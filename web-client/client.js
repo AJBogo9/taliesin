@@ -29,6 +29,36 @@
     }
   };
 
+  // TOC mode: rebuild `<nav id="TOC">` from the mounted, anchored headings after
+  // every change, so the contents stay live as headings are edited/added/removed.
+  const tocEl = window.QMD_TOC === true ? document.getElementById("TOC") : null;
+  const escText = (s) =>
+    s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const buildToc = () => {
+    if (!tocEl) return;
+    const heads = [...root.querySelectorAll("h1[id], h2[id], h3[id]")];
+    if (!heads.length) { tocEl.innerHTML = ""; return; }
+    const lvl = (h) => +h.tagName[1];
+    const base = Math.min(...heads.map(lvl));
+    let html = "<ul>";
+    let level = base;
+    let openLi = false;
+    for (const h of heads) {
+      const l = Math.max(lvl(h), base);
+      if (l > level) {
+        while (level < l) { html += "<ul>"; level++; }
+      } else {
+        if (openLi) html += "</li>";
+        while (level > l) { html += "</ul></li>"; level--; }
+      }
+      html += `<li><a href="#${h.id}">${escText(h.textContent)}</a>`;
+      openLi = true;
+    }
+    if (openLi) html += "</li>";
+    while (level > base) { html += "</ul></li>"; level--; }
+    tocEl.innerHTML = html + "</ul>";
+  };
+
   const cssEscape = (s) =>
     window.CSS && CSS.escape ? CSS.escape(s) : s.replace(/["\\]/g, "\\$&");
 
@@ -47,17 +77,21 @@
     window.scrollTo(0, y);
   };
 
+  // Re-attach reveal and rebuild the TOC after any DOM change (no-ops unless in
+  // the corresponding mode).
+  const afterChange = () => { syncReveal(); buildToc(); };
+
   const handle = (msg) => {
     switch (msg.type) {
       case "full_render":
         document.title = msg.title || "qmd-fast";
         keepScroll(() => { root.innerHTML = msg.body_html; });
-        syncReveal();
+        afterChange();
         break;
       case "update": {
         const el = elById(msg.target_id);
         if (el) keepScroll(() => el.replaceWith(fragment(msg.html)));
-        syncReveal();
+        afterChange();
         break;
       }
       case "insert":
@@ -67,12 +101,12 @@
           if (after) after.after(node);
           else root.prepend(node);
         });
-        syncReveal();
+        afterChange();
         break;
       case "remove": {
         const el = elById(msg.target_id);
         if (el) keepScroll(() => el.remove());
-        syncReveal();
+        afterChange();
         break;
       }
       case "error":

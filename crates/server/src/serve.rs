@@ -32,6 +32,7 @@ struct DocState {
     title: Option<String>,
     subtitle: Option<String>,
     format: DocFormat,
+    toc: bool,
     blocks: Vec<Block>,
 }
 
@@ -78,6 +79,7 @@ async fn serve(path: PathBuf, port: u16) -> std::io::Result<()> {
         d.title = doc.title;
         d.subtitle = doc.subtitle;
         d.format = doc.format;
+        d.toc = doc.toc;
         d.blocks = doc.blocks;
     }
 
@@ -107,14 +109,17 @@ fn render_doc(app: &AppState) -> Option<RenderedDoc> {
 // --- HTTP ---------------------------------------------------------------
 
 async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
-    let format = app.doc.lock().unwrap().format;
-    Html(index_html(format))
+    let (format, toc) = {
+        let d = app.doc.lock().unwrap();
+        (d.format, d.toc)
+    };
+    Html(index_html(format, toc))
 }
 
-fn index_html(format: DocFormat) -> String {
+fn index_html(format: DocFormat, toc: bool) -> String {
     match format {
         DocFormat::Reveal => reveal_index_html(),
-        DocFormat::Html => blog_index_html(),
+        DocFormat::Html => blog_index_html(toc),
     }
 }
 
@@ -123,7 +128,15 @@ const STATUS_CSS: &str = "#qmd-status { position: fixed; bottom: .5rem; left: .5
     font: 12px ui-sans-serif, system-ui, sans-serif; color: #888; background: #fff; \
     padding: .15rem .5rem; border: 1px solid #eee; border-radius: 4px; }";
 
-fn blog_index_html() -> String {
+fn blog_index_html(toc: bool) -> String {
+    // With a TOC, lay the content beside a sticky `<nav id="TOC">` (the client
+    // rebuilds its entries from the mounted headings, so it stays live). The
+    // `QMD_TOC` flag switches the client into that mode.
+    let (body_attr, toc_nav, toc_flag) = if toc {
+        (" class=\"has-toc\"", "<nav id=\"TOC\"></nav>", "window.QMD_TOC = true;")
+    } else {
+        ("", "", "")
+    };
     format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -134,9 +147,11 @@ fn blog_index_html() -> String {
 {styles}
 <style>{status_css}</style>
 </head>
-<body>
+<body{body_attr}>
 <main id="qmd-root"></main>
+{toc_nav}
 <div id="qmd-status">connecting…</div>
+<script>{toc_flag}</script>
 <script>
 {js}
 </script>
@@ -343,6 +358,7 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         d.title = doc.title;
         d.subtitle = doc.subtitle;
         d.format = doc.format;
+        d.toc = doc.toc;
         d.blocks = blocks;
         // Broadcast under the lock so connecting clients can't interleave.
         for op in &ops {
