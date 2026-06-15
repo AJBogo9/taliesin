@@ -5,17 +5,23 @@
 //! carrying `data-block-id` and `data-sourcepos`, which the dev server later
 //! keys off for incremental block-swap and click-to-source.
 
+use crate::includes::LineOrigin;
 use comrak::nodes::{AstNode, ListType, NodeList, NodeValue, TableAlignment};
 use comrak::{Arena, Options, parse_document};
 use std::collections::HashMap;
+use std::path::Path;
 
 /// One top-level block: a stable id, its source position, and its HTML.
 #[derive(Debug, Clone)]
 pub struct Block {
     /// Content-hash id (`b-<hex>`), with a positional tiebreak (`-N`) for duplicates.
     pub id: String,
-    /// comrak sourcepos as `startLine:startCol-endLine:endCol`.
+    /// Sourcepos as `startLine:startCol-endLine:endCol`, relative to `source_file`.
     pub sourcepos: String,
+    /// Origin file when the block came from an `{{< include >}}`d file
+    /// (relative to the primary document's directory); `None` for the primary
+    /// document. Drives click-to-source across files.
+    pub source_file: Option<String>,
     /// Rendered HTML for this block, root element carrying the data attributes.
     pub html: String,
 }
@@ -55,7 +61,22 @@ fn parse_options() -> Options<'static> {
 }
 
 /// Parse `src` into ordered top-level blocks with stable ids + sourcepos.
+/// Does not resolve `{{< include >}}` (use [`render_document_with_includes`]).
 pub fn render_document(src: &str) -> RenderedDoc {
+    render_internal(src, None)
+}
+
+/// Like [`render_document`], but first expands `{{< include >}}` shortcodes
+/// relative to `base_dir`, mapping each block back to its origin file.
+pub fn render_document_with_includes(src: &str, base_dir: &Path) -> RenderedDoc {
+    let (expanded, origins) = crate::includes::resolve(src, base_dir);
+    render_internal(&expanded, Some(&origins))
+}
+
+/// Core render. When `origins` is provided (post-include expansion), each
+/// block's sourcepos and `source_file` are translated back to the originating
+/// file via the line-level source map.
+fn render_internal(src: &str, origins: Option<&[LineOrigin]>) -> RenderedDoc {
     let arena = Arena::new();
     let options = parse_options();
     // Quarto fenced divs (`:::`) aren't CommonMark; strip the fence markers in a
@@ -70,27 +91,35 @@ pub fn render_document(src: &str) -> RenderedDoc {
     let mut id_counts: HashMap<String, u32> = HashMap::new();
 
     for node in root.children() {
-        let (sourcepos, block_src, is_paragraph) = {
+        let (sourcepos, source_file, block_src, is_paragraph) = {
             let data = node.data.borrow();
             if let NodeValue::FrontMatter(fm) = &data.value {
                 title = extract_title(fm);
                 continue;
             }
             let sp = data.sourcepos;
+            // Translate the buffer line range back to the originating file/line.
+            let (file, start_line) = map_origin(origins, sp.start.line);
+            let (_, end_line) = map_origin(origins, sp.end.line);
             let sourcepos = format!(
                 "{}:{}-{}:{}",
-                sp.start.line, sp.start.column, sp.end.line, sp.end.column
+                start_line, sp.start.column, end_line, sp.end.column
             );
             let is_paragraph = matches!(data.value, NodeValue::Paragraph);
             (
                 sourcepos,
+                file,
                 slice_lines(&lines, sp.start.line, sp.end.line),
                 is_paragraph,
             )
         };
 
         let id = make_id(&block_src, &mut id_counts);
-        let attrs = format!(" data-block-id=\"{id}\" data-sourcepos=\"{sourcepos}\"");
+        let file_attr = match &source_file {
+            Some(f) => format!(" data-source-file=\"{}\"", escape_attr(f)),
+            None => String::new(),
+        };
+        let attrs = format!(" data-block-id=\"{id}\" data-sourcepos=\"{sourcepos}\"{file_attr}");
         let mut html = String::new();
         // Quarto/pandoc treat a bare `\begin{env}...\end{env}` block as display
         // math even without `$$`; comrak doesn't, so detect and render it here.
@@ -101,15 +130,32 @@ pub fn render_document(src: &str) -> RenderedDoc {
         } else {
             emit(node, &attrs, &mut html);
         }
-        blocks.push(Block { id, sourcepos, html });
+        blocks.push(Block { id, sourcepos, source_file, html });
     }
 
     RenderedDoc { title, blocks }
 }
 
+/// Map a 1-based buffer line to its (origin file, origin line). Without a
+/// source map, the file is the primary document and the line is unchanged.
+fn map_origin(origins: Option<&[LineOrigin]>, buffer_line: usize) -> (Option<String>, usize) {
+    match origins.and_then(|o| o.get(buffer_line.saturating_sub(1))) {
+        Some(origin) => (origin.file.clone(), origin.line),
+        None => (None, buffer_line),
+    }
+}
+
 /// Render a complete, viewable HTML page (used by the one-shot CLI).
 pub fn render_html_page(src: &str, fallback_title: &str) -> String {
-    let doc = render_document(src);
+    page_from_doc(&render_document(src), fallback_title)
+}
+
+/// Like [`render_html_page`], resolving `{{< include >}}` relative to `base_dir`.
+pub fn render_html_page_with_includes(src: &str, base_dir: &Path, fallback_title: &str) -> String {
+    page_from_doc(&render_document_with_includes(src, base_dir), fallback_title)
+}
+
+fn page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
     let title = doc.title.as_deref().unwrap_or(fallback_title);
     let mut t = String::new();
     escape_html(title, &mut t);

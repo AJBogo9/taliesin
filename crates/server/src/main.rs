@@ -28,11 +28,13 @@ fn cmd_render(path: Option<&String>) -> ExitCode {
     };
     match std::fs::read_to_string(path) {
         Ok(src) => {
-            let stem = Path::new(path)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("document");
-            print!("{}", qmd_fast_core::render_html_page(&src, stem));
+            let p = Path::new(path);
+            let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("document");
+            let base = p.parent().unwrap_or_else(|| Path::new("."));
+            print!(
+                "{}",
+                qmd_fast_core::render_html_page_with_includes(&src, base, stem)
+            );
             ExitCode::SUCCESS
         }
         Err(e) => {
@@ -49,12 +51,21 @@ fn cmd_blocks(path: Option<&String>) -> ExitCode {
     };
     match std::fs::read_to_string(path) {
         Ok(src) => {
-            let doc = qmd_fast_core::render_document(&src);
+            let p = Path::new(path);
+            let base = p.parent().unwrap_or_else(|| Path::new("."));
+            let doc = qmd_fast_core::render_document_with_includes(&src, base);
             eprintln!("title: {:?}", doc.title);
             eprintln!("{} block(s)\n", doc.blocks.len());
-            println!("{:<16}  {:<14}  preview", "id", "sourcepos");
+            println!("{:<16}  {:<14}  {:<22}  preview", "id", "sourcepos", "source-file");
             for b in &doc.blocks {
-                println!("{:<16}  {:<14}  {}", b.id, b.sourcepos, preview(&b.html));
+                let file = b.source_file.as_deref().unwrap_or("(primary)");
+                println!(
+                    "{:<16}  {:<14}  {:<22}  {}",
+                    b.id,
+                    b.sourcepos,
+                    file,
+                    preview(&b.html)
+                );
             }
             ExitCode::SUCCESS
         }

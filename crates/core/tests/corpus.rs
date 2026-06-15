@@ -3,7 +3,7 @@
 //! unique, blocks in document order). The corpus is the spec, so this runs the
 //! whole pipeline over each real `.qmd` rather than synthetic snippets.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -48,12 +48,15 @@ fn every_corpus_doc_renders_with_invariants() {
             .display()
             .to_string();
         let src = fs::read_to_string(f).unwrap();
-        let doc = qmd_fast_core::render_document(&src);
+        let base = f.parent().unwrap();
+        let doc = qmd_fast_core::render_document_with_includes(&src, base);
 
         assert!(!doc.blocks.is_empty(), "{label}: produced no blocks");
 
         let mut ids = HashSet::new();
-        let mut prev_start = 0usize;
+        // Document order holds *within* a single source file; included files
+        // reset to their own line numbering, so track order per file.
+        let mut prev_start: std::collections::HashMap<Option<String>, usize> = HashMap::new();
         for b in &doc.blocks {
             assert!(!b.html.is_empty(), "{label}: empty html for block {}", b.id);
             assert!(ids.insert(&b.id), "{label}: duplicate block id {}", b.id);
@@ -61,13 +64,52 @@ fn every_corpus_doc_renders_with_invariants() {
             let (sl, el) = line_range(&b.sourcepos);
             assert!(sl >= 1, "{label}: zero/invalid start line in {}", b.sourcepos);
             assert!(sl <= el, "{label}: start line after end in {}", b.sourcepos);
+            let prev = prev_start.entry(b.source_file.clone()).or_insert(0);
             assert!(
-                sl >= prev_start,
-                "{label}: blocks out of document order ({sl} after {prev_start})"
+                sl >= *prev,
+                "{label}: blocks out of order within {:?} ({sl} after {prev})",
+                b.source_file
             );
-            prev_start = sl;
+            *prev = sl;
         }
     }
+}
+
+#[test]
+fn includes_are_resolved_with_origin_files() {
+    // pca-geometry pulls in _includes/three-scene.qmd via {{< include >}}.
+    let dir = corpus_dir().join("posts/pca-geometry");
+    let src = fs::read_to_string(dir.join("index.qmd")).unwrap();
+    let doc = qmd_fast_core::render_document_with_includes(&src, &dir);
+
+    let body = doc.body_html();
+    assert!(!body.contains("{{< include"), "include shortcode leaked into output");
+
+    // some blocks must now originate from the included file, with their own lines
+    let from_include: Vec<_> = doc
+        .blocks
+        .iter()
+        .filter(|b| b.source_file.as_deref().is_some_and(|f| f.contains("three-scene")))
+        .collect();
+    assert!(
+        !from_include.is_empty(),
+        "expected blocks sourced from the included three-scene.qmd"
+    );
+
+    // the book pulls in subsections; every subsection should contribute blocks
+    let book = corpus_dir().join("bayesian-book");
+    let bsrc = fs::read_to_string(book.join("index.qmd")).unwrap();
+    let bdoc = qmd_fast_core::render_document_with_includes(&bsrc, &book);
+    assert!(!bdoc.body_html().contains("{{< include"));
+    let included_files: HashSet<_> = bdoc
+        .blocks
+        .iter()
+        .filter_map(|b| b.source_file.clone())
+        .collect();
+    assert!(
+        included_files.len() >= 5,
+        "expected blocks from several subsection files, got {included_files:?}"
+    );
 }
 
 #[test]
