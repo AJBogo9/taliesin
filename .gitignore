@@ -9,6 +9,7 @@ dist/
 out/
 *.vsix
 *.tsbuildinfo
+.vscode-test/
 
 # Logs and env
 *.log

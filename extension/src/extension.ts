@@ -15,15 +15,21 @@ import * as fs from "fs";
 interface Preview {
   panel: vscode.WebviewPanel;
   child: cp.ChildProcess;
+  port: number;
 }
 
-interface GotoMessage {
+export interface GotoMessage {
   type: "qmd-goto";
   source_file: string | null;
   sourcepos: string | null;
 }
 
 const previews = new Map<string, Preview>();
+
+/// The live preview for a document, if open (exposed for tests).
+export function getPreview(fsPath: string): Preview | undefined {
+  return previews.get(fsPath);
+}
 
 export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
@@ -96,7 +102,7 @@ async function openPreview() {
     }
   });
 
-  previews.set(file, { panel, child });
+  previews.set(file, { panel, child, port });
   panel.onDidDispose(() => {
     messageSub.dispose();
     child.kill();
@@ -105,7 +111,7 @@ async function openPreview() {
 }
 
 /// Open the (possibly included) source file and reveal the block's range.
-async function gotoSource(mainFile: string, baseDir: string, msg: GotoMessage) {
+export async function gotoSource(mainFile: string, baseDir: string, msg: GotoMessage) {
   const target = msg.source_file
     ? path.isAbsolute(msg.source_file)
       ? msg.source_file
@@ -129,7 +135,7 @@ async function gotoSource(mainFile: string, baseDir: string, msg: GotoMessage) {
 }
 
 /// Parse a "startLine:startCol-endLine:endCol" sourcepos (1-based) into a Range.
-function parseSourcepos(sp: string | null): vscode.Range | undefined {
+export function parseSourcepos(sp: string | null): vscode.Range | undefined {
   if (!sp) return undefined;
   const m = /^(\d+):(\d+)-(\d+):(\d+)$/.exec(sp);
   if (!m) return undefined;
