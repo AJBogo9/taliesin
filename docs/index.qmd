@@ -132,7 +132,9 @@ cursor posts `qmd-cursor` down to the preview (which highlights the block).
 ## Prose and typography
 
 Standard Markdown works as expected: **bold**, *italic*, ~~strikethrough~~,
-`inline code`, [links](https://example.com), lists, and blockquotes.
+`inline code`, [links](https://example.com), lists, blockquotes, and tables with
+column alignment. Code blocks are syntax-highlighted and get a hover **Copy**
+button.
 
 > Smart typography turns straight quotes into curly ones and handles ellipses,
 > matching the look of the author's existing posts.
@@ -159,7 +161,16 @@ np.arange(5).sum()
 ```
 
 On save, only cells whose source changed (plus downstream cells) re-execute, and
-the kernel never cold-starts.
+the kernel never cold-starts. Execution needs a Python with `ipykernel`
+available; point the server at it with the `QMD_FAST_PYTHON` environment
+variable. Without one, a cell renders as highlighted source with no output rather
+than failing.
+
+## Diagrams
+
+A `{mermaid}` code block renders client-side with mermaid.js, loaded lazily the
+first time a diagram appears on the page. The flowcharts in
+[Architecture](#architecture) above are rendered exactly this way.
 
 ## Callouts
 
@@ -185,8 +196,24 @@ works within the current slide so live edits never reset your position.
 ## Books
 
 A document with `toc: true` gains a sticky table of contents built from its
-heading anchors. Standalone images with a `{#fig-... }` attribute render as
-numbered figures, and `@fig-` cross-references resolve to the figure number.
+heading anchors. Standalone images with a `{#fig-...}` attribute render as
+numbered figures, and clicking any figure opens it full-screen in a lightbox.
+
+## Citations and cross-references
+
+With a `bibliography:` in the front matter, `[@key]` citations become numbered
+links to an auto-generated References section, formatted from the BibTeX file
+(citation groups and locators like `[@a; @b, p. 5]` work too). Cross-references
+resolve to labelled links across the kinds `@fig-`, `@sec-`, `@tbl-`, `@eq-`,
+`@lst-`, `@thm-`, and `@def-`, carrying the resolved number when it is known.
+
+## Click-to-source and editor sync
+
+In the VS Code extension, double-clicking a block in the preview reveals the
+exact source line in the editor (including across `{{< include >}}`d files), and
+moving the editor cursor highlights the matching block in the preview. The
+standalone browser preview highlights a clicked block and reports it to the
+server, but does not open an editor.
 
 # CLI reference
 

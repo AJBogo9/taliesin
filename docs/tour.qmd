@@ -47,4 +47,4 @@ sum(n * n for n in range(10))
 ## Thanks
 
 - Edit the source and watch this slide update in place
-- Double-click any block to jump to its line
+- In VS Code, double-click any block to jump to its line
