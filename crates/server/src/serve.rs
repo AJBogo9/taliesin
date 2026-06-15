@@ -246,12 +246,16 @@ fn spawn_watcher(app: Arc<AppState>) {
         std::thread::park(); // keep the watcher alive
     });
 
-    // Debounce bursts of save events, then re-render and broadcast a diff.
+    // Debounce bursts of save events, then re-render, execute, and broadcast a diff.
     tokio::spawn(async move {
+        let mut executor = crate::exec::Executor::new();
+        // Initial execution pass: markdown is already live; this fills in outputs
+        // (and starts the warm kernel) shortly after the page loads.
+        rebuild(&app, &mut executor).await;
         while signal_rx.recv().await.is_some() {
             tokio::time::sleep(Duration::from_millis(80)).await;
             while signal_rx.try_recv().is_ok() {}
-            on_change(&app);
+            rebuild(&app, &mut executor).await;
         }
     });
 }
@@ -271,13 +275,16 @@ fn watch_dirs(app: &AppState) -> Vec<PathBuf> {
     dirs.into_iter().collect()
 }
 
-fn on_change(app: &AppState) {
+/// Re-render markdown, execute code cells (changed + downstream), then diff the
+/// assembled block list against the live state and broadcast the changes.
+async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
     let Some(doc) = render_doc(app) else { return };
+    let blocks = executor.run(doc.blocks).await;
     let ops = {
         let mut d = app.doc.lock().unwrap();
-        let ops = qmd_fast_core::diff_blocks(&d.blocks, &doc.blocks);
+        let ops = qmd_fast_core::diff_blocks(&d.blocks, &blocks);
         d.title = doc.title;
-        d.blocks = doc.blocks;
+        d.blocks = blocks;
         // Broadcast under the lock so connecting clients can't interleave.
         for op in &ops {
             let _ = app.tx.send(op_json(op));

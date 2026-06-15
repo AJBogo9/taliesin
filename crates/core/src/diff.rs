@@ -32,7 +32,16 @@ pub fn diff_blocks(old: &[Block], new: &[Block]) -> Vec<BlockOp> {
     let mut prev_new: Option<String> = None;
     for (ai, bj) in &anchors {
         emit_gap(&mut ops, old, new, oi..*ai, nj..*bj, &mut prev_new);
-        prev_new = Some(new[*bj].id.clone()); // the anchor is untouched and now precedes
+        // Matched id, but the HTML can still differ for *derived* blocks whose id
+        // isn't a hash of their content (e.g. a code cell's output block, keyed to
+        // the cell id, whose content changes when an upstream cell re-runs).
+        if old[*ai].html != new[*bj].html {
+            ops.push(BlockOp::Update {
+                target_id: new[*bj].id.clone(),
+                html: new[*bj].html.clone(),
+            });
+        }
+        prev_new = Some(new[*bj].id.clone()); // the anchor now precedes
         oi = ai + 1;
         nj = bj + 1;
     }
@@ -112,11 +121,32 @@ mod tests {
             sourcepos: "1:1-1:1".to_string(),
             source_file: None,
             html: format!("<p data-block-id=\"{id}\">{id}</p>"),
+            cell: None,
         }
+    }
+
+    fn block_html(id: &str, html: &str) -> Block {
+        Block { html: html.to_string(), ..block(id) }
     }
 
     fn ids(blocks: &[&str]) -> Vec<Block> {
         blocks.iter().map(|s| block(s)).collect()
+    }
+
+    #[test]
+    fn same_id_changed_html_updates_in_place() {
+        // A code cell's output block keeps its id (keyed to the cell) but its
+        // content changes when an upstream cell re-runs.
+        let old = vec![block_html("a", "<div>old output</div>")];
+        let new = vec![block_html("a", "<div>new output</div>")];
+        let ops = diff_blocks(&old, &new);
+        assert_eq!(
+            ops,
+            vec![BlockOp::Update {
+                target_id: "a".into(),
+                html: "<div>new output</div>".into()
+            }]
+        );
     }
 
     #[test]

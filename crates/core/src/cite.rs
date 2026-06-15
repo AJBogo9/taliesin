@@ -250,6 +250,7 @@ pub fn process(blocks: &mut Vec<Block>, bib: &Bibliography) {
         sourcepos: String::new(),
         source_file: None,
         html: list,
+        cell: None,
     });
 }
 
@@ -415,6 +416,7 @@ mod tests {
             sourcepos: "1:1-1:1".into(),
             source_file: None,
             html: "<p>fails [@bishop2006pattern, chap. 9].</p>".into(),
+            cell: None,
         }];
         process(&mut blocks, &b);
         assert!(blocks[0].html.contains("[<a href=\"#ref-bishop2006pattern\">1</a>, chap. 9]"));
@@ -432,6 +434,7 @@ mod tests {
             sourcepos: "1:1-1:1".into(),
             source_file: None,
             html: "<p>see @fig-scree for details</p>".into(),
+            cell: None,
         }];
         process(&mut blocks, &b);
         assert!(
@@ -451,6 +454,7 @@ mod tests {
             sourcepos: "1:1-1:1".into(),
             source_file: None,
             html: "<pre><code>x = [@bishop2006pattern]</code></pre>".into(),
+            cell: None,
         }];
         process(&mut blocks, &b);
         assert!(blocks[0].html.contains("[@bishop2006pattern]"), "code was rewritten");

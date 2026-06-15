@@ -29,19 +29,27 @@ web-client/     browser preview client (vanilla JS)
 
 ## Status
 
-Phase 2 — live dev server with block-level incremental updates. `qmd-fast serve`
-watches the `.qmd` (and its includes/bibliography), and on each save re-renders,
-diffs against the previous block list, and pushes only the changed blocks over a
-websocket. Unchanged blocks are never touched, so scroll position and the
-runtime state of live blocks (Three.js, OJS) survive edits.
+Phases 0–4 done. `qmd-fast serve` runs a long-lived dev server: it watches the
+`.qmd` (and its includes/bibliography), and on each save re-renders, **executes
+changed code cells against a warm Jupyter kernel** (re-running only the earliest
+changed cell and everything downstream), diffs against the previous block list,
+and pushes only the changed blocks over a websocket. Unchanged blocks are never
+touched, so scroll position and the runtime state of live blocks (Three.js, OJS)
+survive edits. The VS Code extension hosts the same preview with
+double-click-to-source.
 
 ```sh
 cargo run -p qmd-fast-server -- serve corpus/posts/born-machines.qmd  # http://127.0.0.1:4321
 ```
 
-The Phase 1 render pipeline underneath. The core parses `.qmd` with comrak
-(sourcepos), splits the document into top-level blocks with content-hash ids,
-and emits HTML with `data-block-id` + `data-sourcepos` on every block.
+Code execution needs a Python with `ipykernel`; point the server at it with the
+`QMD_FAST_PYTHON` env var (defaults to `python3`). Cells render as source if no
+kernel is available. Outputs (stdout/stderr, results, images, HTML, errors)
+become their own blocks keyed to the cell, so they swap in place.
+
+The render pipeline underneath: the core parses `.qmd` with comrak (sourcepos),
+splits the document into top-level blocks with content-hash ids, and emits HTML
+with `data-block-id` + `data-sourcepos` on every block.
 
 Supported so far:
 

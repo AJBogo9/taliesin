@@ -4,6 +4,8 @@
 //!   - `qmd-fast blocks <file.qmd>`       list block ids + sourcepos (debugging)
 //!   - `qmd-fast serve  <file.qmd> [port]` long-running preview dev server
 
+mod exec;
+mod kernel;
 mod serve;
 
 use std::path::{Path, PathBuf};

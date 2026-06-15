@@ -11,6 +11,14 @@ use comrak::{Arena, Options, parse_document};
 use std::collections::HashMap;
 use std::path::Path;
 
+/// An executable Quarto code cell (```` ```{lang} ````), exposed so the dev
+/// server can run it against a kernel.
+#[derive(Debug, Clone)]
+pub struct Cell {
+    pub lang: String,
+    pub code: String,
+}
+
 /// One top-level block: a stable id, its source position, and its HTML.
 #[derive(Debug, Clone)]
 pub struct Block {
@@ -24,6 +32,8 @@ pub struct Block {
     pub source_file: Option<String>,
     /// Rendered HTML for this block, root element carrying the data attributes.
     pub html: String,
+    /// Present when this block is an executable code cell.
+    pub cell: Option<Cell>,
 }
 
 /// A rendered document: its title (from front matter, if any) and ordered blocks.
@@ -96,7 +106,7 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
     let mut id_counts: HashMap<String, u32> = HashMap::new();
 
     for node in root.children() {
-        let (buf_start, sourcepos, source_file, block_src, is_paragraph) = {
+        let (buf_start, sourcepos, source_file, block_src, is_paragraph, cell) = {
             let data = node.data.borrow();
             if let NodeValue::FrontMatter(fm) = &data.value {
                 title = extract_field(fm, "title");
@@ -112,12 +122,23 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
                 start_line, sp.start.column, end_line, sp.end.column
             );
             let is_paragraph = matches!(data.value, NodeValue::Paragraph);
+            // Executable Quarto cell: ```{lang} ... ``` (lang detected, options stripped).
+            let cell = match &data.value {
+                NodeValue::CodeBlock(cb) if cb.info.trim_start().starts_with('{') => {
+                    code_lang(&cb.info).map(|lang| Cell {
+                        lang,
+                        code: strip_cell_options(&cb.literal),
+                    })
+                }
+                _ => None,
+            };
             (
                 sp.start.line,
                 sourcepos,
                 file,
                 slice_lines(&lines, sp.start.line, sp.end.line),
                 is_paragraph,
+                cell,
             )
         };
 
@@ -139,7 +160,7 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
         }
         flat.push(FlatBlock {
             buf_start,
-            block: Block { id, sourcepos, source_file, html },
+            block: Block { id, sourcepos, source_file, html, cell },
         });
     }
 
@@ -224,6 +245,11 @@ const BASE_CSS: &str = r#"
   .callout-caution { border-left-color: #e8730c; } .callout-caution .callout-title { background: #fdefe3; }
   .qmd-xref { text-decoration: none; }
   .qmd-references .csl-entry { margin: .4rem 0; padding-left: 2.2rem; text-indent: -2.2rem; }
+  .qmd-output { margin: 0 0 1rem; }
+  .qmd-output > pre { background: #fbfbfb; border-left: 3px solid #e3e3e3; }
+  .qmd-output img { display: block; max-width: 100%; }
+  .qmd-stderr { border-left-color: #e0a800 !important; background: #fdf6e3 !important; }
+  .qmd-error { border-left-color: #e0566b !important; background: #fdecef !important; color: #862033; }
   [data-block-id] { scroll-margin-top: 1rem; }
   [data-block-id].qmd-hl { outline: 2px solid #4c8dff; outline-offset: 3px; border-radius: 3px; }
 "#;
@@ -755,7 +781,7 @@ fn build_container(
         format!("<div class=\"{class}\"{id_attr}{data}>{body}</div>")
     };
 
-    Block { id, sourcepos, source_file: file, html }
+    Block { id, sourcepos, source_file: file, html, cell: None }
 }
 
 fn is_heading(html: &str) -> bool {
