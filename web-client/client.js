@@ -70,19 +70,29 @@
 
   // Click-to-source: report the clicked block to the server (the editor client
   // will act on this in Phase 3). Also highlight it locally.
+  const blockRef = (el) => ({
+    block_id: el.dataset.blockId,
+    source_file: el.dataset.sourceFile || null,
+    sourcepos: el.dataset.sourcepos || null,
+  });
+
+  // Single click: highlight + tell the server (it logs / will drive sync).
   document.addEventListener("click", (e) => {
     const el = e.target.closest("[data-block-id]");
     document.querySelectorAll(".qmd-hl").forEach((n) => n.classList.remove("qmd-hl"));
     if (!el) return;
     el.classList.add("qmd-hl");
     if (ws && ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({
-        type: "click_block",
-        block_id: el.dataset.blockId,
-        source_file: el.dataset.sourceFile || null,
-        sourcepos: el.dataset.sourcepos || null,
-      }));
+      ws.send(JSON.stringify({ type: "click_block", ...blockRef(el) }));
     }
+  });
+
+  // Double click: jump to source. When embedded in the VS Code webview, relay
+  // to the extension host (which calls revealRange); standalone, this is a noop.
+  document.addEventListener("dblclick", (e) => {
+    const el = e.target.closest("[data-block-id]");
+    if (!el || window.parent === window) return;
+    window.parent.postMessage({ type: "qmd-goto", ...blockRef(el) }, "*");
   });
 
   connect();
