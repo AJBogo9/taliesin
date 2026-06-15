@@ -1,0 +1,1257 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en"><head>
+
+<meta charset="utf-8">
+<meta name="generator" content="quarto-99.9.9">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+
+<meta name="author" content="Andreas Bogossian">
+<meta name="dcterms.date" content="2026-05-08">
+<meta name="description" content="The geometry behind principal component analysis: how the covariance matrix encodes the shape of your data, and why eigenvectors are the natural axes to read it from.">
+
+<title>PCA: the shape hidden in your data – Andreas Bogossian</title>
+<style>
+/* Default styles provided by pandoc.
+** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+*/
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+div.columns{display: flex; gap: min(4vw, 1.5em);}
+div.column{flex: auto; overflow-x: auto;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+ul.task-list li input[type="checkbox"] {
+  width: 0.8em;
+  margin: 0 0.8em 0.2em -1em; /* quarto-specific, see https://github.com/quarto-dev/quarto-cli/issues/4556 */ 
+  vertical-align: middle;
+}
+/* CSS for syntax highlighting */
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+  }
+pre.numberSource { margin-left: 3em;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+</style>
+
+
+<script src="https://cdn.jsdelivr.net/npm/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script><script src="../../site_libs/quarto-nav/quarto-nav.js"></script>
+<script src="../../site_libs/quarto-nav/headroom.min.js"></script>
+<link href="../../bell-curve.svg" rel="icon" type="image/svg+xml">
+<script src="../../site_libs/clipboard/clipboard.min.js"></script>
+<script src="../../site_libs/quarto-html/quarto.js" type="module"></script>
+<script src="../../site_libs/quarto-html/tabsets/tabsets.js" type="module"></script>
+<script src="../../site_libs/quarto-html/popper.min.js"></script>
+<script src="../../site_libs/quarto-html/tippy.umd.min.js"></script>
+<script src="../../site_libs/quarto-html/anchor.min.js"></script>
+<link href="../../site_libs/quarto-html/tippy.css" rel="stylesheet">
+<link href="../../site_libs/quarto-html/quarto-syntax-highlighting-dark-236479f7f8fafeef9d2a9600ae86e912.css" rel="stylesheet" id="quarto-text-highlighting-styles">
+<script src="../../site_libs/bootstrap/bootstrap.min.js"></script>
+<link href="../../site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
+<link href="../../site_libs/bootstrap/bootstrap-f319ee90481bba11089eeacfc29fdfb7.min.css" rel="stylesheet" append-hash="true" id="quarto-bootstrap" data-mode="dark">
+<script src="../../site_libs/quarto-contrib/glightbox/glightbox.min.js"></script>
+<link href="../../site_libs/quarto-contrib/glightbox/glightbox.min.css" rel="stylesheet">
+<link href="../../site_libs/quarto-contrib/glightbox/lightbox.css" rel="stylesheet">
+<script id="quarto-search-options" type="application/json">{
+  "language": {
+    "search-no-results-text": "No results",
+    "search-matching-documents-text": "matching documents",
+    "search-copy-link-title": "Copy link to search",
+    "search-hide-matches-text": "Hide additional matches",
+    "search-more-match-text": "more match in this document",
+    "search-more-matches-text": "more matches in this document",
+    "search-clear-button-title": "Clear",
+    "search-text-placeholder": "",
+    "search-detached-cancel-button-title": "Cancel",
+    "search-submit-button-title": "Submit",
+    "search-label": "Search"
+  }
+}</script>
+<style>html{ scroll-behavior: smooth; }</style>
+<script type="module" src="../../site_libs/quarto-ojs/quarto-ojs-runtime.js"></script>
+<link href="../../site_libs/quarto-ojs/quarto-ojs.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/requirejs@2.3.6/require.min.js" integrity="sha384-c9c+LnTbwQ3aujuU7ULEPVvgLs+Fn6fJUvIGTsuu1ZcCf11fiEubah0ttpca4ntM sha384-6V1/AdqZRWk1KAlWbKBlGhN7VG4iE/yAZcO6NZPMF8od0vukrvr0tg4qY6NSrItx" crossorigin="anonymous"></script>
+
+<script type="application/javascript">define('jquery', [],function() {return window.jQuery;})</script>
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<script type="speculationrules">
+{"prerender":[{"where":{"href_matches":"/*"},"eagerness":"moderate"}]}
+</script>
+
+  <script>window.backupDefine = window.define; window.define = undefined;</script><script src="https://cdn.jsdelivr.net/npm/katex@latest/dist/katex.min.js"></script>
+  <script>document.addEventListener("DOMContentLoaded", function () {
+ var mathElements = document.getElementsByClassName("math");
+ var macros = [];
+ for (var i = 0; i < mathElements.length; i++) {
+  var texText = mathElements[i].firstChild;
+  if (mathElements[i].tagName == "SPAN") {
+   katex.render(texText.data, mathElements[i], {
+    displayMode: mathElements[i].classList.contains('display'),
+    throwOnError: false,
+    macros: macros,
+    fleqn: false
+   });
+}}});
+  </script>
+  <script>window.define = window.backupDefine; window.backupDefine = undefined;</script><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@latest/dist/katex.min.css">
+
+<script type="text/javascript">
+const typesetMath = (el) => {
+  if (window.MathJax) {
+    // MathJax Typeset
+    window.MathJax.typeset([el]);
+  } else if (window.katex) {
+    // KaTeX Render
+    var mathElements = el.getElementsByClassName("math");
+    var macros = [];
+    for (var i = 0; i < mathElements.length; i++) {
+      var texText = mathElements[i].firstChild;
+      if (mathElements[i].tagName == "SPAN" && texText && texText.data) {
+        window.katex.render(texText.data, mathElements[i], {
+          displayMode: mathElements[i].classList.contains('display'),
+          throwOnError: false,
+          macros: macros,
+          fleqn: false
+        });
+      }
+    }
+  }
+}
+window.Quarto = {
+  typesetMath
+};
+</script>
+
+<link rel="stylesheet" href="../../custom.css">
+<meta property="og:title" content="PCA: the shape hidden in your data – Andreas Bogossian">
+<meta property="og:description" content="The geometry behind principal component analysis: how the covariance matrix encodes the shape of your data, and why eigenvectors are the natural axes to read it from.">
+<meta property="og:image" content="https://andreasbogossian.com/posts/pca-geometry/thumbnail.webp">
+<meta property="og:site_name" content="Andreas Bogossian">
+<meta property="og:image:alt" content="3D scatter plot of NBA player measurements with three principal component vectors, PC1 capturing 80% of variance">
+<meta name="citation_title" content="PCA: the shape hidden in your data">
+<meta name="citation_author" content="Andreas Bogossian">
+<meta name="citation_publication_date" content="2026-05-08">
+<meta name="citation_cover_date" content="2026-05-08">
+<meta name="citation_year" content="2026">
+<meta name="citation_online_date" content="2026-05-08">
+<meta name="citation_fulltext_html_url" content="https://andreasbogossian.com/posts/pca-geometry/">
+<meta name="citation_language" content="en">
+<meta name="citation_reference" content="citation_title=Principal component analysis;,citation_author=Ian T. Jolliffe;,citation_publication_date=2002;,citation_cover_date=2002;,citation_year=2002;">
+<meta name="citation_reference" content="citation_title=Pattern recognition and machine learning;,citation_author=Christopher M. Bishop;,citation_publication_date=2006;,citation_cover_date=2006;,citation_year=2006;">
+<meta name="citation_reference" content="citation_title=Linear algebra and learning from data;,citation_author=Gilbert Strang;,citation_publication_date=2019;,citation_cover_date=2019;,citation_year=2019;">
+</head>
+
+<body class="nav-fixed quarto-light">
+
+<div id="quarto-search-results"></div>
+  <header id="quarto-header" class="headroom fixed-top">
+    <nav class="navbar navbar-expand-lg " data-bs-theme="dark">
+      <div class="navbar-container container-fluid">
+      <div class="navbar-brand-container mx-auto">
+    <a class="navbar-brand" href="../../index.html">
+    <span class="navbar-title">Andreas Bogossian</span>
+    </a>
+  </div>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarCollapse" aria-controls="navbarCollapse" role="menu" aria-expanded="false" aria-label="Toggle navigation" onclick="if (window.quartoToggleHeadroom) { window.quartoToggleHeadroom(); }">
+  <span class="navbar-toggler-icon"></span>
+</button>
+          <div class="collapse navbar-collapse" id="navbarCollapse">
+            <ul class="navbar-nav navbar-nav-scroll me-auto">
+  <li class="nav-item">
+    <a class="nav-link" href="../../blog.html"> 
+<span class="menu-text">Blog</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../publications.html"> 
+<span class="menu-text">Publications</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../projects.html"> 
+<span class="menu-text">Projects</span></a>
+  </li>  
+  <li class="nav-item">
+    <a class="nav-link" href="../../cv.html"> 
+<span class="menu-text">CV</span></a>
+  </li>  
+</ul>
+          </div> <!-- /navcollapse -->
+            <div class="quarto-navbar-tools">
+</div>
+      </div> <!-- /container-fluid -->
+    </nav>
+</header>
+<!-- content -->
+<div id="quarto-content" class="quarto-container page-columns page-rows-contents page-layout-article page-navbar">
+<!-- sidebar -->
+<!-- margin-sidebar -->
+    <div id="quarto-margin-sidebar" class="sidebar margin-sidebar">
+        <nav id="TOC" role="doc-toc" class="toc-active">
+    <h2 id="toc-title">Contents</h2>
+   
+  <ul>
+  <li><a href="#standardising-the-data" id="toc-standardising-the-data" class="nav-link active" data-scroll-target="#standardising-the-data">Standardising the data</a></li>
+  <li><a href="#the-covariance-matrix-encoding-shape" id="toc-the-covariance-matrix-encoding-shape" class="nav-link" data-scroll-target="#the-covariance-matrix-encoding-shape">The covariance matrix: encoding shape</a></li>
+  <li><a href="#eigenvectors-the-natural-axes-of-the-data" id="toc-eigenvectors-the-natural-axes-of-the-data" class="nav-link" data-scroll-target="#eigenvectors-the-natural-axes-of-the-data">Eigenvectors: the natural axes of the data</a></li>
+  <li><a href="#explained-variance-and-the-scree-plot" id="toc-explained-variance-and-the-scree-plot" class="nav-link" data-scroll-target="#explained-variance-and-the-scree-plot">Explained variance and the scree plot</a></li>
+  <li><a href="#dimensionality-reduction" id="toc-dimensionality-reduction" class="nav-link" data-scroll-target="#dimensionality-reduction">Dimensionality reduction</a></li>
+  <li><a href="#what-the-scout-found" id="toc-what-the-scout-found" class="nav-link" data-scroll-target="#what-the-scout-found">What the scout found</a></li>
+  </ul>
+</nav>
+    </div>
+<!-- main -->
+<main class="content" id="quarto-document-content">
+
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">PCA: the shape hidden in your data</h1>
+  <div class="quarto-categories">
+    <div class="quarto-category">linear algebra</div>
+    <div class="quarto-category">machine learning</div>
+  </div>
+  </div>
+
+<div>
+  <div class="description">
+    The geometry behind principal component analysis: how the covariance matrix encodes the shape of your data, and why eigenvectors are the natural axes to read it from.
+  </div>
+</div>
+
+
+<div class="quarto-title-meta">
+
+    <div>
+    <div class="quarto-title-meta-heading">Author</div>
+    <div class="quarto-title-meta-contents">
+             <p>Andreas Bogossian </p>
+          </div>
+  </div>
+    
+    <div>
+    <div class="quarto-title-meta-heading">Published</div>
+    <div class="quarto-title-meta-contents">
+      <p class="date">May 8, 2026</p>
+    </div>
+  </div>
+  
+    
+  </div>
+  
+
+
+</header>
+
+
+<p>An NBA scout records three measurements for every player he is scouting: height, wingspan and reach. The thing is that all these measures are highly correlated because taller players tend to have longer wingspans and higher reaches. So in practice there are three numbers (dimensions) per player, but the data could be represented with a single dimension representing the “overall size” of the NBA player. PCA finds this dimension automatically from the data alone.</p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code hidden" id="cb1" data-startfrom="119" data-source-offset="0"><pre class="sourceCode js code-with-copy"><code class="sourceCode javascript" style="counter-reset: source-line 118;"><span id="cb1-119"><a href="#cb1-119" aria-hidden="true" tabindex="-1"></a><span class="kw">async</span> <span class="kw">function</span> <span class="fu">makeScene3D</span>(buildScene<span class="op">,</span> invalidation<span class="op">,</span> opts <span class="op">=</span> {}) {</span>
+<span id="cb1-120"><a href="#cb1-120" aria-hidden="true" tabindex="-1"></a>  <span class="kw">const</span> THREE <span class="op">=</span> <span class="cf">await</span> <span class="im">import</span>(<span class="st">"https://esm.sh/three@0.163.0"</span>)<span class="op">;</span></span>
+<span id="cb1-121"><a href="#cb1-121" aria-hidden="true" tabindex="-1"></a>  <span class="kw">const</span> { OrbitControls } <span class="op">=</span> <span class="cf">await</span> <span class="im">import</span>(</span>
+<span id="cb1-122"><a href="#cb1-122" aria-hidden="true" tabindex="-1"></a>    <span class="st">"https://esm.sh/three@0.163.0/examples/jsm/controls/OrbitControls"</span></span>
+<span id="cb1-123"><a href="#cb1-123" aria-hidden="true" tabindex="-1"></a>  )<span class="op">;</span></span>
+<span id="cb1-124"><a href="#cb1-124" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-125"><a href="#cb1-125" aria-hidden="true" tabindex="-1"></a>  <span class="kw">const</span> {</span>
+<span id="cb1-126"><a href="#cb1-126" aria-hidden="true" tabindex="-1"></a>    width            <span class="op">=</span> <span class="dv">620</span><span class="op">,</span></span>
+<span id="cb1-127"><a href="#cb1-127" aria-hidden="true" tabindex="-1"></a>    height           <span class="op">=</span> <span class="dv">500</span><span class="op">,</span></span>
+<span id="cb1-128"><a href="#cb1-128" aria-hidden="true" tabindex="-1"></a>    cameraPos        <span class="op">=</span> [<span class="dv">6</span><span class="op">,</span> <span class="dv">4</span><span class="op">,</span> <span class="dv">7</span>]<span class="op">,</span></span>
+<span id="cb1-129"><a href="#cb1-129" aria-hidden="true" tabindex="-1"></a>    fov              <span class="op">=</span> <span class="dv">40</span><span class="op">,</span></span>
+<span id="cb1-130"><a href="#cb1-130" aria-hidden="true" tabindex="-1"></a>    far              <span class="op">=</span> <span class="dv">100</span><span class="op">,</span></span>
+<span id="cb1-131"><a href="#cb1-131" aria-hidden="true" tabindex="-1"></a>    bgColor          <span class="op">=</span> <span class="bn">0x111827</span><span class="op">,</span></span>
+<span id="cb1-132"><a href="#cb1-132" aria-hidden="true" tabindex="-1"></a>    alpha            <span class="op">=</span> <span class="kw">false</span><span class="op">,</span></span>
+<span id="cb1-133"><a href="#cb1-133" aria-hidden="true" tabindex="-1"></a>    target           <span class="op">=</span> [<span class="dv">0</span><span class="op">,</span> <span class="dv">0</span><span class="op">,</span> <span class="dv">0</span>]<span class="op">,</span></span>
+<span id="cb1-134"><a href="#cb1-134" aria-hidden="true" tabindex="-1"></a>    minDistance      <span class="op">=</span> <span class="dv">3</span><span class="op">,</span></span>
+<span id="cb1-135"><a href="#cb1-135" aria-hidden="true" tabindex="-1"></a>    maxDistance      <span class="op">=</span> <span class="dv">20</span><span class="op">,</span></span>
+<span id="cb1-136"><a href="#cb1-136" aria-hidden="true" tabindex="-1"></a>    ambientIntensity <span class="op">=</span> <span class="fl">1.0</span><span class="op">,</span></span>
+<span id="cb1-137"><a href="#cb1-137" aria-hidden="true" tabindex="-1"></a>    onFrame          <span class="op">=</span> <span class="kw">null</span><span class="op">,</span></span>
+<span id="cb1-138"><a href="#cb1-138" aria-hidden="true" tabindex="-1"></a>  } <span class="op">=</span> opts<span class="op">;</span></span>
+<span id="cb1-139"><a href="#cb1-139" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-140"><a href="#cb1-140" aria-hidden="true" tabindex="-1"></a>  <span class="kw">const</span> renderer <span class="op">=</span> <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">WebGLRenderer</span>({ <span class="dt">antialias</span><span class="op">:</span> <span class="kw">true</span><span class="op">,</span> alpha })<span class="op">;</span></span>
+<span id="cb1-141"><a href="#cb1-141" aria-hidden="true" tabindex="-1"></a>  renderer<span class="op">.</span><span class="fu">setSize</span>(width<span class="op">,</span> height)<span class="op">;</span></span>
+<span id="cb1-142"><a href="#cb1-142" aria-hidden="true" tabindex="-1"></a>  renderer<span class="op">.</span><span class="fu">setPixelRatio</span>(<span class="bu">Math</span><span class="op">.</span><span class="fu">min</span>(<span class="bu">window</span><span class="op">.</span><span class="at">devicePixelRatio</span><span class="op">,</span> <span class="dv">2</span>))<span class="op">;</span></span>
+<span id="cb1-143"><a href="#cb1-143" aria-hidden="true" tabindex="-1"></a>  renderer<span class="op">.</span><span class="fu">setClearColor</span>(bgColor<span class="op">,</span> alpha <span class="op">?</span> <span class="dv">0</span> <span class="op">:</span> <span class="dv">1</span>)<span class="op">;</span></span>
+<span id="cb1-144"><a href="#cb1-144" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-145"><a href="#cb1-145" aria-hidden="true" tabindex="-1"></a>  <span class="kw">const</span> scene  <span class="op">=</span> <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">Scene</span>()<span class="op">;</span></span>
+<span id="cb1-146"><a href="#cb1-146" aria-hidden="true" tabindex="-1"></a>  <span class="kw">const</span> camera <span class="op">=</span> <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">PerspectiveCamera</span>(fov<span class="op">,</span> width <span class="op">/</span> height<span class="op">,</span> <span class="fl">0.1</span><span class="op">,</span> far)<span class="op">;</span></span>
+<span id="cb1-147"><a href="#cb1-147" aria-hidden="true" tabindex="-1"></a>  camera<span class="op">.</span><span class="at">position</span><span class="op">.</span><span class="fu">set</span>(<span class="op">...</span>cameraPos)<span class="op">;</span></span>
+<span id="cb1-148"><a href="#cb1-148" aria-hidden="true" tabindex="-1"></a>  scene<span class="op">.</span><span class="fu">add</span>(<span class="kw">new</span> THREE<span class="op">.</span><span class="fu">AmbientLight</span>(<span class="bn">0xffffff</span><span class="op">,</span> ambientIntensity))<span class="op">;</span></span>
+<span id="cb1-149"><a href="#cb1-149" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-150"><a href="#cb1-150" aria-hidden="true" tabindex="-1"></a>  <span class="kw">const</span> O <span class="op">=</span> <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">Vector3</span>(<span class="dv">0</span><span class="op">,</span> <span class="dv">0</span><span class="op">,</span> <span class="dv">0</span>)<span class="op">;</span></span>
+<span id="cb1-151"><a href="#cb1-151" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-152"><a href="#cb1-152" aria-hidden="true" tabindex="-1"></a>  <span class="kw">function</span> <span class="fu">spriteLabel</span>(text<span class="op">,</span> cssColor<span class="op">,</span> scale <span class="op">=</span> <span class="fl">1.6</span>) {</span>
+<span id="cb1-153"><a href="#cb1-153" aria-hidden="true" tabindex="-1"></a>    <span class="kw">const</span> c <span class="op">=</span> <span class="bu">document</span><span class="op">.</span><span class="fu">createElement</span>(<span class="st">"canvas"</span>)<span class="op">;</span></span>
+<span id="cb1-154"><a href="#cb1-154" aria-hidden="true" tabindex="-1"></a>    c<span class="op">.</span><span class="at">width</span> <span class="op">=</span> <span class="dv">320</span><span class="op">;</span> c<span class="op">.</span><span class="at">height</span> <span class="op">=</span> <span class="dv">72</span><span class="op">;</span></span>
+<span id="cb1-155"><a href="#cb1-155" aria-hidden="true" tabindex="-1"></a>    <span class="kw">const</span> ctx <span class="op">=</span> c<span class="op">.</span><span class="fu">getContext</span>(<span class="st">"2d"</span>)<span class="op">;</span></span>
+<span id="cb1-156"><a href="#cb1-156" aria-hidden="true" tabindex="-1"></a>    ctx<span class="op">.</span><span class="at">font</span> <span class="op">=</span> <span class="st">"bold 26px sans-serif"</span><span class="op">;</span></span>
+<span id="cb1-157"><a href="#cb1-157" aria-hidden="true" tabindex="-1"></a>    ctx<span class="op">.</span><span class="at">fillStyle</span> <span class="op">=</span> cssColor<span class="op">;</span></span>
+<span id="cb1-158"><a href="#cb1-158" aria-hidden="true" tabindex="-1"></a>    ctx<span class="op">.</span><span class="at">textAlign</span> <span class="op">=</span> <span class="st">"center"</span><span class="op">;</span></span>
+<span id="cb1-159"><a href="#cb1-159" aria-hidden="true" tabindex="-1"></a>    ctx<span class="op">.</span><span class="at">textBaseline</span> <span class="op">=</span> <span class="st">"middle"</span><span class="op">;</span></span>
+<span id="cb1-160"><a href="#cb1-160" aria-hidden="true" tabindex="-1"></a>    ctx<span class="op">.</span><span class="fu">fillText</span>(text<span class="op">,</span> <span class="dv">160</span><span class="op">,</span> <span class="dv">36</span>)<span class="op">;</span></span>
+<span id="cb1-161"><a href="#cb1-161" aria-hidden="true" tabindex="-1"></a>    <span class="kw">const</span> spr <span class="op">=</span> <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">Sprite</span>(<span class="kw">new</span> THREE<span class="op">.</span><span class="fu">SpriteMaterial</span>({</span>
+<span id="cb1-162"><a href="#cb1-162" aria-hidden="true" tabindex="-1"></a>      <span class="dt">map</span><span class="op">:</span> <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">CanvasTexture</span>(c)<span class="op">,</span> <span class="dt">transparent</span><span class="op">:</span> <span class="kw">true</span><span class="op">,</span> <span class="dt">depthTest</span><span class="op">:</span> <span class="kw">false</span></span>
+<span id="cb1-163"><a href="#cb1-163" aria-hidden="true" tabindex="-1"></a>    }))<span class="op">;</span></span>
+<span id="cb1-164"><a href="#cb1-164" aria-hidden="true" tabindex="-1"></a>    spr<span class="op">.</span><span class="at">scale</span><span class="op">.</span><span class="fu">set</span>(scale<span class="op">,</span> <span class="fl">0.36</span><span class="op">,</span> <span class="dv">1</span>)<span class="op">;</span></span>
+<span id="cb1-165"><a href="#cb1-165" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> spr<span class="op">;</span></span>
+<span id="cb1-166"><a href="#cb1-166" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb1-167"><a href="#cb1-167" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-168"><a href="#cb1-168" aria-hidden="true" tabindex="-1"></a>  <span class="co">// ctrl is created before buildScene so the callback can configure it</span></span>
+<span id="cb1-169"><a href="#cb1-169" aria-hidden="true" tabindex="-1"></a>  <span class="kw">const</span> ctrl <span class="op">=</span> <span class="kw">new</span> <span class="fu">OrbitControls</span>(camera<span class="op">,</span> renderer<span class="op">.</span><span class="at">domElement</span>)<span class="op">;</span></span>
+<span id="cb1-170"><a href="#cb1-170" aria-hidden="true" tabindex="-1"></a>  ctrl<span class="op">.</span><span class="at">target</span><span class="op">.</span><span class="fu">set</span>(<span class="op">...</span>target)<span class="op">;</span></span>
+<span id="cb1-171"><a href="#cb1-171" aria-hidden="true" tabindex="-1"></a>  ctrl<span class="op">.</span><span class="at">enableDamping</span> <span class="op">=</span> <span class="kw">true</span><span class="op">;</span></span>
+<span id="cb1-172"><a href="#cb1-172" aria-hidden="true" tabindex="-1"></a>  ctrl<span class="op">.</span><span class="at">dampingFactor</span> <span class="op">=</span> <span class="fl">0.06</span><span class="op">;</span></span>
+<span id="cb1-173"><a href="#cb1-173" aria-hidden="true" tabindex="-1"></a>  ctrl<span class="op">.</span><span class="at">minDistance</span>   <span class="op">=</span> minDistance<span class="op">;</span></span>
+<span id="cb1-174"><a href="#cb1-174" aria-hidden="true" tabindex="-1"></a>  ctrl<span class="op">.</span><span class="at">maxDistance</span>   <span class="op">=</span> maxDistance<span class="op">;</span></span>
+<span id="cb1-175"><a href="#cb1-175" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-176"><a href="#cb1-176" aria-hidden="true" tabindex="-1"></a>  <span class="fu">buildScene</span>(scene<span class="op">,</span> THREE<span class="op">,</span> { O<span class="op">,</span> spriteLabel<span class="op">,</span> ctrl })<span class="op">;</span></span>
+<span id="cb1-177"><a href="#cb1-177" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-178"><a href="#cb1-178" aria-hidden="true" tabindex="-1"></a>  ctrl<span class="op">.</span><span class="fu">update</span>()<span class="op">;</span></span>
+<span id="cb1-179"><a href="#cb1-179" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-180"><a href="#cb1-180" aria-hidden="true" tabindex="-1"></a>  <span class="kw">let</span> rafId<span class="op">;</span></span>
+<span id="cb1-181"><a href="#cb1-181" aria-hidden="true" tabindex="-1"></a>  (<span class="kw">function</span> <span class="fu">animate</span>() {</span>
+<span id="cb1-182"><a href="#cb1-182" aria-hidden="true" tabindex="-1"></a>    rafId <span class="op">=</span> <span class="fu">requestAnimationFrame</span>(animate)<span class="op">;</span></span>
+<span id="cb1-183"><a href="#cb1-183" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> (onFrame) <span class="fu">onFrame</span>()<span class="op">;</span></span>
+<span id="cb1-184"><a href="#cb1-184" aria-hidden="true" tabindex="-1"></a>    ctrl<span class="op">.</span><span class="fu">update</span>()<span class="op">;</span></span>
+<span id="cb1-185"><a href="#cb1-185" aria-hidden="true" tabindex="-1"></a>    renderer<span class="op">.</span><span class="fu">render</span>(scene<span class="op">,</span> camera)<span class="op">;</span></span>
+<span id="cb1-186"><a href="#cb1-186" aria-hidden="true" tabindex="-1"></a>  })()<span class="op">;</span></span>
+<span id="cb1-187"><a href="#cb1-187" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-188"><a href="#cb1-188" aria-hidden="true" tabindex="-1"></a>  <span class="kw">const</span> container <span class="op">=</span> <span class="bu">document</span><span class="op">.</span><span class="fu">createElement</span>(<span class="st">"div"</span>)<span class="op">;</span></span>
+<span id="cb1-189"><a href="#cb1-189" aria-hidden="true" tabindex="-1"></a>  container<span class="op">.</span><span class="at">style</span><span class="op">.</span><span class="at">cssText</span> <span class="op">=</span></span>
+<span id="cb1-190"><a href="#cb1-190" aria-hidden="true" tabindex="-1"></a>    <span class="vs">`position:relative;display:inline-block;width:</span><span class="sc">${</span>width<span class="sc">}</span><span class="vs">px;max-width:100%;`</span><span class="op">;</span></span>
+<span id="cb1-191"><a href="#cb1-191" aria-hidden="true" tabindex="-1"></a>  container<span class="op">.</span><span class="fu">appendChild</span>(renderer<span class="op">.</span><span class="at">domElement</span>)<span class="op">;</span></span>
+<span id="cb1-192"><a href="#cb1-192" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-193"><a href="#cb1-193" aria-hidden="true" tabindex="-1"></a>  <span class="kw">const</span> btnStyle <span class="op">=</span> [</span>
+<span id="cb1-194"><a href="#cb1-194" aria-hidden="true" tabindex="-1"></a>    <span class="st">"padding:4px 10px"</span><span class="op">,</span> <span class="st">"font-size:12px"</span><span class="op">,</span> <span class="st">"cursor:pointer"</span><span class="op">,</span></span>
+<span id="cb1-195"><a href="#cb1-195" aria-hidden="true" tabindex="-1"></a>    <span class="st">"background:rgba(30,30,30,0.75)"</span><span class="op">,</span> <span class="st">"color:#ddd"</span><span class="op">,</span></span>
+<span id="cb1-196"><a href="#cb1-196" aria-hidden="true" tabindex="-1"></a>    <span class="st">"border:1px solid #555"</span><span class="op">,</span> <span class="st">"border-radius:4px"</span><span class="op">,</span></span>
+<span id="cb1-197"><a href="#cb1-197" aria-hidden="true" tabindex="-1"></a>    <span class="st">"backdrop-filter:blur(4px)"</span><span class="op">,</span> <span class="st">"z-index:10"</span><span class="op">,</span></span>
+<span id="cb1-198"><a href="#cb1-198" aria-hidden="true" tabindex="-1"></a>  ]<span class="op">.</span><span class="fu">join</span>(<span class="st">";"</span>)<span class="op">;</span></span>
+<span id="cb1-199"><a href="#cb1-199" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-200"><a href="#cb1-200" aria-hidden="true" tabindex="-1"></a>  <span class="kw">const</span> fsBtn <span class="op">=</span> <span class="bu">document</span><span class="op">.</span><span class="fu">createElement</span>(<span class="st">"button"</span>)<span class="op">;</span></span>
+<span id="cb1-201"><a href="#cb1-201" aria-hidden="true" tabindex="-1"></a>  fsBtn<span class="op">.</span><span class="at">textContent</span> <span class="op">=</span> <span class="st">"⛶ Fullscreen"</span><span class="op">;</span></span>
+<span id="cb1-202"><a href="#cb1-202" aria-hidden="true" tabindex="-1"></a>  fsBtn<span class="op">.</span><span class="at">style</span><span class="op">.</span><span class="at">cssText</span> <span class="op">=</span> <span class="st">"position:absolute;bottom:8px;right:8px;"</span> <span class="op">+</span> btnStyle<span class="op">;</span></span>
+<span id="cb1-203"><a href="#cb1-203" aria-hidden="true" tabindex="-1"></a>  fsBtn<span class="op">.</span><span class="fu">addEventListener</span>(<span class="st">"click"</span><span class="op">,</span> () <span class="kw">=&gt;</span> {</span>
+<span id="cb1-204"><a href="#cb1-204" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> (<span class="op">!</span><span class="bu">document</span><span class="op">.</span><span class="at">fullscreenElement</span>) container<span class="op">.</span><span class="fu">requestFullscreen</span>()<span class="op">;</span></span>
+<span id="cb1-205"><a href="#cb1-205" aria-hidden="true" tabindex="-1"></a>    <span class="cf">else</span> <span class="bu">document</span><span class="op">.</span><span class="fu">exitFullscreen</span>()<span class="op">;</span></span>
+<span id="cb1-206"><a href="#cb1-206" aria-hidden="true" tabindex="-1"></a>  })<span class="op">;</span></span>
+<span id="cb1-207"><a href="#cb1-207" aria-hidden="true" tabindex="-1"></a>  container<span class="op">.</span><span class="fu">appendChild</span>(fsBtn)<span class="op">;</span></span>
+<span id="cb1-208"><a href="#cb1-208" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-209"><a href="#cb1-209" aria-hidden="true" tabindex="-1"></a>  <span class="kw">function</span> <span class="fu">onFSChange</span>() {</span>
+<span id="cb1-210"><a href="#cb1-210" aria-hidden="true" tabindex="-1"></a>    <span class="cf">if</span> (<span class="bu">document</span><span class="op">.</span><span class="at">fullscreenElement</span> <span class="op">===</span> container) {</span>
+<span id="cb1-211"><a href="#cb1-211" aria-hidden="true" tabindex="-1"></a>      renderer<span class="op">.</span><span class="fu">setSize</span>(<span class="bu">screen</span><span class="op">.</span><span class="at">width</span><span class="op">,</span> <span class="bu">screen</span><span class="op">.</span><span class="at">height</span>)<span class="op">;</span></span>
+<span id="cb1-212"><a href="#cb1-212" aria-hidden="true" tabindex="-1"></a>      camera<span class="op">.</span><span class="at">aspect</span> <span class="op">=</span> <span class="bu">screen</span><span class="op">.</span><span class="at">width</span> <span class="op">/</span> <span class="bu">screen</span><span class="op">.</span><span class="at">height</span><span class="op">;</span></span>
+<span id="cb1-213"><a href="#cb1-213" aria-hidden="true" tabindex="-1"></a>      camera<span class="op">.</span><span class="fu">updateProjectionMatrix</span>()<span class="op">;</span></span>
+<span id="cb1-214"><a href="#cb1-214" aria-hidden="true" tabindex="-1"></a>      fsBtn<span class="op">.</span><span class="at">textContent</span> <span class="op">=</span> <span class="st">"✕ Exit fullscreen"</span><span class="op">;</span></span>
+<span id="cb1-215"><a href="#cb1-215" aria-hidden="true" tabindex="-1"></a>    } <span class="cf">else</span> {</span>
+<span id="cb1-216"><a href="#cb1-216" aria-hidden="true" tabindex="-1"></a>      renderer<span class="op">.</span><span class="fu">setSize</span>(width<span class="op">,</span> height)<span class="op">;</span></span>
+<span id="cb1-217"><a href="#cb1-217" aria-hidden="true" tabindex="-1"></a>      camera<span class="op">.</span><span class="at">aspect</span> <span class="op">=</span> width <span class="op">/</span> height<span class="op">;</span></span>
+<span id="cb1-218"><a href="#cb1-218" aria-hidden="true" tabindex="-1"></a>      camera<span class="op">.</span><span class="fu">updateProjectionMatrix</span>()<span class="op">;</span></span>
+<span id="cb1-219"><a href="#cb1-219" aria-hidden="true" tabindex="-1"></a>      fsBtn<span class="op">.</span><span class="at">textContent</span> <span class="op">=</span> <span class="st">"⛶ Fullscreen"</span><span class="op">;</span></span>
+<span id="cb1-220"><a href="#cb1-220" aria-hidden="true" tabindex="-1"></a>    }</span>
+<span id="cb1-221"><a href="#cb1-221" aria-hidden="true" tabindex="-1"></a>  }</span>
+<span id="cb1-222"><a href="#cb1-222" aria-hidden="true" tabindex="-1"></a>  <span class="bu">document</span><span class="op">.</span><span class="fu">addEventListener</span>(<span class="st">"fullscreenchange"</span><span class="op">,</span> onFSChange)<span class="op">;</span></span>
+<span id="cb1-223"><a href="#cb1-223" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-224"><a href="#cb1-224" aria-hidden="true" tabindex="-1"></a>  invalidation<span class="op">.</span><span class="fu">then</span>(() <span class="kw">=&gt;</span> {</span>
+<span id="cb1-225"><a href="#cb1-225" aria-hidden="true" tabindex="-1"></a>    <span class="fu">cancelAnimationFrame</span>(rafId)<span class="op">;</span></span>
+<span id="cb1-226"><a href="#cb1-226" aria-hidden="true" tabindex="-1"></a>    ctrl<span class="op">.</span><span class="fu">dispose</span>()<span class="op">;</span></span>
+<span id="cb1-227"><a href="#cb1-227" aria-hidden="true" tabindex="-1"></a>    renderer<span class="op">.</span><span class="fu">dispose</span>()<span class="op">;</span></span>
+<span id="cb1-228"><a href="#cb1-228" aria-hidden="true" tabindex="-1"></a>    <span class="bu">document</span><span class="op">.</span><span class="fu">removeEventListener</span>(<span class="st">"fullscreenchange"</span><span class="op">,</span> onFSChange)<span class="op">;</span></span>
+<span id="cb1-229"><a href="#cb1-229" aria-hidden="true" tabindex="-1"></a>  })<span class="op">;</span></span>
+<span id="cb1-230"><a href="#cb1-230" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb1-231"><a href="#cb1-231" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> container<span class="op">;</span></span>
+<span id="cb1-232"><a href="#cb1-232" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display">
+<div id="ojs-cell-1" data-nodetype="declaration">
+
+</div>
+</div>
+</div>
+<div id="lst-data-generation" class="cell listing quarto-float quarto-figure quarto-figure-left anchored" data-execution_count="2">
+<figure class="quarto-float quarto-float-lst figure">
+<figcaption class="quarto-float-caption-top quarto-float-caption quarto-float-lst" id="lst-data-generation-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Listing&nbsp;1: Synthetic NBA player data generation
+</figcaption>
+<div aria-describedby="lst-data-generation-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<details class="code-fold">
+<summary>How the data was generated</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb2" data-lst-cap="Synthetic NBA player data generation"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1" aria-hidden="true" tabindex="-1"></a>rng <span class="op">=</span> np.random.default_rng(<span class="dv">42</span>)</span>
+<span id="cb2-2"><a href="#cb2-2" aria-hidden="true" tabindex="-1"></a>N <span class="op">=</span> <span class="dv">220</span></span>
+<span id="cb2-3"><a href="#cb2-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-4"><a href="#cb2-4" aria-hidden="true" tabindex="-1"></a>feature_names <span class="op">=</span> [<span class="st">"Height"</span>, <span class="st">"Wingspan"</span>, <span class="st">"Standing reach"</span>]</span>
+<span id="cb2-5"><a href="#cb2-5" aria-hidden="true" tabindex="-1"></a>means <span class="op">=</span> np.array([<span class="fl">200.0</span>, <span class="fl">205.0</span>, <span class="fl">260.0</span>])  <span class="co"># cm</span></span>
+<span id="cb2-6"><a href="#cb2-6" aria-hidden="true" tabindex="-1"></a>stds <span class="op">=</span> np.array([<span class="fl">8.0</span>, <span class="fl">9.0</span>, <span class="fl">11.0</span>])  <span class="co"># cm</span></span>
+<span id="cb2-7"><a href="#cb2-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-8"><a href="#cb2-8" aria-hidden="true" tabindex="-1"></a><span class="co"># Correlation matrix: positively correlated but not perfectly</span></span>
+<span id="cb2-9"><a href="#cb2-9" aria-hidden="true" tabindex="-1"></a>corr <span class="op">=</span> np.array(</span>
+<span id="cb2-10"><a href="#cb2-10" aria-hidden="true" tabindex="-1"></a>    [</span>
+<span id="cb2-11"><a href="#cb2-11" aria-hidden="true" tabindex="-1"></a>        [<span class="fl">1.00</span>, <span class="fl">0.75</span>, <span class="fl">0.68</span>],</span>
+<span id="cb2-12"><a href="#cb2-12" aria-hidden="true" tabindex="-1"></a>        [<span class="fl">0.75</span>, <span class="fl">1.00</span>, <span class="fl">0.62</span>],</span>
+<span id="cb2-13"><a href="#cb2-13" aria-hidden="true" tabindex="-1"></a>        [<span class="fl">0.68</span>, <span class="fl">0.62</span>, <span class="fl">1.00</span>],</span>
+<span id="cb2-14"><a href="#cb2-14" aria-hidden="true" tabindex="-1"></a>    ]</span>
+<span id="cb2-15"><a href="#cb2-15" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb2-16"><a href="#cb2-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb2-17"><a href="#cb2-17" aria-hidden="true" tabindex="-1"></a>L <span class="op">=</span> np.linalg.cholesky(corr)</span>
+<span id="cb2-18"><a href="#cb2-18" aria-hidden="true" tabindex="-1"></a>Z <span class="op">=</span> rng.standard_normal((N, <span class="dv">3</span>)) <span class="op">@</span> L.T</span>
+<span id="cb2-19"><a href="#cb2-19" aria-hidden="true" tabindex="-1"></a>X_raw <span class="op">=</span> Z <span class="op">*</span> stds <span class="op">+</span> means</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+</div>
+</figure>
+</div>
+<div id="cell-fig-data-3d" class="cell" data-execution_count="3">
+<div class="cell-output cell-output-display">
+<div id="fig-data-3d" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-data-3d-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<a href="index_files/figure-html/fig-data-3d-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-1" title="Figure&nbsp;1: 220 synthetic NBA player measurements in their original units. By looking at the figure, you can see that the data is elongated on a single axis."><img src="index_files/figure-html/fig-data-3d-output-1.png" width="590" height="566" class="figure-img"></a>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-data-3d-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;1: 220 synthetic NBA player measurements in their original units. By looking at the figure, you can see that the data is elongated on a single axis.
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+<section id="standardising-the-data" class="level1">
+<h1>Standardising the data</h1>
+<p>For computing the PCA components, we need the covariance matrix. But for the covariance matrix, each feature needs to be standardized. The data points are standardized as</p>
+<p><span class="math display">
+x_{ij} \leftarrow \frac{x_{ij} - \mu_j}{\sigma_j}
+</span></p>
+<p>where <span class="math inline">i</span> indexes the player and <span class="math inline">j</span> indexes the feature (height, wingspan, or standing reach), <span class="math inline">\mu_j</span> is the mean of feature <span class="math inline">j</span> across all players, and <span class="math inline">\sigma_j</span> is its standard deviation.</p>
+<p>This step makes each variable have a mean of 0 and variance of 1. This makes the three axes comparable because otherwise larger units would artificially dominate the covariance matrix. The shape of the correlation stays unchanged because standardisation only rescales the values and doesn’t distort them.</p>
+<div id="cell-standardise" class="cell" data-execution_count="4">
+<div id="standardise" class="cell-output cell-output-display">
+<script type="ojs-define">{"contents": [{"name": "std_pts", "value": [[0.2967039831589952, -0.42043759986519363, 0.6309824992961957], [0.9297133965421062, -0.5441357897271254, -0.6288197361475605], [0.12061682825534158, -0.0799446274777471, 0.04855347400022371], [-0.8558891442810411, -0.02565245313046852, 0.15408597430412718], [0.05908302167546247, 0.8138786258182025, 0.6267964125537658], [-0.8621097881003565, -0.36259860045174025, -1.2592531478180224], [0.8678762406113333, 0.6472905013425195, 0.5107137506479287], [-0.6845430254194798, 0.3246811240256859, -0.3686528098006759], [-0.43306883757631104, -0.5137276680338241, 0.05701439174621258], [0.35715990166740164, 0.5698205926820049, 0.6890738698634807], [2.1254350259408934, 1.3474607865610306, 1.1123795047621927], [-0.8167932391999072, -0.16810804803652044, 0.40252799177085324], [-0.12009176783498683, -0.5993413278184753, -0.8321004996197369], [0.6410358111847948, 0.9953535385761558, 1.0389551874312022], [-0.6691920175924886, -0.30849044270055864, -0.32670290587061523], [0.21105950414166225, 0.7600469903542043, 0.5067462411307297], [0.669230171425883, 0.5765157890826839, 0.7470913924869937], [0.6218174186731656, -0.4509442823200662, -0.019144942069108155], [-0.4749259948396125, -0.7313711565836136, -0.6371229447348612], [1.4816154291598176, 0.5712300991167402, 1.6876524794837107], [-1.6820109075476966, -1.428292385518227, -1.1275099468851673], [0.5769526841295376, 0.9270073848559582, 1.1767079093410824], [-0.35382140922430166, -0.5267160473330039, 0.3423321057571115], [-0.19710333841085728, -0.9398746991344032, -1.199488980768558], [-0.9220010767474607, -0.323422919381739, -0.44389793273189593], [0.6807503095974022, 0.26301305814626613, 0.568824761512455], [0.6161450201258925, 0.2918584130593619, 0.7691838568790531], [-0.6656242481722595, -0.693218643541714, -0.8077713307009498], [-1.197154730355967, -0.5340138345270062, -1.1100363764525856], [0.0057854132402045755, 0.3536252135589237, 0.45785491754779484], [0.6557621040779353, 0.4584557431913428, 0.16706063969177093], [-0.08601530964540578, -1.1254349368575145, -1.4298654354567577], [-1.3234484342512844, -1.5935771614933536, -0.8042788941181245], [-0.9080902181992401, -0.8827817820644264, 0.2897125466974868], [-0.3613266567713499, 0.24860802606434765, -0.811194040804898], [-0.21117348510355477, -0.7383582971172419, -0.5491049095710426], [0.8299043313478491, -0.47252408414370256, 0.6567316387692713], [0.2300214899208364, -0.1797126683098104, -1.0062653390348946], [0.06515460866363867, -0.25984214448797355, 0.15998092356767696], [0.015101668756600413, 1.09011158299476, 0.14208942333150237], [-1.025581858389389, -0.6070864311138644, -0.5164318381011658], [1.3464676550159476, 1.578043273741811, 1.4260583229727537], [1.450118233070689, 0.3377147000389503, 0.38681844945964705], [-0.9290929344010104, -0.9059304092975635, -1.7592290562828898], [0.6256628976812021, 0.35561482463266575, -0.6719737968448165], [-1.0176987922655305, -0.513879268056652, -0.01767028449263201], [1.981165179233884, 3.401393965951352, 2.2982191469350983], [-0.991774069725177, -2.086260837990195, -0.8643265657161311], [-0.8159653184094271, -0.8387000595894604, -1.101093743879853], [-0.1468153759990337, 0.621385125328234, 0.23072818550910956], [-0.16457967685514255, -0.7595502801855838, -1.5444718493331548], [-0.49079011967003977, -0.36234387541466484, 1.0059671086518622], [0.12304008142473481, 0.7672440505299184, -0.0863326505362318], [-1.1863074869511603, -1.4710095086971113, -1.5531364512519084], [2.1123159793529585, 1.067667860718107, 2.054993548494604], [-0.9055497317012893, -0.028507726591922543, -0.1710088448324811], [-0.162591651181946, -0.11059004127858249, -0.5927847260626109], [0.4374281402177576, 0.06460062927291857, -0.6636641964216431], [-1.2788861998328271, -0.7992031392697717, 0.33029600851417557], [0.15262452580125685, 0.07238450224108073, 0.3365001220807716], [1.2935192262642423, 1.138071431271021, 0.6958032926257216], [1.0946976505854047, 1.1269559914632064, 2.066413668773069], [0.17576360081756837, -0.6301507154819276, -1.0979740865421], [1.6369057750909695, 2.3716147283426388, 1.3868436863102653], [-0.3881298295049172, 0.6998810160521408, -0.8343299400760305], [-0.8973861754934775, -0.21005034997628436, -0.8079071650558196], [-0.011751940005979972, -0.07862045331275715, 0.2484947696024792], [1.3945463706320058, 1.1291358196411407, 1.547281333669226], [-2.0476737152404016, -1.5131029218370589, -2.1062314960407735], [-1.220025599114353, -1.4394059580736638, -1.2653103215821615], [0.9051613066714097, -0.15581079263575323, 0.4757031567546609], [-0.48866118941134684, -0.5390168856451174, 0.37814538634529155], [0.5290605237738982, 1.2990264591396494, 0.5330068940252262], [-0.699489079090262, -0.6277315550156424, -0.33381622988278864], [0.16913225500356918, -0.543899972455974, 0.029425830298706872], [0.22055665519119275, 1.8383519366663317, 2.0598794537036067], [-0.8560876771049887, -0.7851542638689594, -1.753968888551897], [-0.5947232198916419, -0.1989836321037367, 0.5690581394347173], [-0.7324823731853244, -0.932224259135106, -2.248249845121406], [-0.1685927668763076, -0.7799411646859938, -0.6826166380900173], [-0.8795996839677039, -0.67689753231937, -1.9603277716497487], [-1.4671497539199463, 0.33466089671174687, -1.6367978420611593], [-1.098542809327824, 0.4176402773472083, 1.7622570008534173], [-1.1729900606814876, -1.0726894407913634, -0.6280002150951177], [1.7143283478048417, 0.6649656937442013, 0.9138862421483251], [0.7672148506724077, 0.8881173744529369, 0.3780767143735279], [-0.1398785567038231, -0.9620229507107315, -0.49587781323524444], [-0.27185135597619736, -0.013952302605472299, -0.5483591123544881], [0.46278078765766634, 1.0385890212111615, 0.6627769746100709], [0.3435333430805947, 0.32570277740369036, 0.28857261663110884], [-0.7249901618002865, -0.29496650909702327, -0.5147668818245617], [2.0771721302660713, 2.6001423733258275, 2.109235057958384], [-0.7663040987219629, -1.2555390637561774, 0.18079280814373808], [0.25492345981471226, 0.5379085673016035, -1.0248827232699116], [0.916645753080321, 1.01167567952375, -0.06741165447637441], [-0.47607300514855244, -0.14480219941192476, -0.2296349515388043], [-0.2975199614869702, -0.25142957218763534, -0.3960370680286922], [0.14522858549553264, 1.1017771868777135, -1.5534013270132752], [-0.24244597533319365, -0.028377800306990403, 0.10950153361865685], [-0.3769074076444426, -1.386219566558326, -0.3056712989132113], [1.712986932066948, 0.3079746809049081, 1.6582588582261413], [-0.33371172585263637, -0.2508163004812289, -1.0229467466557802], [-0.33961620119933056, 0.6308014367118966, 0.4552322455543125], [1.7179261772273966, 2.076163631092039, 1.8187597148514212], [1.7294972169337632, 1.6041694148142833, 1.99186539014827], [-0.30190009004300505, -0.14401625667471496, -0.7073491765192635], [0.9785138084201953, -0.0050594717884605836, 1.1258829337307292], [-0.19645298701388073, 0.6530996504240132, 0.6641385813752133], [1.8058664318907243, 1.8506735860944683, 0.2767471810834121], [-0.0733072507397816, -0.7806341005916054, -0.624323960050161], [1.4978298506275827, 1.5616562928114117, 0.6994507206611184], [-1.0158453876057787, -0.6952088527012996, -1.6259376247015889], [-0.6747974546117372, -0.26067943767541346, 0.47189893611531775], [0.5993912173804936, -1.0104316689332111, 0.29087006907650087], [0.06505910240360382, 0.35405150943922764, 1.3771320169047483], [-2.060681567727565, -1.8757354970703444, -1.1227419224216593], [-1.5811875966969569, -0.17504460107997644, -0.5780110512198164], [0.8361521663265566, 0.28469041335003265, 1.1537375046030882], [1.0570493003598262, 0.9715688755783934, 1.0164135223675037], [0.2624835766659499, -0.33084522389696847, -0.04440832210926652], [-0.15849465566818394, 0.16849272879892177, 0.7414152042625836], [-1.0604640465369697, -0.8309751290249848, 0.3621698652868121], [-0.7469220212283703, -1.0523315181560529, -0.5045800378794444], [0.8339631856972791, 0.662080687044268, 1.6462706587537304], [0.8463165888453426, 1.211667690857181, 1.2137831542861932], [2.3106102555475982, 1.6157016648849245, 0.1502187186313049], [1.5904405404720225, 0.9175145245721605, 1.185607356952897], [1.297052328055319, -0.04485511132512126, -0.2620200488602309], [-1.6007832732594682, -1.666967600591859, -0.9395054568648726], [0.515195097969355, 0.5981569837572731, -0.6199899736409703], [-2.306444799362652, -1.6378390334633846, -1.993911098019854], [0.45068228287490614, 0.8273732981970954, 0.5859944312713163], [0.7500871554052942, 0.7416439552003813, 1.0173219424732012], [-0.7081807594168217, -0.6053776298977631, -0.367017139076578], [0.8102129594791605, 0.38078813617830276, 0.9440844492074202], [-0.27130510709780675, -0.2411439991722469, 0.44161816803018994], [-1.990816914008627, -2.283009808679791, -2.7706738284719963], [-2.329852529378184, -2.131986432274009, -1.2132697204880771], [-0.2902653694681562, -0.0499766384687337, 0.6807743733877915], [1.3151068245466022, 0.9663010432874075, 2.0001343509126697], [0.0850624984117315, -0.44547366352803586, -0.5079434346534445], [-1.480580800333512, -1.6390410583031252, -1.4744339139427205], [0.7933451336828045, 1.7444326584866932, -0.1393673446123074], [0.3844210746871299, -0.3557808126693722, 0.4852244113739641], [-0.13715445691718947, -1.2567802236491852, 0.3110892779164332], [-0.6089531161745951, -0.7623994120021991, -1.3191840577922018], [-0.6580156982358532, -0.17282313943032865, -0.5162497990034944], [0.32054202310698765, 0.5096090174828851, 1.3290896481636356], [-0.34790899731170044, -1.1825855460126198, 0.3261133572420814], [-0.33666144915752216, 0.5122972933030501, 0.2732900100326186], [-0.13720510932269894, 0.16174403735870982, 1.4729240252782534], [2.0610566075317034, 1.6093932487343119, 1.6602846381172034], [1.0647832252510068, 0.27537616292460826, 0.9062424568491996], [-0.032400340042872296, 0.21673928789860541, -0.5711115097836174], [-1.5891251011763563, -2.490614226780576, -2.339290587975309], [-0.4632808388526743, -0.49776249827494656, 1.1121522322825115], [1.0944036287380823, 0.2215585394298898, 0.9182803892011203], [-0.41191410321080896, -0.45394121448132857, -0.17907988799410982], [0.6097543967612988, 0.26765426680771665, 1.2201635376651871], [-1.1434939098410013, -0.8070389672834247, 1.172561045013468], [0.215431049347954, 1.1289040213273798, 0.5089768210285813], [0.5715317539158379, 0.4231595183539702, 0.3052668590031255], [-0.7826559688995042, -0.2636448787010109, -1.1091701988302574], [0.6559613381132667, 1.2290161102314516, 0.9761732196232077], [-0.29162394519753587, 0.11573824963999348, -0.3362349426549438], [0.9247182025589921, -0.4699825348278618, 0.12255358098703924], [-1.988578574119307, -2.4105942876812763, -0.6433617295644072], [0.8845362229406931, 0.22388625721792196, -0.59596408200037], [-2.9579490520378227, -2.5098598223034663, -0.37691593734902895], [0.4262901495893748, -0.011723104453917233, 0.5933710758829062], [-1.5606436630386253, -1.3138821920592354, -1.0807708108955534], [-0.09236926135733496, 0.48265736913825413, 0.3640418064941389], [0.6586898859225615, 0.07672091085729255, 1.067913754317446], [1.615012951301316, 0.6022206768640285, 0.35697459717187074], [1.3231688807710653, 0.8927440224072873, 2.022521653069041], [-0.44721330776791973, 0.6519204652395779, 0.061959630663130046], [0.2504232356379235, 1.2404263065475476, 0.21348909039489516], [-0.943574159475668, -0.9549027949333276, -0.3914903703294947], [-1.5654229533287745, -0.7090500810114408, -1.4035339085354213], [1.1360362514431868, -0.6796529785503189, -0.16588526290229078], [-1.6855932251345882, -1.7507203948258014, -1.1525195414583755], [-0.18507955001900664, -0.2656317143549904, -0.27043324695867715], [0.1958274439953301, -0.47474653898703145, 0.5301816587367494], [0.6530551028674567, 0.7711317292472523, 0.9945041469519391], [0.2884419486834562, 1.5747206407968335, 0.5328058709686083], [-0.31236543140919987, -0.6854869422132052, -1.1141683278202679], [-1.2455697938284573, -1.4652686895388185, -1.0857295832219023], [0.3261500048239266, 0.31150694015969677, -0.3056874157209395], [0.8895134884319681, 1.1770399013848518, 0.6851358640607195], [-0.6566546686590599, -0.09336709173918405, -0.20755425749127046], [-1.4483162118651818, -1.081359276325792, -0.8352274509826437], [-0.9023317684783656, -0.508848505656925, -1.6966276213478728], [1.3235688511166288, 1.8297494923507733, 1.0197594994177042], [0.35517905665388955, -1.268663629058048, -1.0164711355857758], [-0.2991205194166186, -0.8830210917171774, 0.1652295030691766], [1.981728293455793, 0.7396820160436446, 0.6249195882288241], [0.22774446538959173, 1.2538118831626965, -0.4481714187281699], [0.2412715679394054, 1.400628285273599, -0.7271858395727361], [-1.2820038537394054, -1.1895243492290144, -1.3715193474155425], [0.8023211562802594, 0.788464433665926, -0.6925854587897949], [0.5064568377800687, 0.036008349998718915, 1.2629066281479173], [-0.631439119347765, -0.8459155034508727, -0.13064643599840756], [0.7528680835235981, 0.8861601534899927, -0.6241493351000675], [0.5289798882436135, -0.24456682288056944, 0.4095321748332383], [-1.4240322697201868, -0.7286446821093616, -1.5379942346498046], [-1.2835623095085569, -0.4504292284493468, -0.5928300311951894], [-0.6178891383310848, 0.5228888634506588, -0.4970543904857592], [0.025311419760500813, 0.23023557451765175, -0.3749069648280761], [0.4623803539364671, 0.03202825976350301, -0.041430889533391545], [1.3499072972606407, 0.35986767414724397, -1.005889763830675], [1.5970933447990807, 2.879453813044448, 1.3325237815296982], [-1.9348455423207744, -1.599827991150916, -1.6476823140526138], [-0.19572901659593525, -0.8332303910601707, 0.13064841067053917], [0.5155132041505125, -0.5539858939418931, 0.6706227102732537], [2.036869508081408, 1.6582240455066404, 1.283129050297685], [-0.1480222925404783, 0.32715449856762124, -1.2830526996841956], [0.15700397905784128, -0.1012764126061345, 1.477531753295986], [-0.18004821735211918, 0.9884791752446307, -0.6442073959651402], [0.5779848914667315, 0.6727674679000257, -0.1539594657987849], [0.16995133866275838, 0.9515604833643068, 0.12161044728023906]]}]}</script>
+</div>
+</div>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code hidden" id="cb3" data-startfrom="253" data-source-offset="0"><pre class="sourceCode js code-with-copy"><code class="sourceCode javascript" style="counter-reset: source-line 252;"><span id="cb3-253"><a href="#cb3-253" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb3-254"><a href="#cb3-254" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> <span class="fu">makeScene3D</span>((scene<span class="op">,</span> THREE<span class="op">,</span> { O<span class="op">,</span> spriteLabel }) <span class="kw">=&gt;</span> {</span>
+<span id="cb3-255"><a href="#cb3-255" aria-hidden="true" tabindex="-1"></a>    <span class="kw">const</span> flat <span class="op">=</span> <span class="kw">new</span> <span class="bu">Float32Array</span>(std_pts<span class="op">.</span><span class="fu">flatMap</span>(p <span class="kw">=&gt;</span> p))<span class="op">;</span></span>
+<span id="cb3-256"><a href="#cb3-256" aria-hidden="true" tabindex="-1"></a>    <span class="kw">const</span> ptGeo <span class="op">=</span> <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">BufferGeometry</span>()<span class="op">;</span></span>
+<span id="cb3-257"><a href="#cb3-257" aria-hidden="true" tabindex="-1"></a>    ptGeo<span class="op">.</span><span class="fu">setAttribute</span>(<span class="st">"position"</span><span class="op">,</span> <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">Float32BufferAttribute</span>(flat<span class="op">,</span> <span class="dv">3</span>))<span class="op">;</span></span>
+<span id="cb3-258"><a href="#cb3-258" aria-hidden="true" tabindex="-1"></a>    scene<span class="op">.</span><span class="fu">add</span>(<span class="kw">new</span> THREE<span class="op">.</span><span class="fu">Points</span>(ptGeo<span class="op">,</span></span>
+<span id="cb3-259"><a href="#cb3-259" aria-hidden="true" tabindex="-1"></a>      <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">PointsMaterial</span>({ <span class="dt">color</span><span class="op">:</span> <span class="bn">0xaaaacc</span><span class="op">,</span> <span class="dt">size</span><span class="op">:</span> <span class="fl">0.07</span><span class="op">,</span> <span class="dt">transparent</span><span class="op">:</span> <span class="kw">true</span><span class="op">,</span> <span class="dt">opacity</span><span class="op">:</span> <span class="fl">0.65</span> })</span>
+<span id="cb3-260"><a href="#cb3-260" aria-hidden="true" tabindex="-1"></a>    ))<span class="op">;</span></span>
+<span id="cb3-261"><a href="#cb3-261" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb3-262"><a href="#cb3-262" aria-hidden="true" tabindex="-1"></a>    <span class="kw">const</span> axLen    <span class="op">=</span> <span class="fl">3.8</span><span class="op">;</span></span>
+<span id="cb3-263"><a href="#cb3-263" aria-hidden="true" tabindex="-1"></a>    <span class="kw">const</span> axColors <span class="op">=</span> [<span class="bn">0xf0956a</span><span class="op">,</span> <span class="bn">0x6ddc8b</span><span class="op">,</span> <span class="bn">0x7eb8f7</span>]<span class="op">;</span></span>
+<span id="cb3-264"><a href="#cb3-264" aria-hidden="true" tabindex="-1"></a>    <span class="kw">const</span> axNames  <span class="op">=</span> [<span class="st">"Height"</span><span class="op">,</span> <span class="st">"Wingspan"</span><span class="op">,</span> <span class="st">"S. Reach"</span>]<span class="op">;</span></span>
+<span id="cb3-265"><a href="#cb3-265" aria-hidden="true" tabindex="-1"></a>    [[<span class="dv">1</span><span class="op">,</span><span class="dv">0</span><span class="op">,</span><span class="dv">0</span>]<span class="op">,</span>[<span class="dv">0</span><span class="op">,</span><span class="dv">1</span><span class="op">,</span><span class="dv">0</span>]<span class="op">,</span>[<span class="dv">0</span><span class="op">,</span><span class="dv">0</span><span class="op">,</span><span class="dv">1</span>]]<span class="op">.</span><span class="fu">forEach</span>(([x<span class="op">,</span>y<span class="op">,</span>z]<span class="op">,</span> i) <span class="kw">=&gt;</span> {</span>
+<span id="cb3-266"><a href="#cb3-266" aria-hidden="true" tabindex="-1"></a>      <span class="kw">const</span> hex <span class="op">=</span> <span class="st">"#"</span> <span class="op">+</span> axColors[i]<span class="op">.</span><span class="fu">toString</span>(<span class="dv">16</span>)<span class="op">.</span><span class="fu">padStart</span>(<span class="dv">6</span><span class="op">,</span> <span class="st">"0"</span>)<span class="op">;</span></span>
+<span id="cb3-267"><a href="#cb3-267" aria-hidden="true" tabindex="-1"></a>      scene<span class="op">.</span><span class="fu">add</span>(<span class="kw">new</span> THREE<span class="op">.</span><span class="fu">ArrowHelper</span>(<span class="kw">new</span> THREE<span class="op">.</span><span class="fu">Vector3</span>(x<span class="op">,</span>y<span class="op">,</span>z)<span class="op">,</span> O<span class="op">,</span> axLen<span class="op">,</span> axColors[i]<span class="op">,</span> <span class="fl">0.15</span><span class="op">,</span> <span class="fl">0.09</span>))<span class="op">;</span></span>
+<span id="cb3-268"><a href="#cb3-268" aria-hidden="true" tabindex="-1"></a>      <span class="kw">const</span> lbl <span class="op">=</span> <span class="fu">spriteLabel</span>(axNames[i]<span class="op">,</span> hex)<span class="op">;</span></span>
+<span id="cb3-269"><a href="#cb3-269" aria-hidden="true" tabindex="-1"></a>      lbl<span class="op">.</span><span class="at">position</span><span class="op">.</span><span class="fu">set</span>(x <span class="op">*</span> (axLen <span class="op">+</span> <span class="fl">0.5</span>)<span class="op">,</span> y <span class="op">*</span> (axLen <span class="op">+</span> <span class="fl">0.5</span>)<span class="op">,</span> z <span class="op">*</span> (axLen <span class="op">+</span> <span class="fl">0.5</span>))<span class="op">;</span></span>
+<span id="cb3-270"><a href="#cb3-270" aria-hidden="true" tabindex="-1"></a>      scene<span class="op">.</span><span class="fu">add</span>(lbl)<span class="op">;</span></span>
+<span id="cb3-271"><a href="#cb3-271" aria-hidden="true" tabindex="-1"></a>    })<span class="op">;</span></span>
+<span id="cb3-272"><a href="#cb3-272" aria-hidden="true" tabindex="-1"></a>  }<span class="op">,</span> invalidation)<span class="op">;</span></span>
+<span id="cb3-273"><a href="#cb3-273" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="fig-std-3d" class="cell-output cell-output-display quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-std-3d-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div id="ojs-cell-2" data-nodetype="expression">
+
+</div>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-std-3d-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;2: The same 220 players after standardisation. Each axis now has mean 0 and variance 1. The elongated shape is preserved. Drag to rotate, scroll to zoom.
+</figcaption>
+</figure>
+</div>
+</div>
+</section>
+<section id="the-covariance-matrix-encoding-shape" class="level1">
+<h1>The covariance matrix: encoding shape</h1>
+<p>After standardising the three measurements, the sample covariance matrix is computed as:</p>
+<p><span class="math display">
+\Sigma = \frac{1}{N-1} X^\top X
+</span></p>
+<p>This form holds because <span class="math inline">X</span> is already centered. Since each feature also has variance 1, the diagonal entries of <span class="math inline">\Sigma</span> are all 1 and the off-diagonal entries are Pearson correlation coefficients. For standardized data, the covariance matrix and the correlation matrix are the same thing. Geometrically the covariance matrix encodes the shape of the data cloud. Looking at <a href="#lst-data-generation" class="quarto-xref">Listing&nbsp;1</a>, you can see that the sample covariance matrix is basically the same that was used to generate the synthetic data. You can see the resulting covariance matrix from <a href="#fig-cov" class="quarto-xref">Figure&nbsp;3</a>.</p>
+<div id="cell-compute-sigma" class="cell" data-execution_count="5">
+<div id="compute-sigma" class="cell-output cell-output-display">
+<script type="ojs-define">{"contents": [{"name": "sigma_eigs", "value": [0.22670533539871673, 0.38530757338008603, 2.401685721358183]}, {"name": "sigma_evecs", "value": [[-0.7421509975938366, 0.6638367541483924, 0.09237240178863286], [-0.31428367050016887, -0.46641604259328284, 0.8268505606629063], [-0.5919777624433327, -0.5846168309699511, -0.554784183011049]]}]}</script>
+</div>
+</div>
+<div id="cell-fig-cov" class="cell" data-execution_count="6">
+<div class="cell-output cell-output-display">
+<div id="fig-cov" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-cov-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<a href="index_files/figure-html/fig-cov-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-2" title="Figure&nbsp;3: Sample covariance matrix of the three standardised measurements (shown as a heatmap). High off-diagonal values confirm that all three features co-vary strongly."><img src="index_files/figure-html/fig-cov-output-1.png" width="478" height="354" class="figure-img"></a>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-cov-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;3: Sample covariance matrix of the three standardised measurements (shown as a heatmap). High off-diagonal values confirm that all three features co-vary strongly.
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="eigenvectors-the-natural-axes-of-the-data" class="level1">
+<h1>Eigenvectors: the natural axes of the data</h1>
+<p>An eigenvector <span class="math inline">\mathbf{v}</span> of <span class="math inline">\Sigma</span> satisfies</p>
+<p><span class="math display">
+\Sigma \mathbf{v} = \lambda \mathbf{v}
+</span></p>
+<p>In practical terms, this means that applying the matrix <span class="math inline">\Sigma</span> to <span class="math inline">\mathbf{v}</span> only scales the vector by a scalar <span class="math inline">\lambda</span> and never rotates it. These eigenvectors are natural axes for the data cloud. These eigenvectors are directions along which the data varies independently with no covariance between them (orthogonal with respect to each other). The corresponding eigenvalue <span class="math inline">\lambda</span> is the variance of the data projected onto that axis. Then sorting the eigenvalues <span class="math inline">\lambda</span> from largest to smallest gives us the principal components in order: PC1 explains most of the variance, PC2 the next most etc. All principal components are orthogonal to each other. The full decomposition is:</p>
+<p><span class="math display">
+\Sigma = V \Lambda V^\top
+</span></p>
+<p>where <span class="math inline">V = [\mathbf{v}_1 \mid \mathbf{v}_2 \mid \mathbf{v}_3]</span> has the eigenvectors as columns and <span class="math inline">\Lambda = \text{diag}(\lambda_1, \lambda_2, \lambda_3)</span>.</p>
+<p><a href="#fig-3d-pca" class="quarto-xref">Figure&nbsp;4</a> shows the three principal component arrows as eigenvectors, scaled by <span class="math inline">\sqrt{\lambda_i}</span> to reflect the data spread better. When rotating the 3d visual, you can see that the data cloud stretches along PC1 and PC2 and PC3 explain the remaining smaller variation.</p>
+<div id="pca-computation" class="cell" data-execution_count="7">
+<details class="code-fold">
+<summary>Computing the principal components</summary>
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code" id="cb4"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1" aria-hidden="true" tabindex="-1"></a>eigenvalues, eigenvectors <span class="op">=</span> np.linalg.eigh(Sigma)</span>
+<span id="cb4-2"><a href="#cb4-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-3"><a href="#cb4-3" aria-hidden="true" tabindex="-1"></a><span class="co"># eigh returns ascending order — reverse to descending</span></span>
+<span id="cb4-4"><a href="#cb4-4" aria-hidden="true" tabindex="-1"></a>idx <span class="op">=</span> np.argsort(eigenvalues)[::<span class="op">-</span><span class="dv">1</span>]</span>
+<span id="cb4-5"><a href="#cb4-5" aria-hidden="true" tabindex="-1"></a>eigenvalues <span class="op">=</span> eigenvalues[idx]</span>
+<span id="cb4-6"><a href="#cb4-6" aria-hidden="true" tabindex="-1"></a>eigenvectors <span class="op">=</span> eigenvectors[:, idx]  <span class="co"># columns are PC vectors</span></span>
+<span id="cb4-7"><a href="#cb4-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-8"><a href="#cb4-8" aria-hidden="true" tabindex="-1"></a>explained_var <span class="op">=</span> eigenvalues <span class="op">/</span> eigenvalues.<span class="bu">sum</span>()</span>
+<span id="cb4-9"><a href="#cb4-9" aria-hidden="true" tabindex="-1"></a>cumulative_var <span class="op">=</span> np.cumsum(explained_var)</span>
+<span id="cb4-10"><a href="#cb4-10" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb4-11"><a href="#cb4-11" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Eigenvalues:       </span><span class="sc">{</span>np<span class="sc">.</span><span class="bu">round</span>(eigenvalues, <span class="dv">3</span>)<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb4-12"><a href="#cb4-12" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"Explained variance:</span><span class="sc">{</span>np<span class="sc">.</span><span class="bu">round</span>(explained_var, <span class="dv">3</span>)<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb4-13"><a href="#cb4-13" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"</span><span class="ch">\n</span><span class="ss">PC1: </span><span class="sc">{</span>np<span class="sc">.</span><span class="bu">round</span>(eigenvectors[:, <span class="dv">0</span>], <span class="dv">3</span>)<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb4-14"><a href="#cb4-14" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"PC2: </span><span class="sc">{</span>np<span class="sc">.</span><span class="bu">round</span>(eigenvectors[:, <span class="dv">1</span>], <span class="dv">3</span>)<span class="sc">}</span><span class="ss">"</span>)</span>
+<span id="cb4-15"><a href="#cb4-15" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(<span class="ss">f"PC3: </span><span class="sc">{</span>np<span class="sc">.</span><span class="bu">round</span>(eigenvectors[:, <span class="dv">2</span>], <span class="dv">3</span>)<span class="sc">}</span><span class="ss">"</span>)</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+</details>
+<div class="cell-output cell-output-stdout">
+<pre><code>Eigenvalues:       [2.402 0.385 0.227]
+Explained variance:[0.797 0.128 0.075]
+
+PC1: [-0.592 -0.585 -0.555]
+PC2: [-0.314 -0.466  0.827]
+PC3: [-0.742  0.664  0.092]</code></pre>
+</div>
+</div>
+<div id="38716c62" class="cell" data-execution_count="8">
+<div class="cell-output cell-output-display">
+<script type="ojs-define">{"contents": [{"name": "pts", "value": [[0.2967039831589952, -0.42043759986519363, 0.6309824992961957], [0.9297133965421062, -0.5441357897271254, -0.6288197361475605], [0.12061682825534158, -0.0799446274777471, 0.04855347400022371], [-0.8558891442810411, -0.02565245313046852, 0.15408597430412718], [0.05908302167546247, 0.8138786258182025, 0.6267964125537658], [-0.8621097881003565, -0.36259860045174025, -1.2592531478180224], [0.8678762406113333, 0.6472905013425195, 0.5107137506479287], [-0.6845430254194798, 0.3246811240256859, -0.3686528098006759], [-0.43306883757631104, -0.5137276680338241, 0.05701439174621258], [0.35715990166740164, 0.5698205926820049, 0.6890738698634807], [2.1254350259408934, 1.3474607865610306, 1.1123795047621927], [-0.8167932391999072, -0.16810804803652044, 0.40252799177085324], [-0.12009176783498683, -0.5993413278184753, -0.8321004996197369], [0.6410358111847948, 0.9953535385761558, 1.0389551874312022], [-0.6691920175924886, -0.30849044270055864, -0.32670290587061523], [0.21105950414166225, 0.7600469903542043, 0.5067462411307297], [0.669230171425883, 0.5765157890826839, 0.7470913924869937], [0.6218174186731656, -0.4509442823200662, -0.019144942069108155], [-0.4749259948396125, -0.7313711565836136, -0.6371229447348612], [1.4816154291598176, 0.5712300991167402, 1.6876524794837107], [-1.6820109075476966, -1.428292385518227, -1.1275099468851673], [0.5769526841295376, 0.9270073848559582, 1.1767079093410824], [-0.35382140922430166, -0.5267160473330039, 0.3423321057571115], [-0.19710333841085728, -0.9398746991344032, -1.199488980768558], [-0.9220010767474607, -0.323422919381739, -0.44389793273189593], [0.6807503095974022, 0.26301305814626613, 0.568824761512455], [0.6161450201258925, 0.2918584130593619, 0.7691838568790531], [-0.6656242481722595, -0.693218643541714, -0.8077713307009498], [-1.197154730355967, -0.5340138345270062, -1.1100363764525856], [0.0057854132402045755, 0.3536252135589237, 0.45785491754779484], [0.6557621040779353, 0.4584557431913428, 0.16706063969177093], [-0.08601530964540578, -1.1254349368575145, -1.4298654354567577], [-1.3234484342512844, -1.5935771614933536, -0.8042788941181245], [-0.9080902181992401, -0.8827817820644264, 0.2897125466974868], [-0.3613266567713499, 0.24860802606434765, -0.811194040804898], [-0.21117348510355477, -0.7383582971172419, -0.5491049095710426], [0.8299043313478491, -0.47252408414370256, 0.6567316387692713], [0.2300214899208364, -0.1797126683098104, -1.0062653390348946], [0.06515460866363867, -0.25984214448797355, 0.15998092356767696], [0.015101668756600413, 1.09011158299476, 0.14208942333150237], [-1.025581858389389, -0.6070864311138644, -0.5164318381011658], [1.3464676550159476, 1.578043273741811, 1.4260583229727537], [1.450118233070689, 0.3377147000389503, 0.38681844945964705], [-0.9290929344010104, -0.9059304092975635, -1.7592290562828898], [0.6256628976812021, 0.35561482463266575, -0.6719737968448165], [-1.0176987922655305, -0.513879268056652, -0.01767028449263201], [1.981165179233884, 3.401393965951352, 2.2982191469350983], [-0.991774069725177, -2.086260837990195, -0.8643265657161311], [-0.8159653184094271, -0.8387000595894604, -1.101093743879853], [-0.1468153759990337, 0.621385125328234, 0.23072818550910956], [-0.16457967685514255, -0.7595502801855838, -1.5444718493331548], [-0.49079011967003977, -0.36234387541466484, 1.0059671086518622], [0.12304008142473481, 0.7672440505299184, -0.0863326505362318], [-1.1863074869511603, -1.4710095086971113, -1.5531364512519084], [2.1123159793529585, 1.067667860718107, 2.054993548494604], [-0.9055497317012893, -0.028507726591922543, -0.1710088448324811], [-0.162591651181946, -0.11059004127858249, -0.5927847260626109], [0.4374281402177576, 0.06460062927291857, -0.6636641964216431], [-1.2788861998328271, -0.7992031392697717, 0.33029600851417557], [0.15262452580125685, 0.07238450224108073, 0.3365001220807716], [1.2935192262642423, 1.138071431271021, 0.6958032926257216], [1.0946976505854047, 1.1269559914632064, 2.066413668773069], [0.17576360081756837, -0.6301507154819276, -1.0979740865421], [1.6369057750909695, 2.3716147283426388, 1.3868436863102653], [-0.3881298295049172, 0.6998810160521408, -0.8343299400760305], [-0.8973861754934775, -0.21005034997628436, -0.8079071650558196], [-0.011751940005979972, -0.07862045331275715, 0.2484947696024792], [1.3945463706320058, 1.1291358196411407, 1.547281333669226], [-2.0476737152404016, -1.5131029218370589, -2.1062314960407735], [-1.220025599114353, -1.4394059580736638, -1.2653103215821615], [0.9051613066714097, -0.15581079263575323, 0.4757031567546609], [-0.48866118941134684, -0.5390168856451174, 0.37814538634529155], [0.5290605237738982, 1.2990264591396494, 0.5330068940252262], [-0.699489079090262, -0.6277315550156424, -0.33381622988278864], [0.16913225500356918, -0.543899972455974, 0.029425830298706872], [0.22055665519119275, 1.8383519366663317, 2.0598794537036067], [-0.8560876771049887, -0.7851542638689594, -1.753968888551897], [-0.5947232198916419, -0.1989836321037367, 0.5690581394347173], [-0.7324823731853244, -0.932224259135106, -2.248249845121406], [-0.1685927668763076, -0.7799411646859938, -0.6826166380900173], [-0.8795996839677039, -0.67689753231937, -1.9603277716497487], [-1.4671497539199463, 0.33466089671174687, -1.6367978420611593], [-1.098542809327824, 0.4176402773472083, 1.7622570008534173], [-1.1729900606814876, -1.0726894407913634, -0.6280002150951177], [1.7143283478048417, 0.6649656937442013, 0.9138862421483251], [0.7672148506724077, 0.8881173744529369, 0.3780767143735279], [-0.1398785567038231, -0.9620229507107315, -0.49587781323524444], [-0.27185135597619736, -0.013952302605472299, -0.5483591123544881], [0.46278078765766634, 1.0385890212111615, 0.6627769746100709], [0.3435333430805947, 0.32570277740369036, 0.28857261663110884], [-0.7249901618002865, -0.29496650909702327, -0.5147668818245617], [2.0771721302660713, 2.6001423733258275, 2.109235057958384], [-0.7663040987219629, -1.2555390637561774, 0.18079280814373808], [0.25492345981471226, 0.5379085673016035, -1.0248827232699116], [0.916645753080321, 1.01167567952375, -0.06741165447637441], [-0.47607300514855244, -0.14480219941192476, -0.2296349515388043], [-0.2975199614869702, -0.25142957218763534, -0.3960370680286922], [0.14522858549553264, 1.1017771868777135, -1.5534013270132752], [-0.24244597533319365, -0.028377800306990403, 0.10950153361865685], [-0.3769074076444426, -1.386219566558326, -0.3056712989132113], [1.712986932066948, 0.3079746809049081, 1.6582588582261413], [-0.33371172585263637, -0.2508163004812289, -1.0229467466557802], [-0.33961620119933056, 0.6308014367118966, 0.4552322455543125], [1.7179261772273966, 2.076163631092039, 1.8187597148514212], [1.7294972169337632, 1.6041694148142833, 1.99186539014827], [-0.30190009004300505, -0.14401625667471496, -0.7073491765192635], [0.9785138084201953, -0.0050594717884605836, 1.1258829337307292], [-0.19645298701388073, 0.6530996504240132, 0.6641385813752133], [1.8058664318907243, 1.8506735860944683, 0.2767471810834121], [-0.0733072507397816, -0.7806341005916054, -0.624323960050161], [1.4978298506275827, 1.5616562928114117, 0.6994507206611184], [-1.0158453876057787, -0.6952088527012996, -1.6259376247015889], [-0.6747974546117372, -0.26067943767541346, 0.47189893611531775], [0.5993912173804936, -1.0104316689332111, 0.29087006907650087], [0.06505910240360382, 0.35405150943922764, 1.3771320169047483], [-2.060681567727565, -1.8757354970703444, -1.1227419224216593], [-1.5811875966969569, -0.17504460107997644, -0.5780110512198164], [0.8361521663265566, 0.28469041335003265, 1.1537375046030882], [1.0570493003598262, 0.9715688755783934, 1.0164135223675037], [0.2624835766659499, -0.33084522389696847, -0.04440832210926652], [-0.15849465566818394, 0.16849272879892177, 0.7414152042625836], [-1.0604640465369697, -0.8309751290249848, 0.3621698652868121], [-0.7469220212283703, -1.0523315181560529, -0.5045800378794444], [0.8339631856972791, 0.662080687044268, 1.6462706587537304], [0.8463165888453426, 1.211667690857181, 1.2137831542861932], [2.3106102555475982, 1.6157016648849245, 0.1502187186313049], [1.5904405404720225, 0.9175145245721605, 1.185607356952897], [1.297052328055319, -0.04485511132512126, -0.2620200488602309], [-1.6007832732594682, -1.666967600591859, -0.9395054568648726], [0.515195097969355, 0.5981569837572731, -0.6199899736409703], [-2.306444799362652, -1.6378390334633846, -1.993911098019854], [0.45068228287490614, 0.8273732981970954, 0.5859944312713163], [0.7500871554052942, 0.7416439552003813, 1.0173219424732012], [-0.7081807594168217, -0.6053776298977631, -0.367017139076578], [0.8102129594791605, 0.38078813617830276, 0.9440844492074202], [-0.27130510709780675, -0.2411439991722469, 0.44161816803018994], [-1.990816914008627, -2.283009808679791, -2.7706738284719963], [-2.329852529378184, -2.131986432274009, -1.2132697204880771], [-0.2902653694681562, -0.0499766384687337, 0.6807743733877915], [1.3151068245466022, 0.9663010432874075, 2.0001343509126697], [0.0850624984117315, -0.44547366352803586, -0.5079434346534445], [-1.480580800333512, -1.6390410583031252, -1.4744339139427205], [0.7933451336828045, 1.7444326584866932, -0.1393673446123074], [0.3844210746871299, -0.3557808126693722, 0.4852244113739641], [-0.13715445691718947, -1.2567802236491852, 0.3110892779164332], [-0.6089531161745951, -0.7623994120021991, -1.3191840577922018], [-0.6580156982358532, -0.17282313943032865, -0.5162497990034944], [0.32054202310698765, 0.5096090174828851, 1.3290896481636356], [-0.34790899731170044, -1.1825855460126198, 0.3261133572420814], [-0.33666144915752216, 0.5122972933030501, 0.2732900100326186], [-0.13720510932269894, 0.16174403735870982, 1.4729240252782534], [2.0610566075317034, 1.6093932487343119, 1.6602846381172034], [1.0647832252510068, 0.27537616292460826, 0.9062424568491996], [-0.032400340042872296, 0.21673928789860541, -0.5711115097836174], [-1.5891251011763563, -2.490614226780576, -2.339290587975309], [-0.4632808388526743, -0.49776249827494656, 1.1121522322825115], [1.0944036287380823, 0.2215585394298898, 0.9182803892011203], [-0.41191410321080896, -0.45394121448132857, -0.17907988799410982], [0.6097543967612988, 0.26765426680771665, 1.2201635376651871], [-1.1434939098410013, -0.8070389672834247, 1.172561045013468], [0.215431049347954, 1.1289040213273798, 0.5089768210285813], [0.5715317539158379, 0.4231595183539702, 0.3052668590031255], [-0.7826559688995042, -0.2636448787010109, -1.1091701988302574], [0.6559613381132667, 1.2290161102314516, 0.9761732196232077], [-0.29162394519753587, 0.11573824963999348, -0.3362349426549438], [0.9247182025589921, -0.4699825348278618, 0.12255358098703924], [-1.988578574119307, -2.4105942876812763, -0.6433617295644072], [0.8845362229406931, 0.22388625721792196, -0.59596408200037], [-2.9579490520378227, -2.5098598223034663, -0.37691593734902895], [0.4262901495893748, -0.011723104453917233, 0.5933710758829062], [-1.5606436630386253, -1.3138821920592354, -1.0807708108955534], [-0.09236926135733496, 0.48265736913825413, 0.3640418064941389], [0.6586898859225615, 0.07672091085729255, 1.067913754317446], [1.615012951301316, 0.6022206768640285, 0.35697459717187074], [1.3231688807710653, 0.8927440224072873, 2.022521653069041], [-0.44721330776791973, 0.6519204652395779, 0.061959630663130046], [0.2504232356379235, 1.2404263065475476, 0.21348909039489516], [-0.943574159475668, -0.9549027949333276, -0.3914903703294947], [-1.5654229533287745, -0.7090500810114408, -1.4035339085354213], [1.1360362514431868, -0.6796529785503189, -0.16588526290229078], [-1.6855932251345882, -1.7507203948258014, -1.1525195414583755], [-0.18507955001900664, -0.2656317143549904, -0.27043324695867715], [0.1958274439953301, -0.47474653898703145, 0.5301816587367494], [0.6530551028674567, 0.7711317292472523, 0.9945041469519391], [0.2884419486834562, 1.5747206407968335, 0.5328058709686083], [-0.31236543140919987, -0.6854869422132052, -1.1141683278202679], [-1.2455697938284573, -1.4652686895388185, -1.0857295832219023], [0.3261500048239266, 0.31150694015969677, -0.3056874157209395], [0.8895134884319681, 1.1770399013848518, 0.6851358640607195], [-0.6566546686590599, -0.09336709173918405, -0.20755425749127046], [-1.4483162118651818, -1.081359276325792, -0.8352274509826437], [-0.9023317684783656, -0.508848505656925, -1.6966276213478728], [1.3235688511166288, 1.8297494923507733, 1.0197594994177042], [0.35517905665388955, -1.268663629058048, -1.0164711355857758], [-0.2991205194166186, -0.8830210917171774, 0.1652295030691766], [1.981728293455793, 0.7396820160436446, 0.6249195882288241], [0.22774446538959173, 1.2538118831626965, -0.4481714187281699], [0.2412715679394054, 1.400628285273599, -0.7271858395727361], [-1.2820038537394054, -1.1895243492290144, -1.3715193474155425], [0.8023211562802594, 0.788464433665926, -0.6925854587897949], [0.5064568377800687, 0.036008349998718915, 1.2629066281479173], [-0.631439119347765, -0.8459155034508727, -0.13064643599840756], [0.7528680835235981, 0.8861601534899927, -0.6241493351000675], [0.5289798882436135, -0.24456682288056944, 0.4095321748332383], [-1.4240322697201868, -0.7286446821093616, -1.5379942346498046], [-1.2835623095085569, -0.4504292284493468, -0.5928300311951894], [-0.6178891383310848, 0.5228888634506588, -0.4970543904857592], [0.025311419760500813, 0.23023557451765175, -0.3749069648280761], [0.4623803539364671, 0.03202825976350301, -0.041430889533391545], [1.3499072972606407, 0.35986767414724397, -1.005889763830675], [1.5970933447990807, 2.879453813044448, 1.3325237815296982], [-1.9348455423207744, -1.599827991150916, -1.6476823140526138], [-0.19572901659593525, -0.8332303910601707, 0.13064841067053917], [0.5155132041505125, -0.5539858939418931, 0.6706227102732537], [2.036869508081408, 1.6582240455066404, 1.283129050297685], [-0.1480222925404783, 0.32715449856762124, -1.2830526996841956], [0.15700397905784128, -0.1012764126061345, 1.477531753295986], [-0.18004821735211918, 0.9884791752446307, -0.6442073959651402], [0.5779848914667315, 0.6727674679000257, -0.1539594657987849], [0.16995133866275838, 0.9515604833643068, 0.12161044728023906]]}, {"name": "pcs", "value": [[-0.5919777624433327, -0.5846168309699511, -0.554784183011049], [-0.31428367050016887, -0.46641604259328284, 0.8268505606629063], [-0.7421509975938366, 0.6638367541483924, 0.09237240178863286]]}, {"name": "evr", "value": [0.7969229893597608, 0.12785205843975583, 0.0752249522004833]}, {"name": "eigs", "value": [2.401685721358183, 0.38530757338008603, 0.22670533539871673]}]}</script>
+</div>
+</div>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code hidden" id="cb6" data-startfrom="380" data-source-offset="0"><pre class="sourceCode js code-with-copy"><code class="sourceCode javascript" style="counter-reset: source-line 379;"><span id="cb6-380"><a href="#cb6-380" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb6-381"><a href="#cb6-381" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> <span class="fu">makeScene3D</span>((scene<span class="op">,</span> THREE<span class="op">,</span> { O<span class="op">,</span> spriteLabel }) <span class="kw">=&gt;</span> {</span>
+<span id="cb6-382"><a href="#cb6-382" aria-hidden="true" tabindex="-1"></a>    <span class="co">// ── Point cloud ─────────────────────────────────────────────────────────</span></span>
+<span id="cb6-383"><a href="#cb6-383" aria-hidden="true" tabindex="-1"></a>    <span class="kw">const</span> flat <span class="op">=</span> <span class="kw">new</span> <span class="bu">Float32Array</span>(pts<span class="op">.</span><span class="fu">flatMap</span>(p <span class="kw">=&gt;</span> p))<span class="op">;</span></span>
+<span id="cb6-384"><a href="#cb6-384" aria-hidden="true" tabindex="-1"></a>    <span class="kw">const</span> ptGeo <span class="op">=</span> <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">BufferGeometry</span>()<span class="op">;</span></span>
+<span id="cb6-385"><a href="#cb6-385" aria-hidden="true" tabindex="-1"></a>    ptGeo<span class="op">.</span><span class="fu">setAttribute</span>(<span class="st">"position"</span><span class="op">,</span> <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">Float32BufferAttribute</span>(flat<span class="op">,</span> <span class="dv">3</span>))<span class="op">;</span></span>
+<span id="cb6-386"><a href="#cb6-386" aria-hidden="true" tabindex="-1"></a>    scene<span class="op">.</span><span class="fu">add</span>(<span class="kw">new</span> THREE<span class="op">.</span><span class="fu">Points</span>(ptGeo<span class="op">,</span></span>
+<span id="cb6-387"><a href="#cb6-387" aria-hidden="true" tabindex="-1"></a>      <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">PointsMaterial</span>({ <span class="dt">color</span><span class="op">:</span> <span class="bn">0xaaaacc</span><span class="op">,</span> <span class="dt">size</span><span class="op">:</span> <span class="fl">0.07</span><span class="op">,</span> <span class="dt">transparent</span><span class="op">:</span> <span class="kw">true</span><span class="op">,</span> <span class="dt">opacity</span><span class="op">:</span> <span class="fl">0.65</span> })</span>
+<span id="cb6-388"><a href="#cb6-388" aria-hidden="true" tabindex="-1"></a>    ))<span class="op">;</span></span>
+<span id="cb6-389"><a href="#cb6-389" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-390"><a href="#cb6-390" aria-hidden="true" tabindex="-1"></a>    <span class="co">// ── PC1–PC2 plane ────────────────────────────────────────────────────────</span></span>
+<span id="cb6-391"><a href="#cb6-391" aria-hidden="true" tabindex="-1"></a>    <span class="kw">const</span> planeGeo <span class="op">=</span> <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">PlaneGeometry</span>(<span class="dv">7</span><span class="op">,</span> <span class="dv">7</span><span class="op">,</span> <span class="dv">14</span><span class="op">,</span> <span class="dv">14</span>)<span class="op">;</span></span>
+<span id="cb6-392"><a href="#cb6-392" aria-hidden="true" tabindex="-1"></a>    <span class="kw">const</span> planeMesh <span class="op">=</span> <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">Mesh</span>(planeGeo<span class="op">,</span> <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">MeshBasicMaterial</span>({</span>
+<span id="cb6-393"><a href="#cb6-393" aria-hidden="true" tabindex="-1"></a>      <span class="dt">color</span><span class="op">:</span> <span class="bn">0x7eb8f7</span><span class="op">,</span> <span class="dt">transparent</span><span class="op">:</span> <span class="kw">true</span><span class="op">,</span> <span class="dt">opacity</span><span class="op">:</span> <span class="fl">0.07</span><span class="op">,</span> <span class="dt">side</span><span class="op">:</span> THREE<span class="op">.</span><span class="at">DoubleSide</span><span class="op">,</span> <span class="dt">depthWrite</span><span class="op">:</span> <span class="kw">false</span></span>
+<span id="cb6-394"><a href="#cb6-394" aria-hidden="true" tabindex="-1"></a>    }))<span class="op">;</span></span>
+<span id="cb6-395"><a href="#cb6-395" aria-hidden="true" tabindex="-1"></a>    planeMesh<span class="op">.</span><span class="at">quaternion</span><span class="op">.</span><span class="fu">setFromUnitVectors</span>(</span>
+<span id="cb6-396"><a href="#cb6-396" aria-hidden="true" tabindex="-1"></a>      <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">Vector3</span>(<span class="dv">0</span><span class="op">,</span> <span class="dv">0</span><span class="op">,</span> <span class="dv">1</span>)<span class="op">,</span></span>
+<span id="cb6-397"><a href="#cb6-397" aria-hidden="true" tabindex="-1"></a>      <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">Vector3</span>(<span class="op">...</span>pcs[<span class="dv">2</span>])<span class="op">.</span><span class="fu">normalize</span>()</span>
+<span id="cb6-398"><a href="#cb6-398" aria-hidden="true" tabindex="-1"></a>    )<span class="op">;</span></span>
+<span id="cb6-399"><a href="#cb6-399" aria-hidden="true" tabindex="-1"></a>    scene<span class="op">.</span><span class="fu">add</span>(planeMesh)<span class="op">;</span></span>
+<span id="cb6-400"><a href="#cb6-400" aria-hidden="true" tabindex="-1"></a>    planeMesh<span class="op">.</span><span class="fu">add</span>(<span class="kw">new</span> THREE<span class="op">.</span><span class="fu">LineSegments</span>(</span>
+<span id="cb6-401"><a href="#cb6-401" aria-hidden="true" tabindex="-1"></a>      <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">WireframeGeometry</span>(planeGeo)<span class="op">,</span></span>
+<span id="cb6-402"><a href="#cb6-402" aria-hidden="true" tabindex="-1"></a>      <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">LineBasicMaterial</span>({ <span class="dt">color</span><span class="op">:</span> <span class="bn">0x7eb8f7</span><span class="op">,</span> <span class="dt">transparent</span><span class="op">:</span> <span class="kw">true</span><span class="op">,</span> <span class="dt">opacity</span><span class="op">:</span> <span class="fl">0.12</span><span class="op">,</span> <span class="dt">depthWrite</span><span class="op">:</span> <span class="kw">false</span> })</span>
+<span id="cb6-403"><a href="#cb6-403" aria-hidden="true" tabindex="-1"></a>    ))<span class="op">;</span></span>
+<span id="cb6-404"><a href="#cb6-404" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-405"><a href="#cb6-405" aria-hidden="true" tabindex="-1"></a>    <span class="co">// ── PC arrows ────────────────────────────────────────────────────────────</span></span>
+<span id="cb6-406"><a href="#cb6-406" aria-hidden="true" tabindex="-1"></a>    <span class="kw">const</span> pcColors <span class="op">=</span> [<span class="bn">0xf0956a</span><span class="op">,</span> <span class="bn">0x6ddc8b</span><span class="op">,</span> <span class="bn">0x7eb8f7</span>]<span class="op">;</span></span>
+<span id="cb6-407"><a href="#cb6-407" aria-hidden="true" tabindex="-1"></a>    <span class="kw">const</span> pcCssCol <span class="op">=</span> [<span class="st">"#f0956a"</span><span class="op">,</span> <span class="st">"#6ddc8b"</span><span class="op">,</span> <span class="st">"#7eb8f7"</span>]<span class="op">;</span></span>
+<span id="cb6-408"><a href="#cb6-408" aria-hidden="true" tabindex="-1"></a>    pcs<span class="op">.</span><span class="fu">forEach</span>((pc<span class="op">,</span> i) <span class="kw">=&gt;</span> {</span>
+<span id="cb6-409"><a href="#cb6-409" aria-hidden="true" tabindex="-1"></a>      <span class="kw">const</span> len  <span class="op">=</span> <span class="bu">Math</span><span class="op">.</span><span class="fu">sqrt</span>(eigs[i]) <span class="op">*</span> <span class="fl">2.2</span><span class="op">;</span></span>
+<span id="cb6-410"><a href="#cb6-410" aria-hidden="true" tabindex="-1"></a>      <span class="kw">const</span> hLen <span class="op">=</span> <span class="bu">Math</span><span class="op">.</span><span class="fu">min</span>(<span class="fl">0.22</span><span class="op">,</span> len <span class="op">*</span> <span class="fl">0.14</span>)<span class="op">;</span></span>
+<span id="cb6-411"><a href="#cb6-411" aria-hidden="true" tabindex="-1"></a>      <span class="kw">const</span> d    <span class="op">=</span> <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">Vector3</span>(<span class="op">...</span>pc)<span class="op">.</span><span class="fu">normalize</span>()<span class="op">;</span></span>
+<span id="cb6-412"><a href="#cb6-412" aria-hidden="true" tabindex="-1"></a>      scene<span class="op">.</span><span class="fu">add</span>(<span class="kw">new</span> THREE<span class="op">.</span><span class="fu">ArrowHelper</span>(d<span class="op">,</span>                O<span class="op">,</span> len<span class="op">,</span> pcColors[i]<span class="op">,</span> hLen<span class="op">,</span> hLen <span class="op">*</span> <span class="fl">0.55</span>))<span class="op">;</span></span>
+<span id="cb6-413"><a href="#cb6-413" aria-hidden="true" tabindex="-1"></a>      scene<span class="op">.</span><span class="fu">add</span>(<span class="kw">new</span> THREE<span class="op">.</span><span class="fu">ArrowHelper</span>(d<span class="op">.</span><span class="fu">clone</span>()<span class="op">.</span><span class="fu">negate</span>()<span class="op">,</span> O<span class="op">,</span> len<span class="op">,</span> pcColors[i]<span class="op">,</span> hLen<span class="op">,</span> hLen <span class="op">*</span> <span class="fl">0.55</span>))<span class="op">;</span></span>
+<span id="cb6-414"><a href="#cb6-414" aria-hidden="true" tabindex="-1"></a>      <span class="kw">const</span> lbl <span class="op">=</span> <span class="fu">spriteLabel</span>(<span class="vs">`PC</span><span class="sc">${</span>i<span class="op">+</span><span class="dv">1</span><span class="sc">}</span><span class="vs">  </span><span class="sc">${</span>(evr[i]<span class="op">*</span><span class="dv">100</span>)<span class="op">.</span><span class="fu">toFixed</span>(<span class="dv">0</span>)<span class="sc">}</span><span class="vs">%`</span><span class="op">,</span> pcCssCol[i]<span class="op">,</span> <span class="fl">1.5</span>)<span class="op">;</span></span>
+<span id="cb6-415"><a href="#cb6-415" aria-hidden="true" tabindex="-1"></a>      lbl<span class="op">.</span><span class="at">position</span><span class="op">.</span><span class="fu">copy</span>(d<span class="op">.</span><span class="fu">clone</span>()<span class="op">.</span><span class="fu">multiplyScalar</span>(len <span class="op">+</span> <span class="fl">0.5</span>))<span class="op">;</span></span>
+<span id="cb6-416"><a href="#cb6-416" aria-hidden="true" tabindex="-1"></a>      scene<span class="op">.</span><span class="fu">add</span>(lbl)<span class="op">;</span></span>
+<span id="cb6-417"><a href="#cb6-417" aria-hidden="true" tabindex="-1"></a>    })<span class="op">;</span></span>
+<span id="cb6-418"><a href="#cb6-418" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb6-419"><a href="#cb6-419" aria-hidden="true" tabindex="-1"></a>    <span class="co">// ── Feature axes (faint) ─────────────────────────────────────────────────</span></span>
+<span id="cb6-420"><a href="#cb6-420" aria-hidden="true" tabindex="-1"></a>    <span class="kw">const</span> axLen <span class="op">=</span> <span class="fl">3.8</span><span class="op">;</span></span>
+<span id="cb6-421"><a href="#cb6-421" aria-hidden="true" tabindex="-1"></a>    [[<span class="dv">1</span><span class="op">,</span><span class="dv">0</span><span class="op">,</span><span class="dv">0</span>]<span class="op">,</span>[<span class="dv">0</span><span class="op">,</span><span class="dv">1</span><span class="op">,</span><span class="dv">0</span>]<span class="op">,</span>[<span class="dv">0</span><span class="op">,</span><span class="dv">0</span><span class="op">,</span><span class="dv">1</span>]]<span class="op">.</span><span class="fu">forEach</span>(dir <span class="kw">=&gt;</span> {</span>
+<span id="cb6-422"><a href="#cb6-422" aria-hidden="true" tabindex="-1"></a>      scene<span class="op">.</span><span class="fu">add</span>(<span class="kw">new</span> THREE<span class="op">.</span><span class="fu">ArrowHelper</span>(<span class="kw">new</span> THREE<span class="op">.</span><span class="fu">Vector3</span>(<span class="op">...</span>dir)<span class="op">,</span> O<span class="op">,</span> axLen<span class="op">,</span> <span class="bn">0x3a3a55</span><span class="op">,</span> <span class="fl">0.12</span><span class="op">,</span> <span class="fl">0.07</span>))<span class="op">;</span></span>
+<span id="cb6-423"><a href="#cb6-423" aria-hidden="true" tabindex="-1"></a>    })<span class="op">;</span></span>
+<span id="cb6-424"><a href="#cb6-424" aria-hidden="true" tabindex="-1"></a>    [[<span class="st">"Height"</span><span class="op">,</span> [axLen<span class="op">+</span><span class="fl">0.3</span><span class="op">,</span><span class="dv">0</span><span class="op">,</span><span class="dv">0</span>]]<span class="op">,</span> [<span class="st">"Wingspan"</span><span class="op">,</span> [<span class="dv">0</span><span class="op">,</span>axLen<span class="op">+</span><span class="fl">0.3</span><span class="op">,</span><span class="dv">0</span>]]<span class="op">,</span> [<span class="st">"S. Reach"</span><span class="op">,</span> [<span class="dv">0</span><span class="op">,</span><span class="dv">0</span><span class="op">,</span>axLen<span class="op">+</span><span class="fl">0.3</span>]]]<span class="op">.</span><span class="fu">forEach</span>(([t<span class="op">,</span>p]) <span class="kw">=&gt;</span> {</span>
+<span id="cb6-425"><a href="#cb6-425" aria-hidden="true" tabindex="-1"></a>      <span class="kw">const</span> lbl <span class="op">=</span> <span class="fu">spriteLabel</span>(t<span class="op">,</span> <span class="st">"#555577"</span><span class="op">,</span> <span class="fl">1.5</span>)<span class="op">;</span></span>
+<span id="cb6-426"><a href="#cb6-426" aria-hidden="true" tabindex="-1"></a>      lbl<span class="op">.</span><span class="at">position</span><span class="op">.</span><span class="fu">set</span>(<span class="op">...</span>p)<span class="op">;</span></span>
+<span id="cb6-427"><a href="#cb6-427" aria-hidden="true" tabindex="-1"></a>      scene<span class="op">.</span><span class="fu">add</span>(lbl)<span class="op">;</span></span>
+<span id="cb6-428"><a href="#cb6-428" aria-hidden="true" tabindex="-1"></a>    })<span class="op">;</span></span>
+<span id="cb6-429"><a href="#cb6-429" aria-hidden="true" tabindex="-1"></a>  }<span class="op">,</span> invalidation)<span class="op">;</span></span>
+<span id="cb6-430"><a href="#cb6-430" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="fig-3d-pca" class="cell-output cell-output-display quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-3d-pca-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div id="ojs-cell-3" data-nodetype="expression">
+
+</div>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-3d-pca-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;4: Three-dimensional point cloud of standardised player measurements. Arrows show the three principal components scaled by their standard deviation √λ. Colour: PC1 (orange) explains the most variance, PC2 (green) the next, PC3 (blue) the least. The translucent plane is the PC1–PC2 subspace. Drag to rotate, scroll to zoom.
+</figcaption>
+</figure>
+</div>
+</div>
+</section>
+<section id="explained-variance-and-the-scree-plot" class="level1">
+<h1>Explained variance and the scree plot</h1>
+<p>Each eigenvalue <span class="math inline">\lambda_i</span> is the variance of the data projected onto PC<span class="math inline">i</span>. Thus the fraction of total variance explained by PC<span class="math inline">i</span> is <span class="math inline">\lambda_i / \sum_j \lambda_j</span>. <a href="#fig-scree" class="quarto-xref">Figure&nbsp;5</a> shows these fractions in descending order.</p>
+<div id="cell-fig-scree" class="cell" data-execution_count="9">
+<div class="cell-output cell-output-display">
+<div id="fig-scree" class="quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-scree-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<a href="index_files/figure-html/fig-scree-output-1.png" class="lightbox" data-gallery="quarto-lightbox-gallery-3" title="Figure&nbsp;5: Scree plot. Bars show individual explained variance per principal component; the line shows the cumulative total. In this dataset PC1 alone captures most of the variance. PC1 is able to capture the general “size” component."><img src="index_files/figure-html/fig-scree-output-1.png" width="662" height="374" class="figure-img"></a>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-scree-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;5: Scree plot. Bars show individual explained variance per principal component; the line shows the cumulative total. In this dataset PC1 alone captures most of the variance. PC1 is able to capture the general “size” component.
+</figcaption>
+</figure>
+</div>
+</div>
+</div>
+</section>
+<section id="dimensionality-reduction" class="level1">
+<h1>Dimensionality reduction</h1>
+<p>Keeping only the first <span class="math inline">k</span> principal components gives a rank-<span class="math inline">k</span> approximation of the data:</p>
+<p><span class="math display">
+\underbrace{Z_k}_{N \times k} = \underbrace{X}_{N \times p}\underbrace{V_k}_{p \times k}, \qquad \underbrace{\hat{X}}_{N \times p} = \underbrace{Z_k}_{N \times k}\underbrace{V_k^\top}_{k \times p}
+</span></p>
+<p>where <span class="math inline">V_k</span> contains only the first <span class="math inline">k</span> eigenvectors and <span class="math inline">p</span> is the number of features (3 in this case). In practice, the data is first projected down to <span class="math inline">k</span> dimensions, then reconstructed back into the original <span class="math inline">p</span>-dimensional space. But during the reconstruction, the data is constrained to lie on a <span class="math inline">k</span>-dimensional subspace, so information carried by the discarded eigenvalues is lost. The reconstruction error is exactly the sum of these discarded eigenvalues:</p>
+<p><span class="math display">
+\|X - \hat{X}\|_F^2 = \sum_{i &gt; k} \lambda_i
+</span></p>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code hidden" id="cb7" data-startfrom="383" data-source-offset="0"><pre class="sourceCode js code-with-copy"><code class="sourceCode javascript" style="counter-reset: source-line 382;"><span id="cb7-383"><a href="#cb7-383" aria-hidden="true" tabindex="-1"></a>viewof k_dim <span class="op">=</span> Inputs<span class="op">.</span><span class="fu">radio</span>([<span class="dv">1</span><span class="op">,</span> <span class="dv">2</span>]<span class="op">,</span> {<span class="dt">label</span><span class="op">:</span> <span class="st">"Principal components to keep (k)"</span><span class="op">,</span> <span class="dt">value</span><span class="op">:</span> <span class="dv">1</span>})</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="cell-output cell-output-display">
+<div id="ojs-cell-4" data-nodetype="declaration">
+
+</div>
+</div>
+</div>
+<div class="cell">
+<div class="code-copy-outer-scaffold"><div class="sourceCode cell-code hidden" id="cb8" data-startfrom="2" data-source-offset="0"><pre class="sourceCode js code-with-copy"><code class="sourceCode javascript" style="counter-reset: source-line 1;"><span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>{</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>  <span class="kw">const</span> dot <span class="op">=</span> (a<span class="op">,</span> b) <span class="kw">=&gt;</span> a<span class="op">.</span><span class="fu">reduce</span>((s<span class="op">,</span> ai<span class="op">,</span> i) <span class="kw">=&gt;</span> s <span class="op">+</span> ai <span class="op">*</span> b[i]<span class="op">,</span> <span class="dv">0</span>)<span class="op">;</span></span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>  <span class="kw">const</span> recon <span class="op">=</span> pts<span class="op">.</span><span class="fu">map</span>(p <span class="kw">=&gt;</span> {</span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>    <span class="kw">let</span> r <span class="op">=</span> [<span class="dv">0</span><span class="op">,</span> <span class="dv">0</span><span class="op">,</span> <span class="dv">0</span>]<span class="op">;</span></span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> (<span class="kw">let</span> i <span class="op">=</span> <span class="dv">0</span><span class="op">;</span> i <span class="op">&lt;</span> k_dim<span class="op">;</span> i<span class="op">++</span>) {</span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>      <span class="kw">const</span> score <span class="op">=</span> <span class="fu">dot</span>(p<span class="op">,</span> pcs[i])<span class="op">;</span></span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a>      r <span class="op">=</span> r<span class="op">.</span><span class="fu">map</span>((v<span class="op">,</span> j) <span class="kw">=&gt;</span> v <span class="op">+</span> score <span class="op">*</span> pcs[i][j])<span class="op">;</span></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a>    }</span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>    <span class="cf">return</span> r<span class="op">;</span></span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a>  })<span class="op">;</span></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a>  <span class="cf">return</span> <span class="fu">makeScene3D</span>((scene<span class="op">,</span> THREE<span class="op">,</span> { O<span class="op">,</span> spriteLabel }) <span class="kw">=&gt;</span> {</span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Original points (faint)</span></span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a>    <span class="kw">const</span> flat <span class="op">=</span> <span class="kw">new</span> <span class="bu">Float32Array</span>(pts<span class="op">.</span><span class="fu">flatMap</span>(p <span class="kw">=&gt;</span> p))<span class="op">;</span></span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a>    <span class="kw">const</span> ptGeo <span class="op">=</span> <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">BufferGeometry</span>()<span class="op">;</span></span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a>    ptGeo<span class="op">.</span><span class="fu">setAttribute</span>(<span class="st">"position"</span><span class="op">,</span> <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">Float32BufferAttribute</span>(flat<span class="op">,</span> <span class="dv">3</span>))<span class="op">;</span></span>
+<span id="cb8-19"><a href="#cb8-19" aria-hidden="true" tabindex="-1"></a>    scene<span class="op">.</span><span class="fu">add</span>(<span class="kw">new</span> THREE<span class="op">.</span><span class="fu">Points</span>(ptGeo<span class="op">,</span></span>
+<span id="cb8-20"><a href="#cb8-20" aria-hidden="true" tabindex="-1"></a>      <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">PointsMaterial</span>({ <span class="dt">color</span><span class="op">:</span> <span class="bn">0xaaaacc</span><span class="op">,</span> <span class="dt">size</span><span class="op">:</span> <span class="fl">0.07</span><span class="op">,</span> <span class="dt">transparent</span><span class="op">:</span> <span class="kw">true</span><span class="op">,</span> <span class="dt">opacity</span><span class="op">:</span> <span class="fl">0.25</span> })</span>
+<span id="cb8-21"><a href="#cb8-21" aria-hidden="true" tabindex="-1"></a>    ))<span class="op">;</span></span>
+<span id="cb8-22"><a href="#cb8-22" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-23"><a href="#cb8-23" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Reconstructed points</span></span>
+<span id="cb8-24"><a href="#cb8-24" aria-hidden="true" tabindex="-1"></a>    <span class="kw">const</span> rFlat <span class="op">=</span> <span class="kw">new</span> <span class="bu">Float32Array</span>(recon<span class="op">.</span><span class="fu">flatMap</span>(p <span class="kw">=&gt;</span> p))<span class="op">;</span></span>
+<span id="cb8-25"><a href="#cb8-25" aria-hidden="true" tabindex="-1"></a>    <span class="kw">const</span> rGeo <span class="op">=</span> <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">BufferGeometry</span>()<span class="op">;</span></span>
+<span id="cb8-26"><a href="#cb8-26" aria-hidden="true" tabindex="-1"></a>    rGeo<span class="op">.</span><span class="fu">setAttribute</span>(<span class="st">"position"</span><span class="op">,</span> <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">Float32BufferAttribute</span>(rFlat<span class="op">,</span> <span class="dv">3</span>))<span class="op">;</span></span>
+<span id="cb8-27"><a href="#cb8-27" aria-hidden="true" tabindex="-1"></a>    scene<span class="op">.</span><span class="fu">add</span>(<span class="kw">new</span> THREE<span class="op">.</span><span class="fu">Points</span>(rGeo<span class="op">,</span></span>
+<span id="cb8-28"><a href="#cb8-28" aria-hidden="true" tabindex="-1"></a>      <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">PointsMaterial</span>({ <span class="dt">color</span><span class="op">:</span> <span class="bn">0xf0956a</span><span class="op">,</span> <span class="dt">size</span><span class="op">:</span> <span class="fl">0.1</span><span class="op">,</span> <span class="dt">transparent</span><span class="op">:</span> <span class="kw">true</span><span class="op">,</span> <span class="dt">opacity</span><span class="op">:</span> <span class="fl">0.85</span> })</span>
+<span id="cb8-29"><a href="#cb8-29" aria-hidden="true" tabindex="-1"></a>    ))<span class="op">;</span></span>
+<span id="cb8-30"><a href="#cb8-30" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-31"><a href="#cb8-31" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Projection lines (original → reconstructed)</span></span>
+<span id="cb8-32"><a href="#cb8-32" aria-hidden="true" tabindex="-1"></a>    <span class="kw">const</span> linePos <span class="op">=</span> []<span class="op">;</span></span>
+<span id="cb8-33"><a href="#cb8-33" aria-hidden="true" tabindex="-1"></a>    pts<span class="op">.</span><span class="fu">forEach</span>((p<span class="op">,</span> i) <span class="kw">=&gt;</span> { linePos<span class="op">.</span><span class="fu">push</span>(<span class="op">...</span>p<span class="op">,</span> <span class="op">...</span>recon[i])<span class="op">;</span> })<span class="op">;</span></span>
+<span id="cb8-34"><a href="#cb8-34" aria-hidden="true" tabindex="-1"></a>    <span class="kw">const</span> lineGeo <span class="op">=</span> <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">BufferGeometry</span>()<span class="op">;</span></span>
+<span id="cb8-35"><a href="#cb8-35" aria-hidden="true" tabindex="-1"></a>    lineGeo<span class="op">.</span><span class="fu">setAttribute</span>(<span class="st">"position"</span><span class="op">,</span> <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">Float32BufferAttribute</span>(<span class="kw">new</span> <span class="bu">Float32Array</span>(linePos)<span class="op">,</span> <span class="dv">3</span>))<span class="op">;</span></span>
+<span id="cb8-36"><a href="#cb8-36" aria-hidden="true" tabindex="-1"></a>    scene<span class="op">.</span><span class="fu">add</span>(<span class="kw">new</span> THREE<span class="op">.</span><span class="fu">LineSegments</span>(lineGeo<span class="op">,</span></span>
+<span id="cb8-37"><a href="#cb8-37" aria-hidden="true" tabindex="-1"></a>      <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">LineBasicMaterial</span>({ <span class="dt">color</span><span class="op">:</span> <span class="bn">0x888888</span><span class="op">,</span> <span class="dt">transparent</span><span class="op">:</span> <span class="kw">true</span><span class="op">,</span> <span class="dt">opacity</span><span class="op">:</span> <span class="fl">0.2</span> })</span>
+<span id="cb8-38"><a href="#cb8-38" aria-hidden="true" tabindex="-1"></a>    ))<span class="op">;</span></span>
+<span id="cb8-39"><a href="#cb8-39" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-40"><a href="#cb8-40" aria-hidden="true" tabindex="-1"></a>    <span class="co">// PC arrows (kept PCs bright, discarded faint)</span></span>
+<span id="cb8-41"><a href="#cb8-41" aria-hidden="true" tabindex="-1"></a>    <span class="kw">const</span> pcColors <span class="op">=</span> [<span class="bn">0xf0956a</span><span class="op">,</span> <span class="bn">0x6ddc8b</span><span class="op">,</span> <span class="bn">0x7eb8f7</span>]<span class="op">;</span></span>
+<span id="cb8-42"><a href="#cb8-42" aria-hidden="true" tabindex="-1"></a>    <span class="kw">const</span> pcCssCol <span class="op">=</span> [<span class="st">"#f0956a"</span><span class="op">,</span> <span class="st">"#6ddc8b"</span><span class="op">,</span> <span class="st">"#7eb8f7"</span>]<span class="op">;</span></span>
+<span id="cb8-43"><a href="#cb8-43" aria-hidden="true" tabindex="-1"></a>    pcs<span class="op">.</span><span class="fu">forEach</span>((pc<span class="op">,</span> i) <span class="kw">=&gt;</span> {</span>
+<span id="cb8-44"><a href="#cb8-44" aria-hidden="true" tabindex="-1"></a>      <span class="kw">const</span> len  <span class="op">=</span> <span class="bu">Math</span><span class="op">.</span><span class="fu">sqrt</span>(eigs[i]) <span class="op">*</span> <span class="fl">2.2</span><span class="op">;</span></span>
+<span id="cb8-45"><a href="#cb8-45" aria-hidden="true" tabindex="-1"></a>      <span class="kw">const</span> hLen <span class="op">=</span> <span class="bu">Math</span><span class="op">.</span><span class="fu">min</span>(<span class="fl">0.22</span><span class="op">,</span> len <span class="op">*</span> <span class="fl">0.14</span>)<span class="op">;</span></span>
+<span id="cb8-46"><a href="#cb8-46" aria-hidden="true" tabindex="-1"></a>      <span class="kw">const</span> op   <span class="op">=</span> i <span class="op">&lt;</span> k_dim <span class="op">?</span> <span class="fl">1.0</span> <span class="op">:</span> <span class="fl">0.15</span><span class="op">;</span></span>
+<span id="cb8-47"><a href="#cb8-47" aria-hidden="true" tabindex="-1"></a>      <span class="kw">const</span> d    <span class="op">=</span> <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">Vector3</span>(<span class="op">...</span>pc)<span class="op">.</span><span class="fu">normalize</span>()<span class="op">;</span></span>
+<span id="cb8-48"><a href="#cb8-48" aria-hidden="true" tabindex="-1"></a>      [d<span class="op">,</span> d<span class="op">.</span><span class="fu">clone</span>()<span class="op">.</span><span class="fu">negate</span>()]<span class="op">.</span><span class="fu">forEach</span>(dir <span class="kw">=&gt;</span> {</span>
+<span id="cb8-49"><a href="#cb8-49" aria-hidden="true" tabindex="-1"></a>        <span class="kw">const</span> arrow <span class="op">=</span> <span class="kw">new</span> THREE<span class="op">.</span><span class="fu">ArrowHelper</span>(dir<span class="op">,</span> O<span class="op">,</span> len<span class="op">,</span> pcColors[i]<span class="op">,</span> hLen<span class="op">,</span> hLen <span class="op">*</span> <span class="fl">0.55</span>)<span class="op">;</span></span>
+<span id="cb8-50"><a href="#cb8-50" aria-hidden="true" tabindex="-1"></a>        arrow<span class="op">.</span><span class="at">line</span><span class="op">.</span><span class="at">material</span><span class="op">.</span><span class="at">transparent</span> <span class="op">=</span> <span class="kw">true</span><span class="op">;</span>  arrow<span class="op">.</span><span class="at">line</span><span class="op">.</span><span class="at">material</span><span class="op">.</span><span class="at">opacity</span> <span class="op">=</span> op<span class="op">;</span></span>
+<span id="cb8-51"><a href="#cb8-51" aria-hidden="true" tabindex="-1"></a>        arrow<span class="op">.</span><span class="at">cone</span><span class="op">.</span><span class="at">material</span><span class="op">.</span><span class="at">transparent</span> <span class="op">=</span> <span class="kw">true</span><span class="op">;</span>  arrow<span class="op">.</span><span class="at">cone</span><span class="op">.</span><span class="at">material</span><span class="op">.</span><span class="at">opacity</span> <span class="op">=</span> op<span class="op">;</span></span>
+<span id="cb8-52"><a href="#cb8-52" aria-hidden="true" tabindex="-1"></a>        scene<span class="op">.</span><span class="fu">add</span>(arrow)<span class="op">;</span></span>
+<span id="cb8-53"><a href="#cb8-53" aria-hidden="true" tabindex="-1"></a>      })<span class="op">;</span></span>
+<span id="cb8-54"><a href="#cb8-54" aria-hidden="true" tabindex="-1"></a>      <span class="kw">const</span> lbl <span class="op">=</span> <span class="fu">spriteLabel</span>(<span class="vs">`PC</span><span class="sc">${</span>i<span class="op">+</span><span class="dv">1</span><span class="sc">}</span><span class="vs">`</span><span class="op">,</span> pcCssCol[i]<span class="op">,</span> <span class="fl">1.5</span>)<span class="op">;</span></span>
+<span id="cb8-55"><a href="#cb8-55" aria-hidden="true" tabindex="-1"></a>      lbl<span class="op">.</span><span class="at">position</span><span class="op">.</span><span class="fu">copy</span>(d<span class="op">.</span><span class="fu">clone</span>()<span class="op">.</span><span class="fu">multiplyScalar</span>(len <span class="op">+</span> <span class="fl">0.5</span>))<span class="op">;</span></span>
+<span id="cb8-56"><a href="#cb8-56" aria-hidden="true" tabindex="-1"></a>      scene<span class="op">.</span><span class="fu">add</span>(lbl)<span class="op">;</span></span>
+<span id="cb8-57"><a href="#cb8-57" aria-hidden="true" tabindex="-1"></a>    })<span class="op">;</span></span>
+<span id="cb8-58"><a href="#cb8-58" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-59"><a href="#cb8-59" aria-hidden="true" tabindex="-1"></a>    <span class="co">// Feature axes (very faint)</span></span>
+<span id="cb8-60"><a href="#cb8-60" aria-hidden="true" tabindex="-1"></a>    <span class="kw">const</span> axLen <span class="op">=</span> <span class="fl">3.8</span><span class="op">;</span></span>
+<span id="cb8-61"><a href="#cb8-61" aria-hidden="true" tabindex="-1"></a>    [[<span class="dv">1</span><span class="op">,</span><span class="dv">0</span><span class="op">,</span><span class="dv">0</span>]<span class="op">,</span>[<span class="dv">0</span><span class="op">,</span><span class="dv">1</span><span class="op">,</span><span class="dv">0</span>]<span class="op">,</span>[<span class="dv">0</span><span class="op">,</span><span class="dv">0</span><span class="op">,</span><span class="dv">1</span>]]<span class="op">.</span><span class="fu">forEach</span>(dir <span class="kw">=&gt;</span> {</span>
+<span id="cb8-62"><a href="#cb8-62" aria-hidden="true" tabindex="-1"></a>      scene<span class="op">.</span><span class="fu">add</span>(<span class="kw">new</span> THREE<span class="op">.</span><span class="fu">ArrowHelper</span>(<span class="kw">new</span> THREE<span class="op">.</span><span class="fu">Vector3</span>(<span class="op">...</span>dir)<span class="op">,</span> O<span class="op">,</span> axLen<span class="op">,</span> <span class="bn">0x3a3a55</span><span class="op">,</span> <span class="fl">0.12</span><span class="op">,</span> <span class="fl">0.07</span>))<span class="op">;</span></span>
+<span id="cb8-63"><a href="#cb8-63" aria-hidden="true" tabindex="-1"></a>    })<span class="op">;</span></span>
+<span id="cb8-64"><a href="#cb8-64" aria-hidden="true" tabindex="-1"></a>    [[<span class="st">"Height"</span><span class="op">,</span>[axLen<span class="op">+</span><span class="fl">0.3</span><span class="op">,</span><span class="dv">0</span><span class="op">,</span><span class="dv">0</span>]]<span class="op">,</span>[<span class="st">"Wingspan"</span><span class="op">,</span>[<span class="dv">0</span><span class="op">,</span>axLen<span class="op">+</span><span class="fl">0.3</span><span class="op">,</span><span class="dv">0</span>]]<span class="op">,</span>[<span class="st">"S. Reach"</span><span class="op">,</span>[<span class="dv">0</span><span class="op">,</span><span class="dv">0</span><span class="op">,</span>axLen<span class="op">+</span><span class="fl">0.3</span>]]]<span class="op">.</span><span class="fu">forEach</span>(([t<span class="op">,</span>p]) <span class="kw">=&gt;</span> {</span>
+<span id="cb8-65"><a href="#cb8-65" aria-hidden="true" tabindex="-1"></a>      <span class="kw">const</span> lbl <span class="op">=</span> <span class="fu">spriteLabel</span>(t<span class="op">,</span> <span class="st">"#555577"</span><span class="op">,</span> <span class="fl">1.5</span>)<span class="op">;</span></span>
+<span id="cb8-66"><a href="#cb8-66" aria-hidden="true" tabindex="-1"></a>      lbl<span class="op">.</span><span class="at">position</span><span class="op">.</span><span class="fu">set</span>(<span class="op">...</span>p)<span class="op">;</span></span>
+<span id="cb8-67"><a href="#cb8-67" aria-hidden="true" tabindex="-1"></a>      scene<span class="op">.</span><span class="fu">add</span>(lbl)<span class="op">;</span></span>
+<span id="cb8-68"><a href="#cb8-68" aria-hidden="true" tabindex="-1"></a>    })<span class="op">;</span></span>
+<span id="cb8-69"><a href="#cb8-69" aria-hidden="true" tabindex="-1"></a>  }<span class="op">,</span> invalidation)<span class="op">;</span></span>
+<span id="cb8-70"><a href="#cb8-70" aria-hidden="true" tabindex="-1"></a>}</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div id="fig-recon-3d" class="cell-output cell-output-display quarto-float quarto-figure quarto-figure-center anchored">
+<figure class="quarto-float quarto-float-fig figure">
+<div aria-describedby="fig-recon-3d-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+<div id="ojs-cell-5" data-nodetype="expression">
+
+</div>
+</div>
+<figcaption class="quarto-float-caption-bottom quarto-float-caption quarto-float-fig" id="fig-recon-3d-caption-0ceaefa1-69ba-4598-a22c-09a6ac19f8ca">
+Figure&nbsp;6: Dimensionality reduction round-trip. Faint blue: original standardised players. Orange: reconstructed from k PCs. Grey lines: projection error.
+</figcaption>
+</figure>
+</div>
+</div>
+</section>
+<section id="what-the-scout-found" class="level1">
+<h1>What the scout found</h1>
+<p>PC1 captures nearly all variation (~80%, see <a href="#fig-scree" class="quarto-xref">Figure&nbsp;5</a>) of the three measurements. PC1 can be thought of as an “overall size” axis. PC2 and PC3 capture the remaining ~20% of the variation. The beautiful part of PCA is that all of this analysis could be done automatically with only the data set and a little bit of clever linear algebra. The method found the dominant axis automatically.</p>
+
+
+</section>
+
+<div id="quarto-appendix" class="default"><section class="quarto-appendix-contents" id="quarto-reuse"><h2 class="anchored quarto-appendix-heading">Reuse</h2><div class="quarto-appendix-contents"><div><a rel="license" href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a></div></div></section></div></main> <!-- /main -->
+<script type="ojs-module-contents">
+eyJjb250ZW50cyI6W3sibWV0aG9kTmFtZSI6ImludGVycHJldCIsImNlbGxOYW1lIjoib2pzLWNlbGwtMSIsImlubGluZSI6ZmFsc2UsInNvdXJjZSI6IlxuYXN5bmMgZnVuY3Rpb24gbWFrZVNjZW5lM0QoYnVpbGRTY2VuZSwgaW52YWxpZGF0aW9uLCBvcHRzID0ge30pIHtcbiAgY29uc3QgVEhSRUUgPSBhd2FpdCBpbXBvcnQoXCJodHRwczovL2VzbS5zaC90aHJlZUAwLjE2My4wXCIpO1xuICBjb25zdCB7IE9yYml0Q29udHJvbHMgfSA9IGF3YWl0IGltcG9ydChcbiAgICBcImh0dHBzOi8vZXNtLnNoL3RocmVlQDAuMTYzLjAvZXhhbXBsZXMvanNtL2NvbnRyb2xzL09yYml0Q29udHJvbHNcIlxuICApO1xuXG4gIGNvbnN0IHtcbiAgICB3aWR0aCAgICAgICAgICAgID0gNjIwLFxuICAgIGhlaWdodCAgICAgICAgICAgPSA1MDAsXG4gICAgY2FtZXJhUG9zICAgICAgICA9IFs2LCA0LCA3XSxcbiAgICBmb3YgICAgICAgICAgICAgID0gNDAsXG4gICAgZmFyICAgICAgICAgICAgICA9IDEwMCxcbiAgICBiZ0NvbG9yICAgICAgICAgID0gMHgxMTE4MjcsXG4gICAgYWxwaGEgICAgICAgICAgICA9IGZhbHNlLFxuICAgIHRhcmdldCAgICAgICAgICAgPSBbMCwgMCwgMF0sXG4gICAgbWluRGlzdGFuY2UgICAgICA9IDMsXG4gICAgbWF4RGlzdGFuY2UgICAgICA9IDIwLFxuICAgIGFtYmllbnRJbnRlbnNpdHkgPSAxLjAsXG4gICAgb25GcmFtZSAgICAgICAgICA9IG51bGwsXG4gIH0gPSBvcHRzO1xuXG4gIGNvbnN0IHJlbmRlcmVyID0gbmV3IFRIUkVFLldlYkdMUmVuZGVyZXIoeyBhbnRpYWxpYXM6IHRydWUsIGFscGhhIH0pO1xuICByZW5kZXJlci5zZXRTaXplKHdpZHRoLCBoZWlnaHQpO1xuICByZW5kZXJlci5zZXRQaXhlbFJhdGlvKE1hdGgubWluKHdpbmRvdy5kZXZpY2VQaXhlbFJhdGlvLCAyKSk7XG4gIHJlbmRlcmVyLnNldENsZWFyQ29sb3IoYmdDb2xvciwgYWxwaGEgPyAwIDogMSk7XG5cbiAgY29uc3Qgc2NlbmUgID0gbmV3IFRIUkVFLlNjZW5lKCk7XG4gIGNvbnN0IGNhbWVyYSA9IG5ldyBUSFJFRS5QZXJzcGVjdGl2ZUNhbWVyYShmb3YsIHdpZHRoIC8gaGVpZ2h0LCAwLjEsIGZhcik7XG4gIGNhbWVyYS5wb3NpdGlvbi5zZXQoLi4uY2FtZXJhUG9zKTtcbiAgc2NlbmUuYWRkKG5ldyBUSFJFRS5BbWJpZW50TGlnaHQoMHhmZmZmZmYsIGFtYmllbnRJbnRlbnNpdHkpKTtcblxuICBjb25zdCBPID0gbmV3IFRIUkVFLlZlY3RvcjMoMCwgMCwgMCk7XG5cbiAgZnVuY3Rpb24gc3ByaXRlTGFiZWwodGV4dCwgY3NzQ29sb3IsIHNjYWxlID0gMS42KSB7XG4gICAgY29uc3QgYyA9IGRvY3VtZW50LmNyZWF0ZUVsZW1lbnQoXCJjYW52YXNcIik7XG4gICAgYy53aWR0aCA9IDMyMDsgYy5oZWlnaHQgPSA3MjtcbiAgICBjb25zdCBjdHggPSBjLmdldENvbnRleHQoXCIyZFwiKTtcbiAgICBjdHguZm9udCA9IFwiYm9sZCAyNnB4IHNhbnMtc2VyaWZcIjtcbiAgICBjdHguZmlsbFN0eWxlID0gY3NzQ29sb3I7XG4gICAgY3R4LnRleHRBbGlnbiA9IFwiY2VudGVyXCI7XG4gICAgY3R4LnRleHRCYXNlbGluZSA9IFwibWlkZGxlXCI7XG4gICAgY3R4LmZpbGxUZXh0KHRleHQsIDE2MCwgMzYpO1xuICAgIGNvbnN0IHNwciA9IG5ldyBUSFJFRS5TcHJpdGUobmV3IFRIUkVFLlNwcml0ZU1hdGVyaWFsKHtcbiAgICAgIG1hcDogbmV3IFRIUkVFLkNhbnZhc1RleHR1cmUoYyksIHRyYW5zcGFyZW50OiB0cnVlLCBkZXB0aFRlc3Q6IGZhbHNlXG4gICAgfSkpO1xuICAgIHNwci5zY2FsZS5zZXQoc2NhbGUsIDAuMzYsIDEpO1xuICAgIHJldHVybiBzcHI7XG4gIH1cblxuICAvLyBjdHJsIGlzIGNyZWF0ZWQgYmVmb3JlIGJ1aWxkU2NlbmUgc28gdGhlIGNhbGxiYWNrIGNhbiBjb25maWd1cmUgaXRcbiAgY29uc3QgY3RybCA9IG5ldyBPcmJpdENvbnRyb2xzKGNhbWVyYSwgcmVuZGVyZXIuZG9tRWxlbWVudCk7XG4gIGN0cmwudGFyZ2V0LnNldCguLi50YXJnZXQpO1xuICBjdHJsLmVuYWJsZURhbXBpbmcgPSB0cnVlO1xuICBjdHJsLmRhbXBpbmdGYWN0b3IgPSAwLjA2O1xuICBjdHJsLm1pbkRpc3RhbmNlICAgPSBtaW5EaXN0YW5jZTtcbiAgY3RybC5tYXhEaXN0YW5jZSAgID0gbWF4RGlzdGFuY2U7XG5cbiAgYnVpbGRTY2VuZShzY2VuZSwgVEhSRUUsIHsgTywgc3ByaXRlTGFiZWwsIGN0cmwgfSk7XG5cbiAgY3RybC51cGRhdGUoKTtcblxuICBsZXQgcmFmSWQ7XG4gIChmdW5jdGlvbiBhbmltYXRlKCkge1xuICAgIHJhZklkID0gcmVxdWVzdEFuaW1hdGlvbkZyYW1lKGFuaW1hdGUpO1xuICAgIGlmIChvbkZyYW1lKSBvbkZyYW1lKCk7XG4gICAgY3RybC51cGRhdGUoKTtcbiAgICByZW5kZXJlci5yZW5kZXIoc2NlbmUsIGNhbWVyYSk7XG4gIH0pKCk7XG5cbiAgY29uc3QgY29udGFpbmVyID0gZG9jdW1lbnQuY3JlYXRlRWxlbWVudChcImRpdlwiKTtcbiAgY29udGFpbmVyLnN0eWxlLmNzc1RleHQgPVxuICAgIGBwb3NpdGlvbjpyZWxhdGl2ZTtkaXNwbGF5OmlubGluZS1ibG9jazt3aWR0aDoke3dpZHRofXB4O21heC13aWR0aDoxMDAlO2A7XG4gIGNvbnRhaW5lci5hcHBlbmRDaGlsZChyZW5kZXJlci5kb21FbGVtZW50KTtcblxuICBjb25zdCBidG5TdHlsZSA9IFtcbiAgICBcInBhZGRpbmc6NHB4IDEwcHhcIiwgXCJmb250LXNpemU6MTJweFwiLCBcImN1cnNvcjpwb2ludGVyXCIsXG4gICAgXCJiYWNrZ3JvdW5kOnJnYmEoMzAsMzAsMzAsMC43NSlcIiwgXCJjb2xvcjojZGRkXCIsXG4gICAgXCJib3JkZXI6MXB4IHNvbGlkICM1NTVcIiwgXCJib3JkZXItcmFkaXVzOjRweFwiLFxuICAgIFwiYmFja2Ryb3AtZmlsdGVyOmJsdXIoNHB4KVwiLCBcInotaW5kZXg6MTBcIixcbiAgXS5qb2luKFwiO1wiKTtcblxuICBjb25zdCBmc0J0biA9IGRvY3VtZW50LmNyZWF0ZUVsZW1lbnQoXCJidXR0b25cIik7XG4gIGZzQnRuLnRleHRDb250ZW50ID0gXCLim7YgRnVsbHNjcmVlblwiO1xuICBmc0J0bi5zdHlsZS5jc3NUZXh0ID0gXCJwb3NpdGlvbjphYnNvbHV0ZTtib3R0b206OHB4O3JpZ2h0OjhweDtcIiArIGJ0blN0eWxlO1xuICBmc0J0bi5hZGRFdmVudExpc3RlbmVyKFwiY2xpY2tcIiwgKCkgPT4ge1xuICAgIGlmICghZG9jdW1lbnQuZnVsbHNjcmVlbkVsZW1lbnQpIGNvbnRhaW5lci5yZXF1ZXN0RnVsbHNjcmVlbigpO1xuICAgIGVsc2UgZG9jdW1lbnQuZXhpdEZ1bGxzY3JlZW4oKTtcbiAgfSk7XG4gIGNvbnRhaW5lci5hcHBlbmRDaGlsZChmc0J0bik7XG5cbiAgZnVuY3Rpb24gb25GU0NoYW5nZSgpIHtcbiAgICBpZiAoZG9jdW1lbnQuZnVsbHNjcmVlbkVsZW1lbnQgPT09IGNvbnRhaW5lcikge1xuICAgICAgcmVuZGVyZXIuc2V0U2l6ZShzY3JlZW4ud2lkdGgsIHNjcmVlbi5oZWlnaHQpO1xuICAgICAgY2FtZXJhLmFzcGVjdCA9IHNjcmVlbi53aWR0aCAvIHNjcmVlbi5oZWlnaHQ7XG4gICAgICBjYW1lcmEudXBkYXRlUHJvamVjdGlvbk1hdHJpeCgpO1xuICAgICAgZnNCdG4udGV4dENvbnRlbnQgPSBcIuKclSBFeGl0IGZ1bGxzY3JlZW5cIjtcbiAgICB9IGVsc2Uge1xuICAgICAgcmVuZGVyZXIuc2V0U2l6ZSh3aWR0aCwgaGVpZ2h0KTtcbiAgICAgIGNhbWVyYS5hc3BlY3QgPSB3aWR0aCAvIGhlaWdodDtcbiAgICAgIGNhbWVyYS51cGRhdGVQcm9qZWN0aW9uTWF0cml4KCk7XG4gICAgICBmc0J0bi50ZXh0Q29udGVudCA9IFwi4pu2IEZ1bGxzY3JlZW5cIjtcbiAgICB9XG4gIH1cbiAgZG9jdW1lbnQuYWRkRXZlbnRMaXN0ZW5lcihcImZ1bGxzY3JlZW5jaGFuZ2VcIiwgb25GU0NoYW5nZSk7XG5cbiAgaW52YWxpZGF0aW9uLnRoZW4oKCkgPT4ge1xuICAgIGNhbmNlbEFuaW1hdGlvbkZyYW1lKHJhZklkKTtcbiAgICBjdHJsLmRpc3Bvc2UoKTtcbiAgICByZW5kZXJlci5kaXNwb3NlKCk7XG4gICAgZG9jdW1lbnQucmVtb3ZlRXZlbnRMaXN0ZW5lcihcImZ1bGxzY3JlZW5jaGFuZ2VcIiwgb25GU0NoYW5nZSk7XG4gIH0pO1xuXG4gIHJldHVybiBjb250YWluZXI7XG59XG4ifSx7Im1ldGhvZE5hbWUiOiJpbnRlcnByZXQiLCJjZWxsTmFtZSI6Im9qcy1jZWxsLTIiLCJpbmxpbmUiOmZhbHNlLCJzb3VyY2UiOiJcbntcbiAgcmV0dXJuIG1ha2VTY2VuZTNEKChzY2VuZSwgVEhSRUUsIHsgTywgc3ByaXRlTGFiZWwgfSkgPT4ge1xuICAgIGNvbnN0IGZsYXQgPSBuZXcgRmxvYXQzMkFycmF5KHN0ZF9wdHMuZmxhdE1hcChwID0+IHApKTtcbiAgICBjb25zdCBwdEdlbyA9IG5ldyBUSFJFRS5CdWZmZXJHZW9tZXRyeSgpO1xuICAgIHB0R2VvLnNldEF0dHJpYnV0ZShcInBvc2l0aW9uXCIsIG5ldyBUSFJFRS5GbG9hdDMyQnVmZmVyQXR0cmlidXRlKGZsYXQsIDMpKTtcbiAgICBzY2VuZS5hZGQobmV3IFRIUkVFLlBvaW50cyhwdEdlbyxcbiAgICAgIG5ldyBUSFJFRS5Qb2ludHNNYXRlcmlhbCh7IGNvbG9yOiAweGFhYWFjYywgc2l6ZTogMC4wNywgdHJhbnNwYXJlbnQ6IHRydWUsIG9wYWNpdHk6IDAuNjUgfSlcbiAgICApKTtcblxuICAgIGNvbnN0IGF4TGVuICAgID0gMy44O1xuICAgIGNvbnN0IGF4Q29sb3JzID0gWzB4ZjA5NTZhLCAweDZkZGM4YiwgMHg3ZWI4ZjddO1xuICAgIGNvbnN0IGF4TmFtZXMgID0gW1wiSGVpZ2h0XCIsIFwiV2luZ3NwYW5cIiwgXCJTLiBSZWFjaFwiXTtcbiAgICBbWzEsMCwwXSxbMCwxLDBdLFswLDAsMV1dLmZvckVhY2goKFt4LHksel0sIGkpID0+IHtcbiAgICAgIGNvbnN0IGhleCA9IFwiI1wiICsgYXhDb2xvcnNbaV0udG9TdHJpbmcoMTYpLnBhZFN0YXJ0KDYsIFwiMFwiKTtcbiAgICAgIHNjZW5lLmFkZChuZXcgVEhSRUUuQXJyb3dIZWxwZXIobmV3IFRIUkVFLlZlY3RvcjMoeCx5LHopLCBPLCBheExlbiwgYXhDb2xvcnNbaV0sIDAuMTUsIDAuMDkpKTtcbiAgICAgIGNvbnN0IGxibCA9IHNwcml0ZUxhYmVsKGF4TmFtZXNbaV0sIGhleCk7XG4gICAgICBsYmwucG9zaXRpb24uc2V0KHggKiAoYXhMZW4gKyAwLjUpLCB5ICogKGF4TGVuICsgMC41KSwgeiAqIChheExlbiArIDAuNSkpO1xuICAgICAgc2NlbmUuYWRkKGxibCk7XG4gICAgfSk7XG4gIH0sIGludmFsaWRhdGlvbik7XG59XG4ifSx7Im1ldGhvZE5hbWUiOiJpbnRlcnByZXQiLCJjZWxsTmFtZSI6Im9qcy1jZWxsLTMiLCJpbmxpbmUiOmZhbHNlLCJzb3VyY2UiOiJcbntcbiAgcmV0dXJuIG1ha2VTY2VuZTNEKChzY2VuZSwgVEhSRUUsIHsgTywgc3ByaXRlTGFiZWwgfSkgPT4ge1xuICAgIC8vIOKUgOKUgCBQb2ludCBjbG91ZCDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIDilIBcbiAgICBjb25zdCBmbGF0ID0gbmV3IEZsb2F0MzJBcnJheShwdHMuZmxhdE1hcChwID0+IHApKTtcbiAgICBjb25zdCBwdEdlbyA9IG5ldyBUSFJFRS5CdWZmZXJHZW9tZXRyeSgpO1xuICAgIHB0R2VvLnNldEF0dHJpYnV0ZShcInBvc2l0aW9uXCIsIG5ldyBUSFJFRS5GbG9hdDMyQnVmZmVyQXR0cmlidXRlKGZsYXQsIDMpKTtcbiAgICBzY2VuZS5hZGQobmV3IFRIUkVFLlBvaW50cyhwdEdlbyxcbiAgICAgIG5ldyBUSFJFRS5Qb2ludHNNYXRlcmlhbCh7IGNvbG9yOiAweGFhYWFjYywgc2l6ZTogMC4wNywgdHJhbnNwYXJlbnQ6IHRydWUsIG9wYWNpdHk6IDAuNjUgfSlcbiAgICApKTtcblxuICAgIC8vIOKUgOKUgCBQQzHigJNQQzIgcGxhbmUg4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSAXG4gICAgY29uc3QgcGxhbmVHZW8gPSBuZXcgVEhSRUUuUGxhbmVHZW9tZXRyeSg3LCA3LCAxNCwgMTQpO1xuICAgIGNvbnN0IHBsYW5lTWVzaCA9IG5ldyBUSFJFRS5NZXNoKHBsYW5lR2VvLCBuZXcgVEhSRUUuTWVzaEJhc2ljTWF0ZXJpYWwoe1xuICAgICAgY29sb3I6IDB4N2ViOGY3LCB0cmFuc3BhcmVudDogdHJ1ZSwgb3BhY2l0eTogMC4wNywgc2lkZTogVEhSRUUuRG91YmxlU2lkZSwgZGVwdGhXcml0ZTogZmFsc2VcbiAgICB9KSk7XG4gICAgcGxhbmVNZXNoLnF1YXRlcm5pb24uc2V0RnJvbVVuaXRWZWN0b3JzKFxuICAgICAgbmV3IFRIUkVFLlZlY3RvcjMoMCwgMCwgMSksXG4gICAgICBuZXcgVEhSRUUuVmVjdG9yMyguLi5wY3NbMl0pLm5vcm1hbGl6ZSgpXG4gICAgKTtcbiAgICBzY2VuZS5hZGQocGxhbmVNZXNoKTtcbiAgICBwbGFuZU1lc2guYWRkKG5ldyBUSFJFRS5MaW5lU2VnbWVudHMoXG4gICAgICBuZXcgVEhSRUUuV2lyZWZyYW1lR2VvbWV0cnkocGxhbmVHZW8pLFxuICAgICAgbmV3IFRIUkVFLkxpbmVCYXNpY01hdGVyaWFsKHsgY29sb3I6IDB4N2ViOGY3LCB0cmFuc3BhcmVudDogdHJ1ZSwgb3BhY2l0eTogMC4xMiwgZGVwdGhXcml0ZTogZmFsc2UgfSlcbiAgICApKTtcblxuICAgIC8vIOKUgOKUgCBQQyBhcnJvd3Mg4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSA4pSAXG4gICAgY29uc3QgcGNDb2xvcnMgPSBbMHhmMDk1NmEsIDB4NmRkYzhiLCAweDdlYjhmN107XG4gICAgY29uc3QgcGNDc3NDb2wgPSBbXCIjZjA5NTZhXCIsIFwiIzZkZGM4YlwiLCBcIiM3ZWI4ZjdcIl07XG4gICAgcGNzLmZvckVhY2goKHBjLCBpKSA9PiB7XG4gICAgICBjb25zdCBsZW4gID0gTWF0aC5zcXJ0KGVpZ3NbaV0pICogMi4yO1xuICAgICAgY29uc3QgaExlbiA9IE1hdGgubWluKDAuMjIsIGxlbiAqIDAuMTQpO1xuICAgICAgY29uc3QgZCAgICA9IG5ldyBUSFJFRS5WZWN0b3IzKC4uLnBjKS5ub3JtYWxpemUoKTtcbiAgICAgIHNjZW5lLmFkZChuZXcgVEhSRUUuQXJyb3dIZWxwZXIoZCwgICAgICAgICAgICAgICAgTywgbGVuLCBwY0NvbG9yc1tpXSwgaExlbiwgaExlbiAqIDAuNTUpKTtcbiAgICAgIHNjZW5lLmFkZChuZXcgVEhSRUUuQXJyb3dIZWxwZXIoZC5jbG9uZSgpLm5lZ2F0ZSgpLCBPLCBsZW4sIHBjQ29sb3JzW2ldLCBoTGVuLCBoTGVuICogMC41NSkpO1xuICAgICAgY29uc3QgbGJsID0gc3ByaXRlTGFiZWwoYFBDJHtpKzF9ICAkeyhldnJbaV0qMTAwKS50b0ZpeGVkKDApfSVgLCBwY0Nzc0NvbFtpXSwgMS41KTtcbiAgICAgIGxibC5wb3NpdGlvbi5jb3B5KGQuY2xvbmUoKS5tdWx0aXBseVNjYWxhcihsZW4gKyAwLjUpKTtcbiAgICAgIHNjZW5lLmFkZChsYmwpO1xuICAgIH0pO1xuXG4gICAgLy8g4pSA4pSAIEZlYXR1cmUgYXhlcyAoZmFpbnQpIOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgOKUgFxuICAgIGNvbnN0IGF4TGVuID0gMy44O1xuICAgIFtbMSwwLDBdLFswLDEsMF0sWzAsMCwxXV0uZm9yRWFjaChkaXIgPT4ge1xuICAgICAgc2NlbmUuYWRkKG5ldyBUSFJFRS5BcnJvd0hlbHBlcihuZXcgVEhSRUUuVmVjdG9yMyguLi5kaXIpLCBPLCBheExlbiwgMHgzYTNhNTUsIDAuMTIsIDAuMDcpKTtcbiAgICB9KTtcbiAgICBbW1wiSGVpZ2h0XCIsIFtheExlbiswLjMsMCwwXV0sIFtcIldpbmdzcGFuXCIsIFswLGF4TGVuKzAuMywwXV0sIFtcIlMuIFJlYWNoXCIsIFswLDAsYXhMZW4rMC4zXV1dLmZvckVhY2goKFt0LHBdKSA9PiB7XG4gICAgICBjb25zdCBsYmwgPSBzcHJpdGVMYWJlbCh0LCBcIiM1NTU1NzdcIiwgMS41KTtcbiAgICAgIGxibC5wb3NpdGlvbi5zZXQoLi4ucCk7XG4gICAgICBzY2VuZS5hZGQobGJsKTtcbiAgICB9KTtcbiAgfSwgaW52YWxpZGF0aW9uKTtcbn1cbiJ9LHsibWV0aG9kTmFtZSI6ImludGVycHJldCIsImNlbGxOYW1lIjoib2pzLWNlbGwtNCIsImlubGluZSI6ZmFsc2UsInNvdXJjZSI6InZpZXdvZiBrX2RpbSA9IElucHV0cy5yYWRpbyhbMSwgMl0sIHtsYWJlbDogXCJQcmluY2lwYWwgY29tcG9uZW50cyB0byBrZWVwIChrKVwiLCB2YWx1ZTogMX0pXG4ifSx7Im1ldGhvZE5hbWUiOiJpbnRlcnByZXQiLCJjZWxsTmFtZSI6Im9qcy1jZWxsLTUiLCJpbmxpbmUiOmZhbHNlLCJzb3VyY2UiOiJ7XG4gIGNvbnN0IGRvdCA9IChhLCBiKSA9PiBhLnJlZHVjZSgocywgYWksIGkpID0+IHMgKyBhaSAqIGJbaV0sIDApO1xuXG4gIGNvbnN0IHJlY29uID0gcHRzLm1hcChwID0+IHtcbiAgICBsZXQgciA9IFswLCAwLCAwXTtcbiAgICBmb3IgKGxldCBpID0gMDsgaSA8IGtfZGltOyBpKyspIHtcbiAgICAgIGNvbnN0IHNjb3JlID0gZG90KHAsIHBjc1tpXSk7XG4gICAgICByID0gci5tYXAoKHYsIGopID0+IHYgKyBzY29yZSAqIHBjc1tpXVtqXSk7XG4gICAgfVxuICAgIHJldHVybiByO1xuICB9KTtcblxuICByZXR1cm4gbWFrZVNjZW5lM0QoKHNjZW5lLCBUSFJFRSwgeyBPLCBzcHJpdGVMYWJlbCB9KSA9PiB7XG4gICAgLy8gT3JpZ2luYWwgcG9pbnRzIChmYWludClcbiAgICBjb25zdCBmbGF0ID0gbmV3IEZsb2F0MzJBcnJheShwdHMuZmxhdE1hcChwID0+IHApKTtcbiAgICBjb25zdCBwdEdlbyA9IG5ldyBUSFJFRS5CdWZmZXJHZW9tZXRyeSgpO1xuICAgIHB0R2VvLnNldEF0dHJpYnV0ZShcInBvc2l0aW9uXCIsIG5ldyBUSFJFRS5GbG9hdDMyQnVmZmVyQXR0cmlidXRlKGZsYXQsIDMpKTtcbiAgICBzY2VuZS5hZGQobmV3IFRIUkVFLlBvaW50cyhwdEdlbyxcbiAgICAgIG5ldyBUSFJFRS5Qb2ludHNNYXRlcmlhbCh7IGNvbG9yOiAweGFhYWFjYywgc2l6ZTogMC4wNywgdHJhbnNwYXJlbnQ6IHRydWUsIG9wYWNpdHk6IDAuMjUgfSlcbiAgICApKTtcblxuICAgIC8vIFJlY29uc3RydWN0ZWQgcG9pbnRzXG4gICAgY29uc3QgckZsYXQgPSBuZXcgRmxvYXQzMkFycmF5KHJlY29uLmZsYXRNYXAocCA9PiBwKSk7XG4gICAgY29uc3QgckdlbyA9IG5ldyBUSFJFRS5CdWZmZXJHZW9tZXRyeSgpO1xuICAgIHJHZW8uc2V0QXR0cmlidXRlKFwicG9zaXRpb25cIiwgbmV3IFRIUkVFLkZsb2F0MzJCdWZmZXJBdHRyaWJ1dGUockZsYXQsIDMpKTtcbiAgICBzY2VuZS5hZGQobmV3IFRIUkVFLlBvaW50cyhyR2VvLFxuICAgICAgbmV3IFRIUkVFLlBvaW50c01hdGVyaWFsKHsgY29sb3I6IDB4ZjA5NTZhLCBzaXplOiAwLjEsIHRyYW5zcGFyZW50OiB0cnVlLCBvcGFjaXR5OiAwLjg1IH0pXG4gICAgKSk7XG5cbiAgICAvLyBQcm9qZWN0aW9uIGxpbmVzIChvcmlnaW5hbCDihpIgcmVjb25zdHJ1Y3RlZClcbiAgICBjb25zdCBsaW5lUG9zID0gW107XG4gICAgcHRzLmZvckVhY2goKHAsIGkpID0+IHsgbGluZVBvcy5wdXNoKC4uLnAsIC4uLnJlY29uW2ldKTsgfSk7XG4gICAgY29uc3QgbGluZUdlbyA9IG5ldyBUSFJFRS5CdWZmZXJHZW9tZXRyeSgpO1xuICAgIGxpbmVHZW8uc2V0QXR0cmlidXRlKFwicG9zaXRpb25cIiwgbmV3IFRIUkVFLkZsb2F0MzJCdWZmZXJBdHRyaWJ1dGUobmV3IEZsb2F0MzJBcnJheShsaW5lUG9zKSwgMykpO1xuICAgIHNjZW5lLmFkZChuZXcgVEhSRUUuTGluZVNlZ21lbnRzKGxpbmVHZW8sXG4gICAgICBuZXcgVEhSRUUuTGluZUJhc2ljTWF0ZXJpYWwoeyBjb2xvcjogMHg4ODg4ODgsIHRyYW5zcGFyZW50OiB0cnVlLCBvcGFjaXR5OiAwLjIgfSlcbiAgICApKTtcblxuICAgIC8vIFBDIGFycm93cyAoa2VwdCBQQ3MgYnJpZ2h0LCBkaXNjYXJkZWQgZmFpbnQpXG4gICAgY29uc3QgcGNDb2xvcnMgPSBbMHhmMDk1NmEsIDB4NmRkYzhiLCAweDdlYjhmN107XG4gICAgY29uc3QgcGNDc3NDb2wgPSBbXCIjZjA5NTZhXCIsIFwiIzZkZGM4YlwiLCBcIiM3ZWI4ZjdcIl07XG4gICAgcGNzLmZvckVhY2goKHBjLCBpKSA9PiB7XG4gICAgICBjb25zdCBsZW4gID0gTWF0aC5zcXJ0KGVpZ3NbaV0pICogMi4yO1xuICAgICAgY29uc3QgaExlbiA9IE1hdGgubWluKDAuMjIsIGxlbiAqIDAuMTQpO1xuICAgICAgY29uc3Qgb3AgICA9IGkgPCBrX2RpbSA/IDEuMCA6IDAuMTU7XG4gICAgICBjb25zdCBkICAgID0gbmV3IFRIUkVFLlZlY3RvcjMoLi4ucGMpLm5vcm1hbGl6ZSgpO1xuICAgICAgW2QsIGQuY2xvbmUoKS5uZWdhdGUoKV0uZm9yRWFjaChkaXIgPT4ge1xuICAgICAgICBjb25zdCBhcnJvdyA9IG5ldyBUSFJFRS5BcnJvd0hlbHBlcihkaXIsIE8sIGxlbiwgcGNDb2xvcnNbaV0sIGhMZW4sIGhMZW4gKiAwLjU1KTtcbiAgICAgICAgYXJyb3cubGluZS5tYXRlcmlhbC50cmFuc3BhcmVudCA9IHRydWU7ICBhcnJvdy5saW5lLm1hdGVyaWFsLm9wYWNpdHkgPSBvcDtcbiAgICAgICAgYXJyb3cuY29uZS5tYXRlcmlhbC50cmFuc3BhcmVudCA9IHRydWU7ICBhcnJvdy5jb25lLm1hdGVyaWFsLm9wYWNpdHkgPSBvcDtcbiAgICAgICAgc2NlbmUuYWRkKGFycm93KTtcbiAgICAgIH0pO1xuICAgICAgY29uc3QgbGJsID0gc3ByaXRlTGFiZWwoYFBDJHtpKzF9YCwgcGNDc3NDb2xbaV0sIDEuNSk7XG4gICAgICBsYmwucG9zaXRpb24uY29weShkLmNsb25lKCkubXVsdGlwbHlTY2FsYXIobGVuICsgMC41KSk7XG4gICAgICBzY2VuZS5hZGQobGJsKTtcbiAgICB9KTtcblxuICAgIC8vIEZlYXR1cmUgYXhlcyAodmVyeSBmYWludClcbiAgICBjb25zdCBheExlbiA9IDMuODtcbiAgICBbWzEsMCwwXSxbMCwxLDBdLFswLDAsMV1dLmZvckVhY2goZGlyID0+IHtcbiAgICAgIHNjZW5lLmFkZChuZXcgVEhSRUUuQXJyb3dIZWxwZXIobmV3IFRIUkVFLlZlY3RvcjMoLi4uZGlyKSwgTywgYXhMZW4sIDB4M2EzYTU1LCAwLjEyLCAwLjA3KSk7XG4gICAgfSk7XG4gICAgW1tcIkhlaWdodFwiLFtheExlbiswLjMsMCwwXV0sW1wiV2luZ3NwYW5cIixbMCxheExlbiswLjMsMF1dLFtcIlMuIFJlYWNoXCIsWzAsMCxheExlbiswLjNdXV0uZm9yRWFjaCgoW3QscF0pID0+IHtcbiAgICAgIGNvbnN0IGxibCA9IHNwcml0ZUxhYmVsKHQsIFwiIzU1NTU3N1wiLCAxLjUpO1xuICAgICAgbGJsLnBvc2l0aW9uLnNldCguLi5wKTtcbiAgICAgIHNjZW5lLmFkZChsYmwpO1xuICAgIH0pO1xuICB9LCBpbnZhbGlkYXRpb24pO1xufVxuIn0seyJtZXRob2ROYW1lIjoiaW50ZXJwcmV0UXVpZXQiLCJzb3VyY2UiOiJzaGlueUlucHV0KCdrX2RpbScpIn1dfQ==
+</script>
+<script type="module">
+if (window.location.protocol === "file:") { alert("The OJS runtime does not work with file:// URLs. Please use a web server to view this document."); }
+window._ojs.paths.runtimeToDoc = "../../posts/pca-geometry";
+window._ojs.paths.runtimeToRoot = "../..";
+window._ojs.paths.docToRoot = "../..";
+window._ojs.selfContained = false;
+window._ojs.runtime.interpretFromScriptTags();
+</script>
+<script id="quarto-html-after-body" type="application/javascript">
+  window.document.addEventListener("DOMContentLoaded", function (event) {
+    const icon = "";
+    const anchorJS = new window.AnchorJS();
+    anchorJS.options = {
+      placement: 'right',
+      icon: icon
+    };
+    anchorJS.add('.anchored');
+    const isCodeAnnotation = (el) => {
+      for (const clz of el.classList) {
+        if (clz.startsWith('code-annotation-')) {                     
+          return true;
+        }
+      }
+      return false;
+    }
+    const onCopySuccess = function(e) {
+      // button target
+      const button = e.trigger;
+      // don't keep focus
+      button.blur();
+      // flash "checked"
+      button.classList.add('code-copy-button-checked');
+      var currentTitle = button.getAttribute("title");
+      button.setAttribute("title", "Copied!");
+      let tooltip;
+      if (window.bootstrap) {
+        button.setAttribute("data-bs-toggle", "tooltip");
+        button.setAttribute("data-bs-placement", "left");
+        button.setAttribute("data-bs-title", "Copied!");
+        tooltip = new bootstrap.Tooltip(button, 
+          { trigger: "manual", 
+            customClass: "code-copy-button-tooltip",
+            offset: [0, -8]});
+        tooltip.show();    
+      }
+      setTimeout(function() {
+        if (tooltip) {
+          tooltip.hide();
+          button.removeAttribute("data-bs-title");
+          button.removeAttribute("data-bs-toggle");
+          button.removeAttribute("data-bs-placement");
+        }
+        button.setAttribute("title", currentTitle);
+        button.classList.remove('code-copy-button-checked');
+      }, 1000);
+      // clear code selection
+      e.clearSelection();
+    }
+    const getTextToCopy = function(trigger) {
+      const outerScaffold = trigger.parentElement.cloneNode(true);
+      const codeEl = outerScaffold.querySelector('code');
+      for (const childEl of codeEl.children) {
+        if (isCodeAnnotation(childEl)) {
+          childEl.remove();
+        }
+      }
+      return codeEl.innerText;
+    }
+    const clipboard = new window.ClipboardJS('.code-copy-button:not([data-in-quarto-modal])', {
+      text: getTextToCopy
+    });
+    clipboard.on('success', onCopySuccess);
+    if (window.document.getElementById('quarto-embedded-source-code-modal')) {
+      const clipboardModal = new window.ClipboardJS('.code-copy-button[data-in-quarto-modal]', {
+        text: getTextToCopy,
+        container: window.document.getElementById('quarto-embedded-source-code-modal')
+      });
+      clipboardModal.on('success', onCopySuccess);
+    }
+      var localhostRegex = new RegExp(/^(?:http|https):\/\/localhost\:?[0-9]*\//);
+      var mailtoRegex = new RegExp(/^mailto:/);
+        var filterRegex = new RegExp("https:\/\/andreasbogossian\.com");
+      var isInternal = (href) => {
+          return filterRegex.test(href) || localhostRegex.test(href) || mailtoRegex.test(href);
+      }
+      // Inspect non-navigation links and adorn them if external
+     var links = window.document.querySelectorAll('a[href]:not(.nav-link):not(.navbar-brand):not(.toc-action):not(.sidebar-link):not(.sidebar-item-toggle):not(.pagination-link):not(.no-external):not([aria-hidden]):not(.dropdown-item):not(.quarto-navigation-tool):not(.about-link)');
+      for (var i=0; i<links.length; i++) {
+        const link = links[i];
+        if (!isInternal(link.href)) {
+          // undo the damage that might have been done by quarto-nav.js in the case of
+          // links that we want to consider external
+          if (link.dataset.originalHref !== undefined) {
+            link.href = link.dataset.originalHref;
+          }
+            // default icon
+            link.classList.add("external");
+        }
+      }
+    function tippyHover(el, contentFn, onTriggerFn, onUntriggerFn) {
+      const config = {
+        allowHTML: true,
+        maxWidth: 500,
+        delay: 100,
+        arrow: false,
+        appendTo: function(el) {
+            return el.parentElement;
+        },
+        interactive: true,
+        interactiveBorder: 10,
+        theme: 'quarto',
+        placement: 'bottom-start',
+      };
+      if (contentFn) {
+        config.content = contentFn;
+      }
+      if (onTriggerFn) {
+        config.onTrigger = onTriggerFn;
+      }
+      if (onUntriggerFn) {
+        config.onUntrigger = onUntriggerFn;
+      }
+      window.tippy(el, config); 
+    }
+    const noterefs = window.document.querySelectorAll('a[role="doc-noteref"]');
+    for (var i=0; i<noterefs.length; i++) {
+      const ref = noterefs[i];
+      tippyHover(ref, function() {
+        // use id or data attribute instead here
+        let href = ref.getAttribute('data-footnote-href') || ref.getAttribute('href');
+        try { href = new URL(href).hash; } catch {}
+        const id = href.replace(/^#\/?/, "");
+        const note = window.document.getElementById(id);
+        if (note) {
+          return note.innerHTML;
+        } else {
+          return "";
+        }
+      });
+    }
+    const xrefs = window.document.querySelectorAll('a.quarto-xref');
+    const processXRef = (id, note) => {
+      // Strip column container classes
+      const stripColumnClz = (el) => {
+        el.classList.remove("page-full", "page-columns");
+        if (el.children) {
+          for (const child of el.children) {
+            stripColumnClz(child);
+          }
+        }
+      }
+      stripColumnClz(note)
+      if (id === null || id.startsWith('sec-')) {
+        // Special case sections, only their first couple elements
+        const container = document.createElement("div");
+        if (note.children && note.children.length > 2) {
+          container.appendChild(note.children[0].cloneNode(true));
+          for (let i = 1; i < note.children.length; i++) {
+            const child = note.children[i];
+            if (child.tagName === "P" && child.innerText === "") {
+              continue;
+            } else {
+              container.appendChild(child.cloneNode(true));
+              break;
+            }
+          }
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(container);
+          }
+          return container.innerHTML
+        } else {
+          if (window.Quarto?.typesetMath) {
+            window.Quarto.typesetMath(note);
+          }
+          return note.innerHTML;
+        }
+      } else {
+        // Remove any anchor links if they are present
+        const anchorLink = note.querySelector('a.anchorjs-link');
+        if (anchorLink) {
+          anchorLink.remove();
+        }
+        if (window.Quarto?.typesetMath) {
+          window.Quarto.typesetMath(note);
+        }
+        if (note.classList.contains("callout")) {
+          return note.outerHTML;
+        } else {
+          return note.innerHTML;
+        }
+      }
+    }
+    for (var i=0; i<xrefs.length; i++) {
+      const xref = xrefs[i];
+      tippyHover(xref, undefined, function(instance) {
+        instance.disable();
+        let url = xref.getAttribute('href');
+        let hash = undefined; 
+        if (url.startsWith('#')) {
+          hash = url;
+        } else {
+          try { hash = new URL(url).hash; } catch {}
+        }
+        if (hash) {
+          const id = hash.replace(/^#\/?/, "");
+          const note = window.document.getElementById(id);
+          if (note !== null) {
+            try {
+              const html = processXRef(id, note.cloneNode(true));
+              instance.setContent(html);
+            } finally {
+              instance.enable();
+              instance.show();
+            }
+          } else {
+            // See if we can fetch this
+            fetch(url.split('#')[0])
+            .then(res => res.text())
+            .then(html => {
+              const parser = new DOMParser();
+              const htmlDoc = parser.parseFromString(html, "text/html");
+              const note = htmlDoc.getElementById(id);
+              if (note !== null) {
+                const html = processXRef(id, note);
+                instance.setContent(html);
+              } 
+            }).finally(() => {
+              instance.enable();
+              instance.show();
+            });
+          }
+        } else {
+          // See if we can fetch a full url (with no hash to target)
+          // This is a special case and we should probably do some content thinning / targeting
+          fetch(url)
+          .then(res => res.text())
+          .then(html => {
+            const parser = new DOMParser();
+            const htmlDoc = parser.parseFromString(html, "text/html");
+            const note = htmlDoc.querySelector('main.content');
+            if (note !== null) {
+              // This should only happen for chapter cross references
+              // (since there is no id in the URL)
+              // remove the first header
+              if (note.children.length > 0 && note.children[0].tagName === "HEADER") {
+                note.children[0].remove();
+              }
+              const html = processXRef(null, note);
+              instance.setContent(html);
+            } 
+          }).finally(() => {
+            instance.enable();
+            instance.show();
+          });
+        }
+      }, function(instance) {
+      });
+    }
+        let selectedAnnoteEl;
+        const selectorForAnnotation = ( cell, annotation) => {
+          let cellAttr = 'data-code-cell="' + cell + '"';
+          let lineAttr = 'data-code-annotation="' +  annotation + '"';
+          const selector = 'span[' + cellAttr + '][' + lineAttr + ']';
+          return selector;
+        }
+        const selectCodeLines = (annoteEl) => {
+          const doc = window.document;
+          const targetCell = annoteEl.getAttribute("data-target-cell");
+          const targetAnnotation = annoteEl.getAttribute("data-target-annotation");
+          const annoteSpan = window.document.querySelector(selectorForAnnotation(targetCell, targetAnnotation));
+          const lines = annoteSpan.getAttribute("data-code-lines").split(",");
+          const lineIds = lines.map((line) => {
+            return targetCell + "-" + line;
+          })
+          let top = null;
+          let height = null;
+          let parent = null;
+          if (lineIds.length > 0) {
+              //compute the position of the single el (top and bottom and make a div)
+              const el = window.document.getElementById(lineIds[0]);
+              top = el.offsetTop;
+              height = el.offsetHeight;
+              parent = el.parentElement.parentElement;
+            if (lineIds.length > 1) {
+              const lastEl = window.document.getElementById(lineIds[lineIds.length - 1]);
+              const bottom = lastEl.offsetTop + lastEl.offsetHeight;
+              height = bottom - top;
+            }
+            if (top !== null && height !== null && parent !== null) {
+              // cook up a div (if necessary) and position it 
+              let div = window.document.getElementById("code-annotation-line-highlight");
+              if (div === null) {
+                div = window.document.createElement("div");
+                div.setAttribute("id", "code-annotation-line-highlight");
+                div.style.position = 'absolute';
+                parent.appendChild(div);
+              }
+              div.style.top = top - 2 + "px";
+              div.style.height = height + 4 + "px";
+              div.style.left = 0;
+              let gutterDiv = window.document.getElementById("code-annotation-line-highlight-gutter");
+              if (gutterDiv === null) {
+                gutterDiv = window.document.createElement("div");
+                gutterDiv.setAttribute("id", "code-annotation-line-highlight-gutter");
+                gutterDiv.style.position = 'absolute';
+                const codeCell = window.document.getElementById(targetCell);
+                const gutter = codeCell.querySelector('.code-annotation-gutter');
+                gutter.appendChild(gutterDiv);
+              }
+              gutterDiv.style.top = top - 2 + "px";
+              gutterDiv.style.height = height + 4 + "px";
+            }
+            selectedAnnoteEl = annoteEl;
+          }
+        };
+        const unselectCodeLines = () => {
+          const elementsIds = ["code-annotation-line-highlight", "code-annotation-line-highlight-gutter"];
+          elementsIds.forEach((elId) => {
+            const div = window.document.getElementById(elId);
+            if (div) {
+              div.remove();
+            }
+          });
+          selectedAnnoteEl = undefined;
+        };
+          // Handle positioning of the toggle
+      window.addEventListener(
+        "resize",
+        throttle(() => {
+          elRect = undefined;
+          if (selectedAnnoteEl) {
+            selectCodeLines(selectedAnnoteEl);
+          }
+        }, 10)
+      );
+      function throttle(fn, ms) {
+      let throttle = false;
+      let timer;
+        return (...args) => {
+          if(!throttle) { // first call gets through
+              fn.apply(this, args);
+              throttle = true;
+          } else { // all the others get throttled
+              if(timer) clearTimeout(timer); // cancel #2
+              timer = setTimeout(() => {
+                fn.apply(this, args);
+                timer = throttle = false;
+              }, ms);
+          }
+        };
+      }
+        // Attach click handler to the DT
+        const annoteDls = window.document.querySelectorAll('dt[data-target-cell]');
+        for (const annoteDlNode of annoteDls) {
+          annoteDlNode.addEventListener('click', (event) => {
+            const clickedEl = event.target;
+            if (clickedEl !== selectedAnnoteEl) {
+              unselectCodeLines();
+              const activeEl = window.document.querySelector('dt[data-target-cell].code-annotation-active');
+              if (activeEl) {
+                activeEl.classList.remove('code-annotation-active');
+              }
+              selectCodeLines(clickedEl);
+              clickedEl.classList.add('code-annotation-active');
+            } else {
+              // Unselect the line
+              unselectCodeLines();
+              clickedEl.classList.remove('code-annotation-active');
+            }
+          });
+        }
+    const findCites = (el) => {
+      const parentEl = el.parentElement;
+      if (parentEl) {
+        const cites = parentEl.dataset.cites;
+        if (cites) {
+          return {
+            el,
+            cites: cites.split(' ')
+          };
+        } else {
+          return findCites(el.parentElement)
+        }
+      } else {
+        return undefined;
+      }
+    };
+    var bibliorefs = window.document.querySelectorAll('a[role="doc-biblioref"]');
+    for (var i=0; i<bibliorefs.length; i++) {
+      const ref = bibliorefs[i];
+      const citeInfo = findCites(ref);
+      if (citeInfo) {
+        tippyHover(citeInfo.el, function() {
+          var popup = window.document.createElement('div');
+          citeInfo.cites.forEach(function(cite) {
+            var citeDiv = window.document.createElement('div');
+            citeDiv.classList.add('hanging-indent');
+            citeDiv.classList.add('csl-entry');
+            var biblioDiv = window.document.getElementById('ref-' + cite);
+            if (biblioDiv) {
+              citeDiv.innerHTML = biblioDiv.innerHTML;
+            }
+            popup.appendChild(citeDiv);
+          });
+          return popup.innerHTML;
+        });
+      }
+    }
+  });
+  </script>
+</div> <!-- /content -->
+<footer class="footer">
+  <div class="nav-footer">
+    <div class="nav-footer-left">
+      <ul class="footer-items list-unstyled">
+    <li class="nav-item">
+ © 2026 Andreas Bogossian
+  </li>  
+    <li class="nav-item">
+    <a class="nav-link" href="https://github.com/AJBogo9/tech-blog">
+<p>Source</p>
+</a>
+  </li>  
+</ul>
+    </div>   
+    <div class="nav-footer-center">
+      &nbsp;
+    </div>
+    <div class="nav-footer-right">
+      <ul class="footer-items list-unstyled">
+    <li class="nav-item">
+    <a class="nav-link" href="https://www.linkedin.com/in/andreas-bogossian/">
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewbox="0 0 16 16" aria-hidden="true">
+<path d="M0 1.146C0 .513.526 0 1.175 0h13.65C15.474 0 16 .513 16 1.146v13.708c0 .633-.526 1.146-1.175 1.146H1.175C.526 16 0 15.487 0 14.854zm4.943 12.248V6.169H2.542v7.225zm-1.2-8.212c.837 0 1.358-.554 1.358-1.248-.015-.709-.52-1.248-1.342-1.248S2.4 3.226 2.4 3.934c0 .694.521 1.248 1.327 1.248zm4.908 8.212V9.359c0-.216.016-.432.08-.586.173-.431.568-.878 1.232-.878.869 0 1.216.662 1.216 1.634v3.865h2.401V9.25c0-2.22-1.184-3.252-2.764-3.252-1.274 0-1.845.7-2.165 1.193v.025h-.016l.016-.025V6.169h-2.4c.03.678 0 7.225 0 7.225z"></path>
+</svg>
+<p><span class="sr-only">LinkedIn</span></p>
+</a>
+  </li>  
+    <li class="nav-item">
+    <a class="nav-link" href="https://github.com/AJBogo9">
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewbox="0 0 16 16" aria-hidden="true">
+<path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8"></path>
+</svg>
+<p><span class="sr-only">GitHub</span></p>
+</a>
+  </li>  
+    <li class="nav-item">
+    <a class="nav-link" href="../../blog.xml">
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewbox="0 0 16 16" aria-hidden="true">
+<path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2z"></path><path d="M5.5 12a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0m-3-8.5a1 1 0 0 1 1-1c5.523 0 10 4.477 10 10a1 1 0 1 1-2 0 8 8 0 0 0-8-8 1 1 0 0 1-1-1m0 4a1 1 0 0 1 1-1 6 6 0 0 1 6 6 1 1 0 1 1-2 0 4 4 0 0 0-4-4 1 1 0 0 1-1-1"></path>
+</svg>
+<p><span class="sr-only">RSS Feed</span></p>
+</a>
+  </li>  
+</ul>
+    </div>
+  </div>
+</footer>
+<script src="../../instantpage.js" type="module"></script>
+<script src="../../post-nav.js" defer=""></script>
+<script>var lightboxQuarto = GLightbox({"closeEffect":"zoom","descPosition":"bottom","loop":false,"openEffect":"zoom","selector":".lightbox"});
+(function() {
+  let previousOnload = window.onload;
+  window.onload = () => {
+    if (previousOnload) {
+      previousOnload();
+    }
+    lightboxQuarto.on('slide_before_load', (data) => {
+      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
+      const href = trigger.getAttribute('href');
+      if (href !== null) {
+        const imgEl = window.document.querySelector(`a[href="${href}"] img`);
+        if (imgEl !== null) {
+          const srcAttr = imgEl.getAttribute("src");
+          if (srcAttr && srcAttr.startsWith("data:")) {
+            slideConfig.href = srcAttr;
+          }
+        }
+      } 
+    });
+  
+    lightboxQuarto.on('slide_after_load', (data) => {
+      const { slideIndex, slideNode, slideConfig, player, trigger } = data;
+      if (window.Quarto?.typesetMath) {
+        window.Quarto.typesetMath(slideNode);
+      }
+    });
+  
+  };
+  
+})();
+          </script>
+
+
+
+
+<script src="../../site_libs/quarto-html/zenscroll-min.js"></script>
+</body></html>
