@@ -32,10 +32,8 @@ corpus/          the real .qmd docs (the spec); cargo test renders them all
 
 ## Read before working
 
-- **PLAN.md** for any structural or cross-cutting work: architecture, the websocket
-  protocol, and the phased build plan. Read this before adding a feature.
-- **PROBLEM.md** for motivation and the hard constraints (why HTML-only, why
-  block-granular, what's explicitly out of scope).
+- **docs/index.qmd** for the architecture, the websocket protocol, and the block
+  model (the project's own manual, authored in `.qmd`).
 - **corpus/README.md** for what the test documents exercise.
 
 ## Commands

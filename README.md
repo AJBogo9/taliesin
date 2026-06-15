@@ -11,8 +11,8 @@ can't deliver:
    components (Three.js, OJS).
 3. **No per-edit startup cost** — a long-running Rust server with a warm Jupyter kernel.
 
-Output is **HTML only**. See [PROBLEM.md](PROBLEM.md) for the motivation and
-[PLAN.md](PLAN.md) for the architecture and phased build plan.
+Output is **HTML only**. See [docs/index.qmd](docs/index.qmd) for the
+architecture, the websocket protocol, and the block model.
 
 ## Architecture (at a glance)
 
