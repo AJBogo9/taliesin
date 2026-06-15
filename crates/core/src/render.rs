@@ -79,19 +79,21 @@ pub fn render_document_with_includes(src: &str, base_dir: &Path) -> RenderedDoc 
 fn render_internal(src: &str, origins: Option<&[LineOrigin]>) -> RenderedDoc {
     let arena = Arena::new();
     let options = parse_options();
-    // Quarto fenced divs (`:::`) aren't CommonMark; strip the fence markers in a
-    // line-preserving pass so sourcepos line numbers stay exact and the inner
-    // content parses as normal blocks. (Callout/layout styling is deferred.)
+    // Quarto fenced divs (`:::`) aren't CommonMark. Record their spans first,
+    // then strip the fence markers in a line-preserving pass so sourcepos line
+    // numbers stay exact and the inner content parses as normal blocks. The
+    // recorded spans are used afterwards to wrap blocks back up as callouts etc.
+    let spans = scan_div_spans(src);
     let processed = preprocess(src);
     let root = parse_document(&arena, &processed, &options);
 
     let lines: Vec<&str> = processed.lines().collect();
     let mut title: Option<String> = None;
-    let mut blocks: Vec<Block> = Vec::new();
+    let mut flat: Vec<FlatBlock> = Vec::new();
     let mut id_counts: HashMap<String, u32> = HashMap::new();
 
     for node in root.children() {
-        let (sourcepos, source_file, block_src, is_paragraph) = {
+        let (buf_start, sourcepos, source_file, block_src, is_paragraph) = {
             let data = node.data.borrow();
             if let NodeValue::FrontMatter(fm) = &data.value {
                 title = extract_title(fm);
@@ -107,6 +109,7 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>) -> RenderedDoc {
             );
             let is_paragraph = matches!(data.value, NodeValue::Paragraph);
             (
+                sp.start.line,
                 sourcepos,
                 file,
                 slice_lines(&lines, sp.start.line, sp.end.line),
@@ -130,10 +133,21 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>) -> RenderedDoc {
         } else {
             emit(node, &attrs, &mut html);
         }
-        blocks.push(Block { id, sourcepos, source_file, html });
+        flat.push(FlatBlock {
+            buf_start,
+            block: Block { id, sourcepos, source_file, html },
+        });
     }
 
+    let blocks = group_divs(flat, &spans, origins, &mut id_counts);
     RenderedDoc { title, blocks }
+}
+
+/// A top-level block plus its line in the (post-include, post-blank) buffer,
+/// used to group blocks back into fenced-div containers.
+struct FlatBlock {
+    buf_start: usize,
+    block: Block,
 }
 
 /// Map a 1-based buffer line to its (origin file, origin line). Without a
@@ -434,7 +448,7 @@ fn preprocess(src: &str) -> String {
         if i > 0 {
             out.push('\n');
         }
-        if !is_fence_line(line.trim_start()) {
+        if parse_fence(line.trim_start()).is_none() {
             out.push_str(line);
         }
     }
@@ -445,14 +459,273 @@ fn preprocess(src: &str) -> String {
 }
 
 /// A pandoc/Quarto fenced-div marker: 3+ colons, then nothing (close) or an
-/// attribute block / class name (open).
-fn is_fence_line(s: &str) -> bool {
+/// attribute block / bare class name (open).
+enum Fence {
+    /// Opening fence; carries the raw attribute string (without the braces).
+    Open(String),
+    /// Closing fence (bare colons).
+    Close,
+}
+
+fn parse_fence(s: &str) -> Option<Fence> {
     let colons = s.chars().take_while(|&c| c == ':').count();
     if colons < 3 {
-        return false;
+        return None;
     }
-    let rest = s[colons..].trim_start();
-    rest.is_empty() || rest.starts_with('{') || rest.chars().next().is_some_and(char::is_alphabetic)
+    let rest = s[colons..].trim();
+    if rest.is_empty() {
+        Some(Fence::Close)
+    } else if let Some(inner) = rest.strip_prefix('{').and_then(|r| r.strip_suffix('}')) {
+        Some(Fence::Open(inner.trim().to_string()))
+    } else if rest.chars().next().is_some_and(char::is_alphabetic) {
+        // bare `::: classname` -> treat the first word as a class
+        Some(Fence::Open(format!(".{}", rest.split_whitespace().next().unwrap_or(""))))
+    } else {
+        None
+    }
+}
+
+/// A fenced-div span in buffer-line space (1-based, inclusive of the markers).
+struct DivSpan {
+    open: usize,
+    close: usize,
+    /// Raw attribute string from the opening fence (e.g. `.callout-note title="X"`).
+    attrs: String,
+}
+
+/// Find all fenced-div spans (stack-based, so nesting is handled). Sorted so
+/// that for a shared opening line the outermost (latest close) comes first.
+fn scan_div_spans(src: &str) -> Vec<DivSpan> {
+    let mut stack: Vec<(usize, String)> = Vec::new();
+    let mut spans: Vec<DivSpan> = Vec::new();
+    for (i, line) in src.lines().enumerate() {
+        match parse_fence(line.trim_start()) {
+            Some(Fence::Open(attrs)) => stack.push((i + 1, attrs)),
+            Some(Fence::Close) => {
+                if let Some((open, attrs)) = stack.pop() {
+                    spans.push(DivSpan { open, close: i + 1, attrs });
+                }
+            }
+            None => {}
+        }
+    }
+    spans.sort_by_key(|s| (s.open, std::cmp::Reverse(s.close)));
+    spans
+}
+
+/// Parsed fenced-div attributes.
+#[derive(Default)]
+struct DivAttrs {
+    classes: Vec<String>,
+    id: Option<String>,
+    kv: Vec<(String, String)>,
+}
+
+impl DivAttrs {
+    fn get(&self, key: &str) -> Option<&str> {
+        self.kv.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+    }
+    fn callout_kind(&self) -> Option<&str> {
+        self.classes
+            .iter()
+            .find_map(|c| c.strip_prefix("callout-"))
+    }
+}
+
+/// Parse a fenced-div attribute string: `.class`, `#id`, and `key=val`
+/// (value optionally quoted), whitespace-separated.
+fn parse_attrs(s: &str) -> DivAttrs {
+    let mut attrs = DivAttrs::default();
+    for tok in tokenize_attrs(s) {
+        if let Some(c) = tok.strip_prefix('.') {
+            attrs.classes.push(c.to_string());
+        } else if let Some(i) = tok.strip_prefix('#') {
+            attrs.id = Some(i.to_string());
+        } else if let Some((k, v)) = tok.split_once('=') {
+            attrs.kv.push((k.to_string(), v.trim_matches(['"', '\'']).to_string()));
+        } else if !tok.is_empty() {
+            attrs.classes.push(tok.to_string());
+        }
+    }
+    attrs
+}
+
+/// Split on whitespace, but keep quoted values (e.g. `title="a b"`) together.
+fn tokenize_attrs(s: &str) -> Vec<String> {
+    let mut toks = Vec::new();
+    let mut cur = String::new();
+    let mut quote: Option<char> = None;
+    for ch in s.chars() {
+        match quote {
+            Some(q) => {
+                cur.push(ch);
+                if ch == q {
+                    quote = None;
+                }
+            }
+            None if ch == '"' || ch == '\'' => {
+                quote = Some(ch);
+                cur.push(ch);
+            }
+            None if ch.is_whitespace() => {
+                if !cur.is_empty() {
+                    toks.push(std::mem::take(&mut cur));
+                }
+            }
+            None => cur.push(ch),
+        }
+    }
+    if !cur.is_empty() {
+        toks.push(cur);
+    }
+    toks
+}
+
+/// Group flat top-level blocks back into fenced-div container blocks (callouts,
+/// layout grids, generic divs), honoring nesting. Blocks inside a div become a
+/// single container block whose HTML embeds them (they keep their own ids and
+/// sourcepos, so click-to-source still works inside).
+fn group_divs(
+    flat: Vec<FlatBlock>,
+    spans: &[DivSpan],
+    origins: Option<&[LineOrigin]>,
+    counts: &mut HashMap<String, u32>,
+) -> Vec<Block> {
+    struct Open<'a> {
+        span: &'a DivSpan,
+        inner: Vec<Block>,
+    }
+    let mut result: Vec<Block> = Vec::new();
+    let mut stack: Vec<Open> = Vec::new();
+    let mut span_idx = 0;
+
+    let push_block = |stack: &mut Vec<Open>, result: &mut Vec<Block>, b: Block| {
+        match stack.last_mut() {
+            Some(top) => top.inner.push(b),
+            None => result.push(b),
+        }
+    };
+
+    for (i, fb) in flat.iter().enumerate() {
+        // Open every span that starts before this block and contains it.
+        while span_idx < spans.len()
+            && spans[span_idx].open < fb.buf_start
+            && spans[span_idx].close > fb.buf_start
+        {
+            stack.push(Open { span: &spans[span_idx], inner: Vec::new() });
+            span_idx += 1;
+        }
+        // Skip any spans that contain no blocks (degenerate/empty divs).
+        while span_idx < spans.len() && spans[span_idx].close < fb.buf_start {
+            span_idx += 1;
+        }
+
+        push_block(&mut stack, &mut result, fb.block.clone());
+
+        // Close spans that end before the next block begins (innermost first).
+        let next_start = flat.get(i + 1).map(|n| n.buf_start).unwrap_or(usize::MAX);
+        while let Some(top) = stack.last() {
+            if top.span.close < next_start {
+                let done = stack.pop().unwrap();
+                let container = build_container(done.span, done.inner, origins, counts);
+                push_block(&mut stack, &mut result, container);
+            } else {
+                break;
+            }
+        }
+    }
+    // Close anything still open (e.g. unterminated div at EOF).
+    while let Some(done) = stack.pop() {
+        let container = build_container(done.span, done.inner, origins, counts);
+        push_block(&mut stack, &mut result, container);
+    }
+    result
+}
+
+/// Render one fenced div as a container block: callouts, layout grids, or a
+/// generic class div.
+fn build_container(
+    span: &DivSpan,
+    mut inner: Vec<Block>,
+    origins: Option<&[LineOrigin]>,
+    counts: &mut HashMap<String, u32>,
+) -> Block {
+    let attrs = parse_attrs(&span.attrs);
+    let id = make_id(&format!("div:{}", span.attrs), counts);
+    let (file, open_line) = map_origin(origins, span.open);
+    let (_, close_line) = map_origin(origins, span.close);
+    let sourcepos = format!("{open_line}:1-{close_line}:3");
+    let file_attr = match &file {
+        Some(f) => format!(" data-source-file=\"{}\"", escape_attr(f)),
+        None => String::new(),
+    };
+    let data = format!(" data-block-id=\"{id}\" data-sourcepos=\"{sourcepos}\"{file_attr}");
+
+    let html = if let Some(kind) = attrs.callout_kind() {
+        // Callout: use a `title="..."` attr, else a leading heading, else the kind.
+        let title = match attrs.get("title") {
+            Some(t) => html_escape(t),
+            None if inner.first().is_some_and(|b| is_heading(&b.html)) => {
+                strip_tags(&inner.remove(0).html)
+            }
+            None => capitalize(kind),
+        };
+        let body: String = inner.iter().map(|b| b.html.as_str()).collect();
+        format!(
+            "<div class=\"callout callout-{kind}\"{data}><div class=\"callout-title\">{title}</div><div class=\"callout-body\">{body}</div></div>"
+        )
+    } else if let Some(ncol) = attrs.get("layout-ncol").and_then(|n| n.parse::<u32>().ok()) {
+        let body: String = inner.iter().map(|b| b.html.as_str()).collect();
+        format!(
+            "<div class=\"qmd-layout\" style=\"display:grid;grid-template-columns:repeat({ncol},minmax(0,1fr));gap:1rem\"{data}>{body}</div>"
+        )
+    } else {
+        let mut class = attrs.classes.join(" ");
+        if class.is_empty() {
+            class.push_str("qmd-div");
+        }
+        let id_attr = match &attrs.id {
+            Some(i) => format!(" id=\"{}\"", escape_attr(i)),
+            None => String::new(),
+        };
+        let body: String = inner.iter().map(|b| b.html.as_str()).collect();
+        format!("<div class=\"{class}\"{id_attr}{data}>{body}</div>")
+    };
+
+    Block { id, sourcepos, source_file: file, html }
+}
+
+fn is_heading(html: &str) -> bool {
+    html.starts_with("<h") && html.as_bytes().get(2).is_some_and(u8::is_ascii_digit)
+}
+
+/// Strip HTML tags, returning the visible text (used for callout titles).
+fn strip_tags(html: &str) -> String {
+    let mut out = String::new();
+    let mut in_tag = false;
+    for ch in html.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            c if !in_tag => out.push(c),
+            _ => {}
+        }
+    }
+    out.trim().to_string()
+}
+
+fn html_escape(s: &str) -> String {
+    let mut out = String::new();
+    escape_html(s, &mut out);
+    out
+}
+
+fn capitalize(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => String::new(),
+    }
 }
 
 /// If a block's source is entirely a LaTeX math environment
@@ -558,6 +831,20 @@ const PAGE_TEMPLATE: &str = r#"<!DOCTYPE html>
   code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
   blockquote { border-left: 3px solid #ddd; margin: 0 0 1rem; padding-left: 1rem; color: #555; }
   img { max-width: 100%; }
+  table { border-collapse: collapse; }
+  th, td { border: 1px solid #e3e3e3; padding: .35rem .6rem; }
+  thead th { border-bottom: 2px solid #ccc; }
+  .callout { border: 1px solid #e0e0e0; border-left-width: 4px; border-radius: 5px;
+             margin: 1rem 0; overflow: hidden; }
+  .callout-title { font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 600;
+                   padding: .5rem .9rem; background: #f6f6f6; }
+  .callout-body { padding: .3rem .9rem; }
+  .callout-body > :first-child { margin-top: .4rem; }
+  .callout-note { border-left-color: #4c8dff; } .callout-note .callout-title { background: #eaf1ff; }
+  .callout-tip { border-left-color: #2bb673; } .callout-tip .callout-title { background: #e7f7ef; }
+  .callout-warning { border-left-color: #e0a800; } .callout-warning .callout-title { background: #fdf6e3; }
+  .callout-important { border-left-color: #e0566b; } .callout-important .callout-title { background: #fdecef; }
+  .callout-caution { border-left-color: #e8730c; } .callout-caution .callout-title { background: #fdefe3; }
   [data-block-id] { scroll-margin-top: 1rem; }
   [data-block-id].qmd-hl { outline: 2px solid #4c8dff; outline-offset: 3px; border-radius: 3px; }
 </style>
@@ -633,13 +920,35 @@ mod tests {
     }
 
     #[test]
-    fn fenced_divs_stripped_inner_content_kept() {
-        let doc = render_document("::: {.callout-note}\n## Note\n\nBody.\n:::\n");
-        assert_eq!(doc.blocks.len(), 2, "fence lines should not be blocks");
-        assert!(doc.blocks[0].html.starts_with("<h2 "));
+    fn callout_wraps_content_using_leading_heading_as_title() {
+        let doc = render_document("::: {.callout-note}\n## My Note\n\nBody text.\n:::\n");
+        assert_eq!(doc.blocks.len(), 1, "the callout is one container block");
+        let h = &doc.blocks[0].html;
+        assert!(h.contains("class=\"callout callout-note\""), "got: {h}");
+        assert!(h.contains("<div class=\"callout-title\">My Note</div>"), "got: {h}");
         assert!(!doc.body_html().contains(":::"));
-        // line numbers preserved: the heading is on line 2 of the source.
-        assert!(doc.blocks[0].html.contains("data-sourcepos=\"2:1-"));
+        // inner content keeps its own sourcepos so click-to-source still works.
+        assert!(h.contains("<p data-block-id"), "inner block lost its id: {h}");
+        assert!(h.contains("Body text."));
+    }
+
+    #[test]
+    fn callout_uses_explicit_title_and_default_title() {
+        let titled = render_document("::: {.callout-tip title=\"Pro tip\"}\nDo this.\n:::\n");
+        assert!(titled.blocks[0].html.contains("callout-tip"));
+        assert!(titled.blocks[0].html.contains(">Pro tip</div>"), "got: {}", titled.blocks[0].html);
+
+        let bare = render_document("::: {.callout-warning}\nBe careful.\n:::\n");
+        assert!(bare.blocks[0].html.contains(">Warning</div>"), "got: {}", bare.blocks[0].html);
+    }
+
+    #[test]
+    fn layout_ncol_div_becomes_grid() {
+        let doc = render_document("::: {layout-ncol=2}\n![](a.png)\n\n![](b.png)\n:::\n");
+        assert_eq!(doc.blocks.len(), 1);
+        let h = &doc.blocks[0].html;
+        assert!(h.contains("qmd-layout"), "got: {h}");
+        assert!(h.contains("repeat(2,"), "got: {h}");
     }
 
     #[test]
