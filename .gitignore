@@ -11,11 +11,6 @@ out/
 *.tsbuildinfo
 .vscode-test/
 
-# Quarto reference snapshots: kept locally as a baseline for the corpus-diff
-# skill (qmd-fast output vs. Quarto), but not committed (they are large and
-# regenerable). See corpus/README.md to regenerate.
-corpus/expected/*.html
-
 # Logs and env
 *.log
 .env

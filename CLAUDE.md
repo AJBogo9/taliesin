@@ -27,7 +27,7 @@ crates/server    qmd-fast-server, bin `qmd-fast`: CLI + websocket dev server
 extension/       VS Code client (primary): click-to-source + reverse cursor sync
 web-client/      browser preview client (vanilla JS): mounts blocks, applies ops
 docs/            project's own manual + tour deck, authored in .qmd (dogfooding)
-corpus/          the real .qmd docs (the spec); corpus/expected/ holds baselines
+corpus/          the real .qmd docs (the spec); cargo test renders them all
 ```
 
 ## Read before working
