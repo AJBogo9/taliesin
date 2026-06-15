@@ -5,7 +5,7 @@
 //! carrying `data-block-id` and `data-sourcepos`, which the dev server later
 //! keys off for incremental block-swap and click-to-source.
 
-use comrak::nodes::{AstNode, ListType, NodeValue};
+use comrak::nodes::{AstNode, ListType, NodeValue, TableAlignment};
 use comrak::{Arena, Options, parse_document};
 use std::collections::HashMap;
 
@@ -54,9 +54,13 @@ fn parse_options() -> Options<'static> {
 pub fn render_document(src: &str) -> RenderedDoc {
     let arena = Arena::new();
     let options = parse_options();
-    let root = parse_document(&arena, src, &options);
+    // Quarto fenced divs (`:::`) aren't CommonMark; strip the fence markers in a
+    // line-preserving pass so sourcepos line numbers stay exact and the inner
+    // content parses as normal blocks. (Callout/layout styling is deferred.)
+    let processed = preprocess(src);
+    let root = parse_document(&arena, &processed, &options);
 
-    let lines: Vec<&str> = src.lines().collect();
+    let lines: Vec<&str> = processed.lines().collect();
     let mut title: Option<String> = None;
     let mut blocks: Vec<Block> = Vec::new();
     let mut id_counts: HashMap<String, u32> = HashMap::new();
@@ -132,16 +136,18 @@ fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
                 Some(l) => format!(" class=\"language-{l}\""),
                 None => String::new(),
             };
+            // Quarto cells (```{lang}) carry leading `#| key: val` option lines; drop them.
+            let is_cell = cb.info.trim_start().starts_with('{');
+            let literal = if is_cell {
+                strip_cell_options(&cb.literal)
+            } else {
+                cb.literal.clone()
+            };
             out.push_str(&format!("<pre{attrs}><code{class}>"));
-            escape_html(&cb.literal, out);
+            escape_html(&literal, out);
             out.push_str("</code></pre>");
         }
-        NodeValue::HtmlBlock(hb) => {
-            // Raw HTML block; wrap so it still carries block attrs for swapping.
-            out.push_str(&format!("<div{attrs}>"));
-            out.push_str(&hb.literal);
-            out.push_str("</div>");
-        }
+        NodeValue::HtmlBlock(hb) => emit_html_block(&hb.literal, attrs, out),
         NodeValue::HtmlInline(h) => out.push_str(h),
         NodeValue::List(nl) => {
             let (tag, extra) = match nl.list_type {
@@ -182,13 +188,9 @@ fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
             }
             out.push_str(" />");
         }
-        NodeValue::Table(_) => {
-            out.push_str(&format!("<table{attrs}>"));
-            emit_children(node, out);
-            out.push_str("</table>");
-        }
-        NodeValue::TableRow(_) => wrap(node, "tr", out),
-        NodeValue::TableCell => wrap(node, "td", out),
+        NodeValue::Table(t) => emit_table(node, &t.alignments, attrs, out),
+        // Rows/cells are emitted by emit_table; fall through harmlessly otherwise.
+        NodeValue::TableRow(_) | NodeValue::TableCell => emit_children(node, out),
         // Unknown/unhandled wrappers degrade to their inner content.
         _ => emit_children(node, out),
     }
@@ -208,6 +210,73 @@ fn emit_children<'a>(node: &'a AstNode<'a>, out: &mut String) {
     for c in node.children() {
         emit(c, "", out);
     }
+}
+
+fn emit_table<'a>(node: &'a AstNode<'a>, aligns: &[TableAlignment], attrs: &str, out: &mut String) {
+    out.push_str(&format!("<table{attrs}>"));
+    let mut body_open = false;
+    for row in node.children() {
+        let is_header = matches!(row.data.borrow().value, NodeValue::TableRow(true));
+        if is_header {
+            out.push_str("<thead><tr>");
+            emit_cells(row, aligns, "th", out);
+            out.push_str("</tr></thead>");
+        } else {
+            if !body_open {
+                out.push_str("<tbody>");
+                body_open = true;
+            }
+            out.push_str("<tr>");
+            emit_cells(row, aligns, "td", out);
+            out.push_str("</tr>");
+        }
+    }
+    if body_open {
+        out.push_str("</tbody>");
+    }
+    out.push_str("</table>");
+}
+
+fn emit_cells<'a>(row: &'a AstNode<'a>, aligns: &[TableAlignment], tag: &str, out: &mut String) {
+    for (i, cell) in row.children().enumerate() {
+        let style = match aligns.get(i) {
+            Some(TableAlignment::Left) => " style=\"text-align: left\"",
+            Some(TableAlignment::Center) => " style=\"text-align: center\"",
+            Some(TableAlignment::Right) => " style=\"text-align: right\"",
+            _ => "",
+        };
+        out.push_str(&format!("<{tag}{style}>"));
+        emit_children(cell, out);
+        out.push_str(&format!("</{tag}>"));
+    }
+}
+
+/// Emit a raw HTML block, injecting block `attrs` into its leading start tag
+/// when one is present (e.g. `<div ...>`). Comments, closing tags, and other
+/// fragments we can't safely annotate are emitted verbatim (no block id).
+fn emit_html_block(literal: &str, attrs: &str, out: &mut String) {
+    let lead = literal.trim_start();
+    let injectable = !attrs.is_empty()
+        && lead.starts_with('<')
+        && !lead.starts_with("</")
+        && !lead.starts_with("<!")
+        && !lead.starts_with("<?");
+    if injectable
+        && let Some(gt) = literal.find('>')
+    {
+        let (open, rest) = literal.split_at(gt); // rest starts with '>'
+        if let Some(open) = open.strip_suffix('/') {
+            out.push_str(open);
+            out.push_str(attrs);
+            out.push('/');
+        } else {
+            out.push_str(open);
+            out.push_str(attrs);
+        }
+        out.push_str(rest);
+        return;
+    }
+    out.push_str(literal);
 }
 
 fn collect_text<'a>(node: &'a AstNode<'a>, out: &mut String) {
@@ -260,6 +329,54 @@ fn fnv1a(s: &str) -> u64 {
 }
 
 // --- helpers -------------------------------------------------------------
+
+/// Blank out Quarto fenced-div markers (`::: {...}` / `:::`) without changing
+/// the line count, so the inner content parses as ordinary blocks and every
+/// other block's sourcepos line numbers stay valid against the original source.
+fn preprocess(src: &str) -> String {
+    let mut out = String::with_capacity(src.len());
+    for (i, line) in src.lines().enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        if !is_fence_line(line.trim_start()) {
+            out.push_str(line);
+        }
+    }
+    if src.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
+/// A pandoc/Quarto fenced-div marker: 3+ colons, then nothing (close) or an
+/// attribute block / class name (open).
+fn is_fence_line(s: &str) -> bool {
+    let colons = s.chars().take_while(|&c| c == ':').count();
+    if colons < 3 {
+        return false;
+    }
+    let rest = s[colons..].trim_start();
+    rest.is_empty() || rest.starts_with('{') || rest.chars().next().is_some_and(char::is_alphabetic)
+}
+
+/// Drop leading `#| key: val` option lines from a Quarto code cell.
+fn strip_cell_options(literal: &str) -> String {
+    let mut body = String::new();
+    let mut skipping = true;
+    for line in literal.lines() {
+        if skipping && line.trim_start().starts_with("#|") {
+            continue;
+        }
+        skipping = false;
+        body.push_str(line);
+        body.push('\n');
+    }
+    if !literal.ends_with('\n') {
+        body.pop();
+    }
+    body
+}
 
 fn slice_lines(lines: &[&str], start: usize, end: usize) -> String {
     let s = start.saturating_sub(1);
@@ -400,5 +517,42 @@ mod tests {
         let doc = render_document("```{python}\nprint(1)\n```\n");
         assert!(doc.blocks[0].html.contains("<pre "));
         assert!(doc.blocks[0].html.contains("class=\"language-python\""));
+    }
+
+    #[test]
+    fn table_uses_thead_th_and_tbody_td() {
+        let doc = render_document("| A | B |\n|---|--:|\n| 1 | 2 |\n");
+        let h = &doc.blocks[0].html;
+        assert!(h.starts_with("<table "), "got: {h}");
+        assert!(h.contains("<thead><tr><th>A</th><th"), "got: {h}");
+        assert!(h.contains("<tbody><tr><td>1</td>"), "got: {h}");
+        assert!(h.contains("text-align: right"), "alignment from |--:| missing: {h}");
+    }
+
+    #[test]
+    fn fenced_divs_stripped_inner_content_kept() {
+        let doc = render_document("::: {.callout-note}\n## Note\n\nBody.\n:::\n");
+        assert_eq!(doc.blocks.len(), 2, "fence lines should not be blocks");
+        assert!(doc.blocks[0].html.starts_with("<h2 "));
+        assert!(!doc.body_html().contains(":::"));
+        // line numbers preserved: the heading is on line 2 of the source.
+        assert!(doc.blocks[0].html.contains("data-sourcepos=\"2:1-"));
+    }
+
+    #[test]
+    fn cell_option_lines_are_dropped() {
+        let doc = render_document("```{python}\n#| echo: false\n#| label: fig\nprint(1)\n```\n");
+        let h = &doc.blocks[0].html;
+        assert!(h.contains("print(1)"));
+        assert!(!h.contains("#| echo"), "option lines should be stripped: {h}");
+    }
+
+    #[test]
+    fn html_block_attrs_injected_into_leading_tag() {
+        let doc = render_document("<div class=\"demo\">\nhi\n</div>\n");
+        let h = &doc.blocks[0].html;
+        assert!(h.contains("<div class=\"demo\" data-block-id="), "got: {h}");
+        // the wrapper-div double-emit bug must not reappear
+        assert!(!h.contains("<div data-block-id"), "should inject, not wrap: {h}");
     }
 }
