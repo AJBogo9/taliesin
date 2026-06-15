@@ -12,6 +12,23 @@
 
   const setStatus = (s) => { if (statusEl) statusEl.textContent = s; };
 
+  // Deck mode: the body is sectioned slides mounted into `.reveal > .slides`
+  // (root). After any DOM change we (re)attach reveal.js — the first change
+  // initializes, later ones only `sync()`, so the current slide and the
+  // runtime state of live blocks survive edits.
+  const isReveal = window.QMD_FORMAT === "reveal";
+  let revealReady = false;
+  const syncReveal = () => {
+    if (!isReveal || !window.Reveal) return;
+    if (!revealReady) {
+      window.Reveal.initialize({ hash: true, slideNumber: "c/t", center: false });
+      revealReady = true;
+    } else {
+      window.Reveal.sync();
+      window.Reveal.layout();
+    }
+  };
+
   const cssEscape = (s) =>
     window.CSS && CSS.escape ? CSS.escape(s) : s.replace(/["\\]/g, "\\$&");
 
@@ -35,10 +52,12 @@
       case "full_render":
         document.title = msg.title || "qmd-fast";
         keepScroll(() => { root.innerHTML = msg.body_html; });
+        syncReveal();
         break;
       case "update": {
         const el = elById(msg.target_id);
         if (el) keepScroll(() => el.replaceWith(fragment(msg.html)));
+        syncReveal();
         break;
       }
       case "insert":
@@ -48,10 +67,12 @@
           if (after) after.after(node);
           else root.prepend(node);
         });
+        syncReveal();
         break;
       case "remove": {
         const el = elById(msg.target_id);
         if (el) keepScroll(() => el.remove());
+        syncReveal();
         break;
       }
       case "error":

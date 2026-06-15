@@ -36,10 +36,25 @@ pub struct Block {
     pub cell: Option<Cell>,
 }
 
-/// A rendered document: its title (from front matter, if any) and ordered blocks.
+/// The output format the document targets, taken from its front matter
+/// `format:` key. Drives which page scaffold (and live client) is emitted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DocFormat {
+    /// A standard HTML page (blog post, book): the default.
+    #[default]
+    Html,
+    /// A reveal.js slide deck (`format: revealjs` / `*-revealjs`).
+    Reveal,
+}
+
+/// A rendered document: front-matter metadata plus ordered blocks.
 #[derive(Debug, Clone)]
 pub struct RenderedDoc {
     pub title: Option<String>,
+    pub subtitle: Option<String>,
+    pub format: DocFormat,
+    /// Whether the front matter requested a table of contents (`toc: true`).
+    pub toc: bool,
     pub blocks: Vec<Block>,
 }
 
@@ -101,16 +116,27 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
 
     let lines: Vec<&str> = processed.lines().collect();
     let mut title: Option<String> = None;
+    let mut subtitle: Option<String> = None;
+    let mut format = DocFormat::Html;
+    let mut toc = false;
     let mut bib_field: Option<String> = None;
     let mut flat: Vec<FlatBlock> = Vec::new();
     let mut id_counts: HashMap<String, u32> = HashMap::new();
+    // Heading anchor slugs (deduped) and the figure number registry, both used
+    // for cross-references (`@sec-x`/`@fig-x`) and the table of contents.
+    let mut heading_slugs: HashMap<String, u32> = HashMap::new();
+    let mut fig_count: usize = 0;
+    let mut fig_registry: HashMap<String, String> = HashMap::new();
 
     for node in root.children() {
-        let (buf_start, sourcepos, source_file, block_src, is_paragraph, cell) = {
+        let (buf_start, sourcepos, source_file, block_src, is_paragraph, heading_level, cell) = {
             let data = node.data.borrow();
             if let NodeValue::FrontMatter(fm) = &data.value {
                 title = extract_field(fm, "title");
+                subtitle = extract_field(fm, "subtitle");
                 bib_field = extract_field(fm, "bibliography");
+                format = detect_format(fm);
+                toc = detect_toc(fm);
                 continue;
             }
             let sp = data.sourcepos;
@@ -122,6 +148,10 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
                 start_line, sp.start.column, end_line, sp.end.column
             );
             let is_paragraph = matches!(data.value, NodeValue::Paragraph);
+            let heading_level = match &data.value {
+                NodeValue::Heading(h) => Some(h.level),
+                _ => None,
+            };
             // Executable Quarto cell: ```{lang} ... ``` (lang detected, options stripped).
             let cell = match &data.value {
                 NodeValue::CodeBlock(cb) if cb.info.trim_start().starts_with('{') => {
@@ -138,6 +168,7 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
                 file,
                 slice_lines(&lines, sp.start.line, sp.end.line),
                 is_paragraph,
+                heading_level,
                 cell,
             )
         };
@@ -147,7 +178,17 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
             Some(f) => format!(" data-source-file=\"{}\"", escape_attr(f)),
             None => String::new(),
         };
-        let attrs = format!(" data-block-id=\"{id}\" data-sourcepos=\"{sourcepos}\"{file_attr}");
+        // A heading gets a stable, deduped anchor id (HTML docs only — reveal
+        // decks put the slug on the wrapping `<section>` instead, so adding it
+        // here too would duplicate the id in the DOM).
+        let id_attr = match heading_level {
+            Some(_) if format == DocFormat::Html => {
+                format!(" id=\"{}\"", escape_attr(&dedup_slug(&block_src, &mut heading_slugs)))
+            }
+            _ => String::new(),
+        };
+        let attrs =
+            format!("{id_attr} data-block-id=\"{id}\" data-sourcepos=\"{sourcepos}\"{file_attr}");
         let mut html = String::new();
         // Quarto/pandoc treat a bare `\begin{env}...\end{env}` block as display
         // math even without `$$`; comrak doesn't, so detect and render it here.
@@ -155,6 +196,14 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
             html.push_str(&format!("<div{attrs} class=\"qmd-math-block\">"));
             html.push_str(&crate::math::render(env, true));
             html.push_str("</div>");
+        } else if let Some(fig) = is_paragraph.then(|| figure_parts(node)).flatten() {
+            // Standalone image -> a numbered `<figure>`; register `#fig-` ids so
+            // `@fig-x` cross-references resolve to the number.
+            fig_count += 1;
+            if let Some(fid) = fig.attrs.id.as_deref().filter(|i| i.starts_with("fig-")) {
+                fig_registry.insert(fid.to_string(), fig_count.to_string());
+            }
+            html.push_str(&emit_figure(&fig, &attrs, fig_count));
         } else {
             emit(node, &attrs, &mut html);
         }
@@ -166,8 +215,56 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
 
     let mut blocks = group_divs(flat, &spans, origins, &mut id_counts);
     let bib = load_bibliography(bib_field.as_deref(), base_dir);
-    crate::cite::process(&mut blocks, &bib);
-    RenderedDoc { title, blocks }
+    crate::cite::process(&mut blocks, &bib, &fig_registry);
+    RenderedDoc { title, subtitle, format, toc, blocks }
+}
+
+/// `toc: true` requested anywhere in the front matter (typically under
+/// `format: html:`). A lightweight scan, matching the corpus book's usage.
+fn detect_toc(front_matter: &str) -> bool {
+    front_matter.lines().any(|l| {
+        let t = l.trim();
+        t.strip_prefix("toc:").map(str::trim) == Some("true")
+    })
+}
+
+/// Detect the output format from raw front matter. A reveal.js deck declares a
+/// `format:` whose inline value or indented sub-keys name a revealjs variant
+/// (`revealjs`, `liquid-glass-revealjs`, …). Everything else is a standard page.
+fn detect_format(front_matter: &str) -> DocFormat {
+    let lines: Vec<&str> = front_matter.lines().collect();
+    for (i, line) in lines.iter().enumerate() {
+        // Only consider the top-level `format:` key, not nested ones.
+        if line.starts_with(char::is_whitespace) {
+            continue;
+        }
+        let Some(rest) = line.trim_end().strip_prefix("format:") else {
+            continue;
+        };
+        let inline = rest.trim();
+        if !inline.is_empty() {
+            // `format: revealjs`
+            return reveal_if(inline.contains("revealjs"));
+        }
+        // Block form: scan the indented sub-keys until the block dedents.
+        for sub in &lines[i + 1..] {
+            if sub.trim().is_empty() {
+                continue;
+            }
+            if !sub.starts_with(char::is_whitespace) {
+                break;
+            }
+            if sub.contains("revealjs") {
+                return DocFormat::Reveal;
+            }
+        }
+        return DocFormat::Html;
+    }
+    DocFormat::Html
+}
+
+fn reveal_if(cond: bool) -> DocFormat {
+    if cond { DocFormat::Reveal } else { DocFormat::Html }
 }
 
 /// Load and merge the bibliography file(s) named in the front matter, resolved
@@ -252,6 +349,26 @@ const BASE_CSS: &str = r#"
   .qmd-error { border-left-color: #e0566b !important; background: #fdecef !important; color: #862033; }
   [data-block-id] { scroll-margin-top: 1rem; }
   [data-block-id].qmd-hl { outline: 2px solid #4c8dff; outline-offset: 3px; border-radius: 3px; }
+  figure.qmd-figure { margin: 1.5rem 0; }
+  figure.qmd-figure img { max-width: 100%; height: auto; }
+  figure.qmd-figure figcaption { font-size: .9em; color: #555; margin-top: .5rem; }
+  .qmd-figure-center { text-align: center; }
+  .qmd-figure-right { text-align: right; }
+  /* toc layout: content beside a sticky table of contents on wide screens */
+  body.has-toc { max-width: 72rem; display: grid; align-items: start; gap: 2.5rem;
+                 grid-template-columns: minmax(0, 46rem) 14rem; justify-content: center; }
+  body.has-toc > main { min-width: 0; }
+  #TOC { position: sticky; top: 2rem; max-height: 92vh; overflow: auto;
+         font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; }
+  #TOC ul { list-style: none; margin: .2rem 0; padding-left: .9rem; }
+  #TOC > ul { padding-left: 0; }
+  #TOC a { color: #666; text-decoration: none; }
+  #TOC a:hover { color: #1a1a1a; }
+  @media (max-width: 60rem) {
+    body.has-toc { display: block; }
+    #TOC { position: static; max-height: none; border-bottom: 1px solid #eee;
+           margin-bottom: 1.5rem; padding-bottom: 1rem; }
+  }
 "#;
 
 /// `<style>` block(s) for the live preview client: base styling plus the
@@ -261,6 +378,13 @@ pub fn client_styles() -> String {
 }
 
 fn page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
+    match doc.format {
+        DocFormat::Reveal => reveal_page_from_doc(doc, fallback_title),
+        DocFormat::Html => html_page_from_doc(doc, fallback_title),
+    }
+}
+
+fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
     let title = doc.title.as_deref().unwrap_or(fallback_title);
     let mut t = String::new();
     escape_html(title, &mut t);
@@ -271,11 +395,430 @@ fn page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
     } else {
         String::new()
     };
+    // With `toc: true`, lay the content beside a sticky table of contents.
+    let toc = if doc.toc { toc_html(&doc.blocks) } else { String::new() };
+    // Content first (left, wide column), TOC second (right, sticky column).
+    let (body_class, body_content) = if toc.is_empty() {
+        (String::new(), body)
+    } else {
+        (" class=\"has-toc\"".to_string(), format!("<main>\n{body}</main>\n{toc}\n"))
+    };
     PAGE_TEMPLATE
         .replace("{{TITLE}}", &t)
         .replace("{{KATEX_CSS}}", &katex_css)
         .replace("{{BASE_CSS}}", BASE_CSS)
-        .replace("{{BODY}}", &body)
+        .replace("{{BODY_CLASS}}", &body_class)
+        .replace("{{BODY}}", &body_content)
+}
+
+fn reveal_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
+    let title = doc.title.as_deref().unwrap_or(fallback_title);
+    let mut t = String::new();
+    escape_html(title, &mut t);
+    let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
+    // Only ship the (large) KaTeX stylesheet when the deck actually has math.
+    let katex_css = if slides.contains("class=\"katex") {
+        format!("<style>{KATEX_CSS}</style>\n")
+    } else {
+        String::new()
+    };
+    format!(
+        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n\
+         <meta charset=\"utf-8\" />\n\
+         <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no\" />\n\
+         <title>{t}</title>\n{links}{katex_css}<style>{REVEAL_EXTRA_CSS}</style>\n\
+         </head>\n<body>\n<div class=\"reveal\">\n<div class=\"slides\">\n{slides}</div>\n</div>\n\
+         {script}\n<script>\n  Reveal.initialize({{ hash: true, slideNumber: 'c/t', center: false }});\n</script>\n\
+         </body>\n</html>\n",
+        links = reveal_stylesheet_links(),
+        script = reveal_library_script(),
+    )
+}
+
+/// A jsDelivr URL for a file under reveal.js's `dist/`, with the version pinned
+/// in one place so the one-shot page and the live client never diverge.
+fn reveal_cdn(path: &str) -> String {
+    format!("https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/{path}")
+}
+
+/// The reveal.js core + theme `<link rel="stylesheet">` tags.
+fn reveal_stylesheet_links() -> String {
+    ["reset.css", "reveal.css", "theme/white.css"]
+        .iter()
+        .map(|f| format!("<link rel=\"stylesheet\" href=\"{}\" />\n", reveal_cdn(f)))
+        .collect()
+}
+
+/// The reveal.js library `<script>` tag (must load before any `Reveal` call).
+fn reveal_library_script() -> String {
+    format!("<script src=\"{}\"></script>", reveal_cdn("reveal.js"))
+}
+
+/// `<head>` markup for the live reveal.js deck client: reveal stylesheets plus
+/// the bundled KaTeX stylesheet (a live deck may gain math on any edit) and the
+/// slide tweaks. The blog [`client_styles`] body CSS is deliberately omitted —
+/// it would fight reveal's own layout.
+pub fn reveal_client_head() -> String {
+    format!(
+        "{links}<style>{KATEX_CSS}</style>\n<style>{REVEAL_EXTRA_CSS}</style>",
+        links = reveal_stylesheet_links(),
+    )
+}
+
+/// The reveal.js library `<script>` for the live deck client; load it before
+/// the preview client so `Reveal` is defined when the deck mounts.
+pub fn reveal_client_script() -> String {
+    reveal_library_script()
+}
+
+// --- reveal.js slide model ----------------------------------------------
+
+/// Quarto's default `slide-level`: headings at this level start a new slide;
+/// headings above it (h1) open a vertical stack of sub-slides.
+const SLIDE_LEVEL: u8 = 2;
+
+/// One slide's contents: the heading level that opened it (0 when opened by a
+/// `---` break or leading content), an optional id slug, and the inner block
+/// HTML (each block keeps its own `data-block-id`/`data-sourcepos`).
+#[derive(Clone)]
+struct SlideBuf {
+    level: u8,
+    from_rule: bool,
+    id: Option<String>,
+    blocks: Vec<String>,
+}
+
+/// A top-level (horizontal) slide, optionally carrying vertical sub-slides.
+enum Top {
+    Slide(SlideBuf),
+    Stack { lead: SlideBuf, children: Vec<SlideBuf> },
+}
+
+/// Build the inner HTML of reveal's `<div class="slides">`: an optional title
+/// slide from front matter, then one `<section>` per slide. Blocks are grouped
+/// into slides by heading level (`SLIDE_LEVEL`) and `---` breaks, with h1s
+/// wrapping their h2s as a vertical stack.
+pub fn slides_html(title: Option<&str>, subtitle: Option<&str>, blocks: &[Block]) -> String {
+    let mut out = String::new();
+    if let Some(title) = title {
+        out.push_str("<section id=\"title-slide\" class=\"quarto-title-block center\">\n<h1 class=\"title\">");
+        escape_html(title, &mut out);
+        out.push_str("</h1>\n");
+        if let Some(sub) = subtitle {
+            out.push_str("<p class=\"subtitle\">");
+            escape_html(sub, &mut out);
+            out.push_str("</p>\n");
+        }
+        out.push_str("</section>\n");
+    }
+    for top in group_slides(blocks) {
+        render_top(&top, &mut out);
+    }
+    out
+}
+
+/// Split blocks into flat slides at slide-level headings and `---` breaks,
+/// then nest h2 slides under any preceding h1 as a vertical stack.
+fn group_slides(blocks: &[Block]) -> Vec<Top> {
+    let flat = split_slides(blocks);
+    let mut tops: Vec<Top> = Vec::new();
+    let mut i = 0;
+    while i < flat.len() {
+        let opens_stack = flat[i].level != 0 && flat[i].level < SLIDE_LEVEL && !flat[i].from_rule;
+        if opens_stack {
+            let lead = flat[i].clone();
+            i += 1;
+            let mut children = Vec::new();
+            // Gather following slides as vertical children until the next
+            // above-slide-level heading or a `---` break pops the stack.
+            while i < flat.len() {
+                let c = &flat[i];
+                let breaks = c.from_rule || (c.level != 0 && c.level < SLIDE_LEVEL);
+                if breaks {
+                    break;
+                }
+                children.push(flat[i].clone());
+                i += 1;
+            }
+            if children.is_empty() {
+                tops.push(Top::Slide(lead));
+            } else {
+                tops.push(Top::Stack { lead, children });
+            }
+        } else {
+            tops.push(Top::Slide(flat[i].clone()));
+            i += 1;
+        }
+    }
+    tops
+}
+
+/// First pass: a new slide begins at any heading with level <= `SLIDE_LEVEL` or
+/// at a `---` break (whose `<hr>` is dropped). Deeper headings and other blocks
+/// accrete onto the current slide. Empty slides (e.g. back-to-back breaks) are
+/// dropped.
+fn split_slides(blocks: &[Block]) -> Vec<SlideBuf> {
+    let mut slides: Vec<SlideBuf> = Vec::new();
+    let mut cur: Option<SlideBuf> = None;
+    for b in blocks {
+        if is_slide_break(&b.html) {
+            slides.extend(cur.take());
+            cur = Some(SlideBuf { level: 0, from_rule: true, id: None, blocks: Vec::new() });
+            continue; // the `<hr>` is the delimiter, not content
+        }
+        if let Some(level) = block_heading_level(&b.html)
+            && level <= SLIDE_LEVEL
+        {
+            slides.extend(cur.take());
+            cur = Some(SlideBuf {
+                level,
+                from_rule: false,
+                id: Some(slugify(&strip_tags(&b.html))),
+                blocks: vec![b.html.clone()],
+            });
+            continue;
+        }
+        match &mut cur {
+            Some(s) => s.blocks.push(b.html.clone()),
+            None => {
+                cur = Some(SlideBuf {
+                    level: 0,
+                    from_rule: false,
+                    id: None,
+                    blocks: vec![b.html.clone()],
+                })
+            }
+        }
+    }
+    slides.extend(cur);
+    slides.retain(|s| !s.blocks.is_empty());
+    slides
+}
+
+fn render_top(top: &Top, out: &mut String) {
+    match top {
+        Top::Slide(s) => render_section(s, out),
+        Top::Stack { lead, children } => {
+            out.push_str("<section>\n");
+            render_section(lead, out);
+            for c in children {
+                render_section(c, out);
+            }
+            out.push_str("</section>\n");
+        }
+    }
+}
+
+fn render_section(s: &SlideBuf, out: &mut String) {
+    out.push_str("<section");
+    if let Some(id) = s.id.as_deref().filter(|id| !id.is_empty()) {
+        out.push_str(&format!(" id=\"{}\"", escape_attr(id)));
+    }
+    if s.level != 0 {
+        out.push_str(&format!(" class=\"slide level{}\"", s.level));
+    } else {
+        out.push_str(" class=\"slide\"");
+    }
+    out.push_str(">\n");
+    for b in &s.blocks {
+        out.push_str(b);
+        out.push('\n');
+    }
+    out.push_str("</section>\n");
+}
+
+/// Heading level (1–6) for a block whose root element is `<hN ...>`/`<hN>`.
+fn block_heading_level(html: &str) -> Option<u8> {
+    let b = html.as_bytes();
+    if b.len() >= 4 && b[0] == b'<' && b[1] == b'h' && b[2].is_ascii_digit() {
+        let lvl = b[2] - b'0';
+        if (1..=6).contains(&lvl) && matches!(b[3], b' ' | b'>') {
+            return Some(lvl);
+        }
+    }
+    None
+}
+
+/// A reveal slide separator: a thematic break (`<hr ...>`).
+fn is_slide_break(html: &str) -> bool {
+    html.starts_with("<hr")
+}
+
+/// GitHub-style slug for a heading's visible text, used as the `<section>` id.
+fn slugify(s: &str) -> String {
+    let mut out = String::new();
+    let mut pending_dash = false;
+    for ch in s.chars() {
+        if ch.is_alphanumeric() {
+            if pending_dash {
+                out.push('-');
+                pending_dash = false;
+            }
+            out.extend(ch.to_lowercase());
+        } else if !out.is_empty() {
+            pending_dash = true;
+        }
+    }
+    out
+}
+
+/// A deduped heading anchor slug; a repeated slug gets a `-N` suffix (Quarto).
+/// `block_src` is the heading's markdown line; `slugify` ignores the leading
+/// `#`s and markup, yielding the visible-text slug.
+fn dedup_slug(block_src: &str, counts: &mut HashMap<String, u32>) -> String {
+    let base = slugify(block_src);
+    let base = if base.is_empty() { "section".to_string() } else { base };
+    let n = counts.entry(base.clone()).or_insert(0);
+    let slug = if *n == 0 { base.clone() } else { format!("{base}-{n}") };
+    *n += 1;
+    slug
+}
+
+// --- figures -------------------------------------------------------------
+
+/// A standalone-image paragraph recognized as a figure.
+struct FigureParts {
+    url: String,
+    /// Rendered inline HTML of the caption (the image's alt content).
+    caption: String,
+    attrs: DivAttrs,
+}
+
+/// If `node` is a paragraph that is a single image, optionally followed by a
+/// `{#id key=val}` attribute block, return its figure parts. Any other content
+/// in the paragraph (stray text, a link, a second image) disqualifies it, so it
+/// falls through to ordinary inline-image rendering.
+fn figure_parts<'a>(node: &'a AstNode<'a>) -> Option<FigureParts> {
+    let mut image: Option<&'a AstNode<'a>> = None;
+    let mut attr_str: Option<String> = None;
+    for child in node.children() {
+        let d = child.data.borrow();
+        match &d.value {
+            NodeValue::Image(_) => {
+                if image.is_some() {
+                    return None;
+                }
+                drop(d);
+                image = Some(child);
+            }
+            NodeValue::SoftBreak | NodeValue::LineBreak => {}
+            NodeValue::Text(t) => {
+                let t = t.trim();
+                if t.is_empty() {
+                    continue;
+                }
+                match t.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
+                    Some(a) if attr_str.is_none() => attr_str = Some(a.trim().to_string()),
+                    _ => return None,
+                }
+            }
+            _ => return None,
+        }
+    }
+    let image = image?;
+    let url = match &image.data.borrow().value {
+        NodeValue::Image(link) => link.url.clone(),
+        _ => return None,
+    };
+    let mut caption = String::new();
+    emit_children(image, &mut caption);
+    let attrs = parse_attrs(attr_str.as_deref().unwrap_or(""));
+    let has_fig_id = attrs.id.as_deref().is_some_and(|i| i.starts_with("fig-"));
+    // A bare image with neither a caption nor a `#fig-` id is decorative.
+    if caption.trim().is_empty() && !has_fig_id {
+        return None;
+    }
+    Some(FigureParts { url, caption, attrs })
+}
+
+/// Render a recognized figure as a numbered `<figure>` carrying the block data
+/// attributes, honoring `width=` and `fig-align=`.
+fn emit_figure(fig: &FigureParts, block_attrs: &str, num: usize) -> String {
+    let id_attr = match &fig.attrs.id {
+        Some(i) => format!(" id=\"{}\"", escape_attr(i)),
+        None => String::new(),
+    };
+    let align_class = match fig.attrs.get("fig-align") {
+        Some("left") => " qmd-figure-left",
+        Some("right") => " qmd-figure-right",
+        _ => " qmd-figure-center",
+    };
+    let style = match fig.attrs.get("width") {
+        Some(w) => format!(" style=\"width:{}\"", escape_attr(w)),
+        None => String::new(),
+    };
+    let alt = strip_tags(&fig.caption);
+    format!(
+        "<figure{block_attrs}{id_attr} class=\"qmd-figure{align_class}\">\
+         <img src=\"{}\" alt=\"{}\"{style} />\
+         <figcaption>Figure&nbsp;{num}: {}</figcaption></figure>",
+        escape_attr(&fig.url),
+        escape_attr(&alt),
+        fig.caption,
+    )
+}
+
+// --- table of contents ---------------------------------------------------
+
+/// Build a `<nav id="TOC">` from the document's heading blocks (levels 1–3),
+/// linking to their anchor ids. Empty when the doc has no anchored headings.
+fn toc_html(blocks: &[Block]) -> String {
+    let mut items: Vec<(u8, String, String)> = Vec::new();
+    for b in blocks {
+        if let (Some(level), Some(id)) = (block_heading_level(&b.html), extract_attr(&b.html, "id"))
+            && level <= 3
+        {
+            items.push((level, id, strip_tags(&b.html)));
+        }
+    }
+    if items.is_empty() {
+        return String::new();
+    }
+    let base = items.iter().map(|(l, _, _)| *l).min().unwrap();
+    let mut out = String::from("<nav id=\"TOC\" class=\"qmd-toc\" role=\"doc-toc\"><ul>");
+    let mut level = base;
+    let mut open_li = false;
+    for (lvl, id, text) in &items {
+        let lvl = (*lvl).max(base);
+        if lvl > level {
+            // Descend: open nested lists inside the still-open parent <li>.
+            while level < lvl {
+                out.push_str("<ul>");
+                level += 1;
+            }
+        } else {
+            if open_li {
+                out.push_str("</li>");
+            }
+            while level > lvl {
+                out.push_str("</ul></li>");
+                level -= 1;
+            }
+        }
+        out.push_str(&format!(
+            "<li><a href=\"#{}\">{}</a>",
+            escape_attr(id),
+            html_escape(text)
+        ));
+        open_li = true;
+    }
+    if open_li {
+        out.push_str("</li>");
+    }
+    while level > base {
+        out.push_str("</ul></li>");
+        level -= 1;
+    }
+    out.push_str("</ul></nav>");
+    out
+}
+
+/// Read the value of an HTML attribute from a start tag (e.g. `id="..."`).
+fn extract_attr(html: &str, name: &str) -> Option<String> {
+    let needle = format!(" {name}=\"");
+    let start = html.find(&needle)? + needle.len();
+    let end = html[start..].find('"')? + start;
+    Some(html[start..end].to_string())
 }
 
 // --- emitter -------------------------------------------------------------
@@ -921,7 +1464,7 @@ const PAGE_TEMPLATE: &str = r#"<!DOCTYPE html>
 {{KATEX_CSS}}
 <style>{{BASE_CSS}}</style>
 </head>
-<body>
+<body{{BODY_CLASS}}>
 {{BODY}}
 <script>
   // Phase 1 demo: click any block to see its source position in the console
@@ -936,6 +1479,22 @@ const PAGE_TEMPLATE: &str = r#"<!DOCTYPE html>
 </script>
 </body>
 </html>
+"#;
+
+// reveal.js (pinned to 5.1.0) is served from jsDelivr — the dev server runs
+// locally with network access; only KaTeX is bundled for true offline use.
+
+/// Slide-specific tweaks layered over the reveal theme (left-aligned content,
+/// centered title slide, readable code/math).
+const REVEAL_EXTRA_CSS: &str = r#"
+  .reveal .slides { text-align: left; }
+  .reveal section.quarto-title-block, .reveal h1.title { text-align: center; }
+  .reveal .subtitle { text-align: center; opacity: .75; font-style: italic; }
+  .reveal pre { width: 100%; box-shadow: none; font-size: .55em; }
+  .reveal pre code { max-height: none; }
+  .reveal code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .reveal .katex-display { margin: .4em 0; }
+  [data-block-id].qmd-hl { outline: 2px solid #4c8dff; outline-offset: 3px; }
 "#;
 
 #[cfg(test)]
@@ -1132,5 +1691,132 @@ mod tests {
         let doc = render_document("use `a < b && c` here\n");
         let h = &doc.blocks[0].html;
         assert!(h.contains("<code>a &lt; b &amp;&amp; c</code>"), "got: {h}");
+    }
+
+    // --- reveal.js / slides ---
+
+    #[test]
+    fn reveal_format_detected_from_front_matter() {
+        // Nested block form (the corpus shape): `format:` with a *-revealjs subkey.
+        let deck = render_document("---\nformat:\n  liquid-glass-revealjs:\n    slide-number: true\n---\n\n## A\n");
+        assert_eq!(deck.format, DocFormat::Reveal);
+        // Inline form.
+        let inline = render_document("---\nformat: revealjs\n---\n\n## A\n");
+        assert_eq!(inline.format, DocFormat::Reveal);
+        // A normal post is Html, even if a nested non-format key mentions revealjs.
+        let post = render_document("---\ntitle: Post\nformat: html\n---\n\nHi.\n");
+        assert_eq!(post.format, DocFormat::Html);
+    }
+
+    #[test]
+    fn deck_splits_into_title_slide_and_one_section_per_heading() {
+        let doc = render_document(
+            "---\ntitle: Deck\nsubtitle: A subtitle\nformat: revealjs\n---\n\n## First\n\nHello.\n\n## Second\n\nWorld.\n",
+        );
+        let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
+        // Title slide from front matter.
+        assert!(slides.contains("id=\"title-slide\""), "got: {slides}");
+        assert!(slides.contains("<h1 class=\"title\">Deck</h1>"), "got: {slides}");
+        assert!(slides.contains("<p class=\"subtitle\">A subtitle</p>"), "got: {slides}");
+        // One <section> per h2, id slugged from the heading text.
+        assert!(slides.contains("<section id=\"first\" class=\"slide level2\">"), "got: {slides}");
+        assert!(slides.contains("<section id=\"second\" class=\"slide level2\">"), "got: {slides}");
+        // Heading keeps its block id inside the section (block-swap/click-to-source).
+        assert!(slides.contains("<h2 data-block-id="), "heading lost its block id: {slides}");
+        // title + two content slides, no nesting.
+        assert_eq!(slides.matches("<section").count(), 3, "got: {slides}");
+    }
+
+    #[test]
+    fn thematic_break_starts_a_new_slide_and_is_not_emitted() {
+        let doc = render_document("---\nformat: revealjs\n---\n\nOne.\n\n---\n\nTwo.\n");
+        let slides = slides_html(None, None, &doc.blocks);
+        assert!(!slides.contains("<hr"), "the --- delimiter must not render: {slides}");
+        assert_eq!(slides.matches("<section").count(), 2, "got: {slides}");
+    }
+
+    #[test]
+    fn h1_wraps_following_h2s_in_a_vertical_stack() {
+        let doc = render_document("---\nformat: revealjs\n---\n\n# Part One\n\nIntro.\n\n## A\n\n## B\n");
+        let slides = slides_html(None, None, &doc.blocks);
+        // Outer wrapper section, then the h1 lead slide, then the two h2 children.
+        assert!(slides.contains("<section>\n<section id=\"part-one\" class=\"slide level1\">"), "got: {slides}");
+        assert!(slides.contains("<section id=\"a\" class=\"slide level2\">"), "got: {slides}");
+        assert!(slides.contains("<section id=\"b\" class=\"slide level2\">"), "got: {slides}");
+        // 1 wrapper + lead + 2 children = 4 sections.
+        assert_eq!(slides.matches("<section").count(), 4, "got: {slides}");
+    }
+
+    #[test]
+    fn reveal_page_carries_revealjs_scaffolding() {
+        let page = render_html_page("---\ntitle: D\nformat: revealjs\n---\n\n## Slide\n", "fallback");
+        assert!(page.contains("class=\"reveal\""));
+        assert!(page.contains("class=\"slides\""));
+        assert!(page.contains("reveal.js@5.1.0"));
+        assert!(page.contains("Reveal.initialize("));
+    }
+
+    // --- books: heading anchors, figures, toc ---
+
+    #[test]
+    fn headings_get_deduped_anchor_ids() {
+        let doc = render_document("# Intro\n\nbody\n\n# Intro\n");
+        assert!(doc.blocks[0].html.starts_with("<h1 id=\"intro\""), "got: {}", doc.blocks[0].html);
+        // a repeated heading slug is deduped with a -N suffix.
+        let last = doc.blocks.last().unwrap();
+        assert!(last.html.contains("id=\"intro-1\""), "got: {}", last.html);
+    }
+
+    #[test]
+    fn reveal_headings_have_no_id_to_avoid_duplicating_section_ids() {
+        // In a deck the slug lives on the wrapping <section>, so the heading must
+        // not also carry it (that would be a duplicate id in the DOM).
+        let doc = render_document("---\nformat: revealjs\n---\n\n## A Slide\n");
+        let h = doc.blocks.iter().find(|b| b.html.starts_with("<h2")).unwrap();
+        assert!(!h.html.contains(" id=\""), "reveal heading should not carry an id: {}", h.html);
+    }
+
+    #[test]
+    fn standalone_image_becomes_a_numbered_figure() {
+        let doc = render_document("![Scree plot](scree.png){#fig-scree width=50% fig-align=\"center\"}\n");
+        let h = &doc.blocks[0].html;
+        assert!(h.starts_with("<figure"), "got: {h}");
+        assert!(h.contains("id=\"fig-scree\""), "got: {h}");
+        assert!(h.contains("class=\"qmd-figure qmd-figure-center\""), "got: {h}");
+        assert!(h.contains("<img src=\"scree.png\""), "got: {h}");
+        assert!(h.contains("style=\"width:50%\""), "got: {h}");
+        assert!(h.contains("<figcaption>Figure&nbsp;1: Scree plot</figcaption>"), "got: {h}");
+        assert!(!h.contains("{#fig-"), "the attribute block leaked: {h}");
+        // the figure still carries the block model attributes.
+        assert!(h.contains("data-block-id=") && h.contains("data-sourcepos="), "got: {h}");
+    }
+
+    #[test]
+    fn inline_image_in_a_sentence_stays_inline() {
+        let doc = render_document("See ![logo](l.png) for the mark.\n");
+        let h = &doc.blocks[0].html;
+        assert!(h.starts_with("<p "), "got: {h}");
+        assert!(h.contains("<img src=\"l.png\""), "got: {h}");
+        assert!(!h.contains("<figure"), "a non-standalone image must not become a figure: {h}");
+    }
+
+    #[test]
+    fn toc_page_lists_headings_with_anchor_links() {
+        let page = render_html_page(
+            "---\ntitle: Doc\nformat:\n  html:\n    toc: true\n---\n\n# A\n\ntext\n\n## B\n",
+            "fb",
+        );
+        assert!(page.contains("id=\"TOC\""), "missing TOC nav");
+        assert!(page.contains("<body class=\"has-toc\">"), "missing toc layout class");
+        assert!(page.contains("<a href=\"#a\">A</a>"), "missing TOC entry for A: {page}");
+        assert!(page.contains("<a href=\"#b\">B</a>"), "missing nested TOC entry for B");
+    }
+
+    #[test]
+    fn no_toc_when_not_requested() {
+        let page = render_html_page("---\ntitle: Doc\n---\n\n# A\n", "fb");
+        // (the `#TOC`/`has-toc` CSS rules are always present; assert on markup.)
+        assert!(!page.contains("<nav id=\"TOC\""), "TOC nav should be absent without toc: true");
+        assert!(!page.contains("<body class=\"has-toc\">"), "toc layout should be off");
     }
 }

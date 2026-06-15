@@ -10,7 +10,7 @@ use axum::routing::get;
 use axum::Router;
 use futures_util::{SinkExt, StreamExt};
 use notify::Watcher;
-use qmd_fast_core::{Block, BlockOp, RenderedDoc};
+use qmd_fast_core::{Block, BlockOp, DocFormat, RenderedDoc};
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -30,17 +30,29 @@ struct AppState {
 #[derive(Default)]
 struct DocState {
     title: Option<String>,
+    subtitle: Option<String>,
+    format: DocFormat,
     blocks: Vec<Block>,
 }
 
 impl DocState {
+    /// The mountable body: a reveal deck is assembled into `<section>` slides;
+    /// a normal doc is just its blocks concatenated. Either way the individual
+    /// blocks keep their ids, so incremental ops apply the same to both.
     fn body_html(&self) -> String {
-        let mut s = String::new();
-        for b in &self.blocks {
-            s.push_str(&b.html);
-            s.push('\n');
+        match self.format {
+            DocFormat::Reveal => {
+                qmd_fast_core::slides_html(self.title.as_deref(), self.subtitle.as_deref(), &self.blocks)
+            }
+            DocFormat::Html => {
+                let mut s = String::new();
+                for b in &self.blocks {
+                    s.push_str(&b.html);
+                    s.push('\n');
+                }
+                s
+            }
         }
-        s
     }
 }
 
@@ -64,6 +76,8 @@ async fn serve(path: PathBuf, port: u16) -> std::io::Result<()> {
     if let Some(doc) = render_doc(&app) {
         let mut d = app.doc.lock().unwrap();
         d.title = doc.title;
+        d.subtitle = doc.subtitle;
+        d.format = doc.format;
         d.blocks = doc.blocks;
     }
 
@@ -92,11 +106,24 @@ fn render_doc(app: &AppState) -> Option<RenderedDoc> {
 
 // --- HTTP ---------------------------------------------------------------
 
-async fn index() -> Html<String> {
-    Html(index_html())
+async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
+    let format = app.doc.lock().unwrap().format;
+    Html(index_html(format))
 }
 
-fn index_html() -> String {
+fn index_html(format: DocFormat) -> String {
+    match format {
+        DocFormat::Reveal => reveal_index_html(),
+        DocFormat::Html => blog_index_html(),
+    }
+}
+
+/// Shared dev-status pill, fixed bottom-right, over either layout.
+const STATUS_CSS: &str = "#qmd-status { position: fixed; bottom: .5rem; left: .5rem; z-index: 9999; \
+    font: 12px ui-sans-serif, system-ui, sans-serif; color: #888; background: #fff; \
+    padding: .15rem .5rem; border: 1px solid #eee; border-radius: 4px; }";
+
+fn blog_index_html() -> String {
     format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -105,12 +132,7 @@ fn index_html() -> String {
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>qmd-fast</title>
 {styles}
-<style>
-  #qmd-status {{ position: fixed; bottom: .5rem; right: .5rem; z-index: 9999;
-                 font: 12px ui-sans-serif, system-ui, sans-serif; color: #888;
-                 background: #fff; padding: .15rem .5rem; border: 1px solid #eee;
-                 border-radius: 4px; }}
-</style>
+<style>{status_css}</style>
 </head>
 <body>
 <main id="qmd-root"></main>
@@ -122,6 +144,41 @@ fn index_html() -> String {
 </html>
 "#,
         styles = qmd_fast_core::client_styles(),
+        status_css = STATUS_CSS,
+        js = CLIENT_JS,
+    )
+}
+
+/// Live reveal.js deck: the same preview client, but mounting sectioned slides
+/// into `.reveal > .slides` and (re)syncing reveal as blocks change. The
+/// `QMD_FORMAT` flag switches the client into deck mode.
+fn reveal_index_html() -> String {
+    format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>qmd-fast</title>
+{head}
+<style>{status_css}</style>
+</head>
+<body>
+<div class="reveal">
+<div class="slides" id="qmd-root"></div>
+</div>
+<div id="qmd-status">connecting…</div>
+{reveal_script}
+<script>window.QMD_FORMAT = "reveal";</script>
+<script>
+{js}
+</script>
+</body>
+</html>
+"#,
+        head = qmd_fast_core::reveal_client_head(),
+        status_css = STATUS_CSS,
+        reveal_script = qmd_fast_core::reveal_client_script(),
         js = CLIENT_JS,
     )
 }
@@ -284,6 +341,8 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         let mut d = app.doc.lock().unwrap();
         let ops = qmd_fast_core::diff_blocks(&d.blocks, &blocks);
         d.title = doc.title;
+        d.subtitle = doc.subtitle;
+        d.format = doc.format;
         d.blocks = blocks;
         // Broadcast under the lock so connecting clients can't interleave.
         for op in &ops {

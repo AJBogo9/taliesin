@@ -117,6 +117,51 @@ fn includes_are_resolved_with_origin_files() {
 }
 
 #[test]
+fn reveal_deck_detects_format_and_splits_into_slides() {
+    use qmd_fast_core::{DocFormat, render_document_with_includes, slides_html};
+    let dir = corpus_dir().join("liquid-glass-slides");
+    let src = fs::read_to_string(dir.join("example.qmd")).unwrap();
+    let doc = render_document_with_includes(&src, &dir);
+
+    assert_eq!(doc.format, DocFormat::Reveal, "the deck should be detected as reveal.js");
+
+    let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
+    // Title slide built from front matter.
+    assert!(slides.contains("id=\"title-slide\""), "missing title slide");
+    assert!(slides.contains("<h1 class=\"title\">Liquid Glass</h1>"));
+    assert!(slides.contains("<p class=\"subtitle\">A RevealJS theme for Quarto</p>"));
+    // One slide per `##` heading (the corpus deck has four).
+    let content_slides = slides.matches("class=\"slide level2\"").count();
+    assert_eq!(content_slides, 4, "expected 4 content slides, got {content_slides}");
+    // Slide ids are slugged from the heading text, matching Quarto.
+    assert!(slides.contains("id=\"what-is-liquid-glass\""), "got: {slides}");
+    // Blocks keep their data attributes inside sections (block-swap/click-to-source).
+    assert!(slides.contains("<h2 data-block-id="), "headings lost their block id");
+    assert!(!slides.contains("{{<"), "shortcodes must not leak into slide output");
+}
+
+#[test]
+fn book_renders_with_toc_anchored_headings_and_numbered_figures() {
+    let dir = corpus_dir().join("bayesian-book");
+    let src = fs::read_to_string(dir.join("index.qmd")).unwrap();
+    let page = qmd_fast_core::render_html_page_with_includes(&src, &dir, "book");
+
+    // toc: true -> a TOC nav + the sidebar layout, with anchor-linked entries.
+    assert!(page.contains("id=\"TOC\""), "book should render a table of contents");
+    assert!(page.contains("class=\"has-toc\""), "missing toc layout");
+    assert!(page.contains("<a href=\"#introduction\">Introduction</a>"), "TOC entry missing");
+    // Headings carry matching anchor ids.
+    assert!(page.contains("<h1 id=\"introduction\""), "heading anchor missing");
+
+    // The three labelled figures render as numbered <figure>s, attrs not leaked.
+    assert!(!page.contains("{#fig-"), "figure attribute block leaked into output");
+    assert!(page.contains("id=\"fig-model-hierarchical\""), "figure id missing");
+    for n in 1..=3 {
+        assert!(page.contains(&format!("Figure&nbsp;{n}:")), "missing 'Figure {n}:' caption");
+    }
+}
+
+#[test]
 fn ids_and_sourcepos_present_on_visible_blocks() {
     // Every visible block element should carry both data attributes. (Raw HTML
     // comment blocks legitimately carry neither — they are emitted verbatim.)

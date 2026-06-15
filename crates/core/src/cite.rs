@@ -3,8 +3,9 @@
 //! Citations (`[@key]`, `[@key, locator]`, `[@a; @b]`) become numbered links to
 //! an auto-generated References section, formatted from a parsed BibTeX file.
 //! Cross-references (`@fig-x`, `@sec-x`, ...) become links to their anchor,
-//! labelled by kind. This is not a full CSL engine — numbering for computed
-//! figures arrives with execution (Phase 4).
+//! labelled by kind and, when the anchor's number is known (e.g. a static
+//! `#fig-` figure), carrying it ("Figure 3"). This is not a full CSL engine —
+//! numbering for *computed* figures would arrive with execution.
 //!
 //! Processing runs over the already-rendered block HTML, transforming only
 //! plain-text runs (never inside tags, code, or math), so block sourcepos is
@@ -213,7 +214,9 @@ fn xref_label(prefix: &str) -> Option<&'static str> {
 
 /// Resolve citations + cross-references across `blocks`, appending a References
 /// block when citations were found and the bibliography could format them.
-pub fn process(blocks: &mut Vec<Block>, bib: &Bibliography) {
+/// `xrefs` maps a cross-reference anchor (e.g. `fig-scree`) to its resolved
+/// number, so `@fig-scree` renders as a linked "Figure 3".
+pub fn process(blocks: &mut Vec<Block>, bib: &Bibliography, xrefs: &HashMap<String, String>) {
     let mut order: Vec<String> = Vec::new();
     let mut number: HashMap<String, usize> = HashMap::new();
     let mut cite_key = |key: &str| -> usize {
@@ -224,7 +227,7 @@ pub fn process(blocks: &mut Vec<Block>, bib: &Bibliography) {
     };
 
     for b in blocks.iter_mut() {
-        b.html = transform_html(&b.html, &mut cite_key);
+        b.html = transform_html(&b.html, &mut cite_key, xrefs);
     }
 
     if order.is_empty() {
@@ -256,7 +259,11 @@ pub fn process(blocks: &mut Vec<Block>, bib: &Bibliography) {
 
 /// Walk HTML, transforming only plain-text runs (never inside tags or inside
 /// `pre`/`code`/`script`/`style`/`annotation` elements).
-fn transform_html(html: &str, cite_key: &mut impl FnMut(&str) -> usize) -> String {
+fn transform_html(
+    html: &str,
+    cite_key: &mut impl FnMut(&str) -> usize,
+    xrefs: &HashMap<String, String>,
+) -> String {
     const SKIP: [&str; 5] = ["pre", "code", "script", "style", "annotation"];
     let mut out = String::with_capacity(html.len());
     let mut skip_depth = 0usize;
@@ -284,7 +291,7 @@ fn transform_html(html: &str, cite_key: &mut impl FnMut(&str) -> usize) -> Strin
             let end = rest.find('<').unwrap_or(rest.len());
             let text = &rest[..end];
             if skip_depth == 0 {
-                out.push_str(&rewrite_text(text, cite_key));
+                out.push_str(&rewrite_text(text, cite_key, xrefs));
             } else {
                 out.push_str(text);
             }
@@ -295,7 +302,11 @@ fn transform_html(html: &str, cite_key: &mut impl FnMut(&str) -> usize) -> Strin
 }
 
 /// Rewrite citations and cross-references within a plain-text run.
-fn rewrite_text(text: &str, cite_key: &mut impl FnMut(&str) -> usize) -> String {
+fn rewrite_text(
+    text: &str,
+    cite_key: &mut impl FnMut(&str) -> usize,
+    xrefs: &HashMap<String, String>,
+) -> String {
     let chars: Vec<char> = text.chars().collect();
     let mut out = String::new();
     let mut i = 0;
@@ -311,9 +322,12 @@ fn rewrite_text(text: &str, cite_key: &mut impl FnMut(&str) -> usize) -> String 
             }
         } else if chars[i] == '@' {
             if let Some((label, anchor, len)) = parse_xref(&chars[i..]) {
-                out.push_str(&format!(
-                    "<a href=\"#{anchor}\" class=\"qmd-xref\">{label}</a>"
-                ));
+                // A resolved number renders "Figure&nbsp;3"; otherwise just the label.
+                let text = match xrefs.get(&anchor) {
+                    Some(n) => format!("{label}&nbsp;{n}"),
+                    None => label.to_string(),
+                };
+                out.push_str(&format!("<a href=\"#{anchor}\" class=\"qmd-xref\">{text}</a>"));
                 i += len;
                 continue;
             }
@@ -418,7 +432,7 @@ mod tests {
             html: "<p>fails [@bishop2006pattern, chap. 9].</p>".into(),
             cell: None,
         }];
-        process(&mut blocks, &b);
+        process(&mut blocks, &b, &HashMap::new());
         assert!(blocks[0].html.contains("[<a href=\"#ref-bishop2006pattern\">1</a>, chap. 9]"));
         // a References section was appended
         let refs = blocks.last().unwrap();
@@ -436,7 +450,7 @@ mod tests {
             html: "<p>see @fig-scree for details</p>".into(),
             cell: None,
         }];
-        process(&mut blocks, &b);
+        process(&mut blocks, &b, &HashMap::new());
         assert!(
             blocks[0].html.contains("<a href=\"#fig-scree\" class=\"qmd-xref\">Figure</a>"),
             "got: {}",
@@ -444,6 +458,27 @@ mod tests {
         );
         // no citations -> no References section
         assert_eq!(blocks.len(), 1);
+    }
+
+    #[test]
+    fn crossref_resolves_number_from_registry() {
+        let mut xrefs = HashMap::new();
+        xrefs.insert("fig-scree".to_string(), "3".to_string());
+        let mut blocks = vec![Block {
+            id: "x".into(),
+            sourcepos: "1:1-1:1".into(),
+            source_file: None,
+            html: "<p>see @fig-scree for the elbow</p>".into(),
+            cell: None,
+        }];
+        process(&mut blocks, &Bibliography::default(), &xrefs);
+        assert!(
+            blocks[0]
+                .html
+                .contains("<a href=\"#fig-scree\" class=\"qmd-xref\">Figure&nbsp;3</a>"),
+            "got: {}",
+            blocks[0].html
+        );
     }
 
     #[test]
@@ -456,7 +491,7 @@ mod tests {
             html: "<pre><code>x = [@bishop2006pattern]</code></pre>".into(),
             cell: None,
         }];
-        process(&mut blocks, &b);
+        process(&mut blocks, &b, &HashMap::new());
         assert!(blocks[0].html.contains("[@bishop2006pattern]"), "code was rewritten");
         assert_eq!(blocks.len(), 1, "no citation should have been counted");
     }
