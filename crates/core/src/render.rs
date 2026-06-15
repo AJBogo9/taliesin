@@ -433,7 +433,71 @@ window.qmdEnhanceCode = function (root) {
     pre.appendChild(btn);
   });
   qmdRenderMermaid(root);
+  qmdInitLightbox();
 };
+
+// Full-screen figure viewer. Set up once; uses event delegation in the capture
+// phase so clicking a figure image opens the lightbox WITHOUT triggering the
+// block-level click/double-click handlers (highlight, click-to-source). Modifier
+// clicks pass through (new tab, reveal alt-zoom). Dismiss: backdrop, Esc, or x.
+function qmdInitLightbox() {
+  if (window.__qmdLightbox) return;
+  window.__qmdLightbox = true;
+
+  var style = document.createElement('style');
+  style.textContent =
+    'figure img{cursor:zoom-in}' +
+    '#qmd-lightbox{position:fixed;inset:0;z-index:2147483000;display:none;flex-direction:column;' +
+    'align-items:center;justify-content:center;gap:.9rem;padding:2rem;box-sizing:border-box;' +
+    'background:rgba(10,12,16,.9);cursor:zoom-out;opacity:0;transition:opacity .15s ease}' +
+    '#qmd-lightbox.open{display:flex;opacity:1}' +
+    '#qmd-lightbox img{max-width:93vw;max-height:86vh;object-fit:contain;cursor:default;' +
+    'background:#fff;border-radius:4px;box-shadow:0 10px 50px rgba(0,0,0,.5)}' +
+    '#qmd-lightbox .qmd-lb-cap{color:#e8e8e8;font:14px ui-sans-serif,system-ui,sans-serif;' +
+    'text-align:center;max-width:93vw}' +
+    '#qmd-lightbox .qmd-lb-cap:empty{display:none}' +
+    '#qmd-lightbox .qmd-lb-close{position:fixed;top:.6rem;right:1rem;color:#fff;background:none;' +
+    'border:0;font-size:2.2rem;line-height:1;cursor:pointer;opacity:.75}' +
+    '#qmd-lightbox .qmd-lb-close:hover{opacity:1}';
+  document.head.appendChild(style);
+
+  var box = document.createElement('div');
+  box.id = 'qmd-lightbox';
+  box.setAttribute('role', 'dialog');
+  box.innerHTML = '<button class="qmd-lb-close" aria-label="Close">×</button>' +
+    '<img alt=""><div class="qmd-lb-cap"></div>';
+  document.body.appendChild(box);
+  var lbImg = box.querySelector('img');
+  var lbCap = box.querySelector('.qmd-lb-cap');
+
+  function open(srcImg) {
+    lbImg.src = srcImg.currentSrc || srcImg.src;
+    lbImg.alt = srcImg.alt || '';
+    var fig = srcImg.closest('figure');
+    var fc = fig && fig.querySelector('figcaption');
+    lbCap.textContent = fc ? fc.textContent : (srcImg.alt || '');
+    box.classList.add('open');
+  }
+  function close() { box.classList.remove('open'); lbImg.removeAttribute('src'); }
+
+  var plainClick = function (e) {
+    return e.target.closest && e.target.closest('figure img') &&
+      !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey;
+  };
+  document.addEventListener('click', function (e) {
+    if (plainClick(e)) { e.preventDefault(); e.stopPropagation(); open(e.target); }
+  }, true);
+  // Keep a double-click on a figure image from reaching click-to-source.
+  document.addEventListener('dblclick', function (e) {
+    if (e.target.closest && e.target.closest('figure img')) {
+      e.preventDefault(); e.stopPropagation();
+    }
+  }, true);
+  box.addEventListener('click', function (e) { if (e.target !== lbImg) close(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && box.classList.contains('open')) close();
+  });
+}
 
 function qmdRenderMermaid(root) {
   var pending = root.querySelectorAll('pre.mermaid:not([data-processed])');

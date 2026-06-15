@@ -91,6 +91,9 @@ async fn serve(path: PathBuf, port: u16) -> std::io::Result<()> {
         .route("/", get(index))
         .route("/favicon.ico", get(favicon))
         .route("/ws", get(ws_handler))
+        // Anything else is a static asset (images, etc.) resolved relative to the
+        // document's directory, so figures display in the live preview.
+        .fallback(static_asset)
         .with_state(app.clone());
 
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
@@ -133,6 +136,71 @@ async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
 /// so the preview tab gets an icon and the console stays free of a 404).
 async fn favicon() -> impl IntoResponse {
     ([(axum::http::header::CONTENT_TYPE, "image/png")], FAVICON)
+}
+
+/// Serve a static file (image, etc.) resolved relative to the document's
+/// directory, with path-traversal protection so only files under `base_dir`
+/// are reachable.
+async fn static_asset(
+    State(app): State<Arc<AppState>>,
+    uri: axum::http::Uri,
+) -> axum::response::Response {
+    use axum::http::{StatusCode, header};
+    let rel = percent_decode(uri.path().trim_start_matches('/'));
+    let not_found = || (StatusCode::NOT_FOUND, "not found").into_response();
+    let (Ok(base), Ok(full)) = (
+        app.base_dir.canonicalize(),
+        app.base_dir.join(&rel).canonicalize(),
+    ) else {
+        return not_found();
+    };
+    if !full.starts_with(&base) || !full.is_file() {
+        return not_found();
+    }
+    match std::fs::read(&full) {
+        Ok(bytes) => ([(header::CONTENT_TYPE, content_type(&full))], bytes).into_response(),
+        Err(_) => not_found(),
+    }
+}
+
+/// Guess a content type from a file extension (covers the asset types a doc
+/// references; defaults to a generic binary type).
+fn content_type(path: &Path) -> &'static str {
+    match path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).as_deref() {
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("svg") => "image/svg+xml",
+        Some("webp") => "image/webp",
+        Some("avif") => "image/avif",
+        Some("ico") => "image/x-icon",
+        Some("css") => "text/css; charset=utf-8",
+        Some("js" | "mjs") => "text/javascript; charset=utf-8",
+        Some("json") => "application/json; charset=utf-8",
+        Some("pdf") => "application/pdf",
+        Some("mp4") => "video/mp4",
+        Some("woff2") => "font/woff2",
+        _ => "application/octet-stream",
+    }
+}
+
+/// Minimal percent-decoding for request paths (so `%20` etc. in filenames work).
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            if let Ok(byte) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                out.push(byte);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 fn index_html(format: DocFormat, toc: bool) -> String {
