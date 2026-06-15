@@ -1,0 +1,22 @@
+# Rust
+/target
+**/*.rs.bk
+*.pdb
+
+# Node / VS Code extension / web client
+node_modules/
+dist/
+out/
+*.vsix
+*.tsbuildinfo
+
+# Logs and env
+*.log
+.env
+.env.local
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
