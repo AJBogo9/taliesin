@@ -331,6 +331,8 @@ const BASE_CSS: &str = r#"
   pre:hover .qmd-copy, .qmd-copy:focus-visible { opacity: 1; }
   .qmd-copy:hover { color: #111; border-color: #999; }
   .qmd-copy.qmd-copied { color: #2bb673; border-color: #2bb673; }
+  pre.mermaid { background: transparent; padding: .5rem 0; text-align: center; overflow: visible; }
+  pre.mermaid svg { max-width: 100%; height: auto; }
   blockquote { border-left: 3px solid #ddd; margin: 0 0 1rem; padding-left: 1rem; color: #555; }
   img { max-width: 100%; }
   table { border-collapse: collapse; }
@@ -384,10 +386,12 @@ pub fn client_styles() -> String {
     format!("<style>{BASE_CSS}</style>\n<style>{KATEX_CSS}</style>")
 }
 
-// highlight.js (pinned) served from jsDelivr — the dev server runs locally with
-// network access, like reveal.js. Syntax highlighting is a presentation layer
-// added client-side, so it never affects the block model or the diff.
+// highlight.js + mermaid (pinned) served from jsDelivr — the dev server runs
+// locally with network access, like reveal.js. Both are client-side presentation
+// layers, so they never affect the block model or the diff. mermaid is loaded
+// lazily (only when a diagram is actually present).
 const HLJS: &str = "https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.11.1";
+const MERMAID: &str = "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js";
 
 /// `<head>` stylesheet link for code syntax highlighting (the highlight.js theme).
 pub fn code_head() -> String {
@@ -395,11 +399,13 @@ pub fn code_head() -> String {
 }
 
 /// Scripts that load highlight.js and define `window.qmdEnhanceCode(root)`,
-/// which syntax-highlights every language-tagged `<pre><code>` under `root` and
-/// gives each code block a copy button. Callers invoke `qmdEnhanceCode` after
-/// (re)mounting content; it is idempotent (skips already-enhanced blocks).
+/// which syntax-highlights every language-tagged `<pre><code>` under `root`,
+/// gives each code block a copy button, and renders any `<pre class="mermaid">`
+/// diagrams (lazy-loading mermaid.js on first use). Callers invoke it after
+/// (re)mounting content; it is idempotent (skips already-processed blocks).
 pub fn code_scripts() -> String {
-    format!("<script src=\"{HLJS}/highlight.min.js\"></script>\n<script>{CODE_ENHANCE_JS}</script>")
+    let js = CODE_ENHANCE_JS.replace("{{MERMAID}}", MERMAID);
+    format!("<script src=\"{HLJS}/highlight.min.js\"></script>\n<script>{js}</script>")
 }
 
 const CODE_ENHANCE_JS: &str = r#"
@@ -426,7 +432,28 @@ window.qmdEnhanceCode = function (root) {
     });
     pre.appendChild(btn);
   });
+  qmdRenderMermaid(root);
 };
+
+function qmdRenderMermaid(root) {
+  var pending = root.querySelectorAll('pre.mermaid:not([data-processed])');
+  if (!pending.length) return;
+  if (window.mermaid) {
+    try { window.mermaid.run({ nodes: pending }); } catch (e) {}
+    return;
+  }
+  if (window.__qmdMermaidLoading) return; // its onload will sweep the whole doc
+  window.__qmdMermaidLoading = true;
+  var s = document.createElement('script');
+  s.src = '{{MERMAID}}';
+  s.onload = function () {
+    try {
+      window.mermaid.initialize({ startOnLoad: false });
+      window.mermaid.run({ nodes: document.querySelectorAll('pre.mermaid:not([data-processed])') });
+    } catch (e) {}
+  };
+  document.head.appendChild(s);
+}
 "#;
 
 fn page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
@@ -910,10 +937,7 @@ fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
             out.push_str("</code>");
         }
         NodeValue::CodeBlock(cb) => {
-            let class = match code_lang(&cb.info) {
-                Some(l) => format!(" class=\"language-{l}\""),
-                None => String::new(),
-            };
+            let lang = code_lang(&cb.info);
             // Quarto cells (```{lang}) carry leading `#| key: val` option lines; drop them.
             let is_cell = cb.info.trim_start().starts_with('{');
             let literal = if is_cell {
@@ -921,9 +945,21 @@ fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
             } else {
                 cb.literal.clone()
             };
-            out.push_str(&format!("<pre{attrs}><code{class}>"));
-            escape_html(&literal, out);
-            out.push_str("</code></pre>");
+            if lang.as_deref() == Some("mermaid") {
+                // Diagram source for client-side mermaid.js. No <code> element,
+                // so it skips syntax highlighting and the copy button.
+                out.push_str(&format!("<pre{attrs} class=\"mermaid\">"));
+                escape_html(&literal, out);
+                out.push_str("</pre>");
+            } else {
+                let class = match &lang {
+                    Some(l) => format!(" class=\"language-{l}\""),
+                    None => String::new(),
+                };
+                out.push_str(&format!("<pre{attrs}><code{class}>"));
+                escape_html(&literal, out);
+                out.push_str("</code></pre>");
+            }
         }
         NodeValue::HtmlBlock(hb) => emit_html_block(&hb.literal, attrs, out),
         NodeValue::HtmlInline(h) => out.push_str(h),
@@ -1558,6 +1594,7 @@ const REVEAL_EXTRA_CSS: &str = r#"
                       font: 600 .5em ui-sans-serif, system-ui, sans-serif; color: #444;
                       background: #fff; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; }
   .reveal .qmd-copy.qmd-copied { color: #2bb673; border-color: #2bb673; }
+  .reveal pre.mermaid { background: transparent; padding: 0; text-align: center; }
   .reveal .katex-display { margin: .4em 0; }
   [data-block-id].qmd-hl { outline: 2px solid #4c8dff; outline-offset: 3px; }
 "#;
@@ -1645,6 +1682,20 @@ mod tests {
         let h = &doc.blocks[0].html;
         assert!(h.contains("qmd-layout"), "got: {h}");
         assert!(h.contains("repeat(2,"), "got: {h}");
+    }
+
+    #[test]
+    fn mermaid_block_emits_pre_mermaid_without_code() {
+        // Both the executable cell form and a plain fence become a mermaid pre.
+        for src in ["```{mermaid}\nflowchart LR\n  A --> B\n```\n", "```mermaid\nflowchart LR\n  A --> B\n```\n"] {
+            let doc = render_document(src);
+            let h = &doc.blocks[0].html;
+            assert!(h.contains("<pre data-block-id"), "got: {h}");
+            assert!(h.contains("class=\"mermaid\""), "got: {h}");
+            assert!(!h.contains("<code"), "mermaid must not wrap a <code> element: {h}");
+            assert!(h.contains("flowchart LR"), "got: {h}");
+            assert!(h.contains("A --&gt; B"), "diagram source should be escaped: {h}");
+        }
     }
 
     #[test]

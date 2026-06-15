@@ -57,7 +57,17 @@ protocol. The editor and browser are thin clients.
 | Extension | `extension/` | VS Code client: hosts the preview, drives editor sync |
 | Web client | `web-client/` | Browser preview client (vanilla JS) |
 
-Adding another editor later is a new thin client, not a rewrite.
+Adding another editor later is a new thin client, not a rewrite. A save flows
+through the pipeline like this:
+
+```{mermaid}
+flowchart LR
+  save["Save .qmd"] --> watch["File watcher"]
+  watch --> parse["Re-parse + block model"]
+  parse --> diff["Diff by block id"]
+  diff --> ws["Websocket:<br/>changed blocks only"]
+  ws --> dom["Preview updates<br/>in place"]
+```
 
 # The block model
 
