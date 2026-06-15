@@ -155,13 +155,24 @@ pub fn render_html_page_with_includes(src: &str, base_dir: &Path, fallback_title
     page_from_doc(&render_document_with_includes(src, base_dir), fallback_title)
 }
 
+/// Self-contained KaTeX stylesheet (fonts inlined as data URIs at build time).
+const KATEX_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/katex-inlined.css"));
+
 fn page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
     let title = doc.title.as_deref().unwrap_or(fallback_title);
     let mut t = String::new();
     escape_html(title, &mut t);
+    let body = doc.body_html();
+    // Only ship the (large) KaTeX stylesheet when the page actually has math.
+    let katex_css = if body.contains("class=\"katex") {
+        format!("<style>{KATEX_CSS}</style>")
+    } else {
+        String::new()
+    };
     PAGE_TEMPLATE
         .replace("{{TITLE}}", &t)
-        .replace("{{BODY}}", &doc.body_html())
+        .replace("{{KATEX_CSS}}", &katex_css)
+        .replace("{{BODY}}", &body)
 }
 
 // --- emitter -------------------------------------------------------------
@@ -538,7 +549,7 @@ const PAGE_TEMPLATE: &str = r#"<!DOCTYPE html>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>{{TITLE}}</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous" />
+{{KATEX_CSS}}
 <style>
   body { max-width: 46rem; margin: 2rem auto; padding: 0 1rem;
          font: 17px/1.7 ui-serif, Georgia, "Times New Roman", serif; color: #1a1a1a; }
