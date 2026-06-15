@@ -1,10 +1,12 @@
 //! qmd-fast-core
 //!
 //! The editor-agnostic rendering core: `.qmd` parsing (comrak + sourcepos),
-//! the block model, and incremental HTML rendering. All intelligence lives
-//! here; the server and clients are thin layers over this crate.
-//!
-//! Currently a Phase 0 skeleton — nothing renders yet.
+//! the block model, and HTML rendering. All intelligence lives here; the
+//! server and clients are thin layers over this crate.
+
+pub mod render;
+
+pub use render::{Block, RenderedDoc, render_document, render_html_page};
 
 /// Crate version, surfaced so the server/CLI can report a single source of truth.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

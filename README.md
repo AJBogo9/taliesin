@@ -29,4 +29,11 @@ web-client/     browser preview client (vanilla JS)
 
 ## Status
 
-Phase 0 — repo skeleton & corpus.
+Phase 1 — parse → HTML with source positions. The core parses `.qmd` with
+comrak (sourcepos), splits the document into top-level blocks with content-hash
+ids, and emits HTML with `data-block-id` + `data-sourcepos` on every block.
+
+```sh
+cargo run -p qmd-fast-server -- render corpus/posts/born-machines.qmd > out.html
+cargo run -p qmd-fast-server -- blocks corpus/posts/born-machines.qmd
+```
