@@ -47,6 +47,8 @@ fn parse_options() -> Options<'static> {
     options.extension.autolink = true;
     // Parse `$...$` (inline) and `$$...$$` (display) into Math nodes for KaTeX.
     options.extension.math_dollars = true;
+    // Smart typography (curly quotes, en/em dashes) to match Quarto/pandoc output.
+    options.parse.smart = true;
     // sourcepos is tracked on AST nodes during parsing; `render.sourcepos`
     // only affects comrak's own formatter, which we don't use.
     options
