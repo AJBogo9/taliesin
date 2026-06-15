@@ -1,0 +1,290 @@
+//! The long-running dev server: serves the preview client over HTTP, pushes
+//! the document over a websocket, and watches the source files. On each change
+//! it re-renders, diffs against the previous block list, and broadcasts only
+//! the changed blocks so the browser updates in place.
+
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::extract::State;
+use axum::response::{Html, IntoResponse};
+use axum::routing::get;
+use axum::Router;
+use futures_util::{SinkExt, StreamExt};
+use notify::Watcher;
+use qmd_fast_core::{Block, BlockOp, RenderedDoc};
+use std::collections::HashSet;
+use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use tokio::sync::{broadcast, mpsc};
+
+const CLIENT_JS: &str = include_str!("../../../web-client/client.js");
+
+struct AppState {
+    path: PathBuf,
+    base_dir: PathBuf,
+    doc: Mutex<DocState>,
+    tx: broadcast::Sender<String>,
+}
+
+#[derive(Default)]
+struct DocState {
+    title: Option<String>,
+    blocks: Vec<Block>,
+}
+
+impl DocState {
+    fn body_html(&self) -> String {
+        let mut s = String::new();
+        for b in &self.blocks {
+            s.push_str(&b.html);
+            s.push('\n');
+        }
+        s
+    }
+}
+
+/// Entry point for `qmd-fast serve <file> [port]`.
+pub fn run(path: PathBuf, port: u16) -> std::io::Result<()> {
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(serve(path, port))
+}
+
+async fn serve(path: PathBuf, port: u16) -> std::io::Result<()> {
+    let base_dir = path.parent().unwrap_or(Path::new(".")).to_path_buf();
+    let (tx, _rx) = broadcast::channel(256);
+    let app = Arc::new(AppState {
+        path,
+        base_dir,
+        doc: Mutex::new(DocState::default()),
+        tx,
+    });
+
+    // Initial render.
+    if let Some(doc) = render_doc(&app) {
+        let mut d = app.doc.lock().unwrap();
+        d.title = doc.title;
+        d.blocks = doc.blocks;
+    }
+
+    spawn_watcher(app.clone());
+
+    let router = Router::new()
+        .route("/", get(index))
+        .route("/ws", get(ws_handler))
+        .with_state(app.clone());
+
+    let addr = SocketAddr::from(([127, 0, 0, 1], port));
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    println!(
+        "qmd-fast serving http://{addr}  (watching {})",
+        app.path.display()
+    );
+    axum::serve(listener, router)
+        .await
+        .map_err(std::io::Error::other)
+}
+
+fn render_doc(app: &AppState) -> Option<RenderedDoc> {
+    let src = std::fs::read_to_string(&app.path).ok()?;
+    Some(qmd_fast_core::render_document_with_includes(&src, &app.base_dir))
+}
+
+// --- HTTP ---------------------------------------------------------------
+
+async fn index() -> Html<String> {
+    Html(index_html())
+}
+
+fn index_html() -> String {
+    format!(
+        r#"<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>qmd-fast</title>
+{styles}
+<style>
+  #qmd-status {{ position: fixed; bottom: .5rem; right: .5rem; z-index: 9999;
+                 font: 12px ui-sans-serif, system-ui, sans-serif; color: #888;
+                 background: #fff; padding: .15rem .5rem; border: 1px solid #eee;
+                 border-radius: 4px; }}
+</style>
+</head>
+<body>
+<main id="qmd-root"></main>
+<div id="qmd-status">connecting…</div>
+<script>
+{js}
+</script>
+</body>
+</html>
+"#,
+        styles = qmd_fast_core::client_styles(),
+        js = CLIENT_JS,
+    )
+}
+
+// --- WebSocket ----------------------------------------------------------
+
+async fn ws_handler(
+    ws: WebSocketUpgrade,
+    State(app): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| client_conn(socket, app))
+}
+
+async fn client_conn(socket: WebSocket, app: Arc<AppState>) {
+    let (mut sink, mut stream) = socket.split();
+
+    // Subscribe and snapshot under the same lock the watcher uses, so we never
+    // miss or double-apply an op straddling the initial render.
+    let (snapshot, mut rx) = {
+        let d = app.doc.lock().unwrap();
+        let rx = app.tx.subscribe();
+        (full_render_json(&d), rx)
+    };
+    if sink.send(Message::Text(snapshot.into())).await.is_err() {
+        return;
+    }
+
+    loop {
+        tokio::select! {
+            broadcasted = rx.recv() => match broadcasted {
+                Ok(text) => {
+                    if sink.send(Message::Text(text.into())).await.is_err() {
+                        break;
+                    }
+                }
+                // Fell behind: re-sync with a fresh full render.
+                Err(broadcast::error::RecvError::Lagged(_)) => {
+                    let fr = full_render_json(&app.doc.lock().unwrap());
+                    if sink.send(Message::Text(fr.into())).await.is_err() {
+                        break;
+                    }
+                }
+                Err(broadcast::error::RecvError::Closed) => break,
+            },
+            incoming = stream.next() => match incoming {
+                Some(Ok(Message::Text(t))) => handle_client_msg(t.as_str()),
+                Some(Ok(Message::Close(_))) | None => break,
+                Some(Err(_)) => break,
+                _ => {}
+            },
+        }
+    }
+}
+
+fn handle_client_msg(text: &str) {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else { return };
+    if v.get("type").and_then(|t| t.as_str()) == Some("click_block") {
+        let file = v.get("source_file").and_then(|f| f.as_str()).unwrap_or("(primary)");
+        let pos = v.get("sourcepos").and_then(|p| p.as_str()).unwrap_or("?");
+        // Phase 3 will turn this into an editor jump; for now, report it.
+        println!("click-to-source: {file} @ {pos}");
+    }
+}
+
+// --- messages -----------------------------------------------------------
+
+fn full_render_json(d: &DocState) -> String {
+    serde_json::json!({
+        "type": "full_render",
+        "title": d.title,
+        "body_html": d.body_html(),
+    })
+    .to_string()
+}
+
+fn op_json(op: &BlockOp) -> String {
+    match op {
+        BlockOp::Update { target_id, html } => {
+            serde_json::json!({"type": "update", "target_id": target_id, "html": html})
+        }
+        BlockOp::Insert { after_id, html } => {
+            serde_json::json!({"type": "insert", "after_id": after_id, "html": html})
+        }
+        BlockOp::Remove { target_id } => {
+            serde_json::json!({"type": "remove", "target_id": target_id})
+        }
+    }
+    .to_string()
+}
+
+// --- file watching ------------------------------------------------------
+
+fn spawn_watcher(app: Arc<AppState>) {
+    let (signal_tx, mut signal_rx) = mpsc::unbounded_channel::<()>();
+    let dirs = watch_dirs(&app);
+
+    // notify is synchronous; run it on its own thread and forward events.
+    std::thread::spawn(move || {
+        let mut watcher = match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            if let Ok(ev) = res {
+                if matches!(
+                    ev.kind,
+                    notify::EventKind::Modify(_)
+                        | notify::EventKind::Create(_)
+                        | notify::EventKind::Remove(_)
+                ) {
+                    let _ = signal_tx.send(());
+                }
+            }
+        }) {
+            Ok(w) => w,
+            Err(e) => {
+                eprintln!("file watcher unavailable: {e}");
+                return;
+            }
+        };
+        for dir in &dirs {
+            if let Err(e) = watcher.watch(dir, notify::RecursiveMode::Recursive) {
+                eprintln!("cannot watch {}: {e}", dir.display());
+            }
+        }
+        std::thread::park(); // keep the watcher alive
+    });
+
+    // Debounce bursts of save events, then re-render and broadcast a diff.
+    tokio::spawn(async move {
+        while signal_rx.recv().await.is_some() {
+            tokio::time::sleep(Duration::from_millis(80)).await;
+            while signal_rx.try_recv().is_ok() {}
+            on_change(&app);
+        }
+    });
+}
+
+/// Directories to watch: the primary doc's directory plus the directory of any
+/// included file (so out-of-tree includes still trigger refreshes).
+fn watch_dirs(app: &AppState) -> Vec<PathBuf> {
+    let mut dirs: HashSet<PathBuf> = HashSet::new();
+    dirs.insert(app.base_dir.clone());
+    if let Ok(src) = std::fs::read_to_string(&app.path) {
+        for dep in qmd_fast_core::includes::dependencies(&src, &app.base_dir) {
+            if let Some(parent) = dep.parent() {
+                dirs.insert(parent.to_path_buf());
+            }
+        }
+    }
+    dirs.into_iter().collect()
+}
+
+fn on_change(app: &AppState) {
+    let Some(doc) = render_doc(app) else { return };
+    let ops = {
+        let mut d = app.doc.lock().unwrap();
+        let ops = qmd_fast_core::diff_blocks(&d.blocks, &doc.blocks);
+        d.title = doc.title;
+        d.blocks = doc.blocks;
+        // Broadcast under the lock so connecting clients can't interleave.
+        for op in &ops {
+            let _ = app.tx.send(op_json(op));
+        }
+        ops.len()
+    };
+    if ops > 0 {
+        println!("updated {ops} block(s)");
+    }
+}

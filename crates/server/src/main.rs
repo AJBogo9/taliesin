@@ -1,12 +1,12 @@
 //! qmd-fast — dev server & CLI entry point.
 //!
-//! Phase 1 surface:
-//!   - `qmd-fast render <file.qmd>`  one-shot full HTML page to stdout
-//!   - `qmd-fast blocks <file.qmd>`  list block ids + sourcepos (debugging)
-//!
-//! Phase 2 will add `qmd-fast serve <path>` (long-running dev server).
+//!   - `qmd-fast render <file.qmd>`       one-shot full HTML page to stdout
+//!   - `qmd-fast blocks <file.qmd>`       list block ids + sourcepos (debugging)
+//!   - `qmd-fast serve  <file.qmd> [port]` long-running preview dev server
 
-use std::path::Path;
+mod serve;
+
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
@@ -14,9 +14,25 @@ fn main() -> ExitCode {
     match args.get(1).map(String::as_str) {
         Some("render") => cmd_render(args.get(2)),
         Some("blocks") => cmd_blocks(args.get(2)),
+        Some("serve") => cmd_serve(args.get(2), args.get(3)),
         _ => {
             usage();
             ExitCode::SUCCESS
+        }
+    }
+}
+
+fn cmd_serve(path: Option<&String>, port: Option<&String>) -> ExitCode {
+    let Some(path) = path else {
+        eprintln!("usage: qmd-fast serve <file.qmd> [port]");
+        return ExitCode::FAILURE;
+    };
+    let port: u16 = port.and_then(|p| p.parse().ok()).unwrap_or(4321);
+    match serve::run(PathBuf::from(path), port) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("serve error: {e}");
+            ExitCode::FAILURE
         }
     }
 }
@@ -99,6 +115,7 @@ fn usage() {
     println!("qmd-fast {} (Phase 1)", qmd_fast_core::VERSION);
     println!();
     println!("usage:");
-    println!("  qmd-fast render <file.qmd>   full HTML page to stdout");
-    println!("  qmd-fast blocks <file.qmd>   list block ids + sourcepos");
+    println!("  qmd-fast render <file.qmd>          full HTML page to stdout");
+    println!("  qmd-fast blocks <file.qmd>          list block ids + sourcepos");
+    println!("  qmd-fast serve  <file.qmd> [port]   live preview dev server (default port 4321)");
 }

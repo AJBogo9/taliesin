@@ -83,6 +83,32 @@ fn expand(
     }
 }
 
+/// All files transitively pulled in by `{{< include >}}` from `src` (absolute,
+/// normalized). Used by the dev server to watch the right files.
+pub fn dependencies(src: &str, base_dir: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    let mut stack = Vec::new();
+    collect_deps(src, base_dir, &mut stack, &mut out);
+    out
+}
+
+fn collect_deps(src: &str, base_dir: &Path, stack: &mut Vec<PathBuf>, out: &mut Vec<PathBuf>) {
+    for line in src.lines() {
+        let Some(rel) = parse_include(line) else { continue };
+        let target = normalize(&base_dir.join(rel));
+        if stack.contains(&target) || out.contains(&target) {
+            continue;
+        }
+        out.push(target.clone());
+        if let Ok(content) = std::fs::read_to_string(&target) {
+            let child_base = target.parent().unwrap_or(base_dir).to_path_buf();
+            stack.push(target.clone());
+            collect_deps(&content, &child_base, stack, out);
+            stack.pop();
+        }
+    }
+}
+
 /// If `line` is solely a `{{< include PATH >}}` shortcode, return PATH.
 fn parse_include(line: &str) -> Option<&str> {
     let t = line.trim();

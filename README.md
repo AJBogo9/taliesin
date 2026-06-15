@@ -29,9 +29,19 @@ web-client/     browser preview client (vanilla JS)
 
 ## Status
 
-Phase 1 — parse → HTML with source positions. The core parses `.qmd` with
-comrak (sourcepos), splits the document into top-level blocks with content-hash
-ids, and emits HTML with `data-block-id` + `data-sourcepos` on every block.
+Phase 2 — live dev server with block-level incremental updates. `qmd-fast serve`
+watches the `.qmd` (and its includes/bibliography), and on each save re-renders,
+diffs against the previous block list, and pushes only the changed blocks over a
+websocket. Unchanged blocks are never touched, so scroll position and the
+runtime state of live blocks (Three.js, OJS) survive edits.
+
+```sh
+cargo run -p qmd-fast-server -- serve corpus/posts/born-machines.qmd  # http://127.0.0.1:4321
+```
+
+The Phase 1 render pipeline underneath. The core parses `.qmd` with comrak
+(sourcepos), splits the document into top-level blocks with content-hash ids,
+and emits HTML with `data-block-id` + `data-sourcepos` on every block.
 
 Supported so far:
 
