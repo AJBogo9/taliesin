@@ -150,5 +150,44 @@
     window.parent.postMessage({ type: "qmd-goto", ...blockRef(el) }, "*");
   });
 
+  // Reverse sync: highlight (and reveal/scroll to) the block under the editor
+  // cursor. The matching block is the smallest one whose sourcepos range covers
+  // `line` in the same source file, else the nearest block starting before it.
+  const highlightAtLine = (file, line) => {
+    const want = file || null;
+    let contained = null, containedSpan = Infinity, preceding = null, precedingStart = -1;
+    for (const el of root.querySelectorAll("[data-sourcepos]")) {
+      if ((el.dataset.sourceFile || null) !== want) continue;
+      const m = /^(\d+):\d+-(\d+):\d+$/.exec(el.dataset.sourcepos || "");
+      if (!m) continue;
+      const start = +m[1], end = +m[2];
+      if (line >= start && line <= end) {
+        if (end - start < containedSpan) { contained = el; containedSpan = end - start; }
+      } else if (start <= line && start > precedingStart) {
+        preceding = el;
+        precedingStart = start;
+      }
+    }
+    const target = contained || preceding;
+    if (!target) return;
+    document.querySelectorAll(".qmd-hl").forEach((n) => n.classList.remove("qmd-hl"));
+    target.classList.add("qmd-hl");
+    if (isReveal && window.Reveal) {
+      const sections = [...root.querySelectorAll(".slides > section")];
+      const i = sections.indexOf(target.closest(".slides > section"));
+      if (i >= 0) window.Reveal.slide(i);
+    } else {
+      const r = target.getBoundingClientRect();
+      if (r.top < 0 || r.bottom > window.innerHeight) {
+        target.scrollIntoView({ block: "center", behavior: "smooth" });
+      }
+    }
+  };
+
+  window.addEventListener("message", (e) => {
+    const m = e.data;
+    if (m && m.type === "qmd-cursor") highlightAtLine(m.file, m.line);
+  });
+
   connect();
 })();

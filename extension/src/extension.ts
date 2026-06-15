@@ -24,7 +24,35 @@ export interface GotoMessage {
   sourcepos: string | null;
 }
 
+/// Reverse sync: editor cursor -> highlight the matching preview block.
+export interface CursorMessage {
+  type: "qmd-cursor";
+  /// Origin file relative to the main doc's dir, or null for the primary doc
+  /// (matches each block's `data-source-file`).
+  file: string | null;
+  /// 1-based cursor line, in `file`'s own line numbering.
+  line: number;
+}
+
 const previews = new Map<string, Preview>();
+
+/// Compute the `qmd-cursor` message for a given preview when the cursor is at
+/// `line` in `docPath`. Returns null when `docPath` is neither the previewed
+/// doc nor a file under its directory (so it can't be one of its blocks).
+export function cursorMessageFor(
+  mainFile: string,
+  docPath: string,
+  line: number,
+): CursorMessage | null {
+  if (docPath === mainFile) {
+    return { type: "qmd-cursor", file: null, line };
+  }
+  const rel = path.relative(path.dirname(mainFile), docPath);
+  if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
+    return null;
+  }
+  return { type: "qmd-cursor", file: rel.split(path.sep).join("/"), line };
+}
 
 /// The live preview for a document, if open (exposed for tests).
 export function getPreview(fsPath: string): Preview | undefined {
@@ -34,7 +62,26 @@ export function getPreview(fsPath: string): Preview | undefined {
 export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("qmd-fast.openPreview", () => openPreview()),
+    vscode.window.onDidChangeTextEditorSelection(onSelectionChange),
   );
+}
+
+let cursorTimer: ReturnType<typeof setTimeout> | undefined;
+
+/// Debounced reverse sync: on cursor movement in a .qmd editor, tell every open
+/// preview to highlight the block under the cursor.
+function onSelectionChange(e: vscode.TextEditorSelectionChangeEvent) {
+  if (previews.size === 0) return;
+  const docPath = e.textEditor.document.uri.fsPath;
+  if (path.extname(docPath) !== ".qmd") return;
+  const line = e.selections[0].active.line + 1; // editor is 0-based; sourcepos is 1-based
+  if (cursorTimer) clearTimeout(cursorTimer);
+  cursorTimer = setTimeout(() => {
+    for (const [mainFile, preview] of previews) {
+      const msg = cursorMessageFor(mainFile, docPath, line);
+      if (msg) void preview.panel.webview.postMessage(msg);
+    }
+  }, 60);
 }
 
 export function deactivate() {
@@ -206,8 +253,9 @@ async function waitForServer(port: number, timeoutMs = 8000): Promise<void> {
   }
 }
 
-/// The webview shell: an iframe to the dev server, plus a relay that forwards
-/// the iframe's `qmd-goto` messages to the extension host.
+/// The webview shell: an iframe to the dev server, plus a two-way relay —
+/// the iframe's `qmd-goto` messages go up to the extension host, and the host's
+/// `qmd-cursor` messages go down into the iframe (the preview client).
 function webviewHtml(port: number): string {
   const src = `http://127.0.0.1:${port}/`;
   return `<!DOCTYPE html>
@@ -221,9 +269,13 @@ function webviewHtml(port: number): string {
 <iframe id="preview" src="${src}"></iframe>
 <script>
   const vscode = acquireVsCodeApi();
+  const iframe = document.getElementById("preview");
   window.addEventListener("message", (e) => {
     const m = e.data;
-    if (m && m.type === "qmd-goto") vscode.postMessage(m);
+    if (!m) return;
+    if (m.type === "qmd-goto") vscode.postMessage(m);                     // iframe -> host
+    else if (m.type === "qmd-cursor" && iframe.contentWindow)
+      iframe.contentWindow.postMessage(m, "*");                          // host -> iframe
   });
 </script>
 </body>

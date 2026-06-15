@@ -5,7 +5,7 @@ import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 
-import { getPreview, gotoSource, parseSourcepos } from "../../extension";
+import { cursorMessageFor, getPreview, gotoSource, parseSourcepos } from "../../extension";
 
 // out/test/suite -> out/test -> out -> extension -> repo root
 const REPO = path.resolve(__dirname, "../../../..");
@@ -71,6 +71,23 @@ suite("qmd-fast extension", () => {
     assert.strictEqual(r!.end.character, 22);
     assert.strictEqual(parseSourcepos(""), undefined);
     assert.strictEqual(parseSourcepos(null), undefined);
+  });
+
+  test("cursorMessageFor maps the primary file and included files", () => {
+    // Cursor in the primary doc -> no source_file, 1-based line preserved.
+    assert.deepStrictEqual(cursorMessageFor(main, main, 7), {
+      type: "qmd-cursor",
+      file: null,
+      line: 7,
+    });
+    // Cursor in an included file under the doc's dir -> its relative path.
+    assert.deepStrictEqual(cursorMessageFor(main, inc, 3), {
+      type: "qmd-cursor",
+      file: "inc.qmd",
+      line: 3,
+    });
+    // A file outside the doc's directory is not one of its blocks.
+    assert.strictEqual(cursorMessageFor(main, path.join(os.tmpdir(), "elsewhere.qmd"), 1), null);
   });
 
   test("gotoSource jumps to the block in the primary file", async () => {
