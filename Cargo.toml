@@ -1,0 +1,18 @@
+[workspace]
+resolver = "3"
+members = ["crates/core", "crates/server"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+license = "MIT"
+authors = ["Andreas Bogossian <andreas.bogossian9@gmail.com>"]
+repository = "https://github.com/AJBogo9/qmd-fast"
+
+[workspace.dependencies]
+# Internal crates
+qmd-fast-core = { path = "crates/core" }
+
+# Shared external dependencies are declared here as the project grows
+# (e.g. comrak in Phase 1, axum/tokio/notify in Phase 2) so versions stay
+# centralized across the workspace.

@@ -1,0 +1,10 @@
+[package]
+name = "qmd-fast-core"
+description = "Parser, block model, and HTML rendering for qmd-fast"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
