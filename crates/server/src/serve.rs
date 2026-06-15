@@ -19,6 +19,8 @@ use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
 
 const CLIENT_JS: &str = include_str!("../../../web-client/client.js");
+/// Quarto's favicon (vendored), served for the preview tab.
+const FAVICON: &[u8] = include_bytes!("../../../web-client/favicon.png");
 
 struct AppState {
     path: PathBuf,
@@ -87,6 +89,7 @@ async fn serve(path: PathBuf, port: u16) -> std::io::Result<()> {
 
     let router = Router::new()
         .route("/", get(index))
+        .route("/favicon.ico", get(favicon))
         .route("/ws", get(ws_handler))
         .with_state(app.clone());
 
@@ -126,6 +129,12 @@ async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
     Html(index_html(format, toc))
 }
 
+/// The vendored Quarto favicon (also satisfies the browser's implicit request,
+/// so the preview tab gets an icon and the console stays free of a 404).
+async fn favicon() -> impl IntoResponse {
+    ([(axum::http::header::CONTENT_TYPE, "image/png")], FAVICON)
+}
+
 fn index_html(format: DocFormat, toc: bool) -> String {
     match format {
         DocFormat::Reveal => reveal_index_html(),
@@ -154,6 +163,7 @@ fn blog_index_html(toc: bool) -> String {
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>qmd-fast</title>
+<link rel="icon" type="image/png" href="/favicon.ico" />
 {styles}
 {code_head}
 <style>{status_css}</style>
@@ -189,6 +199,7 @@ fn reveal_index_html() -> String {
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>qmd-fast</title>
+<link rel="icon" type="image/png" href="/favicon.ico" />
 {head}
 {code_head}
 <style>{status_css}</style>
