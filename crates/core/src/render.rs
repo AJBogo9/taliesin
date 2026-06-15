@@ -45,6 +45,8 @@ fn parse_options() -> Options<'static> {
     options.extension.strikethrough = true;
     options.extension.table = true;
     options.extension.autolink = true;
+    // Parse `$...$` (inline) and `$$...$$` (display) into Math nodes for KaTeX.
+    options.extension.math_dollars = true;
     // sourcepos is tracked on AST nodes during parsing; `render.sourcepos`
     // only affects comrak's own formatter, which we don't use.
     options
@@ -66,7 +68,7 @@ pub fn render_document(src: &str) -> RenderedDoc {
     let mut id_counts: HashMap<String, u32> = HashMap::new();
 
     for node in root.children() {
-        let (sourcepos, block_src) = {
+        let (sourcepos, block_src, is_paragraph) = {
             let data = node.data.borrow();
             if let NodeValue::FrontMatter(fm) = &data.value {
                 title = extract_title(fm);
@@ -77,13 +79,26 @@ pub fn render_document(src: &str) -> RenderedDoc {
                 "{}:{}-{}:{}",
                 sp.start.line, sp.start.column, sp.end.line, sp.end.column
             );
-            (sourcepos, slice_lines(&lines, sp.start.line, sp.end.line))
+            let is_paragraph = matches!(data.value, NodeValue::Paragraph);
+            (
+                sourcepos,
+                slice_lines(&lines, sp.start.line, sp.end.line),
+                is_paragraph,
+            )
         };
 
         let id = make_id(&block_src, &mut id_counts);
         let attrs = format!(" data-block-id=\"{id}\" data-sourcepos=\"{sourcepos}\"");
         let mut html = String::new();
-        emit(node, &attrs, &mut html);
+        // Quarto/pandoc treat a bare `\begin{env}...\end{env}` block as display
+        // math even without `$$`; comrak doesn't, so detect and render it here.
+        if let Some(env) = is_paragraph.then(|| bare_math_env(&block_src)).flatten() {
+            html.push_str(&format!("<div{attrs} class=\"qmd-math-block\">"));
+            html.push_str(&crate::math::render(env, true));
+            html.push_str("</div>");
+        } else {
+            emit(node, &attrs, &mut html);
+        }
         blocks.push(Block { id, sourcepos, html });
     }
 
@@ -149,6 +164,7 @@ fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
         }
         NodeValue::HtmlBlock(hb) => emit_html_block(&hb.literal, attrs, out),
         NodeValue::HtmlInline(h) => out.push_str(h),
+        NodeValue::Math(m) => out.push_str(&crate::math::render(&m.literal, m.display_math)),
         NodeValue::List(nl) => {
             let (tag, extra) = match nl.list_type {
                 ListType::Bullet => ("ul", String::new()),
@@ -360,6 +376,13 @@ fn is_fence_line(s: &str) -> bool {
     rest.is_empty() || rest.starts_with('{') || rest.chars().next().is_some_and(char::is_alphabetic)
 }
 
+/// If a block's source is entirely a LaTeX math environment
+/// (`\begin{env} ... \end{env}`), return it for display-math rendering.
+fn bare_math_env(block_src: &str) -> Option<&str> {
+    let t = block_src.trim();
+    (t.starts_with("\\begin{") && t.contains("\\end{") && t.ends_with('}')).then_some(t)
+}
+
 /// Drop leading `#| key: val` option lines from a Quarto code cell.
 fn strip_cell_options(literal: &str) -> String {
     let mut body = String::new();
@@ -447,6 +470,7 @@ const PAGE_TEMPLATE: &str = r#"<!DOCTYPE html>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>{{TITLE}}</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" crossorigin="anonymous" />
 <style>
   body { max-width: 46rem; margin: 2rem auto; padding: 0 1rem;
          font: 17px/1.7 ui-serif, Georgia, "Times New Roman", serif; color: #1a1a1a; }
@@ -545,6 +569,31 @@ mod tests {
         let h = &doc.blocks[0].html;
         assert!(h.contains("print(1)"));
         assert!(!h.contains("#| echo"), "option lines should be stripped: {h}");
+    }
+
+    #[test]
+    fn dollar_math_is_rendered_by_katex() {
+        let doc = render_document("The value $x^2$ is positive.\n");
+        let h = &doc.blocks[0].html;
+        assert!(h.contains("katex"), "expected katex markup, got: {h}");
+        assert!(!h.contains("$x^2$"), "raw dollar math should be consumed: {h}");
+    }
+
+    #[test]
+    fn display_math_block_renders() {
+        let doc = render_document("$$\n\\sum_{i=1}^n x_i\n$$\n");
+        assert!(doc.body_html().contains("katex-display"), "got: {}", doc.body_html());
+    }
+
+    #[test]
+    fn bare_latex_environment_renders_as_display_math() {
+        let doc = render_document("\\begin{align*}\na &= b \\\\\nc &= d\n\\end{align*}\n");
+        assert_eq!(doc.blocks.len(), 1);
+        let h = &doc.blocks[0].html;
+        // rendered as a display-math block (the raw TeX only survives inside
+        // KaTeX's <annotation>, which is expected).
+        assert!(h.contains("qmd-math-block"), "got: {h}");
+        assert!(h.contains("katex-display"), "expected display math, got: {h}");
     }
 
     #[test]

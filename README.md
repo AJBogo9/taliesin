@@ -32,6 +32,8 @@ web-client/     browser preview client (vanilla JS)
 Phase 1 — parse → HTML with source positions. The core parses `.qmd` with
 comrak (sourcepos), splits the document into top-level blocks with content-hash
 ids, and emits HTML with `data-block-id` + `data-sourcepos` on every block.
+Handles prose, tables, fenced divs, and Quarto code cells; renders math
+(inline, display, and bare `\begin{}` environments) server-side via KaTeX.
 
 ```sh
 cargo run -p qmd-fast-server -- render corpus/posts/born-machines.qmd > out.html

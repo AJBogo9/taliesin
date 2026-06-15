@@ -4,6 +4,7 @@
 //! the block model, and HTML rendering. All intelligence lives here; the
 //! server and clients are thin layers over this crate.
 
+pub mod math;
 pub mod render;
 
 pub use render::{Block, RenderedDoc, render_document, render_html_page};
