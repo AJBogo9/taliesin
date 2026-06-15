@@ -322,8 +322,15 @@ const BASE_CSS: &str = r#"
   body { max-width: 46rem; margin: 2rem auto; padding: 0 1rem;
          font: 17px/1.7 ui-serif, Georgia, "Times New Roman", serif; color: #1a1a1a; }
   h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui, sans-serif; line-height: 1.25; }
-  pre { background: #f5f5f5; padding: 1rem; border-radius: 6px; overflow: auto; font-size: .9em; }
+  pre { position: relative; background: #f5f5f5; padding: 1rem; border-radius: 6px; overflow: auto; font-size: .9em; }
   code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .qmd-copy { position: absolute; top: .45rem; right: .45rem; padding: .1rem .45rem;
+              font: 600 11px/1.4 ui-sans-serif, system-ui, sans-serif; color: #555;
+              background: #fff; border: 1px solid #d4d4d4; border-radius: 5px;
+              cursor: pointer; opacity: 0; transition: opacity .12s ease; }
+  pre:hover .qmd-copy, .qmd-copy:focus-visible { opacity: 1; }
+  .qmd-copy:hover { color: #111; border-color: #999; }
+  .qmd-copy.qmd-copied { color: #2bb673; border-color: #2bb673; }
   blockquote { border-left: 3px solid #ddd; margin: 0 0 1rem; padding-left: 1rem; color: #555; }
   img { max-width: 100%; }
   table { border-collapse: collapse; }
@@ -377,6 +384,51 @@ pub fn client_styles() -> String {
     format!("<style>{BASE_CSS}</style>\n<style>{KATEX_CSS}</style>")
 }
 
+// highlight.js (pinned) served from jsDelivr — the dev server runs locally with
+// network access, like reveal.js. Syntax highlighting is a presentation layer
+// added client-side, so it never affects the block model or the diff.
+const HLJS: &str = "https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.11.1";
+
+/// `<head>` stylesheet link for code syntax highlighting (the highlight.js theme).
+pub fn code_head() -> String {
+    format!("<link rel=\"stylesheet\" href=\"{HLJS}/styles/github.min.css\" />")
+}
+
+/// Scripts that load highlight.js and define `window.qmdEnhanceCode(root)`,
+/// which syntax-highlights every language-tagged `<pre><code>` under `root` and
+/// gives each code block a copy button. Callers invoke `qmdEnhanceCode` after
+/// (re)mounting content; it is idempotent (skips already-enhanced blocks).
+pub fn code_scripts() -> String {
+    format!("<script src=\"{HLJS}/highlight.min.js\"></script>\n<script>{CODE_ENHANCE_JS}</script>")
+}
+
+const CODE_ENHANCE_JS: &str = r#"
+window.qmdEnhanceCode = function (root) {
+  if (!root) return;
+  root.querySelectorAll('pre > code').forEach(function (code) {
+    var pre = code.parentElement;
+    if (pre.dataset.enhanced) return;
+    pre.dataset.enhanced = '1';
+    if (window.hljs && /language-/.test(code.className)) {
+      try { window.hljs.highlightElement(code); } catch (e) {}
+    }
+    var btn = document.createElement('button');
+    btn.className = 'qmd-copy';
+    btn.type = 'button';
+    btn.setAttribute('aria-label', 'Copy code');
+    btn.textContent = 'Copy';
+    btn.addEventListener('click', function () {
+      navigator.clipboard.writeText(code.innerText).then(function () {
+        btn.textContent = 'Copied';
+        btn.classList.add('qmd-copied');
+        setTimeout(function () { btn.textContent = 'Copy'; btn.classList.remove('qmd-copied'); }, 1200);
+      });
+    });
+    pre.appendChild(btn);
+  });
+};
+"#;
+
 fn page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
     match doc.format {
         DocFormat::Reveal => reveal_page_from_doc(doc, fallback_title),
@@ -407,8 +459,10 @@ fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
         .replace("{{TITLE}}", &t)
         .replace("{{KATEX_CSS}}", &katex_css)
         .replace("{{BASE_CSS}}", BASE_CSS)
+        .replace("{{CODE_HEAD}}", &code_head())
         .replace("{{BODY_CLASS}}", &body_class)
         .replace("{{BODY}}", &body_content)
+        .replace("{{CODE_SCRIPTS}}", &code_scripts())
 }
 
 fn reveal_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
@@ -426,12 +480,16 @@ fn reveal_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
         "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n\
          <meta charset=\"utf-8\" />\n\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no\" />\n\
-         <title>{t}</title>\n{links}{katex_css}<style>{REVEAL_EXTRA_CSS}</style>\n\
+         <title>{t}</title>\n{links}{katex_css}<style>{REVEAL_EXTRA_CSS}</style>\n{code_head}\n\
          </head>\n<body>\n<div class=\"reveal\">\n<div class=\"slides\">\n{slides}</div>\n</div>\n\
          {script}\n<script>\n  Reveal.initialize({{ hash: true, slideNumber: 'c/t', center: false }});\n</script>\n\
+         {code_scripts}\n\
+         <script>document.addEventListener('DOMContentLoaded',function(){{window.qmdEnhanceCode&&window.qmdEnhanceCode(document.body);}});</script>\n\
          </body>\n</html>\n",
         links = reveal_stylesheet_links(),
         script = reveal_library_script(),
+        code_head = code_head(),
+        code_scripts = code_scripts(),
     )
 }
 
@@ -1463,12 +1521,13 @@ const PAGE_TEMPLATE: &str = r#"<!DOCTYPE html>
 <title>{{TITLE}}</title>
 {{KATEX_CSS}}
 <style>{{BASE_CSS}}</style>
+{{CODE_HEAD}}
 </head>
 <body{{BODY_CLASS}}>
 {{BODY}}
 <script>
-  // Phase 1 demo: click any block to see its source position in the console
-  // (this previews the Phase 3 click-to-source feature).
+  // Click any block to see its source position in the console (a static preview
+  // of click-to-source; the live server wires this to the editor).
   document.addEventListener('click', (e) => {
     const el = e.target.closest('[data-block-id]');
     document.querySelectorAll('.qmd-hl').forEach(n => n.classList.remove('qmd-hl'));
@@ -1477,6 +1536,8 @@ const PAGE_TEMPLATE: &str = r#"<!DOCTYPE html>
     console.log('block', el.dataset.blockId, '@', el.dataset.sourcepos);
   });
 </script>
+{{CODE_SCRIPTS}}
+<script>document.addEventListener('DOMContentLoaded',function(){window.qmdEnhanceCode&&window.qmdEnhanceCode(document.body);});</script>
 </body>
 </html>
 "#;
@@ -1490,9 +1551,13 @@ const REVEAL_EXTRA_CSS: &str = r#"
   .reveal .slides { text-align: left; }
   .reveal section.quarto-title-block, .reveal h1.title { text-align: center; }
   .reveal .subtitle { text-align: center; opacity: .75; font-style: italic; }
-  .reveal pre { width: 100%; box-shadow: none; font-size: .55em; }
+  .reveal pre { position: relative; width: 100%; box-shadow: none; font-size: .55em; }
   .reveal pre code { max-height: none; }
   .reveal code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .reveal .qmd-copy { position: absolute; top: .3em; right: .3em; padding: .1em .4em;
+                      font: 600 .5em ui-sans-serif, system-ui, sans-serif; color: #444;
+                      background: #fff; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; }
+  .reveal .qmd-copy.qmd-copied { color: #2bb673; border-color: #2bb673; }
   .reveal .katex-display { margin: .4em 0; }
   [data-block-id].qmd-hl { outline: 2px solid #4c8dff; outline-offset: 3px; }
 "#;

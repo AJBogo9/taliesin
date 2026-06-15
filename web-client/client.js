@@ -77,9 +77,13 @@
     window.scrollTo(0, y);
   };
 
-  // Re-attach reveal and rebuild the TOC after any DOM change (no-ops unless in
-  // the corresponding mode).
-  const afterChange = () => { syncReveal(); buildToc(); };
+  // Re-attach reveal, rebuild the TOC, and (re)highlight + add copy buttons to
+  // code blocks after any DOM change (each is a no-op when not applicable).
+  const afterChange = () => {
+    syncReveal();
+    buildToc();
+    if (window.qmdEnhanceCode) window.qmdEnhanceCode(root);
+  };
 
   const handle = (msg) => {
     switch (msg.type) {

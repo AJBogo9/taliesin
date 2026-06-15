@@ -6,14 +6,14 @@ replacement. Three load-bearing goals: click-to-source, block-level incremental
 updates, and no per-edit startup cost (warm server + Jupyter kernel).
 
 **The corpus is the spec.** "Done" means the real documents under `corpus/` render
-correctly, not that some feature checklist is complete. Scope is those ~30 docs,
-not Quarto's feature set.
+correctly, not that some feature checklist is complete. Scope is those ~5 documents
+(13 `.qmd` files counting book subsections), not Quarto's feature set.
 
 ## Where things are
 
 ```
 crates/core      qmd-fast-core lib: parser (comrak + sourcepos) → block model → render
-  src/render.rs    document + block model, HTML page emission
+  src/render.rs    document + block model; HTML / reveal.js / book page emission
   src/diff.rs      block-level diff (BlockOp) for incremental updates
   src/includes.rs  {{< include >}} resolution + per-file source map
   src/math.rs      KaTeX server-side render (bundled CSS/fonts, offline)
@@ -21,8 +21,12 @@ crates/core      qmd-fast-core lib: parser (comrak + sourcepos) → block model 
 crates/server    qmd-fast-server, bin `qmd-fast`: CLI + websocket dev server
   src/main.rs      render / blocks / serve subcommands
   src/serve.rs     axum websocket + notify file watcher
-extension/       VS Code client (primary). Placeholder until Phase 3.
-web-client/      browser preview client (vanilla JS). Placeholder until Phase 2.
+  src/exec.rs      runs a doc's code cells, splices outputs back as blocks
+  src/kernel.rs    warm Jupyter kernel (ZMQ), reused across edits
+  src/log.rs       colorized dev-server console output (to stderr)
+extension/       VS Code client (primary): click-to-source + reverse cursor sync
+web-client/      browser preview client (vanilla JS): mounts blocks, applies ops
+docs/            project's own manual + tour deck, authored in .qmd (dogfooding)
 corpus/          the real .qmd docs (the spec); corpus/expected/ holds baselines
 ```
 

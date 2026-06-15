@@ -12,9 +12,9 @@ pub mod render;
 
 pub use diff::{BlockOp, diff_blocks};
 pub use render::{
-    Block, DocFormat, RenderedDoc, client_styles, render_document, render_document_with_includes,
-    render_html_page, render_html_page_with_includes, reveal_client_head, reveal_client_script,
-    slides_html,
+    Block, DocFormat, RenderedDoc, client_styles, code_head, code_scripts, render_document,
+    render_document_with_includes, render_html_page, render_html_page_with_includes,
+    reveal_client_head, reveal_client_script, slides_html,
 };
 
 /// Crate version, surfaced so the server/CLI can report a single source of truth.

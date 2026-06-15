@@ -155,6 +155,7 @@ fn blog_index_html(toc: bool) -> String {
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>qmd-fast</title>
 {styles}
+{code_head}
 <style>{status_css}</style>
 </head>
 <body{body_attr}>
@@ -162,6 +163,7 @@ fn blog_index_html(toc: bool) -> String {
 {toc_nav}
 <div id="qmd-status">connecting…</div>
 <script>{toc_flag}</script>
+{code_scripts}
 <script>
 {js}
 </script>
@@ -169,6 +171,8 @@ fn blog_index_html(toc: bool) -> String {
 </html>
 "#,
         styles = qmd_fast_core::client_styles(),
+        code_head = qmd_fast_core::code_head(),
+        code_scripts = qmd_fast_core::code_scripts(),
         status_css = STATUS_CSS,
         js = CLIENT_JS,
     )
@@ -186,6 +190,7 @@ fn reveal_index_html() -> String {
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>qmd-fast</title>
 {head}
+{code_head}
 <style>{status_css}</style>
 </head>
 <body>
@@ -194,6 +199,7 @@ fn reveal_index_html() -> String {
 </div>
 <div id="qmd-status">connecting…</div>
 {reveal_script}
+{code_scripts}
 <script>window.QMD_FORMAT = "reveal";</script>
 <script>
 {js}
@@ -202,6 +208,8 @@ fn reveal_index_html() -> String {
 </html>
 "#,
         head = qmd_fast_core::reveal_client_head(),
+        code_head = qmd_fast_core::code_head(),
+        code_scripts = qmd_fast_core::code_scripts(),
         status_css = STATUS_CSS,
         reveal_script = qmd_fast_core::reveal_client_script(),
         js = CLIENT_JS,
