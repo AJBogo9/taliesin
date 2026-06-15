@@ -4,6 +4,7 @@
 //! the block model, and HTML rendering. All intelligence lives here; the
 //! server and clients are thin layers over this crate.
 
+pub mod cite;
 pub mod includes;
 pub mod math;
 pub mod render;

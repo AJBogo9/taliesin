@@ -63,20 +63,22 @@ fn parse_options() -> Options<'static> {
 /// Parse `src` into ordered top-level blocks with stable ids + sourcepos.
 /// Does not resolve `{{< include >}}` (use [`render_document_with_includes`]).
 pub fn render_document(src: &str) -> RenderedDoc {
-    render_internal(src, None)
+    render_internal(src, None, None)
 }
 
 /// Like [`render_document`], but first expands `{{< include >}}` shortcodes
-/// relative to `base_dir`, mapping each block back to its origin file.
+/// relative to `base_dir`, mapping each block back to its origin file, and
+/// resolves citations/cross-references against the doc's bibliography.
 pub fn render_document_with_includes(src: &str, base_dir: &Path) -> RenderedDoc {
     let (expanded, origins) = crate::includes::resolve(src, base_dir);
-    render_internal(&expanded, Some(&origins))
+    render_internal(&expanded, Some(&origins), Some(base_dir))
 }
 
 /// Core render. When `origins` is provided (post-include expansion), each
 /// block's sourcepos and `source_file` are translated back to the originating
-/// file via the line-level source map.
-fn render_internal(src: &str, origins: Option<&[LineOrigin]>) -> RenderedDoc {
+/// file via the line-level source map. `base_dir` (when known) is used to
+/// locate the bibliography for citation resolution.
+fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&Path>) -> RenderedDoc {
     let arena = Arena::new();
     let options = parse_options();
     // Quarto fenced divs (`:::`) aren't CommonMark. Record their spans first,
@@ -89,6 +91,7 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>) -> RenderedDoc {
 
     let lines: Vec<&str> = processed.lines().collect();
     let mut title: Option<String> = None;
+    let mut bib_field: Option<String> = None;
     let mut flat: Vec<FlatBlock> = Vec::new();
     let mut id_counts: HashMap<String, u32> = HashMap::new();
 
@@ -96,7 +99,8 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>) -> RenderedDoc {
         let (buf_start, sourcepos, source_file, block_src, is_paragraph) = {
             let data = node.data.borrow();
             if let NodeValue::FrontMatter(fm) = &data.value {
-                title = extract_title(fm);
+                title = extract_field(fm, "title");
+                bib_field = extract_field(fm, "bibliography");
                 continue;
             }
             let sp = data.sourcepos;
@@ -139,8 +143,30 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>) -> RenderedDoc {
         });
     }
 
-    let blocks = group_divs(flat, &spans, origins, &mut id_counts);
+    let mut blocks = group_divs(flat, &spans, origins, &mut id_counts);
+    let bib = load_bibliography(bib_field.as_deref(), base_dir);
+    crate::cite::process(&mut blocks, &bib);
     RenderedDoc { title, blocks }
+}
+
+/// Load and merge the bibliography file(s) named in the front matter, resolved
+/// relative to `base_dir`. Returns an empty bibliography when none is found
+/// (citations still de-leak; cross-references still resolve).
+fn load_bibliography(field: Option<&str>, base_dir: Option<&Path>) -> crate::cite::Bibliography {
+    let (Some(field), Some(base)) = (field, base_dir) else {
+        return crate::cite::Bibliography::default();
+    };
+    let mut text = String::new();
+    for tok in field.split([',', '[', ']', ' ']) {
+        let tok = tok.trim().trim_matches(['"', '\'']);
+        if tok.ends_with(".bib")
+            && let Ok(content) = std::fs::read_to_string(base.join(tok))
+        {
+            text.push_str(&content);
+            text.push('\n');
+        }
+    }
+    crate::cite::parse_bib(&text)
 }
 
 /// A top-level block plus its line in the (post-include, post-blank) buffer,
@@ -735,12 +761,13 @@ fn bare_math_env(block_src: &str) -> Option<&str> {
     (t.starts_with("\\begin{") && t.contains("\\end{") && t.ends_with('}')).then_some(t)
 }
 
-/// Drop leading `#| key: val` option lines from a Quarto code cell.
+/// Drop leading Quarto cell-option lines (`#|` for most languages, `//|` for OJS/JS).
 fn strip_cell_options(literal: &str) -> String {
     let mut body = String::new();
     let mut skipping = true;
     for line in literal.lines() {
-        if skipping && line.trim_start().starts_with("#|") {
+        let t = line.trim_start();
+        if skipping && (t.starts_with("#|") || t.starts_with("//|")) {
             continue;
         }
         skipping = false;
@@ -762,13 +789,19 @@ fn slice_lines(lines: &[&str], start: usize, end: usize) -> String {
     lines[s..e].join("\n")
 }
 
-/// Extract a `title:` from raw front matter. Lightweight scan, not a YAML parse.
-fn extract_title(front_matter: &str) -> Option<String> {
+/// Extract a top-level `key:` value from raw front matter. Lightweight scan,
+/// not a YAML parse; returns the inline value (empty for block/list values).
+fn extract_field(front_matter: &str, key: &str) -> Option<String> {
+    let prefix = format!("{key}:");
     for line in front_matter.lines() {
-        if let Some(rest) = line.trim().strip_prefix("title:") {
-            let t = rest.trim().trim_matches(['"', '\'']).trim();
-            if !t.is_empty() {
-                return Some(t.to_string());
+        // top-level keys only (not indented sub-keys)
+        if line.starts_with(char::is_whitespace) {
+            continue;
+        }
+        if let Some(rest) = line.trim().strip_prefix(&prefix) {
+            let v = rest.trim().trim_matches(['"', '\'']).trim();
+            if !v.is_empty() {
+                return Some(v.to_string());
             }
         }
     }
@@ -845,6 +878,8 @@ const PAGE_TEMPLATE: &str = r#"<!DOCTYPE html>
   .callout-warning { border-left-color: #e0a800; } .callout-warning .callout-title { background: #fdf6e3; }
   .callout-important { border-left-color: #e0566b; } .callout-important .callout-title { background: #fdecef; }
   .callout-caution { border-left-color: #e8730c; } .callout-caution .callout-title { background: #fdefe3; }
+  .qmd-xref { text-decoration: none; }
+  .qmd-references .csl-entry { margin: .4rem 0; padding-left: 2.2rem; text-indent: -2.2rem; }
   [data-block-id] { scroll-margin-top: 1rem; }
   [data-block-id].qmd-hl { outline: 2px solid #4c8dff; outline-offset: 3px; border-radius: 3px; }
 </style>
@@ -957,6 +992,11 @@ mod tests {
         let h = &doc.blocks[0].html;
         assert!(h.contains("print(1)"));
         assert!(!h.contains("#| echo"), "option lines should be stripped: {h}");
+
+        // OJS/JS cells use `//|` option syntax
+        let ojs = render_document("```{ojs}\n//| echo: false\nx = 1\n```\n");
+        assert!(ojs.blocks[0].html.contains("x = 1"));
+        assert!(!ojs.blocks[0].html.contains("//| echo"), "got: {}", ojs.blocks[0].html);
     }
 
     #[test]

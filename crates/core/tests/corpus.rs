@@ -61,6 +61,10 @@ fn every_corpus_doc_renders_with_invariants() {
             assert!(!b.html.is_empty(), "{label}: empty html for block {}", b.id);
             assert!(ids.insert(&b.id), "{label}: duplicate block id {}", b.id);
 
+            // Generated blocks (e.g. the References section) carry no sourcepos.
+            if b.sourcepos.is_empty() {
+                continue;
+            }
             let (sl, el) = line_range(&b.sourcepos);
             assert!(sl >= 1, "{label}: zero/invalid start line in {}", b.sourcepos);
             assert!(sl <= el, "{label}: start line after end in {}", b.sourcepos);
@@ -119,7 +123,9 @@ fn ids_and_sourcepos_present_on_visible_blocks() {
     let src = fs::read_to_string(corpus_dir().join("posts/em-algorithm/index.qmd")).unwrap();
     let doc = qmd_fast_core::render_document(&src);
     for b in &doc.blocks {
-        if b.html.starts_with("<!--") {
+        // Raw HTML comments are emitted verbatim; generated blocks (References)
+        // have no sourcepos. Both legitimately lack the data attributes.
+        if b.html.starts_with("<!--") || b.sourcepos.is_empty() {
             continue;
         }
         assert!(
