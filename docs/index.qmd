@@ -1,0 +1,162 @@
+---
+title: "qmd-fast"
+subtitle: "A fast, block-incremental .qmd to HTML dev server"
+format:
+  html:
+    toc: true
+---
+
+# Overview
+
+**qmd-fast** is a single-purpose Rust dev server that renders `.qmd` files to
+HTML (blog posts, reveal.js slides, books) for one author's writing workflow. It
+is not a general Quarto replacement. The whole tool is organised around three
+load-bearing goals:
+
+- **Click-to-source.** Every rendered block knows exactly where it came from, so
+  you can jump from the preview back to the line that produced it.
+- **Block-level incremental updates.** Saving a file re-renders only the blocks
+  that changed, leaving everything else (including live canvases) untouched.
+- **No per-edit startup cost.** A warm server and a warm Jupyter kernel mean
+  edits are reflected immediately, with no cold start on every save.
+
+::: {.callout-note}
+## Scope
+
+qmd-fast renders to HTML only. There is no PDF path and no format matrix. The
+"spec" is a small corpus of real documents under `corpus/`: when those render
+correctly, the tool is done.
+:::
+
+# Quick start
+
+Render a file to a standalone HTML page:
+
+```sh
+cargo run -p qmd-fast-server -- render post.qmd > out.html
+```
+
+Or start the live preview server and edit with instant updates:
+
+```sh
+cargo run -p qmd-fast-server -- serve post.qmd 4321
+```
+
+Then open `http://127.0.0.1:4321`. Save the file and watch only the edited block
+update in place, with scroll position preserved.
+
+# Architecture
+
+All of the intelligence lives in the Rust core behind a stable websocket
+protocol. The editor and browser are thin clients.
+
+| Component | Crate / path | Responsibility |
+|---|---|---|
+| Core | `crates/core` | Parsing (comrak + sourcepos), the block model, HTML rendering |
+| Server | `crates/server` | Websocket dev server, file watcher, Jupyter kernel pool |
+| Extension | `extension/` | VS Code client: hosts the preview, drives editor sync |
+| Web client | `web-client/` | Browser preview client (vanilla JS) |
+
+Adding another editor later is a new thin client, not a rewrite.
+
+# The block model
+
+Every top-level element is a **block**. Each block carries three data
+attributes that the rest of the system keys off:
+
+- `data-block-id` is a content hash (with a positional tiebreak for duplicates).
+  Because it is content-derived, an unchanged block keeps its id across edits and
+  is never touched.
+- `data-sourcepos` is the `startLine:startCol-endLine:endCol` range the block
+  came from. This is what powers click-to-source in both directions.
+- `data-source-file` is present only on blocks pulled in from an
+  `{{< include >}}`d file, so cross-file source mapping still works.
+
+Source mapping, incremental re-render, and live-state preservation all build on
+this one model.
+
+# The websocket protocol
+
+On connect, the server sends a `full_render`; on each save it diffs the new block
+list against the old one and broadcasts only the differences.
+
+| Direction | Message | Payload |
+|---|---|---|
+| server to client | `full_render` | `title`, `body_html` |
+| server to client | `update` | `target_id`, `html` |
+| server to client | `insert` | `after_id`, `html` |
+| server to client | `remove` | `target_id` |
+| client to server | `click_block` | `block_id`, `source_file`, `sourcepos` |
+
+Editor sync rides on top via `postMessage`: double-clicking a block posts
+`qmd-goto` up to the extension host (which reveals the source), and moving the
+cursor posts `qmd-cursor` down to the preview (which highlights the block).
+
+# Features
+
+## Prose and typography
+
+Standard Markdown works as expected: **bold**, *italic*, ~~strikethrough~~,
+`inline code`, [links](https://example.com), lists, and blockquotes.
+
+> Smart typography turns straight quotes into curly ones and handles ellipses,
+> matching the look of the author's existing posts.
+
+## Math
+
+Math is rendered server-side with KaTeX and ships fully offline (the fonts are
+inlined at build time). Inline math like $e^{i\pi} + 1 = 0$ sits in running text,
+and display math stands on its own line:
+
+$$
+\hat{\theta} = \arg\max_{\theta} \sum_{i=1}^{n} \log p(x_i \mid \theta)
+$$
+
+## Code execution
+
+A fenced cell tagged with a language runs against a warm Jupyter kernel; its
+outputs become their own blocks tied to the cell's id:
+
+```{python}
+#| echo: true
+import numpy as np
+np.arange(5).sum()
+```
+
+On save, only cells whose source changed (plus downstream cells) re-execute, and
+the kernel never cold-starts.
+
+## Callouts
+
+Fenced divs become callouts, layout grids, or generic containers.
+
+::: {.callout-tip}
+## Tip
+
+Use a `title=` attribute or a leading heading to label a callout; otherwise it
+falls back to the callout kind.
+:::
+
+::: {.callout-warning}
+Unterminated or empty divs degrade gracefully rather than breaking the page.
+:::
+
+## Reveal.js slides
+
+A deck is just a different front-matter `format:`. Headings split the document
+into slides, a title slide is generated from the metadata, and block-swap still
+works within the current slide so live edits never reset your position.
+
+## Books
+
+A document with `toc: true` gains a sticky table of contents built from its
+heading anchors. Standalone images with a `{#fig-... }` attribute render as
+numbered figures, and `@fig-` cross-references resolve to the figure number.
+
+# CLI reference
+
+| Command | Effect |
+|---|---|
+| `render <file.qmd>` | Render a one-shot full HTML page to stdout |
+| `blocks <file.qmd>` | List block ids and sourcepos (for debugging) |
+| `serve <file.qmd> [port]` | Run the live preview server (default port 4321) |

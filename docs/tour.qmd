@@ -1,0 +1,50 @@
+---
+title: "qmd-fast"
+subtitle: "A 60-second tour"
+format: revealjs
+---
+
+## What it is
+
+- A Rust dev server that renders `.qmd` to HTML, fast
+- Built for one author's blog posts, slides, and books
+- Not a general Quarto replacement: HTML only, corpus is the spec
+
+## Three goals
+
+- **Click-to-source**: jump from any block back to its line
+- **Block-level updates**: save re-renders only what changed
+- **No startup cost**: warm server, warm Jupyter kernel
+
+## How a save flows
+
+- The file watcher notices the change
+- The core re-parses and diffs blocks by content-hash id
+- Only the changed blocks are pushed over the websocket
+- Unchanged blocks (and their live state) are never touched
+
+## Math comes for free
+
+KaTeX renders server-side and ships offline:
+
+$$
+p(\theta \mid x) \propto p(x \mid \theta)\, p(\theta)
+$$
+
+## Code runs against a warm kernel
+
+```{python}
+#| echo: true
+sum(n * n for n in range(10))
+```
+
+## The same pipeline, three outputs
+
+- Blog posts and books: a scrolling HTML page with a table of contents
+- Slides: this deck, split by heading
+- All from one block model with stable ids and source positions
+
+## Thanks
+
+- Edit the source and watch this slide update in place
+- Double-click any block to jump to its line
