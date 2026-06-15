@@ -5,7 +5,7 @@
 //! carrying `data-block-id` and `data-sourcepos`, which the dev server later
 //! keys off for incremental block-swap and click-to-source.
 
-use comrak::nodes::{AstNode, ListType, NodeValue, TableAlignment};
+use comrak::nodes::{AstNode, ListType, NodeList, NodeValue, TableAlignment};
 use comrak::{Arena, Options, parse_document};
 use std::collections::HashMap;
 
@@ -165,17 +165,8 @@ fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
         NodeValue::HtmlBlock(hb) => emit_html_block(&hb.literal, attrs, out),
         NodeValue::HtmlInline(h) => out.push_str(h),
         NodeValue::Math(m) => out.push_str(&crate::math::render(&m.literal, m.display_math)),
-        NodeValue::List(nl) => {
-            let (tag, extra) = match nl.list_type {
-                ListType::Bullet => ("ul", String::new()),
-                ListType::Ordered if nl.start != 1 => ("ol", format!(" start=\"{}\"", nl.start)),
-                ListType::Ordered => ("ol", String::new()),
-            };
-            out.push_str(&format!("<{tag}{attrs}{extra}>"));
-            emit_children(node, out);
-            out.push_str(&format!("</{tag}>"));
-        }
-        NodeValue::Item(_) => wrap(node, "li", out),
+        NodeValue::List(nl) => emit_list(node, nl, attrs, out),
+        NodeValue::Item(_) => emit_item(node, false, out),
         NodeValue::BlockQuote => {
             out.push_str(&format!("<blockquote{attrs}>"));
             emit_children(node, out);
@@ -226,6 +217,35 @@ fn emit_children<'a>(node: &'a AstNode<'a>, out: &mut String) {
     for c in node.children() {
         emit(c, "", out);
     }
+}
+
+fn emit_list<'a>(node: &'a AstNode<'a>, nl: &NodeList, attrs: &str, out: &mut String) {
+    let (tag, extra) = match nl.list_type {
+        ListType::Bullet => ("ul", String::new()),
+        ListType::Ordered if nl.start != 1 => ("ol", format!(" start=\"{}\"", nl.start)),
+        ListType::Ordered => ("ol", String::new()),
+    };
+    out.push_str(&format!("<{tag}{attrs}{extra}>"));
+    for item in node.children() {
+        emit_item(item, nl.tight, out);
+    }
+    out.push_str(&format!("</{tag}>"));
+}
+
+/// In a tight list, an item's direct paragraph renders as bare inline content
+/// (no `<p>`); in a loose list it keeps its `<p>`. Nested lists recurse with
+/// their own tightness.
+fn emit_item<'a>(item: &'a AstNode<'a>, tight: bool, out: &mut String) {
+    out.push_str("<li>");
+    for child in item.children() {
+        let is_paragraph = matches!(child.data.borrow().value, NodeValue::Paragraph);
+        if tight && is_paragraph {
+            emit_children(child, out);
+        } else {
+            emit(child, "", out);
+        }
+    }
+    out.push_str("</li>");
 }
 
 fn emit_table<'a>(node: &'a AstNode<'a>, aligns: &[TableAlignment], attrs: &str, out: &mut String) {
@@ -603,5 +623,69 @@ mod tests {
         assert!(h.contains("<div class=\"demo\" data-block-id="), "got: {h}");
         // the wrapper-div double-emit bug must not reappear
         assert!(!h.contains("<div data-block-id"), "should inject, not wrap: {h}");
+    }
+
+    // --- edge cases / robustness ---
+
+    #[test]
+    fn empty_and_whitespace_inputs_do_not_panic() {
+        assert!(render_document("").blocks.is_empty());
+        assert!(render_document("   \n\n\t\n").blocks.is_empty());
+    }
+
+    #[test]
+    fn front_matter_only_yields_no_blocks() {
+        let doc = render_document("---\ntitle: Only Meta\n---\n");
+        assert_eq!(doc.title.as_deref(), Some("Only Meta"));
+        assert!(doc.blocks.is_empty());
+    }
+
+    #[test]
+    fn nested_lists_render_with_nesting() {
+        let doc = render_document("- a\n    - b\n    - c\n- d\n");
+        let h = &doc.blocks[0].html;
+        assert!(h.starts_with("<ul "), "got: {h}");
+        assert!(h.contains("<li>a<ul><li>b</li><li>c</li></ul></li>"), "got: {h}");
+    }
+
+    #[test]
+    fn ordered_list_start_attribute_preserved() {
+        let doc = render_document("3. third\n4. fourth\n");
+        assert!(doc.blocks[0].html.starts_with("<ol "));
+        assert!(doc.blocks[0].html.contains("start=\"3\""), "got: {}", doc.blocks[0].html);
+    }
+
+    #[test]
+    fn links_images_and_blockquotes_render() {
+        let link = render_document("[text](https://example.com \"t\")\n");
+        assert!(link.blocks[0].html.contains("<a href=\"https://example.com\" title=\"t\">text</a>"));
+
+        let img = render_document("![alt text](/img.png)\n");
+        assert!(img.blocks[0].html.contains("<img src=\"/img.png\" alt=\"alt text\" />"));
+
+        let quote = render_document("> quoted line\n");
+        assert!(quote.blocks[0].html.starts_with("<blockquote "));
+        assert!(quote.blocks[0].html.contains("quoted line"));
+    }
+
+    #[test]
+    fn attribute_values_are_escaped() {
+        let doc = render_document("[x](https://e.com?a=1&b=\"2\")\n");
+        let h = &doc.blocks[0].html;
+        assert!(h.contains("&amp;"), "ampersand should be escaped in href: {h}");
+        assert!(h.contains("&quot;"), "quote should be escaped in href: {h}");
+    }
+
+    #[test]
+    fn unicode_text_is_preserved() {
+        let doc = render_document("naïve café — ψ ∈ ℂ, Σ over 𝒩\n");
+        assert!(doc.blocks[0].html.contains("naïve café — ψ ∈ ℂ, Σ over 𝒩"));
+    }
+
+    #[test]
+    fn special_chars_in_inline_code_are_escaped_not_interpreted() {
+        let doc = render_document("use `a < b && c` here\n");
+        let h = &doc.blocks[0].html;
+        assert!(h.contains("<code>a &lt; b &amp;&amp; c</code>"), "got: {h}");
     }
 }
