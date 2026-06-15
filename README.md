@@ -32,8 +32,21 @@ web-client/     browser preview client (vanilla JS)
 Phase 1 — parse → HTML with source positions. The core parses `.qmd` with
 comrak (sourcepos), splits the document into top-level blocks with content-hash
 ids, and emits HTML with `data-block-id` + `data-sourcepos` on every block.
-Handles prose, tables, fenced divs, and Quarto code cells; renders math
-(inline, display, and bare `\begin{}` environments) server-side via KaTeX.
+
+Supported so far:
+
+- Prose, tables (with alignment), nested/tight lists, code cells.
+- Math server-side via KaTeX — inline `$…$`, display `$$…$$`, and bare
+  `\begin{…}` environments. CSS + fonts are bundled and inlined, so pages are
+  self-contained and work offline (no CDN).
+- `{{< include >}}` resolution with a per-file source map: included blocks carry
+  their origin file + that file's line numbers (`data-source-file`), so
+  click-to-source jumps into the included file.
+- Callouts (`.callout-note`/`tip`/`warning`/`important`/`caution`) and
+  `layout-ncol` grids.
+- Pragmatic citations (`[@key]`) → numbered links + an auto-generated References
+  section parsed from the `.bib`; cross-references (`@fig-`, `@sec-`, …) → labelled
+  anchor links.
 
 ```sh
 cargo run -p qmd-fast-server -- render corpus/posts/born-machines.qmd > out.html
