@@ -24,6 +24,11 @@ layout is mirrored from the source project so that path resolves verbatim.
 **structural reference**. Cosmetic diffs (whitespace, attribute order, class
 names) are expected and must not be treated as failures.
 
+**Local-only (gitignored).** These snapshots are large and regenerable, so they
+are not committed (`corpus/expected/*.html` is in `.gitignore`). They live here
+only as a local baseline for the `corpus-diff` skill. Regenerate them with the
+command below after a fresh clone.
+
 Caveats:
 
 - **HTML only, no vendored libs.** The accompanying `*_files/` lib dirs (Bootstrap,
