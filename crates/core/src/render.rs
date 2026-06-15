@@ -198,6 +198,42 @@ pub fn render_html_page_with_includes(src: &str, base_dir: &Path, fallback_title
 /// Self-contained KaTeX stylesheet (fonts inlined as data URIs at build time).
 const KATEX_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/katex-inlined.css"));
 
+/// Base document styling (typography, tables, callouts, references, block
+/// highlight). Shared by the one-shot page and the live preview client.
+const BASE_CSS: &str = r#"
+  body { max-width: 46rem; margin: 2rem auto; padding: 0 1rem;
+         font: 17px/1.7 ui-serif, Georgia, "Times New Roman", serif; color: #1a1a1a; }
+  h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui, sans-serif; line-height: 1.25; }
+  pre { background: #f5f5f5; padding: 1rem; border-radius: 6px; overflow: auto; font-size: .9em; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  blockquote { border-left: 3px solid #ddd; margin: 0 0 1rem; padding-left: 1rem; color: #555; }
+  img { max-width: 100%; }
+  table { border-collapse: collapse; }
+  th, td { border: 1px solid #e3e3e3; padding: .35rem .6rem; }
+  thead th { border-bottom: 2px solid #ccc; }
+  .callout { border: 1px solid #e0e0e0; border-left-width: 4px; border-radius: 5px;
+             margin: 1rem 0; overflow: hidden; }
+  .callout-title { font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 600;
+                   padding: .5rem .9rem; background: #f6f6f6; }
+  .callout-body { padding: .3rem .9rem; }
+  .callout-body > :first-child { margin-top: .4rem; }
+  .callout-note { border-left-color: #4c8dff; } .callout-note .callout-title { background: #eaf1ff; }
+  .callout-tip { border-left-color: #2bb673; } .callout-tip .callout-title { background: #e7f7ef; }
+  .callout-warning { border-left-color: #e0a800; } .callout-warning .callout-title { background: #fdf6e3; }
+  .callout-important { border-left-color: #e0566b; } .callout-important .callout-title { background: #fdecef; }
+  .callout-caution { border-left-color: #e8730c; } .callout-caution .callout-title { background: #fdefe3; }
+  .qmd-xref { text-decoration: none; }
+  .qmd-references .csl-entry { margin: .4rem 0; padding-left: 2.2rem; text-indent: -2.2rem; }
+  [data-block-id] { scroll-margin-top: 1rem; }
+  [data-block-id].qmd-hl { outline: 2px solid #4c8dff; outline-offset: 3px; border-radius: 3px; }
+"#;
+
+/// `<style>` block(s) for the live preview client: base styling plus the
+/// (self-contained) KaTeX stylesheet, since a live doc may gain math at any edit.
+pub fn client_styles() -> String {
+    format!("<style>{BASE_CSS}</style>\n<style>{KATEX_CSS}</style>")
+}
+
 fn page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
     let title = doc.title.as_deref().unwrap_or(fallback_title);
     let mut t = String::new();
@@ -212,6 +248,7 @@ fn page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
     PAGE_TEMPLATE
         .replace("{{TITLE}}", &t)
         .replace("{{KATEX_CSS}}", &katex_css)
+        .replace("{{BASE_CSS}}", BASE_CSS)
         .replace("{{BODY}}", &body)
 }
 
@@ -856,33 +893,7 @@ const PAGE_TEMPLATE: &str = r#"<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>{{TITLE}}</title>
 {{KATEX_CSS}}
-<style>
-  body { max-width: 46rem; margin: 2rem auto; padding: 0 1rem;
-         font: 17px/1.7 ui-serif, Georgia, "Times New Roman", serif; color: #1a1a1a; }
-  h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui, sans-serif; line-height: 1.25; }
-  pre { background: #f5f5f5; padding: 1rem; border-radius: 6px; overflow: auto; font-size: .9em; }
-  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-  blockquote { border-left: 3px solid #ddd; margin: 0 0 1rem; padding-left: 1rem; color: #555; }
-  img { max-width: 100%; }
-  table { border-collapse: collapse; }
-  th, td { border: 1px solid #e3e3e3; padding: .35rem .6rem; }
-  thead th { border-bottom: 2px solid #ccc; }
-  .callout { border: 1px solid #e0e0e0; border-left-width: 4px; border-radius: 5px;
-             margin: 1rem 0; overflow: hidden; }
-  .callout-title { font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 600;
-                   padding: .5rem .9rem; background: #f6f6f6; }
-  .callout-body { padding: .3rem .9rem; }
-  .callout-body > :first-child { margin-top: .4rem; }
-  .callout-note { border-left-color: #4c8dff; } .callout-note .callout-title { background: #eaf1ff; }
-  .callout-tip { border-left-color: #2bb673; } .callout-tip .callout-title { background: #e7f7ef; }
-  .callout-warning { border-left-color: #e0a800; } .callout-warning .callout-title { background: #fdf6e3; }
-  .callout-important { border-left-color: #e0566b; } .callout-important .callout-title { background: #fdecef; }
-  .callout-caution { border-left-color: #e8730c; } .callout-caution .callout-title { background: #fdefe3; }
-  .qmd-xref { text-decoration: none; }
-  .qmd-references .csl-entry { margin: .4rem 0; padding-left: 2.2rem; text-indent: -2.2rem; }
-  [data-block-id] { scroll-margin-top: 1rem; }
-  [data-block-id].qmd-hl { outline: 2px solid #4c8dff; outline-offset: 3px; border-radius: 3px; }
-</style>
+<style>{{BASE_CSS}}</style>
 </head>
 <body>
 {{BODY}}
