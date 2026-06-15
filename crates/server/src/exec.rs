@@ -117,12 +117,15 @@ impl Executor {
         }
         if self.kernel.is_none() {
             match Kernel::start(&self.python).await {
-                Ok(k) => self.kernel = Some(k),
+                Ok(k) => {
+                    crate::log::kernel(&format!("ready ({})", self.python.display()));
+                    self.kernel = Some(k);
+                }
                 Err(e) => {
-                    eprintln!(
-                        "qmd-fast: kernel unavailable ({e}); code cells will render as source only \
+                    crate::log::warn(&format!(
+                        "kernel unavailable ({e}); cells render as source only \
                          (set QMD_FAST_PYTHON to a python with ipykernel)"
-                    );
+                    ));
                     self.failed = true;
                     return String::new();
                 }
@@ -131,7 +134,7 @@ impl Executor {
         match self.kernel.as_mut().unwrap().execute(code).await {
             Ok(outs) => render_outputs(&outs),
             Err(e) => {
-                eprintln!("qmd-fast: execution error: {e}");
+                crate::log::error(&format!("execution error: {e}"));
                 format!("<pre class=\"qmd-error\">execution error: {}</pre>", esc(&e.to_string()))
             }
         }

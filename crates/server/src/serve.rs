@@ -92,10 +92,20 @@ async fn serve(path: PathBuf, port: u16) -> std::io::Result<()> {
 
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    println!(
-        "qmd-fast serving http://{addr}  (watching {})",
-        app.path.display()
-    );
+    let desc = {
+        let d = app.doc.lock().unwrap();
+        let mut parts = vec![match d.format {
+            DocFormat::Reveal => "reveal",
+            DocFormat::Html => "html",
+        }];
+        if d.toc {
+            parts.push("toc");
+        }
+        parts.join(", ")
+    };
+    crate::log::banner(qmd_fast_core::VERSION);
+    crate::log::ready(&format!("http://{addr}"));
+    crate::log::watching(&app.path.display().to_string(), &desc);
     axum::serve(listener, router)
         .await
         .map_err(std::io::Error::other)
@@ -253,8 +263,7 @@ fn handle_client_msg(text: &str) {
     if v.get("type").and_then(|t| t.as_str()) == Some("click_block") {
         let file = v.get("source_file").and_then(|f| f.as_str()).unwrap_or("(primary)");
         let pos = v.get("sourcepos").and_then(|p| p.as_str()).unwrap_or("?");
-        // Phase 3 will turn this into an editor jump; for now, report it.
-        println!("click-to-source: {file} @ {pos}");
+        crate::log::source(&format!("{file}  {pos}"));
     }
 }
 
@@ -306,13 +315,13 @@ fn spawn_watcher(app: Arc<AppState>) {
         }) {
             Ok(w) => w,
             Err(e) => {
-                eprintln!("file watcher unavailable: {e}");
+                crate::log::error(&format!("file watcher unavailable: {e}"));
                 return;
             }
         };
         for dir in &dirs {
             if let Err(e) = watcher.watch(dir, notify::RecursiveMode::Recursive) {
-                eprintln!("cannot watch {}: {e}", dir.display());
+                crate::log::warn(&format!("cannot watch {}: {e}", dir.display()));
             }
         }
         std::thread::park(); // keep the watcher alive
@@ -367,6 +376,6 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         ops.len()
     };
     if ops > 0 {
-        println!("updated {ops} block(s)");
+        crate::log::update(ops);
     }
 }

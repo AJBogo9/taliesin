@@ -6,6 +6,7 @@
 
 mod exec;
 mod kernel;
+mod log;
 mod serve;
 
 use std::path::{Path, PathBuf};
@@ -33,7 +34,7 @@ fn cmd_serve(path: Option<&String>, port: Option<&String>) -> ExitCode {
     match serve::run(PathBuf::from(path), port) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("serve error: {e}");
+            log::error(&format!("serve: {e}"));
             ExitCode::FAILURE
         }
     }
@@ -56,7 +57,7 @@ fn cmd_render(path: Option<&String>) -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("error reading {path}: {e}");
+            log::error(&format!("cannot read {path}: {e}"));
             ExitCode::FAILURE
         }
     }
@@ -88,7 +89,7 @@ fn cmd_blocks(path: Option<&String>) -> ExitCode {
             ExitCode::SUCCESS
         }
         Err(e) => {
-            eprintln!("error reading {path}: {e}");
+            log::error(&format!("cannot read {path}: {e}"));
             ExitCode::FAILURE
         }
     }
@@ -114,10 +115,14 @@ fn preview(html: &str) -> String {
 }
 
 fn usage() {
-    println!("qmd-fast {} (Phase 1)", qmd_fast_core::VERSION);
+    println!("qmd-fast {}", qmd_fast_core::VERSION);
+    println!("A fast .qmd -> HTML renderer and live preview server.");
     println!();
-    println!("usage:");
-    println!("  qmd-fast render <file.qmd>          full HTML page to stdout");
-    println!("  qmd-fast blocks <file.qmd>          list block ids + sourcepos");
-    println!("  qmd-fast serve  <file.qmd> [port]   live preview dev server (default port 4321)");
+    println!("USAGE:");
+    println!("  qmd-fast <command> <file.qmd> [args]");
+    println!();
+    println!("COMMANDS:");
+    println!("  render <file.qmd>          render a full HTML page to stdout");
+    println!("  blocks <file.qmd>          list block ids + sourcepos (debug)");
+    println!("  serve  <file.qmd> [port]   live preview server (default port 4321)");
 }
