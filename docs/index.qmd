@@ -50,6 +50,31 @@ update in place, with scroll position preserved.
 All of the intelligence lives in the Rust core behind a stable websocket
 protocol. The editor and browser are thin clients.
 
+```{mermaid}
+flowchart LR
+  subgraph Clients
+    direction TB
+    VS["VS Code extension<br/>(webview + cursor sync)"]
+    BR["Browser preview<br/>(vanilla JS)"]
+  end
+  subgraph Server["qmd-fast server"]
+    direction TB
+    WS["Websocket<br/>+ file watcher"]
+    subgraph Core["qmd-fast-core"]
+      direction TB
+      P["Parser<br/>comrak + sourcepos"] --> M["Block model<br/>+ diff"] --> R["Render<br/>html / reveal / book"]
+    end
+    K["Warm Jupyter kernel"]
+  end
+  F[(".qmd files")]
+  VS <-->|JSON protocol| WS
+  BR <-->|JSON protocol| WS
+  WS --> P
+  R -->|changed blocks| WS
+  F -.->|watch| WS
+  M -->|code cells| K --> M
+```
+
 | Component | Crate / path | Responsibility |
 |---|---|---|
 | Core | `crates/core` | Parsing (comrak + sourcepos), the block model, HTML rendering |
