@@ -145,7 +145,7 @@ fn code_fold_defaults_to_code_label() {
 #[test]
 fn ojs_cells_render_as_live_placeholders() {
     let html = render_post("posts/fourier-transform/index.qmd");
-    assert!(html.contains("class=\"ojs-cell\""), "OJS cell not emitted as a live placeholder");
+    assert!(html.contains("class=\"cell ojs-cell\""), "OJS cell not emitted as a live placeholder");
     assert!(
         html.contains("<script type=\"ojs-module-contents\">"),
         "OJS cell missing its module-contents script"
@@ -260,7 +260,7 @@ fn every_ojs_cell_has_matching_target_and_script() {
         "posts/pca-geometry/index.qmd",
     ] {
         let html = render_post(post);
-        let cells = html.matches("class=\"ojs-cell\"").count();
+        let cells = html.matches("class=\"cell ojs-cell\"").count();
         let scripts = html.matches("<script type=\"ojs-module-contents\">").count();
         assert!(cells > 0, "{post}: no live OJS cells emitted");
         assert_eq!(cells, scripts, "{post}: cell/script count mismatch");

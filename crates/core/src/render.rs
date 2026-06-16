@@ -2200,8 +2200,12 @@ fn emit_ojs_cell(src: &str, block_id: &str, block_attrs: &str) -> String {
     // its inspector value; tag it so the vendored OJS CSS hides the output (viewof
     // and bare-expression cells stay visible). Mirrors Quarto's `nodetype`.
     let nodetype = if ojs_is_declaration(src) { " nodetype=\"declaration\"" } else { "" };
+    // The vendored Observable runtime walks up to an ancestor with class `cell`
+    // to render a cell error (and bails with a crash if it finds none). The extra
+    // class costs nothing for healthy cells and lets errors degrade to an inline
+    // callout instead of an uncaught `locatePreDiv` TypeError.
     format!(
-        "<div{block_attrs}{nodetype} class=\"ojs-cell\"><div id=\"{cell_name}\"></div>\
+        "<div{block_attrs}{nodetype} class=\"cell ojs-cell\"><div id=\"{cell_name}\"></div>\
          <script type=\"ojs-module-contents\">{b64}</script></div>"
     )
 }
@@ -2540,7 +2544,7 @@ mod tests {
         // before the source is base64-encoded into an ojs-module-contents script.
         let ojs = render_document("```{ojs}\n//| echo: false\nx = 1\n```\n");
         let oh = &ojs.blocks[0].html;
-        assert!(oh.contains("class=\"ojs-cell\""), "ojs cell should be a live placeholder: {oh}");
+        assert!(oh.contains("class=\"cell ojs-cell\""), "ojs cell should be a live placeholder: {oh}");
         assert!(oh.contains("ojs-module-contents"), "ojs cell missing module-contents: {oh}");
         assert!(!oh.contains("//| echo"), "option lines should be stripped: {oh}");
     }
@@ -2550,7 +2554,7 @@ mod tests {
         // A named declaration is hidden (nodetype="declaration"); a viewof and a
         // bare expression stay visible.
         let decl = render_document("```{ojs}\nsignalX = [1, 2, 3]\n```\n");
-        assert!(decl.blocks[0].html.contains("class=\"ojs-cell\""));
+        assert!(decl.blocks[0].html.contains("class=\"cell ojs-cell\""));
         assert!(decl.blocks[0].html.contains("nodetype=\"declaration\""), "named decl should be hidden");
         assert!(decl.blocks[0].html.contains("<script type=\"ojs-module-contents\">"));
 
