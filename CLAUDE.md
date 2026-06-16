@@ -45,6 +45,15 @@ cargo run -p qmd-fast-server -- serve  <file.qmd> [port]       # live preview (d
 cargo test -p qmd-fast-core                                    # corpus invariants + unit tests
 ```
 
+Executing code cells (`{python}`) needs a Python with `ipykernel`; point the
+server at it with `QMD_FAST_PYTHON` (defaults to `python3`). Without a kernel,
+cells render as source and the preview shows a "kernel unavailable" diagnostic.
+
+For UI work, `/preview <file.qmd>` builds, serves on port 4388, and verifies it in
+the browser via the chrome-devtools MCP (screenshot + console). A `PostToolUse`
+hook runs `rustfmt` on every edited `.rs` file, so the tree stays `cargo fmt`-clean
+(CI enforces it).
+
 ## Conventions
 
 - Rust edition 2024, workspace resolver 3. Shared deps go in the root

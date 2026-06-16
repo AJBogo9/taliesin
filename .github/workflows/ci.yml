@@ -1,0 +1,21 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      # The corpus is the spec: these two gates encode the project's contract.
+      - name: Format check
+        run: cargo fmt --all -- --check
+      - name: Test
+        run: cargo test --workspace
+      # Enable once the tree is clippy-warning-clean:
+      # - run: rustup component add clippy && cargo clippy --all-targets -- -D warnings
