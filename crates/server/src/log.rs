@@ -1,9 +1,10 @@
-//! Small, dependency-free console output for the dev server: a startup banner
-//! and consistent, lightly-coloured event lines. Everything goes to stderr so
-//! `render`'s HTML on stdout stays clean. Colour is auto-disabled when stderr
-//! is not a TTY or when `NO_COLOR` is set.
+//! Small console output for the dev server: a startup banner and consistent,
+//! lightly-coloured event lines. Everything goes to stderr so `render`'s HTML on
+//! stdout stays clean. Colour is auto-disabled when stderr is not a TTY or when
+//! `NO_COLOR` is set; the startup screen-clear is likewise gated on a TTY and can
+//! be turned off with `QMD_FAST_NO_CLEAR`.
 
-use std::io::IsTerminal;
+use std::io::{IsTerminal, Write};
 use std::sync::OnceLock;
 
 #[derive(Clone, Copy)]
@@ -48,6 +49,27 @@ fn paint(text: &str, code: &str) -> String {
 fn line(style: Style, msg: &str) {
     let (tag, code) = style.parts();
     eprintln!("  {} {msg}", paint(&format!("{tag:<6}"), code));
+}
+
+/// Clear the screen at startup so the dev-server log starts at the top, free of
+/// previous shell output. Soft clear (Vite-style): the current viewport is pushed
+/// up into the scrollback buffer, then the cursor homes and clears downward — so
+/// earlier output stays recoverable by scrolling up. We never emit `CSI 3J`
+/// (which wipes scrollback). No-op when stderr isn't a TTY (so piped/redirected
+/// logs stay clean) or when `QMD_FAST_NO_CLEAR` is set.
+pub fn clear_screen() {
+    let mut err = std::io::stderr();
+    if !err.is_terminal() || std::env::var_os("QMD_FAST_NO_CLEAR").is_some() {
+        return;
+    }
+    // Push the visible lines into scrollback, then home + erase-to-end. Falling
+    // back to a plain home+erase when the row count is unknown.
+    let rows = terminal_size::terminal_size_of(&err)
+        .map(|(_, h)| h.0)
+        .unwrap_or(0);
+    let blanks = "\n".repeat(rows.saturating_sub(1) as usize);
+    let _ = write!(err, "{blanks}\x1b[H\x1b[J");
+    let _ = err.flush();
 }
 
 /// The opening banner: tool name + version.

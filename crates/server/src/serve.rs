@@ -125,6 +125,7 @@ async fn serve(path: PathBuf, port: u16) -> std::io::Result<()> {
         }
         parts.join(", ")
     };
+    crate::log::clear_screen();
     crate::log::banner(qmd_fast_core::VERSION);
     crate::log::ready(&format!("http://{addr}"));
     crate::log::watching(&app.path.display().to_string(), &desc);
