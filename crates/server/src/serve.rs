@@ -36,6 +36,7 @@ struct DocState {
     subtitle: Option<String>,
     format: DocFormat,
     toc: bool,
+    theme_css: String,
     blocks: Vec<Block>,
 }
 
@@ -83,6 +84,7 @@ async fn serve(path: PathBuf, port: u16) -> std::io::Result<()> {
         d.subtitle = doc.subtitle;
         d.format = doc.format;
         d.toc = doc.toc;
+        d.theme_css = doc.theme_css;
         d.blocks = doc.blocks;
     }
 
@@ -126,11 +128,11 @@ fn render_doc(app: &AppState) -> Option<RenderedDoc> {
 // --- HTTP ---------------------------------------------------------------
 
 async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
-    let (format, toc) = {
+    let (format, toc, theme_css) = {
         let d = app.doc.lock().unwrap();
-        (d.format, d.toc)
+        (d.format, d.toc, d.theme_css.clone())
     };
-    Html(index_html(format, toc))
+    Html(index_html(format, toc, &theme_css))
 }
 
 /// The preview favicon (also satisfies the browser's implicit `/favicon.ico`
@@ -204,10 +206,10 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-fn index_html(format: DocFormat, toc: bool) -> String {
+fn index_html(format: DocFormat, toc: bool, theme_css: &str) -> String {
     match format {
         DocFormat::Reveal => reveal_index_html(),
-        DocFormat::Html => blog_index_html(toc),
+        DocFormat::Html => blog_index_html(toc, theme_css),
     }
 }
 
@@ -216,7 +218,7 @@ const STATUS_CSS: &str = "#qmd-status { position: fixed; bottom: .5rem; left: .5
     font: 12px ui-sans-serif, system-ui, sans-serif; color: #888; background: #fff; \
     padding: .15rem .5rem; border: 1px solid #eee; border-radius: 4px; }";
 
-fn blog_index_html(toc: bool) -> String {
+fn blog_index_html(toc: bool, theme_css: &str) -> String {
     // With a TOC, lay the content beside a sticky `<nav id="TOC">` (the client
     // rebuilds its entries from the mounted headings, so it stays live). The
     // `QMD_TOC` flag switches the client into that mode.
@@ -224,6 +226,12 @@ fn blog_index_html(toc: bool) -> String {
         (" class=\"has-toc\"", "<nav id=\"TOC\"></nav>", "window.QMD_TOC = true;")
     } else {
         ("", "", "")
+    };
+    // Theme override CSS comes after the base styles so its `:root` wins.
+    let theme = if theme_css.trim().is_empty() {
+        String::new()
+    } else {
+        format!("<style>{theme_css}</style>")
     };
     format!(
         r#"<!DOCTYPE html>
@@ -235,6 +243,7 @@ fn blog_index_html(toc: bool) -> String {
 <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
 {styles}
 {code_head}
+{theme}
 <style>{status_css}</style>
 </head>
 <body{body_attr}>
@@ -456,6 +465,7 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         d.subtitle = doc.subtitle;
         d.format = doc.format;
         d.toc = doc.toc;
+        d.theme_css = doc.theme_css;
         d.blocks = blocks;
         // Broadcast under the lock so connecting clients can't interleave.
         for op in &ops {

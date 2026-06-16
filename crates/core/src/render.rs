@@ -55,6 +55,9 @@ pub struct RenderedDoc {
     pub format: DocFormat,
     /// Whether the front matter requested a table of contents (`toc: true`).
     pub toc: bool,
+    /// Resolved theme override CSS (built-in/`.css`/`_extensions/`), empty for
+    /// the default light theme. Inlined after the base stylesheet.
+    pub theme_css: String,
     pub blocks: Vec<Block>,
 }
 
@@ -119,6 +122,7 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
     let mut subtitle: Option<String> = None;
     let mut format = DocFormat::Html;
     let mut toc = false;
+    let mut theme: Option<String> = None;
     let mut bib_field: Option<String> = None;
     let mut flat: Vec<FlatBlock> = Vec::new();
     let mut id_counts: HashMap<String, u32> = HashMap::new();
@@ -137,6 +141,7 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
                 bib_field = extract_field(fm, "bibliography");
                 format = detect_format(fm);
                 toc = detect_toc(fm);
+                theme = detect_theme(fm);
                 continue;
             }
             let sp = data.sourcepos;
@@ -216,8 +221,66 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
     let mut blocks = group_divs(flat, &spans, origins, &mut id_counts);
     let bib = load_bibliography(bib_field.as_deref(), base_dir);
     crate::cite::process(&mut blocks, &bib, &fig_registry);
-    RenderedDoc { title, subtitle, format, toc, blocks }
+    let theme_css = resolve_theme(theme.as_deref(), base_dir);
+    RenderedDoc { title, subtitle, format, toc, theme_css, blocks }
 }
+
+/// A theme is an extension that ships CSS. Two minimal themes are built in
+/// (`light` is the default `:root`, `dark` overrides it); any other name
+/// resolves to a `.css`/`.scss` file or an installed `_extensions/<name>/`
+/// bundle, both relative to the document. Returns the override CSS to inline
+/// after the base stylesheet (empty for the default light theme).
+fn resolve_theme(theme: Option<&str>, base_dir: Option<&Path>) -> String {
+    let Some(name) = theme else { return String::new() };
+    match name {
+        "light" | "default" => String::new(),
+        "dark" => THEME_DARK.to_string(),
+        path if path.ends_with(".css") || path.ends_with(".scss") => base_dir
+            .and_then(|b| std::fs::read_to_string(b.join(path)).ok())
+            .unwrap_or_default(),
+        // An installed extension bundle: `_extensions/<name>/theme.css`.
+        ext => base_dir
+            .and_then(|b| std::fs::read_to_string(b.join("_extensions").join(ext).join("theme.css")).ok())
+            .unwrap_or_default(),
+    }
+}
+
+/// Detect the `theme:` front-matter value (top-level or nested under `format:`).
+fn detect_theme(front_matter: &str) -> Option<String> {
+    front_matter.lines().find_map(|line| {
+        let v = line.trim().strip_prefix("theme:")?.trim();
+        // Take the first name from a scalar or a `[a, b]` list (Quarto allows a
+        // list; the first entry is the base theme, the rest are SCSS layers).
+        let v = v.trim_start_matches('[').split([',', ']']).next()?.trim();
+        let v = v.trim_matches(['"', '\'']).trim();
+        (!v.is_empty()).then(|| v.to_string())
+    })
+}
+
+/// The built-in `dark` theme: minimal variable overrides over the light base.
+/// This is also the reference template for a community theme, a theme is just
+/// a `:root` block (optionally plus rules).
+const THEME_DARK: &str = r#"
+  :root {
+    --qmd-bg: #16181d; --qmd-fg: #e6e6e6; --qmd-muted: #9aa0aa; --qmd-accent: #6ea8ff;
+    --qmd-link: #6ea8ff; --qmd-code-bg: #21242b; --qmd-border: #363a44;
+  }
+  .qmd-copy { background: #21242b; color: #c8ccd4; border-color: #3a3f4b; }
+  .callout-note .callout-title { background: #1b2330; }
+  .callout-tip .callout-title { background: #15241c; }
+  .callout-warning .callout-title { background: #2a2415; }
+  .callout-important .callout-title { background: #2a1820; }
+  .callout-caution .callout-title { background: #2a2015; }
+  pre.mermaid { background: transparent; }
+  /* recolour the (light) syntax theme for a dark background */
+  .hljs, .hljs-subst { background: transparent; color: #c9d1d9; }
+  .hljs-comment, .hljs-quote { color: #8b949e; }
+  .hljs-keyword, .hljs-built_in, .hljs-type { color: #ff7b72; }
+  .hljs-string, .hljs-meta .hljs-string, .hljs-regexp { color: #a5d6ff; }
+  .hljs-number, .hljs-literal { color: #79c0ff; }
+  .hljs-title, .hljs-title.function_, .hljs-section { color: #d2a8ff; }
+  .hljs-attr, .hljs-attribute, .hljs-variable { color: #ffa657; }
+"#;
 
 /// `toc: true` requested anywhere in the front matter (typically under
 /// `format: html:`). A lightweight scan, matching the corpus book's usage.
@@ -319,11 +382,20 @@ const KATEX_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/katex-inlined.cs
 /// Base document styling (typography, tables, callouts, references, block
 /// highlight). Shared by the one-shot page and the live preview client.
 const BASE_CSS: &str = r#"
-  body { max-width: 46rem; margin: 2rem auto; padding: 0 1rem;
-         font: 17px/1.7 ui-serif, Georgia, "Times New Roman", serif; color: #1a1a1a; }
-  h1, h2, h3, h4 { font-family: ui-sans-serif, system-ui, sans-serif; line-height: 1.25; }
-  pre { position: relative; background: #f5f5f5; padding: 1rem; border-radius: 6px; overflow: auto; font-size: .9em; }
-  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  :root {
+    --qmd-bg: #ffffff; --qmd-fg: #1a1a1a; --qmd-muted: #555; --qmd-accent: #4c8dff;
+    --qmd-link: #2563eb; --qmd-code-bg: #f5f5f5; --qmd-border: #e3e3e3;
+    --qmd-font-body: 17px/1.7 ui-serif, Georgia, "Times New Roman", serif;
+    --qmd-font-head: ui-sans-serif, system-ui, sans-serif;
+    --qmd-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --qmd-maxw: 46rem;
+  }
+  body { max-width: var(--qmd-maxw); margin: 2rem auto; padding: 0 1rem;
+         font: var(--qmd-font-body); color: var(--qmd-fg); background: var(--qmd-bg); }
+  a { color: var(--qmd-link); }
+  h1, h2, h3, h4 { font-family: var(--qmd-font-head); line-height: 1.25; }
+  pre { position: relative; background: var(--qmd-code-bg); padding: 1rem; border-radius: 6px; overflow: auto; font-size: .9em; }
+  code { font-family: var(--qmd-font-mono); }
   .qmd-copy { position: absolute; top: .45rem; right: .45rem; padding: .1rem .45rem;
               font: 600 11px/1.4 ui-sans-serif, system-ui, sans-serif; color: #555;
               background: #fff; border: 1px solid #d4d4d4; border-radius: 5px;
@@ -333,11 +405,11 @@ const BASE_CSS: &str = r#"
   .qmd-copy.qmd-copied { color: #2bb673; border-color: #2bb673; }
   pre.mermaid { background: transparent; padding: .5rem 0; text-align: center; overflow: visible; }
   pre.mermaid svg { max-width: 100%; height: auto; }
-  blockquote { border-left: 3px solid #ddd; margin: 0 0 1rem; padding-left: 1rem; color: #555; }
+  blockquote { border-left: 3px solid var(--qmd-border); margin: 0 0 1rem; padding-left: 1rem; color: var(--qmd-muted); }
   img { max-width: 100%; }
   table { border-collapse: collapse; }
-  th, td { border: 1px solid #e3e3e3; padding: .35rem .6rem; }
-  thead th { border-bottom: 2px solid #ccc; }
+  th, td { border: 1px solid var(--qmd-border); padding: .35rem .6rem; }
+  thead th { border-bottom: 2px solid var(--qmd-border); }
   .callout { border: 1px solid #e0e0e0; border-left-width: 4px; border-radius: 5px;
              margin: 1rem 0; overflow: hidden; }
   .callout-title { font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 600;
@@ -357,10 +429,10 @@ const BASE_CSS: &str = r#"
   .qmd-stderr { border-left-color: #e0a800 !important; background: #fdf6e3 !important; }
   .qmd-error { border-left-color: #e0566b !important; background: #fdecef !important; color: #862033; }
   [data-block-id] { scroll-margin-top: 1rem; }
-  [data-block-id].qmd-hl { outline: 2px solid #4c8dff; outline-offset: 3px; border-radius: 3px; }
+  [data-block-id].qmd-hl { outline: 2px solid var(--qmd-accent); outline-offset: 3px; border-radius: 3px; }
   figure.qmd-figure { margin: 1.5rem 0; }
   figure.qmd-figure img { max-width: 100%; height: auto; }
-  figure.qmd-figure figcaption { font-size: .9em; color: #555; margin-top: .5rem; }
+  figure.qmd-figure figcaption { font-size: .9em; color: var(--qmd-muted); margin-top: .5rem; }
   .qmd-figure-center { text-align: center; }
   .qmd-figure-right { text-align: right; }
   /* toc layout: content beside a sticky table of contents on wide screens */
@@ -371,8 +443,8 @@ const BASE_CSS: &str = r#"
          font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; }
   #TOC ul { list-style: none; margin: .2rem 0; padding-left: .9rem; }
   #TOC > ul { padding-left: 0; }
-  #TOC a { color: #666; text-decoration: none; }
-  #TOC a:hover { color: #1a1a1a; }
+  #TOC a { color: var(--qmd-muted); text-decoration: none; }
+  #TOC a:hover { color: var(--qmd-fg); }
   @media (max-width: 60rem) {
     body.has-toc { display: block; }
     #TOC { position: static; max-height: none; border-bottom: 1px solid #eee;
@@ -550,10 +622,21 @@ fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
         .replace("{{TITLE}}", &t)
         .replace("{{KATEX_CSS}}", &katex_css)
         .replace("{{BASE_CSS}}", BASE_CSS)
+        .replace("{{THEME_CSS}}", &theme_style(&doc.theme_css))
         .replace("{{CODE_HEAD}}", &code_head())
         .replace("{{BODY_CLASS}}", &body_class)
         .replace("{{BODY}}", &body_content)
         .replace("{{CODE_SCRIPTS}}", &code_scripts())
+}
+
+/// Wrap resolved theme override CSS in a `<style>` (empty string when there is
+/// no override, i.e. the default light theme).
+fn theme_style(theme_css: &str) -> String {
+    if theme_css.trim().is_empty() {
+        String::new()
+    } else {
+        format!("<style>{theme_css}</style>")
+    }
 }
 
 fn reveal_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
@@ -1622,6 +1705,7 @@ const PAGE_TEMPLATE: &str = r#"<!DOCTYPE html>
 {{KATEX_CSS}}
 <style>{{BASE_CSS}}</style>
 {{CODE_HEAD}}
+{{THEME_CSS}}
 </head>
 <body{{BODY_CLASS}}>
 {{BODY}}
@@ -1998,5 +2082,25 @@ mod tests {
         // (the `#TOC`/`has-toc` CSS rules are always present; assert on markup.)
         assert!(!page.contains("<nav id=\"TOC\""), "TOC nav should be absent without toc: true");
         assert!(!page.contains("<body class=\"has-toc\">"), "toc layout should be off");
+    }
+
+    #[test]
+    fn theme_dark_overrides_variables_default_light_does_not() {
+        // The base :root is the light theme; `theme: dark` appends an override.
+        let dark = render_document("---\ntheme: dark\n---\n\nx\n");
+        assert!(dark.theme_css.contains("--qmd-bg: #16181d"), "dark override missing");
+        let page = render_html_page("---\ntheme: dark\n---\n\nx\n", "fb");
+        assert!(page.contains("--qmd-bg: #16181d"), "dark theme not inlined in page");
+
+        // No theme / `light` -> no override block.
+        assert!(render_document("---\ntitle: x\n---\n\nx\n").theme_css.is_empty());
+        assert!(render_document("---\ntheme: light\n---\n\nx\n").theme_css.is_empty());
+    }
+
+    #[test]
+    fn theme_list_takes_first_entry() {
+        // `theme: [dark, custom.scss]` (Quarto list form) selects the base.
+        let d = render_document("---\ntheme: [dark, custom.scss]\n---\n\nx\n");
+        assert!(d.theme_css.contains("--qmd-bg: #16181d"), "first list entry should win");
     }
 }
