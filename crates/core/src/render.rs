@@ -422,6 +422,9 @@ fn render_internal(
     }
 
     let mut blocks = group_divs(flat, &spans, origins, &mut id_counts);
+    // Pandoc table captions (`: caption {#tbl-x}` after a table) are numbered and
+    // folded into the table's `<caption>`; registers `tbl-x` for `@tbl-` refs.
+    apply_table_captions(&mut blocks, &mut xref_registry);
     let bib = load_bibliography(bib_field.as_deref(), base_dir);
     crate::cite::process(&mut blocks, &bib, &xref_registry);
     // A visible title block (HTML only; reveal builds its own title slide). It is
@@ -740,6 +743,7 @@ const BASE_CSS: &str = r#"
   img { max-width: 100%; }
   table { border-collapse: collapse; }
   th, td { border: 1px solid var(--qmd-border); padding: .35rem .6rem; }
+  table caption { caption-side: top; font-size: .9em; color: var(--qmd-muted); padding-bottom: .4rem; text-align: left; }
   thead th { border-bottom: 2px solid var(--qmd-border); }
   .callout { border: 1px solid #e0e0e0; border-left-width: 4px; border-radius: 5px;
              margin: 1rem 0; overflow: hidden; }
@@ -1536,6 +1540,54 @@ fn strip_heading_attr(html: &str) -> String {
         return format!("{}{}", inner[..open].trim_end(), &html[close..]);
     }
     html.to_string()
+}
+
+/// Fold Pandoc table captions into their tables. A `: caption {#tbl-x}` paragraph
+/// directly after a table becomes the table's numbered `<caption>` ("Table N"),
+/// the table gains the `#tbl-x` id, and `tbl-x` is registered so `@tbl-x` resolves.
+fn apply_table_captions(blocks: &mut Vec<Block>, xrefs: &mut HashMap<String, String>) {
+    let mut tbl_count = 0u32;
+    let mut i = 0;
+    while i + 1 < blocks.len() {
+        if blocks[i].html.starts_with("<table")
+            && let Some((caption_html, id)) = parse_table_caption(&blocks[i + 1].html)
+        {
+            tbl_count += 1;
+            if let Some(id) = &id {
+                xrefs.insert(id.clone(), tbl_count.to_string());
+            }
+            let sep = if caption_html.is_empty() { "" } else { ": " };
+            let id_attr = id
+                .as_deref()
+                .map(|x| format!(" id=\"{}\"", escape_attr(x)))
+                .unwrap_or_default();
+            // Insert the `id` on the <table> and a <caption> as its first child.
+            let table = &blocks[i].html;
+            let gt = table.find('>').unwrap_or(0) + 1;
+            let open = table[..gt].replacen("<table", &format!("<table{id_attr}"), 1);
+            blocks[i].html = format!(
+                "{open}<caption>Table&nbsp;{tbl_count}{sep}{caption_html}</caption>{}",
+                &table[gt..],
+            );
+            blocks.remove(i + 1); // the caption paragraph is now folded in
+        }
+        i += 1;
+    }
+}
+
+/// Parse a table-caption paragraph (`<p ...>: caption {#tbl-x}</p>`): returns the
+/// caption's inner HTML (markers stripped) and an explicit `#id`, or `None`.
+fn parse_table_caption(p_html: &str) -> Option<(String, Option<String>)> {
+    if !(p_html.starts_with("<p ") || p_html.starts_with("<p>")) {
+        return None; // a paragraph (not <pre>, etc.)
+    }
+    let gt = p_html.find('>')?;
+    let body = p_html[gt + 1..].strip_suffix("</p>")?.trim_start();
+    let body = body.strip_prefix(':')?.trim(); // the `: caption` marker
+    Some(match parse_heading_attr(body) {
+        Some((clean, id)) => (clean.trim().to_string(), id),
+        None => (body.to_string(), None),
+    })
 }
 
 // --- figures -------------------------------------------------------------
@@ -3115,6 +3167,30 @@ mod tests {
             plain.blocks[0].html.contains("id=\"my-heading\""),
             "slug id missing: {}",
             plain.blocks[0].html
+        );
+    }
+
+    #[test]
+    fn table_caption_is_numbered_folded_and_referenceable() {
+        let doc = render_document(
+            "| a | b |\n|---|---|\n| 1 | 2 |\n\n: My caption {#tbl-data}\n\nSee @tbl-data.\n",
+        );
+        let body = doc.body_html();
+        assert!(
+            body.contains("<table id=\"tbl-data\""),
+            "table did not get the explicit id: {body}"
+        );
+        assert!(
+            body.contains("<caption>Table&nbsp;1: My caption</caption>"),
+            "caption not folded/numbered into the table: {body}"
+        );
+        assert!(
+            !body.contains("{#tbl-data}") && !body.contains(">: My caption"),
+            "the caption paragraph leaked instead of folding into the table: {body}"
+        );
+        assert!(
+            body.contains("class=\"qmd-xref\">Table&nbsp;1</a>"),
+            "@tbl-data did not resolve to a number: {body}"
         );
     }
 
