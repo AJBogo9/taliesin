@@ -82,9 +82,18 @@ pub fn banner(version: &str) {
     );
 }
 
-/// The server is up; `url` is highlighted as the thing to open.
-pub fn ready(url: &str) {
-    line(Style::Ready, &paint(url, "\x1b[1m"));
+/// The server is up; `url` is highlighted as the thing to open, with how long
+/// startup took.
+pub fn ready(url: &str, elapsed: std::time::Duration) {
+    line(
+        Style::Ready,
+        &format!(
+            "{}  {}  {}ms",
+            paint(url, "\x1b[1m"),
+            paint("·", "\x1b[2m"),
+            elapsed.as_millis()
+        ),
+    );
 }
 
 /// What is being watched, plus a short format descriptor (e.g. "html, toc").

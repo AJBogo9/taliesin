@@ -73,13 +73,14 @@ impl DocState {
     }
 }
 
-/// Entry point for `qmd-fast serve <file> [port]`.
-pub fn run(path: PathBuf, port: u16) -> std::io::Result<()> {
+/// Entry point for `qmd-fast serve <file> [port] [--open]`.
+pub fn run(path: PathBuf, port: u16, open: bool) -> std::io::Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(serve(path, port))
+    rt.block_on(serve(path, port, open))
 }
 
-async fn serve(path: PathBuf, port: u16) -> std::io::Result<()> {
+async fn serve(path: PathBuf, port: u16, open: bool) -> std::io::Result<()> {
+    let start = std::time::Instant::now();
     let base_dir = path.parent().unwrap_or(Path::new(".")).to_path_buf();
     let (tx, _rx) = broadcast::channel(256);
     let app = Arc::new(AppState {
@@ -112,8 +113,8 @@ async fn serve(path: PathBuf, port: u16) -> std::io::Result<()> {
         .fallback(static_asset)
         .with_state(app.clone());
 
-    let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    let listener = tokio::net::TcpListener::bind(addr).await?;
+    let (listener, addr) = bind_with_fallback(port).await?;
+    let url = format!("http://{addr}");
     let desc = {
         let d = app.doc.lock().unwrap();
         let mut parts = vec![match d.format {
@@ -127,11 +128,50 @@ async fn serve(path: PathBuf, port: u16) -> std::io::Result<()> {
     };
     crate::log::clear_screen();
     crate::log::banner(qmd_fast_core::VERSION);
-    crate::log::ready(&format!("http://{addr}"));
+    crate::log::ready(&url, start.elapsed());
     crate::log::watching(&app.path.display().to_string(), &desc);
+    if open {
+        open_in_browser(&url);
+    }
     axum::serve(listener, router)
         .await
         .map_err(std::io::Error::other)
+}
+
+/// Bind 127.0.0.1:`port`, falling back to the next few ports if it's in use (so a
+/// second `serve` doesn't just fail). Logs the substitution when it happens.
+async fn bind_with_fallback(port: u16) -> std::io::Result<(tokio::net::TcpListener, SocketAddr)> {
+    let mut last_err = None;
+    for p in port..=port.saturating_add(9) {
+        let addr = SocketAddr::from(([127, 0, 0, 1], p));
+        match tokio::net::TcpListener::bind(addr).await {
+            Ok(listener) => {
+                if p != port {
+                    crate::log::warn(&format!("port {port} in use; using {p}"));
+                }
+                return Ok((listener, addr));
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => last_err = Some(e),
+            Err(e) => return Err(e),
+        }
+    }
+    Err(last_err.unwrap_or_else(|| std::io::Error::other("no free port")))
+}
+
+/// Open `url` in the default browser (best effort; ignores failure).
+fn open_in_browser(url: &str) {
+    let opener = if cfg!(target_os = "macos") {
+        "open"
+    } else if cfg!(target_os = "windows") {
+        "explorer"
+    } else {
+        "xdg-open"
+    };
+    let _ = std::process::Command::new(opener)
+        .arg(url)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
 }
 
 fn render_doc(app: &AppState) -> Option<RenderedDoc> {

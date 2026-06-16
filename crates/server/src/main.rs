@@ -17,7 +17,7 @@ fn main() -> ExitCode {
     match args.get(1).map(String::as_str) {
         Some("render") => cmd_render(args.get(2)),
         Some("blocks") => cmd_blocks(args.get(2)),
-        Some("serve") => cmd_serve(args.get(2), args.get(3)),
+        Some("serve") => cmd_serve(&args),
         _ => {
             usage();
             ExitCode::SUCCESS
@@ -25,13 +25,19 @@ fn main() -> ExitCode {
     }
 }
 
-fn cmd_serve(path: Option<&String>, port: Option<&String>) -> ExitCode {
-    let Some(path) = path else {
-        eprintln!("usage: qmd-fast serve <file.qmd> [port]");
+fn cmd_serve(args: &[String]) -> ExitCode {
+    // Positionals are <file.qmd> [port]; flags (e.g. --open) may appear anywhere.
+    let positionals: Vec<&String> = args[2..].iter().filter(|a| !a.starts_with("--")).collect();
+    let open = args.iter().any(|a| a == "--open") || std::env::var_os("QMD_FAST_OPEN").is_some();
+    let Some(path) = positionals.first() else {
+        eprintln!("usage: qmd-fast serve <file.qmd> [port] [--open]");
         return ExitCode::FAILURE;
     };
-    let port: u16 = port.and_then(|p| p.parse().ok()).unwrap_or(4321);
-    match serve::run(PathBuf::from(path), port) {
+    let port: u16 = positionals
+        .get(1)
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(4321);
+    match serve::run(PathBuf::from(path), port, open) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             log::error(&format!("serve: {e}"));
@@ -127,5 +133,10 @@ fn usage() {
     println!("COMMANDS:");
     println!("  render <file.qmd>          render a full HTML page to stdout");
     println!("  blocks <file.qmd>          list block ids + sourcepos (debug)");
-    println!("  serve  <file.qmd> [port]   live preview server (default port 4321)");
+    println!("  serve  <file.qmd> [port] [--open]");
+    println!("                             live preview server (default port 4321;");
+    println!("                             auto-picks the next free port if busy;");
+    println!("                             --open launches the browser)");
+    println!();
+    println!("ENV: QMD_FAST_PYTHON (kernel), QMD_FAST_OPEN (=--open), QMD_FAST_NO_CLEAR");
 }
