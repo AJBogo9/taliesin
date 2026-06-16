@@ -167,6 +167,10 @@ fn render_internal(
     let mut toc = false;
     let mut theme: Option<String> = None;
     let mut bib_field: Option<String> = None;
+    // Document-level cell defaults from a front-matter `execute:` block; a cell's
+    // own `#| echo`/`#| include` overrides these.
+    let mut exec_echo = true;
+    let mut exec_include = true;
     let mut flat: Vec<FlatBlock> = Vec::new();
     let mut id_counts: HashMap<String, u32> = HashMap::new();
     // Heading anchor slugs (deduped) and the cross-reference number registry
@@ -199,6 +203,7 @@ fn render_internal(
                 format = detect_format(fm);
                 toc = detect_toc(fm);
                 theme = detect_theme(fm);
+                (exec_echo, exec_include) = detect_execute_defaults(fm);
                 continue;
             }
             let sp = data.sourcepos;
@@ -221,8 +226,8 @@ fn render_internal(
                         lang,
                         code: strip_cell_options(&cb.literal),
                         figure: None,
-                        echo: cell_flag(&cb.literal, "echo"),
-                        include: cell_flag(&cb.literal, "include"),
+                        echo: cell_flag_or(&cb.literal, "echo", exec_echo),
+                        include: cell_flag_or(&cb.literal, "include", exec_include),
                     })
                 }
                 _ => None,
@@ -2314,10 +2319,55 @@ fn cell_option<'a>(literal: &'a str, key: &str) -> Option<&'a str> {
     None
 }
 
-/// A boolean cell option (`#| echo: false`). Defaults to true; only an explicit
-/// `false` turns it off (so Quarto's `echo: fenced` etc. count as "shown").
-fn cell_flag(literal: &str, key: &str) -> bool {
-    cell_option(literal, key) != Some("false")
+/// A boolean cell option (`#| echo: false`) that falls back to a document default
+/// (from `execute:`) when the cell doesn't set it. Only an explicit `false` turns
+/// it off, so Quarto's `echo: fenced` etc. still count as "shown".
+fn cell_flag_or(literal: &str, key: &str, default: bool) -> bool {
+    match cell_option(literal, key) {
+        Some("false") => false,
+        Some(_) => true,
+        None => default,
+    }
+}
+
+/// Document-level cell defaults from a front-matter `execute:` block:
+///
+/// ```yaml
+/// execute:
+///   echo: false
+///   include: false
+/// ```
+///
+/// Returns `(echo, include)`, each defaulting to `true`. Per-cell `#|` options
+/// override these. (`eval`/`output`/`warning`/`cache` are not yet honoured.)
+fn detect_execute_defaults(front_matter: &str) -> (bool, bool) {
+    let (mut echo, mut include) = (true, true);
+    let mut in_block = false;
+    for line in front_matter.lines() {
+        let indent = line.len() - line.trim_start().len();
+        let t = line.trim();
+        if !in_block {
+            if indent == 0 && t.starts_with("execute:") {
+                in_block = true;
+            }
+            continue;
+        }
+        if t.is_empty() {
+            continue;
+        }
+        if indent == 0 {
+            break; // dedent ends the block
+        }
+        if let Some((k, v)) = t.split_once(':') {
+            let v = v.trim().trim_matches(['"', '\'']);
+            match k.trim() {
+                "echo" => echo = v != "false",
+                "include" => include = v != "false",
+                _ => {}
+            }
+        }
+    }
+    (echo, include)
 }
 
 /// A code cell whose source is suppressed (`#| echo: false` / `#| include: false`)
@@ -2959,6 +3009,38 @@ mod tests {
         assert!(
             plain.blocks[0].html.contains("print(1)"),
             "default cell shows source"
+        );
+    }
+
+    #[test]
+    fn execute_block_sets_document_cell_defaults() {
+        // `execute: echo: false` hides every cell's source by default.
+        let doc =
+            render_document("---\nexecute:\n  echo: false\n---\n\n```{python}\nprint(1)\n```\n");
+        let cell = doc
+            .blocks
+            .iter()
+            .find(|b| b.cell.is_some())
+            .expect("a code cell");
+        assert!(
+            !cell.html.contains("print(1)"),
+            "execute.echo:false should hide source by default: {}",
+            cell.html
+        );
+
+        // A per-cell `#| echo: true` overrides the document default.
+        let doc2 = render_document(
+            "---\nexecute:\n  echo: false\n---\n\n```{python}\n#| echo: true\nprint(1)\n```\n",
+        );
+        let cell2 = doc2
+            .blocks
+            .iter()
+            .find(|b| b.cell.is_some())
+            .expect("a code cell");
+        assert!(
+            cell2.html.contains("print(1)"),
+            "per-cell echo:true must override the execute default: {}",
+            cell2.html
         );
     }
 
