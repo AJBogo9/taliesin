@@ -35,20 +35,29 @@ with `serve docs/index.qmd 4321` to see the interactive examples execute.
 
 # Quick start
 
-Render a file to a standalone HTML page:
+Start the live preview server and edit with instant updates:
 
 ```sh
-cargo run -p qmd-fast-server -- render post.qmd > out.html
-```
-
-Or start the live preview server and edit with instant updates:
-
-```sh
-cargo run -p qmd-fast-server -- serve post.qmd 4321
+cargo run -p qmd-fast-server -- preview post.qmd 4321   # aliases: dev, serve
 ```
 
 Then open `http://127.0.0.1:4321`. Save the file and watch only the edited block
-update in place, with scroll position preserved.
+update in place, with scroll position preserved. Add `--host` to expose it on
+your network with a QR code and open the same *live* preview on a phone (see
+[Reading on any screen](#reading-on-any-screen)).
+
+To produce output instead of previewing, `build` writes a self-contained HTML
+file (or, with `--out <dir>`, a portable folder with copied assets) and `render`
+streams a page to stdout:
+
+```sh
+cargo run -p qmd-fast-server -- build  post.qmd             # post.html beside the source
+cargo run -p qmd-fast-server -- build  post.qmd --out dist  # dist/index.html + copied assets
+cargo run -p qmd-fast-server -- render post.qmd > out.html  # one-shot page to stdout
+```
+
+A `~/.local/bin/qmd-fast` launcher on `PATH` (it rebuilds the release binary when
+the tool's sources change) lets you drop the prefix: `qmd-fast preview post.qmd`.
 
 # Architecture
 
@@ -121,10 +130,12 @@ list against the old one and broadcasts only the differences.
 
 | Direction | Message | Payload |
 |---|---|---|
-| server to client | `full_render` | `title`, `body_html` |
+| server to client | `full_render` | `title`, `body_html`, `diagnostics` |
 | server to client | `update` | `target_id`, `html` |
 | server to client | `insert` | `after_id`, `html` |
 | server to client | `remove` | `target_id` |
+| server to client | `diagnostics` | `messages` (non-fatal include / kernel issues) |
+| server to client | `error` | `message` (a failed render; shown as an overlay) |
 | client to server | `click_block` | `block_id`, `source_file`, `sourcepos` |
 
 Double-clicking a block opens its source in your editor — a
@@ -393,9 +404,39 @@ still works within the current slide so live edits never reset your position.
 
 ## Books and a live table of contents
 
-A document with `toc: true` gains a sticky table of contents built from its
-heading anchors and rebuilt live as you edit. This very page is the demo: the TOC
-beside the content is generated from these headings.
+A document with `toc: true` gains a table of contents built from its heading
+anchors and rebuilt live as you edit, with the current section highlighted as you
+scroll (a scrollspy). On a wide screen it's a sticky sidebar; on a phone it
+collapses into a pull-up sheet (see
+[Reading on any screen](#reading-on-any-screen)). This very page is the demo: the
+contents beside the text are generated from these headings.
+
+## Reading on any screen
+
+The reading layout is responsive, so the same document works on a laptop and a
+phone. Wide tables, long code, display math, and embedded canvases scroll within
+their own box instead of stretching the page, type and spacing tighten on narrow
+screens, in-page links scroll smoothly, and everything honours
+`prefers-reduced-motion`.
+
+On a phone the table of contents becomes a **pull-up sheet**: a quiet handle at
+the bottom edge that you drag up (or tap) to open the contents, with the current
+section flashing in as you scroll. It is keyboard- and screen-reader-friendly,
+Enter/Space to open, Escape to close, and focus moves into the sheet.
+
+To see it on a real device, start the server with `--host`:
+
+```sh
+cargo run -p qmd-fast-server -- preview docs/index.qmd --host
+```
+
+That binds your LAN, prints a `network` URL, and renders a QR code in the
+terminal. Scan it and the *live* preview opens on your phone, updating as you edit
+on your laptop.
+
+Pressing **Cmd/Ctrl-P** gives a clean print/PDF: the control bar, TOC handle, and
+diagnostics are hidden, the palette forces light, and content flows full width
+without clipping code, tables, or math.
 
 ## Themes
 
@@ -412,10 +453,32 @@ for now. The client still speaks the `qmd-goto`/`qmd-cursor` `postMessage`
 protocol, so an embedded editor client can host the preview and add reverse cursor
 sync without forking it.
 
+## Live-edit feedback
+
+The edit loop surfaces what is happening without you watching the terminal:
+
+- The block you just changed **pulses** briefly when it re-renders, so your eye
+  (or your phone) lands on the edit.
+- The control bar shows a live **word count and reading time** for the prose.
+- A non-fatal problem (a broken `{{< include >}}`, a missing kernel) appears as a
+  small **diagnostics** note in the corner; a *failed* render throws a prominent,
+  dismissible **error overlay** over the last good content, so a broken save is
+  impossible to miss. It clears on the next successful render.
+- The watcher follows the whole document, not just the served file: editing an
+  included subsection, the `.bib`, or theme CSS refreshes the preview too.
+
 # CLI reference
 
 | Command | Effect |
 |---|---|
+| `preview <file.qmd> [port]` | Live preview server (default port 4321; aliases `dev`, `serve`) |
+| `preview <file.qmd> --host` | …also exposed on your LAN with a QR code for phones |
+| `build <file.qmd> [out.html]` | Write a self-contained HTML file (default `<name>.html`) |
+| `build <file.qmd> --out <dir>` | Write `<dir>/index.html` + copied assets (a portable folder) |
 | `render <file.qmd>` | Render a one-shot full HTML page to stdout |
 | `blocks <file.qmd>` | List block ids and sourcepos (for debugging) |
-| `serve <file.qmd> [port]` | Run the live preview server (default port 4321) |
+
+A `qmd-fast` launcher on `PATH` (`~/.local/bin/qmd-fast`) rebuilds the release
+binary when the tool's sources change, then runs it, so `qmd-fast preview <file>`
+works from anywhere. `--open` launches a browser; `QMD_FAST_PYTHON` points the
+server at a Python with `ipykernel` for code execution.
