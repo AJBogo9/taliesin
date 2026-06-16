@@ -326,11 +326,12 @@
     return t.content.firstElementChild;
   };
 
-  // Apply a mutation while keeping the scroll position pinned.
+  // Apply a mutation while keeping the scroll position pinned. `instant` overrides
+  // the page's smooth scroll-behavior so live re-renders never animate the restore.
   const keepScroll = (fn) => {
     const y = window.scrollY;
     fn();
-    window.scrollTo(0, y);
+    window.scrollTo({ top: y, left: 0, behavior: "instant" });
   };
 
   // Re-attach reveal, rebuild the TOC, and (re)highlight + add copy buttons to

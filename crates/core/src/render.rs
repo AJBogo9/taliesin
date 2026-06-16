@@ -595,6 +595,7 @@ const DARK_CSS: &str = r#"
   html[data-theme="dark"] {
     --qmd-bg: #16181d; --qmd-fg: #e6e6e6; --qmd-muted: #9aa0aa; --qmd-accent: #6ea8ff;
     --qmd-link: #6ea8ff; --qmd-code-bg: #21242b; --qmd-border: #363a44;
+    --qmd-edge-shadow: rgba(255, 255, 255, .14);
   }
   html[data-theme="dark"] .qmd-copy { background: #21242b; color: #c8ccd4; border-color: #3a3f4b; }
   html[data-theme="dark"] .callout-note .callout-title { background: #1b2330; }
@@ -723,11 +724,13 @@ const BASE_CSS: &str = r#"
   :root {
     --qmd-bg: #ffffff; --qmd-fg: #1a1a1a; --qmd-muted: #555; --qmd-accent: #4c8dff;
     --qmd-link: #2563eb; --qmd-code-bg: #f5f5f5; --qmd-border: #e3e3e3;
+    --qmd-edge-shadow: rgba(0, 0, 0, .16);
     --qmd-font-body: 17px/1.7 ui-serif, Georgia, "Times New Roman", serif;
     --qmd-font-head: ui-sans-serif, system-ui, sans-serif;
     --qmd-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
     --qmd-maxw: 46rem;
   }
+  html { scroll-behavior: smooth; }
   body { max-width: var(--qmd-maxw); margin: 2rem auto; padding: 0 1rem;
          font: var(--qmd-font-body); color: var(--qmd-fg); background: var(--qmd-bg);
          overflow-wrap: break-word; }
@@ -762,9 +765,20 @@ const BASE_CSS: &str = r#"
      mobile; max-width clamps even against an author width: rule. */
   canvas, svg, video, iframe { max-width: 100%; }
   /* a wide table scrolls within its own box (max-content up to the page width)
-     rather than stretching the page and forcing a horizontal scroll on mobile */
+     rather than stretching the page and forcing a horizontal scroll on mobile.
+     The layered background is a scroll shadow: bg-coloured covers (background-
+     attachment: local) ride with the content and mask the edge shadows (scroll,
+     pinned to the box) until there is actually more to scroll toward. */
   table { border-collapse: collapse; display: block; width: max-content;
-          max-width: 100%; overflow-x: auto; }
+          max-width: 100%; overflow-x: auto;
+          background:
+            linear-gradient(to right, var(--qmd-bg) 30%, transparent) left center,
+            linear-gradient(to left, var(--qmd-bg) 30%, transparent) right center,
+            radial-gradient(farthest-side at left, var(--qmd-edge-shadow), transparent) left center,
+            radial-gradient(farthest-side at right, var(--qmd-edge-shadow), transparent) right center;
+          background-repeat: no-repeat;
+          background-size: 38px 100%, 38px 100%, 13px 100%, 13px 100%;
+          background-attachment: local, local, scroll, scroll; }
   th, td { border: 1px solid var(--qmd-border); padding: .35rem .6rem; }
   table caption { caption-side: top; font-size: .9em; color: var(--qmd-muted); padding-bottom: .4rem; text-align: left; }
   thead th { border-bottom: 2px solid var(--qmd-border); }
@@ -886,6 +900,30 @@ const BASE_CSS: &str = r#"
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important;
       transition-duration: .001ms !important; scroll-behavior: auto !important; }
+  }
+  /* print: drop the live chrome, force a light palette, flow content full width
+     with the contents list lifted to the top, and avoid clipping/awkward breaks.
+     Placed last so it outranks the width-query rules that also match on paper. */
+  @media print {
+    html[data-theme="dark"], :root {
+      --qmd-bg: #fff; --qmd-fg: #111; --qmd-muted: #555; --qmd-border: #ccc;
+      --qmd-code-bg: #f5f5f5; --qmd-link: #0645ad; --qmd-accent: #0645ad;
+    }
+    #qmd-controls, #qmd-diagnostics, #qmd-toc-handle, #qmd-toc-backdrop, .qmd-copy { display: none !important; }
+    body { max-width: none !important; margin: 0 !important; }
+    body.has-toc { display: grid !important; grid-template-columns: 1fr !important; gap: 0 !important; }
+    body.qmd-toc-sheet #TOC, body.has-toc > #TOC {
+      position: static !important; transform: none !important; order: -1 !important;
+      max-height: none !important; overflow: visible !important; z-index: auto !important;
+      background: transparent !important; box-shadow: none !important; border-radius: 0 !important;
+      margin: 0 0 1.5rem !important; padding: 0 0 1rem !important;
+      border-bottom: 1px solid var(--qmd-border) !important; }
+    #TOC::before { display: none !important; }
+    pre { white-space: pre-wrap !important; overflow: visible !important; }
+    table { display: table !important; overflow: visible !important; background: none !important; }
+    .katex-display { overflow: visible !important; }
+    pre, figure, table, blockquote, .callout, .qmd-eqn { break-inside: avoid; }
+    h2, h3, h4 { break-after: avoid; }
   }
 "#;
 
