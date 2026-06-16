@@ -74,12 +74,12 @@ impl DocState {
 }
 
 /// Entry point for `qmd-fast serve <file> [port] [--open]`.
-pub fn run(path: PathBuf, port: u16, open: bool) -> std::io::Result<()> {
+pub fn run(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(serve(path, port, open))
+    rt.block_on(serve(path, port, open, expose))
 }
 
-async fn serve(path: PathBuf, port: u16, open: bool) -> std::io::Result<()> {
+async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::Result<()> {
     let start = std::time::Instant::now();
     let base_dir = path.parent().unwrap_or(Path::new(".")).to_path_buf();
     let (tx, _rx) = broadcast::channel(256);
@@ -113,8 +113,14 @@ async fn serve(path: PathBuf, port: u16, open: bool) -> std::io::Result<()> {
         .fallback(static_asset)
         .with_state(app.clone());
 
-    let (listener, addr) = bind_with_fallback(port).await?;
-    let url = format!("http://{addr}");
+    let (listener, addr) = bind_with_fallback(port, expose).await?;
+    let port = addr.port();
+    let local = format!("http://127.0.0.1:{port}");
+    // With --host we bound 0.0.0.0; surface the LAN URL (and a QR for phones).
+    let network = expose
+        .then(local_ip)
+        .flatten()
+        .map(|ip| format!("http://{ip}:{port}"));
     let desc = {
         let d = app.doc.lock().unwrap();
         let mut parts = vec![match d.format {
@@ -128,22 +134,35 @@ async fn serve(path: PathBuf, port: u16, open: bool) -> std::io::Result<()> {
     };
     crate::log::clear_screen();
     crate::log::banner(qmd_fast_core::VERSION);
-    crate::log::ready(&url, start.elapsed());
+    crate::log::ready(&local, start.elapsed());
+    if let Some(net) = &network {
+        crate::log::network(net);
+    } else if expose {
+        crate::log::warn("--host set, but no LAN address was found");
+    }
     crate::log::watching(&app.path.display().to_string(), &desc);
+    if let Some(net) = &network {
+        print_qr(net);
+    }
     if open {
-        open_in_browser(&url);
+        open_in_browser(&local);
     }
     axum::serve(listener, router)
         .await
         .map_err(std::io::Error::other)
 }
 
-/// Bind 127.0.0.1:`port`, falling back to the next few ports if it's in use (so a
-/// second `serve` doesn't just fail). Logs the substitution when it happens.
-async fn bind_with_fallback(port: u16) -> std::io::Result<(tokio::net::TcpListener, SocketAddr)> {
+/// Bind `port`, falling back to the next few ports if it's in use (so a second
+/// `serve` doesn't just fail). Binds 0.0.0.0 (LAN-reachable) with `expose`, else
+/// loopback only. Logs the substitution when it happens.
+async fn bind_with_fallback(
+    port: u16,
+    expose: bool,
+) -> std::io::Result<(tokio::net::TcpListener, SocketAddr)> {
+    let host = if expose { [0, 0, 0, 0] } else { [127, 0, 0, 1] };
     let mut last_err = None;
     for p in port..=port.saturating_add(9) {
-        let addr = SocketAddr::from(([127, 0, 0, 1], p));
+        let addr = SocketAddr::from((host, p));
         match tokio::net::TcpListener::bind(addr).await {
             Ok(listener) => {
                 if p != port {
@@ -156,6 +175,28 @@ async fn bind_with_fallback(port: u16) -> std::io::Result<(tokio::net::TcpListen
         }
     }
     Err(last_err.unwrap_or_else(|| std::io::Error::other("no free port")))
+}
+
+/// The machine's primary LAN IP, found by asking the OS which local address it
+/// would route an outbound packet from. No packet is sent, so this works offline;
+/// returns `None` when there is no route (e.g. no network interface).
+fn local_ip() -> Option<std::net::IpAddr> {
+    let sock = std::net::UdpSocket::bind(("0.0.0.0", 0)).ok()?;
+    sock.connect(("8.8.8.8", 80)).ok()?;
+    sock.local_addr().ok().map(|a| a.ip())
+}
+
+/// Print a scannable QR code (terminal half-blocks) for `url`, so the preview can
+/// be opened on a phone on the same network without typing the address.
+fn print_qr(url: &str) {
+    let Ok(code) = qrcode::QrCode::new(url.as_bytes()) else {
+        return;
+    };
+    let art = code
+        .render::<qrcode::render::unicode::Dense1x2>()
+        .quiet_zone(true)
+        .build();
+    eprintln!("{art}");
 }
 
 /// Open `url` in the default browser (best effort; ignores failure).

@@ -39,11 +39,17 @@ corpus/          the real .qmd docs (the spec); cargo test renders them all
 ## Commands
 
 ```sh
-cargo run -p qmd-fast-server -- render <file.qmd> > out.html   # one-shot full page
+cargo run -p qmd-fast-server -- preview <file.qmd> [port]      # live preview (aliases: dev, serve)
+cargo run -p qmd-fast-server -- preview <file.qmd> --host      # + expose on LAN with a phone QR code
+cargo run -p qmd-fast-server -- build  <file.qmd> [out.html]   # self-contained HTML file (default <name>.html)
+cargo run -p qmd-fast-server -- render <file.qmd> > out.html   # one-shot full page to stdout
 cargo run -p qmd-fast-server -- blocks <file.qmd>              # block ids + sourcepos (debug)
-cargo run -p qmd-fast-server -- serve  <file.qmd> [port]       # live preview (default 4321)
 cargo test -p qmd-fast-core                                    # corpus invariants + unit tests
 ```
+
+A `qmd-fast` launcher on `PATH` (`~/.local/bin/qmd-fast`) rebuilds the release
+binary when the tool's sources change, then runs it, so `qmd-fast preview <file>`
+works from anywhere.
 
 Executing code cells (`{python}`) needs a Python with `ipykernel`; point the
 server at it with `QMD_FAST_PYTHON` (defaults to `python3`). Without a kernel,
