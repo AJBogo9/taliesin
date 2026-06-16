@@ -900,7 +900,7 @@ function qmdInitLightbox() {
     '#qmd-lightbox img{max-width:93vw;max-height:86vh;object-fit:contain;cursor:default;' +
     'background:#fff;border-radius:4px;box-shadow:0 10px 50px rgba(0,0,0,.5)}' +
     '#qmd-lightbox .qmd-lb-svg{display:none;width:92vw;max-width:1400px;max-height:86vh;overflow:auto;' +
-    'cursor:default;background:#fff;border-radius:4px;padding:1.2rem;box-sizing:border-box;' +
+    'cursor:default;background:var(--qmd-bg,#fff);border-radius:4px;padding:1.2rem;box-sizing:border-box;' +
     'box-shadow:0 10px 50px rgba(0,0,0,.5)}' +
     '#qmd-lightbox .qmd-lb-svg svg{display:block;width:100%;height:auto;max-width:100%}' +
     '#qmd-lightbox .qmd-lb-cap{color:#e8e8e8;font:14px ui-sans-serif,system-ui,sans-serif;' +
@@ -981,15 +981,32 @@ function qmdInitLightbox() {
 }
 
 // mermaid bakes colours into the SVG at run() time, so a diagram can't be
-// recoloured by CSS when the theme flips — it has to be re-rendered. We pick the
-// theme from <html data-theme> and stash each diagram's source so a later
-// `qmd:themechange` can restore it and run again.
-function qmdMermaidTheme() {
-  return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default';
+// recoloured by CSS when the theme flips — it has to be re-rendered. The config is
+// CSS-driven so a theme extension can style diagrams with no JS: set
+// `--qmd-mermaid-theme` (a mermaid theme name; defaults to dark/default by mode),
+// and optionally `--qmd-mermaid-{bg,node,node-border,text,line}` to tune colours
+// (most effective with `--qmd-mermaid-theme: base`). Each diagram's source is
+// stashed (dataset.src) so a later `qmd:themechange` can restore and re-run it.
+function qmdMermaidConfig() {
+  var cs = getComputedStyle(document.documentElement);
+  var get = function (n) { return cs.getPropertyValue(n).trim(); };
+  var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  var cfg = { startOnLoad: false, theme: get('--qmd-mermaid-theme') || (dark ? 'dark' : 'default') };
+  var map = {
+    background: '--qmd-mermaid-bg',
+    primaryColor: '--qmd-mermaid-node',
+    primaryBorderColor: '--qmd-mermaid-node-border',
+    primaryTextColor: '--qmd-mermaid-text',
+    lineColor: '--qmd-mermaid-line',
+  };
+  var vars = {};
+  for (var key in map) { var v = get(map[key]); if (v) { vars[key] = v; } }
+  if (Object.keys(vars).length) { cfg.themeVariables = vars; }
+  return cfg;
 }
 function qmdRunMermaid(nodes) {
   try {
-    window.mermaid.initialize({ startOnLoad: false, theme: qmdMermaidTheme() });
+    window.mermaid.initialize(qmdMermaidConfig());
     window.mermaid.run({ nodes: nodes });
   } catch (e) {}
 }

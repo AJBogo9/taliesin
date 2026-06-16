@@ -55,6 +55,40 @@ ordinary CSS rules after the `:root` block, the theme is loaded last, so it wins
 The built-in **dark** theme (in `crates/core/src/render.rs`, `THEME_DARK`) is the
 reference: copy it and change the values.
 
+## Mermaid diagrams
+
+Mermaid bakes its colours into the SVG when it renders, so they can't be restyled
+with ordinary CSS. Instead, qmd-fast reads the diagram config from CSS variables
+(re-rendering on a light/dark switch), so you can theme diagrams from your theme
+file with no JavaScript:
+
+| Variable | Role | Default |
+|---|---|---|
+| `--qmd-mermaid-theme` | mermaid theme name (`default`, `dark`, `neutral`, `forest`, `base`) | `dark` in dark mode, else `default` |
+| `--qmd-mermaid-bg` | diagram background | mermaid theme's |
+| `--qmd-mermaid-node` | node fill | mermaid theme's |
+| `--qmd-mermaid-node-border` | node border | mermaid theme's |
+| `--qmd-mermaid-text` | node text | mermaid theme's |
+| `--qmd-mermaid-line` | edges / arrows | mermaid theme's |
+
+For full colour control, set `--qmd-mermaid-theme: base` and the colour variables
+(mermaid's `base` theme is the one built to be customised). To match the rest of
+your palette, point them at your other variables:
+
+```css
+html[data-theme="dark"] {
+  --qmd-mermaid-theme: base;
+  --qmd-mermaid-bg: var(--qmd-bg);
+  --qmd-mermaid-node: var(--qmd-code-bg);
+  --qmd-mermaid-node-border: var(--qmd-border);
+  --qmd-mermaid-text: var(--qmd-fg);
+  --qmd-mermaid-line: var(--qmd-muted);
+}
+```
+
+Set nothing and diagrams just follow the built-in light/dark themes. The zoom
+(click-to-enlarge) backdrop uses `--qmd-bg`, so an enlarged diagram matches.
+
 ## Sharing a theme
 
 Drop it at `_extensions/<name>/theme.css` in your project and reference it with
