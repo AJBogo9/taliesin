@@ -52,11 +52,23 @@ fn cmd_serve(args: &[String]) -> ExitCode {
 }
 
 /// `build <file.qmd> [out.html]`: write a self-contained HTML page to a file
-/// (default `<stem>.html` beside the source). `render` stays the stdout path.
+/// (default `<stem>.html` beside the source). With `--out <dir>` it instead
+/// writes `<dir>/index.html` and copies every referenced local asset alongside
+/// (paths preserved), so the directory is deployable as-is. `render` is stdout.
 fn cmd_build(args: &[String]) -> ExitCode {
-    let positionals: Vec<&String> = args[2..].iter().filter(|a| !a.starts_with("--")).collect();
-    let Some(path) = positionals.first() else {
-        eprintln!("usage: qmd-fast build <file.qmd> [out.html]");
+    // Positionals: <file> [out.html]. Flag: `--out <dir>` (alias `--dir`).
+    let mut positionals: Vec<&str> = Vec::new();
+    let mut out_dir: Option<&str> = None;
+    let mut it = args[2..].iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--out" | "--dir" => out_dir = it.next().map(|s| s.as_str()),
+            s if s.starts_with("--") => {}
+            s => positionals.push(s),
+        }
+    }
+    let Some(path) = positionals.first().copied() else {
+        eprintln!("usage: qmd-fast build <file.qmd> [out.html] [--out <dir>]");
         return ExitCode::FAILURE;
     };
     let src = match std::fs::read_to_string(path) {
@@ -66,13 +78,17 @@ fn cmd_build(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let p = Path::new(path.as_str());
+    let p = Path::new(path);
     let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("document");
     let base = p.parent().unwrap_or_else(|| Path::new("."));
     let html = qmd_fast_core::render_html_page_with_includes(&src, base, stem);
+
+    if let Some(dir) = out_dir {
+        return build_dir(&html, base, Path::new(dir));
+    }
     let out: PathBuf = positionals
         .get(1)
-        .map(|s| PathBuf::from(s.as_str()))
+        .map(|&s| PathBuf::from(s))
         .unwrap_or_else(|| base.join(format!("{stem}.html")));
     match std::fs::write(&out, html) {
         Ok(()) => {
@@ -84,6 +100,81 @@ fn cmd_build(args: &[String]) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Write `<dir>/index.html` and copy each referenced local asset (an `src=`/
+/// `href=` value pointing to an existing file under `base`) to the same relative
+/// path under `dir`, leaving the HTML's paths untouched so the folder is portable.
+fn build_dir(html: &str, base: &Path, dir: &Path) -> ExitCode {
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        log::error(&format!("cannot create {}: {e}", dir.display()));
+        return ExitCode::FAILURE;
+    }
+    let mut copied = 0usize;
+    for r in local_refs(html) {
+        // Bundle only clean in-tree relative paths; anything escaping the output
+        // dir (absolute or containing `..`) is left in place with a warning.
+        if r.starts_with('/') || r.split('/').any(|seg| seg == "..") {
+            log::warn(&format!("asset outside the doc tree, not bundled: {r}"));
+            continue;
+        }
+        let from = base.join(&r);
+        if !from.is_file() {
+            continue; // e.g. an href to something that isn't a local file
+        }
+        let to = dir.join(&r);
+        if let Some(parent) = to.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        match std::fs::copy(&from, &to) {
+            Ok(_) => copied += 1,
+            Err(e) => log::warn(&format!("cannot copy {}: {e}", from.display())),
+        }
+    }
+    let index = dir.join("index.html");
+    if let Err(e) = std::fs::write(&index, html) {
+        log::error(&format!("cannot write {}: {e}", index.display()));
+        return ExitCode::FAILURE;
+    }
+    log::built(&format!(
+        "{}  ·  {copied} asset{}",
+        index.display(),
+        if copied == 1 { "" } else { "s" }
+    ));
+    ExitCode::SUCCESS
+}
+
+/// Unique local `src=`/`href=` values in `html` (skips external URLs, protocol-
+/// relative refs, data URIs, in-page anchors, and other schemes).
+fn local_refs(html: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for attr in ["src=\"", "href=\""] {
+        let mut i = 0;
+        while let Some(pos) = html[i..].find(attr) {
+            let start = i + pos + attr.len();
+            let Some(len) = html[start..].find('"') else {
+                break;
+            };
+            let val = &html[start..start + len];
+            i = start + len;
+            if is_local_ref(val) && !out.iter().any(|v| v == val) {
+                out.push(val.to_string());
+            }
+        }
+    }
+    out
+}
+
+fn is_local_ref(v: &str) -> bool {
+    !v.is_empty()
+        && !v.starts_with('#')
+        && !v.starts_with("//")
+        && !v.contains("://")
+        && !v.starts_with("data:")
+        && !v.starts_with("mailto:")
+        && !v.starts_with("tel:")
+        && !v.starts_with("vscode:")
+        && !v.starts_with("javascript:")
 }
 
 fn cmd_render(path: Option<&String>) -> ExitCode {
@@ -176,9 +267,11 @@ fn usage() {
     println!("                             default port 4321, auto-picks a free one;");
     println!("                             --host exposes it on your LAN with a QR code");
     println!("                             to open on a phone; --open launches a browser)");
-    println!("  build  <file.qmd> [out.html]");
+    println!("  build  <file.qmd> [out.html] [--out <dir>]");
     println!("                             render a self-contained HTML file");
-    println!("                             (default <name>.html beside the source)");
+    println!("                             (default <name>.html beside the source);");
+    println!("                             --out <dir> writes <dir>/index.html and");
+    println!("                             copies referenced assets for a portable folder");
     println!("  render <file.qmd>          render a full HTML page to stdout");
     println!("  blocks <file.qmd>          list block ids + sourcepos (debug)");
     println!();

@@ -42,6 +42,7 @@ corpus/          the real .qmd docs (the spec); cargo test renders them all
 cargo run -p qmd-fast-server -- preview <file.qmd> [port]      # live preview (aliases: dev, serve)
 cargo run -p qmd-fast-server -- preview <file.qmd> --host      # + expose on LAN with a phone QR code
 cargo run -p qmd-fast-server -- build  <file.qmd> [out.html]   # self-contained HTML file (default <name>.html)
+cargo run -p qmd-fast-server -- build  <file.qmd> --out <dir>  # portable folder: <dir>/index.html + copied local assets
 cargo run -p qmd-fast-server -- render <file.qmd> > out.html   # one-shot full page to stdout
 cargo run -p qmd-fast-server -- blocks <file.qmd>              # block ids + sourcepos (debug)
 cargo test -p qmd-fast-core                                    # corpus invariants + unit tests
