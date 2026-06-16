@@ -598,6 +598,7 @@ const DARK_CSS: &str = r#"
     --qmd-edge-shadow: rgba(255, 255, 255, .14); --qmd-flash: rgba(110, 168, 255, .22);
   }
   html[data-theme="dark"] .qmd-copy { background: #21242b; color: #c8ccd4; border-color: #3a3f4b; }
+  html[data-theme="dark"] .qmd-copy:hover { color: #fff; border-color: #5a606b; }
   html[data-theme="dark"] .callout-note .callout-title { background: #1b2330; }
   html[data-theme="dark"] .callout-tip .callout-title { background: #15241c; }
   html[data-theme="dark"] .callout-warning .callout-title { background: #2a2415; }
@@ -742,17 +743,37 @@ const BASE_CSS: &str = r#"
   .qmd-title-block .description { margin: .4rem 0; color: var(--qmd-fg); }
   .qmd-title-block .qmd-title-meta { margin-top: .6rem; display: flex; flex-wrap: wrap; gap: .25rem 1rem;
     font: 14px var(--qmd-font-head); color: var(--qmd-muted); }
-  pre { position: relative; background: var(--qmd-code-bg); padding: 1rem; border-radius: 6px; overflow: auto; font-size: .9em; }
+  pre { position: relative; padding: 1rem; border-radius: 6px; overflow: auto; font-size: .9em;
+        /* same scroll-shadow trick as wide tables: bg-coloured covers (local) ride
+           with the content and mask the edge shadows (scroll, pinned to the box)
+           until a long line actually has more to scroll toward. */
+        background-color: var(--qmd-code-bg);
+        background-image:
+          linear-gradient(to right, var(--qmd-code-bg) 30%, transparent),
+          linear-gradient(to left, var(--qmd-code-bg) 30%, transparent),
+          radial-gradient(farthest-side at left, var(--qmd-edge-shadow), transparent),
+          radial-gradient(farthest-side at right, var(--qmd-edge-shadow), transparent);
+        background-position: left center, right center, left center, right center;
+        background-repeat: no-repeat;
+        background-size: 38px 100%, 38px 100%, 13px 100%, 13px 100%;
+        background-attachment: local, local, scroll, scroll; }
   code { font-family: var(--qmd-font-mono); }
+  /* highlight.js makes code.hljs its own scroll box (display:block; overflow-x:auto),
+     which would scroll inside the padding and below the shadow. Neutralise it so the
+     <pre> is the single horizontal scroll container the scroll-shadow above keys off. */
+  pre > code, pre > code.hljs { display: block; overflow: visible !important;
+    background: transparent !important; padding: 0 !important; }
   /* inline code (not the scrollable <pre> kind): a subtle tinted chip so it reads
      as code in prose instead of blending in as same-colour monospace; .875em pulls
      the mono glyphs down to the serif x-height. It also breaks rather than overflowing. */
   :not(pre) > code { background: var(--qmd-code-bg); padding: .1em .35em; border-radius: 4px;
     font-size: .875em; overflow-wrap: anywhere; }
-  .qmd-copy { position: absolute; top: .45rem; right: .45rem; padding: .1rem .45rem;
-              font: 600 11px/1.4 ui-sans-serif, system-ui, sans-serif; color: #555;
-              background: #fff; border: 1px solid #d4d4d4; border-radius: 5px;
-              cursor: pointer; opacity: 0; transition: opacity .12s ease; }
+  .qmd-copy { position: absolute; top: .45rem; right: .45rem;
+              display: inline-flex; align-items: center; justify-content: center;
+              padding: .28rem; line-height: 0; color: #555;
+              background: #fff; border: 1px solid #d4d4d4; border-radius: 5px; cursor: pointer;
+              opacity: 0; transition: opacity .12s ease, color .12s ease, border-color .12s ease; }
+  .qmd-copy svg { display: block; width: 14px; height: 14px; }
   pre:hover .qmd-copy, .qmd-copy:focus-visible { opacity: 1; }
   .qmd-copy:hover { color: #111; border-color: #999; }
   .qmd-copy.qmd-copied { color: #2bb673; border-color: #2bb673; }
@@ -810,7 +831,13 @@ const BASE_CSS: &str = r#"
   /* live-edit feedback: a block that just (re)rendered pulses an accent tint, so
      the eye (or a phone) lands on what changed. reduced-motion collapses it away. */
   @keyframes qmd-flash { from { background-color: var(--qmd-flash); } to { background-color: transparent; } }
-  [data-block-id].qmd-flash { animation: qmd-flash 1.1s ease-out; border-radius: 4px; }
+  [data-block-id].qmd-flash { animation: qmd-flash .8s ease-out; border-radius: 4px; }
+  /* single-click click-to-source feedback: the clicked block's accent outline
+     fades out (a transient "you clicked here", not a persistent box). The plain
+     .qmd-hl above stays reserved for the editor cursor sync, which persists. */
+  @keyframes qmd-hl-fade { from { outline-color: var(--qmd-accent); } to { outline-color: transparent; } }
+  [data-block-id].qmd-hl-flash { outline: 2px solid var(--qmd-accent); outline-offset: 3px;
+    border-radius: 3px; animation: qmd-hl-fade .7s ease-out forwards; }
   figure.qmd-figure { margin: 1.5rem 0; }
   figure.qmd-figure img { max-width: 100%; height: auto; }
   figure.qmd-figure figcaption { font-size: .9em; color: var(--qmd-muted); margin-top: .5rem; }
@@ -1015,17 +1042,40 @@ window.qmdEnhanceCode = function (root) {
     if (window.hljs && /language-/.test(code.className)) {
       try { window.hljs.highlightElement(code); } catch (e) {}
     }
+    // GitHub/Claude-style copy glyph (Octicons copy), swapping to a check on success.
+    var copyIcon = '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"></path><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path></svg>';
+    var checkIcon = '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L1.22 8.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"></path></svg>';
     var btn = document.createElement('button');
     btn.className = 'qmd-copy';
     btn.type = 'button';
     btn.setAttribute('aria-label', 'Copy code');
-    btn.textContent = 'Copy';
+    btn.innerHTML = copyIcon;
     btn.addEventListener('click', function () {
-      navigator.clipboard.writeText(code.innerText).then(function () {
-        btn.textContent = 'Copied';
+      var text = code.innerText;
+      var ok = function () {
+        btn.innerHTML = checkIcon;
         btn.classList.add('qmd-copied');
-        setTimeout(function () { btn.textContent = 'Copy'; btn.classList.remove('qmd-copied'); }, 1200);
-      });
+        btn.setAttribute('aria-label', 'Copied');
+        setTimeout(function () { btn.innerHTML = copyIcon; btn.classList.remove('qmd-copied'); btn.setAttribute('aria-label', 'Copy code'); }, 1200);
+      };
+      // navigator.clipboard only exists in a secure context; over --host (plain http
+      // on the LAN, e.g. a phone) fall back to a hidden-textarea execCommand copy so
+      // the button still copies and confirms with the check.
+      var legacy = function () {
+        try {
+          var ta = document.createElement('textarea');
+          ta.value = text; ta.setAttribute('readonly', '');
+          ta.style.position = 'fixed'; ta.style.top = '0'; ta.style.opacity = '0';
+          document.body.appendChild(ta); ta.select();
+          var done = document.execCommand('copy'); document.body.removeChild(ta);
+          return done;
+        } catch (e) { return false; }
+      };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(ok, function () { if (legacy()) ok(); });
+      } else if (legacy()) {
+        ok();
+      }
     });
     pre.appendChild(btn);
   });

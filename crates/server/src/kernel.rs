@@ -50,6 +50,21 @@ def ojs_define(**kwargs):
 globals()["ojs_define"] = ojs_define
 "#;
 
+/// Make inline matplotlib figures follow the page theme. Set once at kernel start
+/// via the IPython InlineBackend config (so it's lazy: nothing is imported until a
+/// cell actually uses matplotlib). A transparent figure/axes background lets the
+/// page colour show through and track light/dark instantly, and a neutral grey for
+/// axes, ticks, labels and text reads on both themes; data colours are untouched.
+/// An author's explicit `style`/`facecolor` still overrides these defaults.
+const MPL_THEME_PREAMBLE: &str = r#"
+try:
+    _ip = get_ipython()
+    if _ip is not None:
+        _ip.run_line_magic('config', "InlineBackend.rc = {'figure.facecolor': 'none', 'axes.facecolor': 'none', 'savefig.facecolor': 'none', 'savefig.edgecolor': 'none', 'text.color': '#888888', 'axes.edgecolor': '#888888', 'axes.labelcolor': '#888888', 'xtick.color': '#888888', 'ytick.color': '#888888', 'grid.color': '#888888', 'legend.framealpha': 0.0}")
+except Exception:
+    pass
+"#;
+
 /// One execution output, already rendered to a self-contained HTML fragment.
 #[derive(Debug, Clone)]
 pub enum Output {
@@ -131,6 +146,8 @@ impl Kernel {
         // cells: it emits `<script type="ojs-define">{json}</script>`, which the
         // Observable runtime reads. (Mirrors Quarto's Jupyter setup.)
         let _ = kernel.execute(OJS_DEFINE_PREAMBLE).await;
+        // Default inline figures to a transparent, theme-neutral style.
+        let _ = kernel.execute(MPL_THEME_PREAMBLE).await;
         Ok(kernel)
     }
 

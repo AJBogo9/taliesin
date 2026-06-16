@@ -11,7 +11,13 @@
   let wordCountEl = null;
   let ws;
 
-  const setStatus = (s) => { if (statusEl) statusEl.textContent = s; };
+  const setStatus = (s) => {
+    if (!statusEl) return;
+    statusEl.textContent = s;
+    // Drives the mobile status dot's colour (the text itself is hidden on phones).
+    statusEl.dataset.state =
+      s === "live" ? "live" : s === "error" ? "error" : /reconnect/.test(s) ? "warn" : "wait";
+  };
 
   // Words + reading time (prose only: code and math are excluded), refreshed on
   // every change. Shown in the control bar; no-op in reveal mode / without it.
@@ -100,13 +106,14 @@
     if (e.key === "Escape" && errorEl.classList.contains("qmd-show")) hideError();
   });
 
-  // Briefly pulse a block that just (re)rendered, so the change is easy to spot.
-  const flash = (el) => {
+  // Briefly pulse a block with a self-removing animated class: the change-flash on
+  // re-render (`qmd-flash`), and the click-to-source highlight (`qmd-hl-flash`).
+  const pulse = (el, cls) => {
     if (!el || !el.classList) return;
-    el.classList.remove("qmd-flash");
-    void el.offsetWidth; // restart the animation when re-flashing the same node
-    el.classList.add("qmd-flash");
-    el.addEventListener("animationend", () => el.classList.remove("qmd-flash"), { once: true });
+    el.classList.remove(cls);
+    void el.offsetWidth; // restart the animation when re-pulsing the same node
+    el.classList.add(cls);
+    el.addEventListener("animationend", () => el.classList.remove(cls), { once: true });
   };
 
   // --- preview control bar: theme toggle + click-to-source toggle ----------
@@ -126,11 +133,12 @@
     themeBtn.className = "qmd-ctl";
     themeBtn.type = "button";
     themeBtn.title = "Theme: light / dark / auto (follows your OS)";
-    const ICON = { auto: "🖥 auto", light: "☀ light", dark: "🌙 dark" };
+    const ICON = { auto: "🖥", light: "☀", dark: "🌙" };
     const ORDER = ["auto", "light", "dark"];
     const syncTheme = () => {
       const p = (window.qmdGetThemePref && window.qmdGetThemePref()) || "auto";
       themeBtn.textContent = ICON[p] || ICON.auto;
+      themeBtn.setAttribute("aria-label", "Theme: " + p + " (click to cycle light / dark / auto)");
     };
     themeBtn.addEventListener("click", () => {
       const cur = (window.qmdGetThemePref && window.qmdGetThemePref()) || "auto";
@@ -142,9 +150,11 @@
     // Click-to-source on/off. When off, clicks pass through normally (so you can
     // select text / drive OJS widgets without jumping to source).
     const srcBtn = document.createElement("button");
+    srcBtn.id = "qmd-src-ctl";
     srcBtn.className = "qmd-ctl";
     srcBtn.type = "button";
-    srcBtn.textContent = "⌖ source";
+    srcBtn.textContent = "</>";
+    srcBtn.setAttribute("aria-label", "Click-to-source");
     srcBtn.title =
       "Double-click a block to reveal its source" + (inWebview ? " in the editor" : " in VS Code");
     const syncSrc = () => srcBtn.setAttribute("aria-pressed", clickSource ? "true" : "false");
@@ -161,8 +171,8 @@
 
     statusEl = document.createElement("span");
     statusEl.id = "qmd-status";
-    statusEl.textContent = "connecting…";
     bar.append(themeBtn, srcBtn, wordCountEl, statusEl);
+    setStatus("connecting…");
   })();
   // Reveal mode (and any layout without the control bar) keeps its status pill.
   if (!statusEl) statusEl = document.getElementById("qmd-status");
@@ -442,7 +452,7 @@
         if (el) {
           const node = fragment(msg.html);
           keepScroll(() => el.replaceWith(node));
-          flash(node);
+          pulse(node, "qmd-flash");
         }
         afterChange();
         break;
@@ -455,7 +465,7 @@
           if (after) after.after(node);
           else root.prepend(node);
         });
-        flash(node);
+        pulse(node, "qmd-flash");
         afterChange();
         break;
       }
@@ -509,14 +519,15 @@
     window.location.href = "vscode://file" + encodeURI(abs) + ":" + line + ":" + col;
   };
 
-  // Single click: highlight + tell the server. Skipped when click-to-source is
-  // off, or when the click lands on the control bar.
+  // Single click: a transient highlight pulse on the clicked block + tell the
+  // server. The pulse fades on its own, so nothing is left stuck if you toggle
+  // click-to-source off or click away. (The persistent .qmd-hl is for editor
+  // cursor sync only.) Skipped when click-to-source is off or on the control bar.
   document.addEventListener("click", (e) => {
     if (!clickSource || (e.target.closest && e.target.closest(".qmd-ctl"))) return;
     const el = e.target.closest("[data-block-id]");
-    document.querySelectorAll(".qmd-hl").forEach((n) => n.classList.remove("qmd-hl"));
     if (!el) return;
-    el.classList.add("qmd-hl");
+    pulse(el, "qmd-hl-flash");
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "click_block", ...blockRef(el) }));
     }

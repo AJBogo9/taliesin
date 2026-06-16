@@ -381,7 +381,8 @@ const STATUS_CSS: &str = "#qmd-controls { position: fixed; bottom: .5rem; left: 
     #qmd-controls #qmd-status::before { content: \"\"; display: inline-block; width: .5rem; height: .5rem; \
     border-radius: 50%; background: var(--qmd-muted, #888); vertical-align: middle; } \
     #qmd-controls #qmd-status[data-state=\"live\"]::before { background: #3fb950; } \
-    #qmd-controls #qmd-status[data-state=\"warn\"]::before { background: #d9a23a; } } \
+    #qmd-controls #qmd-status[data-state=\"warn\"]::before { background: #d9a23a; } \
+    #qmd-controls #qmd-status[data-state=\"error\"]::before { background: #e5534b; } } \
     @media (max-width: 60rem) { body.qmd-toc-sheet #qmd-controls { bottom: 2.4rem; } }";
 
 /// Minimal JS-string escape for embedding a filesystem path in a `\"...\"` literal.
