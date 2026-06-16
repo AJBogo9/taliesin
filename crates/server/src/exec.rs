@@ -118,11 +118,17 @@ impl Executor {
             .find(|&i| self.cached.get(i).map(|c| c.id.as_str()) != Some(cells[i].id.as_str()))
             .unwrap_or(cells.len());
 
+        let to_run = cells.len().saturating_sub(first_changed);
         let mut outputs = Vec::with_capacity(cells.len());
         for (i, cell) in cells.iter().enumerate() {
             if i < first_changed {
                 outputs.push(self.cached[i].output.clone());
             } else {
+                // Progress for the cells actually running (skipped once the kernel
+                // is known-unavailable, since those are instant no-ops).
+                if !self.failed {
+                    crate::log::exec(i - first_changed + 1, to_run);
+                }
                 outputs.push(self.exec_cell(&cell.code).await);
             }
         }

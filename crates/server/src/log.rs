@@ -14,6 +14,7 @@ enum Style {
     Update,
     Source,
     Kernel,
+    Exec,
     Warn,
     Error,
 }
@@ -27,6 +28,7 @@ impl Style {
             Style::Update => ("update", "\x1b[36m"), // cyan
             Style::Source => ("source", "\x1b[34m"), // blue
             Style::Kernel => ("kernel", "\x1b[35m"), // magenta
+            Style::Exec => ("exec", "\x1b[35m"),     // magenta (kernel work)
             Style::Warn => ("warn", "\x1b[33m"),     // yellow
             Style::Error => ("error", "\x1b[31m"),   // red
         }
@@ -121,6 +123,11 @@ pub fn source(loc: &str) {
 /// Kernel lifecycle / status.
 pub fn kernel(msg: &str) {
     line(Style::Kernel, msg);
+}
+
+/// Code-cell execution progress (Quarto-style), shown while the kernel runs.
+pub fn exec(done: usize, total: usize) {
+    line(Style::Exec, &format!("cell {done}/{total}"));
 }
 
 pub fn warn(msg: &str) {

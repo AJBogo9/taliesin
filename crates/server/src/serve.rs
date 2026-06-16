@@ -185,7 +185,7 @@ fn render_doc(app: &AppState) -> Option<RenderedDoc> {
 // --- HTTP ---------------------------------------------------------------
 
 async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
-    let (format, toc, theme_css, theme_default, ojs) = {
+    let (format, toc, theme_css, theme_default, ojs, body) = {
         let d = app.doc.lock().unwrap();
         let ojs = d
             .blocks
@@ -197,6 +197,7 @@ async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
             d.theme_css.clone(),
             d.theme_default.clone(),
             ojs,
+            d.body_html(),
         )
     };
     // Absolute doc + base-dir paths so the browser can build `vscode://file/…`
@@ -214,6 +215,7 @@ async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
         ojs,
         doc_path: &doc_path.to_string_lossy(),
         base_dir: &base_dir.to_string_lossy(),
+        body: &body,
     };
     Html(index_html(&ctx))
 }
@@ -227,6 +229,9 @@ struct PageCtx<'a> {
     ojs: bool,
     doc_path: &'a str,
     base_dir: &'a str,
+    /// The rendered body, server-rendered into the page so content shows on the
+    /// first paint (the websocket then only drives live updates).
+    body: &'a str,
 }
 
 /// The preview favicon (also satisfies the browser's implicit `/favicon.ico`
@@ -310,7 +315,7 @@ fn percent_decode(s: &str) -> String {
 
 fn index_html(ctx: &PageCtx) -> String {
     match ctx.format {
-        DocFormat::Reveal => reveal_index_html(),
+        DocFormat::Reveal => reveal_index_html(ctx),
         DocFormat::Html => blog_index_html(ctx),
     }
 }
@@ -379,10 +384,10 @@ fn blog_index_html(ctx: &PageCtx) -> String {
 <style>{status_css}</style>
 </head>
 <body{body_attr}>
-<main id="qmd-root"></main>
+<main id="qmd-root">{body}</main>
 {toc_nav}
 <div id="qmd-controls"></div>
-<script>{doc_global} {toc_flag}</script>
+<script>{doc_global} {toc_flag} window.QMD_SSR = true;</script>
 {code_scripts}
 <script>
 {js}
@@ -397,13 +402,14 @@ fn blog_index_html(ctx: &PageCtx) -> String {
         code_scripts = qmd_fast_core::code_scripts(),
         status_css = STATUS_CSS,
         js = CLIENT_JS,
+        body = ctx.body,
     )
 }
 
 /// Live reveal.js deck: the same preview client, but mounting sectioned slides
 /// into `.reveal > .slides` and (re)syncing reveal as blocks change. The
 /// `QMD_FORMAT` flag switches the client into deck mode.
-fn reveal_index_html() -> String {
+fn reveal_index_html(ctx: &PageCtx) -> String {
     format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -418,12 +424,12 @@ fn reveal_index_html() -> String {
 </head>
 <body>
 <div class="reveal">
-<div class="slides" id="qmd-root"></div>
+<div class="slides" id="qmd-root">{body}</div>
 </div>
 <div id="qmd-status">connecting…</div>
 {reveal_script}
 {code_scripts}
-<script>window.QMD_FORMAT = "reveal";</script>
+<script>window.QMD_FORMAT = "reveal"; window.QMD_SSR = true;</script>
 <script>
 {js}
 </script>
@@ -436,6 +442,7 @@ fn reveal_index_html() -> String {
         status_css = STATUS_CSS,
         reveal_script = qmd_fast_core::reveal_client_script(),
         js = CLIENT_JS,
+        body = ctx.body,
     )
 }
 

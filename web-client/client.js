@@ -172,11 +172,21 @@
     if (window.qmdEnhanceCode) window.qmdEnhanceCode(root);
   };
 
+  // The server renders the initial body into the page (so content paints before
+  // the websocket connects). The first `full_render` after that is identical, so
+  // skip re-mounting it (avoids a flash + needless OJS/reveal re-init); reconnects
+  // still re-mount normally.
+  let ssrPending = window.QMD_SSR === true;
+
   const handle = (msg) => {
     switch (msg.type) {
       case "full_render":
         document.title = msg.title || "qmd-fast";
-        keepScroll(() => { root.innerHTML = msg.body_html; });
+        if (ssrPending) {
+          ssrPending = false; // content already server-rendered into #qmd-root
+        } else {
+          keepScroll(() => { root.innerHTML = msg.body_html; });
+        }
         afterChange();
         setDiagnostics(msg.diagnostics);
         // Run Observable cells once the cells are in the DOM (no-op without OJS).
