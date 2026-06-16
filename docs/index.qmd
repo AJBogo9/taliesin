@@ -243,48 +243,140 @@ Plot.plot({
 
 ### 3D graphics (Three.js / WebGL)
 
-Because OJS cells can `import` any ES module, **3D visualizations work too**: a
-cell pulls Three.js straight from a CDN and returns its `<canvas>`. The cube
-below spins on its own (`invalidation` cleans up the animation when the block is
-re-rendered). The author's PCA post drives interactive WebGL point clouds the
-same way — Python computes the data, `ojs_define` hands it to a Three.js scene.
+Because OJS cells can `import` any ES module, **3D visualizations work too**. This
+cell pulls Three.js and `OrbitControls` from a CDN, wraps an equirectangular world
+map onto a sphere, and returns the live `<canvas>`. Drag to spin the globe yourself
+(it also auto-rotates), the **⛶** button takes it fullscreen via the native
+Fullscreen API (resizing the renderer to fill the screen), and the renderer is
+transparent (`alpha`), so the globe sits straight on the page background and
+follows the light/dark theme.
+`invalidation` stops the animation loop when the block re-renders. The author's PCA
+post drives interactive WebGL point clouds the same way: Python computes the data,
+`ojs_define` hands it to a Three.js scene.
 
 ```{ojs}
 //| echo: false
 {
   const THREE = await import("https://esm.sh/three@0.163.0");
-  const w = 600, h = 320;
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(w, h);
+  const { OrbitControls } = await import(
+    "https://esm.sh/three@0.163.0/examples/jsm/controls/OrbitControls"
+  );
+
+  const w = 600, h = 360;
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setClearColor(0x111827, 1);
+  renderer.setSize(w, h, false); // buffer only; CSS below drives the displayed size
+  renderer.setClearColor(0x000000, 0); // transparent: shows the page bg / theme
+  // Drive the display size from CSS so the canvas keeps its 600x360 aspect when the
+  // page width clamps it (mobile): the width shrinks and the height follows, instead
+  // of the fixed inline height squishing it sideways.
+  const cv = renderer.domElement;
+  cv.style.cssText = `display:block;width:${w}px;max-width:100%;height:auto`;
 
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
-  camera.position.set(3, 2.2, 4);
-  camera.lookAt(0, 0, 0);
-  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
-  const key = new THREE.DirectionalLight(0xffffff, 0.9);
-  key.position.set(5, 6, 4);
+  const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 100);
+  camera.position.set(0, 0, 4);
+  scene.add(new THREE.AmbientLight(0xffffff, 1.7));
+  const key = new THREE.DirectionalLight(0xffffff, 0.6);
+  key.position.set(5, 3, 5);
   scene.add(key);
 
-  const cube = new THREE.Mesh(
-    new THREE.BoxGeometry(1.6, 1.6, 1.6),
-    new THREE.MeshStandardMaterial({ color: 0x4c8dff, metalness: 0.1, roughness: 0.45 })
+  const globe = new THREE.Mesh(
+    new THREE.SphereGeometry(1.3, 64, 64),
+    new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0 })
   );
-  scene.add(cube);
-  scene.add(new THREE.AxesHelper(2.2));
+  scene.add(globe);
+
+  // Equirectangular world map onto the sphere. If it can't load (e.g. offline),
+  // fall back to a drawn lat/long graticule so the globe is never blank.
+  function graticule() {
+    const c = document.createElement("canvas");
+    c.width = 1024; c.height = 512;
+    const x = c.getContext("2d");
+    x.fillStyle = "#1f3a5f"; x.fillRect(0, 0, c.width, c.height);
+    x.strokeStyle = "rgba(255,255,255,0.35)"; x.lineWidth = 2;
+    for (let lon = 0; lon <= c.width; lon += c.width / 24) {
+      x.beginPath(); x.moveTo(lon, 0); x.lineTo(lon, c.height); x.stroke();
+    }
+    for (let lat = 0; lat <= c.height; lat += c.height / 12) {
+      x.beginPath(); x.moveTo(0, lat); x.lineTo(c.width, lat); x.stroke();
+    }
+    return new THREE.CanvasTexture(c);
+  }
+  new THREE.TextureLoader().load(
+    "https://unpkg.com/three-globe/example/img/earth-day.jpg",
+    (tex) => {
+      tex.colorSpace = THREE.SRGBColorSpace;
+      globe.material.map = tex;
+      globe.material.emissiveMap = tex;            // lift the unlit side so it reads in light mode
+      globe.material.emissive = new THREE.Color(0xffffff);
+      globe.material.emissiveIntensity = 0.3;
+      globe.material.needsUpdate = true;
+    },
+    undefined,
+    () => { globe.material.map = graticule(); globe.material.needsUpdate = true; }
+  );
+
+  const ctrl = new OrbitControls(camera, renderer.domElement);
+  ctrl.enableDamping = true;
+  ctrl.dampingFactor = 0.06;
+  ctrl.enablePan = false;
+  ctrl.minDistance = 2;
+  ctrl.maxDistance = 8;
+  ctrl.autoRotate = true;
+  ctrl.autoRotateSpeed = 0.6;
 
   let raf;
   (function animate() {
     raf = requestAnimationFrame(animate);
-    cube.rotation.x += 0.010;
-    cube.rotation.y += 0.013;
+    ctrl.update();
     renderer.render(scene, camera);
   })();
-  invalidation.then(() => { cancelAnimationFrame(raf); renderer.dispose(); });
 
-  return renderer.domElement;
+  // Wrap the canvas so a fullscreen button can overlay it. Native fullscreen
+  // (not the figure lightbox, which clones nodes and would kill a live WebGL
+  // canvas) resizes the renderer to fill the screen on fullscreenchange.
+  const box = document.createElement("div");
+  box.style.cssText = "position:relative;display:inline-block;max-width:100%";
+  box.appendChild(renderer.domElement);
+
+  const fsBtn = document.createElement("button");
+  fsBtn.textContent = "⛶ Fullscreen";
+  fsBtn.style.cssText =
+    "position:absolute;bottom:8px;right:8px;padding:4px 10px;font-size:12px;cursor:pointer;" +
+    "background:rgba(30,30,30,.75);color:#ddd;border:1px solid #555;border-radius:4px;backdrop-filter:blur(4px)";
+  fsBtn.onclick = () =>
+    document.fullscreenElement ? document.exitFullscreen() : box.requestFullscreen();
+  box.appendChild(fsBtn);
+
+  function onFS() {
+    const fs = document.fullscreenElement === box;
+    if (fs) {
+      renderer.setSize(screen.width, screen.height, false);
+      camera.aspect = screen.width / screen.height;
+      cv.style.cssText = "display:block;width:100%;height:100%"; // fill the screen
+    } else {
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      cv.style.cssText = `display:block;width:${w}px;max-width:100%;height:auto`;
+    }
+    camera.updateProjectionMatrix();
+    // Native fullscreen paints a black backdrop; fill it with the page background
+    // (--qmd-bg) so it follows the theme, and go transparent again when inline.
+    const cs = getComputedStyle(document.documentElement);
+    box.style.background = fs
+      ? (cs.getPropertyValue("--qmd-bg").trim() || getComputedStyle(document.body).backgroundColor)
+      : "";
+    fsBtn.textContent = fs ? "✕ Exit fullscreen" : "⛶ Fullscreen";
+  }
+  document.addEventListener("fullscreenchange", onFS);
+
+  invalidation.then(() => {
+    cancelAnimationFrame(raf); ctrl.dispose(); renderer.dispose();
+    document.removeEventListener("fullscreenchange", onFS);
+  });
+
+  return box;
 }
 ```
 
