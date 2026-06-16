@@ -841,6 +841,8 @@ const BASE_CSS: &str = r#"
   @media (max-width: 60rem) {
     /* keep the fixed control bar / diagnostics from covering the last line */
     body { padding-bottom: 2.75rem; }
+    /* sheet pages lift the control bar above the bottom TOC handle, so clear more */
+    body.qmd-toc-sheet { padding-bottom: 4.4rem; }
     /* Static export (no JS): stack the TOC above the content. Keep it a grid so
        the minmax(0,1fr) track clamps <main> to the viewport, and `order` lifts
        the TOC (which follows <main> in the DOM) up instead of stranding it at the

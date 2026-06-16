@@ -23,7 +23,9 @@
       "#qmd-diagnostics .qmd-diag{padding:.3rem .55rem;border-radius:6px;background:var(--qmd-bg,#fff);" +
       "color:var(--qmd-fg,#111);border:1px solid var(--qmd-border,#e0e0e0);box-shadow:0 2px 12px rgba(0,0,0,.18);}" +
       "#qmd-diagnostics .qmd-diag-error{border-left:3px solid #e5534b;}" +
-      "#qmd-diagnostics .qmd-diag-warning{border-left:3px solid #d9a23a;}";
+      "#qmd-diagnostics .qmd-diag-warning{border-left:3px solid #d9a23a;}" +
+      // on mobile, sit above the lifted control bar so neither covers the TOC handle
+      "@media (max-width:60rem){body.qmd-toc-sheet #qmd-diagnostics{bottom:4.6rem;}}";
     (document.head || document.documentElement).appendChild(style);
     const el = document.createElement("div");
     el.id = "qmd-diagnostics";

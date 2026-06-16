@@ -329,7 +329,8 @@ const STATUS_CSS: &str = "#qmd-controls { position: fixed; bottom: .5rem; left: 
     cursor: pointer; line-height: 1.4; } \
     #qmd-controls .qmd-ctl:hover { color: var(--qmd-fg, #111); } \
     #qmd-controls .qmd-ctl[aria-pressed=\"false\"] { opacity: .55; } \
-    #qmd-status { color: var(--qmd-muted, #888); padding: .15rem .35rem; }";
+    #qmd-status { color: var(--qmd-muted, #888); padding: .15rem .35rem; } \
+    @media (max-width: 60rem) { body.qmd-toc-sheet #qmd-controls { bottom: 2.4rem; } }";
 
 /// Minimal JS-string escape for embedding a filesystem path in a `\"...\"` literal.
 fn js_str(s: &str) -> String {
