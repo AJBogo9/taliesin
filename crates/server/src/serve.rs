@@ -39,6 +39,15 @@ struct DocState {
     theme_css: String,
     theme_default: String,
     blocks: Vec<Block>,
+    diagnostics: Vec<Diagnostic>,
+}
+
+/// A non-fatal issue with the current document, surfaced in the preview so the
+/// author isn't left guessing why something looks wrong.
+#[derive(Clone, PartialEq)]
+struct Diagnostic {
+    level: &'static str, // "warning" | "error"
+    message: String,
 }
 
 impl DocState {
@@ -426,8 +435,46 @@ fn full_render_json(d: &DocState) -> String {
         "type": "full_render",
         "title": d.title,
         "body_html": d.body_html(),
+        "diagnostics": diags_array(&d.diagnostics),
     })
     .to_string()
+}
+
+fn diags_array(diags: &[Diagnostic]) -> Vec<serde_json::Value> {
+    diags
+        .iter()
+        .map(|d| serde_json::json!({ "level": d.level, "message": d.message }))
+        .collect()
+}
+
+fn diagnostics_json(diags: &[Diagnostic]) -> String {
+    serde_json::json!({ "type": "diagnostics", "messages": diags_array(diags) }).to_string()
+}
+
+fn error_json(message: &str) -> String {
+    serde_json::json!({ "type": "error", "message": message }).to_string()
+}
+
+/// Non-fatal issues with the current document: includes that don't resolve, and
+/// the kernel state. Surfaced in the preview so the author sees them without
+/// watching the terminal.
+fn compute_diagnostics(app: &AppState, executor: &crate::exec::Executor) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    if let Ok(src) = std::fs::read_to_string(&app.path) {
+        for dep in qmd_fast_core::includes::dependencies(&src, &app.base_dir) {
+            if !dep.exists() {
+                let shown = dep.strip_prefix(&app.base_dir).unwrap_or(&dep);
+                diags.push(Diagnostic {
+                    level: "warning",
+                    message: format!("include not found: {}", shown.display()),
+                });
+            }
+        }
+    }
+    if let Some(message) = executor.diagnostic() {
+        diags.push(Diagnostic { level: "warning", message });
+    }
+    diags
 }
 
 fn op_json(op: &BlockOp) -> String {
@@ -511,11 +558,16 @@ fn watch_dirs(app: &AppState) -> Vec<PathBuf> {
 /// Re-render markdown, execute code cells (changed + downstream), then diff the
 /// assembled block list against the live state and broadcast the changes.
 async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
-    let Some(doc) = render_doc(app) else { return };
+    let Some(doc) = render_doc(app) else {
+        let _ = app.tx.send(error_json(&format!("cannot read {}", app.path.display())));
+        return;
+    };
     let blocks = executor.run(doc.blocks).await;
+    let diags = compute_diagnostics(app, executor);
     let ops = {
         let mut d = app.doc.lock().unwrap();
         let ops = qmd_fast_core::diff_blocks(&d.blocks, &blocks);
+        let diags_changed = d.diagnostics != diags;
         d.title = doc.title;
         d.subtitle = doc.subtitle;
         d.format = doc.format;
@@ -523,9 +575,13 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         d.theme_css = doc.theme_css;
         d.theme_default = doc.theme_default;
         d.blocks = blocks;
+        d.diagnostics = diags;
         // Broadcast under the lock so connecting clients can't interleave.
         for op in &ops {
             let _ = app.tx.send(op_json(op));
+        }
+        if diags_changed {
+            let _ = app.tx.send(diagnostics_json(&d.diagnostics));
         }
         ops.len()
     };

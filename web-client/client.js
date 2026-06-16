@@ -12,6 +12,38 @@
 
   const setStatus = (s) => { if (statusEl) statusEl.textContent = s; };
 
+  // --- diagnostics: render/include/kernel issues the server pushes -----------
+  // A small bottom-left stack, shown only when there are issues, so the author
+  // sees a broken include or a missing kernel without watching the terminal.
+  const diagEl = (() => {
+    const style = document.createElement("style");
+    style.textContent =
+      "#qmd-diagnostics{position:fixed;bottom:2.3rem;left:.5rem;z-index:9998;max-width:min(560px,92vw);" +
+      "display:none;flex-direction:column;gap:.3rem;font:12px ui-sans-serif,system-ui,sans-serif;}" +
+      "#qmd-diagnostics .qmd-diag{padding:.3rem .55rem;border-radius:6px;background:var(--qmd-bg,#fff);" +
+      "color:var(--qmd-fg,#111);border:1px solid var(--qmd-border,#e0e0e0);box-shadow:0 2px 12px rgba(0,0,0,.18);}" +
+      "#qmd-diagnostics .qmd-diag-error{border-left:3px solid #e5534b;}" +
+      "#qmd-diagnostics .qmd-diag-warning{border-left:3px solid #d9a23a;}";
+    (document.head || document.documentElement).appendChild(style);
+    const el = document.createElement("div");
+    el.id = "qmd-diagnostics";
+    document.body.appendChild(el);
+    return el;
+  })();
+  const setDiagnostics = (items) => {
+    const list = (items || []).filter(Boolean);
+    diagEl.textContent = "";
+    if (!list.length) { diagEl.style.display = "none"; return; }
+    for (const it of list) {
+      const level = it.level === "error" ? "error" : "warning";
+      const row = document.createElement("div");
+      row.className = "qmd-diag qmd-diag-" + level;
+      row.textContent = (level === "error" ? "✗ " : "⚠ ") + (it.message || it);
+      diagEl.appendChild(row);
+    }
+    diagEl.style.display = "flex";
+  };
+
   // --- preview control bar: theme toggle + click-to-source toggle ----------
   const inWebview = window.parent !== window;
   const CLICK_KEY = "qmd-click-source";
@@ -146,8 +178,12 @@
         document.title = msg.title || "qmd-fast";
         keepScroll(() => { root.innerHTML = msg.body_html; });
         afterChange();
+        setDiagnostics(msg.diagnostics);
         // Run Observable cells once the cells are in the DOM (no-op without OJS).
         if (window.qmdRunOJS) window.qmdRunOJS();
+        break;
+      case "diagnostics":
+        setDiagnostics(msg.messages);
         break;
       case "update": {
         const el = elById(msg.target_id);
@@ -171,7 +207,8 @@
         break;
       }
       case "error":
-        setStatus("error: " + msg.message);
+        setStatus("error");
+        setDiagnostics([{ level: "error", message: msg.message }]);
         break;
     }
   };

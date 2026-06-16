@@ -45,6 +45,16 @@ impl Executor {
         Self { python, kernel: None, failed: false, cached: Vec::new() }
     }
 
+    /// A user-facing warning about the executor's state, if any. Currently: the
+    /// kernel failed to start, so code cells are rendering as source.
+    pub fn diagnostic(&self) -> Option<String> {
+        self.failed.then(|| {
+            "kernel unavailable; code cells render as source \
+             (set QMD_FAST_PYTHON to a python with ipykernel)"
+                .to_string()
+        })
+    }
+
     /// Execute the document's Python cells (changed cells + downstream) and
     /// return the block list with output blocks spliced in after each cell.
     pub async fn run(&mut self, blocks: Vec<Block>) -> Vec<Block> {
