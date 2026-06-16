@@ -179,6 +179,7 @@ fn render_internal(
     let mut fig_count: usize = 0;
     let mut eq_count: usize = 0;
     let mut lst_count: usize = 0;
+    let mut sec_count: usize = 0;
     let mut xref_registry: HashMap<String, String> = HashMap::new();
 
     for node in root.children() {
@@ -283,6 +284,15 @@ fn render_internal(
         // an explicit `#id` as the anchor (else a slug of the cleaned text), and
         // strip the attribute from the rendered heading below.
         let h_attr = heading_level.and_then(|_| parse_heading_attr(&block_src));
+        // A heading labelled `{#sec-x}` is numbered so `@sec-x` resolves to "Section N"
+        // (sequential over labelled headings; full hierarchical numbering is a
+        // separate `number-sections` feature).
+        if let Some((_, Some(id))) = &h_attr
+            && id.starts_with("sec-")
+        {
+            sec_count += 1;
+            xref_registry.insert(id.clone(), sec_count.to_string());
+        }
         let id_attr = match heading_level {
             Some(_) if format == DocFormat::Html => {
                 let id = match &h_attr {
@@ -3167,6 +3177,20 @@ mod tests {
             plain.blocks[0].html.contains("id=\"my-heading\""),
             "slug id missing: {}",
             plain.blocks[0].html
+        );
+    }
+
+    #[test]
+    fn sec_label_makes_at_sec_resolve_to_a_number() {
+        let doc = render_document("## Methods {#sec-methods}\n\nSee @sec-methods.\n");
+        let body = doc.body_html();
+        assert!(
+            body.contains("id=\"sec-methods\""),
+            "heading id missing: {body}"
+        );
+        assert!(
+            body.contains("class=\"qmd-xref\">Section&nbsp;1</a>"),
+            "@sec-methods did not resolve to a numbered Section link: {body}"
         );
     }
 
