@@ -3,11 +3,11 @@
 //! it re-renders, diffs against the previous block list, and broadcasts only
 //! the changed blocks so the browser updates in place.
 
-use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::Router;
 use axum::extract::State;
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::response::{Html, IntoResponse};
 use axum::routing::get;
-use axum::Router;
 use futures_util::{SinkExt, StreamExt};
 use notify::Watcher;
 use qmd_fast_core::{Block, BlockOp, DocFormat, RenderedDoc};
@@ -56,9 +56,11 @@ impl DocState {
     /// blocks keep their ids, so incremental ops apply the same to both.
     fn body_html(&self) -> String {
         match self.format {
-            DocFormat::Reveal => {
-                qmd_fast_core::slides_html(self.title.as_deref(), self.subtitle.as_deref(), &self.blocks)
-            }
+            DocFormat::Reveal => qmd_fast_core::slides_html(
+                self.title.as_deref(),
+                self.subtitle.as_deref(),
+                &self.blocks,
+            ),
             DocFormat::Html => {
                 let mut s = String::new();
                 for b in &self.blocks {
@@ -133,7 +135,10 @@ async fn serve(path: PathBuf, port: u16) -> std::io::Result<()> {
 
 fn render_doc(app: &AppState) -> Option<RenderedDoc> {
     let src = std::fs::read_to_string(&app.path).ok()?;
-    Some(qmd_fast_core::render_document_with_includes(&src, &app.base_dir))
+    Some(qmd_fast_core::render_document_with_includes(
+        &src,
+        &app.base_dir,
+    ))
 }
 
 // --- HTTP ---------------------------------------------------------------
@@ -141,13 +146,25 @@ fn render_doc(app: &AppState) -> Option<RenderedDoc> {
 async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
     let (format, toc, theme_css, theme_default, ojs) = {
         let d = app.doc.lock().unwrap();
-        let ojs = d.blocks.iter().any(|b| b.html.contains("ojs-module-contents"));
-        (d.format, d.toc, d.theme_css.clone(), d.theme_default.clone(), ojs)
+        let ojs = d
+            .blocks
+            .iter()
+            .any(|b| b.html.contains("ojs-module-contents"));
+        (
+            d.format,
+            d.toc,
+            d.theme_css.clone(),
+            d.theme_default.clone(),
+            ojs,
+        )
     };
     // Absolute doc + base-dir paths so the browser can build `vscode://file/…`
     // links for click-to-source (canonicalized; fall back to the raw paths).
     let doc_path = app.path.canonicalize().unwrap_or_else(|_| app.path.clone());
-    let base_dir = app.base_dir.canonicalize().unwrap_or_else(|_| app.base_dir.clone());
+    let base_dir = app
+        .base_dir
+        .canonicalize()
+        .unwrap_or_else(|_| app.base_dir.clone());
     let ctx = PageCtx {
         format,
         toc,
@@ -174,7 +191,10 @@ struct PageCtx<'a> {
 /// The preview favicon (also satisfies the browser's implicit `/favicon.ico`
 /// request, so the tab gets an icon and the console stays free of a 404).
 async fn favicon() -> impl IntoResponse {
-    ([(axum::http::header::CONTENT_TYPE, "image/svg+xml")], FAVICON)
+    (
+        [(axum::http::header::CONTENT_TYPE, "image/svg+xml")],
+        FAVICON,
+    )
 }
 
 /// Serve a static file (image, etc.) resolved relative to the document's
@@ -205,7 +225,12 @@ async fn static_asset(
 /// Guess a content type from a file extension (covers the asset types a doc
 /// references; defaults to a generic binary type).
 fn content_type(path: &Path) -> &'static str {
-    match path.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).as_deref() {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
         Some("png") => "image/png",
         Some("jpg" | "jpeg") => "image/jpeg",
         Some("gif") => "image/gif",
@@ -277,7 +302,11 @@ fn blog_index_html(ctx: &PageCtx) -> String {
     // rebuilds its entries from the mounted headings, so it stays live). The
     // `QMD_TOC` flag switches the client into that mode.
     let (body_attr, toc_nav, toc_flag) = if ctx.toc {
-        (" class=\"has-toc\"", "<nav id=\"TOC\"></nav>", "window.QMD_TOC = true;")
+        (
+            " class=\"has-toc\"",
+            "<nav id=\"TOC\"></nav>",
+            "window.QMD_TOC = true;",
+        )
     } else {
         ("", "", "")
     };
@@ -371,10 +400,7 @@ fn reveal_index_html() -> String {
 
 // --- WebSocket ----------------------------------------------------------
 
-async fn ws_handler(
-    ws: WebSocketUpgrade,
-    State(app): State<Arc<AppState>>,
-) -> impl IntoResponse {
+async fn ws_handler(ws: WebSocketUpgrade, State(app): State<Arc<AppState>>) -> impl IntoResponse {
     ws.on_upgrade(move |socket| client_conn(socket, app))
 }
 
@@ -420,9 +446,14 @@ async fn client_conn(socket: WebSocket, app: Arc<AppState>) {
 }
 
 fn handle_client_msg(text: &str) {
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else { return };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else {
+        return;
+    };
     if v.get("type").and_then(|t| t.as_str()) == Some("click_block") {
-        let file = v.get("source_file").and_then(|f| f.as_str()).unwrap_or("(primary)");
+        let file = v
+            .get("source_file")
+            .and_then(|f| f.as_str())
+            .unwrap_or("(primary)");
         let pos = v.get("sourcepos").and_then(|p| p.as_str()).unwrap_or("?");
         crate::log::source(&format!("{file}  {pos}"));
     }
@@ -472,7 +503,10 @@ fn compute_diagnostics(app: &AppState, executor: &crate::exec::Executor) -> Vec<
         }
     }
     if let Some(message) = executor.diagnostic() {
-        diags.push(Diagnostic { level: "warning", message });
+        diags.push(Diagnostic {
+            level: "warning",
+            message,
+        });
     }
     diags
 }
@@ -500,24 +534,25 @@ fn spawn_watcher(app: Arc<AppState>) {
 
     // notify is synchronous; run it on its own thread and forward events.
     std::thread::spawn(move || {
-        let mut watcher = match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-            if let Ok(ev) = res {
-                if matches!(
-                    ev.kind,
-                    notify::EventKind::Modify(_)
-                        | notify::EventKind::Create(_)
-                        | notify::EventKind::Remove(_)
-                ) {
-                    let _ = signal_tx.send(());
+        let mut watcher =
+            match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+                if let Ok(ev) = res {
+                    if matches!(
+                        ev.kind,
+                        notify::EventKind::Modify(_)
+                            | notify::EventKind::Create(_)
+                            | notify::EventKind::Remove(_)
+                    ) {
+                        let _ = signal_tx.send(());
+                    }
                 }
-            }
-        }) {
-            Ok(w) => w,
-            Err(e) => {
-                crate::log::error(&format!("file watcher unavailable: {e}"));
-                return;
-            }
-        };
+            }) {
+                Ok(w) => w,
+                Err(e) => {
+                    crate::log::error(&format!("file watcher unavailable: {e}"));
+                    return;
+                }
+            };
         for dir in &dirs {
             if let Err(e) = watcher.watch(dir, notify::RecursiveMode::Recursive) {
                 crate::log::warn(&format!("cannot watch {}: {e}", dir.display()));
@@ -559,7 +594,9 @@ fn watch_dirs(app: &AppState) -> Vec<PathBuf> {
 /// assembled block list against the live state and broadcast the changes.
 async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
     let Some(doc) = render_doc(app) else {
-        let _ = app.tx.send(error_json(&format!("cannot read {}", app.path.display())));
+        let _ = app
+            .tx
+            .send(error_json(&format!("cannot read {}", app.path.display())));
         return;
     };
     let blocks = executor.run(doc.blocks).await;

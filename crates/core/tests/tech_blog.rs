@@ -35,7 +35,15 @@ fn render_post(rel: &str) -> String {
 /// reach the output: if any leak, the live preview shows Quarto source instead
 /// of rendered content.
 fn assert_no_source_leaks(label: &str, html: &str) {
-    for marker in ["{{<", ":::", "\n#|", "//|", "{#eq-", "{#sec-", "language-=html"] {
+    for marker in [
+        "{{<",
+        ":::",
+        "\n#|",
+        "//|",
+        "{#eq-",
+        "{#sec-",
+        "language-=html",
+    ] {
         assert!(
             !html.contains(marker),
             "{label}: source marker {marker:?} leaked into rendered output"
@@ -58,7 +66,11 @@ fn tech_blog_posts_render_leak_free() {
         "posts/fourier-transform/index.qmd",
     ] {
         let html = render_post(post);
-        assert!(html.len() > 2_000, "{post}: suspiciously small output ({} bytes)", html.len());
+        assert!(
+            html.len() > 2_000,
+            "{post}: suspiciously small output ({} bytes)",
+            html.len()
+        );
         assert_no_source_leaks(post, &html);
     }
 }
@@ -68,10 +80,19 @@ fn tech_blog_posts_render_leak_free() {
 #[test]
 fn math_renders_inline_display_and_align() {
     let html = render_post("posts/em-algorithm/index.qmd");
-    assert!(html.contains("class=\"katex\""), "no inline KaTeX spans rendered");
-    assert!(html.contains("katex-display"), "no display-math (`$$`/align) rendered");
+    assert!(
+        html.contains("class=\"katex\""),
+        "no inline KaTeX spans rendered"
+    );
+    assert!(
+        html.contains("katex-display"),
+        "no display-math (`$$`/align) rendered"
+    );
     // sanity: this post is math-dense, so there should be many spans
-    assert!(html.matches("class=\"katex\"").count() > 20, "far fewer KaTeX spans than expected");
+    assert!(
+        html.matches("class=\"katex\"").count() > 20,
+        "far fewer KaTeX spans than expected"
+    );
 }
 
 /// Callouts (`::: {.callout-note ...}`) render with a title and body, and the
@@ -80,9 +101,18 @@ fn math_renders_inline_display_and_align() {
 fn callout_renders_with_title_and_body() {
     let html = render_post("posts/em-algorithm/index.qmd");
     assert!(html.contains("callout-note"), "callout-note class missing");
-    assert!(html.contains("class=\"callout-title\""), "callout title missing");
-    assert!(html.contains("Notation used in this post"), "callout title text missing");
-    assert!(html.contains("class=\"callout-body\""), "callout body missing");
+    assert!(
+        html.contains("class=\"callout-title\""),
+        "callout title missing"
+    );
+    assert!(
+        html.contains("Notation used in this post"),
+        "callout title text missing"
+    );
+    assert!(
+        html.contains("class=\"callout-body\""),
+        "callout body missing"
+    );
 }
 
 /// Citations (`[@key]`, `[@key, chap. 9]`) become numbered links and a CSL
@@ -94,7 +124,10 @@ fn citations_resolve_and_emit_references_section() {
         html.contains("href=\"#ref-bishop2006pattern\""),
         "citation did not become an anchor to the reference"
     );
-    assert!(html.contains("<h2>References</h2>"), "References section not generated");
+    assert!(
+        html.contains("<h2>References</h2>"),
+        "References section not generated"
+    );
     assert!(
         html.contains("id=\"ref-bishop2006pattern\"") && html.contains("csl-entry"),
         "CSL reference entry missing"
@@ -106,9 +139,14 @@ fn citations_resolve_and_emit_references_section() {
 #[test]
 fn callout_collapse_renders_as_details() {
     let html = render_post("posts/em-algorithm/index.qmd");
-    assert!(html.contains("callout-collapse"), "collapsible callout class missing");
     assert!(
-        html.contains("<details><summary class=\"callout-title\">Notation used in this post</summary>"),
+        html.contains("callout-collapse"),
+        "collapsible callout class missing"
+    );
+    assert!(
+        html.contains(
+            "<details><summary class=\"callout-title\">Notation used in this post</summary>"
+        ),
         "collapsible callout is not a <details>/<summary>"
     );
 }
@@ -118,7 +156,10 @@ fn callout_collapse_renders_as_details() {
 #[test]
 fn code_fold_wraps_listing_in_details() {
     let html = render_post("posts/pca-geometry/index.qmd");
-    assert!(html.contains("class=\"qmd-code-fold\""), "code-fold did not produce a <details>");
+    assert!(
+        html.contains("class=\"qmd-code-fold\""),
+        "code-fold did not produce a <details>"
+    );
     assert!(
         html.contains("<summary>How the data was generated</summary>"),
         "code-summary label missing from folded code"
@@ -134,8 +175,14 @@ fn code_fold_wraps_listing_in_details() {
 #[test]
 fn code_fold_defaults_to_code_label() {
     let html = render_post("posts/em-algorithm/index.qmd");
-    assert!(html.contains("class=\"qmd-code-fold\""), "code-fold did not produce a <details>");
-    assert!(html.contains("<summary>Code</summary>"), "default code-fold label missing");
+    assert!(
+        html.contains("class=\"qmd-code-fold\""),
+        "code-fold did not produce a <details>"
+    );
+    assert!(
+        html.contains("<summary>Code</summary>"),
+        "default code-fold label missing"
+    );
 }
 
 /// OJS cells render as live Observable placeholders (executed client-side by the
@@ -145,13 +192,22 @@ fn code_fold_defaults_to_code_label() {
 #[test]
 fn ojs_cells_render_as_live_placeholders() {
     let html = render_post("posts/fourier-transform/index.qmd");
-    assert!(html.contains("class=\"cell ojs-cell\""), "OJS cell not emitted as a live placeholder");
+    assert!(
+        html.contains("class=\"cell ojs-cell\""),
+        "OJS cell not emitted as a live placeholder"
+    );
     assert!(
         html.contains("<script type=\"ojs-module-contents\">"),
         "OJS cell missing its module-contents script"
     );
-    assert!(!html.contains("class=\"language-ojs\""), "OJS still rendered as a static listing");
-    assert!(!html.contains("//| echo"), "OJS cell-option line leaked into output");
+    assert!(
+        !html.contains("class=\"language-ojs\""),
+        "OJS still rendered as a static listing"
+    );
+    assert!(
+        !html.contains("//| echo"),
+        "OJS cell-option line leaked into output"
+    );
 }
 
 /// The full page ships the Observable runtime + init only when the doc has OJS.
@@ -160,12 +216,19 @@ fn ojs_page_ships_runtime_when_cells_present() {
     let dir = corpus_dir().join("posts/fourier-transform");
     let src = std::fs::read_to_string(dir.join("index.qmd")).unwrap();
     let page = qmd_fast_core::render_html_page_with_includes(&src, &dir, "post");
-    assert!(page.contains("window._ojs"), "OJS runtime bundle not shipped on a page with cells");
+    assert!(
+        page.contains("window._ojs"),
+        "OJS runtime bundle not shipped on a page with cells"
+    );
     assert!(page.contains("qmdRunOJS"), "OJS init script missing");
 
     // A doc with no OJS must not pay for the (large) runtime.
-    let prose = qmd_fast_core::render_html_page("---\ntitle: x\n---\n\nJust prose, no cells.\n", "p");
-    assert!(!prose.contains("window._ojs"), "OJS runtime shipped on a doc with no cells");
+    let prose =
+        qmd_fast_core::render_html_page("---\ntitle: x\n---\n\nJust prose, no cells.\n", "p");
+    assert!(
+        !prose.contains("window._ojs"),
+        "OJS runtime shipped on a doc with no cells"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -179,11 +242,18 @@ fn ojs_page_ships_runtime_when_cells_present() {
 /// `fourier-transform` are authored this way. (Fixed; was a gap.)
 #[test]
 fn raw_html_block_is_passed_through() {
-    let src = "```{=html}\n<audio controls><source src=\"x.wav\" type=\"audio/wav\"></audio>\n```\n";
+    let src =
+        "```{=html}\n<audio controls><source src=\"x.wav\" type=\"audio/wav\"></audio>\n```\n";
     let html = render_document(src).body_html();
-    assert!(html.contains("<audio controls"), "raw <audio> HTML was not passed through");
+    assert!(
+        html.contains("<audio controls"),
+        "raw <audio> HTML was not passed through"
+    );
     assert!(!html.contains("&lt;audio"), "raw HTML was escaped");
-    assert!(!html.contains("language-=html"), "raw block was treated as a code cell");
+    assert!(
+        !html.contains("language-=html"),
+        "raw block was treated as a code cell"
+    );
 }
 
 /// The raw-HTML audio players in `fourier-transform` reach the output as live
@@ -191,8 +261,14 @@ fn raw_html_block_is_passed_through() {
 #[test]
 fn fourier_audio_players_render_live() {
     let html = render_post("posts/fourier-transform/index.qmd");
-    assert!(html.contains("<audio controls"), "audio players not passed through");
-    assert!(html.contains("src=\"chord.wav\""), "audio source reference missing");
+    assert!(
+        html.contains("<audio controls"),
+        "audio players not passed through"
+    );
+    assert!(
+        html.contains("src=\"chord.wav\""),
+        "audio source reference missing"
+    );
     assert!(!html.contains("&lt;audio"), "audio markup was escaped");
 }
 
@@ -202,8 +278,14 @@ fn fourier_audio_players_render_live() {
 fn display_equation_label_becomes_numbered_id() {
     let src = "$$\nX = 1\n$$ {#eq-foo}\n";
     let html = render_document(src).body_html();
-    assert!(html.contains("id=\"eq-foo\""), "equation did not get its #eq-foo id");
-    assert!(!html.contains("{#eq-foo}"), "the {{#eq-foo}} attribute leaked as text");
+    assert!(
+        html.contains("id=\"eq-foo\""),
+        "equation did not get its #eq-foo id"
+    );
+    assert!(
+        !html.contains("{#eq-foo}"),
+        "the {{#eq-foo}} attribute leaked as text"
+    );
     assert!(html.contains("qmd-eqn-number"), "equation was not numbered");
 }
 
@@ -212,7 +294,10 @@ fn display_equation_label_becomes_numbered_id() {
 #[test]
 fn equation_crossref_resolves_to_number() {
     let html = render_post("posts/fourier-transform/index.qmd");
-    assert!(html.contains("id=\"eq-dft\""), "labelled equation id missing");
+    assert!(
+        html.contains("id=\"eq-dft\""),
+        "labelled equation id missing"
+    );
     assert!(!html.contains("{#eq-dft}"), "equation label leaked as text");
     assert!(
         html.contains("<a href=\"#eq-dft\" class=\"qmd-xref\">Equation&nbsp;1</a>"),
@@ -231,7 +316,9 @@ fn listing_frontmatter_emits_post_cards() {
     let src = "---\ntitle: \"Blog\"\nlisting:\n  contents: posts\n  type: grid\n---\n\nIntro paragraph.\n";
     let html = render_html_page(src, "Blog");
     assert!(
-        html.contains("quarto-listing") || html.contains("class=\"card") || html.contains("listing"),
+        html.contains("quarto-listing")
+            || html.contains("class=\"card")
+            || html.contains("listing"),
         "listing produced no post-card markup"
     );
 }
@@ -261,12 +348,17 @@ fn every_ojs_cell_has_matching_target_and_script() {
     ] {
         let html = render_post(post);
         let cells = html.matches("class=\"cell ojs-cell\"").count();
-        let scripts = html.matches("<script type=\"ojs-module-contents\">").count();
+        let scripts = html
+            .matches("<script type=\"ojs-module-contents\">")
+            .count();
         assert!(cells > 0, "{post}: no live OJS cells emitted");
         assert_eq!(cells, scripts, "{post}: cell/script count mismatch");
         // every target div id appears as a cellName in a module-contents script
         for id in ojs_target_ids(&html) {
-            assert!(html.contains(&format!("ojs-cell-{id}")), "{post}: {id} has no target div");
+            assert!(
+                html.contains(&format!("ojs-cell-{id}")),
+                "{post}: {id} has no target div"
+            );
         }
     }
 }
@@ -283,7 +375,10 @@ fn computed_output_crossrefs_resolve() {
         f.contains("<a href=\"#fig-components\" class=\"qmd-xref\">Figure&nbsp;1</a>"),
         "@fig-components did not resolve to a numbered link"
     );
-    assert!(f.contains("id=\"fig-winding\""), "labelled OJS figure anchor missing");
+    assert!(
+        f.contains("id=\"fig-winding\""),
+        "labelled OJS figure anchor missing"
+    );
 
     // pca: an OJS figure (fig-3d-pca) and a code listing (lst-data-generation)
     // resolve to numbered, anchored targets at render time.
@@ -293,8 +388,10 @@ fn computed_output_crossrefs_resolve() {
         p.contains("<a href=\"#fig-3d-pca\" class=\"qmd-xref\">Figure&nbsp;"),
         "@fig-3d-pca did not resolve to a numbered link"
     );
-    assert!(p.contains("class=\"qmd-listing\"") && p.contains("id=\"lst-data-generation\""),
-        "code listing anchor missing");
+    assert!(
+        p.contains("class=\"qmd-listing\"") && p.contains("id=\"lst-data-generation\""),
+        "code listing anchor missing"
+    );
     assert!(
         p.contains("<a href=\"#lst-data-generation\" class=\"qmd-xref\">Listing&nbsp;1</a>"),
         "@lst-data-generation did not resolve to a numbered Listing link"

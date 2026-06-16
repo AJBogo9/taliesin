@@ -75,7 +75,10 @@ fn cmd_blocks(path: Option<&String>) -> ExitCode {
             let doc = qmd_fast_core::render_document_with_includes(&src, base);
             eprintln!("title: {:?}", doc.title);
             eprintln!("{} block(s)\n", doc.blocks.len());
-            println!("{:<16}  {:<14}  {:<22}  preview", "id", "sourcepos", "source-file");
+            println!(
+                "{:<16}  {:<14}  {:<22}  preview",
+                "id", "sourcepos", "source-file"
+            );
             for b in &doc.blocks {
                 let file = b.source_file.as_deref().unwrap_or("(primary)");
                 println!(

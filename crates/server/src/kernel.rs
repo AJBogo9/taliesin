@@ -12,8 +12,8 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use jupyter_protocol::{
-    ConnectionInfo, ExecuteRequest, JupyterMessage, JupyterMessageContent, Media, MediaType,
-    Stdio, Transport,
+    ConnectionInfo, ExecuteRequest, JupyterMessage, JupyterMessageContent, Media, MediaType, Stdio,
+    Transport,
 };
 use jupyter_zmq_client::{
     ClientIoPubConnection, ClientShellConnection, create_client_iopub_connection,
@@ -53,10 +53,17 @@ globals()["ojs_define"] = ojs_define
 /// One execution output, already rendered to a self-contained HTML fragment.
 #[derive(Debug, Clone)]
 pub enum Output {
-    Stream { stderr: bool, text: String },
+    Stream {
+        stderr: bool,
+        text: String,
+    },
     /// Rich output (execute_result / display_data) rendered to HTML.
     Rich(String),
-    Error { ename: String, evalue: String, traceback: Vec<String> },
+    Error {
+        ename: String,
+        evalue: String,
+        traceback: Vec<String>,
+    },
 }
 
 /// A live kernel process plus its shell/iopub client connections.
@@ -114,7 +121,12 @@ impl Kernel {
         // sidesteps the ZMQ slow-joiner problem before the first execution.
         let _ = wait_for_iopub_welcome(&mut iopub, Duration::from_secs(5)).await;
 
-        let mut kernel = Kernel { child, shell, iopub, conn_dir };
+        let mut kernel = Kernel {
+            child,
+            shell,
+            iopub,
+            conn_dir,
+        };
         // Define `ojs_define(**kwargs)` so docs can bridge Python values to OJS
         // cells: it emits `<script type="ojs-define">{json}</script>`, which the
         // Observable runtime reads. (Mirrors Quarto's Jupyter setup.)
@@ -194,13 +206,29 @@ pub fn render_outputs(outputs: &[Output]) -> String {
     for o in outputs {
         match o {
             Output::Stream { stderr, text } => {
-                let class = if *stderr { "qmd-stream qmd-stderr" } else { "qmd-stream" };
+                let class = if *stderr {
+                    "qmd-stream qmd-stderr"
+                } else {
+                    "qmd-stream"
+                };
                 s.push_str(&format!("<pre class=\"{class}\">{}</pre>", esc(text)));
             }
             Output::Rich(html) => s.push_str(html),
-            Output::Error { ename, evalue, traceback } => {
-                let tb: String = traceback.iter().map(|l| strip_ansi(l)).collect::<Vec<_>>().join("\n");
-                let body = if tb.trim().is_empty() { format!("{ename}: {evalue}") } else { tb };
+            Output::Error {
+                ename,
+                evalue,
+                traceback,
+            } => {
+                let tb: String = traceback
+                    .iter()
+                    .map(|l| strip_ansi(l))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                let body = if tb.trim().is_empty() {
+                    format!("{ename}: {evalue}")
+                } else {
+                    tb
+                };
                 s.push_str(&format!("<pre class=\"qmd-error\">{}</pre>", esc(&body)));
             }
         }
@@ -223,7 +251,10 @@ fn render_media(media: &Media) -> String {
         MediaType::Png(b) => Some(b.clone()),
         _ => None,
     }) {
-        return format!("<img alt=\"output\" src=\"data:image/png;base64,{}\" />", b.trim());
+        return format!(
+            "<img alt=\"output\" src=\"data:image/png;base64,{}\" />",
+            b.trim()
+        );
     }
     if let Some(s) = pick(&|t| match t {
         MediaType::Svg(s) => Some(s.clone()),
@@ -235,7 +266,10 @@ fn render_media(media: &Media) -> String {
         MediaType::Jpeg(b) => Some(b.clone()),
         _ => None,
     }) {
-        return format!("<img alt=\"output\" src=\"data:image/jpeg;base64,{}\" />", b.trim());
+        return format!(
+            "<img alt=\"output\" src=\"data:image/jpeg;base64,{}\" />",
+            b.trim()
+        );
     }
     if let Some(t) = pick(&|t| match t {
         MediaType::Plain(t) => Some(t.clone()),

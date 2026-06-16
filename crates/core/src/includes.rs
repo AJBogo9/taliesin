@@ -23,7 +23,15 @@ pub fn resolve(src: &str, base_dir: &Path) -> (String, Vec<LineOrigin>) {
     let mut origins = Vec::new();
     let mut stack = Vec::new(); // cycle guard: absolute paths currently expanding
     let had_trailing_newline = src.ends_with('\n');
-    expand(src, base_dir, base_dir, None, &mut stack, &mut lines, &mut origins);
+    expand(
+        src,
+        base_dir,
+        base_dir,
+        None,
+        &mut stack,
+        &mut lines,
+        &mut origins,
+    );
 
     let mut text = lines.join("\n");
     if had_trailing_newline {
@@ -35,8 +43,8 @@ pub fn resolve(src: &str, base_dir: &Path) -> (String, Vec<LineOrigin>) {
 #[allow(clippy::too_many_arguments)]
 fn expand(
     src: &str,
-    base_dir: &Path,    // directory of the file currently being expanded
-    primary_base: &Path, // directory of the primary document (for nice labels)
+    base_dir: &Path,            // directory of the file currently being expanded
+    primary_base: &Path,        // directory of the primary document (for nice labels)
     file_label: Option<String>, // label of the current file (None = primary)
     stack: &mut Vec<PathBuf>,
     out_lines: &mut Vec<String>,
@@ -49,7 +57,10 @@ fn expand(
                 if stack.contains(&target) {
                     // include cycle: leave the directive in place rather than loop
                     out_lines.push(line.to_string());
-                    out_origins.push(LineOrigin { file: file_label.clone(), line: idx + 1 });
+                    out_origins.push(LineOrigin {
+                        file: file_label.clone(),
+                        line: idx + 1,
+                    });
                     continue;
                 }
                 match std::fs::read_to_string(&target) {
@@ -71,13 +82,19 @@ fn expand(
                     Err(_) => {
                         // unreadable include: leave the directive visible
                         out_lines.push(line.to_string());
-                        out_origins.push(LineOrigin { file: file_label.clone(), line: idx + 1 });
+                        out_origins.push(LineOrigin {
+                            file: file_label.clone(),
+                            line: idx + 1,
+                        });
                     }
                 }
             }
             None => {
                 out_lines.push(line.to_string());
-                out_origins.push(LineOrigin { file: file_label.clone(), line: idx + 1 });
+                out_origins.push(LineOrigin {
+                    file: file_label.clone(),
+                    line: idx + 1,
+                });
             }
         }
     }
@@ -94,7 +111,9 @@ pub fn dependencies(src: &str, base_dir: &Path) -> Vec<PathBuf> {
 
 fn collect_deps(src: &str, base_dir: &Path, stack: &mut Vec<PathBuf>, out: &mut Vec<PathBuf>) {
     for line in src.lines() {
-        let Some(rel) = parse_include(line) else { continue };
+        let Some(rel) = parse_include(line) else {
+            continue;
+        };
         let target = normalize(&base_dir.join(rel));
         if stack.contains(&target) || out.contains(&target) {
             continue;
@@ -157,7 +176,10 @@ mod tests {
     #[test]
     fn parses_include_directive() {
         assert_eq!(parse_include("{{< include foo.qmd >}}"), Some("foo.qmd"));
-        assert_eq!(parse_include("  {{< include \"a/b.qmd\" >}}  "), Some("a/b.qmd"));
+        assert_eq!(
+            parse_include("  {{< include \"a/b.qmd\" >}}  "),
+            Some("a/b.qmd")
+        );
         assert_eq!(parse_include("text {{< include x >}}"), None); // not alone on the line
         assert_eq!(parse_include("{{< video x >}}"), None); // different shortcode
     }

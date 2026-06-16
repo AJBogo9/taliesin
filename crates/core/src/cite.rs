@@ -68,7 +68,9 @@ pub fn parse_bib(text: &str) -> Bibliography {
             skip_entry(&chars, &mut i);
             continue;
         }
-        let key = take_while(&chars, &mut i, |c| c != ',' && c != '}').trim().to_string();
+        let key = take_while(&chars, &mut i, |c| c != ',' && c != '}')
+            .trim()
+            .to_string();
         let mut fields = HashMap::new();
         if i < chars.len() && chars[i] == ',' {
             i += 1;
@@ -327,7 +329,9 @@ fn rewrite_text(
                     Some(n) => format!("{label}&nbsp;{n}"),
                     None => label.to_string(),
                 };
-                out.push_str(&format!("<a href=\"#{anchor}\" class=\"qmd-xref\">{text}</a>"));
+                out.push_str(&format!(
+                    "<a href=\"#{anchor}\" class=\"qmd-xref\">{text}</a>"
+                ));
                 i += len;
                 continue;
             }
@@ -342,7 +346,10 @@ fn rewrite_text(
 fn parse_xref(chars: &[char]) -> Option<(&'static str, String, usize)> {
     // chars[0] == '@'
     let rest: String = chars[1..].iter().collect();
-    let prefix: String = rest.chars().take_while(|c| c.is_ascii_lowercase()).collect();
+    let prefix: String = rest
+        .chars()
+        .take_while(|c| c.is_ascii_lowercase())
+        .collect();
     let label = xref_label(&prefix)?;
     let after = &rest[prefix.len()..];
     if !after.starts_with('-') {
@@ -433,7 +440,11 @@ mod tests {
             cell: None,
         }];
         process(&mut blocks, &b, &HashMap::new());
-        assert!(blocks[0].html.contains("[<a href=\"#ref-bishop2006pattern\">1</a>, chap. 9]"));
+        assert!(
+            blocks[0]
+                .html
+                .contains("[<a href=\"#ref-bishop2006pattern\">1</a>, chap. 9]")
+        );
         // a References section was appended
         let refs = blocks.last().unwrap();
         assert!(refs.html.contains("id=\"ref-bishop2006pattern\""));
@@ -452,7 +463,9 @@ mod tests {
         }];
         process(&mut blocks, &b, &HashMap::new());
         assert!(
-            blocks[0].html.contains("<a href=\"#fig-scree\" class=\"qmd-xref\">Figure</a>"),
+            blocks[0]
+                .html
+                .contains("<a href=\"#fig-scree\" class=\"qmd-xref\">Figure</a>"),
             "got: {}",
             blocks[0].html
         );
@@ -492,7 +505,10 @@ mod tests {
             cell: None,
         }];
         process(&mut blocks, &b, &HashMap::new());
-        assert!(blocks[0].html.contains("[@bishop2006pattern]"), "code was rewritten");
+        assert!(
+            blocks[0].html.contains("[@bishop2006pattern]"),
+            "code was rewritten"
+        );
         assert_eq!(blocks.len(), 1, "no citation should have been counted");
     }
 }

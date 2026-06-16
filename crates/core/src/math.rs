@@ -46,7 +46,10 @@ mod tests {
     #[test]
     fn display_mode_emits_display_class() {
         let html = render("\\int_0^1 x \\, dx", true);
-        assert!(html.contains("katex-display"), "expected display markup, got: {html}");
+        assert!(
+            html.contains("katex-display"),
+            "expected display markup, got: {html}"
+        );
     }
 
     #[test]

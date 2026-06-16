@@ -23,11 +23,11 @@ impl Style {
         match self {
             Style::Ready => ("ready", "\x1b[32m"),   // green
             Style::Watch => ("watch", "\x1b[2m"),    // dim
-            Style::Update => ("update", "\x1b[36m"),  // cyan
-            Style::Source => ("source", "\x1b[34m"),  // blue
-            Style::Kernel => ("kernel", "\x1b[35m"),  // magenta
-            Style::Warn => ("warn", "\x1b[33m"),      // yellow
-            Style::Error => ("error", "\x1b[31m"),    // red
+            Style::Update => ("update", "\x1b[36m"), // cyan
+            Style::Source => ("source", "\x1b[34m"), // blue
+            Style::Kernel => ("kernel", "\x1b[35m"), // magenta
+            Style::Warn => ("warn", "\x1b[33m"),     // yellow
+            Style::Error => ("error", "\x1b[31m"),   // red
         }
     }
 }
@@ -53,7 +53,11 @@ fn line(style: Style, msg: &str) {
 /// The opening banner: tool name + version.
 pub fn banner(version: &str) {
     eprintln!();
-    eprintln!("  {} {}", paint("qmd-fast", "\x1b[1;32m"), paint(version, "\x1b[2m"));
+    eprintln!(
+        "  {} {}",
+        paint("qmd-fast", "\x1b[1;32m"),
+        paint(version, "\x1b[2m")
+    );
 }
 
 /// The server is up; `url` is highlighted as the thing to open.
@@ -63,13 +67,19 @@ pub fn ready(url: &str) {
 
 /// What is being watched, plus a short format descriptor (e.g. "html, toc").
 pub fn watching(path: &str, desc: &str) {
-    line(Style::Watch, &format!("{path}  {}  {desc}", paint("·", "\x1b[2m")));
+    line(
+        Style::Watch,
+        &format!("{path}  {}  {desc}", paint("·", "\x1b[2m")),
+    );
     eprintln!();
 }
 
 /// A save was applied: `n` blocks changed.
 pub fn update(n: usize) {
-    line(Style::Update, &format!("{n} block{}", if n == 1 { "" } else { "s" }));
+    line(
+        Style::Update,
+        &format!("{n} block{}", if n == 1 { "" } else { "s" }),
+    );
 }
 
 /// A click-to-source request (a location the preview asked the editor to open).

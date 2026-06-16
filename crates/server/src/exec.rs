@@ -44,7 +44,12 @@ impl Executor {
         let python = std::env::var_os("QMD_FAST_PYTHON")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("python3"));
-        Self { python, kernel: None, failed: false, cached: Vec::new() }
+        Self {
+            python,
+            kernel: None,
+            failed: false,
+            cached: Vec::new(),
+        }
     }
 
     /// A user-facing warning about the executor's state, if any. Currently: the
@@ -85,7 +90,8 @@ impl Executor {
         let outputs = self.compute_outputs(&cells).await;
 
         // Map cell block index -> its output block (when non-empty).
-        let mut output_blocks: std::collections::HashMap<usize, Block> = std::collections::HashMap::new();
+        let mut output_blocks: std::collections::HashMap<usize, Block> =
+            std::collections::HashMap::new();
         for (cell, inner) in cells.iter().zip(&outputs) {
             // `include: false` cells run (above) for their kernel-state side effects
             // but contribute no visible output block.
@@ -124,7 +130,10 @@ impl Executor {
         self.cached = cells
             .iter()
             .zip(&outputs)
-            .map(|(c, o)| Cached { id: c.id.clone(), output: o.clone() })
+            .map(|(c, o)| Cached {
+                id: c.id.clone(),
+                output: o.clone(),
+            })
             .collect();
         outputs
     }
@@ -153,7 +162,10 @@ impl Executor {
             Ok(outs) => render_outputs(&outs),
             Err(e) => {
                 crate::log::error(&format!("execution error: {e}"));
-                format!("<pre class=\"qmd-error\">execution error: {}</pre>", esc(&e.to_string()))
+                format!(
+                    "<pre class=\"qmd-error\">execution error: {}</pre>",
+                    esc(&e.to_string())
+                )
             }
         }
     }

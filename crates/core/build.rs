@@ -17,8 +17,16 @@ fn base64(data: &[u8]) -> String {
         let n = (b0 << 16) | (b1 << 8) | b2;
         s.push(T[(n >> 18 & 63) as usize] as char);
         s.push(T[(n >> 12 & 63) as usize] as char);
-        s.push(if chunk.len() > 1 { T[(n >> 6 & 63) as usize] as char } else { '=' });
-        s.push(if chunk.len() > 2 { T[(n & 63) as usize] as char } else { '=' });
+        s.push(if chunk.len() > 1 {
+            T[(n >> 6 & 63) as usize] as char
+        } else {
+            '='
+        });
+        s.push(if chunk.len() > 2 {
+            T[(n & 63) as usize] as char
+        } else {
+            '='
+        });
     }
     s
 }

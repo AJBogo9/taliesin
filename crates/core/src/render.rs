@@ -39,10 +39,17 @@ pub struct CellFigure {
 /// A code cell's cross-reference role from its `label`/`*-cap` options.
 enum CellRole {
     /// `label: fig-x` / `fig-cap` -> a numbered figure (the cell's output).
-    Figure { anchor: Option<String>, caption: Option<String> },
+    Figure {
+        anchor: Option<String>,
+        caption: Option<String>,
+    },
     /// `label: lst-x` / `lst-cap` -> a numbered listing (the cell's source);
     /// `fold` carries `code-fold` (start-open, summary) so a folded listing works.
-    Listing { anchor: Option<String>, caption: Option<String>, fold: Option<(bool, String)> },
+    Listing {
+        anchor: Option<String>,
+        caption: Option<String>,
+        fold: Option<(bool, String)>,
+    },
 }
 
 /// One top-level block: a stable id, its source position, and its HTML.
@@ -135,7 +142,11 @@ pub fn render_document_with_includes(src: &str, base_dir: &Path) -> RenderedDoc 
 /// block's sourcepos and `source_file` are translated back to the originating
 /// file via the line-level source map. `base_dir` (when known) is used to
 /// locate the bibliography for citation resolution.
-fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&Path>) -> RenderedDoc {
+fn render_internal(
+    src: &str,
+    origins: Option<&[LineOrigin]>,
+    base_dir: Option<&Path>,
+) -> RenderedDoc {
     let arena = Arena::new();
     let options = parse_options();
     // Quarto fenced divs (`:::`) aren't CommonMark. Record their spans first,
@@ -167,7 +178,16 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
     let mut xref_registry: HashMap<String, String> = HashMap::new();
 
     for node in root.children() {
-        let (buf_start, sourcepos, source_file, block_src, is_paragraph, heading_level, mut cell, cell_role) = {
+        let (
+            buf_start,
+            sourcepos,
+            source_file,
+            block_src,
+            is_paragraph,
+            heading_level,
+            mut cell,
+            cell_role,
+        ) = {
             let data = node.data.borrow();
             if let NodeValue::FrontMatter(fm) = &data.value {
                 title = extract_field(fm, "title");
@@ -256,7 +276,10 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
         // here too would duplicate the id in the DOM).
         let id_attr = match heading_level {
             Some(_) if format == DocFormat::Html => {
-                format!(" id=\"{}\"", escape_attr(&dedup_slug(&block_src, &mut heading_slugs)))
+                format!(
+                    " id=\"{}\"",
+                    escape_attr(&dedup_slug(&block_src, &mut heading_slugs))
+                )
             }
             _ => String::new(),
         };
@@ -269,8 +292,9 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
             html.push_str(&format!("<div{attrs} class=\"qmd-math-block\">"));
             html.push_str(&crate::math::render(env, true));
             html.push_str("</div>");
-        } else if let Some((latex, anchor)) =
-            is_paragraph.then(|| labelled_display_eq(&block_src)).flatten()
+        } else if let Some((latex, anchor)) = is_paragraph
+            .then(|| labelled_display_eq(&block_src))
+            .flatten()
         {
             // `$$ ... $$ {#eq-x}` -> a numbered display equation; register the
             // `#eq-` id so `@eq-x` cross-references resolve to "Equation N".
@@ -298,10 +322,19 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
                     match lang.as_str() {
                         // Client-rendered outputs are known now, so wrap them here.
                         "mermaid" => html.push_str(&emit_mermaid_figure(
-                            &code, anchor.as_deref(), caption.as_deref(), &attrs, fig_count,
+                            &code,
+                            anchor.as_deref(),
+                            caption.as_deref(),
+                            &attrs,
+                            fig_count,
                         )),
                         "ojs" => html.push_str(&emit_ojs_figure(
-                            &code, &id, anchor.as_deref(), caption.as_deref(), &attrs, fig_count,
+                            &code,
+                            &id,
+                            anchor.as_deref(),
+                            caption.as_deref(),
+                            &attrs,
+                            fig_count,
                         )),
                         // Python/R: the source renders now; tag the cell so the
                         // executor wraps the (later) output in the numbered figure.
@@ -323,7 +356,11 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
                         }
                     }
                 }
-                CellRole::Listing { anchor, caption, fold } => {
+                CellRole::Listing {
+                    anchor,
+                    caption,
+                    fold,
+                } => {
                     // A listing exists to show source, so only `include: false`
                     // (hide everything) suppresses it.
                     if cell.as_ref().is_some_and(|c| !c.include) {
@@ -334,7 +371,13 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
                             xref_registry.insert(a.clone(), lst_count.to_string());
                         }
                         html.push_str(&emit_code_listing(
-                            &code, &lang, anchor.as_deref(), caption.as_deref(), fold.as_ref(), &attrs, lst_count,
+                            &code,
+                            &lang,
+                            anchor.as_deref(),
+                            caption.as_deref(),
+                            fold.as_ref(),
+                            &attrs,
+                            lst_count,
                         ));
                     }
                 }
@@ -352,7 +395,13 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
         }
         flat.push(FlatBlock {
             buf_start,
-            block: Block { id, sourcepos, source_file, html, cell },
+            block: Block {
+                id,
+                sourcepos,
+                source_file,
+                html,
+                cell,
+            },
         });
     }
 
@@ -384,7 +433,15 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
     }
     let theme_css = resolve_theme(theme.as_deref(), base_dir);
     let theme_default = theme_default_mode(theme.as_deref()).to_string();
-    RenderedDoc { title, subtitle, format, toc, theme_css, theme_default, blocks }
+    RenderedDoc {
+        title,
+        subtitle,
+        format,
+        toc,
+        theme_css,
+        theme_default,
+        blocks,
+    }
 }
 
 /// Build the visible title-block header from front-matter metadata (title +
@@ -416,7 +473,10 @@ fn title_block_html(
         .map(|s| format!("<span>{}</span>", html_escape(s)))
         .collect();
     if !meta.is_empty() {
-        h.push_str(&format!("<div class=\"qmd-title-meta\">{}</div>", meta.join("")));
+        h.push_str(&format!(
+            "<div class=\"qmd-title-meta\">{}</div>",
+            meta.join("")
+        ));
     }
     h.push_str("</header>");
     Some(h)
@@ -428,7 +488,9 @@ fn title_block_html(
 /// bundle, both relative to the document. Returns the override CSS to inline
 /// after the base stylesheet (empty for the default light theme).
 fn resolve_theme(theme: Option<&str>, base_dir: Option<&Path>) -> String {
-    let Some(name) = theme else { return String::new() };
+    let Some(name) = theme else {
+        return String::new();
+    };
     match name {
         // Built-in light/dark are always shipped (DARK_CSS) and selected at
         // runtime via `data-theme` (toggle / OS), so no per-page override CSS.
@@ -438,7 +500,9 @@ fn resolve_theme(theme: Option<&str>, base_dir: Option<&Path>) -> String {
             .unwrap_or_default(),
         // An installed extension bundle: `_extensions/<name>/theme.css`.
         ext => base_dir
-            .and_then(|b| std::fs::read_to_string(b.join("_extensions").join(ext).join("theme.css")).ok())
+            .and_then(|b| {
+                std::fs::read_to_string(b.join("_extensions").join(ext).join("theme.css")).ok()
+            })
             .unwrap_or_default(),
     }
 }
@@ -565,7 +629,11 @@ fn detect_format(front_matter: &str) -> DocFormat {
 }
 
 fn reveal_if(cond: bool) -> DocFormat {
-    if cond { DocFormat::Reveal } else { DocFormat::Html }
+    if cond {
+        DocFormat::Reveal
+    } else {
+        DocFormat::Html
+    }
 }
 
 /// Load and merge the bibliography file(s) named in the front matter, resolved
@@ -611,7 +679,10 @@ pub fn render_html_page(src: &str, fallback_title: &str) -> String {
 
 /// Like [`render_html_page`], resolving `{{< include >}}` relative to `base_dir`.
 pub fn render_html_page_with_includes(src: &str, base_dir: &Path, fallback_title: &str) -> String {
-    page_from_doc(&render_document_with_includes(src, base_dir), fallback_title)
+    page_from_doc(
+        &render_document_with_includes(src, base_dir),
+        fallback_title,
+    )
 }
 
 /// Self-contained KaTeX stylesheet (fonts inlined as data URIs at build time).
@@ -1076,12 +1147,19 @@ fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
         (String::new(), String::new())
     };
     // With `toc: true`, lay the content beside a sticky table of contents.
-    let toc = if doc.toc { toc_html(&doc.blocks) } else { String::new() };
+    let toc = if doc.toc {
+        toc_html(&doc.blocks)
+    } else {
+        String::new()
+    };
     // Content first (left, wide column), TOC second (right, sticky column).
     let (body_class, body_content) = if toc.is_empty() {
         (String::new(), body)
     } else {
-        (" class=\"has-toc\"".to_string(), format!("<main>\n{body}</main>\n{toc}\n"))
+        (
+            " class=\"has-toc\"".to_string(),
+            format!("<main>\n{body}</main>\n{toc}\n"),
+        )
     };
     PAGE_TEMPLATE
         .replace("{{TITLE}}", &t)
@@ -1191,7 +1269,10 @@ struct SlideBuf {
 /// A top-level (horizontal) slide, optionally carrying vertical sub-slides.
 enum Top {
     Slide(SlideBuf),
-    Stack { lead: SlideBuf, children: Vec<SlideBuf> },
+    Stack {
+        lead: SlideBuf,
+        children: Vec<SlideBuf>,
+    },
 }
 
 /// Build the inner HTML of reveal's `<div class="slides">`: an optional title
@@ -1263,7 +1344,12 @@ fn split_slides(blocks: &[Block]) -> Vec<SlideBuf> {
     for b in blocks {
         if is_slide_break(&b.html) {
             slides.extend(cur.take());
-            cur = Some(SlideBuf { level: 0, from_rule: true, id: None, blocks: Vec::new() });
+            cur = Some(SlideBuf {
+                level: 0,
+                from_rule: true,
+                id: None,
+                blocks: Vec::new(),
+            });
             continue; // the `<hr>` is the delimiter, not content
         }
         if let Some(level) = block_heading_level(&b.html)
@@ -1367,9 +1453,17 @@ fn slugify(s: &str) -> String {
 /// `#`s and markup, yielding the visible-text slug.
 fn dedup_slug(block_src: &str, counts: &mut HashMap<String, u32>) -> String {
     let base = slugify(block_src);
-    let base = if base.is_empty() { "section".to_string() } else { base };
+    let base = if base.is_empty() {
+        "section".to_string()
+    } else {
+        base
+    };
     let n = counts.entry(base.clone()).or_insert(0);
-    let slug = if *n == 0 { base.clone() } else { format!("{base}-{n}") };
+    let slug = if *n == 0 {
+        base.clone()
+    } else {
+        format!("{base}-{n}")
+    };
     *n += 1;
     slug
 }
@@ -1428,7 +1522,11 @@ fn figure_parts<'a>(node: &'a AstNode<'a>) -> Option<FigureParts> {
     if caption.trim().is_empty() && !has_fig_id {
         return None;
     }
-    Some(FigureParts { url, caption, attrs })
+    Some(FigureParts {
+        url,
+        caption,
+        attrs,
+    })
 }
 
 /// Render a recognized figure as a numbered `<figure>` carrying the block data
@@ -1757,9 +1855,7 @@ fn emit_html_block(literal: &str, attrs: &str, out: &mut String) {
         && !lead.starts_with("</")
         && !lead.starts_with("<!")
         && !lead.starts_with("<?");
-    if injectable
-        && let Some(gt) = literal.find('>')
-    {
+    if injectable && let Some(gt) = literal.find('>') {
         let (open, rest) = literal.split_at(gt); // rest starts with '>'
         if let Some(open) = open.strip_suffix('/') {
             out.push_str(open);
@@ -1866,7 +1962,10 @@ fn parse_fence(s: &str) -> Option<Fence> {
         Some(Fence::Open(inner.trim().to_string()))
     } else if rest.chars().next().is_some_and(char::is_alphabetic) {
         // bare `::: classname` -> treat the first word as a class
-        Some(Fence::Open(format!(".{}", rest.split_whitespace().next().unwrap_or(""))))
+        Some(Fence::Open(format!(
+            ".{}",
+            rest.split_whitespace().next().unwrap_or("")
+        )))
     } else {
         None
     }
@@ -1890,7 +1989,11 @@ fn scan_div_spans(src: &str) -> Vec<DivSpan> {
             Some(Fence::Open(attrs)) => stack.push((i + 1, attrs)),
             Some(Fence::Close) => {
                 if let Some((open, attrs)) = stack.pop() {
-                    spans.push(DivSpan { open, close: i + 1, attrs });
+                    spans.push(DivSpan {
+                        open,
+                        close: i + 1,
+                        attrs,
+                    });
                 }
             }
             None => {}
@@ -1910,12 +2013,13 @@ struct DivAttrs {
 
 impl DivAttrs {
     fn get(&self, key: &str) -> Option<&str> {
-        self.kv.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
+        self.kv
+            .iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
     }
     fn callout_kind(&self) -> Option<&str> {
-        self.classes
-            .iter()
-            .find_map(|c| c.strip_prefix("callout-"))
+        self.classes.iter().find_map(|c| c.strip_prefix("callout-"))
     }
 }
 
@@ -1929,7 +2033,9 @@ fn parse_attrs(s: &str) -> DivAttrs {
         } else if let Some(i) = tok.strip_prefix('#') {
             attrs.id = Some(i.to_string());
         } else if let Some((k, v)) = tok.split_once('=') {
-            attrs.kv.push((k.to_string(), v.trim_matches(['"', '\'']).to_string()));
+            attrs
+                .kv
+                .push((k.to_string(), v.trim_matches(['"', '\'']).to_string()));
         } else if !tok.is_empty() {
             attrs.classes.push(tok.to_string());
         }
@@ -1986,12 +2092,11 @@ fn group_divs(
     let mut stack: Vec<Open> = Vec::new();
     let mut span_idx = 0;
 
-    let push_block = |stack: &mut Vec<Open>, result: &mut Vec<Block>, b: Block| {
-        match stack.last_mut() {
+    let push_block =
+        |stack: &mut Vec<Open>, result: &mut Vec<Block>, b: Block| match stack.last_mut() {
             Some(top) => top.inner.push(b),
             None => result.push(b),
-        }
-    };
+        };
 
     for (i, fb) in flat.iter().enumerate() {
         // Open every span that starts before this block and contains it.
@@ -1999,7 +2104,10 @@ fn group_divs(
             && spans[span_idx].open < fb.buf_start
             && spans[span_idx].close > fb.buf_start
         {
-            stack.push(Open { span: &spans[span_idx], inner: Vec::new() });
+            stack.push(Open {
+                span: &spans[span_idx],
+                inner: Vec::new(),
+            });
             span_idx += 1;
         }
         // Skip any spans that contain no blocks (degenerate/empty divs).
@@ -2089,7 +2197,13 @@ fn build_container(
         format!("<div class=\"{class}\"{id_attr}{data}>{body}</div>")
     };
 
-    Block { id, sourcepos, source_file: file, html, cell: None }
+    Block {
+        id,
+        sourcepos,
+        source_file: file,
+        html,
+        cell: None,
+    }
 }
 
 fn is_heading(html: &str) -> bool {
@@ -2142,7 +2256,9 @@ fn labelled_display_eq(block_src: &str) -> Option<(String, String)> {
     let (latex, after) = body.split_at(close);
     let attr = after.strip_prefix("$$")?.trim();
     let inner = attr.strip_prefix('{')?.strip_suffix('}')?;
-    let anchor = inner.split_whitespace().find_map(|tok| tok.strip_prefix('#'))?;
+    let anchor = inner
+        .split_whitespace()
+        .find_map(|tok| tok.strip_prefix('#'))?;
     anchor
         .starts_with("eq-")
         .then(|| (latex.trim().to_string(), anchor.to_string()))
@@ -2202,7 +2318,9 @@ fn code_fold(literal: &str) -> Option<(bool, String)> {
     if v != "true" && v != "show" {
         return None;
     }
-    let summary = cell_option(literal, "code-summary").unwrap_or("Code").to_string();
+    let summary = cell_option(literal, "code-summary")
+        .unwrap_or("Code")
+        .to_string();
     Some((v == "show", summary))
 }
 
@@ -2296,8 +2414,16 @@ fn base64_encode(data: &[u8]) -> String {
         let n = (b0 << 16) | (b1 << 8) | b2;
         s.push(T[(n >> 18 & 63) as usize] as char);
         s.push(T[(n >> 12 & 63) as usize] as char);
-        s.push(if chunk.len() > 1 { T[(n >> 6 & 63) as usize] as char } else { '=' });
-        s.push(if chunk.len() > 2 { T[(n & 63) as usize] as char } else { '=' });
+        s.push(if chunk.len() > 1 {
+            T[(n >> 6 & 63) as usize] as char
+        } else {
+            '='
+        });
+        s.push(if chunk.len() > 2 {
+            T[(n & 63) as usize] as char
+        } else {
+            '='
+        });
     }
     s
 }
@@ -2335,7 +2461,11 @@ fn emit_ojs_cell(src: &str, block_id: &str, block_attrs: &str) -> String {
     // A pure named declaration (`foo = …`) feeds other cells and shouldn't display
     // its inspector value; tag it so the vendored OJS CSS hides the output (viewof
     // and bare-expression cells stay visible). Mirrors Quarto's `nodetype`.
-    let nodetype = if ojs_is_declaration(src) { " nodetype=\"declaration\"" } else { "" };
+    let nodetype = if ojs_is_declaration(src) {
+        " nodetype=\"declaration\""
+    } else {
+        ""
+    };
     // The vendored Observable runtime walks up to an ancestor with class `cell`
     // to render a cell error (and bails with a crash if it finds none). The extra
     // class costs nothing for healthy cells and lets errors degrade to an inline
@@ -2357,7 +2487,9 @@ fn emit_ojs_figure(
     num: usize,
 ) -> String {
     let cell = emit_ojs_cell(src, block_id, "");
-    let id_attr = anchor.map(|a| format!(" id=\"{}\"", escape_attr(a))).unwrap_or_default();
+    let id_attr = anchor
+        .map(|a| format!(" id=\"{}\"", escape_attr(a)))
+        .unwrap_or_default();
     let figcap = match caption.map(str::trim).filter(|c| !c.is_empty()) {
         Some(c) => format!("Figure&nbsp;{num}: {}", html_escape(c)),
         None => format!("Figure&nbsp;{num}"),
@@ -2379,8 +2511,14 @@ fn emit_code_listing(
     block_attrs: &str,
     num: usize,
 ) -> String {
-    let id_attr = anchor.map(|a| format!(" id=\"{}\"", escape_attr(a))).unwrap_or_default();
-    let class = if lang.is_empty() { String::new() } else { format!(" class=\"language-{lang}\"") };
+    let id_attr = anchor
+        .map(|a| format!(" id=\"{}\"", escape_attr(a)))
+        .unwrap_or_default();
+    let class = if lang.is_empty() {
+        String::new()
+    } else {
+        format!(" class=\"language-{lang}\"")
+    };
     let mut code_html = String::new();
     escape_html(code, &mut code_html);
     let figcap = match caption.map(str::trim).filter(|c| !c.is_empty()) {
@@ -2407,7 +2545,10 @@ fn emit_code_listing(
 /// or `class Name`? `viewof`/`mutable`/`import` and bare expressions
 /// (``md`…` ``, `Plot.plot(…)`, `{ … }`) are displayed.
 fn ojs_is_declaration(src: &str) -> bool {
-    let Some(line) = src.lines().map(str::trim).find(|l| !l.is_empty() && !l.starts_with("//"))
+    let Some(line) = src
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty() && !l.starts_with("//"))
     else {
         return false;
     };
@@ -2419,7 +2560,10 @@ fn ojs_is_declaration(src: &str) -> bool {
         }
     }
     // `function name`, `async function name`, `class Name` define a name too.
-    let head = line.strip_prefix("async ").map(str::trim_start).unwrap_or(line);
+    let head = line
+        .strip_prefix("async ")
+        .map(str::trim_start)
+        .unwrap_or(line);
     for kw in ["function", "class"] {
         if let Some(rest) = head.strip_prefix(kw)
             && rest.starts_with(char::is_whitespace)
@@ -2535,9 +2679,15 @@ mod tests {
     fn ids_are_stable_across_runs_and_unique_for_duplicates() {
         let doc = render_document("Para.\n\nPara.\n");
         assert_eq!(doc.blocks.len(), 2);
-        assert_ne!(doc.blocks[0].id, doc.blocks[1].id, "duplicate content must get a tiebreak");
+        assert_ne!(
+            doc.blocks[0].id, doc.blocks[1].id,
+            "duplicate content must get a tiebreak"
+        );
         let again = render_document("Para.\n\nPara.\n");
-        assert_eq!(doc.blocks[0].id, again.blocks[0].id, "ids must be stable across runs");
+        assert_eq!(
+            doc.blocks[0].id, again.blocks[0].id,
+            "ids must be stable across runs"
+        );
     }
 
     #[test]
@@ -2547,7 +2697,13 @@ mod tests {
         // A generated title block is prepended, then the body paragraph.
         assert_eq!(doc.blocks.len(), 2);
         assert_eq!(doc.blocks[0].id, "qmd-title-block");
-        assert!(doc.blocks[0].html.contains("<h1 class=\"title\">My Post</h1>"), "got: {}", doc.blocks[0].html);
+        assert!(
+            doc.blocks[0]
+                .html
+                .contains("<h1 class=\"title\">My Post</h1>"),
+            "got: {}",
+            doc.blocks[0].html
+        );
         assert!(doc.blocks[1].html.contains("Body."));
     }
 
@@ -2560,7 +2716,10 @@ mod tests {
         assert!(h.contains("class=\"qmd-title-block\""));
         assert!(h.contains("<p class=\"subtitle\">S</p>"), "got: {h}");
         assert!(h.contains("<p class=\"description\">D</p>"), "got: {h}");
-        assert!(h.contains("<span>A</span>") && h.contains("<span>2026-05-15</span>"), "got: {h}");
+        assert!(
+            h.contains("<span>A</span>") && h.contains("<span>2026-05-15</span>"),
+            "got: {h}"
+        );
     }
 
     #[test]
@@ -2590,7 +2749,10 @@ mod tests {
         assert!(h.starts_with("<table "), "got: {h}");
         assert!(h.contains("<thead><tr><th>A</th><th"), "got: {h}");
         assert!(h.contains("<tbody><tr><td>1</td>"), "got: {h}");
-        assert!(h.contains("text-align: right"), "alignment from |--:| missing: {h}");
+        assert!(
+            h.contains("text-align: right"),
+            "alignment from |--:| missing: {h}"
+        );
     }
 
     #[test]
@@ -2599,10 +2761,16 @@ mod tests {
         assert_eq!(doc.blocks.len(), 1, "the callout is one container block");
         let h = &doc.blocks[0].html;
         assert!(h.contains("class=\"callout callout-note\""), "got: {h}");
-        assert!(h.contains("<div class=\"callout-title\">My Note</div>"), "got: {h}");
+        assert!(
+            h.contains("<div class=\"callout-title\">My Note</div>"),
+            "got: {h}"
+        );
         assert!(!doc.body_html().contains(":::"));
         // inner content keeps its own sourcepos so click-to-source still works.
-        assert!(h.contains("<p data-block-id"), "inner block lost its id: {h}");
+        assert!(
+            h.contains("<p data-block-id"),
+            "inner block lost its id: {h}"
+        );
         assert!(h.contains("Body text."));
     }
 
@@ -2610,10 +2778,18 @@ mod tests {
     fn callout_uses_explicit_title_and_default_title() {
         let titled = render_document("::: {.callout-tip title=\"Pro tip\"}\nDo this.\n:::\n");
         assert!(titled.blocks[0].html.contains("callout-tip"));
-        assert!(titled.blocks[0].html.contains(">Pro tip</div>"), "got: {}", titled.blocks[0].html);
+        assert!(
+            titled.blocks[0].html.contains(">Pro tip</div>"),
+            "got: {}",
+            titled.blocks[0].html
+        );
 
         let bare = render_document("::: {.callout-warning}\nBe careful.\n:::\n");
-        assert!(bare.blocks[0].html.contains(">Warning</div>"), "got: {}", bare.blocks[0].html);
+        assert!(
+            bare.blocks[0].html.contains(">Warning</div>"),
+            "got: {}",
+            bare.blocks[0].html
+        );
     }
 
     #[test]
@@ -2628,14 +2804,23 @@ mod tests {
     #[test]
     fn mermaid_block_emits_pre_mermaid_without_code() {
         // Both the executable cell form and a plain fence become a mermaid pre.
-        for src in ["```{mermaid}\nflowchart LR\n  A --> B\n```\n", "```mermaid\nflowchart LR\n  A --> B\n```\n"] {
+        for src in [
+            "```{mermaid}\nflowchart LR\n  A --> B\n```\n",
+            "```mermaid\nflowchart LR\n  A --> B\n```\n",
+        ] {
             let doc = render_document(src);
             let h = &doc.blocks[0].html;
             assert!(h.contains("<pre data-block-id"), "got: {h}");
             assert!(h.contains("class=\"mermaid\""), "got: {h}");
-            assert!(!h.contains("<code"), "mermaid must not wrap a <code> element: {h}");
+            assert!(
+                !h.contains("<code"),
+                "mermaid must not wrap a <code> element: {h}"
+            );
             assert!(h.contains("flowchart LR"), "got: {h}");
-            assert!(h.contains("A --&gt; B"), "diagram source should be escaped: {h}");
+            assert!(
+                h.contains("A --&gt; B"),
+                "diagram source should be escaped: {h}"
+            );
         }
     }
 
@@ -2646,10 +2831,22 @@ mod tests {
         );
         let body = doc.body_html();
         // the diagram is wrapped in a numbered figure with the #fig- anchor
-        assert!(body.contains("id=\"fig-flow\""), "figure anchor missing: {body}");
-        assert!(body.contains("class=\"qmd-figure"), "mermaid not wrapped in a figure: {body}");
-        assert!(body.contains("<pre class=\"mermaid\">"), "diagram pre missing: {body}");
-        assert!(body.contains("<figcaption>Figure&nbsp;1: The pipeline</figcaption>"), "got: {body}");
+        assert!(
+            body.contains("id=\"fig-flow\""),
+            "figure anchor missing: {body}"
+        );
+        assert!(
+            body.contains("class=\"qmd-figure"),
+            "mermaid not wrapped in a figure: {body}"
+        );
+        assert!(
+            body.contains("<pre class=\"mermaid\">"),
+            "diagram pre missing: {body}"
+        );
+        assert!(
+            body.contains("<figcaption>Figure&nbsp;1: The pipeline</figcaption>"),
+            "got: {body}"
+        );
         // the `%%|` option lines are stripped from the diagram source
         assert!(!body.contains("%%|"), "mermaid cell options leaked: {body}");
         // and `@fig-flow` resolves to the numbered link
@@ -2665,8 +2862,14 @@ mod tests {
         let doc = render_document("```{mermaid}\nflowchart LR\n  A --> B\n```\n");
         let h = &doc.blocks[0].html;
         assert!(h.contains("<pre data-block-id"), "got: {h}");
-        assert!(!h.contains("qmd-figure"), "unlabelled mermaid should not be a figure: {h}");
-        assert!(!h.contains("figcaption"), "unlabelled mermaid should have no caption: {h}");
+        assert!(
+            !h.contains("qmd-figure"),
+            "unlabelled mermaid should not be a figure: {h}"
+        );
+        assert!(
+            !h.contains("figcaption"),
+            "unlabelled mermaid should have no caption: {h}"
+        );
     }
 
     #[test]
@@ -2680,9 +2883,18 @@ mod tests {
         // before the source is base64-encoded into an ojs-module-contents script.
         let ojs = render_document("```{ojs}\n//| echo: false\nx = 1\n```\n");
         let oh = &ojs.blocks[0].html;
-        assert!(oh.contains("class=\"cell ojs-cell\""), "ojs cell should be a live placeholder: {oh}");
-        assert!(oh.contains("ojs-module-contents"), "ojs cell missing module-contents: {oh}");
-        assert!(!oh.contains("//| echo"), "option lines should be stripped: {oh}");
+        assert!(
+            oh.contains("class=\"cell ojs-cell\""),
+            "ojs cell should be a live placeholder: {oh}"
+        );
+        assert!(
+            oh.contains("ojs-module-contents"),
+            "ojs cell missing module-contents: {oh}"
+        );
+        assert!(
+            !oh.contains("//| echo"),
+            "option lines should be stripped: {oh}"
+        );
     }
 
     #[test]
@@ -2691,22 +2903,46 @@ mod tests {
         // it) and its output (added by the executor) is unaffected.
         let echo = render_document("```{python}\n#| echo: false\nprint(1)\n```\n");
         let b = &echo.blocks[0];
-        assert!(b.cell.is_some(), "cell metadata must survive so the executor runs it");
-        assert!(b.cell.as_ref().unwrap().include, "echo:false keeps include true");
-        assert!(!b.html.contains("print(1)"), "echo:false must hide the source: {}", b.html);
-        assert!(b.html.contains("qmd-cell-hidden"), "expected a hidden marker: {}", b.html);
+        assert!(
+            b.cell.is_some(),
+            "cell metadata must survive so the executor runs it"
+        );
+        assert!(
+            b.cell.as_ref().unwrap().include,
+            "echo:false keeps include true"
+        );
+        assert!(
+            !b.html.contains("print(1)"),
+            "echo:false must hide the source: {}",
+            b.html
+        );
+        assert!(
+            b.html.contains("qmd-cell-hidden"),
+            "expected a hidden marker: {}",
+            b.html
+        );
 
         // include:false hides the source too and flags the cell so the executor
         // suppresses its output.
         let inc = render_document("```{python}\n#| include: false\nprint(1)\n```\n");
         let b = &inc.blocks[0];
         assert!(b.cell.is_some());
-        assert!(!b.cell.as_ref().unwrap().include, "include:false must be recorded on the cell");
-        assert!(!b.html.contains("print(1)"), "include:false must hide the source: {}", b.html);
+        assert!(
+            !b.cell.as_ref().unwrap().include,
+            "include:false must be recorded on the cell"
+        );
+        assert!(
+            !b.html.contains("print(1)"),
+            "include:false must hide the source: {}",
+            b.html
+        );
 
         // A plain cell still shows its source.
         let plain = render_document("```{python}\nprint(1)\n```\n");
-        assert!(plain.blocks[0].html.contains("print(1)"), "default cell shows source");
+        assert!(
+            plain.blocks[0].html.contains("print(1)"),
+            "default cell shows source"
+        );
     }
 
     #[test]
@@ -2715,14 +2951,27 @@ mod tests {
         // bare expression stay visible.
         let decl = render_document("```{ojs}\nsignalX = [1, 2, 3]\n```\n");
         assert!(decl.blocks[0].html.contains("class=\"cell ojs-cell\""));
-        assert!(decl.blocks[0].html.contains("nodetype=\"declaration\""), "named decl should be hidden");
-        assert!(decl.blocks[0].html.contains("<script type=\"ojs-module-contents\">"));
+        assert!(
+            decl.blocks[0].html.contains("nodetype=\"declaration\""),
+            "named decl should be hidden"
+        );
+        assert!(
+            decl.blocks[0]
+                .html
+                .contains("<script type=\"ojs-module-contents\">")
+        );
 
         let view = render_document("```{ojs}\nviewof n = Inputs.range([0, 9])\n```\n");
-        assert!(!view.blocks[0].html.contains("nodetype=\"declaration\""), "viewof must stay visible");
+        assert!(
+            !view.blocks[0].html.contains("nodetype=\"declaration\""),
+            "viewof must stay visible"
+        );
 
         let expr = render_document("```{ojs}\nPlot.lineY([1, 2, 3]).plot()\n```\n");
-        assert!(!expr.blocks[0].html.contains("nodetype=\"declaration\""), "expression must stay visible");
+        assert!(
+            !expr.blocks[0].html.contains("nodetype=\"declaration\""),
+            "expression must stay visible"
+        );
     }
 
     #[test]
@@ -2730,7 +2979,9 @@ mod tests {
         assert!(ojs_is_declaration("foo = 1 + 2"));
         assert!(ojs_is_declaration("// a comment\nbar = {\n  return 3;\n}"));
         assert!(ojs_is_declaration("function makeScene(a, b) { return a; }"));
-        assert!(ojs_is_declaration("async function makeScene3D(build, invalidation) { return 0; }"));
+        assert!(ojs_is_declaration(
+            "async function makeScene3D(build, invalidation) { return 0; }"
+        ));
         assert!(ojs_is_declaration("class Particle { constructor() {} }"));
         assert!(!ojs_is_declaration("viewof x = Inputs.button()"));
         assert!(!ojs_is_declaration("import {a} from \"./x.js\""));
@@ -2745,13 +2996,20 @@ mod tests {
         let doc = render_document("The value $x^2$ is positive.\n");
         let h = &doc.blocks[0].html;
         assert!(h.contains("katex"), "expected katex markup, got: {h}");
-        assert!(!h.contains("$x^2$"), "raw dollar math should be consumed: {h}");
+        assert!(
+            !h.contains("$x^2$"),
+            "raw dollar math should be consumed: {h}"
+        );
     }
 
     #[test]
     fn display_math_block_renders() {
         let doc = render_document("$$\n\\sum_{i=1}^n x_i\n$$\n");
-        assert!(doc.body_html().contains("katex-display"), "got: {}", doc.body_html());
+        assert!(
+            doc.body_html().contains("katex-display"),
+            "got: {}",
+            doc.body_html()
+        );
     }
 
     #[test]
@@ -2762,7 +3020,10 @@ mod tests {
         // rendered as a display-math block (the raw TeX only survives inside
         // KaTeX's <annotation>, which is expected).
         assert!(h.contains("qmd-math-block"), "got: {h}");
-        assert!(h.contains("katex-display"), "expected display math, got: {h}");
+        assert!(
+            h.contains("katex-display"),
+            "expected display math, got: {h}"
+        );
     }
 
     #[test]
@@ -2771,7 +3032,10 @@ mod tests {
         let h = &doc.blocks[0].html;
         assert!(h.contains("<div class=\"demo\" data-block-id="), "got: {h}");
         // the wrapper-div double-emit bug must not reappear
-        assert!(!h.contains("<div data-block-id"), "should inject, not wrap: {h}");
+        assert!(
+            !h.contains("<div data-block-id"),
+            "should inject, not wrap: {h}"
+        );
     }
 
     // --- edge cases / robustness ---
@@ -2802,23 +3066,38 @@ mod tests {
         let doc = render_document("- a\n    - b\n    - c\n- d\n");
         let h = &doc.blocks[0].html;
         assert!(h.starts_with("<ul "), "got: {h}");
-        assert!(h.contains("<li>a<ul><li>b</li><li>c</li></ul></li>"), "got: {h}");
+        assert!(
+            h.contains("<li>a<ul><li>b</li><li>c</li></ul></li>"),
+            "got: {h}"
+        );
     }
 
     #[test]
     fn ordered_list_start_attribute_preserved() {
         let doc = render_document("3. third\n4. fourth\n");
         assert!(doc.blocks[0].html.starts_with("<ol "));
-        assert!(doc.blocks[0].html.contains("start=\"3\""), "got: {}", doc.blocks[0].html);
+        assert!(
+            doc.blocks[0].html.contains("start=\"3\""),
+            "got: {}",
+            doc.blocks[0].html
+        );
     }
 
     #[test]
     fn links_images_and_blockquotes_render() {
         let link = render_document("[text](https://example.com \"t\")\n");
-        assert!(link.blocks[0].html.contains("<a href=\"https://example.com\" title=\"t\">text</a>"));
+        assert!(
+            link.blocks[0]
+                .html
+                .contains("<a href=\"https://example.com\" title=\"t\">text</a>")
+        );
 
         let img = render_document("![alt text](/img.png)\n");
-        assert!(img.blocks[0].html.contains("<img src=\"/img.png\" alt=\"alt text\" />"));
+        assert!(
+            img.blocks[0]
+                .html
+                .contains("<img src=\"/img.png\" alt=\"alt text\" />")
+        );
 
         let quote = render_document("> quoted line\n");
         assert!(quote.blocks[0].html.starts_with("<blockquote "));
@@ -2829,7 +3108,10 @@ mod tests {
     fn attribute_values_are_escaped() {
         let doc = render_document("[x](https://e.com?a=1&b=\"2\")\n");
         let h = &doc.blocks[0].html;
-        assert!(h.contains("&amp;"), "ampersand should be escaped in href: {h}");
+        assert!(
+            h.contains("&amp;"),
+            "ampersand should be escaped in href: {h}"
+        );
         assert!(h.contains("&quot;"), "quote should be escaped in href: {h}");
     }
 
@@ -2851,7 +3133,9 @@ mod tests {
     #[test]
     fn reveal_format_detected_from_front_matter() {
         // Nested block form (the corpus shape): `format:` with a *-revealjs subkey.
-        let deck = render_document("---\nformat:\n  liquid-glass-revealjs:\n    slide-number: true\n---\n\n## A\n");
+        let deck = render_document(
+            "---\nformat:\n  liquid-glass-revealjs:\n    slide-number: true\n---\n\n## A\n",
+        );
         assert_eq!(deck.format, DocFormat::Reveal);
         // Inline form.
         let inline = render_document("---\nformat: revealjs\n---\n\n## A\n");
@@ -2869,13 +3153,28 @@ mod tests {
         let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
         // Title slide from front matter.
         assert!(slides.contains("id=\"title-slide\""), "got: {slides}");
-        assert!(slides.contains("<h1 class=\"title\">Deck</h1>"), "got: {slides}");
-        assert!(slides.contains("<p class=\"subtitle\">A subtitle</p>"), "got: {slides}");
+        assert!(
+            slides.contains("<h1 class=\"title\">Deck</h1>"),
+            "got: {slides}"
+        );
+        assert!(
+            slides.contains("<p class=\"subtitle\">A subtitle</p>"),
+            "got: {slides}"
+        );
         // One <section> per h2, id slugged from the heading text.
-        assert!(slides.contains("<section id=\"first\" class=\"slide level2\">"), "got: {slides}");
-        assert!(slides.contains("<section id=\"second\" class=\"slide level2\">"), "got: {slides}");
+        assert!(
+            slides.contains("<section id=\"first\" class=\"slide level2\">"),
+            "got: {slides}"
+        );
+        assert!(
+            slides.contains("<section id=\"second\" class=\"slide level2\">"),
+            "got: {slides}"
+        );
         // Heading keeps its block id inside the section (block-swap/click-to-source).
-        assert!(slides.contains("<h2 data-block-id="), "heading lost its block id: {slides}");
+        assert!(
+            slides.contains("<h2 data-block-id="),
+            "heading lost its block id: {slides}"
+        );
         // title + two content slides, no nesting.
         assert_eq!(slides.matches("<section").count(), 3, "got: {slides}");
     }
@@ -2884,25 +3183,41 @@ mod tests {
     fn thematic_break_starts_a_new_slide_and_is_not_emitted() {
         let doc = render_document("---\nformat: revealjs\n---\n\nOne.\n\n---\n\nTwo.\n");
         let slides = slides_html(None, None, &doc.blocks);
-        assert!(!slides.contains("<hr"), "the --- delimiter must not render: {slides}");
+        assert!(
+            !slides.contains("<hr"),
+            "the --- delimiter must not render: {slides}"
+        );
         assert_eq!(slides.matches("<section").count(), 2, "got: {slides}");
     }
 
     #[test]
     fn h1_wraps_following_h2s_in_a_vertical_stack() {
-        let doc = render_document("---\nformat: revealjs\n---\n\n# Part One\n\nIntro.\n\n## A\n\n## B\n");
+        let doc =
+            render_document("---\nformat: revealjs\n---\n\n# Part One\n\nIntro.\n\n## A\n\n## B\n");
         let slides = slides_html(None, None, &doc.blocks);
         // Outer wrapper section, then the h1 lead slide, then the two h2 children.
-        assert!(slides.contains("<section>\n<section id=\"part-one\" class=\"slide level1\">"), "got: {slides}");
-        assert!(slides.contains("<section id=\"a\" class=\"slide level2\">"), "got: {slides}");
-        assert!(slides.contains("<section id=\"b\" class=\"slide level2\">"), "got: {slides}");
+        assert!(
+            slides.contains("<section>\n<section id=\"part-one\" class=\"slide level1\">"),
+            "got: {slides}"
+        );
+        assert!(
+            slides.contains("<section id=\"a\" class=\"slide level2\">"),
+            "got: {slides}"
+        );
+        assert!(
+            slides.contains("<section id=\"b\" class=\"slide level2\">"),
+            "got: {slides}"
+        );
         // 1 wrapper + lead + 2 children = 4 sections.
         assert_eq!(slides.matches("<section").count(), 4, "got: {slides}");
     }
 
     #[test]
     fn reveal_page_carries_revealjs_scaffolding() {
-        let page = render_html_page("---\ntitle: D\nformat: revealjs\n---\n\n## Slide\n", "fallback");
+        let page = render_html_page(
+            "---\ntitle: D\nformat: revealjs\n---\n\n## Slide\n",
+            "fallback",
+        );
         assert!(page.contains("class=\"reveal\""));
         assert!(page.contains("class=\"slides\""));
         assert!(page.contains("reveal.js@5.1.0"));
@@ -2914,7 +3229,11 @@ mod tests {
     #[test]
     fn headings_get_deduped_anchor_ids() {
         let doc = render_document("# Intro\n\nbody\n\n# Intro\n");
-        assert!(doc.blocks[0].html.starts_with("<h1 id=\"intro\""), "got: {}", doc.blocks[0].html);
+        assert!(
+            doc.blocks[0].html.starts_with("<h1 id=\"intro\""),
+            "got: {}",
+            doc.blocks[0].html
+        );
         // a repeated heading slug is deduped with a -N suffix.
         let last = doc.blocks.last().unwrap();
         assert!(last.html.contains("id=\"intro-1\""), "got: {}", last.html);
@@ -2925,23 +3244,42 @@ mod tests {
         // In a deck the slug lives on the wrapping <section>, so the heading must
         // not also carry it (that would be a duplicate id in the DOM).
         let doc = render_document("---\nformat: revealjs\n---\n\n## A Slide\n");
-        let h = doc.blocks.iter().find(|b| b.html.starts_with("<h2")).unwrap();
-        assert!(!h.html.contains(" id=\""), "reveal heading should not carry an id: {}", h.html);
+        let h = doc
+            .blocks
+            .iter()
+            .find(|b| b.html.starts_with("<h2"))
+            .unwrap();
+        assert!(
+            !h.html.contains(" id=\""),
+            "reveal heading should not carry an id: {}",
+            h.html
+        );
     }
 
     #[test]
     fn standalone_image_becomes_a_numbered_figure() {
-        let doc = render_document("![Scree plot](scree.png){#fig-scree width=50% fig-align=\"center\"}\n");
+        let doc = render_document(
+            "![Scree plot](scree.png){#fig-scree width=50% fig-align=\"center\"}\n",
+        );
         let h = &doc.blocks[0].html;
         assert!(h.starts_with("<figure"), "got: {h}");
         assert!(h.contains("id=\"fig-scree\""), "got: {h}");
-        assert!(h.contains("class=\"qmd-figure qmd-figure-center\""), "got: {h}");
+        assert!(
+            h.contains("class=\"qmd-figure qmd-figure-center\""),
+            "got: {h}"
+        );
         assert!(h.contains("<img src=\"scree.png\""), "got: {h}");
         assert!(h.contains("style=\"width:50%\""), "got: {h}");
-        assert!(h.contains("<figcaption>Figure&nbsp;1: Scree plot</figcaption>"), "got: {h}");
+        assert!(
+            h.contains("<figcaption>Figure&nbsp;1: Scree plot</figcaption>"),
+            "got: {h}"
+        );
         assert!(!h.contains("{#fig-"), "the attribute block leaked: {h}");
         // the figure still carries the block model attributes.
-        assert!(h.contains("data-block-id=") && h.contains("data-sourcepos="), "got: {h}");
+        assert!(
+            h.contains("data-block-id=") && h.contains("data-sourcepos="),
+            "got: {h}"
+        );
     }
 
     #[test]
@@ -2950,7 +3288,10 @@ mod tests {
         let h = &doc.blocks[0].html;
         assert!(h.starts_with("<p "), "got: {h}");
         assert!(h.contains("<img src=\"l.png\""), "got: {h}");
-        assert!(!h.contains("<figure"), "a non-standalone image must not become a figure: {h}");
+        assert!(
+            !h.contains("<figure"),
+            "a non-standalone image must not become a figure: {h}"
+        );
     }
 
     #[test]
@@ -2960,17 +3301,32 @@ mod tests {
             "fb",
         );
         assert!(page.contains("id=\"TOC\""), "missing TOC nav");
-        assert!(page.contains("<body class=\"has-toc\">"), "missing toc layout class");
-        assert!(page.contains("<a href=\"#a\">A</a>"), "missing TOC entry for A: {page}");
-        assert!(page.contains("<a href=\"#b\">B</a>"), "missing nested TOC entry for B");
+        assert!(
+            page.contains("<body class=\"has-toc\">"),
+            "missing toc layout class"
+        );
+        assert!(
+            page.contains("<a href=\"#a\">A</a>"),
+            "missing TOC entry for A: {page}"
+        );
+        assert!(
+            page.contains("<a href=\"#b\">B</a>"),
+            "missing nested TOC entry for B"
+        );
     }
 
     #[test]
     fn no_toc_when_not_requested() {
         let page = render_html_page("---\ntitle: Doc\n---\n\n# A\n", "fb");
         // (the `#TOC`/`has-toc` CSS rules are always present; assert on markup.)
-        assert!(!page.contains("<nav id=\"TOC\""), "TOC nav should be absent without toc: true");
-        assert!(!page.contains("<body class=\"has-toc\">"), "toc layout should be off");
+        assert!(
+            !page.contains("<nav id=\"TOC\""),
+            "TOC nav should be absent without toc: true"
+        );
+        assert!(
+            !page.contains("<body class=\"has-toc\">"),
+            "toc layout should be off"
+        );
     }
 
     #[test]
@@ -2978,25 +3334,40 @@ mod tests {
         // Built-in dark no longer inlines a per-page override; it sets the default
         // mode, and the always-shipped dark CSS is selected at runtime by data-theme.
         let dark = render_document("---\ntheme: dark\n---\n\nx\n");
-        assert!(dark.theme_css.is_empty(), "built-in dark should not inline override CSS");
+        assert!(
+            dark.theme_css.is_empty(),
+            "built-in dark should not inline override CSS"
+        );
         assert_eq!(dark.theme_default, "dark");
 
         let page = render_html_page("---\ntheme: dark\n---\n\nx\n", "fb");
-        assert!(page.contains("html[data-theme=\"dark\"]"), "scoped dark CSS not shipped");
+        assert!(
+            page.contains("html[data-theme=\"dark\"]"),
+            "scoped dark CSS not shipped"
+        );
         assert!(page.contains("--qmd-bg: #16181d"), "dark vars missing");
-        assert!(page.contains("var DEFAULT = \"dark\""), "resolver default should be dark");
+        assert!(
+            page.contains("var DEFAULT = \"dark\""),
+            "resolver default should be dark"
+        );
 
         // No theme -> auto (follow OS); light -> light. No inlined override either way.
         let plain = render_document("---\ntitle: x\n---\n\nx\n");
         assert!(plain.theme_css.is_empty());
         assert_eq!(plain.theme_default, "auto");
-        assert_eq!(render_document("---\ntheme: light\n---\n\nx\n").theme_default, "light");
+        assert_eq!(
+            render_document("---\ntheme: light\n---\n\nx\n").theme_default,
+            "light"
+        );
     }
 
     #[test]
     fn theme_list_takes_first_entry() {
         // `theme: [dark, custom.scss]` (Quarto list form) selects the base.
         let d = render_document("---\ntheme: [dark, custom.scss]\n---\n\nx\n");
-        assert_eq!(d.theme_default, "dark", "first list entry (dark) should win");
+        assert_eq!(
+            d.theme_default, "dark",
+            "first list entry (dark) should win"
+        );
     }
 }

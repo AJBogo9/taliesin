@@ -15,7 +15,10 @@ pub enum BlockOp {
     /// Replace the element `target_id` with `html` (which has the new id).
     Update { target_id: String, html: String },
     /// Insert `html` after `after_id` (or at the start when `None`).
-    Insert { after_id: Option<String>, html: String },
+    Insert {
+        after_id: Option<String>,
+        html: String,
+    },
     /// Remove the element `target_id`.
     Remove { target_id: String },
 }
@@ -45,7 +48,14 @@ pub fn diff_blocks(old: &[Block], new: &[Block]) -> Vec<BlockOp> {
         oi = ai + 1;
         nj = bj + 1;
     }
-    emit_gap(&mut ops, old, new, oi..old.len(), nj..new.len(), &mut prev_new);
+    emit_gap(
+        &mut ops,
+        old,
+        new,
+        oi..old.len(),
+        nj..new.len(),
+        &mut prev_new,
+    );
     ops
 }
 
@@ -70,7 +80,9 @@ fn emit_gap(
         *prev_new = Some(new[n0 + k].id.clone());
     }
     for k in pairs..(o1 - o0) {
-        ops.push(BlockOp::Remove { target_id: old[o0 + k].id.clone() });
+        ops.push(BlockOp::Remove {
+            target_id: old[o0 + k].id.clone(),
+        });
     }
     for k in pairs..(n1 - n0) {
         ops.push(BlockOp::Insert {
@@ -126,7 +138,10 @@ mod tests {
     }
 
     fn block_html(id: &str, html: &str) -> Block {
-        Block { html: html.to_string(), ..block(id) }
+        Block {
+            html: html.to_string(),
+            ..block(id)
+        }
     }
 
     fn ids(blocks: &[&str]) -> Vec<Block> {
@@ -164,7 +179,10 @@ mod tests {
         assert_eq!(ops.len(), 1);
         assert_eq!(
             ops[0],
-            BlockOp::Update { target_id: "b".into(), html: block("b2").html }
+            BlockOp::Update {
+                target_id: "b".into(),
+                html: block("b2").html
+            }
         );
     }
 
@@ -175,20 +193,34 @@ mod tests {
         let ops = diff_blocks(&old, &new);
         assert_eq!(
             ops,
-            vec![BlockOp::Insert { after_id: Some("a".into()), html: block("b").html }]
+            vec![BlockOp::Insert {
+                after_id: Some("a".into()),
+                html: block("b").html
+            }]
         );
     }
 
     #[test]
     fn insertion_at_start_has_no_after() {
         let ops = diff_blocks(&ids(&["b"]), &ids(&["a", "b"]));
-        assert_eq!(ops, vec![BlockOp::Insert { after_id: None, html: block("a").html }]);
+        assert_eq!(
+            ops,
+            vec![BlockOp::Insert {
+                after_id: None,
+                html: block("a").html
+            }]
+        );
     }
 
     #[test]
     fn removal_emits_remove() {
         let ops = diff_blocks(&ids(&["a", "b", "c"]), &ids(&["a", "c"]));
-        assert_eq!(ops, vec![BlockOp::Remove { target_id: "b".into() }]);
+        assert_eq!(
+            ops,
+            vec![BlockOp::Remove {
+                target_id: "b".into()
+            }]
+        );
     }
 
     #[test]
