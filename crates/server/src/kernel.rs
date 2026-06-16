@@ -23,6 +23,33 @@ use jupyter_zmq_client::{
 use tokio::process::{Child, Command};
 use tokio::time::timeout;
 
+/// Python `ojs_define(**kwargs)`, run once at kernel start. Serializes each
+/// keyword (with a pandas convenience for DataFrame/Series) and emits a
+/// `<script type="ojs-define">` HTML output the OJS runtime consumes. Mirrors
+/// Quarto's Jupyter setup so existing `.qmd` docs work unchanged.
+const OJS_DEFINE_PREAMBLE: &str = r#"
+def ojs_define(**kwargs):
+    import json
+    try:
+        from IPython.display import display, HTML
+    except Exception:
+        from IPython.core.display import display, HTML
+    def convert(v):
+        try:
+            import pandas as pd
+        except ModuleNotFoundError:
+            return v
+        if type(v) == pd.Series:
+            v = pd.DataFrame(v)
+        if type(v) == pd.DataFrame:
+            j = json.loads(v.T.to_json(orient='split'))
+            return dict((k, v) for (k, v) in zip(j["index"], j["data"]))
+        return v
+    v = dict(contents=list(dict(name=key, value=convert(value)) for (key, value) in kwargs.items()))
+    display(HTML('<script type="ojs-define">' + json.dumps(v) + '</script>'), metadata=dict(ojs_define=True))
+globals()["ojs_define"] = ojs_define
+"#;
+
 /// One execution output, already rendered to a self-contained HTML fragment.
 #[derive(Debug, Clone)]
 pub enum Output {
@@ -87,7 +114,12 @@ impl Kernel {
         // sidesteps the ZMQ slow-joiner problem before the first execution.
         let _ = wait_for_iopub_welcome(&mut iopub, Duration::from_secs(5)).await;
 
-        Ok(Kernel { child, shell, iopub, conn_dir })
+        let mut kernel = Kernel { child, shell, iopub, conn_dir };
+        // Define `ojs_define(**kwargs)` so docs can bridge Python values to OJS
+        // cells: it emits `<script type="ojs-define">{json}</script>`, which the
+        // Observable runtime reads. (Mirrors Quarto's Jupyter setup.)
+        let _ = kernel.execute(OJS_DEFINE_PREAMBLE).await;
+        Ok(kernel)
     }
 
     /// Run `code` and collect its outputs (waits until the kernel is idle).

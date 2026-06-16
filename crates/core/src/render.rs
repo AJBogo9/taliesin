@@ -17,6 +17,27 @@ use std::path::Path;
 pub struct Cell {
     pub lang: String,
     pub code: String,
+    /// When this cell's output should be a numbered `<figure>` (`#| label: fig-x`
+    /// + `#| fig-cap:`), the executor wraps the rendered output accordingly.
+    pub figure: Option<CellFigure>,
+}
+
+/// Metadata for wrapping a code cell's executed output as a numbered figure.
+#[derive(Debug, Clone)]
+pub struct CellFigure {
+    /// `#fig-…` anchor (when labelled), so `@fig-x` cross-references resolve.
+    pub anchor: Option<String>,
+    pub caption: Option<String>,
+    pub number: usize,
+}
+
+/// A code cell's cross-reference role from its `label`/`*-cap` options.
+enum CellRole {
+    /// `label: fig-x` / `fig-cap` -> a numbered figure (the cell's output).
+    Figure { anchor: Option<String>, caption: Option<String> },
+    /// `label: lst-x` / `lst-cap` -> a numbered listing (the cell's source);
+    /// `fold` carries `code-fold` (start-open, summary) so a folded listing works.
+    Listing { anchor: Option<String>, caption: Option<String>, fold: Option<(bool, String)> },
 }
 
 /// One top-level block: a stable id, its source position, and its HTML.
@@ -55,9 +76,12 @@ pub struct RenderedDoc {
     pub format: DocFormat,
     /// Whether the front matter requested a table of contents (`toc: true`).
     pub toc: bool,
-    /// Resolved theme override CSS (built-in/`.css`/`_extensions/`), empty for
-    /// the default light theme. Inlined after the base stylesheet.
+    /// Resolved custom theme CSS (`.css`/`_extensions/`), empty for the built-in
+    /// light/dark themes. Inlined after the base stylesheet.
     pub theme_css: String,
+    /// Default theme mode for the resolver script: `"dark"`/`"light"` force it,
+    /// `"auto"` follows the OS `prefers-color-scheme`.
+    pub theme_default: String,
     pub blocks: Vec<Block>,
 }
 
@@ -120,24 +144,32 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
     let lines: Vec<&str> = processed.lines().collect();
     let mut title: Option<String> = None;
     let mut subtitle: Option<String> = None;
+    let mut date: Option<String> = None;
+    let mut author: Option<String> = None;
+    let mut description: Option<String> = None;
     let mut format = DocFormat::Html;
     let mut toc = false;
     let mut theme: Option<String> = None;
     let mut bib_field: Option<String> = None;
     let mut flat: Vec<FlatBlock> = Vec::new();
     let mut id_counts: HashMap<String, u32> = HashMap::new();
-    // Heading anchor slugs (deduped) and the figure number registry, both used
-    // for cross-references (`@sec-x`/`@fig-x`) and the table of contents.
+    // Heading anchor slugs (deduped) and the cross-reference number registry
+    // (figures + equations), both used for `@sec-x`/`@fig-x`/`@eq-x` and the TOC.
     let mut heading_slugs: HashMap<String, u32> = HashMap::new();
     let mut fig_count: usize = 0;
-    let mut fig_registry: HashMap<String, String> = HashMap::new();
+    let mut eq_count: usize = 0;
+    let mut lst_count: usize = 0;
+    let mut xref_registry: HashMap<String, String> = HashMap::new();
 
     for node in root.children() {
-        let (buf_start, sourcepos, source_file, block_src, is_paragraph, heading_level, cell) = {
+        let (buf_start, sourcepos, source_file, block_src, is_paragraph, heading_level, mut cell, cell_role) = {
             let data = node.data.borrow();
             if let NodeValue::FrontMatter(fm) = &data.value {
                 title = extract_field(fm, "title");
                 subtitle = extract_field(fm, "subtitle");
+                date = extract_field(fm, "date");
+                author = extract_field(fm, "author");
+                description = extract_field(fm, "description");
                 bib_field = extract_field(fm, "bibliography");
                 format = detect_format(fm);
                 toc = detect_toc(fm);
@@ -163,7 +195,35 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
                     code_lang(&cb.info).map(|lang| Cell {
                         lang,
                         code: strip_cell_options(&cb.literal),
+                        figure: None,
                     })
+                }
+                _ => None,
+            };
+            // A code cell labelled/captioned as a figure (`label: fig-x` / `fig-cap`)
+            // or a listing (`label: lst-x` / `lst-cap`) becomes a numbered, anchored
+            // `<figure>`/listing so `@fig-x` / `@lst-x` resolve.
+            let cell_role = match &data.value {
+                NodeValue::CodeBlock(cb) if cell.is_some() => {
+                    let label = cell_option(&cb.literal, "label");
+                    let fig_cap = cell_option(&cb.literal, "fig-cap");
+                    let lst_cap = cell_option(&cb.literal, "lst-cap");
+                    let is_fig = label.is_some_and(|l| l.starts_with("fig-")) || fig_cap.is_some();
+                    let is_lst = label.is_some_and(|l| l.starts_with("lst-")) || lst_cap.is_some();
+                    if is_fig {
+                        Some(CellRole::Figure {
+                            anchor: label.filter(|l| l.starts_with("fig-")).map(str::to_string),
+                            caption: fig_cap.map(str::to_string),
+                        })
+                    } else if is_lst {
+                        Some(CellRole::Listing {
+                            anchor: label.filter(|l| l.starts_with("lst-")).map(str::to_string),
+                            caption: lst_cap.map(str::to_string),
+                            fold: code_fold(&cb.literal),
+                        })
+                    } else {
+                        None
+                    }
                 }
                 _ => None,
             };
@@ -175,6 +235,7 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
                 is_paragraph,
                 heading_level,
                 cell,
+                cell_role,
             )
         };
 
@@ -201,14 +262,68 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
             html.push_str(&format!("<div{attrs} class=\"qmd-math-block\">"));
             html.push_str(&crate::math::render(env, true));
             html.push_str("</div>");
+        } else if let Some((latex, anchor)) =
+            is_paragraph.then(|| labelled_display_eq(&block_src)).flatten()
+        {
+            // `$$ ... $$ {#eq-x}` -> a numbered display equation; register the
+            // `#eq-` id so `@eq-x` cross-references resolve to "Equation N".
+            eq_count += 1;
+            xref_registry.insert(anchor.clone(), eq_count.to_string());
+            html.push_str(&emit_equation(&latex, &anchor, &attrs, eq_count));
         } else if let Some(fig) = is_paragraph.then(|| figure_parts(node)).flatten() {
             // Standalone image -> a numbered `<figure>`; register `#fig-` ids so
             // `@fig-x` cross-references resolve to the number.
             fig_count += 1;
             if let Some(fid) = fig.attrs.id.as_deref().filter(|i| i.starts_with("fig-")) {
-                fig_registry.insert(fid.to_string(), fig_count.to_string());
+                xref_registry.insert(fid.to_string(), fig_count.to_string());
             }
             html.push_str(&emit_figure(&fig, &attrs, fig_count));
+        } else if let Some(role) = &cell_role {
+            // A labelled/captioned code cell -> a numbered, anchored figure/listing.
+            let lang = cell.as_ref().map(|c| c.lang.clone()).unwrap_or_default();
+            let code = cell.as_ref().map(|c| c.code.clone()).unwrap_or_default();
+            match role {
+                CellRole::Figure { anchor, caption } => {
+                    fig_count += 1;
+                    if let Some(a) = anchor {
+                        xref_registry.insert(a.clone(), fig_count.to_string());
+                    }
+                    match lang.as_str() {
+                        // Client-rendered outputs are known now, so wrap them here.
+                        "mermaid" => html.push_str(&emit_mermaid_figure(
+                            &code, anchor.as_deref(), caption.as_deref(), &attrs, fig_count,
+                        )),
+                        "ojs" => html.push_str(&emit_ojs_figure(
+                            &code, &id, anchor.as_deref(), caption.as_deref(), &attrs, fig_count,
+                        )),
+                        // Python/R: the source renders now; tag the cell so the
+                        // executor wraps the (later) output in the numbered figure.
+                        _ => {
+                            if let Some(c) = cell.as_mut() {
+                                c.figure = Some(CellFigure {
+                                    anchor: anchor.clone(),
+                                    caption: caption.clone(),
+                                    number: fig_count,
+                                });
+                            }
+                            emit(node, &attrs, &mut html);
+                        }
+                    }
+                }
+                CellRole::Listing { anchor, caption, fold } => {
+                    lst_count += 1;
+                    if let Some(a) = anchor {
+                        xref_registry.insert(a.clone(), lst_count.to_string());
+                    }
+                    html.push_str(&emit_code_listing(
+                        &code, &lang, anchor.as_deref(), caption.as_deref(), fold.as_ref(), &attrs, lst_count,
+                    ));
+                }
+            }
+        } else if let Some(c) = cell.as_ref().filter(|c| c.lang == "ojs") {
+            // Live Observable cell: a placeholder the vendored runtime executes
+            // client-side, instead of a static highlighted listing.
+            html.push_str(&emit_ojs_cell(&c.code, &id, &attrs));
         } else {
             emit(node, &attrs, &mut html);
         }
@@ -220,9 +335,68 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
 
     let mut blocks = group_divs(flat, &spans, origins, &mut id_counts);
     let bib = load_bibliography(bib_field.as_deref(), base_dir);
-    crate::cite::process(&mut blocks, &bib, &fig_registry);
+    crate::cite::process(&mut blocks, &bib, &xref_registry);
+    // A visible title block (HTML only; reveal builds its own title slide). It is
+    // a generated block (no sourcepos), so it rides the block model + diff like
+    // the References section.
+    if format == DocFormat::Html
+        && let Some(tb) = title_block_html(
+            title.as_deref(),
+            subtitle.as_deref(),
+            author.as_deref(),
+            date.as_deref(),
+            description.as_deref(),
+        )
+    {
+        blocks.insert(
+            0,
+            Block {
+                id: "qmd-title-block".to_string(),
+                sourcepos: String::new(),
+                source_file: None,
+                html: tb,
+                cell: None,
+            },
+        );
+    }
     let theme_css = resolve_theme(theme.as_deref(), base_dir);
-    RenderedDoc { title, subtitle, format, toc, theme_css, blocks }
+    let theme_default = theme_default_mode(theme.as_deref()).to_string();
+    RenderedDoc { title, subtitle, format, toc, theme_css, theme_default, blocks }
+}
+
+/// Build the visible title-block header from front-matter metadata (title +
+/// optional subtitle/description and an author · date meta line). Returns `None`
+/// without a title. Carries `data-block-id` so it lives in the block model.
+fn title_block_html(
+    title: Option<&str>,
+    subtitle: Option<&str>,
+    author: Option<&str>,
+    date: Option<&str>,
+    description: Option<&str>,
+) -> Option<String> {
+    let title = title?;
+    let mut h = String::from(
+        "<header class=\"qmd-title-block\" data-block-id=\"qmd-title-block\"><h1 class=\"title\">",
+    );
+    h.push_str(&html_escape(title));
+    h.push_str("</h1>");
+    if let Some(s) = subtitle.filter(|s| !s.is_empty()) {
+        h.push_str(&format!("<p class=\"subtitle\">{}</p>", html_escape(s)));
+    }
+    if let Some(d) = description.filter(|s| !s.is_empty()) {
+        h.push_str(&format!("<p class=\"description\">{}</p>", html_escape(d)));
+    }
+    let meta: Vec<String> = [author, date]
+        .into_iter()
+        .flatten()
+        .filter(|s| !s.is_empty())
+        .map(|s| format!("<span>{}</span>", html_escape(s)))
+        .collect();
+    if !meta.is_empty() {
+        h.push_str(&format!("<div class=\"qmd-title-meta\">{}</div>", meta.join("")));
+    }
+    h.push_str("</header>");
+    Some(h)
 }
 
 /// A theme is an extension that ships CSS. Two minimal themes are built in
@@ -233,8 +407,9 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
 fn resolve_theme(theme: Option<&str>, base_dir: Option<&Path>) -> String {
     let Some(name) = theme else { return String::new() };
     match name {
-        "light" | "default" => String::new(),
-        "dark" => THEME_DARK.to_string(),
+        // Built-in light/dark are always shipped (DARK_CSS) and selected at
+        // runtime via `data-theme` (toggle / OS), so no per-page override CSS.
+        "light" | "default" | "dark" => String::new(),
         path if path.ends_with(".css") || path.ends_with(".scss") => base_dir
             .and_then(|b| std::fs::read_to_string(b.join(path)).ok())
             .unwrap_or_default(),
@@ -243,6 +418,42 @@ fn resolve_theme(theme: Option<&str>, base_dir: Option<&Path>) -> String {
             .and_then(|b| std::fs::read_to_string(b.join("_extensions").join(ext).join("theme.css")).ok())
             .unwrap_or_default(),
     }
+}
+
+/// The default theme mode for the resolver script: an explicit `dark`/`light`
+/// from front matter forces that mode; otherwise `auto` follows the OS
+/// (`prefers-color-scheme`). Custom CSS themes don't force a built-in mode.
+fn theme_default_mode(theme: Option<&str>) -> &'static str {
+    match theme {
+        Some("dark") => "dark",
+        Some("light") | Some("default") => "light",
+        _ => "auto",
+    }
+}
+
+/// Inline `<head>` script (runs before paint, so no flash): set
+/// `<html data-theme>` from the saved choice, else the front-matter default,
+/// else the OS `prefers-color-scheme`. Also defines `qmdSetTheme`/`qmdGetThemePref`
+/// for the preview toggle and keeps `auto` in sync with OS changes.
+pub fn theme_head(default_mode: &str) -> String {
+    format!(
+        r#"<script>
+(function(){{
+  var DEFAULT = "{default_mode}";
+  var mq = window.matchMedia && matchMedia("(prefers-color-scheme: dark)");
+  function pref(){{ try {{ return localStorage.getItem("qmd-theme") || DEFAULT; }} catch(e) {{ return DEFAULT; }} }}
+  function apply(){{
+    var p = pref();
+    var mode = p === "auto" ? ((mq && mq.matches) ? "dark" : "light") : p;
+    document.documentElement.setAttribute("data-theme", mode);
+  }}
+  apply();
+  if (mq && mq.addEventListener) mq.addEventListener("change", function(){{ if (pref() === "auto") apply(); }});
+  window.qmdSetTheme = function(p){{ try {{ localStorage.setItem("qmd-theme", p); }} catch(e) {{}} apply(); }};
+  window.qmdGetThemePref = function(){{ return pref(); }};
+}})();
+</script>"#
+    )
 }
 
 /// Detect the `theme:` front-matter value (top-level or nested under `format:`).
@@ -257,29 +468,30 @@ fn detect_theme(front_matter: &str) -> Option<String> {
     })
 }
 
-/// The built-in `dark` theme: minimal variable overrides over the light base.
-/// This is also the reference template for a community theme, a theme is just
-/// a `:root` block (optionally plus rules).
-const THEME_DARK: &str = r#"
-  :root {
+/// The built-in dark theme, scoped to `html[data-theme="dark"]` so it can be
+/// flipped at runtime (the toggle / OS preference set the attribute). Always
+/// shipped alongside the light `:root` base. The `:root` light vars plus this
+/// block are the reference template for a community theme.
+const DARK_CSS: &str = r#"
+  html[data-theme="dark"] {
     --qmd-bg: #16181d; --qmd-fg: #e6e6e6; --qmd-muted: #9aa0aa; --qmd-accent: #6ea8ff;
     --qmd-link: #6ea8ff; --qmd-code-bg: #21242b; --qmd-border: #363a44;
   }
-  .qmd-copy { background: #21242b; color: #c8ccd4; border-color: #3a3f4b; }
-  .callout-note .callout-title { background: #1b2330; }
-  .callout-tip .callout-title { background: #15241c; }
-  .callout-warning .callout-title { background: #2a2415; }
-  .callout-important .callout-title { background: #2a1820; }
-  .callout-caution .callout-title { background: #2a2015; }
-  pre.mermaid { background: transparent; }
+  html[data-theme="dark"] .qmd-copy { background: #21242b; color: #c8ccd4; border-color: #3a3f4b; }
+  html[data-theme="dark"] .callout-note .callout-title { background: #1b2330; }
+  html[data-theme="dark"] .callout-tip .callout-title { background: #15241c; }
+  html[data-theme="dark"] .callout-warning .callout-title { background: #2a2415; }
+  html[data-theme="dark"] .callout-important .callout-title { background: #2a1820; }
+  html[data-theme="dark"] .callout-caution .callout-title { background: #2a2015; }
+  html[data-theme="dark"] pre.mermaid { background: transparent; }
   /* recolour the (light) syntax theme for a dark background */
-  .hljs, .hljs-subst { background: transparent; color: #c9d1d9; }
-  .hljs-comment, .hljs-quote { color: #8b949e; }
-  .hljs-keyword, .hljs-built_in, .hljs-type { color: #ff7b72; }
-  .hljs-string, .hljs-meta .hljs-string, .hljs-regexp { color: #a5d6ff; }
-  .hljs-number, .hljs-literal { color: #79c0ff; }
-  .hljs-title, .hljs-title.function_, .hljs-section { color: #d2a8ff; }
-  .hljs-attr, .hljs-attribute, .hljs-variable { color: #ffa657; }
+  html[data-theme="dark"] .hljs, html[data-theme="dark"] .hljs-subst { background: transparent; color: #c9d1d9; }
+  html[data-theme="dark"] .hljs-comment, html[data-theme="dark"] .hljs-quote { color: #8b949e; }
+  html[data-theme="dark"] .hljs-keyword, html[data-theme="dark"] .hljs-built_in, html[data-theme="dark"] .hljs-type { color: #ff7b72; }
+  html[data-theme="dark"] .hljs-string, html[data-theme="dark"] .hljs-meta .hljs-string, html[data-theme="dark"] .hljs-regexp { color: #a5d6ff; }
+  html[data-theme="dark"] .hljs-number, html[data-theme="dark"] .hljs-literal { color: #79c0ff; }
+  html[data-theme="dark"] .hljs-title, html[data-theme="dark"] .hljs-title.function_, html[data-theme="dark"] .hljs-section { color: #d2a8ff; }
+  html[data-theme="dark"] .hljs-attr, html[data-theme="dark"] .hljs-attribute, html[data-theme="dark"] .hljs-variable { color: #ffa657; }
 "#;
 
 /// `toc: true` requested anywhere in the front matter (typically under
@@ -394,6 +606,12 @@ const BASE_CSS: &str = r#"
          font: var(--qmd-font-body); color: var(--qmd-fg); background: var(--qmd-bg); }
   a { color: var(--qmd-link); }
   h1, h2, h3, h4 { font-family: var(--qmd-font-head); line-height: 1.25; }
+  .qmd-title-block { margin: 0 0 2rem; padding-bottom: 1rem; border-bottom: 1px solid var(--qmd-border); }
+  .qmd-title-block .title { margin: 0 0 .3rem; font-size: 2.1rem; line-height: 1.15; }
+  .qmd-title-block .subtitle { margin: .2rem 0; font-size: 1.15rem; color: var(--qmd-muted); font-weight: 400; }
+  .qmd-title-block .description { margin: .4rem 0; color: var(--qmd-fg); }
+  .qmd-title-block .qmd-title-meta { margin-top: .6rem; display: flex; flex-wrap: wrap; gap: .25rem 1rem;
+    font: 14px var(--qmd-font-head); color: var(--qmd-muted); }
   pre { position: relative; background: var(--qmd-code-bg); padding: 1rem; border-radius: 6px; overflow: auto; font-size: .9em; }
   code { font-family: var(--qmd-font-mono); }
   .qmd-copy { position: absolute; top: .45rem; right: .45rem; padding: .1rem .45rem;
@@ -421,6 +639,11 @@ const BASE_CSS: &str = r#"
   .callout-warning { border-left-color: #e0a800; } .callout-warning .callout-title { background: #fdf6e3; }
   .callout-important { border-left-color: #e0566b; } .callout-important .callout-title { background: #fdecef; }
   .callout-caution { border-left-color: #e8730c; } .callout-caution .callout-title { background: #fdefe3; }
+  .callout-collapse > details > summary.callout-title { cursor: pointer; }
+  .callout-collapse > details[open] > summary.callout-title { margin-bottom: 0; }
+  details.qmd-code-fold > summary { cursor: pointer; color: var(--qmd-muted);
+    font: 600 .85em var(--qmd-font-head); padding: .15rem 0; margin-bottom: .35rem; }
+  details.qmd-code-fold > summary:hover { color: var(--qmd-fg); }
   .qmd-xref { text-decoration: none; }
   .qmd-references .csl-entry { margin: .4rem 0; padding-left: 2.2rem; text-indent: -2.2rem; }
   .qmd-output { margin: 0 0 1rem; }
@@ -433,8 +656,15 @@ const BASE_CSS: &str = r#"
   figure.qmd-figure { margin: 1.5rem 0; }
   figure.qmd-figure img { max-width: 100%; height: auto; }
   figure.qmd-figure figcaption { font-size: .9em; color: var(--qmd-muted); margin-top: .5rem; }
+  .qmd-listing { margin: 1.5rem 0; }
+  .qmd-listing-caption { font-size: .9em; color: var(--qmd-muted); margin-bottom: .35rem; }
   .qmd-figure-center { text-align: center; }
   .qmd-figure-right { text-align: right; }
+  /* numbered display equation: body centered, (N) right-aligned */
+  .qmd-eqn { display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 1rem; }
+  .qmd-eqn .qmd-eqn-body { min-width: 0; }
+  .qmd-eqn .qmd-eqn-body .katex-display { margin: 0; }
+  .qmd-eqn .qmd-eqn-number { color: var(--qmd-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
   /* toc layout: content beside a sticky table of contents on wide screens */
   body.has-toc { max-width: 72rem; display: grid; align-items: start; gap: 2.5rem;
                  grid-template-columns: minmax(0, 46rem) 14rem; justify-content: center; }
@@ -455,7 +685,7 @@ const BASE_CSS: &str = r#"
 /// `<style>` block(s) for the live preview client: base styling plus the
 /// (self-contained) KaTeX stylesheet, since a live doc may gain math at any edit.
 pub fn client_styles() -> String {
-    format!("<style>{BASE_CSS}</style>\n<style>{KATEX_CSS}</style>")
+    format!("<style>{BASE_CSS}{DARK_CSS}</style>\n<style>{KATEX_CSS}</style>")
 }
 
 // highlight.js + mermaid (pinned) served from jsDelivr — the dev server runs
@@ -478,6 +708,50 @@ pub fn code_head() -> String {
 pub fn code_scripts() -> String {
     let js = CODE_ENHANCE_JS.replace("{{MERMAID}}", MERMAID);
     format!("<script src=\"{HLJS}/highlight.min.js\"></script>\n<script>{js}</script>")
+}
+
+// Quarto's Observable runtime (vendored, v0.0.18 — not published to any CDN, so
+// unlike hljs/reveal it must ship with us). It self-installs `window._ojs` on
+// load and drives cells via `interpretFromScriptTags()`. Loaded as a module so
+// execution is deferred until <body> exists (the bundle touches document.body).
+const OJS_RUNTIME: &str = include_str!("../assets/ojs/quarto-ojs-runtime.min.js");
+const OJS_CSS: &str = include_str!("../assets/ojs/quarto-ojs.css");
+
+/// `<head>` assets for Observable cells: the runtime CSS + the runtime bundle.
+/// Emit only when a page actually has `{ojs}` cells.
+pub fn ojs_head() -> String {
+    format!("<style>{OJS_CSS}</style>\n<script type=\"module\">{OJS_RUNTIME}</script>")
+}
+
+/// The init script (run after the bundle + after cells are in the DOM): point
+/// the module resolver at the doc dir and interpret every `ojs-module-contents`
+/// script. Exposed as `window.qmdRunOJS()` so the live client can call it after
+/// (re)mounting blocks; also invoked once on load for the one-shot page.
+pub fn ojs_init() -> String {
+    OJS_INIT.to_string()
+}
+
+const OJS_INIT: &str = r#"<script type="module">
+// Interpret every OJS cell once per page load. The Observable runtime rejects
+// re-defining a variable, so re-running needs a fresh runtime (a page reload);
+// non-OJS edits hot-update via block ops and leave OJS cells untouched.
+window.qmdRunOJS = function () {
+  if (window.__qmdOjsRan) return;
+  if (!window._ojs || !window._ojs.runtime) return;        // bundle not ready yet
+  if (!document.querySelector('script[type="ojs-module-contents"]')) return; // no cells yet
+  window.__qmdOjsRan = true;
+  window._ojs.selfContained = false;
+  window._ojs.paths.runtimeToDoc = ".";                    // page is served from the doc dir
+  window._ojs.paths.runtimeToRoot = ".";
+  window._ojs.paths.docToRoot = ".";
+  window._ojs.runtime.interpretFromScriptTags();
+};
+window.qmdRunOJS();                                         // one-shot page: cells already present
+</script>"#;
+
+/// True if a rendered body contains live Observable cells (gates the OJS assets).
+pub fn has_ojs(body: &str) -> bool {
+    body.contains("ojs-module-contents")
 }
 
 const CODE_ENHANCE_JS: &str = r#"
@@ -508,9 +782,11 @@ window.qmdEnhanceCode = function (root) {
   qmdInitLightbox();
 };
 
-// Full-screen figure viewer. Set up once; uses event delegation in the capture
-// phase so clicking a figure image opens the lightbox WITHOUT triggering the
-// block-level click/double-click handlers (highlight, click-to-source). Modifier
+// Full-screen viewer for figure images AND mermaid diagrams. Set up once; uses
+// event delegation in the capture phase so a click opens the lightbox WITHOUT
+// triggering the block-level click/double-click handlers (highlight,
+// click-to-source). Images are shown via <img>; mermaid SVGs are cloned live
+// (so <foreignObject> labels keep rendering, which an <img> would drop). Modifier
 // clicks pass through (new tab, reveal alt-zoom). Dismiss: backdrop, Esc, or x.
 function qmdInitLightbox() {
   if (window.__qmdLightbox) return;
@@ -518,13 +794,17 @@ function qmdInitLightbox() {
 
   var style = document.createElement('style');
   style.textContent =
-    'figure img{cursor:zoom-in}' +
+    'figure img,pre.mermaid{cursor:zoom-in}' +
     '#qmd-lightbox{position:fixed;inset:0;z-index:2147483000;display:none;flex-direction:column;' +
     'align-items:center;justify-content:center;gap:.9rem;padding:2rem;box-sizing:border-box;' +
     'background:rgba(10,12,16,.9);cursor:zoom-out;opacity:0;transition:opacity .15s ease}' +
     '#qmd-lightbox.open{display:flex;opacity:1}' +
     '#qmd-lightbox img{max-width:93vw;max-height:86vh;object-fit:contain;cursor:default;' +
     'background:#fff;border-radius:4px;box-shadow:0 10px 50px rgba(0,0,0,.5)}' +
+    '#qmd-lightbox .qmd-lb-svg{display:none;width:92vw;max-width:1400px;max-height:86vh;overflow:auto;' +
+    'cursor:default;background:#fff;border-radius:4px;padding:1.2rem;box-sizing:border-box;' +
+    'box-shadow:0 10px 50px rgba(0,0,0,.5)}' +
+    '#qmd-lightbox .qmd-lb-svg svg{display:block;width:100%;height:auto;max-width:100%}' +
     '#qmd-lightbox .qmd-lb-cap{color:#e8e8e8;font:14px ui-sans-serif,system-ui,sans-serif;' +
     'text-align:center;max-width:93vw}' +
     '#qmd-lightbox .qmd-lb-cap:empty{display:none}' +
@@ -537,12 +817,15 @@ function qmdInitLightbox() {
   box.id = 'qmd-lightbox';
   box.setAttribute('role', 'dialog');
   box.innerHTML = '<button class="qmd-lb-close" aria-label="Close">×</button>' +
-    '<img alt=""><div class="qmd-lb-cap"></div>';
+    '<img alt=""><div class="qmd-lb-svg"></div><div class="qmd-lb-cap"></div>';
   document.body.appendChild(box);
   var lbImg = box.querySelector('img');
+  var lbSvg = box.querySelector('.qmd-lb-svg');
   var lbCap = box.querySelector('.qmd-lb-cap');
 
-  function open(srcImg) {
+  function openImg(srcImg) {
+    lbSvg.style.display = 'none'; lbSvg.innerHTML = '';
+    lbImg.style.display = '';
     lbImg.src = srcImg.currentSrc || srcImg.src;
     lbImg.alt = srcImg.alt || '';
     var fig = srcImg.closest('figure');
@@ -550,22 +833,50 @@ function qmdInitLightbox() {
     lbCap.textContent = fc ? fc.textContent : (srcImg.alt || '');
     box.classList.add('open');
   }
-  function close() { box.classList.remove('open'); lbImg.removeAttribute('src'); }
+  function openMermaid(pre) {
+    var svg = pre.querySelector('svg');
+    if (!svg) return; // not rendered yet
+    lbImg.style.display = 'none'; lbImg.removeAttribute('src');
+    var clone = svg.cloneNode(true);
+    clone.removeAttribute('width'); clone.removeAttribute('height');
+    clone.style.maxWidth = 'none';
+    lbSvg.innerHTML = ''; lbSvg.appendChild(clone);
+    lbSvg.style.display = 'block';
+    // Show the figure's caption in the zoom too (empty -> hidden by CSS).
+    var fig = pre.closest('figure');
+    var fc = fig && fig.querySelector('figcaption');
+    lbCap.textContent = fc ? fc.textContent : '';
+    box.classList.add('open');
+  }
+  function close() {
+    box.classList.remove('open');
+    lbImg.removeAttribute('src');
+    lbSvg.innerHTML = '';
+  }
 
-  var plainClick = function (e) {
-    return e.target.closest && e.target.closest('figure img') &&
-      !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey;
+  var unmodified = function (e) {
+    return !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey;
   };
   document.addEventListener('click', function (e) {
-    if (plainClick(e)) { e.preventDefault(); e.stopPropagation(); open(e.target); }
+    if (!e.target.closest) return;
+    if (e.target.closest('figure img') && unmodified(e)) {
+      e.preventDefault(); e.stopPropagation(); openImg(e.target);
+    } else {
+      var pre = e.target.closest('pre.mermaid');
+      if (pre && pre.querySelector('svg') && unmodified(e)) {
+        e.preventDefault(); e.stopPropagation(); openMermaid(pre);
+      }
+    }
   }, true);
-  // Keep a double-click on a figure image from reaching click-to-source.
+  // Keep a double-click on a figure/diagram from reaching click-to-source.
   document.addEventListener('dblclick', function (e) {
-    if (e.target.closest && e.target.closest('figure img')) {
+    if (e.target.closest && e.target.closest('figure img, pre.mermaid')) {
       e.preventDefault(); e.stopPropagation();
     }
   }, true);
-  box.addEventListener('click', function (e) { if (e.target !== lbImg) close(); });
+  box.addEventListener('click', function (e) {
+    if (e.target !== lbImg && !lbSvg.contains(e.target)) close();
+  });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && box.classList.contains('open')) close();
   });
@@ -610,6 +921,12 @@ fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
     } else {
         String::new()
     };
+    // Only ship the Observable runtime + init when the page has live OJS cells.
+    let (ojs_head_html, ojs_init_html) = if has_ojs(&body) {
+        (ojs_head(), ojs_init())
+    } else {
+        (String::new(), String::new())
+    };
     // With `toc: true`, lay the content beside a sticky table of contents.
     let toc = if doc.toc { toc_html(&doc.blocks) } else { String::new() };
     // Content first (left, wide column), TOC second (right, sticky column).
@@ -620,13 +937,16 @@ fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
     };
     PAGE_TEMPLATE
         .replace("{{TITLE}}", &t)
+        .replace("{{THEME_INIT}}", &theme_head(&doc.theme_default))
         .replace("{{KATEX_CSS}}", &katex_css)
-        .replace("{{BASE_CSS}}", BASE_CSS)
+        .replace("{{BASE_CSS}}", &format!("{BASE_CSS}{DARK_CSS}"))
         .replace("{{THEME_CSS}}", &theme_style(&doc.theme_css))
         .replace("{{CODE_HEAD}}", &code_head())
+        .replace("{{OJS_HEAD}}", &ojs_head_html)
         .replace("{{BODY_CLASS}}", &body_class)
         .replace("{{BODY}}", &body_content)
         .replace("{{CODE_SCRIPTS}}", &code_scripts())
+        .replace("{{OJS_INIT}}", &ojs_init_html)
 }
 
 /// Wrap resolved theme override CSS in a `<style>` (empty string when there is
@@ -990,6 +1310,33 @@ fn emit_figure(fig: &FigureParts, block_attrs: &str, num: usize) -> String {
     )
 }
 
+/// Render a labelled/captioned `{mermaid}` cell as a numbered `<figure>` wrapping
+/// the diagram `<pre>`, carrying the block attrs and (when labelled) the `#fig-`
+/// anchor so `@fig-x` cross-references resolve and click-to-zoom still works.
+fn emit_mermaid_figure(
+    code: &str,
+    anchor: Option<&str>,
+    caption: Option<&str>,
+    block_attrs: &str,
+    num: usize,
+) -> String {
+    let id_attr = match anchor {
+        Some(a) => format!(" id=\"{}\"", escape_attr(a)),
+        None => String::new(),
+    };
+    let mut diagram = String::new();
+    escape_html(code, &mut diagram);
+    let figcap = match caption.map(str::trim).filter(|c| !c.is_empty()) {
+        Some(c) => format!("Figure&nbsp;{num}: {}", html_escape(c)),
+        None => format!("Figure&nbsp;{num}"),
+    };
+    format!(
+        "<figure{block_attrs}{id_attr} class=\"qmd-figure qmd-figure-center\">\
+         <pre class=\"mermaid\">{diagram}</pre>\
+         <figcaption>{figcap}</figcaption></figure>"
+    )
+}
+
 // --- table of contents ---------------------------------------------------
 
 /// Build a `<nav id="TOC">` from the document's heading blocks (levels 1–3),
@@ -1083,10 +1430,17 @@ fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
             escape_html(&c.literal, out);
             out.push_str("</code>");
         }
+        NodeValue::CodeBlock(cb) if raw_block_format(&cb.info).as_deref() == Some("html") => {
+            // Pandoc/Quarto raw passthrough: ```{=html} ... ``` is raw *output*,
+            // not a code listing, so its body is emitted verbatim (block data
+            // attrs injected into the leading tag, like any other raw HTML block).
+            emit_html_block(&cb.literal, attrs, out);
+        }
         NodeValue::CodeBlock(cb) => {
             let lang = code_lang(&cb.info);
             // Quarto cells (```{lang}) carry leading `#| key: val` option lines; drop them.
             let is_cell = cb.info.trim_start().starts_with('{');
+            let fold = is_cell.then(|| code_fold(&cb.literal)).flatten();
             let literal = if is_cell {
                 strip_cell_options(&cb.literal)
             } else {
@@ -1103,9 +1457,21 @@ fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
                     Some(l) => format!(" class=\"language-{l}\""),
                     None => String::new(),
                 };
-                out.push_str(&format!("<pre{attrs}><code{class}>"));
-                escape_html(&literal, out);
-                out.push_str("</code></pre>");
+                // `code-fold` wraps the listing in a <details>; the block data
+                // attrs move to the <details> so click-to-source still keys off it.
+                if let Some((open, summary)) = &fold {
+                    let open_attr = if *open { " open" } else { "" };
+                    out.push_str(&format!(
+                        "<details{attrs} class=\"qmd-code-fold\"{open_attr}><summary>{}</summary><pre><code{class}>",
+                        html_escape(summary)
+                    ));
+                    escape_html(&literal, out);
+                    out.push_str("</code></pre></details>");
+                } else {
+                    out.push_str(&format!("<pre{attrs}><code{class}>"));
+                    escape_html(&literal, out);
+                    out.push_str("</code></pre>");
+                }
             }
         }
         NodeValue::HtmlBlock(hb) => emit_html_block(&hb.literal, attrs, out),
@@ -1544,9 +1910,19 @@ fn build_container(
             None => capitalize(kind),
         };
         let body: String = inner.iter().map(|b| b.html.as_str()).collect();
-        format!(
-            "<div class=\"callout callout-{kind}\"{data}><div class=\"callout-title\">{title}</div><div class=\"callout-body\">{body}</div></div>"
-        )
+        // `collapse="true"` makes the callout a native <details> (starts closed);
+        // `collapse="false"` is collapsible but starts open.
+        match attrs.get("collapse") {
+            Some(v) => {
+                let open = if v == "false" { " open" } else { "" };
+                format!(
+                    "<div class=\"callout callout-{kind} callout-collapse\"{data}><details{open}><summary class=\"callout-title\">{title}</summary><div class=\"callout-body\">{body}</div></details></div>"
+                )
+            }
+            None => format!(
+                "<div class=\"callout callout-{kind}\"{data}><div class=\"callout-title\">{title}</div><div class=\"callout-body\">{body}</div></div>"
+            ),
+        }
     } else if let Some(ncol) = attrs.get("layout-ncol").and_then(|n| n.parse::<u32>().ok()) {
         let body: String = inner.iter().map(|b| b.html.as_str()).collect();
         format!(
@@ -1608,13 +1984,75 @@ fn bare_math_env(block_src: &str) -> Option<&str> {
     (t.starts_with("\\begin{") && t.contains("\\end{") && t.ends_with('}')).then_some(t)
 }
 
-/// Drop leading Quarto cell-option lines (`#|` for most languages, `//|` for OJS/JS).
+/// A Quarto-labelled display equation: `$$ ... $$ {#eq-x}`. Returns the LaTeX
+/// body and the `eq-x` anchor. Only `#eq-`-prefixed labels qualify (other
+/// attribute blocks after `$$` are left to the normal math path).
+fn labelled_display_eq(block_src: &str) -> Option<(String, String)> {
+    let t = block_src.trim();
+    let body = t.strip_prefix("$$")?;
+    let close = body.rfind("$$")?;
+    let (latex, after) = body.split_at(close);
+    let attr = after.strip_prefix("$$")?.trim();
+    let inner = attr.strip_prefix('{')?.strip_suffix('}')?;
+    let anchor = inner.split_whitespace().find_map(|tok| tok.strip_prefix('#'))?;
+    anchor
+        .starts_with("eq-")
+        .then(|| (latex.trim().to_string(), anchor.to_string()))
+}
+
+/// Render a numbered display equation: the KaTeX body plus a right-aligned
+/// `(N)` number, carrying the `#eq-` id so `@eq-x` cross-refs link to it.
+fn emit_equation(latex: &str, anchor: &str, block_attrs: &str, num: usize) -> String {
+    format!(
+        "<div id=\"{anchor}\"{block_attrs} class=\"qmd-eqn\">\
+         <span class=\"qmd-eqn-body\">{}</span>\
+         <span class=\"qmd-eqn-number\">({num})</span></div>",
+        crate::math::render(latex, true)
+    )
+}
+
+/// Read a leading `#| key: value` cell option (returns the unquoted value).
+/// Only scans the contiguous leading option block, stopping at the first code
+/// line. Recognizes `#|` (most langs), `//|` (OJS/JS), and `%%|` (mermaid).
+fn cell_option<'a>(literal: &'a str, key: &str) -> Option<&'a str> {
+    for line in literal.lines() {
+        let t = line.trim_start();
+        let Some(opt) = t
+            .strip_prefix("#|")
+            .or_else(|| t.strip_prefix("//|"))
+            .or_else(|| t.strip_prefix("%%|"))
+        else {
+            break;
+        };
+        if let Some((k, v)) = opt.split_once(':')
+            && k.trim() == key
+        {
+            return Some(v.trim().trim_matches(['"', '\'']));
+        }
+    }
+    None
+}
+
+/// If a cell sets `code-fold`, return `(start_open, summary)`. `true` folds
+/// (starts closed), `show` folds but starts open; `code-summary` overrides the
+/// "Code" label.
+fn code_fold(literal: &str) -> Option<(bool, String)> {
+    let v = cell_option(literal, "code-fold")?;
+    if v != "true" && v != "show" {
+        return None;
+    }
+    let summary = cell_option(literal, "code-summary").unwrap_or("Code").to_string();
+    Some((v == "show", summary))
+}
+
+/// Drop leading Quarto cell-option lines (`#|` for most languages, `//|` for
+/// OJS/JS, `%%|` for mermaid).
 fn strip_cell_options(literal: &str) -> String {
     let mut body = String::new();
     let mut skipping = true;
     for line in literal.lines() {
         let t = line.trim_start();
-        if skipping && (t.starts_with("#|") || t.starts_with("//|")) {
+        if skipping && (t.starts_with("#|") || t.starts_with("//|") || t.starts_with("%%|")) {
             continue;
         }
         skipping = false;
@@ -1656,7 +2094,8 @@ fn extract_field(front_matter: &str, key: &str) -> Option<String> {
 }
 
 /// Language for a fenced block: `{python}`/`{.python}`/`{ojs}` -> "python"/"ojs",
-/// plain ` ```rust ` -> "rust".
+/// plain ` ```rust ` -> "rust". Pandoc raw-output attributes (`{=html}`,
+/// `{=latex}`, ...) are not languages and return `None`.
 fn code_lang(info: &str) -> Option<String> {
     let info = info.trim();
     if info.is_empty() {
@@ -1668,7 +2107,170 @@ fn code_lang(info: &str) -> Option<String> {
         info
     };
     let lang = token.split_whitespace().next().unwrap_or("");
-    (!lang.is_empty()).then(|| lang.to_string())
+    if lang.is_empty() || lang.starts_with('=') {
+        return None;
+    }
+    Some(lang.to_string())
+}
+
+/// The raw output format of a Pandoc passthrough fence: `{=html}` -> "html".
+fn raw_block_format(info: &str) -> Option<String> {
+    info.trim()
+        .strip_prefix("{=")
+        .and_then(|s| s.strip_suffix('}'))
+        .map(|f| f.trim().to_ascii_lowercase())
+        .filter(|f| !f.is_empty())
+}
+
+/// Minimal standard-alphabet base64 (mirrors `build.rs`); encodes the OJS
+/// module-contents JSON the way the runtime's `base64ToStr` (base64 → UTF-8)
+/// expects.
+fn base64_encode(data: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut s = String::with_capacity(data.len().div_ceil(3) * 4);
+    for chunk in data.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = *chunk.get(1).unwrap_or(&0) as u32;
+        let b2 = *chunk.get(2).unwrap_or(&0) as u32;
+        let n = (b0 << 16) | (b1 << 8) | b2;
+        s.push(T[(n >> 18 & 63) as usize] as char);
+        s.push(T[(n >> 12 & 63) as usize] as char);
+        s.push(if chunk.len() > 1 { T[(n >> 6 & 63) as usize] as char } else { '=' });
+        s.push(if chunk.len() > 2 { T[(n & 63) as usize] as char } else { '=' });
+    }
+    s
+}
+
+/// Serialize a string as a JSON string literal (quoted + escaped).
+fn json_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for ch in s.chars() {
+        match ch {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+/// Emit a live Observable cell: an output target div (id == cellName) plus a
+/// base64 `ojs-module-contents` script the runtime interprets into it. The block
+/// data attrs ride on the wrapper so click-to-source still keys off the block.
+fn emit_ojs_cell(src: &str, block_id: &str, block_attrs: &str) -> String {
+    let cell_name = format!("ojs-cell-{block_id}");
+    let json = format!(
+        "{{\"contents\":[{{\"methodName\":\"interpret\",\"cellName\":{},\"inline\":false,\"source\":{}}}]}}",
+        json_string(&cell_name),
+        json_string(src),
+    );
+    let b64 = base64_encode(json.as_bytes());
+    // A pure named declaration (`foo = …`) feeds other cells and shouldn't display
+    // its inspector value; tag it so the vendored OJS CSS hides the output (viewof
+    // and bare-expression cells stay visible). Mirrors Quarto's `nodetype`.
+    let nodetype = if ojs_is_declaration(src) { " nodetype=\"declaration\"" } else { "" };
+    format!(
+        "<div{block_attrs}{nodetype} class=\"ojs-cell\"><div id=\"{cell_name}\"></div>\
+         <script type=\"ojs-module-contents\">{b64}</script></div>"
+    )
+}
+
+/// Wrap a live OJS cell in a numbered `<figure>` (for `label: fig-x` OJS cells,
+/// e.g. a Three.js scene). The block attrs + `#fig-` anchor ride on the figure.
+fn emit_ojs_figure(
+    src: &str,
+    block_id: &str,
+    anchor: Option<&str>,
+    caption: Option<&str>,
+    block_attrs: &str,
+    num: usize,
+) -> String {
+    let cell = emit_ojs_cell(src, block_id, "");
+    let id_attr = anchor.map(|a| format!(" id=\"{}\"", escape_attr(a))).unwrap_or_default();
+    let figcap = match caption.map(str::trim).filter(|c| !c.is_empty()) {
+        Some(c) => format!("Figure&nbsp;{num}: {}", html_escape(c)),
+        None => format!("Figure&nbsp;{num}"),
+    };
+    format!(
+        "<figure{block_attrs}{id_attr} class=\"qmd-figure qmd-figure-center\">\
+         {cell}<figcaption>{figcap}</figcaption></figure>"
+    )
+}
+
+/// Render a labelled code cell's source as a numbered listing (`@lst-x`),
+/// caption above the code. The block attrs + `#lst-` anchor ride on the wrapper.
+fn emit_code_listing(
+    code: &str,
+    lang: &str,
+    anchor: Option<&str>,
+    caption: Option<&str>,
+    fold: Option<&(bool, String)>,
+    block_attrs: &str,
+    num: usize,
+) -> String {
+    let id_attr = anchor.map(|a| format!(" id=\"{}\"", escape_attr(a))).unwrap_or_default();
+    let class = if lang.is_empty() { String::new() } else { format!(" class=\"language-{lang}\"") };
+    let mut code_html = String::new();
+    escape_html(code, &mut code_html);
+    let figcap = match caption.map(str::trim).filter(|c| !c.is_empty()) {
+        Some(c) => format!("Listing&nbsp;{num}: {}", html_escape(c)),
+        None => format!("Listing&nbsp;{num}"),
+    };
+    // `code-fold` collapses the listing's source behind its summary.
+    let code_html = match fold {
+        Some((open, summary)) => format!(
+            "<details class=\"qmd-code-fold\"{}><summary>{}</summary><pre><code{class}>{code_html}</code></pre></details>",
+            if *open { " open" } else { "" },
+            html_escape(summary),
+        ),
+        None => format!("<pre><code{class}>{code_html}</code></pre>"),
+    };
+    format!(
+        "<div{block_attrs}{id_attr} class=\"qmd-listing\">\
+         <figcaption class=\"qmd-listing-caption\">{figcap}</figcaption>{code_html}</div>"
+    )
+}
+
+/// Heuristic: does this `{ojs}` cell start with a named declaration whose value
+/// shouldn't be shown — `name = …`, `function name(…)`, `async function name(…)`,
+/// or `class Name`? `viewof`/`mutable`/`import` and bare expressions
+/// (``md`…` ``, `Plot.plot(…)`, `{ … }`) are displayed.
+fn ojs_is_declaration(src: &str) -> bool {
+    let Some(line) = src.lines().map(str::trim).find(|l| !l.is_empty() && !l.starts_with("//"))
+    else {
+        return false;
+    };
+    for kw in ["viewof", "mutable", "import"] {
+        if let Some(rest) = line.strip_prefix(kw)
+            && rest.starts_with(char::is_whitespace)
+        {
+            return false;
+        }
+    }
+    // `function name`, `async function name`, `class Name` define a name too.
+    let head = line.strip_prefix("async ").map(str::trim_start).unwrap_or(line);
+    for kw in ["function", "class"] {
+        if let Some(rest) = head.strip_prefix(kw)
+            && rest.starts_with(char::is_whitespace)
+        {
+            return true;
+        }
+    }
+    let id_len = line
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '$')
+        .count();
+    if id_len == 0 {
+        return false;
+    }
+    let rest = line[id_len..].trim_start();
+    rest.starts_with('=') && !rest.starts_with("==") && !rest.starts_with("=>")
 }
 
 fn escape_html(s: &str, out: &mut String) {
@@ -1702,9 +2304,11 @@ const PAGE_TEMPLATE: &str = r#"<!DOCTYPE html>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>{{TITLE}}</title>
+{{THEME_INIT}}
 {{KATEX_CSS}}
 <style>{{BASE_CSS}}</style>
 {{CODE_HEAD}}
+{{OJS_HEAD}}
 {{THEME_CSS}}
 </head>
 <body{{BODY_CLASS}}>
@@ -1722,6 +2326,7 @@ const PAGE_TEMPLATE: &str = r#"<!DOCTYPE html>
 </script>
 {{CODE_SCRIPTS}}
 <script>document.addEventListener('DOMContentLoaded',function(){window.qmdEnhanceCode&&window.qmdEnhanceCode(document.body);});</script>
+{{OJS_INIT}}
 </body>
 </html>
 "#;
@@ -1771,10 +2376,33 @@ mod tests {
     }
 
     #[test]
-    fn front_matter_title_extracted_and_not_a_block() {
+    fn front_matter_title_extracted_and_rendered_as_title_block() {
         let doc = render_document("---\ntitle: \"My Post\"\nfoo: bar\n---\n\nBody.\n");
         assert_eq!(doc.title.as_deref(), Some("My Post"));
-        assert_eq!(doc.blocks.len(), 1);
+        // A generated title block is prepended, then the body paragraph.
+        assert_eq!(doc.blocks.len(), 2);
+        assert_eq!(doc.blocks[0].id, "qmd-title-block");
+        assert!(doc.blocks[0].html.contains("<h1 class=\"title\">My Post</h1>"), "got: {}", doc.blocks[0].html);
+        assert!(doc.blocks[1].html.contains("Body."));
+    }
+
+    #[test]
+    fn title_block_includes_subtitle_date_and_description() {
+        let doc = render_document(
+            "---\ntitle: T\nsubtitle: S\ndate: 2026-05-15\nauthor: A\ndescription: D\n---\n\nx\n",
+        );
+        let h = &doc.blocks[0].html;
+        assert!(h.contains("class=\"qmd-title-block\""));
+        assert!(h.contains("<p class=\"subtitle\">S</p>"), "got: {h}");
+        assert!(h.contains("<p class=\"description\">D</p>"), "got: {h}");
+        assert!(h.contains("<span>A</span>") && h.contains("<span>2026-05-15</span>"), "got: {h}");
+    }
+
+    #[test]
+    fn reveal_deck_has_no_html_title_block() {
+        // The deck builds its own title slide; no `qmd-title-block` block.
+        let doc = render_document("---\ntitle: T\nformat: revealjs\n---\n\n## Slide\n");
+        assert!(!doc.blocks.iter().any(|b| b.id == "qmd-title-block"));
     }
 
     #[test]
@@ -1847,16 +2475,80 @@ mod tests {
     }
 
     #[test]
+    fn labelled_mermaid_becomes_numbered_referenceable_figure() {
+        let doc = render_document(
+            "See @fig-flow.\n\n```{mermaid}\n%%| label: fig-flow\n%%| fig-cap: \"The pipeline\"\nflowchart LR\n  A --> B\n```\n",
+        );
+        let body = doc.body_html();
+        // the diagram is wrapped in a numbered figure with the #fig- anchor
+        assert!(body.contains("id=\"fig-flow\""), "figure anchor missing: {body}");
+        assert!(body.contains("class=\"qmd-figure"), "mermaid not wrapped in a figure: {body}");
+        assert!(body.contains("<pre class=\"mermaid\">"), "diagram pre missing: {body}");
+        assert!(body.contains("<figcaption>Figure&nbsp;1: The pipeline</figcaption>"), "got: {body}");
+        // the `%%|` option lines are stripped from the diagram source
+        assert!(!body.contains("%%|"), "mermaid cell options leaked: {body}");
+        // and `@fig-flow` resolves to the numbered link
+        assert!(
+            body.contains("<a href=\"#fig-flow\" class=\"qmd-xref\">Figure&nbsp;1</a>"),
+            "cross-reference did not resolve: {body}"
+        );
+    }
+
+    #[test]
+    fn unlabelled_mermaid_stays_a_bare_diagram() {
+        // No label/fig-cap -> not a figure, not numbered (stays a plain pre).
+        let doc = render_document("```{mermaid}\nflowchart LR\n  A --> B\n```\n");
+        let h = &doc.blocks[0].html;
+        assert!(h.contains("<pre data-block-id"), "got: {h}");
+        assert!(!h.contains("qmd-figure"), "unlabelled mermaid should not be a figure: {h}");
+        assert!(!h.contains("figcaption"), "unlabelled mermaid should have no caption: {h}");
+    }
+
+    #[test]
     fn cell_option_lines_are_dropped() {
         let doc = render_document("```{python}\n#| echo: false\n#| label: fig\nprint(1)\n```\n");
         let h = &doc.blocks[0].html;
         assert!(h.contains("print(1)"));
         assert!(!h.contains("#| echo"), "option lines should be stripped: {h}");
 
-        // OJS/JS cells use `//|` option syntax
+        // OJS cells become live placeholders; their `//|` options are stripped
+        // before the source is base64-encoded into an ojs-module-contents script.
         let ojs = render_document("```{ojs}\n//| echo: false\nx = 1\n```\n");
-        assert!(ojs.blocks[0].html.contains("x = 1"));
-        assert!(!ojs.blocks[0].html.contains("//| echo"), "got: {}", ojs.blocks[0].html);
+        let oh = &ojs.blocks[0].html;
+        assert!(oh.contains("class=\"ojs-cell\""), "ojs cell should be a live placeholder: {oh}");
+        assert!(oh.contains("ojs-module-contents"), "ojs cell missing module-contents: {oh}");
+        assert!(!oh.contains("//| echo"), "option lines should be stripped: {oh}");
+    }
+
+    #[test]
+    fn ojs_cell_emits_live_placeholder_and_classifies_declarations() {
+        // A named declaration is hidden (nodetype="declaration"); a viewof and a
+        // bare expression stay visible.
+        let decl = render_document("```{ojs}\nsignalX = [1, 2, 3]\n```\n");
+        assert!(decl.blocks[0].html.contains("class=\"ojs-cell\""));
+        assert!(decl.blocks[0].html.contains("nodetype=\"declaration\""), "named decl should be hidden");
+        assert!(decl.blocks[0].html.contains("<script type=\"ojs-module-contents\">"));
+
+        let view = render_document("```{ojs}\nviewof n = Inputs.range([0, 9])\n```\n");
+        assert!(!view.blocks[0].html.contains("nodetype=\"declaration\""), "viewof must stay visible");
+
+        let expr = render_document("```{ojs}\nPlot.lineY([1, 2, 3]).plot()\n```\n");
+        assert!(!expr.blocks[0].html.contains("nodetype=\"declaration\""), "expression must stay visible");
+    }
+
+    #[test]
+    fn ojs_declaration_classifier() {
+        assert!(ojs_is_declaration("foo = 1 + 2"));
+        assert!(ojs_is_declaration("// a comment\nbar = {\n  return 3;\n}"));
+        assert!(ojs_is_declaration("function makeScene(a, b) { return a; }"));
+        assert!(ojs_is_declaration("async function makeScene3D(build, invalidation) { return 0; }"));
+        assert!(ojs_is_declaration("class Particle { constructor() {} }"));
+        assert!(!ojs_is_declaration("viewof x = Inputs.button()"));
+        assert!(!ojs_is_declaration("import {a} from \"./x.js\""));
+        assert!(!ojs_is_declaration("md`hello ${name}`"));
+        assert!(!ojs_is_declaration("a == b"));
+        assert!(!ojs_is_declaration("x => x + 1"));
+        assert!(!ojs_is_declaration("{ const y = 1; return y; }"));
     }
 
     #[test]
@@ -1902,10 +2594,18 @@ mod tests {
     }
 
     #[test]
-    fn front_matter_only_yields_no_blocks() {
+    fn front_matter_only_yields_just_the_title_block() {
         let doc = render_document("---\ntitle: Only Meta\n---\n");
         assert_eq!(doc.title.as_deref(), Some("Only Meta"));
-        assert!(doc.blocks.is_empty());
+        // Only the generated title block (no body content).
+        assert_eq!(doc.blocks.len(), 1);
+        assert_eq!(doc.blocks[0].id, "qmd-title-block");
+    }
+
+    #[test]
+    fn front_matter_without_title_yields_no_blocks() {
+        // No title -> no title block, and no body -> empty.
+        assert!(render_document("---\nfoo: bar\n---\n").blocks.is_empty());
     }
 
     #[test]
@@ -2085,22 +2785,29 @@ mod tests {
     }
 
     #[test]
-    fn theme_dark_overrides_variables_default_light_does_not() {
-        // The base :root is the light theme; `theme: dark` appends an override.
+    fn theme_dark_default_drives_data_theme_resolver() {
+        // Built-in dark no longer inlines a per-page override; it sets the default
+        // mode, and the always-shipped dark CSS is selected at runtime by data-theme.
         let dark = render_document("---\ntheme: dark\n---\n\nx\n");
-        assert!(dark.theme_css.contains("--qmd-bg: #16181d"), "dark override missing");
-        let page = render_html_page("---\ntheme: dark\n---\n\nx\n", "fb");
-        assert!(page.contains("--qmd-bg: #16181d"), "dark theme not inlined in page");
+        assert!(dark.theme_css.is_empty(), "built-in dark should not inline override CSS");
+        assert_eq!(dark.theme_default, "dark");
 
-        // No theme / `light` -> no override block.
-        assert!(render_document("---\ntitle: x\n---\n\nx\n").theme_css.is_empty());
-        assert!(render_document("---\ntheme: light\n---\n\nx\n").theme_css.is_empty());
+        let page = render_html_page("---\ntheme: dark\n---\n\nx\n", "fb");
+        assert!(page.contains("html[data-theme=\"dark\"]"), "scoped dark CSS not shipped");
+        assert!(page.contains("--qmd-bg: #16181d"), "dark vars missing");
+        assert!(page.contains("var DEFAULT = \"dark\""), "resolver default should be dark");
+
+        // No theme -> auto (follow OS); light -> light. No inlined override either way.
+        let plain = render_document("---\ntitle: x\n---\n\nx\n");
+        assert!(plain.theme_css.is_empty());
+        assert_eq!(plain.theme_default, "auto");
+        assert_eq!(render_document("---\ntheme: light\n---\n\nx\n").theme_default, "light");
     }
 
     #[test]
     fn theme_list_takes_first_entry() {
         // `theme: [dark, custom.scss]` (Quarto list form) selects the base.
         let d = render_document("---\ntheme: [dark, custom.scss]\n---\n\nx\n");
-        assert!(d.theme_css.contains("--qmd-bg: #16181d"), "first list entry should win");
+        assert_eq!(d.theme_default, "dark", "first list entry (dark) should win");
     }
 }

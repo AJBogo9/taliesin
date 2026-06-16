@@ -17,14 +17,14 @@ architecture, the websocket protocol, and the block model.
 ## Architecture (at a glance)
 
 An editor-agnostic Rust dev server owns all logic behind a versioned websocket
-protocol. Thin clients consume it: a VS Code extension (primary) and a plain
-browser preview (secondary).
+protocol. A plain browser preview is the client; double-clicking a block opens
+its source in your editor (a `vscode://` deep link by default). The protocol is
+open, so a third-party editor client (a VS Code extension, etc.) can speak it too.
 
 ```
 crates/core     parser (comrak + sourcepos) + block model + render
 crates/server   dev server, websocket, file watcher, kernel pool
-extension/      VS Code extension (TypeScript)
-web-client/     browser preview client (vanilla JS)
+web-client/     browser preview client (vanilla JS) — the client
 ```
 
 ## Status
@@ -35,8 +35,8 @@ changed code cells against a warm Jupyter kernel** (re-running only the earliest
 changed cell and everything downstream), diffs against the previous block list,
 and pushes only the changed blocks over a websocket. Unchanged blocks are never
 touched, so scroll position and the runtime state of live blocks (Three.js, OJS)
-survive edits. The VS Code extension hosts the same preview with
-double-click-to-source.
+survive edits. Open the preview in a browser; double-clicking a block jumps to
+its `.qmd` source in your editor.
 
 ```sh
 cargo run -p qmd-fast-server -- serve corpus/posts/born-machines.qmd  # http://127.0.0.1:4321

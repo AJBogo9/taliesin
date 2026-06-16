@@ -1,8 +1,11 @@
 # qmd-fast web preview client
 
-A small vanilla-JS client (~150 lines) that speaks the same websocket protocol
-as the VS Code extension. Applies `block_update` / `block_insert` /
+The browser preview client, and the only client. A vanilla-JS module that speaks
+the server's websocket protocol: applies `block_update` / `block_insert` /
 `block_remove` messages by `data-block-id`, preserving scroll position and the
-runtime state of unchanged live blocks (Three.js, OJS).
+runtime state of unchanged live blocks (Three.js, OJS). Double-clicking a block
+opens its source in your editor (a `vscode://` deep link by default).
 
-Scaffolded in **Phase 2**. Empty placeholder for now.
+It also speaks the `qmd-goto` / `qmd-cursor` `postMessage` protocol — inert in a
+plain browser, it's the integration surface for an embedded editor client (a VS
+Code extension, etc.) that wants to host this preview and add reverse cursor sync.

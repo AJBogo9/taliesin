@@ -9,7 +9,7 @@
 
 use std::path::PathBuf;
 
-use qmd_fast_core::{Block, render::Cell};
+use qmd_fast_core::{Block, render::Cell, render::CellFigure};
 
 use crate::kernel::{Kernel, render_outputs};
 
@@ -21,6 +21,8 @@ struct CellRef {
     code: String,
     sourcepos: String,
     source_file: Option<String>,
+    /// When set, the cell's output is wrapped in a numbered `<figure>`.
+    figure: Option<CellFigure>,
 }
 
 struct Cached {
@@ -50,12 +52,13 @@ impl Executor {
             .iter()
             .enumerate()
             .filter_map(|(i, b)| match &b.cell {
-                Some(Cell { lang, code }) if lang == "python" => Some(CellRef {
+                Some(Cell { lang, code, figure }) if lang == "python" => Some(CellRef {
                     block_index: i,
                     id: b.id.clone(),
                     code: code.clone(),
                     sourcepos: b.sourcepos.clone(),
                     source_file: b.source_file.clone(),
+                    figure: figure.clone(),
                 }),
                 _ => None,
             })
@@ -142,12 +145,17 @@ impl Executor {
 }
 
 /// Build the output block for a cell. Its id is the cell id + `-out`, and it
-/// points click-to-source at the cell's own source position.
+/// points click-to-source at the cell's own source position. A `#| label: fig-x`
+/// cell wraps its output in a numbered `<figure>` so `@fig-x` resolves.
 fn output_block(cell: &CellRef, inner: &str) -> Block {
     let id = format!("{}-out", cell.id);
     let source_file_attr = match &cell.source_file {
         Some(f) => format!(" data-source-file=\"{}\"", esc(f)),
         None => String::new(),
+    };
+    let inner = match &cell.figure {
+        Some(fig) => figure_wrap(fig, inner),
+        None => inner.to_string(),
     };
     let html = format!(
         "<div class=\"qmd-output\" data-block-id=\"{id}\" data-sourcepos=\"{}\"{source_file_attr}>{inner}</div>",
@@ -160,6 +168,25 @@ fn output_block(cell: &CellRef, inner: &str) -> Block {
         html,
         cell: None,
     }
+}
+
+/// Wrap a cell's rendered output in a numbered `<figure>` (caption below),
+/// carrying the `#fig-` anchor so `@fig-x` cross-references resolve to it.
+fn figure_wrap(fig: &CellFigure, inner: &str) -> String {
+    let id_attr = match &fig.anchor {
+        Some(a) => format!(" id=\"{}\"", esc(a)),
+        None => String::new(),
+    };
+    let caption = fig.caption.as_deref().unwrap_or("").trim();
+    let figcap = if caption.is_empty() {
+        format!("Figure&nbsp;{}", fig.number)
+    } else {
+        format!("Figure&nbsp;{}: {}", fig.number, esc(caption))
+    };
+    format!(
+        "<figure{id_attr} class=\"qmd-figure qmd-figure-center\">{inner}\
+         <figcaption>{figcap}</figcaption></figure>"
+    )
 }
 
 fn esc(s: &str) -> String {

@@ -24,8 +24,8 @@ crates/server    qmd-fast-server, bin `qmd-fast`: CLI + websocket dev server
   src/exec.rs      runs a doc's code cells, splices outputs back as blocks
   src/kernel.rs    warm Jupyter kernel (ZMQ), reused across edits
   src/log.rs       colorized dev-server console output (to stderr)
-extension/       VS Code client (primary): click-to-source + reverse cursor sync
-web-client/      browser preview client (vanilla JS): mounts blocks, applies ops
+web-client/      browser preview client (vanilla JS, the only client): mounts
+                 blocks, applies ops; double-click opens source in the editor
 docs/            project's own manual + tour deck, authored in .qmd (dogfooding)
 corpus/          the real .qmd docs (the spec); cargo test renders them all
 ```

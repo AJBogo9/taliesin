@@ -3,13 +3,10 @@
 **/*.rs.bk
 *.pdb
 
-# Node / VS Code extension / web client
+# Node / web client tooling
 node_modules/
 dist/
 out/
-*.vsix
-*.tsbuildinfo
-.vscode-test/
 
 # Logs and env
 *.log

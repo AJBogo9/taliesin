@@ -153,12 +153,17 @@ fn book_renders_with_toc_anchored_headings_and_numbered_figures() {
     // Headings carry matching anchor ids.
     assert!(page.contains("<h1 id=\"introduction\""), "heading anchor missing");
 
-    // The three labelled figures render as numbered <figure>s, attrs not leaked.
+    // The three labelled image figures render as numbered <figure>s, attrs not
+    // leaked. They are Figures 4–6: three earlier `#| fig-cap:` code cells take
+    // numbers 1–3 (counted in document order, matching Quarto — even though those
+    // R cells aren't executed here, so their output isn't shown).
     assert!(!page.contains("{#fig-"), "figure attribute block leaked into output");
     assert!(page.contains("id=\"fig-model-hierarchical\""), "figure id missing");
-    for n in 1..=3 {
+    for n in 4..=6 {
         assert!(page.contains(&format!("Figure&nbsp;{n}:")), "missing 'Figure {n}:' caption");
     }
+    // The labelled image figure resolves to its number via the registry.
+    assert!(page.contains("id=\"fig-model-hierarchical\""));
 }
 
 #[test]

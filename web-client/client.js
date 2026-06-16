@@ -7,10 +7,65 @@
 // so there is nothing to re-run on the client.
 (() => {
   const root = document.getElementById("qmd-root");
-  const statusEl = document.getElementById("qmd-status");
+  let statusEl = null;
   let ws;
 
   const setStatus = (s) => { if (statusEl) statusEl.textContent = s; };
+
+  // --- preview control bar: theme toggle + click-to-source toggle ----------
+  const inWebview = window.parent !== window;
+  const CLICK_KEY = "qmd-click-source";
+  let clickSource = (() => {
+    try { return localStorage.getItem(CLICK_KEY) !== "0"; } catch (e) { return true; }
+  })();
+
+  (function buildControls() {
+    const bar = document.getElementById("qmd-controls");
+    if (!bar) return;
+
+    // Theme: cycle auto -> light -> dark, driven by the head-script API
+    // (window.qmdSetTheme/qmdGetThemePref), which also honours the OS default.
+    const themeBtn = document.createElement("button");
+    themeBtn.className = "qmd-ctl";
+    themeBtn.type = "button";
+    themeBtn.title = "Theme: light / dark / auto (follows your OS)";
+    const ICON = { auto: "🖥 auto", light: "☀ light", dark: "🌙 dark" };
+    const ORDER = ["auto", "light", "dark"];
+    const syncTheme = () => {
+      const p = (window.qmdGetThemePref && window.qmdGetThemePref()) || "auto";
+      themeBtn.textContent = ICON[p] || ICON.auto;
+    };
+    themeBtn.addEventListener("click", () => {
+      const cur = (window.qmdGetThemePref && window.qmdGetThemePref()) || "auto";
+      if (window.qmdSetTheme) window.qmdSetTheme(ORDER[(ORDER.indexOf(cur) + 1) % ORDER.length]);
+      syncTheme();
+    });
+    syncTheme();
+
+    // Click-to-source on/off. When off, clicks pass through normally (so you can
+    // select text / drive OJS widgets without jumping to source).
+    const srcBtn = document.createElement("button");
+    srcBtn.className = "qmd-ctl";
+    srcBtn.type = "button";
+    srcBtn.textContent = "⌖ source";
+    srcBtn.title =
+      "Double-click a block to reveal its source" + (inWebview ? " in the editor" : " in VS Code");
+    const syncSrc = () => srcBtn.setAttribute("aria-pressed", clickSource ? "true" : "false");
+    srcBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      clickSource = !clickSource;
+      try { localStorage.setItem(CLICK_KEY, clickSource ? "1" : "0"); } catch (e) {}
+      syncSrc();
+    });
+    syncSrc();
+
+    statusEl = document.createElement("span");
+    statusEl.id = "qmd-status";
+    statusEl.textContent = "connecting…";
+    bar.append(themeBtn, srcBtn, statusEl);
+  })();
+  // Reveal mode (and any layout without the control bar) keeps its status pill.
+  if (!statusEl) statusEl = document.getElementById("qmd-status");
 
   // Deck mode: the body is sectioned slides mounted into `.reveal > .slides`
   // (root). After any DOM change we (re)attach reveal.js — the first change
@@ -91,6 +146,8 @@
         document.title = msg.title || "qmd-fast";
         keepScroll(() => { root.innerHTML = msg.body_html; });
         afterChange();
+        // Run Observable cells once the cells are in the DOM (no-op without OJS).
+        if (window.qmdRunOJS) window.qmdRunOJS();
         break;
       case "update": {
         const el = elById(msg.target_id);
@@ -135,8 +192,30 @@
     sourcepos: el.dataset.sourcepos || null,
   });
 
-  // Single click: highlight + tell the server (it logs / will drive sync).
+  // Open a block's source: in the VS Code webview, relay to the host (which
+  // calls revealRange); in a plain browser, open a `vscode://file/…:line:col`
+  // link (the server injected the absolute doc + base-dir paths as QMD_DOC).
+  const openSource = (el) => {
+    const ref = blockRef(el);
+    if (inWebview) {
+      window.parent.postMessage({ type: "qmd-goto", ...ref }, "*");
+      return;
+    }
+    const doc = window.QMD_DOC;
+    if (!doc) return;
+    const abs = ref.source_file
+      ? doc.baseDir.replace(/\/+$/, "") + "/" + ref.source_file
+      : doc.path;
+    const m = /^(\d+):(\d+)/.exec(ref.sourcepos || "");
+    const line = m ? m[1] : "1";
+    const col = m ? m[2] : "1";
+    window.location.href = "vscode://file" + encodeURI(abs) + ":" + line + ":" + col;
+  };
+
+  // Single click: highlight + tell the server. Skipped when click-to-source is
+  // off, or when the click lands on the control bar.
   document.addEventListener("click", (e) => {
+    if (!clickSource || (e.target.closest && e.target.closest(".qmd-ctl"))) return;
     const el = e.target.closest("[data-block-id]");
     document.querySelectorAll(".qmd-hl").forEach((n) => n.classList.remove("qmd-hl"));
     if (!el) return;
@@ -146,12 +225,11 @@
     }
   });
 
-  // Double click: jump to source. When embedded in the VS Code webview, relay
-  // to the extension host (which calls revealRange); standalone, this is a noop.
+  // Double click: jump to source (browser -> VS Code, webview -> host).
   document.addEventListener("dblclick", (e) => {
+    if (!clickSource) return;
     const el = e.target.closest("[data-block-id]");
-    if (!el || window.parent === window) return;
-    window.parent.postMessage({ type: "qmd-goto", ...blockRef(el) }, "*");
+    if (el) openSource(el);
   });
 
   // Reverse sync: highlight (and reveal/scroll to) the block under the editor

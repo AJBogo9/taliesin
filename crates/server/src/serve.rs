@@ -37,6 +37,7 @@ struct DocState {
     format: DocFormat,
     toc: bool,
     theme_css: String,
+    theme_default: String,
     blocks: Vec<Block>,
 }
 
@@ -85,6 +86,7 @@ async fn serve(path: PathBuf, port: u16) -> std::io::Result<()> {
         d.format = doc.format;
         d.toc = doc.toc;
         d.theme_css = doc.theme_css;
+        d.theme_default = doc.theme_default;
         d.blocks = doc.blocks;
     }
 
@@ -128,11 +130,36 @@ fn render_doc(app: &AppState) -> Option<RenderedDoc> {
 // --- HTTP ---------------------------------------------------------------
 
 async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
-    let (format, toc, theme_css) = {
+    let (format, toc, theme_css, theme_default, ojs) = {
         let d = app.doc.lock().unwrap();
-        (d.format, d.toc, d.theme_css.clone())
+        let ojs = d.blocks.iter().any(|b| b.html.contains("ojs-module-contents"));
+        (d.format, d.toc, d.theme_css.clone(), d.theme_default.clone(), ojs)
     };
-    Html(index_html(format, toc, &theme_css))
+    // Absolute doc + base-dir paths so the browser can build `vscode://file/…`
+    // links for click-to-source (canonicalized; fall back to the raw paths).
+    let doc_path = app.path.canonicalize().unwrap_or_else(|_| app.path.clone());
+    let base_dir = app.base_dir.canonicalize().unwrap_or_else(|_| app.base_dir.clone());
+    let ctx = PageCtx {
+        format,
+        toc,
+        theme_css: &theme_css,
+        theme_default: &theme_default,
+        ojs,
+        doc_path: &doc_path.to_string_lossy(),
+        base_dir: &base_dir.to_string_lossy(),
+    };
+    Html(index_html(&ctx))
+}
+
+/// Everything the preview index template needs from the current document.
+struct PageCtx<'a> {
+    format: DocFormat,
+    toc: bool,
+    theme_css: &'a str,
+    theme_default: &'a str,
+    ojs: bool,
+    doc_path: &'a str,
+    base_dir: &'a str,
 }
 
 /// The preview favicon (also satisfies the browser's implicit `/favicon.ico`
@@ -206,33 +233,57 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-fn index_html(format: DocFormat, toc: bool, theme_css: &str) -> String {
-    match format {
+fn index_html(ctx: &PageCtx) -> String {
+    match ctx.format {
         DocFormat::Reveal => reveal_index_html(),
-        DocFormat::Html => blog_index_html(toc, theme_css),
+        DocFormat::Html => blog_index_html(ctx),
     }
 }
 
-/// Shared dev-status pill, fixed bottom-right, over either layout.
-const STATUS_CSS: &str = "#qmd-status { position: fixed; bottom: .5rem; left: .5rem; z-index: 9999; \
-    font: 12px ui-sans-serif, system-ui, sans-serif; color: #888; background: #fff; \
-    padding: .15rem .5rem; border: 1px solid #eee; border-radius: 4px; }";
+/// Status pill + the bottom-left control bar (theme + click-to-source toggles).
+const STATUS_CSS: &str = "#qmd-controls { position: fixed; bottom: .5rem; left: .5rem; z-index: 9999; \
+    display: flex; align-items: center; gap: .4rem; \
+    font: 12px ui-sans-serif, system-ui, sans-serif; } \
+    #qmd-controls .qmd-ctl { background: var(--qmd-bg, #fff); color: var(--qmd-muted, #888); \
+    border: 1px solid var(--qmd-border, #e0e0e0); border-radius: 5px; padding: .15rem .5rem; \
+    cursor: pointer; line-height: 1.4; } \
+    #qmd-controls .qmd-ctl:hover { color: var(--qmd-fg, #111); } \
+    #qmd-controls .qmd-ctl[aria-pressed=\"false\"] { opacity: .55; } \
+    #qmd-status { color: var(--qmd-muted, #888); padding: .15rem .35rem; }";
 
-fn blog_index_html(toc: bool, theme_css: &str) -> String {
+/// Minimal JS-string escape for embedding a filesystem path in a `\"...\"` literal.
+fn js_str(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn blog_index_html(ctx: &PageCtx) -> String {
+    // The Observable runtime + init, only when the doc has live `{ojs}` cells.
+    // `client.js` calls `window.qmdRunOJS()` after the first full mount.
+    let (ojs_head, ojs_init) = if ctx.ojs {
+        (qmd_fast_core::ojs_head(), qmd_fast_core::ojs_init())
+    } else {
+        (String::new(), String::new())
+    };
     // With a TOC, lay the content beside a sticky `<nav id="TOC">` (the client
     // rebuilds its entries from the mounted headings, so it stays live). The
     // `QMD_TOC` flag switches the client into that mode.
-    let (body_attr, toc_nav, toc_flag) = if toc {
+    let (body_attr, toc_nav, toc_flag) = if ctx.toc {
         (" class=\"has-toc\"", "<nav id=\"TOC\"></nav>", "window.QMD_TOC = true;")
     } else {
         ("", "", "")
     };
-    // Theme override CSS comes after the base styles so its `:root` wins.
-    let theme = if theme_css.trim().is_empty() {
+    // Custom theme CSS (if any) comes after the base styles so its rules win.
+    let theme = if ctx.theme_css.trim().is_empty() {
         String::new()
     } else {
-        format!("<style>{theme_css}</style>")
+        format!("<style>{}</style>", ctx.theme_css)
     };
+    // Absolute paths so click-to-source can build `vscode://file/…` links.
+    let doc_global = format!(
+        "window.QMD_DOC = {{ path: \"{}\", baseDir: \"{}\" }};",
+        js_str(ctx.doc_path),
+        js_str(ctx.base_dir),
+    );
     format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -241,23 +292,27 @@ fn blog_index_html(toc: bool, theme_css: &str) -> String {
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>qmd-fast</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
+{theme_init}
 {styles}
 {code_head}
+{ojs_head}
 {theme}
 <style>{status_css}</style>
 </head>
 <body{body_attr}>
 <main id="qmd-root"></main>
 {toc_nav}
-<div id="qmd-status">connecting…</div>
-<script>{toc_flag}</script>
+<div id="qmd-controls"></div>
+<script>{doc_global} {toc_flag}</script>
 {code_scripts}
 <script>
 {js}
 </script>
+{ojs_init}
 </body>
 </html>
 "#,
+        theme_init = qmd_fast_core::theme_head(ctx.theme_default),
         styles = qmd_fast_core::client_styles(),
         code_head = qmd_fast_core::code_head(),
         code_scripts = qmd_fast_core::code_scripts(),
@@ -466,6 +521,7 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         d.format = doc.format;
         d.toc = doc.toc;
         d.theme_css = doc.theme_css;
+        d.theme_default = doc.theme_default;
         d.blocks = blocks;
         // Broadcast under the lock so connecting clients can't interleave.
         for op in &ops {
