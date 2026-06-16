@@ -352,10 +352,17 @@ post drives interactive WebGL point clouds the same way: Python computes the dat
   function onFS() {
     const fs = document.fullscreenElement === box;
     if (fs) {
-      renderer.setSize(screen.width, screen.height, false);
-      camera.aspect = screen.width / screen.height;
-      cv.style.cssText = "display:block;width:100%;height:100%"; // fill the screen
+      // Fill the screen and let the canvas drive off the box's *measured* size: the
+      // inline max-width:100% would otherwise cap the box and the camera aspect
+      // (screen.* used to be wrong here) wouldn't match the displayed canvas, which
+      // stretched the globe. Measure after forcing the fill so the two always agree.
+      box.style.maxWidth = "none"; box.style.width = "100vw"; box.style.height = "100vh";
+      cv.style.cssText = "display:block;width:100%;height:100%";
+      const fw = box.clientWidth, fh = box.clientHeight;
+      renderer.setSize(fw, fh, false);
+      camera.aspect = fw / fh;
     } else {
+      box.style.maxWidth = "100%"; box.style.width = ""; box.style.height = "";
       renderer.setSize(w, h, false);
       camera.aspect = w / h;
       cv.style.cssText = `display:block;width:${w}px;max-width:100%;height:auto`;
@@ -417,19 +424,52 @@ grammar doesn't cover (custom widgets, embeds, audio players):
 
 ```{=html}
 <div style="display:flex;gap:.6rem;align-items:center;padding:.7rem 1rem;border-radius:10px;
-            background:linear-gradient(90deg,#eef2ff,#fce7f3);font:600 14px ui-sans-serif,system-ui">
+            color:var(--qmd-fg);border:1px solid var(--qmd-border);
+            background:linear-gradient(90deg,rgba(99,102,241,.16),rgba(236,72,153,.16));
+            font:600 14px ui-sans-serif,system-ui">
   <span style="font-size:1.5rem">🔌</span>
-  <span>This badge is raw HTML, passed through by a <code>{=html}</code> block, not escaped.</span>
+  <span>This badge is raw HTML, passed through by a <code>{=html}</code> block, not escaped. Its
+        inline styles use the page's theme variables, so it tracks light/dark too.</span>
 </div>
 ```
 
 ## Figures, captions, and lightbox
 
-A standalone image with a `{#fig-…}` attribute becomes a numbered `<figure>`;
-clicking it opens a full-screen lightbox, and `@fig-` cross-references resolve to
-its number. As @fig-scree shows, the variance drops off after the third component:
+A standalone image with a `{#fig-…}` attribute, or a code cell tagged with
+`#| label: fig-…` and `#| fig-cap:`, becomes a numbered `<figure>`; clicking it
+opens a full-screen lightbox, and `@fig-` cross-references resolve to its number.
+@fig-scree is drawn by a matplotlib cell that sets *no* theme colours: inline
+figures default to a transparent background with neutral-grey axes, ticks, and
+labels, so they track the light/dark theme on their own and only the data colours
+are the author's. As it shows, the variance drops off after the third component:
 
-![Variance explained per principal component. Click to zoom.](assets/scree-plot.svg){#fig-scree}
+```{python}
+#| label: fig-scree
+#| fig-cap: "Variance explained per principal component. Click to zoom."
+#| echo: false
+import matplotlib.pyplot as plt
+
+components = range(1, 8)
+explained = [42, 26, 15, 8.5, 5, 2.5, 1]
+
+fig, ax = plt.subplots(figsize=(6, 3.4), tight_layout=True)
+ax.bar(components, explained, width=0.6, color="#4c8dff", alpha=0.85)
+ax.plot(
+    components, explained,
+    color="#e0566b", linewidth=2, linestyle="--", marker="o", markersize=4,
+)
+ax.annotate(
+    "elbow", xy=(3, 15), xytext=(3.6, 27),
+    color="#e0566b", fontsize=11,
+    arrowprops=dict(arrowstyle="->", color="#e0566b"),
+)
+ax.set_xlabel("Principal component")
+ax.set_ylabel("Variance explained (%)")
+ax.set_xticks(list(components))
+for spine in ("top", "right"):
+    ax.spines[spine].set_visible(False)
+plt.show()
+```
 
 ## Callouts
 

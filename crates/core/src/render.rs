@@ -596,6 +596,7 @@ const DARK_CSS: &str = r#"
     --qmd-bg: #16181d; --qmd-fg: #e6e6e6; --qmd-muted: #9aa0aa; --qmd-accent: #6ea8ff;
     --qmd-link: #6ea8ff; --qmd-code-bg: #21242b; --qmd-border: #363a44;
     --qmd-edge-shadow: rgba(255, 255, 255, .14); --qmd-flash: rgba(110, 168, 255, .22);
+    color-scheme: dark; /* native form controls (OJS inputs) + scrollbars render dark */
   }
   html[data-theme="dark"] .qmd-copy { background: #21242b; color: #c8ccd4; border-color: #3a3f4b; }
   html[data-theme="dark"] .qmd-copy:hover { color: #fff; border-color: #5a606b; }
@@ -613,6 +614,10 @@ const DARK_CSS: &str = r#"
   html[data-theme="dark"] .hljs-number, html[data-theme="dark"] .hljs-literal { color: #79c0ff; }
   html[data-theme="dark"] .hljs-title, html[data-theme="dark"] .hljs-title.function_, html[data-theme="dark"] .hljs-section { color: #d2a8ff; }
   html[data-theme="dark"] .hljs-attr, html[data-theme="dark"] .hljs-attribute, html[data-theme="dark"] .hljs-variable { color: #ffa657; }
+  /* code-cell output, warnings, and errors: dark equivalents of the light boxes */
+  html[data-theme="dark"] .qmd-output > pre { background: #1b1e24; border-left-color: var(--qmd-border); }
+  html[data-theme="dark"] .qmd-stderr { border-left-color: #d0a215 !important; background: #2a2415 !important; color: #e8dcc0; }
+  html[data-theme="dark"] .qmd-error { border-left-color: #e0566b !important; background: #2a1820 !important; color: #f2b8c2; }
 "#;
 
 /// `toc: true` requested anywhere in the front matter (typically under
@@ -726,6 +731,7 @@ const BASE_CSS: &str = r#"
     --qmd-bg: #ffffff; --qmd-fg: #1a1a1a; --qmd-muted: #555; --qmd-accent: #4c8dff;
     --qmd-link: #2563eb; --qmd-code-bg: #f5f5f5; --qmd-border: #e3e3e3;
     --qmd-edge-shadow: rgba(0, 0, 0, .16); --qmd-flash: rgba(76, 141, 255, .18);
+    color-scheme: light;
     --qmd-font-body: 17px/1.7 ui-serif, Georgia, "Times New Roman", serif;
     --qmd-font-head: ui-sans-serif, system-ui, sans-serif;
     --qmd-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -1078,6 +1084,12 @@ window.qmdEnhanceCode = function (root) {
       }
     });
     pre.appendChild(btn);
+    // The button is absolutely positioned inside the <pre>, which is the horizontal
+    // scroll container, so it would scroll away with the code. Counter-translate it by
+    // the scroll offset to keep it pinned to the visible top-right corner.
+    pre.addEventListener('scroll', function () {
+      btn.style.transform = pre.scrollLeft ? 'translateX(' + pre.scrollLeft + 'px)' : '';
+    }, { passive: true });
   });
   qmdRenderMermaid(root);
   qmdInitLightbox();
@@ -1102,7 +1114,7 @@ function qmdInitLightbox() {
     'background:rgba(10,12,16,.9);cursor:zoom-out;opacity:0;transition:opacity .15s ease}' +
     '#qmd-lightbox.open{display:flex;opacity:1}' +
     '#qmd-lightbox img{max-width:93vw;max-height:86vh;object-fit:contain;cursor:default;' +
-    'background:#fff;border-radius:4px;box-shadow:0 10px 50px rgba(0,0,0,.5)}' +
+    'background:var(--qmd-bg,#fff);border-radius:4px;box-shadow:0 10px 50px rgba(0,0,0,.5)}' +
     '#qmd-lightbox .qmd-lb-svg{display:none;width:92vw;max-width:1400px;max-height:86vh;overflow:auto;' +
     'cursor:default;background:var(--qmd-bg,#fff);border-radius:4px;padding:1.2rem;box-sizing:border-box;' +
     'box-shadow:0 10px 50px rgba(0,0,0,.5)}' +
