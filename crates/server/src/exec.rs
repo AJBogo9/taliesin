@@ -9,7 +9,7 @@
 
 use std::path::PathBuf;
 
-use qmd_fast_core::{Block, render::Cell, render::CellFigure};
+use qmd_fast_core::{Block, render::CellFigure};
 
 use crate::kernel::{Kernel, render_outputs};
 
@@ -23,6 +23,8 @@ struct CellRef {
     source_file: Option<String>,
     /// When set, the cell's output is wrapped in a numbered `<figure>`.
     figure: Option<CellFigure>,
+    /// `#| include: false`: run the cell (for downstream state) but emit no output.
+    include: bool,
 }
 
 struct Cached {
@@ -62,13 +64,14 @@ impl Executor {
             .iter()
             .enumerate()
             .filter_map(|(i, b)| match &b.cell {
-                Some(Cell { lang, code, figure }) if lang == "python" => Some(CellRef {
+                Some(c) if c.lang == "python" => Some(CellRef {
                     block_index: i,
                     id: b.id.clone(),
-                    code: code.clone(),
+                    code: c.code.clone(),
                     sourcepos: b.sourcepos.clone(),
                     source_file: b.source_file.clone(),
-                    figure: figure.clone(),
+                    figure: c.figure.clone(),
+                    include: c.include,
                 }),
                 _ => None,
             })
@@ -84,7 +87,9 @@ impl Executor {
         // Map cell block index -> its output block (when non-empty).
         let mut output_blocks: std::collections::HashMap<usize, Block> = std::collections::HashMap::new();
         for (cell, inner) in cells.iter().zip(&outputs) {
-            if inner.trim().is_empty() {
+            // `include: false` cells run (above) for their kernel-state side effects
+            // but contribute no visible output block.
+            if inner.trim().is_empty() || !cell.include {
                 continue;
             }
             output_blocks.insert(cell.block_index, output_block(cell, inner));

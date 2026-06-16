@@ -20,6 +20,11 @@ pub struct Cell {
     /// When this cell's output should be a numbered `<figure>` (`#| label: fig-x`
     /// + `#| fig-cap:`), the executor wraps the rendered output accordingly.
     pub figure: Option<CellFigure>,
+    /// `#| echo: false` hides the source (the cell still runs, output still shows).
+    pub echo: bool,
+    /// `#| include: false` hides both source and output, but the cell still runs
+    /// (so downstream cells see its kernel state).
+    pub include: bool,
 }
 
 /// Metadata for wrapping a code cell's executed output as a numbered figure.
@@ -196,6 +201,8 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
                         lang,
                         code: strip_cell_options(&cb.literal),
                         figure: None,
+                        echo: cell_flag(&cb.literal, "echo"),
+                        include: cell_flag(&cb.literal, "include"),
                     })
                 }
                 _ => None,
@@ -306,24 +313,40 @@ fn render_internal(src: &str, origins: Option<&[LineOrigin]>, base_dir: Option<&
                                     number: fig_count,
                                 });
                             }
-                            emit(node, &attrs, &mut html);
+                            // `echo: false` hides the code but keeps the figure
+                            // tagging, so the executed output still becomes Figure N.
+                            if cell.as_ref().is_some_and(|c| !c.echo || !c.include) {
+                                html.push_str(&hidden_cell(&attrs));
+                            } else {
+                                emit(node, &attrs, &mut html);
+                            }
                         }
                     }
                 }
                 CellRole::Listing { anchor, caption, fold } => {
-                    lst_count += 1;
-                    if let Some(a) = anchor {
-                        xref_registry.insert(a.clone(), lst_count.to_string());
+                    // A listing exists to show source, so only `include: false`
+                    // (hide everything) suppresses it.
+                    if cell.as_ref().is_some_and(|c| !c.include) {
+                        html.push_str(&hidden_cell(&attrs));
+                    } else {
+                        lst_count += 1;
+                        if let Some(a) = anchor {
+                            xref_registry.insert(a.clone(), lst_count.to_string());
+                        }
+                        html.push_str(&emit_code_listing(
+                            &code, &lang, anchor.as_deref(), caption.as_deref(), fold.as_ref(), &attrs, lst_count,
+                        ));
                     }
-                    html.push_str(&emit_code_listing(
-                        &code, &lang, anchor.as_deref(), caption.as_deref(), fold.as_ref(), &attrs, lst_count,
-                    ));
                 }
             }
         } else if let Some(c) = cell.as_ref().filter(|c| c.lang == "ojs") {
             // Live Observable cell: a placeholder the vendored runtime executes
             // client-side, instead of a static highlighted listing.
             html.push_str(&emit_ojs_cell(&c.code, &id, &attrs));
+        } else if cell.as_ref().is_some_and(|c| !c.echo || !c.include) {
+            // `echo: false` / `include: false`: keep the block so the executor still
+            // runs it, but hide its source.
+            html.push_str(&hidden_cell(&attrs));
         } else {
             emit(node, &attrs, &mut html);
         }
@@ -2158,6 +2181,19 @@ fn cell_option<'a>(literal: &'a str, key: &str) -> Option<&'a str> {
     None
 }
 
+/// A boolean cell option (`#| echo: false`). Defaults to true; only an explicit
+/// `false` turns it off (so Quarto's `echo: fenced` etc. count as "shown").
+fn cell_flag(literal: &str, key: &str) -> bool {
+    cell_option(literal, key) != Some("false")
+}
+
+/// A code cell whose source is suppressed (`#| echo: false` / `#| include: false`)
+/// still needs a block in the list so the executor runs it and the output can be
+/// placed after it; render it as an empty hidden marker carrying the data attrs.
+fn hidden_cell(attrs: &str) -> String {
+    format!("<div{attrs} class=\"qmd-cell-hidden\" hidden></div>")
+}
+
 /// If a cell sets `code-fold`, return `(start_open, summary)`. `true` folds
 /// (starts closed), `show` folds but starts open; `code-summary` overrides the
 /// "Code" label.
@@ -2635,10 +2671,10 @@ mod tests {
 
     #[test]
     fn cell_option_lines_are_dropped() {
-        let doc = render_document("```{python}\n#| echo: false\n#| label: fig\nprint(1)\n```\n");
+        let doc = render_document("```{python}\n#| warning: false\nprint(1)\n```\n");
         let h = &doc.blocks[0].html;
         assert!(h.contains("print(1)"));
-        assert!(!h.contains("#| echo"), "option lines should be stripped: {h}");
+        assert!(!h.contains("#|"), "option lines should be stripped: {h}");
 
         // OJS cells become live placeholders; their `//|` options are stripped
         // before the source is base64-encoded into an ojs-module-contents script.
@@ -2647,6 +2683,30 @@ mod tests {
         assert!(oh.contains("class=\"cell ojs-cell\""), "ojs cell should be a live placeholder: {oh}");
         assert!(oh.contains("ojs-module-contents"), "ojs cell missing module-contents: {oh}");
         assert!(!oh.contains("//| echo"), "option lines should be stripped: {oh}");
+    }
+
+    #[test]
+    fn echo_and_include_false_hide_source_but_keep_the_cell() {
+        // echo:false hides the source; the cell stays (so the executor still runs
+        // it) and its output (added by the executor) is unaffected.
+        let echo = render_document("```{python}\n#| echo: false\nprint(1)\n```\n");
+        let b = &echo.blocks[0];
+        assert!(b.cell.is_some(), "cell metadata must survive so the executor runs it");
+        assert!(b.cell.as_ref().unwrap().include, "echo:false keeps include true");
+        assert!(!b.html.contains("print(1)"), "echo:false must hide the source: {}", b.html);
+        assert!(b.html.contains("qmd-cell-hidden"), "expected a hidden marker: {}", b.html);
+
+        // include:false hides the source too and flags the cell so the executor
+        // suppresses its output.
+        let inc = render_document("```{python}\n#| include: false\nprint(1)\n```\n");
+        let b = &inc.blocks[0];
+        assert!(b.cell.is_some());
+        assert!(!b.cell.as_ref().unwrap().include, "include:false must be recorded on the cell");
+        assert!(!b.html.contains("print(1)"), "include:false must hide the source: {}", b.html);
+
+        // A plain cell still shows its source.
+        let plain = render_document("```{python}\nprint(1)\n```\n");
+        assert!(plain.blocks[0].html.contains("print(1)"), "default cell shows source");
     }
 
     #[test]
