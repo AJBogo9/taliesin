@@ -8,9 +8,21 @@
 (() => {
   const root = document.getElementById("qmd-root");
   let statusEl = null;
+  let wordCountEl = null;
   let ws;
 
   const setStatus = (s) => { if (statusEl) statusEl.textContent = s; };
+
+  // Words + reading time (prose only: code and math are excluded), refreshed on
+  // every change. Shown in the control bar; no-op in reveal mode / without it.
+  const updateWordCount = () => {
+    if (!wordCountEl) return;
+    const clone = root.cloneNode(true);
+    clone.querySelectorAll("pre, .katex, .qmd-eqn-number").forEach((n) => n.remove());
+    const words = (clone.textContent.match(/[^\s]+/g) || []).length;
+    const mins = Math.max(1, Math.round(words / 200));
+    wordCountEl.textContent = `${words.toLocaleString()} words · ${mins} min`;
+  };
 
   // --- diagnostics: render/include/kernel issues the server pushes -----------
   // A small bottom-left stack, shown only when there are issues, so the author
@@ -44,6 +56,57 @@
       diagEl.appendChild(row);
     }
     diagEl.style.display = "flex";
+  };
+
+  // --- fatal-error overlay ---------------------------------------------------
+  // A render/read failure leaves the last good content in place; this overlays it
+  // so a broken save is impossible to miss (including on a phone). It clears on
+  // the next successful render, or on click-outside / Escape.
+  const errorEl = (() => {
+    const style = document.createElement("style");
+    style.textContent =
+      "#qmd-error{position:fixed;inset:0;z-index:2147482500;display:none;flex-direction:column;" +
+      "align-items:center;justify-content:center;padding:2rem;box-sizing:border-box;" +
+      "background:rgba(10,12,16,.86);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);}" +
+      "#qmd-error.qmd-show{display:flex;}" +
+      "#qmd-error .qmd-error-card{max-width:min(680px,92vw);width:100%;max-height:74vh;overflow:auto;" +
+      "background:#1b1d23;border:1px solid #5a2a2a;border-left:4px solid #e5534b;border-radius:10px;" +
+      "padding:1rem 1.2rem;box-shadow:0 14px 44px rgba(0,0,0,.55);}" +
+      "#qmd-error .qmd-error-title{font:600 13px ui-sans-serif,system-ui,sans-serif;color:#ff8c82;margin-bottom:.55rem;}" +
+      "#qmd-error pre{margin:0;padding:0;background:transparent;white-space:pre-wrap;word-break:break-word;" +
+      "font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#f2d5d5;}" +
+      "#qmd-error .qmd-error-hint{margin-top:.85rem;font:12px ui-sans-serif,system-ui,sans-serif;color:#9aa0aa;}";
+    (document.head || document.documentElement).appendChild(style);
+    const el = document.createElement("div");
+    el.id = "qmd-error";
+    el.innerHTML =
+      '<div class="qmd-error-card"><div class="qmd-error-title">⚠ Render failed</div><pre></pre>' +
+      '<div class="qmd-error-hint">Fix the source and save; this clears on the next successful render. (Esc to dismiss)</div></div>';
+    document.body.appendChild(el);
+    el.addEventListener("click", (e) => { if (e.target === el) el.classList.remove("qmd-show"); });
+    return el;
+  })();
+  const showError = (message) => {
+    errorEl.querySelector("pre").textContent = message || "Unknown error";
+    errorEl.classList.add("qmd-show");
+  };
+  const hideError = () => errorEl.classList.remove("qmd-show");
+  // A successful render arrived: drop the overlay and clear the "error" status.
+  const renderOk = () => {
+    hideError();
+    if (statusEl && statusEl.textContent === "error") setStatus("live");
+  };
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && errorEl.classList.contains("qmd-show")) hideError();
+  });
+
+  // Briefly pulse a block that just (re)rendered, so the change is easy to spot.
+  const flash = (el) => {
+    if (!el || !el.classList) return;
+    el.classList.remove("qmd-flash");
+    void el.offsetWidth; // restart the animation when re-flashing the same node
+    el.classList.add("qmd-flash");
+    el.addEventListener("animationend", () => el.classList.remove("qmd-flash"), { once: true });
   };
 
   // --- preview control bar: theme toggle + click-to-source toggle ----------
@@ -93,10 +156,13 @@
     });
     syncSrc();
 
+    wordCountEl = document.createElement("span");
+    wordCountEl.id = "qmd-wordcount";
+
     statusEl = document.createElement("span");
     statusEl.id = "qmd-status";
     statusEl.textContent = "connecting…";
-    bar.append(themeBtn, srcBtn, statusEl);
+    bar.append(themeBtn, srcBtn, wordCountEl, statusEl);
   })();
   // Reveal mode (and any layout without the control bar) keeps its status pill.
   if (!statusEl) statusEl = document.getElementById("qmd-status");
@@ -342,6 +408,7 @@
     syncReveal();
     buildToc();
     refreshTocSpy();
+    updateWordCount();
     if (window.qmdEnhanceCode) window.qmdEnhanceCode(root);
   };
 
@@ -354,6 +421,7 @@
   const handle = (msg) => {
     switch (msg.type) {
       case "full_render":
+        renderOk(); // a fresh render arrived: any prior failure is resolved
         document.title = msg.title || "qmd-fast";
         if (ssrPending) {
           ssrPending = false; // content already server-rendered into #qmd-root
@@ -369,21 +437,30 @@
         setDiagnostics(msg.messages);
         break;
       case "update": {
+        renderOk();
         const el = elById(msg.target_id);
-        if (el) keepScroll(() => el.replaceWith(fragment(msg.html)));
+        if (el) {
+          const node = fragment(msg.html);
+          keepScroll(() => el.replaceWith(node));
+          flash(node);
+        }
         afterChange();
         break;
       }
-      case "insert":
+      case "insert": {
+        renderOk();
+        const node = fragment(msg.html);
         keepScroll(() => {
-          const node = fragment(msg.html);
           const after = msg.after_id && elById(msg.after_id);
           if (after) after.after(node);
           else root.prepend(node);
         });
+        flash(node);
         afterChange();
         break;
+      }
       case "remove": {
+        renderOk();
         const el = elById(msg.target_id);
         if (el) keepScroll(() => el.remove());
         afterChange();
@@ -391,7 +468,7 @@
       }
       case "error":
         setStatus("error");
-        setDiagnostics([{ level: "error", message: msg.message }]);
+        showError(msg.message);
         break;
     }
   };

@@ -40,6 +40,9 @@ struct DocState {
     theme_default: String,
     blocks: Vec<Block>,
     diagnostics: Vec<Diagnostic>,
+    /// True while the last render failed, so the next success can re-mount fully
+    /// (clearing the client's error overlay even when the diff is empty).
+    errored: bool,
 }
 
 /// A non-fatal issue with the current document, surfaced in the preview so the
@@ -371,6 +374,14 @@ const STATUS_CSS: &str = "#qmd-controls { position: fixed; bottom: .5rem; left: 
     #qmd-controls .qmd-ctl:hover { color: var(--qmd-fg, #111); } \
     #qmd-controls .qmd-ctl[aria-pressed=\"false\"] { opacity: .55; } \
     #qmd-status { color: var(--qmd-muted, #888); padding: .15rem .35rem; } \
+    #qmd-wordcount { color: var(--qmd-muted, #888); padding: .15rem .35rem; font-variant-numeric: tabular-nums; } \
+    @media (max-width: 30rem) { \
+    #qmd-wordcount, #qmd-src-ctl { display: none; } \
+    #qmd-controls #qmd-status { font-size: 0; padding: .15rem .3rem; } \
+    #qmd-controls #qmd-status::before { content: \"\"; display: inline-block; width: .5rem; height: .5rem; \
+    border-radius: 50%; background: var(--qmd-muted, #888); vertical-align: middle; } \
+    #qmd-controls #qmd-status[data-state=\"live\"]::before { background: #3fb950; } \
+    #qmd-controls #qmd-status[data-state=\"warn\"]::before { background: #d9a23a; } } \
     @media (max-width: 60rem) { body.qmd-toc-sheet #qmd-controls { bottom: 2.4rem; } }";
 
 /// Minimal JS-string escape for embedding a filesystem path in a `\"...\"` literal.
@@ -689,6 +700,7 @@ fn watch_dirs(app: &AppState) -> Vec<PathBuf> {
 /// assembled block list against the live state and broadcast the changes.
 async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
     let Some(doc) = render_doc(app) else {
+        app.doc.lock().unwrap().errored = true;
         let _ = app
             .tx
             .send(error_json(&format!("cannot read {}", app.path.display())));
@@ -698,6 +710,7 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
     let diags = compute_diagnostics(app, executor);
     let ops = {
         let mut d = app.doc.lock().unwrap();
+        let recovered = std::mem::take(&mut d.errored);
         let ops = qmd_fast_core::diff_blocks(&d.blocks, &blocks);
         let diags_changed = d.diagnostics != diags;
         d.title = doc.title;
@@ -709,8 +722,14 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         d.blocks = blocks;
         d.diagnostics = diags;
         // Broadcast under the lock so connecting clients can't interleave.
-        for op in &ops {
-            let _ = app.tx.send(op_json(op));
+        if recovered {
+            // First success after a failure: re-mount fully so every client clears
+            // its error overlay even when the diff against the last good state is empty.
+            let _ = app.tx.send(full_render_json(&d));
+        } else {
+            for op in &ops {
+                let _ = app.tx.send(op_json(op));
+            }
         }
         if diags_changed {
             let _ = app.tx.send(diagnostics_json(&d.diagnostics));

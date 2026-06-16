@@ -595,7 +595,7 @@ const DARK_CSS: &str = r#"
   html[data-theme="dark"] {
     --qmd-bg: #16181d; --qmd-fg: #e6e6e6; --qmd-muted: #9aa0aa; --qmd-accent: #6ea8ff;
     --qmd-link: #6ea8ff; --qmd-code-bg: #21242b; --qmd-border: #363a44;
-    --qmd-edge-shadow: rgba(255, 255, 255, .14);
+    --qmd-edge-shadow: rgba(255, 255, 255, .14); --qmd-flash: rgba(110, 168, 255, .22);
   }
   html[data-theme="dark"] .qmd-copy { background: #21242b; color: #c8ccd4; border-color: #3a3f4b; }
   html[data-theme="dark"] .callout-note .callout-title { background: #1b2330; }
@@ -724,7 +724,7 @@ const BASE_CSS: &str = r#"
   :root {
     --qmd-bg: #ffffff; --qmd-fg: #1a1a1a; --qmd-muted: #555; --qmd-accent: #4c8dff;
     --qmd-link: #2563eb; --qmd-code-bg: #f5f5f5; --qmd-border: #e3e3e3;
-    --qmd-edge-shadow: rgba(0, 0, 0, .16);
+    --qmd-edge-shadow: rgba(0, 0, 0, .16); --qmd-flash: rgba(76, 141, 255, .18);
     --qmd-font-body: 17px/1.7 ui-serif, Georgia, "Times New Roman", serif;
     --qmd-font-head: ui-sans-serif, system-ui, sans-serif;
     --qmd-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -807,6 +807,10 @@ const BASE_CSS: &str = r#"
   .qmd-error { border-left-color: #e0566b !important; background: #fdecef !important; color: #862033; }
   [data-block-id] { scroll-margin-top: 1rem; }
   [data-block-id].qmd-hl { outline: 2px solid var(--qmd-accent); outline-offset: 3px; border-radius: 3px; }
+  /* live-edit feedback: a block that just (re)rendered pulses an accent tint, so
+     the eye (or a phone) lands on what changed. reduced-motion collapses it away. */
+  @keyframes qmd-flash { from { background-color: var(--qmd-flash); } to { background-color: transparent; } }
+  [data-block-id].qmd-flash { animation: qmd-flash 1.1s ease-out; border-radius: 4px; }
   figure.qmd-figure { margin: 1.5rem 0; }
   figure.qmd-figure img { max-width: 100%; height: auto; }
   figure.qmd-figure figcaption { font-size: .9em; color: var(--qmd-muted); margin-top: .5rem; }
