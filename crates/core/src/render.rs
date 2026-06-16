@@ -881,6 +881,12 @@ const BASE_CSS: &str = r#"
     .qmd-title-block .title { font-size: 1.7rem; }
     .qmd-title-block .subtitle { font-size: 1.05rem; }
   }
+  /* honor reduced-motion: collapse transitions/animations (the TOC sheet slide,
+     the handle hint bounce, fades) to near-instant, and drop smooth scrolling */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important;
+      transition-duration: .001ms !important; scroll-behavior: auto !important; }
+  }
 "#;
 
 /// `<style>` block(s) for the live preview client: base styling plus the

@@ -212,7 +212,23 @@
     tocLabelTimer = setTimeout(() => tocHandle.classList.remove("qmd-show-label"), 1000);
   }
   if (tocHandle && tocEl) {
-    const setOpen = (open) => document.body.classList.toggle("qmd-toc-open", open);
+    const isSheetMode = () => !window.matchMedia || matchMedia("(max-width: 60rem)").matches;
+    // #TOC doubles as the desktop sidebar, so only hide it from assistive tech and
+    // pull it out of the tab order when it is an off-screen sheet (narrow + closed).
+    const syncSheetA11y = () => {
+      const open = document.body.classList.contains("qmd-toc-open");
+      tocHandle.setAttribute("aria-expanded", open ? "true" : "false");
+      if (isSheetMode() && !open) {
+        tocEl.setAttribute("inert", ""); tocEl.setAttribute("aria-hidden", "true");
+      } else {
+        tocEl.removeAttribute("inert"); tocEl.removeAttribute("aria-hidden");
+      }
+    };
+    const setOpen = (open) => {
+      document.body.classList.toggle("qmd-toc-open", open);
+      syncSheetA11y();
+      if (open) { const f = tocEl.querySelector("a"); if (f) f.focus(); } // focus into the sheet
+    };
     const resetSheet = () => {
       tocEl.style.transition = ""; tocEl.style.transform = "";
       tocBackdrop.style.transition = ""; tocBackdrop.style.opacity = ""; tocBackdrop.style.pointerEvents = "";
@@ -243,7 +259,7 @@
     };
     tocHandle.addEventListener("pointerup", finish);
     tocHandle.addEventListener("pointercancel", finish);
-    tocBackdrop.addEventListener("click", () => setOpen(false));
+    tocBackdrop.addEventListener("click", () => { setOpen(false); tocHandle.focus(); });
     tocEl.addEventListener("click", (e) => { if (e.target.closest("a")) setOpen(false); });
 
     // Drag the sheet DOWN to dismiss, but only when its list is scrolled to the
@@ -278,6 +294,19 @@
     };
     tocEl.addEventListener("touchend", endSheetDrag);
     tocEl.addEventListener("touchcancel", endSheetDrag);
+
+    // keyboard: Enter/Space on the handle opens; Escape closes and returns focus.
+    tocHandle.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(true); }
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && document.body.classList.contains("qmd-toc-open")) {
+        setOpen(false); tocHandle.focus();
+      }
+    });
+    window.addEventListener("resize", syncSheetA11y);
+    syncSheetA11y();
+
     // teach the gesture once on a narrow screen
     if (window.matchMedia && matchMedia("(max-width: 60rem)").matches) {
       tocHandle.classList.add("qmd-hint");
