@@ -446,6 +446,9 @@ pub fn theme_head(default_mode: &str) -> String {
     var p = pref();
     var mode = p === "auto" ? ((mq && mq.matches) ? "dark" : "light") : p;
     document.documentElement.setAttribute("data-theme", mode);
+    // Let theme-dependent renderers (e.g. mermaid, whose SVG colours are baked at
+    // render time) re-render. Fires on toggle and on OS change while in `auto`.
+    try {{ window.dispatchEvent(new CustomEvent("qmd:themechange", {{ detail: {{ mode: mode }} }})); }} catch(e) {{}}
   }}
   apply();
   if (mq && mq.addEventListener) mq.addEventListener("change", function(){{ if (pref() === "auto") apply(); }});
@@ -882,25 +885,47 @@ function qmdInitLightbox() {
   });
 }
 
+// mermaid bakes colours into the SVG at run() time, so a diagram can't be
+// recoloured by CSS when the theme flips — it has to be re-rendered. We pick the
+// theme from <html data-theme> and stash each diagram's source so a later
+// `qmd:themechange` can restore it and run again.
+function qmdMermaidTheme() {
+  return document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'default';
+}
+function qmdRunMermaid(nodes) {
+  try {
+    window.mermaid.initialize({ startOnLoad: false, theme: qmdMermaidTheme() });
+    window.mermaid.run({ nodes: nodes });
+  } catch (e) {}
+}
 function qmdRenderMermaid(root) {
   var pending = root.querySelectorAll('pre.mermaid:not([data-processed])');
   if (!pending.length) return;
-  if (window.mermaid) {
-    try { window.mermaid.run({ nodes: pending }); } catch (e) {}
-    return;
-  }
+  // Keep the source text so the diagram survives a theme-driven re-render.
+  pending.forEach(function (p) { if (p.dataset.src == null) p.dataset.src = p.textContent; });
+  if (window.mermaid) { qmdRunMermaid(pending); return; }
   if (window.__qmdMermaidLoading) return; // its onload will sweep the whole doc
   window.__qmdMermaidLoading = true;
   var s = document.createElement('script');
   s.src = '{{MERMAID}}';
   s.onload = function () {
-    try {
-      window.mermaid.initialize({ startOnLoad: false });
-      window.mermaid.run({ nodes: document.querySelectorAll('pre.mermaid:not([data-processed])') });
-    } catch (e) {}
+    qmdRunMermaid(document.querySelectorAll('pre.mermaid:not([data-processed])'));
   };
   document.head.appendChild(s);
 }
+// Re-render every diagram from its stashed source under the new theme.
+function qmdReRenderMermaid() {
+  if (!window.mermaid) return; // not loaded yet => first render will use the theme
+  var all = document.querySelectorAll('pre.mermaid');
+  if (!all.length) return;
+  all.forEach(function (p) {
+    if (p.dataset.src == null) return;
+    p.textContent = p.dataset.src;
+    p.removeAttribute('data-processed');
+  });
+  qmdRunMermaid(document.querySelectorAll('pre.mermaid:not([data-processed])'));
+}
+window.addEventListener('qmd:themechange', qmdReRenderMermaid);
 "#;
 
 fn page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
