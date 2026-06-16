@@ -349,8 +349,13 @@ fn blog_index_html(ctx: &PageCtx) -> String {
     // `QMD_TOC` flag switches the client into that mode.
     let (body_attr, toc_nav, toc_flag) = if ctx.toc {
         (
-            " class=\"has-toc\"",
-            "<nav id=\"TOC\"></nav>",
+            // `qmd-toc-sheet` opts the live page into the mobile pull-up-sheet TOC
+            // (the static one-shot export keeps the plain stacked-top TOC).
+            " class=\"has-toc qmd-toc-sheet\"",
+            "<nav id=\"TOC\"></nav>\n\
+             <div id=\"qmd-toc-backdrop\"></div>\n\
+             <button id=\"qmd-toc-handle\" type=\"button\" aria-label=\"Contents\">\
+             <span id=\"qmd-toc-cur\"></span><span class=\"qmd-toc-grip\"></span></button>",
             "window.QMD_TOC = true;",
         )
     } else {

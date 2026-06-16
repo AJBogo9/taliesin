@@ -741,8 +741,11 @@ const BASE_CSS: &str = r#"
     font: 14px var(--qmd-font-head); color: var(--qmd-muted); }
   pre { position: relative; background: var(--qmd-code-bg); padding: 1rem; border-radius: 6px; overflow: auto; font-size: .9em; }
   code { font-family: var(--qmd-font-mono); }
-  /* inline code (not the scrollable <pre> kind) breaks rather than overflowing */
-  :not(pre) > code { overflow-wrap: anywhere; }
+  /* inline code (not the scrollable <pre> kind): a subtle tinted chip so it reads
+     as code in prose instead of blending in as same-colour monospace; .875em pulls
+     the mono glyphs down to the serif x-height. It also breaks rather than overflowing. */
+  :not(pre) > code { background: var(--qmd-code-bg); padding: .1em .35em; border-radius: 4px;
+    font-size: .875em; overflow-wrap: anywhere; }
   .qmd-copy { position: absolute; top: .45rem; right: .45rem; padding: .1rem .45rem;
               font: 600 11px/1.4 ui-sans-serif, system-ui, sans-serif; color: #555;
               background: #fff; border: 1px solid #d4d4d4; border-radius: 5px;
@@ -754,6 +757,10 @@ const BASE_CSS: &str = r#"
   pre.mermaid svg { max-width: 100%; height: auto; }
   blockquote { border-left: 3px solid var(--qmd-border); margin: 0 0 1rem; padding-left: 1rem; color: var(--qmd-muted); }
   img { max-width: 100%; }
+  /* embedded media (OJS/Three.js canvases, SVG figures, video, embeds) is clamped
+     to the page width so a fixed-size canvas can't force a horizontal scroll on
+     mobile; max-width clamps even against an author width: rule. */
+  canvas, svg, video, iframe { max-width: 100%; }
   /* a wide table scrolls within its own box (max-content up to the page width)
      rather than stretching the page and forcing a horizontal scroll on mobile */
   table { border-collapse: collapse; display: block; width: max-content;
@@ -809,19 +816,65 @@ const BASE_CSS: &str = r#"
          font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; }
   #TOC ul { list-style: none; margin: .2rem 0; padding-left: .9rem; }
   #TOC > ul { padding-left: 0; }
-  #TOC a { color: var(--qmd-muted); text-decoration: none; }
+  /* the transparent left border reserves the accent rail's space, so toggling the
+     active entry never shifts the text; the client's scrollspy sets .qmd-toc-active */
+  #TOC a { display: block; padding: .12rem 0 .12rem .6rem; border-left: 2px solid transparent;
+           color: var(--qmd-muted); text-decoration: none; }
   #TOC a:hover { color: var(--qmd-fg); }
+  #TOC a.qmd-toc-active { color: var(--qmd-fg); border-left-color: var(--qmd-accent); }
+  /* mobile pull-up-sheet chrome: hidden on desktop, revealed in the sheet media query */
+  #qmd-toc-handle, #qmd-toc-backdrop { display: none; }
   @media (max-width: 60rem) {
     /* keep the fixed control bar / diagnostics from covering the last line */
     body { padding-bottom: 2.75rem; }
-    /* Stack the TOC layout. The TOC sits after <main> in the DOM, so a plain
-       block layout would strand it at the bottom of the page; flex + order:-1
-       lifts it back above the content as a compact, scrollable contents block. */
-    body.has-toc { display: flex; flex-direction: column; max-width: var(--qmd-maxw); }
-    body.has-toc > #TOC { order: -1; position: static; max-height: 45vh; overflow: auto;
+    /* Static export (no JS): stack the TOC above the content. Keep it a grid so
+       the minmax(0,1fr) track clamps <main> to the viewport, and `order` lifts
+       the TOC (which follows <main> in the DOM) up instead of stranding it at the
+       bottom. The live preview opts out via .qmd-toc-sheet and uses the sheet. */
+    body.has-toc:not(.qmd-toc-sheet) { grid-template-columns: minmax(0, 1fr); max-width: var(--qmd-maxw); gap: 0; }
+    body.has-toc:not(.qmd-toc-sheet) > #TOC { order: -1; position: static; max-height: 45vh; overflow: auto;
            border-bottom: 1px solid var(--qmd-border); margin-bottom: 1.5rem; padding-bottom: 1rem; }
-    /* custom multi-column layouts collapse to one column (inline style ⇒ !important) */
-    .qmd-layout { grid-template-columns: 1fr !important; }
+
+    /* Live preview: a quiet pull-up handle opens the TOC as a bottom sheet. */
+    body.has-toc.qmd-toc-sheet { display: block; max-width: var(--qmd-maxw); }
+    /* the nav becomes the sheet: off-screen until .qmd-toc-open slides it up */
+    body.qmd-toc-sheet #TOC { position: fixed; inset: auto 0 0 0; z-index: 10001; margin: 0;
+      max-height: 72vh; padding: .25rem .6rem calc(1.4rem + env(safe-area-inset-bottom, 0px));
+      background: var(--qmd-bg); border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px rgba(0, 0, 0, .22);
+      overflow: auto; overscroll-behavior: contain;
+      transform: translateY(100%); transition: transform .3s cubic-bezier(.2, .8, .2, 1); }
+    body.qmd-toc-sheet #TOC::before { content: ""; display: block; width: 40px; height: 5px;
+      margin: .15rem auto .6rem; border-radius: 3px; background: var(--qmd-border); }
+    body.qmd-toc-sheet #TOC a { padding-top: .45rem; padding-bottom: .45rem; }
+    body.qmd-toc-sheet.qmd-toc-open #TOC { transform: translateY(0); }
+    /* dim backdrop behind the open sheet */
+    body.qmd-toc-sheet #qmd-toc-backdrop { display: block; position: fixed; inset: 0; z-index: 10000;
+      background: rgba(0, 0, 0, .42); opacity: 0; pointer-events: none; transition: opacity .25s; }
+    body.qmd-toc-sheet.qmd-toc-open #qmd-toc-backdrop { opacity: 1; pointer-events: auto; }
+    /* the resting handle: a quiet grabber you drag up or tap */
+    body.qmd-toc-sheet #qmd-toc-handle { display: flex; flex-direction: column; align-items: center;
+      position: fixed; left: 50%; transform: translateX(-50%); z-index: 9997;
+      bottom: calc(.45rem + env(safe-area-inset-bottom, 0px)); padding: .4rem 1.3rem .5rem; gap: .3rem;
+      border: 0; border-radius: 13px; background: color-mix(in srgb, var(--qmd-bg) 72%, transparent);
+      -webkit-backdrop-filter: blur(7px); backdrop-filter: blur(7px); box-shadow: 0 1px 7px rgba(0, 0, 0, .16);
+      cursor: grab; touch-action: none; -webkit-user-select: none; user-select: none; }
+    body.qmd-toc-sheet.qmd-toc-open #qmd-toc-handle { display: none; }
+    #qmd-toc-handle .qmd-toc-grip { width: 42px; height: 5px; border-radius: 3px; background: var(--qmd-muted); opacity: .6; }
+    /* current-section chip: hidden at rest, flashes in while scrolling, then fades */
+    #qmd-toc-cur { position: absolute; bottom: calc(100% + .35rem); left: 50%;
+      transform: translateX(-50%) translateY(5px); max-width: 72vw; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis; font: 600 12px ui-sans-serif, system-ui, sans-serif;
+      color: var(--qmd-muted); background: var(--qmd-bg); border: 1px solid var(--qmd-border);
+      padding: .2rem .55rem; border-radius: 9px; box-shadow: 0 2px 8px rgba(0, 0, 0, .12);
+      opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease; }
+    #qmd-toc-handle.qmd-show-label #qmd-toc-cur { opacity: 1; transform: translateX(-50%) translateY(0); }
+    @keyframes qmdPeekHint { 0%, 100% { bottom: calc(.45rem + env(safe-area-inset-bottom, 0px)); }
+      50% { bottom: calc(1.3rem + env(safe-area-inset-bottom, 0px)); } }
+    body.qmd-toc-sheet #qmd-toc-handle.qmd-hint { animation: qmdPeekHint 1.15s ease-in-out 2; }
+    /* custom multi-column layouts collapse to one column (inline style ⇒ !important).
+       minmax(0,1fr), not 1fr: the 0 floor lets wide children (figures/images) shrink
+       to the column instead of forcing their intrinsic width and overflowing the page. */
+    .qmd-layout { grid-template-columns: minmax(0, 1fr) !important; }
   }
   @media (max-width: 30rem) {
     body { padding-left: .85rem; padding-right: .85rem; font-size: 16px; }
@@ -981,6 +1034,7 @@ function qmdInitLightbox() {
     var fc = fig && fig.querySelector('figcaption');
     lbCap.textContent = fc ? fc.textContent : (srcImg.alt || '');
     box.classList.add('open');
+    document.documentElement.style.overflow = 'hidden'; // lock scroll behind the lightbox
   }
   function openMermaid(pre) {
     var svg = pre.querySelector('svg');
@@ -996,9 +1050,11 @@ function qmdInitLightbox() {
     var fc = fig && fig.querySelector('figcaption');
     lbCap.textContent = fc ? fc.textContent : '';
     box.classList.add('open');
+    document.documentElement.style.overflow = 'hidden'; // lock scroll behind the lightbox
   }
   function close() {
     box.classList.remove('open');
+    document.documentElement.style.overflow = ''; // restore page scroll
     lbImg.removeAttribute('src');
     lbSvg.innerHTML = '';
   }

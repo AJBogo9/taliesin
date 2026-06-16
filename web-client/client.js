@@ -119,6 +119,10 @@
   // TOC mode: rebuild `<nav id="TOC">` from the mounted, anchored headings after
   // every change, so the contents stay live as headings are edited/added/removed.
   const tocEl = window.QMD_TOC === true ? document.getElementById("TOC") : null;
+  // Mobile pull-up sheet chrome (present only on the live TOC page).
+  const tocHandle = tocEl && document.getElementById("qmd-toc-handle");
+  const tocBackdrop = tocEl && document.getElementById("qmd-toc-backdrop");
+  const tocCur = tocEl && document.getElementById("qmd-toc-cur");
   const escText = (s) =>
     s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   const buildToc = () => {
@@ -146,6 +150,142 @@
     tocEl.innerHTML = html + "</ul>";
   };
 
+  // TOC scrollspy: highlight the entry whose section currently sits at the top of
+  // the viewport, and keep it in view if the TOC is its own scroll area. The link
+  // nodes are recreated on every TOC rebuild, so the set is re-collected then; the
+  // per-scroll update is a cheap rect read, throttled to one rAF.
+  const TOC_ACTIVE = "qmd-toc-active";
+  let tocSpy = []; // [{ link, heading }] in document order
+  let tocSpyActive = null;
+  let tocSpyRaf = 0;
+  const updateTocActive = () => {
+    if (!tocEl || !tocSpy.length) return;
+    // A heading above this y marks the current section. Kept small (just past the
+    // 1rem scroll-margin a clicked anchor lands at) so clicking a heading lights up
+    // that heading, not the sub-heading right beneath it.
+    const line = 44;
+    let active = tocSpy[0];
+    for (const item of tocSpy) {
+      if (item.heading.getBoundingClientRect().top - line <= 0) active = item;
+      else break;
+    }
+    if (active === tocSpyActive) return;
+    tocSpyActive = active;
+    for (const item of tocSpy) item.link.classList.toggle(TOC_ACTIVE, item === active);
+    if (tocCur) tocCur.textContent = active.heading.textContent; // mobile handle chip
+    // keep the active entry within view when the TOC scrolls independently
+    const lr = active.link.getBoundingClientRect();
+    const tr = tocEl.getBoundingClientRect();
+    if (lr.top < tr.top) tocEl.scrollTop -= tr.top - lr.top + 8;
+    else if (lr.bottom > tr.bottom) tocEl.scrollTop += lr.bottom - tr.bottom + 8;
+  };
+  const refreshTocSpy = () => {
+    if (!tocEl) return;
+    tocSpy = [];
+    for (const link of tocEl.querySelectorAll("a[href^='#']")) {
+      const heading = document.getElementById(
+        decodeURIComponent(link.getAttribute("href").slice(1)),
+      );
+      if (heading) tocSpy.push({ link, heading });
+    }
+    tocSpyActive = null; // re-apply against the fresh link nodes
+    updateTocActive();
+  };
+  if (tocEl) {
+    const onSpy = () => {
+      flashTocLabel();
+      if (tocSpyRaf) return;
+      tocSpyRaf = requestAnimationFrame(() => { tocSpyRaf = 0; updateTocActive(); });
+    };
+    window.addEventListener("scroll", onSpy, { passive: true });
+    window.addEventListener("resize", onSpy);
+  }
+
+  // Mobile pull-up TOC: drag the handle up (the sheet follows) or tap it to open;
+  // tap the backdrop or a TOC entry to close. The current-section chip flashes in
+  // while scrolling, then fades, so the resting handle stays quiet.
+  let tocLabelTimer = 0;
+  function flashTocLabel() {
+    if (!tocHandle) return;
+    tocHandle.classList.add("qmd-show-label");
+    clearTimeout(tocLabelTimer);
+    tocLabelTimer = setTimeout(() => tocHandle.classList.remove("qmd-show-label"), 1000);
+  }
+  if (tocHandle && tocEl) {
+    const setOpen = (open) => document.body.classList.toggle("qmd-toc-open", open);
+    const resetSheet = () => {
+      tocEl.style.transition = ""; tocEl.style.transform = "";
+      tocBackdrop.style.transition = ""; tocBackdrop.style.opacity = ""; tocBackdrop.style.pointerEvents = "";
+    };
+    let d = null;
+    tocHandle.addEventListener("pointerdown", (e) => {
+      d = { y: e.clientY, t: Date.now(), moved: 0, h: tocEl.offsetHeight || Math.round(innerHeight * 0.6) };
+      try { tocHandle.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+    tocHandle.addEventListener("pointermove", (e) => {
+      if (!d) return;
+      d.moved = d.y - e.clientY;                         // upward drag is positive
+      const up = Math.max(0, Math.min(d.moved, d.h));
+      tocEl.style.transition = "none";
+      tocEl.style.transform = "translateY(calc(100% - " + up + "px))";
+      tocBackdrop.style.transition = "none";
+      tocBackdrop.style.opacity = (up / d.h * 0.42).toFixed(3);
+      tocBackdrop.style.pointerEvents = up > 2 ? "auto" : "none";
+    });
+    const finish = () => {
+      if (!d) return;
+      const dt = Date.now() - d.t;
+      const tap = d.moved < 6 && dt < 300;
+      const open = tap || d.moved > d.h * 0.3 || (d.moved > 36 && d.moved / Math.max(dt, 1) > 0.45);
+      resetSheet();
+      setOpen(!!open);
+      d = null;
+    };
+    tocHandle.addEventListener("pointerup", finish);
+    tocHandle.addEventListener("pointercancel", finish);
+    tocBackdrop.addEventListener("click", () => setOpen(false));
+    tocEl.addEventListener("click", (e) => { if (e.target.closest("a")) setOpen(false); });
+
+    // Drag the sheet DOWN to dismiss, but only when its list is scrolled to the
+    // top (otherwise a downward swipe just scrolls the list). Touch events, not
+    // pointer: native scroll won't deliver pointermove, so we take over the touch
+    // stream with preventDefault instead.
+    let sd = null;
+    tocEl.addEventListener("touchstart", (e) => {
+      if (!document.body.classList.contains("qmd-toc-open")) { sd = null; return; }
+      sd = { y: e.touches[0].clientY, t0: Date.now(), atTop: tocEl.scrollTop <= 0,
+             active: false, dy: 0, h: tocEl.offsetHeight || Math.round(innerHeight * 0.6) };
+    }, { passive: true });
+    tocEl.addEventListener("touchmove", (e) => {
+      if (!sd) return;
+      const dy = e.touches[0].clientY - sd.y;            // downward is positive
+      if (!sd.active) { if (sd.atTop && dy > 4) sd.active = true; else return; }
+      e.preventDefault();                                // take over from native scroll
+      sd.dy = Math.max(0, dy);
+      tocEl.style.transition = "none";
+      tocEl.style.transform = "translateY(" + sd.dy + "px)";
+      tocBackdrop.style.transition = "none";
+      tocBackdrop.style.opacity = (0.42 * Math.max(0, 1 - sd.dy / sd.h)).toFixed(3);
+    }, { passive: false });
+    const endSheetDrag = () => {
+      if (!sd) return;
+      const active = sd.active, dy = sd.dy, h = sd.h, dt = Date.now() - sd.t0;
+      sd = null;
+      if (!active) return;
+      const close = dy > h * 0.28 || dy > 90 || (dy > 40 && dy / Math.max(dt, 1) > 0.45);
+      resetSheet();
+      setOpen(!close);
+    };
+    tocEl.addEventListener("touchend", endSheetDrag);
+    tocEl.addEventListener("touchcancel", endSheetDrag);
+    // teach the gesture once on a narrow screen
+    if (window.matchMedia && matchMedia("(max-width: 60rem)").matches) {
+      tocHandle.classList.add("qmd-hint");
+      setTimeout(() => tocHandle.classList.remove("qmd-hint"), 2700);
+      flashTocLabel();
+    }
+  }
+
   const cssEscape = (s) =>
     window.CSS && CSS.escape ? CSS.escape(s) : s.replace(/["\\]/g, "\\$&");
 
@@ -169,6 +309,7 @@
   const afterChange = () => {
     syncReveal();
     buildToc();
+    refreshTocSpy();
     if (window.qmdEnhanceCode) window.qmdEnhanceCode(root);
   };
 
