@@ -729,7 +729,8 @@ const BASE_CSS: &str = r#"
     --qmd-maxw: 46rem;
   }
   body { max-width: var(--qmd-maxw); margin: 2rem auto; padding: 0 1rem;
-         font: var(--qmd-font-body); color: var(--qmd-fg); background: var(--qmd-bg); }
+         font: var(--qmd-font-body); color: var(--qmd-fg); background: var(--qmd-bg);
+         overflow-wrap: break-word; }
   a { color: var(--qmd-link); }
   h1, h2, h3, h4 { font-family: var(--qmd-font-head); line-height: 1.25; }
   .qmd-title-block { margin: 0 0 2rem; padding-bottom: 1rem; border-bottom: 1px solid var(--qmd-border); }
@@ -740,6 +741,8 @@ const BASE_CSS: &str = r#"
     font: 14px var(--qmd-font-head); color: var(--qmd-muted); }
   pre { position: relative; background: var(--qmd-code-bg); padding: 1rem; border-radius: 6px; overflow: auto; font-size: .9em; }
   code { font-family: var(--qmd-font-mono); }
+  /* inline code (not the scrollable <pre> kind) breaks rather than overflowing */
+  :not(pre) > code { overflow-wrap: anywhere; }
   .qmd-copy { position: absolute; top: .45rem; right: .45rem; padding: .1rem .45rem;
               font: 600 11px/1.4 ui-sans-serif, system-ui, sans-serif; color: #555;
               background: #fff; border: 1px solid #d4d4d4; border-radius: 5px;
@@ -751,7 +754,10 @@ const BASE_CSS: &str = r#"
   pre.mermaid svg { max-width: 100%; height: auto; }
   blockquote { border-left: 3px solid var(--qmd-border); margin: 0 0 1rem; padding-left: 1rem; color: var(--qmd-muted); }
   img { max-width: 100%; }
-  table { border-collapse: collapse; }
+  /* a wide table scrolls within its own box (max-content up to the page width)
+     rather than stretching the page and forcing a horizontal scroll on mobile */
+  table { border-collapse: collapse; display: block; width: max-content;
+          max-width: 100%; overflow-x: auto; }
   th, td { border: 1px solid var(--qmd-border); padding: .35rem .6rem; }
   table caption { caption-side: top; font-size: .9em; color: var(--qmd-muted); padding-bottom: .4rem; text-align: left; }
   thead th { border-bottom: 2px solid var(--qmd-border); }
@@ -792,6 +798,9 @@ const BASE_CSS: &str = r#"
   .qmd-eqn .qmd-eqn-body { min-width: 0; }
   .qmd-eqn .qmd-eqn-body .katex-display { margin: 0; }
   .qmd-eqn .qmd-eqn-number { color: var(--qmd-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  /* a display equation wider than the column scrolls horizontally inside its own
+     box instead of overflowing the page (the #1 mobile breakage for math docs) */
+  .katex-display { overflow-x: auto; overflow-y: hidden; padding: .3rem 0; }
   /* toc layout: content beside a sticky table of contents on wide screens */
   body.has-toc { max-width: 72rem; display: grid; align-items: start; gap: 2.5rem;
                  grid-template-columns: minmax(0, 46rem) 14rem; justify-content: center; }
@@ -803,9 +812,21 @@ const BASE_CSS: &str = r#"
   #TOC a { color: var(--qmd-muted); text-decoration: none; }
   #TOC a:hover { color: var(--qmd-fg); }
   @media (max-width: 60rem) {
-    body.has-toc { display: block; }
-    #TOC { position: static; max-height: none; border-bottom: 1px solid #eee;
-           margin-bottom: 1.5rem; padding-bottom: 1rem; }
+    /* keep the fixed control bar / diagnostics from covering the last line */
+    body { padding-bottom: 2.75rem; }
+    /* Stack the TOC layout. The TOC sits after <main> in the DOM, so a plain
+       block layout would strand it at the bottom of the page; flex + order:-1
+       lifts it back above the content as a compact, scrollable contents block. */
+    body.has-toc { display: flex; flex-direction: column; max-width: var(--qmd-maxw); }
+    body.has-toc > #TOC { order: -1; position: static; max-height: 45vh; overflow: auto;
+           border-bottom: 1px solid var(--qmd-border); margin-bottom: 1.5rem; padding-bottom: 1rem; }
+    /* custom multi-column layouts collapse to one column (inline style ⇒ !important) */
+    .qmd-layout { grid-template-columns: 1fr !important; }
+  }
+  @media (max-width: 30rem) {
+    body { padding-left: .85rem; padding-right: .85rem; font-size: 16px; }
+    .qmd-title-block .title { font-size: 1.7rem; }
+    .qmd-title-block .subtitle { font-size: 1.05rem; }
   }
 "#;
 

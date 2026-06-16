@@ -119,13 +119,18 @@ impl Executor {
             .unwrap_or(cells.len());
 
         let to_run = cells.len().saturating_sub(first_changed);
+        // Boot the kernel up-front (the real wait), so the per-cell progress below
+        // reflects actual execution rather than the startup it used to hide.
+        if to_run > 0 {
+            self.ensure_kernel().await;
+        }
         let mut outputs = Vec::with_capacity(cells.len());
         for (i, cell) in cells.iter().enumerate() {
             if i < first_changed {
                 outputs.push(self.cached[i].output.clone());
             } else {
-                // Progress for the cells actually running (skipped once the kernel
-                // is known-unavailable, since those are instant no-ops).
+                // Progress only when the kernel is up; otherwise cells are instant
+                // no-ops and a "cell k/n" line would be misleading.
                 if !self.failed {
                     crate::log::exec(i - first_changed + 1, to_run);
                 }
@@ -144,27 +149,34 @@ impl Executor {
         outputs
     }
 
-    async fn exec_cell(&mut self, code: &str) -> String {
-        if self.failed {
-            return String::new();
+    /// Start the warm kernel on first use, logging the (often multi-second) boot
+    /// so the wait is visible rather than hidden behind "cell 1/n". A failure is
+    /// latched (`failed`) so cells fall back to rendering as source.
+    async fn ensure_kernel(&mut self) {
+        if self.failed || self.kernel.is_some() {
+            return;
         }
-        if self.kernel.is_none() {
-            match Kernel::start(&self.python).await {
-                Ok(k) => {
-                    crate::log::kernel(&format!("ready ({})", self.python.display()));
-                    self.kernel = Some(k);
-                }
-                Err(e) => {
-                    crate::log::warn(&format!(
-                        "kernel unavailable ({e}); cells render as source only \
-                         (set QMD_FAST_PYTHON to a python with ipykernel)"
-                    ));
-                    self.failed = true;
-                    return String::new();
-                }
+        crate::log::kernel(&format!("starting ({})", self.python.display()));
+        match Kernel::start(&self.python).await {
+            Ok(k) => {
+                crate::log::kernel(&format!("ready ({})", self.python.display()));
+                self.kernel = Some(k);
+            }
+            Err(e) => {
+                crate::log::warn(&format!(
+                    "kernel unavailable ({e}); cells render as source only \
+                     (set QMD_FAST_PYTHON to a python with ipykernel)"
+                ));
+                self.failed = true;
             }
         }
-        match self.kernel.as_mut().unwrap().execute(code).await {
+    }
+
+    async fn exec_cell(&mut self, code: &str) -> String {
+        let Some(kernel) = self.kernel.as_mut() else {
+            return String::new(); // kernel unavailable: cell renders as source
+        };
+        match kernel.execute(code).await {
             Ok(outs) => render_outputs(&outs),
             Err(e) => {
                 crate::log::error(&format!("execution error: {e}"));
