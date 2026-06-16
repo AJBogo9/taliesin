@@ -279,12 +279,18 @@ fn render_internal(
         // A heading gets a stable, deduped anchor id (HTML docs only — reveal
         // decks put the slug on the wrapping `<section>` instead, so adding it
         // here too would duplicate the id in the DOM).
+        // A heading may carry a Pandoc/Quarto attribute (`## Title {#sec-x}`): use
+        // an explicit `#id` as the anchor (else a slug of the cleaned text), and
+        // strip the attribute from the rendered heading below.
+        let h_attr = heading_level.and_then(|_| parse_heading_attr(&block_src));
         let id_attr = match heading_level {
             Some(_) if format == DocFormat::Html => {
-                format!(
-                    " id=\"{}\"",
-                    escape_attr(&dedup_slug(&block_src, &mut heading_slugs))
-                )
+                let id = match &h_attr {
+                    Some((_, Some(id))) => id.clone(),
+                    Some((clean, None)) => dedup_slug(clean, &mut heading_slugs),
+                    None => dedup_slug(&block_src, &mut heading_slugs),
+                };
+                format!(" id=\"{}\"", escape_attr(&id))
             }
             _ => String::new(),
         };
@@ -395,6 +401,11 @@ fn render_internal(
             // `echo: false` / `include: false`: keep the block so the executor still
             // runs it, but hide its source.
             html.push_str(&hidden_cell(&attrs));
+        } else if h_attr.is_some() {
+            // Heading with a Pandoc attribute: render it, then drop the trailing
+            // `{#id ...}` text comrak left behind (it isn't CommonMark).
+            emit(node, &attrs, &mut html);
+            html = strip_heading_attr(&html);
         } else {
             emit(node, &attrs, &mut html);
         }
@@ -1488,6 +1499,43 @@ fn dedup_slug(block_src: &str, counts: &mut HashMap<String, u32>) -> String {
     };
     *n += 1;
     slug
+}
+
+/// A trailing Pandoc attribute on a heading line (`## Title {#id .class}`).
+/// Returns `(text_without_attr, explicit_id)`, or `None` when there is no attr.
+fn parse_heading_attr(block_src: &str) -> Option<(String, Option<String>)> {
+    let line = block_src.trim_end();
+    let open = line.rfind('{')?;
+    if !line.ends_with('}') {
+        return None;
+    }
+    let inner = &line[open + 1..line.len() - 1];
+    // Require an id or class so we don't strip a heading that merely ends in `}`.
+    if !(inner.starts_with('#') || inner.starts_with('.')) {
+        return None;
+    }
+    let id = inner
+        .split_whitespace()
+        .find_map(|tok| tok.strip_prefix('#'))
+        .filter(|id| !id.is_empty())
+        .map(str::to_string);
+    Some((line[..open].trim_end().to_string(), id))
+}
+
+/// Remove the trailing `{...}` attribute comrak leaves as literal text inside a
+/// rendered heading (heading attributes aren't CommonMark, so it doesn't consume
+/// them). Only called when [`parse_heading_attr`] found one.
+fn strip_heading_attr(html: &str) -> String {
+    let Some(close) = html.rfind("</h") else {
+        return html.to_string();
+    };
+    let inner = &html[..close];
+    if inner.trim_end().ends_with('}')
+        && let Some(open) = inner.rfind('{')
+    {
+        return format!("{}{}", inner[..open].trim_end(), &html[close..]);
+    }
+    html.to_string()
 }
 
 // --- figures -------------------------------------------------------------
@@ -3041,6 +3089,32 @@ mod tests {
             cell2.html.contains("print(1)"),
             "per-cell echo:true must override the execute default: {}",
             cell2.html
+        );
+    }
+
+    #[test]
+    fn explicit_heading_id_is_applied_and_stripped() {
+        let doc = render_document("## Methods {#sec-methods}\n\nText.\n");
+        let h = &doc.blocks[0].html;
+        assert!(
+            h.contains("id=\"sec-methods\""),
+            "explicit id not applied: {h}"
+        );
+        assert!(
+            !h.contains('{'),
+            "the {{#id}} attribute leaked into the heading: {h}"
+        );
+        assert!(
+            h.contains(">Methods</h2>"),
+            "heading text wrong after strip: {h}"
+        );
+
+        // A heading without an attribute still gets a slug id.
+        let plain = render_document("## My Heading\n");
+        assert!(
+            plain.blocks[0].html.contains("id=\"my-heading\""),
+            "slug id missing: {}",
+            plain.blocks[0].html
         );
     }
 
