@@ -166,7 +166,11 @@ tables with per-column alignment:
 > Smart typography turns straight quotes into curly ones and handles ellipses…,
 > matching the look of the author's existing posts.
 
-Syntax-highlighted code blocks get a hover **Copy** button:
+Code blocks are syntax-highlighted **server-side** (in Rust, via syntect) and get
+a hover **Copy** button. Like the math, highlighting ships fully offline: the
+colors are emitted as scope classes the theme styles, so the exported HTML needs
+no CDN, the first paint is already colored, and the light/dark toggle restyles
+code with nothing to re-run on the client.
 
 ```rust
 /// Every rendered block carries a content-hash id and its source range.
