@@ -17,7 +17,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use qmd_fast_core::{render_document, render_document_with_includes, render_html_page};
+use qmd_fast_core::{Site, render_document, render_document_with_includes, render_html_page};
 
 fn corpus_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus")
@@ -305,22 +305,44 @@ fn equation_crossref_resolves_to_number() {
     );
 }
 
-/// GAP (site generator): a `listing:` page (the blog index, projects index, and
-/// the homepage's "recent posts") should crawl its `contents:` directory and
-/// emit post cards. Today the frontmatter is ignored and only the page's prose
-/// renders. This is out of qmd-fast's current single-doc scope; the test marks
-/// the boundary of "iterate on a post" vs "build the whole site".
+/// A `listing:` page (the blog index, projects index, and the homepage's "recent
+/// posts") crawls its `contents:` directory and emits post cards. This is a
+/// site-level feature, so it's exercised through `Site` against the real blog.
 #[test]
-#[ignore = "gap: listing: frontmatter is ignored — no site-level post-card generation (single-doc scope)"]
 fn listing_frontmatter_emits_post_cards() {
-    let src = "---\ntitle: \"Blog\"\nlisting:\n  contents: posts\n  type: grid\n---\n\nIntro paragraph.\n";
-    let html = render_html_page(src, "Blog");
+    let site = Site::discover(&corpus_dir().join("tech-blog"));
+
+    // The blog index lists every post as a card, newest-first.
+    let blog = site.render_page("blog.qmd").expect("blog renders");
     assert!(
-        html.contains("quarto-listing")
-            || html.contains("class=\"card")
-            || html.contains("listing"),
-        "listing produced no post-card markup"
+        blog.contains("qmd-listing-grid"),
+        "blog: no listing grid produced"
     );
+    let card_count = blog.matches("class=\"qmd-card\"").count();
+    assert!(
+        card_count >= 5,
+        "blog: expected a card per post, got {card_count}"
+    );
+    // Cards link to the built `.html`, show a card title, and a category badge.
+    assert!(
+        blog.contains("href=\"posts/em-algorithm/index.html\""),
+        "blog: post card link not rewritten to .html"
+    );
+    assert!(blog.contains("qmd-card-title"), "blog: card has no title");
+    assert!(blog.contains("qmd-cat"), "blog: category badges missing");
+    // Newest-first: the latest-dated post's card precedes an older one.
+    let fourier = blog.find("posts/fourier-transform/").unwrap(); // 2026-05-15
+    let em = blog.find("posts/em-algorithm/").unwrap(); // 2026-04-14
+    assert!(fourier < em, "blog: cards not sorted newest-first");
+
+    // The homepage fills its `::: {#recent-posts}` placeholder, capped at 3.
+    let home = site.render_page("index.qmd").expect("home renders");
+    assert!(
+        home.contains("id=\"recent-posts\""),
+        "home: recent-posts container missing"
+    );
+    let recent = home.matches("class=\"qmd-card\"").count();
+    assert_eq!(recent, 3, "home: max-items: 3 not honoured (got {recent})");
 }
 
 /// GAP (site generator): an `about:` page (the homepage uses `template: jolla`)

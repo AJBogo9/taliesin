@@ -3097,7 +3097,33 @@ const SITE_CSS: &str = r#"
   .qmd-foot-item:hover { color: var(--qmd-fg); }
   .qmd-foot-item svg { width: 16px; height: 16px; }
 
+  /* listing: post cards (a `grid` of cards, or a stacked `default` list) */
+  .qmd-listing { margin: 1.75rem 0; }
+  .qmd-listing-grid { display: grid; gap: 1.25rem;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); }
+  .qmd-listing-default { display: flex; flex-direction: column; gap: 1rem; }
+  .qmd-card { display: flex; flex-direction: column; text-decoration: none; color: var(--qmd-fg);
+    border: 1px solid var(--qmd-border); border-radius: 10px; overflow: hidden; background: var(--qmd-bg);
+    transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease; }
+  .qmd-card:hover { border-color: var(--qmd-accent); transform: translateY(-2px);
+    box-shadow: 0 6px 20px var(--qmd-edge-shadow); }
+  .qmd-listing-default .qmd-card { flex-direction: row; align-items: stretch; }
+  .qmd-card-img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block;
+    background: var(--qmd-code-bg); }
+  .qmd-listing-default .qmd-card-img { width: 12rem; aspect-ratio: 4 / 3; flex: none; }
+  .qmd-card-body { padding: .85rem 1rem 1rem; display: flex; flex-direction: column; gap: .35rem; }
+  .qmd-card-date { font: 600 .72rem var(--qmd-font-head); color: var(--qmd-muted);
+    text-transform: uppercase; letter-spacing: .04em; }
+  .qmd-card-title { font: 600 1.08rem/1.25 var(--qmd-font-head); margin: 0; }
+  .qmd-card-desc { margin: 0; font-size: .92rem; color: var(--qmd-muted); line-height: 1.5; }
+  .qmd-card-cats { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .25rem; }
+  .qmd-cat { font: 500 .72rem var(--qmd-font-head); color: var(--qmd-muted);
+    background: var(--qmd-code-bg); border: 1px solid var(--qmd-border);
+    border-radius: 999px; padding: .1rem .55rem; }
+
   @media (max-width: 640px) {
+    .qmd-listing-default .qmd-card { flex-direction: column; }
+    .qmd-listing-default .qmd-card-img { width: 100%; aspect-ratio: 16 / 9; }
     .qmd-nav-burger { display: flex; flex-direction: column; gap: 4px; cursor: pointer;
       margin-left: auto; padding: .45rem; }
     .qmd-nav-burger span { display: block; width: 22px; height: 2px; border-radius: 2px;

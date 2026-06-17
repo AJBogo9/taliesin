@@ -18,7 +18,7 @@
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 
-use crate::render::{self, SiteCtx};
+use crate::render::{self, Block, SiteCtx};
 
 /// The root project config, parsed from `_quarto.yml`. Only the subset qmd-fast
 /// understands is modelled; unknown keys are ignored (Quarto compatibility —
@@ -93,12 +93,36 @@ pub struct Page {
     pub rel: String,
     /// Output URL relative to the site root, e.g. `posts/em-algorithm/index.html`.
     pub url: String,
-    /// Front-matter title (for nav labels + prev/next).
+    /// Front-matter title (for nav labels + prev/next + listing cards).
     pub title: Option<String>,
     /// Front-matter `date` as written (ISO strings sort chronologically).
     pub date: Option<String>,
+    /// Front-matter `description` (shown on a listing card).
+    pub description: Option<String>,
+    /// Front-matter `image`, resolved to a site-root-relative path (for cards).
+    pub card_image: Option<String>,
+    /// Front-matter `categories` (shown as badges on a card).
+    pub categories: Vec<String>,
     /// Whether the page lives under `posts/` (drives prev/next navigation).
     pub is_post: bool,
+    /// `listing:` blocks declared on this page (the blog index, projects, etc.).
+    pub listings: Vec<ListingSpec>,
+}
+
+/// A `listing:` front-matter block: a request to render a grid/list of cards for
+/// the documents under `contents`.
+#[derive(Debug, Clone)]
+pub struct ListingSpec {
+    /// Optional target id (`listing: { id: x }`) → fills `::: {#x}`; else appended.
+    pub id: Option<String>,
+    /// The directory whose pages are listed (relative to the hosting page).
+    pub contents: String,
+    /// `type: grid` → card grid; otherwise a stacked default list.
+    pub grid: bool,
+    /// Newest-first when true (`sort: "date desc"`, the default).
+    pub sort_desc: bool,
+    /// `max-items:` cap, if any.
+    pub max_items: Option<usize>,
 }
 
 /// A discovered multi-page site: the root config plus its input pages.
@@ -128,15 +152,22 @@ impl Site {
             .map(|input| {
                 let rel = rel_str(root, &input);
                 let url = qmd_to_html(&rel);
-                let (title, date) = front_matter_title_date(&input);
+                let fm = parse_front_matter(&input);
+                // `image` is relative to the page's own directory; store it
+                // site-root-relative so a listing card on another page can link it.
+                let card_image = fm.image.map(|img| join_rel(&rel, &img));
                 let is_post = rel.starts_with("posts/");
                 Page {
                     input,
                     rel,
                     url,
-                    title,
-                    date,
+                    title: fm.title,
+                    date: fm.date,
+                    description: fm.description,
+                    card_image,
+                    categories: fm.categories,
                     is_post,
+                    listings: fm.listings,
                 }
             })
             .collect();
@@ -191,11 +222,115 @@ impl Site {
         let page = self.page(rel_or_url)?;
         let src = std::fs::read_to_string(&page.input).ok()?;
         let base = page.input.parent().unwrap_or(&self.root);
-        let doc = render::render_document_with_includes(&src, base);
+        let mut doc = render::render_document_with_includes(&src, base);
+        self.expand_listings(page, &mut doc.blocks);
         let ctx = self.page_chrome(page);
         let fallback = page.title.as_deref().unwrap_or("");
         let html = render::html_page_from_doc_in_site(&doc, fallback, &ctx);
         Some(rewrite_qmd_links(&html))
+    }
+
+    // --- listings ---------------------------------------------------------
+
+    /// Expand each `listing:` block declared on `page` into a grid/list of post
+    /// cards, mutating `blocks` in place: a listing with an `id` fills the matching
+    /// `::: {#id}` placeholder block; an id-less listing is appended as a new block.
+    /// Both the static build and the live preview call this, so cards stay in the
+    /// block model (mounted + diffed like any other block).
+    pub fn expand_listings(&self, page: &Page, blocks: &mut Vec<Block>) {
+        for spec in &page.listings {
+            let cards = self.listing_html(page, spec);
+            match &spec.id {
+                Some(id) => {
+                    let needle = format!("id=\"{}\"", id);
+                    match blocks.iter().position(|b| b.html.contains(&needle)) {
+                        // A `::: {#id}` container → inject the cards inside it.
+                        Some(i) if blocks[i].html.contains("</div>") => {
+                            let pos = blocks[i].html.rfind("</div>").unwrap();
+                            blocks[i].html.insert_str(pos, &cards);
+                        }
+                        // An anchor (e.g. an auto-slugged heading sharing the id, since
+                        // an empty fenced div emits no block) → cards go right after it.
+                        Some(i) => blocks.insert(i + 1, listing_block(&spec.contents, &cards)),
+                        // No target at all → append so the listing still renders.
+                        None => blocks.push(listing_block(&spec.contents, &cards)),
+                    }
+                }
+                None => blocks.push(listing_block(&spec.contents, &cards)),
+            }
+        }
+    }
+
+    /// The pages a listing covers: those under its `contents:` directory (relative
+    /// to the hosting page), newest-first (or oldest-first), capped by `max-items`.
+    fn collection(&self, host: &Page, spec: &ListingSpec) -> Vec<&Page> {
+        let prefix = format!(
+            "{}/",
+            join_rel(&host.rel, spec.contents.trim_end_matches('/'))
+        );
+        let mut items: Vec<&Page> = self
+            .pages
+            .iter()
+            .filter(|p| p.rel != host.rel && p.title.is_some() && p.rel.starts_with(&prefix))
+            .collect();
+        // Order by date (string-ISO sorts chronologically), tiebreak on rel.
+        items.sort_by(|a, b| a.date.cmp(&b.date).then_with(|| a.rel.cmp(&b.rel)));
+        if spec.sort_desc {
+            items.reverse();
+        }
+        if let Some(n) = spec.max_items {
+            items.truncate(n);
+        }
+        items
+    }
+
+    /// Render a listing's cards. `host` fixes the link/image depth so cards on a
+    /// nested page still resolve.
+    fn listing_html(&self, host: &Page, spec: &ListingSpec) -> String {
+        let up = "../".repeat(host.url.matches('/').count());
+        let layout = if spec.grid { "grid" } else { "default" };
+        let mut s = format!("<div class=\"qmd-listing qmd-listing-{layout}\">");
+        for p in self.collection(host, spec) {
+            s.push_str(&self.card_html(p, &up, spec.grid));
+        }
+        s.push_str("</div>");
+        s
+    }
+
+    fn card_html(&self, p: &Page, up: &str, grid: bool) -> String {
+        let href = format!("{up}{}", p.url);
+        let img = match (grid, &p.card_image) {
+            (true, Some(src)) => format!(
+                "<img class=\"qmd-card-img\" src=\"{up}{}\" alt=\"\" loading=\"lazy\">",
+                esc(src)
+            ),
+            _ => String::new(),
+        };
+        let date = p
+            .date
+            .as_deref()
+            .map(|d| format!("<div class=\"qmd-card-date\">{}</div>", esc(d)))
+            .unwrap_or_default();
+        let title = esc(p.title.as_deref().unwrap_or(&p.rel));
+        let desc = p
+            .description
+            .as_deref()
+            .map(|d| format!("<p class=\"qmd-card-desc\">{}</p>", esc(d)))
+            .unwrap_or_default();
+        let cats = if p.categories.is_empty() {
+            String::new()
+        } else {
+            let badges: String = p
+                .categories
+                .iter()
+                .map(|c| format!("<span class=\"qmd-cat\">{}</span>", esc(c)))
+                .collect();
+            format!("<div class=\"qmd-card-cats\">{badges}</div>")
+        };
+        format!(
+            "<a class=\"qmd-card\" href=\"{href}\">{img}\
+             <div class=\"qmd-card-body\">{date}<h3 class=\"qmd-card-title\">{title}</h3>{desc}{cats}</div></a>"
+        )
     }
 
     // --- chrome -----------------------------------------------------------
@@ -485,41 +620,143 @@ fn rewrite_one_href(val: &str) -> String {
     }
 }
 
-/// Pull `title:` and `date:` out of a page's front-matter block without running
-/// the full renderer (discovery touches every page; keep it cheap).
-fn front_matter_title_date(path: &Path) -> (Option<String>, Option<String>) {
-    let Ok(src) = std::fs::read_to_string(path) else {
-        return (None, None);
-    };
-    let mut lines = src.lines();
-    if lines.next().map(str::trim) != Some("---") {
-        return (None, None);
-    }
-    let mut title = None;
-    let mut date = None;
-    for line in lines {
-        if line.trim() == "---" {
-            break;
-        }
-        if let Some(v) = line.strip_prefix("title:") {
-            title = Some(unquote(v.trim()));
-        } else if let Some(v) = line.strip_prefix("date:") {
-            date = Some(unquote(v.trim()));
-        }
-    }
-    (title, date)
+/// The front-matter fields discovery needs for nav labels, prev/next, and the
+/// listing cards. Parsed once per page from the `---` block.
+#[derive(Default)]
+struct FrontInfo {
+    title: Option<String>,
+    date: Option<String>,
+    description: Option<String>,
+    image: Option<String>,
+    categories: Vec<String>,
+    listings: Vec<ListingSpec>,
 }
 
-/// Strip a single layer of surrounding quotes from a scalar YAML value.
-fn unquote(s: &str) -> String {
-    let s = s.trim();
-    if (s.starts_with('"') && s.ends_with('"') && s.len() >= 2)
-        || (s.starts_with('\'') && s.ends_with('\'') && s.len() >= 2)
-    {
-        s[1..s.len() - 1].to_string()
-    } else {
-        s.to_string()
+/// Parse a page's `---` front-matter block (YAML) into the fields discovery
+/// needs. Tolerant: a missing or malformed block just yields defaults.
+fn parse_front_matter(path: &Path) -> FrontInfo {
+    let Ok(src) = std::fs::read_to_string(path) else {
+        return FrontInfo::default();
+    };
+    let Some(block) = front_matter_block(&src) else {
+        return FrontInfo::default();
+    };
+    let Ok(val) = serde_yaml::from_str::<serde_yaml::Value>(block) else {
+        return FrontInfo::default();
+    };
+    FrontInfo {
+        title: scalar(val.get("title")),
+        date: scalar(val.get("date")),
+        description: scalar(val.get("description")),
+        image: scalar(val.get("image")),
+        categories: string_list(val.get("categories")),
+        listings: parse_listings(val.get("listing")),
     }
+}
+
+/// The text between the leading `---` and the next `---` (the YAML front matter),
+/// or `None` if the document doesn't open with a front-matter fence.
+fn front_matter_block(src: &str) -> Option<&str> {
+    let rest = src.strip_prefix("---")?;
+    // Tolerate `---\n` (and a leading BOM/whitespace already stripped by caller).
+    let rest = rest
+        .strip_prefix('\n')
+        .or_else(|| rest.strip_prefix("\r\n"))?;
+    let end = rest.find("\n---")?;
+    Some(&rest[..end])
+}
+
+/// A YAML scalar (string/number/bool) as a display string.
+fn scalar(v: Option<&serde_yaml::Value>) -> Option<String> {
+    match v? {
+        serde_yaml::Value::String(s) => Some(s.clone()),
+        serde_yaml::Value::Number(n) => Some(n.to_string()),
+        serde_yaml::Value::Bool(b) => Some(b.to_string()),
+        _ => None,
+    }
+}
+
+/// A YAML value that is either a single scalar or a sequence of scalars → a list
+/// of strings (used for `categories`).
+fn string_list(v: Option<&serde_yaml::Value>) -> Vec<String> {
+    match v {
+        Some(serde_yaml::Value::Sequence(seq)) => {
+            seq.iter().filter_map(|x| scalar(Some(x))).collect()
+        }
+        Some(other) => scalar(Some(other)).into_iter().collect(),
+        None => Vec::new(),
+    }
+}
+
+/// Parse a `listing:` value: a single map, or a sequence of maps (cv.qmd).
+fn parse_listings(v: Option<&serde_yaml::Value>) -> Vec<ListingSpec> {
+    match v {
+        Some(serde_yaml::Value::Sequence(seq)) => {
+            seq.iter().filter_map(parse_listing_spec).collect()
+        }
+        Some(map @ serde_yaml::Value::Mapping(_)) => parse_listing_spec(map).into_iter().collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn parse_listing_spec(v: &serde_yaml::Value) -> Option<ListingSpec> {
+    // `contents` is what makes a listing renderable; without it there's nothing
+    // to list (and we only support a single directory string for now).
+    let contents = scalar(v.get("contents"))?;
+    let sort_desc = scalar(v.get("sort"))
+        .map(|s| !s.contains("asc"))
+        .unwrap_or(true);
+    let max_items = v
+        .get("max-items")
+        .and_then(serde_yaml::Value::as_u64)
+        .map(|n| n as usize);
+    Some(ListingSpec {
+        id: scalar(v.get("id")),
+        contents,
+        grid: scalar(v.get("type")).as_deref() == Some("grid"),
+        sort_desc,
+        max_items,
+    })
+}
+
+/// A synthetic block wrapping a listing's cards — used for an id-less listing or
+/// when no `::: {#id}` placeholder exists. Generated, so it carries no sourcepos
+/// (the corpus invariant test skips empty-sourcepos blocks, like References).
+fn listing_block(contents: &str, cards_html: &str) -> Block {
+    Block {
+        id: format!("listing-{}", contents.replace('/', "-")),
+        sourcepos: String::new(),
+        source_file: None,
+        html: cards_html.to_string(),
+        cell: None,
+    }
+}
+
+/// Resolve `target` (a path relative to the file at `from_rel`) to a site-root-
+/// relative path: e.g. (`posts/em/index.qmd`, `thumbnail.webp`) → `posts/em/thumbnail.webp`.
+fn join_rel(from_rel: &str, target: &str) -> String {
+    if target.starts_with('/') {
+        return target.trim_start_matches('/').to_string();
+    }
+    let dir = match from_rel.rsplit_once('/') {
+        Some((d, _)) => d,
+        None => "",
+    };
+    let mut parts: Vec<&str> = if dir.is_empty() {
+        Vec::new()
+    } else {
+        dir.split('/').collect()
+    };
+    for seg in target.split('/') {
+        match seg {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            s => parts.push(s),
+        }
+    }
+    parts.join("/")
 }
 
 /// Minimal HTML-text escape for nav labels (the project-wide `html_escape` in §6

@@ -20,8 +20,9 @@ author's own projects; provenance is below.
 author's real blog with the deploy caches stripped (`.venv`, `_freeze`, `_site`,
 `infra`, heavy demo media); only the renderable sources are vendored. `build
 corpus/tech-blog` emits a static `_site/`; `preview corpus/tech-blog` serves it
-live with cross-page navigation and per-page hot reload. Its `listing:`/`about:`
-front matter is intentionally not yet consumed (see `todo.md` §4).
+live with cross-page navigation and per-page hot reload. Its `listing:` blocks
+(blog index, projects index, homepage recent-posts) render post cards; its
+`about:` front matter is not yet consumed (see `todo.md` §4).
 
 `posts/pca-geometry/index.qmd` pulls in `_includes/three-scene.qmd` via
 `{{< include ../../_includes/three-scene.qmd >}}`; the `posts/` + `_includes/`

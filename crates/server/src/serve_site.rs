@@ -181,25 +181,27 @@ fn serve_asset(root: &Path, rel: &str) -> axum::response::Response {
 /// first visit), then render its full live HTML for the first paint.
 fn ensure_and_render_page(app: &SiteApp, page: &Page) -> String {
     let rel = page.rel.clone();
-    let created = {
-        let mut pages = app.pages.lock().unwrap();
-        if pages.contains_key(&rel) {
-            false
-        } else {
-            let doc = render_markdown_only(page);
-            let (tx, _) = broadcast::channel(256);
-            pages.insert(rel.clone(), PageState { doc, tx });
-            true
-        }
-    };
-    if created {
+    if !app.pages.lock().unwrap().contains_key(&rel) {
+        // First-paint render (markdown + listing cards, no code execution yet);
+        // done outside the pages lock since it needs the site lock for listings.
+        let doc = {
+            let site = app.site.lock().unwrap();
+            render_markdown_only(&site, page)
+        };
+        let (tx, _) = broadcast::channel(256);
+        app.pages
+            .lock()
+            .unwrap()
+            .entry(rel.clone())
+            .or_insert(PageState { doc, tx });
         let _ = app.build_tx.send(rel.clone());
     }
     site_page_html(app, page)
 }
 
 /// A first-paint render without code execution (the worker fills outputs after).
-fn render_markdown_only(page: &Page) -> PageDoc {
+/// Listing cards are expanded here so the blog index paints with its posts.
+fn render_markdown_only(site: &qmd_fast_core::Site, page: &Page) -> PageDoc {
     let Ok(src) = std::fs::read_to_string(&page.input) else {
         return PageDoc {
             errored: true,
@@ -208,12 +210,14 @@ fn render_markdown_only(page: &Page) -> PageDoc {
     };
     let base = page.input.parent().unwrap_or(Path::new("."));
     let doc = qmd_fast_core::render_document_with_includes(&src, base);
+    let mut blocks = doc.blocks;
+    site.expand_listings(page, &mut blocks);
     PageDoc {
         title: doc.title,
         toc: doc.toc,
         theme_css: doc.theme_css,
         theme_default: doc.theme_default,
-        blocks: doc.blocks,
+        blocks,
         diagnostics: Vec::new(),
         errored: false,
     }
@@ -507,7 +511,12 @@ async fn build_page(app: &SiteApp, rel: &str, execs: &mut HashMap<String, crate:
     let exec = execs
         .entry(rel.to_string())
         .or_insert_with(crate::exec::Executor::new);
-    let blocks = exec.run(doc.blocks).await;
+    let mut blocks = exec.run(doc.blocks).await;
+    // Expand listing cards (queries the whole site, so it needs the site lock).
+    {
+        let site = app.site.lock().unwrap();
+        site.expand_listings(&page, &mut blocks);
+    }
     let diags = page_diagnostics(&page.input, &base, exec);
 
     let mut pages = app.pages.lock().unwrap();

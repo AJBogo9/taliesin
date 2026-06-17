@@ -569,8 +569,16 @@ its model. The chrome is a leaner take on Quarto's website: a theme-aware sticky
 navbar (with the theme and click-to-source toggles folded in, and a no-JS mobile
 menu), a slim footer, and restyled prev/next, all driven by the same `--qmd-*`
 variables a theme extension already styles. There is no title banner, no bundled
-search, and no RSS feed. `listing:` post cards and `about:` profile pages are not
-yet generated (the page prose still renders); see `todo.md` §4.
+search, and no RSS feed.
+
+A `listing:` block turns a page into an index: it crawls the `contents:` directory
+and emits a card per document (image, date, title, description, categories), sorted
+by `date` and capped by `max-items`. `type: grid` lays them out as a card grid
+(collapsing to one column on a phone); the default is a stacked list. With
+`listing: { id: x }` the cards fill a `::: {#x}` block (e.g. a homepage "recent
+posts" section); otherwise they're appended to the page. So the blog index, the
+projects index, and the homepage's recent-posts all generate from front matter.
+(`about:` profile pages are not generated yet; see `todo.md` §4.)
 
 ## Reading on any screen
 
