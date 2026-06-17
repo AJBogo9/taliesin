@@ -93,7 +93,13 @@ fn cmd_build(args: &[String]) -> ExitCode {
     let p = Path::new(path);
     let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("document");
     let base = p.parent().unwrap_or_else(|| Path::new("."));
-    let html = qmd_fast_core::render_html_page_with_includes(&src, base, stem);
+    let html = match build_page_executing(&src, base, stem) {
+        Ok(h) => h,
+        Err(e) => {
+            log::error(&format!("cannot start runtime: {e}"));
+            return ExitCode::FAILURE;
+        }
+    };
 
     if let Some(dir) = out_dir {
         return build_dir(&html, base, Path::new(dir));
@@ -112,6 +118,26 @@ fn cmd_build(args: &[String]) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Render a single document to a self-contained HTML page, executing its code
+/// cells first so figures / `ojs_define` outputs are baked in (mirrors the site
+/// build's per-page execution). A missing kernel logs a warning and the cells fall
+/// back to source, matching the preview's behaviour.
+fn build_page_executing(src: &str, base: &Path, fallback: &str) -> std::io::Result<String> {
+    let rt = tokio::runtime::Runtime::new()?;
+    Ok(rt.block_on(async {
+        let mut doc = qmd_fast_core::render_document_with_includes(src, base);
+        let mut ex = exec::Executor::new();
+        doc.blocks = ex.run(std::mem::take(&mut doc.blocks)).await;
+        if ex.diagnostic().is_some() {
+            log::warn(
+                "kernel unavailable; code cells emitted as source \
+                 (set QMD_FAST_PYTHON to a python with ipykernel)",
+            );
+        }
+        qmd_fast_core::render_doc_to_page(&doc, fallback)
+    }))
 }
 
 /// Write `<dir>/index.html` and copy each referenced local asset (an `src=`/
@@ -161,6 +187,19 @@ fn build_dir(html: &str, base: &Path, dir: &Path) -> ExitCode {
 /// the output directory is a deployable static site. `out_override` (the `--out`
 /// flag) wins over the config's `output-dir` (default `_site`).
 fn build_site(root: &Path, out_override: Option<&str>) -> ExitCode {
+    // Executing code cells needs the async kernel, so the whole site build runs on
+    // a tokio runtime (mirrors the preview server's setup).
+    let rt = match tokio::runtime::Runtime::new() {
+        Ok(rt) => rt,
+        Err(e) => {
+            log::error(&format!("cannot start runtime: {e}"));
+            return ExitCode::FAILURE;
+        }
+    };
+    rt.block_on(build_site_async(root, out_override))
+}
+
+async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
     let site = qmd_fast_core::Site::discover(root);
     for w in &site.warnings {
         log::warn(w);
@@ -182,13 +221,22 @@ fn build_site(root: &Path, out_override: Option<&str>) -> ExitCode {
     // 1. Mirror non-source assets (images, etc.) preserving the tree.
     let assets = mirror_assets(root, &out);
 
-    // 2. Render each page with chrome + rewritten links to its output path.
+    // 2. Render each page with chrome + rewritten links. Code cells run against a
+    //    fresh kernel per page (clean state per document; pages with no cells never
+    //    boot one), so the static `_site/` carries real computed outputs.
     let mut pages = 0usize;
+    let mut kernel_unavailable = false;
     for page in &site.pages {
-        let Some(html) = site.render_page(&page.rel) else {
-            log::warn(&format!("could not render {}", page.rel));
+        let Ok(src) = std::fs::read_to_string(&page.input) else {
+            log::warn(&format!("cannot read {}", page.input.display()));
             continue;
         };
+        let base = page.input.parent().unwrap_or(root);
+        let mut doc = qmd_fast_core::render_document_with_includes(&src, base);
+        let mut exec = exec::Executor::new();
+        doc.blocks = exec.run(std::mem::take(&mut doc.blocks)).await;
+        kernel_unavailable |= exec.diagnostic().is_some();
+        let html = site.render_page_doc(page, doc);
         let dest = out.join(&page.url);
         if let Some(parent) = dest.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -199,6 +247,12 @@ fn build_site(root: &Path, out_override: Option<&str>) -> ExitCode {
         }
     }
 
+    if kernel_unavailable {
+        log::warn(
+            "kernel unavailable; code cells were emitted as source \
+             (set QMD_FAST_PYTHON to a python with ipykernel)",
+        );
+    }
     log::built(&format!(
         "{}  ·  {pages} page{}  ·  {assets} asset{}",
         out.display(),

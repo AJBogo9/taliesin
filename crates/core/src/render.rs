@@ -1678,6 +1678,13 @@ fn page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
     }
 }
 
+/// Render an already-built [`RenderedDoc`] into a standalone HTML page (no site
+/// chrome). Lets the `build` CLI run code cells first and then emit the page from
+/// the executed blocks; the in-process [`render_html_page`] path stays unchanged.
+pub fn render_doc_to_page(doc: &RenderedDoc, fallback_title: &str) -> String {
+    page_from_doc(doc, fallback_title)
+}
+
 /// Shared chrome for a page rendered inside a multi-page site: pre-built navbar,
 /// footer, and post prev/next HTML. Built by `qmd_fast_core::site` and injected
 /// around the page body. Empty fields render nothing.

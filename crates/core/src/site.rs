@@ -283,12 +283,21 @@ impl Site {
         let page = self.page(rel_or_url)?;
         let src = std::fs::read_to_string(&page.input).ok()?;
         let base = page.input.parent().unwrap_or(&self.root);
-        let mut doc = render::render_document_with_includes(&src, base);
+        let doc = render::render_document_with_includes(&src, base);
+        Some(self.render_page_doc(page, doc))
+    }
+
+    /// Finish a page whose `doc.blocks` are already produced — and possibly
+    /// code-executed (the static build runs cells, then calls this): apply the
+    /// site front-matter expansion (`about:`/`listing:`), wrap in chrome, and
+    /// rewrite intra-site `.qmd` links. Shared by `render_page` (no execution) and
+    /// the executing `build` path so both emit identical chrome + links.
+    pub fn render_page_doc(&self, page: &Page, mut doc: render::RenderedDoc) -> String {
         self.expand_page(page, &mut doc.blocks);
         let ctx = self.page_chrome(page);
         let fallback = page.title.as_deref().unwrap_or("");
         let html = render::html_page_from_doc_in_site(&doc, fallback, &ctx);
-        Some(rewrite_qmd_links(&html))
+        rewrite_qmd_links(&html)
     }
 
     // --- listings ---------------------------------------------------------
