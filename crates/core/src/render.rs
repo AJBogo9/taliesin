@@ -421,6 +421,9 @@ fn render_internal(
             // Apply Pandoc attribute blocks trailing a link (`[t](u){.btn}`) onto
             // the `<a>`, dropping the literal `{...}` comrak left as text.
             html = apply_link_attrs(&html);
+            // Drop a stray trailing `\` (a hard break at the end of a block): strict
+            // CommonMark leaves it literal, but Pandoc/Quarto drop it. Match Pandoc.
+            html = strip_trailing_hardbreak(&html);
         }
         flat.push(FlatBlock {
             buf_start,
@@ -1874,6 +1877,32 @@ fn apply_link_attrs(html: &str) -> String {
         rest = after;
     }
     out.push_str(rest);
+    out
+}
+
+/// Drop a literal backslash left right before a block-closing tag — a trailing
+/// `\` hard break that comrak keeps (CommonMark) but Pandoc/Quarto drop (e.g. a
+/// CV line ending `2025–2027 \`). Scoped to block closers so inline `\` is untouched.
+fn strip_trailing_hardbreak(html: &str) -> String {
+    let mut out = html.to_string();
+    for tag in [
+        "</p>",
+        "</li>",
+        "</h1>",
+        "</h2>",
+        "</h3>",
+        "</h4>",
+        "</h5>",
+        "</h6>",
+        "</blockquote>",
+        "</td>",
+        "</dd>",
+    ] {
+        if out.contains('\\') {
+            out = out.replace(&format!("\\{tag}"), tag);
+            out = out.replace(&format!("\\ {tag}"), tag);
+        }
+    }
     out
 }
 
