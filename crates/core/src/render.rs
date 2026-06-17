@@ -609,14 +609,13 @@ const DARK_CSS: &str = r#"
   html[data-theme="dark"] .callout-important .callout-title { background: #2a1820; }
   html[data-theme="dark"] .callout-caution .callout-title { background: #2a2015; }
   html[data-theme="dark"] pre.mermaid { background: transparent; }
-  /* recolour the (light) syntax theme for a dark background */
-  html[data-theme="dark"] .hljs, html[data-theme="dark"] .hljs-subst { background: transparent; color: #c9d1d9; }
-  html[data-theme="dark"] .hljs-comment, html[data-theme="dark"] .hljs-quote { color: #8b949e; }
-  html[data-theme="dark"] .hljs-keyword, html[data-theme="dark"] .hljs-built_in, html[data-theme="dark"] .hljs-type { color: #ff7b72; }
-  html[data-theme="dark"] .hljs-string, html[data-theme="dark"] .hljs-meta .hljs-string, html[data-theme="dark"] .hljs-regexp { color: #a5d6ff; }
-  html[data-theme="dark"] .hljs-number, html[data-theme="dark"] .hljs-literal { color: #79c0ff; }
-  html[data-theme="dark"] .hljs-title, html[data-theme="dark"] .hljs-title.function_, html[data-theme="dark"] .hljs-section { color: #d2a8ff; }
-  html[data-theme="dark"] .hljs-attr, html[data-theme="dark"] .hljs-attribute, html[data-theme="dark"] .hljs-variable { color: #ffa657; }
+  /* server-side syntax-highlight scope classes (syntect), recoloured for dark */
+  html[data-theme="dark"] .qhl-comment { color: #8b949e; }
+  html[data-theme="dark"] .qhl-string { color: #a5d6ff; }
+  html[data-theme="dark"] .qhl-keyword, html[data-theme="dark"] .qhl-storage { color: #ff7b72; }
+  html[data-theme="dark"] .qhl-constant, html[data-theme="dark"] .qhl-support { color: #79c0ff; }
+  html[data-theme="dark"] .qhl-entity { color: #d2a8ff; }
+  html[data-theme="dark"] .qhl-variable { color: #ffa657; }
   /* code-cell output, warnings, and errors: dark equivalents of the light boxes */
   html[data-theme="dark"] .qmd-output > pre { background: #1b1e24; border-left-color: var(--qmd-border); }
   html[data-theme="dark"] .qmd-stderr { border-left-color: #d0a215 !important; background: #2a2415 !important; color: #e8dcc0; }
@@ -775,11 +774,18 @@ const BASE_CSS: &str = r#"
         background-size: 38px 100%, 38px 100%, 13px 100%, 13px 100%;
         background-attachment: local, local, scroll, scroll; }
   code { font-family: var(--qmd-font-mono); }
-  /* highlight.js makes code.hljs its own scroll box (display:block; overflow-x:auto),
-     which would scroll inside the padding and below the shadow. Neutralise it so the
-     <pre> is the single horizontal scroll container the scroll-shadow above keys off. */
-  pre > code, pre > code.hljs { display: block; overflow: visible !important;
-    background: transparent !important; padding: 0 !important; }
+  /* the <pre> is the single horizontal scroll container the scroll-shadow keys off,
+     so the inner <code> must not introduce its own scroll box. */
+  pre > code { display: block; overflow: visible; background: transparent; padding: 0; }
+  /* server-side syntax-highlight scope classes (syntect), light palette (GitHub-ish);
+     the dark overrides live in DARK_CSS so the theme toggle restyles code with no
+     re-highlight. Unmapped scopes inherit the default code colour. */
+  .qhl-comment { color: #6e7781; font-style: italic; }
+  .qhl-string { color: #0a3069; }
+  .qhl-keyword, .qhl-storage { color: #cf222e; }
+  .qhl-constant, .qhl-support { color: #0550ae; }
+  .qhl-entity { color: #8250df; }
+  .qhl-variable { color: #953800; }
   /* inline code (not the scrollable <pre> kind): a subtle tinted chip so it reads
      as code in prose instead of blending in as same-colour monospace; .875em pulls
      the mono glyphs down to the serif x-height. It also breaks rather than overflowing. */
@@ -994,22 +1000,23 @@ pub fn site_styles() -> String {
 // locally with network access, like reveal.js. Both are client-side presentation
 // layers, so they never affect the block model or the diff. mermaid is loaded
 // lazily (only when a diagram is actually present).
-const HLJS: &str = "https://cdn.jsdelivr.net/npm/@highlightjs/cdn-assets@11.11.1";
 const MERMAID: &str = "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js";
 
 /// `<head>` stylesheet link for code syntax highlighting (the highlight.js theme).
 pub fn code_head() -> String {
-    format!("<link rel=\"stylesheet\" href=\"{HLJS}/styles/github.min.css\" />")
+    // Syntax highlighting is done server-side (see `crate::highlight`); the colors
+    // live in the base stylesheet, so there's no highlighter CSS to load.
+    String::new()
 }
 
-/// Scripts that load highlight.js and define `window.qmdEnhanceCode(root)`,
-/// which syntax-highlights every language-tagged `<pre><code>` under `root`,
-/// gives each code block a copy button, and renders any `<pre class="mermaid">`
-/// diagrams (lazy-loading mermaid.js on first use). Callers invoke it after
-/// (re)mounting content; it is idempotent (skips already-processed blocks).
+/// Defines `window.qmdEnhanceCode(root)`, which gives each code block a copy button
+/// and renders any `<pre class="mermaid">` diagrams (lazy-loading mermaid.js on
+/// first use). Syntax highlighting is no longer done here — code arrives already
+/// highlighted from the server. Callers invoke it after (re)mounting content; it is
+/// idempotent (skips already-processed blocks).
 pub fn code_scripts() -> String {
     let js = CODE_ENHANCE_JS.replace("{{MERMAID}}", MERMAID);
-    format!("<script src=\"{HLJS}/highlight.min.js\"></script>\n<script>{js}</script>")
+    format!("<script>{js}</script>")
 }
 
 // Quarto's Observable runtime (vendored, v0.0.18 — not published to any CDN, so
@@ -1063,9 +1070,7 @@ window.qmdEnhanceCode = function (root) {
     var pre = code.parentElement;
     if (pre.dataset.enhanced) return;
     pre.dataset.enhanced = '1';
-    if (window.hljs && /language-/.test(code.className)) {
-      try { window.hljs.highlightElement(code); } catch (e) {}
-    }
+    // (Code is highlighted server-side; the client only adds the copy button.)
     // GitHub/Claude-style copy glyph (Octicons copy), swapping to a check on success.
     var copyIcon = '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"></path><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path></svg>';
     var checkIcon = '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L1.22 8.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"></path></svg>';
@@ -2168,18 +2173,17 @@ fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
                 };
                 // `code-fold` wraps the listing in a <details>; the block data
                 // attrs move to the <details> so click-to-source still keys off it.
+                let highlighted = crate::highlight::highlight(&literal, lang.as_deref());
                 if let Some((open, summary)) = &fold {
                     let open_attr = if *open { " open" } else { "" };
                     out.push_str(&format!(
-                        "<details{attrs} class=\"qmd-code-fold\"{open_attr}><summary>{}</summary><pre><code{class}>",
+                        "<details{attrs} class=\"qmd-code-fold\"{open_attr}><summary>{}</summary><pre><code{class}>{highlighted}</code></pre></details>",
                         html_escape(summary)
                     ));
-                    escape_html(&literal, out);
-                    out.push_str("</code></pre></details>");
                 } else {
-                    out.push_str(&format!("<pre{attrs}><code{class}>"));
-                    escape_html(&literal, out);
-                    out.push_str("</code></pre>");
+                    out.push_str(&format!(
+                        "<pre{attrs}><code{class}>{highlighted}</code></pre>"
+                    ));
                 }
             }
         }
@@ -2688,7 +2692,7 @@ fn strip_tags(html: &str) -> String {
     out.trim().to_string()
 }
 
-fn html_escape(s: &str) -> String {
+pub(crate) fn html_escape(s: &str) -> String {
     let mut out = String::new();
     escape_html(s, &mut out);
     out
@@ -3027,8 +3031,7 @@ fn emit_code_listing(
     } else {
         format!(" class=\"language-{lang}\"")
     };
-    let mut code_html = String::new();
-    escape_html(code, &mut code_html);
+    let code_html = crate::highlight::highlight(code, (!lang.is_empty()).then_some(lang));
     let figcap = match caption.map(str::trim).filter(|c| !c.is_empty()) {
         Some(c) => format!("Listing&nbsp;{num}: {}", html_escape(c)),
         None => format!("Listing&nbsp;{num}"),
@@ -3511,7 +3514,8 @@ mod tests {
     fn cell_option_lines_are_dropped() {
         let doc = render_document("```{python}\n#| warning: false\nprint(1)\n```\n");
         let h = &doc.blocks[0].html;
-        assert!(h.contains("print(1)"));
+        // (code is highlighted, so its text is split across scope spans)
+        assert!(strip_tags(h).contains("print(1)"));
         assert!(!h.contains("#|"), "option lines should be stripped: {h}");
 
         // OJS cells become live placeholders; their `//|` options are stripped
@@ -3575,7 +3579,7 @@ mod tests {
         // A plain cell still shows its source.
         let plain = render_document("```{python}\nprint(1)\n```\n");
         assert!(
-            plain.blocks[0].html.contains("print(1)"),
+            strip_tags(&plain.blocks[0].html).contains("print(1)"),
             "default cell shows source"
         );
     }
@@ -3606,7 +3610,7 @@ mod tests {
             .find(|b| b.cell.is_some())
             .expect("a code cell");
         assert!(
-            cell2.html.contains("print(1)"),
+            strip_tags(&cell2.html).contains("print(1)"),
             "per-cell echo:true must override the execute default: {}",
             cell2.html
         );

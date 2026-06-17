@@ -12,3 +12,4 @@ comrak = "0.52.0"
 katex = "0.4.6"
 serde = { workspace = true }
 serde_yaml = { workspace = true }
+syntect = { workspace = true }

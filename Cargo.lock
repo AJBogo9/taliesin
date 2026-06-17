@@ -1433,6 +1433,7 @@ dependencies = [
  "katex",
  "serde",
  "serde_yaml",
+ "syntect",
 ]
 
 [[package]]

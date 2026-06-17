@@ -17,6 +17,7 @@ crates/core      qmd-fast-core lib: parser (comrak + sourcepos) → block model 
   src/diff.rs      block-level diff (BlockOp) for incremental updates
   src/includes.rs  {{< include >}} resolution + per-file source map
   src/math.rs      KaTeX server-side render (bundled CSS/fonts, offline)
+  src/highlight.rs server-side syntax highlighting (syntect → `qhl-` scope classes)
   src/cite.rs      citations ([@key]) + cross-references (@fig-, @sec-)
   src/site.rs      multi-page project: _quarto.yml config, page discovery, chrome, link rewrite
 crates/server    qmd-fast-server, bin `qmd-fast`: CLI + websocket dev server

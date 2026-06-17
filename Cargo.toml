@@ -22,3 +22,8 @@ qmd-fast-core = { path = "crates/core" }
 # fallback if it ever breaks. YAML stays the config format for Quarto compat.
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
+
+# Server-side syntax highlighting at render time (pure-Rust regex, no oniguruma C
+# dependency). We emit scope *classes* and color them in CSS, so the light/dark
+# toggle restyles code without re-highlighting.
+syntect = { version = "5", default-features = false, features = ["default-fancy"] }
