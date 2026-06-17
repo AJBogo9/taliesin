@@ -228,7 +228,12 @@ Plot.lineY(
 ### The Python → OJS bridge
 
 `ojs_define()` in a Python cell hands values to OJS, so you can compute in Python
-and render reactively in the browser. (This part needs a kernel.)
+and render reactively in the browser. (This part needs a kernel.) In live preview
+the Python cell executes *after* the page loads, so its values arrive a moment
+after the OJS cells; the client binds them into the running module as they land
+(and rebinds when a Python input changes), so the cell recomputes in place without
+a reload. Editing an `{ojs}` cell's own source reloads the page (the Observable
+runtime can't redefine a whole cell in place).
 
 ```{python}
 #| code-fold: true
