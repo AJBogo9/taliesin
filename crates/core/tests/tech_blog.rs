@@ -420,6 +420,26 @@ fn site_and_page_includes_are_injected() {
     );
 }
 
+/// The site `favicon:` is emitted as a `<link rel="icon">` with a depth-relative
+/// href, on every page. Without it the browser auto-requests `/favicon.ico` and
+/// 404s on a static deploy (the bug the deploy-validation pass caught).
+#[test]
+fn site_favicon_link_is_emitted_depth_relative() {
+    let site = Site::discover(&corpus_dir().join("tech-blog"));
+    let home = site.render_page("index.qmd").expect("home renders");
+    assert!(
+        home.contains(r#"<link rel="icon" type="image/svg+xml" href="bell-curve.svg" />"#),
+        "root page favicon link missing/!depth-relative"
+    );
+    let post = site
+        .render_page("posts/em-algorithm/index.qmd")
+        .expect("post renders");
+    assert!(
+        post.contains(r#"href="../../bell-curve.svg""#),
+        "post favicon link not resolved relative to its depth"
+    );
+}
+
 /// Every `{ojs}` cell across the OJS-heavy posts becomes a live placeholder with
 /// a matching `id == cellName`, so the runtime can interpret each into its target.
 #[test]

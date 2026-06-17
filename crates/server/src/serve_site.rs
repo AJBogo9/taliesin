@@ -315,6 +315,12 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
     // Body links (author `.qmd` references) -> `.html`; chrome links already are.
     let body = qmd_fast_core::site::rewrite_qmd_links(&body);
     let title_txt = title.unwrap_or_else(|| page.title.clone().unwrap_or_default());
+    // The site's configured favicon (depth-relative); else the dev server's own.
+    let favicon = if chrome.favicon.is_empty() {
+        "<link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.ico\" />".to_string()
+    } else {
+        qmd_fast_core::favicon_link(&chrome.favicon)
+    };
 
     format!(
         r#"<!DOCTYPE html>
@@ -323,7 +329,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>{title_txt}</title>
-<link rel="icon" type="image/svg+xml" href="/favicon.ico" />
+{favicon}
 {theme_init}
 {styles}
 {site_styles}
@@ -354,6 +360,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
 </html>
 "#,
         theme_init = qmd_fast_core::theme_head(&theme_default),
+        favicon = favicon,
         include_in_header = includes.in_header,
         include_before_body = includes.before_body,
         include_after_body = includes.after_body,

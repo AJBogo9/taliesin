@@ -1698,6 +1698,9 @@ pub struct SiteCtx {
     /// Site-level `format: html:` includes (header/body/css from `_quarto.yml`),
     /// merged ahead of each page's own front-matter includes.
     pub includes: PageIncludes,
+    /// Site `favicon:` resolved to a path relative to this page's depth (empty if
+    /// none configured), emitted as `<link rel="icon">`.
+    pub favicon: String,
 }
 
 fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
@@ -1784,8 +1787,13 @@ fn html_page_inner(doc: &RenderedDoc, fallback_title: &str, site: Option<&SiteCt
         }
         None => doc.includes.clone(),
     };
+    let favicon = match site {
+        Some(s) if !s.favicon.is_empty() => favicon_link(&s.favicon),
+        _ => String::new(),
+    };
     PAGE_TEMPLATE
         .replace("{{TITLE}}", &t)
+        .replace("{{FAVICON}}", &favicon)
         .replace("{{THEME_INIT}}", &theme_head(&doc.theme_default))
         .replace("{{KATEX_CSS}}", &katex_css)
         .replace("{{BASE_CSS}}", &base_css)
@@ -1799,6 +1807,26 @@ fn html_page_inner(doc: &RenderedDoc, fallback_title: &str, site: Option<&SiteCt
         .replace("{{CODE_SCRIPTS}}", &code_scripts())
         .replace("{{OJS_INIT}}", &ojs_init_html)
         .replace("{{INCLUDE_AFTER_BODY}}", &includes.after_body)
+}
+
+/// A `<link rel="icon">` for the given href, with a `type` inferred from the
+/// extension (svg/png/x-icon) so SVG favicons render. Shared by the static build
+/// and the live preview.
+pub fn favicon_link(href: &str) -> String {
+    let ty = match href
+        .rsplit('.')
+        .next()
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("svg") => " type=\"image/svg+xml\"",
+        Some("png") => " type=\"image/png\"",
+        Some("ico") => " type=\"image/x-icon\"",
+        _ => "",
+    };
+    let mut h = String::new();
+    escape_html(href, &mut h);
+    format!("<link rel=\"icon\"{ty} href=\"{h}\" />")
 }
 
 /// Wrap resolved theme override CSS in a `<style>` (empty string when there is
@@ -3610,6 +3638,7 @@ const PAGE_TEMPLATE: &str = r#"<!DOCTYPE html>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>{{TITLE}}</title>
+{{FAVICON}}
 {{THEME_INIT}}
 {{KATEX_CSS}}
 <style>{{BASE_CSS}}</style>

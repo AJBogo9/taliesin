@@ -14,8 +14,8 @@ pub mod site;
 
 pub use diff::{BlockOp, diff_blocks};
 pub use render::{
-    Block, DocFormat, RenderedDoc, SiteCtx, client_styles, code_head, code_scripts, has_ojs,
-    html_page_from_doc_in_site, ojs_head, ojs_init, render_doc_to_page, render_document,
+    Block, DocFormat, RenderedDoc, SiteCtx, client_styles, code_head, code_scripts, favicon_link,
+    has_ojs, html_page_from_doc_in_site, ojs_head, ojs_init, render_doc_to_page, render_document,
     render_document_with_includes, render_html_page, render_html_page_with_includes,
     reveal_client_head, reveal_client_script, site_styles, slides_html, theme_head,
 };

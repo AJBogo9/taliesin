@@ -267,12 +267,17 @@ impl Site {
     /// live preview so both render identical navigation.
     pub fn page_chrome(&self, page: &Page) -> SiteCtx {
         let depth = page.url.matches('/').count(); // links are relative to the page
+        let favicon = match &self.config.website.favicon {
+            Some(f) if !f.is_empty() => format!("{}{}", "../".repeat(depth), f),
+            _ => String::new(),
+        };
         SiteCtx {
             navbar_html: self.navbar_html(page, depth),
             footer_html: self.footer_html(depth),
             prevnext_html: self.prevnext_html(page, depth),
             wide: page.page_layout.as_deref() == Some("full"),
             includes: self.includes.clone(),
+            favicon,
         }
     }
 
