@@ -1150,7 +1150,60 @@ window.qmdEnhanceCode = function (root) {
   qmdRenderMermaid(root);
   qmdInitLightbox();
   qmdInitLinkPreview();
+  qmdInitCategoryFilter(root);
 };
+
+// Native category filter for `listing: { categories: true }`: the server emits a
+// chip row (`.qmd-cat-filter`) above the card grid and tags each card with
+// `data-categories`. Clicking a chip — or a category tag on a card — toggles it
+// (multi-select, OR semantics); an empty `data-cat` ("All") clears the filter.
+// Works in the static build and the live preview; idempotent per filter.
+function qmdInitCategoryFilter(root) {
+  (root || document).querySelectorAll('.qmd-cat-filter').forEach(function (filter) {
+    if (filter.dataset.qmdCat) return;
+    filter.dataset.qmdCat = '1';
+    var wrap = filter.closest('.qmd-listing-wrap');
+    var listing = wrap && wrap.querySelector('.qmd-listing');
+    if (!listing) return;
+    var selected = new Set();
+    var catsOf = function (card) {
+      var raw = card.getAttribute('data-categories');
+      return raw ? raw.split(',') : [];
+    };
+    var apply = function () {
+      listing.querySelectorAll('.qmd-card').forEach(function (card) {
+        var show = selected.size === 0 || catsOf(card).some(function (c) { return selected.has(c); });
+        card.style.display = show ? '' : 'none';
+      });
+      filter.querySelectorAll('.qmd-cat-chip').forEach(function (chip) {
+        var c = chip.getAttribute('data-cat');
+        chip.classList.toggle('qmd-cat-active', c === '' ? selected.size === 0 : selected.has(c));
+      });
+      listing.querySelectorAll('.qmd-cat[data-cat]').forEach(function (tag) {
+        tag.classList.toggle('qmd-cat-on', selected.has(tag.getAttribute('data-cat')));
+      });
+    };
+    var toggle = function (cat) {
+      if (cat === '') selected.clear();
+      else if (selected.has(cat)) selected.delete(cat);
+      else selected.add(cat);
+      apply();
+    };
+    filter.addEventListener('click', function (e) {
+      var chip = e.target.closest('.qmd-cat-chip');
+      if (chip) toggle(chip.getAttribute('data-cat') || '');
+    });
+    // A category tag on a card toggles its filter instead of opening the post.
+    listing.addEventListener('click', function (e) {
+      var tag = e.target.closest('.qmd-cat[data-cat]');
+      if (!tag) return;
+      e.preventDefault();
+      e.stopPropagation();
+      toggle(tag.getAttribute('data-cat'));
+    });
+    apply();
+  });
+}
 
 // Full-screen viewer for figure images AND mermaid diagrams. Set up once; uses
 // event delegation in the capture phase so a click opens the lightbox WITHOUT
@@ -3273,7 +3326,22 @@ const SITE_CSS: &str = r#"
   .qmd-card-cats { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .25rem; }
   .qmd-cat { font: 500 .72rem var(--qmd-font-head); color: var(--qmd-muted);
     background: var(--qmd-code-bg); border: 1px solid var(--qmd-border);
-    border-radius: 999px; padding: .1rem .55rem; }
+    border-radius: 999px; padding: .1rem .55rem; transition: background .12s ease, color .12s ease, border-color .12s ease; }
+  /* a card's category tag doubles as a filter toggle */
+  .qmd-cat[data-cat] { cursor: pointer; }
+  .qmd-cat[data-cat]:hover { color: var(--qmd-fg); border-color: var(--qmd-muted); }
+  .qmd-cat.qmd-cat-on { background: var(--qmd-accent); border-color: var(--qmd-accent); color: #fff; }
+
+  /* category filter chip row (listing: categories: true) */
+  .qmd-cat-filter { display: flex; flex-wrap: wrap; gap: .45rem; margin: 0 0 1.5rem; }
+  .qmd-cat-chip { display: inline-flex; align-items: center; gap: .35rem; cursor: pointer;
+    font: 500 .8rem var(--qmd-font-head); color: var(--qmd-muted);
+    background: var(--qmd-code-bg); border: 1px solid var(--qmd-border); border-radius: 999px;
+    padding: .25rem .7rem; transition: background .12s ease, color .12s ease, border-color .12s ease; }
+  .qmd-cat-chip:hover { color: var(--qmd-fg); border-color: var(--qmd-muted); }
+  .qmd-cat-chip.qmd-cat-active { background: var(--qmd-accent); border-color: var(--qmd-accent); color: #fff; }
+  .qmd-cat-count { font-size: .82em; opacity: .65; font-variant-numeric: tabular-nums; }
+  .qmd-cat-chip.qmd-cat-active .qmd-cat-count { opacity: .85; }
 
   /* about: a centered profile header (jolla), replacing the title block */
   .qmd-about { display: flex; flex-direction: column; align-items: center; text-align: center;

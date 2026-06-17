@@ -138,6 +138,8 @@ pub struct ListingSpec {
     pub sort_desc: bool,
     /// `max-items:` cap, if any.
     pub max_items: Option<usize>,
+    /// `categories: true` → render a category filter chip row above the cards.
+    pub categories: bool,
 }
 
 /// A discovered multi-page site: the root config plus its input pages.
@@ -323,12 +325,43 @@ impl Site {
     fn listing_html(&self, host: &Page, spec: &ListingSpec) -> String {
         let up = "../".repeat(host.url.matches('/').count());
         let layout = if spec.grid { "grid" } else { "default" };
-        let mut s = format!("<div class=\"qmd-listing qmd-listing-{layout}\">");
-        for p in self.collection(host, spec) {
-            s.push_str(&self.card_html(p, &up, spec.grid));
+        let items = self.collection(host, spec);
+        let cards: String = items
+            .iter()
+            .map(|p| self.card_html(p, &up, spec.grid))
+            .collect();
+        let grid = format!("<div class=\"qmd-listing qmd-listing-{layout}\">{cards}</div>");
+
+        if !spec.categories {
+            return grid;
         }
-        s.push_str("</div>");
-        s
+        // `categories: true` → a filter chip row above the cards: every category
+        // across the listing, with a count, sorted (the client enhancer wires the
+        // multi-select filtering; an "All" chip clears it).
+        let mut counts: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
+        for p in &items {
+            for c in &p.categories {
+                *counts.entry(c.as_str()).or_default() += 1;
+            }
+        }
+        if counts.is_empty() {
+            return grid;
+        }
+        let mut chips = String::from(
+            "<button class=\"qmd-cat-chip qmd-cat-active\" type=\"button\" data-cat=\"\">All</button>",
+        );
+        for (cat, n) in &counts {
+            chips.push_str(&format!(
+                "<button class=\"qmd-cat-chip\" type=\"button\" data-cat=\"{c}\">{label}\
+                 <span class=\"qmd-cat-count\">{n}</span></button>",
+                c = esc(cat),
+                label = esc(cat),
+            ));
+        }
+        format!(
+            "<div class=\"qmd-listing-wrap\">\
+             <nav class=\"qmd-cat-filter\" aria-label=\"Filter by category\">{chips}</nav>{grid}</div>"
+        )
     }
 
     fn card_html(&self, p: &Page, up: &str, grid: bool) -> String {
@@ -351,20 +384,32 @@ impl Site {
             .as_deref()
             .map(|d| format!("<p class=\"qmd-card-desc\">{}</p>", esc(d)))
             .unwrap_or_default();
+        // Each badge carries `data-cat` so a click on it toggles that category in
+        // the filter; the card carries `data-categories` for the filter to match.
         let cats = if p.categories.is_empty() {
             String::new()
         } else {
             let badges: String = p
                 .categories
                 .iter()
-                .map(|c| format!("<span class=\"qmd-cat\">{}</span>", esc(c)))
+                .map(|c| {
+                    format!(
+                        "<span class=\"qmd-cat\" data-cat=\"{c}\">{c}</span>",
+                        c = esc(c)
+                    )
+                })
                 .collect();
             format!("<div class=\"qmd-card-cats\">{badges}</div>")
+        };
+        let data_cats = if p.categories.is_empty() {
+            String::new()
+        } else {
+            format!(" data-categories=\"{}\"", esc(&p.categories.join(",")))
         };
         // `data-qmd-src` lets the click-to-source locator jump to the post's source
         // (it's site-root-relative; resolved client-side, inert in the static build).
         format!(
-            "<a class=\"qmd-card\" href=\"{href}\" data-qmd-src=\"{src}\">{img}\
+            "<a class=\"qmd-card\" href=\"{href}\" data-qmd-src=\"{src}\"{data_cats}>{img}\
              <div class=\"qmd-card-body\">{date}<h3 class=\"qmd-card-title\">{title}</h3>{desc}{cats}</div></a>",
             src = esc(&p.rel)
         )
@@ -834,6 +879,10 @@ fn parse_listing_spec(v: &serde_yaml::Value) -> Option<ListingSpec> {
         grid: scalar(v.get("type")).as_deref() == Some("grid"),
         sort_desc,
         max_items,
+        categories: v
+            .get("categories")
+            .and_then(|c| c.as_bool())
+            .unwrap_or(false),
     })
 }
 
