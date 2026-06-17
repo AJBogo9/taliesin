@@ -288,10 +288,13 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
     let base_dir = base_dir
         .canonicalize()
         .unwrap_or_else(|_| base_dir.to_path_buf());
+    // `root` lets the locator resolve site-root-relative `data-qmd-src` targets
+    // (a card → its post's source, the navbar/footer → _quarto.yml, etc.).
     let doc_global = format!(
-        "window.QMD_DOC = {{ path: \"{}\", baseDir: \"{}\" }};",
+        "window.QMD_DOC = {{ path: \"{}\", baseDir: \"{}\", root: \"{}\" }};",
         js_str(&doc_path.to_string_lossy()),
         js_str(&base_dir.to_string_lossy()),
+        js_str(&app.root.to_string_lossy()),
     );
     let ws_path = format!("/ws?page={}", encode_query(&page.rel));
     // Body links (author `.qmd` references) -> `.html`; chrome links already are.

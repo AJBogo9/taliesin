@@ -4,8 +4,8 @@
 // scripts (theme_head, OJS init, reveal client) and page flags.
 
 interface Window {
-  /** Absolute doc + base-dir paths for click-to-source `vscode://` links. */
-  QMD_DOC?: { path: string; baseDir: string };
+  /** Absolute doc + base-dir (+ site root) paths for click-to-source `vscode://` links. */
+  QMD_DOC?: { path: string; baseDir: string; root?: string };
   /** Live page has a table of contents (client rebuilds `#TOC`). */
   QMD_TOC?: boolean;
   /** The body was server-rendered, so skip the first re-mount. */

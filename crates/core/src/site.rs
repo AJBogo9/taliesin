@@ -361,9 +361,12 @@ impl Site {
                 .collect();
             format!("<div class=\"qmd-card-cats\">{badges}</div>")
         };
+        // `data-qmd-src` lets the click-to-source locator jump to the post's source
+        // (it's site-root-relative; resolved client-side, inert in the static build).
         format!(
-            "<a class=\"qmd-card\" href=\"{href}\">{img}\
-             <div class=\"qmd-card-body\">{date}<h3 class=\"qmd-card-title\">{title}</h3>{desc}{cats}</div></a>"
+            "<a class=\"qmd-card\" href=\"{href}\" data-qmd-src=\"{src}\">{img}\
+             <div class=\"qmd-card-body\">{date}<h3 class=\"qmd-card-title\">{title}</h3>{desc}{cats}</div></a>",
+            src = esc(&p.rel)
         )
     }
 
@@ -405,10 +408,11 @@ impl Site {
             format!("<div class=\"qmd-about-links\">{items}</div>")
         };
         format!(
-            "<header class=\"qmd-about qmd-about-{tpl}\" data-block-id=\"qmd-title-block\">\
+            "<header class=\"qmd-about qmd-about-{tpl}\" data-block-id=\"qmd-title-block\" data-qmd-src=\"{src}\">\
              {img}<h1 class=\"qmd-about-name\">{name}</h1>{links}</header>",
             tpl = esc(&about.template),
             name = esc(&name),
+            src = esc(&page.rel),
         )
     }
 
@@ -425,7 +429,9 @@ impl Site {
             .title
             .clone()
             .unwrap_or_else(|| "Home".to_string());
-        let mut s = String::from("<header class=\"qmd-site-nav\"><nav class=\"qmd-nav-inner\">");
+        let mut s = String::from(
+            "<header class=\"qmd-site-nav\" data-qmd-src=\"_quarto.yml\"><nav class=\"qmd-nav-inner\">",
+        );
         s.push_str(&format!(
             "<a class=\"qmd-nav-brand\" href=\"{up}index.html\">{}</a>",
             esc(&brand_text)
@@ -496,7 +502,7 @@ impl Site {
             g
         };
         format!(
-            "<footer class=\"qmd-site-footer\"><div class=\"qmd-foot-inner\">\
+            "<footer class=\"qmd-site-footer\" data-qmd-src=\"_quarto.yml\"><div class=\"qmd-foot-inner\">\
              <div class=\"qmd-foot-left\">{}</div>\
              <div class=\"qmd-foot-center\">{}</div>\
              <div class=\"qmd-foot-right\">{}</div>\

@@ -137,9 +137,12 @@
 
   // --- preview control bar: theme toggle + click-to-source toggle ----------
   const inWebview = window.parent !== window;
+  // Click-to-source is an explicit "locate mode", default OFF: when on, clicks
+  // reveal source (and links stop navigating so cards/nav are locatable too), so
+  // it must default off or it would break browsing the preview. The choice persists.
   const CLICK_KEY = "qmd-click-source";
   let clickSource = (() => {
-    try { return localStorage.getItem(CLICK_KEY) !== "0"; } catch (e) { return true; }
+    try { return localStorage.getItem(CLICK_KEY) === "1"; } catch (e) { return false; }
   })();
 
   // One collapsed dev menu (Next.js-style): a corner button showing the live
@@ -567,34 +570,50 @@
     sourcepos: el.dataset.sourcepos || null,
   });
 
-  // Open a block's source: in the VS Code webview, relay to the host (which
-  // calls revealRange); in a plain browser, open a `vscode://file/…:line:col`
-  // link (the server injected the absolute doc + base-dir paths as QMD_DOC).
+  // The nearest locatable ancestor: a `data-qmd-src` element (cards, about block,
+  // navbar/footer → an explicit source file) or a `data-block-id` block (the
+  // page's own prose/headings/code). Whichever is closer wins.
+  const locatable = (/** @type {Element} */ t) =>
+    /** @type {HTMLElement|null} */ (t.closest("[data-qmd-src], [data-block-id]"));
+
+  // Open the source for an element: an explicit `data-qmd-src` (site-root-relative,
+  // `rel` or `rel:line`) wins; else the block's sourcepos on the current page (or an
+  // included file). In the webview, relay to the host; in a browser, `vscode://`.
   const openSource = (/** @type {HTMLElement} */ el) => {
-    const ref = blockRef(el);
-    if (inWebview) {
-      window.parent.postMessage({ type: "qmd-goto", ...ref }, "*");
-      return;
-    }
     const doc = window.QMD_DOC;
     if (!doc) return;
-    const abs = ref.source_file
-      ? doc.baseDir.replace(/\/+$/, "") + "/" + ref.source_file
-      : doc.path;
-    const m = /^(\d+):(\d+)/.exec(ref.sourcepos || "");
-    const line = m ? m[1] : "1";
-    const col = m ? m[2] : "1";
+    const src = el.getAttribute("data-qmd-src");
+    let abs, line = "1", col = "1";
+    if (src && doc.root) {
+      const i = src.indexOf(":");
+      abs = doc.root.replace(/\/+$/, "") + "/" + (i >= 0 ? src.slice(0, i) : src);
+      if (i >= 0) line = src.slice(i + 1);
+    } else {
+      const ref = blockRef(el);
+      if (inWebview) {
+        window.parent.postMessage({ type: "qmd-goto", ...ref }, "*");
+        return;
+      }
+      abs = ref.source_file ? doc.baseDir.replace(/\/+$/, "") + "/" + ref.source_file : doc.path;
+      const m = /^(\d+):(\d+)/.exec(ref.sourcepos || "");
+      if (m) { line = m[1]; col = m[2]; }
+    }
+    if (inWebview) {
+      window.parent.postMessage({ type: "qmd-goto", source_file: src, sourcepos: line + ":" + col }, "*");
+      return;
+    }
     window.location.href = "vscode://file" + encodeURI(abs) + ":" + line + ":" + col;
   };
 
-  // Single click: a transient highlight pulse on the clicked block + tell the
-  // server. The pulse fades on its own, so nothing is left stuck if you toggle
-  // click-to-source off or click away. (The persistent .qmd-hl is for editor
-  // cursor sync only.) Skipped when click-to-source is off or on the control bar.
+  const inDevMenu = (/** @type {Element} */ t) => !!t.closest("#qmd-controls");
+
+  // Single click in locate mode (click-to-source ON): pulse the target + report it,
+  // and suppress link navigation so a card/link can be double-clicked to its source.
   document.addEventListener("click", (e) => {
     const t = e.target instanceof Element ? e.target : null;
-    if (!clickSource || !t || t.closest(".qmd-ctl")) return;
-    const el = /** @type {HTMLElement|null} */ (t.closest("[data-block-id]"));
+    if (!clickSource || !t || inDevMenu(t)) return;
+    if (t.closest("a")) e.preventDefault(); // locate mode: links don't navigate
+    const el = locatable(t);
     if (!el) return;
     pulse(el, "qmd-hl-flash");
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -602,12 +621,13 @@
     }
   });
 
-  // Double click: jump to source (browser -> VS Code, webview -> host).
+  // Double click in locate mode: jump to source (browser -> editor, webview -> host).
   document.addEventListener("dblclick", (e) => {
     if (!clickSource) return;
     const t = e.target instanceof Element ? e.target : null;
-    const el = t && /** @type {HTMLElement|null} */ (t.closest("[data-block-id]"));
-    if (el) openSource(el);
+    if (!t || inDevMenu(t)) return;
+    const el = locatable(t);
+    if (el) { e.preventDefault(); openSource(el); }
   });
 
   // Reverse sync: highlight (and reveal/scroll to) the block under the editor
