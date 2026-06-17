@@ -1850,17 +1850,26 @@ fn reveal_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
     } else {
         String::new()
     };
+    // A custom `theme:` CSS layer and the `include-*` front-matter apply to decks
+    // just like HTML pages — a deck (or an installed reveal theme extension) can
+    // restyle reveal and inject head/body markup. `theme` comes after reveal's own
+    // stylesheets so it overrides them; the css folded into `include-in-header`
+    // follows last.
     format!(
         "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n\
          <meta charset=\"utf-8\" />\n\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no\" />\n\
-         <title>{t}</title>\n{links}{katex_css}<style>{REVEAL_EXTRA_CSS}</style>\n{code_head}\n\
-         </head>\n<body>\n<div class=\"reveal\">\n<div class=\"slides\">\n{slides}</div>\n</div>\n\
+         <title>{t}</title>\n{links}{katex_css}<style>{REVEAL_EXTRA_CSS}</style>\n{code_head}\n{theme}{in_header}\
+         </head>\n<body>\n{before_body}<div class=\"reveal\">\n<div class=\"slides\">\n{slides}</div>\n</div>\n\
          {script}\n<script>\n  Reveal.initialize({{ hash: true, slideNumber: 'c/t', center: false }});\n</script>\n\
          {code_scripts}\n\
          <script>document.addEventListener('DOMContentLoaded',function(){{window.qmdEnhanceCode&&window.qmdEnhanceCode(document.body);}});</script>\n\
-         </body>\n</html>\n",
+         {after_body}</body>\n</html>\n",
         links = reveal_stylesheet_links(),
+        theme = theme_style(&doc.theme_css),
+        in_header = doc.includes.in_header,
+        before_body = doc.includes.before_body,
+        after_body = doc.includes.after_body,
         script = reveal_library_script(),
         code_head = code_head(),
         code_scripts = code_scripts(),
@@ -4185,6 +4194,29 @@ mod tests {
     fn front_matter_without_title_yields_no_blocks() {
         // No title -> no title block, and no body -> empty.
         assert!(render_document("---\nfoo: bar\n---\n").blocks.is_empty());
+    }
+
+    #[test]
+    fn reveal_deck_injects_includes_and_theme() {
+        let src = "---\n\
+            format: revealjs\n\
+            include-in-header:\n  text: |\n    <meta name=\"deck\" content=\"1\">\n\
+            include-after-body:\n  text: |\n    <script>window.__deck=1</script>\n\
+            ---\n\n## Slide\n";
+        let page = render_html_page(src, "deck");
+        assert!(
+            page.contains("<div class=\"reveal\">"),
+            "should render as a reveal deck"
+        );
+        let head = &page[..page.find("</head>").expect("has </head>")];
+        assert!(
+            head.contains("<meta name=\"deck\" content=\"1\">"),
+            "include-in-header not injected into the deck <head>"
+        );
+        assert!(
+            page.contains("<script>window.__deck=1</script>"),
+            "include-after-body not injected into the deck"
+        );
     }
 
     #[test]
