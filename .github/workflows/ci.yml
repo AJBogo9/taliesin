@@ -1,7 +1,12 @@
 name: CI
 
+# Minimal solo-dev backstop: this private repo's value from CI is the fresh-clone
+# build (a warm local `cargo test` can stay green while the committed tree is
+# broken). So run only on what actually lands — pushes to `main` and PRs — not on
+# every WIP branch push, and cache the cargo build to keep each run to ~1-2 min.
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
@@ -12,6 +17,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
+      - uses: Swatinem/rust-cache@v2
       # The corpus is the spec: these two gates encode the project's contract.
       - name: Format check
         run: cargo fmt --all -- --check
