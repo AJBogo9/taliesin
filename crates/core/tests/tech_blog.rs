@@ -370,6 +370,56 @@ fn about_page_renders_profile_block() {
     );
 }
 
+/// The site's `format: html:` `include-in-header` / `include-after-body` / `css`
+/// (from `_quarto.yml`) are injected into every page, and a page's own front-matter
+/// `include-in-header` is injected on top of the site's. Without this the blog's
+/// preconnect hints, prefetch script, and custom stylesheet silently vanish.
+#[test]
+fn site_and_page_includes_are_injected() {
+    let site = Site::discover(&corpus_dir().join("tech-blog"));
+
+    // A regular post gets the site-wide includes (it declares none of its own).
+    let post = site
+        .render_page("posts/em-algorithm/index.qmd")
+        .expect("post renders");
+    // include-in-header (text:) — preconnect + speculationrules.
+    assert!(
+        post.contains("rel=\"preconnect\" href=\"https://cdn.jsdelivr.net\""),
+        "site include-in-header preconnect missing"
+    );
+    assert!(
+        post.contains("<script type=\"speculationrules\">"),
+        "site include-in-header speculationrules missing"
+    );
+    // include-after-body (text:) — the prefetch + post-nav scripts.
+    assert!(
+        post.contains("src=\"/instantpage.js\"") && post.contains("src=\"/post-nav.js\""),
+        "site include-after-body scripts missing"
+    );
+    // css: custom.css — inlined, so a known selector from the file is present.
+    assert!(
+        post.contains(".back-to-top"),
+        "site css (custom.css) not inlined"
+    );
+    // Header injection lands inside <head>, body injection after </body>'s content.
+    let head = &post[..post.find("</head>").expect("has </head>")];
+    assert!(
+        head.contains("speculationrules"),
+        "include-in-header must be inside <head>"
+    );
+
+    // The homepage adds its OWN include-in-header on top of the site's.
+    let home = site.render_page("index.qmd").expect("home renders");
+    assert!(
+        home.contains("name=\"description\" content=\"MSc student"),
+        "page-level include-in-header (meta description) missing"
+    );
+    assert!(
+        home.contains("rel=\"preconnect\" href=\"https://cdn.jsdelivr.net\""),
+        "site include should still apply alongside the page's own"
+    );
+}
+
 /// Every `{ojs}` cell across the OJS-heavy posts becomes a live placeholder with
 /// a matching `id == cellName`, so the runtime can interpret each into its target.
 #[test]

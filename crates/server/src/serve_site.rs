@@ -57,6 +57,8 @@ struct PageDoc {
     toc: bool,
     theme_css: String,
     theme_default: String,
+    /// The page's own front-matter `include-*`/`css` (merged after the site's).
+    includes: qmd_fast_core::render::PageIncludes,
     blocks: Vec<Block>,
     diagnostics: Vec<Diag>,
     errored: bool,
@@ -224,6 +226,7 @@ fn render_markdown_only(site: &qmd_fast_core::Site, page: &Page) -> PageDoc {
         toc: doc.toc,
         theme_css: doc.theme_css,
         theme_default: doc.theme_default,
+        includes: doc.includes,
         blocks,
         diagnostics: Vec::new(),
         errored: false,
@@ -233,7 +236,7 @@ fn render_markdown_only(site: &qmd_fast_core::Site, page: &Page) -> PageDoc {
 /// Build the full live HTML for a page: theme + base + site CSS, the SSR body
 /// wrapped in the site chrome, and the preview client scoped to this page's ws.
 fn site_page_html(app: &SiteApp, page: &Page) -> String {
-    let (title, toc, theme_css, theme_default, body, ojs) = {
+    let (title, toc, theme_css, theme_default, body, ojs, page_includes) = {
         let pages = app.pages.lock().unwrap();
         let ps = pages.get(&page.rel);
         match ps {
@@ -247,6 +250,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
                     ps.doc.theme_default.clone(),
                     body,
                     ojs,
+                    ps.doc.includes.clone(),
                 )
             }
             None => (
@@ -256,10 +260,14 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
                 String::new(),
                 String::new(),
                 false,
+                Default::default(),
             ),
         }
     };
     let chrome = { app.site.lock().unwrap().page_chrome(page) };
+    // Site-level `format: html:` includes first, then this page's own front matter.
+    let mut includes = chrome.includes.clone();
+    includes.merge(&page_includes);
 
     let (ojs_head, ojs_init) = if ojs {
         (qmd_fast_core::ojs_head(), qmd_fast_core::ojs_init())
@@ -322,9 +330,11 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
 {code_head}
 {ojs_head}
 {theme}
+{include_in_header}
 <style>{status_css}</style>
 </head>
 <body class="qmd-site">
+{include_before_body}
 {navbar}
 <div class="{main_cls}">
 <main id="qmd-root">{body}</main>
@@ -339,10 +349,14 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
 {js}
 </script>
 {ojs_init}
+{include_after_body}
 </body>
 </html>
 "#,
         theme_init = qmd_fast_core::theme_head(&theme_default),
+        include_in_header = includes.in_header,
+        include_before_body = includes.before_body,
+        include_after_body = includes.after_body,
         styles = qmd_fast_core::client_styles(),
         site_styles = qmd_fast_core::site_styles(),
         code_head = qmd_fast_core::code_head(),
@@ -579,6 +593,7 @@ async fn build_page(app: &SiteApp, rel: &str, execs: &mut HashMap<String, crate:
     ps.doc.toc = doc.toc;
     ps.doc.theme_css = doc.theme_css;
     ps.doc.theme_default = doc.theme_default;
+    ps.doc.includes = doc.includes;
     ps.doc.blocks = blocks;
     ps.doc.diagnostics = diags;
     if recovered {

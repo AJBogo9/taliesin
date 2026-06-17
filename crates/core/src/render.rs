@@ -9,7 +9,7 @@ use crate::includes::LineOrigin;
 use comrak::nodes::{AstNode, ListType, NodeList, NodeValue, TableAlignment};
 use comrak::{Arena, Options, parse_document};
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// An executable Quarto code cell (```` ```{lang} ````), exposed so the dev
 /// server can run it against a kernel.
@@ -94,7 +94,36 @@ pub struct RenderedDoc {
     /// Default theme mode for the resolver script: `"dark"`/`"light"` force it,
     /// `"auto"` follows the OS `prefers-color-scheme`.
     pub theme_default: String,
+    /// Resolved `include-in-header`/`include-before-body`/`include-after-body` +
+    /// `css` from the doc's front matter, injected into the page template.
+    pub includes: PageIncludes,
     pub blocks: Vec<Block>,
+}
+
+/// Ready-to-inject markup from the `include-in-header` / `include-before-body` /
+/// `include-after-body` / `css` front-matter (and site `format: html:`) keys.
+/// Each string is already resolved (inline `text:` or a referenced file's
+/// contents; `css` files wrapped in `<style>`), so the template just drops it in.
+#[derive(Debug, Clone, Default)]
+pub struct PageIncludes {
+    pub in_header: String,
+    pub before_body: String,
+    pub after_body: String,
+}
+
+impl PageIncludes {
+    /// Append `other` after `self` (site-level first, then the page's own).
+    pub fn merge(&mut self, other: &PageIncludes) {
+        for (dst, src) in [
+            (&mut self.in_header, &other.in_header),
+            (&mut self.before_body, &other.before_body),
+            (&mut self.after_body, &other.after_body),
+        ] {
+            if !src.is_empty() {
+                dst.push_str(src);
+            }
+        }
+    }
 }
 
 impl RenderedDoc {
@@ -167,6 +196,7 @@ fn render_internal(
     let mut toc = false;
     let mut theme: Option<String> = None;
     let mut bib_field: Option<String> = None;
+    let mut includes = PageIncludes::default();
     // Document-level cell defaults from a front-matter `execute:` block; a cell's
     // own `#| echo`/`#| include` overrides these.
     let mut exec_echo = true;
@@ -204,6 +234,7 @@ fn render_internal(
                 format = detect_format(fm);
                 toc = detect_toc(fm);
                 theme = detect_theme(fm);
+                includes = resolve_doc_includes(fm, base_dir);
                 (exec_echo, exec_include) = detect_execute_defaults(fm);
                 continue;
             }
@@ -475,6 +506,7 @@ fn render_internal(
         toc,
         theme_css,
         theme_default,
+        includes,
         blocks,
     }
 }
@@ -621,6 +653,132 @@ fn detect_theme(front_matter: &str) -> Option<String> {
         let v = v.trim_matches(['"', '\'']).trim();
         (!v.is_empty()).then(|| v.to_string())
     })
+}
+
+/// Resolve the `include-in-header`/`include-before-body`/`include-after-body` +
+/// `css` keys from a doc's front-matter YAML into ready-to-inject markup, reading
+/// referenced files relative to `base_dir`.
+fn resolve_doc_includes(front_matter: &str, base_dir: Option<&Path>) -> PageIncludes {
+    // comrak hands us the block *with* its `---` fences; strip them so serde_yaml
+    // sees a single document (the bare `---` would otherwise read as a separator).
+    let body = {
+        let mut lines: Vec<&str> = front_matter.lines().collect();
+        while lines.first().is_some_and(|l| l.trim().is_empty()) {
+            lines.remove(0);
+        }
+        if lines.first().is_some_and(|l| l.trim() == "---") {
+            lines.remove(0);
+        }
+        while lines.last().is_some_and(|l| l.trim().is_empty()) {
+            lines.pop();
+        }
+        if lines.last().is_some_and(|l| l.trim() == "---") {
+            lines.pop();
+        }
+        lines.join("\n")
+    };
+    let Ok(v) = serde_yaml::from_str::<serde_yaml::Value>(&body) else {
+        return PageIncludes::default();
+    };
+    includes_from_parts(
+        v.get("include-in-header"),
+        v.get("include-before-body"),
+        v.get("include-after-body"),
+        v.get("css"),
+        base_dir,
+    )
+}
+
+/// Build [`PageIncludes`] from already-located YAML values for each key. Shared by
+/// the single-doc front-matter path and the site `format: html:` path (which keep
+/// these as typed `serde_yaml::Value` fields). `css` files are wrapped in `<style>`
+/// and placed ahead of the header text so an author stylesheet can override ours.
+pub fn includes_from_parts(
+    in_header: Option<&serde_yaml::Value>,
+    before_body: Option<&serde_yaml::Value>,
+    after_body: Option<&serde_yaml::Value>,
+    css: Option<&serde_yaml::Value>,
+    base_dir: Option<&Path>,
+) -> PageIncludes {
+    let mut head = resolve_include_value(css, base_dir, true);
+    head.push_str(&resolve_include_value(in_header, base_dir, false));
+    PageIncludes {
+        in_header: head,
+        before_body: resolve_include_value(before_body, base_dir, false),
+        after_body: resolve_include_value(after_body, base_dir, false),
+    }
+}
+
+/// Resolve one include value: a path string (file contents), a `{text: …}` or
+/// `{file: …}` map, or a list of those. `css == true` wraps each resolved chunk
+/// in a `<style>` block; otherwise the markup is injected verbatim.
+fn resolve_include_value(
+    v: Option<&serde_yaml::Value>,
+    base_dir: Option<&Path>,
+    css: bool,
+) -> String {
+    let mut out = String::new();
+    if let Some(v) = v {
+        resolve_include_into(v, base_dir, css, &mut out);
+    }
+    out
+}
+
+fn resolve_include_into(
+    v: &serde_yaml::Value,
+    base_dir: Option<&Path>,
+    css: bool,
+    out: &mut String,
+) {
+    use serde_yaml::Value;
+    match v {
+        Value::String(s) => append_include(&read_include_file(base_dir, s), css, out),
+        Value::Mapping(_) => {
+            if let Some(Value::String(t)) = v.get("text") {
+                append_include(t, css, out);
+            } else if let Some(Value::String(f)) = v.get("file") {
+                append_include(&read_include_file(base_dir, f), css, out);
+            }
+        }
+        Value::Sequence(seq) => {
+            for item in seq {
+                resolve_include_into(item, base_dir, css, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn append_include(content: &str, css: bool, out: &mut String) {
+    if css {
+        out.push_str("<style>\n");
+        out.push_str(content);
+        out.push_str("\n</style>\n");
+    } else {
+        out.push_str(content);
+        out.push('\n');
+    }
+}
+
+/// Read an include/css file relative to the doc (or site root). A missing file is
+/// reported as an HTML comment rather than aborting the render (warn, don't reject).
+fn read_include_file(base_dir: Option<&Path>, rel: &str) -> String {
+    let path = match base_dir {
+        Some(dir) => dir.join(rel),
+        None => PathBuf::from(rel),
+    };
+    match std::fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(_) => format!(
+            "<!-- qmd-fast: include file not found: {} -->",
+            esc_comment(rel)
+        ),
+    }
+}
+
+/// Sanitize a path for an HTML comment (no `--`, which would close the comment).
+fn esc_comment(s: &str) -> String {
+    s.replace("--", "__")
 }
 
 /// The built-in dark theme, scoped to `html[data-theme="dark"]` so it can be
@@ -1530,6 +1688,9 @@ pub struct SiteCtx {
     pub prevnext_html: String,
     /// `page-layout: full` — widen the content column (for listing indexes).
     pub wide: bool,
+    /// Site-level `format: html:` includes (header/body/css from `_quarto.yml`),
+    /// merged ahead of each page's own front-matter includes.
+    pub includes: PageIncludes,
 }
 
 fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
@@ -1606,6 +1767,16 @@ fn html_page_inner(doc: &RenderedDoc, fallback_title: &str, site: Option<&SiteCt
         Some(_) => format!("{BASE_CSS}{DARK_CSS}{SITE_CSS}"),
         None => format!("{BASE_CSS}{DARK_CSS}"),
     };
+    // Site-level `format: html:` includes (from `_quarto.yml`) apply to every page
+    // first; the page's own front-matter includes follow.
+    let includes = match site {
+        Some(s) => {
+            let mut merged = s.includes.clone();
+            merged.merge(&doc.includes);
+            merged
+        }
+        None => doc.includes.clone(),
+    };
     PAGE_TEMPLATE
         .replace("{{TITLE}}", &t)
         .replace("{{THEME_INIT}}", &theme_head(&doc.theme_default))
@@ -1614,10 +1785,13 @@ fn html_page_inner(doc: &RenderedDoc, fallback_title: &str, site: Option<&SiteCt
         .replace("{{THEME_CSS}}", &theme_style(&doc.theme_css))
         .replace("{{CODE_HEAD}}", &code_head())
         .replace("{{OJS_HEAD}}", &ojs_head_html)
+        .replace("{{INCLUDE_IN_HEADER}}", &includes.in_header)
         .replace("{{BODY_CLASS}}", &body_class)
+        .replace("{{INCLUDE_BEFORE_BODY}}", &includes.before_body)
         .replace("{{BODY}}", &body_content)
         .replace("{{CODE_SCRIPTS}}", &code_scripts())
         .replace("{{OJS_INIT}}", &ojs_init_html)
+        .replace("{{INCLUDE_AFTER_BODY}}", &includes.after_body)
 }
 
 /// Wrap resolved theme override CSS in a `<style>` (empty string when there is
@@ -3435,8 +3609,10 @@ const PAGE_TEMPLATE: &str = r#"<!DOCTYPE html>
 {{CODE_HEAD}}
 {{OJS_HEAD}}
 {{THEME_CSS}}
+{{INCLUDE_IN_HEADER}}
 </head>
 <body{{BODY_CLASS}}>
+{{INCLUDE_BEFORE_BODY}}
 {{BODY}}
 <script>
   // Click any block to see its source position in the console (a static preview
@@ -3452,6 +3628,7 @@ const PAGE_TEMPLATE: &str = r#"<!DOCTYPE html>
 {{CODE_SCRIPTS}}
 <script>document.addEventListener('DOMContentLoaded',function(){window.qmdEnhanceCode&&window.qmdEnhanceCode(document.body);});</script>
 {{OJS_INIT}}
+{{INCLUDE_AFTER_BODY}}
 </body>
 </html>
 "#;
@@ -3972,6 +4149,33 @@ mod tests {
     fn front_matter_without_title_yields_no_blocks() {
         // No title -> no title block, and no body -> empty.
         assert!(render_document("---\nfoo: bar\n---\n").blocks.is_empty());
+    }
+
+    #[test]
+    fn front_matter_include_text_injected_at_head_and_body() {
+        let src = "---\n\
+            title: T\n\
+            include-in-header:\n  text: |\n    <meta name=\"x\" content=\"y\">\n\
+            include-before-body:\n  text: |\n    <div id=\"top-banner\"></div>\n\
+            include-after-body:\n  text: |\n    <script>window.__after=1</script>\n\
+            ---\n\nBody.\n";
+        let page = render_html_page(src, "fallback");
+        let head = &page[..page.find("</head>").expect("has </head>")];
+        assert!(
+            head.contains("<meta name=\"x\" content=\"y\">"),
+            "include-in-header not injected into <head>"
+        );
+        // before-body lands ahead of the rendered body paragraph.
+        let banner = page.find("top-banner").expect("before-body injected");
+        let body_para = page.find("Body.").expect("body present");
+        assert!(
+            banner < body_para,
+            "include-before-body must precede the body"
+        );
+        assert!(
+            page.contains("<script>window.__after=1</script>"),
+            "include-after-body not injected"
+        );
     }
 
     #[test]

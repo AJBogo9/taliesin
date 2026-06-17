@@ -29,6 +29,31 @@ pub struct SiteConfig {
     pub project: ProjectSection,
     #[serde(default)]
     pub website: WebsiteSection,
+    #[serde(default)]
+    pub format: FormatSection,
+}
+
+/// The `format:` block. Only `html:` is read (qmd-fast is HTML-only); within it,
+/// the `include-*` / `css` keys are honoured site-wide (other keys are ignored).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct FormatSection {
+    #[serde(default)]
+    pub html: FormatHtml,
+}
+
+/// Site-wide `format: html:` asset injection (applied to every page). Each value
+/// is left as raw YAML and resolved by `render::includes_from_parts` (a path
+/// string, a `{text:}`/`{file:}` map, or a list of those; `css` files inlined).
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct FormatHtml {
+    #[serde(default, rename = "include-in-header")]
+    pub include_in_header: Option<serde_yaml::Value>,
+    #[serde(default, rename = "include-before-body")]
+    pub include_before_body: Option<serde_yaml::Value>,
+    #[serde(default, rename = "include-after-body")]
+    pub include_after_body: Option<serde_yaml::Value>,
+    #[serde(default)]
+    pub css: Option<serde_yaml::Value>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -148,6 +173,9 @@ pub struct Site {
     pub root: PathBuf,
     pub config: SiteConfig,
     pub pages: Vec<Page>,
+    /// Site-wide `format: html:` includes (header/body/css), resolved once at
+    /// discovery relative to the site root and merged ahead of each page's own.
+    pub includes: render::PageIncludes,
     /// Warnings gathered during discovery (bad config, etc.), surfaced by the
     /// caller (build logs / preview diagnostics).
     pub warnings: Vec<String>,
@@ -192,10 +220,22 @@ impl Site {
             .collect();
         pages.sort_by(|a, b| a.rel.cmp(&b.rel));
 
+        // Resolve the site-wide `format: html:` includes once, relative to the
+        // site root (where `_quarto.yml` and its referenced css/js files live).
+        let html = &config.format.html;
+        let includes = render::includes_from_parts(
+            html.include_in_header.as_ref(),
+            html.include_before_body.as_ref(),
+            html.include_after_body.as_ref(),
+            html.css.as_ref(),
+            Some(root),
+        );
+
         Site {
             root: root.to_path_buf(),
             config,
             pages,
+            includes,
             warnings,
         }
     }
@@ -232,6 +272,7 @@ impl Site {
             footer_html: self.footer_html(depth),
             prevnext_html: self.prevnext_html(page, depth),
             wide: page.page_layout.as_deref() == Some("full"),
+            includes: self.includes.clone(),
         }
     }
 
@@ -622,6 +663,12 @@ fn load_config(root: &Path, warnings: &mut Vec<String>) -> SiteConfig {
         match serde_yaml::from_value(v) {
             Ok(w) => cfg.website = w,
             Err(e) => warnings.push(format!("ignoring malformed `website` config: {e}")),
+        }
+    }
+    if let Some(v) = root_val.get("format").cloned() {
+        match serde_yaml::from_value(v) {
+            Ok(f) => cfg.format = f,
+            Err(e) => warnings.push(format!("ignoring malformed `format` config: {e}")),
         }
     }
     cfg
