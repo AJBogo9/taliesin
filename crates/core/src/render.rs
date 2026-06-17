@@ -1805,7 +1805,7 @@ pub fn render_doc_to_page(doc: &RenderedDoc, fallback_title: &str) -> String {
 pub struct SiteCtx {
     pub navbar_html: String,
     pub footer_html: String,
-    pub prevnext_html: String,
+    pub post_nav_html: String,
     /// `page-layout: full` — widen the content column (for listing indexes).
     pub wide: bool,
     /// Site-level `format: html:` includes (header/body/css from `_quarto.yml`),
@@ -1878,9 +1878,9 @@ fn html_page_inner(doc: &RenderedDoc, fallback_title: &str, site: Option<&SiteCt
             }
             body_class = " class=\"qmd-site\"".to_string();
             format!(
-                "{nav}\n<div class=\"{main_cls}\">\n{content}{prevnext}</div>\n{footer}\n",
+                "{nav}\n<div class=\"{main_cls}\">\n{content}{post_nav}</div>\n{footer}\n",
                 nav = s.navbar_html,
-                prevnext = s.prevnext_html,
+                post_nav = s.post_nav_html,
                 footer = s.footer_html,
             )
         }
@@ -3655,18 +3655,18 @@ const SITE_CSS: &str = r#"
   /* a page with a TOC widens into a two-column grid (content + sticky sidebar) */
   .qmd-site-main.has-toc { max-width: 72rem; display: grid; align-items: start;
     gap: 2.5rem; grid-template-columns: minmax(0, 46rem) 14rem; }
-  .qmd-site-main.has-toc > .qmd-prevnext { grid-column: 1 / -1; }
+  .qmd-site-main.has-toc > .qmd-postnav { grid-column: 1 / -1; }
 
-  /* prev/next between posts */
-  .qmd-prevnext { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;
-    margin: 3.5rem 0 0; padding-top: 1.5rem; border-top: 1px solid var(--qmd-border); }
-  .qmd-prevnext-link { display: flex; flex-direction: column; gap: .25rem; text-decoration: none;
-    padding: .8rem 1rem; border: 1px solid var(--qmd-border); border-radius: 8px;
-    color: var(--qmd-fg); transition: border-color .12s ease, background .12s ease; }
-  .qmd-prevnext-link:hover { border-color: var(--qmd-accent); background: var(--qmd-code-bg); }
-  .qmd-pn-next { text-align: right; align-items: flex-end; }
-  .qmd-pn-dir { font: 600 .8rem var(--qmd-font-head); color: var(--qmd-muted); }
-  .qmd-pn-title { font-weight: 600; }
+  /* bottom-of-post: a single "back to the blog listing" button */
+  .qmd-postnav { display: flex; margin: 3.5rem 0 0; padding-top: 1.5rem;
+    border-top: 1px solid var(--qmd-border); }
+  .qmd-back-link { display: inline-flex; align-items: center; gap: .45rem; text-decoration: none;
+    padding: .55rem 1rem; border: 1px solid var(--qmd-border); border-radius: 8px;
+    color: var(--qmd-fg); font-weight: 600;
+    transition: border-color .12s ease, background .12s ease, color .12s ease; }
+  .qmd-back-link:hover { border-color: var(--qmd-accent); background: var(--qmd-code-bg);
+    color: var(--qmd-accent); }
+  .qmd-back-glyph { font: 600 1rem var(--qmd-font-head); }
 
   /* slim footer pinned to the bottom of the flex column (icons = author raw HTML) */
   .qmd-site-footer { flex-shrink: 0; border-top: 1px solid var(--qmd-border); }
@@ -3749,8 +3749,6 @@ const SITE_CSS: &str = r#"
     .qmd-nav-link { padding: .7rem 1.15rem; border-radius: 0; }
     .qmd-nav-controls { padding: .5rem 1.15rem; }
     .qmd-site-main.has-toc { grid-template-columns: minmax(0, 1fr); }
-    .qmd-prevnext { grid-template-columns: 1fr; }
-    .qmd-pn-next { text-align: left; align-items: flex-start; }
   }
 "#;
 

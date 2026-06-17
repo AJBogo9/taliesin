@@ -276,11 +276,19 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
     // The RSS/feed link is dropped.
     assert!(!blog.contains("blog.xml"), "RSS link should be dropped");
 
-    // A post carries prev/next nav and rewrites cross-page `.qmd` links.
+    // A post carries a "back to the blog listing" button and rewrites cross-page
+    // `.qmd` links.
     let post = site
         .render_page("posts/evidence-lower-bound/index.qmd")
         .expect("post renders");
-    assert!(post.contains("qmd-prevnext"), "post missing prev/next");
+    assert!(
+        post.contains("qmd-back-link") && post.contains("Back to Blog"),
+        "post missing the back-to-blog button"
+    );
+    assert!(
+        post.contains("href=\"../../blog.html\""),
+        "back button should link to the blog listing"
+    );
     assert!(
         post.contains("../KL-divergence/index.html"),
         "cross-page .qmd link not rewritten to .html"

@@ -345,7 +345,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
 <div class="{main_cls}">
 <main id="qmd-root">{body}</main>
 {toc_nav}
-{prevnext}
+{post_nav}
 </div>
 {footer}
 <div id="qmd-controls"></div>
@@ -370,7 +370,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
         code_scripts = qmd_fast_core::code_scripts(),
         status_css = STATUS_CSS,
         navbar = chrome.navbar_html,
-        prevnext = chrome.prevnext_html,
+        post_nav = chrome.post_nav_html,
         footer = chrome.footer_html,
         js = CLIENT_JS,
     )

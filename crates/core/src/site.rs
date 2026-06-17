@@ -254,15 +254,7 @@ impl Site {
             .find(|p| p.rel == needle || p.url == needle)
     }
 
-    /// Posts ordered oldest→newest (by `date`, falling back to rel path), the
-    /// order used for prev/next navigation.
-    fn posts_chronological(&self) -> Vec<&Page> {
-        let mut posts: Vec<&Page> = self.pages.iter().filter(|p| p.is_post).collect();
-        posts.sort_by(|a, b| a.date.cmp(&b.date).then_with(|| a.rel.cmp(&b.rel)));
-        posts
-    }
-
-    /// Build the chrome (navbar, footer, prev/next) for a page, with links
+    /// Build the chrome (navbar, footer, post-nav) for a page, with links
     /// resolved relative to that page's depth. Shared by the static build and the
     /// live preview so both render identical navigation.
     pub fn page_chrome(&self, page: &Page) -> SiteCtx {
@@ -274,7 +266,7 @@ impl Site {
         SiteCtx {
             navbar_html: self.navbar_html(page, depth),
             footer_html: self.footer_html(depth),
-            prevnext_html: self.prevnext_html(page, depth),
+            post_nav_html: self.post_nav_html(page, depth),
             wide: page.page_layout.as_deref() == Some("full"),
             includes: self.includes.clone(),
             favicon,
@@ -614,38 +606,39 @@ impl Site {
     }
 
     /// Prev/next navigation between posts (chronological). Non-posts get nothing.
-    fn prevnext_html(&self, current: &Page, depth: usize) -> String {
+    /// Bottom-of-post navigation: a single "back to the listing" button (replaces
+    /// prev/next). Links to the listing page that covers this post, preferring the
+    /// most complete one (the full blog over a homepage "recent posts" excerpt).
+    fn post_nav_html(&self, current: &Page, depth: usize) -> String {
         if !current.is_post {
             return String::new();
         }
-        let posts = self.posts_chronological();
-        let Some(i) = posts.iter().position(|p| p.rel == current.rel) else {
+        // The listing page covering this post with the largest collection.
+        let mut best: Option<(&Page, usize)> = None;
+        for page in &self.pages {
+            if page.rel == current.rel {
+                continue;
+            }
+            for spec in &page.listings {
+                let coll = self.collection(page, spec);
+                if coll.iter().any(|p| p.rel == current.rel)
+                    && best.is_none_or(|(_, n)| coll.len() > n)
+                {
+                    best = Some((page, coll.len()));
+                }
+            }
+        }
+        let Some((blog, _)) = best else {
             return String::new();
         };
         let up = "../".repeat(depth);
-        let link = |p: &Page, dir: &str, glyph: &str| -> String {
-            let label = p.title.as_deref().unwrap_or(&p.rel);
-            let target = format!("{up}{}", p.url);
-            format!(
-                "<a class=\"qmd-prevnext-link qmd-pn-{dir}\" href=\"{target}\">\
-                 <span class=\"qmd-pn-dir\">{glyph}</span>\
-                 <span class=\"qmd-pn-title\">{}</span></a>",
-                esc(label)
-            )
-        };
-        let mut s = String::from("<nav class=\"qmd-prevnext\">");
-        if i > 0 {
-            s.push_str(&link(posts[i - 1], "prev", "← Previous"));
-        } else {
-            s.push_str("<span></span>");
-        }
-        if i + 1 < posts.len() {
-            s.push_str(&link(posts[i + 1], "next", "Next →"));
-        } else {
-            s.push_str("<span></span>");
-        }
-        s.push_str("</nav>");
-        s
+        let target = format!("{up}{}", blog.url);
+        let label = blog.title.as_deref().unwrap_or("Blog");
+        format!(
+            "<nav class=\"qmd-postnav\"><a class=\"qmd-back-link\" href=\"{target}\">\
+             <span class=\"qmd-back-glyph\">\u{2190}</span> Back to {}</a></nav>",
+            esc(label)
+        )
     }
 }
 
