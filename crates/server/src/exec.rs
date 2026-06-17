@@ -8,10 +8,16 @@
 //! swaps in place when the cell (or an upstream cell) re-runs.
 
 use std::path::PathBuf;
+use std::time::{Duration, Instant};
 
 use qmd_fast_core::{Block, render::CellFigure};
 
 use crate::kernel::{Kernel, render_outputs};
+
+/// After a failed kernel start, wait at least this long before retrying — long
+/// enough that a genuinely missing/bad Python doesn't re-hang every save, short
+/// enough that fixing `QMD_FAST_PYTHON`/the venv self-heals within a few saves.
+const KERNEL_RETRY_AFTER: Duration = Duration::from_secs(20);
 
 /// A code cell pulled out of the block list, with what the engine needs to run
 /// it and to build its output block.
@@ -35,7 +41,10 @@ struct Cached {
 pub struct Executor {
     python: PathBuf,
     kernel: Option<Kernel>,
-    failed: bool,
+    /// When the last kernel *start* failed (None = never failed / recovered).
+    /// Drives a retry backoff instead of a permanent "failed" latch, so a fixed
+    /// config self-heals without restarting the server.
+    failed_at: Option<Instant>,
     cached: Vec<Cached>,
 }
 
@@ -47,19 +56,29 @@ impl Executor {
         Self {
             python,
             kernel: None,
-            failed: false,
+            failed_at: None,
             cached: Vec::new(),
         }
     }
 
-    /// A user-facing warning about the executor's state, if any. Currently: the
-    /// kernel failed to start, so code cells are rendering as source.
+    /// A user-facing warning about the executor's state, if any: the kernel start
+    /// failed (recently), so code cells are rendering as source.
     pub fn diagnostic(&self) -> Option<String> {
-        self.failed.then(|| {
+        (self.kernel.is_none() && self.failed_at.is_some()).then(|| {
             "kernel unavailable; code cells render as source \
-             (set QMD_FAST_PYTHON to a python with ipykernel)"
+             (set QMD_FAST_PYTHON to a python with ipykernel, then Restart kernel)"
                 .to_string()
         })
+    }
+
+    /// Drop the current kernel and clear the failure backoff, so the next run
+    /// starts a fresh kernel immediately. Backs the dev-menu "Restart kernel"
+    /// action and recovery after fixing `QMD_FAST_PYTHON`. (Dropping the kernel
+    /// kills its child process.)
+    pub fn restart_kernel(&mut self) {
+        self.kernel = None;
+        self.failed_at = None;
+        self.cached.clear(); // force a full re-run against the fresh kernel
     }
 
     /// Execute the document's Python cells (changed cells + downstream) and
@@ -131,7 +150,7 @@ impl Executor {
             } else {
                 // Progress only when the kernel is up; otherwise cells are instant
                 // no-ops and a "cell k/n" line would be misleading.
-                if !self.failed {
+                if self.kernel.is_some() {
                     crate::log::exec(i - first_changed + 1, to_run);
                 }
                 outputs.push(self.exec_cell(&cell.code).await);
@@ -149,25 +168,41 @@ impl Executor {
         outputs
     }
 
-    /// Start the warm kernel on first use, logging the (often multi-second) boot
-    /// so the wait is visible rather than hidden behind "cell 1/n". A failure is
-    /// latched (`failed`) so cells fall back to rendering as source.
+    /// Ensure a live kernel before executing. Three cases:
+    ///   - a kernel that died mid-session is dropped and respawned (self-healing,
+    ///     so a crash doesn't make every later cell hang on the execute timeout);
+    ///   - after a failed *start* we back off for `KERNEL_RETRY_AFTER` before
+    ///     retrying, so a missing/bad Python doesn't re-hang every save, but a
+    ///     fixed config recovers on its own within a few saves;
+    ///   - otherwise (no kernel, not in backoff) we start one.
+    /// Logs the (often multi-second) boot so the wait is visible.
     async fn ensure_kernel(&mut self) {
-        if self.failed || self.kernel.is_some() {
-            return;
+        if let Some(k) = self.kernel.as_mut() {
+            if k.is_alive() {
+                return;
+            }
+            crate::log::warn("kernel exited; restarting");
+            self.kernel = None;
+            self.cached.clear(); // kernel state is gone; re-run everything
+        }
+        if let Some(at) = self.failed_at {
+            if at.elapsed() < KERNEL_RETRY_AFTER {
+                return; // still backing off; cells render as source
+            }
         }
         crate::log::kernel(&format!("starting ({})", self.python.display()));
         match Kernel::start(&self.python).await {
             Ok(k) => {
                 crate::log::kernel(&format!("ready ({})", self.python.display()));
                 self.kernel = Some(k);
+                self.failed_at = None;
             }
             Err(e) => {
                 crate::log::warn(&format!(
                     "kernel unavailable ({e}); cells render as source only \
                      (set QMD_FAST_PYTHON to a python with ipykernel)"
                 ));
-                self.failed = true;
+                self.failed_at = Some(Instant::now());
             }
         }
     }

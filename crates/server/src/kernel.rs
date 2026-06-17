@@ -151,6 +151,13 @@ impl Kernel {
         Ok(kernel)
     }
 
+    /// Whether the kernel process is still alive — a cheap, non-blocking check
+    /// (`try_wait`) used to detect a kernel that died mid-session so it can be
+    /// respawned instead of hanging on the next execute's timeout.
+    pub fn is_alive(&mut self) -> bool {
+        matches!(self.child.try_wait(), Ok(None))
+    }
+
     /// Run `code` and collect its outputs (waits until the kernel is idle).
     pub async fn execute(&mut self, code: &str) -> io::Result<Vec<Output>> {
         let request = JupyterMessage::new(

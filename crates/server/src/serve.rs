@@ -14,6 +14,7 @@ use qmd_fast_core::{Block, BlockOp, DocFormat, RenderedDoc};
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
@@ -28,6 +29,11 @@ struct AppState {
     base_dir: PathBuf,
     doc: Mutex<DocState>,
     tx: broadcast::Sender<String>,
+    /// Set by the dev-menu "Restart kernel" action; the rebuild loop honours it on
+    /// its next pass (restart the kernel, then re-render).
+    restart_kernel: AtomicBool,
+    /// Wakes the rebuild loop (the file watcher and the restart action both kick it).
+    kick: mpsc::UnboundedSender<()>,
 }
 
 #[derive(Default)]
@@ -86,11 +92,14 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
     let start = std::time::Instant::now();
     let base_dir = path.parent().unwrap_or(Path::new(".")).to_path_buf();
     let (tx, _rx) = broadcast::channel(256);
+    let (kick, kick_rx) = mpsc::unbounded_channel();
     let app = Arc::new(AppState {
         path,
         base_dir,
         doc: Mutex::new(DocState::default()),
         tx,
+        restart_kernel: AtomicBool::new(false),
+        kick,
     });
 
     // Initial render.
@@ -105,7 +114,7 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         d.blocks = doc.blocks;
     }
 
-    spawn_watcher(app.clone());
+    spawn_watcher(app.clone(), kick_rx);
 
     let router = Router::new()
         .route("/", get(index))
@@ -571,7 +580,7 @@ async fn client_conn(socket: WebSocket, app: Arc<AppState>) {
                 Err(broadcast::error::RecvError::Closed) => break,
             },
             incoming = stream.next() => match incoming {
-                Some(Ok(Message::Text(t))) => handle_client_msg(t.as_str()),
+                Some(Ok(Message::Text(t))) => handle_client_msg(t.as_str(), &app),
                 Some(Ok(Message::Close(_))) | None => break,
                 Some(Err(_)) => break,
                 _ => {}
@@ -580,17 +589,26 @@ async fn client_conn(socket: WebSocket, app: Arc<AppState>) {
     }
 }
 
-fn handle_client_msg(text: &str) {
+fn handle_client_msg(text: &str, app: &AppState) {
     let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else {
         return;
     };
-    if v.get("type").and_then(|t| t.as_str()) == Some("click_block") {
-        let file = v
-            .get("source_file")
-            .and_then(|f| f.as_str())
-            .unwrap_or("(primary)");
-        let pos = v.get("sourcepos").and_then(|p| p.as_str()).unwrap_or("?");
-        crate::log::source(&format!("{file}  {pos}"));
+    match v.get("type").and_then(|t| t.as_str()) {
+        Some("click_block") => {
+            let file = v
+                .get("source_file")
+                .and_then(|f| f.as_str())
+                .unwrap_or("(primary)");
+            let pos = v.get("sourcepos").and_then(|p| p.as_str()).unwrap_or("?");
+            crate::log::source(&format!("{file}  {pos}"));
+        }
+        Some("restart_kernel") => {
+            // Flag the restart and wake the rebuild loop, which drops + respawns
+            // the kernel and re-renders (broadcasting the refreshed outputs).
+            app.restart_kernel.store(true, Ordering::Relaxed);
+            let _ = app.kick.send(());
+        }
+        _ => {}
     }
 }
 
@@ -615,6 +633,12 @@ fn diags_array(diags: &[Diagnostic]) -> Vec<serde_json::Value> {
 
 fn diagnostics_json(diags: &[Diagnostic]) -> String {
     serde_json::json!({ "type": "diagnostics", "messages": diags_array(diags) }).to_string()
+}
+
+/// Tell the client to do a full page reload (used after a kernel restart, so OJS
+/// cells re-bind to freshly-defined values).
+fn reload_json() -> String {
+    serde_json::json!({ "type": "reload" }).to_string()
 }
 
 fn error_json(message: &str) -> String {
@@ -663,8 +687,8 @@ fn op_json(op: &BlockOp) -> String {
 
 // --- file watching ------------------------------------------------------
 
-fn spawn_watcher(app: Arc<AppState>) {
-    let (signal_tx, mut signal_rx) = mpsc::unbounded_channel::<()>();
+fn spawn_watcher(app: Arc<AppState>, mut signal_rx: mpsc::UnboundedReceiver<()>) {
+    let signal_tx = app.kick.clone();
     let dirs = watch_dirs(&app);
 
     // notify is synchronous; run it on its own thread and forward events.
@@ -705,7 +729,19 @@ fn spawn_watcher(app: Arc<AppState>) {
         while signal_rx.recv().await.is_some() {
             tokio::time::sleep(Duration::from_millis(80)).await;
             while signal_rx.try_recv().is_ok() {}
+            // Honour a pending dev-menu "Restart kernel" before this rebuild.
+            let restarted = app.restart_kernel.swap(false, Ordering::Relaxed);
+            if restarted {
+                crate::log::kernel("restart requested (dev menu)");
+                executor.restart_kernel();
+            }
             rebuild(&app, &mut executor).await;
+            // A fresh kernel means fresh outputs — including any `ojs_define`
+            // values. Reload so OJS cells re-bind to them (the Observable runtime
+            // can't redefine a variable in place, so a diff-splice wouldn't take).
+            if restarted {
+                let _ = app.tx.send(reload_json());
+            }
         }
     });
 }

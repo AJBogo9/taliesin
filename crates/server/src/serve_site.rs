@@ -35,7 +35,14 @@ struct SiteApp {
     site: Mutex<Site>,
     pages: Mutex<HashMap<String, PageState>>,
     /// Page rel-paths queued for a (re)build by the executor worker.
-    build_tx: mpsc::UnboundedSender<String>,
+    build_tx: mpsc::UnboundedSender<BuildMsg>,
+}
+
+/// A job for the executor worker: rebuild a page, or restart its kernel first
+/// (the dev-menu "Restart kernel" action) then rebuild.
+enum BuildMsg {
+    Build(String),
+    Restart(String),
 }
 
 struct PageState {
@@ -194,7 +201,7 @@ fn ensure_and_render_page(app: &SiteApp, page: &Page) -> String {
             .unwrap()
             .entry(rel.clone())
             .or_insert(PageState { doc, tx });
-        let _ = app.build_tx.send(rel.clone());
+        let _ = app.build_tx.send(BuildMsg::Build(rel.clone()));
     }
     site_page_html(app, page)
 }
@@ -387,7 +394,7 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, rel_or_url: String) {
         (full_render_json(&ps.doc), ps.tx.subscribe(), created)
     };
     if created {
-        let _ = app.build_tx.send(rel.clone());
+        let _ = app.build_tx.send(BuildMsg::Build(rel.clone()));
     }
     if sink.send(Message::Text(snapshot.into())).await.is_err() {
         return;
@@ -413,13 +420,29 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, rel_or_url: String) {
                 Err(broadcast::error::RecvError::Closed) => break,
             },
             incoming = stream.next() => match incoming {
-                Some(Ok(Message::Text(t))) => handle_client_msg(t.as_str()),
+                Some(Ok(Message::Text(t))) => {
+                    // The dev menu's "Restart kernel" action restarts this page's kernel.
+                    if is_restart_kernel(t.as_str()) {
+                        let _ = app.build_tx.send(BuildMsg::Restart(rel.clone()));
+                    } else {
+                        handle_client_msg(t.as_str());
+                    }
+                }
                 Some(Ok(Message::Close(_))) | None => break,
                 Some(Err(_)) => break,
                 _ => {}
             },
         }
     }
+}
+
+/// Whether a client ws message is the dev-menu "Restart kernel" request.
+fn is_restart_kernel(text: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(text)
+        .ok()
+        .and_then(|v| v.get("type").and_then(|t| t.as_str()).map(str::to_string))
+        .as_deref()
+        == Some("restart_kernel")
 }
 
 fn handle_client_msg(text: &str) {
@@ -487,11 +510,28 @@ fn op_json(op: &BlockOp) -> String {
 
 // --- build worker -------------------------------------------------------
 
-fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<String>) {
+fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildMsg>) {
     tokio::spawn(async move {
         let mut execs: HashMap<String, crate::exec::Executor> = HashMap::new();
-        while let Some(rel) = build_rx.recv().await {
-            build_page(&app, &rel, &mut execs).await;
+        while let Some(msg) = build_rx.recv().await {
+            match msg {
+                BuildMsg::Build(rel) => build_page(&app, &rel, &mut execs).await,
+                BuildMsg::Restart(rel) => {
+                    // Drop + respawn this page's kernel, then rebuild (re-executes
+                    // every cell against the fresh kernel).
+                    if let Some(ex) = execs.get_mut(&rel) {
+                        ex.restart_kernel();
+                    }
+                    build_page(&app, &rel, &mut execs).await;
+                    // A fresh kernel means fresh outputs — including any `ojs_define`
+                    // values. Reload the page so OJS cells re-bind to them: the
+                    // Observable runtime can't redefine a variable in place, so a
+                    // diff-splice of the define script wouldn't take effect.
+                    if let Some(ps) = app.pages.lock().unwrap().get(&rel) {
+                        let _ = ps.tx.send(reload_json());
+                    }
+                }
+            }
         }
     });
 }
@@ -668,7 +708,7 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>) {
             }
         }
         if deps.intersection(&changed_canon).next().is_some() {
-            let _ = app.build_tx.send(rel);
+            let _ = app.build_tx.send(BuildMsg::Build(rel));
         }
     }
 }

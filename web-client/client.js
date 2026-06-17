@@ -254,7 +254,29 @@
     });
     syncSrc();
 
-    panel.append(devRow("Status", statusEl), devRow("Words", wordCountEl), srcBtn);
+    // Restart the warm Jupyter kernel: drops the (possibly dead/wedged) kernel and
+    // re-runs every cell against a fresh one. Recovers after fixing QMD_FAST_PYTHON.
+    const kernelBtn = document.createElement("button");
+    kernelBtn.id = "qmd-kernel-ctl";
+    kernelBtn.className = "qmd-dev-ctl";
+    kernelBtn.type = "button";
+    kernelBtn.textContent = "Restart kernel";
+    kernelBtn.title = "Drop the Jupyter kernel and re-run all cells against a fresh one";
+    kernelBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: "restart_kernel" }));
+        const prev = kernelBtn.textContent;
+        kernelBtn.textContent = "Restarting…";
+        kernelBtn.disabled = true;
+        setTimeout(() => {
+          kernelBtn.textContent = prev;
+          kernelBtn.disabled = false;
+        }, 1500);
+      }
+    });
+
+    panel.append(devRow("Status", statusEl), devRow("Words", wordCountEl), srcBtn, kernelBtn);
 
     // Single-doc preview has no site navbar, so give the dev menu its own theme
     // toggle (wired by the shared theme_head). Sites use the navbar's instead.
