@@ -418,6 +418,9 @@ fn render_internal(
             html = strip_heading_attr(&html);
         } else {
             emit(node, &attrs, &mut html);
+            // Apply Pandoc attribute blocks trailing a link (`[t](u){.btn}`) onto
+            // the `<a>`, dropping the literal `{...}` comrak left as text.
+            html = apply_link_attrs(&html);
         }
         flat.push(FlatBlock {
             buf_start,
@@ -742,6 +745,14 @@ const BASE_CSS: &str = r#"
          font: var(--qmd-font-body); color: var(--qmd-fg); background: var(--qmd-bg);
          overflow-wrap: break-word; }
   a { color: var(--qmd-link); }
+  /* button-style links (Pandoc `[text](url){.btn .btn-outline-* .btn-sm}`) */
+  a.btn { display: inline-block; font: 500 .9rem var(--qmd-font-head); text-decoration: none;
+    padding: .4rem .95rem; border-radius: 7px; border: 1px solid var(--qmd-accent);
+    color: var(--qmd-accent); transition: background .12s ease, color .12s ease; }
+  a.btn:hover { background: var(--qmd-accent); color: #fff; }
+  a.btn-outline-secondary { border-color: var(--qmd-border); color: var(--qmd-muted); }
+  a.btn-outline-secondary:hover { background: var(--qmd-fg); color: var(--qmd-bg); border-color: var(--qmd-fg); }
+  a.btn-sm { font-size: .8rem; padding: .25rem .7rem; }
   h1, h2, h3, h4 { font-family: var(--qmd-font-head); line-height: 1.25; }
   .qmd-title-block { margin: 0 0 2rem; padding-bottom: 1rem; border-bottom: 1px solid var(--qmd-border); }
   .qmd-title-block .title { margin: 0 0 .3rem; font-size: 2.1rem; line-height: 1.15; }
@@ -1380,6 +1391,8 @@ pub struct SiteCtx {
     pub navbar_html: String,
     pub footer_html: String,
     pub prevnext_html: String,
+    /// `page-layout: full` — widen the content column (for listing indexes).
+    pub wide: bool,
 }
 
 fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
@@ -1435,11 +1448,13 @@ fn html_page_inner(doc: &RenderedDoc, fallback_title: &str, site: Option<&SiteCt
     // wrapper, leaving the body free to be the flex shell.
     let body_content = match site {
         Some(s) => {
-            let main_cls = if toc.is_empty() {
-                "qmd-site-main"
-            } else {
-                "qmd-site-main has-toc"
-            };
+            let mut main_cls = String::from("qmd-site-main");
+            if !toc.is_empty() {
+                main_cls.push_str(" has-toc");
+            }
+            if s.wide {
+                main_cls.push_str(" qmd-wide");
+            }
             body_class = " class=\"qmd-site\"".to_string();
             format!(
                 "{nav}\n<div class=\"{main_cls}\">\n{content}{prevnext}</div>\n{footer}\n",
@@ -1796,6 +1811,76 @@ fn strip_heading_attr(html: &str) -> String {
         return format!("{}{}", inner[..open].trim_end(), &html[close..]);
     }
     html.to_string()
+}
+
+/// Apply a Pandoc/Quarto attribute block trailing a link — `<a ...>text</a>{.btn #id}`
+/// — onto the `<a>` (merging classes + setting an id) and drop the literal `{...}`
+/// comrak leaves as text. The inline analogue of [`strip_heading_attr`]; only
+/// `.class`/`#id` blocks are consumed (anything else, e.g. `{x}`, is left as-is).
+fn apply_link_attrs(html: &str) -> String {
+    if !html.contains("</a>") {
+        return html.to_string();
+    }
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(pos) = rest.find("</a>") {
+        let end = pos + "</a>".len();
+        out.push_str(&rest[..end]);
+        let after = &rest[end..];
+        let trimmed = after.trim_start();
+        if let Some(body) = trimmed.strip_prefix('{')
+            && let Some(close) = body.find('}')
+            && let Some((classes, id)) = parse_pandoc_attrs(&body[..close])
+        {
+            inject_attrs_into_last_tag(&mut out, "<a ", &classes, id.as_deref());
+            rest = &body[close + 1..];
+            continue;
+        }
+        rest = after;
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Parse a `.class #id` attribute block. Returns `None` unless every token is a
+/// `.class` or `#id` (so non-attribute braces are left untouched).
+fn parse_pandoc_attrs(s: &str) -> Option<(Vec<String>, Option<String>)> {
+    let s = s.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let mut classes = Vec::new();
+    let mut id = None;
+    for tok in s.split_whitespace() {
+        if let Some(c) = tok.strip_prefix('.').filter(|c| !c.is_empty()) {
+            classes.push(c.to_string());
+        } else if let Some(i) = tok.strip_prefix('#').filter(|i| !i.is_empty()) {
+            id = Some(i.to_string());
+        } else {
+            return None;
+        }
+    }
+    Some((classes, id))
+}
+
+/// Insert `class`/`id` attributes into the last opening `tag` already written to
+/// `out` (e.g. the `<a ` that precedes a just-emitted `</a>`).
+fn inject_attrs_into_last_tag(out: &mut String, tag: &str, classes: &[String], id: Option<&str>) {
+    let Some(start) = out.rfind(tag) else {
+        return;
+    };
+    let Some(rel_gt) = out[start..].find('>') else {
+        return;
+    };
+    let gt = start + rel_gt;
+    let mut ins = String::new();
+    if !classes.is_empty() {
+        ins.push_str(&format!(" class=\"{}\"", escape_attr(&classes.join(" "))));
+    }
+    if let Some(i) = id {
+        ins.push_str(&format!(" id=\"{}\"", escape_attr(i)));
+    }
+    out.insert_str(gt, &ins);
 }
 
 /// Fold Pandoc table captions into their tables. A `: caption {#tbl-x}` paragraph
@@ -3068,6 +3153,8 @@ const SITE_CSS: &str = r#"
   .qmd-site-main { flex: 1 0 auto; width: 100%; max-width: var(--qmd-maxw);
     margin: 0 auto; padding: 2rem 1rem; }
   .qmd-site-main > main { min-width: 0; }
+  /* `page-layout: full` widens the column (the blog/projects card indexes) */
+  .qmd-site-main.qmd-wide { max-width: 60rem; }
   /* a page with a TOC widens into a two-column grid (content + sticky sidebar) */
   .qmd-site-main.has-toc { max-width: 72rem; display: grid; align-items: start;
     gap: 2.5rem; grid-template-columns: minmax(0, 46rem) 14rem; }

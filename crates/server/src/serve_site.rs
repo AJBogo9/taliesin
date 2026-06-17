@@ -259,7 +259,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
     } else {
         (String::new(), String::new())
     };
-    let (main_cls, toc_nav, toc_flag) = if toc {
+    let (base_cls, toc_nav, toc_flag) = if toc {
         (
             "qmd-site-main has-toc",
             "<nav id=\"TOC\"></nav>",
@@ -267,6 +267,11 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
         )
     } else {
         ("qmd-site-main", "", "")
+    };
+    let main_cls = if chrome.wide {
+        format!("{base_cls} qmd-wide")
+    } else {
+        base_cls.to_string()
     };
     let theme = if theme_css.trim().is_empty() {
         String::new()

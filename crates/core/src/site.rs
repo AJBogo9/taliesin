@@ -109,6 +109,8 @@ pub struct Page {
     pub listings: Vec<ListingSpec>,
     /// `about:` profile block, if this page declares one (the homepage).
     pub about: Option<AboutSpec>,
+    /// `page-layout:` (`full` widens the content column; default reading width).
+    pub page_layout: Option<String>,
 }
 
 /// An `about:` front-matter block: a profile header (image + name + links). The
@@ -182,6 +184,7 @@ impl Site {
                     is_post,
                     listings: fm.listings,
                     about: fm.about,
+                    page_layout: fm.page_layout,
                 }
             })
             .collect();
@@ -226,6 +229,7 @@ impl Site {
             navbar_html: self.navbar_html(page, depth),
             footer_html: self.footer_html(depth),
             prevnext_html: self.prevnext_html(page, depth),
+            wide: page.page_layout.as_deref() == Some("full"),
         }
     }
 
@@ -706,6 +710,7 @@ struct FrontInfo {
     categories: Vec<String>,
     listings: Vec<ListingSpec>,
     about: Option<AboutSpec>,
+    page_layout: Option<String>,
 }
 
 /// Parse a page's `---` front-matter block (YAML) into the fields discovery
@@ -728,6 +733,7 @@ fn parse_front_matter(path: &Path) -> FrontInfo {
         categories: string_list(val.get("categories")),
         listings: parse_listings(val.get("listing")),
         about: parse_about(val.get("about")),
+        page_layout: scalar(val.get("page-layout")),
     }
 }
 
