@@ -143,6 +143,35 @@ pub struct Kernel {
     conn_dir: PathBuf,
 }
 
+/// The error for a kernel process that exited during startup: read its stderr
+/// tail (the interpreter's own message, e.g. "No module named ipykernel") so the
+/// failure is actionable rather than an opaque connect timeout.
+async fn startup_failure(
+    spec: &KernelSpec,
+    stderr: Option<tokio::process::ChildStderr>,
+) -> io::Error {
+    let mut buf = Vec::new();
+    if let Some(mut e) = stderr {
+        use tokio::io::AsyncReadExt;
+        let _ = e.read_to_end(&mut buf).await;
+    }
+    let err = String::from_utf8_lossy(&buf);
+    let lines: Vec<&str> = err.lines().filter(|l| !l.trim().is_empty()).collect();
+    let tail = lines[lines.len().saturating_sub(3)..].join("; ");
+    io::Error::other(format!(
+        "`{}` exited at startup: {}",
+        spec.program.display(),
+        if tail.is_empty() {
+            format!(
+                "no output (is the {} kernel module installed?)",
+                spec.kernel_name
+            )
+        } else {
+            tail
+        }
+    ))
+}
+
 impl Kernel {
     /// Spawn the kernel described by `spec` (Python ipykernel or R IRkernel) and
     /// connect to it. The kernel stays warm for the lifetime of this value.
@@ -167,28 +196,48 @@ impl Kernel {
         let conn_file = conn_dir.join("connection.json");
         std::fs::write(&conn_file, serde_json::to_vec(&info)?)?;
 
-        let child = Command::new(&spec.program)
+        // Capture stderr so a startup failure (e.g. the interpreter lacks the
+        // ipykernel/IRkernel module) can be reported instead of swallowed.
+        let mut child = Command::new(&spec.program)
             .args((spec.argv)(&conn_file))
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
             .spawn()
             .map_err(|e| {
-                io::Error::other(format!("failed to launch kernel ({:?}): {e}", spec.program))
+                io::Error::other(format!(
+                    "cannot launch `{}`: {e} (is it installed / on PATH?)",
+                    spec.program.display()
+                ))
             })?;
+        let child_stderr = child.stderr.take();
 
         let session = uuid::Uuid::new_v4().to_string();
-        let mut iopub = create_client_iopub_connection(&info, "", &session)
-            .await
-            .map_err(io::Error::other)?;
-        let identity = peer_identity_for_session(&session).map_err(io::Error::other)?;
-        let shell = create_client_shell_connection_with_identity(&info, &session, identity)
-            .await
-            .map_err(io::Error::other)?;
+        // Connect over ZMQ. The client's connect has a long (30s) timeout, so if
+        // the interpreter dies at startup (missing ipykernel/IRkernel) we'd hang
+        // the full timeout and then report an opaque "connect timed out". Instead,
+        // race the connect against the process exiting: a bad interpreter then
+        // fails in ~1s with its actual stderr (e.g. "No module named ipykernel").
+        let connect = async {
+            let mut iopub = create_client_iopub_connection(&info, "", &session)
+                .await
+                .map_err(io::Error::other)?;
+            let identity = peer_identity_for_session(&session).map_err(io::Error::other)?;
+            let shell = create_client_shell_connection_with_identity(&info, &session, identity)
+                .await
+                .map_err(io::Error::other)?;
+            // Reading one iopub message confirms our SUB subscription is live, which
+            // sidesteps the ZMQ slow-joiner problem before the first execution.
+            let _ = wait_for_iopub_welcome(&mut iopub, Duration::from_secs(5)).await;
+            Ok::<(ClientIoPubConnection, ClientShellConnection), io::Error>((iopub, shell))
+        };
 
-        // Reading one iopub message confirms our SUB subscription is live, which
-        // sidesteps the ZMQ slow-joiner problem before the first execution.
-        let _ = wait_for_iopub_welcome(&mut iopub, Duration::from_secs(5)).await;
+        let (iopub, shell) = tokio::select! {
+            r = connect => r?,
+            _ = child.wait() => {
+                return Err(startup_failure(&spec, child_stderr).await);
+            }
+        };
 
         let mut kernel = Kernel {
             child,

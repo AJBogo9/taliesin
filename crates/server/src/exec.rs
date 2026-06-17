@@ -58,6 +58,9 @@ struct LangState {
     /// When the last kernel *start* failed (None = never failed / recovered).
     /// Drives a retry backoff instead of a permanent "failed" latch.
     failed_at: Option<Instant>,
+    /// The last kernel-start error (the interpreter's own message, e.g. a missing
+    /// `ipykernel`), surfaced to the user so a failing kernel isn't opaque.
+    last_error: Option<String>,
     cached: Vec<Cached>,
 }
 
@@ -94,16 +97,29 @@ impl Executor {
 
     /// A user-facing warning about the executor's state, if any: some language's
     /// kernel start failed (recently), so its code cells are rendering as source.
+    /// Includes the interpreter's own error (e.g. a missing `ipykernel`) so the
+    /// failure isn't opaque.
     pub fn diagnostic(&self) -> Option<String> {
-        self.langs
-            .values()
-            .any(|s| s.kernel.is_none() && s.failed_at.is_some())
-            .then(|| {
-                "kernel unavailable; code cells render as source \
-                 (set QMD_FAST_PYTHON / QMD_FAST_R to an interpreter with the Jupyter \
-                 kernel, then Restart kernel)"
-                    .to_string()
+        self.langs.iter().find_map(|(lang, s)| {
+            if s.kernel.is_some() || s.failed_at.is_none() {
+                return None;
+            }
+            let var = if *lang == "r" {
+                "QMD_FAST_R"
+            } else {
+                "QMD_FAST_PYTHON"
+            };
+            Some(match &s.last_error {
+                Some(e) => format!(
+                    "{lang} kernel unavailable — {e}. Code cells render as source; \
+                     fix the interpreter ({var}) and click Restart kernel."
+                ),
+                None => format!(
+                    "{lang} kernel unavailable; code cells render as source \
+                     (set {var} to an interpreter with the Jupyter kernel, then Restart kernel)."
+                ),
             })
+        })
     }
 
     /// Drop every language's kernel and clear the failure backoff, so the next run
@@ -258,12 +274,14 @@ impl Executor {
                 crate::log::kernel(&format!("{lang} ready ({})", program.display()));
                 state.kernel = Some(k);
                 state.failed_at = None;
+                state.last_error = None;
             }
             Err(e) => {
                 crate::log::warn(&format!(
                     "{lang} kernel unavailable ({e}); cells render as source only"
                 ));
                 state.failed_at = Some(Instant::now());
+                state.last_error = Some(e.to_string());
             }
         }
     }
