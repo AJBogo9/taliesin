@@ -335,14 +335,14 @@ fn listing_frontmatter_emits_post_cards() {
     let em = blog.find("posts/em-algorithm/").unwrap(); // 2026-04-14
     assert!(fourier < em, "blog: cards not sorted newest-first");
 
-    // The homepage fills its `::: {#recent-posts}` placeholder, capped at 3.
+    // The homepage fills its `::: {#recent-posts}` placeholder, capped at 2.
     let home = site.render_page("index.qmd").expect("home renders");
     assert!(
         home.contains("id=\"recent-posts\""),
         "home: recent-posts container missing"
     );
     let recent = home.matches("class=\"qmd-card\"").count();
-    assert_eq!(recent, 3, "home: max-items: 3 not honoured (got {recent})");
+    assert_eq!(recent, 2, "home: max-items: 2 not honoured (got {recent})");
 }
 
 /// An `about:` page (the homepage uses `template: jolla`) renders a profile block

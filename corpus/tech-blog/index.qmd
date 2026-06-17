@@ -15,7 +15,7 @@ listing:
   id: recent-posts
   contents: posts
   sort: "date desc"
-  max-items: 3
+  max-items: 2
   type: grid
   fields: [image, title, description, date, categories]
 ---

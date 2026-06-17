@@ -596,12 +596,16 @@ pub fn theme_head(default_mode: &str) -> String {
     format!(
         r#"<script>
 (function(){{
-  var DEFAULT = "{default_mode}";
-  var mq = window.matchMedia && matchMedia("(prefers-color-scheme: dark)");
-  function pref(){{ try {{ return localStorage.getItem("qmd-theme") || DEFAULT; }} catch(e) {{ return DEFAULT; }} }}
+  // Two fixed modes only — light or dark. No OS-following "auto": a `darkly`-style
+  // (or unspecified) default resolves to dark; an explicit light theme to light.
+  var DEFAULT = "{default_mode}" === "light" ? "light" : "dark";
+  function pref(){{
+    var v = null;
+    try {{ v = localStorage.getItem("qmd-theme"); }} catch(e) {{}}
+    return (v === "light" || v === "dark") ? v : DEFAULT;
+  }}
   function apply(){{
-    var p = pref();
-    var mode = p === "auto" ? ((mq && mq.matches) ? "dark" : "light") : p;
+    var mode = pref();
     var el = document.documentElement;
     el.setAttribute("data-theme", mode);
     // Set color-scheme + background inline, right here in the pre-paint head
@@ -611,27 +615,25 @@ pub fn theme_head(default_mode: &str) -> String {
     el.style.colorScheme = mode;
     el.style.background = mode === "dark" ? '#16181d' : '#ffffff';
     // Let theme-dependent renderers (e.g. mermaid, whose SVG colours are baked at
-    // render time) re-render. Fires on toggle and on OS change while in `auto`.
+    // render time) re-render on a toggle.
     try {{ window.dispatchEvent(new CustomEvent("qmd:themechange", {{ detail: {{ mode: mode }} }})); }} catch(e) {{}}
   }}
   apply();
-  if (mq && mq.addEventListener) mq.addEventListener("change", function(){{ if (pref() === "auto") apply(); }});
   window.qmdSetTheme = function(p){{ try {{ localStorage.setItem("qmd-theme", p); }} catch(e) {{}} apply(); }};
   window.qmdGetThemePref = function(){{ return pref(); }};
   // Wire any `[data-qmd-theme-toggle]` button (the site navbar's, or the dev
-  // menu's on a single doc): cycle auto -> light -> dark, icon reflects state.
+  // menu's on a single doc): toggle light <-> dark, icon reflects the current mode.
   // Shipped here (not in the preview client) so the toggle works in `build` too.
-  var ICONS = {{ auto: "{auto_icon}", light: "{sun_icon}", dark: "{moon_icon}" }};
-  var ORDER = ["auto", "light", "dark"];
+  var ICONS = {{ light: "{sun_icon}", dark: "{moon_icon}" }};
   window.qmdWireThemeToggles = function(){{
     var btns = document.querySelectorAll("[data-qmd-theme-toggle]");
     for (var i = 0; i < btns.length; i++) {{
       (function(btn){{
         if (btn.getAttribute("data-wired")) return;
         btn.setAttribute("data-wired", "1");
-        function sync(){{ var p = pref(); btn.innerHTML = ICONS[p] || ICONS.auto;
-          btn.setAttribute("aria-label", "Theme: " + p + " (click to cycle light / dark / auto)"); }}
-        btn.addEventListener("click", function(){{ window.qmdSetTheme(ORDER[(ORDER.indexOf(pref()) + 1) % 3]); sync(); }});
+        function sync(){{ var p = pref(); btn.innerHTML = ICONS[p] || ICONS.dark;
+          btn.setAttribute("aria-label", "Theme: " + p + " (click to toggle light / dark)"); }}
+        btn.addEventListener("click", function(){{ window.qmdSetTheme(pref() === "dark" ? "light" : "dark"); sync(); }});
         window.addEventListener("qmd:themechange", sync);
         sync();
       }})(btns[i]);
@@ -641,7 +643,6 @@ pub fn theme_head(default_mode: &str) -> String {
   else window.qmdWireThemeToggles();
 }})();
 </script>"#,
-        auto_icon = THEME_ICON_AUTO,
         sun_icon = THEME_ICON_SUN,
         moon_icon = THEME_ICON_MOON,
     )
@@ -651,7 +652,6 @@ pub fn theme_head(default_mode: &str) -> String {
 // quotes; `currentColor` so they inherit the control's colour).
 const THEME_ICON_SUN: &str = "<svg width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round'><circle cx='12' cy='12' r='4'/><path d='M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4'/></svg>";
 const THEME_ICON_MOON: &str = "<svg width='15' height='15' viewBox='0 0 24 24' fill='currentColor'><path d='M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z'/></svg>";
-const THEME_ICON_AUTO: &str = "<svg width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'><circle cx='12' cy='12' r='9'/><path d='M12 3a9 9 0 0 0 0 18z' fill='currentColor' stroke='none'/></svg>";
 
 /// Detect the `theme:` front-matter value (top-level or nested under `format:`).
 fn detect_theme(front_matter: &str) -> Option<String> {
@@ -3639,8 +3639,14 @@ const SITE_CSS: &str = r#"
   .qmd-nav-brand:hover { color: var(--qmd-accent); }
   .qmd-nav-links { display: flex; align-items: center; gap: .35rem; flex: 1; }
   .qmd-nav-spacer { flex: 1 1 auto; }
-  .qmd-nav-link { color: var(--qmd-muted); text-decoration: none; padding: .35rem .6rem;
-    border-radius: 6px; transition: color .12s ease, background .12s ease; }
+  .qmd-nav-link { display: inline-flex; flex-direction: column; align-items: flex-start;
+    color: var(--qmd-muted); text-decoration: none; padding: .35rem .6rem;
+    border-radius: 6px; white-space: nowrap;
+    transition: color .12s ease, background .12s ease; }
+  /* Reserve the bold (active) width on every item so bolding the current page's
+     link never changes its width — the bar stays put across navigations. */
+  .qmd-nav-link::after { content: attr(data-label); font-weight: 600; height: 0;
+    overflow: hidden; visibility: hidden; pointer-events: none; }
   .qmd-nav-link:hover { color: var(--qmd-fg); background: var(--qmd-code-bg); }
   .qmd-nav-active { color: var(--qmd-fg); font-weight: 600; }
   .qmd-nav-active:hover { background: transparent; }
@@ -3685,7 +3691,8 @@ const SITE_CSS: &str = r#"
   .qmd-foot-center { flex: 1 1 auto; justify-content: center; }
   .qmd-foot-right { margin-left: auto; }
   .qmd-foot-item { color: var(--qmd-muted); text-decoration: none; display: inline-flex; align-items: center; gap: .35rem; }
-  .qmd-foot-item:hover { color: var(--qmd-fg); }
+  /* Only actual links highlight on hover — the copyright span is not a link. */
+  a.qmd-foot-item:hover { color: var(--qmd-fg); }
   .qmd-foot-item svg { width: 16px; height: 16px; }
 
   /* listing: post cards (a `grid` of cards, or a stacked `default` list) */

@@ -220,10 +220,11 @@ fn render_markdown_only(site: &qmd_fast_core::Site, page: &Page) -> PageDoc {
     let base = page.input.parent().unwrap_or(Path::new("."));
     let doc = qmd_fast_core::render_document_with_includes(&src, base);
     let mut blocks = doc.blocks;
+    let toc = site.page_toc(page, doc.toc);
     site.expand_page(page, &mut blocks);
     PageDoc {
         title: doc.title,
-        toc: doc.toc,
+        toc,
         theme_css: doc.theme_css,
         theme_default: doc.theme_default,
         includes: doc.includes,
@@ -582,10 +583,11 @@ async fn build_page(app: &SiteApp, rel: &str, execs: &mut HashMap<String, crate:
         .or_insert_with(crate::exec::Executor::new);
     let mut blocks = exec.run(doc.blocks).await;
     // Expand listing cards (queries the whole site, so it needs the site lock).
-    {
+    let toc = {
         let site = app.site.lock().unwrap();
         site.expand_page(&page, &mut blocks);
-    }
+        site.page_toc(&page, doc.toc)
+    };
     let diags = page_diagnostics(&page.input, &base, exec);
 
     let mut pages = app.pages.lock().unwrap();
@@ -597,7 +599,7 @@ async fn build_page(app: &SiteApp, rel: &str, execs: &mut HashMap<String, crate:
     let ops = diff_blocks(&ps.doc.blocks, &blocks);
     let diags_changed = ps.doc.diagnostics != diags;
     ps.doc.title = doc.title;
-    ps.doc.toc = doc.toc;
+    ps.doc.toc = toc;
     ps.doc.theme_css = doc.theme_css;
     ps.doc.theme_default = doc.theme_default;
     ps.doc.includes = doc.includes;

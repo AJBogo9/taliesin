@@ -46,6 +46,9 @@ pub struct FormatSection {
 /// string, a `{text:}`/`{file:}` map, or a list of those; `css` files inlined).
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct FormatHtml {
+    /// Site-wide `toc:` default (applied to article pages — not listing/about ones).
+    #[serde(default)]
+    pub toc: Option<bool>,
     #[serde(default, rename = "include-in-header")]
     pub include_in_header: Option<serde_yaml::Value>,
     #[serde(default, rename = "include-before-body")]
@@ -290,11 +293,23 @@ impl Site {
     /// rewrite intra-site `.qmd` links. Shared by `render_page` (no execution) and
     /// the executing `build` path so both emit identical chrome + links.
     pub fn render_page_doc(&self, page: &Page, mut doc: render::RenderedDoc) -> String {
+        doc.toc = self.page_toc(page, doc.toc);
         self.expand_page(page, &mut doc.blocks);
         let ctx = self.page_chrome(page);
         let fallback = page.title.as_deref().unwrap_or("");
         let html = render::html_page_from_doc_in_site(&doc, fallback, &ctx);
         rewrite_qmd_links(&html)
+    }
+
+    /// Whether a page shows a table of contents: its own front-matter `toc:` wins;
+    /// otherwise the site-wide `format: html: toc:` applies, but only to article
+    /// pages — a listing or about page would otherwise get a TOC built from its card
+    /// titles. Used by both the static build and the live preview.
+    pub fn page_toc(&self, page: &Page, doc_toc: bool) -> bool {
+        doc_toc
+            || (self.config.format.html.toc.unwrap_or(false)
+                && page.listings.is_empty()
+                && page.about.is_none())
     }
 
     // --- listings ---------------------------------------------------------
@@ -565,7 +580,14 @@ impl Site {
         } else {
             " class=\"qmd-nav-link\""
         };
-        format!("<a{cls} href=\"{}\">{}</a>", target, esc(label))
+        // `data-label` carries the text so the CSS can reserve the bold (active)
+        // width, keeping the navbar from shifting when the active item bolds.
+        format!(
+            "<a{cls} href=\"{}\" data-label=\"{}\">{}</a>",
+            target,
+            esc(label),
+            esc(label)
+        )
     }
 
     /// The slim site footer. Footer item text is treated as raw HTML (icon SVGs),
