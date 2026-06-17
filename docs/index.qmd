@@ -136,7 +136,9 @@ list against the old one and broadcasts only the differences.
 | server to client | `remove` | `target_id` |
 | server to client | `diagnostics` | `messages` (non-fatal include / kernel issues) |
 | server to client | `error` | `message` (a failed render; shown as an overlay) |
+| server to client | `reload` | *(none)* — do a full page reload (config change, kernel restart) |
 | client to server | `click_block` | `block_id`, `source_file`, `sourcepos` |
+| client to server | `restart_kernel` | *(none)* — drop + respawn the kernel, re-run all cells |
 
 Double-clicking a block opens its source in your editor — a
 `vscode://file/…:line:col` deep link by default (so it assumes VS Code for now).
@@ -406,6 +408,13 @@ On save, only cells whose source changed (plus downstream cells) re-execute, and
 the kernel never cold-starts. Point the server at a Python with `ipykernel` via
 the `QMD_FAST_PYTHON` environment variable; without one, a cell renders as
 highlighted source rather than failing.
+
+The kernel is resilient: if it crashes mid-session the server detects the dead
+process and respawns it on the next run (rather than hanging on the execute
+timeout), and fixing a bad `QMD_FAST_PYTHON` self-heals within a few saves instead
+of latching off until restart. The dev menu also has a **Restart kernel** action
+that drops the kernel, re-runs every cell against a fresh one, and reloads the page
+so `ojs_define` values re-bind.
 
 ### Folded code
 
