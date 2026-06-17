@@ -413,9 +413,11 @@ np.arange(5).sum()
 ```
 
 On save, only cells whose source changed (plus downstream cells) re-execute, and
-the kernel never cold-starts. Point the server at a Python with `ipykernel` via
-the `QMD_FAST_PYTHON` environment variable; without one, a cell renders as
-highlighted source rather than failing.
+the kernel never cold-starts. Both `{python}` and `{r}` cells run, each against its
+own warm kernel: point the server at a Python with `ipykernel` via `QMD_FAST_PYTHON`
+and (for R) an R with `IRkernel` via `QMD_FAST_R` (default `R`). A cell in any other
+language, or with no kernel available, renders as highlighted source rather than
+failing.
 
 The kernel is resilient: if it crashes mid-session the server detects the dead
 process and respawns it on the next run (rather than hanging on the execute

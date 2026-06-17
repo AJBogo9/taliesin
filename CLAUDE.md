@@ -58,9 +58,11 @@ A `qmd-fast` launcher on `PATH` (`~/.local/bin/qmd-fast`) rebuilds the release
 binary when the tool's sources change, then runs it, so `qmd-fast preview <file>`
 works from anywhere.
 
-Executing code cells (`{python}`) needs a Python with `ipykernel`; point the
-server at it with `QMD_FAST_PYTHON` (defaults to `python3`). Without a kernel,
-cells render as source and the preview shows a "kernel unavailable" diagnostic.
+Executing code cells needs a matching Jupyter kernel: `{python}` cells need a
+Python with `ipykernel` (`QMD_FAST_PYTHON`, default `python3`); `{r}` cells need an
+R with `IRkernel` (`QMD_FAST_R`, default `R`). Each language runs against its own
+warm kernel. Without a kernel, cells render as source and the preview shows a
+"kernel unavailable" diagnostic.
 
 For UI work, `/preview <file.qmd>` builds, serves on port 4388, and verifies it in
 the browser via the chrome-devtools MCP (screenshot + console). A `PostToolUse`
