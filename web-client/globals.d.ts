@@ -20,6 +20,8 @@ interface Window {
   /** Theme API from the head script (`theme_head`). */
   qmdSetTheme?: (mode: string) => void;
   qmdGetThemePref?: () => string;
+  /** Wires every `[data-qmd-theme-toggle]` button (defined in theme_head). */
+  qmdWireThemeToggles?: () => void;
   /** Observable runtime driver (OJS init script). */
   qmdRunOJS?: () => void;
   /** Code enhancer (copy buttons + mermaid), defined in client.js itself. */

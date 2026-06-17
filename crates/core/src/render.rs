@@ -573,10 +573,40 @@ pub fn theme_head(default_mode: &str) -> String {
   if (mq && mq.addEventListener) mq.addEventListener("change", function(){{ if (pref() === "auto") apply(); }});
   window.qmdSetTheme = function(p){{ try {{ localStorage.setItem("qmd-theme", p); }} catch(e) {{}} apply(); }};
   window.qmdGetThemePref = function(){{ return pref(); }};
+  // Wire any `[data-qmd-theme-toggle]` button (the site navbar's, or the dev
+  // menu's on a single doc): cycle auto -> light -> dark, icon reflects state.
+  // Shipped here (not in the preview client) so the toggle works in `build` too.
+  var ICONS = {{ auto: "{auto_icon}", light: "{sun_icon}", dark: "{moon_icon}" }};
+  var ORDER = ["auto", "light", "dark"];
+  window.qmdWireThemeToggles = function(){{
+    var btns = document.querySelectorAll("[data-qmd-theme-toggle]");
+    for (var i = 0; i < btns.length; i++) {{
+      (function(btn){{
+        if (btn.getAttribute("data-wired")) return;
+        btn.setAttribute("data-wired", "1");
+        function sync(){{ var p = pref(); btn.innerHTML = ICONS[p] || ICONS.auto;
+          btn.setAttribute("aria-label", "Theme: " + p + " (click to cycle light / dark / auto)"); }}
+        btn.addEventListener("click", function(){{ window.qmdSetTheme(ORDER[(ORDER.indexOf(pref()) + 1) % 3]); sync(); }});
+        window.addEventListener("qmd:themechange", sync);
+        sync();
+      }})(btns[i]);
+    }}
+  }};
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", window.qmdWireThemeToggles);
+  else window.qmdWireThemeToggles();
 }})();
-</script>"#
+</script>"#,
+        auto_icon = THEME_ICON_AUTO,
+        sun_icon = THEME_ICON_SUN,
+        moon_icon = THEME_ICON_MOON,
     )
 }
+
+// Monochrome theme-toggle icons (single-quoted attrs so they embed in JS double
+// quotes; `currentColor` so they inherit the control's colour).
+const THEME_ICON_SUN: &str = "<svg width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round'><circle cx='12' cy='12' r='4'/><path d='M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4'/></svg>";
+const THEME_ICON_MOON: &str = "<svg width='15' height='15' viewBox='0 0 24 24' fill='currentColor'><path d='M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z'/></svg>";
+const THEME_ICON_AUTO: &str = "<svg width='15' height='15' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'><circle cx='12' cy='12' r='9'/><path d='M12 3a9 9 0 0 0 0 18z' fill='currentColor' stroke='none'/></svg>";
 
 /// Detect the `theme:` front-matter value (top-level or nested under `format:`).
 fn detect_theme(front_matter: &str) -> Option<String> {
@@ -3148,7 +3178,12 @@ const SITE_CSS: &str = r#"
   .qmd-nav-link:hover { color: var(--qmd-fg); background: var(--qmd-code-bg); }
   .qmd-nav-active { color: var(--qmd-fg); font-weight: 600; }
   .qmd-nav-active:hover { background: transparent; }
-  .qmd-nav-controls { display: inline-flex; align-items: center; gap: .4rem; }
+  /* real (shipped) light/dark toggle: a subtle icon, not a dev-style button */
+  .qmd-theme-toggle { display: inline-flex; align-items: center; justify-content: center;
+    width: 2rem; height: 2rem; padding: 0; border: 0; border-radius: 7px; cursor: pointer;
+    background: transparent; color: var(--qmd-muted); transition: color .12s ease, background .12s ease; }
+  .qmd-theme-toggle:hover { color: var(--qmd-fg); background: var(--qmd-code-bg); }
+  .qmd-theme-toggle svg { display: block; }
   .qmd-nav-burger { display: none; }
   .qmd-nav-toggle { display: none; }
 

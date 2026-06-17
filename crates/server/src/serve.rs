@@ -364,26 +364,45 @@ fn index_html(ctx: &PageCtx) -> String {
     }
 }
 
-/// Status pill + the bottom-left control bar (theme + click-to-source toggles).
-pub(crate) const STATUS_CSS: &str = "#qmd-controls { position: fixed; bottom: .5rem; left: .5rem; z-index: 9999; \
-    display: flex; align-items: center; gap: .4rem; \
-    font: 12px ui-sans-serif, system-ui, sans-serif; } \
-    #qmd-controls .qmd-ctl { background: var(--qmd-bg, #fff); color: var(--qmd-muted, #888); \
-    border: 1px solid var(--qmd-border, #e0e0e0); border-radius: 5px; padding: .15rem .5rem; \
-    cursor: pointer; line-height: 1.4; } \
-    #qmd-controls .qmd-ctl:hover { color: var(--qmd-fg, #111); } \
-    #qmd-controls .qmd-ctl[aria-pressed=\"false\"] { opacity: .55; } \
-    #qmd-status { color: var(--qmd-muted, #888); padding: .15rem .35rem; } \
-    #qmd-wordcount { color: var(--qmd-muted, #888); padding: .15rem .35rem; font-variant-numeric: tabular-nums; } \
-    @media (max-width: 30rem) { \
-    #qmd-wordcount, #qmd-src-ctl { display: none; } \
-    #qmd-controls #qmd-status { font-size: 0; padding: .15rem .3rem; } \
-    #qmd-controls #qmd-status::before { content: \"\"; display: inline-block; width: .5rem; height: .5rem; \
-    border-radius: 50%; background: var(--qmd-muted, #888); vertical-align: middle; } \
-    #qmd-controls #qmd-status[data-state=\"live\"]::before { background: #3fb950; } \
-    #qmd-controls #qmd-status[data-state=\"warn\"]::before { background: #d9a23a; } \
-    #qmd-controls #qmd-status[data-state=\"error\"]::before { background: #e5534b; } } \
-    @media (max-width: 60rem) { body.qmd-toc-sheet #qmd-controls { bottom: 2.4rem; } }";
+/// The floating dev menu (preview-only): a collapsed corner button with a live
+/// status dot, expanding to a panel of dev tools (status, word count, click-to-
+/// source toggle, diagnostics, and on a single doc a theme toggle). All
+/// preview-only — none of this ships in `build`.
+pub(crate) const STATUS_CSS: &str = "\
+    #qmd-controls.qmd-dev { position: fixed; bottom: .6rem; left: .6rem; z-index: 9999; \
+      font: 12px ui-sans-serif, system-ui, sans-serif; } \
+    .qmd-dev-toggle { display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; \
+      background: var(--qmd-bg, #fff); color: var(--qmd-muted, #888); \
+      border: 1px solid var(--qmd-border, #e0e0e0); border-radius: 999px; padding: .25rem .6rem; \
+      box-shadow: 0 1px 6px rgba(0,0,0,.12); } \
+    .qmd-dev-toggle:hover { color: var(--qmd-fg, #111); } \
+    .qmd-dev-toggle.qmd-dev-alert { border-color: #d9a23a; color: #d9a23a; } \
+    .qmd-dev-glyph { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -1px; } \
+    .qmd-dev-dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--qmd-muted, #888); flex: none; } \
+    .qmd-dev-dot[data-state=\"live\"] { background: #3fb950; } \
+    .qmd-dev-dot[data-state=\"warn\"] { background: #d9a23a; } \
+    .qmd-dev-dot[data-state=\"error\"] { background: #e5534b; } \
+    .qmd-dev-panel { position: absolute; bottom: calc(100% + .45rem); left: 0; min-width: 13rem; \
+      display: flex; flex-direction: column; gap: .5rem; padding: .65rem; \
+      background: var(--qmd-bg, #fff); color: var(--qmd-fg, #111); \
+      border: 1px solid var(--qmd-border, #e0e0e0); border-radius: 9px; box-shadow: 0 8px 28px rgba(0,0,0,.2); } \
+    .qmd-dev-panel[hidden] { display: none; } \
+    .qmd-dev-row { display: flex; justify-content: space-between; gap: 1rem; color: var(--qmd-muted, #888); } \
+    .qmd-dev-row .qmd-dev-label { font-weight: 600; } \
+    #qmd-wordcount { font-variant-numeric: tabular-nums; } \
+    .qmd-dev-ctl { display: inline-flex; align-items: center; gap: .4rem; text-align: left; cursor: pointer; \
+      background: var(--qmd-code-bg, #f5f5f5); color: var(--qmd-fg, #111); \
+      border: 1px solid var(--qmd-border, #e0e0e0); border-radius: 6px; padding: .3rem .55rem; } \
+    .qmd-dev-ctl:hover { border-color: var(--qmd-accent, #4c8dff); } \
+    .qmd-dev-ctl[aria-pressed=\"false\"] { opacity: .6; } \
+    .qmd-dev-ctl[aria-pressed=\"true\"]::before { content: \"\\2713\"; color: #3fb950; font-weight: 700; } \
+    .qmd-dev-theme svg { width: 14px; height: 14px; } \
+    #qmd-diagnostics { display: none; flex-direction: column; gap: .3rem; max-width: 22rem; } \
+    #qmd-diagnostics .qmd-diag { padding: .3rem .5rem; border-radius: 6px; background: var(--qmd-code-bg, #f5f5f5); \
+      border: 1px solid var(--qmd-border, #e0e0e0); line-height: 1.35; } \
+    #qmd-diagnostics .qmd-diag-error { border-left: 3px solid #e5534b; } \
+    #qmd-diagnostics .qmd-diag-warning { border-left: 3px solid #d9a23a; } \
+    @media (max-width: 60rem) { body.qmd-toc-sheet #qmd-controls.qmd-dev { bottom: 2.4rem; } }";
 
 /// Minimal JS-string escape for embedding a filesystem path in a `\"...\"` literal.
 pub(crate) fn js_str(s: &str) -> String {

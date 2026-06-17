@@ -32,11 +32,15 @@
   let ws = /** @type {WebSocket|undefined} */ (undefined);
 
   const setStatus = (/** @type {string} */ s) => {
-    if (!statusEl) return;
-    statusEl.textContent = s;
-    // Drives the mobile status dot's colour (the text itself is hidden on phones).
-    statusEl.dataset.state =
+    const state =
       s === "live" ? "live" : s === "error" ? "error" : /reconnect/.test(s) ? "warn" : "wait";
+    if (statusEl) {
+      statusEl.textContent = s;
+      statusEl.dataset.state = state;
+    }
+    // The collapsed dev-menu button shows this state as a colored dot.
+    const dot = document.getElementById("qmd-dev-dot");
+    if (dot) dot.dataset.state = state;
   };
 
   // Words + reading time (prose only: code and math are excluded), refreshed on
@@ -53,27 +57,19 @@
   // --- diagnostics: render/include/kernel issues the server pushes -----------
   // A small bottom-left stack, shown only when there are issues, so the author
   // sees a broken include or a missing kernel without watching the terminal.
-  const diagEl = (() => {
-    const style = document.createElement("style");
-    style.textContent =
-      "#qmd-diagnostics{position:fixed;bottom:2.3rem;left:.5rem;z-index:9998;max-width:min(560px,92vw);" +
-      "display:none;flex-direction:column;gap:.3rem;font:12px ui-sans-serif,system-ui,sans-serif;}" +
-      "#qmd-diagnostics .qmd-diag{padding:.3rem .55rem;border-radius:6px;background:var(--qmd-bg,#fff);" +
-      "color:var(--qmd-fg,#111);border:1px solid var(--qmd-border,#e0e0e0);box-shadow:0 2px 12px rgba(0,0,0,.18);}" +
-      "#qmd-diagnostics .qmd-diag-error{border-left:3px solid #e5534b;}" +
-      "#qmd-diagnostics .qmd-diag-warning{border-left:3px solid #d9a23a;}" +
-      // on mobile, sit above the lifted control bar so neither covers the TOC handle
-      "@media (max-width:60rem){body.qmd-toc-sheet #qmd-diagnostics{bottom:4.6rem;}}";
-    (document.head || document.documentElement).appendChild(style);
-    const el = document.createElement("div");
-    el.id = "qmd-diagnostics";
-    document.body.appendChild(el);
-    return el;
-  })();
+  // The diagnostics list lives inside the dev menu's panel (moved there once the
+  // menu is built). Its style is part of the dev-menu CSS (STATUS_CSS).
+  const diagEl = document.createElement("div");
+  diagEl.id = "qmd-diagnostics";
+  diagEl.style.display = "none";
   const setDiagnostics = (/** @type {Diagnostic[]=} */ items) => {
     const list = (items || []).filter(Boolean);
     diagEl.textContent = "";
-    if (!list.length) { diagEl.style.display = "none"; return; }
+    if (!list.length) {
+      diagEl.style.display = "none";
+      document.getElementById("qmd-dev-toggle")?.classList.remove("qmd-dev-alert");
+      return;
+    }
     for (const it of list) {
       const level = it.level === "error" ? "error" : "warning";
       const row = document.createElement("div");
@@ -82,6 +78,8 @@
       diagEl.appendChild(row);
     }
     diagEl.style.display = "flex";
+    // Flag the collapsed dev button so issues are noticeable without expanding.
+    document.getElementById("qmd-dev-toggle")?.classList.add("qmd-dev-alert");
   };
 
   // --- fatal-error overlay ---------------------------------------------------
@@ -144,40 +142,66 @@
     try { return localStorage.getItem(CLICK_KEY) !== "0"; } catch (e) { return true; }
   })();
 
-  (function buildControls() {
-    const bar = document.getElementById("qmd-controls");
-    if (!bar) return;
+  // One collapsed dev menu (Next.js-style): a corner button showing the live
+  // status dot, expanding to a panel with the preview-only tools — live status,
+  // word count, the click-to-source toggle, diagnostics, and (only when the page
+  // chrome has no real theme toggle, i.e. single-doc preview) a theme toggle.
+  // The site navbar's theme toggle is a real, shipped feature, not a dev tool.
+  (function buildDevMenu() {
+    const host = document.getElementById("qmd-controls");
+    if (!host) return;
+    host.classList.add("qmd-dev");
 
-    // Theme: cycle auto -> light -> dark, driven by the head-script API
-    // (window.qmdSetTheme/qmdGetThemePref), which also honours the OS default.
-    const themeBtn = document.createElement("button");
-    themeBtn.className = "qmd-ctl";
-    themeBtn.type = "button";
-    themeBtn.title = "Theme: light / dark / auto (follows your OS)";
-    const ICON = /** @type {Record<string, string>} */ ({ auto: "🖥", light: "☀", dark: "🌙" });
-    const ORDER = ["auto", "light", "dark"];
-    const syncTheme = () => {
-      const p = (window.qmdGetThemePref && window.qmdGetThemePref()) || "auto";
-      themeBtn.textContent = ICON[p] || ICON.auto;
-      themeBtn.setAttribute("aria-label", "Theme: " + p + " (click to cycle light / dark / auto)");
+    const devRow = (/** @type {string} */ label, /** @type {HTMLElement} */ valueEl) => {
+      const row = document.createElement("div");
+      row.className = "qmd-dev-row";
+      const l = document.createElement("span");
+      l.className = "qmd-dev-label";
+      l.textContent = label;
+      row.append(l, valueEl);
+      return row;
     };
-    themeBtn.addEventListener("click", () => {
-      const cur = (window.qmdGetThemePref && window.qmdGetThemePref()) || "auto";
-      if (window.qmdSetTheme) window.qmdSetTheme(ORDER[(ORDER.indexOf(cur) + 1) % ORDER.length]);
-      syncTheme();
+
+    const toggle = document.createElement("button");
+    toggle.id = "qmd-dev-toggle";
+    toggle.className = "qmd-dev-toggle";
+    toggle.type = "button";
+    toggle.setAttribute("aria-label", "Developer tools");
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.innerHTML =
+      '<span class="qmd-dev-dot" id="qmd-dev-dot"></span><span class="qmd-dev-glyph">&lt;/&gt;</span>';
+
+    const panel = document.createElement("div");
+    panel.id = "qmd-dev-panel";
+    panel.className = "qmd-dev-panel";
+    panel.hidden = true;
+
+    toggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      panel.hidden = !panel.hidden;
+      toggle.setAttribute("aria-expanded", panel.hidden ? "false" : "true");
     });
-    syncTheme();
+    document.addEventListener("click", (e) => {
+      if (!panel.hidden && e.target instanceof Node && !host.contains(e.target)) {
+        panel.hidden = true;
+        toggle.setAttribute("aria-expanded", "false");
+      }
+    });
+
+    statusEl = document.createElement("span");
+    statusEl.id = "qmd-status";
+    wordCountEl = document.createElement("span");
+    wordCountEl.id = "qmd-wordcount";
 
     // Click-to-source on/off. When off, clicks pass through normally (so you can
     // select text / drive OJS widgets without jumping to source).
     const srcBtn = document.createElement("button");
     srcBtn.id = "qmd-src-ctl";
-    srcBtn.className = "qmd-ctl";
+    srcBtn.className = "qmd-dev-ctl";
     srcBtn.type = "button";
-    srcBtn.textContent = "</>";
-    srcBtn.setAttribute("aria-label", "Click-to-source");
+    srcBtn.textContent = "Click-to-source";
     srcBtn.title =
-      "Double-click a block to reveal its source" + (inWebview ? " in the editor" : " in VS Code");
+      "Double-click any block to reveal its source" + (inWebview ? " in the editor" : " in your editor");
     const syncSrc = () => srcBtn.setAttribute("aria-pressed", clickSource ? "true" : "false");
     srcBtn.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -187,21 +211,21 @@
     });
     syncSrc();
 
-    wordCountEl = document.createElement("span");
-    wordCountEl.id = "qmd-wordcount";
+    panel.append(devRow("Status", statusEl), devRow("Words", wordCountEl), srcBtn);
 
-    statusEl = document.createElement("span");
-    statusEl.id = "qmd-status";
-    // In a multi-page site the user-facing toggles live in the navbar; the live
-    // status + word count stay in the small floating telemetry bar. Single-doc
-    // preview keeps everything together in the floating bar.
-    const navSlot = document.getElementById("qmd-nav-controls");
-    if (navSlot) {
-      navSlot.append(themeBtn, srcBtn);
-      bar.append(wordCountEl, statusEl);
-    } else {
-      bar.append(themeBtn, srcBtn, wordCountEl, statusEl);
+    // Single-doc preview has no site navbar, so give the dev menu its own theme
+    // toggle (wired by the shared theme_head). Sites use the navbar's instead.
+    if (!document.querySelector("[data-qmd-theme-toggle]")) {
+      const themeBtn = document.createElement("button");
+      themeBtn.className = "qmd-dev-ctl qmd-dev-theme";
+      themeBtn.type = "button";
+      themeBtn.setAttribute("data-qmd-theme-toggle", "");
+      panel.appendChild(themeBtn);
+      if (window.qmdWireThemeToggles) window.qmdWireThemeToggles();
     }
+
+    panel.appendChild(diagEl); // diagnostics live inside the panel
+    host.append(toggle, panel);
     setStatus("connecting…");
   })();
   // Reveal mode (and any layout without the control bar) keeps its status pill.

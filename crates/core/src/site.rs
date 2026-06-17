@@ -444,9 +444,12 @@ impl Site {
         for it in &self.config.website.navbar.right {
             s.push_str(&self.nav_link(it, current, &up));
         }
-        // Slot the preview/theme control bar mounts into (filled client-side; empty
-        // in the static build).
-        s.push_str("<span class=\"qmd-nav-controls\" id=\"qmd-nav-controls\"></span>");
+        // A real, shipped light/dark toggle (wired by theme_head; works in `build`
+        // too). Dev-only tools live in the floating dev menu, not the navbar.
+        s.push_str(
+            "<button class=\"qmd-theme-toggle\" type=\"button\" data-qmd-theme-toggle \
+             aria-label=\"Toggle theme\"></button>",
+        );
         s.push_str("</div></nav></header>");
         s
     }
