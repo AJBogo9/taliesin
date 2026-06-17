@@ -1,9 +1,9 @@
 # qmd-fast
 
 A single-purpose, performance-oriented tool for authoring HTML from `.qmd`
-files: blog posts, reveal.js slide decks, and books. A focused replacement for
-Quarto for one author's workflow, built around three goals Quarto's architecture
-can't deliver:
+files: blog posts, reveal.js slide decks, books, and **multi-page websites**. A
+focused replacement for Quarto for one author's workflow, built around three
+goals Quarto's architecture can't deliver:
 
 1. **Click-to-source** — double-click a rendered element, jump to its `.qmd` source.
 2. **Block-level incremental updates** — saving a change swaps only the affected
@@ -27,19 +27,24 @@ crates/server   dev server, websocket, file watcher, kernel pool
 web-client/     browser preview client (vanilla JS) — the client
 ```
 
-## Status
+## Usage
 
-Phases 0–4 done. `qmd-fast serve` runs a long-lived dev server: it watches the
-`.qmd` (and its includes/bibliography), and on each save re-renders, **executes
-changed code cells against a warm Jupyter kernel** (re-running only the earliest
-changed cell and everything downstream), diffs against the previous block list,
-and pushes only the changed blocks over a websocket. Unchanged blocks are never
-touched, so scroll position and the runtime state of live blocks (Three.js, OJS)
-survive edits. Open the preview in a browser; double-clicking a block jumps to
-its `.qmd` source in your editor.
+`qmd-fast preview` runs a long-lived dev server: it watches the `.qmd` (and its
+includes/bibliography), and on each save re-renders, **executes changed code cells
+against a warm Jupyter kernel** (re-running only the earliest changed cell and
+everything downstream), diffs against the previous block list, and pushes only the
+changed blocks over a websocket. Unchanged blocks are never touched, so scroll
+position and the runtime state of live blocks (Three.js, OJS) survive edits. Open
+the preview in a browser; double-clicking a block jumps to its `.qmd` source.
+
+Point it at a **single file** or a **directory** (a multi-page site project):
 
 ```sh
-cargo run -p qmd-fast-server -- serve corpus/posts/born-machines.qmd  # http://127.0.0.1:4321
+cargo run -p qmd-fast-server -- preview corpus/posts/born-machines.qmd  # one doc
+cargo run -p qmd-fast-server -- preview corpus/tech-blog                # a whole site
+cargo run -p qmd-fast-server -- build   corpus/tech-blog                # static _site/
+cargo run -p qmd-fast-server -- render  corpus/posts/born-machines.qmd > out.html
+cargo run -p qmd-fast-server -- blocks  corpus/posts/born-machines.qmd
 ```
 
 Code execution needs a Python with `ipykernel`; point the server at it with the
@@ -51,22 +56,27 @@ The render pipeline underneath: the core parses `.qmd` with comrak (sourcepos),
 splits the document into top-level blocks with content-hash ids, and emits HTML
 with `data-block-id` + `data-sourcepos` on every block.
 
-Supported so far:
+## What it renders
 
-- Prose, tables (with alignment), nested/tight lists, code cells.
-- Math server-side via KaTeX — inline `$…$`, display `$$…$$`, and bare
-  `\begin{…}` environments. CSS + fonts are bundled and inlined, so pages are
-  self-contained and work offline (no CDN).
-- `{{< include >}}` resolution with a per-file source map: included blocks carry
-  their origin file + that file's line numbers (`data-source-file`), so
+- Prose, tables (with alignment), nested/tight lists, code cells; smart typography.
+- **Syntax highlighting server-side** (syntect) — emitted as theme-styled scope
+  classes, so it ships offline (no CDN), paints highlighted on first load, and
+  recolors instantly on the light/dark toggle. Copy button on every block.
+- **Math server-side** via KaTeX — inline `$…$`, display `$$…$$`, `\begin{…}`
+  environments; CSS + fonts bundled inline, fully offline.
+- `{{< include >}}` resolution with a per-file source map (`data-source-file`), so
   click-to-source jumps into the included file.
-- Callouts (`.callout-note`/`tip`/`warning`/`important`/`caution`) and
-  `layout-ncol` grids.
-- Pragmatic citations (`[@key]`) → numbered links + an auto-generated References
-  section parsed from the `.bib`; cross-references (`@fig-`, `@sec-`, …) → labelled
-  anchor links.
+- Callouts, `layout-ncol` grids, attributed `.btn` links, raw `{=html}` passthrough.
+- Citations (`[@key]`) + an auto-generated References section, and cross-references
+  (`@fig-`/`@eq-`/`@lst-`/`@tbl-`/`@sec-`) → numbered, labelled anchor links.
+- Live **Observable/OJS** cells, **mermaid** diagrams, a figure lightbox, themes
+  (light/dark + custom), and a responsive reading layout (mobile TOC pull-up sheet,
+  print stylesheet).
+- **Multi-page sites** (`preview`/`build` a directory): a `_quarto.yml` project with
+  a redesigned navbar/footer + post prev/next, `.qmd`→`.html` link rewriting,
+  `listing:` post-card indexes, and `about:` profile pages. Live preview navigates
+  between pages and hot-reloads the edited one.
 
-```sh
-cargo run -p qmd-fast-server -- render corpus/posts/born-machines.qmd > out.html
-cargo run -p qmd-fast-server -- blocks corpus/posts/born-machines.qmd
-```
+reveal.js, mermaid, and the Observable runtime are the only client-side pieces;
+everything else (parse, render, highlight, math) happens in Rust. See
+[docs/index.qmd](docs/index.qmd) — the project's own manual, authored in `.qmd`.
