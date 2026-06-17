@@ -669,3 +669,75 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>) {
         }
     }
 }
+
+#[cfg(test)]
+mod protocol_contract {
+    //! Locks the websocket message/op shapes the preview client consumes
+    //! (web-client/client.js `@typedef` block). If a field name or `type` tag
+    //! changes here, update the client's typedefs too — these are the two halves
+    //! of one contract. The `serve.rs` producers are covered by a sibling test.
+    use super::*;
+    use qmd_fast_core::BlockOp;
+    use serde_json::Value;
+
+    fn parse(s: String) -> Value {
+        serde_json::from_str(&s).unwrap()
+    }
+
+    #[test]
+    fn op_messages_match_client_contract() {
+        let up = parse(op_json(&BlockOp::Update {
+            target_id: "b1".into(),
+            html: "<p>x</p>".into(),
+        }));
+        assert_eq!(up["type"], "update");
+        assert_eq!(up["target_id"], "b1");
+        assert!(up.get("html").is_some());
+
+        let ins = parse(op_json(&BlockOp::Insert {
+            after_id: Some("b1".into()),
+            html: "<p>y</p>".into(),
+        }));
+        assert_eq!(ins["type"], "insert");
+        assert!(ins.get("after_id").is_some());
+        assert!(ins.get("html").is_some());
+
+        let rm = parse(op_json(&BlockOp::Remove {
+            target_id: "b2".into(),
+        }));
+        assert_eq!(rm["type"], "remove");
+        assert_eq!(rm["target_id"], "b2");
+    }
+
+    #[test]
+    fn op_json_rewrites_qmd_links_in_block_html() {
+        let up = parse(op_json(&BlockOp::Update {
+            target_id: "b1".into(),
+            html: "<a href=\"blog.qmd\">b</a>".into(),
+        }));
+        assert_eq!(up["html"], "<a href=\"blog.html\">b</a>");
+    }
+
+    #[test]
+    fn lifecycle_messages_match_client_contract() {
+        let fr = parse(full_render_json(&PageDoc::default()));
+        assert_eq!(fr["type"], "full_render");
+        assert!(fr.get("title").is_some()); // present (null allowed)
+        assert!(fr.get("body_html").is_some());
+        assert!(fr["diagnostics"].is_array());
+
+        let dg = parse(diagnostics_json(&[Diag {
+            level: "warning",
+            message: "x".into(),
+        }]));
+        assert_eq!(dg["type"], "diagnostics");
+        assert_eq!(dg["messages"][0]["level"], "warning");
+        assert_eq!(dg["messages"][0]["message"], "x");
+
+        let err = parse(error_json("boom"));
+        assert_eq!(err["type"], "error");
+        assert_eq!(err["message"], "boom");
+
+        assert_eq!(parse(reload_json())["type"], "reload");
+    }
+}

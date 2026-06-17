@@ -741,3 +741,44 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         crate::log::update(ops);
     }
 }
+
+#[cfg(test)]
+mod protocol_contract {
+    //! The single-doc producers share the op/message contract that the preview
+    //! client (web-client/client.js) consumes; the comprehensive shape test lives
+    //! in serve_site.rs. This guards serve.rs's own `*_json` against drift.
+    use super::*;
+    use serde_json::Value;
+
+    fn parse(s: String) -> Value {
+        serde_json::from_str(&s).unwrap()
+    }
+
+    #[test]
+    fn ops_and_full_render_match_client_contract() {
+        let up = parse(op_json(&BlockOp::Update {
+            target_id: "b".into(),
+            html: "h".into(),
+        }));
+        assert_eq!(up["type"], "update");
+        assert_eq!(up["target_id"], "b");
+        assert!(up.get("html").is_some());
+
+        let ins = parse(op_json(&BlockOp::Insert {
+            after_id: Some("b".into()),
+            html: "h".into(),
+        }));
+        assert_eq!(ins["type"], "insert");
+        assert!(ins.get("after_id").is_some());
+
+        let rm = parse(op_json(&BlockOp::Remove {
+            target_id: "b".into(),
+        }));
+        assert_eq!(rm["type"], "remove");
+
+        let fr = parse(full_render_json(&DocState::default()));
+        assert_eq!(fr["type"], "full_render");
+        assert!(fr.get("body_html").is_some());
+        assert!(fr["diagnostics"].is_array());
+    }
+}

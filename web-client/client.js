@@ -5,6 +5,23 @@
 // never touched, so scroll position and the runtime state of live blocks
 // (Three.js canvases, OJS cells) survive edits. Math is rendered server-side,
 // so there is nothing to re-run on the client.
+//
+// ── Websocket protocol ──────────────────────────────────────────────────────
+// The server is the producer; these typedefs are the consumer's view of the
+// contract. The Rust producers (serve.rs / serve_site.rs `*_json`) are locked to
+// these shapes by a contract test (`protocol_contract` in serve_site.rs); keep
+// the two in sync. A future `// @ts-check` pass can enforce these here too
+// (see todo §7: client.js type-check).
+//
+// @typedef {{ level: string, message: string }} Diagnostic
+// @typedef {{ type: "full_render", title: ?string, body_html: string, diagnostics: Diagnostic[] }} FullRenderMsg
+// @typedef {{ type: "diagnostics", messages: Diagnostic[] }} DiagnosticsMsg
+// @typedef {{ type: "update", target_id: string, html: string }} UpdateMsg
+// @typedef {{ type: "insert", after_id: ?string, html: string }} InsertMsg
+// @typedef {{ type: "remove", target_id: string }} RemoveMsg
+// @typedef {{ type: "error", message: string }} ErrorMsg
+// @typedef {{ type: "reload" }} ReloadMsg
+// @typedef {FullRenderMsg|DiagnosticsMsg|UpdateMsg|InsertMsg|RemoveMsg|ErrorMsg|ReloadMsg} ServerMessage
 (() => {
   const root = document.getElementById("qmd-root");
   let statusEl = null;
@@ -437,6 +454,7 @@
   // still re-mount normally.
   let ssrPending = window.QMD_SSR === true;
 
+  /** @param {ServerMessage} msg */
   const handle = (msg) => {
     switch (msg.type) {
       case "full_render":
