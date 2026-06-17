@@ -1,0 +1,15 @@
+---
+title: "Glass Deck"
+format:
+  glass-revealjs:
+    slide-number: true
+---
+
+## First
+
+Hello.
+
+## Second
+
+- a
+- b

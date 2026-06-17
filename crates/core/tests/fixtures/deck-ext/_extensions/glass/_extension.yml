@@ -1,0 +1,12 @@
+title: Glass
+description: A tiny reveal theme extension fixture (mirrors liquid-glass-revealjs).
+author: test
+version: 0.1.0
+contributes:
+  formats:
+    revealjs:
+      theme: [dark, glass.css]
+      include-in-header:
+        - file: glass-head.html
+      include-after-body:
+        - file: glass-init.html

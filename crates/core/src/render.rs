@@ -234,7 +234,10 @@ fn render_internal(
                 format = detect_format(fm);
                 toc = detect_toc(fm);
                 theme = detect_theme(fm);
-                includes = resolve_doc_includes(fm, base_dir);
+                // A format extension (`format: <ext>-revealjs`) contributes its
+                // includes/theme first; the doc's own front matter appends/overrides.
+                includes = resolve_format_extension(fm, base_dir);
+                includes.merge(&resolve_doc_includes(fm, base_dir));
                 (exec_echo, exec_include) = detect_execute_defaults(fm);
                 continue;
             }
@@ -687,6 +690,116 @@ fn resolve_doc_includes(front_matter: &str, base_dir: Option<&Path>) -> PageIncl
         v.get("css"),
         base_dir,
     )
+}
+
+/// The raw `format:` key (`glass-revealjs`, `revealjs`, `html`, …) — inline value
+/// or the first block sub-key. Used to spot a format-extension reference.
+fn detect_format_name(front_matter: &str) -> Option<String> {
+    let lines: Vec<&str> = front_matter.lines().collect();
+    for (i, line) in lines.iter().enumerate() {
+        if line.starts_with(char::is_whitespace) {
+            continue;
+        }
+        let Some(rest) = line.trim_end().strip_prefix("format:") else {
+            continue;
+        };
+        let inline = rest.trim();
+        if !inline.is_empty() {
+            return Some(inline.trim_matches(['"', '\'']).to_string());
+        }
+        // Block form: the first indented sub-key is the format name.
+        for sub in &lines[i + 1..] {
+            if sub.trim().is_empty() {
+                continue;
+            }
+            if !sub.starts_with(char::is_whitespace) {
+                break; // dedented out of the block without a sub-key
+            }
+            let key = sub.trim().trim_end_matches(':').trim_matches(['"', '\'']);
+            if !key.is_empty() {
+                return Some(key.to_string());
+            }
+        }
+        return None;
+    }
+    None
+}
+
+/// If the doc's `format:` names a format extension (`<ext>-revealjs`/`<ext>-html`),
+/// load `_extensions/<ext>/_extension.yml` and resolve the includes + theme its
+/// `contributes: formats: <base>:` block injects, with files resolved relative to
+/// the extension's own directory. Empty when there's no such extension.
+fn resolve_format_extension(front_matter: &str, base_dir: Option<&Path>) -> PageIncludes {
+    let Some(fmt) = detect_format_name(front_matter) else {
+        return PageIncludes::default();
+    };
+    // Recognized base formats; the part before `-<base>` is the extension name.
+    let Some((ext, base)) = ["revealjs", "html"]
+        .iter()
+        .find_map(|b| fmt.strip_suffix(&format!("-{b}")).map(|e| (e, *b)))
+    else {
+        return PageIncludes::default();
+    };
+    let (Some(dir), false) = (base_dir, ext.is_empty()) else {
+        return PageIncludes::default();
+    };
+    let ext_dir = dir.join("_extensions").join(ext);
+    let Ok(text) = std::fs::read_to_string(ext_dir.join("_extension.yml")) else {
+        return PageIncludes::default();
+    };
+    let Ok(v) = serde_yaml::from_str::<serde_yaml::Value>(&text) else {
+        return PageIncludes::default();
+    };
+    let Some(cfg) = v
+        .get("contributes")
+        .and_then(|c| c.get("formats"))
+        .and_then(|f| f.get(base))
+    else {
+        return PageIncludes::default();
+    };
+    let mut inc = includes_from_parts(
+        cfg.get("include-in-header"),
+        cfg.get("include-before-body"),
+        cfg.get("include-after-body"),
+        cfg.get("css"),
+        Some(&ext_dir),
+    );
+    // The contributed `theme:` CSS layers, inlined ahead of the header so the deck's
+    // own front matter can still override. (`.scss` layers need a compiler we don't
+    // ship yet, so only `.css` is inlined; named base themes are handled elsewhere.)
+    let theme = resolve_theme_layers(cfg.get("theme"), &ext_dir);
+    if !theme.is_empty() {
+        inc.in_header = format!("{theme}{}", inc.in_header);
+    }
+    inc
+}
+
+/// Inline every `.css` entry of an extension's `theme:` (a scalar or list) as a
+/// `<style>` block, read relative to `dir`. Non-`.css` entries (named base themes,
+/// uncompiled `.scss`) are skipped.
+fn resolve_theme_layers(v: Option<&serde_yaml::Value>, dir: &Path) -> String {
+    let mut out = String::new();
+    let mut push = |name: &str| {
+        if name.ends_with(".css")
+            && let Ok(css) = std::fs::read_to_string(dir.join(name))
+        {
+            out.push_str("<style>\n");
+            out.push_str(&css);
+            out.push_str("\n</style>\n");
+        }
+    };
+    match v {
+        Some(serde_yaml::Value::String(s)) => push(s),
+        Some(serde_yaml::Value::Sequence(seq)) => {
+            for item in seq {
+                if let serde_yaml::Value::String(s) = item {
+                    push(s);
+                }
+            }
+        }
+        _ => {}
+    }
+    out
 }
 
 /// Build [`PageIncludes`] from already-located YAML values for each key. Shared by
