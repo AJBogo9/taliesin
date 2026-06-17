@@ -7,17 +7,29 @@
 //! cached output. Each output block's id is derived from its cell's id, so it
 //! swaps in place when the cell (or an upstream cell) re-runs.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use qmd_fast_core::{Block, render::CellFigure};
 
-use crate::kernel::{Kernel, render_outputs};
+use crate::kernel::{Kernel, KernelSpec, render_outputs};
 
 /// After a failed kernel start, wait at least this long before retrying — long
-/// enough that a genuinely missing/bad Python doesn't re-hang every save, short
-/// enough that fixing `QMD_FAST_PYTHON`/the venv self-heals within a few saves.
+/// enough that a genuinely missing/bad interpreter doesn't re-hang every save,
+/// short enough that fixing `QMD_FAST_PYTHON`/`QMD_FAST_R` self-heals within a few
+/// saves.
 const KERNEL_RETRY_AFTER: Duration = Duration::from_secs(20);
+
+/// Cell languages qmd-fast can execute, mapped to a stable kernel key. Anything
+/// else renders as highlighted source.
+fn kernel_lang(lang: &str) -> Option<&'static str> {
+    match lang {
+        "python" => Some("python"),
+        "r" => Some("r"),
+        _ => None,
+    }
+}
 
 /// A code cell pulled out of the block list, with what the engine needs to run
 /// it and to build its output block.
@@ -38,14 +50,22 @@ struct Cached {
     output: String, // inner output HTML (may be empty)
 }
 
-pub struct Executor {
-    python: PathBuf,
+/// Per-language warm kernel + its output cache. One per executed language so a
+/// `{python}` and an `{r}` cell run against independent, isolated kernels.
+#[derive(Default)]
+struct LangState {
     kernel: Option<Kernel>,
     /// When the last kernel *start* failed (None = never failed / recovered).
-    /// Drives a retry backoff instead of a permanent "failed" latch, so a fixed
-    /// config self-heals without restarting the server.
+    /// Drives a retry backoff instead of a permanent "failed" latch.
     failed_at: Option<Instant>,
     cached: Vec<Cached>,
+}
+
+pub struct Executor {
+    python: PathBuf,
+    r: PathBuf,
+    /// One warm kernel per executed language ("python", "r"), created lazily.
+    langs: HashMap<&'static str, LangState>,
 }
 
 impl Executor {
@@ -53,42 +73,59 @@ impl Executor {
         let python = std::env::var_os("QMD_FAST_PYTHON")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("python3"));
+        let r = std::env::var_os("QMD_FAST_R")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("R"));
         Self {
             python,
-            kernel: None,
-            failed_at: None,
-            cached: Vec::new(),
+            r,
+            langs: HashMap::new(),
         }
     }
 
-    /// A user-facing warning about the executor's state, if any: the kernel start
-    /// failed (recently), so code cells are rendering as source.
-    pub fn diagnostic(&self) -> Option<String> {
-        (self.kernel.is_none() && self.failed_at.is_some()).then(|| {
-            "kernel unavailable; code cells render as source \
-             (set QMD_FAST_PYTHON to a python with ipykernel, then Restart kernel)"
-                .to_string()
-        })
+    /// The launch spec + interpreter path (for logging) for a language.
+    fn spec(&self, lang: &str) -> Option<(KernelSpec, PathBuf)> {
+        match lang {
+            "python" => Some((KernelSpec::python(&self.python), self.python.clone())),
+            "r" => Some((KernelSpec::r(&self.r), self.r.clone())),
+            _ => None,
+        }
     }
 
-    /// Drop the current kernel and clear the failure backoff, so the next run
-    /// starts a fresh kernel immediately. Backs the dev-menu "Restart kernel"
-    /// action and recovery after fixing `QMD_FAST_PYTHON`. (Dropping the kernel
+    /// A user-facing warning about the executor's state, if any: some language's
+    /// kernel start failed (recently), so its code cells are rendering as source.
+    pub fn diagnostic(&self) -> Option<String> {
+        self.langs
+            .values()
+            .any(|s| s.kernel.is_none() && s.failed_at.is_some())
+            .then(|| {
+                "kernel unavailable; code cells render as source \
+                 (set QMD_FAST_PYTHON / QMD_FAST_R to an interpreter with the Jupyter \
+                 kernel, then Restart kernel)"
+                    .to_string()
+            })
+    }
+
+    /// Drop every language's kernel and clear the failure backoff, so the next run
+    /// starts fresh kernels immediately. Backs the dev-menu "Restart kernel" action
+    /// and recovery after fixing `QMD_FAST_PYTHON`/`QMD_FAST_R`. (Dropping a kernel
     /// kills its child process.)
     pub fn restart_kernel(&mut self) {
-        self.kernel = None;
-        self.failed_at = None;
-        self.cached.clear(); // force a full re-run against the fresh kernel
+        self.langs.clear();
     }
 
-    /// Execute the document's Python cells (changed cells + downstream) and
-    /// return the block list with output blocks spliced in after each cell.
+    /// Execute the document's code cells (changed cells + downstream, per language)
+    /// and return the block list with output blocks spliced in after each cell.
+    /// Each executable language runs against its own kernel; unknown languages are
+    /// left as source.
     pub async fn run(&mut self, blocks: Vec<Block>) -> Vec<Block> {
-        let cells: Vec<CellRef> = blocks
-            .iter()
-            .enumerate()
-            .filter_map(|(i, b)| match &b.cell {
-                Some(c) if c.lang == "python" => Some(CellRef {
+        // Group executable cells by language, preserving document order.
+        let mut by_lang: HashMap<&'static str, Vec<CellRef>> = HashMap::new();
+        for (i, b) in blocks.iter().enumerate() {
+            if let Some(c) = &b.cell
+                && let Some(lang) = kernel_lang(&c.lang)
+            {
+                by_lang.entry(lang).or_default().push(CellRef {
                     block_index: i,
                     id: b.id.clone(),
                     code: c.code.clone(),
@@ -96,28 +133,29 @@ impl Executor {
                     source_file: b.source_file.clone(),
                     figure: c.figure.clone(),
                     include: c.include,
-                }),
-                _ => None,
-            })
-            .collect();
+                });
+            }
+        }
 
-        if cells.is_empty() {
-            self.cached.clear();
+        // Drop kernels/caches for languages no longer present in the document.
+        self.langs.retain(|lang, _| by_lang.contains_key(lang));
+
+        if by_lang.is_empty() {
             return blocks;
         }
 
-        let outputs = self.compute_outputs(&cells).await;
-
-        // Map cell block index -> its output block (when non-empty).
-        let mut output_blocks: std::collections::HashMap<usize, Block> =
-            std::collections::HashMap::new();
-        for (cell, inner) in cells.iter().zip(&outputs) {
-            // `include: false` cells run (above) for their kernel-state side effects
-            // but contribute no visible output block.
-            if inner.trim().is_empty() || !cell.include {
-                continue;
+        // Map cell block index -> its output block (when non-empty), across langs.
+        let mut output_blocks: HashMap<usize, Block> = HashMap::new();
+        for (lang, cells) in &by_lang {
+            let outputs = self.compute_outputs(lang, cells).await;
+            for (cell, inner) in cells.iter().zip(&outputs) {
+                // `include: false` cells run (above) for their kernel-state side
+                // effects but contribute no visible output block.
+                if inner.trim().is_empty() || !cell.include {
+                    continue;
+                }
+                output_blocks.insert(cell.block_index, output_block(cell, inner));
             }
-            output_blocks.insert(cell.block_index, output_block(cell, inner));
         }
 
         let mut result = Vec::with_capacity(blocks.len() + output_blocks.len());
@@ -130,85 +168,108 @@ impl Executor {
         result
     }
 
-    /// Outputs (inner HTML) for each cell, reusing cache before the earliest
-    /// changed cell and executing from there to the end.
-    async fn compute_outputs(&mut self, cells: &[CellRef]) -> Vec<String> {
+    /// Outputs (inner HTML) for one language's cells, reusing that language's cache
+    /// before the earliest changed cell and executing from there to the end.
+    async fn compute_outputs(&mut self, lang: &'static str, cells: &[CellRef]) -> Vec<String> {
         let first_changed = (0..cells.len())
-            .find(|&i| self.cached.get(i).map(|c| c.id.as_str()) != Some(cells[i].id.as_str()))
+            .find(|&i| {
+                self.langs
+                    .get(lang)
+                    .and_then(|s| s.cached.get(i))
+                    .map(|c| c.id.as_str())
+                    != Some(cells[i].id.as_str())
+            })
             .unwrap_or(cells.len());
 
         let to_run = cells.len().saturating_sub(first_changed);
         // Boot the kernel up-front (the real wait), so the per-cell progress below
         // reflects actual execution rather than the startup it used to hide.
         if to_run > 0 {
-            self.ensure_kernel().await;
+            self.ensure_kernel(lang).await;
         }
+        let has_kernel = self
+            .langs
+            .get(lang)
+            .map(|s| s.kernel.is_some())
+            .unwrap_or(false);
         let mut outputs = Vec::with_capacity(cells.len());
         for (i, cell) in cells.iter().enumerate() {
             if i < first_changed {
-                outputs.push(self.cached[i].output.clone());
+                let cached = self
+                    .langs
+                    .get(lang)
+                    .and_then(|s| s.cached.get(i))
+                    .map(|c| c.output.clone())
+                    .unwrap_or_default();
+                outputs.push(cached);
             } else {
                 // Progress only when the kernel is up; otherwise cells are instant
                 // no-ops and a "cell k/n" line would be misleading.
-                if self.kernel.is_some() {
+                if has_kernel {
                     crate::log::exec(i - first_changed + 1, to_run);
                 }
-                outputs.push(self.exec_cell(&cell.code).await);
+                outputs.push(self.exec_cell(lang, &cell.code).await);
             }
         }
 
-        self.cached = cells
-            .iter()
-            .zip(&outputs)
-            .map(|(c, o)| Cached {
-                id: c.id.clone(),
-                output: o.clone(),
-            })
-            .collect();
+        if let Some(state) = self.langs.get_mut(lang) {
+            state.cached = cells
+                .iter()
+                .zip(&outputs)
+                .map(|(c, o)| Cached {
+                    id: c.id.clone(),
+                    output: o.clone(),
+                })
+                .collect();
+        }
         outputs
     }
 
-    /// Ensure a live kernel before executing. Three cases:
+    /// Ensure a live kernel for `lang` before executing. Three cases:
     ///   - a kernel that died mid-session is dropped and respawned (self-healing,
     ///     so a crash doesn't make every later cell hang on the execute timeout);
     ///   - after a failed *start* we back off for `KERNEL_RETRY_AFTER` before
-    ///     retrying, so a missing/bad Python doesn't re-hang every save, but a
+    ///     retrying, so a missing/bad interpreter doesn't re-hang every save, but a
     ///     fixed config recovers on its own within a few saves;
     ///   - otherwise (no kernel, not in backoff) we start one.
     /// Logs the (often multi-second) boot so the wait is visible.
-    async fn ensure_kernel(&mut self) {
-        if let Some(k) = self.kernel.as_mut() {
+    async fn ensure_kernel(&mut self, lang: &'static str) {
+        // Build the launch spec before borrowing the per-language state mutably.
+        let Some((spec, program)) = self.spec(lang) else {
+            return;
+        };
+        let state = self.langs.entry(lang).or_default();
+        if let Some(k) = state.kernel.as_mut() {
             if k.is_alive() {
                 return;
             }
-            crate::log::warn("kernel exited; restarting");
-            self.kernel = None;
-            self.cached.clear(); // kernel state is gone; re-run everything
+            crate::log::warn(&format!("{lang} kernel exited; restarting"));
+            state.kernel = None;
+            state.cached.clear(); // kernel state is gone; re-run everything
         }
-        if let Some(at) = self.failed_at {
+        if let Some(at) = state.failed_at {
             if at.elapsed() < KERNEL_RETRY_AFTER {
                 return; // still backing off; cells render as source
             }
         }
-        crate::log::kernel(&format!("starting ({})", self.python.display()));
-        match Kernel::start(&self.python).await {
+        crate::log::kernel(&format!("starting {lang} ({})", program.display()));
+        match Kernel::start(&spec).await {
             Ok(k) => {
-                crate::log::kernel(&format!("ready ({})", self.python.display()));
-                self.kernel = Some(k);
-                self.failed_at = None;
+                crate::log::kernel(&format!("{lang} ready ({})", program.display()));
+                state.kernel = Some(k);
+                state.failed_at = None;
             }
             Err(e) => {
                 crate::log::warn(&format!(
-                    "kernel unavailable ({e}); cells render as source only \
-                     (set QMD_FAST_PYTHON to a python with ipykernel)"
+                    "{lang} kernel unavailable ({e}); cells render as source only"
                 ));
-                self.failed_at = Some(Instant::now());
+                state.failed_at = Some(Instant::now());
             }
         }
     }
 
-    async fn exec_cell(&mut self, code: &str) -> String {
-        let Some(kernel) = self.kernel.as_mut() else {
+    async fn exec_cell(&mut self, lang: &'static str, code: &str) -> String {
+        let Some(kernel) = self.langs.get_mut(lang).and_then(|s| s.kernel.as_mut()) else {
             return String::new(); // kernel unavailable: cell renders as source
         };
         match kernel.execute(code).await {

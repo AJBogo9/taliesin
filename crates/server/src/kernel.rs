@@ -65,6 +65,60 @@ except Exception:
     pass
 "#;
 
+/// How to launch a Jupyter kernel for one language. The ZMQ protocol is
+/// language-agnostic, so only the spawn command, the kernel-spec name, and any
+/// startup preambles differ between Python (ipykernel) and R (IRkernel).
+pub struct KernelSpec {
+    /// The interpreter binary (`python3`, `R`, …).
+    program: PathBuf,
+    /// `kernel_name` reported in the connection info.
+    kernel_name: &'static str,
+    /// Builds the process argv given the path to the written connection file
+    /// (ipykernel takes `-f <conn>`, IRkernel takes `--args <conn>`).
+    argv: fn(&Path) -> Vec<String>,
+    /// Code run once at startup (the `ojs_define` bridge + matplotlib theme for
+    /// Python; nothing for R yet).
+    preambles: &'static [&'static str],
+}
+
+impl KernelSpec {
+    /// Python via `python -m ipykernel_launcher`.
+    pub fn python(program: &Path) -> KernelSpec {
+        KernelSpec {
+            program: program.to_path_buf(),
+            kernel_name: "python3",
+            argv: |conn| {
+                vec![
+                    "-m".into(),
+                    "ipykernel_launcher".into(),
+                    "-f".into(),
+                    conn.display().to_string(),
+                    "--quiet".into(),
+                ]
+            },
+            preambles: &[OJS_DEFINE_PREAMBLE, MPL_THEME_PREAMBLE],
+        }
+    }
+
+    /// R via `R --slave -e 'IRkernel::main()'` (the IRkernel kernelspec invocation).
+    pub fn r(program: &Path) -> KernelSpec {
+        KernelSpec {
+            program: program.to_path_buf(),
+            kernel_name: "ir",
+            argv: |conn| {
+                vec![
+                    "--slave".into(),
+                    "-e".into(),
+                    "IRkernel::main()".into(),
+                    "--args".into(),
+                    conn.display().to_string(),
+                ]
+            },
+            preambles: &[],
+        }
+    }
+}
+
 /// One execution output, already rendered to a self-contained HTML fragment.
 #[derive(Debug, Clone)]
 pub enum Output {
@@ -90,9 +144,9 @@ pub struct Kernel {
 }
 
 impl Kernel {
-    /// Spawn `python -m ipykernel_launcher` and connect to it. The kernel stays
-    /// warm for the lifetime of this value.
-    pub async fn start(python: &Path) -> io::Result<Kernel> {
+    /// Spawn the kernel described by `spec` (Python ipykernel or R IRkernel) and
+    /// connect to it. The kernel stays warm for the lifetime of this value.
+    pub async fn start(spec: &KernelSpec) -> io::Result<Kernel> {
         let ip: IpAddr = "127.0.0.1".parse().unwrap();
         let ports = peek_ports(ip, 5).await.map_err(io::Error::other)?;
         let info = ConnectionInfo {
@@ -105,7 +159,7 @@ impl Kernel {
             hb_port: ports[4],
             key: uuid::Uuid::new_v4().to_string(),
             signature_scheme: "hmac-sha256".to_string(),
-            kernel_name: Some("python3".to_string()),
+            kernel_name: Some(spec.kernel_name.to_string()),
         };
 
         let conn_dir = std::env::temp_dir().join(format!("qmd-kernel-{}", uuid::Uuid::new_v4()));
@@ -113,15 +167,15 @@ impl Kernel {
         let conn_file = conn_dir.join("connection.json");
         std::fs::write(&conn_file, serde_json::to_vec(&info)?)?;
 
-        let child = Command::new(python)
-            .args(["-m", "ipykernel_launcher", "-f"])
-            .arg(&conn_file)
-            .arg("--quiet")
+        let child = Command::new(&spec.program)
+            .args((spec.argv)(&conn_file))
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
-            .map_err(|e| io::Error::other(format!("failed to launch kernel ({python:?}): {e}")))?;
+            .map_err(|e| {
+                io::Error::other(format!("failed to launch kernel ({:?}): {e}", spec.program))
+            })?;
 
         let session = uuid::Uuid::new_v4().to_string();
         let mut iopub = create_client_iopub_connection(&info, "", &session)
@@ -142,12 +196,11 @@ impl Kernel {
             iopub,
             conn_dir,
         };
-        // Define `ojs_define(**kwargs)` so docs can bridge Python values to OJS
-        // cells: it emits `<script type="ojs-define">{json}</script>`, which the
-        // Observable runtime reads. (Mirrors Quarto's Jupyter setup.)
-        let _ = kernel.execute(OJS_DEFINE_PREAMBLE).await;
-        // Default inline figures to a transparent, theme-neutral style.
-        let _ = kernel.execute(MPL_THEME_PREAMBLE).await;
+        // Language-specific startup (e.g. Python's `ojs_define` bridge + matplotlib
+        // theme); each preamble runs once against the warm kernel.
+        for preamble in spec.preambles {
+            let _ = kernel.execute(preamble).await;
+        }
         Ok(kernel)
     }
 
@@ -331,7 +384,9 @@ mod tests {
         let py = PathBuf::from(py);
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async move {
-            let mut k = Kernel::start(&py).await.expect("kernel should start");
+            let mut k = Kernel::start(&KernelSpec::python(&py))
+                .await
+                .expect("kernel should start");
 
             // stdout stream + a bare expression result
             let html = render_outputs(&k.execute("print('hello'); 6 * 7").await.unwrap());
