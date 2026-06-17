@@ -602,7 +602,14 @@ pub fn theme_head(default_mode: &str) -> String {
   function apply(){{
     var p = pref();
     var mode = p === "auto" ? ((mq && mq.matches) ? "dark" : "light") : p;
-    document.documentElement.setAttribute("data-theme", mode);
+    var el = document.documentElement;
+    el.setAttribute("data-theme", mode);
+    // Set color-scheme + background inline, right here in the pre-paint head
+    // script, so the browser's canvas is the theme colour from the very first
+    // frame. Without this the canvas stays white until the inline <style> parses,
+    // which shows as a white flash on every (cross-page) navigation in dark mode.
+    el.style.colorScheme = mode;
+    el.style.background = mode === "dark" ? '#16181d' : '#ffffff';
     // Let theme-dependent renderers (e.g. mermaid, whose SVG colours are baked at
     // render time) re-render. Fires on toggle and on OS change while in `auto`.
     try {{ window.dispatchEvent(new CustomEvent("qmd:themechange", {{ detail: {{ mode: mode }} }})); }} catch(e) {{}}
