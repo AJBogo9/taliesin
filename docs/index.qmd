@@ -48,11 +48,14 @@ your network with a QR code and open the same *live* preview on a phone (see
 
 To produce output instead of previewing, `build` writes a self-contained HTML
 file (or, with `--out <dir>`, a portable folder with copied assets) and `render`
-streams a page to stdout:
+streams a page to stdout. `build` executes code cells (against a kernel, when one
+is available), so the output carries the same computed figures and `ojs_define`
+values you see in the live preview; a directory is built as a whole site:
 
 ```sh
 cargo run -p qmd-fast-server -- build  post.qmd             # post.html beside the source
 cargo run -p qmd-fast-server -- build  post.qmd --out dist  # dist/index.html + copied assets
+cargo run -p qmd-fast-server -- build  blog/              # whole site -> blog/_site/
 cargo run -p qmd-fast-server -- render post.qmd > out.html  # one-shot page to stdout
 ```
 
