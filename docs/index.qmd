@@ -578,7 +578,11 @@ by `date` and capped by `max-items`. `type: grid` lays them out as a card grid
 `listing: { id: x }` the cards fill a `::: {#x}` block (e.g. a homepage "recent
 posts" section); otherwise they're appended to the page. So the blog index, the
 projects index, and the homepage's recent-posts all generate from front matter.
-(`about:` profile pages are not generated yet; see `todo.md` §4.)
+
+An `about:` block turns a page into a profile: it renders a centered header (a
+round image, the page title as the name, and any `links:`) in place of the normal
+title block. The `template:` (jolla, trestles, …) is kept as a styling hook; the
+shipped layout is the centered jolla style.
 
 ## Reading on any screen
 

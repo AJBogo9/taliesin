@@ -107,6 +107,19 @@ pub struct Page {
     pub is_post: bool,
     /// `listing:` blocks declared on this page (the blog index, projects, etc.).
     pub listings: Vec<ListingSpec>,
+    /// `about:` profile block, if this page declares one (the homepage).
+    pub about: Option<AboutSpec>,
+}
+
+/// An `about:` front-matter block: a profile header (image + name + links). The
+/// `template` (jolla, trestles, …) is kept as a class for styling; the layout is
+/// the centered jolla style the corpus uses.
+#[derive(Debug, Clone)]
+pub struct AboutSpec {
+    pub template: String,
+    pub image: Option<String>,
+    pub image_alt: Option<String>,
+    pub links: Vec<NavItem>,
 }
 
 /// A `listing:` front-matter block: a request to render a grid/list of cards for
@@ -168,6 +181,7 @@ impl Site {
                     categories: fm.categories,
                     is_post,
                     listings: fm.listings,
+                    about: fm.about,
                 }
             })
             .collect();
@@ -223,7 +237,7 @@ impl Site {
         let src = std::fs::read_to_string(&page.input).ok()?;
         let base = page.input.parent().unwrap_or(&self.root);
         let mut doc = render::render_document_with_includes(&src, base);
-        self.expand_listings(page, &mut doc.blocks);
+        self.expand_page(page, &mut doc.blocks);
         let ctx = self.page_chrome(page);
         let fallback = page.title.as_deref().unwrap_or("");
         let html = render::html_page_from_doc_in_site(&doc, fallback, &ctx);
@@ -232,12 +246,28 @@ impl Site {
 
     // --- listings ---------------------------------------------------------
 
-    /// Expand each `listing:` block declared on `page` into a grid/list of post
-    /// cards, mutating `blocks` in place: a listing with an `id` fills the matching
-    /// `::: {#id}` placeholder block; an id-less listing is appended as a new block.
-    /// Both the static build and the live preview call this, so cards stay in the
-    /// block model (mounted + diffed like any other block).
-    pub fn expand_listings(&self, page: &Page, blocks: &mut Vec<Block>) {
+    /// Apply this page's site-level front-matter blocks to its rendered `blocks`,
+    /// mutating in place: an `about:` profile replaces the title block, and each
+    /// `listing:` expands into post cards. Both the static build and the live
+    /// preview call this, so the results stay in the block model (mounted + diffed
+    /// like any other block).
+    pub fn expand_page(&self, page: &Page, blocks: &mut Vec<Block>) {
+        if let Some(about) = &page.about {
+            let html = self.about_html(page, about);
+            match blocks.iter_mut().find(|b| b.id == "qmd-title-block") {
+                Some(tb) => tb.html = html,
+                None => blocks.insert(
+                    0,
+                    Block {
+                        id: "qmd-title-block".to_string(),
+                        sourcepos: String::new(),
+                        source_file: None,
+                        html,
+                        cell: None,
+                    },
+                ),
+            }
+        }
         for spec in &page.listings {
             let cards = self.listing_html(page, spec);
             match &spec.id {
@@ -330,6 +360,51 @@ impl Site {
         format!(
             "<a class=\"qmd-card\" href=\"{href}\">{img}\
              <div class=\"qmd-card-body\">{date}<h3 class=\"qmd-card-title\">{title}</h3>{desc}{cats}</div></a>"
+        )
+    }
+
+    // --- about ------------------------------------------------------------
+
+    /// Render an `about:` profile header (replaces the title block on a page that
+    /// declares one). Centered jolla-style: round image, name, optional links. The
+    /// `image` is relative to the page itself, so it's emitted as-is.
+    fn about_html(&self, page: &Page, about: &AboutSpec) -> String {
+        let name = page.title.clone().unwrap_or_default();
+        let img = about
+            .image
+            .as_deref()
+            .map(|src| {
+                let alt = about.image_alt.as_deref().unwrap_or("");
+                format!(
+                    "<img class=\"qmd-about-img\" src=\"{}\" alt=\"{}\">",
+                    esc(src),
+                    esc(alt)
+                )
+            })
+            .unwrap_or_default();
+        let links = if about.links.is_empty() {
+            String::new()
+        } else {
+            let items: String = about
+                .links
+                .iter()
+                .filter_map(|l| {
+                    let href = l.href.as_deref()?;
+                    let label = l.text.as_deref().or(l.icon.as_deref()).unwrap_or(href);
+                    Some(format!(
+                        "<a class=\"qmd-about-link\" href=\"{}\">{}</a>",
+                        esc(href),
+                        esc(label)
+                    ))
+                })
+                .collect();
+            format!("<div class=\"qmd-about-links\">{items}</div>")
+        };
+        format!(
+            "<header class=\"qmd-about qmd-about-{tpl}\" data-block-id=\"qmd-title-block\">\
+             {img}<h1 class=\"qmd-about-name\">{name}</h1>{links}</header>",
+            tpl = esc(&about.template),
+            name = esc(&name),
         )
     }
 
@@ -630,6 +705,7 @@ struct FrontInfo {
     image: Option<String>,
     categories: Vec<String>,
     listings: Vec<ListingSpec>,
+    about: Option<AboutSpec>,
 }
 
 /// Parse a page's `---` front-matter block (YAML) into the fields discovery
@@ -651,7 +727,34 @@ fn parse_front_matter(path: &Path) -> FrontInfo {
         image: scalar(val.get("image")),
         categories: string_list(val.get("categories")),
         listings: parse_listings(val.get("listing")),
+        about: parse_about(val.get("about")),
     }
+}
+
+/// Parse an `about:` mapping into a profile spec (template + image + links).
+fn parse_about(v: Option<&serde_yaml::Value>) -> Option<AboutSpec> {
+    let map = match v? {
+        serde_yaml::Value::Mapping(_) => v?,
+        _ => return None,
+    };
+    let links = match map.get("links") {
+        Some(serde_yaml::Value::Sequence(seq)) => seq
+            .iter()
+            .map(|it| NavItem {
+                text: scalar(it.get("text")),
+                href: scalar(it.get("href")),
+                icon: scalar(it.get("icon")),
+            })
+            .filter(|n| n.href.is_some())
+            .collect(),
+        _ => Vec::new(),
+    };
+    Some(AboutSpec {
+        template: scalar(map.get("template")).unwrap_or_else(|| "jolla".to_string()),
+        image: scalar(map.get("image")),
+        image_alt: scalar(map.get("image-alt")),
+        links,
+    })
 }
 
 /// The text between the leading `---` and the next `---` (the YAML front matter),

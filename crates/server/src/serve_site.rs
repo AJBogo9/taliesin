@@ -211,7 +211,7 @@ fn render_markdown_only(site: &qmd_fast_core::Site, page: &Page) -> PageDoc {
     let base = page.input.parent().unwrap_or(Path::new("."));
     let doc = qmd_fast_core::render_document_with_includes(&src, base);
     let mut blocks = doc.blocks;
-    site.expand_listings(page, &mut blocks);
+    site.expand_page(page, &mut blocks);
     PageDoc {
         title: doc.title,
         toc: doc.toc,
@@ -515,7 +515,7 @@ async fn build_page(app: &SiteApp, rel: &str, execs: &mut HashMap<String, crate:
     // Expand listing cards (queries the whole site, so it needs the site lock).
     {
         let site = app.site.lock().unwrap();
-        site.expand_listings(&page, &mut blocks);
+        site.expand_page(&page, &mut blocks);
     }
     let diags = page_diagnostics(&page.input, &base, exec);
 

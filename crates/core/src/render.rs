@@ -3121,6 +3121,19 @@ const SITE_CSS: &str = r#"
     background: var(--qmd-code-bg); border: 1px solid var(--qmd-border);
     border-radius: 999px; padding: .1rem .55rem; }
 
+  /* about: a centered profile header (jolla), replacing the title block */
+  .qmd-about { display: flex; flex-direction: column; align-items: center; text-align: center;
+    gap: .85rem; margin: 1rem 0 2.5rem; padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--qmd-border); }
+  .qmd-about-img { width: 9rem; height: 9rem; border-radius: 50%; object-fit: cover;
+    border: 1px solid var(--qmd-border); }
+  .qmd-about-name { margin: 0; font-size: 2rem; line-height: 1.15; }
+  .qmd-about-links { display: flex; flex-wrap: wrap; gap: .6rem; justify-content: center; }
+  .qmd-about-link { font: 500 .9rem var(--qmd-font-head); text-decoration: none;
+    color: var(--qmd-fg); border: 1px solid var(--qmd-border); border-radius: 999px;
+    padding: .3rem .9rem; transition: border-color .12s ease, color .12s ease; }
+  .qmd-about-link:hover { border-color: var(--qmd-accent); color: var(--qmd-accent); }
+
   @media (max-width: 640px) {
     .qmd-listing-default .qmd-card { flex-direction: column; }
     .qmd-listing-default .qmd-card-img { width: 100%; aspect-ratio: 16 / 9; }

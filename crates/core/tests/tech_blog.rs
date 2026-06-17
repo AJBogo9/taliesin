@@ -17,7 +17,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use qmd_fast_core::{Site, render_document, render_document_with_includes, render_html_page};
+use qmd_fast_core::{Site, render_document, render_document_with_includes};
 
 fn corpus_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus")
@@ -345,17 +345,28 @@ fn listing_frontmatter_emits_post_cards() {
     assert_eq!(recent, 3, "home: max-items: 3 not honoured (got {recent})");
 }
 
-/// GAP (site generator): an `about:` page (the homepage uses `template: jolla`)
-/// should render a profile block from the frontmatter. Today the `about:` key is
-/// ignored and only the body prose renders.
+/// An `about:` page (the homepage uses `template: jolla`) renders a profile block
+/// from the front matter. Site-level, so exercised through `Site` on the real blog.
 #[test]
-#[ignore = "gap: about: frontmatter is ignored — no profile/about block rendered (single-doc scope)"]
 fn about_page_renders_profile_block() {
-    let src = "---\ntitle: \"Andreas Bogossian\"\nabout:\n  template: jolla\n  image: profile.webp\n---\n\nMSc student.\n";
-    let html = render_html_page(src, "About");
+    let site = Site::discover(&corpus_dir().join("tech-blog"));
+    let home = site.render_page("index.qmd").expect("home renders");
     assert!(
-        html.contains("about-") || html.contains("quarto-about"),
-        "about: frontmatter produced no about/profile block"
+        home.contains("qmd-about-jolla"),
+        "about: produced no jolla profile block"
+    );
+    assert!(
+        home.contains("qmd-about-img") && home.contains("src=\"profile.webp\""),
+        "about: profile image missing"
+    );
+    assert!(
+        home.contains("<h1 class=\"qmd-about-name\">Andreas Bogossian</h1>"),
+        "about: name (page title) missing"
+    );
+    // The profile replaces the default title block (no duplicate header).
+    assert!(
+        !home.contains("class=\"qmd-title-block\""),
+        "about: default title block should be replaced"
     );
 }
 
