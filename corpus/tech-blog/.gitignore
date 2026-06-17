@@ -1,0 +1,35 @@
+# Generated at publish time
+llms.txt
+llms-full.txt
+
+# Quarto output
+_site/
+.quarto/
+/.quarto/
+*_cache/
+*_files/
+_freeze/
+
+# Quarto notebooks
+**/*.quarto_ipynb*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Terraform
+infra/.terraform/
+infra/terraform.tfvars
+infra/terraform.tfstate
+infra/terraform.tfstate.backup
+
+# Playwright MCP
+.playwright-mcp/
+
+# Editor
+.DS_Store
+.vscode/
+*.swp
+**/*.quarto_ipynb
+_notes/

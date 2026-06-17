@@ -8,6 +8,9 @@ node_modules/
 dist/
 out/
 
+# Built multi-page sites (qmd-fast build <dir> default output)
+_site/
+
 # Logs and env
 *.log
 .env

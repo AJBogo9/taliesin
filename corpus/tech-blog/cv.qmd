@@ -1,0 +1,89 @@
+---
+title: "Andreas Bogossian"
+subtitle: "Machine Learning · Software"
+page-layout: article
+title-block-banner: false
+toc: false
+listing:
+  - id: cv-projects
+    contents: projects
+    type: default
+    sort: "date desc"
+    fields: [title, description, categories, date]
+    sort-ui: false
+    filter-ui: false
+---
+
+M.Sc. student at Aalto University specialising in machine learning and mathematics. I build systems at the intersection of math and production-quality software.
+
+[GitHub](https://github.com/AJBogo9) · [LinkedIn](https://www.linkedin.com/in/bogo9/) · [andreasbogossian.com](https://andreasbogossian.com)
+
+## Education
+
+**Master of Science — Machine Learning, Data Science and Artificial Intelligence** \
+*Aalto University* · 2025–2027 \
+
+**Bachelor of Science — Computer Science** \
+*Aalto University* · Sep 2023–Jan 2026 \
+Minor in Mathematics
+
+Relevant coursework: Machine Learning, Bayesian Data Analysis, Reinforcement
+Learning, Stochastic Processes, Prediction and Time Series Analysis,
+Introduction to Optimization, Numerical Analysis, Linear Algebra,
+Programming Parallel Computers, Databases, Theory of Computation,
+Software Engineering
+
+## Skills
+
+| Category | Technologies |
+|---|---|
+| Languages | Python, R, TypeScript, Scala, C |
+| ML / Data | scikit-learn, PyTorch, pandas, NumPy, brms, ggplot2 |
+| Web & Backend | React, Next.js, Bun, PostgreSQL |
+| Infrastructure | Docker, Kubernetes, Terraform, Google Cloud, Flux CD |
+| Tools | Git, Ubuntu, Quarto |
+
+## Publications
+
+{{< include _includes/publications.md >}}
+
+## Projects
+
+Each links to a write-up. The full set lives on the [Projects](projects.qmd) page.
+
+::: {#cv-projects}
+:::
+
+## Experience
+
+**Full Stack Developer** · Droppe *(Internship, part-time)* \
+Sep 2024–May 2025 · Helsinki, Finland
+
+- Optimised data pipeline with caching, reducing query costs by 37×
+- Designed a customised analytics schema to surface relevant data for developers
+- Built a no-code filtering tool for data visualisation
+
+**Logistics Assistant** · Viking Line *(Seasonal)* \
+Jun 2024–Aug 2024 · Finland
+
+- Served customers across three ships in English, Swedish and Finnish
+
+## Honors & Awards
+
+**Accenture Software Quality Award — Finalist** \
+*Accenture* · May 2025 \
+Top 3 of 19 teams at Aalto University, recognized for software implementation quality.
+
+## Volunteering
+
+**Board Member** · Aalto Triathlon Club · Sep 2024–Present \
+**Sports Committee Board Member** · Tietokilta · Jan 2025–Present
+
+## Languages
+
+| Language | Proficiency |
+|---|---|
+| English | Native or bilingual |
+| Finnish | Native or bilingual |
+| Swedish | Limited working |
+| Chinese (Mandarin) | Elementary |

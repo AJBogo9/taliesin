@@ -972,6 +972,13 @@ pub fn client_styles() -> String {
     format!("<style>{BASE_CSS}{DARK_CSS}</style>\n<style>{KATEX_CSS}</style>")
 }
 
+/// The multi-page site chrome CSS (navbar / footer / prev-next), wrapped in a
+/// `<style>`. The live site preview ships this on top of [`client_styles`];
+/// the static build folds it into the page template directly.
+pub fn site_styles() -> String {
+    format!("<style>{SITE_CSS}</style>")
+}
+
 // highlight.js + mermaid (pinned) served from jsDelivr — the dev server runs
 // locally with network access, like reveal.js. Both are client-side presentation
 // layers, so they never affect the block model or the diff. mermaid is loaded
@@ -1365,7 +1372,32 @@ fn page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
     }
 }
 
+/// Shared chrome for a page rendered inside a multi-page site: pre-built navbar,
+/// footer, and post prev/next HTML. Built by `qmd_fast_core::site` and injected
+/// around the page body. Empty fields render nothing.
+#[derive(Debug, Clone, Default)]
+pub struct SiteCtx {
+    pub navbar_html: String,
+    pub footer_html: String,
+    pub prevnext_html: String,
+}
+
 fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
+    html_page_inner(doc, fallback_title, None)
+}
+
+/// Like [`html_page_from_doc`], but wraps the page body in the site chrome
+/// (navbar above, prev/next + footer below) and ships the site CSS. The
+/// single-page path ([`html_page_from_doc`]) is unchanged (`site == None`).
+pub fn html_page_from_doc_in_site(
+    doc: &RenderedDoc,
+    fallback_title: &str,
+    site: &SiteCtx,
+) -> String {
+    html_page_inner(doc, fallback_title, Some(site))
+}
+
+fn html_page_inner(doc: &RenderedDoc, fallback_title: &str, site: Option<&SiteCtx>) -> String {
     let title = doc.title.as_deref().unwrap_or(fallback_title);
     let mut t = String::new();
     escape_html(title, &mut t);
@@ -1389,7 +1421,7 @@ fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
         String::new()
     };
     // Content first (left, wide column), TOC second (right, sticky column).
-    let (body_class, body_content) = if toc.is_empty() {
+    let (mut body_class, content) = if toc.is_empty() {
         (String::new(), body)
     } else {
         (
@@ -1397,11 +1429,36 @@ fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
             format!("<main>\n{body}</main>\n{toc}\n"),
         )
     };
+    // Site mode: body becomes a full-width flex column (navbar, a centred content
+    // wrapper, footer) so the footer sits at the bottom of short pages and the
+    // chrome lines up with the reading column. The `has-toc` grid moves onto the
+    // wrapper, leaving the body free to be the flex shell.
+    let body_content = match site {
+        Some(s) => {
+            let main_cls = if toc.is_empty() {
+                "qmd-site-main"
+            } else {
+                "qmd-site-main has-toc"
+            };
+            body_class = " class=\"qmd-site\"".to_string();
+            format!(
+                "{nav}\n<div class=\"{main_cls}\">\n{content}{prevnext}</div>\n{footer}\n",
+                nav = s.navbar_html,
+                prevnext = s.prevnext_html,
+                footer = s.footer_html,
+            )
+        }
+        None => content,
+    };
+    let base_css = match site {
+        Some(_) => format!("{BASE_CSS}{DARK_CSS}{SITE_CSS}"),
+        None => format!("{BASE_CSS}{DARK_CSS}"),
+    };
     PAGE_TEMPLATE
         .replace("{{TITLE}}", &t)
         .replace("{{THEME_INIT}}", &theme_head(&doc.theme_default))
         .replace("{{KATEX_CSS}}", &katex_css)
-        .replace("{{BASE_CSS}}", &format!("{BASE_CSS}{DARK_CSS}"))
+        .replace("{{BASE_CSS}}", &base_css)
         .replace("{{THEME_CSS}}", &theme_style(&doc.theme_css))
         .replace("{{CODE_HEAD}}", &code_head())
         .replace("{{OJS_HEAD}}", &ojs_head_html)
@@ -2972,6 +3029,92 @@ fn escape_attr(s: &str) -> String {
     }
     out
 }
+
+/// Multi-page site chrome: a sticky theme-aware navbar, a slim footer, and post
+/// prev/next nav. Only shipped when a page renders inside a site (see
+/// [`html_page_from_doc_in_site`]); all of it is driven by `--qmd-*` vars so a
+/// theme extension restyles it for free. Deliberately leaner than Quarto's
+/// Bootstrap chrome (no banner, no search bar, no feed).
+const SITE_CSS: &str = r#"
+  /* Site shell: a full-width flex column so the footer sits at the bottom of the
+     viewport even on short pages. The navbar, content, and footer each centre
+     their own inner box on the reading column, so they all line up. */
+  body.qmd-site { max-width: none; margin: 0; padding: 0;
+    min-height: 100vh; display: flex; flex-direction: column; }
+
+  /* sticky theme-aware navbar (spans full width as a flex child; inner centres) */
+  .qmd-site-nav { position: sticky; top: 0; z-index: 50;
+    background: color-mix(in srgb, var(--qmd-bg) 88%, transparent);
+    -webkit-backdrop-filter: saturate(1.4) blur(9px); backdrop-filter: saturate(1.4) blur(9px);
+    border-bottom: 1px solid var(--qmd-border); }
+  .qmd-nav-inner { position: relative; max-width: var(--qmd-maxw); margin: 0 auto;
+    padding: .6rem 1rem; display: flex; align-items: center; gap: 1.1rem;
+    font: 500 15px/1 var(--qmd-font-head); }
+  .qmd-nav-brand { color: var(--qmd-fg); font-weight: 700; font-size: 1.02rem; text-decoration: none;
+    letter-spacing: -0.01em; white-space: nowrap; }
+  .qmd-nav-brand:hover { color: var(--qmd-accent); }
+  .qmd-nav-links { display: flex; align-items: center; gap: .35rem; flex: 1; }
+  .qmd-nav-spacer { flex: 1 1 auto; }
+  .qmd-nav-link { color: var(--qmd-muted); text-decoration: none; padding: .35rem .6rem;
+    border-radius: 6px; transition: color .12s ease, background .12s ease; }
+  .qmd-nav-link:hover { color: var(--qmd-fg); background: var(--qmd-code-bg); }
+  .qmd-nav-active { color: var(--qmd-fg); font-weight: 600; }
+  .qmd-nav-active:hover { background: transparent; }
+  .qmd-nav-controls { display: inline-flex; align-items: center; gap: .4rem; }
+  .qmd-nav-burger { display: none; }
+  .qmd-nav-toggle { display: none; }
+
+  /* the reading column; grows to fill the column so the footer is pushed down */
+  .qmd-site-main { flex: 1 0 auto; width: 100%; max-width: var(--qmd-maxw);
+    margin: 0 auto; padding: 2rem 1rem; }
+  .qmd-site-main > main { min-width: 0; }
+  /* a page with a TOC widens into a two-column grid (content + sticky sidebar) */
+  .qmd-site-main.has-toc { max-width: 72rem; display: grid; align-items: start;
+    gap: 2.5rem; grid-template-columns: minmax(0, 46rem) 14rem; }
+  .qmd-site-main.has-toc > .qmd-prevnext { grid-column: 1 / -1; }
+
+  /* prev/next between posts */
+  .qmd-prevnext { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;
+    margin: 3.5rem 0 0; padding-top: 1.5rem; border-top: 1px solid var(--qmd-border); }
+  .qmd-prevnext-link { display: flex; flex-direction: column; gap: .25rem; text-decoration: none;
+    padding: .8rem 1rem; border: 1px solid var(--qmd-border); border-radius: 8px;
+    color: var(--qmd-fg); transition: border-color .12s ease, background .12s ease; }
+  .qmd-prevnext-link:hover { border-color: var(--qmd-accent); background: var(--qmd-code-bg); }
+  .qmd-pn-next { text-align: right; align-items: flex-end; }
+  .qmd-pn-dir { font: 600 .8rem var(--qmd-font-head); color: var(--qmd-muted); }
+  .qmd-pn-title { font-weight: 600; }
+
+  /* slim footer pinned to the bottom of the flex column (icons = author raw HTML) */
+  .qmd-site-footer { flex-shrink: 0; border-top: 1px solid var(--qmd-border); }
+  .qmd-foot-inner { max-width: var(--qmd-maxw); margin: 0 auto; padding: 1.4rem 1rem;
+    display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap;
+    font: 14px var(--qmd-font-head); color: var(--qmd-muted); }
+  .qmd-foot-left, .qmd-foot-center, .qmd-foot-right { display: inline-flex; align-items: center; gap: 1.1rem; }
+  .qmd-foot-left:empty, .qmd-foot-center:empty, .qmd-foot-right:empty { display: none; }
+  .qmd-foot-center { flex: 1 1 auto; justify-content: center; }
+  .qmd-foot-right { margin-left: auto; }
+  .qmd-foot-item { color: var(--qmd-muted); text-decoration: none; display: inline-flex; align-items: center; gap: .35rem; }
+  .qmd-foot-item:hover { color: var(--qmd-fg); }
+  .qmd-foot-item svg { width: 16px; height: 16px; }
+
+  @media (max-width: 640px) {
+    .qmd-nav-burger { display: flex; flex-direction: column; gap: 4px; cursor: pointer;
+      margin-left: auto; padding: .45rem; }
+    .qmd-nav-burger span { display: block; width: 22px; height: 2px; border-radius: 2px;
+      background: var(--qmd-fg); transition: transform .15s ease, opacity .15s ease; }
+    .qmd-nav-links { display: none; position: absolute; top: 100%; left: 0; right: 0;
+      flex-direction: column; align-items: stretch; gap: 0; flex: none;
+      background: var(--qmd-bg); border-bottom: 1px solid var(--qmd-border);
+      box-shadow: 0 8px 20px rgba(0,0,0,.12); padding: .35rem 0; }
+    .qmd-nav-toggle:checked ~ .qmd-nav-links { display: flex; }
+    .qmd-nav-spacer { display: none; }
+    .qmd-nav-link { padding: .7rem 1.15rem; border-radius: 0; }
+    .qmd-nav-controls { padding: .5rem 1.15rem; }
+    .qmd-site-main.has-toc { grid-template-columns: minmax(0, 1fr); }
+    .qmd-prevnext { grid-template-columns: 1fr; }
+    .qmd-pn-next { text-align: left; align-items: flex-start; }
+  }
+"#;
 
 const PAGE_TEMPLATE: &str = r#"<!DOCTYPE html>
 <html lang="en">

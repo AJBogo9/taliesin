@@ -9,6 +9,7 @@ mod exec;
 mod kernel;
 mod log;
 mod serve;
+mod serve_site;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -35,14 +36,20 @@ fn cmd_serve(args: &[String]) -> ExitCode {
     let open = flag("--open") || std::env::var_os("QMD_FAST_OPEN").is_some();
     let expose = flag("--host") || std::env::var_os("QMD_FAST_HOST").is_some();
     let Some(path) = positionals.first() else {
-        eprintln!("usage: qmd-fast preview <file.qmd> [port] [--host] [--open]");
+        eprintln!("usage: qmd-fast preview <file.qmd|dir> [port] [--host] [--open]");
         return ExitCode::FAILURE;
     };
     let port: u16 = positionals
         .get(1)
         .and_then(|p| p.parse().ok())
         .unwrap_or(4321);
-    match serve::run(PathBuf::from(path), port, open, expose) {
+    // A directory is a multi-page site project; a single `.qmd` is one document.
+    let result = if Path::new(path.as_str()).is_dir() {
+        serve_site::run(PathBuf::from(path), port, open, expose)
+    } else {
+        serve::run(PathBuf::from(path), port, open, expose)
+    };
+    match result {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             log::error(&format!("serve: {e}"));
@@ -68,9 +75,14 @@ fn cmd_build(args: &[String]) -> ExitCode {
         }
     }
     let Some(path) = positionals.first().copied() else {
-        eprintln!("usage: qmd-fast build <file.qmd> [out.html] [--out <dir>]");
+        eprintln!("usage: qmd-fast build <file.qmd|dir> [out.html] [--out <dir>]");
         return ExitCode::FAILURE;
     };
+    // A directory is a multi-page site project (`_quarto.yml` + `.qmd` pages);
+    // a single `.qmd` keeps the original self-contained-page behaviour.
+    if Path::new(path).is_dir() {
+        return build_site(Path::new(path), out_dir);
+    }
     let src = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) => {
@@ -142,6 +154,97 @@ fn build_dir(html: &str, base: &Path, dir: &Path) -> ExitCode {
         if copied == 1 { "" } else { "s" }
     ));
     ExitCode::SUCCESS
+}
+
+/// Build a multi-page site: render every `.qmd` page with the shared chrome to
+/// `<out>/<page>.html` and mirror the project's non-source assets alongside, so
+/// the output directory is a deployable static site. `out_override` (the `--out`
+/// flag) wins over the config's `output-dir` (default `_site`).
+fn build_site(root: &Path, out_override: Option<&str>) -> ExitCode {
+    let site = qmd_fast_core::Site::discover(root);
+    for w in &site.warnings {
+        log::warn(w);
+    }
+    if site.pages.is_empty() {
+        log::error(&format!("no .qmd pages found under {}", root.display()));
+        return ExitCode::FAILURE;
+    }
+    let out = match out_override {
+        Some(d) => PathBuf::from(d),
+        None => root.join(site.output_dir()),
+    };
+    if let Err(e) = std::fs::create_dir_all(&out) {
+        log::error(&format!("cannot create {}: {e}", out.display()));
+        return ExitCode::FAILURE;
+    }
+    let out = out.canonicalize().unwrap_or(out);
+
+    // 1. Mirror non-source assets (images, etc.) preserving the tree.
+    let assets = mirror_assets(root, &out);
+
+    // 2. Render each page with chrome + rewritten links to its output path.
+    let mut pages = 0usize;
+    for page in &site.pages {
+        let Some(html) = site.render_page(&page.rel) else {
+            log::warn(&format!("could not render {}", page.rel));
+            continue;
+        };
+        let dest = out.join(&page.url);
+        if let Some(parent) = dest.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        match std::fs::write(&dest, html) {
+            Ok(()) => pages += 1,
+            Err(e) => log::warn(&format!("cannot write {}: {e}", dest.display())),
+        }
+    }
+
+    log::built(&format!(
+        "{}  ·  {pages} page{}  ·  {assets} asset{}",
+        out.display(),
+        if pages == 1 { "" } else { "s" },
+        if assets == 1 { "" } else { "s" },
+    ));
+    ExitCode::SUCCESS
+}
+
+/// Copy every non-source file under `root` into `out`, mirroring the directory
+/// tree. Skips `.qmd` sources (rendered separately), `_`-prefixed and dot
+/// entries (`_quarto.yml`, `_includes`, `_site`, …), and the output dir itself.
+fn mirror_assets(root: &Path, out: &Path) -> usize {
+    fn walk(dir: &Path, root: &Path, out: &Path, copied: &mut usize) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let p = entry.path();
+            let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
+            if name.starts_with('_') || name.starts_with('.') {
+                continue;
+            }
+            if p.is_dir() {
+                // Never recurse into the output directory (it may live in-tree).
+                if p.canonicalize().ok().as_deref() == Some(out) {
+                    continue;
+                }
+                walk(&p, root, out, copied);
+            } else if p.extension().and_then(|s| s.to_str()) != Some("qmd") {
+                let Ok(rel) = p.strip_prefix(root) else {
+                    continue;
+                };
+                let dest = out.join(rel);
+                if let Some(parent) = dest.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                if std::fs::copy(&p, &dest).is_ok() {
+                    *copied += 1;
+                }
+            }
+        }
+    }
+    let mut copied = 0;
+    walk(root, root, out, &mut copied);
+    copied
 }
 
 /// Unique local `src=`/`href=` values in `html` (skips external URLs, protocol-

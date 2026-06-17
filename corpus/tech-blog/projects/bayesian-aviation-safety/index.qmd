@@ -1,0 +1,22 @@
+---
+title: "Hierarchical Bayesian Analysis of Aviation Safety"
+date: "2025-11-04"
+description: "A hierarchical Bayesian study of fatality rates across aircraft manufacturers, showing partial pooling beats complete pooling by ~1,944 ELPD."
+image: "thumbnail.png"
+categories:
+  - R
+  - bayesian
+  - statistics
+---
+
+[GitHub](https://github.com/AJBogo9/bayesian-fatality-analysis){.btn .btn-outline-secondary .btn-sm}
+
+A study of fatality-rate patterns across aircraft manufacturers, fitting hierarchical and non-hierarchical Bayesian models in R with `brms` (Stan backend) to 1,766 aviation crashes spanning 40 manufacturers from 1976 to 2024.
+
+## The question
+
+Are some manufacturers genuinely safer than others, or do apparent differences vanish once you account for how few crashes each manufacturer contributes? A naive per-manufacturer rate is noisy; complete pooling hides real variation. Hierarchical partial pooling sits between the two.
+
+## What the models showed
+
+The hierarchical partial-pooling model outperformed complete pooling by **1,944 ELPD points**, confirming significant manufacturer-level variation in fatality rates that persists despite industry standardisation. The temporal trend, by contrast, was minimal.

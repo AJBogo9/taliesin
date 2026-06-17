@@ -1,0 +1,9 @@
+---
+title: "Publications"
+page-layout: article
+toc: false
+---
+
+## Theses
+
+{{< include _includes/publications.md >}}

@@ -1,0 +1,24 @@
+---
+title: "Activity Challenge Telegram Bot"
+date: "2025-12-05"
+description: "A production Telegram bot running guild-based fitness competitions across Aalto societies, with a Kubernetes-deployed backend and an analytics dashboard."
+image: "thumbnail.png"
+categories:
+  - python
+  - kubernetes
+  - backend
+---
+
+[GitHub](https://github.com/AJBogo9/activity-challenge-bot){.btn .btn-outline-secondary .btn-sm}
+
+A Telegram bot that runs guild-based fitness competitions across Aalto University societies. Members log activities through the bot, which scores them with a point system derived from the 2024 Physical Activity Compendium so that a swim, a run, and a gym session are all comparable on one leaderboard.
+
+## What it does
+
+- **Multi-step conversation flows** for logging an activity, so users are walked through type, duration, and intensity rather than memorising a command syntax.
+- **Guild-based scoring**: points roll up per society, turning the competition into a team event.
+- **A React/Vite analytics dashboard** surfacing per-user and per-guild trends.
+
+## How it runs
+
+The whole thing is deployed as infrastructure-as-code on a Kubernetes cluster (Talos OS), provisioned with Terraform and continuously delivered with Flux CD. Pushing to the repo reconciles the cluster state automatically.

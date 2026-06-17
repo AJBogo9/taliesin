@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <style>
+    /* Dark mode (default) */
+    .curve, .baseline {
+      stroke: #ffffff;
+    }
+    
+    /* Light mode */
+    @media (prefers-color-scheme: light) {
+      .curve, .baseline {
+        stroke: #000000;
+      }
+    }
+  </style>
+  
+  <!-- Bell curve -->
+  <path class="curve" d="M 10,85 Q 20,85 25,75 Q 30,60 35,45 Q 40,25 50,20 Q 60,25 65,45 Q 70,60 75,75 Q 80,85 90,85" 
+    fill="none" 
+    stroke-width="4" 
+    stroke-linecap="round"/>
+  
+  <!-- Base line -->
+  <line class="baseline" x1="10" y1="85" x2="90" y2="85" 
+    stroke-width="2" 
+    stroke-linecap="round"/>
+</svg>

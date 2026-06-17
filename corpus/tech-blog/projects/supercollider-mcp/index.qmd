@@ -1,0 +1,95 @@
+---
+title: "supercollider-mcp"
+date: "2026-06-10"
+description: "An MCP server that gives an LLM a synthesis engine, a feedback loop, and ears."
+image: "thumbnail.png"
+categories:
+  - python
+  - MCP
+  - music
+---
+
+[GitHub](https://github.com/AJBogo9/supercollider-mcp){.btn .btn-outline-secondary .btn-sm}
+
+The AI boom has influenced basically every generative/creative industry, music included. Tools like Suno are impressive, but they hand you a finished track. What if you want to iterate on the product and get more control of what comes out? LLMs are good at producing code, but they are not designed to produce sound directly, but why now ask LLMs to then produce code that produces sound? There exists tools that fit this description. SuperCollider is an audio platform that allows you to write code to produce sound so with SuperCollider, th
+
+SuperCollider is an open-source platform for audio synthesis and algorithmic composition. It consists of two parts: `scsynth` (the audio server) and `sclang` (the SuperCollider language). Just generating sclang code and playing the code would be impressive, but I wanted to add a feedback loop for an LLM so that it can get feedback from its composition. This is where the supercollider-MCP comes into play.
+
+MCP (Model Context Protocol) is an open protocol for AI models to call tools in external processes. The supercollider-mcp puts SuperCollider behind the protocol so that the LLM can call functionality of the audio server like rendering songs and playing them for the composer all triggered by the LLM.
+
+## How the server is built
+
+The MCP server uses [FastMCP](https://github.com/jlowin/fastmcp). It is a Python library that turns decorated functions into MCP tools. Each tool is a plain python function and the docstring for the function becomes the tool's description that the LLM reads to decide when and how to use the tool.
+
+```python
+mcp = FastMCP("supercollider")
+
+@mcp.tool()
+def sc_play(code: str) -> str:
+    """Execute Python/supriya code against the live scsynth server."""
+    server = _get_server()
+    ctx = _exec_context(server)
+    try:
+        exec(compile(code, "<sc_play>", "exec"), ctx)
+        return "Code executed."
+    except Exception:
+        tb = traceback.format_exc()
+        return f"Execution error:\n{tb}"
+```
+
+## Tools
+
+| Tool | Description |
+|---|---|
+| `sc_play(code)` | Run Python/supriya code on the live server |
+| `sc_stop` | Stop all sounds, signal song threads to exit |
+| `sc_render(code, duration, output_path)` | NRT render to WAV (returns a one-line analysis summary) |
+| `sc_analyze(path)` | Measure a render: loudness, dynamics, spectrum, stereo, key |
+| `sc_log` | Read scsynth output and exec errors |
+| `sc_boot` / `sc_quit` / `sc_ping` | Server lifecycle |
+| `save_song` / `load_song` / `list_songs` | Song library |
+| `save_pattern` / `load_pattern` / `list_patterns` | Pattern snippets |
+
+## The workflow
+
+The model can't hear, so it gets feedback two ways: one loop for whether the code is *correct*, and one for whether it *sounds good*.
+
+**The correctness loop**
+
+The LLM treats `sc_play` and `sc_log` as a pair: play, immediately read the log for exceptions and engine warnings, fix what is found and then resend to be played. Then this iterates until no bugs are present in the code and it renders well.
+
+**The quality loop**
+
+`sc_log` catches what is *broken*, but not what sounds *bad*. `sc_analyze` fills that gap. The function reads a rendered file and reports measurable proxies (summary statistics) that tell useful information to the LLM on how to make the song sound better. The `sc_analyze` function can't replace taste, but it catches the technical defects a human would flag and lets the model iterate toward know-good numbers. 
+
+**Building a song**
+
+Songs are built over many iterations where one iteration is one conversation turn. The model writes code, renders it, reads the analysis back, and then proposes the last changes. Then the composer can listen to the song and decide what direction should be taken next. The resulting workflow is less "AI-generated music" and more "Ai-assisted composition" with very fast iteration cycles. Summarizing, the model handles the code synthesis and the musical direction comes from prompting.
+
+## Demos
+
+### Synthesis showcase: choir
+
+```{=html}
+<audio controls style="width:100%; margin: 1rem 0;">
+  <source src="choir_demo_v3.mp3" type="audio/mpeg">
+</audio>
+```
+
+- A sustained chord voiced
+
+### Full track: Voltage
+
+```{=html}
+<audio controls style="width:100%; margin: 1rem 0;">
+  <source src="voltage.mp3" type="audio/mpeg">
+</audio>
+```
+
+- Generative acid techno
+
+## Summary
+
+Give a model a synthesis engine, a feedback loop, and ears, and code generation turns into music composition.
+
+

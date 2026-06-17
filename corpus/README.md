@@ -14,6 +14,14 @@ author's own projects; provenance is below.
 | `posts/fourier-transform/` | Interactive blog post | `ojs_define` Python→OJS bridge, raw-HTML (`{=html}`) audio players, labelled equations (`@eq-`) | `personal/tech-blog` |
 | `liquid-glass-slides/example.qmd` | reveal.js deck | slide structure, custom `liquid-glass` format extension | `personal/liquid-glass-revealjs` |
 | `bayesian-book/` | Multi-file book | includes (`subsections/`), cross-refs, bib + CSL, TOC | `personal/bayesian-fatality-analysis` |
+| `tech-blog/` | Multi-page website | `_quarto.yml` project config, many pages + posts, navbar/footer, prev/next, `.qmd`→`.html` cross-page links | `personal/tech-blog` |
+
+`tech-blog/` is the multi-page spec (the destination in `todo.md` §4). It is the
+author's real blog with the deploy caches stripped (`.venv`, `_freeze`, `_site`,
+`infra`, heavy demo media); only the renderable sources are vendored. `build
+corpus/tech-blog` emits a static `_site/`; `preview corpus/tech-blog` serves it
+live with cross-page navigation and per-page hot reload. Its `listing:`/`about:`
+front matter is intentionally not yet consumed (see `todo.md` §4).
 
 `posts/pca-geometry/index.qmd` pulls in `_includes/three-scene.qmd` via
 `{{< include ../../_includes/three-scene.qmd >}}`; the `posts/` + `_includes/`
@@ -24,8 +32,9 @@ layout is mirrored from the source project so that path resolves verbatim.
 `crates/core/tests/corpus.rs` renders every doc here and asserts the
 load-bearing invariants (each block has an id + valid sourcepos, ids unique,
 blocks in document order, includes resolved, decks split into slides, the book
-gets a TOC + numbered figures). These are the project's regression tests, so the
-corpus must stay.
+gets a TOC + numbered figures, and the `tech-blog/` site discovers its pages and
+renders them with chrome + `.qmd`→`.html` link rewriting). These are the
+project's regression tests, so the corpus must stay.
 
 Structural comparison against **Quarto** (rendering the same doc with both and
 diffing) lives in the separate `qmd-fast-testbed` repo, not here.

@@ -1,0 +1,673 @@
+---
+title: "A* Pathfinding Algorithm"
+date: "2026-03-19"
+description: "A* finds the shortest path between two points by balancing actual travel cost and a heuristic estimate of remaining distance."
+image: "astar.webp"
+image-alt: "Animated visualisation of the A* pathfinding algorithm navigating a grid"
+bibliography: references.bib
+categories:
+  - algorithms
+  - graph theory
+---
+
+How does Google Maps find the *best* route in under a second, across millions of roads? Stripping this question into its basic elements, the question becomes, how to find the shortest path in a graph from the start position to the end position. If one was to approach this problem by trying every single path, the number of paths grow as $\mathcal{O}(b^d)$, where $b$ is the branching factor (average number of branches from each node) and $d$ is the depth. The brute force method scales extremely poorly so another solution must be used.
+
+Dijkstra's algorithm improves on the brute force method slightly. Dijkstra always expands the cheapest node so far. The problem with Dijkstra is that it expands the search in every direction including roads that lead away from the destination. Dijkstra can be beaten with algorithms with sense of direction.
+
+## The idea behind the A\* algorithm
+
+A\* assigns every node a single score:
+
+$$
+f(n) = g(n) + h(n)
+$$
+
+where
+
+- $g(n)$: the exact cost from start to the current node $n$. This is known.
+- $h(n)$: the estimated cost from the current node $n$ to the goal. This is a heuristic (educated guess).
+
+After A\* computes the score of each frontier node, the algorithm will always expand the node with the lowest $f(n)$. Minimizing both the cost of getting to the current node $g(n)$ and the estimate of arriving at the goal $h(n)$ makes the algorithm seek the shortest path from start point to the end point.
+
+For a more thorough study of A\*, please refer to @russell2022artificial.
+
+## Implementation
+
+### Heuristic
+
+A common heuristic is the Manhattan distance:
+
+$$
+h(n) = |x_1 - x_2| + |y_1 - y_2|
+$$
+
+The geometric interpretation of this is amount of grid cells that need to be navigated to go from one point to another without moving diagonally.
+
+```{python}
+def heuristic(a: tuple[int, int], b: tuple[int, int]) -> int:
+    return abs(a[0] - b[0]) + abs(a[1] - b[1])
+```
+
+### Main loop
+
+The open set is a min-heap keyed on $f(n)$. At each iteration the node with the lowest $f$ is popped. Then check if the goal has been reached. Then the third step is to expand the neighbours:
+
+```{python}
+import heapq
+
+def astar(
+    grid: list[list[int]],
+    start: tuple[int, int],
+    goal: tuple[int, int]
+) -> dict[tuple[int, int], tuple[int, int]]:
+    rows, cols = len(grid), len(grid[0])
+
+    open_set: list[tuple[int, tuple[int, int]]] = []
+    heapq.heappush(open_set, (0, start))
+
+    came_from: dict[tuple[int, int], tuple[int, int]] = {}
+    g_score: dict[tuple[int, int], int] = {start: 0}
+
+    while open_set:
+        _, current = heapq.heappop(open_set)
+
+        if current == goal:
+            break
+
+        r, c = current
+        for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+            neighbour: tuple[int, int] = (r + dr, c + dc)
+            nr, nc = neighbour
+
+            if not (0 <= nr < rows and 0 <= nc < cols):
+                continue
+            if grid[nr][nc] == 1:
+                continue
+
+            tentative_g = g_score[current] + 1
+
+            if tentative_g < g_score.get(neighbour, float('inf')):
+                came_from[neighbour] = current
+                g_score[neighbour] = tentative_g
+                f = tentative_g + heuristic(neighbour, goal)
+                heapq.heappush(open_set, (f, neighbour))
+
+    return came_from
+```
+
+### Path reconstruction
+
+```{python}
+def reconstruct_path(
+    came_from: dict[tuple[int, int], tuple[int, int]],
+    start: tuple[int, int],
+    goal: tuple[int, int]
+) -> list[tuple[int, int]]:
+    path: list[tuple[int, int]] = []
+    node = goal
+    while node != start:
+        path.append(node)
+        node = came_from[node]
+    path.append(start)
+    path.reverse()
+    return path
+```
+
+### Running the algorithm on a 2D grid
+
+```{python}
+grid = [
+    [0, 0, 0, 1, 0],
+    [1, 1, 0, 1, 0],
+    [0, 0, 0, 0, 0],
+    [0, 1, 1, 1, 0],
+    [0, 0, 0, 0, 0],
+]
+start, goal = (0, 0), (4, 4)
+
+came_from = astar(grid, start, goal)
+path = reconstruct_path(came_from, start, goal)
+print(path)
+```
+
+
+## Weighted A\*
+
+A useful, greedier A\* variant is weighted A\*. The variant inflates the heuristic by a weight $w > 1$:
+
+$$
+f(n) = g(n) + w \cdot h(n)
+$$
+
+The benefit of using the weight is that fewer nodes are expanded because the search prioritizes nodes that are close to the end. The trade-off is that the path found is at most $w$ times longer than optimal.
+
+## Demo
+
+Start with Dijkstra and then swap to A\* with the Manhattan heuristic. Also, test the weight slider to make the algorithm faster with the expense of accuracy.
+
+- **Blue-green cells**: open set, discovered but not yet expanded.
+- **Orange cell**: node currently being expanded.
+- **Dark green cells**: closed set, fully expanded.
+- **Yellow path**: the solution once the algorithm reaches the end node.
+- Drag **S** or **E** to reposition start and goal. Paint walls by clicking and dragging on empty cells.
+
+```{ojs}
+//| echo: false
+
+// ── constants ────────────────────────────────────────────────────────────────
+COLS = 19
+ROWS = 11
+CELL = 40
+W    = COLS * CELL
+H    = ROWS * CELL
+key  = (r, c) => `${r},${c}`
+```
+
+```{ojs}
+//| echo: false
+
+// ── controls ─────────────────────────────────────────────────────────────────
+viewof heuristic = Inputs.select(
+  ["zero (Dijkstra)", "manhattan"],
+  { label: "Heuristic", value: "zero (Dijkstra)" }
+)
+
+viewof weight = Inputs.range([1, 5], {
+  label: "Weight (w)",
+  value: 1,
+  step: 0.1
+})
+
+viewof speed = Inputs.range([10, 500], {
+  label: "Speed (ms/step)",
+  value: 80,
+  step: 10
+})
+```
+
+```{ojs}
+//| echo: false
+
+// ── heuristic function ───────────────────────────────────────────────────────
+function heuristicFn(r1, c1, r2, c2, type) {
+  const dr = Math.abs(r1 - r2), dc = Math.abs(c1 - c2);
+  if (type === "manhattan")       return dr + dc;
+  if (type === "zero (Dijkstra)") return 0;
+  return dr + dc;
+}
+```
+
+```{ojs}
+//| echo: false
+
+// ── search functions ─────────────────────────────────────────────────────────
+function initSearch(s) {
+  const sk = key(s.start.r, s.start.c);
+  s.openSet   = [{ r: s.start.r, c: s.start.c }];
+  s.closedSet = new Set();
+  s.cameFrom  = {};
+  s.gScore    = { [sk]: 0 };
+  s.fScore    = { [sk]: s.weight * heuristicFn(s.start.r, s.start.c, s.end.r, s.end.c, s.heuristic) };
+  s.path      = [];
+  s.current   = null;
+  s.running   = true;
+  s.done      = false;
+  s.iter      = 0;
+  s.status    = "searching…";
+}
+
+function stepOnce(s) {
+  if (!s.running || s.done) return;
+  if (s.openSet.length === 0) {
+    s.running = false; s.done = true; s.current = null; s.status = "no path found"; return;
+  }
+  let bestIdx = 0;
+  for (let i = 1; i < s.openSet.length; i++) {
+    const fi = s.fScore[key(s.openSet[i].r, s.openSet[i].c)] ?? Infinity;
+    const fb = s.fScore[key(s.openSet[bestIdx].r, s.openSet[bestIdx].c)] ?? Infinity;
+    if (fi < fb) bestIdx = i;
+  }
+  const cur = s.openSet.splice(bestIdx, 1)[0];
+  const ck  = key(cur.r, cur.c);
+  s.current = ck;
+
+  if (cur.r === s.end.r && cur.c === s.end.c) {
+    let k = ck;
+    while (s.cameFrom[k]) { s.path.push(k); k = s.cameFrom[k]; }
+    s.path.push(key(s.start.r, s.start.c));
+    s.running = false; s.done = true; s.current = null;
+    s.status  = `done — ${s.path.length - 1} steps`;
+    return;
+  }
+  s.closedSet.add(ck);
+  s.iter++;
+
+  for (const [dr, dc] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+    const nr = cur.r + dr, nc = cur.c + dc;
+    if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+    if (s.walls[nr][nc]) continue;
+    const nk = key(nr, nc);
+    if (s.closedSet.has(nk)) continue;
+    const tentG = (s.gScore[ck] ?? Infinity) + 1;
+    if (tentG < (s.gScore[nk] ?? Infinity)) {
+      s.cameFrom[nk] = ck;
+      s.gScore[nk]   = tentG;
+      s.fScore[nk]   = tentG + s.weight * heuristicFn(nr, nc, s.end.r, s.end.c, s.heuristic);
+      if (!s.openSet.find(n => n.r === nr && n.c === nc))
+        s.openSet.push({ r: nr, c: nc });
+    }
+  }
+}
+
+function resetSearch(s) {
+  s.openSet = []; s.closedSet = new Set(); s.cameFrom = {};
+  s.gScore  = {}; s.fScore   = {};
+  s.path    = []; s.current = null; s.running  = false; s.done = false; s.iter = 0; s.status = "idle";
+}
+```
+
+```{ojs}
+//| echo: false
+
+// ── maze generation ──────────────────────────────────────────────────────────
+function generateMaze(s) {
+  s.walls = Array.from({ length: ROWS }, () => new Array(COLS).fill(true));
+  const inMaze    = Array.from({ length: ROWS }, () => new Array(COLS).fill(false));
+  const cardinals = [[0,2],[0,-2],[2,0],[-2,0]];
+
+  function neighbours(r, c) {
+    return cardinals
+      .map(([dr, dc]) => [r + dr, c + dc])
+      .filter(([nr, nc]) => nr >= 1 && nr < ROWS - 1 && nc >= 1 && nc < COLS - 1);
+  }
+
+  s.walls[1][1] = false;
+  inMaze[1][1]  = true;
+  let frontier  = neighbours(1, 1).map(([nr, nc]) => [nr, nc, 1, 1]);
+
+  while (frontier.length) {
+    const idx = Math.floor(Math.random() * frontier.length);
+    const [r, c, pr, pc] = frontier.splice(idx, 1)[0];
+    if (inMaze[r][c]) continue;
+    s.walls[r][c] = false;
+    s.walls[(r + pr) / 2][(c + pc) / 2] = false;
+    inMaze[r][c] = true;
+    for (const [nr, nc] of neighbours(r, c))
+      if (!inMaze[nr][nc]) frontier.push([nr, nc, r, c]);
+  }
+
+  const dist   = Array.from({ length: ROWS }, () => new Array(COLS).fill(-1));
+  const queue  = [[1, 1]];
+  dist[1][1]   = 0;
+  let furthest = [1, 1];
+  while (queue.length) {
+    const [r, c] = queue.shift();
+    for (const [dr, dc] of [[0,1],[0,-1],[1,0],[-1,0]]) {
+      const nr = r + dr, nc = c + dc;
+      if (nr < 0 || nr >= ROWS || nc < 0 || nc >= COLS) continue;
+      if (s.walls[nr][nc] || dist[nr][nc] !== -1) continue;
+      dist[nr][nc] = dist[r][c] + 1;
+      if (dist[nr][nc] > dist[furthest[0]][furthest[1]]) furthest = [nr, nc];
+      queue.push([nr, nc]);
+    }
+  }
+  s.start = { r: 1, c: 1 };
+  s.end   = { r: furthest[0], c: furthest[1] };
+  resetSearch(s);
+}
+```
+
+```{ojs}
+//| echo: false
+
+// ── state (runs once, no reactive deps) ──────────────────────────────────────
+s = {
+  const state = {
+    walls:     Array.from({ length: ROWS }, () => new Array(COLS).fill(false)),
+    start:     { r: 1, c: 1 },
+    end:       { r: ROWS - 2, c: COLS - 2 },
+    openSet:   [], closedSet: new Set(), cameFrom: {},
+    gScore:    {}, fScore:    {}, path: [],
+    running:   false, done: false, iter: 0, status: "idle",
+    heuristic: "zero (Dijkstra)", weight: 1, speed: 80,
+    showScores: false, current: null,
+    animating: false, animTimer: null,
+  };
+  generateMaze(state);
+  return state;
+}
+```
+
+```{ojs}
+//| echo: false
+
+// ── app (D3 implementation — never mentions heuristic or weight) ──────────────
+app = {
+  const C = {
+    bg:        "#f8fafc",  // very light gray
+    grid:      "#cbd5e1",  // slate-300
+    empty:     "#f1f5f9",  // slate-100
+    wall:      "#334155",  // slate-700
+    start:     "#3b82f6",  // blue-500
+    end:       "#ef4444",  // red-500
+    open:      "#93c5fd",  // blue-300
+    closed:    "#86efac",  // green-300
+    path:      "#fbbf24",  // amber-400
+    current:   "#f97316",  // orange-500
+    text:      "#ffffff",  // white — for S/E labels on coloured cells
+    scoreText: "#1e293b",  // slate-800 — dark, readable on all light cell colours
+  };
+
+  // ── SVG setup ───────────────────────────────────────────────────────────────
+  const svg = d3.create("svg")
+    .attr("width",  "100%")
+    .attr("viewBox", `0 0 ${W} ${H}`)
+    .style("cursor", "crosshair")
+    .style("max-width", `${W}px`)
+    .style("display", "block");
+
+  // background
+  svg.append("rect").attr("width", W).attr("height", H).attr("fill", C.bg);
+
+  // ── build flat cell array ────────────────────────────────────────────────
+  // Each object is a stable reference — D3 joins on identity, not index.
+  const cells = Array.from({ length: ROWS }, (_, r) =>
+    Array.from({ length: COLS }, (_, c) => ({ r, c }))
+  ).flat();
+
+  // ── cell rects ───────────────────────────────────────────────────────────
+  const rects = svg.append("g").attr("class", "cells")
+    .selectAll("rect")
+    .data(cells, d => key(d.r, d.c))   // key by position — stable across updates
+    .join("rect")
+      .attr("x",      d => d.c * CELL + 1)
+      .attr("y",      d => d.r * CELL + 1)
+      .attr("width",  CELL - 2)
+      .attr("height", CELL - 2)
+      .attr("rx", 1);
+
+  // ── tooltip ───────────────────────────────────────────────────────────────
+  const tooltip = Object.assign(document.createElement("div"), {});
+  tooltip.style.cssText = `
+  position: fixed;
+  background: #1e293b;
+  color: #f8fafc;
+  border: 1px solid #475569;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.8em;
+  font-family: monospace;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.1s;
+  `;
+  document.body.appendChild(tooltip);
+
+  invalidation.then(() => tooltip.remove());
+
+  rects.on("mousemove", function(e, d) {
+  const k = key(d.r, d.c);
+  const g = s.gScore[k] ?? "—";
+  const h = heuristicFn(d.r, d.c, s.end.r, s.end.c, s.heuristic);
+  const f = s.fScore[k] ?? "—";
+  tooltip.innerHTML = `g=${g} &nbsp; h=${h} &nbsp; f=${f}`;
+  tooltip.style.opacity = 1;
+  tooltip.style.left = (e.clientX + 12) + "px";
+  tooltip.style.top  = (e.clientY - 28) + "px";
+  });
+
+  rects.on("mouseleave", () => { tooltip.style.opacity = 0; });
+
+  // ── labels (S / E) ────────────────────────────────────────────────────────
+  const labels = svg.append("g").attr("class", "labels");
+
+  function updateLabels() {
+    const data = [
+      { r: s.start.r, c: s.start.c, text: "S" },
+      { r: s.end.r,   c: s.end.c,   text: "E" },
+    ];
+    labels.selectAll("text")
+      .data(data)
+      .join("text")
+        .attr("x", d => d.c * CELL + CELL / 2)
+        .attr("y", d => d.r * CELL + CELL / 2)
+        .attr("text-anchor", "middle")
+        .attr("dominant-baseline", "central")
+        .attr("font-size", CELL * 0.38)
+        .attr("font-family", "monospace")
+        .attr("font-weight", "bold")
+        .attr("fill", C.text)
+        .attr("pointer-events", "none")
+        .text(d => d.text);
+  }
+
+  // ── score text overlay ───────────────────────────────────────────────────
+  const scoreG = svg.append("g").attr("class", "scores");
+
+  function updateScores() {
+    scoreG.selectAll("*").remove();
+    if (!s.showScores) return;
+    const scored = cells.filter(d => {
+      const k = key(d.r, d.c);
+      return s.gScore[k] !== undefined && !s.walls[d.r][d.c]
+        && !(d.r === s.start.r && d.c === s.start.c)
+        && !(d.r === s.end.r   && d.c === s.end.c);
+    });
+    // g — top-left
+    scoreG.selectAll("text.gs")
+      .data(scored, d => key(d.r, d.c) + "g")
+      .join("text").attr("class", "gs")
+        .attr("x", d => d.c * CELL + 3).attr("y", d => d.r * CELL + 10)
+        .attr("text-anchor", "start").attr("font-size", 9)
+        .attr("font-family", "monospace").attr("fill", C.scoreText)
+        .attr("pointer-events", "none")
+        .text(d => `g:${s.gScore[key(d.r, d.c)]}`);
+    // h — top-right
+    scoreG.selectAll("text.hs")
+      .data(scored, d => key(d.r, d.c) + "h")
+      .join("text").attr("class", "hs")
+        .attr("x", d => d.c * CELL + CELL - 3).attr("y", d => d.r * CELL + 10)
+        .attr("text-anchor", "end").attr("font-size", 9)
+        .attr("font-family", "monospace").attr("fill", C.scoreText)
+        .attr("pointer-events", "none")
+        .text(d => `h:${heuristicFn(d.r, d.c, s.end.r, s.end.c, s.heuristic)}`);
+    // f — bottom-centre, bold
+    scoreG.selectAll("text.fs")
+      .data(scored, d => key(d.r, d.c) + "f")
+      .join("text").attr("class", "fs")
+        .attr("x", d => d.c * CELL + CELL / 2).attr("y", d => d.r * CELL + CELL - 5)
+        .attr("text-anchor", "middle").attr("font-size", 10).attr("font-weight", "bold")
+        .attr("font-family", "monospace").attr("fill", C.scoreText)
+        .attr("pointer-events", "none")
+        .text(d => { const f = s.fScore[key(d.r, d.c)]; return f !== undefined ? `f:${Number.isInteger(f) ? f : f.toFixed(1)}` : ""; });
+  }
+
+  // ── grid lines ────────────────────────────────────────────────────────────
+  const gridG = svg.append("g").attr("class", "grid")
+    .attr("stroke", C.grid)
+    .attr("stroke-width", 0.4);
+
+  for (let r = 0; r <= ROWS; r++)
+    gridG.append("line").attr("x1", 0).attr("y1", r*CELL).attr("x2", W).attr("y2", r*CELL);
+  for (let c = 0; c <= COLS; c++)
+    gridG.append("line").attr("x1", c*CELL).attr("y1", 0).attr("x2", c*CELL).attr("y2", H);
+
+  // ── draw — only updates fill, no DOM rebuild ──────────────────────────────
+  const iterDisplay = document.createElement("div");
+  iterDisplay.style.cssText = "margin-top:6px;font-size:0.85em";
+  iterDisplay.textContent   = "iterations: —";
+
+  function cellColor(d) {
+    const k         = key(d.r, d.c);
+    const isStart   = d.r === s.start.r && d.c === s.start.c;
+    const isEnd     = d.r === s.end.r   && d.c === s.end.c;
+    const isWall    = s.walls[d.r][d.c];
+    const isPath    = pathSet.has(k)     && !isStart && !isEnd;
+    const isCurrent = k === s.current   && !isStart && !isEnd;
+    const isOpen    = openKeys.has(k)    && !isStart && !isEnd;
+    const isClosed  = s.closedSet.has(k) && !isStart && !isEnd;
+    return isWall ? C.wall : isStart ? C.start : isEnd ? C.end :
+           isPath ? C.path : isCurrent ? C.current : isOpen ? C.open : isClosed ? C.closed : C.empty;
+  }
+
+  // these are updated before every draw call
+  let openKeys = new Set(), pathSet = new Set();
+
+  function draw() {
+    openKeys = new Set(s.openSet.map(n => key(n.r, n.c)));
+    pathSet  = new Set(s.path);
+
+    // D3 only touches the fill attribute — no DOM nodes created or destroyed
+    rects.attr("fill", d => cellColor(d));
+
+    updateLabels();
+    updateScores();
+
+    iterDisplay.textContent = s.done
+      ? `iterations: ${s.iter} · ${s.status}`
+      : s.iter > 0 ? `iterations: ${s.iter}…` : "iterations: —";
+  }
+
+  // ── pointer / paint / drag ────────────────────────────────────────────────
+  let painting = false, paintValue = true, dragging = null;
+
+  function cellAt(e) {
+    const svgEl = svg.node();
+    const rect  = svgEl.getBoundingClientRect();
+    const scaleX = W / rect.width;
+    const scaleY = H / rect.height;
+    return {
+      r: Math.floor((e.clientY - rect.top)  * scaleY / CELL),
+      c: Math.floor((e.clientX - rect.left) * scaleX / CELL),
+    };
+  }
+
+  function applyEdit(r, c) {
+    if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return;
+    if ((r === s.start.r && c === s.start.c) || (r === s.end.r && c === s.end.c)) return;
+    if (s.walls[r][c] === paintValue) return;
+    s.walls[r][c] = paintValue;
+    resetSearch(s); draw();
+  }
+
+  svg.on("pointerdown", e => {
+    stopAnim(); svg.node().setPointerCapture(e.pointerId);
+    const { r, c } = cellAt(e);
+    if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return;
+    if (r === s.start.r && c === s.start.c) { dragging = "start"; return; }
+    if (r === s.end.r   && c === s.end.c)   { dragging = "end";   return; }
+    painting = true;
+    paintValue = !s.walls[r][c]; applyEdit(r, c);
+  });
+  svg.on("pointermove", e => {
+    const { r, c } = cellAt(e);
+    if (dragging) {
+      if (r < 0 || r >= ROWS || c < 0 || c >= COLS || s.walls[r][c]) return;
+      if (dragging === "start") s.start = { r, c };
+      else                      s.end   = { r, c };
+      resetSearch(s); draw();
+    } else if (painting) {
+      applyEdit(r, c);
+    }
+  });
+  svg.on("pointerup", () => { painting = false; dragging = null; });
+
+  // ── animation ─────────────────────────────────────────────────────────────
+  function stopAnim() {
+    s.animating = false;
+    if (s.animTimer) { clearTimeout(s.animTimer); s.animTimer = null; }
+    btnAnimate.textContent = "▶ Animate";
+  }
+
+  function animTick() {
+    if (!s.animating) return;
+    if (!s.running && !s.done) initSearch(s);
+    stepOnce(s); draw();
+    if (!s.done) s.animTimer = setTimeout(animTick, s.speed);
+    else stopAnim();
+  }
+
+  function startAnim() {
+    if (s.done) resetSearch(s);
+    s.animating = true;
+    btnAnimate.textContent = "⏸ Pause";
+    animTick();
+  }
+
+  // ── buttons ───────────────────────────────────────────────────────────────
+  const btnAnimate = Object.assign(document.createElement("button"), { textContent: "▶ Animate" });
+  const btnStep    = Object.assign(document.createElement("button"), { textContent: "Step" });
+  const btnRun     = Object.assign(document.createElement("button"), { textContent: "Run" });
+  const btnReset   = Object.assign(document.createElement("button"), { textContent: "Reset" });
+  const btnClear   = Object.assign(document.createElement("button"), { textContent: "Clear walls" });
+  const btnMaze    = Object.assign(document.createElement("button"), { textContent: "New maze" });
+  const chkScores  = Object.assign(document.createElement("input"),  { type: "checkbox", id: "chk-scores" });
+  const lblScores  = Object.assign(document.createElement("label"),  { textContent: "Show g/h/f", htmlFor: "chk-scores" });
+  lblScores.style.cssText = "font-size:0.85em;cursor:pointer;user-select:none";
+
+  btnAnimate.onclick = () => s.animating ? stopAnim() : startAnim();
+  btnStep.onclick    = () => {
+    stopAnim();
+    if (!s.running && !s.done) initSearch(s);
+    stepOnce(s); draw();
+  };
+  btnRun.onclick     = () => {
+    stopAnim();
+    if (!s.running && !s.done) initSearch(s);
+    while (!s.done) stepOnce(s);
+    draw();
+  };
+  btnReset.onclick   = () => { stopAnim(); resetSearch(s); draw(); };
+  btnClear.onclick   = () => {
+    stopAnim();
+    s.walls = Array.from({ length: ROWS }, () => new Array(COLS).fill(false));
+    resetSearch(s); draw();
+  };
+  btnMaze.onclick    = () => { stopAnim(); generateMaze(s); draw(); };
+  chkScores.onchange = () => { s.showScores = chkScores.checked; draw(); };
+
+  const btnRow = document.createElement("div");
+  btnRow.style.cssText = "display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center";
+  const scoreWrap = document.createElement("span");
+  scoreWrap.style.cssText = "display:flex;align-items:center;gap:4px;margin-left:8px";
+  scoreWrap.append(chkScores, lblScores);
+  btnRow.append(btnAnimate, btnStep, btnRun, btnReset, btnClear, btnMaze, scoreWrap);
+
+  const root = document.createElement("div");
+  root.append(svg.node(), btnRow, iterDisplay);
+
+  draw();
+  return { root, draw };
+}
+```
+
+```{ojs}
+//| echo: false
+app.root
+```
+
+```{ojs}
+//| echo: false
+//| output: false
+
+// ── watcher ───────────────────────────────────────────────────────────────────
+{
+  s.heuristic = heuristic;
+  s.weight    = weight;
+  if (!s.animating) {
+    resetSearch(s);
+    app.draw();
+  }
+}
+
+// speed sync — no search reset
+{ s.speed = speed; }
+```
+
+## Discussion
+
+A\* shines in applications where a cost function and an admissible heuristic (a heuristic that never overestimates the distance to the end) can be defined. Examples of these types of application are GPS routing, NPC path finding in games and network routing.
+
+There is one problem with A\*: it doesn't factor walls into the heuristic when using Manhattan distance. For solving this problem, algorithms like [Jump Point Search](https://en.wikipedia.org/wiki/Jump_point_search) (JPS) are used.
+
+## References

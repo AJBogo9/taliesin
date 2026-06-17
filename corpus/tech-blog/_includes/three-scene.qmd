@@ -1,0 +1,118 @@
+```{ojs}
+//| echo: false
+
+async function makeScene3D(buildScene, invalidation, opts = {}) {
+  const THREE = await import("https://esm.sh/three@0.163.0");
+  const { OrbitControls } = await import(
+    "https://esm.sh/three@0.163.0/examples/jsm/controls/OrbitControls"
+  );
+
+  const {
+    width            = 620,
+    height           = 500,
+    cameraPos        = [6, 4, 7],
+    fov              = 40,
+    far              = 100,
+    bgColor          = 0x111827,
+    alpha            = false,
+    target           = [0, 0, 0],
+    minDistance      = 3,
+    maxDistance      = 20,
+    ambientIntensity = 1.0,
+    onFrame          = null,
+  } = opts;
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha });
+  renderer.setSize(width, height);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setClearColor(bgColor, alpha ? 0 : 1);
+
+  const scene  = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(fov, width / height, 0.1, far);
+  camera.position.set(...cameraPos);
+  scene.add(new THREE.AmbientLight(0xffffff, ambientIntensity));
+
+  const O = new THREE.Vector3(0, 0, 0);
+
+  function spriteLabel(text, cssColor, scale = 1.6) {
+    const c = document.createElement("canvas");
+    c.width = 320; c.height = 72;
+    const ctx = c.getContext("2d");
+    ctx.font = "bold 26px sans-serif";
+    ctx.fillStyle = cssColor;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(text, 160, 36);
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: new THREE.CanvasTexture(c), transparent: true, depthTest: false
+    }));
+    spr.scale.set(scale, 0.36, 1);
+    return spr;
+  }
+
+  // ctrl is created before buildScene so the callback can configure it
+  const ctrl = new OrbitControls(camera, renderer.domElement);
+  ctrl.target.set(...target);
+  ctrl.enableDamping = true;
+  ctrl.dampingFactor = 0.06;
+  ctrl.minDistance   = minDistance;
+  ctrl.maxDistance   = maxDistance;
+
+  buildScene(scene, THREE, { O, spriteLabel, ctrl });
+
+  ctrl.update();
+
+  let rafId;
+  (function animate() {
+    rafId = requestAnimationFrame(animate);
+    if (onFrame) onFrame();
+    ctrl.update();
+    renderer.render(scene, camera);
+  })();
+
+  const container = document.createElement("div");
+  container.style.cssText =
+    `position:relative;display:inline-block;width:${width}px;max-width:100%;`;
+  container.appendChild(renderer.domElement);
+
+  const btnStyle = [
+    "padding:4px 10px", "font-size:12px", "cursor:pointer",
+    "background:rgba(30,30,30,0.75)", "color:#ddd",
+    "border:1px solid #555", "border-radius:4px",
+    "backdrop-filter:blur(4px)", "z-index:10",
+  ].join(";");
+
+  const fsBtn = document.createElement("button");
+  fsBtn.textContent = "⛶ Fullscreen";
+  fsBtn.style.cssText = "position:absolute;bottom:8px;right:8px;" + btnStyle;
+  fsBtn.addEventListener("click", () => {
+    if (!document.fullscreenElement) container.requestFullscreen();
+    else document.exitFullscreen();
+  });
+  container.appendChild(fsBtn);
+
+  function onFSChange() {
+    if (document.fullscreenElement === container) {
+      renderer.setSize(screen.width, screen.height);
+      camera.aspect = screen.width / screen.height;
+      camera.updateProjectionMatrix();
+      fsBtn.textContent = "✕ Exit fullscreen";
+    } else {
+      renderer.setSize(width, height);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+      fsBtn.textContent = "⛶ Fullscreen";
+    }
+  }
+  document.addEventListener("fullscreenchange", onFSChange);
+
+  invalidation.then(() => {
+    cancelAnimationFrame(rafId);
+    ctrl.dispose();
+    renderer.dispose();
+    document.removeEventListener("fullscreenchange", onFSChange);
+  });
+
+  return container;
+}
+```

@@ -171,7 +171,16 @@
 
     statusEl = document.createElement("span");
     statusEl.id = "qmd-status";
-    bar.append(themeBtn, srcBtn, wordCountEl, statusEl);
+    // In a multi-page site the user-facing toggles live in the navbar; the live
+    // status + word count stay in the small floating telemetry bar. Single-doc
+    // preview keeps everything together in the floating bar.
+    const navSlot = document.getElementById("qmd-nav-controls");
+    if (navSlot) {
+      navSlot.append(themeBtn, srcBtn);
+      bar.append(wordCountEl, statusEl);
+    } else {
+      bar.append(themeBtn, srcBtn, wordCountEl, statusEl);
+    }
     setStatus("connecting…");
   })();
   // Reveal mode (and any layout without the control bar) keeps its status pill.
@@ -480,11 +489,19 @@
         setStatus("error");
         showError(msg.message);
         break;
+      // Multi-page site: the project config (or a structural change) changed,
+      // so the whole page is re-fetched rather than block-diffed.
+      case "reload":
+        location.reload();
+        break;
     }
   };
 
   const connect = () => {
-    ws = new WebSocket(`ws://${location.host}/ws`);
+    // In a multi-page site the ws is scoped to the current page (QMD_WS_PATH);
+    // a single-doc preview uses the plain "/ws".
+    const wsPath = window.QMD_WS_PATH || "/ws";
+    ws = new WebSocket(`ws://${location.host}${wsPath}`);
     ws.onopen = () => setStatus("live");
     ws.onmessage = (e) => handle(JSON.parse(e.data));
     ws.onclose = () => { setStatus("reconnecting…"); setTimeout(connect, 1000); };

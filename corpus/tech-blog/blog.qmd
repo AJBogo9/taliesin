@@ -1,0 +1,16 @@
+---
+title: "Blog"
+listing:
+  contents: posts
+  sort: "date desc"
+  type: grid
+  sort-ui: false
+  filter-ui: false
+  categories: true
+  feed: true
+  fields: [image, title, description, date, categories]
+page-layout: full
+title-block-banner: false
+---
+
+I write about concepts I'm working to understand, mostly machine learning, statistics, and algorithms.

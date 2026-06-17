@@ -543,6 +543,35 @@ collapses into a pull-up sheet (see
 [Reading on any screen](#reading-on-any-screen)). This very page is the demo: the
 contents beside the text are generated from these headings.
 
+## Multi-page websites
+
+Point either command at a **directory** (instead of a single `.qmd`) and qmd-fast
+treats it as a website project. The directory needs one root config, `_quarto.yml`
+(Quarto-compatible), which names the site title, the navbar, and the footer; every
+`.qmd` under it (skipping `_`-prefixed partials) becomes a page.
+
+```sh
+qmd-fast build   corpus/tech-blog            # static site -> _site/ (deployable)
+qmd-fast preview corpus/tech-blog            # live site on http://127.0.0.1:4321
+```
+
+`build` writes one `.html` per page (mirroring the input tree) and copies the
+referenced assets, so the output folder deploys as-is. `preview` serves the same
+site **live**: the navbar and post prev/next links navigate between pages (each a
+real page load with its own websocket), and the page you are editing hot-reloads
+in place with the usual block diff. Intra-site `.qmd` links (including
+`other-page.qmd#anchor`) are rewritten to their `.html` targets automatically.
+
+Config is **two levels, no cascade**: the root `_quarto.yml` sets project-wide
+defaults and a page's own front matter overrides them. There is deliberately no
+Quarto-style `_metadata.yml` directory merge, the single most confusing part of
+its model. The chrome is a leaner take on Quarto's website: a theme-aware sticky
+navbar (with the theme and click-to-source toggles folded in, and a no-JS mobile
+menu), a slim footer, and restyled prev/next, all driven by the same `--qmd-*`
+variables a theme extension already styles. There is no title banner, no bundled
+search, and no RSS feed. `listing:` post cards and `about:` profile pages are not
+yet generated (the page prose still renders); see `todo.md` §4.
+
 ## Reading on any screen
 
 The reading layout is responsive, so the same document works on a laptop and a
@@ -605,8 +634,10 @@ The edit loop surfaces what is happening without you watching the terminal:
 |---|---|
 | `preview <file.qmd> [port]` | Live preview server (default port 4321; aliases `dev`, `serve`) |
 | `preview <file.qmd> --host` | …also exposed on your LAN with a QR code for phones |
+| `preview <dir>` | Live **multi-page site** preview (cross-page nav + per-page hot reload) |
 | `build <file.qmd> [out.html]` | Write a self-contained HTML file (default `<name>.html`) |
 | `build <file.qmd> --out <dir>` | Write `<dir>/index.html` + copied assets (a portable folder) |
+| `build <dir> [--out <dir>]` | Build a **multi-page site** to `_site/` (one `.html` per page + assets) |
 | `render <file.qmd>` | Render a one-shot full HTML page to stdout |
 | `blocks <file.qmd>` | List block ids and sourcepos (for debugging) |
 

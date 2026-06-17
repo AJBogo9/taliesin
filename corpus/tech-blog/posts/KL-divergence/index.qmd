@@ -1,0 +1,135 @@
+---
+title: "KL Divergence"
+date: "2026-03-17"
+image: "thumbnail.webp"
+image-alt: "Two overlapping probability distributions P and Q on a dark background, illustrating KL divergence"
+bibliography: references.bib
+description: "How to measure the difference between two probability distributions, and why it sits at the heart of modern LLM alignment."
+categories:
+  - information theory
+  - probabilistic ML
+---
+
+When you fine-tune a large language model, how do you measure whether its output distribution is actually moving closer to the desired distribution? This question is a central to modern alignment techniques like RLHF [@ziegler2019; @ouyang2022].
+
+Large language models like GPTs output a probability distribution over tokens at each step. They assign a likelihood for each possible next word and then append the most likely next word to the output. During training the model outputs a predicted distribution $Q$ of the most likely next words. For ensuring correct output, the distribution $Q$ needs to be compared to the true distribution $P$. This is exactly what KL-divergence does. KL-divergence takes the original distribution and compares it to a new generated distribution and outputs a value that tells how much the two distributions differ. The closer the value is to zero, the more similar the distributions are.
+
+## Theory
+
+The **Kullback-Leibler divergence** from Q to P is defined as:
+
+$$
+D_{KL}(P||Q) = \sum_k \operatorname{log}p_k\frac{p_k}{q_k}
+$$
+
+where $p_k = P(X = k)$ and $q_k = Q(X = k)$ are the probabilities assigned by
+distributions $P$ and $Q$ to outcome $k$, and the sum is taken over all outcomes
+$k$ in the support of $P$.
+
+KL divergence can be interpreted intuitively using the concept of entropy form information theory.
+
+The entropy of $P$ is
+
+$$
+H(P) = - \sum_k p_k \operatorname{log}p_k
+$$
+
+This is the average number of bits needed to encode samples from P using an optimal code for $P$ [@goodfellow2016]. 
+
+If instead if a code optimized for $Q$ was used to encode samples that came form $P$, the average code length is the **cross-entropy**:
+
+$$
+H(P, Q) = - \sum_k p_k \operatorname{log}q_k
+$$
+
+Now combining entropy and cross entropy together, KL divergence is the extra cost you pay for using a code for $Q$ to encode samples from $P$:
+
+$$
+\begin{align*}
+D_{KL}(P||Q) &= H(P, Q) - H(P) \\
+&= - \sum_k p_k \operatorname{log}q_k - (- \sum_k p_k \operatorname{log}p_k) \\
+&= - \sum_k p_k \operatorname{log}q_k + \sum_k p_k \operatorname{log}p_k \\
+&= \sum_k p_k \operatorname{log}p_k - \sum_k p_k \operatorname{log}q_k  \\
+&= \sum_k p_k (\operatorname{log}p_k - \operatorname{log}q_k)  \\
+&= \sum_k p_k \operatorname{log} \frac{p_k}{q_k} \\
+\end{align*}
+$$
+
+### Key properties
+
+- Asymmetric:
+$$D_{KL}(P \| Q) \neq D_{KL}(Q \| P)$$
+
+- Always non-negative:
+$$D_{KL}(P \| Q) \geq 0$$
+
+- Equal to zero only when the two distributions are identical.
+$$D_{KL}(P \| Q) = 0 \iff P = Q$$
+
+
+So intuitively, the KL-divergence asks how supriced you would be about the current distribution of the model given you know what the training data looks like. The more suprised you would be, the further the model is from the truth and thus the KL-divergence would be bigger.
+
+## Code demo
+
+Now imagine a small vocabulary of five tokens: `["cat", "sat", "on", "the", "mat"]`. We have an imaginary LLM that has a predicted distribution $Q$ for the vocabulary and we also know the true distribution $P$ from the training data for the vocabulary.
+
+```{python}
+import numpy as np
+
+vocab = ["cat", "sat", "on", "the", "mat"]
+
+# True distribution (training data)
+P = np.array([0.4, 0.3, 0.1, 0.15, 0.05])
+
+# Model's predicted distribution
+Q = np.array([0.2, 0.25, 0.3, 0.15, 0.1])
+```
+
+By plotting $P$ and $Q$ the mismatch is immediately visible.
+
+```{python}
+#| code-fold: true
+#| code-summary: "Show code"
+import matplotlib.pyplot as plt
+
+x = np.arange(len(vocab))
+width = 0.35
+
+fig, ax = plt.subplots(figsize=(7, 4))
+ax.bar(x - width/2, P, width, label="P (true)", color="steelblue")
+ax.bar(x + width/2, Q, width, label="Q (model)", color="tomato")
+
+ax.set_xticks(x)
+ax.set_xticklabels(vocab)
+ax.set_ylabel("Probability")
+ax.set_title(f"P vs Q")
+ax.legend()
+plt.tight_layout()
+plt.show()
+```
+
+Directly applying the discrete formula $D_{KL}(P \| Q) = \sum_k p_k \log \frac{p_k}{q_k}$:
+
+```{python}
+def kl_divergence(p, q):
+    return np.sum(p * np.log(p / q))
+
+kl_pq = kl_divergence(P, Q)
+print(f"D_KL(P || Q) = {kl_pq:.4f} nats")
+```
+
+The KL-divergence is non-zero so there is a difference between the true distribution $P$ and the current distribution $Q$ of our model. The difference between the true distribution $P$ and the predicted distribution $Q$ is obvious.
+
+The order of the distributions is not trivial when computing KL-divergence. This can be shown shown numerically:
+
+```{python}
+kl_qp = kl_divergence(Q, P)
+
+print(f"D_KL(P || Q) = {kl_pq:.4f} nats")
+print(f"D_KL(Q || P) = {kl_qp:.4f} nats")
+print(f"Symmetric?   {np.isclose(kl_pq, kl_qp)}")
+```
+
+## Summary
+
+KL-divergence can be used answering the question: how different are two probability distributions? The distribution is used, for example, LLM alignment to tell how far away the models predicted vocabulary distribution is from the training data distribution. KL-divergence has a mathematical foundation in information theory.

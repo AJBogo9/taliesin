@@ -13,14 +13,16 @@ correctly, not that some feature checklist is complete. Scope is those ~5 docume
 
 ```
 crates/core      qmd-fast-core lib: parser (comrak + sourcepos) → block model → render
-  src/render.rs    document + block model; HTML / reveal.js / book page emission
+  src/render.rs    document + block model; HTML / reveal.js / book / site-chrome emission
   src/diff.rs      block-level diff (BlockOp) for incremental updates
   src/includes.rs  {{< include >}} resolution + per-file source map
   src/math.rs      KaTeX server-side render (bundled CSS/fonts, offline)
   src/cite.rs      citations ([@key]) + cross-references (@fig-, @sec-)
+  src/site.rs      multi-page project: _quarto.yml config, page discovery, chrome, link rewrite
 crates/server    qmd-fast-server, bin `qmd-fast`: CLI + websocket dev server
-  src/main.rs      render / blocks / serve subcommands
-  src/serve.rs     axum websocket + notify file watcher
+  src/main.rs      render / blocks / build / serve subcommands (a dir = a site project)
+  src/serve.rs     single-doc axum websocket + notify file watcher
+  src/serve_site.rs multi-page site server (per-page state/executor, cross-page nav, hot reload)
   src/exec.rs      runs a doc's code cells, splices outputs back as blocks
   src/kernel.rs    warm Jupyter kernel (ZMQ), reused across edits
   src/log.rs       colorized dev-server console output (to stderr)
@@ -41,8 +43,10 @@ corpus/          the real .qmd docs (the spec); cargo test renders them all
 ```sh
 cargo run -p qmd-fast-server -- preview <file.qmd> [port]      # live preview (aliases: dev, serve)
 cargo run -p qmd-fast-server -- preview <file.qmd> --host      # + expose on LAN with a phone QR code
+cargo run -p qmd-fast-server -- preview <dir>                  # live multi-page SITE preview (nav + per-page hot reload)
 cargo run -p qmd-fast-server -- build  <file.qmd> [out.html]   # self-contained HTML file (default <name>.html)
 cargo run -p qmd-fast-server -- build  <file.qmd> --out <dir>  # portable folder: <dir>/index.html + copied local assets
+cargo run -p qmd-fast-server -- build  <dir> [--out <dir>]     # multi-page SITE -> _site/ (one .html per page + assets)
 cargo run -p qmd-fast-server -- render <file.qmd> > out.html   # one-shot full page to stdout
 cargo run -p qmd-fast-server -- blocks <file.qmd>              # block ids + sourcepos (debug)
 cargo test -p qmd-fast-core                                    # corpus invariants + unit tests

@@ -1,0 +1,232 @@
+/*
+ * Custom SCSS theme overrides layered on top of darkly.
+ * Loaded via: theme: [darkly, theme.scss] in _quarto.yml
+ *
+ * Design intent: no accent color. All chrome is tonal (black → gray → white).
+ * The only thing that should draw attention is the content itself.
+ */
+
+/*-- scss:defaults --*/
+
+// Prevent darkly from importing Google Fonts (Lato)
+$web-font-path: "";
+
+// Typography
+$font-family-sans-serif:  Inter, system-ui, -apple-system, BlinkMacSystemFont,
+                          "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+$font-family-monospace:   "JetBrains Mono", "Fira Code", "Cascadia Code",
+                          ui-monospace, "SFMono-Regular", Menlo, monospace;
+$font-size-base:          1.0625rem;
+$line-height-base:        1.75;
+$headings-font-weight:    600;
+$headings-line-height:    1.25;
+
+// Palette — pure tonal, no hue
+$body-bg:                 #111318;
+$body-color:              #c9cdd4;
+$headings-color:          #edeef0;
+
+// Accent — darkly's original navy blue, lightened for readability on dark bg
+$primary:                 #375a7f;
+$link-color:              #6b9ec8;
+$link-hover-color:        #93bfdf;
+$link-decoration:         none;
+
+// Surfaces
+$card-bg:                 #181b21;
+$card-border-color:       #23272f;
+
+// Navbar — restore darkly's signature blue bar
+$navbar-dark-bg:          #375a7f;
+$navbar-dark-brand-color: #fff;
+$navbar-dark-color:       rgba(255,255,255,0.75);
+$navbar-dark-hover-color: #fff;
+$navbar-dark-active-color: #fff;
+
+// Footer
+$footer-bg:               #0c0e12;
+
+// Borders
+$border-color:            #23272f;
+$border-radius:           4px;
+$border-radius-sm:        3px;
+$border-radius-lg:        6px;
+
+// Code
+$code-bg:                 #181b21;
+$code-color:              #c9cdd4;
+$pre-bg:                  #181b21;
+
+// Inputs
+$input-bg:                #181b21;
+$input-border-color:      #2e333d;
+$btn-border-radius:       4px;
+
+
+/*-- scss:rules --*/
+
+body {
+  background-color: $body-bg;
+}
+
+// Navbar: hairline border, no shadow
+.navbar {
+  border-bottom: 1px solid #23272f;
+  box-shadow: none;
+}
+
+.navbar-brand {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: $headings-color !important;
+}
+
+.navbar-nav .nav-link {
+  font-size: 0.875rem;
+  letter-spacing: 0.01em;
+  padding-left: 0.75rem !important;
+  padding-right: 0.75rem !important;
+
+  &:hover { color: $headings-color !important; }
+}
+
+// Headings
+h1, h2, h3, h4, h5, h6 {
+  color: $headings-color;
+  letter-spacing: -0.01em;
+}
+
+h1 { font-size: 1.9rem; }
+h2 { font-size: 1.4rem; border-bottom: 1px solid #23272f; padding-bottom: 0.3rem; margin-top: 2.2rem; }
+h3 { font-size: 1.15rem; }
+
+p, li { color: $body-color; }
+
+// Links: lighter text, underline on hover only
+a {
+  color: $link-color;
+  text-decoration: none;
+
+  &:hover {
+    color: $link-hover-color;
+    text-decoration: underline;
+  }
+}
+
+// Cards
+.card {
+  background: $card-bg;
+  border: 1px solid $card-border-color;
+  border-radius: 6px;
+}
+
+.card-body { padding: 1rem 1.1rem; }
+
+// Code blocks
+pre.sourceCode, pre {
+  background: $pre-bg !important;
+  border: 1px solid #23272f;
+  border-radius: 6px;
+  font-size: 0.875em;
+  line-height: 1.6;
+}
+
+code {
+  font-size: 0.875em;
+  color: #93bfdf;
+  background: rgba(55, 90, 127, 0.15);
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+}
+
+pre code {
+  color: inherit;
+  background: transparent;
+  padding: 0;
+}
+
+// Buttons: neutral, no color
+.btn-outline-primary {
+  border-color: #375a7f;
+  color: $link-color;
+
+  &:hover {
+    background: rgba(55, 90, 127, 0.15);
+    border-color: $link-color;
+    color: $link-hover-color;
+  }
+}
+
+// TOC sidebar
+nav[role="doc-toc"] {
+  font-size: 0.82rem;
+
+  a {
+    color: #6b7280;
+
+    &:hover  { color: $link-color !important; }
+    &.active { color: $link-color !important; border-left-color: $link-color !important; }
+  }
+}
+
+// Post title block
+.quarto-title h1.title {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.quarto-title-meta {
+  font-size: 0.8rem;
+  color: #6b7280;
+}
+
+// Blog listing
+.quarto-listing-default { gap: 1rem; }
+
+.listing-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: $headings-color;
+  line-height: 1.35;
+}
+
+.listing-description {
+  font-size: 0.83rem;
+  color: #7a8394;
+  line-height: 1.5;
+}
+
+.listing-date,
+.listing-category { font-size: 0.75rem; }
+
+hr {
+  border-color: #23272f;
+  opacity: 1;
+}
+
+blockquote {
+  border-left: 3px solid #2e333d;
+  color: #7a8394;
+  padding-left: 1rem;
+  margin-left: 0;
+  font-style: italic;
+}
+
+table {
+  font-size: 0.875rem;
+  border-color: #23272f;
+}
+
+thead { border-bottom: 2px solid #2e333d; }
+
+td, th {
+  border-color: #23272f;
+  padding: 0.45rem 0.75rem;
+}
+
+.callout {
+  border-left-width: 3px;
+  background: #181b21;
+  border-color: #2e333d;
+}

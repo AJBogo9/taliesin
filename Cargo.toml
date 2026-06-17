@@ -16,3 +16,9 @@ qmd-fast-core = { path = "crates/core" }
 # Shared external dependencies are declared here as the project grows
 # (e.g. comrak in Phase 1, axum/tokio/notify in Phase 2) so versions stay
 # centralized across the workspace.
+
+# Typed parse of the multi-page project config (`_quarto.yml`). serde_yaml is
+# archived upstream but stable and dependency-light; the `serde_yml` fork is the
+# fallback if it ever breaks. YAML stays the config format for Quarto compat.
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.9"

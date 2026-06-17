@@ -18,10 +18,10 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
 
-const CLIENT_JS: &str = include_str!("../../../web-client/client.js");
+pub(crate) const CLIENT_JS: &str = include_str!("../../../web-client/client.js");
 /// The preview tab's favicon (an original block-model mark; SVG, so it's tiny
 /// and self-contained).
-const FAVICON: &str = include_str!("../../../web-client/favicon.svg");
+pub(crate) const FAVICON: &str = include_str!("../../../web-client/favicon.svg");
 
 struct AppState {
     path: PathBuf,
@@ -158,7 +158,7 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
 /// Bind `port`, falling back to the next few ports if it's in use (so a second
 /// `serve` doesn't just fail). Binds 0.0.0.0 (LAN-reachable) with `expose`, else
 /// loopback only. Logs the substitution when it happens.
-async fn bind_with_fallback(
+pub(crate) async fn bind_with_fallback(
     port: u16,
     expose: bool,
 ) -> std::io::Result<(tokio::net::TcpListener, SocketAddr)> {
@@ -183,7 +183,7 @@ async fn bind_with_fallback(
 /// The machine's primary LAN IP, found by asking the OS which local address it
 /// would route an outbound packet from. No packet is sent, so this works offline;
 /// returns `None` when there is no route (e.g. no network interface).
-fn local_ip() -> Option<std::net::IpAddr> {
+pub(crate) fn local_ip() -> Option<std::net::IpAddr> {
     let sock = std::net::UdpSocket::bind(("0.0.0.0", 0)).ok()?;
     sock.connect(("8.8.8.8", 80)).ok()?;
     sock.local_addr().ok().map(|a| a.ip())
@@ -191,7 +191,7 @@ fn local_ip() -> Option<std::net::IpAddr> {
 
 /// Print a scannable QR code (terminal half-blocks) for `url`, so the preview can
 /// be opened on a phone on the same network without typing the address.
-fn print_qr(url: &str) {
+pub(crate) fn print_qr(url: &str) {
     let Ok(code) = qrcode::QrCode::new(url.as_bytes()) else {
         return;
     };
@@ -203,7 +203,7 @@ fn print_qr(url: &str) {
 }
 
 /// Open `url` in the default browser (best effort; ignores failure).
-fn open_in_browser(url: &str) {
+pub(crate) fn open_in_browser(url: &str) {
     let opener = if cfg!(target_os = "macos") {
         "open"
     } else if cfg!(target_os = "windows") {
@@ -314,7 +314,7 @@ async fn static_asset(
 
 /// Guess a content type from a file extension (covers the asset types a doc
 /// references; defaults to a generic binary type).
-fn content_type(path: &Path) -> &'static str {
+pub(crate) fn content_type(path: &Path) -> &'static str {
     match path
         .extension()
         .and_then(|e| e.to_str())
@@ -339,7 +339,7 @@ fn content_type(path: &Path) -> &'static str {
 }
 
 /// Minimal percent-decoding for request paths (so `%20` etc. in filenames work).
-fn percent_decode(s: &str) -> String {
+pub(crate) fn percent_decode(s: &str) -> String {
     let b = s.as_bytes();
     let mut out = Vec::with_capacity(b.len());
     let mut i = 0;
@@ -365,7 +365,7 @@ fn index_html(ctx: &PageCtx) -> String {
 }
 
 /// Status pill + the bottom-left control bar (theme + click-to-source toggles).
-const STATUS_CSS: &str = "#qmd-controls { position: fixed; bottom: .5rem; left: .5rem; z-index: 9999; \
+pub(crate) const STATUS_CSS: &str = "#qmd-controls { position: fixed; bottom: .5rem; left: .5rem; z-index: 9999; \
     display: flex; align-items: center; gap: .4rem; \
     font: 12px ui-sans-serif, system-ui, sans-serif; } \
     #qmd-controls .qmd-ctl { background: var(--qmd-bg, #fff); color: var(--qmd-muted, #888); \
@@ -386,7 +386,7 @@ const STATUS_CSS: &str = "#qmd-controls { position: fixed; bottom: .5rem; left: 
     @media (max-width: 60rem) { body.qmd-toc-sheet #qmd-controls { bottom: 2.4rem; } }";
 
 /// Minimal JS-string escape for embedding a filesystem path in a `\"...\"` literal.
-fn js_str(s: &str) -> String {
+pub(crate) fn js_str(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 

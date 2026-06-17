@@ -239,3 +239,54 @@ fn ids_and_sourcepos_present_on_visible_blocks() {
         );
     }
 }
+
+#[test]
+fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
+    use qmd_fast_core::Site;
+    let root = corpus_dir().join("tech-blog");
+    let site = Site::discover(&root);
+
+    // The project config parses (navbar items) and every `.qmd` page is found,
+    // each mapped to a `.html` output url.
+    assert!(
+        site.pages.len() >= 10,
+        "expected the tech-blog pages, found {}",
+        site.pages.len()
+    );
+    assert!(
+        !site.config.website.navbar.left.is_empty(),
+        "navbar items should parse from _quarto.yml"
+    );
+    for p in &site.pages {
+        assert!(p.url.ends_with(".html"), "page url not .html: {}", p.url);
+    }
+
+    // A top-level page renders with the site chrome and rewrites its nav links.
+    let blog = site.render_page("blog.qmd").expect("blog renders");
+    assert!(blog.contains("qmd-site-nav"), "navbar missing");
+    assert!(blog.contains("qmd-site-footer"), "footer missing");
+    assert!(
+        blog.contains("href=\"blog.html\""),
+        "nav link not rewritten"
+    );
+    assert!(
+        !blog.contains("href=\"blog.qmd\""),
+        "raw .qmd nav link leaked"
+    );
+    // The RSS/feed link is dropped.
+    assert!(!blog.contains("blog.xml"), "RSS link should be dropped");
+
+    // A post carries prev/next nav and rewrites cross-page `.qmd` links.
+    let post = site
+        .render_page("posts/evidence-lower-bound/index.qmd")
+        .expect("post renders");
+    assert!(post.contains("qmd-prevnext"), "post missing prev/next");
+    assert!(
+        post.contains("../KL-divergence/index.html"),
+        "cross-page .qmd link not rewritten to .html"
+    );
+    assert!(
+        !post.contains("../KL-divergence/index.qmd"),
+        "raw cross-page .qmd link leaked"
+    );
+}
