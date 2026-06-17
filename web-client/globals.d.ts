@@ -24,6 +24,12 @@ interface Window {
   qmdWireThemeToggles?: () => void;
   /** Observable runtime driver (OJS init script). */
   qmdRunOJS?: () => void;
+  /** Binds Python `ojs_define` values into the live OJS module (OJS init script). */
+  qmdBindOjsDefines?: (scope?: Element | null) => void;
+  /** True once the OJS cells have been interpreted (OJS init script). */
+  __qmdOjsRan?: boolean;
+  /** Tracks bound `ojs_define` names -> JSON value (OJS init script). */
+  __qmdOjsDefined?: Map<string, string>;
   /** Code enhancer (copy buttons + mermaid), defined in client.js itself. */
   qmdEnhanceCode?: (root: ParentNode | null) => void;
 }

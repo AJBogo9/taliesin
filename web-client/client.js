@@ -545,6 +545,25 @@
     window.scrollTo({ top: y, left: 0, behavior: "instant" });
   };
 
+  // React to OJS content arriving/changing in a freshly-mounted op node.
+  // - An `ojs-define` script (a {python} cell's output bridging values to OJS):
+  //   bind it into the live module so the cells that reference it recompute. This
+  //   is what fixes the cold-load race — the values arrive after the OJS cells
+  //   first interpret — and also live-updates a figure when its Python inputs change.
+  // - An `ojs-module-contents` script (an authored {ojs} cell whose source changed):
+  //   the runtime can't redefine a whole cell in place, so reload to re-interpret.
+  /** @param {Element|null} node */
+  const afterOjsMutation = (node) => {
+    if (!node || !window.__qmdOjsRan || !node.querySelector) return;
+    if (node.querySelector('script[type="ojs-module-contents"]')) {
+      location.reload();
+      return;
+    }
+    if (node.querySelector('script[type="ojs-define"]') && window.qmdBindOjsDefines) {
+      window.qmdBindOjsDefines(node);
+    }
+  };
+
   // Re-attach reveal, rebuild the TOC, and (re)highlight + add copy buttons to
   // code blocks after any DOM change (each is a no-op when not applicable).
   const afterChange = () => {
@@ -588,6 +607,7 @@
         if (el && node) {
           keepScroll(() => el.replaceWith(node));
           pulse(node, "qmd-flash");
+          afterOjsMutation(node);
         }
         afterChange();
         break;
@@ -602,6 +622,7 @@
             else root.prepend(node);
           });
           pulse(node, "qmd-flash");
+          afterOjsMutation(node);
         }
         afterChange();
         break;
