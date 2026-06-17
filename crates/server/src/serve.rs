@@ -378,6 +378,9 @@ pub(crate) const STATUS_CSS: &str = "\
     .qmd-dev-toggle:hover { color: var(--qmd-fg, #111); } \
     .qmd-dev-toggle.qmd-dev-alert { border-color: #d9a23a; color: #d9a23a; } \
     .qmd-dev-glyph { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -1px; } \
+    .qmd-dev-count { min-width: 1rem; padding: 0 .3rem; border-radius: 999px; background: #d9a23a; color: #fff; \
+      font-weight: 700; font-size: 11px; line-height: 1.3; text-align: center; } \
+    .qmd-dev-count[hidden] { display: none; } \
     .qmd-dev-dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--qmd-muted, #888); flex: none; } \
     .qmd-dev-dot[data-state=\"live\"] { background: #3fb950; } \
     .qmd-dev-dot[data-state=\"warn\"] { background: #d9a23a; } \
@@ -402,6 +405,12 @@ pub(crate) const STATUS_CSS: &str = "\
       border: 1px solid var(--qmd-border, #e0e0e0); line-height: 1.35; } \
     #qmd-diagnostics .qmd-diag-error { border-left: 3px solid #e5534b; } \
     #qmd-diagnostics .qmd-diag-warning { border-left: 3px solid #d9a23a; } \
+    #qmd-cell-errors { flex-direction: column; gap: .3rem; max-width: 22rem; } \
+    .qmd-cellerr { text-align: left; cursor: pointer; font: 12px ui-sans-serif, system-ui, sans-serif; \
+      color: var(--qmd-fg, #111); background: var(--qmd-code-bg, #f5f5f5); border: 1px solid var(--qmd-border, #e0e0e0); \
+      border-left: 3px solid #e5534b; border-radius: 6px; padding: .3rem .5rem; \
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } \
+    .qmd-cellerr:hover { border-color: #e5534b; } \
     @media (max-width: 60rem) { body.qmd-toc-sheet #qmd-controls.qmd-dev { bottom: 2.4rem; } }";
 
 /// Minimal JS-string escape for embedding a filesystem path in a `\"...\"` literal.

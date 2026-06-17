@@ -59,17 +59,35 @@
   // sees a broken include or a missing kernel without watching the terminal.
   // The diagnostics list lives inside the dev menu's panel (moved there once the
   // menu is built). Its style is part of the dev-menu CSS (STATUS_CSS).
+  // Two issue sources, both shown in the dev panel and counted on the collapsed
+  // pill: server diagnostics (include/kernel) in `diagEl`, and per-cell runtime
+  // errors (Python `.qmd-error`, OJS `.observablehq--error`) in `cellErrEl`.
   const diagEl = document.createElement("div");
   diagEl.id = "qmd-diagnostics";
   diagEl.style.display = "none";
+  const cellErrEl = document.createElement("div");
+  cellErrEl.id = "qmd-cell-errors";
+  cellErrEl.style.display = "none";
+  let cellErrCount = 0;
+
+  // Reflect the total issue count on the collapsed dev button (amber + a badge),
+  // so problems are noticeable without expanding the panel.
+  const refreshAlert = () => {
+    const diagCount = diagEl.style.display === "none" ? 0 : diagEl.children.length;
+    const total = diagCount + cellErrCount;
+    const toggle = document.getElementById("qmd-dev-toggle");
+    if (toggle) toggle.classList.toggle("qmd-dev-alert", total > 0);
+    const badge = document.getElementById("qmd-dev-count");
+    if (badge) {
+      badge.textContent = total ? String(total) : "";
+      badge.hidden = total === 0;
+    }
+  };
+
   const setDiagnostics = (/** @type {Diagnostic[]=} */ items) => {
     const list = (items || []).filter(Boolean);
     diagEl.textContent = "";
-    if (!list.length) {
-      diagEl.style.display = "none";
-      document.getElementById("qmd-dev-toggle")?.classList.remove("qmd-dev-alert");
-      return;
-    }
+    diagEl.style.display = list.length ? "flex" : "none";
     for (const it of list) {
       const level = it.level === "error" ? "error" : "warning";
       const row = document.createElement("div");
@@ -77,9 +95,30 @@
       row.textContent = (level === "error" ? "✗ " : "⚠ ") + (it.message || it);
       diagEl.appendChild(row);
     }
-    diagEl.style.display = "flex";
-    // Flag the collapsed dev button so issues are noticeable without expanding.
-    document.getElementById("qmd-dev-toggle")?.classList.add("qmd-dev-alert");
+    refreshAlert();
+  };
+
+  // Scan the mounted content for per-cell errors, list them in the panel (each a
+  // button that scrolls to + flashes the failing cell), and update the pill badge.
+  // Re-run after every mount and (via a MutationObserver) when async OJS errors land.
+  const scanCellErrors = () => {
+    const errs = root ? [...root.querySelectorAll(".qmd-error, .observablehq--error")] : [];
+    cellErrCount = errs.length;
+    cellErrEl.textContent = "";
+    cellErrEl.style.display = errs.length ? "flex" : "none";
+    errs.forEach((el, i) => {
+      if (!el.id) el.id = "qmd-cellerr-" + i;
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "qmd-cellerr";
+      row.textContent = "✗ " + (el.textContent || "cell error").trim().slice(0, 90);
+      row.addEventListener("click", () => {
+        el.scrollIntoView({ block: "center", behavior: "smooth" });
+        pulse(/** @type {HTMLElement} */ (el), "qmd-hl-flash");
+      });
+      cellErrEl.appendChild(row);
+    });
+    refreshAlert();
   };
 
   // --- fatal-error overlay ---------------------------------------------------
@@ -172,7 +211,8 @@
     toggle.setAttribute("aria-label", "Developer tools");
     toggle.setAttribute("aria-expanded", "false");
     toggle.innerHTML =
-      '<span class="qmd-dev-dot" id="qmd-dev-dot"></span><span class="qmd-dev-glyph">&lt;/&gt;</span>';
+      '<span class="qmd-dev-dot" id="qmd-dev-dot"></span><span class="qmd-dev-glyph">&lt;/&gt;</span>' +
+      '<span class="qmd-dev-count" id="qmd-dev-count" hidden></span>';
 
     const panel = document.createElement("div");
     panel.id = "qmd-dev-panel";
@@ -227,12 +267,23 @@
       if (window.qmdWireThemeToggles) window.qmdWireThemeToggles();
     }
 
-    panel.appendChild(diagEl); // diagnostics live inside the panel
+    // Diagnostics + per-cell errors both live inside the panel.
+    panel.append(diagEl, cellErrEl);
     host.append(toggle, panel);
     setStatus("connecting…");
   })();
   // Reveal mode (and any layout without the control bar) keeps its status pill.
   if (!statusEl) statusEl = document.getElementById("qmd-status");
+
+  // OJS errors are rendered asynchronously by the Observable runtime, after the
+  // mount; watch the content for them (debounced) so the dev-menu count stays live.
+  if (window.MutationObserver) {
+    let t = 0;
+    new MutationObserver(() => {
+      clearTimeout(t);
+      t = setTimeout(scanCellErrors, 200);
+    }).observe(root, { childList: true, subtree: true });
+  }
 
   // Deck mode: the body is sectioned slides mounted into `.reveal > .slides`
   // (root). After any DOM change we (re)attach reveal.js — the first change
@@ -480,6 +531,7 @@
     refreshTocSpy();
     updateWordCount();
     if (window.qmdEnhanceCode) window.qmdEnhanceCode(root);
+    scanCellErrors();
   };
 
   // The server renders the initial body into the page (so content paints before
