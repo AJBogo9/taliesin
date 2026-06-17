@@ -1,3 +1,4 @@
+// @ts-check
 // qmd-fast preview client.
 //
 // Connects to the dev server's websocket and applies a `full_render` followed
@@ -9,26 +10,28 @@
 // ── Websocket protocol ──────────────────────────────────────────────────────
 // The server is the producer; these typedefs are the consumer's view of the
 // contract. The Rust producers (serve.rs / serve_site.rs `*_json`) are locked to
-// these shapes by a contract test (`protocol_contract` in serve_site.rs); keep
-// the two in sync. A future `// @ts-check` pass can enforce these here too
-// (see todo §7: client.js type-check).
-//
-// @typedef {{ level: string, message: string }} Diagnostic
-// @typedef {{ type: "full_render", title: ?string, body_html: string, diagnostics: Diagnostic[] }} FullRenderMsg
-// @typedef {{ type: "diagnostics", messages: Diagnostic[] }} DiagnosticsMsg
-// @typedef {{ type: "update", target_id: string, html: string }} UpdateMsg
-// @typedef {{ type: "insert", after_id: ?string, html: string }} InsertMsg
-// @typedef {{ type: "remove", target_id: string }} RemoveMsg
-// @typedef {{ type: "error", message: string }} ErrorMsg
-// @typedef {{ type: "reload" }} ReloadMsg
-// @typedef {FullRenderMsg|DiagnosticsMsg|UpdateMsg|InsertMsg|RemoveMsg|ErrorMsg|ReloadMsg} ServerMessage
+// these shapes by a contract test (`protocol_contract`); keep the two in sync.
+// This file is `// @ts-check`ed (see web-client/jsconfig.json), so the shapes are
+// enforced here too.
+/**
+ * @typedef {{ level: string, message: string }} Diagnostic
+ * @typedef {{ type: "full_render", title: ?string, body_html: string, diagnostics: Diagnostic[] }} FullRenderMsg
+ * @typedef {{ type: "diagnostics", messages: Diagnostic[] }} DiagnosticsMsg
+ * @typedef {{ type: "update", target_id: string, html: string }} UpdateMsg
+ * @typedef {{ type: "insert", after_id: ?string, html: string }} InsertMsg
+ * @typedef {{ type: "remove", target_id: string }} RemoveMsg
+ * @typedef {{ type: "error", message: string }} ErrorMsg
+ * @typedef {{ type: "reload" }} ReloadMsg
+ * @typedef {FullRenderMsg|DiagnosticsMsg|UpdateMsg|InsertMsg|RemoveMsg|ErrorMsg|ReloadMsg} ServerMessage
+ */
 (() => {
   const root = document.getElementById("qmd-root");
-  let statusEl = null;
-  let wordCountEl = null;
-  let ws;
+  if (!root) return; // the client mounts into #qmd-root; nothing to do without it
+  let statusEl = /** @type {HTMLElement|null} */ (null);
+  let wordCountEl = /** @type {HTMLElement|null} */ (null);
+  let ws = /** @type {WebSocket|undefined} */ (undefined);
 
-  const setStatus = (s) => {
+  const setStatus = (/** @type {string} */ s) => {
     if (!statusEl) return;
     statusEl.textContent = s;
     // Drives the mobile status dot's colour (the text itself is hidden on phones).
@@ -40,9 +43,9 @@
   // every change. Shown in the control bar; no-op in reveal mode / without it.
   const updateWordCount = () => {
     if (!wordCountEl) return;
-    const clone = root.cloneNode(true);
+    const clone = /** @type {Element} */ (root.cloneNode(true));
     clone.querySelectorAll("pre, .katex, .qmd-eqn-number").forEach((n) => n.remove());
-    const words = (clone.textContent.match(/[^\s]+/g) || []).length;
+    const words = ((clone.textContent || "").match(/[^\s]+/g) || []).length;
     const mins = Math.max(1, Math.round(words / 200));
     wordCountEl.textContent = `${words.toLocaleString()} words · ${mins} min`;
   };
@@ -67,7 +70,7 @@
     document.body.appendChild(el);
     return el;
   })();
-  const setDiagnostics = (items) => {
+  const setDiagnostics = (/** @type {Diagnostic[]=} */ items) => {
     const list = (items || []).filter(Boolean);
     diagEl.textContent = "";
     if (!list.length) { diagEl.style.display = "none"; return; }
@@ -109,8 +112,9 @@
     el.addEventListener("click", (e) => { if (e.target === el) el.classList.remove("qmd-show"); });
     return el;
   })();
-  const showError = (message) => {
-    errorEl.querySelector("pre").textContent = message || "Unknown error";
+  const showError = (/** @type {string=} */ message) => {
+    const pre = errorEl.querySelector("pre");
+    if (pre) pre.textContent = message || "Unknown error";
     errorEl.classList.add("qmd-show");
   };
   const hideError = () => errorEl.classList.remove("qmd-show");
@@ -125,10 +129,10 @@
 
   // Briefly pulse a block with a self-removing animated class: the change-flash on
   // re-render (`qmd-flash`), and the click-to-source highlight (`qmd-hl-flash`).
-  const pulse = (el, cls) => {
+  const pulse = (/** @type {Element|null} */ el, /** @type {string} */ cls) => {
     if (!el || !el.classList) return;
     el.classList.remove(cls);
-    void el.offsetWidth; // restart the animation when re-pulsing the same node
+    void (/** @type {HTMLElement} */ (el)).offsetWidth; // restart the animation when re-pulsing the same node
     el.classList.add(cls);
     el.addEventListener("animationend", () => el.classList.remove(cls), { once: true });
   };
@@ -150,7 +154,7 @@
     themeBtn.className = "qmd-ctl";
     themeBtn.type = "button";
     themeBtn.title = "Theme: light / dark / auto (follows your OS)";
-    const ICON = { auto: "🖥", light: "☀", dark: "🌙" };
+    const ICON = /** @type {Record<string, string>} */ ({ auto: "🖥", light: "☀", dark: "🌙" });
     const ORDER = ["auto", "light", "dark"];
     const syncTheme = () => {
       const p = (window.qmdGetThemePref && window.qmdGetThemePref()) || "auto";
@@ -227,13 +231,14 @@
   const tocHandle = tocEl && document.getElementById("qmd-toc-handle");
   const tocBackdrop = tocEl && document.getElementById("qmd-toc-backdrop");
   const tocCur = tocEl && document.getElementById("qmd-toc-cur");
-  const escText = (s) =>
-    s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const escText = (/** @type {string|null} */ s) =>
+    (s || "").replace(/[&<>]/g, (/** @type {string} */ c) =>
+      /** @type {Record<string, string>} */ ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
   const buildToc = () => {
     if (!tocEl) return;
     const heads = [...root.querySelectorAll("h1[id], h2[id], h3[id]")];
     if (!heads.length) { tocEl.innerHTML = ""; return; }
-    const lvl = (h) => +h.tagName[1];
+    const lvl = (/** @type {Element} */ h) => +h.tagName[1];
     const base = Math.min(...heads.map(lvl));
     let html = "<ul>";
     let level = base;
@@ -259,8 +264,9 @@
   // nodes are recreated on every TOC rebuild, so the set is re-collected then; the
   // per-scroll update is a cheap rect read, throttled to one rAF.
   const TOC_ACTIVE = "qmd-toc-active";
-  let tocSpy = []; // [{ link, heading }] in document order
-  let tocSpyActive = null;
+  /** @typedef {{ link: Element, heading: HTMLElement }} TocEntry */
+  let tocSpy = /** @type {TocEntry[]} */ ([]); // in document order
+  let tocSpyActive = /** @type {TocEntry|null} */ (null);
   let tocSpyRaf = 0;
   const updateTocActive = () => {
     if (!tocEl || !tocSpy.length) return;
@@ -288,7 +294,7 @@
     tocSpy = [];
     for (const link of tocEl.querySelectorAll("a[href^='#']")) {
       const heading = document.getElementById(
-        decodeURIComponent(link.getAttribute("href").slice(1)),
+        decodeURIComponent((link.getAttribute("href") || "").slice(1)),
       );
       if (heading) tocSpy.push({ link, heading });
     }
@@ -315,7 +321,7 @@
     clearTimeout(tocLabelTimer);
     tocLabelTimer = setTimeout(() => tocHandle.classList.remove("qmd-show-label"), 1000);
   }
-  if (tocHandle && tocEl) {
+  if (tocHandle && tocEl && tocBackdrop) {
     const isSheetMode = () => !window.matchMedia || matchMedia("(max-width: 60rem)").matches;
     // #TOC doubles as the desktop sidebar, so only hide it from assistive tech and
     // pull it out of the tab order when it is an off-screen sheet (narrow + closed).
@@ -328,7 +334,7 @@
         tocEl.removeAttribute("inert"); tocEl.removeAttribute("aria-hidden");
       }
     };
-    const setOpen = (open) => {
+    const setOpen = (/** @type {boolean} */ open) => {
       document.body.classList.toggle("qmd-toc-open", open);
       syncSheetA11y();
       if (open) { const f = tocEl.querySelector("a"); if (f) f.focus(); } // focus into the sheet
@@ -337,7 +343,7 @@
       tocEl.style.transition = ""; tocEl.style.transform = "";
       tocBackdrop.style.transition = ""; tocBackdrop.style.opacity = ""; tocBackdrop.style.pointerEvents = "";
     };
-    let d = null;
+    let d = /** @type {{ y: number, t: number, moved: number, h: number }|null} */ (null);
     tocHandle.addEventListener("pointerdown", (e) => {
       d = { y: e.clientY, t: Date.now(), moved: 0, h: tocEl.offsetHeight || Math.round(innerHeight * 0.6) };
       try { tocHandle.setPointerCapture(e.pointerId); } catch (_) {}
@@ -364,13 +370,13 @@
     tocHandle.addEventListener("pointerup", finish);
     tocHandle.addEventListener("pointercancel", finish);
     tocBackdrop.addEventListener("click", () => { setOpen(false); tocHandle.focus(); });
-    tocEl.addEventListener("click", (e) => { if (e.target.closest("a")) setOpen(false); });
+    tocEl.addEventListener("click", (e) => { if (e.target instanceof Element && e.target.closest("a")) setOpen(false); });
 
     // Drag the sheet DOWN to dismiss, but only when its list is scrolled to the
     // top (otherwise a downward swipe just scrolls the list). Touch events, not
     // pointer: native scroll won't deliver pointermove, so we take over the touch
     // stream with preventDefault instead.
-    let sd = null;
+    let sd = /** @type {{ y: number, t0: number, atTop: boolean, active: boolean, dy: number, h: number }|null} */ (null);
     tocEl.addEventListener("touchstart", (e) => {
       if (!document.body.classList.contains("qmd-toc-open")) { sd = null; return; }
       sd = { y: e.touches[0].clientY, t0: Date.now(), atTop: tocEl.scrollTop <= 0,
@@ -412,19 +418,20 @@
     syncSheetA11y();
 
     // teach the gesture once on a narrow screen
-    if (window.matchMedia && matchMedia("(max-width: 60rem)").matches) {
+    if (isSheetMode()) {
       tocHandle.classList.add("qmd-hint");
       setTimeout(() => tocHandle.classList.remove("qmd-hint"), 2700);
       flashTocLabel();
     }
   }
 
-  const cssEscape = (s) =>
+  const cssEscape = (/** @type {string} */ s) =>
     window.CSS && CSS.escape ? CSS.escape(s) : s.replace(/["\\]/g, "\\$&");
 
-  const elById = (id) => root.querySelector(`[data-block-id="${cssEscape(id)}"]`);
+  const elById = (/** @type {string} */ id) =>
+    root.querySelector(`[data-block-id="${cssEscape(id)}"]`);
 
-  const fragment = (html) => {
+  const fragment = (/** @type {string} */ html) => {
     const t = document.createElement("template");
     t.innerHTML = html.trim();
     return t.content.firstElementChild;
@@ -432,7 +439,7 @@
 
   // Apply a mutation while keeping the scroll position pinned. `instant` overrides
   // the page's smooth scroll-behavior so live re-renders never animate the restore.
-  const keepScroll = (fn) => {
+  const keepScroll = (/** @type {() => void} */ fn) => {
     const y = window.scrollY;
     fn();
     window.scrollTo({ top: y, left: 0, behavior: "instant" });
@@ -476,8 +483,8 @@
       case "update": {
         renderOk();
         const el = elById(msg.target_id);
-        if (el) {
-          const node = fragment(msg.html);
+        const node = fragment(msg.html);
+        if (el && node) {
           keepScroll(() => el.replaceWith(node));
           pulse(node, "qmd-flash");
         }
@@ -487,12 +494,14 @@
       case "insert": {
         renderOk();
         const node = fragment(msg.html);
-        keepScroll(() => {
-          const after = msg.after_id && elById(msg.after_id);
-          if (after) after.after(node);
-          else root.prepend(node);
-        });
-        pulse(node, "qmd-flash");
+        if (node) {
+          keepScroll(() => {
+            const after = msg.after_id && elById(msg.after_id);
+            if (after) after.after(node);
+            else root.prepend(node);
+          });
+          pulse(node, "qmd-flash");
+        }
         afterChange();
         break;
       }
@@ -523,12 +532,12 @@
     ws.onopen = () => setStatus("live");
     ws.onmessage = (e) => handle(JSON.parse(e.data));
     ws.onclose = () => { setStatus("reconnecting…"); setTimeout(connect, 1000); };
-    ws.onerror = () => ws.close();
+    ws.onerror = () => ws?.close();
   };
 
   // Click-to-source: report the clicked block to the server (the editor client
   // will act on this in Phase 3). Also highlight it locally.
-  const blockRef = (el) => ({
+  const blockRef = (/** @type {HTMLElement} */ el) => ({
     block_id: el.dataset.blockId,
     source_file: el.dataset.sourceFile || null,
     sourcepos: el.dataset.sourcepos || null,
@@ -537,7 +546,7 @@
   // Open a block's source: in the VS Code webview, relay to the host (which
   // calls revealRange); in a plain browser, open a `vscode://file/…:line:col`
   // link (the server injected the absolute doc + base-dir paths as QMD_DOC).
-  const openSource = (el) => {
+  const openSource = (/** @type {HTMLElement} */ el) => {
     const ref = blockRef(el);
     if (inWebview) {
       window.parent.postMessage({ type: "qmd-goto", ...ref }, "*");
@@ -559,8 +568,9 @@
   // click-to-source off or click away. (The persistent .qmd-hl is for editor
   // cursor sync only.) Skipped when click-to-source is off or on the control bar.
   document.addEventListener("click", (e) => {
-    if (!clickSource || (e.target.closest && e.target.closest(".qmd-ctl"))) return;
-    const el = e.target.closest("[data-block-id]");
+    const t = e.target instanceof Element ? e.target : null;
+    if (!clickSource || !t || t.closest(".qmd-ctl")) return;
+    const el = /** @type {HTMLElement|null} */ (t.closest("[data-block-id]"));
     if (!el) return;
     pulse(el, "qmd-hl-flash");
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -571,17 +581,22 @@
   // Double click: jump to source (browser -> VS Code, webview -> host).
   document.addEventListener("dblclick", (e) => {
     if (!clickSource) return;
-    const el = e.target.closest("[data-block-id]");
+    const t = e.target instanceof Element ? e.target : null;
+    const el = t && /** @type {HTMLElement|null} */ (t.closest("[data-block-id]"));
     if (el) openSource(el);
   });
 
   // Reverse sync: highlight (and reveal/scroll to) the block under the editor
   // cursor. The matching block is the smallest one whose sourcepos range covers
   // `line` in the same source file, else the nearest block starting before it.
-  const highlightAtLine = (file, line) => {
+  const highlightAtLine = (/** @type {string|null} */ file, /** @type {number} */ line) => {
     const want = file || null;
-    let contained = null, containedSpan = Infinity, preceding = null, precedingStart = -1;
-    for (const el of root.querySelectorAll("[data-sourcepos]")) {
+    /** @type {HTMLElement|null} */ let contained = null;
+    let containedSpan = Infinity;
+    /** @type {HTMLElement|null} */ let preceding = null;
+    let precedingStart = -1;
+    for (const node of root.querySelectorAll("[data-sourcepos]")) {
+      const el = /** @type {HTMLElement} */ (node);
       if ((el.dataset.sourceFile || null) !== want) continue;
       const m = /^(\d+):\d+-(\d+):\d+$/.exec(el.dataset.sourcepos || "");
       if (!m) continue;
@@ -599,7 +614,8 @@
     target.classList.add("qmd-hl");
     if (isReveal && window.Reveal) {
       const sections = [...root.querySelectorAll(".slides > section")];
-      const i = sections.indexOf(target.closest(".slides > section"));
+      const sec = target.closest(".slides > section");
+      const i = sec ? sections.indexOf(sec) : -1;
       if (i >= 0) window.Reveal.slide(i);
     } else {
       const r = target.getBoundingClientRect();
