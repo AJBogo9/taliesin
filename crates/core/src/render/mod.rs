@@ -1112,7 +1112,9 @@ fn html_page_inner(doc: &RenderedDoc, fallback_title: &str, site: Option<&SiteCt
     };
     let favicon = match site {
         Some(s) if !s.favicon.is_empty() => favicon_link(&s.favicon),
-        _ => String::new(),
+        // No configured favicon (a book, or any project that sets none): fall back
+        // to the bundled qmd-fast mark so the tab has an icon and no /favicon.ico 404.
+        _ => default_favicon(),
     };
     PAGE_TEMPLATE
         .replace("{{TITLE}}", &t)
@@ -1151,6 +1153,17 @@ pub fn favicon_link(href: &str) -> String {
     let mut h = String::new();
     escape_html(href, &mut h);
     format!("<link rel=\"icon\"{ty} href=\"{h}\" />")
+}
+
+/// The bundled qmd-fast mark (the block-model glyph), inlined as a base64 SVG data
+/// URI — the default favicon when a project configures none.
+const FAVICON_SVG: &str = include_str!("../../../../web-client/favicon.svg");
+
+fn default_favicon() -> String {
+    format!(
+        "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml;base64,{}\" />",
+        base64_encode(FAVICON_SVG.as_bytes())
+    )
 }
 
 /// Heading level (1–6) for a block whose root element is `<hN ...>`/`<hN>`.

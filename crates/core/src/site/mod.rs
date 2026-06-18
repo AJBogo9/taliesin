@@ -654,12 +654,20 @@ impl Site {
         };
         let up = "../".repeat(depth);
         let mut s = String::from("<nav class=\"qmd-book-sidebar\" data-qmd-src=\"_quarto.yml\">");
+        // Sidebar header: book title (links home) + a light/dark toggle. A book has
+        // no top navbar, so without this the toggle (wired by theme_head) has no home.
+        s.push_str("<div class=\"qmd-book-sidebar-head\">");
         if let Some(t) = &book.title {
             s.push_str(&format!(
                 "<a class=\"qmd-book-brand\" href=\"{up}index.html\">{}</a>",
                 esc(t)
             ));
         }
+        s.push_str(
+            "<button class=\"qmd-theme-toggle\" type=\"button\" data-qmd-theme-toggle \
+             aria-label=\"Toggle light/dark theme\"></button>",
+        );
+        s.push_str("</div>");
         s.push_str("<ul class=\"qmd-book-chapters\">");
         for e in &book.entries {
             if let Some(part) = &e.part {
