@@ -26,8 +26,8 @@ use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
 
 use crate::serve::{
-    CLIENT_JS, FAVICON, STATUS_CSS, bind_with_fallback, content_type, js_str, local_ip,
-    open_in_browser, percent_decode, print_qr,
+    CLIENT_JS, FAVICON, STATUS_CSS, bind_with_fallback, js_str, local_ip, open_in_browser,
+    percent_decode, print_qr,
 };
 
 struct SiteApp {
@@ -172,18 +172,7 @@ async fn page_or_asset(
 
 /// Serve a file under `root`, with path-traversal protection.
 fn serve_asset(root: &Path, rel: &str) -> axum::response::Response {
-    use axum::http::{StatusCode, header};
-    let not_found = || (StatusCode::NOT_FOUND, "not found").into_response();
-    let (Ok(base), Ok(full)) = (root.canonicalize(), root.join(rel).canonicalize()) else {
-        return not_found();
-    };
-    if !full.starts_with(&base) || !full.is_file() {
-        return not_found();
-    }
-    match std::fs::read(&full) {
-        Ok(bytes) => ([(header::CONTENT_TYPE, content_type(&full))], bytes).into_response(),
-        Err(_) => not_found(),
-    }
+    crate::serve::serve_asset_from(root, rel)
 }
 
 /// Ensure the page has live state (creating it + queuing an execution build on

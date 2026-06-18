@@ -303,22 +303,46 @@ async fn static_asset(
     State(app): State<Arc<AppState>>,
     uri: axum::http::Uri,
 ) -> axum::response::Response {
+    serve_asset_from(
+        &app.base_dir,
+        &percent_decode(uri.path().trim_start_matches('/')),
+    )
+}
+
+/// Serve a static file a page references: first a plain file under `base`, else a
+/// format extension's resource (looked up by file name in `_extensions/*/`, so an
+/// injected `<script src="plugin.js">` resolves in preview the same way the build
+/// copies it next to the page). Shared by the single-doc and site servers.
+pub(crate) fn serve_asset_from(base: &Path, rel: &str) -> axum::response::Response {
     use axum::http::{StatusCode, header};
-    let rel = percent_decode(uri.path().trim_start_matches('/'));
     let not_found = || (StatusCode::NOT_FOUND, "not found").into_response();
-    let (Ok(base), Ok(full)) = (
-        app.base_dir.canonicalize(),
-        app.base_dir.join(&rel).canonicalize(),
-    ) else {
-        return not_found();
-    };
-    if !full.starts_with(&base) || !full.is_file() {
-        return not_found();
-    }
-    match std::fs::read(&full) {
-        Ok(bytes) => ([(header::CONTENT_TYPE, content_type(&full))], bytes).into_response(),
+    let serve = |full: &Path| match std::fs::read(full) {
+        Ok(bytes) => ([(header::CONTENT_TYPE, content_type(full))], bytes).into_response(),
         Err(_) => not_found(),
+    };
+    if let (Ok(root), Ok(full)) = (base.canonicalize(), base.join(rel).canonicalize())
+        && full.starts_with(&root)
+        && full.is_file()
+    {
+        return serve(&full);
     }
+    match find_in_extensions(base, rel) {
+        Some(p) => serve(&p),
+        None => not_found(),
+    }
+}
+
+/// Find a file by name in any `_extensions/<ext>/` directory under `base` (where
+/// a format extension's `format-resources` live).
+fn find_in_extensions(base: &Path, rel: &str) -> Option<PathBuf> {
+    let name = Path::new(rel).file_name()?;
+    for entry in std::fs::read_dir(base.join("_extensions")).ok()?.flatten() {
+        let candidate = entry.path().join(name);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
 }
 
 /// Guess a content type from a file extension (covers the asset types a doc

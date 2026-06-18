@@ -93,7 +93,7 @@ fn cmd_build(args: &[String]) -> ExitCode {
     let p = Path::new(path);
     let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("document");
     let base = p.parent().unwrap_or_else(|| Path::new("."));
-    let html = match build_page_executing(&src, base, stem) {
+    let (html, resources) = match build_page_executing(&src, base, stem) {
         Ok(h) => h,
         Err(e) => {
             log::error(&format!("cannot start runtime: {e}"));
@@ -102,7 +102,9 @@ fn cmd_build(args: &[String]) -> ExitCode {
     };
 
     if let Some(dir) = out_dir {
-        return build_dir(&html, base, Path::new(dir));
+        let code = build_dir(&html, base, Path::new(dir));
+        copy_resources(&resources, Path::new(dir));
+        return code;
     }
     let out: PathBuf = positionals
         .get(1)
@@ -110,6 +112,7 @@ fn cmd_build(args: &[String]) -> ExitCode {
         .unwrap_or_else(|| base.join(format!("{stem}.html")));
     match std::fs::write(&out, html) {
         Ok(()) => {
+            copy_resources(&resources, out.parent().unwrap_or(base));
             log::built(&out.display().to_string());
             ExitCode::SUCCESS
         }
@@ -124,7 +127,11 @@ fn cmd_build(args: &[String]) -> ExitCode {
 /// cells first so figures / `ojs_define` outputs are baked in (mirrors the site
 /// build's per-page execution). A missing kernel logs a warning and the cells fall
 /// back to source, matching the preview's behaviour.
-fn build_page_executing(src: &str, base: &Path, fallback: &str) -> std::io::Result<String> {
+fn build_page_executing(
+    src: &str,
+    base: &Path,
+    fallback: &str,
+) -> std::io::Result<(String, Vec<PathBuf>)> {
     for w in qmd_fast_core::frontmatter::lint(src) {
         log::warn(&w);
     }
@@ -139,8 +146,21 @@ fn build_page_executing(src: &str, base: &Path, fallback: &str) -> std::io::Resu
                  (set QMD_FAST_PYTHON to a python with ipykernel)",
             );
         }
-        qmd_fast_core::render_doc_to_page(&doc, fallback)
+        let resources = doc.includes.resources.clone();
+        (qmd_fast_core::render_doc_to_page(&doc, fallback), resources)
     }))
+}
+
+/// Copy a format extension's `format-resources` (a reveal plugin's `.js`, etc.)
+/// next to the output page by file name, so an injected `<script src="x.js">`
+/// resolves. Skips silently when there are none.
+fn copy_resources(resources: &[PathBuf], dest_dir: &Path) {
+    for r in resources {
+        let Some(name) = r.file_name() else { continue };
+        if let Err(e) = std::fs::copy(r, dest_dir.join(name)) {
+            log::warn(&format!("cannot copy resource {}: {e}", r.display()));
+        }
+    }
 }
 
 /// Write `<dir>/index.html` and copy each referenced local asset (an `src=`/
@@ -242,10 +262,12 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
         let mut exec = exec::Executor::new();
         doc.blocks = exec.run(std::mem::take(&mut doc.blocks)).await;
         kernel_unavailable |= exec.diagnostic().is_some();
+        let resources = doc.includes.resources.clone();
         let html = site.render_page_doc(page, doc);
         let dest = out.join(&page.url);
         if let Some(parent) = dest.parent() {
             let _ = std::fs::create_dir_all(parent);
+            copy_resources(&resources, parent);
         }
         match std::fs::write(&dest, html) {
             Ok(()) => pages += 1,

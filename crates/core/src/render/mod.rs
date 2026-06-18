@@ -115,6 +115,11 @@ pub struct PageIncludes {
     pub in_header: String,
     pub before_body: String,
     pub after_body: String,
+    /// Files a format extension contributes via `format-resources` (e.g. a reveal
+    /// plugin's `.js`). Absolute source paths; the build copies each next to the
+    /// output page (by file name) so the deck's `<script src="...">` resolves, and
+    /// the preview serves them from the `_extensions/` tree.
+    pub resources: Vec<PathBuf>,
 }
 
 impl PageIncludes {
@@ -129,6 +134,7 @@ impl PageIncludes {
                 dst.push_str(src);
             }
         }
+        self.resources.extend(other.resources.iter().cloned());
     }
 }
 
@@ -694,6 +700,18 @@ fn resolve_format_extension(front_matter: &str, base_dir: Option<&Path>) -> Page
     if !theme.is_empty() {
         inc.in_header = format!("{theme}{}", inc.in_header);
     }
+    // `format-resources` (a scalar or list of file names relative to the extension)
+    // are copied verbatim next to the output so an injected `<script src="x.js">`
+    // resolves at runtime, rather than inlined.
+    if let Some(res) = cfg.get("format-resources") {
+        for name in res
+            .as_sequence()
+            .map(|s| s.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
+            .unwrap_or_else(|| res.as_str().into_iter().collect())
+        {
+            inc.resources.push(ext_dir.join(name));
+        }
+    }
     inc
 }
 
@@ -714,6 +732,7 @@ pub fn includes_from_parts(
         in_header: head,
         before_body: resolve_include_value(before_body, base_dir, false),
         after_body: resolve_include_value(after_body, base_dir, false),
+        resources: Vec::new(),
     }
 }
 
