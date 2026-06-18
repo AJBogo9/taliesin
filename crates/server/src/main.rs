@@ -22,9 +22,20 @@ fn main() -> ExitCode {
         Some("blocks") => cmd_blocks(args.get(2)),
         // `preview`/`dev` are vite-style aliases for the live server.
         Some("serve" | "preview" | "dev") => cmd_serve(&args),
-        _ => {
+        Some("--version" | "-V") => {
+            println!("qmd-fast {}", qmd_fast_core::VERSION);
+            ExitCode::SUCCESS
+        }
+        // No command, or an explicit help request: print usage and succeed.
+        Some("--help" | "-h" | "help") | None => {
             usage();
             ExitCode::SUCCESS
+        }
+        // An unrecognized command is an error (non-zero), not a silent success.
+        Some(other) => {
+            log::error(&format!("unknown command: `{other}`"));
+            usage();
+            ExitCode::FAILURE
         }
     }
 }
@@ -39,10 +50,18 @@ fn cmd_serve(args: &[String]) -> ExitCode {
         eprintln!("usage: qmd-fast preview <file.qmd|dir> [port] [--host] [--open]");
         return ExitCode::FAILURE;
     };
-    let port: u16 = positionals
-        .get(1)
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(4321);
+    // The optional second positional is the port; a present-but-unparseable value
+    // is an error rather than a silent fall-back to the default.
+    let port: u16 = match positionals.get(1) {
+        None => 4321,
+        Some(p) => match p.parse() {
+            Ok(n) => n,
+            Err(_) => {
+                log::error(&format!("invalid port: `{p}` (expected 0-65535)"));
+                return ExitCode::FAILURE;
+            }
+        },
+    };
     // A directory is a multi-page site project; a single `.qmd` is one document.
     let result = if Path::new(path.as_str()).is_dir() {
         serve_site::run(PathBuf::from(path), port, open, expose)
