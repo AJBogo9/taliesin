@@ -6,6 +6,7 @@
 
 pub mod cite;
 pub mod diff;
+pub mod frontmatter;
 pub mod highlight;
 pub mod includes;
 pub mod math;

@@ -651,6 +651,12 @@ fn error_json(message: &str) -> String {
 fn compute_diagnostics(app: &AppState, executor: &crate::exec::Executor) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     if let Ok(src) = std::fs::read_to_string(&app.path) {
+        for message in qmd_fast_core::frontmatter::lint(&src) {
+            diags.push(Diagnostic {
+                level: "warning",
+                message,
+            });
+        }
         for dep in qmd_fast_core::includes::dependencies(&src, &app.base_dir) {
             if !dep.exists() {
                 let shown = dep.strip_prefix(&app.base_dir).unwrap_or(&dep);

@@ -125,6 +125,9 @@ fn cmd_build(args: &[String]) -> ExitCode {
 /// build's per-page execution). A missing kernel logs a warning and the cells fall
 /// back to source, matching the preview's behaviour.
 fn build_page_executing(src: &str, base: &Path, fallback: &str) -> std::io::Result<String> {
+    for w in qmd_fast_core::frontmatter::lint(src) {
+        log::warn(&w);
+    }
     let rt = tokio::runtime::Runtime::new()?;
     Ok(rt.block_on(async {
         let mut doc = qmd_fast_core::render_document_with_includes(src, base);
@@ -231,6 +234,9 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
             log::warn(&format!("cannot read {}", page.input.display()));
             continue;
         };
+        for w in qmd_fast_core::frontmatter::lint(&src) {
+            log::warn(&format!("{}: {w}", page.rel));
+        }
         let base = page.input.parent().unwrap_or(root);
         let mut doc = qmd_fast_core::render_document_with_includes(&src, base);
         let mut exec = exec::Executor::new();

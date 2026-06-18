@@ -626,6 +626,12 @@ async fn build_page(app: &SiteApp, rel: &str, execs: &mut HashMap<String, crate:
 fn page_diagnostics(input: &Path, base: &Path, exec: &crate::exec::Executor) -> Vec<Diag> {
     let mut diags = Vec::new();
     if let Ok(src) = std::fs::read_to_string(input) {
+        for message in qmd_fast_core::frontmatter::lint(&src) {
+            diags.push(Diag {
+                level: "warning",
+                message,
+            });
+        }
         for dep in qmd_fast_core::includes::dependencies(&src, base) {
             if !dep.exists() {
                 let shown = dep.strip_prefix(base).unwrap_or(&dep);

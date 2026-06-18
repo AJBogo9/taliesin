@@ -40,6 +40,27 @@ fn line_range(sourcepos: &str) -> (usize, usize) {
 }
 
 #[test]
+fn every_corpus_doc_has_clean_front_matter() {
+    // The front-matter linter must not warn on any real document: a warning here
+    // means the KNOWN_KEYS allowlist is missing a key the corpus legitimately uses.
+    let mut files = Vec::new();
+    collect_qmd(&corpus_dir(), &mut files);
+    let mut offenders = Vec::new();
+    for f in &files {
+        let src = fs::read_to_string(f).unwrap();
+        for w in qmd_fast_core::frontmatter::lint(&src) {
+            let label = f.strip_prefix(corpus_dir()).unwrap_or(f).display();
+            offenders.push(format!("{label}: {w}"));
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "front-matter lint warned on corpus docs:\n{}",
+        offenders.join("\n")
+    );
+}
+
+#[test]
 fn every_corpus_doc_renders_with_invariants() {
     let mut files = Vec::new();
     collect_qmd(&corpus_dir(), &mut files);
