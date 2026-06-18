@@ -211,6 +211,7 @@ fn render_markdown_only(site: &qmd_fast_core::Site, page: &Page) -> PageDoc {
     let mut blocks = doc.blocks;
     let toc = site.page_toc(page, doc.toc_explicit);
     site.number_chapter(page, &mut blocks);
+    site.resolve_cross_refs(&mut blocks, &page.url);
     site.expand_page(page, &mut blocks);
     PageDoc {
         title: doc.title,
@@ -603,6 +604,7 @@ async fn build_page(app: &SiteApp, rel: &str, execs: &mut HashMap<String, crate:
     let toc = {
         let site = app.site.lock().unwrap();
         site.number_chapter(&page, &mut blocks);
+        site.resolve_cross_refs(&mut blocks, &page.url);
         site.expand_page(&page, &mut blocks);
         site.page_toc(&page, doc.toc_explicit)
     };

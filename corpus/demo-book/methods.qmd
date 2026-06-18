@@ -4,6 +4,6 @@ The approach in one display equation:
 
 $$ D_{\mathrm{KL}}(P\,\|\,Q) = \sum_k p_k \log\frac{p_k}{q_k} $$
 
-## Setup
+## Setup {#sec-setup}
 
 The setup for the experiments.

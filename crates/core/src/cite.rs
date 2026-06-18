@@ -538,13 +538,19 @@ fn rewrite_text(
         } else if chars[i] == '@'
             && let Some((label, anchor, len)) = parse_xref(&chars[i..])
         {
-            // A resolved number renders "Figure&nbsp;3"; otherwise just the label.
-            let text = match xrefs.get(&anchor) {
-                Some(n) => format!("{label}&nbsp;{n}"),
-                None => label.to_string(),
+            // A locally-resolved number renders "Figure&nbsp;3". An anchor not in
+            // this document's registry may live on another page: emit it with a
+            // `data-qmd-xref` marker so a site can resolve it to that page (and its
+            // number); if nothing resolves it, it degrades to a bare-label link.
+            let (text, marker) = match xrefs.get(&anchor) {
+                Some(n) => (format!("{label}&nbsp;{n}"), String::new()),
+                None => (
+                    label.to_string(),
+                    format!(" data-qmd-xref=\"{}\"", esc(&anchor)),
+                ),
             };
             out.push_str(&format!(
-                "<a href=\"#{anchor}\" class=\"qmd-xref\">{text}</a>"
+                "<a href=\"#{anchor}\" class=\"qmd-xref\"{marker}>{text}</a>"
             ));
             i += len;
             continue;
@@ -740,10 +746,11 @@ mod tests {
             cell: None,
         }];
         process(&mut blocks, &b, &HashMap::new());
+        // Unresolved here: linked label, marked for cross-page resolution by a site.
         assert!(
-            blocks[0]
-                .html
-                .contains("<a href=\"#fig-scree\" class=\"qmd-xref\">Figure</a>"),
+            blocks[0].html.contains(
+                "<a href=\"#fig-scree\" class=\"qmd-xref\" data-qmd-xref=\"fig-scree\">Figure</a>"
+            ),
             "got: {}",
             blocks[0].html
         );

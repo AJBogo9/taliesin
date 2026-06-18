@@ -385,4 +385,29 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
         !methods.contains("<header class=\"qmd-site-nav\""),
         "a book should not emit the website navbar"
     );
+
+    // Cross-chapter `@ref`s resolve to the other page with the right number: the
+    // Results chapter references `@sec-methods` (a chapter -> "Chapter 2") and
+    // `@sec-setup` (a subsection -> "Section 2.1"), both on methods.html.
+    let results = site.render_page("results.qmd").expect("results renders");
+    assert!(
+        results
+            .contains("<a href=\"methods.html#sec-methods\" class=\"qmd-xref\">Chapter&nbsp;2</a>"),
+        "cross-chapter ref to a chapter not resolved: {}",
+        results
+            .match_indices("qmd-xref")
+            .next()
+            .map(|_| "(see qmd-xref links)")
+            .unwrap_or("(no qmd-xref at all)")
+    );
+    assert!(
+        results
+            .contains("<a href=\"methods.html#sec-setup\" class=\"qmd-xref\">Section&nbsp;2.1</a>"),
+        "cross-chapter ref to a subsection not resolved"
+    );
+    // No unresolved marker should leak into the output once a target is known.
+    assert!(
+        !results.contains("data-qmd-xref=\"sec-methods\""),
+        "resolved cross-ref still carries its marker"
+    );
 }

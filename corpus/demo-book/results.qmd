@@ -1,6 +1,7 @@
 # Results
 
-What we found, building on @sec-methods.
+What we found, building on the methods in @sec-methods (in particular the
+configuration described in @sec-setup).
 
 ## Discussion
 
