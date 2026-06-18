@@ -55,6 +55,16 @@
     for (var j = 0; j < entries.length; j++) {
       entries[j].link.classList.toggle("qmd-toc-active", entries[j] === cur);
     }
+    // Collapse: expand only the active entry's branch (its <li> and ancestors), so
+    // a long TOC shows top-level entries plus the current section's subsections.
+    var open = [];
+    for (var node = cur && cur.link.parentNode; node && node.id !== "TOC"; node = node.parentNode) {
+      if (node.tagName === "LI") open.push(node);
+    }
+    var lis = toc.getElementsByTagName("li");
+    for (var k = 0; k < lis.length; k++) {
+      lis[k].classList.toggle("qmd-toc-expanded", open.indexOf(lis[k]) !== -1);
+    }
     var chip = document.getElementById("qmd-toc-cur"); // mobile pull-up handle label
     if (chip && cur) chip.textContent = cur.heading.textContent;
     if (cur) {

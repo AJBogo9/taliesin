@@ -154,6 +154,11 @@
          font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; }
   #TOC ul { list-style: none; margin: .2rem 0; padding-left: .9rem; }
   #TOC > ul { padding-left: 0; }
+  /* Collapse subsection lists; the scrollspy expands only the active section's
+     branch (qmd-toc-expanded on its <li> + ancestors), like Quarto's toc-expand,
+     so a long book/document shows top-level entries plus the current section. */
+  #TOC ul ul { display: none; }
+  #TOC li.qmd-toc-expanded > ul { display: block; }
   /* the transparent left border reserves the accent rail's space, so toggling the
      active entry never shifts the text; the client's scrollspy sets .qmd-toc-active */
   #TOC a { display: block; padding: .12rem 0 .12rem .6rem; border-left: 2px solid transparent;
@@ -186,6 +191,8 @@
     body.qmd-toc-sheet #TOC::before { content: ""; display: block; width: 40px; height: 5px;
       margin: .15rem auto .6rem; border-radius: 3px; background: var(--qmd-border); }
     body.qmd-toc-sheet #TOC a { padding-top: .45rem; padding-bottom: .45rem; }
+    /* the pull-up sheet shows the full tree (you tap any entry to navigate) */
+    body.qmd-toc-sheet #TOC ul ul { display: block; }
     body.qmd-toc-sheet.qmd-toc-open #TOC { transform: translateY(0); }
     /* dim backdrop behind the open sheet */
     body.qmd-toc-sheet #qmd-toc-backdrop { display: block; position: fixed; inset: 0; z-index: 10000;
