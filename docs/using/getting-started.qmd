@@ -106,6 +106,52 @@ deploys anywhere that serves files.
   form and the site/book builds copy referenced local assets next to the HTML, so
   the folder is self-contained.
 
+### Deploy with GitHub Actions
+
+A copy-paste workflow that builds on every push and publishes to GitHub Pages.
+Enable **Settings → Pages → Source: GitHub Actions** once, then drop this in
+`.github/workflows/deploy.yml`:
+
+```yaml
+name: Deploy
+on:
+  push: { branches: [main] }
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency: { group: pages, cancel-in-progress: true }
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install qmd-fast
+        # point at wherever qmd-fast lives; add --tag vX.Y for reproducible builds
+        run: cargo install --git https://github.com/you/qmd-fast --locked qmd-fast-server
+      - name: Build the site
+        run: qmd-fast build .          # website -> _site/   (a book emits _book/)
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: _site }
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
+```
+
+`build` **executes code cells**, so if your pages run `{python}` / `{r}`, add a
+step to install that interpreter plus `ipykernel` / `IRkernel` and set
+`QMD_FAST_PYTHON` / `QMD_FAST_R` — otherwise those cells render as source in CI.
+
 ::: {.callout-note}
 The interactive Observable/Three.js demos fetch their runtimes from a CDN and
 need to be served over `http(s)` (not opened from `file://`). Once deployed — or
