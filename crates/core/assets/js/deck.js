@@ -98,16 +98,63 @@
   // A fragment is any `.fragment` element or a list item inside `.incremental`,
   // in document order. They start hidden (via visibility, so layout + shrink-to-
   // fit are unaffected) and reveal one per forward step before the slide advances.
+  // A slide's ordered "steps": each `.fragment`/`.incremental` item is a reveal
+  // step; a `pre[data-code-lines]` with K `|`-separated segments contributes K-1
+  // steps (segment 0 is the slide's base highlight, applied before any step).
+  var FRAG_SEL = '.fragment, .incremental > ul > li, .incremental > ol > li';
   function fragsOf(slide) {
-    return slide ? Array.prototype.slice.call(
-      slide.querySelectorAll('.fragment, .incremental > ul > li, .incremental > ol > li')
-    ) : [];
+    if (!slide) return [];
+    var steps = [];
+    slide.querySelectorAll(FRAG_SEL + ', pre[data-code-lines]').forEach(function (node) {
+      if (node.tagName === 'PRE') {
+        var segs = node.getAttribute('data-code-lines').split('|');
+        for (var i = 1; i < segs.length; i++) steps.push({ code: node, seg: segs[i] });
+      } else {
+        steps.push({ frag: node });
+      }
+    });
+    return steps;
   }
   function fragCount() { return fragsOf(currentSlide()).length; }
   function applyFragments() {
-    var f = fragsOf(currentSlide());
-    if (deck.frag > f.length) deck.frag = f.length;
-    f.forEach(function (el, i) { el.classList.toggle('qmd-frag-visible', i < deck.frag); });
+    var slide = currentSlide();
+    if (!slide) return;
+    var steps = fragsOf(slide);
+    if (deck.frag > steps.length) deck.frag = steps.length;
+    // base state: every code block to its segment 0, every fragment hidden
+    slide.querySelectorAll('pre[data-code-lines]').forEach(function (pre) {
+      highlightLines(pre, pre.getAttribute('data-code-lines').split('|')[0]);
+    });
+    slide.querySelectorAll(FRAG_SEL).forEach(function (el) { el.classList.remove('qmd-frag-visible'); });
+    // then apply each taken step in order (later code steps overwrite earlier)
+    for (var i = 0; i < deck.frag; i++) {
+      var s = steps[i];
+      if (s.frag) s.frag.classList.add('qmd-frag-visible');
+      else highlightLines(s.code, s.seg);
+    }
+  }
+  // Highlight the lines named by `spec` ("3-5", "1,4", "all", "") in a code block,
+  // dimming the rest. "all"/empty clears the dim.
+  function highlightLines(pre, spec) {
+    var lines = pre.querySelectorAll('.qhl-ln');
+    spec = (spec || '').trim();
+    if (!spec || spec === 'all') {
+      pre.classList.remove('qhl-lines-active');
+      lines.forEach(function (l) { l.classList.remove('qhl-ln-hl'); });
+      return;
+    }
+    var on = parseLineSpec(spec);
+    pre.classList.add('qhl-lines-active');
+    lines.forEach(function (l, i) { l.classList.toggle('qhl-ln-hl', on.has(i + 1)); });
+  }
+  function parseLineSpec(spec) {
+    var on = new Set();
+    spec.split(',').forEach(function (part) {
+      var m = part.trim().match(/^(\d+)\s*-\s*(\d+)$/);
+      if (m) { for (var n = +m[1]; n <= +m[2]; n++) on.add(n); }
+      else if (/^\d+$/.test(part.trim())) on.add(+part.trim());
+    });
+    return on;
   }
   // A fragment step doesn't go through commit(), so it must render the right view
   // for the current mode AND broadcast, so the other window (audience or speaker

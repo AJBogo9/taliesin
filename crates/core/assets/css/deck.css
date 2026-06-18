@@ -143,6 +143,20 @@ body { background: #fff; }
 .reveal.overview .incremental > ul > li,
 .reveal.overview .incremental > ol > li { opacity: 1 !important; visibility: visible !important; }
 
+/* Code line highlighting / stepping (code-line-numbers). Lines are block so the
+   highlight + dim span the full code width; the copy button reads innerText, which
+   still reconstructs the breaks. deck.js toggles .qhl-lines-active / .qhl-ln-hl. */
+.reveal pre[data-code-lines] .qhl-ln { display: block; }
+.reveal pre.qhl-lines-active .qhl-ln { opacity: .3; }
+.reveal pre.qhl-lines-active .qhl-ln-hl {
+  opacity: 1;
+  background: color-mix(in srgb, var(--deck-accent, #4c6ef5) 13%, transparent);
+  box-shadow: inset .18em 0 0 var(--deck-accent, #4c6ef5);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .reveal pre[data-code-lines] .qhl-ln { transition: opacity .3s ease; }
+}
+
 /* Presenter (speaker) window: a dark control surface with live current + next
    previews (iframes), the slide's notes, and a timer + clock. Built by deck.js
    when the page is opened at ?qmd=speaker; stays in sync with the audience. */

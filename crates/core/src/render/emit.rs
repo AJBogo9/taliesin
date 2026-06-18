@@ -70,9 +70,18 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
                         html_escape(summary)
                     ));
                 } else {
-                    out.push_str(&format!(
-                        "<pre{attrs}><code{class}>{highlighted}</code></pre>"
-                    ));
+                    // `code-line-numbers` wraps each line so a deck can highlight /
+                    // step through them; absent, the code block is emitted unchanged.
+                    match code_line_numbers(&cb.info, &cb.literal) {
+                        Some(spec) => out.push_str(&format!(
+                            "<pre{attrs} data-code-lines=\"{}\"><code{class}>{}</code></pre>",
+                            escape_attr(&spec),
+                            wrap_code_lines(&highlighted),
+                        )),
+                        None => out.push_str(&format!(
+                            "<pre{attrs}><code{class}>{highlighted}</code></pre>"
+                        )),
+                    }
                 }
             }
         }
@@ -117,6 +126,83 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
         // Unknown/unhandled wrappers degrade to their inner content.
         _ => emit_children(node, out),
     }
+}
+
+/// The `code-line-numbers` spec for a code block: from a `{python}` cell option
+/// (`#| code-line-numbers: "1|3-5"`) or a fenced attribute
+/// (```` ```{.python code-line-numbers="1|3-5"} ````). `None` if absent. The spec
+/// is `|`-separated steps, each a comma list of line numbers / `a-b` ranges /
+/// `all` (e.g. `"1|3-5|all"`).
+fn code_line_numbers(info: &str, literal: &str) -> Option<String> {
+    if let Some(v) = cell_option(literal, "code-line-numbers") {
+        return Some(v.trim_matches(['"', '\'']).to_string());
+    }
+    let rest = &info[info.find("code-line-numbers=")? + "code-line-numbers=".len()..];
+    let mut chars = rest.chars();
+    match chars.next()? {
+        q @ ('"' | '\'') => rest[1..].find(q).map(|e| rest[1..1 + e].to_string()),
+        _ => {
+            let end = rest.find([' ', '}', '\t']).unwrap_or(rest.len());
+            Some(rest[..end].to_string())
+        }
+    }
+}
+
+/// Wrap each source line of already-highlighted code HTML in `<span class="qhl-ln">`
+/// so a deck can address individual lines. A highlight span left open across a
+/// newline is closed at the line end and reopened at the next line's start, so each
+/// line is self-contained. Lines are block-displayed (no trailing newline needed);
+/// the copy button reads `innerText`, which still reconstructs the line breaks.
+fn wrap_code_lines(html: &str) -> String {
+    let mut lines: Vec<String> = vec![String::new()];
+    let mut open: Vec<String> = Vec::new();
+    let mut rest = html;
+    while !rest.is_empty() {
+        if let Some(after) = rest.strip_prefix("</span>") {
+            lines.last_mut().unwrap().push_str("</span>");
+            open.pop();
+            rest = after;
+        } else if rest.starts_with("<span") {
+            let end = rest.find('>').map(|e| e + 1).unwrap_or(rest.len());
+            let (tag, after) = rest.split_at(end);
+            lines.last_mut().unwrap().push_str(tag);
+            open.push(tag.to_string());
+            rest = after;
+        } else if let Some(after) = rest.strip_prefix('\n') {
+            let cur = lines.last_mut().unwrap();
+            (0..open.len()).for_each(|_| cur.push_str("</span>"));
+            lines.push(open.concat()); // reopen the still-open spans on the next line
+            rest = after;
+        } else {
+            let n = rest.chars().next().unwrap().len_utf8();
+            lines.last_mut().unwrap().push_str(&rest[..n]);
+            rest = &rest[n..];
+        }
+    }
+    // Drop trailing lines with no actual text (the source's final newline leaves a
+    // line that is just the highlighter's closing tags).
+    while lines.len() > 1 && !line_has_text(lines.last().unwrap()) {
+        lines.pop();
+    }
+    lines
+        .into_iter()
+        .map(|l| format!("<span class=\"qhl-ln\">{l}</span>"))
+        .collect()
+}
+
+/// Does an HTML line fragment contain any non-whitespace text outside of tags?
+/// (Entities like `&lt;` count as text — they carry no literal `<`/`>`.)
+fn line_has_text(s: &str) -> bool {
+    let mut in_tag = false;
+    for c in s.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag && !c.is_whitespace() => return true,
+            _ => {}
+        }
+    }
+    false
 }
 
 fn wrap<'a>(node: &'a AstNode<'a>, tag: &str, out: &mut String) {

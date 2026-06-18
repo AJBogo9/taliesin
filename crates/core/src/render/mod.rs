@@ -85,6 +85,9 @@ pub enum DocFormat {
 pub struct RenderedDoc {
     pub title: Option<String>,
     pub subtitle: Option<String>,
+    /// Front-matter `description`, used for the SEO/OpenGraph meta on a standalone
+    /// page (site pages get richer per-page meta from their `Page`).
+    pub description: Option<String>,
     pub format: DocFormat,
     /// Whether this doc shows a table of contents. For a standalone render this
     /// is the front-matter `toc:` (default off); inside a site it is recomputed
@@ -565,6 +568,7 @@ fn render_internal(
     RenderedDoc {
         title,
         subtitle,
+        description,
         format,
         // Standalone default: a TOC only when the page asked for one. The site
         // path overrides this via `page_toc` using `toc_explicit`.
@@ -576,6 +580,29 @@ fn render_internal(
         warnings,
         blocks,
     }
+}
+
+/// OpenGraph / Twitter-card / SEO `<meta>` for a standalone document, from its own
+/// front matter. A single file has no site URL, so there's no canonical/og:url or
+/// absolute image — just the text tags that make a shared link or search result
+/// meaningful. (Site pages get the richer, URL-aware set from `site::meta`.)
+fn social_meta_head(title: Option<&str>, description: Option<&str>) -> String {
+    let meta = |attr: &str, key: &str, val: &str| {
+        format!("\n<meta {attr}=\"{key}\" content=\"{}\">", escape_attr(val))
+    };
+    let mut h = String::new();
+    if let Some(d) = description.filter(|s| !s.is_empty()) {
+        h.push_str(&meta("name", "description", d));
+        h.push_str(&meta("property", "og:description", d));
+        h.push_str(&meta("name", "twitter:description", d));
+    }
+    h.push_str(&meta("property", "og:type", "article"));
+    if let Some(t) = title.filter(|s| !s.is_empty()) {
+        h.push_str(&meta("property", "og:title", t));
+        h.push_str(&meta("name", "twitter:title", t));
+    }
+    h.push_str(&meta("name", "twitter:card", "summary"));
+    h
 }
 
 /// Build the visible title-block header from front-matter metadata (title +
@@ -1113,7 +1140,7 @@ fn html_page_inner(doc: &RenderedDoc, fallback_title: &str, site: Option<&SiteCt
     };
     // Site-level `format: html:` includes (from `_quarto.yml`) apply to every page
     // first; the page's own front-matter includes follow.
-    let includes = match site {
+    let mut includes = match site {
         Some(s) => {
             let mut merged = s.includes.clone();
             merged.merge(&doc.includes);
@@ -1121,6 +1148,15 @@ fn html_page_inner(doc: &RenderedDoc, fallback_title: &str, site: Option<&SiteCt
         }
         None => doc.includes.clone(),
     };
+    // A standalone doc has no site chrome, so emit its OpenGraph/SEO meta here from
+    // its own front matter. Site pages already carry richer per-page meta via the
+    // chrome includes, so this only runs off-site (`site` is `None`).
+    if site.is_none() {
+        includes.in_header.push_str(&social_meta_head(
+            doc.title.as_deref(),
+            doc.description.as_deref(),
+        ));
+    }
     let favicon = match site {
         Some(s) if !s.favicon.is_empty() => favicon_link(&s.favicon),
         // No configured favicon (a book, or any project that sets none): fall back
@@ -2781,6 +2817,34 @@ mod tests {
         assert!(
             !page.contains("jsdelivr") || !page.contains("reveal.js@"),
             "the deck must not load reveal.js from a CDN"
+        );
+    }
+
+    #[test]
+    fn code_line_numbers_wraps_lines_for_stepping() {
+        let page = render_html_page(
+            "---\nformat: revealjs\n---\n\n## S\n\n```{.python code-line-numbers=\"1|2\"}\na = 1\nb = 2\n```\n",
+            "fallback",
+        );
+        assert!(
+            page.contains("data-code-lines=\"1|2\""),
+            "missing line spec"
+        );
+        // two source lines -> two line spans (the trailing-newline line is dropped).
+        assert_eq!(
+            page.matches("class=\"qhl-ln\"").count(),
+            2,
+            "expected one line span per source line"
+        );
+        // a code block without the attribute is left unwrapped.
+        let plain = render_html_page(
+            "---\nformat: revealjs\n---\n\n## S\n\n```python\na = 1\n```\n",
+            "fb",
+        );
+        // (check the attribute, not bare "qhl-ln" — the inlined CSS mentions `.qhl-ln`.)
+        assert!(
+            !plain.contains("class=\"qhl-ln\""),
+            "plain code should not be line-wrapped"
         );
     }
 
