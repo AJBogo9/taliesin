@@ -109,6 +109,7 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
 
     let router = Router::new()
         .route("/favicon.ico", get(favicon))
+        .route("/feed.xml", get(feed_xml))
         .route("/ws", get(ws_handler))
         .fallback(page_or_asset)
         .with_state(app.clone());
@@ -151,6 +152,22 @@ async fn favicon() -> impl IntoResponse {
         [(axum::http::header::CONTENT_TYPE, "image/svg+xml")],
         FAVICON,
     )
+}
+
+/// The site's RSS feed, matching what `build` writes to `feed.xml`. 404 when the
+/// project has no feed (a book, or a website without a `url:` / posts).
+async fn feed_xml(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
+    match app.site.lock().rss_feed() {
+        Some(xml) => (
+            [(
+                axum::http::header::CONTENT_TYPE,
+                "application/rss+xml; charset=utf-8",
+            )],
+            xml,
+        )
+            .into_response(),
+        None => axum::http::StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 /// Resolve a request to a page (rendered live) or a static asset under the root.

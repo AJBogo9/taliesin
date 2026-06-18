@@ -104,6 +104,7 @@ pub struct Site {
 mod book;
 pub use book::{Book, BookEntry};
 use book::{book_pages, build_book};
+mod feed;
 mod search;
 mod xref;
 pub use xref::XrefTarget;
@@ -157,6 +158,21 @@ impl Site {
         self.book.is_some()
     }
 
+    /// The site's RSS 2.0 feed (a website with a configured `url:` and at least
+    /// one post), or `None`. Written to `feed.xml` by the build and served by the
+    /// preview.
+    pub fn rss_feed(&self) -> Option<String> {
+        feed::rss(self)
+    }
+
+    /// Cheap check that a feed will be produced — gates the discovery `<link>` and
+    /// the `feed.xml` route without rebuilding the whole feed.
+    fn feed_enabled(&self) -> bool {
+        !self.is_book()
+            && self.config.url.as_deref().is_some_and(|u| !u.is_empty())
+            && self.pages.iter().any(|p| p.is_post)
+    }
+
     /// The output directory `build` writes to (default `_site`, or `_book` for a
     /// book, matching Quarto).
     pub fn output_dir(&self) -> &str {
@@ -185,6 +201,17 @@ impl Site {
             _ => String::new(),
         };
         let book = self.is_book();
+        // Auto-discovery for the RSS feed: a root-relative `<link>` in the head so
+        // feed readers (and the browser) find `feed.xml` from any page depth.
+        let mut includes = self.includes.clone();
+        if self.feed_enabled() {
+            let title = self.config.title.as_deref().unwrap_or("RSS");
+            includes.in_header.push_str(&format!(
+                "\n<link rel=\"alternate\" type=\"application/rss+xml\" title=\"{}\" href=\"{}feed.xml\">",
+                crate::escape_attr(title),
+                "../".repeat(depth),
+            ));
+        }
         // The cross-page search index (+ how to resolve a result's page URL from
         // this page's depth). Empty when there are no entries; injected only where
         // the search palette also rides along (TOC pages).
@@ -214,7 +241,7 @@ impl Site {
             },
             book_sidebar: book.then(|| self.sidebar_html(page, depth)),
             wide: page.page_layout.as_deref() == Some("full"),
-            includes: self.includes.clone(),
+            includes,
             favicon,
             search_index,
         }
@@ -574,12 +601,14 @@ impl Site {
     }
 
     /// The slim site footer. Footer item text is treated as raw HTML (icon SVGs),
-    /// per the trusted-source model. The RSS/feed link is dropped (unused).
+    /// per the trusted-source model. A configured `.xml` link resolves to the
+    /// generated `feed.xml`.
     fn footer_html(&self, depth: usize) -> String {
         let Some(footer) = &self.config.footer else {
             return String::new();
         };
         let up = "../".repeat(depth);
+        let feed = self.feed_enabled();
         let group = |items: &[NavItem]| -> String {
             let mut g = String::new();
             for it in items {
@@ -593,8 +622,16 @@ impl Site {
                     None => (it.text.clone().unwrap_or_default(), String::new()),
                 };
                 match it.href.as_deref() {
-                    // Drop the RSS/Atom feed link — deliberately unsupported.
-                    Some(h) if h.ends_with(".xml") => continue,
+                    // A configured `.xml` link (e.g. Quarto's `blog.xml`) points to
+                    // the generated feed.xml — or is dropped when there's no feed.
+                    Some(h) if h.ends_with(".xml") => {
+                        if !feed {
+                            continue;
+                        }
+                        g.push_str(&format!(
+                            "<a class=\"qmd-foot-item\"{aria} href=\"{up}feed.xml\">{content}</a>"
+                        ));
+                    }
                     Some(h) => {
                         g.push_str(&format!(
                             "<a class=\"qmd-foot-item\"{aria} href=\"{}\">{content}</a>",

@@ -294,8 +294,25 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
         !blog.contains("href=\"blog.qmd\""),
         "raw .qmd nav link leaked"
     );
-    // The RSS/feed link is dropped.
-    assert!(!blog.contains("blog.xml"), "RSS link should be dropped");
+    // The RSS feed: the discovery <link> + the footer's `.xml` link both resolve
+    // to the generated feed.xml; the old Quarto `blog.xml` name is rewritten away.
+    assert!(blog.contains("feed.xml"), "RSS feed link missing");
+    assert!(
+        !blog.contains("blog.xml"),
+        "old Quarto .xml feed name not rewritten"
+    );
+    assert!(
+        blog.contains("application/rss+xml"),
+        "RSS discovery <link> missing"
+    );
+    // The website emits an RSS 2.0 feed with the posts as absolute-linked items.
+    let feed = site.rss_feed().expect("tech-blog has an RSS feed");
+    assert!(feed.contains("<rss version=\"2.0\""), "not an RSS 2.0 feed");
+    assert!(feed.contains("<item>"), "feed has no items");
+    assert!(
+        feed.contains("<link>https://"),
+        "feed item links not absolute"
+    );
 
     // A post carries a "back to the blog listing" button and rewrites cross-page
     // `.qmd` links.

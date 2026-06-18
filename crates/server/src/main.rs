@@ -306,8 +306,18 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
              (set QMD_FAST_PYTHON to a python with ipykernel)",
         );
     }
+    // RSS feed for a website (posts + a configured `url:`), written alongside the
+    // pages so feed readers and the head `<link>` resolve.
+    let mut feed = "";
+    if let Some(xml) = site.rss_feed() {
+        match std::fs::write(out.join("feed.xml"), xml) {
+            Ok(()) => feed = "  ·  feed.xml",
+            Err(e) => log::warn(&format!("cannot write feed.xml: {e}")),
+        }
+    }
+
     log::built(&format!(
-        "{}  ·  {pages} page{}  ·  {assets} asset{}",
+        "{}  ·  {pages} page{}  ·  {assets} asset{}{feed}",
         out.display(),
         if pages == 1 { "" } else { "s" },
         if assets == 1 { "" } else { "s" },
