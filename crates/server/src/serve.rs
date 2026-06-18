@@ -44,6 +44,9 @@ struct DocState {
     toc: bool,
     theme_css: String,
     theme_default: String,
+    /// The doc's front-matter `include-*`/`css` (and any format-extension theme),
+    /// injected into the page head/body so a single-doc preview matches the build.
+    includes: qmd_fast_core::render::PageIncludes,
     blocks: Vec<Block>,
     diagnostics: Vec<Diagnostic>,
     /// True while the last render failed, so the next success can re-mount fully
@@ -111,6 +114,7 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         d.toc = doc.toc;
         d.theme_css = doc.theme_css;
         d.theme_default = doc.theme_default;
+        d.includes = doc.includes;
         d.blocks = doc.blocks;
     }
 
@@ -238,7 +242,7 @@ fn render_doc(app: &AppState) -> Option<RenderedDoc> {
 // --- HTTP ---------------------------------------------------------------
 
 async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
-    let (format, toc, theme_css, theme_default, ojs, body) = {
+    let (format, toc, theme_css, theme_default, includes, ojs, body) = {
         let d = app.doc.lock().unwrap();
         let ojs = d
             .blocks
@@ -249,6 +253,7 @@ async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
             d.toc,
             d.theme_css.clone(),
             d.theme_default.clone(),
+            d.includes.clone(),
             ojs,
             d.body_html(),
         )
@@ -268,6 +273,7 @@ async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
         ojs,
         doc_path: &doc_path.to_string_lossy(),
         base_dir: &base_dir.to_string_lossy(),
+        includes: &includes,
         body: &body,
     };
     Html(index_html(&ctx))
@@ -282,6 +288,9 @@ struct PageCtx<'a> {
     ojs: bool,
     doc_path: &'a str,
     base_dir: &'a str,
+    /// The doc's front-matter `include-*`/`css` + format-extension theme, injected
+    /// into the page head/body (so a single-doc deck's theme + plugin appear live).
+    includes: &'a qmd_fast_core::render::PageIncludes,
     /// The rendered body, server-rendered into the page so content shows on the
     /// first paint (the websocket then only drives live updates).
     body: &'a str,
@@ -502,9 +511,11 @@ fn blog_index_html(ctx: &PageCtx) -> String {
 {code_head}
 {ojs_head}
 {theme}
+{include_in_header}
 <style>{status_css}</style>
 </head>
 <body{body_attr}>
+{include_before_body}
 <main id="qmd-root">{body}</main>
 {toc_nav}
 <div id="qmd-controls"></div>
@@ -514,6 +525,7 @@ fn blog_index_html(ctx: &PageCtx) -> String {
 {js}
 </script>
 {ojs_init}
+{include_after_body}
 </body>
 </html>
 "#,
@@ -522,6 +534,9 @@ fn blog_index_html(ctx: &PageCtx) -> String {
         code_head = qmd_fast_core::code_head(),
         code_scripts = qmd_fast_core::code_scripts(),
         status_css = STATUS_CSS,
+        include_in_header = ctx.includes.in_header,
+        include_before_body = ctx.includes.before_body,
+        include_after_body = ctx.includes.after_body,
         js = CLIENT_JS,
         body = ctx.body,
     )
@@ -531,6 +546,15 @@ fn blog_index_html(ctx: &PageCtx) -> String {
 /// into `.reveal > .slides` and (re)syncing reveal as blocks change. The
 /// `QMD_FORMAT` flag switches the client into deck mode.
 fn reveal_index_html(ctx: &PageCtx) -> String {
+    // A contributed `theme:` (e.g. from a reveal format extension) plus the doc's
+    // `include-*`. The theme/header come after reveal's own stylesheets so they
+    // win; the after-body include (a plugin's `<script src>` + `registerPlugin`)
+    // runs after the reveal library and before the preview client initializes it.
+    let theme = if ctx.theme_css.trim().is_empty() {
+        String::new()
+    } else {
+        format!("<style>{}</style>", ctx.theme_css)
+    };
     format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -541,9 +565,12 @@ fn reveal_index_html(ctx: &PageCtx) -> String {
 <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
 {head}
 {code_head}
+{theme}
+{include_in_header}
 <style>{status_css}</style>
 </head>
 <body>
+{include_before_body}
 <div class="reveal">
 <div class="slides" id="qmd-root">{body}</div>
 </div>
@@ -551,6 +578,7 @@ fn reveal_index_html(ctx: &PageCtx) -> String {
 {reveal_script}
 {code_scripts}
 <script>window.QMD_FORMAT = "reveal"; window.QMD_SSR = true;</script>
+{include_after_body}
 <script>
 {js}
 </script>
@@ -561,6 +589,9 @@ fn reveal_index_html(ctx: &PageCtx) -> String {
         code_head = qmd_fast_core::code_head(),
         code_scripts = qmd_fast_core::code_scripts(),
         status_css = STATUS_CSS,
+        include_in_header = ctx.includes.in_header,
+        include_before_body = ctx.includes.before_body,
+        include_after_body = ctx.includes.after_body,
         reveal_script = qmd_fast_core::reveal_client_script(),
         js = CLIENT_JS,
         body = ctx.body,
@@ -815,6 +846,7 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         d.toc = doc.toc;
         d.theme_css = doc.theme_css;
         d.theme_default = doc.theme_default;
+        d.includes = doc.includes;
         d.blocks = blocks;
         d.diagnostics = diags;
         // Broadcast under the lock so connecting clients can't interleave.
