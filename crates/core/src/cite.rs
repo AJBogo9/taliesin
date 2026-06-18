@@ -535,19 +535,19 @@ fn rewrite_text(
                     continue;
                 }
             }
-        } else if chars[i] == '@' {
-            if let Some((label, anchor, len)) = parse_xref(&chars[i..]) {
-                // A resolved number renders "Figure&nbsp;3"; otherwise just the label.
-                let text = match xrefs.get(&anchor) {
-                    Some(n) => format!("{label}&nbsp;{n}"),
-                    None => label.to_string(),
-                };
-                out.push_str(&format!(
-                    "<a href=\"#{anchor}\" class=\"qmd-xref\">{text}</a>"
-                ));
-                i += len;
-                continue;
-            }
+        } else if chars[i] == '@'
+            && let Some((label, anchor, len)) = parse_xref(&chars[i..])
+        {
+            // A resolved number renders "Figure&nbsp;3"; otherwise just the label.
+            let text = match xrefs.get(&anchor) {
+                Some(n) => format!("{label}&nbsp;{n}"),
+                None => label.to_string(),
+            };
+            out.push_str(&format!(
+                "<a href=\"#{anchor}\" class=\"qmd-xref\">{text}</a>"
+            ));
+            i += len;
+            continue;
         }
         out.push(chars[i]);
         i += 1;

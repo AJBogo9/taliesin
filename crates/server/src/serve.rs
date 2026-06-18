@@ -353,12 +353,13 @@ pub(crate) fn percent_decode(s: &str) -> String {
     let mut out = Vec::with_capacity(b.len());
     let mut i = 0;
     while i < b.len() {
-        if b[i] == b'%' && i + 2 < b.len() {
-            if let Ok(byte) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
-                out.push(byte);
-                i += 3;
-                continue;
-            }
+        if b[i] == b'%'
+            && i + 2 < b.len()
+            && let Ok(byte) = u8::from_str_radix(&s[i + 1..i + 3], 16)
+        {
+            out.push(byte);
+            i += 3;
+            continue;
         }
         out.push(b[i]);
         i += 1;
@@ -701,15 +702,15 @@ fn spawn_watcher(app: Arc<AppState>, mut signal_rx: mpsc::UnboundedReceiver<()>)
     std::thread::spawn(move || {
         let mut watcher =
             match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-                if let Ok(ev) = res {
-                    if matches!(
+                if let Ok(ev) = res
+                    && matches!(
                         ev.kind,
                         notify::EventKind::Modify(_)
                             | notify::EventKind::Create(_)
                             | notify::EventKind::Remove(_)
-                    ) {
-                        let _ = signal_tx.send(());
-                    }
+                    )
+                {
+                    let _ = signal_tx.send(());
                 }
             }) {
                 Ok(w) => w,

@@ -236,7 +236,7 @@ impl Kernel {
         let (iopub, shell) = tokio::select! {
             r = connect => r?,
             _ = child.wait() => {
-                return Err(startup_failure(&spec, child_stderr).await);
+                return Err(startup_failure(spec, child_stderr).await);
             }
         };
 

@@ -248,6 +248,7 @@ impl Executor {
     ///     retrying, so a missing/bad interpreter doesn't re-hang every save, but a
     ///     fixed config recovers on its own within a few saves;
     ///   - otherwise (no kernel, not in backoff) we start one.
+    ///
     /// Logs the (often multi-second) boot so the wait is visible.
     async fn ensure_kernel(&mut self, lang: &'static str) {
         // Build the launch spec before borrowing the per-language state mutably.
@@ -263,10 +264,10 @@ impl Executor {
             state.kernel = None;
             state.cached.clear(); // kernel state is gone; re-run everything
         }
-        if let Some(at) = state.failed_at {
-            if at.elapsed() < KERNEL_RETRY_AFTER {
-                return; // still backing off; cells render as source
-            }
+        if let Some(at) = state.failed_at
+            && at.elapsed() < KERNEL_RETRY_AFTER
+        {
+            return; // still backing off; cells render as source
         }
         crate::log::kernel(&format!("starting {lang} ({})", program.display()));
         match Kernel::start(&spec).await {
