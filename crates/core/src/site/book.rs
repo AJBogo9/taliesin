@@ -93,6 +93,7 @@ fn chapter_heading(input: &Path) -> (Option<String>, bool) {
         return (None, false);
     };
     let mut in_fm = false;
+    let mut in_code = false;
     for (i, line) in src.lines().enumerate() {
         let t = line.trim_start();
         if i == 0 && t == "---" {
@@ -103,6 +104,15 @@ fn chapter_heading(input: &Path) -> (Option<String>, bool) {
             if t == "---" {
                 in_fm = false;
             }
+            continue;
+        }
+        // Skip fenced code blocks so a `# comment` inside ```yaml/```sh isn't
+        // mistaken for the chapter's H1.
+        if t.starts_with("```") || t.starts_with("~~~") {
+            in_code = !in_code;
+            continue;
+        }
+        if in_code {
             continue;
         }
         if let Some(rest) = t.strip_prefix("# ") {
