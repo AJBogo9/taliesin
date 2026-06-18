@@ -2938,6 +2938,24 @@ mod tests {
         );
     }
 
+    #[test]
+    fn magic_move_div_wraps_code_lines() {
+        let page = render_html_page(
+            "---\nformat: revealjs\n---\n\n## S\n\n::: {.magic-move}\n```js\na = 1\n```\n\n```js\na = 2\nb = 3\n```\n:::\n",
+            "fb",
+        );
+        assert!(
+            page.contains("class=\"magic-move\""),
+            "magic-move div missing"
+        );
+        // both blocks' lines are wrapped so the engine can match/glide them (1 + 2 = 3).
+        assert_eq!(
+            page.matches("class=\"qhl-ln\"").count(),
+            3,
+            "magic-move code blocks should be line-wrapped"
+        );
+    }
+
     // --- books: heading anchors, figures, toc ---
 
     #[test]

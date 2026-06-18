@@ -153,7 +153,7 @@ fn code_line_numbers(info: &str, literal: &str) -> Option<String> {
 /// newline is closed at the line end and reopened at the next line's start, so each
 /// line is self-contained. Lines are block-displayed (no trailing newline needed);
 /// the copy button reads `innerText`, which still reconstructs the line breaks.
-fn wrap_code_lines(html: &str) -> String {
+pub(crate) fn wrap_code_lines(html: &str) -> String {
     let mut lines: Vec<String> = vec![String::new()];
     let mut open: Vec<String> = Vec::new();
     let mut rest = html;
@@ -192,6 +192,31 @@ fn wrap_code_lines(html: &str) -> String {
 
 /// Does an HTML line fragment contain any non-whitespace text outside of tags?
 /// (Entities like `&lt;` count as text — they carry no literal `<`/`>`.)
+/// Line-wrap the code inside a rendered `<pre><code>…</code></pre>` block (used for
+/// magic-move blocks, which need addressable lines to morph between). Returns the
+/// html unchanged if it isn't a code block or is already line-wrapped.
+pub(crate) fn wrap_pre_lines(html: &str) -> String {
+    if html.contains("class=\"qhl-ln\"") || !html.contains("<code") {
+        return html.to_string();
+    }
+    let Some(cs) = html.find("<code") else {
+        return html.to_string();
+    };
+    let Some(open_rel) = html[cs..].find('>') else {
+        return html.to_string();
+    };
+    let open_end = cs + open_rel + 1;
+    let Some(close) = html.rfind("</code>") else {
+        return html.to_string();
+    };
+    format!(
+        "{}{}{}",
+        &html[..open_end],
+        wrap_code_lines(&html[open_end..close]),
+        &html[close..]
+    )
+}
+
 fn line_has_text(s: &str) -> bool {
     let mut in_tag = false;
     for c in s.chars() {

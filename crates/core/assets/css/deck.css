@@ -123,6 +123,18 @@ body { background: #fff; }
   border-color: #4c8dff;
 }
 
+/* Magic-move: the code blocks in a `::: {.magic-move}` are stacked in one grid
+   cell (so the container sizes to the tallest); deck.js shows the active block and,
+   on a step, glides matched lines + fades new/old ones between consecutive blocks. */
+.reveal .magic-move { display: grid; }
+.reveal .magic-move > pre {
+  grid-area: 1 / 1;
+  margin: 0;
+  opacity: 0;
+  transition: opacity .4s ease;
+}
+.reveal .magic-move > pre.qmd-mm-active { opacity: 1; }
+
 /* Auto-animate target: suppress the default fade-in so the matched-element FLIP
    (driven by deck.js with inline transforms) isn't overridden by the keyframe. */
 .reveal .slides > section.qmd-aa,
@@ -173,7 +185,7 @@ html.qmd-print .qmd-bg { display: none; } /* per-slide backgrounds aren't in the
 /* Code line highlighting / stepping (code-line-numbers). Lines are block so the
    highlight + dim span the full code width; the copy button reads innerText, which
    still reconstructs the breaks. deck.js toggles .qhl-lines-active / .qhl-ln-hl. */
-.reveal pre[data-code-lines] .qhl-ln { display: block; }
+.reveal pre .qhl-ln { display: block; } /* wrapped lines (code-line-numbers + magic-move) stack */
 .reveal pre.qhl-lines-active .qhl-ln { opacity: .3; }
 .reveal pre.qhl-lines-active .qhl-ln-hl {
   opacity: 1;

@@ -269,6 +269,14 @@ fn build_container(
         format!(
             "<div class=\"qmd-layout\" style=\"display:grid;grid-template-columns:repeat({ncol},minmax(0,1fr));gap:1rem\"{data}>{body}</div>"
         )
+    } else if attrs.classes.iter().any(|c| c == "magic-move") {
+        // Magic-move: the contained code blocks are animation steps. Line-wrap each so
+        // the deck engine can match + glide lines between consecutive blocks.
+        let body: String = inner
+            .iter()
+            .map(|b| super::emit::wrap_pre_lines(&b.html))
+            .collect();
+        format!("<div class=\"magic-move\"{data}>{body}</div>")
     } else {
         let mut class = attrs.classes.join(" ");
         if class.is_empty() {

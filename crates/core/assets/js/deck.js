@@ -209,8 +209,11 @@
   function fragsOf(slide) {
     if (!slide) return [];
     var steps = [];
-    slide.querySelectorAll(FRAG_SEL + ', pre[data-code-lines]').forEach(function (node) {
-      if (node.tagName === 'PRE') {
+    slide.querySelectorAll(FRAG_SEL + ', pre[data-code-lines], .magic-move').forEach(function (node) {
+      if (node.classList.contains('magic-move')) {
+        var n = node.querySelectorAll(':scope > pre').length;
+        for (var k = 1; k < n; k++) steps.push({ mm: node }); // one step per block-to-block morph
+      } else if (node.tagName === 'PRE') {
         var segs = node.getAttribute('data-code-lines').split('|');
         for (var i = 1; i < segs.length; i++) steps.push({ code: node, seg: segs[i] });
       } else {
@@ -230,12 +233,56 @@
       highlightLines(pre, pre.getAttribute('data-code-lines').split('|')[0]);
     });
     slide.querySelectorAll(FRAG_SEL).forEach(function (el) { el.classList.remove('qmd-frag-visible'); });
+    var mmCount = new Map();
+    slide.querySelectorAll('.magic-move').forEach(function (d) { mmCount.set(d, 0); });
     // then apply each taken step in order (later code steps overwrite earlier)
     for (var i = 0; i < deck.frag; i++) {
       var s = steps[i];
       if (s.frag) s.frag.classList.add('qmd-frag-visible');
-      else highlightLines(s.code, s.seg);
+      else if (s.code) highlightLines(s.code, s.seg);
+      else if (s.mm) mmCount.set(s.mm, (mmCount.get(s.mm) || 0) + 1);
     }
+    mmCount.forEach(function (idx, div) { setOrMorphMM(div, idx); });
+  }
+  // Magic-move: show block `target` of a `.magic-move` div. On an in-slide step
+  // (deck.animSteps) it morphs from the previous block: matched lines (same text)
+  // glide to their new positions, new lines fade in, the old block fades out.
+  function mmBlocks(div) { return Array.prototype.slice.call(div.querySelectorAll(':scope > pre')); }
+  function lineText(l) { return (l.textContent || '').replace(/\s+/g, ' ').trim(); }
+  function setOrMorphMM(div, target) {
+    var pres = mmBlocks(div);
+    if (!pres.length) return;
+    target = Math.max(0, Math.min(target, pres.length - 1));
+    var prev = div.__mm;
+    if (deck.animSteps && prev != null && prev !== target) morphMM(div, pres, prev, target);
+    else pres.forEach(function (p, i) { p.classList.toggle('qmd-mm-active', i === target); });
+    div.__mm = target;
+  }
+  function morphMM(div, pres, from, to) {
+    var blockFrom = pres[from], blockTo = pres[to];
+    var scale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--qmd-deck-scale')) || 1;
+    var byText = {};
+    Array.prototype.forEach.call(blockFrom.querySelectorAll('.qhl-ln'), function (l) {
+      (byText[lineText(l)] || (byText[lineText(l)] = [])).push(l);
+    });
+    blockTo.classList.add('qmd-mm-active');
+    blockFrom.classList.remove('qmd-mm-active'); // fades out (CSS opacity transition)
+    Array.prototype.forEach.call(blockTo.querySelectorAll('.qhl-ln'), function (lt) {
+      var list = byText[lineText(lt)], st = lt.style;
+      if (list && list.length) { // matched line: glide from its old position
+        var lf = list.shift(), rf = lf.getBoundingClientRect(), rt = lt.getBoundingClientRect();
+        st.transition = 'none';
+        st.transform = 'translate(' + (rf.left - rt.left) / scale + 'px,' + (rf.top - rt.top) / scale + 'px)';
+        void lt.offsetWidth;
+        st.transition = 'transform .45s cubic-bezier(.2,.8,.2,1)';
+        st.transform = 'translate(0,0)';
+        setTimeout(function () { st.transition = ''; st.transform = ''; }, 480);
+      } else { // new line: fade in
+        st.opacity = '0'; st.transition = 'none'; void lt.offsetWidth;
+        st.transition = 'opacity .4s ease .12s'; st.opacity = '1';
+        setTimeout(function () { st.transition = ''; st.opacity = ''; }, 560);
+      }
+    });
   }
   // Highlight the lines named by `spec` ("3-5", "1,4", "all", "") in a code block,
   // dimming the rest. "all"/empty clears the dim.
@@ -264,8 +311,10 @@
   // for the current mode AND broadcast, so the other window (audience or speaker
   // preview) follows the reveal, not just slide changes.
   function fragChanged() {
+    deck.animSteps = true; // an in-slide step: let magic-move morph (vs. set on slide entry)
     if (deck.mode === 'speaker') updateSpeakerUI();
     else applyFragments();
+    deck.animSteps = false;
     broadcastState();
   }
   function revealNextFrag() {
@@ -527,6 +576,10 @@
     });
     rev.querySelectorAll(FRAG_SEL).forEach(function (e) { e.classList.add('qmd-frag-visible'); });
     rev.querySelectorAll('pre[data-code-lines]').forEach(function (p) { highlightLines(p, 'all'); });
+    rev.querySelectorAll('.magic-move').forEach(function (div) { // show the final block
+      var pres = mmBlocks(div);
+      pres.forEach(function (p, i) { p.classList.toggle('qmd-mm-active', i === pres.length - 1); });
+    });
     allSlides().forEach(fitSlide); // size every slide to its page (not just visited ones)
   }
   function exitPrint() {
