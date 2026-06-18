@@ -224,6 +224,31 @@ mod tests {
     }
 
     #[test]
+    fn reorder_reconstructs_via_remove_plus_insert() {
+        // There is no Move op: swapping a/b keeps one block's identity (b here,
+        // an anchor) and rebuilds the other as remove+insert. The trailing c
+        // (an anchor) stays untouched. This documents the content-hash-id
+        // limitation: a *moved* live block loses its runtime state.
+        let ops = diff_blocks(&ids(&["a", "b", "c"]), &ids(&["b", "a", "c"]));
+        assert!(
+            ops.iter().all(|op| !format!("{op:?}").contains("\"c\"")),
+            "the unmoved anchor c must not appear in any op: {ops:?}"
+        );
+        assert_eq!(
+            ops,
+            vec![
+                BlockOp::Remove {
+                    target_id: "a".into()
+                },
+                BlockOp::Insert {
+                    after_id: Some("b".into()),
+                    html: block("a").html
+                },
+            ]
+        );
+    }
+
+    #[test]
     fn unchanged_blocks_around_edit_are_untouched() {
         // a, <big live block L>, c ; edit only c.
         let old = ids(&["a", "L", "c"]);

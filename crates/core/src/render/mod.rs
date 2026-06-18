@@ -2205,6 +2205,57 @@ mod tests {
     }
 
     #[test]
+    fn unterminated_div_renders_content_without_a_container() {
+        // A `:::` open with no matching close forms no span: the fence line is
+        // blanked and the content renders as ordinary blocks (no crash, no
+        // stray `:::`, no wrapper div).
+        let doc = render_document("::: {.callout-note}\n\nOrphan body.\n");
+        let body = doc.body_html();
+        assert!(body.contains("Orphan body."), "got: {body}");
+        assert!(
+            !body.contains(":::"),
+            "fence marker must be stripped: {body}"
+        );
+        assert!(
+            !body.contains("callout"),
+            "no container without a close: {body}"
+        );
+    }
+
+    #[test]
+    fn stray_closing_fence_is_ignored() {
+        // A `:::` close with nothing open is dropped, not turned into an empty div.
+        let doc = render_document("A paragraph.\n\n:::\n");
+        let body = doc.body_html();
+        assert!(body.contains("A paragraph."), "got: {body}");
+        assert!(!body.contains(":::"), "got: {body}");
+        assert!(!body.contains("qmd-div"), "got: {body}");
+    }
+
+    #[test]
+    fn empty_div_emits_no_block() {
+        // An open immediately followed by a close contains no blocks, so it
+        // produces no container at all (the documented "empty fenced div emits
+        // no block" behaviour the listing injector relies on).
+        let doc = render_document("::: {.callout-note}\n:::\n");
+        assert!(doc.blocks.is_empty(), "got {} blocks", doc.blocks.len());
+    }
+
+    #[test]
+    fn nested_divs_group_inside_out() {
+        let doc = render_document("::: {.outer}\n\n::: {.inner}\n\nDeep text.\n\n:::\n\n:::\n");
+        assert_eq!(doc.blocks.len(), 1, "one outer container");
+        let h = &doc.blocks[0].html;
+        let outer = h.find("outer").expect("outer class");
+        let inner = h.find("inner").expect("inner class");
+        let text = h.find("Deep text.").expect("inner text");
+        assert!(
+            outer < inner && inner < text,
+            "outer wraps inner wraps text: {h}"
+        );
+    }
+
+    #[test]
     fn mermaid_block_emits_pre_mermaid_without_code() {
         // Both the executable cell form and a plain fence become a mermaid pre.
         for src in [
