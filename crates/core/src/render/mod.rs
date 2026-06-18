@@ -1224,7 +1224,7 @@ pub fn favicon_link(href: &str) -> String {
 }
 
 /// Heading level (1–6) for a block whose root element is `<hN ...>`/`<hN>`.
-fn block_heading_level(html: &str) -> Option<u8> {
+pub(crate) fn block_heading_level(html: &str) -> Option<u8> {
     let b = html.as_bytes();
     if b.len() >= 4 && b[0] == b'<' && b[1] == b'h' && b[2].is_ascii_digit() {
         let lvl = b[2] - b'0';

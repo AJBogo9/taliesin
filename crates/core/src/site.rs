@@ -19,7 +19,7 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::render::{self, Block, SiteCtx};
+use crate::render::{self, Block, SiteCtx, block_heading_level, escape_attr as esc};
 
 /// The root project config, parsed from `_quarto.yml`. Only the subset qmd-fast
 /// understands is modelled; unknown keys are ignored (Quarto compatibility —
@@ -1038,15 +1038,9 @@ fn rewrite_one_xref(
 }
 
 /// The heading level (1–6) of a block whose root element is `<hN …>`, else `None`.
+/// Delegates to the render crate's parser so the two never diverge.
 fn heading_level(html: &str) -> Option<usize> {
-    let bytes = html.as_bytes();
-    if bytes.first() == Some(&b'<')
-        && bytes.get(1) == Some(&b'h')
-        && let Some(d @ b'1'..=b'6') = bytes.get(2)
-    {
-        return Some((d - b'0') as usize);
-    }
-    None
+    block_heading_level(html).map(usize::from)
 }
 
 /// Insert a `header-section-number` span just after a heading's opening tag.
@@ -1549,22 +1543,6 @@ fn join_rel(from_rel: &str, target: &str) -> String {
         }
     }
     parts.join("/")
-}
-
-/// Minimal HTML-text escape for nav labels (the project-wide `html_escape` in §6
-/// will subsume this; kept local for now).
-fn esc(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for ch in s.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            _ => out.push(ch),
-        }
-    }
-    out
 }
 
 #[cfg(test)]

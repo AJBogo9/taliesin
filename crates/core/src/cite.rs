@@ -11,7 +11,7 @@
 //! plain-text runs (never inside tags, code, or math), so block sourcepos is
 //! untouched. The only structural change is appending a References block.
 
-use crate::render::Block;
+use crate::render::{Block, escape_attr as esc};
 use std::collections::HashMap;
 
 /// A parsed BibTeX database.
@@ -613,20 +613,6 @@ fn render_citation_group(inner: &str, cite_key: &mut impl FnMut(&str) -> usize) 
     } else {
         format!("[{}]", rendered.join(", "))
     }
-}
-
-fn esc(s: &str) -> String {
-    let mut out = String::new();
-    for ch in s.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            _ => out.push(ch),
-        }
-    }
-    out
 }
 
 #[cfg(test)]
