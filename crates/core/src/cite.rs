@@ -17,32 +17,190 @@ use std::collections::HashMap;
 /// A parsed BibTeX database.
 #[derive(Default)]
 pub struct Bibliography {
-    entries: HashMap<String, HashMap<String, String>>,
+    entries: HashMap<String, Entry>,
 }
 
+/// One parsed BibTeX entry: its `@type` (lowercased, e.g. `article`/`book`/
+/// `misc`) plus field values. The type drives IEEE per-type formatting.
+#[derive(Default)]
+struct Entry {
+    kind: String,
+    fields: HashMap<String, String>,
+}
+
+type Fields = HashMap<String, String>;
+
 impl Bibliography {
-    /// Format one entry as a reference string (HTML). `None` if unknown.
+    /// Format one entry as an IEEE reference string (HTML). `None` if unknown.
+    /// IEEE varies by entry type: article = quoted title + italic journal +
+    /// vol/no/pp; book = italic title + edition + publisher; everything else
+    /// (misc/online) = quoted title + `[Online]. Available:` link.
     fn format(&self, key: &str) -> Option<String> {
         let e = self.entries.get(key)?;
-        let mut parts: Vec<String> = Vec::new();
-        if let Some(a) = e.get("author") {
-            parts.push(esc(&format_authors(a)));
+        let f = &e.fields;
+        let body = match e.kind.as_str() {
+            "article" => fmt_article(f),
+            "book" | "inbook" | "incollection" => fmt_book(f),
+            _ => fmt_misc(f),
+        };
+        // Authors lead the entry (IEEE: "A. B. Author, <rest>").
+        let mut out = String::new();
+        if let Some(a) = f
+            .get("author")
+            .map(|a| format_authors(a))
+            .filter(|s| !s.is_empty())
+        {
+            out.push_str(&a);
+            out.push_str(", ");
         }
-        if let Some(t) = e.get("title") {
-            parts.push(format!("<em>{}</em>", esc(t)));
+        out.push_str(&body);
+        Some(out)
+    }
+}
+
+/// IEEE journal article: `"Title," Journal, vol. V, no. N, pp. P, Year.`
+fn fmt_article(f: &Fields) -> String {
+    let mut segs: Vec<String> = Vec::new();
+    if let Some(j) = f.get("journal").filter(|s| !s.is_empty()) {
+        segs.push(format!("<em>{}</em>", esc(&clean(j))));
+    }
+    if let Some(v) = f.get("volume").filter(|s| !s.is_empty()) {
+        segs.push(format!("vol. {}", esc(&clean(v))));
+    }
+    if let Some(n) = f.get("number").filter(|s| !s.is_empty()) {
+        segs.push(format!("no. {}", esc(&clean(n))));
+    }
+    if let Some(p) = f.get("pages").filter(|s| !s.is_empty()) {
+        segs.push(format!("pp. {}", esc(&clean_pages(p))));
+    }
+    if let Some(y) = f.get("year").filter(|s| !s.is_empty()) {
+        segs.push(esc(&clean(y)));
+    }
+    let mut out = quoted_title(f);
+    if !segs.is_empty() {
+        if !out.is_empty() {
+            out.push(' ');
         }
-        let venue = e
-            .get("journal")
-            .or_else(|| e.get("booktitle"))
-            .or_else(|| e.get("publisher"))
-            .or_else(|| e.get("organization"));
-        if let Some(v) = venue {
-            parts.push(esc(v));
+        out.push_str(&segs.join(", "));
+    }
+    out.push('.');
+    append_url(&mut out, f);
+    out
+}
+
+/// IEEE book: `Title, Nth ed. City: Publisher, Year.` (title italic).
+fn fmt_book(f: &Fields) -> String {
+    let mut out = String::new();
+    if let Some(t) = f.get("title").filter(|s| !s.is_empty()) {
+        out.push_str(&format!("<em>{}</em>", esc(&clean(t))));
+    }
+    if let Some(ed) = f.get("edition").filter(|s| !s.is_empty()) {
+        out.push_str(&format!(", {} ed.", ordinal(&clean(ed))));
+    }
+    // The edition already ends in a period ("ed."); don't double it.
+    if !out.ends_with('.') {
+        out.push('.');
+    }
+    let publisher = match (f.get("address"), f.get("publisher")) {
+        (Some(a), Some(p)) if !a.is_empty() => format!("{}: {}", clean(a), clean(p)),
+        (_, Some(p)) => clean(p),
+        _ => String::new(),
+    };
+    let mut segs: Vec<String> = Vec::new();
+    if !publisher.is_empty() {
+        segs.push(esc(&publisher));
+    }
+    if let Some(y) = f.get("year").filter(|s| !s.is_empty()) {
+        segs.push(esc(&clean(y)));
+    }
+    if !segs.is_empty() {
+        out.push(' ');
+        out.push_str(&segs.join(", "));
+        out.push('.');
+    }
+    append_url(&mut out, f);
+    out
+}
+
+/// IEEE misc / online (the fallback): `"Title," Year. [Online]. Available: URL.`
+fn fmt_misc(f: &Fields) -> String {
+    let mut out = quoted_title(f);
+    if let Some(y) = f.get("year").filter(|s| !s.is_empty()) {
+        out.push_str(&format!(" {}", esc(&clean(y))));
+    }
+    out.push('.');
+    append_url(&mut out, f);
+    if let Some(note) = f.get("note").filter(|s| !s.is_empty()) {
+        // Start a new sentence after a URL (which ends in `</a>`, not punctuation).
+        if !out.ends_with(['.', ' ']) {
+            out.push('.');
         }
-        if let Some(y) = e.get("year") {
-            parts.push(esc(y));
+        out.push_str(&format!(" {}.", esc(&clean(note))));
+    }
+    out
+}
+
+/// A title in IEEE quotes with the trailing comma inside the closing quote
+/// (`"Title,"`), ready for the venue/year to follow. Empty if no title.
+fn quoted_title(f: &Fields) -> String {
+    match f.get("title").filter(|s| !s.is_empty()) {
+        Some(t) => format!("\u{201c}{},\u{201d}", esc(&clean(t))),
+        None => String::new(),
+    }
+}
+
+/// Append `[Online]. Available: <link>` from `url` (or a `\url{}` in
+/// `howpublished`) when present.
+fn append_url(out: &mut String, f: &Fields) {
+    let url = f
+        .get("url")
+        .or_else(|| f.get("howpublished"))
+        .map(|u| clean(u))
+        .filter(|u| u.starts_with("http"));
+    if let Some(u) = url {
+        let u = esc(&u);
+        out.push_str(&format!(" [Online]. Available: <a href=\"{u}\">{u}</a>"));
+    }
+}
+
+/// Strip BibTeX/LaTeX cruft from a field value: `\url{}` wrappers, brace groups
+/// (capitalization guards), and the common backslash escapes.
+fn clean(s: &str) -> String {
+    let s = s
+        .replace("\\url", "")
+        .replace(['{', '}'], "")
+        .replace("\\&", "&")
+        .replace("\\%", "%")
+        .replace("\\_", "_")
+        .replace("\\#", "#")
+        .replace("\\$", "$");
+    s.trim().to_string()
+}
+
+/// Page ranges use an en dash (`12--34` -> `12\u{2013}34`).
+fn clean_pages(s: &str) -> String {
+    clean(s)
+        .replace("---", "\u{2013}")
+        .replace("--", "\u{2013}")
+}
+
+/// `4` -> `4th`, `21` -> `21st`; passes non-numeric editions through unchanged.
+fn ordinal(s: &str) -> String {
+    match s.trim().parse::<u32>() {
+        Ok(n) => {
+            let suffix = if (11..=13).contains(&(n % 100)) {
+                "th"
+            } else {
+                match n % 10 {
+                    1 => "st",
+                    2 => "nd",
+                    3 => "rd",
+                    _ => "th",
+                }
+            };
+            format!("{n}{suffix}")
         }
-        Some(parts.join(", "))
+        Err(_) => s.to_string(),
     }
 }
 
@@ -102,7 +260,7 @@ pub fn parse_bib(text: &str) -> Bibliography {
             i += 1;
         }
         if !key.is_empty() {
-            entries.insert(key, fields);
+            entries.insert(key, Entry { kind, fields });
         }
     }
     Bibliography { entries }
@@ -182,22 +340,77 @@ fn normalize_ws(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// "Bishop, Christopher M and Doe, Jane" -> "C. M. Bishop, J. Doe".
+/// IEEE author list (HTML). Initials precede the surname ("C. M. Bishop"); a
+/// `\u{201c}{Corporate Name}\u{201d}`-style braced author stays literal. Per the
+/// shipped ieee.csl (`et-al-min=7`, `et-al-use-first=1`), seven or more authors
+/// (or a trailing BibTeX `and others`) collapse to the first author + italic
+/// "et al.". Otherwise: "A and B" for two, "A, B, and C" (Oxford comma) for more.
 fn format_authors(raw: &str) -> String {
-    raw.split(" and ")
-        .map(|name| match name.split_once(',') {
-            Some((last, first)) => {
-                let initials: String = first
-                    .split_whitespace()
-                    .filter_map(|w| w.chars().next())
-                    .map(|c| format!("{c}. "))
-                    .collect();
-                format!("{}{}", initials, last.trim())
+    let mut names: Vec<&str> = raw
+        .split(" and ")
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+    let mut et_al = false;
+    if names
+        .last()
+        .is_some_and(|n| n.eq_ignore_ascii_case("others"))
+    {
+        names.pop();
+        et_al = true;
+    }
+    if et_al || names.len() >= 7 {
+        et_al = true;
+        names.truncate(1);
+    }
+    let people: Vec<String> = names.iter().map(|n| esc(&format_one_author(n))).collect();
+    let mut out = join_authors(&people);
+    if et_al {
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        out.push_str("<em>et al.</em>");
+    }
+    out
+}
+
+/// One author -> "F. M. Surname". Handles "Surname, First Mid", "First Mid
+/// Surname", and a brace-wrapped corporate name (kept verbatim).
+fn format_one_author(name: &str) -> String {
+    let name = name.trim();
+    if name.starts_with('{') {
+        return clean(name);
+    }
+    if let Some((last, first)) = name.split_once(',') {
+        format!("{}{}", initials(first), last.trim())
+    } else {
+        let words: Vec<&str> = name.split_whitespace().collect();
+        match words.split_last() {
+            Some((last, firsts)) if !firsts.is_empty() => {
+                format!("{}{last}", initials(&firsts.join(" ")))
             }
-            None => name.trim().to_string(),
-        })
-        .collect::<Vec<_>>()
-        .join(", ")
+            _ => name.to_string(),
+        }
+    }
+}
+
+/// First/middle names -> space-terminated initials: "Daniel M." -> "D. M. ".
+fn initials(first: &str) -> String {
+    first
+        .split_whitespace()
+        .filter_map(|w| w.chars().find(|c| c.is_alphabetic()))
+        .map(|c| format!("{}. ", c.to_uppercase()))
+        .collect()
+}
+
+/// Join names IEEE-style: "" / "A" / "A and B" / "A, B, and C".
+fn join_authors(people: &[String]) -> String {
+    match people {
+        [] => String::new(),
+        [a] => a.clone(),
+        [a, b] => format!("{a} and {b}"),
+        [head @ .., last] => format!("{}, and {last}", head.join(", ")),
+    }
 }
 
 /// Cross-reference kind prefixes -> display label.
@@ -427,6 +640,71 @@ mod tests {
         assert!(f.contains("C. M. Bishop"), "got: {f}");
         assert!(f.contains("<em>Pattern Recognition and Machine Learning</em>"));
         assert!(f.contains("Springer") && f.contains("2006"));
+    }
+
+    #[test]
+    fn article_is_ieee_quoted_title_italic_journal_and_et_al() {
+        let b = parse_bib(
+            "@article{k,\n author = {Ziegler, Daniel M. and Stiennon, Nisan and Wu, Jeffrey and Brown, Tom B. and Radford, Alec and Amodei, Dario and Christiano, Paul and Irving, Geoffrey},\n title = {Fine-Tuning Language Models},\n journal = {arXiv preprint arXiv:1909.08593},\n year = {2019},\n url = {https://arxiv.org/abs/1909.08593}\n}\n",
+        );
+        let f = b.format("k").unwrap();
+        // 8 authors -> first + italic et al.; article title quoted; journal italic.
+        assert!(f.starts_with("D. M. Ziegler <em>et al.</em>, "), "got: {f}");
+        assert!(
+            f.contains("\u{201c}Fine-Tuning Language Models,\u{201d}"),
+            "got: {f}"
+        );
+        assert!(
+            f.contains("<em>arXiv preprint arXiv:1909.08593</em>, 2019."),
+            "got: {f}"
+        );
+        assert!(
+            f.contains("[Online]. Available: <a href=\"https://arxiv.org/abs/1909.08593\">"),
+            "got: {f}"
+        );
+    }
+
+    #[test]
+    fn book_with_edition_is_ieee_ordinal() {
+        let b = parse_bib(
+            "@book{r,\n author = {Russell, Stuart and Norvig, Peter},\n title = {Artificial Intelligence: A Modern Approach},\n edition = {4},\n publisher = {Pearson},\n year = {2022}\n}\n",
+        );
+        let f = b.format("r").unwrap();
+        assert_eq!(
+            f,
+            "S. Russell and P. Norvig, <em>Artificial Intelligence: A Modern Approach</em>, 4th ed. Pearson, 2022."
+        );
+    }
+
+    #[test]
+    fn misc_online_uses_howpublished_url_and_corporate_author() {
+        let b = parse_bib(
+            "@misc{w,\n author = {{Wikipedia contributors}},\n title = {Analysis of variance},\n howpublished = {\\url{https://en.wikipedia.org/wiki/Analysis_of_variance}},\n year = {2025},\n note = {Accessed: 2026-04-25}\n}\n",
+        );
+        let f = b.format("w").unwrap();
+        // Braced corporate author stays literal (no initials); \url{} unwrapped.
+        assert!(f.starts_with("Wikipedia contributors, "), "got: {f}");
+        assert!(
+            f.contains("\u{201c}Analysis of variance,\u{201d} 2025."),
+            "got: {f}"
+        );
+        assert!(
+            f.contains(
+                "[Online]. Available: <a href=\"https://en.wikipedia.org/wiki/Analysis_of_variance\">"
+            ),
+            "got: {f}"
+        );
+        assert!(f.trim_end().ends_with("Accessed: 2026-04-25."), "got: {f}");
+    }
+
+    #[test]
+    fn and_others_collapses_to_et_al() {
+        let b = parse_bib(
+            "@article{o,\n author = {Ouyang, Long and Wu, Jeffrey and others},\n title = {T},\n journal = {J},\n year = {2022}\n}\n",
+        );
+        let f = b.format("o").unwrap();
+        assert!(f.starts_with("L. Ouyang <em>et al.</em>, "), "got: {f}");
+        assert!(!f.contains("others"), "literal 'others' leaked: {f}");
     }
 
     #[test]
