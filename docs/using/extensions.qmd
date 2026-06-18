@@ -18,35 +18,44 @@ format:
     slide-number: true
 ```
 
-Its `_extensions/liquid-glass/_extension.yml` contributes includes, a theme, and
-resources to the matching base format:
+Its `_extensions/liquid-glass/_extension.yml` is a flat manifest that contributes
+includes, a theme, and resources:
 
 ```yaml
-contributes:
-  formats:
-    revealjs:
-      theme: [dark, liquid-glass.css]      # .css layers inlined ahead of the deck
-      format-resources: [liquid-glass.js]  # copied next to the output / served in preview
-      include-in-header:  [{ file: head.html }]
-      include-after-body: [{ file: init.html }]
+name: Liquid Glass
+theme: [dark, liquid-glass.css]    # .css layers inlined ahead of the deck
+resources: [liquid-glass.js]       # copied next to the output / served in preview
+head: liquid-glass-head.html       # = include-in-header (also: body-start, body-end)
+body-end: liquid-glass-init.html
 ```
 
-The contributed markup is injected **before** the document's own front-matter
-`include-*`, so your page can still override the extension. `format-resources` are
-copied next to the built page (and resolved by bare name in the live preview), so
-an injected `<script src="liquid-glass.js">` works in both.
+The keys mirror the [project config](../reference/configuration.qmd)
+(`head`/`body-start`/`body-end`/`resources`/`css`/`theme`), so it's one
+vocabulary. The contributed markup is injected **before** the document's own
+front-matter `include-*`, so your page can still override the extension; a file in
+`resources` is copied next to the built page (and resolved by bare name in the
+live preview), so an injected `<script src="liquid-glass.js">` works in both. An
+unknown key is reported with a "did you mean …".
+
+::: {.callout-note}
+## Coming from a Quarto extension?
+
+Leave it — a manifest with the nested `contributes: → formats: → <base>:` shape is
+detected and still works. Or flatten it: lift the keys out of that block and
+rename `include-in-header` → `head`, `include-after-body` → `body-end`,
+`format-resources` → `resources`.
+:::
 
 ## Declarative shortcodes
 
 A shortcode is a `{{< name args >}}` tag in the body that expands to an HTML
-template — perfect for embeds, with no JavaScript. Declare them under
-`contributes.shortcodes` as a name → template map:
+template — perfect for embeds, with no JavaScript. Declare them at the top level
+as a name → template map:
 
 ```yaml
-contributes:
-  shortcodes:
-    youtube: '<div class="ratio"><iframe src="https://www.youtube.com/embed/{{1}}" allowfullscreen></iframe></div>'
-    callout: '<aside class="note"><strong>{{title}}</strong> {{body}}</aside>'
+shortcodes:
+  youtube: '<div class="ratio"><iframe src="https://www.youtube.com/embed/{{1}}" allowfullscreen></iframe></div>'
+  callout: '<aside class="note"><strong>{{title}}</strong> {{body}}</aside>'
 ```
 
 Then in any document that activates the extension:
