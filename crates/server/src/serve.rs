@@ -992,3 +992,53 @@ mod protocol_contract {
         assert_eq!(panic_msg(&*payload), "render boom");
     }
 }
+
+#[cfg(test)]
+mod extension_assets {
+    //! The preview's `find_in_extensions` fallback resolves a format extension's
+    //! `format-resources` by *bare file name*, mirroring how `build` copies them
+    //! flat next to the output page.
+    use super::*;
+    use std::fs;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    fn tmp() -> PathBuf {
+        static N: AtomicU32 = AtomicU32::new(0);
+        let p = std::env::temp_dir().join(format!(
+            "qmd-srv-ext-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        let _ = fs::remove_dir_all(&p);
+        p
+    }
+
+    #[test]
+    fn resolves_top_level_resource_by_bare_name_and_strips_paths() {
+        let root = tmp();
+        fs::create_dir_all(root.join("_extensions/deck")).unwrap();
+        fs::write(root.join("_extensions/deck/plugin.js"), "// x").unwrap();
+
+        // A bare `<script src="plugin.js">` resolves into the extension dir.
+        assert_eq!(
+            find_in_extensions(&root, "plugin.js"),
+            Some(root.join("_extensions/deck/plugin.js"))
+        );
+        // Only the file name is used, so a path can't traverse out.
+        assert_eq!(
+            find_in_extensions(&root, "../../etc/plugin.js"),
+            Some(root.join("_extensions/deck/plugin.js"))
+        );
+        // A miss is None (not a panic).
+        assert_eq!(find_in_extensions(&root, "missing.js"), None);
+
+        // AUDIT: a *subdir* resource (e.g. `format-resources: [assets/x.css]`,
+        // which `build` copies flat as `x.css`) is NOT found here — the fallback
+        // only searches one level deep, a latent build/preview inconsistency.
+        fs::create_dir_all(root.join("_extensions/deck/assets")).unwrap();
+        fs::write(root.join("_extensions/deck/assets/x.css"), "/* */").unwrap();
+        assert_eq!(find_in_extensions(&root, "x.css"), None);
+
+        let _ = fs::remove_dir_all(&root);
+    }
+}
