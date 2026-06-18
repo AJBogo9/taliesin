@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use qmd_fast_core::{Block, render::CellFigure};
+use qmd_fast_core::{Block, escape_attr as esc, render::CellFigure};
 
 use crate::kernel::{Kernel, KernelSpec, render_outputs};
 
@@ -346,18 +346,4 @@ fn figure_wrap(fig: &CellFigure, inner: &str) -> String {
         "<figure{id_attr} class=\"qmd-figure qmd-figure-center\">{inner}\
          <figcaption>{figcap}</figcaption></figure>"
     )
-}
-
-fn esc(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for ch in s.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            '"' => out.push_str("&quot;"),
-            _ => out.push(ch),
-        }
-    }
-    out
 }

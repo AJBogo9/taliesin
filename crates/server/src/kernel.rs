@@ -20,6 +20,7 @@ use jupyter_zmq_client::{
     create_client_shell_connection_with_identity, peek_ports, peer_identity_for_session,
     wait_for_iopub_welcome,
 };
+use qmd_fast_core::html_escape as esc;
 use tokio::process::{Child, Command};
 use tokio::time::timeout;
 
@@ -404,19 +405,6 @@ fn render_media(media: &Media) -> String {
         return format!("<pre>{}</pre>", esc(&t));
     }
     String::new()
-}
-
-fn esc(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    for ch in s.chars() {
-        match ch {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            _ => out.push(ch),
-        }
-    }
-    out
 }
 
 #[cfg(test)]

@@ -2526,7 +2526,10 @@ fn strip_tags(html: &str) -> String {
     out.trim().to_string()
 }
 
-pub(crate) fn html_escape(s: &str) -> String {
+/// Escape a string for HTML *text* content (`&`, `<`, `>`). For attribute values
+/// (which also need `"`), use [`escape_attr`]. Shared with the server crate's
+/// executor/kernel output rendering so escaping is defined once.
+pub fn html_escape(s: &str) -> String {
     let mut out = String::new();
     escape_html(s, &mut out);
     out
@@ -2938,7 +2941,9 @@ fn escape_html(s: &str, out: &mut String) {
     }
 }
 
-fn escape_attr(s: &str) -> String {
+/// Escape a string for an HTML *attribute* value (`&`, `<`, `>`, `"`). For text
+/// content, use [`html_escape`].
+pub fn escape_attr(s: &str) -> String {
     let mut out = String::new();
     for ch in s.chars() {
         match ch {
