@@ -300,6 +300,41 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
         }
     }
 
+    // 3. Build each deck referenced by a `{{< embed >}}` to its own self-contained
+    //    `.html` (not a chapter/page: no site chrome), so the embedding iframes
+    //    resolve in the deployed tree.
+    let mut decks = 0usize;
+    for deck in &site.decks {
+        let Ok(src) = std::fs::read_to_string(&deck.input) else {
+            log::warn(&format!(
+                "cannot read embedded deck {}",
+                deck.input.display()
+            ));
+            continue;
+        };
+        let base = deck.input.parent().unwrap_or(root);
+        let mut doc = qmd_fast_core::render_document_with_includes(&src, base);
+        let mut ex = exec::Executor::new();
+        doc.blocks = ex.run(std::mem::take(&mut doc.blocks)).await;
+        kernel_unavailable |= ex.diagnostic().is_some();
+        let stem = deck
+            .url
+            .rsplit('/')
+            .next()
+            .and_then(|f| f.strip_suffix(".html"))
+            .unwrap_or("deck");
+        let html = qmd_fast_core::render_doc_to_page(&doc, stem);
+        let dest = out.join(&deck.url);
+        if let Some(parent) = dest.parent() {
+            let _ = std::fs::create_dir_all(parent);
+            copy_resources(&doc.includes.resources, parent);
+        }
+        match std::fs::write(&dest, html) {
+            Ok(()) => decks += 1,
+            Err(e) => log::warn(&format!("cannot write {}: {e}", dest.display())),
+        }
+    }
+
     if kernel_unavailable {
         log::warn(
             "kernel unavailable; code cells were emitted as source \
@@ -333,9 +368,14 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
     } else {
         String::new()
     };
+    let deck_note = if decks > 0 {
+        format!("  ·  {decks} deck{}", if decks == 1 { "" } else { "s" })
+    } else {
+        String::new()
+    };
 
     log::built(&format!(
-        "{}  ·  {pages} page{}  ·  {assets} asset{}{feed}{tag_pages}",
+        "{}  ·  {pages} page{}  ·  {assets} asset{}{feed}{tag_pages}{deck_note}",
         out.display(),
         if pages == 1 { "" } else { "s" },
         if assets == 1 { "" } else { "s" },

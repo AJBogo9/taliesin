@@ -182,6 +182,7 @@ fn parse_options() -> Options<'static> {
 mod reveal;
 pub use reveal::{reveal_client_head, reveal_client_script, slides_html};
 mod extension;
+pub(crate) use extension::embed_targets;
 use extension::{resolve_format_extension, resolve_named_extensions};
 mod divs;
 pub(crate) use divs::parse_attrs;

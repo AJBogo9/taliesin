@@ -185,6 +185,23 @@ async fn page_or_asset(
     if let Some(page) = page {
         return Html(ensure_and_render_page(&app, &page)).into_response();
     }
+    // A deck referenced by `{{< embed >}}` (a standalone document, not a page/
+    // chapter): render it self-contained on the fly so the embedding iframe resolves
+    // in preview, mirroring what `build` writes.
+    let deck = { app.site.lock().deck(&lookup).cloned() };
+    if let Some(deck) = deck
+        && let Ok(src) = std::fs::read_to_string(&deck.input)
+    {
+        let base = deck.input.parent().unwrap_or(&app.root).to_path_buf();
+        let doc = qmd_fast_core::render_document_with_includes(&src, &base);
+        let stem = deck
+            .url
+            .rsplit('/')
+            .next()
+            .and_then(|f| f.strip_suffix(".html"))
+            .unwrap_or("deck");
+        return Html(qmd_fast_core::render_doc_to_page(&doc, stem)).into_response();
+    }
     // A per-tag archive page (categories/<slug>/), rendered on the fly to match
     // what `build` writes.
     if let Some(rest) = path.strip_prefix("categories/") {

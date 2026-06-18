@@ -6,16 +6,48 @@ One block model drives several outputs. The same `.qmd` you preview as a page ca
 become a slide deck, and pointing the tool at a directory turns it into a book or
 a whole website.
 
-## Reveal.js slides
+## Slide decks
 
-A deck is just a different front-matter `format: revealjs`. Headings split the
-document into slides, a title slide is generated from the metadata, and the block
-diff still works *within the current slide*, so live edits never reset your
-position. `docs/tour.qmd` is a runnable example:
+Set `format: revealjs` and the document becomes a slide deck driven by qmd-fast's
+**own engine** (no reveal.js, no CDN, everything bundled offline). `##` starts a
+slide and `#` starts a section that nests the following slides as a vertical stack;
+a title slide is generated from the metadata. The block diff still applies *within
+the current slide*, so a live edit re-renders one block without resetting your
+position, and double-clicking a block jumps to its source, exactly like a page.
 
 ```sh
-cargo run -p qmd-fast-server -- preview docs/tour.qmd 4321
+qmd-fast preview docs/demo.qmd      # live, click-to-source, hot reload
+qmd-fast build   docs/demo.qmd      # one self-contained .html
 ```
+
+The engine ships the things you actually present with:
+
+- **Fragments** — `::: {.incremental}` lists (or `.fragment`) reveal step by step.
+- **Code line-stepping** — add `code-line-numbers="1|2-3|all"` to a code block to
+  walk it line by line.
+- **Magic-move** — `::: {.magic-move}` around two code snapshots tweens matched
+  lines from one to the other.
+- **Auto-animate** — `## Title {auto-animate=true}` on consecutive slides tweens
+  matched elements (text, code, images) between them.
+- **Backgrounds** — `{background-color="…"}`, `background-gradient`,
+  `background-image` on a heading; light text on dark is automatic.
+- **Speaker view** — press <kbd>S</kbd> for current + next slide, notes
+  (`::: {.notes}`), and a timer, synced across windows.
+- **PDF export** — <kbd>Ctrl/Cmd-P</kbd> prints one slide per page.
+- **Reader mode** — on a narrow / portrait screen the fixed-aspect deck flattens to
+  a scrollable column.
+- **Drawing** — press <kbd>D</kbd> to annotate the current slide with a pen.
+- **Live code + OJS** — `{python}` / `{r}` cells execute and Observable cells stay
+  reactive, right in the deck.
+
+### Embedding a deck in a page
+
+`{{< embed deck.qmd >}}` drops a deck into any page or chapter as an isolating,
+interactive iframe with a fullscreen button, so an article can lead with a swipeable
+summary or a site can showcase a live demo. The referenced deck is built and served
+automatically alongside the page. Here is this manual's own feature deck:
+
+{{< embed ../demo.qmd title="The qmd-fast deck engine" >}}
 
 ## Books and a live table of contents
 
@@ -72,6 +104,15 @@ site **live**: the navbar and prev/next links navigate between pages (each a rea
 page load with its own websocket), and the page you are editing hot-reloads in
 place. Intra-site `.qmd` links (including `other-page.qmd#anchor`) are rewritten to
 their `.html` targets automatically.
+
+To ship a website and a separate docs **book** as one deploy, build the book into a
+subfolder of the site's output with `--out`, then link to it from the navbar:
+
+```sh
+qmd-fast build my-site                 # -> my-site/_site/
+qmd-fast build docs --out my-site/_site/docs   # the book, nested at /docs
+# navbar:  - { text: Docs, href: docs/index.html }
+```
 
 Config is **two levels, no cascade**: the root `_quarto.yml` sets project-wide
 defaults and a page's own front matter overrides them. There is deliberately no

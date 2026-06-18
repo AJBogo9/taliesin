@@ -1,0 +1,99 @@
+---
+title: "The deck engine"
+---
+
+`format: revealjs` renders to a slide deck driven by qmd-fast's **own** engine, not
+reveal.js. The engine is two bundled assets, `assets/css/deck.css` and
+`assets/js/deck.js`, emitted inline by `render/reveal.rs`. Three decisions shape it:
+
+- **Keep reveal's DOM contract.** The markup is still `.reveal > .slides > section`,
+  with nested `<section>` stacks and `.present` / `.past` / `.future` classes. A
+  `window.Reveal` facade mirrors the bits extensions call (`Reveal.on`,
+  `getIndices`, `slide`, …). So a reveal *theme* extension like liquid-glass loads
+  and runs unmodified, while the engine underneath is ours.
+- **Bundle everything offline.** `deck.css` / `deck.js` (and KaTeX, OJS, highlight
+  CSS) are `include_str!`'d into the page. No CDN, no network.
+- **Reuse the block model.** Every slide's blocks still carry `data-block-id` +
+  `data-sourcepos`, so the block diff, click-to-source, and live execution work in a
+  deck exactly as on a page, *within the current slide*.
+
+## From document to slides
+
+The deck is built from the same block list as every other output. `render/reveal.rs`
+groups those blocks into slides:
+
+```{mermaid}
+flowchart TB
+  blocks["block list<br/>(data-block-id + sourcepos)"] --> split["split_slides<br/>## → slide, # → section stack, --- → break"]
+  split --> dedup["dedup_slug<br/>distinct section ids"]
+  dedup --> thread["heading-attribute threading<br/>{background-* / auto-animate} hoisted onto &lt;section&gt;"]
+  thread --> emit["reveal_page_from_doc<br/>inline deck.css/js (+ KaTeX/OJS when present)"]
+```
+
+- **`split_slides`** walks the blocks: a level-2 heading opens a slide, a level-1
+  heading opens a *section* whose following slides become a vertical stack, and a
+  `---` rule is an explicit break. Each slide gets an id from its heading text,
+  deduped (`step`, `step-1`, …) so repeated titles, common with auto-animate, don't
+  collide in the DOM or the URL hash.
+- **Heading-attribute threading.** Authors write per-slide options on the heading
+  (`## Title {background-color="#0f172a" auto-animate=true}`). The renderer lifts
+  those onto the `<section>` as `data-background-*` / `data-auto-animate`, where the
+  runtime reads them.
+
+## The runtime (`deck.js`)
+
+A single `deck` state object holds the position (`h`, `v`, `f` — horizontal,
+vertical, fragment step), the mode, and the plugin/listener registries. The core
+loop is small:
+
+- **`layout`** scales the fixed 960×540 (16:9) stage to the viewport with a single
+  CSS transform (`--qmd-deck-scale`), so slides never reflow; `fitSlide` shrinks a
+  slide's own font if its content overflows (PowerPoint-style autofit).
+- **`apply`** makes exactly one slide visible (inline `display` so an extension's
+  `!important` can't leak other slides in), runs its per-slide effects, and records
+  the previous slide for transitions.
+- **Navigation** (`right`/`left`/`down`/`up`, plus keyboard and touch) moves through
+  the step list, then across slides.
+
+### One step list per slide
+
+Fragments, code line-stepping, and magic-move all advance with the same key, so they
+share one ordered step list. `fragsOf(slide)` returns step descriptors in document
+order:
+
+- `{frag: el}` — an incremental list item or `.fragment`.
+- `{code: pre, seg}` — the next segment of a `code-line-numbers` block.
+- `{mm: div}` — the next snapshot of a `.magic-move` block.
+
+`deck.f` is how many steps have been taken; advancing dispatches to the matching
+handler. Magic-move and auto-animate animate with **FLIP** (measure First and Last
+rects, Invert with a transform, Play), scale-corrected by `--qmd-deck-scale` so the
+motion is right inside the scaled stage.
+
+### Modes
+
+One engine, several presentations, selected by a `?qmd=` query param or a class:
+
+| Mode | Trigger | What it does |
+|------|---------|--------------|
+| normal | (default) | the interactive deck |
+| speaker | `S` → popup at `?qmd=speaker` | current + next slide previews, notes, timer |
+| embed | `?qmd=embed` | passive preview (no key/scroll capture); used by speaker previews and `{{< embed >}}` |
+| overview | `Esc` / `O` | zoomed grid of all slides |
+| print | `Ctrl/Cmd-P` / `?qmd=print` | flattened, one slide per page |
+| scroll | narrow screen / `?qmd=scroll` | a single scrollable reading column |
+
+Speaker view and the audience window stay in sync over `postMessage` (it works on
+`file://`, unlike `BroadcastChannel`). When the deck flattens (overview, scroll,
+print), the per-slide background layer is hidden and the light-on-dark text class is
+cleared, so a dark slide stays readable instead of going white-on-white.
+
+## Embedding a deck
+
+`{{< embed deck.qmd >}}` (see [Slides, books & sites](../using/formats.qmd)) is a
+built-in shortcode in `render/extension`. It emits an iframe to the referenced
+deck's built `.html` plus a fullscreen button; the iframe is the isolation boundary
+that keeps the deck's full-viewport CSS, global keyboard handler, and URL hash from
+fighting the host page. The build and preview discover embed targets
+(`embed_targets`) and render each referenced deck to its own self-contained page, so
+the iframe resolves without the deck also becoming a navigable site page.

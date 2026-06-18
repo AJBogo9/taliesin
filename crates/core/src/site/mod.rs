@@ -20,6 +20,17 @@ use std::path::{Path, PathBuf};
 
 use crate::render::{self, Block, SiteCtx, block_heading_level, escape_attr as esc};
 
+/// A deck referenced by a `{{< embed >}}` on some page: a standalone document
+/// (not a chapter/page) that the build renders to its own self-contained `.html`
+/// and the preview serves live, so the embedding iframe resolves.
+#[derive(Debug, Clone)]
+pub struct DeckRef {
+    /// Absolute path to the deck's `.qmd` source.
+    pub input: PathBuf,
+    /// Output URL relative to the site root (`demo.qmd` → `demo.html`).
+    pub url: String,
+}
+
 /// A single input page and where it lands in the built site.
 #[derive(Debug, Clone)]
 pub struct Page {
@@ -99,6 +110,10 @@ pub struct Site {
     /// palette searches the whole project (`window.QMD_SEARCH_INDEX`). Built once
     /// at discovery.
     pub search_index_json: String,
+    /// Decks referenced by `{{< embed >}}` shortcodes across the pages (deduped).
+    /// These aren't pages/chapters; the build renders each to its own `.html` and
+    /// the preview serves them live so the embedding iframes resolve.
+    pub decks: Vec<DeckRef>,
 }
 
 mod book;
@@ -122,12 +137,19 @@ impl Site {
 
         // A book takes its page set + order from the explicit `chapters:` list;
         // a website discovers every `.qmd` and orders by path.
-        let (pages, book) = if config.is_book {
+        let (mut pages, book) = if config.is_book {
             let book = build_book(root, &config);
             (book_pages(root, &book), Some(book))
         } else {
             (website_pages(root), None)
         };
+
+        // Decks referenced by `{{< embed >}}`. A website discovers *every* `.qmd` as a
+        // page, so a deck that's only there to be embedded would otherwise also become
+        // a navigable, chrome-wrapped page (and show up in nav/search). Drop those from
+        // the page set: an embedded deck is served as a standalone deck, not a page.
+        let decks = discover_decks(root, &pages, &mut warnings);
+        pages.retain(|p| !decks.iter().any(|d| d.url == p.url));
 
         // Resolve the site-wide head/body/css includes once, relative to the site
         // root (where `_quarto.yml` and its referenced css/js files live).
@@ -151,7 +173,15 @@ impl Site {
             includes,
             warnings,
             search_index_json,
+            decks,
         }
+    }
+
+    /// A deck referenced by an `{{< embed >}}`, looked up by its output URL (what a
+    /// browser requests). Used by the preview to render embedded decks on the fly.
+    pub fn deck(&self, url: &str) -> Option<&DeckRef> {
+        let needle = url.trim_start_matches('/');
+        self.decks.iter().find(|d| d.url == needle)
     }
 
     /// Whether this project is a book (`project: type: book`).
@@ -1081,6 +1111,33 @@ fn website_pages(root: &Path) -> Vec<Page> {
         .collect();
     pages.sort_by(|a, b| a.rel.cmp(&b.rel));
     pages
+}
+
+/// Resolve every `{{< embed PATH >}}` across the pages to a deduped [`DeckRef`].
+/// The path is written relative to the embedding page, so it's mapped to a
+/// site-root-relative path via [`join_rel`]; a target that isn't a file is warned
+/// about and skipped (the embed iframe would otherwise 404).
+fn discover_decks(root: &Path, pages: &[Page], warnings: &mut Vec<String>) -> Vec<DeckRef> {
+    let mut decks: Vec<DeckRef> = Vec::new();
+    for page in pages {
+        let Ok(src) = std::fs::read_to_string(&page.input) else {
+            continue;
+        };
+        for target in crate::render::embed_targets(&src) {
+            let rel = join_rel(&page.rel, &target);
+            let url = qmd_to_html(&rel);
+            if decks.iter().any(|d| d.url == url) {
+                continue;
+            }
+            let input = root.join(&rel);
+            if input.is_file() {
+                decks.push(DeckRef { input, url });
+            } else {
+                warnings.push(format!("{}: embedded deck not found: {target}", page.rel));
+            }
+        }
+    }
+    decks
 }
 
 /// Recursively collect input `.qmd` pages under `dir`, skipping `_`-prefixed

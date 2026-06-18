@@ -369,7 +369,10 @@ fn gather_shortcodes(
 /// in ```` ``` ```` stays literal; unknown shortcodes are left untouched.
 pub(super) fn expand_shortcodes(src: &str, base_dir: Option<&Path>) -> String {
     let templates = shortcode_templates(front_matter_block(src), base_dir);
-    if templates.is_empty() || !src.contains("{{<") {
+    // Process whenever a `{{<` is present: besides extension-declared templates,
+    // `render_shortcode` also handles the built-in `{{< embed >}}`, which must work
+    // with no extensions loaded.
+    if !src.contains("{{<") {
         return src.to_string();
     }
     let mut out = String::with_capacity(src.len());
@@ -396,26 +399,48 @@ pub(super) fn expand_shortcodes(src: &str, base_dir: Option<&Path>) -> String {
 
 /// Replace every `{{< name args >}}` that opens and closes on this line with its
 /// declared template; leave unrecognized ones (and unterminated spans) verbatim.
+/// Inline code spans (`` `…` ``, ``` ``…`` ```) are copied through untouched, so a
+/// shortcode shown as an *example* in backticks (e.g. `` `{{< embed x.qmd >}}` ``)
+/// stays literal — mirroring how fenced blocks are skipped in `expand_shortcodes`.
 fn expand_in_line(line: &str, templates: &HashMap<String, String>) -> String {
     if !line.contains("{{<") {
         return line.to_string();
     }
+    let bytes = line.as_bytes();
     let mut out = String::with_capacity(line.len());
-    let mut rest = line;
-    while let Some(start) = rest.find("{{<") {
-        let Some(rel_end) = rest[start..].find(">}}") else {
-            break; // no close on this line: leave the remainder as written
-        };
-        let end = start + rel_end;
-        out.push_str(&rest[..start]);
-        let inner = rest[start + 3..end].trim();
-        match render_shortcode(inner, templates) {
-            Some(html) => out.push_str(&html),
-            None => out.push_str(&rest[start..end + 3]), // unknown: keep verbatim
+    let mut i = 0;
+    while i < line.len() {
+        if bytes[i] == b'`' {
+            // An inline code span: copy through the matching backtick run verbatim
+            // so a `{{< … >}}` inside it is not expanded.
+            let run = line[i..].bytes().take_while(|&c| c == b'`').count();
+            let ticks = &line[i..i + run];
+            if let Some(rel) = line[i + run..].find(ticks) {
+                let close = i + run + rel + run;
+                out.push_str(&line[i..close]);
+                i = close;
+            } else {
+                out.push_str(ticks); // unterminated run: copy the backticks, keep scanning
+                i += run;
+            }
+        } else if line[i..].starts_with("{{<") {
+            let Some(rel_end) = line[i + 3..].find(">}}") else {
+                out.push_str(&line[i..]); // no close on this line: leave as written
+                break;
+            };
+            let end = i + 3 + rel_end;
+            let inner = line[i + 3..end].trim();
+            match render_shortcode(inner, templates) {
+                Some(html) => out.push_str(&html),
+                None => out.push_str(&line[i..end + 3]), // unknown: keep verbatim
+            }
+            i = end + 3;
+        } else {
+            let ch = line[i..].chars().next().unwrap();
+            out.push(ch);
+            i += ch.len_utf8();
         }
-        rest = &rest[end + 3..];
     }
-    out.push_str(rest);
     out
 }
 
@@ -425,7 +450,17 @@ fn expand_in_line(line: &str, templates: &HashMap<String, String>) -> String {
 fn render_shortcode(inner: &str, templates: &HashMap<String, String>) -> Option<String> {
     let toks = tokenize_args(inner);
     let (name, args) = toks.split_first()?;
-    let template = templates.get(name)?;
+    let Some(template) = templates.get(name) else {
+        // No extension declares this name. `{{< embed deck.qmd [title="…"] >}}` is a
+        // built-in fallback: it embeds another document's deck view in an isolating
+        // iframe with a fullscreen affordance (the deck is built/served as a
+        // dependency, see `embed_targets`). An extension's own `embed` template, if
+        // declared, takes precedence above.
+        if name == "embed" {
+            return embed_path(args).map(|p| embed_html(&p, embed_title(args).as_deref()));
+        }
+        return None;
+    };
     let mut positional = Vec::new();
     let mut named = Vec::new();
     for a in args {
@@ -479,4 +514,103 @@ fn tokenize_args(inner: &str) -> Vec<String> {
         toks.push(cur);
     }
     toks
+}
+
+/// The first bare (non `key=value`) argument of an `embed` shortcode: the path to
+/// the deck document, relative to the embedding page.
+fn embed_path(args: &[String]) -> Option<String> {
+    args.iter()
+        .find(|a| !a.contains('=') || a.starts_with('='))
+        .cloned()
+}
+
+/// The optional `title="…"` argument (used as the iframe's accessible name).
+fn embed_title(args: &[String]) -> Option<String> {
+    args.iter()
+        .find_map(|a| a.strip_prefix("title=").map(str::to_string))
+}
+
+/// Map a deck source path to its built output URL (`x.qmd` → `x.html`), leaving a
+/// path that is already `.html` (or anything else) untouched.
+fn deck_href(path: &str) -> String {
+    match path.strip_suffix(".qmd") {
+        Some(stem) => format!("{stem}.html"),
+        None => path.to_string(),
+    }
+}
+
+/// The HTML for an embedded deck: a responsive 16:9 iframe (isolating the deck's
+/// full-viewport CSS/JS/keyboard from the host page) plus a fullscreen button and an
+/// "open in a new tab" link. Emitted as a raw-HTML block, which the renderer passes
+/// through.
+fn embed_html(path: &str, title: Option<&str>) -> String {
+    let href = escape_attr(&deck_href(path));
+    let title = html_escape(title.unwrap_or("Embedded slide deck"));
+    format!(
+        "<div class=\"qmd-embed\">\
+         <div class=\"qmd-embed-stage\">\
+         <iframe class=\"qmd-embed-frame\" src=\"{href}\" title=\"{title}\" loading=\"lazy\" allowfullscreen></iframe>\
+         </div>\
+         <div class=\"qmd-embed-bar\">\
+         <button type=\"button\" class=\"qmd-embed-btn\" onclick=\"this.closest('.qmd-embed').querySelector('iframe').requestFullscreen()\">\u{26f6} Fullscreen</button>\
+         <a class=\"qmd-embed-btn\" href=\"{href}\" target=\"_blank\" rel=\"noopener\">Open \u{2197}</a>\
+         </div></div>"
+    )
+}
+
+/// Invoke `f` with the inner body of each `{{< … >}}` on `line` that is *not* inside
+/// an inline code span, so a shortcode shown as an example in backticks is ignored
+/// (the same discipline `expand_in_line` uses when expanding).
+fn each_shortcode(line: &str, mut f: impl FnMut(&str)) {
+    let bytes = line.as_bytes();
+    let mut i = 0;
+    while i < line.len() {
+        if bytes[i] == b'`' {
+            let run = line[i..].bytes().take_while(|&c| c == b'`').count();
+            let ticks = &line[i..i + run];
+            match line[i + run..].find(ticks) {
+                Some(rel) => i = i + run + rel + run,
+                None => i += run,
+            }
+        } else if line[i..].starts_with("{{<") {
+            let Some(rel_end) = line[i + 3..].find(">}}") else {
+                break;
+            };
+            let end = i + 3 + rel_end;
+            f(line[i + 3..end].trim());
+            i = end + 3;
+        } else {
+            i += line[i..].chars().next().unwrap().len_utf8();
+        }
+    }
+}
+
+/// Every deck referenced by a `{{< embed PATH >}}` in `src` (paths as written,
+/// relative to the page), deduped and in document order. Fenced and inline code are
+/// skipped so an `embed` shown as an example stays inert. The site build/preview uses
+/// this to also build/serve each referenced deck.
+pub(crate) fn embed_targets(src: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut in_code = false;
+    for line in src.lines() {
+        let t = line.trim_start();
+        if t.starts_with("```") || t.starts_with("~~~") {
+            in_code = !in_code;
+            continue;
+        }
+        if in_code {
+            continue;
+        }
+        each_shortcode(line, |inner| {
+            let toks = tokenize_args(inner);
+            if let Some((name, args)) = toks.split_first()
+                && name == "embed"
+                && let Some(p) = embed_path(args)
+                && !out.contains(&p)
+            {
+                out.push(p);
+            }
+        });
+    }
+    out
 }

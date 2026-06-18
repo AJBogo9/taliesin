@@ -321,6 +321,40 @@ fn declarative_shortcode_named_args() {
     assert!(body.contains("title=\"A Clip\""), "quoted value: {body}");
 }
 
+/// The built-in `{{< embed deck.qmd >}}` works with no extensions loaded: it emits
+/// an isolating iframe whose `src` maps `.qmd` → `.html`, an accessible title, and an
+/// "open in a new tab" link to the same deck.
+#[test]
+fn builtin_embed_emits_deck_iframe() {
+    let src = "---\ntitle: T\n---\n\n{{< embed talk.qmd title=\"My Talk\" >}}\n";
+    let doc = qmd_fast_core::render_document_with_includes(src, std::path::Path::new("."));
+    let body = doc.body_html();
+    assert!(
+        body.contains("class=\"qmd-embed\""),
+        "embed wrapper: {body}"
+    );
+    assert!(body.contains("src=\"talk.html\""), "qmd->html src: {body}");
+    assert!(body.contains("title=\"My Talk\""), "title arg: {body}");
+    assert!(body.contains("href=\"talk.html\""), "open link: {body}");
+}
+
+/// A shortcode shown as an example inside an inline code span stays literal (it is
+/// not expanded), so docs can describe `{{< embed … >}}` without triggering it.
+#[test]
+fn shortcode_in_inline_code_stays_literal() {
+    let src = "---\ntitle: T\n---\n\nUse `{{< embed deck.qmd >}}` to embed a deck.\n";
+    let doc = qmd_fast_core::render_document_with_includes(src, std::path::Path::new("."));
+    let body = doc.body_html();
+    assert!(
+        body.contains("{{&lt; embed deck.qmd &gt;}}") || body.contains("{{< embed deck.qmd >}}"),
+        "inline-code shortcode should stay literal: {body}"
+    );
+    assert!(
+        !body.contains("class=\"qmd-embed\""),
+        "must not expand inside inline code: {body}"
+    );
+}
+
 /// A shortcode the active extension does not declare is left verbatim (not an
 /// error — it may be Quarto syntax qmd-fast doesn't handle).
 #[test]

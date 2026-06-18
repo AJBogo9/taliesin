@@ -16,6 +16,7 @@ chapters:
     chapters:
       - internals/architecture.qmd
       - internals/rendering.qmd
+      - internals/deck-engine.qmd
       - internals/block-model.qmd
       - internals/execution.qmd
       - internals/server.qmd

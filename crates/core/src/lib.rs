@@ -43,7 +43,7 @@ pub use render::{
     render_html_page, render_html_page_with_includes, reveal_client_head, reveal_client_script,
     site_styles, slides_html, theme_head,
 };
-pub use site::{Page, Site, SiteConfig};
+pub use site::{DeckRef, Page, Site, SiteConfig};
 
 /// Crate version, surfaced so the server/CLI can report a single source of truth.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
