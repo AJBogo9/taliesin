@@ -3,8 +3,9 @@ title: "Configuration reference"
 ---
 
 Two places hold configuration: a document's **YAML front matter** (the `---`
-block at the top), and a project's **`_quarto.yml`** (for a site or book). qmd-fast
-reads a deliberate subset of Quarto's keys; the ones it honours are below.
+block at the top), and a project's **`_quarto.yml`** (for a site or book). The
+project config uses a flat, native schema; a Quarto-shaped config still works
+unchanged (see the note at the end).
 
 ## Document front matter
 
@@ -38,41 +39,74 @@ cell's own `#|` options override.
 
 ## Project `_quarto.yml`
 
-A **directory** with a `_quarto.yml` is a site or book project. There is no
+A **directory** with a `_quarto.yml` is a site or book project. The schema is
+flat — qmd-fast is HTML-only, so there's no `format: html:` nesting, and the
+project type is inferred (presence of `chapters:` ⇒ a book). There is no
 `_metadata.yml` cascade: the root config sets defaults, a page's own front matter
 overrides them.
 
+A **website**:
+
 ```yaml
-project:
-  type: website        # or: book
-  output-dir: _site    # default: _site (website) / _book (book)
+title: "My Site"
+description: "Notes on things"
+url: "https://example.com"
+favicon: favicon.svg
+output: _site            # build output dir (default _site, or _book for a book)
+toc: true                # default table of contents for article pages
+css: custom.css
+head: head.html          # = include-in-header  (also: body-start, body-end)
 
-# website chrome (websites only)
-website:
-  title: "My Site"
-  favicon: favicon.svg
-  navbar:
-    left:  [{ text: "Home", href: index.qmd }]
-    right: [{ text: "GitHub", href: "https://github.com/…" }]
-  page-footer: "© 2026"
+nav:                     # a list is the left side; or { left: [...], right: [...] }
+  - { text: Blog,     href: blog.qmd }
+  - { text: Projects, href: projects.qmd }
 
-# chapter order (books only); `part:` groups chapters
-book:
-  title: "My Book"
-  author: "…"
-  chapters:
-    - index.qmd
-    - part: "Part One"
-      chapters: [a.qmd, b.qmd]
-    - c.qmd
-
-# project-wide format defaults (merged ahead of each page's front matter)
-format:
-  html:
-    toc: true
-    theme: dark
-    include-in-header: [{ file: analytics.html }]
+footer:                  # a string is left text; or { left, center, right }
+  left: "© 2026 Me"
+  right:
+    - { icon: github, href: "https://github.com/me" }
+    - { icon: rss,    href: /blog.xml }
 ```
+
+A **book** — just add `chapters:` (its presence makes it a book; no `type:`):
+
+```yaml
+title: "My Book"
+author: "Me"
+toc: true
+chapters:
+  - index.qmd
+  - part: "Part One"     # group chapters under a part header
+    chapters: [a.qmd, b.qmd]
+  - c.qmd
+```
+
+| Key | Meaning |
+|---|---|
+| `title`, `author`, `description`, `url` | Project metadata (`title` is the navbar brand / book title) |
+| `favicon` | Tab icon (defaults to the qmd-fast mark) |
+| `output` | Build output directory |
+| `toc` | Default table of contents for article pages |
+| `css`, `head`, `body-start`, `body-end` | Site-wide asset injection (a path, `{ text: … }` / `{ file: … }`, or a list) |
+| `nav` | Navbar items — a list (left), or `{ left, right }` |
+| `footer` | Footer — a string, or `{ left, center, right }` of items |
+| `chapters` | Book chapter order (a file, or `{ part, chapters }`); presence ⇒ a book |
+
+**Icons.** A nav/footer item can be `{ icon: <name>, href: … }` instead of raw
+HTML; bundled glyphs: `github`, `linkedin`, `rss`, `x`, `mastodon`, `bluesky`,
+`email`.
+
+**Validation.** Unknown top-level keys are reported with a "did you mean …", so a
+typo like `favicn:` doesn't silently do nothing.
+
+::: {.callout-note}
+## Coming from a Quarto config?
+
+Leave it as-is — the nested `project:` / `website:` / `book:` / `format:` shape is
+detected and still renders. Or flatten it: lift `website: title:` → `title:`,
+`format: html: toc:` → `toc:`, `website: navbar: left:` → `nav:`,
+`page-footer:` → `footer:`, and `project: output-dir:` → `output:`.
+:::
 
 ### Page blocks (sites)
 
