@@ -1,0 +1,96 @@
+---
+title: "Configuration reference"
+---
+
+Two places hold configuration: a document's **YAML front matter** (the `---`
+block at the top), and a project's **`_quarto.yml`** (for a site or book). qmd-fast
+reads a deliberate subset of Quarto's keys; the ones it honours are below.
+
+## Document front matter
+
+| Key | Meaning |
+|---|---|
+| `title`, `subtitle`, `author`, `date`, `description` | Metadata; `title` drives `<title>`, the title block, OpenGraph, and nav/listing labels |
+| `format` | `html` (default) or `revealjs`; or `<ext>-html` / `<ext>-revealjs` to load a format extension |
+| `theme` | `light` (default) / `dark`, a `.css`/`.scss` file, or an installed `_extensions/<name>/` |
+| `toc` | `true` adds a live table of contents (+ the Cmd-K search palette) |
+| `title-block-style` | `none` keeps the title metadata but hides the visible `<h1>` header |
+| `bibliography` | A `.bib` file enabling `[@key]` citations + an auto References section |
+| `page-layout` | `full` widens the content column (for listing indexes) |
+| `include-in-header` / `include-before-body` / `include-after-body` | Inject raw markup; each is a path, a `{ text: … }` / `{ file: … }` map, or a list of those |
+| `css` | Stylesheet(s) wrapped in `<style>` and inlined |
+| `categories`, `image` | Used by `listing:` cards |
+
+### Code-cell options
+
+Inside a cell, lines beginning `#|` (`//|` for `{ojs}`, `%%|` for `{mermaid}`)
+set per-cell options:
+
+| Option | Meaning |
+|---|---|
+| `echo: false` | Hide the source, show only the output |
+| `code-fold: true` + `code-summary: "…"` | Collapse the listing behind a summary |
+| `label: fig-… ` + `fig-cap: "…"` | Make the output a numbered, cross-referenceable figure |
+| `include: false` | Run the cell but drop its output |
+
+A front-matter `execute:` block sets document-wide `echo`/`include` defaults that a
+cell's own `#|` options override.
+
+## Project `_quarto.yml`
+
+A **directory** with a `_quarto.yml` is a site or book project. There is no
+`_metadata.yml` cascade: the root config sets defaults, a page's own front matter
+overrides them.
+
+```yaml
+project:
+  type: website        # or: book
+  output-dir: _site    # default: _site (website) / _book (book)
+
+# website chrome (websites only)
+website:
+  title: "My Site"
+  favicon: favicon.svg
+  navbar:
+    left:  [{ text: "Home", href: index.qmd }]
+    right: [{ text: "GitHub", href: "https://github.com/…" }]
+  page-footer: "© 2026"
+
+# chapter order (books only); `part:` groups chapters
+book:
+  title: "My Book"
+  author: "…"
+  chapters:
+    - index.qmd
+    - part: "Part One"
+      chapters: [a.qmd, b.qmd]
+    - c.qmd
+
+# project-wide format defaults (merged ahead of each page's front matter)
+format:
+  html:
+    toc: true
+    theme: dark
+    include-in-header: [{ file: analytics.html }]
+```
+
+### Page blocks (sites)
+
+Two front-matter blocks turn a page into something special:
+
+```yaml
+# an index page: a card per document under `contents:`
+listing:
+  contents: posts          # directory to crawl
+  type: grid               # grid | (default) stacked list
+  sort: "date desc"
+  max-items: 10
+  categories: true         # render a category filter row
+  id: recent               # optional: fill a `::: {#recent}` block instead of appending
+
+# a profile page (the homepage)
+about:
+  template: jolla
+  image: me.jpg
+  links: [{ text: "GitHub", href: "https://github.com/…" }]
+```

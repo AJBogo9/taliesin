@@ -29,6 +29,21 @@ These docs are themselves a multi-page **book** built with qmd-fast — sidebar,
 search (press <kbd>Cmd/Ctrl-K</kbd>), live diagrams, and executed code cells
 included.
 
+## Coming from Quarto or Jupyter?
+
+qmd-fast reads the same `.qmd` syntax you already know, but it makes a different
+trade: **do one thing — author HTML — and make the edit loop instant.**
+
+- vs **Quarto**: no PDF/Word/format matrix and no `_metadata.yml` cascade, but a
+  *live* block-incremental preview (Quarto re-renders the whole document), built-in
+  click-to-source, and a warm kernel that never cold-starts on save. The config is
+  a small subset of Quarto's, so your front matter mostly just works.
+- vs **Jupyter**: you write in plain text files (versionable, diffable) with real
+  prose, math, citations, and cross-references — not notebook JSON — while still
+  getting live, cached, in-place code execution.
+
+It is intentionally small: one author's HTML workflow, kept fast.
+
 ## Get running in 30 seconds
 
 qmd-fast builds from source with a Rust toolchain (`cargo build --release`); a

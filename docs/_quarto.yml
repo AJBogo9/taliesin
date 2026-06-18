@@ -8,6 +8,7 @@ book:
     - index.qmd
     - part: "Using qmd-fast"
       chapters:
+        - using/getting-started.qmd
         - using/preview.qmd
         - using/code.qmd
         - using/writing.qmd
@@ -16,8 +17,14 @@ book:
     - part: "Internals"
       chapters:
         - internals/architecture.qmd
+        - internals/rendering.qmd
         - internals/block-model.qmd
-        - internals/cli.qmd
+        - internals/extending.qmd
+    - part: "Reference"
+      chapters:
+        - reference/configuration.qmd
+        - reference/troubleshooting.qmd
+        - reference/cli.qmd
 
 format:
   html:

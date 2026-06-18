@@ -1,0 +1,113 @@
+---
+title: "Getting started"
+---
+
+This chapter takes you from nothing to a published page: install the tool, set up
+a kernel for code, write your first document, and put it online.
+
+## Install
+
+qmd-fast builds from source with a Rust toolchain. From the repo:
+
+```sh
+cargo build --release
+```
+
+The binary is `target/release/qmd-fast`. The repo also ships a `~/.local/bin/qmd-fast`
+launcher that rebuilds the release binary whenever the tool's sources change and
+then runs it, so once it's on your `PATH` you can just say `qmd-fast preview …`
+from any directory. Every command below works either way — substitute
+`cargo run -p qmd-fast-server --` for `qmd-fast` if you prefer not to install the
+launcher.
+
+## Set up a kernel (for code execution)
+
+Prose, math, diagrams, and Observable cells need no setup. To *execute*
+`{python}` / `{r}` cells you point the server at a Jupyter kernel. A one-time
+Python setup:
+
+```sh
+python3 -m venv .venv && . .venv/bin/activate
+pip install ipykernel numpy matplotlib   # + whatever your cells import
+export QMD_FAST_PYTHON="$(pwd)/.venv/bin/python"
+```
+
+For R cells, install `IRkernel` and set `QMD_FAST_R`. Without a kernel, cells
+render as highlighted source and the preview shows a quiet "kernel unavailable"
+note instead of failing — so you can always start writing and add a kernel later.
+
+## Your first document
+
+Create `hello.qmd`:
+
+````markdown
+---
+title: "Hello, qmd-fast"
+toc: true
+---
+
+# Introduction
+
+A paragraph with **markdown**, inline math $a^2 + b^2 = c^2$, and a diagram:
+
+```{mermaid}
+flowchart LR
+  write --> preview --> publish
+```
+
+# Compute
+
+```{python}
+import numpy as np
+np.random.default_rng(0).normal(size=5).round(2)
+```
+````
+
+Preview it live:
+
+```sh
+qmd-fast preview hello.qmd
+```
+
+Open `http://127.0.0.1:4321`. Edit the file and watch only the changed block
+update in place. Double-click any block to jump to its source line in your
+editor.
+
+## Build for publishing
+
+When you're happy, `build` produces output (executing code cells against the
+kernel, so the HTML carries the computed figures):
+
+```sh
+qmd-fast build hello.qmd                 # -> hello.html (one self-contained file)
+qmd-fast build hello.qmd --out dist      # -> dist/index.html + copied local assets
+```
+
+Point `build`/`preview` at a **directory** instead and you get a whole
+multi-page site or book (see [Slides, books & sites](formats.qmd)):
+
+```sh
+qmd-fast build blog/                     # -> blog/_site/   (one .html per page)
+qmd-fast build docs/                     # -> docs/_book/   (a book, if _quarto.yml says so)
+```
+
+## Publish it
+
+The build output is **plain static HTML + assets** with no server runtime, so it
+deploys anywhere that serves files.
+
+- **GitHub Pages.** Build into `docs/` (or push `_site/`) on your default branch
+  and enable Pages, or use an action that runs `qmd-fast build` and uploads the
+  output directory as the Pages artifact.
+- **Netlify / Vercel / Cloudflare Pages.** Set the build command to
+  `cargo run -p qmd-fast-server -- build <dir>` and the publish directory to the
+  emitted `_site/` / `_book/`.
+- **Any static host / `rsync`.** Copy the output folder as-is. The `--out <dir>`
+  form and the site/book builds copy referenced local assets next to the HTML, so
+  the folder is self-contained.
+
+::: {.callout-note}
+The interactive Observable/Three.js demos fetch their runtimes from a CDN and
+need to be served over `http(s)` (not opened from `file://`). Once deployed — or
+under `preview` — they are fully live.
+:::

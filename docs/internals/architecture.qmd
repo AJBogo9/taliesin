@@ -52,10 +52,48 @@ flowchart LR
   ws --> dom["Preview updates<br/>in place"]
 ```
 
-The core (`crates/core`) is deliberately small and divided into focused modules:
-the parser/render pipeline, the block-level `diff`, `{{< include >}}` resolution
-with a per-file source map, server-side KaTeX and syntax highlighting, citations
-and cross-references, the multi-page `site`/book model, and the format-extension
-resolver. The server (`crates/server`) is the long-running process: the websocket
-protocol, the `notify` file watcher, and the warm Jupyter kernel pool that runs
-code cells and splices their outputs back as blocks.
+The two crates split cleanly: **`qmd-fast-core` does all the thinking and touches
+no network** (it parses, models, and renders), while **`qmd-fast-server` is the
+long-running process** (CLI, websocket, file watcher, kernel pool). The browser
+client is a thin layer that mounts blocks and applies the ops the server sends.
+
+## The codebase map
+
+`crates/core/src` — the library (`qmd-fast-core`):
+
+| Path | Responsibility |
+|---|---|
+| `render/mod.rs` | The render pipeline (`render_internal`) + full-page assembly. The coordinator. |
+| `render/emit.rs` | One AST node → HTML (the emitter). |
+| `render/divs.rs` | `:::` fenced-div preprocessing + grouping into callouts/columns. |
+| `render/figure.rs` | Standalone-image and captioned-cell `<figure>`s. |
+| `render/theme.rs` | Theming: light/dark, `.css`/`.scss`, extension themes, the pre-paint script. |
+| `render/reveal.rs` | reveal.js slide assembly. |
+| `render/extension.rs` | Format extensions + declarative shortcodes. |
+| `diff.rs` | Block-level diff (LCS over block ids) → `BlockOp`s. |
+| `includes.rs` | `{{< include >}}` resolution + the per-file source map. |
+| `math.rs` / `highlight.rs` | Server-side KaTeX / syntect, both offline. |
+| `cite.rs` | Citations + cross-references + the CSL/IEEE bibliography. |
+| `site/` | Multi-page projects: `config` (`_quarto.yml` model), `book`, `xref` (cross-page refs), `search` (cross-page index), and `mod` (discovery, chrome, page render). |
+| `frontmatter.rs` | Front-matter parsing + unknown-key linting. |
+
+`crates/server/src` — the binary (`qmd-fast`):
+
+| Path | Responsibility |
+|---|---|
+| `main.rs` | CLI: the `preview` / `build` / `render` / `blocks` subcommands. |
+| `serve.rs` | Single-document websocket server + file watcher. |
+| `serve_site.rs` | Multi-page site/book server (per-page state, cross-page nav, hot reload). |
+| `exec.rs` | Runs a doc's code cells and splices outputs back as blocks (incremental: the first changed cell + everything downstream). |
+| `kernel.rs` | The warm Jupyter kernel (ZMQ), reused across edits, with interrupt + timeout. |
+| `log.rs` | Colourised dev-server console output. |
+
+`web-client/` — the browser preview (vanilla JS, no build step): `client.js`
+(mounts blocks, applies ops, the dev menu, click-to-source), `search.js` (the
+Cmd-K palette), `toc-spy.js` (the scrollspy). The core also ships JS *assets*
+(`code-enhance.js` with the `window.qmdEnhancers` registry, `mermaid.js`) that
+both the live client and the static build inject.
+
+The next two chapters go deeper: [the rendering pipeline](rendering.qmd) (how a
+`.qmd` becomes blocks) and [extending qmd-fast](extending.qmd) (the conventions,
+how to add a feature, and the dev workflow).

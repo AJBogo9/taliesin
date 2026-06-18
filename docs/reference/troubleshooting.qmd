@@ -1,0 +1,59 @@
+---
+title: "Troubleshooting"
+---
+
+The preview surfaces most problems as a small **diagnostics** note in the corner
+(non-fatal) or a dismissible **error overlay** (a failed render). Here are the
+common ones.
+
+## Code cells show as source / "kernel unavailable"
+
+There is no Jupyter kernel. Set `QMD_FAST_PYTHON` to a Python that has
+`ipykernel` (and `QMD_FAST_R` for R with `IRkernel`):
+
+```sh
+pip install ipykernel
+export QMD_FAST_PYTHON="$(which python3)"
+```
+
+The diagnostics note usually quotes the kernel's own error (e.g. *"No module
+named ipykernel"*), so fix that and save — the server respawns the kernel and
+re-runs automatically, no restart needed.
+
+## A cell hangs / runs forever
+
+A cell that exceeds `QMD_FAST_CELL_TIMEOUT` seconds (default 120) is interrupted
+(SIGINT → `KeyboardInterrupt`); the warm kernel and prior cells survive. Lower it
+for tighter feedback, or set `0` to disable the cap. The dev menu's **Restart
+kernel** drops and respawns the kernel if it's truly wedged.
+
+## Diagrams / Observable cells don't render
+
+Mermaid and the Observable runtime load from a CDN and run over `http(s)`, not
+`file://`. Use `preview` (or a deployed/served build) and make sure you're online.
+Prose, math, and executed figures render offline regardless.
+
+## "Port already in use"
+
+`preview` automatically tries the next few ports and logs the substitution. Pass
+an explicit port if you want a specific one: `qmd-fast preview file.qmd 5000`.
+
+## A broken `{{< include >}}` or extension
+
+A missing include leaves an HTML comment breadcrumb and a diagnostics note. A
+format extension that fails to load (typo'd `format:` name, malformed
+`_extension.yml`, or a missing `contributes.formats.<base>` block) is reported in
+the dev menu and the build log — so it never fails silently.
+
+## Edits aren't picked up
+
+The watcher follows source/asset file types (`.qmd`, `.bib`, `.css`, images, …)
+under the document's directory and any `{{< include >}}`d file's directory, and
+skips build-output/VCS folders (`_site`, `_book`, `.git`). Editing a file outside
+those won't trigger a refresh.
+
+## A reveal deck looks unstyled
+
+A custom deck theme usually comes from a format extension
+(`format: <ext>-revealjs`). Confirm the extension loaded (no warning in the dev
+menu) and that its `_extensions/<ext>/` directory sits beside the `.qmd`.

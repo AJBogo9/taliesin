@@ -1,0 +1,83 @@
+---
+title: "Extending qmd-fast"
+---
+
+This chapter is for working *on* qmd-fast: the conventions, where new code goes,
+the extension points, and the dev loop.
+
+## The guiding principle: a lean core
+
+The core stays small and predictable; power lives at the edges. Before adding to
+the core, ask whether it can be an **extension** or a **client enhancer** instead.
+Server-side transforms (parsing, the block model, the diff) belong in the core;
+presentation and optional features should ride the extension points below.
+
+## Conventions
+
+- **Rust edition 2024**, workspace resolver 3. Shared dependencies are declared
+  once in the root `[workspace.dependencies]` so versions stay centralized.
+- **Directory-module pattern.** When a file grows past ~1.5k lines it becomes a
+  directory module: a `mod.rs` plus focused submodules that reach shared items via
+  `use super::*` and expose what the parent needs as `pub(super)`. `render/` and
+  `site/` are split this way.
+- **The block contract is load-bearing.** Anything you emit must keep
+  `data-block-id` (content hash) + `data-sourcepos` (and `data-source-file` for
+  includes). Source mapping, the diff, and live-state preservation all key off it.
+- **`rustfmt`-clean, `clippy`-clean.** A `PostToolUse` hook formats every edited
+  `.rs`; CI enforces `cargo fmt --check`, `cargo test`, `cargo clippy -D warnings`,
+  and a weekly `cargo audit`.
+
+## Where a change goes
+
+| You want to… | Touch |
+|---|---|
+| Change how a markdown element renders | `render/emit.rs` (+ `divs.rs`/`figure.rs` for those) |
+| Add a pipeline stage | `render/mod.rs` (`render_internal`), keeping it source-map-preserving |
+| Change incremental behaviour | `diff.rs` |
+| Add a site/book feature | `site/` |
+| Change code execution / the kernel | `server/exec.rs`, `server/kernel.rs` |
+| Add a client-side behaviour | a JS enhancer (below), not the core |
+
+## The three extension points
+
+These let features live *outside* the core (see [Extensions](../using/extensions.qmd)
+for the authoring side):
+
+1. **Format extensions** (`render/extension.rs`). `_extensions/<name>/_extension.yml`
+   contributes includes, a theme, and resources to a base format. A failed load is
+   reported through the `warnings` channel — never silent.
+2. **Declarative shortcodes** (`render/extension.rs`). `contributes.shortcodes`
+   maps a name to an HTML template, expanded at pipeline stage 2.
+3. **Client enhancers** (`window.qmdEnhancers`, in `code-enhance.js`). An
+   extension's JS registers `fn(root)` that runs after every (re)mount. The
+   built-in copy buttons and `mermaid.js` use this same public API, so a
+   third-party enhancer is indistinguishable from core's.
+
+## The dev loop
+
+```sh
+cargo run -p qmd-fast-server -- preview corpus/<doc>   # iterate on a real doc
+cargo test -p qmd-fast-core                            # corpus invariants + unit tests
+cargo clippy --workspace --all-targets -- -D warnings
+cd web-client && npx -y -p typescript tsc -p jsconfig.json   # type-check client.js
+```
+
+### The corpus is the spec
+
+There is no exhaustive feature checklist. The contract is that the real documents
+under `corpus/` render correctly; `crates/core/tests/corpus.rs` asserts the block
+invariants across all of them. Add a representative document to the corpus when you
+add a feature.
+
+### Byte-identity for refactors
+
+A pure refactor must not change the output. The standard check is to build the
+corpus before and after and `diff` the results:
+
+```sh
+qmd-fast build corpus/tech-blog --out /tmp/before/site   # on the old tree
+qmd-fast build corpus/tech-blog --out /tmp/after/site    # on the new tree
+diff -rq /tmp/before /tmp/after                          # must be empty
+```
+
+That, plus the test suite, is what makes the larger module splits safe.

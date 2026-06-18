@@ -1,0 +1,81 @@
+---
+title: "The rendering pipeline"
+---
+
+Rendering turns `.qmd` source into the **block list** everything else keys off.
+The entry point is `render_document_with_includes(src, base_dir)` in
+`render/mod.rs`; it runs a fixed sequence of stages, each a small, testable
+function.
+
+```{mermaid}
+flowchart TB
+  src[".qmd source"] --> inc["includes::resolve<br/>{{< include >}} + source map"]
+  inc --> sc["expand_shortcodes<br/>extension {{< name >}} templates"]
+  sc --> spans["scan_div_spans<br/>record ::: fenced divs"]
+  spans --> pre["preprocess<br/>blank ::: markers (line-preserving)"]
+  pre --> ast["comrak parse_document<br/>(+ sourcepos)"]
+  ast --> walk["walk top-level nodes<br/>→ FlatBlock (emit HTML, hash id)"]
+  walk --> group["group_divs<br/>rewrap into callouts/columns"]
+  group --> cite["table captions + cite::process<br/>citations, @refs"]
+  cite --> blocks["RenderedDoc { blocks, title, … }"]
+```
+
+## Stage by stage
+
+1. **Include resolution** (`includes.rs`). `{{< include path >}}` shortcodes are
+   expanded inline, and a `Vec<LineOrigin>` source map records, for every line of
+   the expanded text, which file + line it came from. Cycles are detected and left
+   in place. This is what makes click-to-source work *across files*.
+2. **Shortcode expansion** (`render/extension.rs`). `{{< name args >}}` tags
+   declared by the active format extension expand to their HTML templates. It is
+   **line-preserving** (each tag opens and closes on one line, the template's
+   newlines collapsed) so the source map from stage 1 stays valid.
+3. **Fenced-div scan + preprocess** (`render/divs.rs`). Quarto's `:::` divs aren't
+   CommonMark, so their spans are recorded first, then the marker lines are blanked
+   *without changing the line count* (again preserving sourcepos). The inner
+   content then parses as ordinary blocks.
+4. **Parse** (`comrak`, with `sourcepos` on). One AST for the whole document, with
+   every node carrying its `startLine:col-endLine:col`.
+5. **Walk → FlatBlock** (`render/mod.rs` + `render/emit.rs`). Each *top-level* node
+   becomes one block: the emitter renders it to HTML (code highlighted by
+   `highlight.rs`, math by `math.rs`), and the block gets a **content-hash id**
+   (`b-<hex>`, with a positional tiebreak for duplicates) and a `data-sourcepos`
+   mapped back through the source map. A `` ```{lang} `` fence is recognised as an
+   executable **cell** and recorded for the server to run later. The front-matter
+   node is where metadata, the theme, and a format extension's includes are
+   resolved.
+6. **Regroup divs** (`render/divs.rs`). The flat blocks are wrapped back into
+   callout / layout-grid / generic container blocks using the spans from stage 3.
+   Inner blocks keep their own ids and sourcepos, so click-to-source works inside a
+   callout.
+7. **Captions + citations** (`cite.rs`). Table captions are numbered, then
+   `[@key]` citations and `@fig-`/`@sec-`/… cross-references are resolved against
+   the bibliography and the cross-reference registry.
+
+The result is a `RenderedDoc`: an ordered `Vec<Block>` plus the title, theme, TOC
+flag, includes, and any non-fatal `warnings`.
+
+## The block contract
+
+Every emitted block carries three data attributes, and **the whole system depends
+on them** (`crates/core/tests/corpus.rs` enforces it):
+
+- `data-block-id` — a content hash. Because it's content-derived, an unchanged
+  block keeps its id across edits and is never touched by the diff.
+- `data-sourcepos` — the original source range (drives click-to-source).
+- `data-source-file` — present only on blocks pulled in from an include.
+
+## Incremental updates
+
+On a save the server re-runs the pipeline and calls `diff_blocks(old, new)`
+(`diff.rs`): an LCS over the block-id sequences finds the stable anchors, and the
+gaps between them become `Update` / `Insert` / `Remove` ops. Only those ops cross
+the websocket, so the browser swaps a handful of elements while everything
+else — including live canvases — stays put. (Code-cell *outputs* are blocks too,
+keyed to the cell id, so re-running a cell updates only its output block.)
+
+## Output assembly
+
+`RenderedDoc` → a full page is `render/mod.rs`'s page template; a deck is
+`render/reveal.rs`; a site/book page adds chrome via `site/`. The same block list
+backs all three (see [Architecture](architecture.qmd)).
