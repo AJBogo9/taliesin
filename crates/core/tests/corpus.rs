@@ -395,6 +395,43 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
 }
 
 #[test]
+fn standalone_doc_carries_opengraph_seo_meta() {
+    // A single .qmd (no site) gets text OpenGraph/SEO meta from its own front matter.
+    let doc = qmd_fast_core::render_document(
+        "---\ntitle: \"T\"\ndescription: \"D\"\n---\n\n# Hi\n\nbody\n",
+    );
+    let page = qmd_fast_core::render_doc_to_page(&doc, "fallback");
+    assert!(
+        page.contains("property=\"og:title\" content=\"T\""),
+        "og:title"
+    );
+    assert!(
+        page.contains("property=\"og:description\" content=\"D\""),
+        "og:description"
+    );
+    assert!(
+        page.contains("name=\"description\" content=\"D\""),
+        "meta description"
+    );
+    assert!(
+        page.contains("property=\"og:type\" content=\"article\""),
+        "og:type"
+    );
+    assert!(page.contains("name=\"twitter:card\""), "twitter card");
+
+    // A doc with no description omits the description tags but still has og:title.
+    let bare = qmd_fast_core::render_doc_to_page(
+        &qmd_fast_core::render_document("---\ntitle: \"Only\"\n---\n\n# x\n"),
+        "fb",
+    );
+    assert!(bare.contains("property=\"og:title\" content=\"Only\""));
+    assert!(
+        !bare.contains("name=\"description\""),
+        "no description tag when absent"
+    );
+}
+
+#[test]
 fn book_discovers_chapters_with_parts_numbering_and_chrome() {
     use qmd_fast_core::Site;
     let root = corpus_dir().join("demo-book");
