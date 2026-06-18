@@ -15,121 +15,10 @@
 //! front matter overrides it. Both `build` (static) and `serve` (live preview)
 //! drive the site through [`Site::discover`] + [`Site::render_page`].
 
-use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use crate::render::{self, Block, SiteCtx, block_heading_level, escape_attr as esc};
-
-/// The root project config, parsed from `_quarto.yml`. Only the subset qmd-fast
-/// understands is modelled; unknown keys are ignored (Quarto compatibility —
-/// a real config carries far more than this foundation consumes).
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct SiteConfig {
-    #[serde(default)]
-    pub project: ProjectSection,
-    #[serde(default)]
-    pub website: WebsiteSection,
-    #[serde(default)]
-    pub book: BookSection,
-    #[serde(default)]
-    pub format: FormatSection,
-}
-
-/// The `format:` block. Only `html:` is read (qmd-fast is HTML-only); within it,
-/// the `include-*` / `css` keys are honoured site-wide (other keys are ignored).
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct FormatSection {
-    #[serde(default)]
-    pub html: FormatHtml,
-}
-
-/// Site-wide `format: html:` asset injection (applied to every page). Each value
-/// is left as raw YAML and resolved by `render::includes_from_parts` (a path
-/// string, a `{text:}`/`{file:}` map, or a list of those; `css` files inlined).
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct FormatHtml {
-    /// Site-wide `toc:` default (applied to article pages — not listing/about ones).
-    #[serde(default)]
-    pub toc: Option<bool>,
-    #[serde(default, rename = "include-in-header")]
-    pub include_in_header: Option<serde_yaml::Value>,
-    #[serde(default, rename = "include-before-body")]
-    pub include_before_body: Option<serde_yaml::Value>,
-    #[serde(default, rename = "include-after-body")]
-    pub include_after_body: Option<serde_yaml::Value>,
-    #[serde(default)]
-    pub css: Option<serde_yaml::Value>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct ProjectSection {
-    /// `website` (default) or `book`.
-    #[serde(default, rename = "type")]
-    pub project_type: Option<String>,
-    /// Where `build` writes the site (default `_site`, or `_book` for a book).
-    #[serde(default, rename = "output-dir")]
-    pub output_dir: Option<String>,
-}
-
-/// The `book:` block (only present for `project: type: book`). `chapters` is an
-/// ordered list whose entries are either a chapter file name or a
-/// `{ part: <name>, chapters: [...] }` group.
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct BookSection {
-    #[serde(default)]
-    pub title: Option<String>,
-    #[serde(default)]
-    pub author: Option<serde_yaml::Value>,
-    #[serde(default)]
-    pub chapters: Vec<serde_yaml::Value>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct WebsiteSection {
-    #[serde(default)]
-    pub title: Option<String>,
-    #[serde(default)]
-    pub description: Option<String>,
-    #[serde(default, rename = "site-url")]
-    pub site_url: Option<String>,
-    #[serde(default)]
-    pub favicon: Option<String>,
-    #[serde(default)]
-    pub navbar: Navbar,
-    #[serde(default, rename = "page-footer")]
-    pub page_footer: Option<Footer>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct Navbar {
-    #[serde(default)]
-    pub left: Vec<NavItem>,
-    #[serde(default)]
-    pub right: Vec<NavItem>,
-}
-
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct Footer {
-    #[serde(default)]
-    pub left: Vec<NavItem>,
-    #[serde(default)]
-    pub center: Vec<NavItem>,
-    #[serde(default)]
-    pub right: Vec<NavItem>,
-}
-
-/// A navbar/footer entry. `text` is the label (plain text in the navbar, allowed
-/// raw HTML in the footer for icon SVGs); `href` is its link.
-#[derive(Debug, Clone, Default, Deserialize)]
-pub struct NavItem {
-    #[serde(default)]
-    pub text: Option<String>,
-    #[serde(default)]
-    pub href: Option<String>,
-    #[serde(default)]
-    pub icon: Option<String>,
-}
 
 /// A single input page and where it lands in the built site.
 #[derive(Debug, Clone)]
@@ -189,44 +78,6 @@ pub struct ListingSpec {
     pub categories: bool,
 }
 
-/// The resolved book navigation: the sidebar order (parts + chapters) plus the
-/// chapter title/number/url for each chapter page. Present only for a book.
-#[derive(Debug, Clone, Default)]
-pub struct Book {
-    pub title: Option<String>,
-    /// Sidebar entries in order; a part header has `part: Some` and no `url`.
-    pub entries: Vec<BookEntry>,
-}
-
-/// One sidebar row: a part header (`part` set, `url` empty) or a chapter (`url`
-/// set, `number` = its chapter number, `None` for an unnumbered preface).
-#[derive(Debug, Clone, Default)]
-pub struct BookEntry {
-    pub part: Option<String>,
-    pub number: Option<u32>,
-    pub title: String,
-    pub rel: String,
-    pub url: String,
-}
-
-impl Book {
-    /// The chapters in reading order (part headers dropped), for prev/next.
-    fn chapters(&self) -> Vec<&BookEntry> {
-        self.entries
-            .iter()
-            .filter(|e| e.part.is_none() && !e.url.is_empty())
-            .collect()
-    }
-}
-
-/// Where a cross-referenceable anchor (`sec-x`, `fig-x`, …) lives in the project:
-/// its page url and, for a numbered section, its number ("2.1"; empty otherwise).
-#[derive(Debug, Clone, Default)]
-pub struct XrefTarget {
-    pub url: String,
-    pub number: String,
-}
-
 /// A discovered multi-page site: the root config plus its input pages.
 #[derive(Debug, Clone)]
 pub struct Site {
@@ -245,6 +96,15 @@ pub struct Site {
     /// caller (build logs / preview diagnostics).
     pub warnings: Vec<String>,
 }
+
+mod book;
+pub use book::{Book, BookEntry};
+use book::{book_pages, build_book};
+mod xref;
+pub use xref::XrefTarget;
+use xref::{rewrite_cross_refs, scan_xref_targets};
+mod config;
+pub use config::*;
 
 impl Site {
     /// Discover the site rooted at `root`: parse `_quarto.yml`, enumerate input
@@ -883,160 +743,6 @@ fn section_number(chapter: u32, level: usize, counters: &mut [u32; 5]) -> String
     parts.join(".")
 }
 
-/// Scan every page's source for cross-referenceable anchors (`{#sec-x}` headings,
-/// `{#fig-x}`/`{#eq-x}`/… on other lines), recording each anchor's page url and —
-/// for a numbered book section — its number. A lightweight source pass (no render),
-/// so cross-page `@ref`s resolve without a second execution. First definition wins.
-fn scan_xref_targets(pages: &[Page], book: &Option<Book>) -> HashMap<String, XrefTarget> {
-    let mut map = HashMap::new();
-    for page in pages {
-        let Ok(src) = std::fs::read_to_string(&page.input) else {
-            continue;
-        };
-        let chapter = book.as_ref().and_then(|b| {
-            b.entries
-                .iter()
-                .find(|e| e.rel == page.rel)
-                .and_then(|e| e.number)
-        });
-        for (anchor, number) in scan_page_anchors(&src, chapter) {
-            map.entry(anchor).or_insert(XrefTarget {
-                url: page.url.clone(),
-                number,
-            });
-        }
-    }
-    map
-}
-
-/// The `{#prefix-id}` cross-ref anchors in one page's source, paired with a section
-/// number for `{#sec-}` headings in a numbered chapter (empty otherwise). Headings
-/// are counted in order so an unlabeled section still advances the numbering.
-fn scan_page_anchors(src: &str, chapter: Option<u32>) -> Vec<(String, String)> {
-    let mut out = Vec::new();
-    let mut counters = [0u32; 5];
-    let mut in_front_matter = false;
-    let mut in_code = false;
-    for (i, line) in src.lines().enumerate() {
-        let t = line.trim_start();
-        if i == 0 && t == "---" {
-            in_front_matter = true;
-            continue;
-        }
-        if in_front_matter {
-            in_front_matter = t != "---";
-            continue;
-        }
-        if t.starts_with("```") || t.starts_with("~~~") {
-            in_code = !in_code;
-            continue;
-        }
-        if in_code {
-            continue;
-        }
-        let level = t.bytes().take_while(|&b| b == b'#').count();
-        let is_heading = (1..=6).contains(&level) && t.as_bytes().get(level) == Some(&b' ');
-        if is_heading {
-            let number = chapter
-                .map(|ch| section_number(ch, level, &mut counters))
-                .unwrap_or_default();
-            if let Some(id) = brace_id(t).filter(|id| is_ref_anchor(id)) {
-                out.push((id, number));
-            }
-        } else if let Some(id) = brace_id(t).filter(|id| is_ref_anchor(id)) {
-            out.push((id, String::new())); // a figure/equation anchor: link, no number
-        }
-    }
-    out
-}
-
-/// The id from a `{#id …}` attribute block on a line, if any (up to a space, `.`,
-/// or `}`).
-fn brace_id(line: &str) -> Option<String> {
-    let start = line.find("{#")? + 2;
-    let rest = &line[start..];
-    let end = rest.find([' ', '.', '}']).unwrap_or(rest.len());
-    let id = &rest[..end];
-    (!id.is_empty()).then(|| id.to_string())
-}
-
-/// Whether an id is a Quarto cross-reference anchor (`sec-`, `fig-`, …).
-fn is_ref_anchor(id: &str) -> bool {
-    ["sec-", "fig-", "tbl-", "eq-", "lst-", "thm-", "def-"]
-        .iter()
-        .any(|p| id.starts_with(p))
-}
-
-/// Rewrite the `data-qmd-xref`-marked links in one block's HTML: a marker whose
-/// anchor is a known cross-page target becomes a link to that page (with its
-/// number); an unknown anchor is left as the bare-label link `cite` emitted.
-fn rewrite_cross_refs(
-    html: &str,
-    targets: &HashMap<String, XrefTarget>,
-    current_url: &str,
-    up: &str,
-) -> String {
-    let mut out = String::with_capacity(html.len());
-    let mut pos = 0;
-    while let Some(rel) = html[pos..].find("<a href=\"#") {
-        let start = pos + rel;
-        out.push_str(&html[pos..start]);
-        let Some(close) = html[start..].find("</a>") else {
-            break;
-        };
-        let end = start + close + "</a>".len();
-        out.push_str(&rewrite_one_xref(
-            &html[start..end],
-            targets,
-            current_url,
-            up,
-        ));
-        pos = end;
-    }
-    out.push_str(&html[pos..]);
-    out
-}
-
-/// Rewrite one `<a …>` if it is a cross-page xref marker; else return it unchanged.
-fn rewrite_one_xref(
-    link: &str,
-    targets: &HashMap<String, XrefTarget>,
-    current_url: &str,
-    up: &str,
-) -> String {
-    let marker = "data-qmd-xref=\"";
-    let (Some(ms), Some(gt)) = (link.find(marker), link.find('>')) else {
-        return link.to_string();
-    };
-    let astart = ms + marker.len();
-    let Some(alen) = link[astart..].find('"') else {
-        return link.to_string();
-    };
-    let anchor = &link[astart..astart + alen];
-    let Some(target) = targets.get(anchor).filter(|t| t.url != current_url) else {
-        return link.to_string(); // same page or unknown → leave cite's label link
-    };
-    // A `@sec-` to a chapter (a whole-number section number, no dot) reads "Chapter
-    // N" like Quarto; a subsection keeps cite's "Section" label.
-    let label = if anchor.starts_with("sec-")
-        && !target.number.is_empty()
-        && !target.number.contains('.')
-    {
-        "Chapter"
-    } else {
-        &link[gt + 1..link.len() - "</a>".len()]
-    };
-    let number = if target.number.is_empty() {
-        String::new()
-    } else {
-        format!("&nbsp;{}", target.number)
-    };
-    format!(
-        "<a href=\"{up}{}#{anchor}\" class=\"qmd-xref\">{label}{number}</a>",
-        target.url
-    )
-}
-
 /// The heading level (1–6) of a block whose root element is `<hN …>`, else `None`.
 /// Delegates to the render crate's parser so the two never diverge.
 fn heading_level(html: &str) -> Option<usize> {
@@ -1053,51 +759,6 @@ fn prefix_heading_number(html: &str, number: &str) -> String {
         ),
         None => html.to_string(),
     }
-}
-
-/// Load + parse `_quarto.yml` at `root`, tolerating malformed sections (warn,
-/// don't reject — Quarto configs carry keys/shapes we don't model).
-fn load_config(root: &Path, warnings: &mut Vec<String>) -> SiteConfig {
-    let path = root.join("_quarto.yml");
-    let Ok(text) = std::fs::read_to_string(&path) else {
-        warnings.push(format!("no _quarto.yml at {}", root.display()));
-        return SiteConfig::default();
-    };
-    // Parse to a generic value first, then deserialize each known section on its
-    // own, so one unfamiliar section can't sink the whole config.
-    let root_val: serde_yaml::Value = match serde_yaml::from_str(&text) {
-        Ok(v) => v,
-        Err(e) => {
-            warnings.push(format!("_quarto.yml is not valid YAML: {e}"));
-            return SiteConfig::default();
-        }
-    };
-    let mut cfg = SiteConfig::default();
-    if let Some(v) = root_val.get("project").cloned() {
-        match serde_yaml::from_value(v) {
-            Ok(p) => cfg.project = p,
-            Err(e) => warnings.push(format!("ignoring malformed `project` config: {e}")),
-        }
-    }
-    if let Some(v) = root_val.get("website").cloned() {
-        match serde_yaml::from_value(v) {
-            Ok(w) => cfg.website = w,
-            Err(e) => warnings.push(format!("ignoring malformed `website` config: {e}")),
-        }
-    }
-    if let Some(v) = root_val.get("book").cloned() {
-        match serde_yaml::from_value(v) {
-            Ok(b) => cfg.book = b,
-            Err(e) => warnings.push(format!("ignoring malformed `book` config: {e}")),
-        }
-    }
-    if let Some(v) = root_val.get("format").cloned() {
-        match serde_yaml::from_value(v) {
-            Ok(f) => cfg.format = f,
-            Err(e) => warnings.push(format!("ignoring malformed `format` config: {e}")),
-        }
-    }
-    cfg
 }
 
 /// A website's pages: every `.qmd` under `root` (path-ordered), each mapped to a
@@ -1134,116 +795,6 @@ fn website_pages(root: &Path) -> Vec<Page> {
         .collect();
     pages.sort_by(|a, b| a.rel.cmp(&b.rel));
     pages
-}
-
-/// Resolve `book: chapters:` into the sidebar navigation: walk the ordered list
-/// (chapter file names + `{ part, chapters }` groups), assigning each chapter a
-/// running number (an unnumbered chapter — the `index.qmd` preface or one whose
-/// H1 carries `.unnumbered`/`{-}` — is skipped in the count, like Quarto).
-fn build_book(root: &Path, config: &SiteConfig) -> Book {
-    let mut entries = Vec::new();
-    let mut num = 0u32;
-    for ch in &config.book.chapters {
-        if let Some(file) = ch.as_str() {
-            push_chapter(root, file, &mut entries, &mut num);
-        } else if let Some(map) = ch.as_mapping() {
-            let part = map
-                .get("part")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            entries.push(BookEntry {
-                part: Some(part),
-                ..Default::default()
-            });
-            if let Some(seq) = map.get("chapters").and_then(|v| v.as_sequence()) {
-                for c in seq.iter().filter_map(|v| v.as_str()) {
-                    push_chapter(root, c, &mut entries, &mut num);
-                }
-            }
-        }
-    }
-    Book {
-        title: config.book.title.clone(),
-        entries,
-    }
-}
-
-/// Append one chapter entry, bumping the chapter counter unless it is unnumbered.
-fn push_chapter(root: &Path, file: &str, entries: &mut Vec<BookEntry>, num: &mut u32) {
-    let input = root.join(file);
-    let rel = file.to_string();
-    let (h1, unnumbered) = chapter_heading(&input);
-    let title = h1
-        .or_else(|| parse_front_matter(&input).title)
-        .unwrap_or_else(|| rel.trim_end_matches(".qmd").to_string());
-    // The `index.qmd` preface is unnumbered by convention, like Quarto.
-    let number = if unnumbered || rel == "index.qmd" {
-        None
-    } else {
-        *num += 1;
-        Some(*num)
-    };
-    entries.push(BookEntry {
-        part: None,
-        number,
-        title,
-        url: qmd_to_html(&rel),
-        rel,
-    });
-}
-
-/// A chapter's title (its first `# H1` text, attributes stripped) and whether
-/// that heading is unnumbered (`{.unnumbered}` / `{-}`).
-fn chapter_heading(input: &Path) -> (Option<String>, bool) {
-    let Ok(src) = std::fs::read_to_string(input) else {
-        return (None, false);
-    };
-    let mut in_fm = false;
-    for (i, line) in src.lines().enumerate() {
-        let t = line.trim_start();
-        if i == 0 && t == "---" {
-            in_fm = true;
-            continue;
-        }
-        if in_fm {
-            if t == "---" {
-                in_fm = false;
-            }
-            continue;
-        }
-        if let Some(rest) = t.strip_prefix("# ") {
-            let unnumbered = rest.contains(".unnumbered") || rest.contains("{-}");
-            let title = rest.split('{').next().unwrap_or(rest).trim().to_string();
-            return (Some(title), unnumbered);
-        }
-    }
-    (None, false)
-}
-
-/// A book's pages: one [`Page`] per chapter, in reading order.
-fn book_pages(root: &Path, book: &Book) -> Vec<Page> {
-    book.chapters()
-        .into_iter()
-        .map(|c| {
-            let input = root.join(&c.rel);
-            let fm = parse_front_matter(&input);
-            Page {
-                input,
-                rel: c.rel.clone(),
-                url: c.url.clone(),
-                title: Some(c.title.clone()),
-                date: fm.date,
-                description: fm.description,
-                card_image: None,
-                categories: fm.categories,
-                is_post: false,
-                listings: fm.listings,
-                about: fm.about,
-                page_layout: fm.page_layout,
-            }
-        })
-        .collect()
 }
 
 /// Recursively collect input `.qmd` pages under `dir`, skipping `_`-prefixed
