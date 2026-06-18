@@ -52,12 +52,130 @@ flowchart LR
   ws --> dom["Preview updates<br/>in place"]
 ```
 
+The same save as an interaction over time, module by module, is @fig-save-seq:
+
+```{mermaid}
+%%| label: fig-save-seq
+%%| fig-cap: "A save, module by module — only changed blocks (and re-run cells) cross the wire."
+sequenceDiagram
+  autonumber
+  participant FS as .qmd file
+  participant SV as serve.rs (watcher)
+  participant RN as render/ (core)
+  participant EX as exec + kernel
+  participant DF as diff.rs
+  participant CL as client.js
+  FS->>SV: changed (notify)
+  SV->>RN: re-render (debounced)
+  RN->>EX: run first changed cell + downstream
+  EX-->>RN: output blocks
+  RN-->>SV: new block list
+  SV->>DF: new blocks vs live blocks
+  DF-->>SV: BlockOps (changed only)
+  SV->>CL: ws update / insert / remove
+  CL->>CL: swap blocks in place (scroll + live state kept)
+```
+
 The two crates split cleanly: **`qmd-fast-core` does all the thinking and touches
 no network** (it parses, models, and renders), while **`qmd-fast-server` is the
 long-running process** (CLI, websocket, file watcher, kernel pool). The browser
 client is a thin layer that mounts blocks and applies the ops the server sends.
 
 ## The codebase map
+
+The dependency shape first — who leans on whom (@fig-modules). The server
+orchestrates and owns the runtime; the core does all the rendering and never
+touches the network; the browser client only mounts blocks and applies ops.
+
+```{mermaid}
+%%| label: fig-modules
+%%| fig-cap: "Module dependencies across the three layers (an arrow means 'uses / calls')."
+flowchart TB
+  subgraph client["web-client/ · browser (vanilla JS)"]
+    CL["client.js<br/>mount · apply ops · click-to-source"]
+  end
+
+  subgraph server["crates/server · qmd-fast (binary)"]
+    direction TB
+    MAIN["main.rs · CLI"]
+    SRV["serve.rs<br/>single doc"]
+    SITE["serve_site.rs<br/>site / book"]
+    EX["exec.rs · executor"]
+    KR["kernel.rs<br/>warm ZMQ kernel"]
+    MAIN --> SRV
+    MAIN --> SITE
+    SRV --> EX
+    SITE --> EX
+    EX --> KR
+  end
+
+  subgraph core["crates/core · qmd-fast-core (library)"]
+    direction TB
+    RN["render/<br/>parse → block model → HTML"]
+    DF["diff.rs"]
+    SM["site/<br/>multi-page projects"]
+    INC["includes.rs"]
+    FM["frontmatter.rs"]
+    CI["cite.rs"]
+    MA["math.rs"]
+    HL["highlight.rs"]
+    RN --> INC
+    RN --> FM
+    RN --> CI
+    RN --> MA
+    RN --> HL
+    SM --> RN
+  end
+
+  CL <-->|ws JSON| SRV
+  CL <-->|ws JSON| SITE
+  SRV --> RN
+  SRV --> DF
+  SITE --> SM
+  SITE --> DF
+  EX -->|output blocks| DF
+```
+
+The data those modules pass around is small (@fig-data-model): a `RenderedDoc` is
+a list of `Block`s, an executable block carries a `Cell`, and `diff.rs` turns two
+block lists into a stream of `BlockOp`s.
+
+```{mermaid}
+%%| label: fig-data-model
+%%| fig-cap: "The core data model — what flows from the parser to the client."
+classDiagram
+  class RenderedDoc {
+    Option~String~ title
+    DocFormat format
+    bool toc
+    Vec~String~ warnings
+    Vec~Block~ blocks
+  }
+  class Block {
+    String id
+    String sourcepos
+    Option~String~ source_file
+    String html
+    Option~Cell~ cell
+  }
+  class Cell {
+    String lang
+    String code
+    bool echo
+    bool include
+  }
+  class BlockOp {
+    <<enumeration>>
+    Update
+    Insert
+    Remove
+  }
+  RenderedDoc "1" *-- "many" Block : blocks
+  Block "1" o-- "0..1" Cell : cell
+  Block ..> BlockOp : diff emits
+```
+
+The per-file reference follows.
 
 `crates/core/src` — the library (`qmd-fast-core`):
 
@@ -69,7 +187,7 @@ client is a thin layer that mounts blocks and applies the ops the server sends.
 | `render/figure.rs` | Standalone-image and captioned-cell `<figure>`s. |
 | `render/theme.rs` | Theming: light/dark, `.css`/`.scss`, extension themes, the pre-paint script. |
 | `render/reveal.rs` | reveal.js slide assembly. |
-| `render/extension.rs` | Format extensions + declarative shortcodes. |
+| `render/extension/` | Format extensions + declarative shortcodes (`mod` + an isolated Quarto-compat reader). |
 | `diff.rs` | Block-level diff (LCS over block ids) → `BlockOp`s. |
 | `includes.rs` | `{{< include >}}` resolution + the per-file source map. |
 | `math.rs` / `highlight.rs` | Server-side KaTeX / syntect, both offline. |
