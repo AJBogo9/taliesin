@@ -24,34 +24,47 @@ anchors and rebuilt live as you edit, with the current section highlighted as yo
 scroll (a scrollspy). On a wide screen it's a sticky sidebar; on a phone it
 collapses into a pull-up sheet.
 
-A **multi-chapter book** is a directory whose `_quarto.yml` declares
-`project: type: book` and lists `chapters:` (optionally grouped into `part:`s).
-qmd-fast numbers the chapters, builds the left sidebar, wires prev/next
+A **multi-chapter book** is a directory whose `_quarto.yml` lists `chapters:` —
+their presence makes it a book (no `type:` needed), optionally grouped into
+`part:`s. qmd-fast numbers the chapters, builds the left sidebar, wires prev/next
 navigation, and resolves cross-references across chapters. *These very docs are
 such a book* — look at the sidebar and press <kbd>Cmd/Ctrl-K</kbd> to search.
 
 ```yaml
-project:
-  type: book
-book:
-  title: "My Book"
-  chapters:
-    - index.qmd
-    - part: "Part One"
-      chapters: [a.qmd, b.qmd]
+title: "My Book"
+toc: true
+chapters:
+  - index.qmd
+  - part: "Part One"
+    chapters: [a.qmd, b.qmd]
 ```
 
 ## Multi-page websites
 
 Point either command at a **directory** and qmd-fast treats it as a website
-project. The directory needs one root config, `_quarto.yml` (Quarto-compatible),
-which names the site title, the navbar, and the footer; every `.qmd` under it
-(skipping `_`-prefixed partials) becomes a page.
+project. The directory needs one root config, `_quarto.yml`, which names the site
+title, the navbar, and the footer; every `.qmd` under it (skipping `_`-prefixed
+partials) becomes a page.
+
+```yaml
+title: "My Site"
+favicon: favicon.svg
+nav:
+  - { text: Blog, href: blog.qmd }
+  - { text: Projects, href: projects.qmd }
+footer:
+  left: "© 2026 Me"
+  right:
+    - { icon: github, href: "https://github.com/me" }
+```
 
 ```sh
 qmd-fast build   corpus/tech-blog     # static site -> _site/ (deployable)
 qmd-fast preview corpus/tech-blog     # live site on http://127.0.0.1:4321
 ```
+
+See the [configuration reference](../reference/configuration.qmd) for every key
+(and the note on reusing an existing Quarto-shaped config unchanged).
 
 `build` writes one `.html` per page (mirroring the input tree) and copies the
 referenced assets, so the output folder deploys as-is. `preview` serves the same
