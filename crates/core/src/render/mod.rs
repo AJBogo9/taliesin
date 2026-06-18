@@ -103,6 +103,11 @@ pub struct RenderedDoc {
     /// Resolved `include-in-header`/`include-before-body`/`include-after-body` +
     /// `css` from the doc's front matter, injected into the page template.
     pub includes: PageIncludes,
+    /// Non-fatal render warnings (a missing `bibliography:`/`theme:` file, …): the
+    /// core can't return a `Result`, so it reports these for the server to log +
+    /// surface in the dev menu. Front-matter typo warnings are separate (the
+    /// `frontmatter` linter runs off the source).
+    pub warnings: Vec<String>,
     pub blocks: Vec<Block>,
 }
 
@@ -502,11 +507,12 @@ fn render_internal(
         });
     }
 
+    let mut warnings: Vec<String> = Vec::new();
     let mut blocks = group_divs(flat, &spans, origins, &mut id_counts);
     // Pandoc table captions (`: caption {#tbl-x}` after a table) are numbered and
     // folded into the table's `<caption>`; registers `tbl-x` for `@tbl-` refs.
     apply_table_captions(&mut blocks, &mut xref_registry);
-    let bib = load_bibliography(bib_field.as_deref(), base_dir);
+    let bib = load_bibliography(bib_field.as_deref(), base_dir, &mut warnings);
     crate::cite::process(&mut blocks, &bib, &xref_registry);
     // A visible title block (HTML only; reveal builds its own title slide). It is
     // a generated block (no sourcepos), so it rides the block model + diff like
@@ -532,7 +538,7 @@ fn render_internal(
             },
         );
     }
-    let theme_css = resolve_theme(theme.as_deref(), base_dir);
+    let theme_css = resolve_theme(theme.as_deref(), base_dir, &mut warnings);
     let theme_default = theme_default_mode(theme.as_deref()).to_string();
     RenderedDoc {
         title,
@@ -545,6 +551,7 @@ fn render_internal(
         theme_css,
         theme_default,
         includes,
+        warnings,
         blocks,
     }
 }
@@ -886,18 +893,28 @@ fn reveal_if(cond: bool) -> DocFormat {
 /// Load and merge the bibliography file(s) named in the front matter, resolved
 /// relative to `base_dir`. Returns an empty bibliography when none is found
 /// (citations still de-leak; cross-references still resolve).
-fn load_bibliography(field: Option<&str>, base_dir: Option<&Path>) -> crate::cite::Bibliography {
+fn load_bibliography(
+    field: Option<&str>,
+    base_dir: Option<&Path>,
+    warnings: &mut Vec<String>,
+) -> crate::cite::Bibliography {
     let (Some(field), Some(base)) = (field, base_dir) else {
         return crate::cite::Bibliography::default();
     };
     let mut text = String::new();
     for tok in field.split([',', '[', ']', ' ']) {
         let tok = tok.trim().trim_matches(['"', '\'']);
-        if tok.ends_with(".bib")
-            && let Ok(content) = std::fs::read_to_string(base.join(tok))
-        {
-            text.push_str(&content);
-            text.push('\n');
+        if !tok.ends_with(".bib") {
+            continue;
+        }
+        match std::fs::read_to_string(base.join(tok)) {
+            Ok(content) => {
+                text.push_str(&content);
+                text.push('\n');
+            }
+            // An explicitly named `.bib` that can't be read is a typo worth flagging
+            // (citations would otherwise just silently fail to resolve).
+            Err(_) => warnings.push(format!("bibliography file not found: {tok}")),
         }
     }
     crate::cite::parse_bib(&text)
@@ -2859,6 +2876,40 @@ mod tests {
         assert!(
             !page.contains("<body class=\"has-toc\">"),
             "toc layout should be off"
+        );
+    }
+
+    #[test]
+    fn missing_bibliography_and_theme_files_warn() {
+        // A named `.bib`/`.css` that can't be read is reported on the doc's
+        // `warnings` (the core's non-fatal error channel), not silently dropped.
+        let doc = render_document_with_includes(
+            "---\ntitle: X\nbibliography: nope.bib\ntheme: gone.css\n---\n\nSee [@k].\n",
+            std::path::Path::new("/qmd-fast-nonexistent-dir"),
+        );
+        assert!(
+            doc.warnings
+                .iter()
+                .any(|w| w.contains("bibliography file not found: nope.bib")),
+            "got: {:?}",
+            doc.warnings
+        );
+        assert!(
+            doc.warnings
+                .iter()
+                .any(|w| w.contains("theme file not found: gone.css")),
+            "got: {:?}",
+            doc.warnings
+        );
+        // A bare theme name (a possible Quarto built-in) must NOT warn.
+        let ok = render_document_with_includes(
+            "---\ntitle: X\ntheme: darkly\n---\n\ntext\n",
+            std::path::Path::new("/qmd-fast-nonexistent-dir"),
+        );
+        assert!(
+            ok.warnings.is_empty(),
+            "bare theme warned: {:?}",
+            ok.warnings
         );
     }
 

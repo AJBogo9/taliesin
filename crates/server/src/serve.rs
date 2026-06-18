@@ -47,6 +47,9 @@ struct DocState {
     /// The doc's front-matter `include-*`/`css` (and any format-extension theme),
     /// injected into the page head/body so a single-doc preview matches the build.
     includes: qmd_fast_core::render::PageIncludes,
+    /// Non-fatal render warnings (missing `bibliography:`/`theme:` file), surfaced
+    /// in the dev menu + terminal.
+    warnings: Vec<String>,
     blocks: Vec<Block>,
     diagnostics: Vec<Diagnostic>,
     /// True while the last render failed, so the next success can re-mount fully
@@ -115,6 +118,7 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         d.theme_css = doc.theme_css;
         d.theme_default = doc.theme_default;
         d.includes = doc.includes;
+        d.warnings = doc.warnings;
         d.blocks = doc.blocks;
     }
 
@@ -834,7 +838,15 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         return;
     };
     let blocks = executor.run(doc.blocks).await;
-    let diags = compute_diagnostics(app, executor);
+    let mut diags = compute_diagnostics(app, executor);
+    // Render warnings (missing bibliography/theme file) ride alongside the
+    // include/kernel diagnostics into the dev menu.
+    for w in &doc.warnings {
+        diags.push(Diagnostic {
+            level: "warning",
+            message: w.clone(),
+        });
+    }
     let ops = {
         let mut d = app.doc.lock().unwrap();
         let recovered = std::mem::take(&mut d.errored);
@@ -847,6 +859,7 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         d.theme_css = doc.theme_css;
         d.theme_default = doc.theme_default;
         d.includes = doc.includes;
+        d.warnings = doc.warnings;
         d.blocks = blocks;
         d.diagnostics = diags;
         // Broadcast under the lock so connecting clients can't interleave.

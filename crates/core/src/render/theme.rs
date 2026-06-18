@@ -11,7 +11,11 @@ use super::*;
 /// resolves to a `.css`/`.scss` file or an installed `_extensions/<name>/`
 /// bundle, both relative to the document. Returns the override CSS to inline
 /// after the base stylesheet (empty for the default light theme).
-pub(super) fn resolve_theme(theme: Option<&str>, base_dir: Option<&Path>) -> String {
+pub(super) fn resolve_theme(
+    theme: Option<&str>,
+    base_dir: Option<&Path>,
+    warnings: &mut Vec<String>,
+) -> String {
     let Some(name) = theme else {
         return String::new();
     };
@@ -19,10 +23,19 @@ pub(super) fn resolve_theme(theme: Option<&str>, base_dir: Option<&Path>) -> Str
         // Built-in light/dark are always shipped (DARK_CSS) and selected at
         // runtime via `data-theme` (toggle / OS), so no per-page override CSS.
         "light" | "default" | "dark" => String::new(),
-        path if path.ends_with(".css") || path.ends_with(".scss") => base_dir
-            .and_then(|b| std::fs::read_to_string(b.join(path)).ok())
-            .unwrap_or_default(),
-        // An installed extension bundle: `_extensions/<name>/theme.css`.
+        // A named `.css`/`.scss` that can't be read is a typo worth flagging.
+        path if path.ends_with(".css") || path.ends_with(".scss") => {
+            match base_dir.and_then(|b| std::fs::read_to_string(b.join(path)).ok()) {
+                Some(css) => css,
+                None => {
+                    warnings.push(format!("theme file not found: {path}"));
+                    String::new()
+                }
+            }
+        }
+        // An installed extension bundle: `_extensions/<name>/theme.css`. A bare
+        // name isn't warned (it may be a Quarto built-in theme qmd-fast doesn't
+        // ship, e.g. `darkly`, which harmlessly falls back to the default).
         ext => base_dir
             .and_then(|b| {
                 std::fs::read_to_string(b.join("_extensions").join(ext).join("theme.css")).ok()

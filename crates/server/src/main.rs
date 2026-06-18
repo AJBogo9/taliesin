@@ -138,6 +138,9 @@ fn build_page_executing(
     let rt = tokio::runtime::Runtime::new()?;
     Ok(rt.block_on(async {
         let mut doc = qmd_fast_core::render_document_with_includes(src, base);
+        for w in &doc.warnings {
+            log::warn(w);
+        }
         let mut ex = exec::Executor::new();
         doc.blocks = ex.run(std::mem::take(&mut doc.blocks)).await;
         if ex.diagnostic().is_some() {
@@ -259,6 +262,9 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
         }
         let base = page.input.parent().unwrap_or(root);
         let mut doc = qmd_fast_core::render_document_with_includes(&src, base);
+        for w in &doc.warnings {
+            log::warn(&format!("{}: {w}", page.rel));
+        }
         let mut exec = exec::Executor::new();
         doc.blocks = exec.run(std::mem::take(&mut doc.blocks)).await;
         kernel_unavailable |= exec.diagnostic().is_some();

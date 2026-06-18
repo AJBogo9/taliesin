@@ -213,6 +213,14 @@ fn render_markdown_only(site: &qmd_fast_core::Site, page: &Page) -> PageDoc {
     site.number_chapter(page, &mut blocks);
     site.resolve_cross_refs(&mut blocks, &page.url);
     site.expand_page(page, &mut blocks);
+    let diagnostics = doc
+        .warnings
+        .iter()
+        .map(|w| Diag {
+            level: "warning",
+            message: w.clone(),
+        })
+        .collect();
     PageDoc {
         title: doc.title,
         toc,
@@ -220,7 +228,7 @@ fn render_markdown_only(site: &qmd_fast_core::Site, page: &Page) -> PageDoc {
         theme_default: doc.theme_default,
         includes: doc.includes,
         blocks,
-        diagnostics: Vec::new(),
+        diagnostics,
         errored: false,
     }
 }
@@ -608,7 +616,13 @@ async fn build_page(app: &SiteApp, rel: &str, execs: &mut HashMap<String, crate:
         site.expand_page(&page, &mut blocks);
         site.page_toc(&page, doc.toc_explicit)
     };
-    let diags = page_diagnostics(&page.input, &base, exec);
+    let mut diags = page_diagnostics(&page.input, &base, exec);
+    for w in &doc.warnings {
+        diags.push(Diag {
+            level: "warning",
+            message: w.clone(),
+        });
+    }
 
     let mut pages = app.pages.lock().unwrap();
     let ps = pages.entry(rel.to_string()).or_insert_with(|| PageState {
