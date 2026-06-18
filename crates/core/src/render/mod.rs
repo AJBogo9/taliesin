@@ -88,7 +88,7 @@ pub struct RenderedDoc {
     pub format: DocFormat,
     /// Whether this doc shows a table of contents. For a standalone render this
     /// is the front-matter `toc:` (default off); inside a site it is recomputed
-    /// from [`SiteCtx::page_toc`] so the site default can apply.
+    /// from `Site::page_toc` so the site default can apply.
     pub toc: bool,
     /// The page's explicit front-matter `toc:` as a tri-state: `Some(true/false)`
     /// when set, `None` when absent. The site uses this so an explicit `toc: false`
@@ -115,6 +115,10 @@ pub struct RenderedDoc {
 /// `include-after-body` / `css` front-matter (and site `format: html:`) keys.
 /// Each string is already resolved (inline `text:` or a referenced file's
 /// contents; `css` files wrapped in `<style>`), so the template just drops it in.
+///
+/// These strings are injected **verbatim, unescaped**: the author is trusted
+/// (see the crate-level "Trust model" doc). Don't populate them from any
+/// untrusted source without sanitizing first.
 #[derive(Debug, Clone, Default)]
 pub struct PageIncludes {
     pub in_header: String,
@@ -1077,9 +1081,9 @@ fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
     html_page_inner(doc, fallback_title, None)
 }
 
-/// Like [`html_page_from_doc`], but wraps the page body in the site chrome
+/// Like `html_page_from_doc`, but wraps the page body in the site chrome
 /// (navbar above, prev/next + footer below) and ships the site CSS. The
-/// single-page path ([`html_page_from_doc`]) is unchanged (`site == None`).
+/// single-page path (`html_page_from_doc`) is unchanged (`site == None`).
 pub fn html_page_from_doc_in_site(
     doc: &RenderedDoc,
     fallback_title: &str,

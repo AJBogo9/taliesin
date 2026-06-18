@@ -76,6 +76,8 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
                 }
             }
         }
+        // Raw HTML in the body is passed through verbatim (not escaped): the
+        // `.qmd` author is trusted. See the crate-level "Trust model" doc.
         NodeValue::HtmlBlock(hb) => emit_html_block(&hb.literal, attrs, out),
         NodeValue::HtmlInline(h) => out.push_str(h),
         NodeValue::Math(m) => out.push_str(&crate::math::render(&m.literal, m.display_math)),
