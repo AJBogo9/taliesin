@@ -38,7 +38,7 @@ impl Book {
 pub(super) fn build_book(root: &Path, config: &SiteConfig) -> Book {
     let mut entries = Vec::new();
     let mut num = 0u32;
-    for ch in &config.book.chapters {
+    for ch in &config.chapters {
         if let Some(file) = ch.as_str() {
             push_chapter(root, file, &mut entries, &mut num);
         } else if let Some(map) = ch.as_mapping() {
@@ -59,7 +59,7 @@ pub(super) fn build_book(root: &Path, config: &SiteConfig) -> Book {
         }
     }
     Book {
-        title: config.book.title.clone(),
+        title: config.title.clone(),
         entries,
     }
 }

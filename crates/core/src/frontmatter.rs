@@ -147,7 +147,13 @@ fn front_matter_block(src: &str) -> Option<&str> {
 
 /// The known key closest to `key` within an edit distance of 2 (likely a typo).
 fn closest_known(key: &str) -> Option<&'static str> {
-    KNOWN_KEYS
+    closest(key, KNOWN_KEYS)
+}
+
+/// The candidate within edit distance 2 of `key` (a "did you mean"), or `None`.
+/// Shared by the front-matter linter and the project-config validator.
+pub(crate) fn closest(key: &str, candidates: &[&'static str]) -> Option<&'static str> {
+    candidates
         .iter()
         .copied()
         .map(|k| (levenshtein(key, k), k))

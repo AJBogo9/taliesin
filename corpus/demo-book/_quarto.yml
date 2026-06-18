@@ -1,18 +1,12 @@
-project:
-  type: book
+title: "A Short Demo Book"
+author: "Andreas Bogossian"
+toc: true
 
-book:
-  title: "A Short Demo Book"
-  author: "Andreas Bogossian"
-  chapters:
-    - index.qmd
-    - intro.qmd
-    - part: "Core"
-      chapters:
-        - methods.qmd
-        - results.qmd
-    - summary.qmd
-
-format:
-  html:
-    toc: true
+chapters:            # presence makes this a book — no project: type: needed
+  - index.qmd
+  - intro.qmd
+  - part: "Core"
+    chapters:
+      - methods.qmd
+      - results.qmd
+  - summary.qmd

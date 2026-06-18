@@ -118,23 +118,22 @@ impl Site {
         let mut warnings = Vec::new();
         let config = load_config(root, &mut warnings);
 
-        // A book takes its page set + order from the explicit `book: chapters:`
-        // list; a website discovers every `.qmd` and orders by path.
-        let (pages, book) = if config.project.project_type.as_deref() == Some("book") {
+        // A book takes its page set + order from the explicit `chapters:` list;
+        // a website discovers every `.qmd` and orders by path.
+        let (pages, book) = if config.is_book {
             let book = build_book(root, &config);
             (book_pages(root, &book), Some(book))
         } else {
             (website_pages(root), None)
         };
 
-        // Resolve the site-wide `format: html:` includes once, relative to the
-        // site root (where `_quarto.yml` and its referenced css/js files live).
-        let html = &config.format.html;
+        // Resolve the site-wide head/body/css includes once, relative to the site
+        // root (where `_quarto.yml` and its referenced css/js files live).
         let includes = render::includes_from_parts(
-            html.include_in_header.as_ref(),
-            html.include_before_body.as_ref(),
-            html.include_after_body.as_ref(),
-            html.css.as_ref(),
+            config.head.as_ref(),
+            config.body_start.as_ref(),
+            config.body_end.as_ref(),
+            config.css.as_ref(),
             Some(root),
         );
 
@@ -162,7 +161,6 @@ impl Site {
     /// book, matching Quarto).
     pub fn output_dir(&self) -> &str {
         self.config
-            .project
             .output_dir
             .as_deref()
             .unwrap_or(if self.is_book() { "_book" } else { "_site" })
@@ -182,7 +180,7 @@ impl Site {
     /// live preview so both render identical navigation.
     pub fn page_chrome(&self, page: &Page) -> SiteCtx {
         let depth = page.url.matches('/').count(); // links are relative to the page
-        let favicon = match &self.config.website.favicon {
+        let favicon = match &self.config.favicon {
             Some(f) if !f.is_empty() => format!("{}{}", "../".repeat(depth), f),
             _ => String::new(),
         };
@@ -256,9 +254,7 @@ impl Site {
     /// titles. Used by both the static build and the live preview.
     pub fn page_toc(&self, page: &Page, doc_toc: Option<bool>) -> bool {
         doc_toc.unwrap_or_else(|| {
-            self.config.format.html.toc.unwrap_or(false)
-                && page.listings.is_empty()
-                && page.about.is_none()
+            self.config.toc.unwrap_or(false) && page.listings.is_empty() && page.about.is_none()
         })
     }
 
@@ -514,7 +510,6 @@ impl Site {
         let up = "../".repeat(depth);
         let brand_text = self
             .config
-            .website
             .title
             .clone()
             .unwrap_or_else(|| "Home".to_string());
@@ -531,12 +526,12 @@ impl Site {
         );
         s.push_str("<label for=\"qmd-nav-toggle\" class=\"qmd-nav-burger\" aria-label=\"Menu\"><span></span><span></span><span></span></label>");
         s.push_str("<div class=\"qmd-nav-links\">");
-        for it in &self.config.website.navbar.left {
+        for it in &self.config.nav.left {
             s.push_str(&self.nav_link(it, current, &up));
         }
         // Everything after the spacer is pushed to the far right of the bar.
         s.push_str("<span class=\"qmd-nav-spacer\"></span>");
-        for it in &self.config.website.navbar.right {
+        for it in &self.config.nav.right {
             s.push_str(&self.nav_link(it, current, &up));
         }
         // A real, shipped light/dark toggle (wired by theme_head; works in `build`
@@ -562,37 +557,51 @@ impl Site {
         } else {
             " class=\"qmd-nav-link\""
         };
+        // `icon:` shorthand renders a bundled SVG; otherwise the (escaped) label.
+        let content = it
+            .icon
+            .as_deref()
+            .and_then(social_icon)
+            .unwrap_or_else(|| esc(label));
         // `data-label` carries the text so the CSS can reserve the bold (active)
         // width, keeping the navbar from shifting when the active item bolds.
         format!(
             "<a{cls} href=\"{}\" data-label=\"{}\">{}</a>",
             target,
             esc(label),
-            esc(label)
+            content
         )
     }
 
     /// The slim site footer. Footer item text is treated as raw HTML (icon SVGs),
     /// per the trusted-source model. The RSS/feed link is dropped (unused).
     fn footer_html(&self, depth: usize) -> String {
-        let Some(footer) = &self.config.website.page_footer else {
+        let Some(footer) = &self.config.footer else {
             return String::new();
         };
         let up = "../".repeat(depth);
         let group = |items: &[NavItem]| -> String {
             let mut g = String::new();
             for it in items {
-                let text = it.text.clone().unwrap_or_default();
+                // `icon:` shorthand → a bundled SVG; otherwise the text is raw HTML
+                // (the trusted-source model, so an inline `<svg>` still works).
+                let (content, aria) = match it.icon.as_deref().and_then(social_icon) {
+                    Some(svg) => {
+                        let label = it.text.as_deref().or(it.icon.as_deref()).unwrap_or("link");
+                        (svg, format!(" aria-label=\"{}\"", esc(label)))
+                    }
+                    None => (it.text.clone().unwrap_or_default(), String::new()),
+                };
                 match it.href.as_deref() {
                     // Drop the RSS/Atom feed link — deliberately unsupported.
                     Some(h) if h.ends_with(".xml") => continue,
                     Some(h) => {
                         g.push_str(&format!(
-                            "<a class=\"qmd-foot-item\" href=\"{}\">{text}</a>",
+                            "<a class=\"qmd-foot-item\"{aria} href=\"{}\">{content}</a>",
                             resolve_href(h, &up)
                         ));
                     }
-                    None => g.push_str(&format!("<span class=\"qmd-foot-item\">{text}</span>")),
+                    None => g.push_str(&format!("<span class=\"qmd-foot-item\">{content}</span>")),
                 }
             }
             g
@@ -608,7 +617,43 @@ impl Site {
             group(&footer.right),
         )
     }
+}
 
+/// The bundled social glyphs for the `icon:` shorthand (Bootstrap Icons, inline
+/// SVG using `currentColor`), so a footer/nav link is `{ icon: github, href: … }`
+/// instead of a raw `<svg>` blob. `None` for an unknown name (the caller falls
+/// back to `text`).
+fn social_icon(name: &str) -> Option<String> {
+    let paths = match name.to_ascii_lowercase().as_str() {
+        "github" => {
+            "<path d=\"M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8\"/>"
+        }
+        "linkedin" => {
+            "<path d=\"M0 1.146C0 .513.526 0 1.175 0h13.65C15.474 0 16 .513 16 1.146v13.708c0 .633-.526 1.146-1.175 1.146H1.175C.526 16 0 15.487 0 14.854zm4.943 12.248V6.169H2.542v7.225zm-1.2-8.212c.837 0 1.358-.554 1.358-1.248-.015-.709-.52-1.248-1.342-1.248S2.4 3.226 2.4 3.934c0 .694.521 1.248 1.327 1.248zm4.908 8.212V9.359c0-.216.016-.432.08-.586.173-.431.568-.878 1.232-.878.869 0 1.216.662 1.216 1.634v3.865h2.401V9.25c0-2.22-1.184-3.252-2.764-3.252-1.274 0-1.845.7-2.165 1.193v.025h-.016l.016-.025V6.169h-2.4c.03.678 0 7.225 0 7.225z\"/>"
+        }
+        "rss" => {
+            "<path d=\"M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2z\"/><path d=\"M5.5 12a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0m-3-8.5a1 1 0 0 1 1-1c5.523 0 10 4.477 10 10a1 1 0 1 1-2 0 8 8 0 0 0-8-8 1 1 0 0 1-1-1m0 4a1 1 0 0 1 1-1 6 6 0 0 1 6 6 1 1 0 1 1-2 0 4 4 0 0 0-4-4 1 1 0 0 1-1-1\"/>"
+        }
+        "x" | "twitter" => {
+            "<path d=\"M12.6.75h2.454l-5.36 6.142L16 15.25h-4.937l-3.867-5.07-4.425 5.07H.316l5.733-6.57L0 .75h5.063l3.495 4.633L12.601.75Zm-.86 13.028h1.36L4.323 2.145H2.865z\"/>"
+        }
+        "mastodon" => {
+            "<path d=\"M11.19 12.195c2.016-.24 3.77-1.475 3.99-2.603.348-1.778.32-4.339.32-4.339 0-3.47-2.286-4.488-2.286-4.488C12.062.238 10.083.017 8.027 0h-.05C5.92.017 3.942.238 2.79.765c0 0-2.285 1.017-2.285 4.488l-.002.662c-.004.64-.007 1.35.011 2.091.083 3.394.626 6.74 3.78 7.57 1.454.383 2.703.463 3.709.408 1.823-.1 2.847-.647 2.847-.647l-.06-1.317s-1.303.41-2.767.36c-1.45-.05-2.98-.156-3.215-1.928a3.6 3.6 0 0 1-.033-.496s1.424.346 3.228.428c1.103.05 2.137-.064 3.188-.189zm1.613-2.47H11.13v-4.08c0-.859-.364-1.295-1.091-1.295-.804 0-1.207.517-1.207 1.541v2.233H7.168V5.89c0-1.024-.403-1.541-1.207-1.541-.727 0-1.091.436-1.091 1.296v4.079H3.197V5.522c0-.859.22-1.541.66-2.046.456-.505 1.052-.764 1.793-.764.856 0 1.504.328 1.933.983L8 4.39l.417-.695c.429-.655 1.077-.983 1.934-.983.74 0 1.336.259 1.791.764.442.505.661 1.187.661 2.046z\"/>"
+        }
+        "bluesky" => {
+            "<path d=\"M3.468 1.948C5.303 3.325 7.276 6.117 8 7.615c.725-1.498 2.697-4.29 4.532-5.667C13.855.956 16 .186 16 2.632c0 .489-.28 4.105-.444 4.692-.572 2.04-2.653 2.561-4.504 2.246 3.236.551 4.06 2.375 2.281 4.2-3.376 3.464-4.852-.87-5.23-1.98-.07-.204-.103-.3-.103-.218 0-.082-.033.014-.102.218-.379 1.11-1.855 5.444-5.231 1.98-1.778-1.825-.955-3.65 2.28-4.2-1.85.315-3.932-.205-4.503-2.246C.28 6.737 0 3.12 0 2.632 0 .186 2.145.955 3.468 1.948\"/>"
+        }
+        "email" | "mail" => {
+            "<path d=\"M.05 3.555A2 2 0 0 1 2 2h12a2 2 0 0 1 1.95 1.555L8 8.414zM0 4.697v7.104l5.803-3.558zM6.761 8.83l-6.57 4.027A2 2 0 0 0 2 14h12a2 2 0 0 0 1.808-1.144l-6.57-4.027L8 9.586zm3.436-.586L16 11.801V4.697z\"/>"
+        }
+        _ => return None,
+    };
+    Some(format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 16 16\" aria-hidden=\"true\">{paths}</svg>"
+    ))
+}
+
+impl Site {
     /// Prev/next navigation between posts (chronological). Non-posts get nothing.
     /// Bottom-of-post navigation: a single "back to the listing" button (replaces
     /// prev/next). Links to the listing page that covers this post, preferring the
