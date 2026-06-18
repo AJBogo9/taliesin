@@ -94,12 +94,90 @@ fn load_manifest(r: &ExtensionRef, warnings: &mut Vec<String>) -> Option<serde_y
     }
 }
 
+mod quarto;
+
+/// The normalized set of things an extension contributes, built from either the
+/// flat native manifest or the Quarto `contributes.formats.<base>` shape. Values
+/// are the raw YAML (resolved into includes/resources by the caller).
+#[derive(Default)]
+struct Contribution {
+    head: Option<serde_yaml::Value>,
+    body_start: Option<serde_yaml::Value>,
+    body_end: Option<serde_yaml::Value>,
+    css: Option<serde_yaml::Value>,
+    theme: Option<serde_yaml::Value>,
+    resources: Option<serde_yaml::Value>,
+    shortcodes: Option<serde_yaml::Value>,
+}
+
+impl Contribution {
+    /// The flat native manifest: contribution keys live at the top level.
+    fn from_native(m: &serde_yaml::Value) -> Contribution {
+        Contribution {
+            head: m.get("head").cloned(),
+            body_start: m.get("body-start").cloned(),
+            body_end: m.get("body-end").cloned(),
+            css: m.get("css").cloned(),
+            theme: m.get("theme").cloned(),
+            resources: m.get("resources").cloned(),
+            shortcodes: m.get("shortcodes").cloned(),
+        }
+    }
+}
+
+/// Recognized native top-level keys: metadata (informational) + contributions.
+const NATIVE_MANIFEST_KEYS: &[&str] = &[
+    "name",
+    "title",
+    "description",
+    "author",
+    "version",
+    "theme",
+    "css",
+    "head",
+    "body-start",
+    "body-end",
+    "resources",
+    "shortcodes",
+];
+
+/// Warn on unrecognized top-level keys of a native manifest (a closed set).
+fn validate_manifest(m: &serde_yaml::Value, ext: &str, warnings: &mut Vec<String>) {
+    let Some(map) = m.as_mapping() else { return };
+    for k in map.keys() {
+        let Some(key) = k.as_str() else { continue };
+        if !NATIVE_MANIFEST_KEYS.contains(&key) {
+            let hint = crate::frontmatter::closest(key, NATIVE_MANIFEST_KEYS)
+                .map(|s| format!(" (did you mean `{s}`?)"))
+                .unwrap_or_default();
+            warnings.push(format!(
+                "extension '{ext}': unknown manifest key `{key}`{hint}"
+            ));
+        }
+    }
+}
+
+/// Build a [`Contribution`], dispatching on manifest shape: a `contributes:` block
+/// is the Quarto shape (the isolated compat reader); otherwise the flat native
+/// schema. Delete `quarto.rs` + this branch to drop Quarto-extension support.
+fn load_contribution(
+    r: &ExtensionRef,
+    m: &serde_yaml::Value,
+    warnings: &mut Vec<String>,
+) -> Contribution {
+    if m.get("contributes").is_some() {
+        quarto::contribution(m, r.base, &r.name, warnings)
+    } else {
+        validate_manifest(m, &r.name, warnings);
+        Contribution::from_native(m)
+    }
+}
+
 /// If the doc's `format:` names a format extension (`<ext>-revealjs`/`<ext>-html`),
-/// load `_extensions/<ext>/_extension.yml` and resolve the includes + theme its
-/// `contributes: formats: <base>:` block injects, with files resolved relative to
-/// the extension's own directory. Empty when there's no such extension; a *failed*
-/// load (missing/malformed manifest, no matching `formats` block) is reported via
-/// `warnings` so the author isn't left guessing why their extension did nothing.
+/// load `_extensions/<ext>/_extension.yml` and resolve the includes + theme it
+/// contributes, with files resolved relative to the extension's own directory.
+/// Empty when there's no such extension; a *failed* load (missing/malformed
+/// manifest, no matching contribution) is reported via `warnings`.
 pub(super) fn resolve_format_extension(
     front_matter: &str,
     base_dir: Option<&Path>,
@@ -108,39 +186,29 @@ pub(super) fn resolve_format_extension(
     let Some(r) = extension_ref(front_matter, base_dir) else {
         return PageIncludes::default();
     };
-    let Some(v) = load_manifest(&r, warnings) else {
+    let Some(m) = load_manifest(&r, warnings) else {
         return PageIncludes::default();
     };
-    let Some(cfg) = v
-        .get("contributes")
-        .and_then(|c| c.get("formats"))
-        .and_then(|f| f.get(r.base))
-    else {
-        warnings.push(format!(
-            "extension '{}' declares no `contributes.formats.{}` block",
-            r.name, r.base
-        ));
-        return PageIncludes::default();
-    };
+    let c = load_contribution(&r, &m, warnings);
     let ext_dir = &r.dir;
     let mut inc = includes_from_parts(
-        cfg.get("include-in-header"),
-        cfg.get("include-before-body"),
-        cfg.get("include-after-body"),
-        cfg.get("css"),
+        c.head.as_ref(),
+        c.body_start.as_ref(),
+        c.body_end.as_ref(),
+        c.css.as_ref(),
         Some(ext_dir),
     );
     // The contributed `theme:` CSS layers, inlined ahead of the header so the deck's
     // own front matter can still override. (`.scss` layers need a compiler we don't
     // ship yet, so only `.css` is inlined; named base themes are handled elsewhere.)
-    let theme = resolve_theme_layers(cfg.get("theme"), ext_dir);
+    let theme = resolve_theme_layers(c.theme.as_ref(), ext_dir);
     if !theme.is_empty() {
         inc.in_header = format!("{theme}{}", inc.in_header);
     }
-    // `format-resources` (a scalar or list of file names relative to the extension)
-    // are copied verbatim next to the output so an injected `<script src="x.js">`
+    // `resources` (a scalar or list of file names relative to the extension) are
+    // copied verbatim next to the output so an injected `<script src="x.js">`
     // resolves at runtime, rather than inlined.
-    if let Some(res) = cfg.get("format-resources") {
+    if let Some(res) = &c.resources {
         for name in res
             .as_sequence()
             .map(|s| s.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
@@ -175,15 +243,14 @@ fn shortcode_templates(front_matter: &str, base_dir: Option<&Path>) -> HashMap<S
     let Some(r) = extension_ref(front_matter, base_dir) else {
         return out;
     };
+    // Warnings are dropped here — resolve_format_extension reports them once on the
+    // same render (this runs in the earlier shortcode-expansion pass).
     let mut ignore = Vec::new();
-    let Some(v) = load_manifest(&r, &mut ignore) else {
+    let Some(m) = load_manifest(&r, &mut ignore) else {
         return out;
     };
-    if let Some(map) = v
-        .get("contributes")
-        .and_then(|c| c.get("shortcodes"))
-        .and_then(|s| s.as_mapping())
-    {
+    let c = load_contribution(&r, &m, &mut ignore);
+    if let Some(map) = c.shortcodes.as_ref().and_then(|s| s.as_mapping()) {
         for (k, val) in map {
             if let (Some(name), Some(tmpl)) = (k.as_str(), val.as_str()) {
                 out.insert(name.to_string(), tmpl.to_string());

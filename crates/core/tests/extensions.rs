@@ -384,3 +384,73 @@ fn plain_format_without_extension_is_untouched() {
         "a non-extension format must not pull extension includes"
     );
 }
+
+/// A flat **native** `_extension.yml` (no `contributes:` nesting) contributes the
+/// same theme / head / body-end / resources / shortcodes — the friendly schema.
+#[test]
+fn native_flat_manifest_contributes_everything() {
+    let d = TempProj::new();
+    d.ext(
+        "glassy",
+        "name: Glassy\n\
+         theme: [dark, glassy.css]\n\
+         head: head.html\n\
+         body-end: init.html\n\
+         resources: [glassy.js]\n\
+         shortcodes:\n  yt: '<iframe src=\"/v/{{1}}\"></iframe>'\n",
+    );
+    d.file("_extensions/glassy/glassy.css", ".reveal{--g:1}");
+    d.file("_extensions/glassy/head.html", "<meta name=\"glassy\">");
+    d.file(
+        "_extensions/glassy/init.html",
+        "<script>window.__g=1</script>",
+    );
+    d.file("_extensions/glassy/glassy.js", "// js");
+
+    let src = "---\ntitle: T\nformat: glassy-revealjs\n---\n\nWatch {{< yt abc >}}.\n\n## S\n";
+    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    assert!(
+        doc.includes.in_header.contains("--g:1"),
+        "theme layer inlined"
+    );
+    assert!(
+        doc.includes.in_header.contains("name=\"glassy\""),
+        "head injected"
+    );
+    assert!(
+        doc.includes.after_body.contains("window.__g=1"),
+        "body-end injected"
+    );
+    assert!(
+        doc.includes
+            .resources
+            .iter()
+            .any(|p| p.ends_with("glassy.js")),
+        "resource collected"
+    );
+    assert!(
+        doc.body_html().contains("/v/abc"),
+        "native shortcode expanded"
+    );
+    assert!(
+        doc.warnings.is_empty(),
+        "clean manifest: {:?}",
+        doc.warnings
+    );
+}
+
+/// A typo'd key in a native manifest is reported with a "did you mean".
+#[test]
+fn native_manifest_unknown_key_is_warned() {
+    let d = TempProj::new();
+    d.ext("typo", "name: T\nresorces: [x.js]\n"); // resorces -> resources
+    let src = "---\ntitle: T\nformat: typo-revealjs\n---\n\n## S\n";
+    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    assert!(
+        doc.warnings
+            .iter()
+            .any(|w| w.contains("resorces") && w.contains("resources")),
+        "expected a did-you-mean manifest warning, got: {:?}",
+        doc.warnings
+    );
+}
