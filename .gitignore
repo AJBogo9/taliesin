@@ -10,6 +10,7 @@ out/
 
 # Built multi-page sites (qmd-fast build <dir> default output)
 _site/
+_book/
 
 # Logs and env
 *.log

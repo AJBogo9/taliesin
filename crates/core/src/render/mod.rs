@@ -1042,6 +1042,10 @@ pub struct SiteCtx {
     pub navbar_html: String,
     pub footer_html: String,
     pub post_nav_html: String,
+    /// A book's left chapter sidebar (Some only for `project: type: book`); when
+    /// set, the page uses the book layout (sidebar | content | TOC) instead of the
+    /// website layout (navbar on top).
+    pub book_sidebar: Option<String>,
     /// `page-layout: full` — widen the content column (for listing indexes).
     pub wide: bool,
     /// Site-level `format: html:` includes (header/body/css from `_quarto.yml`),
@@ -1110,6 +1114,23 @@ fn html_page_inner(doc: &RenderedDoc, fallback_title: &str, site: Option<&SiteCt
     // chrome lines up with the reading column. The `has-toc` grid moves onto the
     // wrapper, leaving the body free to be the flex shell.
     let body_content = match site {
+        // Book: a left chapter sidebar beside the reading area (content + TOC),
+        // with prev/next-chapter navigation under it.
+        Some(s) if s.book_sidebar.is_some() => {
+            body_class = " class=\"qmd-book-body\"".to_string();
+            let inner_cls = if toc.is_empty() {
+                "qmd-book-inner"
+            } else {
+                "qmd-book-inner has-toc"
+            };
+            format!(
+                "<div class=\"qmd-book\">\n{sidebar}\n<div class=\"qmd-book-main\">\n\
+                 <div class=\"{inner_cls}\">\n{content}</div>\n{post_nav}</div>\n</div>\n{footer}\n",
+                sidebar = s.book_sidebar.as_deref().unwrap_or(""),
+                post_nav = s.post_nav_html,
+                footer = s.footer_html,
+            )
+        }
         Some(s) => {
             let mut main_cls = String::from("qmd-site-main");
             if !toc.is_empty() {

@@ -13,8 +13,9 @@ author's own projects; provenance is below.
 | `posts/pca-geometry/` | Live-demo blog post | OJS + Three.js + math + code | `personal/tech-blog` |
 | `posts/fourier-transform/` | Interactive blog post | `ojs_define` Python→OJS bridge, raw-HTML (`{=html}`) audio players, labelled equations (`@eq-`) | `personal/tech-blog` |
 | `liquid-glass-slides/example.qmd` | reveal.js deck | slide structure, custom `liquid-glass` format extension | `personal/liquid-glass-revealjs` |
-| `bayesian-book/` | Multi-file book | includes (`subsections/`), cross-refs, bib + CSL, TOC | `personal/bayesian-fatality-analysis` |
+| `bayesian-book/` | Single-page report (`type: website`) | one page assembled from `subsections/` includes, cross-refs, bib + CSL, TOC | `personal/bayesian-fatality-analysis` |
 | `tech-blog/` | Multi-page website | `_quarto.yml` project config, many pages + posts, navbar/footer, prev/next, `.qmd`→`.html` cross-page links | `personal/tech-blog` |
+| `demo-book/` | Multi-chapter book (`type: book`) | `book: chapters:` (with a `part:`), left chapter sidebar, chapter + section numbering, prev/next-chapter nav | (purpose-built for the book format) |
 
 `tech-blog/` is the multi-page spec (the destination in `todo.md` §4). It is the
 author's real blog with the deploy caches stripped (`.venv`, `_freeze`, `_site`,

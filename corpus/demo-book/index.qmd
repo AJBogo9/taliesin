@@ -1,0 +1,4 @@
+# Preface {.unnumbered}
+
+This short book demonstrates the **book format**: chapters listed in a left
+sidebar, numbered, with previous/next navigation at the foot of each chapter.

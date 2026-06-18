@@ -210,6 +210,7 @@ fn render_markdown_only(site: &qmd_fast_core::Site, page: &Page) -> PageDoc {
     let doc = qmd_fast_core::render_document_with_includes(&src, base);
     let mut blocks = doc.blocks;
     let toc = site.page_toc(page, doc.toc_explicit);
+    site.number_chapter(page, &mut blocks);
     site.expand_page(page, &mut blocks);
     PageDoc {
         title: doc.title,
@@ -312,6 +313,38 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
         qmd_fast_core::favicon_link(&chrome.favicon)
     };
 
+    // A book lays out a left chapter sidebar | reading area (the live `#qmd-root`
+    // + TOC) | prev/next-chapter; a website keeps the navbar-on-top layout.
+    let (body_class, layout) = match chrome.book_sidebar.as_deref() {
+        Some(sidebar) => {
+            let inner_cls = if toc_nav.is_empty() {
+                "qmd-book-inner"
+            } else {
+                "qmd-book-inner has-toc"
+            };
+            (
+                "qmd-book-body",
+                format!(
+                    "<div class=\"qmd-book\">\n{sidebar}\n<div class=\"qmd-book-main\">\n\
+                     <div class=\"{inner_cls}\">\n<main id=\"qmd-root\">{body}</main>\n{toc_nav}\n</div>\n\
+                     {post_nav}</div>\n</div>\n{footer}",
+                    post_nav = chrome.post_nav_html,
+                    footer = chrome.footer_html,
+                ),
+            )
+        }
+        None => (
+            "qmd-site",
+            format!(
+                "{navbar}\n<div class=\"{main_cls}\">\n<main id=\"qmd-root\">{body}</main>\n\
+                 {toc_nav}\n{post_nav}\n</div>\n{footer}",
+                navbar = chrome.navbar_html,
+                post_nav = chrome.post_nav_html,
+                footer = chrome.footer_html,
+            ),
+        ),
+    };
+
     format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -329,19 +362,14 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
 {include_in_header}
 <style>{status_css}</style>
 </head>
-<body class="qmd-site">
+<body class="{body_class}">
 {include_before_body}
-{navbar}
-<div class="{main_cls}">
-<main id="qmd-root">{body}</main>
-{toc_nav}
-{post_nav}
-</div>
-{footer}
+{layout}
 <div id="qmd-controls"></div>
 <script>{doc_global} {toc_flag} window.QMD_SSR = true; window.QMD_WS_PATH = "{ws_path}";</script>
 {code_scripts}
 <script>{toc_spy}</script>
+<script>{search_js}</script>
 <script>
 {js}
 </script>
@@ -360,10 +388,8 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
         code_head = qmd_fast_core::code_head(),
         code_scripts = qmd_fast_core::code_scripts(),
         toc_spy = qmd_fast_core::TOC_SPY_JS,
+        search_js = qmd_fast_core::SEARCH_JS,
         status_css = STATUS_CSS,
-        navbar = chrome.navbar_html,
-        post_nav = chrome.post_nav_html,
-        footer = chrome.footer_html,
         js = CLIENT_JS,
     )
 }
@@ -576,6 +602,7 @@ async fn build_page(app: &SiteApp, rel: &str, execs: &mut HashMap<String, crate:
     // Expand listing cards (queries the whole site, so it needs the site lock).
     let toc = {
         let site = app.site.lock().unwrap();
+        site.number_chapter(&page, &mut blocks);
         site.expand_page(&page, &mut blocks);
         site.page_toc(&page, doc.toc_explicit)
     };

@@ -30,6 +30,8 @@ pub struct SiteConfig {
     #[serde(default)]
     pub website: WebsiteSection,
     #[serde(default)]
+    pub book: BookSection,
+    #[serde(default)]
     pub format: FormatSection,
 }
 
@@ -61,9 +63,25 @@ pub struct FormatHtml {
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct ProjectSection {
-    /// Where `build` writes the site (default `_site`).
+    /// `website` (default) or `book`.
+    #[serde(default, rename = "type")]
+    pub project_type: Option<String>,
+    /// Where `build` writes the site (default `_site`, or `_book` for a book).
     #[serde(default, rename = "output-dir")]
     pub output_dir: Option<String>,
+}
+
+/// The `book:` block (only present for `project: type: book`). `chapters` is an
+/// ordered list whose entries are either a chapter file name or a
+/// `{ part: <name>, chapters: [...] }` group.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct BookSection {
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub author: Option<serde_yaml::Value>,
+    #[serde(default)]
+    pub chapters: Vec<serde_yaml::Value>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -170,12 +188,44 @@ pub struct ListingSpec {
     pub categories: bool,
 }
 
+/// The resolved book navigation: the sidebar order (parts + chapters) plus the
+/// chapter title/number/url for each chapter page. Present only for a book.
+#[derive(Debug, Clone, Default)]
+pub struct Book {
+    pub title: Option<String>,
+    /// Sidebar entries in order; a part header has `part: Some` and no `url`.
+    pub entries: Vec<BookEntry>,
+}
+
+/// One sidebar row: a part header (`part` set, `url` empty) or a chapter (`url`
+/// set, `number` = its chapter number, `None` for an unnumbered preface).
+#[derive(Debug, Clone, Default)]
+pub struct BookEntry {
+    pub part: Option<String>,
+    pub number: Option<u32>,
+    pub title: String,
+    pub rel: String,
+    pub url: String,
+}
+
+impl Book {
+    /// The chapters in reading order (part headers dropped), for prev/next.
+    fn chapters(&self) -> Vec<&BookEntry> {
+        self.entries
+            .iter()
+            .filter(|e| e.part.is_none() && !e.url.is_empty())
+            .collect()
+    }
+}
+
 /// A discovered multi-page site: the root config plus its input pages.
 #[derive(Debug, Clone)]
 pub struct Site {
     pub root: PathBuf,
     pub config: SiteConfig,
     pub pages: Vec<Page>,
+    /// Resolved book navigation when `project: type: book`; `None` for a website.
+    pub book: Option<Book>,
     /// Site-wide `format: html:` includes (header/body/css), resolved once at
     /// discovery relative to the site root and merged ahead of each page's own.
     pub includes: render::PageIncludes,
@@ -191,37 +241,14 @@ impl Site {
         let mut warnings = Vec::new();
         let config = load_config(root, &mut warnings);
 
-        let mut inputs = Vec::new();
-        collect_pages(root, &mut inputs);
-        inputs.sort();
-
-        let mut pages: Vec<Page> = inputs
-            .into_iter()
-            .map(|input| {
-                let rel = rel_str(root, &input);
-                let url = qmd_to_html(&rel);
-                let fm = parse_front_matter(&input);
-                // `image` is relative to the page's own directory; store it
-                // site-root-relative so a listing card on another page can link it.
-                let card_image = fm.image.map(|img| join_rel(&rel, &img));
-                let is_post = rel.starts_with("posts/");
-                Page {
-                    input,
-                    rel,
-                    url,
-                    title: fm.title,
-                    date: fm.date,
-                    description: fm.description,
-                    card_image,
-                    categories: fm.categories,
-                    is_post,
-                    listings: fm.listings,
-                    about: fm.about,
-                    page_layout: fm.page_layout,
-                }
-            })
-            .collect();
-        pages.sort_by(|a, b| a.rel.cmp(&b.rel));
+        // A book takes its page set + order from the explicit `book: chapters:`
+        // list; a website discovers every `.qmd` and orders by path.
+        let (pages, book) = if config.project.project_type.as_deref() == Some("book") {
+            let book = build_book(root, &config);
+            (book_pages(root, &book), Some(book))
+        } else {
+            (website_pages(root), None)
+        };
 
         // Resolve the site-wide `format: html:` includes once, relative to the
         // site root (where `_quarto.yml` and its referenced css/js files live).
@@ -238,14 +265,25 @@ impl Site {
             root: root.to_path_buf(),
             config,
             pages,
+            book,
             includes,
             warnings,
         }
     }
 
-    /// The output directory `build` writes to (default `_site`).
+    /// Whether this project is a book (`project: type: book`).
+    pub fn is_book(&self) -> bool {
+        self.book.is_some()
+    }
+
+    /// The output directory `build` writes to (default `_site`, or `_book` for a
+    /// book, matching Quarto).
     pub fn output_dir(&self) -> &str {
-        self.config.project.output_dir.as_deref().unwrap_or("_site")
+        self.config
+            .project
+            .output_dir
+            .as_deref()
+            .unwrap_or(if self.is_book() { "_book" } else { "_site" })
     }
 
     /// Look up a page by its source rel-path or its output URL (`serve` accepts
@@ -266,10 +304,22 @@ impl Site {
             Some(f) if !f.is_empty() => format!("{}{}", "../".repeat(depth), f),
             _ => String::new(),
         };
+        let book = self.is_book();
         SiteCtx {
-            navbar_html: self.navbar_html(page, depth),
+            // A book replaces the top navbar with a left chapter sidebar and uses
+            // chapter prev/next instead of the post "back to listing" link.
+            navbar_html: if book {
+                String::new()
+            } else {
+                self.navbar_html(page, depth)
+            },
             footer_html: self.footer_html(depth),
-            post_nav_html: self.post_nav_html(page, depth),
+            post_nav_html: if book {
+                self.book_nav_html(page, depth)
+            } else {
+                self.post_nav_html(page, depth)
+            },
+            book_sidebar: book.then(|| self.sidebar_html(page, depth)),
             wide: page.page_layout.as_deref() == Some("full"),
             includes: self.includes.clone(),
             favicon,
@@ -294,6 +344,7 @@ impl Site {
     /// the executing `build` path so both emit identical chrome + links.
     pub fn render_page_doc(&self, page: &Page, mut doc: render::RenderedDoc) -> String {
         doc.toc = self.page_toc(page, doc.toc_explicit);
+        self.number_chapter(page, &mut doc.blocks);
         self.expand_page(page, &mut doc.blocks);
         let ctx = self.page_chrome(page);
         let fallback = page.title.as_deref().unwrap_or("");
@@ -312,6 +363,21 @@ impl Site {
                 && page.listings.is_empty()
                 && page.about.is_none()
         })
+    }
+
+    /// Number a book chapter's headings in place (chapter N, then N.1, N.1.1 …),
+    /// like Quarto's `number-sections`. A no-op for a website or an unnumbered
+    /// preface. Called by both the static build and the live preview.
+    pub fn number_chapter(&self, page: &Page, blocks: &mut [Block]) {
+        if let Some(book) = &self.book
+            && let Some(number) = book
+                .entries
+                .iter()
+                .find(|e| e.rel == page.rel)
+                .and_then(|e| e.number)
+        {
+            number_chapter_headings(blocks, number);
+        }
     }
 
     // --- listings ---------------------------------------------------------
@@ -664,6 +730,142 @@ impl Site {
             esc(label)
         )
     }
+
+    /// The book's left sidebar: the title, then the ordered chapters (part
+    /// headers interspersed), each prefixed with its number, the current chapter
+    /// highlighted.
+    fn sidebar_html(&self, current: &Page, depth: usize) -> String {
+        let Some(book) = &self.book else {
+            return String::new();
+        };
+        let up = "../".repeat(depth);
+        let mut s = String::from("<nav class=\"qmd-book-sidebar\" data-qmd-src=\"_quarto.yml\">");
+        if let Some(t) = &book.title {
+            s.push_str(&format!(
+                "<a class=\"qmd-book-brand\" href=\"{up}index.html\">{}</a>",
+                esc(t)
+            ));
+        }
+        s.push_str("<ul class=\"qmd-book-chapters\">");
+        for e in &book.entries {
+            if let Some(part) = &e.part {
+                s.push_str(&format!("<li class=\"qmd-book-part\">{}</li>", esc(part)));
+                continue;
+            }
+            let active = e.rel == current.rel;
+            let cls = if active {
+                "qmd-book-chapter qmd-book-active"
+            } else {
+                "qmd-book-chapter"
+            };
+            let aria = if active { " aria-current=\"page\"" } else { "" };
+            let num = e
+                .number
+                .map(|n| format!("<span class=\"qmd-chap-num\">{n}</span> "))
+                .unwrap_or_default();
+            s.push_str(&format!(
+                "<li><a class=\"{cls}\" href=\"{up}{}\"{aria}>{num}{}</a></li>",
+                e.url,
+                esc(&e.title)
+            ));
+        }
+        s.push_str("</ul></nav>");
+        s
+    }
+
+    /// Bottom-of-chapter prev/next navigation between book chapters.
+    fn book_nav_html(&self, current: &Page, depth: usize) -> String {
+        let Some(book) = &self.book else {
+            return String::new();
+        };
+        let chapters = book.chapters();
+        let Some(idx) = chapters.iter().position(|c| c.rel == current.rel) else {
+            return String::new();
+        };
+        let up = "../".repeat(depth);
+        let label = |e: &BookEntry| match e.number {
+            Some(n) => format!("{n}  {}", esc(&e.title)),
+            None => esc(&e.title),
+        };
+        let prev = idx.checked_sub(1).and_then(|i| chapters.get(i)).copied();
+        let next = chapters.get(idx + 1).copied();
+        if prev.is_none() && next.is_none() {
+            return String::new();
+        }
+        let left = prev
+            .map(|p| {
+                format!(
+                    "<a class=\"qmd-book-prev\" href=\"{up}{}\">\
+                     <span class=\"qmd-back-glyph\">\u{2190}</span> {}</a>",
+                    p.url,
+                    label(p)
+                )
+            })
+            .unwrap_or_default();
+        let right = next
+            .map(|n| {
+                format!(
+                    "<a class=\"qmd-book-next\" href=\"{up}{}\">{} \
+                     <span class=\"qmd-fwd-glyph\">\u{2192}</span></a>",
+                    n.url,
+                    label(n)
+                )
+            })
+            .unwrap_or_default();
+        format!(
+            "<nav class=\"qmd-postnav qmd-book-postnav\">{left}\
+             <span class=\"qmd-nav-spacer\"></span>{right}</nav>"
+        )
+    }
+}
+
+/// Prefix each heading in a book chapter with its section number: the chapter's
+/// `# H1` becomes "N", and the deeper headings count within it ("N.1", "N.1.1"),
+/// emitted as a `header-section-number` span so it reads like Quarto.
+fn number_chapter_headings(blocks: &mut [Block], chapter: u32) {
+    let mut counters = [0u32; 5]; // counters[0] = h2, [1] = h3, …
+    for b in blocks.iter_mut() {
+        let Some(level) = heading_level(&b.html) else {
+            continue;
+        };
+        let number = if level <= 1 {
+            chapter.to_string()
+        } else {
+            let i = (level - 2).min(counters.len() - 1);
+            counters[i] += 1;
+            for c in &mut counters[i + 1..] {
+                *c = 0;
+            }
+            let mut parts = vec![chapter.to_string()];
+            parts.extend(counters[..=i].iter().map(u32::to_string));
+            parts.join(".")
+        };
+        b.html = prefix_heading_number(&b.html, &number);
+    }
+}
+
+/// The heading level (1–6) of a block whose root element is `<hN …>`, else `None`.
+fn heading_level(html: &str) -> Option<usize> {
+    let bytes = html.as_bytes();
+    if bytes.first() == Some(&b'<')
+        && bytes.get(1) == Some(&b'h')
+        && let Some(d @ b'1'..=b'6') = bytes.get(2)
+    {
+        return Some((d - b'0') as usize);
+    }
+    None
+}
+
+/// Insert a `header-section-number` span just after a heading's opening tag.
+fn prefix_heading_number(html: &str, number: &str) -> String {
+    match html.find('>') {
+        Some(i) => format!(
+            "{}<span class=\"header-section-number\">{number}</span> {}",
+            &html[..=i],
+            &html[i + 1..]
+        ),
+        None => html.to_string(),
+    }
 }
 
 /// Load + parse `_quarto.yml` at `root`, tolerating malformed sections (warn,
@@ -696,6 +898,12 @@ fn load_config(root: &Path, warnings: &mut Vec<String>) -> SiteConfig {
             Err(e) => warnings.push(format!("ignoring malformed `website` config: {e}")),
         }
     }
+    if let Some(v) = root_val.get("book").cloned() {
+        match serde_yaml::from_value(v) {
+            Ok(b) => cfg.book = b,
+            Err(e) => warnings.push(format!("ignoring malformed `book` config: {e}")),
+        }
+    }
     if let Some(v) = root_val.get("format").cloned() {
         match serde_yaml::from_value(v) {
             Ok(f) => cfg.format = f,
@@ -703,6 +911,152 @@ fn load_config(root: &Path, warnings: &mut Vec<String>) -> SiteConfig {
         }
     }
     cfg
+}
+
+/// A website's pages: every `.qmd` under `root` (path-ordered), each mapped to a
+/// [`Page`] from its front matter.
+fn website_pages(root: &Path) -> Vec<Page> {
+    let mut inputs = Vec::new();
+    collect_pages(root, &mut inputs);
+    inputs.sort();
+    let mut pages: Vec<Page> = inputs
+        .into_iter()
+        .map(|input| {
+            let rel = rel_str(root, &input);
+            let url = qmd_to_html(&rel);
+            let fm = parse_front_matter(&input);
+            // `image` is relative to the page's own directory; store it
+            // site-root-relative so a listing card on another page can link it.
+            let card_image = fm.image.map(|img| join_rel(&rel, &img));
+            let is_post = rel.starts_with("posts/");
+            Page {
+                input,
+                rel,
+                url,
+                title: fm.title,
+                date: fm.date,
+                description: fm.description,
+                card_image,
+                categories: fm.categories,
+                is_post,
+                listings: fm.listings,
+                about: fm.about,
+                page_layout: fm.page_layout,
+            }
+        })
+        .collect();
+    pages.sort_by(|a, b| a.rel.cmp(&b.rel));
+    pages
+}
+
+/// Resolve `book: chapters:` into the sidebar navigation: walk the ordered list
+/// (chapter file names + `{ part, chapters }` groups), assigning each chapter a
+/// running number (an unnumbered chapter — the `index.qmd` preface or one whose
+/// H1 carries `.unnumbered`/`{-}` — is skipped in the count, like Quarto).
+fn build_book(root: &Path, config: &SiteConfig) -> Book {
+    let mut entries = Vec::new();
+    let mut num = 0u32;
+    for ch in &config.book.chapters {
+        if let Some(file) = ch.as_str() {
+            push_chapter(root, file, &mut entries, &mut num);
+        } else if let Some(map) = ch.as_mapping() {
+            let part = map
+                .get("part")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            entries.push(BookEntry {
+                part: Some(part),
+                ..Default::default()
+            });
+            if let Some(seq) = map.get("chapters").and_then(|v| v.as_sequence()) {
+                for c in seq.iter().filter_map(|v| v.as_str()) {
+                    push_chapter(root, c, &mut entries, &mut num);
+                }
+            }
+        }
+    }
+    Book {
+        title: config.book.title.clone(),
+        entries,
+    }
+}
+
+/// Append one chapter entry, bumping the chapter counter unless it is unnumbered.
+fn push_chapter(root: &Path, file: &str, entries: &mut Vec<BookEntry>, num: &mut u32) {
+    let input = root.join(file);
+    let rel = file.to_string();
+    let (h1, unnumbered) = chapter_heading(&input);
+    let title = h1
+        .or_else(|| parse_front_matter(&input).title)
+        .unwrap_or_else(|| rel.trim_end_matches(".qmd").to_string());
+    // The `index.qmd` preface is unnumbered by convention, like Quarto.
+    let number = if unnumbered || rel == "index.qmd" {
+        None
+    } else {
+        *num += 1;
+        Some(*num)
+    };
+    entries.push(BookEntry {
+        part: None,
+        number,
+        title,
+        url: qmd_to_html(&rel),
+        rel,
+    });
+}
+
+/// A chapter's title (its first `# H1` text, attributes stripped) and whether
+/// that heading is unnumbered (`{.unnumbered}` / `{-}`).
+fn chapter_heading(input: &Path) -> (Option<String>, bool) {
+    let Ok(src) = std::fs::read_to_string(input) else {
+        return (None, false);
+    };
+    let mut in_fm = false;
+    for (i, line) in src.lines().enumerate() {
+        let t = line.trim_start();
+        if i == 0 && t == "---" {
+            in_fm = true;
+            continue;
+        }
+        if in_fm {
+            if t == "---" {
+                in_fm = false;
+            }
+            continue;
+        }
+        if let Some(rest) = t.strip_prefix("# ") {
+            let unnumbered = rest.contains(".unnumbered") || rest.contains("{-}");
+            let title = rest.split('{').next().unwrap_or(rest).trim().to_string();
+            return (Some(title), unnumbered);
+        }
+    }
+    (None, false)
+}
+
+/// A book's pages: one [`Page`] per chapter, in reading order.
+fn book_pages(root: &Path, book: &Book) -> Vec<Page> {
+    book.chapters()
+        .into_iter()
+        .map(|c| {
+            let input = root.join(&c.rel);
+            let fm = parse_front_matter(&input);
+            Page {
+                input,
+                rel: c.rel.clone(),
+                url: c.url.clone(),
+                title: Some(c.title.clone()),
+                date: fm.date,
+                description: fm.description,
+                card_image: None,
+                categories: fm.categories,
+                is_post: false,
+                listings: fm.listings,
+                about: fm.about,
+                page_layout: fm.page_layout,
+            }
+        })
+        .collect()
 }
 
 /// Recursively collect input `.qmd` pages under `dir`, skipping `_`-prefixed

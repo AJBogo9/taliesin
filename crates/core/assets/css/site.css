@@ -151,3 +151,39 @@
     .qmd-nav-controls { padding: .5rem 1.15rem; }
     .qmd-site-main.has-toc { grid-template-columns: minmax(0, 1fr); }
   }
+
+/* --- book format: left chapter sidebar | reading area | within-chapter TOC --- */
+/* a book has no top navbar, so the content clears nothing (nav height = 0) */
+body.qmd-book-body { max-width: none; margin: 0; padding: 0; --qmd-nav-h: 0rem; }
+.qmd-book { display: flex; align-items: flex-start; gap: 2.5rem;
+  max-width: 80rem; margin: 0 auto; padding: 0 1.2rem; }
+.qmd-book-sidebar { position: sticky; top: 0; flex: 0 0 15rem; width: 15rem;
+  max-height: 100vh; overflow-y: auto; padding: 1.8rem 0 2rem; box-sizing: border-box; }
+.qmd-book-brand { display: block; font-weight: 700; font-size: 1.05rem; line-height: 1.25;
+  color: var(--qmd-fg); text-decoration: none; margin: 0 0 1.1rem; }
+.qmd-book-brand:hover { color: var(--qmd-accent); }
+.qmd-book-chapters { list-style: none; margin: 0; padding: 0; }
+.qmd-book-part { margin: 1.1rem 0 .35rem; font-size: .76rem; font-weight: 700;
+  letter-spacing: .04em; text-transform: uppercase; color: var(--qmd-muted); }
+.qmd-book-chapter { display: block; padding: .26rem 0; color: var(--qmd-muted);
+  text-decoration: none; font-size: .95rem; line-height: 1.3; }
+.qmd-book-chapter:hover { color: var(--qmd-fg); }
+.qmd-book-active { color: var(--qmd-accent); font-weight: 600; }
+.qmd-chap-num { color: var(--qmd-muted); margin-right: .25rem; }
+.qmd-book-active .qmd-chap-num { color: var(--qmd-accent); }
+.qmd-book-main { flex: 1 1 auto; min-width: 0; padding: 1.8rem 0 1rem; }
+.qmd-book-inner.has-toc { display: grid; align-items: start; gap: 2.5rem;
+  grid-template-columns: minmax(0, 1fr) 13rem; }
+.qmd-book-inner > main { min-width: 0; }
+.qmd-book-postnav { display: flex; align-items: center; gap: 1rem;
+  margin-top: 2.5rem; padding-top: 1.2rem; border-top: 1px solid var(--qmd-border); }
+.qmd-book-prev, .qmd-book-next { color: var(--qmd-muted); text-decoration: none; font-size: .95rem; }
+.qmd-book-prev:hover, .qmd-book-next:hover { color: var(--qmd-accent); }
+.qmd-book-postnav .qmd-nav-spacer { flex: 1 1 auto; }
+.header-section-number { color: var(--qmd-muted); font-weight: inherit; margin-right: .15em; }
+@media (max-width: 60rem) {
+  .qmd-book { flex-direction: column; gap: 0; }
+  .qmd-book-sidebar { position: static; width: 100%; flex-basis: auto; max-height: none;
+    border-bottom: 1px solid var(--qmd-border); margin-bottom: 1.2rem; }
+  .qmd-book-inner.has-toc { grid-template-columns: minmax(0, 1fr); }
+}

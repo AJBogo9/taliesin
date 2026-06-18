@@ -1,0 +1,7 @@
+# Results
+
+What we found, building on @sec-methods.
+
+## Discussion
+
+A short discussion of the findings.

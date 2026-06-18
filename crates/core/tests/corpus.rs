@@ -319,3 +319,70 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
         "raw cross-page .qmd link leaked"
     );
 }
+
+#[test]
+fn book_discovers_chapters_with_parts_numbering_and_chrome() {
+    use qmd_fast_core::Site;
+    let root = corpus_dir().join("demo-book");
+    let site = Site::discover(&root);
+
+    // Detected as a book; the chapter pages come from `book: chapters:` in order.
+    assert!(site.is_book(), "demo-book should be a book project");
+    assert_eq!(site.output_dir(), "_book", "book builds to _book");
+    let book = site.book.as_ref().expect("book nav resolved");
+    assert_eq!(book.title.as_deref(), Some("A Short Demo Book"));
+
+    // The sidebar order: Preface (unnumbered), Introduction (1), the "Core" part
+    // header, Methods (2), Results (3), Summary (4).
+    let chapters: Vec<(&str, Option<u32>)> = book
+        .entries
+        .iter()
+        .filter(|e| e.part.is_none())
+        .map(|e| (e.title.as_str(), e.number))
+        .collect();
+    assert_eq!(
+        chapters,
+        vec![
+            ("Preface", None),
+            ("Introduction", Some(1)),
+            ("Methods", Some(2)),
+            ("Results", Some(3)),
+            ("Summary", Some(4)),
+        ],
+        "chapter order + numbering (preface unnumbered)"
+    );
+    assert!(
+        book.entries
+            .iter()
+            .any(|e| e.part.as_deref() == Some("Core")),
+        "the `Core` part header should be in the sidebar"
+    );
+
+    // A chapter renders with the book chrome: left sidebar (active chapter),
+    // section numbers on its headings, and prev/next-chapter navigation.
+    let methods = site.render_page("methods.qmd").expect("methods renders");
+    assert!(
+        methods.contains("<nav class=\"qmd-book-sidebar\""),
+        "book sidebar missing"
+    );
+    assert!(
+        methods.contains("qmd-book-chapter qmd-book-active"),
+        "active chapter not marked"
+    );
+    assert!(
+        methods.contains("header-section-number\">2</span>")
+            && methods.contains("header-section-number\">2.1</span>"),
+        "chapter/section numbering missing"
+    );
+    assert!(
+        methods.contains("qmd-book-postnav")
+            && methods.contains("3  Results")
+            && methods.contains("1  Introduction"),
+        "prev/next-chapter navigation missing"
+    );
+    // A book uses the sidebar, not the website navbar element.
+    assert!(
+        !methods.contains("<header class=\"qmd-site-nav\""),
+        "a book should not emit the website navbar"
+    );
+}

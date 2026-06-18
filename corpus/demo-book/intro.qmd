@@ -1,0 +1,8 @@
+# Introduction
+
+Books group related material into ordered chapters. The methods we use are
+introduced in the next part.
+
+## Background
+
+Some background, with a little inline math $e^{i\pi}+1=0$ to check rendering.
