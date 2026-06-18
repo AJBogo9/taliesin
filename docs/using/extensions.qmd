@@ -92,7 +92,7 @@ so a third-party enhancer is indistinguishable from core's.
 ::: {.callout-tip}
 ## Diagnostics, not silence
 
-A typo'd extension name, a malformed `_extension.yml`, or a missing
-`contributes.formats.<base>` block is reported in the dev menu and the build log —
-so a broken extension never fails silently.
+A typo'd extension name, a malformed `_extension.yml`, or an unknown manifest key
+is reported in the dev menu and the build log — so a broken extension never fails
+silently.
 :::
