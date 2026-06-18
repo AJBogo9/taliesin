@@ -399,6 +399,31 @@
     if (window.opener) { try { window.opener.postMessage({ qmd: 'deck', type: 'hello' }, '*'); } catch (e) {} }
   }
 
+  // --- PDF export (print) ------------------------------------------------
+  // On `beforeprint` (Cmd/Ctrl+P) the deck flattens to one slide per page: every
+  // slide shown, transforms dropped, all fragments revealed, code un-dimmed.
+  // `@page` makes each page the deck's aspect, so the browser's "Save as PDF"
+  // yields a clean handout. `?qmd=print` enters the same layout on screen.
+  function enterPrint() {
+    var rev = revealEl(); if (!rev) return;
+    document.documentElement.classList.add('qmd-print');
+    tops().forEach(function (top) {
+      top.style.removeProperty('display'); top.removeAttribute('aria-hidden');
+      if (isStack(top)) {
+        top.classList.add('qmd-print-stack');
+        vertsOf(top).forEach(function (s) { s.style.removeProperty('display'); s.removeAttribute('aria-hidden'); });
+      }
+    });
+    rev.querySelectorAll(FRAG_SEL).forEach(function (e) { e.classList.add('qmd-frag-visible'); });
+    rev.querySelectorAll('pre[data-code-lines]').forEach(function (p) { highlightLines(p, 'all'); });
+    allSlides().forEach(fitSlide); // size every slide to its page (not just visited ones)
+  }
+  function exitPrint() {
+    document.documentElement.classList.remove('qmd-print');
+    tops().forEach(function (t) { t.classList.remove('qmd-print-stack'); });
+    apply();
+  }
+
   // --- URL hash (replaceState by default: no history pollution) ----------
   function writeHash() {
     if (!deck.config.hash) return;
@@ -516,7 +541,8 @@
     var rev = revealEl();
     if (!rev || !slidesEl()) return facade;
     var qmd = new URLSearchParams(location.search).get('qmd');
-    deck.mode = qmd === 'speaker' ? 'speaker' : (qmd === 'embed' ? 'embed' : 'normal');
+    deck.mode = qmd === 'speaker' ? 'speaker' : qmd === 'embed' ? 'embed'
+      : qmd === 'print' ? 'print' : 'normal';
     // reveal-styled extensions expect a .reveal-viewport host (e.g. liquid-glass
     // inserts background layers behind .reveal); reveal puts it on .reveal's parent.
     if (rev.parentNode && rev.parentNode.classList) rev.parentNode.classList.add('reveal-viewport');
@@ -526,6 +552,15 @@
 
     // The speaker window doesn't render the deck itself; it builds the control UI.
     if (deck.mode === 'speaker') { initSpeaker(); deck.ready = true; return facade; }
+
+    // Print preview: lay every slide out as a page on screen (same layout Cmd/Ctrl+P uses).
+    if (deck.mode === 'print') {
+      clampIndices();
+      rev.classList.add('qmd-ready');
+      enterPrint();
+      deck.ready = true;
+      return facade;
+    }
 
     if (!readHash()) { deck.h = 0; deck.v = 0; }
     clampIndices(); apply(); layout(); updateNumber();
@@ -540,6 +575,8 @@
       rev.addEventListener('touchend', onTouchEnd, { passive: true });
       slidesEl().addEventListener('click', onSlidesClick);
       window.addEventListener('hashchange', onHashChange);
+      window.addEventListener('beforeprint', enterPrint); // Cmd/Ctrl+P -> one slide per page
+      window.addEventListener('afterprint', exitPrint);
     }
     deck.ready = true;
     deck.plugins.forEach(initPlugin);
@@ -567,6 +604,7 @@
     on: on, addEventListener: on,
     registerPlugin: registerPlugin,
     openSpeaker: openSpeaker,
+    print: function () { window.print(); },
     isReady: function () { return deck.ready; },
   };
 

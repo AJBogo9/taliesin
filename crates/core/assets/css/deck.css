@@ -202,3 +202,38 @@ body { background: #fff; }
   border-radius: 6px;
   pointer-events: none;
 }
+
+/* PDF export: deck.js adds `qmd-print` to <html> on Cmd/Ctrl+P (and for the
+   ?qmd=print preview), flattening the deck to one fixed-size slide per page —
+   no transform, every slide shown, fragments revealed. `@page` makes each
+   printed page the deck's aspect so "Save as PDF" produces a clean handout. */
+html.qmd-print, html.qmd-print body {
+  width: 960px; height: auto; margin: 0; overflow: visible; background: #fff;
+}
+html.qmd-print .reveal,
+html.qmd-print .reveal-viewport {
+  position: static; width: 960px; height: auto; overflow: visible;
+}
+html.qmd-print .reveal .slides {
+  position: static; transform: none !important; left: auto; top: auto;
+  width: 960px; height: auto;
+}
+html.qmd-print .reveal .slides > section,
+html.qmd-print .reveal .slides > section > section {
+  position: relative !important;
+  display: block !important;
+  width: 960px; height: 540px; box-sizing: border-box;
+  overflow: hidden;
+  break-after: page;
+  background: #fff;
+}
+html.qmd-print .reveal .slides > section.center {
+  display: flex !important; flex-direction: column; justify-content: center; /* keep title slides centered */
+}
+html.qmd-print .reveal .slides > section.qmd-print-stack {
+  height: auto; break-after: auto; padding: 0; /* a stack wrapper isn't itself a page */
+}
+html.qmd-print .qmd-slide-number { display: none; }
+@media print {
+  @page { size: 960px 540px; margin: 0; }
+}
