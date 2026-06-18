@@ -242,6 +242,48 @@ html.qmd-print .qmd-bg { display: none; } /* per-slide backgrounds aren't in the
   pointer-events: none;
 }
 
+/* Drawing / annotations: a canvas inside .slides (so it scales with the deck)
+   captures pointer strokes while the pen is on (`d`); the toolbar floats bottom-left. */
+.reveal .qmd-draw {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 40;
+  pointer-events: none;
+  touch-action: none;
+}
+.reveal.qmd-drawing .qmd-draw { pointer-events: auto; cursor: crosshair; }
+.reveal .qmd-draw-bar {
+  position: fixed;
+  left: 14px;
+  bottom: 14px;
+  z-index: 50;
+  display: none;
+  gap: 6px;
+  padding: 6px;
+  background: rgba(20, 22, 27, .92);
+  border-radius: 10px;
+  align-items: center;
+}
+.reveal.qmd-drawing .qmd-draw-bar { display: flex; }
+.reveal .qmd-draw-bar button {
+  height: 28px;
+  min-width: 28px;
+  padding: 0 8px;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #e6e8ec;
+  background: #2a2e36;
+  font: 600 12px ui-sans-serif, system-ui, sans-serif;
+}
+.reveal .qmd-draw-bar .qmd-draw-color { width: 28px; padding: 0; }
+.reveal .qmd-draw-bar button.sel { border-color: #fff; }
+/* annotations are a live-presenting feature: hidden in reader + print. */
+html.qmd-scroll .qmd-draw, html.qmd-scroll .qmd-draw-bar,
+html.qmd-print .qmd-draw, html.qmd-print .qmd-draw-bar { display: none !important; }
+
 /* PDF export: deck.js adds `qmd-print` to <html> on Cmd/Ctrl+P (and for the
    ?qmd=print preview), flattening the deck to one fixed-size slide per page —
    no transform, every slide shown, fragments revealed. `@page` makes each

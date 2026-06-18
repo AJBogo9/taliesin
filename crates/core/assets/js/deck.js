@@ -94,6 +94,7 @@
     fitSlide(currentSlide());
     applyFragments();
     applyBackground();
+    if (deck.draw) redrawAnnotations(); // restore the new slide's annotations
     deck.lastSlide = currentSlide(); // remember for the next auto-animate transition
   }
   // --- per-slide backgrounds ---------------------------------------------
@@ -424,6 +425,7 @@
     var rev = revealEl();
     if (!rev) return;
     deck.overview = on;
+    if (on && deck.draw && deck.draw.on) { deck.draw.on = false; rev.classList.remove('qmd-drawing'); }
     var T = tops();
     if (on) {
       rev.classList.add('overview');
@@ -622,6 +624,99 @@
     layout();
   }
 
+  // --- drawing / annotations ---------------------------------------------
+  // `d` toggles a pen: a canvas inside `.slides` (so it scales with the deck) that
+  // captures pointer strokes over the current slide. Strokes are kept per slide and
+  // redrawn on navigation. A small toolbar offers colours, an eraser and clear.
+  function ensureDraw() {
+    if (deck.draw) return deck.draw;
+    var canvas = document.createElement('canvas');
+    canvas.className = 'qmd-draw';
+    canvas.width = deck.config.width;
+    canvas.height = deck.config.height;
+    slidesEl().appendChild(canvas);
+    var bar = document.createElement('div');
+    bar.className = 'qmd-draw-bar';
+    bar.innerHTML =
+      '<button class="qmd-draw-color" data-c="#ef4444" style="background:#ef4444"></button>' +
+      '<button class="qmd-draw-color" data-c="#3b82f6" style="background:#3b82f6"></button>' +
+      '<button class="qmd-draw-color" data-c="#22c55e" style="background:#22c55e"></button>' +
+      '<button class="qmd-draw-erase" title="Erase">erase</button>' +
+      '<button class="qmd-draw-clear" title="Clear slide">clear</button>' +
+      '<button class="qmd-draw-done" title="Done (d)">done</button>';
+    revealEl().appendChild(bar);
+    var d = deck.draw = {
+      canvas: canvas, ctx: canvas.getContext('2d'), bar: bar,
+      color: '#ef4444', erase: false, on: false, strokes: {}, drawing: false, stroke: null,
+    };
+    bar.querySelectorAll('.qmd-draw-color').forEach(function (b) {
+      b.addEventListener('click', function () { d.color = b.getAttribute('data-c'); d.erase = false; updateDrawBar(); });
+    });
+    bar.querySelector('.qmd-draw-erase').addEventListener('click', function () { d.erase = !d.erase; updateDrawBar(); });
+    bar.querySelector('.qmd-draw-clear').addEventListener('click', clearSlideDrawing);
+    bar.querySelector('.qmd-draw-done').addEventListener('click', function () { toggleDraw(false); });
+    canvas.addEventListener('pointerdown', drawStart);
+    canvas.addEventListener('pointermove', drawMove);
+    window.addEventListener('pointerup', function () { if (deck.draw) deck.draw.drawing = false; });
+    return d;
+  }
+  function updateDrawBar() {
+    var d = deck.draw; if (!d) return;
+    d.bar.querySelectorAll('.qmd-draw-color').forEach(function (b) {
+      b.classList.toggle('sel', !d.erase && b.getAttribute('data-c') === d.color);
+    });
+    d.bar.querySelector('.qmd-draw-erase').classList.toggle('sel', d.erase);
+  }
+  function toggleDraw(force) {
+    if (deck.mode !== 'normal' || deck.scroll || deck.overview) return;
+    var d = ensureDraw();
+    d.on = (force == null) ? !d.on : force;
+    revealEl().classList.toggle('qmd-drawing', d.on);
+    if (d.on) { redrawAnnotations(); updateDrawBar(); }
+  }
+  function drawKey() { var c = currentSlide(); return c ? (c.id || 'i' + deck.h + '-' + deck.v) : ''; }
+  function drawPoint(e) {
+    var d = deck.draw, r = d.canvas.getBoundingClientRect();
+    return { x: (e.clientX - r.left) / r.width * d.canvas.width, y: (e.clientY - r.top) / r.height * d.canvas.height };
+  }
+  function drawStroke(ctx, s) {
+    ctx.save();
+    ctx.globalCompositeOperation = s.erase ? 'destination-out' : 'source-over';
+    ctx.strokeStyle = s.color; ctx.lineWidth = s.w; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    s.pts.forEach(function (p, i) { i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); });
+    ctx.stroke();
+    ctx.restore();
+  }
+  function drawStart(e) {
+    var d = deck.draw; if (!d.on) return;
+    e.preventDefault();
+    d.drawing = true;
+    d.stroke = { color: d.color, erase: d.erase, w: d.erase ? 30 : 4, pts: [drawPoint(e)] };
+    (d.strokes[drawKey()] || (d.strokes[drawKey()] = [])).push(d.stroke);
+  }
+  function drawMove(e) {
+    var d = deck.draw; if (!d.on || !d.drawing) return;
+    var p = drawPoint(e), prev = d.stroke.pts[d.stroke.pts.length - 1];
+    d.stroke.pts.push(p);
+    var ctx = d.ctx;
+    ctx.save();
+    ctx.globalCompositeOperation = d.stroke.erase ? 'destination-out' : 'source-over';
+    ctx.strokeStyle = d.stroke.color; ctx.lineWidth = d.stroke.w; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath(); ctx.moveTo(prev.x, prev.y); ctx.lineTo(p.x, p.y); ctx.stroke();
+    ctx.restore();
+  }
+  function redrawAnnotations() {
+    var d = deck.draw; if (!d) return;
+    d.ctx.clearRect(0, 0, d.canvas.width, d.canvas.height);
+    (d.strokes[drawKey()] || []).forEach(function (s) { drawStroke(d.ctx, s); });
+  }
+  function clearSlideDrawing() {
+    var d = deck.draw; if (!d) return;
+    d.strokes[drawKey()] = [];
+    redrawAnnotations();
+  }
+
   // --- URL hash (replaceState by default: no history pollution) ----------
   function writeHash() {
     if (!deck.config.hash) return;
@@ -701,6 +796,7 @@
       case 'End': moveTo(tops().length - 1, 0, true); break;
       case 'Escape': case 'o': if (deck.mode === 'normal') setOverview(true); break;
       case 's': openSpeaker(); break;
+      case 'd': toggleDraw(); break;
       default: handled = false;
     }
     if (handled) e.preventDefault();
