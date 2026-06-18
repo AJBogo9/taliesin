@@ -560,6 +560,14 @@ fn reveal_index_html(ctx: &PageCtx) -> String {
     } else {
         format!("<style>{}</style>", ctx.theme_css)
     };
+    // The Observable runtime + init, only when the deck has live `{ojs}` cells —
+    // so interactive inputs/plots work in a deck just like on a page. `ojs_init`
+    // defines `window.qmdRunOJS`, which the preview client calls after each mount.
+    let (ojs_head, ojs_init) = if ctx.ojs {
+        (qmd_fast_core::ojs_head(), qmd_fast_core::ojs_init())
+    } else {
+        (String::new(), String::new())
+    };
     format!(
         r#"<!DOCTYPE html>
 <html lang="en">
@@ -570,6 +578,7 @@ fn reveal_index_html(ctx: &PageCtx) -> String {
 <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
 {head}
 {code_head}
+{ojs_head}
 {theme}
 {include_in_header}
 <style>{status_css}</style>
@@ -584,6 +593,7 @@ fn reveal_index_html(ctx: &PageCtx) -> String {
 {code_scripts}
 <script>window.QMD_FORMAT = "reveal"; window.QMD_SSR = true;</script>
 {include_after_body}
+{ojs_init}
 <script>
 {js}
 </script>

@@ -29,6 +29,15 @@ pub(super) fn reveal_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> S
     } else {
         String::new()
     };
+    // Interactive `{ojs}` cells need the Observable runtime + init, exactly like an
+    // HTML page — only shipped when the deck actually has OJS cells. The runtime
+    // renders into the cell divs regardless of which slide is showing, so reactive
+    // outputs are live the moment their slide appears.
+    let (ojs_head_html, ojs_init_html) = if has_ojs(&slides) {
+        (ojs_head(), ojs_init())
+    } else {
+        (String::new(), String::new())
+    };
     // A custom `theme:` CSS layer and the `include-*` front-matter apply to decks
     // just like HTML pages — a deck (or an installed reveal theme extension) can
     // restyle reveal and inject head/body markup. `theme` comes after reveal's own
@@ -38,12 +47,12 @@ pub(super) fn reveal_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> S
         "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n\
          <meta charset=\"utf-8\" />\n\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no\" />\n\
-         <title>{t}</title>\n{links}{katex_css}<style>{REVEAL_EXTRA_CSS}</style>\n{code_head}\n{theme}{in_header}\
+         <title>{t}</title>\n{links}{katex_css}<style>{REVEAL_EXTRA_CSS}</style>\n{code_head}\n{ojs_head}{theme}{in_header}\
          </head>\n<body>\n{before_body}<div class=\"reveal\">\n<div class=\"slides\">\n{slides}</div>\n</div>\n\
          {script}\n<script>\n  Reveal.initialize({{ hash: true, slideNumber: 'c/t', center: false }});\n</script>\n\
          {code_scripts}\n\
          <script>document.addEventListener('DOMContentLoaded',function(){{window.qmdEnhanceCode&&window.qmdEnhanceCode(document.body);}});</script>\n\
-         {after_body}</body>\n</html>\n",
+         {ojs_init}{after_body}</body>\n</html>\n",
         links = format!("<style>{DECK_CSS}</style>\n"),
         theme = theme_style(&doc.theme_css),
         in_header = doc.includes.in_header,
@@ -52,6 +61,8 @@ pub(super) fn reveal_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> S
         script = format!("<script>{DECK_JS}</script>"),
         code_head = code_head(),
         code_scripts = code_scripts(),
+        ojs_head = ojs_head_html,
+        ojs_init = ojs_init_html,
     )
 }
 
