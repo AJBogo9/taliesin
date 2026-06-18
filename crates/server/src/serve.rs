@@ -768,6 +768,7 @@ fn spawn_watcher(app: Arc<AppState>, mut signal_rx: mpsc::UnboundedReceiver<()>)
                             | notify::EventKind::Create(_)
                             | notify::EventKind::Remove(_)
                     )
+                    && relevant_event(&ev)
                 {
                     let _ = signal_tx.send(());
                 }
@@ -810,6 +811,30 @@ fn spawn_watcher(app: Arc<AppState>, mut signal_rx: mpsc::UnboundedReceiver<()>)
             }
         }
     });
+}
+
+/// Whether a file-watch event touches something a re-render actually depends on:
+/// a source/content/asset file, and not a build-output or VCS directory. Filters
+/// out the noise (editor swap files, `_site/`/`_book/` output, `.git`/`.quarto`)
+/// that would otherwise trigger a wasteful 0-op rebuild on every unrelated save.
+fn relevant_event(ev: &notify::Event) -> bool {
+    const EXTS: &[&str] = &[
+        "qmd", "md", "bib", "csl", "css", "scss", "yml", "yaml", "json", "js", "html", "svg",
+        "png", "jpg", "jpeg", "webp", "gif",
+    ];
+    const SKIP_DIRS: &[&str] = &["_site", "_book", ".git", ".quarto", "node_modules"];
+    ev.paths.iter().any(|p| {
+        let ext_ok = p
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| EXTS.contains(&e.to_ascii_lowercase().as_str()));
+        let in_skip_dir = p.components().any(|c| {
+            c.as_os_str()
+                .to_str()
+                .is_some_and(|s| SKIP_DIRS.contains(&s))
+        });
+        ext_ok && !in_skip_dir
+    })
 }
 
 /// Directories to watch: the primary doc's directory plus the directory of any
