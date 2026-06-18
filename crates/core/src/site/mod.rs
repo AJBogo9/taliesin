@@ -272,6 +272,7 @@ impl Site {
         self.number_chapter(page, &mut doc.blocks);
         self.resolve_cross_refs(&mut doc.blocks, &page.url);
         self.expand_page(page, &mut doc.blocks);
+        self.decorate_post(page, &mut doc.blocks);
         let ctx = self.page_chrome(page);
         let fallback = page.title.as_deref().unwrap_or("");
         let html = render::html_page_from_doc_in_site(&doc, fallback, &ctx);
@@ -486,6 +487,117 @@ impl Site {
         )
     }
 
+    // --- post decoration + category archives ------------------------------
+
+    /// Add a reading-time estimate and category links to a *post's* title block
+    /// (a no-op for listing/about/book pages). Both ride in the existing title
+    /// block, so they mount + diff like any other content.
+    fn decorate_post(&self, page: &Page, blocks: &mut [Block]) {
+        if !page.is_post {
+            return;
+        }
+        let words: usize = blocks
+            .iter()
+            .filter(|b| b.id != "qmd-title-block")
+            .map(|b| html_word_count(&b.html))
+            .sum();
+        let mins = words.div_ceil(200).max(1);
+        let read = format!("<span class=\"qmd-read-time\">{mins} min read</span>");
+        let cats = if page.categories.is_empty() {
+            String::new()
+        } else {
+            let up = "../".repeat(page.url.matches('/').count());
+            let links: String = page
+                .categories
+                .iter()
+                .map(|c| {
+                    format!(
+                        "<a class=\"qmd-cat\" href=\"{up}categories/{}/\">{}</a>",
+                        slugify(c),
+                        esc(c)
+                    )
+                })
+                .collect();
+            format!("<div class=\"qmd-post-cats\">{links}</div>")
+        };
+        if let Some(tb) = blocks.iter_mut().find(|b| b.id == "qmd-title-block") {
+            inject_title_extras(&mut tb.html, &read, &cats);
+        }
+    }
+
+    /// Every post category mapped to its posts, newest-first. The basis of the
+    /// per-tag archive pages.
+    pub fn category_index(&self) -> std::collections::BTreeMap<String, Vec<&Page>> {
+        let mut m: std::collections::BTreeMap<String, Vec<&Page>> = Default::default();
+        for p in self.pages.iter().filter(|p| p.is_post) {
+            for c in &p.categories {
+                m.entry(c.clone()).or_default().push(p);
+            }
+        }
+        for v in m.values_mut() {
+            v.sort_by(|a, b| b.date.cmp(&a.date).then_with(|| a.rel.cmp(&b.rel)));
+        }
+        m
+    }
+
+    /// Render the archive page for one category `slug` (a grid of its posts with
+    /// full site chrome), or `None` if no category slugs to it. Used by the build
+    /// (writes `categories/<slug>/index.html`) and the preview route.
+    pub fn render_category_page(&self, slug: &str) -> Option<String> {
+        let index = self.category_index();
+        let (cat, posts) = index.iter().find(|(c, _)| slugify(c) == slug)?;
+        let url = format!("categories/{slug}/index.html");
+        let n = posts.len();
+        let synth = Page {
+            input: self.root.join(&url),
+            rel: format!("categories/{slug}/index.qmd"),
+            url,
+            title: Some(format!("Tagged: {cat}")),
+            date: None,
+            description: Some(format!(
+                "{n} post{} tagged \u{201c}{cat}\u{201d}",
+                if n == 1 { "" } else { "s" }
+            )),
+            card_image: None,
+            categories: Vec::new(),
+            is_post: false,
+            listings: Vec::new(),
+            about: None,
+            page_layout: None,
+        };
+        let grid: String = posts
+            .iter()
+            .map(|p| self.card_html(p, "../../", true))
+            .collect();
+        // Render a minimal source so the doc gets the right theme/includes defaults,
+        // then append the card grid and wrap it in chrome like any other page.
+        let src = format!(
+            "---\ntitle: {}\n---\n",
+            yaml_quote(&format!("Tagged: {cat}"))
+        );
+        let mut doc = render::render_document_with_includes(&src, &self.root);
+        doc.blocks.push(Block {
+            id: "qmd-cat-archive".to_string(),
+            sourcepos: String::new(),
+            source_file: None,
+            html: format!("<div class=\"qmd-listing qmd-listing-grid\">{grid}</div>"),
+            cell: None,
+        });
+        Some(self.render_page_doc(&synth, doc))
+    }
+
+    /// All category archive pages as `(url, html)`, for the static build.
+    pub fn category_pages(&self) -> Vec<(String, String)> {
+        self.category_index()
+            .keys()
+            .filter_map(|cat| {
+                let slug = slugify(cat);
+                self.render_category_page(&slug)
+                    .map(|html| (format!("categories/{slug}/index.html"), html))
+            })
+            .collect()
+    }
+
     // --- about ------------------------------------------------------------
 
     /// Render an `about:` profile header (replaces the title block on a page that
@@ -657,6 +769,65 @@ impl Site {
             group(&footer.center),
             group(&footer.right),
         )
+    }
+}
+
+/// A URL-safe slug for a category name (`"Machine Learning"` → `"machine-learning"`):
+/// lowercase ASCII alphanumerics, every other run collapsed to a single `-`.
+fn slugify(s: &str) -> String {
+    let mut out = String::new();
+    for c in s.chars() {
+        if c.is_ascii_alphanumeric() {
+            out.push(c.to_ascii_lowercase());
+        } else if !out.is_empty() && !out.ends_with('-') {
+            out.push('-');
+        }
+    }
+    out.trim_matches('-').to_string()
+}
+
+/// Approximate word count of rendered HTML, skipping tag markup (for reading time).
+fn html_word_count(html: &str) -> usize {
+    let (mut words, mut in_tag, mut in_word) = (0usize, false, false);
+    for c in html.chars() {
+        match c {
+            '<' => {
+                in_tag = true;
+                in_word = false;
+            }
+            '>' => in_tag = false,
+            _ if in_tag => {}
+            c if c.is_whitespace() => in_word = false,
+            _ => {
+                if !in_word {
+                    words += 1;
+                    in_word = true;
+                }
+            }
+        }
+    }
+    words
+}
+
+/// Double-quote + escape a string for a YAML scalar (synthetic front matter).
+fn yaml_quote(s: &str) -> String {
+    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+/// Splice a reading-time span into a title block's `qmd-title-meta` (creating the
+/// meta if absent) and append a category-links block before `</header>`.
+fn inject_title_extras(html: &mut String, read: &str, cats: &str) {
+    if let Some(meta) = html.find("class=\"qmd-title-meta\">") {
+        if let Some(rel) = html[meta..].find("</div>") {
+            html.insert_str(meta + rel, read);
+        }
+    } else if let Some(end) = html.rfind("</header>") {
+        html.insert_str(end, &format!("<div class=\"qmd-title-meta\">{read}</div>"));
+    }
+    if !cats.is_empty()
+        && let Some(end) = html.rfind("</header>")
+    {
+        html.insert_str(end, cats);
     }
 }
 

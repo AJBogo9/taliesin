@@ -109,6 +109,10 @@
   .qmd-cat[data-cat] { cursor: pointer; }
   .qmd-cat[data-cat]:hover { color: var(--qmd-fg); border-color: var(--qmd-muted); }
   .qmd-cat.qmd-cat-on { background: var(--qmd-accent); border-color: var(--qmd-accent); color: #fff; }
+  /* a post's category links (in its title block) → the per-tag archive pages */
+  .qmd-post-cats { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .7rem; }
+  a.qmd-cat { text-decoration: none; }
+  a.qmd-cat:hover { color: var(--qmd-fg); border-color: var(--qmd-muted); background: var(--qmd-code-bg); }
 
   /* category filter chip row (listing: categories: true) */
   .qmd-cat-filter { display: flex; flex-wrap: wrap; gap: .45rem; margin: 0 0 1.5rem; }

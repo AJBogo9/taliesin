@@ -360,6 +360,38 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
         post.contains("rel=\"canonical\" href=\"https://"),
         "canonical link missing"
     );
+
+    // Reading time is added to every post's title block.
+    assert!(
+        post.contains("class=\"qmd-read-time\"") && post.contains("min read"),
+        "reading time missing"
+    );
+
+    // Per-tag archives: each post category yields an archive page that lists its
+    // posts, and a post links to its category archives.
+    assert!(
+        !site.category_pages().is_empty(),
+        "no category archive pages"
+    );
+    let fourier = site
+        .render_page("posts/fourier-transform/index.qmd")
+        .expect("fourier post renders");
+    assert!(
+        fourier.contains("qmd-post-cats") && fourier.contains("categories/signal-processing/"),
+        "post should link to its category archives"
+    );
+    let archive = site
+        .render_category_page("signal-processing")
+        .expect("signal-processing archive renders");
+    assert!(
+        archive.contains("Tagged: signal processing"),
+        "archive title missing"
+    );
+    assert!(archive.contains("qmd-card"), "archive lists no posts");
+    assert!(
+        site.render_category_page("does-not-exist").is_none(),
+        "bogus slug should be None"
+    );
 }
 
 #[test]

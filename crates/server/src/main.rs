@@ -316,8 +316,26 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
         }
     }
 
+    // Per-tag archive pages (categories/<slug>/index.html).
+    let mut tags = 0usize;
+    for (url, html) in site.category_pages() {
+        let dest = out.join(&url);
+        if let Some(parent) = dest.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        match std::fs::write(&dest, html) {
+            Ok(()) => tags += 1,
+            Err(e) => log::warn(&format!("cannot write {url}: {e}")),
+        }
+    }
+    let tag_pages = if tags > 0 {
+        format!("  ·  {tags} tag page{}", if tags == 1 { "" } else { "s" })
+    } else {
+        String::new()
+    };
+
     log::built(&format!(
-        "{}  ·  {pages} page{}  ·  {assets} asset{}{feed}",
+        "{}  ·  {pages} page{}  ·  {assets} asset{}{feed}{tag_pages}",
         out.display(),
         if pages == 1 { "" } else { "s" },
         if assets == 1 { "" } else { "s" },

@@ -185,6 +185,17 @@ async fn page_or_asset(
     if let Some(page) = page {
         return Html(ensure_and_render_page(&app, &page)).into_response();
     }
+    // A per-tag archive page (categories/<slug>/), rendered on the fly to match
+    // what `build` writes.
+    if let Some(rest) = path.strip_prefix("categories/") {
+        let slug = rest.trim_end_matches("index.html").trim_end_matches('/');
+        if !slug.is_empty()
+            && !slug.contains('/')
+            && let Some(html) = app.site.lock().render_category_page(slug)
+        {
+            return Html(html).into_response();
+        }
+    }
     serve_asset(&app.root, &path)
 }
 
