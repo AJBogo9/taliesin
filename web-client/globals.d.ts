@@ -32,4 +32,8 @@ interface Window {
   __qmdOjsDefined?: Map<string, string>;
   /** Code enhancer (copy buttons + mermaid), defined in client.js itself. */
   qmdEnhanceCode?: (root: ParentNode | null) => void;
+  /** (Re)collects `#TOC` links and runs the scrollspy (shared toc-spy.js). */
+  qmdInitTocSpy?: () => void;
+  /** Per-scroll hook the shared scrollspy calls (preview flashes the mobile label). */
+  qmdTocScrollHook?: () => void;
 }

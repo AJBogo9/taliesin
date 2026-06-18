@@ -220,7 +220,7 @@ fn render_markdown_only(site: &qmd_fast_core::Site, page: &Page) -> PageDoc {
     let base = page.input.parent().unwrap_or(Path::new("."));
     let doc = qmd_fast_core::render_document_with_includes(&src, base);
     let mut blocks = doc.blocks;
-    let toc = site.page_toc(page, doc.toc);
+    let toc = site.page_toc(page, doc.toc_explicit);
     site.expand_page(page, &mut blocks);
     PageDoc {
         title: doc.title,
@@ -352,6 +352,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
 <div id="qmd-controls"></div>
 <script>{doc_global} {toc_flag} window.QMD_SSR = true; window.QMD_WS_PATH = "{ws_path}";</script>
 {code_scripts}
+<script>{toc_spy}</script>
 <script>
 {js}
 </script>
@@ -369,6 +370,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
         site_styles = qmd_fast_core::site_styles(),
         code_head = qmd_fast_core::code_head(),
         code_scripts = qmd_fast_core::code_scripts(),
+        toc_spy = qmd_fast_core::TOC_SPY_JS,
         status_css = STATUS_CSS,
         navbar = chrome.navbar_html,
         post_nav = chrome.post_nav_html,
@@ -586,7 +588,7 @@ async fn build_page(app: &SiteApp, rel: &str, execs: &mut HashMap<String, crate:
     let toc = {
         let site = app.site.lock().unwrap();
         site.expand_page(&page, &mut blocks);
-        site.page_toc(&page, doc.toc)
+        site.page_toc(&page, doc.toc_explicit)
     };
     let diags = page_diagnostics(&page.input, &base, exec);
 

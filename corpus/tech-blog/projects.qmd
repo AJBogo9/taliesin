@@ -1,5 +1,6 @@
 ---
 title: "Projects"
+title-block-style: none
 listing:
   contents: projects
   sort: "date desc"

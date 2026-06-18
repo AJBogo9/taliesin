@@ -330,7 +330,6 @@
   // Mobile pull-up sheet chrome (present only on the live TOC page).
   const tocHandle = tocEl && document.getElementById("qmd-toc-handle");
   const tocBackdrop = tocEl && document.getElementById("qmd-toc-backdrop");
-  const tocCur = tocEl && document.getElementById("qmd-toc-cur");
   const escText = (/** @type {string|null} */ s) =>
     (s || "").replace(/[&<>]/g, (/** @type {string} */ c) =>
       /** @type {Record<string, string>} */ ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
@@ -359,57 +358,11 @@
     tocEl.innerHTML = html + "</ul>";
   };
 
-  // TOC scrollspy: highlight the entry whose section currently sits at the top of
-  // the viewport, and keep it in view if the TOC is its own scroll area. The link
-  // nodes are recreated on every TOC rebuild, so the set is re-collected then; the
-  // per-scroll update is a cheap rect read, throttled to one rAF.
-  const TOC_ACTIVE = "qmd-toc-active";
-  /** @typedef {{ link: Element, heading: HTMLElement }} TocEntry */
-  let tocSpy = /** @type {TocEntry[]} */ ([]); // in document order
-  let tocSpyActive = /** @type {TocEntry|null} */ (null);
-  let tocSpyRaf = 0;
-  const updateTocActive = () => {
-    if (!tocEl || !tocSpy.length) return;
-    // A heading above this y marks the current section. Kept small (just past the
-    // 1rem scroll-margin a clicked anchor lands at) so clicking a heading lights up
-    // that heading, not the sub-heading right beneath it.
-    const line = 44;
-    let active = tocSpy[0];
-    for (const item of tocSpy) {
-      if (item.heading.getBoundingClientRect().top - line <= 0) active = item;
-      else break;
-    }
-    if (active === tocSpyActive) return;
-    tocSpyActive = active;
-    for (const item of tocSpy) item.link.classList.toggle(TOC_ACTIVE, item === active);
-    if (tocCur) tocCur.textContent = active.heading.textContent; // mobile handle chip
-    // keep the active entry within view when the TOC scrolls independently
-    const lr = active.link.getBoundingClientRect();
-    const tr = tocEl.getBoundingClientRect();
-    if (lr.top < tr.top) tocEl.scrollTop -= tr.top - lr.top + 8;
-    else if (lr.bottom > tr.bottom) tocEl.scrollTop += lr.bottom - tr.bottom + 8;
-  };
-  const refreshTocSpy = () => {
-    if (!tocEl) return;
-    tocSpy = [];
-    for (const link of tocEl.querySelectorAll("a[href^='#']")) {
-      const heading = document.getElementById(
-        decodeURIComponent((link.getAttribute("href") || "").slice(1)),
-      );
-      if (heading) tocSpy.push({ link, heading });
-    }
-    tocSpyActive = null; // re-apply against the fresh link nodes
-    updateTocActive();
-  };
-  if (tocEl) {
-    const onSpy = () => {
-      flashTocLabel();
-      if (tocSpyRaf) return;
-      tocSpyRaf = requestAnimationFrame(() => { tocSpyRaf = 0; updateTocActive(); });
-    };
-    window.addEventListener("scroll", onSpy, { passive: true });
-    window.addEventListener("resize", onSpy);
-  }
+  // TOC scrollspy lives in the shared toc-spy.js (window.qmdInitTocSpy) so the
+  // live preview and the static build highlight the active section identically.
+  // The client only re-inits it after rebuilding the nav (see mountAll) and feeds
+  // it the mobile pull-up label flash on scroll.
+  if (tocEl) window.qmdTocScrollHook = () => flashTocLabel();
 
   // Mobile pull-up TOC: drag the handle up (the sheet follows) or tap it to open;
   // tap the backdrop or a TOC entry to close. The current-section chip flashes in
@@ -569,7 +522,7 @@
   const afterChange = () => {
     syncReveal();
     buildToc();
-    refreshTocSpy();
+    if (window.qmdInitTocSpy) window.qmdInitTocSpy(); // re-collect against the fresh nav
     updateWordCount();
     if (window.qmdEnhanceCode) window.qmdEnhanceCode(root);
     scanCellErrors();

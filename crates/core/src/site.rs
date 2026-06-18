@@ -293,7 +293,7 @@ impl Site {
     /// rewrite intra-site `.qmd` links. Shared by `render_page` (no execution) and
     /// the executing `build` path so both emit identical chrome + links.
     pub fn render_page_doc(&self, page: &Page, mut doc: render::RenderedDoc) -> String {
-        doc.toc = self.page_toc(page, doc.toc);
+        doc.toc = self.page_toc(page, doc.toc_explicit);
         self.expand_page(page, &mut doc.blocks);
         let ctx = self.page_chrome(page);
         let fallback = page.title.as_deref().unwrap_or("");
@@ -301,15 +301,17 @@ impl Site {
         rewrite_qmd_links(&html)
     }
 
-    /// Whether a page shows a table of contents: its own front-matter `toc:` wins;
+    /// Whether a page shows a table of contents: its own front-matter `toc:` wins
+    /// (an explicit `toc: false` suppresses it even when the site enables TOCs);
     /// otherwise the site-wide `format: html: toc:` applies, but only to article
     /// pages — a listing or about page would otherwise get a TOC built from its card
     /// titles. Used by both the static build and the live preview.
-    pub fn page_toc(&self, page: &Page, doc_toc: bool) -> bool {
-        doc_toc
-            || (self.config.format.html.toc.unwrap_or(false)
+    pub fn page_toc(&self, page: &Page, doc_toc: Option<bool>) -> bool {
+        doc_toc.unwrap_or_else(|| {
+            self.config.format.html.toc.unwrap_or(false)
                 && page.listings.is_empty()
-                && page.about.is_none())
+                && page.about.is_none()
+        })
     }
 
     // --- listings ---------------------------------------------------------

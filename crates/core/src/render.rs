@@ -86,8 +86,14 @@ pub struct RenderedDoc {
     pub title: Option<String>,
     pub subtitle: Option<String>,
     pub format: DocFormat,
-    /// Whether the front matter requested a table of contents (`toc: true`).
+    /// Whether this doc shows a table of contents. For a standalone render this
+    /// is the front-matter `toc:` (default off); inside a site it is recomputed
+    /// from [`SiteCtx::page_toc`] so the site default can apply.
     pub toc: bool,
+    /// The page's explicit front-matter `toc:` as a tri-state: `Some(true/false)`
+    /// when set, `None` when absent. The site uses this so an explicit `toc: false`
+    /// overrides the site-wide default (a plain `bool` can't tell "off" from "unset").
+    pub toc_explicit: Option<bool>,
     /// Resolved custom theme CSS (`.css`/`_extensions/`), empty for the built-in
     /// light/dark themes. Inlined after the base stylesheet.
     pub theme_css: String,
@@ -193,7 +199,10 @@ fn render_internal(
     let mut author: Option<String> = None;
     let mut description: Option<String> = None;
     let mut format = DocFormat::Html;
-    let mut toc = false;
+    let mut toc_explicit: Option<bool> = None;
+    // `title-block-style: none` keeps `title` (drives `<title>`, OpenGraph, nav)
+    // but skips the visible `<h1>` header (nav landing pages don't need it).
+    let mut hide_title_block = false;
     let mut theme: Option<String> = None;
     let mut bib_field: Option<String> = None;
     let mut includes = PageIncludes::default();
@@ -232,7 +241,8 @@ fn render_internal(
                 description = extract_field(fm, "description");
                 bib_field = extract_field(fm, "bibliography");
                 format = detect_format(fm);
-                toc = detect_toc(fm);
+                toc_explicit = detect_toc(fm);
+                hide_title_block = detect_title_block_hidden(fm);
                 theme = detect_theme(fm);
                 // A format extension (`format: <ext>-revealjs`) contributes its
                 // includes/theme first; the doc's own front matter appends/overrides.
@@ -481,6 +491,7 @@ fn render_internal(
     // a generated block (no sourcepos), so it rides the block model + diff like
     // the References section.
     if format == DocFormat::Html
+        && !hide_title_block
         && let Some(tb) = title_block_html(
             title.as_deref(),
             subtitle.as_deref(),
@@ -506,7 +517,10 @@ fn render_internal(
         title,
         subtitle,
         format,
-        toc,
+        // Standalone default: a TOC only when the page asked for one. The site
+        // path overrides this via `page_toc` using `toc_explicit`.
+        toc: toc_explicit.unwrap_or(false),
+        toc_explicit,
         theme_css,
         theme_default,
         includes,
@@ -933,12 +947,29 @@ const DARK_CSS: &str = r#"
   html[data-theme="dark"] .qmd-error { border-left-color: #e0566b !important; background: #2a1820 !important; color: #f2b8c2; }
 "#;
 
-/// `toc: true` requested anywhere in the front matter (typically under
-/// `format: html:`). A lightweight scan, matching the corpus book's usage.
-fn detect_toc(front_matter: &str) -> bool {
+/// The front-matter `toc:` setting (typically under `format: html:`) as a
+/// tri-state: `Some(true)`/`Some(false)` when the page sets it, `None` when
+/// absent. A lightweight scan, matching the corpus book's usage. Returning
+/// `Option` lets a site distinguish an explicit `toc: false` (which overrides
+/// the site default) from an unset toc (which inherits it).
+fn detect_toc(front_matter: &str) -> Option<bool> {
+    front_matter.lines().find_map(|l| {
+        let t = l.trim();
+        match t.strip_prefix("toc:").map(str::trim) {
+            Some("true") => Some(true),
+            Some("false") => Some(false),
+            _ => None,
+        }
+    })
+}
+
+/// `title-block-style: none` suppresses the visible title-block header while
+/// keeping the `title` metadata (Quarto-compatible). Used by nav landing pages
+/// (Blog/Projects/Publications) where a big `<h1>` repeats the navbar.
+fn detect_title_block_hidden(front_matter: &str) -> bool {
     front_matter.lines().any(|l| {
         let t = l.trim();
-        t.strip_prefix("toc:").map(str::trim) == Some("true")
+        t.strip_prefix("title-block-style:").map(str::trim) == Some("none")
     })
 }
 
@@ -1328,6 +1359,16 @@ pub fn code_head() -> String {
 pub fn code_scripts() -> String {
     let js = CODE_ENHANCE_JS.replace("{{MERMAID}}", MERMAID);
     format!("<script>{js}</script>")
+}
+
+/// The canonical TOC scrollspy (highlights the section under the navbar). Shared
+/// so the static build and the live preview behave identically: the static build
+/// inlines this once (it auto-inits on load); the preview also ships it and calls
+/// `window.qmdInitTocSpy()` after each TOC rebuild. Emitted only on TOC pages.
+pub const TOC_SPY_JS: &str = include_str!("../../../web-client/toc-spy.js");
+
+pub fn toc_scripts() -> String {
+    format!("<script>{TOC_SPY_JS}</script>")
 }
 
 // Quarto's Observable runtime (vendored, v0.0.18 — not published to any CDN, so
@@ -1861,6 +1902,12 @@ fn html_page_inner(doc: &RenderedDoc, fallback_title: &str, site: Option<&SiteCt
     } else {
         String::new()
     };
+    // The scrollspy script rides along only on pages that actually have a TOC.
+    let toc_script = if toc.is_empty() {
+        String::new()
+    } else {
+        toc_scripts()
+    };
     // Content first (left, wide column), TOC second (right, sticky column).
     let (mut body_class, content) = if toc.is_empty() {
         (String::new(), body)
@@ -1925,6 +1972,7 @@ fn html_page_inner(doc: &RenderedDoc, fallback_title: &str, site: Option<&SiteCt
         .replace("{{INCLUDE_BEFORE_BODY}}", &includes.before_body)
         .replace("{{BODY}}", &body_content)
         .replace("{{CODE_SCRIPTS}}", &code_scripts())
+        .replace("{{TOC_SCRIPT}}", &toc_script)
         .replace("{{OJS_INIT}}", &ojs_init_html)
         .replace("{{INCLUDE_AFTER_BODY}}", &includes.after_body)
 }
@@ -3624,7 +3672,13 @@ const SITE_CSS: &str = r#"
      viewport even on short pages. The navbar, content, and footer each centre
      their own inner box on the reading column, so they all line up. */
   body.qmd-site { max-width: none; margin: 0; padding: 0;
-    min-height: 100vh; display: flex; flex-direction: column; }
+    min-height: 100vh; display: flex; flex-direction: column;
+    /* height of the sticky navbar; the TOC and jumped-to headings clear it */
+    --qmd-nav-h: 3.25rem; }
+  /* the sticky navbar would otherwise cover the top of the sticky TOC and the top
+     of any heading a TOC link jumps to — offset both by the navbar height + a gap */
+  body.qmd-site #TOC { top: calc(var(--qmd-nav-h) + 1rem); }
+  body.qmd-site [data-block-id] { scroll-margin-top: calc(var(--qmd-nav-h) + 1rem); }
 
   /* sticky theme-aware navbar (spans full width as a flex child; inner centres) */
   .qmd-site-nav { position: sticky; top: 0; z-index: 50;
@@ -3665,8 +3719,10 @@ const SITE_CSS: &str = r#"
   .qmd-site-main > main { min-width: 0; }
   /* `page-layout: full` widens the column (the blog/projects card indexes) */
   .qmd-site-main.qmd-wide { max-width: 60rem; }
-  /* a page with a TOC widens into a two-column grid (content + sticky sidebar) */
-  .qmd-site-main.has-toc { max-width: 72rem; display: grid; align-items: start;
+  /* a page with a TOC widens into a two-column grid (content + sticky sidebar).
+     max-width is exactly the column sum (46 + 2.5 gap + 14) so the block centres
+     with no dead space pooling to the right of the TOC. */
+  .qmd-site-main.has-toc { max-width: 62.5rem; display: grid; align-items: start;
     gap: 2.5rem; grid-template-columns: minmax(0, 46rem) 14rem; }
   .qmd-site-main.has-toc > .qmd-postnav { grid-column: 1 / -1; }
 
@@ -3797,6 +3853,7 @@ const PAGE_TEMPLATE: &str = r#"<!DOCTYPE html>
 </script>
 {{CODE_SCRIPTS}}
 <script>document.addEventListener('DOMContentLoaded',function(){window.qmdEnhanceCode&&window.qmdEnhanceCode(document.body);});</script>
+{{TOC_SCRIPT}}
 {{OJS_INIT}}
 {{INCLUDE_AFTER_BODY}}
 </body>
@@ -3868,6 +3925,21 @@ mod tests {
             doc.blocks[0].html
         );
         assert!(doc.blocks[1].html.contains("Body."));
+    }
+
+    #[test]
+    fn title_block_style_none_keeps_title_metadata_but_drops_visible_block() {
+        let doc = render_document("---\ntitle: \"Blog\"\ntitle-block-style: none\n---\n\nIntro.\n");
+        // Metadata title is preserved (drives `<title>`, OpenGraph, nav)...
+        assert_eq!(doc.title.as_deref(), Some("Blog"));
+        // ...but no visible title-block header is emitted, only the body.
+        assert!(
+            !doc.blocks.iter().any(|b| b.id == "qmd-title-block"),
+            "expected no title block, got ids: {:?}",
+            doc.blocks.iter().map(|b| &b.id).collect::<Vec<_>>()
+        );
+        assert_eq!(doc.blocks.len(), 1);
+        assert!(doc.blocks[0].html.contains("Intro."));
     }
 
     #[test]
@@ -4637,6 +4709,17 @@ mod tests {
             !page.contains("<body class=\"has-toc\">"),
             "toc layout should be off"
         );
+    }
+
+    #[test]
+    fn detect_toc_is_tristate_so_explicit_false_can_override_a_site_default() {
+        // Unset, on, and off must be distinguishable: a plain bool can't tell an
+        // explicit `toc: false` (which should beat the site default) from "unset".
+        assert_eq!(detect_toc("title: X\n"), None);
+        assert_eq!(detect_toc("title: X\ntoc: true\n"), Some(true));
+        assert_eq!(detect_toc("title: X\ntoc: false\n"), Some(false));
+        // `toc-depth:`/`toc-title:` are not the `toc:` key and must not match.
+        assert_eq!(detect_toc("toc-depth: 2\ntoc-title: Contents\n"), None);
     }
 
     #[test]
