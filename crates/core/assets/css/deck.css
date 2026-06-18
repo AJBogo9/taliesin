@@ -123,6 +123,11 @@ body { background: #fff; }
   border-color: #4c8dff;
 }
 
+/* Auto-animate target: suppress the default fade-in so the matched-element FLIP
+   (driven by deck.js with inline transforms) isn't overridden by the keyframe. */
+.reveal .slides > section.qmd-aa,
+.reveal .slides > section.qmd-aa.present { animation: none !important; }
+
 /* Per-slide backgrounds: a single full-viewport layer behind the deck, set by
    deck.js from the current slide's data-background-*. Light text is applied over
    image/gradient/dark-colour slides via .qmd-dark-bg (code panels keep their own

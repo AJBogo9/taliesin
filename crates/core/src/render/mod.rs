@@ -521,13 +521,13 @@ fn render_internal(
             // CommonMark leaves it literal, but Pandoc/Quarto drop it. Match Pandoc.
             html = strip_trailing_hardbreak(&html);
         }
-        // A deck heading may set a per-slide background (`## T {background-image="..."}`):
-        // emit it as `data-background-*` on the heading so the slide model can hoist it
-        // onto the wrapping `<section>`.
+        // A deck heading may set section-level attrs (`## T {background-image="..."}`,
+        // `{auto-animate=true}`): emit them as data-* on the heading so the slide model
+        // can hoist them onto the wrapping `<section>`.
         if heading_level.is_some() && format == DocFormat::Reveal {
-            let bg = heading_bg_data(&block_src);
-            if !bg.is_empty() {
-                html = apply_heading_bg(&html, &bg);
+            let section_attrs = heading_section_attrs(&block_src);
+            if !section_attrs.is_empty() {
+                html = apply_heading_bg(&html, &section_attrs);
             }
         }
         flat.push(FlatBlock {
@@ -1298,7 +1298,7 @@ fn parse_heading_attr(block_src: &str) -> Option<(String, Option<String>)> {
 /// `background-color`/`-image`/`-gradient`/`-size`/`-position`/`-repeat`/`-opacity`
 /// become ` data-background-*="..."`. Empty if the heading has no `{...}` or no
 /// background keys.
-fn heading_bg_data(block_src: &str) -> String {
+fn heading_section_attrs(block_src: &str) -> String {
     let line = block_src.trim_end();
     let Some(open) = line.rfind('{') else {
         return String::new();
@@ -1307,12 +1307,20 @@ fn heading_bg_data(block_src: &str) -> String {
         return String::new();
     }
     let attrs = divs::parse_attrs(&line[open + 1..line.len() - 1]);
-    attrs
-        .kv
-        .iter()
-        .filter(|(k, _)| k.starts_with("background"))
-        .map(|(k, v)| format!(" data-{}=\"{}\"", k, escape_attr(v)))
-        .collect()
+    let mut out = String::new();
+    for (k, v) in &attrs.kv {
+        if k.starts_with("background") {
+            out.push_str(&format!(" data-{}=\"{}\"", k, escape_attr(v)));
+        }
+    }
+    // `auto-animate` (as `auto-animate=true` or a bare class) marks the slide so the
+    // deck engine tweens matched elements into the next auto-animate slide.
+    let auto = attrs.kv.iter().any(|(k, _)| k == "auto-animate")
+        || attrs.classes.iter().any(|c| c == "auto-animate");
+    if auto {
+        out.push_str(" data-auto-animate=\"\"");
+    }
+    out
 }
 
 /// Strip a heading's trailing `{...}` (if still present) and inject `bg_data` into
@@ -2906,6 +2914,27 @@ mod tests {
         assert!(
             !page.contains("<h2 data-background"),
             "bg must move off the heading"
+        );
+    }
+
+    #[test]
+    fn heading_auto_animate_marks_the_section() {
+        let page = render_html_page(
+            "---\nformat: revealjs\n---\n\n## Title {auto-animate=true}\n\nbody\n",
+            "fb",
+        );
+        assert!(
+            page.contains("data-auto-animate"),
+            "auto-animate marker missing"
+        );
+        // it hoists onto the <section>, not the heading, and the `{...}` is stripped.
+        assert!(
+            !page.contains("<h2 data-auto-animate"),
+            "must move off the heading"
+        );
+        assert!(
+            !page.contains("{auto-animate"),
+            "the {{...}} must be stripped"
         );
     }
 

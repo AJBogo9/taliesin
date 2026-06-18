@@ -258,7 +258,7 @@ fn render_section(s: &SlideBuf, out: &mut String) {
 /// — they sit in the opening tag — returning (attrs for the `<section>`, lead block
 /// with them removed).
 fn take_bg_attrs(html: &str) -> (String, String) {
-    if !html.contains("data-background") {
+    if !html.contains("data-background") && !html.contains("data-auto-animate") {
         return (String::new(), html.to_string());
     }
     let gt = html.find('>').unwrap_or(html.len());
@@ -267,7 +267,8 @@ fn take_bg_attrs(html: &str) -> (String, String) {
     let mut rest = String::new();
     let mut i = 0;
     while i < head.len() {
-        if head[i..].starts_with(" data-background")
+        if (head[i..].starts_with(" data-background")
+            || head[i..].starts_with(" data-auto-animate"))
             && let Some(eq) = head[i..].find("=\"")
             && let Some(qend) = head[i + eq + 2..].find('"')
         {

@@ -94,6 +94,7 @@
     fitSlide(currentSlide());
     applyFragments();
     applyBackground();
+    deck.lastSlide = currentSlide(); // remember for the next auto-animate transition
   }
   // --- per-slide backgrounds ---------------------------------------------
   // Apply the current slide's `data-background-*` to a single full-viewport layer
@@ -142,6 +143,60 @@
     if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
     var r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
     return 0.299 * r + 0.587 * g + 0.114 * b < 140;
+  }
+
+  // --- auto-animate -------------------------------------------------------
+  // When moving between two consecutive `data-auto-animate` slides, matched
+  // elements (same tag + text) tween from their position/size on the old slide to
+  // the new one (FLIP: measure both, translate the element to its old spot, then
+  // animate to identity). Unmatched elements just appear.
+  var AA_SEL = 'h1,h2,h3,h4,p,li,pre,blockquote,img,figure';
+  function isAutoAnimate(s) { return !!(s && s.hasAttribute && s.hasAttribute('data-auto-animate')); }
+  function aaKey(el) { return el.tagName + '|' + (el.textContent || '').replace(/\s+/g, ' ').trim(); }
+  // Measure matched element rects in both slides (both must be laid out, so the
+  // incoming slide is briefly force-shown — no paint happens mid-call).
+  function snapshotMatched(from, to) {
+    to.style.setProperty('display', 'block', 'important');
+    var byKey = {};
+    Array.prototype.forEach.call(from.querySelectorAll(AA_SEL), function (el) {
+      (byKey[aaKey(el)] || (byKey[aaKey(el)] = [])).push(el);
+    });
+    var snap = [];
+    Array.prototype.forEach.call(to.querySelectorAll(AA_SEL), function (el) {
+      var list = byKey[aaKey(el)];
+      if (list && list.length) {
+        var a = list.shift();
+        snap.push({
+          to: el,
+          fr: a.getBoundingClientRect(), tr: el.getBoundingClientRect(),
+          ff: getComputedStyle(a).fontSize, tf: getComputedStyle(el).fontSize,
+        });
+      }
+    });
+    to.style.removeProperty('display');
+    return snap;
+  }
+  function flipTo(snap, to) {
+    var scale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--qmd-deck-scale')) || 1;
+    snap.forEach(function (s) {
+      var el = s.to, st = el.style;
+      var dx = (s.fr.left - s.tr.left) / scale, dy = (s.fr.top - s.tr.top) / scale;
+      var animFont = s.ff !== s.tf;
+      if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5 && !animFont) return;
+      st.transition = 'none';
+      st.transformOrigin = 'top left';
+      st.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+      if (animFont) st.fontSize = s.ff;
+      void el.offsetWidth; // reflow so the start state sticks before we animate
+      st.transition = 'transform .5s cubic-bezier(.2,.8,.2,1), font-size .5s cubic-bezier(.2,.8,.2,1)';
+      st.transform = 'translate(0,0)';
+      if (animFont) st.fontSize = s.tf;
+      setTimeout(function () {
+        st.transition = ''; st.transform = ''; st.transformOrigin = '';
+        if (animFont) st.fontSize = '';
+      }, 520);
+    });
+    setTimeout(function () { to.classList.remove('qmd-aa'); }, 520);
   }
   // --- fragments (incremental reveals) -----------------------------------
   // A fragment is any `.fragment` element or a list item inside `.incremental`,
@@ -246,8 +301,15 @@
   // --- navigation ---------------------------------------------------------
   function commit() {
     clampIndices();
-    if (deck.mode === 'speaker') updateSpeakerUI();
-    else { apply(); layout(); updateNumber(); writeHash(); focusCurrent(); }
+    if (deck.mode === 'speaker') { updateSpeakerUI(); fire('slidechanged'); broadcastState(); return; }
+    // Auto-animate: tween matched elements when both slides opt in. Measure before
+    // apply() hides the outgoing slide; suppress its fade-in so the FLIP owns it.
+    var to = currentSlide(), from = deck.lastSlide;
+    var aa = from && to && from !== to && isAutoAnimate(from) && isAutoAnimate(to);
+    var snap = aa ? snapshotMatched(from, to) : null;
+    if (aa) to.classList.add('qmd-aa');
+    apply(); layout(); updateNumber(); writeHash(); focusCurrent();
+    if (snap) flipTo(snap, to);
     fire('slidechanged');
     broadcastState();
   }
