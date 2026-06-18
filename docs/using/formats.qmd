@@ -1,0 +1,81 @@
+---
+title: "Slides, books & sites"
+---
+
+One block model drives several outputs. The same `.qmd` you preview as a page can
+become a slide deck, and pointing the tool at a directory turns it into a book or
+a whole website.
+
+## Reveal.js slides
+
+A deck is just a different front-matter `format: revealjs`. Headings split the
+document into slides, a title slide is generated from the metadata, and the block
+diff still works *within the current slide*, so live edits never reset your
+position. `docs/tour.qmd` is a runnable example:
+
+```sh
+cargo run -p qmd-fast-server -- preview docs/tour.qmd 4321
+```
+
+## Books and a live table of contents
+
+A document with `toc: true` gains a table of contents built from its heading
+anchors and rebuilt live as you edit, with the current section highlighted as you
+scroll (a scrollspy). On a wide screen it's a sticky sidebar; on a phone it
+collapses into a pull-up sheet.
+
+A **multi-chapter book** is a directory whose `_quarto.yml` declares
+`project: type: book` and lists `chapters:` (optionally grouped into `part:`s).
+qmd-fast numbers the chapters, builds the left sidebar, wires prev/next
+navigation, and resolves cross-references across chapters. *These very docs are
+such a book* — look at the sidebar and press <kbd>Cmd/Ctrl-K</kbd> to search.
+
+```yaml
+project:
+  type: book
+book:
+  title: "My Book"
+  chapters:
+    - index.qmd
+    - part: "Part One"
+      chapters: [a.qmd, b.qmd]
+```
+
+## Multi-page websites
+
+Point either command at a **directory** and qmd-fast treats it as a website
+project. The directory needs one root config, `_quarto.yml` (Quarto-compatible),
+which names the site title, the navbar, and the footer; every `.qmd` under it
+(skipping `_`-prefixed partials) becomes a page.
+
+```sh
+qmd-fast build   corpus/tech-blog     # static site -> _site/ (deployable)
+qmd-fast preview corpus/tech-blog     # live site on http://127.0.0.1:4321
+```
+
+`build` writes one `.html` per page (mirroring the input tree) and copies the
+referenced assets, so the output folder deploys as-is. `preview` serves the same
+site **live**: the navbar and prev/next links navigate between pages (each a real
+page load with its own websocket), and the page you are editing hot-reloads in
+place. Intra-site `.qmd` links (including `other-page.qmd#anchor`) are rewritten to
+their `.html` targets automatically.
+
+Config is **two levels, no cascade**: the root `_quarto.yml` sets project-wide
+defaults and a page's own front matter overrides them. There is deliberately no
+Quarto-style `_metadata.yml` directory merge — the single most confusing part of
+its model.
+
+A `listing:` block turns a page into an index: it crawls a `contents:` directory
+and emits a card per document (image, date, title, description, categories),
+sorted by date and capped by `max-items`, as a `type: grid` card grid or a stacked
+list. An `about:` block turns a page into a centered profile header. So a blog
+index, a projects index, and a homepage's "recent posts" all generate from front
+matter.
+
+## Themes
+
+`theme:` selects the built-in `light` (default) or `dark`, a `.css`/`.scss` file,
+or an installed `_extensions/<name>/` bundle. A theme is just a `:root` block of
+CSS custom properties (`--qmd-*`); the navbar, footer, callouts, diagrams, and
+code all read those variables, so one small file restyles everything and the
+light/dark toggle just swaps the values — nothing re-renders.

@@ -1,0 +1,24 @@
+project:
+  type: book
+
+book:
+  title: "qmd-fast"
+  author: "Andreas Bogossian"
+  chapters:
+    - index.qmd
+    - part: "Using qmd-fast"
+      chapters:
+        - using/preview.qmd
+        - using/code.qmd
+        - using/writing.qmd
+        - using/formats.qmd
+        - using/extensions.qmd
+    - part: "Internals"
+      chapters:
+        - internals/architecture.qmd
+        - internals/block-model.qmd
+        - internals/cli.qmd
+
+format:
+  html:
+    toc: true

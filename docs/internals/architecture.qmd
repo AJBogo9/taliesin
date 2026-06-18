@@ -1,0 +1,61 @@
+---
+title: "Architecture"
+---
+
+All of the intelligence lives in the Rust core behind a stable websocket protocol.
+The browser preview is a thin client, as @fig-architecture shows.
+
+```{mermaid}
+%%| label: fig-architecture
+%%| fig-cap: "Thin clients talk to the server over a websocket; all rendering lives in the Rust core."
+flowchart LR
+  BR["Browser preview<br/>(vanilla JS)"]
+  subgraph Server["qmd-fast server"]
+    direction TB
+    WS["Websocket<br/>+ file watcher"]
+    subgraph Core["qmd-fast-core"]
+      direction TB
+      P["Parser<br/>comrak + sourcepos"] --> M["Block model<br/>+ diff"] --> R["Render<br/>html / reveal / book"]
+    end
+    K["Warm Jupyter kernel"]
+  end
+  F[(".qmd files")]
+  BR <-->|JSON protocol| WS
+  WS --> P
+  R -->|changed blocks| WS
+  F -.->|watch| WS
+  M -->|code cells| K --> M
+```
+
+| Component | Crate / path | Responsibility |
+|---|---|---|
+| Core | `crates/core` | Parsing (comrak + sourcepos), the block model, HTML rendering |
+| Server | `crates/server` | Websocket dev server, file watcher, Jupyter kernel pool |
+| Web client | `web-client/` | Browser preview client (vanilla JS) |
+
+The protocol is open, so an embedded editor client (a VS Code extension, etc.) is
+a new thin client, not a rewrite.
+
+## How a save flows
+
+A save flows through the pipeline as @fig-save-flow shows — and crucially, only
+the **changed** blocks reach the preview.
+
+```{mermaid}
+%%| label: fig-save-flow
+%%| fig-cap: "Only the changed blocks are pushed to the preview."
+flowchart LR
+  save["Save .qmd"] --> watch["File watcher"]
+  watch --> parse["Re-parse + block model"]
+  parse --> diff["Diff by block id"]
+  diff --> ws["Websocket:<br/>changed blocks only"]
+  ws --> dom["Preview updates<br/>in place"]
+```
+
+The core (`crates/core`) is deliberately small and divided into focused modules:
+the parser/render pipeline, the block-level `diff`, `{{< include >}}` resolution
+with a per-file source map, server-side KaTeX and syntax highlighting, citations
+and cross-references, the multi-page `site`/book model, and the format-extension
+resolver. The server (`crates/server`) is the long-running process: the websocket
+protocol, the `notify` file watcher, and the warm Jupyter kernel pool that runs
+code cells and splices their outputs back as blocks.

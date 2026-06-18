@@ -1,0 +1,55 @@
+---
+title: "The block model & protocol"
+---
+
+Everything in qmd-fast keys off one idea: the document is a list of **blocks**,
+each of which knows its identity and its origin.
+
+## The block model
+
+Every top-level element is a block. Each block carries three data attributes that
+the rest of the system keys off:
+
+- `data-block-id` is a **content hash** (with a positional tiebreak for
+  duplicates). Because it is content-derived, an unchanged block keeps its id
+  across edits and is never touched.
+- `data-sourcepos` is the `startLine:startCol-endLine:endCol` range the block came
+  from. This is what powers click-to-source in both directions.
+- `data-source-file` is present only on blocks pulled in from an
+  `{{< include >}}`d file, so cross-file source mapping still works.
+
+Source mapping, incremental re-render, and live-state preservation all build on
+this one model. A code cell's *output* is itself a block, keyed to the cell's id —
+so when an upstream cell re-runs, only the affected output blocks update.
+
+## The websocket protocol
+
+On connect, the server sends a `full_render`; on each save it diffs the new block
+list against the old one (an LCS over block ids) and broadcasts **only the
+differences**.
+
+| Direction | Message | Payload |
+|---|---|---|
+| server → client | `full_render` | `title`, `body_html`, `diagnostics` |
+| server → client | `update` | `target_id`, `html` |
+| server → client | `insert` | `after_id`, `html` |
+| server → client | `remove` | `target_id` |
+| server → client | `diagnostics` | `messages` (non-fatal include / kernel / extension issues) |
+| server → client | `error` | `message` (a failed render; shown as an overlay) |
+| server → client | `reload` | *(none)* — full page reload (config change, kernel restart) |
+| client → server | `click_block` | `block_id`, `source_file`, `sourcepos` |
+| client → server | `restart_kernel` | *(none)* — drop + respawn the kernel, re-run all cells |
+
+Double-clicking a block opens its source in your editor — a
+`vscode://file/…:line:col` deep link by default. The client also speaks a
+`postMessage` protocol as the integration surface for an embedded editor client:
+it posts `qmd-goto` up to a host (which reveals the source) and accepts
+`qmd-cursor` to highlight the block under the editor cursor.
+
+## Trust model
+
+qmd-fast renders **one author's own `.qmd` files**, so the source is *trusted*:
+raw HTML in the body, `{=html}` blocks, `include-*` markup, and footer icon SVGs
+are passed through **unescaped** by design, and code cells are executed. None of
+this is a vulnerability under the intended use — but it does mean qmd-fast must
+not be pointed at a `.qmd` from an untrusted source.

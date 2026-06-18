@@ -1,0 +1,70 @@
+---
+title: "The live preview loop"
+---
+
+The reason qmd-fast exists is the edit loop: change the source, and the preview
+reflects it *immediately* — without reloading the page, losing your scroll, or
+resetting any live content already on screen.
+
+## Incremental updates
+
+On every save the server re-parses the document, diffs the new block list against
+the old one by content-hash id, and pushes **only the blocks that changed** over a
+websocket. An unchanged block is never touched, so:
+
+- your scroll position is preserved,
+- a running Observable cell or Three.js canvas keeps its state,
+- the page never flashes white.
+
+The block you just edited **pulses** briefly when it re-renders, so your eye (or
+your phone) lands on the change.
+
+## Click-to-source and editor sync
+
+In the browser preview, single-clicking a block highlights it (and reports it to
+the server); **double-clicking opens its exact source line in your editor**
+(including across `{{< include >}}`d files) via a `vscode://` deep link — VS Code
+is assumed for now. The client also speaks a `qmd-goto` / `qmd-cursor`
+`postMessage` protocol, so an embedded editor (a VS Code extension, say) can host
+the preview and add reverse cursor sync — highlighting the block under your
+cursor — without forking anything.
+
+## Live-edit feedback
+
+The loop surfaces what is happening without you watching the terminal:
+
+- The control bar shows a live **word count and reading time** for the prose.
+- A non-fatal problem (a broken `{{< include >}}`, a missing kernel, a typo'd
+  extension) appears as a small **diagnostics** note in the corner.
+- A *failed* render throws a prominent, dismissible **error overlay** over the
+  last good content, so a broken save is impossible to miss. It clears on the
+  next successful render.
+- The watcher follows the whole document, not just the served file: editing an
+  included subsection, the `.bib`, or theme CSS refreshes the preview too.
+
+## Reading on any screen
+
+The reading layout is responsive, so the same document works on a laptop and a
+phone. Wide tables, long code, display math, and embedded canvases scroll within
+their own box instead of stretching the page; type and spacing tighten on narrow
+screens; in-page links scroll smoothly; and everything honours
+`prefers-reduced-motion`.
+
+On a phone the table of contents becomes a **pull-up sheet**: a quiet handle at
+the bottom edge that you drag up (or tap) to open the contents, with the current
+section flashing in as you scroll. It is keyboard- and screen-reader-friendly
+(Enter/Space to open, Escape to close).
+
+To see it on a real device, start the server with `--host`:
+
+```sh
+cargo run -p qmd-fast-server -- preview docs/ --host
+```
+
+That binds your LAN, prints a `network` URL, and renders a **QR code** in the
+terminal. Scan it and the *live* preview opens on your phone, updating as you edit
+on your laptop.
+
+Pressing <kbd>Cmd/Ctrl-P</kbd> gives a clean print/PDF: the control bar, TOC
+handle, and diagnostics are hidden, the palette forces light, and content flows
+full width without clipping code, tables, or math.

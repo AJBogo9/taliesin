@@ -1,0 +1,89 @@
+---
+title: "Extensions"
+---
+
+qmd-fast keeps a lean core and pushes power to **extensions**. An extension is a
+folder under `_extensions/<name>/` with an `_extension.yml` manifest plus whatever
+CSS, JS, and templates it ships. There are three things an extension can do, from
+simplest to most powerful: contribute a **format/theme**, declare
+**shortcodes**, and register a client-side **enhancer**.
+
+## Format & theme extensions
+
+A format extension is selected by name in the front matter:
+
+```yaml
+format:
+  liquid-glass-revealjs:   # <name>-<base>, base is revealjs or html
+    slide-number: true
+```
+
+Its `_extensions/liquid-glass/_extension.yml` contributes includes, a theme, and
+resources to the matching base format:
+
+```yaml
+contributes:
+  formats:
+    revealjs:
+      theme: [dark, liquid-glass.css]      # .css layers inlined ahead of the deck
+      format-resources: [liquid-glass.js]  # copied next to the output / served in preview
+      include-in-header:  [{ file: head.html }]
+      include-after-body: [{ file: init.html }]
+```
+
+The contributed markup is injected **before** the document's own front-matter
+`include-*`, so your page can still override the extension. `format-resources` are
+copied next to the built page (and resolved by bare name in the live preview), so
+an injected `<script src="liquid-glass.js">` works in both.
+
+## Declarative shortcodes
+
+A shortcode is a `{{< name args >}}` tag in the body that expands to an HTML
+template — perfect for embeds, with no JavaScript. Declare them under
+`contributes.shortcodes` as a name → template map:
+
+```yaml
+contributes:
+  shortcodes:
+    youtube: '<div class="ratio"><iframe src="https://www.youtube.com/embed/{{1}}" allowfullscreen></iframe></div>'
+    callout: '<aside class="note"><strong>{{title}}</strong> {{body}}</aside>'
+```
+
+Then in any document that activates the extension:
+
+```markdown
+{{< youtube dQw4w9WgXcQ >}}
+{{< callout title="Heads up" body="this expanded from a shortcode" >}}
+```
+
+Positional args fill `{{1}}`, `{{2}}`, …; named `key=value` args (quotes group
+spaces) fill `{{key}}`. Expansion is line-preserving, so click-to-source still
+points at the right line. Unknown `{{< … >}}` tags are left untouched.
+
+## Client enhancers
+
+For anything interactive, ship a `.js` file (via `format-resources` or an
+`include-after-body`) that registers an **enhancer** through the public API:
+
+```js
+window.qmdEnhancers.register(function (root) {
+  root.querySelectorAll('.timestamp:not([data-done])').forEach(function (el) {
+    el.dataset.done = '1';
+    el.textContent = new Date(el.dataset.epoch * 1000).toLocaleString();
+  });
+});
+```
+
+A registered `fn(root)` runs after every (re)mount in the live preview, on load in
+the static build, and once immediately if it registers after the page is already
+mounted. Make it **idempotent** (guard with a data-attribute), since it re-runs on
+every change. This is the same registry the built-in copy buttons and mermaid use,
+so a third-party enhancer is indistinguishable from core's.
+
+::: {.callout-tip}
+## Diagnostics, not silence
+
+A typo'd extension name, a malformed `_extension.yml`, or a missing
+`contributes.formats.<base>` block is reported in the dev menu and the build log —
+so a broken extension never fails silently.
+:::

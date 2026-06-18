@@ -35,8 +35,10 @@ corpus/          the real .qmd docs (the spec); cargo test renders them all
 
 ## Read before working
 
-- **docs/index.qmd** for the architecture, the websocket protocol, and the block
-  model (the project's own manual, authored in `.qmd`).
+- **docs/** is the project's own manual, authored in `.qmd` as a multi-page book
+  (dogfooding): Part I (`docs/using/`) is the user-facing feature showcase, Part II
+  (`docs/internals/`) covers the architecture, block model, and websocket protocol.
+  Build/preview it like any book project: `qmd-fast preview docs/`.
 - **corpus/README.md** for what the test documents exercise.
 
 ## Commands
