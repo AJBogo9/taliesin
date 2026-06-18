@@ -280,9 +280,11 @@ html.qmd-print .qmd-bg { display: none; } /* per-slide backgrounds aren't in the
 }
 .reveal .qmd-draw-bar .qmd-draw-color { width: 28px; padding: 0; }
 .reveal .qmd-draw-bar button.sel { border-color: #fff; }
-/* annotations are a live-presenting feature: hidden in reader + print. */
+/* annotations are a live-presenting feature: hidden in reader, print and overview. */
 html.qmd-scroll .qmd-draw, html.qmd-scroll .qmd-draw-bar,
-html.qmd-print .qmd-draw, html.qmd-print .qmd-draw-bar { display: none !important; }
+html.qmd-print .qmd-draw, html.qmd-print .qmd-draw-bar,
+.reveal.overview .qmd-draw, .reveal.overview .qmd-draw-bar { display: none !important; }
+.reveal.overview .qmd-bg { display: none; } /* the per-slide bg layer isn't shown in the grid */
 
 /* PDF export: deck.js adds `qmd-print` to <html> on Cmd/Ctrl+P (and for the
    ?qmd=print preview), flattening the deck to one fixed-size slide per page —

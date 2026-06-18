@@ -2956,6 +2956,21 @@ mod tests {
         );
     }
 
+    #[test]
+    fn deck_dedups_repeated_slide_ids() {
+        // Repeated headings (common with auto-animate's shared titles) must get
+        // distinct section ids, else `#/hash` + getElementById only find the first.
+        let page = render_html_page(
+            "---\nformat: revealjs\n---\n\n## Step\n\na\n\n## Step\n\nb\n",
+            "fb",
+        );
+        assert!(page.contains("id=\"step\""), "first slide id missing");
+        assert!(
+            page.contains("id=\"step-1\""),
+            "duplicate slide id not deduped"
+        );
+    }
+
     // --- books: heading anchors, figures, toc ---
 
     #[test]

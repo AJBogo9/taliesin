@@ -174,6 +174,10 @@ fn group_slides(blocks: &[Block]) -> Vec<Top> {
 fn split_slides(blocks: &[Block]) -> Vec<SlideBuf> {
     let mut slides: Vec<SlideBuf> = Vec::new();
     let mut cur: Option<SlideBuf> = None;
+    // Dedup section ids across the deck (`## X` twice -> `x`, `x-1`), so repeated
+    // headings — common with auto-animate, where a title is shared — don't collide
+    // in the DOM (hash + getElementById would otherwise only ever find the first).
+    let mut id_counts: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
     for b in blocks {
         if is_slide_break(&b.html) {
             slides.extend(cur.take());
@@ -192,7 +196,7 @@ fn split_slides(blocks: &[Block]) -> Vec<SlideBuf> {
             cur = Some(SlideBuf {
                 level,
                 from_rule: false,
-                id: Some(slugify(&strip_tags(&b.html))),
+                id: Some(dedup_slug(&strip_tags(&b.html), &mut id_counts)),
                 blocks: vec![b.html.clone()],
             });
             continue;

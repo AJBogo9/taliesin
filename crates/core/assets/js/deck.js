@@ -425,7 +425,10 @@
     var rev = revealEl();
     if (!rev) return;
     deck.overview = on;
-    if (on && deck.draw && deck.draw.on) { deck.draw.on = false; rev.classList.remove('qmd-drawing'); }
+    if (on) {
+      rev.classList.remove('qmd-dark-bg'); // bg layer is hidden in the grid; keep tile text readable
+      if (deck.draw && deck.draw.on) { deck.draw.on = false; rev.classList.remove('qmd-drawing'); }
+    }
     var T = tops();
     if (on) {
       rev.classList.add('overview');
@@ -569,6 +572,7 @@
   function enterPrint() {
     var rev = revealEl(); if (!rev) return;
     document.documentElement.classList.add('qmd-print');
+    rev.classList.remove('qmd-dark-bg'); // bg layer is hidden in print; keep text readable on the page
     tops().forEach(function (top) {
       top.style.removeProperty('display'); top.removeAttribute('aria-hidden');
       if (isStack(top)) {
@@ -599,6 +603,7 @@
     if (!rev || deck.scroll) return;
     deck.scroll = true;
     document.documentElement.classList.add('qmd-scroll');
+    rev.classList.remove('qmd-dark-bg'); // backgrounds are hidden in reader; keep text readable
     tops().forEach(function (top) {
       top.style.removeProperty('display');
       top.style.removeProperty('font-size');
