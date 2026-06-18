@@ -202,6 +202,9 @@ pub fn render_document(src: &str) -> RenderedDoc {
 /// resolves citations/cross-references against the doc's bibliography.
 pub fn render_document_with_includes(src: &str, base_dir: &Path) -> RenderedDoc {
     let (expanded, origins) = crate::includes::resolve(src, base_dir);
+    // Declarative shortcodes (`{{< name args >}}`) from the active format
+    // extension expand after includes, line-preserving so `origins` stays valid.
+    let expanded = extension::expand_shortcodes(&expanded, Some(base_dir));
     render_internal(&expanded, Some(&origins), Some(base_dir))
 }
 

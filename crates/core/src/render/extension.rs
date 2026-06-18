@@ -151,3 +151,154 @@ pub(super) fn resolve_format_extension(
     }
     inc
 }
+
+// --- Declarative shortcodes --------------------------------------------------
+
+/// The raw front-matter block at the top of `src` (without the `---` fences), or
+/// `""` when there isn't one. Used to find the active extension before parsing.
+fn front_matter_block(src: &str) -> &str {
+    let rest = src
+        .strip_prefix("---\n")
+        .or_else(|| src.strip_prefix("---\r\n"));
+    match rest {
+        Some(body) => body.split_once("\n---").map(|(fm, _)| fm).unwrap_or(""),
+        None => "",
+    }
+}
+
+/// Shortcode templates the active format extension declares under
+/// `contributes.shortcodes` (a name → HTML-template map). Empty when there is no
+/// format extension or it declares none. Loads silently — a broken manifest is
+/// reported by [`resolve_format_extension`] on the same render.
+fn shortcode_templates(front_matter: &str, base_dir: Option<&Path>) -> HashMap<String, String> {
+    let mut out = HashMap::new();
+    let Some(r) = extension_ref(front_matter, base_dir) else {
+        return out;
+    };
+    let mut ignore = Vec::new();
+    let Some(v) = load_manifest(&r, &mut ignore) else {
+        return out;
+    };
+    if let Some(map) = v
+        .get("contributes")
+        .and_then(|c| c.get("shortcodes"))
+        .and_then(|s| s.as_mapping())
+    {
+        for (k, val) in map {
+            if let (Some(name), Some(tmpl)) = (k.as_str(), val.as_str()) {
+                out.insert(name.to_string(), tmpl.to_string());
+            }
+        }
+    }
+    out
+}
+
+/// Expand declarative shortcodes (`{{< name args >}}`) using the templates the
+/// active format extension contributes. Line-preserving — each invocation must
+/// open and close on one line and expands to inline HTML — so the include source
+/// map stays valid. Unknown shortcodes (and any `{{< include >}}` the include
+/// pass already resolved) are left untouched.
+pub(super) fn expand_shortcodes(src: &str, base_dir: Option<&Path>) -> String {
+    let templates = shortcode_templates(front_matter_block(src), base_dir);
+    if templates.is_empty() || !src.contains("{{<") {
+        return src.to_string();
+    }
+    let mut out = String::with_capacity(src.len());
+    for (i, line) in src.lines().enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        out.push_str(&expand_in_line(line, &templates));
+    }
+    if src.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
+/// Replace every `{{< name args >}}` that opens and closes on this line with its
+/// declared template; leave unrecognized ones (and unterminated spans) verbatim.
+fn expand_in_line(line: &str, templates: &HashMap<String, String>) -> String {
+    if !line.contains("{{<") {
+        return line.to_string();
+    }
+    let mut out = String::with_capacity(line.len());
+    let mut rest = line;
+    while let Some(start) = rest.find("{{<") {
+        let Some(rel_end) = rest[start..].find(">}}") else {
+            break; // no close on this line: leave the remainder as written
+        };
+        let end = start + rel_end;
+        out.push_str(&rest[..start]);
+        let inner = rest[start + 3..end].trim();
+        match render_shortcode(inner, templates) {
+            Some(html) => out.push_str(&html),
+            None => out.push_str(&rest[start..end + 3]), // unknown: keep verbatim
+        }
+        rest = &rest[end + 3..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Render one `name args` shortcode body against the templates, or `None` when
+/// the name isn't declared. Args are `key=value` (named → `{{key}}`) or bare
+/// (positional → `{{1}}`, `{{2}}`, …); quotes group values with spaces.
+fn render_shortcode(inner: &str, templates: &HashMap<String, String>) -> Option<String> {
+    let toks = tokenize_args(inner);
+    let (name, args) = toks.split_first()?;
+    let template = templates.get(name)?;
+    let mut positional = Vec::new();
+    let mut named = Vec::new();
+    for a in args {
+        match a.split_once('=') {
+            Some((k, v))
+                if !k.is_empty()
+                    && k.chars()
+                        .all(|c| c.is_alphanumeric() || c == '_' || c == '-') =>
+            {
+                named.push((k.to_string(), v.to_string()))
+            }
+            _ => positional.push(a.clone()),
+        }
+    }
+    // Collapse the template to one line (line-preserving), then substitute.
+    let mut html = template.replace('\n', " ");
+    for (i, v) in positional.iter().enumerate() {
+        html = html.replace(&format!("{{{{{}}}}}", i + 1), v);
+    }
+    for (k, v) in &named {
+        html = html.replace(&format!("{{{{{k}}}}}"), v);
+    }
+    Some(html)
+}
+
+/// Whitespace-split `inner`, keeping quoted values (`key="a b"`) as one token and
+/// stripping the surrounding quotes.
+fn tokenize_args(inner: &str) -> Vec<String> {
+    let mut toks = Vec::new();
+    let mut cur = String::new();
+    let mut quote: Option<char> = None;
+    for ch in inner.chars() {
+        match quote {
+            Some(q) => {
+                if ch == q {
+                    quote = None;
+                } else {
+                    cur.push(ch);
+                }
+            }
+            None if ch == '"' || ch == '\'' => quote = Some(ch),
+            None if ch.is_whitespace() => {
+                if !cur.is_empty() {
+                    toks.push(std::mem::take(&mut cur));
+                }
+            }
+            None => cur.push(ch),
+        }
+    }
+    if !cur.is_empty() {
+        toks.push(cur);
+    }
+    toks
+}

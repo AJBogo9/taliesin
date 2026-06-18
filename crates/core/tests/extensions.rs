@@ -274,6 +274,76 @@ fn missing_referenced_file_leaves_a_breadcrumb_comment() {
     assert!(!doc.blocks.is_empty());
 }
 
+/// An extension's `contributes.shortcodes` template expands `{{< name args >}}`
+/// in the body, with a positional arg filling `{{1}}`.
+#[test]
+fn declarative_shortcode_expands_positional() {
+    let d = TempProj::new();
+    d.ext(
+        "media",
+        "contributes:
+  shortcodes:
+    yt: '<iframe src=\"https://www.youtube.com/embed/{{1}}\"></iframe>'
+  formats:
+    html:
+      include-in-header:
+        - text: \"<!--m-->\"
+",
+    );
+    let src = "---\ntitle: T\nformat: media-html\n---\n\nWatch {{< yt dQw4 >}} now.\n";
+    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    let body = doc.body_html();
+    assert!(
+        body.contains("youtube.com/embed/dQw4"),
+        "shortcode not expanded: {body}"
+    );
+    assert!(!body.contains("{{<"), "raw shortcode left behind: {body}");
+}
+
+/// Named args fill `{{key}}` placeholders; quotes group spaces.
+#[test]
+fn declarative_shortcode_named_args() {
+    let d = TempProj::new();
+    d.ext(
+        "media",
+        "contributes:
+  shortcodes:
+    embed: '<iframe width=\"{{width}}\" title=\"{{title}}\" src=\"/v/{{id}}\"></iframe>'
+  formats:
+    html: {}
+",
+    );
+    let src = "---\ntitle: T\nformat: media-html\n---\n\n{{< embed id=abc width=560 title=\"A Clip\" >}}\n";
+    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    let body = doc.body_html();
+    assert!(body.contains("width=\"560\""), "named width: {body}");
+    assert!(body.contains("/v/abc"), "named id: {body}");
+    assert!(body.contains("title=\"A Clip\""), "quoted value: {body}");
+}
+
+/// A shortcode the active extension does not declare is left verbatim (not an
+/// error — it may be Quarto syntax qmd-fast doesn't handle).
+#[test]
+fn unknown_shortcode_is_left_verbatim() {
+    let d = TempProj::new();
+    d.ext(
+        "media",
+        "contributes:
+  shortcodes:
+    yt: '<iframe src=\"/v/{{1}}\"></iframe>'
+  formats:
+    html: {}
+",
+    );
+    let src = "---\ntitle: T\nformat: media-html\n---\n\nText {{< unknownsc x >}} more.\n";
+    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    assert!(
+        doc.body_html().contains("unknownsc x"),
+        "unknown shortcode should survive: {}",
+        doc.body_html()
+    );
+}
+
 #[test]
 fn format_extension_injects_theme_and_includes() {
     let dir = fixture("deck-ext");
