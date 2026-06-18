@@ -1,14 +1,119 @@
+/* qmd-fast default deck theme — the typographic theme reveal's bundled CSS used
+   to provide, now owned here. Clean, modern, fully offline (system font stack, no
+   web-font download). Core knobs are CSS custom properties so a deck or extension
+   can retheme with a few overrides; an extension theme (e.g. liquid-glass) can
+   override wholesale. Also carries the content styling base.css gives normal HTML
+   pages but which decks don't load (decks ship only deck.css + this + KaTeX).
+   Keep the .qhl-* palette in sync with base.css. */
 
-  .reveal .slides { text-align: left; }
-  .reveal section.quarto-title-block, .reveal h1.title { text-align: center; }
-  .reveal .subtitle { text-align: center; opacity: .75; font-style: italic; }
-  .reveal pre { position: relative; width: 100%; box-shadow: none; font-size: .55em; }
-  .reveal pre code { max-height: none; }
-  .reveal code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
-  .reveal .qmd-copy { position: absolute; top: .3em; right: .3em; padding: .1em .4em;
-                      font: 600 .5em ui-sans-serif, system-ui, sans-serif; color: #444;
-                      background: #fff; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; }
-  .reveal .qmd-copy.qmd-copied { color: #2bb673; border-color: #2bb673; }
-  .reveal pre.mermaid { background: transparent; padding: 0; text-align: center; }
-  .reveal .katex-display { margin: .4em 0; }
-  [data-block-id].qmd-hl { outline: 2px solid #4c8dff; outline-offset: 3px; }
+.reveal {
+  --deck-ink: #1b1c22;
+  --deck-muted: #6b6e7b;
+  --deck-accent: #4c6ef5;
+  --deck-rule: #e6e7ea;
+  --deck-code-bg: #f6f8fa;
+  --deck-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --deck-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: var(--deck-font);
+  color: var(--deck-ink);
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Content is left-aligned; the front-matter title slide is centered. */
+.reveal .slides { text-align: left; }
+.reveal section.quarto-title-block, .reveal h1.title { text-align: center; }
+
+/* Type scale (the deck base font-size is 40px, set in deck.css). Headings
+   inherit font-family from .reveal (low specificity) rather than setting it, so a
+   theme extension's `.reveal *` font rule still wins (e.g. liquid-glass's Inter). */
+.reveal h1, .reveal h2, .reveal h3, .reveal h4 {
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--deck-ink);
+  margin: 0 0 .5em;
+}
+.reveal h1 { font-size: 1.9em; }
+.reveal h2 { font-size: 1.5em; }
+.reveal h3 { font-size: 1.15em; }
+.reveal h1.title { font-size: 2.3em; letter-spacing: -0.035em; margin-bottom: .2em; }
+.reveal .subtitle {
+  text-align: center;
+  font-size: 1.05em;
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--deck-muted);
+}
+.reveal p { margin: 0 0 .6em; line-height: 1.4; }
+.reveal strong { font-weight: 700; color: var(--deck-ink); }
+.reveal a {
+  color: var(--deck-accent);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--deck-accent) 35%, transparent);
+}
+.reveal a:hover { border-bottom-color: var(--deck-accent); }
+
+/* Lists: comfortable rhythm, accent markers. */
+.reveal ul, .reveal ol { margin: 0 0 .6em; padding-left: 1.1em; }
+.reveal li { margin: .32em 0; line-height: 1.35; }
+.reveal li::marker { color: var(--deck-accent); }
+
+/* Code: highlighted blocks read as a tinted panel; inline code as a chip. */
+.reveal code { font-family: var(--deck-mono); }
+.reveal pre {
+  position: relative;
+  width: 100%;
+  box-shadow: none;
+  font-size: .5em;
+  background: var(--deck-code-bg);
+  border: 1px solid var(--deck-rule);
+  border-radius: .4em;
+  padding: .8em 1em;
+  margin: 0 0 .6em;
+}
+.reveal pre code { max-height: none; background: transparent; padding: 0; }
+.reveal :not(pre) > code {
+  background: var(--deck-code-bg);
+  border: 1px solid var(--deck-rule);
+  padding: .08em .3em;
+  border-radius: .25em;
+  font-size: .9em;
+}
+.reveal .qmd-copy {
+  position: absolute; top: .4em; right: .4em; padding: .1em .4em;
+  font: 600 .5em var(--deck-font); color: var(--deck-muted);
+  background: #fff; border: 1px solid var(--deck-rule); border-radius: 5px; cursor: pointer;
+}
+.reveal .qmd-copy.qmd-copied { color: #2bb673; border-color: #2bb673; }
+.reveal pre.mermaid { background: transparent; border: 0; padding: 0; text-align: center; }
+
+/* server-side syntax-highlight palette (syntect); keep in sync with base.css.
+   Unmapped scopes inherit the default ink colour. */
+.reveal .qhl-comment { color: #6e7781; font-style: italic; }
+.reveal .qhl-string { color: #0a3069; }
+.reveal .qhl-keyword, .reveal .qhl-storage { color: #cf222e; }
+.reveal .qhl-constant, .reveal .qhl-support { color: #0550ae; }
+.reveal .qhl-entity { color: #8250df; }
+.reveal .qhl-variable { color: #953800; }
+
+/* Tables and blockquotes (base.css equivalents, deck-safe concrete values). */
+.reveal table { border-collapse: collapse; margin: 0 0 .6em; }
+.reveal th, .reveal td { padding: .15em .6em; text-align: left; border-bottom: 1px solid var(--deck-rule); }
+.reveal thead th { border-bottom: 2px solid var(--deck-ink); font-weight: 700; }
+.reveal blockquote {
+  border-left: .12em solid var(--deck-accent);
+  margin: 0 0 .6em; padding-left: .7em;
+  color: var(--deck-muted);
+}
+
+.reveal .katex-display { margin: .4em 0; }
+
+/* Speaker notes (`::: {.notes}`) are for the presenter window only. */
+.reveal .notes { display: none; }
+
+/* Click-to-source highlight; programmatic slide focus is not a visible affordance. */
+[data-block-id].qmd-hl { outline: 2px solid var(--deck-accent); outline-offset: 3px; }
+.reveal .slides > section:focus, .reveal .slides > section:focus-visible { outline: none; }

@@ -1,0 +1,190 @@
+/* qmd-fast deck engine — the layout reveal.css used to provide, reimplemented
+   over reveal's own DOM/class contract (.reveal > .slides > section.slide,
+   .present/.past/.future, nested <section> stacks, .reveal-viewport) so that
+   reveal-extra.css and reveal-styled extensions (e.g. liquid-glass) keep
+   applying unchanged. Behaviour lives in deck.js; this is only layout. */
+
+html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+body { background: #fff; }
+
+/* The deck fills the viewport; deck.js owns scaling + navigation. Sized with
+   explicit width/height (not `inset`) so it still fills when an extension forces
+   `position: relative` to set up a stacking context (e.g. liquid-glass, which
+   layers backgrounds behind .reveal). */
+.reveal {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-size: 40px; /* design base; em-sized content scales with the transform */
+  -webkit-tap-highlight-color: transparent;
+  touch-action: pan-y;
+}
+.reveal-viewport { position: relative; width: 100%; height: 100%; }
+
+/* A fixed design box (size from --qmd-deck-w/h), centered in the viewport and
+   scaled to fit by deck.js via --qmd-deck-scale. */
+.reveal .slides {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--qmd-deck-w, 960px);
+  height: var(--qmd-deck-h, 540px); /* 16:9 default */
+  transform: translate(-50%, -50%) scale(var(--qmd-deck-scale, 1));
+  transform-origin: 50% 50%;
+}
+
+/* Hide the deck until deck.js positions the first slide, so neither the plain
+   `display:none` (blank) nor a theme's forced per-section display (all slides
+   stacked) flashes before JS runs. deck.js adds `.qmd-ready` after first layout. */
+.reveal:not(.qmd-ready) .slides {
+  visibility: hidden;
+}
+
+/* Each slide fills the design box; only the .present one shows. center:false →
+   content flows from the top. A top-level <section> that contains child
+   <section>s is a vertical stack: a transparent container whose current child
+   carries the slide box. */
+.reveal .slides > section,
+.reveal .slides > section > section {
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  padding: 0.6em 1em; /* em so shrink-to-fit (font-size scaling) scales it too */
+  display: none;
+  overflow: hidden;
+}
+.reveal .slides > section.present,
+.reveal .slides > section.present > section.present {
+  display: block;
+}
+
+/* Per-slide vertical centering (the front-matter title slide carries .center). */
+.reveal .slides > section.center.present,
+.reveal .slides > section.present > section.center.present {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* A gentle fade as each slide becomes present. It's a one-shot animation on the
+   incoming slide (not a transition between two), so hidden slides can stay
+   display:none and it never fights a theme's per-slide layout. */
+@media (prefers-reduced-motion: no-preference) {
+  .reveal .slides > section.present,
+  .reveal .slides > section.present > section.present {
+    animation: qmd-slide-in .28s ease-out;
+  }
+  @keyframes qmd-slide-in {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
+/* Overview: a scrollable grid of all slides. Built with `zoom` + grid (no 3D
+   transforms), so themes using `backdrop-filter` (liquid-glass) don't break the
+   way they do in reveal's transform-based overview. Toggled with Escape; click a
+   tile to jump. deck.js clears the per-slide inline display so every tile shows. */
+.reveal.overview .slides {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, calc(var(--qmd-deck-w, 960px) * 0.28));
+  grid-auto-rows: calc(var(--qmd-deck-h, 540px) * 0.28);
+  gap: 22px;
+  justify-content: center;
+  align-content: start;
+  padding: 28px;
+  overflow: auto;
+  background: #1a1d21;
+}
+.reveal.overview .slides > section {
+  display: block;
+  position: relative !important;
+  inset: auto !important;
+  top: auto !important;
+  left: auto !important;
+  width: var(--qmd-deck-w, 960px) !important;
+  height: var(--qmd-deck-h, 540px) !important;
+  zoom: 0.28; /* scales the full design box into a tile; tracks any aspect ratio */
+  overflow: hidden;
+  background: #fff;
+  border: 10px solid transparent;
+  border-radius: 28px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, .45);
+  cursor: pointer;
+}
+.reveal.overview .slides > section.qmd-overview-current {
+  border-color: #4c8dff;
+}
+
+/* Fragments / incremental reveals: hidden but keeping layout space (visibility,
+   not display) so the slide doesn't reflow and shrink-to-fit sizes for the final
+   state. deck.js toggles .qmd-frag-visible to reveal them one step at a time. */
+.reveal .fragment,
+.reveal .incremental > ul > li,
+.reveal .incremental > ol > li {
+  opacity: 0;
+  visibility: hidden;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .reveal .fragment,
+  .reveal .incremental > ul > li,
+  .reveal .incremental > ol > li { transition: opacity .25s ease; }
+}
+.reveal .qmd-frag-visible { opacity: 1 !important; visibility: visible !important; }
+/* Overview shows every slide complete, regardless of reveal state. */
+.reveal.overview .fragment,
+.reveal.overview .incremental > ul > li,
+.reveal.overview .incremental > ol > li { opacity: 1 !important; visibility: visible !important; }
+
+/* Presenter (speaker) window: a dark control surface with live current + next
+   previews (iframes), the slide's notes, and a timer + clock. Built by deck.js
+   when the page is opened at ?qmd=speaker; stays in sync with the audience. */
+.qmd-speaker {
+  position: fixed;
+  inset: 0;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  gap: 14px;
+  padding: 16px;
+  background: #14161b;
+  color: #e6e8ec;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.qmd-speaker .sp-top { display: flex; align-items: center; gap: 16px; }
+.qmd-speaker .sp-timer { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.qmd-speaker .sp-clock { margin-left: auto; color: #9aa0aa; font-variant-numeric: tabular-nums; }
+.qmd-speaker .sp-reset {
+  background: #262a32; color: #e6e8ec; border: 1px solid #363b44;
+  border-radius: 6px; padding: 4px 10px; font: inherit; font-size: 13px; cursor: pointer;
+}
+.qmd-speaker .sp-reset:hover { background: #2f343d; }
+.qmd-speaker .sp-stage { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; min-height: 0; }
+.qmd-speaker .sp-pane { display: flex; flex-direction: column; min-height: 0; }
+.qmd-speaker .sp-label { font-size: 11px; text-transform: uppercase; letter-spacing: .09em; color: #8b919c; margin-bottom: 6px; }
+.qmd-speaker iframe { flex: 1; width: 100%; min-height: 0; border: 0; border-radius: 10px; background: #fff; }
+.qmd-speaker .sp-notes { background: #1b1e24; border-radius: 10px; padding: 12px 16px; max-height: 26vh; overflow: auto; }
+.qmd-speaker .sp-notes-body { font-size: 19px; line-height: 1.5; }
+.qmd-speaker .sp-notes-body :last-child { margin-bottom: 0; }
+.qmd-speaker .sp-empty { color: #6b7079; font-style: italic; }
+
+/* slideNumber: 'c/t' chip. */
+.reveal .qmd-slide-number {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 30;
+  font: 600 16px ui-sans-serif, system-ui, sans-serif;
+  color: rgba(0, 0, 0, .5);
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, .55);
+  border-radius: 6px;
+  pointer-events: none;
+}

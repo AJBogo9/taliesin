@@ -7,9 +7,16 @@
 
 use super::*;
 
-/// Slide-specific tweaks layered over the reveal theme (left-aligned content,
+/// Slide-specific tweaks layered over the deck theme (left-aligned content,
 /// centered title slide, readable code/math).
 const REVEAL_EXTRA_CSS: &str = include_str!("../../assets/css/reveal-extra.css");
+
+/// qmd-fast's own deck engine, bundled (no CDN): `deck.css` is the layout and
+/// `deck.js` the navigation/scaling engine, exposing a `window.Reveal`-shaped
+/// facade so reveal extensions and the preview client work unchanged. Inlined
+/// into both the one-shot page and the live client, like KaTeX/OJS/mermaid.
+const DECK_CSS: &str = include_str!("../../assets/css/deck.css");
+const DECK_JS: &str = include_str!("../../assets/js/deck.js");
 
 pub(super) fn reveal_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
     let title = doc.title.as_deref().unwrap_or(fallback_title);
@@ -37,51 +44,31 @@ pub(super) fn reveal_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> S
          {code_scripts}\n\
          <script>document.addEventListener('DOMContentLoaded',function(){{window.qmdEnhanceCode&&window.qmdEnhanceCode(document.body);}});</script>\n\
          {after_body}</body>\n</html>\n",
-        links = reveal_stylesheet_links(),
+        links = format!("<style>{DECK_CSS}</style>\n"),
         theme = theme_style(&doc.theme_css),
         in_header = doc.includes.in_header,
         before_body = doc.includes.before_body,
         after_body = doc.includes.after_body,
-        script = reveal_library_script(),
+        script = format!("<script>{DECK_JS}</script>"),
         code_head = code_head(),
         code_scripts = code_scripts(),
     )
 }
 
-/// A jsDelivr URL for a file under reveal.js's `dist/`, with the version pinned
-/// in one place so the one-shot page and the live client never diverge.
-fn reveal_cdn(path: &str) -> String {
-    format!("https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/{path}")
-}
-
-/// The reveal.js core + theme `<link rel="stylesheet">` tags.
-fn reveal_stylesheet_links() -> String {
-    ["reset.css", "reveal.css", "theme/white.css"]
-        .iter()
-        .map(|f| format!("<link rel=\"stylesheet\" href=\"{}\" />\n", reveal_cdn(f)))
-        .collect()
-}
-
-/// The reveal.js library `<script>` tag (must load before any `Reveal` call).
-fn reveal_library_script() -> String {
-    format!("<script src=\"{}\"></script>", reveal_cdn("reveal.js"))
-}
-
-/// `<head>` markup for the live reveal.js deck client: reveal stylesheets plus
-/// the bundled KaTeX stylesheet (a live deck may gain math on any edit) and the
-/// slide tweaks. The blog [`client_styles`] body CSS is deliberately omitted —
-/// it would fight reveal's own layout.
+/// `<head>` markup for the live deck client: the bundled deck layout plus the
+/// KaTeX stylesheet (a live deck may gain math on any edit) and the slide
+/// tweaks. The blog [`client_styles`] body CSS is deliberately omitted — it
+/// would fight the deck layout.
 pub fn reveal_client_head() -> String {
     format!(
-        "{links}<style>{KATEX_CSS}</style>\n<style>{REVEAL_EXTRA_CSS}</style>",
-        links = reveal_stylesheet_links(),
+        "<style>{DECK_CSS}</style>\n<style>{KATEX_CSS}</style>\n<style>{REVEAL_EXTRA_CSS}</style>"
     )
 }
 
-/// The reveal.js library `<script>` for the live deck client; load it before
-/// the preview client so `Reveal` is defined when the deck mounts.
+/// The deck engine `<script>` for the live deck client; load it before the
+/// preview client so the `window.Reveal` facade is defined when the deck mounts.
 pub fn reveal_client_script() -> String {
-    reveal_library_script()
+    format!("<script>{DECK_JS}</script>")
 }
 
 // --- reveal.js slide model ----------------------------------------------

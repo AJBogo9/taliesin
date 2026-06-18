@@ -2000,8 +2000,8 @@ const PAGE_TEMPLATE: &str = r#"<!DOCTYPE html>
 </html>
 "#;
 
-// reveal.js (pinned to 5.1.0) is served from jsDelivr — the dev server runs
-// locally with network access; only KaTeX is bundled for true offline use.
+// The deck engine (deck.css/deck.js) is bundled into the page like KaTeX/OJS —
+// decks render with no network, the same as every other format.
 
 #[cfg(test)]
 mod tests {
@@ -2775,8 +2775,13 @@ mod tests {
         );
         assert!(page.contains("class=\"reveal\""));
         assert!(page.contains("class=\"slides\""));
-        assert!(page.contains("reveal.js@5.1.0"));
+        // The deck engine is bundled (no CDN); it exposes a window.Reveal facade.
+        assert!(page.contains("window.QmdDeck"));
         assert!(page.contains("Reveal.initialize("));
+        assert!(
+            !page.contains("jsdelivr") || !page.contains("reveal.js@"),
+            "the deck must not load reveal.js from a CDN"
+        );
     }
 
     // --- books: heading anchors, figures, toc ---
