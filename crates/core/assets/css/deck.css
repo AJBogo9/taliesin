@@ -276,3 +276,30 @@ html.qmd-print .qmd-slide-number { display: none; }
 @media print {
   @page { size: 960px 540px; margin: 0; }
 }
+
+/* Scroll / reader mode: deck.js adds `qmd-scroll` to <html> on a narrow/portrait
+   screen (or ?qmd=scroll). The deck flattens to a vertically-scrollable document —
+   every slide a full-width section in a centered reading column, at a responsive
+   font size (no fixed-aspect scaling) so it reads well on a phone. */
+html.qmd-scroll, html.qmd-scroll body {
+  width: auto; height: auto; overflow: auto; margin: 0; background: #fff;
+}
+html.qmd-scroll .qmd-bg { display: none; }
+html.qmd-scroll .reveal {
+  position: static; width: auto; height: auto; overflow: visible;
+  font-size: clamp(15px, 4.2vw, 21px);
+}
+html.qmd-scroll .reveal-viewport { position: static; height: auto; }
+html.qmd-scroll .reveal .slides {
+  position: static; transform: none !important; left: auto; top: auto;
+  width: auto; height: auto; max-width: 46rem; margin: 0 auto; padding: 0 1rem 3rem;
+}
+html.qmd-scroll .reveal .slides > section,
+html.qmd-scroll .reveal .slides > section > section {
+  position: relative !important; display: block !important;
+  width: auto; height: auto; min-height: 0; box-sizing: border-box;
+  padding: 1.6rem 0; border-top: 1px solid var(--deck-rule, #e6e7ea); overflow: visible;
+}
+html.qmd-scroll .reveal .slides > section:first-child { border-top: 0; }
+html.qmd-scroll .reveal .slides > section.qmd-scroll-stack { padding: 0; border-top: 0; }
+html.qmd-scroll .qmd-slide-number { display: none; }

@@ -588,6 +588,40 @@
     apply();
   }
 
+  // --- scroll / reader mode ----------------------------------------------
+  // On a narrow/portrait screen (or ?qmd=scroll) the fixed-aspect deck would
+  // letterbox badly, so it flattens to a vertically-scrollable, readable document:
+  // every slide stacked full-width at a responsive size, all fragments revealed.
+  function enterScroll() {
+    var rev = revealEl();
+    if (!rev || deck.scroll) return;
+    deck.scroll = true;
+    document.documentElement.classList.add('qmd-scroll');
+    tops().forEach(function (top) {
+      top.style.removeProperty('display');
+      top.style.removeProperty('font-size');
+      top.removeAttribute('aria-hidden');
+      if (isStack(top)) {
+        top.classList.add('qmd-scroll-stack');
+        vertsOf(top).forEach(function (s) { s.style.removeProperty('display'); s.style.removeProperty('font-size'); });
+      }
+    });
+    rev.querySelectorAll(FRAG_SEL).forEach(function (e) { e.classList.add('qmd-frag-visible'); });
+    rev.querySelectorAll('pre[data-code-lines]').forEach(function (p) { highlightLines(p, 'all'); });
+    rev.querySelectorAll('.magic-move').forEach(function (div) {
+      var pres = mmBlocks(div);
+      pres.forEach(function (p, i) { p.classList.toggle('qmd-mm-active', i === pres.length - 1); });
+    });
+  }
+  function exitScroll() {
+    if (!deck.scroll) return;
+    deck.scroll = false;
+    document.documentElement.classList.remove('qmd-scroll');
+    tops().forEach(function (t) { t.classList.remove('qmd-scroll-stack'); });
+    apply();
+    layout();
+  }
+
   // --- URL hash (replaceState by default: no history pollution) ----------
   function writeHash() {
     if (!deck.config.hash) return;
@@ -642,6 +676,7 @@
   // --- keyboard + touch ---------------------------------------------------
   function onKey(e) {
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (deck.scroll) return; // reader mode: let the browser scroll normally
     var t = /** @type {any} */ (e.target);
     if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
     var handled = true;
@@ -672,7 +707,7 @@
   }
   var touch = { x: null, y: null, t: 0 };
   function onTouchStart(e) {
-    if (e.touches.length !== 1) { touch.x = null; return; }
+    if (deck.scroll || e.touches.length !== 1) { touch.x = null; return; } // reader mode scrolls
     touch.x = e.touches[0].clientX; touch.y = e.touches[0].clientY; touch.t = Date.now();
   }
   function onTouchEnd(e) {
@@ -741,6 +776,12 @@
       window.addEventListener('hashchange', onHashChange);
       window.addEventListener('beforeprint', enterPrint); // Cmd/Ctrl+P -> one slide per page
       window.addEventListener('afterprint', exitPrint);
+      // Scroll/reader mode: explicit ?qmd=scroll, or auto on a narrow/portrait screen
+      // (the fixed-aspect deck letterboxes badly there); re-evaluated on resize/rotate.
+      var narrow = window.matchMedia('(max-width: 600px)');
+      var syncScroll = function () { (qmd === 'scroll' || narrow.matches) ? enterScroll() : exitScroll(); };
+      if (narrow.addEventListener) narrow.addEventListener('change', syncScroll);
+      syncScroll();
     }
     deck.ready = true;
     deck.plugins.forEach(initPlugin);
