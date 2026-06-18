@@ -22,6 +22,22 @@ against its own warm kernel: point the server at a Python with `ipykernel` via
 other language, or with no kernel available, renders as highlighted source rather
 than failing.
 
+::: {.callout-tip}
+## Setting up a kernel
+
+Code execution needs a Jupyter kernel. A one-time Python setup:
+
+```sh
+python3 -m venv .venv && . .venv/bin/activate
+pip install ipykernel numpy matplotlib   # + whatever your cells import
+export QMD_FAST_PYTHON="$(pwd)/.venv/bin/python"
+```
+
+Now `preview`/`build` run `{python}` cells against that interpreter. No kernel is
+fine too — cells just render as highlighted source, and the preview shows a quiet
+"kernel unavailable" note instead of failing.
+:::
+
 The kernel is resilient: if it crashes mid-session the server detects the dead
 process and respawns it on the next run, and a runaway cell is interrupted at a
 configurable timeout instead of wedging the kernel. The dev menu's **Restart

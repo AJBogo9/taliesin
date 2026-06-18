@@ -75,6 +75,36 @@ flowchart LR
   BM --> K["book + TOC"]
 ```
 
+Every mermaid diagram type works — **sequence**, **state**, class, ER, gantt,
+and more — so you can document a protocol or a state machine from a few lines of
+text. Here is the live-edit loop as a sequence diagram:
+
+```{mermaid}
+sequenceDiagram
+  autonumber
+  participant E as Editor
+  participant S as Server
+  participant P as Preview
+  E->>S: save .qmd
+  S->>S: re-parse + diff by block id
+  S-->>P: only the changed blocks
+  P->>P: swap them in (scroll kept)
+  Note over P: live canvases keep their state
+```
+
+…and the warm kernel's lifecycle as a state diagram:
+
+```{mermaid}
+stateDiagram-v2
+  [*] --> Idle
+  Idle --> Running: run changed cell(s)
+  Running --> Idle: outputs spliced back
+  Running --> Interrupted: exceeds timeout
+  Interrupted --> Idle
+  Idle --> Respawned: process died
+  Respawned --> Idle: re-run all cells
+```
+
 ## Figures, captions, and lightbox
 
 A standalone image with a `{#fig-…}` attribute, or a code cell tagged with

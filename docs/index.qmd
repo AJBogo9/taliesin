@@ -31,6 +31,11 @@ included.
 
 ## Get running in 30 seconds
 
+qmd-fast builds from source with a Rust toolchain (`cargo build --release`); a
+`qmd-fast` launcher on your `PATH` then keeps the binary fresh and runs it from
+anywhere. To execute code cells you also point it at a Jupyter kernel — see
+[Executable content](using/code.qmd#code-cells).
+
 ```sh
 # live preview, updating as you save (aliases: dev, serve)
 cargo run -p qmd-fast-server -- preview post.qmd 4321
