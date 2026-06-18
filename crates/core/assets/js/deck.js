@@ -93,6 +93,55 @@
     });
     fitSlide(currentSlide());
     applyFragments();
+    applyBackground();
+  }
+  // --- per-slide backgrounds ---------------------------------------------
+  // Apply the current slide's `data-background-*` to a single full-viewport layer
+  // behind the deck. Light text is auto-applied over an image/gradient or a dark
+  // colour; the author can still override via theme. (Print hides the layer.)
+  function ensureBgLayer() {
+    var layer = document.querySelector('.qmd-bg');
+    if (!layer) {
+      layer = document.createElement('div');
+      layer.className = 'qmd-bg';
+      var rev = revealEl();
+      var host = (rev && rev.parentNode) || document.body;
+      host.insertBefore(layer, host.firstChild);
+    }
+    return layer;
+  }
+  function applyBackground() {
+    var rev = revealEl();
+    if (!rev) return;
+    var cur = currentSlide();
+    var color = cur && cur.getAttribute('data-background-color');
+    var gradient = cur && cur.getAttribute('data-background-gradient');
+    var image = cur && cur.getAttribute('data-background-image');
+    rev.classList.remove('qmd-dark-bg');
+    if (!color && !gradient && !image) {
+      var existing = document.querySelector('.qmd-bg');
+      if (existing) existing.style.cssText = '';
+      return;
+    }
+    var layer = ensureBgLayer();
+    layer.style.cssText = ''; // keep positioning from the class; reset paint props
+    if (color) layer.style.backgroundColor = color;
+    if (gradient) layer.style.backgroundImage = gradient;
+    if (image) {
+      layer.style.backgroundImage = 'url("' + image + '")';
+      layer.style.backgroundSize = cur.getAttribute('data-background-size') || 'cover';
+      layer.style.backgroundPosition = cur.getAttribute('data-background-position') || 'center';
+      layer.style.backgroundRepeat = cur.getAttribute('data-background-repeat') || 'no-repeat';
+    }
+    if (image || gradient || (color && isDarkColor(color))) rev.classList.add('qmd-dark-bg');
+  }
+  function isDarkColor(c) {
+    var m = c.replace(/\s/g, '').match(/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i);
+    if (!m) return true; // named/unknown colour -> assume dark (decorative)
+    var h = m[1];
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    var r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+    return 0.299 * r + 0.587 * g + 0.114 * b < 140;
   }
   // --- fragments (incremental reveals) -----------------------------------
   // A fragment is any `.fragment` element or a list item inside `.incremental`,

@@ -229,6 +229,13 @@ fn render_top(top: &Top, out: &mut String) {
 }
 
 fn render_section(s: &SlideBuf, out: &mut String) {
+    // A per-slide background is emitted as `data-background-*` on the heading; hoist
+    // it onto the <section> (where the deck engine reads it) and strip it off the heading.
+    let (bg_attrs, lead) = s
+        .blocks
+        .first()
+        .map(|b| take_bg_attrs(b))
+        .unwrap_or_default();
     out.push_str("<section");
     if let Some(id) = s.id.as_deref().filter(|id| !id.is_empty()) {
         out.push_str(&format!(" id=\"{}\"", escape_attr(id)));
@@ -238,12 +245,42 @@ fn render_section(s: &SlideBuf, out: &mut String) {
     } else {
         out.push_str(" class=\"slide\"");
     }
+    out.push_str(&bg_attrs);
     out.push_str(">\n");
-    for b in &s.blocks {
-        out.push_str(b);
+    for (i, b) in s.blocks.iter().enumerate() {
+        out.push_str(if i == 0 { &lead } else { b });
         out.push('\n');
     }
     out.push_str("</section>\n");
+}
+
+/// Pull any `data-background-*` attributes out of a slide's lead block (its heading)
+/// — they sit in the opening tag — returning (attrs for the `<section>`, lead block
+/// with them removed).
+fn take_bg_attrs(html: &str) -> (String, String) {
+    if !html.contains("data-background") {
+        return (String::new(), html.to_string());
+    }
+    let gt = html.find('>').unwrap_or(html.len());
+    let (head, tail) = html.split_at(gt);
+    let mut attrs = String::new();
+    let mut rest = String::new();
+    let mut i = 0;
+    while i < head.len() {
+        if head[i..].starts_with(" data-background")
+            && let Some(eq) = head[i..].find("=\"")
+            && let Some(qend) = head[i + eq + 2..].find('"')
+        {
+            let end = i + eq + 2 + qend + 1;
+            attrs.push_str(&head[i..end]);
+            i = end;
+            continue;
+        }
+        let ch = head[i..].chars().next().unwrap();
+        rest.push(ch);
+        i += ch.len_utf8();
+    }
+    (attrs, format!("{rest}{tail}"))
 }
 
 fn is_slide_break(html: &str) -> bool {

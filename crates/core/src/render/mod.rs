@@ -521,6 +521,15 @@ fn render_internal(
             // CommonMark leaves it literal, but Pandoc/Quarto drop it. Match Pandoc.
             html = strip_trailing_hardbreak(&html);
         }
+        // A deck heading may set a per-slide background (`## T {background-image="..."}`):
+        // emit it as `data-background-*` on the heading so the slide model can hoist it
+        // onto the wrapping `<section>`.
+        if heading_level.is_some() && format == DocFormat::Reveal {
+            let bg = heading_bg_data(&block_src);
+            if !bg.is_empty() {
+                html = apply_heading_bg(&html, &bg);
+            }
+        }
         flat.push(FlatBlock {
             buf_start,
             block: Block {
@@ -1283,6 +1292,37 @@ fn parse_heading_attr(block_src: &str) -> Option<(String, Option<String>)> {
         .filter(|id| !id.is_empty())
         .map(str::to_string);
     Some((line[..open].trim_end().to_string(), id))
+}
+
+/// Per-slide background data attributes from a heading's trailing `{...}` —
+/// `background-color`/`-image`/`-gradient`/`-size`/`-position`/`-repeat`/`-opacity`
+/// become ` data-background-*="..."`. Empty if the heading has no `{...}` or no
+/// background keys.
+fn heading_bg_data(block_src: &str) -> String {
+    let line = block_src.trim_end();
+    let Some(open) = line.rfind('{') else {
+        return String::new();
+    };
+    if !line.ends_with('}') {
+        return String::new();
+    }
+    let attrs = divs::parse_attrs(&line[open + 1..line.len() - 1]);
+    attrs
+        .kv
+        .iter()
+        .filter(|(k, _)| k.starts_with("background"))
+        .map(|(k, v)| format!(" data-{}=\"{}\"", k, escape_attr(v)))
+        .collect()
+}
+
+/// Strip a heading's trailing `{...}` (if still present) and inject `bg_data` into
+/// its opening tag, so `## T {background-image="x"}` -> `<h2 data-background-image="x">T</h2>`.
+fn apply_heading_bg(html: &str, bg_data: &str) -> String {
+    let stripped = strip_heading_attr(html);
+    match stripped.find('>') {
+        Some(gt) => format!("{}{}{}", &stripped[..gt], bg_data, &stripped[gt..]),
+        None => stripped,
+    }
 }
 
 /// Remove the trailing `{...}` attribute comrak leaves as literal text inside a
@@ -2845,6 +2885,27 @@ mod tests {
         assert!(
             !plain.contains("class=\"qhl-ln\""),
             "plain code should not be line-wrapped"
+        );
+    }
+
+    #[test]
+    fn heading_background_attr_moves_to_section() {
+        let page = render_html_page(
+            "---\nformat: revealjs\n---\n\n## Title {background-color=\"#123456\"}\n\nbody\n",
+            "fb",
+        );
+        // the background hoists onto the <section> and the `{...}` is stripped.
+        assert!(
+            page.contains("data-background-color=\"#123456\""),
+            "bg attr missing"
+        );
+        assert!(
+            !page.contains("{background-color"),
+            "the {{...}} must be stripped"
+        );
+        assert!(
+            !page.contains("<h2 data-background"),
+            "bg must move off the heading"
         );
     }
 

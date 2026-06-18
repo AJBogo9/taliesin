@@ -123,6 +123,28 @@ body { background: #fff; }
   border-color: #4c8dff;
 }
 
+/* Per-slide backgrounds: a single full-viewport layer behind the deck, set by
+   deck.js from the current slide's data-background-*. Light text is applied over
+   image/gradient/dark-colour slides via .qmd-dark-bg (code panels keep their own
+   light background, so code stays readable). */
+.qmd-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background-size: cover;
+  background-position: center;
+}
+.reveal.qmd-dark-bg,
+.reveal.qmd-dark-bg h1,
+.reveal.qmd-dark-bg h2,
+.reveal.qmd-dark-bg h3,
+.reveal.qmd-dark-bg h4,
+.reveal.qmd-dark-bg strong { color: #fff; }
+.reveal.qmd-dark-bg .subtitle { color: rgba(255, 255, 255, .8); }
+.reveal.qmd-dark-bg a { color: #c7d2fe; }
+.reveal.qmd-dark-bg li::marker { color: #c7d2fe; }
+html.qmd-print .qmd-bg { display: none; } /* per-slide backgrounds aren't in the PDF (v1) */
+
 /* Fragments / incremental reveals: hidden but keeping layout space (visibility,
    not display) so the slide doesn't reflow and shrink-to-fit sizes for the final
    state. deck.js toggles .qmd-frag-visible to reveal them one step at a time. */
