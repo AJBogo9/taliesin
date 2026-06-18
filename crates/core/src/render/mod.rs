@@ -238,6 +238,9 @@ fn render_internal(
     let mut theme: Option<String> = None;
     let mut bib_field: Option<String> = None;
     let mut includes = PageIncludes::default();
+    // Non-fatal render warnings (missing/broken extension, bibliography, theme),
+    // collected through the whole render and surfaced in the dev menu / build log.
+    let mut warnings: Vec<String> = Vec::new();
     // Document-level cell defaults from a front-matter `execute:` block; a cell's
     // own `#| echo`/`#| include` overrides these.
     let mut exec_echo = true;
@@ -278,7 +281,7 @@ fn render_internal(
                 theme = detect_theme(fm);
                 // A format extension (`format: <ext>-revealjs`) contributes its
                 // includes/theme first; the doc's own front matter appends/overrides.
-                includes = resolve_format_extension(fm, base_dir);
+                includes = resolve_format_extension(fm, base_dir, &mut warnings);
                 includes.merge(&resolve_doc_includes(fm, base_dir));
                 (exec_echo, exec_include) = detect_execute_defaults(fm);
                 continue;
@@ -513,7 +516,6 @@ fn render_internal(
         });
     }
 
-    let mut warnings: Vec<String> = Vec::new();
     let mut blocks = group_divs(flat, &spans, origins, &mut id_counts);
     // Pandoc table captions (`: caption {#tbl-x}` after a table) are numbered and
     // folded into the table's `<caption>`; registers `tbl-x` for `@tbl-` refs.

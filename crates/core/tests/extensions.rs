@@ -171,34 +171,85 @@ fn extension_theme_inlines_css_but_drops_builtin_base() {
     );
 }
 
-/// AUDIT: a typo'd / unknown extension name fails completely silently — no
-/// includes and (today) no warning. This pins the *safety* contract (no crash,
-/// clean render); the missing diagnostic is called out in the audit notes.
+/// A typo'd / unknown extension name renders cleanly AND is reported via the
+/// warnings channel (so the author isn't left guessing why it did nothing).
 #[test]
-fn unknown_extension_name_is_a_silent_noop() {
+fn unknown_extension_name_is_reported() {
     let d = TempProj::new();
     let src = "---\ntitle: T\nformat: doesnotexist-revealjs\n---\n\n## S\n";
     let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
     assert!(doc.includes.in_header.is_empty());
-    assert!(doc.includes.resources.is_empty());
     assert!(!doc.blocks.is_empty(), "the doc still renders normally");
+    assert!(
+        doc.warnings
+            .iter()
+            .any(|w| w.contains("doesnotexist") && w.contains("not found")),
+        "expected a 'not found' warning, got: {:?}",
+        doc.warnings
+    );
 }
 
-/// A malformed `_extension.yml` is ignored rather than crashing the render.
+/// A bare base format (`revealjs`/`html`) is NOT an extension request, so it must
+/// render silently — no spurious "extension not found" warning.
 #[test]
-fn malformed_manifest_is_ignored_not_fatal() {
+fn bare_base_format_does_not_warn() {
+    let d = TempProj::new();
+    let src = "---\ntitle: T\nformat: revealjs\n---\n\n## S\n";
+    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    assert!(
+        doc.warnings.iter().all(|w| !w.contains("extension")),
+        "a plain base format must not warn: {:?}",
+        doc.warnings
+    );
+}
+
+/// A malformed `_extension.yml` is reported (not fatal): the render still
+/// succeeds and a parse warning is surfaced.
+#[test]
+fn malformed_manifest_is_reported_not_fatal() {
     let d = TempProj::new();
     d.ext("broken", "contributes: [this is not, valid: yaml");
     let src = "---\ntitle: T\nformat: broken-revealjs\n---\n\n## S\n";
     let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
     assert!(doc.includes.in_header.is_empty(), "malformed ext ignored");
     assert!(!doc.blocks.is_empty(), "render still succeeds");
+    assert!(
+        doc.warnings.iter().any(|w| w.contains("could not parse")),
+        "expected a parse warning, got: {:?}",
+        doc.warnings
+    );
+}
+
+/// An installed extension that declares no matching `contributes.formats.<base>`
+/// block is reported (a common copy/paste mistake).
+#[test]
+fn extension_without_matching_format_block_is_reported() {
+    let d = TempProj::new();
+    // declares an `html` block, but the deck asked for the `revealjs` base
+    d.ext(
+        "mismatch",
+        "contributes:
+  formats:
+    html:
+      include-in-header:
+        - text: \"<!--x-->\"
+",
+    );
+    let src = "---\ntitle: T\nformat: mismatch-revealjs\n---\n\n## S\n";
+    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    assert!(
+        doc.warnings
+            .iter()
+            .any(|w| w.contains("mismatch") && w.contains("revealjs")),
+        "expected a missing-format-block warning, got: {:?}",
+        doc.warnings
+    );
 }
 
 /// A manifest that references a missing file leaves an HTML-comment breadcrumb
-/// in the header rather than failing. AUDIT: note the inconsistency — a missing
-/// *file* is surfaced (in the output), but a missing *extension* or a malformed
-/// manifest is fully silent. None of these reach the warnings channel / dev menu.
+/// in the header rather than failing. (Missing *extensions* and malformed
+/// manifests are now reported through the warnings channel; a missing *included
+/// file* still only leaves this in-output breadcrumb.)
 #[test]
 fn missing_referenced_file_leaves_a_breadcrumb_comment() {
     let d = TempProj::new();

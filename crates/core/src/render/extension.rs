@@ -38,52 +38,102 @@ fn detect_format_name(front_matter: &str) -> Option<String> {
     }
     None
 }
+/// A `format: <ext>-<base>` reference to an installed format extension, resolved
+/// to its directory. Recognized base formats; the part before `-<base>` is the
+/// extension name.
+struct ExtensionRef {
+    name: String,
+    base: &'static str,
+    /// `<base_dir>/_extensions/<name>`.
+    dir: PathBuf,
+}
+
+/// Parse `format:` into an [`ExtensionRef`], or `None` when it is absent, names a
+/// bare base format (`revealjs`/`html`), or there is no project dir — none of
+/// which is an error (so no warning). A `None` here means "not an extension
+/// request"; a request that *is* made but then fails to load *does* warn.
+fn extension_ref(front_matter: &str, base_dir: Option<&Path>) -> Option<ExtensionRef> {
+    let fmt = detect_format_name(front_matter)?;
+    let (ext, base) = ["revealjs", "html"]
+        .iter()
+        .find_map(|b| fmt.strip_suffix(&format!("-{b}")).map(|e| (e, *b)))?;
+    let dir = base_dir?;
+    if ext.is_empty() {
+        return None;
+    }
+    Some(ExtensionRef {
+        name: ext.to_string(),
+        base,
+        dir: dir.join("_extensions").join(ext),
+    })
+}
+
+/// Load + parse an extension's `_extension.yml`. Because the caller asked for this
+/// extension explicitly via `format:`, a missing or malformed manifest is an
+/// authoring mistake worth surfacing (the dev menu / build log), not a silent
+/// no-op — so failures push a `warnings` entry.
+fn load_manifest(r: &ExtensionRef, warnings: &mut Vec<String>) -> Option<serde_yaml::Value> {
+    let manifest = r.dir.join("_extension.yml");
+    let text = match std::fs::read_to_string(&manifest) {
+        Ok(t) => t,
+        Err(_) => {
+            warnings.push(format!(
+                "format extension '{}' not found (looked for {})",
+                r.name,
+                manifest.display()
+            ));
+            return None;
+        }
+    };
+    match serde_yaml::from_str::<serde_yaml::Value>(&text) {
+        Ok(v) => Some(v),
+        Err(e) => {
+            warnings.push(format!("could not parse {}: {e}", manifest.display()));
+            None
+        }
+    }
+}
+
 /// If the doc's `format:` names a format extension (`<ext>-revealjs`/`<ext>-html`),
 /// load `_extensions/<ext>/_extension.yml` and resolve the includes + theme its
 /// `contributes: formats: <base>:` block injects, with files resolved relative to
-/// the extension's own directory. Empty when there's no such extension.
+/// the extension's own directory. Empty when there's no such extension; a *failed*
+/// load (missing/malformed manifest, no matching `formats` block) is reported via
+/// `warnings` so the author isn't left guessing why their extension did nothing.
 pub(super) fn resolve_format_extension(
     front_matter: &str,
     base_dir: Option<&Path>,
+    warnings: &mut Vec<String>,
 ) -> PageIncludes {
-    let Some(fmt) = detect_format_name(front_matter) else {
+    let Some(r) = extension_ref(front_matter, base_dir) else {
         return PageIncludes::default();
     };
-    // Recognized base formats; the part before `-<base>` is the extension name.
-    let Some((ext, base)) = ["revealjs", "html"]
-        .iter()
-        .find_map(|b| fmt.strip_suffix(&format!("-{b}")).map(|e| (e, *b)))
-    else {
-        return PageIncludes::default();
-    };
-    let (Some(dir), false) = (base_dir, ext.is_empty()) else {
-        return PageIncludes::default();
-    };
-    let ext_dir = dir.join("_extensions").join(ext);
-    let Ok(text) = std::fs::read_to_string(ext_dir.join("_extension.yml")) else {
-        return PageIncludes::default();
-    };
-    let Ok(v) = serde_yaml::from_str::<serde_yaml::Value>(&text) else {
+    let Some(v) = load_manifest(&r, warnings) else {
         return PageIncludes::default();
     };
     let Some(cfg) = v
         .get("contributes")
         .and_then(|c| c.get("formats"))
-        .and_then(|f| f.get(base))
+        .and_then(|f| f.get(r.base))
     else {
+        warnings.push(format!(
+            "extension '{}' declares no `contributes.formats.{}` block",
+            r.name, r.base
+        ));
         return PageIncludes::default();
     };
+    let ext_dir = &r.dir;
     let mut inc = includes_from_parts(
         cfg.get("include-in-header"),
         cfg.get("include-before-body"),
         cfg.get("include-after-body"),
         cfg.get("css"),
-        Some(&ext_dir),
+        Some(ext_dir),
     );
     // The contributed `theme:` CSS layers, inlined ahead of the header so the deck's
     // own front matter can still override. (`.scss` layers need a compiler we don't
     // ship yet, so only `.css` is inlined; named base themes are handled elsewhere.)
-    let theme = resolve_theme_layers(cfg.get("theme"), &ext_dir);
+    let theme = resolve_theme_layers(cfg.get("theme"), ext_dir);
     if !theme.is_empty() {
         inc.in_header = format!("{theme}{}", inc.in_header);
     }
