@@ -494,3 +494,25 @@ fn extension_resolved_from_project_root() {
         doc.body_html()
     );
 }
+
+/// A shortcode shown as an *example* inside a fenced code block stays literal (it's
+/// documentation, not an invocation) — only the real invocation expands.
+#[test]
+fn shortcode_in_code_block_is_left_literal() {
+    let d = TempProj::new();
+    d.ext(
+        "media",
+        "name: M\nshortcodes:\n  yt: '<iframe src=\"/v/{{1}}\"></iframe>'\n",
+    );
+    let src = "---\ntitle: T\nextensions: [media]\n---\n\nExample:\n\n```\n{{< yt abc >}}\n```\n\nLive: {{< yt xyz >}}\n";
+    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    let body = doc.body_html();
+    assert!(
+        body.contains("/v/xyz"),
+        "the real invocation expands: {body}"
+    );
+    assert!(
+        !body.contains("/v/abc"),
+        "the code-block example must stay literal (not expand): {body}"
+    );
+}

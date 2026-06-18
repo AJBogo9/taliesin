@@ -363,21 +363,30 @@ fn gather_shortcodes(
 }
 
 /// Expand declarative shortcodes (`{{< name args >}}`) using the templates the
-/// active format extension contributes. Line-preserving — each invocation must
-/// open and close on one line and expands to inline HTML — so the include source
-/// map stays valid. Unknown shortcodes (and any `{{< include >}}` the include
-/// pass already resolved) are left untouched.
+/// active extensions contribute. Line-preserving — each invocation opens and
+/// closes on one line and expands to inline HTML — so the include source map stays
+/// valid. Fenced code blocks are skipped, so a `{{< … >}}` shown as an *example*
+/// in ```` ``` ```` stays literal; unknown shortcodes are left untouched.
 pub(super) fn expand_shortcodes(src: &str, base_dir: Option<&Path>) -> String {
     let templates = shortcode_templates(front_matter_block(src), base_dir);
     if templates.is_empty() || !src.contains("{{<") {
         return src.to_string();
     }
     let mut out = String::with_capacity(src.len());
+    let mut in_code = false;
     for (i, line) in src.lines().enumerate() {
         if i > 0 {
             out.push('\n');
         }
-        out.push_str(&expand_in_line(line, &templates));
+        let t = line.trim_start();
+        if t.starts_with("```") || t.starts_with("~~~") {
+            in_code = !in_code;
+            out.push_str(line);
+        } else if in_code {
+            out.push_str(line); // literal inside a code block (it's an example)
+        } else {
+            out.push_str(&expand_in_line(line, &templates));
+        }
     }
     if src.ends_with('\n') {
         out.push('\n');
