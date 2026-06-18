@@ -899,14 +899,15 @@ pub fn code_head() -> String {
     String::new()
 }
 
-/// Defines `window.qmdEnhanceCode(root)`, which gives each code block a copy button
-/// and renders any `<pre class="mermaid">` diagrams (lazy-loading mermaid.js on
-/// first use). Syntax highlighting is no longer done here — code arrives already
-/// highlighted from the server. Callers invoke it after (re)mounting content; it is
-/// idempotent (skips already-processed blocks).
+/// The client enhancers: the `window.qmdEnhancers` registry + built-ins (copy
+/// buttons, lightbox, link-preview, category-filter) in code-enhance.js, then the
+/// self-registering mermaid module (which lazy-loads the mermaid library on first
+/// use). Emitted after the registry so it is defined when mermaid registers.
+/// Syntax highlighting arrives already done from the server. Callers invoke
+/// `window.qmdEnhanceCode(root)` after (re)mounting; it is idempotent.
 pub fn code_scripts() -> String {
-    let js = CODE_ENHANCE_JS.replace("{{MERMAID}}", MERMAID);
-    format!("<script>{js}</script>")
+    let mermaid = MERMAID_JS.replace("{{MERMAID}}", MERMAID);
+    format!("<script>{CODE_ENHANCE_JS}</script>\n<script>{mermaid}</script>")
 }
 
 /// The canonical TOC scrollspy (highlights the section under the navbar). Shared
@@ -953,6 +954,7 @@ pub fn has_ojs(body: &str) -> bool {
 }
 
 const CODE_ENHANCE_JS: &str = include_str!("../../assets/js/code-enhance.js");
+const MERMAID_JS: &str = include_str!("../../assets/js/mermaid.js");
 
 fn page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
     match doc.format {
