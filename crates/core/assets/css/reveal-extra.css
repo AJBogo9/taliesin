@@ -1,0 +1,14 @@
+
+  .reveal .slides { text-align: left; }
+  .reveal section.quarto-title-block, .reveal h1.title { text-align: center; }
+  .reveal .subtitle { text-align: center; opacity: .75; font-style: italic; }
+  .reveal pre { position: relative; width: 100%; box-shadow: none; font-size: .55em; }
+  .reveal pre code { max-height: none; }
+  .reveal code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .reveal .qmd-copy { position: absolute; top: .3em; right: .3em; padding: .1em .4em;
+                      font: 600 .5em ui-sans-serif, system-ui, sans-serif; color: #444;
+                      background: #fff; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; }
+  .reveal .qmd-copy.qmd-copied { color: #2bb673; border-color: #2bb673; }
+  .reveal pre.mermaid { background: transparent; padding: 0; text-align: center; }
+  .reveal .katex-display { margin: .4em 0; }
+  [data-block-id].qmd-hl { outline: 2px solid #4c8dff; outline-offset: 3px; }

@@ -1,0 +1,153 @@
+
+  /* Site shell: a full-width flex column so the footer sits at the bottom of the
+     viewport even on short pages. The navbar, content, and footer each centre
+     their own inner box on the reading column, so they all line up. */
+  body.qmd-site { max-width: none; margin: 0; padding: 0;
+    min-height: 100vh; display: flex; flex-direction: column;
+    /* height of the sticky navbar; the TOC and jumped-to headings clear it */
+    --qmd-nav-h: 3.25rem; }
+  /* the sticky navbar would otherwise cover the top of the sticky TOC and the top
+     of any heading a TOC link jumps to — offset both by the navbar height + a gap */
+  body.qmd-site #TOC { top: calc(var(--qmd-nav-h) + 1rem); }
+  body.qmd-site [data-block-id] { scroll-margin-top: calc(var(--qmd-nav-h) + 1rem); }
+
+  /* sticky theme-aware navbar (spans full width as a flex child; inner centres) */
+  .qmd-site-nav { position: sticky; top: 0; z-index: 50;
+    background: color-mix(in srgb, var(--qmd-bg) 88%, transparent);
+    -webkit-backdrop-filter: saturate(1.4) blur(9px); backdrop-filter: saturate(1.4) blur(9px);
+    border-bottom: 1px solid var(--qmd-border); }
+  .qmd-nav-inner { position: relative; max-width: var(--qmd-maxw); margin: 0 auto;
+    padding: .6rem 1rem; display: flex; align-items: center; gap: 1.1rem;
+    font: 500 15px/1 var(--qmd-font-head); }
+  .qmd-nav-brand { color: var(--qmd-fg); font-weight: 700; font-size: 1.02rem; text-decoration: none;
+    letter-spacing: -0.01em; white-space: nowrap; }
+  .qmd-nav-brand:hover { color: var(--qmd-accent); }
+  .qmd-nav-links { display: flex; align-items: center; gap: .35rem; flex: 1; }
+  .qmd-nav-spacer { flex: 1 1 auto; }
+  .qmd-nav-link { display: inline-flex; flex-direction: column; align-items: flex-start;
+    color: var(--qmd-muted); text-decoration: none; padding: .35rem .6rem;
+    border-radius: 6px; white-space: nowrap;
+    transition: color .12s ease, background .12s ease; }
+  /* Reserve the bold (active) width on every item so bolding the current page's
+     link never changes its width — the bar stays put across navigations. */
+  .qmd-nav-link::after { content: attr(data-label); font-weight: 600; height: 0;
+    overflow: hidden; visibility: hidden; pointer-events: none; }
+  .qmd-nav-link:hover { color: var(--qmd-fg); background: var(--qmd-code-bg); }
+  .qmd-nav-active { color: var(--qmd-fg); font-weight: 600; }
+  .qmd-nav-active:hover { background: transparent; }
+  /* real (shipped) light/dark toggle: a subtle icon, not a dev-style button */
+  .qmd-theme-toggle { display: inline-flex; align-items: center; justify-content: center;
+    width: 2rem; height: 2rem; padding: 0; border: 0; border-radius: 7px; cursor: pointer;
+    background: transparent; color: var(--qmd-muted); transition: color .12s ease, background .12s ease; }
+  .qmd-theme-toggle:hover { color: var(--qmd-fg); background: var(--qmd-code-bg); }
+  .qmd-theme-toggle svg { display: block; }
+  .qmd-nav-burger { display: none; }
+  .qmd-nav-toggle { display: none; }
+
+  /* the reading column; grows to fill the column so the footer is pushed down */
+  .qmd-site-main { flex: 1 0 auto; width: 100%; max-width: var(--qmd-maxw);
+    margin: 0 auto; padding: 2rem 1rem; }
+  .qmd-site-main > main { min-width: 0; }
+  /* `page-layout: full` widens the column (the blog/projects card indexes) */
+  .qmd-site-main.qmd-wide { max-width: 60rem; }
+  /* a page with a TOC widens into a two-column grid (content + sticky sidebar).
+     max-width is exactly the column sum (46 + 2.5 gap + 14) so the block centres
+     with no dead space pooling to the right of the TOC. */
+  .qmd-site-main.has-toc { max-width: 62.5rem; display: grid; align-items: start;
+    gap: 2.5rem; grid-template-columns: minmax(0, 46rem) 14rem; }
+  .qmd-site-main.has-toc > .qmd-postnav { grid-column: 1 / -1; }
+
+  /* bottom-of-post: a single "back to the blog listing" button */
+  .qmd-postnav { display: flex; margin: 3.5rem 0 0; padding-top: 1.5rem;
+    border-top: 1px solid var(--qmd-border); }
+  .qmd-back-link { display: inline-flex; align-items: center; gap: .45rem; text-decoration: none;
+    padding: .55rem 1rem; border: 1px solid var(--qmd-border); border-radius: 8px;
+    color: var(--qmd-fg); font-weight: 600;
+    transition: border-color .12s ease, background .12s ease, color .12s ease; }
+  .qmd-back-link:hover { border-color: var(--qmd-accent); background: var(--qmd-code-bg);
+    color: var(--qmd-accent); }
+  .qmd-back-glyph { font: 600 1rem var(--qmd-font-head); }
+
+  /* slim footer pinned to the bottom of the flex column (icons = author raw HTML) */
+  .qmd-site-footer { flex-shrink: 0; border-top: 1px solid var(--qmd-border); }
+  .qmd-foot-inner { max-width: var(--qmd-maxw); margin: 0 auto; padding: 1.4rem 1rem;
+    display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap;
+    font: 14px var(--qmd-font-head); color: var(--qmd-muted); }
+  .qmd-foot-left, .qmd-foot-center, .qmd-foot-right { display: inline-flex; align-items: center; gap: 1.1rem; }
+  .qmd-foot-left:empty, .qmd-foot-center:empty, .qmd-foot-right:empty { display: none; }
+  .qmd-foot-center { flex: 1 1 auto; justify-content: center; }
+  .qmd-foot-right { margin-left: auto; }
+  .qmd-foot-item { color: var(--qmd-muted); text-decoration: none; display: inline-flex; align-items: center; gap: .35rem; }
+  /* Only actual links highlight on hover — the copyright span is not a link. */
+  a.qmd-foot-item:hover { color: var(--qmd-fg); }
+  .qmd-foot-item svg { width: 16px; height: 16px; }
+
+  /* listing: post cards (a `grid` of cards, or a stacked `default` list) */
+  .qmd-listing { margin: 1.75rem 0; }
+  .qmd-listing-grid { display: grid; gap: 1.25rem;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); }
+  .qmd-listing-default { display: flex; flex-direction: column; gap: 1rem; }
+  .qmd-card { display: flex; flex-direction: column; text-decoration: none; color: var(--qmd-fg);
+    border: 1px solid var(--qmd-border); border-radius: 10px; overflow: hidden; background: var(--qmd-bg);
+    transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease; }
+  .qmd-card:hover { border-color: var(--qmd-accent); transform: translateY(-2px);
+    box-shadow: 0 6px 20px var(--qmd-edge-shadow); }
+  .qmd-listing-default .qmd-card { flex-direction: row; align-items: stretch; }
+  .qmd-card-img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block;
+    background: var(--qmd-code-bg); }
+  .qmd-listing-default .qmd-card-img { width: 12rem; aspect-ratio: 4 / 3; flex: none; }
+  .qmd-card-body { padding: .85rem 1rem 1rem; display: flex; flex-direction: column; gap: .35rem; }
+  .qmd-card-date { font: 600 .72rem var(--qmd-font-head); color: var(--qmd-muted);
+    text-transform: uppercase; letter-spacing: .04em; }
+  .qmd-card-title { font: 600 1.08rem/1.25 var(--qmd-font-head); margin: 0; }
+  .qmd-card-desc { margin: 0; font-size: .92rem; color: var(--qmd-muted); line-height: 1.5; }
+  .qmd-card-cats { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .25rem; }
+  .qmd-cat { font: 500 .72rem var(--qmd-font-head); color: var(--qmd-muted);
+    background: var(--qmd-code-bg); border: 1px solid var(--qmd-border);
+    border-radius: 999px; padding: .1rem .55rem; transition: background .12s ease, color .12s ease, border-color .12s ease; }
+  /* a card's category tag doubles as a filter toggle */
+  .qmd-cat[data-cat] { cursor: pointer; }
+  .qmd-cat[data-cat]:hover { color: var(--qmd-fg); border-color: var(--qmd-muted); }
+  .qmd-cat.qmd-cat-on { background: var(--qmd-accent); border-color: var(--qmd-accent); color: #fff; }
+
+  /* category filter chip row (listing: categories: true) */
+  .qmd-cat-filter { display: flex; flex-wrap: wrap; gap: .45rem; margin: 0 0 1.5rem; }
+  .qmd-cat-chip { display: inline-flex; align-items: center; gap: .35rem; cursor: pointer;
+    font: 500 .8rem var(--qmd-font-head); color: var(--qmd-muted);
+    background: var(--qmd-code-bg); border: 1px solid var(--qmd-border); border-radius: 999px;
+    padding: .25rem .7rem; transition: background .12s ease, color .12s ease, border-color .12s ease; }
+  .qmd-cat-chip:hover { color: var(--qmd-fg); border-color: var(--qmd-muted); }
+  .qmd-cat-chip.qmd-cat-active { background: var(--qmd-accent); border-color: var(--qmd-accent); color: #fff; }
+  .qmd-cat-count { font-size: .82em; opacity: .65; font-variant-numeric: tabular-nums; }
+  .qmd-cat-chip.qmd-cat-active .qmd-cat-count { opacity: .85; }
+
+  /* about: a centered profile header (jolla), replacing the title block */
+  .qmd-about { display: flex; flex-direction: column; align-items: center; text-align: center;
+    gap: .85rem; margin: 1rem 0 2.5rem; padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--qmd-border); }
+  .qmd-about-img { width: 9rem; height: 9rem; border-radius: 50%; object-fit: cover;
+    border: 1px solid var(--qmd-border); }
+  .qmd-about-name { margin: 0; font-size: 2rem; line-height: 1.15; }
+  .qmd-about-links { display: flex; flex-wrap: wrap; gap: .6rem; justify-content: center; }
+  .qmd-about-link { font: 500 .9rem var(--qmd-font-head); text-decoration: none;
+    color: var(--qmd-fg); border: 1px solid var(--qmd-border); border-radius: 999px;
+    padding: .3rem .9rem; transition: border-color .12s ease, color .12s ease; }
+  .qmd-about-link:hover { border-color: var(--qmd-accent); color: var(--qmd-accent); }
+
+  @media (max-width: 640px) {
+    .qmd-listing-default .qmd-card { flex-direction: column; }
+    .qmd-listing-default .qmd-card-img { width: 100%; aspect-ratio: 16 / 9; }
+    .qmd-nav-burger { display: flex; flex-direction: column; gap: 4px; cursor: pointer;
+      margin-left: auto; padding: .45rem; }
+    .qmd-nav-burger span { display: block; width: 22px; height: 2px; border-radius: 2px;
+      background: var(--qmd-fg); transition: transform .15s ease, opacity .15s ease; }
+    .qmd-nav-links { display: none; position: absolute; top: 100%; left: 0; right: 0;
+      flex-direction: column; align-items: stretch; gap: 0; flex: none;
+      background: var(--qmd-bg); border-bottom: 1px solid var(--qmd-border);
+      box-shadow: 0 8px 20px rgba(0,0,0,.12); padding: .35rem 0; }
+    .qmd-nav-toggle:checked ~ .qmd-nav-links { display: flex; }
+    .qmd-nav-spacer { display: none; }
+    .qmd-nav-link { padding: .7rem 1.15rem; border-radius: 0; }
+    .qmd-nav-controls { padding: .5rem 1.15rem; }
+    .qmd-site-main.has-toc { grid-template-columns: minmax(0, 1fr); }
+  }

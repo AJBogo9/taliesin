@@ -1,0 +1,253 @@
+
+  :root {
+    --qmd-bg: #ffffff; --qmd-fg: #1a1a1a; --qmd-muted: #555; --qmd-accent: #4c8dff;
+    --qmd-link: #2563eb; --qmd-code-bg: #f5f5f5; --qmd-border: #e3e3e3;
+    --qmd-edge-shadow: rgba(0, 0, 0, .16); --qmd-flash: rgba(76, 141, 255, .18);
+    color-scheme: light;
+    --qmd-font-body: 17px/1.7 ui-serif, Georgia, "Times New Roman", serif;
+    --qmd-font-head: ui-sans-serif, system-ui, sans-serif;
+    --qmd-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+    --qmd-maxw: 46rem;
+  }
+  html { scroll-behavior: smooth; }
+  body { max-width: var(--qmd-maxw); margin: 2rem auto; padding: 0 1rem;
+         font: var(--qmd-font-body); color: var(--qmd-fg); background: var(--qmd-bg);
+         overflow-wrap: break-word; }
+  a { color: var(--qmd-link); }
+  /* button-style links (Pandoc `[text](url){.btn .btn-outline-* .btn-sm}`) */
+  a.btn { display: inline-block; font: 500 .9rem var(--qmd-font-head); text-decoration: none;
+    padding: .4rem .95rem; border-radius: 7px; border: 1px solid var(--qmd-accent);
+    color: var(--qmd-accent); transition: background .12s ease, color .12s ease; }
+  a.btn:hover { background: var(--qmd-accent); color: #fff; }
+  a.btn-outline-secondary { border-color: var(--qmd-border); color: var(--qmd-muted); }
+  a.btn-outline-secondary:hover { background: var(--qmd-fg); color: var(--qmd-bg); border-color: var(--qmd-fg); }
+  a.btn-sm { font-size: .8rem; padding: .25rem .7rem; }
+  h1, h2, h3, h4 { font-family: var(--qmd-font-head); line-height: 1.25; }
+  .qmd-title-block { margin: 0 0 2rem; padding-bottom: 1rem; border-bottom: 1px solid var(--qmd-border); }
+  .qmd-title-block .title { margin: 0 0 .3rem; font-size: 2.1rem; line-height: 1.15; }
+  .qmd-title-block .subtitle { margin: .2rem 0; font-size: 1.15rem; color: var(--qmd-muted); font-weight: 400; }
+  .qmd-title-block .description { margin: .4rem 0; color: var(--qmd-fg); }
+  .qmd-title-block .qmd-title-meta { margin-top: .6rem; display: flex; flex-wrap: wrap; gap: .25rem 1rem;
+    font: 14px var(--qmd-font-head); color: var(--qmd-muted); }
+  pre { position: relative; padding: 1rem; border-radius: 6px; overflow: auto; font-size: .9em;
+        /* same scroll-shadow trick as wide tables: bg-coloured covers (local) ride
+           with the content and mask the edge shadows (scroll, pinned to the box)
+           until a long line actually has more to scroll toward. */
+        background-color: var(--qmd-code-bg);
+        background-image:
+          linear-gradient(to right, var(--qmd-code-bg) 30%, transparent),
+          linear-gradient(to left, var(--qmd-code-bg) 30%, transparent),
+          radial-gradient(farthest-side at left, var(--qmd-edge-shadow), transparent),
+          radial-gradient(farthest-side at right, var(--qmd-edge-shadow), transparent);
+        background-position: left center, right center, left center, right center;
+        background-repeat: no-repeat;
+        background-size: 38px 100%, 38px 100%, 13px 100%, 13px 100%;
+        background-attachment: local, local, scroll, scroll; }
+  code { font-family: var(--qmd-font-mono); }
+  /* the <pre> is the single horizontal scroll container the scroll-shadow keys off,
+     so the inner <code> must not introduce its own scroll box. */
+  pre > code { display: block; overflow: visible; background: transparent; padding: 0; }
+  /* server-side syntax-highlight scope classes (syntect), light palette (GitHub-ish);
+     the dark overrides live in DARK_CSS so the theme toggle restyles code with no
+     re-highlight. Unmapped scopes inherit the default code colour. */
+  .qhl-comment { color: #6e7781; font-style: italic; }
+  .qhl-string { color: #0a3069; }
+  .qhl-keyword, .qhl-storage { color: #cf222e; }
+  .qhl-constant, .qhl-support { color: #0550ae; }
+  .qhl-entity { color: #8250df; }
+  .qhl-variable { color: #953800; }
+  /* inline code (not the scrollable <pre> kind): a subtle tinted chip so it reads
+     as code in prose instead of blending in as same-colour monospace; .875em pulls
+     the mono glyphs down to the serif x-height. It also breaks rather than overflowing. */
+  :not(pre) > code { background: var(--qmd-code-bg); padding: .1em .35em; border-radius: 4px;
+    font-size: .875em; overflow-wrap: anywhere; }
+  .qmd-copy { position: absolute; top: .45rem; right: .45rem;
+              display: inline-flex; align-items: center; justify-content: center;
+              padding: .28rem; line-height: 0; color: #555;
+              background: #fff; border: 1px solid #d4d4d4; border-radius: 5px; cursor: pointer;
+              opacity: 0; transition: opacity .12s ease, color .12s ease, border-color .12s ease; }
+  .qmd-copy svg { display: block; width: 14px; height: 14px; }
+  pre:hover .qmd-copy, .qmd-copy:focus-visible { opacity: 1; }
+  .qmd-copy:hover { color: #111; border-color: #999; }
+  .qmd-copy.qmd-copied { color: #2bb673; border-color: #2bb673; }
+  pre.mermaid { background: transparent; padding: .5rem 0; text-align: center; overflow: visible; }
+  pre.mermaid svg { max-width: 100%; height: auto; }
+  blockquote { border-left: 3px solid var(--qmd-border); margin: 0 0 1rem; padding-left: 1rem; color: var(--qmd-muted); }
+  img { max-width: 100%; }
+  /* embedded media (OJS/Three.js canvases, SVG figures, video, embeds) is clamped
+     to the page width so a fixed-size canvas can't force a horizontal scroll on
+     mobile; max-width clamps even against an author width: rule. */
+  canvas, svg, video, iframe { max-width: 100%; }
+  /* a wide table scrolls within its own box (max-content up to the page width)
+     rather than stretching the page and forcing a horizontal scroll on mobile.
+     The layered background is a scroll shadow: bg-coloured covers (background-
+     attachment: local) ride with the content and mask the edge shadows (scroll,
+     pinned to the box) until there is actually more to scroll toward. */
+  table { border-collapse: collapse; display: block; width: max-content;
+          max-width: 100%; overflow-x: auto;
+          background:
+            linear-gradient(to right, var(--qmd-bg) 30%, transparent) left center,
+            linear-gradient(to left, var(--qmd-bg) 30%, transparent) right center,
+            radial-gradient(farthest-side at left, var(--qmd-edge-shadow), transparent) left center,
+            radial-gradient(farthest-side at right, var(--qmd-edge-shadow), transparent) right center;
+          background-repeat: no-repeat;
+          background-size: 38px 100%, 38px 100%, 13px 100%, 13px 100%;
+          background-attachment: local, local, scroll, scroll; }
+  th, td { border: 1px solid var(--qmd-border); padding: .35rem .6rem; }
+  table caption { caption-side: top; font-size: .9em; color: var(--qmd-muted); padding-bottom: .4rem; text-align: left; }
+  thead th { border-bottom: 2px solid var(--qmd-border); }
+  .callout { border: 1px solid #e0e0e0; border-left-width: 4px; border-radius: 5px;
+             margin: 1rem 0; overflow: hidden; }
+  .callout-title { font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 600;
+                   padding: .5rem .9rem; background: #f6f6f6; }
+  .callout-body { padding: .3rem .9rem; }
+  .callout-body > :first-child { margin-top: .4rem; }
+  .callout-note { border-left-color: #4c8dff; } .callout-note .callout-title { background: #eaf1ff; }
+  .callout-tip { border-left-color: #2bb673; } .callout-tip .callout-title { background: #e7f7ef; }
+  .callout-warning { border-left-color: #e0a800; } .callout-warning .callout-title { background: #fdf6e3; }
+  .callout-important { border-left-color: #e0566b; } .callout-important .callout-title { background: #fdecef; }
+  .callout-caution { border-left-color: #e8730c; } .callout-caution .callout-title { background: #fdefe3; }
+  .callout-collapse > details > summary.callout-title { cursor: pointer; }
+  .callout-collapse > details[open] > summary.callout-title { margin-bottom: 0; }
+  details.qmd-code-fold > summary { cursor: pointer; color: var(--qmd-muted);
+    font: 600 .85em var(--qmd-font-head); padding: .15rem 0; margin-bottom: .35rem; }
+  details.qmd-code-fold > summary:hover { color: var(--qmd-fg); }
+  .qmd-xref { text-decoration: none; }
+  .qmd-references .csl-entry { margin: .4rem 0; padding-left: 2.2rem; text-indent: -2.2rem; }
+  .qmd-output { margin: 0 0 1rem; }
+  .qmd-output > pre { background: #fbfbfb; border-left: 3px solid #e3e3e3; }
+  .qmd-output img { display: block; max-width: 100%; }
+  .qmd-stderr { border-left-color: #e0a800 !important; background: #fdf6e3 !important; }
+  .qmd-error { border-left-color: #e0566b !important; background: #fdecef !important; color: #862033; }
+  [data-block-id] { scroll-margin-top: 1rem; }
+  [data-block-id].qmd-hl { outline: 2px solid var(--qmd-accent); outline-offset: 3px; border-radius: 3px; }
+  /* live-edit feedback: a block that just (re)rendered pulses an accent tint, so
+     the eye (or a phone) lands on what changed. reduced-motion collapses it away. */
+  @keyframes qmd-flash { from { background-color: var(--qmd-flash); } to { background-color: transparent; } }
+  [data-block-id].qmd-flash { animation: qmd-flash .8s ease-out; border-radius: 4px; }
+  /* single-click click-to-source feedback: the clicked block's accent outline
+     fades out (a transient "you clicked here", not a persistent box). The plain
+     .qmd-hl above stays reserved for the editor cursor sync, which persists. */
+  @keyframes qmd-hl-fade { from { outline-color: var(--qmd-accent); } to { outline-color: transparent; } }
+  [data-block-id].qmd-hl-flash { outline: 2px solid var(--qmd-accent); outline-offset: 3px;
+    border-radius: 3px; animation: qmd-hl-fade .7s ease-out forwards; }
+  figure.qmd-figure { margin: 1.5rem 0; }
+  figure.qmd-figure img { max-width: 100%; height: auto; }
+  figure.qmd-figure figcaption { font-size: .9em; color: var(--qmd-muted); margin-top: .5rem; }
+  .qmd-listing { margin: 1.5rem 0; }
+  .qmd-listing-caption { font-size: .9em; color: var(--qmd-muted); margin-bottom: .35rem; }
+  .qmd-figure-center { text-align: center; }
+  .qmd-figure-right { text-align: right; }
+  /* numbered display equation: body centered, (N) right-aligned */
+  .qmd-eqn { display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 1rem; }
+  .qmd-eqn .qmd-eqn-body { min-width: 0; }
+  .qmd-eqn .qmd-eqn-body .katex-display { margin: 0; }
+  .qmd-eqn .qmd-eqn-number { color: var(--qmd-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  /* a display equation wider than the column scrolls horizontally inside its own
+     box instead of overflowing the page (the #1 mobile breakage for math docs) */
+  .katex-display { overflow-x: auto; overflow-y: hidden; padding: .3rem 0; }
+  /* toc layout: content beside a sticky table of contents on wide screens */
+  body.has-toc { max-width: 72rem; display: grid; align-items: start; gap: 2.5rem;
+                 grid-template-columns: minmax(0, 46rem) 14rem; justify-content: center; }
+  body.has-toc > main { min-width: 0; }
+  #TOC { position: sticky; top: 2rem; max-height: 92vh; overflow: auto;
+         font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; }
+  #TOC ul { list-style: none; margin: .2rem 0; padding-left: .9rem; }
+  #TOC > ul { padding-left: 0; }
+  /* the transparent left border reserves the accent rail's space, so toggling the
+     active entry never shifts the text; the client's scrollspy sets .qmd-toc-active */
+  #TOC a { display: block; padding: .12rem 0 .12rem .6rem; border-left: 2px solid transparent;
+           color: var(--qmd-muted); text-decoration: none; }
+  #TOC a:hover { color: var(--qmd-fg); }
+  #TOC a.qmd-toc-active { color: var(--qmd-fg); border-left-color: var(--qmd-accent); }
+  /* mobile pull-up-sheet chrome: hidden on desktop, revealed in the sheet media query */
+  #qmd-toc-handle, #qmd-toc-backdrop { display: none; }
+  @media (max-width: 60rem) {
+    /* keep the fixed control bar / diagnostics from covering the last line */
+    body { padding-bottom: 2.75rem; }
+    /* sheet pages lift the control bar above the bottom TOC handle, so clear more */
+    body.qmd-toc-sheet { padding-bottom: 4.4rem; }
+    /* Static export (no JS): stack the TOC above the content. Keep it a grid so
+       the minmax(0,1fr) track clamps <main> to the viewport, and `order` lifts
+       the TOC (which follows <main> in the DOM) up instead of stranding it at the
+       bottom. The live preview opts out via .qmd-toc-sheet and uses the sheet. */
+    body.has-toc:not(.qmd-toc-sheet) { grid-template-columns: minmax(0, 1fr); max-width: var(--qmd-maxw); gap: 0; }
+    body.has-toc:not(.qmd-toc-sheet) > #TOC { order: -1; position: static; max-height: 45vh; overflow: auto;
+           border-bottom: 1px solid var(--qmd-border); margin-bottom: 1.5rem; padding-bottom: 1rem; }
+
+    /* Live preview: a quiet pull-up handle opens the TOC as a bottom sheet. */
+    body.has-toc.qmd-toc-sheet { display: block; max-width: var(--qmd-maxw); }
+    /* the nav becomes the sheet: off-screen until .qmd-toc-open slides it up */
+    body.qmd-toc-sheet #TOC { position: fixed; inset: auto 0 0 0; z-index: 10001; margin: 0;
+      max-height: 72vh; padding: .25rem .6rem calc(1.4rem + env(safe-area-inset-bottom, 0px));
+      background: var(--qmd-bg); border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px rgba(0, 0, 0, .22);
+      overflow: auto; overscroll-behavior: contain;
+      transform: translateY(100%); transition: transform .3s cubic-bezier(.2, .8, .2, 1); }
+    body.qmd-toc-sheet #TOC::before { content: ""; display: block; width: 40px; height: 5px;
+      margin: .15rem auto .6rem; border-radius: 3px; background: var(--qmd-border); }
+    body.qmd-toc-sheet #TOC a { padding-top: .45rem; padding-bottom: .45rem; }
+    body.qmd-toc-sheet.qmd-toc-open #TOC { transform: translateY(0); }
+    /* dim backdrop behind the open sheet */
+    body.qmd-toc-sheet #qmd-toc-backdrop { display: block; position: fixed; inset: 0; z-index: 10000;
+      background: rgba(0, 0, 0, .42); opacity: 0; pointer-events: none; transition: opacity .25s; }
+    body.qmd-toc-sheet.qmd-toc-open #qmd-toc-backdrop { opacity: 1; pointer-events: auto; }
+    /* the resting handle: a quiet grabber you drag up or tap */
+    body.qmd-toc-sheet #qmd-toc-handle { display: flex; flex-direction: column; align-items: center;
+      position: fixed; left: 50%; transform: translateX(-50%); z-index: 9997;
+      bottom: calc(.45rem + env(safe-area-inset-bottom, 0px)); padding: .4rem 1.3rem .5rem; gap: .3rem;
+      border: 0; border-radius: 13px; background: color-mix(in srgb, var(--qmd-bg) 72%, transparent);
+      -webkit-backdrop-filter: blur(7px); backdrop-filter: blur(7px); box-shadow: 0 1px 7px rgba(0, 0, 0, .16);
+      cursor: grab; touch-action: none; -webkit-user-select: none; user-select: none; }
+    body.qmd-toc-sheet.qmd-toc-open #qmd-toc-handle { display: none; }
+    #qmd-toc-handle .qmd-toc-grip { width: 42px; height: 5px; border-radius: 3px; background: var(--qmd-muted); opacity: .6; }
+    /* current-section chip: hidden at rest, flashes in while scrolling, then fades */
+    #qmd-toc-cur { position: absolute; bottom: calc(100% + .35rem); left: 50%;
+      transform: translateX(-50%) translateY(5px); max-width: 72vw; white-space: nowrap;
+      overflow: hidden; text-overflow: ellipsis; font: 600 12px ui-sans-serif, system-ui, sans-serif;
+      color: var(--qmd-muted); background: var(--qmd-bg); border: 1px solid var(--qmd-border);
+      padding: .2rem .55rem; border-radius: 9px; box-shadow: 0 2px 8px rgba(0, 0, 0, .12);
+      opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease; }
+    #qmd-toc-handle.qmd-show-label #qmd-toc-cur { opacity: 1; transform: translateX(-50%) translateY(0); }
+    @keyframes qmdPeekHint { 0%, 100% { bottom: calc(.45rem + env(safe-area-inset-bottom, 0px)); }
+      50% { bottom: calc(1.3rem + env(safe-area-inset-bottom, 0px)); } }
+    body.qmd-toc-sheet #qmd-toc-handle.qmd-hint { animation: qmdPeekHint 1.15s ease-in-out 2; }
+    /* custom multi-column layouts collapse to one column (inline style ⇒ !important).
+       minmax(0,1fr), not 1fr: the 0 floor lets wide children (figures/images) shrink
+       to the column instead of forcing their intrinsic width and overflowing the page. */
+    .qmd-layout { grid-template-columns: minmax(0, 1fr) !important; }
+  }
+  @media (max-width: 30rem) {
+    body { padding-left: .85rem; padding-right: .85rem; font-size: 16px; }
+    .qmd-title-block .title { font-size: 1.7rem; }
+    .qmd-title-block .subtitle { font-size: 1.05rem; }
+  }
+  /* honor reduced-motion: collapse transitions/animations (the TOC sheet slide,
+     the handle hint bounce, fades) to near-instant, and drop smooth scrolling */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important;
+      transition-duration: .001ms !important; scroll-behavior: auto !important; }
+  }
+  /* print: drop the live chrome, force a light palette, flow content full width
+     with the contents list lifted to the top, and avoid clipping/awkward breaks.
+     Placed last so it outranks the width-query rules that also match on paper. */
+  @media print {
+    html[data-theme="dark"], :root {
+      --qmd-bg: #fff; --qmd-fg: #111; --qmd-muted: #555; --qmd-border: #ccc;
+      --qmd-code-bg: #f5f5f5; --qmd-link: #0645ad; --qmd-accent: #0645ad;
+    }
+    #qmd-controls, #qmd-diagnostics, #qmd-toc-handle, #qmd-toc-backdrop, .qmd-copy { display: none !important; }
+    body { max-width: none !important; margin: 0 !important; }
+    body.has-toc { display: grid !important; grid-template-columns: 1fr !important; gap: 0 !important; }
+    body.qmd-toc-sheet #TOC, body.has-toc > #TOC {
+      position: static !important; transform: none !important; order: -1 !important;
+      max-height: none !important; overflow: visible !important; z-index: auto !important;
+      background: transparent !important; box-shadow: none !important; border-radius: 0 !important;
+      margin: 0 0 1.5rem !important; padding: 0 0 1rem !important;
+      border-bottom: 1px solid var(--qmd-border) !important; }
+    #TOC::before { display: none !important; }
+    pre { white-space: pre-wrap !important; overflow: visible !important; }
+    table { display: table !important; overflow: visible !important; background: none !important; }
+    .katex-display { overflow: visible !important; }
+    pre, figure, table, blockquote, .callout, .qmd-eqn { break-inside: avoid; }
+    h2, h3, h4 { break-after: avoid; }
+  }
