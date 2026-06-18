@@ -982,8 +982,13 @@ pub fn code_scripts() -> String {
 pub const TOC_SPY_JS: &str = include_str!("../../../../web-client/toc-spy.js");
 
 pub fn toc_scripts() -> String {
-    format!("<script>{TOC_SPY_JS}</script>")
+    format!("<script>{TOC_SPY_JS}</script>\n<script>{SEARCH_JS}</script>")
 }
+
+/// Cmd/Ctrl-K command palette to search the document's headings. Rides along on
+/// pages that have a table of contents (the long ones: the book, a paper), where
+/// jumping between sections matters most.
+pub const SEARCH_JS: &str = include_str!("../../../../web-client/search.js");
 
 // Quarto's Observable runtime (vendored, v0.0.18 — not published to any CDN, so
 // unlike hljs/reveal it must ship with us). It self-installs `window._ojs` on
