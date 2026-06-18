@@ -1,0 +1,9 @@
+{
+  "name": "qmd-fast-record-demo",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "description": "Record qmd-fast preview demos to GIF/MP4 (Playwright + ffmpeg).",
+  "bin": { "record-demo": "record.mjs" },
+  "dependencies": { "playwright-core": "^1.48.0" }
+}
