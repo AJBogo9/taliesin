@@ -407,6 +407,25 @@ fn render_media(media: &Media) -> String {
     String::new()
 }
 
+/// Strip ANSI SGR escape sequences (IPython colourises tracebacks).
+fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\u{1b}' {
+            // Skip until the terminating letter of the escape sequence.
+            for c in chars.by_ref() {
+                if c.is_ascii_alphabetic() {
+                    break;
+                }
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -440,23 +459,4 @@ mod tests {
             assert!(err.contains("ZeroDivisionError"), "missing error: {err}");
         });
     }
-}
-
-/// Strip ANSI SGR escape sequences (IPython colourises tracebacks).
-fn strip_ansi(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut chars = s.chars().peekable();
-    while let Some(ch) = chars.next() {
-        if ch == '\u{1b}' {
-            // Skip until the terminating letter of the escape sequence.
-            for c in chars.by_ref() {
-                if c.is_ascii_alphabetic() {
-                    break;
-                }
-            }
-        } else {
-            out.push(ch);
-        }
-    }
-    out
 }
