@@ -95,11 +95,16 @@ pub struct Site {
     /// Warnings gathered during discovery (bad config, etc.), surfaced by the
     /// caller (build logs / preview diagnostics).
     pub warnings: Vec<String>,
+    /// Inlinable JSON of every page's title + anchored headings, so the Cmd-K
+    /// palette searches the whole project (`window.QMD_SEARCH_INDEX`). Built once
+    /// at discovery.
+    pub search_index_json: String,
 }
 
 mod book;
 pub use book::{Book, BookEntry};
 use book::{book_pages, build_book};
+mod search;
 mod xref;
 pub use xref::XrefTarget;
 use xref::{rewrite_cross_refs, scan_xref_targets};
@@ -134,6 +139,7 @@ impl Site {
         );
 
         let xref_targets = scan_xref_targets(&pages, &book);
+        let search_index_json = search::build_index_json(&pages);
 
         Site {
             root: root.to_path_buf(),
@@ -143,6 +149,7 @@ impl Site {
             xref_targets,
             includes,
             warnings,
+            search_index_json,
         }
     }
 
@@ -180,6 +187,19 @@ impl Site {
             _ => String::new(),
         };
         let book = self.is_book();
+        // The cross-page search index (+ how to resolve a result's page URL from
+        // this page's depth). Empty when there are no entries; injected only where
+        // the search palette also rides along (TOC pages).
+        let search_index = if self.search_index_json.is_empty() || self.search_index_json == "[]" {
+            String::new()
+        } else {
+            format!(
+                "window.QMD_SEARCH_INDEX={};window.QMD_SITE_ROOT=\"{}\";window.QMD_PAGE_URL=\"{}\"",
+                self.search_index_json,
+                "../".repeat(depth),
+                page.url
+            )
+        };
         SiteCtx {
             // A book replaces the top navbar with a left chapter sidebar and uses
             // chapter prev/next instead of the post "back to listing" link.
@@ -198,6 +218,7 @@ impl Site {
             wide: page.page_layout.as_deref() == Some("full"),
             includes: self.includes.clone(),
             favicon,
+            search_index,
         }
     }
 

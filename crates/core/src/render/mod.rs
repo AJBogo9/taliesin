@@ -990,6 +990,10 @@ pub struct SiteCtx {
     /// Site `favicon:` resolved to a path relative to this page's depth (empty if
     /// none configured), emitted as `<link rel="icon">`.
     pub favicon: String,
+    /// JS that sets `window.QMD_SEARCH_INDEX` (+ `QMD_SITE_ROOT`/`QMD_PAGE_URL`)
+    /// for the whole-project Cmd-K search; empty for a single doc. Injected next to
+    /// the search script on TOC pages.
+    pub search_index: String,
 }
 
 fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
@@ -1030,11 +1034,18 @@ fn html_page_inner(doc: &RenderedDoc, fallback_title: &str, site: Option<&SiteCt
     } else {
         String::new()
     };
-    // The scrollspy script rides along only on pages that actually have a TOC.
+    // The scrollspy + search scripts ride along only on pages with a TOC. In a
+    // site/book, prepend the cross-page search index so Cmd-K searches everything.
     let toc_script = if toc.is_empty() {
         String::new()
     } else {
-        toc_scripts()
+        match site
+            .map(|s| s.search_index.as_str())
+            .filter(|s| !s.is_empty())
+        {
+            Some(idx) => format!("<script>{idx}</script>\n{}", toc_scripts()),
+            None => toc_scripts(),
+        }
     };
     // Content first (left, wide column), TOC second (right, sticky column).
     let (mut body_class, content) = if toc.is_empty() {

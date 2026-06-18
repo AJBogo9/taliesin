@@ -56,6 +56,15 @@
   // Build the index: every anchored heading, plus the lowercased text of the
   // blocks that follow it until the next heading (so body keywords match too).
   function buildIndex() {
+    // Site/book: search the whole project from the inlined cross-page index
+    // (every page's title + anchored headings). A result carries its page url so
+    // selecting it can navigate across chapters.
+    if (window.QMD_SEARCH_INDEX) {
+      return window.QMD_SEARCH_INDEX.map(function (e) {
+        return { id: e.i, title: e.t, level: e.l, body: "", url: e.u, page: e.p };
+      });
+    }
+    // Single doc: build from the current DOM (so it reflects live edits).
     var main = document.querySelector("main") || document.body;
     var heads = main.querySelectorAll("h1[id],h2[id],h3[id],h4[id]");
     var out = [];
@@ -110,6 +119,7 @@
 
   function open() {
     ensureUi();
+    if (window.QMD_SEARCH_INDEX && input) input.placeholder = "Search the book…";
     index = buildIndex();
     if (!index.length) return; // nothing to search on this page
     overlay.hidden = false;
@@ -138,10 +148,13 @@
   function render(query) {
     var q = query.trim().toLowerCase();
     if (!q) {
-      // No query: show the document outline (all headings).
-      matches = index.map(function (it) {
-        return it;
-      });
+      // No query: a book shows its chapter list (the level-0 page entries) as a
+      // jump menu; a single doc shows its full heading outline.
+      matches = window.QMD_SEARCH_INDEX
+        ? index.filter(function (it) {
+            return it.level === 0;
+          })
+        : index.slice();
     } else {
       matches = index
         .map(function (it) {
@@ -182,7 +195,8 @@
     highlight(title, item.title, q);
     var sec = document.createElement("span");
     sec.className = "qmd-s-sec";
-    sec.textContent = "H" + item.level;
+    // In a book, label the result with its chapter; otherwise its heading level.
+    sec.textContent = item.page || "H" + item.level;
     li.appendChild(title);
     li.appendChild(sec);
     li.addEventListener("mousemove", function () {
@@ -247,6 +261,17 @@
 
   function go(item) {
     close();
+    // A result on another page navigates there (a real page load, anchored to the
+    // heading); on this page — or in a single doc — it scrolls in place.
+    if (item.url != null && item.url !== window.QMD_PAGE_URL) {
+      window.location.href =
+        (window.QMD_SITE_ROOT || "") + item.url + (item.id ? "#" + item.id : "");
+      return;
+    }
+    if (!item.id) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
     var target = document.getElementById(item.id);
     if (!target) return;
     if (history.replaceState) history.replaceState(null, "", "#" + item.id);
