@@ -30,8 +30,13 @@ interface Window {
   __qmdOjsRan?: boolean;
   /** Tracks bound `ojs_define` names -> JSON value (OJS init script). */
   __qmdOjsDefined?: Map<string, string>;
-  /** Code enhancer (copy buttons + mermaid), defined in client.js itself. */
+  /** Runs all registered enhancers over `root` (the registry runner, code-enhance.js). */
   qmdEnhanceCode?: (root: ParentNode | null) => void;
+  /** Public extension hook: register `fn(root)` to enhance freshly-mounted DOM. */
+  qmdEnhancers?: {
+    register: (fn: (root: ParentNode) => void) => unknown;
+    run: (root: ParentNode | null) => void;
+  };
   /** (Re)collects `#TOC` links and runs the scrollspy (shared toc-spy.js). */
   qmdInitTocSpy?: () => void;
   /** Per-scroll hook the shared scrollspy calls (preview flashes the mobile label). */

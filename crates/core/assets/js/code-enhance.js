@@ -1,7 +1,42 @@
 
-window.qmdEnhanceCode = function (root) {
-  if (!root) return;
-  root.querySelectorAll('pre > code').forEach(function (code) {
+// --- Enhancer registry (the public extension hook) ---------------------------
+// An *enhancer* is `fn(root)` that decorates freshly-mounted DOM. An extension's
+// JS opts in with `window.qmdEnhancers.register(fn)`; the registered fn then runs
+// after every (re)mount in the live preview, on DOMContentLoaded in the static
+// build, and once immediately if it registers after the page is already mounted
+// (an extension script loaded in `include-after-body`). Enhancers MUST be
+// idempotent — guard with a data-attribute — since they re-run on every change.
+// The built-in copy-button / mermaid / lightbox / etc. below register through
+// the exact same API, so a third-party enhancer is indistinguishable from core's.
+(function () {
+  if (window.qmdEnhancers) return;
+  var list = [];
+  var mounted = false;
+  function run1(fn, root) {
+    try { fn(root || document); } catch (e) { console.error('[qmd] enhancer failed', e); }
+  }
+  window.qmdEnhancers = {
+    register: function (fn) {
+      if (typeof fn === 'function') {
+        list.push(fn);
+        if (mounted) run1(fn, document); // late registration: catch up on existing DOM
+      }
+      return this;
+    },
+    run: function (root) {
+      mounted = true;
+      for (var i = 0; i < list.length; i++) run1(list[i], root);
+    },
+  };
+  // The single entry point every caller uses (live client, static build, reveal).
+  window.qmdEnhanceCode = function (root) { window.qmdEnhancers.run(root); };
+})();
+
+// --- Built-in enhancers (registered through the same public API) -------------
+
+// Code blocks are highlighted server-side; the client only adds a copy button.
+function qmdCopyButtons(root) {
+  (root || document).querySelectorAll('pre > code').forEach(function (code) {
     var pre = code.parentElement;
     if (pre.dataset.enhanced) return;
     pre.dataset.enhanced = '1';
@@ -49,11 +84,15 @@ window.qmdEnhanceCode = function (root) {
       btn.style.transform = pre.scrollLeft ? 'translateX(' + pre.scrollLeft + 'px)' : '';
     }, { passive: true });
   });
-  qmdRenderMermaid(root);
-  qmdInitLightbox();
-  qmdInitLinkPreview();
-  qmdInitCategoryFilter(root);
-};
+}
+
+// Register the built-ins through the public API. Lightbox / link-preview set
+// themselves up once (document-level), so they ignore `root`.
+window.qmdEnhancers.register(qmdCopyButtons);
+window.qmdEnhancers.register(qmdRenderMermaid);
+window.qmdEnhancers.register(function () { qmdInitLightbox(); });
+window.qmdEnhancers.register(function () { qmdInitLinkPreview(); });
+window.qmdEnhancers.register(qmdInitCategoryFilter);
 
 // Native category filter for `listing: { categories: true }`: the server emits a
 // chip row (`.qmd-cat-filter`) above the card grid and tags each card with
