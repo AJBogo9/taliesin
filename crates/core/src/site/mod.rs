@@ -105,6 +105,7 @@ mod book;
 pub use book::{Book, BookEntry};
 use book::{book_pages, build_book};
 mod feed;
+mod meta;
 mod search;
 mod xref;
 pub use xref::XrefTarget;
@@ -201,9 +202,12 @@ impl Site {
             _ => String::new(),
         };
         let book = self.is_book();
+        // Per-page OpenGraph / Twitter-card / SEO meta, so a shared link renders a
+        // rich preview. Injected via the head include (no render/mod.rs change).
+        let mut includes = self.includes.clone();
+        includes.in_header.push_str(&meta::social_head(self, page));
         // Auto-discovery for the RSS feed: a root-relative `<link>` in the head so
         // feed readers (and the browser) find `feed.xml` from any page depth.
-        let mut includes = self.includes.clone();
         if self.feed_enabled() {
             let title = self.config.title.as_deref().unwrap_or("RSS");
             includes.in_header.push_str(&format!(

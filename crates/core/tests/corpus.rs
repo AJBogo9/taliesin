@@ -335,6 +335,31 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
         !post.contains("../KL-divergence/index.qmd"),
         "raw cross-page .qmd link leaked"
     );
+
+    // OpenGraph / SEO meta for sharing: a post gets og:type=article, og:title,
+    // an absolute og:url + canonical (the site has a `url:`), a meta description,
+    // and a twitter card.
+    assert!(
+        post.contains("property=\"og:type\" content=\"article\""),
+        "post og:type should be article"
+    );
+    assert!(post.contains("property=\"og:title\""), "og:title missing");
+    assert!(
+        post.contains("property=\"og:url\" content=\"https://"),
+        "absolute og:url missing"
+    );
+    assert!(
+        post.contains("<meta name=\"description\""),
+        "meta description missing"
+    );
+    assert!(
+        post.contains("name=\"twitter:card\""),
+        "twitter card missing"
+    );
+    assert!(
+        post.contains("rel=\"canonical\" href=\"https://"),
+        "canonical link missing"
+    );
 }
 
 #[test]
