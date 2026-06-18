@@ -22,6 +22,36 @@ Source mapping, incremental re-render, and live-state preservation all build on
 this one model. A code cell's *output* is itself a block, keyed to the cell's id —
 so when an upstream cell re-runs, only the affected output blocks update.
 
+## The diff (`diff.rs`)
+
+`diff_blocks(old, new)` turns two block lists into the minimal set of DOM ops the
+client applies. Because ids are content hashes, an unchanged block has the *same*
+id in both lists — so the algorithm is an **LCS over the id sequences**:
+
+1. The LCS finds the matched id pairs — the **stable anchors** that didn't move.
+2. The runs of blocks *between* consecutive anchors are the changed regions.
+   `emit_gap` pairs them positionally: each pair → an **`Update`** (replace the old
+   block's element with the new HTML); a surplus of old blocks → **`Remove`**; a
+   surplus of new blocks → **`Insert`** after the preceding block's id (or at the
+   start when there is none).
+3. A matched anchor is normally left untouched — *except* when its HTML differs,
+   which happens for **derived** blocks whose id isn't a pure content hash (a code
+   cell's output block, keyed to the cell id, changes when an upstream cell
+   re-runs). Those get an `Update`.
+
+The payoff: an unchanged block is **never touched**, so the browser keeps its
+scroll position and any live DOM state inside it — a running Three.js canvas, an
+Observable cell — survives a save untouched (goal #2).
+
+::: {.callout-note}
+## The one limitation: no Move
+
+There is no `Move` op. Reordering two blocks keeps one as an anchor and rebuilds
+the other as remove + insert, so a *moved* live block loses its runtime state.
+This is the deliberate trade of content-hash ids (a pinned regression test
+documents it); moves are rare in editing, and the simplicity is worth it.
+:::
+
 ## The websocket protocol
 
 On connect, the server sends a `full_render`; on each save it diffs the new block
@@ -40,11 +70,24 @@ differences**.
 | client → server | `click_block` | `block_id`, `source_file`, `sourcepos` |
 | client → server | `restart_kernel` | *(none)* — drop + respawn the kernel, re-run all cells |
 
-Double-clicking a block opens its source in your editor — a
-`vscode://file/…:line:col` deep link by default. The client also speaks a
-`postMessage` protocol as the integration surface for an embedded editor client:
-it posts `qmd-goto` up to a host (which reveals the source) and accepts
-`qmd-cursor` to highlight the block under the editor cursor.
+## Click-to-source & editor sync
+
+Click-to-source (goal #1) rides entirely on the two source attributes:
+
+- **Forward (preview → editor).** Double-clicking a block reads its
+  `data-sourcepos` (+ `data-source-file`) and opens the exact source line — a
+  `vscode://file/<path>:<line>:<col>` deep link by default. The source positions
+  start as comrak's per-node ranges; on the way to becoming blocks they are
+  **translated through the include source map** (`includes.rs` records a
+  `LineOrigin` for every expanded line → its origin file + line), so a block that
+  came from an `{{< include >}}`d partial carries that file in `data-source-file`
+  and the *original* line — click-to-source works across files.
+- **Reverse (editor → preview).** The client also speaks a `postMessage` protocol
+  as the integration surface for an embedded editor (a VS Code extension hosting
+  the preview): it posts `qmd-goto` up to the host (which reveals the source), and
+  accepts `qmd-cursor {file, line}` to highlight/scroll to the block whose
+  `data-sourcepos` covers that line. So an editor can host the preview and add
+  cursor sync without forking the client.
 
 ## Trust model
 

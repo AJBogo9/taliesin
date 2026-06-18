@@ -1,0 +1,95 @@
+---
+title: "The dev server"
+---
+
+The server (`crates/server`) is the long-running process behind `preview`: an
+[axum](https://github.com/tokio-rs/axum) HTTP/websocket server, a
+[`notify`](https://github.com/notify-rs/notify) file watcher, and the kernel pool
+from [the previous chapter](execution.qmd). There are two of them — `serve.rs`
+for a single document and `serve_site.rs` for a directory (site/book) — sharing
+the small HTTP/asset helpers and the websocket message contract.
+
+## The save → preview loop
+
+```{mermaid}
+flowchart LR
+  save["save .qmd"] --> watch["notify watcher<br/>(debounced, filtered)"]
+  watch --> kick["wake the rebuild task"]
+  kick --> render["re-render + execute cells"]
+  render --> diff["diff vs the live block list"]
+  diff --> ws["websocket: changed ops"]
+  ws --> dom["browser swaps blocks in place"]
+```
+
+On a websocket connect the server sends a `full_render` (and the page was already
+server-rendered into `#qmd-root` for the first paint). On each save it diffs and
+broadcasts **only the ops** (`update`/`insert`/`remove`), or a fresh `full_render`
+when recovering from a previous failure, plus a `diagnostics` message when those
+change. The full message contract is in [the block model](block-model.qmd).
+
+## Single-document server (`serve.rs`)
+
+`AppState` is the shared state, behind a non-poisoning lock:
+
+```rust
+struct AppState {
+    doc: parking_lot::Mutex<DocState>,  // title, blocks, diagnostics, …
+    tx: broadcast::Sender<String>,      // fan-out of JSON messages to clients
+    restart_kernel: AtomicBool,         // set by the dev-menu action
+    kick: mpsc::UnboundedSender<()>,    // watcher → rebuild task
+}
+```
+
+A single spawned task owns the rebuild loop: it waits on `kick`, debounces a
+burst of saves (~80 ms), honours a pending kernel restart, then rebuilds. The
+rebuild itself (`rebuild`) re-renders the document, runs its cells through the
+`Executor`, diffs the new blocks against `DocState.blocks`, and broadcasts the
+ops **under the lock** (so a connecting client can't interleave a `full_render`
+with an op stream).
+
+### Panic isolation
+
+The rebuild runs in a spawned task, so a panic in the render/exec path would
+silently kill hot-reload for the rest of the session. `rebuild_guarded` wraps each
+rebuild in `catch_unwind`: a panic is logged, surfaced to the client as an error
+overlay, and the loop survives — the next good save recovers. (Because the state
+is a `parking_lot::Mutex`, a panic mid-update releases the lock cleanly instead of
+poisoning it.)
+
+### The watcher
+
+`spawn_watcher` runs `notify` on its own thread and forwards relevant events to
+the rebuild task. `relevant_event` filters to source/asset extensions (`.qmd`,
+`.bib`, `.css`, images, …) outside build-output/VCS dirs (`_site`, `_book`,
+`.git`), so an unrelated save doesn't trigger a wasteful 0-op rebuild.
+`watch_dirs` watches the document's directory **plus every `{{< include >}}`d
+file's directory**, so editing an included partial refreshes the preview too.
+
+## Multi-page server (`serve_site.rs`)
+
+A directory generalises the single-doc server to a project. State is **per page**,
+built lazily on first visit:
+
+```rust
+struct SiteApp {
+    site: Mutex<Site>,                       // the discovered project (config, pages, …)
+    pages: Mutex<HashMap<String, PageState>>, // rel-path → { live blocks, broadcast tx }
+    build_tx: UnboundedSender<BuildMsg>,     // → the executor worker
+}
+```
+
+Navigation between pages is just a real page load (each page has its own
+websocket and its own executor), so the navbar / prev-next links work with no SPA.
+A save rebuilds only the affected page and hot-reloads it in place with the same
+block diff; a `_quarto.yml` change re-discovers the whole site and reloads open
+tabs. A single spawned **executor worker** drains `build_tx`, so each page's cells
+run on its own kernel without blocking the HTTP handlers; `build_page_guarded`
+gives it the same `catch_unwind` isolation as the single-doc loop.
+
+## Why two servers, not one
+
+The single-doc path has no chrome, no cross-page links, and one block state; the
+site path adds per-page state, navigation, listing/chrome expansion, and the
+cross-page xref + search index. Keeping them separate keeps each one simple; the
+shared surface (the websocket message shapes, the asset/`favicon` helpers, the
+embedded client) lives in `serve.rs` and is reused by `serve_site.rs`.

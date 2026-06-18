@@ -17,6 +17,8 @@ chapters:
       - internals/architecture.qmd
       - internals/rendering.qmd
       - internals/block-model.qmd
+      - internals/execution.qmd
+      - internals/server.qmd
       - internals/extending.qmd
   - part: "Reference"
     chapters:

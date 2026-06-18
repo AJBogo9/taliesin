@@ -1,0 +1,95 @@
+---
+title: "Code execution & the kernel"
+---
+
+Executing `{python}` / `{r}` cells is the most involved subsystem and lives
+entirely in the **server** (`crates/server`), in two layers: the **executor**
+(`exec.rs`) decides *what* to run and splices outputs back into the block list;
+the **kernel** (`kernel.rs`) is one warm Jupyter process it talks to over ZMQ.
+The core knows nothing about execution — it emits code cells as blocks, and the
+server fills in their outputs.
+
+## The executor (`exec.rs`)
+
+`Executor` holds **one warm kernel per language**, created lazily, plus a per-cell
+output cache:
+
+```rust
+struct Executor {
+    python: PathBuf,            // QMD_FAST_PYTHON (default python3)
+    r: PathBuf,                 // QMD_FAST_R (default R)
+    langs: HashMap<&str, LangState>,  // "python" / "r" → kernel + cache
+}
+```
+
+`run(blocks)` is the entry point each rebuild calls. It groups the cells by
+language (preserving document order), runs each language's cells, and splices an
+**output block after each cell**:
+
+```{mermaid}
+flowchart TB
+  blocks["block list (cells marked)"] --> group["group cells by language"]
+  group --> co["compute_outputs per language"]
+  co --> splice["splice an output block after each cell<br/>(id derived from the cell id)"]
+  splice --> out["block list + outputs"]
+```
+
+An output block's id is derived from its cell's id, so when a cell re-runs only
+*its* output block changes — the diff swaps it in place (see
+[the block model](block-model.qmd)).
+
+## Incremental re-execution
+
+`compute_outputs` implements simple notebook semantics without re-running
+everything. The per-language cache stores `(cell id, output)` in order. On each
+rebuild it finds the **earliest cell whose id differs from the cache** (i.e. whose
+source changed — ids are content hashes), then:
+
+- cells *before* it → reuse the cached output (no execution),
+- that cell and *everything after* it → re-execute (downstream cells may depend on
+  the changed kernel state),
+- the cache is rewritten from the new results.
+
+So editing the last cell re-runs one cell; editing the first re-runs all. The
+kernel stays warm across all of this — there is no per-edit cold start (goal #3).
+A `#| include: false` cell still runs (for its kernel-state side effects) but
+contributes no output block.
+
+## The warm kernel (`kernel.rs`)
+
+`Kernel { child, shell, iopub, conn_dir }` is a spawned interpreter plus its ZMQ
+client connections. `start()`:
+
+1. picks free ports and writes a Jupyter `connection.json`,
+2. spawns the interpreter (`python -m ipykernel` / `R -e IRkernel::main()`) with
+   **stderr piped**,
+3. connects the `shell` + `iopub` ZMQ channels, and **races the connect against
+   the process exiting** — so a missing `ipykernel` fails in ~1s with its real
+   stderr ("No module named ipykernel") instead of hanging the 30s connect
+   timeout and reporting something opaque,
+4. reads one iopub message to confirm the SUB subscription is live (sidestepping
+   the ZMQ slow-joiner problem before the first run).
+
+`execute(code)` sends an `execute_request` on the shell channel and collects iopub
+messages parented by that request — `stream` (stdout/stderr), `execute_result`,
+`display_data`, `error` — until the kernel returns to `idle`. A **total
+wall-clock cap** (`QMD_FAST_CELL_TIMEOUT`, default 120s) guards a runaway cell:
+on hit it SIGINTs the kernel (the `interrupt_mode: signal` path → `KeyboardInterrupt`)
+and drains a short grace window so the channels resync and the *next* cell still
+works. `Drop` kills the child and removes the connection dir.
+
+## Resilience
+
+`ensure_kernel` makes a missing or crashed kernel a recoverable, visible
+condition rather than a latch:
+
+- **Crashed mid-session** → the dead kernel is dropped and respawned on the next
+  run (so a crash doesn't make every later cell hang on the execute timeout).
+- **Failed to start** → back off for `KERNEL_RETRY_AFTER` (20s) before retrying,
+  so a bad `QMD_FAST_PYTHON` doesn't re-hang every save, but *fixing* it
+  self-heals within a few saves.
+- The interpreter's own start error (`last_error`) is surfaced as a diagnostic, so
+  "kernel unavailable" tells you *why*.
+
+With no kernel at all, cells render as highlighted source and the preview shows a
+quiet "kernel unavailable" note — the document still builds.
