@@ -563,14 +563,14 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
         let mut execs: HashMap<String, crate::exec::Executor> = HashMap::new();
         while let Some(msg) = build_rx.recv().await {
             match msg {
-                BuildMsg::Build(rel) => build_page(&app, &rel, &mut execs).await,
+                BuildMsg::Build(rel) => build_page_guarded(&app, &rel, &mut execs).await,
                 BuildMsg::Restart(rel) => {
                     // Drop + respawn this page's kernel, then rebuild (re-executes
                     // every cell against the fresh kernel).
                     if let Some(ex) = execs.get_mut(&rel) {
                         ex.restart_kernel();
                     }
-                    build_page(&app, &rel, &mut execs).await;
+                    build_page_guarded(&app, &rel, &mut execs).await;
                     // A fresh kernel means fresh outputs — including any `ojs_define`
                     // values. Reload the page so OJS cells re-bind to them: the
                     // Observable runtime can't redefine a variable in place, so a
@@ -582,6 +582,34 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
             }
         }
     });
+}
+
+/// Run [`build_page`], catching any panic in the render/exec path so one bad
+/// page can't kill the shared builder task (which would silently stop hot-reload
+/// for *every* page). The panic is logged and surfaced to that page's clients;
+/// the next good save recovers.
+async fn build_page_guarded(
+    app: &SiteApp,
+    rel: &str,
+    execs: &mut HashMap<String, crate::exec::Executor>,
+) {
+    use futures_util::FutureExt;
+    let outcome = std::panic::AssertUnwindSafe(build_page(app, rel, execs))
+        .catch_unwind()
+        .await;
+    if let Err(payload) = outcome {
+        let msg = crate::serve::panic_msg(&*payload);
+        crate::log::error(&format!(
+            "render panicked on {rel} (preview kept alive): {msg}"
+        ));
+        let mut pages = app.pages.lock();
+        if let Some(ps) = pages.get_mut(rel) {
+            ps.doc.errored = true;
+            let _ = ps
+                .tx
+                .send(error_json(&format!("internal render error: {msg}")));
+        }
+    }
 }
 
 /// Re-render a page's markdown, run its code cells (on the page's own executor),

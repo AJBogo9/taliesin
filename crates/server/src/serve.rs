@@ -793,7 +793,7 @@ fn spawn_watcher(app: Arc<AppState>, mut signal_rx: mpsc::UnboundedReceiver<()>)
         let mut executor = crate::exec::Executor::new();
         // Initial execution pass: markdown is already live; this fills in outputs
         // (and starts the warm kernel) shortly after the page loads.
-        rebuild(&app, &mut executor).await;
+        rebuild_guarded(&app, &mut executor).await;
         while signal_rx.recv().await.is_some() {
             tokio::time::sleep(Duration::from_millis(80)).await;
             while signal_rx.try_recv().is_ok() {}
@@ -803,7 +803,7 @@ fn spawn_watcher(app: Arc<AppState>, mut signal_rx: mpsc::UnboundedReceiver<()>)
                 crate::log::kernel("restart requested (dev menu)");
                 executor.restart_kernel();
             }
-            rebuild(&app, &mut executor).await;
+            rebuild_guarded(&app, &mut executor).await;
             // A fresh kernel means fresh outputs — including any `ojs_define`
             // values. Reload so OJS cells re-bind to them (the Observable runtime
             // can't redefine a variable in place, so a diff-splice wouldn't take).
@@ -908,6 +908,37 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
     }
 }
 
+/// Run a [`rebuild`], but catch any panic in the render/exec path so one bad
+/// document can't kill the rebuild task (which would silently stop hot-reload
+/// for the rest of the session). The panic is logged and surfaced to the client
+/// as an error diagnostic; the next good save recovers. `parking_lot` mutexes
+/// mean a panic mid-update releases the lock cleanly rather than poisoning it.
+async fn rebuild_guarded(app: &AppState, executor: &mut crate::exec::Executor) {
+    use futures_util::FutureExt;
+    let outcome = std::panic::AssertUnwindSafe(rebuild(app, executor))
+        .catch_unwind()
+        .await;
+    if let Err(payload) = outcome {
+        let msg = panic_msg(&*payload);
+        crate::log::error(&format!("render panicked (preview kept alive): {msg}"));
+        app.doc.lock().errored = true;
+        let _ = app
+            .tx
+            .send(error_json(&format!("internal render error: {msg}")));
+    }
+}
+
+/// Best-effort human string from a caught panic payload (`Box<dyn Any>`).
+pub(crate) fn panic_msg(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(s) = payload.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "unknown panic".to_string()
+    }
+}
+
 #[cfg(test)]
 mod protocol_contract {
     //! The single-doc producers share the op/message contract that the preview
@@ -946,5 +977,18 @@ mod protocol_contract {
         assert_eq!(fr["type"], "full_render");
         assert!(fr.get("body_html").is_some());
         assert!(fr["diagnostics"].is_array());
+    }
+
+    #[tokio::test]
+    async fn rebuild_guard_catches_panic_and_recovers_message() {
+        // The exact mechanism `rebuild_guarded` relies on: a panic inside the
+        // awaited render future is caught (not propagated, so the rebuild loop
+        // survives) and its message is recovered for the error diagnostic.
+        use futures_util::FutureExt;
+        let outcome = std::panic::AssertUnwindSafe(async { panic!("render boom") })
+            .catch_unwind()
+            .await;
+        let payload = outcome.expect_err("the panic must be caught, not propagated");
+        assert_eq!(panic_msg(&*payload), "render boom");
     }
 }

@@ -62,7 +62,9 @@ Executing code cells needs a matching Jupyter kernel: `{python}` cells need a
 Python with `ipykernel` (`QMD_FAST_PYTHON`, default `python3`); `{r}` cells need an
 R with `IRkernel` (`QMD_FAST_R`, default `R`). Each language runs against its own
 warm kernel. Without a kernel, cells render as source and the preview shows a
-"kernel unavailable" diagnostic.
+"kernel unavailable" diagnostic. A cell that runs longer than `QMD_FAST_CELL_TIMEOUT`
+seconds (default 120; `0` disables) is interrupted (SIGINT) so a runaway cell can't
+wedge the kernel; the warm kernel and prior cells survive.
 
 For UI work, `/preview <file.qmd>` builds, serves on port 4388, and verifies it in
 the browser via the chrome-devtools MCP (screenshot + console). A `PostToolUse`

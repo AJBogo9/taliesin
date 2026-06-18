@@ -1444,6 +1444,7 @@ dependencies = [
  "futures-util",
  "jupyter-protocol",
  "jupyter-zmq-client",
+ "libc",
  "notify",
  "parking_lot",
  "qmd-fast-core",

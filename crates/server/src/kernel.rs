@@ -9,6 +9,7 @@
 use std::io;
 use std::net::IpAddr;
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use jupyter_protocol::{
@@ -22,7 +23,21 @@ use jupyter_zmq_client::{
 };
 use qmd_fast_core::html_escape as esc;
 use tokio::process::{Child, Command};
-use tokio::time::timeout;
+use tokio::time::{Instant, timeout};
+
+/// Wall-clock cap on a single cell execution, after which the kernel is sent
+/// SIGINT (`QMD_FAST_CELL_TIMEOUT` seconds, default 120; `0` disables the cap and
+/// falls back to a per-output silent-hang backstop). Read once.
+fn cell_timeout() -> Option<Duration> {
+    static T: OnceLock<Option<Duration>> = OnceLock::new();
+    *T.get_or_init(|| {
+        let secs = std::env::var("QMD_FAST_CELL_TIMEOUT")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(120);
+        (secs > 0).then(|| Duration::from_secs(secs))
+    })
+}
 
 /// Python `ojs_define(**kwargs)`, run once at kernel start. Serializes each
 /// keyword (with a pandas convenience for DataFrame/Series) and emits a
@@ -271,18 +286,51 @@ impl Kernel {
         self.shell.send(request).await.map_err(io::Error::other)?;
 
         let mut outputs: Vec<Output> = Vec::new();
+        // Total wall-clock cap (not per-message, so a *streaming* runaway cell is
+        // still caught). On hitting it we SIGINT the kernel, then drain a short
+        // grace window so the resulting KeyboardInterrupt + Idle resync the
+        // channels and the *next* cell still works.
+        let cap = cell_timeout();
+        let deadline = cap.map(|d| Instant::now() + d);
+        let mut grace_until: Option<Instant> = None;
         loop {
-            let msg = match timeout(Duration::from_secs(60), self.iopub.read()).await {
+            let budget = match grace_until {
+                Some(g) => g.saturating_duration_since(Instant::now()),
+                None => deadline
+                    .map(|dl| dl.saturating_duration_since(Instant::now()))
+                    .unwrap_or(Duration::from_secs(60)),
+            };
+            let msg = match timeout(budget, self.iopub.read()).await {
                 Ok(Ok(msg)) => msg,
                 Ok(Err(e)) => return Err(io::Error::other(e)),
-                Err(_) => {
-                    outputs.push(Output::Error {
-                        ename: "Timeout".into(),
-                        evalue: "cell execution exceeded 60s".into(),
-                        traceback: vec![],
-                    });
+                Err(_) if grace_until.is_some() => {
+                    // The kernel ignored SIGINT within the grace window; give up on
+                    // this cell. The channels may be desynced — the dev-menu
+                    // "Restart kernel" is the escape hatch.
                     break;
                 }
+                Err(_) => match cap {
+                    // Hit the hard cap: interrupt and switch to the grace window.
+                    Some(d) => {
+                        self.interrupt();
+                        outputs.push(Output::Error {
+                            ename: "Timeout".into(),
+                            evalue: format!("cell exceeded {}s; sent interrupt", d.as_secs()),
+                            traceback: vec![],
+                        });
+                        grace_until = Some(Instant::now() + Duration::from_secs(5));
+                        continue;
+                    }
+                    // No cap (opt-out): a silent hang still times out per-output.
+                    None => {
+                        outputs.push(Output::Error {
+                            ename: "Timeout".into(),
+                            evalue: "cell produced no output for 60s".into(),
+                            traceback: vec![],
+                        });
+                        break;
+                    }
+                },
             };
             // Only messages parented by our request belong to this execution.
             let ours = msg.parent_header.as_ref().map(|h| h.msg_id.as_str()) == Some(&msg_id);
@@ -316,6 +364,21 @@ impl Kernel {
         // Drain the matching shell execute_reply so the channel stays in sync.
         let _ = timeout(Duration::from_secs(5), self.shell.read()).await;
         Ok(outputs)
+    }
+
+    /// Send SIGINT to the kernel process: the `interrupt_mode: signal` path that
+    /// raises `KeyboardInterrupt` in the running cell (ipykernel and IRkernel both
+    /// honour it), stopping a runaway cell while the warm kernel and prior cell
+    /// state survive. Unix-only; a no-op (the cap still ends the wait) elsewhere.
+    fn interrupt(&self) {
+        #[cfg(unix)]
+        if let Some(pid) = self.child.id() {
+            // Safety: `kill` with a valid pid + signal is sound; a stale pid just
+            // returns ESRCH, which we ignore.
+            unsafe {
+                libc::kill(pid as libc::pid_t, libc::SIGINT);
+            }
+        }
     }
 }
 
@@ -432,11 +495,15 @@ mod tests {
 
     // Runs only when QMD_FAST_PYTHON points at a python with ipykernel.
     #[test]
-    fn kernel_executes_streams_results_state_and_errors() {
+    fn kernel_executes_state_errors_and_interrupts_runaway_cell() {
         let Some(py) = std::env::var_os("QMD_FAST_PYTHON") else {
             eprintln!("skipping kernel test: set QMD_FAST_PYTHON to a python with ipykernel");
             return;
         };
+        // Short per-cell cap so the runaway case below trips fast. Set before the
+        // first execute(), since `cell_timeout()` reads the env once.
+        // Safety: single-threaded test, before any threads observe the env.
+        unsafe { std::env::set_var("QMD_FAST_CELL_TIMEOUT", "3") };
         let py = PathBuf::from(py);
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async move {
@@ -457,6 +524,30 @@ mod tests {
             // errors are captured
             let err = render_outputs(&k.execute("1 / 0").await.unwrap());
             assert!(err.contains("ZeroDivisionError"), "missing error: {err}");
+
+            // A *streaming* runaway cell (the case a per-message timeout never
+            // catches) is interrupted at the cap, then the warm kernel recovers.
+            let t = std::time::Instant::now();
+            let runaway = render_outputs(
+                &k.execute("import time\nwhile True:\n    print('x'); time.sleep(0.05)")
+                    .await
+                    .unwrap(),
+            );
+            assert!(
+                t.elapsed() < Duration::from_secs(20),
+                "runaway cell should be interrupted well before 20s (took {:?})",
+                t.elapsed()
+            );
+            assert!(
+                runaway.contains("interrupt") || runaway.contains("KeyboardInterrupt"),
+                "runaway cell should report an interrupt: {runaway}"
+            );
+            // The kernel survived the interrupt and still holds warm state (x == 21).
+            let recovered = render_outputs(&k.execute("print(x * 2)").await.unwrap());
+            assert!(
+                recovered.contains("42"),
+                "kernel did not recover after interrupt: {recovered}"
+            );
         });
     }
 }

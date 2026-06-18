@@ -32,3 +32,8 @@ syntect = { version = "5", default-features = false, features = ["default-fancy"
 # held releases it cleanly instead of poisoning it (which would otherwise make
 # every later request panic). Lighter + faster than std's poison-tracking lock.
 parking_lot = "0.12"
+
+# Just `kill(2)`: send SIGINT to a runaway kernel process to interrupt the cell
+# (the `interrupt_mode: signal` path) without killing the warm kernel. Already in
+# the tree transitively (via tokio), so this is a near-free direct dependency.
+libc = "0.2"

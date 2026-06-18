@@ -16,6 +16,7 @@ axum = { version = "0.8.9", features = ["ws"] }
 futures-util = "0.3.32"
 jupyter-protocol = "2.0.1"
 jupyter-zmq-client = { version = "1.0.0", features = ["tokio-runtime"] }
+libc = { workspace = true }
 notify = "8.2.0"
 parking_lot = { workspace = true }
 qmd-fast-core = { workspace = true }
