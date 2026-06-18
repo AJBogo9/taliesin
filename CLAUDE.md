@@ -1,8 +1,8 @@
 # qmd-fast
 
 A single-purpose Rust dev server that renders `.qmd` files to **HTML only** (blog
-posts, reveal.js slides, books) for one author's workflow. Not a general Quarto
-replacement. Three load-bearing goals: click-to-source, block-level incremental
+posts, slide decks, books, multi-page sites) for one author's workflow. Not a
+general Quarto replacement. Three load-bearing goals: click-to-source, block-level incremental
 updates, and no per-edit startup cost (warm server + Jupyter kernel).
 
 **The corpus is the spec.** "Done" means the real documents under `corpus/` render
@@ -13,13 +13,28 @@ correctly, not that some feature checklist is complete. Scope is those ~5 docume
 
 ```
 crates/core      qmd-fast-core lib: parser (comrak + sourcepos) → block model → render
-  src/render.rs    document + block model; HTML / reveal.js / book / site-chrome emission
+  src/render/      block model + emission (a module dir):
+    mod.rs           the render pipeline, block model, HTML page emission + helpers
+    reveal.rs        slide decks on qmd-fast's OWN engine (reveal.js removed): bundles
+                     deck.css/deck.js + a `window.Reveal` facade so reveal *theme*
+                     extensions (e.g. liquid-glass) still load unmodified
+    emit.rs          per-block HTML (server-side highlighting, code line-wrapping)
+    divs.rs          `:::` fenced divs (callouts, columns, magic-move)
+    figure.rs        numbered figures + captions
+    extension/       format extensions (`_extensions/`) + shortcode expansion,
+                     including the built-in `{{< embed deck.qmd >}}` (embeds a deck)
+    theme.rs         `--qmd-*` CSS-variable themes (light/dark, extension themes)
   src/diff.rs      block-level diff (BlockOp) for incremental updates
   src/includes.rs  {{< include >}} resolution + per-file source map
+  src/frontmatter.rs YAML front-matter parse + lint (typo warnings)
   src/math.rs      KaTeX server-side render (bundled CSS/fonts, offline)
   src/highlight.rs server-side syntax highlighting (syntect → `qhl-` scope classes)
   src/cite.rs      citations ([@key]) + cross-references (@fig-, @sec-)
-  src/site.rs      multi-page project: _quarto.yml config, page discovery, chrome, link rewrite
+  src/site/        multi-page project (mod.rs): _quarto.yml config (config/), page
+                   discovery, chrome, link rewrite, listings/about, books (book.rs),
+                   RSS (feed.rs), Cmd-K search (search.rs), cross-refs (xref.rs); an
+                   {{< embed >}}-referenced deck is built/served but kept out of nav
+  assets/          bundled offline: css/ (base.css + deck.css), js/ (deck.js), katex/, ojs/
 crates/server    qmd-fast-server, bin `qmd-fast`: CLI + websocket dev server
   src/main.rs      render / blocks / build / serve subcommands (a dir = a site project)
   src/serve.rs     single-doc axum websocket + notify file watcher
@@ -29,7 +44,7 @@ crates/server    qmd-fast-server, bin `qmd-fast`: CLI + websocket dev server
   src/log.rs       colorized dev-server console output (to stderr)
 web-client/      browser preview client (vanilla JS, the only client): mounts
                  blocks, applies ops; double-click opens source in the editor
-docs/            project's own manual + tour deck, authored in .qmd (dogfooding)
+docs/            project's own manual + demo/tour decks, authored in .qmd (dogfooding)
 corpus/          the real .qmd docs (the spec); cargo test renders them all
 ```
 
@@ -37,7 +52,8 @@ corpus/          the real .qmd docs (the spec); cargo test renders them all
 
 - **docs/** is the project's own manual, authored in `.qmd` as a multi-page book
   (dogfooding): Part I (`docs/using/`) is the user-facing feature showcase, Part II
-  (`docs/internals/`) covers the architecture, block model, and websocket protocol.
+  (`docs/internals/`) covers the architecture, the rendering pipeline, the deck
+  engine, the block model, and the websocket protocol.
   Build/preview it like any book project: `qmd-fast preview docs/`.
 - **corpus/README.md** for what the test documents exercise.
 
