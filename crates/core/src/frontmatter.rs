@@ -36,6 +36,7 @@ const KNOWN_KEYS: &[&str] = &[
     "format",
     "theme",
     "css",
+    "extensions",
     "html-math-method",
     "page-layout",
     "title-block-banner",

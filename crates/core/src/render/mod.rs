@@ -179,7 +179,7 @@ fn parse_options() -> Options<'static> {
 mod reveal;
 pub use reveal::{reveal_client_head, reveal_client_script, slides_html};
 mod extension;
-use extension::resolve_format_extension;
+use extension::{resolve_format_extension, resolve_named_extensions};
 mod divs;
 pub(crate) use divs::parse_attrs;
 use divs::{group_divs, parse_pandoc_attrs, preprocess, scan_div_spans};
@@ -282,9 +282,20 @@ fn render_internal(
                 toc_explicit = detect_toc(fm);
                 hide_title_block = detect_title_block_hidden(fm);
                 theme = detect_theme(fm);
-                // A format extension (`format: <ext>-revealjs`) contributes its
-                // includes/theme first; the doc's own front matter appends/overrides.
+                // Extensions contribute first (the `format:` one, then each
+                // `extensions: [..]` entry for this doc's base), and the doc's own
+                // front matter appends/overrides last.
+                let ext_base = match format {
+                    DocFormat::Reveal => "revealjs",
+                    DocFormat::Html => "html",
+                };
                 includes = resolve_format_extension(fm, base_dir, &mut warnings);
+                includes.merge(&resolve_named_extensions(
+                    fm,
+                    base_dir,
+                    ext_base,
+                    &mut warnings,
+                ));
                 includes.merge(&resolve_doc_includes(fm, base_dir));
                 (exec_echo, exec_include) = detect_execute_defaults(fm);
                 continue;

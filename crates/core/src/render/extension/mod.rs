@@ -64,8 +64,25 @@ fn extension_ref(front_matter: &str, base_dir: Option<&Path>) -> Option<Extensio
     Some(ExtensionRef {
         name: ext.to_string(),
         base,
-        dir: dir.join("_extensions").join(ext),
+        dir: find_extension_dir(dir, ext),
     })
+}
+
+/// Locate an installed extension: the nearest `_extensions/<name>/` walking up from
+/// `base_dir` to the filesystem root, so a chapter deep in a book finds extensions
+/// vendored at the project root (not just beside the page). Falls back to the
+/// page-relative path when none is found, so the not-found warning still points
+/// somewhere sensible.
+fn find_extension_dir(base_dir: &Path, name: &str) -> PathBuf {
+    let mut dir = Some(base_dir);
+    while let Some(d) = dir {
+        let cand = d.join("_extensions").join(name);
+        if cand.join("_extension.yml").is_file() {
+            return cand;
+        }
+        dir = d.parent();
+    }
+    base_dir.join("_extensions").join(name)
 }
 
 /// Load + parse an extension's `_extension.yml`. Because the caller asked for this
@@ -173,24 +190,31 @@ fn load_contribution(
     }
 }
 
-/// If the doc's `format:` names a format extension (`<ext>-revealjs`/`<ext>-html`),
-/// load `_extensions/<ext>/_extension.yml` and resolve the includes + theme it
-/// contributes, with files resolved relative to the extension's own directory.
-/// Empty when there's no such extension; a *failed* load (missing/malformed
-/// manifest, no matching contribution) is reported via `warnings`.
-pub(super) fn resolve_format_extension(
-    front_matter: &str,
-    base_dir: Option<&Path>,
+impl ExtensionRef {
+    /// A reference to an explicitly-named extension (the `extensions: [..]` key),
+    /// resolved for the doc's base format `base`.
+    fn named(name: &str, base: &'static str, base_dir: &Path) -> ExtensionRef {
+        ExtensionRef {
+            name: name.to_string(),
+            base,
+            dir: find_extension_dir(base_dir, name),
+        }
+    }
+}
+
+/// Load an extension's manifest and build its [`Contribution`] (+ its directory),
+/// or `None` if the manifest can't be read/parsed.
+fn contribution_for(
+    r: &ExtensionRef,
     warnings: &mut Vec<String>,
-) -> PageIncludes {
-    let Some(r) = extension_ref(front_matter, base_dir) else {
-        return PageIncludes::default();
-    };
-    let Some(m) = load_manifest(&r, warnings) else {
-        return PageIncludes::default();
-    };
-    let c = load_contribution(&r, &m, warnings);
-    let ext_dir = &r.dir;
+) -> Option<(PathBuf, Contribution)> {
+    let m = load_manifest(r, warnings)?;
+    Some((r.dir.clone(), load_contribution(r, &m, warnings)))
+}
+
+/// Turn a [`Contribution`] into the `PageIncludes` it injects (head/body/css +
+/// theme layers ahead of the header, and `resources` recorded for copying).
+fn apply_contribution(c: &Contribution, ext_dir: &Path) -> PageIncludes {
     let mut inc = includes_from_parts(
         c.head.as_ref(),
         c.body_start.as_ref(),
@@ -198,16 +222,15 @@ pub(super) fn resolve_format_extension(
         c.css.as_ref(),
         Some(ext_dir),
     );
-    // The contributed `theme:` CSS layers, inlined ahead of the header so the deck's
-    // own front matter can still override. (`.scss` layers need a compiler we don't
-    // ship yet, so only `.css` is inlined; named base themes are handled elsewhere.)
+    // Contributed `theme:` CSS layers, inlined ahead of the header so the doc's own
+    // front matter can still override. (`.scss` needs a compiler we don't ship; only
+    // `.css` is inlined.)
     let theme = resolve_theme_layers(c.theme.as_ref(), ext_dir);
     if !theme.is_empty() {
         inc.in_header = format!("{theme}{}", inc.in_header);
     }
-    // `resources` (a scalar or list of file names relative to the extension) are
-    // copied verbatim next to the output so an injected `<script src="x.js">`
-    // resolves at runtime, rather than inlined.
+    // `resources` (file names relative to the extension) are copied next to the
+    // output so an injected `<script src="x.js">` resolves at runtime.
     if let Some(res) = &c.resources {
         for name in res
             .as_sequence()
@@ -218,6 +241,67 @@ pub(super) fn resolve_format_extension(
         }
     }
     inc
+}
+
+/// If the doc's `format:` names a format extension (`<ext>-revealjs`/`<ext>-html`),
+/// load `_extensions/<ext>/_extension.yml` and resolve what it contributes. Empty
+/// when there's no such extension; a *failed* load is reported via `warnings`.
+pub(super) fn resolve_format_extension(
+    front_matter: &str,
+    base_dir: Option<&Path>,
+    warnings: &mut Vec<String>,
+) -> PageIncludes {
+    let Some(r) = extension_ref(front_matter, base_dir) else {
+        return PageIncludes::default();
+    };
+    match contribution_for(&r, warnings) {
+        Some((dir, c)) => apply_contribution(&c, &dir),
+        None => PageIncludes::default(),
+    }
+}
+
+/// Apply the `extensions: [a, b]` list — the general (format-agnostic) activation.
+/// Each named extension contributes for the doc's `base` format, merged in order
+/// (so a later one wins). This is how a shortcode/enhancer extension is switched on
+/// without hijacking `format:`.
+pub(super) fn resolve_named_extensions(
+    front_matter: &str,
+    base_dir: Option<&Path>,
+    base: &'static str,
+    warnings: &mut Vec<String>,
+) -> PageIncludes {
+    let Some(dir) = base_dir else {
+        return PageIncludes::default();
+    };
+    let mut inc = PageIncludes::default();
+    for name in parse_extensions(front_matter) {
+        let r = ExtensionRef::named(&name, base, dir);
+        if let Some((d, c)) = contribution_for(&r, warnings) {
+            inc.merge(&apply_contribution(&c, &d));
+        }
+    }
+    inc
+}
+
+/// The `extensions:` front-matter list (explicitly activated extensions), or empty.
+fn parse_extensions(front_matter: &str) -> Vec<String> {
+    // Strip the leading `---` and everything from the closing fence, then parse the
+    // body as YAML — robust whether or not the fences are present.
+    let body = match front_matter.trim_start().strip_prefix("---") {
+        Some(rest) => rest.rsplit_once("---").map(|(b, _)| b).unwrap_or(rest),
+        None => front_matter,
+    };
+    serde_yaml::from_str::<serde_yaml::Value>(body)
+        .ok()
+        .as_ref()
+        .and_then(|v| v.get("extensions"))
+        .and_then(|v| v.as_sequence())
+        .map(|s| {
+            s.iter()
+                .filter_map(|v| v.as_str().map(str::to_string))
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 // --- Declarative shortcodes --------------------------------------------------
@@ -234,22 +318,41 @@ fn front_matter_block(src: &str) -> &str {
     }
 }
 
-/// Shortcode templates the active format extension declares under
-/// `contributes.shortcodes` (a name → HTML-template map). Empty when there is no
-/// format extension or it declares none. Loads silently — a broken manifest is
-/// reported by [`resolve_format_extension`] on the same render.
+/// Shortcode templates (name → HTML template) from every active extension: the
+/// `format:` one plus each `extensions:` entry. Loads silently — failures are
+/// reported once by the include resolvers on the same render (this runs in the
+/// earlier shortcode-expansion pass).
 fn shortcode_templates(front_matter: &str, base_dir: Option<&Path>) -> HashMap<String, String> {
     let mut out = HashMap::new();
-    let Some(r) = extension_ref(front_matter, base_dir) else {
-        return out;
-    };
-    // Warnings are dropped here — resolve_format_extension reports them once on the
-    // same render (this runs in the earlier shortcode-expansion pass).
     let mut ignore = Vec::new();
-    let Some(m) = load_manifest(&r, &mut ignore) else {
-        return out;
+    // the format extension (`format: <ext>-base`)
+    if let Some(r) = extension_ref(front_matter, base_dir) {
+        gather_shortcodes(&r, &mut out, &mut ignore);
+    }
+    // each `extensions: [..]` entry (shortcodes are format-agnostic, so the base
+    // passed here is a don't-care — it only affects the unused includes block)
+    if let Some(dir) = base_dir {
+        for name in parse_extensions(front_matter) {
+            gather_shortcodes(
+                &ExtensionRef::named(&name, "html", dir),
+                &mut out,
+                &mut ignore,
+            );
+        }
+    }
+    out
+}
+
+/// Merge one extension's declared shortcodes into `out`.
+fn gather_shortcodes(
+    r: &ExtensionRef,
+    out: &mut HashMap<String, String>,
+    warnings: &mut Vec<String>,
+) {
+    let Some(m) = load_manifest(r, warnings) else {
+        return;
     };
-    let c = load_contribution(&r, &m, &mut ignore);
+    let c = load_contribution(r, &m, warnings);
     if let Some(map) = c.shortcodes.as_ref().and_then(|s| s.as_mapping()) {
         for (k, val) in map {
             if let (Some(name), Some(tmpl)) = (k.as_str(), val.as_str()) {
@@ -257,7 +360,6 @@ fn shortcode_templates(front_matter: &str, base_dir: Option<&Path>) -> HashMap<S
             }
         }
     }
-    out
 }
 
 /// Expand declarative shortcodes (`{{< name args >}}`) using the templates the

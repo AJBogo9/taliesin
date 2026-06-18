@@ -1,5 +1,6 @@
 ---
 title: "Extensions"
+extensions: [embed, tabset]
 ---
 
 qmd-fast keeps a lean core and pushes power to **extensions**. An extension is a
@@ -95,4 +96,55 @@ so a third-party enhancer is indistinguishable from core's.
 A typo'd extension name, a malformed `_extension.yml`, or an unknown manifest key
 is reported in the dev menu and the build log — so a broken extension never fails
 silently.
+:::
+
+## Activating extensions
+
+A *format/theme* extension is selected by `format:` (above). A *shortcode* or
+*enhancer* extension is switched on with the `extensions:` front-matter list:
+
+```yaml
+---
+title: "My post"
+extensions: [embed, tabset]   # vendored under <project>/_extensions/
+---
+```
+
+Extensions are found in the nearest `_extensions/` walking up to the project root,
+so a whole book or site can share one `_extensions/` folder.
+
+## See them in action
+
+This chapter activates `extensions: [embed, tabset]`, and both extensions below
+are *live* — the same `embed` and `tabset` folders sit under this book's
+`_extensions/`.
+
+A `{{< youtube … >}}` shortcode from the **embed** extension expands to a
+responsive player (it plays once the page is *served* — some videos block the
+`file://` referrer of a locally-opened build):
+
+{{< youtube jNQXAC9IVRw >}}
+
+…and the **tabset** enhancer turns a `::: {.panel-tabset}` of headings into tabs
+(click between them):
+
+::: {.panel-tabset}
+
+### Python
+
+```python
+print("hello from the Python tab")
+```
+
+### R
+
+```r
+cat("hello from the R tab")
+```
+
+### Notes
+
+Each heading inside the `panel-tabset` div becomes a tab; the enhancer registers
+through `window.qmdEnhancers`, exactly like core's built-ins.
+
 :::

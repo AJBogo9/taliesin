@@ -454,3 +454,43 @@ fn native_manifest_unknown_key_is_warned() {
         doc.warnings
     );
 }
+
+/// The `extensions: [name]` list activates a shortcode/enhancer extension without
+/// hijacking `format:` (the general activation).
+#[test]
+fn extensions_list_activates_without_format() {
+    let d = TempProj::new();
+    d.ext(
+        "widgets",
+        "name: Widgets\ncss: w.css\nshortcodes:\n  hi: '<b>hi {{1}}</b>'\n",
+    );
+    d.file("_extensions/widgets/w.css", ".w{color:red}");
+    let src = "---\ntitle: T\nextensions: [widgets]\n---\n\nSay {{< hi there >}}.\n";
+    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    assert!(
+        doc.body_html().contains("<b>hi there</b>"),
+        "shortcode from the extensions: list: {}",
+        doc.body_html()
+    );
+    assert!(
+        doc.includes.in_header.contains(".w{color:red}"),
+        "css from the extensions: list"
+    );
+    assert!(doc.warnings.is_empty(), "clean: {:?}", doc.warnings);
+}
+
+/// An extension vendored at the project root is found from a doc in a subdirectory
+/// (resolution walks up the tree), so a whole book/site shares one `_extensions/`.
+#[test]
+fn extension_resolved_from_project_root() {
+    let d = TempProj::new();
+    d.ext("widgets", "name: W\nshortcodes:\n  hi: '<b>{{1}}</b>'\n"); // at <root>/_extensions
+    let src = "---\ntitle: T\nextensions: [widgets]\n---\n\n{{< hi yo >}}\n";
+    let base = d.0.join("chapters"); // a doc one level deeper than the extension
+    let doc = qmd_fast_core::render_document_with_includes(src, &base);
+    assert!(
+        doc.body_html().contains("<b>yo</b>"),
+        "extension should be found by walking up to the project root: {}",
+        doc.body_html()
+    );
+}

@@ -1,0 +1,11 @@
+.panel-tabset { margin: 1.3rem 0; }
+.qmd-tab-bar { display: flex; flex-wrap: wrap; gap: .15rem;
+  border-bottom: 1px solid var(--qmd-border, #ddd); }
+.qmd-tab-btn { border: 0; background: none; padding: .5rem .9rem; cursor: pointer;
+  color: var(--qmd-muted, #888); font: inherit; border-bottom: 2px solid transparent;
+  margin-bottom: -1px; }
+.qmd-tab-btn:hover { color: var(--qmd-fg, #111); }
+.qmd-tab-btn[aria-selected="true"] { color: var(--qmd-accent, #4c8dff);
+  border-bottom-color: var(--qmd-accent, #4c8dff); font-weight: 600; }
+.qmd-tab-panel { padding: 1rem 0; }
+.qmd-tab-panel > :first-child { margin-top: 0; }
