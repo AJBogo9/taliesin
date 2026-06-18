@@ -18,10 +18,11 @@ use axum::response::{Html, IntoResponse};
 use axum::routing::get;
 use futures_util::{SinkExt, StreamExt};
 use notify::Watcher;
+use parking_lot::Mutex;
 use qmd_fast_core::{Block, BlockOp, Page, Site, diff_blocks};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
 
@@ -163,7 +164,7 @@ async fn page_or_asset(
     } else {
         path.clone()
     };
-    let page = { app.site.lock().unwrap().page(&lookup).cloned() };
+    let page = { app.site.lock().page(&lookup).cloned() };
     if let Some(page) = page {
         return Html(ensure_and_render_page(&app, &page)).into_response();
     }
@@ -179,17 +180,16 @@ fn serve_asset(root: &Path, rel: &str) -> axum::response::Response {
 /// first visit), then render its full live HTML for the first paint.
 fn ensure_and_render_page(app: &SiteApp, page: &Page) -> String {
     let rel = page.rel.clone();
-    if !app.pages.lock().unwrap().contains_key(&rel) {
+    if !app.pages.lock().contains_key(&rel) {
         // First-paint render (markdown + listing cards, no code execution yet);
         // done outside the pages lock since it needs the site lock for listings.
         let doc = {
-            let site = app.site.lock().unwrap();
+            let site = app.site.lock();
             render_markdown_only(&site, page)
         };
         let (tx, _) = broadcast::channel(256);
         app.pages
             .lock()
-            .unwrap()
             .entry(rel.clone())
             .or_insert(PageState { doc, tx });
         let _ = app.build_tx.send(BuildMsg::Build(rel.clone()));
@@ -237,7 +237,7 @@ fn render_markdown_only(site: &qmd_fast_core::Site, page: &Page) -> PageDoc {
 /// wrapped in the site chrome, and the preview client scoped to this page's ws.
 fn site_page_html(app: &SiteApp, page: &Page) -> String {
     let (title, toc, theme_css, theme_default, body, ojs, page_includes) = {
-        let pages = app.pages.lock().unwrap();
+        let pages = app.pages.lock();
         let ps = pages.get(&page.rel);
         match ps {
             Some(ps) => {
@@ -264,7 +264,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
             ),
         }
     };
-    let chrome = { app.site.lock().unwrap().page_chrome(page) };
+    let chrome = { app.site.lock().page_chrome(page) };
     // Site-level `format: html:` includes first, then this page's own front matter.
     let mut includes = chrome.includes.clone();
     includes.merge(&page_includes);
@@ -425,7 +425,7 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, rel_or_url: String) {
 
     // Normalise the client's page key (it may send a url) to the source rel.
     let rel = {
-        let site = app.site.lock().unwrap();
+        let site = app.site.lock();
         match site.page(&rel_or_url) {
             Some(p) => p.rel.clone(),
             None => rel_or_url.clone(),
@@ -433,7 +433,7 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, rel_or_url: String) {
     };
 
     let (snapshot, mut rx, created) = {
-        let mut pages = app.pages.lock().unwrap();
+        let mut pages = app.pages.lock();
         let created = !pages.contains_key(&rel);
         let ps = pages.entry(rel.clone()).or_insert_with(|| PageState {
             doc: PageDoc::default(),
@@ -456,7 +456,7 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, rel_or_url: String) {
                 }
                 Err(broadcast::error::RecvError::Lagged(_)) => {
                     let fr = {
-                        let pages = app.pages.lock().unwrap();
+                        let pages = app.pages.lock();
                         pages.get(&rel).map(|ps| full_render_json(&ps.doc))
                     };
                     if let Some(fr) = fr
@@ -575,7 +575,7 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
                     // values. Reload the page so OJS cells re-bind to them: the
                     // Observable runtime can't redefine a variable in place, so a
                     // diff-splice of the define script wouldn't take effect.
-                    if let Some(ps) = app.pages.lock().unwrap().get(&rel) {
+                    if let Some(ps) = app.pages.lock().get(&rel) {
                         let _ = ps.tx.send(reload_json());
                     }
                 }
@@ -587,12 +587,12 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
 /// Re-render a page's markdown, run its code cells (on the page's own executor),
 /// then diff against its live blocks and broadcast the changes to its subscribers.
 async fn build_page(app: &SiteApp, rel: &str, execs: &mut HashMap<String, crate::exec::Executor>) {
-    let page = { app.site.lock().unwrap().page(rel).cloned() };
+    let page = { app.site.lock().page(rel).cloned() };
     let Some(page) = page else {
         return;
     };
     let Ok(src) = std::fs::read_to_string(&page.input) else {
-        let mut pages = app.pages.lock().unwrap();
+        let mut pages = app.pages.lock();
         if let Some(ps) = pages.get_mut(rel) {
             ps.doc.errored = true;
             let _ = ps
@@ -610,7 +610,7 @@ async fn build_page(app: &SiteApp, rel: &str, execs: &mut HashMap<String, crate:
     let mut blocks = exec.run(doc.blocks).await;
     // Expand listing cards (queries the whole site, so it needs the site lock).
     let toc = {
-        let site = app.site.lock().unwrap();
+        let site = app.site.lock();
         site.number_chapter(&page, &mut blocks);
         site.resolve_cross_refs(&mut blocks, &page.url);
         site.expand_page(&page, &mut blocks);
@@ -624,7 +624,7 @@ async fn build_page(app: &SiteApp, rel: &str, execs: &mut HashMap<String, crate:
         });
     }
 
-    let mut pages = app.pages.lock().unwrap();
+    let mut pages = app.pages.lock();
     let ps = pages.entry(rel.to_string()).or_insert_with(|| PageState {
         doc: PageDoc::default(),
         tx: broadcast::channel(256).0,
@@ -744,8 +744,8 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>) {
         .any(|p| p.file_name().and_then(|n| n.to_str()) == Some("_quarto.yml"));
     if config_changed {
         let new = Site::discover(&app.root);
-        *app.site.lock().unwrap() = new;
-        for ps in app.pages.lock().unwrap().values() {
+        *app.site.lock() = new;
+        for ps in app.pages.lock().values() {
             let _ = ps.tx.send(reload_json());
         }
         crate::log::update(0);
@@ -753,8 +753,8 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>) {
     }
 
     // Rebuild only pages that are open (have live state) and depend on a change.
-    let open: Vec<String> = app.pages.lock().unwrap().keys().cloned().collect();
-    let site = app.site.lock().unwrap();
+    let open: Vec<String> = app.pages.lock().keys().cloned().collect();
+    let site = app.site.lock();
     for rel in open {
         let Some(page) = site.page(&rel) else {
             continue;

@@ -1445,6 +1445,7 @@ dependencies = [
  "jupyter-protocol",
  "jupyter-zmq-client",
  "notify",
+ "parking_lot",
  "qmd-fast-core",
  "qrcode",
  "serde",

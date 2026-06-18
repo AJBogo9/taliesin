@@ -10,12 +10,13 @@ use axum::response::{Html, IntoResponse};
 use axum::routing::get;
 use futures_util::{SinkExt, StreamExt};
 use notify::Watcher;
+use parking_lot::Mutex;
 use qmd_fast_core::{Block, BlockOp, DocFormat, RenderedDoc};
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
 
@@ -110,7 +111,7 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
 
     // Initial render.
     if let Some(doc) = render_doc(&app) {
-        let mut d = app.doc.lock().unwrap();
+        let mut d = app.doc.lock();
         d.title = doc.title;
         d.subtitle = doc.subtitle;
         d.format = doc.format;
@@ -142,7 +143,7 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         .flatten()
         .map(|ip| format!("http://{ip}:{port}"));
     let desc = {
-        let d = app.doc.lock().unwrap();
+        let d = app.doc.lock();
         let mut parts = vec![match d.format {
             DocFormat::Reveal => "reveal",
             DocFormat::Html => "html",
@@ -247,7 +248,7 @@ fn render_doc(app: &AppState) -> Option<RenderedDoc> {
 
 async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
     let (format, toc, theme_css, theme_default, includes, ojs, body) = {
-        let d = app.doc.lock().unwrap();
+        let d = app.doc.lock();
         let ojs = d
             .blocks
             .iter()
@@ -614,7 +615,7 @@ async fn client_conn(socket: WebSocket, app: Arc<AppState>) {
     // Subscribe and snapshot under the same lock the watcher uses, so we never
     // miss or double-apply an op straddling the initial render.
     let (snapshot, mut rx) = {
-        let d = app.doc.lock().unwrap();
+        let d = app.doc.lock();
         let rx = app.tx.subscribe();
         (full_render_json(&d), rx)
     };
@@ -632,7 +633,7 @@ async fn client_conn(socket: WebSocket, app: Arc<AppState>) {
                 }
                 // Fell behind: re-sync with a fresh full render.
                 Err(broadcast::error::RecvError::Lagged(_)) => {
-                    let fr = full_render_json(&app.doc.lock().unwrap());
+                    let fr = full_render_json(&app.doc.lock());
                     if sink.send(Message::Text(fr.into())).await.is_err() {
                         break;
                     }
@@ -856,7 +857,7 @@ fn watch_dirs(app: &AppState) -> Vec<PathBuf> {
 /// assembled block list against the live state and broadcast the changes.
 async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
     let Some(doc) = render_doc(app) else {
-        app.doc.lock().unwrap().errored = true;
+        app.doc.lock().errored = true;
         let _ = app
             .tx
             .send(error_json(&format!("cannot read {}", app.path.display())));
@@ -873,7 +874,7 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         });
     }
     let ops = {
-        let mut d = app.doc.lock().unwrap();
+        let mut d = app.doc.lock();
         let recovered = std::mem::take(&mut d.errored);
         let ops = qmd_fast_core::diff_blocks(&d.blocks, &blocks);
         let diags_changed = d.diagnostics != diags;

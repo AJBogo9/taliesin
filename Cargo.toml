@@ -27,3 +27,8 @@ serde_yaml = "0.9"
 # dependency). We emit scope *classes* and color them in CSS, so the light/dark
 # toggle restyles code without re-highlighting.
 syntect = { version = "5", default-features = false, features = ["default-fancy"] }
+
+# Non-poisoning Mutex for the dev server's shared state: a panic while a lock is
+# held releases it cleanly instead of poisoning it (which would otherwise make
+# every later request panic). Lighter + faster than std's poison-tracking lock.
+parking_lot = "0.12"
