@@ -351,6 +351,16 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
         }
     }
 
+    // Full-text search index, lazy-loaded by the Cmd-K palette (pages link to it
+    // via window.QMD_SEARCH_URL rather than inlining it).
+    let mut search = "";
+    if !site.search_index_json.is_empty() && site.search_index_json != "[]" {
+        match std::fs::write(out.join("search.json"), &site.search_index_json) {
+            Ok(()) => search = "  ·  search.json",
+            Err(e) => log::warn(&format!("cannot write search.json: {e}")),
+        }
+    }
+
     // Per-tag archive pages (categories/<slug>/index.html).
     let mut tags = 0usize;
     for (url, html) in site.category_pages() {
@@ -383,7 +393,7 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
     };
 
     log::built(&format!(
-        "{}  ·  {pages} page{}  ·  {assets} asset{}{feed}{tag_pages}{deck_note}{not_found}",
+        "{}  ·  {pages} page{}  ·  {assets} asset{}{feed}{search}{tag_pages}{deck_note}{not_found}",
         out.display(),
         if pages == 1 { "" } else { "s" },
         if assets == 1 { "" } else { "s" },

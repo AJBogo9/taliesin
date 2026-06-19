@@ -151,6 +151,7 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
     let router = Router::new()
         .route("/favicon.ico", get(favicon))
         .route("/feed.xml", get(feed_xml))
+        .route("/search.json", get(search_json))
         .route("/ws", get(ws_handler))
         .fallback(page_or_asset)
         .with_state(app.clone());
@@ -197,6 +198,23 @@ async fn favicon() -> impl IntoResponse {
 
 /// The site's RSS feed, matching what `build` writes to `feed.xml`. 404 when the
 /// project has no feed (a book, or a website without a `url:` / posts).
+/// The full-text search index, lazy-loaded by the Cmd-K palette on first open.
+async fn search_json(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
+    let json = { app.site.lock().search_index_json.clone() };
+    (
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "application/json; charset=utf-8",
+        )],
+        if json.is_empty() {
+            "[]".to_string()
+        } else {
+            json
+        },
+    )
+        .into_response()
+}
+
 async fn feed_xml(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
     match app.site.lock().rss_feed() {
         Some(xml) => (
@@ -425,6 +443,13 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
         js_str(&app.root.to_string_lossy()),
     );
     let ws_path = format!("/ws?page={}", encode_query(&page.rel));
+    // Cross-page Cmd-K search: point the palette at the lazy-loaded `search.json`
+    // (depth-relative, served at the root). Empty for a project with no index.
+    let search_cfg = if chrome.search_index.is_empty() {
+        String::new()
+    } else {
+        format!("{};", chrome.search_index)
+    };
     // Body links (author `.qmd` references) -> `.html`; chrome links already are.
     let body = qmd_fast_core::site::rewrite_qmd_links(&body);
     let title_txt = title.unwrap_or_else(|| page.title.clone().unwrap_or_default());
@@ -488,7 +513,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
 {include_before_body}
 {layout}
 <div id="qmd-controls"></div>
-<script>{doc_global} {toc_flag} window.QMD_SSR = true; window.QMD_WS_PATH = "{ws_path}";</script>
+<script>{doc_global} {toc_flag} {search_cfg} window.QMD_SSR = true; window.QMD_WS_PATH = "{ws_path}";</script>
 {code_scripts}
 <script>{toc_spy}</script>
 <script>{search_js}</script>

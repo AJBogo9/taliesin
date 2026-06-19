@@ -284,10 +284,11 @@ impl Site {
         let search_index = if self.search_index_json.is_empty() || self.search_index_json == "[]" {
             String::new()
         } else {
+            // Point the client at the lazy-loaded `search.json` (fetched on first
+            // open) instead of inlining the full-text index into every page.
+            let up = "../".repeat(depth);
             format!(
-                "window.QMD_SEARCH_INDEX={};window.QMD_SITE_ROOT=\"{}\";window.QMD_PAGE_URL=\"{}\"",
-                self.search_index_json,
-                "../".repeat(depth),
+                "window.QMD_SEARCH_URL=\"{up}search.json\";window.QMD_SITE_ROOT=\"{up}\";window.QMD_PAGE_URL=\"{}\"",
                 page.url
             )
         };

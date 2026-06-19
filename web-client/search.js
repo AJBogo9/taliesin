@@ -1,11 +1,11 @@
-// Client-side command palette (Cmd/Ctrl-K): fuzzy-search a long document's
-// headings to jump around it — the book, a paper, any page with a table of
-// contents. The index is rebuilt from the DOM each time the palette opens, so it
-// always reflects the current content (works in the live preview too). Matches a
-// heading's own text and the text of its section, so a body keyword still finds
-// the right section. Self-contained: injects its own themed overlay CSS and rides
-// along as one <script> beside the TOC scrollspy. Not part of the type-checked
-// client.js bundle.
+// Client-side command palette (Cmd/Ctrl-K): full-text search to jump around a
+// long document — the book, a paper, any page with a table of contents. Matches
+// both headings and the body text of each section, and shows a snippet around the
+// hit. A single doc builds its index from the live DOM on open; a site/book lazy-
+// loads the cross-page index (search.json) on first open via window.QMD_SEARCH_URL,
+// so the full-text index never bloats every page. Self-contained: injects its own
+// themed overlay CSS and rides along as one <script> beside the TOC scrollspy. Not
+// part of the type-checked client.js bundle.
 (function () {
   if (window.qmdSearchInstalled) return;
   window.qmdSearchInstalled = true;
@@ -24,16 +24,22 @@
     "padding:.95rem 1.1rem;font-size:1.05rem;background:transparent;color:inherit;" +
     "border-bottom:1px solid var(--qmd-border,#e0e0e0)}" +
     "#qmd-search .qmd-s-results{list-style:none;margin:0;padding:.3rem;overflow:auto;flex:1}" +
-    "#qmd-search .qmd-s-item{display:flex;align-items:baseline;gap:.6rem;padding:.5rem .7rem;" +
+    "#qmd-search .qmd-s-item{display:flex;flex-direction:column;gap:.15rem;padding:.5rem .7rem;" +
     "border-radius:7px;cursor:pointer;scroll-margin:.4rem}" +
+    "#qmd-search .qmd-s-head{display:flex;align-items:baseline;gap:.6rem}" +
     "#qmd-search .qmd-s-item[aria-selected=true]{background:var(--qmd-accent,#4c8dff);color:#fff}" +
     "#qmd-search .qmd-s-item[aria-selected=true] .qmd-s-sec{color:rgba(255,255,255,.8)}" +
+    "#qmd-search .qmd-s-snip{font-size:.78rem;color:var(--qmd-muted,#888);overflow:hidden;" +
+    "text-overflow:ellipsis;white-space:nowrap}" +
+    "#qmd-search .qmd-s-snip mark{background:transparent;color:var(--qmd-accent,#4c8dff);font-weight:700;padding:0}" +
+    "#qmd-search .qmd-s-item[aria-selected=true] .qmd-s-snip{color:rgba(255,255,255,.85)}" +
+    "#qmd-search .qmd-s-item[aria-selected=true] .qmd-s-snip mark{color:#fff}" +
     "#qmd-search .qmd-s-title{font-weight:600}" +
     "#qmd-search .qmd-s-title mark{background:transparent;color:var(--qmd-accent,#4c8dff);" +
     "font-weight:800;padding:0}" +
     "#qmd-search .qmd-s-item[aria-selected=true] .qmd-s-title mark{color:#fff;" +
     "text-decoration:underline}" +
-    "#qmd-search .qmd-s-sec{font-size:.8rem;color:var(--qmd-muted,#888);white-space:nowrap}" +
+    "#qmd-search .qmd-s-sec{font-size:.8rem;color:var(--qmd-muted,#888);white-space:nowrap;margin-left:auto}" +
     "#qmd-search .qmd-s-empty{padding:1rem 1.1rem;color:var(--qmd-muted,#888)}" +
     "#qmd-search .qmd-s-hint{display:flex;gap:1rem;padding:.45rem .9rem;font-size:.72rem;" +
     "color:var(--qmd-muted,#888);border-top:1px solid var(--qmd-border,#e0e0e0)}" +
@@ -61,7 +67,7 @@
     // selecting it can navigate across chapters.
     if (window.QMD_SEARCH_INDEX) {
       return window.QMD_SEARCH_INDEX.map(function (e) {
-        return { id: e.i, title: e.t, level: e.l, body: "", url: e.u, page: e.p };
+        return { id: e.i, title: e.t, level: e.l, body: e.b || "", url: e.u, page: e.p };
       });
     }
     // Single doc: build from the current DOM (so it reflects live edits).
@@ -85,11 +91,34 @@
   function sectionText(h, next) {
     var txt = "";
     var node = h.nextElementSibling;
-    while (node && node !== next && txt.length < 600) {
+    while (node && node !== next && txt.length < 1500) {
       txt += " " + (node.textContent || "");
       node = node.nextElementSibling;
     }
-    return txt.toLowerCase();
+    return txt.replace(/\s+/g, " ").trim();
+  }
+
+  // Lazy-load the cross-page index from `search.json` on first open (a site/book
+  // links to it via QMD_SEARCH_URL instead of inlining it into every page), then
+  // run `cb`. A single doc (no URL) just runs `cb` against the DOM index.
+  var indexFetched = false;
+  function loadIndexThen(cb) {
+    if (window.QMD_SEARCH_INDEX || !window.QMD_SEARCH_URL || indexFetched) {
+      cb();
+      return;
+    }
+    indexFetched = true;
+    fetch(window.QMD_SEARCH_URL)
+      .then(function (r) {
+        return r.json();
+      })
+      .then(function (data) {
+        window.QMD_SEARCH_INDEX = data;
+        cb();
+      })
+      .catch(function () {
+        cb();
+      });
   }
 
   function ensureUi() {
@@ -119,12 +148,24 @@
 
   function open() {
     ensureUi();
-    if (window.QMD_SEARCH_INDEX && input) input.placeholder = "Search the book…";
-    index = buildIndex();
-    if (!index.length) return; // nothing to search on this page
+    var isSite = !!(window.QMD_SEARCH_URL || window.QMD_SEARCH_INDEX);
+    // Single doc with no headings: nothing to search.
+    if (!isSite && !buildIndex().length) return;
     overlay.hidden = false;
     input.value = "";
-    render("");
+    input.placeholder = isSite ? "Search the book…" : "Search this document…";
+    // While the cross-page index is fetching on first open, show a loading row.
+    list.innerHTML = "";
+    if (isSite && !window.QMD_SEARCH_INDEX) {
+      var li = document.createElement("li");
+      li.className = "qmd-s-empty";
+      li.textContent = "Loading…";
+      list.appendChild(li);
+    }
+    loadIndexThen(function () {
+      index = buildIndex();
+      render(input.value);
+    });
     input.focus();
   }
 
@@ -141,7 +182,7 @@
     var pos = t.indexOf(q);
     if (pos === 0) return 3; // title prefix
     if (pos > 0) return 2; // title contains
-    if (item.body.indexOf(q) >= 0) return 1; // body contains
+    if (item.body.toLowerCase().indexOf(q) >= 0) return 1; // body contains
     return 0;
   }
 
@@ -190,6 +231,8 @@
     li.className = "qmd-s-item";
     li.setAttribute("role", "option");
     li.id = "qmd-s-opt-" + i;
+    var head = document.createElement("div");
+    head.className = "qmd-s-head";
     var title = document.createElement("span");
     title.className = "qmd-s-title";
     highlight(title, item.title, q);
@@ -197,8 +240,16 @@
     sec.className = "qmd-s-sec";
     // In a book, label the result with its chapter; otherwise its heading level.
     sec.textContent = item.page || "H" + item.level;
-    li.appendChild(title);
-    li.appendChild(sec);
+    head.appendChild(title);
+    head.appendChild(sec);
+    li.appendChild(head);
+    // A body (full-text) match that isn't in the title gets a snippet around the hit.
+    if (q && item.title.toLowerCase().indexOf(q) < 0 && item.body) {
+      var snip = document.createElement("div");
+      snip.className = "qmd-s-snip";
+      snippet(snip, item.body, q);
+      li.appendChild(snip);
+    }
     li.addEventListener("mousemove", function () {
       if (sel !== i) {
         sel = i;
@@ -209,6 +260,28 @@
       go(item);
     });
     return li;
+  }
+
+  // A one-line excerpt of body text around the first match of q, q highlighted.
+  function snippet(el, body, q) {
+    var pos = body.toLowerCase().indexOf(q);
+    if (pos < 0) {
+      el.textContent = body.slice(0, 120);
+      return;
+    }
+    var start = Math.max(0, pos - 30);
+    var tailEnd = pos + q.length + 90;
+    el.appendChild(
+      document.createTextNode((start > 0 ? "… " : "") + body.slice(start, pos)),
+    );
+    var m = document.createElement("mark");
+    m.textContent = body.slice(pos, pos + q.length);
+    el.appendChild(m);
+    el.appendChild(
+      document.createTextNode(
+        body.slice(pos + q.length, tailEnd) + (body.length > tailEnd ? " …" : ""),
+      ),
+    );
   }
 
   // Render the title with the matched substring wrapped in <mark>.
