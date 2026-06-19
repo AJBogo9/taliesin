@@ -6,7 +6,6 @@ title: "qmd-fast"
 description: "A fast, single-purpose dev server that turns one .qmd file into a live blog post, slide deck, book, or website — with executable code and an edit loop that updates the instant you save."
 url: "https://qmd-fast.dev"
 favicon: favicon.svg
-css: marketing.css
 toc: false
 
 nav:

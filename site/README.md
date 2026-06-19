@@ -1,49 +1,63 @@
 # Marketing site
 
-The qmd-fast landing site, **built by qmd-fast itself** (a website project). Three
-pages — `index.qmd` (landing), `features.qmd`, `formats.qmd` — plus `demo.qmd` (the
-showcase deck, embedded via `{{< embed >}}` and kept out of nav). Styling is
-`marketing.css` (a "clean dev-tool" layer over the base theme); config is
-`_quarto.yml` (native flat schema).
+The qmd-fast landing site, **built by qmd-fast itself** with **nothing but Markdown
++ YAML — no custom CSS**. It's the framework's own dogfood test: if this looks good
+on the defaults, the framework is doing its job.
+
+Pages: `index.qmd` (landing), `features.qmd`, `formats.qmd`, plus `demo.qmd` (the
+showcase deck, embedded via `{{< embed >}}` and kept out of nav). Config is
+`_quarto.yml` (native flat schema). There is intentionally no stylesheet.
 
 > Placeholders to update before going live: `url:` and the GitHub links in
-> `_quarto.yml` / the page CTAs (currently `https://qmd-fast.dev` and
-> `github.com/AJBogo9/qmd-fast`).
+> `_quarto.yml` (currently `https://qmd-fast.dev` and `github.com/AJBogo9/qmd-fast`).
+
+## How it's authored (all framework features)
+
+- **Hero** — the `hero:` front-matter block (`eyebrow` / `headline` / `lead` /
+  `actions`) renders the top of each page. No HTML.
+- **Sections** — plain `##` headings + prose, the way any qmd-fast doc reads.
+- **Card grids** — `::: {.feature-grid}` with `::: {.feature}` cards (fenced divs).
+- **Screencasts** — `{{< video light.mp4 dark=dark.mp4 caption="…" >}}` (built-in
+  shortcode; the clip matching the page theme plays, swapping live on toggle).
+- **Live deck** — `{{< embed demo.qmd >}}` (built-in shortcode).
+- **Buttons** — Pandoc attributes: `[Text](href){.btn .btn-primary .btn-lg}`.
+- **Closing CTA** — a `::: {.hero}` fenced div.
+
+The theme (serif body, sans headings, light/dark toggle) is the qmd-fast default.
 
 ## Preview
 
 ```sh
-qmd-fast preview site        # live, with hot reload
+qmd-fast preview site
 ```
 
-The `Docs` nav item points at `docs/`, which only exists in the built tree (see
-below) — in `preview` it 404s until you also serve the docs book.
+The `Docs` nav item points at `docs/`, which only exists in the built tree (below);
+in `preview` it 404s until you also serve the docs book.
 
-## Build (single-tree deploy: site at root, docs book at /docs)
+## Build (single-tree: site at root, docs book at /docs)
 
 ```sh
-qmd-fast build site --out _site            # marketing pages + demo deck + assets
-qmd-fast build docs --out _site/docs       # the docs book under /docs
+qmd-fast build site --out _site
+qmd-fast build docs --out _site/docs
 ```
 
-Then deploy `_site/` to any static host. Building the deck (and the docs' code
-cells) wants a Python kernel; without one they degrade to source. Serve `_site/`
-with directory indexing so `/docs/` resolves to `/docs/index.html`.
+Deploy `_site/` to any static host with directory indexing.
 
-## The hero videos
+## The screencasts
 
-`index.qmd` / `features.qmd` embed two autoplaying clips from `assets/`:
-
-- `live-edit.mp4` — the live block-update loop
-- `live-code.mp4` — editing a `{python}` cell, output re-runs in place
-
-They are produced by the scripted recorder, non-destructively, from demo specs:
+`assets/{live-edit,live-code}-{light,dark}.mp4` are produced by the scripted
+recorder (non-destructively) from demo specs. The optional 3rd arg picks the theme
+and suffixes the output, so one spec records both variants:
 
 ```sh
 cd tools/record-demo
-QMD_FAST_PYTHON=<py-with-numpy+matplotlib> node record.mjs demos/live-edit.mjs
-QMD_FAST_PYTHON=<...> node record.mjs demos/live-code.mjs
-cp out/live-edit.mp4 out/live-code.mp4 ../../site/assets/
+for clip in live-edit live-code; do
+  for theme in light dark; do
+    QMD_FAST_PYTHON=<py-with-numpy+matplotlib> node record.mjs demos/$clip.mjs $theme
+  done
+done
+cp out/live-edit-light.mp4 out/live-edit-dark.mp4 \
+   out/live-code-light.mp4 out/live-code-dark.mp4 ../../site/assets/
 ```
 
 `demo.qmd` is a copy of `docs/demo.qmd`; re-copy it if the showcase deck changes.
