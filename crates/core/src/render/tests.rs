@@ -1113,3 +1113,15 @@ fn footnotes_emit_ref_and_gathered_section() {
     assert!(page.contains("The supporting note"), "footnote body");
     assert!(page.contains("qmd-fn-back"), "backlink to the reference");
 }
+
+#[test]
+fn sidenote_div_renders_with_class() {
+    // `::: {.sidenote}` is a margin note (styled via base.css float); it just needs
+    // to emit a `.sidenote` block carrying the usual data-block-id (click-to-source).
+    let page = render_html_page(
+        "---\ntitle: T\n---\n\n::: {.sidenote}\nA margin note.\n:::\n",
+        "fb",
+    );
+    assert!(page.contains("class=\"sidenote\""), "sidenote div: {page}");
+    assert!(page.contains("A margin note"), "sidenote content");
+}

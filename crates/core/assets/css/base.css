@@ -179,6 +179,21 @@
   .footnotes li > :first-child { display: inline; } /* keep the backlink on the text's line */
   .footnotes li:target, [id^="fnref-"]:target { background: var(--qmd-flash); border-radius: 4px; }
   .qmd-fn-back { text-decoration: none; margin-left: .4em; }
+  /* Sidenotes / margin notes (Tufte/Distill): `::: {.sidenote}` (alias `.marginnote`)
+     floats into the right margin on a wide screen — marginalia that don't interrupt
+     the body, impossible to do in a PDF. Below ~73rem (no margin room) it falls back
+     to an indented aside in the flow. It's a normal block, so click-to-source works. */
+  .sidenote, .marginnote {
+    float: right; clear: right; width: 12rem;
+    margin: .3rem -13.5rem 1rem 1.5rem;
+    font: 400 .82rem/1.5 var(--qmd-font-head); color: var(--qmd-muted); text-align: left; }
+  .sidenote > :first-child, .marginnote > :first-child { margin-top: 0; }
+  .sidenote > :last-child, .marginnote > :last-child { margin-bottom: 0; }
+  @media (max-width: 73rem) {
+    .sidenote, .marginnote {
+      float: none; width: auto; margin: 1rem 0;
+      padding-left: .9rem; border-left: 2px solid var(--qmd-accent); }
+  }
   .qmd-output { margin: 0 0 1rem; }
   .qmd-output > pre { background: #fbfbfb; border-left: 3px solid #e3e3e3; }
   .qmd-output img { display: block; max-width: 100%; }
