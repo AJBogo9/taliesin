@@ -103,6 +103,11 @@ pub struct RenderedDoc {
     /// Default theme mode for the resolver script: `"dark"`/`"light"` force it,
     /// `"auto"` follows the OS `prefers-color-scheme`.
     pub theme_default: String,
+    /// Whether a custom theme owns this doc's colours — a `theme:` CSS/extension,
+    /// or a `format: <ext>-revealjs` / `extensions:` that contributes markup. Decks
+    /// use this to skip the built-in light/dark management when an extension theme
+    /// (e.g. liquid-glass) is in charge.
+    pub theme_is_custom: bool,
     /// Resolved `include-in-header`/`include-before-body`/`include-after-body` +
     /// `css` from the doc's front matter, injected into the page template.
     pub includes: PageIncludes,
@@ -135,6 +140,11 @@ pub struct PageIncludes {
 }
 
 impl PageIncludes {
+    /// Whether this contributes any head/body markup (ignores `resources`). Used to
+    /// tell whether an extension contributed a theme/plugin to a deck.
+    pub fn has_markup(&self) -> bool {
+        !self.in_header.is_empty() || !self.before_body.is_empty() || !self.after_body.is_empty()
+    }
     /// Append `other` after `self` (site-level first, then the page's own).
     pub fn merge(&mut self, other: &PageIncludes) {
         for (dst, src) in [
@@ -180,7 +190,7 @@ fn parse_options() -> Options<'static> {
 /// Parse `src` into ordered top-level blocks with stable ids + sourcepos.
 /// Does not resolve `{{< include >}}` (use [`render_document_with_includes`]).
 mod reveal;
-pub use reveal::{reveal_client_head, reveal_client_script, slides_html};
+pub use reveal::{deck_theme_head, reveal_client_head, reveal_client_script, slides_html};
 mod extension;
 pub(crate) use extension::embed_targets;
 use extension::{resolve_format_extension, resolve_named_extensions};
@@ -245,6 +255,9 @@ fn render_internal(
     let mut theme: Option<String> = None;
     let mut bib_field: Option<String> = None;
     let mut includes = PageIncludes::default();
+    // Whether a format/named extension contributed head/body markup (e.g. a reveal
+    // theme extension like liquid-glass): such a theme owns the deck's colours.
+    let mut ext_contributes = false;
     // Non-fatal render warnings (missing/broken extension, bibliography, theme),
     // collected through the whole render and surfaced in the dev menu / build log.
     let mut warnings: Vec<String> = Vec::new();
@@ -293,13 +306,11 @@ fn render_internal(
                     DocFormat::Reveal => "revealjs",
                     DocFormat::Html => "html",
                 };
-                includes = resolve_format_extension(fm, base_dir, &mut warnings);
-                includes.merge(&resolve_named_extensions(
-                    fm,
-                    base_dir,
-                    ext_base,
-                    &mut warnings,
-                ));
+                let fmt_inc = resolve_format_extension(fm, base_dir, &mut warnings);
+                let named_inc = resolve_named_extensions(fm, base_dir, ext_base, &mut warnings);
+                ext_contributes = fmt_inc.has_markup() || named_inc.has_markup();
+                includes = fmt_inc;
+                includes.merge(&named_inc);
                 includes.merge(&resolve_doc_includes(fm, base_dir));
                 (exec_echo, exec_include) = detect_execute_defaults(fm);
                 continue;
@@ -575,6 +586,7 @@ fn render_internal(
     }
     let theme_css = resolve_theme(theme.as_deref(), base_dir, &mut warnings);
     let theme_default = theme_default_mode(theme.as_deref()).to_string();
+    let theme_is_custom = ext_contributes || !theme_css.trim().is_empty();
     RenderedDoc {
         title,
         subtitle,
@@ -586,6 +598,7 @@ fn render_internal(
         toc_explicit,
         theme_css,
         theme_default,
+        theme_is_custom,
         includes,
         warnings,
         blocks,
@@ -3152,6 +3165,32 @@ mod tests {
             render_document("---\ntheme: light\n---\n\nx\n").theme_default,
             "light"
         );
+    }
+
+    #[test]
+    fn deck_theme_is_custom_and_head_gating() {
+        // A plain deck (built-in theme) is managed: the deck theme head is emitted
+        // and the deck follows OS/host/front-matter.
+        let plain = render_document("---\nformat: revealjs\n---\n\n# A\n");
+        assert!(!plain.theme_is_custom, "a plain deck has no custom theme");
+        assert!(
+            deck_theme_head(&plain.theme_default, plain.theme_is_custom)
+                .contains("qmdDeckApplyTheme"),
+            "a built-in-theme deck should get the theme head"
+        );
+        // A user `include-in-header` is not a theme extension, so it must not flip
+        // the deck out of built-in light/dark management.
+        let with_header = render_document(
+            "---\nformat: revealjs\ninclude-in-header:\n  text: \"<meta name=x>\"\n---\n\n# A\n",
+        );
+        assert!(!with_header.theme_is_custom);
+        // An explicit `theme: dark` forces dark and is still managed.
+        assert_eq!(
+            render_document("---\nformat: revealjs\ntheme: dark\n---\n\n# A\n").theme_default,
+            "dark"
+        );
+        // A custom theme owns the colours -> no theme-management script.
+        assert!(deck_theme_head("auto", true).is_empty());
     }
 
     #[test]

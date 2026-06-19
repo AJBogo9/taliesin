@@ -47,12 +47,13 @@ pub(super) fn reveal_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> S
         "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n\
          <meta charset=\"utf-8\" />\n\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no\" />\n\
-         <title>{t}</title>\n<style>{DECK_CSS}</style>\n{katex_css}<style>{REVEAL_EXTRA_CSS}</style>\n{code_head}\n{ojs_head}{theme}{in_header}\
+         <title>{t}</title>\n{deck_theme}<style>{DECK_CSS}</style>\n{katex_css}<style>{REVEAL_EXTRA_CSS}</style>\n{code_head}\n{ojs_head}{theme}{in_header}\
          </head>\n<body>\n{before_body}<div class=\"reveal\">\n<div class=\"slides\">\n{slides}</div>\n</div>\n\
          <script>{DECK_JS}</script>\n<script>\n  Reveal.initialize({{ hash: true, slideNumber: 'c/t', center: false }});\n</script>\n\
          {code_scripts}\n\
          <script>document.addEventListener('DOMContentLoaded',function(){{window.qmdEnhanceCode&&window.qmdEnhanceCode(document.body);}});</script>\n\
          {ojs_init}{after_body}</body>\n</html>\n",
+        deck_theme = deck_theme_head(&doc.theme_default, doc.theme_is_custom),
         theme = theme_style(&doc.theme_css),
         in_header = doc.includes.in_header,
         before_body = doc.includes.before_body,
@@ -78,6 +79,48 @@ pub fn reveal_client_head() -> String {
 /// preview client so the `window.Reveal` facade is defined when the deck mounts.
 pub fn reveal_client_script() -> String {
     format!("<script>{DECK_JS}</script>")
+}
+
+/// Pre-paint `<head>` script that sets the deck's light/dark mode before first
+/// paint, so an embedded deck never flashes a white panel on a dark page. The
+/// mode is derived from the doc's resolved theme: an explicit `theme: dark`/
+/// `light` forces it; the built-in default theme (`theme_default` "auto", no
+/// custom CSS) follows the embedding page (a same-origin host) or the OS for a
+/// standalone deck; a custom/extension theme (`custom_theme`) owns its own colours
+/// and gets no script. The runtime helpers (`qmdDeckApplyTheme`/`qmdDeckSetTheme`)
+/// are used by deck.js for the menu toggle and live host-theme following.
+pub fn deck_theme_head(theme_default: &str, custom_theme: bool) -> String {
+    let mode = match theme_default {
+        "dark" => "dark",
+        "light" => "light",
+        _ if custom_theme => "none",
+        _ => "auto",
+    };
+    if mode == "none" {
+        return String::new();
+    }
+    format!(
+        r#"<script>
+(function(){{
+  var DEFAULT = "{mode}";
+  var embedded = window.self !== window.top;
+  function osDark(){{ try {{ return matchMedia('(prefers-color-scheme: dark)').matches; }} catch(e){{ return false; }} }}
+  function hostTheme(){{ try {{ var t = window.top.document.documentElement.getAttribute('data-theme'); return (t==='dark'||t==='light') ? t : null; }} catch(e){{ return null; }} }}
+  function stored(){{ try {{ var v = localStorage.getItem('qmd-deck-theme'); return (v==='dark'||v==='light') ? v : null; }} catch(e){{ return null; }} }}
+  function resolve(){{
+    if (embedded) {{ return hostTheme() || (osDark() ? 'dark' : 'light'); }}  // follow the host page
+    var s = stored(); if (s) return s;                                        // a standalone deck's saved toggle
+    if (DEFAULT==='dark'||DEFAULT==='light') return DEFAULT;                   // explicit front-matter
+    return osDark() ? 'dark' : 'light';                                       // else the OS preference
+  }}
+  window.qmdDeckEmbedded = embedded;
+  window.qmdDeckThemeManaged = true;
+  window.qmdDeckApplyTheme = function(){{ var m = resolve(); var el = document.documentElement; el.classList.toggle('qmd-deck-dark', m==='dark'); el.style.colorScheme = m; return m; }};
+  window.qmdDeckSetTheme = function(m){{ if (!embedded) {{ try {{ localStorage.setItem('qmd-deck-theme', m); }} catch(e){{}} }} return window.qmdDeckApplyTheme(); }};
+  window.qmdDeckApplyTheme();
+}})();
+</script>"#
+    )
 }
 
 // --- reveal.js slide model ----------------------------------------------

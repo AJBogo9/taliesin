@@ -45,6 +45,9 @@ struct DocState {
     toc: bool,
     theme_css: String,
     theme_default: String,
+    /// Whether a custom/extension theme owns the colours (decks skip built-in
+    /// light/dark management when so).
+    theme_is_custom: bool,
     /// The doc's front-matter `include-*`/`css` (and any format-extension theme),
     /// injected into the page head/body so a single-doc preview matches the build.
     includes: qmd_fast_core::render::PageIncludes,
@@ -118,6 +121,7 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         d.toc = doc.toc;
         d.theme_css = doc.theme_css;
         d.theme_default = doc.theme_default;
+        d.theme_is_custom = doc.theme_is_custom;
         d.includes = doc.includes;
         d.warnings = doc.warnings;
         d.blocks = doc.blocks;
@@ -247,7 +251,7 @@ fn render_doc(app: &AppState) -> Option<RenderedDoc> {
 // --- HTTP ---------------------------------------------------------------
 
 async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
-    let (format, toc, theme_css, theme_default, includes, ojs, body) = {
+    let (format, toc, theme_css, theme_default, theme_is_custom, includes, ojs, body) = {
         let d = app.doc.lock();
         let ojs = d
             .blocks
@@ -258,6 +262,7 @@ async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
             d.toc,
             d.theme_css.clone(),
             d.theme_default.clone(),
+            d.theme_is_custom,
             d.includes.clone(),
             ojs,
             d.body_html(),
@@ -275,6 +280,7 @@ async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
         toc,
         theme_css: &theme_css,
         theme_default: &theme_default,
+        theme_is_custom,
         ojs,
         doc_path: &doc_path.to_string_lossy(),
         base_dir: &base_dir.to_string_lossy(),
@@ -290,6 +296,7 @@ struct PageCtx<'a> {
     toc: bool,
     theme_css: &'a str,
     theme_default: &'a str,
+    theme_is_custom: bool,
     ojs: bool,
     doc_path: &'a str,
     base_dir: &'a str,
@@ -576,6 +583,7 @@ fn reveal_index_html(ctx: &PageCtx) -> String {
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
 <title>qmd-fast</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.ico" />
+{deck_theme}
 {head}
 {code_head}
 {ojs_head}
@@ -600,6 +608,7 @@ fn reveal_index_html(ctx: &PageCtx) -> String {
 </body>
 </html>
 "#,
+        deck_theme = qmd_fast_core::deck_theme_head(ctx.theme_default, ctx.theme_is_custom),
         head = qmd_fast_core::reveal_client_head(),
         code_head = qmd_fast_core::code_head(),
         code_scripts = qmd_fast_core::code_scripts(),
@@ -894,6 +903,7 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         d.toc = doc.toc;
         d.theme_css = doc.theme_css;
         d.theme_default = doc.theme_default;
+        d.theme_is_custom = doc.theme_is_custom;
         d.includes = doc.includes;
         d.warnings = doc.warnings;
         d.blocks = blocks;

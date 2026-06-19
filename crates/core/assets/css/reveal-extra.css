@@ -111,6 +111,28 @@
 
 .reveal .katex-display { margin: .4em 0; }
 
+/* === Dark theme (html.qmd-deck-dark) ====================================== */
+/* The class is set, pre-paint, by the deck theme head script (deck_theme_head):
+   from `theme: dark/light`, the embedding page's theme (a same-origin host), or
+   the OS preference for a standalone deck. Only the built-in theme participates —
+   a custom/extension theme (liquid-glass) owns its colours, so the head script
+   emits nothing for it. Palette mirrors the page dark theme (dark.css). PDF export
+   forces light: deck.js drops the class while printing. */
+html.qmd-deck-dark .reveal {
+  --deck-ink: #e6e6e6;
+  --deck-muted: #9aa0aa;
+  --deck-accent: #6ea8ff;
+  --deck-rule: #363a44;
+  --deck-code-bg: #21242b;
+}
+html.qmd-deck-dark .reveal .qhl-comment { color: #8b949e; }
+html.qmd-deck-dark .reveal .qhl-string { color: #a5d6ff; }
+html.qmd-deck-dark .reveal .qhl-keyword, html.qmd-deck-dark .reveal .qhl-storage { color: #ff7b72; }
+html.qmd-deck-dark .reveal .qhl-constant, html.qmd-deck-dark .reveal .qhl-support { color: #79c0ff; }
+html.qmd-deck-dark .reveal .qhl-entity { color: #d2a8ff; }
+html.qmd-deck-dark .reveal .qhl-variable { color: #ffa657; }
+html.qmd-deck-dark .reveal .qmd-copy { background: #21242b; color: var(--deck-muted); border-color: var(--deck-rule); }
+
 /* Speaker notes (`::: {.notes}`) are for the presenter window only. */
 .reveal .notes { display: none; }
 

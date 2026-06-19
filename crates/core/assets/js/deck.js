@@ -95,6 +95,7 @@
     applyFragments();
     applyBackground();
     if (deck.draw) redrawAnnotations(); // restore the new slide's annotations
+    updateChrome(); // progress bar / menu state follow the current slide
     deck.lastSlide = currentSlide(); // remember for the next auto-animate transition
   }
   // --- per-slide backgrounds ---------------------------------------------
@@ -780,6 +781,10 @@
     var t = /** @type {any} */ (e.target);
     if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
     var handled = true;
+    if (deck.menuOpen) { // swallow keys while the control menu is open
+      if (e.key === 'Escape' || e.key === 'm' || e.key === '?') { toggleMenu(false); e.preventDefault(); }
+      return;
+    }
     if (deck.overview) {
       switch (e.key) {
         case 'Escape': case 'Enter': case ' ': setOverview(false); moveTo(deck.h, deck.v, true); break;
@@ -802,6 +807,8 @@
       case 'Escape': case 'o': if (deck.mode === 'normal') setOverview(true); break;
       case 's': openSpeaker(); break;
       case 'd': toggleDraw(); break;
+      case 'f': toggleFullscreen(); break;
+      case 'm': case '?': toggleMenu(); break;
       default: handled = false;
     }
     if (handled) e.preventDefault();
@@ -833,6 +840,174 @@
     try { p.init(facade); } catch (e) {}
   }
   function registerPlugin(p) { if (p) { deck.plugins.push(p); if (deck.ready) initPlugin(p); } }
+
+  // --- on-screen chrome: control menu, progress bar, nav arrows -----------
+  // The deck's features (overview, annotate, speaker, PDF, reader, dark mode)
+  // were keyboard-only and so undiscoverable; this surfaces them in a corner
+  // menu (reveal-style) plus a progress bar + prev/next arrows. Built once in
+  // normal mode; auto-hides on idle. Fixed to the viewport (not the scaled
+  // .slides), so it doesn't ride the deck transform.
+  function svg(p) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>'; }
+  var IC = {
+    menu: svg('<path d="M4 7h16M4 12h16M4 17h16"/>'),
+    grid: svg('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>'),
+    pen: svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
+    speak: svg('<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>'),
+    fs: svg('<path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/>'),
+    pdf: svg('<path d="M14 3v5h5"/><path d="M5 3h9l5 5v13H5z"/>'),
+    reader: svg('<path d="M4 5h16M4 10h16M4 15h10"/>'),
+    moon: svg('<path d="M21 12.8A8 8 0 1 1 11.2 3a6 6 0 0 0 9.8 9.8z"/>'),
+  };
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function tool(action, ico, label, hint) {
+    return '<button class="qmd-menu-item" data-action="' + action + '"><span class="qmd-menu-ico">' + ico +
+      '</span><span class="qmd-menu-label">' + label + '</span>' + (hint ? '<span class="qmd-menu-hint">' + hint + '</span>' : '') + '</button>';
+  }
+  function key(k, d) { return '<div class="qmd-key"><kbd>' + k + '</kbd><span>' + d + '</span></div>'; }
+  var KEYS_HTML =
+    key('← →', 'Navigate') + key('↑ ↓', 'Vertical slides') + key('Space', 'Next') +
+    key('O', 'Overview') + key('F', 'Fullscreen') + key('S', 'Speaker view') +
+    key('D', 'Annotate') + key('⌘/Ctrl P', 'Export PDF') + key('?', 'This menu') + key('Esc', 'Close');
+
+  function buildChrome() {
+    var rev = revealEl();
+    if (!rev || deck.chrome) return;
+    var prog = document.createElement('div');
+    prog.className = 'qmd-progress';
+    prog.innerHTML = '<div class="qmd-progress-fill"></div>';
+    rev.appendChild(prog);
+    var ctl = document.createElement('div');
+    ctl.className = 'qmd-controls';
+    ctl.innerHTML =
+      '<button class="qmd-ctl qmd-ctl-prev" aria-label="Previous slide" title="Previous (←)">‹</button>' +
+      '<button class="qmd-ctl qmd-ctl-next" aria-label="Next slide" title="Next (→)">›</button>' +
+      '<button class="qmd-ctl qmd-ctl-menu" aria-label="Menu" title="Menu (m)">' + IC.menu + '</button>';
+    rev.appendChild(ctl);
+    ctl.querySelector('.qmd-ctl-prev').addEventListener('click', function () { prev(); });
+    ctl.querySelector('.qmd-ctl-next').addEventListener('click', function () { next(); });
+    ctl.querySelector('.qmd-ctl-menu').addEventListener('click', function () { toggleMenu(); });
+    deck.chrome = { fill: prog.querySelector('.qmd-progress-fill'), ctl: ctl };
+    buildMenu();
+    document.addEventListener('mousemove', showChrome);
+    document.addEventListener('touchstart', showChrome, { passive: true });
+    showChrome();
+    updateChrome();
+  }
+  function buildMenu() {
+    var menu = document.createElement('div');
+    menu.className = 'qmd-menu';
+    menu.setAttribute('hidden', '');
+    var themeRow = (window.qmdDeckThemeManaged && !window.qmdDeckEmbedded)
+      ? '<div class="qmd-menu-head">Theme</div><div class="qmd-menu-tools">' +
+        tool('theme', IC.moon, 'Dark mode', '<span class="qmd-theme-state"></span>') + '</div>'
+      : '';
+    menu.innerHTML =
+      '<div class="qmd-menu-head">Slides</div><div class="qmd-menu-slides"></div>' +
+      '<div class="qmd-menu-head">Tools</div><div class="qmd-menu-tools">' +
+        tool('overview', IC.grid, 'Overview', 'O') +
+        tool('reader', IC.reader, 'Reader mode', '') +
+        tool('draw', IC.pen, 'Annotate', 'D') +
+        tool('speaker', IC.speak, 'Speaker view', 'S') +
+        tool('fullscreen', IC.fs, 'Fullscreen', 'F') +
+        tool('print', IC.pdf, 'Export PDF', '⌘P') +
+      '</div>' + themeRow +
+      '<div class="qmd-menu-head">Keyboard</div><div class="qmd-menu-keys">' + KEYS_HTML + '</div>';
+    document.body.appendChild(menu);
+    var backdrop = document.createElement('div');
+    backdrop.className = 'qmd-menu-backdrop';
+    backdrop.setAttribute('hidden', '');
+    backdrop.addEventListener('click', function () { toggleMenu(false); });
+    document.body.appendChild(backdrop);
+    menu.addEventListener('click', onMenuClick);
+    deck.menu = menu;
+    deck.menuBackdrop = backdrop;
+  }
+  function refreshSlideList() {
+    var box = deck.menu && deck.menu.querySelector('.qmd-menu-slides');
+    if (!box) return;
+    var all = allSlides(), cur = currentSlide(), html = '';
+    for (var i = 0; i < all.length; i++) {
+      var hd = all[i].querySelector('h1,h2,h3');
+      var label = hd ? hd.textContent.trim() : ('Slide ' + (i + 1));
+      html += '<button class="qmd-menu-slide' + (all[i] === cur ? ' qmd-on' : '') + '" data-i="' + i + '">' +
+        '<span class="qmd-menu-slide-n">' + (i + 1) + '</span><span class="qmd-menu-slide-t">' + esc(label) + '</span></button>';
+    }
+    box.innerHTML = html;
+    var on = box.querySelector('.qmd-on');
+    if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
+  }
+  function markActiveTools() {
+    if (!deck.menu) return;
+    var set = function (action, on) {
+      var b = deck.menu.querySelector('[data-action="' + action + '"]');
+      if (b) b.classList.toggle('qmd-on', !!on);
+    };
+    set('reader', deck.scroll);
+    set('draw', deck.draw && deck.draw.on);
+    set('overview', deck.overview);
+    var st = deck.menu.querySelector('.qmd-theme-state');
+    if (st) st.textContent = document.documentElement.classList.contains('qmd-deck-dark') ? 'On' : 'Off';
+  }
+  function onMenuClick(e) {
+    var slide = e.target.closest && e.target.closest('.qmd-menu-slide');
+    if (slide) { jumpToIndex(parseInt(slide.getAttribute('data-i'), 10)); return; }
+    var item = e.target.closest && e.target.closest('.qmd-menu-item');
+    if (!item) return;
+    var a = item.getAttribute('data-action');
+    if (a === 'theme') { toggleThemeMode(); return; } // stay open; reflects state
+    toggleMenu(false);
+    if (a === 'overview') setOverview(true);
+    else if (a === 'reader') toggleScroll();
+    else if (a === 'draw') toggleDraw(true);
+    else if (a === 'speaker') openSpeaker();
+    else if (a === 'fullscreen') toggleFullscreen();
+    else if (a === 'print') window.print();
+  }
+  function toggleMenu(force) {
+    if (!deck.menu) return;
+    var open = (force == null) ? deck.menu.hasAttribute('hidden') : force;
+    deck.menuOpen = open;
+    if (open) {
+      refreshSlideList(); markActiveTools();
+      deck.menu.removeAttribute('hidden'); deck.menuBackdrop.removeAttribute('hidden');
+      showChrome();
+    } else {
+      deck.menu.setAttribute('hidden', ''); deck.menuBackdrop.setAttribute('hidden', '');
+    }
+  }
+  function jumpToIndex(i) {
+    var all = allSlides(), el = all[i];
+    if (!el) return;
+    var ix = indexOf(el);
+    toggleMenu(false);
+    if (deck.overview) setOverview(false);
+    moveTo(ix.h, ix.v, true);
+  }
+  function toggleScroll() { deck.scroll ? exitScroll() : enterScroll(); updateChrome(); }
+  function toggleFullscreen() {
+    try {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+    } catch (e) {}
+  }
+  function toggleThemeMode() {
+    if (!window.qmdDeckSetTheme) return;
+    var dark = document.documentElement.classList.contains('qmd-deck-dark');
+    window.qmdDeckSetTheme(dark ? 'light' : 'dark');
+    markActiveTools();
+  }
+  function updateChrome() {
+    if (!deck.chrome) return;
+    var all = allSlides(), idx = all.indexOf(currentSlide());
+    var pct = all.length ? (idx + 1) / all.length * 100 : 0;
+    deck.chrome.fill.style.width = pct + '%';
+  }
+  var idleTimer;
+  function showChrome() {
+    document.documentElement.classList.remove('qmd-idle');
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(function () { if (!deck.menuOpen) document.documentElement.classList.add('qmd-idle'); }, 3000);
+  }
 
   // --- lifecycle ----------------------------------------------------------
   function initialize(opts) {
@@ -875,6 +1050,14 @@
       rev.addEventListener('touchend', onTouchEnd, { passive: true });
       slidesEl().addEventListener('click', onSlidesClick);
       window.addEventListener('hashchange', onHashChange);
+      buildChrome(); // the control menu + progress bar + nav arrows
+      // Embedded in a same-origin page: follow the host's light/dark toggle live.
+      if (window.qmdDeckEmbedded && window.qmdDeckApplyTheme) {
+        try {
+          new MutationObserver(window.qmdDeckApplyTheme)
+            .observe(window.top.document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+        } catch (e) {}
+      }
       window.addEventListener('beforeprint', enterPrint); // Cmd/Ctrl+P -> one slide per page
       window.addEventListener('afterprint', exitPrint);
       // Scroll/reader mode: explicit ?qmd=scroll, or auto on a narrow/portrait screen

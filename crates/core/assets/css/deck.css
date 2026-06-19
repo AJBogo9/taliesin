@@ -228,11 +228,11 @@ html.qmd-print .qmd-bg { display: none; } /* per-slide backgrounds aren't in the
 .qmd-speaker .sp-notes-body :last-child { margin-bottom: 0; }
 .qmd-speaker .sp-empty { color: #6b7079; font-style: italic; }
 
-/* slideNumber: 'c/t' chip. */
+/* slideNumber: 'c/t' chip (top-right, clear of the bottom control chrome). */
 .reveal .qmd-slide-number {
   position: absolute;
-  right: 10px;
-  bottom: 10px;
+  right: 12px;
+  top: 10px;
   z-index: 30;
   font: 600 16px ui-sans-serif, system-ui, sans-serif;
   color: rgba(0, 0, 0, .5);
@@ -347,3 +347,71 @@ html.qmd-scroll .reveal .slides > section > section {
 html.qmd-scroll .reveal .slides > section:first-child { border-top: 0; }
 html.qmd-scroll .reveal .slides > section.qmd-scroll-stack { padding: 0; border-top: 0; }
 html.qmd-scroll .qmd-slide-number { display: none; }
+
+/* === Dark theme backgrounds (palette/colours live in reveal-extra.css) =====
+   The slides are transparent (they show the body), so the body background is the
+   deck background. Overview tiles, the slide-number chip, and reader mode each
+   carry their own hardcoded light surface, so override those too. PDF print stays
+   light (deck.js removes qmd-deck-dark while printing). */
+html.qmd-deck-dark, html.qmd-deck-dark body { background: #16181d; }
+html.qmd-deck-dark .reveal.overview .slides > section { background: #22262e; }
+html.qmd-deck-dark .reveal .qmd-slide-number { background: rgba(255, 255, 255, .12); color: rgba(255, 255, 255, .62); }
+html.qmd-deck-dark.qmd-scroll, html.qmd-deck-dark.qmd-scroll body { background: #16181d; }
+
+/* === On-screen chrome: progress bar, nav arrows, control menu =============
+   A reveal-style control surface built by deck.js in normal mode, surfacing the
+   keyboard-only features (overview / annotate / speaker / fullscreen / PDF /
+   reader / dark mode) + a jump-to-slide list + a shortcut sheet. Fixed to the
+   viewport (outside the scaled .slides). A consistent dark glass surface that
+   reads on both light and dark decks; arrows + menu auto-hide on idle. */
+.qmd-progress { position: fixed; left: 0; right: 0; bottom: 0; height: 3px; z-index: 60;
+  background: rgba(127, 127, 127, .18); pointer-events: none; }
+.qmd-progress-fill { height: 100%; width: 0; background: var(--deck-accent, #4c6ef5); transition: width .25s ease; }
+
+.qmd-controls { position: fixed; right: 14px; bottom: 14px; z-index: 61; display: flex; gap: 6px;
+  transition: opacity .25s ease; }
+.qmd-ctl { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center;
+  padding: 0; border: 0; border-radius: 8px; cursor: pointer; color: #e6e8ec;
+  background: rgba(20, 22, 27, .78); font: 600 21px/1 ui-sans-serif, system-ui, sans-serif;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+.qmd-ctl:hover { background: rgba(20, 22, 27, .96); }
+.qmd-ctl svg { width: 18px; height: 18px; display: block; }
+.qmd-idle .qmd-controls { opacity: 0; pointer-events: none; }
+
+.qmd-menu-backdrop { position: fixed; inset: 0; z-index: 70; background: transparent; }
+.qmd-menu[hidden], .qmd-menu-backdrop[hidden] { display: none; }
+.qmd-menu { position: fixed; right: 14px; bottom: 58px; z-index: 71; width: 300px; max-height: 78vh;
+  overflow-y: auto; box-sizing: border-box; padding: 10px;
+  background: rgba(20, 22, 27, .97); color: #e6e8ec; border: 1px solid #2c313b; border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, .5);
+  font: 14px/1.3 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.qmd-menu-head { font-size: 10.5px; text-transform: uppercase; letter-spacing: .09em; color: #8b919c; margin: 11px 6px 4px; }
+.qmd-menu-head:first-child { margin-top: 2px; }
+.qmd-menu-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.qmd-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px;
+  border: 0; border-radius: 8px; cursor: pointer; text-align: left; background: transparent; color: #e6e8ec; font: inherit; }
+.qmd-menu-item:hover { background: rgba(255, 255, 255, .08); }
+.qmd-menu-item.qmd-on { background: color-mix(in srgb, var(--deck-accent, #4c6ef5) 32%, transparent); }
+.qmd-menu-ico { display: inline-flex; color: #aeb4bf; }
+.qmd-menu-ico svg { width: 17px; height: 17px; }
+.qmd-menu-item.qmd-on .qmd-menu-ico { color: #fff; }
+.qmd-menu-label { flex: 1; }
+.qmd-menu-hint { color: #8b919c; font-size: 12px; }
+.qmd-menu-slides { max-height: 30vh; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+.qmd-menu-slide { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 6px 10px;
+  border: 0; border-radius: 7px; cursor: pointer; text-align: left; background: transparent; color: #c7ccd6; font: inherit; }
+.qmd-menu-slide:hover { background: rgba(255, 255, 255, .08); color: #fff; }
+.qmd-menu-slide.qmd-on .qmd-menu-slide-n { color: var(--deck-accent, #6ea8ff); }
+.qmd-menu-slide.qmd-on .qmd-menu-slide-t { color: #fff; }
+.qmd-menu-slide-n { flex: 0 0 1.5em; color: #6b7079; font-variant-numeric: tabular-nums; font-size: 12px; }
+.qmd-menu-slide-t { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qmd-menu-keys { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 10px; padding: 2px 6px 4px; }
+.qmd-key { display: flex; align-items: center; gap: 7px; color: #aeb4bf; font-size: 12px; }
+.qmd-key kbd { font: 600 11px ui-monospace, SFMono-Regular, Menlo, monospace; color: #e6e8ec;
+  background: #2a2e36; border: 1px solid #3a3f49; border-radius: 5px; padding: 1px 5px; white-space: nowrap; }
+
+/* live-presenting chrome only: gone in print + overview; reader keeps just the menu button */
+html.qmd-print .qmd-progress, html.qmd-print .qmd-controls, html.qmd-print .qmd-menu, html.qmd-print .qmd-menu-backdrop,
+.reveal.overview .qmd-progress, .reveal.overview .qmd-controls { display: none !important; }
+html.qmd-scroll .qmd-progress, html.qmd-scroll .qmd-ctl-prev, html.qmd-scroll .qmd-ctl-next { display: none; }
