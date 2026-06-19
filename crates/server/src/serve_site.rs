@@ -650,18 +650,39 @@ struct ExecPool {
     execs: HashMap<String, crate::exec::Executor>,
     /// Page rel-paths, most-recently-built first; kept in sync with `execs`' keys.
     mru: Vec<String>,
+    /// `_freeze/` directory for the project; each page's executor caches its outputs
+    /// under it. Empty (the `Default`) disables caching — used by the unit tests.
+    freeze_dir: PathBuf,
 }
 
 impl ExecPool {
+    /// A pool whose executors persist their outputs under `freeze_dir`.
+    fn new(freeze_dir: PathBuf) -> Self {
+        ExecPool {
+            freeze_dir,
+            ..Default::default()
+        }
+    }
+
+    /// A fresh executor for `rel`, cache-backed when the pool has a `_freeze/` dir.
+    fn make(&self, rel: &str) -> crate::exec::Executor {
+        if self.freeze_dir.as_os_str().is_empty() {
+            crate::exec::Executor::new()
+        } else {
+            crate::exec::Executor::with_freeze(crate::freeze::page_path(&self.freeze_dir, rel))
+        }
+    }
+
     /// The executor for `rel` (created if absent), marked most-recently-used. If
     /// that pushes the live set past the cap, the least-recently-built page's
     /// executor is dropped (killing its kernels).
     fn get(&mut self, rel: &str) -> &mut crate::exec::Executor {
         self.mru.retain(|r| r != rel);
         self.mru.insert(0, rel.to_string());
-        self.execs
-            .entry(rel.to_string())
-            .or_insert_with(crate::exec::Executor::new);
+        if !self.execs.contains_key(rel) {
+            let ex = self.make(rel);
+            self.execs.insert(rel.to_string(), ex);
+        }
         while self.mru.len() > MAX_WARM_PAGES {
             if let Some(evicted) = self.mru.pop() {
                 self.execs.remove(&evicted); // drops the executor -> kills its kernels
@@ -728,7 +749,7 @@ mod exec_pool_tests {
 
 fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildMsg>) {
     tokio::spawn(async move {
-        let mut pool = ExecPool::default();
+        let mut pool = ExecPool::new(app.root.join("_freeze"));
         while let Some(msg) = build_rx.recv().await {
             match msg {
                 BuildMsg::Build(rel) => build_page_guarded(&app, &rel, &mut pool).await,

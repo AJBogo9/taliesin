@@ -1,18 +1,35 @@
-//! Execution engine: runs a document's Python code cells against a warm kernel
+//! Execution engine: runs a document's Python/R code cells against a warm kernel
 //! and splices the outputs back into the block list as their own blocks.
 //!
-//! Granularity is simple notebook semantics: on each rebuild, find the earliest
-//! cell whose source changed and re-run it plus everything after it (downstream
-//! cells may depend on the changed kernel state); cells before it reuse their
-//! cached output. Each output block's id is derived from its cell's id, so it
-//! swaps in place when the cell (or an upstream cell) re-runs.
+//! ## Granularity & the persistent cache
+//!
+//! Cell outputs are keyed by a cumulative content hash (see [`crate::freeze`]):
+//! cell `i`'s key folds in every same-language cell's code up to and including it,
+//! so editing a cell — or anything upstream — moves its key and every downstream
+//! key. Each run plans (via [`plan`]) which contiguous range of cells must actually
+//! execute:
+//!
+//!   - in a **warm session**, the live kernel already holds the unchanged prefix's
+//!     state, so only the changed cell + downstream re-run (notebook semantics);
+//!   - on a **cold start** (a `build`, or a preview after restart) the kernel holds
+//!     nothing, so if every cell hits the disk cache we replay all outputs and never
+//!     boot the kernel; if anything changed we re-run from the first cell whose
+//!     state the kernel lacks. Kernel *variable* state is never cached (that's what
+//!     makes Quarto's per-cell `cache` fragile), so a cold start can only skip work
+//!     when the whole document is unchanged.
+//!
+//! Each output block's id is derived from its cell's id, so it swaps in place when
+//! the cell (or an upstream cell) re-runs.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
+use parking_lot::Mutex;
 use qmd_fast_core::{Block, escape_attr as esc, render::CellFigure};
 
+use crate::freeze::{self, FreezeCache};
 use crate::kernel::{Kernel, KernelSpec, render_outputs};
 
 /// After a failed kernel start, wait at least this long before retrying — long
@@ -47,15 +64,21 @@ struct CellRef {
     figure: Option<CellFigure>,
     /// `#| include: false`: run the cell (for downstream state) but emit no output.
     include: bool,
+    /// `#| cache: false`: never restore from / persist to the disk cache; always
+    /// re-executes (the escape hatch for non-deterministic cells).
+    cache: bool,
 }
 
-struct Cached {
-    id: String,
+/// A cell the *current warm kernel* has executed: its cumulative cache key and the
+/// output it produced. Ordered, contiguous from cell 0 — so it doubles as the
+/// "what state does the live kernel hold" record the [`plan`]ner diffs against.
+struct Ran {
+    hash: String,
     output: String, // inner output HTML (may be empty)
 }
 
-/// Per-language warm kernel + its output cache. One per executed language so a
-/// `{python}` and an `{r}` cell run against independent, isolated kernels.
+/// Per-language warm kernel + the cells it has executed. One per executed language
+/// so a `{python}` and an `{r}` cell run against independent, isolated kernels.
 #[derive(Default)]
 struct LangState {
     kernel: Option<Kernel>,
@@ -65,7 +88,10 @@ struct LangState {
     /// The last kernel-start error (the interpreter's own message, e.g. a missing
     /// `ipykernel`), surfaced to the user so a failing kernel isn't opaque.
     last_error: Option<String>,
-    cached: Vec<Cached>,
+    /// Cells the live kernel has run, in order from cell 0 (empty when cold). Drives
+    /// the warm-prefix reuse: a cell whose key still matches keeps its output and
+    /// isn't re-run, because the kernel still holds its state.
+    ran: Vec<Ran>,
 }
 
 pub struct Executor {
@@ -73,10 +99,31 @@ pub struct Executor {
     r: PathBuf,
     /// One warm kernel per executed language ("python", "r"), created lazily.
     langs: HashMap<&'static str, LangState>,
+    /// Disk-backed output cache for this document (the L2 behind the per-language
+    /// in-memory `ran`). Disabled by [`Executor::new`]; bound to a `_freeze/` file
+    /// by [`Executor::with_freeze`].
+    freeze: FreezeCache,
+    /// Set by [`Executor::restart_kernel`]: makes the *next* run ignore disk-cache
+    /// hits and re-execute every cell against the fresh kernel (then re-persist),
+    /// so "Restart kernel" actually re-runs rather than replaying stale outputs.
+    force_next: bool,
 }
 
 impl Executor {
+    /// An executor with the persistent cache **disabled** (in-memory warm reuse
+    /// only). Used where there's no on-disk home for the cache.
     pub fn new() -> Self {
+        Self::build(FreezeCache::disabled())
+    }
+
+    /// An executor whose outputs are cached in (and restored from) the `_freeze/`
+    /// file at `freeze_path`, so unchanged cells survive across `build` runs and
+    /// preview restarts.
+    pub fn with_freeze(freeze_path: PathBuf) -> Self {
+        Self::build(FreezeCache::for_page(freeze_path))
+    }
+
+    fn build(freeze: FreezeCache) -> Self {
         let python = std::env::var_os("QMD_FAST_PYTHON")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("python3"));
@@ -87,6 +134,8 @@ impl Executor {
             python,
             r,
             langs: HashMap::new(),
+            freeze,
+            force_next: false,
         }
     }
 
@@ -129,9 +178,12 @@ impl Executor {
     /// Drop every language's kernel and clear the failure backoff, so the next run
     /// starts fresh kernels immediately. Backs the dev-menu "Restart kernel" action
     /// and recovery after fixing `QMD_FAST_PYTHON`/`QMD_FAST_R`. (Dropping a kernel
-    /// kills its child process.)
+    /// kills its child process.) Also forces the next run to re-execute every cell
+    /// (ignoring disk-cache hits), so "Restart kernel" actually re-runs against the
+    /// fresh kernel instead of replaying cached outputs.
     pub fn restart_kernel(&mut self) {
         self.langs.clear();
+        self.force_next = true;
     }
 
     /// Execute the document's code cells (changed cells + downstream, per language)
@@ -153,6 +205,7 @@ impl Executor {
                     source_file: b.source_file.clone(),
                     figure: c.figure.clone(),
                     include: c.include,
+                    cache: c.cache,
                 });
             }
         }
@@ -177,6 +230,10 @@ impl Executor {
                 output_blocks.insert(cell.block_index, output_block(cell, inner));
             }
         }
+        // A forced re-run (Restart kernel) applies to every language in this pass,
+        // then clears. Flush any newly executed outputs to `_freeze/` once.
+        self.force_next = false;
+        self.freeze.save();
 
         let mut result = Vec::with_capacity(blocks.len() + output_blocks.len());
         for (i, b) in blocks.into_iter().enumerate() {
@@ -188,18 +245,36 @@ impl Executor {
         result
     }
 
-    /// Outputs (inner HTML) for one language's cells, reusing that language's cache
-    /// before the earliest changed cell and executing from there to the end.
+    /// Outputs (inner HTML) for one language's cells: restore the unchanged warm
+    /// prefix + any disk-cached tail, and execute the contiguous range in between
+    /// (see [`plan`]). Freshly executed, cacheable, non-error outputs are persisted.
     async fn compute_outputs(&mut self, lang: &'static str, cells: &[CellRef]) -> Vec<String> {
-        let first_changed = self
+        // The interpreter identity seeds the cumulative hash chain (a different
+        // interpreter/version can't serve another's outputs). Computed up front so
+        // even a full cold replay — which never boots the kernel — can key the cache.
+        let interp = self
+            .spec(lang)
+            .map(|(_, program)| interp_id(lang, &program))
+            .unwrap_or_else(|| lang.to_string());
+        let codes: Vec<&str> = cells.iter().map(|c| c.code.as_str()).collect();
+        let hashes = freeze::cumulative_hashes(&interp, &codes);
+
+        // A cell is "known" (restorable without running) when its output is on disk
+        // and it isn't opted out (`#| cache: false` always re-executes). A forced
+        // re-run (Restart kernel) treats everything as unknown.
+        let force = self.force_next;
+        let known = |i: usize| !force && cells[i].cache && self.freeze.get(&hashes[i]).is_some();
+        let ran: Vec<String> = self
             .langs
             .get(lang)
-            .map(|s| first_changed_index(&s.cached, cells))
-            .unwrap_or(0);
+            .map(|s| s.ran.iter().map(|r| r.hash.clone()).collect())
+            .unwrap_or_default();
+        let (shared, run_end) = plan(&ran, &hashes, known);
 
-        let to_run = cells.len().saturating_sub(first_changed);
+        let to_run = run_end.saturating_sub(shared);
         // Boot the kernel up-front (the real wait), so the per-cell progress below
-        // reflects actual execution rather than the startup it used to hide.
+        // reflects actual execution rather than the startup it used to hide. A full
+        // replay (to_run == 0) never boots: that's the cold-start fast path.
         if to_run > 0 {
             self.ensure_kernel(lang).await;
         }
@@ -208,42 +283,72 @@ impl Executor {
             .get(lang)
             .map(|s| s.kernel.is_some())
             .unwrap_or(false);
+
+        // Outputs already known without running, pulled out before the execute loop
+        // so they don't hold a borrow on `self` across `exec_cell`: the warm prefix
+        // from the live kernel's in-memory record, the tail from the disk cache.
+        let warm: Vec<String> = self
+            .langs
+            .get(lang)
+            .map(|s| {
+                s.ran
+                    .iter()
+                    .take(shared)
+                    .map(|r| r.output.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let tail: Vec<String> = (run_end..cells.len())
+            .map(|i| self.freeze.get(&hashes[i]).unwrap_or_default().to_string())
+            .collect();
+
         let mut outputs = Vec::with_capacity(cells.len());
-        let mut ran = 0;
+        let mut ran_count = 0;
         for (i, cell) in cells.iter().enumerate() {
-            if i < first_changed {
-                let cached = self
-                    .langs
-                    .get(lang)
-                    .and_then(|s| s.cached.get(i))
-                    .map(|c| c.output.clone())
-                    .unwrap_or_default();
-                outputs.push(cached);
-            } else if has_kernel && !self.kernel_alive(lang) {
-                // The kernel was up when this run started but has since exited (an
-                // earlier cell crashed it). Don't run the rest: each `execute` would
-                // just wait out the full cell timeout on a kernel that will never
-                // reply. Fail fast; the next rebuild detects the dead kernel,
-                // respawns it, and re-runs everything.
-                outputs.push(KERNEL_DIED_HTML.to_string());
-            } else {
-                // Progress only when the kernel is up; otherwise cells are instant
-                // no-ops and a "cell k/n" line would be misleading.
-                if has_kernel {
-                    ran += 1;
-                    crate::log::exec(ran, to_run);
+            if i < shared {
+                outputs.push(warm.get(i).cloned().unwrap_or_default());
+            } else if i < run_end {
+                if has_kernel && !self.kernel_alive(lang) {
+                    // The kernel was up when this run started but has since exited (an
+                    // earlier cell crashed it). Don't run the rest: each `execute`
+                    // would just wait out the full cell timeout on a kernel that will
+                    // never reply. Fail fast; the next rebuild detects the dead
+                    // kernel, respawns it, and re-runs everything.
+                    outputs.push(KERNEL_DIED_HTML.to_string());
+                } else {
+                    // Progress only when the kernel is up; otherwise cells are instant
+                    // no-ops and a "cell k/n" line would be misleading.
+                    if has_kernel {
+                        ran_count += 1;
+                        crate::log::exec(ran_count, to_run);
+                    }
+                    outputs.push(self.exec_cell(lang, &cell.code).await);
                 }
-                outputs.push(self.exec_cell(lang, &cell.code).await);
+            } else {
+                outputs.push(tail[i - run_end].clone());
             }
         }
 
+        // Persist freshly executed, cacheable, non-error outputs (only ones a live
+        // kernel actually produced). Errors and `cache: false` cells are never
+        // stored, so a transient failure or a nondeterministic cell never sticks.
+        if has_kernel {
+            for i in shared..run_end {
+                if cells[i].cache && !is_uncacheable(&outputs[i]) {
+                    self.freeze.put(hashes[i].clone(), outputs[i].clone());
+                }
+            }
+        }
+
+        // Record what the kernel now holds: cells [0, run_end) ran contiguously (the
+        // warm prefix it already had, plus what we just executed). The disk-restored
+        // tail is deliberately NOT recorded — the kernel never ran it, so a later
+        // edit there re-runs from here to rebuild state.
         if let Some(state) = self.langs.get_mut(lang) {
-            state.cached = cells
-                .iter()
-                .zip(&outputs)
-                .map(|(c, o)| Cached {
-                    id: c.id.clone(),
-                    output: o.clone(),
+            state.ran = (0..run_end)
+                .map(|i| Ran {
+                    hash: hashes[i].clone(),
+                    output: outputs[i].clone(),
                 })
                 .collect();
         }
@@ -271,7 +376,7 @@ impl Executor {
             }
             crate::log::warn(&format!("{lang} kernel exited; restarting"));
             state.kernel = None;
-            state.cached.clear(); // kernel state is gone; re-run everything
+            state.ran.clear(); // kernel state is gone; re-run everything
         }
         if let Some(at) = state.failed_at
             && at.elapsed() < KERNEL_RETRY_AFTER
@@ -322,14 +427,79 @@ impl Executor {
     }
 }
 
-/// Index of the earliest cell whose id differs from the previous cached run (or
-/// where the cache is shorter): everything from here re-runs, everything before
-/// reuses its cached output. Pure over the two id sequences, so the re-run
-/// granularity is unit-testable without a kernel.
-fn first_changed_index(cached: &[Cached], cells: &[CellRef]) -> usize {
-    (0..cells.len())
-        .find(|&i| cached.get(i).map(|c| c.id.as_str()) != Some(cells[i].id.as_str()))
-        .unwrap_or(cells.len())
+/// Decide the half-open range `[shared, run_end)` of cells that must execute this
+/// run. `ran` is the cumulative hashes the warm kernel has already executed
+/// (contiguous from cell 0; empty when cold); `hashes` are this run's per-cell
+/// keys; `known(i)` reports whether cell `i`'s output is available without running
+/// it (a disk-cache hit not opted out).
+///
+///   - `shared` = longest common prefix of `ran` and `hashes`: the kernel holds
+///     this prefix's state, so those cells restore (never re-run).
+///   - cells `[shared, run_end)` execute; `run_end` is one past the last cell whose
+///     output we don't already have. A *known* cell inside this range still runs —
+///     the kernel needs its state to reach an unknown cell after it.
+///   - cells `[run_end, len)` are all known and restore from the disk cache; their
+///     kernel state is never needed (nothing after them runs).
+///
+/// The safety properties fall out of this: a warm session re-runs only the changed
+/// cell + downstream; a cold start with everything known runs *nothing* (instant
+/// replay, kernel never booted); a cold start with any change runs from the first
+/// cell whose state the kernel lacks (kernel variable state is never faked). Pure,
+/// so the granularity is unit-testable without a kernel.
+fn plan(ran: &[String], hashes: &[String], known: impl Fn(usize) -> bool) -> (usize, usize) {
+    let shared = (0..hashes.len())
+        .take_while(|&i| ran.get(i) == Some(&hashes[i]))
+        .count();
+    let mut run_end = shared;
+    for i in shared..hashes.len() {
+        if !known(i) {
+            run_end = i + 1;
+        }
+    }
+    (shared, run_end)
+}
+
+/// Whether an output must not be cached: any execution error (a cell error, a
+/// timeout, or the mid-run kernel-died marker — all carry the `qmd-error` class),
+/// so a transient failure is never replayed and the cell re-runs next time.
+fn is_uncacheable(output: &str) -> bool {
+    output.contains("qmd-error")
+}
+
+/// A stable identity for a language's interpreter, used to seed the cumulative
+/// hash chain so a different interpreter (or an upgraded one) can't serve outputs
+/// it didn't compute. Runs `<program> --version` once and memoizes the result per
+/// `(lang, program)` for the process; if that fails (e.g. the interpreter isn't
+/// installed), falls back to the program path so the id is still stable.
+fn interp_id(lang: &str, program: &Path) -> String {
+    static CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+    let key = format!("{lang}\u{0}{}", program.display());
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(id) = cache.lock().get(&key) {
+        return id.clone();
+    }
+    let version = std::process::Command::new(program)
+        .arg("--version")
+        .output()
+        .ok()
+        .map(|o| {
+            // Python prints to stdout, some tools to stderr; take whichever is set.
+            let bytes = if o.stdout.is_empty() {
+                o.stderr
+            } else {
+                o.stdout
+            };
+            String::from_utf8_lossy(&bytes)
+                .lines()
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_string()
+        })
+        .unwrap_or_default();
+    let id = format!("{lang}::{}::{version}", program.display());
+    cache.lock().insert(key, id.clone());
+    id
 }
 
 /// Build the output block for a cell. Its id is the cell id + `-out`, and it
@@ -395,49 +565,53 @@ mod tests {
             source_file: None,
             figure: None,
             include: true,
+            cache: true,
         }
     }
 
-    fn cells(ids: &[&str]) -> Vec<CellRef> {
-        ids.iter().map(|id| cell(id)).collect()
+    fn h(ks: &[&str]) -> Vec<String> {
+        ks.iter().map(|s| s.to_string()).collect()
     }
 
-    fn cached(ids: &[&str]) -> Vec<Cached> {
-        ids.iter()
-            .map(|id| Cached {
-                id: id.to_string(),
-                output: String::new(),
-            })
-            .collect()
+    /// `plan` with `ran` = the warm kernel's executed keys and `cur` = this run's
+    /// per-cell keys; cells whose key is in `disk` are disk-cache hits.
+    fn run_plan(ran: &[&str], cur: &[&str], disk: &[&str]) -> (usize, usize) {
+        let cur = h(cur);
+        plan(&h(ran), &cur, |i| disk.contains(&cur[i].as_str()))
     }
 
     #[test]
-    fn first_changed_index_drives_cache_reuse_granularity() {
-        // Unchanged cell ids -> nothing re-runs (index == len, all cached).
+    fn plan_warm_session_reruns_only_changed_cell_and_downstream() {
+        // Warm kernel ran [a,b,c]; nothing changed -> run nothing (full reuse).
+        assert_eq!(run_plan(&["a", "b", "c"], &["a", "b", "c"], &[]), (3, 3));
+        // Edit the middle cell: its key + downstream keys move; re-run from there.
+        assert_eq!(run_plan(&["a", "b", "c"], &["a", "X", "Y"], &[]), (1, 3));
+        // Edit only the last cell: re-run just it.
+        assert_eq!(run_plan(&["a", "b", "c"], &["a", "b", "Z"], &[]), (2, 3));
+        // Append a cell: run only the new trailing cell.
+        assert_eq!(run_plan(&["a", "b"], &["a", "b", "c"], &[]), (2, 3));
+        // Remove the trailing cell: survivors stay warm, run nothing.
+        assert_eq!(run_plan(&["a", "b", "c"], &["a", "b"], &[]), (2, 2));
+        // Warm prefix [a,b] + a fully disk-cached tail [c,d] -> still run nothing.
         assert_eq!(
-            first_changed_index(&cached(&["a", "b", "c"]), &cells(&["a", "b", "c"])),
-            3
+            run_plan(&["a", "b"], &["a", "b", "c", "d"], &["c", "d"]),
+            (2, 2)
         );
-        // The first differing cell, and everything after it, re-runs.
-        assert_eq!(
-            first_changed_index(&cached(&["a", "b", "c"]), &cells(&["a", "X", "c"])),
-            1
-        );
-        assert_eq!(
-            first_changed_index(&cached(&["a", "b", "c"]), &cells(&["Z", "b", "c"])),
-            0
-        );
-        // A cold cache (or a freshly appended trailing cell) re-runs from the gap.
-        assert_eq!(first_changed_index(&[], &cells(&["a", "b"])), 0);
-        assert_eq!(
-            first_changed_index(&cached(&["a", "b"]), &cells(&["a", "b", "c"])),
-            2
-        );
-        // A removed trailing cell leaves the survivors cached (index past the end).
-        assert_eq!(
-            first_changed_index(&cached(&["a", "b", "c"]), &cells(&["a", "b"])),
-            2
-        );
+    }
+
+    #[test]
+    fn plan_cold_start_replays_only_when_every_cell_is_known() {
+        // Cold kernel, every cell on disk -> run NOTHING (instant replay, the
+        // kernel never boots). The headline persistent-cache win.
+        assert_eq!(run_plan(&[], &["a", "b", "c"], &["a", "b", "c"]), (0, 0));
+        // Cold kernel, nothing cached -> run everything from the start.
+        assert_eq!(run_plan(&[], &["a", "b", "c"], &[]), (0, 3));
+        // Cold start, only the last cell changed (missing from disk): we lack kernel
+        // state for the prefix, so we must re-run the whole document.
+        assert_eq!(run_plan(&[], &["a", "b", "Z"], &["a", "b"]), (0, 3));
+        // Cold start, a middle cell missing: run through it; the cached tail after
+        // the last miss restores without running (its state is never needed).
+        assert_eq!(run_plan(&[], &["a", "X", "c"], &["a", "c"]), (0, 2));
     }
 
     #[test]

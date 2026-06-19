@@ -131,9 +131,10 @@ fn render_internal(
     // collected through the whole render and surfaced in the dev menu / build log.
     let mut warnings: Vec<String> = Vec::new();
     // Document-level cell defaults from a front-matter `execute:` block; a cell's
-    // own `#| echo`/`#| include` overrides these.
+    // own `#| echo`/`#| include`/`#| cache` overrides these.
     let mut exec_echo = true;
     let mut exec_include = true;
+    let mut exec_cache = true;
     let mut flat: Vec<FlatBlock> = Vec::new();
     // Footnote definitions, rendered as `<li>`s and gathered into a section at the
     // end (comrak moves them here in reference order); see below the loop.
@@ -202,7 +203,7 @@ fn render_internal(
                 if theme.is_none() {
                     theme = fmt_theme_base.map(String::from);
                 }
-                (exec_echo, exec_include) = detect_execute_defaults(fm);
+                (exec_echo, exec_include, exec_cache) = detect_execute_defaults(fm);
                 continue;
             }
             let sp = data.sourcepos;
@@ -227,6 +228,7 @@ fn render_internal(
                         figure: None,
                         echo: cell_flag_or(&cb.literal, "echo", exec_echo),
                         include: cell_flag_or(&cb.literal, "include", exec_include),
+                        cache: cell_flag_or(&cb.literal, "cache", exec_cache),
                     })
                 }
                 _ => None,
@@ -1394,12 +1396,13 @@ fn cell_flag_or(literal: &str, key: &str, default: bool) -> bool {
 /// execute:
 ///   echo: false
 ///   include: false
+///   cache: false
 /// ```
 ///
-/// Returns `(echo, include)`, each defaulting to `true`. Per-cell `#|` options
-/// override these. (`eval`/`output`/`warning`/`cache` are not yet honoured.)
-fn detect_execute_defaults(front_matter: &str) -> (bool, bool) {
-    let (mut echo, mut include) = (true, true);
+/// Returns `(echo, include, cache)`, each defaulting to `true`. Per-cell `#|`
+/// options override these. (`eval`/`output`/`warning` are not yet honoured.)
+fn detect_execute_defaults(front_matter: &str) -> (bool, bool, bool) {
+    let (mut echo, mut include, mut cache) = (true, true, true);
     let mut in_block = false;
     for line in front_matter.lines() {
         let indent = line.len() - line.trim_start().len();
@@ -1421,11 +1424,12 @@ fn detect_execute_defaults(front_matter: &str) -> (bool, bool) {
             match k.trim() {
                 "echo" => echo = v != "false",
                 "include" => include = v != "false",
+                "cache" => cache = v != "false",
                 _ => {}
             }
         }
     }
-    (echo, include)
+    (echo, include, cache)
 }
 
 /// A code cell whose source is suppressed (`#| echo: false` / `#| include: false`)

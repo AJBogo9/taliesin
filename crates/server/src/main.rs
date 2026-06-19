@@ -6,6 +6,7 @@
 //!   - `qmd-fast blocks <file.qmd>`         list block ids + sourcepos (debugging)
 
 mod exec;
+mod freeze;
 mod kernel;
 mod log;
 mod protocol;
@@ -168,7 +169,9 @@ fn build_page_executing(
         for w in &doc.warnings {
             log::warn(w);
         }
-        let mut ex = exec::Executor::new();
+        // Persistent execution cache keyed off the doc's stem, beside the source.
+        let mut ex =
+            exec::Executor::with_freeze(freeze::page_path(&base.join("_freeze"), fallback));
         doc.blocks = ex.run(std::mem::take(&mut doc.blocks)).await;
         if ex.diagnostic().is_some() {
             log::warn(
@@ -291,6 +294,11 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
     }
     let out = out.canonicalize().unwrap_or(out);
 
+    // Persistent execution cache, rooted at the project source (not the build
+    // output), so a `build` and the `preview` server share it and it survives a
+    // clean of `_site/`.
+    let freeze_dir = root.join("_freeze");
+
     // 1. Mirror non-source assets (images, etc.) preserving the tree.
     let assets = mirror_assets(root, &out);
 
@@ -312,7 +320,7 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
         for w in &doc.warnings {
             log::warn(&format!("{}: {w}", page.rel));
         }
-        let mut exec = exec::Executor::new();
+        let mut exec = exec::Executor::with_freeze(freeze::page_path(&freeze_dir, &page.rel));
         doc.blocks = exec.run(std::mem::take(&mut doc.blocks)).await;
         kernel_unavailable |= exec.diagnostic().is_some();
         let resources = doc.includes.resources.clone();
@@ -342,7 +350,7 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
         };
         let base = deck.input.parent().unwrap_or(root);
         let mut doc = qmd_fast_core::render_document_with_includes(&src, base);
-        let mut ex = exec::Executor::new();
+        let mut ex = exec::Executor::with_freeze(freeze::page_path(&freeze_dir, &deck.url));
         doc.blocks = ex.run(std::mem::take(&mut doc.blocks)).await;
         kernel_unavailable |= ex.diagnostic().is_some();
         let stem = deck
@@ -600,5 +608,6 @@ fn usage() {
     println!("  blocks <file.qmd>          list block ids + sourcepos (debug)");
     println!();
     println!("ENV: QMD_FAST_PYTHON (kernel), QMD_FAST_OPEN (=--open),");
-    println!("     QMD_FAST_HOST (=--host), QMD_FAST_NO_CLEAR");
+    println!("     QMD_FAST_HOST (=--host), QMD_FAST_NO_CLEAR,");
+    println!("     QMD_FAST_NO_CACHE (skip the _freeze/ execution cache)");
 }

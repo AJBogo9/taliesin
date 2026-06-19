@@ -46,7 +46,11 @@ crates/server    qmd-fast-server, bin `qmd-fast`: CLI + websocket dev server
   src/main.rs      render / blocks / build / serve subcommands (a dir = a site project)
   src/serve.rs     single-doc axum websocket + notify file watcher
   src/serve_site.rs multi-page site server (per-page state/executor, cross-page nav, hot reload)
-  src/exec.rs      runs a doc's code cells, splices outputs back as blocks
+  src/exec.rs      runs a doc's code cells, splices outputs back as blocks; plans
+                   what re-runs via cumulative-hash keys (warm reuse + cold replay)
+  src/freeze.rs    persistent execution cache (`_freeze/<page>.json`): rendered cell
+                   outputs keyed by a cumulative content hash, so unchanged cells
+                   restore instead of re-executing across builds + preview restarts
   src/kernel.rs    warm Jupyter kernel (ZMQ), reused across edits
   src/log.rs       colorized dev-server console output (to stderr)
 web-client/      browser preview client (vanilla JS, the only client): client.js mounts
@@ -91,6 +95,17 @@ warm kernel. Without a kernel, cells render as source and the preview shows a
 "kernel unavailable" diagnostic. A cell that runs longer than `QMD_FAST_CELL_TIMEOUT`
 seconds (default 120; `0` disables) is interrupted (SIGINT) so a runaway cell can't
 wedge the kernel; the warm kernel and prior cells survive.
+
+Cell outputs persist in `_freeze/` (gitignored), keyed by a cumulative content hash
+(this cell's code + all upstream same-language code + interpreter id) — so a change
+to a cell or anything upstream busts it and everything downstream, with no stale
+hits and nothing to clear by hand. An unchanged doc replays from disk on the next
+`build`/preview without booting the kernel; a warm preview still re-runs only the
+edited cell + downstream. Errors and `#| cache: false` cells are never persisted.
+`QMD_FAST_NO_CACHE` ignores + skips writing the cache; "Restart kernel" forces a
+fresh re-run. (Kernel *variable* state is never cached — that's what makes Quarto's
+per-cell `cache` fragile — so a cold start can only skip work when the whole
+document is unchanged.) See `crates/server/src/freeze.rs`.
 
 For UI work, `/preview <file.qmd>` builds, serves on port 4388, and verifies it in
 the browser via the chrome-devtools MCP (screenshot + console). A `PostToolUse`

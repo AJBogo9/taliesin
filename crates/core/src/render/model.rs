@@ -18,6 +18,11 @@ pub struct Cell {
     /// `#| include: false` hides both source and output, but the cell still runs
     /// (so downstream cells see its kernel state).
     pub include: bool,
+    /// `#| cache: false` opts this cell out of the persistent execution cache: it
+    /// always re-executes and its output is never written to `_freeze/`. The escape
+    /// hatch for non-deterministic cells (RNG/time/network) whose output shouldn't
+    /// be replayed. Defaults to `true` (cacheable).
+    pub cache: bool,
 }
 
 /// Metadata for wrapping a code cell's executed output as a numbered figure.

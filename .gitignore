@@ -12,6 +12,10 @@ out/
 _site/
 _book/
 
+# Persistent execution cache (rendered cell outputs, keyed by cumulative content
+# hash); regenerated on demand, like the build output above.
+_freeze/
+
 # Stray media dumped at the repo root by running a post's code cells from here
 # (anchored to root so corpus/ .wav fixtures stay tracked)
 /*.wav
