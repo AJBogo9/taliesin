@@ -173,6 +173,28 @@ resolve to labelled links across `@fig-`, `@sec-`, `@tbl-`, `@eq-`, `@lst-`,
 `@fig-scree` above do) — **across chapters**, so a `@fig-` in one chapter resolves
 to its figure in another.
 
+## Footnotes and sidenotes
+
+Footnotes use the standard `[^label]` syntax. A reference renders as a superscript
+link, and the definitions (which can span paragraphs) are gathered into a numbered
+footnotes section at the end of the page, in reference order, each with a backlink.[^demo]
+
+[^demo]: Like this one. Write `[^label]` where you want the marker, and `[^label]: …`
+    anywhere for the body — qmd-fast does the numbering and the return arrow.
+
+For an aside that belongs *beside* the text rather than at the bottom, a
+`::: {.sidenote}` (or `.marginnote`) block floats into the right margin on a wide
+screen and folds into the flow on a narrow one — web-native marginalia a PDF can't do.
+
+::: {.sidenote}
+This is a sidenote. On a wide screen it sits in the margin, aligned to where it was
+written; narrow the window and it collapses to an indented note. Math works here too:
+$\sigma^2 = \operatorname{Var}(X)$.
+:::
+
+The body keeps flowing in the reading column while the margin note sits alongside the
+paragraph it annotates, so a digression never interrupts the main thread.
+
 ## Raw HTML passthrough
 
 A `{=html}` block is emitted verbatim, so you can drop in markup the Markdown
