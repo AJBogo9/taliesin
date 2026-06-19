@@ -21,6 +21,10 @@ use crate::kernel::{Kernel, KernelSpec, render_outputs};
 /// saves.
 const KERNEL_RETRY_AFTER: Duration = Duration::from_secs(20);
 
+/// Shown for cells skipped after the kernel died mid-run (see `compute_outputs`):
+/// they didn't execute, and the next rebuild respawns the kernel and re-runs them.
+const KERNEL_DIED_HTML: &str = "<pre class=\"qmd-error\">kernel exited before this cell ran; it will re-run on the next save</pre>";
+
 /// Cell languages qmd-fast can execute, mapped to a stable kernel key. Anything
 /// else renders as highlighted source.
 fn kernel_lang(lang: &str) -> Option<&'static str> {
@@ -205,6 +209,7 @@ impl Executor {
             .map(|s| s.kernel.is_some())
             .unwrap_or(false);
         let mut outputs = Vec::with_capacity(cells.len());
+        let mut ran = 0;
         for (i, cell) in cells.iter().enumerate() {
             if i < first_changed {
                 let cached = self
@@ -214,11 +219,19 @@ impl Executor {
                     .map(|c| c.output.clone())
                     .unwrap_or_default();
                 outputs.push(cached);
+            } else if has_kernel && !self.kernel_alive(lang) {
+                // The kernel was up when this run started but has since exited (an
+                // earlier cell crashed it). Don't run the rest: each `execute` would
+                // just wait out the full cell timeout on a kernel that will never
+                // reply. Fail fast; the next rebuild detects the dead kernel,
+                // respawns it, and re-runs everything.
+                outputs.push(KERNEL_DIED_HTML.to_string());
             } else {
                 // Progress only when the kernel is up; otherwise cells are instant
                 // no-ops and a "cell k/n" line would be misleading.
                 if has_kernel {
-                    crate::log::exec(i - first_changed + 1, to_run);
+                    ran += 1;
+                    crate::log::exec(ran, to_run);
                 }
                 outputs.push(self.exec_cell(lang, &cell.code).await);
             }
@@ -281,6 +294,15 @@ impl Executor {
                 state.last_error = Some(e.to_string());
             }
         }
+    }
+
+    /// Whether `lang` currently has a *live* kernel process. Used mid-run to bail
+    /// out instead of waiting out the cell timeout on a kernel that just died.
+    fn kernel_alive(&mut self, lang: &'static str) -> bool {
+        self.langs
+            .get_mut(lang)
+            .and_then(|s| s.kernel.as_mut())
+            .is_some_and(|k| k.is_alive())
     }
 
     async fn exec_cell(&mut self, lang: &'static str, code: &str) -> String {
