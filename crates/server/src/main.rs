@@ -8,6 +8,7 @@
 mod exec;
 mod kernel;
 mod log;
+mod protocol;
 mod serve;
 mod serve_site;
 #[cfg(test)]
@@ -131,9 +132,14 @@ fn cmd_build(args: &[String]) -> ExitCode {
         .get(1)
         .map(|&s| PathBuf::from(s))
         .unwrap_or_else(|| base.join(format!("{stem}.html")));
-    match std::fs::write(&out, html) {
+    match std::fs::write(&out, &html) {
         Ok(()) => {
-            copy_resources(&resources, out.parent().unwrap_or(base));
+            let dest = out.parent().unwrap_or(base);
+            copy_resources(&resources, dest);
+            // Bundle the doc's own referenced assets (images, audio, …) next to the
+            // page too, so `build doc.qmd out.html` into another directory doesn't
+            // leave them dangling. A no-op for an in-place build.
+            copy_local_assets(&html, base, dest);
             log::built(&out.display().to_string());
             ExitCode::SUCCESS
         }
@@ -195,27 +201,7 @@ fn build_dir(html: &str, base: &Path, dir: &Path) -> ExitCode {
         log::error(&format!("cannot create {}: {e}", dir.display()));
         return ExitCode::FAILURE;
     }
-    let mut copied = 0usize;
-    for r in local_refs(html) {
-        // Bundle only clean in-tree relative paths; anything escaping the output
-        // dir (absolute or containing `..`) is left in place with a warning.
-        if r.starts_with('/') || r.split('/').any(|seg| seg == "..") {
-            log::warn(&format!("asset outside the doc tree, not bundled: {r}"));
-            continue;
-        }
-        let from = base.join(&r);
-        if !from.is_file() {
-            continue; // e.g. an href to something that isn't a local file
-        }
-        let to = dir.join(&r);
-        if let Some(parent) = to.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        match std::fs::copy(&from, &to) {
-            Ok(_) => copied += 1,
-            Err(e) => log::warn(&format!("cannot copy {}: {e}", from.display())),
-        }
-    }
+    let copied = copy_local_assets(html, base, dir);
     let index = dir.join("index.html");
     if let Err(e) = std::fs::write(&index, html) {
         log::error(&format!("cannot write {}: {e}", index.display()));
@@ -227,6 +213,46 @@ fn build_dir(html: &str, base: &Path, dir: &Path) -> ExitCode {
         if copied == 1 { "" } else { "s" }
     ));
     ExitCode::SUCCESS
+}
+
+/// Copy each referenced local asset (a relative `src=`/`href=` under `base`) to
+/// the same relative path under `dest`, so a built page's images/audio/etc. travel
+/// with it. Skips paths escaping the tree (absolute or `..`) and no-op self-copies
+/// (an in-place build, where the asset already sits next to the output). Returns
+/// the number copied. Shared by the portable `--out` folder and the single-file
+/// build (so `build doc.qmd out.html` into another directory isn't left with
+/// dangling asset references).
+fn copy_local_assets(html: &str, base: &Path, dest: &Path) -> usize {
+    let mut copied = 0usize;
+    for r in local_refs(html) {
+        if r.starts_with('/') || r.split('/').any(|seg| seg == "..") {
+            log::warn(&format!("asset outside the doc tree, not bundled: {r}"));
+            continue;
+        }
+        let from = base.join(&r);
+        if !from.is_file() {
+            continue; // e.g. an href to something that isn't a local file
+        }
+        let to = dest.join(&r);
+        // In-place build: the asset is already where the page points, and copying a
+        // file onto itself would truncate it.
+        if same_file(&from, &to) {
+            continue;
+        }
+        if let Some(parent) = to.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        match std::fs::copy(&from, &to) {
+            Ok(_) => copied += 1,
+            Err(e) => log::warn(&format!("cannot copy {}: {e}", from.display())),
+        }
+    }
+    copied
+}
+
+/// Whether two paths resolve to the same file on disk (so we don't self-copy).
+fn same_file(a: &Path, b: &Path) -> bool {
+    matches!((a.canonicalize(), b.canonicalize()), (Ok(x), Ok(y)) if x == y)
 }
 
 /// Build a multi-page site: render every `.qmd` page with the shared chrome to

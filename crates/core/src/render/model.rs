@@ -78,6 +78,9 @@ pub enum DocFormat {
 pub struct RenderedDoc {
     pub title: Option<String>,
     pub subtitle: Option<String>,
+    /// Front-matter `lang:` (a BCP-47 tag like `en`/`fr`), emitted as `<html lang>`
+    /// by the page builders. `None` falls back to `en`.
+    pub lang: Option<String>,
     /// Front-matter `description`, used for the SEO/OpenGraph meta on a standalone
     /// page (site pages get richer per-page meta from their `Page`).
     pub description: Option<String>,

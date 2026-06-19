@@ -620,6 +620,20 @@ fn reveal_deck_injects_includes_and_theme() {
 }
 
 #[test]
+fn front_matter_lang_sets_html_lang_attr() {
+    // `lang:` drives `<html lang>` (for screen readers + SEO); absent falls back to en.
+    assert!(
+        render_html_page("---\ntitle: Bonjour\nlang: fr\n---\n\nSalut.\n", "f")
+            .contains("<html lang=\"fr\">"),
+        "front-matter lang not applied to <html>"
+    );
+    assert!(
+        render_html_page("---\ntitle: Hi\n---\n\nHi.\n", "f").contains("<html lang=\"en\">"),
+        "missing lang should default to en"
+    );
+}
+
+#[test]
 fn front_matter_include_text_injected_at_head_and_body() {
     let src = "---\n\
             title: T\n\

@@ -44,6 +44,132 @@ pub struct SiteCtx {
     pub search_index: String,
 }
 
+/// The pieces a caller supplies to [`assemble_html_page`]. Everything that
+/// differs between the three HTML shells (the static build, the single-doc live
+/// preview, and the multi-page site preview) lives here; the page skeleton +
+/// `<head>` ordering live once in [`assemble_html_page`]. The empty defaults
+/// (`extra_head`/`scripts_*` = `""`) reproduce the static build; the dev servers
+/// fill those slots with their live machinery (dev menu, websocket client).
+pub struct PageParts<'a> {
+    /// Already HTML-escaped `<title>` text.
+    pub title: &'a str,
+    /// BCP-47 language tag for `<html lang>` (e.g. `en`); callers default to `en`.
+    pub lang: &'a str,
+    /// A pre-built `<link rel="icon" …>` (inlined data URI, a path, or a route).
+    pub favicon: &'a str,
+    /// `light`/`dark`/… default for the no-flash theme bootstrap script.
+    pub theme_default: &'a str,
+    /// Extension / site theme CSS, raw (wrapped in `<style>` only when non-empty).
+    pub theme_css: &'a str,
+    /// Also ship the multi-page site chrome CSS (navbar / footer / prev-next).
+    pub with_site_css: bool,
+    /// Ship the KaTeX stylesheet. The static build sets this only when the page
+    /// has math; a live preview always sets it (a doc can gain math any edit).
+    pub ship_katex: bool,
+    /// Ship the Observable runtime (`<head>`) + its init script (after the body).
+    pub has_ojs: bool,
+    /// Preview-only `<head>` additions (the dev-menu CSS); `""` for the build.
+    /// Non-empty values should end with a newline.
+    pub extra_head: &'a str,
+    /// A `<body>` attribute string including its leading space (e.g. ` class="…"`),
+    /// or `""`.
+    pub body_class: &'a str,
+    pub include_in_header: &'a str,
+    pub include_before_body: &'a str,
+    /// The body region: chrome + content (build/site) or the live `#qmd-root`.
+    pub body: &'a str,
+    /// Scripts emitted *before* the shared enhancer registry (the static
+    /// click-to-source logger, or the live `window.QMD_*` globals).
+    pub scripts_pre: &'a str,
+    /// Scripts emitted *after* it (the static `qmdEnhanceCode` call + TOC scripts,
+    /// or the live websocket client).
+    pub scripts_post: &'a str,
+    pub include_after_body: &'a str,
+}
+
+/// Assemble a complete HTML page from its parts: the single source of truth for
+/// the page skeleton (`<!DOCTYPE>`, the `<head>` ordering, the body frame, the
+/// shared enhancer/OJS scripts) shared by the static build and both live-preview
+/// servers. Keeping it here means a new meta tag, a bundled stylesheet, or a head
+/// reordering happens once instead of in three hand-rolled templates.
+pub fn assemble_html_page(p: &PageParts) -> String {
+    let katex = if p.ship_katex {
+        format!("\n<style>{KATEX_CSS}</style>")
+    } else {
+        String::new()
+    };
+    let site_css = if p.with_site_css { SITE_CSS } else { "" };
+    let ojs_head_html = if p.has_ojs { ojs_head() } else { String::new() };
+    let ojs_init_html = if p.has_ojs {
+        format!("{}\n", ojs_init())
+    } else {
+        String::new()
+    };
+    format!(
+        r#"<!DOCTYPE html>
+<html lang="{lang}">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>{title}</title>
+{favicon}
+{theme_init}
+<style>{base}{dark}{site}</style>{katex}
+{ojs_head}
+{theme_css}
+{include_in_header}
+{extra_head}</head>
+<body{body_class}>
+{include_before_body}
+{body}
+{scripts_pre}
+{code_scripts}
+{scripts_post}
+{ojs_init}{include_after_body}
+</body>
+</html>
+"#,
+        lang = p.lang,
+        title = p.title,
+        favicon = p.favicon,
+        theme_init = theme_head(p.theme_default),
+        base = BASE_CSS,
+        dark = DARK_CSS,
+        site = site_css,
+        ojs_head = ojs_head_html,
+        theme_css = theme_style(p.theme_css),
+        include_in_header = p.include_in_header,
+        extra_head = p.extra_head,
+        body_class = p.body_class,
+        include_before_body = p.include_before_body,
+        body = p.body,
+        scripts_pre = p.scripts_pre,
+        code_scripts = code_scripts(),
+        scripts_post = p.scripts_post,
+        ojs_init = ojs_init_html,
+        include_after_body = p.include_after_body,
+    )
+}
+
+/// Static-page click-to-source: clicking a block logs its id + sourcepos to the
+/// console (a no-server preview of click-to-source; the live server replaces this
+/// with the editor wiring in `client.js`).
+const STATIC_CLICK_TO_SOURCE: &str = r#"<script>
+  // Click any block to see its source position in the console (a static preview
+  // of click-to-source; the live server wires this to the editor).
+  document.addEventListener('click', (e) => {
+    const el = e.target.closest('[data-block-id]');
+    document.querySelectorAll('.qmd-hl').forEach(n => n.classList.remove('qmd-hl'));
+    if (!el) return;
+    el.classList.add('qmd-hl');
+    console.log('block', el.dataset.blockId, '@', el.dataset.sourcepos);
+  });
+</script>"#;
+
+/// Run the client enhancers once on load (the static page has no websocket client
+/// to call them after a mount).
+const STATIC_ENHANCE: &str = "<script>document.addEventListener('DOMContentLoaded',function(){window.qmdEnhanceCode&&window.qmdEnhanceCode(document.body);});</script>";
+
 fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
     html_page_inner(doc, fallback_title, None)
 }
@@ -64,18 +190,11 @@ fn html_page_inner(doc: &RenderedDoc, fallback_title: &str, site: Option<&SiteCt
     let mut t = String::new();
     escape_html(title, &mut t);
     let body = doc.body_html();
-    // Only ship the (large) KaTeX stylesheet when the page actually has math.
-    let katex_css = if body.contains("class=\"katex") {
-        format!("<style>{KATEX_CSS}</style>")
-    } else {
-        String::new()
-    };
-    // Only ship the Observable runtime + init when the page has live OJS cells.
-    let (ojs_head_html, ojs_init_html) = if has_ojs(&body) {
-        (ojs_head(), ojs_init())
-    } else {
-        (String::new(), String::new())
-    };
+    // Only ship the (large) KaTeX stylesheet when the page actually has math, and
+    // the Observable runtime only when it has live cells (computed before `body`
+    // is moved into the content layout below).
+    let ship_katex = body.contains("class=\"katex");
+    let has_ojs = has_ojs(&body);
     // With `toc: true`, lay the content beside a sticky table of contents.
     let toc = if doc.toc {
         toc_html(&doc.blocks)
@@ -144,10 +263,6 @@ fn html_page_inner(doc: &RenderedDoc, fallback_title: &str, site: Option<&SiteCt
         }
         None => content,
     };
-    let base_css = match site {
-        Some(_) => format!("{BASE_CSS}{DARK_CSS}{SITE_CSS}"),
-        None => format!("{BASE_CSS}{DARK_CSS}"),
-    };
     // Site-level `format: html:` includes (from `_quarto.yml`) apply to every page
     // first; the page's own front-matter includes follow.
     let mut includes = match site {
@@ -173,23 +288,26 @@ fn html_page_inner(doc: &RenderedDoc, fallback_title: &str, site: Option<&SiteCt
         // to the bundled qmd-fast mark so the tab has an icon and no /favicon.ico 404.
         _ => default_favicon(),
     };
-    PAGE_TEMPLATE
-        .replace("{{TITLE}}", &t)
-        .replace("{{FAVICON}}", &favicon)
-        .replace("{{THEME_INIT}}", &theme_head(&doc.theme_default))
-        .replace("{{KATEX_CSS}}", &katex_css)
-        .replace("{{BASE_CSS}}", &base_css)
-        .replace("{{THEME_CSS}}", &theme_style(&doc.theme_css))
-        .replace("{{CODE_HEAD}}", &code_head())
-        .replace("{{OJS_HEAD}}", &ojs_head_html)
-        .replace("{{INCLUDE_IN_HEADER}}", &includes.in_header)
-        .replace("{{BODY_CLASS}}", &body_class)
-        .replace("{{INCLUDE_BEFORE_BODY}}", &includes.before_body)
-        .replace("{{BODY}}", &body_content)
-        .replace("{{CODE_SCRIPTS}}", &code_scripts())
-        .replace("{{TOC_SCRIPT}}", &toc_script)
-        .replace("{{OJS_INIT}}", &ojs_init_html)
-        .replace("{{INCLUDE_AFTER_BODY}}", &includes.after_body)
+    assemble_html_page(&PageParts {
+        title: &t,
+        lang: doc.lang.as_deref().unwrap_or("en"),
+        favicon: &favicon,
+        theme_default: &doc.theme_default,
+        theme_css: &doc.theme_css,
+        with_site_css: site.is_some(),
+        ship_katex,
+        has_ojs,
+        extra_head: "",
+        body_class: &body_class,
+        include_in_header: &includes.in_header,
+        include_before_body: &includes.before_body,
+        body: &body_content,
+        // The static page has no websocket client, so it logs click-to-source to
+        // the console and runs the enhancers once on load itself.
+        scripts_pre: STATIC_CLICK_TO_SOURCE,
+        scripts_post: &format!("{STATIC_ENHANCE}\n{toc_script}"),
+        include_after_body: &includes.after_body,
+    })
 }
 
 /// A `<link rel="icon">` for the given href, with a `type` inferred from the

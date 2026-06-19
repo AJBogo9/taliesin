@@ -36,7 +36,12 @@ fn parse_options() -> Options<'static> {
 /// Parse `src` into ordered top-level blocks with stable ids + sourcepos.
 /// Does not resolve `{{< include >}}` (use [`render_document_with_includes`]).
 mod reveal;
-pub use reveal::{deck_theme_head, reveal_client_head, reveal_client_script, slides_html};
+pub use reveal::{RevealParts, assemble_reveal_page, reveal_client_script, slides_html};
+// `deck_theme_head` is used inside `reveal.rs` (the deck builder) and by the unit
+// tests; it's not part of the public API, so it's only pulled into scope here for
+// the tests rather than re-exported.
+#[cfg(test)]
+use reveal::deck_theme_head;
 mod extension;
 pub(crate) use extension::embed_targets;
 use extension::{resolve_format_extension, resolve_named_extensions};
@@ -50,10 +55,14 @@ pub(crate) use emit::emit_children;
 mod figure;
 use figure::{emit_figure, emit_mermaid_figure, figure_parts};
 mod theme;
-pub use theme::theme_head;
+// Used only by the page builders; kept crate-internal, not part of the public API.
+pub(crate) use theme::theme_head;
 mod page;
 use page::page_from_doc;
-pub use page::{SiteCtx, favicon_link, html_page_from_doc_in_site, render_doc_to_page};
+pub use page::{
+    PageParts, SiteCtx, assemble_html_page, favicon_link, html_page_from_doc_in_site,
+    render_doc_to_page,
+};
 use theme::{detect_theme, resolve_theme, resolve_theme_layers, theme_default_mode, theme_style};
 
 /// Render a `.qmd` source string into the `RenderedDoc` block model: the parse
@@ -106,6 +115,7 @@ fn render_internal(
     let mut date: Option<String> = None;
     let mut author: Option<String> = None;
     let mut description: Option<String> = None;
+    let mut lang: Option<String> = None;
     let mut format = DocFormat::Html;
     let mut toc_explicit: Option<bool> = None;
     // `title-block-style: none` keeps `title` (drives `<title>`, OpenGraph, nav)
@@ -166,6 +176,7 @@ fn render_internal(
                 date = extract_field(fm, "date");
                 author = extract_field(fm, "author");
                 description = extract_field(fm, "description");
+                lang = extract_field(fm, "lang");
                 bib_field = extract_field(fm, "bibliography");
                 format = detect_format(fm);
                 toc_explicit = detect_toc(fm);
@@ -483,6 +494,7 @@ fn render_internal(
     RenderedDoc {
         title,
         subtitle,
+        lang,
         description,
         format,
         // Standalone default: a TOC only when the page asked for one. The site
@@ -832,34 +844,19 @@ pub fn render_html_page_with_includes(src: &str, base_dir: &Path, fallback_title
 const KATEX_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/katex-inlined.css"));
 
 /// Base document styling (typography, tables, callouts, references, block
-/// highlight). Shared by the one-shot page and the live preview client.
+/// highlight). Emitted by the page builders in `page.rs`/`reveal.rs`; KaTeX rides
+/// along when the page has (or, in a live preview, may gain) math.
 const BASE_CSS: &str = include_str!("../../assets/css/base.css");
 
-/// `<style>` block(s) for the live preview client: base styling plus the
-/// (self-contained) KaTeX stylesheet, since a live doc may gain math at any edit.
-pub fn client_styles() -> String {
-    format!("<style>{BASE_CSS}{DARK_CSS}</style>\n<style>{KATEX_CSS}</style>")
-}
-
-/// The multi-page site chrome CSS (navbar / footer / prev-next), wrapped in a
-/// `<style>`. The live site preview ships this on top of [`client_styles`];
-/// the static build folds it into the page template directly.
-pub fn site_styles() -> String {
-    format!("<style>{SITE_CSS}</style>")
-}
-
-// highlight.js + mermaid (pinned) served from jsDelivr — the dev server runs
-// locally with network access, like reveal.js. Both are client-side presentation
-// layers, so they never affect the block model or the diff. mermaid is loaded
-// lazily (only when a diagram is actually present).
+// mermaid (pinned) is the one asset still loaded from a CDN rather than bundled:
+// it's large (~3 MB) and only needed when a diagram is actually present, so it's
+// lazy-loaded by `mermaid.js` (the self-registering enhancer) the first time a
+// `{mermaid}` block appears. It's a client-side presentation layer, so it never
+// affects the block model or the diff. NOTE: this is the sole exception to the
+// "self-contained / offline" guarantee — a built page with a mermaid diagram needs
+// network at view time. (Syntax highlighting is server-side; reveal/KaTeX/OJS are
+// all bundled offline.)
 const MERMAID: &str = "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js";
-
-/// `<head>` stylesheet link for code syntax highlighting (the highlight.js theme).
-pub fn code_head() -> String {
-    // Syntax highlighting is done server-side (see `crate::highlight`); the colors
-    // live in the base stylesheet, so there's no highlighter CSS to load.
-    String::new()
-}
 
 /// The client enhancers: the `window.qmdEnhancers` registry + built-ins (copy
 /// buttons, lightbox, link-preview, category-filter) in code-enhance.js, then the
@@ -895,8 +892,9 @@ const OJS_RUNTIME: &str = include_str!("../../assets/ojs/quarto-ojs-runtime.min.
 const OJS_CSS: &str = include_str!("../../assets/ojs/quarto-ojs.css");
 
 /// `<head>` assets for Observable cells: the runtime CSS + the runtime bundle.
-/// Emit only when a page actually has `{ojs}` cells.
-pub fn ojs_head() -> String {
+/// Emit only when a page actually has `{ojs}` cells. Crate-internal — the page
+/// builders gate it on `has_ojs`; callers pass that flag, not this markup.
+pub(crate) fn ojs_head() -> String {
     format!("<style>{OJS_CSS}</style>\n<script type=\"module\">{OJS_RUNTIME}</script>")
 }
 
@@ -1741,44 +1739,6 @@ pub fn escape_attr(s: &str) -> String {
 /// theme extension restyles it for free. Deliberately leaner than Quarto's
 /// Bootstrap chrome (no banner, no search bar, no feed).
 const SITE_CSS: &str = include_str!("../../assets/css/site.css");
-
-const PAGE_TEMPLATE: &str = r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>{{TITLE}}</title>
-{{FAVICON}}
-{{THEME_INIT}}
-{{KATEX_CSS}}
-<style>{{BASE_CSS}}</style>
-{{CODE_HEAD}}
-{{OJS_HEAD}}
-{{THEME_CSS}}
-{{INCLUDE_IN_HEADER}}
-</head>
-<body{{BODY_CLASS}}>
-{{INCLUDE_BEFORE_BODY}}
-{{BODY}}
-<script>
-  // Click any block to see its source position in the console (a static preview
-  // of click-to-source; the live server wires this to the editor).
-  document.addEventListener('click', (e) => {
-    const el = e.target.closest('[data-block-id]');
-    document.querySelectorAll('.qmd-hl').forEach(n => n.classList.remove('qmd-hl'));
-    if (!el) return;
-    el.classList.add('qmd-hl');
-    console.log('block', el.dataset.blockId, '@', el.dataset.sourcepos);
-  });
-</script>
-{{CODE_SCRIPTS}}
-<script>document.addEventListener('DOMContentLoaded',function(){window.qmdEnhanceCode&&window.qmdEnhanceCode(document.body);});</script>
-{{TOC_SCRIPT}}
-{{OJS_INIT}}
-{{INCLUDE_AFTER_BODY}}
-</body>
-</html>
-"#;
 
 // The deck engine (deck.css/deck.js) is bundled into the page like KaTeX/OJS —
 // decks render with no network, the same as every other format.

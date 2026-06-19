@@ -18,61 +18,117 @@ const REVEAL_EXTRA_CSS: &str = include_str!("../../assets/css/reveal-extra.css")
 const DECK_CSS: &str = include_str!("../../assets/css/deck.css");
 const DECK_JS: &str = include_str!("../../assets/js/deck.js");
 
+/// The pieces a caller supplies to [`assemble_reveal_page`]; the deck analogue of
+/// [`super::PageParts`]. The static build passes the empty preview slots; the
+/// live-deck server fills `extra_head`/`slides_attr`/`after_reveal` and composes
+/// its own client-driven `tail`. The shared `<head>` lives once in the builder.
+pub struct RevealParts<'a> {
+    /// Already HTML-escaped `<title>` text.
+    pub title: &'a str,
+    /// BCP-47 language tag for `<html lang>` (e.g. `en`); callers default to `en`.
+    pub lang: &'a str,
+    /// A pre-built `<link rel="icon" …>`, or `""` (a built deck ships none).
+    pub favicon: &'a str,
+    pub theme_default: &'a str,
+    /// A custom/extension `theme:` owns its colours (no pre-paint mode script).
+    pub theme_is_custom: bool,
+    pub theme_css: &'a str,
+    /// Ship the KaTeX stylesheet (only-if-math for the build, always for a live deck).
+    pub ship_katex: bool,
+    pub has_ojs: bool,
+    /// Preview-only `<head>` additions (the dev-menu CSS); `""` for the build.
+    pub extra_head: &'a str,
+    pub include_in_header: &'a str,
+    pub include_before_body: &'a str,
+    /// Attributes on the `.slides` container (` id="qmd-root"` for the live mount).
+    pub slides_attr: &'a str,
+    /// The slide HTML (`<section>`s).
+    pub slides: &'a str,
+    /// Markup right after the `.reveal` container (the live status node); `""` build.
+    pub after_reveal: &'a str,
+    /// Everything after the deck body: the deck-engine script + the format-specific
+    /// init/enhancer/client scripts + `include-after-body`, composed by the caller
+    /// (the static `Reveal.initialize` flow and the client-driven live flow differ,
+    /// and the live flow is load-order-sensitive for OJS).
+    pub tail: &'a str,
+}
+
+/// Assemble a complete reveal-deck page from its parts: the single source of the
+/// deck page skeleton + `<head>` (deck-theme pre-paint, bundled deck CSS, KaTeX,
+/// slide tweaks, OJS), shared by the static build and the live-deck preview. The
+/// deck-engine `<script>` and the rest of the script tail are caller-composed.
+pub fn assemble_reveal_page(p: &RevealParts) -> String {
+    // Only ship the (large) KaTeX stylesheet when the deck has math (build); a live
+    // deck always ships it, since it can gain math on any edit.
+    let katex = if p.ship_katex {
+        format!("<style>{KATEX_CSS}</style>\n")
+    } else {
+        String::new()
+    };
+    // The Observable runtime renders into the cell divs regardless of which slide
+    // shows, so reactive outputs are live the moment their slide appears.
+    let ojs_head_html = if p.has_ojs { ojs_head() } else { String::new() };
+    // `theme` comes after reveal's own stylesheets so it overrides them; the css
+    // folded into `include-in-header` follows last.
+    format!(
+        "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n\
+         <meta charset=\"utf-8\" />\n\
+         <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no\" />\n\
+         <title>{title}</title>\n{favicon}{deck_theme}<style>{DECK_CSS}</style>\n{katex}<style>{REVEAL_EXTRA_CSS}</style>\n{ojs_head}{theme}{in_header}{extra_head}\
+         </head>\n<body>\n{before_body}<div class=\"reveal\">\n<div class=\"slides\"{slides_attr}>\n{slides}</div>\n</div>\n{after_reveal}\
+         {tail}</body>\n</html>\n",
+        lang = p.lang,
+        title = p.title,
+        favicon = p.favicon,
+        deck_theme = deck_theme_head(p.theme_default, p.theme_is_custom),
+        theme = theme_style(p.theme_css),
+        in_header = p.include_in_header,
+        before_body = p.include_before_body,
+        ojs_head = ojs_head_html,
+        slides_attr = p.slides_attr,
+        slides = p.slides,
+        after_reveal = p.after_reveal,
+        extra_head = p.extra_head,
+        tail = p.tail,
+    )
+}
+
 pub(super) fn reveal_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
     let title = doc.title.as_deref().unwrap_or(fallback_title);
     let mut t = String::new();
     escape_html(title, &mut t);
     let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
-    // Only ship the (large) KaTeX stylesheet when the deck actually has math.
-    let katex_css = if slides.contains("class=\"katex") {
-        format!("<style>{KATEX_CSS}</style>\n")
-    } else {
-        String::new()
-    };
-    // Interactive `{ojs}` cells need the Observable runtime + init, exactly like an
-    // HTML page — only shipped when the deck actually has OJS cells. The runtime
-    // renders into the cell divs regardless of which slide is showing, so reactive
-    // outputs are live the moment their slide appears.
-    let (ojs_head_html, ojs_init_html) = if has_ojs(&slides) {
-        (ojs_head(), ojs_init())
-    } else {
-        (String::new(), String::new())
-    };
-    // A custom `theme:` CSS layer and the `include-*` front-matter apply to decks
-    // just like HTML pages — a deck (or an installed reveal theme extension) can
-    // restyle reveal and inject head/body markup. `theme` comes after reveal's own
-    // stylesheets so it overrides them; the css folded into `include-in-header`
-    // follows last.
-    format!(
-        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n\
-         <meta charset=\"utf-8\" />\n\
-         <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no\" />\n\
-         <title>{t}</title>\n{deck_theme}<style>{DECK_CSS}</style>\n{katex_css}<style>{REVEAL_EXTRA_CSS}</style>\n{code_head}\n{ojs_head}{theme}{in_header}\
-         </head>\n<body>\n{before_body}<div class=\"reveal\">\n<div class=\"slides\">\n{slides}</div>\n</div>\n\
-         <script>{DECK_JS}</script>\n<script>\n  Reveal.initialize({{ hash: true, slideNumber: 'c/t', center: false }});\n</script>\n\
+    let has_ojs = has_ojs(&slides);
+    let ojs_init_html = if has_ojs { ojs_init() } else { String::new() };
+    // The static deck self-initializes the engine on load and runs the enhancers
+    // once (no websocket client to drive them after a mount).
+    let tail = format!(
+        "<script>{DECK_JS}</script>\n\
+         <script>\n  Reveal.initialize({{ hash: true, slideNumber: 'c/t', center: false }});\n</script>\n\
          {code_scripts}\n\
          <script>document.addEventListener('DOMContentLoaded',function(){{window.qmdEnhanceCode&&window.qmdEnhanceCode(document.body);}});</script>\n\
-         {ojs_init}{after_body}</body>\n</html>\n",
-        deck_theme = deck_theme_head(&doc.theme_default, doc.theme_is_custom),
-        theme = theme_style(&doc.theme_css),
-        in_header = doc.includes.in_header,
-        before_body = doc.includes.before_body,
-        after_body = doc.includes.after_body,
-        code_head = code_head(),
+         {ojs_init}{after_body}",
         code_scripts = code_scripts(),
-        ojs_head = ojs_head_html,
         ojs_init = ojs_init_html,
-    )
-}
-
-/// `<head>` markup for the live deck client: the bundled deck layout plus the
-/// KaTeX stylesheet (a live deck may gain math on any edit) and the slide
-/// tweaks. The blog [`client_styles`] body CSS is deliberately omitted — it
-/// would fight the deck layout.
-pub fn reveal_client_head() -> String {
-    format!(
-        "<style>{DECK_CSS}</style>\n<style>{KATEX_CSS}</style>\n<style>{REVEAL_EXTRA_CSS}</style>"
-    )
+        after_body = doc.includes.after_body,
+    );
+    assemble_reveal_page(&RevealParts {
+        title: &t,
+        lang: doc.lang.as_deref().unwrap_or("en"),
+        favicon: "",
+        theme_default: &doc.theme_default,
+        theme_is_custom: doc.theme_is_custom,
+        theme_css: &doc.theme_css,
+        ship_katex: slides.contains("class=\"katex"),
+        has_ojs,
+        extra_head: "",
+        include_in_header: &doc.includes.in_header,
+        include_before_body: &doc.includes.before_body,
+        slides_attr: "",
+        slides: &slides,
+        after_reveal: "",
+        tail: &tail,
+    })
 }
 
 /// The deck engine `<script>` for the live deck client; load it before the

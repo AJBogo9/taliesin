@@ -26,6 +26,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{broadcast, mpsc};
 
+use crate::protocol::{self, Diagnostic};
 use crate::serve::{
     CLIENT_JS, FAVICON, STATUS_CSS, bind_with_fallback, js_str, local_ip, open_in_browser,
     percent_decode, print_qr,
@@ -72,14 +73,8 @@ struct PageDoc {
     /// The page's own front-matter `include-*`/`css` (merged after the site's).
     includes: qmd_fast_core::render::PageIncludes,
     blocks: Vec<Block>,
-    diagnostics: Vec<Diag>,
+    diagnostics: Vec<Diagnostic>,
     errored: bool,
-}
-
-#[derive(Clone, PartialEq)]
-struct Diag {
-    level: &'static str,
-    message: String,
 }
 
 impl PageDoc {
@@ -347,7 +342,7 @@ fn render_markdown_only(site: &qmd_fast_core::Site, page: &Page) -> PageDoc {
     let diagnostics = doc
         .warnings
         .iter()
-        .map(|w| Diag {
+        .map(|w| Diagnostic {
             level: "warning",
             message: w.clone(),
         })
@@ -400,11 +395,6 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
     let mut includes = chrome.includes.clone();
     includes.merge(&page_includes);
 
-    let (ojs_head, ojs_init) = if ojs {
-        (qmd_fast_core::ojs_head(), qmd_fast_core::ojs_init())
-    } else {
-        (String::new(), String::new())
-    };
     let (base_cls, toc_nav, toc_flag) = if toc {
         (
             "qmd-site-main has-toc",
@@ -418,11 +408,6 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
         format!("{base_cls} qmd-wide")
     } else {
         base_cls.to_string()
-    };
-    let theme = if theme_css.trim().is_empty() {
-        String::new()
-    } else {
-        format!("<style>{theme_css}</style>")
     };
 
     // Absolute paths for click-to-source `vscode://file/…` links.
@@ -492,53 +477,40 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
         ),
     };
 
-    format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>{title_txt}</title>
-{favicon}
-{theme_init}
-{styles}
-{site_styles}
-{code_head}
-{ojs_head}
-{theme}
-{include_in_header}
-<style>{status_css}</style>
-</head>
-<body class="{body_class}">
-{include_before_body}
-{layout}
-<div id="qmd-controls"></div>
-<script>{doc_global} {toc_flag} {search_cfg} window.QMD_SSR = true; window.QMD_WS_PATH = "{ws_path}";</script>
-{code_scripts}
-<script>{toc_spy}</script>
-<script>{search_js}</script>
-<script>
-{js}
-</script>
-{ojs_init}
-{include_after_body}
-</body>
-</html>
-"#,
-        theme_init = qmd_fast_core::theme_head(&theme_default),
-        favicon = favicon,
-        include_in_header = includes.in_header,
-        include_before_body = includes.before_body,
-        include_after_body = includes.after_body,
-        styles = qmd_fast_core::client_styles(),
-        site_styles = qmd_fast_core::site_styles(),
-        code_head = qmd_fast_core::code_head(),
-        code_scripts = qmd_fast_core::code_scripts(),
+    // The live body: the site chrome + the mountable `#qmd-root`, plus the
+    // dev-menu mount. The websocket client drives everything after first paint.
+    let body = format!("{layout}\n<div id=\"qmd-controls\"></div>");
+    let extra_head = format!("<style>{STATUS_CSS}</style>\n");
+    let scripts_pre = format!(
+        "<script>{doc_global} {toc_flag} {search_cfg} window.QMD_SSR = true; window.QMD_WS_PATH = \"{ws_path}\";</script>"
+    );
+    // The cross-page TOC scrollspy + Cmd-K search, then the websocket client.
+    let scripts_post = format!(
+        "<script>{toc_spy}</script>\n<script>{search_js}</script>\n<script>\n{CLIENT_JS}\n</script>",
         toc_spy = qmd_fast_core::TOC_SPY_JS,
         search_js = qmd_fast_core::SEARCH_JS,
-        status_css = STATUS_CSS,
-        js = CLIENT_JS,
-    )
+    );
+    qmd_fast_core::assemble_html_page(&qmd_fast_core::PageParts {
+        title: &title_txt,
+        // Preview chrome defaults to English; the built `_site/` honours each
+        // page's front-matter `lang:` via the core page builder.
+        lang: "en",
+        favicon: &favicon,
+        theme_default: &theme_default,
+        theme_css: &theme_css,
+        with_site_css: true,
+        // A live page can gain math at any edit, so always ship the KaTeX styles.
+        ship_katex: true,
+        has_ojs: ojs,
+        extra_head: &extra_head,
+        body_class: &format!(" class=\"{body_class}\""),
+        include_in_header: &includes.in_header,
+        include_before_body: &includes.before_body,
+        body: &body,
+        scripts_pre: &scripts_pre,
+        scripts_post: &scripts_post,
+        include_after_body: &includes.after_body,
+    })
 }
 
 /// Minimal query-value encoding for a page rel in the ws URL (spaces only; `/`
@@ -648,73 +620,129 @@ fn handle_client_msg(text: &str) {
 // --- messages -----------------------------------------------------------
 
 fn full_render_json(d: &PageDoc) -> String {
-    serde_json::json!({
-        "type": "full_render",
-        "title": d.title,
-        "body_html": qmd_fast_core::site::rewrite_qmd_links(&d.body_html()),
-        "diagnostics": diags_array(&d.diagnostics),
-    })
-    .to_string()
-}
-
-fn diags_array(diags: &[Diag]) -> Vec<serde_json::Value> {
-    diags
-        .iter()
-        .map(|d| serde_json::json!({ "level": d.level, "message": d.message }))
-        .collect()
-}
-
-fn diagnostics_json(diags: &[Diag]) -> String {
-    serde_json::json!({ "type": "diagnostics", "messages": diags_array(diags) }).to_string()
-}
-
-fn error_json(message: &str) -> String {
-    serde_json::json!({ "type": "error", "message": message }).to_string()
-}
-
-fn reload_json() -> String {
-    serde_json::json!({ "type": "reload" }).to_string()
-}
-
-/// Like `serve::op_json`, but rewrites any author `.qmd` links in the block HTML
-/// to their `.html` targets before it goes over the wire.
-fn op_json(op: &BlockOp) -> String {
     use qmd_fast_core::site::rewrite_qmd_links;
-    match op {
-        BlockOp::Update { target_id, html } => serde_json::json!({
-            "type": "update", "target_id": target_id, "html": rewrite_qmd_links(html)
-        }),
-        BlockOp::Insert { after_id, html } => serde_json::json!({
-            "type": "insert", "after_id": after_id, "html": rewrite_qmd_links(html)
-        }),
-        BlockOp::Remove { target_id } => {
-            serde_json::json!({"type": "remove", "target_id": target_id})
-        }
-    }
-    .to_string()
+    protocol::full_render(
+        d.title.as_deref(),
+        &rewrite_qmd_links(&d.body_html()),
+        &d.diagnostics,
+    )
+}
+
+/// Like the single-doc server's `op_json`, but rewrites any author `.qmd` links
+/// in the block HTML to their `.html` targets before it goes over the wire.
+fn op_json(op: &BlockOp) -> String {
+    protocol::op(op, qmd_fast_core::site::rewrite_qmd_links)
 }
 
 // --- build worker -------------------------------------------------------
 
+/// How many pages keep a warm kernel at once. Each page's executor holds its own
+/// Python/R kernel (~80-150 MB each), so an unbounded map would grow a kernel per
+/// page visited and never reclaim it. We keep the most-recently-built pages warm
+/// and drop the rest's kernels; an evicted page just pays a cold kernel start on
+/// its next edit.
+const MAX_WARM_PAGES: usize = 6;
+
+/// The per-page executors, bounded to [`MAX_WARM_PAGES`] by least-recently-built.
+/// Dropping an executor (on eviction) kills its kernel child processes.
+#[derive(Default)]
+struct ExecPool {
+    execs: HashMap<String, crate::exec::Executor>,
+    /// Page rel-paths, most-recently-built first; kept in sync with `execs`' keys.
+    mru: Vec<String>,
+}
+
+impl ExecPool {
+    /// The executor for `rel` (created if absent), marked most-recently-used. If
+    /// that pushes the live set past the cap, the least-recently-built page's
+    /// executor is dropped (killing its kernels).
+    fn get(&mut self, rel: &str) -> &mut crate::exec::Executor {
+        self.mru.retain(|r| r != rel);
+        self.mru.insert(0, rel.to_string());
+        self.execs
+            .entry(rel.to_string())
+            .or_insert_with(crate::exec::Executor::new);
+        while self.mru.len() > MAX_WARM_PAGES {
+            if let Some(evicted) = self.mru.pop() {
+                self.execs.remove(&evicted); // drops the executor -> kills its kernels
+                crate::log::kernel(&format!("evicted warm kernel for {evicted}"));
+            }
+        }
+        // Present: just inserted, and `rel` is at the MRU front so it's never the
+        // one evicted (cap >= 1).
+        self.execs.get_mut(rel).unwrap()
+    }
+
+    /// Restart `rel`'s kernel if it currently has one (the dev-menu action).
+    fn restart(&mut self, rel: &str) {
+        if let Some(ex) = self.execs.get_mut(rel) {
+            ex.restart_kernel();
+        }
+    }
+}
+
+#[cfg(test)]
+mod exec_pool_tests {
+    //! The pool bounds how many pages keep a warm kernel, so a long browse of a
+    //! big site doesn't leak a kernel per page. `Executor::new()` doesn't spawn a
+    //! kernel (that's lazy), so this exercises the eviction logic kernel-free.
+    use super::*;
+
+    #[test]
+    fn evicts_least_recently_built_beyond_cap() {
+        let mut pool = ExecPool::default();
+        for i in 0..MAX_WARM_PAGES + 3 {
+            pool.get(&format!("p{i}"));
+        }
+        assert_eq!(pool.execs.len(), MAX_WARM_PAGES, "live set must be capped");
+        assert_eq!(
+            pool.mru.len(),
+            MAX_WARM_PAGES,
+            "mru stays in sync with execs"
+        );
+        assert!(!pool.execs.contains_key("p0"), "oldest page was evicted");
+        assert!(
+            pool.execs.contains_key(&format!("p{}", MAX_WARM_PAGES + 2)),
+            "newest page is warm"
+        );
+    }
+
+    #[test]
+    fn touching_a_page_keeps_it_warm() {
+        let mut pool = ExecPool::default();
+        for i in 0..MAX_WARM_PAGES {
+            pool.get(&format!("p{i}"));
+        }
+        // Re-build the oldest page: it becomes most-recent and must survive the
+        // next eviction instead of being dropped.
+        pool.get("p0");
+        pool.get("newer");
+        assert!(pool.execs.contains_key("p0"), "re-touched page survived");
+        assert!(
+            !pool.execs.contains_key("p1"),
+            "the now-oldest page was evicted"
+        );
+        assert_eq!(pool.execs.len(), MAX_WARM_PAGES);
+    }
+}
+
 fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildMsg>) {
     tokio::spawn(async move {
-        let mut execs: HashMap<String, crate::exec::Executor> = HashMap::new();
+        let mut pool = ExecPool::default();
         while let Some(msg) = build_rx.recv().await {
             match msg {
-                BuildMsg::Build(rel) => build_page_guarded(&app, &rel, &mut execs).await,
+                BuildMsg::Build(rel) => build_page_guarded(&app, &rel, &mut pool).await,
                 BuildMsg::Restart(rel) => {
                     // Drop + respawn this page's kernel, then rebuild (re-executes
                     // every cell against the fresh kernel).
-                    if let Some(ex) = execs.get_mut(&rel) {
-                        ex.restart_kernel();
-                    }
-                    build_page_guarded(&app, &rel, &mut execs).await;
+                    pool.restart(&rel);
+                    build_page_guarded(&app, &rel, &mut pool).await;
                     // A fresh kernel means fresh outputs — including any `ojs_define`
                     // values. Reload the page so OJS cells re-bind to them: the
                     // Observable runtime can't redefine a variable in place, so a
                     // diff-splice of the define script wouldn't take effect.
                     if let Some(ps) = app.pages.lock().get(&rel) {
-                        let _ = ps.tx.send(reload_json());
+                        let _ = ps.tx.send(protocol::reload());
                     }
                 }
             }
@@ -726,13 +754,9 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
 /// page can't kill the shared builder task (which would silently stop hot-reload
 /// for *every* page). The panic is logged and surfaced to that page's clients;
 /// the next good save recovers.
-async fn build_page_guarded(
-    app: &SiteApp,
-    rel: &str,
-    execs: &mut HashMap<String, crate::exec::Executor>,
-) {
+async fn build_page_guarded(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
     use futures_util::FutureExt;
-    let outcome = std::panic::AssertUnwindSafe(build_page(app, rel, execs))
+    let outcome = std::panic::AssertUnwindSafe(build_page(app, rel, pool))
         .catch_unwind()
         .await;
     if let Err(payload) = outcome {
@@ -745,14 +769,14 @@ async fn build_page_guarded(
             ps.doc.errored = true;
             let _ = ps
                 .tx
-                .send(error_json(&format!("internal render error: {msg}")));
+                .send(protocol::error(&format!("internal render error: {msg}")));
         }
     }
 }
 
 /// Re-render a page's markdown, run its code cells (on the page's own executor),
 /// then diff against its live blocks and broadcast the changes to its subscribers.
-async fn build_page(app: &SiteApp, rel: &str, execs: &mut HashMap<String, crate::exec::Executor>) {
+async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
     let page = { app.site.lock().page(rel).cloned() };
     let Some(page) = page else {
         return;
@@ -761,18 +785,17 @@ async fn build_page(app: &SiteApp, rel: &str, execs: &mut HashMap<String, crate:
         let mut pages = app.pages.lock();
         if let Some(ps) = pages.get_mut(rel) {
             ps.doc.errored = true;
-            let _ = ps
-                .tx
-                .send(error_json(&format!("cannot read {}", page.input.display())));
+            let _ = ps.tx.send(protocol::error(&format!(
+                "cannot read {}",
+                page.input.display()
+            )));
         }
         return;
     };
     let base = page.input.parent().unwrap_or(Path::new(".")).to_path_buf();
     let doc = qmd_fast_core::render_document_with_includes(&src, &base);
 
-    let exec = execs
-        .entry(rel.to_string())
-        .or_insert_with(crate::exec::Executor::new);
+    let exec = pool.get(rel);
     let mut blocks = exec.run(doc.blocks).await;
     // Expand listing cards (queries the whole site, so it needs the site lock).
     let toc = {
@@ -784,7 +807,7 @@ async fn build_page(app: &SiteApp, rel: &str, execs: &mut HashMap<String, crate:
     };
     let mut diags = page_diagnostics(&page.input, &base, exec);
     for w in &doc.warnings {
-        diags.push(Diag {
+        diags.push(Diagnostic {
             level: "warning",
             message: w.clone(),
         });
@@ -813,7 +836,7 @@ async fn build_page(app: &SiteApp, rel: &str, execs: &mut HashMap<String, crate:
         }
     }
     if diags_changed {
-        let _ = ps.tx.send(diagnostics_json(&ps.doc.diagnostics));
+        let _ = ps.tx.send(protocol::diagnostics(&ps.doc.diagnostics));
     }
     if !ops.is_empty() {
         crate::log::update(ops.len());
@@ -821,11 +844,11 @@ async fn build_page(app: &SiteApp, rel: &str, execs: &mut HashMap<String, crate:
 }
 
 /// Per-page diagnostics: unresolved includes + kernel availability.
-fn page_diagnostics(input: &Path, base: &Path, exec: &crate::exec::Executor) -> Vec<Diag> {
+fn page_diagnostics(input: &Path, base: &Path, exec: &crate::exec::Executor) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     if let Ok(src) = std::fs::read_to_string(input) {
         for message in qmd_fast_core::frontmatter::lint(&src) {
-            diags.push(Diag {
+            diags.push(Diagnostic {
                 level: "warning",
                 message,
             });
@@ -833,7 +856,7 @@ fn page_diagnostics(input: &Path, base: &Path, exec: &crate::exec::Executor) -> 
         for dep in qmd_fast_core::includes::dependencies(&src, base) {
             if !dep.exists() {
                 let shown = dep.strip_prefix(base).unwrap_or(&dep);
-                diags.push(Diag {
+                diags.push(Diagnostic {
                     level: "warning",
                     message: format!("include not found: {}", shown.display()),
                 });
@@ -841,7 +864,7 @@ fn page_diagnostics(input: &Path, base: &Path, exec: &crate::exec::Executor) -> 
         }
     }
     if let Some(message) = exec.diagnostic() {
-        diags.push(Diag {
+        diags.push(Diagnostic {
             level: "warning",
             message,
         });
@@ -912,7 +935,7 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>) {
         let new = Site::discover(&app.root);
         *app.site.lock() = new;
         for ps in app.pages.lock().values() {
-            let _ = ps.tx.send(reload_json());
+            let _ = ps.tx.send(protocol::reload());
         }
         crate::log::update(0);
         return;
@@ -1021,7 +1044,7 @@ mod protocol_contract {
         assert!(fr.get("body_html").is_some());
         assert!(fr["diagnostics"].is_array());
 
-        let dg = parse(diagnostics_json(&[Diag {
+        let dg = parse(protocol::diagnostics(&[Diagnostic {
             level: "warning",
             message: "x".into(),
         }]));
@@ -1029,10 +1052,10 @@ mod protocol_contract {
         assert_eq!(dg["messages"][0]["level"], "warning");
         assert_eq!(dg["messages"][0]["message"], "x");
 
-        let err = parse(error_json("boom"));
+        let err = parse(protocol::error("boom"));
         assert_eq!(err["type"], "error");
         assert_eq!(err["message"], "boom");
 
-        assert_eq!(parse(reload_json())["type"], "reload");
+        assert_eq!(parse(protocol::reload())["type"], "reload");
     }
 }

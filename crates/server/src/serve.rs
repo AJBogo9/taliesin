@@ -3,6 +3,7 @@
 //! it re-renders, diffs against the previous block list, and broadcasts only
 //! the changed blocks so the browser updates in place.
 
+use crate::protocol::{self, Diagnostic};
 use axum::Router;
 use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
@@ -59,14 +60,6 @@ struct DocState {
     /// True while the last render failed, so the next success can re-mount fully
     /// (clearing the client's error overlay even when the diff is empty).
     errored: bool,
-}
-
-/// A non-fatal issue with the current document, surfaced in the preview so the
-/// author isn't left guessing why something looks wrong.
-#[derive(Clone, PartialEq)]
-struct Diagnostic {
-    level: &'static str, // "warning" | "error"
-    message: String,
 }
 
 impl DocState {
@@ -486,20 +479,13 @@ pub(crate) fn js_str(s: &str) -> String {
 }
 
 fn blog_index_html(ctx: &PageCtx) -> String {
-    // The Observable runtime + init, only when the doc has live `{ojs}` cells.
-    // `client.js` calls `window.qmdRunOJS()` after the first full mount.
-    let (ojs_head, ojs_init) = if ctx.ojs {
-        (qmd_fast_core::ojs_head(), qmd_fast_core::ojs_init())
-    } else {
-        (String::new(), String::new())
-    };
     // With a TOC, lay the content beside a sticky `<nav id="TOC">` (the client
     // rebuilds its entries from the mounted headings, so it stays live). The
-    // `QMD_TOC` flag switches the client into that mode.
-    let (body_attr, toc_nav, toc_flag) = if ctx.toc {
+    // `QMD_TOC` flag switches the client into that mode. `qmd-toc-sheet` opts the
+    // live page into the mobile pull-up-sheet TOC (the static export keeps the
+    // plain stacked-top TOC).
+    let (body_class, toc_nav, toc_flag) = if ctx.toc {
         (
-            // `qmd-toc-sheet` opts the live page into the mobile pull-up-sheet TOC
-            // (the static one-shot export keeps the plain stacked-top TOC).
             " class=\"has-toc qmd-toc-sheet\"",
             "<nav id=\"TOC\"></nav>\n\
              <div id=\"qmd-toc-backdrop\"></div>\n\
@@ -510,128 +496,89 @@ fn blog_index_html(ctx: &PageCtx) -> String {
     } else {
         ("", "", "")
     };
-    // Custom theme CSS (if any) comes after the base styles so its rules win.
-    let theme = if ctx.theme_css.trim().is_empty() {
-        String::new()
-    } else {
-        format!("<style>{}</style>", ctx.theme_css)
-    };
     // Absolute paths so click-to-source can build `vscode://file/…` links.
     let doc_global = format!(
         "window.QMD_DOC = {{ path: \"{}\", baseDir: \"{}\" }};",
         js_str(ctx.doc_path),
         js_str(ctx.base_dir),
     );
-    format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>qmd-fast</title>
-<link rel="icon" type="image/svg+xml" href="/favicon.ico" />
-{theme_init}
-{styles}
-{code_head}
-{ojs_head}
-{theme}
-{include_in_header}
-<style>{status_css}</style>
-</head>
-<body{body_attr}>
-{include_before_body}
-<main id="qmd-root">{body}</main>
-{toc_nav}
-<div id="qmd-controls"></div>
-<script>{doc_global} {toc_flag} window.QMD_SSR = true;</script>
-{code_scripts}
-<script>
-{js}
-</script>
-{ojs_init}
-{include_after_body}
-</body>
-</html>
-"#,
-        theme_init = qmd_fast_core::theme_head(ctx.theme_default),
-        styles = qmd_fast_core::client_styles(),
-        code_head = qmd_fast_core::code_head(),
-        code_scripts = qmd_fast_core::code_scripts(),
-        status_css = STATUS_CSS,
-        include_in_header = ctx.includes.in_header,
-        include_before_body = ctx.includes.before_body,
-        include_after_body = ctx.includes.after_body,
-        js = CLIENT_JS,
-        body = ctx.body,
-    )
+    // The live body: a mountable `#qmd-root`, the live TOC nav, and the dev-menu
+    // mount. The websocket client drives everything after the first paint.
+    let body = format!(
+        "<main id=\"qmd-root\">{}</main>\n{toc_nav}\n<div id=\"qmd-controls\"></div>",
+        ctx.body
+    );
+    let extra_head = format!("<style>{STATUS_CSS}</style>\n");
+    let scripts_pre = format!("<script>{doc_global} {toc_flag} window.QMD_SSR = true;</script>");
+    let scripts_post = format!("<script>\n{CLIENT_JS}\n</script>");
+    qmd_fast_core::assemble_html_page(&qmd_fast_core::PageParts {
+        title: "qmd-fast",
+        // The preview page chrome is English ("qmd-fast"); the built artifact honours
+        // the doc's front-matter `lang:`.
+        lang: "en",
+        favicon: "<link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.ico\" />",
+        theme_default: ctx.theme_default,
+        theme_css: ctx.theme_css,
+        with_site_css: false,
+        // A live doc can gain math at any edit, so always ship the KaTeX styles.
+        ship_katex: true,
+        has_ojs: ctx.ojs,
+        extra_head: &extra_head,
+        body_class,
+        include_in_header: &ctx.includes.in_header,
+        include_before_body: &ctx.includes.before_body,
+        body: &body,
+        scripts_pre: &scripts_pre,
+        scripts_post: &scripts_post,
+        include_after_body: &ctx.includes.after_body,
+    })
 }
 
 /// Live reveal.js deck: the same preview client, but mounting sectioned slides
 /// into `.reveal > .slides` and (re)syncing reveal as blocks change. The
 /// `QMD_FORMAT` flag switches the client into deck mode.
 fn reveal_index_html(ctx: &PageCtx) -> String {
-    // A contributed `theme:` (e.g. from a reveal format extension) plus the doc's
-    // `include-*`. The theme/header come after reveal's own stylesheets so they
-    // win; the after-body include (a plugin's `<script src>` + `registerPlugin`)
-    // runs after the reveal library and before the preview client initializes it.
-    let theme = if ctx.theme_css.trim().is_empty() {
+    // The Observable runtime init, only when the deck has live `{ojs}` cells.
+    // `ojs_init` defines `window.qmdRunOJS`, which the preview client calls after
+    // each mount, so it must be defined before `client.js` runs.
+    let ojs_init = if ctx.ojs {
+        qmd_fast_core::ojs_init()
+    } else {
         String::new()
-    } else {
-        format!("<style>{}</style>", ctx.theme_css)
     };
-    // The Observable runtime + init, only when the deck has live `{ojs}` cells —
-    // so interactive inputs/plots work in a deck just like on a page. `ojs_init`
-    // defines `window.qmdRunOJS`, which the preview client calls after each mount.
-    let (ojs_head, ojs_init) = if ctx.ojs {
-        (qmd_fast_core::ojs_head(), qmd_fast_core::ojs_init())
-    } else {
-        (String::new(), String::new())
-    };
-    format!(
-        r#"<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-<title>qmd-fast</title>
-<link rel="icon" type="image/svg+xml" href="/favicon.ico" />
-{deck_theme}
-{head}
-{code_head}
-{ojs_head}
-{theme}
-{include_in_header}
-<style>{status_css}</style>
-</head>
-<body>
-{include_before_body}
-<div class="reveal">
-<div class="slides" id="qmd-root">{body}</div>
-</div>
-<div id="qmd-status">connecting…</div>
-{reveal_script}
-{code_scripts}
-<script>window.QMD_FORMAT = "reveal"; window.QMD_SSR = true;</script>
-{include_after_body}
-{ojs_init}
-<script>
-{js}
-</script>
-</body>
-</html>
-"#,
-        deck_theme = qmd_fast_core::deck_theme_head(ctx.theme_default, ctx.theme_is_custom),
-        head = qmd_fast_core::reveal_client_head(),
-        code_head = qmd_fast_core::code_head(),
-        code_scripts = qmd_fast_core::code_scripts(),
-        status_css = STATUS_CSS,
-        include_in_header = ctx.includes.in_header,
-        include_before_body = ctx.includes.before_body,
-        include_after_body = ctx.includes.after_body,
+    let extra_head = format!("<style>{STATUS_CSS}</style>\n");
+    // The live deck tail: the deck engine, the enhancers, the `QMD_*` flags, the
+    // doc's after-body include (a reveal plugin's `<script src>` + `registerPlugin`,
+    // which must run after the engine and before the client initializes it), then
+    // the websocket client last (after `ojs_init`).
+    let tail = format!(
+        "{reveal_script}\n{code_scripts}\n\
+         <script>window.QMD_FORMAT = \"reveal\"; window.QMD_SSR = true;</script>\n\
+         {include_after_body}\n{ojs_init}\n<script>\n{CLIENT_JS}\n</script>\n",
         reveal_script = qmd_fast_core::reveal_client_script(),
-        js = CLIENT_JS,
-        body = ctx.body,
-    )
+        code_scripts = qmd_fast_core::code_scripts(),
+        include_after_body = ctx.includes.after_body,
+    );
+    qmd_fast_core::assemble_reveal_page(&qmd_fast_core::RevealParts {
+        title: "qmd-fast",
+        // The preview page chrome is English ("qmd-fast"); the built artifact honours
+        // the doc's front-matter `lang:`.
+        lang: "en",
+        favicon: "<link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.ico\" />",
+        theme_default: ctx.theme_default,
+        theme_is_custom: ctx.theme_is_custom,
+        theme_css: ctx.theme_css,
+        // A live deck can gain math at any edit, so always ship the KaTeX styles.
+        ship_katex: true,
+        has_ojs: ctx.ojs,
+        extra_head: &extra_head,
+        include_in_header: &ctx.includes.in_header,
+        include_before_body: &ctx.includes.before_body,
+        slides_attr: " id=\"qmd-root\"",
+        slides: ctx.body,
+        after_reveal: "<div id=\"qmd-status\">connecting…</div>\n",
+        tail: &tail,
+    })
 }
 
 // --- WebSocket ----------------------------------------------------------
@@ -682,6 +629,12 @@ async fn client_conn(socket: WebSocket, app: Arc<AppState>) {
 }
 
 fn handle_client_msg(text: &str, app: &AppState) {
+    // Control messages are accepted from any connected client without auth. Under
+    // the tool's trust model this is intentional: it serves *one author's own*
+    // documents, and `--host` is an opt-in convenience for previewing on the
+    // author's own devices over a trusted LAN. The only state these messages reach
+    // is the author's local render/kernel (worst case, a LAN peer triggers a kernel
+    // restart). Multi-tenant/hosted use would need per-connection authorization here.
     let Ok(v) = serde_json::from_str::<serde_json::Value>(text) else {
         return;
     };
@@ -707,34 +660,7 @@ fn handle_client_msg(text: &str, app: &AppState) {
 // --- messages -----------------------------------------------------------
 
 fn full_render_json(d: &DocState) -> String {
-    serde_json::json!({
-        "type": "full_render",
-        "title": d.title,
-        "body_html": d.body_html(),
-        "diagnostics": diags_array(&d.diagnostics),
-    })
-    .to_string()
-}
-
-fn diags_array(diags: &[Diagnostic]) -> Vec<serde_json::Value> {
-    diags
-        .iter()
-        .map(|d| serde_json::json!({ "level": d.level, "message": d.message }))
-        .collect()
-}
-
-fn diagnostics_json(diags: &[Diagnostic]) -> String {
-    serde_json::json!({ "type": "diagnostics", "messages": diags_array(diags) }).to_string()
-}
-
-/// Tell the client to do a full page reload (used after a kernel restart, so OJS
-/// cells re-bind to freshly-defined values).
-fn reload_json() -> String {
-    serde_json::json!({ "type": "reload" }).to_string()
-}
-
-fn error_json(message: &str) -> String {
-    serde_json::json!({ "type": "error", "message": message }).to_string()
+    protocol::full_render(d.title.as_deref(), &d.body_html(), &d.diagnostics)
 }
 
 /// Non-fatal issues with the current document: includes that don't resolve, and
@@ -769,18 +695,7 @@ fn compute_diagnostics(app: &AppState, executor: &crate::exec::Executor) -> Vec<
 }
 
 fn op_json(op: &BlockOp) -> String {
-    match op {
-        BlockOp::Update { target_id, html } => {
-            serde_json::json!({"type": "update", "target_id": target_id, "html": html})
-        }
-        BlockOp::Insert { after_id, html } => {
-            serde_json::json!({"type": "insert", "after_id": after_id, "html": html})
-        }
-        BlockOp::Remove { target_id } => {
-            serde_json::json!({"type": "remove", "target_id": target_id})
-        }
-    }
-    .to_string()
+    protocol::op(op, |html| html.to_string())
 }
 
 // --- file watching ------------------------------------------------------
@@ -839,7 +754,7 @@ fn spawn_watcher(app: Arc<AppState>, mut signal_rx: mpsc::UnboundedReceiver<()>)
             // values. Reload so OJS cells re-bind to them (the Observable runtime
             // can't redefine a variable in place, so a diff-splice wouldn't take).
             if restarted {
-                let _ = app.tx.send(reload_json());
+                let _ = app.tx.send(protocol::reload());
             }
         }
     });
@@ -889,9 +804,10 @@ fn watch_dirs(app: &AppState) -> Vec<PathBuf> {
 async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
     let Some(doc) = render_doc(app) else {
         app.doc.lock().errored = true;
-        let _ = app
-            .tx
-            .send(error_json(&format!("cannot read {}", app.path.display())));
+        let _ = app.tx.send(protocol::error(&format!(
+            "cannot read {}",
+            app.path.display()
+        )));
         return;
     };
     let blocks = executor.run(doc.blocks).await;
@@ -931,7 +847,7 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
             }
         }
         if diags_changed {
-            let _ = app.tx.send(diagnostics_json(&d.diagnostics));
+            let _ = app.tx.send(protocol::diagnostics(&d.diagnostics));
         }
         ops.len()
     };
@@ -956,7 +872,7 @@ async fn rebuild_guarded(app: &AppState, executor: &mut crate::exec::Executor) {
         app.doc.lock().errored = true;
         let _ = app
             .tx
-            .send(error_json(&format!("internal render error: {msg}")));
+            .send(protocol::error(&format!("internal render error: {msg}")));
     }
 }
 

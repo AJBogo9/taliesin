@@ -37,11 +37,11 @@ pub mod site;
 
 pub use diff::{BlockOp, diff_blocks};
 pub use render::{
-    Block, DocFormat, RenderedDoc, SEARCH_JS, SiteCtx, TOC_SPY_JS, client_styles, code_head,
-    code_scripts, deck_theme_head, escape_attr, favicon_link, has_ojs, html_escape,
-    html_page_from_doc_in_site, ojs_head, ojs_init, render_doc_to_page, render_document,
+    Block, DocFormat, PageParts, RenderedDoc, RevealParts, SEARCH_JS, SiteCtx, TOC_SPY_JS,
+    assemble_html_page, assemble_reveal_page, code_scripts, escape_attr, favicon_link, has_ojs,
+    html_escape, html_page_from_doc_in_site, ojs_init, render_doc_to_page, render_document,
     render_document_with_includes, render_html_page, render_html_page_with_includes,
-    reveal_client_head, reveal_client_script, site_styles, slides_html, theme_head,
+    reveal_client_script, slides_html,
 };
 pub use site::{DeckRef, Page, Site, SiteConfig};
 
