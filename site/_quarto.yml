@@ -1,0 +1,25 @@
+# qmd-fast marketing site — a website project, built by qmd-fast itself.
+# Native flat schema (HTML-only; no `project:`/`format:` nesting). The docs book
+# is a separate project built into `_site/docs` for a single-tree deploy, so the
+# "Docs" nav item points at `docs/`.
+title: "qmd-fast"
+description: "A fast, single-purpose dev server that turns one .qmd file into a live blog post, slide deck, book, or website — with executable code and an edit loop that updates the instant you save."
+url: "https://qmd-fast.dev"
+favicon: favicon.svg
+css: marketing.css
+toc: false
+
+nav:
+  left:
+    - { text: "Features", href: features.qmd }
+    - { text: "Document types", href: formats.qmd }
+    - { text: "Docs", href: "docs/" }
+  right:
+    - { icon: github, href: "https://github.com/AJBogo9/qmd-fast" }
+
+footer:
+  left:
+    - { text: "Built with qmd-fast" }
+  right:
+    - { text: "Docs", href: "docs/" }
+    - { icon: github, href: "https://github.com/AJBogo9/qmd-fast" }

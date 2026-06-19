@@ -1,0 +1,99 @@
+---
+title: "Document types"
+description: "One .qmd source, four outputs: blog posts and papers, slide decks, multi-chapter books, and multi-page websites — all from the same block model."
+title-block-style: none
+toc: false
+---
+
+::: {.mkt-hero}
+<span class="mkt-eyebrow">One source, four outputs</span>
+
+<h1>Pick the output in the <span class="mkt-accent">front matter</span></h1>
+
+<p class="mkt-lead">A blog post, a slide deck, a book, and a website are the same document seen four ways. They share the block model, the offline math and highlighting, and the live edit loop — so anything you learn for one carries to the rest.</p>
+:::
+
+::: {.mkt-section-head}
+<span class="mkt-eyebrow">Article</span>
+
+## Blog posts & papers {#blog-posts}
+
+The default output. Prose with everything a technical piece actually needs.
+:::
+
+Write Markdown and get a clean reading column with web-native typography. Add
+display and inline math, mermaid diagrams, numbered figures, callouts, and
+`[@key]` citations with a real bibliography. Drop in `{python}` or `{r}` cells and
+their output, including matplotlib figures, renders inline and re-runs only when
+the code changes.
+
+```yaml
+---
+title: "A post about something hard"
+bibliography: references.bib
+---
+```
+
+Live Observable inputs and Three.js scenes belong here too: they keep their
+runtime state while you edit the prose around them.
+
+::: {.mkt-section-head}
+<span class="mkt-eyebrow">Reveal</span>
+
+## Slide decks {#slide-decks}
+
+`format: revealjs` turns the same headings into a deck, on qmd-fast's own engine, with no reveal.js dependency.
+:::
+
+Fragments and incremental lists, a presenter view with notes and a timer,
+one-slide-per-page PDF export, per-slide backgrounds, auto-animate, magic-move
+code, and step-through line highlighting. And because the exec pipeline is
+format-agnostic, a `{python}` cell **runs on the slide** and re-runs as you edit it.
+
+{{< embed demo.qmd title="The qmd-fast deck engine" >}}
+
+The deck above is live — click it, arrow through it, press <kbd>F</kbd> for fullscreen.
+
+::: {.mkt-section-head}
+<span class="mkt-eyebrow">Book</span>
+
+## Multi-chapter books {#books}
+
+A `chapters:` list makes a book: a sidebar, numbered chapters, cross-chapter references.
+:::
+
+References like `@fig-` and `@sec-` resolve and number across chapters, a Cmd-K
+palette searches the whole book, and each chapter is still a normal `.qmd` you can
+preview on its own.
+
+::: {.mkt-cta}
+[Read the docs — they are a qmd-fast book](docs/){.btn .btn-primary}
+:::
+
+::: {.mkt-section-head}
+<span class="mkt-eyebrow">Site</span>
+
+## Multi-page websites {#websites}
+
+Point qmd-fast at a directory with a `_quarto.yml` and you get a whole site.
+:::
+
+A themed navbar and footer, post listings and an `about:` profile header, an RSS
+feed, OpenGraph and Twitter-card metadata, light/dark with a toggle, and Cmd-K
+search — built to a static `_site/` you can host anywhere. Intra-site `.qmd` links
+are rewritten to `.html` automatically.
+
+::: {.mkt-dogfood}
+This site is the example. The page you are reading, its navbar and footer, and the
+dark/light toggle are all a qmd-fast website — and the [docs](docs/) it links to are
+a qmd-fast book, deployed in the same tree under `/docs`.
+:::
+
+::: {.mkt-band}
+## Try it on your own writing
+
+<div class="mkt-cta">
+  <a class="btn btn-primary btn-lg" href="docs/using/getting-started.html">Get started</a>
+  <a class="btn btn-lg" href="features.qmd">Back to features</a>
+</div>
+:::

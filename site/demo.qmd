@@ -1,0 +1,103 @@
+---
+title: "The qmd-fast deck engine"
+subtitle: "A tour of every feature, in one deck"
+format: revealjs
+---
+
+## One source, many views {auto-animate=true}
+
+The same `.qmd` renders as a page, a book, a website, or **this deck**.
+
+::: {.incremental}
+- Block-level live updates while you edit
+- Double-click any block to jump to its source
+- No CDN: fonts, math, and highlighting are bundled offline
+:::
+
+## One source, many views {auto-animate=true}
+
+The same `.qmd` renders as a page, a book, a website, or **this deck**.
+
+> The title above tweened into place: that's **auto-animate**.
+
+## Fragments reveal step by step
+
+::: {.incremental}
+- Press <kbd>Space</kbd> or <kbd>→</kbd> to advance
+- Each bullet is its own step
+- Steps interleave with code and animations, in document order
+:::
+
+## Code, highlighted line by line
+
+```{.python code-line-numbers="1|2-3|4"}
+import numpy as np
+x = np.linspace(0, 1, 100)
+y = np.sin(2 * np.pi * x)
+print(y.max())
+```
+
+Server-side highlighting; the focus steps `1 → 2-3 → 4` as you advance.
+
+## Magic move
+
+::: {.magic-move}
+```python
+def area(r):
+    return 3.14 * r * r
+```
+
+```python
+import math
+
+def area(r):
+    return math.pi * r ** 2
+```
+:::
+
+Matched lines glide to their new home between the two snapshots.
+
+## Math, rendered offline
+
+KaTeX renders server-side, no network needed:
+
+$$
+\hat{\beta} = (X^\top X)^{-1} X^\top y
+$$
+
+Inline works too: the estimator $\hat{\beta}$ minimizes $\lVert y - X\beta \rVert^2$.
+
+## A slide with a backdrop {background-color="#0f172a"}
+
+Per-slide backgrounds (`background-color`, `background-gradient`,
+`background-image`) set the mood. Text flips to light automatically.
+
+## Gradient {background-gradient="linear-gradient(135deg,#4c6ef5,#9775fa)"}
+
+Gradients work the same way.
+
+# Vertical stacks
+
+Press <kbd>↓</kbd> to go deeper, <kbd>→</kbd> to move on.
+
+## Deep dive
+
+A heading under a section becomes a vertical sub-slide, so a topic can have its
+own thread without cluttering the main flow.
+
+## Presenter, print, reader, draw
+
+::: {.incremental}
+- <kbd>S</kbd> opens **speaker view** (current + next slide, notes, timer)
+- <kbd>Ctrl/Cmd-P</kbd> prints to a clean **one-slide-per-page PDF**
+- On a phone the deck flattens to a scrollable **reader**
+- <kbd>D</kbd> toggles a **pen** to annotate live
+:::
+
+::: {.notes}
+Speaker notes live in a `::: {.notes}` block and only show in speaker view.
+:::
+
+## That's the tour
+
+Built with qmd-fast. Edit the source and watch this slide update in place.

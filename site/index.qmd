@@ -1,0 +1,137 @@
+---
+title: "qmd-fast"
+description: "A fast, single-purpose dev server that turns one .qmd file into a live blog post, slide deck, book, or website — with executable code and an edit loop that updates the instant you save."
+title-block-style: none
+toc: false
+---
+
+::: {.mkt-hero}
+<span class="mkt-eyebrow">Markdown in · live HTML out</span>
+
+<h1>Technical writing at the<br><span class="mkt-accent">speed of code</span></h1>
+
+<p class="mkt-lead">A focused dev server that turns one&nbsp;<code>.qmd</code> file into a live blog post, slide deck, book, or website. Save, and only the block you changed re-renders, in place. No cold start. No full-page reload.</p>
+
+<div class="mkt-cta">
+  <a class="btn btn-primary btn-lg" href="docs/">Read the docs</a>
+  <a class="btn btn-lg" href="features.qmd">See what it does</a>
+  <a class="btn btn-outline-secondary btn-lg" href="https://github.com/AJBogo9/qmd-fast">GitHub</a>
+</div>
+
+<div class="mkt-term">
+  <div class="mkt-term-bar"><i></i><i></i><i></i><span>zsh</span></div>
+  <pre><span class="tok-prompt">$ </span><span class="tok-cmd">qmd-fast</span> <span class="tok-arg">preview</span> post.qmd
+<span class="tok-dim">  → http://127.0.0.1:4321   (edit, and watch one block update in place)</span></pre>
+</div>
+:::
+
+::: {.mkt-media}
+<figure>
+  <div class="mkt-media-frame">
+    <video src="assets/live-edit.mp4" autoplay muted loop playsinline></video>
+  </div>
+  <figcaption>Save the file, and only the block you touched re-renders. Scroll position, the warm kernel, and live canvases all survive.</figcaption>
+</figure>
+:::
+
+::: {.mkt-section}
+::: {.mkt-section-head}
+<span class="mkt-eyebrow">Why it feels different</span>
+## Three things it gets right
+
+The whole tool is built around one idea: writing should feel as immediate as editing code.
+:::
+
+::: {.feature-grid}
+<div class="feature">
+  <h3><span class="mkt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg></span>Block-level updates</h3>
+  <p>A save re-renders only the blocks that changed, and swaps them in place over a websocket. The page never reloads, so live Three.js and Observable canvases keep their state.</p>
+</div>
+<div class="feature">
+  <h3><span class="mkt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path></svg></span>Click to source</h3>
+  <p>Every rendered block remembers the line it came from. Double-click anything in the preview to jump straight to its source — even across <code>{{< include >}}</code>d files.</p>
+</div>
+<div class="feature">
+  <h3><span class="mkt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c1.5 3 4 4.5 4 8a4 4 0 0 1-8 0c0-1.2.4-2.2 1-3"></path><path d="M12 22a6 6 0 0 0 6-6c0-2-1-3.7-2.5-5"></path></svg></span>No cold start</h3>
+  <p>A long-running server and a warm Jupyter kernel mean edits show up immediately, and a code change re-runs only that cell and everything downstream — not the whole document.</p>
+</div>
+:::
+:::
+
+::: {.mkt-section}
+::: {.mkt-section-head}
+<span class="mkt-eyebrow">One source, many outputs</span>
+## The same `.qmd` becomes any of these
+
+Write once in plain text. Pick the output in the front matter. Every format shares the block model, the offline math and highlighting, and the live edit loop.
+:::
+
+::: {.mkt-formats}
+<a class="mkt-format" href="formats.qmd#blog-posts">
+  <span class="mkt-format-kind">Article</span>
+  <h3>Blog posts &amp; papers</h3>
+  <p>Prose, math, figures, citations, and cross-references — with executable Python/R cells and live interactive graphics.</p>
+  <span class="mkt-format-go">See an example →</span>
+</a>
+<a class="mkt-format" href="formats.qmd#slide-decks">
+  <span class="mkt-format-kind">Reveal</span>
+  <h3>Slide decks</h3>
+  <p>A native slide engine: fragments, presenter view, PDF export, code stepping, auto-animate — and code that actually runs on the slide.</p>
+  <span class="mkt-format-go">Open the live deck →</span>
+</a>
+<a class="mkt-format" href="docs/">
+  <span class="mkt-format-kind">Book</span>
+  <h3>Multi-chapter books</h3>
+  <p>A sidebar, numbered chapters, cross-chapter references, and full-text search. These very docs are a qmd-fast book.</p>
+  <span class="mkt-format-go">Read the docs book →</span>
+</a>
+<a class="mkt-format" href="formats.qmd#websites">
+  <span class="mkt-format-kind">Site</span>
+  <h3>Multi-page websites</h3>
+  <p>Navbar, footer, listings, RSS, OpenGraph, and Cmd-K search. This whole site is a qmd-fast website.</p>
+  <span class="mkt-format-go">How this site is built →</span>
+</a>
+:::
+:::
+
+::: {.mkt-section}
+::: {.mkt-section-head}
+<span class="mkt-eyebrow">See it live</span>
+## A real slide deck, embedded right here
+
+This is the running deck engine, not a screenshot. Click it and use <kbd>←</kbd> / <kbd>→</kbd>, press <kbd>F</kbd> for fullscreen, or open it in its own tab.
+:::
+
+{{< embed demo.qmd title="The qmd-fast deck engine" >}}
+:::
+
+::: {.mkt-section}
+::: {.mkt-section-head}
+<span class="mkt-eyebrow">The part you can't screenshot</span>
+## Edit the code. The output re-runs in place.
+
+A `{python}` or `{r}` cell runs against a warm kernel. Change a parameter and only that cell — and the figure it produced — re-renders. The rest of the page never moves.
+:::
+
+::: {.mkt-media}
+<figure>
+  <div class="mkt-media-frame">
+    <video src="assets/live-code.mp4" autoplay muted loop playsinline></video>
+  </div>
+  <figcaption>One value changes in the source; the matplotlib figure updates in place, with scroll preserved. Double-click any block to open its source in your editor.</figcaption>
+</figure>
+:::
+:::
+
+<p class="mkt-dogfood">There is nothing static here that a screenshot could fake: <strong>this landing page, its <a href="docs/">documentation book</a>, and the slide deck above are all built and served by qmd-fast</strong> — from plain <code>.qmd</code> files in one repository.</p>
+
+::: {.mkt-band}
+## Write the next thing in plain text
+
+Author in `.qmd`, preview it live, and ship self-contained HTML — a post, a deck, a book, or a site.
+
+<div class="mkt-cta">
+  <a class="btn btn-primary btn-lg" href="docs/using/getting-started.html">Get started</a>
+  <a class="btn btn-lg" href="https://github.com/AJBogo9/qmd-fast">Star on GitHub</a>
+</div>
+:::

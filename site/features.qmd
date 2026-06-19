@@ -1,0 +1,152 @@
+---
+title: "Features"
+description: "The live edit loop, everything technical writing needs, live interactive graphics, and offline-first publishing — every feature of the qmd-fast dev server."
+title-block-style: none
+toc: false
+---
+
+::: {.mkt-hero}
+<span class="mkt-eyebrow">Everything the dev server does</span>
+
+<h1>Built for the <span class="mkt-accent">edit loop</span></h1>
+
+<p class="mkt-lead">qmd-fast does one thing — author HTML from <code>.qmd</code> — and makes the loop from keystroke to rendered page instant. Here is what that buys you.</p>
+:::
+
+::: {.mkt-media}
+<figure>
+  <div class="mkt-media-frame">
+    <video src="assets/live-edit.mp4" autoplay muted loop playsinline></video>
+  </div>
+  <figcaption>One save. Only the changed block re-renders, in place.</figcaption>
+</figure>
+:::
+
+::: {.mkt-section}
+::: {.mkt-section-head}
+<span class="mkt-eyebrow">The loop</span>
+## A preview that keeps up with you
+
+A long-running Rust server watches the file, re-renders on save, and pushes only what changed over a websocket.
+:::
+
+::: {.feature-grid}
+<div class="feature">
+  <h3><span class="mkt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"></rect><path d="M8 21h8M12 17v4"></path></svg></span>Live preview</h3>
+  <p>Open it in any browser. The server watches the <code>.qmd</code> (and its includes and bibliography) and re-renders the moment you save.</p>
+</div>
+<div class="feature">
+  <h3><span class="mkt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="14" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect></svg></span>Block-level diffing</h3>
+  <p>Each save diffs the new blocks against the old and ships only the differences. Unchanged blocks are never touched — scroll, focus, and live state survive.</p>
+</div>
+<div class="feature">
+  <h3><span class="mkt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path></svg></span>Click to source</h3>
+  <p>Double-click any rendered element and your editor jumps to the line it came from, via a <code>vscode://</code> deep link — even across <code>{{< include >}}</code>d files.</p>
+</div>
+<div class="feature">
+  <h3><span class="mkt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c1.5 3 4 4.5 4 8a4 4 0 0 1-8 0c0-1.2.4-2.2 1-3"></path><path d="M12 22a6 6 0 0 0 6-6c0-2-1-3.7-2.5-5"></path></svg></span>Warm kernel</h3>
+  <p>A persistent Jupyter kernel (Python or R) runs your cells. A code change re-runs only the earliest changed cell and everything downstream — never the whole document.</p>
+</div>
+<div class="feature">
+  <h3><span class="mkt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2" width="10" height="20" rx="2"></rect><path d="M11 18h2"></path></svg></span>Preview on your phone</h3>
+  <p><code>--host</code> exposes the live preview on your LAN with a QR code, so you can read the real, updating page on a phone while you write.</p>
+</div>
+<div class="feature">
+  <h3><span class="mkt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8v4l3 2"></path><circle cx="12" cy="12" r="9"></circle></svg></span>No runaway cells</h3>
+  <p>A cell that runs too long is interrupted, and kernel failures surface in seconds with the real cause — the warm kernel and prior cells survive.</p>
+</div>
+:::
+:::
+
+::: {.mkt-section}
+::: {.mkt-section-head}
+<span class="mkt-eyebrow">On the page</span>
+## Everything technical writing needs
+
+Math, diagrams, runnable code, citations — all rendered offline, all part of the block model.
+:::
+
+::: {.feature-grid}
+<div class="feature">
+  <h3><span class="mkt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20l5-16M9 4h8M5 12h8"></path></svg></span>Math, offline</h3>
+  <p>KaTeX renders inline and display math server-side. Fonts and CSS are bundled, so equations need no network and never reflow on load.</p>
+</div>
+<div class="feature">
+  <h3><span class="mkt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M20 4v7a4 4 0 0 1-4 4H9"></path></svg></span>Diagrams</h3>
+  <p>Mermaid flowcharts, sequence, and state diagrams from fenced code — re-themed automatically when you toggle light and dark.</p>
+</div>
+<div class="feature">
+  <h3><span class="mkt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 6 3 12 8 18"></polyline><polyline points="16 6 21 12 16 18"></polyline></svg></span>Executable code</h3>
+  <p>Python and R cells run against the warm kernel; their output — text and matplotlib figures alike — is spliced back into the page as real blocks.</p>
+</div>
+<div class="feature">
+  <h3><span class="mkt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v12a3 3 0 0 0 3 3h9"></path><path d="M15 15l3 3-3 3"></path><path d="M9 7h7"></path></svg></span>Citations &amp; cross-refs</h3>
+  <p><code>[@key]</code> citations with IEEE/CSL bibliographies, and <code>@fig-</code> / <code>@sec-</code> cross-references that number and link themselves — across chapters.</p>
+</div>
+<div class="feature">
+  <h3><span class="mkt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><path d="M21 15l-5-5L5 21"></path></svg></span>Numbered figures</h3>
+  <p>Figures get automatic numbering and captions, callouts and columns come from fenced divs, and <code>{{< include >}}</code> stitches files together.</p>
+</div>
+<div class="feature">
+  <h3><span class="mkt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg></span>Cmd-K search</h3>
+  <p>A keyboard-driven palette searches every page or chapter. Front-matter typos are flagged as you write, before they bite.</p>
+</div>
+:::
+:::
+
+::: {.mkt-section}
+::: {.mkt-section-head}
+<span class="mkt-eyebrow">The moat</span>
+## Live, and it stays alive
+
+Interactive graphics keep their runtime state across edits — because the page never reloads.
+:::
+
+::: {.feature-grid}
+<div class="feature">
+  <h3><span class="mkt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"></path><path d="M7 15l3-4 3 2 4-6"></path></svg></span>Observable reactivity</h3>
+  <p>Observable JS cells give you sliders and reactive figures. Edit a value and the reactive graph recomputes live, in place.</p>
+</div>
+<div class="feature">
+  <h3><span class="mkt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L3 7v10l9 5 9-5V7z"></path><path d="M3 7l9 5 9-5M12 12v10"></path></svg></span>3D graphics</h3>
+  <p>Drop in a Three.js / WebGL canvas. Edit the prose around it and the canvas keeps spinning — its WebGL context is never torn down.</p>
+</div>
+<div class="feature">
+  <h3><span class="mkt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="13" rx="2"></rect><path d="M8 21h8M12 17v4M7 11l2 2 4-4"></path></svg></span>Code that runs on slides</h3>
+  <p>The same executable cells work in a deck. Edit a <code>{python}</code> cell mid-talk and the slide updates in place — no other framework does this.</p>
+</div>
+:::
+:::
+
+::: {.mkt-section}
+::: {.mkt-section-head}
+<span class="mkt-eyebrow">Shipping</span>
+## Offline-first, and self-contained
+
+No CDN, no build pipeline. <code>build</code> writes HTML you can host anywhere.
+:::
+
+::: {.feature-grid}
+<div class="feature">
+  <h3><span class="mkt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3l18 18"></path><path d="M5 12a7 7 0 0 1 9-2M8.5 8.5A11 11 0 0 1 19 12"></path><path d="M12 20h.01"></path></svg></span>Zero CDN</h3>
+  <p>Fonts, KaTeX, syntax highlighting, and the slide engine are all bundled. Pages render identically offline and never phone home.</p>
+</div>
+<div class="feature">
+  <h3><span class="mkt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3v5h5"></path><path d="M5 3h9l5 5v13H5z"></path></svg></span>Self-contained HTML</h3>
+  <p>One command turns a document into a single HTML file — or a portable folder with its local assets copied alongside.</p>
+</div>
+<div class="feature">
+  <h3><span class="mkt-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"></path></svg></span>Whole sites</h3>
+  <p>Point it at a directory for a multi-page website or book: navbar, footer, listings, RSS, OpenGraph, and search — built to a static <code>_site/</code>.</p>
+</div>
+:::
+:::
+
+::: {.mkt-band}
+## See the formats, or read the manual
+
+<div class="mkt-cta">
+  <a class="btn btn-primary btn-lg" href="formats.qmd">Tour the document types</a>
+  <a class="btn btn-lg" href="docs/">Read the docs</a>
+</div>
+:::

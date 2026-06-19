@@ -1,0 +1,34 @@
+---
+title: "Sampling a noisy signal"
+title-block-style: none
+toc: false
+---
+
+# Sampling a noisy signal
+
+The cell below runs against a warm Python kernel. Change the **number of cycles**
+and only this cell re-runs — the figure it produced updates in place, with the
+page never moving.
+
+```{python}
+import numpy as np
+import matplotlib.pyplot as plt
+
+cycles = 3                     # ← edit me
+x = np.linspace(0, 1, 600)
+y = np.sin(2 * np.pi * cycles * x)
+
+fig, ax = plt.subplots(figsize=(8, 3.2))
+ax.plot(x, y, color="#4c6ef5", lw=2.2)
+ax.fill_between(x, y, alpha=0.12, color="#4c6ef5")
+ax.set_title(f"sin(2π · {cycles}t)", fontsize=13)
+ax.set_xlabel("t")
+ax.set_ylim(-1.3, 1.3)
+ax.spines[["top", "right"]].set_visible(False)
+plt.tight_layout()
+plt.show()
+```
+
+Because the kernel is warm, the re-run is instant: no interpreter start-up, no
+re-importing numpy, no full-page reload. Just the one cell and everything
+downstream of it.

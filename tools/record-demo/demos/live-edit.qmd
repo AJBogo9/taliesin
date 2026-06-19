@@ -1,0 +1,42 @@
+---
+title: "Gradient descent, explained"
+title-block-style: none
+toc: false
+---
+
+# Gradient descent, explained
+
+We minimize a loss $L(\theta)$ by repeatedly stepping **downhill** — against the
+gradient — with a learning rate $\eta$:
+
+$$
+\theta_{t+1} = \theta_t - \eta \, \nabla L(\theta_t)
+$$
+
+The whole loop is three moves: evaluate, differentiate, step.
+
+```{mermaid}
+flowchart LR
+  init["initialize θ"] --> grad["compute ∇L(θ)"]
+  grad --> step["θ ← θ − η∇L(θ)"]
+  step -->|"not converged"| grad
+  step -->|"converged"| done["return θ"]
+```
+
+::: {.callout-tip}
+## Choosing the learning rate
+Too small and training crawls; too large and the loss diverges. A good first guess
+is the largest η that still decreases the loss every step.
+:::
+
+# Why this loop feels instant
+
+There is no per-edit startup cost. The server stays warm and so does the kernel,
+so changing one line re-renders just the block you touched — scroll position and
+live state untouched.
+
+::: {.callout-note}
+## Click to source
+Double-click any block in the preview and the editor jumps to the exact line it
+came from, even across included files.
+:::
