@@ -23,6 +23,9 @@ fn parse_options() -> Options<'static> {
     options.extension.autolink = true;
     // Parse `$...$` (inline) and `$$...$$` (display) into Math nodes for KaTeX.
     options.extension.math_dollars = true;
+    // `[^1]` references + `[^1]: …` definitions; comrak moves definitions to the
+    // document end in reference order, which we gather into a footnotes section.
+    options.extension.footnotes = true;
     // Smart typography (curly quotes, en/em dashes) to match Quarto/pandoc output.
     options.parse.smart = true;
     // sourcepos is tracked on AST nodes during parsing; `render.sourcepos`
@@ -112,6 +115,9 @@ fn render_internal(
     let mut exec_echo = true;
     let mut exec_include = true;
     let mut flat: Vec<FlatBlock> = Vec::new();
+    // Footnote definitions, rendered as `<li>`s and gathered into a section at the
+    // end (comrak moves them here in reference order); see below the loop.
+    let mut footnote_items: Vec<String> = Vec::new();
     let mut id_counts: HashMap<String, u32> = HashMap::new();
     // Heading anchor slugs (deduped) and the cross-reference number registry
     // (figures + equations), both used for `@sec-x`/`@fig-x`/`@eq-x` and the TOC.
@@ -123,6 +129,16 @@ fn render_internal(
     let mut xref_registry: HashMap<String, String> = HashMap::new();
 
     for node in root.children() {
+        // Footnote definitions are gathered into a section at the end (comrak has
+        // already moved them here, in reference order) — not rendered in place.
+        let fn_name = match &node.data.borrow().value {
+            NodeValue::FootnoteDefinition(fd) => Some(fd.name.clone()),
+            _ => None,
+        };
+        if let Some(name) = fn_name {
+            footnote_items.push(emit::footnote_def_li(node, &name));
+            continue;
+        }
         let (
             buf_start,
             sourcepos,
@@ -406,6 +422,20 @@ fn render_internal(
     apply_table_captions(&mut blocks, &mut xref_registry);
     let bib = load_bibliography(bib_field.as_deref(), base_dir, &mut warnings);
     crate::cite::process(&mut blocks, &bib, &xref_registry);
+    // Gather the footnote definitions (collected above, in comrak's reference order)
+    // into one footnotes section, appended after any References.
+    if !footnote_items.is_empty() {
+        let inner = footnote_items.join("");
+        blocks.push(Block {
+            id: "qmd-footnotes".to_string(),
+            sourcepos: String::new(),
+            source_file: None,
+            html: format!(
+                "<section class=\"footnotes\" role=\"doc-endnotes\" data-block-id=\"qmd-footnotes\"><hr><ol>{inner}</ol></section>"
+            ),
+            cell: None,
+        });
+    }
     // A visible title block (HTML only; reveal builds its own title slide). It is
     // a generated block (no sourcepos), so it rides the block model + diff like
     // the References section.

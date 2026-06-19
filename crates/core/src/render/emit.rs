@@ -90,6 +90,13 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
         NodeValue::HtmlBlock(hb) => emit_html_block(&hb.literal, attrs, out),
         NodeValue::HtmlInline(h) => out.push_str(h),
         NodeValue::Math(m) => out.push_str(&crate::math::render(&m.literal, m.display_math)),
+        // `[^name]` reference → a superscript link to the gathered footnote section.
+        NodeValue::FootnoteReference(r) => out.push_str(&format!(
+            "<sup class=\"qmd-fnref\" id=\"fnref-{name}-{rn}\"><a href=\"#fn-{name}\">{ix}</a></sup>",
+            name = escape_attr(&r.name),
+            rn = r.ref_num,
+            ix = r.ix,
+        )),
         NodeValue::List(nl) => emit_list(node, nl, attrs, out),
         NodeValue::Item(_) => emit_item(node, false, out),
         NodeValue::BlockQuote => {
@@ -126,6 +133,18 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
         // Unknown/unhandled wrappers degrade to their inner content.
         _ => emit_children(node, out),
     }
+}
+
+/// A footnote definition as an `<li>` for the gathered footnotes `<ol>` (the render
+/// loop collects these so they don't render in place; the `<ol>` auto-numbers them
+/// in comrak's reference order). Carries a backlink to the first reference.
+pub(crate) fn footnote_def_li<'a>(node: &'a AstNode<'a>, name: &str) -> String {
+    let mut inner = String::new();
+    emit_children(node, &mut inner);
+    let n = escape_attr(name);
+    format!(
+        "<li id=\"fn-{n}\" class=\"qmd-fn\">{inner}<a class=\"qmd-fn-back\" href=\"#fnref-{n}-1\" aria-label=\"Back to content\">\u{21a9}\u{fe0e}</a></li>"
+    )
 }
 
 /// The `code-line-numbers` spec for a code block: from a `{python}` cell option

@@ -169,6 +169,16 @@
   details.qmd-code-fold > summary:hover { color: var(--qmd-fg); }
   .qmd-xref { text-decoration: none; }
   .qmd-references .csl-entry { margin: .4rem 0; padding-left: 2.2rem; text-indent: -2.2rem; }
+  /* Footnotes: `[^1]` superscript refs + the gathered footnote section at page end. */
+  .qmd-fnref { font-size: .75em; line-height: 0; white-space: nowrap; }
+  .qmd-fnref a { text-decoration: none; padding: 0 .1em; }
+  .footnotes { margin-top: 2.5rem; font-size: .9rem; color: var(--qmd-muted); }
+  .footnotes hr { border: 0; border-top: 1px solid var(--qmd-border); margin: 0 0 1rem; }
+  .footnotes ol { padding-left: 1.3rem; }
+  .footnotes li { margin: .4rem 0; }
+  .footnotes li > :first-child { display: inline; } /* keep the backlink on the text's line */
+  .footnotes li:target, [id^="fnref-"]:target { background: var(--qmd-flash); border-radius: 4px; }
+  .qmd-fn-back { text-decoration: none; margin-left: .4em; }
   .qmd-output { margin: 0 0 1rem; }
   .qmd-output > pre { background: #fbfbfb; border-left: 3px solid #e3e3e3; }
   .qmd-output img { display: block; max-width: 100%; }

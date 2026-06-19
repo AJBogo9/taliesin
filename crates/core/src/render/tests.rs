@@ -1097,3 +1097,19 @@ fn theme_list_takes_first_entry() {
         "first list entry (dark) should win"
     );
 }
+
+#[test]
+fn footnotes_emit_ref_and_gathered_section() {
+    let page = render_html_page(
+        "---\ntitle: T\n---\n\nA claim.[^1] More text.\n\n[^1]: The supporting note.\n",
+        "fb",
+    );
+    // The reference is a superscript link to the definition.
+    assert!(page.contains("class=\"qmd-fnref\""), "footnote ref: {page}");
+    assert!(page.contains("href=\"#fn-1\""), "ref links to def");
+    // Definitions are gathered into one footnotes section (not rendered in place).
+    assert!(page.contains("class=\"footnotes\""), "footnotes section");
+    assert!(page.contains("id=\"fn-1\""), "footnote def id");
+    assert!(page.contains("The supporting note"), "footnote body");
+    assert!(page.contains("qmd-fn-back"), "backlink to the reference");
+}
