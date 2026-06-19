@@ -31,8 +31,9 @@ The theme (serif body, sans headings, light/dark toggle) is the qmd-fast default
 qmd-fast preview site
 ```
 
-The `Docs` nav item points at `docs/`, which only exists in the built tree (below);
-in `preview` it 404s until you also serve the docs book.
+The `Docs` nav link resolves live: `_quarto.yml`'s `mounts: { docs: ../docs }` makes
+`preview` serve the sibling docs book under `/docs/` (rendered on request, so content
+edits show on refresh).
 
 ## Build (single-tree: site at root, docs book at /docs)
 

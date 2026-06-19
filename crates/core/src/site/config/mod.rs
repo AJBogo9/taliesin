@@ -51,6 +51,18 @@ pub struct SiteConfig {
     pub footer: Option<Footer>,
     /// Ordered chapter list (book only): a file name or `{ part, chapters }`.
     pub chapters: Vec<serde_yaml::Value>,
+    /// `mounts:` — other qmd-fast projects to mount under a URL prefix, so a site
+    /// can link to e.g. a separate docs `book` at `/docs`. In `preview` they're
+    /// served live; the static `build` recipe wires them with a second `build`.
+    pub mounts: Vec<Mount>,
+}
+
+/// One `mounts:` entry: serve the project at `path` (relative to the site root)
+/// under the `/at/` URL prefix.
+#[derive(Debug, Clone)]
+pub struct Mount {
+    pub at: String,
+    pub path: String,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -99,6 +111,7 @@ const NATIVE_KEYS: &[&str] = &[
     "nav",
     "footer",
     "chapters",
+    "mounts",
 ];
 
 /// Load + parse `_quarto.yml` at `root`. Dispatches by shape: a config nesting
@@ -152,6 +165,32 @@ fn parse_native(value: &serde_yaml::Value, warnings: &mut Vec<String>) -> SiteCo
         nav: nav_from(value.get("nav")),
         footer: footer_from(value.get("footer")),
         chapters,
+        mounts: mounts_from(value.get("mounts")),
+    }
+}
+
+/// Parse `mounts:` — a map `{ docs: ../docs }` or a sequence of `{ at, path }`.
+fn mounts_from(v: Option<&serde_yaml::Value>) -> Vec<Mount> {
+    match v {
+        Some(serde_yaml::Value::Mapping(m)) => m
+            .iter()
+            .filter_map(|(k, val)| {
+                Some(Mount {
+                    at: k.as_str()?.trim_matches('/').to_string(),
+                    path: val.as_str()?.to_string(),
+                })
+            })
+            .collect(),
+        Some(serde_yaml::Value::Sequence(seq)) => seq
+            .iter()
+            .filter_map(|it| {
+                Some(Mount {
+                    at: it.get("at")?.as_str()?.trim_matches('/').to_string(),
+                    path: it.get("path")?.as_str()?.to_string(),
+                })
+            })
+            .collect(),
+        _ => Vec::new(),
     }
 }
 

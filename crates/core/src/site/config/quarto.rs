@@ -82,6 +82,7 @@ pub(super) fn from_value(value: &serde_yaml::Value, warnings: &mut Vec<String>) 
         nav: website.navbar,
         footer: website.page_footer,
         chapters: book.chapters,
+        mounts: Vec::new(), // Quarto has no equivalent; native-only
     }
 }
 

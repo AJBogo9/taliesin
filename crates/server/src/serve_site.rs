@@ -37,6 +37,17 @@ struct SiteApp {
     pages: Mutex<HashMap<String, PageState>>,
     /// Page rel-paths queued for a (re)build by the executor worker.
     build_tx: mpsc::UnboundedSender<BuildMsg>,
+    /// `mounts:` — other qmd-fast projects (e.g. a docs `book`) served under a URL
+    /// prefix, so a site's link to `/docs` resolves in `preview` (not just `build`).
+    /// Discovered once; pages render on request (content edits show on refresh).
+    mounts: Vec<MountedSite>,
+}
+
+/// A mounted sub-project: serve `site` (rooted at `root`) under the `/at/` prefix.
+struct MountedSite {
+    at: String,
+    root: PathBuf,
+    site: Site,
 }
 
 /// A job for the executor worker: rebuild a page, or restart its kernel first
@@ -96,12 +107,42 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         crate::log::warn(w);
     }
     let page_count = site.pages.len();
+    // Discover any `mounts:` sub-projects (e.g. a docs book under /docs) once.
+    let mounts: Vec<MountedSite> = site
+        .config
+        .mounts
+        .clone()
+        .into_iter()
+        .filter_map(|m| {
+            let mroot = root.join(&m.path);
+            let mroot = mroot.canonicalize().unwrap_or(mroot);
+            if !mroot.is_dir() {
+                crate::log::warn(&format!(
+                    "mount '{}': no directory at {}",
+                    m.at,
+                    mroot.display()
+                ));
+                return None;
+            }
+            crate::log::watching(
+                &mroot.display().to_string(),
+                &format!("mounted at /{}/", m.at),
+            );
+            let msite = Site::discover(&mroot);
+            Some(MountedSite {
+                at: m.at,
+                root: mroot,
+                site: msite,
+            })
+        })
+        .collect();
     let (build_tx, build_rx) = mpsc::unbounded_channel();
     let app = Arc::new(SiteApp {
         root: root.clone(),
         site: Mutex::new(site),
         pages: Mutex::new(HashMap::new()),
         build_tx,
+        mounts,
     });
 
     spawn_builder(app.clone(), build_rx);
@@ -211,6 +252,26 @@ async fn page_or_asset(
             && let Some(html) = app.site.lock().render_category_page(slug)
         {
             return Html(html).into_response();
+        }
+    }
+    // A `mounts:` sub-project (e.g. the docs book under /docs): render the requested
+    // page from it on the fly (so its links resolve in preview, mirroring the
+    // single-tree build), or serve one of its assets.
+    for m in &app.mounts {
+        let sub = if path == m.at {
+            Some("")
+        } else {
+            match path.strip_prefix(&m.at) {
+                Some(r) if r.starts_with('/') => Some(&r[1..]),
+                _ => None,
+            }
+        };
+        if let Some(sub) = sub {
+            let lookup = if sub.is_empty() { "index.html" } else { sub };
+            if let Some(html) = m.site.render_page(lookup) {
+                return Html(html).into_response();
+            }
+            return serve_asset(&m.root, lookup);
         }
     }
     // Nothing matched. If it isn't an existing asset either, serve the site's own

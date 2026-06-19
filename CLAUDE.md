@@ -14,15 +14,17 @@ correctly, not that some feature checklist is complete. Scope is those ~5 docume
 ```
 crates/core      qmd-fast-core lib: parser (comrak + sourcepos) → block model → render
   src/render/      block model + emission (a module dir):
-    mod.rs           the render pipeline, block model, HTML page emission + helpers
+    mod.rs           the render pipeline + HTML page emission + helpers
+    model.rs         the block-model data types (Cell, Block, RenderedDoc, PageIncludes)
+    tests.rs         render unit + corpus-invariant tests
     reveal.rs        slide decks on qmd-fast's OWN engine (reveal.js removed): bundles
                      deck.css/deck.js + a `window.Reveal` facade so reveal *theme*
                      extensions (e.g. liquid-glass) still load unmodified
     emit.rs          per-block HTML (server-side highlighting, code line-wrapping)
     divs.rs          `:::` fenced divs (callouts, columns, magic-move)
     figure.rs        numbered figures + captions
-    extension/       format extensions (`_extensions/`) + shortcode expansion,
-                     including the built-in `{{< embed deck.qmd >}}` (embeds a deck)
+    extension/       format extensions (`_extensions/`) + shortcode expansion, incl. the
+                     built-in `{{< embed deck.qmd >}}` + `{{< video clip.mp4 dark= >}}`
     theme.rs         `--qmd-*` CSS-variable themes (light/dark, extension themes)
   src/diff.rs      block-level diff (BlockOp) for incremental updates
   src/includes.rs  {{< include >}} resolution + per-file source map
@@ -31,9 +33,11 @@ crates/core      qmd-fast-core lib: parser (comrak + sourcepos) → block model 
   src/highlight.rs server-side syntax highlighting (syntect → `qhl-` scope classes)
   src/cite.rs      citations ([@key]) + cross-references (@fig-, @sec-)
   src/site/        multi-page project (mod.rs): _quarto.yml config (config/), page
-                   discovery, chrome, link rewrite, listings/about, books (book.rs),
-                   RSS (feed.rs), Cmd-K search (search.rs), cross-refs (xref.rs); an
-                   {{< embed >}}-referenced deck is built/served but kept out of nav
+                   discovery, chrome, link rewrite, listings + about/`hero:` blocks,
+                   front-matter parse (frontmatter.rs), books (book.rs), RSS (feed.rs),
+                   Cmd-K search (search.rs), cross-refs (xref.rs); an {{< embed >}}-
+                   referenced deck is built/served but kept out of nav. `mounts:`
+                   serves another project (e.g. the docs book) under a URL prefix in preview
   assets/          bundled offline: css/ (base.css + deck.css), js/ (deck.js), katex/, ojs/
 crates/server    qmd-fast-server, bin `qmd-fast`: CLI + websocket dev server
   src/main.rs      render / blocks / build / serve subcommands (a dir = a site project)
