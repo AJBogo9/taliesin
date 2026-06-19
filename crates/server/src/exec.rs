@@ -348,3 +348,127 @@ fn figure_wrap(fig: &CellFigure, inner: &str) -> String {
          <figcaption>{figcap}</figcaption></figure>"
     )
 }
+
+#[cfg(test)]
+mod tests {
+    //! The output-splicing helpers are pure (no kernel), so they're tested
+    //! directly: they're what carries a cell's executed output back into the
+    //! block model, and they must preserve the click-to-source invariants
+    //! (output id keyed to the cell, sourcepos/source-file carried through) and
+    //! the `#fig-` anchor that lets `@fig-x` resolve to the output.
+    use super::*;
+
+    fn cell(id: &str) -> CellRef {
+        CellRef {
+            block_index: 0,
+            id: id.to_string(),
+            code: "print(1)".into(),
+            sourcepos: "5:1-7:3".into(),
+            source_file: None,
+            figure: None,
+            include: true,
+        }
+    }
+
+    #[test]
+    fn output_block_keys_id_to_cell_and_carries_clickto_source() {
+        let b = output_block(&cell("b-abc"), "<pre>1</pre>");
+        // id derived from the cell so the output swaps in place when it re-runs.
+        assert_eq!(b.id, "b-abc-out");
+        // click-to-source points back at the cell's own source position.
+        assert_eq!(b.sourcepos, "5:1-7:3");
+        assert!(b.cell.is_none(), "an output block is not itself a cell");
+        assert!(
+            b.html.contains("class=\"qmd-output\"")
+                && b.html.contains("data-block-id=\"b-abc-out\"")
+                && b.html.contains("data-sourcepos=\"5:1-7:3\""),
+            "missing block-model attributes: {}",
+            b.html
+        );
+        assert!(
+            b.html.contains("<pre>1</pre>"),
+            "inner output dropped: {}",
+            b.html
+        );
+        // no source_file -> no data-source-file attribute.
+        assert!(!b.html.contains("data-source-file"), "{}", b.html);
+    }
+
+    #[test]
+    fn output_block_emits_escaped_data_source_file_for_included_cells() {
+        let mut c = cell("b1");
+        c.source_file = Some("posts/p&q.qmd".into());
+        let b = output_block(&c, "x");
+        assert_eq!(b.source_file.as_deref(), Some("posts/p&q.qmd"));
+        assert!(
+            b.html.contains("data-source-file=\"posts/p&amp;q.qmd\""),
+            "source file not emitted/escaped: {}",
+            b.html
+        );
+    }
+
+    #[test]
+    fn figure_wrap_numbers_anchors_and_escapes_caption() {
+        let fig = CellFigure {
+            anchor: Some("fig-cov".into()),
+            caption: Some("Cov & vars".into()),
+            number: 2,
+        };
+        let html = figure_wrap(&fig, "<img src=\"c.png\">");
+        assert!(
+            html.starts_with("<figure id=\"fig-cov\" class=\"qmd-figure qmd-figure-center\">"),
+            "anchor/classes wrong: {html}"
+        );
+        assert!(
+            html.contains("<img src=\"c.png\">"),
+            "inner dropped: {html}"
+        );
+        assert!(
+            html.contains("<figcaption>Figure&nbsp;2: Cov &amp; vars</figcaption>"),
+            "caption not numbered/escaped: {html}"
+        );
+    }
+
+    #[test]
+    fn figure_wrap_without_anchor_or_caption_is_bare_numbered() {
+        let fig = CellFigure {
+            anchor: None,
+            caption: None,
+            number: 1,
+        };
+        let html = figure_wrap(&fig, "out");
+        assert!(
+            html.starts_with("<figure class=\"qmd-figure"),
+            "an unlabelled figure must carry no id: {html}"
+        );
+        assert!(
+            html.contains("<figcaption>Figure&nbsp;1</figcaption>"),
+            "bare number missing: {html}"
+        );
+        assert!(!html.contains(':'), "no caption -> no colon: {html}");
+    }
+
+    #[test]
+    fn output_block_wraps_a_labelled_cells_output_in_a_figure() {
+        let mut c = cell("b2");
+        c.figure = Some(CellFigure {
+            anchor: Some("fig-x".into()),
+            caption: Some("Cap".into()),
+            number: 3,
+        });
+        let b = output_block(&c, "<img>");
+        // the figure nests inside the qmd-output wrapper, anchored for @fig-x.
+        assert!(b.html.contains("class=\"qmd-output\""), "{}", b.html);
+        assert!(
+            b.html.contains("id=\"fig-x\""),
+            "figure anchor missing: {}",
+            b.html
+        );
+        assert!(
+            b.html
+                .contains("<figcaption>Figure&nbsp;3: Cap</figcaption>"),
+            "{}",
+            b.html
+        );
+    }
+}

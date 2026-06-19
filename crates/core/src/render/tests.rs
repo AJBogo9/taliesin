@@ -527,6 +527,23 @@ fn bare_latex_environment_renders_as_display_math() {
 }
 
 #[test]
+fn display_equation_label_becomes_numbered_id() {
+    // A display equation labelled `$$ ... $$ {#eq-foo}` consumes the attribute,
+    // emits a matching `id`, and gets a number.
+    let src = "$$\nX = 1\n$$ {#eq-foo}\n";
+    let html = render_document(src).body_html();
+    assert!(
+        html.contains("id=\"eq-foo\""),
+        "equation did not get its #eq-foo id"
+    );
+    assert!(
+        !html.contains("{#eq-foo}"),
+        "the {{#eq-foo}} attribute leaked as text"
+    );
+    assert!(html.contains("qmd-eqn-number"), "equation was not numbered");
+}
+
+#[test]
 fn html_block_attrs_injected_into_leading_tag() {
     let doc = render_document("<div class=\"demo\">\nhi\n</div>\n");
     let h = &doc.blocks[0].html;
@@ -535,6 +552,24 @@ fn html_block_attrs_injected_into_leading_tag() {
     assert!(
         !h.contains("<div data-block-id"),
         "should inject, not wrap: {h}"
+    );
+}
+
+#[test]
+fn raw_html_block_is_passed_through() {
+    // ```{=html}``` is Pandoc/Quarto raw-passthrough: its body is emitted
+    // verbatim, not escaped as a code listing.
+    let src =
+        "```{=html}\n<audio controls><source src=\"x.wav\" type=\"audio/wav\"></audio>\n```\n";
+    let html = render_document(src).body_html();
+    assert!(
+        html.contains("<audio controls"),
+        "raw <audio> HTML was not passed through"
+    );
+    assert!(!html.contains("&lt;audio"), "raw HTML was escaped");
+    assert!(
+        !html.contains("language-=html"),
+        "raw block was treated as a code cell"
     );
 }
 

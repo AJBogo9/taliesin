@@ -1,27 +1,23 @@
-//! Progress tracking toward replacing Quarto for *iterating* on the author's
+//! Feature coverage for replacing Quarto when *iterating* on the author's
 //! tech-blog (https://andreasbogossian.com). Three corpus posts come straight
 //! from it: `em-algorithm`, `pca-geometry`, and `fourier-transform`.
 //!
-//! Two kinds of tests live here:
+//! Each test locks in a slice of the per-post / per-site feature surface you'd
+//! actually exercise in the edit-preview loop (math, callouts, citations,
+//! OJS-as-live-output, listings, the about page, includes, leak-free whole-doc
+//! rendering), all asserted against the *real* blog documents. Synthetic-input
+//! unit tests for the same features live in the render module's `tests.rs`.
 //!
-//!  * **Passing tests** lock in the per-post feature surface that already works,
-//!    i.e. the edit-preview loop you'd actually iterate in: math, callouts,
-//!    citations, OJS-as-source, and leak-free whole-doc rendering.
-//!  * **`#[ignore]`d tests** encode the *target*: each is a known gap between
-//!    qmd-fast and Quarto for this blog. They fail today; flip off `#[ignore]`
-//!    when the gap is closed. Run them with `cargo test -- --ignored`.
-//!
-//! Keeping both in one file makes "how close are we?" answerable with
-//! `cargo test -p qmd-fast-core --test tech_blog -- --ignored`.
+//! History: this file used to also carry `#[ignore]`d tests marking known gaps
+//! vs Quarto; every one of those gaps has since been closed, so only the
+//! locked-in surface remains.
 
 use std::fs;
-use std::path::{Path, PathBuf};
 
-use qmd_fast_core::{Site, render_document, render_document_with_includes};
+use qmd_fast_core::{Site, render_document_with_includes};
 
-fn corpus_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus")
-}
+mod common;
+use common::corpus_dir;
 
 /// Render a corpus post (resolving its includes) and return the body HTML.
 fn render_post(rel: &str) -> String {
@@ -52,7 +48,7 @@ fn assert_no_source_leaks(label: &str, html: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// Passing: the per-post feature surface you iterate on already works.
+// Per-post rendering features (math, callouts, citations, code-fold, OJS).
 // ---------------------------------------------------------------------------
 
 /// The three blog posts in the corpus all render to substantial, leak-free HTML.
@@ -232,29 +228,9 @@ fn ojs_page_ships_runtime_when_cells_present() {
 }
 
 // ---------------------------------------------------------------------------
-// Gaps (#[ignore]): the target for "fully replace Quarto for this blog".
-// Each fails today; remove `#[ignore]` once the feature lands.
-// Run with: cargo test -p qmd-fast-core --test tech_blog -- --ignored
+// Site-level + cross-document features (raw-HTML passthrough end-to-end,
+// equation/figure cross-refs, listings, about, includes, favicon, 404).
 // ---------------------------------------------------------------------------
-
-/// ```` ```{=html} ```` is Pandoc/Quarto raw-passthrough: its body is emitted
-/// verbatim, not escaped as a code listing. The audio players in
-/// `fourier-transform` are authored this way. (Fixed; was a gap.)
-#[test]
-fn raw_html_block_is_passed_through() {
-    let src =
-        "```{=html}\n<audio controls><source src=\"x.wav\" type=\"audio/wav\"></audio>\n```\n";
-    let html = render_document(src).body_html();
-    assert!(
-        html.contains("<audio controls"),
-        "raw <audio> HTML was not passed through"
-    );
-    assert!(!html.contains("&lt;audio"), "raw HTML was escaped");
-    assert!(
-        !html.contains("language-=html"),
-        "raw block was treated as a code cell"
-    );
-}
 
 /// The raw-HTML audio players in `fourier-transform` reach the output as live
 /// `<audio>`/`<source>` elements (end-to-end, through the real post).
@@ -270,23 +246,6 @@ fn fourier_audio_players_render_live() {
         "audio source reference missing"
     );
     assert!(!html.contains("&lt;audio"), "audio markup was escaped");
-}
-
-/// A display equation labelled `$$ ... $$ {#eq-foo}` consumes the attribute,
-/// emits a matching `id`, and gets a number. (Fixed; was a gap.)
-#[test]
-fn display_equation_label_becomes_numbered_id() {
-    let src = "$$\nX = 1\n$$ {#eq-foo}\n";
-    let html = render_document(src).body_html();
-    assert!(
-        html.contains("id=\"eq-foo\""),
-        "equation did not get its #eq-foo id"
-    );
-    assert!(
-        !html.contains("{#eq-foo}"),
-        "the {{#eq-foo}} attribute leaked as text"
-    );
-    assert!(html.contains("qmd-eqn-number"), "equation was not numbered");
 }
 
 /// End-to-end in `fourier-transform`: the labelled equation gets `id="eq-dft"`

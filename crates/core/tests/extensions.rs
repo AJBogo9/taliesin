@@ -3,50 +3,15 @@
 //! includes injected (the mechanism behind liquid-glass-revealjs).
 
 use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::path::Path;
+
+mod common;
+use common::TempProj;
 
 fn fixture(rel: &str) -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures")
         .join(rel)
-}
-
-/// A throwaway project directory for building ad-hoc extensions in-test, so each
-/// case can express exactly the manifest/files it needs without committed fixtures.
-struct TempProj(PathBuf);
-
-impl TempProj {
-    fn new() -> Self {
-        static N: AtomicU32 = AtomicU32::new(0);
-        let p = std::env::temp_dir().join(format!(
-            "qmd-ext-{}-{}",
-            std::process::id(),
-            N.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = fs::remove_dir_all(&p);
-        fs::create_dir_all(&p).unwrap();
-        TempProj(p)
-    }
-
-    /// Write a file (creating parent dirs) relative to the project root.
-    fn file(&self, rel: &str, content: &str) -> &Self {
-        let f = self.0.join(rel);
-        fs::create_dir_all(f.parent().unwrap()).unwrap();
-        fs::write(f, content).unwrap();
-        self
-    }
-
-    /// Install an extension `name` whose `_extension.yml` is `manifest`.
-    fn ext(&self, name: &str, manifest: &str) -> &Self {
-        self.file(&format!("_extensions/{name}/_extension.yml"), manifest)
-    }
-}
-
-impl Drop for TempProj {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
 }
 
 /// `format: <ext>-html` extensions are resolved, not just `-revealjs`: the
