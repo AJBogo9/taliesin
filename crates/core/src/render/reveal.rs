@@ -47,18 +47,16 @@ pub(super) fn reveal_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> S
         "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n\
          <meta charset=\"utf-8\" />\n\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no\" />\n\
-         <title>{t}</title>\n{links}{katex_css}<style>{REVEAL_EXTRA_CSS}</style>\n{code_head}\n{ojs_head}{theme}{in_header}\
+         <title>{t}</title>\n<style>{DECK_CSS}</style>\n{katex_css}<style>{REVEAL_EXTRA_CSS}</style>\n{code_head}\n{ojs_head}{theme}{in_header}\
          </head>\n<body>\n{before_body}<div class=\"reveal\">\n<div class=\"slides\">\n{slides}</div>\n</div>\n\
-         {script}\n<script>\n  Reveal.initialize({{ hash: true, slideNumber: 'c/t', center: false }});\n</script>\n\
+         <script>{DECK_JS}</script>\n<script>\n  Reveal.initialize({{ hash: true, slideNumber: 'c/t', center: false }});\n</script>\n\
          {code_scripts}\n\
          <script>document.addEventListener('DOMContentLoaded',function(){{window.qmdEnhanceCode&&window.qmdEnhanceCode(document.body);}});</script>\n\
          {ojs_init}{after_body}</body>\n</html>\n",
-        links = format!("<style>{DECK_CSS}</style>\n"),
         theme = theme_style(&doc.theme_css),
         in_header = doc.includes.in_header,
         before_body = doc.includes.before_body,
         after_body = doc.includes.after_body,
-        script = format!("<script>{DECK_JS}</script>"),
         code_head = code_head(),
         code_scripts = code_scripts(),
         ojs_head = ojs_head_html,
