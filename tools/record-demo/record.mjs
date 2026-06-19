@@ -23,6 +23,11 @@ const outDir = resolve(here, "out");
 mkdirSync(outDir, { recursive: true });
 
 const spec = (await import(resolve(here, process.argv[2] || "demos/sample.mjs"))).default;
+// Optional 3rd arg overrides the theme ("light" | "dark") and suffixes the output
+// name, so one spec records both variants: `node record.mjs demos/x.mjs light`.
+const themeArg = process.argv[3];
+if (themeArg === "light" || themeArg === "dark") spec.theme = themeArg;
+const outName = (spec.name || "demo") + (themeArg ? `-${themeArg}` : "");
 const viewport = spec.viewport || { width: 1000, height: 720 };
 const port = spec.port || 4399;
 const url = `http://127.0.0.1:${port}/${spec.path || ""}`;
@@ -93,6 +98,11 @@ try {
     colorScheme: spec.theme === "light" ? "light" : "dark",
     recordVideo: { dir: outDir, size: viewport },
   });
+  // qmd-fast pages ignore the OS preference (they default to dark), so drive the
+  // theme explicitly via the saved choice the theme script reads on first paint.
+  await ctx.addInitScript((t) => {
+    try { localStorage.setItem("qmd-theme", t); } catch (e) {}
+  }, spec.theme === "light" ? "light" : "dark");
   const page = await ctx.newPage();
   await page.goto(url, { waitUntil: "networkidle" }).catch(() => {});
 
@@ -108,7 +118,7 @@ try {
 // --- encode ---------------------------------------------------------------
 const webm = readdirSync(outDir).filter((f) => f.endsWith(".webm")).map((f) => join(outDir, f)).sort().pop();
 if (!webm) throw new Error("no video was recorded");
-const base = join(outDir, spec.name || "demo");
+const base = join(outDir, outName);
 const mp4 = `${base}.mp4`, gif = `${base}.gif`, palette = join(outDir, "_palette.png");
 const ff = (args) => {
   const r = spawnSync("ffmpeg", ["-y", "-loglevel", "error", ...args], { stdio: "inherit" });

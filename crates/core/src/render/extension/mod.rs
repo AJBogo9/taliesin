@@ -459,6 +459,21 @@ fn render_shortcode(inner: &str, templates: &HashMap<String, String>) -> Option<
         if name == "embed" {
             return embed_path(args).map(|p| embed_html(&p, embed_title(args).as_deref()));
         }
+        // `{{< video clip.mp4 [dark=clip-dark.mp4] [poster=…] [caption="…"] >}}` — a
+        // framed, autoplaying, muted, looping screencast (the marketing pattern),
+        // authored in Markdown so a page needs no raw `<video>` HTML. With `dark=`, the
+        // light clip plays on a light page and the dark clip on a dark page (toggled by
+        // `html[data-theme]`), so the screencast matches the surrounding theme.
+        if name == "video" {
+            return embed_path(args).map(|src| {
+                video_html(
+                    &src,
+                    shortcode_named(args, "dark").as_deref(),
+                    shortcode_named(args, "poster").as_deref(),
+                    shortcode_named(args, "caption").as_deref(),
+                )
+            });
+        }
         return None;
     };
     let mut positional = Vec::new();
@@ -526,8 +541,51 @@ fn embed_path(args: &[String]) -> Option<String> {
 
 /// The optional `title="…"` argument (used as the iframe's accessible name).
 fn embed_title(args: &[String]) -> Option<String> {
+    shortcode_named(args, "title")
+}
+
+/// A shortcode's `key=value` argument by name (quotes already stripped by the tokenizer).
+fn shortcode_named(args: &[String], key: &str) -> Option<String> {
+    let prefix = format!("{key}=");
     args.iter()
-        .find_map(|a| a.strip_prefix("title=").map(str::to_string))
+        .find_map(|a| a.strip_prefix(&prefix).map(str::to_string))
+}
+
+/// The HTML for a `{{< video >}}`: a framed autoplaying/muted/looping `<video>` (a
+/// silent screencast) with an optional caption. With a `dark` source, both clips are
+/// emitted and CSS shows the one matching `html[data-theme]`. Raw-HTML, passed through.
+fn video_html(
+    src: &str,
+    dark: Option<&str>,
+    poster: Option<&str>,
+    caption: Option<&str>,
+) -> String {
+    let poster_attr = poster
+        .map(|p| format!(" poster=\"{}\"", escape_attr(p)))
+        .unwrap_or_default();
+    let video = |s: &str, class: &str| {
+        format!(
+            "<video{cls} src=\"{}\"{poster_attr} autoplay muted loop playsinline></video>",
+            escape_attr(s),
+            cls = if class.is_empty() {
+                String::new()
+            } else {
+                format!(" class=\"{class}\"")
+            },
+        )
+    };
+    let videos = match dark {
+        Some(d) => format!(
+            "{}{}",
+            video(src, "qmd-video-light"),
+            video(d, "qmd-video-dark")
+        ),
+        None => video(src, ""),
+    };
+    let cap = caption
+        .map(|c| format!("<figcaption>{}</figcaption>", html_escape(c)))
+        .unwrap_or_default();
+    format!("<figure class=\"qmd-video\">{videos}{cap}</figure>")
 }
 
 /// Map a deck source path to its built output URL (`x.qmd` → `x.html`), leaving a
@@ -550,9 +608,10 @@ fn embed_html(path: &str, title: Option<&str>) -> String {
         "<div class=\"qmd-embed\">\
          <div class=\"qmd-embed-stage\">\
          <iframe class=\"qmd-embed-frame\" src=\"{href}\" title=\"{title}\" loading=\"lazy\" allowfullscreen></iframe>\
+         <button type=\"button\" class=\"qmd-embed-expand\" aria-label=\"Fullscreen\" onclick=\"this.closest('.qmd-embed').querySelector('iframe').requestFullscreen()\">\u{2922}</button>\
          </div>\
          <div class=\"qmd-embed-bar\">\
-         <button type=\"button\" class=\"qmd-embed-btn\" onclick=\"this.closest('.qmd-embed').querySelector('iframe').requestFullscreen()\">\u{26f6} Fullscreen</button>\
+         <button type=\"button\" class=\"qmd-embed-btn\" onclick=\"this.closest('.qmd-embed').querySelector('iframe').requestFullscreen()\">\u{2922} Fullscreen</button>\
          <a class=\"qmd-embed-btn\" href=\"{href}\" target=\"_blank\" rel=\"noopener\">Open \u{2197}</a>\
          </div></div>"
     )

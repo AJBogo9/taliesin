@@ -338,6 +338,31 @@ fn builtin_embed_emits_deck_iframe() {
     assert!(body.contains("href=\"talk.html\""), "open link: {body}");
 }
 
+/// The built-in `{{< video clip.mp4 >}}` emits a framed, autoplaying, muted, looping
+/// `<video>` with an optional caption — so a page needs no raw `<video>` HTML.
+#[test]
+fn builtin_video_emits_autoplay_figure() {
+    let src = "---\ntitle: T\n---\n\n{{< video assets/clip.mp4 caption=\"A demo\" >}}\n";
+    let doc = qmd_fast_core::render_document_with_includes(src, std::path::Path::new("."));
+    let body = doc.body_html();
+    assert!(
+        body.contains("class=\"qmd-video\""),
+        "video wrapper: {body}"
+    );
+    assert!(
+        body.contains("src=\"assets/clip.mp4\""),
+        "video src: {body}"
+    );
+    assert!(
+        body.contains("autoplay") && body.contains("muted") && body.contains("loop"),
+        "screencast attrs: {body}"
+    );
+    assert!(
+        body.contains("<figcaption>A demo</figcaption>"),
+        "caption: {body}"
+    );
+}
+
 /// A shortcode shown as an example inside an inline code span stays literal (it is
 /// not expanded), so docs can describe `{{< embed … >}}` without triggering it.
 #[test]

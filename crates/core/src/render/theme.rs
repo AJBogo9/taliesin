@@ -104,8 +104,21 @@ pub fn theme_head(default_mode: &str) -> String {
       }})(btns[i]);
     }}
   }};
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", window.qmdWireThemeToggles);
-  else window.qmdWireThemeToggles();
+  // Theme-matched `{{< video >}}` clips: a `<video>` hidden via `display:none`
+  // gets paused by the browser, so on a theme change play the now-visible variant
+  // (and pause the hidden one). Also runs once on load so a non-default-theme page
+  // starts its visible clip.
+  function syncThemeVideos(){{
+    var vids = document.querySelectorAll(".qmd-video video");
+    for (var i = 0; i < vids.length; i++) {{
+      var v = vids[i];
+      if (getComputedStyle(v).display === "none") {{ try {{ v.pause(); }} catch(e) {{}} }}
+      else {{ try {{ var p = v.play(); if (p && p.catch) p.catch(function(){{}}); }} catch(e) {{}} }}
+    }}
+  }}
+  window.addEventListener("qmd:themechange", syncThemeVideos);
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", function(){{ window.qmdWireThemeToggles(); syncThemeVideos(); }});
+  else {{ window.qmdWireThemeToggles(); syncThemeVideos(); }}
 }})();
 </script>"#,
         sun_icon = THEME_ICON_SUN,

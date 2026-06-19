@@ -33,6 +33,11 @@
   .qmd-nav-link::after { content: attr(data-label); font-weight: 600; height: 0;
     overflow: hidden; visibility: hidden; pointer-events: none; }
   .qmd-nav-link:hover { color: var(--qmd-fg); background: var(--qmd-code-bg); }
+  /* icon-only nav links (social): a compact, centered square. No bold-width
+     reservation (no text to bold), so the hit box is just the icon + padding. */
+  .qmd-nav-icon { align-items: center; padding: .35rem .5rem; }
+  .qmd-nav-icon::after { content: none; }
+  .qmd-nav-icon svg { display: block; }
   .qmd-nav-active { color: var(--qmd-fg); font-weight: 600; }
   .qmd-nav-active:hover { background: transparent; }
   /* real (shipped) light/dark toggle: a subtle icon, not a dev-style button */

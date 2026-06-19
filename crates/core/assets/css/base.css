@@ -29,25 +29,48 @@
     border: 1px solid var(--qmd-border); border-radius: 10px; overflow: hidden;
     background: var(--qmd-code-bg); box-shadow: 0 1px 4px var(--qmd-edge-shadow); }
   .qmd-embed-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
+  /* hover-revealed corner "expand" (the deck is interactive, so it can't be
+     click-to-zoom; this enlarges via real fullscreen, like a video player's icon). */
+  .qmd-embed-expand { position: absolute; top: .55rem; right: .55rem; z-index: 3;
+    width: 2rem; height: 2rem; display: inline-flex; align-items: center; justify-content: center;
+    padding: 0; border: 0; border-radius: 7px; cursor: pointer; font-size: 1.05rem; line-height: 1;
+    color: #fff; background: rgba(20, 22, 27, .72); opacity: 0; transition: opacity .15s ease;
+    -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+  .qmd-embed-stage:hover .qmd-embed-expand, .qmd-embed-expand:focus-visible { opacity: 1; }
   .qmd-embed-bar { display: flex; gap: .5rem; justify-content: flex-end; margin-top: .55rem; }
   .qmd-embed-btn { font: 500 .82rem var(--qmd-font-head); cursor: pointer; line-height: 1;
     padding: .4rem .85rem; border-radius: 7px; border: 1px solid var(--qmd-border);
     background: transparent; color: var(--qmd-muted); text-decoration: none;
     transition: border-color .12s ease, color .12s ease; }
   .qmd-embed-btn:hover { border-color: var(--qmd-accent); color: var(--qmd-accent); }
+  /* `{{< video >}}` — a framed silent screencast (autoplay/muted/loop) + optional caption. */
+  .qmd-video { margin: 1.6rem 0; }
+  .qmd-video video { display: block; width: 100%; height: auto; border: 1px solid var(--qmd-border);
+    border-radius: 12px; background: var(--qmd-code-bg); box-shadow: 0 4px 18px var(--qmd-edge-shadow); }
+  .qmd-video figcaption { text-align: center; color: var(--qmd-muted); font-size: .9rem; margin-top: .6rem; }
+  /* `dark=` variant: show the clip that matches the page theme (selectors carry the
+     element so they beat the `.qmd-video video` base rule). */
+  .qmd-video video.qmd-video-dark { display: none; }
+  html[data-theme="dark"] .qmd-video video.qmd-video-light { display: none; }
+  html[data-theme="dark"] .qmd-video video.qmd-video-dark { display: block; }
   /* Filled + large button variants, layered on `.btn` (a landing-page primary CTA
      is `[Start](x){.btn .btn-primary .btn-lg}`; the base `.btn` is the outline style). */
   a.btn-primary { background: var(--qmd-accent); border-color: var(--qmd-accent); color: #fff; }
   a.btn-primary:hover { filter: brightness(1.08); background: var(--qmd-accent); color: #fff; }
   a.btn-lg { font-size: 1.02rem; padding: .62rem 1.35rem; border-radius: 9px; }
-  /* Marketing primitives — author with fenced divs (`::: {.hero}`, `::: {.feature-grid}`
-     with `::: {.feature}` cards) or raw HTML; styled so a landing page needs no bespoke CSS. */
-  .hero { text-align: center; padding: 3.5rem 1rem 2.4rem; }
+  /* Marketing primitives. The top hero is best authored with the `hero:` front
+     matter (renders this `.hero` markup, no HTML); `::: {.hero}` / `::: {.feature-grid}`
+     fenced divs cover in-body sections. Styled so a landing page needs no bespoke CSS. */
+  .hero { text-align: center; padding: 3.2rem 1rem 2.4rem; }
   .hero h1, .hero h2 { font-family: var(--qmd-font-head); font-size: clamp(2rem, 6vw, 3.2rem);
-    line-height: 1.1; margin: 0 0 .6rem; border: 0; padding: 0; }
-  .hero p { font-size: clamp(1.05rem, 2.4vw, 1.3rem); color: var(--qmd-muted);
-    max-width: 34rem; margin: 0 auto 1.5rem; }
+    line-height: 1.08; letter-spacing: -0.02em; margin: 0 0 .7rem; border: 0; padding: 0; }
+  .hero p, .hero .hero-lead { font-size: clamp(1.05rem, 2.4vw, 1.28rem); color: var(--qmd-muted);
+    max-width: 36rem; margin: 0 auto 1.5rem; line-height: 1.5; }
+  .hero-eyebrow { font: 600 .8rem/1 var(--qmd-font-mono); letter-spacing: .12em;
+    text-transform: uppercase; color: var(--qmd-accent); margin: 0 0 1rem; }
+  .hero-actions { display: flex; flex-wrap: wrap; gap: .6rem; justify-content: center; margin-top: 1.5rem; }
   .hero a.btn { margin: .35rem .3rem 0; }
+  .hero-actions a.btn { margin: 0; }
   .feature-grid { display: grid; gap: 1.1rem; margin: 2.2rem 0;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
   .feature { padding: 1.3rem 1.4rem; border: 1px solid var(--qmd-border);

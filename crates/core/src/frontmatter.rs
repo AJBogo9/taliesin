@@ -81,6 +81,7 @@ const KNOWN_KEYS: &[&str] = &[
     // Listings / project pages
     "listing",
     "about",
+    "hero",
     "draft",
     "order",
     "aliases",

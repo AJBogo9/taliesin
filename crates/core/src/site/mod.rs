@@ -56,6 +56,9 @@ pub struct Page {
     pub listings: Vec<ListingSpec>,
     /// `about:` profile block, if this page declares one (the homepage).
     pub about: Option<AboutSpec>,
+    /// `hero:` landing block (headline + lead + CTAs), if declared. Mutually
+    /// exclusive with `about:` (both replace the title block).
+    pub hero: Option<HeroSpec>,
     /// `page-layout:` (`full` widens the content column; default reading width).
     pub page_layout: Option<String>,
 }
@@ -69,6 +72,32 @@ pub struct AboutSpec {
     pub image: Option<String>,
     pub image_alt: Option<String>,
     pub links: Vec<NavItem>,
+}
+
+/// A `hero:` front-matter block: the headline + lead + call-to-action band at the
+/// top of a landing/home page. Authored entirely in YAML, so a landing page needs
+/// no bespoke HTML — it renders into the framework's `.hero` primitive. Reusable
+/// for a product page, a researcher's homepage, or a lab/group site.
+#[derive(Debug, Clone)]
+pub struct HeroSpec {
+    /// Small uppercase kicker above the headline (`eyebrow:`); optional.
+    pub eyebrow: Option<String>,
+    /// The big headline; falls back to the page `title:` when omitted.
+    pub headline: Option<String>,
+    /// The supporting sentence under the headline (`lead:`); optional.
+    pub lead: Option<String>,
+    /// Call-to-action buttons (`actions:` — a list of `{text, href, primary}`).
+    pub actions: Vec<HeroAction>,
+}
+
+/// One `hero:` call-to-action button.
+#[derive(Debug, Clone)]
+pub struct HeroAction {
+    pub text: String,
+    pub href: String,
+    /// `primary: true` (or `class: primary`) renders the filled accent button;
+    /// otherwise the outline style.
+    pub primary: bool,
 }
 
 /// A `listing:` front-matter block: a request to render a grid/list of cards for
@@ -370,7 +399,10 @@ impl Site {
     /// titles. Used by both the static build and the live preview.
     pub fn page_toc(&self, page: &Page, doc_toc: Option<bool>) -> bool {
         doc_toc.unwrap_or_else(|| {
-            self.config.toc.unwrap_or(false) && page.listings.is_empty() && page.about.is_none()
+            self.config.toc.unwrap_or(false)
+                && page.listings.is_empty()
+                && page.about.is_none()
+                && page.hero.is_none()
         })
     }
 
@@ -414,21 +446,12 @@ impl Site {
     /// preview call this, so the results stay in the block model (mounted + diffed
     /// like any other block).
     pub fn expand_page(&self, page: &Page, blocks: &mut Vec<Block>) {
-        if let Some(about) = &page.about {
-            let html = self.about_html(page, about);
-            match blocks.iter_mut().find(|b| b.id == "qmd-title-block") {
-                Some(tb) => tb.html = html,
-                None => blocks.insert(
-                    0,
-                    Block {
-                        id: "qmd-title-block".to_string(),
-                        sourcepos: String::new(),
-                        source_file: None,
-                        html,
-                        cell: None,
-                    },
-                ),
-            }
+        // A `hero:` or `about:` block replaces the title block (they're alternative
+        // page-header treatments; hero wins if a page somehow declares both).
+        if let Some(hero) = &page.hero {
+            set_title_block(blocks, self.hero_html(page, hero));
+        } else if let Some(about) = &page.about {
+            set_title_block(blocks, self.about_html(page, about));
         }
         for spec in &page.listings {
             let cards = self.listing_html(page, spec);
@@ -647,6 +670,7 @@ impl Site {
             is_post: false,
             listings: Vec::new(),
             about: None,
+            hero: None,
             page_layout: None,
         };
         let grid: String = posts
@@ -680,6 +704,56 @@ impl Site {
                     .map(|html| (format!("categories/{slug}/index.html"), html))
             })
             .collect()
+    }
+
+    // --- hero ---------------------------------------------------------------
+
+    /// Render a `hero:` landing header (eyebrow + headline + lead + CTA buttons)
+    /// into the framework's `.hero` primitive — no bespoke HTML on the page. The
+    /// headline falls back to the page `title:`. Replaces the title block.
+    fn hero_html(&self, page: &Page, hero: &HeroSpec) -> String {
+        let headline = hero
+            .headline
+            .clone()
+            .or_else(|| page.title.clone())
+            .unwrap_or_default();
+        let eyebrow = hero
+            .eyebrow
+            .as_deref()
+            .map(|e| format!("<div class=\"hero-eyebrow\">{}</div>", esc(e)))
+            .unwrap_or_default();
+        let lead = hero
+            .lead
+            .as_deref()
+            .map(|l| format!("<p class=\"hero-lead\">{}</p>", esc(l)))
+            .unwrap_or_default();
+        let actions = if hero.actions.is_empty() {
+            String::new()
+        } else {
+            let items: String = hero
+                .actions
+                .iter()
+                .map(|a| {
+                    let cls = if a.primary {
+                        "btn btn-primary btn-lg"
+                    } else {
+                        "btn btn-lg"
+                    };
+                    format!(
+                        "<a class=\"{cls}\" href=\"{}\">{}</a>",
+                        esc(&a.href),
+                        esc(&a.text)
+                    )
+                })
+                .collect();
+            format!("<div class=\"hero-actions\">{items}</div>")
+        };
+        format!(
+            "<header class=\"hero\" data-block-id=\"qmd-title-block\" data-qmd-src=\"{src}\">\
+             {eyebrow}<h1>{headline}</h1>{lead}{actions}</header>",
+            src = esc(&page.rel),
+            headline = esc(&headline),
+        )
     }
 
     // --- about ------------------------------------------------------------
@@ -779,24 +853,35 @@ impl Site {
         let target = resolve_href(href, up);
         // Active when this nav item points at the current page.
         let active = href_matches_page(href, current);
-        let cls = if active {
-            " class=\"qmd-nav-link qmd-nav-active\" aria-current=\"page\""
-        } else {
-            " class=\"qmd-nav-link\""
-        };
         // `icon:` shorthand renders a bundled SVG; otherwise the (escaped) label.
-        let content = it
-            .icon
-            .as_deref()
-            .and_then(social_icon)
-            .unwrap_or_else(|| esc(label));
+        let icon = it.icon.as_deref().and_then(social_icon);
+        let mut classes = String::from("qmd-nav-link");
+        if icon.is_some() {
+            classes.push_str(" qmd-nav-icon");
+        }
+        if active {
+            classes.push_str(" qmd-nav-active");
+        }
+        let aria = if active { " aria-current=\"page\"" } else { "" };
         // `data-label` carries the text so the CSS can reserve the bold (active)
-        // width, keeping the navbar from shifting when the active item bolds.
+        // width, keeping the navbar from shifting when the active item bolds. An
+        // icon link has no text to bold (and for `{ icon, href }` the `label` is the
+        // URL), so it gets an empty `data-label` (no width reservation) + an
+        // accessible name from the icon name.
+        let (data_label, name_attr) = match &icon {
+            Some(_) => (
+                String::new(),
+                format!(
+                    " aria-label=\"{}\"",
+                    esc(it.icon.as_deref().unwrap_or("link"))
+                ),
+            ),
+            None => (esc(label), String::new()),
+        };
+        let content = icon.unwrap_or_else(|| esc(label));
         format!(
-            "<a{cls} href=\"{}\" data-label=\"{}\">{}</a>",
-            target,
-            esc(label),
-            content
+            "<a class=\"{classes}\"{aria}{name_attr} href=\"{}\" data-label=\"{}\">{}</a>",
+            target, data_label, content
         )
     }
 
@@ -1159,6 +1244,7 @@ fn website_pages(root: &Path) -> Vec<Page> {
                 is_post,
                 listings: fm.listings,
                 about: fm.about,
+                hero: fm.hero,
                 page_layout: fm.page_layout,
             }
         })
@@ -1331,6 +1417,7 @@ struct FrontInfo {
     categories: Vec<String>,
     listings: Vec<ListingSpec>,
     about: Option<AboutSpec>,
+    hero: Option<HeroSpec>,
     page_layout: Option<String>,
 }
 
@@ -1354,6 +1441,7 @@ fn parse_front_matter(path: &Path) -> FrontInfo {
         categories: string_list(val.get("categories")),
         listings: parse_listings(val.get("listing")),
         about: parse_about(val.get("about")),
+        hero: parse_hero(val.get("hero")),
         page_layout: scalar(val.get("page-layout")),
     }
 }
@@ -1381,6 +1469,33 @@ fn parse_about(v: Option<&serde_yaml::Value>) -> Option<AboutSpec> {
         image: scalar(map.get("image")),
         image_alt: scalar(map.get("image-alt")),
         links,
+    })
+}
+
+fn parse_hero(v: Option<&serde_yaml::Value>) -> Option<HeroSpec> {
+    let map = match v? {
+        serde_yaml::Value::Mapping(_) => v?,
+        _ => return None,
+    };
+    let actions = match map.get("actions") {
+        Some(serde_yaml::Value::Sequence(seq)) => seq
+            .iter()
+            .filter_map(|it| {
+                Some(HeroAction {
+                    text: scalar(it.get("text"))?,
+                    href: scalar(it.get("href"))?,
+                    primary: it.get("primary").and_then(serde_yaml::Value::as_bool) == Some(true)
+                        || scalar(it.get("class")).as_deref() == Some("primary"),
+                })
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    Some(HeroSpec {
+        eyebrow: scalar(map.get("eyebrow")),
+        headline: scalar(map.get("headline")),
+        lead: scalar(map.get("lead")),
+        actions,
     })
 }
 
@@ -1463,6 +1578,25 @@ fn listing_block(contents: &str, cards_html: &str) -> Block {
         source_file: None,
         html: cards_html.to_string(),
         cell: None,
+    }
+}
+
+/// Set the page's title-block content to `html` (a `hero:`/`about:` header): reuse
+/// the existing `qmd-title-block` so source-mapping + diffing are preserved, or
+/// insert it at the top if the page has no title block.
+fn set_title_block(blocks: &mut Vec<Block>, html: String) {
+    match blocks.iter_mut().find(|b| b.id == "qmd-title-block") {
+        Some(tb) => tb.html = html,
+        None => blocks.insert(
+            0,
+            Block {
+                id: "qmd-title-block".to_string(),
+                sourcepos: String::new(),
+                source_file: None,
+                html,
+                cell: None,
+            },
+        ),
     }
 }
 

@@ -158,13 +158,15 @@ function qmdInitLightbox() {
 
   var style = document.createElement('style');
   style.textContent =
-    'figure img,pre.mermaid{cursor:zoom-in}' +
+    'figure img,pre.mermaid,.qmd-video video{cursor:zoom-in}' +
     '#qmd-lightbox{position:fixed;inset:0;z-index:2147483000;display:none;flex-direction:column;' +
     'align-items:center;justify-content:center;gap:.9rem;padding:2rem;box-sizing:border-box;' +
     'background:rgba(10,12,16,.9);cursor:zoom-out;opacity:0;transition:opacity .15s ease}' +
     '#qmd-lightbox.open{display:flex;opacity:1}' +
     '#qmd-lightbox img{max-width:93vw;max-height:86vh;object-fit:contain;cursor:default;' +
     'background:var(--qmd-bg,#fff);border-radius:4px;box-shadow:0 10px 50px rgba(0,0,0,.5)}' +
+    '#qmd-lightbox video{display:none;max-width:93vw;max-height:86vh;object-fit:contain;cursor:default;' +
+    'border-radius:6px;background:#000;box-shadow:0 10px 50px rgba(0,0,0,.5)}' +
     '#qmd-lightbox .qmd-lb-svg{display:none;width:92vw;max-width:1400px;max-height:86vh;overflow:auto;' +
     'cursor:default;background:var(--qmd-bg,#fff);border-radius:4px;padding:1.2rem;box-sizing:border-box;' +
     'box-shadow:0 10px 50px rgba(0,0,0,.5)}' +
@@ -181,14 +183,23 @@ function qmdInitLightbox() {
   box.id = 'qmd-lightbox';
   box.setAttribute('role', 'dialog');
   box.innerHTML = '<button class="qmd-lb-close" aria-label="Close">×</button>' +
-    '<img alt=""><div class="qmd-lb-svg"></div><div class="qmd-lb-cap"></div>';
+    '<img alt=""><video class="qmd-lb-video" muted loop playsinline></video>' +
+    '<div class="qmd-lb-svg"></div><div class="qmd-lb-cap"></div>';
   document.body.appendChild(box);
   var lbImg = box.querySelector('img');
+  var lbVideo = box.querySelector('.qmd-lb-video');
   var lbSvg = box.querySelector('.qmd-lb-svg');
   var lbCap = box.querySelector('.qmd-lb-cap');
 
-  function openImg(srcImg) {
+  function hideAll() {
+    lbImg.style.display = 'none'; lbImg.removeAttribute('src');
+    lbVideo.style.display = 'none';
+    try { lbVideo.pause(); } catch (e) {}
+    lbVideo.removeAttribute('src');
     lbSvg.style.display = 'none'; lbSvg.innerHTML = '';
+  }
+  function openImg(srcImg) {
+    hideAll();
     lbImg.style.display = '';
     lbImg.src = srcImg.currentSrc || srcImg.src;
     lbImg.alt = srcImg.alt || '';
@@ -201,11 +212,11 @@ function qmdInitLightbox() {
   function openMermaid(pre) {
     var svg = pre.querySelector('svg');
     if (!svg) return; // not rendered yet
-    lbImg.style.display = 'none'; lbImg.removeAttribute('src');
+    hideAll();
     var clone = svg.cloneNode(true);
     clone.removeAttribute('width'); clone.removeAttribute('height');
     clone.style.maxWidth = 'none';
-    lbSvg.innerHTML = ''; lbSvg.appendChild(clone);
+    lbSvg.appendChild(clone);
     lbSvg.style.display = 'block';
     // Show the figure's caption in the zoom too (empty -> hidden by CSS).
     var fig = pre.closest('figure');
@@ -214,11 +225,23 @@ function qmdInitLightbox() {
     box.classList.add('open');
     document.documentElement.style.overflow = 'hidden'; // lock scroll behind the lightbox
   }
+  // A `{{< video >}}` screencast: play an enlarged copy (the clicked element is the
+  // theme-visible variant; the hidden one is display:none and not clickable).
+  function openVideo(vid) {
+    hideAll();
+    lbVideo.style.display = 'block'; // CSS defaults it to none; need an explicit value
+    lbVideo.src = vid.currentSrc || vid.src;
+    var p = lbVideo.play(); if (p && p.catch) p.catch(function () {});
+    var fig = vid.closest('figure');
+    var fc = fig && fig.querySelector('figcaption');
+    lbCap.textContent = fc ? fc.textContent : '';
+    box.classList.add('open');
+    document.documentElement.style.overflow = 'hidden'; // lock scroll behind the lightbox
+  }
   function close() {
     box.classList.remove('open');
     document.documentElement.style.overflow = ''; // restore page scroll
-    lbImg.removeAttribute('src');
-    lbSvg.innerHTML = '';
+    hideAll();
   }
 
   var unmodified = function (e) {
@@ -226,8 +249,11 @@ function qmdInitLightbox() {
   };
   document.addEventListener('click', function (e) {
     if (!e.target.closest) return;
+    var vid;
     if (e.target.closest('figure img') && unmodified(e)) {
       e.preventDefault(); e.stopPropagation(); openImg(e.target);
+    } else if ((vid = e.target.closest('.qmd-video video')) && unmodified(e)) {
+      e.preventDefault(); e.stopPropagation(); openVideo(vid);
     } else {
       var pre = e.target.closest('pre.mermaid');
       if (pre && pre.querySelector('svg') && unmodified(e)) {
@@ -235,14 +261,14 @@ function qmdInitLightbox() {
       }
     }
   }, true);
-  // Keep a double-click on a figure/diagram from reaching click-to-source.
+  // Keep a double-click on a figure/diagram/video from reaching click-to-source.
   document.addEventListener('dblclick', function (e) {
-    if (e.target.closest && e.target.closest('figure img, pre.mermaid')) {
+    if (e.target.closest && e.target.closest('figure img, pre.mermaid, .qmd-video video')) {
       e.preventDefault(); e.stopPropagation();
     }
   }, true);
   box.addEventListener('click', function (e) {
-    if (e.target !== lbImg && !lbSvg.contains(e.target)) close();
+    if (e.target !== lbImg && e.target !== lbVideo && !lbSvg.contains(e.target)) close();
   });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && box.classList.contains('open')) close();
