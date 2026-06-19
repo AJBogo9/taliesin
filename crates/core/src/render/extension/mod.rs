@@ -243,20 +243,41 @@ fn apply_contribution(c: &Contribution, ext_dir: &Path) -> PageIncludes {
     inc
 }
 
+/// The built-in base mode (`dark`/`light`) a contributed `theme:` selects, if any:
+/// the first entry of a `[dark, x.css]` list or a bare `theme: dark` scalar.
+/// `.css`/`.scss` layer names are not base modes (they're inlined separately).
+fn contributed_theme_base(theme: Option<&serde_yaml::Value>) -> Option<&'static str> {
+    let first = match theme? {
+        serde_yaml::Value::String(s) => s.as_str(),
+        serde_yaml::Value::Sequence(seq) => seq.first()?.as_str()?,
+        _ => return None,
+    };
+    match first {
+        "dark" => Some("dark"),
+        "light" | "default" => Some("light"),
+        _ => None,
+    }
+}
+
 /// If the doc's `format:` names a format extension (`<ext>-revealjs`/`<ext>-html`),
-/// load `_extensions/<ext>/_extension.yml` and resolve what it contributes. Empty
+/// load `_extensions/<ext>/_extension.yml` and resolve what it contributes: the
+/// injected `PageIncludes` plus the built-in theme base it selects (so the deck
+/// defaults to the extension's light/dark when the doc names no `theme:`). Empty
 /// when there's no such extension; a *failed* load is reported via `warnings`.
 pub(super) fn resolve_format_extension(
     front_matter: &str,
     base_dir: Option<&Path>,
     warnings: &mut Vec<String>,
-) -> PageIncludes {
+) -> (PageIncludes, Option<&'static str>) {
     let Some(r) = extension_ref(front_matter, base_dir) else {
-        return PageIncludes::default();
+        return (PageIncludes::default(), None);
     };
     match contribution_for(&r, warnings) {
-        Some((dir, c)) => apply_contribution(&c, &dir),
-        None => PageIncludes::default(),
+        Some((dir, c)) => (
+            apply_contribution(&c, &dir),
+            contributed_theme_base(c.theme.as_ref()),
+        ),
+        None => (PageIncludes::default(), None),
     }
 }
 

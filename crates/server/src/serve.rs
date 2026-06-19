@@ -353,17 +353,29 @@ pub(crate) fn serve_asset_from(base: &Path, rel: &str) -> axum::response::Respon
     }
 }
 
-/// Find a file by name in any `_extensions/<ext>/` directory under `base` (where
-/// a format extension's `format-resources` live).
+/// Find a file by its bare name anywhere under `base/_extensions/` (where a
+/// format extension's `format-resources` live, possibly in a subdir like
+/// `assets/`). `build` copies those resources flat next to the page, so the
+/// preview must resolve a bare `<script src="x.js">` regardless of which subdir
+/// it sits in. Only the file name is used, so a path can't traverse out.
 fn find_in_extensions(base: &Path, rel: &str) -> Option<PathBuf> {
     let name = Path::new(rel).file_name()?;
-    for entry in std::fs::read_dir(base.join("_extensions")).ok()?.flatten() {
-        let candidate = entry.path().join(name);
-        if candidate.is_file() {
-            return Some(candidate);
+    find_file_named(&base.join("_extensions"), name)
+}
+
+/// Depth-first search for a file named `name` under `dir`: files at each level
+/// are matched before descending, so a top-level resource still wins.
+fn find_file_named(dir: &Path, name: &std::ffi::OsStr) -> Option<PathBuf> {
+    let mut subdirs = Vec::new();
+    for entry in std::fs::read_dir(dir).ok()?.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            subdirs.push(path);
+        } else if path.file_name() == Some(name) {
+            return Some(path);
         }
     }
-    None
+    subdirs.iter().find_map(|sub| find_file_named(sub, name))
 }
 
 /// Guess a content type from a file extension (covers the asset types a doc
@@ -965,11 +977,7 @@ mod protocol_contract {
     //! client (web-client/client.js) consumes; the comprehensive shape test lives
     //! in serve_site.rs. This guards serve.rs's own `*_json` against drift.
     use super::*;
-    use serde_json::Value;
-
-    fn parse(s: String) -> Value {
-        serde_json::from_str(&s).unwrap()
-    }
+    use crate::testutil::parse;
 
     #[test]
     fn ops_and_full_render_match_client_contract() {
@@ -1052,12 +1060,15 @@ mod extension_assets {
         // A miss is None (not a panic).
         assert_eq!(find_in_extensions(&root, "missing.js"), None);
 
-        // AUDIT: a *subdir* resource (e.g. `format-resources: [assets/x.css]`,
-        // which `build` copies flat as `x.css`) is NOT found here — the fallback
-        // only searches one level deep, a latent build/preview inconsistency.
+        // A *subdir* resource (e.g. `format-resources: [assets/x.css]`, which
+        // `build` copies flat as `x.css`) resolves too, by bare name — so preview
+        // and build agree on what an injected `src="x.css"` points at.
         fs::create_dir_all(root.join("_extensions/deck/assets")).unwrap();
         fs::write(root.join("_extensions/deck/assets/x.css"), "/* */").unwrap();
-        assert_eq!(find_in_extensions(&root, "x.css"), None);
+        assert_eq!(
+            find_in_extensions(&root, "x.css"),
+            Some(root.join("_extensions/deck/assets/x.css"))
+        );
 
         let _ = fs::remove_dir_all(&root);
     }

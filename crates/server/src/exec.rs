@@ -187,15 +187,11 @@ impl Executor {
     /// Outputs (inner HTML) for one language's cells, reusing that language's cache
     /// before the earliest changed cell and executing from there to the end.
     async fn compute_outputs(&mut self, lang: &'static str, cells: &[CellRef]) -> Vec<String> {
-        let first_changed = (0..cells.len())
-            .find(|&i| {
-                self.langs
-                    .get(lang)
-                    .and_then(|s| s.cached.get(i))
-                    .map(|c| c.id.as_str())
-                    != Some(cells[i].id.as_str())
-            })
-            .unwrap_or(cells.len());
+        let first_changed = self
+            .langs
+            .get(lang)
+            .map(|s| first_changed_index(&s.cached, cells))
+            .unwrap_or(0);
 
         let to_run = cells.len().saturating_sub(first_changed);
         // Boot the kernel up-front (the real wait), so the per-cell progress below
@@ -304,6 +300,16 @@ impl Executor {
     }
 }
 
+/// Index of the earliest cell whose id differs from the previous cached run (or
+/// where the cache is shorter): everything from here re-runs, everything before
+/// reuses its cached output. Pure over the two id sequences, so the re-run
+/// granularity is unit-testable without a kernel.
+fn first_changed_index(cached: &[Cached], cells: &[CellRef]) -> usize {
+    (0..cells.len())
+        .find(|&i| cached.get(i).map(|c| c.id.as_str()) != Some(cells[i].id.as_str()))
+        .unwrap_or(cells.len())
+}
+
 /// Build the output block for a cell. Its id is the cell id + `-out`, and it
 /// points click-to-source at the cell's own source position. A `#| label: fig-x`
 /// cell wraps its output in a numbered `<figure>` so `@fig-x` resolves.
@@ -368,6 +374,48 @@ mod tests {
             figure: None,
             include: true,
         }
+    }
+
+    fn cells(ids: &[&str]) -> Vec<CellRef> {
+        ids.iter().map(|id| cell(id)).collect()
+    }
+
+    fn cached(ids: &[&str]) -> Vec<Cached> {
+        ids.iter()
+            .map(|id| Cached {
+                id: id.to_string(),
+                output: String::new(),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn first_changed_index_drives_cache_reuse_granularity() {
+        // Unchanged cell ids -> nothing re-runs (index == len, all cached).
+        assert_eq!(
+            first_changed_index(&cached(&["a", "b", "c"]), &cells(&["a", "b", "c"])),
+            3
+        );
+        // The first differing cell, and everything after it, re-runs.
+        assert_eq!(
+            first_changed_index(&cached(&["a", "b", "c"]), &cells(&["a", "X", "c"])),
+            1
+        );
+        assert_eq!(
+            first_changed_index(&cached(&["a", "b", "c"]), &cells(&["Z", "b", "c"])),
+            0
+        );
+        // A cold cache (or a freshly appended trailing cell) re-runs from the gap.
+        assert_eq!(first_changed_index(&[], &cells(&["a", "b"])), 0);
+        assert_eq!(
+            first_changed_index(&cached(&["a", "b"]), &cells(&["a", "b", "c"])),
+            2
+        );
+        // A removed trailing cell leaves the survivors cached (index past the end).
+        assert_eq!(
+            first_changed_index(&cached(&["a", "b", "c"]), &cells(&["a", "b"])),
+            2
+        );
     }
 
     #[test]

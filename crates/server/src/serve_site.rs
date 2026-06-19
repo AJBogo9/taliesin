@@ -950,12 +950,8 @@ mod protocol_contract {
     //! changes here, update the client's typedefs too — these are the two halves
     //! of one contract. The `serve.rs` producers are covered by a sibling test.
     use super::*;
-    use qmd_fast_core::BlockOp;
-    use serde_json::Value;
-
-    fn parse(s: String) -> Value {
-        serde_json::from_str(&s).unwrap()
-    }
+    use crate::testutil::parse;
+    use qmd_fast_core::{BlockOp, render_document};
 
     #[test]
     fn op_messages_match_client_contract() {
@@ -989,6 +985,32 @@ mod protocol_contract {
             html: "<a href=\"blog.qmd\">b</a>".into(),
         }));
         assert_eq!(up["html"], "<a href=\"blog.html\">b</a>");
+    }
+
+    #[test]
+    fn a_real_edit_serializes_to_one_update_with_links_rewritten() {
+        // The full chain a previewing client receives: render two versions of a
+        // page, diff them, and serialize. `tests/incremental.rs` covers render->
+        // diff in core; this proves the serve-side serialization (incl. the
+        // .qmd->.html rewrite that happens *in* op_json, not at render time).
+        let v1 = render_document("Intro.\n\nSee [post](other.qmd).\n");
+        let v2 = render_document("Intro.\n\nSee [the post](other.qmd) now.\n");
+        let ops = diff_blocks(&v1.blocks, &v2.blocks);
+        assert_eq!(ops.len(), 1, "one paragraph edit -> one op: {ops:?}");
+
+        let msg = parse(op_json(&ops[0]));
+        assert_eq!(msg["type"], "update");
+        assert_eq!(
+            msg["target_id"].as_str().unwrap(),
+            v1.blocks[1].id.as_str(),
+            "update must target the edited block's existing id"
+        );
+        let html = msg["html"].as_str().unwrap();
+        assert!(
+            html.contains("other.html"),
+            "qmd link not rewritten: {html}"
+        );
+        assert!(!html.contains("other.qmd"), "raw .qmd link leaked: {html}");
     }
 
     #[test]

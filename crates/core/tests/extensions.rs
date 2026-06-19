@@ -108,11 +108,11 @@ fn extension_header_precedes_document_header() {
     assert!(ext_at < doc_at, "extension must precede doc: {h}");
 }
 
-/// A contributed `theme: [dark, x.css]` inlines the `.css` layer, but the
-/// built-in `dark` base is currently NOT applied (only a doc's own top-level
-/// `theme:` selects built-in light/dark). AUDIT: fidelity gap vs Quarto.
+/// A contributed `theme: [dark, x.css]` inlines the `.css` layer AND applies the
+/// built-in `dark` base, so the deck defaults to dark when the doc names no
+/// `theme:` of its own (matching Quarto, where the extension owns the look).
 #[test]
-fn extension_theme_inlines_css_but_drops_builtin_base() {
+fn extension_theme_inlines_css_and_applies_builtin_base() {
     let d = TempProj::new();
     d.ext(
         "glassy",
@@ -130,9 +130,31 @@ fn extension_theme_inlines_css_but_drops_builtin_base() {
         "css layer should be inlined: {}",
         doc.includes.in_header
     );
-    assert_ne!(
+    assert_eq!(
         doc.theme_default, "dark",
-        "the extension's built-in `dark` base is not applied today (the gap)"
+        "the extension's built-in `dark` base should set the default mode"
+    );
+}
+
+/// The doc's own `theme:` wins over the extension's contributed base: the
+/// extension only supplies the default when the doc didn't pick one.
+#[test]
+fn doc_theme_overrides_extension_theme_base() {
+    let d = TempProj::new();
+    d.ext(
+        "glassy",
+        "contributes:
+  formats:
+    revealjs:
+      theme: [dark, glassy.css]
+",
+    );
+    d.file("_extensions/glassy/glassy.css", ".reveal{--marker:1}");
+    let src = "---\ntitle: T\nformat: glassy-revealjs\ntheme: light\n---\n\n## S\n";
+    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    assert_eq!(
+        doc.theme_default, "light",
+        "the doc's own theme: must beat the extension's contributed base"
     );
 }
 

@@ -493,11 +493,65 @@ fn strip_ansi(s: &str) -> String {
 mod tests {
     use super::*;
 
-    // Runs only when QMD_FAST_PYTHON points at a python with ipykernel.
+    // `render_outputs` turns kernel messages into the output block's inner HTML.
+    // It's pure, so it's covered here unconditionally — the live-kernel test below
+    // needs an interpreter and is skipped without one, so this is what guarantees
+    // the output-formatting path stays green in CI.
+    #[test]
+    fn render_outputs_formats_streams_rich_and_errors() {
+        assert_eq!(render_outputs(&[]), "", "no outputs -> empty fragment");
+
+        // stdout vs stderr get distinct classes; text is HTML-escaped.
+        let out = render_outputs(&[Output::Stream {
+            stderr: false,
+            text: "a < b\n".into(),
+        }]);
+        assert_eq!(out, "<pre class=\"qmd-stream\">a &lt; b\n</pre>");
+        let err = render_outputs(&[Output::Stream {
+            stderr: true,
+            text: "oops".into(),
+        }]);
+        assert!(
+            err.contains("class=\"qmd-stream qmd-stderr\""),
+            "got: {err}"
+        );
+
+        // Rich output is already HTML and passes through verbatim (not escaped).
+        assert_eq!(
+            render_outputs(&[Output::Rich("<table><tr><td>1</td></tr></table>".into())]),
+            "<table><tr><td>1</td></tr></table>"
+        );
+
+        // An error with no traceback falls back to "ename: evalue".
+        let bare = render_outputs(&[Output::Error {
+            ename: "ValueError".into(),
+            evalue: "bad".into(),
+            traceback: vec![],
+        }]);
+        assert_eq!(bare, "<pre class=\"qmd-error\">ValueError: bad</pre>");
+
+        // A traceback is ANSI-stripped, joined, and escaped.
+        let tb = render_outputs(&[Output::Error {
+            ename: "E".into(),
+            evalue: "v".into(),
+            traceback: vec!["\u{1b}[31mline 1\u{1b}[0m".into(), "a < b".into()],
+        }]);
+        assert!(tb.contains("class=\"qmd-error\""), "got: {tb}");
+        assert!(tb.contains("line 1"), "ansi not stripped: {tb}");
+        assert!(!tb.contains("\u{1b}["), "raw ANSI leaked: {tb}");
+        assert!(tb.contains("a &lt; b"), "traceback not escaped: {tb}");
+    }
+
+    // Runs only when QMD_FAST_PYTHON points at a python with ipykernel; without
+    // one it reports ok WITHOUT exercising a real kernel (the pure-logic tests
+    // above carry the unconditional coverage).
     #[test]
     fn kernel_executes_state_errors_and_interrupts_runaway_cell() {
         let Some(py) = std::env::var_os("QMD_FAST_PYTHON") else {
-            eprintln!("skipping kernel test: set QMD_FAST_PYTHON to a python with ipykernel");
+            eprintln!(
+                "SKIPPED (no live kernel): set QMD_FAST_PYTHON to a python with ipykernel to \
+                 actually exercise kernel.rs; this run did not."
+            );
             return;
         };
         // Short per-cell cap so the runaway case below trips fast. Set before the

@@ -56,6 +56,16 @@ use page::page_from_doc;
 pub use page::{SiteCtx, favicon_link, html_page_from_doc_in_site, render_doc_to_page};
 use theme::{detect_theme, resolve_theme, resolve_theme_layers, theme_default_mode, theme_style};
 
+/// Render a `.qmd` source string into the `RenderedDoc` block model: the parse
+/// step only (no code execution, no page chrome). The dev server diffs these
+/// block lists for incremental updates; the CLI wraps the result in a page.
+///
+/// ```
+/// let doc = qmd_fast_core::render_document("# Title\n\nHello *world*.\n");
+/// assert_eq!(doc.title, None); // no front-matter title
+/// assert_eq!(doc.blocks.len(), 2); // the heading + the paragraph
+/// assert!(doc.blocks[0].html.contains("<h1"));
+/// ```
 pub fn render_document(src: &str) -> RenderedDoc {
     render_internal(src, None, None)
 }
@@ -168,12 +178,19 @@ fn render_internal(
                     DocFormat::Reveal => "revealjs",
                     DocFormat::Html => "html",
                 };
-                let fmt_inc = resolve_format_extension(fm, base_dir, &mut warnings);
+                let (fmt_inc, fmt_theme_base) =
+                    resolve_format_extension(fm, base_dir, &mut warnings);
                 let named_inc = resolve_named_extensions(fm, base_dir, ext_base, &mut warnings);
                 ext_contributes = fmt_inc.has_markup() || named_inc.has_markup();
                 includes = fmt_inc;
                 includes.merge(&named_inc);
                 includes.merge(&resolve_doc_includes(fm, base_dir));
+                // A format extension's `theme: [dark|light, …]` selects the
+                // built-in base mode when the doc itself named no `theme:` (the
+                // extension owns the look, matching Quarto).
+                if theme.is_none() {
+                    theme = fmt_theme_base.map(String::from);
+                }
                 (exec_echo, exec_include) = detect_execute_defaults(fm);
                 continue;
             }
@@ -790,7 +807,15 @@ fn map_origin(origins: Option<&[LineOrigin]>, buffer_line: usize) -> (Option<Str
     }
 }
 
-/// Render a complete, viewable HTML page (used by the one-shot CLI).
+/// Render a complete, viewable HTML page (used by the one-shot CLI). The
+/// front-matter `title:` becomes the document `<title>`; `fallback_title` is
+/// used when the source declares none.
+///
+/// ```
+/// let html = qmd_fast_core::render_html_page("---\ntitle: Demo\n---\n\nHi.\n", "fallback");
+/// assert!(html.contains("<title>Demo</title>"));
+/// assert!(html.contains("Hi."));
+/// ```
 pub fn render_html_page(src: &str, fallback_title: &str) -> String {
     page_from_doc(&render_document(src), fallback_title)
 }

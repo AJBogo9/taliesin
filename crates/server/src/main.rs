@@ -10,6 +10,8 @@ mod kernel;
 mod log;
 mod serve;
 mod serve_site;
+#[cfg(test)]
+mod testutil;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
