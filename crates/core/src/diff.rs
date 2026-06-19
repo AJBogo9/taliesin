@@ -93,33 +93,55 @@ fn emit_gap(
     }
 }
 
-/// Longest common subsequence over two id sequences (unique elements), returned
-/// as matched index pairs `(old_idx, new_idx)` in increasing order.
+/// Longest common subsequence over two id sequences, returned as matched index
+/// pairs `(old_idx, new_idx)` in increasing order.
+///
+/// Block ids are unique within a document (`make_id` disambiguates collisions; the
+/// corpus tests assert it), so a common subsequence is exactly a set of shared ids
+/// in the same relative order — i.e. the longest run of new-list positions that is
+/// increasing when the shared ids are taken in old-list order. That reduces the LCS
+/// to a Longest Increasing Subsequence, solved in O(n log n) time and O(n) space via
+/// patience sorting. (The textbook O(m·n) DP table would allocate tens of MB on
+/// every keystroke-save once a document reaches a few thousand blocks.)
 fn lcs_pairs(a: &[&str], b: &[&str]) -> Vec<(usize, usize)> {
-    let (m, n) = (a.len(), b.len());
-    let mut dp = vec![vec![0u32; n + 1]; m + 1];
-    for i in (0..m).rev() {
-        for j in (0..n).rev() {
-            dp[i][j] = if a[i] == b[j] {
-                dp[i + 1][j + 1] + 1
-            } else {
-                dp[i + 1][j].max(dp[i][j + 1])
-            };
-        }
+    // New-list position of each id (unique ⇒ exactly one position per id).
+    let mut pos_in_b: std::collections::HashMap<&str, usize> =
+        std::collections::HashMap::with_capacity(b.len());
+    for (j, &id) in b.iter().enumerate() {
+        pos_in_b.insert(id, j);
     }
-    let mut pairs = Vec::new();
-    let (mut i, mut j) = (0, 0);
-    while i < m && j < n {
-        if a[i] == b[j] {
-            pairs.push((i, j));
-            i += 1;
-            j += 1;
-        } else if dp[i + 1][j] >= dp[i][j + 1] {
-            i += 1;
+    // The shared ids as `(old_idx, new_idx)` in old-list order; the LCS is the
+    // longest strictly-increasing-by-`new_idx` subsequence of this.
+    let seq: Vec<(usize, usize)> = a
+        .iter()
+        .enumerate()
+        .filter_map(|(i, id)| pos_in_b.get(id).map(|&j| (i, j)))
+        .collect();
+    // Patience sorting: `tails[k]` is the `seq`-index of the smallest tail of an
+    // increasing run of length `k + 1`; `prev` links each element to the tail of the
+    // run it extends, so the actual subsequence can be rebuilt.
+    let mut tails: Vec<usize> = Vec::new();
+    let mut prev: Vec<usize> = vec![usize::MAX; seq.len()];
+    for (s, &(_, j)) in seq.iter().enumerate() {
+        let k = tails.partition_point(|&t| seq[t].1 < j);
+        if k > 0 {
+            prev[s] = tails[k - 1];
+        }
+        if k == tails.len() {
+            tails.push(s);
         } else {
-            j += 1;
+            tails[k] = s;
         }
     }
+    // Walk back from the longest run's tail to recover the pairs, then put them in
+    // increasing order.
+    let mut pairs = Vec::new();
+    let mut cur = tails.last().copied();
+    while let Some(s) = cur {
+        pairs.push(seq[s]);
+        cur = (prev[s] != usize::MAX).then_some(prev[s]);
+    }
+    pairs.reverse();
     pairs
 }
 
