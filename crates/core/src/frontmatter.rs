@@ -128,8 +128,10 @@ pub fn lint(src: &str) -> Vec<String> {
 }
 
 /// The leading `---` ... `---`/`...` block of a document, without the fences.
-/// `None` if the source doesn't open with a front-matter fence.
-fn front_matter_block(src: &str) -> Option<&str> {
+/// `None` if the source doesn't open with a front-matter fence. The one canonical
+/// front-matter splitter (BOM- and `...`-terminator-aware); the site parser and the
+/// shortcode/extension scanner reuse it so every path agrees on edge cases.
+pub(crate) fn front_matter_block(src: &str) -> Option<&str> {
     let src = src.strip_prefix('\u{feff}').unwrap_or(src);
     let first = src.split_inclusive('\n').next()?;
     if first.trim_end() != "---" {

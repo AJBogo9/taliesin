@@ -306,18 +306,6 @@ fn parse_extensions(front_matter: &str) -> Vec<String> {
 
 // --- Declarative shortcodes --------------------------------------------------
 
-/// The raw front-matter block at the top of `src` (without the `---` fences), or
-/// `""` when there isn't one. Used to find the active extension before parsing.
-fn front_matter_block(src: &str) -> &str {
-    let rest = src
-        .strip_prefix("---\n")
-        .or_else(|| src.strip_prefix("---\r\n"));
-    match rest {
-        Some(body) => body.split_once("\n---").map(|(fm, _)| fm).unwrap_or(""),
-        None => "",
-    }
-}
-
 /// Shortcode templates (name → HTML template) from every active extension: the
 /// `format:` one plus each `extensions:` entry. Loads silently — failures are
 /// reported once by the include resolvers on the same render (this runs in the
@@ -368,7 +356,10 @@ fn gather_shortcodes(
 /// valid. Fenced code blocks are skipped, so a `{{< … >}}` shown as an *example*
 /// in ```` ``` ```` stays literal; unknown shortcodes are left untouched.
 pub(super) fn expand_shortcodes(src: &str, base_dir: Option<&Path>) -> String {
-    let templates = shortcode_templates(front_matter_block(src), base_dir);
+    let templates = shortcode_templates(
+        crate::frontmatter::front_matter_block(src).unwrap_or(""),
+        base_dir,
+    );
     // Process whenever a `{{<` is present: besides extension-declared templates,
     // `render_shortcode` also handles the built-in `{{< embed >}}`, which must work
     // with no extensions loaded.

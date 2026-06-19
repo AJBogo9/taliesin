@@ -23,7 +23,7 @@ pub(crate) fn parse_front_matter(path: &Path) -> FrontInfo {
     let Ok(src) = std::fs::read_to_string(path) else {
         return FrontInfo::default();
     };
-    let Some(block) = front_matter_block(&src) else {
+    let Some(block) = crate::frontmatter::front_matter_block(&src) else {
         return FrontInfo::default();
     };
     let Ok(val) = serde_yaml::from_str::<serde_yaml::Value>(block) else {
@@ -93,18 +93,6 @@ pub(crate) fn parse_hero(v: Option<&serde_yaml::Value>) -> Option<HeroSpec> {
         lead: scalar(map.get("lead")),
         actions,
     })
-}
-
-/// The text between the leading `---` and the next `---` (the YAML front matter),
-/// or `None` if the document doesn't open with a front-matter fence.
-pub(crate) fn front_matter_block(src: &str) -> Option<&str> {
-    let rest = src.strip_prefix("---")?;
-    // Tolerate `---\n` (and a leading BOM/whitespace already stripped by caller).
-    let rest = rest
-        .strip_prefix('\n')
-        .or_else(|| rest.strip_prefix("\r\n"))?;
-    let end = rest.find("\n---")?;
-    Some(&rest[..end])
 }
 
 /// A YAML scalar (string/number/bool) as a display string.
