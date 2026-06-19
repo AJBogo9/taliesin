@@ -309,6 +309,60 @@ impl Site {
         rewrite_qmd_links(&html)
     }
 
+    /// A self-contained `404.html` for the static build. A static host (GitHub
+    /// Pages, Netlify, Cloudflare Pages, …) serves this one file for *any* unknown
+    /// path, at any depth, while the browser keeps the bad URL in the address bar —
+    /// so every link in it must be **root-absolute** (`/…`), never the
+    /// depth-relative links the rest of the site uses (those would resolve against
+    /// the wrong directory). To keep that absolute-link surface tiny the page is
+    /// deliberately minimal: no navbar, an inlined favicon (data URI), and a single
+    /// `/` home link. The base/site CSS is inlined into every page already, so the
+    /// page stays on-theme with no relative dependency.
+    ///
+    /// Absolute `/` assumes a **root deploy** (custom domain or `user.github.io`); a
+    /// project-subpath deploy (`user.github.io/repo/`) would need a base path the
+    /// config doesn't model yet. Served (with a 404 status) by the live preview's
+    /// fallback too, so preview matches production.
+    pub fn render_404_page(&self) -> String {
+        // Scoped styling for the centred 404 body, injected into the head. Uses the
+        // theme `--qmd-*` vars so it tracks light/dark like the rest of the site.
+        const NOT_FOUND_STYLE: &str = "\n<style>\n\
+            .qmd-404{min-height:60vh;display:flex;flex-direction:column;\
+            align-items:center;justify-content:center;text-align:center;gap:.3rem}\n\
+            .qmd-404-code{font-family:var(--qmd-font-head);\
+            font-size:clamp(4.5rem,20vw,9rem);font-weight:800;line-height:.9;\
+            letter-spacing:-.04em;color:var(--qmd-accent)}\n\
+            .qmd-404 h1{margin:.4rem 0 0;font-size:1.5rem}\n\
+            .qmd-404 p{margin:.2rem 0;color:var(--qmd-muted)}\n\
+            .qmd-404-home{display:inline-block;margin-top:1.4rem;font-weight:600}\n\
+            </style>";
+
+        let site_title = self.config.title.as_deref().unwrap_or("the site");
+        let body = format!(
+            "<div class=\"qmd-404\">\n\
+             <div class=\"qmd-404-code\">404</div>\n\
+             <h1>Page not found</h1>\n\
+             <p>The page you’re looking for doesn’t exist or may have moved.</p>\n\
+             <p><a class=\"qmd-404-home\" href=\"/\">Back to {}</a></p>\n\
+             </div>",
+            crate::html_escape(site_title),
+        );
+
+        // Start from a default standalone doc (correct theme defaults + bundled
+        // data-URI favicon), then swap in the one hand-built block.
+        let mut doc = render::render_document("");
+        doc.title = Some("Page not found".to_string());
+        doc.includes.in_header.push_str(NOT_FOUND_STYLE);
+        doc.blocks = vec![Block {
+            id: "qmd-404".to_string(),
+            sourcepos: "1:1-1:1".to_string(),
+            source_file: None,
+            html: body,
+            cell: None,
+        }];
+        render::render_doc_to_page(&doc, "Page not found")
+    }
+
     /// Whether a page shows a table of contents: its own front-matter `toc:` wins
     /// (an explicit `toc: false` suppresses it even when the site enables TOCs);
     /// otherwise the site-wide `format: html: toc:` applies, but only to article

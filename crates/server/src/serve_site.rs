@@ -213,7 +213,14 @@ async fn page_or_asset(
             return Html(html).into_response();
         }
     }
-    serve_asset(&app.root, &path)
+    // Nothing matched. If it isn't an existing asset either, serve the site's own
+    // 404 page (with a 404 status) so preview mirrors the deployed `404.html`.
+    let asset = serve_asset(&app.root, &path);
+    if asset.status() == axum::http::StatusCode::NOT_FOUND {
+        let html = { app.site.lock().render_404_page() };
+        return (axum::http::StatusCode::NOT_FOUND, Html(html)).into_response();
+    }
+    asset
 }
 
 /// Serve a file under `root`, with path-traversal protection.

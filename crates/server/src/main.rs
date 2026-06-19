@@ -368,6 +368,14 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
     } else {
         String::new()
     };
+
+    // Self-contained `404.html` at the site root: most static hosts serve it for
+    // any unknown path (root-absolute links inside, so it works at any depth).
+    let mut not_found = "";
+    match std::fs::write(out.join("404.html"), site.render_404_page()) {
+        Ok(()) => not_found = "  ·  404.html",
+        Err(e) => log::warn(&format!("cannot write 404.html: {e}")),
+    }
     let deck_note = if decks > 0 {
         format!("  ·  {decks} deck{}", if decks == 1 { "" } else { "s" })
     } else {
@@ -375,7 +383,7 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
     };
 
     log::built(&format!(
-        "{}  ·  {pages} page{}  ·  {assets} asset{}{feed}{tag_pages}{deck_note}",
+        "{}  ·  {pages} page{}  ·  {assets} asset{}{feed}{tag_pages}{deck_note}{not_found}",
         out.display(),
         if pages == 1 { "" } else { "s" },
         if assets == 1 { "" } else { "s" },

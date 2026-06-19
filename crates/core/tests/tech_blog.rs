@@ -440,6 +440,35 @@ fn site_favicon_link_is_emitted_depth_relative() {
     );
 }
 
+/// The site emits a self-contained `404.html`: a complete page, on-theme, whose
+/// links are root-absolute (it is served at arbitrary depth, so depth-relative
+/// `../` links would resolve against the wrong directory).
+#[test]
+fn site_404_page_is_self_contained_with_absolute_links() {
+    let site = Site::discover(&corpus_dir().join("tech-blog"));
+    let page = site.render_404_page();
+    assert!(
+        page.contains("<!doctype") || page.contains("<html"),
+        "not a full page"
+    );
+    assert!(
+        page.contains("404") && page.contains("Page not found"),
+        "missing 404 body"
+    );
+    // The one home link is root-absolute, not depth-relative.
+    assert!(page.contains(r#"href="/""#), "home link not root-absolute");
+    // No relative `../` link anywhere (would break when served at depth), and the
+    // favicon is the inlined data URI, not a relative file ref.
+    assert!(
+        !page.contains("href=\"../"),
+        "404 page has a depth-relative link"
+    );
+    assert!(
+        page.contains("data:image/svg+xml;base64,"),
+        "favicon not inlined"
+    );
+}
+
 /// Every `{ojs}` cell across the OJS-heavy posts becomes a live placeholder with
 /// a matching `id == cellName`, so the runtime can interpret each into its target.
 #[test]
