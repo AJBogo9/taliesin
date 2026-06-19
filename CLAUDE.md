@@ -14,7 +14,7 @@ correctly, not that some feature checklist is complete. Scope is those ~5 docume
 ```
 crates/core      qmd-fast-core lib: parser (comrak + sourcepos) → block model → render
   src/render/      block model + emission (a module dir):
-    mod.rs           the render pipeline + HTML page emission + helpers
+    mod.rs           the render pipeline (parse → block model → HTML) + head/asset helpers
     model.rs         the block-model data types (Cell, Block, RenderedDoc, PageIncludes)
     tests.rs         render unit + corpus-invariant tests
     reveal.rs        slide decks on qmd-fast's OWN engine (reveal.js removed): bundles
@@ -26,6 +26,8 @@ crates/core      qmd-fast-core lib: parser (comrak + sourcepos) → block model 
     extension/       format extensions (`_extensions/`) + shortcode expansion, incl. the
                      built-in `{{< embed deck.qmd >}}` + `{{< video clip.mp4 dark= >}}`
     theme.rs         `--qmd-*` CSS-variable themes (light/dark, extension themes)
+    page.rs          full HTML-page assembly (PAGE_TEMPLATE shell, site-chrome wiring,
+                     favicon): RenderedDoc → standalone page for build + in-process render
   src/diff.rs      block-level diff (BlockOp) for incremental updates
   src/includes.rs  {{< include >}} resolution + per-file source map
   src/frontmatter.rs YAML front-matter parse + lint (typo warnings)
@@ -38,7 +40,8 @@ crates/core      qmd-fast-core lib: parser (comrak + sourcepos) → block model 
                    Cmd-K search (search.rs), cross-refs (xref.rs); an {{< embed >}}-
                    referenced deck is built/served but kept out of nav. `mounts:`
                    serves another project (e.g. the docs book) under a URL prefix in preview
-  assets/          bundled offline: css/ (base.css + deck.css), js/ (deck.js), katex/, ojs/
+  assets/          bundled offline: css/ (base, dark, deck, reveal-extra, site),
+                   js/ (deck.js, code-enhance.js, mermaid.js, ojs-init.html), katex/, ojs/
 crates/server    qmd-fast-server, bin `qmd-fast`: CLI + websocket dev server
   src/main.rs      render / blocks / build / serve subcommands (a dir = a site project)
   src/serve.rs     single-doc axum websocket + notify file watcher
@@ -46,8 +49,9 @@ crates/server    qmd-fast-server, bin `qmd-fast`: CLI + websocket dev server
   src/exec.rs      runs a doc's code cells, splices outputs back as blocks
   src/kernel.rs    warm Jupyter kernel (ZMQ), reused across edits
   src/log.rs       colorized dev-server console output (to stderr)
-web-client/      browser preview client (vanilla JS, the only client): mounts
-                 blocks, applies ops; double-click opens source in the editor
+web-client/      browser preview client (vanilla JS, the only client): client.js mounts
+                 blocks + applies ops (double-click opens source in the editor),
+                 search.js (Cmd-K), toc-spy.js (scrollspy)
 docs/            project's own manual + demo/tour decks, authored in .qmd (dogfooding)
 corpus/          the real .qmd docs (the spec); cargo test renders them all
 ```
