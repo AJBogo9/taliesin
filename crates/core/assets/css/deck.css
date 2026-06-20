@@ -279,6 +279,32 @@ body { background: transparent; }
 }
 .reveal .magic-move > pre.qmd-mm-active { opacity: 1; }
 
+/* Callouts on slides. The deck doesn't load base.css, so style them here with
+   translucent fills (so they read on a light OR dark deck): an accent left border per
+   kind + a tinted title bar. Matches the page/book callout structure. */
+.reveal .slides .callout {
+  border: 1px solid rgba(127, 127, 127, .28);
+  border-left-width: 5px;
+  border-radius: 8px;
+  margin: 0.5em 0;
+  overflow: hidden;
+  text-align: left;
+}
+.reveal .slides .callout-title { font-weight: 700; padding: 0.28em 0.7em; margin: 0; }
+.reveal .slides .callout-body { padding: 0.1em 0.75em 0.4em; }
+.reveal .slides .callout-body > :first-child { margin-top: 0.35em; }
+.reveal .slides .callout-collapse > details > summary.callout-title { cursor: pointer; list-style: none; }
+.reveal .slides .callout-note { border-left-color: #4c8dff; }
+.reveal .slides .callout-note > .callout-title, .reveal .slides .callout-note summary.callout-title { background: rgba(76, 141, 255, .16); }
+.reveal .slides .callout-tip { border-left-color: #2bb673; }
+.reveal .slides .callout-tip > .callout-title, .reveal .slides .callout-tip summary.callout-title { background: rgba(43, 182, 115, .16); }
+.reveal .slides .callout-warning { border-left-color: #e0a800; }
+.reveal .slides .callout-warning > .callout-title, .reveal .slides .callout-warning summary.callout-title { background: rgba(224, 168, 0, .18); }
+.reveal .slides .callout-important { border-left-color: #e0566b; }
+.reveal .slides .callout-important > .callout-title, .reveal .slides .callout-important summary.callout-title { background: rgba(224, 86, 107, .16); }
+.reveal .slides .callout-caution { border-left-color: #e8730c; }
+.reveal .slides .callout-caution > .callout-title, .reveal .slides .callout-caution summary.callout-title { background: rgba(232, 115, 12, .16); }
+
 /* Per-slide backgrounds: a layer behind each slide's own content, filling the slide
    box, so it travels with the slide as the camera pans and shows per-tile in
    overview. deck.js sets it from the section's data-background-*. `.qmd-dark-bg` on
