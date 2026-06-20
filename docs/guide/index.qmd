@@ -25,9 +25,9 @@ exactly as they were. No cold start, no full-page flash, no waiting.
   edits show up immediately, and only the cells whose code actually changed
   re-run.
 
-These docs are themselves a multi-page **book** built with qmd-fast — sidebar,
-search (press <kbd>Cmd/Ctrl-K</kbd>), live diagrams, and executed code cells
-included.
+This guide is itself a multi-page **book** built with qmd-fast: sidebar, search
+(press <kbd>Cmd/Ctrl-K</kbd>), live diagrams, and executed code cells included. A
+companion book, [Internals](../internals/), covers how it works inside.
 
 ## Coming from Quarto or Jupyter?
 
@@ -88,8 +88,9 @@ correctly, the tool is done. That focus is the point — it stays fast, small, a
 predictable.
 :::
 
-The rest of **Part I** is a tour of what you can put on a page: [the live preview
+The rest of this guide tours what you can put on a page: [the live preview
 loop](using/preview.qmd), [executable content](using/code.qmd) (Python/R cells,
 Observable, 3D graphics), [rich writing](using/writing.qmd) (math, diagrams,
 figures, citations), [slides, books and sites](using/formats.qmd), and the
-[extension system](using/extensions.qmd). **Part II** is how it works inside.
+[extension system](using/extensions.qmd). For how qmd-fast works inside, read the
+companion [Internals](../internals/) book.

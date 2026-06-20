@@ -56,17 +56,26 @@ crates/server    qmd-fast-server, bin `qmd-fast`: CLI + websocket dev server
 web-client/      browser preview client (vanilla JS, the only client): client.js mounts
                  blocks + applies ops (double-click opens source in the editor),
                  search.js (Cmd-K), toc-spy.js (scrollspy)
-docs/            project's own manual + demo/tour decks, authored in .qmd (dogfooding)
+docs/            project's own manual: TWO sibling book projects, authored in .qmd
+                 (dogfooding). docs/guide/ = User Guide (using/ + reference/ + demo/tour
+                 decks); docs/internals/ = Internals book. docs/ itself is just a container
+                 (no _quarto.yml). The site mounts each at /docs/guide + /docs/internals.
 corpus/          the real .qmd docs (the spec); cargo test renders them all
 ```
 
 ## Read before working
 
-- **docs/** is the project's own manual, authored in `.qmd` as a multi-page book
-  (dogfooding): Part I (`docs/using/`) is the user-facing feature showcase, Part II
-  (`docs/internals/`) covers the architecture, the rendering pipeline, the deck
-  engine, the block model, and the websocket protocol.
-  Build/preview it like any book project: `qmd-fast preview docs/`.
+- **docs/** is the project's own manual, authored in `.qmd` as TWO sibling book
+  projects (dogfooding):
+  - **`docs/guide/`** = the User Guide (`using/` feature showcase + `reference/`):
+    how to *use* qmd-fast. Preview it: `qmd-fast preview docs/guide`.
+  - **`docs/internals/`** = the Internals book: the architecture, the rendering
+    pipeline, the deck engine, the block model, the execution model, the dev server,
+    and how to extend it. Preview it: `qmd-fast preview docs/internals`.
+  - `docs/` itself is just a container (no `_quarto.yml`); the books are siblings
+    because the page-walker would otherwise swallow a nested book's pages. The
+    marketing site mounts them at `/docs/guide` + `/docs/internals`. Cross-book links
+    are written as relative `.html` (e.g. `../guide/using/formats.html`).
 - **corpus/README.md** for what the test documents exercise.
 
 ## Commands

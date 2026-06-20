@@ -2,8 +2,10 @@
 title: "Architecture"
 ---
 
-All of the intelligence lives in the Rust core behind a stable websocket protocol.
-The browser preview is a thin client, as @fig-architecture shows.
+Saving `post.qmd` updates the browser in a few milliseconds: no reload, no lost
+scroll, no cold start. That is possible because of one decision, drawn in
+@fig-architecture: **all of the intelligence lives in the Rust core behind a stable
+websocket protocol, and the browser preview is a thin client.**
 
 ```{mermaid}
 %%| label: fig-architecture
@@ -38,8 +40,10 @@ a new thin client, not a rewrite.
 
 ## How a save flows
 
-A save flows through the pipeline as @fig-save-flow shows — and crucially, only
-the **changed** blocks reach the preview.
+Change `tau` from 10 to 12 in `post.qmd` and save. That edit flows through the
+pipeline as @fig-save-flow shows, and crucially, only the **changed** blocks reach
+the preview: the heading and the paragraph stay put, and only the plot the cell
+redraws crosses the wire.
 
 ```{mermaid}
 %%| label: fig-save-flow
@@ -175,7 +179,7 @@ classDiagram
   Block ..> BlockOp : diff emits
 ```
 
-The per-file reference follows.
+With the shape in mind, here is the file-by-file detail, one table per layer.
 
 `crates/core/src` — the library (`qmd-fast-core`):
 

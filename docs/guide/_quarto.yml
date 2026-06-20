@@ -1,4 +1,4 @@
-title: "qmd-fast"
+title: "qmd-fast User Guide"
 author: "Andreas Bogossian"
 toc: true
 
@@ -12,15 +12,6 @@ chapters:
       - using/writing.qmd
       - using/formats.qmd
       - using/extensions.qmd
-  - part: "Internals"
-    chapters:
-      - internals/architecture.qmd
-      - internals/rendering.qmd
-      - internals/deck-engine.qmd
-      - internals/block-model.qmd
-      - internals/execution.qmd
-      - internals/server.qmd
-      - internals/extending.qmd
   - part: "Reference"
     chapters:
       - reference/configuration.qmd

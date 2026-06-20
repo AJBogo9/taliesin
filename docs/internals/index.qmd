@@ -1,0 +1,107 @@
+---
+title: "qmd-fast Internals"
+---
+
+# How qmd-fast works {.unnumbered}
+
+You change one number in a `.qmd` file and hit save. The paragraph you touched
+re-renders in place, and nothing else moves: your scroll position holds, the 3D
+canvas two sections down keeps spinning, the Jupyter kernel stays warm. No flash,
+no reload, no cold start. **This book is how that works.**
+
+The companion [User Guide](../guide/) is about *using* qmd-fast; this one is about
+*how it is built*, for contributors, for anyone extending it, and for the curious
+reader who would rather see the design decisions than take them on faith.
+
+## The one idea
+
+Everything here follows from a single architectural choice: **all of the
+intelligence lives in a Rust core, and every client is thin.** The core parses a
+`.qmd` into a block model, renders each block to HTML, and speaks a small, stable
+websocket protocol. The browser preview, the `build` command, and any future client
+(a VS Code extension, say) are all just consumers of that protocol. Nothing clever
+lives in the client.
+
+Three properties fall out of that design, and they are what the rest of this book
+explains in detail:
+
+- **Click-to-source.** Every block carries the source position it came from, so the
+  preview can map any rendered element back to its line, even across included files.
+- **Block-level incremental updates.** A save diffs the new block model against the
+  old and ships only the differences, so live state (scroll position, a spinning 3D
+  canvas, a warm kernel) survives an edit.
+- **No per-edit startup cost.** A warm server and a warm Jupyter kernel mean a save
+  re-runs only the code that actually changed.
+
+## Our running example
+
+To keep things concrete, the chapters follow one tiny document, `post.qmd`:
+
+````markdown
+# Cooling coffee
+
+A fresh cup cools toward room temperature, the gap shrinking exponentially:
+$T(t) = T_\text{room} + (T_0 - T_\text{room})\,e^{-t/\tau}$.
+
+```{python}
+import numpy as np
+import matplotlib.pyplot as plt
+
+t = np.linspace(0, 30, 200)
+plt.plot(t, 20 + 70 * np.exp(-t / 10))   # tau = 10 minutes
+plt.show()
+```
+````
+
+Three blocks: a heading, a paragraph with a line of math, and a Python cell that
+draws a cooling curve. It is barely a document, yet it touches every part of the
+system, prose and a heading to render, math to typeset, code to highlight and to
+*run*, and an output to splice back in. Across the book we watch it become blocks,
+get diffed, cached, and pushed to the browser. When a chapter needs a concrete
+edit, we turn one knob: the cooling constant `tau`, from 10 to 12.
+
+And because this book is itself built with qmd-fast, that cell is not a screenshot.
+The curve below is drawn by running `post.qmd`'s code right here, as the page
+renders, the very pipeline the rest of the book describes:
+
+```{python}
+#| echo: false
+import numpy as np
+import matplotlib.pyplot as plt
+
+t = np.linspace(0, 30, 200)
+fig, ax = plt.subplots(figsize=(6, 3.2), tight_layout=True)
+ax.plot(t, 20 + 70 * np.exp(-t / 10), lw=2, color="#5b8cff")  # tau = 10 minutes
+ax.set_xlabel("minutes")
+ax.set_ylabel("temperature (°C)")
+for spine in ("top", "right"):
+    ax.spines[spine].set_visible(False)
+plt.show()
+```
+
+## How to read this book
+
+The chapters build on each other, roughly from the outside in:
+
+- **[Architecture](architecture.qmd)** is the map: the crates, the data flow, and
+  what happens on a save.
+- **[The rendering pipeline](rendering.qmd)** follows a `.qmd` from raw text to a
+  block model to HTML.
+- **[Offline-first rendering & theming](offline-theming.qmd)** is how math, code, and
+  themes render server-side and offline, so a light/dark toggle re-styles the page
+  with nothing to re-render.
+- **[The deck engine](deck-engine.qmd)** is how the same block model becomes a slide
+  deck on qmd-fast's own engine.
+- **[The multi-page subsystem](sites.qmd)** is how a directory becomes a website or a
+  book: discovery, chrome, listings, cross-page references, search, and feeds.
+- **[The block model](block-model.qmd)** is the load-bearing data structure, and the
+  websocket message contract that rides on it.
+- **[Code execution & the kernel](execution.qmd)** covers the warm Jupyter kernel,
+  the execution plan, and the persistent output cache.
+- **[The dev server](server.qmd)** is the long-running process: the file watcher, the
+  websocket, and the multi-page site server.
+- **[Extending qmd-fast](extending.qmd)** is the conventions for adding a feature, and
+  where extensions live outside the core.
+
+If you read only one chapter, read [Architecture](architecture.qmd). It frames
+everything else.

@@ -2,6 +2,10 @@
 title: "Code execution & the kernel"
 ---
 
+Our `post.qmd` has a single `{python}` cell. This chapter is what happens when it
+runs, and, more to the point, the lengths qmd-fast goes to so that it usually
+*doesn't have to*.
+
 Executing `{python}` / `{r}` cells is the most involved subsystem and lives
 entirely in the **server** (`crates/server`), in two layers: the **executor**
 (`exec.rs`) decides *what* to run and splices outputs back into the block list;
@@ -11,14 +15,15 @@ server fills in their outputs.
 
 ## The executor (`exec.rs`)
 
-`Executor` holds **one warm kernel per language**, created lazily, plus a per-cell
-output cache:
+`Executor` holds **one warm kernel per language**, created lazily, plus the two
+output caches that let it skip work, one in memory and one on disk:
 
 ```rust
 struct Executor {
     python: PathBuf,            // QMD_FAST_PYTHON (default python3)
     r: PathBuf,                 // QMD_FAST_R (default R)
-    langs: HashMap<&str, LangState>,  // "python" / "r" → kernel + cache
+    langs: HashMap<&str, LangState>,  // "python" / "r" → warm kernel + in-memory ran-list
+    freeze: FreezeCache,        // persistent _freeze/ output cache (on disk)
 }
 ```
 
@@ -38,22 +43,66 @@ An output block's id is derived from its cell's id, so when a cell re-runs only
 *its* output block changes — the diff swaps it in place (see
 [the block model](block-model.qmd)).
 
-## Incremental re-execution
+## What runs on a rebuild
 
-`compute_outputs` implements simple notebook semantics without re-running
-everything. The per-language cache stores `(cell id, output)` in order. On each
-rebuild it finds the **earliest cell whose id differs from the cache** (i.e. whose
-source changed — ids are content hashes), then:
+`compute_outputs` gives the document notebook semantics without re-running
+everything. Per language, it answers one question — which **contiguous range** of
+cells must actually execute — by sorting the cells into three zones
+(@fig-exec-zones):
 
-- cells *before* it → reuse the cached output (no execution),
-- that cell and *everything after* it → re-execute (downstream cells may depend on
-  the changed kernel state),
-- the cache is rewritten from the new results.
+```{mermaid}
+%%| label: fig-exec-zones
+%%| fig-cap: "Each language's cells split into three zones; only the run range boots the kernel."
+flowchart LR
+  A["warm prefix<br/>the live kernel<br/>already ran it"] --> B["run range<br/>changed cell +<br/>everything downstream"] --> C["cached tail<br/>restored from<br/>_freeze/"]
+```
+
+The boundaries come from one key per cell: a **cumulative content hash**
+(`freeze::cumulative_hashes`) that folds in the interpreter identity plus *every
+same-language cell's code up to and including this one*. Because it is cumulative,
+editing a cell moves its key **and every downstream key** — so an upstream edit
+invalidates everything after it automatically, exactly the dependency a notebook
+needs. `plan` then finds the warm prefix the live kernel already holds and the run
+range; any suffix whose keys are already on disk is restored without running.
 
 So editing the last cell re-runs one cell; editing the first re-runs all. The
-kernel stays warm across all of this — there is no per-edit cold start (goal #3).
-A `#| include: false` cell still runs (for its kernel-state side effects) but
-contributes no output block.
+kernel stays warm across all of it — no per-edit cold start (goal #3). A
+`#| include: false` cell still runs (for its kernel-state side effects) but emits
+no output block; a `#| cache: false` cell always re-runs and is never cached.
+
+## The persistent cache (`_freeze/`)
+
+The warm prefix only exists while a kernel is alive. To skip work *across* `build`
+runs and preview restarts — when the kernel holds nothing — outputs are also
+written to `_freeze/<page>.json`, keyed by the **same** cumulative hash
+(`crates/server/src/freeze.rs`). On a **cold start** the in-memory prefix is empty,
+so if every cell's key hits the disk cache the whole document **replays from disk
+and never boots the kernel**: an unchanged doc builds instantly. The kernel starts
+only when a key is missing (a real edit), and only for the changed range.
+
+`post.qmd` makes this vivid. Build it twice without touching it and the second
+build replays the plot from `_freeze/` without ever starting Python. Bump `tau` to
+12 and only that one cell's key misses, so only it re-runs; had there been cells
+*after* it, their keys would have moved too, and they would re-run as well.
+
+That cumulative key is what makes this safe where Quarto's per-cell `cache` is
+fragile. It encodes *every byte of code the kernel ran to reach this output*, so:
+
+- **a stale hit is impossible by construction** — no mtime heuristics, nothing to
+  clear by hand; the content *is* the key;
+- a different interpreter (say a Python upgrade) busts every key, since it can't
+  serve outputs the old one computed;
+- kernel **variable state is deliberately never cached** — that is the fragile part
+  of per-cell caching — which is why a cold start can only skip a cell when its
+  *whole upstream* is unchanged, never an arbitrary one in the middle.
+
+What's stored is just the cell's output HTML (kernel images are already inline data
+URIs, so there are no sidecar files). **Errors are never cached**, so a transient
+failure can't bake in. The file is written atomically (temp + rename), tolerates a
+missing / corrupt / old-version file by starting empty, evicts least-recently-used
+entries past a cap (so toggling an edit back and forth still restores instantly),
+and `QMD_FAST_NO_CACHE` disables it outright. "Restart kernel" forces a fresh run
+rather than a replay.
 
 ## The warm kernel (`kernel.rs`)
 
@@ -83,8 +132,10 @@ works. `Drop` kills the child and removes the connection dir.
 `ensure_kernel` makes a missing or crashed kernel a recoverable, visible
 condition rather than a latch:
 
-- **Crashed mid-session** → the dead kernel is dropped and respawned on the next
-  run (so a crash doesn't make every later cell hang on the execute timeout).
+- **Crashes mid-run** → the cells *after* the crash **fail fast** with a "kernel
+  died" notice instead of each waiting out the full cell timeout on a kernel that
+  will never reply; the next rebuild detects the dead kernel, respawns it, and
+  re-runs from the top.
 - **Failed to start** → back off for `KERNEL_RETRY_AFTER` (20s) before retrying,
   so a bad `QMD_FAST_PYTHON` doesn't re-hang every save, but *fixing* it
   self-heals within a few saves.

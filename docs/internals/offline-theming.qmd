@@ -1,0 +1,87 @@
+---
+title: "Offline-first rendering & theming"
+---
+
+Three subsystems, math, syntax highlighting, and theming, look unrelated but
+follow one principle: **render server-side, ship offline, and emit theme-agnostic
+output so a light/dark toggle restyles the page with nothing to re-render.** It is
+worth stating on its own because it shapes how each of them is built.
+
+## Render in Rust, ship offline
+
+Our `post.qmd` carries both kinds of content the browser should never have to
+render for itself, the `$T(t) = …$` math and the Python block. Both are handled at
+render time, in Rust, not by a client-side pass:
+
+- **Math** (`math.rs`) runs KaTeX in an embedded JS engine and emits static
+  HTML + MathML at parse time. The only client dependency is KaTeX's stylesheet,
+  whose fonts are inlined.
+- **Highlighting** (`highlight.rs`) colours code with `syntect`, in Rust, rather
+  than shipping highlight.js.
+
+The payoff is the same in both cases, and it is why they are built this way:
+
+1. the exported HTML is **self-contained**, no CDN for a built post's own math or
+   highlighting;
+2. the **first paint is already correct**, no flash of plain code or unrendered
+   `$…$` while a client script boots, and nothing to re-run after each block
+   update;
+3. the work lives in the **corpus-tested Rust half**, not in untested browser JS.
+
+## Theme-agnostic output
+
+The second half of the principle is that none of this output bakes in colours.
+Highlighting emits `syntect`'s **scope classes** (each prefixed `qhl-`) rather than
+inline colours, and a stylesheet maps those classes to a palette with a
+`[data-theme=dark]` override. The same idea runs through the whole page: the
+navbar, callouts, figures, and code all read `--qmd-*` CSS custom properties, and a
+*theme* is just a `:root` block that sets those variables (a built-in `light`/`dark`
+pair, a `.css`/`.scss` file, or an installed `_extensions/<name>/theme.css`, all
+resolved in `theme.rs`).
+
+So **a light/dark toggle swaps CSS-variable values and re-styles everything with
+nothing to re-render**, no re-highlight, no re-render of math. That is only possible
+because the rendered output was theme-agnostic to begin with.
+
+## Memoizing the per-render cost
+
+Rendering server-side has one cost: the dev server re-renders the *whole* document
+on every save, so a math-heavy page would re-render hundreds of KaTeX expressions
+on each keystroke (hundreds of ms). KaTeX output is a pure function of
+`(latex, display_mode)` under fixed options, so `math.rs` **memoizes** results in a
+process-global cache. After the first render, all the unchanged math on a save
+(everything but the block being edited) is a hashmap hit, and the cache is shared
+across a whole site's pages. This is the render-time analogue of the block diff:
+do the expensive work once, reuse it everywhere it didn't change.
+
+## No flash: the pre-paint script
+
+A theme that is chosen at runtime risks a flash of the wrong one. `theme.rs` ships
+a small **pre-paint `<head>` script** that runs before the body renders. It:
+
+- sets `<html data-theme>` from the saved choice (`localStorage`), else the
+  front-matter default, else dark; and
+- sets `color-scheme` and the page `background` **inline, in that same pre-paint
+  script**, so the browser's canvas is the theme colour from the very first frame.
+
+Without that inline background, the canvas stays white until the inline `<style>`
+parses, which shows as a white flash on every cross-page navigation in dark mode.
+The script is shipped *in the page* (not in the preview client) so the toggle and
+the no-flash behaviour work in static `build` output too, and it defines the
+`qmdSetTheme` / `qmdWireThemeToggles` helpers the navbar and dev-menu toggles call.
+
+## The exceptions that must re-render
+
+Theme-agnostic output covers almost everything, but not quite. A few things bake
+their colours at render time and a CSS-variable swap can't reach them:
+
+| On a light/dark toggle | What happens |
+|---|---|
+| Prose, code, callouts, navbar, chrome | CSS variables re-resolve, nothing re-renders |
+| KaTeX math | already theme-neutral, untouched |
+| Mermaid diagrams | SVG colours are baked at render time, so they **re-render** |
+| Theme-matched `{{< video >}}` clips | the now-visible variant is played, the hidden one paused |
+
+The pre-paint script dispatches a `qmd:themechange` event, and exactly those
+renderers listen for it. That small, explicit list is the boundary of the
+"toggle re-styles with nothing to re-render" rule.

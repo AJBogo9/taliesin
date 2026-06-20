@@ -2,10 +2,11 @@
 title: "The rendering pipeline"
 ---
 
-Rendering turns `.qmd` source into the **block list** everything else keys off.
-The entry point is `render_document_with_includes(src, base_dir)` in
-`render/mod.rs`; it runs a fixed sequence of stages, each a small, testable
-function.
+Rendering is where `post.qmd` stops being text and becomes the **block list**
+everything else keys off: its heading, its paragraph, and its code cell, each a
+separate block with its own identity. The entry point is
+`render_document_with_includes(src, base_dir)` in `render/mod.rs`; it runs a fixed
+sequence of stages, each a small, testable function.
 
 ```{mermaid}
 flowchart TB
@@ -65,6 +66,19 @@ on them** (`crates/core/tests/corpus.rs` enforces it):
 - `data-sourcepos` — the original source range (drives click-to-source).
 - `data-source-file` — present only on blocks pulled in from an include.
 
+## Citations & cross-references
+
+Citations and cross-references (`cite.rs`) are the last pipeline stage, and they
+run as a **post-process over the already-rendered block HTML**: they transform only
+plain-text runs, never the inside of a tag, code, or math span, so block sourcepos
+is left untouched. `[@key]` citations become numbered links to a References block
+appended to the document (the one structural change), formatted from the parsed
+BibTeX. `@fig-` / `@sec-` / `@tbl-` / `@eq-` references become links to their anchor,
+carrying the resolved number when it is known. It is deliberately **pragmatic, not
+a full CSL engine**. Cross-*page* references (a `@fig-` that lives in another
+chapter) are resolved a layer up, in the site subsystem (see [The multi-page
+subsystem](sites.qmd)).
+
 ## Incremental updates
 
 On a save the server re-runs the pipeline and calls `diff_blocks(old, new)`
@@ -72,10 +86,28 @@ On a save the server re-runs the pipeline and calls `diff_blocks(old, new)`
 gaps between them become `Update` / `Insert` / `Remove` ops. Only those ops cross
 the websocket, so the browser swaps a handful of elements while everything
 else — including live canvases — stays put. (Code-cell *outputs* are blocks too,
-keyed to the cell id, so re-running a cell updates only its output block.)
+keyed to the cell id, so re-running a cell updates only its output block.) Our
+`tau` edit is the smallest case of all: only the cell's code changed, so the cell
+re-runs and its output block re-renders, while the heading and the paragraph keep
+their ids and are never touched.
 
 ## Output assembly
 
-`RenderedDoc` → a full page is `render/mod.rs`'s page template; a deck is
-`render/reveal.rs`; a site/book page adds chrome via `site/`. The same block list
-backs all three (see [Architecture](architecture.qmd)).
+A `RenderedDoc` becomes a full page through one assembler, `render/page.rs`
+(`assemble_html_page`): it wraps the block HTML in the document shell, the `<head>`
+theme script, the bundled offline assets, and, for an OJS page, the Observable
+runtime. A deck routes through `render/reveal.rs` instead, and a site/book page adds
+chrome from `site/`, but the **same assembler builds the page shell for the static
+`build` and for both live-preview servers** (preview just injects the websocket
+client into that shell), so they can't drift apart. The same block list backs all
+three outputs (see [Architecture](architecture.qmd)).
+
+## Interactive cells (OJS)
+
+Observable (`ojs`) cells are client-side reactive, not kernel-executed, so they sit
+outside the [execution](execution.qmd) path. Two decisions keep them cheap and
+robust. The page assembler ships the Observable runtime **only when a page actually
+contains live cells** (`page.rs`'s `has_ojs`), so a page without them carries no
+runtime weight. And because every OJS cell is a block with a content-hash id, an
+unedited cell is **never touched by the diff**, so a reactive graph keeps its
+runtime state across a save, the same live-state guarantee a Three.js canvas gets.

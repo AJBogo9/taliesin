@@ -1,0 +1,15 @@
+title: "qmd-fast Internals"
+author: "Andreas Bogossian"
+toc: true
+
+chapters:
+  - index.qmd
+  - architecture.qmd
+  - rendering.qmd
+  - offline-theming.qmd
+  - deck-engine.qmd
+  - sites.qmd
+  - block-model.qmd
+  - execution.qmd
+  - server.qmd
+  - extending.qmd

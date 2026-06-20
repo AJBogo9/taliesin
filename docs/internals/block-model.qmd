@@ -3,7 +3,9 @@ title: "The block model & protocol"
 ---
 
 Everything in qmd-fast keys off one idea: the document is a list of **blocks**,
-each of which knows its identity and its origin.
+each of which knows its identity and its origin. Our `post.qmd` is three of them,
+the `# Cooling coffee` heading, the paragraph, and the Python cell, plus a fourth
+the cell *produces*: the plot, a derived block keyed to the cell.
 
 ## The block model
 
@@ -39,9 +41,45 @@ id in both lists — so the algorithm is an **LCS over the id sequences**:
    cell's output block, keyed to the cell id, changes when an upstream cell
    re-runs). Those get an `Update`.
 
+The whole decision is mechanical once the anchors are known (@fig-diff):
+
+```{mermaid}
+%%| label: fig-diff
+%%| fig-cap: "How diff_blocks turns two block-id lists into DOM ops. Matched anchors are normally left alone (so scroll + live state survive); only the gaps between them, and derived anchors whose HTML changed, cross the wire."
+flowchart TD
+  lists["old block ids vs new block ids"] --> lcs["LCS over the ids"]
+  lcs --> anchor{"matched anchor?"}
+  anchor -->|"HTML identical"| keep["leave untouched"]
+  anchor -->|"HTML differs (cell output)"| u1["Update"]
+  lcs --> gap{"gap between anchors"}
+  gap -->|"old / new pair"| u2["Update"]
+  gap -->|"surplus old"| rem["Remove"]
+  gap -->|"surplus new"| ins["Insert after prev id"]
+```
+
+### Why the diff is `O(n log n)`
+
+Calling this "an LCS" is a lie of omission. The textbook LCS is an `O(m·n)`
+dynamic-programming table, and on a save it would be reallocated on **every
+keystroke** — tens of megabytes once a document reaches a few thousand blocks.
+qmd-fast never builds it.
+
+The shortcut is that block ids are **unique** within a document. A common
+subsequence is then just a set of shared ids in the same relative order, so the
+LCS collapses to a **Longest Increasing Subsequence**: map each old block to its
+position in the new list, and the longest still-increasing run is the set of
+anchors that didn't move. LIS is solved in `O(n log n)` time and `O(n)` space by
+**patience sorting**, which is what `lcs_pairs` does. The cost of a diff is
+therefore dominated by the handful of blocks that actually changed, not by the
+size of the document.
+
 The payoff: an unchanged block is **never touched**, so the browser keeps its
 scroll position and any live DOM state inside it — a running Three.js canvas, an
 Observable cell — survives a save untouched (goal #2).
+
+Concretely: change `tau` and the diff emits exactly one op, an `Update` for the
+plot's block, while the heading and the paragraph, their content hashes unchanged,
+never move.
 
 ::: {.callout-note}
 ## The one limitation: no Move
@@ -69,6 +107,11 @@ differences**.
 | server → client | `reload` | *(none)* — full page reload (config change, kernel restart) |
 | client → server | `click_block` | `block_id`, `source_file`, `sourcepos` |
 | client → server | `restart_kernel` | *(none)* — drop + respawn the kernel, re-run all cells |
+
+These message shapes are defined **once**, in `protocol.rs`, and shared by both
+dev servers and the browser client. The single-document server, the multi-page
+server, and `web-client/` are all ends of this one contract, so they can't drift
+apart from each other.
 
 ## Click-to-source & editor sync
 

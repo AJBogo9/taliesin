@@ -40,8 +40,8 @@ presentation and optional features should ride the extension points below.
 
 ## The three extension points
 
-These let features live *outside* the core (see [Extensions](../using/extensions.qmd)
-for the authoring side):
+These let features live *outside* the core (see [Extensions](../guide/using/extensions.html)
+in the User Guide for the authoring side):
 
 1. **Format extensions** (`render/extension.rs`). `_extensions/<name>/_extension.yml`
    contributes includes, a theme, and resources to a base format. A failed load is
@@ -52,6 +52,18 @@ for the authoring side):
    extension's JS registers `fn(root)` that runs after every (re)mount. The
    built-in copy buttons and `mermaid.js` use this same public API, so a
    third-party enhancer is indistinguishable from core's.
+
+### How a format extension loads
+
+`format: <name>-revealjs` (or `-html`) names a base format plus an installed
+extension. The renderer (`render/extension/`) reads
+`_extensions/<name>/_extension.yml`, applies the extension's `theme:` *on top of*
+the base theme (so the extension restyles rather than replaces), and injects the
+includes and resources its `contributes:` block declares, resolving resource paths
+inside the extension's own sub-directory. The core stays a **thin injector**: the
+extension supplies the CSS/JS, the core just wires it in (and reports a failed load
+through `warnings`, never silently). This is what lets a reveal theme like
+liquid-glass run unmodified on qmd-fast's own [deck engine](deck-engine.qmd).
 
 ## The dev loop
 
