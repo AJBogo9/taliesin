@@ -34,12 +34,17 @@ The loop surfaces what is happening without you watching the terminal:
 
 - The control bar shows a live **word count and reading time** for the prose.
 - A non-fatal problem (a broken `{{< include >}}`, a missing kernel, a typo'd
-  extension) appears as a small **diagnostics** note in the corner.
+  extension, a **broken `[@citation]` or `@cross-reference`**) appears as a small
+  **diagnostics** note in the corner.
+- A **broken front matter** points right at the bad line: the diagnostic shows a
+  small code frame and is clickable to open that line in your editor.
 - A *failed* render throws a prominent, dismissible **error overlay** over the
   last good content, so a broken save is impossible to miss. It clears on the
   next successful render.
 - The watcher follows the whole document, not just the served file: editing an
-  included subsection, the `.bib`, or theme CSS refreshes the preview too.
+  included subsection, the `.bib`, or **theme CSS** refreshes the preview too —
+  and a theme/CSS edit **hot-swaps in place** (no reload), so your scroll position
+  and the current slide survive.
 
 ## Reading on any screen
 
