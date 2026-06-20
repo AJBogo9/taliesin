@@ -66,17 +66,140 @@ def ojs_define(**kwargs):
 globals()["ojs_define"] = ojs_define
 "#;
 
-/// Make inline matplotlib figures follow the page theme. Set once at kernel start
-/// via the IPython InlineBackend config (so it's lazy: nothing is imported until a
-/// cell actually uses matplotlib). A transparent figure/axes background lets the
-/// page colour show through and track light/dark instantly, and a neutral grey for
-/// axes, ticks, labels and text reads on both themes; data colours are untouched.
-/// An author's explicit `style`/`facecolor` still overrides these defaults.
+/// Make inline matplotlib figures follow the page theme **without tainting the
+/// author's saved figures**. The previous approach set `InlineBackend.rc` globally,
+/// which leaks into `matplotlib.rcParams` and so into any `savefig` the author runs
+/// (e.g. a vector figure exported for a LaTeX paper would come out grey-on-
+/// transparent instead of black-on-white). Instead we keep global rcParams pristine
+/// and theme only the *inline render*:
+///
+///   - transparency comes from `InlineBackend.print_figure_kwargs` (applied solely
+///     when the inline backend rasterises the figure — never global rcParams);
+///   - the neutral grey for axes/ticks/text/grid is applied by recolouring the
+///     figure's artists immediately before the inline image is produced, then
+///     restored, so the live figure object is left exactly as the author built it.
+///
+/// This also powers `#| fig-export:`: the export writes the *pristine* figure to
+/// disk (print-clean) at display time, before the inline recolour. Data colours are
+/// never touched. The wrap installs lazily (on the first cell that mentions
+/// matplotlib) so non-plotting documents pay nothing.
 const MPL_THEME_PREAMBLE: &str = r#"
 try:
     _ip = get_ipython()
     if _ip is not None:
-        _ip.run_line_magic('config', "InlineBackend.rc = {'figure.facecolor': 'none', 'axes.facecolor': 'none', 'savefig.facecolor': 'none', 'savefig.edgecolor': 'none', 'text.color': '#888888', 'axes.edgecolor': '#888888', 'axes.labelcolor': '#888888', 'xtick.color': '#888888', 'ytick.color': '#888888', 'grid.color': '#888888', 'legend.framealpha': 0.0}")
+        # Transparency for the inline image only (not global rcParams).
+        _ip.run_line_magic('config', "InlineBackend.print_figure_kwargs = {'facecolor': 'none', 'edgecolor': 'none', 'bbox_inches': 'tight'}")
+
+        _QMD_GREY = '#888888'
+        _qmd_pending_export = []
+
+        def _qmd_do_export(fig):
+            # Write the (still-pristine) figure to the files a `#| fig-export:` cell
+            # requested, with print-clean styling for LaTeX/print. PNG gets a print
+            # DPI; vector formats (.pdf/.svg) are resolution-independent.
+            if not _qmd_pending_export:
+                return
+            import os as _os, sys as _sys
+            for _p in list(_qmd_pending_export):
+                _d = _os.path.dirname(_p)
+                if _d:
+                    _os.makedirs(_d, exist_ok=True)
+                _kw = {'bbox_inches': 'tight', 'facecolor': 'white', 'edgecolor': 'white'}
+                if _p.lower().endswith('.png'):
+                    _kw['dpi'] = 200
+                try:
+                    fig.savefig(_p, **_kw)
+                except Exception as _e:
+                    print('qmd-fast: fig-export failed for %r: %s' % (_p, _e), file=_sys.stderr)
+            _qmd_pending_export.clear()
+
+        def _qmd_recolour(fig):
+            # Recolour foreground (text/spines/ticks/grid) to a neutral grey that
+            # reads on light AND dark themes, and make axes backgrounds transparent.
+            # Returns the originals so the figure can be restored exactly.
+            import matplotlib.text as _t
+            saved = []
+            for _o in fig.findobj(_t.Text):
+                saved.append((_o.set_color, _o.get_color())); _o.set_color(_QMD_GREY)
+            for _ax in fig.axes:
+                saved.append((_ax.patch.set_facecolor, _ax.patch.get_facecolor())); _ax.patch.set_facecolor('none')
+                for _sp in _ax.spines.values():
+                    saved.append((_sp.set_edgecolor, _sp.get_edgecolor())); _sp.set_edgecolor(_QMD_GREY)
+                for _ln in (*_ax.xaxis.get_ticklines(), *_ax.yaxis.get_ticklines(), *_ax.get_xgridlines(), *_ax.get_ygridlines()):
+                    saved.append((_ln.set_color, _ln.get_color())); _ln.set_color(_QMD_GREY)
+            return saved
+
+        def _qmd_ensure_inline():
+            # Make sure the inline backend's Figure->png formatter exists, activating
+            # it (once) only when it doesn't, so we never reset an existing formatter.
+            from matplotlib.figure import Figure
+            _png = _ip.display_formatter.formatters.get('image/png')
+            if _png is None:
+                return
+            try:
+                _cur = _png.lookup_by_type(Figure)
+            except Exception:
+                _cur = None
+            if _cur is None:
+                try:
+                    _ip.run_line_magic('matplotlib', 'inline')
+                except Exception:
+                    pass
+
+        def _qmd_install():
+            # Wrap the inline Figure->png formatter so each inline render exports
+            # (pristine) then recolours-then-restores. Idempotent: skips if the
+            # current formatter is already ours; re-wraps if something replaced it.
+            try:
+                from matplotlib.figure import Figure
+            except Exception:
+                return
+            _fmts = getattr(_ip, 'display_formatter', None)
+            if _fmts is None:
+                return
+            _png = _fmts.formatters.get('image/png')
+            if _png is None:
+                return
+            try:
+                _orig = _png.lookup_by_type(Figure)
+            except Exception:
+                _orig = None
+            if _orig is None or getattr(_orig, '_qmd_themed', False):
+                return
+            def _themed(fig):
+                _qmd_do_export(fig)
+                _saved = _qmd_recolour(fig)
+                try:
+                    return _orig(fig)
+                finally:
+                    for _set, _val in reversed(_saved):
+                        _set(_val)
+            _themed._qmd_themed = True
+            _png.for_type(Figure, _themed)
+
+        def _qmd_export(paths, install=False):
+            # Called via a line the executor prepends to a `#| fig-export:` cell.
+            _qmd_pending_export[:] = [p for p in paths if p]
+            if install:
+                try:
+                    import matplotlib.pyplot  # noqa: F401
+                    _qmd_ensure_inline()
+                    _qmd_install()
+                except Exception:
+                    pass
+
+        def _qmd_pre(*_a, **_k):
+            _info = _a[0] if _a else None
+            _src = getattr(_info, 'raw_cell', '') or ''
+            if ('matplotlib' in _src) or ('pyplot' in _src) or ('plt' in _src) or ('seaborn' in _src):
+                try:
+                    import matplotlib.pyplot  # noqa: F401
+                    _qmd_ensure_inline()
+                    _qmd_install()
+                except Exception:
+                    pass
+
+        _ip.events.register('pre_run_cell', _qmd_pre)
 except Exception:
     pass
 "#;

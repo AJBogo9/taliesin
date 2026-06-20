@@ -67,6 +67,10 @@ struct CellRef {
     /// `#| cache: false`: never restore from / persist to the disk cache; always
     /// re-executes (the escape hatch for non-deterministic cells).
     cache: bool,
+    /// `#| fig-export: figures/x.pdf[, …]`: also write the cell's figure to these
+    /// files (print-clean) for LaTeX/print. Folded into the cache key so adding or
+    /// changing it re-runs the cell (and thus rewrites the file).
+    fig_export: Option<String>,
 }
 
 /// A cell the *current warm kernel* has executed: its cumulative cache key and the
@@ -206,6 +210,7 @@ impl Executor {
                     figure: c.figure.clone(),
                     include: c.include,
                     cache: c.cache,
+                    fig_export: c.fig_export.clone(),
                 });
             }
         }
@@ -256,8 +261,18 @@ impl Executor {
             .spec(lang)
             .map(|(_, program)| interp_id(lang, &program))
             .unwrap_or_else(|| lang.to_string());
-        let codes: Vec<&str> = cells.iter().map(|c| c.code.as_str()).collect();
-        let hashes = freeze::cumulative_hashes(&interp, &codes);
+        // Fold `#| fig-export:` into the hashed code so adding/changing it moves the
+        // cell's key and forces a re-run (which rewrites the exported file); a cell
+        // without it hashes exactly as before, so existing caches stay valid.
+        let codes: Vec<String> = cells
+            .iter()
+            .map(|c| match &c.fig_export {
+                Some(spec) => format!("{}\n# qmd-fig-export: {spec}", c.code),
+                None => c.code.clone(),
+            })
+            .collect();
+        let code_refs: Vec<&str> = codes.iter().map(String::as_str).collect();
+        let hashes = freeze::cumulative_hashes(&interp, &code_refs);
 
         // A cell is "known" (restorable without running) when its output is on disk
         // and it isn't opted out (`#| cache: false` always re-executes). A forced
@@ -322,7 +337,14 @@ impl Executor {
                         ran_count += 1;
                         crate::log::exec(ran_count, to_run);
                     }
-                    outputs.push(self.exec_cell(lang, &cell.code).await);
+                    // Python `#| fig-export:` cells get a one-line trigger prepended
+                    // so the kernel writes the figure to disk when it's displayed.
+                    let code = if lang == "python" {
+                        export_wrapped(&cell.code, cell.fig_export.as_deref())
+                    } else {
+                        cell.code.clone()
+                    };
+                    outputs.push(self.exec_cell(lang, &code).await);
                 }
             } else {
                 outputs.push(tail[i - run_end].clone());
@@ -459,6 +481,37 @@ fn plan(ran: &[String], hashes: &[String], known: impl Fn(usize) -> bool) -> (us
     (shared, run_end)
 }
 
+/// Prepend a `#| fig-export:` trigger to a Python cell's code so the kernel writes
+/// the cell's figure to the requested file(s) (print-clean) the moment it's
+/// displayed. A comma-separated list exports to several files at once (e.g. a vector
+/// `.pdf` plus a raster `.png`). The `_qmd_export` hook is defined in the Python
+/// preamble ([`crate::kernel`]); `install=True` makes it idempotently install the
+/// figure wrap even for cells that produce a figure without naming matplotlib.
+/// Returns the code unchanged when there's nothing to export.
+fn export_wrapped(code: &str, fig_export: Option<&str>) -> String {
+    let Some(spec) = fig_export else {
+        return code.to_string();
+    };
+    let paths: Vec<String> = spec
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(py_str_literal)
+        .collect();
+    if paths.is_empty() {
+        return code.to_string();
+    }
+    format!("_qmd_export([{}], install=True)\n{code}", paths.join(", "))
+}
+
+/// Quote a path as a Python single-quoted string literal, escaping backslashes and
+/// quotes so a path with spaces or odd characters survives being embedded in the
+/// prepended `_qmd_export([...])` call.
+fn py_str_literal(s: &str) -> String {
+    let escaped = s.replace('\\', "\\\\").replace('\'', "\\'");
+    format!("'{escaped}'")
+}
+
 /// Whether an output must not be cached: any execution error (a cell error, a
 /// timeout, or the mid-run kernel-died marker — all carry the `qmd-error` class),
 /// so a transient failure is never replayed and the cell re-runs next time.
@@ -566,6 +619,7 @@ mod tests {
             figure: None,
             include: true,
             cache: true,
+            fig_export: None,
         }
     }
 

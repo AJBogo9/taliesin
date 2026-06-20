@@ -23,6 +23,13 @@ pub struct Cell {
     /// hatch for non-deterministic cells (RNG/time/network) whose output shouldn't
     /// be replayed. Defaults to `true` (cacheable).
     pub cache: bool,
+    /// `#| fig-export: figures/x.pdf` (comma-separated for several files) also writes
+    /// the cell's figure to those files with print-clean styling (black-on-white,
+    /// no web theming), for inclusion in a LaTeX/print document. Vector `.pdf`/`.svg`
+    /// stay resolution-independent; `.png` is saved at a print DPI. Paths resolve
+    /// relative to where qmd-fast runs (normally the document's directory). The
+    /// export itself is performed by the Python kernel preamble at display time.
+    pub fig_export: Option<String>,
 }
 
 /// Metadata for wrapping a code cell's executed output as a numbered figure.

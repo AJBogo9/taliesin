@@ -69,6 +69,9 @@ with `data-block-id` + `data-sourcepos` on every block.
 - Callouts, `layout-ncol` grids, attributed `.btn` links, raw `{=html}` passthrough.
 - Citations (`[@key]`) + an auto-generated References section, and cross-references
   (`@fig-`/`@eq-`/`@lst-`/`@tbl-`/`@sec-`) → numbered, labelled anchor links.
+- **Print/LaTeX figure export** — inline matplotlib figures are web-themed without
+  tainting global `rcParams`, so `savefig` stays print-clean; `#| fig-export: x.pdf`
+  writes the figure to a vector/raster file (black-on-white) for `\includegraphics`.
 - Live **Observable/OJS** cells, **mermaid** diagrams, a figure lightbox, themes
   (light/dark + custom), and a responsive reading layout (mobile TOC pull-up sheet,
   print stylesheet).

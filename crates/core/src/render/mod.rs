@@ -229,6 +229,7 @@ fn render_internal(
                         echo: cell_flag_or(&cb.literal, "echo", exec_echo),
                         include: cell_flag_or(&cb.literal, "include", exec_include),
                         cache: cell_flag_or(&cb.literal, "cache", exec_cache),
+                        fig_export: cell_option(&cb.literal, "fig-export").map(str::to_string),
                     })
                 }
                 _ => None,
