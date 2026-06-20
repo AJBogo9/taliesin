@@ -1,0 +1,150 @@
+---
+title: "On the Step Size in Gradient Descent"
+subtitle: "Why the learning rate is the whole game"
+author: "A. N. Author"
+date: 2026-06-19
+bibliography: references.bib
+toc: true
+---
+
+## Abstract {.unnumbered}
+
+*Gradient descent is the workhorse of continuous optimization, yet its behaviour
+is governed almost entirely by a single scalar: the step size. We review the
+elementary convergence picture on a quadratic objective, show experimentally how
+the loss trajectory changes across four learning rates, and recover the classic
+stability threshold. The note doubles as a single-page exercise of every feature
+qmd-fast renders: numbered equations, cross-references, a live figure, a captioned
+table, citations, callouts, footnotes, and a margin note.*
+
+## Introduction {#sec-intro}
+
+Gradient descent minimizes a differentiable objective $f(\theta)$ by repeatedly
+stepping against the gradient. Its appeal is its simplicity, but that simplicity
+hides a sharp dependence on the **step size** (the learning rate) $\eta$: too small
+and progress crawls, too large and the iterates diverge [@boyd2004; @nocedal2006].
+The method's stochastic cousin underpins essentially all of modern machine learning
+[@robbins1951], where tuning $\eta$ is often the difference between a model that
+trains and one that does not.
+
+This note builds the intuition on the simplest possible objective. @sec-background
+states the update rule and the convergence condition; @sec-method describes a small
+experiment; and @fig-loss in @sec-results shows what each regime actually looks like.
+
+## Background {#sec-background}
+
+The gradient descent iteration is
+
+$$
+\theta_{t+1} = \theta_t - \eta \, \nabla f(\theta_t),
+$$ {#eq-gd}
+
+where $\eta > 0$ is the step size. For the one-dimensional quadratic
+$f(\theta) = \tfrac{1}{2}\theta^2$, the gradient is $\nabla f(\theta) = \theta$, so
+@eq-gd collapses to a linear recurrence:
+
+$$
+\begin{aligned}
+  \theta_{t+1} &= \theta_t - \eta \, \theta_t = (1 - \eta)\,\theta_t, \\
+  \theta_t     &= (1 - \eta)^t \, \theta_0 .
+\end{aligned}
+$$
+
+The iterate therefore contracts by a factor $|1 - \eta|$ each step. It converges
+precisely when $|1 - \eta| < 1$, i.e. for $0 < \eta < 2$; at $\eta = 2$ it
+oscillates forever, and beyond it the loss explodes.[^quadratic]
+
+[^quadratic]: The quadratic is not as special as it looks: near a smooth minimum
+    every objective is approximately quadratic, with $\eta$ rescaled by the local
+    curvature (the Hessian's eigenvalues). The threshold $\eta < 2/L$ for an
+    $L$-smooth function is the same statement, generalized.
+
+::: {.sidenote}
+The contraction factor $|1-\eta|$ is minimized at $\eta = 1$, where this quadratic
+converges in a *single* step. Real objectives are not so kind: the best fixed step
+trades off the largest and smallest curvature directions.
+:::
+
+## Method {#sec-method}
+
+We run @eq-gd from $\theta_0 = 10$ for 40 iterations at four step sizes, chosen to
+land in each regime of @sec-background. @tbl-config lists them with the contraction
+factor they imply.
+
+| Step size $\eta$ | Contraction $\lvert 1-\eta\rvert$ | Expected behaviour |
+|:--|:--:|:--|
+| 0.1  | 0.90 | converges, slowly |
+| 0.4  | 0.60 | converges, steadily |
+| 0.9  | 0.10 | converges, quickly |
+| 2.05 | 1.05 | diverges |
+
+: Step sizes used in the experiment, with the contraction factor each implies. {#tbl-config}
+
+::: {.callout-note}
+## Reproducible by construction
+The figure below is produced by a `{python}` cell that runs when the page renders;
+there is no static image to fall out of date. Change a step size and the curve
+updates in place.
+:::
+
+## Results {#sec-results}
+
+@fig-loss plots the loss $\tfrac12\theta_t^2$ against the iteration count for each
+step size in @tbl-config. The three convergent rates fall in straight lines on a
+log axis (geometric decay), with slope set by the contraction factor, while the
+$\eta = 2.05$ run climbs: exactly the threshold $\eta < 2$ predicted in
+@sec-background.
+
+```{python}
+#| label: fig-loss
+#| fig-cap: "Loss versus iteration for gradient descent on a quadratic at four step sizes. Convergent rates decay geometrically (straight lines on the log axis); the largest step diverges."
+#| echo: false
+import numpy as np
+import matplotlib.pyplot as plt
+
+
+def descend(lr, steps=40, theta0=10.0):
+    theta, hist = theta0, []
+    for _ in range(steps):
+        hist.append(0.5 * theta**2)
+        theta = theta - lr * theta  # grad of 0.5*theta^2 is theta
+    return hist
+
+
+fig, ax = plt.subplots(figsize=(6.2, 3.6), tight_layout=True)
+for lr, color in zip([0.1, 0.4, 0.9, 2.05], ["#4c8dff", "#27a567", "#b07cf0", "#e0566b"]):
+    ax.plot(descend(lr), lw=1.8, marker="o", markersize=3, color=color, label=f"$\\eta$ = {lr}")
+ax.set_yscale("log")
+ax.set_xlabel("iteration $t$")
+ax.set_ylabel(r"loss $\frac{1}{2}\theta_t^2$  (log scale)")
+ax.legend(title="step size", frameon=False)
+for spine in ("top", "right"):
+    ax.spines[spine].set_visible(False)
+plt.show()
+```
+
+The practical lesson is the one every practitioner relearns: the largest *stable*
+step is the fastest, and it sits just below the cliff. Adaptive and accelerated
+methods [@nesterov1983] are, in large part, machinery for getting closer to that
+cliff without falling off it.
+
+## Discussion {#sec-discussion}
+
+The quadratic picture is a local one. Three caveats carry over to real problems:
+
+::: {.callout-warning collapse="true"}
+## When the clean threshold breaks down (click to expand)
+- **Non-convexity.** Saddle points and plateaus mean the gradient can be tiny far
+  from any minimum, so a fixed $\eta$ stalls.
+- **Anisotropy.** When curvature differs wildly across directions, no single $\eta$
+  suits all of them; this is the case for preconditioning and adaptive methods.
+- **Stochasticity.** With noisy gradients the step size must *decay* for the
+  iterates to settle [@robbins1951], trading final accuracy against speed.
+:::
+
+## Conclusion {#sec-conclusion}
+
+On a quadratic, gradient descent is a linear recurrence and its entire fate is the
+factor $|1 - \eta|$: converge for $\eta < 2$, diverge beyond. Everything harder in
+optimization, momentum, adaptivity, schedules, is an attempt to push that stable
+step as high as the landscape will allow.
