@@ -239,6 +239,7 @@
     applyBackgrounds();
     buildLodCards(); // semantic-zoom title cards (shown when zoomed far out)
     buildMinimap(); // overview+detail minimap (shown when zoomed past fit)
+    buildOverviewSearch(); // the overview filter box
     allSlides().forEach(fitSlide); // all slides are laid out now, not just the current one
     if (deck.overview) fitOverview(); // viewport changed: re-fit the map
     setCamera(false);
@@ -721,7 +722,7 @@
     rev.classList.toggle('overview', on);
     if (on && deck.draw && deck.draw.on) { deck.draw.on = false; rev.classList.remove('qmd-drawing'); }
     if (on) { fitOverview(); markCurrentTile(); }
-    else { deck.ov = null; allSlides().forEach(function (s) { s.classList.remove('qmd-overview-current'); }); }
+    else { deck.ov = null; clearFilter(); allSlides().forEach(function (s) { s.classList.remove('qmd-overview-current'); }); }
     positionGrid(); // add (or remove) the per-tile gutter shrink
     setCamera(true); // zoom out to the map, or back into the current cell
   }
@@ -815,6 +816,52 @@
     var vw = st.sw / deck.ov.scale, vh = st.sh / deck.ov.scale;
     var view = mm.querySelector('.qmd-mini-view');
     view.style.cssText = 'left:' + ((deck.ov.cx - vw / 2) * ms) + 'px;top:' + ((deck.ov.cy - vh / 2) * ms) + 'px;width:' + (vw * ms) + 'px;height:' + (vh * ms) + 'px';
+  }
+
+  // --- overview filter (Shneiderman's "filter" leg) ----------------------
+  // Press `/` in the overview to filter slides by title: non-matches dim, matches get
+  // an accent ring, Enter jumps to the first match. Type -> locate -> dive in.
+  function buildOverviewSearch() {
+    var rev = revealEl(); if (!rev || rev.querySelector(':scope > .qmd-ov-search')) return;
+    var box = document.createElement('input');
+    box.className = 'qmd-ov-search';
+    box.type = 'text';
+    box.setAttribute('placeholder', 'Filter slides…  ( / focus · ↵ jump )');
+    box.addEventListener('input', function () { filterTiles(box.value); });
+    box.addEventListener('keydown', function (e) {
+      e.stopPropagation(); // typing must not drive the deck
+      if (e.key === 'Enter') jumpToFirstMatch();
+      else if (e.key === 'Escape') { box.value = ''; filterTiles(''); box.blur(); }
+    });
+    rev.appendChild(box);
+  }
+  function filterTiles(q) {
+    q = (q || '').trim().toLowerCase();
+    deck.ovQuery = q;
+    allSlides().forEach(function (sec) {
+      var h = sec.querySelector('h1, h2, h3, h4, h5, h6');
+      var title = (h ? h.textContent : sec.textContent || '').toLowerCase();
+      var hit = !!q && title.indexOf(q) >= 0;
+      sec.classList.toggle('qmd-ov-dim', !!q && !hit);
+      sec.classList.toggle('qmd-ov-hit', hit);
+    });
+  }
+  function clearFilter() {
+    var rev = revealEl(); if (!rev) return;
+    var box = rev.querySelector(':scope > .qmd-ov-search');
+    if (box) box.value = '';
+    filterTiles('');
+  }
+  function jumpToFirstMatch() {
+    var T = tops();
+    for (var h = 0; h < T.length; h++) {
+      var leaves = vertsOf(T[h]);
+      for (var v = 0; v < leaves.length; v++) {
+        if (leaves[v].classList.contains('qmd-ov-hit')) {
+          deck.h = h; deck.v = v; markCurrentTile(); ensureCurrentTileVisible(true); return;
+        }
+      }
+    }
   }
 
   // --- presenter mode + cross-window sync --------------------------------
@@ -1142,6 +1189,7 @@
         case 'ArrowDown': moveHighlight(0, 1); break;
         case 'ArrowUp': moveHighlight(0, -1); break;
         case '0': fitOverview(); setCamera(true); break; // re-fit the whole map
+        case '/': { var b = revealEl().querySelector(':scope > .qmd-ov-search'); if (b) b.focus(); break; } // filter
         default: handled = false;
       }
       if (handled) e.preventDefault();

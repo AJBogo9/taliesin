@@ -241,6 +241,32 @@ body { background: transparent; }
 }
 @media (prefers-reduced-motion: reduce) { .qmd-minimap { transition: none; } }
 
+/* Overview filter: a box (press `/`) that dims non-matching tiles and rings matches. */
+.qmd-ov-search {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 320px;
+  max-width: 62vw;
+  padding: 9px 16px;
+  border: 1px solid rgba(140, 150, 170, .3);
+  border-radius: 999px;
+  background: rgba(20, 22, 28, .72);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  color: var(--qmd-deck-fg, #e8eaf0);
+  font: 500 15px/1 system-ui, sans-serif;
+  outline: none;
+  z-index: 41;
+  display: none;
+}
+.reveal.overview .qmd-ov-search { display: block; }
+.qmd-ov-search:focus { border-color: var(--deck-accent, #4c8dff); }
+.qmd-ov-search::placeholder { color: rgba(150, 160, 180, .7); }
+.reveal.overview .slides section.qmd-ov-dim { opacity: .2; }
+.reveal.overview .slides section.qmd-ov-hit { outline: 3px solid var(--deck-accent, #4c8dff); }
+
 /* Magic-move: the code blocks in a `::: {.magic-move}` are stacked in one grid
    cell (so the container sizes to the tallest); deck.js shows the active block and,
    on a step, glides matched lines + fades new/old ones between consecutive blocks. */
