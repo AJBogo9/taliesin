@@ -868,10 +868,15 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
     };
     let blocks = executor.run(doc.blocks).await;
     let mut diags = compute_diagnostics(app, executor);
-    // Render warnings (missing bibliography/theme file) ride alongside the
-    // include/kernel diagnostics into the dev menu.
+    // Render warnings (missing bibliography/theme file, broken citation) ride
+    // alongside the include/kernel diagnostics into the dev menu.
     for w in &doc.warnings {
         diags.push(Diagnostic::warn(w.clone()));
+    }
+    // A standalone doc has no site to resolve cross-page refs, so any cross-ref
+    // still marked unresolved is broken.
+    for w in qmd_fast_core::cite::validate_xrefs(&blocks) {
+        diags.push(Diagnostic::warn(w));
     }
     let ops = {
         let mut d = app.doc.lock();

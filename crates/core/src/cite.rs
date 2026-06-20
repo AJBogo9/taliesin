@@ -31,6 +31,13 @@ struct Entry {
 type Fields = HashMap<String, String>;
 
 impl Bibliography {
+    /// Whether no entries were parsed (no `bibliography:` set, or an empty file).
+    /// Used to suppress "broken citation" warnings when there's no bibliography at
+    /// all (the missing-file case is reported separately).
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
     /// Format one entry as an IEEE reference string (HTML). `None` if unknown.
     /// IEEE varies by entry type: article = quoted title + italic journal +
     /// vol/no/pp; book = italic title + edition + publisher; everything else
@@ -431,7 +438,14 @@ fn xref_label(prefix: &str) -> Option<&'static str> {
 /// block when citations were found and the bibliography could format them.
 /// `xrefs` maps a cross-reference anchor (e.g. `fig-scree`) to its resolved
 /// number, so `@fig-scree` renders as a linked "Figure 3".
-pub fn process(blocks: &mut Vec<Block>, bib: &Bibliography, xrefs: &HashMap<String, String>) {
+/// Returns one warning per citation key not in the (non-empty) bibliography, for
+/// the dev server's diagnostics. Empty when every citation resolves (or there's no
+/// bibliography at all, in which case the missing-file case is reported elsewhere).
+pub fn process(
+    blocks: &mut Vec<Block>,
+    bib: &Bibliography,
+    xrefs: &HashMap<String, String>,
+) -> Vec<String> {
     let mut order: Vec<String> = Vec::new();
     let mut number: HashMap<String, usize> = HashMap::new();
     let mut cite_key = |key: &str| -> usize {
@@ -446,15 +460,25 @@ pub fn process(blocks: &mut Vec<Block>, bib: &Bibliography, xrefs: &HashMap<Stri
     }
 
     if order.is_empty() {
-        return;
+        return Vec::new();
     }
+    let mut warnings = Vec::new();
     let mut list = String::from(
         "<section class=\"qmd-references\" data-block-id=\"qmd-references\"><h2>References</h2>",
     );
     for (idx, key) in order.iter().enumerate() {
-        let formatted = bib
-            .format(key)
-            .unwrap_or_else(|| format!("<code>{}</code>", esc(key)));
+        let formatted = match bib.format(key) {
+            Some(f) => f,
+            None => {
+                // A cited key with no entry is a broken citation — but only flag it
+                // when a bibliography exists (else every cite would warn before one
+                // is set up; the missing-file case is its own warning).
+                if !bib.is_empty() {
+                    warnings.push(format!("broken citation: @{key} (not in the bibliography)"));
+                }
+                format!("<code>{}</code>", esc(key))
+            }
+        };
         list.push_str(&format!(
             "<div id=\"ref-{}\" class=\"csl-entry\">[{}] {}</div>",
             esc(key),
@@ -470,6 +494,28 @@ pub fn process(blocks: &mut Vec<Block>, bib: &Bibliography, xrefs: &HashMap<Stri
         html: list,
         cell: None,
     });
+    warnings
+}
+
+/// Scan rendered blocks for cross-references left unresolved — the `data-qmd-xref`
+/// markers `cite` emits when an `@fig-`/`@sec-`/… anchor isn't in the local (and,
+/// for a site, cross-page) registry. One warning per distinct broken anchor. Run
+/// AFTER any site-wide cross-ref resolution so genuine cross-page refs aren't flagged.
+pub fn validate_xrefs(blocks: &[Block]) -> Vec<String> {
+    let marker = "data-qmd-xref=\"";
+    let mut seen = std::collections::BTreeSet::new();
+    for b in blocks {
+        let mut rest = b.html.as_str();
+        while let Some(i) = rest.find(marker) {
+            rest = &rest[i + marker.len()..];
+            let Some(end) = rest.find('"') else { break };
+            seen.insert(rest[..end].to_string());
+            rest = &rest[end..];
+        }
+    }
+    seen.into_iter()
+        .map(|a| format!("broken cross-reference: @{a} (no such figure/section/…)"))
+        .collect()
 }
 
 /// Walk HTML, transforming only plain-text runs (never inside tags or inside
@@ -719,6 +765,51 @@ mod tests {
         let refs = blocks.last().unwrap();
         assert!(refs.html.contains("id=\"ref-bishop2006pattern\""));
         assert!(refs.html.contains("[1] C. M. Bishop"));
+    }
+
+    #[test]
+    fn broken_citation_warns_only_when_a_bib_exists() {
+        let mk = || {
+            vec![Block {
+                id: "x".into(),
+                sourcepos: "1:1-1:1".into(),
+                source_file: None,
+                html: "<p>see [@nosuchkey].</p>".into(),
+                cell: None,
+            }]
+        };
+        // A non-empty bib + an unknown key -> one "broken citation" warning.
+        let mut blocks = mk();
+        let w = process(&mut blocks, &bib(), &HashMap::new());
+        assert_eq!(w.len(), 1, "got: {w:?}");
+        assert!(w[0].contains("@nosuchkey") && w[0].contains("broken citation"));
+        // No bibliography at all -> not flagged (the missing-file case is separate).
+        let mut blocks2 = mk();
+        assert!(process(&mut blocks2, &Bibliography::default(), &HashMap::new()).is_empty());
+    }
+
+    #[test]
+    fn validate_xrefs_flags_only_unresolved_markers() {
+        let broken = vec![Block {
+            id: "x".into(),
+            sourcepos: "1:1-1:1".into(),
+            source_file: None,
+            html: "<a href=\"#fig-gone\" class=\"qmd-xref\" data-qmd-xref=\"fig-gone\">Figure</a>"
+                .into(),
+            cell: None,
+        }];
+        let w = validate_xrefs(&broken);
+        assert_eq!(w.len(), 1, "got: {w:?}");
+        assert!(w[0].contains("@fig-gone") && w[0].contains("broken cross-reference"));
+        // A resolved xref (marker already rewritten away) is not flagged.
+        let ok = vec![Block {
+            id: "y".into(),
+            sourcepos: "1:1-1:1".into(),
+            source_file: None,
+            html: "<a href=\"#fig-x\" class=\"qmd-xref\">Figure&nbsp;1</a>".into(),
+            cell: None,
+        }];
+        assert!(validate_xrefs(&ok).is_empty());
     }
 
     #[test]

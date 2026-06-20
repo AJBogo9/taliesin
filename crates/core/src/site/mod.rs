@@ -334,6 +334,9 @@ impl Site {
         doc.toc = self.page_toc(page, doc.toc_explicit);
         self.number_chapter(page, &mut doc.blocks);
         self.resolve_cross_refs(&mut doc.blocks, &page.url);
+        // Cross-refs that survived the site-wide resolution are genuinely broken.
+        doc.warnings
+            .extend(crate::cite::validate_xrefs(&doc.blocks));
         self.expand_page(page, &mut doc.blocks);
         self.decorate_post(page, &mut doc.blocks);
         let ctx = self.page_chrome(page);

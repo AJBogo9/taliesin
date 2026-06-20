@@ -451,7 +451,7 @@ fn render_internal(
     // folded into the table's `<caption>`; registers `tbl-x` for `@tbl-` refs.
     apply_table_captions(&mut blocks, &mut xref_registry);
     let bib = load_bibliography(bib_field.as_deref(), base_dir, &mut warnings);
-    crate::cite::process(&mut blocks, &bib, &xref_registry);
+    warnings.extend(crate::cite::process(&mut blocks, &bib, &xref_registry));
     // Gather the footnote definitions (collected above, in comrak's reference order)
     // into one footnotes section, appended after any References.
     if !footnote_items.is_empty() {
