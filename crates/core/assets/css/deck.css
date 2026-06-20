@@ -141,6 +141,18 @@ body { background: transparent; }
 .reveal.overview { cursor: grab; }
 .reveal.overview.qmd-ov-panning,
 .reveal.overview.qmd-ov-panning .slides > section { cursor: grabbing; }
+/* Drag-to-reorder (preview): the lifted tile + a side bar showing where it will drop. */
+.reveal.overview.qmd-ov-reordering { cursor: grabbing; }
+.reveal.overview .slides > section.qmd-tile-dragging,
+.reveal.overview .slides > section > section.qmd-tile-dragging {
+  z-index: 10;
+  opacity: .9;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .6);
+  outline: 2px solid var(--deck-accent, #4c8dff);
+  cursor: grabbing;
+}
+.reveal.overview .slides section.qmd-drop-before { box-shadow: -11px 0 0 -3px var(--deck-accent, #4c8dff); }
+.reveal.overview .slides section.qmd-drop-after { box-shadow: 11px 0 0 -3px var(--deck-accent, #4c8dff); }
 /* A hint on how to drive the map, shown in screen space (not the scaled .slides) and
    auto-fading a few seconds after the overview opens. */
 .reveal.overview::after {

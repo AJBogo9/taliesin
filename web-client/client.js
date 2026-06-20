@@ -610,6 +610,12 @@
     ws.onerror = () => ws?.close();
   };
 
+  // Let the deck engine (deck.js) send control messages over this same socket — and
+  // signal that we're in a live preview (its presence gates drag-to-reorder).
+  window.qmdWsSend = (/** @type {object} */ obj) => {
+    if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
+  };
+
   // Click-to-source: report the clicked block to the server (the editor client
   // will act on this in Phase 3). Also highlight it locally.
   const blockRef = (/** @type {HTMLElement} */ el) => ({
