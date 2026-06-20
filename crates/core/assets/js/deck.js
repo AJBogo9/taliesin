@@ -742,6 +742,7 @@
     if (!rev) return;
     deck.overview = on;
     rev.classList.toggle('overview', on);
+    if (on && deck.blackout) toggleBlackout(false); // can't navigate a map you can't see
     if (on && deck.draw && deck.draw.on) { deck.draw.on = false; rev.classList.remove('qmd-drawing'); }
     if (on) { fitOverview(); markCurrentTile(); }
     else { deck.ov = null; clearFilter(); allSlides().forEach(function (s) { s.classList.remove('qmd-overview-current'); }); }
@@ -909,6 +910,7 @@
   // Apply a position received from the other window (or, in an embed iframe, from
   // the speaker). Never re-broadcasts, so there is no echo loop.
   function applyRemote(h, v, frag) {
+    if (deck.blackout) toggleBlackout(false); // an external slide change lifts the curtain
     deck.h = h; deck.v = v;
     clampIndices();
     deck.frag = (frag == null) ? fragCount() : frag;
@@ -1188,6 +1190,7 @@
     if (!readHash()) return;
     clampIndices();
     if (deck.h === ph && deck.v === pv) return; // our own writeHash, or no real change
+    if (deck.blackout) toggleBlackout(false); // an external slide change lifts the curtain
     deck.frag = fragCount(); apply(); updateNumber(); fire('slidechanged'); // apply pans the camera
   }
 
@@ -1254,13 +1257,27 @@
     }
     if (handled) e.preventDefault();
   }
-  // Black the whole viewport (pull attention back to the speaker). A class on
-  // `.reveal` drives a full-screen overlay in deck.css; keys are gated in onKey.
+  // Black the whole viewport (pull attention back to the speaker). The overlay is a
+  // body-level element (not a `.reveal` child) so it escapes `.reveal`'s stacking
+  // context and covers ALL chrome — including the preview dev menu at z-9999. Keys
+  // are gated in onKey; a tap dismisses it where there's no Esc/B (touch).
   function toggleBlackout(on) {
     var rev = revealEl();
-    if (!rev) return;
     deck.blackout = !!on;
-    rev.classList.toggle('qmd-blackout', deck.blackout);
+    if (rev) rev.classList.toggle('qmd-blackout', deck.blackout);
+    if (deck.blackout) {
+      // Blackout means eyes on the speaker — drop drawing too (mirrors setOverview).
+      if (deck.draw && deck.draw.on) { deck.draw.on = false; if (rev) rev.classList.remove('qmd-drawing'); }
+      if (!deck.blackoutEl) {
+        deck.blackoutEl = document.createElement('div');
+        deck.blackoutEl.className = 'qmd-blackout-overlay';
+        deck.blackoutEl.addEventListener('pointerdown', function () { toggleBlackout(false); });
+        document.body.appendChild(deck.blackoutEl);
+      }
+      deck.blackoutEl.style.display = 'block';
+    } else if (deck.blackoutEl) {
+      deck.blackoutEl.style.display = 'none';
+    }
   }
   var touch = { x: null, y: null, t: 0 };
   function onTouchStart(e) {

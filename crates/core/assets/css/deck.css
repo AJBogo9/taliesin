@@ -598,10 +598,13 @@ html.qmd-deck-dark.qmd-scroll, html.qmd-deck-dark.qmd-scroll body { background: 
 .qmd-ctl svg { width: 18px; height: 18px; display: block; }
 .qmd-idle .qmd-controls { opacity: 0; pointer-events: none; }
 
-/* Black-screen / pause (B or .): a full-viewport blackout above slides + chrome,
-   to pull the room's attention back to the speaker. */
-.reveal.qmd-blackout::after { content: ""; position: fixed; inset: 0; background: #000;
-  z-index: 80; cursor: none; }
+/* Black-screen / pause (B or .): a full-viewport blackout to pull the room's
+   attention back to the speaker. A body-level element (see deck.js toggleBlackout),
+   above ALL chrome including the preview dev menu (z-9999); hidden in print/reader,
+   and lifted on overview / external navigation in deck.js. */
+.qmd-blackout-overlay { position: fixed; inset: 0; background: #000; z-index: 100000; cursor: none; }
+html.qmd-print .qmd-blackout-overlay,
+html.qmd-scroll .qmd-blackout-overlay { display: none !important; }
 
 .qmd-menu-backdrop { position: fixed; inset: 0; z-index: 70; background: transparent; }
 .qmd-menu[hidden], .qmd-menu-backdrop[hidden] { display: none; }
