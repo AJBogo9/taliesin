@@ -147,7 +147,7 @@ follow-up email:
 <style>
 .reveal .slides section form { font: 500 .45em/1.4 system-ui; display: flex; align-items: center; gap: .7rem; margin: .3em 0; }
 .reveal .slides section input[type=range] { width: 22rem; }
-.reveal .slides section input[type=number] { width: 4.5rem; }
+.reveal .slides section input[type=number] { width: 6.5rem; padding: .15em .4em; box-sizing: border-box; }
 </style>
 ```
 
