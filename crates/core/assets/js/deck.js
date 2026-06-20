@@ -114,6 +114,7 @@
     }
     if (!(scale > 0)) scale = 1;
     s.style.setProperty('--qmd-thread', (3.5 / scale).toFixed(1) + 'px'); // constant ~3.5px on-screen storyline thread
+    rev.classList.toggle('qmd-lod-far', !!deck.overview && scale * W < 200); // semantic zoom: tiny tiles -> title cards
     var tx = sw / 2 - scale * cx, ty = sh / 2 - scale * cy;
     s.classList.toggle('qmd-cam-anim', !!animate);
     s.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
@@ -123,6 +124,7 @@
     if (!slidesEl()) return;
     positionGrid();
     applyBackgrounds();
+    buildLodCards(); // semantic-zoom title cards (shown when zoomed far out)
     allSlides().forEach(fitSlide); // all slides are laid out now, not just the current one
     if (deck.overview) fitOverview(); // viewport changed: re-fit the map
     setCamera(false);
@@ -190,6 +192,27 @@
         bg.style.backgroundRepeat = sec.getAttribute('data-background-repeat') || 'no-repeat';
       }
       if (image || gradient || (color && isDarkColor(color))) sec.classList.add('qmd-dark-bg');
+    });
+  }
+  // --- semantic zoom (level-of-detail) -----------------------------------
+  // When the overview is zoomed out far enough that full slide content is an
+  // illegible smudge, each tile collapses to a clean title card (shown by the
+  // `.qmd-lod-far` class that setCamera toggles on tile on-screen size). The real
+  // content stays in the DOM, just faded, so live state is never lost. Cards are
+  // built once and their title/number refreshed on each layout.
+  function buildLodCards() {
+    allSlides().forEach(function (sec, i) {
+      var card = sec.querySelector(':scope > .qmd-lod');
+      if (!card) {
+        card = document.createElement('div');
+        card.className = 'qmd-lod';
+        card.innerHTML = '<div class="qmd-lod-title"></div><div class="qmd-lod-num"></div>';
+        sec.appendChild(card);
+      }
+      var h = sec.querySelector('h1, h2, h3, h4, h5, h6');
+      var title = h ? h.textContent.trim() : (sec.textContent || '').trim().split('\n')[0].slice(0, 80);
+      card.firstChild.textContent = title;
+      card.lastChild.textContent = String(i + 1);
     });
   }
   function isDarkColor(c) {

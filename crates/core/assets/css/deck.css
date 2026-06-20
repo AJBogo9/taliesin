@@ -173,6 +173,54 @@ body { background: transparent; }
 @keyframes qmd-ov-hint { 0%, 64% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .reveal.overview::after { animation: none; opacity: .85; } }
 
+/* Semantic zoom (level-of-detail): when the camera is zoomed out far enough that a
+   tile's real content is an illegible smudge, each tile collapses to a clean title
+   card (built by deck.js buildLodCards). The real content stays in the DOM, only
+   faded, so live state and the auto-animate/FLIP machinery are never disturbed.
+   `.qmd-lod-far` is toggled by setCamera on the tile's on-screen size. */
+.qmd-lod {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 44px 56px;
+  box-sizing: border-box;
+  color: inherit;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .18s ease;
+}
+.qmd-lod-title {
+  font-size: 84px;
+  font-weight: 700;
+  line-height: 1.08;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.qmd-lod-num {
+  position: absolute;
+  top: 24px;
+  right: 34px;
+  font-size: 38px;
+  font-weight: 600;
+  opacity: .5;
+}
+.reveal.qmd-lod-far .slides section > .qmd-lod { opacity: 1; }
+/* Fade the real content out (but keep the bg layer, the title card, and any nested
+   sub-slide sections, which carry their own cards). */
+.reveal.qmd-lod-far .slides section > :not(.qmd-slide-bg):not(.qmd-lod):not(section) {
+  opacity: 0;
+  transition: opacity .18s ease;
+}
+@media (prefers-reduced-motion: reduce) {
+  .qmd-lod,
+  .reveal.qmd-lod-far .slides section > :not(.qmd-slide-bg):not(.qmd-lod):not(section) { transition: none; }
+}
+
 /* Magic-move: the code blocks in a `::: {.magic-move}` are stacked in one grid
    cell (so the container sizes to the tallest); deck.js shows the active block and,
    on a step, glides matched lines + fades new/old ones between consecutive blocks. */
