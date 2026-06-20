@@ -83,19 +83,12 @@ body { background: transparent; }
   justify-content: center;
 }
 
-/* A gentle fade as each slide becomes present. It's a one-shot animation on the
-   incoming slide (not a transition between two), so hidden slides can stay
-   display:none and it never fights a theme's per-slide layout. */
-@media (prefers-reduced-motion: no-preference) {
-  .reveal .slides > section.present,
-  .reveal .slides > section.present > section.present {
-    animation: qmd-slide-in .28s ease-out;
-  }
-  @keyframes qmd-slide-in {
-    from { opacity: 0; transform: translateY(14px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-}
+/* No per-slide fade-in. In the camera model every slide is laid out and fully
+   opaque, and the CAMERA PAN itself is the transition: the incoming slide simply
+   scrolls into the 16:9 stage. A fade-in here would start the incoming slide at
+   opacity 0 (invisible until landed) and add a vertical shift that fights the
+   horizontal pan, breaking the "slides sitting in a line" illusion. The first
+   slide is revealed cleanly by the .qmd-ready visibility gate above. */
 
 /* Overview: a scrollable grid of all slides. Built with `zoom` + grid (no 3D
    transforms), so themes using `backdrop-filter` (liquid-glass) don't break the
@@ -164,11 +157,6 @@ body { background: transparent; }
   transition: opacity .4s ease;
 }
 .reveal .magic-move > pre.qmd-mm-active { opacity: 1; }
-
-/* Auto-animate target: suppress the default fade-in so the matched-element FLIP
-   (driven by deck.js with inline transforms) isn't overridden by the keyframe. */
-.reveal .slides > section.qmd-aa,
-.reveal .slides > section.qmd-aa.present { animation: none !important; }
 
 /* Per-slide backgrounds: a layer behind each slide's own content, filling the slide
    box, so it travels with the slide as the camera pans and shows per-tile in
