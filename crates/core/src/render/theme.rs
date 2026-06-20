@@ -173,6 +173,8 @@ pub(super) fn theme_style(theme_css: &str) -> String {
     if theme_css.trim().is_empty() {
         String::new()
     } else {
-        format!("<style>{theme_css}</style>")
+        // The id lets the dev server hot-swap theme CSS in place (no reload) on a
+        // `.css`/theme edit; absent in a build with no custom theme, which is fine.
+        format!("<style id=\"qmd-theme\">{theme_css}</style>")
     }
 }

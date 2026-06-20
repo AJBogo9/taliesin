@@ -93,6 +93,14 @@ pub fn reload() -> String {
     serde_json::json!({ "type": "reload" }).to_string()
 }
 
+/// Hot-swap the theme CSS in place (no reload): the client replaces the contents
+/// of `<style id="qmd-theme">` (creating it if absent). Sent when only the theme
+/// CSS changed, so scroll position, the current deck slide, and open callouts all
+/// survive a theme edit.
+pub fn style(css: &str) -> String {
+    serde_json::json!({ "type": "style", "css": css }).to_string()
+}
+
 /// A fatal render/read error, shown in the preview banner.
 pub fn error(message: &str) -> String {
     serde_json::json!({ "type": "error", "message": message }).to_string()

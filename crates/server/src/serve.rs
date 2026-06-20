@@ -892,6 +892,7 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
                 BlockOp::Update { .. } => false,
             });
         let diags_changed = d.diagnostics != diags;
+        let theme_changed = d.theme_css != doc.theme_css;
         d.title = doc.title;
         d.subtitle = doc.subtitle;
         d.format = doc.format;
@@ -912,6 +913,12 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         } else {
             for op in &ops {
                 let _ = app.tx.send(op_json(op));
+            }
+            // CSS-only change (a theme/`.css` edit, content unchanged): hot-swap the
+            // theme `<style>` in place instead of reloading, so scroll + the current
+            // slide survive. Only when no block ops also went out this pass.
+            if theme_changed && ops.is_empty() {
+                let _ = app.tx.send(protocol::style(&d.theme_css));
             }
         }
         if diags_changed {
@@ -962,6 +969,24 @@ mod protocol_contract {
     //! in serve_site.rs. This guards serve.rs's own `*_json` against drift.
     use super::*;
     use crate::testutil::parse;
+
+    #[test]
+    fn style_message_carries_css_for_hot_swap() {
+        let m = parse(protocol::style(":root{--qmd-accent:#f00}"));
+        assert_eq!(m["type"], "style");
+        assert_eq!(m["css"], ":root{--qmd-accent:#f00}");
+    }
+
+    #[test]
+    fn located_diagnostic_serializes_file_line_and_frame() {
+        let d = Diagnostic::error("bad yaml")
+            .at(None, 3)
+            .with_frame("> 3 | x\n".into());
+        let m = parse(protocol::diagnostics(&[d]));
+        assert_eq!(m["messages"][0]["level"], "error");
+        assert_eq!(m["messages"][0]["line"], 3);
+        assert!(m["messages"][0]["frame"].as_str().unwrap().contains("> 3"));
+    }
 
     #[test]
     fn reveal_index_carries_qmd_doc_for_click_to_source() {

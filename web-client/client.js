@@ -22,7 +22,8 @@
  * @typedef {{ type: "remove", target_id: string }} RemoveMsg
  * @typedef {{ type: "error", message: string }} ErrorMsg
  * @typedef {{ type: "reload" }} ReloadMsg
- * @typedef {FullRenderMsg|DiagnosticsMsg|UpdateMsg|InsertMsg|RemoveMsg|ErrorMsg|ReloadMsg} ServerMessage
+ * @typedef {{ type: "style", css: string }} StyleMsg
+ * @typedef {FullRenderMsg|DiagnosticsMsg|UpdateMsg|InsertMsg|RemoveMsg|ErrorMsg|ReloadMsg|StyleMsg} ServerMessage
  */
 (() => {
   const root = document.getElementById("qmd-root");
@@ -592,6 +593,17 @@
         setStatus("error");
         showError(msg.message);
         break;
+      case "style": {
+        // Hot-swap theme CSS in place (no reload): scroll + deck slide survive.
+        let s = document.getElementById("qmd-theme");
+        if (!s) {
+          s = document.createElement("style");
+          s.id = "qmd-theme";
+          (document.head || document.documentElement).appendChild(s);
+        }
+        s.textContent = msg.css;
+        break;
+      }
       // Multi-page site: the project config (or a structural change) changed,
       // so the whole page is re-fetched rather than block-diffed.
       case "reload":

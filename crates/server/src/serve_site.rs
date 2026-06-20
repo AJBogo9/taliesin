@@ -836,6 +836,7 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
     let recovered = std::mem::take(&mut ps.doc.errored);
     let ops = diff_blocks(&ps.doc.blocks, &blocks);
     let diags_changed = ps.doc.diagnostics != diags;
+    let theme_changed = ps.doc.theme_css != doc.theme_css;
     ps.doc.title = doc.title;
     ps.doc.toc = toc;
     ps.doc.theme_css = doc.theme_css;
@@ -848,6 +849,10 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
     } else {
         for op in &ops {
             let _ = ps.tx.send(op_json(op));
+        }
+        // CSS-only change: hot-swap the theme style in place (no reload).
+        if theme_changed && ops.is_empty() {
+            let _ = ps.tx.send(protocol::style(&ps.doc.theme_css));
         }
     }
     if diags_changed {
