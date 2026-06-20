@@ -673,6 +673,18 @@
     if (!deck.overview) return;
     if (!deck.ov) fitOverview();
     e.preventDefault();
+    // Disambiguate input: a trackpad pinch arrives as ctrlKey+wheel (zoom toward the
+    // cursor); a mouse wheel is a large vertical-only notch (zoom); a trackpad
+    // two-finger scroll (horizontal component, or small pixel deltas) pans the map.
+    var pinch = e.ctrlKey;
+    var mouseWheel = !pinch && (e.deltaMode !== 0 || (Math.abs(e.deltaY) >= 100 && e.deltaX === 0));
+    if (!pinch && !mouseWheel) { // trackpad pan
+      deck.ov.cx += e.deltaX / deck.ov.scale;
+      deck.ov.cy += e.deltaY / deck.ov.scale;
+      clampOv();
+      setCamera(false);
+      return;
+    }
     var st = ovStage(), rev = revealEl(), r = rev.getBoundingClientRect();
     var px = e.clientX - r.left, py = e.clientY - r.top;   // cursor in stage coords
     var scale = deck.ov.scale;
@@ -843,15 +855,27 @@
     });
     rev.appendChild(box);
   }
+  function leafAt(h, v) {
+    var top = tops()[h];
+    return top ? (isStack(top) ? vertsOf(top)[v] : top) : null;
+  }
   function filterTiles(q) {
     q = (q || '').trim().toLowerCase();
     deck.ovQuery = q;
+    var rev = revealEl();
     allSlides().forEach(function (sec) {
       var h = sec.querySelector('h1, h2, h3, h4, h5, h6');
       var title = (h ? h.textContent : sec.textContent || '').toLowerCase();
       var hit = !!q && title.indexOf(q) >= 0;
       sec.classList.toggle('qmd-ov-dim', !!q && !hit);
       sec.classList.toggle('qmd-ov-hit', hit);
+    });
+    if (rev) rev.classList.toggle('qmd-ov-filtering', !!q); // dims the threads via CSS
+    var mm = rev && rev.querySelector(':scope > .qmd-minimap'); // mirror onto the minimap
+    if (mm) Array.prototype.forEach.call(mm.querySelectorAll('.qmd-mini-tile'), function (t) {
+      var leaf = leafAt(+t.dataset.h, +t.dataset.v);
+      t.classList.toggle('qmd-mini-dim', !!leaf && leaf.classList.contains('qmd-ov-dim'));
+      t.classList.toggle('qmd-mini-hit', !!leaf && leaf.classList.contains('qmd-ov-hit'));
     });
   }
   function clearFilter() {

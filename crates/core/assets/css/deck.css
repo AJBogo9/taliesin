@@ -130,6 +130,7 @@ body { background: transparent; }
   opacity: .42;
   border-radius: 999px;
 }
+.reveal.overview.qmd-ov-filtering .qmd-thread-line { opacity: .1; } /* recede under a filter */
 .reveal.overview .slides > section:not(.qmd-stack):hover,
 .reveal.overview .slides > section > section:hover {
   outline-color: rgba(160, 170, 190, .55);
@@ -232,6 +233,8 @@ body { background: transparent; }
 .qmd-minimap-inner { position: relative; cursor: pointer; }
 .qmd-mini-tile { position: absolute; background: rgba(165, 175, 195, .26); border-radius: 2px; }
 .qmd-mini-tile.qmd-mini-cur { background: var(--deck-accent, #4c8dff); }
+.qmd-mini-tile.qmd-mini-dim { opacity: .22; } /* under an active filter */
+.qmd-mini-tile.qmd-mini-hit { background: var(--deck-accent, #4c8dff); }
 .qmd-mini-view {
   position: absolute;
   border: 1.5px solid var(--deck-accent, #4c8dff);
