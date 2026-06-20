@@ -146,32 +146,92 @@
       tl.appendChild(d);
     });
   }
-  // The camera: one translate+scale on `.slides`, mapping world coords to screen so
-  // the target rect lands centred in the viewport.
-  function setCamera(animate) {
-    var s = slidesEl(), rev = revealEl(); if (!s || !rev) return;
+  // The camera target for the current state: the cell that fills the 16:9 stage
+  // (normal), or the free map camera (overview).
+  function cameraTarget() {
+    var rev = revealEl();
     var W = deck.config.width, H = deck.config.height;
-    // The "stage" is `.reveal`, a fixed 16:9 box centred in the viewport (CSS). The
-    // cell fills it exactly, so adjacent cells fall outside and are clipped — no
-    // peek — and the area around the stage is the letterbox.
     var sw = rev.clientWidth || window.innerWidth, sh = rev.clientHeight || window.innerHeight;
-    var scale, cx, cy;
     if (deck.overview) {
-      if (!deck.ov) fitOverview();                          // free "map" camera: fit-all, then wheel/drag
-      scale = deck.ov.scale; cx = deck.ov.cx; cy = deck.ov.cy;
-    } else {
-      scale = Math.min(sw / W, sh / H);                    // one cell fills the stage exactly
-      var p = posOf(deck.h, deck.v);
-      cx = p.col * W + W / 2; cy = p.row * H + H / 2;       // centre the current cell
+      if (!deck.ov) fitOverview();
+      return { cx: deck.ov.cx, cy: deck.ov.cy, scale: deck.ov.scale > 0 ? deck.ov.scale : 1 };
     }
-    if (!(scale > 0)) scale = 1;
-    s.style.setProperty('--qmd-thread', (3.5 / scale).toFixed(1) + 'px'); // constant ~3.5px on-screen storyline thread
-    rev.classList.toggle('qmd-lod-far', !!deck.overview && scale * W < 200); // semantic zoom: tiny tiles -> title cards
+    var scale = Math.min(sw / W, sh / H);
+    var p = posOf(deck.h, deck.v);
+    return { cx: p.col * W + W / 2, cy: p.row * H + H / 2, scale: scale > 0 ? scale : 1 };
+  }
+  // Apply a camera (one translate+scale on `.slides`, mapping world -> screen so the
+  // target lands centred). mode: 'css' = CSS transition, anything else = instant.
+  function applyCam(cx, cy, scale, mode) {
+    var s = slidesEl(), rev = revealEl(); if (!s || !rev) return;
+    var W = deck.config.width;
+    var sw = rev.clientWidth || window.innerWidth, sh = rev.clientHeight || window.innerHeight;
+    s.style.setProperty('--qmd-thread', (3.5 / scale).toFixed(1) + 'px'); // constant ~3.5px on-screen thread
+    rev.classList.toggle('qmd-lod-far', !!deck.overview && scale * W < 200); // semantic zoom threshold
     var tx = sw / 2 - scale * cx, ty = sh / 2 - scale * cy;
-    s.classList.toggle('qmd-cam-anim', !!animate);
+    s.classList.toggle('qmd-cam-anim', mode === 'css');
     s.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
     document.documentElement.style.setProperty('--qmd-deck-scale', String(scale));
-    updateMinimapView(); // keep the minimap's current-view rectangle in sync
+    deck.cam = { cx: cx, cy: cy, scale: scale };
+    updateMinimapView();
+  }
+  // van Wijk & Nuij (2003) optimal smooth zoom-and-pan: a path in [cx, cy, w] (w =
+  // world width on screen) that minimises perceived velocity. Ported from
+  // d3.interpolateZoom (dependency-free). Used for big moves (overview, long jumps).
+  function interpolateZoom(p0, p1) {
+    var rho = Math.SQRT2, rho2 = 2, rho4 = 4, eps = 1e-12;
+    var ux0 = p0[0], uy0 = p0[1], w0 = p0[2], ux1 = p1[0], uy1 = p1[1], w1 = p1[2];
+    var dx = ux1 - ux0, dy = uy1 - uy0, d2 = dx * dx + dy * dy, i, S;
+    if (d2 < eps) {
+      S = Math.log(w1 / w0) / rho;
+      i = function (t) { return [ux0 + t * dx, uy0 + t * dy, w0 * Math.exp(rho * t * S)]; };
+    } else {
+      var d1 = Math.sqrt(d2);
+      var b0 = (w1 * w1 - w0 * w0 + rho4 * d2) / (2 * w0 * rho2 * d1);
+      var b1 = (w1 * w1 - w0 * w0 - rho4 * d2) / (2 * w1 * rho2 * d1);
+      var r0 = Math.log(Math.sqrt(b0 * b0 + 1) - b0);
+      var r1 = Math.log(Math.sqrt(b1 * b1 + 1) - b1);
+      S = (r1 - r0) / rho;
+      i = function (t) {
+        var s = t * S, coshr0 = Math.cosh(r0);
+        var u = w0 / (rho2 * d1) * (coshr0 * Math.tanh(rho * s + r0) - Math.sinh(r0));
+        return [ux0 + u * dx, uy0 + u * dy, w0 * coshr0 / Math.cosh(rho * s + r0)];
+      };
+    }
+    i.duration = S * 1000;
+    return i;
+  }
+  function reducedMotion() {
+    return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+  // A "big" move (worth the smooth fly) is a real zoom change or a long pan.
+  function bigChange(a, b) {
+    var zr = Math.max(a.scale / b.scale, b.scale / a.scale);
+    if (zr > 1.4) return true;
+    var rev = revealEl(), sw = rev.clientWidth || window.innerWidth;
+    return Math.hypot((b.cx - a.cx) * b.scale, (b.cy - a.cy) * b.scale) > 2.2 * sw;
+  }
+  function flyTo(t) {
+    if (deck.flyRAF) { cancelAnimationFrame(deck.flyRAF); deck.flyRAF = null; }
+    var rev = revealEl(), sw = rev.clientWidth || window.innerWidth, from = deck.cam;
+    var iz = interpolateZoom([from.cx, from.cy, sw / from.scale], [t.cx, t.cy, sw / t.scale]);
+    var dur = Math.max(320, Math.min(iz.duration * 0.85, 820)), start = performance.now();
+    (function frame(now) {
+      var k = dur > 0 ? Math.min(1, (now - start) / dur) : 1;
+      var p = iz(k);
+      applyCam(p[0], p[1], sw / p[2], 'instant');
+      deck.flyRAF = k < 1 ? requestAnimationFrame(frame) : null;
+    })(start);
+  }
+  // setCamera: snap (animate falsy), CSS-tween a small move, or van Wijk-Nuij-fly a
+  // big one (overview enter/exit, long jumps), respecting reduced-motion.
+  function setCamera(animate) {
+    var t = cameraTarget();
+    if (animate && deck.cam && !reducedMotion() && bigChange(deck.cam, t)) flyTo(t);
+    else {
+      if (deck.flyRAF) { cancelAnimationFrame(deck.flyRAF); deck.flyRAF = null; }
+      applyCam(t.cx, t.cy, t.scale, animate ? 'css' : 'instant');
+    }
   }
   function layout() {
     if (!slidesEl()) return;
