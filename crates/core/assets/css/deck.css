@@ -5,35 +5,46 @@
    applying unchanged. Behaviour lives in deck.js; this is only layout. */
 
 html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
-body { background: #fff; }
+/* The default deck background is the `html` canvas; `body` stays transparent so the
+   per-slide `.qmd-bg` layer (z-index -1) can paint above the canvas and below the
+   (transparent) slides. A `body` background would sit above z-index -1 and hide it. */
+html { background: #fff; }
+body { background: transparent; }
 
-/* The deck fills the viewport; deck.js owns scaling + navigation. Sized with
-   explicit width/height (not `inset`) so it still fills when an extension forces
-   `position: relative` to set up a stacking context (e.g. liquid-glass, which
-   layers backgrounds behind .reveal). */
+/* The deck is a fixed 16:9 "stage" centred in the viewport; deck.js's camera fits a
+   cell to it exactly so adjacent cells fall outside and are clipped (no peek), and
+   the area around the stage is the letterbox. (An extension that layers a full-bleed
+   background behind .reveal, e.g. liquid-glass, covers only the stage; refined in a
+   later phase.) */
 .reveal {
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  overflow: hidden;
+  inset: 0;
+  margin: auto; /* centre the stage in the viewport */
+  width: min(100%, calc(100vh * 16 / 9));
+  height: min(100%, calc(100vw * 9 / 16));
+  overflow: hidden; /* clips every cell but the framed one */
   font-size: 40px; /* design base; em-sized content scales with the transform */
   -webkit-tap-highlight-color: transparent;
   touch-action: pan-y;
 }
 .reveal-viewport { position: relative; width: 100%; height: 100%; }
 
-/* A fixed design box (size from --qmd-deck-w/h), centered in the viewport and
-   scaled to fit by deck.js via --qmd-deck-scale. */
+/* The slides container is the "camera": deck.js sets a `translate() scale()`
+   transform that frames the current cell (normal) or the whole grid (overview).
+   Sections are positioned into a grid relative to it (see deck.js positionGrid). */
 .reveal .slides {
   position: absolute;
-  left: 50%;
-  top: 50%;
+  left: 0;
+  top: 0;
   width: var(--qmd-deck-w, 960px);
-  height: var(--qmd-deck-h, 540px); /* 16:9 default */
-  transform: translate(-50%, -50%) scale(var(--qmd-deck-scale, 1));
-  transform-origin: 50% 50%;
+  height: var(--qmd-deck-h, 540px); /* one cell; sections translate out into the grid */
+  transform-origin: 0 0;
+}
+/* The pan/zoom transition. Gated by a class so resize + first paint don't animate. */
+.reveal .slides.qmd-cam-anim,
+.reveal .slides.qmd-cam-anim > section,
+.reveal .slides.qmd-cam-anim > section > section {
+  transition: transform .5s cubic-bezier(.2, .8, .2, 1);
 }
 
 /* Hide the deck until deck.js positions the first slide, so neither the plain
@@ -47,23 +58,26 @@ body { background: #fff; }
    content flows from the top. A top-level <section> that contains child
    <section>s is a vertical stack: a transparent container whose current child
    carries the slide box. */
+/* Every slide is laid out (not just .present): deck.js positions each into its grid
+   cell via an inline transform. present/past/future classes are kept for any CSS.
+   transform-origin centre so the overview gutter-shrink scales toward the middle. */
 .reveal .slides > section,
 .reveal .slides > section > section {
   position: absolute;
   inset: 0;
   box-sizing: border-box;
   padding: 0.6em 1em; /* em so shrink-to-fit (font-size scaling) scales it too */
-  display: none;
-  overflow: hidden;
-}
-.reveal .slides > section.present,
-.reveal .slides > section.present > section.present {
   display: block;
+  overflow: hidden;
+  transform-origin: 50% 50%;
 }
+/* A stack wrapper is a transparent container; its sub-slides drop below it, so it
+   must not clip them or carry its own padding. */
+.reveal .slides > section.qmd-stack { overflow: visible; padding: 0; }
 
 /* Per-slide vertical centering (the front-matter title slide carries .center). */
-.reveal .slides > section.center.present,
-.reveal .slides > section.present > section.center.present {
+.reveal .slides > section.center,
+.reveal .slides > section > section.center {
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -87,40 +101,56 @@ body { background: #fff; }
    transforms), so themes using `backdrop-filter` (liquid-glass) don't break the
    way they do in reveal's transform-based overview. Toggled with Escape; click a
    tile to jump. deck.js clears the per-slide inline display so every tile shows. */
-.reveal.overview .slides {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  transform: none;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, calc(var(--qmd-deck-w, 960px) * 0.28));
-  grid-auto-rows: calc(var(--qmd-deck-h, 540px) * 0.28);
-  gap: 22px;
-  justify-content: center;
-  align-content: start;
-  padding: 28px;
-  overflow: auto;
-  background: #1a1d21;
-}
-.reveal.overview .slides > section {
-  display: block;
-  position: relative !important;
-  inset: auto !important;
-  top: auto !important;
-  left: auto !important;
-  width: var(--qmd-deck-w, 960px) !important;
-  height: var(--qmd-deck-h, 540px) !important;
-  zoom: 0.28; /* scales the full design box into a tile; tracks any aspect ratio */
-  overflow: hidden;
-  background: #fff;
-  border: 10px solid transparent;
-  border-radius: 28px;
-  box-shadow: 0 6px 22px rgba(0, 0, 0, .45);
+/* Overview: the camera (deck.js) zooms out to frame the whole grid; slides stay in
+   their cells, so the move is a continuous zoom, not a relayout. Tiles get card
+   styling, a per-section gutter-shrink (positionGrid) opens the gaps, and the
+   current tile is ringed in the accent colour. Click a tile to zoom into it. */
+.reveal.overview .slides > section:not(.qmd-stack),
+.reveal.overview .slides > section > section {
+  border-radius: 12px;
+  box-shadow: 0 12px 34px rgba(0, 0, 0, .5);
+  outline: 1px solid rgba(127, 127, 127, .25);
+  background: rgba(127, 127, 127, .07); /* a faint surface for slides with no background */
   cursor: pointer;
+  overflow: hidden;
 }
-.reveal.overview .slides > section.qmd-overview-current {
-  border-color: #4c8dff;
+.reveal.overview .slides > section.qmd-overview-current,
+.reveal.overview .slides > section > section.qmd-overview-current {
+  outline: 3px solid var(--deck-accent, #4c8dff);
+  box-shadow: 0 16px 46px rgba(0, 0, 0, .6);
+}
+/* Storyline threads: a spine along the main row, a vertical connector down each
+   branch column. Drawn in `.slides` world coords (so they pan/zoom with the camera)
+   and behind the tiles, so they read as a thread joining the cards through the
+   gutters. `--qmd-cols` / `--branch-rows` are set by deck.js positionGrid. */
+.reveal.overview .slides::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--qmd-deck-w, 960px) / 2);
+  top: calc(var(--qmd-deck-h, 540px) / 2 - var(--qmd-thread, 16px) / 2);
+  width: calc((var(--qmd-cols, 1) - 1) * var(--qmd-deck-w, 960px));
+  height: var(--qmd-thread, 16px);
+  border-radius: 999px;
+  background: var(--deck-accent, #4c8dff);
+  opacity: .42;
+  pointer-events: none;
+}
+.reveal.overview .slides > section.qmd-stack::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--qmd-deck-w, 960px) / 2 - var(--qmd-thread, 16px) / 2);
+  top: calc(var(--qmd-deck-h, 540px) / 2);
+  width: var(--qmd-thread, 16px);
+  height: calc((var(--branch-rows, 1) - 1) * var(--qmd-deck-h, 540px));
+  border-radius: 999px;
+  background: var(--deck-accent, #4c8dff);
+  opacity: .42;
+  pointer-events: none;
+}
+.reveal.overview .slides > section:not(.qmd-stack):hover,
+.reveal.overview .slides > section > section:hover {
+  outline-color: rgba(160, 170, 190, .55);
+  box-shadow: 0 18px 52px rgba(0, 0, 0, .62);
 }
 
 /* Magic-move: the code blocks in a `::: {.magic-move}` are stacked in one grid
@@ -140,27 +170,29 @@ body { background: #fff; }
 .reveal .slides > section.qmd-aa,
 .reveal .slides > section.qmd-aa.present { animation: none !important; }
 
-/* Per-slide backgrounds: a single full-viewport layer behind the deck, set by
-   deck.js from the current slide's data-background-*. Light text is applied over
-   image/gradient/dark-colour slides via .qmd-dark-bg (code panels keep their own
-   light background, so code stays readable). */
-.qmd-bg {
-  position: fixed;
+/* Per-slide backgrounds: a layer behind each slide's own content, filling the slide
+   box, so it travels with the slide as the camera pans and shows per-tile in
+   overview. deck.js sets it from the section's data-background-*. `.qmd-dark-bg` on
+   the section flips its own text light over a dark/image/gradient background (code
+   panels keep their own light background, so code stays readable). */
+.reveal .slides section > .qmd-slide-bg {
+  position: absolute;
   inset: 0;
   z-index: -1;
   background-size: cover;
   background-position: center;
+  border-radius: inherit;
 }
-.reveal.qmd-dark-bg,
-.reveal.qmd-dark-bg h1,
-.reveal.qmd-dark-bg h2,
-.reveal.qmd-dark-bg h3,
-.reveal.qmd-dark-bg h4,
-.reveal.qmd-dark-bg strong { color: #fff; }
-.reveal.qmd-dark-bg .subtitle { color: rgba(255, 255, 255, .8); }
-.reveal.qmd-dark-bg a { color: #c7d2fe; }
-.reveal.qmd-dark-bg li::marker { color: #c7d2fe; }
-html.qmd-print .qmd-bg { display: none; } /* per-slide backgrounds aren't in the PDF (v1) */
+.reveal .slides section.qmd-dark-bg,
+.reveal .slides section.qmd-dark-bg h1,
+.reveal .slides section.qmd-dark-bg h2,
+.reveal .slides section.qmd-dark-bg h3,
+.reveal .slides section.qmd-dark-bg h4,
+.reveal .slides section.qmd-dark-bg strong { color: #fff; }
+.reveal .slides section.qmd-dark-bg .subtitle { color: rgba(255, 255, 255, .8); }
+.reveal .slides section.qmd-dark-bg a { color: #c7d2fe; }
+.reveal .slides section.qmd-dark-bg li::marker { color: #c7d2fe; }
+html.qmd-print .qmd-slide-bg { display: none; } /* per-slide backgrounds aren't in the PDF (v1) */
 
 /* Fragments / incremental reveals: hidden but keeping layout space (visibility,
    not display) so the slide doesn't reflow and shrink-to-fit sizes for the final
@@ -349,12 +381,18 @@ html.qmd-scroll .reveal .slides > section.qmd-scroll-stack { padding: 0; border-
 html.qmd-scroll .qmd-slide-number { display: none; }
 
 /* === Dark theme backgrounds (palette/colours live in reveal-extra.css) =====
-   The slides are transparent (they show the body), so the body background is the
-   deck background. Overview tiles, the slide-number chip, and reader mode each
-   carry their own hardcoded light surface, so override those too. PDF print stays
-   light (deck.js removes qmd-deck-dark while printing). */
-html.qmd-deck-dark, html.qmd-deck-dark body { background: #16181d; }
-html.qmd-deck-dark .reveal.overview .slides > section { background: #22262e; }
+   The slides and body are transparent, so the deck background is the html canvas
+   (which lets the per-slide `.qmd-bg` layer paint above it). Overview tiles, the
+   slide-number chip, and reader mode each carry their own hardcoded light surface,
+   so override those too. PDF print stays light (deck.js removes qmd-deck-dark). */
+html.qmd-deck-dark { background: #16181d; }
+html.qmd-deck-dark .reveal.overview .slides > section:not(.qmd-stack),
+html.qmd-deck-dark .reveal.overview .slides > section > section { background: #20242b; }
+@media (prefers-reduced-motion: reduce) {
+  .reveal .slides.qmd-cam-anim,
+  .reveal .slides.qmd-cam-anim > section,
+  .reveal .slides.qmd-cam-anim > section > section { transition: none !important; }
+}
 html.qmd-deck-dark .reveal .qmd-slide-number { background: rgba(255, 255, 255, .12); color: rgba(255, 255, 255, .62); }
 html.qmd-deck-dark.qmd-scroll, html.qmd-deck-dark.qmd-scroll body { background: #16181d; }
 

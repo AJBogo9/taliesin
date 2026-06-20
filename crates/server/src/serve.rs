@@ -576,7 +576,11 @@ fn reveal_index_html(ctx: &PageCtx) -> String {
         include_before_body: &ctx.includes.before_body,
         slides_attr: " id=\"qmd-root\"",
         slides: ctx.body,
-        after_reveal: "<div id=\"qmd-status\">connecting…</div>\n",
+        // The dev-menu host (the floating `</>` button), same as the single-doc
+        // page: `client.js`'s buildDevMenu fills it with the live status dot,
+        // click-to-source toggle, and restart-kernel control. (Was a bare
+        // `#qmd-status` node, which only showed an orphaned "live" label.)
+        after_reveal: "<div id=\"qmd-controls\"></div>\n",
         tail: &tail,
     })
 }

@@ -61,14 +61,71 @@
     deck.v = Math.max(0, Math.min(deck.v, V.length - 1));
   }
 
-  // --- scale-to-fit -------------------------------------------------------
-  function layout() {
-    var s = slidesEl();
-    if (!s) return;
-    var w = deck.config.width, h = deck.config.height, m = deck.config.margin;
-    var scale = Math.min(window.innerWidth / w, window.innerHeight / h) * (1 - 2 * m);
+  // --- grid layout + camera ----------------------------------------------
+  // Every slide is laid out once in a 2-D grid: top-level slides across (column =
+  // h), a stack's sub-slides down under their column (row = v). One transform on
+  // `.slides` is the "camera": focused on the current cell at full scale (normal),
+  // or zoomed out to frame the whole map (overview). Panning the camera between
+  // cells IS the slide transition; zooming it out IS the overview. There is no
+  // second view, so the two animate into each other with no cut.
+  function gridDims() {
+    var T = tops(), rows = 1;
+    T.forEach(function (top) { rows = Math.max(rows, vertsOf(top).length); });
+    return { cols: Math.max(1, T.length), rows: rows };
+  }
+  // Place each section at its grid cell via an inline transform. A stack wrapper is
+  // translated to its column; its children drop down by row, relative to it. In
+  // overview each leaf tile shrinks slightly to open a gutter between flush cells.
+  function positionGrid() {
+    var W = deck.config.width, H = deck.config.height;
+    var gut = deck.overview ? ' scale(.9)' : ''; // shrink tiles in overview to open gutters
+    var T = tops(), s = slidesEl();
+    if (s) s.style.setProperty('--qmd-cols', T.length); // for the overview spine width
+    T.forEach(function (top, h) {
+      if (isStack(top)) {
+        top.classList.add('qmd-stack');
+        top.style.setProperty('--branch-rows', vertsOf(top).length); // for the branch connector height
+        top.style.transform = 'translate(' + (h * W) + 'px,0px)';
+        vertsOf(top).forEach(function (sec, v) {
+          sec.style.transform = 'translate(0px,' + (v * H) + 'px)' + gut;
+        });
+      } else {
+        top.style.transform = 'translate(' + (h * W) + 'px,0px)' + gut;
+      }
+    });
+  }
+  // The camera: one translate+scale on `.slides`, mapping world coords to screen so
+  // the target rect lands centred in the viewport.
+  function setCamera(animate) {
+    var s = slidesEl(), rev = revealEl(); if (!s || !rev) return;
+    var W = deck.config.width, H = deck.config.height;
+    // The "stage" is `.reveal`, a fixed 16:9 box centred in the viewport (CSS). The
+    // cell fills it exactly, so adjacent cells fall outside and are clipped — no
+    // peek — and the area around the stage is the letterbox.
+    var sw = rev.clientWidth || window.innerWidth, sh = rev.clientHeight || window.innerHeight;
+    var scale, cx, cy;
+    if (deck.overview) {
+      var g = gridDims(), gw = g.cols * W, gh = g.rows * H;
+      scale = Math.min(sw / gw, sh / gh) * (1 - 2 * 0.06); // frame the whole map, with margin
+      cx = gw / 2; cy = gh / 2;
+    } else {
+      scale = Math.min(sw / W, sh / H);                    // one cell fills the stage exactly
+      var top = tops()[deck.h], row = top && isStack(top) ? deck.v : 0;
+      cx = deck.h * W + W / 2; cy = row * H + H / 2;        // centre the current cell
+    }
     if (!(scale > 0)) scale = 1;
+    s.style.setProperty('--qmd-thread', (3.5 / scale).toFixed(1) + 'px'); // constant ~3.5px on-screen storyline thread
+    var tx = sw / 2 - scale * cx, ty = sh / 2 - scale * cy;
+    s.classList.toggle('qmd-cam-anim', !!animate);
+    s.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
     document.documentElement.style.setProperty('--qmd-deck-scale', String(scale));
+  }
+  function layout() {
+    if (!slidesEl()) return;
+    positionGrid();
+    applyBackgrounds();
+    allSlides().forEach(fitSlide); // all slides are laid out now, not just the current one
+    setCamera(false);
   }
 
   // --- show the current slide --------------------------------------------
@@ -78,65 +135,62 @@
   // The present slide has its inline display removed so the theme's own layout
   // (or deck.css's `.present` rule) decides how it renders. The past/present/
   // future classes are kept for CSS transitions.
-  function apply() {
+  // The non-camera part of a slide change: present/past/future classes, fragments,
+  // chrome. Split out so auto-animate can update state without moving the camera.
+  function applyClasses() {
     var T = tops();
     var curTop = T[deck.h];
     T.forEach(function (top, i) {
       setClass(top, i < deck.h ? 'past' : (i > deck.h ? 'future' : 'present'));
-      setVisible(top, top === curTop);
       if (isStack(top)) {
         vertsOf(top).forEach(function (sec, j) {
-          setClass(sec, j < deck.v ? 'past' : (j > deck.v ? 'future' : 'present'));
-          setVisible(sec, top === curTop && j === deck.v);
+          setClass(sec, top === curTop ? (j < deck.v ? 'past' : (j > deck.v ? 'future' : 'present')) : 'future');
         });
       }
     });
-    fitSlide(currentSlide());
     applyFragments();
-    applyBackground();
     if (deck.draw) redrawAnnotations(); // restore the new slide's annotations
     updateChrome(); // progress bar / menu state follow the current slide
     deck.lastSlide = currentSlide(); // remember for the next auto-animate transition
   }
-  // --- per-slide backgrounds ---------------------------------------------
-  // Apply the current slide's `data-background-*` to a single full-viewport layer
-  // behind the deck. Light text is auto-applied over an image/gradient or a dark
-  // colour; the author can still override via theme. (Print hides the layer.)
-  function ensureBgLayer() {
-    var layer = document.querySelector('.qmd-bg');
-    if (!layer) {
-      layer = document.createElement('div');
-      layer.className = 'qmd-bg';
-      var rev = revealEl();
-      var host = (rev && rev.parentNode) || document.body;
-      host.insertBefore(layer, host.firstChild);
-    }
-    return layer;
+  function apply() {
+    applyClasses();
+    setCamera(true); // pan/zoom the camera to the current cell (the transition)
   }
-  function applyBackground() {
-    var rev = revealEl();
-    if (!rev) return;
-    var cur = currentSlide();
-    var color = cur && cur.getAttribute('data-background-color');
-    var gradient = cur && cur.getAttribute('data-background-gradient');
-    var image = cur && cur.getAttribute('data-background-image');
-    rev.classList.remove('qmd-dark-bg');
-    if (!color && !gradient && !image) {
-      var existing = document.querySelector('.qmd-bg');
-      if (existing) existing.style.cssText = '';
-      return;
+  // --- per-slide backgrounds ---------------------------------------------
+  // Each slide carries its own `data-background-*` as a layer behind its content,
+  // so the background travels with the slide as the camera pans, and shows per-tile
+  // in overview. `.qmd-dark-bg` on the section flips its own text light over a dark
+  // / image / gradient background. Set once per layout (the attributes are static).
+  function ensureSlideBg(sec) {
+    var bg = sec.querySelector(':scope > .qmd-slide-bg');
+    if (!bg) {
+      bg = document.createElement('div');
+      bg.className = 'qmd-slide-bg';
+      sec.insertBefore(bg, sec.firstChild);
     }
-    var layer = ensureBgLayer();
-    layer.style.cssText = ''; // keep positioning from the class; reset paint props
-    if (color) layer.style.backgroundColor = color;
-    if (gradient) layer.style.backgroundImage = gradient;
-    if (image) {
-      layer.style.backgroundImage = 'url("' + image + '")';
-      layer.style.backgroundSize = cur.getAttribute('data-background-size') || 'cover';
-      layer.style.backgroundPosition = cur.getAttribute('data-background-position') || 'center';
-      layer.style.backgroundRepeat = cur.getAttribute('data-background-repeat') || 'no-repeat';
-    }
-    if (image || gradient || (color && isDarkColor(color))) rev.classList.add('qmd-dark-bg');
+    return bg;
+  }
+  function applyBackgrounds() {
+    allSlides().forEach(function (sec) {
+      var color = sec.getAttribute('data-background-color');
+      var gradient = sec.getAttribute('data-background-gradient');
+      var image = sec.getAttribute('data-background-image');
+      sec.classList.remove('qmd-dark-bg');
+      var existing = sec.querySelector(':scope > .qmd-slide-bg');
+      if (!color && !gradient && !image) { if (existing) existing.remove(); return; }
+      var bg = ensureSlideBg(sec);
+      bg.style.cssText = '';
+      if (color) bg.style.backgroundColor = color;
+      if (gradient) bg.style.backgroundImage = gradient;
+      if (image) {
+        bg.style.backgroundImage = 'url("' + image + '")';
+        bg.style.backgroundSize = sec.getAttribute('data-background-size') || 'cover';
+        bg.style.backgroundPosition = sec.getAttribute('data-background-position') || 'center';
+        bg.style.backgroundRepeat = sec.getAttribute('data-background-repeat') || 'no-repeat';
+      }
+      if (image || gradient || (color && isDarkColor(color))) sec.classList.add('qmd-dark-bg');
+    });
   }
   function isDarkColor(c) {
     var m = c.replace(/\s/g, '').match(/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i);
@@ -199,6 +253,24 @@
       }, 520);
     });
     setTimeout(function () { to.classList.remove('qmd-aa'); }, 520);
+  }
+  // Auto-animate in the camera model: instead of panning between the two cells, hold
+  // the camera and overlay `to` on `from`'s cell so the matched elements morph in
+  // place; then snap `to` and the camera to `to`'s real cell together — a net-zero
+  // screen move, so the reposition is invisible.
+  function autoAnimateTo(from, to) {
+    var toTransform = to.style.transform;       // to's real grid cell
+    to.style.transform = from.style.transform;  // overlap `to` onto `from`'s cell
+    to.classList.add('qmd-aa');
+    var snap = snapshotMatched(from, to);        // measure both at the same screen spot
+    from.style.opacity = '0';                    // hide the old slide; the morph carries the motion
+    applyClasses();                              // update state, but DON'T move the camera
+    flipTo(snap, to);
+    setTimeout(function () {
+      from.style.opacity = '';
+      to.style.transform = toTransform;          // restore `to`'s real cell ...
+      setCamera(false);                          // ... and move the camera to it (net screen move = 0)
+    }, 520);
   }
   // --- fragments (incremental reveals) -----------------------------------
   // A fragment is any `.fragment` element or a list item inside `.incremental`,
@@ -353,14 +425,15 @@
   function commit() {
     clampIndices();
     if (deck.mode === 'speaker') { updateSpeakerUI(); fire('slidechanged'); broadcastState(); return; }
-    // Auto-animate: tween matched elements when both slides opt in. Measure before
-    // apply() hides the outgoing slide; suppress its fade-in so the FLIP owns it.
+    // Auto-animate between two consecutive opted-in slides morphs the matched
+    // elements in place (autoAnimateTo) rather than panning between their cells.
     var to = currentSlide(), from = deck.lastSlide;
-    var aa = from && to && from !== to && isAutoAnimate(from) && isAutoAnimate(to);
-    var snap = aa ? snapshotMatched(from, to) : null;
-    if (aa) to.classList.add('qmd-aa');
-    apply(); layout(); updateNumber(); writeHash(); focusCurrent();
-    if (snap) flipTo(snap, to);
+    if (from && to && from !== to && isAutoAnimate(from) && isAutoAnimate(to)) {
+      autoAnimateTo(from, to);
+    } else {
+      apply(); // pan/zoom the camera to the current cell
+    }
+    updateNumber(); writeHash(); focusCurrent();
     fire('slidechanged');
     broadcastState();
   }
@@ -420,58 +493,47 @@
     }
   }
 
-  // --- overview (grid of all slides) -------------------------------------
+  // --- overview (zoom the camera out to the whole map) -------------------
+  function markCurrentTile() {
+    var cur = currentSlide();
+    allSlides().forEach(function (s) { s.classList.toggle('qmd-overview-current', s === cur); });
+  }
   function setOverview(on) {
     if (on === deck.overview) return;
     var rev = revealEl();
     if (!rev) return;
     deck.overview = on;
-    if (on) {
-      rev.classList.remove('qmd-dark-bg'); // bg layer is hidden in the grid; keep tile text readable
-      if (deck.draw && deck.draw.on) { deck.draw.on = false; rev.classList.remove('qmd-drawing'); }
-    }
-    var T = tops();
-    if (on) {
-      rev.classList.add('overview');
-      var cur = T[deck.h];
-      T.forEach(function (top) {
-        top.style.removeProperty('display');
-        top.style.removeProperty('font-size'); // tiles render at natural size, not shrunk
-        top.removeAttribute('aria-hidden');
-        top.classList.toggle('qmd-overview-current', top === cur);
-        // a stack tile shows only its lead sub-slide
-        if (isStack(top)) vertsOf(top).forEach(function (sec, j) {
-          sec.style.removeProperty('font-size');
-          if (j === 0) sec.style.removeProperty('display');
-          else sec.style.setProperty('display', 'none', 'important');
-        });
-      });
-      var c = T[deck.h];
-      if (c && c.scrollIntoView) c.scrollIntoView({ block: 'nearest' });
-    } else {
-      rev.classList.remove('overview');
-      T.forEach(function (t) { t.classList.remove('qmd-overview-current'); });
-      apply();
-      layout();
-    }
+    rev.classList.toggle('overview', on);
+    if (on && deck.draw && deck.draw.on) { deck.draw.on = false; rev.classList.remove('qmd-drawing'); }
+    if (on) markCurrentTile();
+    else allSlides().forEach(function (s) { s.classList.remove('qmd-overview-current'); });
+    positionGrid(); // add (or remove) the per-tile gutter shrink
+    setCamera(true); // zoom out to the map, or back into the current cell
   }
+  // Move the overview highlight one leaf forward/back in deck order, keeping the
+  // camera framed on the whole map.
   function moveHighlight(delta) {
-    var T = tops();
-    deck.h = Math.max(0, Math.min(deck.h + delta, T.length - 1));
-    deck.v = 0;
-    T.forEach(function (t, i) { t.classList.toggle('qmd-overview-current', i === deck.h); });
-    var c = T[deck.h];
-    if (c && c.scrollIntoView) c.scrollIntoView({ block: 'nearest' });
+    var leaves = allSlides();
+    var i = leaves.indexOf(currentSlide());
+    i = Math.max(0, Math.min((i < 0 ? 0 : i) + delta, leaves.length - 1));
+    var target = leaves[i], T = tops();
+    for (var h = 0; h < T.length; h++) {
+      var v = vertsOf(T[h]).indexOf(target);
+      if (v >= 0) { deck.h = h; deck.v = v; break; }
+    }
+    markCurrentTile();
   }
   function onSlidesClick(e) {
     if (!deck.overview) return;
-    var sec = e.target.closest && e.target.closest('.reveal .slides > section');
+    var sec = e.target.closest && e.target.closest('.reveal .slides section');
     if (!sec) return;
     e.preventDefault();
-    var idx = tops().indexOf(sec);
+    var T = tops();
+    for (var h = 0; h < T.length; h++) {
+      var v = vertsOf(T[h]).indexOf(sec);
+      if (sec === T[h] || v >= 0) { setOverview(false); moveTo(h, v < 0 ? 0 : v, true); return; }
+    }
     setOverview(false);
-    if (idx >= 0) moveTo(idx, 0, true);
-    else commit();
   }
 
   // --- presenter mode + cross-window sync --------------------------------
@@ -489,7 +551,7 @@
     clampIndices();
     deck.frag = (frag == null) ? fragCount() : frag;
     if (deck.mode === 'speaker') updateSpeakerUI();
-    else { apply(); layout(); updateNumber(); writeHash(); }
+    else { apply(); updateNumber(); writeHash(); }
     fire('slidechanged');
   }
   function broadcastState() {
@@ -760,7 +822,11 @@
     return { h: 0, v: 0 };
   }
   function onHashChange() {
-    if (readHash()) { clampIndices(); deck.frag = fragCount(); apply(); layout(); updateNumber(); fire('slidechanged'); }
+    var ph = deck.h, pv = deck.v;
+    if (!readHash()) return;
+    clampIndices();
+    if (deck.h === ph && deck.v === pv) return; // our own writeHash, or no real change
+    deck.frag = fragCount(); apply(); updateNumber(); fire('slidechanged'); // apply pans the camera
   }
 
   // --- slide number -------------------------------------------------------
@@ -787,7 +853,9 @@
     }
     if (deck.overview) {
       switch (e.key) {
-        case 'Escape': case 'Enter': case ' ': setOverview(false); moveTo(deck.h, deck.v, true); break;
+        // `o` toggles overview closed (mirrors opening it with `o`), alongside
+        // Escape/Enter/Space; all land on the highlighted slide.
+        case 'Escape': case 'Enter': case ' ': case 'o': setOverview(false); moveTo(deck.h, deck.v, true); break;
         case 'ArrowRight': case 'ArrowDown': moveHighlight(1); break;
         case 'ArrowLeft': case 'ArrowUp': moveHighlight(-1); break;
         default: handled = false;
