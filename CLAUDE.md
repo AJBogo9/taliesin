@@ -9,6 +9,16 @@ updates, and no per-edit startup cost (warm server + Jupyter kernel).
 correctly, not that some feature checklist is complete. Scope is those ~5 documents
 (13 `.qmd` files counting book subsections), not Quarto's feature set.
 
+**The `.qmd` file is the single editing surface; the browser is a read-only view.**
+Edits flow one way: you change the source in your editor, the preview re-renders.
+Click-to-source is the only bridge back, and it *navigates* (preview → editor
+cursor), it never *writes*. The preview must not mutate the source. A
+drag-to-reorder-slides feature once broke this and was removed: a second write path
+fights click-to-source over who owns the file (editor-buffer vs. on-disk conflicts),
+and "you may reorder but not edit/delete" is an arbitrary line that invites WYSIWYG
+scope creep. The in-scope way to make a source edit ergonomic is an editor command,
+not a preview gesture.
+
 ## Where things are
 
 ```

@@ -348,11 +348,49 @@ fn render_section(s: &SlideBuf, out: &mut String) {
     }
     out.push_str(&bg_attrs);
     out.push_str(">\n");
+    // Quarto `. . .` pause markers: drop the marker block and turn every block
+    // after it (until the next pause or the end of the slide) into a `.fragment`,
+    // so it reveals on the next step via the existing fragment engine.
+    let mut paused = false;
     for (i, b) in s.blocks.iter().enumerate() {
-        out.push_str(if i == 0 { &lead } else { b });
+        if i == 0 {
+            out.push_str(&lead);
+            out.push('\n');
+            continue;
+        }
+        if is_pause(b) {
+            paused = true;
+            continue;
+        }
+        if paused {
+            out.push_str(&add_fragment_class(b));
+        } else {
+            out.push_str(b);
+        }
         out.push('\n');
     }
     out.push_str("</section>\n");
+}
+
+/// A Quarto pause marker: a paragraph whose only text is `. . .`. It is dropped
+/// from the slide and turns the following block(s) into reveal fragments.
+fn is_pause(html: &str) -> bool {
+    html.starts_with("<p") && strip_tags(html).trim() == ". . ."
+}
+
+/// Add `fragment` to a block's opening-tag class list (creating `class="fragment"`
+/// when none exists), so the existing fragment engine hides it until its step.
+fn add_fragment_class(html: &str) -> String {
+    let Some(gt) = html.find('>') else {
+        return html.to_string();
+    };
+    let (open, rest) = html.split_at(gt);
+    if let Some(ci) = open.find("class=\"") {
+        let at = ci + "class=\"".len();
+        format!("{}fragment {}{}", &open[..at], &open[at..], rest)
+    } else {
+        format!("{open} class=\"fragment\"{rest}")
+    }
 }
 
 /// Pull any `data-background-*` attributes out of a slide's lead block (its heading)

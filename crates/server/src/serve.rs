@@ -657,95 +657,12 @@ fn handle_client_msg(text: &str, app: &AppState) {
             app.restart_kernel.store(true, Ordering::Relaxed);
             let _ = app.kick.send(());
         }
-        // Drag-to-reorder in the deck overview (preview only). The client sends the
-        // source line of the dragged slide's heading and of the slide to drop it
-        // before (-1 = move to the end). We move that slide's source block in the
-        // .qmd; the file watcher then re-renders + broadcasts as for any edit.
-        Some("reorder") => {
-            let from = v.get("from_line").and_then(|x| x.as_u64());
-            let to = v.get("to_line").and_then(|x| x.as_i64());
-            if let (Some(from), Some(to)) = (from, to) {
-                if reorder_slides(&app.path, from as usize, to) {
-                    crate::log::source(&format!(
-                        "reordered slide @ line {from} {}",
-                        if to < 0 {
-                            "to end".into()
-                        } else {
-                            format!("before line {to}")
-                        }
-                    ));
-                }
-            }
-        }
         _ => {}
     }
 }
 
-/// Move one slide's source block (a `#`/`##` heading and everything up to the next
-/// such heading) so it sits before `to_line` (or at the end if `to_line < 0`).
-/// Headings inside fenced code blocks are ignored. Returns whether the file changed.
-fn reorder_slides(path: &Path, from_line: usize, to_line: i64) -> bool {
-    let Ok(src) = std::fs::read_to_string(path) else {
-        return false;
-    };
-    let mut lines: Vec<String> = src.split('\n').map(str::to_string).collect();
-    let headings = slide_heading_lines(&lines); // 1-based line numbers
-    let Some(pos) = headings.iter().position(|&h| h == from_line) else {
-        return false; // dragged line is not a slide heading (stale client) — ignore
-    };
-    let start = from_line; // 1-based, inclusive
-    let end = headings.get(pos + 1).copied().unwrap_or(lines.len() + 1) - 1; // 1-based, inclusive
-    if start < 1 || end > lines.len() || start > end {
-        return false;
-    }
-    // Dropping onto itself is a no-op.
-    if to_line >= start as i64 && to_line <= end as i64 {
-        return false;
-    }
-    let chunk: Vec<String> = lines.splice((start - 1)..end, std::iter::empty()).collect();
-    let removed = chunk.len();
-    let insert_at = if to_line < 0 {
-        lines.len()
-    } else {
-        let t = to_line as usize;
-        // Lines after the removed block shifted up by `removed`.
-        let idx = if t > end { t - removed - 1 } else { t - 1 };
-        idx.min(lines.len())
-    };
-    let tail = lines.split_off(insert_at);
-    lines.extend(chunk);
-    lines.extend(tail);
-    let out = lines.join("\n");
-    if out == src {
-        return false;
-    }
-    std::fs::write(path, out).is_ok()
-}
-
-/// 1-based line numbers of the `#`/`##` ATX headings that start a slide, skipping
-/// any inside fenced code (``` or ~~~), so a `# comment` in a code cell isn't one.
-fn slide_heading_lines(lines: &[String]) -> Vec<usize> {
-    let mut out = Vec::new();
-    let mut in_fence = false;
-    for (i, line) in lines.iter().enumerate() {
-        let t = line.trim_start();
-        if t.starts_with("```") || t.starts_with("~~~") {
-            in_fence = !in_fence;
-            continue;
-        }
-        if in_fence {
-            continue;
-        }
-        let hashes = t.bytes().take_while(|&b| b == b'#').count();
-        if (hashes == 1 || hashes == 2) && t.as_bytes().get(hashes) == Some(&b' ') {
-            out.push(i + 1);
-        }
-    }
-    out
-}
-
 /// Whether a rendered block is a slide-starting heading (`<h1>`/`<h2>`), i.e. a deck
-/// section boundary. Used to tell a slide-level change (reorder/add/remove a slide)
+/// section boundary. Used to tell a slide-level change (add/remove a slide)
 /// from a within-slide content edit.
 fn is_slide_heading(html: &str) -> bool {
     let h = html.trim_start();
@@ -928,8 +845,8 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         let recovered = std::mem::take(&mut d.errored);
         let ops = qmd_fast_core::diff_blocks(&d.blocks, &blocks);
         // A deck re-mounts fully only when an insert/remove touches a slide HEADING
-        // (reorder / add / remove a slide): its `<section>`-grouped slides can't be
-        // restructured by flat block ops. Content edits within a slide (inserting a
+        // (add / remove a slide in the source): its `<section>`-grouped slides can't
+        // be restructured by flat block ops. Content edits within a slide (inserting a
         // paragraph, re-titling, editing text) stay incremental. Computed before
         // `d.blocks` is replaced, so a Remove can look up the old block's html.
         let deck_structural = matches!(doc.format, DocFormat::Reveal)
@@ -1105,76 +1022,5 @@ mod extension_assets {
         );
 
         let _ = fs::remove_dir_all(&root);
-    }
-}
-
-#[cfg(test)]
-mod reorder {
-    //! Drag-to-reorder rewrites the `.qmd` by moving one `#`/`##` heading block.
-    use super::*;
-    use std::fs;
-    use std::sync::atomic::{AtomicU32, Ordering};
-
-    fn tmp(body: &str) -> PathBuf {
-        static N: AtomicU32 = AtomicU32::new(0);
-        let p = std::env::temp_dir().join(format!(
-            "qmd-reorder-{}-{}.qmd",
-            std::process::id(),
-            N.fetch_add(1, Ordering::Relaxed)
-        ));
-        fs::write(&p, body).unwrap();
-        p
-    }
-    fn slide_titles(s: &str) -> Vec<String> {
-        s.lines()
-            .filter(|l| l.starts_with("## "))
-            .map(|l| l.to_string())
-            .collect()
-    }
-
-    // 1:---  2:title  3:---  4:""  5:## A  6:""  7:a  8:""  9:## B  10:""  11:b
-    // 12:""  13:## C  14:""  15:c  16:""
-    const DECK: &str = "---\ntitle: T\n---\n\n## A\n\na\n\n## B\n\nb\n\n## C\n\nc\n";
-
-    #[test]
-    fn move_up_before_first() {
-        let p = tmp(DECK);
-        assert!(reorder_slides(&p, 13, 5)); // C before A
-        assert_eq!(
-            slide_titles(&fs::read_to_string(&p).unwrap()),
-            ["## C", "## A", "## B"]
-        );
-        let _ = fs::remove_file(&p);
-    }
-    #[test]
-    fn move_down_to_end() {
-        let p = tmp(DECK);
-        assert!(reorder_slides(&p, 5, -1)); // A to the end
-        assert_eq!(
-            slide_titles(&fs::read_to_string(&p).unwrap()),
-            ["## B", "## C", "## A"]
-        );
-        let _ = fs::remove_file(&p);
-    }
-    #[test]
-    fn drop_on_self_is_noop() {
-        let p = tmp(DECK);
-        assert!(!reorder_slides(&p, 9, 9)); // B onto B
-        assert_eq!(
-            slide_titles(&fs::read_to_string(&p).unwrap()),
-            ["## A", "## B", "## C"]
-        );
-        let _ = fs::remove_file(&p);
-    }
-    #[test]
-    fn heading_inside_a_fence_is_not_a_slide() {
-        // The `## not a slide` sits in a code fence, so C's block stays whole.
-        let body = "## A\n\n```python\n## not a slide\n```\n\n## C\n\nc\n";
-        let p = tmp(body);
-        assert!(reorder_slides(&p, 7, 1)); // C (line 7) before A (line 1)
-        let out = fs::read_to_string(&p).unwrap();
-        assert!(out.find("## C").unwrap() < out.find("## A").unwrap());
-        assert!(out.contains("```python\n## not a slide\n```")); // fence intact
-        let _ = fs::remove_file(&p);
     }
 }

@@ -83,6 +83,40 @@ body { background: transparent; }
   justify-content: center;
 }
 
+/* `.r-stretch`: let an image fill the slide's remaining vertical space (Quarto/
+   reveal). The slide turns into a flex column so the marked element grows into
+   what's left after the heading and other content. Authored as a fenced div:
+   `:::{.r-stretch}` wrapping an image. */
+.reveal .slides > section:has(> .r-stretch),
+.reveal .slides > section > section:has(> .r-stretch) {
+  display: flex;
+  flex-direction: column;
+}
+.reveal .r-stretch {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0.4em 0;
+}
+/* Unwrap the paragraph/figure comrak puts around the image so the media itself is
+   the box that fills the stretch region. */
+.reveal .r-stretch > p {
+  display: contents;
+}
+.reveal .r-stretch > figure {
+  margin: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.reveal .r-stretch :is(img, svg, canvas) {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+}
+
 /* No per-slide fade-in. In the camera model every slide is laid out and fully
    opaque, and the CAMERA PAN itself is the transition: the incoming slide simply
    scrolls into the 16:9 stage. A fade-in here would start the incoming slide at
@@ -141,34 +175,6 @@ body { background: transparent; }
 .reveal.overview { cursor: grab; }
 .reveal.overview.qmd-ov-panning,
 .reveal.overview.qmd-ov-panning .slides > section { cursor: grabbing; }
-/* Drag-to-reorder (preview): the lifted tile + a side bar showing where it will drop. */
-.reveal.overview.qmd-ov-reordering { cursor: grabbing; }
-.reveal.overview .slides > section.qmd-tile-dragging,
-.reveal.overview .slides > section > section.qmd-tile-dragging {
-  z-index: 10;
-  opacity: .9;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, .6);
-  outline: 2px solid var(--deck-accent, #4c8dff);
-  cursor: grabbing;
-}
-/* The insertion bar: a glowing accent line in the gap where the slide will drop. In
-   `.slides` world coords; its width is counter-scaled (via --qmd-thread) to stay a
-   constant ~6px on screen at any zoom. */
-.qmd-drop-bar { display: none; }
-.reveal.overview .qmd-drop-bar {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: calc(var(--qmd-thread, 16px) * 1.7);
-  height: var(--qmd-deck-h, 540px);
-  margin-left: calc(var(--qmd-thread, 16px) * -0.85);
-  border-radius: 999px;
-  background: var(--deck-accent, #4c8dff);
-  box-shadow: 0 0 calc(var(--qmd-thread, 16px) * 2.5) calc(var(--qmd-thread, 16px) * 0.4) var(--deck-accent, #4c8dff);
-  transform-origin: 0 0;
-  pointer-events: none;
-  z-index: 6;
-}
 /* A hint on how to drive the map, shown in screen space (not the scaled .slides) and
    auto-fading a few seconds after the overview opens. */
 .reveal.overview::after {
@@ -591,6 +597,11 @@ html.qmd-deck-dark.qmd-scroll, html.qmd-deck-dark.qmd-scroll body { background: 
 .qmd-ctl:hover { background: rgba(20, 22, 27, .96); }
 .qmd-ctl svg { width: 18px; height: 18px; display: block; }
 .qmd-idle .qmd-controls { opacity: 0; pointer-events: none; }
+
+/* Black-screen / pause (B or .): a full-viewport blackout above slides + chrome,
+   to pull the room's attention back to the speaker. */
+.reveal.qmd-blackout::after { content: ""; position: fixed; inset: 0; background: #000;
+  z-index: 80; cursor: none; }
 
 .qmd-menu-backdrop { position: fixed; inset: 0; z-index: 70; background: transparent; }
 .qmd-menu[hidden], .qmd-menu-backdrop[hidden] { display: none; }

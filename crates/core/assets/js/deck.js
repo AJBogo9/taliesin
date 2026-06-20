@@ -698,31 +698,13 @@
     clampOv();
     setCamera(false);
   }
-  var ovDrag = null, ovReorder = null;
-  // In a live preview (window.qmdWsSend is present), pressing on a tile starts a
-  // drag-to-reorder; pressing on empty space pans the map.
+  var ovDrag = null;
+  // Pressing anywhere on the overview pans the map.
   function onOverviewPointerDown(e) {
     if (!deck.overview || !deck.ov || e.button !== 0) return;
-    var tile = window.qmdWsSend && e.target.closest && e.target.closest('.reveal .slides > section');
-    if (tile && !tile.classList.contains('qmd-stack') && slideHeadingLine(tile) != null) {
-      var hv = coordsOfTile(tile);
-      if (hv) { ovReorder = { sec: tile, h: hv.h, v: hv.v, x: e.clientX, y: e.clientY, base: tile.style.transform, moved: false, target: null }; return; }
-    }
     ovDrag = { x: e.clientX, y: e.clientY, cx: deck.ov.cx, cy: deck.ov.cy, moved: false };
   }
   function onOverviewPointerMove(e) {
-    if (ovReorder) {
-      var rdx = e.clientX - ovReorder.x, rdy = e.clientY - ovReorder.y;
-      if (!ovReorder.moved && rdx * rdx + rdy * rdy < 36) return; // 6px before it's a drag
-      ovReorder.moved = true;
-      var sc = (deck.cam && deck.cam.scale) || 1;
-      revealEl().classList.add('qmd-ov-reordering');
-      ovReorder.sec.classList.add('qmd-tile-dragging');
-      ovReorder.sec.style.transform = 'translate(' + (rdx / sc) + 'px,' + (rdy / sc) + 'px) ' + ovReorder.base;
-      ovReorder.target = dropTarget(e.clientX, e.clientY, ovReorder.sec);
-      showDropIndicator(ovReorder.target);
-      return;
-    }
     if (!ovDrag) return;
     var dx = e.clientX - ovDrag.x, dy = e.clientY - ovDrag.y;
     if (!ovDrag.moved && dx * dx + dy * dy < 25) return;    // 5px before it counts as a drag
@@ -735,88 +717,9 @@
   }
   function onOverviewPointerUp() {
     var rev = revealEl();
-    if (ovReorder) {
-      if (ovReorder.moved) {
-        deck.ovDragged = true; // swallow the click that would otherwise select
-        var from = slideHeadingLine(ovReorder.sec);
-        var before = ovReorder.target && ovReorder.target.before;
-        var to = before ? slideHeadingLine(before) : -1;
-        if (before && to == null) to = firstHeadingLine(); // before the title slide -> top of body
-        if (from != null && to != null && window.qmdWsSend) window.qmdWsSend({ type: 'reorder', from_line: from, to_line: to });
-        ovReorder.sec.classList.remove('qmd-tile-dragging');
-        ovReorder.sec.style.transform = ovReorder.base; // the re-render settles the final order
-      }
-      clearDropIndicator();
-      if (rev) rev.classList.remove('qmd-ov-reordering');
-      ovReorder = null;
-      return;
-    }
     if (ovDrag && ovDrag.moved) deck.ovDragged = true;      // a pan: swallow the click that follows
     ovDrag = null;
     if (rev) rev.classList.remove('qmd-ov-panning');
-  }
-  function coordsOfTile(sec) {
-    var T = tops();
-    for (var h = 0; h < T.length; h++) {
-      if (sec === T[h]) return { h: h, v: 0 };
-      var v = vertsOf(T[h]).indexOf(sec);
-      if (v >= 0) return { h: h, v: v };
-    }
-    return null;
-  }
-  // The 1-based source line of a leaf's heading, or null if it has no own source
-  // (the front-matter title slide) or comes from an included file (not reorderable).
-  function slideHeadingLine(sec) {
-    var b = sec.querySelector('[data-sourcepos]');
-    if (!b || b.getAttribute('data-source-file')) return null;
-    var m = /^(\d+):/.exec(b.getAttribute('data-sourcepos') || '');
-    return m ? parseInt(m[1], 10) : null;
-  }
-  function firstHeadingLine() {
-    var min = null;
-    allSlides().forEach(function (s) { var l = slideHeadingLine(s); if (l != null && (min == null || l < min)) min = l; });
-    return min == null ? -1 : min;
-  }
-  // The slide the dragged tile would drop before (doc order). `before` is the leaf to
-  // insert ahead of, or null = drop at the very end.
-  function dropTarget(clientX, clientY, dragged) {
-    var rev = revealEl(), r = rev.getBoundingClientRect();
-    var sc = (deck.cam && deck.cam.scale) || 1, W = deck.config.width, H = deck.config.height;
-    var wx = deck.cam.cx + (clientX - r.left - rev.clientWidth / 2) / sc;
-    var wy = deck.cam.cy + (clientY - r.top - rev.clientHeight / 2) / sc;
-    var rows = gridRows(), best = null, bestD = Infinity;
-    rows.forEach(function (rowArr, ri) {
-      rowArr.forEach(function (cell, ci) {
-        var d = Math.pow(wx - (ci * W + W / 2), 2) + Math.pow(wy - (ri * H + H / 2), 2);
-        if (d < bestD) { bestD = d; best = { cell: cell, col: ci }; }
-      });
-    });
-    if (!best) return null;
-    var leaves = allSlides(), idx = leaves.indexOf(leafAt(best.cell.h, best.cell.v));
-    if (wx > best.col * W + W / 2) idx += 1; // dropped on the right half -> after this tile
-    var before = leaves[idx] || null;
-    if (before === dragged) before = leaves[idx + 1] || null; // skip self
-    return { before: before };
-  }
-  function cellOfTile(sec) { var hv = coordsOfTile(sec); return hv ? posOf(hv.h, hv.v) : null; }
-  // A glowing vertical bar in the gap where the slide will land. Drawn in `.slides`
-  // world coords (so it pans/zooms with the camera and isn't clipped by a tile's
-  // `overflow:hidden`), at the left edge of the `before` tile, or after the last.
-  function showDropIndicator(t) {
-    var s = slidesEl(); if (!s) return;
-    var bar = s.querySelector(':scope > .qmd-drop-bar');
-    if (!bar) { bar = document.createElement('div'); bar.className = 'qmd-drop-bar'; s.appendChild(bar); }
-    var W = deck.config.width, H = deck.config.height, cell = null, atEnd = false;
-    if (t && t.before) cell = cellOfTile(t.before);
-    else if (t) { var L = allSlides(); cell = L.length ? cellOfTile(L[L.length - 1]) : null; atEnd = true; }
-    if (!cell) { bar.style.display = 'none'; return; }
-    var x = (atEnd ? cell.col + 1 : cell.col) * W;
-    bar.style.transform = 'translate(' + x + 'px,' + (cell.row * H) + 'px)';
-    bar.style.display = 'block';
-  }
-  function clearDropIndicator() {
-    var s = slidesEl(); var bar = s && s.querySelector(':scope > .qmd-drop-bar');
-    if (bar) bar.style.display = 'none';
   }
   // Pan (if needed) so the highlighted tile stays comfortably on-screen; keep zoom.
   function ensureCurrentTileVisible(animate) {
@@ -1326,6 +1229,12 @@
       if (handled) e.preventDefault();
       return;
     }
+    // Black-screen / pause: while blacked out, only b / . / Esc unblank; all other
+    // keys are swallowed so navigation can't run behind the curtain.
+    if (deck.blackout) {
+      if (e.key === 'b' || e.key === '.' || e.key === 'Escape') { toggleBlackout(false); e.preventDefault(); }
+      return;
+    }
     switch (e.key) {
       case ' ': case 'PageDown': e.shiftKey ? prev() : next(); break;
       case 'PageUp': prev(); break;
@@ -1339,10 +1248,19 @@
       case 's': openSpeaker(); break;
       case 'd': toggleDraw(); break;
       case 'f': toggleFullscreen(); break;
+      case 'b': case '.': toggleBlackout(true); break;
       case 'm': case '?': toggleMenu(); break;
       default: handled = false;
     }
     if (handled) e.preventDefault();
+  }
+  // Black the whole viewport (pull attention back to the speaker). A class on
+  // `.reveal` drives a full-screen overlay in deck.css; keys are gated in onKey.
+  function toggleBlackout(on) {
+    var rev = revealEl();
+    if (!rev) return;
+    deck.blackout = !!on;
+    rev.classList.toggle('qmd-blackout', deck.blackout);
   }
   var touch = { x: null, y: null, t: 0 };
   function onTouchStart(e) {
@@ -1398,7 +1316,8 @@
   var KEYS_HTML =
     key('← →', 'Navigate') + key('↑ ↓', 'Vertical slides') + key('Space', 'Next') +
     key('O', 'Overview') + key('F', 'Fullscreen') + key('S', 'Speaker view') +
-    key('D', 'Annotate') + key('⌘/Ctrl P', 'Export PDF') + key('?', 'This menu') + key('Esc', 'Close');
+    key('D', 'Annotate') + key('B', 'Black screen') + key('⌘/Ctrl P', 'Export PDF') +
+    key('?', 'This menu') + key('Esc', 'Close');
 
   function buildChrome() {
     var rev = revealEl();

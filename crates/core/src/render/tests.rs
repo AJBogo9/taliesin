@@ -790,6 +790,29 @@ fn thematic_break_starts_a_new_slide_and_is_not_emitted() {
 }
 
 #[test]
+fn pause_marker_drops_and_fragments_following_blocks() {
+    // Quarto `. . .` is a pause: the marker itself is dropped, and every block
+    // after it (until end of slide) becomes a `.fragment` reveal step.
+    let doc = render_document(
+        "---\nformat: revealjs\n---\n\n## S\n\nVisible now.\n\n. . .\n\nAfter the pause.\n",
+    );
+    let slides = slides_html(None, None, &doc.blocks);
+    assert!(
+        !slides.contains(". . ."),
+        "the pause marker must not render as text: {slides}"
+    );
+    // The block before the pause stays plain; the one after gains `class="fragment"`.
+    assert!(
+        slides.contains(">Visible now.</p>"),
+        "pre-pause block should be unmodified: {slides}"
+    );
+    assert!(
+        slides.contains("class=\"fragment\">After the pause."),
+        "post-pause block should become a fragment: {slides}"
+    );
+}
+
+#[test]
 fn h1_wraps_following_h2s_in_a_vertical_stack() {
     let doc =
         render_document("---\nformat: revealjs\n---\n\n# Part One\n\nIntro.\n\n## A\n\n## B\n");

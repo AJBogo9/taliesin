@@ -23,6 +23,8 @@ qmd-fast build   docs/demo.qmd      # one self-contained .html
 The engine ships the things you actually present with:
 
 - **Fragments** — `::: {.incremental}` lists (or `.fragment`) reveal step by step.
+- **Pause** — a `. . .` line is a pause: everything after it on the slide reveals on
+  the next click (Quarto's shorthand for a fragment break).
 - **Code line-stepping** — add `code-line-numbers="1|2-3|all"` to a code block to
   walk it line by line.
 - **Magic-move** — `::: {.magic-move}` around two code snapshots tweens matched
@@ -31,12 +33,17 @@ The engine ships the things you actually present with:
   matched elements (text, code, images) between them.
 - **Backgrounds** — `{background-color="…"}`, `background-gradient`,
   `background-image` on a heading; light text on dark is automatic.
+- **Stretch to fit** — wrap an image in `::: {.r-stretch}` and it grows to fill the
+  slide's leftover height (aspect preserved), so a chart isn't left tiny.
 - **Speaker view** — press <kbd>S</kbd> for current + next slide, notes
   (`::: {.notes}`), and a timer, synced across windows.
 - **PDF export** — <kbd>Ctrl/Cmd-P</kbd> prints one slide per page.
 - **Reader mode** — on a narrow / portrait screen the fixed-aspect deck flattens to
   a scrollable column.
 - **Drawing** — press <kbd>D</kbd> to annotate the current slide with a pen.
+- **Black screen** — press <kbd>B</kbd> (or <kbd>.</kbd>) to blank the deck mid-talk
+  and pull attention back to you; any of <kbd>B</kbd>/<kbd>.</kbd>/<kbd>Esc</kbd>
+  restores it.
 - **Live code + OJS** — `{python}` / `{r}` cells execute and Observable cells stay
   reactive, right in the deck.
 
