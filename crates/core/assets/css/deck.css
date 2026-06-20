@@ -517,6 +517,13 @@ html.qmd-scroll .reveal .slides > section > section {
 }
 /* The per-slide background layer + LOD title cards have no place in the reader. */
 html.qmd-scroll .qmd-slide-bg, html.qmd-scroll .qmd-lod, html.qmd-scroll .qmd-threads { display: none !important; }
+/* The per-slide background is hidden in the reader, so `.qmd-dark-bg`'s light text
+   would go invisible on a light deck — fall back to the reading column's own colour. */
+html.qmd-scroll .reveal .slides section.qmd-dark-bg,
+html.qmd-scroll .reveal .slides section.qmd-dark-bg strong,
+html.qmd-scroll .reveal .slides section.qmd-dark-bg a,
+html.qmd-scroll .reveal .slides section.qmd-dark-bg .subtitle,
+html.qmd-scroll .reveal .slides section.qmd-dark-bg li::marker { color: inherit; }
 html.qmd-scroll .reveal .slides > section:first-child { border-top: 0; }
 html.qmd-scroll .reveal .slides > section.qmd-scroll-stack { padding: 0; border-top: 0; }
 html.qmd-scroll .qmd-slide-number { display: none; }
