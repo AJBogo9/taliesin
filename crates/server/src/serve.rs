@@ -547,13 +547,22 @@ fn reveal_index_html(ctx: &PageCtx) -> String {
         String::new()
     };
     let extra_head = format!("<style>{STATUS_CSS}</style>\n");
+    // Absolute paths so click-to-source can build `vscode://file/…` links. The
+    // single-doc page sets this in its scripts_pre; the deck has none, so the tail
+    // carries it — without it, `openSource` bails (no QMD_DOC) and click-to-source
+    // silently does nothing on slides.
+    let doc_global = format!(
+        "window.QMD_DOC = {{ path: \"{}\", baseDir: \"{}\" }};",
+        js_str(ctx.doc_path),
+        js_str(ctx.base_dir),
+    );
     // The live deck tail: the deck engine, the enhancers, the `QMD_*` flags, the
     // doc's after-body include (a reveal plugin's `<script src>` + `registerPlugin`,
     // which must run after the engine and before the client initializes it), then
     // the websocket client last (after `ojs_init`).
     let tail = format!(
         "{reveal_script}\n{code_scripts}\n\
-         <script>window.QMD_FORMAT = \"reveal\"; window.QMD_SSR = true;</script>\n\
+         <script>{doc_global} window.QMD_FORMAT = \"reveal\"; window.QMD_SSR = true;</script>\n\
          {include_after_body}\n{ojs_init}\n<script>\n{CLIENT_JS}\n</script>\n",
         reveal_script = qmd_fast_core::reveal_client_script(),
         code_scripts = qmd_fast_core::code_scripts(),
@@ -929,6 +938,31 @@ mod protocol_contract {
     //! in serve_site.rs. This guards serve.rs's own `*_json` against drift.
     use super::*;
     use crate::testutil::parse;
+
+    #[test]
+    fn reveal_index_carries_qmd_doc_for_click_to_source() {
+        // The deck page has no scripts_pre, so its tail must inject QMD_DOC — without
+        // it, client.js's openSource bails (no doc) and click-to-source is dead on
+        // slides, even though every block carries data-block-id/sourcepos.
+        let includes = qmd_fast_core::render::PageIncludes::default();
+        let ctx = PageCtx {
+            format: DocFormat::Reveal,
+            toc: false,
+            theme_css: "",
+            theme_default: "auto",
+            theme_is_custom: false,
+            ojs: false,
+            doc_path: "/tmp/deck.qmd",
+            base_dir: "/tmp",
+            includes: &includes,
+            body: "<section><h2>S</h2></section>",
+        };
+        let html = reveal_index_html(&ctx);
+        assert!(
+            html.contains("window.QMD_DOC = { path: \"/tmp/deck.qmd\", baseDir: \"/tmp\" }"),
+            "deck page must carry QMD_DOC for click-to-source"
+        );
+    }
 
     #[test]
     fn ops_and_full_render_match_client_contract() {
