@@ -112,33 +112,23 @@ body { background: transparent; }
   outline: 3px solid var(--deck-accent, #4c8dff);
   box-shadow: 0 16px 46px rgba(0, 0, 0, .6);
 }
-/* Storyline threads: a spine along the main row, a vertical connector down each
-   branch column. Drawn in `.slides` world coords (so they pan/zoom with the camera)
-   and behind the tiles, so they read as a thread joining the cards through the
-   gutters. `--qmd-cols` / `--branch-rows` are set by deck.js positionGrid. */
-.reveal.overview .slides::before {
-  content: "";
+/* Storyline threads: a horizontal connector along each multi-slide topic row, drawn
+   as `.qmd-thread-line` divs (deck.js drawThreads) in `.slides` world coords so they
+   pan/zoom with the camera and read as a line joining a topic's cards through the
+   gutters. Shown only in overview. */
+.qmd-threads { position: absolute; left: 0; top: 0; pointer-events: none; }
+.qmd-thread-line { display: none; }
+.reveal.overview .qmd-thread-line {
+  display: block;
   position: absolute;
-  left: calc(var(--qmd-deck-w, 960px) / 2);
-  top: calc(var(--qmd-deck-h, 540px) / 2 - var(--qmd-thread, 16px) / 2);
-  width: calc((var(--qmd-cols, 1) - 1) * var(--qmd-deck-w, 960px));
+  left: 0;
+  top: 0;
   height: var(--qmd-thread, 16px);
-  border-radius: 999px;
+  margin-top: calc(var(--qmd-thread, 16px) / -2);
+  transform-origin: 0 0;
   background: var(--deck-accent, #4c8dff);
   opacity: .42;
-  pointer-events: none;
-}
-.reveal.overview .slides > section.qmd-stack::before {
-  content: "";
-  position: absolute;
-  left: calc(var(--qmd-deck-w, 960px) / 2 - var(--qmd-thread, 16px) / 2);
-  top: calc(var(--qmd-deck-h, 540px) / 2);
-  width: var(--qmd-thread, 16px);
-  height: calc((var(--branch-rows, 1) - 1) * var(--qmd-deck-h, 540px));
   border-radius: 999px;
-  background: var(--deck-accent, #4c8dff);
-  opacity: .42;
-  pointer-events: none;
 }
 .reveal.overview .slides > section:not(.qmd-stack):hover,
 .reveal.overview .slides > section > section:hover {

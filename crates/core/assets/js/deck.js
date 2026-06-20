@@ -68,10 +68,36 @@
   // or zoomed out to frame the whole map (overview). Panning the camera between
   // cells IS the slide transition; zooming it out IS the overview. There is no
   // second view, so the two animate into each other with no cut.
+  // Group the deck into visual ROWS: each `#`-section stack is one row (its slides
+  // laid out ACROSS), and a run of consecutive top-level slides is one row. So a
+  // topic reads left-to-right and the next topic is the row beneath it: the main
+  // storyline is the top row, with any branch/appendix as a row hanging below.
+  function gridRows() {
+    var T = tops(), rows = [], run = null;
+    for (var h = 0; h < T.length; h++) {
+      if (isStack(T[h])) {
+        if (run) { rows.push(run); run = null; }
+        rows.push(vertsOf(T[h]).map(function (sec, v) { return { h: h, v: v }; }));
+      } else {
+        if (!run) run = [];
+        run.push({ h: h, v: 0 });
+      }
+    }
+    if (run) rows.push(run);
+    return rows.length ? rows : [[{ h: 0, v: 0 }]];
+  }
+  // The visual (row, col) of a leaf, plus the row grid it came from.
+  function posOf(h, v) {
+    var rows = gridRows();
+    for (var r = 0; r < rows.length; r++)
+      for (var c = 0; c < rows[r].length; c++)
+        if (rows[r][c].h === h && rows[r][c].v === v) return { row: r, col: c, rows: rows };
+    return { row: 0, col: 0, rows: rows };
+  }
   function gridDims() {
-    var T = tops(), rows = 1;
-    T.forEach(function (top) { rows = Math.max(rows, vertsOf(top).length); });
-    return { cols: Math.max(1, T.length), rows: rows };
+    var rows = gridRows();
+    var cols = rows.reduce(function (m, r) { return Math.max(m, r.length); }, 1);
+    return { cols: Math.max(1, cols), rows: Math.max(1, rows.length) };
   }
   // Place each section at its grid cell via an inline transform. A stack wrapper is
   // translated to its column; its children drop down by row, relative to it. In
@@ -79,19 +105,45 @@
   function positionGrid() {
     var W = deck.config.width, H = deck.config.height;
     var gut = deck.overview ? ' scale(.9)' : ''; // shrink tiles in overview to open gutters
-    var T = tops(), s = slidesEl();
-    if (s) s.style.setProperty('--qmd-cols', T.length); // for the overview spine width
+    var rows = gridRows(), T = tops(), s = slidesEl();
+    var loc = {}, maxCols = 1; // per top index: its row + the column of its first leaf
+    rows.forEach(function (rowArr, r) {
+      maxCols = Math.max(maxCols, rowArr.length);
+      rowArr.forEach(function (cell, c) { if (!(cell.h in loc)) loc[cell.h] = { row: r, col0: c }; });
+    });
+    if (s) {
+      s.style.setProperty('--qmd-cols', maxCols);
+      s.style.setProperty('--qmd-rows', rows.length);
+    }
     T.forEach(function (top, h) {
+      var L = loc[h] || { row: 0, col0: 0 };
       if (isStack(top)) {
         top.classList.add('qmd-stack');
-        top.style.setProperty('--branch-rows', vertsOf(top).length); // for the branch connector height
-        top.style.transform = 'translate(' + (h * W) + 'px,0px)';
+        top.style.transform = 'translate(' + (L.col0 * W) + 'px,' + (L.row * H) + 'px)';
         vertsOf(top).forEach(function (sec, v) {
-          sec.style.transform = 'translate(0px,' + (v * H) + 'px)' + gut;
+          sec.style.transform = 'translate(' + (v * W) + 'px,0px)' + gut; // sub-slides flow ACROSS the row
         });
       } else {
-        top.style.transform = 'translate(' + (h * W) + 'px,0px)' + gut;
+        top.style.transform = 'translate(' + (L.col0 * W) + 'px,' + (L.row * H) + 'px)' + gut;
       }
+    });
+    drawThreads(rows, W, H, s);
+  }
+  // A horizontal connector thread per multi-slide row (topic), drawn behind the tiles
+  // in `.slides` world coords so it pans/zooms with the camera and reads as a line
+  // joining the cards through the gutters. Rebuilt each layout; shown only in overview.
+  function drawThreads(rows, W, H, s) {
+    if (!s) return;
+    var tl = s.querySelector(':scope > .qmd-threads');
+    if (!tl) { tl = document.createElement('div'); tl.className = 'qmd-threads'; s.insertBefore(tl, s.firstChild); }
+    tl.innerHTML = '';
+    rows.forEach(function (rowArr, r) {
+      if (rowArr.length < 2) return;
+      var d = document.createElement('div');
+      d.className = 'qmd-thread-line';
+      d.style.transform = 'translate(' + (W / 2) + 'px,' + (r * H + H / 2) + 'px)';
+      d.style.width = ((rowArr.length - 1) * W) + 'px';
+      tl.appendChild(d);
     });
   }
   // The camera: one translate+scale on `.slides`, mapping world coords to screen so
@@ -109,8 +161,8 @@
       scale = deck.ov.scale; cx = deck.ov.cx; cy = deck.ov.cy;
     } else {
       scale = Math.min(sw / W, sh / H);                    // one cell fills the stage exactly
-      var top = tops()[deck.h], row = top && isStack(top) ? deck.v : 0;
-      cx = deck.h * W + W / 2; cy = row * H + H / 2;        // centre the current cell
+      var p = posOf(deck.h, deck.v);
+      cx = p.col * W + W / 2; cy = p.row * H + H / 2;       // centre the current cell
     }
     if (!(scale > 0)) scale = 1;
     s.style.setProperty('--qmd-thread', (3.5 / scale).toFixed(1) + 'px'); // constant ~3.5px on-screen storyline thread
@@ -481,23 +533,18 @@
   }
   // Forward steps reveal the next fragment first, then advance; backward steps
   // hide the last fragment first, then retreat (landing fully revealed).
-  function right() {
-    if (revealNextFrag()) return;
-    if (deck.h < tops().length - 1) moveTo(deck.h + 1, 0, false);
-  }
-  function left() {
-    if (hidePrevFrag()) return;
-    if (deck.h > 0) moveTo(deck.h - 1, 0, true);
-  }
-  function down() {
-    if (revealNextFrag()) return;
-    var top = tops()[deck.h];
-    if (top && isStack(top) && deck.v < vertsOf(top).length - 1) moveTo(deck.h, deck.v + 1, false);
-  }
-  function up() {
-    if (hidePrevFrag()) return;
-    var top = tops()[deck.h];
-    if (top && isStack(top) && deck.v > 0) moveTo(deck.h, deck.v - 1, true);
+  // Arrow keys map to the visual grid: left/right step through the current topic
+  // (flowing on to the next topic at its ends, i.e. linear order); up/down jump
+  // straight to the topic above/below, keeping the column.
+  function right() { next(); }
+  function left() { prev(); }
+  function down() { moveTopic(1); }
+  function up() { moveTopic(-1); }
+  function moveTopic(d) {
+    var p = posOf(deck.h, deck.v), r = p.row + d;
+    if (r < 0 || r >= p.rows.length) return;
+    var rowArr = p.rows[r], cell = rowArr[Math.min(p.col, rowArr.length - 1)];
+    moveTo(cell.h, cell.v, true);
   }
   // Linear next/prev: fragments first, then flow down a stack, then across.
   function next() {
@@ -592,8 +639,8 @@
   function ensureCurrentTileVisible(animate) {
     if (!deck.overview || !deck.ov) return;
     var st = ovStage(), W = deck.config.width, H = deck.config.height;
-    var top = tops()[deck.h], row = top && isStack(top) ? deck.v : 0;
-    var wx = deck.h * W + W / 2, wy = row * H + H / 2;
+    var p = posOf(deck.h, deck.v);
+    var wx = p.col * W + W / 2, wy = p.row * H + H / 2;
     var scale = deck.ov.scale;
     var sx = st.sw / 2 + scale * (wx - deck.ov.cx);
     var sy = st.sh / 2 + scale * (wy - deck.ov.cy);
@@ -617,15 +664,12 @@
   }
   // Move the overview highlight one leaf forward/back in deck order, keeping it
   // on-screen as the map pans.
-  function moveHighlight(delta) {
-    var leaves = allSlides();
-    var i = leaves.indexOf(currentSlide());
-    i = Math.max(0, Math.min((i < 0 ? 0 : i) + delta, leaves.length - 1));
-    var target = leaves[i], T = tops();
-    for (var h = 0; h < T.length; h++) {
-      var v = vertsOf(T[h]).indexOf(target);
-      if (v >= 0) { deck.h = h; deck.v = v; break; }
-    }
+  function moveHighlight(dCol, dRow) {
+    var p = posOf(deck.h, deck.v), rows = p.rows, r = p.row, c = p.col;
+    if (dRow) { r = Math.max(0, Math.min(r + dRow, rows.length - 1)); c = Math.min(c, rows[r].length - 1); }
+    if (dCol) { c = Math.max(0, Math.min(c + dCol, rows[r].length - 1)); }
+    var cell = rows[r][c];
+    deck.h = cell.h; deck.v = cell.v;
     markCurrentTile();
     ensureCurrentTileVisible(true);
   }
@@ -963,8 +1007,10 @@
         // `o` toggles overview closed (mirrors opening it with `o`), alongside
         // Escape/Enter/Space; all land on the highlighted slide.
         case 'Escape': case 'Enter': case ' ': case 'o': setOverview(false); moveTo(deck.h, deck.v, true); break;
-        case 'ArrowRight': case 'ArrowDown': moveHighlight(1); break;
-        case 'ArrowLeft': case 'ArrowUp': moveHighlight(-1); break;
+        case 'ArrowRight': moveHighlight(1, 0); break;
+        case 'ArrowLeft': moveHighlight(-1, 0); break;
+        case 'ArrowDown': moveHighlight(0, 1); break;
+        case 'ArrowUp': moveHighlight(0, -1); break;
         case '0': fitOverview(); setCamera(true); break; // re-fit the whole map
         default: handled = false;
       }
