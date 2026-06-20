@@ -545,10 +545,18 @@
   function fitSlide(sec) {
     if (!sec || deck.overview) return;
     sec.style.removeProperty('font-size'); // measure at natural size
-    var fh = sec.scrollHeight > sec.clientHeight ? sec.clientHeight / sec.scrollHeight : 1;
-    var fw = sec.scrollWidth > sec.clientWidth ? sec.clientWidth / sec.scrollWidth : 1;
-    var f = Math.min(fh, fw);
-    if (f < 1) sec.style.fontSize = (BASE * f * 0.97).toFixed(2) + 'px';
+    // Iterate to convergence: a single pass under-shrinks when a slide holds a
+    // fixed-size element (a chart image doesn't scale with font-size), leaving the
+    // content tight against the bottom. The 0.95 leaves a small bottom margin.
+    var size = BASE;
+    for (var i = 0; i < 4; i++) {
+      var fh = sec.scrollHeight > sec.clientHeight ? sec.clientHeight / sec.scrollHeight : 1;
+      var fw = sec.scrollWidth > sec.clientWidth ? sec.clientWidth / sec.scrollWidth : 1;
+      var f = Math.min(fh, fw);
+      if (f >= 1) break; // fits (with margin)
+      size = Math.max(12, size * f * 0.95);
+      sec.style.fontSize = size.toFixed(2) + 'px';
+    }
   }
   function setClass(el, state) {
     el.classList.remove('past', 'present', 'future');
