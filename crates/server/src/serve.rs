@@ -744,6 +744,14 @@ fn slide_heading_lines(lines: &[String]) -> Vec<usize> {
     out
 }
 
+/// Whether a rendered block is a slide-starting heading (`<h1>`/`<h2>`), i.e. a deck
+/// section boundary. Used to tell a slide-level change (reorder/add/remove a slide)
+/// from a within-slide content edit.
+fn is_slide_heading(html: &str) -> bool {
+    let h = html.trim_start();
+    h.starts_with("<h1") || h.starts_with("<h2")
+}
+
 // --- messages -----------------------------------------------------------
 
 fn full_render_json(d: &DocState) -> String {
@@ -919,6 +927,20 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         let mut d = app.doc.lock();
         let recovered = std::mem::take(&mut d.errored);
         let ops = qmd_fast_core::diff_blocks(&d.blocks, &blocks);
+        // A deck re-mounts fully only when an insert/remove touches a slide HEADING
+        // (reorder / add / remove a slide): its `<section>`-grouped slides can't be
+        // restructured by flat block ops. Content edits within a slide (inserting a
+        // paragraph, re-titling, editing text) stay incremental. Computed before
+        // `d.blocks` is replaced, so a Remove can look up the old block's html.
+        let deck_structural = matches!(doc.format, DocFormat::Reveal)
+            && ops.iter().any(|op| match op {
+                BlockOp::Insert { html, .. } => is_slide_heading(html),
+                BlockOp::Remove { target_id } => d
+                    .blocks
+                    .iter()
+                    .any(|b| &b.id == target_id && is_slide_heading(&b.html)),
+                BlockOp::Update { .. } => false,
+            });
         let diags_changed = d.diagnostics != diags;
         d.title = doc.title;
         d.subtitle = doc.subtitle;
@@ -932,9 +954,10 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         d.blocks = blocks;
         d.diagnostics = diags;
         // Broadcast under the lock so connecting clients can't interleave.
-        if recovered {
-            // First success after a failure: re-mount fully so every client clears
-            // its error overlay even when the diff against the last good state is empty.
+        if recovered || deck_structural {
+            // Re-mount fully when recovering from an error (so every client clears its
+            // overlay) or a deck changed structurally. The deck preserves its current
+            // slide + overview across the swap (its JS state survives the DOM rebuild).
             let _ = app.tx.send(full_render_json(&d));
         } else {
             for op in &ops {
