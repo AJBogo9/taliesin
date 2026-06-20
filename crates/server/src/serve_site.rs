@@ -342,10 +342,7 @@ fn render_markdown_only(site: &qmd_fast_core::Site, page: &Page) -> PageDoc {
     let diagnostics = doc
         .warnings
         .iter()
-        .map(|w| Diagnostic {
-            level: "warning",
-            message: w.clone(),
-        })
+        .map(|w| Diagnostic::warn(w.clone()))
         .collect();
     PageDoc {
         title: doc.title,
@@ -828,10 +825,7 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
     };
     let mut diags = page_diagnostics(&page.input, &base, exec);
     for w in &doc.warnings {
-        diags.push(Diagnostic {
-            level: "warning",
-            message: w.clone(),
-        });
+        diags.push(Diagnostic::warn(w.clone()));
     }
 
     let mut pages = app.pages.lock();
@@ -868,27 +862,30 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
 fn page_diagnostics(input: &Path, base: &Path, exec: &crate::exec::Executor) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     if let Ok(src) = std::fs::read_to_string(input) {
-        for message in qmd_fast_core::frontmatter::lint(&src) {
-            diags.push(Diagnostic {
-                level: "warning",
-                message,
-            });
+        // Broken front matter: a located, framed error (same as the single-doc server).
+        if let Some((message, line)) = qmd_fast_core::frontmatter::yaml_error(&src) {
+            diags.push(
+                Diagnostic::error(message)
+                    .at(None, line)
+                    .with_frame(crate::serve::code_frame(&src, line)),
+            );
+        } else {
+            for message in qmd_fast_core::frontmatter::lint(&src) {
+                diags.push(Diagnostic::warn(message));
+            }
         }
         for dep in qmd_fast_core::includes::dependencies(&src, base) {
             if !dep.exists() {
                 let shown = dep.strip_prefix(base).unwrap_or(&dep);
-                diags.push(Diagnostic {
-                    level: "warning",
-                    message: format!("include not found: {}", shown.display()),
-                });
+                diags.push(Diagnostic::warn(format!(
+                    "include not found: {}",
+                    shown.display()
+                )));
             }
         }
     }
     if let Some(message) = exec.diagnostic() {
-        diags.push(Diagnostic {
-            level: "warning",
-            message,
-        });
+        diags.push(Diagnostic::warn(message));
     }
     diags
 }
@@ -1065,10 +1062,7 @@ mod protocol_contract {
         assert!(fr.get("body_html").is_some());
         assert!(fr["diagnostics"].is_array());
 
-        let dg = parse(protocol::diagnostics(&[Diagnostic {
-            level: "warning",
-            message: "x".into(),
-        }]));
+        let dg = parse(protocol::diagnostics(&[Diagnostic::warn("x")]));
         assert_eq!(dg["type"], "diagnostics");
         assert_eq!(dg["messages"][0]["level"], "warning");
         assert_eq!(dg["messages"][0]["message"], "x");

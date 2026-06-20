@@ -463,6 +463,11 @@ pub(crate) const STATUS_CSS: &str = "\
       border: 1px solid var(--qmd-border, #e0e0e0); line-height: 1.35; } \
     #qmd-diagnostics .qmd-diag-error { border-left: 3px solid #e5534b; } \
     #qmd-diagnostics .qmd-diag-warning { border-left: 3px solid #d9a23a; } \
+    #qmd-diagnostics .qmd-diag-loc { cursor: pointer; text-align: left; width: 100%; font: inherit; color: inherit; } \
+    #qmd-diagnostics .qmd-diag-loc:hover { border-color: var(--qmd-accent, #4c8dff); } \
+    #qmd-diagnostics .qmd-diag-loc::after { content: \"  \\2192 source\"; color: var(--qmd-muted, #888); font-size: 11px; } \
+    #qmd-diagnostics .qmd-diag-frame { margin: .35rem 0 0; padding: .35rem .45rem; border-radius: 4px; overflow-x: auto; \
+      background: var(--qmd-bg, #fff); white-space: pre; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; } \
     #qmd-cell-errors { flex-direction: column; gap: .3rem; max-width: 22rem; } \
     .qmd-cellerr { text-align: left; cursor: pointer; font: 12px ui-sans-serif, system-ui, sans-serif; \
       color: var(--qmd-fg, #111); background: var(--qmd-code-bg, #f5f5f5); border: 1px solid var(--qmd-border, #e0e0e0); \
@@ -688,29 +693,53 @@ fn full_render_json(d: &DocState) -> String {
 fn compute_diagnostics(app: &AppState, executor: &crate::exec::Executor) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     if let Ok(src) = std::fs::read_to_string(&app.path) {
-        for message in qmd_fast_core::frontmatter::lint(&src) {
-            diags.push(Diagnostic {
-                level: "warning",
-                message,
-            });
+        // A broken front matter is worth pointing AT: a located, framed error that
+        // jumps to the bad line on click. lint() reports the same YAML error as a
+        // plain warning, so it's one or the other, never both.
+        if let Some((message, line)) = qmd_fast_core::frontmatter::yaml_error(&src) {
+            diags.push(
+                Diagnostic::error(message)
+                    .at(None, line)
+                    .with_frame(code_frame(&src, line)),
+            );
+        } else {
+            for message in qmd_fast_core::frontmatter::lint(&src) {
+                diags.push(Diagnostic::warn(message));
+            }
         }
         for dep in qmd_fast_core::includes::dependencies(&src, &app.base_dir) {
             if !dep.exists() {
                 let shown = dep.strip_prefix(&app.base_dir).unwrap_or(&dep);
-                diags.push(Diagnostic {
-                    level: "warning",
-                    message: format!("include not found: {}", shown.display()),
-                });
+                diags.push(Diagnostic::warn(format!(
+                    "include not found: {}",
+                    shown.display()
+                )));
             }
         }
     }
     if let Some(message) = executor.diagnostic() {
-        diags.push(Diagnostic {
-            level: "warning",
-            message,
-        });
+        diags.push(Diagnostic::warn(message));
     }
     diags
+}
+
+/// A small code frame for a located diagnostic: up to two lines of context around
+/// the 1-based `line`, each prefixed with its number, the offending line marked
+/// `>`. Shown inline (monospace) in the dev panel. Shared with the site server.
+pub(crate) fn code_frame(src: &str, line: u32) -> String {
+    let lines: Vec<&str> = src.lines().collect();
+    if lines.is_empty() || line == 0 {
+        return String::new();
+    }
+    let l = (line as usize).min(lines.len());
+    let start = l.saturating_sub(2).max(1);
+    let end = (l + 2).min(lines.len());
+    let mut out = String::new();
+    for n in start..=end {
+        let mark = if n as u32 == line { '>' } else { ' ' };
+        out.push_str(&format!("{mark} {n:>3} | {}\n", lines[n - 1]));
+    }
+    out
 }
 
 fn op_json(op: &BlockOp) -> String {
@@ -842,10 +871,7 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
     // Render warnings (missing bibliography/theme file) ride alongside the
     // include/kernel diagnostics into the dev menu.
     for w in &doc.warnings {
-        diags.push(Diagnostic {
-            level: "warning",
-            message: w.clone(),
-        });
+        diags.push(Diagnostic::warn(w.clone()));
     }
     let ops = {
         let mut d = app.doc.lock();

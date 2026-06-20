@@ -127,6 +127,26 @@ pub fn lint(src: &str) -> Vec<String> {
     warnings
 }
 
+/// If the document has front matter that is present but not valid YAML, return the
+/// parse-error message and its 1-based line in the SOURCE FILE. The front-matter
+/// block starts on the line after the opening `---`, so a YAML line `L` is file
+/// line `L + 1`; `serde_yaml` locations are 1-based, and we fall back to the fence
+/// line when the error carries none. `None` when there is no front matter or it
+/// parses cleanly. Powers a located, click-to-source diagnostic in the dev server.
+pub fn yaml_error(src: &str) -> Option<(String, u32)> {
+    let block = front_matter_block(src)?;
+    if block.trim().is_empty() {
+        return None;
+    }
+    match serde_yaml::from_str::<serde_yaml::Value>(block) {
+        Ok(_) => None,
+        Err(e) => {
+            let line = e.location().map(|l| l.line() as u32 + 1).unwrap_or(1);
+            Some((format!("front matter is not valid YAML: {e}"), line))
+        }
+    }
+}
+
 /// The leading `---` ... `---`/`...` block of a document, without the fences.
 /// `None` if the source doesn't open with a front-matter fence. The one canonical
 /// front-matter splitter (BOM- and `...`-terminator-aware); the site parser and the
@@ -195,6 +215,21 @@ mod tests {
             w[0].contains("`treme`") && w[0].contains("did you mean `theme`"),
             "got: {w:?}"
         );
+    }
+
+    #[test]
+    fn yaml_error_reports_the_file_line() {
+        // `: x` after a value on line 3 of the FILE (line 2 of the YAML block) is a
+        // mapping error; the reported line is offset past the opening `---`.
+        let (msg, line) = yaml_error("---\ntitle: ok\nbad: : x\n---\n\nbody\n").expect("an error");
+        assert!(msg.contains("not valid YAML"), "got: {msg}");
+        assert_eq!(line, 3, "should point at the file line, past the fence");
+    }
+
+    #[test]
+    fn yaml_error_none_when_valid_or_absent() {
+        assert!(yaml_error("---\ntitle: X\n---\n\nbody\n").is_none());
+        assert!(yaml_error("no front matter\n").is_none());
     }
 
     #[test]

@@ -9,17 +9,63 @@ use qmd_fast_core::BlockOp;
 
 /// A non-fatal issue surfaced in the preview (an unresolved include, the kernel
 /// state, a front-matter typo). Held in each document's state and serialized
-/// into the `full_render` / `diagnostics` messages.
-#[derive(Clone, PartialEq)]
+/// into the `full_render` / `diagnostics` messages. When `line` is set the client
+/// makes the row click-to-source; `frame` is an optional small code frame shown
+/// inline (a few source lines around `line`, the offending one marked).
+#[derive(Clone, PartialEq, Default)]
 pub struct Diagnostic {
     pub level: &'static str, // "warning" | "error"
     pub message: String,
+    /// Source file for click-to-source, relative to the doc's base dir; `None`
+    /// means "the document being previewed" (the client falls back to its path).
+    pub file: Option<String>,
+    pub line: Option<u32>, // 1-based
+    pub frame: Option<String>,
+}
+
+impl Diagnostic {
+    pub fn warn(message: impl Into<String>) -> Self {
+        Self {
+            level: "warning",
+            message: message.into(),
+            ..Self::default()
+        }
+    }
+    pub fn error(message: impl Into<String>) -> Self {
+        Self {
+            level: "error",
+            message: message.into(),
+            ..Self::default()
+        }
+    }
+    /// Attach a click-to-source location (and so make the diagnostic clickable).
+    pub fn at(mut self, file: Option<String>, line: u32) -> Self {
+        self.file = file;
+        self.line = Some(line);
+        self
+    }
+    pub fn with_frame(mut self, frame: String) -> Self {
+        self.frame = Some(frame);
+        self
+    }
 }
 
 fn diags_array(diags: &[Diagnostic]) -> Vec<serde_json::Value> {
     diags
         .iter()
-        .map(|d| serde_json::json!({ "level": d.level, "message": d.message }))
+        .map(|d| {
+            let mut o = serde_json::json!({ "level": d.level, "message": d.message });
+            if let Some(f) = &d.file {
+                o["file"] = serde_json::json!(f);
+            }
+            if let Some(l) = d.line {
+                o["line"] = serde_json::json!(l);
+            }
+            if let Some(fr) = &d.frame {
+                o["frame"] = serde_json::json!(fr);
+            }
+            o
+        })
         .collect()
 }
 

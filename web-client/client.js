@@ -14,7 +14,7 @@
 // This file is `// @ts-check`ed (see web-client/jsconfig.json), so the shapes are
 // enforced here too.
 /**
- * @typedef {{ level: string, message: string }} Diagnostic
+ * @typedef {{ level: string, message: string, file?: ?string, line?: number, frame?: string }} Diagnostic
  * @typedef {{ type: "full_render", title: ?string, body_html: string, diagnostics: Diagnostic[] }} FullRenderMsg
  * @typedef {{ type: "diagnostics", messages: Diagnostic[] }} DiagnosticsMsg
  * @typedef {{ type: "update", target_id: string, html: string }} UpdateMsg
@@ -90,9 +90,23 @@
     diagEl.style.display = list.length ? "flex" : "none";
     for (const it of list) {
       const level = it.level === "error" ? "error" : "warning";
-      const row = document.createElement("div");
-      row.className = "qmd-diag qmd-diag-" + level;
-      row.textContent = (level === "error" ? "✗ " : "⚠ ") + (it.message || it);
+      const located = typeof it.line === "number"; // clickable jump-to-source
+      const row = document.createElement(located ? "button" : "div");
+      row.className = "qmd-diag qmd-diag-" + level + (located ? " qmd-diag-loc" : "");
+      const msg = document.createElement("div");
+      msg.textContent = (level === "error" ? "✗ " : "⚠ ") + (it.message || it);
+      row.appendChild(msg);
+      if (it.frame) {
+        const pre = document.createElement("pre");
+        pre.className = "qmd-diag-frame";
+        pre.textContent = it.frame;
+        row.appendChild(pre);
+      }
+      if (located) {
+        /** @type {HTMLButtonElement} */ (row).type = "button";
+        row.title = "Open this line in your editor";
+        row.addEventListener("click", () => gotoSource(it.file || null, /** @type {number} */ (it.line)));
+      }
       diagEl.appendChild(row);
     }
     refreshAlert();
@@ -610,6 +624,20 @@
   // page's own prose/headings/code). Whichever is closer wins.
   const locatable = (/** @type {Element} */ t) =>
     /** @type {HTMLElement|null} */ (t.closest("[data-qmd-src], [data-block-id]"));
+
+  // Jump the editor to a source file:line directly (file relative to the doc's base
+  // dir, or null = the previewed doc itself). Used by located diagnostics; webview
+  // relays to the host, a browser opens vscode://. openSource() handles the el case.
+  const gotoSource = (/** @type {?string} */ file, /** @type {number} */ line) => {
+    const doc = window.QMD_DOC;
+    if (!doc) return;
+    if (inWebview) {
+      window.parent.postMessage({ type: "qmd-goto", source_file: file, sourcepos: line + ":1" }, "*");
+      return;
+    }
+    const abs = file ? doc.baseDir.replace(/\/+$/, "") + "/" + file : doc.path;
+    window.location.href = "vscode://file" + encodeURI(abs) + ":" + line + ":1";
+  };
 
   // Open the source for an element: an explicit `data-qmd-src` (site-root-relative,
   // `rel` or `rel:line`) wins; else the block's sourcepos on the current page (or an
