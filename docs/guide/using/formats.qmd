@@ -13,7 +13,8 @@ Set `format: revealjs` and the document becomes a slide deck driven by qmd-fast'
 slide and `#` starts a section that nests the following slides as a vertical stack;
 a title slide is generated from the metadata. The block diff still applies *within
 the current slide*, so a live edit re-renders one block without resetting your
-position, and double-clicking a block jumps to its source, exactly like a page.
+position, and Alt-clicking (Option-clicking on Mac) a block jumps to its source,
+exactly like a page.
 
 ```sh
 qmd-fast preview docs/demo.qmd      # live, click-to-source, hot reload

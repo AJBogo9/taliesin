@@ -70,8 +70,8 @@ qmd-fast preview hello.qmd
 ```
 
 Open `http://127.0.0.1:4321`. Edit the file and watch only the changed block
-update in place. Double-click any block to jump to its source line in your
-editor.
+update in place. Alt-click (Option-click on Mac) any block to jump to its source
+line in your editor.
 
 ## Build for publishing
 

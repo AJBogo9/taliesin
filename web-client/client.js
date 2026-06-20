@@ -174,15 +174,11 @@
     el.addEventListener("animationend", () => el.classList.remove(cls), { once: true });
   };
 
-  // --- preview control bar: theme toggle + click-to-source toggle ----------
+  // --- preview control bar: theme toggle + click-to-source hint ------------
   const inWebview = window.parent !== window;
-  // Click-to-source is an explicit "locate mode", default OFF: when on, clicks
-  // reveal source (and links stop navigating so cards/nav are locatable too), so
-  // it must default off or it would break browsing the preview. The choice persists.
-  const CLICK_KEY = "qmd-click-source";
-  let clickSource = (() => {
-    try { return localStorage.getItem(CLICK_KEY) === "1"; } catch (e) { return false; }
-  })();
+  // Click-to-source is a modifier gesture (Alt/Option-click), not a mode: a plain
+  // click always browses normally, so there's no state to toggle or remember and no
+  // way to accidentally jump to the editor. The dev menu carries a hint.
 
   // One collapsed dev menu (Next.js-style): a corner button showing the live
   // status dot, expanding to a panel with the preview-only tools — live status,
@@ -236,23 +232,14 @@
     wordCountEl = document.createElement("span");
     wordCountEl.id = "qmd-wordcount";
 
-    // Click-to-source on/off. When off, clicks pass through normally (so you can
-    // select text / drive OJS widgets without jumping to source).
-    const srcBtn = document.createElement("button");
-    srcBtn.id = "qmd-src-ctl";
-    srcBtn.className = "qmd-dev-ctl";
-    srcBtn.type = "button";
-    srcBtn.textContent = "Click-to-source";
-    srcBtn.title =
-      "Double-click any block to reveal its source" + (inWebview ? " in the editor" : " in your editor");
-    const syncSrc = () => srcBtn.setAttribute("aria-pressed", clickSource ? "true" : "false");
-    srcBtn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      clickSource = !clickSource;
-      try { localStorage.setItem(CLICK_KEY, clickSource ? "1" : "0"); } catch (e) {}
-      syncSrc();
-    });
-    syncSrc();
+    // Click-to-source hint: Alt/Option-click any block to open its source. No toggle
+    // — a plain click browses normally; the modifier is the whole gesture.
+    const srcHint = document.createElement("span");
+    srcHint.id = "qmd-src-hint";
+    srcHint.textContent = "Alt-click a block";
+    srcHint.title =
+      "Hold Alt (Option on Mac) and click any block to open its source" +
+      (inWebview ? " in the editor" : " in your editor");
 
     // Restart the warm Jupyter kernel: drops the (possibly dead/wedged) kernel and
     // re-runs every cell against a fresh one. Recovers after fixing QMD_FAST_PYTHON.
@@ -276,7 +263,7 @@
       }
     });
 
-    panel.append(devRow("Status", statusEl), devRow("Words", wordCountEl), srcBtn, kernelBtn);
+    panel.append(devRow("Status", statusEl), devRow("Words", wordCountEl), devRow("Source", srcHint), kernelBtn);
 
     // Single-doc preview has no site navbar, so give the dev menu its own theme
     // toggle (wired by the shared theme_head). Sites use the navbar's instead.
@@ -655,27 +642,21 @@
 
   const inDevMenu = (/** @type {Element} */ t) => !!t.closest("#qmd-controls");
 
-  // Single click in locate mode (click-to-source ON): pulse the target + report it,
-  // and suppress link navigation so a card/link can be double-clicked to its source.
+  // Click-to-source: Alt/Option-click any block to jump to its source line (browser
+  // -> vscode://, webview -> host). A plain click browses normally, so there's no
+  // mode and no way to land in the editor by accident.
   document.addEventListener("click", (e) => {
+    if (!e.altKey) return;
     const t = e.target instanceof Element ? e.target : null;
-    if (!clickSource || !t || inDevMenu(t)) return;
-    if (t.closest("a")) e.preventDefault(); // locate mode: links don't navigate
+    if (!t || inDevMenu(t)) return;
     const el = locatable(t);
     if (!el) return;
+    e.preventDefault(); // suppress text selection / link navigation on the Alt-click
     pulse(el, "qmd-hl-flash");
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "click_block", ...blockRef(el) }));
     }
-  });
-
-  // Double click in locate mode: jump to source (browser -> editor, webview -> host).
-  document.addEventListener("dblclick", (e) => {
-    if (!clickSource) return;
-    const t = e.target instanceof Element ? e.target : null;
-    if (!t || inDevMenu(t)) return;
-    const el = locatable(t);
-    if (el) { e.preventDefault(); openSource(el); }
+    openSource(el);
   });
 
   // Reverse sync: highlight (and reveal/scroll to) the block under the editor

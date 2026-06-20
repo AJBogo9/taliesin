@@ -457,8 +457,6 @@ pub(crate) const STATUS_CSS: &str = "\
       background: var(--qmd-code-bg, #f5f5f5); color: var(--qmd-fg, #111); \
       border: 1px solid var(--qmd-border, #e0e0e0); border-radius: 6px; padding: .3rem .55rem; } \
     .qmd-dev-ctl:hover { border-color: var(--qmd-accent, #4c8dff); } \
-    .qmd-dev-ctl[aria-pressed=\"false\"] { opacity: .6; } \
-    .qmd-dev-ctl[aria-pressed=\"true\"]::before { content: \"\\2713\"; color: #3fb950; font-weight: 700; } \
     .qmd-dev-theme svg { width: 14px; height: 14px; } \
     #qmd-diagnostics { display: none; flex-direction: column; gap: .3rem; max-width: 22rem; } \
     #qmd-diagnostics .qmd-diag { padding: .3rem .5rem; border-radius: 6px; background: var(--qmd-code-bg, #f5f5f5); \

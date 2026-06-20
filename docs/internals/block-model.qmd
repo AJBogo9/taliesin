@@ -117,9 +117,9 @@ apart from each other.
 
 Click-to-source (goal #1) rides entirely on the two source attributes:
 
-- **Forward (preview → editor).** Double-clicking a block reads its
-  `data-sourcepos` (+ `data-source-file`) and opens the exact source line — a
-  `vscode://file/<path>:<line>:<col>` deep link by default. The source positions
+- **Forward (preview → editor).** Alt-clicking (Option-clicking on Mac) a block
+  reads its `data-sourcepos` (+ `data-source-file`) and opens the exact source
+  line: a `vscode://file/<path>:<line>:<col>` deep link by default. The source positions
   start as comrak's per-node ranges; on the way to becoming blocks they are
   **translated through the include source map** (`includes.rs` records a
   `LineOrigin` for every expanded line → its origin file + line), so a block that

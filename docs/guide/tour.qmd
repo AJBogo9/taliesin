@@ -66,4 +66,4 @@ The same block renders identically here and in a scrolling page.
 ## Thanks
 
 - Edit the source and watch this slide update in place
-- Double-click any block to jump to its source line in your editor
+- Alt-click (Option-click on Mac) any block to jump to its source line in your editor

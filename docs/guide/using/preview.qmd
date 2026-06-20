@@ -21,10 +21,9 @@ your phone) lands on the change.
 
 ## Click-to-source and editor sync
 
-In the browser preview, single-clicking a block highlights it (and reports it to
-the server); **double-clicking opens its exact source line in your editor**
-(including across `{{< include >}}`d files) via a `vscode://` deep link — VS Code
-is assumed for now. The client also speaks a `qmd-goto` / `qmd-cursor`
+In the browser preview, a plain click browses normally; **Alt-click (Option-click
+on Mac) any block to open its exact source line in your editor** (including across
+`{{< include >}}`d files) via a `vscode://` deep link (VS Code is assumed for now). The client also speaks a `qmd-goto` / `qmd-cursor`
 `postMessage` protocol, so an embedded editor (a VS Code extension, say) can host
 the preview and add reverse cursor sync — highlighting the block under your
 cursor — without forking anything.

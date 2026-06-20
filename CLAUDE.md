@@ -64,7 +64,7 @@ crates/server    qmd-fast-server, bin `qmd-fast`: CLI + websocket dev server
   src/kernel.rs    warm Jupyter kernel (ZMQ), reused across edits
   src/log.rs       colorized dev-server console output (to stderr)
 web-client/      browser preview client (vanilla JS, the only client): client.js mounts
-                 blocks + applies ops (double-click opens source in the editor),
+                 blocks + applies ops (Alt-click opens source in the editor),
                  search.js (Cmd-K), toc-spy.js (scrollspy)
 docs/            project's own manual: TWO sibling book projects, authored in .qmd
                  (dogfooding). docs/guide/ = User Guide (using/ + reference/ + demo/tour
