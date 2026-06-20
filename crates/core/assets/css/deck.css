@@ -151,8 +151,24 @@ body { background: transparent; }
   outline: 2px solid var(--deck-accent, #4c8dff);
   cursor: grabbing;
 }
-.reveal.overview .slides section.qmd-drop-before { box-shadow: -11px 0 0 -3px var(--deck-accent, #4c8dff); }
-.reveal.overview .slides section.qmd-drop-after { box-shadow: 11px 0 0 -3px var(--deck-accent, #4c8dff); }
+/* The insertion bar: a glowing accent line in the gap where the slide will drop. In
+   `.slides` world coords; its width is counter-scaled (via --qmd-thread) to stay a
+   constant ~6px on screen at any zoom. */
+.qmd-drop-bar { display: none; }
+.reveal.overview .qmd-drop-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(var(--qmd-thread, 16px) * 1.7);
+  height: var(--qmd-deck-h, 540px);
+  margin-left: calc(var(--qmd-thread, 16px) * -0.85);
+  border-radius: 999px;
+  background: var(--deck-accent, #4c8dff);
+  box-shadow: 0 0 calc(var(--qmd-thread, 16px) * 2.5) calc(var(--qmd-thread, 16px) * 0.4) var(--deck-accent, #4c8dff);
+  transform-origin: 0 0;
+  pointer-events: none;
+  z-index: 6;
+}
 /* A hint on how to drive the map, shown in screen space (not the scaled .slides) and
    auto-fading a few seconds after the overview opens. */
 .reveal.overview::after {

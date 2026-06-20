@@ -798,14 +798,25 @@
     if (before === dragged) before = leaves[idx + 1] || null; // skip self
     return { before: before };
   }
+  function cellOfTile(sec) { var hv = coordsOfTile(sec); return hv ? posOf(hv.h, hv.v) : null; }
+  // A glowing vertical bar in the gap where the slide will land. Drawn in `.slides`
+  // world coords (so it pans/zooms with the camera and isn't clipped by a tile's
+  // `overflow:hidden`), at the left edge of the `before` tile, or after the last.
   function showDropIndicator(t) {
-    clearDropIndicator();
-    if (!t) return;
-    if (t.before) t.before.classList.add('qmd-drop-before');
-    else { var L = allSlides(); if (L.length) L[L.length - 1].classList.add('qmd-drop-after'); }
+    var s = slidesEl(); if (!s) return;
+    var bar = s.querySelector(':scope > .qmd-drop-bar');
+    if (!bar) { bar = document.createElement('div'); bar.className = 'qmd-drop-bar'; s.appendChild(bar); }
+    var W = deck.config.width, H = deck.config.height, cell = null, atEnd = false;
+    if (t && t.before) cell = cellOfTile(t.before);
+    else if (t) { var L = allSlides(); cell = L.length ? cellOfTile(L[L.length - 1]) : null; atEnd = true; }
+    if (!cell) { bar.style.display = 'none'; return; }
+    var x = (atEnd ? cell.col + 1 : cell.col) * W;
+    bar.style.transform = 'translate(' + x + 'px,' + (cell.row * H) + 'px)';
+    bar.style.display = 'block';
   }
   function clearDropIndicator() {
-    allSlides().forEach(function (s) { s.classList.remove('qmd-drop-before', 'qmd-drop-after'); });
+    var s = slidesEl(); var bar = s && s.querySelector(':scope > .qmd-drop-bar');
+    if (bar) bar.style.display = 'none';
   }
   // Pan (if needed) so the highlighted tile stays comfortably on-screen; keep zoom.
   function ensureCurrentTileVisible(animate) {
