@@ -7,7 +7,7 @@ hero:
   headline: "Technical writing at the speed of code"
   lead: "A focused dev server that turns one .qmd file into a live post, slide deck, book, or website — updating the instant you save."
   actions:
-    - { text: "Read the docs", href: "docs/", primary: true }
+    - { text: "Read the docs", href: "docs/guide/", primary: true }
     - { text: "Explore the features", href: "features.qmd" }
 ---
 
@@ -50,7 +50,7 @@ code that actually runs on the slide.
 A sidebar, numbered chapters, cross-chapter references, and full-text search. These
 very docs are a qmd-fast book.
 
-[Read the docs book →](docs/)
+[Read the docs book →](docs/guide/)
 :::
 
 ::: {.feature}
@@ -80,7 +80,7 @@ moves, and the kernel never cold-starts.
 ## Built the way you would build yours
 
 There is nothing here a screenshot could fake: **this landing page, its
-[documentation book](docs/), and the slide deck above are all built and served by
+[documentation book](docs/guide/), and the slide deck above are all built and served by
 qmd-fast** — from plain `.qmd` files in one repository. If it reads well here, the
 framework is doing its job.
 
@@ -90,5 +90,5 @@ framework is doing its job.
 Author in `.qmd`, preview it live, and ship self-contained HTML — a post, a deck, a
 book, or a site.
 
-[Get started](docs/using/getting-started.html){.btn .btn-primary .btn-lg} [Browse the docs](docs/){.btn .btn-lg}
+[Get started](docs/guide/using/getting-started.html){.btn .btn-primary .btn-lg} [Browse the docs](docs/guide/){.btn .btn-lg}
 :::

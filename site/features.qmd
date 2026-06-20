@@ -8,7 +8,7 @@ hero:
   lead: "qmd-fast does one thing — author HTML from .qmd — and makes the loop from keystroke to rendered page instant. Here is what that buys you."
   actions:
     - { text: "See the document types", href: "formats.qmd", primary: true }
-    - { text: "Read the docs", href: "docs/" }
+    - { text: "Read the docs", href: "docs/guide/" }
 ---
 
 {{< video assets/live-edit-light.mp4 dark=assets/live-edit-dark.mp4 caption="One save. Only the changed block re-renders, in place." >}}
@@ -151,5 +151,5 @@ RSS, OpenGraph, and search — built to a static `_site/`.
 ::: {.hero}
 ## See the formats, or read the manual
 
-[Tour the document types](formats.qmd){.btn .btn-primary .btn-lg} [Read the docs](docs/){.btn .btn-lg}
+[Tour the document types](formats.qmd){.btn .btn-primary .btn-lg} [Read the docs](docs/guide/){.btn .btn-lg}
 :::

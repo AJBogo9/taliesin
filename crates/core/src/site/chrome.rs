@@ -5,6 +5,30 @@
 
 use super::*;
 
+/// Magnifier glyph for the search control (single-quoted attrs so it embeds in a
+/// double-quoted Rust string; `currentColor` so it inherits the control's colour).
+const SEARCH_ICON: &str = "<svg width='15' height='15' viewBox='0 0 16 16' fill='none' stroke='currentColor' stroke-width='1.6' aria-hidden='true'><circle cx='7' cy='7' r='4.5'/><path d='M10.5 10.5 14 14' stroke-linecap='round'/></svg>";
+
+/// A search control that opens the Cmd-K palette. It carries `data-qmd-search`,
+/// which `web-client/search.js` wires (by click delegation) to open the same
+/// palette the keyboard shortcut does. Rendered in the navbar (websites) and the
+/// book sidebar; `full` widens it with a label for the sidebar.
+fn search_button(full: bool) -> String {
+    let (cls, label) = if full {
+        (
+            "qmd-search-btn qmd-search-full",
+            "<span class='qmd-search-label'>Search the book</span>",
+        )
+    } else {
+        ("qmd-search-btn", "")
+    };
+    format!(
+        "<button class='{cls}' type='button' data-qmd-search aria-label='Search' \
+         aria-keyshortcuts='Control+K Meta+K'>{SEARCH_ICON}{label}\
+         <kbd class='qmd-search-kbd'>\u{2318}K</kbd></button>"
+    )
+}
+
 impl Site {
     /// The site navbar: a brand (site title → home) plus the configured left/right
     /// item groups. `depth` is the current page's path depth so links resolve
@@ -37,8 +61,10 @@ impl Site {
         for it in &self.config.nav.right {
             s.push_str(&self.nav_link(it, current, &up));
         }
-        // A real, shipped light/dark toggle (wired by theme_head; works in `build`
-        // too). Dev-only tools live in the floating dev menu, not the navbar.
+        // A visible search control (opens the Cmd-K palette) + a real, shipped
+        // light/dark toggle (wired by theme_head; works in `build` too). Dev-only
+        // tools live in the floating dev menu, not the navbar.
+        s.push_str(&search_button(false));
         s.push_str(
             "<button class=\"qmd-theme-toggle\" type=\"button\" data-qmd-theme-toggle \
              aria-label=\"Toggle theme\"></button>",
@@ -203,6 +229,8 @@ impl Site {
              aria-label=\"Toggle light/dark theme\"></button>",
         );
         s.push_str("</div>");
+        // A visible search box under the title (opens the same Cmd-K palette).
+        s.push_str(&search_button(true));
         s.push_str("<ul class=\"qmd-book-chapters\">");
         for e in &book.entries {
             if let Some(part) = &e.part {

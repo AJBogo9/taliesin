@@ -46,6 +46,19 @@
     background: transparent; color: var(--qmd-muted); transition: color .12s ease, background .12s ease; }
   .qmd-theme-toggle:hover { color: var(--qmd-fg); background: var(--qmd-code-bg); }
   .qmd-theme-toggle svg { display: block; }
+  /* visible search control (navbar + book sidebar) that opens the Cmd-K palette */
+  .qmd-search-btn { display: inline-flex; align-items: center; gap: .4rem;
+    background: var(--qmd-code-bg); color: var(--qmd-muted);
+    border: 1px solid var(--qmd-border); border-radius: 8px;
+    padding: .32rem .55rem; font: inherit; font-size: .9rem; line-height: 1;
+    cursor: pointer; transition: border-color .12s ease, color .12s ease; }
+  .qmd-search-btn:hover { border-color: var(--qmd-accent); color: var(--qmd-fg); }
+  .qmd-search-btn svg { flex: none; }
+  .qmd-search-kbd { font-size: .72rem; border: 1px solid var(--qmd-border);
+    border-radius: 4px; padding: 0 .3rem; color: var(--qmd-muted); }
+  /* book sidebar: a full-width search box under the title */
+  .qmd-search-full { width: 100%; margin: .1rem 0 1.1rem; }
+  .qmd-search-full .qmd-search-label { margin-right: auto; }
   .qmd-nav-burger { display: none; }
   .qmd-nav-toggle { display: none; }
 
@@ -192,10 +205,17 @@ body.qmd-book-body { max-width: none; margin: 0; padding: 0; --qmd-nav-h: 0rem; 
 .qmd-book-prev, .qmd-book-next { color: var(--qmd-muted); text-decoration: none; font-size: .95rem; }
 .qmd-book-prev:hover, .qmd-book-next:hover { color: var(--qmd-accent); }
 .qmd-book-postnav .qmd-nav-spacer { flex: 1 1 auto; }
+/* The post-nav is a sibling AFTER the content+TOC grid, so it would span the full
+   reading width and push "next" out to the TOC's right edge. Constrain it to the
+   text column (total minus the TOC column and the grid gap; keep in sync with
+   `.qmd-book-inner.has-toc` above) so prev/next stay within the middle column. */
+.qmd-book-inner.has-toc + .qmd-book-postnav { width: calc(100% - 13rem - 2.5rem); }
 .header-section-number { color: var(--qmd-muted); font-weight: inherit; margin-right: .15em; }
 @media (max-width: 60rem) {
   .qmd-book { flex-direction: column; gap: 0; }
   .qmd-book-sidebar { position: static; width: 100%; flex-basis: auto; max-height: none;
     border-bottom: 1px solid var(--qmd-border); margin-bottom: 1.2rem; }
   .qmd-book-inner.has-toc { grid-template-columns: minmax(0, 1fr); }
+  /* single-column: no TOC beside the text, so the post-nav spans full width again */
+  .qmd-book-inner.has-toc + .qmd-book-postnav { width: auto; }
 }

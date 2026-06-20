@@ -31,15 +31,16 @@ The theme (serif body, sans headings, light/dark toggle) is the qmd-fast default
 qmd-fast preview site
 ```
 
-The `Docs` nav link resolves live: `_quarto.yml`'s `mounts: { docs: ../docs }` makes
-`preview` serve the sibling docs book under `/docs/` (rendered on request, so content
-edits show on refresh).
+The `Guide` and `Internals` nav links resolve live: `_quarto.yml`'s `mounts:` serves
+the two sibling docs books under `/docs/guide/` and `/docs/internals/` (rendered on
+request, so content edits show on refresh).
 
-## Build (single-tree: site at root, docs book at /docs)
+## Build (single-tree: site at root, two docs books under /docs)
 
 ```sh
-qmd-fast build site --out _site
-qmd-fast build docs --out _site/docs
+qmd-fast build site            --out _site
+qmd-fast build docs/guide      --out _site/docs/guide
+qmd-fast build docs/internals  --out _site/docs/internals
 ```
 
 Deploy `_site/` to any static host with directory indexing.

@@ -153,7 +153,7 @@
     if (!isSite && !buildIndex().length) return;
     overlay.hidden = false;
     input.value = "";
-    input.placeholder = isSite ? "Search the book…" : "Search this document…";
+    input.placeholder = isSite ? "Search…" : "Search this document…";
     // While the cross-page index is fetching on first open, show a loading row.
     list.innerHTML = "";
     if (isSite && !window.QMD_SEARCH_INDEX) {
@@ -361,4 +361,15 @@
     },
     true,
   );
+
+  // A visible search control (the navbar / book-sidebar button) carries
+  // `data-qmd-search`; clicking it opens the same palette as Cmd-K. Delegated, so
+  // it works no matter when the control entered the DOM.
+  document.addEventListener("click", function (e) {
+    var t = e.target && e.target.closest && e.target.closest("[data-qmd-search]");
+    if (t) {
+      e.preventDefault();
+      isOpen() ? close() : open();
+    }
+  });
 })();

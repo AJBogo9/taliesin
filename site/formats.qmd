@@ -8,7 +8,7 @@ hero:
   lead: "A blog post, a slide deck, a book, and a website are the same document seen four ways — they share the block model, the offline math and highlighting, and the live edit loop."
   actions:
     - { text: "See the features", href: "features.qmd", primary: true }
-    - { text: "Read the docs", href: "docs/" }
+    - { text: "Read the docs", href: "docs/guide/" }
 ---
 
 ## Blog posts & papers {#blog-posts}
@@ -49,7 +49,7 @@ references. References like `@fig-` and `@sec-` resolve and number across chapte
 Cmd-K palette searches the whole book, and each chapter is still a normal `.qmd` you
 can preview on its own.
 
-[Read the docs — they are a qmd-fast book](docs/){.btn .btn-primary}
+[Read the docs — they are a qmd-fast book](docs/guide/){.btn .btn-primary}
 
 ## Multi-page websites {#websites}
 
@@ -60,11 +60,11 @@ built to a static `_site/` you can host anywhere. Intra-site `.qmd` links are
 rewritten to `.html` automatically.
 
 This site is the example. The page you are reading, its navbar and footer, and the
-dark/light toggle are all a qmd-fast website — and the [docs](docs/) it links to are
+dark/light toggle are all a qmd-fast website — and the [docs](docs/guide/) it links to are
 a qmd-fast book, deployed in the same tree under `/docs`.
 
 ::: {.hero}
 ## Try it on your own writing
 
-[Get started](docs/using/getting-started.html){.btn .btn-primary .btn-lg} [Back to features](features.qmd){.btn .btn-lg}
+[Get started](docs/guide/using/getting-started.html){.btn .btn-primary .btn-lg} [Back to features](features.qmd){.btn .btn-lg}
 :::

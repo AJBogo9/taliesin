@@ -1,22 +1,24 @@
-# qmd-fast marketing site — a website project, built by qmd-fast itself.
-# Native flat schema (HTML-only; no `project:`/`format:` nesting). The docs book is
-# a separate project; `mounts:` serves it under /docs in `preview` (the static
-# `build` wires it with `build docs --out _site/docs`).
+# qmd-fast marketing site: a website project, built by qmd-fast itself.
+# Native flat schema (HTML-only; no `project:`/`format:` nesting). The docs are two
+# separate book projects; `mounts:` serves them under /docs/guide and /docs/internals
+# in `preview` (the static `build` wires each with its own `build ... --out` step).
 title: "qmd-fast"
 description: "A fast, single-purpose dev server that turns one .qmd file into a live blog post, slide deck, book, or website — with executable code and an edit loop that updates the instant you save."
 url: "https://qmd-fast.dev"
 favicon: favicon.svg
 toc: false
 
-# Serve the sibling docs book under /docs so the "Docs" nav link resolves live.
+# Serve the two sibling docs books so the nav links resolve live in `preview`.
 mounts:
-  docs: ../docs
+  docs/guide: ../docs/guide
+  docs/internals: ../docs/internals
 
 nav:
   left:
     - { text: "Features", href: features.qmd }
     - { text: "Document types", href: formats.qmd }
-    - { text: "Docs", href: "docs/" }
+    - { text: "Guide", href: "docs/guide/" }
+    - { text: "Internals", href: "docs/internals/" }
   right:
     - { icon: github, href: "https://github.com/AJBogo9/qmd-fast" }
 
@@ -24,5 +26,6 @@ footer:
   left:
     - { text: "Built with qmd-fast" }
   right:
-    - { text: "Docs", href: "docs/" }
+    - { text: "Guide", href: "docs/guide/" }
+    - { text: "Internals", href: "docs/internals/" }
     - { icon: github, href: "https://github.com/AJBogo9/qmd-fast" }
