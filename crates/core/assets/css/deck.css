@@ -482,9 +482,12 @@ html.qmd-scroll .reveal .slides {
 html.qmd-scroll .reveal .slides > section,
 html.qmd-scroll .reveal .slides > section > section {
   position: relative !important; display: block !important;
+  transform: none !important; /* drop the grid-cell transform so sections stack in flow */
   width: auto; height: auto; min-height: 0; box-sizing: border-box;
   padding: 1.6rem 0; border-top: 1px solid var(--deck-rule, #e6e7ea); overflow: visible;
 }
+/* The per-slide background layer + LOD title cards have no place in the reader. */
+html.qmd-scroll .qmd-slide-bg, html.qmd-scroll .qmd-lod, html.qmd-scroll .qmd-threads { display: none !important; }
 html.qmd-scroll .reveal .slides > section:first-child { border-top: 0; }
 html.qmd-scroll .reveal .slides > section.qmd-scroll-stack { padding: 0; border-top: 0; }
 html.qmd-scroll .qmd-slide-number { display: none; }
