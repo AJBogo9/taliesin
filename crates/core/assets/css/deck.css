@@ -145,6 +145,33 @@ body { background: transparent; }
   outline-color: rgba(160, 170, 190, .55);
   box-shadow: 0 18px 52px rgba(0, 0, 0, .62);
 }
+/* The overview is a draggable map: grab cursor on the canvas (tiles keep pointer),
+   grabbing while panning. */
+.reveal.overview { cursor: grab; }
+.reveal.overview.qmd-ov-panning,
+.reveal.overview.qmd-ov-panning .slides > section { cursor: grabbing; }
+/* A hint on how to drive the map, shown in screen space (not the scaled .slides) and
+   auto-fading a few seconds after the overview opens. */
+.reveal.overview::after {
+  content: "scroll to zoom · drag to pan · 0 to fit";
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  transform: translateX(-50%);
+  padding: 5px 12px;
+  border-radius: 999px;
+  font: 500 13px/1 system-ui, sans-serif;
+  letter-spacing: .01em;
+  color: rgba(232, 234, 240, .82);
+  background: rgba(20, 22, 28, .62);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  pointer-events: none;
+  z-index: 30;
+  animation: qmd-ov-hint 4.5s ease forwards;
+}
+@keyframes qmd-ov-hint { 0%, 64% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .reveal.overview::after { animation: none; opacity: .85; } }
 
 /* Magic-move: the code blocks in a `::: {.magic-move}` are stacked in one grid
    cell (so the container sizes to the tallest); deck.js shows the active block and,

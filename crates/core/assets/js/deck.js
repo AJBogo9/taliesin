@@ -105,9 +105,8 @@
     var sw = rev.clientWidth || window.innerWidth, sh = rev.clientHeight || window.innerHeight;
     var scale, cx, cy;
     if (deck.overview) {
-      var g = gridDims(), gw = g.cols * W, gh = g.rows * H;
-      scale = Math.min(sw / gw, sh / gh) * (1 - 2 * 0.06); // frame the whole map, with margin
-      cx = gw / 2; cy = gh / 2;
+      if (!deck.ov) fitOverview();                          // free "map" camera: fit-all, then wheel/drag
+      scale = deck.ov.scale; cx = deck.ov.cx; cy = deck.ov.cy;
     } else {
       scale = Math.min(sw / W, sh / H);                    // one cell fills the stage exactly
       var top = tops()[deck.h], row = top && isStack(top) ? deck.v : 0;
@@ -125,6 +124,7 @@
     positionGrid();
     applyBackgrounds();
     allSlides().forEach(fitSlide); // all slides are laid out now, not just the current one
+    if (deck.overview) fitOverview(); // viewport changed: re-fit the map
     setCamera(false);
   }
 
@@ -493,10 +493,92 @@
     }
   }
 
-  // --- overview (zoom the camera out to the whole map) -------------------
+  // --- overview (a free "map" camera over the whole grid) ----------------
+  // The overview is a pannable, zoomable map (so it scales to 100+ slides, not just
+  // a fit-all that makes every tile a speck). deck.ov = {scale, cx, cy} is the
+  // camera: the world point (cx,cy) sits at screen centre, at zoom `scale`. `fit` is
+  // the zoomed-out bound (whole map visible); maxScale (one tile fills the stage) is
+  // the zoomed-in bound. Wheel zooms toward the cursor, drag pans, `0` re-fits.
   function markCurrentTile() {
     var cur = currentSlide();
     allSlides().forEach(function (s) { s.classList.toggle('qmd-overview-current', s === cur); });
+  }
+  function fitOverview() {
+    var rev = revealEl(); if (!rev) return;
+    var W = deck.config.width, H = deck.config.height;
+    var sw = rev.clientWidth || window.innerWidth, sh = rev.clientHeight || window.innerHeight;
+    var g = gridDims(), gw = g.cols * W, gh = g.rows * H;
+    var fit = Math.min(sw / gw, sh / gh) * (1 - 2 * 0.06); // whole map, with margin
+    if (!(fit > 0)) fit = 1;
+    deck.ov = { scale: fit, cx: gw / 2, cy: gh / 2, fit: fit };
+  }
+  function ovStage() {
+    var rev = revealEl();
+    var W = deck.config.width, H = deck.config.height;
+    var sw = rev.clientWidth || window.innerWidth, sh = rev.clientHeight || window.innerHeight;
+    return { sw: sw, sh: sh, maxScale: Math.min(sw / W, sh / H) };
+  }
+  // Keep the map from drifting into the void: clamp the centred point to the grid
+  // plus a one-cell margin on every side.
+  function clampOv() {
+    if (!deck.ov) return;
+    var W = deck.config.width, H = deck.config.height;
+    var g = gridDims(), gw = g.cols * W, gh = g.rows * H;
+    deck.ov.cx = Math.max(-W, Math.min(deck.ov.cx, gw + W));
+    deck.ov.cy = Math.max(-H, Math.min(deck.ov.cy, gh + H));
+  }
+  function onOverviewWheel(e) {
+    if (!deck.overview) return;
+    if (!deck.ov) fitOverview();
+    e.preventDefault();
+    var st = ovStage(), rev = revealEl(), r = rev.getBoundingClientRect();
+    var px = e.clientX - r.left, py = e.clientY - r.top;   // cursor in stage coords
+    var scale = deck.ov.scale;
+    var tx = st.sw / 2 - scale * deck.ov.cx, ty = st.sh / 2 - scale * deck.ov.cy;
+    var wx = (px - tx) / scale, wy = (py - ty) / scale;    // world point under the cursor
+    var ns = scale * Math.exp(-e.deltaY * 0.0015);          // smooth, proportional zoom
+    ns = Math.max(deck.ov.fit, Math.min(ns, st.maxScale));
+    deck.ov.scale = ns;
+    deck.ov.cx = (st.sw / 2 - (px - ns * wx)) / ns;         // keep that point under the cursor
+    deck.ov.cy = (st.sh / 2 - (py - ns * wy)) / ns;
+    clampOv();
+    setCamera(false);
+  }
+  var ovDrag = null;
+  function onOverviewPointerDown(e) {
+    if (!deck.overview || !deck.ov || e.button !== 0) return;
+    ovDrag = { x: e.clientX, y: e.clientY, cx: deck.ov.cx, cy: deck.ov.cy, moved: false };
+  }
+  function onOverviewPointerMove(e) {
+    if (!ovDrag) return;
+    var dx = e.clientX - ovDrag.x, dy = e.clientY - ovDrag.y;
+    if (!ovDrag.moved && dx * dx + dy * dy < 25) return;    // 5px before it counts as a drag
+    ovDrag.moved = true;
+    revealEl().classList.add('qmd-ov-panning');
+    deck.ov.cx = ovDrag.cx - dx / deck.ov.scale;
+    deck.ov.cy = ovDrag.cy - dy / deck.ov.scale;
+    clampOv();
+    setCamera(false);
+  }
+  function onOverviewPointerUp() {
+    if (ovDrag && ovDrag.moved) deck.ovDragged = true;      // a pan: swallow the click that follows
+    ovDrag = null;
+    var rev = revealEl(); if (rev) rev.classList.remove('qmd-ov-panning');
+  }
+  // Pan (if needed) so the highlighted tile stays comfortably on-screen; keep zoom.
+  function ensureCurrentTileVisible(animate) {
+    if (!deck.overview || !deck.ov) return;
+    var st = ovStage(), W = deck.config.width, H = deck.config.height;
+    var top = tops()[deck.h], row = top && isStack(top) ? deck.v : 0;
+    var wx = deck.h * W + W / 2, wy = row * H + H / 2;
+    var scale = deck.ov.scale;
+    var sx = st.sw / 2 + scale * (wx - deck.ov.cx);
+    var sy = st.sh / 2 + scale * (wy - deck.ov.cy);
+    var mx = st.sw * 0.18, my = st.sh * 0.18;
+    if (sx < mx || sx > st.sw - mx || sy < my || sy > st.sh - my) {
+      deck.ov.cx = wx; deck.ov.cy = wy; clampOv();
+      setCamera(animate);
+    }
   }
   function setOverview(on) {
     if (on === deck.overview) return;
@@ -505,13 +587,13 @@
     deck.overview = on;
     rev.classList.toggle('overview', on);
     if (on && deck.draw && deck.draw.on) { deck.draw.on = false; rev.classList.remove('qmd-drawing'); }
-    if (on) markCurrentTile();
-    else allSlides().forEach(function (s) { s.classList.remove('qmd-overview-current'); });
+    if (on) { fitOverview(); markCurrentTile(); }
+    else { deck.ov = null; allSlides().forEach(function (s) { s.classList.remove('qmd-overview-current'); }); }
     positionGrid(); // add (or remove) the per-tile gutter shrink
     setCamera(true); // zoom out to the map, or back into the current cell
   }
-  // Move the overview highlight one leaf forward/back in deck order, keeping the
-  // camera framed on the whole map.
+  // Move the overview highlight one leaf forward/back in deck order, keeping it
+  // on-screen as the map pans.
   function moveHighlight(delta) {
     var leaves = allSlides();
     var i = leaves.indexOf(currentSlide());
@@ -522,9 +604,11 @@
       if (v >= 0) { deck.h = h; deck.v = v; break; }
     }
     markCurrentTile();
+    ensureCurrentTileVisible(true);
   }
   function onSlidesClick(e) {
     if (!deck.overview) return;
+    if (deck.ovDragged) { deck.ovDragged = false; return; } // that was a pan, not a pick
     var sec = e.target.closest && e.target.closest('.reveal .slides section');
     if (!sec) return;
     e.preventDefault();
@@ -858,6 +942,7 @@
         case 'Escape': case 'Enter': case ' ': case 'o': setOverview(false); moveTo(deck.h, deck.v, true); break;
         case 'ArrowRight': case 'ArrowDown': moveHighlight(1); break;
         case 'ArrowLeft': case 'ArrowUp': moveHighlight(-1); break;
+        case '0': fitOverview(); setCamera(true); break; // re-fit the whole map
         default: handled = false;
       }
       if (handled) e.preventDefault();
@@ -1117,6 +1202,10 @@
       rev.addEventListener('touchstart', onTouchStart, { passive: true });
       rev.addEventListener('touchend', onTouchEnd, { passive: true });
       slidesEl().addEventListener('click', onSlidesClick);
+      rev.addEventListener('wheel', onOverviewWheel, { passive: false }); // overview: zoom the map
+      rev.addEventListener('pointerdown', onOverviewPointerDown);         // overview: drag to pan
+      window.addEventListener('pointermove', onOverviewPointerMove);
+      window.addEventListener('pointerup', onOverviewPointerUp);
       window.addEventListener('hashchange', onHashChange);
       buildChrome(); // the control menu + progress bar + nav arrows
       // Embedded in a same-origin page: follow the host's light/dark toggle live.
