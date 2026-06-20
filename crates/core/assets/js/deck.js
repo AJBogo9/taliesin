@@ -171,12 +171,14 @@
     s.classList.toggle('qmd-cam-anim', !!animate);
     s.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
     document.documentElement.style.setProperty('--qmd-deck-scale', String(scale));
+    updateMinimapView(); // keep the minimap's current-view rectangle in sync
   }
   function layout() {
     if (!slidesEl()) return;
     positionGrid();
     applyBackgrounds();
     buildLodCards(); // semantic-zoom title cards (shown when zoomed far out)
+    buildMinimap(); // overview+detail minimap (shown when zoomed past fit)
     allSlides().forEach(fitSlide); // all slides are laid out now, not just the current one
     if (deck.overview) fitOverview(); // viewport changed: re-fit the map
     setCamera(false);
@@ -572,6 +574,7 @@
   function markCurrentTile() {
     var cur = currentSlide();
     allSlides().forEach(function (s) { s.classList.toggle('qmd-overview-current', s === cur); });
+    markMinimapCurrent();
   }
   function fitOverview() {
     var rev = revealEl(); if (!rev) return;
@@ -685,6 +688,73 @@
       if (sec === T[h] || v >= 0) { setOverview(false); moveTo(h, v < 0 ? 0 : v, true); return; }
     }
     setOverview(false);
+  }
+
+  // --- minimap (overview+detail) -----------------------------------------
+  // When the map is zoomed past fit, a corner minimap shows the whole deck as a
+  // schematic of tiles plus a rectangle for the current view; click/drag it to fly
+  // the camera. (Cockburn/Karlson/Bederson: pan+zoom WITH an overview is the most
+  // efficient navigation technique.) Rebuilt on layout; the view rect tracks setCamera.
+  function buildMinimap() {
+    var rev = revealEl(); if (!rev) return;
+    var mm = rev.querySelector(':scope > .qmd-minimap'), inner;
+    if (!mm) {
+      mm = document.createElement('div');
+      mm.className = 'qmd-minimap';
+      mm.innerHTML = '<div class="qmd-minimap-inner"><div class="qmd-mini-view"></div></div>';
+      rev.appendChild(mm);
+      inner = mm.firstChild;
+      var dragging = false;
+      var fly = function (e) {
+        if (!deck.ov || !deck.mini) return;
+        var r = inner.getBoundingClientRect();
+        deck.ov.cx = (e.clientX - r.left) / deck.mini.scale;
+        deck.ov.cy = (e.clientY - r.top) / deck.mini.scale;
+        clampOv(); setCamera(false);
+      };
+      inner.addEventListener('pointerdown', function (e) { dragging = true; fly(e); e.preventDefault(); e.stopPropagation(); });
+      window.addEventListener('pointermove', function (e) { if (dragging) fly(e); });
+      window.addEventListener('pointerup', function () { dragging = false; });
+    }
+    inner = mm.firstChild;
+    var W = deck.config.width, H = deck.config.height;
+    var rows = gridRows(), gd = gridDims(), gw = gd.cols * W, gh = gd.rows * H;
+    var ms = Math.min(232 / gw, 150 / gh);
+    deck.mini = { scale: ms };
+    inner.style.width = (gw * ms) + 'px';
+    inner.style.height = (gh * ms) + 'px';
+    var view = inner.querySelector('.qmd-mini-view');
+    Array.prototype.slice.call(inner.querySelectorAll('.qmd-mini-tile')).forEach(function (t) { t.remove(); });
+    rows.forEach(function (rowArr, r) {
+      rowArr.forEach(function (cell, c) {
+        var t = document.createElement('div');
+        t.className = 'qmd-mini-tile';
+        t.style.cssText = 'left:' + (c * W * ms) + 'px;top:' + (r * H * ms) + 'px;width:' + (W * ms - 2) + 'px;height:' + (H * ms - 2) + 'px';
+        t.dataset.h = cell.h; t.dataset.v = cell.v;
+        inner.insertBefore(t, view);
+      });
+    });
+    markMinimapCurrent();
+  }
+  function markMinimapCurrent() {
+    var rev = revealEl(); if (!rev) return;
+    var mm = rev.querySelector(':scope > .qmd-minimap'); if (!mm) return;
+    Array.prototype.forEach.call(mm.querySelectorAll('.qmd-mini-tile'), function (t) {
+      t.classList.toggle('qmd-mini-cur', +t.dataset.h === deck.h && +t.dataset.v === deck.v);
+    });
+  }
+  // Position the "current view" rectangle; show the minimap only when zoomed past fit
+  // (otherwise the whole deck is already on screen and it would be redundant).
+  function updateMinimapView() {
+    var rev = revealEl(); if (!rev) return;
+    var mm = rev.querySelector(':scope > .qmd-minimap'); if (!mm || !deck.mini) return;
+    var show = deck.overview && deck.ov && deck.ov.scale > deck.ov.fit * 1.12;
+    mm.classList.toggle('qmd-minimap-on', show);
+    if (!show) return;
+    var st = ovStage(), ms = deck.mini.scale;
+    var vw = st.sw / deck.ov.scale, vh = st.sh / deck.ov.scale;
+    var view = mm.querySelector('.qmd-mini-view');
+    view.style.cssText = 'left:' + ((deck.ov.cx - vw / 2) * ms) + 'px;top:' + ((deck.ov.cy - vh / 2) * ms) + 'px;width:' + (vw * ms) + 'px;height:' + (vh * ms) + 'px';
   }
 
   // --- presenter mode + cross-window sync --------------------------------

@@ -211,6 +211,36 @@ body { background: transparent; }
   .reveal.qmd-lod-far .slides section > :not(.qmd-slide-bg):not(.qmd-lod):not(section) { transition: none; }
 }
 
+/* Minimap (overview+detail): a schematic of the whole deck in the corner, with a
+   rectangle for the current view; appears only when the map is zoomed past fit. */
+.qmd-minimap {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  padding: 7px;
+  background: rgba(18, 20, 26, .72);
+  border-radius: 10px;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, .42);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s ease;
+  z-index: 40;
+}
+.qmd-minimap.qmd-minimap-on { opacity: 1; pointer-events: auto; }
+.qmd-minimap-inner { position: relative; cursor: pointer; }
+.qmd-mini-tile { position: absolute; background: rgba(165, 175, 195, .26); border-radius: 2px; }
+.qmd-mini-tile.qmd-mini-cur { background: var(--deck-accent, #4c8dff); }
+.qmd-mini-view {
+  position: absolute;
+  border: 1.5px solid var(--deck-accent, #4c8dff);
+  background: rgba(76, 141, 255, .14);
+  border-radius: 3px;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) { .qmd-minimap { transition: none; } }
+
 /* Magic-move: the code blocks in a `::: {.magic-move}` are stacked in one grid
    cell (so the container sizes to the tallest); deck.js shows the active block and,
    on a step, glides matched lines + fades new/old ones between consecutive blocks. */
