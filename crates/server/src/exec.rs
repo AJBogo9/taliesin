@@ -116,6 +116,10 @@ pub struct Executor {
     /// hits and re-execute every cell against the fresh kernel (then re-persist),
     /// so "Restart kernel" actually re-runs rather than replaying stale outputs.
     force_next: bool,
+    /// `--no-exec` / `QMD_FAST_NO_EXEC`: never run code cells, render them as source.
+    /// The safe way to preview a document you don't trust (executing it would run
+    /// its `{python}`/`{r}` cells against a live kernel).
+    no_exec: bool,
 }
 
 impl Executor {
@@ -145,6 +149,7 @@ impl Executor {
             langs: HashMap::new(),
             freeze,
             force_next: false,
+            no_exec: std::env::var_os("QMD_FAST_NO_EXEC").is_some(),
         }
     }
 
@@ -200,6 +205,11 @@ impl Executor {
     /// Each executable language runs against its own kernel; unknown languages are
     /// left as source.
     pub async fn run(&mut self, blocks: Vec<Block>) -> Vec<Block> {
+        // `--no-exec`: never touch a kernel. The cells are already rendered as source
+        // in `blocks`; returning them unchanged is exactly "preview as source".
+        if self.no_exec {
+            return blocks;
+        }
         // Group executable cells by language, preserving document order.
         let mut by_lang: HashMap<&'static str, Vec<CellRef>> = HashMap::new();
         for (i, b) in blocks.iter().enumerate() {
@@ -670,6 +680,7 @@ mod tests {
     //! (output id keyed to the cell, sourcepos/source-file carried through) and
     //! the `#fig-` anchor that lets `@fig-x` resolve to the output.
     use super::*;
+    use qmd_fast_core::render::Cell;
 
     fn cell(id: &str) -> CellRef {
         CellRef {
@@ -684,6 +695,44 @@ mod tests {
             cache: true,
             fig_export: None,
         }
+    }
+
+    fn python_cell_block(id: &str) -> Block {
+        Block {
+            id: id.to_string(),
+            sourcepos: "1:1-1:9".into(),
+            source_file: None,
+            html: "<pre data-block-id=\"x\">print(1)</pre>".into(),
+            cell: Some(Cell {
+                lang: "python".into(),
+                code: "print(1)".into(),
+                figure: None,
+                table: None,
+                echo: true,
+                include: true,
+                cache: true,
+                fig_export: None,
+            }),
+        }
+    }
+
+    #[tokio::test]
+    async fn no_exec_renders_cells_as_source_and_never_touches_a_kernel() {
+        // With `--no-exec`, `run` must return the blocks exactly as rendered (the
+        // cell shows as source, no output block appended) and must not even attempt
+        // to start a kernel — so there's no "kernel unavailable" diagnostic either.
+        // Both assertions make this fail without the guard regardless of whether a
+        // working kernel happens to be installed in the test environment.
+        let mut ex = Executor::new();
+        ex.no_exec = true;
+        let blocks = vec![python_cell_block("b-1")];
+        let out = ex.run(blocks.clone()).await;
+        assert_eq!(out.len(), 1, "no output block should be appended");
+        assert_eq!(out[0].html, blocks[0].html, "the cell stays as source");
+        assert!(
+            ex.diagnostic().is_none(),
+            "no_exec is deliberate, not a kernel failure -> no diagnostic"
+        );
     }
 
     fn h(ks: &[&str]) -> Vec<String> {

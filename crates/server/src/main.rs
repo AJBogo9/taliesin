@@ -50,8 +50,15 @@ fn cmd_serve(args: &[String]) -> ExitCode {
     let flag = |name: &str| args.iter().any(|a| a == name);
     let open = flag("--open") || std::env::var_os("QMD_FAST_OPEN").is_some();
     let expose = flag("--host") || std::env::var_os("QMD_FAST_HOST").is_some();
+    // `--no-exec` is sugar for `QMD_FAST_NO_EXEC=1`, which `exec::Executor` reads:
+    // preview a document you don't trust without running its code cells.
+    if flag("--no-exec") {
+        // SAFETY: set once at CLI startup, before the tokio runtime / kernel
+        // threads spawn, so no other thread is touching the environment.
+        unsafe { std::env::set_var("QMD_FAST_NO_EXEC", "1") };
+    }
     let Some(path) = positionals.first() else {
-        eprintln!("usage: qmd-fast preview <file.qmd|dir> [port] [--host] [--open]");
+        eprintln!("usage: qmd-fast preview <file.qmd|dir> [port] [--host] [--open] [--no-exec]");
         return ExitCode::FAILURE;
     };
     // The optional second positional is the port; a present-but-unparseable value
@@ -654,11 +661,13 @@ fn usage() {
     println!("  qmd-fast <command> <file.qmd> [args]");
     println!();
     println!("COMMANDS:");
-    println!("  preview <file.qmd> [port] [--host] [--open]");
+    println!("  preview <file.qmd> [port] [--host] [--open] [--no-exec]");
     println!("                             live preview server (aliases: dev, serve;");
     println!("                             default port 4321, auto-picks a free one;");
     println!("                             --host exposes it on your LAN with a QR code");
-    println!("                             to open on a phone; --open launches a browser)");
+    println!("                             to open on a phone; --open launches a browser;");
+    println!("                             --no-exec previews untrusted docs as source,");
+    println!("                             never running their code cells)");
     println!("  build  <file.qmd> [out.html] [--out <dir>]");
     println!("                             render a self-contained HTML file");
     println!("                             (default <name>.html beside the source);");
@@ -669,5 +678,6 @@ fn usage() {
     println!();
     println!("ENV: QMD_FAST_PYTHON (kernel), QMD_FAST_OPEN (=--open),");
     println!("     QMD_FAST_HOST (=--host), QMD_FAST_NO_CLEAR,");
-    println!("     QMD_FAST_NO_CACHE (skip the _freeze/ execution cache)");
+    println!("     QMD_FAST_NO_CACHE (skip the _freeze/ execution cache),");
+    println!("     QMD_FAST_NO_EXEC (=--no-exec, never run code cells)");
 }

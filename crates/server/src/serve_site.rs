@@ -29,7 +29,7 @@ use tokio::sync::{broadcast, mpsc};
 use crate::protocol::{self, Diagnostic};
 use crate::serve::{
     CLIENT_JS, FAVICON, STATUS_CSS, bind_with_fallback, js_str, local_ip, open_in_browser,
-    percent_decode, print_qr,
+    percent_decode, print_qr, ws_origin_ok,
 };
 
 struct SiteApp {
@@ -174,6 +174,12 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
     );
     if let Some(net) = &network {
         print_qr(net);
+    }
+    if expose && std::env::var_os("QMD_FAST_NO_EXEC").is_none() {
+        crate::log::warn(
+            "code cells run on this machine; only serve documents you trust over --host \
+             (pass --no-exec to preview as source)",
+        );
     }
     if open {
         open_in_browser(&local);
@@ -563,11 +569,20 @@ fn encode_query(s: &str) -> String {
 
 async fn ws_handler(
     ws: WebSocketUpgrade,
+    headers: axum::http::HeaderMap,
     Query(q): Query<HashMap<String, String>>,
     State(app): State<Arc<SiteApp>>,
-) -> impl IntoResponse {
+) -> axum::response::Response {
+    if !ws_origin_ok(&headers) {
+        return (
+            axum::http::StatusCode::FORBIDDEN,
+            "cross-origin websocket refused",
+        )
+            .into_response();
+    }
     let rel = q.get("page").cloned().unwrap_or_default();
     ws.on_upgrade(move |socket| client_conn(socket, app, rel))
+        .into_response()
 }
 
 async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, rel_or_url: String) {

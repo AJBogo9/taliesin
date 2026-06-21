@@ -162,6 +162,12 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
     if let Some(net) = &network {
         print_qr(net);
     }
+    if expose && std::env::var_os("QMD_FAST_NO_EXEC").is_none() {
+        crate::log::warn(
+            "code cells run on this machine; only serve documents you trust over --host \
+             (pass --no-exec to preview as source)",
+        );
+    }
     if open {
         open_in_browser(&local);
     }
@@ -205,6 +211,33 @@ pub(crate) fn local_ip() -> Option<std::net::IpAddr> {
     let sock = std::net::UdpSocket::bind(("0.0.0.0", 0)).ok()?;
     sock.connect(("8.8.8.8", 80)).ok()?;
     sock.local_addr().ok().map(|a| a.ip())
+}
+
+/// Whether a websocket upgrade carrying this `Origin` may connect, given the
+/// request's `Host`. The control channel (restart kernel, etc.) lives on the
+/// websocket, so a page on another site must not be able to open it against your
+/// dev server (a browser always sends `Origin`, so this blocks cross-site driving
+/// without affecting non-browser clients, which send none).
+pub(crate) fn origin_allowed(origin: Option<&str>, host: Option<&str>) -> bool {
+    let Some(origin) = origin else {
+        return true; // no Origin => not a browser => not a cross-site request
+    };
+    // The part after the scheme is the authority (host[:port]).
+    let authority = origin.split_once("://").map_or(origin, |(_, rest)| rest);
+    if Some(authority) == host {
+        return true; // same origin (covers the LAN case: phone dials the Host it sees)
+    }
+    let host_only = authority.split(':').next().unwrap_or("");
+    matches!(host_only, "localhost" | "127.0.0.1" | "::1" | "[::1]")
+}
+
+/// Apply [`origin_allowed`] to a request's headers; both websocket handlers gate
+/// the upgrade on this.
+pub(crate) fn ws_origin_ok(headers: &axum::http::HeaderMap) -> bool {
+    use axum::http::header::{HOST, ORIGIN};
+    let origin = headers.get(ORIGIN).and_then(|v| v.to_str().ok());
+    let host = headers.get(HOST).and_then(|v| v.to_str().ok());
+    origin_allowed(origin, host)
 }
 
 /// Print a scannable QR code (terminal half-blocks) for `url`, so the preview can
@@ -633,8 +666,20 @@ fn reveal_index_html(ctx: &PageCtx) -> String {
 
 // --- WebSocket ----------------------------------------------------------
 
-async fn ws_handler(ws: WebSocketUpgrade, State(app): State<Arc<AppState>>) -> impl IntoResponse {
+async fn ws_handler(
+    ws: WebSocketUpgrade,
+    headers: axum::http::HeaderMap,
+    State(app): State<Arc<AppState>>,
+) -> axum::response::Response {
+    if !ws_origin_ok(&headers) {
+        return (
+            axum::http::StatusCode::FORBIDDEN,
+            "cross-origin websocket refused",
+        )
+            .into_response();
+    }
     ws.on_upgrade(move |socket| client_conn(socket, app))
+        .into_response()
 }
 
 async fn client_conn(socket: WebSocket, app: Arc<AppState>) {
@@ -1156,5 +1201,44 @@ mod extension_assets {
         );
 
         let _ = fs::remove_dir_all(&root);
+    }
+}
+
+#[cfg(test)]
+mod security {
+    use super::*;
+
+    #[test]
+    fn origin_check_allows_same_origin_and_blocks_cross_site() {
+        // No Origin header (curl / websocat — not a browser) can't be a cross-site
+        // request, so it's allowed.
+        assert!(origin_allowed(None, Some("localhost:4388")));
+        // A same-origin browser connection is allowed.
+        assert!(origin_allowed(
+            Some("http://localhost:4388"),
+            Some("localhost:4388")
+        ));
+        // The `--host` LAN case: the phone's Origin is the Host it dialed -> allowed.
+        assert!(origin_allowed(
+            Some("http://192.168.1.5:4388"),
+            Some("192.168.1.5:4388")
+        ));
+        // Loopback is allowed regardless of port (a second local dev server).
+        assert!(origin_allowed(
+            Some("http://127.0.0.1:9999"),
+            Some("localhost:4388")
+        ));
+        // The attack: a malicious page open in your browser tries to drive your dev
+        // server's control channel. Blocked.
+        assert!(!origin_allowed(
+            Some("http://evil.example"),
+            Some("localhost:4388")
+        ));
+        assert!(!origin_allowed(
+            Some("https://evil.example:4388"),
+            Some("192.168.1.5:4388")
+        ));
+        // A `null` origin (sandboxed iframe / file://) can't control the server.
+        assert!(!origin_allowed(Some("null"), Some("localhost:4388")));
     }
 }
