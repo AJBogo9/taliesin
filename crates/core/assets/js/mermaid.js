@@ -51,6 +51,15 @@ function qmdRenderMermaid(root) {
   s.onload = function () {
     qmdRunMermaid(document.querySelectorAll('pre.mermaid:not([data-processed])'));
   };
+  s.onerror = function () {
+    // The library couldn't load (offline / blocked). Don't wedge: clear the flag so
+    // a later mutation can retry, and leave each diagram's source text visible as a
+    // readable fallback (it's already the <pre>'s content).
+    window.__qmdMermaidLoading = false;
+    document
+      .querySelectorAll('pre.mermaid:not([data-processed])')
+      .forEach(function (p) { p.setAttribute('data-mermaid-error', '1'); });
+  };
   document.head.appendChild(s);
 }
 // Re-render every diagram from its stashed source under the new theme.

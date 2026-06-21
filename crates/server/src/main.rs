@@ -169,6 +169,11 @@ fn build_page_executing(
         for w in &doc.warnings {
             log::warn(w);
         }
+        // Broken cross-refs (a single doc has no site to resolve them across pages),
+        // so a `build` doesn't ship a dangling `@fig-`/`@sec-` link silently.
+        for w in qmd_fast_core::cite::validate_xrefs(&doc.blocks) {
+            log::warn(&w);
+        }
         // Persistent execution cache keyed off the doc's stem, beside the source.
         let mut ex =
             exec::Executor::with_freeze(freeze::page_path(&base.join("_freeze"), fallback));
@@ -317,14 +322,16 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
         }
         let base = page.input.parent().unwrap_or(root);
         let mut doc = qmd_fast_core::render_document_with_includes(&src, base);
-        for w in &doc.warnings {
-            log::warn(&format!("{}: {w}", page.rel));
-        }
         let mut exec = exec::Executor::with_freeze(freeze::page_path(&freeze_dir, &page.rel));
         doc.blocks = exec.run(std::mem::take(&mut doc.blocks)).await;
         kernel_unavailable |= exec.diagnostic().is_some();
         let resources = doc.includes.resources.clone();
-        let html = site.render_page_doc(page, doc);
+        // Surface render warnings *and* broken cross-refs so a broken site doesn't
+        // deploy silently (these previously only showed in the preview dev menu).
+        let (html, warnings) = site.render_page_doc_warned(page, doc);
+        for w in &warnings {
+            log::warn(&format!("{}: {w}", page.rel));
+        }
         let dest = out.join(&page.url);
         if let Some(parent) = dest.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -397,6 +404,15 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
         }
     }
 
+    // Quarto-compatible `listings.json` (post prev/next nav fetches it). Only when
+    // the site actually has listings.
+    let listings = site.listings_json();
+    if listings != "[]"
+        && let Err(e) = std::fs::write(out.join("listings.json"), &listings)
+    {
+        log::warn(&format!("cannot write listings.json: {e}"));
+    }
+
     // Per-tag archive pages (categories/<slug>/index.html).
     let mut tags = 0usize;
     for (url, html) in site.category_pages() {
@@ -441,7 +457,20 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
 /// tree. Skips `.qmd` sources (rendered separately), `_`-prefixed and dot
 /// entries (`_quarto.yml`, `_includes`, `_site`, …), and the output dir itself.
 fn mirror_assets(root: &Path, out: &Path) -> usize {
-    fn walk(dir: &Path, root: &Path, out: &Path, copied: &mut usize) {
+    fn walk(
+        dir: &Path,
+        root: &Path,
+        out: &Path,
+        seen: &mut std::collections::HashSet<PathBuf>,
+        copied: &mut usize,
+    ) {
+        // Break symlink cycles: descend into each directory at most once (keyed by
+        // canonical path), so a dir symlink pointing at an ancestor can't loop.
+        if let Ok(canon) = dir.canonicalize()
+            && !seen.insert(canon)
+        {
+            return;
+        }
         let Ok(entries) = std::fs::read_dir(dir) else {
             return;
         };
@@ -456,7 +485,7 @@ fn mirror_assets(root: &Path, out: &Path) -> usize {
                 if p.canonicalize().ok().as_deref() == Some(out) {
                     continue;
                 }
-                walk(&p, root, out, copied);
+                walk(&p, root, out, seen, copied);
             } else if p.extension().and_then(|s| s.to_str()) != Some("qmd") {
                 let Ok(rel) = p.strip_prefix(root) else {
                     continue;
@@ -472,7 +501,13 @@ fn mirror_assets(root: &Path, out: &Path) -> usize {
         }
     }
     let mut copied = 0;
-    walk(root, root, out, &mut copied);
+    walk(
+        root,
+        root,
+        out,
+        &mut std::collections::HashSet::new(),
+        &mut copied,
+    );
     copied
 }
 

@@ -538,10 +538,12 @@ fn py_str_literal(s: &str) -> String {
 }
 
 /// Whether an output must not be cached: any execution error (a cell error, a
-/// timeout, or the mid-run kernel-died marker — all carry the `qmd-error` class),
-/// so a transient failure is never replayed and the cell re-runs next time.
+/// timeout, or the mid-run kernel-died marker — all rendered as a `qmd-error` block),
+/// so a transient failure is never replayed and the cell re-runs next time. Matches
+/// the emitted `class="qmd-error"` rather than a bare substring, so a *successful*
+/// cell whose output merely prints the text "qmd-error" still caches.
 fn is_uncacheable(output: &str) -> bool {
-    output.contains("qmd-error")
+    output.contains("class=\"qmd-error\"")
 }
 
 /// A stable identity for a language's interpreter, used to seed the cumulative

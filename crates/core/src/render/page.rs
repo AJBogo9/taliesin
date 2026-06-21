@@ -129,7 +129,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
 </body>
 </html>
 "#,
-        lang = p.lang,
+        lang = escape_attr(p.lang),
         title = p.title,
         favicon = p.favicon,
         theme_init = theme_head(p.theme_default),

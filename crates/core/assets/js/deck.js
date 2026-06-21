@@ -997,7 +997,8 @@
     window.addEventListener('message', onMessage);
     deck.spStart = Date.now();
     root.querySelector('.sp-reset').addEventListener('click', function () { deck.spStart = Date.now(); updateSpeakerClock(); });
-    setInterval(updateSpeakerClock, 500);
+    if (deck.spClock) clearInterval(deck.spClock); // don't stack intervals on re-init
+    deck.spClock = setInterval(updateSpeakerClock, 500);
     updateSpeakerClock();
     clampIndices();
     if (window.opener) { try { window.opener.postMessage({ qmd: 'deck', type: 'hello' }, targetOrigin()); } catch (e) {} }
@@ -1204,6 +1205,7 @@
     if (deck.h === ph && deck.v === pv) return; // our own writeHash, or no real change
     if (deck.blackout) toggleBlackout(false); // an external slide change lifts the curtain
     deck.frag = fragCount(); apply(); updateNumber(); fire('slidechanged'); // apply pans the camera
+    broadcastState(); // keep a speaker/embed window in sync on hash (back/forward) nav
   }
 
   // --- slide number -------------------------------------------------------
@@ -1258,7 +1260,12 @@
       case 'ArrowDown': down(); break;
       case 'ArrowUp': up(); break;
       case 'Home': moveTo(0, 0, false); break;
-      case 'End': moveTo(tops().length - 1, 0, true); break;
+      case 'End': {
+        // The very last slide: the last vertical of the last stack, not v=0.
+        var lh = tops().length - 1, lt = tops()[lh];
+        moveTo(lh, isStack(lt) ? vertsOf(lt).length - 1 : 0, true);
+        break;
+      }
       case 'Escape': case 'o': if (deck.mode === 'normal') setOverview(true); break;
       case 's': openSpeaker(); break;
       case 'd': toggleDraw(); break;

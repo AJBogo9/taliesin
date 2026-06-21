@@ -149,8 +149,9 @@ fn section_text(html: &str) -> String {
 }
 
 /// Escape a string for a JSON value inlined inside a `<script>` (so `</script>`
-/// in content can't break out, and control chars stay valid JSON).
-fn json_str(s: &str) -> String {
+/// in content can't break out, and control chars stay valid JSON). Returns the
+/// escaped body without surrounding quotes.
+pub(super) fn json_str(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     for c in s.chars() {
         match c {

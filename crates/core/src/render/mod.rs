@@ -1012,10 +1012,26 @@ fn dedup_slug(block_src: &str, counts: &mut HashMap<String, u32>) -> String {
     slug
 }
 
+/// The line of a heading block that carries a trailing `{...}` attribute. For an
+/// ATX heading (`## Title {#id}`) that's the whole line; for a setext heading
+/// (`Title {#id}` above a `===`/`---` rule) the attribute sits on the text line, so
+/// return that, not the underline. Only called when the block is a heading.
+fn heading_attr_line(block_src: &str) -> &str {
+    let trimmed = block_src.trim_end();
+    if let Some((above, rule)) = trimmed.rsplit_once('\n') {
+        let r = rule.trim();
+        if !r.is_empty() && (r.bytes().all(|b| b == b'=') || r.bytes().all(|b| b == b'-')) {
+            // Setext underline: the attribute is on the last text line above it.
+            return above.trim_end().lines().last().unwrap_or(above).trim_end();
+        }
+    }
+    trimmed
+}
+
 /// A trailing Pandoc attribute on a heading line (`## Title {#id .class}`).
 /// Returns `(text_without_attr, explicit_id)`, or `None` when there is no attr.
 fn parse_heading_attr(block_src: &str) -> Option<(String, Option<String>)> {
-    let line = block_src.trim_end();
+    let line = heading_attr_line(block_src);
     let open = line.rfind('{')?;
     if !line.ends_with('}') {
         return None;
@@ -1038,7 +1054,7 @@ fn parse_heading_attr(block_src: &str) -> Option<(String, Option<String>)> {
 /// become ` data-background-*="..."`. Empty if the heading has no `{...}` or no
 /// background keys.
 fn heading_section_attrs(block_src: &str) -> String {
-    let line = block_src.trim_end();
+    let line = heading_attr_line(block_src);
     let Some(open) = line.rfind('{') else {
         return String::new();
     };
@@ -1121,8 +1137,7 @@ fn apply_link_attrs(html: &str) -> String {
 /// `\` hard break that comrak keeps (CommonMark) but Pandoc/Quarto drop (e.g. a
 /// CV line ending `2025–2027 \`). Scoped to block closers so inline `\` is untouched.
 fn strip_trailing_hardbreak(html: &str) -> String {
-    let mut out = html.to_string();
-    for tag in [
+    const TAGS: [&str; 11] = [
         "</p>",
         "</li>",
         "</h1>",
@@ -1134,13 +1149,25 @@ fn strip_trailing_hardbreak(html: &str) -> String {
         "</blockquote>",
         "</td>",
         "</dd>",
-    ] {
-        if out.contains('\\') {
-            out = out.replace(&format!("\\{tag}"), tag);
-            out = out.replace(&format!("\\ {tag}"), tag);
-        }
+    ];
+    let trimmed = html.trim_end();
+    for tag in TAGS {
+        let Some(prefix) = trimmed.strip_suffix(tag) else {
+            continue;
+        };
+        // A trailing hard-break backslash sits right before the block's closing tag
+        // (`text\</p>`): CommonMark keeps it literal, Pandoc/Quarto drop it. Anchored
+        // to the block end, so raw-HTML content containing `\</p>` mid-block (not a
+        // hardbreak) is left untouched — the previous global replace could corrupt it.
+        let stripped = prefix
+            .strip_suffix('\\')
+            .or_else(|| prefix.strip_suffix("\\ "));
+        return match stripped {
+            Some(p) => format!("{p}{tag}{}", &html[trimmed.len()..]),
+            None => html.to_string(),
+        };
     }
-    out
+    html.to_string()
 }
 
 /// Insert `class`/`id` attributes into the last opening `tag` already written to

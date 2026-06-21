@@ -18,7 +18,10 @@ pub(super) fn social_head(site: &Site, page: &Page) -> String {
     let title = page.title.as_deref().or(cfg.title.as_deref()).unwrap_or("");
     let desc = page.description.as_deref().or(cfg.description.as_deref());
     let base = cfg.url.as_deref().map(|u| u.trim_end_matches('/'));
-    let page_url = base.map(|b| format!("{b}/{}", page.url));
+    // Use the clean directory URL for canonical/og:url: an index page is served at
+    // its directory (`/posts/x/`), not `/posts/x/index.html`.
+    let clean_url = page.url.strip_suffix("index.html").unwrap_or(&page.url);
+    let page_url = base.map(|b| format!("{b}/{clean_url}"));
     // Card image, made absolute (social scrapers require absolute image URLs). Falls
     // back to the site-wide default (`image:` / Quarto `open-graph: image:`).
     let image = page

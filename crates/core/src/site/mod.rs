@@ -228,6 +228,29 @@ impl Site {
         feed::rss(self)
     }
 
+    /// Quarto-compatible `listings.json`: one entry per listing block, mapping the
+    /// hosting page's URL (`/blog.html`) to its item URLs (`/posts/x/index.html`) in
+    /// display order. Consumed by an author's prev/next `post-nav.js` and any
+    /// Quarto-shaped tooling. `[]` when the site has no listings.
+    pub fn listings_json(&self) -> String {
+        let mut entries: Vec<String> = Vec::new();
+        for page in &self.pages {
+            for spec in &page.listings {
+                let items: Vec<String> = self
+                    .collection(page, spec)
+                    .iter()
+                    .map(|p| format!("\"/{}\"", search::json_str(&p.url)))
+                    .collect();
+                entries.push(format!(
+                    "{{\"listing\":\"/{}\",\"items\":[{}]}}",
+                    search::json_str(&page.url),
+                    items.join(",")
+                ));
+            }
+        }
+        format!("[{}]", entries.join(","))
+    }
+
     /// Cheap check that a feed will be produced — gates the discovery `<link>` and
     /// the `feed.xml` route without rebuilding the whole feed.
     fn feed_enabled(&self) -> bool {
@@ -330,15 +353,26 @@ impl Site {
     /// site front-matter expansion (`about:`/`listing:`), wrap in chrome, and
     /// rewrite intra-site `.qmd` links. Shared by `render_page` (no execution) and
     /// the executing `build` path so both emit identical chrome + links.
-    pub fn render_page_doc(&self, page: &Page, mut doc: render::RenderedDoc) -> String {
+    pub fn render_page_doc(&self, page: &Page, doc: render::RenderedDoc) -> String {
+        self.render_page_doc_warned(page, doc).0
+    }
+
+    /// Like [`render_page_doc`](Self::render_page_doc) but also returns the page's
+    /// warnings (render warnings + broken cross-refs from `finish_blocks`), so the
+    /// static `build` can print them to stderr instead of letting a broken site
+    /// deploy silently.
+    pub fn render_page_doc_warned(
+        &self,
+        page: &Page,
+        mut doc: render::RenderedDoc,
+    ) -> (String, Vec<String>) {
         doc.toc = self.page_toc(page, doc.toc_explicit);
         let mut warnings = std::mem::take(&mut doc.warnings);
         self.finish_blocks(page, &mut doc.blocks, &mut warnings);
-        doc.warnings = warnings;
         let ctx = self.page_chrome(page);
         let fallback = page.title.as_deref().unwrap_or("");
         let html = render::html_page_from_doc_in_site(&doc, fallback, &ctx);
-        rewrite_qmd_links(&html)
+        (rewrite_qmd_links(&html), warnings)
     }
 
     /// Finish a page's blocks in place: chapter numbering, site-wide cross-ref
@@ -829,13 +863,33 @@ impl Site {
 fn slugify(s: &str) -> String {
     let mut out = String::new();
     for c in s.chars() {
-        if c.is_ascii_alphanumeric() {
-            out.push(c.to_ascii_lowercase());
+        // Keep Unicode letters/digits (so a non-Latin category — Cyrillic, CJK,
+        // accented — gets a real, distinct slug instead of collapsing to empty and
+        // colliding with every other non-ASCII name on `/categories//`).
+        if c.is_alphanumeric() {
+            out.extend(c.to_lowercase());
         } else if !out.is_empty() && !out.ends_with('-') {
             out.push('-');
         }
     }
-    out.trim_matches('-').to_string()
+    let slug = out.trim_matches('-').to_string();
+    if slug.is_empty() {
+        // No alphanumerics at all (e.g. an emoji-only name): a stable hash keeps
+        // distinct names on distinct URLs.
+        format!("cat-{:x}", fnv1a(s))
+    } else {
+        slug
+    }
+}
+
+/// A small deterministic (cross-build-stable) hash for slug fallbacks.
+fn fnv1a(s: &str) -> u64 {
+    let mut h = 0xcbf29ce484222325u64;
+    for b in s.bytes() {
+        h ^= b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    h
 }
 
 /// Approximate word count of rendered HTML, skipping tag markup (for reading time).

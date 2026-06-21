@@ -362,16 +362,30 @@ fn find_in_extensions(base: &Path, rel: &str) -> Option<PathBuf> {
 /// Depth-first search for a file named `name` under `dir`: files at each level
 /// are matched before descending, so a top-level resource still wins.
 fn find_file_named(dir: &Path, name: &std::ffi::OsStr) -> Option<PathBuf> {
-    let mut subdirs = Vec::new();
-    for entry in std::fs::read_dir(dir).ok()?.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            subdirs.push(path);
-        } else if path.file_name() == Some(name) {
-            return Some(path);
+    fn walk(
+        dir: &Path,
+        name: &std::ffi::OsStr,
+        seen: &mut std::collections::HashSet<PathBuf>,
+    ) -> Option<PathBuf> {
+        // Visit each directory at most once (by canonical path) so a symlink cycle
+        // can't recurse forever.
+        if let Ok(canon) = dir.canonicalize()
+            && !seen.insert(canon)
+        {
+            return None;
         }
+        let mut subdirs = Vec::new();
+        for entry in std::fs::read_dir(dir).ok()?.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                subdirs.push(path);
+            } else if path.file_name() == Some(name) {
+                return Some(path);
+            }
+        }
+        subdirs.iter().find_map(|sub| walk(sub, name, seen))
     }
-    subdirs.iter().find_map(|sub| find_file_named(sub, name))
+    walk(dir, name, &mut std::collections::HashSet::new())
 }
 
 /// Guess a content type from a file extension (covers the asset types a doc
@@ -481,7 +495,24 @@ pub(crate) const STATUS_CSS: &str = "\
 
 /// Minimal JS-string escape for embedding a filesystem path in a `\"...\"` literal.
 pub(crate) fn js_str(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
+    // Escape for a double-quoted JS string literal embedded in an inline <script>:
+    // also neutralize `</script>` (escape `<`), newlines, and the U+2028/U+2029
+    // separators that are illegal raw in a JS string. A path with these is unusual
+    // but shouldn't be able to break out of the literal or the script tag.
+    let mut out = String::with_capacity(s.len() + 2);
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '<' => out.push_str("\\x3c"), // splits a literal `</script>`
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\u{2028}' => out.push_str("\\u2028"),
+            '\u{2029}' => out.push_str("\\u2029"),
+            c => out.push(c),
+        }
+    }
+    out
 }
 
 fn blog_index_html(ctx: &PageCtx) -> String {

@@ -66,45 +66,37 @@ the watcher no longer rebuilds on `_freeze/` writes). Details in git. The items 
 
 ## P2 — polish / minor robustness (notable low)
 
-- **Build emits no warnings to stderr** — broken refs/citations/front-matter only
-  surface in preview's dev menu, so a broken site deploys silently. Add a build-time
-  warning summary. (Also: single-doc `build` doesn't run `validate_xrefs` — `cite.rs:504`.)
-- **Prev/next post nav broken on the tech-blog** — your `post-nav.js` fetches Quarto's
-  `/listings.json`, which qmd-fast doesn't emit (404). Emit a compatible `listings.json`,
-  or ship native blog prev/next.
-- **Canonical/`og:url` for index pages use `.../index.html`** instead of the clean
-  directory URL → `site/meta.rs:21`.
-- **Mermaid loads from a CDN** (violates the offline goal) and a load failure silently
-  wedges rendering → `assets/js/mermaid.js:38`. Bundle it.
-- **Captioned `.r-stretch` image overflows the slide** on decks → `deck.css:105`.
-- **`<html lang>` interpolated unescaped** in both page shells → `reveal.rs:74`, `page.rs:110`.
-- **`js_str` doesn't escape `</script>`/newlines** in embedded paths (both servers) →
-  `serve.rs:480`, `serve_site.rs:421`.
+### Done (2026-06-21)
+Build now prints render warnings **and broken cross-refs** to stderr (site + single
+doc), so a broken site no longer deploys silently. The site emits a Quarto-compatible
+`listings.json` (build + preview route) — tech-blog prev/next works again, with real
+titles (the corpus `post-nav.js` was updated to read qmd-fast's compact `search.json`).
+Canonical/`og:url` use the clean directory URL; `<html lang>` and `js_str` are escaped
+(`</script>`/newlines); a setext-heading `{#id}` is applied + stripped;
+`strip_trailing_hardbreak` is end-anchored (no longer corrupts raw-HTML content); the
+include resolver skips `{{< include >}}` inside a code fence; `is_uncacheable` matches
+the emitted `class="qmd-error"` (not bare text); non-ASCII category names get a real
+(or hashed-fallback) slug; a captioned `.r-stretch` figure no longer overflows the
+slide; `mirror_assets`/`find_file_named` guard against symlink cycles; deck End key
+lands on the last vertical of the last stack, `onHashChange` re-broadcasts to the
+speaker, and the speaker clock interval can't double-register.
+
+Mermaid: load-failure no longer wedges (clears the loading flag + leaves source
+visible). **Full offline bundling deferred** — it means vendoring ~2.8 MB of
+mermaid; wants a decision before growing the repo that much.
+
+### Remaining
 - **Visited pages never evicted from `app.pages`** — unbounded block-state growth →
-  `serve_site.rs:38`.
-- **setext-heading `{#id}` not stripped/applied** (leaks literal text, breaks the anchor)
-  → `mod.rs:974`.
-- **`strip_trailing_hardbreak` is an unanchored global replace** that can edit non-trailing
-  content → `mod.rs:1080`.
-- **Include resolver isn't fence-aware** (a `{{< include >}}` inside a code block is
-  resolved) → `includes.rs:53`.
-- **`is_uncacheable` substring-matches `qmd-error`** → a successful cell whose output
-  mentions that string is never cached → `exec.rs:465`.
-- **Non-ASCII-only category names slugify to empty** → colliding `/categories//` pages →
-  `site/mod.rs:817`.
-- **Speaker clock `setInterval` never cleared**; **End key lands on v=0 of the last stack**;
-  **`onHashChange` doesn't `broadcastState`** (desyncs speaker) → `deck.js:988/1249/1188`.
-- **`mirror_assets` / `find_file_named` can infinite-recurse on a symlink cycle** →
-  `main.rs:443`, `serve.rs:361`.
+  `serve_site.rs`.
 - **`updateWordCount` deep-clones all of `#qmd-root` on every op** (perf) →
-  `client.js:49`.
+  `client.js`.
 - `@dataset`/`@online`/`inbook` drop carried fields; malformed author values leak;
-  empty venue/year doubles punctuation (`cite.rs:45/355/86`). `decorate_post` injects
-  meta into a `hero:`/`about:` header (`site/mod.rs:340`). Footer treats any `.xml` as
-  the feed (`chrome.rs:140`). `--out` greedily consumes a following flag (`main.rs:49`).
-  Combined content+theme edit drops the hot-swap until reload (`serve.rs:918`). Initial
-  synchronous render isn't panic-guarded (`serve.rs:108`). Query-string asset refs aren't
-  bundled (`main.rs:481`). `yaml_error` off-by-one past EOF (`frontmatter.rs:144`).
+  empty venue/year doubles punctuation (`cite.rs`). `decorate_post` injects
+  meta into a `hero:`/`about:` header (`site/mod.rs`). Footer treats any `.xml` as
+  the feed (`chrome.rs`). `--out` greedily consumes a following flag (`main.rs`).
+  Combined content+theme edit drops the hot-swap until reload (`serve.rs`). Initial
+  synchronous render isn't panic-guarded (`serve.rs`). Query-string asset refs aren't
+  bundled (`main.rs`). `yaml_error` off-by-one past EOF (`frontmatter.rs`).
 
 ---
 

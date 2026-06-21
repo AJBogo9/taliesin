@@ -147,6 +147,7 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         .route("/favicon.ico", get(favicon))
         .route("/feed.xml", get(feed_xml))
         .route("/search.json", get(search_json))
+        .route("/listings.json", get(listings_json))
         .route("/ws", get(ws_handler))
         .fallback(page_or_asset)
         .with_state(app.clone());
@@ -206,6 +207,20 @@ async fn search_json(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
         } else {
             json
         },
+    )
+        .into_response()
+}
+
+/// Quarto-compatible `listings.json`, matching what `build` writes — so an author's
+/// prev/next `post-nav.js` works in preview too (was a 404).
+async fn listings_json(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
+    let json = { app.site.lock().listings_json() };
+    (
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "application/json; charset=utf-8",
+        )],
+        json,
     )
         .into_response()
 }

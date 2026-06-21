@@ -116,6 +116,17 @@ body { background: transparent; }
   max-width: 100%;
   object-fit: contain;
 }
+/* In a *captioned* figure the media shares the box with the figcaption, so let it
+   flex-grow instead of forcing height:100% (which ignores the caption and overflows
+   the slide); the caption keeps its content height. */
+.reveal .r-stretch > figure > :is(img, svg, canvas) {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+}
+.reveal .r-stretch > figure > figcaption {
+  flex: none;
+}
 
 /* No per-slide fade-in. In the camera model every slide is laid out and fully
    opaque, and the CAMERA PAN itself is the transition: the incoming slide simply

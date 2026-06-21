@@ -20,9 +20,10 @@
     if (idx === -1) return;
 
     const titles = {};
+    // qmd-fast's compact search.json: u=url, p=page title (t=section title, i=anchor).
     search.forEach(s => {
-      if (s.section === '' && s.href.startsWith('posts/')) {
-        titles['/' + s.href] = s.title;
+      if (s.u && s.u.startsWith('posts/')) {
+        titles['/' + s.u] = s.p;
       }
     });
 

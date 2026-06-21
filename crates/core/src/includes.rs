@@ -50,8 +50,18 @@ fn expand(
     out_lines: &mut Vec<String>,
     out_origins: &mut Vec<LineOrigin>,
 ) {
+    let mut in_code: Option<(char, usize)> = None;
     for (idx, line) in src.lines().enumerate() {
-        match parse_include(line) {
+        let was_in_code = in_code.is_some();
+        in_code = next_code_state(in_code, line);
+        // A `{{< include >}}` inside a code fence is documentation, not a directive —
+        // leave it literal (matches the fenced-div handling).
+        let directive = if was_in_code || in_code.is_some() {
+            None
+        } else {
+            parse_include(line)
+        };
+        match directive {
             Some(rel) => {
                 let Some(target) = safe_join(base_dir, rel) else {
                     // Unsafe path (absolute or escaping the project root): leave the
@@ -119,7 +129,13 @@ pub fn dependencies(src: &str, base_dir: &Path) -> Vec<PathBuf> {
 }
 
 fn collect_deps(src: &str, base_dir: &Path, stack: &mut Vec<PathBuf>, out: &mut Vec<PathBuf>) {
+    let mut in_code: Option<(char, usize)> = None;
     for line in src.lines() {
+        let was_in_code = in_code.is_some();
+        in_code = next_code_state(in_code, line);
+        if was_in_code || in_code.is_some() {
+            continue; // a `{{< include >}}` inside a code fence isn't a dependency
+        }
         let Some(rel) = parse_include(line) else {
             continue;
         };
@@ -136,6 +152,40 @@ fn collect_deps(src: &str, base_dir: &Path, stack: &mut Vec<PathBuf>, out: &mut 
             collect_deps(&content, &child_base, stack, out);
             stack.pop();
         }
+    }
+}
+
+/// A Markdown code-fence marker line (3+ backticks/tildes after at most 3 spaces),
+/// as `(fence_char, run_len)` — so a `{{< include >}}` *inside* a code block is left
+/// literal rather than resolved.
+fn code_fence(line: &str) -> Option<(char, usize)> {
+    let trimmed = line.trim_start_matches(' ');
+    if line.len() - trimmed.len() > 3 {
+        return None;
+    }
+    let ch = trimmed.chars().next()?;
+    if ch != '`' && ch != '~' {
+        return None;
+    }
+    let run = trimmed.chars().take_while(|&c| c == ch).count();
+    (run >= 3).then_some((ch, run))
+}
+
+/// Advance the fenced-code state by one line (open on a fence, close on a bare
+/// same-char fence of at least the opening length).
+fn next_code_state(state: Option<(char, usize)>, line: &str) -> Option<(char, usize)> {
+    match state {
+        Some((ch, run)) => match code_fence(line) {
+            Some((c2, r2))
+                if c2 == ch
+                    && r2 >= run
+                    && line.trim_start().trim_start_matches(ch).trim().is_empty() =>
+            {
+                None
+            }
+            _ => Some((ch, run)),
+        },
+        None => code_fence(line),
     }
 }
 
