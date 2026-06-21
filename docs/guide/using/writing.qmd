@@ -71,7 +71,7 @@ like an image. As @fig-render shows, one block model feeds three render targets:
 flowchart LR
   Q[".qmd"] --> BM["block model"]
   BM --> H["HTML page"]
-  BM --> R["reveal.js deck"]
+  BM --> R["slide deck"]
   BM --> K["book + TOC"]
 ```
 

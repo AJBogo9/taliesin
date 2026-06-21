@@ -27,7 +27,7 @@ flowchart TB
    expanded inline, and a `Vec<LineOrigin>` source map records, for every line of
    the expanded text, which file + line it came from. Cycles are detected and left
    in place. This is what makes click-to-source work *across files*.
-2. **Shortcode expansion** (`render/extension.rs`). `{{< name args >}}` tags
+2. **Shortcode expansion** (`render/extension/`). `{{< name args >}}` tags
    declared by the active format extension expand to their HTML templates. It is
    **line-preserving** (each tag opens and closes on one line, the template's
    newlines collapsed) so the source map from stage 1 stays valid.

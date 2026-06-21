@@ -5,7 +5,7 @@ title: "qmd-fast"
 # Why qmd-fast {.unnumbered}
 
 **A fast, single-purpose dev server that turns `.qmd` files into live HTML — blog
-posts, reveal.js slides, books, and whole websites — with executable code blocks
+posts, slide decks, books, and whole websites — with executable code blocks
 and an editing loop that updates the instant you save.**
 
 qmd-fast is built around one idea: writing technical content should feel as
@@ -72,7 +72,7 @@ One block model drives every output — a page, a slide deck, or a book:
 flowchart LR
   Q[".qmd"] --> BM["block model"]
   BM --> H["HTML page"]
-  BM --> R["reveal.js deck"]
+  BM --> R["slide deck"]
   BM --> K["book + TOC"]
 ```
 

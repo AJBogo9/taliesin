@@ -190,7 +190,7 @@ With the shape in mind, here is the file-by-file detail, one table per layer.
 | `render/divs.rs` | `:::` fenced-div preprocessing + grouping into callouts/columns. |
 | `render/figure.rs` | Standalone-image and captioned-cell `<figure>`s. |
 | `render/theme.rs` | Theming: light/dark, `.css`/`.scss`, extension themes, the pre-paint script. |
-| `render/reveal.rs` | reveal.js slide assembly. |
+| `render/reveal.rs` | Slide-deck assembly on qmd-fast's own engine (reveal.js removed; a `window.Reveal` facade keeps reveal *theme* extensions loading). |
 | `render/extension/` | Format extensions + declarative shortcodes (`mod` + an isolated Quarto-compat reader). |
 | `diff.rs` | Block-level diff (LCS over block ids) → `BlockOp`s. |
 | `includes.rs` | `{{< include >}}` resolution + the per-file source map. |

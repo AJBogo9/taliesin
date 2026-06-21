@@ -135,9 +135,16 @@ impl Site {
                     None => (it.text.clone().unwrap_or_default(), String::new()),
                 };
                 match it.href.as_deref() {
-                    // A configured `.xml` link (e.g. Quarto's `blog.xml`) points to
-                    // the generated feed.xml — or is dropped when there's no feed.
-                    Some(h) if h.ends_with(".xml") => {
+                    // A configured *local* `.xml` link (e.g. Quarto's `/blog.xml`)
+                    // points to the generated feed.xml — or is dropped when there's no
+                    // feed. An external `.xml` URL (http/protocol-relative) is left
+                    // alone: it's some other resource, not this site's feed.
+                    Some(h)
+                        if h.ends_with(".xml")
+                            && !(h.starts_with("http://")
+                                || h.starts_with("https://")
+                                || h.starts_with("//")) =>
+                    {
                         if !feed {
                             continue;
                         }

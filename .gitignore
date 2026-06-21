@@ -17,8 +17,10 @@ _book/
 _freeze/
 
 # Stray media dumped at the repo root by running a post's code cells from here
-# (anchored to root so corpus/ .wav fixtures stay tracked)
+# (anchored to root so corpus/ .wav fixtures stay tracked). `/figures/` is the
+# `#| fig-export:` target from the docs/guide example when built from the repo root.
 /*.wav
+/figures/
 
 # Logs and env
 *.log

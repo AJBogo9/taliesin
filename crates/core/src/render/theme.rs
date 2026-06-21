@@ -48,8 +48,9 @@ pub(super) fn resolve_theme(
     }
 }
 /// The default theme mode for the resolver script: an explicit `dark`/`light`
-/// from front matter forces that mode; otherwise `auto` follows the OS
-/// (`prefers-color-scheme`). Custom CSS themes don't force a built-in mode.
+/// from front matter forces that mode; anything else returns `"auto"`, which the
+/// pre-paint head script resolves to **dark** (there is no OS-following mode — see
+/// [`theme_head`]). Custom CSS themes don't force a built-in mode.
 pub(super) fn theme_default_mode(theme: Option<&str>) -> &'static str {
     match theme {
         Some("dark") => "dark",

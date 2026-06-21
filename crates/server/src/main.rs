@@ -92,7 +92,14 @@ fn cmd_build(args: &[String]) -> ExitCode {
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
         match a.as_str() {
-            "--out" | "--dir" => out_dir = it.next().map(|s| s.as_str()),
+            // Take the next token as the value, but not if it's itself a flag (so
+            // `--out --open` doesn't silently swallow `--open` as the directory).
+            "--out" | "--dir" => {
+                out_dir = it
+                    .next()
+                    .map(|s| s.as_str())
+                    .filter(|s| !s.starts_with("--"));
+            }
             s if s.starts_with("--") => {}
             s => positionals.push(s),
         }

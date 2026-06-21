@@ -103,6 +103,7 @@ differences**.
 | server → client | `insert` | `after_id`, `html` |
 | server → client | `remove` | `target_id` |
 | server → client | `diagnostics` | `messages` (non-fatal include / kernel / extension issues) |
+| server → client | `style` | `css` — hot-swaps the theme `<style>` in place on a CSS/theme edit (no reload) |
 | server → client | `error` | `message` (a failed render; shown as an overlay) |
 | server → client | `reload` | *(none)* — full page reload (config change, kernel restart) |
 | client → server | `click_block` | `block_id`, `source_file`, `sourcepos` |

@@ -86,14 +86,19 @@ visible). **Full offline bundling deferred** — it means vendoring ~2.8 MB of
 mermaid; wants a decision before growing the repo that much.
 
 ### Remaining
+Also fixed 2026-06-21: `@dataset`/`@online` now keep their publisher/organization
+(corpus: the Kaggle dataset); empty venue/year no longer dangles a comma before the
+period; malformed authors that format to nothing are dropped; the footer only maps a
+*local* `.xml` to the feed (an external `.xml` URL is left alone); `--out` won't
+swallow a following flag as the directory.
+
+Still open:
 - **Visited pages never evicted from `app.pages`** — unbounded block-state growth →
   `serve_site.rs`.
 - **`updateWordCount` deep-clones all of `#qmd-root` on every op** (perf) →
   `client.js`.
-- `@dataset`/`@online`/`inbook` drop carried fields; malformed author values leak;
-  empty venue/year doubles punctuation (`cite.rs`). `decorate_post` injects
-  meta into a `hero:`/`about:` header (`site/mod.rs`). Footer treats any `.xml` as
-  the feed (`chrome.rs`). `--out` greedily consumes a following flag (`main.rs`).
+- `@inbook`/`@incollection` drop `booktitle`/pages (no corpus entry yet).
+  `decorate_post` injects meta into a `hero:`/`about:` header (`site/mod.rs`).
   Combined content+theme edit drops the hot-swap until reload (`serve.rs`). Initial
   synchronous render isn't panic-guarded (`serve.rs`). Query-string asset refs aren't
   bundled (`main.rs`). `yaml_error` off-by-one past EOF (`frontmatter.rs`).
@@ -112,16 +117,12 @@ mermaid; wants a decision before growing the repo that much.
 - CLI helpers `local_refs`/`is_local_ref`/arg parsing (`main.rs` — no tests yet).
 - pause/fragment + background hoisting beyond the happy path (`reveal.rs`).
 
-### Docs staleness (the dogfooded books)
-- **`render/reveal.rs` still called "reveal.js slide assembly"** (reveal.js was removed)
-  → `docs/internals/architecture.qmd:193`; stale "reveal.js" wording in the guide lead +
-  two mermaid diagrams (`docs/guide/index.qmd:8`).
-- Docs reference **`render/extension.rs`** but it's now a directory module →
-  `docs/internals/rendering.qmd:30`.
-- Block-model protocol table **omits the `style` (theme hot-swap) message** →
-  `docs/internals/block-model.qmd:99`.
-- `extending.qmd` describes declarative shortcodes only via the Quarto-shaped key;
-  `theme.rs:46` comments claim an OS-following "auto" theme the impl removed.
+### Docs staleness (the dogfooded books) — DONE 2026-06-21
+Fixed: the "reveal.js" wording in the guide lead + the two mermaid diagram nodes +
+`architecture.qmd`'s `render/reveal.rs` row; `render/extension.rs` → `render/extension/`
+in `rendering.qmd` + `extending.qmd`; the block-model protocol table now lists the
+`style` (theme hot-swap) message; `extending.qmd` notes the native `shortcodes:` key;
+`theme.rs`'s `theme_default_mode` comment no longer claims an OS-following "auto".
 
 ### Nits (trivial)
 Diagnostic with missing message renders `[object Object]` (`client.js:98`). Search

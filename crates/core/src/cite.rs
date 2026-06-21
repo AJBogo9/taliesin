@@ -83,15 +83,28 @@ fn fmt_article(f: &Fields) -> String {
     if let Some(y) = f.get("year").filter(|s| !s.is_empty()) {
         segs.push(esc(&clean(y)));
     }
-    let mut out = quoted_title(f);
-    if !segs.is_empty() {
+    let mut out = title_with_segs(quoted_title(f), &segs);
+    append_url(&mut out, f);
+    out
+}
+
+/// Join a quoted title (`"Title,"`) with trailing IEEE segments (venue/year/…),
+/// adding the final period. When nothing follows, the dangling comma inside the
+/// closing quote becomes a period (`"Title."`) instead of `"Title,".`.
+fn title_with_segs(mut out: String, segs: &[String]) -> String {
+    if segs.is_empty() {
+        if let Some(stripped) = out.strip_suffix(",\u{201d}") {
+            out = format!("{stripped}.\u{201d}");
+        } else if !out.is_empty() && !out.ends_with('.') {
+            out.push('.');
+        }
+    } else {
         if !out.is_empty() {
             out.push(' ');
         }
         out.push_str(&segs.join(", "));
+        out.push('.');
     }
-    out.push('.');
-    append_url(&mut out, f);
     out
 }
 
@@ -131,11 +144,21 @@ fn fmt_book(f: &Fields) -> String {
 
 /// IEEE misc / online (the fallback): `"Title," Year. [Online]. Available: URL.`
 fn fmt_misc(f: &Fields) -> String {
-    let mut out = quoted_title(f);
-    if let Some(y) = f.get("year").filter(|s| !s.is_empty()) {
-        out.push_str(&format!(" {}", esc(&clean(y))));
+    let mut segs: Vec<String> = Vec::new();
+    // A `@dataset`/`@online` often carries the issuing body (Kaggle, a standards org)
+    // as publisher/organization/institution — keep it rather than drop it.
+    if let Some(p) = f
+        .get("publisher")
+        .or_else(|| f.get("organization"))
+        .or_else(|| f.get("institution"))
+        .filter(|s| !s.is_empty())
+    {
+        segs.push(esc(&clean(p)));
     }
-    out.push('.');
+    if let Some(y) = f.get("year").filter(|s| !s.is_empty()) {
+        segs.push(esc(&clean(y)));
+    }
+    let mut out = title_with_segs(quoted_title(f), &segs);
     append_url(&mut out, f);
     if let Some(note) = f.get("note").filter(|s| !s.is_empty()) {
         // Start a new sentence after a URL (which ends in `</a>`, not punctuation).
@@ -370,7 +393,13 @@ fn format_authors(raw: &str) -> String {
         et_al = true;
         names.truncate(1);
     }
-    let people: Vec<String> = names.iter().map(|n| esc(&format_one_author(n))).collect();
+    // Drop any name that formats to nothing (a stray `,`/brace), so a malformed
+    // entry can't leak an empty slot like "A, , and B".
+    let people: Vec<String> = names
+        .iter()
+        .map(|n| esc(&format_one_author(n)))
+        .filter(|s| !s.trim().is_empty())
+        .collect();
     let mut out = join_authors(&people);
     if et_al {
         if !out.is_empty() {
