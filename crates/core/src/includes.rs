@@ -53,7 +53,16 @@ fn expand(
     for (idx, line) in src.lines().enumerate() {
         match parse_include(line) {
             Some(rel) => {
-                let target = normalize(&base_dir.join(rel));
+                let Some(target) = safe_join(base_dir, rel) else {
+                    // Unsafe path (absolute or escaping the project root): leave the
+                    // directive visible rather than reading outside the project.
+                    out_lines.push(line.to_string());
+                    out_origins.push(LineOrigin {
+                        file: file_label.clone(),
+                        line: idx + 1,
+                    });
+                    continue;
+                };
                 if stack.contains(&target) {
                     // include cycle: leave the directive in place rather than loop
                     out_lines.push(line.to_string());
@@ -114,7 +123,9 @@ fn collect_deps(src: &str, base_dir: &Path, stack: &mut Vec<PathBuf>, out: &mut 
         let Some(rel) = parse_include(line) else {
             continue;
         };
-        let target = normalize(&base_dir.join(rel));
+        let Some(target) = safe_join(base_dir, rel) else {
+            continue;
+        };
         if stack.contains(&target) || out.contains(&target) {
             continue;
         }
@@ -148,6 +159,41 @@ fn label_for(target: &Path, primary_base: &Path) -> String {
     match target.strip_prefix(&primary) {
         Ok(rel) => rel.to_string_lossy().into_owned(),
         Err(_) => target.to_string_lossy().into_owned(),
+    }
+}
+
+/// Resolve `rel` against `base_dir`, refusing path-traversal escapes. An absolute
+/// `rel`, or a result that climbs above the *project root* (the nearest ancestor of
+/// `base_dir` holding a `.git` or `_quarto.yml`, else `base_dir` itself), returns
+/// `None` so the caller can refuse it. This blocks `{{< include /etc/passwd >}}`
+/// and `../../../../etc/...` while still allowing the corpus's `../../_includes/...`
+/// (the repo root contains both the doc and `_includes/`). Shared by include
+/// resolution, theme/CSS includes, and format-resource reads.
+pub(crate) fn safe_join(base_dir: &Path, rel: &str) -> Option<PathBuf> {
+    let relp = Path::new(rel);
+    // An absolute path (incl. a Windows drive/UNC root) escapes immediately.
+    if relp.has_root() || relp.is_absolute() {
+        return None;
+    }
+    let target = normalize(&base_dir.join(relp));
+    let root = containment_root(base_dir);
+    target.starts_with(&root).then_some(target)
+}
+
+/// The containment boundary for [`safe_join`]: the nearest ancestor of `base_dir`
+/// that looks like a project root (`.git` or `_quarto.yml`), falling back to
+/// `base_dir` itself when none is found.
+fn containment_root(base_dir: &Path) -> PathBuf {
+    let base = normalize(base_dir);
+    let mut cur: &Path = &base;
+    loop {
+        if cur.join(".git").exists() || cur.join("_quarto.yml").exists() {
+            return cur.to_path_buf();
+        }
+        match cur.parent() {
+            Some(p) if !p.as_os_str().is_empty() => cur = p,
+            _ => return base.clone(),
+        }
     }
 }
 

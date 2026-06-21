@@ -81,13 +81,15 @@ pub(super) fn emit_figure(fig: &FigureParts, block_attrs: &str, num: usize) -> S
         Some(w) => format!(" style=\"width:{}\"", escape_attr(w)),
         None => String::new(),
     };
+    // `alt` is the caption HTML with tags stripped: it already carries valid
+    // entities, so only quote-escape it (escape_attr would double-escape `&`).
     let alt = strip_tags(&fig.caption);
     format!(
         "<figure{block_attrs}{id_attr} class=\"qmd-figure{align_class}\">\
          <img src=\"{}\" alt=\"{}\"{style} />\
          <figcaption>Figure&nbsp;{num}: {}</figcaption></figure>",
         escape_attr(&fig.url),
-        escape_attr(&alt),
+        escape_attr_from_html(&alt),
         fig.caption,
     )
 }

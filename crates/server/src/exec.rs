@@ -27,7 +27,10 @@ use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
-use qmd_fast_core::{Block, escape_attr as esc, render::CellFigure};
+use qmd_fast_core::{
+    Block, escape_attr as esc,
+    render::{CellFigure, CellTable},
+};
 
 use crate::freeze::{self, FreezeCache};
 use crate::kernel::{Kernel, KernelSpec, render_outputs};
@@ -62,6 +65,8 @@ struct CellRef {
     source_file: Option<String>,
     /// When set, the cell's output is wrapped in a numbered `<figure>`.
     figure: Option<CellFigure>,
+    /// When set, the cell's executed `<table>` gets a numbered caption + `#tbl-` id.
+    table: Option<CellTable>,
     /// `#| include: false`: run the cell (for downstream state) but emit no output.
     include: bool,
     /// `#| cache: false`: never restore from / persist to the disk cache; always
@@ -208,6 +213,7 @@ impl Executor {
                     sourcepos: b.sourcepos.clone(),
                     source_file: b.source_file.clone(),
                     figure: c.figure.clone(),
+                    table: c.table.clone(),
                     include: c.include,
                     cache: c.cache,
                     fig_export: c.fig_export.clone(),
@@ -284,7 +290,7 @@ impl Executor {
             .get(lang)
             .map(|s| s.ran.iter().map(|r| r.hash.clone()).collect())
             .unwrap_or_default();
-        let (shared, run_end) = plan(&ran, &hashes, known);
+        let (shared, run_end) = plan(&ran, &hashes, known, |i| cells[i].cache);
 
         let to_run = run_end.saturating_sub(shared);
         // Boot the kernel up-front (the real wait), so the per-cell progress below
@@ -366,7 +372,12 @@ impl Executor {
         // warm prefix it already had, plus what we just executed). The disk-restored
         // tail is deliberately NOT recorded — the kernel never ran it, so a later
         // edit there re-runs from here to rebuild state.
-        if let Some(state) = self.langs.get_mut(lang) {
+        //
+        // Only record when a kernel is actually live. Without one, cells [shared,
+        // run_end) ran as no-ops (empty output); recording them as `ran` would make
+        // them part of the warm prefix, so when the kernel later self-heals they'd
+        // be skipped instead of re-run — leaving stale/missing output.
+        if has_kernel && let Some(state) = self.langs.get_mut(lang) {
             state.ran = (0..run_end)
                 .map(|i| Ran {
                     hash: hashes[i].clone(),
@@ -455,8 +466,10 @@ impl Executor {
 /// keys; `known(i)` reports whether cell `i`'s output is available without running
 /// it (a disk-cache hit not opted out).
 ///
-///   - `shared` = longest common prefix of `ran` and `hashes`: the kernel holds
-///     this prefix's state, so those cells restore (never re-run).
+///   - `shared` = longest common prefix of `ran` and `hashes`, capped at the first
+///     `#| cache: false` cell: the kernel holds this prefix's state, so those cells
+///     restore (never re-run). A non-cacheable cell must always re-execute, so it
+///     (and everything after) is kept out of the warm prefix.
 ///   - cells `[shared, run_end)` execute; `run_end` is one past the last cell whose
 ///     output we don't already have. A *known* cell inside this range still runs —
 ///     the kernel needs its state to reach an unknown cell after it.
@@ -468,10 +481,22 @@ impl Executor {
 /// replay, kernel never booted); a cold start with any change runs from the first
 /// cell whose state the kernel lacks (kernel variable state is never faked). Pure,
 /// so the granularity is unit-testable without a kernel.
-fn plan(ran: &[String], hashes: &[String], known: impl Fn(usize) -> bool) -> (usize, usize) {
-    let shared = (0..hashes.len())
+fn plan(
+    ran: &[String],
+    hashes: &[String],
+    known: impl Fn(usize) -> bool,
+    cacheable: impl Fn(usize) -> bool,
+) -> (usize, usize) {
+    let lcp = (0..hashes.len())
         .take_while(|&i| ran.get(i) == Some(&hashes[i]))
         .count();
+    // A `#| cache: false` cell always re-executes, so the warm prefix can't include
+    // it (or anything after it): otherwise an unchanged non-deterministic cell would
+    // be replayed from the kernel's prior in-memory output instead of re-run.
+    let first_uncacheable = (0..hashes.len())
+        .find(|&i| !cacheable(i))
+        .unwrap_or(hashes.len());
+    let shared = lcp.min(first_uncacheable);
     let mut run_end = shared;
     for i in shared..hashes.len() {
         if !known(i) {
@@ -564,9 +589,12 @@ fn output_block(cell: &CellRef, inner: &str) -> Block {
         Some(f) => format!(" data-source-file=\"{}\"", esc(f)),
         None => String::new(),
     };
-    let inner = match &cell.figure {
-        Some(fig) => figure_wrap(fig, inner),
-        None => inner.to_string(),
+    let inner = if let Some(fig) = &cell.figure {
+        figure_wrap(fig, inner)
+    } else if let Some(tbl) = &cell.table {
+        table_wrap(tbl, inner)
+    } else {
+        inner.to_string()
     };
     let html = format!(
         "<div class=\"qmd-output\" data-block-id=\"{id}\" data-sourcepos=\"{}\"{source_file_attr}>{inner}</div>",
@@ -600,6 +628,35 @@ fn figure_wrap(fig: &CellFigure, inner: &str) -> String {
     )
 }
 
+/// Inject a numbered `<caption>` (and the `#tbl-` anchor) into a cell's executed
+/// table output so `@tbl-x` resolves to "Table N". Finds the first `<table>` in the
+/// output; if there is none (the cell produced something that isn't a table), the
+/// output is returned unchanged.
+fn table_wrap(tbl: &CellTable, inner: &str) -> String {
+    let Some(start) = inner.find("<table") else {
+        return inner.to_string();
+    };
+    let Some(rel_gt) = inner[start..].find('>') else {
+        return inner.to_string();
+    };
+    let gt = start + rel_gt + 1;
+    let id_attr = tbl
+        .anchor
+        .as_deref()
+        .map(|a| format!(" id=\"{}\"", esc(a)))
+        .unwrap_or_default();
+    let caption = tbl.caption.as_deref().unwrap_or("").trim();
+    let sep = if caption.is_empty() { "" } else { ": " };
+    let open = inner[start..gt].replacen("<table", &format!("<table{id_attr}"), 1);
+    format!(
+        "{}{open}<caption>Table&nbsp;{}{sep}{}</caption>{}",
+        &inner[..start],
+        tbl.number,
+        esc(caption),
+        &inner[gt..],
+    )
+}
+
 #[cfg(test)]
 mod tests {
     //! The output-splicing helpers are pure (no kernel), so they're tested
@@ -617,6 +674,7 @@ mod tests {
             sourcepos: "5:1-7:3".into(),
             source_file: None,
             figure: None,
+            table: None,
             include: true,
             cache: true,
             fig_export: None,
@@ -628,10 +686,42 @@ mod tests {
     }
 
     /// `plan` with `ran` = the warm kernel's executed keys and `cur` = this run's
-    /// per-cell keys; cells whose key is in `disk` are disk-cache hits.
+    /// per-cell keys; cells whose key is in `disk` are disk-cache hits. All cells
+    /// are cacheable here; `run_plan_nc` covers `#| cache: false`.
     fn run_plan(ran: &[&str], cur: &[&str], disk: &[&str]) -> (usize, usize) {
         let cur = h(cur);
-        plan(&h(ran), &cur, |i| disk.contains(&cur[i].as_str()))
+        plan(&h(ran), &cur, |i| disk.contains(&cur[i].as_str()), |_| true)
+    }
+
+    /// Like `run_plan`, but `nocache` lists the cell indices marked `#| cache: false`.
+    fn run_plan_nc(ran: &[&str], cur: &[&str], disk: &[&str], nocache: &[usize]) -> (usize, usize) {
+        let cur = h(cur);
+        plan(
+            &h(ran),
+            &cur,
+            |i| disk.contains(&cur[i].as_str()),
+            |i| !nocache.contains(&i),
+        )
+    }
+
+    #[test]
+    fn plan_cache_false_cell_always_reruns() {
+        // Warm kernel ran [a,b,c], nothing changed, but a `cache: false` cell can't
+        // be served from the warm prefix: it (and everything after) re-runs.
+        assert_eq!(
+            run_plan_nc(&["a", "b", "c"], &["a", "b", "c"], &[], &[1]),
+            (1, 3)
+        );
+        // `cache: false` on the first cell -> re-run everything.
+        assert_eq!(
+            run_plan_nc(&["a", "b", "c"], &["a", "b", "c"], &[], &[0]),
+            (0, 3)
+        );
+        // `cache: false` on the last cell only -> warm prefix [a,b], re-run just c.
+        assert_eq!(
+            run_plan_nc(&["a", "b", "c"], &["a", "b", "c"], &[], &[2]),
+            (2, 3)
+        );
     }
 
     #[test]

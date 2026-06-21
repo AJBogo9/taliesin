@@ -41,6 +41,9 @@ pub struct SiteConfig {
     pub description: Option<String>,
     pub url: Option<String>,
     pub favicon: Option<String>,
+    /// Default social-card image (native `image:`, Quarto `open-graph: image:`),
+    /// used for `og:image`/`twitter:image` when a page sets no `image:` of its own.
+    pub card_image: Option<String>,
     pub toc: Option<bool>,
     pub css: Option<serde_yaml::Value>,
     /// `head` → include-in-header; `body-start`/`body-end` → before/after body.
@@ -102,6 +105,7 @@ const NATIVE_KEYS: &[&str] = &[
     "description",
     "url",
     "favicon",
+    "image",
     "output",
     "toc",
     "css",
@@ -157,6 +161,7 @@ fn parse_native(value: &serde_yaml::Value, warnings: &mut Vec<String>) -> SiteCo
         description: str_of("description"),
         url: str_of("url"),
         favicon: str_of("favicon"),
+        card_image: str_of("image"),
         toc: value.get("toc").and_then(|v| v.as_bool()),
         css: value.get("css").cloned(),
         head: value.get("head").cloned(),
@@ -244,18 +249,24 @@ fn footer_from(v: Option<&serde_yaml::Value>) -> Option<Footer> {
 }
 
 /// Coerce a value into a list of [`NavItem`]: a string → one text item, a single
-/// `{…}` → one item, a list → many.
+/// `{…}` → one item, a list → many. Bare strings *inside* a list are handled too
+/// (they would otherwise fail to deserialize into a struct and be silently dropped).
 fn items(v: Option<&serde_yaml::Value>) -> Vec<NavItem> {
     match v {
         None => Vec::new(),
-        Some(serde_yaml::Value::String(s)) => vec![NavItem {
+        Some(serde_yaml::Value::Sequence(seq)) => seq.iter().filter_map(nav_item).collect(),
+        Some(v) => nav_item(v).into_iter().collect(),
+    }
+}
+
+/// One nav/footer entry from a YAML value: a bare string becomes a text label; a
+/// `{…}` mapping deserializes into a [`NavItem`].
+fn nav_item(v: &serde_yaml::Value) -> Option<NavItem> {
+    match v {
+        serde_yaml::Value::String(s) => Some(NavItem {
             text: Some(s.clone()),
             ..NavItem::default()
-        }],
-        Some(serde_yaml::Value::Sequence(seq)) => seq
-            .iter()
-            .filter_map(|it| serde_yaml::from_value(it.clone()).ok())
-            .collect(),
-        Some(v) => serde_yaml::from_value(v.clone()).ok().into_iter().collect(),
+        }),
+        other => serde_yaml::from_value(other.clone()).ok(),
     }
 }

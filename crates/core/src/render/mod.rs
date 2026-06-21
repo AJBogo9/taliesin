@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 mod model;
 pub(crate) use model::CellRole;
-pub use model::{Block, Cell, CellFigure, DocFormat, PageIncludes, RenderedDoc};
+pub use model::{Block, Cell, CellFigure, CellTable, DocFormat, PageIncludes, RenderedDoc};
 
 fn parse_options() -> Options<'static> {
     let mut options = Options::default();
@@ -226,6 +226,7 @@ fn render_internal(
                         lang,
                         code: strip_cell_options(&cb.literal),
                         figure: None,
+                        table: None,
                         echo: cell_flag_or(&cb.literal, "echo", exec_echo),
                         include: cell_flag_or(&cb.literal, "include", exec_include),
                         cache: cell_flag_or(&cb.literal, "cache", exec_cache),
@@ -242,8 +243,10 @@ fn render_internal(
                     let label = cell_option(&cb.literal, "label");
                     let fig_cap = cell_option(&cb.literal, "fig-cap");
                     let lst_cap = cell_option(&cb.literal, "lst-cap");
+                    let tbl_cap = cell_option(&cb.literal, "tbl-cap");
                     let is_fig = label.is_some_and(|l| l.starts_with("fig-")) || fig_cap.is_some();
                     let is_lst = label.is_some_and(|l| l.starts_with("lst-")) || lst_cap.is_some();
+                    let is_tbl = label.is_some_and(|l| l.starts_with("tbl-")) || tbl_cap.is_some();
                     if is_fig {
                         Some(CellRole::Figure {
                             anchor: label.filter(|l| l.starts_with("fig-")).map(str::to_string),
@@ -254,6 +257,11 @@ fn render_internal(
                             anchor: label.filter(|l| l.starts_with("lst-")).map(str::to_string),
                             caption: lst_cap.map(str::to_string),
                             fold: code_fold(&cb.literal),
+                        })
+                    } else if is_tbl {
+                        Some(CellRole::Table {
+                            anchor: label.filter(|l| l.starts_with("tbl-")).map(str::to_string),
+                            caption: tbl_cap.map(str::to_string),
                         })
                     } else {
                         None
@@ -401,6 +409,25 @@ fn render_internal(
                             &attrs,
                             lst_count,
                         ));
+                    }
+                }
+                CellRole::Table { anchor, caption } => {
+                    // The table is the cell's executed output (e.g. a pandas
+                    // DataFrame), so tag the cell and let the executor inject the
+                    // caption/id; the number is assigned in document order by
+                    // `apply_table_captions` below. The source renders now (or is
+                    // hidden by `echo:false`/`include:false`), like a figure cell.
+                    if let Some(c) = cell.as_mut() {
+                        c.table = Some(CellTable {
+                            anchor: anchor.clone(),
+                            caption: caption.clone(),
+                            number: 0,
+                        });
+                    }
+                    if cell.as_ref().is_some_and(|c| !c.echo || !c.include) {
+                        html.push_str(&hidden_cell(&attrs));
+                    } else {
+                        emit(node, &attrs, &mut html);
                     }
                 }
             }
@@ -683,13 +710,15 @@ fn append_include(content: &str, css: bool, out: &mut String) {
 /// Read an include/css file relative to the doc (or site root). A missing file is
 /// reported as an HTML comment rather than aborting the render (warn, don't reject).
 fn read_include_file(base_dir: Option<&Path>, rel: &str) -> String {
+    // Containment: an absolute path or one escaping the project root is refused
+    // (path-traversal guard), reported the same as a missing file.
     let path = match base_dir {
-        Some(dir) => dir.join(rel),
-        None => PathBuf::from(rel),
+        Some(dir) => crate::includes::safe_join(dir, rel),
+        None => Path::new(rel).is_relative().then(|| PathBuf::from(rel)),
     };
-    match std::fs::read_to_string(&path) {
-        Ok(s) => s,
-        Err(_) => format!(
+    match path.and_then(|p| std::fs::read_to_string(&p).ok()) {
+        Some(s) => s,
+        None => format!(
             "<!-- qmd-fast: include file not found: {} -->",
             esc_comment(rel)
         ),
@@ -748,10 +777,14 @@ fn detect_format(front_matter: &str) -> DocFormat {
         };
         let inline = rest.trim();
         if !inline.is_empty() {
-            // `format: revealjs`
-            return reveal_if(inline.contains("revealjs"));
+            // `format: revealjs` (or a list `[html, revealjs]`): match a format
+            // *name*, not any substring, so a theme/filename that merely contains
+            // "revealjs" (e.g. `theme: my-revealjs.css`) can't flip an HTML doc to
+            // a deck.
+            return reveal_if(inline.split(['[', ']', ',', ' ']).any(is_reveal_format));
         }
-        // Block form: scan the indented sub-keys until the block dedents.
+        // Block form: the sub-keys are format *names* (`html:`, `revealjs:`,
+        // `liquid-glass-revealjs:`). Match the key, never a value substring.
         for sub in &lines[i + 1..] {
             if sub.trim().is_empty() {
                 continue;
@@ -759,13 +792,21 @@ fn detect_format(front_matter: &str) -> DocFormat {
             if !sub.starts_with(char::is_whitespace) {
                 break;
             }
-            if sub.contains("revealjs") {
+            let key = sub.trim().split(':').next().unwrap_or("");
+            if is_reveal_format(key) {
                 return DocFormat::Reveal;
             }
         }
         return DocFormat::Html;
     }
     DocFormat::Html
+}
+
+/// Whether a `format:` name selects a revealjs deck: `revealjs` itself or an
+/// extension variant `<ext>-revealjs` (e.g. `liquid-glass-revealjs`).
+fn is_reveal_format(name: &str) -> bool {
+    let n = name.trim().trim_matches(['"', '\'']);
+    n == "revealjs" || n.ends_with("-revealjs")
 }
 
 fn reveal_if(cond: bool) -> DocFormat {
@@ -793,14 +834,15 @@ fn load_bibliography(
         if !tok.ends_with(".bib") {
             continue;
         }
-        match std::fs::read_to_string(base.join(tok)) {
-            Ok(content) => {
+        match crate::includes::safe_join(base, tok).and_then(|p| std::fs::read_to_string(&p).ok()) {
+            Some(content) => {
                 text.push_str(&content);
                 text.push('\n');
             }
-            // An explicitly named `.bib` that can't be read is a typo worth flagging
-            // (citations would otherwise just silently fail to resolve).
-            Err(_) => warnings.push(format!("bibliography file not found: {tok}")),
+            // An explicitly named `.bib` that can't be read (or escapes the project
+            // root) is a typo worth flagging: citations would otherwise just
+            // silently fail to resolve.
+            None => warnings.push(format!("bibliography file not found: {tok}")),
         }
     }
     crate::cite::parse_bib(&text)
@@ -1127,8 +1169,23 @@ fn inject_attrs_into_last_tag(out: &mut String, tag: &str, classes: &[String], i
 fn apply_table_captions(blocks: &mut Vec<Block>, xrefs: &mut HashMap<String, String>) {
     let mut tbl_count = 0u32;
     let mut i = 0;
-    while i + 1 < blocks.len() {
-        if blocks[i].html.starts_with("<table")
+    while i < blocks.len() {
+        // A code cell whose executed output is a numbered table (`#| label: tbl-x`):
+        // assign its number in document order (so it interleaves correctly with
+        // Markdown tables) and register the xref. The executor injects the matching
+        // caption/id into the output using `cell.table.number`.
+        if let Some(t) = blocks[i].cell.as_mut().and_then(|c| c.table.as_mut()) {
+            tbl_count += 1;
+            t.number = tbl_count;
+            if let Some(a) = &t.anchor {
+                xrefs.insert(a.clone(), tbl_count.to_string());
+            }
+            i += 1;
+            continue;
+        }
+        // A Markdown table directly followed by a `: caption {#tbl-x}` paragraph.
+        if i + 1 < blocks.len()
+            && blocks[i].html.starts_with("<table")
             && let Some((caption_html, id)) = parse_table_caption(&blocks[i + 1].html)
         {
             tbl_count += 1;
@@ -1194,10 +1251,17 @@ fn toc_html(blocks: &[Block]) -> String {
     for (lvl, id, text) in &items {
         let lvl = (*lvl).max(base);
         if lvl > level {
-            // Descend: open nested lists inside the still-open parent <li>.
+            // Descend: nest a <ul> inside the open parent <li>. When heading levels
+            // are skipped (e.g. h1 -> h3, or the first heading is deeper than the
+            // base) there is no <li> to hold the next <ul>, so emit a filler <li> —
+            // a <ul> may only contain <li>, never another <ul> directly.
             while level < lvl {
+                if !open_li {
+                    out.push_str("<li>");
+                }
                 out.push_str("<ul>");
                 level += 1;
+                open_li = false; // the freshly opened <ul> has no <li> yet
             }
         } else {
             if open_li {
@@ -1288,6 +1352,27 @@ impl DivAttrs {
 
 fn is_heading(html: &str) -> bool {
     html.starts_with("<h") && html.as_bytes().get(2).is_some_and(u8::is_ascii_digit)
+}
+
+/// Index of the `>` that closes an element's opening tag, skipping any `>` inside
+/// a quoted attribute value (so `<a title="a>b">` returns the *final* `>`, not the
+/// one in the title). `None` if the tag is unterminated. Used by the string-surgery
+/// helpers that splice a class/attribute into an already-emitted opening tag — a
+/// naive `find('>')` would split inside an attribute value.
+pub(crate) fn tag_end(html: &str) -> Option<usize> {
+    let mut quote: Option<u8> = None;
+    for (i, &b) in html.as_bytes().iter().enumerate() {
+        match quote {
+            Some(q) if b == q => quote = None,
+            Some(_) => {}
+            None => match b {
+                b'"' | b'\'' => quote = Some(b),
+                b'>' => return Some(i),
+                _ => {}
+            },
+        }
+    }
+    None
 }
 
 /// Strip HTML tags, returning the visible text (used for callout titles).
@@ -1720,6 +1805,14 @@ fn escape_html(s: &str, out: &mut String) {
             _ => out.push(ch),
         }
     }
+}
+
+/// Make already-entity-escaped HTML *text* (e.g. a rendered caption with its tags
+/// stripped via [`strip_tags`]) safe inside a double-quoted attribute. Existing
+/// entities are valid in an attribute value, so only the `"` needs escaping —
+/// running [`escape_attr`] here would double-escape `&` (`&amp;` -> `&amp;amp;`).
+pub(crate) fn escape_attr_from_html(s: &str) -> String {
+    s.replace('"', "&quot;")
 }
 
 /// Escape a string for an HTML *attribute* value (`&`, `<`, `>`, `"`). For text

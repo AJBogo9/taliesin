@@ -571,7 +571,15 @@
         renderOk();
         const node = fragment(msg.html);
         if (node) {
+          // Block ids are unique per document, so drop any element already
+          // carrying this id before inserting. The server emits Removes before
+          // Inserts, so this is normally a no-op; it defends against a stale
+          // duplicate if ops ever arrive out of order (a reorder splits a moved
+          // block into Remove+Insert of the same id).
+          const newId = node.getAttribute && node.getAttribute("data-block-id");
+          const stale = newId && elById(newId);
           keepScroll(() => {
+            if (stale) stale.remove();
             const after = msg.after_id && elById(msg.after_id);
             if (after) after.after(node);
             else root.prepend(node);

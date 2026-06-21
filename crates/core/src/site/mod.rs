@@ -332,17 +332,29 @@ impl Site {
     /// the executing `build` path so both emit identical chrome + links.
     pub fn render_page_doc(&self, page: &Page, mut doc: render::RenderedDoc) -> String {
         doc.toc = self.page_toc(page, doc.toc_explicit);
-        self.number_chapter(page, &mut doc.blocks);
-        self.resolve_cross_refs(&mut doc.blocks, &page.url);
-        // Cross-refs that survived the site-wide resolution are genuinely broken.
-        doc.warnings
-            .extend(crate::cite::validate_xrefs(&doc.blocks));
-        self.expand_page(page, &mut doc.blocks);
-        self.decorate_post(page, &mut doc.blocks);
+        let mut warnings = std::mem::take(&mut doc.warnings);
+        self.finish_blocks(page, &mut doc.blocks, &mut warnings);
+        doc.warnings = warnings;
         let ctx = self.page_chrome(page);
         let fallback = page.title.as_deref().unwrap_or("");
         let html = render::html_page_from_doc_in_site(&doc, fallback, &ctx);
         rewrite_qmd_links(&html)
+    }
+
+    /// Finish a page's blocks in place: chapter numbering, site-wide cross-ref
+    /// resolution (+ broken-ref warnings), site front-matter expansion
+    /// (`about:`/`listing:`), and post decoration (reading-time / category badges).
+    /// The single block-finishing step shared by the static build, `render_page_doc`,
+    /// and the live preview, so all three produce identical blocks (the preview used
+    /// to skip `validate_xrefs` + `decorate_post`). `page_toc` is computed by the
+    /// caller (it reads blocks but doesn't mutate them).
+    pub fn finish_blocks(&self, page: &Page, blocks: &mut Vec<Block>, warnings: &mut Vec<String>) {
+        self.number_chapter(page, blocks);
+        self.resolve_cross_refs(blocks, &page.url);
+        // Cross-refs that survived the site-wide resolution are genuinely broken.
+        warnings.extend(crate::cite::validate_xrefs(blocks));
+        self.expand_page(page, blocks);
+        self.decorate_post(page, blocks);
     }
 
     /// A self-contained `404.html` for the static build. A static host (GitHub
@@ -460,7 +472,7 @@ impl Site {
         } else if let Some(about) = &page.about {
             set_title_block(blocks, self.about_html(page, about));
         }
-        for spec in &page.listings {
+        for (li, spec) in page.listings.iter().enumerate() {
             let cards = self.listing_html(page, spec);
             match &spec.id {
                 Some(id) => {
@@ -473,12 +485,12 @@ impl Site {
                         }
                         // An anchor (e.g. an auto-slugged heading sharing the id, since
                         // an empty fenced div emits no block) → cards go right after it.
-                        Some(i) => blocks.insert(i + 1, listing_block(&spec.contents, &cards)),
+                        Some(i) => blocks.insert(i + 1, listing_block(li, &spec.contents, &cards)),
                         // No target at all → append so the listing still renders.
-                        None => blocks.push(listing_block(&spec.contents, &cards)),
+                        None => blocks.push(listing_block(li, &spec.contents, &cards)),
                     }
                 }
-                None => blocks.push(listing_block(&spec.contents, &cards)),
+                None => blocks.push(listing_block(li, &spec.contents, &cards)),
             }
         }
     }
@@ -1111,9 +1123,11 @@ fn rewrite_one_href(val: &str) -> String {
 }
 
 /// A synthetic block wrapping a listing card set (id-less listing, or no placeholder).
-fn listing_block(contents: &str, cards_html: &str) -> Block {
+/// `index` is the listing's position on the page, so two listings of the same
+/// `contents:` don't collide on `data-block-id` (which would break the diff).
+fn listing_block(index: usize, contents: &str, cards_html: &str) -> Block {
     Block {
-        id: format!("listing-{}", contents.replace('/', "-")),
+        id: format!("listing-{index}-{}", contents.replace('/', "-")),
         sourcepos: String::new(),
         source_file: None,
         html: cards_html.to_string(),

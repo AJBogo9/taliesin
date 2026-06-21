@@ -426,6 +426,10 @@
         var n = node.querySelectorAll(':scope > pre').length;
         for (var k = 1; k < n; k++) steps.push({ mm: node }); // one step per block-to-block morph
       } else if (node.tagName === 'PRE') {
+        // A code-step pre that also follows a `. . .` pause carries `.fragment`;
+        // give it a reveal step first (else it stays visibility:hidden for the
+        // whole talk), then its per-segment line-highlight steps.
+        if (node.classList.contains('fragment')) steps.push({ frag: node });
         var segs = node.getAttribute('data-code-lines').split('|');
         for (var i = 1; i < segs.length; i++) steps.push({ code: node, seg: segs[i] });
       } else {
@@ -906,6 +910,12 @@
   // in sync via opener<->popup postMessage (works on file://); either can drive.
   function withQmd(url, val) { return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'qmd=' + val; }
   function deckBaseUrl() { return location.href.split('#')[0].split('?')[0]; }
+  // Only accept/sync with windows of our own origin, so a third-party page that
+  // embeds the deck can't drive it (or read its slide position). file:// has no
+  // real origin ("" / "null"), so allow it there. When posting, target our origin
+  // on http(s) and fall back to '*' on file:// (a "null" targetOrigin would throw).
+  function sameOrigin(e) { return e.origin === location.origin || e.origin === '' || e.origin === 'null'; }
+  function targetOrigin() { return (location.origin && location.origin !== 'null') ? location.origin : '*'; }
 
   // Apply a position received from the other window (or, in an embed iframe, from
   // the speaker). Never re-broadcasts, so there is no echo loop.
@@ -920,10 +930,12 @@
   }
   function broadcastState() {
     var msg = { qmd: 'deck', type: 'state', h: deck.h, v: deck.v, frag: deck.frag };
-    if (deck.speakerWin && !deck.speakerWin.closed) { try { deck.speakerWin.postMessage(msg, '*'); } catch (e) {} }
-    if (window.opener && !window.opener.closed) { try { window.opener.postMessage(msg, '*'); } catch (e) {} }
+    var t = targetOrigin();
+    if (deck.speakerWin && !deck.speakerWin.closed) { try { deck.speakerWin.postMessage(msg, t); } catch (e) {} }
+    if (window.opener && !window.opener.closed) { try { window.opener.postMessage(msg, t); } catch (e) {} }
   }
   function onMessage(e) {
+    if (!sameOrigin(e)) return; // ignore cross-origin drivers
     var d = e.data;
     if (!d || d.qmd !== 'deck') return;
     if (d.type === 'goto' || d.type === 'state') applyRemote(d.h, d.v, d.frag);
@@ -942,7 +954,7 @@
   }
   function postFrame(frame, h, v, frag) {
     if (frame && frame.contentWindow) {
-      try { frame.contentWindow.postMessage({ qmd: 'deck', type: 'goto', h: h, v: v, frag: frag }, '*'); } catch (e) {}
+      try { frame.contentWindow.postMessage({ qmd: 'deck', type: 'goto', h: h, v: v, frag: frag }, targetOrigin()); } catch (e) {}
     }
   }
   function updateSpeakerUI() {
@@ -988,7 +1000,7 @@
     setInterval(updateSpeakerClock, 500);
     updateSpeakerClock();
     clampIndices();
-    if (window.opener) { try { window.opener.postMessage({ qmd: 'deck', type: 'hello' }, '*'); } catch (e) {} }
+    if (window.opener) { try { window.opener.postMessage({ qmd: 'deck', type: 'hello' }, targetOrigin()); } catch (e) {} }
   }
 
   // --- PDF export (print) ------------------------------------------------

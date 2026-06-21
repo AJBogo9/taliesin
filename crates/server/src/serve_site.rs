@@ -336,11 +336,11 @@ fn render_markdown_only(site: &qmd_fast_core::Site, page: &Page) -> PageDoc {
     let doc = qmd_fast_core::render_document_with_includes(&src, base);
     let mut blocks = doc.blocks;
     let toc = site.page_toc(page, doc.toc_explicit);
-    site.number_chapter(page, &mut blocks);
-    site.resolve_cross_refs(&mut blocks, &page.url);
-    site.expand_page(page, &mut blocks);
-    let diagnostics = doc
-        .warnings
+    // One shared finishing step (numbering, cross-refs + broken-ref warnings,
+    // listing/about expansion, post decoration) so preview matches the build.
+    let mut warnings = doc.warnings;
+    site.finish_blocks(page, &mut blocks, &mut warnings);
+    let diagnostics = warnings
         .iter()
         .map(|w| Diagnostic::warn(w.clone()))
         .collect();
@@ -815,16 +815,17 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
 
     let exec = pool.get(rel);
     let mut blocks = exec.run(doc.blocks).await;
-    // Expand listing cards (queries the whole site, so it needs the site lock).
+    // Finish the executed blocks exactly as the build does (numbering, cross-refs +
+    // broken-ref warnings, listing/about expansion, post decoration). Queries the
+    // whole site, so it needs the site lock.
+    let mut warnings = doc.warnings.clone();
     let toc = {
         let site = app.site.lock();
-        site.number_chapter(&page, &mut blocks);
-        site.resolve_cross_refs(&mut blocks, &page.url);
-        site.expand_page(&page, &mut blocks);
+        site.finish_blocks(&page, &mut blocks, &mut warnings);
         site.page_toc(&page, doc.toc_explicit)
     };
     let mut diags = page_diagnostics(&page.input, &base, exec);
-    for w in &doc.warnings {
+    for w in &warnings {
         diags.push(Diagnostic::warn(w.clone()));
     }
 
@@ -897,8 +898,22 @@ fn page_diagnostics(input: &Path, base: &Path, exec: &crate::exec::Executor) -> 
 
 // --- file watching ------------------------------------------------------
 
+/// One debounced file-change signal: the path plus whether it is *structural* (a
+/// `.qmd` created or removed, which may change the site's page set).
+struct Change {
+    path: PathBuf,
+    structural: bool,
+}
+
+fn is_qmd(p: &Path) -> bool {
+    matches!(
+        p.extension().and_then(|e| e.to_str()),
+        Some("qmd") | Some("md")
+    )
+}
+
 fn spawn_watcher(app: Arc<SiteApp>) {
-    let (sig_tx, mut sig_rx) = mpsc::unbounded_channel::<PathBuf>();
+    let (sig_tx, mut sig_rx) = mpsc::unbounded_channel::<Change>();
     let root = app.root.clone();
 
     std::thread::spawn(move || {
@@ -912,8 +927,21 @@ fn spawn_watcher(app: Arc<SiteApp>) {
                             | notify::EventKind::Remove(_)
                     )
                 {
+                    // A created/removed file may change the page set (vs. an in-place
+                    // edit, which only rebuilds the page).
+                    let structural = matches!(
+                        ev.kind,
+                        notify::EventKind::Create(_) | notify::EventKind::Remove(_)
+                    );
                     for p in ev.paths {
-                        let _ = sig_tx.send(p);
+                        // Ignore generated/VCS noise (esp. the executor's own
+                        // `_freeze/` writes, which would otherwise rebuild every run).
+                        if crate::serve::relevant_path(&p) {
+                            let _ = sig_tx.send(Change {
+                                path: p,
+                                structural,
+                            });
+                        }
                     }
                 }
             }) {
@@ -932,20 +960,23 @@ fn spawn_watcher(app: Arc<SiteApp>) {
     tokio::spawn(async move {
         while let Some(first) = sig_rx.recv().await {
             let mut changed: HashSet<PathBuf> = HashSet::new();
-            changed.insert(first);
+            let mut structural = first.structural && is_qmd(&first.path);
+            changed.insert(first.path);
             tokio::time::sleep(Duration::from_millis(80)).await;
-            while let Ok(p) = sig_rx.try_recv() {
-                changed.insert(p);
+            while let Ok(c) = sig_rx.try_recv() {
+                structural |= c.structural && is_qmd(&c.path);
+                changed.insert(c.path);
             }
-            dispatch_changes(&app, &changed);
+            dispatch_changes(&app, &changed, structural);
         }
     });
 }
 
-/// Map a batch of changed files to rebuilds: a `_quarto.yml` change re-discovers
-/// the site and reloads open tabs; otherwise rebuild every *open* page whose
-/// source or include set touches a changed file.
-fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>) {
+/// Map a batch of changed files to rebuilds: a `_quarto.yml` change (or a `.qmd`
+/// added/removed that changes the page set) re-discovers the site and reloads open
+/// tabs; otherwise rebuild every *open* page whose source or include set touches a
+/// changed file. `structural` is set when the batch created/removed a `.qmd`.
+fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool) {
     let changed_canon: HashSet<PathBuf> = changed
         .iter()
         .map(|p| p.canonicalize().unwrap_or_else(|_| p.clone()))
@@ -955,13 +986,23 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>) {
         .iter()
         .any(|p| p.file_name().and_then(|n| n.to_str()) == Some("_quarto.yml"));
     if config_changed {
-        let new = Site::discover(&app.root);
-        *app.site.lock() = new;
-        for ps in app.pages.lock().values() {
-            let _ = ps.tx.send(protocol::reload());
-        }
-        crate::log::update(0);
+        *app.site.lock() = Site::discover(&app.root);
+        reload_open_tabs(app);
         return;
+    }
+
+    // A `.qmd` was created/removed: re-discover, and if the page set actually changed
+    // (new/renamed/deleted page, not just an editor's save-via-rename of an existing
+    // one) reload open tabs so nav + listings refresh. Otherwise fall through to the
+    // normal per-page rebuild against the refreshed site.
+    if structural {
+        let new = Site::discover(&app.root);
+        let set_changed = page_rels(&new) != page_rels(&app.site.lock());
+        *app.site.lock() = new;
+        if set_changed {
+            reload_open_tabs(app);
+            return;
+        }
     }
 
     // Rebuild only pages that are open (have live state) and depend on a change.
@@ -987,6 +1028,26 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>) {
             let _ = app.build_tx.send(BuildMsg::Build(rel));
         }
     }
+}
+
+/// Reload every open tab and drop its cached block state, so the reload re-renders
+/// fresh against the (re-discovered) site — used after a `_quarto.yml` or page-set
+/// change. The reload message is delivered before each channel's sender is dropped.
+fn reload_open_tabs(app: &SiteApp) {
+    let mut pages = app.pages.lock();
+    for ps in pages.values() {
+        let _ = ps.tx.send(protocol::reload());
+    }
+    pages.clear();
+    crate::log::update(0);
+}
+
+/// The site's page identifiers, sorted — to tell whether a `.qmd` add/remove actually
+/// changed the page set (vs. an editor save-via-rename of an existing page).
+fn page_rels(site: &Site) -> Vec<String> {
+    let mut v: Vec<String> = site.pages.iter().map(|p| p.rel.clone()).collect();
+    v.sort();
+    v
 }
 
 #[cfg(test)]

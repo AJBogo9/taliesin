@@ -576,7 +576,7 @@ fn rewrite_text(
             if let Some(close) = chars[i + 1..].iter().position(|&c| c == ']') {
                 let inner: String = chars[i + 1..i + 1 + close].iter().collect();
                 if inner.contains('@') {
-                    out.push_str(&render_citation_group(&inner, cite_key));
+                    out.push_str(&render_citation_group(&inner, cite_key, xrefs));
                     i += close + 2;
                     continue;
                 }
@@ -607,6 +607,35 @@ fn rewrite_text(
     out
 }
 
+/// Characters allowed in a citation key. BibTeX keys permit far more than
+/// alphanumerics (e.g. `smith.2020`, `doe+roe`, `path/key`); the reference parser
+/// must accept the same set the bib parser does, or `[@smith.2020]` truncates to
+/// `smith` and falsely warns "broken citation".
+fn is_cite_key_char(c: char) -> bool {
+    c.is_alphanumeric() || matches!(c, '-' | '_' | ':' | '.' | '+' | '/')
+}
+
+/// If `key` is a cross-reference key (`fig-x`, `tbl-x`, …), render it as a cross-ref
+/// link (so `[@fig-x]` is a cross-ref, not a citation). `None` for ordinary keys.
+fn xref_link(key: &str, xrefs: &HashMap<String, String>) -> Option<String> {
+    let (prefix, ident) = key.split_once('-')?;
+    let label = xref_label(prefix)?;
+    if ident.is_empty() {
+        return None;
+    }
+    let (text, marker) = match xrefs.get(key) {
+        Some(n) => (format!("{label}&nbsp;{n}"), String::new()),
+        None => (
+            label.to_string(),
+            format!(" data-qmd-xref=\"{}\"", esc(key)),
+        ),
+    };
+    Some(format!(
+        "<a href=\"#{}\" class=\"qmd-xref\"{marker}>{text}</a>",
+        esc(key)
+    ))
+}
+
 /// `@fig-x` -> ("Figure", "fig-x", consumed_len).
 fn parse_xref(chars: &[char]) -> Option<(&'static str, String, usize)> {
     // chars[0] == '@'
@@ -632,18 +661,26 @@ fn parse_xref(chars: &[char]) -> Option<(&'static str, String, usize)> {
     Some((label, anchor, consumed))
 }
 
-/// Render `@a; @b, p. 5` style citation group content into `[1, 2, p. 5]`.
-fn render_citation_group(inner: &str, cite_key: &mut impl FnMut(&str) -> usize) -> String {
+/// Render `@a; @b, p. 5` style citation group content into `[1, 2, p. 5]`. A
+/// cross-reference key inside the brackets (`[@fig-x]`) renders as a cross-ref link,
+/// not a citation.
+fn render_citation_group(
+    inner: &str,
+    cite_key: &mut impl FnMut(&str) -> usize,
+    xrefs: &HashMap<String, String>,
+) -> String {
     let mut rendered: Vec<String> = Vec::new();
     for item in inner.split(';') {
         let item = item.trim().trim_start_matches('-'); // `-@key` suppresses author (n/a for numeric)
         let Some(at) = item.find('@') else { continue };
         let after = &item[at + 1..];
-        let key: String = after
-            .chars()
-            .take_while(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_' || *c == ':')
-            .collect();
+        let key: String = after.chars().take_while(|&c| is_cite_key_char(c)).collect();
         if key.is_empty() {
+            continue;
+        }
+        // A cross-reference key (`fig-`, `tbl-`, …) is a cross-ref, not a citation.
+        if let Some(link) = xref_link(&key, xrefs) {
+            rendered.push(link);
             continue;
         }
         let locator = after[key.len()..].trim().trim_start_matches(',').trim();

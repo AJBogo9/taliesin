@@ -28,6 +28,12 @@ struct Website {
     navbar: Navbar,
     #[serde(rename = "page-footer")]
     page_footer: Option<Footer>,
+    // `open-graph:` may be a bool (just enable) or a `{ image, … }` map; keep the raw
+    // value and pull `image` out, falling back to `twitter-card: image:`.
+    #[serde(rename = "open-graph")]
+    open_graph: Option<serde_yaml::Value>,
+    #[serde(rename = "twitter-card")]
+    twitter_card: Option<serde_yaml::Value>,
 }
 
 #[derive(Deserialize, Default)]
@@ -74,6 +80,7 @@ pub(super) fn from_value(value: &serde_yaml::Value, warnings: &mut Vec<String>) 
         description: website.description,
         url: website.site_url,
         favicon: website.favicon,
+        card_image: og_image(&website.open_graph).or_else(|| og_image(&website.twitter_card)),
         toc: format.html.toc,
         css: format.html.css,
         head: format.html.include_in_header,
@@ -84,6 +91,15 @@ pub(super) fn from_value(value: &serde_yaml::Value, warnings: &mut Vec<String>) 
         chapters: book.chapters,
         mounts: Vec::new(), // Quarto has no equivalent; native-only
     }
+}
+
+/// The `image:` field of a Quarto `open-graph:` / `twitter-card:` block (which may
+/// also be a bare bool to just enable cards, hence the `Value`).
+fn og_image(v: &Option<serde_yaml::Value>) -> Option<String> {
+    v.as_ref()?
+        .get("image")
+        .and_then(|i| i.as_str())
+        .map(str::to_string)
 }
 
 fn section<T: Default + serde::de::DeserializeOwned>(

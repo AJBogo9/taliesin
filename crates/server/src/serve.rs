@@ -186,7 +186,10 @@ pub(crate) async fn bind_with_fallback(
                 if p != port {
                     crate::log::warn(&format!("port {port} in use; using {p}"));
                 }
-                return Ok((listener, addr));
+                // Report the *bound* address: with port 0 ("any free port") the OS
+                // assigns the real port, so the requested `addr` would still read `:0`.
+                let bound = listener.local_addr().unwrap_or(addr);
+                return Ok((listener, bound));
             }
             Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => last_err = Some(e),
             Err(e) => return Err(e),
@@ -821,23 +824,35 @@ fn spawn_watcher(app: Arc<AppState>, mut signal_rx: mpsc::UnboundedReceiver<()>)
 /// out the noise (editor swap files, `_site/`/`_book/` output, `.git`/`.quarto`)
 /// that would otherwise trigger a wasteful 0-op rebuild on every unrelated save.
 fn relevant_event(ev: &notify::Event) -> bool {
+    ev.paths.iter().any(|p| relevant_path(p))
+}
+
+/// Whether a changed path should trigger a rebuild: a known source/asset extension,
+/// not under a generated/VCS directory. `_freeze` is skipped so the executor's own
+/// cache writes don't kick a redundant rebuild on every run.
+pub(crate) fn relevant_path(p: &Path) -> bool {
     const EXTS: &[&str] = &[
         "qmd", "md", "bib", "csl", "css", "scss", "yml", "yaml", "json", "js", "html", "svg",
         "png", "jpg", "jpeg", "webp", "gif",
     ];
-    const SKIP_DIRS: &[&str] = &["_site", "_book", ".git", ".quarto", "node_modules"];
-    ev.paths.iter().any(|p| {
-        let ext_ok = p
-            .extension()
-            .and_then(|e| e.to_str())
-            .is_some_and(|e| EXTS.contains(&e.to_ascii_lowercase().as_str()));
-        let in_skip_dir = p.components().any(|c| {
-            c.as_os_str()
-                .to_str()
-                .is_some_and(|s| SKIP_DIRS.contains(&s))
-        });
-        ext_ok && !in_skip_dir
-    })
+    const SKIP_DIRS: &[&str] = &[
+        "_site",
+        "_book",
+        "_freeze",
+        ".git",
+        ".quarto",
+        "node_modules",
+    ];
+    let ext_ok = p
+        .extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| EXTS.contains(&e.to_ascii_lowercase().as_str()));
+    let in_skip_dir = p.components().any(|c| {
+        c.as_os_str()
+            .to_str()
+            .is_some_and(|s| SKIP_DIRS.contains(&s))
+    });
+    ext_ok && !in_skip_dir
 }
 
 /// Directories to watch: the primary doc's directory plus the directory of any

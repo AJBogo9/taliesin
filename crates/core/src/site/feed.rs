@@ -93,11 +93,21 @@ fn xml(s: &str) -> String {
 /// `pubDate` wants, at midnight GMT. `None` if it doesn't parse — the weekday is
 /// computed with Zeller's congruence so no date dependency is needed.
 fn rfc822(date: &str) -> Option<String> {
-    let d = date.get(..10)?;
+    // Take the date portion before any time component, then split on `-`. Parsing
+    // each field (rather than slicing a fixed 10 chars) tolerates dates that aren't
+    // zero-padded, e.g. `2024-1-5`, which would otherwise drop the whole `pubDate`.
+    let d = date.split(['T', ' ']).next()?;
     let mut it = d.split('-');
-    let y: i32 = it.next()?.parse().ok()?;
-    let m: u32 = it.next()?.parse().ok()?;
-    let day: u32 = it.next()?.parse().ok()?;
+    let y: i32 = it.next()?.trim().parse().ok()?;
+    let m: u32 = it.next()?.trim().parse().ok()?;
+    let day: u32 = it
+        .next()?
+        .trim()
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect::<String>()
+        .parse()
+        .ok()?;
     if !(1..=12).contains(&m) || !(1..=31).contains(&day) {
         return None;
     }
@@ -138,6 +148,12 @@ mod tests {
             Some("Mon, 15 Jan 2024 00:00:00 +0000".into())
         );
         assert_eq!(rfc822("not-a-date"), None);
+        // Non-zero-padded ISO dates still produce a pubDate (regression: a fixed
+        // 10-char slice dropped these entirely).
+        assert_eq!(
+            rfc822("2024-1-5"),
+            Some("Fri, 05 Jan 2024 00:00:00 +0000".into())
+        );
     }
 
     #[test]

@@ -75,12 +75,18 @@ globals()["ojs_define"] = ojs_define
 ///
 ///   - transparency comes from `InlineBackend.print_figure_kwargs` (applied solely
 ///     when the inline backend rasterises the figure — never global rcParams);
-///   - the neutral grey for axes/ticks/text/grid is applied by recolouring the
-///     figure's artists immediately before the inline image is produced, then
-///     restored, so the live figure object is left exactly as the author built it.
+///   - instead of one washed-out neutral grey, we render the figure **twice** —
+///     once with the light theme's near-black foreground, once with the dark
+///     theme's near-white foreground — by recolouring the figure's artists right
+///     before each inline image is produced, then restoring them. The two PNGs are
+///     emitted together as a `text/html` fragment whose `.qmd-fig-light` /
+///     `.qmd-fig-dark` images the page swaps on a `data-theme` change, so the axes
+///     and text always match the surrounding page exactly (same mechanism as the
+///     theme-matched `{{< video >}}`). The standalone `image/png` is suppressed so
+///     only the dual-theme HTML is emitted.
 ///
 /// This also powers `#| fig-export:`: the export writes the *pristine* figure to
-/// disk (print-clean) at display time, before the inline recolour. Data colours are
+/// disk (print-clean) at display time, before any inline recolour. Data colours are
 /// never touched. The wrap installs lazily (on the first cell that mentions
 /// matplotlib) so non-plotting documents pay nothing.
 const MPL_THEME_PREAMBLE: &str = r#"
@@ -90,8 +96,12 @@ try:
         # Transparency for the inline image only (not global rcParams).
         _ip.run_line_magic('config', "InlineBackend.print_figure_kwargs = {'facecolor': 'none', 'edgecolor': 'none', 'bbox_inches': 'tight'}")
 
-        _QMD_GREY = '#888888'
+        # (foreground, grid) per theme — kept in sync with --qmd-fg / --qmd-border
+        # in assets/css/{base,dark}.css.
+        _QMD_LIGHT = ('#1a1a1a', '#d0d0d0')
+        _QMD_DARK = ('#e6e6e6', '#363a44')
         _qmd_pending_export = []
+        _qmd_orig_png = [None]  # the real Figure->png formatter, captured once
 
         def _qmd_do_export(fig):
             # Write the (still-pristine) figure to the files a `#| fig-export:` cell
@@ -113,21 +123,34 @@ try:
                     print('qmd-fast: fig-export failed for %r: %s' % (_p, _e), file=_sys.stderr)
             _qmd_pending_export.clear()
 
-        def _qmd_recolour(fig):
-            # Recolour foreground (text/spines/ticks/grid) to a neutral grey that
-            # reads on light AND dark themes, and make axes backgrounds transparent.
-            # Returns the originals so the figure can be restored exactly.
+        def _qmd_recolour(fig, fg, grid):
+            # Recolour foreground (text/spines/ticks) to `fg` and grid lines to
+            # `grid`, and make axes backgrounds transparent. Returns the originals
+            # so the figure can be restored exactly. Data colours are untouched.
             import matplotlib.text as _t
             saved = []
             for _o in fig.findobj(_t.Text):
-                saved.append((_o.set_color, _o.get_color())); _o.set_color(_QMD_GREY)
+                saved.append((_o.set_color, _o.get_color())); _o.set_color(fg)
             for _ax in fig.axes:
                 saved.append((_ax.patch.set_facecolor, _ax.patch.get_facecolor())); _ax.patch.set_facecolor('none')
                 for _sp in _ax.spines.values():
-                    saved.append((_sp.set_edgecolor, _sp.get_edgecolor())); _sp.set_edgecolor(_QMD_GREY)
-                for _ln in (*_ax.xaxis.get_ticklines(), *_ax.yaxis.get_ticklines(), *_ax.get_xgridlines(), *_ax.get_ygridlines()):
-                    saved.append((_ln.set_color, _ln.get_color())); _ln.set_color(_QMD_GREY)
+                    saved.append((_sp.set_edgecolor, _sp.get_edgecolor())); _sp.set_edgecolor(fg)
+                for _ln in (*_ax.xaxis.get_ticklines(), *_ax.yaxis.get_ticklines()):
+                    saved.append((_ln.set_color, _ln.get_color())); _ln.set_color(fg)
+                for _ln in (*_ax.get_xgridlines(), *_ax.get_ygridlines()):
+                    saved.append((_ln.set_color, _ln.get_color())); _ln.set_color(grid)
             return saved
+
+        def _qmd_render(fig, fg, grid):
+            # Produce a base64 PNG (transparent bg) with `fg`/`grid` recolouring,
+            # restoring the live figure afterwards.
+            _orig = _qmd_orig_png[0]
+            _saved = _qmd_recolour(fig, fg, grid)
+            try:
+                return _orig(fig)
+            finally:
+                for _set, _val in reversed(_saved):
+                    _set(_val)
 
         def _qmd_ensure_inline():
             # Make sure the inline backend's Figure->png formatter exists, activating
@@ -147,9 +170,9 @@ try:
                     pass
 
         def _qmd_install():
-            # Wrap the inline Figure->png formatter so each inline render exports
-            # (pristine) then recolours-then-restores. Idempotent: skips if the
-            # current formatter is already ours; re-wraps if something replaced it.
+            # Register a text/html Figure formatter emitting both theme variants, and
+            # suppress the standalone image/png. Idempotent: skips if the html
+            # formatter is already ours; re-wraps if something replaced it.
             try:
                 from matplotlib.figure import Figure
             except Exception:
@@ -158,24 +181,41 @@ try:
             if _fmts is None:
                 return
             _png = _fmts.formatters.get('image/png')
-            if _png is None:
+            _html = _fmts.formatters.get('text/html')
+            if _png is None or _html is None:
                 return
             try:
-                _orig = _png.lookup_by_type(Figure)
+                _cur_html = _html.lookup_by_type(Figure)
             except Exception:
-                _orig = None
-            if _orig is None or getattr(_orig, '_qmd_themed', False):
+                _cur_html = None
+            if getattr(_cur_html, '_qmd_themed', False):
                 return
-            def _themed(fig):
+            # Capture the real png formatter (the one matplotlib_inline registered),
+            # before we replace it with the suppressor.
+            try:
+                _real = _png.lookup_by_type(Figure)
+            except Exception:
+                _real = None
+            if _real is not None and not getattr(_real, '_qmd_suppress', False):
+                _qmd_orig_png[0] = _real
+            if _qmd_orig_png[0] is None:
+                return
+            def _themed_html(fig):
+                if not fig.axes and not fig.lines:
+                    return None  # empty figure: emit nothing (matches print_figure)
                 _qmd_do_export(fig)
-                _saved = _qmd_recolour(fig)
-                try:
-                    return _orig(fig)
-                finally:
-                    for _set, _val in reversed(_saved):
-                        _set(_val)
-            _themed._qmd_themed = True
-            _png.for_type(Figure, _themed)
+                _l = _qmd_render(fig, *_QMD_LIGHT)
+                _d = _qmd_render(fig, *_QMD_DARK)
+                if _l is None or _d is None:
+                    return None
+                return ('<img class="qmd-fig qmd-fig-light" alt="" src="data:image/png;base64,' + _l + '">'
+                        '<img class="qmd-fig qmd-fig-dark" alt="" src="data:image/png;base64,' + _d + '">')
+            _themed_html._qmd_themed = True
+            _html.for_type(Figure, _themed_html)
+            def _suppress(fig):
+                return None
+            _suppress._qmd_suppress = True
+            _png.for_type(Figure, _suppress)
 
         def _qmd_export(paths, install=False):
             # Called via a line the executor prepends to a `#| fig-export:` cell.
@@ -330,10 +370,34 @@ impl Kernel {
             kernel_name: Some(spec.kernel_name.to_string()),
         };
 
+        // The connection file holds the HMAC key + ZMQ ports — anyone who can read
+        // it can drive the kernel. It lives in the shared temp dir, so lock it down:
+        // a 0700 dir and a 0600 file, created with those modes from the start (no
+        // world-readable window) on Unix.
         let conn_dir = std::env::temp_dir().join(format!("qmd-kernel-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir_all(&conn_dir)?;
+        {
+            let mut b = std::fs::DirBuilder::new();
+            b.recursive(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::DirBuilderExt;
+                b.mode(0o700);
+            }
+            b.create(&conn_dir)?;
+        }
         let conn_file = conn_dir.join("connection.json");
-        std::fs::write(&conn_file, serde_json::to_vec(&info)?)?;
+        {
+            use std::io::Write;
+            let mut opts = std::fs::OpenOptions::new();
+            opts.write(true).create(true).truncate(true);
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::OpenOptionsExt;
+                opts.mode(0o600);
+            }
+            opts.open(&conn_file)?
+                .write_all(&serde_json::to_vec(&info)?)?;
+        }
 
         // Capture stderr so a startup failure (e.g. the interpreter lacks the
         // ipykernel/IRkernel module) can be reported instead of swallowed.

@@ -56,6 +56,13 @@ pub fn diff_blocks(old: &[Block], new: &[Block]) -> Vec<BlockOp> {
         nj..new.len(),
         &mut prev_new,
     );
+    // Apply every Remove before any Insert. A reorder splits a moved block into a
+    // Remove (its old slot) + an Insert (its new slot) of the *same* id; if the
+    // Insert is emitted first (a move toward the front), the client's id-based
+    // lookup for the Remove matches the just-inserted element and deletes the wrong
+    // one. Removes are positionally independent, so hoisting them is safe; this
+    // stable sort keeps Inserts in document order (so after_id chains still hold).
+    ops.sort_by_key(|op| !matches!(op, BlockOp::Remove { .. }));
     ops
 }
 

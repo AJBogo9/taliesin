@@ -362,10 +362,15 @@ fn render_section(s: &SlideBuf, out: &mut String) {
             paused = true;
             continue;
         }
+        // A per-slide background / `auto-animate` only applies at the <section>
+        // level (hoisted from the slide's lead heading above). On a deeper heading
+        // mid-slide it can't apply, so strip it rather than leak an inert `data-*`
+        // attribute onto the heading.
+        let (_, b) = take_bg_attrs(b);
         if paused {
-            out.push_str(&add_fragment_class(b));
+            out.push_str(&add_fragment_class(&b));
         } else {
-            out.push_str(b);
+            out.push_str(&b);
         }
         out.push('\n');
     }
@@ -381,7 +386,7 @@ fn is_pause(html: &str) -> bool {
 /// Add `fragment` to a block's opening-tag class list (creating `class="fragment"`
 /// when none exists), so the existing fragment engine hides it until its step.
 fn add_fragment_class(html: &str) -> String {
-    let Some(gt) = html.find('>') else {
+    let Some(gt) = tag_end(html) else {
         return html.to_string();
     };
     let (open, rest) = html.split_at(gt);
@@ -400,7 +405,7 @@ fn take_bg_attrs(html: &str) -> (String, String) {
     if !html.contains("data-background") && !html.contains("data-auto-animate") {
         return (String::new(), html.to_string());
     }
-    let gt = html.find('>').unwrap_or(html.len());
+    let gt = tag_end(html).unwrap_or(html.len());
     let (head, tail) = html.split_at(gt);
     let mut attrs = String::new();
     let mut rest = String::new();

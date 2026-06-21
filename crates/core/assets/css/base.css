@@ -197,6 +197,14 @@
   .qmd-output { margin: 0 0 1rem; }
   .qmd-output > pre { background: #fbfbfb; border-left: 3px solid #e3e3e3; }
   .qmd-output img { display: block; max-width: 100%; }
+  /* Theme-matched matplotlib figures: the kernel emits a light (near-black) and a
+     dark (near-white) variant of each plot; show the one matching the active theme
+     so axes/text match the page exactly. Same idea as the dual {{< video >}} clip.
+     Specificity is matched to `.qmd-output img` so the right variant wins. */
+  img.qmd-fig { display: block; max-width: 100%; }
+  img.qmd-fig-dark { display: none; }
+  html[data-theme="dark"] img.qmd-fig-light { display: none; }
+  html[data-theme="dark"] img.qmd-fig-dark { display: block; }
   .qmd-stderr { border-left-color: #e0a800 !important; background: #fdf6e3 !important; }
   .qmd-error { border-left-color: #e0566b !important; background: #fdecef !important; color: #862033; }
   [data-block-id] { scroll-margin-top: 1rem; }

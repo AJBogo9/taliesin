@@ -343,7 +343,7 @@ fn emit_html_block(literal: &str, attrs: &str, out: &mut String) {
         && !lead.starts_with("</")
         && !lead.starts_with("<!")
         && !lead.starts_with("<?");
-    if injectable && let Some(gt) = literal.find('>') {
+    if injectable && let Some(gt) = tag_end(literal) {
         let (open, rest) = literal.split_at(gt); // rest starts with '>'
         if let Some(open) = open.strip_suffix('/') {
             out.push_str(open);

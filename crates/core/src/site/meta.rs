@@ -19,10 +19,12 @@ pub(super) fn social_head(site: &Site, page: &Page) -> String {
     let desc = page.description.as_deref().or(cfg.description.as_deref());
     let base = cfg.url.as_deref().map(|u| u.trim_end_matches('/'));
     let page_url = base.map(|b| format!("{b}/{}", page.url));
-    // Card image, made absolute (social scrapers require absolute image URLs).
+    // Card image, made absolute (social scrapers require absolute image URLs). Falls
+    // back to the site-wide default (`image:` / Quarto `open-graph: image:`).
     let image = page
         .card_image
         .as_deref()
+        .or(cfg.card_image.as_deref())
         .zip(base)
         .map(|(img, b)| format!("{b}/{}", img.trim_start_matches('/')));
     let og_type = if page.is_post { "article" } else { "website" };

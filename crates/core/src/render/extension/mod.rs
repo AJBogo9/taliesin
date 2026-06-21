@@ -615,7 +615,9 @@ fn deck_href(path: &str) -> String {
 /// through.
 fn embed_html(path: &str, title: Option<&str>) -> String {
     let href = escape_attr(&deck_href(path));
-    let title = html_escape(title.unwrap_or("Embedded slide deck"));
+    // `title` lands in a double-quoted attribute, so escape `"` too (escape_attr,
+    // not html_escape) — otherwise a `"` in the title breaks out of the attribute.
+    let title = escape_attr(title.unwrap_or("Embedded slide deck"));
     format!(
         "<div class=\"qmd-embed\">\
          <div class=\"qmd-embed-stage\">\

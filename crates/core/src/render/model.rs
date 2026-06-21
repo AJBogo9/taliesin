@@ -13,6 +13,10 @@ pub struct Cell {
     /// When this cell's output should be a numbered `<figure>` (`#| label: fig-x`
     /// + `#| fig-cap:`), the executor wraps the rendered output accordingly.
     pub figure: Option<CellFigure>,
+    /// When this cell's output is a numbered, captioned table (from `#| label:
+    /// tbl-x` / `#| tbl-cap:`), the executor injects the `#tbl-x` id and a "Table N"
+    /// caption into the executed `<table>` so `@tbl-x` cross-references resolve.
+    pub table: Option<CellTable>,
     /// `#| echo: false` hides the source (the cell still runs, output still shows).
     pub echo: bool,
     /// `#| include: false` hides both source and output, but the cell still runs
@@ -41,6 +45,17 @@ pub struct CellFigure {
     pub number: usize,
 }
 
+/// Metadata for captioning/numbering a code cell's executed `<table>` output.
+#[derive(Debug, Clone)]
+pub struct CellTable {
+    /// `#tbl-…` anchor (when labelled), so `@tbl-x` cross-references resolve.
+    pub anchor: Option<String>,
+    pub caption: Option<String>,
+    /// Assigned in document order (alongside Markdown tables) so the "Table N" the
+    /// caption shows matches what `@tbl-x` resolves to.
+    pub number: u32,
+}
+
 /// A code cell's cross-reference role from its `label`/`*-cap` options.
 pub(crate) enum CellRole {
     /// `label: fig-x` / `fig-cap` -> a numbered figure (the cell's output).
@@ -54,6 +69,11 @@ pub(crate) enum CellRole {
         anchor: Option<String>,
         caption: Option<String>,
         fold: Option<(bool, String)>,
+    },
+    /// `label: tbl-x` / `tbl-cap` -> a numbered table (the cell's executed output).
+    Table {
+        anchor: Option<String>,
+        caption: Option<String>,
     },
 }
 

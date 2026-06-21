@@ -22,9 +22,18 @@ pub(super) fn scan_xref_targets(
 ) -> HashMap<String, XrefTarget> {
     let mut map = HashMap::new();
     for page in pages {
-        let Ok(src) = std::fs::read_to_string(&page.input) else {
+        let Ok(raw) = std::fs::read_to_string(&page.input) else {
             continue;
         };
+        // Resolve `{{< include >}}` first, exactly like the render pipeline does, so
+        // the section-number counters advance over included headings too (otherwise a
+        // chapter built from includes numbers its sections differently here than in
+        // the rendered page, and `@sec-` resolves to the wrong number).
+        let base = page
+            .input
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let (src, _) = crate::includes::resolve(&raw, base);
         let chapter = book.as_ref().and_then(|b| {
             b.entries
                 .iter()

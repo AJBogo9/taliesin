@@ -24,8 +24,12 @@ pub(super) fn resolve_theme(
         // runtime via `data-theme` (toggle / OS), so no per-page override CSS.
         "light" | "default" | "dark" => String::new(),
         // A named `.css`/`.scss` that can't be read is a typo worth flagging.
+        // `safe_join` refuses an absolute path or one escaping the project root.
         path if path.ends_with(".css") || path.ends_with(".scss") => {
-            match base_dir.and_then(|b| std::fs::read_to_string(b.join(path)).ok()) {
+            match base_dir
+                .and_then(|b| crate::includes::safe_join(b, path))
+                .and_then(|p| std::fs::read_to_string(&p).ok())
+            {
                 Some(css) => css,
                 None => {
                     warnings.push(format!("theme file not found: {path}"));
@@ -147,7 +151,8 @@ pub(super) fn resolve_theme_layers(v: Option<&serde_yaml::Value>, dir: &Path) ->
     let mut out = String::new();
     let mut push = |name: &str| {
         if name.ends_with(".css")
-            && let Ok(css) = std::fs::read_to_string(dir.join(name))
+            && let Some(css) =
+                crate::includes::safe_join(dir, name).and_then(|p| std::fs::read_to_string(&p).ok())
         {
             out.push_str("<style>\n");
             out.push_str(&css);

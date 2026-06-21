@@ -32,11 +32,18 @@ pub(crate) fn parse_pandoc_attrs(s: &str) -> Option<(Vec<String>, Option<String>
 /// other block's sourcepos line numbers stay valid against the original source.
 pub(crate) fn preprocess(src: &str) -> String {
     let mut out = String::with_capacity(src.len());
+    let mut in_code: Option<(char, usize)> = None;
     for (i, line) in src.lines().enumerate() {
         if i > 0 {
             out.push('\n');
         }
-        if parse_fence(line.trim_start()).is_none() {
+        let was_in_code = in_code.is_some();
+        in_code = next_code_state(in_code, line);
+        // A `:::` marker is a div fence only outside a code block; inside one it is
+        // literal content (e.g. docs that *show* `::: {.callout-note}` in a code
+        // block), so leave those lines untouched.
+        let blank = !was_in_code && in_code.is_none() && parse_fence(line.trim_start()).is_some();
+        if !blank {
             out.push_str(line);
         }
     }
@@ -44,6 +51,42 @@ pub(crate) fn preprocess(src: &str) -> String {
         out.push('\n');
     }
     out
+}
+
+/// A Markdown code-fence marker line (3+ backticks or tildes after at most 3 spaces
+/// of indentation), as `(fence_char, run_len)`. Used to recognise `:::` lines that
+/// sit *inside* a code block, which must render literally rather than as div fences.
+fn code_fence(line: &str) -> Option<(char, usize)> {
+    let trimmed = line.trim_start_matches(' ');
+    if line.len() - trimmed.len() > 3 {
+        return None; // a code fence is indented at most 3 spaces (CommonMark)
+    }
+    let ch = trimmed.chars().next()?;
+    if ch != '`' && ch != '~' {
+        return None;
+    }
+    let run = trimmed.chars().take_while(|&c| c == ch).count();
+    (run >= 3).then_some((ch, run))
+}
+
+/// Advance the fenced-code state machine by one line: outside a code block a fence
+/// opens one; inside, a bare same-char fence of at least the opening length closes
+/// it. Keeps `preprocess` and `scan_div_spans` agreeing on what is "inside code".
+fn next_code_state(state: Option<(char, usize)>, line: &str) -> Option<(char, usize)> {
+    match state {
+        Some((ch, run)) => match code_fence(line) {
+            // A closing fence carries no info string (only the fence chars + space).
+            Some((c2, r2))
+                if c2 == ch
+                    && r2 >= run
+                    && line.trim_start().trim_start_matches(ch).trim().is_empty() =>
+            {
+                None
+            }
+            _ => Some((ch, run)),
+        },
+        None => code_fence(line),
+    }
 }
 
 /// A pandoc/Quarto fenced-div marker: 3+ colons, then nothing (close) or an
@@ -89,7 +132,13 @@ pub(crate) struct DivSpan {
 pub(crate) fn scan_div_spans(src: &str) -> Vec<DivSpan> {
     let mut stack: Vec<(usize, String)> = Vec::new();
     let mut spans: Vec<DivSpan> = Vec::new();
+    let mut in_code: Option<(char, usize)> = None;
     for (i, line) in src.lines().enumerate() {
+        let was_in_code = in_code.is_some();
+        in_code = next_code_state(in_code, line);
+        if was_in_code || in_code.is_some() {
+            continue; // inside (or entering/closing) a code block: not a div fence
+        }
         match parse_fence(line.trim_start()) {
             Some(Fence::Open(attrs)) => stack.push((i + 1, attrs)),
             Some(Fence::Close) => {

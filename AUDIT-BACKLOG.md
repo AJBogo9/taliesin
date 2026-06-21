@@ -20,103 +20,47 @@ plus build/live findings below. Priorities P0–P3 group them by what to fix fir
 
 ---
 
-## P0 — fix first (correctness that bites real input, + security)
+## P0 — RESOLVED (2026-06-21)
 
-### Render / authoring correctness
-- **`:::` inside a code fence is silently deleted.** The fenced-div preprocessor
-  isn't code-fence-aware, so `::: {...}` lines inside a ```` ``` ```` block are
-  blanked. Reproduced: a code block showing `::: {.callout-note}` renders with those
-  lines *gone*. **Hits your own docs**, which document `:::` syntax in code blocks.
-  → `crates/core/src/render/divs.rs:33` (preprocess) + `:89` (scan_div_spans): track
-  fenced-code state in both so `:::` isn't treated as a fence inside code.
-- **Cell-produced tables aren't captioned/numbered/anchored.** `#| label: tbl-x` +
-  `#| tbl-cap:` is handled for figures (`fig-`) and listings (`lst-`) but **not
-  tables** — so the caption is dropped, no "Table N", no `#tbl-x` id, and `@tbl-x`
-  cross-refs break. Corpus hit: `corpus/tech-blog/posts/Kruskal-Wallis-test`.
-  → `crates/core/src/render/mod.rs:236-242`: add a `tbl-` branch mirroring figures.
-- **A `code-line-numbers` block right after a `. . .` pause becomes permanently
-  hidden.** `add_fragment_class` adds `.fragment` to the `<pre>`, but `fragsOf`
-  treats it as code-only and never adds `qmd-frag-visible`, so it stays
-  `visibility:hidden` for the whole talk. (Interaction between the pause + code-step
-  features.) → `reveal.rs:383` skip `.fragment` on `pre[data-code-lines]`, **or**
-  `deck.js` fragsOf reveal it.
-- **`format:` mis-detection.** Any value containing `revealjs` (a theme name, a CSS
-  filename) makes an HTML doc render as a deck — it's a substring scan over nested
-  values. → `mod.rs:751,761`: match the format *key*, not any substring (or parse the
-  `format` block with serde_yaml, already done at `:598`).
-- **Reorder-toward-front diff emits Insert-before-Remove of the same id**, so the
-  client's first-match `querySelector` deletes the wrong (newly inserted) element.
-  → `crates/core/src/diff.rs:64-94`: emit all Removes before Inserts (or guarantee a
-  Remove of id X precedes any Insert of id X); + client dup-id defense
-  (`web-client/client.js:486`).
+All P0 items below were fixed and verified (201+ tests pass, clippy/fmt clean, the
+matplotlib + tbl + `:::`-in-fence behaviours browser-verified; the Kruskal-Wallis
+corpus post now emits `Table 1`). Details live in git. For the record, the items were:
+`:::` inside a code fence silently deleted; cell-produced tables not
+captioned/numbered/anchored (`tbl-`); a `code-line-numbers` block after a `. . .`
+pause staying hidden; `format:` substring mis-detection; reorder diff emitting
+Insert-before-Remove; kernel-recovery recording `ran` with no live kernel; `#| cache:
+false` cells reused from the warm prefix; path traversal in include/theme/bib reads;
+the world-readable kernel connection file; attribute-injection points; and the deck's
+open-origin `postMessage`.
 
-### Execution
-- **Kernel recovery skips re-execution.** A cell run while the kernel was down still
-  records `ran`, so when the kernel self-heals the cell is *not* re-run → stale/missing
-  output. → `crates/server/src/exec.rs:347-354`: only record `ran` `if has_kernel`.
-- **`#| cache: false` cells are reused** from the warm in-memory prefix, contradicting
-  the documented "always re-executes". → `exec.rs:449-460`: cap the warm `shared`
-  prefix at the first non-cacheable cell.
-
-### Security
-- **Path traversal (arbitrary file read).** Include / theme / format-resource paths
-  have no containment — absolute paths and `../` escape the base dir. → `includes.rs:55`,
-  `render/mod.rs:684` (read_include_file), `theme.rs:146`: reject absolute / leading-`..`
-  after lexical normalize; require the result stays under the doc/extension root.
-- **Kernel connection file world-readable** (HMAC key + ZMQ ports) in the shared temp
-  dir. → `kernel.rs:210`: 0700 dir / 0600 file, or `$XDG_RUNTIME_DIR`.
-- **Attribute injection** — values text-escaped but injected into double-quoted attrs:
-  `{{< embed >}}` title (`extension/mod.rs:618`) and figure `alt` (double-escaped,
-  `figure.rs:84`). Also `add_fragment_class` / `emit_html_block` split the opening tag
-  at the first `>` even inside a quoted attribute (`reveal.rs:383`, `emit.rs:339`).
-  → use `escape_attr` and a quote-aware tag-end scan.
-- **Deck `postMessage` accepts any origin and posts to `'*'`** — a third-party page
-  embedding the deck can drive it (and read its slide position). → `deck.js:926`: gate
-  on `e.origin === location.origin` (allow `file:`); target `location.origin`.
+(Also shipped alongside: **theme-matched matplotlib figures** — the kernel now emits a
+light + a dark variant of each plot and the page swaps them on a `data-theme` change,
+replacing the single washed-out grey render.)
 
 ---
 
-## P1 — correctness & robustness (medium)
+## P1 — RESOLVED (2026-06-21)
 
-### Site dev server (preview ≠ build, staleness)
-- **Live preview skips `validate_xrefs` + `decorate_post`** that build runs, so broken
-  cross-refs and reading-time/category badges never appear in preview. → `site/mod.rs:333`
-  vs `serve_site.rs:328`: share one `finish_blocks(page, blocks, &mut warnings)`.
-- **Site re-discovered only on `_quarto.yml` change** — new/renamed pages, edited
-  titles/dates/listings never refresh live. → `serve_site.rs:948`: re-run `Site::discover`
-  on any `.qmd` add/remove/rename (debounced).
-- **`_quarto.yml` change reloads tabs but serves stale cached block state** →
-  `serve_site.rs:957`: clear `app.pages` (or re-queue builds) before broadcasting reload.
-- **Site watcher has no relevance filter** — every fs event (incl. `_freeze/` writes,
-  `.git`) triggers a full per-page dependency rescan. → add the relevance filter +
-  `_freeze` to SKIP_DIRS (also `serve.rs:828` for single-doc: a freeze write triggers a
-  redundant rebuild). → `serve_site.rs:904`.
-- **Synthesized listing blocks can collide on `data-block-id`**, breaking the diff.
-  → `site/mod.rs:1114`: thread the listing index into the id.
+All P1 items below were fixed and verified (tests pass, clippy/fmt clean; the
+cite/xref/TOC fixes checked in rendered output; the site-preview parity checked live —
+a post now shows its reading-time + category badges + executed table in preview, and
+the watcher no longer rebuilds on `_freeze/` writes). Details in git. The items were:
 
-### Citations / cross-refs
-- **`[@fig-x]` (bracketed cross-ref) mis-parsed as a citation** → wrong link + spurious
-  broken-citation warning. → `cite.rs:575`: detect xref-prefixed keys before treating as
-  a citation.
-- **Citation-key grammar omits `.`/`+`** that BibTeX keys allow → truncated keys + false
-  warnings. → `cite.rs:642` vs `:236`: share one `is_cite_key_char`.
-- **Cross-ref section numbers diverge from rendered numbers when a chapter uses
-  `{{< include >}}`** → `site/xref.rs:25`: build the registry from include-resolved source.
-
-### Reveal / slides
-- **Per-slide `background`/`auto-animate` on an h3+ heading is silently dropped**
-  (attrs only hoist from slide-level headings). → `reveal.rs:332`: strip them from
-  non-lead headings or warn.
-
-### Misc
-- **TOC emits invalid `<ul>`-in-`<ul>`** when heading levels are skipped → `mod.rs:1195`.
-- **Bare-string nav/footer items silently dropped** from config sequences →
-  `site/config/mod.rs:255`.
-- **RSS `pubDate` dropped for any non-zero-padded ISO date** → `feed.rs:96`.
-- **Quarto `open-graph: image:` ignored** → site loses its default social card →
-  `config/quarto.rs:20` + `meta.rs`.
-- **Port 0 surfaces a broken URL** (returns requested addr, not the bound `local_addr`)
-  → `serve.rs:182`.
+- **Site dev server:** preview now shares one `finish_blocks` with the build (so
+  `validate_xrefs` + `decorate_post` run in preview); the site re-discovers when a
+  `.qmd` is added/removed *and the page set actually changes*; a `_quarto.yml` / page-set
+  change clears cached block state before reloading tabs; the watcher gained a relevance
+  filter (and `_freeze` is in SKIP_DIRS for both servers); synthesized listing blocks
+  carry the listing index in their id.
+- **Citations / cross-refs:** `[@fig-x]` renders as a cross-ref (not a citation); the
+  citation-key grammar accepts `.`/`+`/`/`; the xref registry is built from
+  include-resolved source so section numbers match.
+- **Reveal:** a `background`/`auto-animate` on a non-lead (h3+) heading is stripped
+  rather than left as an inert `data-*` attribute.
+- **Misc:** TOC inserts a filler `<li>` so skipped heading levels stay valid; bare-string
+  nav/footer items aren't dropped; RSS `pubDate` tolerates non-zero-padded dates; the
+  default social card comes from `image:` / Quarto `open-graph: image:`; port 0 reports
+  the OS-assigned port.
 
 ---
 
