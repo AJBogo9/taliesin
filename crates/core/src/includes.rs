@@ -52,6 +52,15 @@ fn expand(
 ) {
     let mut in_code: Option<(char, usize)> = None;
     for (idx, line) in src.lines().enumerate() {
+        // Emit `line` verbatim, mapped back to the current file (used whenever a
+        // directive isn't expanded: ordinary text, or an unsafe/cyclic/unreadable include).
+        let mut keep_line = || {
+            out_lines.push(line.to_string());
+            out_origins.push(LineOrigin {
+                file: file_label.clone(),
+                line: idx + 1,
+            });
+        };
         let was_in_code = in_code.is_some();
         in_code = next_code_state(in_code, line);
         // A `{{< include >}}` inside a code fence is documentation, not a directive —
@@ -61,60 +70,34 @@ fn expand(
         } else {
             parse_include(line)
         };
-        match directive {
-            Some(rel) => {
-                let Some(target) = safe_join(base_dir, rel) else {
-                    // Unsafe path (absolute or escaping the project root): leave the
-                    // directive visible rather than reading outside the project.
-                    out_lines.push(line.to_string());
-                    out_origins.push(LineOrigin {
-                        file: file_label.clone(),
-                        line: idx + 1,
-                    });
-                    continue;
-                };
-                if stack.contains(&target) {
-                    // include cycle: leave the directive in place rather than loop
-                    out_lines.push(line.to_string());
-                    out_origins.push(LineOrigin {
-                        file: file_label.clone(),
-                        line: idx + 1,
-                    });
-                    continue;
-                }
-                match std::fs::read_to_string(&target) {
-                    Ok(content) => {
-                        let label = label_for(&target, primary_base);
-                        let child_base = target.parent().unwrap_or(base_dir).to_path_buf();
-                        stack.push(target.clone());
-                        expand(
-                            &content,
-                            &child_base,
-                            primary_base,
-                            Some(label),
-                            stack,
-                            out_lines,
-                            out_origins,
-                        );
-                        stack.pop();
-                    }
-                    Err(_) => {
-                        // unreadable include: leave the directive visible
-                        out_lines.push(line.to_string());
-                        out_origins.push(LineOrigin {
-                            file: file_label.clone(),
-                            line: idx + 1,
-                        });
-                    }
-                }
+        let Some(rel) = directive else {
+            keep_line();
+            continue;
+        };
+        // Unsafe path (absolute or escaping the project root), or an include cycle:
+        // leave the directive visible rather than reading outside the project / looping.
+        let Some(target) = safe_join(base_dir, rel).filter(|t| !stack.contains(t)) else {
+            keep_line();
+            continue;
+        };
+        match std::fs::read_to_string(&target) {
+            Ok(content) => {
+                let label = label_for(&target, primary_base);
+                let child_base = target.parent().unwrap_or(base_dir).to_path_buf();
+                stack.push(target.clone());
+                expand(
+                    &content,
+                    &child_base,
+                    primary_base,
+                    Some(label),
+                    stack,
+                    out_lines,
+                    out_origins,
+                );
+                stack.pop();
             }
-            None => {
-                out_lines.push(line.to_string());
-                out_origins.push(LineOrigin {
-                    file: file_label.clone(),
-                    line: idx + 1,
-                });
-            }
+            // unreadable include: leave the directive visible
+            Err(_) => keep_line(),
         }
     }
 }

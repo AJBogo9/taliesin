@@ -638,7 +638,7 @@ async fn client_conn(socket: WebSocket, app: Arc<SiteApp>, rel_or_url: String) {
 fn is_restart_kernel(text: &str) -> bool {
     serde_json::from_str::<serde_json::Value>(text)
         .ok()
-        .and_then(|v| v.get("type").and_then(|t| t.as_str()).map(str::to_string))
+        .and_then(|v| v.get("type")?.as_str().map(str::to_string))
         .as_deref()
         == Some("restart_kernel")
 }

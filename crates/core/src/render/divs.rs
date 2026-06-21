@@ -284,11 +284,9 @@ fn build_container(
     let (file, open_line) = map_origin(origins, span.open);
     let (_, close_line) = map_origin(origins, span.close);
     let sourcepos = format!("{open_line}:1-{close_line}:3");
-    let file_attr = match &file {
-        Some(f) => format!(" data-source-file=\"{}\"", escape_attr(f)),
-        None => String::new(),
-    };
+    let file_attr = source_file_attr(file.as_deref());
     let data = format!(" data-block-id=\"{id}\" data-sourcepos=\"{sourcepos}\"{file_attr}");
+    let concat = |inner: &[Block]| -> String { inner.iter().map(|b| b.html.as_str()).collect() };
 
     let html = if let Some(kind) = attrs.callout_kind() {
         // Callout: use a `title="..."` attr, else a leading heading, else the kind.
@@ -299,7 +297,7 @@ fn build_container(
             }
             None => capitalize(kind),
         };
-        let body: String = inner.iter().map(|b| b.html.as_str()).collect();
+        let body = concat(&inner);
         // `collapse="true"` makes the callout a native <details> (starts closed);
         // `collapse="false"` is collapsible but starts open.
         match attrs.get("collapse") {
@@ -314,7 +312,7 @@ fn build_container(
             ),
         }
     } else if let Some(ncol) = attrs.get("layout-ncol").and_then(|n| n.parse::<u32>().ok()) {
-        let body: String = inner.iter().map(|b| b.html.as_str()).collect();
+        let body = concat(&inner);
         format!(
             "<div class=\"qmd-layout\" style=\"display:grid;grid-template-columns:repeat({ncol},minmax(0,1fr));gap:1rem\"{data}>{body}</div>"
         )
@@ -331,11 +329,8 @@ fn build_container(
         if class.is_empty() {
             class.push_str("qmd-div");
         }
-        let id_attr = match &attrs.id {
-            Some(i) => format!(" id=\"{}\"", escape_attr(i)),
-            None => String::new(),
-        };
-        let body: String = inner.iter().map(|b| b.html.as_str()).collect();
+        let id_attr = id_attr(attrs.id.as_deref());
+        let body = concat(&inner);
         format!("<div class=\"{class}\"{id_attr}{data}>{body}</div>")
     };
 

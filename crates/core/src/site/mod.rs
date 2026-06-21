@@ -1177,18 +1177,9 @@ fn rewrite_one_href(val: &str) -> String {
     {
         return val.to_string();
     }
-    let (path, frag) = match val.split_once('#') {
-        Some((p, f)) => (p, Some(f)),
-        None => (val, None),
-    };
-    if !path.ends_with(".qmd") {
-        return val.to_string();
-    }
-    let mapped = qmd_to_html(path);
-    match frag {
-        Some(f) => format!("{mapped}#{f}"),
-        None => mapped,
-    }
+    // `.qmd`→`.html` on the path component, fragment preserved (a non-`.qmd` path
+    // round-trips unchanged through `qmd_to_html`).
+    qmd_href(val)
 }
 
 /// Whether a block's *leading element tag* carries `id="x"` (so a `::: {#x}`

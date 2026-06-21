@@ -27,8 +27,8 @@ function qmdMermaidConfig() {
     lineColor: '--qmd-mermaid-line',
   };
   var vars = {};
-  for (var key in map) { var v = get(map[key]); if (v) { vars[key] = v; } }
-  if (Object.keys(vars).length) { cfg.themeVariables = vars; }
+  for (var key in map) { var v = get(map[key]); if (v) vars[key] = v; }
+  if (Object.keys(vars).length) cfg.themeVariables = vars;
   return cfg;
 }
 function qmdRunMermaid(nodes) {

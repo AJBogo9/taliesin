@@ -23,12 +23,11 @@
     var toc = document.getElementById("TOC");
     entries = [];
     if (!toc) return;
-    var links = toc.querySelectorAll("a[href^='#']");
-    for (var i = 0; i < links.length; i++) {
-      var id = decodeURIComponent((links[i].getAttribute("href") || "").slice(1));
+    toc.querySelectorAll("a[href^='#']").forEach(function (link) {
+      var id = decodeURIComponent((link.getAttribute("href") || "").slice(1));
       var h = id && document.getElementById(id);
-      if (h) entries.push({ link: links[i], heading: h });
-    }
+      if (h) entries.push({ link: link, heading: h });
+    });
   }
 
   function update() {
@@ -44,27 +43,26 @@
       cur = entries[entries.length - 1];
     } else {
       for (var i = 0; i < entries.length; i++) {
-        if (entries[i].heading.getBoundingClientRect().top - ln <= 0) cur = entries[i];
-        else break;
+        if (entries[i].heading.getBoundingClientRect().top - ln > 0) break;
+        cur = entries[i];
       }
     }
     // cur stays null while above the first heading, so nothing is highlighted in
     // the intro (rather than prematurely lighting the first entry).
     if (cur === active) return;
     active = cur;
-    for (var j = 0; j < entries.length; j++) {
-      entries[j].link.classList.toggle("qmd-toc-active", entries[j] === cur);
-    }
+    entries.forEach(function (e) {
+      e.link.classList.toggle("qmd-toc-active", e === cur);
+    });
     // Collapse: expand only the active entry's branch (its <li> and ancestors), so
     // a long TOC shows top-level entries plus the current section's subsections.
     var open = [];
     for (var node = cur && cur.link.parentNode; node && node.id !== "TOC"; node = node.parentNode) {
       if (node.tagName === "LI") open.push(node);
     }
-    var lis = toc.getElementsByTagName("li");
-    for (var k = 0; k < lis.length; k++) {
-      lis[k].classList.toggle("qmd-toc-expanded", open.indexOf(lis[k]) !== -1);
-    }
+    Array.prototype.forEach.call(toc.getElementsByTagName("li"), function (li) {
+      li.classList.toggle("qmd-toc-expanded", open.indexOf(li) !== -1);
+    });
     var chip = document.getElementById("qmd-toc-cur"); // mobile pull-up handle label
     if (chip && cur) chip.textContent = cur.heading.textContent;
     if (cur) {

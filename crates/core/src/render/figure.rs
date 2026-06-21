@@ -68,10 +68,7 @@ pub(super) fn figure_parts<'a>(node: &'a AstNode<'a>) -> Option<FigureParts> {
 /// Render a recognized figure as a numbered `<figure>` carrying the block data
 /// attributes, honoring `width=` and `fig-align=`.
 pub(super) fn emit_figure(fig: &FigureParts, block_attrs: &str, num: usize) -> String {
-    let id_attr = match &fig.attrs.id {
-        Some(i) => format!(" id=\"{}\"", escape_attr(i)),
-        None => String::new(),
-    };
+    let id_attr = id_attr(fig.attrs.id.as_deref());
     let align_class = match fig.attrs.get("fig-align") {
         Some("left") => " qmd-figure-left",
         Some("right") => " qmd-figure-right",
@@ -104,16 +101,10 @@ pub(super) fn emit_mermaid_figure(
     block_attrs: &str,
     num: usize,
 ) -> String {
-    let id_attr = match anchor {
-        Some(a) => format!(" id=\"{}\"", escape_attr(a)),
-        None => String::new(),
-    };
+    let id_attr = id_attr(anchor);
     let mut diagram = String::new();
     escape_html(code, &mut diagram);
-    let figcap = match caption.map(str::trim).filter(|c| !c.is_empty()) {
-        Some(c) => format!("Figure&nbsp;{num}: {}", html_escape(c)),
-        None => format!("Figure&nbsp;{num}"),
-    };
+    let figcap = numbered_caption("Figure", num, caption);
     format!(
         "<figure{block_attrs}{id_attr} class=\"qmd-figure qmd-figure-center\">\
          <pre class=\"mermaid\">{diagram}</pre>\

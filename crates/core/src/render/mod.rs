@@ -306,10 +306,7 @@ fn render_internal_impl(
         };
 
         let id = make_id(&block_src, &mut id_counts);
-        let file_attr = match &source_file {
-            Some(f) => format!(" data-source-file=\"{}\"", escape_attr(f)),
-            None => String::new(),
-        };
+        let file_attr = source_file_attr(source_file.as_deref());
         // A heading gets a stable, deduped anchor id (HTML docs only — reveal
         // decks put the slug on the wrapping `<section>` instead, so adding it
         // here too would duplicate the id in the DOM).
@@ -820,7 +817,11 @@ fn detect_format(front_matter: &str) -> DocFormat {
             // *name*, not any substring, so a theme/filename that merely contains
             // "revealjs" (e.g. `theme: my-revealjs.css`) can't flip an HTML doc to
             // a deck.
-            return reveal_if(inline.split(['[', ']', ',', ' ']).any(is_reveal_format));
+            return if inline.split(['[', ']', ',', ' ']).any(is_reveal_format) {
+                DocFormat::Reveal
+            } else {
+                DocFormat::Html
+            };
         }
         // Block form: the sub-keys are format *names* (`html:`, `revealjs:`,
         // `liquid-glass-revealjs:`). Match the key, never a value substring.
@@ -846,14 +847,6 @@ fn detect_format(front_matter: &str) -> DocFormat {
 fn is_reveal_format(name: &str) -> bool {
     let n = name.trim().trim_matches(['"', '\'']);
     n == "revealjs" || n.ends_with("-revealjs")
-}
-
-fn reveal_if(cond: bool) -> DocFormat {
-    if cond {
-        DocFormat::Reveal
-    } else {
-        DocFormat::Html
-    }
 }
 
 /// Load and merge the bibliography file(s) named in the front matter, resolved
@@ -894,6 +887,25 @@ fn load_bibliography(
 struct FlatBlock {
     buf_start: usize,
     block: Block,
+}
+
+/// The ` data-source-file="…"` attribute for a block from an included file (empty
+/// for a primary-document block). Preserves the click-to-source invariant for both
+/// leaf blocks and fenced-div containers.
+fn source_file_attr(file: Option<&str>) -> String {
+    match file {
+        Some(f) => format!(" data-source-file=\"{}\"", escape_attr(f)),
+        None => String::new(),
+    }
+}
+
+/// The ` id="…"` attribute for an optional anchor (empty when `None`). Shared by the
+/// figure/listing/div emitters that put a `#fig-`/`#lst-`/`#id` anchor on a wrapper.
+pub(crate) fn id_attr(id: Option<&str>) -> String {
+    match id {
+        Some(i) => format!(" id=\"{}\"", escape_attr(i)),
+        None => String::new(),
+    }
 }
 
 /// Map a 1-based buffer line to its (origin file, origin line). Without a
@@ -1043,14 +1055,21 @@ fn dedup_slug(block_src: &str, counts: &mut HashMap<String, u32>) -> String {
     } else {
         base
     };
+    dedup_with_suffix(base, counts)
+}
+
+/// Make `base` unique within `counts`: the first occurrence is `base`, each repeat
+/// gets a `-N` suffix (`base`, `base-1`, `base-2`, …). Shared by heading-slug and
+/// block-id deduplication.
+fn dedup_with_suffix(base: String, counts: &mut HashMap<String, u32>) -> String {
     let n = counts.entry(base.clone()).or_insert(0);
-    let slug = if *n == 0 {
+    let out = if *n == 0 {
         base.clone()
     } else {
         format!("{base}-{n}")
     };
     *n += 1;
-    slug
+    out
 }
 
 /// The line of a heading block that carries a trailing `{...}` attribute. For an
@@ -1284,10 +1303,7 @@ fn apply_table_captions(
                 register_xref(xrefs, warnings, id, tbl_count.to_string());
             }
             let sep = if caption_html.is_empty() { "" } else { ": " };
-            let id_attr = id
-                .as_deref()
-                .map(|x| format!(" id=\"{}\"", escape_attr(x)))
-                .unwrap_or_default();
+            let id_attr = id_attr(id.as_deref());
             // Insert the `id` on the <table> and a <caption> as its first child.
             let table = &blocks[i].html;
             let gt = table.find('>').unwrap_or(0) + 1;
@@ -1398,14 +1414,7 @@ fn extract_attr(html: &str, name: &str) -> Option<String> {
 fn make_id(block_src: &str, counts: &mut HashMap<String, u32>) -> String {
     let hex = format!("{:016x}", fnv1a(block_src.trim()));
     let base = format!("b-{}", &hex[..12]);
-    let n = counts.entry(base.clone()).or_insert(0);
-    let id = if *n == 0 {
-        base.clone()
-    } else {
-        format!("{base}-{n}")
-    };
-    *n += 1;
-    id
+    dedup_with_suffix(base, counts)
 }
 
 /// 64-bit FNV-1a — a small, deterministic hash stable across runs and versions.
@@ -1521,6 +1530,16 @@ fn labelled_display_eq(block_src: &str) -> Option<(String, String)> {
     anchor
         .starts_with("eq-")
         .then(|| (latex.trim().to_string(), anchor.to_string()))
+}
+
+/// A numbered figure/listing caption: `"<Label>&nbsp;<num>"`, with `": <caption>"`
+/// appended (HTML-escaped) when a non-empty caption is given. Shared by the
+/// figure, listing, mermaid, and OJS-figure emitters.
+fn numbered_caption(label: &str, num: usize, caption: Option<&str>) -> String {
+    match caption.map(str::trim).filter(|c| !c.is_empty()) {
+        Some(c) => format!("{label}&nbsp;{num}: {}", html_escape(c)),
+        None => format!("{label}&nbsp;{num}"),
+    }
 }
 
 /// Render a numbered display equation: the KaTeX body plus a right-aligned
@@ -1793,13 +1812,8 @@ fn emit_ojs_figure(
     num: usize,
 ) -> String {
     let cell = emit_ojs_cell(src, block_id, "");
-    let id_attr = anchor
-        .map(|a| format!(" id=\"{}\"", escape_attr(a)))
-        .unwrap_or_default();
-    let figcap = match caption.map(str::trim).filter(|c| !c.is_empty()) {
-        Some(c) => format!("Figure&nbsp;{num}: {}", html_escape(c)),
-        None => format!("Figure&nbsp;{num}"),
-    };
+    let id_attr = id_attr(anchor);
+    let figcap = numbered_caption("Figure", num, caption);
     format!(
         "<figure{block_attrs}{id_attr} class=\"qmd-figure qmd-figure-center\">\
          {cell}<figcaption>{figcap}</figcaption></figure>"
@@ -1817,19 +1831,14 @@ fn emit_code_listing(
     block_attrs: &str,
     num: usize,
 ) -> String {
-    let id_attr = anchor
-        .map(|a| format!(" id=\"{}\"", escape_attr(a)))
-        .unwrap_or_default();
+    let id_attr = id_attr(anchor);
     let class = if lang.is_empty() {
         String::new()
     } else {
         format!(" class=\"language-{lang}\"")
     };
     let code_html = crate::highlight::highlight(code, (!lang.is_empty()).then_some(lang));
-    let figcap = match caption.map(str::trim).filter(|c| !c.is_empty()) {
-        Some(c) => format!("Listing&nbsp;{num}: {}", html_escape(c)),
-        None => format!("Listing&nbsp;{num}"),
-    };
+    let figcap = numbered_caption("Listing", num, caption);
     // `code-fold` collapses the listing's source behind its summary.
     let code_html = match fold {
         Some((open, summary)) => format!(

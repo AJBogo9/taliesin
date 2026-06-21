@@ -111,10 +111,9 @@ function qmdInitCategoryFilter(root) {
       // Read the card's own category badges (each holds the exact name in data-cat),
       // so a category name containing a comma still matches (a delimited attribute
       // would mis-split it).
-      return Array.prototype.map.call(
-        card.querySelectorAll('.qmd-cat[data-cat]'),
-        function (b) { return b.getAttribute('data-cat'); }
-      );
+      return [...card.querySelectorAll('.qmd-cat[data-cat]')].map(function (b) {
+        return b.getAttribute('data-cat');
+      });
     };
     var apply = function () {
       listing.querySelectorAll('.qmd-card').forEach(function (card) {

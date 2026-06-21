@@ -192,24 +192,14 @@
       // No query: a book shows its chapter list (the level-0 page entries) as a
       // jump menu; a single doc shows its full heading outline.
       matches = window.QMD_SEARCH_INDEX
-        ? index.filter(function (it) {
-            return it.level === 0;
-          })
+        ? index.filter(function (it) { return it.level === 0; })
         : index.slice();
     } else {
       matches = index
-        .map(function (it) {
-          return { it: it, s: score(it, q) };
-        })
-        .filter(function (m) {
-          return m.s > 0;
-        })
-        .sort(function (a, b) {
-          return b.s - a.s;
-        })
-        .map(function (m) {
-          return m.it;
-        });
+        .map(function (it) { return { it: it, s: score(it, q) }; })
+        .filter(function (m) { return m.s > 0; })
+        .sort(function (a, b) { return b.s - a.s; })
+        .map(function (m) { return m.it; });
     }
     sel = 0;
     list.innerHTML = "";
@@ -220,9 +210,7 @@
       list.appendChild(empty);
       return;
     }
-    for (var i = 0; i < matches.length; i++) {
-      list.appendChild(itemEl(matches[i], q, i));
-    }
+    matches.forEach(function (m, i) { list.appendChild(itemEl(m, q, i)); });
     markSel();
   }
 
@@ -240,8 +228,7 @@
     sec.className = "qmd-s-sec";
     // In a book, label the result with its chapter; otherwise its heading level.
     sec.textContent = item.page || "H" + item.level;
-    head.appendChild(title);
-    head.appendChild(sec);
+    head.append(title, sec);
     li.appendChild(head);
     // A body (full-text) match that isn't in the title gets a snippet around the hit.
     if (q && item.title.toLowerCase().indexOf(q) < 0 && item.body) {
@@ -299,15 +286,14 @@
   }
 
   function markSel() {
-    var opts = list.querySelectorAll(".qmd-s-item");
-    for (var i = 0; i < opts.length; i++) {
+    list.querySelectorAll(".qmd-s-item").forEach(function (opt, i) {
       var on = i === sel;
-      opts[i].setAttribute("aria-selected", on ? "true" : "false");
+      opt.setAttribute("aria-selected", on ? "true" : "false");
       if (on) {
-        opts[i].scrollIntoView({ block: "nearest" });
-        input.setAttribute("aria-activedescendant", opts[i].id);
+        opt.scrollIntoView({ block: "nearest" });
+        input.setAttribute("aria-activedescendant", opt.id);
       }
-    }
+    });
   }
 
   function onKey(e) {
@@ -366,8 +352,7 @@
   // `data-qmd-search`; clicking it opens the same palette as Cmd-K. Delegated, so
   // it works no matter when the control entered the DOM.
   document.addEventListener("click", function (e) {
-    var t = e.target && e.target.closest && e.target.closest("[data-qmd-search]");
-    if (t) {
+    if (e.target && e.target.closest && e.target.closest("[data-qmd-search]")) {
       e.preventDefault();
       isOpen() ? close() : open();
     }

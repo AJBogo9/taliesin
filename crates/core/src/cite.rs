@@ -630,16 +630,7 @@ fn rewrite_text(
             // this document's registry may live on another page: emit it with a
             // `data-qmd-xref` marker so a site can resolve it to that page (and its
             // number); if nothing resolves it, it degrades to a bare-label link.
-            let (text, marker) = match xrefs.get(&anchor) {
-                Some(n) => (format!("{label}&nbsp;{n}"), String::new()),
-                None => (
-                    label.to_string(),
-                    format!(" data-qmd-xref=\"{}\"", esc(&anchor)),
-                ),
-            };
-            out.push_str(&format!(
-                "<a href=\"#{anchor}\" class=\"qmd-xref\"{marker}>{text}</a>"
-            ));
+            out.push_str(&xref_anchor_link(&anchor, label, xrefs));
             i += len;
             continue;
         }
@@ -657,6 +648,24 @@ fn is_cite_key_char(c: char) -> bool {
     c.is_alphanumeric() || matches!(c, '-' | '_' | ':' | '.' | '+' | '/')
 }
 
+/// A cross-reference link to `anchor`, labelled by kind. A locally-resolved number
+/// renders "Figure&nbsp;3"; an anchor unknown to this document's registry emits a
+/// `data-qmd-xref` marker (so a site can resolve it cross-page) and degrades to a
+/// bare-label link. Shared by the bracketed (`[@fig-x]`) and bare (`@fig-x`) paths.
+fn xref_anchor_link(anchor: &str, label: &str, xrefs: &HashMap<String, String>) -> String {
+    let (text, marker) = match xrefs.get(anchor) {
+        Some(n) => (format!("{label}&nbsp;{n}"), String::new()),
+        None => (
+            label.to_string(),
+            format!(" data-qmd-xref=\"{}\"", esc(anchor)),
+        ),
+    };
+    format!(
+        "<a href=\"#{}\" class=\"qmd-xref\"{marker}>{text}</a>",
+        esc(anchor)
+    )
+}
+
 /// If `key` is a cross-reference key (`fig-x`, `tbl-x`, …), render it as a cross-ref
 /// link (so `[@fig-x]` is a cross-ref, not a citation). `None` for ordinary keys.
 fn xref_link(key: &str, xrefs: &HashMap<String, String>) -> Option<String> {
@@ -665,17 +674,7 @@ fn xref_link(key: &str, xrefs: &HashMap<String, String>) -> Option<String> {
     if ident.is_empty() {
         return None;
     }
-    let (text, marker) = match xrefs.get(key) {
-        Some(n) => (format!("{label}&nbsp;{n}"), String::new()),
-        None => (
-            label.to_string(),
-            format!(" data-qmd-xref=\"{}\"", esc(key)),
-        ),
-    };
-    Some(format!(
-        "<a href=\"#{}\" class=\"qmd-xref\"{marker}>{text}</a>",
-        esc(key)
-    ))
+    Some(xref_anchor_link(key, label, xrefs))
 }
 
 /// `@fig-x` -> ("Figure", "fig-x", consumed_len).
