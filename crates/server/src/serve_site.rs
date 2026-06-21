@@ -296,6 +296,34 @@ async fn page_or_asset(
         };
         if let Some(sub) = sub {
             let lookup = if sub.is_empty() { "index.html" } else { sub };
+            // The mounted site's search + feed are route-served (not written to disk
+            // in preview), exactly like the parent's. Without this, Cmd-K search on a
+            // mounted-book page fetches `/<mount>/search.json` → 404.
+            let json_ct = "application/json; charset=utf-8";
+            match lookup {
+                "search.json" => {
+                    let j = m.site.search_index_json.clone();
+                    let body = if j.is_empty() { "[]".to_string() } else { j };
+                    return ([(axum::http::header::CONTENT_TYPE, json_ct)], body).into_response();
+                }
+                // (No `listings.json` for mounts: `listings_json()` emits
+                // root-absolute URLs that ignore the mount prefix, and the shipping
+                // mounts are books with no listings — serving it would give broken
+                // prev/next links.)
+                "feed.xml" => {
+                    if let Some(xml) = m.site.rss_feed() {
+                        return (
+                            [(
+                                axum::http::header::CONTENT_TYPE,
+                                "application/rss+xml; charset=utf-8",
+                            )],
+                            xml,
+                        )
+                            .into_response();
+                    }
+                }
+                _ => {}
+            }
             if let Some(html) = m.site.render_page(lookup) {
                 return Html(html).into_response();
             }

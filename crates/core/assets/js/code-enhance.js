@@ -95,8 +95,8 @@ window.qmdEnhancers.register(function () { qmdInitLinkPreview(); });
 window.qmdEnhancers.register(qmdInitCategoryFilter);
 
 // Native category filter for `listing: { categories: true }`: the server emits a
-// chip row (`.qmd-cat-filter`) above the card grid and tags each card with
-// `data-categories`. Clicking a chip — or a category tag on a card — toggles it
+// chip row (`.qmd-cat-filter`) above the card grid; each card's categories are read
+// from its `.qmd-cat[data-cat]` badges. Clicking a chip — or a category tag on a card — toggles it
 // (multi-select, OR semantics); an empty `data-cat` ("All") clears the filter.
 // Works in the static build and the live preview; idempotent per filter.
 function qmdInitCategoryFilter(root) {
@@ -108,8 +108,13 @@ function qmdInitCategoryFilter(root) {
     if (!listing) return;
     var selected = new Set();
     var catsOf = function (card) {
-      var raw = card.getAttribute('data-categories');
-      return raw ? raw.split(',') : [];
+      // Read the card's own category badges (each holds the exact name in data-cat),
+      // so a category name containing a comma still matches (a delimited attribute
+      // would mis-split it).
+      return Array.prototype.map.call(
+        card.querySelectorAll('.qmd-cat[data-cat]'),
+        function (b) { return b.getAttribute('data-cat'); }
+      );
     };
     var apply = function () {
       listing.querySelectorAll('.qmd-card').forEach(function (card) {

@@ -19,8 +19,10 @@ pub struct XrefTarget {
 pub(super) fn scan_xref_targets(
     pages: &[Page],
     book: &Option<Book>,
+    warnings: &mut Vec<String>,
 ) -> HashMap<String, XrefTarget> {
-    let mut map = HashMap::new();
+    let mut map: HashMap<String, XrefTarget> = HashMap::new();
+    let mut warned: std::collections::HashSet<String> = std::collections::HashSet::new();
     for page in pages {
         let Ok(raw) = std::fs::read_to_string(&page.input) else {
             continue;
@@ -41,10 +43,29 @@ pub(super) fn scan_xref_targets(
                 .and_then(|e| e.number)
         });
         for (anchor, number) in scan_page_anchors(&src, chapter) {
-            map.entry(anchor).or_insert(XrefTarget {
-                url: page.url.clone(),
-                number,
-            });
+            match map.entry(anchor) {
+                std::collections::hash_map::Entry::Occupied(e) => {
+                    // First definition wins project-wide; warn when a *different*
+                    // page redefines the same label (within-page dups are warned by
+                    // the per-page render). Otherwise `@x` silently links to whichever
+                    // page was discovered first.
+                    // Warn once per label (a page can define it twice, which would
+                    // otherwise push the identical warning repeatedly).
+                    if e.get().url != page.url && warned.insert(e.key().clone()) {
+                        warnings.push(format!(
+                            "duplicate cross-reference label \u{201c}{}\u{201d} defined on multiple pages (using {})",
+                            e.key(),
+                            e.get().url
+                        ));
+                    }
+                }
+                std::collections::hash_map::Entry::Vacant(e) => {
+                    e.insert(XrefTarget {
+                        url: page.url.clone(),
+                        number,
+                    });
+                }
+            }
         }
     }
     map

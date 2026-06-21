@@ -202,7 +202,12 @@ fn build_page_executing(
 fn copy_resources(resources: &[PathBuf], dest_dir: &Path) {
     for r in resources {
         let Some(name) = r.file_name() else { continue };
-        if let Err(e) = std::fs::copy(r, dest_dir.join(name)) {
+        let dest = dest_dir.join(name);
+        // Don't copy a resource onto itself (fs::copy truncates the dest first).
+        if same_file(r, &dest) {
+            continue;
+        }
+        if let Err(e) = std::fs::copy(r, &dest) {
             log::warn(&format!("cannot copy resource {}: {e}", r.display()));
         }
     }
@@ -305,6 +310,19 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
         return ExitCode::FAILURE;
     }
     let out = out.canonicalize().unwrap_or(out);
+
+    // Refuse to build into the source directory: `mirror_assets` and the page writes
+    // would copy files onto themselves, and `fs::copy` truncates the destination
+    // first — silently zeroing the user's own assets. (Triggered by `output-dir: .`
+    // or `--out <root>`.)
+    if root.canonicalize().is_ok_and(|r| r == out) {
+        log::error(&format!(
+            "output directory is the source directory ({}); refusing to build in place \
+             (it would overwrite/truncate your source files). Use a different `output-dir:` or `--out <dir>`.",
+            out.display()
+        ));
+        return ExitCode::FAILURE;
+    }
 
     // Persistent execution cache, rooted at the project source (not the build
     // output), so a `build` and the `preview` server share it and it survives a

@@ -473,6 +473,14 @@ impl Kernel {
         self.shell.send(request).await.map_err(io::Error::other)?;
 
         let mut outputs: Vec<Output> = Vec::new();
+        // Caps so a cell that emits a huge amount of output can't hang the renderer
+        // or blow memory (the output is later cloned into the block, the freeze
+        // cache, and the warm-state record, and HTML-escaped). We keep *draining* to
+        // Idle to stay in channel sync, but stop accumulating past the caps.
+        const MAX_STREAM_BYTES: usize = 512 * 1024;
+        const MAX_OUTPUTS: usize = 4096;
+        let mut stream_bytes = 0usize;
+        let mut capped = false;
         // Total wall-clock cap (not per-message, so a *streaming* runaway cell is
         // still caught). On hitting it we SIGINT the kernel, then drain a short
         // grace window so the resulting KeyboardInterrupt + Idle resync the
@@ -524,15 +532,59 @@ impl Kernel {
             if !ours {
                 continue;
             }
+            // Past the item cap, stop accumulating (but keep draining): emit one
+            // marker. Only an *output-producing* message trips this — not an Error or
+            // the terminal Idle Status — so a cell that emits exactly MAX_OUTPUTS items
+            // and then finishes cleanly is not falsely marked as truncated.
+            let accumulating = matches!(
+                &msg.content,
+                JupyterMessageContent::StreamContent(_)
+                    | JupyterMessageContent::ExecuteResult(_)
+                    | JupyterMessageContent::DisplayData(_)
+            );
+            if !capped && accumulating && outputs.len() >= MAX_OUTPUTS {
+                outputs.push(Output::Stream {
+                    stderr: true,
+                    text: format!("\n[qmd-fast: output truncated at {MAX_OUTPUTS} items]\n"),
+                });
+                capped = true;
+            }
             match msg.content {
-                JupyterMessageContent::StreamContent(s) => outputs.push(Output::Stream {
-                    stderr: matches!(s.name, Stdio::Stderr),
-                    text: s.text,
-                }),
-                JupyterMessageContent::ExecuteResult(r) => {
+                JupyterMessageContent::StreamContent(s) if !capped => {
+                    let stderr = matches!(s.name, Stdio::Stderr);
+                    let remaining = MAX_STREAM_BYTES.saturating_sub(stream_bytes);
+                    if s.text.len() <= remaining {
+                        stream_bytes += s.text.len();
+                        outputs.push(Output::Stream {
+                            stderr,
+                            text: s.text,
+                        });
+                    } else {
+                        // Keep a char-boundary-safe prefix, then mark + stop.
+                        let mut cut = remaining;
+                        while cut > 0 && !s.text.is_char_boundary(cut) {
+                            cut -= 1;
+                        }
+                        if cut > 0 {
+                            outputs.push(Output::Stream {
+                                stderr,
+                                text: s.text[..cut].to_string(),
+                            });
+                        }
+                        outputs.push(Output::Stream {
+                            stderr: true,
+                            text: format!(
+                                "\n[qmd-fast: output truncated at {} KB]\n",
+                                MAX_STREAM_BYTES / 1024
+                            ),
+                        });
+                        capped = true;
+                    }
+                }
+                JupyterMessageContent::ExecuteResult(r) if !capped => {
                     outputs.push(Output::Rich(render_media(&r.data)))
                 }
-                JupyterMessageContent::DisplayData(d) => {
+                JupyterMessageContent::DisplayData(d) if !capped => {
                     outputs.push(Output::Rich(render_media(&d.data)))
                 }
                 JupyterMessageContent::ErrorOutput(e) => outputs.push(Output::Error {
@@ -547,9 +599,34 @@ impl Kernel {
                 }
                 _ => {}
             }
+            // Once capped, interrupt the kernel so it stops flooding us (a huge-output
+            // cell otherwise keeps streaming megabytes we'd have to read + discard,
+            // and the per-message receive is super-linear). Then drain a short grace
+            // window for the resulting KeyboardInterrupt + Idle and stop.
+            if capped && grace_until.is_none() {
+                self.interrupt();
+                grace_until = Some(Instant::now() + Duration::from_secs(5));
+            }
         }
-        // Drain the matching shell execute_reply so the channel stays in sync.
-        let _ = timeout(Duration::from_secs(5), self.shell.read()).await;
+        // Drain *our* shell execute_reply so the channel stays in sync. Match on
+        // msg_id: after an interrupt a previous cell's late reply can still be in the
+        // queue, and consuming it here would leave every later cell one reply behind.
+        let drain_deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let budget = drain_deadline.saturating_duration_since(Instant::now());
+            if budget.is_zero() {
+                break;
+            }
+            match timeout(budget, self.shell.read()).await {
+                Ok(Ok(reply)) => {
+                    if reply.parent_header.as_ref().map(|h| h.msg_id.as_str()) == Some(&msg_id) {
+                        break;
+                    }
+                    // A stale (non-matching) reply: discard and keep draining.
+                }
+                _ => break, // timeout or read error: give up draining
+            }
+        }
         Ok(outputs)
     }
 

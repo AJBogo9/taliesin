@@ -237,6 +237,14 @@ fn ordinal(s: &str) -> String {
 /// Parse a BibTeX string into a [`Bibliography`]. Tolerant of `{...}`/`"..."`
 /// values and brace nesting; ignores comments and `@string`/`@comment`.
 pub fn parse_bib(text: &str) -> Bibliography {
+    parse_bib_warned(text).0
+}
+
+/// Like [`parse_bib`] but also returns warnings — currently for duplicate citation
+/// keys, which would otherwise silently last-write-win and render the wrong reference
+/// (the same overwrite-vs-warn class as duplicate cross-reference labels).
+pub fn parse_bib_warned(text: &str) -> (Bibliography, Vec<String>) {
+    let mut warnings = Vec::new();
     let mut entries = HashMap::new();
     let chars: Vec<char> = text.chars().collect();
     let mut i = 0;
@@ -290,10 +298,15 @@ pub fn parse_bib(text: &str) -> Bibliography {
             i += 1;
         }
         if !key.is_empty() {
+            if entries.contains_key(&key) {
+                warnings.push(format!(
+                    "duplicate bibliography key \u{201c}{key}\u{201d} (using the last definition)"
+                ));
+            }
             entries.insert(key, Entry { kind, fields });
         }
     }
-    Bibliography { entries }
+    (Bibliography { entries }, warnings)
 }
 
 fn take_while(chars: &[char], i: &mut usize, pred: impl Fn(char) -> bool) -> String {

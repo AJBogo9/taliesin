@@ -6,7 +6,7 @@
 //! `quarto::from_value` dispatch branch in `mod.rs`. Nothing else references these
 //! types, so the native path and every downstream consumer keep working.
 
-use super::{Footer, Navbar, SiteConfig};
+use super::SiteConfig;
 use serde::Deserialize;
 
 #[derive(Deserialize, Default)]
@@ -15,25 +15,6 @@ struct Project {
     project_type: Option<String>,
     #[serde(rename = "output-dir")]
     output_dir: Option<String>,
-}
-
-#[derive(Deserialize, Default)]
-struct Website {
-    title: Option<String>,
-    description: Option<String>,
-    #[serde(rename = "site-url")]
-    site_url: Option<String>,
-    favicon: Option<String>,
-    #[serde(default)]
-    navbar: Navbar,
-    #[serde(rename = "page-footer")]
-    page_footer: Option<Footer>,
-    // `open-graph:` may be a bool (just enable) or a `{ image, … }` map; keep the raw
-    // value and pull `image` out, falling back to `twitter-card: image:`.
-    #[serde(rename = "open-graph")]
-    open_graph: Option<serde_yaml::Value>,
-    #[serde(rename = "twitter-card")]
-    twitter_card: Option<serde_yaml::Value>,
 }
 
 #[derive(Deserialize, Default)]
@@ -66,28 +47,39 @@ struct FormatHtml {
 /// deserializes on its own so one unfamiliar section can't sink the whole config.
 pub(super) fn from_value(value: &serde_yaml::Value, warnings: &mut Vec<String>) -> SiteConfig {
     let project: Project = section(value, "project", warnings);
-    let website: Website = section(value, "website", warnings);
     let book: Book = section(value, "book", warnings);
     let format: Format = section(value, "format", warnings);
+
+    // Read `website:` field-by-field from the raw value (not via an atomic derive), so
+    // one wrong-typed field — a bare-string nav item, or `title:` given a sequence —
+    // can't sink the whole block and silently drop title/url/favicon/footer with it.
+    let website = value.get("website");
+    let ws_str = |k: &str| {
+        website
+            .and_then(|w| w.get(k))
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+    };
+    let ws_val = |k: &str| website.and_then(|w| w.get(k)).cloned();
 
     let is_book = project.project_type.as_deref() == Some("book") || !book.chapters.is_empty();
     SiteConfig {
         is_book,
         output_dir: project.output_dir,
         // book metadata lives under `book:`, site metadata under `website:`
-        title: book.title.or(website.title),
+        title: book.title.or_else(|| ws_str("title")),
         author: book.author,
-        description: website.description,
-        url: website.site_url,
-        favicon: website.favicon,
-        card_image: og_image(&website.open_graph).or_else(|| og_image(&website.twitter_card)),
+        description: ws_str("description"),
+        url: ws_str("site-url"),
+        favicon: ws_str("favicon"),
+        card_image: og_image(&ws_val("open-graph")).or_else(|| og_image(&ws_val("twitter-card"))),
         toc: format.html.toc,
         css: format.html.css,
         head: format.html.include_in_header,
         body_start: format.html.include_before_body,
         body_end: format.html.include_after_body,
-        nav: website.navbar,
-        footer: website.page_footer,
+        nav: super::nav_from(ws_val("navbar").as_ref()),
+        footer: super::footer_from(ws_val("page-footer").as_ref()),
         chapters: book.chapters,
         mounts: Vec::new(), // Quarto has no equivalent; native-only
     }

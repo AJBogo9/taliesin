@@ -90,11 +90,35 @@ pub fn render_document_with_includes(src: &str, base_dir: &Path) -> RenderedDoc 
     render_internal(&expanded, Some(&origins), Some(base_dir))
 }
 
-/// Core render. When `origins` is provided (post-include expansion), each
-/// block's sourcepos and `source_file` are translated back to the originating
-/// file via the line-level source map. `base_dir` (when known) is used to
-/// locate the bibliography for citation resolution.
+/// Core render. Runs the actual work on a worker thread with a large stack:
+/// deeply nested input (blockquotes / lists) drives deep recursion in the Markdown
+/// parser and block emission, which on the default ~8 MB stack overflows and
+/// **aborts the whole process** (a single pathological document would crash `build`
+/// or take down the live preview server) at ~3000 levels. A big stack absorbs any
+/// realistic nesting; a panic is propagated to the caller unchanged.
 fn render_internal(
+    src: &str,
+    origins: Option<&[LineOrigin]>,
+    base_dir: Option<&Path>,
+) -> RenderedDoc {
+    std::thread::scope(|scope| {
+        match std::thread::Builder::new()
+            .stack_size(256 * 1024 * 1024)
+            .spawn_scoped(scope, || render_internal_impl(src, origins, base_dir))
+        {
+            Ok(handle) => match handle.join() {
+                Ok(doc) => doc,
+                Err(payload) => std::panic::resume_unwind(payload),
+            },
+            // Spawning the big-stack worker can fail under a strict address-space
+            // limit (e.g. `ulimit -v`). Fall back to rendering inline on the current
+            // (default-stack) thread rather than panicking — same as before this guard.
+            Err(_) => render_internal_impl(src, origins, base_dir),
+        }
+    })
+}
+
+fn render_internal_impl(
     src: &str,
     origins: Option<&[LineOrigin]>,
     base_dir: Option<&Path>,
@@ -300,7 +324,7 @@ fn render_internal(
             && id.starts_with("sec-")
         {
             sec_count += 1;
-            xref_registry.insert(id.clone(), sec_count.to_string());
+            register_xref(&mut xref_registry, &mut warnings, id, sec_count.to_string());
         }
         let id_attr = match heading_level {
             Some(_) if format == DocFormat::Html => {
@@ -329,14 +353,24 @@ fn render_internal(
             // `$$ ... $$ {#eq-x}` -> a numbered display equation; register the
             // `#eq-` id so `@eq-x` cross-references resolve to "Equation N".
             eq_count += 1;
-            xref_registry.insert(anchor.clone(), eq_count.to_string());
+            register_xref(
+                &mut xref_registry,
+                &mut warnings,
+                &anchor,
+                eq_count.to_string(),
+            );
             html.push_str(&emit_equation(&latex, &anchor, &attrs, eq_count));
         } else if let Some(fig) = is_paragraph.then(|| figure_parts(node)).flatten() {
             // Standalone image -> a numbered `<figure>`; register `#fig-` ids so
             // `@fig-x` cross-references resolve to the number.
             fig_count += 1;
             if let Some(fid) = fig.attrs.id.as_deref().filter(|i| i.starts_with("fig-")) {
-                xref_registry.insert(fid.to_string(), fig_count.to_string());
+                register_xref(
+                    &mut xref_registry,
+                    &mut warnings,
+                    fid,
+                    fig_count.to_string(),
+                );
             }
             html.push_str(&emit_figure(&fig, &attrs, fig_count));
         } else if let Some(role) = &cell_role {
@@ -347,7 +381,7 @@ fn render_internal(
                 CellRole::Figure { anchor, caption } => {
                     fig_count += 1;
                     if let Some(a) = anchor {
-                        xref_registry.insert(a.clone(), fig_count.to_string());
+                        register_xref(&mut xref_registry, &mut warnings, a, fig_count.to_string());
                     }
                     match lang.as_str() {
                         // Client-rendered outputs are known now, so wrap them here.
@@ -398,7 +432,12 @@ fn render_internal(
                     } else {
                         lst_count += 1;
                         if let Some(a) = anchor {
-                            xref_registry.insert(a.clone(), lst_count.to_string());
+                            register_xref(
+                                &mut xref_registry,
+                                &mut warnings,
+                                a,
+                                lst_count.to_string(),
+                            );
                         }
                         html.push_str(&emit_code_listing(
                             &code,
@@ -477,7 +516,7 @@ fn render_internal(
     let mut blocks = group_divs(flat, &spans, origins, &mut id_counts);
     // Pandoc table captions (`: caption {#tbl-x}` after a table) are numbered and
     // folded into the table's `<caption>`; registers `tbl-x` for `@tbl-` refs.
-    apply_table_captions(&mut blocks, &mut xref_registry);
+    apply_table_captions(&mut blocks, &mut xref_registry, &mut warnings);
     let bib = load_bibliography(bib_field.as_deref(), base_dir, &mut warnings);
     warnings.extend(crate::cite::process(&mut blocks, &bib, &xref_registry));
     // Gather the footnote definitions (collected above, in comrak's reference order)
@@ -845,7 +884,9 @@ fn load_bibliography(
             None => warnings.push(format!("bibliography file not found: {tok}")),
         }
     }
-    crate::cite::parse_bib(&text)
+    let (bib, bib_warnings) = crate::cite::parse_bib_warned(&text);
+    warnings.extend(bib_warnings);
+    bib
 }
 
 /// A top-level block plus its line in the (post-include, post-blank) buffer,
@@ -1193,7 +1234,30 @@ fn inject_attrs_into_last_tag(out: &mut String, tag: &str, classes: &[String], i
 /// Fold Pandoc table captions into their tables. A `: caption {#tbl-x}` paragraph
 /// directly after a table becomes the table's numbered `<caption>` ("Table N"),
 /// the table gains the `#tbl-x` id, and `tbl-x` is registered so `@tbl-x` resolves.
-fn apply_table_captions(blocks: &mut Vec<Block>, xrefs: &mut HashMap<String, String>) {
+/// Register a cross-reference anchor → number, keeping the **first** definition and
+/// warning on a duplicate label. Otherwise a repeated `{#fig-x}`/`{#sec-x}` silently
+/// took the *last* number while the `#fig-x` anchor pointed at the *first* element —
+/// so `@fig-x` and the link target disagreed, with no diagnostic.
+fn register_xref(
+    reg: &mut HashMap<String, String>,
+    warnings: &mut Vec<String>,
+    anchor: &str,
+    number: String,
+) {
+    if reg.contains_key(anchor) {
+        warnings.push(format!(
+            "duplicate cross-reference label \u{201c}{anchor}\u{201d} (using the first definition)"
+        ));
+    } else {
+        reg.insert(anchor.to_string(), number);
+    }
+}
+
+fn apply_table_captions(
+    blocks: &mut Vec<Block>,
+    xrefs: &mut HashMap<String, String>,
+    warnings: &mut Vec<String>,
+) {
     let mut tbl_count = 0u32;
     let mut i = 0;
     while i < blocks.len() {
@@ -1205,7 +1269,7 @@ fn apply_table_captions(blocks: &mut Vec<Block>, xrefs: &mut HashMap<String, Str
             tbl_count += 1;
             t.number = tbl_count;
             if let Some(a) = &t.anchor {
-                xrefs.insert(a.clone(), tbl_count.to_string());
+                register_xref(xrefs, warnings, a, tbl_count.to_string());
             }
             i += 1;
             continue;
@@ -1217,7 +1281,7 @@ fn apply_table_captions(blocks: &mut Vec<Block>, xrefs: &mut HashMap<String, Str
         {
             tbl_count += 1;
             if let Some(id) = &id {
-                xrefs.insert(id.clone(), tbl_count.to_string());
+                register_xref(xrefs, warnings, id, tbl_count.to_string());
             }
             let sep = if caption_html.is_empty() { "" } else { ": " };
             let id_attr = id

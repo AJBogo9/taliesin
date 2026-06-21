@@ -193,7 +193,7 @@ impl Site {
             Some(root),
         );
 
-        let xref_targets = scan_xref_targets(&pages, &book);
+        let xref_targets = scan_xref_targets(&pages, &book, &mut warnings);
         let search_index_json = search::build_index_json(&pages);
 
         Site {
@@ -510,8 +510,7 @@ impl Site {
             let cards = self.listing_html(page, spec);
             match &spec.id {
                 Some(id) => {
-                    let needle = format!("id=\"{}\"", id);
-                    match blocks.iter().position(|b| b.html.contains(&needle)) {
+                    match blocks.iter().position(|b| block_tag_has_id(&b.html, id)) {
                         // A `::: {#id}` container → inject the cards inside it.
                         Some(i) if blocks[i].html.contains("</div>") => {
                             let pos = blocks[i].html.rfind("</div>").unwrap();
@@ -617,7 +616,7 @@ impl Site {
             .map(|d| format!("<p class=\"qmd-card-desc\">{}</p>", esc(d)))
             .unwrap_or_default();
         // Each badge carries `data-cat` so a click on it toggles that category in
-        // the filter; the card carries `data-categories` for the filter to match.
+        // the filter; the filter also reads these badges to know a card's categories.
         let cats = if p.categories.is_empty() {
             String::new()
         } else {
@@ -633,15 +632,13 @@ impl Site {
                 .collect();
             format!("<div class=\"qmd-card-cats\">{badges}</div>")
         };
-        let data_cats = if p.categories.is_empty() {
-            String::new()
-        } else {
-            format!(" data-categories=\"{}\"", esc(&p.categories.join(",")))
-        };
+        // No delimited `data-categories` list: the client filter reads each card's
+        // own `.qmd-cat[data-cat]` badges (exact names), so a category name
+        // containing a comma still matches.
         // `data-qmd-src` lets the click-to-source locator jump to the post's source
         // (it's site-root-relative; resolved client-side, inert in the static build).
         format!(
-            "<a class=\"qmd-card\" href=\"{href}\" data-qmd-src=\"{src}\"{data_cats}>{img}\
+            "<a class=\"qmd-card\" href=\"{href}\" data-qmd-src=\"{src}\">{img}\
              <div class=\"qmd-card-body\">{date}<h3 class=\"qmd-card-title\">{title}</h3>{desc}{cats}</div></a>",
             src = esc(&p.rel)
         )
@@ -705,7 +702,21 @@ impl Site {
     /// (writes `categories/<slug>/index.html`) and the preview route.
     pub fn render_category_page(&self, slug: &str) -> Option<String> {
         let index = self.category_index();
-        let (cat, posts) = index.iter().find(|(c, _)| slugify(c) == slug)?;
+        // Merge every category *name* that slugs to `slug` (e.g. "Machine Learning"
+        // and "machine-learning" share one archive) so they don't silently overwrite
+        // each other's page; dedupe posts by `rel`.
+        let mut posts: Vec<&Page> = Vec::new();
+        let mut display: Option<&str> = None;
+        for (c, ps) in index.iter().filter(|(c, _)| slugify(c) == slug) {
+            display.get_or_insert(c.as_str());
+            for p in ps {
+                if !posts.iter().any(|q| q.rel == p.rel) {
+                    posts.push(p);
+                }
+            }
+        }
+        let cat = display?;
+        posts.sort_by(|a, b| b.date.cmp(&a.date).then_with(|| a.rel.cmp(&b.rel)));
         let url = format!("categories/{slug}/index.html");
         let n = posts.len();
         let synth = Page {
@@ -749,10 +760,14 @@ impl Site {
 
     /// All category archive pages as `(url, html)`, for the static build.
     pub fn category_pages(&self) -> Vec<(String, String)> {
+        // Dedupe by slug so two names sharing a slug render one merged archive (not
+        // two writes to the same path).
+        let mut seen = std::collections::HashSet::new();
         self.category_index()
             .keys()
-            .filter_map(|cat| {
-                let slug = slugify(cat);
+            .map(|cat| slugify(cat))
+            .filter(|slug| seen.insert(slug.clone()))
+            .filter_map(|slug| {
                 self.render_category_page(&slug)
                     .map(|html| (format!("categories/{slug}/index.html"), html))
             })
@@ -1173,6 +1188,19 @@ fn rewrite_one_href(val: &str) -> String {
     match frag {
         Some(f) => format!("{mapped}#{f}"),
         None => mapped,
+    }
+}
+
+/// Whether a block's *leading element tag* carries `id="x"` (so a `::: {#x}`
+/// placeholder matches, but a code sample or prose that merely contains the text
+/// `id="x"` in its body does not).
+fn block_tag_has_id(html: &str, id: &str) -> bool {
+    let needle = format!("id=\"{id}\"");
+    // Quote-aware tag end, so a raw-HTML placeholder whose leading tag has a `>`
+    // inside an attribute value (e.g. `<div title="a > b" id="x">`) is handled.
+    match crate::render::tag_end(html) {
+        Some(gt) => html[..gt].contains(&needle),
+        None => html.contains(&needle),
     }
 }
 

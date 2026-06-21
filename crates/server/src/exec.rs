@@ -541,9 +541,12 @@ fn py_str_literal(s: &str) -> String {
 /// timeout, or the mid-run kernel-died marker — all rendered as a `qmd-error` block),
 /// so a transient failure is never replayed and the cell re-runs next time. Matches
 /// the emitted `class="qmd-error"` rather than a bare substring, so a *successful*
-/// cell whose output merely prints the text "qmd-error" still caches.
+/// cell whose output merely prints the text "qmd-error" still caches. Also refuses to
+/// cache an output the kernel *truncated* at the size cap: if the cell completes
+/// cleanly (no KeyboardInterrupt error) the truncated result would otherwise be frozen
+/// and replayed silently. The marker text comes from `kernel.rs`'s output caps.
 fn is_uncacheable(output: &str) -> bool {
-    output.contains("class=\"qmd-error\"")
+    output.contains("class=\"qmd-error\"") || output.contains("qmd-fast: output truncated")
 }
 
 /// A stable identity for a language's interpreter, used to seed the cumulative
