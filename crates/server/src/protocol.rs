@@ -120,6 +120,14 @@ pub fn op(op: &BlockOp, rewrite_html: impl Fn(&str) -> String) -> String {
         BlockOp::Remove { target_id } => {
             serde_json::json!({ "type": "remove", "target_id": target_id })
         }
+        BlockOp::SetMeta {
+            target_id,
+            sourcepos,
+            source_file,
+        } => serde_json::json!({
+            "type": "set_meta", "target_id": target_id,
+            "sourcepos": sourcepos, "source_file": source_file
+        }),
     }
     .to_string()
 }

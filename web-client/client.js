@@ -20,10 +20,11 @@
  * @typedef {{ type: "update", target_id: string, html: string }} UpdateMsg
  * @typedef {{ type: "insert", after_id: ?string, html: string }} InsertMsg
  * @typedef {{ type: "remove", target_id: string }} RemoveMsg
+ * @typedef {{ type: "set_meta", target_id: string, sourcepos: string, source_file: ?string }} SetMetaMsg
  * @typedef {{ type: "error", message: string }} ErrorMsg
  * @typedef {{ type: "reload" }} ReloadMsg
  * @typedef {{ type: "style", css: string }} StyleMsg
- * @typedef {FullRenderMsg|DiagnosticsMsg|UpdateMsg|InsertMsg|RemoveMsg|ErrorMsg|ReloadMsg|StyleMsg} ServerMessage
+ * @typedef {FullRenderMsg|DiagnosticsMsg|UpdateMsg|InsertMsg|RemoveMsg|SetMetaMsg|ErrorMsg|ReloadMsg|StyleMsg} ServerMessage
  */
 (() => {
   const root = document.getElementById("qmd-root");
@@ -595,6 +596,20 @@
         const el = elById(msg.target_id);
         if (el) keepScroll(() => el.remove());
         afterChange();
+        break;
+      }
+      case "set_meta": {
+        // A structural edit elsewhere shifted this block's lines but not its
+        // content. Patch only its position attributes so click-to-source stays
+        // exact — without re-rendering, so its live DOM state (video, OJS widget,
+        // open <details>) survives. No afterChange(): content is unchanged.
+        renderOk();
+        const el = elById(msg.target_id);
+        if (el) {
+          el.setAttribute("data-sourcepos", msg.sourcepos);
+          if (msg.source_file) el.setAttribute("data-source-file", msg.source_file);
+          else el.removeAttribute("data-source-file");
+        }
         break;
       }
       case "error":

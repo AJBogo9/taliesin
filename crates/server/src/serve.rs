@@ -985,7 +985,9 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
                     .blocks
                     .iter()
                     .any(|b| &b.id == target_id && is_slide_heading(&b.html)),
-                BlockOp::Update { .. } => false,
+                // A content edit or a pure position-metadata shift never restructures
+                // slides (no <section> added or removed).
+                BlockOp::Update { .. } | BlockOp::SetMeta { .. } => false,
             });
         let diags_changed = d.diagnostics != diags;
         let theme_changed = d.theme_css != doc.theme_css;

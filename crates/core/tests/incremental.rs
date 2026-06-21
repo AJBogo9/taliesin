@@ -67,12 +67,13 @@ fn deleting_the_last_paragraph_is_a_single_remove() {
 }
 
 #[test]
-fn removing_a_middle_block_keeps_ids_stable_but_reupdates_blocks_below() {
-    // A middle delete shifts the *line numbers* of every block below it. Block
-    // ids are content hashes (sourcepos-independent), so those blocks stay
-    // anchors and are NOT recreated — but their html carries data-sourcepos, so
-    // each gets an in-place Update to refresh that attribute. Click-to-source is
-    // exact; the cost is that a structural edit re-sends the blocks beneath it.
+fn structural_edit_preserves_live_blocks_below_via_metadata_only_op() {
+    // A middle delete shifts the *line numbers* of every block below it. Block ids
+    // are content hashes (sourcepos-independent), so those blocks stay anchors and
+    // are NOT recreated. Their *only* change is data-sourcepos, so the diff emits a
+    // lightweight SetMeta (patch the attribute) instead of a full Update: the
+    // element, and its live DOM state (video playback, OJS widgets, open
+    // <details>), is left untouched while click-to-source stays exact.
     let v1 = render_document("Alpha.\n\nBeta.\n\nGamma.\n");
     let v2 = render_document("Alpha.\n\nGamma.\n");
     let ops = diff_blocks(&v1.blocks, &v2.blocks);
@@ -82,14 +83,15 @@ fn removing_a_middle_block_keeps_ids_stable_but_reupdates_blocks_below() {
             BlockOp::Remove {
                 target_id: v1.blocks[1].id.clone(), // Beta
             },
-            BlockOp::Update {
+            BlockOp::SetMeta {
                 target_id: v1.blocks[2].id.clone(), // Gamma, line-shifted
-                html: v2.blocks[1].html.clone(),
+                sourcepos: v2.blocks[1].sourcepos.clone(),
+                source_file: v2.blocks[1].source_file.clone(),
             },
         ]
     );
-    // Gamma's id is identical before and after: the Update swaps it in place
-    // rather than recreating the element.
+    // Gamma's id is identical before and after: it's patched in place, never
+    // recreated.
     assert_eq!(
         v1.blocks[2].id, v2.blocks[1].id,
         "Gamma's id must be stable"

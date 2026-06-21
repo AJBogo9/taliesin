@@ -21,6 +21,16 @@ pub enum BlockOp {
     },
     /// Remove the element `target_id`.
     Remove { target_id: String },
+    /// Patch only the position metadata (`data-sourcepos` / `data-source-file`) of
+    /// the element `target_id`, leaving its rendered content — and its live DOM state
+    /// (video playback, OJS widgets, open `<details>`) — in place. Emitted when a
+    /// structural edit elsewhere shifts an unchanged block's line numbers: its
+    /// content-hash id and body are identical, only the attribute moved.
+    SetMeta {
+        target_id: String,
+        sourcepos: String,
+        source_file: Option<String>,
+    },
 }
 
 /// Produce the ops that transform the `old` block sequence into `new`.
@@ -35,14 +45,13 @@ pub fn diff_blocks(old: &[Block], new: &[Block]) -> Vec<BlockOp> {
     let mut prev_new: Option<String> = None;
     for (ai, bj) in &anchors {
         emit_gap(&mut ops, old, new, oi..*ai, nj..*bj, &mut prev_new);
-        // Matched id, but the HTML can still differ for *derived* blocks whose id
-        // isn't a hash of their content (e.g. a code cell's output block, keyed to
-        // the cell id, whose content changes when an upstream cell re-runs).
+        // Matched id, but the HTML can still differ: either only the block's
+        // `data-sourcepos` moved (a structural edit elsewhere shifted its lines —
+        // patch the attribute, keeping its live DOM state) or its content genuinely
+        // changed (a *derived* block whose id isn't a content hash, e.g. a code
+        // cell's output keyed to the cell id, re-run upstream — full re-render).
         if old[*ai].html != new[*bj].html {
-            ops.push(BlockOp::Update {
-                target_id: new[*bj].id.clone(),
-                html: new[*bj].html.clone(),
-            });
+            ops.push(anchor_op(&old[*ai], &new[*bj]));
         }
         prev_new = Some(new[*bj].id.clone()); // the anchor now precedes
         oi = ai + 1;
@@ -64,6 +73,49 @@ pub fn diff_blocks(old: &[Block], new: &[Block]) -> Vec<BlockOp> {
     // stable sort keeps Inserts in document order (so after_id chains still hold).
     ops.sort_by_key(|op| !matches!(op, BlockOp::Remove { .. }));
     ops
+}
+
+/// The op for an id-matched anchor whose html changed. If *only* the position
+/// metadata moved (same content-hashed body, just a shifted `data-sourcepos`), patch
+/// the attribute in place via `SetMeta` so the element's live DOM state survives a
+/// structural edit elsewhere. Otherwise the content actually changed (a derived
+/// block such as a cell's output), so re-render it with a full `Update`.
+fn anchor_op(old: &Block, new: &Block) -> BlockOp {
+    if old.sourcepos != new.sourcepos && eq_ignoring_sourcepos(&old.html, &new.html) {
+        BlockOp::SetMeta {
+            target_id: new.id.clone(),
+            sourcepos: new.sourcepos.clone(),
+            source_file: new.source_file.clone(),
+        }
+    } else {
+        BlockOp::Update {
+            target_id: new.id.clone(),
+            html: new.html.clone(),
+        }
+    }
+}
+
+/// Two block htmls compared with every `data-sourcepos="…"` value blanked, so a
+/// pure line-number shift reads as equal (the rest of the markup — content,
+/// `data-block-id`, `data-source-file` — must still match exactly).
+fn eq_ignoring_sourcepos(a: &str, b: &str) -> bool {
+    mask_sourcepos(a) == mask_sourcepos(b)
+}
+
+fn mask_sourcepos(html: &str) -> String {
+    const KEY: &str = "data-sourcepos=\"";
+    let mut out = String::with_capacity(html.len());
+    let mut rest = html;
+    while let Some(i) = rest.find(KEY) {
+        out.push_str(&rest[..i + KEY.len()]);
+        rest = &rest[i + KEY.len()..];
+        match rest.find('"') {
+            Some(q) => rest = &rest[q..], // drop the value; keep the closing quote on
+            None => break,                // malformed (no closing quote): stop masking
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Turn one gap (a run of old + new blocks between anchors) into ops: pair them
@@ -274,6 +326,58 @@ mod tests {
                     html: block("a").html
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn matched_id_with_only_a_sourcepos_shift_is_a_metadata_patch() {
+        // Same content-hash id and body; only data-sourcepos moved (a structural
+        // edit above shifted this block's lines). A SetMeta, not a re-render.
+        let old = Block {
+            id: "a".into(),
+            sourcepos: "5:1-5:6".into(),
+            source_file: None,
+            html: "<p data-block-id=\"a\" data-sourcepos=\"5:1-5:6\">Body.</p>".into(),
+            cell: None,
+        };
+        let new = Block {
+            sourcepos: "3:1-3:6".into(),
+            html: "<p data-block-id=\"a\" data-sourcepos=\"3:1-3:6\">Body.</p>".into(),
+            ..old.clone()
+        };
+        assert_eq!(
+            diff_blocks(std::slice::from_ref(&old), std::slice::from_ref(&new)),
+            vec![BlockOp::SetMeta {
+                target_id: "a".into(),
+                sourcepos: "3:1-3:6".into(),
+                source_file: None,
+            }]
+        );
+    }
+
+    #[test]
+    fn matched_id_with_a_real_content_change_is_still_a_full_update() {
+        // A derived block (a cell's output, keyed to the cell id) whose content
+        // changed: even though its sourcepos also moved, the body differs, so the
+        // mask comparison fails and it's a full Update (not a metadata patch).
+        let old = Block {
+            id: "out".into(),
+            sourcepos: "5:1-5:6".into(),
+            source_file: None,
+            html: "<div data-block-id=\"out\" data-sourcepos=\"5:1-5:6\">old</div>".into(),
+            cell: None,
+        };
+        let new = Block {
+            sourcepos: "3:1-3:6".into(),
+            html: "<div data-block-id=\"out\" data-sourcepos=\"3:1-3:6\">NEW</div>".into(),
+            ..old.clone()
+        };
+        assert_eq!(
+            diff_blocks(std::slice::from_ref(&old), std::slice::from_ref(&new)),
+            vec![BlockOp::Update {
+                target_id: "out".into(),
+                html: new.html,
+            }]
         );
     }
 
