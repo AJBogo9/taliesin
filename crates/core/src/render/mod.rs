@@ -86,8 +86,12 @@ pub fn render_document_with_includes(src: &str, base_dir: &Path) -> RenderedDoc 
     let (expanded, origins) = crate::includes::resolve(src, base_dir);
     // Declarative shortcodes (`{{< name args >}}`) from the active format
     // extension expand after includes, line-preserving so `origins` stays valid.
-    let expanded = extension::expand_shortcodes(&expanded, Some(base_dir));
-    render_internal(&expanded, Some(&origins), Some(base_dir))
+    // A `{{< name >}}` that no extension/built-in declares is left verbatim but
+    // reported, so a typo'd shortcode doesn't ship silently as literal text.
+    let (expanded, shortcode_warnings) = extension::expand_shortcodes(&expanded, Some(base_dir));
+    let mut doc = render_internal(&expanded, Some(&origins), Some(base_dir));
+    doc.warnings.extend(shortcode_warnings);
+    doc
 }
 
 /// Core render. Runs the actual work on a worker thread with a large stack:

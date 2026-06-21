@@ -376,16 +376,17 @@ fn gather_shortcodes(
 /// closes on one line and expands to inline HTML — so the include source map stays
 /// valid. Fenced code blocks are skipped, so a `{{< … >}}` shown as an *example*
 /// in ```` ``` ```` stays literal; unknown shortcodes are left untouched.
-pub(super) fn expand_shortcodes(src: &str, base_dir: Option<&Path>) -> String {
+pub(super) fn expand_shortcodes(src: &str, base_dir: Option<&Path>) -> (String, Vec<String>) {
     let templates = shortcode_templates(
         crate::frontmatter::front_matter_block(src).unwrap_or(""),
         base_dir,
     );
+    let mut warnings = Vec::new();
     // Process whenever a `{{<` is present: besides extension-declared templates,
     // `render_shortcode` also handles the built-in `{{< embed >}}`, which must work
     // with no extensions loaded.
     if !src.contains("{{<") {
-        return src.to_string();
+        return (src.to_string(), warnings);
     }
     let mut out = String::with_capacity(src.len());
     let mut in_code = false;
@@ -400,13 +401,13 @@ pub(super) fn expand_shortcodes(src: &str, base_dir: Option<&Path>) -> String {
         } else if in_code {
             out.push_str(line); // literal inside a code block (it's an example)
         } else {
-            out.push_str(&expand_in_line(line, &templates));
+            out.push_str(&expand_in_line(line, &templates, i + 1, &mut warnings));
         }
     }
     if src.ends_with('\n') {
         out.push('\n');
     }
-    out
+    (out, warnings)
 }
 
 /// Replace every `{{< name args >}}` that opens and closes on this line with its
@@ -414,7 +415,12 @@ pub(super) fn expand_shortcodes(src: &str, base_dir: Option<&Path>) -> String {
 /// Inline code spans (`` `…` ``, ``` ``…`` ```) are copied through untouched, so a
 /// shortcode shown as an *example* in backticks (e.g. `` `{{< embed x.qmd >}}` ``)
 /// stays literal — mirroring how fenced blocks are skipped in `expand_shortcodes`.
-fn expand_in_line(line: &str, templates: &HashMap<String, String>) -> String {
+fn expand_in_line(
+    line: &str,
+    templates: &HashMap<String, String>,
+    line_no: usize,
+    warnings: &mut Vec<String>,
+) -> String {
     if !line.contains("{{<") {
         return line.to_string();
     }
@@ -444,7 +450,22 @@ fn expand_in_line(line: &str, templates: &HashMap<String, String>) -> String {
             let inner = line[i + 3..end].trim();
             match render_shortcode(inner, templates) {
                 Some(html) => out.push_str(&html),
-                None => out.push_str(&line[i..end + 3]), // unknown: keep verbatim
+                None => {
+                    // No extension or built-in declares this name. Keep it verbatim
+                    // (nothing is lost), but warn: a typo'd shortcode name should be
+                    // visible in the build log / preview diagnostics, not shipped as
+                    // literal text into the page. `include` is handled in an earlier
+                    // pass (`includes::resolve`); a leftover one means that pass already
+                    // reported it (file missing/unsafe/cyclic), so don't double-warn.
+                    let name = inner.split_whitespace().next().unwrap_or(inner);
+                    if name != "include" {
+                        warnings.push(format!(
+                            "unknown shortcode `{{{{< {name} >}}}}` at line {line_no} \
+                             (no extension declares it; left as literal text)"
+                        ));
+                    }
+                    out.push_str(&line[i..end + 3]); // unknown: keep verbatim
+                }
             }
             i = end + 3;
         } else {

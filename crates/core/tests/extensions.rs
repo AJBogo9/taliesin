@@ -17,6 +17,44 @@ fn fixture(rel: &str) -> std::path::PathBuf {
 /// `format: <ext>-html` extensions are resolved, not just `-revealjs`: the
 /// contributed header AND before-body includes both land (before-body was
 /// previously untested).
+/// A `{{< name >}}` that no extension (and no built-in) recognises must not fail
+/// silently. It stays as literal text in the output (so nothing breaks), but the
+/// renderer surfaces a warning naming the shortcode and its line, so a typo'd name
+/// shows up in the build log and the preview diagnostics instead of shipping
+/// verbatim into the page.
+#[test]
+fn unknown_shortcode_warns_with_its_name_and_line() {
+    let proj = TempProj::new();
+    let doc = qmd_fast_core::render_document_with_includes(
+        "# Title\n\nIntro.\n\n{{< videoo clip.mp4 >}}\n",
+        &proj.0,
+    );
+    assert!(
+        doc.warnings.iter().any(|w| w.contains("unknown shortcode")
+            && w.contains("videoo")
+            && w.contains("line 5")),
+        "expected an unknown-shortcode warning naming `videoo` at line 5, got: {:?}",
+        doc.warnings
+    );
+}
+
+/// A missing include is left verbatim by the include resolver (which reports it on
+/// its own); the shortcode pass must not *also* flag `{{< include >}}` as an unknown
+/// shortcode, or every broken include would double-warn.
+#[test]
+fn a_leftover_include_directive_is_not_flagged_as_an_unknown_shortcode() {
+    let proj = TempProj::new();
+    let doc = qmd_fast_core::render_document_with_includes(
+        "# Title\n\n{{< include does-not-exist.qmd >}}\n",
+        &proj.0,
+    );
+    assert!(
+        !doc.warnings.iter().any(|w| w.contains("unknown shortcode")),
+        "a leftover include must not warn as an unknown shortcode: {:?}",
+        doc.warnings
+    );
+}
+
 #[test]
 fn html_base_extension_injects_header_and_before_body() {
     let d = TempProj::new();

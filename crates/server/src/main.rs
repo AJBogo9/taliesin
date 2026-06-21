@@ -177,6 +177,15 @@ fn build_page_executing(
     for w in qmd_fast_core::frontmatter::lint(src) {
         log::warn(&w);
     }
+    // An include that doesn't resolve leaves its `{{< include … >}}` directive
+    // literal in the output; warn rather than ship it silently (the preview's
+    // diagnostics already flag this, so build matches that behaviour).
+    for dep in qmd_fast_core::includes::dependencies(src, base) {
+        if !dep.exists() {
+            let shown = dep.strip_prefix(base).unwrap_or(&dep);
+            log::warn(&format!("include not found: {}", shown.display()));
+        }
+    }
     let rt = tokio::runtime::Runtime::new()?;
     Ok(rt.block_on(async {
         let mut doc = qmd_fast_core::render_document_with_includes(src, base);
