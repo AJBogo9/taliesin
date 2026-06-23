@@ -278,16 +278,13 @@ async fn page_or_asset(
             // in preview), exactly like the parent's. Without this, Cmd-K search on a
             // mounted-book page fetches `/<mount>/search.json` → 404.
             let json_ct = "application/json; charset=utf-8";
-            match lookup {
-                "search.json" => {
-                    let j = m.site.search_index_json.clone();
-                    let body = if j.is_empty() { "[]".to_string() } else { j };
-                    return ([(axum::http::header::CONTENT_TYPE, json_ct)], body).into_response();
-                }
-                // (No `listings.json` for mounts: `listings_json()` emits
-                // root-absolute URLs that ignore the mount prefix, and the shipping
-                // mounts are books with no listings.)
-                _ => {}
+            // (No `listings.json` for mounts: `listings_json()` emits root-absolute
+            // URLs that ignore the mount prefix, and the shipping mounts are books
+            // with no listings.)
+            if lookup == "search.json" {
+                let j = m.site.search_index_json.clone();
+                let body = if j.is_empty() { "[]".to_string() } else { j };
+                return ([(axum::http::header::CONTENT_TYPE, json_ct)], body).into_response();
             }
             if let Some(html) = m.site.render_page(lookup) {
                 return Html(html).into_response();
