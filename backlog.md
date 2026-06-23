@@ -4,8 +4,8 @@
 render correctly, not that a Quarto feature checklist is complete.
 
 > Kept deliberately small (read often). Only open tasks live here; the history of
-> completed work is in git. Detailed audit findings live in `AUDIT-BACKLOG.md`
-> (round 1, P0–P3) and `AUDIT-2.md` (round 2, empirical).
+> completed work is in git. Detailed audit findings live in `AUDITS.md` (round 1
+> P0-P3, round 2 empirical, plus the 2026-06-19 visual/UX pass).
 
 ## State (2026-06-21, on `main`)
 
@@ -208,7 +208,7 @@ Remaining candidates, with an honest value read for a solo-author personal tool
   if wanted), copy-permalink (headings already have anchors), edit-this-page /
   last-updated (solo author, no external contributors).
 
-### Marketing site (visual-ux-audit 2026-06-19: the hero pages roll into a demo-machine rebuild)
+### Marketing site (visual/UX audit 2026-06-19: the hero pages roll into a demo-machine rebuild)
 - [ ] Swap placeholders in `site/_quarto.yml`: `url:` + the GitHub links.
 - [ ] Rebuild the hero pages demo-led (lead with motion, one value line, the
   vs-Quarto table, an install/quickstart on-ramp). Folds in the open visual bugs:
@@ -218,7 +218,7 @@ Remaining candidates, with an honest value read for a solo-author personal tool
 - [ ] Refine the mobile embed (narrow iframe → reader / nested-scroll).
 - [ ] Deploy: Cloudflare or a GitHub-Pages single-tree pipeline (when publishing).
 
-### Audit residuals (deferred, low-risk for this tool's scope; detail in the two audit files)
+### Audit residuals (deferred, low-risk for this tool's scope; detail in `AUDITS.md`)
 - [ ] **Robustness / correctness.** Combined content+theme edit drops the hot-swap
   until reload (`serve.rs`); initial synchronous render isn't panic-guarded
   (`serve.rs`); `front_matter_block` terminates early on a `---`/`...` inside a block
@@ -232,7 +232,7 @@ Remaining candidates, with an honest value read for a solo-author personal tool
 - [ ] **Bib / build edge cases (no corpus entry yet).** `@inbook`/`@incollection`
   drop `booktitle`/pages; query-string asset refs aren't bundled (`main.rs`).
 - The remaining LOW findings, nits, and the P3 test-coverage gaps live in
-  `AUDIT-BACKLOG.md` + `AUDIT-2.md`; pull them up here only when one becomes relevant.
+  `AUDITS.md`; pull them up here only when one becomes relevant.
 
 ## Product / distribution
 Direction resolved (2026-06-20): ship as **open source + personal tool**, no company
