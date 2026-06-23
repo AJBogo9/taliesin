@@ -60,13 +60,10 @@ fn html_base_extension_injects_header_and_before_body() {
     let d = TempProj::new();
     d.ext(
         "brand",
-        "contributes:
-  formats:
-    html:
-      include-in-header:
-        - file: brand-head.html
-      include-before-body:
-        - file: brand-top.html
+        "head:
+  - file: brand-head.html
+body-start:
+  - file: brand-top.html
 ",
     );
     d.file("_extensions/brand/brand-head.html", "<meta name=\"brand\">");
@@ -96,12 +93,9 @@ fn format_resources_are_collected_for_copying() {
     let d = TempProj::new();
     d.ext(
         "deck",
-        "contributes:
-  formats:
-    revealjs:
-      format-resources:
-        - plugin.js
-        - assets/extra.css
+        "resources:
+  - plugin.js
+  - assets/extra.css
 ",
     );
     d.file("_extensions/deck/plugin.js", "// js");
@@ -131,11 +125,8 @@ fn extension_header_precedes_document_header() {
     let d = TempProj::new();
     d.ext(
         "lib",
-        "contributes:
-  formats:
-    revealjs:
-      include-in-header:
-        - text: \"<!--EXT-->\"
+        "head:
+  - text: \"<!--EXT-->\"
 ",
     );
     let src = "---\ntitle: T\nformat: lib-revealjs\ninclude-in-header:\n  - text: \"<!--DOC-->\"\n---\n\n## S\n";
@@ -152,14 +143,7 @@ fn extension_header_precedes_document_header() {
 #[test]
 fn extension_theme_inlines_css_and_applies_builtin_base() {
     let d = TempProj::new();
-    d.ext(
-        "glassy",
-        "contributes:
-  formats:
-    revealjs:
-      theme: [dark, glassy.css]
-",
-    );
+    d.ext("glassy", "theme: [dark, glassy.css]\n");
     d.file("_extensions/glassy/glassy.css", ".reveal{--marker:1}");
     let src = "---\ntitle: T\nformat: glassy-revealjs\n---\n\n## S\n";
     let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
@@ -179,14 +163,7 @@ fn extension_theme_inlines_css_and_applies_builtin_base() {
 #[test]
 fn doc_theme_overrides_extension_theme_base() {
     let d = TempProj::new();
-    d.ext(
-        "glassy",
-        "contributes:
-  formats:
-    revealjs:
-      theme: [dark, glassy.css]
-",
-    );
+    d.ext("glassy", "theme: [dark, glassy.css]\n");
     d.file("_extensions/glassy/glassy.css", ".reveal{--marker:1}");
     let src = "---\ntitle: T\nformat: glassy-revealjs\ntheme: light\n---\n\n## S\n";
     let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
@@ -233,7 +210,7 @@ fn bare_base_format_does_not_warn() {
 #[test]
 fn malformed_manifest_is_reported_not_fatal() {
     let d = TempProj::new();
-    d.ext("broken", "contributes: [this is not, valid: yaml");
+    d.ext("broken", "theme: [this is not, valid: yaml");
     let src = "---\ntitle: T\nformat: broken-revealjs\n---\n\n## S\n";
     let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
     assert!(doc.includes.in_header.is_empty(), "malformed ext ignored");
@@ -241,32 +218,6 @@ fn malformed_manifest_is_reported_not_fatal() {
     assert!(
         doc.warnings.iter().any(|w| w.contains("could not parse")),
         "expected a parse warning, got: {:?}",
-        doc.warnings
-    );
-}
-
-/// An installed extension that declares no matching `contributes.formats.<base>`
-/// block is reported (a common copy/paste mistake).
-#[test]
-fn extension_without_matching_format_block_is_reported() {
-    let d = TempProj::new();
-    // declares an `html` block, but the deck asked for the `revealjs` base
-    d.ext(
-        "mismatch",
-        "contributes:
-  formats:
-    html:
-      include-in-header:
-        - text: \"<!--x-->\"
-",
-    );
-    let src = "---\ntitle: T\nformat: mismatch-revealjs\n---\n\n## S\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
-    assert!(
-        doc.warnings
-            .iter()
-            .any(|w| w.contains("mismatch") && w.contains("revealjs")),
-        "expected a missing-format-block warning, got: {:?}",
         doc.warnings
     );
 }
@@ -280,11 +231,8 @@ fn missing_referenced_file_leaves_a_breadcrumb_comment() {
     let d = TempProj::new();
     d.ext(
         "partial",
-        "contributes:
-  formats:
-    revealjs:
-      include-in-header:
-        - file: nope.html
+        "head:
+  - file: nope.html
 ",
     );
     let src = "---\ntitle: T\nformat: partial-revealjs\n---\n\n## S\n";
@@ -299,20 +247,15 @@ fn missing_referenced_file_leaves_a_breadcrumb_comment() {
     assert!(!doc.blocks.is_empty());
 }
 
-/// An extension's `contributes.shortcodes` template expands `{{< name args >}}`
-/// in the body, with a positional arg filling `{{1}}`.
+/// An extension's `shortcodes:` template expands `{{< name args >}}` in the body,
+/// with a positional arg filling `{{1}}`.
 #[test]
 fn declarative_shortcode_expands_positional() {
     let d = TempProj::new();
     d.ext(
         "media",
-        "contributes:
-  shortcodes:
-    yt: '<iframe src=\"https://www.youtube.com/embed/{{1}}\"></iframe>'
-  formats:
-    html:
-      include-in-header:
-        - text: \"<!--m-->\"
+        "shortcodes:
+  yt: '<iframe src=\"https://www.youtube.com/embed/{{1}}\"></iframe>'
 ",
     );
     let src = "---\ntitle: T\nformat: media-html\n---\n\nWatch {{< yt dQw4 >}} now.\n";
@@ -331,11 +274,8 @@ fn declarative_shortcode_named_args() {
     let d = TempProj::new();
     d.ext(
         "media",
-        "contributes:
-  shortcodes:
-    embed: '<iframe width=\"{{width}}\" title=\"{{title}}\" src=\"/v/{{id}}\"></iframe>'
-  formats:
-    html: {}
+        "shortcodes:
+  embed: '<iframe width=\"{{width}}\" title=\"{{title}}\" src=\"/v/{{id}}\"></iframe>'
 ",
     );
     let src = "---\ntitle: T\nformat: media-html\n---\n\n{{< embed id=abc width=560 title=\"A Clip\" >}}\n";
@@ -412,11 +352,8 @@ fn unknown_shortcode_is_left_verbatim() {
     let d = TempProj::new();
     d.ext(
         "media",
-        "contributes:
-  shortcodes:
-    yt: '<iframe src=\"/v/{{1}}\"></iframe>'
-  formats:
-    html: {}
+        "shortcodes:
+  yt: '<iframe src=\"/v/{{1}}\"></iframe>'
 ",
     );
     let src = "---\ntitle: T\nformat: media-html\n---\n\nText {{< unknownsc x >}} more.\n";
@@ -444,16 +381,16 @@ fn format_extension_injects_theme_and_includes() {
         html.contains(".reveal .slides section h2 { color: #2bd4a0; }"),
         "extension theme css not inlined"
     );
-    // contributed include-in-header (file: glass-head.html), inside <head>.
+    // contributed head (file: glass-head.html), inside <head>.
     let head = &html[..html.find("</head>").expect("has </head>")];
     assert!(
         head.contains(r#"<meta name="glass-ext" content="active">"#),
-        "extension include-in-header not injected into <head>"
+        "extension head not injected into <head>"
     );
-    // contributed include-after-body (file: glass-init.html).
+    // contributed body-end (file: glass-init.html).
     assert!(
         html.contains("window.__glassExt = true;"),
-        "extension include-after-body not injected"
+        "extension body-end not injected"
     );
 }
 
@@ -469,8 +406,8 @@ fn plain_format_without_extension_is_untouched() {
     );
 }
 
-/// A flat **native** `_extension.yml` (no `contributes:` nesting) contributes the
-/// same theme / head / body-end / resources / shortcodes — the friendly schema.
+/// A flat native `_extension.yml` contributes theme / head / body-end / resources
+/// / shortcodes — the friendly schema.
 #[test]
 fn native_flat_manifest_contributes_everything() {
     let d = TempProj::new();

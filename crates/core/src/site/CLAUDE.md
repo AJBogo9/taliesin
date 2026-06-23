@@ -8,7 +8,7 @@ Module map:
 - `chrome.rs`     navbar / footer / post-nav / book sidebar HTML + social-icon glyphs
                   (a second `impl Site`, methods `pub(super)` so `page_chrome()` calls them)
 - `frontmatter.rs` per-page `---` parsing (reuses `crate::frontmatter::front_matter_block`)
-- `config/`       `_quarto.yml` → `SiteConfig` (native flat schema + an isolated Quarto compat shim)
+- `config/`       `_quarto.yml` → `SiteConfig` (flat native schema; the only path)
 - `book.rs` `feed.rs` `meta.rs` `search.rs` `xref.rs`
 
 Conventions:

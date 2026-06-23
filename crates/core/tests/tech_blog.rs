@@ -329,10 +329,10 @@ fn about_page_renders_profile_block() {
     );
 }
 
-/// The site's `format: html:` `include-in-header` / `include-after-body` / `css`
-/// (from `_quarto.yml`) are injected into every page, and a page's own front-matter
-/// `include-in-header` is injected on top of the site's. Without this the blog's
-/// preconnect hints, prefetch script, and custom stylesheet silently vanish.
+/// The site's native `head` / `body-end` / `css` (from `_quarto.yml`) are injected
+/// into every page, and a page's own front-matter `include-in-header` is injected on
+/// top of the site's. Without this the blog's preconnect hints, prefetch script, and
+/// custom stylesheet silently vanish.
 #[test]
 fn site_and_page_includes_are_injected() {
     let site = Site::discover(&corpus_dir().join("tech-blog"));

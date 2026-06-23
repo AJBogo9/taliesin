@@ -1,8 +1,4 @@
-//! Project config (`_quarto.yml`). The **flat native schema is the real model**;
-//! a Quarto-shaped config is translated into it by the isolated compat shim in
-//! [`quarto`]. To drop Quarto support entirely, delete `quarto.rs` and the
-//! `quarto::from_value` branch in [`load_config`] — the native path and every
-//! downstream consumer are unaffected.
+//! Project config (`_quarto.yml`). The flat native schema is the only model.
 //!
 //! Native schema (everything top-level, HTML-only so no `format: html:` nesting):
 //!
@@ -26,10 +22,8 @@
 use super::*;
 use serde::Deserialize;
 
-mod quarto;
-
 /// The resolved project config — the single internal model every downstream
-/// consumer reads. Both the native parser and the Quarto shim produce this.
+/// consumer reads.
 #[derive(Debug, Clone, Default)]
 pub struct SiteConfig {
     /// `chapters:` present ⇒ a book (a left chapter sidebar instead of a navbar).
@@ -118,9 +112,7 @@ const NATIVE_KEYS: &[&str] = &[
     "mounts",
 ];
 
-/// Load + parse `_quarto.yml` at `root`. Dispatches by shape: a config nesting
-/// under `project:`/`website:`/`book:`/`format:` is Quarto-shaped (the compat
-/// shim); anything else is the native flat schema.
+/// Load + parse `_quarto.yml` at `root` into the native flat schema.
 pub(in crate::site) fn load_config(root: &Path, warnings: &mut Vec<String>) -> SiteConfig {
     let path = root.join("_quarto.yml");
     let Ok(text) = std::fs::read_to_string(&path) else {
@@ -134,14 +126,6 @@ pub(in crate::site) fn load_config(root: &Path, warnings: &mut Vec<String>) -> S
             return SiteConfig::default();
         }
     };
-    // --- Quarto compatibility dispatch (delete this branch to drop it) ---
-    let is_quarto = ["project", "website", "book", "format"]
-        .iter()
-        .any(|k| value.get(k).is_some());
-    if is_quarto {
-        return quarto::from_value(&value, warnings);
-    }
-    // ---------------------------------------------------------------------
     parse_native(&value, warnings)
 }
 

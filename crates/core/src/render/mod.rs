@@ -212,15 +212,11 @@ fn render_internal_impl(
                 hide_title_block = detect_title_block_hidden(fm);
                 theme = detect_theme(fm);
                 // Extensions contribute first (the `format:` one, then each
-                // `extensions: [..]` entry for this doc's base), and the doc's own
-                // front matter appends/overrides last.
-                let ext_base = match format {
-                    DocFormat::Reveal => "revealjs",
-                    DocFormat::Html => "html",
-                };
+                // `extensions: [..]` entry), and the doc's own front matter
+                // appends/overrides last.
                 let (fmt_inc, fmt_theme_base) =
                     resolve_format_extension(fm, base_dir, &mut warnings);
-                let named_inc = resolve_named_extensions(fm, base_dir, ext_base, &mut warnings);
+                let named_inc = resolve_named_extensions(fm, base_dir, &mut warnings);
                 ext_contributes = fmt_inc.has_markup() || named_inc.has_markup();
                 includes = fmt_inc;
                 includes.merge(&named_inc);

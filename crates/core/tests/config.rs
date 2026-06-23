@@ -1,5 +1,5 @@
-//! The native flat `_quarto.yml` schema (and its Quarto-shaped fallback): parsing,
-//! `chapters:`-implies-book inference, the `icon:` shorthand, and typo validation.
+//! The native flat `_quarto.yml` schema: parsing, `chapters:`-implies-book
+//! inference, the `icon:` shorthand, and typo validation.
 
 use qmd_fast_core::Site;
 
@@ -66,20 +66,32 @@ fn unknown_native_key_is_warned_with_a_suggestion() {
 }
 
 #[test]
-fn quarto_shaped_config_still_works_via_fallback() {
-    // The old nested shape must keep parsing into the same model.
+fn quarto_shaped_config_is_no_longer_parsed_and_warns() {
+    // The compat shim is gone: the native flat schema is the only path. A
+    // Quarto-shaped config no longer translates — its nested values are not
+    // lifted, and its now-unknown top-level keys warn.
     let d = site(
         "project:\n  type: website\nwebsite:\n  title: \"Old\"\n  navbar:\n    left:\n      - { text: Home, href: index.qmd }\n",
     );
     let site = Site::discover(&d.0);
     assert!(!site.is_book());
-    assert_eq!(site.config.title.as_deref(), Some("Old"));
-    assert_eq!(site.config.nav.left.len(), 1);
-    // a Quarto config carries keys we ignore — but it must NOT trip the native
-    // typo validator (that only runs on the native shape).
+    assert_eq!(
+        site.config.title, None,
+        "a nested `website.title` must not be parsed by the native schema"
+    );
     assert!(
-        site.warnings.is_empty(),
-        "fallback warnings: {:?}",
+        site.config.nav.left.is_empty(),
+        "a nested `website.navbar` must not be parsed by the native schema"
+    );
+    // The native typo validator flags the unrecognized top-level keys.
+    assert!(
+        site.warnings.iter().any(|w| w.contains("project")),
+        "expected an unknown-key warning for `project`, got: {:?}",
+        site.warnings
+    );
+    assert!(
+        site.warnings.iter().any(|w| w.contains("website")),
+        "expected an unknown-key warning for `website`, got: {:?}",
         site.warnings
     );
 }

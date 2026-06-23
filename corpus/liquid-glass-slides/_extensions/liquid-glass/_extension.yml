@@ -2,14 +2,10 @@ title: Liquid Glass
 description: Apple-inspired frosted glass panels over a full-bleed background image for RevealJS presentations.
 author: Andreas Bogossian
 version: 0.2.0
-quarto-required: ">=1.3.0"
-contributes:
-  formats:
-    revealjs:
-      theme: [dark, liquid-glass.css]
-      format-resources:
-        - liquid-glass.js
-      include-in-header:
-        - file: liquid-glass-head.html
-      include-after-body:
-        - file: liquid-glass-init.html
+theme: [dark, liquid-glass.css]
+resources:
+  - liquid-glass.js
+head:
+  - file: liquid-glass-head.html
+body-end:
+  - file: liquid-glass-init.html

@@ -18,7 +18,7 @@ fn tmp_site(name: &str) -> PathBuf {
 #[test]
 fn loose_deck_in_site_is_warned_not_silently_flattened() {
     let dir = tmp_site("warn");
-    fs::write(dir.join("_quarto.yml"), "project:\n  type: website\n").unwrap();
+    fs::write(dir.join("_quarto.yml"), "title: Test Site\n").unwrap();
     fs::write(dir.join("index.qmd"), "---\ntitle: Home\n---\n\nHi.\n").unwrap();
     fs::write(
         dir.join("talk.qmd"),
@@ -42,7 +42,7 @@ fn loose_deck_in_site_is_warned_not_silently_flattened() {
 #[test]
 fn embedded_deck_in_site_is_not_warned() {
     let dir = tmp_site("ok");
-    fs::write(dir.join("_quarto.yml"), "project:\n  type: website\n").unwrap();
+    fs::write(dir.join("_quarto.yml"), "title: Test Site\n").unwrap();
     fs::write(
         dir.join("index.qmd"),
         "---\ntitle: Home\n---\n\n{{< embed talk.qmd >}}\n",

@@ -1,8 +1,7 @@
 //! Format extensions: `format: <ext>-revealjs|-html` loads
-//! `_extensions/<ext>/_extension.yml` and injects the includes/theme/resources
-//! its `contributes:` block declares. Kept in its own module so the core stays a
-//! thin injector; `use super::*` reaches PageIncludes + the shared include/theme
-//! helpers.
+//! `_extensions/<ext>/_extension.yml` and injects the includes/theme/resources its
+//! flat native manifest declares. Kept in its own module so the core stays a thin
+//! injector; `use super::*` reaches PageIncludes + the shared include/theme helpers.
 
 use super::*;
 
@@ -40,10 +39,10 @@ fn detect_format_name(front_matter: &str) -> Option<String> {
 }
 /// A `format: <ext>-<base>` reference to an installed format extension, resolved
 /// to its directory. Recognized base formats; the part before `-<base>` is the
-/// extension name.
+/// extension name (the native manifest is format-agnostic, so the base itself is
+/// only used to *recognize* the reference, not retained).
 struct ExtensionRef {
     name: String,
-    base: &'static str,
     /// `<base_dir>/_extensions/<name>`.
     dir: PathBuf,
 }
@@ -54,16 +53,15 @@ struct ExtensionRef {
 /// request"; a request that *is* made but then fails to load *does* warn.
 fn extension_ref(front_matter: &str, base_dir: Option<&Path>) -> Option<ExtensionRef> {
     let fmt = detect_format_name(front_matter)?;
-    let (ext, base) = ["revealjs", "html"]
+    let ext = ["revealjs", "html"]
         .iter()
-        .find_map(|b| fmt.strip_suffix(&format!("-{b}")).map(|e| (e, *b)))?;
+        .find_map(|b| fmt.strip_suffix(&format!("-{b}")))?;
     let dir = base_dir?;
     if ext.is_empty() {
         return None;
     }
     Some(ExtensionRef {
         name: ext.to_string(),
-        base,
         dir: find_extension_dir(dir, ext),
     })
 }
@@ -111,11 +109,9 @@ fn load_manifest(r: &ExtensionRef, warnings: &mut Vec<String>) -> Option<serde_y
     }
 }
 
-mod quarto;
-
-/// The normalized set of things an extension contributes, built from either the
-/// flat native manifest or the Quarto `contributes.formats.<base>` shape. Values
-/// are the raw YAML (resolved into includes/resources by the caller).
+/// The normalized set of things an extension contributes, built from the flat
+/// native manifest. Values are the raw YAML (resolved into includes/resources by
+/// the caller).
 #[derive(Default)]
 struct Contribution {
     head: Option<serde_yaml::Value>,
@@ -174,29 +170,22 @@ fn validate_manifest(m: &serde_yaml::Value, ext: &str, warnings: &mut Vec<String
     }
 }
 
-/// Build a [`Contribution`], dispatching on manifest shape: a `contributes:` block
-/// is the Quarto shape (the isolated compat reader); otherwise the flat native
-/// schema. Delete `quarto.rs` + this branch to drop Quarto-extension support.
+/// Build a [`Contribution`] from the flat native manifest, warning on any
+/// unrecognized top-level key.
 fn load_contribution(
     r: &ExtensionRef,
     m: &serde_yaml::Value,
     warnings: &mut Vec<String>,
 ) -> Contribution {
-    if m.get("contributes").is_some() {
-        quarto::contribution(m, r.base, &r.name, warnings)
-    } else {
-        validate_manifest(m, &r.name, warnings);
-        Contribution::from_native(m)
-    }
+    validate_manifest(m, &r.name, warnings);
+    Contribution::from_native(m)
 }
 
 impl ExtensionRef {
-    /// A reference to an explicitly-named extension (the `extensions: [..]` key),
-    /// resolved for the doc's base format `base`.
-    fn named(name: &str, base: &'static str, base_dir: &Path) -> ExtensionRef {
+    /// A reference to an explicitly-named extension (the `extensions: [..]` key).
+    fn named(name: &str, base_dir: &Path) -> ExtensionRef {
         ExtensionRef {
             name: name.to_string(),
-            base,
             dir: find_extension_dir(base_dir, name),
         }
     }
@@ -282,13 +271,11 @@ pub(super) fn resolve_format_extension(
 }
 
 /// Apply the `extensions: [a, b]` list — the general (format-agnostic) activation.
-/// Each named extension contributes for the doc's `base` format, merged in order
-/// (so a later one wins). This is how a shortcode/enhancer extension is switched on
-/// without hijacking `format:`.
+/// Each named extension is merged in order (so a later one wins). This is how a
+/// shortcode/enhancer extension is switched on without hijacking `format:`.
 pub(super) fn resolve_named_extensions(
     front_matter: &str,
     base_dir: Option<&Path>,
-    base: &'static str,
     warnings: &mut Vec<String>,
 ) -> PageIncludes {
     let Some(dir) = base_dir else {
@@ -296,7 +283,7 @@ pub(super) fn resolve_named_extensions(
     };
     let mut inc = PageIncludes::default();
     for name in parse_extensions(front_matter) {
-        let r = ExtensionRef::named(&name, base, dir);
+        let r = ExtensionRef::named(&name, dir);
         if let Some((d, c)) = contribution_for(&r, warnings) {
             inc.merge(&apply_contribution(&c, &d));
         }
@@ -338,15 +325,10 @@ fn shortcode_templates(front_matter: &str, base_dir: Option<&Path>) -> HashMap<S
     if let Some(r) = extension_ref(front_matter, base_dir) {
         gather_shortcodes(&r, &mut out, &mut ignore);
     }
-    // each `extensions: [..]` entry (shortcodes are format-agnostic, so the base
-    // passed here is a don't-care — it only affects the unused includes block)
+    // each `extensions: [..]` entry
     if let Some(dir) = base_dir {
         for name in parse_extensions(front_matter) {
-            gather_shortcodes(
-                &ExtensionRef::named(&name, "html", dir),
-                &mut out,
-                &mut ignore,
-            );
+            gather_shortcodes(&ExtensionRef::named(&name, dir), &mut out, &mut ignore);
         }
     }
     out
