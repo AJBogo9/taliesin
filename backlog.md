@@ -99,6 +99,14 @@ production quality (Lighthouse/CWV, no-JS fallback, hashed assets, robots/sitema
 cross-browser check of the deck (Safari/Firefox/iOS, since the visual audit was
 Chromium-only). Not worth now: deeper i18n/RTL (English solo author).
 
+> **Initiative: drop Quarto backwards-compat → fully native.** Full phased plan in
+> `DROP-QUARTO.md` (from a 49-agent verified audit, 2026-06-23). TL;DR: most big
+> files are *intrinsic*, not Quarto tax; the real work is delete 2 isolated shims +
+> rename `_quarto.yml` → `_site.yml` + close `KNOWN_KEYS` (cheap, Phase 1–3), then
+> de-reveal the deck engine (the design-freedom prize, Phase 4) and re-architect OJS
+> off the 440 KB runtime (Phase 5). A **Do-NOT-touch** list guards the intrinsic
+> machinery (`:::`, citations, includes, numbering, freeze) from negative-ROI rewrites.
+
 ## Open / next
 
 ### Format & structure audit (round 3, 2026-06-23): open items
