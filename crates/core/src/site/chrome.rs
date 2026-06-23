@@ -41,7 +41,7 @@ impl Site {
             .clone()
             .unwrap_or_else(|| "Home".to_string());
         let mut s = String::from(
-            "<header class=\"qmd-site-nav\" data-qmd-src=\"_quarto.yml\"><nav class=\"qmd-nav-inner\">",
+            "<header class=\"qmd-site-nav\" data-qmd-src=\"_site.yml\"><nav class=\"qmd-nav-inner\">",
         );
         s.push_str(&format!(
             "<a class=\"qmd-nav-brand\" href=\"{up}index.html\">{}</a>",
@@ -158,7 +158,7 @@ impl Site {
             g
         };
         format!(
-            "<footer class=\"qmd-site-footer\" data-qmd-src=\"_quarto.yml\"><div class=\"qmd-foot-inner\">\
+            "<footer class=\"qmd-site-footer\" data-qmd-src=\"_site.yml\"><div class=\"qmd-foot-inner\">\
              <div class=\"qmd-foot-left\">{}</div>\
              <div class=\"qmd-foot-center\">{}</div>\
              <div class=\"qmd-foot-right\">{}</div>\
@@ -179,7 +179,7 @@ impl Site {
             return String::new();
         };
         let up = "../".repeat(depth);
-        let mut s = String::from("<nav class=\"qmd-book-sidebar\" data-qmd-src=\"_quarto.yml\">");
+        let mut s = String::from("<nav class=\"qmd-book-sidebar\" data-qmd-src=\"_site.yml\">");
         // Sidebar header: book title (links home) + a light/dark toggle. A book has
         // no top navbar, so without this the toggle (wired by theme_head) has no home.
         s.push_str("<div class=\"qmd-book-sidebar-head\">");

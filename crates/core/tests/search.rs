@@ -13,7 +13,7 @@ use common::TempProj;
 fn index_captures_page_title_heading_and_section_body_prose() {
     let d = TempProj::new();
     d.file(
-        "_quarto.yml",
+        "_site.yml",
         "title: S\nnav:\n  - { text: Home, href: index.qmd }\n",
     );
     d.file(

@@ -275,7 +275,7 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
     );
     assert!(
         !site.config.nav.left.is_empty(),
-        "navbar items should parse from _quarto.yml"
+        "navbar items should parse from _site.yml"
     );
     for p in &site.pages {
         assert!(p.url.ends_with(".html"), "page url not .html: {}", p.url);

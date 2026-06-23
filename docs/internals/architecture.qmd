@@ -196,7 +196,7 @@ With the shape in mind, here is the file-by-file detail, one table per layer.
 | `includes.rs` | `{{< include >}}` resolution + the per-file source map. |
 | `math.rs` / `highlight.rs` | Server-side KaTeX / syntect, both offline. |
 | `cite.rs` | Citations + cross-references + the CSL/IEEE bibliography. |
-| `site/` | Multi-page projects: `config` (`_quarto.yml` model), `book`, `xref` (cross-page refs), `search` (cross-page index), and `mod` (discovery, chrome, page render). |
+| `site/` | Multi-page projects: `config` (`_site.yml` model), `book`, `xref` (cross-page refs), `search` (cross-page index), and `mod` (discovery, chrome, page render). |
 | `frontmatter.rs` | Front-matter parsing + unknown-key linting. |
 
 `crates/server/src` — the binary (`qmd-fast`):

@@ -88,7 +88,7 @@ multi-page site or book (see [Slides, books & sites](formats.qmd)):
 
 ```sh
 qmd-fast build blog/                     # -> blog/_site/   (one .html per page)
-qmd-fast build docs/                     # -> docs/_book/   (a book, if _quarto.yml says so)
+qmd-fast build docs/                     # -> docs/_book/   (a book, if _site.yml says so)
 ```
 
 ## Publish it

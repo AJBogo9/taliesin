@@ -64,7 +64,7 @@ anchors and rebuilt live as you edit, with the current section highlighted as yo
 scroll (a scrollspy). On a wide screen it's a sticky sidebar; on a phone it
 collapses into a pull-up sheet.
 
-A **multi-chapter book** is a directory whose `_quarto.yml` lists `chapters:` —
+A **multi-chapter book** is a directory whose `_site.yml` lists `chapters:` —
 their presence makes it a book (no `type:` needed), optionally grouped into
 `part:`s. qmd-fast numbers the chapters, builds the left sidebar, wires prev/next
 navigation, and resolves cross-references across chapters. *These very docs are
@@ -82,7 +82,7 @@ chapters:
 ## Multi-page websites
 
 Point either command at a **directory** and qmd-fast treats it as a website
-project. The directory needs one root config, `_quarto.yml`, which names the site
+project. The directory needs one root config, `_site.yml`, which names the site
 title, the navbar, and the footer; every `.qmd` under it (skipping `_`-prefixed
 partials) becomes a page.
 
@@ -122,7 +122,7 @@ qmd-fast build docs --out my-site/_site/docs   # the book, nested at /docs
 # navbar:  - { text: Docs, href: docs/index.html }
 ```
 
-Config is **two levels, no cascade**: the root `_quarto.yml` sets project-wide
+Config is **two levels, no cascade**: the root `_site.yml` sets project-wide
 defaults and a page's own front matter overrides them. There is deliberately no
 Quarto-style `_metadata.yml` directory merge — the single most confusing part of
 its model.

@@ -32,7 +32,7 @@ pub struct SiteCtx {
     pub book_sidebar: Option<String>,
     /// `page-layout: full` — widen the content column (for listing indexes).
     pub wide: bool,
-    /// Site-level `format: html:` includes (header/body/css from `_quarto.yml`),
+    /// Site-level `format: html:` includes (header/body/css from `_site.yml`),
     /// merged ahead of each page's own front-matter includes.
     pub includes: PageIncludes,
     /// Site `favicon:` resolved to a path relative to this page's depth (empty if
@@ -263,7 +263,7 @@ fn html_page_inner(doc: &RenderedDoc, fallback_title: &str, site: Option<&SiteCt
         }
         None => content,
     };
-    // Site-level `format: html:` includes (from `_quarto.yml`) apply to every page
+    // Site-level `format: html:` includes (from `_site.yml`) apply to every page
     // first; the page's own front-matter includes follow.
     let mut includes = match site {
         Some(s) => {

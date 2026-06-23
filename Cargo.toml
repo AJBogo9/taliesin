@@ -17,7 +17,7 @@ qmd-fast-core = { path = "crates/core" }
 # (e.g. comrak in Phase 1, axum/tokio/notify in Phase 2) so versions stay
 # centralized across the workspace.
 
-# Typed parse of the multi-page project config (`_quarto.yml`). serde_yaml is
+# Typed parse of the multi-page project config (`_site.yml`). serde_yaml is
 # archived upstream but stable and dependency-light; the `serde_yml` fork is the
 # fallback if it ever breaks. YAML stays the config format for Quarto compat.
 serde = { version = "1", features = ["derive"] }

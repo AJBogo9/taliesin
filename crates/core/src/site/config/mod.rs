@@ -1,4 +1,4 @@
-//! Project config (`_quarto.yml`). The flat native schema is the only model.
+//! Project config (`_site.yml`). The flat native schema is the only model.
 //!
 //! Native schema (everything top-level, HTML-only so no `format: html:` nesting):
 //!
@@ -112,17 +112,17 @@ const NATIVE_KEYS: &[&str] = &[
     "mounts",
 ];
 
-/// Load + parse `_quarto.yml` at `root` into the native flat schema.
+/// Load + parse `_site.yml` at `root` into the native flat schema.
 pub(in crate::site) fn load_config(root: &Path, warnings: &mut Vec<String>) -> SiteConfig {
-    let path = root.join("_quarto.yml");
+    let path = root.join("_site.yml");
     let Ok(text) = std::fs::read_to_string(&path) else {
-        warnings.push(format!("no _quarto.yml at {}", root.display()));
+        warnings.push(format!("no _site.yml at {}", root.display()));
         return SiteConfig::default();
     };
     let value: serde_yaml::Value = match serde_yaml::from_str(&text) {
         Ok(v) => v,
         Err(e) => {
-            warnings.push(format!("_quarto.yml is not valid YAML: {e}"));
+            warnings.push(format!("_site.yml is not valid YAML: {e}"));
             return SiteConfig::default();
         }
     };

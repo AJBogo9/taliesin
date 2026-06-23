@@ -191,7 +191,7 @@ items above are the confirmed, actionable ones.)
   `# Why this exists` shows "Why this exists" in the sidebar; an `index.qmd` preface
   (no H1) correctly uses its front-matter title. *Candidate fix:* prefer front-matter
   `title:` over the first H1 in `push_chapter` (`book.rs:70-73`), or allow a per-chapter
-  label override in `_quarto.yml` (`- file: x.qmd, text: "..."`). **May be deliberate
+  label override in `_site.yml` (`- file: x.qmd, text: "..."`). **May be deliberate
   Quarto parity** (Quarto treats the first H1 as the chapter title), so decide whether
   this is a bug or intended before changing it. Low value, trivial fix; affects any book
   built from standalone docs. (Surfaced 2026-06-23 building a 2-chapter book in the
@@ -217,7 +217,7 @@ Remaining candidates, with an honest value read for a solo-author personal tool
   last-updated (solo author, no external contributors).
 
 ### Marketing site (visual/UX audit 2026-06-19: the hero pages roll into a demo-machine rebuild)
-- [ ] Swap placeholders in `site/_quarto.yml`: `url:` + the GitHub links.
+- [ ] Swap placeholders in `site/_site.yml`: `url:` + the GitHub links.
 - [ ] Rebuild the hero pages demo-led (lead with motion, one value line, the
   vs-Quarto table, an install/quickstart on-ramp). Folds in the open visual bugs:
   mobile prose overflow at 390px (`page-layout: full` + `hero:`), theme/video desync

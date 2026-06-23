@@ -329,7 +329,7 @@ fn about_page_renders_profile_block() {
     );
 }
 
-/// The site's native `head` / `body-end` / `css` (from `_quarto.yml`) are injected
+/// The site's native `head` / `body-end` / `css` (from `_site.yml`) are injected
 /// into every page, and a page's own front-matter `include-in-header` is injected on
 /// top of the site's. Without this the blog's preconnect hints, prefetch script, and
 /// custom stylesheet silently vanish.

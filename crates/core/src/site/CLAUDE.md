@@ -1,6 +1,6 @@
 # site/ — multi-page projects (websites + books)
 
-A directory with a `_quarto.yml` is a `Site`. `chapters:` present ⇒ a **book** (left
+A directory with a `_site.yml` is a `Site`. `chapters:` present ⇒ a **book** (left
 chapter sidebar); otherwise a **website** (top navbar).
 
 Module map:
@@ -8,7 +8,7 @@ Module map:
 - `chrome.rs`     navbar / footer / post-nav / book sidebar HTML + social-icon glyphs
                   (a second `impl Site`, methods `pub(super)` so `page_chrome()` calls them)
 - `frontmatter.rs` per-page `---` parsing (reuses `crate::frontmatter::front_matter_block`)
-- `config/`       `_quarto.yml` → `SiteConfig` (flat native schema; the only path)
+- `config/`       `_site.yml` → `SiteConfig` (flat native schema; the only path)
 - `book.rs` `feed.rs` `meta.rs` `search.rs` `xref.rs`
 
 Conventions:

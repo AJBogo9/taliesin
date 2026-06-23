@@ -44,7 +44,7 @@ crates/core      qmd-fast-core lib: parser (comrak + sourcepos) → block model 
   src/math.rs      KaTeX server-side render (bundled CSS/fonts, offline)
   src/highlight.rs server-side syntax highlighting (syntect → `qhl-` scope classes)
   src/cite.rs      citations ([@key]) + cross-references (@fig-, @sec-)
-  src/site/        multi-page project (mod.rs): _quarto.yml config (config/), page
+  src/site/        multi-page project (mod.rs): _site.yml config (config/), page
                    discovery, chrome, link rewrite, listings + about/`hero:` blocks,
                    front-matter parse (frontmatter.rs), books (book.rs), RSS (feed.rs),
                    Cmd-K search (search.rs), cross-refs (xref.rs); an {{< embed >}}-
@@ -69,7 +69,7 @@ web-client/      browser preview client (vanilla JS, the only client): client.js
 docs/            project's own manual: TWO sibling book projects, authored in .qmd
                  (dogfooding). docs/guide/ = User Guide (using/ + reference/ + demo/tour
                  decks); docs/internals/ = Internals book. docs/ itself is just a container
-                 (no _quarto.yml). The site mounts each at /docs/guide + /docs/internals.
+                 (no _site.yml). The site mounts each at /docs/guide + /docs/internals.
 corpus/          the real .qmd docs (the spec); cargo test renders them all
 ```
 
@@ -82,7 +82,7 @@ corpus/          the real .qmd docs (the spec); cargo test renders them all
   - **`docs/internals/`** = the Internals book: the architecture, the rendering
     pipeline, the deck engine, the block model, the execution model, the dev server,
     and how to extend it. Preview it: `qmd-fast preview docs/internals`.
-  - `docs/` itself is just a container (no `_quarto.yml`); the books are siblings
+  - `docs/` itself is just a container (no `_site.yml`); the books are siblings
     because the page-walker would otherwise swallow a nested book's pages. The
     marketing site mounts them at `/docs/guide` + `/docs/internals`. Cross-book links
     are written as relative `.html` (e.g. `../guide/using/formats.html`).

@@ -53,7 +53,7 @@ can preview on its own.
 
 ## Multi-page websites {#websites}
 
-Point qmd-fast at a directory with a `_quarto.yml` and you get a whole site: a themed
+Point qmd-fast at a directory with a `_site.yml` and you get a whole site: a themed
 navbar and footer, post listings and an `about:` profile header, an RSS feed,
 OpenGraph and Twitter-card metadata, light/dark with a toggle, and Cmd-K search —
 built to a static `_site/` you can host anywhere. Intra-site `.qmd` links are

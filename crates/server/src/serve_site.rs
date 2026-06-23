@@ -7,7 +7,7 @@
 //!   - each page has its own block state, broadcast channel, and code executor,
 //!     built lazily on first visit,
 //!   - a save rebuilds only the affected page(s) and hot-reloads them in place;
-//!     a `_quarto.yml` change re-discovers the site and reloads open tabs.
+//!     a `_site.yml` change re-discovers the site and reloads open tabs.
 //!
 //! Small HTTP/asset helpers + the embedded client are shared with [`crate::serve`].
 
@@ -422,7 +422,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
         .canonicalize()
         .unwrap_or_else(|_| base_dir.to_path_buf());
     // `root` lets the locator resolve site-root-relative `data-qmd-src` targets
-    // (a card → its post's source, the navbar/footer → _quarto.yml, etc.).
+    // (a card → its post's source, the navbar/footer → _site.yml, etc.).
     let doc_global = format!(
         "window.QMD_DOC = {{ path: \"{}\", baseDir: \"{}\", root: \"{}\" }};",
         js_str(&doc_path.to_string_lossy()),
@@ -986,7 +986,7 @@ fn spawn_watcher(app: Arc<SiteApp>) {
     });
 }
 
-/// Map a batch of changed files to rebuilds: a `_quarto.yml` change (or a `.qmd`
+/// Map a batch of changed files to rebuilds: a `_site.yml` change (or a `.qmd`
 /// added/removed that changes the page set) re-discovers the site and reloads open
 /// tabs; otherwise rebuild every *open* page whose source or include set touches a
 /// changed file. `structural` is set when the batch created/removed a `.qmd`.
@@ -998,7 +998,7 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
 
     let config_changed = changed
         .iter()
-        .any(|p| p.file_name().and_then(|n| n.to_str()) == Some("_quarto.yml"));
+        .any(|p| p.file_name().and_then(|n| n.to_str()) == Some("_site.yml"));
     if config_changed {
         *app.site.lock() = Site::discover(&app.root);
         reload_open_tabs(app);
@@ -1045,7 +1045,7 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
 }
 
 /// Reload every open tab and drop its cached block state, so the reload re-renders
-/// fresh against the (re-discovered) site — used after a `_quarto.yml` or page-set
+/// fresh against the (re-discovered) site — used after a `_site.yml` or page-set
 /// change. The reload message is delivered before each channel's sender is dropped.
 fn reload_open_tabs(app: &SiteApp) {
     let mut pages = app.pages.lock();

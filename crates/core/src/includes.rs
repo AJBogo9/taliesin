@@ -197,7 +197,7 @@ fn label_for(target: &Path, primary_base: &Path) -> String {
 
 /// Resolve `rel` against `base_dir`, refusing path-traversal escapes. An absolute
 /// `rel`, or a result that climbs above the *project root* (the nearest ancestor of
-/// `base_dir` holding a `.git` or `_quarto.yml`, else `base_dir` itself), returns
+/// `base_dir` holding a `.git` or `_site.yml`, else `base_dir` itself), returns
 /// `None` so the caller can refuse it. This blocks `{{< include /etc/passwd >}}`
 /// and `../../../../etc/...` while still allowing the corpus's `../../_includes/...`
 /// (the repo root contains both the doc and `_includes/`). Shared by include
@@ -214,13 +214,13 @@ pub(crate) fn safe_join(base_dir: &Path, rel: &str) -> Option<PathBuf> {
 }
 
 /// The containment boundary for [`safe_join`]: the nearest ancestor of `base_dir`
-/// that looks like a project root (`.git` or `_quarto.yml`), falling back to
+/// that looks like a project root (`.git` or `_site.yml`), falling back to
 /// `base_dir` itself when none is found.
 fn containment_root(base_dir: &Path) -> PathBuf {
     let base = normalize(base_dir);
     let mut cur: &Path = &base;
     loop {
-        if cur.join(".git").exists() || cur.join("_quarto.yml").exists() {
+        if cur.join(".git").exists() || cur.join("_site.yml").exists() {
             return cur.to_path_buf();
         }
         match cur.parent() {

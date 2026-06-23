@@ -1,6 +1,6 @@
 //! Multi-page website project model.
 //!
-//! A *site* is a directory with one explicit root config (`_quarto.yml`, kept for
+//! A *site* is a directory with one explicit root config (`_site.yml`, kept for
 //! Quarto compatibility) plus a set of `.qmd` input pages. This module owns the
 //! project-level concerns that the single-page path never had:
 //!
@@ -158,7 +158,7 @@ pub use config::*;
 pub(crate) use frontmatter::*;
 
 impl Site {
-    /// Discover the site rooted at `root`: parse `_quarto.yml`, enumerate input
+    /// Discover the site rooted at `root`: parse `_site.yml`, enumerate input
     /// `.qmd` pages, and compute their output URLs + ordering.
     pub fn discover(root: &Path) -> Site {
         let mut warnings = Vec::new();
@@ -196,7 +196,7 @@ impl Site {
         }
 
         // Resolve the site-wide head/body/css includes once, relative to the site
-        // root (where `_quarto.yml` and its referenced css/js files live).
+        // root (where `_site.yml` and its referenced css/js files live).
         let includes = render::includes_from_parts(
             config.head.as_ref(),
             config.body_start.as_ref(),

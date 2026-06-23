@@ -85,7 +85,7 @@ struct SiteApp {
 Navigation between pages is just a real page load (each page has its own
 websocket and its own executor), so the navbar / prev-next links work with no SPA.
 A save rebuilds only the affected page and hot-reloads it in place with the same
-block diff; a `_quarto.yml` change re-discovers the whole site and reloads open
+block diff; a `_site.yml` change re-discovers the whole site and reloads open
 tabs. A single spawned **executor worker** drains `build_tx`, so each page's cells
 run on its own kernel without blocking the HTTP handlers; `build_page_guarded`
 gives it the same `catch_unwind` isolation as the single-doc loop.

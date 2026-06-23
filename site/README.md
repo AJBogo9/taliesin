@@ -6,10 +6,10 @@ on the defaults, the framework is doing its job.
 
 Pages: `index.qmd` (landing), `features.qmd`, `formats.qmd`, plus `demo.qmd` (the
 showcase deck, embedded via `{{< embed >}}` and kept out of nav). Config is
-`_quarto.yml` (native flat schema). There is intentionally no stylesheet.
+`_site.yml` (native flat schema). There is intentionally no stylesheet.
 
 > Placeholders to update before going live: `url:` and the GitHub links in
-> `_quarto.yml` (currently `https://qmd-fast.dev` and `github.com/AJBogo9/qmd-fast`).
+> `_site.yml` (currently `https://qmd-fast.dev` and `github.com/AJBogo9/qmd-fast`).
 
 ## How it's authored (all framework features)
 
@@ -31,7 +31,7 @@ The theme (serif body, sans headings, light/dark toggle) is the qmd-fast default
 qmd-fast preview site
 ```
 
-The `Guide` and `Internals` nav links resolve live: `_quarto.yml`'s `mounts:` serves
+The `Guide` and `Internals` nav links resolve live: `_site.yml`'s `mounts:` serves
 the two sibling docs books under `/docs/guide/` and `/docs/internals/` (rendered on
 request, so content edits show on refresh).
 

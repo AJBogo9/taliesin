@@ -1,4 +1,4 @@
-//! The native flat `_quarto.yml` schema: parsing, `chapters:`-implies-book
+//! The native flat `_site.yml` schema: parsing, `chapters:`-implies-book
 //! inference, the `icon:` shorthand, and typo validation.
 
 use qmd_fast_core::Site;
@@ -6,11 +6,11 @@ use qmd_fast_core::Site;
 mod common;
 use common::TempProj;
 
-/// A throwaway site project: `_quarto.yml` = `config`, plus a minimal `index.qmd`
+/// A throwaway site project: `_site.yml` = `config`, plus a minimal `index.qmd`
 /// (so `Site::discover` always has a home page).
 fn site(config: &str) -> TempProj {
     let d = TempProj::new();
-    d.file("_quarto.yml", config);
+    d.file("_site.yml", config);
     d.file("index.qmd", "---\ntitle: Home\n---\n\n# Hi\n");
     d
 }

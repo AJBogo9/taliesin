@@ -115,7 +115,7 @@ fn cmd_build(args: &[String]) -> ExitCode {
         eprintln!("usage: qmd-fast build <file.qmd|dir> [out.html] [--out <dir>]");
         return ExitCode::FAILURE;
     };
-    // A directory is a multi-page site project (`_quarto.yml` + `.qmd` pages);
+    // A directory is a multi-page site project (`_site.yml` + `.qmd` pages);
     // a single `.qmd` keeps the original self-contained-page behaviour.
     if Path::new(path).is_dir() {
         return build_site(Path::new(path), out_dir);
@@ -478,7 +478,7 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
 
 /// Copy every non-source file under `root` into `out`, mirroring the directory
 /// tree. Skips `.qmd` sources (rendered separately), `_`-prefixed and dot
-/// entries (`_quarto.yml`, `_includes`, `_site`, …), and the output dir itself.
+/// entries (`_site.yml`, `_includes`, `_site`, …), and the output dir itself.
 fn mirror_assets(root: &Path, out: &Path) -> usize {
     fn walk(
         dir: &Path,

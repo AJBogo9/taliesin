@@ -3,7 +3,7 @@ title: "Configuration reference"
 ---
 
 Two places hold configuration: a document's **YAML front matter** (the `---`
-block at the top), and a project's **`_quarto.yml`** (for a site or book). The
+block at the top), and a project's **`_site.yml`** (for a site or book). The
 project config uses a flat, native schema; a Quarto-shaped config still works
 unchanged (see the note at the end).
 
@@ -37,9 +37,9 @@ set per-cell options:
 A front-matter `execute:` block sets document-wide `echo`/`include` defaults that a
 cell's own `#|` options override.
 
-## Project `_quarto.yml`
+## Project `_site.yml`
 
-A **directory** with a `_quarto.yml` is a site or book project. The schema is
+A **directory** with a `_site.yml` is a site or book project. The schema is
 flat — qmd-fast is HTML-only, so there's no `format: html:` nesting, and the
 project type is inferred (presence of `chapters:` ⇒ a book). There is no
 `_metadata.yml` cascade: the root config sets defaults, a page's own front matter
