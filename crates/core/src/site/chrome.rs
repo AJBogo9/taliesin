@@ -114,14 +114,13 @@ impl Site {
     }
 
     /// The slim site footer. Footer item text is treated as raw HTML (icon SVGs),
-    /// per the trusted-source model. A configured `.xml` link resolves to the
-    /// generated `feed.xml`.
+    /// per the trusted-source model. A configured local `.xml` link is dropped
+    /// (this build generates no RSS feed).
     pub(super) fn footer_html(&self, depth: usize) -> String {
         let Some(footer) = &self.config.footer else {
             return String::new();
         };
         let up = "../".repeat(depth);
-        let feed = self.feed_enabled();
         let group = |items: &[NavItem]| -> String {
             let mut g = String::new();
             for it in items {
@@ -136,21 +135,16 @@ impl Site {
                 };
                 match it.href.as_deref() {
                     // A configured *local* `.xml` link (e.g. Quarto's `/blog.xml`)
-                    // points to the generated feed.xml — or is dropped when there's no
-                    // feed. An external `.xml` URL (http/protocol-relative) is left
-                    // alone: it's some other resource, not this site's feed.
+                    // is dropped: this build generates no RSS feed. An external
+                    // `.xml` URL (http/protocol-relative) is left alone — it's some
+                    // other resource, not this site's feed.
                     Some(h)
                         if h.ends_with(".xml")
                             && !(h.starts_with("http://")
                                 || h.starts_with("https://")
                                 || h.starts_with("//")) =>
                     {
-                        if !feed {
-                            continue;
-                        }
-                        g.push_str(&format!(
-                            "<a class=\"qmd-foot-item\"{aria} href=\"{up}feed.xml\">{content}</a>"
-                        ));
+                        continue;
                     }
                     Some(h) => {
                         g.push_str(&format!(
@@ -177,42 +171,6 @@ impl Site {
 }
 
 impl Site {
-    /// Prev/next navigation between posts (chronological). Non-posts get nothing.
-    /// Bottom-of-post navigation: a single "back to the listing" button (replaces
-    /// prev/next). Links to the listing page that covers this post, preferring the
-    /// most complete one (the full blog over a homepage "recent posts" excerpt).
-    pub(super) fn post_nav_html(&self, current: &Page, depth: usize) -> String {
-        if !current.is_post {
-            return String::new();
-        }
-        // The listing page covering this post with the largest collection.
-        let mut best: Option<(&Page, usize)> = None;
-        for page in &self.pages {
-            if page.rel == current.rel {
-                continue;
-            }
-            for spec in &page.listings {
-                let coll = self.collection(page, spec);
-                if coll.iter().any(|p| p.rel == current.rel)
-                    && best.is_none_or(|(_, n)| coll.len() > n)
-                {
-                    best = Some((page, coll.len()));
-                }
-            }
-        }
-        let Some((blog, _)) = best else {
-            return String::new();
-        };
-        let up = "../".repeat(depth);
-        let target = format!("{up}{}", blog.url);
-        let label = blog.title.as_deref().unwrap_or("Blog");
-        format!(
-            "<nav class=\"qmd-postnav\"><a class=\"qmd-back-link\" href=\"{target}\">\
-             <span class=\"qmd-back-glyph\">\u{2190}</span> Back to {}</a></nav>",
-            esc(label)
-        )
-    }
-
     /// The book's left sidebar: the title, then the ordered chapters (part
     /// headers interspersed), each prefixed with its number, the current chapter
     /// highlighted.

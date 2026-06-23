@@ -73,18 +73,6 @@
      with no dead space pooling to the right of the TOC. */
   .qmd-site-main.has-toc { max-width: 62.5rem; display: grid; align-items: start;
     gap: 2.5rem; grid-template-columns: minmax(0, 46rem) 14rem; }
-  .qmd-site-main.has-toc > .qmd-postnav { grid-column: 1 / -1; }
-
-  /* bottom-of-post: a single "back to the blog listing" button */
-  .qmd-postnav { display: flex; margin: 3.5rem 0 0; padding-top: 1.5rem;
-    border-top: 1px solid var(--qmd-border); }
-  .qmd-back-link { display: inline-flex; align-items: center; gap: .45rem; text-decoration: none;
-    padding: .55rem 1rem; border: 1px solid var(--qmd-border); border-radius: 8px;
-    color: var(--qmd-fg); font-weight: 600;
-    transition: border-color .12s ease, background .12s ease, color .12s ease; }
-  .qmd-back-link:hover { border-color: var(--qmd-accent); background: var(--qmd-code-bg);
-    color: var(--qmd-accent); }
-  .qmd-back-glyph { font: 600 1rem var(--qmd-font-head); }
 
   /* slim footer pinned to the bottom of the flex column (icons = author raw HTML) */
   .qmd-site-footer { flex-shrink: 0; border-top: 1px solid var(--qmd-border); }
@@ -127,10 +115,6 @@
   .qmd-cat[data-cat] { cursor: pointer; }
   .qmd-cat[data-cat]:hover { color: var(--qmd-fg); border-color: var(--qmd-muted); }
   .qmd-cat.qmd-cat-on { background: var(--qmd-accent); border-color: var(--qmd-accent); color: #fff; }
-  /* a post's category links (in its title block) → the per-tag archive pages */
-  .qmd-post-cats { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .7rem; }
-  a.qmd-cat { text-decoration: none; }
-  a.qmd-cat:hover { color: var(--qmd-fg); border-color: var(--qmd-muted); background: var(--qmd-code-bg); }
 
   /* category filter chip row (listing: categories: true) */
   .qmd-cat-filter { display: flex; flex-wrap: wrap; gap: .45rem; margin: 0 0 1.5rem; }

@@ -43,7 +43,7 @@ pub use reveal::{RevealParts, assemble_reveal_page, reveal_client_script, slides
 #[cfg(test)]
 use reveal::deck_theme_head;
 mod extension;
-pub(crate) use extension::embed_targets;
+pub use extension::embed_targets;
 use extension::{resolve_format_extension, resolve_named_extensions};
 mod divs;
 pub(crate) use divs::parse_attrs;
@@ -800,6 +800,14 @@ fn detect_title_block_hidden(front_matter: &str) -> bool {
         let t = l.trim();
         t.strip_prefix("title-block-style:").map(str::trim) == Some("none")
     })
+}
+
+/// Whether a document's front matter selects a revealjs deck. Reads only the
+/// front matter (no full parse), so site discovery can cheaply flag a loose deck
+/// dropped into a website — which would otherwise be flattened into an article.
+pub fn is_reveal_doc(src: &str) -> bool {
+    crate::frontmatter::front_matter_block(src)
+        .is_some_and(|fm| detect_format(fm) == DocFormat::Reveal)
 }
 
 /// Detect the output format from raw front matter. A reveal.js deck declares a

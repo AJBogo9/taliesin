@@ -50,8 +50,6 @@ pub struct Page {
     pub card_image: Option<String>,
     /// Front-matter `categories` (shown as badges on a card).
     pub categories: Vec<String>,
-    /// Whether the page lives under `posts/` (drives prev/next navigation).
-    pub is_post: bool,
     /// `listing:` blocks declared on this page (the blog index, projects, etc.).
     pub listings: Vec<ListingSpec>,
     /// `about:` profile block, if this page declares one (the homepage).
@@ -149,7 +147,6 @@ mod book;
 mod chrome;
 pub use book::{Book, BookEntry};
 use book::{book_pages, build_book};
-mod feed;
 mod meta;
 mod search;
 mod xref;
@@ -182,6 +179,21 @@ impl Site {
         // the page set: an embedded deck is served as a standalone deck, not a page.
         let decks = discover_decks(root, &pages, &mut warnings);
         pages.retain(|p| !decks.iter().any(|d| d.url == p.url));
+
+        // A loose deck: a `format: revealjs` page that survived the embed retain
+        // above, so it isn't referenced by `{{< embed >}}` anywhere. It would be
+        // flattened into a chrome-wrapped article (no slides, no deck JS) with no
+        // other signal — warn so the author embeds it or moves it out of the site.
+        for p in &pages {
+            if std::fs::read_to_string(&p.input).is_ok_and(|s| render::is_reveal_doc(&s)) {
+                warnings.push(format!(
+                    "{}: declares a revealjs deck but is a loose page in the site; it \
+                     will render as a flat article. Reference it with {{{{< embed {} >}}}} \
+                     from a page, or move it out of the site.",
+                    p.rel, p.rel
+                ));
+            }
+        }
 
         // Resolve the site-wide head/body/css includes once, relative to the site
         // root (where `_quarto.yml` and its referenced css/js files live).
@@ -221,13 +233,6 @@ impl Site {
         self.book.is_some()
     }
 
-    /// The site's RSS 2.0 feed (a website with a configured `url:` and at least
-    /// one post), or `None`. Written to `feed.xml` by the build and served by the
-    /// preview.
-    pub fn rss_feed(&self) -> Option<String> {
-        feed::rss(self)
-    }
-
     /// Quarto-compatible `listings.json`: one entry per listing block, mapping the
     /// hosting page's URL (`/blog.html`) to its item URLs (`/posts/x/index.html`) in
     /// display order. Consumed by an author's prev/next `post-nav.js` and any
@@ -249,14 +254,6 @@ impl Site {
             }
         }
         format!("[{}]", entries.join(","))
-    }
-
-    /// Cheap check that a feed will be produced — gates the discovery `<link>` and
-    /// the `feed.xml` route without rebuilding the whole feed.
-    fn feed_enabled(&self) -> bool {
-        !self.is_book()
-            && self.config.url.as_deref().is_some_and(|u| !u.is_empty())
-            && self.pages.iter().any(|p| p.is_post)
     }
 
     /// The output directory `build` writes to (default `_site`, or `_book` for a
@@ -291,16 +288,6 @@ impl Site {
         // rich preview. Injected via the head include (no render/mod.rs change).
         let mut includes = self.includes.clone();
         includes.in_header.push_str(&meta::social_head(self, page));
-        // Auto-discovery for the RSS feed: a root-relative `<link>` in the head so
-        // feed readers (and the browser) find `feed.xml` from any page depth.
-        if self.feed_enabled() {
-            let title = self.config.title.as_deref().unwrap_or("RSS");
-            includes.in_header.push_str(&format!(
-                "\n<link rel=\"alternate\" type=\"application/rss+xml\" title=\"{}\" href=\"{}feed.xml\">",
-                crate::escape_attr(title),
-                "../".repeat(depth),
-            ));
-        }
         // The cross-page search index (+ how to resolve a result's page URL from
         // this page's depth). Empty when there are no entries; injected only where
         // the search palette also rides along (TOC pages).
@@ -327,7 +314,7 @@ impl Site {
             post_nav_html: if book {
                 self.book_nav_html(page, depth)
             } else {
-                self.post_nav_html(page, depth)
+                String::new()
             },
             book_sidebar: book.then(|| self.sidebar_html(page, depth)),
             wide: page.page_layout.as_deref() == Some("full"),
@@ -376,19 +363,17 @@ impl Site {
     }
 
     /// Finish a page's blocks in place: chapter numbering, site-wide cross-ref
-    /// resolution (+ broken-ref warnings), site front-matter expansion
-    /// (`about:`/`listing:`), and post decoration (reading-time / category badges).
-    /// The single block-finishing step shared by the static build, `render_page_doc`,
-    /// and the live preview, so all three produce identical blocks (the preview used
-    /// to skip `validate_xrefs` + `decorate_post`). `page_toc` is computed by the
-    /// caller (it reads blocks but doesn't mutate them).
+    /// resolution (+ broken-ref warnings), and site front-matter expansion
+    /// (`about:`/`listing:`). The single block-finishing step shared by the static
+    /// build, `render_page_doc`, and the live preview, so all three produce identical
+    /// blocks (the preview used to skip `validate_xrefs`). `page_toc` is computed by
+    /// the caller (it reads blocks but doesn't mutate them).
     pub fn finish_blocks(&self, page: &Page, blocks: &mut Vec<Block>, warnings: &mut Vec<String>) {
         self.number_chapter(page, blocks);
         self.resolve_cross_refs(blocks, &page.url);
         // Cross-refs that survived the site-wide resolution are genuinely broken.
         warnings.extend(crate::cite::validate_xrefs(blocks));
         self.expand_page(page, blocks);
-        self.decorate_post(page, blocks);
     }
 
     /// A self-contained `404.html` for the static build. A static host (GitHub
@@ -644,136 +629,6 @@ impl Site {
         )
     }
 
-    // --- post decoration + category archives ------------------------------
-
-    /// Add a reading-time estimate and category links to a *post's* title block
-    /// (a no-op for listing/about/book pages). Both ride in the existing title
-    /// block, so they mount + diff like any other content.
-    fn decorate_post(&self, page: &Page, blocks: &mut [Block]) {
-        if !page.is_post {
-            return;
-        }
-        let words: usize = blocks
-            .iter()
-            .filter(|b| b.id != "qmd-title-block")
-            .map(|b| html_word_count(&b.html))
-            .sum();
-        let mins = words.div_ceil(200).max(1);
-        let read = format!("<span class=\"qmd-read-time\">{mins} min read</span>");
-        let cats = if page.categories.is_empty() {
-            String::new()
-        } else {
-            let up = "../".repeat(page.url.matches('/').count());
-            let links: String = page
-                .categories
-                .iter()
-                .map(|c| {
-                    format!(
-                        "<a class=\"qmd-cat\" href=\"{up}categories/{}/\">{}</a>",
-                        slugify(c),
-                        esc(c)
-                    )
-                })
-                .collect();
-            format!("<div class=\"qmd-post-cats\">{links}</div>")
-        };
-        if let Some(tb) = blocks.iter_mut().find(|b| b.id == "qmd-title-block") {
-            inject_title_extras(&mut tb.html, &read, &cats);
-        }
-    }
-
-    /// Every post category mapped to its posts, newest-first. The basis of the
-    /// per-tag archive pages.
-    pub fn category_index(&self) -> std::collections::BTreeMap<String, Vec<&Page>> {
-        let mut m: std::collections::BTreeMap<String, Vec<&Page>> = Default::default();
-        for p in self.pages.iter().filter(|p| p.is_post) {
-            for c in &p.categories {
-                m.entry(c.clone()).or_default().push(p);
-            }
-        }
-        for v in m.values_mut() {
-            v.sort_by(|a, b| b.date.cmp(&a.date).then_with(|| a.rel.cmp(&b.rel)));
-        }
-        m
-    }
-
-    /// Render the archive page for one category `slug` (a grid of its posts with
-    /// full site chrome), or `None` if no category slugs to it. Used by the build
-    /// (writes `categories/<slug>/index.html`) and the preview route.
-    pub fn render_category_page(&self, slug: &str) -> Option<String> {
-        let index = self.category_index();
-        // Merge every category *name* that slugs to `slug` (e.g. "Machine Learning"
-        // and "machine-learning" share one archive) so they don't silently overwrite
-        // each other's page; dedupe posts by `rel`.
-        let mut posts: Vec<&Page> = Vec::new();
-        let mut display: Option<&str> = None;
-        for (c, ps) in index.iter().filter(|(c, _)| slugify(c) == slug) {
-            display.get_or_insert(c.as_str());
-            for p in ps {
-                if !posts.iter().any(|q| q.rel == p.rel) {
-                    posts.push(p);
-                }
-            }
-        }
-        let cat = display?;
-        posts.sort_by(|a, b| b.date.cmp(&a.date).then_with(|| a.rel.cmp(&b.rel)));
-        let url = format!("categories/{slug}/index.html");
-        let n = posts.len();
-        let synth = Page {
-            input: self.root.join(&url),
-            rel: format!("categories/{slug}/index.qmd"),
-            url,
-            title: Some(format!("Tagged: {cat}")),
-            date: None,
-            description: Some(format!(
-                "{n} post{} tagged \u{201c}{cat}\u{201d}",
-                if n == 1 { "" } else { "s" }
-            )),
-            card_image: None,
-            categories: Vec::new(),
-            is_post: false,
-            listings: Vec::new(),
-            about: None,
-            hero: None,
-            page_layout: None,
-        };
-        let grid: String = posts
-            .iter()
-            .map(|p| self.card_html(p, "../../", true))
-            .collect();
-        // Render a minimal source so the doc gets the right theme/includes defaults,
-        // then append the card grid and wrap it in chrome like any other page.
-        let src = format!(
-            "---\ntitle: {}\n---\n",
-            yaml_quote(&format!("Tagged: {cat}"))
-        );
-        let mut doc = render::render_document_with_includes(&src, &self.root);
-        doc.blocks.push(Block {
-            id: "qmd-cat-archive".to_string(),
-            sourcepos: String::new(),
-            source_file: None,
-            html: format!("<div class=\"qmd-listing qmd-listing-grid\">{grid}</div>"),
-            cell: None,
-        });
-        Some(self.render_page_doc(&synth, doc))
-    }
-
-    /// All category archive pages as `(url, html)`, for the static build.
-    pub fn category_pages(&self) -> Vec<(String, String)> {
-        // Dedupe by slug so two names sharing a slug render one merged archive (not
-        // two writes to the same path).
-        let mut seen = std::collections::HashSet::new();
-        self.category_index()
-            .keys()
-            .map(|cat| slugify(cat))
-            .filter(|slug| seen.insert(slug.clone()))
-            .filter_map(|slug| {
-                self.render_category_page(&slug)
-                    .map(|html| (format!("categories/{slug}/index.html"), html))
-            })
-            .collect()
-    }
-
     // --- hero ---------------------------------------------------------------
 
     /// Render a `hero:` landing header (eyebrow + headline + lead + CTA buttons)
@@ -873,85 +728,6 @@ impl Site {
     // --- chrome -----------------------------------------------------------
 }
 
-/// A URL-safe slug for a category name (`"Machine Learning"` → `"machine-learning"`):
-/// lowercase ASCII alphanumerics, every other run collapsed to a single `-`.
-fn slugify(s: &str) -> String {
-    let mut out = String::new();
-    for c in s.chars() {
-        // Keep Unicode letters/digits (so a non-Latin category — Cyrillic, CJK,
-        // accented — gets a real, distinct slug instead of collapsing to empty and
-        // colliding with every other non-ASCII name on `/categories//`).
-        if c.is_alphanumeric() {
-            out.extend(c.to_lowercase());
-        } else if !out.is_empty() && !out.ends_with('-') {
-            out.push('-');
-        }
-    }
-    let slug = out.trim_matches('-').to_string();
-    if slug.is_empty() {
-        // No alphanumerics at all (e.g. an emoji-only name): a stable hash keeps
-        // distinct names on distinct URLs.
-        format!("cat-{:x}", fnv1a(s))
-    } else {
-        slug
-    }
-}
-
-/// A small deterministic (cross-build-stable) hash for slug fallbacks.
-fn fnv1a(s: &str) -> u64 {
-    let mut h = 0xcbf29ce484222325u64;
-    for b in s.bytes() {
-        h ^= b as u64;
-        h = h.wrapping_mul(0x100000001b3);
-    }
-    h
-}
-
-/// Approximate word count of rendered HTML, skipping tag markup (for reading time).
-fn html_word_count(html: &str) -> usize {
-    let (mut words, mut in_tag, mut in_word) = (0usize, false, false);
-    for c in html.chars() {
-        match c {
-            '<' => {
-                in_tag = true;
-                in_word = false;
-            }
-            '>' => in_tag = false,
-            _ if in_tag => {}
-            c if c.is_whitespace() => in_word = false,
-            _ => {
-                if !in_word {
-                    words += 1;
-                    in_word = true;
-                }
-            }
-        }
-    }
-    words
-}
-
-/// Double-quote + escape a string for a YAML scalar (synthetic front matter).
-fn yaml_quote(s: &str) -> String {
-    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
-}
-
-/// Splice a reading-time span into a title block's `qmd-title-meta` (creating the
-/// meta if absent) and append a category-links block before `</header>`.
-fn inject_title_extras(html: &mut String, read: &str, cats: &str) {
-    if let Some(meta) = html.find("class=\"qmd-title-meta\">") {
-        if let Some(rel) = html[meta..].find("</div>") {
-            html.insert_str(meta + rel, read);
-        }
-    } else if let Some(end) = html.rfind("</header>") {
-        html.insert_str(end, &format!("<div class=\"qmd-title-meta\">{read}</div>"));
-    }
-    if !cats.is_empty()
-        && let Some(end) = html.rfind("</header>")
-    {
-        html.insert_str(end, cats);
-    }
-}
-
 /// Prefix each heading in a book chapter with its section number: the chapter's
 /// `# H1` becomes "N", and the deeper headings count within it ("N.1", "N.1.1"),
 /// emitted as a `header-section-number` span so it reads like Quarto.
@@ -1016,7 +792,6 @@ fn website_pages(root: &Path) -> Vec<Page> {
             // `image` is relative to the page's own directory; store it
             // site-root-relative so a listing card on another page can link it.
             let card_image = fm.image.map(|img| join_rel(&rel, &img));
-            let is_post = rel.starts_with("posts/");
             Page {
                 input,
                 rel,
@@ -1026,7 +801,6 @@ fn website_pages(root: &Path) -> Vec<Page> {
                 description: fm.description,
                 card_image,
                 categories: fm.categories,
-                is_post,
                 listings: fm.listings,
                 about: fm.about,
                 hero: fm.hero,

@@ -192,6 +192,16 @@ fn build_page_executing(
         for w in &doc.warnings {
             log::warn(w);
         }
+        // `{{< embed >}}` only resolves in a SITE build, which also builds the
+        // embedded target beside the page. A single-doc build ships the iframe but
+        // not its target, so the embed would 404 — warn instead of failing silently.
+        for target in qmd_fast_core::render::embed_targets(src) {
+            log::warn(&format!(
+                "{{{{< embed {target} >}}}} won't resolve in a single-doc build (its \
+                 target isn't built); build the containing directory as a site, or \
+                 inline the content instead."
+            ));
+        }
         // Broken cross-refs (a single doc has no site to resolve them across pages),
         // so a `build` doesn't ship a dangling `@fig-`/`@sec-` link silently.
         for w in qmd_fast_core::cite::validate_xrefs(&doc.blocks) {
@@ -425,16 +435,6 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
              (set QMD_FAST_PYTHON to a python with ipykernel)",
         );
     }
-    // RSS feed for a website (posts + a configured `url:`), written alongside the
-    // pages so feed readers and the head `<link>` resolve.
-    let mut feed = "";
-    if let Some(xml) = site.rss_feed() {
-        match std::fs::write(out.join("feed.xml"), xml) {
-            Ok(()) => feed = "  ·  feed.xml",
-            Err(e) => log::warn(&format!("cannot write feed.xml: {e}")),
-        }
-    }
-
     // Full-text search index, lazy-loaded by the Cmd-K palette (pages link to it
     // via window.QMD_SEARCH_URL rather than inlining it).
     let mut search = "";
@@ -445,32 +445,14 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
         }
     }
 
-    // Quarto-compatible `listings.json` (post prev/next nav fetches it). Only when
-    // the site actually has listings.
+    // Quarto-compatible `listings.json` for any external listing tooling. Only
+    // when the site actually has listings.
     let listings = site.listings_json();
     if listings != "[]"
         && let Err(e) = std::fs::write(out.join("listings.json"), &listings)
     {
         log::warn(&format!("cannot write listings.json: {e}"));
     }
-
-    // Per-tag archive pages (categories/<slug>/index.html).
-    let mut tags = 0usize;
-    for (url, html) in site.category_pages() {
-        let dest = out.join(&url);
-        if let Some(parent) = dest.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
-        match std::fs::write(&dest, html) {
-            Ok(()) => tags += 1,
-            Err(e) => log::warn(&format!("cannot write {url}: {e}")),
-        }
-    }
-    let tag_pages = if tags > 0 {
-        format!("  ·  {tags} tag page{}", if tags == 1 { "" } else { "s" })
-    } else {
-        String::new()
-    };
 
     // Self-contained `404.html` at the site root: most static hosts serve it for
     // any unknown path (root-absolute links inside, so it works at any depth).
@@ -486,7 +468,7 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
     };
 
     log::built(&format!(
-        "{}  ·  {pages} page{}  ·  {assets} asset{}{feed}{search}{tag_pages}{deck_note}{not_found}",
+        "{}  ·  {pages} page{}  ·  {assets} asset{}{search}{deck_note}{not_found}",
         out.display(),
         if pages == 1 { "" } else { "s" },
         if assets == 1 { "" } else { "s" },

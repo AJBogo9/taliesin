@@ -145,7 +145,6 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
 
     let router = Router::new()
         .route("/favicon.ico", get(favicon))
-        .route("/feed.xml", get(feed_xml))
         .route("/search.json", get(search_json))
         .route("/listings.json", get(listings_json))
         .route("/ws", get(ws_handler))
@@ -198,8 +197,6 @@ async fn favicon() -> impl IntoResponse {
     )
 }
 
-/// The site's RSS feed, matching what `build` writes to `feed.xml`. 404 when the
-/// project has no feed (a book, or a website without a `url:` / posts).
 /// The full-text search index, lazy-loaded by the Cmd-K palette on first open.
 async fn search_json(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
     let json = { app.site.lock().search_index_json.clone() };
@@ -229,20 +226,6 @@ async fn listings_json(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
         json,
     )
         .into_response()
-}
-
-async fn feed_xml(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
-    match app.site.lock().rss_feed() {
-        Some(xml) => (
-            [(
-                axum::http::header::CONTENT_TYPE,
-                "application/rss+xml; charset=utf-8",
-            )],
-            xml,
-        )
-            .into_response(),
-        None => axum::http::StatusCode::NOT_FOUND.into_response(),
-    }
 }
 
 /// Resolve a request to a page (rendered live) or a static asset under the root.
@@ -277,17 +260,6 @@ async fn page_or_asset(
             .unwrap_or("deck");
         return Html(qmd_fast_core::render_doc_to_page(&doc, stem)).into_response();
     }
-    // A per-tag archive page (categories/<slug>/), rendered on the fly to match
-    // what `build` writes.
-    if let Some(rest) = path.strip_prefix("categories/") {
-        let slug = rest.trim_end_matches("index.html").trim_end_matches('/');
-        if !slug.is_empty()
-            && !slug.contains('/')
-            && let Some(html) = app.site.lock().render_category_page(slug)
-        {
-            return Html(html).into_response();
-        }
-    }
     // A `mounts:` sub-project (e.g. the docs book under /docs): render the requested
     // page from it on the fly (so its links resolve in preview, mirroring the
     // single-tree build), or serve one of its assets.
@@ -314,20 +286,7 @@ async fn page_or_asset(
                 }
                 // (No `listings.json` for mounts: `listings_json()` emits
                 // root-absolute URLs that ignore the mount prefix, and the shipping
-                // mounts are books with no listings — serving it would give broken
-                // prev/next links.)
-                "feed.xml" => {
-                    if let Some(xml) = m.site.rss_feed() {
-                        return (
-                            [(
-                                axum::http::header::CONTENT_TYPE,
-                                "application/rss+xml; charset=utf-8",
-                            )],
-                            xml,
-                        )
-                            .into_response();
-                    }
-                }
+                // mounts are books with no listings.)
                 _ => {}
             }
             if let Some(html) = m.site.render_page(lookup) {

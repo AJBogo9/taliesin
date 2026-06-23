@@ -30,7 +30,11 @@ pub(super) fn social_head(site: &Site, page: &Page) -> String {
         .or(cfg.card_image.as_deref())
         .zip(base)
         .map(|(img, b)| format!("{b}/{}", img.trim_start_matches('/')));
-    let og_type = if page.is_post { "article" } else { "website" };
+    let og_type = if page.date.is_some() {
+        "article"
+    } else {
+        "website"
+    };
 
     let mut h = String::new();
     if let Some(d) = desc {

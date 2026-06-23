@@ -139,7 +139,6 @@ pub(super) fn book_pages(root: &Path, book: &Book) -> Vec<Page> {
                 description: fm.description,
                 card_image: None,
                 categories: fm.categories,
-                is_post: false,
                 listings: fm.listings,
                 about: fm.about,
                 hero: fm.hero,

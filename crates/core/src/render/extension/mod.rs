@@ -683,7 +683,7 @@ fn each_shortcode(line: &str, mut f: impl FnMut(&str)) {
 /// relative to the page), deduped and in document order. Fenced and inline code are
 /// skipped so an `embed` shown as an example stays inert. The site build/preview uses
 /// this to also build/serve each referenced deck.
-pub(crate) fn embed_targets(src: &str) -> Vec<String> {
+pub fn embed_targets(src: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut in_code = false;
     for line in src.lines() {

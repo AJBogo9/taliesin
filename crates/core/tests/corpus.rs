@@ -293,38 +293,29 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
         !blog.contains("href=\"blog.qmd\""),
         "raw .qmd nav link leaked"
     );
-    // The RSS feed: the discovery <link> + the footer's `.xml` link both resolve
-    // to the generated feed.xml; the old Quarto `blog.xml` name is rewritten away.
-    assert!(blog.contains("feed.xml"), "RSS feed link missing");
+    // Blog-specific features were removed: no RSS feed is generated, so there is
+    // no discovery <link>, no rss+xml, no feed.xml anywhere, and the footer's
+    // local `.xml` item is dropped (there is no feed to point it at).
+    assert!(!blog.contains("feed.xml"), "feed.xml link should be gone");
     assert!(
         !blog.contains("blog.xml"),
-        "old Quarto .xml feed name not rewritten"
+        "local .xml footer link should be dropped"
     );
     assert!(
-        blog.contains("application/rss+xml"),
-        "RSS discovery <link> missing"
-    );
-    // The website emits an RSS 2.0 feed with the posts as absolute-linked items.
-    let feed = site.rss_feed().expect("tech-blog has an RSS feed");
-    assert!(feed.contains("<rss version=\"2.0\""), "not an RSS 2.0 feed");
-    assert!(feed.contains("<item>"), "feed has no items");
-    assert!(
-        feed.contains("<link>https://"),
-        "feed item links not absolute"
+        !blog.contains("application/rss+xml"),
+        "RSS discovery <link> should be gone"
     );
 
-    // A post carries a "back to the blog listing" button and rewrites cross-page
-    // `.qmd` links.
+    // A post is a plain page: no "back to listing" button and no post-nav at all,
+    // but cross-page `.qmd` links are still rewritten to `.html`.
     let post = site
         .render_page("posts/evidence-lower-bound/index.qmd")
         .expect("post renders");
     assert!(
-        post.contains("qmd-back-link") && post.contains("Back to Blog"),
-        "post missing the back-to-blog button"
-    );
-    assert!(
-        post.contains("href=\"../../blog.html\""),
-        "back button should link to the blog listing"
+        !post.contains("qmd-back-link")
+            && !post.contains("Back to Blog")
+            && !post.contains("qmd-postnav"),
+        "post should have no back-to-listing / post-nav"
     );
     assert!(
         post.contains("../KL-divergence/index.html"),
@@ -360,36 +351,20 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
         "canonical link missing"
     );
 
-    // Reading time is added to every post's title block.
+    // No reading-time decoration: a post's title block is like any page's.
     assert!(
-        post.contains("class=\"qmd-read-time\"") && post.contains("min read"),
-        "reading time missing"
+        !post.contains("class=\"qmd-read-time\"") && !post.contains("min read"),
+        "reading-time decoration should be gone"
     );
 
-    // Per-tag archives: each post category yields an archive page that lists its
-    // posts, and a post links to its category archives.
-    assert!(
-        !site.category_pages().is_empty(),
-        "no category archive pages"
-    );
+    // No per-tag archive pages, and a post no longer carries a category strip
+    // linking to them (the in-listing category filter on the grid is unaffected).
     let fourier = site
         .render_page("posts/fourier-transform/index.qmd")
         .expect("fourier post renders");
     assert!(
-        fourier.contains("qmd-post-cats") && fourier.contains("categories/signal-processing/"),
-        "post should link to its category archives"
-    );
-    let archive = site
-        .render_category_page("signal-processing")
-        .expect("signal-processing archive renders");
-    assert!(
-        archive.contains("Tagged: signal processing"),
-        "archive title missing"
-    );
-    assert!(archive.contains("qmd-card"), "archive lists no posts");
-    assert!(
-        site.render_category_page("does-not-exist").is_none(),
-        "bogus slug should be None"
+        !fourier.contains("qmd-post-cats") && !fourier.contains("categories/signal-processing/"),
+        "post should not carry a category archive strip"
     );
 }
 
