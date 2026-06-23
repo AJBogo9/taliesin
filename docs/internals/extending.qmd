@@ -60,11 +60,11 @@ in the User Guide for the authoring side):
 extension. The renderer (`render/extension/`) reads
 `_extensions/<name>/_extension.yml`, applies the extension's `theme:` *on top of*
 the base theme (so the extension restyles rather than replaces), and injects the
-includes and resources its `contributes:` block declares, resolving resource paths
-inside the extension's own sub-directory. The core stays a **thin injector**: the
-extension supplies the CSS/JS, the core just wires it in (and reports a failed load
-through `warnings`, never silently). This is what lets a reveal theme like
-liquid-glass run unmodified on qmd-fast's own [deck engine](deck-engine.qmd).
+includes and resources its manifest declares, resolving resource paths inside the
+extension's own sub-directory. The core stays a **thin injector**: the extension
+supplies the CSS/JS, the core just wires it in (and reports a failed load through
+`warnings`, never silently). This is what lets a theme extension restyle qmd-fast's
+own [deck engine](deck-engine.qmd) against its native `.qmd-deck` contract.
 
 ## The dev loop
 

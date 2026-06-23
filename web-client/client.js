@@ -46,7 +46,7 @@
   };
 
   // Words + reading time (prose only: code and math are excluded), refreshed on
-  // every change. Shown in the control bar; no-op in reveal mode / without it.
+  // every change. Shown in the control bar; no-op in deck mode / without it.
   const updateWordCount = () => {
     if (!wordCountEl) return;
     const clone = /** @type {Element} */ (root.cloneNode(true));
@@ -297,7 +297,7 @@
     host.append(toggle, panel);
     setStatus("connecting…");
   })();
-  // Reveal mode (and any layout without the control bar) keeps its status pill.
+  // Deck mode (and any layout without the control bar) keeps its status pill.
   if (!statusEl) statusEl = document.getElementById("qmd-status");
 
   // OJS errors are rendered asynchronously by the Observable runtime, after the
@@ -310,20 +310,20 @@
     }).observe(root, { childList: true, subtree: true });
   }
 
-  // Deck mode: the body is sectioned slides mounted into `.reveal > .slides`
-  // (root). After any DOM change we (re)attach reveal.js — the first change
-  // initializes, later ones only `sync()`, so the current slide and the
-  // runtime state of live blocks survive edits.
-  const isReveal = window.QMD_FORMAT === "reveal";
-  let revealReady = false;
-  const syncReveal = () => {
-    if (!isReveal || !window.Reveal) return;
-    if (!revealReady) {
-      window.Reveal.initialize({ hash: true, slideNumber: "c/t", center: false });
-      revealReady = true;
+  // Deck mode: the body is sectioned slides mounted into `.qmd-deck > .qmd-slides`
+  // (root). After any DOM change we (re)attach the deck engine: the first change
+  // initializes, later ones only `sync()`, so the current slide and the runtime
+  // state of live blocks survive edits.
+  const isDeck = window.QMD_FORMAT === "deck";
+  let deckReady = false;
+  const syncDeck = () => {
+    if (!isDeck || !window.QmdDeck) return;
+    if (!deckReady) {
+      window.QmdDeck.initialize({ hash: true, slideNumber: "c/t", center: false });
+      deckReady = true;
     } else {
-      window.Reveal.sync();
-      window.Reveal.layout();
+      window.QmdDeck.sync();
+      window.QmdDeck.layout();
     }
   };
 
@@ -520,10 +520,10 @@
     }
   };
 
-  // Re-attach reveal, rebuild the TOC, and (re)highlight + add copy buttons to
+  // Re-attach the deck, rebuild the TOC, and (re)highlight + add copy buttons to
   // code blocks after any DOM change (each is a no-op when not applicable).
   const afterChange = () => {
-    syncReveal();
+    syncDeck();
     buildToc();
     if (window.qmdInitTocSpy) window.qmdInitTocSpy(); // re-collect against the fresh nav
     updateWordCount();
@@ -533,7 +533,7 @@
 
   // The server renders the initial body into the page (so content paints before
   // the websocket connects). The first `full_render` after that is identical, so
-  // skip re-mounting it (avoids a flash + needless OJS/reveal re-init); reconnects
+  // skip re-mounting it (avoids a flash + needless OJS/deck re-init); reconnects
   // still re-mount normally.
   let ssrPending = window.QMD_SSR === true;
 
@@ -797,11 +797,11 @@
     if (!target) return;
     document.querySelectorAll(".qmd-hl").forEach((n) => n.classList.remove("qmd-hl"));
     target.classList.add("qmd-hl");
-    if (isReveal && window.Reveal) {
-      const sections = [...root.querySelectorAll(".slides > section")];
-      const sec = target.closest(".slides > section");
+    if (isDeck && window.QmdDeck) {
+      const sections = [...root.querySelectorAll(".qmd-slides > section")];
+      const sec = target.closest(".qmd-slides > section");
       const i = sec ? sections.indexOf(sec) : -1;
-      if (i >= 0) window.Reveal.slide(i);
+      if (i >= 0) window.QmdDeck.slide(i);
     } else {
       const r = target.getBoundingClientRect();
       if (r.top < 0 || r.bottom > window.innerHeight) {

@@ -142,7 +142,7 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
     let desc = {
         let d = app.doc.lock();
         let mut parts = vec![match d.format {
-            DocFormat::Reveal => "reveal",
+            DocFormat::Reveal => "deck",
             DocFormat::Html => "html",
         }];
         if d.toc {
@@ -469,7 +469,7 @@ pub(crate) fn percent_decode(s: &str) -> String {
 
 fn index_html(ctx: &PageCtx) -> String {
     match ctx.format {
-        DocFormat::Reveal => reveal_index_html(ctx),
+        DocFormat::Reveal => deck_index_html(ctx),
         DocFormat::Html => blog_index_html(ctx),
     }
 }
@@ -604,10 +604,10 @@ fn blog_index_html(ctx: &PageCtx) -> String {
     })
 }
 
-/// Live reveal.js deck: the same preview client, but mounting sectioned slides
-/// into `.reveal > .slides` and (re)syncing reveal as blocks change. The
+/// Live deck: the same preview client, but mounting sectioned slides into
+/// `.qmd-deck > .qmd-slides` and (re)syncing the deck engine as blocks change. The
 /// `QMD_FORMAT` flag switches the client into deck mode.
-fn reveal_index_html(ctx: &PageCtx) -> String {
+fn deck_index_html(ctx: &PageCtx) -> String {
     // The Observable runtime init, only when the deck has live `{ojs}` cells.
     // `ojs_init` defines `window.qmdRunOJS`, which the preview client calls after
     // each mount, so it must be defined before `client.js` runs.
@@ -627,18 +627,18 @@ fn reveal_index_html(ctx: &PageCtx) -> String {
         js_str(ctx.base_dir),
     );
     // The live deck tail: the deck engine, the enhancers, the `QMD_*` flags, the
-    // doc's after-body include (a reveal plugin's `<script src>` + `registerPlugin`,
+    // doc's after-body include (an extension plugin's `<script src>` + registration,
     // which must run after the engine and before the client initializes it), then
     // the websocket client last (after `ojs_init`).
     let tail = format!(
-        "{reveal_script}\n{code_scripts}\n\
-         <script>{doc_global} window.QMD_FORMAT = \"reveal\"; window.QMD_SSR = true;</script>\n\
+        "{deck_script}\n{code_scripts}\n\
+         <script>{doc_global} window.QMD_FORMAT = \"deck\"; window.QMD_SSR = true;</script>\n\
          {include_after_body}\n{ojs_init}\n<script>\n{CLIENT_JS}\n</script>\n",
-        reveal_script = qmd_fast_core::reveal_client_script(),
+        deck_script = qmd_fast_core::deck_client_script(),
         code_scripts = qmd_fast_core::code_scripts(),
         include_after_body = ctx.includes.after_body,
     );
-    qmd_fast_core::assemble_reveal_page(&qmd_fast_core::RevealParts {
+    qmd_fast_core::assemble_deck_page(&qmd_fast_core::DeckParts {
         title: "qmd-fast",
         // The preview page chrome is English ("qmd-fast"); the built artifact honours
         // the doc's front-matter `lang:`.
@@ -659,7 +659,7 @@ fn reveal_index_html(ctx: &PageCtx) -> String {
         // page: `client.js`'s buildDevMenu fills it with the live status dot,
         // click-to-source toggle, and restart-kernel control. (Was a bare
         // `#qmd-status` node, which only showed an orphaned "live" label.)
-        after_reveal: "<div id=\"qmd-controls\"></div>\n",
+        after_deck: "<div id=\"qmd-controls\"></div>\n",
         tail: &tail,
     })
 }
@@ -1104,7 +1104,7 @@ mod protocol_contract {
             includes: &includes,
             body: "<section><h2>S</h2></section>",
         };
-        let html = reveal_index_html(&ctx);
+        let html = deck_index_html(&ctx);
         assert!(
             html.contains("window.QMD_DOC = { path: \"/tmp/deck.qmd\", baseDir: \"/tmp\" }"),
             "deck page must carry QMD_DOC for click-to-source"

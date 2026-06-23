@@ -7,7 +7,7 @@ Module map:
 - `emit.rs`   per-block HTML (server-side highlight, code line-wrapping)
 - `divs.rs`   `:::` fenced divs (callouts, columns, magic-move)
 - `figure.rs` numbered figures + captions
-- `reveal.rs` the slide-deck engine (bundles `deck.css`/`deck.js` + a `window.Reveal` facade)
+- `deck.rs` the slide-deck engine (bundles `deck.css`/`deck.js`; native `.qmd-deck` + `window.QmdDeck`)
 - `theme.rs`  `--qmd-*` themes (light/dark), `theme_head`
 - `extension/` format extensions + shortcode expansion (`{{< embed >}}`, `{{< video >}}`)
 

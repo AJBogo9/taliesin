@@ -605,8 +605,8 @@ fn reveal_deck_injects_includes_and_theme() {
             ---\n\n## Slide\n";
     let page = render_html_page(src, "deck");
     assert!(
-        page.contains("<div class=\"reveal\">"),
-        "should render as a reveal deck"
+        page.contains("<div class=\"qmd-deck\">"),
+        "should render as a deck"
     );
     let head = &page[..page.find("</head>").expect("has </head>")];
     assert!(
@@ -727,7 +727,7 @@ fn special_chars_in_inline_code_are_escaped_not_interpreted() {
     assert!(h.contains("<code>a &lt; b &amp;&amp; c</code>"), "got: {h}");
 }
 
-// --- reveal.js / slides ---
+// --- deck / slides ---
 
 #[test]
 fn reveal_format_detected_from_front_matter() {
@@ -762,11 +762,11 @@ fn deck_splits_into_title_slide_and_one_section_per_heading() {
     );
     // One <section> per h2, id slugged from the heading text.
     assert!(
-        slides.contains("<section id=\"first\" class=\"slide level2\">"),
+        slides.contains("<section id=\"first\" class=\"qmd-slide\" data-level=\"2\">"),
         "got: {slides}"
     );
     assert!(
-        slides.contains("<section id=\"second\" class=\"slide level2\">"),
+        slides.contains("<section id=\"second\" class=\"qmd-slide\" data-level=\"2\">"),
         "got: {slides}"
     );
     // Heading keeps its block id inside the section (block-swap/click-to-source).
@@ -792,7 +792,7 @@ fn thematic_break_starts_a_new_slide_and_is_not_emitted() {
 #[test]
 fn pause_marker_drops_and_fragments_following_blocks() {
     // Quarto `. . .` is a pause: the marker itself is dropped, and every block
-    // after it (until end of slide) becomes a `.fragment` reveal step.
+    // after it (until end of slide) becomes a `.fragment` step.
     let doc = render_document(
         "---\nformat: revealjs\n---\n\n## S\n\nVisible now.\n\n. . .\n\nAfter the pause.\n",
     );
@@ -819,15 +819,16 @@ fn h1_wraps_following_h2s_in_a_vertical_stack() {
     let slides = slides_html(None, None, &doc.blocks);
     // Outer wrapper section, then the h1 lead slide, then the two h2 children.
     assert!(
-        slides.contains("<section>\n<section id=\"part-one\" class=\"slide level1\">"),
+        slides
+            .contains("<section>\n<section id=\"part-one\" class=\"qmd-slide\" data-level=\"1\">"),
         "got: {slides}"
     );
     assert!(
-        slides.contains("<section id=\"a\" class=\"slide level2\">"),
+        slides.contains("<section id=\"a\" class=\"qmd-slide\" data-level=\"2\">"),
         "got: {slides}"
     );
     assert!(
-        slides.contains("<section id=\"b\" class=\"slide level2\">"),
+        slides.contains("<section id=\"b\" class=\"qmd-slide\" data-level=\"2\">"),
         "got: {slides}"
     );
     // 1 wrapper + lead + 2 children = 4 sections.
@@ -835,16 +836,16 @@ fn h1_wraps_following_h2s_in_a_vertical_stack() {
 }
 
 #[test]
-fn reveal_page_carries_revealjs_scaffolding() {
+fn deck_page_carries_native_scaffolding() {
     let page = render_html_page(
         "---\ntitle: D\nformat: revealjs\n---\n\n## Slide\n",
         "fallback",
     );
-    assert!(page.contains("class=\"reveal\""));
-    assert!(page.contains("class=\"slides\""));
-    // The deck engine is bundled (no CDN); it exposes a window.Reveal facade.
+    assert!(page.contains("class=\"qmd-deck\""));
+    assert!(page.contains("class=\"qmd-slides\""));
+    // The deck engine is bundled (no CDN); it exposes the window.QmdDeck API.
     assert!(page.contains("window.QmdDeck"));
-    assert!(page.contains("Reveal.initialize("));
+    assert!(page.contains("QmdDeck.initialize("));
     assert!(
         !page.contains("jsdelivr") || !page.contains("reveal.js@"),
         "the deck must not load reveal.js from a CDN"
@@ -981,7 +982,7 @@ fn reveal_headings_have_no_id_to_avoid_duplicating_section_ids() {
         .unwrap();
     assert!(
         !h.html.contains(" id=\""),
-        "reveal heading should not carry an id: {}",
+        "deck heading should not carry an id: {}",
         h.html
     );
 }

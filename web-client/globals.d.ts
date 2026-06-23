@@ -1,7 +1,7 @@
 // Dev-only ambient types so `tsc --checkJs` can type-check client.js.
 // NOT shipped or embedded — the server only `include_str!`s client.js itself.
 // These declare the globals client.js shares with the server-injected inline
-// scripts (theme_head, OJS init, reveal client) and page flags.
+// scripts (theme_head, OJS init, deck client) and page flags.
 
 interface Window {
   /** Absolute doc + base-dir (+ site root) paths for click-to-source `vscode://` links. */
@@ -10,13 +10,13 @@ interface Window {
   QMD_TOC?: boolean;
   /** The body was server-rendered, so skip the first re-mount. */
   QMD_SSR?: boolean;
-  /** Document format flag (`"reveal"` switches the client into deck mode). */
+  /** Document format flag (`"deck"` switches the client into deck mode). */
   QMD_FORMAT?: string;
   /** Per-page websocket path for the multi-page site server. */
   QMD_WS_PATH?: string;
 
-  /** reveal.js global (deck mode only); external lib, typed loosely. */
-  Reveal?: any;
+  /** Deck engine API (deck mode only), defined by deck.js; typed loosely. */
+  QmdDeck?: any;
   /** Theme API from the head script (`theme_head`). */
   qmdSetTheme?: (mode: string) => void;
   qmdGetThemePref?: () => string;

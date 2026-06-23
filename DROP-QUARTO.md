@@ -115,44 +115,52 @@ build). One divergence from the original wording is recorded below.
   selectors (`.quarto-grid-item`, `#quarto-margin-sidebar`, `--bs-*`, ...) that qmd-fast
   never emits: a corpus-cleanup pass, not a core change.
 
-## Phase 4 — De-reveal the deck engine (THE design-freedom prize)
+## Phase 4 — De-reveal the deck engine (DONE, 2026-06-23)
 
-The engine is already 100% own code (reveal.js is gone), but it's authored in
-reveal's vocabulary so unmodified reveal *theme extensions* load. Verified surface:
-`deck.css` (32 KB, 238 reveal-vocabulary hits), `deck.js` (80 KB, 100 hits, 2
-`window.Reveal` calls), `reveal-extra.css` (145 lines, self-described as "the
-typographic theme reveal's bundled CSS used to provide, now owned here"). The one
-corpus extension (liquid-glass, the author's own repo) uses ~4 API methods + the
-host class. This is where infinite hours pays off most — it unlocks design space,
-not just tidiness.
+The engine was already 100% own code (reveal.js gone) but wore reveal's vocabulary
+so unmodified reveal *theme extensions* could load. **Scope change:** the author
+decided liquid-glass does NOT need to keep working against qmd-fast as-is (it will be
+ported to the finished contract later), which removed the entire reason for the
+compat layer. So this was a clean full de-reveal, not a lockstep port.
 
-- [ ] **Design the native deck contract.** Replace `.reveal/.slides/section` +
-      stringly `past/present/future` classes with `.qmd-deck` / `.qmd-slide` carrying
-      `data-state="past|current|next"` (or an index-based model). Decide the public
-      JS surface: `window.QmdDeck` only (drop the `window.Reveal` facade alias).
-- [ ] **Re-author `deck.css` at honest specificity.** Today CSS is deliberately
-      low-specificity to lose specificity wars to a theme extension's `.reveal *`.
-      Native ownership removes that constraint — rewrite cleanly.
-- [ ] **Fold `reveal-extra.css` into `deck.css`** as an honest native theme (no
-      "resupply reveal's bundled theme" framing).
-- [ ] **Move slide effects to the block model.** Per-slide backgrounds, auto-animate,
-      `. . .` pauses, `.r-stretch`, magic-move → emitted as `data-*` attributes
-      server-side in `reveal.rs`, instead of post-hoc HTML string surgery.
-- [ ] **Drop the `.reveal-viewport` shim** and any DOM scaffolding that exists only
-      for the reveal contract.
-- [ ] **Define a native theme-extension API** and **port liquid-glass** to it
-      (`liquid-glass-revealjs` is the author's own repo — update in lockstep).
-- **Gating:** do not delete the reveal contract until the native contract renders
-      every corpus deck (`liquid-glass-slides/example.qmd`, `docs/guide/demo.qmd`,
-      `tour.qmd`) correctly *and* the ported liquid-glass extension works live.
-- **Acceptance:** all decks render + navigate (overview, speaker view, fragments,
-      pauses, magic-move, auto-animate, backgrounds, PDF export, drawing all intact);
-      liquid-glass loads against the native API; grep finds **zero** `reveal`/
-      `.slides`/`past`/`present`/`future`/`window.Reveal` in `deck.*` + `reveal.rs`.
-- **Design-freedom unlocked here:** real `data-state` transitions; per-slide effects
-      as first-class block attributes; CSS at honest specificity; transitions/scaling
-      not bounded by what a reveal facade can express; glass/background panels emitted
-      server-side. Consider renaming `reveal.rs` → `deck.rs` once de-revealed.
+What shipped:
+
+- **Native DOM contract.** `.reveal` → `.qmd-deck`, `.slides` → `.qmd-slides`;
+  slides stay `<section>` but `class="slide level2"` → `class="qmd-slide"
+  data-level="2"` (id slug + `.center` kept); `quarto-title-block` → `qmd-title-slide`
+  (`#title-slide` id kept). Emitted server-side by `deck.rs`.
+- **Dropped the dead state vocabulary.** `.past`/`.present`/`.future` were write-only
+  (no CSS or JS read them); removed entirely (visibility is the camera transform).
+  `setVisible` was dead code; removed. Event detail keys `indexh/indexv` → `h/v`.
+- **`window.Reveal` facade dropped** (the alias + the `.reveal-viewport` shim). The
+  sole public surface is `window.QmdDeck`. `client.js`/`serve.rs` use it; the
+  static deck calls `QmdDeck.initialize`. `QMD_FORMAT` flag value `"reveal"` → `"deck"`.
+- **Folded `reveal-extra.css` into `deck.css`** (one native deck theme).
+- **Renamed** `render/reveal.rs` → `render/deck.rs`; the API `RevealParts` →
+  `DeckParts`, `assemble_reveal_page` → `assemble_deck_page`, `reveal_page_from_doc`
+  → `deck_page_from_doc`, `reveal_client_script` → `deck_client_script`.
+- **Kept the author `.qmd` dialect:** `format: revealjs`, `.fragment`/`.incremental`,
+  `:::{.notes}`/`:::{.magic-move}`, `{auto-animate=true}`, `{background-color=…}`,
+  `. . .` pauses. (`DocFormat::Reveal` enum variant kept internally.)
+- Rewrote the ~10 tests asserting the literal reveal vocabulary; updated docs
+  (`deck-engine.qmd`, `architecture.qmd`, CLAUDE.md) + `globals.d.ts`.
+
+**Acceptance met:** grep finds zero `reveal`/`.slides`/`past`/`present`/`future`/
+`window.Reveal` in `deck.css`/`deck.js`/`deck.rs`; `cargo test` + clippy + fmt green;
+decks verified live (nav, fragments, pauses, magic-move, auto-animate, backgrounds,
+overview, speaker, PDF, drawing).
+
+**Deferred (separate, invariant-touching step):** move the per-slide-effect *string
+surgery* (`take_bg_attrs` byte-scan in `deck.rs` that hoists `data-background-*`/
+`data-auto-animate` from a heading onto its `<section>`) into a typed `Block` field.
+It touches `model.rs` + the diff/sourcepos invariants the corpus tests enforce, so
+it's better done on its own. Not required for the de-reveal (the attributes are
+already emitted server-side; only the *mechanism* is a string scan).
+
+**liquid-glass:** NOT ported here. Its CSS/JS still target the old reveal vocabulary,
+so `corpus/liquid-glass-slides/example.qmd` renders as a deck but unstyled by the
+extension until the author updates `liquid-glass-revealjs` against the new
+`.qmd-deck`/`window.QmdDeck` contract.
 
 ## Phase 5 — Re-architect OJS interactivity (biggest asset liability, do last)
 

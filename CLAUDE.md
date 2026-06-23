@@ -27,9 +27,9 @@ crates/core      qmd-fast-core lib: parser (comrak + sourcepos) → block model 
     mod.rs           the render pipeline (parse → block model → HTML) + head/asset helpers
     model.rs         the block-model data types (Cell, Block, RenderedDoc, PageIncludes)
     tests.rs         render unit + corpus-invariant tests
-    reveal.rs        slide decks on qmd-fast's OWN engine (reveal.js removed): bundles
-                     deck.css/deck.js + a `window.Reveal` facade so reveal *theme*
-                     extensions (e.g. liquid-glass) still load unmodified
+    deck.rs          slide decks on qmd-fast's OWN engine (reveal.js removed): bundles
+                     deck.css/deck.js, emits the native `.qmd-deck`/`.qmd-slides`
+                     contract + a `window.QmdDeck` API (no reveal vocabulary)
     emit.rs          per-block HTML (server-side highlighting, code line-wrapping)
     divs.rs          `:::` fenced divs (callouts, columns, magic-move)
     figure.rs        numbered figures + captions
@@ -50,7 +50,7 @@ crates/core      qmd-fast-core lib: parser (comrak + sourcepos) → block model 
                    Cmd-K search (search.rs), cross-refs (xref.rs); an {{< embed >}}-
                    referenced deck is built/served but kept out of nav. `mounts:`
                    serves another project (e.g. the docs book) under a URL prefix in preview
-  assets/          bundled offline: css/ (base, dark, deck, reveal-extra, site),
+  assets/          bundled offline: css/ (base, dark, deck, site),
                    js/ (deck.js, code-enhance.js, mermaid.js, ojs-init.html), katex/, ojs/
 crates/server    qmd-fast-server, bin `qmd-fast`: CLI + websocket dev server
   src/main.rs      render / blocks / build / serve subcommands (a dir = a site project)

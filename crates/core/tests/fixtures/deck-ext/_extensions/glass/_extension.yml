@@ -1,5 +1,5 @@
 name: Glass
-description: A tiny reveal theme extension fixture (mirrors liquid-glass-revealjs).
+description: A tiny deck theme extension fixture.
 theme: [dark, glass.css]
 head: glass-head.html
 body-end: glass-init.html

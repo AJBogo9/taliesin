@@ -6,7 +6,7 @@ use super::*;
 
 pub(crate) fn page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
     match doc.format {
-        DocFormat::Reveal => reveal::reveal_page_from_doc(doc, fallback_title),
+        DocFormat::Reveal => deck::deck_page_from_doc(doc, fallback_title),
         DocFormat::Html => html_page_from_doc(doc, fallback_title),
     }
 }

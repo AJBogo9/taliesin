@@ -1,28 +1,22 @@
-//! reveal.js deck output: the one-shot deck page, the live-deck client
-//! head/script, and the slide model (grouping blocks into `<section>`s by
-//! heading level and `---` breaks). Split out of the render module; `use
-//! super::*` pulls in the shared block model and helpers (Block, RenderedDoc,
-//! html escaping, slugify, block_heading_level, KaTeX CSS, theme_style,
-//! code_head/code_scripts).
+//! Deck output: the one-shot deck page, the live-deck client head/script, and the
+//! slide model (grouping blocks into `<section>`s by heading level and `---`
+//! breaks). Split out of the render module; `use super::*` pulls in the shared
+//! block model and helpers (Block, RenderedDoc, html escaping, slugify,
+//! block_heading_level, KaTeX CSS, theme_style, code_head/code_scripts).
 
 use super::*;
 
-/// Slide-specific tweaks layered over the deck theme (left-aligned content,
-/// centered title slide, readable code/math).
-const REVEAL_EXTRA_CSS: &str = include_str!("../../assets/css/reveal-extra.css");
-
-/// qmd-fast's own deck engine, bundled (no CDN): `deck.css` is the layout and
-/// `deck.js` the navigation/scaling engine, exposing a `window.Reveal`-shaped
-/// facade so reveal extensions and the preview client work unchanged. Inlined
-/// into both the one-shot page and the live client, like KaTeX/OJS/mermaid.
+/// qmd-fast's own deck engine, bundled (no CDN): `deck.css` is the layout + theme
+/// and `deck.js` the navigation/scaling engine (`window.QmdDeck`). Inlined into
+/// both the one-shot page and the live client, like KaTeX/OJS/mermaid.
 const DECK_CSS: &str = include_str!("../../assets/css/deck.css");
 const DECK_JS: &str = include_str!("../../assets/js/deck.js");
 
-/// The pieces a caller supplies to [`assemble_reveal_page`]; the deck analogue of
+/// The pieces a caller supplies to [`assemble_deck_page`]; the deck analogue of
 /// [`super::PageParts`]. The static build passes the empty preview slots; the
-/// live-deck server fills `extra_head`/`slides_attr`/`after_reveal` and composes
+/// live-deck server fills `extra_head`/`slides_attr`/`after_deck` and composes
 /// its own client-driven `tail`. The shared `<head>` lives once in the builder.
-pub struct RevealParts<'a> {
+pub struct DeckParts<'a> {
     /// Already HTML-escaped `<title>` text.
     pub title: &'a str,
     /// BCP-47 language tag for `<html lang>` (e.g. `en`); callers default to `en`.
@@ -40,24 +34,24 @@ pub struct RevealParts<'a> {
     pub extra_head: &'a str,
     pub include_in_header: &'a str,
     pub include_before_body: &'a str,
-    /// Attributes on the `.slides` container (` id="qmd-root"` for the live mount).
+    /// Attributes on the `.qmd-slides` container (` id="qmd-root"` for the live mount).
     pub slides_attr: &'a str,
     /// The slide HTML (`<section>`s).
     pub slides: &'a str,
-    /// Markup right after the `.reveal` container (the live status node); `""` build.
-    pub after_reveal: &'a str,
+    /// Markup right after the `.qmd-deck` container (the live status node); `""` build.
+    pub after_deck: &'a str,
     /// Everything after the deck body: the deck-engine script + the format-specific
     /// init/enhancer/client scripts + `include-after-body`, composed by the caller
-    /// (the static `Reveal.initialize` flow and the client-driven live flow differ,
+    /// (the static `QmdDeck.initialize` flow and the client-driven live flow differ,
     /// and the live flow is load-order-sensitive for OJS).
     pub tail: &'a str,
 }
 
-/// Assemble a complete reveal-deck page from its parts: the single source of the
-/// deck page skeleton + `<head>` (deck-theme pre-paint, bundled deck CSS, KaTeX,
-/// slide tweaks, OJS), shared by the static build and the live-deck preview. The
-/// deck-engine `<script>` and the rest of the script tail are caller-composed.
-pub fn assemble_reveal_page(p: &RevealParts) -> String {
+/// Assemble a complete deck page from its parts: the single source of the deck
+/// page skeleton + `<head>` (deck-theme pre-paint, bundled deck CSS, KaTeX, OJS),
+/// shared by the static build and the live-deck preview. The deck-engine
+/// `<script>` and the rest of the script tail are caller-composed.
+pub fn assemble_deck_page(p: &DeckParts) -> String {
     // Only ship the (large) KaTeX stylesheet when the deck has math (build); a live
     // deck always ships it, since it can gain math on any edit.
     let katex = if p.ship_katex {
@@ -68,14 +62,14 @@ pub fn assemble_reveal_page(p: &RevealParts) -> String {
     // The Observable runtime renders into the cell divs regardless of which slide
     // shows, so reactive outputs are live the moment their slide appears.
     let ojs_head_html = if p.has_ojs { ojs_head() } else { String::new() };
-    // `theme` comes after reveal's own stylesheets so it overrides them; the css
+    // `theme` comes after the deck's own stylesheet so it overrides it; the css
     // folded into `include-in-header` follows last.
     format!(
         "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n\
          <meta charset=\"utf-8\" />\n\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no\" />\n\
-         <title>{title}</title>\n{favicon}{deck_theme}<style>{DECK_CSS}</style>\n{katex}<style>{REVEAL_EXTRA_CSS}</style>\n{ojs_head}{theme}{in_header}{extra_head}\
-         </head>\n<body>\n{before_body}<div class=\"reveal\">\n<div class=\"slides\"{slides_attr}>\n{slides}</div>\n</div>\n{after_reveal}\
+         <title>{title}</title>\n{favicon}{deck_theme}<style>{DECK_CSS}</style>\n{katex}{ojs_head}{theme}{in_header}{extra_head}\
+         </head>\n<body>\n{before_body}<div class=\"qmd-deck\">\n<div class=\"qmd-slides\"{slides_attr}>\n{slides}</div>\n</div>\n{after_deck}\
          {tail}</body>\n</html>\n",
         lang = escape_attr(p.lang),
         title = p.title,
@@ -87,13 +81,13 @@ pub fn assemble_reveal_page(p: &RevealParts) -> String {
         ojs_head = ojs_head_html,
         slides_attr = p.slides_attr,
         slides = p.slides,
-        after_reveal = p.after_reveal,
+        after_deck = p.after_deck,
         extra_head = p.extra_head,
         tail = p.tail,
     )
 }
 
-pub(super) fn reveal_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
+pub(super) fn deck_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
     let title = doc.title.as_deref().unwrap_or(fallback_title);
     let mut t = String::new();
     escape_html(title, &mut t);
@@ -104,7 +98,7 @@ pub(super) fn reveal_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> S
     // once (no websocket client to drive them after a mount).
     let tail = format!(
         "<script>{DECK_JS}</script>\n\
-         <script>\n  Reveal.initialize({{ hash: true, slideNumber: 'c/t', center: false }});\n</script>\n\
+         <script>\n  QmdDeck.initialize({{ hash: true, slideNumber: 'c/t', center: false }});\n</script>\n\
          {code_scripts}\n\
          <script>document.addEventListener('DOMContentLoaded',function(){{window.qmdEnhanceCode&&window.qmdEnhanceCode(document.body);}});</script>\n\
          {ojs_init}{after_body}",
@@ -112,7 +106,7 @@ pub(super) fn reveal_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> S
         ojs_init = ojs_init_html,
         after_body = doc.includes.after_body,
     );
-    assemble_reveal_page(&RevealParts {
+    assemble_deck_page(&DeckParts {
         title: &t,
         lang: doc.lang.as_deref().unwrap_or("en"),
         favicon: "",
@@ -126,14 +120,14 @@ pub(super) fn reveal_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> S
         include_before_body: &doc.includes.before_body,
         slides_attr: "",
         slides: &slides,
-        after_reveal: "",
+        after_deck: "",
         tail: &tail,
     })
 }
 
 /// The deck engine `<script>` for the live deck client; load it before the
-/// preview client so the `window.Reveal` facade is defined when the deck mounts.
-pub fn reveal_client_script() -> String {
+/// preview client so `window.QmdDeck` is defined when the deck mounts.
+pub fn deck_client_script() -> String {
     format!("<script>{DECK_JS}</script>")
 }
 
@@ -179,7 +173,7 @@ pub fn deck_theme_head(theme_default: &str, custom_theme: bool) -> String {
     )
 }
 
-// --- reveal.js slide model ----------------------------------------------
+// --- deck slide model ---------------------------------------------------
 
 /// Quarto's default `slide-level`: headings at this level start a new slide;
 /// headings above it (h1) open a vertical stack of sub-slides.
@@ -205,14 +199,16 @@ enum Top {
     },
 }
 
-/// Build the inner HTML of reveal's `<div class="slides">`: an optional title
+/// Build the inner HTML of the deck's `<div class="qmd-slides">`: an optional title
 /// slide from front matter, then one `<section>` per slide. Blocks are grouped
 /// into slides by heading level (`SLIDE_LEVEL`) and `---` breaks, with h1s
 /// wrapping their h2s as a vertical stack.
 pub fn slides_html(title: Option<&str>, subtitle: Option<&str>, blocks: &[Block]) -> String {
     let mut out = String::new();
     if let Some(title) = title {
-        out.push_str("<section id=\"title-slide\" class=\"quarto-title-block center\">\n<h1 class=\"title\">");
+        out.push_str(
+            "<section id=\"title-slide\" class=\"qmd-title-slide center\">\n<h1 class=\"title\">",
+        );
         escape_html(title, &mut out);
         out.push_str("</h1>\n");
         if let Some(sub) = subtitle {
@@ -341,16 +337,15 @@ fn render_section(s: &SlideBuf, out: &mut String) {
     if let Some(id) = s.id.as_deref().filter(|id| !id.is_empty()) {
         out.push_str(&format!(" id=\"{}\"", escape_attr(id)));
     }
+    out.push_str(" class=\"qmd-slide\"");
     if s.level != 0 {
-        out.push_str(&format!(" class=\"slide level{}\"", s.level));
-    } else {
-        out.push_str(" class=\"slide\"");
+        out.push_str(&format!(" data-level=\"{}\"", s.level));
     }
     out.push_str(&bg_attrs);
     out.push_str(">\n");
     // Quarto `. . .` pause markers: drop the marker block and turn every block
     // after it (until the next pause or the end of the slide) into a `.fragment`,
-    // so it reveals on the next step via the existing fragment engine.
+    // so it shows on the next step via the existing fragment engine.
     let mut paused = false;
     for (i, b) in s.blocks.iter().enumerate() {
         if i == 0 {
@@ -378,7 +373,7 @@ fn render_section(s: &SlideBuf, out: &mut String) {
 }
 
 /// A Quarto pause marker: a paragraph whose only text is `. . .`. It is dropped
-/// from the slide and turns the following block(s) into reveal fragments.
+/// from the slide and turns the following block(s) into fragments.
 fn is_pause(html: &str) -> bool {
     html.starts_with("<p") && strip_tags(html).trim() == ". . ."
 }

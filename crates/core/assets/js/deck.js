@@ -1,10 +1,9 @@
-// qmd-fast deck engine — the navigation + scaling reveal.js used to provide,
-// owned by the project so block-level incremental updates and click-to-source
-// work in decks the same way they do on a page. It drives reveal's own DOM
-// contract (.reveal > .slides > section, .present/.past/.future, nested
-// <section> stacks) and exposes a window.Reveal-shaped facade so existing
-// reveal extensions (liquid-glass) and the preview client keep working
-// unmodified. Internally it is window.QmdDeck.
+// qmd-fast deck engine: the navigation + scaling for slides, owned by the project
+// so block-level incremental updates and click-to-source work in decks the same
+// way they do on a page. It drives qmd-fast's own DOM contract
+// (.qmd-deck > .qmd-slides > section, nested <section> stacks) and exposes a
+// window.QmdDeck API (initialize/sync/layout/slide + on/getSlides/getCurrentSlide/
+// registerPlugin) that the preview client and theme extensions bind to.
 (function () {
   var deck = {
     config: {
@@ -18,8 +17,8 @@
     listeners: {},
   };
 
-  function slidesEl() { return document.querySelector('.reveal .slides'); }
-  function revealEl() { return document.querySelector('.reveal'); }
+  function slidesEl() { return document.querySelector('.qmd-deck .qmd-slides'); }
+  function deckEl() { return document.querySelector('.qmd-deck'); }
 
   // Top-level horizontal sections (a stack wrapper counts as one).
   function tops() {
@@ -42,7 +41,7 @@
     return isStack(top) ? vertsOf(top)[deck.v] : top;
   }
 
-  // Flat list of leaf slides (what reveal's getSlides returns), for plugins
+  // Flat list of leaf slides (what getSlides returns), for plugins
   // and the slide-number total.
   function allSlides() {
     var out = [];
@@ -64,7 +63,7 @@
   // --- grid layout + camera ----------------------------------------------
   // Every slide is laid out once in a 2-D grid: top-level slides across (column =
   // h), a stack's sub-slides down under their column (row = v). One transform on
-  // `.slides` is the "camera": focused on the current cell at full scale (normal),
+  // `.qmd-slides` is the "camera": focused on the current cell at full scale (normal),
   // or zoomed out to frame the whole map (overview). Panning the camera between
   // cells IS the slide transition; zooming it out IS the overview. There is no
   // second view, so the two animate into each other with no cut.
@@ -130,7 +129,7 @@
     drawThreads(rows, W, H, s);
   }
   // A horizontal connector thread per multi-slide row (topic), drawn behind the tiles
-  // in `.slides` world coords so it pans/zooms with the camera and reads as a line
+  // in `.qmd-slides` world coords so it pans/zooms with the camera and reads as a line
   // joining the cards through the gutters. Rebuilt each layout; shown only in overview.
   function drawThreads(rows, W, H, s) {
     if (!s) return;
@@ -149,7 +148,7 @@
   // The camera target for the current state: the cell that fills the 16:9 stage
   // (normal), or the free map camera (overview).
   function cameraTarget() {
-    var rev = revealEl();
+    var rev = deckEl();
     var W = deck.config.width, H = deck.config.height;
     var sw = rev.clientWidth || window.innerWidth, sh = rev.clientHeight || window.innerHeight;
     if (deck.overview) {
@@ -160,10 +159,10 @@
     var p = posOf(deck.h, deck.v);
     return { cx: p.col * W + W / 2, cy: p.row * H + H / 2, scale: scale > 0 ? scale : 1 };
   }
-  // Apply a camera (one translate+scale on `.slides`, mapping world -> screen so the
+  // Apply a camera (one translate+scale on `.qmd-slides`, mapping world -> screen so the
   // target lands centred). mode: 'css' = CSS transition, anything else = instant.
   function applyCam(cx, cy, scale, mode) {
-    var s = slidesEl(), rev = revealEl(); if (!s || !rev) return;
+    var s = slidesEl(), rev = deckEl(); if (!s || !rev) return;
     var W = deck.config.width;
     var sw = rev.clientWidth || window.innerWidth, sh = rev.clientHeight || window.innerHeight;
     s.style.setProperty('--qmd-thread', (3.5 / scale).toFixed(1) + 'px'); // constant ~3.5px on-screen thread
@@ -208,12 +207,12 @@
   function bigChange(a, b) {
     var zr = Math.max(a.scale / b.scale, b.scale / a.scale);
     if (zr > 1.4) return true;
-    var rev = revealEl(), sw = rev.clientWidth || window.innerWidth;
+    var rev = deckEl(), sw = rev.clientWidth || window.innerWidth;
     return Math.hypot((b.cx - a.cx) * b.scale, (b.cy - a.cy) * b.scale) > 2.2 * sw;
   }
   function flyTo(t) {
     if (deck.flyRAF) { cancelAnimationFrame(deck.flyRAF); deck.flyRAF = null; }
-    var rev = revealEl(), sw = rev.clientWidth || window.innerWidth, from = deck.cam;
+    var rev = deckEl(), sw = rev.clientWidth || window.innerWidth, from = deck.cam;
     var iz = interpolateZoom([from.cx, from.cy, sw / from.scale], [t.cx, t.cy, sw / t.scale]);
     var dur = Math.max(320, Math.min(iz.duration * 0.85, 820)), start = performance.now();
     (function frame(now) {
@@ -238,33 +237,19 @@
     positionGrid();
     applyBackgrounds();
     buildLodCards(); // semantic-zoom title cards (shown when zoomed far out)
-    buildMinimap(); // overview+detail minimap (shown when zoomed past fit)
+    buildMinimap(); // overview+detail minimap (shown when zoomed beyond fit)
     buildOverviewSearch(); // the overview filter box
     allSlides().forEach(fitSlide); // all slides are laid out now, not just the current one
     if (deck.overview) fitOverview(); // viewport changed: re-fit the map
     setCamera(false);
   }
 
-  // --- show the current slide --------------------------------------------
-  // Visibility is driven by an inline `display: none !important` on hidden
-  // slides (not just a CSS class), so it beats theme rules that force a display
-  // on every section — e.g. liquid-glass's `section { display: flex !important }`.
-  // The present slide has its inline display removed so the theme's own layout
-  // (or deck.css's `.present` rule) decides how it renders. The past/present/
-  // future classes are kept for CSS transitions.
-  // The non-camera part of a slide change: present/past/future classes, fragments,
-  // chrome. Split out so auto-animate can update state without moving the camera.
+  // --- the non-camera part of a slide change -----------------------------
+  // Fragment visibility, chrome, and the annotation redraw. Split out so
+  // auto-animate can update these without moving the camera. Per-slide visibility
+  // is the camera transform itself: every slide is laid out into its grid cell and
+  // the camera frames the current one (no per-slide show/hide class needed).
   function applyClasses() {
-    var T = tops();
-    var curTop = T[deck.h];
-    T.forEach(function (top, i) {
-      setClass(top, i < deck.h ? 'past' : (i > deck.h ? 'future' : 'present'));
-      if (isStack(top)) {
-        vertsOf(top).forEach(function (sec, j) {
-          setClass(sec, top === curTop ? (j < deck.v ? 'past' : (j > deck.v ? 'future' : 'present')) : 'future');
-        });
-      }
-    });
     applyFragments();
     if (deck.draw) redrawAnnotations(); // restore the new slide's annotations
     updateChrome(); // progress bar / menu state follow the current slide
@@ -410,11 +395,11 @@
       setCamera(false);                          // ... and move the camera to it (net screen move = 0)
     }, 520);
   }
-  // --- fragments (incremental reveals) -----------------------------------
+  // --- fragments (incremental steps) -----------------------------------
   // A fragment is any `.fragment` element or a list item inside `.incremental`,
   // in document order. They start hidden (via visibility, so layout + shrink-to-
-  // fit are unaffected) and reveal one per forward step before the slide advances.
-  // A slide's ordered "steps": each `.fragment`/`.incremental` item is a reveal
+  // fit are unaffected) and show one per forward step before the slide advances.
+  // A slide's ordered "steps": each `.fragment`/`.incremental` item is a step
   // step; a `pre[data-code-lines]` with K `|`-separated segments contributes K-1
   // steps (segment 0 is the slide's base highlight, applied before any step).
   var FRAG_SEL = '.fragment, .incremental > ul > li, .incremental > ol > li';
@@ -427,7 +412,7 @@
         for (var k = 1; k < n; k++) steps.push({ mm: node }); // one step per block-to-block morph
       } else if (node.tagName === 'PRE') {
         // A code-step pre that also follows a `. . .` pause carries `.fragment`;
-        // give it a reveal step first (else it stays visibility:hidden for the
+        // give it a fragment step first (else it stays visibility:hidden for the
         // whole talk), then its per-segment line-highlight steps.
         if (node.classList.contains('fragment')) steps.push({ frag: node });
         var segs = node.getAttribute('data-code-lines').split('|');
@@ -525,7 +510,7 @@
   }
   // A fragment step doesn't go through commit(), so it must render the right view
   // for the current mode AND broadcast, so the other window (audience or speaker
-  // preview) follows the reveal, not just slide changes.
+  // preview) follows the fragment step, not just slide changes.
   function fragChanged() {
     deck.animSteps = true; // an in-slide step: let magic-move morph (vs. set on slide entry)
     if (deck.mode === 'speaker') updateSpeakerUI();
@@ -533,7 +518,7 @@
     deck.animSteps = false;
     broadcastState();
   }
-  function revealNextFrag() {
+  function showNextFrag() {
     if (deck.frag < fragCount()) { deck.frag++; fragChanged(); fire('fragmentshown'); return true; }
     return false;
   }
@@ -562,15 +547,6 @@
       sec.style.fontSize = size.toFixed(2) + 'px';
     }
   }
-  function setClass(el, state) {
-    el.classList.remove('past', 'present', 'future');
-    el.classList.add(state);
-  }
-  function setVisible(el, visible) {
-    if (visible) { el.style.removeProperty('display'); el.removeAttribute('aria-hidden'); }
-    else { el.style.setProperty('display', 'none', 'important'); el.setAttribute('aria-hidden', 'true'); }
-  }
-
   // --- navigation ---------------------------------------------------------
   function commit() {
     clampIndices();
@@ -598,16 +574,16 @@
     if (!c.hasAttribute('tabindex')) c.setAttribute('tabindex', '-1');
     try { c.focus({ preventScroll: true }); } catch (e) {}
   }
-  // Move to a slide. `revealAll` shows all its fragments (a backward step or a
+  // Move to a slide. `showAll` shows all its fragments (a backward step or a
   // jump lands on a complete slide); otherwise they start hidden (forward entry).
-  function moveTo(h, v, revealAll) {
+  function moveTo(h, v, showAll) {
     deck.h = h; deck.v = v;
     clampIndices();
-    deck.frag = revealAll ? fragCount() : 0;
+    deck.frag = showAll ? fragCount() : 0;
     commit();
   }
-  // Forward steps reveal the next fragment first, then advance; backward steps
-  // hide the last fragment first, then retreat (landing fully revealed).
+  // Forward steps show the next fragment first, then advance; backward steps
+  // hide the last fragment first, then retreat (landing fully shown).
   // Arrow keys map to the visual grid: left/right step through the current topic
   // (flowing on to the next topic at its ends, i.e. linear order); up/down jump
   // straight to the topic above/below, keeping the column.
@@ -623,7 +599,7 @@
   }
   // Linear next/prev: fragments first, then flow down a stack, then across.
   function next() {
-    if (revealNextFrag()) return;
+    if (showNextFrag()) return;
     var T = tops(), top = T[deck.h];
     if (top && isStack(top) && deck.v < vertsOf(top).length - 1) moveTo(deck.h, deck.v + 1, false);
     else if (deck.h < T.length - 1) moveTo(deck.h + 1, 0, false);
@@ -650,7 +626,7 @@
     markMinimapCurrent();
   }
   function fitOverview() {
-    var rev = revealEl(); if (!rev) return;
+    var rev = deckEl(); if (!rev) return;
     var W = deck.config.width, H = deck.config.height;
     var sw = rev.clientWidth || window.innerWidth, sh = rev.clientHeight || window.innerHeight;
     var g = gridDims(), gw = g.cols * W, gh = g.rows * H;
@@ -659,7 +635,7 @@
     deck.ov = { scale: fit, cx: gw / 2, cy: gh / 2, fit: fit };
   }
   function ovStage() {
-    var rev = revealEl();
+    var rev = deckEl();
     var W = deck.config.width, H = deck.config.height;
     var sw = rev.clientWidth || window.innerWidth, sh = rev.clientHeight || window.innerHeight;
     return { sw: sw, sh: sh, maxScale: Math.min(sw / W, sh / H) };
@@ -689,7 +665,7 @@
       setCamera(false);
       return;
     }
-    var st = ovStage(), rev = revealEl(), r = rev.getBoundingClientRect();
+    var st = ovStage(), rev = deckEl(), r = rev.getBoundingClientRect();
     var px = e.clientX - r.left, py = e.clientY - r.top;   // cursor in stage coords
     var scale = deck.ov.scale;
     var tx = st.sw / 2 - scale * deck.ov.cx, ty = st.sh / 2 - scale * deck.ov.cy;
@@ -713,14 +689,14 @@
     var dx = e.clientX - ovDrag.x, dy = e.clientY - ovDrag.y;
     if (!ovDrag.moved && dx * dx + dy * dy < 25) return;    // 5px before it counts as a drag
     ovDrag.moved = true;
-    revealEl().classList.add('qmd-ov-panning');
+    deckEl().classList.add('qmd-ov-panning');
     deck.ov.cx = ovDrag.cx - dx / deck.ov.scale;
     deck.ov.cy = ovDrag.cy - dy / deck.ov.scale;
     clampOv();
     setCamera(false);
   }
   function onOverviewPointerUp() {
-    var rev = revealEl();
+    var rev = deckEl();
     if (ovDrag && ovDrag.moved) deck.ovDragged = true;      // a pan: swallow the click that follows
     ovDrag = null;
     if (rev) rev.classList.remove('qmd-ov-panning');
@@ -742,7 +718,7 @@
   }
   function setOverview(on) {
     if (on === deck.overview) return;
-    var rev = revealEl();
+    var rev = deckEl();
     if (!rev) return;
     deck.overview = on;
     rev.classList.toggle('overview', on);
@@ -767,7 +743,7 @@
   function onSlidesClick(e) {
     if (!deck.overview) return;
     if (deck.ovDragged) { deck.ovDragged = false; return; } // that was a pan, not a pick
-    var sec = e.target.closest && e.target.closest('.reveal .slides section');
+    var sec = e.target.closest && e.target.closest('.qmd-deck .qmd-slides section');
     if (!sec) return;
     e.preventDefault();
     var T = tops();
@@ -779,12 +755,12 @@
   }
 
   // --- minimap (overview+detail) -----------------------------------------
-  // When the map is zoomed past fit, a corner minimap shows the whole deck as a
+  // When the map is zoomed beyond fit, a corner minimap shows the whole deck as a
   // schematic of tiles plus a rectangle for the current view; click/drag it to fly
   // the camera. (Cockburn/Karlson/Bederson: pan+zoom WITH an overview is the most
   // efficient navigation technique.) Rebuilt on layout; the view rect tracks setCamera.
   function buildMinimap() {
-    var rev = revealEl(); if (!rev) return;
+    var rev = deckEl(); if (!rev) return;
     var mm = rev.querySelector(':scope > .qmd-minimap'), inner;
     if (!mm) {
       mm = document.createElement('div');
@@ -825,16 +801,16 @@
     markMinimapCurrent();
   }
   function markMinimapCurrent() {
-    var rev = revealEl(); if (!rev) return;
+    var rev = deckEl(); if (!rev) return;
     var mm = rev.querySelector(':scope > .qmd-minimap'); if (!mm) return;
     Array.prototype.forEach.call(mm.querySelectorAll('.qmd-mini-tile'), function (t) {
       t.classList.toggle('qmd-mini-cur', +t.dataset.h === deck.h && +t.dataset.v === deck.v);
     });
   }
-  // Position the "current view" rectangle; show the minimap only when zoomed past fit
+  // Position the "current view" rectangle; show the minimap only when zoomed beyond fit
   // (otherwise the whole deck is already on screen and it would be redundant).
   function updateMinimapView() {
-    var rev = revealEl(); if (!rev) return;
+    var rev = deckEl(); if (!rev) return;
     var mm = rev.querySelector(':scope > .qmd-minimap'); if (!mm || !deck.mini) return;
     var show = deck.overview && deck.ov && deck.ov.scale > deck.ov.fit * 1.12;
     mm.classList.toggle('qmd-minimap-on', show);
@@ -849,7 +825,7 @@
   // Press `/` in the overview to filter slides by title: non-matches dim, matches get
   // an accent ring, Enter jumps to the first match. Type -> locate -> dive in.
   function buildOverviewSearch() {
-    var rev = revealEl(); if (!rev || rev.querySelector(':scope > .qmd-ov-search')) return;
+    var rev = deckEl(); if (!rev || rev.querySelector(':scope > .qmd-ov-search')) return;
     var box = document.createElement('input');
     box.className = 'qmd-ov-search';
     box.type = 'text';
@@ -869,7 +845,7 @@
   function filterTiles(q) {
     q = (q || '').trim().toLowerCase();
     deck.ovQuery = q;
-    var rev = revealEl();
+    var rev = deckEl();
     allSlides().forEach(function (sec) {
       var h = sec.querySelector('h1, h2, h3, h4, h5, h6');
       var title = (h ? h.textContent : sec.textContent || '').toLowerCase();
@@ -886,7 +862,7 @@
     });
   }
   function clearFilter() {
-    var rev = revealEl(); if (!rev) return;
+    var rev = deckEl(); if (!rev) return;
     var box = rev.querySelector(':scope > .qmd-ov-search');
     if (box) box.value = '';
     filterTiles('');
@@ -974,7 +950,7 @@
   }
   function initSpeaker() {
     document.title = 'Speaker · ' + document.title;
-    var rev = revealEl(); if (rev) rev.style.display = 'none'; // keep as data source for notes/counts
+    var rev = deckEl(); if (rev) rev.style.display = 'none'; // keep as data source for notes/counts
     var root = document.createElement('div');
     root.className = 'qmd-speaker';
     root.innerHTML =
@@ -1006,11 +982,11 @@
 
   // --- PDF export (print) ------------------------------------------------
   // On `beforeprint` (Cmd/Ctrl+P) the deck flattens to one slide per page: every
-  // slide shown, transforms dropped, all fragments revealed, code un-dimmed.
+  // slide shown, transforms dropped, all fragments shown, code un-dimmed.
   // `@page` makes each page the deck's aspect, so the browser's "Save as PDF"
   // yields a clean handout. `?qmd=print` enters the same layout on screen.
   function enterPrint() {
-    var rev = revealEl(); if (!rev) return;
+    var rev = deckEl(); if (!rev) return;
     document.documentElement.classList.add('qmd-print');
     rev.classList.remove('qmd-dark-bg'); // bg layer is hidden in print; keep text readable on the page
     tops().forEach(function (top) {
@@ -1037,9 +1013,9 @@
   // --- scroll / reader mode ----------------------------------------------
   // On a narrow/portrait screen (or ?qmd=scroll) the fixed-aspect deck would
   // letterbox badly, so it flattens to a vertically-scrollable, readable document:
-  // every slide stacked full-width at a responsive size, all fragments revealed.
+  // every slide stacked full-width at a responsive size, all fragments shown.
   function enterScroll() {
-    var rev = revealEl();
+    var rev = deckEl();
     if (!rev || deck.scroll) return;
     deck.scroll = true;
     document.documentElement.classList.add('qmd-scroll');
@@ -1070,7 +1046,7 @@
   }
 
   // --- drawing / annotations ---------------------------------------------
-  // `d` toggles a pen: a canvas inside `.slides` (so it scales with the deck) that
+  // `d` toggles a pen: a canvas inside `.qmd-slides` (so it scales with the deck) that
   // captures pointer strokes over the current slide. Strokes are kept per slide and
   // redrawn on navigation. A small toolbar offers colours, an eraser and clear.
   function ensureDraw() {
@@ -1089,7 +1065,7 @@
       '<button class="qmd-draw-erase" title="Erase">erase</button>' +
       '<button class="qmd-draw-clear" title="Clear slide">clear</button>' +
       '<button class="qmd-draw-done" title="Done (d)">done</button>';
-    revealEl().appendChild(bar);
+    deckEl().appendChild(bar);
     var d = deck.draw = {
       canvas: canvas, ctx: canvas.getContext('2d'), bar: bar,
       color: '#ef4444', erase: false, on: false, strokes: {}, drawing: false, stroke: null,
@@ -1116,7 +1092,7 @@
     if (deck.mode !== 'normal' || deck.scroll || deck.overview) return;
     var d = ensureDraw();
     d.on = (force == null) ? !d.on : force;
-    revealEl().classList.toggle('qmd-drawing', d.on);
+    deckEl().classList.toggle('qmd-drawing', d.on);
     if (d.on) { redrawAnnotations(); updateDrawBar(); }
   }
   function drawKey() { var c = currentSlide(); return c ? (c.id || 'i' + deck.h + '-' + deck.v) : ''; }
@@ -1211,7 +1187,7 @@
   // --- slide number -------------------------------------------------------
   function updateNumber() {
     if (!deck.config.slideNumber) return;
-    var rev = revealEl();
+    var rev = deckEl();
     if (!rev) return;
     var el = rev.querySelector('.qmd-slide-number');
     if (!el) { el = document.createElement('div'); el.className = 'qmd-slide-number'; rev.appendChild(el); }
@@ -1240,7 +1216,7 @@
         case 'ArrowDown': moveHighlight(0, 1); break;
         case 'ArrowUp': moveHighlight(0, -1); break;
         case '0': fitOverview(); setCamera(true); break; // re-fit the whole map
-        case '/': { var b = revealEl().querySelector(':scope > .qmd-ov-search'); if (b) b.focus(); break; } // filter
+        case '/': { var b = deckEl().querySelector(':scope > .qmd-ov-search'); if (b) b.focus(); break; } // filter
         default: handled = false;
       }
       if (handled) e.preventDefault();
@@ -1277,11 +1253,11 @@
     if (handled) e.preventDefault();
   }
   // Black the whole viewport (pull attention back to the speaker). The overlay is a
-  // body-level element (not a `.reveal` child) so it escapes `.reveal`'s stacking
+  // body-level element (not a `.qmd-deck` child) so it escapes `.qmd-deck`'s stacking
   // context and covers ALL chrome — including the preview dev menu at z-9999. Keys
   // are gated in onKey; a tap dismisses it where there's no Esc/B (touch).
   function toggleBlackout(on) {
-    var rev = revealEl();
+    var rev = deckEl();
     deck.blackout = !!on;
     if (rev) rev.classList.toggle('qmd-blackout', deck.blackout);
     if (deck.blackout) {
@@ -1313,10 +1289,10 @@
     else { dy < 0 ? down() : up(); }
   }
 
-  // --- events + plugins (reveal facade) -----------------------------------
+  // --- events + plugins (deck API) -----------------------------------
   function on(evt, cb) { (deck.listeners[evt] = deck.listeners[evt] || []).push(cb); }
   function fire(evt) {
-    var detail = { indexh: deck.h, indexv: deck.v, currentSlide: currentSlide() };
+    var detail = { h: deck.h, v: deck.v, currentSlide: currentSlide() };
     (deck.listeners[evt] || []).forEach(function (cb) { try { cb(detail); } catch (e) {} });
   }
   function initPlugin(p) {
@@ -1329,9 +1305,9 @@
   // --- on-screen chrome: control menu, progress bar, nav arrows -----------
   // The deck's features (overview, annotate, speaker, PDF, reader, dark mode)
   // were keyboard-only and so undiscoverable; this surfaces them in a corner
-  // menu (reveal-style) plus a progress bar + prev/next arrows. Built once in
+  // menu plus a progress bar + prev/next arrows. Built once in
   // normal mode; auto-hides on idle. Fixed to the viewport (not the scaled
-  // .slides), so it doesn't ride the deck transform.
+  // .qmd-slides), so it doesn't ride the deck transform.
   function svg(p) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>'; }
   var IC = {
     menu: svg('<path d="M4 7h16M4 12h16M4 17h16"/>'),
@@ -1356,7 +1332,7 @@
     key('?', 'This menu') + key('Esc', 'Close');
 
   function buildChrome() {
-    var rev = revealEl();
+    var rev = deckEl();
     if (!rev || deck.chrome) return;
     var prog = document.createElement('div');
     prog.className = 'qmd-progress';
@@ -1499,14 +1475,11 @@
   function initialize(opts) {
     if (opts) for (var k in opts) deck.config[k] = opts[k];
     if (deck.ready) { sync(); return facade; } // idempotent: client.js may call again
-    var rev = revealEl();
+    var rev = deckEl();
     if (!rev || !slidesEl()) return facade;
     var qmd = new URLSearchParams(location.search).get('qmd');
     deck.mode = qmd === 'speaker' ? 'speaker' : qmd === 'embed' ? 'embed'
       : qmd === 'print' ? 'print' : 'normal';
-    // reveal-styled extensions expect a .reveal-viewport host (e.g. liquid-glass
-    // inserts background layers behind .reveal); reveal puts it on .reveal's parent.
-    if (rev.parentNode && rev.parentNode.classList) rev.parentNode.classList.add('reveal-viewport');
     var d = document.documentElement.style;
     d.setProperty('--qmd-deck-w', deck.config.width + 'px');
     d.setProperty('--qmd-deck-h', deck.config.height + 'px');
@@ -1525,7 +1498,7 @@
 
     if (!readHash()) { deck.h = 0; deck.v = 0; }
     clampIndices(); apply(); layout(); updateNumber();
-    rev.classList.add('qmd-ready'); // reveal the deck now the first slide is placed
+    rev.classList.add('qmd-ready'); // show the deck now the first slide is placed
     window.addEventListener('resize', layout);
     window.addEventListener('message', onMessage); // sync (audience) / goto (embed)
     // An embed preview (in the speaker window's iframes) is passive: no input, no
@@ -1588,5 +1561,4 @@
   };
 
   window.QmdDeck = facade;
-  window.Reveal = facade; // compatibility facade for reveal extensions
 })();

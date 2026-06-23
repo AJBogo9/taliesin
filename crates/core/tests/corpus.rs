@@ -166,7 +166,7 @@ fn reveal_deck_detects_format_and_splits_into_slides() {
     assert_eq!(
         doc.format,
         DocFormat::Reveal,
-        "the deck should be detected as reveal.js"
+        "the deck format should be detected"
     );
 
     let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
@@ -175,7 +175,7 @@ fn reveal_deck_detects_format_and_splits_into_slides() {
     assert!(slides.contains("<h1 class=\"title\">Liquid Glass</h1>"));
     assert!(slides.contains("<p class=\"subtitle\">A RevealJS theme for Quarto</p>"));
     // One slide per `##` heading (the corpus deck has four).
-    let content_slides = slides.matches("class=\"slide level2\"").count();
+    let content_slides = slides.matches("data-level=\"2\"").count();
     assert_eq!(
         content_slides, 4,
         "expected 4 content slides, got {content_slides}"

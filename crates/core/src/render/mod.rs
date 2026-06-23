@@ -35,13 +35,13 @@ fn parse_options() -> Options<'static> {
 
 /// Parse `src` into ordered top-level blocks with stable ids + sourcepos.
 /// Does not resolve `{{< include >}}` (use [`render_document_with_includes`]).
-mod reveal;
-pub use reveal::{RevealParts, assemble_reveal_page, reveal_client_script, slides_html};
-// `deck_theme_head` is used inside `reveal.rs` (the deck builder) and by the unit
+mod deck;
+pub use deck::{DeckParts, assemble_deck_page, deck_client_script, slides_html};
+// `deck_theme_head` is used inside `deck.rs` (the deck builder) and by the unit
 // tests; it's not part of the public API, so it's only pulled into scope here for
 // the tests rather than re-exported.
 #[cfg(test)]
-use reveal::deck_theme_head;
+use deck::deck_theme_head;
 mod extension;
 pub use extension::embed_targets;
 use extension::{resolve_format_extension, resolve_named_extensions};
@@ -950,7 +950,7 @@ pub fn render_html_page_with_includes(src: &str, base_dir: &Path, fallback_title
 const KATEX_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/katex-inlined.css"));
 
 /// Base document styling (typography, tables, callouts, references, block
-/// highlight). Emitted by the page builders in `page.rs`/`reveal.rs`; KaTeX rides
+/// highlight). Emitted by the page builders in `page.rs`/`deck.rs`; KaTeX rides
 /// along when the page has (or, in a live preview, may gain) math.
 const BASE_CSS: &str = include_str!("../../assets/css/base.css");
 

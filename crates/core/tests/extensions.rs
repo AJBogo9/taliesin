@@ -1,4 +1,4 @@
-//! `_extensions/` format-extension resolution: a deck that selects a reveal theme
+//! `_extensions/` format-extension resolution: a deck that selects a slide theme
 //! extension via `format: <ext>-revealjs` gets the extension's contributed theme +
 //! includes injected (the mechanism behind liquid-glass-revealjs).
 
@@ -144,7 +144,7 @@ fn extension_header_precedes_document_header() {
 fn extension_theme_inlines_css_and_applies_builtin_base() {
     let d = TempProj::new();
     d.ext("glassy", "theme: [dark, glassy.css]\n");
-    d.file("_extensions/glassy/glassy.css", ".reveal{--marker:1}");
+    d.file("_extensions/glassy/glassy.css", ".qmd-deck{--marker:1}");
     let src = "---\ntitle: T\nformat: glassy-revealjs\n---\n\n## S\n";
     let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
     assert!(
@@ -164,7 +164,7 @@ fn extension_theme_inlines_css_and_applies_builtin_base() {
 fn doc_theme_overrides_extension_theme_base() {
     let d = TempProj::new();
     d.ext("glassy", "theme: [dark, glassy.css]\n");
-    d.file("_extensions/glassy/glassy.css", ".reveal{--marker:1}");
+    d.file("_extensions/glassy/glassy.css", ".qmd-deck{--marker:1}");
     let src = "---\ntitle: T\nformat: glassy-revealjs\ntheme: light\n---\n\n## S\n";
     let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
     assert_eq!(
@@ -371,14 +371,14 @@ fn format_extension_injects_theme_and_includes() {
     let src = fs::read_to_string(dir.join("slides.qmd")).expect("read slides.qmd");
     let html = qmd_fast_core::render_html_page_with_includes(&src, &dir, "Glass Deck");
 
-    // Renders as a reveal deck (the `-revealjs` base format is detected).
+    // Renders as a deck (the `-revealjs` base format is detected).
     assert!(
-        html.contains("<div class=\"reveal\">"),
-        "should render as a reveal deck"
+        html.contains("<div class=\"qmd-deck\">"),
+        "should render as a deck"
     );
     // contributed theme: glass.css inlined as <style>.
     assert!(
-        html.contains(".reveal .slides section h2 { color: #2bd4a0; }"),
+        html.contains(".qmd-deck .qmd-slides section h2 { color: #2bd4a0; }"),
         "extension theme css not inlined"
     );
     // contributed head (file: glass-head.html), inside <head>.
@@ -399,7 +399,7 @@ fn plain_format_without_extension_is_untouched() {
     // A bare `format: revealjs` has no extension prefix, so nothing extra is pulled.
     let src = "---\ntitle: T\nformat: revealjs\n---\n\n## S\n";
     let html = qmd_fast_core::render_html_page_with_includes(src, &fixture("deck-ext"), "T");
-    assert!(html.contains("<div class=\"reveal\">"));
+    assert!(html.contains("<div class=\"qmd-deck\">"));
     assert!(
         !html.contains("glass-ext"),
         "a non-extension format must not pull extension includes"
@@ -420,7 +420,7 @@ fn native_flat_manifest_contributes_everything() {
          resources: [glassy.js]\n\
          shortcodes:\n  yt: '<iframe src=\"/v/{{1}}\"></iframe>'\n",
     );
-    d.file("_extensions/glassy/glassy.css", ".reveal{--g:1}");
+    d.file("_extensions/glassy/glassy.css", ".qmd-deck{--g:1}");
     d.file("_extensions/glassy/head.html", "<meta name=\"glassy\">");
     d.file(
         "_extensions/glassy/init.html",

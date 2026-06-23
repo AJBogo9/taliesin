@@ -1,8 +1,6 @@
-/* qmd-fast deck engine — the layout reveal.css used to provide, reimplemented
-   over reveal's own DOM/class contract (.reveal > .slides > section.slide,
-   .present/.past/.future, nested <section> stacks, .reveal-viewport) so that
-   reveal-extra.css and reveal-styled extensions (e.g. liquid-glass) keep
-   applying unchanged. Behaviour lives in deck.js; this is only layout. */
+/* qmd-fast deck engine: the slide layout, on qmd-fast's own contract
+   (.qmd-deck > .qmd-slides > section, nested <section> stacks). Behaviour
+   lives in deck.js; this is only layout. */
 
 html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
 /* The default deck background is the `html` canvas; `body` stays transparent so the
@@ -13,10 +11,8 @@ body { background: transparent; }
 
 /* The deck is a fixed 16:9 "stage" centred in the viewport; deck.js's camera fits a
    cell to it exactly so adjacent cells fall outside and are clipped (no peek), and
-   the area around the stage is the letterbox. (An extension that layers a full-bleed
-   background behind .reveal, e.g. liquid-glass, covers only the stage; refined in a
-   later phase.) */
-.reveal {
+   the area around the stage is the letterbox. */
+.qmd-deck {
   position: absolute;
   inset: 0;
   margin: auto; /* centre the stage in the viewport */
@@ -27,12 +23,11 @@ body { background: transparent; }
   -webkit-tap-highlight-color: transparent;
   touch-action: pan-y;
 }
-.reveal-viewport { position: relative; width: 100%; height: 100%; }
 
 /* The slides container is the "camera": deck.js sets a `translate() scale()`
    transform that frames the current cell (normal) or the whole grid (overview).
    Sections are positioned into a grid relative to it (see deck.js positionGrid). */
-.reveal .slides {
+.qmd-deck .qmd-slides {
   position: absolute;
   left: 0;
   top: 0;
@@ -41,28 +36,27 @@ body { background: transparent; }
   transform-origin: 0 0;
 }
 /* The pan/zoom transition. Gated by a class so resize + first paint don't animate. */
-.reveal .slides.qmd-cam-anim,
-.reveal .slides.qmd-cam-anim > section,
-.reveal .slides.qmd-cam-anim > section > section {
+.qmd-deck .qmd-slides.qmd-cam-anim,
+.qmd-deck .qmd-slides.qmd-cam-anim > section,
+.qmd-deck .qmd-slides.qmd-cam-anim > section > section {
   transition: transform .5s cubic-bezier(.2, .8, .2, 1);
 }
 
 /* Hide the deck until deck.js positions the first slide, so neither the plain
    `display:none` (blank) nor a theme's forced per-section display (all slides
    stacked) flashes before JS runs. deck.js adds `.qmd-ready` after first layout. */
-.reveal:not(.qmd-ready) .slides {
+.qmd-deck:not(.qmd-ready) .qmd-slides {
   visibility: hidden;
 }
 
-/* Each slide fills the design box; only the .present one shows. center:false →
-   content flows from the top. A top-level <section> that contains child
-   <section>s is a vertical stack: a transparent container whose current child
-   carries the slide box. */
-/* Every slide is laid out (not just .present): deck.js positions each into its grid
-   cell via an inline transform. present/past/future classes are kept for any CSS.
+/* Each slide fills the design box; center:false means content flows from the top.
+   A top-level <section> that contains child <section>s is a vertical stack: a
+   transparent container whose current child carries the slide box. */
+/* Every slide is laid out: deck.js positions each into its grid cell via an inline
+   transform (visibility is driven by the camera, not a per-slide class).
    transform-origin centre so the overview gutter-shrink scales toward the middle. */
-.reveal .slides > section,
-.reveal .slides > section > section {
+.qmd-deck .qmd-slides > section,
+.qmd-deck .qmd-slides > section > section {
   position: absolute;
   inset: 0;
   box-sizing: border-box;
@@ -73,43 +67,43 @@ body { background: transparent; }
 }
 /* A stack wrapper is a transparent container; its sub-slides drop below it, so it
    must not clip them or carry its own padding. */
-.reveal .slides > section.qmd-stack { overflow: visible; padding: 0; }
+.qmd-deck .qmd-slides > section.qmd-stack { overflow: visible; padding: 0; }
 
 /* Per-slide vertical centering (the front-matter title slide carries .center). */
-.reveal .slides > section.center,
-.reveal .slides > section > section.center {
+.qmd-deck .qmd-slides > section.center,
+.qmd-deck .qmd-slides > section > section.center {
   display: flex;
   flex-direction: column;
   justify-content: center;
 }
 
-/* `.r-stretch`: let an image fill the slide's remaining vertical space (Quarto/
-   reveal). The slide turns into a flex column so the marked element grows into
+/* `.r-stretch`: let an image fill the slide's remaining vertical space (a Quarto
+   authoring class). The slide turns into a flex column so the marked element grows into
    what's left after the heading and other content. Authored as a fenced div:
    `:::{.r-stretch}` wrapping an image. */
-.reveal .slides > section:has(> .r-stretch),
-.reveal .slides > section > section:has(> .r-stretch) {
+.qmd-deck .qmd-slides > section:has(> .r-stretch),
+.qmd-deck .qmd-slides > section > section:has(> .r-stretch) {
   display: flex;
   flex-direction: column;
 }
-.reveal .r-stretch {
+.qmd-deck .r-stretch {
   flex: 1 1 auto;
   min-height: 0;
   margin: 0.4em 0;
 }
 /* Unwrap the paragraph/figure comrak puts around the image so the media itself is
    the box that fills the stretch region. */
-.reveal .r-stretch > p {
+.qmd-deck .r-stretch > p {
   display: contents;
 }
-.reveal .r-stretch > figure {
+.qmd-deck .r-stretch > figure {
   margin: 0;
   height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
 }
-.reveal .r-stretch :is(img, svg, canvas) {
+.qmd-deck .r-stretch :is(img, svg, canvas) {
   display: block;
   width: 100%;
   height: 100%;
@@ -119,12 +113,12 @@ body { background: transparent; }
 /* In a *captioned* figure the media shares the box with the figcaption, so let it
    flex-grow instead of forcing height:100% (which ignores the caption and overflows
    the slide); the caption keeps its content height. */
-.reveal .r-stretch > figure > :is(img, svg, canvas) {
+.qmd-deck .r-stretch > figure > :is(img, svg, canvas) {
   flex: 1 1 auto;
   height: auto;
   min-height: 0;
 }
-.reveal .r-stretch > figure > figcaption {
+.qmd-deck .r-stretch > figure > figcaption {
   flex: none;
 }
 
@@ -133,18 +127,18 @@ body { background: transparent; }
    scrolls into the 16:9 stage. A fade-in here would start the incoming slide at
    opacity 0 (invisible until landed) and add a vertical shift that fights the
    horizontal pan, breaking the "slides sitting in a line" illusion. The first
-   slide is revealed cleanly by the .qmd-ready visibility gate above. */
+   slide is shown cleanly by the .qmd-ready visibility gate above. */
 
 /* Overview: a scrollable grid of all slides. Built with `zoom` + grid (no 3D
-   transforms), so themes using `backdrop-filter` (liquid-glass) don't break the
-   way they do in reveal's transform-based overview. Toggled with Escape; click a
-   tile to jump. deck.js clears the per-slide inline display so every tile shows. */
+   transforms), so themes using `backdrop-filter` keep working (a transform-based
+   overview would break them). Toggled with Escape; click a tile to jump. deck.js
+   clears the per-slide inline display so every tile shows. */
 /* Overview: the camera (deck.js) zooms out to frame the whole grid; slides stay in
    their cells, so the move is a continuous zoom, not a relayout. Tiles get card
    styling, a per-section gutter-shrink (positionGrid) opens the gaps, and the
    current tile is ringed in the accent colour. Click a tile to zoom into it. */
-.reveal.overview .slides > section:not(.qmd-stack),
-.reveal.overview .slides > section > section {
+.qmd-deck.overview .qmd-slides > section:not(.qmd-stack),
+.qmd-deck.overview .qmd-slides > section > section {
   border-radius: 12px;
   box-shadow: 0 12px 34px rgba(0, 0, 0, .5);
   outline: 1px solid rgba(127, 127, 127, .25);
@@ -152,18 +146,18 @@ body { background: transparent; }
   cursor: pointer;
   overflow: hidden;
 }
-.reveal.overview .slides > section.qmd-overview-current,
-.reveal.overview .slides > section > section.qmd-overview-current {
+.qmd-deck.overview .qmd-slides > section.qmd-overview-current,
+.qmd-deck.overview .qmd-slides > section > section.qmd-overview-current {
   outline: 3px solid var(--deck-accent, #4c8dff);
   box-shadow: 0 16px 46px rgba(0, 0, 0, .6);
 }
 /* Storyline threads: a horizontal connector along each multi-slide topic row, drawn
-   as `.qmd-thread-line` divs (deck.js drawThreads) in `.slides` world coords so they
+   as `.qmd-thread-line` divs (deck.js drawThreads) in `.qmd-slides` world coords so they
    pan/zoom with the camera and read as a line joining a topic's cards through the
    gutters. Shown only in overview. */
 .qmd-threads { position: absolute; left: 0; top: 0; pointer-events: none; }
 .qmd-thread-line { display: none; }
-.reveal.overview .qmd-thread-line {
+.qmd-deck.overview .qmd-thread-line {
   display: block;
   position: absolute;
   left: 0;
@@ -175,20 +169,20 @@ body { background: transparent; }
   opacity: .42;
   border-radius: 999px;
 }
-.reveal.overview.qmd-ov-filtering .qmd-thread-line { opacity: .1; } /* recede under a filter */
-.reveal.overview .slides > section:not(.qmd-stack):hover,
-.reveal.overview .slides > section > section:hover {
+.qmd-deck.overview.qmd-ov-filtering .qmd-thread-line { opacity: .1; } /* recede under a filter */
+.qmd-deck.overview .qmd-slides > section:not(.qmd-stack):hover,
+.qmd-deck.overview .qmd-slides > section > section:hover {
   outline-color: rgba(160, 170, 190, .55);
   box-shadow: 0 18px 52px rgba(0, 0, 0, .62);
 }
 /* The overview is a draggable map: grab cursor on the canvas (tiles keep pointer),
    grabbing while panning. */
-.reveal.overview { cursor: grab; }
-.reveal.overview.qmd-ov-panning,
-.reveal.overview.qmd-ov-panning .slides > section { cursor: grabbing; }
-/* A hint on how to drive the map, shown in screen space (not the scaled .slides) and
+.qmd-deck.overview { cursor: grab; }
+.qmd-deck.overview.qmd-ov-panning,
+.qmd-deck.overview.qmd-ov-panning .qmd-slides > section { cursor: grabbing; }
+/* A hint on how to drive the map, shown in screen space (not the scaled .qmd-slides) and
    auto-fading a few seconds after the overview opens. */
-.reveal.overview::after {
+.qmd-deck.overview::after {
   content: "scroll to zoom · drag to pan · 0 to fit";
   position: absolute;
   left: 50%;
@@ -207,7 +201,7 @@ body { background: transparent; }
   animation: qmd-ov-hint 4.5s ease forwards;
 }
 @keyframes qmd-ov-hint { 0%, 64% { opacity: 1; } 100% { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .reveal.overview::after { animation: none; opacity: .85; } }
+@media (prefers-reduced-motion: reduce) { .qmd-deck.overview::after { animation: none; opacity: .85; } }
 
 /* Semantic zoom (level-of-detail): when the camera is zoomed out far enough that a
    tile's real content is an illegible smudge, each tile collapses to a clean title
@@ -245,20 +239,20 @@ body { background: transparent; }
   font-weight: 600;
   opacity: .5;
 }
-.reveal.qmd-lod-far .slides section > .qmd-lod { opacity: 1; }
+.qmd-deck.qmd-lod-far .qmd-slides section > .qmd-lod { opacity: 1; }
 /* Fade the real content out (but keep the bg layer, the title card, and any nested
    sub-slide sections, which carry their own cards). */
-.reveal.qmd-lod-far .slides section > :not(.qmd-slide-bg):not(.qmd-lod):not(section) {
+.qmd-deck.qmd-lod-far .qmd-slides section > :not(.qmd-slide-bg):not(.qmd-lod):not(section) {
   opacity: 0;
   transition: opacity .18s ease;
 }
 @media (prefers-reduced-motion: reduce) {
   .qmd-lod,
-  .reveal.qmd-lod-far .slides section > :not(.qmd-slide-bg):not(.qmd-lod):not(section) { transition: none; }
+  .qmd-deck.qmd-lod-far .qmd-slides section > :not(.qmd-slide-bg):not(.qmd-lod):not(section) { transition: none; }
 }
 
 /* Minimap (overview+detail): a schematic of the whole deck in the corner, with a
-   rectangle for the current view; appears only when the map is zoomed past fit. */
+   rectangle for the current view; appears only when the map is zoomed beyond fit. */
 .qmd-minimap {
   position: absolute;
   right: 16px;
@@ -309,28 +303,28 @@ body { background: transparent; }
   z-index: 41;
   display: none;
 }
-.reveal.overview .qmd-ov-search { display: block; }
+.qmd-deck.overview .qmd-ov-search { display: block; }
 .qmd-ov-search:focus { border-color: var(--deck-accent, #4c8dff); }
 .qmd-ov-search::placeholder { color: rgba(150, 160, 180, .7); }
-.reveal.overview .slides section.qmd-ov-dim { opacity: .2; }
-.reveal.overview .slides section.qmd-ov-hit { outline: 3px solid var(--deck-accent, #4c8dff); }
+.qmd-deck.overview .qmd-slides section.qmd-ov-dim { opacity: .2; }
+.qmd-deck.overview .qmd-slides section.qmd-ov-hit { outline: 3px solid var(--deck-accent, #4c8dff); }
 
 /* Magic-move: the code blocks in a `::: {.magic-move}` are stacked in one grid
    cell (so the container sizes to the tallest); deck.js shows the active block and,
    on a step, glides matched lines + fades new/old ones between consecutive blocks. */
-.reveal .magic-move { display: grid; }
-.reveal .magic-move > pre {
+.qmd-deck .magic-move { display: grid; }
+.qmd-deck .magic-move > pre {
   grid-area: 1 / 1;
   margin: 0;
   opacity: 0;
   transition: opacity .4s ease;
 }
-.reveal .magic-move > pre.qmd-mm-active { opacity: 1; }
+.qmd-deck .magic-move > pre.qmd-mm-active { opacity: 1; }
 
 /* Callouts on slides. The deck doesn't load base.css, so style them here with
    translucent fills (so they read on a light OR dark deck): an accent left border per
    kind + a tinted title bar. Matches the page/book callout structure. */
-.reveal .slides .callout {
+.qmd-deck .qmd-slides .callout {
   border: 1px solid rgba(127, 127, 127, .28);
   border-left-width: 5px;
   border-radius: 8px;
@@ -338,27 +332,27 @@ body { background: transparent; }
   overflow: hidden;
   text-align: left;
 }
-.reveal .slides .callout-title { font-weight: 700; padding: 0.28em 0.7em; margin: 0; }
-.reveal .slides .callout-body { padding: 0.1em 0.75em 0.4em; }
-.reveal .slides .callout-body > :first-child { margin-top: 0.35em; }
-.reveal .slides .callout-collapse > details > summary.callout-title { cursor: pointer; list-style: none; }
-.reveal .slides .callout-note { border-left-color: #4c8dff; }
-.reveal .slides .callout-note > .callout-title, .reveal .slides .callout-note summary.callout-title { background: rgba(76, 141, 255, .16); }
-.reveal .slides .callout-tip { border-left-color: #2bb673; }
-.reveal .slides .callout-tip > .callout-title, .reveal .slides .callout-tip summary.callout-title { background: rgba(43, 182, 115, .16); }
-.reveal .slides .callout-warning { border-left-color: #e0a800; }
-.reveal .slides .callout-warning > .callout-title, .reveal .slides .callout-warning summary.callout-title { background: rgba(224, 168, 0, .18); }
-.reveal .slides .callout-important { border-left-color: #e0566b; }
-.reveal .slides .callout-important > .callout-title, .reveal .slides .callout-important summary.callout-title { background: rgba(224, 86, 107, .16); }
-.reveal .slides .callout-caution { border-left-color: #e8730c; }
-.reveal .slides .callout-caution > .callout-title, .reveal .slides .callout-caution summary.callout-title { background: rgba(232, 115, 12, .16); }
+.qmd-deck .qmd-slides .callout-title { font-weight: 700; padding: 0.28em 0.7em; margin: 0; }
+.qmd-deck .qmd-slides .callout-body { padding: 0.1em 0.75em 0.4em; }
+.qmd-deck .qmd-slides .callout-body > :first-child { margin-top: 0.35em; }
+.qmd-deck .qmd-slides .callout-collapse > details > summary.callout-title { cursor: pointer; list-style: none; }
+.qmd-deck .qmd-slides .callout-note { border-left-color: #4c8dff; }
+.qmd-deck .qmd-slides .callout-note > .callout-title, .qmd-deck .qmd-slides .callout-note summary.callout-title { background: rgba(76, 141, 255, .16); }
+.qmd-deck .qmd-slides .callout-tip { border-left-color: #2bb673; }
+.qmd-deck .qmd-slides .callout-tip > .callout-title, .qmd-deck .qmd-slides .callout-tip summary.callout-title { background: rgba(43, 182, 115, .16); }
+.qmd-deck .qmd-slides .callout-warning { border-left-color: #e0a800; }
+.qmd-deck .qmd-slides .callout-warning > .callout-title, .qmd-deck .qmd-slides .callout-warning summary.callout-title { background: rgba(224, 168, 0, .18); }
+.qmd-deck .qmd-slides .callout-important { border-left-color: #e0566b; }
+.qmd-deck .qmd-slides .callout-important > .callout-title, .qmd-deck .qmd-slides .callout-important summary.callout-title { background: rgba(224, 86, 107, .16); }
+.qmd-deck .qmd-slides .callout-caution { border-left-color: #e8730c; }
+.qmd-deck .qmd-slides .callout-caution > .callout-title, .qmd-deck .qmd-slides .callout-caution summary.callout-title { background: rgba(232, 115, 12, .16); }
 
 /* Per-slide backgrounds: a layer behind each slide's own content, filling the slide
    box, so it travels with the slide as the camera pans and shows per-tile in
    overview. deck.js sets it from the section's data-background-*. `.qmd-dark-bg` on
    the section flips its own text light over a dark/image/gradient background (code
    panels keep their own light background, so code stays readable). */
-.reveal .slides section > .qmd-slide-bg {
+.qmd-deck .qmd-slides section > .qmd-slide-bg {
   position: absolute;
   inset: 0;
   z-index: -1;
@@ -366,49 +360,49 @@ body { background: transparent; }
   background-position: center;
   border-radius: inherit;
 }
-.reveal .slides section.qmd-dark-bg,
-.reveal .slides section.qmd-dark-bg h1,
-.reveal .slides section.qmd-dark-bg h2,
-.reveal .slides section.qmd-dark-bg h3,
-.reveal .slides section.qmd-dark-bg h4,
-.reveal .slides section.qmd-dark-bg strong { color: #fff; }
-.reveal .slides section.qmd-dark-bg .subtitle { color: rgba(255, 255, 255, .8); }
-.reveal .slides section.qmd-dark-bg a { color: #c7d2fe; }
-.reveal .slides section.qmd-dark-bg li::marker { color: #c7d2fe; }
+.qmd-deck .qmd-slides section.qmd-dark-bg,
+.qmd-deck .qmd-slides section.qmd-dark-bg h1,
+.qmd-deck .qmd-slides section.qmd-dark-bg h2,
+.qmd-deck .qmd-slides section.qmd-dark-bg h3,
+.qmd-deck .qmd-slides section.qmd-dark-bg h4,
+.qmd-deck .qmd-slides section.qmd-dark-bg strong { color: #fff; }
+.qmd-deck .qmd-slides section.qmd-dark-bg .subtitle { color: rgba(255, 255, 255, .8); }
+.qmd-deck .qmd-slides section.qmd-dark-bg a { color: #c7d2fe; }
+.qmd-deck .qmd-slides section.qmd-dark-bg li::marker { color: #c7d2fe; }
 html.qmd-print .qmd-slide-bg { display: none; } /* per-slide backgrounds aren't in the PDF (v1) */
 
-/* Fragments / incremental reveals: hidden but keeping layout space (visibility,
+/* Fragments / incremental steps: hidden but keeping layout space (visibility,
    not display) so the slide doesn't reflow and shrink-to-fit sizes for the final
-   state. deck.js toggles .qmd-frag-visible to reveal them one step at a time. */
-.reveal .fragment,
-.reveal .incremental > ul > li,
-.reveal .incremental > ol > li {
+   state. deck.js toggles .qmd-frag-visible to show them one step at a time. */
+.qmd-deck .fragment,
+.qmd-deck .incremental > ul > li,
+.qmd-deck .incremental > ol > li {
   opacity: 0;
   visibility: hidden;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .reveal .fragment,
-  .reveal .incremental > ul > li,
-  .reveal .incremental > ol > li { transition: opacity .25s ease; }
+  .qmd-deck .fragment,
+  .qmd-deck .incremental > ul > li,
+  .qmd-deck .incremental > ol > li { transition: opacity .25s ease; }
 }
-.reveal .qmd-frag-visible { opacity: 1 !important; visibility: visible !important; }
-/* Overview shows every slide complete, regardless of reveal state. */
-.reveal.overview .fragment,
-.reveal.overview .incremental > ul > li,
-.reveal.overview .incremental > ol > li { opacity: 1 !important; visibility: visible !important; }
+.qmd-deck .qmd-frag-visible { opacity: 1 !important; visibility: visible !important; }
+/* Overview shows every slide complete, regardless of fragment state. */
+.qmd-deck.overview .fragment,
+.qmd-deck.overview .incremental > ul > li,
+.qmd-deck.overview .incremental > ol > li { opacity: 1 !important; visibility: visible !important; }
 
 /* Code line highlighting / stepping (code-line-numbers). Lines are block so the
    highlight + dim span the full code width; the copy button reads innerText, which
    still reconstructs the breaks. deck.js toggles .qhl-lines-active / .qhl-ln-hl. */
-.reveal pre .qhl-ln { display: block; } /* wrapped lines (code-line-numbers + magic-move) stack */
-.reveal pre.qhl-lines-active .qhl-ln { opacity: .3; }
-.reveal pre.qhl-lines-active .qhl-ln-hl {
+.qmd-deck pre .qhl-ln { display: block; } /* wrapped lines (code-line-numbers + magic-move) stack */
+.qmd-deck pre.qhl-lines-active .qhl-ln { opacity: .3; }
+.qmd-deck pre.qhl-lines-active .qhl-ln-hl {
   opacity: 1;
   background: color-mix(in srgb, var(--deck-accent, #4c6ef5) 13%, transparent);
   box-shadow: inset .18em 0 0 var(--deck-accent, #4c6ef5);
 }
 @media (prefers-reduced-motion: no-preference) {
-  .reveal pre[data-code-lines] .qhl-ln { transition: opacity .3s ease; }
+  .qmd-deck pre[data-code-lines] .qhl-ln { transition: opacity .3s ease; }
 }
 
 /* Presenter (speaker) window: a dark control surface with live current + next
@@ -444,7 +438,7 @@ html.qmd-print .qmd-slide-bg { display: none; } /* per-slide backgrounds aren't 
 .qmd-speaker .sp-empty { color: #6b7079; font-style: italic; }
 
 /* slideNumber: 'c/t' chip (top-right, clear of the bottom control chrome). */
-.reveal .qmd-slide-number {
+.qmd-deck .qmd-slide-number {
   position: absolute;
   right: 12px;
   top: 10px;
@@ -457,9 +451,9 @@ html.qmd-print .qmd-slide-bg { display: none; } /* per-slide backgrounds aren't 
   pointer-events: none;
 }
 
-/* Drawing / annotations: a canvas inside .slides (so it scales with the deck)
+/* Drawing / annotations: a canvas inside .qmd-slides (so it scales with the deck)
    captures pointer strokes while the pen is on (`d`); the toolbar floats bottom-left. */
-.reveal .qmd-draw {
+.qmd-deck .qmd-draw {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -468,8 +462,8 @@ html.qmd-print .qmd-slide-bg { display: none; } /* per-slide backgrounds aren't 
   pointer-events: none;
   touch-action: none;
 }
-.reveal.qmd-drawing .qmd-draw { pointer-events: auto; cursor: crosshair; }
-.reveal .qmd-draw-bar {
+.qmd-deck.qmd-drawing .qmd-draw { pointer-events: auto; cursor: crosshair; }
+.qmd-deck .qmd-draw-bar {
   position: fixed;
   left: 14px;
   bottom: 14px;
@@ -481,8 +475,8 @@ html.qmd-print .qmd-slide-bg { display: none; } /* per-slide backgrounds aren't 
   border-radius: 10px;
   align-items: center;
 }
-.reveal.qmd-drawing .qmd-draw-bar { display: flex; }
-.reveal .qmd-draw-bar button {
+.qmd-deck.qmd-drawing .qmd-draw-bar { display: flex; }
+.qmd-deck .qmd-draw-bar button {
   height: 28px;
   min-width: 28px;
   padding: 0 8px;
@@ -493,31 +487,30 @@ html.qmd-print .qmd-slide-bg { display: none; } /* per-slide backgrounds aren't 
   background: #2a2e36;
   font: 600 12px ui-sans-serif, system-ui, sans-serif;
 }
-.reveal .qmd-draw-bar .qmd-draw-color { width: 28px; padding: 0; }
-.reveal .qmd-draw-bar button.sel { border-color: #fff; }
+.qmd-deck .qmd-draw-bar .qmd-draw-color { width: 28px; padding: 0; }
+.qmd-deck .qmd-draw-bar button.sel { border-color: #fff; }
 /* annotations are a live-presenting feature: hidden in reader, print and overview. */
 html.qmd-scroll .qmd-draw, html.qmd-scroll .qmd-draw-bar,
 html.qmd-print .qmd-draw, html.qmd-print .qmd-draw-bar,
-.reveal.overview .qmd-draw, .reveal.overview .qmd-draw-bar { display: none !important; }
-.reveal.overview .qmd-bg { display: none; } /* the per-slide bg layer isn't shown in the grid */
+.qmd-deck.overview .qmd-draw, .qmd-deck.overview .qmd-draw-bar { display: none !important; }
+.qmd-deck.overview .qmd-bg { display: none; } /* the per-slide bg layer isn't shown in the grid */
 
 /* PDF export: deck.js adds `qmd-print` to <html> on Cmd/Ctrl+P (and for the
    ?qmd=print preview), flattening the deck to one fixed-size slide per page —
-   no transform, every slide shown, fragments revealed. `@page` makes each
+   no transform, every slide shown, fragments expanded. `@page` makes each
    printed page the deck's aspect so "Save as PDF" produces a clean handout. */
 html.qmd-print, html.qmd-print body {
   width: 960px; height: auto; margin: 0; overflow: visible; background: #fff;
 }
-html.qmd-print .reveal,
-html.qmd-print .reveal-viewport {
+html.qmd-print .qmd-deck {
   position: static; width: 960px; height: auto; overflow: visible;
 }
-html.qmd-print .reveal .slides {
+html.qmd-print .qmd-deck .qmd-slides {
   position: static; transform: none !important; left: auto; top: auto;
   width: 960px; height: auto;
 }
-html.qmd-print .reveal .slides > section,
-html.qmd-print .reveal .slides > section > section {
+html.qmd-print .qmd-deck .qmd-slides > section,
+html.qmd-print .qmd-deck .qmd-slides > section > section {
   position: relative !important;
   display: block !important;
   width: 960px; height: 540px; box-sizing: border-box;
@@ -525,10 +518,10 @@ html.qmd-print .reveal .slides > section > section {
   break-after: page;
   background: #fff;
 }
-html.qmd-print .reveal .slides > section.center {
+html.qmd-print .qmd-deck .qmd-slides > section.center {
   display: flex !important; flex-direction: column; justify-content: center; /* keep title slides centered */
 }
-html.qmd-print .reveal .slides > section.qmd-print-stack {
+html.qmd-print .qmd-deck .qmd-slides > section.qmd-print-stack {
   height: auto; break-after: auto; padding: 0; /* a stack wrapper isn't itself a page */
 }
 html.qmd-print .qmd-slide-number { display: none; }
@@ -544,17 +537,16 @@ html.qmd-scroll, html.qmd-scroll body {
   width: auto; height: auto; overflow: auto; margin: 0; background: #fff;
 }
 html.qmd-scroll .qmd-bg { display: none; }
-html.qmd-scroll .reveal {
+html.qmd-scroll .qmd-deck {
   position: static; width: auto; height: auto; overflow: visible;
   font-size: clamp(15px, 4.2vw, 21px);
 }
-html.qmd-scroll .reveal-viewport { position: static; height: auto; }
-html.qmd-scroll .reveal .slides {
+html.qmd-scroll .qmd-deck .qmd-slides {
   position: static; transform: none !important; left: auto; top: auto;
   width: auto; height: auto; max-width: 46rem; margin: 0 auto; padding: 0 1rem 3rem;
 }
-html.qmd-scroll .reveal .slides > section,
-html.qmd-scroll .reveal .slides > section > section {
+html.qmd-scroll .qmd-deck .qmd-slides > section,
+html.qmd-scroll .qmd-deck .qmd-slides > section > section {
   position: relative !important; display: block !important;
   transform: none !important; /* drop the grid-cell transform so sections stack in flow */
   width: auto; height: auto; min-height: 0; box-sizing: border-box;
@@ -564,36 +556,36 @@ html.qmd-scroll .reveal .slides > section > section {
 html.qmd-scroll .qmd-slide-bg, html.qmd-scroll .qmd-lod, html.qmd-scroll .qmd-threads { display: none !important; }
 /* The per-slide background is hidden in the reader, so `.qmd-dark-bg`'s light text
    would go invisible on a light deck — fall back to the reading column's own colour. */
-html.qmd-scroll .reveal .slides section.qmd-dark-bg,
-html.qmd-scroll .reveal .slides section.qmd-dark-bg strong,
-html.qmd-scroll .reveal .slides section.qmd-dark-bg a,
-html.qmd-scroll .reveal .slides section.qmd-dark-bg .subtitle,
-html.qmd-scroll .reveal .slides section.qmd-dark-bg li::marker { color: inherit; }
-html.qmd-scroll .reveal .slides > section:first-child { border-top: 0; }
-html.qmd-scroll .reveal .slides > section.qmd-scroll-stack { padding: 0; border-top: 0; }
+html.qmd-scroll .qmd-deck .qmd-slides section.qmd-dark-bg,
+html.qmd-scroll .qmd-deck .qmd-slides section.qmd-dark-bg strong,
+html.qmd-scroll .qmd-deck .qmd-slides section.qmd-dark-bg a,
+html.qmd-scroll .qmd-deck .qmd-slides section.qmd-dark-bg .subtitle,
+html.qmd-scroll .qmd-deck .qmd-slides section.qmd-dark-bg li::marker { color: inherit; }
+html.qmd-scroll .qmd-deck .qmd-slides > section:first-child { border-top: 0; }
+html.qmd-scroll .qmd-deck .qmd-slides > section.qmd-scroll-stack { padding: 0; border-top: 0; }
 html.qmd-scroll .qmd-slide-number { display: none; }
 
-/* === Dark theme backgrounds (palette/colours live in reveal-extra.css) =====
+/* === Dark theme backgrounds (palette/colours defined at the top of this file) =====
    The slides and body are transparent, so the deck background is the html canvas
    (which lets the per-slide `.qmd-bg` layer paint above it). Overview tiles, the
    slide-number chip, and reader mode each carry their own hardcoded light surface,
    so override those too. PDF print stays light (deck.js removes qmd-deck-dark). */
 html.qmd-deck-dark { background: #16181d; }
-html.qmd-deck-dark .reveal.overview .slides > section:not(.qmd-stack),
-html.qmd-deck-dark .reveal.overview .slides > section > section { background: #20242b; }
+html.qmd-deck-dark .qmd-deck.overview .qmd-slides > section:not(.qmd-stack),
+html.qmd-deck-dark .qmd-deck.overview .qmd-slides > section > section { background: #20242b; }
 @media (prefers-reduced-motion: reduce) {
-  .reveal .slides.qmd-cam-anim,
-  .reveal .slides.qmd-cam-anim > section,
-  .reveal .slides.qmd-cam-anim > section > section { transition: none !important; }
+  .qmd-deck .qmd-slides.qmd-cam-anim,
+  .qmd-deck .qmd-slides.qmd-cam-anim > section,
+  .qmd-deck .qmd-slides.qmd-cam-anim > section > section { transition: none !important; }
 }
-html.qmd-deck-dark .reveal .qmd-slide-number { background: rgba(255, 255, 255, .12); color: rgba(255, 255, 255, .62); }
+html.qmd-deck-dark .qmd-deck .qmd-slide-number { background: rgba(255, 255, 255, .12); color: rgba(255, 255, 255, .62); }
 html.qmd-deck-dark.qmd-scroll, html.qmd-deck-dark.qmd-scroll body { background: #16181d; }
 
 /* === On-screen chrome: progress bar, nav arrows, control menu =============
-   A reveal-style control surface built by deck.js in normal mode, surfacing the
+   A control surface built by deck.js in normal mode, surfacing the
    keyboard-only features (overview / annotate / speaker / fullscreen / PDF /
    reader / dark mode) + a jump-to-slide list + a shortcut sheet. Fixed to the
-   viewport (outside the scaled .slides). A consistent dark glass surface that
+   viewport (outside the scaled .qmd-slides). A consistent dark glass surface that
    reads on both light and dark decks; arrows + menu auto-hide on idle. */
 .qmd-progress { position: fixed; left: 0; right: 0; bottom: 0; height: 3px; z-index: 60;
   background: rgba(127, 127, 127, .18); pointer-events: none; }
@@ -652,5 +644,152 @@ html.qmd-scroll .qmd-blackout-overlay { display: none !important; }
 
 /* live-presenting chrome only: gone in print + overview; reader keeps just the menu button */
 html.qmd-print .qmd-progress, html.qmd-print .qmd-controls, html.qmd-print .qmd-menu, html.qmd-print .qmd-menu-backdrop,
-.reveal.overview .qmd-progress, .reveal.overview .qmd-controls { display: none !important; }
+.qmd-deck.overview .qmd-progress, .qmd-deck.overview .qmd-controls { display: none !important; }
 html.qmd-scroll .qmd-progress, html.qmd-scroll .qmd-ctl-prev, html.qmd-scroll .qmd-ctl-next { display: none; }
+
+/* ===========================================================================
+   Deck theme: the typographic + content styling for slides. Clean, modern, fully
+   offline (system font stack, no web-font download). Core knobs are CSS custom
+   properties so a deck or extension theme can retheme with a few overrides, or
+   override wholesale. Also carries the content styling base.css gives normal HTML
+   pages but which decks don't load (decks ship deck.css + KaTeX).
+   Keep the .qhl-* palette in sync with base.css.
+   =========================================================================== */
+
+.qmd-deck {
+  --deck-ink: #1b1c22;
+  --deck-muted: #6b6e7b;
+  --deck-accent: #4c6ef5;
+  --deck-rule: #e6e7ea;
+  --deck-code-bg: #f6f8fa;
+  --deck-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --deck-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-family: var(--deck-font);
+  color: var(--deck-ink);
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Content is left-aligned; the front-matter title slide is centered. */
+.qmd-deck .qmd-slides { text-align: left; }
+.qmd-deck section.qmd-title-slide, .qmd-deck h1.title { text-align: center; }
+
+/* Type scale (the deck base font-size is 40px, set above). Headings inherit
+   font-family from .qmd-deck (low specificity) rather than setting it, so a theme
+   extension's `.qmd-deck *` font rule can still win. */
+.qmd-deck h1, .qmd-deck h2, .qmd-deck h3, .qmd-deck h4 {
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--deck-ink);
+  margin: 0 0 .5em;
+}
+.qmd-deck h1 { font-size: 1.9em; }
+.qmd-deck h2 { font-size: 1.5em; }
+.qmd-deck h3 { font-size: 1.15em; }
+.qmd-deck h1.title { font-size: 2.3em; letter-spacing: -0.035em; margin-bottom: .2em; }
+.qmd-deck .subtitle {
+  text-align: center;
+  font-size: 1.05em;
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--deck-muted);
+}
+.qmd-deck p { margin: 0 0 .6em; line-height: 1.4; }
+.qmd-deck strong { font-weight: 700; color: var(--deck-ink); }
+.qmd-deck a {
+  color: var(--deck-accent);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--deck-accent) 35%, transparent);
+}
+.qmd-deck a:hover { border-bottom-color: var(--deck-accent); }
+
+/* Lists: comfortable rhythm, accent markers. */
+.qmd-deck ul, .qmd-deck ol { margin: 0 0 .6em; padding-left: 1.1em; }
+.qmd-deck li { margin: .32em 0; line-height: 1.35; }
+.qmd-deck li::marker { color: var(--deck-accent); }
+
+/* Code: highlighted blocks read as a tinted panel; inline code as a chip. */
+.qmd-deck code { font-family: var(--deck-mono); }
+.qmd-deck pre {
+  position: relative;
+  width: 100%;
+  box-shadow: none;
+  font-size: .5em;
+  background: var(--deck-code-bg);
+  border: 1px solid var(--deck-rule);
+  border-radius: .4em;
+  padding: .8em 1em;
+  margin: 0 0 .6em;
+}
+.qmd-deck pre code { max-height: none; background: transparent; padding: 0; }
+.qmd-deck :not(pre) > code {
+  background: var(--deck-code-bg);
+  border: 1px solid var(--deck-rule);
+  padding: .08em .3em;
+  border-radius: .25em;
+  font-size: .9em;
+}
+.qmd-deck .qmd-copy {
+  position: absolute; top: .4em; right: .4em; padding: .1em .4em;
+  font: 600 .5em var(--deck-font); color: var(--deck-muted);
+  background: #fff; border: 1px solid var(--deck-rule); border-radius: 5px; cursor: pointer;
+}
+.qmd-deck .qmd-copy.qmd-copied { color: #2bb673; border-color: #2bb673; }
+.qmd-deck pre.mermaid { background: transparent; border: 0; padding: 0; text-align: center; }
+
+/* server-side syntax-highlight palette (syntect); keep in sync with base.css.
+   Unmapped scopes inherit the default ink colour. */
+.qmd-deck .qhl-comment { color: #6e7781; font-style: italic; }
+.qmd-deck .qhl-string { color: #0a3069; }
+.qmd-deck .qhl-keyword, .qmd-deck .qhl-storage { color: #cf222e; }
+.qmd-deck .qhl-constant, .qmd-deck .qhl-support { color: #0550ae; }
+.qmd-deck .qhl-entity { color: #8250df; }
+.qmd-deck .qhl-variable { color: #953800; }
+
+/* Tables and blockquotes (base.css equivalents, deck-safe concrete values). */
+.qmd-deck table { border-collapse: collapse; margin: 0 0 .6em; }
+.qmd-deck th, .qmd-deck td { padding: .15em .6em; text-align: left; border-bottom: 1px solid var(--deck-rule); }
+.qmd-deck thead th { border-bottom: 2px solid var(--deck-ink); font-weight: 700; }
+.qmd-deck blockquote {
+  border-left: .12em solid var(--deck-accent);
+  margin: 0 0 .6em; padding-left: .7em;
+  color: var(--deck-muted);
+}
+
+.qmd-deck .katex-display { margin: .4em 0; }
+
+/* === Dark theme (html.qmd-deck-dark) ====================================== */
+/* The class is set, pre-paint, by the deck theme head script (deck_theme_head):
+   from `theme: dark/light`, the embedding page's theme (a same-origin host), or
+   the OS preference for a standalone deck. Only the built-in theme participates:
+   a custom/extension theme owns its colours, so the head script emits nothing for
+   it. Palette mirrors the page dark theme (dark.css). PDF export
+   forces light: deck.js drops the class while printing. */
+html.qmd-deck-dark .qmd-deck {
+  --deck-ink: #e6e6e6;
+  --deck-muted: #9aa0aa;
+  --deck-accent: #6ea8ff;
+  --deck-rule: #363a44;
+  --deck-code-bg: #21242b;
+}
+html.qmd-deck-dark .qmd-deck .qhl-comment { color: #8b949e; }
+html.qmd-deck-dark .qmd-deck .qhl-string { color: #a5d6ff; }
+html.qmd-deck-dark .qmd-deck .qhl-keyword, html.qmd-deck-dark .qmd-deck .qhl-storage { color: #ff7b72; }
+html.qmd-deck-dark .qmd-deck .qhl-constant, html.qmd-deck-dark .qmd-deck .qhl-support { color: #79c0ff; }
+html.qmd-deck-dark .qmd-deck .qhl-entity { color: #d2a8ff; }
+html.qmd-deck-dark .qmd-deck .qhl-variable { color: #ffa657; }
+html.qmd-deck-dark .qmd-deck .qmd-copy { background: #21242b; color: var(--deck-muted); border-color: var(--deck-rule); }
+
+/* Speaker notes (`::: {.notes}`) are for the presenter window only. */
+.qmd-deck .notes { display: none; }
+
+/* Click-to-source highlight; programmatic slide focus is not a visible affordance. */
+[data-block-id].qmd-hl { outline: 2px solid var(--deck-accent); outline-offset: 3px; }
+.qmd-deck .qmd-slides > section:focus, .qmd-deck .qmd-slides > section:focus-visible { outline: none; }
+
+/* Alt-held click-to-source affordance (deck accent; see base.css for the rationale). */
+html.qmd-alt [data-block-id] { cursor: pointer; }
+.qmd-src-hover { outline: 2px dashed var(--deck-accent); outline-offset: 3px; }

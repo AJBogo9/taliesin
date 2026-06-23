@@ -96,7 +96,7 @@ their ids and are never touched.
 A `RenderedDoc` becomes a full page through one assembler, `render/page.rs`
 (`assemble_html_page`): it wraps the block HTML in the document shell, the `<head>`
 theme script, the bundled offline assets, and, for an OJS page, the Observable
-runtime. A deck routes through `render/reveal.rs` instead, and a site/book page adds
+runtime. A deck routes through `render/deck.rs` instead, and a site/book page adds
 chrome from `site/`, but the **same assembler builds the page shell for the static
 `build` and for both live-preview servers** (preview just injects the websocket
 client into that shell), so they can't drift apart. The same block list backs all
