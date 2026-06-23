@@ -28,8 +28,7 @@ Drop `post.qmd` into a `posts/` folder beside a `_quarto.yml` and it joins a
 website. `Site::discover` reads the root `_quarto.yml`, then walks the directory for
 input pages: every `.qmd` becomes a page, **skipping `_`-prefixed directories**
 (partials, `_freeze`, `_site`) and dotfiles. Each page maps to its output URL (`x.qmd` →
-`x.html`, mirroring the input tree), and the page list gives the order used for
-post prev/next navigation. Both `build` (static) and `preview` (live) drive a
+`x.html`, mirroring the input tree). Both `build` (static) and `preview` (live) drive a
 project through the same `discover` + `render_page`.
 
 ## The config model, and the Quarto shim
@@ -51,7 +50,7 @@ downstream consumer keep working.
 
 The same machinery produces both, branched on one key: **`chapters:` present ⇒ a
 book** (a left chapter sidebar, numbered chapters + sections, prev/next-*chapter*
-navigation), otherwise a website (a top navbar, post prev/next). `book.rs` computes
+navigation), otherwise a website (a top navbar). `book.rs` computes
 the section numbers that the sidebar and cross-references display. No `type:` is
 needed; the shape of the config decides.
 
@@ -91,12 +90,6 @@ prose, not just headings. It is built once at discovery and **written to a separ
 every page, so the index never bloats page weight. (On a 17-page book that saved
 over a megabyte across the pages.) The palette is opened by the navbar search
 control (or the book sidebar's, for a book) or the <kbd>Cmd/Ctrl-K</kbd> shortcut.
-
-## Feeds
-
-`feed.rs` emits an RSS 2.0 feed of the site's posts (pages under `posts/`), newest
-first. A book, or a site with no configured `url:`, produces no feed, since RSS
-items need absolute links.
 
 ## Mounts
 

@@ -108,7 +108,7 @@ See the [configuration reference](../reference/configuration.qmd) for every key
 
 `build` writes one `.html` per page (mirroring the input tree) and copies the
 referenced assets, so the output folder deploys as-is. `preview` serves the same
-site **live**: the navbar and prev/next links navigate between pages (each a real
+site **live**: the navbar links navigate between pages (each a real
 page load with its own websocket), and the page you are editing hot-reloads in
 place. Intra-site `.qmd` links (including `other-page.qmd#anchor`) are rewritten to
 their `.html` targets automatically.
