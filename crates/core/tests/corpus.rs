@@ -455,8 +455,8 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
         "active chapter not marked"
     );
     assert!(
-        methods.contains("header-section-number\">2</span>")
-            && methods.contains("header-section-number\">2.1</span>"),
+        methods.contains("qmd-section-number\">2</span>")
+            && methods.contains("qmd-section-number\">2.1</span>"),
         "chapter/section numbering missing"
     );
     assert!(

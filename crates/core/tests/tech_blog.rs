@@ -350,10 +350,10 @@ fn site_and_page_includes_are_injected() {
         post.contains("<script type=\"speculationrules\">"),
         "site include-in-header speculationrules missing"
     );
-    // include-after-body (text:) — the prefetch + post-nav scripts.
+    // include-after-body (text:) — the prefetch script.
     assert!(
-        post.contains("src=\"/instantpage.js\"") && post.contains("src=\"/post-nav.js\""),
-        "site include-after-body scripts missing"
+        post.contains("src=\"/instantpage.js\""),
+        "site include-after-body script missing"
     );
     // css: custom.css — inlined, so a known selector from the file is present.
     assert!(

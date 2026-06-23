@@ -1,7 +1,0 @@
-csl: "../ieee.csl"
-license: "CC BY"
-google-scholar: true
-author: "Andreas Bogossian"
-format:
-  html:
-    html-math-method: katex

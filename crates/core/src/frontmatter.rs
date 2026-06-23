@@ -7,94 +7,46 @@
 //! rendering is unaffected (an unknown key still renders), so a Quarto document
 //! using keys qmd-fast doesn't implement still works.
 
-/// Top-level front-matter keys qmd-fast or Quarto recognize. Deliberately broad
-/// (it includes keys qmd-fast doesn't implement yet) so a valid Quarto document
-/// never warns; only genuinely unknown keys (typically typos) do. Nested keys
-/// (e.g. under `format:` or `execute:`) are not linted.
+/// Top-level front-matter keys qmd-fast recognizes: the closed set of keys it
+/// actually implements, plus every key the corpus/docs use. Intentionally tight
+/// (Phase 3 of the Quarto drop), so a key qmd-fast doesn't implement, or a typo,
+/// now warns instead of being silently ignored. Only top-level keys are linted;
+/// nested keys (under `format:`, `execute:`, `about:`, `listing:`, `hero:`) are not.
 const KNOWN_KEYS: &[&str] = &[
     // Identity / metadata
     "title",
     "subtitle",
     "author",
     "date",
-    "date-modified",
     "description",
-    "abstract",
-    "keywords",
-    "categories",
     "lang",
-    "license",
-    "copyright",
-    "doi",
-    "funding",
+    "categories",
     // Images / social
     "image",
     "image-alt",
-    "image-height",
-    "image-width",
     // Output / format / theme
     "format",
     "theme",
     "css",
     "extensions",
-    "html-math-method",
     "page-layout",
     "title-block-banner",
     "title-block-style",
     "include-in-header",
     "include-before-body",
     "include-after-body",
-    // Table of contents / numbering
+    // Table of contents
     "toc",
-    "toc-depth",
-    "toc-title",
-    "toc-location",
-    "toc-expand",
-    "number-sections",
-    "number-depth",
-    // Code
-    "code-fold",
-    "code-tools",
-    "code-line-numbers",
-    "code-overflow",
-    "code-copy",
-    "highlight-style",
-    // Figures / cross-refs / citations
-    "fig-cap",
-    "fig-align",
-    "fig-width",
-    "fig-height",
-    "fig-format",
-    "fig-dpi",
-    "crossref",
-    "reference-location",
-    "tbl-cap-location",
+    // Citations
     "bibliography",
     "csl",
-    "citation",
-    "link-citations",
     // Execution
     "execute",
-    "jupyter",
-    "engine",
-    "kernel",
     // Listings / project pages
     "listing",
     "about",
     "hero",
-    "draft",
-    "order",
-    "aliases",
-    "resources",
     "site-url",
-    "search",
-    "comments",
-    // Misc presentation
-    "smooth-scroll",
-    "link-external-icon",
-    "link-external-newwindow",
-    "filters",
-    "format-links",
 ];
 
 /// Lint a document's front matter, returning one warning per unknown top-level
@@ -239,6 +191,15 @@ mod tests {
             "---\ntitle: X\nsubtitle: Y\ntoc: true\ncategories: [a, b]\nformat:\n  html:\n    toc: true\n    theme: darkly\n---\n\nx\n",
         );
         assert!(w.is_empty(), "got: {w:?}");
+    }
+
+    #[test]
+    fn unimplemented_quarto_key_now_warns() {
+        // A valid Quarto key qmd-fast doesn't implement (dropped from KNOWN_KEYS in
+        // the Phase-3 schema close) now warns rather than being silently ignored.
+        let w = lint("---\ntitle: X\nnumber-sections: true\n---\n");
+        assert_eq!(w.len(), 1, "got: {w:?}");
+        assert!(w[0].contains("`number-sections`"), "got: {w:?}");
     }
 
     #[test]

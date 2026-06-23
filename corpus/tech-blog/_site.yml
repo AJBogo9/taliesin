@@ -23,11 +23,7 @@ head:
 
     '
 body-end:
-  text: '<script src="/instantpage.js" type="module"></script>
-
-    <script src="/post-nav.js" defer></script>
-
-    '
+  text: '<script src="/instantpage.js" type="module"></script>'
 nav:
   left:
   - text: Blog

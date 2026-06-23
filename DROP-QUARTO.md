@@ -85,67 +85,35 @@ These numbers are the corrected ones.
 
 ---
 
-## Phase 1 — Cheap isolated deletes (low risk, do first)
+## Phases 1-3 (DONE, 2026-06-23, on `main`)
 
-The author pre-built the seams for these; downstream already reads native types.
-An afternoon of mechanical work. Individually revertable, low blast radius.
+Completed and verified (cargo test + clippy -D warnings + fmt green; corpus sites
+build). One divergence from the original wording is recorded below.
 
-- [ ] **Delete `site/config/quarto.rs`** (109 L) and the dispatch in
-      `site/config/mod.rs:138-143` (`is_quarto` detection + `quarto::from_value`).
-      The native `parse_native` becomes the only path.
-- [ ] **Delete `render/extension/quarto.rs`** (48 L) and the `quarto::contribution`
-      call in `render/extension/mod.rs:186`. Keep only the native flat-manifest path.
-- [ ] **Migrate the 6 nested `_quarto.yml` + 1 nested `_extension.yml` to flat
-      native shape** via LLM. Targets: `corpus/tech-blog/_quarto.yml` (the big one:
-      ~20 html keys, navbar, footer, open-graph), `corpus/bayesian-book/_quarto.yml`,
-      `corpus/demo-book/_quarto.yml`, `docs/guide/_quarto.yml`,
-      `docs/internals/_quarto.yml`, and the liquid-glass `_extension.yml`
-      (`contributes: → formats:` → flat).
-- [ ] **Update test fixtures** that assert the Quarto-shaped path
-      (`tests/config.rs`, `tests/extensions.rs` reference Quarto shapes).
-- **Acceptance:** `cargo test -p qmd-fast-core` green; every corpus site still
-  discovers its pages + renders chrome; clippy + fmt clean. A Quarto-shaped config
-  now warns/falls through rather than parsing (intended).
-
-## Phase 2 — Rename the config file (`_quarto.yml` → `_site.yml`)
-
-Zero logic change; kills the single most visible Quarto identity. Pairs with Phase 1.
-
-- [ ] **Change the sentinel** (the `_quarto.yml` filename literal in `site/config/mod.rs`
-      `load_config` + the directory-is-a-site detection in `serve_site.rs` / `main.rs`).
-- [ ] **Update the file watcher** (notify path for config hot-reload).
-- [ ] **Update the 3 `data-qmd-src` chrome literals** that point click-to-source at
-      the config file.
-- [ ] **Rename the 7 corpus/docs config files** + fixtures.
-- [ ] **Keep the leading underscore** (`_site.yml`) — it's a free "skip this page"
-      signal to the page walker, no extra ignore logic needed.
-- **Open question:** `_site.yml` vs `site.yml` vs `qmd.yml`. Recommend `_site.yml`
-      (keeps the walker skip; reads as "the site config"). Decide before doing.
-- **Acceptance:** all corpus/docs sites build + preview; click-to-source on a config
-  line opens `_site.yml`, not `_quarto.yml`.
-
-## Phase 3 — Close the config schema + cosmetic honesty
-
-Make the native schema *strict* and strip remaining Quarto residue.
-
-- [ ] **Audit the corpus, then close `KNOWN_KEYS`** (`frontmatter.rs:14`) from the
-      74-key Quarto superset to the ~20–25 keys qmd-fast actually implements. The
-      linter flips from "silently ignore unknown" to "warn on unsupported key" —
-      strictly better DX. **CAUTION:** the audit caught the inventory naming
-      *implemented-and-used* keys as dead — keep `page-layout`, `title-block-banner`,
-      `title-block-style`, and anything the corpus relies on. Grep the corpus first;
-      do not trim from a hand-written list.
-- [ ] **Replace the `listings.json` sidecar** with server-side prev/next chrome that
-      reuses `book_nav_html` (the book sidebar already computes ordering server-side).
-- [ ] **Rename emitted `header-section-number` → `qmd-section-number`** (~3 LOC,
-      class rename only).
-- [ ] **Delete inert files** carried for Quarto: the 2 `_metadata.yml` that no longer
-      drive anything, `corpus/bayesian-book/index_cache/` (leftover knitr cache),
-      and `.quartoignore` (superseded by native ignore).
-- [ ] **Drop the dead `trestles` about-template branch** if unused by the corpus.
-- **Acceptance:** feeding a deliberately-misspelled config key produces a "did you
-  mean" warning; corpus configs produce *zero* spurious warnings; prev/next nav
-  still renders on every multi-page site.
+- **Phase 1.** Deleted both Quarto-compat shims (`site/config/quarto.rs`,
+  `render/extension/quarto.rs`); the flat native schema is the only path. Migrated the
+  two Quarto-shaped corpus configs (`tech-blog`, `bayesian-book`) and the liquid-glass
+  `_extension.yml` to native flat shape (the rest were already native). A Quarto-shaped
+  config now warns / falls through rather than parsing.
+- **Phase 2.** Renamed the project config `_quarto.yml` to `_site.yml` (sentinel,
+  watcher, the 3 `data-qmd-src` chrome anchors, the includes project-root heuristic, all
+  6 config files, docs / READMEs / comments). Leading underscore kept (free build-skip
+  and page-walker skip).
+- **Phase 3.** Closed `KNOWN_KEYS` from 74 to 27 keys (every corpus/docs-used key plus
+  every key the code reads; kept `page-layout` / `title-block-*`); unimplemented keys now
+  warn. Renamed emitted `header-section-number` to `qmd-section-number`. Deleted inert
+  leftovers (`.quartoignore`, 2x `_metadata.yml`, `bayesian-book/index_cache/`). The
+  "trestles about-template branch" was only a doc comment (no code branch), now reworded.
+  **Divergence:** rather than "replace `listings.json` with server-side prev/next
+  chrome," website posts were made **plain pages** (no prev/next), consistent with the
+  earlier de-specialize-posts refactor whose corpus test forbids post-nav on website
+  posts. The `listings.json` sidecar, the client `post-nav.js`, and its `_site.yml`
+  wiring were deleted outright. Books keep their server-side `qmd-book-postnav`
+  (unchanged).
+- **Follow-up (out of Phase-3 scope, noted for later).** The corpus author stylesheets
+  (`corpus/tech-blog/custom.css`, `theme.scss`) still carry dead Quarto-targeting
+  selectors (`.quarto-grid-item`, `#quarto-margin-sidebar`, `--bs-*`, ...) that qmd-fast
+  never emits: a corpus-cleanup pass, not a core change.
 
 ## Phase 4 — De-reveal the deck engine (THE design-freedom prize)
 

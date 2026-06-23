@@ -445,15 +445,6 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
         }
     }
 
-    // Quarto-compatible `listings.json` for any external listing tooling. Only
-    // when the site actually has listings.
-    let listings = site.listings_json();
-    if listings != "[]"
-        && let Err(e) = std::fs::write(out.join("listings.json"), &listings)
-    {
-        log::warn(&format!("cannot write listings.json: {e}"));
-    }
-
     // Self-contained `404.html` at the site root: most static hosts serve it for
     // any unknown path (root-absolute links inside, so it works at any depth).
     let mut not_found = "";

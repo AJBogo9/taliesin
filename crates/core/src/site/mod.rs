@@ -6,8 +6,8 @@
 //!
 //!   - parsing the root config (navbar / footer / title) into a typed [`SiteConfig`],
 //!   - discovering input pages and mapping each to its output URL (`.qmd` → `.html`),
-//!   - the page order used for post prev/next navigation,
-//!   - building the shared chrome (navbar, footer, prev/next) injected into pages,
+//!   - the page order used for book chapter prev/next navigation,
+//!   - building the shared chrome (navbar, footer, book prev/next) injected into pages,
 //!   - rewriting intra-site `.qmd` links to their built `.html` targets.
 //!
 //! Per the project's config decision there is **no `_metadata.yml` cascade**: the
@@ -62,8 +62,8 @@ pub struct Page {
 }
 
 /// An `about:` front-matter block: a profile header (image + name + links). The
-/// `template` (jolla, trestles, …) is kept as a class for styling; the layout is
-/// the centered jolla style the corpus uses.
+/// `template` (e.g. jolla) is kept as a class for styling; the layout is the
+/// centered jolla style the corpus uses.
 #[derive(Debug, Clone)]
 pub struct AboutSpec {
     pub template: String,
@@ -231,29 +231,6 @@ impl Site {
     /// Whether this project is a book (`project: type: book`).
     pub fn is_book(&self) -> bool {
         self.book.is_some()
-    }
-
-    /// Quarto-compatible `listings.json`: one entry per listing block, mapping the
-    /// hosting page's URL (`/blog.html`) to its item URLs (`/posts/x/index.html`) in
-    /// display order. Consumed by an author's prev/next `post-nav.js` and any
-    /// Quarto-shaped tooling. `[]` when the site has no listings.
-    pub fn listings_json(&self) -> String {
-        let mut entries: Vec<String> = Vec::new();
-        for page in &self.pages {
-            for spec in &page.listings {
-                let items: Vec<String> = self
-                    .collection(page, spec)
-                    .iter()
-                    .map(|p| format!("\"/{}\"", search::json_str(&p.url)))
-                    .collect();
-                entries.push(format!(
-                    "{{\"listing\":\"/{}\",\"items\":[{}]}}",
-                    search::json_str(&page.url),
-                    items.join(",")
-                ));
-            }
-        }
-        format!("[{}]", entries.join(","))
     }
 
     /// The output directory `build` writes to (default `_site`, or `_book` for a
@@ -730,7 +707,7 @@ impl Site {
 
 /// Prefix each heading in a book chapter with its section number: the chapter's
 /// `# H1` becomes "N", and the deeper headings count within it ("N.1", "N.1.1"),
-/// emitted as a `header-section-number` span so it reads like Quarto.
+/// emitted as a `qmd-section-number` span.
 fn number_chapter_headings(blocks: &mut [Block], chapter: u32) {
     let mut counters = [0u32; 5]; // counters[0] = h2, [1] = h3, …
     for b in blocks.iter_mut() {
@@ -765,11 +742,11 @@ fn heading_level(html: &str) -> Option<usize> {
     block_heading_level(html).map(usize::from)
 }
 
-/// Insert a `header-section-number` span just after a heading's opening tag.
+/// Insert a `qmd-section-number` span just after a heading's opening tag.
 fn prefix_heading_number(html: &str, number: &str) -> String {
     match html.find('>') {
         Some(i) => format!(
-            "{}<span class=\"header-section-number\">{number}</span> {}",
+            "{}<span class=\"qmd-section-number\">{number}</span> {}",
             &html[..=i],
             &html[i + 1..]
         ),

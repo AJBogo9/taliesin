@@ -146,7 +146,6 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
     let router = Router::new()
         .route("/favicon.ico", get(favicon))
         .route("/search.json", get(search_json))
-        .route("/listings.json", get(listings_json))
         .route("/ws", get(ws_handler))
         .fallback(page_or_asset)
         .with_state(app.clone());
@@ -214,20 +213,6 @@ async fn search_json(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
         .into_response()
 }
 
-/// Quarto-compatible `listings.json`, matching what `build` writes — so an author's
-/// prev/next `post-nav.js` works in preview too (was a 404).
-async fn listings_json(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
-    let json = { app.site.lock().listings_json() };
-    (
-        [(
-            axum::http::header::CONTENT_TYPE,
-            "application/json; charset=utf-8",
-        )],
-        json,
-    )
-        .into_response()
-}
-
 /// Resolve a request to a page (rendered live) or a static asset under the root.
 async fn page_or_asset(
     State(app): State<Arc<SiteApp>>,
@@ -278,9 +263,6 @@ async fn page_or_asset(
             // in preview), exactly like the parent's. Without this, Cmd-K search on a
             // mounted-book page fetches `/<mount>/search.json` → 404.
             let json_ct = "application/json; charset=utf-8";
-            // (No `listings.json` for mounts: `listings_json()` emits root-absolute
-            // URLs that ignore the mount prefix, and the shipping mounts are books
-            // with no listings.)
             if lookup == "search.json" {
                 let j = m.site.search_index_json.clone();
                 let body = if j.is_empty() { "[]".to_string() } else { j };

@@ -76,7 +76,7 @@ with `data-block-id` + `data-sourcepos` on every block.
   (light/dark + custom), and a responsive reading layout (mobile TOC pull-up sheet,
   print stylesheet).
 - **Multi-page sites** (`preview`/`build` a directory): a `_site.yml` project with
-  a redesigned navbar/footer + post prev/next, `.qmd`→`.html` link rewriting,
+  a redesigned navbar/footer + book chapter prev/next, `.qmd`→`.html` link rewriting,
   `listing:` post-card indexes, and `about:` profile pages. Live preview navigates
   between pages and hot-reloads the edited one.
 
