@@ -139,3 +139,7 @@ html.qmd-deck-dark .reveal .qmd-copy { background: #21242b; color: var(--deck-mu
 /* Click-to-source highlight; programmatic slide focus is not a visible affordance. */
 [data-block-id].qmd-hl { outline: 2px solid var(--deck-accent); outline-offset: 3px; }
 .reveal .slides > section:focus, .reveal .slides > section:focus-visible { outline: none; }
+
+/* Alt-held click-to-source affordance (deck accent; see base.css for the rationale). */
+html.qmd-alt [data-block-id] { cursor: pointer; }
+.qmd-src-hover { outline: 2px dashed var(--deck-accent); outline-offset: 3px; }

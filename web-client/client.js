@@ -722,6 +722,55 @@
     openSource(el);
   });
 
+  // Click-to-source affordance: while Alt is held, make the otherwise-invisible
+  // gesture visible. `html.qmd-alt` flips every source-mapped block to a pointer
+  // cursor, and the single block a click would actually resolve to (via the same
+  // `locatable()` used by the click handler, so highlight and jump can never drift)
+  // wears a dashed outline that tracks the mouse. Pure feedback — no write path,
+  // nothing shown until Alt is down, and no animation: hover is continuous tracking
+  // and must read as instantaneous, while the jump itself already pulses on commit.
+  (() => {
+    let altOn = false;
+    /** @type {HTMLElement|null} */ let hovered = null;
+    let lastX = 0, lastY = 0;
+
+    // Move the dashed outline to the locatable block at `target`, or clear it.
+    // Idempotent: touches the DOM only when the resolved block actually changes.
+    const markEl = (/** @type {Element|null} */ target) => {
+      const el = target && !inDevMenu(target) ? locatable(target) : null;
+      if (el === hovered) return;
+      if (hovered) hovered.classList.remove("qmd-src-hover");
+      hovered = el;
+      if (el) el.classList.add("qmd-src-hover");
+    };
+
+    const enterAlt = () => {
+      if (altOn) return;
+      altOn = true;
+      document.documentElement.classList.add("qmd-alt");
+      markEl(document.elementFromPoint(lastX, lastY)); // highlight what's already under the cursor
+    };
+    const exitAlt = () => {
+      if (!altOn) return;
+      altOn = false;
+      document.documentElement.classList.remove("qmd-alt");
+      markEl(null);
+    };
+
+    window.addEventListener("keydown", (e) => { if (e.key === "Alt") enterAlt(); });
+    window.addEventListener("keyup", (e) => { if (e.key === "Alt") exitAlt(); });
+    document.addEventListener("mousemove", (e) => {
+      lastX = e.clientX;
+      lastY = e.clientY;
+      if (altOn) markEl(e.target instanceof Element ? e.target : null);
+    }, { passive: true });
+    // Never leave the affordance stuck "armed" if focus leaves mid-press (alt-tab,
+    // an Alt-click that navigates to vscode://, switching tabs): the keyup may never
+    // arrive, so reset on blur / hide.
+    window.addEventListener("blur", exitAlt);
+    document.addEventListener("visibilitychange", () => { if (document.hidden) exitAlt(); });
+  })();
+
   // Reverse sync: highlight (and reveal/scroll to) the block under the editor
   // cursor. The matching block is the smallest one whose sourcepos range covers
   // `line` in the same source file, else the nearest block starting before it.

@@ -219,6 +219,14 @@
   @keyframes qmd-hl-fade { from { outline-color: var(--qmd-accent); } to { outline-color: transparent; } }
   [data-block-id].qmd-hl-flash { outline: 2px solid var(--qmd-accent); outline-offset: 3px;
     border-radius: 3px; animation: qmd-hl-fade .7s ease-out forwards; }
+  /* click-to-source affordance: while Alt is held (html.qmd-alt) every source-mapped
+     block reads as clickable (pointer), and the block a click would resolve to gets a
+     dashed accent outline that tracks the mouse (.qmd-src-hover, toggled in client.js).
+     Dashed distinguishes this "click to open source" hover from the solid .qmd-hl that
+     marks the editor-cursor sync. Outline (not border) so tracking never reflows the
+     page; no animation, because continuous hover feedback must read as instantaneous. */
+  html.qmd-alt [data-block-id], html.qmd-alt [data-qmd-src] { cursor: pointer; }
+  .qmd-src-hover { outline: 2px dashed var(--qmd-accent); outline-offset: 3px; border-radius: 3px; }
   figure.qmd-figure { margin: 1.5rem 0; }
   figure.qmd-figure img { max-width: 100%; height: auto; }
   figure.qmd-figure figcaption { font-size: .9em; color: var(--qmd-muted); margin-top: .5rem; }
