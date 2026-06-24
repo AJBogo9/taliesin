@@ -35,3 +35,6 @@ Thumbs.db
 
 # subagent-driven-development scratch
 .superpowers/
+
+# live-edit benchmark runtime artifact (the committed snapshot is RESULTS.md)
+tools/live-edit-bench/RESULTS.json
