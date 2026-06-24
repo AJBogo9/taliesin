@@ -64,6 +64,38 @@ fn every_corpus_doc_has_clean_front_matter() {
 }
 
 #[test]
+fn every_corpus_doc_emits_no_unknown_key_warnings() {
+    // qmd-fast has its own closed vocabulary: every real corpus doc must use only
+    // recognized cell options, callout kinds, and config keys, so the validators stay
+    // silent. corpus/diagnostics/ is exempt (its exact warnings are pinned in
+    // crates/core/tests/nested_validation.rs).
+    let mut files = Vec::new();
+    collect_qmd(&corpus_dir(), &mut files);
+    let mut offenders = Vec::new();
+    for f in &files {
+        if f.components().any(|c| c.as_os_str() == "diagnostics") {
+            continue;
+        }
+        let src = fs::read_to_string(f).unwrap();
+        let base = f.parent().unwrap();
+        let doc = qmd_fast_core::render_document_with_includes(&src, base);
+        for w in doc
+            .warnings
+            .iter()
+            .filter(|w| w.message.starts_with("unknown "))
+        {
+            let label = f.strip_prefix(corpus_dir()).unwrap_or(f).display();
+            offenders.push(format!("{label}: {}", w.message));
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "validator warned on corpus docs (clean the doc or extend the vocabulary):\n{}",
+        offenders.join("\n")
+    );
+}
+
+#[test]
 fn every_corpus_doc_renders_with_invariants() {
     let mut files = Vec::new();
     collect_qmd(&corpus_dir(), &mut files);

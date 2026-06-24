@@ -1,0 +1,23 @@
+---
+title: "Diagnostics: typo coverage"
+treme: darkly
+execute:
+  eccho: false
+listing:
+  contents: posts
+  max-itemz: 3
+---
+
+# Typo coverage
+
+This document deliberately uses misspelled keys to pin qmd-fast's schema validators.
+Each unknown key below produces one click-to-source warning; rendering is unaffected.
+
+::: {.callout-importnat}
+This callout names a kind qmd-fast does not define.
+:::
+
+```{python}
+#| labl: fig-demo
+print("hello from a cell whose option key is misspelled")
+```

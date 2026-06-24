@@ -16,6 +16,7 @@ author's own projects; provenance is below.
 | `bayesian-book/` | Single-page report (`type: website`) | one page assembled from `subsections/` includes, cross-refs, bib + CSL, TOC | `personal/bayesian-fatality-analysis` |
 | `tech-blog/` | Multi-page website | `_site.yml` project config, many pages + posts, navbar/footer, prev/next, `.qmd`→`.html` cross-page links | `personal/tech-blog` |
 | `demo-book/` | Multi-chapter book (`type: book`) | `book: chapters:` (with a `part:`), left chapter sidebar, chapter + section numbering, prev/next-chapter nav | (purpose-built for the book format) |
+| `diagnostics/` | Validator coverage | docs that deliberately trip qmd-fast's schema validators | (purpose-built) |
 
 `tech-blog/` is the multi-page spec (the destination in `todo.md` §4). It is the
 author's real blog with the deploy caches stripped (`.venv`, `_freeze`, `_site`,
@@ -28,6 +29,12 @@ homepage's `about:` block renders a profile header (see `todo.md` §4).
 `posts/pca-geometry/index.qmd` pulls in `_includes/three-scene.qmd` via
 `{{< include ../../_includes/three-scene.qmd >}}`; the `posts/` + `_includes/`
 layout is mirrored from the source project so that path resolves verbatim.
+
+`diagnostics/` holds docs that deliberately trip qmd-fast's schema validators
+(`typos.qmd`: a misspelled key in each surface, front-matter top-level + nested,
+callout kind, cell option). It is pinned by `crates/core/tests/nested_validation.rs`,
+which asserts the exact click-to-source warnings, and is exempted from the corpus
+"clean vocabulary" guards.
 
 ## How the corpus is used
 
