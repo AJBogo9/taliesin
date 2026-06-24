@@ -158,8 +158,11 @@ Chromium-only). Not worth now: deeper i18n/RTL (English solo author).
 >   by `corpus/callouts/kinds.qmd`. `typography-craft-pass`
 >   (= #6, branch `feat/typography-craft-pass`, 2026-06-24): modular heading scale
 >   (`--qmd-scale`), font-feature-settings + smoothing, tabular-nums, KaTeX inline aligned to
->   the body. Remaining: `image-lightbox` (mostly done — lightbox enhancer already covers
->   figures/mermaid/video) · `js-reactive-graph`.
+>   the body. `image-lightbox`
+>   (branch `feat/image-lightbox`, 2026-06-24): gallery ←/→ navigation + `(n/N)` counter added
+>   to the existing lightbox; pinned by `corpus/media/gallery.qmd` (bare-`.lightbox` opt-in
+>   deferred — needs a server change, no corpus need). **Remaining: `js-reactive-graph` (LAST
+>   Wave 3 item; gated on a corpus reactive doc FIRST; design-risky, ~80 lines client JS).**
 > - **Wave 4 (close the loop):** `reverse-sync-coverage-audit` → `vscode-editor-companion`
 >   Phase 1 (coordinate with #1d).
 > - **Wave 5 / later:** `print-pdf-track`, `docs-as-spec`, `{glsl}` registry, `build-seo`.

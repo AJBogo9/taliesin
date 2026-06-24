@@ -216,13 +216,18 @@ each pinned by an added corpus document so breadth never outruns the regression 
   held: inner blocks retain ids/sourcepos via `group_divs`; switch toggles only
   `aria-*`/`hidden`; `:::` scanner, cite, includes, numbering, exec, deck engine
   untouched.*
-- [ ] **`image-lightbox` (med / small / none).** Ship the lightbox half only:
-  click-to-zoom overlay enhancer for figures / `.lightbox` images (`figure.rs` already
-  has the aspirational comment). Zero-dep, read-only. The WebP/AVIF transcode +
-  content-hash asset cache is DEFERRED to the backlog "Image optimization" item,
-  triggered when a corpus doc goes image-heavy. **Pin: `corpus/media/gallery.qmd`.**
-  *Invariant: image blocks keep ids/sourcepos; zoom never writes source; transcode
-  cache (when built) is separate from `_freeze`.*
+- [x] **`image-lightbox` (med / small / none). DONE (2026-06-24, branch
+  `feat/image-lightbox`).** The click-to-zoom overlay was ALREADY shipped (`qmdInitLightbox`
+  covers `figure img`/mermaid/video); the increment that makes a *gallery* meaningful is
+  **keyboard navigation**: on open, collect the page's zoomable images and step prev/next
+  with ←/→ (wrapping) + an `(n / N)` counter, Esc closes. Enhancer-only, read-only
+  (code-enhance.js). The click target / cursor / dblclick guard also match `img.lightbox`
+  (forward-compat). **Bare-image `.lightbox` opt-in DEFERRED** (verified: a captionless
+  `![](x){.lightbox}` doesn't carry the class — the lone-decorative-image path leaks the
+  attr; needs a server change, no corpus doc needs it). WebP/AVIF transcode stays deferred
+  to the backlog "Image optimization" item. **Pinned: `corpus/media/gallery.qmd`** (a
+  `layout-ncol=3` grid of 3 labeled figures); browser-verified. *Invariant held: image
+  blocks keep ids/sourcepos; zoom never writes source.*
 - [x] **`callout-kind-contract` (med / small / none). DONE (2026-06-24, branch
   `feat/callout-kind-contract`).** Emission-only contract on the already-closed kind enum
   (Wave 1's `CALLOUT_KINDS`): a `callout_icon(kind)` helper (bundled inline GitHub
