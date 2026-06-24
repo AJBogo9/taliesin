@@ -42,6 +42,10 @@
     if (!el) return;
     r.inputs[name] = el;
     el.addEventListener("input", function () {
+      // Re-run the transitive-downstream closure of this input, in dependency order
+      // (the cells that consume `name`, then whatever consumes their derived names).
+      scheduleFrom(r, name);
+      // Still fire any callbacks registered manually via the public `qmd.onInput` API.
       var set = r.listeners[name];
       if (set) set.forEach(function (fn) { fn(); });
     });
@@ -147,9 +151,18 @@
       }
     }
 
-    var cell = { kind: kind, run: run };
+    // `defines` is the name this cell publishes (a `//| name` value or a `//| viewof`
+    // input); `inputs` are the names it consumes. The dependency graph (buildGraph) is
+    // built from these, so a `//| input:` sink re-runs through the graph, not a per-input
+    // listener — which is what makes transitive chains (n -> squared -> here) work.
+    var cell = {
+      kind: kind,
+      run: run,
+      defines: name || viewof,
+      inputs: inputs,
+      container: container,
+    };
     r.cells.push(cell);
-    if (inputs.length) api.onInput(inputs, run);
     return cell;
   }
 
@@ -159,8 +172,73 @@
     for (var i = 0; i < cells.length; i++) await cells[i].run();
   }
 
+  // Build (and cache on `r`) the cell dependency graph: a name -> consumers map plus a
+  // global topological order via Kahn's algorithm over `producer.defines -> consumer`
+  // edges. Cells left over after Kahn's are in a dependency cycle -> diagnosed (and then
+  // excluded from scheduling). Rebuilt whenever fresh cells mount.
+  function buildGraph(r) {
+    var cells = r.cells;
+    var consumers = {}; // define-name -> [cells listing it in `inputs`]
+    cells.forEach(function (c) {
+      c.inputs.forEach(function (n) { (consumers[n] = consumers[n] || []).push(c); });
+    });
+    var indeg = new Map();
+    cells.forEach(function (c) { indeg.set(c, 0); });
+    cells.forEach(function (c) {
+      if (c.defines) (consumers[c.defines] || []).forEach(function (cc) {
+        indeg.set(cc, indeg.get(cc) + 1);
+      });
+    });
+    var queue = cells.filter(function (c) { return indeg.get(c) === 0; }); // doc order
+    var order = [];
+    while (queue.length) {
+      var c = queue.shift();
+      order.push(c);
+      if (c.defines) (consumers[c.defines] || []).forEach(function (cc) {
+        indeg.set(cc, indeg.get(cc) - 1);
+        if (indeg.get(cc) === 0) queue.push(cc);
+      });
+    }
+    var cyclic = cells.filter(function (c) { return order.indexOf(c) < 0; });
+    cyclic.forEach(function (c) {
+      console.error("qmd-js: dependency cycle involving", c.defines || "(unnamed cell)");
+      if (c.container) {
+        var pre = document.createElement("pre");
+        pre.className = "qmd-js-error";
+        pre.textContent = "qmd-js: dependency cycle involving `" + (c.defines || "this cell") + "`";
+        c.container.replaceChildren(pre);
+      }
+    });
+    r.graph = { consumers: consumers, order: order, cyclic: cyclic };
+    return r.graph;
+  }
+
+  // The cells transitively downstream of a changed name, in topological order. BFS over
+  // the consumers map, following each hit cell's own `defines` (so n -> squared -> ...
+  // chains are followed). Cyclic cells are excluded (they show their diagnostic instead).
+  function downstreamInOrder(r, seed) {
+    var g = r.graph || buildGraph(r);
+    var hit = new Set();
+    var q = [seed];
+    while (q.length) {
+      var n = q.shift();
+      (g.consumers[n] || []).forEach(function (c) {
+        if (!hit.has(c)) { hit.add(c); if (c.defines) q.push(c.defines); }
+      });
+    }
+    return g.order.filter(function (c) { return hit.has(c); });
+  }
+
+  // Re-run exactly the closure downstream of `name`, once each, in dependency order — a
+  // single controlled pass (NOT cascading listener fires, which would be a reactive VM).
+  function scheduleFrom(r, name) {
+    var cells = downstreamInOrder(r, name);
+    if (cells.length) runSequentially(cells);
+  }
+
   function enhance(root) {
     bindDefines(); // ingest any define blobs already present before running cells
+    var r = rt();
     var fresh = [];
     (root || document).querySelectorAll(
       'script[type="application/qmd-js"]:not([data-qmd-ran])'
@@ -169,7 +247,12 @@
       var c = setupCell(s);
       if (c) fresh.push(c);
     });
-    runSequentially(fresh);
+    if (fresh.length) buildGraph(r); // (re)derive the graph + diagnose cycles
+    // Initial run in document order (the authoring convention is producer-before-
+    // consumer); cyclic cells are left showing their diagnostic rather than run.
+    runSequentially(fresh.filter(function (c) {
+      return !r.graph || r.graph.cyclic.indexOf(c) < 0;
+    }));
   }
 
   if (window.qmdEnhancers && window.qmdEnhancers.register) {
