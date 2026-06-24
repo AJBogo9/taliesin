@@ -5,12 +5,8 @@ listing:
   contents: projects
   sort: "date desc"
   type: grid
-  sort-ui: false
-  filter-ui: false
   categories: true
-  fields: [image, title, description, categories]
 page-layout: full
-title-block-banner: false
 ---
 
 Things I built to learn something. Each project page documents what it does, how it works, and what I took away from it.

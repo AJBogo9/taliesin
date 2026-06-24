@@ -2,16 +2,12 @@
 title: "Andreas Bogossian"
 subtitle: "Machine Learning · Software"
 page-layout: article
-title-block-banner: false
 toc: false
 listing:
   - id: cv-projects
     contents: projects
     type: default
     sort: "date desc"
-    fields: [title, description, categories, date]
-    sort-ui: false
-    filter-ui: false
 ---
 
 M.Sc. student at Aalto University specialising in machine learning and mathematics. I build systems at the intersection of math and production-quality software.

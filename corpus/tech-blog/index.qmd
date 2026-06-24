@@ -5,7 +5,6 @@ about:
   image: profile.webp
   image-alt: "Andreas Bogossian"
 page-layout: article
-title-block-banner: false
 toc: false
 include-in-header:
   text: |
@@ -17,7 +16,6 @@ listing:
   sort: "date desc"
   max-items: 2
   type: grid
-  fields: [image, title, description, date, categories]
 ---
 
 MSc student in ML, Data Science and AI at Aalto University. I write about machine learning, statistics, and algorithms.

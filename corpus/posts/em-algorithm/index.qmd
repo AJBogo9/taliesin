@@ -158,7 +158,6 @@ In this code demo, we'll use the example from the introduction. We'll create a d
 
 ```{python}
 #| label: setup
-#| message: false
 
 import numpy as np
 import json
