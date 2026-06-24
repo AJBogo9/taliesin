@@ -145,51 +145,36 @@ Chromium-only). Not worth now: deeper i18n/RTL (English solo author).
 >   per the author's feature-first policy (2026-06-24), the recorded showcase clip + the whole
 >   "Marketing site" section below wait until the framework is feature-complete. **>> RESUME HERE:
 >   Wave 3 (craft + breadth)** below, the next FEATURE work.
-> - **Wave 3 (craft + breadth),** parallel and corpus-pinned. DONE so far:
->   `narrated-code-walkthrough` (branch `feat/code-walkthrough`): `::: {.code-walkthrough}`
->   sticky code panel + scroll-driven line focus. `panel-tabset-margin` (branch
->   `feat/panel-tabset-margin`, 2026-06-24): `.panel-tabset` ARIA-tabbed panels (one
->   `build_container` arm + `assets/js/tabset.js` click/keyboard enhancer) + `.column-margin`/
->   `.aside` margin rail (CSS-only, aliased onto the existing `.sidenote` mechanism), pinned
->   by `corpus/layout/panels.qmd` (incl. an in-tab `@fig-` cross-ref) + render/validate tests,
->   browser-verified. `callout-kind-contract` (branch `feat/callout-kind-contract`,
->   2026-06-24): bundled Octicon icons + `appearance=`/`icon="false"` + `--qmd-callout-*`
->   tokens (color-mix tints → light/dark from one def, dark.css overrides dropped), pinned
->   by `corpus/callouts/kinds.qmd`. `typography-craft-pass`
->   (= #6, branch `feat/typography-craft-pass`, 2026-06-24): modular heading scale
->   (`--qmd-scale`), font-feature-settings + smoothing, tabular-nums, KaTeX inline aligned to
->   the body. `image-lightbox`
->   (branch `feat/image-lightbox`, 2026-06-24): gallery ←/→ navigation + `(n/N)` counter added
->   to the existing lightbox; pinned by `corpus/media/gallery.qmd` (bare-`.lightbox` opt-in
->   deferred — needs a server change, no corpus need). **Remaining: `js-reactive-graph` (LAST
->   Wave 3 item; gated on a corpus reactive doc FIRST; design-risky, ~80 lines client JS).**
-> - **Wave 4 (close the loop):** `reverse-sync-coverage-audit` → `vscode-editor-companion`
+> - **Wave 3 (craft + breadth): COMPLETE (2026-06-24).** All six shipped + merged, each
+>   corpus-pinned + browser-verified: `narrated-code-walkthrough` (`.code-walkthrough` sticky
+>   code + scroll-driven line focus), `panel-tabset-margin` (`.panel-tabset` ARIA tabs +
+>   `.column-margin`/`.aside` aliased onto `.sidenote`), `callout-kind-contract` (Octicon icons
+>   + `appearance=`/`icon=` + `--qmd-callout-*` tokens; dark.css overrides dropped),
+>   `typography-craft-pass` (= #6: modular heading scale `--qmd-scale`, font-features + smoothing,
+>   KaTeX inline aligned), `image-lightbox` (gallery ←/→ nav + counter on the existing lightbox),
+>   `js-reactive-graph` (transitive downstream scheduler in `qmd-js.js` — name→consumers map +
+>   topo-sort + cycle diagnosis; fixes derived-`//| name` chains; define-landing left as full
+>   rebuild). Specs under `docs/superpowers/specs/`.
+> - **Wave 4 (close the loop) — NEXT:** `reverse-sync-coverage-audit` → `vscode-editor-companion`
 >   Phase 1 (coordinate with #1d).
 > - **Wave 5 / later:** `print-pdf-track`, `docs-as-spec`, `{glsl}` registry, `build-seo`.
 > Priorities #1d/#4/#5/#6/#7 below are integrated into the waves (not duplicated).
 >
-> **>> To resume next session:** `main` (version 0.1.0) has Wave 0, ALL of Wave 1, and the Wave 2
-> `live-edit-benchmark-harness` merged; **two Wave 3 features are DONE** — `narrated-code-walkthrough`
-> (branch `feat/code-walkthrough`) and `panel-tabset-margin` (branch `feat/panel-tabset-margin`) (run
-> `git log --oneline -12` for HEAD; nothing pushed to any remote). A fresh session can resume from
+> **>> To resume next session:** `main` (version 0.1.0) has Waves 0-3 fully merged (run
+> `git log --oneline -20` for HEAD; nothing pushed to any remote). A fresh session can resume from
 > this note + `BEYOND-QUARTO.md` + the auto-loaded memory alone; the specs under
-> `docs/superpowers/specs/` + the 5 plans under `docs/superpowers/plans/` are the working template.
+> `docs/superpowers/specs/` + the plans under `docs/superpowers/plans/` are the working template.
 > **AUTHOR POLICY (2026-06-24): feature-first.** Finish ALL framework features before any
 > marketing-site work; `live-edit-hero-demo` (a recorded showcase clip) + the "Marketing site"
 > section are DEFERRED until the framework is feature-complete (see the feature-first memory). Next
-> concrete step = the NEXT **Wave 3 feature** (`BEYOND-QUARTO.md` Pillar III/IV/V, all corpus-pinned,
-> read-only-additive), pick one with the author: `typography-craft-pass` (= #6, CSS type craft) ·
-> `callout-kind-contract` (closed callout enum + bundled SVG icons + `--qmd-callout-*` tokens +
-> `appearance`, shares the `CALLOUT_KINDS` enum from Wave 1) · `image-lightbox` (click-to-zoom; note
-> a lightbox enhancer already EXISTS in `code-enhance.js` for figures/mermaid/video, so the remaining
-> work is `.lightbox` opt-in for non-figure images) · `js-reactive-graph` (gated on a corpus reactive
-> doc FIRST; design-risky, keep it ~80 lines client JS).
+> concrete step = **Wave 4 (close the loop)**: `reverse-sync-coverage-audit` (make sourcepos total
+> in both directions; corpus test that non-empty sourcepos matches the reverse-sync regex) →
+> `vscode-editor-companion` Phase 1 (host + cursor loop; coordinate with #1d's LAN token). See
+> `BEYOND-QUARTO.md` Pillar II for both.
 > Working method: branch per feature, brainstorm if forks exist, write a spec under
-> `docs/superpowers/specs/` (and a complete-code plan under `docs/superpowers/plans/` for larger
-> work), implement TDD (or subagent-driven via a Workflow for big items), browser-verify, then
-> fast-forward merge locally. CAVEAT (Wave 2): instruct any review subagents to use ONLY read-only
-> git (`git diff a..b`, never `git checkout`) since they share the working tree (a reviewer's
-> `git checkout` moved HEAD mid-run and stalled a task).
+> `docs/superpowers/specs/`, implement TDD, browser-verify via chrome-devtools, then fast-forward
+> merge locally. CAVEAT (Wave 2): instruct any review subagents to use ONLY read-only git
+> (`git diff a..b`, never `git checkout`) since they share the working tree.
 
 ## Open / next
 

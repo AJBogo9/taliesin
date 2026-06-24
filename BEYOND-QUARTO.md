@@ -158,16 +158,22 @@ already waits for.
 Invest where warm + source-mapped + block-modeled unlocks behavior a batch compiler
 cannot reach, while resisting the reactive-VM trap.
 
-- [ ] **`js-reactive-graph` (high / small / none).** A *minimal* transitive-downstream
-  scheduler over the `//| name` / `viewof` / `inputs` edges the model already carries
-  (`model.rs:47-52`); today any define re-runs *every* cell (`qmd-js.js:75`). Build a
-  name→consumers map at `enhance()`, topo-sort, re-run only the downstream closure;
-  keep the per-run `invalidation` teardown; detect + diagnose cycles. **~80 lines of
-  client JS, NO Rust, NO model field, NO reactive VM** (the OJS-over-provisioning
-  lesson). "No inputs" once-cells stay as-is. **GATE: commit a corpus reactive doc
-  pinning the ~6 chains BEFORE writing the scheduler.** *Invariant: reads
-  `data-name/viewof/inputs` only, never `data-block-id`; confined to `qmd-js.js`;
-  re-derives the graph after an incremental swap.*
+- [x] **`js-reactive-graph` (high / small / none). DONE (2026-06-24, branch
+  `feat/js-reactive-graph`).** A minimal transitive-downstream scheduler over the
+  `//| name`/`viewof`/`input` edges, ~70 lines in `qmd-js.js`, NO Rust/model change.
+  `buildGraph` (at `enhance`) builds a name→consumers map + a global topo order (Kahn's);
+  an input change re-runs only the transitive-downstream closure (BFS over consumers,
+  following each hit cell's own `defines`) once each in topo order, reusing the per-run
+  `invalidation` teardown — one controlled pass, NOT cascading fires (the OJS/VM trap).
+  Cycles (leftover after Kahn's) are diagnosed (console + a `qmd-js-error` in each cyclic
+  cell) and excluded. **Fixed the genuinely-broken case**: a cell consuming a derived
+  `//| name` (not a DOM input) now updates transitively. **Scope:** the closure governs the
+  input-change path; `bindDefines` (define landing) stays a full rebuild (rare; avoids
+  regressing implicit define-readers). Single-level fan-out (every existing corpus doc) is
+  unaffected. **GATE honored:** `corpus/reactive/graph.qmd` committed first (`393a990`).
+  Browser-verified (transitive update + isolation by node identity + cycle diagnosis, 0
+  console errors). *Invariant held: reads `data-name/viewof/inputs` only, never
+  `data-block-id`; confined to `qmd-js.js`; re-derives the graph after a swap.*
 - [x] **`narrated-code-walkthrough` (high / med / none). DONE (2026-06-24, branch
   `feat/code-walkthrough`).** One `::: {.code-walkthrough}` div: a sticky code panel +
   prose `.step` divs (`lines="3-5"`); scrolling drives line-range focus (reuses the
@@ -312,11 +318,10 @@ validation → jsonschema`) and the scope-skeptic's "land integrity debt first."
   `live-edit-hero-demo`. Turns the architectural bet into evidence + an automated
   state-preservation regression gate; quantifies the first-edit-after-restart penalty
   (which decides whether cold-start-prefix-warming ever returns).
-- **Wave 3, Craft + breadth** (parallelizable, all read-only-additive, each
-  corpus-pinned): `typography-craft-pass` (#6) · `callout-kind-contract` (shares the
-  enum from Wave 1) · `panel-tabset-margin` · `image-lightbox` ·
-  `narrated-code-walkthrough` · `js-reactive-graph` (after its corpus reactive doc
-  lands).
+- **Wave 3, Craft + breadth: COMPLETE (2026-06-24).** All six shipped + merged to
+  `main`, each corpus-pinned, read-only-additive: `narrated-code-walkthrough` ·
+  `panel-tabset-margin` · `callout-kind-contract` · `typography-craft-pass` (#6) ·
+  `image-lightbox` · `js-reactive-graph`. Next: **Wave 4** (close the loop).
 - **Wave 4, Close the loop** (the deepest real past-Quarto move):
   `reverse-sync-coverage-audit` → `vscode-editor-companion` Phase 1 (coordinate with
   #1d). Phase 2 editor commands capped and deferred.
