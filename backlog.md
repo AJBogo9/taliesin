@@ -107,6 +107,29 @@ Chromium-only). Not worth now: deeper i18n/RTL (English solo author).
 > enhancer and vendored d3/Plot (Phase 5). The **Do-NOT-touch** list held: the
 > intrinsic machinery (`:::`, citations, includes, numbering, freeze) was untouched.
 
+> **Successor initiative: Beyond Quarto → cash the closures into capability. ACTIVE
+> (2026-06-24).** Full roadmap (thesis, 5 pillars, ~15 surviving items, cuts/defers,
+> risks) in `BEYOND-QUARTO.md` (from a 9-agent design workflow, adversarially
+> critiqued). Scope philosophy shifts from "corpus is the spec" to **corpus-plus-
+> roadmap**: each new feature ships pinned by a target corpus doc. Output stays
+> **HTML-only** ("wider" = web-native depth in the live view, not new formats; the one
+> sanctioned exception is a deferred print/PDF track *derived from* the built HTML).
+> The guardrails are unchanged (block-model invariants, single editing surface,
+> Do-NOT-touch). Sequenced in waves:
+> - **Wave 0 (integrity & foundation):** `prune-and-fix-stale-docs` → `third-party-truth`
+>   (= #5) → `version-stamp`. Quick, zero-risk correctness debt from DROP-QUARTO.
+> - **Wave 1 (cash the schema):** `locate-render-warnings` → `nested-schema-validation`
+>   epic (pin `corpus/diagnostics/typos.qmd`) → `jsonschema-for-config`. Supersedes the
+>   moot P2 below.
+> - **Wave 2 (prove the moat, = #7):** `live-edit-benchmark-harness` → `live-edit-hero-demo`.
+> - **Wave 3 (craft + breadth),** parallel and corpus-pinned: `typography-craft-pass` (= #6)
+>   · `callout-kind-contract` · `panel-tabset-margin` · `image-lightbox`
+>   · `narrated-code-walkthrough` · `js-reactive-graph`.
+> - **Wave 4 (close the loop):** `reverse-sync-coverage-audit` → `vscode-editor-companion`
+>   Phase 1 (coordinate with #1d).
+> - **Wave 5 / later:** `print-pdf-track`, `docs-as-spec`, `{glsl}` registry, `build-seo`.
+> Priorities #1d/#4/#5/#6/#7 below are integrated into the waves (not duplicated).
+
 ## Open / next
 
 ### Format & structure audit (round 3, 2026-06-23): open items
@@ -116,15 +139,14 @@ layout/shareability (49 confirmed findings). The shipped fixes (posts/
 de-specialization, the loose-deck and dead-embed warnings, the docs sync) are in git;
 the open items follow.
 
-- [ ] **P2: the Quarto-compat config path has no validation (high).** The native
-  config path warns on unknown keys (`config/mod.rs:204`), but the Quarto-shaped path
-  (`config/quarto.rs::from_value`) gives zero feedback, so typos vanish and load-bearing
-  keys drop silently. Quarto's keyspace is *open*, so do NOT warn on every unmodeled key.
-  (a) Typo-detect top-level keys (near-miss of `{project, website, book, format, execute,
-  jupyter}` via `frontmatter::closest`). (b) Add one targeted "recognized but ignored"
-  warning for `format: html: theme:` (the whole visual theme drops silently; qmd-fast
-  ships its own, and custom styling goes through `css:` or a theme extension). Skip a
-  `resources:` warning, since those files *are* copied by `mirror_assets`.
+- [~] **P2: the Quarto-compat config path has no validation (high). MOOT/SUPERSEDED
+  (2026-06-24).** The `config/quarto.rs` path this targeted was *deleted* in DROP-QUARTO
+  Phase 1, so the Quarto-shaped config no longer parses at all (it warns + falls
+  through). The remaining, more valuable work is now `nested-schema-validation` in
+  Beyond Quarto **Wave 1** (`BEYOND-QUARTO.md`): validating the *nested* native blocks
+  (`execute:`/`listing:`/`about:`/`hero:`), `#|` cell options, and callout kinds with
+  did-you-mean hints, built on a located-diagnostics substrate so each warning is
+  click-to-source.
 - [ ] **P3a: `build` leaks residue into the deployed output (medium).** `mirror_assets`
   (`main.rs:500`) copies every non-`_`/`.` file ignoring `.gitignore`, dragging R/Quarto
   caches (`*_cache/`, `index_cache/`, `.RData`), private notes, and `.bib`/`.Rproj` into

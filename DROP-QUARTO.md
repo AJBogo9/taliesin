@@ -1,5 +1,13 @@
 # Dropping Quarto backwards-compatibility — initiative backlog
 
+> **COMPLETE (2026-06-24). Successor initiative: `BEYOND-QUARTO.md`.** DROP-QUARTO
+> removed every backwards-compat shim and closed every schema; Beyond Quarto cashes
+> those closures into capability and grows the tool deliberately past Quarto. The
+> guardrails are unchanged (block-model invariants, single editing surface, HTML-only,
+> the Do-NOT-touch list). Scope evolves from "the corpus is the spec" to
+> corpus-plus-roadmap (every new feature pins a target corpus doc). This file is kept
+> as the historical record of the drop.
+
 > Dedicated backlog for de-Quarto-ing qmd-fast into a fully native `.qmd` tool.
 > Created 2026-06-23 from a 49-agent verified audit (inventory per subsystem →
 > corpus reality-check → adversarial verification → synthesis). Companion to

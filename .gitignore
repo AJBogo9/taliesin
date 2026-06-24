@@ -32,3 +32,6 @@ _freeze/
 Thumbs.db
 .idea/
 *.swp
+
+# subagent-driven-development scratch
+.superpowers/

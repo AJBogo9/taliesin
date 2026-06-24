@@ -1,13 +1,21 @@
 # qmd-fast
 
 A single-purpose Rust dev server that renders `.qmd` files to **HTML only** (blog
-posts, slide decks, books, multi-page sites) for one author's workflow. Not a
-general Quarto replacement. Three load-bearing goals: click-to-source, block-level incremental
-updates, and no per-edit startup cost (warm server + Jupyter kernel).
+posts, slide decks, books, multi-page sites) for one author's workflow, built around
+three load-bearing goals: click-to-source, block-level incremental updates, and no
+per-edit startup cost (warm server + Jupyter kernel). It is **not** a general document
+compiler: HTML is the only output target (no LaTeX/Typst/Word/ePub; a future print/PDF
+track would render *from* the built HTML, never as a parallel format).
 
-**The corpus is the spec.** "Done" means the real documents under `corpus/` render
-correctly, not that some feature checklist is complete. Scope is those ~5 documents
-(13 `.qmd` files counting book subsections), not Quarto's feature set.
+**Scope is corpus-plus-roadmap.** "Done" still means the documents under `corpus/`
+render correctly: the corpus is the regression net and the arbiter of done. But the
+corpus now *leads* as well as records: each new capability ships pinned by a target
+corpus document added in the same change, so scope can grow deliberately toward "wider
+than Quarto in web-native capability" without ever outrunning the test net. **"Wider"
+means richer browser behavior in a live HTML view, not new output formats, and never at
+the cost of the load-bearing invariants or the Do-NOT-touch discipline.** The active
+roadmap is `BEYOND-QUARTO.md` (successor to the completed `DROP-QUARTO.md`); the prior
+"the corpus is the spec / not a general Quarto replacement" framing is superseded by it.
 
 **The `.qmd` file is the single editing surface; the browser is a read-only view.**
 Edits flow one way: you change the source in your editor, the preview re-renders.
