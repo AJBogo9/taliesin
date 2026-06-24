@@ -27,7 +27,11 @@ fn main() -> ExitCode {
         // `preview`/`dev` are vite-style aliases for the live server.
         Some("serve" | "preview" | "dev") => cmd_serve(&args),
         Some("--version" | "-V") => {
-            println!("qmd-fast {}", qmd_fast_core::VERSION);
+            println!(
+                "qmd-fast {} ({})",
+                qmd_fast_core::VERSION,
+                env!("QMD_FAST_GIT_SHA")
+            );
             ExitCode::SUCCESS
         }
         // No command, or an explicit help request: print usage and succeed.
@@ -636,7 +640,11 @@ fn preview(html: &str) -> String {
 }
 
 fn usage() {
-    println!("qmd-fast {}", qmd_fast_core::VERSION);
+    println!(
+        "qmd-fast {} ({})",
+        qmd_fast_core::VERSION,
+        env!("QMD_FAST_GIT_SHA")
+    );
     println!("A fast .qmd -> HTML renderer and live preview server.");
     println!();
     println!("USAGE:");
