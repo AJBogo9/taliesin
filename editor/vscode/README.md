@@ -52,8 +52,22 @@ needed yet). Phase 2 (editor commands like insert-block / reorder-slide, strictl
 `.qmd`-buffer text transforms) is deferred. See
 `docs/superpowers/specs/2026-06-24-vscode-editor-companion-design.md`.
 
-## Pure-logic unit tests
+## Automated verification (three layers)
 
-`npm test` runs the `node:test` suite for `ports.ts` (free-port pick, HTTP wait) and
-`paths.ts` (sourcepos parse, source-file mapping) — the logic that doesn't need the VS Code
-host. The VS Code API surface is thin and exercised by the manual checklist above.
+1. **Unit (`npm test`)** — `node:test` for `ports.ts` (free-port pick, HTTP wait) and
+   `paths.ts` (sourcepos parse, source-file mapping). No VS Code needed.
+2. **Relay bridge (`node scripts/relay-harness.cjs`)** — serves the real `relayHtml` with a
+   same-origin stub iframe so a browser can drive both message directions against the actual
+   code (see the script header). Verified: `qmd-goto` from the iframe reaches the host;
+   `qmd-cursor` from the host reaches the iframe.
+3. **Extension Host (`npm run test:e2e`)** — `@vscode/test-electron` downloads a throwaway
+   VS Code and runs `src/e2e/` inside the real Extension Host: asserts the command is
+   registered and that *Open Preview* on a `.qmd` actually opens a webview panel (which
+   spawns the server). Needs the locally-built `target/debug/qmd-fast`. The runner clears
+   `ELECTRON_RUN_AS_NODE` (set in some sandboxes) and passes `--no-sandbox` so VS Code
+   launches headless.
+
+What those three **don't** cover — and what the F5 checklist above is for — is the final
+visual round-trip *through the live preview iframe*: cursor-move → the block actually
+highlights/scrolls, and Alt-click → the editor cursor lands. Layers 2+3 verify each side of
+that bridge independently; F5 confirms them end-to-end in a real editor.
