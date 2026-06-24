@@ -1,0 +1,55 @@
+---
+title: "Reactive cells: a dependency graph"
+---
+
+`{js}` cells form a dependency graph through `//| viewof` (a named input control),
+`//| name` (a value a cell publishes), and `//| input` (what a cell consumes). Moving a
+slider re-runs only the cells downstream of it, in dependency order, including cells that
+depend on it *transitively* through a derived value.
+
+```{js}
+//| viewof: n
+const input = document.createElement("input");
+input.type = "range"; input.min = "1"; input.max = "12"; input.step = "1"; input.value = "3";
+const wrap = document.createElement("label");
+wrap.style.cssText = "display:flex;gap:.6rem;align-items:center";
+wrap.append("n", input);
+return wrap;
+```
+
+The next cell publishes a derived value, `squared`, that consumes the slider `n`:
+
+```{js}
+//| name: squared
+//| input: n
+return qmd.value("n") ** 2;
+```
+
+This cell consumes `squared` — a derived `//| name`, not the slider itself — so it stays
+in sync only because the change propagates transitively (`n → squared → here`):
+
+```{js}
+//| input: squared
+const p = document.createElement("p");
+p.textContent = "n squared = " + qmd.get("squared");
+return p;
+```
+
+A second, independent slider drives its own cell, untouched when `n` moves:
+
+```{js}
+//| viewof: m
+const input = document.createElement("input");
+input.type = "range"; input.min = "1"; input.max = "12"; input.step = "1"; input.value = "5";
+const wrap = document.createElement("label");
+wrap.style.cssText = "display:flex;gap:.6rem;align-items:center";
+wrap.append("m", input);
+return wrap;
+```
+
+```{js}
+//| input: m
+const p = document.createElement("p");
+p.textContent = "m doubled = " + (qmd.value("m") * 2);
+return p;
+```
