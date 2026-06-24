@@ -34,6 +34,8 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     "css",
     "extensions",
     "page-layout",
+    // Drafts: `draft: true` excludes a page from a website build (output, nav, listings).
+    "draft",
     // Title block: `title-block-style: none` is honored (suppresses the visible
     // header); see `render::detect_title_block_hidden`.
     "title-block-style",

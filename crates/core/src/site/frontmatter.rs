@@ -15,6 +15,8 @@ pub(crate) struct FrontInfo {
     pub(crate) about: Option<AboutSpec>,
     pub(crate) hero: Option<HeroSpec>,
     pub(crate) page_layout: Option<String>,
+    /// `draft: true` — excluded from a website build (output, nav, listings).
+    pub(crate) draft: bool,
 }
 
 /// Parse a page's `---` front-matter block (YAML) into the fields discovery
@@ -39,6 +41,10 @@ pub(crate) fn parse_front_matter(path: &Path) -> FrontInfo {
         about: parse_about(val.get("about")),
         hero: parse_hero(val.get("hero")),
         page_layout: scalar(val.get("page-layout")),
+        draft: val
+            .get("draft")
+            .and_then(serde_yaml::Value::as_bool)
+            .unwrap_or(false),
     }
 }
 

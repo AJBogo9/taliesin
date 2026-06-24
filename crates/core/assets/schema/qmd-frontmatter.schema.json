@@ -19,6 +19,7 @@
     "css": {},
     "date": {},
     "description": {},
+    "draft": {},
     "execute": {
       "additionalProperties": false,
       "properties": {

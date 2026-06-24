@@ -762,14 +762,19 @@ fn website_pages(root: &Path) -> Vec<Page> {
     inputs.sort();
     let mut pages: Vec<Page> = inputs
         .into_iter()
-        .map(|input| {
+        .filter_map(|input| {
             let rel = rel_str(root, &input);
             let url = qmd_to_html(&rel);
             let fm = parse_front_matter(&input);
+            // `draft: true` excludes the page from the build entirely — and, because
+            // listings + prev/next nav derive from `self.pages`, from those too.
+            if fm.draft {
+                return None;
+            }
             // `image` is relative to the page's own directory; store it
             // site-root-relative so a listing card on another page can link it.
             let card_image = fm.image.map(|img| join_rel(&rel, &img));
-            Page {
+            Some(Page {
                 input,
                 rel,
                 url,
@@ -782,7 +787,7 @@ fn website_pages(root: &Path) -> Vec<Page> {
                 about: fm.about,
                 hero: fm.hero,
                 page_layout: fm.page_layout,
-            }
+            })
         })
         .collect();
     pages.sort_by(|a, b| a.rel.cmp(&b.rel));
@@ -1040,5 +1045,37 @@ mod tests {
         assert_eq!(resolve_href("/blog.qmd", "../"), "/blog.html");
         assert_eq!(resolve_href("https://x.com", "../"), "https://x.com");
         assert_eq!(resolve_href("#top", "../"), "#top");
+    }
+
+    #[test]
+    fn website_pages_excludes_drafts() {
+        use std::fs;
+        let root = std::env::temp_dir().join(format!("qmd-draft-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("index.qmd"), "---\ntitle: Home\n---\n\nHome.\n").unwrap();
+        fs::write(
+            root.join("published.qmd"),
+            "---\ntitle: Pub\n---\n\nPublished.\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("wip.qmd"),
+            "---\ntitle: WIP\ndraft: true\n---\n\nWork in progress.\n",
+        )
+        .unwrap();
+
+        let rels: Vec<String> = website_pages(&root).iter().map(|p| p.rel.clone()).collect();
+        assert!(rels.contains(&"index.qmd".to_string()), "kept: {rels:?}");
+        assert!(
+            rels.contains(&"published.qmd".to_string()),
+            "kept: {rels:?}"
+        );
+        assert!(
+            !rels.contains(&"wip.qmd".to_string()),
+            "draft excluded: {rels:?}"
+        );
+
+        let _ = fs::remove_dir_all(&root);
     }
 }
