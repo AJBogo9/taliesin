@@ -434,6 +434,25 @@ fn copy_js_imports(html: &str, base: &Path, dest: &Path) -> usize {
 /// `<out>/<page>.html` and mirror the project's non-source assets alongside, so
 /// the output directory is a deployable static site. `out_override` (the `--out`
 /// flag) wins over the config's `output-dir` (default `_site`).
+/// One warning line per `mounts:` entry: the static build does not wire mounts (only
+/// `preview` serves them), so a previewed site's `/<at>/` links 404 in the deploy. Each
+/// line gives the exact command to build that mount into `<out>/<at>/`. Empty when the
+/// site has no mounts. (Auto-building mounts is a deferred follow-up.)
+fn mount_warnings(mounts: &[qmd_fast_core::site::Mount], root: &Path, out: &Path) -> Vec<String> {
+    mounts
+        .iter()
+        .map(|m| {
+            format!(
+                "mount '/{}/' is preview-only and not in the static build (its links will 404). \
+                 Build it: qmd-fast build {} --out {}",
+                m.at,
+                root.join(&m.path).display(),
+                out.join(&m.at).display(),
+            )
+        })
+        .collect()
+}
+
 fn build_site(root: &Path, out_override: Option<&str>) -> ExitCode {
     // Executing code cells needs the async kernel, so the whole site build runs on
     // a tokio runtime (mirrors the preview server's setup).
@@ -477,6 +496,12 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
             out.display()
         ));
         return ExitCode::FAILURE;
+    }
+
+    // `mounts:` are served live in `preview` but the static build doesn't wire them, so
+    // warn (with the per-mount build command) rather than ship 404'ing links silently.
+    for w in mount_warnings(&site.config.mounts, root, &out) {
+        log::warn(&w);
     }
 
     // Persistent execution cache, rooted at the project source (not the build
@@ -772,6 +797,38 @@ mod mirror_tests {
 
         let _ = fs::remove_dir_all(&base);
         let _ = fs::remove_dir_all(&out);
+    }
+
+    #[test]
+    fn mount_warnings_name_each_unwired_mount_with_a_build_command() {
+        use qmd_fast_core::site::Mount;
+        let root = Path::new("/proj/site");
+        let out = Path::new("/proj/site/_site");
+
+        let none = mount_warnings(&[], root, out);
+        assert!(none.is_empty(), "no mounts -> no warnings");
+
+        let ws = mount_warnings(
+            &[Mount {
+                at: "docs".into(),
+                path: "../docs".into(),
+            }],
+            root,
+            out,
+        );
+        assert_eq!(ws.len(), 1, "one warning per mount");
+        let w = &ws[0];
+        assert!(w.contains("docs"), "names the mount: {w}");
+        assert!(w.contains("404"), "explains the consequence: {w}");
+        assert!(
+            w.contains("build") && w.contains("--out"),
+            "gives the build command: {w}"
+        );
+        // the --out path is <out>/<at>
+        assert!(
+            w.contains(&out.join("docs").display().to_string()),
+            "points at <out>/<at>: {w}"
+        );
     }
 }
 

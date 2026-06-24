@@ -98,8 +98,14 @@ control (or the book sidebar's, for a book) or the <kbd>Cmd/Ctrl-K</kbd> shortcu
 ## Mounts
 
 `mounts:` serves *another* project under a URL prefix in `preview`, which is how the
-marketing site resolves its `/docs/guide` and `/docs/internals` links live. A
-mounted page is **rendered on request as static output**, mirroring exactly what the
-deployed `build` produces, so it has no live websocket, no dev menu, and no
-click-to-source. To edit a mounted book with the full live loop, preview it directly
-(`preview docs/internals`) rather than through the mount.
+marketing site resolves its `/docs/guide` and `/docs/internals` links live. Under
+`preview` a mounted page is **rendered on request as static output**, so it has no live
+websocket, no dev menu, and no click-to-source; to edit a mounted book with the full live
+loop, preview it directly (`preview docs/internals`) rather than through the mount.
+
+The static `build` does **not** auto-wire mounts: building the site emits each page and its
+own assets, but a `mounts:` sub-project is a separate project, so `build <site>` only
+*warns* (naming each mount and the exact command) rather than producing it. Build each mount
+yourself into the matching sub-path, e.g. `qmd-fast build docs/internals --out _site/docs/internals`,
+so the deployed `/docs/internals/` links resolve. (Auto-building mounts is a planned
+follow-up.)
