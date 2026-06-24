@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "about": {
+      "additionalProperties": false,
+      "properties": {
+        "image": {},
+        "image-alt": {},
+        "links": {},
+        "template": {}
+      },
+      "type": "object"
+    },
+    "author": {},
+    "bibliography": {},
+    "categories": {},
+    "csl": {},
+    "css": {},
+    "date": {},
+    "description": {},
+    "execute": {
+      "additionalProperties": false,
+      "properties": {
+        "cache": {
+          "type": "boolean"
+        },
+        "echo": {
+          "type": "boolean"
+        },
+        "include": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "extensions": {},
+    "format": {},
+    "hero": {
+      "additionalProperties": false,
+      "properties": {
+        "actions": {},
+        "eyebrow": {},
+        "headline": {},
+        "lead": {}
+      },
+      "type": "object"
+    },
+    "image": {},
+    "image-alt": {},
+    "include-after-body": {},
+    "include-before-body": {},
+    "include-in-header": {},
+    "lang": {},
+    "listing": {
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "categories": {
+              "type": "boolean"
+            },
+            "contents": {},
+            "id": {},
+            "max-items": {
+              "type": "integer"
+            },
+            "sort": {},
+            "type": {}
+          },
+          "type": "object"
+        },
+        {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "categories": {
+                "type": "boolean"
+              },
+              "contents": {},
+              "id": {},
+              "max-items": {
+                "type": "integer"
+              },
+              "sort": {},
+              "type": {}
+            },
+            "type": "object"
+          },
+          "type": "array"
+        }
+      ]
+    },
+    "page-layout": {},
+    "subtitle": {},
+    "theme": {},
+    "title": {},
+    "title-block-style": {},
+    "toc": {
+      "type": "boolean"
+    }
+  },
+  "title": "qmd-fast document front matter",
+  "type": "object"
+}

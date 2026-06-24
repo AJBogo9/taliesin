@@ -1432,6 +1432,7 @@ dependencies = [
  "comrak",
  "katex",
  "serde",
+ "serde_json",
  "serde_yaml",
  "syntect",
 ]

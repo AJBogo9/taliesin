@@ -93,7 +93,7 @@ pub struct NavItem {
 }
 
 /// Every recognized top-level native key (drives typo validation).
-const NATIVE_KEYS: &[&str] = &[
+pub(crate) const NATIVE_KEYS: &[&str] = &[
     "title",
     "author",
     "description",

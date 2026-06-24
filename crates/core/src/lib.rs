@@ -33,6 +33,7 @@ pub mod highlight;
 pub mod includes;
 pub mod math;
 pub mod render;
+pub mod schema;
 pub mod site;
 
 pub use diff::{BlockOp, diff_blocks};

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "author": {},
+    "body-end": {},
+    "body-start": {},
+    "chapters": {},
+    "css": {},
+    "description": {},
+    "favicon": {},
+    "footer": {},
+    "head": {},
+    "image": {},
+    "mounts": {},
+    "nav": {},
+    "output": {},
+    "title": {},
+    "toc": {
+      "type": "boolean"
+    },
+    "url": {}
+  },
+  "title": "qmd-fast _site.yml",
+  "type": "object"
+}

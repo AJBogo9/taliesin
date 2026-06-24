@@ -16,7 +16,7 @@ use crate::render::Warning;
 /// now warns instead of being silently ignored. Top-level keys plus the immediate
 /// children of `execute:` / `listing:` / `about:` / `hero:` are linted; `format:`
 /// sub-keys are not (an extension owns them).
-const KNOWN_KEYS: &[&str] = &[
+pub(crate) const KNOWN_KEYS: &[&str] = &[
     // Identity / metadata
     "title",
     "subtitle",
@@ -56,16 +56,17 @@ const KNOWN_KEYS: &[&str] = &[
 
 /// `execute:` sub-keys qmd-fast honors (document-level cell defaults; see
 /// `render::detect_execute_defaults`).
-const EXECUTE_KEYS: &[&str] = &["echo", "include", "cache"];
+pub(crate) const EXECUTE_KEYS: &[&str] = &["echo", "include", "cache"];
 
 /// `listing:` sub-keys qmd-fast honors (see `site::frontmatter::parse_listing_spec`).
-const LISTING_KEYS: &[&str] = &["contents", "id", "sort", "type", "max-items", "categories"];
+pub(crate) const LISTING_KEYS: &[&str] =
+    &["contents", "id", "sort", "type", "max-items", "categories"];
 
 /// `about:` sub-keys qmd-fast honors (see `site::frontmatter::parse_about`).
-const ABOUT_KEYS: &[&str] = &["template", "image", "image-alt", "links"];
+pub(crate) const ABOUT_KEYS: &[&str] = &["template", "image", "image-alt", "links"];
 
 /// `hero:` sub-keys qmd-fast honors (see `site::frontmatter::parse_hero`).
-const HERO_KEYS: &[&str] = &["eyebrow", "headline", "lead", "actions"];
+pub(crate) const HERO_KEYS: &[&str] = &["eyebrow", "headline", "lead", "actions"];
 
 /// Validate a document's front matter against qmd-fast's vocabulary: every unknown
 /// top-level key, plus every unknown immediate child of the nested `execute:`,
