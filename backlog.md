@@ -155,8 +155,13 @@ Chromium-only). Not worth now: deeper i18n/RTL (English solo author).
 >   `js-reactive-graph` (transitive downstream scheduler in `qmd-js.js` — name→consumers map +
 >   topo-sort + cycle diagnosis; fixes derived-`//| name` chains; define-landing left as full
 >   rebuild). Specs under `docs/superpowers/specs/`.
-> - **Wave 4 (close the loop) — NEXT:** `reverse-sync-coverage-audit` → `vscode-editor-companion`
->   Phase 1 (coordinate with #1d).
+> - **Wave 4 (close the loop) — IN PROGRESS:** `reverse-sync-coverage-audit` **DONE**
+>   (branch `feat/reverse-sync-coverage-audit`, 2026-06-24): audit found the sourcepos
+>   emission already reverse-sync-total (0 offenders); locked in by a corpus test
+>   `reverse_sync_sourcepos_is_total` + an `output_block` assertion + a seam comment;
+>   `highlightAtLine` browser-verified across block types + deck jump. NEXT:
+>   `vscode-editor-companion` Phase 1 (host + cursor loop; LARGE — a VS Code extension;
+>   coordinate with #1d's LAN token).
 > - **Wave 5 / later:** `print-pdf-track`, `docs-as-spec`, `{glsl}` registry, `build-seo`.
 > Priorities #1d/#4/#5/#6/#7 below are integrated into the waves (not duplicated).
 >

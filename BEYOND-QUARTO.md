@@ -132,16 +132,19 @@ already waits for.
   Split-screen against the same edit in Quarto (full reload destroys all of it). Build
   after the benchmark so it cites real numbers. *Invariant: edits in the editor pane;
   preview shown as the read-only view it is, demonstrates single-editing-surface.*
-- [ ] **`reverse-sync-coverage-audit` (high / small / none, strengthens invariants).**
-  Make source-mapping total in BOTH directions. Forward `locatable()` accepts any
-  `[data-block-id]`; reverse `highlightAtLine` needs a strict
-  `^(\d+):\d+-(\d+):\d+$` sourcepos, so any block with a degenerate sourcepos is
-  invisible to cursor sync. Audit + fix cell outputs, math, figures, title block,
-  footnotes, includes. Add a corpus test asserting *non-empty* sourcepos matches the
-  regex (NOT "every block", the References/footnotes blocks at `corpus.rs:94/252` are
-  legitimately empty and stay exempt). *Invariant: strengthens the corpus-enforced
-  block-model contract; fixes live at the attr-injection seam, never in numbering/
-  figure/cite.*
+- [x] **`reverse-sync-coverage-audit` (high / small / none). DONE (2026-06-24, branch
+  `feat/reverse-sync-coverage-audit`).** Audited every `data-sourcepos` in every corpus
+  doc's rendered HTML against the reverse-sync regex `^(\d+):\d+-(\d+):\d+$` (cell outputs
+  via `exec.rs::output_block`, math, figures, title block, footnotes, includes): **ZERO
+  offenders** — the emission seam (`map_origin → "{open}:1-{close}:3"`) is already uniform,
+  so no fix was needed. Locked it in: a corpus test `reverse_sync_sourcepos_is_total`
+  (every non-empty sourcepos must match; generated empty-sourcepos blocks exempt), a
+  reverse-sync-valid assertion in the `output_block` unit test (covers the executed-cell
+  path the no-kernel corpus test can't reach), and a contract comment at the attr-injection
+  seam. Browser-verified the consumer (`highlightAtLine`) works ahead of the producer:
+  `qmd-cursor` highlights the right block for a heading, a paragraph, a block nested in a
+  callout, and jumps the deck to the cursor's slide. *Invariant held: corpus-enforced
+  block-model contract strengthened; no numbering/figure/cite change.*
 - [ ] **`vscode-editor-companion` (transformational / large / none).** Phase 1 only:
   host + cursor loop. A thin extension that launches `qmd-fast preview`, hosts it in a
   webview (the `inWebview` relay already exists), reveals source on `qmd-goto`, and
