@@ -12,11 +12,16 @@
     --qmd-font-head: ui-sans-serif, system-ui, sans-serif;
     --qmd-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
     --qmd-maxw: 46rem;
+    --qmd-scale: 1.2; /* modular type-scale ratio (minor third) for the heading sizes */
   }
   html { scroll-behavior: smooth; }
   body { max-width: var(--qmd-maxw); margin: 2rem auto; padding: 0 1rem;
          font: var(--qmd-font-body); color: var(--qmd-fg); background: var(--qmd-bg);
-         overflow-wrap: break-word; }
+         overflow-wrap: break-word;
+         font-feature-settings: "liga" 1, "calt" 1, "kern" 1;
+         -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  /* Tabular figures where columns/alignment matter (prose keeps proportional numerals). */
+  pre, code, table, .katex { font-variant-numeric: tabular-nums; }
   a { color: var(--qmd-link); }
   /* button-style links (Pandoc `[text](url){.btn .btn-outline-* .btn-sm}`) */
   a.btn { display: inline-block; font: 500 .9rem var(--qmd-font-head); text-decoration: none;
@@ -81,7 +86,17 @@
     border-radius: 12px; background: var(--qmd-code-bg); }
   .feature h3 { font-family: var(--qmd-font-head); margin: 0 0 .4rem; font-size: 1.12rem; }
   .feature p { margin: 0; color: var(--qmd-muted); font-size: .95rem; }
-  h1, h2, h3, h4 { font-family: var(--qmd-font-head); line-height: 1.25; }
+  /* Intentional modular heading scale (minor third) with optical line-heights +
+     vertical rhythm (more space before a heading than after, binding it to its section).
+     Replaces the browser-default sizes the headings used to fall back to. */
+  h1, h2, h3, h4, h5, h6 { font-family: var(--qmd-font-head); font-weight: 600; }
+  h1 { font-size: 2rem; line-height: 1.15; letter-spacing: -.011em; margin: 0 0 .6rem; }
+  h2 { font-size: 1.62rem; line-height: 1.2; letter-spacing: -.011em; margin: 2.2rem 0 .7rem; }
+  h3 { font-size: 1.35rem; line-height: 1.25; margin: 1.8rem 0 .55rem; }
+  h4 { font-size: 1.15rem; line-height: 1.3; margin: 1.5rem 0 .45rem; }
+  h5 { font-size: 1rem; line-height: 1.35; margin: 1.3rem 0 .4rem;
+       text-transform: uppercase; letter-spacing: .04em; color: var(--qmd-muted); }
+  h6 { font-size: .9rem; line-height: 1.35; margin: 1.2rem 0 .4rem; color: var(--qmd-muted); }
   .qmd-title-block { margin: 0 0 2rem; padding-bottom: 1rem; border-bottom: 1px solid var(--qmd-border); }
   .qmd-title-block .title { margin: 0 0 .3rem; font-size: 2.1rem; line-height: 1.15; }
   .qmd-title-block .subtitle { margin: .2rem 0; font-size: 1.15rem; color: var(--qmd-muted); font-weight: 400; }
@@ -319,6 +334,10 @@
   /* a display equation wider than the column scrolls horizontally inside its own
      box instead of overflowing the page (the #1 mobile breakage for math docs) */
   .katex-display { overflow-x: auto; overflow-y: hidden; padding: .3rem 0; }
+  /* Align inline math to the serif body x-height (KaTeX defaults to 1.21em, which reads
+     oversized); keep display math at its standalone presence. */
+  .katex { font-size: 1.06em; }
+  .katex-display > .katex { font-size: 1.18em; }
   /* toc layout: content beside a sticky table of contents on wide screens */
   body.has-toc { max-width: 72rem; display: grid; align-items: start; gap: 2.5rem;
                  grid-template-columns: minmax(0, 46rem) 14rem; justify-content: center; }
