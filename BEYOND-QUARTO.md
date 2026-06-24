@@ -154,8 +154,12 @@ already waits for.
   `qmd-goto`→`revealRange`, reverse cursor→debounced `qmd-cursor`→`highlightAtLine` (incl.
   deck-slide jump). Pure logic (`ports.ts` free-port+HTTP-wait, `paths.ts` sourcepos+source-
   file mapping) unit-tested with `node:test` (8 pass); `PreviewServer` spawn/readiness/kill +
-  `relayHtml` smoke-tested against the real binary. **The VS Code API wiring can't be
-  browser-verified headlessly → author runs the `editor/vscode/README.md` F5 checklist.**
+  `relayHtml` smoke-tested against the real binary. **Verification later extended (commit
+  `ac2087c`) so most is now headless:** the relay bridge is browser-driven (chrome MCP, both
+  directions) and a `@vscode/test-electron` suite runs in a real headless Extension Host
+  (command registered + *Open Preview* opens a webview panel; runner clears
+  `ELECTRON_RUN_AS_NODE` + `--no-sandbox`). Only the visual round-trip through the live
+  preview iframe is left for the author's F5 (`editor/vscode/README.md`).
   Plan: `docs/superpowers/plans/2026-06-24-vscode-editor-companion-phase1.md`. **Phase 2
   (capped, deferred): editor commands** (insert block / reorder slide) strictly as
   `.qmd`-buffer text transforms, never preview gestures. *Invariant held: preview stays

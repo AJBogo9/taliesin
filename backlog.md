@@ -164,9 +164,12 @@ Chromium-only). Not worth now: deeper i18n/RTL (English solo author).
 >   `qmd-fast preview`, webview host via `asExternalUri`, relay `qmd-goto`→reveal +
 >   cursor→`qmd-cursor`→`highlightAtLine`; localhost-only so #1d's LAN token isn't needed).
 >   Pure logic unit-tested (`node:test`, 8 pass); `PreviewServer`+`relayHtml` smoke-tested
->   against the real binary. **The VS Code API wiring can't be verified headlessly → run the
->   `editor/vscode/README.md` F5 checklist (open a corpus .qmd → Open Preview → cursor
->   highlights blocks; Alt-click jumps source; deck jumps slides).** Spec + plan under
+>   against the real binary. **Verification extended @ `ac2087c` so most is headless:** relay
+>   bridge browser-driven (chrome MCP, both directions); `npm run test:e2e`
+>   (`@vscode/test-electron`) runs in a real headless Extension Host — command registered +
+>   *Open Preview* opens a webview panel (2/2 pass; runner clears `ELECTRON_RUN_AS_NODE` +
+>   `--no-sandbox`; `.vscode-test/` gitignored). **Only the visual round-trip through the live
+>   preview iframe is left for author F5** (`editor/vscode/README.md`). Spec + plan under
 >   `docs/superpowers/`. **Phase 2 (editor commands) deferred. >> This completes Wave 4's
 >   built scope; Wave 5 / smaller backlog items are next.**
 > - **Wave 5 / later:** `print-pdf-track`, `docs-as-spec`, `{glsl}` registry, `build-seo`.
