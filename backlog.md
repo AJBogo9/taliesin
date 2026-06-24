@@ -222,11 +222,17 @@ the open items follow.
   mount, print the `build <path> --out <out>/<at>` command); auto-build into `<out>/<at>/`
   later. Also fix `docs/internals/sites.qmd` "## Mounts", which still claims the build
   mirrors mounts.
-- [ ] **P3c: single-doc `build --out` drops `{js}` cell local imports (medium).**
-  `copy_local_assets` (`main.rs:264`) only scans `src=`/`href=` HTML attributes, so a `{js}`
-  cell's `import(...)`/`from "./helper.js"` is invisible and the standalone interactive post
-  404s. Warn, then scan `{js}` cell source for relative imports (recursively). The corpus
-  hits this: posts `import("./em-helpers.js")` / `import("./three-scene…")`.
+- [x] **P3c: single-doc `build --out` drops `{js}` cell local imports (medium). DONE
+  (2026-06-24, branch `feat/js-import-bundling`).** `copy_local_assets` now also scans
+  `<script type="application/qmd-js">` cell bodies for relative specifiers (`./`/`../`,
+  covering `import()`/`from`/`fetch`), resolves them against the doc base, copies to the
+  same relative path, and recurses through copied `.js`/`.mjs` (each spec relative to its
+  own dir; deduped; tree-escapes warn; remote `https://`/bare specifiers ignored). New
+  helpers `qmd_js_cell_sources`/`relative_specifiers`/`normalize_rel`/`copy_js_imports`.
+  Unit-tested (`copy_local_assets_bundles_js_cell_imports_recursively`) + verified by a real
+  `build corpus/posts/em-algorithm/index.qmd --out` (its `./em-helpers.js` now lands next to
+  `index.html`). Note: pca-geometry's `import("https://esm.sh/three…")` is remote, correctly
+  not bundled. Zero new deps.
 - [ ] **Docs: no "Project structure & reserved names" reference (medium).** Add an
   annotated-tree section (`configuration.qmd`) covering the `_`/`.`-skip rule, `_freeze/`,
   and `_includes/`, plus a "how a deck gets built" note (chaptered vs embedded vs
