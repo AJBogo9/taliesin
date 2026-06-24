@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Rust edition 2024, resolver 3.
-- `serde_json` is added ONLY as a `[dev-dependencies]` entry of `qmd-fast-core`. The shipped binary must gain NO new runtime dependency: the generator is `#[cfg(test)]`, and `qmd-fast schema` emits the bundled static strings, never generating JSON at runtime. (`cargo tree -p qmd-fast-server | grep serde_json` must stay empty.)
+- `serde_json` is added ONLY as a `[dev-dependencies]` entry of `qmd-fast-core`. The shipped binary must gain NO new runtime dependency from this work: the generator is `#[cfg(test)]`, and `qmd-fast schema` emits the bundled static strings (`include_str!` consts), never generating JSON at runtime. The binding form of this invariant is "this work introduces no new runtime dependency", and that holds: Task 1 confines `serde_json` to core's `[dev-dependencies]`, and Task 2's `cmd_schema` only prints the bundled `&str` consts. NOTE (verified 2026-06-24): the literal check `cargo tree -p qmd-fast-server -e no-dev | grep serde_json` is NOT, and never was, empty in this repo, and that is unrelated to this work: at the base commit `a455a52` the server already declared `serde_json = "1.0.150"` as a direct runtime dependency, and `serde_json` also reaches the server's no-dev tree transitively via `axum`, `jupyter-protocol` / `jupyter-zmq-client`, and `syntect` (pulled by `comrak`). So that grep-empty wording is unattainable by construction and is NOT a gate for this work; use the dev-only-confinement check below instead.
 - No em dashes or en dashes in any authored prose, comment, doc, or commit message. Use commas, colons, parentheses, or restructured sentences.
 - CI enforces `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo test --workspace`. Each task ends green on all three.
 - INVARIANT SAFETY: purely additive. No change to the render pipeline, the block model (`data-block-id` / `data-sourcepos` / `data-source-file`), the diff, the `:::` machine, cite/includes/numbering/exec/freeze, or the validator's behavior. The schema only DESCRIBES what the validator already enforces.
@@ -289,8 +289,9 @@ Expected: all three tests PASS (the committed files now equal the generator outp
 
 - [ ] **Step 9: Confirm no runtime dependency leaked + full gate**
 
-Run: `cargo tree -p qmd-fast-server -e no-dev 2>/dev/null | grep serde_json && echo "LEAKED INTO RUNTIME" || echo "serde_json stays dev-only"`
+Run (the binding check: this work added a `serde_json` edge to `qmd-fast-core`; confirm that edge is dev-only, i.e. core declares `serde_json` only under `[dev-dependencies]`, never under `[dependencies]`): `cargo metadata --format-version 1 --no-deps 2>/dev/null | grep -o '"name":"serde_json"[^}]*"kind":"[a-z]*"' | grep -q '"kind":"normal"' && echo "LEAKED INTO RUNTIME" || echo "serde_json stays dev-only"`
 Expected: `serde_json stays dev-only`.
+(Do NOT use `cargo tree -p qmd-fast-server -e no-dev | grep serde_json` or `cargo tree -p qmd-fast-core -e no-dev | grep serde_json` as the guard: BOTH trees already contain `serde_json` independently of this work. In the server tree it arrives via the server's own direct `serde_json` dep plus `axum` / `jupyter-protocol` and `syntect`-through-`comrak`; in the core no-dev tree it arrives purely via `syntect`-through-`comrak`. So grepping either no-dev tree is unattainable-by-construction and is not a meaningful test of this change. What this work must not do, and does not do, is add `serde_json` to a crate's `[dependencies]`; the `cargo metadata` check above tests exactly that.)
 Then: `cargo test -p qmd-fast-core 2>&1 | grep -E 'test result:' | grep -vE '0 failed' && echo FAILURES || echo "core green"`
 Then: `cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings`
 Expected: `core green`, fmt clean, clippy clean.
