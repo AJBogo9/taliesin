@@ -141,6 +141,16 @@ pub(crate) fn closest(key: &str, candidates: &[&'static str]) -> Option<&'static
         .map(|(_, k)| k)
 }
 
+/// Build an "unknown <what> `<key>`" message, appending "(did you mean `X`?)" when a
+/// known candidate is within edit distance 2. The single message format shared by the
+/// front-matter, cell-option, callout, and nested-config validators.
+pub(crate) fn unknown_key_message(what: &str, key: &str, candidates: &[&'static str]) -> String {
+    match closest(key, candidates) {
+        Some(s) => format!("unknown {what} `{key}` (did you mean `{s}`?)"),
+        None => format!("unknown {what} `{key}`"),
+    }
+}
+
 /// Plain Levenshtein edit distance (two-row DP).
 fn levenshtein(a: &str, b: &str) -> usize {
     let a: Vec<char> = a.chars().collect();

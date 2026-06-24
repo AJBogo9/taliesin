@@ -48,6 +48,7 @@ mod extension;
 pub use extension::embed_targets;
 use extension::{resolve_format_extension, resolve_named_extensions};
 mod divs;
+mod validate;
 pub(crate) use divs::parse_attrs;
 use divs::{group_divs, parse_pandoc_attrs, preprocess, scan_div_spans};
 mod emit;
@@ -299,6 +300,18 @@ fn render_internal_impl(
                 }
                 _ => None,
             };
+            // Validate this code cell's `#|` options against qmd-fast's vocabulary
+            // (a typo or a Quarto-only key becomes a located, click-to-source warning;
+            // the cell still renders unchanged).
+            if cell.is_some()
+                && let NodeValue::CodeBlock(cb) = &data.value
+            {
+                warnings.extend(validate::validate_cell_options(
+                    &cb.literal,
+                    start_line,
+                    file.clone(),
+                ));
+            }
             (
                 sp.start.line,
                 sourcepos,
