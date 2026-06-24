@@ -217,6 +217,7 @@ pub(crate) fn group_divs(
     spans: &[DivSpan],
     origins: Option<&[LineOrigin]>,
     counts: &mut HashMap<String, u32>,
+    warnings: &mut Vec<Warning>,
 ) -> Vec<Block> {
     struct Open<'a> {
         span: &'a DivSpan,
@@ -256,7 +257,7 @@ pub(crate) fn group_divs(
         while let Some(top) = stack.last() {
             if top.span.close < next_start {
                 let done = stack.pop().unwrap();
-                let container = build_container(done.span, done.inner, origins, counts);
+                let container = build_container(done.span, done.inner, origins, counts, warnings);
                 push_block(&mut stack, &mut result, container);
             } else {
                 break;
@@ -265,7 +266,7 @@ pub(crate) fn group_divs(
     }
     // Close anything still open (e.g. unterminated div at EOF).
     while let Some(done) = stack.pop() {
-        let container = build_container(done.span, done.inner, origins, counts);
+        let container = build_container(done.span, done.inner, origins, counts, warnings);
         push_block(&mut stack, &mut result, container);
     }
     result
@@ -278,6 +279,7 @@ fn build_container(
     mut inner: Vec<Block>,
     origins: Option<&[LineOrigin]>,
     counts: &mut HashMap<String, u32>,
+    warnings: &mut Vec<Warning>,
 ) -> Block {
     let attrs = parse_attrs(&span.attrs);
     let id = make_id(&format!("div:{}", span.attrs), counts);
@@ -289,6 +291,11 @@ fn build_container(
     let concat = |inner: &[Block]| -> String { inner.iter().map(|b| b.html.as_str()).collect() };
 
     let html = if let Some(kind) = attrs.callout_kind() {
+        // Validate the kind against qmd-fast's callout vocabulary (an unknown kind
+        // warns, click-to-source, and still renders with its given class).
+        if let Some(w) = super::validate::validate_callout_kind(kind, open_line, file.clone()) {
+            warnings.push(w);
+        }
         // Callout: use a `title="..."` attr, else a leading heading, else the kind.
         let title = match attrs.get("title") {
             Some(t) => html_escape(t),

@@ -94,10 +94,7 @@ mod tests {
     #[test]
     fn enumerates_only_the_leading_option_block() {
         let lit = "#| echo: false\n#| labl: x\nprint(1)\n#| late: y\n";
-        let keys: Vec<_> = cell_option_keys(lit)
-            .into_iter()
-            .map(|(k, i)| (k, i))
-            .collect();
+        let keys: Vec<_> = cell_option_keys(lit).into_iter().collect();
         assert_eq!(keys, vec![("echo".to_string(), 0), ("labl".to_string(), 1)]);
     }
 

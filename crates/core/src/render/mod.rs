@@ -530,7 +530,7 @@ fn render_internal_impl(
         });
     }
 
-    let mut blocks = group_divs(flat, &spans, origins, &mut id_counts);
+    let mut blocks = group_divs(flat, &spans, origins, &mut id_counts, &mut warnings);
     // Pandoc table captions (`: caption {#tbl-x}` after a table) are numbered and
     // folded into the table's `<caption>`; registers `tbl-x` for `@tbl-` refs.
     apply_table_captions(&mut blocks, &mut xref_registry, &mut warnings);
