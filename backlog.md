@@ -145,35 +145,39 @@ Chromium-only). Not worth now: deeper i18n/RTL (English solo author).
 >   per the author's feature-first policy (2026-06-24), the recorded showcase clip + the whole
 >   "Marketing site" section below wait until the framework is feature-complete. **>> RESUME HERE:
 >   Wave 3 (craft + breadth)** below, the next FEATURE work.
-> - **Wave 3 (craft + breadth),** parallel and corpus-pinned: `typography-craft-pass` (= #6)
->   · `callout-kind-contract` · `panel-tabset-margin` · `image-lightbox`
->   · `narrated-code-walkthrough` · `js-reactive-graph`.
+> - **Wave 3 (craft + breadth),** parallel and corpus-pinned: `narrated-code-walkthrough`
+>   **DONE (2026-06-24, branch `feat/code-walkthrough`):** `::: {.code-walkthrough}` sticky
+>   code panel + scroll-driven line-range focus (two `build_container` arms, one
+>   IntersectionObserver enhancer in `assets/js/walkthrough.js`, `base.css` grid→mobile
+>   sticky-top), pinned by `corpus/narrate/walkthrough.qmd` + render/validate tests,
+>   browser-verified. Remaining: `typography-craft-pass` (= #6) · `callout-kind-contract`
+>   · `panel-tabset-margin` · `image-lightbox` · `js-reactive-graph`.
 > - **Wave 4 (close the loop):** `reverse-sync-coverage-audit` → `vscode-editor-companion`
 >   Phase 1 (coordinate with #1d).
 > - **Wave 5 / later:** `print-pdf-track`, `docs-as-spec`, `{glsl}` registry, `build-seo`.
 > Priorities #1d/#4/#5/#6/#7 below are integrated into the waves (not duplicated).
 >
 > **>> To resume next session:** `main` (version 0.1.0) has Wave 0, ALL of Wave 1, and the Wave 2
-> `live-edit-benchmark-harness` merged (run `git log --oneline -10` for HEAD; nothing pushed to any
-> remote). A fresh session can resume from this note + `BEYOND-QUARTO.md` + the auto-loaded memory
-> alone; the 5 plans under `docs/superpowers/plans/` are the working template.
+> `live-edit-benchmark-harness` merged; the **first Wave 3 feature `narrated-code-walkthrough` is
+> DONE** on branch `feat/code-walkthrough` (run `git log --oneline -10` for HEAD; nothing pushed to
+> any remote). A fresh session can resume from this note + `BEYOND-QUARTO.md` + the auto-loaded
+> memory alone; the spec under `docs/superpowers/specs/` + the 5 plans under `docs/superpowers/plans/`
+> are the working template.
 > **AUTHOR POLICY (2026-06-24): feature-first.** Finish ALL framework features before any
 > marketing-site work; `live-edit-hero-demo` (a recorded showcase clip) + the "Marketing site"
 > section are DEFERRED until the framework is feature-complete (see the feature-first memory). Next
-> concrete step = a **Wave 3 feature** (`BEYOND-QUARTO.md` Pillar III/IV, all corpus-pinned,
-> read-only-additive): `typography-craft-pass` (= #6, CSS type craft) · `callout-kind-contract`
-> (closed callout enum + bundled SVG icons + `--qmd-callout-*` tokens + `appearance`, shares the
-> `CALLOUT_KINDS` enum from Wave 1) · `panel-tabset-margin` (`.panel-tabset` + `.column-margin`/
-> `.aside`) · `image-lightbox` (click-to-zoom) · `narrated-code-walkthrough` (`::: {.code-walkthrough}`
-> sticky code + scroll-driven line highlight) · `js-reactive-graph` (gated on a corpus reactive doc
-> FIRST; design-risky, keep it ~80 lines client JS). Pick one with the author. Working method
-> (Waves 0-2): branch per wave,
-> brainstorm if forks exist, write a complete-code plan under `docs/superpowers/plans/`, execute
-> subagent-driven via a Workflow (implementer + two adversarial reviewers per task + a final
-> whole-branch review), then fast-forward merge locally. CAVEAT learned this wave: instruct review
-> subagents to use ONLY read-only git (`git diff a..b`, never `git checkout`) since they share the
-> working tree (a reviewer's `git checkout` moved HEAD mid-run and stalled a task). The five
-> completed plans under `docs/superpowers/plans/` are the template.
+> concrete step = the NEXT **Wave 3 feature** (`BEYOND-QUARTO.md` Pillar III/IV/V, all corpus-pinned,
+> read-only-additive), pick one with the author: `typography-craft-pass` (= #6, CSS type craft) ·
+> `callout-kind-contract` (closed callout enum + bundled SVG icons + `--qmd-callout-*` tokens +
+> `appearance`, shares the `CALLOUT_KINDS` enum from Wave 1) · `panel-tabset-margin` (`.panel-tabset`
+> + `.column-margin`/`.aside`) · `image-lightbox` (click-to-zoom) · `js-reactive-graph` (gated on a
+> corpus reactive doc FIRST; design-risky, keep it ~80 lines client JS).
+> Working method: branch per feature, brainstorm if forks exist, write a spec under
+> `docs/superpowers/specs/` (and a complete-code plan under `docs/superpowers/plans/` for larger
+> work), implement TDD (or subagent-driven via a Workflow for big items), browser-verify, then
+> fast-forward merge locally. CAVEAT (Wave 2): instruct any review subagents to use ONLY read-only
+> git (`git diff a..b`, never `git checkout`) since they share the working tree (a reviewer's
+> `git checkout` moved HEAD mid-run and stalled a task).
 
 ## Open / next
 

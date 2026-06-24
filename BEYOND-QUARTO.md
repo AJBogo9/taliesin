@@ -168,14 +168,23 @@ cannot reach, while resisting the reactive-VM trap.
   pinning the ~6 chains BEFORE writing the scheduler.** *Invariant: reads
   `data-name/viewof/inputs` only, never `data-block-id`; confined to `qmd-js.js`;
   re-derives the graph after an incremental swap.*
-- [ ] **`narrated-code-walkthrough` (high / med / none).** One `::: {.code-walkthrough}`
-  div: a sticky code panel + numbered prose steps; scrolling drives line-range
-  highlighting (reusing the existing `qhl-ln` spans + magic-move line matching). A new
-  arm in `build_container` alongside callouts/columns/magic-move (the *supported*
-  extension path, NOT a scanner rewrite) + one IntersectionObserver enhancer. Unifies
-  Quarto's split code-annotation + magic-move, neither tool does this. **Pin:
-  `corpus/narrate/walkthrough.qmd`.** Strong hero-demo content for #7. *Invariant: inner
-  blocks keep ids/sourcepos via `group_divs`; enhancer is read-only/scroll-only.*
+- [x] **`narrated-code-walkthrough` (high / med / none). DONE (2026-06-24, branch
+  `feat/code-walkthrough`).** One `::: {.code-walkthrough}` div: a sticky code panel +
+  prose `.step` divs (`lines="3-5"`); scrolling drives line-range focus (reuses the
+  `.qhl-ln` spans + the deck's `.qhl-ln-hl`/`.qhl-lines-active` CSS class contract). Two
+  new `build_container` arms (`divs.rs`): `.code-walkthrough` splits the first code block
+  (the panel, `wrap_pre_lines`'d) from the steps column; `.step` carries `lines=` as
+  `data-cw-lines` (the generic arm would drop it). One idempotent IntersectionObserver
+  enhancer (`assets/js/walkthrough.js`, bundled in `code_scripts()`) focuses the step
+  nearest viewport-centre; `deck.js` untouched (not loaded on pages), so the ~8-line
+  line-spec parse lives in the enhancer. Grid prose-left/code-right, collapsing to a
+  sticky-top single column on mobile (`base.css`). Located warning when a walkthrough has
+  no code block (`validate.rs`). **Pinned: `corpus/narrate/walkthrough.qmd`** + a
+  `render/tests.rs` emitted-contract test + a `validate.rs` warning test;
+  browser-verified desktop + 390px (focus tracks scroll across all 4 steps, 0 console
+  errors). Strong hero-demo content for #7. *Invariant held: inner blocks keep ids/
+  sourcepos via `group_divs`; enhancer is read-only/scroll-only; `:::` scanner, cite,
+  includes, numbering, exec, deck engine all untouched.*
 - [ ] **`cell-language-registry` (high / med / low).** Ship the registry refactor +
   `{glsl}` only. Generalize the hardcoded `lang=="js"` gate (`mod.rs:1763`) into a
   registry of client-side cell languages over the existing `qmdEnhancers` seam, each
