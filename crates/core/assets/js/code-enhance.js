@@ -162,7 +162,7 @@ function qmdInitLightbox() {
 
   var style = document.createElement('style');
   style.textContent =
-    'figure img,pre.mermaid,.qmd-video video{cursor:zoom-in}' +
+    'figure img,img.lightbox,pre.mermaid,.qmd-video video{cursor:zoom-in}' +
     '#qmd-lightbox{position:fixed;inset:0;z-index:2147483000;display:none;flex-direction:column;' +
     'align-items:center;justify-content:center;gap:.9rem;padding:2rem;box-sizing:border-box;' +
     'background:rgba(10,12,16,.9);cursor:zoom-out;opacity:0;transition:opacity .15s ease}' +
@@ -194,6 +194,7 @@ function qmdInitLightbox() {
   var lbVideo = box.querySelector('.qmd-lb-video');
   var lbSvg = box.querySelector('.qmd-lb-svg');
   var lbCap = box.querySelector('.qmd-lb-cap');
+  var gallery = [], gIdx = -1; // the page's zoomable images, for ←/→ navigation
 
   function hideAll() {
     lbImg.style.display = 'none'; lbImg.removeAttribute('src');
@@ -202,16 +203,29 @@ function qmdInitLightbox() {
     lbVideo.removeAttribute('src');
     lbSvg.style.display = 'none'; lbSvg.innerHTML = '';
   }
-  function openImg(srcImg) {
+  // Show gallery[i] (wrapping) with its caption + an (n / N) counter for multi-image sets.
+  function showImageAt(i) {
+    if (!gallery.length) return;
+    gIdx = (i + gallery.length) % gallery.length;
+    var img = gallery[gIdx];
     hideAll();
     lbImg.style.display = '';
-    lbImg.src = srcImg.currentSrc || srcImg.src;
-    lbImg.alt = srcImg.alt || '';
-    var fig = srcImg.closest('figure');
+    lbImg.src = img.currentSrc || img.src;
+    lbImg.alt = img.alt || '';
+    var fig = img.closest('figure');
     var fc = fig && fig.querySelector('figcaption');
-    lbCap.textContent = fc ? fc.textContent : (srcImg.alt || '');
+    var cap = fc ? fc.textContent : (img.alt || '');
+    if (gallery.length > 1) cap = (cap ? cap + '  ' : '') + '(' + (gIdx + 1) + ' / ' + gallery.length + ')';
+    lbCap.textContent = cap;
     box.classList.add('open');
     document.documentElement.style.overflow = 'hidden'; // lock scroll behind the lightbox
+  }
+  // Open the clicked image, building the page's gallery so ←/→ can step between images.
+  function openImg(srcImg) {
+    gallery = [].slice.call(document.querySelectorAll('figure img, img.lightbox'));
+    var i = gallery.indexOf(srcImg);
+    if (i < 0) { gallery = [srcImg]; i = 0; }
+    showImageAt(i);
   }
   function openMermaid(pre) {
     var svg = pre.querySelector('svg');
@@ -246,6 +260,7 @@ function qmdInitLightbox() {
     box.classList.remove('open');
     document.documentElement.style.overflow = ''; // restore page scroll
     hideAll();
+    gallery = []; gIdx = -1;
   }
 
   var unmodified = function (e) {
@@ -253,9 +268,9 @@ function qmdInitLightbox() {
   };
   document.addEventListener('click', function (e) {
     if (!e.target.closest) return;
-    var vid;
-    if (e.target.closest('figure img') && unmodified(e)) {
-      e.preventDefault(); e.stopPropagation(); openImg(e.target);
+    var img = e.target.closest('figure img, img.lightbox'), vid;
+    if (img && unmodified(e)) {
+      e.preventDefault(); e.stopPropagation(); openImg(img);
     } else if ((vid = e.target.closest('.qmd-video video')) && unmodified(e)) {
       e.preventDefault(); e.stopPropagation(); openVideo(vid);
     } else {
@@ -267,7 +282,7 @@ function qmdInitLightbox() {
   }, true);
   // Keep a double-click on a figure/diagram/video from reaching click-to-source.
   document.addEventListener('dblclick', function (e) {
-    if (e.target.closest && e.target.closest('figure img, pre.mermaid, .qmd-video video')) {
+    if (e.target.closest && e.target.closest('figure img, img.lightbox, pre.mermaid, .qmd-video video')) {
       e.preventDefault(); e.stopPropagation();
     }
   }, true);
@@ -275,7 +290,13 @@ function qmdInitLightbox() {
     if (e.target !== lbImg && e.target !== lbVideo && !lbSvg.contains(e.target)) close();
   });
   document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && box.classList.contains('open')) close();
+    if (!box.classList.contains('open')) return;
+    if (e.key === 'Escape') { close(); return; }
+    // ←/→ step the image gallery (only while an image, not a video/diagram, is shown).
+    if (gallery.length > 1 && lbImg.style.display !== 'none') {
+      if (e.key === 'ArrowRight') { e.preventDefault(); showImageAt(gIdx + 1); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); showImageAt(gIdx - 1); }
+    }
   });
 }
 

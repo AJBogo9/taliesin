@@ -17,16 +17,20 @@ Re-shipping zoom would be redundant. The valuable increment is **gallery navigat
    (wrapping), swapping the lightbox `<img>` + caption in place; Esc still closes. When the
    gallery has >1 image, append a `(n / N)` counter to the caption. Mermaid/video stay
    single-open (galleries are images only); arrows are ignored unless an image is shown.
-2. **`.lightbox` opt-in (truthfulness).** Extend the click target + zoom-in cursor +
-   dblclick guard to also match `img.lightbox`, so a non-figure image can opt in (figures
-   keep working unchanged).
+2. **`img.lightbox` selector (forward-compat).** The click target + zoom-in cursor +
+   dblclick guard also match `img.lightbox`. NOTE (verified empirically): a *bare*
+   `![](x){.lightbox}` does NOT currently carry the class — the lone-decorative-image path
+   emits `<img>` and leaks the `{.lightbox}` text. Making bare images opt in needs a
+   server-side change to apply attr classes to a captionless image; no corpus doc needs it,
+   so it's **deferred**. Captioned/labeled images are already `<figure>`s (already zoom).
+   The selector is kept as harmless forward-compat for when that server change lands.
 
 ## Pin + verify
 
 - `corpus/media/gallery.qmd` — a `::: {layout-ncol=3}` grid of 3 labeled `@fig-` figures
-  + one `{.lightbox}` image; README row.
-- Verify in-browser: clicking a figure opens the lightbox; ←/→ steps through all images
-  with the counter; Esc closes; an `img.lightbox` opens too.
+  (self-contained images under `corpus/media/`); README row.
+- Verify in-browser: clicking a figure opens the lightbox; ←/→ steps through all three
+  with the `(n / N)` counter; Esc closes.
 
 ## Invariants
 

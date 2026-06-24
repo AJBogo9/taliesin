@@ -1,0 +1,17 @@
+---
+title: "An image gallery"
+---
+
+Every figure is click-to-zoom, and a multi-image page becomes a navigable gallery:
+open one and step through the rest with the ← / → arrow keys.
+
+::: {layout-ncol=3}
+![No pooling.](fit-b.png){#fig-no-pooling}
+
+![Complete pooling.](fit-c.png){#fig-complete-pooling}
+
+![Hierarchical (partial pooling).](fit-a.png){#fig-hierarchical}
+:::
+
+The three fits above (@fig-no-pooling, @fig-complete-pooling, and @fig-hierarchical)
+zoom into one gallery: click any one, then step through the others with ← / →.
