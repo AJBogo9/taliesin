@@ -32,9 +32,15 @@
 
 ---
 
-### Task 1: Corpus hygiene — purge non-qmd-fast keys (no-op edits, output unchanged)
+### Task 1: Corpus hygiene, purge non-qmd-fast keys (visible HTML unchanged; block-id/sourcepos shift as expected)
 
-This lands FIRST so the validators in Tasks 2-4 hit an already-clean corpus and the regression net stays green. Every key removed here is **unread by qmd-fast** (verified: `fig-width`/`fig-height`/`message`/`warning` are never honored; `title-block-banner`/`site-url`/`sort-ui`/`filter-ui`/`feed`/`fields` are never read by the listing/front-matter parsers), and cell-option lines are stripped by `strip_cell_options` before emission regardless, so removing them produces byte-identical rendered HTML.
+This lands FIRST so the validators in Tasks 2-4 hit an already-clean corpus and the regression net stays green. Every key removed here is **unread by qmd-fast** (verified: `fig-width`/`fig-height`/`message`/`warning` are never honored; `title-block-banner`/`site-url`/`sort-ui`/`filter-ui`/`feed`/`fields` are never read by the listing/front-matter parsers), and cell-option lines are stripped by `strip_cell_options` before emission regardless, so the **visible HTML is unchanged**.
+
+Note the precise no-op claim: the rendered output is NOT byte-identical, and the verification gate (Step 6) must not assert that it is. Two block-model attributes shift deterministically because deleting source lines changes the raw source:
+- `data-sourcepos` shifts on every block after a deletion (line ranges reflect raw source positions; e.g. `_data-description.qmd` `91:1-116:3` becomes `91:1-114:3`).
+- `data-block-id` changes for the in-fence cell-option deletions (`message`/`fig-width`/`fig-height`), because the block id is hashed over the raw fence literal, and those `#|` lines live inside the literal (e.g. `b-084e643bd521` becomes `b-5af04b871581`). Front-matter and top-level/listing key removals do not change any block id (those lines are not inside a block's hashed content), they only shift downstream sourcepos.
+
+This is expected and safe: the block model stays self-consistent and all corpus block-invariant tests stay green. The deliverable is "visible HTML unchanged", proven by diffing the render with `data-block-id`/`data-sourcepos` stripped, plus a green `cargo test -p qmd-fast-core`.
 
 **Files:** see the per-edit list below (all under `corpus/`).
 
@@ -108,15 +114,19 @@ Keep `contents`, `id`, `sort`, `type`, `max-items`, `categories`. Confirm:
 grep -rnE '^\s*(sort-ui|filter-ui|feed|fields)\s*:' corpus --include='*.qmd' || echo "no non-recognized listing keys remain"
 ```
 
-- [ ] **Step 6: Verify output is unchanged and the corpus still renders**
+- [ ] **Step 6: Verify the VISIBLE HTML is unchanged and the corpus still renders**
+
+A raw `diff` of the before/after render WILL differ (by design): `data-sourcepos` shifts and the in-fence cell-option deletions change `data-block-id` (see the note at the top of Task 1). So the gate diffs the render with those two volatile attributes stripped, and confirms the corpus tests stay green:
 
 ```bash
 cargo run -p qmd-fast-server -- render corpus/bayesian-book/subsections/_data-description.qmd > /tmp/qmd_after_datadesc.html 2>/dev/null
-diff /tmp/qmd_before_datadesc.html /tmp/qmd_after_datadesc.html && echo "OUTPUT IDENTICAL (edits are no-ops)" || echo "OUTPUT CHANGED — investigate"
+sed -E 's/ data-sourcepos="[^"]*"//g; s/ data-block-id="[^"]*"//g' /tmp/qmd_before_datadesc.html > /tmp/qmd_before_strip.html
+sed -E 's/ data-sourcepos="[^"]*"//g; s/ data-block-id="[^"]*"//g' /tmp/qmd_after_datadesc.html  > /tmp/qmd_after_strip.html
+diff /tmp/qmd_before_strip.html /tmp/qmd_after_strip.html && echo "VISIBLE HTML IDENTICAL (block-id/sourcepos shift as expected)" || echo "VISIBLE HTML CHANGED, investigate"
 cargo test -p qmd-fast-core 2>&1 | grep -E 'test result:' | grep -vE '0 failed' && echo FAILURES || echo "core green"
 ```
 
-Expected: `OUTPUT IDENTICAL` and `core green`.
+Expected: `VISIBLE HTML IDENTICAL` and `core green`. (The authoritative gate is `core green`: the corpus block-invariant tests assert the block model stays self-consistent after the deletions.)
 
 - [ ] **Step 7: Commit**
 
@@ -1068,6 +1078,6 @@ git commit -m "test(validate): pin corpus/diagnostics/typos.qmd + corpus-wide cl
 
 **Type consistency:** `Warning` (message/file/line, `new`/`at`) is the Wave 1 type, used identically across all tasks. `unknown_key_message(what, key, candidates) -> String` is defined in Task 2 and consumed by Tasks 2-4. `validate_cell_options` / `validate_callout_kind` signatures defined in Task 2 match their call sites in Tasks 2-3. `group_divs` / `build_container` gain `warnings: &mut Vec<Warning>` consistently (Task 3). `frontmatter::lint -> Vec<String>` is fully removed and replaced by `validate_front_matter -> Vec<Warning>`; every caller (3 server files + corpus test) is updated in Task 4. The nested sets (`EXECUTE_KEYS`/`LISTING_KEYS`/`ABOUT_KEYS`/`HERO_KEYS`) match the keys the live parsers read (`detect_execute_defaults`, `parse_listing_spec`, `parse_about`, `parse_hero`).
 
-**Scope check:** Five independently testable, independently committable tasks. Task 1 is a no-op corpus purge (verified output-identical). Tasks 2-4 each add one validation surface with TDD; the corpus stays green because Task 1 ran first. Task 5 pins the behavior. No block-model / diff / sourcepos / `:::`-output / cite / includes / numbering / exec change: every validator only appends a `Warning`. `Site::warnings` and `site::config::validate_keys` are untouched.
+**Scope check:** Five independently testable, independently committable tasks. Task 1 is a corpus purge whose VISIBLE HTML is unchanged (verified by stripped-attribute diff + green corpus tests); `data-block-id`/`data-sourcepos` shift deterministically where source lines are removed, which the block-invariant tests tolerate. Tasks 2-4 each add one validation surface with TDD; the corpus stays green because Task 1 ran first. Task 5 pins the behavior. No block-model / diff / sourcepos / `:::`-output / cite / includes / numbering / exec change: every validator only appends a `Warning`. `Site::warnings` and `site::config::validate_keys` are untouched.
 
 **Known follow-ups (out of scope, noted not silently dropped):** `jsonschema-for-config` (the next Wave 1 item) will generate a schema from these same consts. `callout-kind-contract` (Wave 3) will turn `CALLOUT_KINDS` into a render contract (icons/tokens, fall-back-to-note); this epic deliberately leaves rendering unchanged. `about:`/`hero:` deep-child validation (the keys inside `links:` / `actions:` items) is left for a later pass; only immediate children are validated here. The marketing `site/` and `docs/` trees are not in the corpus regression net; if they use purged Quarto keys they will now warn in preview (correct, per the clean-break directive) and can be cleaned on demand.
