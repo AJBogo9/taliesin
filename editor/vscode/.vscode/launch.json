@@ -1,0 +1,12 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run qmd-fast Companion",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}/editor/vscode"],
+      "outFiles": ["${workspaceFolder}/editor/vscode/out/**/*.js"]
+    }
+  ]
+}
