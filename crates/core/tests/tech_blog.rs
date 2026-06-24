@@ -139,10 +139,11 @@ fn callout_collapse_renders_as_details() {
         html.contains("callout-collapse"),
         "collapsible callout class missing"
     );
+    // <details>/<summary> structure with the title as the summary (a kind icon now
+    // precedes the title text inside the summary).
     assert!(
-        html.contains(
-            "<details><summary class=\"callout-title\">Notation used in this post</summary>"
-        ),
+        html.contains("<details><summary class=\"callout-title\">")
+            && html.contains("Notation used in this post</summary>"),
         "collapsible callout is not a <details>/<summary>"
     );
 }

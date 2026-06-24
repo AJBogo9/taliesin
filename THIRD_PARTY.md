@@ -17,9 +17,14 @@ Bundled so the tool works fully offline.
   Copyright 2020-2023 Observable, Inc.). The high-level chart library for `{js}`
   cells; depends on the vendored D3 above. License:
   <https://github.com/observablehq/plot/blob/main/LICENSE>.
+- **GitHub Octicons** (MIT, Copyright (c) GitHub, Inc.). A handful of inline SVG
+  glyph paths are embedded directly in source — the copy/check button in
+  `code-enhance.js` and the callout-kind icons in `crates/core/src/render/divs.rs`.
+  No Octicons package is bundled; only individual path data. License:
+  <https://github.com/primer/octicons/blob/main/LICENSE>.
 
 The other scripts under `crates/core/assets/js/` (`code-enhance.js`, `deck.js`,
-`mermaid.js`, `qmd-js.js`) are qmd-fast's own (MIT).
+`mermaid.js`, `qmd-js.js`, `walkthrough.js`, `tabset.js`) are qmd-fast's own (MIT).
 
 ## Loaded at runtime from a CDN (not redistributed here)
 

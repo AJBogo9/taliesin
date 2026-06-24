@@ -7,11 +7,8 @@
   }
   html[data-theme="dark"] .qmd-copy { background: #21242b; color: #c8ccd4; border-color: #3a3f4b; }
   html[data-theme="dark"] .qmd-copy:hover { color: #fff; border-color: #5a606b; }
-  html[data-theme="dark"] .callout-note .callout-title { background: #1b2330; }
-  html[data-theme="dark"] .callout-tip .callout-title { background: #15241c; }
-  html[data-theme="dark"] .callout-warning .callout-title { background: #2a2415; }
-  html[data-theme="dark"] .callout-important .callout-title { background: #2a1820; }
-  html[data-theme="dark"] .callout-caution .callout-title { background: #2a2015; }
+  /* Callout title tints are derived from --qmd-callout-* via color-mix with transparent,
+     so they adapt to the dark background automatically — no per-kind dark override needed. */
   html[data-theme="dark"] pre.mermaid { background: transparent; }
   /* server-side syntax-highlight scope classes (syntect), recoloured for dark */
   html[data-theme="dark"] .qhl-comment { color: #8b949e; }

@@ -3,6 +3,10 @@
     --qmd-bg: #ffffff; --qmd-fg: #1a1a1a; --qmd-muted: #555; --qmd-accent: #4c8dff;
     --qmd-link: #2563eb; --qmd-code-bg: #f5f5f5; --qmd-border: #e3e3e3;
     --qmd-edge-shadow: rgba(0, 0, 0, .16); --qmd-flash: rgba(76, 141, 255, .18);
+    /* Per-kind callout accents: the border + icon take these; the title-bar tint is
+       derived via color-mix, so light + dark work from one definition. */
+    --qmd-callout-note: #4c8dff; --qmd-callout-tip: #2bb673; --qmd-callout-warning: #e0a800;
+    --qmd-callout-important: #e0566b; --qmd-callout-caution: #e8730c;
     color-scheme: light;
     --qmd-font-body: 17px/1.7 ui-serif, Georgia, "Times New Roman", serif;
     --qmd-font-head: ui-sans-serif, system-ui, sans-serif;
@@ -154,14 +158,32 @@
   .callout { border: 1px solid #e0e0e0; border-left-width: 4px; border-radius: 5px;
              margin: 1rem 0; overflow: hidden; }
   .callout-title { font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 600;
-                   padding: .5rem .9rem; background: #f6f6f6; }
+                   padding: .5rem .9rem; display: flex; align-items: center; gap: .45rem; }
+  .callout-icon { flex: 0 0 auto; width: 1em; height: 1em; }
   .callout-body { padding: .3rem .9rem; }
   .callout-body > :first-child { margin-top: .4rem; }
-  .callout-note { border-left-color: #4c8dff; } .callout-note .callout-title { background: #eaf1ff; }
-  .callout-tip { border-left-color: #2bb673; } .callout-tip .callout-title { background: #e7f7ef; }
-  .callout-warning { border-left-color: #e0a800; } .callout-warning .callout-title { background: #fdf6e3; }
-  .callout-important { border-left-color: #e0566b; } .callout-important .callout-title { background: #fdecef; }
-  .callout-caution { border-left-color: #e8730c; } .callout-caution .callout-title { background: #fdefe3; }
+  /* Per-kind accent: border + icon take the token; the title tint is derived from it. */
+  .callout-note { border-left-color: var(--qmd-callout-note); }
+  .callout-tip { border-left-color: var(--qmd-callout-tip); }
+  .callout-warning { border-left-color: var(--qmd-callout-warning); }
+  .callout-important { border-left-color: var(--qmd-callout-important); }
+  .callout-caution { border-left-color: var(--qmd-callout-caution); }
+  .callout-note .callout-icon { color: var(--qmd-callout-note); }
+  .callout-tip .callout-icon { color: var(--qmd-callout-tip); }
+  .callout-warning .callout-icon { color: var(--qmd-callout-warning); }
+  .callout-important .callout-icon { color: var(--qmd-callout-important); }
+  .callout-caution .callout-icon { color: var(--qmd-callout-caution); }
+  .callout-note .callout-title { background: color-mix(in srgb, var(--qmd-callout-note) 12%, transparent); }
+  .callout-tip .callout-title { background: color-mix(in srgb, var(--qmd-callout-tip) 12%, transparent); }
+  .callout-warning .callout-title { background: color-mix(in srgb, var(--qmd-callout-warning) 13%, transparent); }
+  .callout-important .callout-title { background: color-mix(in srgb, var(--qmd-callout-important) 12%, transparent); }
+  .callout-caution .callout-title { background: color-mix(in srgb, var(--qmd-callout-caution) 12%, transparent); }
+  /* appearance="simple": no tinted title bar (border + icon carry the kind). */
+  .callout-simple > .callout-title, .callout-simple > details > summary.callout-title { background: transparent; }
+  /* appearance="minimal": drop the left accent too; muted icon. */
+  .callout-minimal { border-left-width: 1px; }
+  .callout-minimal > .callout-title, .callout-minimal > details > summary.callout-title { background: transparent; }
+  .callout-minimal .callout-icon { color: var(--qmd-muted); }
   .callout-collapse > details > summary.callout-title { cursor: pointer; }
   .callout-collapse > details[open] > summary.callout-title { margin-bottom: 0; }
   details.qmd-code-fold > summary { cursor: pointer; color: var(--qmd-muted);

@@ -114,8 +114,9 @@ fn callout_wraps_content_using_leading_heading_as_title() {
     assert_eq!(doc.blocks.len(), 1, "the callout is one container block");
     let h = &doc.blocks[0].html;
     assert!(h.contains("class=\"callout callout-note\""), "got: {h}");
+    // The title text is used as the callout title (the kind icon precedes it).
     assert!(
-        h.contains("<div class=\"callout-title\">My Note</div>"),
+        h.contains("class=\"callout-title\"") && h.contains(">My Note</div>"),
         "got: {h}"
     );
     assert!(!doc.body_html().contains(":::"));
@@ -142,6 +143,39 @@ fn callout_uses_explicit_title_and_default_title() {
         bare.blocks[0].html.contains(">Warning</div>"),
         "got: {}",
         bare.blocks[0].html
+    );
+}
+
+#[test]
+fn callout_emits_kind_icon_and_respects_icon_false() {
+    let tip = render_document("::: {.callout-tip}\nBody.\n:::\n");
+    assert!(
+        tip.blocks[0].html.contains("<svg class=\"callout-icon\""),
+        "tip should carry a bundled icon: {}",
+        tip.blocks[0].html
+    );
+    let none = render_document("::: {.callout-note icon=\"false\"}\nBody.\n:::\n");
+    assert!(
+        !none.blocks[0].html.contains("callout-icon"),
+        "icon=\"false\" suppresses the icon: {}",
+        none.blocks[0].html
+    );
+}
+
+#[test]
+fn callout_appearance_adds_modifier_class() {
+    let simple = render_document("::: {.callout-warning appearance=\"simple\"}\nBody.\n:::\n");
+    assert!(
+        simple.blocks[0].html.contains("callout-simple"),
+        "simple appearance adds a modifier class: {}",
+        simple.blocks[0].html
+    );
+    let def = render_document("::: {.callout-note}\nBody.\n:::\n");
+    assert!(
+        !def.blocks[0].html.contains("callout-simple")
+            && !def.blocks[0].html.contains("callout-minimal"),
+        "default appearance adds no modifier: {}",
+        def.blocks[0].html
     );
 }
 

@@ -1,0 +1,39 @@
+---
+title: "Callout kinds, icons, and appearances"
+---
+
+The five callout kinds each carry a bundled icon and a theme-aware accent.
+
+::: {.callout-note}
+A note. The default boxed appearance with a tinted title bar.
+:::
+
+::: {.callout-tip}
+A tip worth surfacing.
+:::
+
+::: {.callout-warning}
+A warning the reader should not miss.
+:::
+
+::: {.callout-important}
+Something important, with a title bar derived from the kind accent.
+:::
+
+::: {.callout-caution}
+Proceed with caution.
+:::
+
+The appearance and icon are configurable.
+
+::: {.callout-tip appearance="simple"}
+`appearance="simple"` drops the tinted title bar; the border and icon carry the kind.
+:::
+
+::: {.callout-warning appearance="minimal"}
+`appearance="minimal"` also drops the left accent for a quieter aside.
+:::
+
+::: {.callout-note icon="false"}
+`icon="false"` suppresses the icon entirely.
+:::
