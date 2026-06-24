@@ -32,7 +32,8 @@ The other scripts under `crates/core/assets/js/` (`code-enhance.js`, `deck.js`,
 The Rust crates in `Cargo.lock` (comrak, axum, tokio, syntect, etc.) are fetched
 by Cargo at build time under their own licenses (predominantly MIT, Apache-2.0,
 and ISC). They are not redistributed in this repository. `deny.toml` pins the
-allowed license set and CI runs `cargo deny check`.
+allowed license set; run `cargo deny check` to verify them (CI wiring is a
+deferred follow-up).
 
 ## Note on Quarto
 
