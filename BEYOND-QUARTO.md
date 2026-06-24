@@ -223,14 +223,18 @@ each pinned by an added corpus document so breadth never outruns the regression 
   triggered when a corpus doc goes image-heavy. **Pin: `corpus/media/gallery.qmd`.**
   *Invariant: image blocks keep ids/sourcepos; zoom never writes source; transcode
   cache (when built) is separate from `_freeze`.*
-- [ ] **`callout-kind-contract` (med / small / none).** Make `callout_kind` a closed
-  enum {note, tip, warning, important, caution} with bundled inline-SVG icons +
-  `--qmd-callout-*` tokens + `appearance` (default/simple/minimal) + `icon=false`. The
-  kind enum is defined ONCE and shared with `nested-schema-validation` (the validator
-  reads it; unknown kinds warn + fall back to note). Color/spacing craft folds into the
-  typography pass, not styled twice. Emission-only change in `build_container`'s callout
-  arm. **Pin: `corpus/callouts/kinds.qmd`.** *Invariant: the `:::` scanner contract
-  untouched; icons bundled offline.*
+- [x] **`callout-kind-contract` (med / small / none). DONE (2026-06-24, branch
+  `feat/callout-kind-contract`).** Emission-only contract on the already-closed kind enum
+  (Wave 1's `CALLOUT_KINDS`): a `callout_icon(kind)` helper (bundled inline GitHub
+  Octicons, MIT, `fill=currentColor`) keyed by the same vocabulary; the callout arm
+  prepends the icon and reads `icon="false"` (suppress) + `appearance="simple"|"minimal"`
+  (modifier class). `--qmd-callout-{kind}` accent tokens drive border + icon + a
+  color-mix-derived title tint, so **light and dark work from one definition** — the 5
+  hardcoded `dark.css` callout-title overrides were removed. `THIRD_PARTY.md` now
+  attributes the inline Octicon glyphs (also covers the pre-existing copy-button icons).
+  **Pinned: `corpus/callouts/kinds.qmd`** + unit tests; browser-verified light + dark.
+  Color/spacing fine-craft still folds into `typography-craft-pass`. *Invariant held: the
+  `:::` scanner contract + block model untouched; icons bundled offline.*
 - [ ] **`print-pdf-track` (med / large / low), DEFERRED to Wave 5 (decided
   2026-06-24).** Produce a print/PDF *derived from the built HTML*, HTML staying the
   single source of truth: a paged-media pass (print CSS `@page` rules + headless Chrome,

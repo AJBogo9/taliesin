@@ -152,8 +152,12 @@ Chromium-only). Not worth now: deeper i18n/RTL (English solo author).
 >   `build_container` arm + `assets/js/tabset.js` click/keyboard enhancer) + `.column-margin`/
 >   `.aside` margin rail (CSS-only, aliased onto the existing `.sidenote` mechanism), pinned
 >   by `corpus/layout/panels.qmd` (incl. an in-tab `@fig-` cross-ref) + render/validate tests,
->   browser-verified. Remaining: `typography-craft-pass` (= #6) · `callout-kind-contract`
->   · `image-lightbox` · `js-reactive-graph`.
+>   browser-verified. `callout-kind-contract` (branch `feat/callout-kind-contract`,
+>   2026-06-24): bundled Octicon icons + `appearance=`/`icon="false"` + `--qmd-callout-*`
+>   tokens (color-mix tints → light/dark from one def, dark.css overrides dropped), pinned
+>   by `corpus/callouts/kinds.qmd`. Remaining: `typography-craft-pass` (= #6) ·
+>   `image-lightbox` (mostly done — lightbox enhancer already covers figures/mermaid/video)
+>   · `js-reactive-graph`.
 > - **Wave 4 (close the loop):** `reverse-sync-coverage-audit` → `vscode-editor-companion`
 >   Phase 1 (coordinate with #1d).
 > - **Wave 5 / later:** `print-pdf-track`, `docs-as-spec`, `{glsl}` registry, `build-seo`.
