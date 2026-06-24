@@ -867,16 +867,13 @@ fn page_diagnostics(input: &Path, base: &Path, exec: &crate::exec::Executor) -> 
     let mut diags = Vec::new();
     if let Ok(src) = std::fs::read_to_string(input) {
         // Broken front matter: a located, framed error (same as the single-doc server).
+        // (Front-matter key warnings now arrive via `doc.warnings` from the render pass.)
         if let Some((message, line)) = qmd_fast_core::frontmatter::yaml_error(&src) {
             diags.push(
                 Diagnostic::error(message)
                     .at(None, line)
                     .with_frame(crate::serve::code_frame(&src, line)),
             );
-        } else {
-            for message in qmd_fast_core::frontmatter::lint(&src) {
-                diags.push(Diagnostic::warn(message));
-            }
         }
         for dep in qmd_fast_core::includes::dependencies(&src, base) {
             if !dep.exists() {

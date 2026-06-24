@@ -161,6 +161,10 @@ fn render_internal_impl(
     // Non-fatal render warnings (missing/broken extension, bibliography, theme),
     // collected through the whole render and surfaced in the dev menu / build log.
     let mut warnings: Vec<Warning> = Vec::new();
+    // Validate the document's front matter against qmd-fast's vocabulary (top-level
+    // keys + the nested execute/listing/about/hero children); located warnings flow to
+    // the dev panel as click-to-source diagnostics, the same channel as broken refs.
+    warnings.extend(crate::frontmatter::validate_front_matter(src));
     // Document-level cell defaults from a front-matter `execute:` block; a cell's
     // own `#| echo`/`#| include`/`#| cache` overrides these.
     let mut exec_echo = true;

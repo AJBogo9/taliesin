@@ -40,21 +40,25 @@ fn line_range(sourcepos: &str) -> (usize, usize) {
 
 #[test]
 fn every_corpus_doc_has_clean_front_matter() {
-    // The front-matter linter must not warn on any real document: a warning here
-    // means the KNOWN_KEYS allowlist is missing a key the corpus legitimately uses.
+    // qmd-fast's front-matter validator must not warn on any real document: a warning
+    // here means the allowlist is missing a key the corpus legitimately uses.
+    // corpus/diagnostics/ is exempt (it deliberately holds typo'd keys).
     let mut files = Vec::new();
     collect_qmd(&corpus_dir(), &mut files);
     let mut offenders = Vec::new();
     for f in &files {
+        if f.components().any(|c| c.as_os_str() == "diagnostics") {
+            continue;
+        }
         let src = fs::read_to_string(f).unwrap();
-        for w in qmd_fast_core::frontmatter::lint(&src) {
+        for w in qmd_fast_core::frontmatter::validate_front_matter(&src) {
             let label = f.strip_prefix(corpus_dir()).unwrap_or(f).display();
-            offenders.push(format!("{label}: {w}"));
+            offenders.push(format!("{label}: {}", w.message));
         }
     }
     assert!(
         offenders.is_empty(),
-        "front-matter lint warned on corpus docs:\n{}",
+        "front-matter validator warned on corpus docs:\n{}",
         offenders.join("\n")
     );
 }

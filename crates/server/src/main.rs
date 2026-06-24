@@ -178,9 +178,6 @@ fn build_page_executing(
     base: &Path,
     fallback: &str,
 ) -> std::io::Result<(String, Vec<PathBuf>)> {
-    for w in qmd_fast_core::frontmatter::lint(src) {
-        log::warn(&w);
-    }
     // An include that doesn't resolve leaves its `{{< include … >}}` directive
     // literal in the output; warn rather than ship it silently (the preview's
     // diagnostics already flag this, so build matches that behaviour).
@@ -372,9 +369,6 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
             log::warn(&format!("cannot read {}", page.input.display()));
             continue;
         };
-        for w in qmd_fast_core::frontmatter::lint(&src) {
-            log::warn(&format!("{}: {w}", page.rel));
-        }
         let base = page.input.parent().unwrap_or(root);
         let mut doc = qmd_fast_core::render_document_with_includes(&src, base);
         let mut exec = exec::Executor::with_freeze(freeze::page_path(&freeze_dir, &page.rel));

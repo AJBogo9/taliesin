@@ -756,18 +756,14 @@ fn compute_diagnostics(app: &AppState, executor: &crate::exec::Executor) -> Vec<
     let mut diags = Vec::new();
     if let Ok(src) = std::fs::read_to_string(&app.path) {
         // A broken front matter is worth pointing AT: a located, framed error that
-        // jumps to the bad line on click. lint() reports the same YAML error as a
-        // plain warning, so it's one or the other, never both.
+        // jumps to the bad line on click. (Front-matter key warnings now arrive via
+        // `doc.warnings` from the render pass, so they are not re-collected here.)
         if let Some((message, line)) = qmd_fast_core::frontmatter::yaml_error(&src) {
             diags.push(
                 Diagnostic::error(message)
                     .at(None, line)
                     .with_frame(code_frame(&src, line)),
             );
-        } else {
-            for message in qmd_fast_core::frontmatter::lint(&src) {
-                diags.push(Diagnostic::warn(message));
-            }
         }
         for dep in qmd_fast_core::includes::dependencies(&src, &app.base_dir) {
             if !dep.exists() {
