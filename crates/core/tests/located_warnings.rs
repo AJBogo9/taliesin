@@ -10,13 +10,8 @@ fn broken_crossref_warning_is_located() {
         "# Title\n\nIntro.\n\nSee @fig-nope for details.\n",
         &proj.0,
     );
-    // standalone docs surface broken xrefs via validate_xrefs at the server;
-    // exercise that path directly so the test does not depend on the server.
-    let w = doc
-        .warnings
-        .iter()
-        .find(|w| w.message.contains("@fig-nope"));
-    // Cross-refs in a standalone render are validated by `validate_xrefs`:
+    // Standalone docs surface broken xrefs via `validate_xrefs` (the server runs it
+    // after site-wide resolution); exercise that path directly here.
     let xref_warnings = qmd_fast_core::cite::validate_xrefs(&doc.blocks);
     let located = xref_warnings
         .iter()
@@ -26,7 +21,6 @@ fn broken_crossref_warning_is_located() {
         located.line.is_some(),
         "broken-crossref warning should carry a line, got: {located:?}"
     );
-    let _ = w; // doc.warnings path may or may not include it depending on resolution stage
 }
 
 /// An unknown-shortcode warning carries the line where the shortcode appears.
