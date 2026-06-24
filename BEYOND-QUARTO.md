@@ -94,14 +94,16 @@ diagnostics, trustworthiness Quarto's open keyspace structurally cannot match.
   `corpus/diagnostics/typos.qmd`** + `nested_validation.rs` asserting the exact warnings +
   a corpus-wide clean-vocabulary guard. *Invariant held: read-only; no block-model/diff
   change; `:::` scanner, cite, includes, numbering, exec untouched.*
-- [ ] **`jsonschema-for-config` (high / med / none).** GATE: after
-  `prune-and-fix-stale-docs` + after the validation epic exists. Generate a
-  Draft-2020-12 schema from the SAME consts the validator uses (`NATIVE_KEYS`,
-  `KNOWN_KEYS`, nested sets) so it cannot drift; ship `assets/schema/*.schema.json` +
-  document the `# yaml-language-server: $schema=` line. The in-scope single-editing-
-  surface on-ramp: the *editor* gets autocomplete/hover/validate via the YAML LSP, with
-  zero qmd-fast LSP to build. *Invariant: a schema file is documentation, not an output
-  format; HTML-only intact.*
+- [x] **`jsonschema-for-config` (high / med / none). DONE, merged @ `8fcea33`
+  (2026-06-24).** Generated Draft-2020-12 schemas from the SAME consts the validator uses
+  (`KNOWN_KEYS` + nested sets in `frontmatter.rs`, `NATIVE_KEYS` in `site/config`) via a
+  `#[cfg(test)]` generator in `crates/core/src/schema.rs`; committed + bundled
+  `assets/schema/qmd-frontmatter.schema.json` + `qmd-site.schema.json`, drift-locked
+  by a golden-file test (`QMD_FAST_BLESS=1` regenerates). `qmd-fast schema [--out <dir>]`
+  emits them; `configuration.qmd` documents the `# yaml-language-server: $schema=` on-ramp
+  (front-matter caveat noted). `serde_json` added as a core DEV-dependency only (no new
+  runtime dep). *Invariant held: additive only, a schema file is documentation not an output
+  format; HTML-only intact.* **This completes Wave 1.**
 
 ### Pillar II, Live-edit supremacy (measure, market, close the loop)
 

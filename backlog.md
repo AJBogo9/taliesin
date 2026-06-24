@@ -130,12 +130,14 @@ Chromium-only). Not worth now: deeper i18n/RTL (English solo author).
 >   vocabulary (typo OR Quarto-ism) is flagged, and the corpus was purged of all Quarto-only
 >   keys (a verified visible-HTML no-op).** Pinned by `corpus/diagnostics/typos.qmd` + exact-
 >   warning test + a corpus-wide clean-vocabulary guard. Server `frontmatter::lint()` removed
->   (front-matter warnings now flow through `doc.warnings`). **>> RESUME HERE:
->   `jsonschema-for-config`** (gate satisfied: `prune-and-fix-stale-docs` + the validator exist):
->   generate a Draft-2020-12 schema from the SAME consts the validator uses so it cannot drift,
->   ship `assets/schema/*.schema.json`, document the `# yaml-language-server: $schema=` line.
->   Supersedes the moot P2 below.
-> - **Wave 2 (prove the moat, = #7):** `live-edit-benchmark-harness` → `live-edit-hero-demo`.
+>   (front-matter warnings now flow through `doc.warnings`). `jsonschema-for-config` **DONE,
+>   merged @ `8fcea33`** (2026-06-24): Draft-2020-12 schemas for front matter + `_site.yml`
+>   generated from the validator's own consts (`crates/core/src/schema.rs`, `#[cfg(test)]`
+>   generator), committed + bundled in `assets/schema/`, drift-locked by a golden-file test
+>   (`QMD_FAST_BLESS=1` regenerates); `qmd-fast schema [--out <dir>]` emits them;
+>   `configuration.qmd` documents the `# yaml-language-server: $schema=` on-ramp; `serde_json` is
+>   a core dev-dependency only. Supersedes the moot P2 below. **>> WAVE 1 COMPLETE.**
+> - **>> RESUME HERE: Wave 2 (prove the moat, = #7):** `live-edit-benchmark-harness` → `live-edit-hero-demo`.
 > - **Wave 3 (craft + breadth),** parallel and corpus-pinned: `typography-craft-pass` (= #6)
 >   · `callout-kind-contract` · `panel-tabset-margin` · `image-lightbox`
 >   · `narrated-code-walkthrough` · `js-reactive-graph`.
@@ -144,19 +146,19 @@ Chromium-only). Not worth now: deeper i18n/RTL (English solo author).
 > - **Wave 5 / later:** `print-pdf-track`, `docs-as-spec`, `{glsl}` registry, `build-seo`.
 > Priorities #1d/#4/#5/#6/#7 below are integrated into the waves (not duplicated).
 >
-> **>> To resume next session:** `main` is at `bdeebe5` (version 0.1.0); Wave 0 + all of Wave 1
-> through `nested-schema-validation` are merged (nothing pushed to any remote yet). Next concrete
-> step = write + execute the **`jsonschema-for-config`** plan (`BEYOND-QUARTO.md` Pillar I, the
-> Wave 1 gate, now unblocked): generate a Draft-2020-12 JSON Schema from the SAME consts the
-> validator already uses (`KNOWN_KEYS` + the nested `EXECUTE_KEYS`/`LISTING_KEYS`/`ABOUT_KEYS`/
-> `HERO_KEYS` in `frontmatter.rs`, `CELL_OPTION_KEYS`/`CALLOUT_KINDS` in `render/validate.rs`,
-> `NATIVE_KEYS` in `site/config/mod.rs`) so the schema cannot drift from the validator; ship
-> `assets/schema/*.schema.json` + document the editor `# yaml-language-server: $schema=` on-ramp
-> (the in-scope single-editing-surface win: the EDITOR gets autocomplete/hover/validate via the
-> YAML LSP, zero qmd-fast LSP to build). Working method (Waves 0 + 1): branch per wave, write a
-> complete-code plan under `docs/superpowers/plans/`, execute subagent-driven (implementer + two
-> adversarial reviewers per task + a final whole-branch review), then fast-forward merge locally.
-> The three completed plans under `docs/superpowers/plans/` are the template.
+> **>> To resume next session:** `main` is at `8fcea33` (version 0.1.0); Wave 0 + ALL of Wave 1
+> (`locate-render-warnings` → `nested-schema-validation` → `jsonschema-for-config`) are merged
+> (nothing pushed to any remote yet). Next concrete step = **Wave 2, prove the moat** (= old
+> priority #7): `live-edit-benchmark-harness` (a committed bench measuring the three moat claims
+> through the real `rebuild() → exec.run → diff_blocks` seam: cold full render, warm single-cell
+> edit latency, emitted payload size, and a headless chrome-devtools assertion that an open
+> `<details>` survives an edit above it AS THE SAME DOM node; emits markdown + JSON), then
+> `live-edit-hero-demo` (a showcase doc + scripted read-only walkthrough, split-screen vs Quarto's
+> full reload, citing the bench numbers). Detail in `BEYOND-QUARTO.md` Pillar II. Working method
+> (Waves 0 + 1): branch per wave, brainstorm if forks exist, write a complete-code plan under
+> `docs/superpowers/plans/`, execute subagent-driven via a Workflow (implementer + two adversarial
+> reviewers per task + a final whole-branch review), then fast-forward merge locally. The four
+> completed plans under `docs/superpowers/plans/` are the template.
 
 ## Open / next
 
