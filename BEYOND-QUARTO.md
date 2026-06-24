@@ -264,12 +264,16 @@ books as versioned spec, integrity debt paid.
   Full inventory + `cargo-deny` + a grep test over `assets/js` so it cannot silently
   rot. A public repo with a wrong `THIRD_PARTY.md` is a real liability. *Invariant: docs
   + CI only.*
-- [ ] **`typography-craft-pass` (high / med / none).** = backlog #6. `base.css` is flat
-  17px/1.7. Add a `--qmd-scale` type ratio, `font-feature-settings` (ligatures,
-  tabular-nums), align KaTeX with the body text, font-smoothing. Absorb the callout
-  color/spacing craft so callouts aren't styled twice. CSS-only, zero web fonts
-  (offline / FOUC-free is itself a past-Quarto default). Verify via chrome-devtools.
-  *Invariant: CSS-only; block model unchanged.*
+- [x] **`typography-craft-pass` (high / med / none). DONE (2026-06-24, branch
+  `feat/typography-craft-pass`).** = backlog #6. Headings had NO explicit sizes (browser
+  defaults); added an intentional minor-third scale (`--qmd-scale: 1.2`, h1 2rem … h6
+  .9rem) with optical line-heights, h1/h2 tracking, uppercase/muted h5/h6, and vertical
+  rhythm (more space-before than -after). `body` gets `font-feature-settings`
+  (liga/calt/kern) + font-smoothing; `tabular-nums` scoped to pre/code/table/.katex.
+  KaTeX inline aligned to the body (`1.06em`, was 1.21em) with display kept at `1.18em`.
+  Measure unchanged. Callout color/spacing was already handled by `callout-kind-contract`,
+  so not restyled here. CSS-only, zero web fonts; verified before/after light + dark via
+  chrome-devtools. *Invariant held: CSS-only; block model unchanged; deck.css untouched.*
 - [ ] **`version-stamp` (med / small / none).** `Cargo.toml` is `0.0.0`; add `--version`
   + a build colophon. Gates any launch. *Invariant: trivial; no machinery.*
 - [ ] **`docs-as-spec` (med / large / none).** Lower priority; start after the

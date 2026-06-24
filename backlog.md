@@ -155,9 +155,11 @@ Chromium-only). Not worth now: deeper i18n/RTL (English solo author).
 >   browser-verified. `callout-kind-contract` (branch `feat/callout-kind-contract`,
 >   2026-06-24): bundled Octicon icons + `appearance=`/`icon="false"` + `--qmd-callout-*`
 >   tokens (color-mix tints → light/dark from one def, dark.css overrides dropped), pinned
->   by `corpus/callouts/kinds.qmd`. Remaining: `typography-craft-pass` (= #6) ·
->   `image-lightbox` (mostly done — lightbox enhancer already covers figures/mermaid/video)
->   · `js-reactive-graph`.
+>   by `corpus/callouts/kinds.qmd`. `typography-craft-pass`
+>   (= #6, branch `feat/typography-craft-pass`, 2026-06-24): modular heading scale
+>   (`--qmd-scale`), font-feature-settings + smoothing, tabular-nums, KaTeX inline aligned to
+>   the body. Remaining: `image-lightbox` (mostly done — lightbox enhancer already covers
+>   figures/mermaid/video) · `js-reactive-graph`.
 > - **Wave 4 (close the loop):** `reverse-sync-coverage-audit` → `vscode-editor-companion`
 >   Phase 1 (coordinate with #1d).
 > - **Wave 5 / later:** `print-pdf-track`, `docs-as-spec`, `{glsl}` registry, `build-seo`.
