@@ -87,6 +87,22 @@ pub(crate) fn validate_callout_kind(
     })
 }
 
+/// Validate a `.code-walkthrough` container: warn (click-to-source) when it holds no
+/// code block, since the sticky panel would render empty. `line` is the 1-based source
+/// line of the div's opening fence. Purely diagnostic — the div still renders.
+pub(crate) fn validate_walkthrough(
+    has_code: bool,
+    line: usize,
+    file: Option<String>,
+) -> Option<Warning> {
+    (!has_code).then(|| {
+        Warning::new(
+            "`.code-walkthrough` has no code block to show in the sticky panel".to_string(),
+        )
+        .at(file, line as u32)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -132,6 +148,18 @@ mod tests {
         assert!(
             validate_callout_kind("note", 7, None).is_none(),
             "note is recognized"
+        );
+    }
+
+    #[test]
+    fn walkthrough_without_code_block_is_flagged_and_located() {
+        let w = validate_walkthrough(false, 12, Some("w.qmd".into())).expect("a no-code warning");
+        assert!(w.message.contains("no code block"), "got: {}", w.message);
+        assert_eq!(w.line, Some(12));
+        assert_eq!(w.file.as_deref(), Some("w.qmd"));
+        assert!(
+            validate_walkthrough(true, 12, None).is_none(),
+            "silent when a code block is present"
         );
     }
 }

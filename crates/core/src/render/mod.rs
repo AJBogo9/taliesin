@@ -997,7 +997,7 @@ const MERMAID: &str = "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.
 pub fn code_scripts() -> String {
     let mermaid = MERMAID_JS.replace("{{MERMAID}}", MERMAID);
     format!(
-        "<script>{CODE_ENHANCE_JS}</script>\n<script>{mermaid}</script>\n<script>{QMD_JS}</script>"
+        "<script>{CODE_ENHANCE_JS}</script>\n<script>{mermaid}</script>\n<script>{QMD_JS}</script>\n<script>{WALKTHROUGH_JS}</script>"
     )
 }
 
@@ -1038,6 +1038,10 @@ pub fn has_js_cells(body: &str) -> bool {
 
 const CODE_ENHANCE_JS: &str = include_str!("../../assets/js/code-enhance.js");
 const MERMAID_JS: &str = include_str!("../../assets/js/mermaid.js");
+/// Scroll-driven line-range highlighter for `::: {.code-walkthrough}`. Registers
+/// through `qmdEnhancers`, no-ops without a walkthrough (like mermaid/qmd-js), so it
+/// rides unconditionally in [`code_scripts`].
+const WALKTHROUGH_JS: &str = include_str!("../../assets/js/walkthrough.js");
 
 /// Heading level (1–6) for a block whose root element is `<hN ...>`/`<hN>`.
 pub(crate) fn block_heading_level(html: &str) -> Option<u8> {

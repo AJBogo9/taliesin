@@ -167,6 +167,42 @@
   details.qmd-code-fold > summary { cursor: pointer; color: var(--qmd-muted);
     font: 600 .85em var(--qmd-font-head); padding: .15rem 0; margin-bottom: .35rem; }
   details.qmd-code-fold > summary:hover { color: var(--qmd-fg); }
+  /* Narrated code walkthrough (`::: {.code-walkthrough}`): prose steps scroll on the
+     left, the code panel is pinned on the right; scrolling focuses line ranges (the
+     `.qhl-ln-hl` toggle is driven by walkthrough.js). Steps come first in the DOM
+     (source/click order); the grid columns place them left, the code right. */
+  .code-walkthrough { display: grid; grid-template-columns: 1fr minmax(18rem, .85fr);
+    gap: 2rem; align-items: start; margin: 1.6rem 0; }
+  .code-walkthrough .cw-steps, .code-walkthrough .cw-stage { min-width: 0; }
+  .cw-steps .step { min-height: 30vh; display: flex; flex-direction: column; justify-content: center;
+    padding: 1.2rem 0 1.2rem 1rem; border-left: 2px solid transparent; opacity: .62; }
+  .cw-steps .step.cw-step-active { opacity: 1; border-left-color: var(--qmd-accent); }
+  .cw-steps .step > :first-child { margin-top: 0; }
+  .cw-steps .step > :last-child { margin-bottom: 0; }
+  .cw-stage { position: sticky; top: 0; align-self: start; height: 100vh;
+    display: flex; flex-direction: column; justify-content: center; }
+  .cw-code { max-height: 82vh; overflow: auto; }
+  .cw-code pre { margin: 0; }
+  /* Reuse the deck's line-focus contract (block lines, dim the rest, accent the
+     focused range), scoped to the page-side walkthrough so it never touches decks. */
+  .code-walkthrough pre .qhl-ln { display: block; }
+  .code-walkthrough pre.qhl-lines-active .qhl-ln { opacity: .32; }
+  .code-walkthrough pre.qhl-lines-active .qhl-ln-hl { opacity: 1;
+    background: color-mix(in srgb, var(--qmd-accent) 14%, transparent);
+    box-shadow: inset .18em 0 0 var(--qmd-accent); }
+  @media (prefers-reduced-motion: no-preference) {
+    .code-walkthrough .cw-steps .step { transition: opacity .25s ease, border-color .25s ease; }
+    .code-walkthrough pre .qhl-ln { transition: opacity .25s ease, background .25s ease; }
+  }
+  @media (max-width: 60rem) {
+    /* Single column: lift the code to a sticky strip at the top, prose flows beneath. */
+    .code-walkthrough { display: flex; flex-direction: column; gap: 0; }
+    .cw-stage { order: -1; position: sticky; top: 0; height: auto; z-index: 5;
+      background: var(--qmd-bg); padding: .4rem 0 .6rem;
+      box-shadow: 0 4px 12px var(--qmd-edge-shadow); }
+    .cw-code { max-height: 42vh; }
+    .cw-steps .step { min-height: auto; padding: 1.4rem .9rem; }
+  }
   .qmd-xref { text-decoration: none; }
   .qmd-references .csl-entry { margin: .4rem 0; padding-left: 2.2rem; text-indent: -2.2rem; }
   /* Footnotes: `[^1]` superscript refs + the gathered footnote section at page end. */

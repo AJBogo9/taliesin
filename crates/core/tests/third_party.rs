@@ -3,7 +3,13 @@ use std::path::Path;
 /// qmd-fast's OWN (MIT) bundled scripts. Everything else in `assets/js/` is a
 /// vendored third party that MUST be attributed by filename in THIRD_PARTY.md.
 /// Adding a new vendored lib without documenting it fails `vendored_js_is_attributed`.
-const OWN_JS: &[&str] = &["code-enhance.js", "deck.js", "mermaid.js", "qmd-js.js"];
+const OWN_JS: &[&str] = &[
+    "code-enhance.js",
+    "deck.js",
+    "mermaid.js",
+    "qmd-js.js",
+    "walkthrough.js",
+];
 
 fn third_party_md() -> String {
     let core = Path::new(env!("CARGO_MANIFEST_DIR"));

@@ -331,6 +331,53 @@ fn build_container(
             .map(|b| super::emit::wrap_pre_lines(&b.html))
             .collect();
         format!("<div class=\"magic-move\"{data}>{body}</div>")
+    } else if attrs.classes.iter().any(|c| c == "code-walkthrough") {
+        // Narrated code walkthrough: the first code block becomes a sticky panel; the
+        // remaining blocks (the `.step` divs) scroll alongside it and drive line-range
+        // highlighting (walkthrough.js, reusing the `.qhl-ln` contract). Read-only:
+        // inner blocks keep their own ids/sourcepos via the regular grouping.
+        let code_idx = inner
+            .iter()
+            .position(|b| b.html.contains("<pre") && b.html.contains("<code"));
+        if let Some(w) =
+            super::validate::validate_walkthrough(code_idx.is_some(), open_line, file.clone())
+        {
+            warnings.push(w);
+        }
+        match code_idx {
+            Some(i) => {
+                // Line-wrap the panel so its lines are addressable by ordinal (the same
+                // idempotent helper magic-move uses); the rest stay in document order.
+                let panel = super::emit::wrap_pre_lines(&inner[i].html);
+                let steps: String = inner
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(j, b)| (j != i).then_some(b.html.as_str()))
+                    .collect();
+                format!(
+                    "<div class=\"code-walkthrough\"{data}><div class=\"cw-steps\">{steps}</div><div class=\"cw-stage\"><div class=\"cw-code\">{panel}</div></div></div>"
+                )
+            }
+            None => {
+                let body = concat(&inner);
+                format!(
+                    "<div class=\"code-walkthrough\"{data}><div class=\"cw-steps\">{body}</div></div>"
+                )
+            }
+        }
+    } else if attrs.classes.iter().any(|c| c == "step") {
+        // A walkthrough step: carry its line-focus spec as `data-cw-lines` (read by
+        // walkthrough.js) and keep the div's own id/sourcepos so its prose stays
+        // locatable. Meaningful only inside `.code-walkthrough`; harmless elsewhere.
+        let id_attr = id_attr(attrs.id.as_deref());
+        let cw_lines = match attrs.get("lines") {
+            Some(spec) if !spec.is_empty() => {
+                format!(" data-cw-lines=\"{}\"", escape_attr(spec))
+            }
+            _ => String::new(),
+        };
+        let body = concat(&inner);
+        format!("<div class=\"step\"{id_attr}{data}{cw_lines}>{body}</div>")
     } else {
         let mut class = attrs.classes.join(" ");
         if class.is_empty() {

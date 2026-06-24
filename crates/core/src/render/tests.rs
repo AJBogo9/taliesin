@@ -206,6 +206,70 @@ fn nested_divs_group_inside_out() {
 }
 
 #[test]
+fn code_walkthrough_builds_sticky_panel_and_line_focused_steps() {
+    let src = "::: {.code-walkthrough}\n\n\
+        ```python\ndef f(x):\n    y = x + 1\n    return y\n```\n\n\
+        ::: {.step lines=\"1\"}\n\nDefine the function.\n\n:::\n\n\
+        ::: {.step lines=\"2-3\"}\n\nCompute and return.\n\n:::\n\n\
+        :::\n";
+    let doc = render_document(src);
+    assert_eq!(doc.blocks.len(), 1, "one walkthrough container block");
+    let h = &doc.blocks[0].html;
+
+    // Wrapper carries the block-model attrs + the layout scaffold.
+    assert!(h.contains("class=\"code-walkthrough\""), "got: {h}");
+    assert!(h.contains("data-block-id=\"b-"), "wrapper id: {h}");
+    assert!(
+        h.contains("data-sourcepos=\"1:1-"),
+        "wrapper sourcepos: {h}"
+    );
+    assert!(h.contains("class=\"cw-steps\""), "steps column: {h}");
+    assert!(h.contains("class=\"cw-stage\""), "sticky stage: {h}");
+    assert!(h.contains("class=\"cw-code\""), "code holder: {h}");
+
+    // The panel code block is line-wrapped so its lines are addressable by ordinal.
+    assert!(
+        h.contains("class=\"qhl-ln\""),
+        "panel lines not wrapped: {h}"
+    );
+
+    // Each step carries its focus spec AND keeps its own block id (click-to-source).
+    assert!(
+        h.contains("data-cw-lines=\"1\""),
+        "step 1 spec missing: {h}"
+    );
+    assert!(
+        h.contains("data-cw-lines=\"2-3\""),
+        "step 2 spec missing: {h}"
+    );
+    assert_eq!(h.matches("class=\"step\"").count(), 2, "two step divs: {h}");
+    assert!(
+        h.matches("data-block-id").count() >= 4,
+        "wrapper + panel + steps each keep a block id: {h}"
+    );
+
+    // No fence leakage; steps precede the stage in DOM/source order.
+    assert!(!doc.body_html().contains(":::"), "fence leaked: {h}");
+    assert!(
+        h.find("cw-steps").unwrap() < h.find("cw-stage").unwrap(),
+        "steps come before the stage in DOM order: {h}"
+    );
+}
+
+#[test]
+fn code_walkthrough_step_without_lines_has_no_focus_spec() {
+    // A step with no `lines` clears the focus (full code undimmed): no data-cw-lines.
+    let src = "::: {.code-walkthrough}\n\n\
+        ```python\nx = 1\n```\n\n\
+        ::: {.step}\n\nJust narration.\n\n:::\n\n\
+        :::\n";
+    let doc = render_document(src);
+    let h = &doc.blocks[0].html;
+    assert!(h.contains("class=\"step\""), "step present: {h}");
+    assert!(!h.contains("data-cw-lines"), "no focus spec expected: {h}");
+}
+
+#[test]
 fn mermaid_block_emits_pre_mermaid_without_code() {
     // Both the executable cell form and a plain fence become a mermaid pre.
     for src in [
