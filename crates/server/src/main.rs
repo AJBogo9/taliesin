@@ -24,6 +24,7 @@ fn main() -> ExitCode {
         Some("render") => cmd_render(args.get(2)),
         Some("build") => cmd_build(&args),
         Some("blocks") => cmd_blocks(args.get(2)),
+        Some("schema") => cmd_schema(&args),
         // `preview`/`dev` are vite-style aliases for the live server.
         Some("serve" | "preview" | "dev") => cmd_serve(&args),
         Some("--version" | "-V") => {
@@ -614,6 +615,53 @@ fn cmd_blocks(path: Option<&String>) -> ExitCode {
     }
 }
 
+/// Emit the bundled JSON Schemas for qmd-fast's YAML config (document front matter +
+/// `_site.yml`) so an editor's YAML language server can validate them. With `--out <dir>`
+/// it writes two files there; otherwise it prints both to stdout. The strings are the
+/// committed, bundled schemas (no runtime JSON generation).
+fn cmd_schema(args: &[String]) -> ExitCode {
+    use qmd_fast_core::schema::{FRONTMATTER_SCHEMA, SITE_SCHEMA};
+    let files = [
+        ("qmd-frontmatter.schema.json", FRONTMATTER_SCHEMA),
+        ("qmd-site.schema.json", SITE_SCHEMA),
+    ];
+    // Optional `--out <dir>` (alias `--dir`), parsed like `cmd_build`.
+    let mut out: Option<String> = None;
+    let mut it = args.iter().skip(2);
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--out" | "--dir" => out = it.next().cloned(),
+            _ => {}
+        }
+    }
+    match out {
+        Some(dir) => {
+            if let Err(e) = std::fs::create_dir_all(&dir) {
+                eprintln!("qmd-fast schema: cannot create {dir}: {e}");
+                return ExitCode::FAILURE;
+            }
+            for (name, body) in files {
+                let path = std::path::Path::new(&dir).join(name);
+                if let Err(e) = std::fs::write(&path, body) {
+                    eprintln!("qmd-fast schema: cannot write {}: {e}", path.display());
+                    return ExitCode::FAILURE;
+                }
+                println!("wrote {}", path.display());
+            }
+            println!(
+                "add `# yaml-language-server: $schema={dir}/qmd-site.schema.json` atop _site.yml"
+            );
+        }
+        None => {
+            for (name, body) in files {
+                println!("// {name}");
+                print!("{body}");
+            }
+        }
+    }
+    ExitCode::SUCCESS
+}
+
 /// A short, single-line, tag-free preview of a block's HTML.
 fn preview(html: &str) -> String {
     let mut s = String::new();
@@ -659,6 +707,9 @@ fn usage() {
     println!("                             copies referenced assets for a portable folder");
     println!("  render <file.qmd>          render a full HTML page to stdout");
     println!("  blocks <file.qmd>          list block ids + sourcepos (debug)");
+    println!(
+        "  schema [--out <dir>]       emit JSON Schemas for _site.yml + front matter (editor autocomplete)"
+    );
     println!();
     println!("ENV: QMD_FAST_PYTHON (kernel), QMD_FAST_OPEN (=--open),");
     println!("     QMD_FAST_HOST (=--host), QMD_FAST_NO_CLEAR,");
