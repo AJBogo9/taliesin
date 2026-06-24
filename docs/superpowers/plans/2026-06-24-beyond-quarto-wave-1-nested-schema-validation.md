@@ -1036,7 +1036,7 @@ Expected: PASS (Task 1 purged every Quarto-only key, so the guard is green).
 In `corpus/README.md`, add a short row/section noting the new directory. Match the file's existing format; the content to convey:
 
 ```markdown
-- **diagnostics/** — docs that deliberately trip qmd-fast's schema validators
+- **diagnostics/**: docs that deliberately trip qmd-fast's schema validators
   (`typos.qmd`: a misspelled key in each surface, front-matter top-level + nested,
   callout kind, cell option). Pinned by `crates/core/tests/nested_validation.rs`,
   which asserts the exact click-to-source warnings, and exempted from the corpus

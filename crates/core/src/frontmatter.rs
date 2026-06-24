@@ -1,11 +1,12 @@
-//! Front-matter schema + linting.
+//! Front-matter schema validation.
 //!
-//! Quarto (and qmd-fast) read a leading YAML `---` block. Quarto silently
-//! ignores keys it doesn't recognize, so a typo like `treme:` just does nothing
-//! and the author never finds out. [`lint`] parses the block and flags every
-//! unknown top-level key, suggesting the closest known one. It only warns;
-//! rendering is unaffected (an unknown key still renders), so a Quarto document
-//! using keys qmd-fast doesn't implement still works.
+//! qmd-fast reads a leading YAML `---` block and validates it against its OWN
+//! recognized key set, defined independently of Quarto. A key qmd-fast does not
+//! implement, whether a typo like `treme:` or a Quarto term it does not honor, is
+//! flagged by [`validate_front_matter`]: every unknown top-level key, plus every
+//! unknown immediate child of the nested `execute:` / `listing:` / `about:` /
+//! `hero:` blocks, each suggesting the closest known key. It only warns (located
+//! for click-to-source); rendering is unaffected, an unknown key still renders.
 
 use crate::render::Warning;
 
