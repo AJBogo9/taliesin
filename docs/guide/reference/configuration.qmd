@@ -100,6 +100,43 @@ HTML; bundled glyphs: `github`, `linkedin`, `rss`, `x`, `mastodon`, `bluesky`,
 **Validation.** Unknown top-level keys are reported with a "did you mean …", so a
 typo like `favicn:` doesn't silently do nothing.
 
+## Editor autocomplete (config schema)
+
+qmd-fast ships JSON Schemas for both config surfaces so your editor's YAML
+language server can autocomplete keys, show hovers, and flag unknown keys as you
+type, before you render. There is no qmd-fast language server to install: the
+schemas describe the same key sets qmd-fast validates against at render time, so
+the editor and the renderer always agree.
+
+Drop the schemas into your project:
+
+```sh
+qmd-fast schema --out .qmd
+```
+
+Then point the YAML language server at them with a modeline.
+
+For `_site.yml` (a plain YAML file, works out of the box), add at the very top:
+
+```yaml
+# yaml-language-server: $schema=.qmd/qmd-site.schema.json
+title: My site
+```
+
+For a document's front matter, put the modeline inside the `---` block:
+
+```yaml
+---
+# yaml-language-server: $schema=.qmd/qmd-frontmatter.schema.json
+title: My post
+---
+```
+
+Front-matter validation needs an editor that treats a `.qmd` file's `---` block
+as embedded YAML (for example the VS Code YAML extension). A plain YAML language
+server does not parse a `.qmd` file as YAML, so the front-matter modeline only
+takes effect with that support; `_site.yml` needs no such setup.
+
 ::: {.callout-note}
 ## Quarto migration
 

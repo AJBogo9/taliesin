@@ -45,6 +45,11 @@ mean" hint (`config/mod.rs` `validate_keys`). A Quarto-shaped nested config
 warn as unknown and their nested values are ignored, so a Quarto config must be
 flattened to the native shape.
 
+qmd-fast generates a JSON Schema for `_site.yml` from `NATIVE_KEYS` (the same
+closed set the config validator uses), emitted by `qmd-fast schema`. See the
+Configuration reference (`../guide/reference/configuration.qmd`) for the editor
+autocomplete on-ramp.
+
 ## Books vs websites
 
 The same machinery produces both, branched on one key: **`chapters:` present ⇒ a
