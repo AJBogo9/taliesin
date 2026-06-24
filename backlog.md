@@ -238,10 +238,13 @@ the open items follow.
   annotated-tree section (`configuration.qmd`) covering the `_`/`.`-skip rule, `_freeze/`,
   and `_includes/`, plus a "how a deck gets built" note (chaptered vs embedded vs
   standalone, the omission that orphaned `docs/guide/tour.qmd`).
-- [ ] **Wire up `draft:` (low).** Already in the front-matter lint allowlist
-  (`frontmatter.rs:85`) but connected to nothing, so `draft: true` is a silent no-op. Add
-  a `draft: bool` to `FrontInfo` and filter it out of `website_pages` (which also drops it
-  from nav + listings).
+- [x] **Wire up `draft:` (low). DONE (2026-06-24, branch `feat/draft-wireup`).** `draft:
+  true` now excludes a page from a website build. Three parts (the backlog's "already in the
+  allowlist" was wrong — it wasn't): added `draft` to `frontmatter::KNOWN_KEYS` (+ re-blessed
+  the drift-locked `qmd-frontmatter.schema.json`); parse `draft: bool` into `site::FrontInfo`;
+  `website_pages` filter_maps drafts out — which also drops them from listings (`collection()`
+  → `self.pages`) and prev/next nav. Websites only (books list chapters explicitly).
+  Unit-tested (`website_pages_excludes_drafts`) + verified by a real build.
 - [ ] **Corpus hygiene (low).** `corpus/bayesian-book` is a single-page *website*, not a
   book; rename it (dir + the `book_*` test fn) to stop blurring the website/book line.
   Delete `tech-blog/**/_metadata.yml` (ignored; teaches a cascade that does not exist).
