@@ -30,6 +30,9 @@ const KNOWN_KEYS: &[&str] = &[
     "css",
     "extensions",
     "page-layout",
+    // Tolerated but not yet honored: corpus front matter sets these, but no code
+    // reads them. Kept so valid corpus docs do not warn; a future validation pass
+    // may add a "recognized but not honored" note (see BEYOND-QUARTO.md Wave 1).
     "title-block-banner",
     "title-block-style",
     "include-in-header",
@@ -46,7 +49,7 @@ const KNOWN_KEYS: &[&str] = &[
     "listing",
     "about",
     "hero",
-    "site-url",
+    "site-url", // tolerated but not honored (see the note above); used by corpus.
 ];
 
 /// Lint a document's front matter, returning one warning per unknown top-level
@@ -223,5 +226,16 @@ mod tests {
         let w = lint("---\ntitle: X\n: : :\n---\n");
         assert_eq!(w.len(), 1);
         assert!(w[0].contains("not valid YAML"), "got: {w:?}");
+    }
+
+    #[test]
+    fn tolerated_unimplemented_keys_do_not_warn() {
+        // `title-block-banner` and `site-url` are used by corpus front matter
+        // (tech-blog, bayesian-book) but read by no code yet. They must stay in
+        // KNOWN_KEYS so the corpus never warns; their "recognized but not
+        // honored" disposition is the Wave 1 validation epic's job, not removal.
+        let w =
+            lint("---\ntitle: X\ntitle-block-banner: false\nsite-url: https://example.com\n---\n");
+        assert!(w.is_empty(), "tolerated keys must not warn, got: {w:?}");
     }
 }

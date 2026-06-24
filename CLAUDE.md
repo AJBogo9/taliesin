@@ -54,7 +54,7 @@ crates/core      qmd-fast-core lib: parser (comrak + sourcepos) → block model 
   src/cite.rs      citations ([@key]) + cross-references (@fig-, @sec-)
   src/site/        multi-page project (mod.rs): _site.yml config (config/), page
                    discovery, chrome, link rewrite, listings + about/`hero:` blocks,
-                   front-matter parse (frontmatter.rs), books (book.rs), RSS (feed.rs),
+                   front-matter parse (frontmatter.rs), books (book.rs),
                    Cmd-K search (search.rs), cross-refs (xref.rs); an {{< embed >}}-
                    referenced deck is built/served but kept out of nav. `mounts:`
                    serves another project (e.g. the docs book) under a URL prefix in preview

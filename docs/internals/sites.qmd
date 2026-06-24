@@ -7,7 +7,7 @@ A directory with a `_site.yml` is a **project**: a website or a book. The core's
 single-page path never had, the project-level concerns, while the per-page server
 that drives it lives in [the dev server](server.qmd). This chapter is the core
 subsystem: discovery, the config model, the front-matter primitives, link
-rewriting, cross-page references, search, and feeds.
+rewriting, cross-page references, and search.
 
 ```{mermaid}
 %%| label: fig-site-render
@@ -31,20 +31,19 @@ input pages: every `.qmd` becomes a page, **skipping `_`-prefixed directories**
 `x.html`, mirroring the input tree). Both `build` (static) and `preview` (live) drive a
 project through the same `discover` + `render_page`.
 
-## The config model, and the Quarto shim
+## The config model
 
 The typed `SiteConfig` is qmd-fast's **native, flat** schema (title, nav, footer,
-`mounts:`, …). Config is deliberately **two levels with no cascade**: the root
+`mounts:`, ...). Config is deliberately **two levels with no cascade**: the root
 `_site.yml` sets project-wide defaults and a page's own front matter overrides
 them, full stop. There is no `_metadata.yml` directory merge, the single most
 confusing part of Quarto's model.
 
-Existing Quarto-shaped configs still load, through one isolated shim
-(`site/config/quarto.rs`) that translates the nested
-`project:` / `website:` / `book:` / `format:` layout into the native `SiteConfig`.
-It is **isolated on purpose**: to drop Quarto support entirely you delete that one
-file and the single dispatch branch that calls it, and the native path and every
-downstream consumer keep working.
+The schema is a **closed set**: an unknown top-level key warns with a "did you
+mean" hint (`config/mod.rs` `validate_keys`). A Quarto-shaped nested config
+(`project:` / `website:` / `book:` / `format:`) is no longer accepted: those keys
+warn as unknown and their nested values are ignored, so a Quarto config must be
+flattened to the native shape.
 
 ## Books vs websites
 

@@ -4,8 +4,10 @@ title: "Configuration reference"
 
 Two places hold configuration: a document's **YAML front matter** (the `---`
 block at the top), and a project's **`_site.yml`** (for a site or book). The
-project config uses a flat, native schema; a Quarto-shaped config still works
-unchanged (see the note at the end).
+project config uses a flat, native schema. A Quarto-shaped nested config (a
+`project:` / `website:` / `book:` / `format:` block) is no longer parsed: its
+unknown top-level keys warn, and its nested values are ignored. Flatten it (see
+the note at the end).
 
 ## Document front matter
 
@@ -99,12 +101,13 @@ HTML; bundled glyphs: `github`, `linkedin`, `rss`, `x`, `mastodon`, `bluesky`,
 typo like `favicn:` doesn't silently do nothing.
 
 ::: {.callout-note}
-## Coming from a Quarto config?
+## Quarto migration
 
-Leave it as-is — the nested `project:` / `website:` / `book:` / `format:` shape is
-detected and still renders. Or flatten it: lift `website: title:` → `title:`,
-`format: html: toc:` → `toc:`, `website: navbar: left:` → `nav:`,
-`page-footer:` → `footer:`, and `project: output-dir:` → `output:`.
+The nested Quarto shape is no longer parsed, so flatten it: lift
+`website: title:` to `title:`, `format: html: toc:` to `toc:`,
+`website: navbar: left:` to `nav:`, `page-footer:` to `footer:`, and
+`project: output-dir:` to `output:`. Any leftover nested top-level key
+(`project:`, `website:`, `book:`) will warn as unknown.
 :::
 
 ### Page blocks (sites)
