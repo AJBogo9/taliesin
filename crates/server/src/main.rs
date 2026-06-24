@@ -295,12 +295,139 @@ fn copy_local_assets(html: &str, base: &Path, dest: &Path) -> usize {
             Err(e) => log::warn(&format!("cannot copy {}: {e}", from.display())),
         }
     }
-    copied
+    copied + copy_js_imports(html, base, dest)
 }
 
 /// Whether two paths resolve to the same file on disk (so we don't self-copy).
 fn same_file(a: &Path, b: &Path) -> bool {
     matches!((a.canonicalize(), b.canonicalize()), (Ok(x), Ok(y)) if x == y)
+}
+
+/// Bodies of the `<script type="application/qmd-js">…</script>` cells in `html` (the
+/// author's `{js}` source, where relative `import()`/`fetch()` specifiers live —
+/// invisible to the `src=`/`href=` scan). `</script` is server-escaped in the source, so
+/// the next `</script>` reliably ends the body.
+fn qmd_js_cell_sources(html: &str) -> Vec<&str> {
+    let needle = "type=\"application/qmd-js\"";
+    let mut out = Vec::new();
+    let mut i = 0;
+    while let Some(pos) = html[i..].find(needle) {
+        let tag = i + pos;
+        let Some(gt) = html[tag..].find('>') else {
+            break;
+        };
+        let body_start = tag + gt + 1;
+        let Some(end) = html[body_start..].find("</script>") else {
+            break;
+        };
+        out.push(&html[body_start..body_start + end]);
+        i = body_start + end + "</script>".len();
+    }
+    out
+}
+
+/// Every quoted string literal in `src` whose value starts with `./` or `../` — the
+/// relative files a `{js}` cell (or a copied module) imports/fetches. Quote-escaping is
+/// not handled (module specifiers don't contain escaped quotes), matching `local_refs`.
+fn relative_specifiers(src: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let bytes = src.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        let q = bytes[i];
+        if (q == b'"' || q == b'\'')
+            && let Some(end) = src[i + 1..].find(q as char)
+        {
+            let val = &src[i + 1..i + 1 + end];
+            if val.starts_with("./") || val.starts_with("../") {
+                out.push(val.to_string());
+            }
+            i += 1 + end + 1;
+            continue;
+        }
+        i += 1;
+    }
+    out
+}
+
+/// Resolve a relative `spec` (from a file whose dir, relative to the doc base, is `dir`)
+/// to a normalized base-relative path, collapsing `.`/`..`. `None` if it escapes the base
+/// tree (a `..` above the root, or an absolute path).
+fn normalize_rel(dir: &str, spec: &str) -> Option<String> {
+    if spec.starts_with('/') {
+        return None;
+    }
+    let mut parts: Vec<&str> = if dir.is_empty() {
+        Vec::new()
+    } else {
+        dir.split('/').collect()
+    };
+    for seg in spec.split('/') {
+        match seg {
+            "" | "." => {}
+            ".." => {
+                parts.pop()?;
+            }
+            s => parts.push(s),
+        }
+    }
+    Some(parts.join("/"))
+}
+
+/// Bundle the local files a `{js}` cell imports/fetches via relative specifiers, which the
+/// `src=`/`href=` scan can't see. Resolves against the doc `base`, copies to the same
+/// relative path under `dest`, and follows the chain through copied `.js`/`.mjs` modules
+/// (each specifier resolved against its own dir). Remote (`https://…`) and bare specifiers
+/// are ignored; tree-escaping ones warn. Returns the count copied.
+fn copy_js_imports(html: &str, base: &Path, dest: &Path) -> usize {
+    let mut copied = 0usize;
+    let mut visited = std::collections::HashSet::new();
+    let mut queue: Vec<String> = Vec::new();
+    let enqueue = |queue: &mut Vec<String>, dir: &str, spec: &str| match normalize_rel(dir, spec) {
+        Some(rel) => queue.push(rel),
+        None => log::warn(&format!(
+            "{{js}} import escapes the doc tree, not bundled: {spec}"
+        )),
+    };
+    for body in qmd_js_cell_sources(html) {
+        for spec in relative_specifiers(body) {
+            enqueue(&mut queue, "", &spec);
+        }
+    }
+    while let Some(rel) = queue.pop() {
+        if !visited.insert(rel.clone()) {
+            continue;
+        }
+        let from = base.join(&rel);
+        if !from.is_file() {
+            continue; // a relative-looking string that isn't a real local file
+        }
+        let to = dest.join(&rel);
+        if !same_file(&from, &to) {
+            if let Some(parent) = to.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            match std::fs::copy(&from, &to) {
+                Ok(_) => copied += 1,
+                Err(e) => {
+                    log::warn(&format!("cannot copy {}: {e}", from.display()));
+                    continue;
+                }
+            }
+        }
+        // Follow the chain: a copied module may import further local files (relative to
+        // its OWN dir).
+        let ext = Path::new(&rel).extension().and_then(|s| s.to_str());
+        if matches!(ext, Some("js") | Some("mjs"))
+            && let Ok(src) = std::fs::read_to_string(&from)
+        {
+            let dir = rel.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
+            for spec in relative_specifiers(&src) {
+                enqueue(&mut queue, dir, &spec);
+            }
+        }
+    }
+    copied
 }
 
 /// Build a multi-page site: render every `.qmd` page with the shared chrome to
@@ -598,6 +725,52 @@ mod mirror_tests {
         );
 
         let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&out);
+    }
+
+    #[test]
+    fn copy_local_assets_bundles_js_cell_imports_recursively() {
+        let base = tmp("jsimp");
+        let out = tmp("jsimp-out");
+        // A {js} cell importing a local helper + a remote module; plus a normal image.
+        let html = concat!(
+            "<img src=\"pic.png\">",
+            "<script type=\"application/qmd-js\" data-target=\"c\">\n",
+            "const lib = await import(\"./helper.js\");\n",
+            "const three = await import(\"https://esm.sh/three@0.163.0\");\n",
+            "</script>"
+        );
+        fs::write(base.join("pic.png"), b"x").unwrap();
+        fs::write(
+            base.join("helper.js"),
+            "import { z } from \"./util.js\";\nexport const y = z;\n",
+        )
+        .unwrap();
+        fs::write(base.join("util.js"), "export const z = 1;\n").unwrap();
+        fs::write(base.join("secret.js"), "export const s = 0;\n").unwrap(); // not referenced
+
+        let copied = copy_local_assets(html, &base, &out);
+
+        assert!(
+            out.join("helper.js").exists(),
+            "directly-imported helper bundled"
+        );
+        assert!(
+            out.join("util.js").exists(),
+            "transitively-imported file bundled (recursion)"
+        );
+        assert!(out.join("pic.png").exists(), "src= asset still bundled");
+        assert!(
+            !out.join("secret.js").exists(),
+            "unreferenced file not bundled"
+        );
+        assert!(
+            !out.join("three").exists() && !out.join("esm.sh").exists(),
+            "remote import must not be fetched/copied"
+        );
+        assert_eq!(copied, 3, "pic.png + helper.js + util.js, got {copied}");
+
+        let _ = fs::remove_dir_all(&base);
         let _ = fs::remove_dir_all(&out);
     }
 }
