@@ -357,6 +357,11 @@ fn render_internal_impl(
             }
             _ => String::new(),
         };
+        // `sourcepos` MUST stay in `L:C-L:C` form: reverse cursor-sync (client.js
+        // `highlightAtLine`) matches it against `^(\d+):\d+-(\d+):\d+$` and silently
+        // skips any block it can't parse. Corpus-enforced by
+        // `reverse_sync_sourcepos_is_total` (tests/corpus.rs). A generated block with no
+        // source position uses an EMPTY sourcepos (omitted), never a degenerate one.
         let attrs =
             format!("{id_attr} data-block-id=\"{id}\" data-sourcepos=\"{sourcepos}\"{file_attr}");
         let mut html = String::new();

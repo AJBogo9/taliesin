@@ -820,6 +820,22 @@ mod tests {
         assert_eq!(b.id, "b-abc-out");
         // click-to-source points back at the cell's own source position.
         assert_eq!(b.sourcepos, "5:1-7:3");
+        // ...and that position is reverse-sync-valid (`L:C-L:C`), so an executed-cell
+        // output is reachable by cursor sync just like a static block. The no-kernel
+        // corpus test can't produce executed outputs, so this is where that's pinned.
+        let part_ok = |p: &str| {
+            let mut it = p.split(':');
+            matches!((it.next(), it.next(), it.next()), (Some(l), Some(c), None)
+                if !l.is_empty() && l.bytes().all(|x| x.is_ascii_digit())
+                    && !c.is_empty() && c.bytes().all(|x| x.is_ascii_digit()))
+        };
+        assert!(
+            b.sourcepos
+                .split_once('-')
+                .is_some_and(|(a, z)| part_ok(a) && part_ok(z)),
+            "output sourcepos must match the reverse-sync format L:C-L:C: {}",
+            b.sourcepos
+        );
         assert!(b.cell.is_none(), "an output block is not itself a cell");
         assert!(
             b.html.contains("class=\"qmd-output\"")

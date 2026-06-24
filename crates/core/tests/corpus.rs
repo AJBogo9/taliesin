@@ -277,6 +277,63 @@ fn book_renders_with_toc_anchored_headings_and_numbered_figures() {
 }
 
 #[test]
+fn reverse_sync_sourcepos_is_total() {
+    // Reverse cursor-sync (`highlightAtLine` in web-client/client.js) scans every
+    // `[data-sourcepos]` element and matches the strict regex `^(\d+):\d+-(\d+):\d+$`;
+    // a non-matching sourcepos is silently skipped (the block becomes cursor-invisible).
+    // So EVERY non-empty `data-sourcepos` in the emitted HTML must match that exact
+    // format. Empty sourcepos (generated References/footnotes blocks) is exempt — those
+    // blocks carry neither `data-block-id` nor `data-sourcepos`, so forward + reverse
+    // sync agree they are not locatable.
+    let re = |s: &str| -> bool {
+        // crude ^(\d+):\d+-(\d+):\d+$ check without the regex crate
+        let (a, b) = match s.split_once('-') {
+            Some(x) => x,
+            None => return false,
+        };
+        let ok = |p: &str| {
+            let mut it = p.split(':');
+            let (l, c) = (it.next(), it.next());
+            it.next().is_none()
+                && l.is_some_and(|x| !x.is_empty() && x.bytes().all(|b| b.is_ascii_digit()))
+                && c.is_some_and(|x| !x.is_empty() && x.bytes().all(|b| b.is_ascii_digit()))
+        };
+        ok(a) && ok(b)
+    };
+    let mut files = Vec::new();
+    collect_qmd(&corpus_dir(), &mut files);
+    let mut offenders = Vec::new();
+    for f in &files {
+        let src = fs::read_to_string(f).unwrap();
+        let base = f.parent().unwrap();
+        let doc = qmd_fast_core::render_document_with_includes(&src, base);
+        // Scan EVERY data-sourcepos="..." in the emitted HTML (what highlightAtLine sees),
+        // not just top-level blocks — nested elements inside containers carry their own.
+        let html = doc.body_html();
+        let mut rest = html.as_str();
+        while let Some(i) = rest.find("data-sourcepos=\"") {
+            rest = &rest[i + "data-sourcepos=\"".len()..];
+            let end = rest.find('"').unwrap_or(rest.len());
+            let sp = &rest[..end];
+            rest = &rest[end..];
+            if !sp.is_empty() && !re(sp) {
+                let label = f.strip_prefix(corpus_dir()).unwrap_or(f).display();
+                offenders.push(format!("{label}: sourcepos={sp:?}"));
+            }
+        }
+    }
+    offenders.sort();
+    offenders.dedup();
+    assert!(
+        offenders.is_empty(),
+        "{} block(s) have a sourcepos that reverse cursor-sync cannot match \
+         (must be `L:C-L:C`); fix at the attr-injection seam:\n{}",
+        offenders.len(),
+        offenders.join("\n")
+    );
+}
+
+#[test]
 fn ids_and_sourcepos_present_on_visible_blocks() {
     // Every visible block element should carry both data attributes. (Raw HTML
     // comment blocks legitimately carry neither — they are emitted verbatim.)
