@@ -116,11 +116,17 @@ Chromium-only). Not worth now: deeper i18n/RTL (English solo author).
 > sanctioned exception is a deferred print/PDF track *derived from* the built HTML).
 > The guardrails are unchanged (block-model invariants, single editing surface,
 > Do-NOT-touch). Sequenced in waves:
-> - **Wave 0 (integrity & foundation):** `prune-and-fix-stale-docs` → `third-party-truth`
->   (= #5) → `version-stamp`. Quick, zero-risk correctness debt from DROP-QUARTO.
-> - **Wave 1 (cash the schema):** `locate-render-warnings` → `nested-schema-validation`
->   epic (pin `corpus/diagnostics/typos.qmd`) → `jsonschema-for-config`. Supersedes the
->   moot P2 below.
+> - **Wave 0 (integrity & foundation): DONE, merged to `main` @ `4c900fa`.** Shipped
+>   version 0.1.0 + git-SHA colophon, truthful `THIRD_PARTY.md` + a rot-proof grep test +
+>   `deny.toml` (CI cargo-deny wiring deferred: not installable/verifiable locally), and
+>   stale Quarto-config/`feed.rs` doc fixes.
+> - **Wave 1 (cash the schema):** substrate `locate-render-warnings` **DONE, merged @
+>   `4c900fa`** (a located `Warning` channel: broken cross-refs, broken citations, and
+>   unknown shortcodes are now click-to-source; invariant-safe). **>> RESUME HERE: the
+>   `nested-schema-validation` epic** (validate `#|` cell options + callout kinds + nested
+>   config blocks with did-you-mean, built on the located substrate; pin
+>   `corpus/diagnostics/typos.qmd`) -> then `jsonschema-for-config`. Supersedes the moot P2
+>   below.
 > - **Wave 2 (prove the moat, = #7):** `live-edit-benchmark-harness` → `live-edit-hero-demo`.
 > - **Wave 3 (craft + breadth),** parallel and corpus-pinned: `typography-craft-pass` (= #6)
 >   · `callout-kind-contract` · `panel-tabset-margin` · `image-lightbox`
@@ -129,6 +135,17 @@ Chromium-only). Not worth now: deeper i18n/RTL (English solo author).
 >   Phase 1 (coordinate with #1d).
 > - **Wave 5 / later:** `print-pdf-track`, `docs-as-spec`, `{glsl}` registry, `build-seo`.
 > Priorities #1d/#4/#5/#6/#7 below are integrated into the waves (not duplicated).
+>
+> **>> To resume next session:** `main` is at `4c900fa` (version 0.1.0); Wave 0 + the Wave 1
+> substrate are merged (nothing pushed to any remote yet). Next concrete step = write +
+> execute the **`nested-schema-validation`** plan (the epic in `BEYOND-QUARTO.md` Pillar I:
+> closed key sets + `closest()` did-you-mean for `#|` cell options, callout kinds, and
+> nested config blocks `execute:`/`listing:`/`about:`/`hero:`; pin `corpus/diagnostics/
+> typos.qmd`). It builds on the now-located `Warning` channel (`render/model.rs` `Warning`),
+> so each new diagnostic is click-to-source for free. Working method that worked for Waves
+> 0 + 1: branch per wave, write a complete-code plan under `docs/superpowers/plans/`, execute
+> subagent-driven (one implementer + one independent reviewer per task + a final whole-branch
+> review), then fast-forward merge locally. The completed plans + ledgers are the template.
 
 ## Open / next
 
