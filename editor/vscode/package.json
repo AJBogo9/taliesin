@@ -1,0 +1,43 @@
+{
+  "name": "qmd-fast-companion",
+  "displayName": "qmd-fast Companion",
+  "description": "Live preview + bidirectional source sync for qmd-fast .qmd documents.",
+  "version": "0.1.0",
+  "publisher": "qmd-fast",
+  "private": true,
+  "engines": { "vscode": "^1.85.0", "node": ">=18" },
+  "categories": ["Other"],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "qmdFast.openPreview", "title": "qmd-fast: Open Preview", "category": "qmd-fast" }
+    ],
+    "menus": {
+      "editor/title": [
+        { "command": "qmdFast.openPreview", "when": "resourceExtname == .qmd", "group": "navigation" }
+      ]
+    },
+    "configuration": {
+      "title": "qmd-fast",
+      "properties": {
+        "qmdFast.path": {
+          "type": "string",
+          "default": "qmd-fast",
+          "description": "Path to the qmd-fast executable (default: the qmd-fast launcher on PATH)."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node",
+    "compile-tests": "tsc -p . --outDir out",
+    "test": "npm run compile-tests && node --test out/test"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.21.0",
+    "typescript": "^5.4.0"
+  }
+}
