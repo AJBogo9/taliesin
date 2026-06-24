@@ -145,16 +145,21 @@ already waits for.
   `qmd-cursor` highlights the right block for a heading, a paragraph, a block nested in a
   callout, and jumps the deck to the cursor's slide. *Invariant held: corpus-enforced
   block-model contract strengthened; no numbering/figure/cite change.*
-- [ ] **`vscode-editor-companion` (transformational / large / none).** Phase 1 only:
-  host + cursor loop. A thin extension that launches `qmd-fast preview`, hosts it in a
-  webview (the `inWebview` relay already exists), reveals source on `qmd-goto`, and
-  posts `qmd-cursor {file,line}` driving the already-built `highlightAtLine`
-  reverse-sync (incl. deck-slide jump). The protocol is half-built and waiting for a
-  host (consumer exists, no producer). Coordinate local-server launch with **backlog
-  #1d** (LAN token). Land with/after `reverse-sync-coverage-audit`. **Phase 2 (capped,
-  deferred): editor commands** (insert block / reorder slide) specced strictly as
-  `.qmd`-buffer text transforms in the editor, never preview gestures. *Invariant:
-  preview stays read-only; cursor sync highlights/scrolls, goto navigates.*
+- [~] **`vscode-editor-companion` Phase 1 (transformational / large / none). BUILT
+  (2026-06-24, branch `feat/vscode-editor-companion`); pending author F5 acceptance.** New
+  `editor/vscode/` TS extension (the missing producer for the half-built sync protocol):
+  `qmdFast.openPreview` spawns `qmd-fast preview` (localhost, no `--host` → #1d LAN token
+  not needed yet), hosts it in a webview via `asExternalUri` + a relay doc that bridges the
+  iframe's `qmd-goto`/`qmd-cursor` postMessages to VS Code webview messaging; forward
+  `qmd-goto`→`revealRange`, reverse cursor→debounced `qmd-cursor`→`highlightAtLine` (incl.
+  deck-slide jump). Pure logic (`ports.ts` free-port+HTTP-wait, `paths.ts` sourcepos+source-
+  file mapping) unit-tested with `node:test` (8 pass); `PreviewServer` spawn/readiness/kill +
+  `relayHtml` smoke-tested against the real binary. **The VS Code API wiring can't be
+  browser-verified headlessly → author runs the `editor/vscode/README.md` F5 checklist.**
+  Plan: `docs/superpowers/plans/2026-06-24-vscode-editor-companion-phase1.md`. **Phase 2
+  (capped, deferred): editor commands** (insert block / reorder slide) strictly as
+  `.qmd`-buffer text transforms, never preview gestures. *Invariant held: preview stays
+  read-only; cursor sync highlights/scrolls, goto navigates; no write-back.*
 
 ### Pillar III, New web-native capabilities (the genuinely-past-Quarto bets)
 
