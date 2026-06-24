@@ -87,35 +87,50 @@ parent folders are created as needed. Then in LaTeX:
 `\includegraphics[width=\columnwidth]{figures/loss.pdf}`. Changing the
 `fig-export` path re-runs the cell so the file is rewritten.
 
-## Live interactive content (Observable / OJS)
+## Live interactive content
 
-`{ojs}` cells execute client-side against a vendored Observable runtime: reactive
-cells, `viewof` inputs, `Plot`, and `d3` all work, and a cell re-runs
-automatically when an input it depends on changes. Drag the slider to add odd
-harmonics to a square-wave Fourier synthesis and watch the curve sharpen:
+`{js}` cells run client-side via a tiny built-in enhancer (no Observable runtime):
+native `viewof` inputs and vendored `Plot` + `d3` all work, and a cell re-runs
+when an input it declares changes. A cell tags
+itself with `//| viewof: NAME` to publish a control, and a consuming cell lists
+`//| input: NAME` to re-run when that control changes (read the current value with
+`qmd.value("NAME")`). Drag the slider to add odd harmonics to a square-wave Fourier
+synthesis and watch the curve sharpen:
 
-```{ojs}
+```{js}
+//| viewof: harmonics
 //| echo: false
-viewof harmonics = Inputs.range([1, 12], {value: 3, step: 1, label: "Harmonics"})
+const wrap = document.createElement("label");
+wrap.className = "qmd-input";
+wrap.append("Harmonics ");
+const input = document.createElement("input");
+input.type = "range";
+input.min = "1"; input.max = "12"; input.step = "1"; input.value = "3";
+wrap.append(input);
+return wrap;
 ```
 
-```{ojs}
+```{js}
+//| input: harmonics
 //| echo: false
-Plot.lineY(
+const harmonics = qmd.value("harmonics");
+return Plot.lineY(
   Array.from({length: 500}, (_, t) =>
     d3.range(1, harmonics + 1).reduce(
       (sum, k) => sum + Math.sin(2 * Math.PI * (2 * k - 1) * t / 500) / (2 * k - 1), 0)),
   {curve: "basis", stroke: "#4c8dff"}
-).plot({height: 200, marginLeft: 36, y: {label: "amplitude"}})
+).plot({height: 200, marginLeft: 36, y: {label: "amplitude"}});
 ```
 
-### The Python → OJS bridge
+### The Python → JS bridge
 
-`ojs_define()` in a Python cell hands values to OJS, so you can **compute in
-Python and render reactively in the browser**. In live preview the Python cell
-executes *after* the page loads, so its values arrive a moment after the OJS
-cells; the client binds them into the running module as they land (and rebinds
-when a Python input changes), so the cell recomputes in place without a reload.
+`ojs_define()` in a Python cell hands values to `{js}` cells, so you can **compute
+in Python and render reactively in the browser**. In live preview the Python cell
+executes *after* the page loads, so its values arrive a moment after the `{js}`
+cells; a `{js}` cell reads them as `qmd.defines.NAME` and re-runs automatically
+when they land (and rebinds when a Python input changes), so the cell recomputes
+in place without a reload. Guard against the value not having arrived yet with an
+early `return`.
 
 ```{python}
 #| code-fold: true
@@ -126,139 +141,139 @@ signal = [math.sin(2 * math.pi * i / 40) + random.uniform(-0.3, 0.3) for i in ra
 ojs_define(signal=signal)
 ```
 
-```{ojs}
+```{js}
 //| echo: false
-Plot.plot({
+const signal = qmd.defines.signal;
+if (!signal) return;
+return Plot.plot({
   height: 180, marginLeft: 36,
   marks: [Plot.ruleY([0]), Plot.lineY(signal, {stroke: "#2bb673"})]
-})
+});
 ```
 
 ### 3D graphics (Three.js / WebGL)
 
-Because OJS cells can `import` any ES module, **3D visualizations work too**. This
-cell pulls Three.js and `OrbitControls` from a CDN, wraps an equirectangular world
+Because a `{js}` cell can `await import()` any ES module, **3D visualizations work
+too**. This cell pulls Three.js and `OrbitControls` from a CDN, wraps an equirectangular world
 map onto a sphere, and returns the live `<canvas>`. Drag to spin the globe (it
 also auto-rotates), the **⛶** button takes it fullscreen, and the renderer is
 transparent so the globe follows the light/dark theme. `invalidation` stops the
 animation loop when the block re-renders — so a live save never leaks a running
 loop.
 
-```{ojs}
+```{js}
 //| echo: false
-{
-  const THREE = await import("https://esm.sh/three@0.163.0");
-  const { OrbitControls } = await import(
-    "https://esm.sh/three@0.163.0/examples/jsm/controls/OrbitControls"
-  );
+const THREE = await import("https://esm.sh/three@0.163.0");
+const { OrbitControls } = await import(
+  "https://esm.sh/three@0.163.0/examples/jsm/controls/OrbitControls"
+);
 
-  const w = 600, h = 360;
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.setSize(w, h, false);
-  renderer.setClearColor(0x000000, 0);
-  const cv = renderer.domElement;
-  cv.style.cssText = `display:block;width:${w}px;max-width:100%;height:auto`;
+const w = 600, h = 360;
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(w, h, false);
+renderer.setClearColor(0x000000, 0);
+const cv = renderer.domElement;
+cv.style.cssText = `display:block;width:${w}px;max-width:100%;height:auto`;
 
-  const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 100);
-  camera.position.set(0, 0, 4);
-  scene.add(new THREE.AmbientLight(0xffffff, 1.7));
-  const key = new THREE.DirectionalLight(0xffffff, 0.6);
-  key.position.set(5, 3, 5);
-  scene.add(key);
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 100);
+camera.position.set(0, 0, 4);
+scene.add(new THREE.AmbientLight(0xffffff, 1.7));
+const key = new THREE.DirectionalLight(0xffffff, 0.6);
+key.position.set(5, 3, 5);
+scene.add(key);
 
-  const globe = new THREE.Mesh(
-    new THREE.SphereGeometry(1.3, 64, 64),
-    new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0 })
-  );
-  scene.add(globe);
+const globe = new THREE.Mesh(
+  new THREE.SphereGeometry(1.3, 64, 64),
+  new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0 })
+);
+scene.add(globe);
 
-  function graticule() {
-    const c = document.createElement("canvas");
-    c.width = 1024; c.height = 512;
-    const x = c.getContext("2d");
-    x.fillStyle = "#1f3a5f"; x.fillRect(0, 0, c.width, c.height);
-    x.strokeStyle = "rgba(255,255,255,0.35)"; x.lineWidth = 2;
-    for (let lon = 0; lon <= c.width; lon += c.width / 24) {
-      x.beginPath(); x.moveTo(lon, 0); x.lineTo(lon, c.height); x.stroke();
-    }
-    for (let lat = 0; lat <= c.height; lat += c.height / 12) {
-      x.beginPath(); x.moveTo(0, lat); x.lineTo(c.width, lat); x.stroke();
-    }
-    return new THREE.CanvasTexture(c);
+function graticule() {
+  const c = document.createElement("canvas");
+  c.width = 1024; c.height = 512;
+  const x = c.getContext("2d");
+  x.fillStyle = "#1f3a5f"; x.fillRect(0, 0, c.width, c.height);
+  x.strokeStyle = "rgba(255,255,255,0.35)"; x.lineWidth = 2;
+  for (let lon = 0; lon <= c.width; lon += c.width / 24) {
+    x.beginPath(); x.moveTo(lon, 0); x.lineTo(lon, c.height); x.stroke();
   }
-  new THREE.TextureLoader().load(
-    "https://unpkg.com/three-globe/example/img/earth-day.jpg",
-    (tex) => {
-      tex.colorSpace = THREE.SRGBColorSpace;
-      globe.material.map = tex;
-      globe.material.emissiveMap = tex;
-      globe.material.emissive = new THREE.Color(0xffffff);
-      globe.material.emissiveIntensity = 0.3;
-      globe.material.needsUpdate = true;
-    },
-    undefined,
-    () => { globe.material.map = graticule(); globe.material.needsUpdate = true; }
-  );
-
-  const ctrl = new OrbitControls(camera, renderer.domElement);
-  ctrl.enableDamping = true;
-  ctrl.dampingFactor = 0.06;
-  ctrl.enablePan = false;
-  ctrl.minDistance = 2;
-  ctrl.maxDistance = 8;
-  ctrl.autoRotate = true;
-  ctrl.autoRotateSpeed = 0.6;
-
-  let raf;
-  (function animate() {
-    raf = requestAnimationFrame(animate);
-    ctrl.update();
-    renderer.render(scene, camera);
-  })();
-
-  const box = document.createElement("div");
-  box.style.cssText = "position:relative;display:inline-block;max-width:100%";
-  box.appendChild(renderer.domElement);
-
-  const fsBtn = document.createElement("button");
-  fsBtn.textContent = "⛶ Fullscreen";
-  fsBtn.style.cssText =
-    "position:absolute;bottom:8px;right:8px;padding:4px 10px;font-size:12px;cursor:pointer;" +
-    "background:rgba(30,30,30,.75);color:#ddd;border:1px solid #555;border-radius:4px;backdrop-filter:blur(4px)";
-  fsBtn.onclick = () =>
-    document.fullscreenElement ? document.exitFullscreen() : box.requestFullscreen();
-  box.appendChild(fsBtn);
-
-  function onFS() {
-    const fs = document.fullscreenElement === box;
-    if (fs) {
-      box.style.maxWidth = "none"; box.style.width = "100vw"; box.style.height = "100vh";
-      cv.style.cssText = "display:block;width:100%;height:100%";
-      const fw = box.clientWidth, fh = box.clientHeight;
-      renderer.setSize(fw, fh, false);
-      camera.aspect = fw / fh;
-    } else {
-      box.style.maxWidth = "100%"; box.style.width = ""; box.style.height = "";
-      renderer.setSize(w, h, false);
-      camera.aspect = w / h;
-      cv.style.cssText = `display:block;width:${w}px;max-width:100%;height:auto`;
-    }
-    camera.updateProjectionMatrix();
-    const cs = getComputedStyle(document.documentElement);
-    box.style.background = fs
-      ? (cs.getPropertyValue("--qmd-bg").trim() || getComputedStyle(document.body).backgroundColor)
-      : "";
-    fsBtn.textContent = fs ? "✕ Exit fullscreen" : "⛶ Fullscreen";
+  for (let lat = 0; lat <= c.height; lat += c.height / 12) {
+    x.beginPath(); x.moveTo(0, lat); x.lineTo(c.width, lat); x.stroke();
   }
-  document.addEventListener("fullscreenchange", onFS);
-
-  invalidation.then(() => {
-    cancelAnimationFrame(raf); ctrl.dispose(); renderer.dispose();
-    document.removeEventListener("fullscreenchange", onFS);
-  });
-
-  return box;
+  return new THREE.CanvasTexture(c);
 }
+new THREE.TextureLoader().load(
+  "https://unpkg.com/three-globe/example/img/earth-day.jpg",
+  (tex) => {
+    tex.colorSpace = THREE.SRGBColorSpace;
+    globe.material.map = tex;
+    globe.material.emissiveMap = tex;
+    globe.material.emissive = new THREE.Color(0xffffff);
+    globe.material.emissiveIntensity = 0.3;
+    globe.material.needsUpdate = true;
+  },
+  undefined,
+  () => { globe.material.map = graticule(); globe.material.needsUpdate = true; }
+);
+
+const ctrl = new OrbitControls(camera, renderer.domElement);
+ctrl.enableDamping = true;
+ctrl.dampingFactor = 0.06;
+ctrl.enablePan = false;
+ctrl.minDistance = 2;
+ctrl.maxDistance = 8;
+ctrl.autoRotate = true;
+ctrl.autoRotateSpeed = 0.6;
+
+let raf;
+(function animate() {
+  raf = requestAnimationFrame(animate);
+  ctrl.update();
+  renderer.render(scene, camera);
+})();
+
+const box = document.createElement("div");
+box.style.cssText = "position:relative;display:inline-block;max-width:100%";
+box.appendChild(renderer.domElement);
+
+const fsBtn = document.createElement("button");
+fsBtn.textContent = "⛶ Fullscreen";
+fsBtn.style.cssText =
+  "position:absolute;bottom:8px;right:8px;padding:4px 10px;font-size:12px;cursor:pointer;" +
+  "background:rgba(30,30,30,.75);color:#ddd;border:1px solid #555;border-radius:4px;backdrop-filter:blur(4px)";
+fsBtn.onclick = () =>
+  document.fullscreenElement ? document.exitFullscreen() : box.requestFullscreen();
+box.appendChild(fsBtn);
+
+function onFS() {
+  const fs = document.fullscreenElement === box;
+  if (fs) {
+    box.style.maxWidth = "none"; box.style.width = "100vw"; box.style.height = "100vh";
+    cv.style.cssText = "display:block;width:100%;height:100%";
+    const fw = box.clientWidth, fh = box.clientHeight;
+    renderer.setSize(fw, fh, false);
+    camera.aspect = fw / fh;
+  } else {
+    box.style.maxWidth = "100%"; box.style.width = ""; box.style.height = "";
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    cv.style.cssText = `display:block;width:${w}px;max-width:100%;height:auto`;
+  }
+  camera.updateProjectionMatrix();
+  const cs = getComputedStyle(document.documentElement);
+  box.style.background = fs
+    ? (cs.getPropertyValue("--qmd-bg").trim() || getComputedStyle(document.body).backgroundColor)
+    : "";
+  fsBtn.textContent = fs ? "✕ Exit fullscreen" : "⛶ Fullscreen";
+}
+document.addEventListener("fullscreenchange", onFS);
+
+invalidation.then(() => {
+  cancelAnimationFrame(raf); ctrl.dispose(); renderer.dispose();
+  document.removeEventListener("fullscreenchange", onFS);
+});
+
+return box;
 ```

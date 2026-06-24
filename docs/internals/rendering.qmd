@@ -95,19 +95,31 @@ their ids and are never touched.
 
 A `RenderedDoc` becomes a full page through one assembler, `render/page.rs`
 (`assemble_html_page`): it wraps the block HTML in the document shell, the `<head>`
-theme script, the bundled offline assets, and, for an OJS page, the Observable
-runtime. A deck routes through `render/deck.rs` instead, and a site/book page adds
+theme script, the bundled offline assets, and, for a page with `{js}` cells, the
+`{js}` enhancer. A deck routes through `render/deck.rs` instead, and a site/book page adds
 chrome from `site/`, but the **same assembler builds the page shell for the static
 `build` and for both live-preview servers** (preview just injects the websocket
 client into that shell), so they can't drift apart. The same block list backs all
 three outputs (see [Architecture](architecture.qmd)).
 
-## Interactive cells (OJS)
+## Interactive cells (`{js}`)
 
-Observable (`ojs`) cells are client-side reactive, not kernel-executed, so they sit
-outside the [execution](execution.qmd) path. Two decisions keep them cheap and
-robust. The page assembler ships the Observable runtime **only when a page actually
-contains live cells** (`page.rs`'s `has_ojs`), so a page without them carries no
-runtime weight. And because every OJS cell is a block with a content-hash id, an
-unedited cell is **never touched by the diff**, so a reactive graph keeps its
-runtime state across a save, the same live-state guarantee a Three.js canvas gets.
+`{js}` cells are client-side, not kernel-executed, so they sit outside the
+[execution](execution.qmd) path. A tiny native enhancer (`qmd-js.js`, ~130 lines)
+runs each cell's source against a small per-cell scope (`qmd.get`/`set`/`value`,
+`onInput`, `container`, `invalidation`); there is **no dataflow graph**. Cell
+kinds come from `//|` options: `//| viewof: name` returns a DOM input registered
+under `name`, `//| name: x` publishes the return value into a shared scope, and
+`//| input: a, b` re-runs the cell when input `a` or `b` fires. The corpus's whole
+reactive surface is single-input fan-out (one input → a few sink cells), so there is
+no dataflow engine — sinks just re-run on a named input, and cross-cell helpers are
+read with `qmd.get()` after a sequential (document-order, awaited) pass. A Python
+cell's `ojs_define(...)` bridges values across via a `<script type="qmd-define">`
+blob the enhancer ingests, re-running dependents when it lands after first paint.
+
+Two decisions keep this cheap and robust. The page assembler ships the vendored
+d3 + Observable Plot libs (UMD globals) **only when a page actually contains `{js}`
+cells** (gated on the rendered body), so a page without them carries no extra weight.
+And because every `{js}` cell is a block with a content-hash id, an unedited cell is
+**never touched by the diff**, so it keeps its runtime state across a save — the same
+live-state guarantee a Three.js canvas gets.

@@ -66,8 +66,6 @@ pub struct PageParts<'a> {
     /// Ship the KaTeX stylesheet. The static build sets this only when the page
     /// has math; a live preview always sets it (a doc can gain math any edit).
     pub ship_katex: bool,
-    /// Ship the Observable runtime (`<head>`) + its init script (after the body).
-    pub has_ojs: bool,
     /// Preview-only `<head>` additions (the dev-menu CSS); `""` for the build.
     /// Non-empty values should end with a newline.
     pub extra_head: &'a str,
@@ -89,7 +87,7 @@ pub struct PageParts<'a> {
 
 /// Assemble a complete HTML page from its parts: the single source of truth for
 /// the page skeleton (`<!DOCTYPE>`, the `<head>` ordering, the body frame, the
-/// shared enhancer/OJS scripts) shared by the static build and both live-preview
+/// shared enhancer scripts) shared by the static build and both live-preview
 /// servers. Keeping it here means a new meta tag, a bundled stylesheet, or a head
 /// reordering happens once instead of in three hand-rolled templates.
 pub fn assemble_html_page(p: &PageParts) -> String {
@@ -99,9 +97,10 @@ pub fn assemble_html_page(p: &PageParts) -> String {
         String::new()
     };
     let site_css = if p.with_site_css { SITE_CSS } else { "" };
-    let ojs_head_html = if p.has_ojs { ojs_head() } else { String::new() };
-    let ojs_init_html = if p.has_ojs {
-        format!("{}\n", ojs_init())
+    // Native `{js}` cells need the vendored d3 + Plot libs in <head>; the enhancer
+    // itself rides in code_scripts(). Gated on the rendered body (no PageParts flag).
+    let js_head_html = if has_js_cells(p.body) {
+        js_cell_head()
     } else {
         String::new()
     };
@@ -115,7 +114,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
 {favicon}
 {theme_init}
 <style>{base}{dark}{site}</style>{katex}
-{ojs_head}
+{js_head}
 {theme_css}
 {include_in_header}
 {extra_head}</head>
@@ -125,7 +124,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
 {scripts_pre}
 {code_scripts}
 {scripts_post}
-{ojs_init}{include_after_body}
+{include_after_body}
 </body>
 </html>
 "#,
@@ -136,7 +135,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
         base = BASE_CSS,
         dark = DARK_CSS,
         site = site_css,
-        ojs_head = ojs_head_html,
+        js_head = js_head_html,
         theme_css = theme_style(p.theme_css),
         include_in_header = p.include_in_header,
         extra_head = p.extra_head,
@@ -146,7 +145,6 @@ pub fn assemble_html_page(p: &PageParts) -> String {
         scripts_pre = p.scripts_pre,
         code_scripts = code_scripts(),
         scripts_post = p.scripts_post,
-        ojs_init = ojs_init_html,
         include_after_body = p.include_after_body,
     )
 }
@@ -190,11 +188,9 @@ fn html_page_inner(doc: &RenderedDoc, fallback_title: &str, site: Option<&SiteCt
     let mut t = String::new();
     escape_html(title, &mut t);
     let body = doc.body_html();
-    // Only ship the (large) KaTeX stylesheet when the page actually has math, and
-    // the Observable runtime only when it has live cells (computed before `body`
-    // is moved into the content layout below).
+    // Only ship the (large) KaTeX stylesheet when the page actually has math
+    // (computed before `body` is moved into the content layout below).
     let ship_katex = body.contains("class=\"katex");
-    let has_ojs = has_ojs(&body);
     // With `toc: true`, lay the content beside a sticky table of contents.
     let toc = if doc.toc {
         toc_html(&doc.blocks)
@@ -296,7 +292,6 @@ fn html_page_inner(doc: &RenderedDoc, fallback_title: &str, site: Option<&SiteCt
         theme_css: &doc.theme_css,
         with_site_css: site.is_some(),
         ship_katex,
-        has_ojs,
         extra_head: "",
         body_class: &body_class,
         include_in_header: &includes.in_header,

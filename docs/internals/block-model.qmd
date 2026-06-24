@@ -74,8 +74,8 @@ therefore dominated by the handful of blocks that actually changed, not by the
 size of the document.
 
 The payoff: an unchanged block is **never touched**, so the browser keeps its
-scroll position and any live DOM state inside it — a running Three.js canvas, an
-Observable cell — survives a save untouched (goal #2).
+scroll position and any live DOM state inside it — a running Three.js canvas, a
+`{js}` cell — survives a save untouched (goal #2).
 
 Concretely: change `tau` and the diff emits exactly one op, an `Update` for the
 plot's block, while the heading and the paragraph, their content hashes unchanged,

@@ -4,7 +4,7 @@
 // Connects to the dev server's websocket and applies a `full_render` followed
 // by incremental `update`/`insert`/`remove` block ops. Unchanged blocks are
 // never touched, so scroll position and the runtime state of live blocks
-// (Three.js canvases, OJS cells) survive edits. Math is rendered server-side,
+// (Three.js canvases, {js} cells) survive edits. Math is rendered server-side,
 // so there is nothing to re-run on the client.
 //
 // ── Websocket protocol ──────────────────────────────────────────────────────
@@ -63,7 +63,7 @@
   // menu is built). Its style is part of the dev-menu CSS (STATUS_CSS).
   // Two issue sources, both shown in the dev panel and counted on the collapsed
   // pill: server diagnostics (include/kernel) in `diagEl`, and per-cell runtime
-  // errors (Python `.qmd-error`, OJS `.observablehq--error`) in `cellErrEl`.
+  // errors (Python `.qmd-error`, `{js}` cell `.qmd-js-error`) in `cellErrEl`.
   const diagEl = document.createElement("div");
   diagEl.id = "qmd-diagnostics";
   diagEl.style.display = "none";
@@ -116,9 +116,9 @@
 
   // Scan the mounted content for per-cell errors, list them in the panel (each a
   // button that scrolls to + flashes the failing cell), and update the pill badge.
-  // Re-run after every mount and (via a MutationObserver) when async OJS errors land.
+  // Re-run after every mount and (via a MutationObserver) when async `{js}` errors land.
   const scanCellErrors = () => {
-    const errs = root ? [...root.querySelectorAll(".qmd-error, .observablehq--error")] : [];
+    const errs = root ? [...root.querySelectorAll(".qmd-error, .qmd-js-error")] : [];
     cellErrCount = errs.length;
     cellErrEl.textContent = "";
     cellErrEl.style.display = errs.length ? "flex" : "none";
@@ -300,8 +300,8 @@
   // Deck mode (and any layout without the control bar) keeps its status pill.
   if (!statusEl) statusEl = document.getElementById("qmd-status");
 
-  // OJS errors are rendered asynchronously by the Observable runtime, after the
-  // mount; watch the content for them (debounced) so the dev-menu count stays live.
+  // A `{js}` cell can error asynchronously (its async body runs after the mount);
+  // watch the content for them (debounced) so the dev-menu count stays live.
   if (window.MutationObserver) {
     let t = 0;
     new MutationObserver(() => {
@@ -501,25 +501,6 @@
     window.scrollTo({ top: y, left: 0, behavior: "instant" });
   };
 
-  // React to OJS content arriving/changing in a freshly-mounted op node.
-  // - An `ojs-define` script (a {python} cell's output bridging values to OJS):
-  //   bind it into the live module so the cells that reference it recompute. This
-  //   is what fixes the cold-load race — the values arrive after the OJS cells
-  //   first interpret — and also live-updates a figure when its Python inputs change.
-  // - An `ojs-module-contents` script (an authored {ojs} cell whose source changed):
-  //   the runtime can't redefine a whole cell in place, so reload to re-interpret.
-  /** @param {Element|null} node */
-  const afterOjsMutation = (node) => {
-    if (!node || !window.__qmdOjsRan || !node.querySelector) return;
-    if (node.querySelector('script[type="ojs-module-contents"]')) {
-      location.reload();
-      return;
-    }
-    if (node.querySelector('script[type="ojs-define"]') && window.qmdBindOjsDefines) {
-      window.qmdBindOjsDefines(node);
-    }
-  };
-
   // Re-attach the deck, rebuild the TOC, and (re)highlight + add copy buttons to
   // code blocks after any DOM change (each is a no-op when not applicable).
   const afterChange = () => {
@@ -533,7 +514,7 @@
 
   // The server renders the initial body into the page (so content paints before
   // the websocket connects). The first `full_render` after that is identical, so
-  // skip re-mounting it (avoids a flash + needless OJS/deck re-init); reconnects
+  // skip re-mounting it (avoids a flash + needless {js}/deck re-init); reconnects
   // still re-mount normally.
   let ssrPending = window.QMD_SSR === true;
 
@@ -550,8 +531,6 @@
         }
         afterChange();
         setDiagnostics(msg.diagnostics);
-        // Run Observable cells once the cells are in the DOM (no-op without OJS).
-        if (window.qmdRunOJS) window.qmdRunOJS();
         break;
       case "diagnostics":
         setDiagnostics(msg.messages);
@@ -563,7 +542,6 @@
         if (el && node) {
           keepScroll(() => el.replaceWith(node));
           pulse(node, "qmd-flash");
-          afterOjsMutation(node);
         }
         afterChange();
         break;
@@ -586,7 +564,6 @@
             else root.prepend(node);
           });
           pulse(node, "qmd-flash");
-          afterOjsMutation(node);
         }
         afterChange();
         break;
@@ -601,7 +578,7 @@
       case "set_meta": {
         // A structural edit elsewhere shifted this block's lines but not its
         // content. Patch only its position attributes so click-to-source stays
-        // exact — without re-rendering, so its live DOM state (video, OJS widget,
+        // exact — without re-rendering, so its live DOM state (video, {js} widget,
         // open <details>) survives. No afterChange(): content is unchanged.
         renderOk();
         const el = elById(msg.target_id);

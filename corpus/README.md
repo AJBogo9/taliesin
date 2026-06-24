@@ -9,9 +9,9 @@ author's own projects; provenance is below.
 | Path | Category | Exercises | Source |
 |---|---|---|---|
 | `posts/born-machines.qmd` | Prose blog post | pure prose (no math/code) — the simplest Phase 1 target | `personal/blog` |
-| `posts/em-algorithm/` | Math blog post | heavy KaTeX (~100 math spans), 6 code cells, OJS | `personal/tech-blog` |
-| `posts/pca-geometry/` | Live-demo blog post | OJS + Three.js + math + code | `personal/tech-blog` |
-| `posts/fourier-transform/` | Interactive blog post | `ojs_define` Python→OJS bridge, raw-HTML (`{=html}`) audio players, labelled equations (`@eq-`) | `personal/tech-blog` |
+| `posts/em-algorithm/` | Math blog post | heavy KaTeX (~100 math spans), 6 code cells, `{js}` cells | `personal/tech-blog` |
+| `posts/pca-geometry/` | Live-demo blog post | `{js}` cells + Three.js + math + code | `personal/tech-blog` |
+| `posts/fourier-transform/` | Interactive blog post | `ojs_define` Python→`{js}` bridge, raw-HTML (`{=html}`) audio players, labelled equations (`@eq-`) | `personal/tech-blog` |
 | `liquid-glass-slides/example.qmd` | reveal.js deck | slide structure, custom `liquid-glass` format extension | `personal/liquid-glass-revealjs` |
 | `bayesian-book/` | Single-page report (`type: website`) | one page assembled from `subsections/` includes, cross-refs, bib + CSL, TOC | `personal/bayesian-fatality-analysis` |
 | `tech-blog/` | Multi-page website | `_site.yml` project config, many pages + posts, navbar/footer, prev/next, `.qmd`→`.html` cross-page links | `personal/tech-blog` |
@@ -44,10 +44,10 @@ diffing) lives in the separate `qmd-fast-testbed` repo, not here.
 `crates/core/tests/tech_blog.rs` tracks progress toward using qmd-fast as the
 edit-preview loop for the author's tech-blog: passing tests lock in the per-post
 features (math, callouts, citations, raw-`{=html}` passthrough, numbered/labelled
-equations + `@eq-` refs, collapsible callouts, `code-fold`, and live Observable
+equations + `@eq-` refs, collapsible callouts, `code-fold`, and live `{js}`
 cells). The remaining `#[ignore]`d tests encode the website-scope `listing:`/
 `about:` features. Run `cargo test --test tech_blog -- --ignored` for those.
 
-Live OJS needs a real web server (the Observable runtime rejects `file://`), so it
-is verified by `serve` + browser rather than a unit test; see `todo.md` for the
-OJS design + known follow-ups.
+Live `{js}` cells need a real web server (a cell's relative `import()` is blocked over
+`file://`), so they are verified by `serve` + browser rather than a unit test; see
+`backlog.md` for known follow-ups.

@@ -145,31 +145,36 @@ follow-up email:
 
 ```{=html}
 <style>
-.reveal .slides section form { font: 500 .45em/1.4 system-ui; display: flex; align-items: center; gap: .7rem; margin: .3em 0; }
-.reveal .slides section input[type=range] { width: 22rem; }
-.reveal .slides section input[type=number] { width: 6.5rem; padding: .15em .4em; box-sizing: border-box; }
+.qmd-deck section label { font: 500 .45em/1.4 system-ui; display: flex; align-items: center; gap: .7rem; margin: .3em 0; }
+.qmd-deck section input[type=range] { width: 22rem; }
 </style>
 ```
 
-```{ojs}
-//| echo: false
-viewof churn = Inputs.range([0.02, 0.15], { value: 0.05, step: 0.005, label: "churn / month" })
+```{js}
+//| viewof: churn
+const label = document.createElement("label");
+const range = document.createElement("input");
+range.type = "range";
+range.min = "0.02"; range.max = "0.15"; range.step = "0.005"; range.value = "0.05";
+label.append("churn / month", range);
+return label;
 ```
 
-```{ojs}
-//| echo: false
-{
-  const retained = Math.pow(1 - churn, 60);
-  const arr = Math.round(2400 * retained);
-  const pct = (100 * retained).toFixed(0);
-  return html`<div style="font:600 1.15em system-ui;color:var(--qmd-deck-fg,#e8eaf0)">
+```{js}
+//| input: churn
+const churn = qmd.value("churn");
+const retained = Math.pow(1 - churn, 60);
+const arr = Math.round(2400 * retained);
+const pct = (100 * retained).toFixed(0);
+const div = document.createElement("div");
+div.style.cssText = "font:600 1.15em system-ui;color:var(--qmd-deck-fg,#e8eaf0)";
+div.innerHTML = `
     Retained after 5 years: <span style="color:#5b8cff">${pct}%</span> of the cohort
     &nbsp;·&nbsp; <span style="color:#27a567">$${arr.toLocaleString()}</span> run-rate / 100 seats
     <div style="height:16px;margin-top:.5em;border-radius:8px;background:#2a3350;overflow:hidden">
       <div style="height:100%;width:${pct}%;background:#5b8cff;transition:width .2s"></div>
-    </div>
-  </div>`;
-}
+    </div>`;
+return div;
 ```
 
 ## Two plans, side by side

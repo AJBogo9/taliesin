@@ -56,7 +56,7 @@ controlled_parameter: User drags two 2D sliders, each setting the real and imagi
 visual_output: Two Argand-plane discs showing the complex amplitude vectors; a bar chart of the resulting probabilities p(xᵢ) = |ψ(xᵢ)|² / Z updating in real time; a heat-map overlay on each disc coloring every reachable point green (valid distribution) — the entire plane is green, with no red boundary anywhere
 insight_revealed: Every point in ℂᴺ parameter space maps to a valid probability distribution — there is no invalid region or boundary wall, making the amplitude parameterization truly unconstrained compared to the simplex
 estimated_complexity: medium
-suggested_tech: OJS
+suggested_tech: {js}
 -->
 
 ## The Born Rule: Quantum Physics Hands Us the Formula
@@ -89,7 +89,7 @@ controlled_parameter: User adjusts a bond-dimension slider χ (1 through 6) for 
 visual_output: A heatmap of the 64-outcome learned distribution vs. the target distribution, with total-variation distance shown numerically; tensor diagram glyphs update to reflect the bond width; at χ = 1 the amplitude model captures the two modes while the probability model cannot — the TV distance curve for amplitudes drops steeply while the probability-mode curve plateaus
 insight_revealed: Interference in the amplitude tensor train lets a small bond dimension represent multi-modal distributions that require exponentially larger non-negative factorizations, making the representational separation between the two model classes concretely visible
 estimated_complexity: high
-suggested_tech: OJS
+suggested_tech: {js}
 -->
 
 ## Interference: Why Amplitudes Buy Expressivity Probabilities Cannot

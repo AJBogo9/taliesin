@@ -280,12 +280,8 @@ fn render_doc(app: &AppState) -> Option<RenderedDoc> {
 // --- HTTP ---------------------------------------------------------------
 
 async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
-    let (format, toc, theme_css, theme_default, theme_is_custom, includes, ojs, body) = {
+    let (format, toc, theme_css, theme_default, theme_is_custom, includes, body) = {
         let d = app.doc.lock();
-        let ojs = d
-            .blocks
-            .iter()
-            .any(|b| b.html.contains("ojs-module-contents"));
         (
             d.format,
             d.toc,
@@ -293,7 +289,6 @@ async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
             d.theme_default.clone(),
             d.theme_is_custom,
             d.includes.clone(),
-            ojs,
             d.body_html(),
         )
     };
@@ -310,7 +305,6 @@ async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
         theme_css: &theme_css,
         theme_default: &theme_default,
         theme_is_custom,
-        ojs,
         doc_path: &doc_path.to_string_lossy(),
         base_dir: &base_dir.to_string_lossy(),
         includes: &includes,
@@ -326,7 +320,6 @@ struct PageCtx<'a> {
     theme_css: &'a str,
     theme_default: &'a str,
     theme_is_custom: bool,
-    ojs: bool,
     doc_path: &'a str,
     base_dir: &'a str,
     /// The doc's front-matter `include-*`/`css` + format-extension theme, injected
@@ -592,7 +585,6 @@ fn blog_index_html(ctx: &PageCtx) -> String {
         with_site_css: false,
         // A live doc can gain math at any edit, so always ship the KaTeX styles.
         ship_katex: true,
-        has_ojs: ctx.ojs,
         extra_head: &extra_head,
         body_class,
         include_in_header: &ctx.includes.in_header,
@@ -608,14 +600,6 @@ fn blog_index_html(ctx: &PageCtx) -> String {
 /// `.qmd-deck > .qmd-slides` and (re)syncing the deck engine as blocks change. The
 /// `QMD_FORMAT` flag switches the client into deck mode.
 fn deck_index_html(ctx: &PageCtx) -> String {
-    // The Observable runtime init, only when the deck has live `{ojs}` cells.
-    // `ojs_init` defines `window.qmdRunOJS`, which the preview client calls after
-    // each mount, so it must be defined before `client.js` runs.
-    let ojs_init = if ctx.ojs {
-        qmd_fast_core::ojs_init()
-    } else {
-        String::new()
-    };
     let extra_head = format!("<style>{STATUS_CSS}</style>\n");
     // Absolute paths so click-to-source can build `vscode://file/…` links. The
     // single-doc page sets this in its scripts_pre; the deck has none, so the tail
@@ -629,11 +613,11 @@ fn deck_index_html(ctx: &PageCtx) -> String {
     // The live deck tail: the deck engine, the enhancers, the `QMD_*` flags, the
     // doc's after-body include (an extension plugin's `<script src>` + registration,
     // which must run after the engine and before the client initializes it), then
-    // the websocket client last (after `ojs_init`).
+    // the websocket client last.
     let tail = format!(
         "{deck_script}\n{code_scripts}\n\
          <script>{doc_global} window.QMD_FORMAT = \"deck\"; window.QMD_SSR = true;</script>\n\
-         {include_after_body}\n{ojs_init}\n<script>\n{CLIENT_JS}\n</script>\n",
+         {include_after_body}\n<script>\n{CLIENT_JS}\n</script>\n",
         deck_script = qmd_fast_core::deck_client_script(),
         code_scripts = qmd_fast_core::code_scripts(),
         include_after_body = ctx.includes.after_body,
@@ -649,7 +633,6 @@ fn deck_index_html(ctx: &PageCtx) -> String {
         theme_css: ctx.theme_css,
         // A live deck can gain math at any edit, so always ship the KaTeX styles.
         ship_katex: true,
-        has_ojs: ctx.ojs,
         extra_head: &extra_head,
         include_in_header: &ctx.includes.in_header,
         include_before_body: &ctx.includes.before_body,
@@ -886,8 +869,8 @@ fn spawn_watcher(app: Arc<AppState>, mut signal_rx: mpsc::UnboundedReceiver<()>)
             }
             rebuild_guarded(&app, &mut executor).await;
             // A fresh kernel means fresh outputs — including any `ojs_define`
-            // values. Reload so OJS cells re-bind to them (the Observable runtime
-            // can't redefine a variable in place, so a diff-splice wouldn't take).
+            // values. Reload so the `{js}` cells re-bind to the fresh `qmd-define`
+            // blobs from a clean module scope.
             if restarted {
                 let _ = app.tx.send(protocol::reload());
             }
@@ -1098,7 +1081,6 @@ mod protocol_contract {
             theme_css: "",
             theme_default: "auto",
             theme_is_custom: false,
-            ojs: false,
             doc_path: "/tmp/deck.qmd",
             base_dir: "/tmp",
             includes: &includes,

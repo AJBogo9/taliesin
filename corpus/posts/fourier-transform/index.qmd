@@ -150,80 +150,54 @@ There is a nice geometric way to understand what @eq-dft is doing. The idea is t
 
 When $k$ matches a hidden frequency, the wound samples bunch up on one side of the origin (large $|X[k]|$). When $k$ does not match a hidden frequency, the samples scatter evenly around the circle (small $|X[k]|$). From the figure below, you can see the chord signal that is wound around a circle. Changing the frequency $k$ shows on which frequencies $|X[k]|$ becomes non-zero. The figure below uses a synthetic 256-sample signal with notes at bin indices $k = 3, 7, 12$ which is the same ratio as the chord, but scaled to a different absolute pitch to simplify the visual.
 
-```{ojs}
+```{js}
+//| viewof: wind_f
 //| echo: false
-//| label: fig-winding
-//| fig-cap: "Three-panel interactive: signal x[n] (top), signal wound around a circle at frequency k (middle), full spectrum |X[k]| (bottom). Drag the slider to k = 3, 7, or 12 and watch the winding bunch up while the orange dot in the spectrum jumps to a peak."
+const wrap = document.createElement("div");
+wrap.style.cssText = "font-family:inherit;font-size:13px;";
+wrap.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+    <span style="color:#d1d5db;">Test frequency k</span>
+    <input type="number" min="0" max="20" step="0.05" value="3"
+      style="width:68px;background:#1f2937;color:#f9fafb;border:1px solid #4b5563;
+             border-radius:4px;padding:2px 6px;font-size:13px;text-align:right;">
+  </div>
+  <input type="range" min="0" max="20" step="0.05" value="3"
+    style="width:100%;accent-color:#7eb8f7;cursor:pointer;">`;
 
-viewof wind_f = {
-  const wrap = html`<div style="font-family:inherit;font-size:13px;">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
-      <span style="color:#d1d5db;">Test frequency k</span>
-      <input type="number" min="0" max="20" step="0.05" value="3"
-        style="width:68px;background:#1f2937;color:#f9fafb;border:1px solid #4b5563;
-               border-radius:4px;padding:2px 6px;font-size:13px;text-align:right;">
-    </div>
-    <input type="range" min="0" max="20" step="0.05" value="3"
-      style="width:100%;accent-color:#7eb8f7;cursor:pointer;">
-  </div>`;
+const slider = wrap.querySelector("input[type=range]");
+const number = wrap.querySelector("input[type=number]");
 
-  const slider = wrap.querySelector("input[type=range]");
-  const number = wrap.querySelector("input[type=number]");
+const emit = () => {
+  wrap.value = +slider.value;
+  wrap.dispatchEvent(new Event("input", {bubbles: true}));
+};
 
-  const emit = () => {
-    wrap.value = +slider.value;
-    wrap.dispatchEvent(new Event("input", {bubbles: true}));
-  };
+slider.oninput = () => { number.value = slider.value; emit(); };
+number.oninput = () => {
+  const v = Math.max(0, Math.min(20, +number.value));
+  slider.value = v;
+  emit();
+};
 
-  slider.oninput = () => { number.value = slider.value; emit(); };
-  number.oninput = () => {
-    const v = Math.max(0, Math.min(20, +number.value));
-    slider.value = v;
-    emit();
-  };
-
-  wrap.value = 3;
-  return wrap;
-}
+wrap.value = 3;
+return wrap;
 ```
 
 
-```{ojs}
+```{js}
+//| name: layout
 //| echo: false
-signalX = {
-  const N = winding_N;
-  return Array.from({length: N}, (_, n) =>
-    winding_freqs.reduce((s, f, i) => s + winding_amps[i] * Math.cos(2 * Math.PI * f * n / N), 0)
-  );
-}
-```
-
-```{ojs}
-//| echo: false
-specK = {
-  const N = winding_N;
-  return Array.from({length: 21}, (_, k) => {
-    let re = 0, im = 0;
-    for (let n = 0; n < N; n++) {
-      re += signalX[n] * Math.cos(-2 * Math.PI * k * n / N);
-      im += signalX[n] * Math.sin(-2 * Math.PI * k * n / N);
-    }
-    return { k, mag: Math.sqrt(re * re + im * im) / N };
-  });
-}
-```
-
-```{ojs}
-//| echo: false
-layout = ({
+return {
   W: 520, flatH: 148, gapY: 14, circD: 300, gapY2: 18, specH: 150,
   totalH: 148 + 14 + 300 + 18 + 150
-})
+};
 ```
 
-```{ojs}
+```{js}
+//| name: drawSignalPanel
 //| echo: false
-drawSignalPanel = (svg, { x, components, compColors, compAlpha, wind_f, isMatch, N }) => {
+return (svg, { x, components, compColors, compAlpha, wind_f, isMatch, N }) => {
+  const layout = qmd.get("layout");
   const { W, flatH } = layout;
   const xMax = d3.max(x, v => Math.abs(v));
   const xPad = N * 0.10;
@@ -269,13 +243,14 @@ drawSignalPanel = (svg, { x, components, compColors, compAlpha, wind_f, isMatch,
       .attr("stroke", "#6b7280").attr("stroke-width", 0.8)
       .attr("opacity", 0.12 + 0.38 * Math.abs(v) / xMax);
   });
-}
+};
 ```
 
-```{ojs}
+```{js}
+//| name: drawWindingPanel
 //| echo: false
-drawWindingPanel = (svg, { wound, cm_x, cm_y, wind_f }) => {
-  const { W, flatH, gapY, circD } = layout;
+return (svg, { wound, cm_x, cm_y, wind_f }) => {
+  const { W, flatH, gapY, circD } = qmd.get("layout");
   const circY0 = flatH + gapY;
   const margin = 18;
   const R      = (circD - 2 * margin) / 2;
@@ -311,13 +286,14 @@ drawWindingPanel = (svg, { wound, cm_x, cm_y, wind_f }) => {
   svg.append("circle")
     .attr("cx", cx0 + cm_x * scale).attr("cy", cy0 - cm_y * scale)
     .attr("r", 6).attr("fill", "#f0956a");
-}
+};
 ```
 
-```{ojs}
+```{js}
+//| name: drawSpectrumPanel
 //| echo: false
-drawSpectrumPanel = (svg, { specK, wind_f, mag, comp_freqs, compColors }) => {
-  const { W, flatH, gapY, circD, gapY2, specH } = layout;
+return (svg, { specK, wind_f, mag, comp_freqs, compColors }) => {
+  const { W, flatH, gapY, circD, gapY2, specH } = qmd.get("layout");
   const specY0     = flatH + gapY + circD + gapY2;
   const specFm     = { l: 36, r: 14, t: 18, b: 32 };
   const specMaxMag = d3.max(specK, d => d.mag);
@@ -385,45 +361,68 @@ drawSpectrumPanel = (svg, { specK, wind_f, mag, comp_freqs, compColors }) => {
   svg.append("circle")
     .attr("cx", cur_x).attr("cy", cur_y).attr("r", 5).attr("fill", "#f0956a")
     .attr("stroke", "#111827").attr("stroke-width", 1.5);
-}
+};
 ```
 
-```{ojs}
+```{js}
+//| label: fig-winding
+//| input: wind_f
 //| echo: false
-{
-  const N          = winding_N;
-  const comp_freqs = winding_freqs;
-  const comp_amps  = winding_amps;
-  const compColors = ["#7eb8f7", "#6ddc8b", "#f0956a"];
+//| fig-cap: "Three-panel interactive: signal x[n] (top), signal wound around a circle at frequency k (middle), full spectrum |X[k]| (bottom). Drag the slider to k = 3, 7, or 12 and watch the winding bunch up while the orange dot in the spectrum jumps to a peak."
+const N          = qmd.defines.winding_N;
+const comp_freqs = qmd.defines.winding_freqs;
+const comp_amps  = qmd.defines.winding_amps;
+const layout     = qmd.get("layout");
+const drawSignalPanel   = qmd.get("drawSignalPanel");
+const drawWindingPanel  = qmd.get("drawWindingPanel");
+const drawSpectrumPanel = qmd.get("drawSpectrumPanel");
+if (!N || !comp_freqs || !comp_amps || !layout ||
+    !drawSignalPanel || !drawWindingPanel || !drawSpectrumPanel) return;
 
-  const wound  = signalX.map((v, n) => ({
-    px: v * Math.cos(-2 * Math.PI * wind_f * n / N),
-    py: v * Math.sin(-2 * Math.PI * wind_f * n / N),
-  }));
-  const cm_x   = wound.reduce((s, p) => s + p.px, 0) / N;
-  const cm_y   = wound.reduce((s, p) => s + p.py, 0) / N;
-  const mag      = Math.sqrt(cm_x**2 + cm_y**2);
-  const isMatch  = comp_freqs.some(f => Math.abs(f - wind_f) < 0.15);
-  const mag_display = Math.abs(wind_f - Math.round(wind_f)) < 0.01 ? mag : 0;
+// signal x[n] = sum of the component cosines
+const signalX = Array.from({length: N}, (_, n) =>
+  comp_freqs.reduce((s, f, i) => s + comp_amps[i] * Math.cos(2 * Math.PI * f * n / N), 0)
+);
+// full spectrum |X[k]| for k = 0..20
+const specK = Array.from({length: 21}, (_, k) => {
+  let re = 0, im = 0;
+  for (let n = 0; n < N; n++) {
+    re += signalX[n] * Math.cos(-2 * Math.PI * k * n / N);
+    im += signalX[n] * Math.sin(-2 * Math.PI * k * n / N);
+  }
+  return { k, mag: Math.sqrt(re * re + im * im) / N };
+});
 
-  const components = comp_freqs.map((f, i) =>
-    Array.from({length: N}, (_, n) => comp_amps[i] * Math.cos(2 * Math.PI * f * n / N))
-  );
-  const compAlpha = comp_freqs.map(f => {
-    const dist = Math.abs(f - wind_f);
-    return dist < 2 ? 0.15 + 0.85 * (1 - dist / 2) : 0.15;
-  });
+const wind_f = qmd.value("wind_f");
+const compColors = ["#7eb8f7", "#6ddc8b", "#f0956a"];
 
-  const svg = d3.create("svg")
-    .attr("width", layout.W).attr("height", layout.totalH)
-    .style("background", "#111827").style("border-radius", "8px");
+const wound  = signalX.map((v, n) => ({
+  px: v * Math.cos(-2 * Math.PI * wind_f * n / N),
+  py: v * Math.sin(-2 * Math.PI * wind_f * n / N),
+}));
+const cm_x   = wound.reduce((s, p) => s + p.px, 0) / N;
+const cm_y   = wound.reduce((s, p) => s + p.py, 0) / N;
+const mag      = Math.sqrt(cm_x**2 + cm_y**2);
+const isMatch  = comp_freqs.some(f => Math.abs(f - wind_f) < 0.15);
+const mag_display = Math.abs(wind_f - Math.round(wind_f)) < 0.01 ? mag : 0;
 
-  drawSignalPanel(svg, { x: signalX, components, compColors, compAlpha, wind_f, isMatch, N });
-  drawWindingPanel(svg, { wound, cm_x, cm_y, wind_f });
-  drawSpectrumPanel(svg, { specK, wind_f, mag: mag_display, comp_freqs, compColors });
+const components = comp_freqs.map((f, i) =>
+  Array.from({length: N}, (_, n) => comp_amps[i] * Math.cos(2 * Math.PI * f * n / N))
+);
+const compAlpha = comp_freqs.map(f => {
+  const dist = Math.abs(f - wind_f);
+  return dist < 2 ? 0.15 + 0.85 * (1 - dist / 2) : 0.15;
+});
 
-  return svg.node();
-}
+const svg = d3.create("svg")
+  .attr("width", layout.W).attr("height", layout.totalH)
+  .style("background", "#111827").style("border-radius", "8px");
+
+drawSignalPanel(svg, { x: signalX, components, compColors, compAlpha, wind_f, isMatch, N });
+drawWindingPanel(svg, { wound, cm_x, cm_y, wind_f });
+drawSpectrumPanel(svg, { specK, wind_f, mag: mag_display, comp_freqs, compColors });
+
+return svg.node();
 ```
 
 An instrument plays three notes at once, but you hear a single chord. Your brain solves that problem instantly, without effort. Now you know how a computer does it too.

@@ -82,7 +82,7 @@ Quarto, and the pre-open-source gate. Curated to what's actually worth the time.
    completely" past self-judgment ("the corpus is the spec" is necessary, not
    sufficient, for a *replacement* claim).
 5. **[ ] Supply-chain / licensing audit (pre-OSS gate).** Verify every vendored asset
-   (KaTeX, syntect grammars, the reveal *theme*, fonts, OJS runtime) permits
+   (KaTeX, syntect grammars, fonts, vendored d3 + Observable Plot) permits
    redistribution and is attributed in `THIRD_PARTY.md`. Cheap now, expensive to
    discover after the repo is public.
 6. **[ ] Typography pass on the themes.** Measure (line length), vertical rhythm,
@@ -99,13 +99,13 @@ production quality (Lighthouse/CWV, no-JS fallback, hashed assets, robots/sitema
 cross-browser check of the deck (Safari/Firefox/iOS, since the visual audit was
 Chromium-only). Not worth now: deeper i18n/RTL (English solo author).
 
-> **Initiative: drop Quarto backwards-compat → fully native.** Full phased plan in
-> `DROP-QUARTO.md` (from a 49-agent verified audit, 2026-06-23). TL;DR: most big
-> files are *intrinsic*, not Quarto tax; the real work is delete 2 isolated shims +
-> rename `_quarto.yml` → `_site.yml` + close `KNOWN_KEYS` (cheap, Phase 1–3), then
-> de-reveal the deck engine (the design-freedom prize, Phase 4) and re-architect OJS
-> off the 440 KB runtime (Phase 5). A **Do-NOT-touch** list guards the intrinsic
-> machinery (`:::`, citations, includes, numbering, freeze) from negative-ROI rewrites.
+> **Initiative: drop Quarto backwards-compat → fully native. DONE (2026-06-24).**
+> Full phased plan + outcomes in `DROP-QUARTO.md` (from a 49-agent verified audit,
+> 2026-06-23). All five phases shipped: deleted 2 isolated shims, renamed
+> `_quarto.yml` → `_site.yml`, closed `KNOWN_KEYS`, de-revealed the deck engine
+> (Phase 4), and replaced the 440 KB OJS runtime with native `{js}` cells + a tiny
+> enhancer and vendored d3/Plot (Phase 5). The **Do-NOT-touch** list held: the
+> intrinsic machinery (`:::`, citations, includes, numbering, freeze) was untouched.
 
 ## Open / next
 
@@ -136,10 +136,11 @@ the open items follow.
   mount, print the `build <path> --out <out>/<at>` command); auto-build into `<out>/<at>/`
   later. Also fix `docs/internals/sites.qmd` "## Mounts", which still claims the build
   mirrors mounts.
-- [ ] **P3c: single-doc `build --out` drops OJS local imports (medium).**
-  `copy_local_assets` (`main.rs:264`) only scans `src=`/`href=` HTML attributes, so an OJS
-  `import {...} from "./helper.js"` is invisible and the standalone interactive post 404s.
-  Warn, then scan OJS cell source for relative imports (recursively).
+- [ ] **P3c: single-doc `build --out` drops `{js}` cell local imports (medium).**
+  `copy_local_assets` (`main.rs:264`) only scans `src=`/`href=` HTML attributes, so a `{js}`
+  cell's `import(...)`/`from "./helper.js"` is invisible and the standalone interactive post
+  404s. Warn, then scan `{js}` cell source for relative imports (recursively). The corpus
+  hits this: posts `import("./em-helpers.js")` / `import("./three-scene…")`.
 - [ ] **Docs: no "Project structure & reserved names" reference (medium).** Add an
   annotated-tree section (`configuration.qmd`) covering the `_`/`.`-skip rule, `_freeze/`,
   and `_includes/`, plus a "how a deck gets built" note (chaptered vs embedded vs
@@ -163,12 +164,12 @@ items above are the confirmed, actionable ones.)
 
 ### Slide deck
 - [ ] **Mobile / touch (deeper).** Reader flatten + light-deck dark-bg done; still:
-  pinch/pan + touch gestures on the deck itself, and interactive widgets (OJS slider)
+  pinch/pan + touch gestures on the deck itself, and interactive widgets (`{js}` slider)
   tuned for touch. (Hard to verify without a real device.)
 - [ ] **Footer / logo (deferred).** No corpus deck needs one yet. When one does:
   thread `footer:`/`logo:` front-matter through `RenderedDoc` → both deck-page
-  builders (`reveal_page_from_doc` + `serve.rs` live `PageCtx`), render fixed chrome
-  inside `.reveal` (hidden in overview/print), and add the logo to the build's
+  builders (`deck_page_from_doc` + `serve.rs` live `PageCtx`), render fixed chrome
+  inside `.qmd-deck` (hidden in overview/print), and add the logo to the build's
   asset-copy set.
 - Decided against: inline-image r-stretch (`![](x){.r-stretch}`), images become
   numbered figures, so use the `:::{.r-stretch}` div form. `#`-section quick-jump

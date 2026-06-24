@@ -4,7 +4,7 @@
 //!
 //! Each test locks in a slice of the per-post / per-site feature surface you'd
 //! actually exercise in the edit-preview loop (math, callouts, citations,
-//! OJS-as-live-output, listings, the about page, includes, leak-free whole-doc
+//! `{js}`-as-live-output, listings, the about page, includes, leak-free whole-doc
 //! rendering), all asserted against the *real* blog documents. Synthetic-input
 //! unit tests for the same features live in the render module's `tests.rs`.
 //!
@@ -48,7 +48,7 @@ fn assert_no_source_leaks(label: &str, html: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// Per-post rendering features (math, callouts, citations, code-fold, OJS).
+// Per-post rendering features (math, callouts, citations, code-fold, `{js}` cells).
 // ---------------------------------------------------------------------------
 
 /// The three blog posts in the corpus all render to substantial, leak-free HTML.
@@ -181,49 +181,52 @@ fn code_fold_defaults_to_code_label() {
     );
 }
 
-/// OJS cells render as live Observable placeholders (executed client-side by the
-/// vendored runtime), not as static highlighted source. Each cell emits an output
-/// target div plus a base64 `ojs-module-contents` script, and cell-option lines
-/// are stripped. (Was a gap; OJS now executes — see also the page-level head.)
+/// `{js}` cells render as live placeholders (run client-side by the qmd-js
+/// enhancer), not static highlighted source. Each emits a target div + an
+/// `application/qmd-js` script, and `//|` option lines are stripped.
 #[test]
-fn ojs_cells_render_as_live_placeholders() {
+fn js_cells_render_as_live_placeholders() {
     let html = render_post("posts/fourier-transform/index.qmd");
     assert!(
-        html.contains("class=\"cell ojs-cell\""),
-        "OJS cell not emitted as a live placeholder"
+        html.contains("class=\"cell qmd-js-cell\""),
+        "js cell not emitted as a live placeholder"
     );
     assert!(
-        html.contains("<script type=\"ojs-module-contents\">"),
-        "OJS cell missing its module-contents script"
+        html.contains("<script type=\"application/qmd-js\""),
+        "js cell missing its qmd-js script"
     );
     assert!(
-        !html.contains("class=\"language-ojs\""),
-        "OJS still rendered as a static listing"
+        !html.contains("ojs-module-contents"),
+        "the OJS wire format must be gone"
     );
     assert!(
-        !html.contains("//| echo"),
-        "OJS cell-option line leaked into output"
+        !html.contains("//| input"),
+        "js cell-option line leaked into output"
     );
 }
 
-/// The full page ships the Observable runtime + init only when the doc has OJS.
+/// A page with `{js}` cells ships the vendored d3 + Plot libs (never the Observable
+/// runtime); a prose-only page ships neither.
 #[test]
-fn ojs_page_ships_runtime_when_cells_present() {
+fn js_page_ships_libs_when_cells_present() {
     let dir = corpus_dir().join("posts/fourier-transform");
     let src = std::fs::read_to_string(dir.join("index.qmd")).unwrap();
     let page = qmd_fast_core::render_html_page_with_includes(&src, &dir, "post");
     assert!(
-        page.contains("window._ojs"),
-        "OJS runtime bundle not shipped on a page with cells"
+        page.contains("@observablehq/plot") && page.contains("d3js.org"),
+        "vendored Plot/d3 not shipped on a page with {{js}} cells"
     );
-    assert!(page.contains("qmdRunOJS"), "OJS init script missing");
+    assert!(
+        !page.contains("quarto-ojs-runtime") && !page.contains("window._ojs"),
+        "the Observable runtime must be gone"
+    );
 
-    // A doc with no OJS must not pay for the (large) runtime.
+    // A doc with no live cells must not pay for the (large) libs.
     let prose =
         qmd_fast_core::render_html_page("---\ntitle: x\n---\n\nJust prose, no cells.\n", "p");
     assert!(
-        !prose.contains("window._ojs"),
-        "OJS runtime shipped on a doc with no cells"
+        !prose.contains("@observablehq/plot"),
+        "Plot shipped on a doc with no cells"
     );
 }
 
@@ -428,38 +431,36 @@ fn site_404_page_is_self_contained_with_absolute_links() {
     );
 }
 
-/// Every `{ojs}` cell across the OJS-heavy posts becomes a live placeholder with
-/// a matching `id == cellName`, so the runtime can interpret each into its target.
+/// Every `{js}` cell across the interactive posts is a live placeholder whose
+/// target div id matches its `application/qmd-js` script's `data-target`.
 #[test]
-fn every_ojs_cell_has_matching_target_and_script() {
+fn every_js_cell_has_matching_target_and_script() {
     for post in [
         "posts/fourier-transform/index.qmd",
         "posts/em-algorithm/index.qmd",
         "posts/pca-geometry/index.qmd",
     ] {
         let html = render_post(post);
-        let cells = html.matches("class=\"cell ojs-cell\"").count();
-        let scripts = html
-            .matches("<script type=\"ojs-module-contents\">")
-            .count();
-        assert!(cells > 0, "{post}: no live OJS cells emitted");
+        let cells = html.matches("class=\"cell qmd-js-cell\"").count();
+        let scripts = html.matches("<script type=\"application/qmd-js\"").count();
+        assert!(cells > 0, "{post}: no live js cells emitted");
         assert_eq!(cells, scripts, "{post}: cell/script count mismatch");
-        // every target div id appears as a cellName in a module-contents script
-        for id in ojs_target_ids(&html) {
+        // every target div id is the data-target of a qmd-js script
+        for id in js_target_ids(&html) {
             assert!(
-                html.contains(&format!("ojs-cell-{id}")),
-                "{post}: {id} has no target div"
+                html.contains(&format!("data-target=\"qmd-js-{id}\"")),
+                "{post}: qmd-js-{id} has no matching script"
             );
         }
     }
 }
 
 /// Cross-references to computed outputs resolve to numbers, and the
-/// client-rendered targets (OJS figures, code listings) carry their anchors at
+/// client-rendered targets (`{js}` figures, code listings) carry their anchors at
 /// render time. (Python figure outputs are wrapped by the executor; see serve.)
 #[test]
 fn computed_output_crossrefs_resolve() {
-    // fourier: a matplotlib figure (fig-components) gets a number; the OJS winding
+    // fourier: a matplotlib figure (fig-components) gets a number; the {js} winding
     // figure is a real <figure> anchor.
     let f = render_post("posts/fourier-transform/index.qmd");
     assert!(
@@ -468,13 +469,16 @@ fn computed_output_crossrefs_resolve() {
     );
     assert!(
         f.contains("id=\"fig-winding\""),
-        "labelled OJS figure anchor missing"
+        "labelled js-cell figure anchor missing"
     );
 
-    // pca: an OJS figure (fig-3d-pca) and a code listing (lst-data-generation)
+    // pca: a {js} figure (fig-3d-pca) and a code listing (lst-data-generation)
     // resolve to numbered, anchored targets at render time.
     let p = render_post("posts/pca-geometry/index.qmd");
-    assert!(p.contains("id=\"fig-3d-pca\""), "OJS figure anchor missing");
+    assert!(
+        p.contains("id=\"fig-3d-pca\""),
+        "js-cell figure anchor missing"
+    );
     assert!(
         p.contains("<a href=\"#fig-3d-pca\" class=\"qmd-xref\">Figure&nbsp;"),
         "@fig-3d-pca did not resolve to a numbered link"
@@ -495,11 +499,11 @@ fn computed_output_crossrefs_resolve() {
     );
 }
 
-/// Pull the block ids out of `id="ojs-cell-<id>"` target divs.
-fn ojs_target_ids(html: &str) -> Vec<String> {
-    html.match_indices("id=\"ojs-cell-")
+/// Pull the block ids out of `id="qmd-js-<id>"` target divs.
+fn js_target_ids(html: &str) -> Vec<String> {
+    html.match_indices("id=\"qmd-js-")
         .filter_map(|(i, _)| {
-            let rest = &html[i + "id=\"ojs-cell-".len()..];
+            let rest = &html[i + "id=\"qmd-js-".len()..];
             rest.split('"').next().map(str::to_string)
         })
         .collect()

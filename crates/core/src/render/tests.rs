@@ -284,21 +284,21 @@ fn cell_option_lines_are_dropped() {
     assert!(strip_tags(h).contains("print(1)"));
     assert!(!h.contains("#|"), "option lines should be stripped: {h}");
 
-    // OJS cells become live placeholders; their `//|` options are stripped
-    // before the source is base64-encoded into an ojs-module-contents script.
-    let ojs = render_document("```{ojs}\n//| echo: false\nx = 1\n```\n");
-    let oh = &ojs.blocks[0].html;
+    // `{js}` cells become live placeholders; their `//|` options drive the
+    // enhancer (data-* attrs) and are stripped from the emitted source.
+    let js = render_document("```{js}\n//| name: x\n//| echo: false\nreturn 1;\n```\n");
+    let jh = &js.blocks[0].html;
     assert!(
-        oh.contains("class=\"cell ojs-cell\""),
-        "ojs cell should be a live placeholder: {oh}"
+        jh.contains("class=\"cell qmd-js-cell\""),
+        "js cell should be a live placeholder: {jh}"
     );
     assert!(
-        oh.contains("ojs-module-contents"),
-        "ojs cell missing module-contents: {oh}"
+        jh.contains("type=\"application/qmd-js\"") && jh.contains("data-name=\"x\""),
+        "js cell missing the qmd-js script / parsed option: {jh}"
     );
     assert!(
-        !oh.contains("//| echo"),
-        "option lines should be stripped: {oh}"
+        !jh.contains("//| name"),
+        "option lines should be stripped: {jh}"
     );
 }
 
@@ -446,49 +446,35 @@ fn table_caption_is_numbered_folded_and_referenceable() {
 }
 
 #[test]
-fn ojs_cell_emits_live_placeholder_and_classifies_declarations() {
-    // A named declaration is hidden (nodetype="declaration"); a viewof and a
-    // bare expression stay visible.
-    let decl = render_document("```{ojs}\nsignalX = [1, 2, 3]\n```\n");
-    assert!(decl.blocks[0].html.contains("class=\"cell ojs-cell\""));
+fn js_cell_emits_native_wire_format_with_options() {
+    // A native `{js}` cell is a live placeholder: a target div + an
+    // `application/qmd-js` script carrying the source, with `//|` options as data-*.
+    let d = render_document("```{js}\n//| name: signalX\nreturn [1, 2, 3];\n```\n");
+    let h = &d.blocks[0].html;
     assert!(
-        decl.blocks[0].html.contains("nodetype=\"declaration\""),
-        "named decl should be hidden"
+        h.contains("class=\"cell qmd-js-cell\""),
+        "js placeholder: {h}"
     );
     assert!(
-        decl.blocks[0]
-            .html
-            .contains("<script type=\"ojs-module-contents\">")
+        h.contains("<script type=\"application/qmd-js\"") && h.contains("data-name=\"signalX\""),
+        "qmd-js script + name option: {h}"
+    );
+    assert!(!h.contains("ojs"), "no OJS vocabulary remains: {h}");
+
+    let v =
+        render_document("```{js}\n//| viewof: n\nreturn document.createElement(\"input\");\n```\n");
+    assert!(
+        v.blocks[0].html.contains("data-viewof=\"n\""),
+        "viewof option: {}",
+        v.blocks[0].html
     );
 
-    let view = render_document("```{ojs}\nviewof n = Inputs.range([0, 9])\n```\n");
+    let s = render_document("```{js}\n//| input: n, m\nreturn container;\n```\n");
     assert!(
-        !view.blocks[0].html.contains("nodetype=\"declaration\""),
-        "viewof must stay visible"
+        s.blocks[0].html.contains("data-inputs=\"n,m\""),
+        "input option: {}",
+        s.blocks[0].html
     );
-
-    let expr = render_document("```{ojs}\nPlot.lineY([1, 2, 3]).plot()\n```\n");
-    assert!(
-        !expr.blocks[0].html.contains("nodetype=\"declaration\""),
-        "expression must stay visible"
-    );
-}
-
-#[test]
-fn ojs_declaration_classifier() {
-    assert!(ojs_is_declaration("foo = 1 + 2"));
-    assert!(ojs_is_declaration("// a comment\nbar = {\n  return 3;\n}"));
-    assert!(ojs_is_declaration("function makeScene(a, b) { return a; }"));
-    assert!(ojs_is_declaration(
-        "async function makeScene3D(build, invalidation) { return 0; }"
-    ));
-    assert!(ojs_is_declaration("class Particle { constructor() {} }"));
-    assert!(!ojs_is_declaration("viewof x = Inputs.button()"));
-    assert!(!ojs_is_declaration("import {a} from \"./x.js\""));
-    assert!(!ojs_is_declaration("md`hello ${name}`"));
-    assert!(!ojs_is_declaration("a == b"));
-    assert!(!ojs_is_declaration("x => x + 1"));
-    assert!(!ojs_is_declaration("{ const y = 1; return y; }"));
 }
 
 #[test]

@@ -29,9 +29,12 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-/// Bumped if the on-disk format or hashing scheme changes; a mismatch makes the
-/// loader treat the file as empty (and the next save rewrites it fresh).
-const FORMAT_VERSION: u32 = 1;
+/// Bumped if the on-disk format or hashing scheme changes — or if the *bundled
+/// output format* of a cached cell changes (the cell code is unchanged, so the
+/// cumulative key wouldn't move on its own). A mismatch makes the loader treat the
+/// file as empty (and the next save rewrites it fresh). v2: the Python bridge
+/// emits `<script type="qmd-define">` (was `ojs-define`) for native `{js}` cells.
+const FORMAT_VERSION: u32 = 2;
 
 /// Per-page entry cap. Entries beyond the live set are kept (so toggling an edit
 /// back and forth restores instantly instead of re-running) up to this bound, then

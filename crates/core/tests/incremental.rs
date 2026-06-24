@@ -72,7 +72,7 @@ fn structural_edit_preserves_live_blocks_below_via_metadata_only_op() {
     // are content hashes (sourcepos-independent), so those blocks stay anchors and
     // are NOT recreated. Their *only* change is data-sourcepos, so the diff emits a
     // lightweight SetMeta (patch the attribute) instead of a full Update: the
-    // element, and its live DOM state (video playback, OJS widgets, open
+    // element, and its live DOM state (video playback, `{js}` widgets, open
     // <details>), is left untouched while click-to-source stays exact.
     let v1 = render_document("Alpha.\n\nBeta.\n\nGamma.\n");
     let v2 = render_document("Alpha.\n\nGamma.\n");

@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 mod model;
 pub(crate) use model::CellRole;
-pub use model::{Block, Cell, CellFigure, CellTable, DocFormat, PageIncludes, RenderedDoc};
+pub use model::{Block, Cell, CellFigure, CellTable, DocFormat, JsOpts, PageIncludes, RenderedDoc};
 
 fn parse_options() -> Options<'static> {
     let mut options = Options::default();
@@ -246,15 +246,19 @@ fn render_internal_impl(
             // Executable Quarto cell: ```{lang} ... ``` (lang detected, options stripped).
             let cell = match &data.value {
                 NodeValue::CodeBlock(cb) if cb.info.trim_start().starts_with('{') => {
-                    code_lang(&cb.info).map(|lang| Cell {
-                        lang,
-                        code: strip_cell_options(&cb.literal),
-                        figure: None,
-                        table: None,
-                        echo: cell_flag_or(&cb.literal, "echo", exec_echo),
-                        include: cell_flag_or(&cb.literal, "include", exec_include),
-                        cache: cell_flag_or(&cb.literal, "cache", exec_cache),
-                        fig_export: cell_option(&cb.literal, "fig-export").map(str::to_string),
+                    code_lang(&cb.info).map(|lang| {
+                        let js = parse_js_opts(&cb.literal, &lang);
+                        Cell {
+                            lang,
+                            code: strip_cell_options(&cb.literal),
+                            figure: None,
+                            table: None,
+                            echo: cell_flag_or(&cb.literal, "echo", exec_echo),
+                            include: cell_flag_or(&cb.literal, "include", exec_include),
+                            cache: cell_flag_or(&cb.literal, "cache", exec_cache),
+                            fig_export: cell_option(&cb.literal, "fig-export").map(str::to_string),
+                            js,
+                        }
                     })
                 }
                 _ => None,
@@ -389,9 +393,10 @@ fn render_internal_impl(
                             &attrs,
                             fig_count,
                         )),
-                        "ojs" => html.push_str(&emit_ojs_figure(
+                        "js" => html.push_str(&emit_js_figure(
                             &code,
                             &id,
+                            cell.as_ref().map(|c| &c.js),
                             anchor.as_deref(),
                             caption.as_deref(),
                             &attrs,
@@ -467,10 +472,10 @@ fn render_internal_impl(
                     }
                 }
             }
-        } else if let Some(c) = cell.as_ref().filter(|c| c.lang == "ojs") {
-            // Live Observable cell: a placeholder the vendored runtime executes
-            // client-side, instead of a static highlighted listing.
-            html.push_str(&emit_ojs_cell(&c.code, &id, &attrs));
+        } else if let Some(c) = cell.as_ref().filter(|c| c.lang == "js") {
+            // Native interactive `{js}` cell: the qmd-js enhancer runs it
+            // client-side (no Observable runtime).
+            html.push_str(&emit_js_cell(&c.code, &id, &c.js, &attrs));
         } else if cell.as_ref().is_some_and(|c| !c.echo || !c.include) {
             // `echo: false` / `include: false`: keep the block so the executor still
             // runs it, but hide its source.
@@ -960,8 +965,8 @@ const BASE_CSS: &str = include_str!("../../assets/css/base.css");
 // `{mermaid}` block appears. It's a client-side presentation layer, so it never
 // affects the block model or the diff. NOTE: this is the sole exception to the
 // "self-contained / offline" guarantee — a built page with a mermaid diagram needs
-// network at view time. (Syntax highlighting is server-side; reveal/KaTeX/OJS are
-// all bundled offline.)
+// network at view time. (Syntax highlighting is server-side; the deck engine and
+// KaTeX are all bundled offline.)
 const MERMAID: &str = "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js";
 
 /// The client enhancers: the `window.qmdEnhancers` registry + built-ins (copy
@@ -972,7 +977,9 @@ const MERMAID: &str = "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.
 /// `window.qmdEnhanceCode(root)` after (re)mounting; it is idempotent.
 pub fn code_scripts() -> String {
     let mermaid = MERMAID_JS.replace("{{MERMAID}}", MERMAID);
-    format!("<script>{CODE_ENHANCE_JS}</script>\n<script>{mermaid}</script>")
+    format!(
+        "<script>{CODE_ENHANCE_JS}</script>\n<script>{mermaid}</script>\n<script>{QMD_JS}</script>"
+    )
 }
 
 /// The canonical TOC scrollspy (highlights the section under the navbar). Shared
@@ -990,33 +997,24 @@ pub fn toc_scripts() -> String {
 /// jumping between sections matters most.
 pub const SEARCH_JS: &str = include_str!("../../../../web-client/search.js");
 
-// Quarto's Observable runtime (vendored, v0.0.18 — not published to any CDN, so
-// unlike hljs/reveal it must ship with us). It self-installs `window._ojs` on
-// load and drives cells via `interpretFromScriptTags()`. Loaded as a module so
-// execution is deferred until <body> exists (the bundle touches document.body).
-const OJS_RUNTIME: &str = include_str!("../../assets/ojs/quarto-ojs-runtime.min.js");
-const OJS_CSS: &str = include_str!("../../assets/ojs/quarto-ojs.css");
+// Native interactive `{js}` cells: vendored d3 + Observable Plot (UMD globals) the
+// cells draw with, shipped only when a page has `{js}` cells. The small enhancer (`qmd-js.js`)
+// ships unconditionally in `code_scripts()` (it registers and no-ops without cells,
+// like mermaid); only these heavy libs are gated on `has_js_cells`.
+const D3_JS: &str = include_str!("../../assets/js/d3.min.js");
+const PLOT_JS: &str = include_str!("../../assets/js/plot.umd.min.js");
+const QMD_JS: &str = include_str!("../../assets/js/qmd-js.js");
 
-/// `<head>` assets for Observable cells: the runtime CSS + the runtime bundle.
-/// Emit only when a page actually has `{ojs}` cells. Crate-internal — the page
-/// builders gate it on `has_ojs`; callers pass that flag, not this markup.
-pub(crate) fn ojs_head() -> String {
-    format!("<style>{OJS_CSS}</style>\n<script type=\"module\">{OJS_RUNTIME}</script>")
+/// `<head>` assets for native `{js}` cells: vendored d3 + Observable Plot. Emit
+/// only when a page actually has `{js}` cells (gated on [`has_js_cells`]). The
+/// enhancer itself rides in [`code_scripts`].
+pub(crate) fn js_cell_head() -> String {
+    format!("<script>{D3_JS}</script>\n<script>{PLOT_JS}</script>")
 }
 
-/// The init script (run after the bundle + after cells are in the DOM): point
-/// the module resolver at the doc dir and interpret every `ojs-module-contents`
-/// script. Exposed as `window.qmdRunOJS()` so the live client can call it after
-/// (re)mounting blocks; also invoked once on load for the one-shot page.
-pub fn ojs_init() -> String {
-    OJS_INIT.to_string()
-}
-
-const OJS_INIT: &str = include_str!("../../assets/js/ojs-init.html");
-
-/// True if a rendered body contains live Observable cells (gates the OJS assets).
-pub fn has_ojs(body: &str) -> bool {
-    body.contains("ojs-module-contents")
+/// True if a rendered body contains native `{js}` cells (gates the Plot/d3 libs).
+pub fn has_js_cells(body: &str) -> bool {
+    body.contains("application/qmd-js")
 }
 
 const CODE_ENHANCE_JS: &str = include_str!("../../assets/js/code-enhance.js");
@@ -1542,7 +1540,7 @@ fn labelled_display_eq(block_src: &str) -> Option<(String, String)> {
 
 /// A numbered figure/listing caption: `"<Label>&nbsp;<num>"`, with `": <caption>"`
 /// appended (HTML-escaped) when a non-empty caption is given. Shared by the
-/// figure, listing, mermaid, and OJS-figure emitters.
+/// figure, listing, mermaid, and `{js}`-figure emitters.
 fn numbered_caption(label: &str, num: usize, caption: Option<&str>) -> String {
     match caption.map(str::trim).filter(|c| !c.is_empty()) {
         Some(c) => format!("{label}&nbsp;{num}: {}", html_escape(c)),
@@ -1563,7 +1561,7 @@ fn emit_equation(latex: &str, anchor: &str, block_attrs: &str, num: usize) -> St
 
 /// Read a leading `#| key: value` cell option (returns the unquoted value).
 /// Only scans the contiguous leading option block, stopping at the first code
-/// line. Recognizes `#|` (most langs), `//|` (OJS/JS), and `%%|` (mermaid).
+/// line. Recognizes `#|` (most langs), `//|` (JS), and `%%|` (mermaid).
 fn cell_option<'a>(literal: &'a str, key: &str) -> Option<&'a str> {
     for line in literal.lines() {
         let t = line.trim_start();
@@ -1657,8 +1655,8 @@ fn code_fold(literal: &str) -> Option<(bool, String)> {
     Some((v == "show", summary))
 }
 
-/// Drop leading Quarto cell-option lines (`#|` for most languages, `//|` for
-/// OJS/JS, `%%|` for mermaid).
+/// Drop leading cell-option lines (`#|` for most languages, `//|` for JS,
+/// `%%|` for mermaid).
 fn strip_cell_options(literal: &str) -> String {
     let mut body = String::new();
     let mut skipping = true;
@@ -1705,7 +1703,7 @@ fn extract_field(front_matter: &str, key: &str) -> Option<String> {
     None
 }
 
-/// Language for a fenced block: `{python}`/`{.python}`/`{ojs}` -> "python"/"ojs",
+/// Language for a fenced block: `{python}`/`{.python}`/`{js}` -> "python"/"js",
 /// plain ` ```rust ` -> "rust". Pandoc raw-output attributes (`{=html}`,
 /// `{=latex}`, ...) are not languages and return `None`.
 fn code_lang(info: &str) -> Option<String> {
@@ -1734,9 +1732,8 @@ fn raw_block_format(info: &str) -> Option<String> {
         .filter(|f| !f.is_empty())
 }
 
-/// Minimal standard-alphabet base64 (mirrors `build.rs`); encodes the OJS
-/// module-contents JSON the way the runtime's `base64ToStr` (base64 → UTF-8)
-/// expects.
+/// Minimal standard-alphabet base64 (mirrors `build.rs`); used to inline the
+/// favicon as a `data:` URI (see [`page::favicon_link`]).
 fn base64_encode(data: &[u8]) -> String {
     const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut s = String::with_capacity(data.len().div_ceil(3) * 4);
@@ -1761,65 +1758,68 @@ fn base64_encode(data: &[u8]) -> String {
     s
 }
 
-/// Serialize a string as a JSON string literal (quoted + escaped).
-fn json_string(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 2);
-    out.push('"');
-    for ch in s.chars() {
-        match ch {
-            '"' => out.push_str("\\\""),
-            '\\' => out.push_str("\\\\"),
-            '\n' => out.push_str("\\n"),
-            '\r' => out.push_str("\\r"),
-            '\t' => out.push_str("\\t"),
-            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
-            c => out.push(c),
-        }
+/// Parse the native `{js}` cell options (`//| name:`/`//| viewof:`/`//| input:`)
+/// from the raw fence body. Empty for every other language.
+fn parse_js_opts(literal: &str, lang: &str) -> JsOpts {
+    if lang != "js" {
+        return JsOpts::default();
     }
-    out.push('"');
-    out
+    JsOpts {
+        name: cell_option(literal, "name").map(str::to_string),
+        viewof: cell_option(literal, "viewof").map(str::to_string),
+        inputs: cell_option(literal, "input")
+            .map(|s| {
+                s.split(',')
+                    .map(|x| x.trim().to_string())
+                    .filter(|x| !x.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default(),
+    }
 }
 
-/// Emit a live Observable cell: an output target div (id == cellName) plus a
-/// base64 `ojs-module-contents` script the runtime interprets into it. The block
-/// data attrs ride on the wrapper so click-to-source still keys off the block.
-fn emit_ojs_cell(src: &str, block_id: &str, block_attrs: &str) -> String {
-    let cell_name = format!("ojs-cell-{block_id}");
-    let json = format!(
-        "{{\"contents\":[{{\"methodName\":\"interpret\",\"cellName\":{},\"inline\":false,\"source\":{}}}]}}",
-        json_string(&cell_name),
-        json_string(src),
-    );
-    let b64 = base64_encode(json.as_bytes());
-    // A pure named declaration (`foo = …`) feeds other cells and shouldn't display
-    // its inspector value; tag it so the vendored OJS CSS hides the output (viewof
-    // and bare-expression cells stay visible). Mirrors Quarto's `nodetype`.
-    let nodetype = if ojs_is_declaration(src) {
-        " nodetype=\"declaration\""
-    } else {
-        ""
-    };
-    // The vendored Observable runtime walks up to an ancestor with class `cell`
-    // to render a cell error (and bails with a crash if it finds none). The extra
-    // class costs nothing for healthy cells and lets errors degrade to an inline
-    // callout instead of an uncaught `locatePreDiv` TypeError.
+/// Emit a native interactive `{js}` cell: an output target div plus an
+/// `application/qmd-js` script carrying the author source verbatim (only `</script`
+/// escaped, so it is readable in devtools — no base64). The `data-*` attrs tell the
+/// `qmd-js` enhancer how to wire the cell (shared-scope name, named input, re-run
+/// inputs). Block data attrs ride on the wrapper for click-to-source.
+fn emit_js_cell(src: &str, block_id: &str, js: &JsOpts, block_attrs: &str) -> String {
+    let target = format!("qmd-js-{block_id}");
+    let mut data = format!(" data-target=\"{target}\"");
+    if let Some(n) = js.name.as_deref() {
+        data.push_str(&format!(" data-name=\"{}\"", escape_attr(n)));
+    }
+    if let Some(v) = js.viewof.as_deref() {
+        data.push_str(&format!(" data-viewof=\"{}\"", escape_attr(v)));
+    }
+    if !js.inputs.is_empty() {
+        data.push_str(&format!(
+            " data-inputs=\"{}\"",
+            escape_attr(&js.inputs.join(","))
+        ));
+    }
+    // `</script` is the only sequence that can terminate the script element; escape
+    // it so author source carrying it (e.g. in a template literal) stays intact.
+    let safe_src = src.replace("</script", "<\\/script");
     format!(
-        "<div{block_attrs}{nodetype} class=\"cell ojs-cell\"><div id=\"{cell_name}\"></div>\
-         <script type=\"ojs-module-contents\">{b64}</script></div>"
+        "<div{block_attrs} class=\"cell qmd-js-cell\"><div class=\"qmd-js-out\" id=\"{target}\"></div>\
+         <script type=\"application/qmd-js\"{data}>{safe_src}</script></div>"
     )
 }
 
-/// Wrap a live OJS cell in a numbered `<figure>` (for `label: fig-x` OJS cells,
+/// Wrap a native `{js}` cell in a numbered `<figure>` (for `label: fig-x` js cells,
 /// e.g. a Three.js scene). The block attrs + `#fig-` anchor ride on the figure.
-fn emit_ojs_figure(
+fn emit_js_figure(
     src: &str,
     block_id: &str,
+    js: Option<&JsOpts>,
     anchor: Option<&str>,
     caption: Option<&str>,
     block_attrs: &str,
     num: usize,
 ) -> String {
-    let cell = emit_ojs_cell(src, block_id, "");
+    let default = JsOpts::default();
+    let cell = emit_js_cell(src, block_id, js.unwrap_or(&default), "");
     let id_attr = id_attr(anchor);
     let figcap = numbered_caption("Figure", num, caption);
     format!(
@@ -1860,48 +1860,6 @@ fn emit_code_listing(
         "<div{block_attrs}{id_attr} class=\"qmd-listing\">\
          <figcaption class=\"qmd-listing-caption\">{figcap}</figcaption>{code_html}</div>"
     )
-}
-
-/// Heuristic: does this `{ojs}` cell start with a named declaration whose value
-/// shouldn't be shown — `name = …`, `function name(…)`, `async function name(…)`,
-/// or `class Name`? `viewof`/`mutable`/`import` and bare expressions
-/// (``md`…` ``, `Plot.plot(…)`, `{ … }`) are displayed.
-fn ojs_is_declaration(src: &str) -> bool {
-    let Some(line) = src
-        .lines()
-        .map(str::trim)
-        .find(|l| !l.is_empty() && !l.starts_with("//"))
-    else {
-        return false;
-    };
-    for kw in ["viewof", "mutable", "import"] {
-        if let Some(rest) = line.strip_prefix(kw)
-            && rest.starts_with(char::is_whitespace)
-        {
-            return false;
-        }
-    }
-    // `function name`, `async function name`, `class Name` define a name too.
-    let head = line
-        .strip_prefix("async ")
-        .map(str::trim_start)
-        .unwrap_or(line);
-    for kw in ["function", "class"] {
-        if let Some(rest) = head.strip_prefix(kw)
-            && rest.starts_with(char::is_whitespace)
-        {
-            return true;
-        }
-    }
-    let id_len = line
-        .chars()
-        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '$')
-        .count();
-    if id_len == 0 {
-        return false;
-    }
-    let rest = line[id_len..].trim_start();
-    rest.starts_with('=') && !rest.starts_with("==") && !rest.starts_with("=>")
 }
 
 fn escape_html(s: &str, out: &mut String) {
@@ -1946,7 +1904,7 @@ pub fn escape_attr(s: &str) -> String {
 /// Bootstrap chrome (no banner, no search bar, no feed).
 const SITE_CSS: &str = include_str!("../../assets/css/site.css");
 
-// The deck engine (deck.css/deck.js) is bundled into the page like KaTeX/OJS —
+// The deck engine (deck.css/deck.js) is bundled into the page like KaTeX —
 // decks render with no network, the same as every other format.
 
 #[cfg(test)]

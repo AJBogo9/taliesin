@@ -1,7 +1,8 @@
-```{ojs}
+```{js}
+//| name: makeScene3D
 //| echo: false
 
-async function makeScene3D(buildScene, invalidation, opts = {}) {
+return async function makeScene3D(buildScene, invalidation, opts = {}) {
   const THREE = await import("https://esm.sh/three@0.163.0");
   const { OrbitControls } = await import(
     "https://esm.sh/three@0.163.0/examples/jsm/controls/OrbitControls"
@@ -114,5 +115,5 @@ async function makeScene3D(buildScene, invalidation, opts = {}) {
   });
 
   return container;
-}
+};
 ```

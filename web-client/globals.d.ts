@@ -1,7 +1,7 @@
 // Dev-only ambient types so `tsc --checkJs` can type-check client.js.
 // NOT shipped or embedded — the server only `include_str!`s client.js itself.
 // These declare the globals client.js shares with the server-injected inline
-// scripts (theme_head, OJS init, deck client) and page flags.
+// scripts (theme_head, deck client, qmd-js cells) and page flags.
 
 interface Window {
   /** Absolute doc + base-dir (+ site root) paths for click-to-source `vscode://` links. */
@@ -22,14 +22,6 @@ interface Window {
   qmdGetThemePref?: () => string;
   /** Wires every `[data-qmd-theme-toggle]` button (defined in theme_head). */
   qmdWireThemeToggles?: () => void;
-  /** Observable runtime driver (OJS init script). */
-  qmdRunOJS?: () => void;
-  /** Binds Python `ojs_define` values into the live OJS module (OJS init script). */
-  qmdBindOjsDefines?: (scope?: Element | null) => void;
-  /** True once the OJS cells have been interpreted (OJS init script). */
-  __qmdOjsRan?: boolean;
-  /** Tracks bound `ojs_define` names -> JSON value (OJS init script). */
-  __qmdOjsDefined?: Map<string, string>;
   /** Runs all registered enhancers over `root` (the registry runner, code-enhance.js). */
   qmdEnhanceCode?: (root: ParentNode | null) => void;
   /** Public extension hook: register `fn(root)` to enhance freshly-mounted DOM. */

@@ -8,7 +8,7 @@ use super::*;
 
 /// qmd-fast's own deck engine, bundled (no CDN): `deck.css` is the layout + theme
 /// and `deck.js` the navigation/scaling engine (`window.QmdDeck`). Inlined into
-/// both the one-shot page and the live client, like KaTeX/OJS/mermaid.
+/// both the one-shot page and the live client, like KaTeX/mermaid.
 const DECK_CSS: &str = include_str!("../../assets/css/deck.css");
 const DECK_JS: &str = include_str!("../../assets/js/deck.js");
 
@@ -29,7 +29,6 @@ pub struct DeckParts<'a> {
     pub theme_css: &'a str,
     /// Ship the KaTeX stylesheet (only-if-math for the build, always for a live deck).
     pub ship_katex: bool,
-    pub has_ojs: bool,
     /// Preview-only `<head>` additions (the dev-menu CSS); `""` for the build.
     pub extra_head: &'a str,
     pub include_in_header: &'a str,
@@ -43,14 +42,14 @@ pub struct DeckParts<'a> {
     /// Everything after the deck body: the deck-engine script + the format-specific
     /// init/enhancer/client scripts + `include-after-body`, composed by the caller
     /// (the static `QmdDeck.initialize` flow and the client-driven live flow differ,
-    /// and the live flow is load-order-sensitive for OJS).
+    /// and the live flow is load-order-sensitive).
     pub tail: &'a str,
 }
 
 /// Assemble a complete deck page from its parts: the single source of the deck
-/// page skeleton + `<head>` (deck-theme pre-paint, bundled deck CSS, KaTeX, OJS),
-/// shared by the static build and the live-deck preview. The deck-engine
-/// `<script>` and the rest of the script tail are caller-composed.
+/// page skeleton + `<head>` (deck-theme pre-paint, bundled deck CSS, KaTeX), shared
+/// by the static build and the live-deck preview. The deck-engine `<script>` and
+/// the rest of the script tail are caller-composed.
 pub fn assemble_deck_page(p: &DeckParts) -> String {
     // Only ship the (large) KaTeX stylesheet when the deck has math (build); a live
     // deck always ships it, since it can gain math on any edit.
@@ -59,16 +58,20 @@ pub fn assemble_deck_page(p: &DeckParts) -> String {
     } else {
         String::new()
     };
-    // The Observable runtime renders into the cell divs regardless of which slide
-    // shows, so reactive outputs are live the moment their slide appears.
-    let ojs_head_html = if p.has_ojs { ojs_head() } else { String::new() };
+    // Native `{js}` cells need the vendored d3 + Plot libs (the enhancer rides in
+    // code_scripts); gated on the slide body.
+    let js_head_html = if has_js_cells(p.slides) {
+        js_cell_head()
+    } else {
+        String::new()
+    };
     // `theme` comes after the deck's own stylesheet so it overrides it; the css
     // folded into `include-in-header` follows last.
     format!(
         "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n\
          <meta charset=\"utf-8\" />\n\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no\" />\n\
-         <title>{title}</title>\n{favicon}{deck_theme}<style>{DECK_CSS}</style>\n{katex}{ojs_head}{theme}{in_header}{extra_head}\
+         <title>{title}</title>\n{favicon}{deck_theme}<style>{DECK_CSS}</style>\n{katex}{js_head}{theme}{in_header}{extra_head}\
          </head>\n<body>\n{before_body}<div class=\"qmd-deck\">\n<div class=\"qmd-slides\"{slides_attr}>\n{slides}</div>\n</div>\n{after_deck}\
          {tail}</body>\n</html>\n",
         lang = escape_attr(p.lang),
@@ -78,7 +81,7 @@ pub fn assemble_deck_page(p: &DeckParts) -> String {
         theme = theme_style(p.theme_css),
         in_header = p.include_in_header,
         before_body = p.include_before_body,
-        ojs_head = ojs_head_html,
+        js_head = js_head_html,
         slides_attr = p.slides_attr,
         slides = p.slides,
         after_deck = p.after_deck,
@@ -92,8 +95,6 @@ pub(super) fn deck_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> Str
     let mut t = String::new();
     escape_html(title, &mut t);
     let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
-    let has_ojs = has_ojs(&slides);
-    let ojs_init_html = if has_ojs { ojs_init() } else { String::new() };
     // The static deck self-initializes the engine on load and runs the enhancers
     // once (no websocket client to drive them after a mount).
     let tail = format!(
@@ -101,9 +102,8 @@ pub(super) fn deck_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> Str
          <script>\n  QmdDeck.initialize({{ hash: true, slideNumber: 'c/t', center: false }});\n</script>\n\
          {code_scripts}\n\
          <script>document.addEventListener('DOMContentLoaded',function(){{window.qmdEnhanceCode&&window.qmdEnhanceCode(document.body);}});</script>\n\
-         {ojs_init}{after_body}",
+         {after_body}",
         code_scripts = code_scripts(),
-        ojs_init = ojs_init_html,
         after_body = doc.includes.after_body,
     );
     assemble_deck_page(&DeckParts {
@@ -114,7 +114,6 @@ pub(super) fn deck_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> Str
         theme_is_custom: doc.theme_is_custom,
         theme_css: &doc.theme_css,
         ship_katex: slides.contains("class=\"katex"),
-        has_ojs,
         extra_head: "",
         include_in_header: &doc.includes.in_header,
         include_before_body: &doc.includes.before_body,

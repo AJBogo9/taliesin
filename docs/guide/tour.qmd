@@ -52,10 +52,10 @@ The same block renders identically here and in a scrolling page.
 
 ## Live interactive content
 
-- HTML pages run **Observable (`{ojs}`) cells** client-side: `viewof` inputs,
-  `Plot`, `d3`, and the `ojs_define` Python→OJS bridge
+- HTML pages run native **`{js}` cells** client-side: `viewof` inputs, vendored
+  `Plot` + `d3`, and the `ojs_define` Python→JS bridge (no Observable runtime)
 - Open the [web manual](index.qmd) to drag a slider and watch a chart react
-- Decks stay static; the same block model drives both
+- Decks run the same `{js}` cells; one block model drives both
 
 ## The same pipeline, three outputs
 

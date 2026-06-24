@@ -27,11 +27,12 @@ A cell that exceeds `QMD_FAST_CELL_TIMEOUT` seconds (default 120) is interrupted
 for tighter feedback, or set `0` to disable the cap. The dev menu's **Restart
 kernel** drops and respawns the kernel if it's truly wedged.
 
-## Diagrams / Observable cells don't render
+## Diagrams / `{js}` cells don't render
 
-Mermaid and the Observable runtime load from a CDN and run over `http(s)`, not
-`file://`. Use `preview` (or a deployed/served build) and make sure you're online.
-Prose, math, and executed figures render offline regardless.
+Mermaid loads from a CDN, so it needs `http(s)` and a network. `{js}` cells run
+offline (d3 + Plot are bundled), but a cell that `import()`s a relative helper module
+needs `http(s)`, not `file://`. Use `preview` (or a deployed/served build). Prose,
+math, and executed figures render offline regardless.
 
 ## "Port already in use"
 

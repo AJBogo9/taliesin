@@ -115,32 +115,33 @@ X = (X_raw - X_raw.mean(axis=0)) / X_raw.std(axis=0)
 ojs_define(std_pts = X.tolist())
 ```
 
-```{ojs}
+```{js}
 //| echo: false
 //| label: fig-std-3d
 //| fig-cap: "The same 220 players after standardisation. Each axis now has mean 0 and variance 1. The elongated shape is preserved. Drag to rotate, scroll to zoom."
 
-{
-  return makeScene3D((scene, THREE, { O, spriteLabel }) => {
-    const flat = new Float32Array(std_pts.flatMap(p => p));
-    const ptGeo = new THREE.BufferGeometry();
-    ptGeo.setAttribute("position", new THREE.Float32BufferAttribute(flat, 3));
-    scene.add(new THREE.Points(ptGeo,
-      new THREE.PointsMaterial({ color: 0xaaaacc, size: 0.07, transparent: true, opacity: 0.65 })
-    ));
+const std_pts = qmd.defines.std_pts; if (!std_pts) return;
+const makeScene3D = qmd.get("makeScene3D");
 
-    const axLen    = 3.8;
-    const axColors = [0xf0956a, 0x6ddc8b, 0x7eb8f7];
-    const axNames  = ["Height", "Wingspan", "S. Reach"];
-    [[1,0,0],[0,1,0],[0,0,1]].forEach(([x,y,z], i) => {
-      const hex = "#" + axColors[i].toString(16).padStart(6, "0");
-      scene.add(new THREE.ArrowHelper(new THREE.Vector3(x,y,z), O, axLen, axColors[i], 0.15, 0.09));
-      const lbl = spriteLabel(axNames[i], hex);
-      lbl.position.set(x * (axLen + 0.5), y * (axLen + 0.5), z * (axLen + 0.5));
-      scene.add(lbl);
-    });
-  }, invalidation);
-}
+return makeScene3D((scene, THREE, { O, spriteLabel }) => {
+  const flat = new Float32Array(std_pts.flatMap(p => p));
+  const ptGeo = new THREE.BufferGeometry();
+  ptGeo.setAttribute("position", new THREE.Float32BufferAttribute(flat, 3));
+  scene.add(new THREE.Points(ptGeo,
+    new THREE.PointsMaterial({ color: 0xaaaacc, size: 0.07, transparent: true, opacity: 0.65 })
+  ));
+
+  const axLen    = 3.8;
+  const axColors = [0xf0956a, 0x6ddc8b, 0x7eb8f7];
+  const axNames  = ["Height", "Wingspan", "S. Reach"];
+  [[1,0,0],[0,1,0],[0,0,1]].forEach(([x,y,z], i) => {
+    const hex = "#" + axColors[i].toString(16).padStart(6, "0");
+    scene.add(new THREE.ArrowHelper(new THREE.Vector3(x,y,z), O, axLen, axColors[i], 0.15, 0.09));
+    const lbl = spriteLabel(axNames[i], hex);
+    lbl.position.set(x * (axLen + 0.5), y * (axLen + 0.5), z * (axLen + 0.5));
+    scene.add(lbl);
+  });
+}, invalidation);
 ```
 
 # The covariance matrix: encoding shape
@@ -238,7 +239,7 @@ print(f"PC3: {np.round(eigenvectors[:, 2], 3)}")
 
 ```{python}
 #| echo: false
-# Pass everything to OJS for the 3-D visual
+# Pass everything to {js} for the 3-D visual
 ojs_define(
     pts=X.tolist(),
     pcs=eigenvectors.T.tolist(),  # pcs[0] = PC1 vector, etc.
@@ -247,62 +248,64 @@ ojs_define(
 )
 ```
 
-```{ojs}
+```{js}
 //| echo: false
 //| label: fig-3d-pca
 //| fig-cap: "Three-dimensional point cloud of standardised player measurements. Arrows show the three principal components scaled by their standard deviation √λ. Colour: PC1 (orange) explains the most variance, PC2 (green) the next, PC3 (blue) the least. The translucent plane is the PC1–PC2 subspace. Drag to rotate, scroll to zoom."
 
-{
-  return makeScene3D((scene, THREE, { O, spriteLabel }) => {
-    // ── Point cloud ─────────────────────────────────────────────────────────
-    const flat = new Float32Array(pts.flatMap(p => p));
-    const ptGeo = new THREE.BufferGeometry();
-    ptGeo.setAttribute("position", new THREE.Float32BufferAttribute(flat, 3));
-    scene.add(new THREE.Points(ptGeo,
-      new THREE.PointsMaterial({ color: 0xaaaacc, size: 0.07, transparent: true, opacity: 0.65 })
-    ));
+const pts = qmd.defines.pts; if (!pts) return;
+const { pcs, evr, eigs } = qmd.defines;
+const makeScene3D = qmd.get("makeScene3D");
 
-    // ── PC1–PC2 plane ────────────────────────────────────────────────────────
-    const planeGeo = new THREE.PlaneGeometry(7, 7, 14, 14);
-    const planeMesh = new THREE.Mesh(planeGeo, new THREE.MeshBasicMaterial({
-      color: 0x7eb8f7, transparent: true, opacity: 0.07, side: THREE.DoubleSide, depthWrite: false
-    }));
-    planeMesh.quaternion.setFromUnitVectors(
-      new THREE.Vector3(0, 0, 1),
-      new THREE.Vector3(...pcs[2]).normalize()
-    );
-    scene.add(planeMesh);
-    planeMesh.add(new THREE.LineSegments(
-      new THREE.WireframeGeometry(planeGeo),
-      new THREE.LineBasicMaterial({ color: 0x7eb8f7, transparent: true, opacity: 0.12, depthWrite: false })
-    ));
+return makeScene3D((scene, THREE, { O, spriteLabel }) => {
+  // ── Point cloud ─────────────────────────────────────────────────────────
+  const flat = new Float32Array(pts.flatMap(p => p));
+  const ptGeo = new THREE.BufferGeometry();
+  ptGeo.setAttribute("position", new THREE.Float32BufferAttribute(flat, 3));
+  scene.add(new THREE.Points(ptGeo,
+    new THREE.PointsMaterial({ color: 0xaaaacc, size: 0.07, transparent: true, opacity: 0.65 })
+  ));
 
-    // ── PC arrows ────────────────────────────────────────────────────────────
-    const pcColors = [0xf0956a, 0x6ddc8b, 0x7eb8f7];
-    const pcCssCol = ["#f0956a", "#6ddc8b", "#7eb8f7"];
-    pcs.forEach((pc, i) => {
-      const len  = Math.sqrt(eigs[i]) * 2.2;
-      const hLen = Math.min(0.22, len * 0.14);
-      const d    = new THREE.Vector3(...pc).normalize();
-      scene.add(new THREE.ArrowHelper(d,                O, len, pcColors[i], hLen, hLen * 0.55));
-      scene.add(new THREE.ArrowHelper(d.clone().negate(), O, len, pcColors[i], hLen, hLen * 0.55));
-      const lbl = spriteLabel(`PC${i+1}  ${(evr[i]*100).toFixed(0)}%`, pcCssCol[i], 1.5);
-      lbl.position.copy(d.clone().multiplyScalar(len + 0.5));
-      scene.add(lbl);
-    });
+  // ── PC1–PC2 plane ────────────────────────────────────────────────────────
+  const planeGeo = new THREE.PlaneGeometry(7, 7, 14, 14);
+  const planeMesh = new THREE.Mesh(planeGeo, new THREE.MeshBasicMaterial({
+    color: 0x7eb8f7, transparent: true, opacity: 0.07, side: THREE.DoubleSide, depthWrite: false
+  }));
+  planeMesh.quaternion.setFromUnitVectors(
+    new THREE.Vector3(0, 0, 1),
+    new THREE.Vector3(...pcs[2]).normalize()
+  );
+  scene.add(planeMesh);
+  planeMesh.add(new THREE.LineSegments(
+    new THREE.WireframeGeometry(planeGeo),
+    new THREE.LineBasicMaterial({ color: 0x7eb8f7, transparent: true, opacity: 0.12, depthWrite: false })
+  ));
 
-    // ── Feature axes (faint) ─────────────────────────────────────────────────
-    const axLen = 3.8;
-    [[1,0,0],[0,1,0],[0,0,1]].forEach(dir => {
-      scene.add(new THREE.ArrowHelper(new THREE.Vector3(...dir), O, axLen, 0x3a3a55, 0.12, 0.07));
-    });
-    [["Height", [axLen+0.3,0,0]], ["Wingspan", [0,axLen+0.3,0]], ["S. Reach", [0,0,axLen+0.3]]].forEach(([t,p]) => {
-      const lbl = spriteLabel(t, "#555577", 1.5);
-      lbl.position.set(...p);
-      scene.add(lbl);
-    });
-  }, invalidation);
-}
+  // ── PC arrows ────────────────────────────────────────────────────────────
+  const pcColors = [0xf0956a, 0x6ddc8b, 0x7eb8f7];
+  const pcCssCol = ["#f0956a", "#6ddc8b", "#7eb8f7"];
+  pcs.forEach((pc, i) => {
+    const len  = Math.sqrt(eigs[i]) * 2.2;
+    const hLen = Math.min(0.22, len * 0.14);
+    const d    = new THREE.Vector3(...pc).normalize();
+    scene.add(new THREE.ArrowHelper(d,                O, len, pcColors[i], hLen, hLen * 0.55));
+    scene.add(new THREE.ArrowHelper(d.clone().negate(), O, len, pcColors[i], hLen, hLen * 0.55));
+    const lbl = spriteLabel(`PC${i+1}  ${(evr[i]*100).toFixed(0)}%`, pcCssCol[i], 1.5);
+    lbl.position.copy(d.clone().multiplyScalar(len + 0.5));
+    scene.add(lbl);
+  });
+
+  // ── Feature axes (faint) ─────────────────────────────────────────────────
+  const axLen = 3.8;
+  [[1,0,0],[0,1,0],[0,0,1]].forEach(dir => {
+    scene.add(new THREE.ArrowHelper(new THREE.Vector3(...dir), O, axLen, 0x3a3a55, 0.12, 0.07));
+  });
+  [["Height", [axLen+0.3,0,0]], ["Wingspan", [0,axLen+0.3,0]], ["S. Reach", [0,0,axLen+0.3]]].forEach(([t,p]) => {
+    const lbl = spriteLabel(t, "#555577", 1.5);
+    lbl.position.set(...p);
+    scene.add(lbl);
+  });
+}, invalidation);
 ```
 
 # Explained variance and the scree plot
@@ -374,28 +377,62 @@ $$
 \|X - \hat{X}\|_F^2 = \sum_{i > k} \lambda_i
 $$
 
-```{ojs}
+```{js}
+//| viewof: k_dim
 //| echo: false
-viewof k_dim = Inputs.radio([1, 2], {label: "Principal components to keep (k)", value: 1})
+const options = [1, 2];
+const wrap = document.createElement("label");
+wrap.className = "qmd-input";
+wrap.append("Principal components to keep (k) ");
+const radios = options.map((v, i) => {
+  const opt = document.createElement("label");
+  opt.style.marginRight = "12px";
+  const input = document.createElement("input");
+  input.type = "radio";
+  input.name = "k_dim";
+  input.value = String(v);
+  if (i === 0) input.checked = true;
+  opt.append(input, " " + v);
+  wrap.append(opt);
+  return input;
+});
+// Expose a numeric `.value` so the runtime registers `wrap` as the control and
+// `qmd.value("k_dim")` returns the checked radio's number; bubble an `input`
+// event from the wrapper when any radio changes so sinks re-run.
+Object.defineProperty(wrap, "value", {
+  get() {
+    const sel = radios.find(r => r.checked);
+    return sel ? Number(sel.value) : Number(options[0]);
+  },
+});
+radios.forEach(r => r.addEventListener("change", () => {
+  wrap.dispatchEvent(new Event("input", { bubbles: true }));
+}));
+return wrap;
 ```
 
-```{ojs}
+```{js}
 //| echo: false
+//| input: k_dim
 //| label: fig-recon-3d
 //| fig-cap: "Dimensionality reduction round-trip. Faint blue: original standardised players. Orange: reconstructed from k PCs. Grey lines: projection error."
-{
-  const dot = (a, b) => a.reduce((s, ai, i) => s + ai * b[i], 0);
+const pts = qmd.defines.pts; if (!pts) return;
+const { pcs, eigs } = qmd.defines;
+const makeScene3D = qmd.get("makeScene3D");
+const k_dim = qmd.value("k_dim");
 
-  const recon = pts.map(p => {
-    let r = [0, 0, 0];
-    for (let i = 0; i < k_dim; i++) {
-      const score = dot(p, pcs[i]);
-      r = r.map((v, j) => v + score * pcs[i][j]);
-    }
-    return r;
-  });
+const dot = (a, b) => a.reduce((s, ai, i) => s + ai * b[i], 0);
 
-  return makeScene3D((scene, THREE, { O, spriteLabel }) => {
+const recon = pts.map(p => {
+  let r = [0, 0, 0];
+  for (let i = 0; i < k_dim; i++) {
+    const score = dot(p, pcs[i]);
+    r = r.map((v, j) => v + score * pcs[i][j]);
+  }
+  return r;
+});
+
+return makeScene3D((scene, THREE, { O, spriteLabel }) => {
     // Original points (faint)
     const flat = new Float32Array(pts.flatMap(p => p));
     const ptGeo = new THREE.BufferGeometry();
@@ -451,7 +488,6 @@ viewof k_dim = Inputs.radio([1, 2], {label: "Principal components to keep (k)", 
       scene.add(lbl);
     });
   }, invalidation);
-}
 ```
 
 # What the scout found

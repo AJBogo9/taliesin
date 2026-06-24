@@ -12,8 +12,8 @@ reveal.js. The engine is two bundled assets, `assets/css/deck.css` and
   `window.QmdDeck` (`initialize` / `sync` / `slide` / `on` / `getSlides` /
   `getCurrentSlide` / `registerPlugin`, …), which the preview client and theme
   extensions bind to.
-- **Bundle everything offline.** `deck.css` / `deck.js` (and KaTeX, OJS, highlight
-  CSS) are `include_str!`'d into the page. No CDN, no network.
+- **Bundle everything offline.** `deck.css` / `deck.js` (and KaTeX, the `{js}`
+  enhancer, highlight CSS) are `include_str!`'d into the page. No CDN, no network.
 - **Reuse the block model.** Every slide's blocks still carry `data-block-id` +
   `data-sourcepos`, so the block diff, click-to-source, and live execution work in a
   deck exactly as on a page, *within the current slide*.
@@ -30,7 +30,7 @@ flowchart TB
   blocks["block list<br/>(data-block-id + sourcepos)"] --> split["split_slides<br/>## → slide, # → section stack, --- → break"]
   split --> dedup["dedup_slug<br/>distinct section ids"]
   dedup --> thread["heading-attribute threading<br/>{background-* / auto-animate} hoisted onto &lt;section&gt;"]
-  thread --> emit["deck_page_from_doc<br/>inline deck.css/js (+ KaTeX/OJS when present)"]
+  thread --> emit["deck_page_from_doc<br/>inline deck.css/js (+ KaTeX / {js} enhancer when present)"]
 ```
 
 - **`split_slides`** walks the blocks: a level-2 heading opens a slide, a level-1

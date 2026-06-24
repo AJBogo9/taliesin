@@ -41,8 +41,8 @@ fn cell_timeout() -> Option<Duration> {
 
 /// Python `ojs_define(**kwargs)`, run once at kernel start. Serializes each
 /// keyword (with a pandas convenience for DataFrame/Series) and emits a
-/// `<script type="ojs-define">` HTML output the OJS runtime consumes. Mirrors
-/// Quarto's Jupyter setup so existing `.qmd` docs work unchanged.
+/// `<script type="qmd-define">` HTML output the native `{js}` runtime consumes
+/// (the Python -> JS bridge). The `ojs_define` name is kept as the author API.
 const OJS_DEFINE_PREAMBLE: &str = r#"
 def ojs_define(**kwargs):
     import json
@@ -62,7 +62,7 @@ def ojs_define(**kwargs):
             return dict((k, v) for (k, v) in zip(j["index"], j["data"]))
         return v
     v = dict(contents=list(dict(name=key, value=convert(value)) for (key, value) in kwargs.items()))
-    display(HTML('<script type="ojs-define">' + json.dumps(v) + '</script>'), metadata=dict(ojs_define=True))
+    display(HTML('<script type="qmd-define">' + json.dumps(v) + '</script>'), metadata=dict(qmd_define=True))
 globals()["ojs_define"] = ojs_define
 "#;
 

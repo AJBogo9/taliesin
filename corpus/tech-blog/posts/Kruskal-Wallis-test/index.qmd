@@ -138,25 +138,41 @@ display(HTML(f"""
 
 For deducing whether one protocol produces less pain than another, we don't need to know how much less. We only need to know who ranks lower. Thus we use a ranking transformation. The animation in @fig-rank-transform shows how the data points are transformed into ranks.
 
-```{ojs}
-//| label: ojs-rank-transform-control
+```{js}
+//| viewof: transform_t
 //| echo: false
 
-viewof transform_t = Inputs.range(
-  [0, 1],
-  { step: 0.005, value: 0, label: "← original values  ·  ranks →" }
-)
+const wrap = document.createElement("label");
+wrap.className = "qmd-input";
+wrap.append("← original values  ·  ranks → ");
+const input = document.createElement("input");
+input.type = "range";
+input.min = "0";
+input.max = "1";
+input.step = "0.005";
+input.value = "0";
+wrap.append(input);
+return wrap;
 ```
 
-```{ojs}
+```{js}
+//| label: fig-rank-transform
+//| input: transform_t
 //| echo: false
+//| fig-cap: "Each dot is one of the 45 patients, coloured by protocol. Drag to 1: each pain score is replaced by its rank in the pooled dataset, spreading the dots uniformly. The pooled row fades in to show all 45 ranks in sequence."
 
-rt_colors = ["steelblue", "darkorange", "mediumseagreen"]
-N_rt = pain_groups.flat().length
+const pain_groups = qmd.defines.pain_groups;
+const pain_labels = qmd.defines.pain_labels;
+if (!pain_groups || !pain_labels) return;
 
-rt_flat_pain = pain_groups.flatMap((g, j) => g.map(v => ({ v, group: j })))
+const transform_t = qmd.value("transform_t");
 
-rt_ranks_pain = (() => {
+const rt_colors = ["steelblue", "darkorange", "mediumseagreen"];
+const N_rt = pain_groups.flat().length;
+
+const rt_flat_pain = pain_groups.flatMap((g, j) => g.map(v => ({ v, group: j })));
+
+const rt_ranks_pain = (() => {
   const indexed = rt_flat_pain.map((d, i) => ({ v: d.v, i })).sort((a, b) => a.v - b.v);
   const ranks = new Array(rt_flat_pain.length);
   let i = 0;
@@ -168,30 +184,24 @@ rt_ranks_pain = (() => {
     i = j + 1;
   }
   return ranks;
-})()
+})();
 
-rt_x_lo = (1 - transform_t) * 0  + transform_t * 1
-rt_x_hi = (1 - transform_t) * 10 + transform_t * N_rt
+const rt_x_lo = (1 - transform_t) * 0  + transform_t * 1;
+const rt_x_hi = (1 - transform_t) * 10 + transform_t * N_rt;
 
-rt_pts_groups = rt_flat_pain.map((d, i) => ({
+const rt_pts_groups = rt_flat_pain.map((d, i) => ({
   x: (1 - transform_t) * d.v + transform_t * rt_ranks_pain[i],
   y: pain_labels[d.group],
   group: pain_labels[d.group],
-}))
+}));
 
-rt_pts_pooled = rt_flat_pain.map((d, i) => ({
+const rt_pts_pooled = rt_flat_pain.map((d, i) => ({
   x: rt_ranks_pain[i],
   y: "Pooled",
   group: pain_labels[d.group],
-}))
-```
+}));
 
-```{ojs}
-//| label: fig-rank-transform
-//| echo: false
-//| fig-cap: "Each dot is one of the 45 patients, coloured by protocol. Drag to 1: each pain score is replaced by its rank in the pooled dataset, spreading the dots uniformly. The pooled row fades in to show all 45 ranks in sequence."
-
-Plot.plot({
+return Plot.plot({
   width: 680,
   height: 270,
   marginLeft: 145,
@@ -225,7 +235,7 @@ Plot.plot({
       strokeOpacity: transform_t,
     }),
   ],
-})
+});
 ```
 
 # Deriving the $H$ statistic

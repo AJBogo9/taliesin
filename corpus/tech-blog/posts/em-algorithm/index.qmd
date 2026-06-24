@@ -222,7 +222,7 @@ def em_gmm(X, K=2, n_iter=30, seed=0):
     sigma = np.full(K, np.std(X))                  # same initial spread for all components
     pi    = np.ones(K) / K                          # equal mixing weights
 
-    history = []   # store every snapshot for the OJS step-through
+    history = []   # store every snapshot for the {js} step-through
 
     for t in range(n_iter):
 
@@ -259,7 +259,7 @@ def em_gmm(X, K=2, n_iter=30, seed=0):
 
 history = em_gmm(X, K=2, n_iter=30)
 
-# Bridge to OJS
+# Bridge to {js}
 ojs_define(
     history     = history,
     X_data      = X.tolist(),
@@ -273,39 +273,59 @@ ojs_define(
 
 The slider steps through the iterations of the EM algorithm. The top plot shows how the two Gaussians converge towards the most likely parameter values. The bottom plot shows the log-likelihood.
 
-```{ojs}
-//| label: ojs-controls
+```{js}
+//| viewof: iter
 //| echo: false
-
-viewof iter = Inputs.range(
-  [1, history.length],
-  { value: 1, step: 1, label: "EM iteration" }
-)
-
-viewof showTrue = Inputs.toggle({ label: "Reveal true labels", value: false })
+// Slider over EM iterations; its range comes from the Python `history` length
+// (the cell re-runs when that ojs_define lands). Returns a labeled range input.
+const n = (qmd.defines.history || []).length || 1;
+const wrap = document.createElement("label");
+wrap.className = "qmd-input";
+wrap.append("EM iteration ");
+const input = document.createElement("input");
+input.type = "range"; input.min = "1"; input.max = String(n); input.step = "1"; input.value = "1";
+wrap.append(input);
+return wrap;
 ```
 
-```{ojs}
-//| label: ojs-plot
+```{js}
+//| viewof: showTrue
+//| echo: false
+const wrap = document.createElement("label");
+wrap.className = "qmd-input";
+const input = document.createElement("input");
+input.type = "checkbox";
+wrap.append(input, " Reveal true labels");
+return wrap;
+```
+
+```{js}
+//| label: fig-em-fit
+//| input: iter, showTrue
 //| echo: false
 //| fig-cap: "The two curves are the fitted Gaussians and the rug marks show each data point coloured by its soft assignment (blue = component 1, orange = component 2, yellow = uncertain). Grey dashed lines are the true means."
 
-import { gaussPDF, makeCurve, makeResp, linspace } from "./em-helpers.js"
+const { gaussPDF, makeCurve, makeResp, linspace } = await import("./em-helpers.js");
+
+const history = qmd.defines.history;
+if (!history) return; // the Python ojs_define hasn't landed yet (cold preview)
+const { X_data, true_labels, true_mu } = qmd.defines;
+const iter = qmd.value("iter"), showTrue = qmd.value("showTrue");
 
 // Snapshot for the current slider value
-snap = history[iter - 1]
+const snap = history[iter - 1];
 
 // x-axis grid for smooth density curves (300 points, score range 10–100)
-xs = linspace(10, 100, 300)
+const xs = linspace(10, 100, 300);
 
 // Weighted Gaussian curves (area under each curve = pi_k)
-curve0 = makeCurve(xs, snap.mu[0], snap.sigma[0], snap.pi[0], "Component 1")
-curve1 = makeCurve(xs, snap.mu[1], snap.sigma[1], snap.pi[1], "Component 2")
+const curve0 = makeCurve(xs, snap.mu[0], snap.sigma[0], snap.pi[0], "Component 1");
+const curve1 = makeCurve(xs, snap.mu[1], snap.sigma[1], snap.pi[1], "Component 2");
 
 // Rug data: one entry per observed score, tagged with r0 and true label
-resp = makeResp(X_data, snap.r, true_labels)
+const resp = makeResp(X_data, snap.r, true_labels);
 
-Plot.plot({
+return Plot.plot({
   width: 700,
   height: 360,
   marginLeft: 50,
@@ -351,16 +371,20 @@ Plot.plot({
 })
 ```
 
-```{ojs}
-//| label: ojs-loglik
+```{js}
+//| label: fig-em-loglik
+//| input: iter
 //| echo: false
 //| fig-cap: "Log-likelihood across iterations. It can only ever increase."
 
-import { makeLLData } from "./em-helpers.js"
+const { makeLLData } = await import("./em-helpers.js");
+const history = qmd.defines.history;
+if (!history) return;
+const iter = qmd.value("iter");
 
-ll_data = makeLLData(history)
+const ll_data = makeLLData(history);
 
-Plot.plot({
+return Plot.plot({
   width: 700,
   height: 200,
   marginLeft: 60,

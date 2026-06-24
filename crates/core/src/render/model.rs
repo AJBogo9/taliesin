@@ -34,6 +34,21 @@ pub struct Cell {
     /// relative to where qmd-fast runs (normally the document's directory). The
     /// export itself is performed by the Python kernel preamble at display time.
     pub fig_export: Option<String>,
+    /// Native `{js}` cell options (`//| name:`/`//| viewof:`/`//| input:`). Empty
+    /// for every other language; drives how the cell wires into the `{js}` runtime.
+    pub js: JsOpts,
+}
+
+/// Options for a native interactive `{js}` cell (the Observable-runtime
+/// replacement). `name`: publish the cell's return value into the shared scope
+/// under this name (a helper other cells read). `viewof`: the cell returns a DOM
+/// input registered under this name. `inputs`: re-run this cell when any of these
+/// named inputs (or Python `ojs_define` values) change.
+#[derive(Debug, Clone, Default)]
+pub struct JsOpts {
+    pub name: Option<String>,
+    pub viewof: Option<String>,
+    pub inputs: Vec<String>,
 }
 
 /// Metadata for wrapping a code cell's executed output as a numbered figure.

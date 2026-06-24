@@ -22,7 +22,7 @@ launcher.
 
 ## Set up a kernel (for code execution)
 
-Prose, math, diagrams, and Observable cells need no setup. To *execute*
+Prose, math, diagrams, and `{js}` cells need no setup. To *execute*
 `{python}` / `{r}` cells you point the server at a Jupyter kernel. A one-time
 Python setup:
 
@@ -153,7 +153,8 @@ step to install that interpreter plus `ipykernel` / `IRkernel` and set
 `QMD_FAST_PYTHON` / `QMD_FAST_R` — otherwise those cells render as source in CI.
 
 ::: {.callout-note}
-The interactive Observable/Three.js demos fetch their runtimes from a CDN and
-need to be served over `http(s)` (not opened from `file://`). Once deployed — or
+The interactive `{js}`/Three.js demos need to be served over `http(s)` (not opened
+from `file://`): a cell's relative `import()` and Three.js's module are blocked on
+`file://`. (d3 and Plot are bundled, so they need no network.) Once deployed — or
 under `preview` — they are fully live.
 :::

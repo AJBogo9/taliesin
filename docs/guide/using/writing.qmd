@@ -15,7 +15,7 @@ tables with per-column alignment:
 | Capability | Status | Where |
 |:--|:--:|--:|
 | Block model + diff | ✅ | `crates/core` |
-| Live Observable cells | ✅ | vendored runtime |
+| Live `{js}` cells | ✅ | native enhancer + vendored d3/Plot |
 | PDF / non-HTML output | ❌ | out of scope |
 
 > Smart typography turns straight quotes into curly ones and handles ellipses…,

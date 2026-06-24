@@ -13,7 +13,7 @@ the old one by content-hash id, and pushes **only the blocks that changed** over
 websocket. An unchanged block is never touched, so:
 
 - your scroll position is preserved,
-- a running Observable cell or Three.js canvas keeps its state,
+- a running `{js}` cell or Three.js canvas keeps its state,
 - the page never flashes white.
 
 The block you just edited **pulses** briefly when it re-renders, so your eye (or

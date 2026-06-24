@@ -162,33 +162,45 @@ so `corpus/liquid-glass-slides/example.qmd` renders as a deck but unstyled by th
 extension until the author updates `liquid-glass-revealjs` against the new
 `.qmd-deck`/`window.QmdDeck` contract.
 
-## Phase 5 — Re-architect OJS interactivity (biggest asset liability, do last)
+## Phase 5 — Re-architect OJS interactivity (biggest asset liability) — ✅ DONE (2026-06-24)
 
-`quarto-ojs-runtime.min.js` is **440 KB** — by far the largest asset (12× the next,
-`deck.js` at 80 KB) and a vendored black box you can't debug or modify. Plus ~220 LOC
-of glue, `ojs-init.html`, the `class=cell`/`ojs-module-contents` wire format, and the
-only dead `--quarto-hl-*`/`--bs-*` CSS vars. **Not a free drop:** 13 corpus files use
-`{ojs}`/`ojs_define` (per-file cell counts up to 9), some genuinely reactive (sliders
-re-running plots). This is the only place "LLM-rewrite the docs" is genuinely hard.
+`quarto-ojs-runtime.min.js` was **440 KB** — by far the largest asset (12× the next,
+`deck.js`) and a vendored black box. Replaced by a tiny native `{js}` cell enhancer.
 
-- [ ] **Design a native `{js}` enhancer cell** that runs against the live block DOM
-      (mounts, re-runs on its own inputs, integrates with the incremental block model).
-- [ ] **Decide the reactivity story.** The big loss is *automatic reactive recompute*
-      (Observable's dataflow graph). Options: (a) accept manual wiring (event
-      listeners) and rewrite reactive demos as explicit handlers; (b) build a small
-      native reactive primitive; (c) keep a *much smaller* reactive lib than the
-      440 KB fork. With unlimited hours, (b) is the "best end result" path but the
-      most work — prototype against the `pca-geometry` Three.js demo + a slider post.
-- [ ] **Build the Python→JS bridge** to replace `ojs_define` (13 bridge sites).
-- [ ] **Rewrite the ~50 `{ojs}` cells** across the 9 interactive posts; verify each
-      live (OJS needs a real server — browser-test via chrome-devtools MCP, not units).
-- [ ] **Delete** `quarto-ojs-runtime.min.js`, `quarto-ojs.css`, `ojs-init.html`, the
-      wire-format glue, and the dead CSS vars once parity is reached.
-- **Gating:** delete nothing until the native path renders every interactive corpus
-      post with equal-or-better behavior. This phase can regress posts if rushed.
-- **Acceptance:** every interactive corpus post works live with no Observable runtime
-      loaded; total bundled asset weight drops ~440 KB; the largest asset becomes
-      `deck.js`.
+**Decisions taken** (the audit flagged a, b, c for reactivity):
+- **Reactivity = manual handlers (option a).** A corpus audit found the *entire*
+  reactive surface is single-input fan-out (one input → a few sink cells; intermediate
+  helpers are pure) — only ~6 chains. A dataflow engine (option b) was over-provisioned,
+  so there is none: inputs are plain DOM elements, and a sink re-runs when a named input
+  fires. Cross-cell values use `//| name:` helpers stored in a shared scope and read via
+  `qmd.get()`; cells run sequentially (document order, awaited) so a helper resolves
+  before a dependent reads it.
+- **Charts = vendor offline.** d3 v7.9.0 (`d3.min.js`) + Observable Plot v0.6.16
+  (`plot.umd.min.js`) are vendored as UMD globals (`window.d3`/`window.Plot`), shipped
+  in `<head>` only when a page/deck has `{js}` cells. Three.js is `import()`ed by the
+  cell. Net asset weight dropped ~440 KB and re-spread across two debuggable libs.
+
+**What shipped:**
+- `qmd-js.js` enhancer (registered through the same `qmdEnhancers` registry as mermaid):
+  per-cell scope `{get, set, value, defines, onInput, container, invalidation}`; cell
+  kinds from `//| viewof:` / `//| name:` / `//| input:`; per-run `invalidation` so cells
+  tear down Three.js renderers / RAF loops on re-run.
+- Wire format: `<div class="cell qmd-js-cell"><div class="qmd-js-out" id="qmd-js-…">` +
+  `<script type="application/qmd-js" data-target/name/viewof/inputs>` carrying the
+  source verbatim (only `</script` escaped — readable in devtools, no base64).
+- Python→JS bridge: `ojs_define()` (author API name kept) now emits
+  `<script type="qmd-define">`; the enhancer ingests it and re-runs dependent cells when
+  a define lands after first paint (cold load / kernel restart).
+- All `{ojs}` cells across the corpus + `docs/guide` + `samples/deck.qmd` ported to `{js}`.
+- **Deleted:** `quarto-ojs-runtime.min.js`, `quarto-ojs.css`, `ojs-init.html`, the
+  `ojs_head`/`ojs_init`/`has_ojs` glue, the `PageParts.has_ojs`/`DeckParts.has_ojs`/
+  `PageCtx.ojs` fields, the `nodetype="declaration"` classifier, `client.js`'s
+  `afterOjsMutation`/`qmdRunOJS`, and the `window.qmdRunOJS`/`qmdBindOjsDefines` globals.
+
+**Verified:** all 7 interactive units (em-algorithm, pca-geometry/three-scene, fourier,
+a-star, evidence-lower-bound, Kruskal-Wallis, docs `code.qmd`) render live with **zero
+console errors and no Observable runtime loaded**. Full `cargo test --workspace` + clippy
+(`-D warnings`) + `cargo fmt --check` + client `tsc` all green.
 
 ---
 
@@ -235,18 +247,18 @@ invariants. The audit's adversarial pass specifically reclassified these out of 
 
 ---
 
-## Open design decisions (resolve before the phase that needs them)
+## Design decisions (all RESOLVED — initiative complete 2026-06-24)
 
-1. **Config filename:** `_site.yml` (recommended) vs `site.yml` vs `qmd.yml`. (Phase 2)
-2. **Closed-schema strictness:** warn vs hard-error on unknown config keys. Recommend
-   warn (keeps single-typo resilience). (Phase 3)
-3. **Deck state model:** `data-state` string vs numeric index + offset. (Phase 4)
-4. **Native theme-extension API surface:** what methods/hooks an extension like
-   liquid-glass targets (the old contract exposed ~4 reveal methods). (Phase 4)
-5. **OJS reactivity replacement:** manual handlers vs a small native reactive
-   primitive vs a lighter reactive lib. This is the single biggest design call in the
-   initiative — it determines whether interactive posts keep "free" recompute. (Phase 5)
-6. **Rename `reveal.rs` → `deck.rs`** once de-revealed? (cosmetic, Phase 4 tail)
+1. **Config filename:** → `_site.yml`. (Phase 2)
+2. **Closed-schema strictness:** → warn on unknown config keys (keeps single-typo
+   resilience). (Phase 3)
+3. **Deck state model:** → numeric index in `window.QmdDeck`. (Phase 4)
+4. **Native theme-extension API surface:** → `window.QmdDeck`; liquid-glass deferred
+   (author updates the extension against the new contract). (Phase 4)
+5. **OJS reactivity replacement:** → manual handlers. The corpus's whole reactive
+   surface is single-input fan-out (~6 chains), so a dataflow engine was over-provisioned;
+   inputs are DOM elements and sinks re-run on a named input firing. (Phase 5)
+6. **Rename `reveal.rs` → `deck.rs`:** → done (plus `.reveal` → `.qmd-deck`). (Phase 4)
 
 ## Risks / regrets to accept knowingly
 

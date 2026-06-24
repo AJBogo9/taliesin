@@ -187,42 +187,54 @@ ojs_define(
 )
 ```
 
-```{ojs}
-//| label: ojs-controls
+```{js}
+//| viewof: iter
 //| echo: false
-
-viewof iter = Inputs.range(
-  [1, 40],
-  { value: 1, step: 1, label: "VI iteration" }
-)
+const wrap = document.createElement("label");
+wrap.className = "qmd-input";
+wrap.append("VI iteration ");
+const input = document.createElement("input");
+input.type = "range";
+input.min = "1";
+input.max = "40";
+input.step = "1";
+input.value = "1";
+wrap.append(input);
+return wrap;
 ```
 
-```{ojs}
+```{js}
 //| label: fig-vi-convergence
+//| input: iter
 //| echo: false
 //| fig-cap: "VI convergence: the variational q approaches the true posterior. Drag the slider to step through iterations. Dashed blue line is the true posterior; solid orange line is the current q."
 
-snap = history[iter - 1]
+const history = qmd.defines.history; if (!history) return;
+const mu_post = qmd.defines.mu_post;
+const sig_post = qmd.defines.sig_post;
+const iter = qmd.value("iter");
 
-z_vals = Array.from({length: 500}, (_, i) => -3 + i * 7 / 499)
+const snap = history[iter - 1];
+
+const z_vals = Array.from({length: 500}, (_, i) => -3 + i * 7 / 499);
 
 function normalPDF(zArr, mu, sigma) {
   return zArr.map(zi =>
     Math.exp(-0.5 * ((zi - mu) / sigma) ** 2) / (sigma * Math.sqrt(2 * Math.PI))
-  )
+  );
 }
 
-true_curve = z_vals.map((zi, i) => ({
+const true_curve = z_vals.map((zi, i) => ({
   z: zi,
   y: normalPDF(z_vals, mu_post, sig_post)[i],
-}))
+}));
 
-q_curve = z_vals.map((zi, i) => ({
+const q_curve = z_vals.map((zi, i) => ({
   z: zi,
   y: normalPDF(z_vals, snap.mu_q, snap.sq)[i],
-}))
+}));
 
-Plot.plot({
+return Plot.plot({
   width: 700,
   height: 360,
   marginLeft: 50,
@@ -255,14 +267,18 @@ Plot.plot({
 })
 ```
 
-```{ojs}
+```{js}
 //| label: fig-vi-elbo
+//| input: iter
 //| echo: false
 //| fig-cap: "ELBO rises monotonically during VI optimisation."
 
-ll_data = history.slice(0, 40).map(d => ({ iter: d.iter, elbo: d.elbo }))
+const history = qmd.defines.history; if (!history) return;
+const iter = qmd.value("iter");
 
-Plot.plot({
+const ll_data = history.slice(0, 40).map(d => ({ iter: d.iter, elbo: d.elbo }));
+
+return Plot.plot({
   width: 700,
   height: 200,
   marginLeft: 60,
@@ -279,7 +295,7 @@ Plot.plot({
       x: "iter", y: "elbo", fill: "darkorange", r: 5,
     }),
   ],
-})
+});
 ```
 
 ```{python}

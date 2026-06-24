@@ -2,7 +2,7 @@
 //!
 //! Block ids are content hashes and unique within a document, so an unchanged
 //! block keeps its id and is left untouched (this is what preserves scroll and
-//! the runtime state of live blocks like Three.js/OJS). Changed regions are
+//! the runtime state of live blocks like Three.js/`{js}` cells). Changed regions are
 //! aligned positionally between the stable anchors (an LCS over ids) and turned
 //! into in-place updates, with extras as inserts/removes.
 
@@ -23,7 +23,7 @@ pub enum BlockOp {
     Remove { target_id: String },
     /// Patch only the position metadata (`data-sourcepos` / `data-source-file`) of
     /// the element `target_id`, leaving its rendered content — and its live DOM state
-    /// (video playback, OJS widgets, open `<details>`) — in place. Emitted when a
+    /// (video playback, `{js}` widgets, open `<details>`) — in place. Emitted when a
     /// structural edit elsewhere shifts an unchanged block's line numbers: its
     /// content-hash id and body are identical, only the attribute moved.
     SetMeta {

@@ -346,30 +346,24 @@ fn render_markdown_only(site: &qmd_fast_core::Site, page: &Page) -> PageDoc {
 /// Build the full live HTML for a page: theme + base + site CSS, the SSR body
 /// wrapped in the site chrome, and the preview client scoped to this page's ws.
 fn site_page_html(app: &SiteApp, page: &Page) -> String {
-    let (title, toc, theme_css, theme_default, body, ojs, page_includes) = {
+    let (title, toc, theme_css, theme_default, body, page_includes) = {
         let pages = app.pages.lock();
         let ps = pages.get(&page.rel);
         match ps {
-            Some(ps) => {
-                let body = ps.doc.body_html();
-                let ojs = body.contains("ojs-module-contents");
-                (
-                    ps.doc.title.clone(),
-                    ps.doc.toc,
-                    ps.doc.theme_css.clone(),
-                    ps.doc.theme_default.clone(),
-                    body,
-                    ojs,
-                    ps.doc.includes.clone(),
-                )
-            }
+            Some(ps) => (
+                ps.doc.title.clone(),
+                ps.doc.toc,
+                ps.doc.theme_css.clone(),
+                ps.doc.theme_default.clone(),
+                ps.doc.body_html(),
+                ps.doc.includes.clone(),
+            ),
             None => (
                 None,
                 false,
                 String::new(),
                 String::new(),
                 String::new(),
-                false,
                 Default::default(),
             ),
         }
@@ -485,7 +479,6 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
         with_site_css: true,
         // A live page can gain math at any edit, so always ship the KaTeX styles.
         ship_katex: true,
-        has_ojs: ojs,
         extra_head: &extra_head,
         body_class: &format!(" class=\"{body_class}\""),
         include_in_header: &includes.in_header,
@@ -752,9 +745,8 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
                     pool.restart(&rel);
                     build_page_guarded(&app, &rel, &mut pool).await;
                     // A fresh kernel means fresh outputs — including any `ojs_define`
-                    // values. Reload the page so OJS cells re-bind to them: the
-                    // Observable runtime can't redefine a variable in place, so a
-                    // diff-splice of the define script wouldn't take effect.
+                    // values. Reload the page so the `{js}` cells re-bind to the
+                    // fresh `qmd-define` blobs from a clean module scope.
                     if let Some(ps) = app.pages.lock().get(&rel) {
                         let _ = ps.tx.send(protocol::reload());
                     }

@@ -3,7 +3,7 @@
     --qmd-bg: #16181d; --qmd-fg: #e6e6e6; --qmd-muted: #9aa0aa; --qmd-accent: #6ea8ff;
     --qmd-link: #6ea8ff; --qmd-code-bg: #21242b; --qmd-border: #363a44;
     --qmd-edge-shadow: rgba(255, 255, 255, .14); --qmd-flash: rgba(110, 168, 255, .22);
-    color-scheme: dark; /* native form controls (OJS inputs) + scrollbars render dark */
+    color-scheme: dark; /* native form controls ({js} cell inputs) + scrollbars render dark */
   }
   html[data-theme="dark"] .qmd-copy { background: #21242b; color: #c8ccd4; border-color: #3a3f4b; }
   html[data-theme="dark"] .qmd-copy:hover { color: #fff; border-color: #5a606b; }

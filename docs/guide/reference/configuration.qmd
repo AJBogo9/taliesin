@@ -24,7 +24,7 @@ unchanged (see the note at the end).
 
 ### Code-cell options
 
-Inside a cell, lines beginning `#|` (`//|` for `{ojs}`, `%%|` for `{mermaid}`)
+Inside a cell, lines beginning `#|` (`//|` for `{js}`, `%%|` for `{mermaid}`)
 set per-cell options:
 
 | Option | Meaning |

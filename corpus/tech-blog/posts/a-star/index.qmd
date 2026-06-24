@@ -151,42 +151,64 @@ Start with Dijkstra and then swap to A\* with the Manhattan heuristic. Also, tes
 - **Yellow path**: the solution once the algorithm reaches the end node.
 - Drag **S** or **E** to reposition start and goal. Paint walls by clicking and dragging on empty cells.
 
-```{ojs}
-//| echo: false
-
-// ── constants ────────────────────────────────────────────────────────────────
-COLS = 19
-ROWS = 11
-CELL = 40
-W    = COLS * CELL
-H    = ROWS * CELL
-key  = (r, c) => `${r},${c}`
-```
-
-```{ojs}
+```{js}
+//| viewof: heuristic
 //| echo: false
 
 // ── controls ─────────────────────────────────────────────────────────────────
-viewof heuristic = Inputs.select(
-  ["zero (Dijkstra)", "manhattan"],
-  { label: "Heuristic", value: "zero (Dijkstra)" }
-)
-
-viewof weight = Inputs.range([1, 5], {
-  label: "Weight (w)",
-  value: 1,
-  step: 0.1
-})
-
-viewof speed = Inputs.range([10, 500], {
-  label: "Speed (ms/step)",
-  value: 80,
-  step: 10
-})
+const wrap = document.createElement("label");
+wrap.className = "qmd-input";
+wrap.append("Heuristic ");
+const sel = document.createElement("select");
+for (const opt of ["zero (Dijkstra)", "manhattan"]) {
+  const o = document.createElement("option");
+  o.value = opt; o.textContent = opt;
+  sel.append(o);
+}
+sel.value = "zero (Dijkstra)";
+wrap.append(sel);
+return wrap;
 ```
 
-```{ojs}
+```{js}
+//| viewof: weight
 //| echo: false
+
+const wrap = document.createElement("label");
+wrap.className = "qmd-input";
+wrap.append("Weight (w) ");
+const input = document.createElement("input");
+input.type = "range"; input.min = "1"; input.max = "5"; input.step = "0.1"; input.value = "1";
+wrap.append(input);
+return wrap;
+```
+
+```{js}
+//| viewof: speed
+//| echo: false
+
+const wrap = document.createElement("label");
+wrap.className = "qmd-input";
+wrap.append("Speed (ms/step) ");
+const input = document.createElement("input");
+input.type = "range"; input.min = "10"; input.max = "500"; input.step = "10"; input.value = "80";
+wrap.append(input);
+return wrap;
+```
+
+```{js}
+//| echo: false
+
+// ── A* demo (built once; mounted here; exposes s/draw/resetSearch for the
+//    slider watcher cell below via qmd.set) ────────────────────────────────────
+
+// ── constants ────────────────────────────────────────────────────────────────
+const COLS = 19;
+const ROWS = 11;
+const CELL = 40;
+const W    = COLS * CELL;
+const H    = ROWS * CELL;
+const key  = (r, c) => `${r},${c}`;
 
 // ── heuristic function ───────────────────────────────────────────────────────
 function heuristicFn(r1, c1, r2, c2, type) {
@@ -195,10 +217,6 @@ function heuristicFn(r1, c1, r2, c2, type) {
   if (type === "zero (Dijkstra)") return 0;
   return dr + dc;
 }
-```
-
-```{ojs}
-//| echo: false
 
 // ── search functions ─────────────────────────────────────────────────────────
 function initSearch(s) {
@@ -264,10 +282,6 @@ function resetSearch(s) {
   s.gScore  = {}; s.fScore   = {};
   s.path    = []; s.current = null; s.running  = false; s.done = false; s.iter = 0; s.status = "idle";
 }
-```
-
-```{ojs}
-//| echo: false
 
 // ── maze generation ──────────────────────────────────────────────────────────
 function generateMaze(s) {
@@ -315,35 +329,23 @@ function generateMaze(s) {
   s.end   = { r: furthest[0], c: furthest[1] };
   resetSearch(s);
 }
-```
 
-```{ojs}
-//| echo: false
-
-// ── state (runs once, no reactive deps) ──────────────────────────────────────
-s = {
-  const state = {
-    walls:     Array.from({ length: ROWS }, () => new Array(COLS).fill(false)),
-    start:     { r: 1, c: 1 },
-    end:       { r: ROWS - 2, c: COLS - 2 },
-    openSet:   [], closedSet: new Set(), cameFrom: {},
-    gScore:    {}, fScore:    {}, path: [],
-    running:   false, done: false, iter: 0, status: "idle",
-    heuristic: "zero (Dijkstra)", weight: 1, speed: 80,
-    showScores: false, current: null,
-    animating: false, animTimer: null,
-  };
-  generateMaze(state);
-  return state;
-}
-```
-
-```{ojs}
-//| echo: false
+// ── state (built once) ───────────────────────────────────────────────────────
+const s = {
+  walls:     Array.from({ length: ROWS }, () => new Array(COLS).fill(false)),
+  start:     { r: 1, c: 1 },
+  end:       { r: ROWS - 2, c: COLS - 2 },
+  openSet:   [], closedSet: new Set(), cameFrom: {},
+  gScore:    {}, fScore:    {}, path: [],
+  running:   false, done: false, iter: 0, status: "idle",
+  heuristic: "zero (Dijkstra)", weight: 1, speed: 80,
+  showScores: false, current: null,
+  animating: false, animTimer: null,
+};
+generateMaze(s);
 
 // ── app (D3 implementation — never mentions heuristic or weight) ──────────────
-app = {
-  const C = {
+const C = {
     bg:        "#f8fafc",  // very light gray
     grid:      "#cbd5e1",  // slate-300
     empty:     "#f1f5f9",  // slate-100
@@ -403,7 +405,11 @@ app = {
   `;
   document.body.appendChild(tooltip);
 
-  invalidation.then(() => tooltip.remove());
+  invalidation.then(() => {
+    tooltip.remove();
+    if (s.animTimer) { clearTimeout(s.animTimer); s.animTimer = null; }
+    s.animating = false;
+  });
 
   rects.on("mousemove", function(e, d) {
   const k = key(d.r, d.c);
@@ -633,35 +639,35 @@ app = {
   scoreWrap.append(chkScores, lblScores);
   btnRow.append(btnAnimate, btnStep, btnRun, btnReset, btnClear, btnMaze, scoreWrap);
 
-  const root = document.createElement("div");
-  root.append(svg.node(), btnRow, iterDisplay);
+const root = document.createElement("div");
+root.append(svg.node(), btnRow, iterDisplay);
 
+draw();
+
+// expose to the slider-watcher cell below (set synchronously, before that cell runs)
+qmd.set("astar", { s, draw, resetSearch });
+
+return root;
+```
+
+```{js}
+//| input: heuristic, weight, speed
+//| echo: false
+
+// ── watcher: slider changes re-run only this cell; the app is never rebuilt ────
+const astar = qmd.get("astar");
+if (!astar) return;
+const { s, draw, resetSearch } = astar;
+
+// fall back to current state when an input isn't registered yet (initial load)
+const h = qmd.value("heuristic"); if (h !== undefined) s.heuristic = h;
+const w = qmd.value("weight");    if (w !== undefined) s.weight    = w;
+const sp = qmd.value("speed");    if (sp !== undefined) s.speed    = sp;
+
+if (!s.animating) {
+  resetSearch(s);
   draw();
-  return { root, draw };
 }
-```
-
-```{ojs}
-//| echo: false
-app.root
-```
-
-```{ojs}
-//| echo: false
-//| output: false
-
-// ── watcher ───────────────────────────────────────────────────────────────────
-{
-  s.heuristic = heuristic;
-  s.weight    = weight;
-  if (!s.animating) {
-    resetSearch(s);
-    app.draw();
-  }
-}
-
-// speed sync — no search reset
-{ s.speed = speed; }
 ```
 
 ## Discussion

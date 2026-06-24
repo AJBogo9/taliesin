@@ -35,7 +35,7 @@ Create a new post in this Quarto blog following the established conventions.
 4. **Write the body** if the user gave enough to start; otherwise leave a one-line stub. Match the house style of existing posts:
    - Open with a concrete, motivating example or question, not a definition.
    - Math uses KaTeX: inline `$...$`, display `$$...$$`. Reference figures with `@fig-label`.
-   - Python cells are ```` ```{python} ```` and execute via Jupyter (`echo: true`, so code shows). Interactive visuals use ```` ```{ojs} ```` with D3.
+   - Python cells are ```` ```{python} ```` and execute via Jupyter (`echo: true`, so code shows). Interactive visuals use ```` ```{js} ```` cells with the vendored `Plot`/`d3` globals (or `import()` Three.js); a Python cell can bridge values via `ojs_define(...)`.
    - Collapsible notation tables use `::: {.callout-note collapse="true"}`.
 
 ## House rules (do not violate)

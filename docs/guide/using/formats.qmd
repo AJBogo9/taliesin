@@ -45,8 +45,8 @@ The engine ships the things you actually present with:
 - **Black screen** — press <kbd>B</kbd> (or <kbd>.</kbd>) to blank the deck mid-talk
   and pull attention back to you; any of <kbd>B</kbd>/<kbd>.</kbd>/<kbd>Esc</kbd>
   restores it.
-- **Live code + OJS** — `{python}` / `{r}` cells execute and Observable cells stay
-  reactive, right in the deck.
+- **Live code + `{js}`** — `{python}` / `{r}` cells execute and native `{js}` cells
+  stay interactive, right in the deck.
 
 ### Embedding a deck in a page
 

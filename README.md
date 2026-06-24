@@ -1,14 +1,14 @@
 # qmd-fast
 
 A single-purpose, performance-oriented tool for authoring HTML from `.qmd`
-files: blog posts, reveal.js slide decks, books, and **multi-page websites**. A
+files: blog posts, slide decks, books, and **multi-page websites**. A
 focused replacement for Quarto for one author's workflow, built around three
 goals Quarto's architecture can't deliver:
 
 1. **Click-to-source** — double-click a rendered element, jump to its `.qmd` source.
 2. **Block-level incremental updates** — saving a change swaps only the affected
    block(s) in place, preserving scroll position and the runtime state of live
-   components (Three.js, OJS).
+   components (Three.js, `{js}` cells).
 3. **No per-edit startup cost** — a long-running Rust server with a warm Jupyter kernel.
 
 Output is **HTML only**. See [docs/index.qmd](docs/index.qmd) for the
@@ -34,7 +34,7 @@ includes/bibliography), and on each save re-renders, **executes changed code cel
 against a warm Jupyter kernel** (re-running only the earliest changed cell and
 everything downstream), diffs against the previous block list, and pushes only the
 changed blocks over a websocket. Unchanged blocks are never touched, so scroll
-position and the runtime state of live blocks (Three.js, OJS) survive edits. Open
+position and the runtime state of live blocks (Three.js, `{js}` cells) survive edits. Open
 the preview in a browser; double-clicking a block jumps to its `.qmd` source.
 
 Point it at a **single file** or a **directory** (a multi-page site project):
@@ -72,7 +72,8 @@ with `data-block-id` + `data-sourcepos` on every block.
 - **Print/LaTeX figure export** — inline matplotlib figures are web-themed without
   tainting global `rcParams`, so `savefig` stays print-clean; `#| fig-export: x.pdf`
   writes the figure to a vector/raster file (black-on-white) for `\includegraphics`.
-- Live **Observable/OJS** cells, **mermaid** diagrams, a figure lightbox, themes
+- Live **`{js}`** cells (a tiny native enhancer with vendored d3 + Observable Plot,
+  no Observable runtime), **mermaid** diagrams, a figure lightbox, themes
   (light/dark + custom), and a responsive reading layout (mobile TOC pull-up sheet,
   print stylesheet).
 - **Multi-page sites** (`preview`/`build` a directory): a `_site.yml` project with
@@ -80,6 +81,6 @@ with `data-block-id` + `data-sourcepos` on every block.
   `listing:` post-card indexes, and `about:` profile pages. Live preview navigates
   between pages and hot-reloads the edited one.
 
-reveal.js, mermaid, and the Observable runtime are the only client-side pieces;
-everything else (parse, render, highlight, math) happens in Rust. See
+The native deck engine, mermaid, and the `{js}` cell enhancer are the only
+client-side pieces; everything else (parse, render, highlight, math) happens in Rust. See
 [docs/index.qmd](docs/index.qmd) — the project's own manual, authored in `.qmd`.

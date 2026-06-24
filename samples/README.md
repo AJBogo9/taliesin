@@ -37,7 +37,7 @@ numbered mermaid figures with cross-references.
 story (the deck-assembly tax, and how answering live closes the deal) that exercises
 **every** slide feature on qmd-fast's own engine: auto-animate, incremental fragments
 and a `.fragment`, code line-stepping (`code-line-numbers`), magic-move, **live
-`{python}` cells that compute the business charts on the slide**, an **interactive OJS
+`{python}` cells that compute the business charts on the slide**, an **interactive `{js}`
 slider** the audience can drag, math, a two-column layout (`layout-ncol`), callouts, a
 table, a mermaid diagram, per-slide backgrounds (colour, gradient, and a local offline
 image in `assets/`), vertical sub-slide stacks, speaker notes (`S`), PDF export

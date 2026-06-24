@@ -129,7 +129,7 @@
   pre.mermaid svg { max-width: 100%; height: auto; }
   blockquote { border-left: 3px solid var(--qmd-border); margin: 0 0 1rem; padding-left: 1rem; color: var(--qmd-muted); }
   img { max-width: 100%; }
-  /* embedded media (OJS/Three.js canvases, SVG figures, video, embeds) is clamped
+  /* embedded media ({js}/Three.js canvases, SVG figures, video, embeds) is clamped
      to the page width so a fixed-size canvas can't force a horizontal scroll on
      mobile; max-width clamps even against an author width: rule. */
   canvas, svg, video, iframe { max-width: 100%; }
@@ -354,3 +354,18 @@
     pre, figure, table, blockquote, .callout, .qmd-eqn { break-inside: avoid; }
     h2, h3, h4 { break-after: avoid; }
   }
+
+/* Interactive `{js}`-cell inputs (the `//| viewof:` controls). A native, minimal
+   control style replacing the inputs the Observable runtime used to provide. */
+.qmd-input {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  margin: 0.4rem 0;
+  font-size: 0.9rem;
+  color: var(--qmd-muted);
+}
+.qmd-input input[type="range"] { flex: 0 1 16rem; accent-color: var(--qmd-accent); }
+.qmd-input input[type="checkbox"], .qmd-input input[type="radio"] { accent-color: var(--qmd-accent); }
+.qmd-input select { color: var(--qmd-ink); background: var(--qmd-bg); border: 1px solid var(--qmd-border); border-radius: 4px; padding: 0.1em 0.3em; }
+.qmd-js-error { color: #b00020; background: #fff0f0; border: 1px solid #f3c0c0; padding: .5em .7em; border-radius: 6px; overflow: auto; font-size: .85em; }

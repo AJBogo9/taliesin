@@ -87,8 +87,8 @@ pub fn diagnostics(diags: &[Diagnostic]) -> String {
     serde_json::json!({ "type": "diagnostics", "messages": diags_array(diags) }).to_string()
 }
 
-/// Tell the client to do a full page reload (used after a kernel restart, so OJS
-/// cells re-bind to freshly-defined values).
+/// Tell the client to do a full page reload (used after a kernel restart, so
+/// `{js}` cells re-bind to freshly-defined `qmd-define` values).
 pub fn reload() -> String {
     serde_json::json!({ "type": "reload" }).to_string()
 }

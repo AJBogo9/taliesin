@@ -51,7 +51,8 @@ crates/core      qmd-fast-core lib: parser (comrak + sourcepos) → block model 
                    referenced deck is built/served but kept out of nav. `mounts:`
                    serves another project (e.g. the docs book) under a URL prefix in preview
   assets/          bundled offline: css/ (base, dark, deck, site),
-                   js/ (deck.js, code-enhance.js, mermaid.js, ojs-init.html), katex/, ojs/
+                   js/ (deck.js, code-enhance.js, mermaid.js, qmd-js.js + vendored
+                   plot.umd.min.js/d3.min.js for `{js}` cells), katex/
 crates/server    qmd-fast-server, bin `qmd-fast`: CLI + websocket dev server
   src/main.rs      render / blocks / build / serve subcommands (a dir = a site project)
   src/serve.rs     single-doc axum websocket + notify file watcher
