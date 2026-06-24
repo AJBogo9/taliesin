@@ -11,7 +11,7 @@
 //! plain-text runs (never inside tags, code, or math), so block sourcepos is
 //! untouched. The only structural change is appending a References block.
 
-use crate::render::{Block, escape_attr as esc};
+use crate::render::{Block, Warning, escape_attr as esc};
 use std::collections::HashMap;
 
 /// A parsed BibTeX database.
@@ -487,7 +487,7 @@ pub fn process(
     blocks: &mut Vec<Block>,
     bib: &Bibliography,
     xrefs: &HashMap<String, String>,
-) -> Vec<String> {
+) -> Vec<Warning> {
     let mut order: Vec<String> = Vec::new();
     let mut number: HashMap<String, usize> = HashMap::new();
     let mut cite_key = |key: &str| -> usize {
@@ -504,7 +504,7 @@ pub fn process(
     if order.is_empty() {
         return Vec::new();
     }
-    let mut warnings = Vec::new();
+    let mut warnings: Vec<Warning> = Vec::new();
     let mut list = String::from(
         "<section class=\"qmd-references\" data-block-id=\"qmd-references\"><h2>References</h2>",
     );
@@ -516,7 +516,9 @@ pub fn process(
                 // when a bibliography exists (else every cite would warn before one
                 // is set up; the missing-file case is its own warning).
                 if !bib.is_empty() {
-                    warnings.push(format!("broken citation: @{key} (not in the bibliography)"));
+                    warnings.push(Warning::new(format!(
+                        "broken citation: @{key} (not in the bibliography)"
+                    )));
                 }
                 format!("<code>{}</code>", esc(key))
             }
@@ -543,7 +545,7 @@ pub fn process(
 /// markers `cite` emits when an `@fig-`/`@sec-`/… anchor isn't in the local (and,
 /// for a site, cross-page) registry. One warning per distinct broken anchor. Run
 /// AFTER any site-wide cross-ref resolution so genuine cross-page refs aren't flagged.
-pub fn validate_xrefs(blocks: &[Block]) -> Vec<String> {
+pub fn validate_xrefs(blocks: &[Block]) -> Vec<Warning> {
     let marker = "data-qmd-xref=\"";
     let mut seen = std::collections::BTreeSet::new();
     for b in blocks {
@@ -556,7 +558,11 @@ pub fn validate_xrefs(blocks: &[Block]) -> Vec<String> {
         }
     }
     seen.into_iter()
-        .map(|a| format!("broken cross-reference: @{a} (no such figure/section/…)"))
+        .map(|a| {
+            Warning::new(format!(
+                "broken cross-reference: @{a} (no such figure/section/\u{2026})"
+            ))
+        })
         .collect()
 }
 
@@ -860,7 +866,7 @@ mod tests {
         let mut blocks = mk();
         let w = process(&mut blocks, &bib(), &HashMap::new());
         assert_eq!(w.len(), 1, "got: {w:?}");
-        assert!(w[0].contains("@nosuchkey") && w[0].contains("broken citation"));
+        assert!(w[0].message.contains("@nosuchkey") && w[0].message.contains("broken citation"));
         // No bibliography at all -> not flagged (the missing-file case is separate).
         let mut blocks2 = mk();
         assert!(process(&mut blocks2, &Bibliography::default(), &HashMap::new()).is_empty());
@@ -878,7 +884,9 @@ mod tests {
         }];
         let w = validate_xrefs(&broken);
         assert_eq!(w.len(), 1, "got: {w:?}");
-        assert!(w[0].contains("@fig-gone") && w[0].contains("broken cross-reference"));
+        assert!(
+            w[0].message.contains("@fig-gone") && w[0].message.contains("broken cross-reference")
+        );
         // A resolved xref (marker already rewritten away) is not flagged.
         let ok = vec![Block {
             id: "y".into(),

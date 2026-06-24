@@ -120,6 +120,41 @@ pub enum DocFormat {
     Reveal,
 }
 
+/// A non-fatal render warning, optionally carrying a click-to-source location.
+/// When `line` is `Some`, the dev server renders it as a clickable diagnostic
+/// (jump-to-source); `file` is doc-base-relative (matching `Block::source_file`)
+/// or `None` for "the document being previewed". `line: None` is an unlocated
+/// warning (logged + shown, not clickable), the same behavior bare strings had.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Warning {
+    pub message: String,
+    pub file: Option<String>,
+    pub line: Option<u32>,
+}
+
+impl Warning {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            file: None,
+            line: None,
+        }
+    }
+
+    /// Attach a click-to-source location.
+    pub fn at(mut self, file: Option<String>, line: u32) -> Self {
+        self.file = file;
+        self.line = Some(line);
+        self
+    }
+}
+
+impl std::fmt::Display for Warning {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
 /// A rendered document: front-matter metadata plus ordered blocks.
 #[derive(Debug, Clone)]
 pub struct RenderedDoc {
@@ -158,7 +193,7 @@ pub struct RenderedDoc {
     /// core can't return a `Result`, so it reports these for the server to log +
     /// surface in the dev menu. Front-matter typo warnings are separate (the
     /// `frontmatter` linter runs off the source).
-    pub warnings: Vec<String>,
+    pub warnings: Vec<Warning>,
     pub blocks: Vec<Block>,
 }
 
@@ -212,5 +247,26 @@ impl RenderedDoc {
             s.push('\n');
         }
         s
+    }
+}
+
+#[cfg(test)]
+mod warning_tests {
+    use super::Warning;
+
+    #[test]
+    fn warning_new_is_unlocated_and_displays_its_message() {
+        let w = Warning::new("broken citation: @x");
+        assert_eq!(w.message, "broken citation: @x");
+        assert_eq!(w.file, None);
+        assert_eq!(w.line, None);
+        assert_eq!(w.to_string(), "broken citation: @x");
+    }
+
+    #[test]
+    fn warning_at_attaches_file_and_line() {
+        let w = Warning::new("broken cross-reference: @fig-x").at(Some("intro.qmd".into()), 12);
+        assert_eq!(w.file.as_deref(), Some("intro.qmd"));
+        assert_eq!(w.line, Some(12));
     }
 }

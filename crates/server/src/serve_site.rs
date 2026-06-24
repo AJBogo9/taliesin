@@ -329,7 +329,13 @@ fn render_markdown_only(site: &qmd_fast_core::Site, page: &Page) -> PageDoc {
     site.finish_blocks(page, &mut blocks, &mut warnings);
     let diagnostics = warnings
         .iter()
-        .map(|w| Diagnostic::warn(w.clone()))
+        .map(|w| {
+            let mut d = Diagnostic::warn(&w.message);
+            if let Some(line) = w.line {
+                d = d.at(w.file.clone(), line);
+            }
+            d
+        })
         .collect();
     PageDoc {
         title: doc.title,
@@ -814,7 +820,11 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
     };
     let mut diags = page_diagnostics(&page.input, &base, exec);
     for w in &warnings {
-        diags.push(Diagnostic::warn(w.clone()));
+        let mut d = Diagnostic::warn(&w.message);
+        if let Some(line) = w.line {
+            d = d.at(w.file.clone(), line);
+        }
+        diags.push(d);
     }
 
     let mut pages = app.pages.lock();

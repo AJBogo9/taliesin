@@ -194,7 +194,7 @@ fn build_page_executing(
     Ok(rt.block_on(async {
         let mut doc = qmd_fast_core::render_document_with_includes(src, base);
         for w in &doc.warnings {
-            log::warn(w);
+            log::warn(&w.message);
         }
         // `{{< embed >}}` only resolves in a SITE build, which also builds the
         // embedded target beside the page. A single-doc build ships the iframe but
@@ -209,7 +209,7 @@ fn build_page_executing(
         // Broken cross-refs (a single doc has no site to resolve them across pages),
         // so a `build` doesn't ship a dangling `@fig-`/`@sec-` link silently.
         for w in qmd_fast_core::cite::validate_xrefs(&doc.blocks) {
-            log::warn(&w);
+            log::warn(&w.message);
         }
         // Persistent execution cache keyed off the doc's stem, beside the source.
         let mut ex =
@@ -385,7 +385,7 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
         // deploy silently (these previously only showed in the preview dev menu).
         let (html, warnings) = site.render_page_doc_warned(page, doc);
         for w in &warnings {
-            log::warn(&format!("{}: {w}", page.rel));
+            log::warn(&format!("{}: {}", page.rel, w.message));
         }
         let dest = out.join(&page.url);
         if let Some(parent) = dest.parent() {

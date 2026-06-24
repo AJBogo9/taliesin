@@ -13,7 +13,9 @@ use std::path::{Path, PathBuf};
 
 mod model;
 pub(crate) use model::CellRole;
-pub use model::{Block, Cell, CellFigure, CellTable, DocFormat, JsOpts, PageIncludes, RenderedDoc};
+pub use model::{
+    Block, Cell, CellFigure, CellTable, DocFormat, JsOpts, PageIncludes, RenderedDoc, Warning,
+};
 
 fn parse_options() -> Options<'static> {
     let mut options = Options::default();
@@ -157,7 +159,7 @@ fn render_internal_impl(
     let mut ext_contributes = false;
     // Non-fatal render warnings (missing/broken extension, bibliography, theme),
     // collected through the whole render and surfaced in the dev menu / build log.
-    let mut warnings: Vec<String> = Vec::new();
+    let mut warnings: Vec<Warning> = Vec::new();
     // Document-level cell defaults from a front-matter `execute:` block; a cell's
     // own `#| echo`/`#| include`/`#| cache` overrides these.
     let mut exec_echo = true;
@@ -868,7 +870,7 @@ fn is_reveal_format(name: &str) -> bool {
 fn load_bibliography(
     field: Option<&str>,
     base_dir: Option<&Path>,
-    warnings: &mut Vec<String>,
+    warnings: &mut Vec<Warning>,
 ) -> crate::cite::Bibliography {
     let (Some(field), Some(base)) = (field, base_dir) else {
         return crate::cite::Bibliography::default();
@@ -887,11 +889,11 @@ fn load_bibliography(
             // An explicitly named `.bib` that can't be read (or escapes the project
             // root) is a typo worth flagging: citations would otherwise just
             // silently fail to resolve.
-            None => warnings.push(format!("bibliography file not found: {tok}")),
+            None => warnings.push(Warning::new(format!("bibliography file not found: {tok}"))),
         }
     }
     let (bib, bib_warnings) = crate::cite::parse_bib_warned(&text);
-    warnings.extend(bib_warnings);
+    warnings.extend(bib_warnings.into_iter().map(Warning::new));
     bib
 }
 
@@ -1265,14 +1267,14 @@ fn inject_attrs_into_last_tag(out: &mut String, tag: &str, classes: &[String], i
 /// so `@fig-x` and the link target disagreed, with no diagnostic.
 fn register_xref(
     reg: &mut HashMap<String, String>,
-    warnings: &mut Vec<String>,
+    warnings: &mut Vec<Warning>,
     anchor: &str,
     number: String,
 ) {
     if reg.contains_key(anchor) {
-        warnings.push(format!(
+        warnings.push(Warning::new(format!(
             "duplicate cross-reference label \u{201c}{anchor}\u{201d} (using the first definition)"
-        ));
+        )));
     } else {
         reg.insert(anchor.to_string(), number);
     }
@@ -1281,7 +1283,7 @@ fn register_xref(
 fn apply_table_captions(
     blocks: &mut Vec<Block>,
     xrefs: &mut HashMap<String, String>,
-    warnings: &mut Vec<String>,
+    warnings: &mut Vec<Warning>,
 ) {
     let mut tbl_count = 0u32;
     let mut i = 0;

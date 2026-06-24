@@ -87,23 +87,26 @@ fn find_extension_dir(base_dir: &Path, name: &str) -> PathBuf {
 /// extension explicitly via `format:`, a missing or malformed manifest is an
 /// authoring mistake worth surfacing (the dev menu / build log), not a silent
 /// no-op — so failures push a `warnings` entry.
-fn load_manifest(r: &ExtensionRef, warnings: &mut Vec<String>) -> Option<serde_yaml::Value> {
+fn load_manifest(r: &ExtensionRef, warnings: &mut Vec<Warning>) -> Option<serde_yaml::Value> {
     let manifest = r.dir.join("_extension.yml");
     let text = match std::fs::read_to_string(&manifest) {
         Ok(t) => t,
         Err(_) => {
-            warnings.push(format!(
+            warnings.push(Warning::new(format!(
                 "format extension '{}' not found (looked for {})",
                 r.name,
                 manifest.display()
-            ));
+            )));
             return None;
         }
     };
     match serde_yaml::from_str::<serde_yaml::Value>(&text) {
         Ok(v) => Some(v),
         Err(e) => {
-            warnings.push(format!("could not parse {}: {e}", manifest.display()));
+            warnings.push(Warning::new(format!(
+                "could not parse {}: {e}",
+                manifest.display()
+            )));
             None
         }
     }
@@ -155,7 +158,7 @@ const NATIVE_MANIFEST_KEYS: &[&str] = &[
 ];
 
 /// Warn on unrecognized top-level keys of a native manifest (a closed set).
-fn validate_manifest(m: &serde_yaml::Value, ext: &str, warnings: &mut Vec<String>) {
+fn validate_manifest(m: &serde_yaml::Value, ext: &str, warnings: &mut Vec<Warning>) {
     let Some(map) = m.as_mapping() else { return };
     for k in map.keys() {
         let Some(key) = k.as_str() else { continue };
@@ -163,9 +166,9 @@ fn validate_manifest(m: &serde_yaml::Value, ext: &str, warnings: &mut Vec<String
             let hint = crate::frontmatter::closest(key, NATIVE_MANIFEST_KEYS)
                 .map(|s| format!(" (did you mean `{s}`?)"))
                 .unwrap_or_default();
-            warnings.push(format!(
+            warnings.push(Warning::new(format!(
                 "extension '{ext}': unknown manifest key `{key}`{hint}"
-            ));
+            )));
         }
     }
 }
@@ -175,7 +178,7 @@ fn validate_manifest(m: &serde_yaml::Value, ext: &str, warnings: &mut Vec<String
 fn load_contribution(
     r: &ExtensionRef,
     m: &serde_yaml::Value,
-    warnings: &mut Vec<String>,
+    warnings: &mut Vec<Warning>,
 ) -> Contribution {
     validate_manifest(m, &r.name, warnings);
     Contribution::from_native(m)
@@ -195,7 +198,7 @@ impl ExtensionRef {
 /// or `None` if the manifest can't be read/parsed.
 fn contribution_for(
     r: &ExtensionRef,
-    warnings: &mut Vec<String>,
+    warnings: &mut Vec<Warning>,
 ) -> Option<(PathBuf, Contribution)> {
     let m = load_manifest(r, warnings)?;
     Some((r.dir.clone(), load_contribution(r, &m, warnings)))
@@ -256,7 +259,7 @@ fn contributed_theme_base(theme: Option<&serde_yaml::Value>) -> Option<&'static 
 pub(super) fn resolve_format_extension(
     front_matter: &str,
     base_dir: Option<&Path>,
-    warnings: &mut Vec<String>,
+    warnings: &mut Vec<Warning>,
 ) -> (PageIncludes, Option<&'static str>) {
     let Some(r) = extension_ref(front_matter, base_dir) else {
         return (PageIncludes::default(), None);
@@ -276,7 +279,7 @@ pub(super) fn resolve_format_extension(
 pub(super) fn resolve_named_extensions(
     front_matter: &str,
     base_dir: Option<&Path>,
-    warnings: &mut Vec<String>,
+    warnings: &mut Vec<Warning>,
 ) -> PageIncludes {
     let Some(dir) = base_dir else {
         return PageIncludes::default();
@@ -320,7 +323,7 @@ fn parse_extensions(front_matter: &str) -> Vec<String> {
 /// earlier shortcode-expansion pass).
 fn shortcode_templates(front_matter: &str, base_dir: Option<&Path>) -> HashMap<String, String> {
     let mut out = HashMap::new();
-    let mut ignore = Vec::new();
+    let mut ignore: Vec<Warning> = Vec::new();
     // the format extension (`format: <ext>-base`)
     if let Some(r) = extension_ref(front_matter, base_dir) {
         gather_shortcodes(&r, &mut out, &mut ignore);
@@ -338,7 +341,7 @@ fn shortcode_templates(front_matter: &str, base_dir: Option<&Path>) -> HashMap<S
 fn gather_shortcodes(
     r: &ExtensionRef,
     out: &mut HashMap<String, String>,
-    warnings: &mut Vec<String>,
+    warnings: &mut Vec<Warning>,
 ) {
     let Some(m) = load_manifest(r, warnings) else {
         return;
@@ -358,12 +361,12 @@ fn gather_shortcodes(
 /// closes on one line and expands to inline HTML — so the include source map stays
 /// valid. Fenced code blocks are skipped, so a `{{< … >}}` shown as an *example*
 /// in ```` ``` ```` stays literal; unknown shortcodes are left untouched.
-pub(super) fn expand_shortcodes(src: &str, base_dir: Option<&Path>) -> (String, Vec<String>) {
+pub(super) fn expand_shortcodes(src: &str, base_dir: Option<&Path>) -> (String, Vec<Warning>) {
     let templates = shortcode_templates(
         crate::frontmatter::front_matter_block(src).unwrap_or(""),
         base_dir,
     );
-    let mut warnings = Vec::new();
+    let mut warnings: Vec<Warning> = Vec::new();
     // Process whenever a `{{<` is present: besides extension-declared templates,
     // `render_shortcode` also handles the built-in `{{< embed >}}`, which must work
     // with no extensions loaded.
@@ -401,7 +404,7 @@ fn expand_in_line(
     line: &str,
     templates: &HashMap<String, String>,
     line_no: usize,
-    warnings: &mut Vec<String>,
+    warnings: &mut Vec<Warning>,
 ) -> String {
     if !line.contains("{{<") {
         return line.to_string();
@@ -441,10 +444,10 @@ fn expand_in_line(
                     // reported it (file missing/unsafe/cyclic), so don't double-warn.
                     let name = inner.split_whitespace().next().unwrap_or(inner);
                     if name != "include" {
-                        warnings.push(format!(
+                        warnings.push(Warning::new(format!(
                             "unknown shortcode `{{{{< {name} >}}}}` at line {line_no} \
                              (no extension declares it; left as literal text)"
-                        ));
+                        )));
                     }
                     out.push_str(&line[i..end + 3]); // unknown: keep verbatim
                 }

@@ -54,7 +54,7 @@ struct DocState {
     includes: qmd_fast_core::render::PageIncludes,
     /// Non-fatal render warnings (missing `bibliography:`/`theme:` file), surfaced
     /// in the dev menu + terminal.
-    warnings: Vec<String>,
+    warnings: Vec<qmd_fast_core::render::Warning>,
     blocks: Vec<Block>,
     diagnostics: Vec<Diagnostic>,
     /// True while the last render failed, so the next success can re-mount fully
@@ -944,13 +944,22 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
     let mut diags = compute_diagnostics(app, executor);
     // Render warnings (missing bibliography/theme file, broken citation) ride
     // alongside the include/kernel diagnostics into the dev menu.
+    // A warning that carries a line becomes a clickable jump-to-source row.
     for w in &doc.warnings {
-        diags.push(Diagnostic::warn(w.clone()));
+        let mut d = Diagnostic::warn(&w.message);
+        if let Some(line) = w.line {
+            d = d.at(w.file.clone(), line);
+        }
+        diags.push(d);
     }
     // A standalone doc has no site to resolve cross-page refs, so any cross-ref
     // still marked unresolved is broken.
     for w in qmd_fast_core::cite::validate_xrefs(&blocks) {
-        diags.push(Diagnostic::warn(w));
+        let mut d = Diagnostic::warn(&w.message);
+        if let Some(line) = w.line {
+            d = d.at(w.file.clone(), line);
+        }
+        diags.push(d);
     }
     let ops = {
         let mut d = app.doc.lock();

@@ -1056,14 +1056,14 @@ fn missing_bibliography_and_theme_files_warn() {
     assert!(
         doc.warnings
             .iter()
-            .any(|w| w.contains("bibliography file not found: nope.bib")),
+            .any(|w| w.message.contains("bibliography file not found: nope.bib")),
         "got: {:?}",
         doc.warnings
     );
     assert!(
         doc.warnings
             .iter()
-            .any(|w| w.contains("theme file not found: gone.css")),
+            .any(|w| w.message.contains("theme file not found: gone.css")),
         "got: {:?}",
         doc.warnings
     );

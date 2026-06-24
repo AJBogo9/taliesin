@@ -14,7 +14,7 @@ use super::*;
 pub(super) fn resolve_theme(
     theme: Option<&str>,
     base_dir: Option<&Path>,
-    warnings: &mut Vec<String>,
+    warnings: &mut Vec<Warning>,
 ) -> String {
     let Some(name) = theme else {
         return String::new();
@@ -32,7 +32,7 @@ pub(super) fn resolve_theme(
             {
                 Some(css) => css,
                 None => {
-                    warnings.push(format!("theme file not found: {path}"));
+                    warnings.push(Warning::new(format!("theme file not found: {path}")));
                     String::new()
                 }
             }

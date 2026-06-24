@@ -30,9 +30,11 @@ fn unknown_shortcode_warns_with_its_name_and_line() {
         &proj.0,
     );
     assert!(
-        doc.warnings.iter().any(|w| w.contains("unknown shortcode")
-            && w.contains("videoo")
-            && w.contains("line 5")),
+        doc.warnings
+            .iter()
+            .any(|w| w.message.contains("unknown shortcode")
+                && w.message.contains("videoo")
+                && w.message.contains("line 5")),
         "expected an unknown-shortcode warning naming `videoo` at line 5, got: {:?}",
         doc.warnings
     );
@@ -49,7 +51,9 @@ fn a_leftover_include_directive_is_not_flagged_as_an_unknown_shortcode() {
         &proj.0,
     );
     assert!(
-        !doc.warnings.iter().any(|w| w.contains("unknown shortcode")),
+        !doc.warnings
+            .iter()
+            .any(|w| w.message.contains("unknown shortcode")),
         "a leftover include must not warn as an unknown shortcode: {:?}",
         doc.warnings
     );
@@ -185,7 +189,7 @@ fn unknown_extension_name_is_reported() {
     assert!(
         doc.warnings
             .iter()
-            .any(|w| w.contains("doesnotexist") && w.contains("not found")),
+            .any(|w| w.message.contains("doesnotexist") && w.message.contains("not found")),
         "expected a 'not found' warning, got: {:?}",
         doc.warnings
     );
@@ -199,7 +203,9 @@ fn bare_base_format_does_not_warn() {
     let src = "---\ntitle: T\nformat: revealjs\n---\n\n## S\n";
     let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
     assert!(
-        doc.warnings.iter().all(|w| !w.contains("extension")),
+        doc.warnings
+            .iter()
+            .all(|w| !w.message.contains("extension")),
         "a plain base format must not warn: {:?}",
         doc.warnings
     );
@@ -216,7 +222,9 @@ fn malformed_manifest_is_reported_not_fatal() {
     assert!(doc.includes.in_header.is_empty(), "malformed ext ignored");
     assert!(!doc.blocks.is_empty(), "render still succeeds");
     assert!(
-        doc.warnings.iter().any(|w| w.contains("could not parse")),
+        doc.warnings
+            .iter()
+            .any(|w| w.message.contains("could not parse")),
         "expected a parse warning, got: {:?}",
         doc.warnings
     );
@@ -470,7 +478,7 @@ fn native_manifest_unknown_key_is_warned() {
     assert!(
         doc.warnings
             .iter()
-            .any(|w| w.contains("resorces") && w.contains("resources")),
+            .any(|w| w.message.contains("resorces") && w.message.contains("resources")),
         "expected a did-you-mean manifest warning, got: {:?}",
         doc.warnings
     );

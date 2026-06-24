@@ -18,7 +18,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::render::{self, Block, SiteCtx, block_heading_level, escape_attr as esc};
+use crate::render::{self, Block, SiteCtx, Warning, block_heading_level, escape_attr as esc};
 
 /// A deck referenced by a `{{< embed >}}` on some page: a standalone document
 /// (not a chapter/page) that the build renders to its own self-contained `.html`
@@ -329,7 +329,7 @@ impl Site {
         &self,
         page: &Page,
         mut doc: render::RenderedDoc,
-    ) -> (String, Vec<String>) {
+    ) -> (String, Vec<Warning>) {
         doc.toc = self.page_toc(page, doc.toc_explicit);
         let mut warnings = std::mem::take(&mut doc.warnings);
         self.finish_blocks(page, &mut doc.blocks, &mut warnings);
@@ -345,7 +345,7 @@ impl Site {
     /// build, `render_page_doc`, and the live preview, so all three produce identical
     /// blocks (the preview used to skip `validate_xrefs`). `page_toc` is computed by
     /// the caller (it reads blocks but doesn't mutate them).
-    pub fn finish_blocks(&self, page: &Page, blocks: &mut Vec<Block>, warnings: &mut Vec<String>) {
+    pub fn finish_blocks(&self, page: &Page, blocks: &mut Vec<Block>, warnings: &mut Vec<Warning>) {
         self.number_chapter(page, blocks);
         self.resolve_cross_refs(blocks, &page.url);
         // Cross-refs that survived the site-wide resolution are genuinely broken.
