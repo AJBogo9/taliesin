@@ -111,14 +111,20 @@ The moat was bet-on but never measured or marketed; turn architecture into evide
 a regression gate, then close the loop with the editor companion the client protocol
 already waits for.
 
-- [ ] **`live-edit-benchmark-harness` (high / med / none).** = backlog #7's
-  measurement half. A committed bench measuring the three moat claims on a real corpus
-  doc through the exact `rebuild() → exec.run → diff_blocks` seam: cold full render,
-  warm single-cell-edit latency, emitted payload size, and a headless chrome-devtools
-  assertion that an open `<details>` survives an edit above it *as the same DOM node*.
-  Quarto-on-PATH branch stays optional (don't rebuild backlog #4). Emits markdown +
-  JSON for the hero demo. *Invariant: pure measurement; edits a temp copy, never
-  source; reads only `data-block-id`/sourcepos.*
+- [x] **`live-edit-benchmark-harness` (high / med / none). DONE, merged @ `b1b00b1`
+  (2026-06-24).** = backlog #7's measurement half. A committed `tools/live-edit-bench`
+  crate measures the moat through the real `render_document_with_includes → diff_blocks`
+  seam. **Design decision (author): CI-safe core + live browser proof.** Kernel-free +
+  deterministic: cold full render, warm edit-above render+diff, emitted `BlockOp` payload
+  vs full HTML, and DOM preservation asserted at the DIFF level (the open-`<details>`
+  block below the edit gets a `SetMeta`, never an `Update`), not via a committed browser
+  harness. Headline on `corpus/posts/em-algorithm/index.qmd`: cold ~124 ms vs warm ~28 ms
+  (warm amortizes lazy syntax/KaTeX init), payload 3.2 KB vs 270 KB page (**83x smaller**),
+  54 `SetMeta` / 0 `Update`, DOM survives. Bin emits markdown + `RESULTS.json`; CI-safe
+  regression gate asserts the invariants (not timings). The live browser proof + recording
+  roll into `live-edit-hero-demo` (the `tools/record-demo` Playwright recorder already
+  exists). *Invariant held: pure measurement; edits an in-memory copy, never source; reads
+  only id/sourcepos/html; no change to crates/core or crates/server.*
 - [ ] **`live-edit-hero-demo` (high / small / none).** = backlog #7's deliverable. A
   showcase doc (running `{js}` animation, open `<details>`, playing video, heavy code
   block low on the page) + a scripted read-only `tools/record-demo` walkthrough editing

@@ -137,7 +137,14 @@ Chromium-only). Not worth now: deeper i18n/RTL (English solo author).
 >   (`QMD_FAST_BLESS=1` regenerates); `qmd-fast schema [--out <dir>]` emits them;
 >   `configuration.qmd` documents the `# yaml-language-server: $schema=` on-ramp; `serde_json` is
 >   a core dev-dependency only. Supersedes the moot P2 below. **>> WAVE 1 COMPLETE.**
-> - **>> RESUME HERE: Wave 2 (prove the moat, = #7):** `live-edit-benchmark-harness` → `live-edit-hero-demo`.
+> - **Wave 2 (prove the moat, = #7):** `live-edit-benchmark-harness` **DONE, merged @ `b1b00b1`**
+>   (2026-06-24): committed `tools/live-edit-bench` crate measuring the moat through the real
+>   `render_document_with_includes → diff_blocks` seam (kernel-free, CI-safe). On em-algorithm:
+>   cold ~124 ms vs warm ~28 ms, payload 3.2 KB vs 270 KB page (83x smaller), 54 `SetMeta` / 0
+>   `Update`, DOM survives at the diff level. **>> RESUME HERE: `live-edit-hero-demo`** (the
+>   showcase doc + scripted split-screen-vs-Quarto walkthrough citing these numbers; the
+>   `tools/record-demo` Playwright recorder + a `live-edit` demo already exist, so this is
+>   wiring the bench numbers in + the live browser proof, not building from scratch).
 > - **Wave 3 (craft + breadth),** parallel and corpus-pinned: `typography-craft-pass` (= #6)
 >   · `callout-kind-contract` · `panel-tabset-margin` · `image-lightbox`
 >   · `narrated-code-walkthrough` · `js-reactive-graph`.
@@ -146,18 +153,21 @@ Chromium-only). Not worth now: deeper i18n/RTL (English solo author).
 > - **Wave 5 / later:** `print-pdf-track`, `docs-as-spec`, `{glsl}` registry, `build-seo`.
 > Priorities #1d/#4/#5/#6/#7 below are integrated into the waves (not duplicated).
 >
-> **>> To resume next session:** `main` is at `8fcea33` (version 0.1.0); Wave 0 + ALL of Wave 1
-> (`locate-render-warnings` → `nested-schema-validation` → `jsonschema-for-config`) are merged
-> (nothing pushed to any remote yet). Next concrete step = **Wave 2, prove the moat** (= old
-> priority #7): `live-edit-benchmark-harness` (a committed bench measuring the three moat claims
-> through the real `rebuild() → exec.run → diff_blocks` seam: cold full render, warm single-cell
-> edit latency, emitted payload size, and a headless chrome-devtools assertion that an open
-> `<details>` survives an edit above it AS THE SAME DOM node; emits markdown + JSON), then
-> `live-edit-hero-demo` (a showcase doc + scripted read-only walkthrough, split-screen vs Quarto's
-> full reload, citing the bench numbers). Detail in `BEYOND-QUARTO.md` Pillar II. Working method
-> (Waves 0 + 1): branch per wave, brainstorm if forks exist, write a complete-code plan under
-> `docs/superpowers/plans/`, execute subagent-driven via a Workflow (implementer + two adversarial
-> reviewers per task + a final whole-branch review), then fast-forward merge locally. The four
+> **>> To resume next session:** `main` is at `b1b00b1` (version 0.1.0); Wave 0, ALL of Wave 1,
+> and the Wave 2 `live-edit-benchmark-harness` are merged (nothing pushed to any remote yet). Next
+> concrete step = **`live-edit-hero-demo`** (Wave 2 second half, `BEYOND-QUARTO.md` Pillar II): a
+> showcase doc (running `{js}`, open `<details>`, playing video, heavy code low on the page) + a
+> scripted read-only walkthrough editing a paragraph ABOVE them (only that block re-renders, the
+> rest survives), split-screen vs the same edit in Quarto (full reload destroys all of it), citing
+> the bench numbers from `tools/live-edit-bench/RESULTS.md` (83x smaller payload, DOM survives).
+> NOTE: `tools/record-demo` (node + Playwright `recordVideo`, system Chrome) already exists with a
+> `live-edit` demo, so this is wiring the bench numbers in + capturing the live browser proof + the
+> Quarto split-screen, NOT building the recorder. Working method (Waves 0-2): branch per wave,
+> brainstorm if forks exist, write a complete-code plan under `docs/superpowers/plans/`, execute
+> subagent-driven via a Workflow (implementer + two adversarial reviewers per task + a final
+> whole-branch review), then fast-forward merge locally. CAVEAT learned this wave: instruct review
+> subagents to use ONLY read-only git (`git diff a..b`, never `git checkout`) since they share the
+> working tree (a reviewer's `git checkout` moved HEAD mid-run and stalled a task). The five
 > completed plans under `docs/superpowers/plans/` are the template.
 
 ## Open / next
