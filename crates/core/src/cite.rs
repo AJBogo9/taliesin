@@ -490,16 +490,30 @@ pub fn process(
 ) -> Vec<Warning> {
     let mut order: Vec<String> = Vec::new();
     let mut number: HashMap<String, usize> = HashMap::new();
+    // Track the block location where each cite key is first seen, for located warnings.
+    // (file, line) pair per key; the RefCell lets the closure capture it alongside order/number.
+    type KeyLocMap = HashMap<String, (Option<String>, Option<u32>)>;
+    let key_loc: std::cell::RefCell<KeyLocMap> = std::cell::RefCell::new(HashMap::new());
+    let cur_loc: std::cell::RefCell<(Option<String>, Option<u32>)> =
+        std::cell::RefCell::new((None, None));
     let mut cite_key = |key: &str| -> usize {
-        *number.entry(key.to_string()).or_insert_with(|| {
+        let n = *number.entry(key.to_string()).or_insert_with(|| {
             order.push(key.to_string());
             order.len()
-        })
+        });
+        // Record the block location the first time this key appears.
+        key_loc
+            .borrow_mut()
+            .entry(key.to_string())
+            .or_insert_with(|| cur_loc.borrow().clone());
+        n
     };
 
     for b in blocks.iter_mut() {
+        *cur_loc.borrow_mut() = (b.source_file.clone(), sourcepos_start_line(&b.sourcepos));
         b.html = transform_html(&b.html, &mut cite_key, xrefs);
     }
+    let key_loc = key_loc.into_inner();
 
     if order.is_empty() {
         return Vec::new();
@@ -516,9 +530,13 @@ pub fn process(
                 // when a bibliography exists (else every cite would warn before one
                 // is set up; the missing-file case is its own warning).
                 if !bib.is_empty() {
-                    warnings.push(Warning::new(format!(
-                        "broken citation: @{key} (not in the bibliography)"
-                    )));
+                    let (file, line) = key_loc.get(key).cloned().unwrap_or((None, None));
+                    let w =
+                        Warning::new(format!("broken citation: @{key} (not in the bibliography)"));
+                    warnings.push(match line {
+                        Some(l) => w.at(file, l),
+                        None => w,
+                    });
                 }
                 format!("<code>{}</code>", esc(key))
             }
@@ -541,27 +559,46 @@ pub fn process(
     warnings
 }
 
+/// Parse the 1-based start line out of a `startLine:col-endLine:col` sourcepos.
+/// Returns `None` for a generated block (empty sourcepos) or a malformed value.
+fn sourcepos_start_line(sourcepos: &str) -> Option<u32> {
+    sourcepos
+        .split(':')
+        .next()?
+        .parse::<u32>()
+        .ok()
+        .filter(|&l| l > 0)
+}
+
 /// Scan rendered blocks for cross-references left unresolved — the `data-qmd-xref`
 /// markers `cite` emits when an `@fig-`/`@sec-`/… anchor isn't in the local (and,
 /// for a site, cross-page) registry. One warning per distinct broken anchor. Run
 /// AFTER any site-wide cross-ref resolution so genuine cross-page refs aren't flagged.
 pub fn validate_xrefs(blocks: &[Block]) -> Vec<Warning> {
     let marker = "data-qmd-xref=\"";
-    let mut seen = std::collections::BTreeSet::new();
+    // First occurrence wins for the reported location; dedup by anchor.
+    let mut seen: std::collections::BTreeMap<String, (Option<String>, Option<u32>)> =
+        std::collections::BTreeMap::new();
     for b in blocks {
+        let loc = (b.source_file.clone(), sourcepos_start_line(&b.sourcepos));
         let mut rest = b.html.as_str();
         while let Some(i) = rest.find(marker) {
             rest = &rest[i + marker.len()..];
             let Some(end) = rest.find('"') else { break };
-            seen.insert(rest[..end].to_string());
+            let anchor = rest[..end].to_string();
+            seen.entry(anchor).or_insert_with(|| loc.clone());
             rest = &rest[end..];
         }
     }
     seen.into_iter()
-        .map(|a| {
-            Warning::new(format!(
+        .map(|(a, (file, line))| {
+            let w = Warning::new(format!(
                 "broken cross-reference: @{a} (no such figure/section/\u{2026})"
-            ))
+            ));
+            match line {
+                Some(l) => w.at(file, l),
+                None => w,
+            }
         })
         .collect()
 }

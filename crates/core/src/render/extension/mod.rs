@@ -444,10 +444,13 @@ fn expand_in_line(
                     // reported it (file missing/unsafe/cyclic), so don't double-warn.
                     let name = inner.split_whitespace().next().unwrap_or(inner);
                     if name != "include" {
-                        warnings.push(Warning::new(format!(
-                            "unknown shortcode `{{{{< {name} >}}}}` at line {line_no} \
-                             (no extension declares it; left as literal text)"
-                        )));
+                        warnings.push(
+                            Warning::new(format!(
+                                "unknown shortcode `{{{{< {name} >}}}}` at line {line_no} \
+                                 (no extension declares it; left as literal text)"
+                            ))
+                            .at(None, line_no as u32),
+                        );
                     }
                     out.push_str(&line[i..end + 3]); // unknown: keep verbatim
                 }
