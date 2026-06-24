@@ -145,33 +145,36 @@ Chromium-only). Not worth now: deeper i18n/RTL (English solo author).
 >   per the author's feature-first policy (2026-06-24), the recorded showcase clip + the whole
 >   "Marketing site" section below wait until the framework is feature-complete. **>> RESUME HERE:
 >   Wave 3 (craft + breadth)** below, the next FEATURE work.
-> - **Wave 3 (craft + breadth),** parallel and corpus-pinned: `narrated-code-walkthrough`
->   **DONE (2026-06-24, branch `feat/code-walkthrough`):** `::: {.code-walkthrough}` sticky
->   code panel + scroll-driven line-range focus (two `build_container` arms, one
->   IntersectionObserver enhancer in `assets/js/walkthrough.js`, `base.css` grid→mobile
->   sticky-top), pinned by `corpus/narrate/walkthrough.qmd` + render/validate tests,
+> - **Wave 3 (craft + breadth),** parallel and corpus-pinned. DONE so far:
+>   `narrated-code-walkthrough` (branch `feat/code-walkthrough`): `::: {.code-walkthrough}`
+>   sticky code panel + scroll-driven line focus. `panel-tabset-margin` (branch
+>   `feat/panel-tabset-margin`, 2026-06-24): `.panel-tabset` ARIA-tabbed panels (one
+>   `build_container` arm + `assets/js/tabset.js` click/keyboard enhancer) + `.column-margin`/
+>   `.aside` margin rail (CSS-only, aliased onto the existing `.sidenote` mechanism), pinned
+>   by `corpus/layout/panels.qmd` (incl. an in-tab `@fig-` cross-ref) + render/validate tests,
 >   browser-verified. Remaining: `typography-craft-pass` (= #6) · `callout-kind-contract`
->   · `panel-tabset-margin` · `image-lightbox` · `js-reactive-graph`.
+>   · `image-lightbox` · `js-reactive-graph`.
 > - **Wave 4 (close the loop):** `reverse-sync-coverage-audit` → `vscode-editor-companion`
 >   Phase 1 (coordinate with #1d).
 > - **Wave 5 / later:** `print-pdf-track`, `docs-as-spec`, `{glsl}` registry, `build-seo`.
 > Priorities #1d/#4/#5/#6/#7 below are integrated into the waves (not duplicated).
 >
 > **>> To resume next session:** `main` (version 0.1.0) has Wave 0, ALL of Wave 1, and the Wave 2
-> `live-edit-benchmark-harness` merged; the **first Wave 3 feature `narrated-code-walkthrough` is
-> DONE** on branch `feat/code-walkthrough` (run `git log --oneline -10` for HEAD; nothing pushed to
-> any remote). A fresh session can resume from this note + `BEYOND-QUARTO.md` + the auto-loaded
-> memory alone; the spec under `docs/superpowers/specs/` + the 5 plans under `docs/superpowers/plans/`
-> are the working template.
+> `live-edit-benchmark-harness` merged; **two Wave 3 features are DONE** — `narrated-code-walkthrough`
+> (branch `feat/code-walkthrough`) and `panel-tabset-margin` (branch `feat/panel-tabset-margin`) (run
+> `git log --oneline -12` for HEAD; nothing pushed to any remote). A fresh session can resume from
+> this note + `BEYOND-QUARTO.md` + the auto-loaded memory alone; the specs under
+> `docs/superpowers/specs/` + the 5 plans under `docs/superpowers/plans/` are the working template.
 > **AUTHOR POLICY (2026-06-24): feature-first.** Finish ALL framework features before any
 > marketing-site work; `live-edit-hero-demo` (a recorded showcase clip) + the "Marketing site"
 > section are DEFERRED until the framework is feature-complete (see the feature-first memory). Next
 > concrete step = the NEXT **Wave 3 feature** (`BEYOND-QUARTO.md` Pillar III/IV/V, all corpus-pinned,
 > read-only-additive), pick one with the author: `typography-craft-pass` (= #6, CSS type craft) ·
 > `callout-kind-contract` (closed callout enum + bundled SVG icons + `--qmd-callout-*` tokens +
-> `appearance`, shares the `CALLOUT_KINDS` enum from Wave 1) · `panel-tabset-margin` (`.panel-tabset`
-> + `.column-margin`/`.aside`) · `image-lightbox` (click-to-zoom) · `js-reactive-graph` (gated on a
-> corpus reactive doc FIRST; design-risky, keep it ~80 lines client JS).
+> `appearance`, shares the `CALLOUT_KINDS` enum from Wave 1) · `image-lightbox` (click-to-zoom; note
+> a lightbox enhancer already EXISTS in `code-enhance.js` for figures/mermaid/video, so the remaining
+> work is `.lightbox` opt-in for non-figure images) · `js-reactive-graph` (gated on a corpus reactive
+> doc FIRST; design-risky, keep it ~80 lines client JS).
 > Working method: branch per feature, brainstorm if forks exist, write a spec under
 > `docs/superpowers/specs/` (and a complete-code plan under `docs/superpowers/plans/` for larger
 > work), implement TDD (or subagent-driven via a Workflow for big items), browser-verify, then

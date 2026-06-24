@@ -199,14 +199,23 @@ cannot reach, while resisting the reactive-VM trap.
 Close the genuinely-web-native breadth gaps where qmd-fast is narrower than Quarto,
 each pinned by an added corpus document so breadth never outruns the regression net.
 
-- [ ] **`panel-tabset-margin` (high / med / none).** Add `.panel-tabset` (child
-  headings → ARIA-tabbed panels, keyboard switch) and `.column-margin` / `.aside`
-  (CSS-grid margin rail) as new `build_container` arms. The moat applies: an open tab +
-  a running `{js}` widget inside it survive an edit elsewhere, Quarto's reload can't.
-  **Pin: `corpus/layout/panels.qmd`** with a `@fig-` inside a tab (proves cross-ref
-  resolves). Reduced-motion handling tracked under the a11y backlog item. *Invariant:
-  inner blocks retain ids/sourcepos via `group_divs`; switch enhancer toggles
-  `aria-hidden` only.*
+- [x] **`panel-tabset-margin` (high / med / none). DONE (2026-06-24, branch
+  `feat/panel-tabset-margin`).** `.panel-tabset` is a new `build_container` arm: child
+  headings at the shallowest level present become ARIA tabs (label = `strip_tags` of the
+  heading, emitted as `<button role="tab">` NOT `<hN>`, so no TOC pollution); following
+  blocks are the panel body; leading blocks are an intro; tab/panel ids derive from the
+  container's block id. `tabset.js` (idempotent `qmdEnhancers` enhancer, bundled in
+  `code_scripts()`) does click + Arrow/Home/End switching with full ARIA (aria-selected,
+  roving tabindex, panel `hidden`). **Shape note: the margin rail needed NO Rust** —
+  `.column-margin`/`.aside` are aliased onto the existing `.sidenote`/`.marginnote` CSS
+  (float-right + `<73rem` inline fallback), since the generic div arm already emits the
+  class. Located no-headings warning in `validate.rs`. **Pinned: `corpus/layout/panels.qmd`**
+  with a `@fig-` figure inside the third tab + a `.column-margin` note; render/validate
+  unit tests + a cross-ref test prove the in-tab figure numbers and `@fig-` resolves
+  through the tabset (verified empirically). Browser-verified at 1280px + 760px. *Invariant
+  held: inner blocks retain ids/sourcepos via `group_divs`; switch toggles only
+  `aria-*`/`hidden`; `:::` scanner, cite, includes, numbering, exec, deck engine
+  untouched.*
 - [ ] **`image-lightbox` (med / small / none).** Ship the lightbox half only:
   click-to-zoom overlay enhancer for figures / `.lightbox` images (`figure.rs` already
   has the aspirational comment). Zero-dep, read-only. The WebP/AVIF transcode +
