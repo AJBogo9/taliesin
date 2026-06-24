@@ -153,8 +153,10 @@ Chromium-only). Not worth now: deeper i18n/RTL (English solo author).
 > - **Wave 5 / later:** `print-pdf-track`, `docs-as-spec`, `{glsl}` registry, `build-seo`.
 > Priorities #1d/#4/#5/#6/#7 below are integrated into the waves (not duplicated).
 >
-> **>> To resume next session:** `main` is at `7ed28bd` (version 0.1.0); Wave 0, ALL of Wave 1,
-> and the Wave 2 `live-edit-benchmark-harness` are merged (nothing pushed to any remote yet).
+> **>> To resume next session:** `main` (version 0.1.0) has Wave 0, ALL of Wave 1, and the Wave 2
+> `live-edit-benchmark-harness` merged (run `git log --oneline -10` for HEAD; nothing pushed to any
+> remote). A fresh session can resume from this note + `BEYOND-QUARTO.md` + the auto-loaded memory
+> alone; the 5 plans under `docs/superpowers/plans/` are the working template.
 > **AUTHOR POLICY (2026-06-24): feature-first.** Finish ALL framework features before any
 > marketing-site work; `live-edit-hero-demo` (a recorded showcase clip) + the "Marketing site"
 > section are DEFERRED until the framework is feature-complete (see the feature-first memory). Next
