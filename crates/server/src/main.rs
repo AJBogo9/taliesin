@@ -358,7 +358,14 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
     let freeze_dir = root.join("_freeze");
 
     // 1. Mirror non-source assets (images, etc.) preserving the tree.
-    let assets = mirror_assets(root, &out);
+    let (assets, skipped_residue) = mirror_assets(root, &out);
+    if !skipped_residue.is_empty() {
+        log::warn(&format!(
+            "skipped {} build-cache dir(s) (not deployed): {}",
+            skipped_residue.len(),
+            skipped_residue.join(", ")
+        ));
+    }
 
     // 2. Render each page with chrome + rewritten links. Code cells run against a
     //    fresh kernel per page (clean state per document; pages with no cells never
@@ -466,16 +473,25 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Copy every non-source file under `root` into `out`, mirroring the directory
-/// tree. Skips `.qmd` sources (rendered separately), `_`-prefixed and dot
-/// entries (`_site.yml`, `_includes`, `_site`, …), and the output dir itself.
-fn mirror_assets(root: &Path, out: &Path) -> usize {
+/// Source-only file extensions that are build *inputs*, never referenced by the rendered
+/// HTML, so they are not mirrored into the deploy: `.qmd` (rendered separately), `.bib`
+/// (citations are resolved server-side), `.Rproj` (an editor project file).
+const SKIP_EXT: &[&str] = &["qmd", "bib", "Rproj"];
+
+/// Copy every non-source file under `root` into `out`, mirroring the directory tree.
+/// Skips: `.qmd`/`.bib`/`.Rproj` sources ([`SKIP_EXT`]), `_`-prefixed and dot entries
+/// (`_site.yml`, `_includes`, `_site`, `.RData`, …), build-tool cache/artifact dirs
+/// (`*_cache/`, `*_files/` — knitr/RMarkdown/Quarto residue), and the output dir itself.
+/// Returns `(files copied, names of skipped cache dirs)` so the caller can report residue
+/// it dropped rather than silently omitting it.
+fn mirror_assets(root: &Path, out: &Path) -> (usize, Vec<String>) {
     fn walk(
         dir: &Path,
         root: &Path,
         out: &Path,
         seen: &mut std::collections::HashSet<PathBuf>,
         copied: &mut usize,
+        skipped: &mut Vec<String>,
     ) {
         // Break symlink cycles: descend into each directory at most once (keyed by
         // canonical path), so a dir symlink pointing at an ancestor can't loop.
@@ -498,8 +514,14 @@ fn mirror_assets(root: &Path, out: &Path) -> usize {
                 if p.canonicalize().ok().as_deref() == Some(out) {
                     continue;
                 }
-                walk(&p, root, out, seen, copied);
-            } else if p.extension().and_then(|s| s.to_str()) != Some("qmd") {
+                // Build-tool cache/artifact dirs (knitr/RMarkdown/Quarto) are residue, not
+                // content — never drag them into the deployed output.
+                if name.ends_with("_cache") || name.ends_with("_files") {
+                    skipped.push(name.to_string());
+                    continue;
+                }
+                walk(&p, root, out, seen, copied, skipped);
+            } else if !SKIP_EXT.contains(&p.extension().and_then(|s| s.to_str()).unwrap_or("")) {
                 let Ok(rel) = p.strip_prefix(root) else {
                     continue;
                 };
@@ -514,14 +536,70 @@ fn mirror_assets(root: &Path, out: &Path) -> usize {
         }
     }
     let mut copied = 0;
+    let mut skipped = Vec::new();
     walk(
         root,
         root,
         out,
         &mut std::collections::HashSet::new(),
         &mut copied,
+        &mut skipped,
     );
-    copied
+    skipped.sort();
+    skipped.dedup();
+    (copied, skipped)
+}
+
+#[cfg(test)]
+mod mirror_tests {
+    use super::*;
+    use std::fs;
+
+    fn tmp(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("qmd-mirror-{}-{name}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn mirror_assets_skips_build_residue() {
+        let root = tmp("residue");
+        let out = tmp("residue-out");
+        fs::write(root.join("keep.png"), b"x").unwrap();
+        fs::write(root.join("notes.md"), b"x").unwrap(); // not residue -> kept (use _/. to hide)
+        fs::write(root.join("refs.bib"), b"x").unwrap(); // source-only -> skipped
+        for d in ["index_cache", "report_files", "_freeze"] {
+            fs::create_dir_all(root.join(d)).unwrap();
+            fs::write(root.join(d).join("a"), b"x").unwrap();
+        }
+        fs::write(root.join(".RData"), b"x").unwrap(); // dotfile -> skipped
+
+        let (copied, skipped) = mirror_assets(&root, &out);
+
+        assert!(out.join("keep.png").exists(), "plain asset should copy");
+        assert!(
+            out.join("notes.md").exists(),
+            "non-residue file copies (the _/. convention marks private)"
+        );
+        assert!(
+            !out.join("refs.bib").exists(),
+            ".bib is source-only residue"
+        );
+        assert!(!out.join("index_cache").exists(), "*_cache dir is residue");
+        assert!(!out.join("report_files").exists(), "*_files dir is residue");
+        assert!(!out.join("_freeze").exists(), "_-prefixed dir skipped");
+        assert!(!out.join(".RData").exists(), "dotfile skipped");
+        assert_eq!(copied, 2, "only keep.png + notes.md copied");
+        assert!(
+            skipped.contains(&"index_cache".to_string())
+                && skipped.contains(&"report_files".to_string()),
+            "skipped cache dirs reported: {skipped:?}"
+        );
+
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&out);
+    }
 }
 
 /// Unique local `src=`/`href=` values in `html` (skips external URLs, protocol-
