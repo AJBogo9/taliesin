@@ -216,12 +216,13 @@ the open items follow.
   (`mirror_assets_skips_build_residue`) + verified by a real `build corpus/bayesian-book`
   (its `references.bib` no longer lands in `_site/`). Dotfiles (`.RData`/`.Rproj`/`.gitignore`)
   were already excluded by the existing `.`-prefix skip.
-- [ ] **P3b: `mounts:` works in `preview` but `build <site>` ignores it (medium).**
-  `build_site` (`main.rs`) never reads `site.config.mounts`, so a previewed site with
-  working `/docs/*` nav links deploys with 404'ing links. Warn first (name each unwired
-  mount, print the `build <path> --out <out>/<at>` command); auto-build into `<out>/<at>/`
-  later. Also fix `docs/internals/sites.qmd` "## Mounts", which still claims the build
-  mirrors mounts.
+- [x] **P3b: `mounts:` works in `preview` but `build <site>` ignores it (medium). DONE
+  (2026-06-24, branch `feat/build-mounts-warning`).** `build_site_async` now calls a pure
+  `mount_warnings(mounts, root, out)` and `log::warn`s one line per mount (the `/<at>/` 404
+  consequence + the exact `qmd-fast build <root/path> --out <out/at>` command), warn-first.
+  Scope = warn only (auto-building each mount into `<out>/<at>/` is the deferred follow-up).
+  Fixed `docs/internals/sites.qmd` "## Mounts" (it implied the build mirrors mounts).
+  Unit-tested + verified by a real build of a temp site with `mounts:`.
 - [x] **P3c: single-doc `build --out` drops `{js}` cell local imports (medium). DONE
   (2026-06-24, branch `feat/js-import-bundling`).** `copy_local_assets` now also scans
   `<script type="application/qmd-js">` cell bodies for relative specifiers (`./`/`../`,
