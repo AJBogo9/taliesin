@@ -5,25 +5,34 @@ following third-party work.
 
 ## Vendored (redistributed with this project)
 
-- **KaTeX** — MIT License, Copyright (c) 2013-2020 Khan Academy and other
-  contributors. The stylesheet and WOFF2 fonts under `crates/core/assets/katex/`
-  are bundled so math renders offline. Full license:
-  <https://github.com/KaTeX/KaTeX/blob/main/LICENSE>.
+Bundled so the tool works fully offline.
+
+- **KaTeX** (MIT, Copyright (c) 2013-2020 Khan Academy and other contributors).
+  The stylesheet and WOFF2 fonts under `crates/core/assets/katex/` render math
+  offline. License: <https://github.com/KaTeX/KaTeX/blob/main/LICENSE>.
+- **D3** (`crates/core/assets/js/d3.min.js`, ISC, v7.9.0, Copyright 2010-2023
+  Mike Bostock). The plotting primitive used by `{js}` cells. License:
+  <https://github.com/d3/d3/blob/main/LICENSE>.
+- **Observable Plot** (`crates/core/assets/js/plot.umd.min.js`, ISC, v0.6.16,
+  Copyright 2020-2023 Observable, Inc.). The high-level chart library for `{js}`
+  cells; depends on the vendored D3 above. License:
+  <https://github.com/observablehq/plot/blob/main/LICENSE>.
+
+The other scripts under `crates/core/assets/js/` (`code-enhance.js`, `deck.js`,
+`mermaid.js`, `qmd-js.js`) are qmd-fast's own (MIT).
 
 ## Loaded at runtime from a CDN (not redistributed here)
 
-Used only by the generated preview pages / decks, fetched from jsDelivr in the
-browser:
-
-- **reveal.js** — MIT License (slide decks).
-- **highlight.js** — BSD 3-Clause License (code syntax highlighting).
-- **mermaid** — MIT License (diagrams).
+- **Mermaid** (MIT, diagrams). Pulled lazily from jsDelivr by the bundled
+  `mermaid.js` loader only on pages that contain a `mermaid` block. This is the
+  sole CDN dependency.
 
 ## Build dependencies
 
-The Rust crates in `Cargo.lock` (comrak, axum, tokio, etc.) are fetched by Cargo
-at build time under their own licenses (predominantly MIT and Apache-2.0). They
-are not redistributed in this repository.
+The Rust crates in `Cargo.lock` (comrak, axum, tokio, syntect, etc.) are fetched
+by Cargo at build time under their own licenses (predominantly MIT, Apache-2.0,
+and ISC). They are not redistributed in this repository. `deny.toml` pins the
+allowed license set and CI runs `cargo deny check`.
 
 ## Note on Quarto
 
