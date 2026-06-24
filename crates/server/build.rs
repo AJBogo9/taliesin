@@ -16,4 +16,5 @@ fn main() {
     // Re-run when the checked-out commit moves.
     println!("cargo:rerun-if-changed=../../.git/HEAD");
     println!("cargo:rerun-if-changed=../../.git/refs/heads");
+    println!("cargo:rerun-if-changed=../../.git/packed-refs");
 }
