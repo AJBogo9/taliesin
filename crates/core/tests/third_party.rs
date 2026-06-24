@@ -9,6 +9,7 @@ const OWN_JS: &[&str] = &[
     "mermaid.js",
     "qmd-js.js",
     "walkthrough.js",
+    "tabset.js",
 ];
 
 fn third_party_md() -> String {

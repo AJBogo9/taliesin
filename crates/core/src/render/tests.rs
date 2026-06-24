@@ -270,6 +270,96 @@ fn code_walkthrough_step_without_lines_has_no_focus_spec() {
 }
 
 #[test]
+fn panel_tabset_builds_aria_tabs_from_headings() {
+    let src = "::: {.panel-tabset}\n\n\
+        ## Python\n\n\
+        ```python\nprint(\"hi\")\n```\n\n\
+        ## R\n\n\
+        ```r\nprint(\"hi\")\n```\n\n\
+        :::\n";
+    let doc = render_document(src);
+    assert_eq!(doc.blocks.len(), 1, "one tabset container block");
+    let h = &doc.blocks[0].html;
+
+    assert!(h.contains("class=\"panel-tabset\""), "got: {h}");
+    assert!(h.contains("data-block-id=\"b-"), "wrapper id: {h}");
+    assert!(h.contains("role=\"tablist\""), "tablist: {h}");
+    assert_eq!(h.matches("role=\"tab\"").count(), 2, "two tabs: {h}");
+    assert_eq!(h.matches("role=\"tabpanel\"").count(), 2, "two panels: {h}");
+
+    // Labels come from the headings, which are NOT re-emitted as <hN> (no TOC pollution).
+    assert!(h.contains(">Python</button>"), "Python tab label: {h}");
+    assert!(h.contains(">R</button>"), "R tab label: {h}");
+    assert!(
+        !h.contains("<h2"),
+        "headings must be absorbed, not emitted: {h}"
+    );
+
+    // First tab selected, second not; exactly one panel hidden.
+    assert_eq!(
+        h.matches("aria-selected=\"true\"").count(),
+        1,
+        "one selected tab: {h}"
+    );
+    assert_eq!(h.matches(" hidden").count(), 1, "one hidden panel: {h}");
+
+    // Panel bodies keep their inner code blocks (with their own ids).
+    assert!(h.contains("print"), "panel bodies present: {h}");
+    assert!(
+        h.matches("data-block-id").count() >= 3,
+        "wrapper + 2 code blocks each keep an id: {h}"
+    );
+    assert!(
+        h.contains("aria-controls=") && h.contains("aria-labelledby="),
+        "aria wiring: {h}"
+    );
+    assert!(!doc.body_html().contains(":::"), "fence leaked: {h}");
+}
+
+#[test]
+fn panel_tabset_without_headings_falls_back_and_warns() {
+    let doc = render_document("::: {.panel-tabset}\n\nJust prose, no tabs.\n\n:::\n");
+    let h = &doc.blocks[0].html;
+    assert!(
+        h.contains("class=\"panel-tabset\""),
+        "still a container: {h}"
+    );
+    assert!(
+        !h.contains("role=\"tablist\""),
+        "no tablist without headings: {h}"
+    );
+    assert!(h.contains("Just prose"), "content still rendered: {h}");
+    assert!(
+        doc.warnings.iter().any(|w| w.message.contains("tab")),
+        "expected a no-tabs warning, got: {:?}",
+        doc.warnings
+    );
+}
+
+#[test]
+fn panel_tabset_in_tab_figure_resolves_crossref() {
+    let src = "::: {.panel-tabset}\n\n\
+        ## Plot\n\n\
+        ![A fit.](fit.png){#fig-fit}\n\n\
+        :::\n\n\
+        See @fig-fit for the result.\n";
+    let doc = render_document(src);
+    let body = doc.body_html();
+    // The figure inside the tab still gets a number + anchor, and the @fig- ref links to
+    // it (cross-ref resolution sees through the tabset grouping).
+    assert!(
+        body.contains("id=\"fig-fit\""),
+        "figure anchor missing: {body}"
+    );
+    assert!(body.contains("Figure"), "figure not numbered: {body}");
+    assert!(!body.contains("@fig-fit"), "ref left unresolved: {body}");
+    assert!(
+        body.contains("#fig-fit"),
+        "ref not linked to the figure: {body}"
+    );
+}
+
+#[test]
 fn mermaid_block_emits_pre_mermaid_without_code() {
     // Both the executable cell form and a plain fence become a mermaid pre.
     for src in [

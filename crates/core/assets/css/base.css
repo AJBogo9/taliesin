@@ -203,6 +203,22 @@
     .cw-code { max-height: 42vh; }
     .cw-steps .step { min-height: auto; padding: 1.4rem .9rem; }
   }
+  /* Tabbed panels (`::: {.panel-tabset}`): a tablist of underline-on-active tab buttons
+     over the active panel; switching (tabset.js) toggles aria-selected + [hidden]. */
+  .panel-tabset { margin: 1.4rem 0; }
+  .tabset-tablist { display: flex; flex-wrap: wrap; gap: .2rem;
+    border-bottom: 1px solid var(--qmd-border); margin-bottom: 1rem; }
+  .tabset-tab { appearance: none; background: none; border: 0; cursor: pointer;
+    padding: .45rem .9rem; margin-bottom: -1px; font: 600 .9rem var(--qmd-font-head);
+    color: var(--qmd-muted); border-bottom: 2px solid transparent; }
+  .tabset-tab:hover { color: var(--qmd-fg); }
+  .tabset-tab[aria-selected="true"] { color: var(--qmd-accent); border-bottom-color: var(--qmd-accent); }
+  .tabset-tab:focus-visible { outline: 2px solid var(--qmd-accent); outline-offset: -2px; border-radius: 3px; }
+  .tabset-panel[hidden] { display: none; }
+  .tabset-panel > :first-child { margin-top: 0; }
+  @media (prefers-reduced-motion: no-preference) {
+    .tabset-tab { transition: color .15s ease, border-color .15s ease; }
+  }
   .qmd-xref { text-decoration: none; }
   .qmd-references .csl-entry { margin: .4rem 0; padding-left: 2.2rem; text-indent: -2.2rem; }
   /* Footnotes: `[^1]` superscript refs + the gathered footnote section at page end. */
@@ -215,18 +231,21 @@
   .footnotes li > :first-child { display: inline; } /* keep the backlink on the text's line */
   .footnotes li:target, [id^="fnref-"]:target { background: var(--qmd-flash); border-radius: 4px; }
   .qmd-fn-back { text-decoration: none; margin-left: .4em; }
-  /* Sidenotes / margin notes (Tufte/Distill): `::: {.sidenote}` (alias `.marginnote`)
-     floats into the right margin on a wide screen — marginalia that don't interrupt
-     the body, impossible to do in a PDF. Below ~73rem (no margin room) it falls back
-     to an indented aside in the flow. It's a normal block, so click-to-source works. */
-  .sidenote, .marginnote {
+  /* Sidenotes / margin notes (Tufte/Distill): `::: {.sidenote}` (aliases `.marginnote`,
+     `.column-margin`, `.aside`) floats into the right margin on a wide screen — marginalia
+     that don't interrupt the body, impossible to do in a PDF. Below ~73rem (no margin
+     room) it falls back to an indented aside in the flow. It's a normal block, so
+     click-to-source works. */
+  .sidenote, .marginnote, .column-margin, .aside {
     float: right; clear: right; width: 12rem;
     margin: .3rem -13.5rem 1rem 1.5rem;
     font: 400 .82rem/1.5 var(--qmd-font-head); color: var(--qmd-muted); text-align: left; }
-  .sidenote > :first-child, .marginnote > :first-child { margin-top: 0; }
-  .sidenote > :last-child, .marginnote > :last-child { margin-bottom: 0; }
+  .sidenote > :first-child, .marginnote > :first-child,
+  .column-margin > :first-child, .aside > :first-child { margin-top: 0; }
+  .sidenote > :last-child, .marginnote > :last-child,
+  .column-margin > :last-child, .aside > :last-child { margin-bottom: 0; }
   @media (max-width: 73rem) {
-    .sidenote, .marginnote {
+    .sidenote, .marginnote, .column-margin, .aside {
       float: none; width: auto; margin: 1rem 0;
       padding-left: .9rem; border-left: 2px solid var(--qmd-accent); }
   }

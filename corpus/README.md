@@ -17,6 +17,7 @@ author's own projects; provenance is below.
 | `tech-blog/` | Multi-page website | `_site.yml` project config, many pages + posts, navbar/footer, prev/next, `.qmd`→`.html` cross-page links | `personal/tech-blog` |
 | `demo-book/` | Multi-chapter book (`type: book`) | `book: chapters:` (with a `part:`), left chapter sidebar, chapter + section numbering, prev/next-chapter nav | (purpose-built for the book format) |
 | `narrate/walkthrough.qmd` | Narrated code walkthrough | `::: {.code-walkthrough}` sticky code panel + scroll-driven line-range focus (`.step lines=`) | (purpose-built) |
+| `layout/panels.qmd` | Tabsets + margin notes | `::: {.panel-tabset}` (headings → ARIA tabs) + `::: {.column-margin}`; `@fig-` cross-ref resolves through a tab | (purpose-built) |
 | `diagnostics/` | Validator coverage | docs that deliberately trip qmd-fast's schema validators | (purpose-built) |
 
 `tech-blog/` is the multi-page spec (the destination in `todo.md` §4). It is the

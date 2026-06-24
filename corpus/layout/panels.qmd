@@ -1,0 +1,39 @@
+---
+title: "Layout: tabsets and margin notes"
+---
+
+qmd-fast renders tabbed panels and margin notes as native web-native layout, and
+cross-references resolve straight through them.
+
+::: {.column-margin}
+Margin notes float into the right margin on a wide screen and fall back to an inline
+aside when there's no room. The same block works in posts, books, and sites.
+:::
+
+The same linear fit is shown three ways below: as Python, as R, and as a plot.
+
+::: {.panel-tabset}
+
+## Python
+
+```python
+import numpy as np
+
+coef = np.polyfit(x, y, 1)
+```
+
+## R
+
+```r
+coef <- lm(y ~ x)$coefficients
+```
+
+## Result
+
+![A linear fit through the sample points.](fit.png){#fig-fit}
+
+:::
+
+The fitted line is plotted in @fig-fit, defined inside the third tab above. The
+reference still numbers and links even though its figure lives in a panel that is
+hidden until you select that tab.

@@ -378,6 +378,56 @@ fn build_container(
         };
         let body = concat(&inner);
         format!("<div class=\"step\"{id_attr}{data}{cw_lines}>{body}</div>")
+    } else if attrs.classes.iter().any(|c| c == "panel-tabset") {
+        // Tabbed panels: child headings at the shallowest level present become tabs, and
+        // the blocks after each become its panel body (deeper headings stay in the body).
+        // Labels are emitted as ARIA tab buttons, NOT as <hN>, so they don't pollute the
+        // TOC. tab/panel ids derive from the container's block id (unique + stable).
+        // Read-only: inner blocks keep their own ids/sourcepos via direct concatenation.
+        let min_level = inner
+            .iter()
+            .filter_map(|b| block_heading_level(&b.html))
+            .min();
+        if let Some(w) =
+            super::validate::validate_tabset(min_level.is_some(), open_line, file.clone())
+        {
+            warnings.push(w);
+        }
+        match min_level {
+            None => format!("<div class=\"panel-tabset\"{data}>{}</div>", concat(&inner)),
+            Some(level) => {
+                // Partition: blocks before the first tab heading are an intro; each
+                // level-`level` heading opens a new (label, body) tab.
+                let mut intro = String::new();
+                let mut tabs: Vec<(String, String)> = Vec::new();
+                for b in &inner {
+                    if block_heading_level(&b.html) == Some(level) {
+                        tabs.push((strip_tags(&b.html), String::new()));
+                    } else if let Some((_, body)) = tabs.last_mut() {
+                        body.push_str(&b.html);
+                    } else {
+                        intro.push_str(&b.html);
+                    }
+                }
+                let mut tablist = String::from("<div class=\"tabset-tablist\" role=\"tablist\">");
+                let mut panels = String::new();
+                for (i, (label, body)) in tabs.iter().enumerate() {
+                    let sel = i == 0;
+                    let (tab_id, panel_id) = (format!("{id}-t{i}"), format!("{id}-p{i}"));
+                    tablist.push_str(&format!(
+                        "<button class=\"tabset-tab\" role=\"tab\" id=\"{tab_id}\" aria-controls=\"{panel_id}\" aria-selected=\"{sel}\" tabindex=\"{}\">{}</button>",
+                        if sel { "0" } else { "-1" },
+                        html_escape(label),
+                    ));
+                    panels.push_str(&format!(
+                        "<div class=\"tabset-panel\" role=\"tabpanel\" id=\"{panel_id}\" aria-labelledby=\"{tab_id}\"{}>{body}</div>",
+                        if sel { "" } else { " hidden" },
+                    ));
+                }
+                tablist.push_str("</div>");
+                format!("<div class=\"panel-tabset\"{data}>{intro}{tablist}{panels}</div>")
+            }
+        }
     } else {
         let mut class = attrs.classes.join(" ");
         if class.is_empty() {

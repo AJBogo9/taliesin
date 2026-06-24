@@ -103,6 +103,23 @@ pub(crate) fn validate_walkthrough(
     })
 }
 
+/// Validate a `.panel-tabset` container: warn (click-to-source) when it has no headings,
+/// so it would render no tabs. `line` is the 1-based source line of the opening fence.
+/// Purely diagnostic — the div still renders its content.
+pub(crate) fn validate_tabset(
+    has_tabs: bool,
+    line: usize,
+    file: Option<String>,
+) -> Option<Warning> {
+    (!has_tabs).then(|| {
+        Warning::new(
+            "`.panel-tabset` has no headings, so it renders no tabs (add `##` headings)"
+                .to_string(),
+        )
+        .at(file, line as u32)
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -160,6 +177,18 @@ mod tests {
         assert!(
             validate_walkthrough(true, 12, None).is_none(),
             "silent when a code block is present"
+        );
+    }
+
+    #[test]
+    fn tabset_without_headings_is_flagged_and_located() {
+        let w = validate_tabset(false, 4, Some("p.qmd".into())).expect("a no-tabs warning");
+        assert!(w.message.contains("no headings"), "got: {}", w.message);
+        assert_eq!(w.line, Some(4));
+        assert_eq!(w.file.as_deref(), Some("p.qmd"));
+        assert!(
+            validate_tabset(true, 4, None).is_none(),
+            "silent when headings are present"
         );
     }
 }
