@@ -206,11 +206,16 @@ the open items follow.
   native blocks (`execute:`/`listing:`/`about:`/`hero:`), `#|` cell options, callout kinds,
   and front-matter top-level keys are all validated against qmd-fast's own closed vocabulary
   with did-you-mean, click-to-source. See `BEYOND-QUARTO.md` Pillar I.
-- [ ] **P3a: `build` leaks residue into the deployed output (medium).** `mirror_assets`
-  (`main.rs:500`) copies every non-`_`/`.` file ignoring `.gitignore`, dragging R/Quarto
-  caches (`*_cache/`, `index_cache/`, `.RData`), private notes, and `.bib`/`.Rproj` into
-  `_site/`. Min fix: also skip `*_cache/`/`*_files/` dirs at `main.rs:521`. Cleaner: honor
-  the project `.gitignore` (the `ignore` crate).
+- [x] **P3a: `build` leaks residue into the deployed output (medium). DONE (2026-06-24,
+  branch `feat/build-residue-skip`).** `mirror_assets`'s `walk()` now skips build-tool cache
+  dirs (`*_cache/`/`*_files/`) and source-only files via `SKIP_EXT = {qmd, bib, Rproj}`, and
+  returns the skipped cache-dir names so `cmd_build` logs them (not silent). Chose the
+  zero-dep targeted skip over honoring `.gitignore` (the `ignore` crate) to keep the codebase
+  lean; consequence: arbitrary private non-dot files (e.g. `notes.md`) are still copied — the
+  `_`/`.` naming convention remains the way to mark those private. Unit-tested
+  (`mirror_assets_skips_build_residue`) + verified by a real `build corpus/bayesian-book`
+  (its `references.bib` no longer lands in `_site/`). Dotfiles (`.RData`/`.Rproj`/`.gitignore`)
+  were already excluded by the existing `.`-prefix skip.
 - [ ] **P3b: `mounts:` works in `preview` but `build <site>` ignores it (medium).**
   `build_site` (`main.rs`) never reads `site.config.mounts`, so a previewed site with
   working `/docs/*` nav links deploys with 404'ing links. Warn first (name each unwired
