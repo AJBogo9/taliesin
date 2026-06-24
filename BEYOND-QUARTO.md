@@ -74,24 +74,26 @@ DROP-QUARTO closed every schema but enforces only the top level; push the existi
 `validate_keys`/`closest()` machinery all the way down, surfaced as click-to-source
 diagnostics, trustworthiness Quarto's open keyspace structurally cannot match.
 
-- [ ] **`locate-render-warnings` (high / med / none).** SUBSTRATE, build first.
+- [x] **`locate-render-warnings` (high / med / none). DONE @ `4c900fa`.** SUBSTRATE, build first.
   Enrich the render-warning channel from bare `String` to a located struct (message +
   optional file/line) so broken-citation / xref / bibliography warnings jump to source
   like front-matter errors already do (`serve.rs:764` `.at().with_frame()`). Changes
   only the warning return type. *Invariant: read-only; reinforces click-to-source for
   diagnostics; does not touch `cite.rs` lowering or the BibTeX formatter.*
-- [ ] **`nested-schema-validation` (high / med / none).** THE validation epic;
-  absorbs four duplicate proposals into one workstream. Closed key sets + `closest()`
-  did-you-mean for: `#|` / `//|` cell options (`mod.rs:1565` reads keys with no
-  membership check), callout kinds (`callout_kind` strips `callout-` off any class,
-  `mod.rs:1454`), and nested config blocks (`execute:` / `listing:` / `about:` /
-  `hero:` + front-matter sub-keys). Distinguish "unknown key" from
-  "recognized-but-not-honored" (e.g. `execute: eval:`), a genuine past-Quarto signal.
-  Built on `locate-render-warnings` so every diagnostic is click-to-source. Closes the
-  now-moot backlog P2 (its `config/quarto.rs` target was deleted). **Pin:
-  `corpus/diagnostics/typos.qmd`** + a sibling test asserting exact warnings.
-  *Invariant: read-only; no block-model/diff change; `:::` scanner, cite, includes,
-  numbering, exec all untouched.*
+- [x] **`nested-schema-validation` (high / med / none). DONE, merged @ `bdeebe5`
+  (2026-06-24).** THE validation epic; absorbed four duplicate proposals into one
+  workstream. Closed key sets + `closest()` did-you-mean for: `#|` / `//|` / `%%|` cell
+  options (`render/validate.rs` `CELL_OPTION_KEYS`), callout kinds (`CALLOUT_KINDS`), and
+  nested config blocks (`execute:` / `listing:` / `about:` / `hero:` children +
+  front-matter top-level, `frontmatter::validate_front_matter`). **Clean-break decision
+  (author directive 2026-06-24): the "unknown vs recognized-but-not-honored" distinction
+  was DROPPED in favor of a single closed vocabulary per surface; any key outside qmd-fast's
+  own vocabulary (typo OR Quarto term) is flagged, and the corpus was purged of all
+  Quarto-only keys (a verified visible-HTML no-op).** Built on `locate-render-warnings` so
+  every diagnostic is click-to-source. Closed the now-moot backlog P2. **Pinned:
+  `corpus/diagnostics/typos.qmd`** + `nested_validation.rs` asserting the exact warnings +
+  a corpus-wide clean-vocabulary guard. *Invariant held: read-only; no block-model/diff
+  change; `:::` scanner, cite, includes, numbering, exec untouched.*
 - [ ] **`jsonschema-for-config` (high / med / none).** GATE: after
   `prune-and-fix-stale-docs` + after the validation epic exists. Generate a
   Draft-2020-12 schema from the SAME consts the validator uses (`NATIVE_KEYS`,

@@ -120,13 +120,21 @@ Chromium-only). Not worth now: deeper i18n/RTL (English solo author).
 >   version 0.1.0 + git-SHA colophon, truthful `THIRD_PARTY.md` + a rot-proof grep test +
 >   `deny.toml` (CI cargo-deny wiring deferred: not installable/verifiable locally), and
 >   stale Quarto-config/`feed.rs` doc fixes.
-> - **Wave 1 (cash the schema):** substrate `locate-render-warnings` **DONE, merged @
->   `4c900fa`** (a located `Warning` channel: broken cross-refs, broken citations, and
->   unknown shortcodes are now click-to-source; invariant-safe). **>> RESUME HERE: the
->   `nested-schema-validation` epic** (validate `#|` cell options + callout kinds + nested
->   config blocks with did-you-mean, built on the located substrate; pin
->   `corpus/diagnostics/typos.qmd`) -> then `jsonschema-for-config`. Supersedes the moot P2
->   below.
+> - **Wave 1 (cash the schema):** substrate `locate-render-warnings` **DONE @ `4c900fa`**
+>   (located `Warning` channel; click-to-source). `nested-schema-validation` epic **DONE,
+>   merged @ `bdeebe5`** (2026-06-24): qmd-fast validates its OWN closed vocabulary on three
+>   surfaces with did-you-mean, click-to-source, via `render/validate.rs` + the new
+>   `frontmatter::validate_front_matter` (`#|` cell options, `:::` callout kinds, front-matter
+>   top-level + nested `execute:`/`listing:`/`about:`/`hero:` children). **Clean-break decision
+>   (author directive): NO "recognized-but-not-honored" tier; any key outside qmd-fast's
+>   vocabulary (typo OR Quarto-ism) is flagged, and the corpus was purged of all Quarto-only
+>   keys (a verified visible-HTML no-op).** Pinned by `corpus/diagnostics/typos.qmd` + exact-
+>   warning test + a corpus-wide clean-vocabulary guard. Server `frontmatter::lint()` removed
+>   (front-matter warnings now flow through `doc.warnings`). **>> RESUME HERE:
+>   `jsonschema-for-config`** (gate satisfied: `prune-and-fix-stale-docs` + the validator exist):
+>   generate a Draft-2020-12 schema from the SAME consts the validator uses so it cannot drift,
+>   ship `assets/schema/*.schema.json`, document the `# yaml-language-server: $schema=` line.
+>   Supersedes the moot P2 below.
 > - **Wave 2 (prove the moat, = #7):** `live-edit-benchmark-harness` → `live-edit-hero-demo`.
 > - **Wave 3 (craft + breadth),** parallel and corpus-pinned: `typography-craft-pass` (= #6)
 >   · `callout-kind-contract` · `panel-tabset-margin` · `image-lightbox`
@@ -136,16 +144,19 @@ Chromium-only). Not worth now: deeper i18n/RTL (English solo author).
 > - **Wave 5 / later:** `print-pdf-track`, `docs-as-spec`, `{glsl}` registry, `build-seo`.
 > Priorities #1d/#4/#5/#6/#7 below are integrated into the waves (not duplicated).
 >
-> **>> To resume next session:** `main` is at `4c900fa` (version 0.1.0); Wave 0 + the Wave 1
-> substrate are merged (nothing pushed to any remote yet). Next concrete step = write +
-> execute the **`nested-schema-validation`** plan (the epic in `BEYOND-QUARTO.md` Pillar I:
-> closed key sets + `closest()` did-you-mean for `#|` cell options, callout kinds, and
-> nested config blocks `execute:`/`listing:`/`about:`/`hero:`; pin `corpus/diagnostics/
-> typos.qmd`). It builds on the now-located `Warning` channel (`render/model.rs` `Warning`),
-> so each new diagnostic is click-to-source for free. Working method that worked for Waves
-> 0 + 1: branch per wave, write a complete-code plan under `docs/superpowers/plans/`, execute
-> subagent-driven (one implementer + one independent reviewer per task + a final whole-branch
-> review), then fast-forward merge locally. The completed plans + ledgers are the template.
+> **>> To resume next session:** `main` is at `bdeebe5` (version 0.1.0); Wave 0 + all of Wave 1
+> through `nested-schema-validation` are merged (nothing pushed to any remote yet). Next concrete
+> step = write + execute the **`jsonschema-for-config`** plan (`BEYOND-QUARTO.md` Pillar I, the
+> Wave 1 gate, now unblocked): generate a Draft-2020-12 JSON Schema from the SAME consts the
+> validator already uses (`KNOWN_KEYS` + the nested `EXECUTE_KEYS`/`LISTING_KEYS`/`ABOUT_KEYS`/
+> `HERO_KEYS` in `frontmatter.rs`, `CELL_OPTION_KEYS`/`CALLOUT_KINDS` in `render/validate.rs`,
+> `NATIVE_KEYS` in `site/config/mod.rs`) so the schema cannot drift from the validator; ship
+> `assets/schema/*.schema.json` + document the editor `# yaml-language-server: $schema=` on-ramp
+> (the in-scope single-editing-surface win: the EDITOR gets autocomplete/hover/validate via the
+> YAML LSP, zero qmd-fast LSP to build). Working method (Waves 0 + 1): branch per wave, write a
+> complete-code plan under `docs/superpowers/plans/`, execute subagent-driven (implementer + two
+> adversarial reviewers per task + a final whole-branch review), then fast-forward merge locally.
+> The three completed plans under `docs/superpowers/plans/` are the template.
 
 ## Open / next
 
@@ -156,14 +167,12 @@ layout/shareability (49 confirmed findings). The shipped fixes (posts/
 de-specialization, the loose-deck and dead-embed warnings, the docs sync) are in git;
 the open items follow.
 
-- [~] **P2: the Quarto-compat config path has no validation (high). MOOT/SUPERSEDED
+- [x] **P2: the Quarto-compat config path has no validation (high). RESOLVED/SHIPPED
   (2026-06-24).** The `config/quarto.rs` path this targeted was *deleted* in DROP-QUARTO
-  Phase 1, so the Quarto-shaped config no longer parses at all (it warns + falls
-  through). The remaining, more valuable work is now `nested-schema-validation` in
-  Beyond Quarto **Wave 1** (`BEYOND-QUARTO.md`): validating the *nested* native blocks
-  (`execute:`/`listing:`/`about:`/`hero:`), `#|` cell options, and callout kinds with
-  did-you-mean hints, built on a located-diagnostics substrate so each warning is
-  click-to-source.
+  Phase 1. The valuable successor, `nested-schema-validation`, shipped @ `bdeebe5`: nested
+  native blocks (`execute:`/`listing:`/`about:`/`hero:`), `#|` cell options, callout kinds,
+  and front-matter top-level keys are all validated against qmd-fast's own closed vocabulary
+  with did-you-mean, click-to-source. See `BEYOND-QUARTO.md` Pillar I.
 - [ ] **P3a: `build` leaks residue into the deployed output (medium).** `mirror_assets`
   (`main.rs:500`) copies every non-`_`/`.` file ignoring `.gitignore`, dragging R/Quarto
   caches (`*_cache/`, `index_cache/`, `.RData`), private notes, and `.bib`/`.Rproj` into
