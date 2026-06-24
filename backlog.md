@@ -159,9 +159,15 @@ Chromium-only). Not worth now: deeper i18n/RTL (English solo author).
 >   (branch `feat/reverse-sync-coverage-audit`, 2026-06-24): audit found the sourcepos
 >   emission already reverse-sync-total (0 offenders); locked in by a corpus test
 >   `reverse_sync_sourcepos_is_total` + an `output_block` assertion + a seam comment;
->   `highlightAtLine` browser-verified across block types + deck jump. NEXT:
->   `vscode-editor-companion` Phase 1 (host + cursor loop; LARGE — a VS Code extension;
->   coordinate with #1d's LAN token).
+>   `highlightAtLine` browser-verified across block types + deck jump. `vscode-editor-companion` Phase 1: **DESIGN + PLAN READY (not built)** — author chose
+>   design-only (2026-06-24) since a VS Code extension needs editor-side (Extension Host)
+>   testing that can't be browser-verified headlessly. Spec:
+>   `docs/superpowers/specs/2026-06-24-vscode-editor-companion-design.md`; complete 7-task
+>   plan: `docs/superpowers/plans/2026-06-24-vscode-editor-companion-phase1.md` (a new
+>   `editor/vscode/` TS extension: spawn `qmd-fast preview`, webview host via `asExternalUri`,
+>   relay `qmd-goto`→reveal + cursor→`qmd-cursor`→`highlightAtLine`; localhost-only so #1d's
+>   LAN token isn't needed yet). **To build: execute that plan (subagent-driven), then the
+>   author runs the README F5 checklist to verify.**
 > - **Wave 5 / later:** `print-pdf-track`, `docs-as-spec`, `{glsl}` registry, `build-seo`.
 > Priorities #1d/#4/#5/#6/#7 below are integrated into the waves (not duplicated).
 >
