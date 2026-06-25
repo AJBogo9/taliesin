@@ -6,6 +6,41 @@ findings behind it, kept for reference.
 
 -----------------------------------------------------------------------------
 
+# Corpus fidelity sweep vs Quarto (2026-06-25)
+
+Systematized output-fidelity check (backlog "highest-value #4"). The sibling
+`qmd-fast-testbed` gained `sweep_corpus.py`: render every real corpus single-doc
+(the spec) in **both** qmd-fast and Quarto with execution disabled, reduce to the
+block skeleton, structural-diff, and catalog. The full classification lives in
+`qmd-fast-testbed/CORPUS-FINDINGS.md`; the generated report is `corpus_sweep.md`.
+
+**Result: 3/8 exact match** (callouts/kinds, narrate/walkthrough, posts/born-machines);
+the other 5 differ only in items below, all classified. A `run.py` normalization fix
+(code-token whitespace was inventing `np.polyfit` → `np . polyfit` noise) also lifted
+the existing conformance suite 16/27 → 18/27.
+
+**Deliberate (qmd-fast intentionally different):** native `{js}` cells render as live
+widgets not dumped OJS source; flat `div.qmd-layout` vs Quarto's
+`quarto-layout-panel/row/cell`; references in a semantic `section.qmd-references` vs
+`div.references`; display-math in `div.qmd-math` (KaTeX server-side, nothing dropped)
+vs Quarto's `<p>\[…\]</p>`; tabset's no-JS form (`h2` + stacked panels, upgraded to
+ARIA tabs by client JS).
+
+**qmd-fast does better:** resolves `@fig-`/`@sec-` cross-refs even without executing
+the target cell (Quarto leaves `?@fig-…` under `--no-execute`).
+
+**Real bug-candidates (REPORTED, follow-ups — not yet fixed):**
+- **`#|` option lines leak into displayed code.** A non-executed `{python}` cell renders
+  its `#| label:` / `#| fig-cap:` directive lines as visible highlighted code; Quarto
+  strips `#|` from echoed source. Affects the no-kernel render/preview path. Fix in the
+  cell source-emit path (`crates/core/src/render/emit.rs`): strip leading `#|`/`//|`
+  option lines before highlighting source-rendered cells. *Confirmed in the HTML.*
+- **Captioned code listing is not a `<figure>`.** qmd-fast emits `div.qmd-listing` with a
+  `<figcaption>` (a `<figcaption>` outside `<figure>` is out of place); Quarto uses
+  `<figure class="quarto-float-lst">`. Minor/semantic (`render/figure.rs`/`emit.rs`).
+
+-----------------------------------------------------------------------------
+
 # qmd-fast — round-2 adversarial audit (2026-06-21)
 
 A second pass after the round-1 backlog (P0–P3) was fixed. Method: **empirical** (a
