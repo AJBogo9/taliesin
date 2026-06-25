@@ -93,7 +93,16 @@
     border: 0; border-radius: 7px; padding: .42rem .7rem; cursor: pointer;
     box-shadow: 0 3px 14px var(--qmd-edge-shadow); }
   .qmd-hl-action[hidden] { display: none; }
-  @media print { .qmd-hl-action { display: none !important; } }
+  /* Selection toolbar: a row of .qmd-hl-action pills (Copy / Quote / Share link / Highlight)
+     shown above a selection. The bar is the fixed host; the pills flow inside it. */
+  .qmd-seltools { position: fixed; z-index: 2147481600; display: inline-flex; gap: .3rem;
+    white-space: nowrap; }
+  .qmd-seltools[hidden] { display: none; }
+  .qmd-seltools .qmd-hl-action { position: static; z-index: auto; }
+  .qmd-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+  @media print { .qmd-hl-action, .qmd-seltools { display: none !important; } }
+  @media (max-width: 380px) { .qmd-seltools .qmd-hl-action { padding: .38rem .5rem; font-size: .72rem; } }
 
   /* My highlights: list + export, reused inside the reader menu's Highlights section. */
   .qmd-hlx-list { list-style: none; margin: 0 0 .7rem; padding: 0; }

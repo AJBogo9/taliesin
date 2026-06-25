@@ -33,6 +33,50 @@
   window.qmdEnhanceCode = function (root) { window.qmdEnhancers.run(root); };
 })();
 
+// Shared clipboard helper: navigator.clipboard in a secure context, with a hidden-textarea
+// execCommand fallback for insecure contexts (file://, plain-http --host LAN). Never throws;
+// calls onOk on success, onFail (optional) on total failure.
+function qmdCopyText(text, onOk, onFail) {
+  function legacy() {
+    try {
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.setAttribute('readonly', '');
+      ta.style.position = 'fixed'; ta.style.top = '0'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      var done = document.execCommand('copy'); document.body.removeChild(ta);
+      return done;
+    } catch (e) { return false; }
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(onOk, function () { if (legacy()) onOk(); else if (onFail) onFail(); });
+  } else if (legacy()) { onOk(); }
+  else if (onFail) { onFail(); }
+}
+
+// Build a W3C Text Fragment URL (#:~:text=) that deep-links to `rawText` on this page. Pure;
+// returns null for empty input. A long selection uses the textStart,textEnd range form to keep
+// the URL short. encTF escapes the three chars structurally significant in a text directive
+// ('-' marks prefix/suffix, ',' separates parts, '&' separates directives) on top of
+// encodeURIComponent, so the directive can never break out of itself.
+function qmdBuildTextFragmentUrl(rawText) {
+  var text = (rawText || '').replace(/\s+/g, ' ').trim();
+  if (!text) return null;
+  function encTF(s) { return encodeURIComponent(s).replace(/-/g, '%2D').replace(/,/g, '%2C').replace(/&/g, '%26'); }
+  var start = text, end = null;
+  if (text.length > 300) {
+    var words = text.split(' ');
+    if (words.length >= 12) { start = words.slice(0, 6).join(' '); end = words.slice(-6).join(' '); }
+    else { var cut = text.slice(0, 300), sp = cut.lastIndexOf(' '); start = sp > 0 ? cut.slice(0, sp) : cut; }
+  }
+  var directive = 'text=' + encTF(start) + (end ? ',' + encTF(end) : '');
+  // Preserve any element-id hash, drop any prior text fragment, emit exactly one ':~:'.
+  // Concatenate the href by string (assigning u.hash would re-encode '%' to '%25').
+  var u = new URL(location.href);
+  var id = u.hash.replace(/^#/, '').split(':~:')[0];
+  u.hash = '';
+  return u.href + '#' + id + ':~:' + directive;
+}
+
 // --- Built-in enhancers (registered through the same public API) -------------
 
 // Code blocks are highlighted server-side; the client only adds a copy button.
@@ -51,31 +95,13 @@ function qmdCopyButtons(root) {
     btn.setAttribute('aria-label', 'Copy code');
     btn.innerHTML = copyIcon;
     btn.addEventListener('click', function () {
-      var text = code.innerText;
-      var ok = function () {
+      // Secure context → navigator.clipboard; --host LAN / file:// → execCommand fallback.
+      qmdCopyText(code.innerText, function () {
         btn.innerHTML = checkIcon;
         btn.classList.add('qmd-copied');
         btn.setAttribute('aria-label', 'Copied');
         setTimeout(function () { btn.innerHTML = copyIcon; btn.classList.remove('qmd-copied'); btn.setAttribute('aria-label', 'Copy code'); }, 1200);
-      };
-      // navigator.clipboard only exists in a secure context; over --host (plain http
-      // on the LAN, e.g. a phone) fall back to a hidden-textarea execCommand copy so
-      // the button still copies and confirms with the check.
-      var legacy = function () {
-        try {
-          var ta = document.createElement('textarea');
-          ta.value = text; ta.setAttribute('readonly', '');
-          ta.style.position = 'fixed'; ta.style.top = '0'; ta.style.opacity = '0';
-          document.body.appendChild(ta); ta.select();
-          var done = document.execCommand('copy'); document.body.removeChild(ta);
-          return done;
-        } catch (e) { return false; }
-      };
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(ok, function () { if (legacy()) ok(); });
-      } else if (legacy()) {
-        ok();
-      }
+      });
     });
     pre.appendChild(btn);
     // The button is absolutely positioned inside the <pre>, which is the horizontal
@@ -748,39 +774,99 @@ function qmdInitHighlights() {
 
   if (!window.__qmdHL) {
     window.__qmdHL = true;
-    var btn = document.createElement('button');
+
+    // The selection toolbar: a bar holding Copy / Quote / Share link (clipboard-only) plus the
+    // Highlight button (which keeps its exact behaviour, now as one child).
+    var bar = document.createElement('div');
+    bar.className = 'qmd-seltools';
+    bar.setAttribute('role', 'toolbar');
+    bar.setAttribute('aria-label', 'Selection actions');
+    bar.hidden = true;
+    var live = document.createElement('span');
+    live.className = 'qmd-sr-only';
+    live.setAttribute('aria-live', 'polite');
+
+    var mode = null, pending = null, pendingTag = null;
+    function announce(msg) { live.textContent = ''; live.textContent = msg; }
+
+    // A clipboard-action child: clicking runs `run(done)`; `done(msg)` flashes the label.
+    function action(label, run) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'qmd-hl-action';
+      b.textContent = label;
+      var t = null;
+      b.__reset = function () { if (t) { clearTimeout(t); t = null; } b.textContent = label; };
+      b.addEventListener('click', function () {
+        run(function (msg) {
+          if (t) clearTimeout(t);
+          b.textContent = msg; announce(msg);
+          t = setTimeout(function () { b.textContent = label; t = null; }, 1200);
+        });
+      });
+      return b;
+    }
+    var copyBtn = action('Copy', function (done) {
+      qmdCopyText(pending.text, function () { done('Copied'); }, function () { done('Copy failed'); });
+    });
+    var quoteBtn = action('Quote', function (done) {
+      var url = qmdBuildTextFragmentUrl(pending.text) || location.href;
+      var label = (document.title || location.href).replace(/[\[\]()\\]/g, '\\$&');
+      var md = pending.text.split(/\r?\n/).map(function (l) { return '> ' + l; }).join('\n') +
+        '\n>\n> -- [' + label + '](<' + url + '>)'; // angle-bracket dest tolerates parens in url
+      qmdCopyText(md, function () { done('Quote copied'); }, function () { done('Copy failed'); });
+    });
+    var shareBtn = action('Share link', function (done) {
+      var url = qmdBuildTextFragmentUrl(pending.text);
+      if (!url) { done('Nothing to link'); return; }
+      qmdCopyText(url, function () {
+        done('Link copied');
+        if (location.protocol === 'file:') announce('Link copied; the highlight opens when served over http or https');
+      }, function () { done('Copy failed'); });
+    });
+    var extras = [copyBtn, quoteBtn, shareBtn];
+
+    var btn = document.createElement('button'); // the Highlight / Remove-highlight child
     btn.type = 'button';
     btn.className = 'qmd-hl-action';
-    btn.hidden = true;
-    document.body.appendChild(btn);
-    var mode = null, pending = null, pendingTag = null;
+    extras.forEach(function (b) { bar.appendChild(b); });
+    bar.appendChild(btn);
+    document.body.appendChild(bar);
+    document.body.appendChild(live);
 
-    function hideBtn() { btn.hidden = true; mode = null; pending = null; pendingTag = null; }
+    function resetExtras() { extras.forEach(function (b) { if (b.__reset) b.__reset(); }); }
+    function hideBtn() { resetExtras(); bar.hidden = true; mode = null; pending = null; pendingTag = null; }
     function placeBtn(rect) {
-      btn.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 130)) + 'px';
-      btn.style.top = Math.max(8, rect.top - 38) + 'px';
+      bar.hidden = false;                       // un-hide first so offsetWidth is measurable
+      var w = bar.offsetWidth;
+      var left = rect.left + rect.width / 2 - w / 2;
+      bar.style.left = Math.max(8, Math.min(left, window.innerWidth - w - 8)) + 'px';
+      bar.style.top = (rect.top - 38 >= 8 ? rect.top - 38 : rect.bottom + 8) + 'px';
     }
     function onSelect() {
       var sel = window.getSelection();
       if (!sel || sel.isCollapsed || sel.rangeCount === 0) { if (mode === 'add') hideBtn(); return; }
       var r = sel.getRangeAt(0);
-      if (btn.contains(r.startContainer)) return;
+      if (bar.contains(r.startContainer)) return;
       var b1 = blockOf(r.startContainer), b2 = blockOf(r.endContainer);
       if (!b1 || b1 !== b2 || skip(r.startContainer, b1) || skip(r.endContainer, b1)) {
         if (mode === 'add') hideBtn(); return;
       }
       var s = offsetOf(b1, r.startContainer, r.startOffset), e = offsetOf(b1, r.endContainer, r.endOffset);
       if (s < 0 || e < 0 || e <= s) { if (mode === 'add') hideBtn(); return; }
-      mode = 'add'; pending = { id: b1.getAttribute('data-block-id'), s: s, e: e }; pendingTag = null;
-      btn.textContent = 'Highlight'; btn.hidden = false;
+      // The selection text from the SAME math/code-free walk the offsets use (single block).
+      var text = textNodes(b1).map(function (n) { return n.nodeValue; }).join('').slice(s, e);
+      mode = 'add'; pending = { id: b1.getAttribute('data-block-id'), s: s, e: e, text: text }; pendingTag = null;
+      resetExtras();
+      extras.forEach(function (b) { b.hidden = false; });
+      btn.textContent = 'Highlight';
       placeBtn(r.getBoundingClientRect());
     }
-    btn.addEventListener('mousedown', function (e) { e.preventDefault(); }); // keep the selection
+    bar.addEventListener('mousedown', function (e) { e.preventDefault(); }); // keep the selection on any click
     btn.addEventListener('click', function () {
       if (mode === 'add' && pending) {
         var list = load();
         if (!list.some(function (h) { return h.id === pending.id && h.s === pending.s && h.e === pending.e; })) {
-          list.push(pending); save(list);
+          list.push({ id: pending.id, s: pending.s, e: pending.e }); save(list); // keep the id:s:e schema
         }
         var sel = window.getSelection(); if (sel) sel.removeAllRanges();
         dispatch();
@@ -798,12 +884,14 @@ function qmdInitHighlights() {
       var m = e.target.closest && e.target.closest('mark.qmd-userhl');
       if (m) {
         mode = 'remove'; pendingTag = m.getAttribute('data-hl'); pending = null;
-        btn.textContent = 'Remove highlight'; btn.hidden = false;
+        resetExtras();
+        extras.forEach(function (b) { b.hidden = true; });
+        btn.textContent = 'Remove highlight';
         placeBtn(m.getBoundingClientRect());
         e.stopPropagation();
         return;
       }
-      if (e.target !== btn && !btn.contains(e.target) && window.getSelection().isCollapsed) hideBtn();
+      if (!bar.contains(e.target) && window.getSelection().isCollapsed) hideBtn();
     });
     window.addEventListener('scroll', function () { if (mode) hideBtn(); }, { passive: true });
     window.addEventListener('qmd:hlchange', applyAll);
@@ -885,6 +973,8 @@ function qmdInitHighlightIndex() {
       var md = '# ' + (document.title || 'Highlights') + '\n\n' + location.href + '\n\n';
       load().forEach(function (h) { var t = textOf(h); if (t != null) md += '> ' + t.replace(/\s+/g, ' ').trim() + '\n\n'; });
       ta.value = md; ta.hidden = false; ta.focus(); ta.select();
+      // Best-effort clipboard; the visible textarea is the reliable path. (Not qmdCopyText: its
+      // execCommand fallback would steal the selection from the textarea in an insecure context.)
       try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(md); } catch (e) {}
     });
     actions.appendChild(exp); actions.appendChild(ta); body.appendChild(actions);
