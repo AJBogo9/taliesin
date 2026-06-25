@@ -1293,6 +1293,16 @@ fn assembled_page_ships_selection_toolbar() {
 }
 
 #[test]
+fn search_js_ships_tokenizing_matcher() {
+    // The Cmd-K matcher is multi-term/prefix/fuzzy with a shared range emitter, not a single
+    // whole-query indexOf. emitRanges is the marker symbol of the rework.
+    assert!(
+        super::SEARCH_JS.contains("emitRanges"),
+        "search.js still ships the old single-indexOf matcher"
+    );
+}
+
+#[test]
 fn toc_page_lists_headings_with_anchor_links() {
     let page = render_html_page(
         "---\ntitle: Doc\nformat:\n  html:\n    toc: true\n---\n\n# A\n\ntext\n\n## B\n",

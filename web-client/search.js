@@ -67,7 +67,10 @@
     // selecting it can navigate across chapters.
     if (window.QMD_SEARCH_INDEX) {
       return window.QMD_SEARCH_INDEX.map(function (e) {
-        return { id: e.i, title: e.t, level: e.l, body: e.b || "", url: e.u, page: e.p };
+        var body = e.b || "";
+        // tLow/bLow are memoized once so the per-keystroke matcher is just indexOf scans.
+        return { id: e.i, title: e.t, level: e.l, body: body, url: e.u, page: e.p,
+          tLow: (e.t || "").toLowerCase(), bLow: body.toLowerCase() };
       });
     }
     // Single doc: build from the current DOM (so it reflects live edits).
@@ -78,11 +81,14 @@
       var h = heads[i];
       var title = (h.textContent || "").trim();
       if (!title) continue;
+      var sbody = sectionText(h, heads[i + 1]);
       out.push({
         id: h.id,
         title: title,
         level: parseInt(h.tagName.charAt(1), 10) || 1,
-        body: sectionText(h, heads[i + 1]),
+        body: sbody,
+        tLow: title.toLowerCase(),
+        bLow: sbody.toLowerCase(),
       });
     }
     return out;
@@ -177,18 +183,61 @@
     return overlay && !overlay.hidden;
   }
 
-  function score(item, q) {
-    var t = item.title.toLowerCase();
-    var pos = t.indexOf(q);
-    if (pos === 0) return 3; // title prefix
-    if (pos > 0) return 2; // title contains
-    if (item.body.toLowerCase().indexOf(q) >= 0) return 1; // body contains
-    return 0;
+  // Bounded edit-distance-1: true iff `a` is within one substitution / insertion / deletion of
+  // `b` (Levenshtein <= 1). O(len), no matrix. Transpositions count as 2 (out of scope for v1).
+  function within1(a, b) {
+    var la = a.length, lb = b.length;
+    if (Math.abs(la - lb) > 1) return false;
+    var i = 0, j = 0, diff = 0;
+    while (i < la && j < lb) {
+      if (a.charCodeAt(i) === b.charCodeAt(j)) { i++; j++; continue; }
+      if (++diff > 1) return false;
+      if (la > lb) i++; // deletion from a
+      else if (lb > la) j++; // insertion into a
+      else { i++; j++; } // substitution
+    }
+    if (i < la || j < lb) diff++; // a trailing unmatched char is one more edit
+    return diff <= 1;
+  }
+
+  // Does any whitespace-delimited word of `fieldLow` typo-match `term` (edit distance <= 1)?
+  function fuzzyWord(term, fieldLow) {
+    var words = fieldLow.split(/\s+/);
+    for (var k = 0; k < words.length; k++) {
+      if (words[k] && within1(term, words[k])) return true;
+    }
+    return false;
+  }
+
+  // Multi-term AND matcher. Every query term must hit some field (title or body) by exact
+  // substring or, for terms >= 4 chars, an edit-distance-1 typo against a word. Returns a
+  // field-boosted score (0 rejects). Title outranks body; bonuses reward all-title hits, a
+  // title-leading match, and an exact contiguous phrase. Single-term degenerates to the old
+  // prefix > contains > body ordering.
+  function score(item, terms) {
+    var t = item.tLow, b = item.bLow, total = 0, allTitle = true, leadPrefix = false;
+    for (var k = 0; k < terms.length; k++) {
+      var term = terms[k], pos = t.indexOf(term);
+      if (pos >= 0) { total += 6; if (pos === 0) leadPrefix = true; }
+      else if (b.indexOf(term) >= 0) { total += 3; allTitle = false; }
+      else if (term.length >= 4 && fuzzyWord(term, t)) { total += 2; }
+      else if (term.length >= 4 && fuzzyWord(term, b)) { total += 1; allTitle = false; }
+      else return 0; // AND: this term matched nothing -> reject the item
+    }
+    if (allTitle) total += 3;
+    if (leadPrefix) total += 2;
+    if (terms.length > 1) {
+      var phrase = terms.join(" "); // the normalized query, contiguous
+      if (t.indexOf(phrase) >= 0) total += 2;
+      else if (b.indexOf(phrase) >= 0) total += 1;
+    }
+    return total;
   }
 
   function render(query) {
     var q = query.trim().toLowerCase();
-    if (!q) {
+    var terms = q ? q.split(/\s+/).filter(Boolean) : [];
+    if (!terms.length) {
       // No query: a book shows its chapter list (the level-0 page entries) as a
       // jump menu; a single doc shows its full heading outline.
       matches = window.QMD_SEARCH_INDEX
@@ -196,9 +245,9 @@
         : index.slice();
     } else {
       matches = index
-        .map(function (it) { return { it: it, s: score(it, q) }; })
+        .map(function (it) { return { it: it, s: score(it, terms) }; })
         .filter(function (m) { return m.s > 0; })
-        .sort(function (a, b) { return b.s - a.s; })
+        .sort(function (a, b) { return b.s - a.s || (a.it.level || 0) - (b.it.level || 0); })
         .map(function (m) { return m.it; });
     }
     sel = 0;
@@ -210,11 +259,11 @@
       list.appendChild(empty);
       return;
     }
-    matches.forEach(function (m, i) { list.appendChild(itemEl(m, q, i)); });
+    matches.forEach(function (m, i) { list.appendChild(itemEl(m, terms, i)); });
     markSel();
   }
 
-  function itemEl(item, q, i) {
+  function itemEl(item, terms, i) {
     var li = document.createElement("li");
     li.className = "qmd-s-item";
     li.setAttribute("role", "option");
@@ -223,18 +272,23 @@
     head.className = "qmd-s-head";
     var title = document.createElement("span");
     title.className = "qmd-s-title";
-    highlight(title, item.title, q);
+    highlight(title, item.title, terms);
     var sec = document.createElement("span");
     sec.className = "qmd-s-sec";
     // In a book, label the result with its chapter; otherwise its heading level.
     sec.textContent = item.page || "H" + item.level;
     head.append(title, sec);
     li.appendChild(head);
-    // A body (full-text) match that isn't in the title gets a snippet around the hit.
-    if (q && item.title.toLowerCase().indexOf(q) < 0 && item.body) {
+    // A body snippet when the body carries something the title doesn't already show. "In the
+    // title" matches score()'s notion (exact OR a >=4-char fuzzy hit), so a fuzzy-title match
+    // doesn't trigger an unmarkable body snippet.
+    var everyInTitle = terms.every(function (term) {
+      return item.tLow.indexOf(term) >= 0 || (term.length >= 4 && fuzzyWord(term, item.tLow));
+    });
+    if (terms.length && !everyInTitle && item.body) {
       var snip = document.createElement("div");
       snip.className = "qmd-s-snip";
-      snippet(snip, item.body, q);
+      snippet(snip, item.body, terms);
       li.appendChild(snip);
     }
     li.addEventListener("mousemove", function () {
@@ -249,40 +303,84 @@
     return li;
   }
 
-  // A one-line excerpt of body text around the first match of q, q highlighted.
-  function snippet(el, body, q) {
-    var pos = body.toLowerCase().indexOf(q);
-    if (pos < 0) {
-      el.textContent = body.slice(0, 120);
-      return;
+  // Every [start,end) span where a term occurs in `text` (case-insensitive substring, all
+  // occurrences). Fuzzy-only terms (no substring) yield no span — honest, never the wrong run.
+  function termRanges(text, terms) {
+    var low = text.toLowerCase(), ranges = [];
+    // If lowercasing changed the length (rare Unicode), low-derived offsets no longer align
+    // with the original-case slice; skip marking rather than mis-place a <mark>.
+    if (low.length !== text.length) return ranges;
+    for (var k = 0; k < terms.length; k++) {
+      var term = terms[k], from = 0, pos;
+      if (!term) continue;
+      while ((pos = low.indexOf(term, from)) >= 0) {
+        ranges.push([pos, pos + term.length]);
+        from = pos + term.length;
+      }
     }
-    var start = Math.max(0, pos - 30);
-    var tailEnd = pos + q.length + 90;
-    el.appendChild(
-      document.createTextNode((start > 0 ? "… " : "") + body.slice(start, pos)),
-    );
-    var m = document.createElement("mark");
-    m.textContent = body.slice(pos, pos + q.length);
-    el.appendChild(m);
-    el.appendChild(
-      document.createTextNode(
-        body.slice(pos + q.length, tailEnd) + (body.length > tailEnd ? " …" : ""),
-      ),
-    );
+    return ranges;
   }
 
-  // Render the title with the matched substring wrapped in <mark>.
-  function highlight(el, title, q) {
-    var pos = q ? title.toLowerCase().indexOf(q) : -1;
-    if (pos < 0) {
-      el.textContent = title;
+  // Emit `sourceText` into `el` as alternating text nodes / <mark>s over the given ranges
+  // (sorted + merged so overlapping/adjacent terms become one continuous mark). DOM-built,
+  // never innerHTML; the original-case source is sliced for display.
+  function emitRanges(el, sourceText, ranges) {
+    if (!ranges.length) { el.appendChild(document.createTextNode(sourceText)); return; }
+    ranges.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
+    var merged = [ranges[0].slice()];
+    for (var k = 1; k < ranges.length; k++) {
+      var last = merged[merged.length - 1], r = ranges[k];
+      if (r[0] <= last[1]) { if (r[1] > last[1]) last[1] = r[1]; }
+      else merged.push(r.slice());
+    }
+    var cur = 0;
+    for (var m = 0; m < merged.length; m++) {
+      var s = merged[m][0], e = merged[m][1];
+      if (s > cur) el.appendChild(document.createTextNode(sourceText.slice(cur, s)));
+      var mk = document.createElement("mark");
+      mk.textContent = sourceText.slice(s, e);
+      el.appendChild(mk);
+      cur = e;
+    }
+    if (cur < sourceText.length) el.appendChild(document.createTextNode(sourceText.slice(cur)));
+  }
+
+  // A one-line body excerpt: the ~140-char window covering the most distinct terms, each term
+  // occurrence inside it marked. Falls back to the head of the body when no term is present.
+  function snippet(el, body, terms) {
+    var low = body.toLowerCase(), WINDOW = 140, offs = [];
+    // Length-preserving lowercase only (see termRanges); otherwise fall back to an unmarked head.
+    if (low.length === body.length) {
+      for (var k = 0; k < terms.length; k++) {
+        var pos = low.indexOf(terms[k]);
+        if (pos >= 0) offs.push(pos);
+      }
+    }
+    if (!offs.length) {
+      el.textContent = body.slice(0, 120) + (body.length > 120 ? " …" : "");
       return;
     }
-    el.appendChild(document.createTextNode(title.slice(0, pos)));
-    var m = document.createElement("mark");
-    m.textContent = title.slice(pos, pos + q.length);
-    el.appendChild(m);
-    el.appendChild(document.createTextNode(title.slice(pos + q.length)));
+    offs.sort(function (a, b) { return a - b; });
+    // Pick the window (already expanded left for context) covering the most distinct terms,
+    // counting over the SAME window that will be rendered.
+    var bestStart = Math.max(0, offs[0] - 30), bestCount = -1;
+    for (var a = 0; a < offs.length; a++) {
+      var winStart = Math.max(0, offs[a] - 30), count = 0;
+      for (var b2 = 0; b2 < offs.length; b2++) {
+        if (offs[b2] >= winStart && offs[b2] < winStart + WINDOW) count++;
+      }
+      if (count > bestCount) { bestCount = count; bestStart = winStart; }
+    }
+    var start = bestStart, end = Math.min(body.length, start + WINDOW);
+    var slice = body.slice(start, end);
+    if (start > 0) el.appendChild(document.createTextNode("… "));
+    emitRanges(el, slice, termRanges(slice, terms));
+    if (end < body.length) el.appendChild(document.createTextNode(" …"));
+  }
+
+  // Render `title` with every term occurrence wrapped in <mark>.
+  function highlight(el, title, terms) {
+    emitRanges(el, title, termRanges(title, terms));
   }
 
   function markSel() {
