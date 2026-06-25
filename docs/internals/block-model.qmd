@@ -81,6 +81,14 @@ Concretely: change `tau` and the diff emits exactly one op, an `Update` for the
 plot's block, while the heading and the paragraph, their content hashes unchanged,
 never move.
 
+There is a fourth op, **`SetMeta`**, for the common case where an edit *above* a
+block shifts its line numbers without changing its content. The block's HTML is
+identical (same content-hash id), so re-`Update`ing it would needlessly rebuild the
+element and drop its live DOM state; but its `data-sourcepos` (and `data-source-file`)
+is now stale, which would break click-to-source. `SetMeta` patches just those
+attributes on the existing element, in place, so the live block keeps its state
+*and* still maps to the right source line.
+
 ::: {.callout-note}
 ## The one limitation: no Move
 
@@ -102,12 +110,13 @@ differences**.
 | server → client | `update` | `target_id`, `html` |
 | server → client | `insert` | `after_id`, `html` |
 | server → client | `remove` | `target_id` |
+| server → client | `set_meta` | `target_id`, `sourcepos`, `source_file` (patch a shifted block's source mapping in place) |
 | server → client | `diagnostics` | `messages` (non-fatal include / kernel / extension issues) |
-| server → client | `style` | `css` — hot-swaps the theme `<style>` in place on a CSS/theme edit (no reload) |
+| server → client | `style` | `css` (hot-swaps the theme `<style>` in place on a CSS/theme edit, no reload) |
 | server → client | `error` | `message` (a failed render; shown as an overlay) |
-| server → client | `reload` | *(none)* — full page reload (config change, kernel restart) |
+| server → client | `reload` | *(none)*; full page reload (config change, kernel restart) |
 | client → server | `click_block` | `block_id`, `source_file`, `sourcepos` |
-| client → server | `restart_kernel` | *(none)* — drop + respawn the kernel, re-run all cells |
+| client → server | `restart_kernel` | *(none)*; drop + respawn the kernel, re-run all cells |
 
 These message shapes are defined **once**, in `protocol.rs`, and shared by both
 dev servers and the browser client. The single-document server, the multi-page

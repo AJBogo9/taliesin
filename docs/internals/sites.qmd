@@ -47,7 +47,7 @@ flattened to the native shape.
 
 qmd-fast generates a JSON Schema for `_site.yml` from `NATIVE_KEYS` (the same
 closed set the config validator uses), emitted by `qmd-fast schema`. See the
-Configuration reference (`../guide/reference/configuration.qmd`) for the editor
+Configuration reference (`../guide/reference/configuration.html`) for the editor
 autocomplete on-ramp.
 
 ## Books vs websites
@@ -56,7 +56,9 @@ The same machinery produces both, branched on one key: **`chapters:` present ⇒
 book** (a left chapter sidebar, numbered chapters + sections, prev/next-*chapter*
 navigation), otherwise a website (a top navbar). `book.rs` computes
 the section numbers that the sidebar and cross-references display. No `type:` is
-needed; the shape of the config decides.
+needed; the shape of the config decides. A `chapters:` entry is a bare path, a
+`{ part:, chapters: }` group, or a `{ file:, text: }` mapping whose `text:`
+overrides the sidebar label (otherwise the label is the chapter's first `# H1`).
 
 ## Front-matter primitives
 

@@ -17,7 +17,7 @@ flowchart LR
     WS["Websocket<br/>+ file watcher"]
     subgraph Core["qmd-fast-core"]
       direction TB
-      P["Parser<br/>comrak + sourcepos"] --> M["Block model<br/>+ diff"] --> R["Render<br/>html / reveal / book"]
+      P["Parser<br/>comrak + sourcepos"] --> M["Block model<br/>+ diff"] --> R["Render<br/>html / deck / book"]
     end
     K["Warm Jupyter kernel"]
   end
@@ -173,6 +173,7 @@ classDiagram
     Update
     Insert
     Remove
+    SetMeta
   }
   RenderedDoc "1" *-- "many" Block : blocks
   Block "1" o-- "0..1" Cell : cell
@@ -191,7 +192,7 @@ With the shape in mind, here is the file-by-file detail, one table per layer.
 | `render/figure.rs` | Standalone-image and captioned-cell `<figure>`s. |
 | `render/theme.rs` | Theming: light/dark, `.css`/`.scss`, extension themes, the pre-paint script. |
 | `render/deck.rs` | Slide-deck assembly on qmd-fast's own engine (reveal.js removed; native `.qmd-deck`/`.qmd-slides` + a `window.QmdDeck` API). |
-| `render/extension/` | Format extensions + declarative shortcodes (`mod` + an isolated Quarto-compat reader). |
+| `render/extension/` | Format extensions (`_extensions/` themes/shortcodes) + shortcode expansion, in a single `mod.rs`. |
 | `diff.rs` | Block-level diff (LCS over block ids) → `BlockOp`s. |
 | `includes.rs` | `{{< include >}}` resolution + the per-file source map. |
 | `math.rs` / `highlight.rs` | Server-side KaTeX / syntect, both offline. |
@@ -203,11 +204,13 @@ With the shape in mind, here is the file-by-file detail, one table per layer.
 
 | Path | Responsibility |
 |---|---|
-| `main.rs` | CLI: the `preview` / `build` / `render` / `blocks` subcommands. |
-| `serve.rs` | Single-document websocket server + file watcher. |
+| `main.rs` | CLI: the `preview` / `build` / `render` / `blocks` / `schema` subcommands. |
+| `protocol.rs` | The versioned websocket message contract shared by both servers + the client. |
+| `serve.rs` | Single-document websocket server + file watcher (incl. the `--host` LAN token guard). |
 | `serve_site.rs` | Multi-page site/book server (per-page state, cross-page nav, hot reload). |
 | `exec.rs` | Runs a doc's code cells and splices outputs back as blocks (incremental: the first changed cell + everything downstream). |
 | `kernel.rs` | The warm Jupyter kernel (ZMQ), reused across edits, with interrupt + timeout. |
+| `freeze.rs` | The persistent `_freeze/` execution cache, keyed by a cumulative content hash. |
 | `log.rs` | Colourised dev-server console output. |
 
 `web-client/` — the browser preview (vanilla JS, no build step): `client.js`

@@ -17,7 +17,7 @@ export QMD_FAST_PYTHON="$(which python3)"
 ```
 
 The diagnostics note usually quotes the kernel's own error (e.g. *"No module
-named ipykernel"*), so fix that and save — the server respawns the kernel and
+named ipykernel"*), so fix that and save: the server respawns the kernel and
 re-runs automatically, no restart needed.
 
 ## A cell hangs / runs forever
@@ -42,9 +42,9 @@ an explicit port if you want a specific one: `qmd-fast preview file.qmd 5000`.
 ## A broken `{{< include >}}` or extension
 
 A missing include leaves an HTML comment breadcrumb and a diagnostics note. A
-format extension that fails to load (typo'd `format:` name, malformed
-`_extension.yml`, or a missing `contributes.formats.<base>` block) is reported in
-the dev menu and the build log — so it never fails silently.
+format extension that fails to load (a typo'd `format:` name, or a malformed
+`_extension.yml` whose keys don't match the native manifest) is reported in the
+dev menu and the build log, so it never fails silently.
 
 ## Edits aren't picked up
 
@@ -53,8 +53,17 @@ under the document's directory and any `{{< include >}}`d file's directory, and
 skips build-output/VCS folders (`_site`, `_book`, `.git`). Editing a file outside
 those won't trigger a refresh.
 
-## A reveal deck looks unstyled
+## A deck looks unstyled
 
 A custom deck theme usually comes from a format extension
 (`format: <ext>-revealjs`). Confirm the extension loaded (no warning in the dev
 menu) and that its `_extensions/<ext>/` directory sits beside the `.qmd`.
+
+## `--host` preview is refused from my phone (or shows "needs its session link")
+
+`--host` gates non-loopback access behind a per-session token, so a request without
+it gets a 403. Open the **exact** URL from the QR code or the printed `network`
+line (it carries the `?t=…` token); a hand-typed `http://<ip>:<port>/` is refused
+on purpose. The token is regenerated on every server start, so an old QR or a
+bookmarked URL from a previous run stops working: rescan the current one. Browsing
+from the same machine (`127.0.0.1`) never needs the token.

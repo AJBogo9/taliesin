@@ -104,7 +104,8 @@ qmd-fast preview corpus/tech-blog     # live site on http://127.0.0.1:4321
 ```
 
 See the [configuration reference](../reference/configuration.qmd) for every key
-(and the note on reusing an existing Quarto-shaped config unchanged).
+(and the note on migrating a Quarto-shaped config by flattening it to the native
+schema).
 
 `build` writes one `.html` per page (mirroring the input tree) and copies the
 referenced assets, so the output folder deploys as-is. `preview` serves the same

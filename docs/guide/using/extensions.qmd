@@ -41,10 +41,11 @@ unknown key is reported with a "did you mean …".
 ::: {.callout-note}
 ## Coming from a Quarto extension?
 
-Leave it — a manifest with the nested `contributes: → formats: → <base>:` shape is
-detected and still works. Or flatten it: lift the keys out of that block and
-rename `include-in-header` → `head`, `include-after-body` → `body-end`,
-`format-resources` → `resources`.
+The nested `contributes: → formats: → <base>:` manifest shape is no longer parsed,
+so flatten it: lift the keys out of that block to the top level and rename
+`include-in-header` to `head`, `include-after-body` to `body-end`, and
+`format-resources` to `resources`. An unflattened `contributes:` key just warns as
+unknown and its contributions are ignored.
 :::
 
 ## Declarative shortcodes
@@ -126,7 +127,10 @@ responsive player (it plays once the page is *served* — some videos block the
 {{< youtube jNQXAC9IVRw >}}
 
 …and the **tabset** enhancer turns a `::: {.panel-tabset}` of headings into tabs
-(click between them):
+(click between them). Note `.panel-tabset` is actually **built into core** (the
+tablist is emitted server-side with ARIA roles and core ships its own `tabset.js`);
+the bundled `tabset` extension here re-implements it purely to demonstrate the
+enhancer API, so you do not need an extension to use tabsets:
 
 ::: {.panel-tabset}
 

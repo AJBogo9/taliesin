@@ -22,7 +22,11 @@ the note at the end).
 | `page-layout` | `full` widens the content column (for listing indexes) |
 | `include-in-header` / `include-before-body` / `include-after-body` | Inject raw markup; each is a path, a `{ text: … }` / `{ file: … }` map, or a list of those |
 | `css` | Stylesheet(s) wrapped in `<style>` and inlined |
-| `categories`, `image` | Used by `listing:` cards |
+| `lang` | BCP-47 language tag for `<html lang>` (default `en`) |
+| `bibliography` + `csl` | `csl` picks a `.csl` citation style for the references (defaults to a built-in) |
+| `categories`, `image`, `image-alt` | `categories`/`image` feed `listing:` cards + social meta; `image-alt` is the card image's alt text |
+| `extensions` | A list of `_extensions/<name>/` to load (shortcodes, format theming) |
+| `draft` | `true` excludes the page from a website build (output, nav, and listings) |
 
 ### Code-cell options
 
@@ -36,13 +40,13 @@ set per-cell options:
 | `label: fig-… ` + `fig-cap: "…"` | Make the output a numbered, cross-referenceable figure |
 | `include: false` | Run the cell but drop its output |
 
-A front-matter `execute:` block sets document-wide `echo`/`include` defaults that a
-cell's own `#|` options override.
+A front-matter `execute:` block sets document-wide `echo`/`include`/`cache` defaults
+that a cell's own `#|` options override.
 
 ## Project `_site.yml`
 
 A **directory** with a `_site.yml` is a site or book project. The schema is
-flat — qmd-fast is HTML-only, so there's no `format: html:` nesting, and the
+flat: qmd-fast is HTML-only, so there's no `format: html:` nesting, and the
 project type is inferred (presence of `chapters:` ⇒ a book). There is no
 `_metadata.yml` cascade: the root config sets defaults, a page's own front matter
 overrides them.
@@ -69,7 +73,7 @@ footer:                  # a string is left text; or { left, center, right }
     - { icon: github, href: "https://github.com/me" }
 ```
 
-A **book** — just add `chapters:` (its presence makes it a book; no `type:`):
+A **book**: just add `chapters:` (its presence makes it a book; no `type:`):
 
 ```yaml
 title: "My Book"
@@ -79,19 +83,27 @@ chapters:
   - index.qmd
   - part: "Part One"     # group chapters under a part header
     chapters: [a.qmd, b.qmd]
-  - c.qmd
+  - file: c.qmd          # { file:, text: } overrides the sidebar label
+    text: "Conclusions"
 ```
+
+A chapter entry is a bare path (`- a.qmd`), a `{ part:, chapters: }` group header, or
+a `{ file:, text: }` mapping whose `text:` overrides the sidebar label (the override
+also works inside a part's list). Without `text:`, the label is the chapter's first
+`# H1`, then its front-matter `title:`, then the file stem.
 
 | Key | Meaning |
 |---|---|
 | `title`, `author`, `description`, `url` | Project metadata (`title` is the navbar brand / book title) |
 | `favicon` | Tab icon (defaults to the qmd-fast mark) |
+| `image` | Default social-card image for pages that don't set their own |
 | `output` | Build output directory |
 | `toc` | Default table of contents for article pages |
 | `css`, `head`, `body-start`, `body-end` | Site-wide asset injection (a path, `{ text: … }` / `{ file: … }`, or a list) |
-| `nav` | Navbar items — a list (left), or `{ left, right }` |
-| `footer` | Footer — a string, or `{ left, center, right }` of items |
-| `chapters` | Book chapter order (a file, or `{ part, chapters }`); presence ⇒ a book |
+| `nav` | Navbar items: a list (left), or `{ left, right }` |
+| `footer` | Footer: a string, or `{ left, center, right }` of items |
+| `chapters` | Book chapter order (a file, `{ file, text }`, or `{ part, chapters }`); presence ⇒ a book |
+| `mounts` | Mount other qmd-fast projects under a URL prefix in **preview**: a map `{ docs: ../docs }` or a list of `{ at, path }`. The static build skips mounts and prints the per-mount build command |
 
 **Icons.** A nav/footer item can be `{ icon: <name>, href: … }` instead of raw
 HTML; bundled glyphs: `github`, `linkedin`, `rss`, `x`, `mastodon`, `bluesky`,

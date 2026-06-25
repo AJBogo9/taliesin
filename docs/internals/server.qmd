@@ -97,3 +97,18 @@ site path adds per-page state, navigation, listing/chrome expansion, and the
 cross-page xref + search index. Keeping them separate keeps each one simple; the
 shared surface (the websocket message shapes, the asset/`favicon` helpers, the
 embedded client) lives in `serve.rs` and is reused by `serve_site.rs`.
+
+## LAN exposure & the `--host` token
+
+By default the server binds loopback only. `--host` binds `0.0.0.0` so a phone on
+the same network can open the live preview (the console prints the LAN URL and a QR
+code). That also means anyone on the network could reach it, so a shared guard in
+`serve.rs` (`new_session_token` / `lan_access` / `lan_token_guard`, installed via
+`with_lan_guard` on both servers) gates **non-loopback** requests behind a
+per-session token: the token is a random UUID minted at startup, threaded into the
+LAN URL/QR as `?t=…`, and the first tokened load sets a `qmd_token` cookie so the
+rest of the session (assets, the websocket upgrade, reloads) authenticates with no
+client changes. Loopback peers are detected from `ConnectInfo` and exempted, so the
+local workflow (and the editor companion) is unaffected; a non-loopback request with
+no/wrong token gets a `403`. The websocket `Origin` check (`origin_allowed`) is an
+orthogonal, always-on guard against cross-site driving of the control channel.

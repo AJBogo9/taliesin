@@ -5,14 +5,16 @@ files: blog posts, slide decks, books, and **multi-page websites**. A
 focused replacement for Quarto for one author's workflow, built around three
 goals Quarto's architecture can't deliver:
 
-1. **Click-to-source** — double-click a rendered element, jump to its `.qmd` source.
-2. **Block-level incremental updates** — saving a change swaps only the affected
+1. **Click-to-source.** Double-click a rendered element, jump to its `.qmd` source.
+2. **Block-level incremental updates.** Saving a change swaps only the affected
    block(s) in place, preserving scroll position and the runtime state of live
    components (Three.js, `{js}` cells).
-3. **No per-edit startup cost** — a long-running Rust server with a warm Jupyter kernel.
+3. **No per-edit startup cost.** A long-running Rust server with a warm Jupyter kernel.
 
-Output is **HTML only**. See [docs/index.qmd](docs/index.qmd) for the
-architecture, the websocket protocol, and the block model.
+Output is **HTML only**. The project's own manual is two sibling books authored in
+`.qmd`: the [User Guide](docs/guide/index.qmd) (how to use it) and the
+[Internals](docs/internals/index.qmd) book (the architecture, websocket protocol,
+and block model).
 
 ## Architecture (at a glance)
 
@@ -24,7 +26,7 @@ open, so a third-party editor client (a VS Code extension, etc.) can speak it to
 ```
 crates/core     parser (comrak + sourcepos) + block model + render
 crates/server   dev server, websocket, file watcher, kernel pool
-web-client/     browser preview client (vanilla JS) — the client
+web-client/     browser preview client (vanilla JS), the only client
 ```
 
 ## Usage
@@ -42,10 +44,14 @@ Point it at a **single file** or a **directory** (a multi-page site project):
 ```sh
 cargo run -p qmd-fast-server -- preview corpus/posts/born-machines.qmd  # one doc
 cargo run -p qmd-fast-server -- preview corpus/tech-blog                # a whole site
+cargo run -p qmd-fast-server -- preview corpus/tech-blog --host         # + LAN URL & QR
 cargo run -p qmd-fast-server -- build   corpus/tech-blog                # static _site/
 cargo run -p qmd-fast-server -- render  corpus/posts/born-machines.qmd > out.html
 cargo run -p qmd-fast-server -- blocks  corpus/posts/born-machines.qmd
 ```
+
+`--host` exposes the preview on your LAN with a phone-scannable QR code, gated by a
+per-session access token baked into the printed URL (loopback access needs none).
 
 Code execution needs a Python with `ipykernel`; point the server at it with the
 `QMD_FAST_PYTHON` env var (defaults to `python3`). Cells render as source if no
@@ -59,17 +65,18 @@ with `data-block-id` + `data-sourcepos` on every block.
 ## What it renders
 
 - Prose, tables (with alignment), nested/tight lists, code cells; smart typography.
-- **Syntax highlighting server-side** (syntect) — emitted as theme-styled scope
+- **Syntax highlighting server-side** (syntect), emitted as theme-styled scope
   classes, so it ships offline (no CDN), paints highlighted on first load, and
   recolors instantly on the light/dark toggle. Copy button on every block.
-- **Math server-side** via KaTeX — inline `$…$`, display `$$…$$`, `\begin{…}`
+- **Math server-side** via KaTeX: inline `$…$`, display `$$…$$`, `\begin{…}`
   environments; CSS + fonts bundled inline, fully offline.
 - `{{< include >}}` resolution with a per-file source map (`data-source-file`), so
   click-to-source jumps into the included file.
 - Callouts, `layout-ncol` grids, attributed `.btn` links, raw `{=html}` passthrough.
 - Citations (`[@key]`) + an auto-generated References section, and cross-references
-  (`@fig-`/`@eq-`/`@lst-`/`@tbl-`/`@sec-`) → numbered, labelled anchor links.
-- **Print/LaTeX figure export** — inline matplotlib figures are web-themed without
+  (e.g. `@fig-`/`@eq-`/`@lst-`/`@tbl-`/`@sec-`/`@thm-`) into numbered, labelled
+  anchor links.
+- **Print/LaTeX figure export.** Inline matplotlib figures are web-themed without
   tainting global `rcParams`, so `savefig` stays print-clean; `#| fig-export: x.pdf`
   writes the figure to a vector/raster file (black-on-white) for `\includegraphics`.
 - Live **`{js}`** cells (a tiny native enhancer with vendored d3 + Observable Plot,
@@ -80,7 +87,11 @@ with `data-block-id` + `data-sourcepos` on every block.
   a redesigned navbar/footer + book chapter prev/next, `.qmd`→`.html` link rewriting,
   `listing:` post-card indexes, and `about:` profile pages. Live preview navigates
   between pages and hot-reloads the edited one.
+- **Live diagnostics** in the preview's dev panel: broken includes, missing kernels,
+  config typos (with did-you-mean), and an advisory client-side accessibility audit
+  (missing alt text, heading skips, low contrast), each click-to-source.
 
 The native deck engine, mermaid, and the `{js}` cell enhancer are the only
-client-side pieces; everything else (parse, render, highlight, math) happens in Rust. See
-[docs/index.qmd](docs/index.qmd) — the project's own manual, authored in `.qmd`.
+client-side pieces; everything else (parse, render, highlight, math) happens in Rust.
+See the [User Guide](docs/guide/index.qmd) and [Internals](docs/internals/index.qmd)
+books, authored in `.qmd` and built with qmd-fast itself.
