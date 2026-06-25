@@ -722,7 +722,18 @@ fn blog_index_html(ctx: &PageCtx) -> String {
     );
     let extra_head = format!("<style>{STATUS_CSS}</style>\n");
     let scripts_pre = format!("<script>{doc_global} {toc_flag} window.QMD_SSR = true;</script>");
-    let scripts_post = format!("<script>\n{CLIENT_JS}\n</script>");
+    // With a TOC, load the shared scrollspy (toc-spy.js) ahead of the client so
+    // `window.qmdInitTocSpy` is defined when client.js rebuilds the nav and calls it
+    // after every edit — that drives the active-section highlight and the read-state
+    // marks. Without this the TOC sits inert in single-doc preview (scrollspy + read
+    // state only worked in the static build / site preview). Search (Cmd-K) stays out:
+    // the client doesn't re-index it on a live edit, so its index would go stale.
+    let toc_spy = if ctx.toc {
+        format!("<script>\n{}\n</script>\n", qmd_fast_core::TOC_SPY_JS)
+    } else {
+        String::new()
+    };
+    let scripts_post = format!("{toc_spy}<script>\n{CLIENT_JS}\n</script>");
     qmd_fast_core::assemble_html_page(&qmd_fast_core::PageParts {
         title: "qmd-fast",
         // The preview page chrome is English ("qmd-fast"); the built artifact honours
@@ -1244,6 +1255,38 @@ mod protocol_contract {
         assert!(
             html.contains("window.QMD_DOC = { path: \"/tmp/deck.qmd\", baseDir: \"/tmp\" }"),
             "deck page must carry QMD_DOC for click-to-source"
+        );
+    }
+
+    #[test]
+    fn blog_index_ships_toc_scrollspy_when_toc_enabled() {
+        // The single-doc live preview must load toc-spy.js when the doc has a TOC, so
+        // scrollspy highlighting + read-state TOC work in `qmd-fast preview <file>`
+        // (client.js rebuilds the nav, then calls window.qmdInitTocSpy). The `qmd-read:`
+        // storage key is unique to toc-spy.js — client.js only *calls* qmdInitTocSpy —
+        // so it discriminates "script loaded" from "script merely referenced".
+        let includes = qmd_fast_core::render::PageIncludes::default();
+        let mk = |toc| {
+            let ctx = PageCtx {
+                format: DocFormat::Html,
+                toc,
+                theme_css: "",
+                theme_default: "auto",
+                theme_is_custom: false,
+                doc_path: "/tmp/doc.qmd",
+                base_dir: "/tmp",
+                includes: &includes,
+                body: "<h2 id=\"s\" data-block-id=\"b\">S</h2>",
+            };
+            blog_index_html(&ctx)
+        };
+        assert!(
+            mk(true).contains("qmd-read:"),
+            "a TOC preview must load toc-spy.js so scrollspy + read-state work live"
+        );
+        assert!(
+            !mk(false).contains("qmd-read:"),
+            "a no-TOC preview should not load the TOC scrollspy"
         );
     }
 
