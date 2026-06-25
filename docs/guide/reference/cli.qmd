@@ -13,14 +13,21 @@ title: "CLI reference"
 | `blocks <file.qmd>` | List block ids and sourcepos (for debugging) |
 | `schema [--out <dir>]` | Emit the bundled JSON Schemas for `_site.yml` + front matter (editor autocomplete) |
 
-`preview` (and `build` of a folder) take these flags, which may appear anywhere:
+`--version` / `-V` prints the version; `--help` / `-h` (or no arguments) prints usage. If
+the default port (or one you pass) is already in use, `preview` auto-picks the next free
+port and logs the chosen URL.
+
+`preview` takes these flags (they may appear anywhere on the line):
 
 | Flag | Effect |
 |---|---|
 | `--host` | Bind your LAN and print a **QR code** for phones, gated by a per-session access token (see below) |
 | `--open` | Launch the default browser at the preview URL |
 | `--no-exec` | Render code cells as source without executing them (preview untrusted docs safely) |
-| `--out <dir>` | (`build` only; alias `--dir`) write to a folder instead of a single file |
+
+`build` takes only `--out <dir>` (alias `--dir`) to write a portable folder instead of a
+single file; other `--` flags are ignored. A `build` skips code execution only through the
+`QMD_FAST_NO_EXEC=1` environment variable, not a `--no-exec` flag.
 
 `--host` binds `0.0.0.0`, so it gates non-loopback access behind a token baked into
 the printed LAN URL and QR (`?t=…`, then a `qmd_token` cookie); a fresh token is
@@ -37,7 +44,7 @@ works from anywhere.
 |---|---|
 | `QMD_FAST_PYTHON` | Python with `ipykernel` for `{python}` cells (default `python3`) |
 | `QMD_FAST_R` | R with `IRkernel` for `{r}` cells (default `R`) |
-| `QMD_FAST_CELL_TIMEOUT` | Per-cell wall-clock cap in seconds before interrupt (default 120; `0` disables) |
+| `QMD_FAST_CELL_TIMEOUT` | Per-cell wall-clock cap in seconds before interrupt (default 120; `0` disables the cap, but a per-output silent-hang backstop still applies) |
 | `QMD_FAST_HOST` | Same as `--host` (expose on the LAN) |
 | `QMD_FAST_OPEN` | Same as `--open` (launch a browser) |
 | `QMD_FAST_NO_EXEC` | Same as `--no-exec` (never execute code cells) |

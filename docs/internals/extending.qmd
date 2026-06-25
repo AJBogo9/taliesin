@@ -46,9 +46,15 @@ in the User Guide for the authoring side):
 1. **Format extensions** (`render/extension/`). `_extensions/<name>/_extension.yml`
    contributes includes, a theme, and resources to a base format. A failed load is
    reported through the `warnings` channel, never silent.
-2. **Declarative shortcodes** (`render/extension/`). A top-level `shortcodes:` map
-   (native), or `contributes.shortcodes` (the Quarto-compat shape), maps a name to an
-   HTML template, expanded at pipeline stage 2.
+2. **Declarative shortcodes** (`render/extension/`). A flat, top-level `shortcodes:`
+   map in `_extension.yml` maps a name to an HTML template, expanded at pipeline
+   stage 2. The manifest is a **closed set**: any key outside `NATIVE_MANIFEST_KEYS`
+   is flagged with a did-you-mean hint, so the old Quarto `contributes.shortcodes`
+   nesting is no longer read (it warns as an unknown manifest key). Two shortcodes are
+   **built in** and need no extension: `{{< embed deck.qmd >}}` (embed another document's
+   deck as an isolating iframe) and `{{< video clip.mp4 [dark=…] >}}` (a theme-matched
+   `<video>` authored in Markdown). An extension template of the same name takes
+   precedence, since the built-ins are `render_shortcode` fallbacks.
 3. **Client enhancers** (`window.qmdEnhancers`, in `code-enhance.js`). An
    extension's JS registers `fn(root)` that runs after every (re)mount. The
    built-in copy buttons and `mermaid.js` use this same public API, so a
@@ -65,6 +71,42 @@ extension's own sub-directory. The core stays a **thin injector**: the extension
 supplies the CSS/JS, the core just wires it in (and reports a failed load through
 `warnings`, never silently). This is what lets a theme extension restyle qmd-fast's
 own [deck engine](deck-engine.qmd) against its native `.qmd-deck` contract.
+
+Besides that `format: <name>-base` form, an extension can be activated
+**format-agnostically** with an `extensions: [a, b]` front-matter list, merged in order
+so a later one wins. That is how a plain `format: html` page pulls in a shortcode pack or
+a theme without naming a base format.
+
+## Editor integration: the VS Code companion
+
+The websocket protocol is open (see [the block model](block-model.qmd)), so an editor
+that hosts the preview is just another thin client, not a fork. One such client already
+ships in-repo, at `editor/vscode/`: the **qmd-fast Companion**. It is the concrete
+*producer* for the reverse-sync side of the protocol that `web-client/client.js` already
+*consumes*, so the two halves meet.
+
+It lives **outside the cargo workspace** with its own npm/esbuild toolchain (`cd
+editor/vscode && npm install && npm run build`, then **F5** to launch an Extension
+Development Host). A single command, `qmdFast.openPreview` (command palette or the
+editor-title button on a `.qmd`), and one setting, `qmdFast.path` (the binary, when
+`qmd-fast` is not on `PATH`), are its whole surface.
+
+The host architecture is deliberately thin:
+
+- it spawns `qmd-fast preview` on a free **localhost** port (no `--host`, so the LAN
+  token never enters the picture) and embeds that URL in a webview via
+  `vscode.env.asExternalUri`;
+- a small **relay** HTML document inside the webview bridges the preview iframe's
+  `postMessage` protocol to and from the extension host. Forward sync (`qmd-goto`) calls
+  `revealRange` to move the editor cursor; reverse sync turns a cursor move into a
+  debounced `qmd-cursor`, which the client resolves with `highlightAtLine` (and, in a
+  deck, jumps `QmdDeck` to the containing slide).
+
+The companion **never writes back to the source**: it only navigates and highlights,
+holding the line that the `.qmd` file is the single editing surface and the preview is a
+read-only view. Phase 1 is exactly this host-plus-cursor loop, localhost only; editor
+*commands* that transform the buffer (insert-block, reorder-slide) are deferred to a
+later phase, and strictly as `.qmd`-text transforms when they land.
 
 ## The dev loop
 

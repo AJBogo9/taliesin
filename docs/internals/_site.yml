@@ -12,4 +12,5 @@ chapters:
   - block-model.qmd
   - execution.qmd
   - server.qmd
+  - validation.qmd
   - extending.qmd

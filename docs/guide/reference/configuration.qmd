@@ -18,13 +18,13 @@ the note at the end).
 | `theme` | `light` (default) / `dark`, a `.css`/`.scss` file, or an installed `_extensions/<name>/` |
 | `toc` | `true` adds a live table of contents (+ the Cmd-K search palette) |
 | `title-block-style` | `none` keeps the title metadata but hides the visible `<h1>` header |
-| `bibliography` | A `.bib` file enabling `[@key]` citations + an auto References section |
+| `bibliography` | A `.bib` file enabling `[@key]` citations + an auto References section (rendered in a single built-in IEEE style) |
 | `page-layout` | `full` widens the content column (for listing indexes) |
 | `include-in-header` / `include-before-body` / `include-after-body` | Inject raw markup; each is a path, a `{ text: … }` / `{ file: … }` map, or a list of those |
 | `css` | Stylesheet(s) wrapped in `<style>` and inlined |
 | `lang` | BCP-47 language tag for `<html lang>` (default `en`) |
-| `bibliography` + `csl` | `csl` picks a `.csl` citation style for the references (defaults to a built-in) |
-| `categories`, `image`, `image-alt` | `categories`/`image` feed `listing:` cards + social meta; `image-alt` is the card image's alt text |
+| `csl` | Recognized so it never warns, but **not currently honored**: references always render in the built-in IEEE style, so setting `csl` has no effect |
+| `categories`, `image`, `image-alt` | `categories`/`image` feed `listing:` cards + social meta; `image-alt` sets the alt text on an `about:` profile image (listing-card images emit an empty `alt`) |
 | `extensions` | A list of `_extensions/<name>/` to load (shortcodes, format theming) |
 | `draft` | `true` excludes the page from a website build (output, nav, and listings) |
 
@@ -109,8 +109,15 @@ also works inside a part's list). Without `text:`, the label is the chapter's fi
 HTML; bundled glyphs: `github`, `linkedin`, `rss`, `x`, `mastodon`, `bluesky`,
 `email`.
 
-**Validation.** Unknown top-level keys are reported with a "did you mean …", so a
-typo like `favicn:` doesn't silently do nothing.
+**Validation.** Unrecognized keys are reported with a "did you mean …" hint, offered
+when a known key is within edit distance 2, so a typo like `favicn:` doesn't silently do
+nothing. Validation only **warns**: the document still renders, and every warning is
+**located**, so in the live preview you can click it straight to the source line. The same
+closed-vocabulary check covers unknown cell `#|` options and unknown immediate children of
+`execute:` / `listing:` / `about:` / `hero:`; `format:` sub-keys are intentionally left
+unlinted, since a format extension may add its own. (The Internals book covers the design,
+and the drift-locked Draft 2020-12 schemas behind the `qmd-fast schema` command, in its
+*Validation & schemas* chapter.)
 
 ## Editor autocomplete (config schema)
 

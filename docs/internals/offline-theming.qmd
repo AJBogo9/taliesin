@@ -14,10 +14,15 @@ render for itself, the `$T(t) = …$` math and the Python block. Both are handle
 render time, in Rust, not by a client-side pass:
 
 - **Math** (`math.rs`) runs KaTeX in an embedded JS engine and emits static
-  HTML + MathML at parse time. The only client dependency is KaTeX's stylesheet,
-  whose fonts are inlined.
+  HTML + MathML at parse time. The only client dependency is KaTeX's stylesheet, whose
+  woff2 fonts are inlined into it as `data:` URIs at build time (`build.rs`), so even the
+  math fonts need no network. A static build ships that stylesheet **only on pages that
+  actually contain math**; the live preview always carries it, since any edit can add an
+  equation.
 - **Highlighting** (`highlight.rs`) colours code with `syntect`, in Rust, rather
-  than shipping highlight.js.
+  than shipping highlight.js. It aliases common language tokens (`js`/`ojs` → javascript,
+  `py` → python, `rs` → rust) and falls back to plain escaped text for an unrecognized
+  language, so a fenced block always renders.
 
 The payoff is the same in both cases, and it is why they are built this way:
 
@@ -51,8 +56,11 @@ on each keystroke (hundreds of ms). KaTeX output is a pure function of
 `(latex, display_mode)` under fixed options, so `math.rs` **memoizes** results in a
 process-global cache. After the first render, all the unchanged math on a save
 (everything but the block being edited) is a hashmap hit, and the cache is shared
-across a whole site's pages. This is the render-time analogue of the block diff:
-do the expensive work once, reuse it everywhere it didn't change.
+across a whole site's pages. The cache is **bounded** at 8192 entries keyed on
+`(latex, display_mode)`, and clears wholesale on overflow rather than evicting one entry
+at a time, since real documents have small, stable math sets that a long session never
+outgrows. This is the render-time analogue of [the block diff](block-model.qmd): do the
+expensive work once, reuse it everywhere it didn't change.
 
 ## No flash: the pre-paint script
 

@@ -9,7 +9,7 @@ Module map:
                   (a second `impl Site`, methods `pub(super)` so `page_chrome()` calls them)
 - `frontmatter.rs` per-page `---` parsing (reuses `crate::frontmatter::front_matter_block`)
 - `config/`       `_site.yml` → `SiteConfig` (flat native schema; the only path)
-- `book.rs` `feed.rs` `meta.rs` `search.rs` `xref.rs`
+- `book.rs` `meta.rs` `search.rs` `xref.rs`
 
 Conventions:
 - Submodules use `use super::*`; expose an item to `mod.rs`/siblings via a `pub(crate) use`

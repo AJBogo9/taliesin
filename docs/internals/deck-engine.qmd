@@ -45,16 +45,18 @@ flowchart TB
 
 ## The runtime (`deck.js`)
 
-A single `deck` state object holds the position (`h`, `v`, `f`: horizontal,
+A single `deck` state object holds the position (`h`, `v`, `frag`: horizontal,
 vertical, fragment step), the mode, and the plugin/listener registries. The core
 loop is small:
 
 - **`layout`** scales the fixed 960×540 (16:9) stage to the viewport with a single
   CSS transform (`--qmd-deck-scale`), so slides never reflow; `fitSlide` shrinks a
   slide's own font if its content overflows (PowerPoint-style autofit).
-- **`apply`** makes exactly one slide visible (inline `display` so an extension's
-  `!important` can't leak other slides in), runs its per-slide effects, and records
-  the previous slide for transitions.
+- **`apply`** updates the per-slide classes (fragment visibility, chrome,
+  annotations), records the previous slide for auto-animate, and calls `setCamera`
+  to pan and zoom the stage to the current slide. Visibility *is* that camera
+  transform, not a per-slide `display` toggle (the contract from the top of this
+  chapter).
 - **Navigation** (`right`/`left`/`down`/`up`, plus keyboard and touch) moves through
   the step list, then across slides.
 
@@ -68,7 +70,7 @@ order:
 - `{code: pre, seg}`: the next segment of a `code-line-numbers` block.
 - `{mm: div}`: the next snapshot of a `.magic-move` block.
 
-`deck.f` is how many steps have been taken; advancing dispatches to the matching
+`deck.frag` is how many steps have been taken; advancing dispatches to the matching
 handler. Magic-move and auto-animate animate with **FLIP** (measure First and Last
 rects, Invert with a transform, Play), scale-corrected by `--qmd-deck-scale` so the
 motion is right inside the scaled stage.
@@ -87,9 +89,11 @@ One engine, several presentations, selected by a `?qmd=` query param or a class:
 | scroll | narrow screen / `?qmd=scroll` | a single scrollable reading column |
 
 Speaker view and the audience window stay in sync over `postMessage` (it works on
-`file://`, unlike `BroadcastChannel`). When the deck flattens (overview, scroll,
-print), the per-slide background layer is hidden and the light-on-dark text class is
-cleared, so a dark slide stays readable instead of going white-on-white.
+`file://`, unlike `BroadcastChannel`). When the deck flattens into a reading column or
+a print sheet (scroll and print), the per-slide background layer is hidden and the
+light-on-dark text class is cleared, so a dark slide stays readable instead of going
+white-on-white. Overview is the exception: it keeps each slide's background, shown per
+tile.
 
 ## Embedding a deck
 

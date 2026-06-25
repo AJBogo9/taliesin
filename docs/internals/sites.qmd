@@ -3,7 +3,7 @@ title: "The multi-page subsystem"
 ---
 
 A directory with a `_site.yml` is a **project**: a website or a book. The core's
-[`site/`](https://github.com/AJBogo9/qmd-fast) module owns everything the
+`site/` module owns everything the
 single-page path never had, the project-level concerns, while the per-page server
 that drives it lives in [the dev server](server.qmd). This chapter is the core
 subsystem: discovery, the config model, the front-matter primitives, link
@@ -30,6 +30,13 @@ input pages: every `.qmd` becomes a page, **skipping `_`-prefixed directories**
 (partials, `_freeze`, `_site`) and dotfiles. Each page maps to its output URL (`x.qmd` →
 `x.html`, mirroring the input tree). Both `build` (static) and `preview` (live) drive a
 project through the same `discover` + `render_page`.
+
+Two kinds of `.qmd` are discovered but deliberately kept out of the navigable page set: a
+`draft: true` page is excluded from a **website** entirely (no output, nav, listing, or
+prev/next entry; books do not consult `draft`), and a deck pulled in by
+`{{< embed >}}` is built and served but stays out of nav and search, since it is an
+inclusion, not a page. A loose `format: revealjs` file that no page embeds warns rather
+than silently becoming a chrome-wrapped article.
 
 ## The config model
 
@@ -96,6 +103,15 @@ prose, not just headings. It is built once at discovery and **written to a separ
 every page, so the index never bloats page weight. (On a 17-page book that saved
 over a megabyte across the pages.) The palette is opened by the navbar search
 control (or the book sidebar's, for a book) or the <kbd>Cmd/Ctrl-K</kbd> shortcut.
+
+## Social & SEO metadata
+
+Each page emits OpenGraph, Twitter-card, and `canonical` tags (`meta.rs`), taken from the
+page's own front matter (`title`, `description`, `image`) and falling back to the
+`_site.yml` config. `og:type` is `article` when the page carries a `date:`, and `website`
+otherwise. The absolute-URL tags (`og:url`, `og:image`, `canonical`) are emitted **only
+when a `url:` is configured**, since social scrapers need absolute URLs; without a `url:`
+the page still carries its relative title/description metadata.
 
 ## Mounts
 

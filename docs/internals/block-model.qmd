@@ -36,21 +36,28 @@ id in both lists, so the algorithm is an **LCS over the id sequences**:
    block's element with the new HTML); a surplus of old blocks → **`Remove`**; a
    surplus of new blocks → **`Insert`** after the preceding block's id (or at the
    start when there is none).
-3. A matched anchor is normally left untouched, *except* when its HTML differs,
-   which happens for **derived** blocks whose id isn't a pure content hash (a code
-   cell's output block, keyed to the cell id, changes when an upstream cell
-   re-runs). Those get an `Update`.
+3. A matched anchor is normally left untouched. When its HTML *does* differ,
+   `anchor_op` chooses between two outcomes by comparing the bodies with the
+   source-position attributes masked out:
+   - if only `data-sourcepos` / `data-source-file` moved (an edit *above* shifted the
+     block's line numbers, but its content is byte-identical), it emits a **`SetMeta`**:
+     patch those two attributes in place, with no re-render, so the live element keeps
+     its DOM state;
+   - if the body itself changed, it emits an **`Update`**. This is the path a
+     **derived** block whose id isn't a pure content hash (a code cell's output block,
+     keyed to the cell id) takes when an upstream cell re-runs.
 
 The whole decision is mechanical once the anchors are known (@fig-diff):
 
 ```{mermaid}
 %%| label: fig-diff
-%%| fig-cap: "How diff_blocks turns two block-id lists into DOM ops. Matched anchors are normally left alone (so scroll + live state survive); only the gaps between them, and derived anchors whose HTML changed, cross the wire."
+%%| fig-cap: "How diff_blocks turns two block-id lists into DOM ops. Matched anchors are normally left alone (so scroll + live state survive); only the gaps between them, plus anchors whose source position shifted (SetMeta) or whose body changed (Update), cross the wire."
 flowchart TD
   lists["old block ids vs new block ids"] --> lcs["LCS over the ids"]
   lcs --> anchor{"matched anchor?"}
   anchor -->|"HTML identical"| keep["leave untouched"]
-  anchor -->|"HTML differs (cell output)"| u1["Update"]
+  anchor -->|"only sourcepos moved"| sm["SetMeta"]
+  anchor -->|"body changed (cell output)"| u1["Update"]
   lcs --> gap{"gap between anchors"}
   gap -->|"old / new pair"| u2["Update"]
   gap -->|"surplus old"| rem["Remove"]
@@ -81,9 +88,9 @@ Concretely: change `tau` and the diff emits exactly one op, an `Update` for the
 plot's block, while the heading and the paragraph, their content hashes unchanged,
 never move.
 
-There is a fourth op, **`SetMeta`**, for the common case where an edit *above* a
-block shifts its line numbers without changing its content. The block's HTML is
-identical (same content-hash id), so re-`Update`ing it would needlessly rebuild the
+That `SetMeta` outcome is worth dwelling on, because it is the common one: an edit
+*above* a block shifts its line numbers without changing its content. The block's HTML
+is identical (same content-hash id), so re-`Update`ing it would needlessly rebuild the
 element and drop its live DOM state; but its `data-sourcepos` (and `data-source-file`)
 is now stale, which would break click-to-source. `SetMeta` patches just those
 attributes on the existing element, in place, so the live block keeps its state
@@ -123,6 +130,35 @@ dev servers and the browser client. The single-document server, the multi-page
 server, and `web-client/` are all ends of this one contract, so they can't drift
 apart from each other.
 
+### Applying the ops (the client)
+
+The browser side (`web-client/client.js`) is deliberately thin: each op is one small
+DOM mutation, and the diff above is what keeps that set small.
+
+- **`update`** finds the target by id and `replaceWith`s the new HTML; **`insert`**
+  builds a fragment and places it after `after_id` (or `prepend`s it when there is
+  none); **`remove`** drops the element. **`set_meta`** patches only `data-sourcepos` /
+  `data-source-file` on the existing element and **does not re-render**, so a live
+  block (a video, a `{js}` widget, an open `<details>`) keeps its DOM state while its
+  source mapping stays exact.
+- Every mutation runs inside **`keepScroll`**, which pins `window.scrollY` across the
+  change (instantly, never animated), and is followed by **`afterChange`**, which
+  re-attaches the deck, rebuilds the TOC, re-runs the code enhancers, and re-scans for
+  cell errors and a11y issues. `set_meta` skips `afterChange` (nothing rendered).
+- The first paint is **server-rendered** into `#qmd-root`, so the very first
+  `full_render` after connect is identical and is **skipped** (no flash, no needless
+  deck/`{js}` re-init). A *reconnect* re-mounts normally, and a dropped socket retries
+  on a short loop.
+- Because block ids are unique, an `insert` first drops any element already carrying
+  the incoming id. The server emits all **`remove`s before any `insert`s**, so this is
+  normally a no-op; it only matters if a reorder (a `remove` + `insert` of the same id)
+  ever arrived out of order.
+
+Reverse sync runs the same model backwards: `highlightAtLine(file, line)` picks the
+**smallest** block whose `data-sourcepos` covers the line (else the nearest block
+starting before it), outlines it with `.qmd-hl`, and scrolls it into view, or, in a
+deck, jumps `QmdDeck` to the containing slide.
+
 ## Click-to-source & editor sync
 
 Click-to-source (goal #1) rides entirely on the two source attributes:
@@ -136,11 +172,12 @@ Click-to-source (goal #1) rides entirely on the two source attributes:
   came from an `{{< include >}}`d partial carries that file in `data-source-file`
   and the *original* line: click-to-source works across files.
 - **Reverse (editor → preview).** The client also speaks a `postMessage` protocol
-  as the integration surface for an embedded editor (a VS Code extension hosting
-  the preview): it posts `qmd-goto` up to the host (which reveals the source), and
-  accepts `qmd-cursor {file, line}` to highlight/scroll to the block whose
-  `data-sourcepos` covers that line. So an editor can host the preview and add
-  cursor sync without forking the client.
+  as the integration surface for an embedded editor host. The in-repo [VS Code
+  companion](extending.qmd) is that host: the client posts `qmd-goto` up to it (which
+  reveals the source), and accepts `qmd-cursor {file, line}` to highlight/scroll to the
+  block whose `data-sourcepos` covers that line (in a deck, jumping to the containing
+  slide). So an editor can host the preview and add cursor sync without forking the
+  client.
 
 ## Trust model
 

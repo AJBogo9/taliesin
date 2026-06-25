@@ -88,7 +88,11 @@ A save rebuilds only the affected page and hot-reloads it in place with the same
 block diff; a `_site.yml` change re-discovers the whole site and reloads open
 tabs. A single spawned **executor worker** drains `build_tx`, so each page's cells
 run on its own kernel without blocking the HTTP handlers; `build_page_guarded`
-gives it the same `catch_unwind` isolation as the single-doc loop.
+gives it the same `catch_unwind` isolation as the single-doc loop. To keep a long
+browse from leaking a kernel per visited page, the worker holds at most
+`MAX_WARM_PAGES` (6) warm executors and evicts the least-recently-built (dropping its
+executor kills its kernel children); an evicted page just pays a cold kernel start on
+its next edit.
 
 ## Why two servers, not one
 

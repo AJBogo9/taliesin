@@ -1,0 +1,108 @@
+---
+title: "Validation & schemas"
+---
+
+Mistype `#| eccho: false` in `post.qmd`'s cell, or write `treme:` for `theme:` in its
+front matter, and qmd-fast does two things at once: it **renders the document anyway**,
+and it drops a **located warning** in the dev panel that you can click straight to the
+offending line. That pairing, render-anyway plus a precise, jumpable diagnostic, is the
+whole design of the validation layer.
+
+## The invariant: purely diagnostic, always located
+
+Every validator in qmd-fast obeys one rule: it is **purely diagnostic**. An
+unrecognized key, kind, or option never changes what renders; the block emits exactly
+as it would have, and the validator's only effect is to append a `Warning`. A typo
+costs you a note, not a broken page.
+
+A `Warning` is a small struct (`message`, `file`, `line`), and the `file` + `line` are
+the point: they ride the same source map the block model uses, so a warning about an
+included partial names the partial and the original line. The dev panel renders each
+warning as a click-to-source link, the same Alt-click bridge the preview uses (see [the
+block model](block-model.qmd)). A diagnostic you can't locate is noise; a located one is
+a fix.
+
+## The closed vocabularies
+
+qmd-fast validates against its **own** closed sets of keys, defined independently of
+Quarto in `frontmatter.rs`, `render/validate.rs`, and `site/config/`. There are five
+surfaces, each a list-membership check:
+
+| Surface | Checked against | Where |
+|---|---|---|
+| Front-matter top-level keys | `KNOWN_KEYS` | `frontmatter.rs` |
+| Nested `execute:` / `about:` / `hero:` children | `EXECUTE_KEYS` / `ABOUT_KEYS` / `HERO_KEYS` | `frontmatter.rs` |
+| Code-cell `#|` / `//|` / `%%|` options | `CELL_OPTION_KEYS` | `render/validate.rs` (called from the pipeline) |
+| Callout kinds (`.callout-<kind>`) | `CALLOUT_KINDS` | `render/validate.rs` (called from `divs.rs`) |
+| `_site.yml` keys | `NATIVE_KEYS` | `site/config/` |
+
+Two `:::` containers are also checked for **structure** rather than vocabulary: a
+`.panel-tabset` with no headings (it would render no tabs) and a `.code-walkthrough`
+with no code block (its sticky panel would be empty) each warn, since the author almost
+certainly meant something. One deliberate hole: `format:` sub-keys are left unlinted,
+because a format extension may legitimately introduce its own.
+
+## Did you mean?
+
+Membership tells you a key is wrong; a good diagnostic tells you what you meant. Every
+surface shares one helper, `unknown_key_message`, which appends a suggestion when a
+known key is within **Levenshtein edit distance 2** of the typo (`closest()`):
+
+```text
+unknown front-matter key `treme` (did you mean `theme`?)
+unknown cell option `eccho` (did you mean `echo`?)
+unknown _site.yml key `favicn` (did you mean `favicon`?)
+```
+
+Distance 2 is the sweet spot: it catches the realistic slips (a swapped, dropped, or
+doubled letter) without guessing wildly at a key that is simply absent from qmd-fast's
+vocabulary. When nothing is close enough, the message is just the bare "unknown" form,
+no misleading suggestion.
+
+## The clean break: no Quarto-tolerance tier
+
+A key that is unknown because it is a *Quarto* term qmd-fast does not implement is
+reported exactly like a typo: as unknown. This is a deliberate stance, not an oversight.
+qmd-fast is its own tool with its own closed vocabulary, so there is no silent
+"tolerate but ignore" tier for Quarto keys, the single most confusing failure mode of a
+compatibility shim, where a setting appears to be accepted but quietly does nothing.
+The corpus was purged of Quarto-only keys to hold this line.
+
+## Schemas: the same vocabulary, one step earlier
+
+Validation at render time is the backstop. The **earlier** you learn a key is wrong, the
+better, so qmd-fast also ships JSON Schemas that let your editor's YAML language server
+flag the same mistakes as you type, before you ever render.
+
+```{mermaid}
+%%| fig-cap: "One source of truth (the closed-set consts) feeds both the render-time validator and the bundled JSON Schemas."
+flowchart LR
+  consts["closed-set consts<br/>KNOWN_KEYS · EXECUTE/ABOUT/HERO · NATIVE_KEYS"]
+  consts --> val["render-time validator<br/>(located warnings)"]
+  consts --> bless["bless test<br/>(QMD_FAST_BLESS=1)"]
+  bless --> schema["bundled Draft-2020-12 schemas<br/>FRONTMATTER_SCHEMA · SITE_SCHEMA"]
+  schema --> cli["qmd-fast schema --out .qmd"]
+  cli --> lsp["editor YAML language server"]
+```
+
+The two schemas (`FRONTMATTER_SCHEMA`, `SITE_SCHEMA` in `schema.rs`) are committed as
+static strings, but they are **generated from the same closed-set consts** the validator
+uses, and **regenerated only** through a bless test (`QMD_FAST_BLESS=1 cargo test -p
+qmd-fast-core --lib schema`). They are never hand-edited, so they **cannot drift** from
+what the renderer enforces: the editor and the renderer always agree on the vocabulary.
+A second test asserts each schema's structural shape, so a malformed bless can't slip
+through.
+
+`qmd-fast schema [--out <dir>]` writes both files out, and a one-line modeline points the
+language server at them:
+
+```yaml
+# yaml-language-server: $schema=.qmd/qmd-site.schema.json
+title: My site
+```
+
+This is the in-scope on-ramp to editor autocomplete: there is **no qmd-fast language
+server to build or install**, just two schema files and the YAML support the editor
+already has. The authoring side is covered in the [Configuration
+reference](../guide/reference/configuration.html); the config validator's role in a
+multi-page project is in [the multi-page subsystem](sites.qmd).

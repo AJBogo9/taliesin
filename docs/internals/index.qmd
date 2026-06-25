@@ -18,9 +18,9 @@ reader who would rather see the design decisions than take them on faith.
 Everything here follows from a single architectural choice: **all of the
 intelligence lives in a Rust core, and every client is thin.** The core parses a
 `.qmd` into a block model, renders each block to HTML, and speaks a small, stable
-websocket protocol. The browser preview, the `build` command, and any future client
-(a VS Code extension, say) are all just consumers of that protocol. Nothing clever
-lives in the client.
+websocket protocol. The browser preview, the `build` command, and the VS Code companion
+extension are all just consumers of that protocol; the next client is a new consumer, not
+a rewrite. Nothing clever lives in the client.
 
 Three properties fall out of that design, and they are what the rest of this book
 explains in detail:
@@ -93,13 +93,15 @@ The chapters build on each other, roughly from the outside in:
 - **[The deck engine](deck-engine.qmd)** is how the same block model becomes a slide
   deck on qmd-fast's own engine.
 - **[The multi-page subsystem](sites.qmd)** is how a directory becomes a website or a
-  book: discovery, chrome, listings, cross-page references, search, and feeds.
+  book: discovery, chrome, listings, cross-page references, and search.
 - **[The block model](block-model.qmd)** is the load-bearing data structure, and the
   websocket message contract that rides on it.
 - **[Code execution & the kernel](execution.qmd)** covers the warm Jupyter kernel,
   the execution plan, and the persistent output cache.
 - **[The dev server](server.qmd)** is the long-running process: the file watcher, the
   websocket, and the multi-page site server.
+- **[Validation & schemas](validation.qmd)** is the closed-vocabulary validator, the
+  located warnings it emits, and the drift-locked JSON Schemas behind editor autocomplete.
 - **[Extending qmd-fast](extending.qmd)** is the conventions for adding a feature, and
   where extensions live outside the core.
 

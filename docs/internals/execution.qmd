@@ -22,14 +22,21 @@ output caches that let it skip work, one in memory and one on disk:
 struct Executor {
     python: PathBuf,            // QMD_FAST_PYTHON (default python3)
     r: PathBuf,                 // QMD_FAST_R (default R)
-    langs: HashMap<&str, LangState>,  // "python" / "r" → warm kernel + in-memory ran-list
+    langs: HashMap<&'static str, LangState>,  // "python" / "r" → warm kernel + ran-list
     freeze: FreezeCache,        // persistent _freeze/ output cache (on disk)
+    no_exec: bool,              // QMD_FAST_NO_EXEC / --no-exec: render cells as source
+    force_next: bool,           // "Restart kernel" forces a full re-run next rebuild
 }
 ```
 
-`run(blocks)` is the entry point each rebuild calls. It groups the cells by
-language (preserving document order), runs each language's cells, and splices an
-**output block after each cell**:
+`run(blocks)` is the entry point each rebuild calls. Its very first check is the
+`no_exec` flag: with `QMD_FAST_NO_EXEC` (or `--no-exec`) set, it returns the blocks
+untouched, so every code cell previews as highlighted source with no kernel started and
+no "kernel unavailable" notice. That makes `--no-exec` the safe way to open a document
+you don't trust, and a `--host` preview without it logs a warning (exposing an executing
+preview runs code on every save). Otherwise it groups the cells by language (preserving
+document order), runs each language's cells, and splices an **output block after each
+cell**:
 
 ```{mermaid}
 flowchart TB
@@ -97,8 +104,8 @@ fragile. It encodes *every byte of code the kernel ran to reach this output*, so
   *whole upstream* is unchanged, never an arbitrary one in the middle.
 
 What's stored is just the cell's output HTML (kernel images are already inline data
-URIs, so there are no sidecar files). **Errors are never cached**, so a transient
-failure can't bake in. The file is written atomically (temp + rename), tolerates a
+URIs, so there are no sidecar files). **Errors, and output the kernel truncated at the
+size cap, are never cached**, so a transient failure (or a clipped result) can't bake in. The file is written atomically (temp + rename), tolerates a
 missing / corrupt / old-version file by starting empty, evicts least-recently-used
 entries past a cap (so toggling an edit back and forth still restores instantly),
 and `QMD_FAST_NO_CACHE` disables it outright. "Restart kernel" forces a fresh run
@@ -117,7 +124,11 @@ client connections. `start()`:
    stderr ("No module named ipykernel") instead of hanging the 30s connect
    timeout and reporting something opaque,
 4. reads one iopub message to confirm the SUB subscription is live (sidestepping
-   the ZMQ slow-joiner problem before the first run).
+   the ZMQ slow-joiner problem before the first run), and
+5. runs each language's **startup preambles** once against the now-warm kernel: Python
+   installs the `ojs_define` Python-to-JS bridge and a matplotlib theme hook that
+   restyles inline figures to follow the page (lazily, the first time a cell uses
+   matplotlib); R has none.
 
 `execute(code)` sends an `execute_request` on the shell channel and collects iopub
 messages parented by that request, namely `stream` (stdout/stderr), `execute_result`,
@@ -125,7 +136,9 @@ messages parented by that request, namely `stream` (stdout/stderr), `execute_res
 wall-clock cap** (`QMD_FAST_CELL_TIMEOUT`, default 120s) guards a runaway cell:
 on hit it SIGINTs the kernel (the `interrupt_mode: signal` path → `KeyboardInterrupt`)
 and drains a short grace window so the channels resync and the *next* cell still
-works. `Drop` kills the child and removes the connection dir.
+works. Setting the cap to `0` disables it, but a per-output silent-hang backstop (60s with
+no new output) still ends a wait that would otherwise hang forever. `Drop` kills the child
+and removes the connection dir.
 
 ## Resilience
 

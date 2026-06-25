@@ -36,7 +36,9 @@ flowchart TB
    *without changing the line count* (again preserving sourcepos). The inner
    content then parses as ordinary blocks.
 4. **Parse** (`comrak`, with `sourcepos` on). One AST for the whole document, with
-   every node carrying its `startLine:col-endLine:col`.
+   every node carrying its `startLine:col-endLine:col`. The parse and the walk that
+   follows run on a worker thread with a 256 MB stack, so pathologically nested markdown
+   overflows nothing and cannot crash a build or preview.
 5. **Walk → FlatBlock** (`render/mod.rs` + `render/emit.rs`). Each *top-level* node
    becomes one block: the emitter renders it to HTML (code highlighted by
    `highlight.rs`, math by `math.rs`), and the block gets a **content-hash id**
@@ -73,11 +75,14 @@ run as a **post-process over the already-rendered block HTML**: they transform o
 plain-text runs, never the inside of a tag, code, or math span, so block sourcepos
 is left untouched. `[@key]` citations become numbered links to a References block
 appended to the document (the one structural change), formatted from the parsed
-BibTeX. `@fig-` / `@sec-` / `@tbl-` / `@eq-` references become links to their anchor,
-carrying the resolved number when it is known. It is deliberately **pragmatic, not
+BibTeX. `@fig-` / `@sec-` / `@tbl-` / `@lst-` / `@eq-` references become links to their
+anchor, carrying the resolved number when it is known. It is deliberately **pragmatic, not
 a full CSL engine**. Cross-*page* references (a `@fig-` that lives in another
 chapter) are resolved a layer up, in the site subsystem (see [The multi-page
-subsystem](sites.qmd)).
+subsystem](sites.qmd)). Markdown footnotes (`[^name]`) ride the same idea: their
+definitions are gathered into a generated `qmd-footnotes` section appended after any
+References, an empty-sourcepos block that flows through the block model and the diff like
+References itself.
 
 ## Incremental updates
 
@@ -105,7 +110,7 @@ three outputs (see [Architecture](architecture.qmd)).
 ## Interactive cells (`{js}`)
 
 `{js}` cells are client-side, not kernel-executed, so they sit outside the
-[execution](execution.qmd) path. A tiny native enhancer (`qmd-js.js`, ~130 lines)
+[execution](execution.qmd) path. A small native enhancer (`qmd-js.js`)
 runs each cell's source against a small per-cell scope (`qmd.get`/`set`/`value`,
 `onInput`, `container`, `invalidation`); there is **no dataflow graph**. Cell
 kinds come from `//|` options: `//| viewof: name` returns a DOM input registered
