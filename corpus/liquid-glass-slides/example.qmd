@@ -4,13 +4,6 @@ subtitle: "A RevealJS theme for Quarto"
 format:
   liquid-glass-revealjs:
     slide-number: true
-    include-in-header:
-      text: |
-        <style>
-          :root {
-            --lg-bg-image: url('https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1920&q=80');
-          }
-        </style>
 ---
 
 ## What is Liquid Glass?

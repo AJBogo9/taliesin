@@ -176,8 +176,8 @@ fn includes_are_resolved_with_origin_files() {
         "expected blocks sourced from the included three-scene.qmd"
     );
 
-    // the book pulls in subsections; every subsection should contribute blocks
-    let book = corpus_dir().join("bayesian-book");
+    // the single-page report pulls in subsections; every subsection contributes blocks
+    let book = corpus_dir().join("bayesian-website");
     let bsrc = fs::read_to_string(book.join("index.qmd")).unwrap();
     let bdoc = qmd_fast_core::render_document_with_includes(&bsrc, &book);
     assert!(!bdoc.body_html().contains("{{< include"));
@@ -233,10 +233,13 @@ fn reveal_deck_detects_format_and_splits_into_slides() {
 }
 
 #[test]
-fn book_renders_with_toc_anchored_headings_and_numbered_figures() {
-    let dir = corpus_dir().join("bayesian-book");
+fn website_renders_with_toc_anchored_headings_and_numbered_figures() {
+    // bayesian-website is a single-page website (no `chapters:`), assembled from
+    // `subsections/` includes — not a book; the assertions below exercise TOC,
+    // heading anchors, and document-order figure numbering on that one page.
+    let dir = corpus_dir().join("bayesian-website");
     let src = fs::read_to_string(dir.join("index.qmd")).unwrap();
-    let page = qmd_fast_core::render_html_page_with_includes(&src, &dir, "book");
+    let page = qmd_fast_core::render_html_page_with_includes(&src, &dir, "report");
 
     // toc: true -> a TOC nav + the sidebar layout, with anchor-linked entries.
     assert!(

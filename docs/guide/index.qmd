@@ -29,6 +29,13 @@ This guide is itself a multi-page **book** built with qmd-fast: sidebar, search
 (press <kbd>Cmd/Ctrl-K</kbd>), live diagrams, and executed code cells included. A
 companion book, [Internals](../internals/), covers how it works inside.
 
+## The 60-second tour {.unnumbered}
+
+The fastest way in: a short slide deck, embedded right here (it is itself a qmd-fast
+deck — use the arrow keys, or press <kbd>f</kbd> for fullscreen).
+
+{{< embed tour.qmd title="qmd-fast: a 60-second tour" >}}
+
 ## Coming from Quarto or Jupyter?
 
 qmd-fast reads the same `.qmd` syntax you already know, but it makes a different

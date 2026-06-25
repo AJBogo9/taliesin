@@ -9,11 +9,41 @@
    include-in-header to customise the theme without forking it.
 ============================================================= */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap');
+/* Inter (latin subset) vendored locally so the deck renders fully offline — no
+   Google Fonts / gstatic fetch. Weights match the original @import (300-600). */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 300;
+  font-display: swap;
+  src: url('fonts/inter-300.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('fonts/inter-400.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('fonts/inter-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('fonts/inter-600.woff2') format('woff2');
+}
 
 :root {
   /* --- Background image ------------------------------------ */
-  --lg-bg-image: url('https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1920&q=80');
+  /* Vendored locally (no remote Unsplash fetch); override per-deck if desired. */
+  --lg-bg-image: url('assets/bg-default.jpg');
 
   /* --- Glass panel ----------------------------------------- */
   --lg-panel-width: 72%;
