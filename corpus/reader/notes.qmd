@@ -1,0 +1,21 @@
+---
+title: "Notes"
+---
+
+Highlight a few passages on this page and a **N highlights** control appears at the
+bottom-left. Open it to see every highlight together, jump between them, remove any, or
+export them all as Markdown to paste into your own notes.
+
+The value of a highlight is not the act of marking but the later act of returning. A reader
+who marks ten passages in a chapter wants to gather them, not hunt for them by scrolling. An
+index turns scattered marks into a small, reviewable set; an export turns that set into
+something the reader owns and can carry away.
+
+Because the highlights are stored in the reader's own browser and exported as plain Markdown,
+nothing leaves the page to a server. The document stays read-only and authoritative; the
+reader keeps a private reading of it that travels by file, not by login. That is the whole
+shape of the idea: the author writes once, and each reader owns their reading.
+
+A second paragraph of prose, so there is more than one place to mark. The longer a document,
+the more an index earns its keep, since the marks spread out and the scrolling between them
+grows. Even on a short page, gathering what you flagged in one list is quietly useful.

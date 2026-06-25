@@ -95,6 +95,7 @@ window.qmdEnhancers.register(function () { qmdInitLinkPreview(); });
 window.qmdEnhancers.register(function () { qmdInitReaderPrefs(); });
 window.qmdEnhancers.register(function () { qmdInitReadingProgress(); });
 window.qmdEnhancers.register(function () { qmdInitHighlights(); });
+window.qmdEnhancers.register(function () { qmdInitHighlightIndex(); });
 window.qmdEnhancers.register(qmdInitCategoryFilter);
 
 // Native category filter for `listing: { categories: true }`: the server emits a
@@ -652,6 +653,7 @@ function qmdInitHighlights() {
 
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { return []; } }
   function save(list) { try { localStorage.setItem(KEY, JSON.stringify(list)); } catch (e) {} }
+  function dispatch() { try { window.dispatchEvent(new CustomEvent('qmd:hlchange')); } catch (e) {} }
 
   // A text node is non-highlightable if it sits inside math/code within the block.
   function skip(node, block) {
@@ -756,10 +758,10 @@ function qmdInitHighlights() {
           list.push(pending); save(list);
         }
         var sel = window.getSelection(); if (sel) sel.removeAllRanges();
-        applyAll();
+        dispatch();
       } else if (mode === 'remove' && pendingTag) {
         save(load().filter(function (h) { return (h.id + ':' + h.s + ':' + h.e) !== pendingTag; }));
-        applyAll();
+        dispatch();
       }
       hideBtn();
     });
@@ -779,8 +781,128 @@ function qmdInitHighlights() {
       if (e.target !== btn && !btn.contains(e.target) && window.getSelection().isCollapsed) hideBtn();
     });
     window.addEventListener('scroll', function () { if (mode) hideBtn(); }, { passive: true });
+    window.addEventListener('qmd:hlchange', applyAll);
   }
 
   applyAll();
+}
+
+// My highlights: an index + Markdown export over the reader's highlights (qmdInitHighlights).
+// When the page has any highlights, a "N highlights" button (bottom-left) opens a panel that
+// lists them, jumps to one, removes one, or exports them all as Markdown into a selectable
+// textarea (and best-effort to the clipboard). Reader-side + read-only: reads the same
+// localStorage; coordinates with the highlighter via the qmd:hlchange event. Skipped on decks.
+function qmdInitHighlightIndex() {
+  if (document.querySelector('.qmd-deck')) return;
+  if (window.__qmdHLIndex) return;
+  window.__qmdHLIndex = true;
+
+  var KEY = 'qmd-hl:' + location.pathname;
+  function load() { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { return []; } }
+  function save(list) { try { localStorage.setItem(KEY, JSON.stringify(list)); } catch (e) {} }
+  function changed() { try { window.dispatchEvent(new CustomEvent('qmd:hlchange')); } catch (e) {} }
+
+  // Same highlightable-text rule as the highlighter, so offsets resolve identically.
+  function skip(node, block) {
+    var p = node.parentNode;
+    while (p && p !== block) {
+      if (p.nodeType === 1 && (p.tagName === 'PRE' || p.tagName === 'CODE' ||
+          (p.classList && p.classList.contains('katex')))) return true;
+      p = p.parentNode;
+    }
+    return false;
+  }
+  function blockText(block) {
+    var w = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, null), n, s = '';
+    while ((n = w.nextNode())) { if (!skip(n, block)) s += n.nodeValue; }
+    return s;
+  }
+  function findBlock(id) {
+    return document.querySelector('[data-block-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+  }
+  function textOf(h) { var b = findBlock(h.id); return b ? blockText(b).slice(h.s, h.e) : null; }
+
+  var btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'qmd-hlx-toggle';
+  btn.hidden = true;
+  btn.setAttribute('aria-haspopup', 'dialog');
+  var panel = document.createElement('div');
+  panel.className = 'qmd-hlx-panel';
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-label', 'Highlights');
+  panel.hidden = true;
+  document.body.appendChild(btn);
+  document.body.appendChild(panel);
+
+  function flash(block) { block.classList.remove('qmd-flash'); void block.offsetWidth; block.classList.add('qmd-flash'); }
+
+  function renderPanel() {
+    var list = load();
+    while (panel.firstChild) panel.removeChild(panel.firstChild);
+    var head = document.createElement('h2'); head.textContent = 'Highlights'; panel.appendChild(head);
+    var resolvable = 0;
+    var ul = document.createElement('ul'); ul.className = 'qmd-hlx-list';
+    list.forEach(function (h) {
+      var t = textOf(h); if (t == null) return; // block gone (orphaned highlight)
+      resolvable++;
+      var li = document.createElement('li');
+      var go = document.createElement('button');
+      go.type = 'button'; go.className = 'qmd-hlx-go';
+      go.textContent = t.length > 90 ? t.slice(0, 90) + '…' : t;
+      go.addEventListener('click', function () {
+        var b = findBlock(h.id);
+        if (b) { b.scrollIntoView({ block: 'center', behavior: 'smooth' }); flash(b); panel.hidden = true; }
+      });
+      var rm = document.createElement('button');
+      rm.type = 'button'; rm.className = 'qmd-hlx-rm';
+      rm.setAttribute('aria-label', 'Remove'); rm.textContent = '×';
+      rm.addEventListener('click', function () {
+        var tag = h.id + ':' + h.s + ':' + h.e;
+        save(load().filter(function (x) { return (x.id + ':' + x.s + ':' + x.e) !== tag; }));
+        changed();
+      });
+      li.appendChild(go); li.appendChild(rm); ul.appendChild(li);
+    });
+    if (!resolvable) {
+      var empty = document.createElement('p'); empty.className = 'qmd-hlx-empty';
+      empty.textContent = 'No highlights yet.'; panel.appendChild(empty);
+    }
+    panel.appendChild(ul);
+
+    var actions = document.createElement('div'); actions.className = 'qmd-hlx-actions';
+    var exp = document.createElement('button');
+    exp.type = 'button'; exp.className = 'qmd-hlx-export'; exp.textContent = 'Export as Markdown';
+    var ta = document.createElement('textarea');
+    ta.className = 'qmd-hlx-out'; ta.readOnly = true; ta.hidden = true;
+    ta.setAttribute('aria-label', 'Highlights as Markdown');
+    exp.addEventListener('click', function () {
+      var md = '# ' + (document.title || 'Highlights') + '\n\n' + location.href + '\n\n';
+      load().forEach(function (h) { var t = textOf(h); if (t != null) md += '> ' + t.replace(/\s+/g, ' ').trim() + '\n\n'; });
+      ta.value = md; ta.hidden = false; ta.focus(); ta.select();
+      try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(md); } catch (e) {}
+    });
+    actions.appendChild(exp); actions.appendChild(ta); panel.appendChild(actions);
+  }
+
+  function refresh() {
+    var n = load().filter(function (h) { return textOf(h) != null; }).length;
+    if (n > 0) { btn.hidden = false; btn.textContent = n + (n === 1 ? ' highlight' : ' highlights'); }
+    else { btn.hidden = true; panel.hidden = true; }
+    if (!panel.hidden) renderPanel();
+  }
+
+  btn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    panel.hidden = !panel.hidden;
+    if (!panel.hidden) renderPanel();
+  });
+  document.addEventListener('click', function (e) {
+    if (!panel.hidden && !panel.contains(e.target) && e.target !== btn) panel.hidden = true;
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !panel.hidden) panel.hidden = true; });
+  window.addEventListener('qmd:hlchange', refresh);
+
+  refresh();
 }
 

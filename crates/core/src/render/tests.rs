@@ -1254,6 +1254,15 @@ fn assembled_page_ships_reader_highlights() {
 }
 
 #[test]
+fn assembled_page_ships_highlight_index() {
+    let page = render_html_page("# Title\n\nProse to highlight and review.\n", "doc");
+    assert!(
+        page.contains("qmdInitHighlightIndex"),
+        "highlight-index enhancer not shipped in the assembled page"
+    );
+}
+
+#[test]
 fn toc_page_lists_headings_with_anchor_links() {
     let page = render_html_page(
         "---\ntitle: Doc\nformat:\n  html:\n    toc: true\n---\n\n# A\n\ntext\n\n## B\n",
