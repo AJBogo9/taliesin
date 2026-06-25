@@ -449,6 +449,65 @@ fn labelled_mermaid_becomes_numbered_referenceable_figure() {
 }
 
 #[test]
+fn spaced_option_directives_are_recognized() {
+    // Quarto tolerates whitespace between the comment marker and the pipe (`# |`,
+    // `// |`, `%% |`); qmd-fast must too, or the spaced lines leak into the displayed
+    // source AND their options (echo/label/...) are silently ignored.
+    // Regression: corpus/posts/pca-geometry writes `# | label:` / `# | echo: false`.
+
+    // 1. A spaced option is stripped from echoed source (not left as a comment).
+    //    Check the stripped text, since highlighting splits the literal `# |`.
+    let warn = render_document("```{python}\n# | warning: false\nprint(1)\n```\n");
+    let text = strip_tags(&warn.blocks[0].html);
+    assert!(text.contains("print(1)"));
+    assert!(
+        !text.contains("warning"),
+        "spaced option line leaked into source: {text}"
+    );
+
+    // 2. A spaced `# | echo: false` is honoured: parsed onto the cell, source hidden.
+    let echo = render_document("```{python}\n# | echo: false\nprint(1)\n```\n");
+    let b = &echo.blocks[0];
+    assert!(
+        !b.cell.as_ref().unwrap().echo,
+        "spaced echo:false must be parsed onto the cell"
+    );
+    assert!(
+        b.html.contains("qmd-cell-hidden") && !b.html.contains("print(1)"),
+        "spaced echo:false must hide the source: {}",
+        b.html
+    );
+
+    // 3. A spaced `%% |` label registers the figure + resolves its cross-reference
+    //    (mirrors the canonical-form mermaid test, exercised in the no-exec path).
+    let fig = render_document(
+        "See @fig-x.\n\n```{mermaid}\n%% | label: fig-x\n%% | fig-cap: \"Cap\"\nflowchart LR\n  A --> B\n```\n",
+    );
+    let body = fig.body_html();
+    assert!(
+        body.contains("id=\"fig-x\""),
+        "spaced label did not register the figure anchor: {body}"
+    );
+    assert!(
+        !body.contains("%% |"),
+        "spaced mermaid options leaked: {body}"
+    );
+    assert!(
+        body.contains("<a href=\"#fig-x\" class=\"qmd-xref\">Figure&nbsp;1</a>"),
+        "spaced-label cross-reference did not resolve: {body}"
+    );
+
+    // 4. A spaced `// |` js option is parsed (data-name on the live placeholder).
+    let js = render_document("```{js}\n// | name: x\nreturn 1;\n```\n");
+    let jh = &js.blocks[0].html;
+    assert!(
+        jh.contains("data-name=\"x\""),
+        "spaced js option not parsed: {jh}"
+    );
+    assert!(!jh.contains("// |"), "spaced js option line leaked: {jh}");
+}
+
+#[test]
 fn unlabelled_mermaid_stays_a_bare_diagram() {
     // No label/fig-cap -> not a figure, not numbered (stays a plain pre).
     let doc = render_document("```{mermaid}\nflowchart LR\n  A --> B\n```\n");

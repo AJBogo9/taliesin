@@ -30,11 +30,16 @@ ARIA tabs by client JS).
 the target cell (Quarto leaves `?@fig-…` under `--no-execute`).
 
 **Real bug-candidates (REPORTED, follow-ups — not yet fixed):**
-- **`#|` option lines leak into displayed code.** A non-executed `{python}` cell renders
-  its `#| label:` / `#| fig-cap:` directive lines as visible highlighted code; Quarto
-  strips `#|` from echoed source. Affects the no-kernel render/preview path. Fix in the
-  cell source-emit path (`crates/core/src/render/emit.rs`): strip leading `#|`/`//|`
-  option lines before highlighting source-rendered cells. *Confirmed in the HTML.*
+- **`#|` option lines leak into displayed code. FIXED (2026-06-25).** Root cause was *not*
+  the originally-prescribed emit-path strip (`#|` already strips fine, 123 corpus uses + a
+  test): `posts/pca-geometry` writes the options with a space (`# | label:`, `# | echo:
+  false`), and every option parser only matched `#|` (no space). So the spaced lines were
+  neither stripped (→ leaked into source) nor parsed (→ `echo: false` ignored, source shown;
+  `label: fig-data-3d` unregistered, throwing figure numbers off by one vs Quarto). Quarto
+  accepts the spaced form, so qmd-fast now does too: a single `option_directive()` primitive
+  (`render/mod.rs`) tolerates optional whitespace between the comment marker and `|`, and
+  `cell_option` / `strip_cell_options` / `validate::cell_option_keys` all key off it.
+  Pinned by `render::tests::spaced_option_directives_are_recognized`.
 - **Captioned code listing is not a `<figure>`.** qmd-fast emits `div.qmd-listing` with a
   `<figcaption>` (a `<figcaption>` outside `<figure>` is out of place); Quarto uses
   `<figure class="quarto-float-lst">`. Minor/semantic (`render/figure.rs`/`emit.rs`).

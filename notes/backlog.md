@@ -87,10 +87,6 @@ directly: `code, pre, kbd, samp, .katex { letter-spacing: normal; word-spacing: 
   (cargo-deny not installable/verifiable locally). Add it when CI is set up.
 
 ### Fidelity follow-ups (from the 2026-06-25 corpus sweep; detail in `AUDITS.md`)
-- [ ] **`#|` option lines leak into displayed code.** A non-executed `{python}` cell renders
-  its `#| label:` / `#| fig-cap:` directive lines as visible code (Quarto strips them).
-  Affects the no-kernel render/preview path. Strip leading `#|`/`//|` option lines before
-  highlighting source-rendered cells (`crates/core/src/render/emit.rs`). *Confirmed.*
 - [ ] **Captioned code listing isn't a `<figure>`.** qmd-fast emits `div.qmd-listing` with a
   bare `<figcaption>` where Quarto uses `<figure class="quarto-float-lst">`. Minor/semantic.
 

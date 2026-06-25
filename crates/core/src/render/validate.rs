@@ -41,12 +41,7 @@ pub(crate) const CALLOUT_KINDS: &[&str] = &["note", "tip", "warning", "important
 pub(crate) fn cell_option_keys(literal: &str) -> Vec<(String, usize)> {
     let mut keys = Vec::new();
     for (i, line) in literal.lines().enumerate() {
-        let t = line.trim_start();
-        let Some(opt) = t
-            .strip_prefix("#|")
-            .or_else(|| t.strip_prefix("//|"))
-            .or_else(|| t.strip_prefix("%%|"))
-        else {
+        let Some(opt) = super::option_directive(line) else {
             break;
         };
         if let Some((k, _)) = opt.split_once(':') {

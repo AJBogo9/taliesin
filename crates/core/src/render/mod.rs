@@ -1590,17 +1590,28 @@ fn emit_equation(latex: &str, anchor: &str, block_attrs: &str, num: usize) -> St
     )
 }
 
+/// If `line` is a leading cell-option directive, return the content after the pipe.
+/// Recognizes `#|` (most langs), `//|` (JS), `%%|` (mermaid), each tolerating optional
+/// whitespace between the comment marker and the pipe (`# |`, `// |`, `%% |`) — Quarto
+/// accepts the spaced form, so the corpus may use it (e.g. `posts/pca-geometry`).
+/// Returns `None` for a plain comment or code line. This is the single primitive every
+/// option parser keys off (`cell_option`, `strip_cell_options`, `validate`).
+pub(crate) fn option_directive(line: &str) -> Option<&str> {
+    let t = line.trim_start();
+    for marker in ["#", "//", "%%"] {
+        if let Some(rest) = t.strip_prefix(marker) {
+            return rest.trim_start_matches([' ', '\t']).strip_prefix('|');
+        }
+    }
+    None
+}
+
 /// Read a leading `#| key: value` cell option (returns the unquoted value).
 /// Only scans the contiguous leading option block, stopping at the first code
-/// line. Recognizes `#|` (most langs), `//|` (JS), and `%%|` (mermaid).
+/// line. See [`option_directive`] for the recognized prefixes.
 fn cell_option<'a>(literal: &'a str, key: &str) -> Option<&'a str> {
     for line in literal.lines() {
-        let t = line.trim_start();
-        let Some(opt) = t
-            .strip_prefix("#|")
-            .or_else(|| t.strip_prefix("//|"))
-            .or_else(|| t.strip_prefix("%%|"))
-        else {
+        let Some(opt) = option_directive(line) else {
             break;
         };
         if let Some((k, v)) = opt.split_once(':')
@@ -1705,13 +1716,12 @@ fn code_fold(literal: &str) -> Option<(bool, String)> {
 }
 
 /// Drop leading cell-option lines (`#|` for most languages, `//|` for JS,
-/// `%%|` for mermaid).
+/// `%%|` for mermaid; see [`option_directive`] for the spaced forms too).
 fn strip_cell_options(literal: &str) -> String {
     let mut body = String::new();
     let mut skipping = true;
     for line in literal.lines() {
-        let t = line.trim_start();
-        if skipping && (t.starts_with("#|") || t.starts_with("//|") || t.starts_with("%%|")) {
+        if skipping && option_directive(line).is_some() {
             continue;
         }
         skipping = false;
