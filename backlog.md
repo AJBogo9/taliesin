@@ -62,13 +62,11 @@ install && npm run build`, then F5 and run the `editor/vscode/README.md` checkli
   bare `<figcaption>` where Quarto uses `<figure class="quarto-float-lst">`. Minor/semantic.
 
 ### Library-outsourcing audit follow-ups (2026-06-25; method: multi-agent sweep of every from-scratch subsystem vs mature OSS, each candidate adversarially verified against the invariants)
-- [ ] **Modal focus-trap a11y fix (small; hand-rolled, NOT the lib).** Lightbox
-  (`#qmd-lightbox`), reader menu (`.qmd-rmenu-panel`), and the deck control menus handle Esc but
-  don't trap Tab focus or set `aria-modal`, so keyboard/SR users can Tab into the page behind an
-  open modal. Fix by hand: `aria-modal="true"` + a ~20-line Tab/Shift+Tab wrap handler (the
-  reader menu already restores launcher focus on close; replicate for the lightbox). Reject the
-  `focus-trap` npm dep — it pulls in `tabbable` (two vendored files) to save ~20 lines, against
-  the vendor-single-audited-files discipline.
+- [ ] **Deck control-menu focus trap (small, deferred).** The lightbox + Cmd-K palette got the
+  shared `qmdFocusTrap` (`7febc97`, hand-rolled, no npm dep); the deck control menus (`deck.js`)
+  weren't covered. First check whether they are truly modal (vs. simple toggles) before trapping.
+  The reader menu is intentionally a light-dismiss popover (not trapped — `aria-modal` would
+  misrepresent it). Reject the `focus-trap` npm dep.
 - [ ] **Correct the `serde_yaml` fallback target (watch-item).** The `Cargo.toml` workspace
   comment names `serde_yml` as the fallback, but it carries **RUSTSEC-2025-0068 (unsound +
   unmaintained)**; `serde_norway` is 1+ yr stale. The maintained continuation is
