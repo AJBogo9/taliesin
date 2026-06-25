@@ -5,7 +5,72 @@
     "author": {},
     "body-end": {},
     "body-start": {},
-    "chapters": {},
+    "chapters": {
+      "items": {
+        "oneOf": [
+          {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "file": {
+                    "type": "string"
+                  },
+                  "text": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "chapters": {
+                "items": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "file": {
+                          "type": "string"
+                        },
+                        "text": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "file"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              "part": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "part"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "type": "array"
+    },
     "css": {},
     "description": {},
     "favicon": {},

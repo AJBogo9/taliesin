@@ -31,17 +31,22 @@ impl Book {
             .collect()
     }
 }
-/// Resolve `book: chapters:` into the sidebar navigation: walk the ordered list
-/// (chapter file names + `{ part, chapters }` groups), assigning each chapter a
-/// running number (an unnumbered chapter — the `index.qmd` preface or one whose
-/// H1 carries `.unnumbered`/`{-}` — is skipped in the count, like Quarto).
+/// Resolve `book: chapters:` into the sidebar navigation: walk the ordered list,
+/// assigning each chapter a running number (an unnumbered chapter — the `index.qmd`
+/// preface or one whose H1 carries `.unnumbered`/`{-}` — is skipped in the count,
+/// like Quarto). Each list entry is one of three shapes: a bare path string
+/// (`- intro.qmd`), a `{ file:, text: }` chapter with a label override, or a
+/// `{ part:, chapters: }` group whose inner list takes the same string-or-`{file,text}`
+/// chapter shapes.
 pub(super) fn build_book(root: &Path, config: &SiteConfig) -> Book {
     let mut entries = Vec::new();
     let mut num = 0u32;
     for ch in &config.chapters {
-        if let Some(file) = ch.as_str() {
-            push_chapter(root, file, &mut entries, &mut num);
-        } else if let Some(map) = ch.as_mapping() {
+        if push_chapter_entry(root, ch, &mut entries, &mut num) {
+            continue;
+        }
+        // Not a chapter ⇒ a `{ part:, chapters: }` group header + its inner chapters.
+        if let Some(map) = ch.as_mapping() {
             let part = map
                 .get("part")
                 .and_then(|v| v.as_str())
@@ -52,8 +57,8 @@ pub(super) fn build_book(root: &Path, config: &SiteConfig) -> Book {
                 ..Default::default()
             });
             if let Some(seq) = map.get("chapters").and_then(|v| v.as_sequence()) {
-                for c in seq.iter().filter_map(|v| v.as_str()) {
-                    push_chapter(root, c, &mut entries, &mut num);
+                for c in seq {
+                    push_chapter_entry(root, c, &mut entries, &mut num);
                 }
             }
         }
@@ -63,12 +68,46 @@ pub(super) fn build_book(root: &Path, config: &SiteConfig) -> Book {
         entries,
     }
 }
+/// Push one chapter from a list entry that is either a bare path string or a
+/// `{ file:, text: }` mapping (the `text:` overrides the sidebar label). Returns
+/// `true` when it consumed `value` as a chapter, `false` if it is some other shape
+/// (e.g. a `{ part: }` group) the caller must handle.
+fn push_chapter_entry(
+    root: &Path,
+    value: &serde_yaml::Value,
+    entries: &mut Vec<BookEntry>,
+    num: &mut u32,
+) -> bool {
+    if let Some(file) = value.as_str() {
+        push_chapter(root, file, None, entries, num);
+        return true;
+    }
+    if let Some(map) = value.as_mapping() {
+        if let Some(file) = map.get("file").and_then(|v| v.as_str()) {
+            let label = map.get("text").and_then(|v| v.as_str());
+            push_chapter(root, file, label, entries, num);
+            return true;
+        }
+    }
+    false
+}
 /// Append one chapter entry, bumping the chapter counter unless it is unnumbered.
-fn push_chapter(root: &Path, file: &str, entries: &mut Vec<BookEntry>, num: &mut u32) {
+/// `label` (from a `{ file:, text: }` entry) overrides the sidebar label; without
+/// it the label falls back to the first `# H1`, then front-matter `title:`, then
+/// the file stem.
+fn push_chapter(
+    root: &Path,
+    file: &str,
+    label: Option<&str>,
+    entries: &mut Vec<BookEntry>,
+    num: &mut u32,
+) {
     let input = root.join(file);
     let rel = file.to_string();
     let (h1, unnumbered) = chapter_heading(&input);
-    let title = h1
+    let title = label
+        .map(str::to_string)
+        .or(h1)
         .or_else(|| parse_front_matter(&input).title)
         .unwrap_or_else(|| rel.trim_end_matches(".qmd").to_string());
     // The `index.qmd` preface is unnumbered by convention, like Quarto.

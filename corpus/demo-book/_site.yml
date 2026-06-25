@@ -7,6 +7,8 @@ chapters:            # presence makes this a book — no project: type: needed
   - intro.qmd
   - part: "Core"
     chapters:
-      - methods.qmd
+      - file: methods.qmd   # `{ file:, text: }` overrides the sidebar label
+        text: "Methodology"
       - results.qmd
-  - summary.qmd
+  - file: summary.qmd       # a top-level chapter can use the override form too
+    text: "Wrap-up"

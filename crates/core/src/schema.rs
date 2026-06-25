@@ -85,12 +85,44 @@ mod generate {
     }
 
     pub fn site_config_schema() -> Value {
+        // A book chapter is either a bare path (`- intro.qmd`) or a `{ file:, text: }`
+        // mapping whose `text:` overrides the sidebar label.
+        let chapter = json!({
+            "oneOf": [
+                { "type": "string" },
+                {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["file"],
+                    "properties": { "file": { "type": "string" }, "text": { "type": "string" } },
+                },
+            ]
+        });
+        // `chapters:` is a list of chapters and/or `{ part:, chapters: }` group headers
+        // (each group's inner list takes the same chapter shapes).
+        let chapters = json!({
+            "type": "array",
+            "items": {
+                "oneOf": [
+                    chapter.clone(),
+                    {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["part"],
+                        "properties": {
+                            "part": { "type": "string" },
+                            "chapters": { "type": "array", "items": chapter },
+                        },
+                    },
+                ]
+            }
+        });
         json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "title": "qmd-fast _site.yml",
             "type": "object",
             "additionalProperties": false,
-            "properties": properties(NATIVE_KEYS, &[("toc", boolean())]),
+            "properties": properties(NATIVE_KEYS, &[("toc", boolean()), ("chapters", chapters)]),
         })
     }
 

@@ -511,7 +511,9 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
     assert_eq!(book.title.as_deref(), Some("A Short Demo Book"));
 
     // The sidebar order: Preface (unnumbered), Introduction (1), the "Core" part
-    // header, Methods (2), Results (3), Summary (4).
+    // header, Methodology (2), Results (3), Wrap-up (4). "Methodology" and "Wrap-up"
+    // come from per-chapter `{ file:, text: }` label overrides in `_site.yml`
+    // (Methods/Summary are the chapters' own H1s, which the override replaces).
     let chapters: Vec<(&str, Option<u32>)> = book
         .entries
         .iter()
@@ -523,11 +525,11 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
         vec![
             ("Preface", None),
             ("Introduction", Some(1)),
-            ("Methods", Some(2)),
+            ("Methodology", Some(2)),
             ("Results", Some(3)),
-            ("Summary", Some(4)),
+            ("Wrap-up", Some(4)),
         ],
-        "chapter order + numbering (preface unnumbered)"
+        "chapter order + numbering with per-chapter label overrides (preface unnumbered)"
     );
     assert!(
         book.entries
