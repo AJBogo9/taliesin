@@ -62,16 +62,6 @@ install && npm run build`, then F5 and run the `editor/vscode/README.md` checkli
   bare `<figcaption>` where Quarto uses `<figure class="quarto-float-lst">`. Minor/semantic.
 
 ### Library-outsourcing audit follow-ups (2026-06-25; method: multi-agent sweep of every from-scratch subsystem vs mature OSS, each candidate adversarially verified against the invariants)
-- [ ] **MiniSearch for Cmd-K relevance (medium).** The matcher in `web-client/search.js` is a
-  single literal `indexOf` (no multi-term/prefix/fuzzy: "block diff" matches nothing unless
-  contiguous; a typo never matches). Vendor MiniSearch (~7KB gz, zero deps, offline UMD like
-  d3/Plot/mermaid) and build the index client-side over the existing `{t,b}` entries
-  (title-boosted); server `search.rs` / `search.json` format stays byte-identical. Caveat that
-  makes it more than a 40-line swap: rework `snippet()`/`highlight()` for token spans (fuzzy
-  hits won't substring-match, so the current `indexOf`-based `<mark>` would render nothing),
-  rebuild the single-doc index per `open()`, +7KB inlines into every TOC page, and the ranking
-  change has no corpus regression net (browser-verify). *The one clear quality win the audit
-  found — adopt-with-caveats.*
 - [ ] **Modal focus-trap a11y fix (small; hand-rolled, NOT the lib).** Lightbox
   (`#qmd-lightbox`), reader menu (`.qmd-rmenu-panel`), and the deck control menus handle Esc but
   don't trap Tab focus or set `aria-modal`, so keyboard/SR users can Tab into the page behind an
