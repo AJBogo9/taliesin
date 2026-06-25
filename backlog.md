@@ -61,6 +61,52 @@ install && npm run build`, then F5 and run the `editor/vscode/README.md` checkli
 - [ ] **Captioned code listing isn't a `<figure>`.** qmd-fast emits `div.qmd-listing` with a
   bare `<figcaption>` where Quarto uses `<figure class="quarto-float-lst">`. Minor/semantic.
 
+### Library-outsourcing audit follow-ups (2026-06-25; method: multi-agent sweep of every from-scratch subsystem vs mature OSS, each candidate adversarially verified against the invariants)
+- [ ] **MiniSearch for Cmd-K relevance (medium).** The matcher in `web-client/search.js` is a
+  single literal `indexOf` (no multi-term/prefix/fuzzy: "block diff" matches nothing unless
+  contiguous; a typo never matches). Vendor MiniSearch (~7KB gz, zero deps, offline UMD like
+  d3/Plot/mermaid) and build the index client-side over the existing `{t,b}` entries
+  (title-boosted); server `search.rs` / `search.json` format stays byte-identical. Caveat that
+  makes it more than a 40-line swap: rework `snippet()`/`highlight()` for token spans (fuzzy
+  hits won't substring-match, so the current `indexOf`-based `<mark>` would render nothing),
+  rebuild the single-doc index per `open()`, +7KB inlines into every TOC page, and the ranking
+  change has no corpus regression net (browser-verify). *The one clear quality win the audit
+  found — adopt-with-caveats.*
+- [ ] **Modal focus-trap a11y fix (small; hand-rolled, NOT the lib).** Lightbox
+  (`#qmd-lightbox`), reader menu (`.qmd-rmenu-panel`), and the deck control menus handle Esc but
+  don't trap Tab focus or set `aria-modal`, so keyboard/SR users can Tab into the page behind an
+  open modal. Fix by hand: `aria-modal="true"` + a ~20-line Tab/Shift+Tab wrap handler (the
+  reader menu already restores launcher focus on close; replicate for the lightbox). Reject the
+  `focus-trap` npm dep — it pulls in `tabbable` (two vendored files) to save ~20 lines, against
+  the vendor-single-audited-files discipline.
+- [ ] **Correct the `serde_yaml` fallback target (watch-item).** The `Cargo.toml` workspace
+  comment names `serde_yml` as the fallback, but it carries **RUSTSEC-2025-0068 (unsound +
+  unmaintained)**; `serde_norway` is 1+ yr stale. The maintained continuation is
+  **`serde_yaml_ng`** (v0.10). No urgency (input is trusted local config; 0.9 still builds). If
+  0.9 ever breaks against a future serde/edition, swap to `serde_yaml_ng`, gated on a test that
+  `Error::location().line()` still works (the only click-to-source-relevant API). Fix the stale
+  comment when touched.
+- [ ] **Dedup the FNV-1a hash (small footgun).** Byte-identical copies in `freeze.rs:49` +
+  `render/mod.rs:1458` that MUST stay identical (the block-id scheme == the cache-key scheme).
+  Pull into one shared helper. Do NOT swap the algorithm: seahash reintroduces cross-version
+  instability that would break content-hash block ids, and xxhash/blake3 solve a non-problem.
+- [ ] **Arg-parser unit tests (small).** `main.rs` hand-rolled arg dispatch is NOT test-covered
+  (existing tests cover asset-mirroring only). Keep the parser (clap rejected: no real burden,
+  fiddly to match the permissive flags-anywhere + `QMD_FAST_*` env-var ergonomics) but add tests
+  around the `[out.html]` positional vs `--out <dir>` dual meaning + the port parse.
+- Decided against (so they aren't re-litigated): **hayagriva**/**biblatex** (citations — mature
+  but large integration, heavy deps incl. the very serde_yaml 0.9 we're leaving, and zero corpus
+  demand: only IEEE is used, which the hand-roll already produces; revisit only for live
+  multi-CSL switching); **schemars** (reopens the schema↔validator drift already closed);
+  **jsonschema** (loses source-line diagnostics); **morphdom**/**idiomorph** (reverse the 83x
+  live-edit payload win + risk live-state loss; the diff is server-authoritative); **similar**/
+  **dissimilar** (give up the unique-block-id→LIS reduction); **clap**; **owo-colors**; **slug**
+  (transliterates non-ASCII → breaks anchors/`@sec-`); **html-escape** (breaks the
+  anti-double-escape contract); **lightningcss**/**palette** (no Rust color math — CSS uses native
+  `color-mix`); IntersectionObserver/scrollspy libs (can't do the dynamic activation line +
+  bottom-pinning); deck micro-helpers d3-interpolate/screenfull/hotkeys/hammer (each force an
+  offline bundle onto every deck for a few lines).
+
 ### Deck
 - [ ] **Mobile / touch (deeper).** Pinch/pan + touch gestures on the deck, and `{js}` widgets
   tuned for touch. (Hard to verify without a real device.)
