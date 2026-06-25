@@ -93,6 +93,7 @@ window.qmdEnhancers.register(qmdCopyButtons);
 window.qmdEnhancers.register(function () { qmdInitLightbox(); });
 window.qmdEnhancers.register(function () { qmdInitLinkPreview(); });
 window.qmdEnhancers.register(function () { qmdInitReaderPrefs(); });
+window.qmdEnhancers.register(function () { qmdInitReadingProgress(); });
 window.qmdEnhancers.register(qmdInitCategoryFilter);
 
 // Native category filter for `listing: { categories: true }`: the server emits a
@@ -505,5 +506,135 @@ function qmdInitReaderPrefs() {
 
   document.body.appendChild(btn);
   document.body.appendChild(panel);
+}
+
+// Reading progress + resume: a thin top progress bar tied to scroll, a "N min left"
+// estimate (prose only, code/math excluded), and a block-id-anchored resume position
+// (reader-local, exact, survives reflow). Reader-side + read-only: derives from the live
+// DOM and the reader's own localStorage; never writes the author's source. Skipped on
+// decks. Idempotent (document-level, builds once).
+function qmdInitReadingProgress() {
+  if (window.__qmdProgress) return;
+  if (document.querySelector('.qmd-deck')) return; // a slide deck has its own chrome
+  window.__qmdProgress = true;
+
+  // Top-level content blocks (a [data-block-id] not nested inside another block).
+  function contentBlocks() {
+    return [].slice.call(document.querySelectorAll('[data-block-id]')).filter(function (el) {
+      return !el.parentElement || !el.parentElement.closest('[data-block-id]');
+    });
+  }
+
+  // Prose word count (code + math excluded), computed once / on block-set change.
+  var totalMin = 1, counted = -1;
+  function countWords() {
+    var blocks = contentBlocks();
+    if (blocks.length === counted) return;
+    counted = blocks.length;
+    var words = 0;
+    blocks.forEach(function (el) {
+      var clone = el.cloneNode(true);
+      [].slice.call(clone.querySelectorAll('pre, code, .katex')).forEach(function (n) { n.remove(); });
+      var m = (clone.textContent || '').match(/[^\s]+/g);
+      if (m) words += m.length;
+    });
+    totalMin = Math.max(1, Math.round(words / 200));
+  }
+
+  var bar = document.createElement('div');
+  bar.className = 'qmd-readbar';
+  bar.setAttribute('aria-hidden', 'true');
+  var fill = document.createElement('div');
+  fill.className = 'qmd-readbar-fill';
+  bar.appendChild(fill);
+  var time = document.createElement('div');
+  time.className = 'qmd-readbar-time';
+  time.setAttribute('aria-hidden', 'true');
+  time.hidden = true;
+  document.body.appendChild(bar);
+  document.body.appendChild(time);
+
+  function frac() {
+    var h = document.documentElement;
+    var max = (h.scrollHeight || document.body.scrollHeight) - window.innerHeight;
+    if (max <= 0) return 0;
+    // window.scrollY is 0 at the top; `|| h.scrollTop` would wrongly treat 0 as falsy.
+    var y = window.pageYOffset != null ? window.pageYOffset : h.scrollTop;
+    return Math.min(1, Math.max(0, y / max));
+  }
+  var ticking = false;
+  function render() {
+    ticking = false;
+    var f = frac();
+    fill.style.width = (f * 100).toFixed(2) + '%';
+    var left = Math.ceil(totalMin * (1 - f));
+    if (f > 0.985 || left <= 0) { time.hidden = true; }
+    else { time.hidden = false; time.textContent = left + ' min left'; }
+  }
+  function schedule() { if (!ticking) { ticking = true; requestAnimationFrame(render); } }
+
+  // Resume position (block-id anchored), reader-local, keyed by page path.
+  var KEY = 'qmd-pos:' + location.pathname;
+  function topBlockId() {
+    var blocks = contentBlocks();
+    for (var i = 0; i < blocks.length; i++) {
+      if (blocks[i].getBoundingClientRect().top >= -4) return blocks[i].getAttribute('data-block-id');
+    }
+    return blocks.length ? blocks[blocks.length - 1].getAttribute('data-block-id') : null;
+  }
+  var saveTimer = null;
+  function saveSoon() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(function () {
+      var f = frac(), id = topBlockId();
+      try {
+        if (f <= 0.02 || !id) localStorage.removeItem(KEY);
+        else localStorage.setItem(KEY, f.toFixed(3) + '|' + id);
+      } catch (e) {}
+    }, 500);
+  }
+
+  var resumeEl = null, resumeArmed = false;
+  function dismissResume() { if (resumeEl) { resumeEl.remove(); resumeEl = null; } }
+  function maybeShowResume() {
+    var raw = null;
+    try { raw = localStorage.getItem(KEY); } catch (e) {}
+    if (!raw) return;
+    var parts = raw.split('|'), f = parseFloat(parts[0]), id = parts[1];
+    if (!(f > 0.04) || !id) return;
+    var sel = '[data-block-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]';
+    var target = document.querySelector(sel);
+    if (!target || Math.abs(frac() - f) < 0.03) return; // missing or already roughly there
+    resumeEl = document.createElement('div');
+    resumeEl.className = 'qmd-resume';
+    var go = document.createElement('button');
+    go.type = 'button'; go.className = 'qmd-resume-go';
+    go.textContent = 'Resume reading · ' + Math.round(f * 100) + '% →';
+    go.addEventListener('click', function () {
+      target.scrollIntoView({ block: 'start', behavior: 'smooth' }); dismissResume();
+    });
+    var x = document.createElement('button');
+    x.type = 'button'; x.className = 'qmd-resume-x';
+    x.setAttribute('aria-label', 'Dismiss'); x.textContent = '×';
+    x.addEventListener('click', dismissResume);
+    resumeEl.appendChild(go); resumeEl.appendChild(x);
+    document.body.appendChild(resumeEl);
+    resumeArmed = false;
+    setTimeout(function () { dismissResume(); }, 8000);
+  }
+
+  function onScroll() {
+    schedule();
+    saveSoon();
+    // Dismiss the resume pill on the reader's own scroll (not the first programmatic tick).
+    if (resumeEl) { if (resumeArmed) dismissResume(); else resumeArmed = true; }
+  }
+
+  countWords();
+  render();
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', schedule, { passive: true });
+  window.addEventListener('qmd:readerchange', schedule);
+  maybeShowResume();
 }
 

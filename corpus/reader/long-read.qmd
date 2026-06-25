@@ -1,0 +1,73 @@
+---
+title: "A longer read"
+---
+
+This page is deliberately long. It exists to be scrolled, so the reading-progress bar at the
+top fills as you move down, the "minutes left" estimate counts toward zero, and your position
+is remembered: close the tab partway through and a *Resume reading* pill brings you back to
+the exact block you left, anchored to that block's content hash rather than a raw scroll
+offset, so it survives a re-render or a change of window size.
+
+## On length
+
+A long document is not a failure of editing; sometimes the subject is large. What a long
+document owes its reader is orientation. A printed book gives it for free: the heft in your
+left hand versus your right tells you, without a word, how far you have come and how far is
+left. A web page gives you nothing. The scrollbar is a poor substitute, thin and easy to
+ignore, and it measures pixels, not ideas. A reader deep in a forty-minute chapter, with no
+sense of the end, reads differently than one who can see the shore.
+
+## On memory
+
+The second thing a long read owes its reader is memory. Reading is rarely done in one sitting.
+You stop to think, to eat, to sleep, and you come back. A tool that forgets where you were
+punishes the very act of returning, which is the act most worth encouraging. The browser's
+native scroll restoration is unreliable and coarse; it remembers a pixel offset that means
+nothing after the layout reflows on a different screen. Anchoring to a block's identity is
+exact, and it is the kind of thing qmd-fast can do that a plain web page cannot, because every
+block already carries a stable, content-derived id.
+
+## On estimates
+
+People ask "how long will this take?" before they ask "is this any good?". An honest estimate,
+even a rough one, is a kindness: it lets the reader choose the right moment. Reading speed
+varies, so the number is approximate by nature, and that is fine. Counting the prose and
+ignoring the code and the equations gives a figure close enough to be useful and never
+pretends to a precision it does not have.
+
+## On restraint
+
+The danger with reading aids is that they crowd the page. A progress bar that pulses, a
+counter that jumps, a pill that nags: each one steals attention from the words, which is the
+opposite of the point. The right amount of chrome is the least amount that still answers the
+reader's two quiet questions, *where am I* and *can I come back*, and then gets out of the
+way. A thin bar, a small number, a pill that appears once and then dismisses itself.
+
+## A middle section
+
+Here is more prose so the page is genuinely long. The measure of a reading surface is not how
+much it can show but how little it asks. Every control is a small tax on attention. The ones
+worth keeping are the ones a reader would miss if they were gone, and would not think about
+while they were there. Orientation and memory pass that test. They are invisible until needed
+and obvious the moment they are.
+
+## Another section
+
+The same logic that makes the live editor fast, a stable block model with content-hash ids,
+is what makes the reader's position durable. The architecture that was built for the author
+pays the reader too. That is the recurring shape of qmd-fast's best features: one structural
+idea, the identified block, cashed in two directions at once.
+
+## On finishing
+
+A reader who reaches the end of a long piece has given you something scarce, their sustained
+attention, and the least you can do is make the journey legible while it happens. By the time
+these words are on screen the progress bar should be near full and the estimate near zero. The
+end of a document is a small event worth marking quietly, not with confetti, just with the
+honest absence of any more bar to fill.
+
+## The end
+
+There is nothing after this heading except the satisfaction of having arrived. If your
+position was saved on the way down, reloading this page should offer to bring you back to
+wherever you were, not here.
