@@ -14,7 +14,7 @@ corpus document added in the same change, so scope can grow deliberately toward 
 than Quarto in web-native capability" without ever outrunning the test net. **"Wider"
 means richer browser behavior in a live HTML view, not new output formats, and never at
 the cost of the load-bearing invariants or the Do-NOT-touch discipline.** The active
-roadmap is `BEYOND-QUARTO.md` (successor to the completed `DROP-QUARTO.md`); the prior
+roadmap is `notes/BEYOND-QUARTO.md` (successor to the completed `notes/DROP-QUARTO.md`); the prior
 "the corpus is the spec / not a general Quarto replacement" framing is superseded by it.
 
 **The `.qmd` file is the single editing surface; the browser is a read-only view.**

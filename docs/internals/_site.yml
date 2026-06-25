@@ -4,6 +4,7 @@ toc: true
 
 chapters:
   - index.qmd
+  - repository.qmd
   - architecture.qmd
   - rendering.qmd
   - offline-theming.qmd

@@ -83,6 +83,8 @@ plt.show()
 
 The chapters build on each other, roughly from the outside in:
 
+- **[The repository](repository.qmd)** is the lay of the land: what every top-level
+  directory is for, so you know where to look before opening a file.
 - **[Architecture](architecture.qmd)** is the map: the crates, the data flow, and
   what happens on a save.
 - **[The rendering pipeline](rendering.qmd)** follows a `.qmd` from raw text to a

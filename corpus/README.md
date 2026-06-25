@@ -62,4 +62,4 @@ cells). The remaining `#[ignore]`d tests encode the website-scope `listing:`/
 
 Live `{js}` cells need a real web server (a cell's relative `import()` is blocked over
 `file://`), so they are verified by `serve` + browser rather than a unit test; see
-`backlog.md` for known follow-ups.
+`notes/backlog.md` for known follow-ups.
