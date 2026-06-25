@@ -113,6 +113,20 @@
     font: .78rem/1.4 var(--qmd-font-mono); color: var(--qmd-fg); background: var(--qmd-code-bg);
     border: 1px solid var(--qmd-border); border-radius: 7px; padding: .5rem; resize: vertical; }
   .qmd-hlx-out[hidden] { display: none; }
+
+  /* Reader bookmarks: the hover star toggle + a persistent margin star on a bookmarked
+     heading (qmdInitBookmarks). */
+  .qmd-bm-toggle { position: absolute; z-index: 2147481400;
+    width: 1.7rem; height: 1.7rem; display: flex; align-items: center; justify-content: center;
+    padding: 0; border: 0; border-radius: 6px; background: transparent; cursor: pointer;
+    color: var(--qmd-muted); font-size: 1.05rem; line-height: 1; }
+  .qmd-bm-toggle:hover { color: var(--qmd-accent); background: var(--qmd-code-bg); }
+  .qmd-bm-toggle[aria-pressed="true"] { color: var(--qmd-accent); }
+  .qmd-bm-toggle[hidden] { display: none; }
+  .qmd-bookmarked { position: relative; }
+  .qmd-bookmarked::before { content: "\2605"; position: absolute; left: -1.15em; top: .05em;
+    color: var(--qmd-accent); font-size: .72em; line-height: inherit; pointer-events: none; }
+  @media print { .qmd-bm-toggle { display: none !important; } }
   body { max-width: var(--qmd-maxw); margin: 2rem auto; padding: 0 1rem;
          font: var(--qmd-font-body); color: var(--qmd-fg); background: var(--qmd-bg);
          overflow-wrap: break-word;
