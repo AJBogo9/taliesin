@@ -55,6 +55,7 @@
   }
 
   var overlay, input, list;
+  var searchRelease = null; // active focus-trap release while the palette is open
   var index = [];
   var matches = [];
   var sel = 0;
@@ -172,11 +173,14 @@
       index = buildIndex();
       render(input.value);
     });
-    input.focus();
+    // Trap focus in the palette (focus the input); fall back to a bare focus if absent.
+    if (window.qmdFocusTrap) searchRelease = window.qmdFocusTrap(overlay, input);
+    else input.focus();
   }
 
   function close() {
     if (overlay) overlay.hidden = true;
+    if (searchRelease) { searchRelease(); searchRelease = null; }
   }
 
   function isOpen() {

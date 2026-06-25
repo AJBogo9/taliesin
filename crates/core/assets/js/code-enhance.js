@@ -77,6 +77,39 @@ function qmdBuildTextFragmentUrl(rawText) {
   return u.href + '#' + id + ':~:' + directive;
 }
 
+// Shared modal focus trap: while a modal is open, confine Tab/Shift+Tab to `container`, mark it
+// aria-modal, and (on release) restore focus to the opener IF focus is still inside (a keyboard
+// or programmatic close) — not when the user clicked elsewhere. Used by the lightbox + reader
+// menu here and, via this global, by the Cmd-K palette in search.js. Returns release().
+window.qmdFocusTrap = window.qmdFocusTrap || function (container, initial) {
+  var prev = document.activeElement;
+  var SEL = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+  container.setAttribute('aria-modal', 'true');
+  function focusables() {
+    return [].slice.call(container.querySelectorAll(SEL)).filter(function (el) {
+      return el.offsetWidth > 0 || el.offsetHeight > 0 || el === document.activeElement;
+    });
+  }
+  function onKey(e) {
+    if (e.key !== 'Tab') return;
+    var f = focusables();
+    if (!f.length) { e.preventDefault(); return; }
+    var first = f[0], last = f[f.length - 1], a = document.activeElement;
+    if (!container.contains(a)) { e.preventDefault(); first.focus(); return; }
+    if (e.shiftKey) { if (a === first) { e.preventDefault(); last.focus(); } }
+    else if (a === last) { e.preventDefault(); first.focus(); }
+  }
+  document.addEventListener('keydown', onKey, true);
+  try { (initial || focusables()[0] || container).focus(); } catch (e) {}
+  return function () {
+    document.removeEventListener('keydown', onKey, true);
+    container.removeAttribute('aria-modal');
+    if (container.contains(document.activeElement) && prev && prev.focus) {
+      try { prev.focus(); } catch (e) {}
+    }
+  };
+};
+
 // --- Built-in enhancers (registered through the same public API) -------------
 
 // Code blocks are highlighted server-side; the client only adds a copy button.
@@ -227,6 +260,14 @@ function qmdInitLightbox() {
   var lbSvg = box.querySelector('.qmd-lb-svg');
   var lbCap = box.querySelector('.qmd-lb-cap');
   var gallery = [], gIdx = -1; // the page's zoomable images, for ←/→ navigation
+  var lbRelease = null;        // active focus-trap release while the lightbox is open
+
+  // Open the box (add the class, lock scroll, trap focus on the close button once).
+  function markOpen() {
+    box.classList.add('open');
+    document.documentElement.style.overflow = 'hidden';
+    if (!lbRelease && window.qmdFocusTrap) lbRelease = window.qmdFocusTrap(box, box.querySelector('.qmd-lb-close'));
+  }
 
   function hideAll() {
     lbImg.style.display = 'none'; lbImg.removeAttribute('src');
@@ -249,8 +290,7 @@ function qmdInitLightbox() {
     var cap = fc ? fc.textContent : (img.alt || '');
     if (gallery.length > 1) cap = (cap ? cap + '  ' : '') + '(' + (gIdx + 1) + ' / ' + gallery.length + ')';
     lbCap.textContent = cap;
-    box.classList.add('open');
-    document.documentElement.style.overflow = 'hidden'; // lock scroll behind the lightbox
+    markOpen();
   }
   // Open the clicked image, building the page's gallery so ←/→ can step between images.
   function openImg(srcImg) {
@@ -272,8 +312,7 @@ function qmdInitLightbox() {
     var fig = pre.closest('figure');
     var fc = fig && fig.querySelector('figcaption');
     lbCap.textContent = fc ? fc.textContent : '';
-    box.classList.add('open');
-    document.documentElement.style.overflow = 'hidden'; // lock scroll behind the lightbox
+    markOpen();
   }
   // A `{{< video >}}` screencast: play an enlarged copy (the clicked element is the
   // theme-visible variant; the hidden one is display:none and not clickable).
@@ -285,14 +324,14 @@ function qmdInitLightbox() {
     var fig = vid.closest('figure');
     var fc = fig && fig.querySelector('figcaption');
     lbCap.textContent = fc ? fc.textContent : '';
-    box.classList.add('open');
-    document.documentElement.style.overflow = 'hidden'; // lock scroll behind the lightbox
+    markOpen();
   }
   function close() {
     box.classList.remove('open');
     document.documentElement.style.overflow = ''; // restore page scroll
     hideAll();
     gallery = []; gIdx = -1;
+    if (lbRelease) { lbRelease(); lbRelease = null; }
   }
 
   var unmodified = function (e) {
@@ -456,6 +495,10 @@ function qmdInitReaderMenu() {
   document.body.appendChild(launcher);
   document.body.appendChild(panel);
 
+  // The reader menu is a light-dismiss POPOVER, not a modal (it doesn't cover/inert the page),
+  // so it deliberately does NOT use qmdFocusTrap: aria-modal would mislead a screen reader, and
+  // trapping/focus-restore fights the jump buttons + outside-click dismissal. aria-expanded on
+  // the launcher + Esc-to-close (returning focus to the launcher) + click-away is the right shape.
   var sections = [];
   function openMenu() {
     panel.hidden = false; launcher.setAttribute('aria-expanded', 'true');
