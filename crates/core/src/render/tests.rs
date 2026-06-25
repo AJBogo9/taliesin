@@ -1245,6 +1245,15 @@ fn assembled_page_ships_reading_progress() {
 }
 
 #[test]
+fn assembled_page_ships_reader_highlights() {
+    let page = render_html_page("# Title\n\nProse a reader can highlight.\n", "doc");
+    assert!(
+        page.contains("qmdInitHighlights"),
+        "reader-highlights enhancer not shipped in the assembled page"
+    );
+}
+
+#[test]
 fn toc_page_lists_headings_with_anchor_links() {
     let page = render_html_page(
         "---\ntitle: Doc\nformat:\n  html:\n    toc: true\n---\n\n# A\n\ntext\n\n## B\n",

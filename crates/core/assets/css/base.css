@@ -79,6 +79,20 @@
     padding: 0 .6rem; }
   .qmd-resume-x:hover { color: var(--qmd-fg); }
   @media print { .qmd-readbar, .qmd-readbar-time, .qmd-resume { display: none !important; } }
+
+  /* Reader highlights: theme-aware mark colour + the highlight/remove action button. */
+  :root { --qmd-userhl-bg: rgba(255, 213, 0, .40); }
+  html[data-theme="dark"] { --qmd-userhl-bg: rgba(214, 178, 60, .34); }
+  html[data-theme="sepia"] { --qmd-userhl-bg: rgba(176, 120, 32, .32); }
+  mark.qmd-userhl { background: var(--qmd-userhl-bg); color: inherit; border-radius: 2px;
+    padding: 0 .03em; cursor: pointer;
+    -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+  .qmd-hl-action { position: fixed; z-index: 2147481600;
+    font: 600 .78rem/1 var(--qmd-font-head); background: var(--qmd-fg); color: var(--qmd-bg);
+    border: 0; border-radius: 7px; padding: .42rem .7rem; cursor: pointer;
+    box-shadow: 0 3px 14px var(--qmd-edge-shadow); }
+  .qmd-hl-action[hidden] { display: none; }
+  @media print { .qmd-hl-action { display: none !important; } }
   body { max-width: var(--qmd-maxw); margin: 2rem auto; padding: 0 1rem;
          font: var(--qmd-font-body); color: var(--qmd-fg); background: var(--qmd-bg);
          overflow-wrap: break-word;

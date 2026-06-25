@@ -94,6 +94,7 @@ window.qmdEnhancers.register(function () { qmdInitLightbox(); });
 window.qmdEnhancers.register(function () { qmdInitLinkPreview(); });
 window.qmdEnhancers.register(function () { qmdInitReaderPrefs(); });
 window.qmdEnhancers.register(function () { qmdInitReadingProgress(); });
+window.qmdEnhancers.register(function () { qmdInitHighlights(); });
 window.qmdEnhancers.register(qmdInitCategoryFilter);
 
 // Native category filter for `listing: { categories: true }`: the server emits a
@@ -636,5 +637,150 @@ function qmdInitReadingProgress() {
   window.addEventListener('resize', schedule, { passive: true });
   window.addEventListener('qmd:readerchange', schedule);
   maybeShowResume();
+}
+
+// Reader highlights: select prose, click "Highlight", and the passage is marked. The
+// highlight is the reader's own, stored in their localStorage anchored to the block's
+// content-hash data-block-id + character offsets within the block's HIGHLIGHTABLE text
+// (text nodes, skipping .katex/pre/code so KaTeX's duplicated MathML text and code's
+// syntax spans don't corrupt offsets). Re-applied on every mount; exact and survives a
+// re-render. Reader-side + read-only: never writes the author's source, never changes a
+// block id/sourcepos. Skipped on decks.
+function qmdInitHighlights() {
+  if (document.querySelector('.qmd-deck')) return; // a slide deck has its own chrome
+  var KEY = 'qmd-hl:' + location.pathname;
+
+  function load() { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { return []; } }
+  function save(list) { try { localStorage.setItem(KEY, JSON.stringify(list)); } catch (e) {} }
+
+  // A text node is non-highlightable if it sits inside math/code within the block.
+  function skip(node, block) {
+    var p = node.parentNode;
+    while (p && p !== block) {
+      if (p.nodeType === 1 && (p.tagName === 'PRE' || p.tagName === 'CODE' ||
+          (p.classList && p.classList.contains('katex')))) return true;
+      p = p.parentNode;
+    }
+    return false;
+  }
+  function textNodes(block) {
+    var out = [], w = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, null), n;
+    while ((n = w.nextNode())) { if (!skip(n, block)) out.push(n); }
+    return out;
+  }
+  function blockOf(node) {
+    var el = node.nodeType === 1 ? node : node.parentNode;
+    return el && el.closest ? el.closest('[data-block-id]') : null;
+  }
+  // Character offset of (node, nodeOffset) within the block's highlightable text, or -1.
+  function offsetOf(block, node, nodeOffset) {
+    var nodes = textNodes(block), pos = 0;
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i] === node) return pos + nodeOffset;
+      pos += nodes[i].nodeValue.length;
+    }
+    return -1;
+  }
+  // Wrap [s, e) of the block's highlightable text in <mark> elements (one per text node).
+  function applyOne(block, s, e, tag) {
+    if (e <= s) return;
+    var nodes = textNodes(block), pos = 0, segs = [], i;
+    for (i = 0; i < nodes.length; i++) {
+      var node = nodes[i], L = node.nodeValue.length, ns = pos, ne = pos + L;
+      var os = Math.max(s, ns), oe = Math.min(e, ne);
+      if (os < oe) segs.push({ node: node, ls: os - ns, le: oe - ns });
+      pos = ne;
+    }
+    segs.forEach(function (seg) {
+      var t = seg.node;
+      if (seg.ls > 0) t = t.splitText(seg.ls);
+      if (seg.le - seg.ls < t.nodeValue.length) t.splitText(seg.le - seg.ls);
+      var mark = document.createElement('mark');
+      mark.className = 'qmd-userhl';
+      mark.setAttribute('data-hl', tag);
+      t.parentNode.insertBefore(mark, t);
+      mark.appendChild(t);
+    });
+  }
+  function unwrapAll() {
+    var marks = [].slice.call(document.querySelectorAll('mark.qmd-userhl')), blocks = [];
+    marks.forEach(function (m) {
+      var b = m.closest('[data-block-id]'); if (b && blocks.indexOf(b) < 0) blocks.push(b);
+      m.replaceWith(document.createTextNode(m.textContent));
+    });
+    blocks.forEach(function (b) { b.normalize(); });
+  }
+  function applyAll() {
+    unwrapAll();
+    load().forEach(function (h) {
+      var sel = '[data-block-id="' + (window.CSS && CSS.escape ? CSS.escape(h.id) : h.id) + '"]';
+      var block = document.querySelector(sel);
+      if (block) applyOne(block, h.s, h.e, h.id + ':' + h.s + ':' + h.e);
+    });
+  }
+
+  if (!window.__qmdHL) {
+    window.__qmdHL = true;
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'qmd-hl-action';
+    btn.hidden = true;
+    document.body.appendChild(btn);
+    var mode = null, pending = null, pendingTag = null;
+
+    function hideBtn() { btn.hidden = true; mode = null; pending = null; pendingTag = null; }
+    function placeBtn(rect) {
+      btn.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 130)) + 'px';
+      btn.style.top = Math.max(8, rect.top - 38) + 'px';
+    }
+    function onSelect() {
+      var sel = window.getSelection();
+      if (!sel || sel.isCollapsed || sel.rangeCount === 0) { if (mode === 'add') hideBtn(); return; }
+      var r = sel.getRangeAt(0);
+      if (btn.contains(r.startContainer)) return;
+      var b1 = blockOf(r.startContainer), b2 = blockOf(r.endContainer);
+      if (!b1 || b1 !== b2 || skip(r.startContainer, b1) || skip(r.endContainer, b1)) {
+        if (mode === 'add') hideBtn(); return;
+      }
+      var s = offsetOf(b1, r.startContainer, r.startOffset), e = offsetOf(b1, r.endContainer, r.endOffset);
+      if (s < 0 || e < 0 || e <= s) { if (mode === 'add') hideBtn(); return; }
+      mode = 'add'; pending = { id: b1.getAttribute('data-block-id'), s: s, e: e }; pendingTag = null;
+      btn.textContent = 'Highlight'; btn.hidden = false;
+      placeBtn(r.getBoundingClientRect());
+    }
+    btn.addEventListener('mousedown', function (e) { e.preventDefault(); }); // keep the selection
+    btn.addEventListener('click', function () {
+      if (mode === 'add' && pending) {
+        var list = load();
+        if (!list.some(function (h) { return h.id === pending.id && h.s === pending.s && h.e === pending.e; })) {
+          list.push(pending); save(list);
+        }
+        var sel = window.getSelection(); if (sel) sel.removeAllRanges();
+        applyAll();
+      } else if (mode === 'remove' && pendingTag) {
+        save(load().filter(function (h) { return (h.id + ':' + h.s + ':' + h.e) !== pendingTag; }));
+        applyAll();
+      }
+      hideBtn();
+    });
+    document.addEventListener('mouseup', function () { setTimeout(onSelect, 0); });
+    document.addEventListener('keyup', function (e) {
+      if (e.shiftKey || e.key === 'ArrowLeft' || e.key === 'ArrowRight') setTimeout(onSelect, 0);
+    });
+    document.addEventListener('click', function (e) {
+      var m = e.target.closest && e.target.closest('mark.qmd-userhl');
+      if (m) {
+        mode = 'remove'; pendingTag = m.getAttribute('data-hl'); pending = null;
+        btn.textContent = 'Remove highlight'; btn.hidden = false;
+        placeBtn(m.getBoundingClientRect());
+        e.stopPropagation();
+        return;
+      }
+      if (e.target !== btn && !btn.contains(e.target) && window.getSelection().isCollapsed) hideBtn();
+    });
+    window.addEventListener('scroll', function () { if (mode) hideBtn(); }, { passive: true });
+  }
+
+  applyAll();
 }
 
