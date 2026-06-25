@@ -4,13 +4,13 @@ title: "qmd-fast"
 
 # Why qmd-fast {.unnumbered}
 
-**A fast, single-purpose dev server that turns `.qmd` files into live HTML — blog
-posts, slide decks, books, and whole websites — with executable code blocks
+**A fast, single-purpose dev server that turns `.qmd` files into live HTML (blog
+posts, slide decks, books, and whole websites) with executable code blocks
 and an editing loop that updates the instant you save.**
 
 qmd-fast is built around one idea: writing technical content should feel as
 immediate as editing code. You save the file, and only the block you changed
-re-renders — your scroll position, your live 3D canvas, your warm kernel all stay
+re-renders: your scroll position, your live 3D canvas, your warm kernel all stay
 exactly as they were. No cold start, no full-page flash, no waiting.
 
 ## Three things it gets right
@@ -32,21 +32,21 @@ companion book, [Internals](../internals/), covers how it works inside.
 ## The 60-second tour {.unnumbered}
 
 The fastest way in: a short slide deck, embedded right here (it is itself a qmd-fast
-deck — use the arrow keys, or press <kbd>f</kbd> for fullscreen).
+deck: use the arrow keys, or press <kbd>f</kbd> for fullscreen).
 
 {{< embed tour.qmd title="qmd-fast: a 60-second tour" >}}
 
 ## Coming from Quarto or Jupyter?
 
 qmd-fast reads the same `.qmd` syntax you already know, but it makes a different
-trade: **do one thing — author HTML — and make the edit loop instant.**
+trade: **do one thing, author HTML, and make the edit loop instant.**
 
 - vs **Quarto**: no PDF/Word/format matrix and no `_metadata.yml` cascade, but a
   *live* block-incremental preview (Quarto re-renders the whole document), built-in
   click-to-source, and a warm kernel that never cold-starts on save. The config is
   a small subset of Quarto's, so your front matter mostly just works.
 - vs **Jupyter**: you write in plain text files (versionable, diffable) with real
-  prose, math, citations, and cross-references — not notebook JSON — while still
+  prose, math, citations, and cross-references (not notebook JSON) while still
   getting live, cached, in-place code execution.
 
 It is intentionally small: one author's HTML workflow, kept fast.
@@ -55,7 +55,7 @@ It is intentionally small: one author's HTML workflow, kept fast.
 
 qmd-fast builds from source with a Rust toolchain (`cargo build --release`); a
 `qmd-fast` launcher on your `PATH` then keeps the binary fresh and runs it from
-anywhere. To execute code cells you also point it at a Jupyter kernel — see
+anywhere. To execute code cells you also point it at a Jupyter kernel: see
 [Executable content](using/code.qmd#code-cells).
 
 ```sh
@@ -73,7 +73,7 @@ Open `http://127.0.0.1:4321`, edit, and watch a single block update in place wit
 your scroll preserved. Add `--host` to expose it on your LAN with a QR code and
 read the *live* preview on your phone.
 
-One block model drives every output — a page, a slide deck, or a book:
+One block model drives every output, a page, a slide deck, or a book:
 
 ```{mermaid}
 flowchart LR
@@ -88,10 +88,10 @@ flowchart LR
 ::: {.callout-note}
 ## Scope
 
-qmd-fast renders to **HTML only** — there is no PDF path and no format matrix. It
+qmd-fast renders to **HTML only**: there is no PDF path and no format matrix. It
 is a focused tool for one author's writing workflow, not a general Quarto
 replacement. The "spec" is a small corpus of real documents: when those render
-correctly, the tool is done. That focus is the point — it stays fast, small, and
+correctly, the tool is done. That focus is the point: it stays fast, small, and
 predictable.
 :::
 

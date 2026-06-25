@@ -3,7 +3,7 @@ title: "The live preview loop"
 ---
 
 The reason qmd-fast exists is the edit loop: change the source, and the preview
-reflects it *immediately* — without reloading the page, losing your scroll, or
+reflects it *immediately*, without reloading the page, losing your scroll, or
 resetting any live content already on screen.
 
 ## Incremental updates
@@ -25,8 +25,8 @@ In the browser preview, a plain click browses normally; **Alt-click (Option-clic
 on Mac) any block to open its exact source line in your editor** (including across
 `{{< include >}}`d files) via a `vscode://` deep link (VS Code is assumed for now). The client also speaks a `qmd-goto` / `qmd-cursor`
 `postMessage` protocol, so an embedded editor (a VS Code extension, say) can host
-the preview and add reverse cursor sync — highlighting the block under your
-cursor — without forking anything.
+the preview and add reverse cursor sync (highlighting the block under your
+cursor) without forking anything.
 
 ## Live-edit feedback
 

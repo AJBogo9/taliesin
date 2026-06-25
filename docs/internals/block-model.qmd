@@ -21,22 +21,22 @@ the rest of the system keys off:
   `{{< include >}}`d file, so cross-file source mapping still works.
 
 Source mapping, incremental re-render, and live-state preservation all build on
-this one model. A code cell's *output* is itself a block, keyed to the cell's id —
+this one model. A code cell's *output* is itself a block, keyed to the cell's id,
 so when an upstream cell re-runs, only the affected output blocks update.
 
 ## The diff (`diff.rs`)
 
 `diff_blocks(old, new)` turns two block lists into the minimal set of DOM ops the
 client applies. Because ids are content hashes, an unchanged block has the *same*
-id in both lists — so the algorithm is an **LCS over the id sequences**:
+id in both lists, so the algorithm is an **LCS over the id sequences**:
 
-1. The LCS finds the matched id pairs — the **stable anchors** that didn't move.
+1. The LCS finds the matched id pairs: the **stable anchors** that didn't move.
 2. The runs of blocks *between* consecutive anchors are the changed regions.
    `emit_gap` pairs them positionally: each pair → an **`Update`** (replace the old
    block's element with the new HTML); a surplus of old blocks → **`Remove`**; a
    surplus of new blocks → **`Insert`** after the preceding block's id (or at the
    start when there is none).
-3. A matched anchor is normally left untouched — *except* when its HTML differs,
+3. A matched anchor is normally left untouched, *except* when its HTML differs,
    which happens for **derived** blocks whose id isn't a pure content hash (a code
    cell's output block, keyed to the cell id, changes when an upstream cell
    re-runs). Those get an `Update`.
@@ -61,7 +61,7 @@ flowchart TD
 
 Calling this "an LCS" is a lie of omission. The textbook LCS is an `O(m·n)`
 dynamic-programming table, and on a save it would be reallocated on **every
-keystroke** — tens of megabytes once a document reaches a few thousand blocks.
+keystroke**: tens of megabytes once a document reaches a few thousand blocks.
 qmd-fast never builds it.
 
 The shortcut is that block ids are **unique** within a document. A common
@@ -74,8 +74,8 @@ therefore dominated by the handful of blocks that actually changed, not by the
 size of the document.
 
 The payoff: an unchanged block is **never touched**, so the browser keeps its
-scroll position and any live DOM state inside it — a running Three.js canvas, a
-`{js}` cell — survives a save untouched (goal #2).
+scroll position and any live DOM state inside it (a running Three.js canvas, a
+`{js}` cell) survives a save untouched (goal #2).
 
 Concretely: change `tau` and the diff emits exactly one op, an `Update` for the
 plot's block, while the heading and the paragraph, their content hashes unchanged,
@@ -134,7 +134,7 @@ Click-to-source (goal #1) rides entirely on the two source attributes:
   **translated through the include source map** (`includes.rs` records a
   `LineOrigin` for every expanded line → its origin file + line), so a block that
   came from an `{{< include >}}`d partial carries that file in `data-source-file`
-  and the *original* line — click-to-source works across files.
+  and the *original* line: click-to-source works across files.
 - **Reverse (editor → preview).** The client also speaks a `postMessage` protocol
   as the integration surface for an embedded editor (a VS Code extension hosting
   the preview): it posts `qmd-goto` up to the host (which reveals the source), and
@@ -147,5 +147,5 @@ Click-to-source (goal #1) rides entirely on the two source attributes:
 qmd-fast renders **one author's own `.qmd` files**, so the source is *trusted*:
 raw HTML in the body, `{=html}` blocks, `include-*` markup, and footer icon SVGs
 are passed through **unescaped** by design, and code cells are executed. None of
-this is a vulnerability under the intended use — but it does mean qmd-fast must
+this is a vulnerability under the intended use, but it does mean qmd-fast must
 not be pointed at a `.qmd` from an untrusted source.

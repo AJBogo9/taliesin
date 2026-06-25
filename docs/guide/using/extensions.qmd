@@ -51,7 +51,7 @@ unknown and its contributions are ignored.
 ## Declarative shortcodes
 
 A shortcode is a `{{< name args >}}` tag in the body that expands to an HTML
-template — perfect for embeds, with no JavaScript. Declare them at the top level
+template, perfect for embeds, with no JavaScript. Declare them at the top level
 as a name → template map:
 
 ```yaml
@@ -95,7 +95,7 @@ so a third-party enhancer is indistinguishable from core's.
 ## Diagnostics, not silence
 
 A typo'd extension name, a malformed `_extension.yml`, or an unknown manifest key
-is reported in the dev menu and the build log — so a broken extension never fails
+is reported in the dev menu and the build log, so a broken extension never fails
 silently.
 :::
 
@@ -117,11 +117,11 @@ so a whole book or site can share one `_extensions/` folder.
 ## See them in action
 
 This chapter activates `extensions: [embed, tabset]`, and both extensions below
-are *live* — the same `embed` and `tabset` folders sit under this book's
+are *live*: the same `embed` and `tabset` folders sit under this book's
 `_extensions/`.
 
 A `{{< youtube … >}}` shortcode from the **embed** extension expands to a
-responsive player (it plays once the page is *served* — some videos block the
+responsive player (it plays once the page is *served*: some videos block the
 `file://` referrer of a locally-opened build):
 
 {{< youtube jNQXAC9IVRw >}}

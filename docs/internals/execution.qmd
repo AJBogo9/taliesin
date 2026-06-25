@@ -10,7 +10,7 @@ Executing `{python}` / `{r}` cells is the most involved subsystem and lives
 entirely in the **server** (`crates/server`), in two layers: the **executor**
 (`exec.rs`) decides *what* to run and splices outputs back into the block list;
 the **kernel** (`kernel.rs`) is one warm Jupyter process it talks to over ZMQ.
-The core knows nothing about execution — it emits code cells as blocks, and the
+The core knows nothing about execution: it emits code cells as blocks, and the
 server fills in their outputs.
 
 ## The executor (`exec.rs`)
@@ -40,14 +40,14 @@ flowchart TB
 ```
 
 An output block's id is derived from its cell's id, so when a cell re-runs only
-*its* output block changes — the diff swaps it in place (see
+*its* output block changes: the diff swaps it in place (see
 [the block model](block-model.qmd)).
 
 ## What runs on a rebuild
 
 `compute_outputs` gives the document notebook semantics without re-running
-everything. Per language, it answers one question — which **contiguous range** of
-cells must actually execute — by sorting the cells into three zones
+everything. Per language, it answers one question, which **contiguous range** of
+cells must actually execute, by sorting the cells into three zones
 (@fig-exec-zones):
 
 ```{mermaid}
@@ -60,20 +60,20 @@ flowchart LR
 The boundaries come from one key per cell: a **cumulative content hash**
 (`freeze::cumulative_hashes`) that folds in the interpreter identity plus *every
 same-language cell's code up to and including this one*. Because it is cumulative,
-editing a cell moves its key **and every downstream key** — so an upstream edit
+editing a cell moves its key **and every downstream key**, so an upstream edit
 invalidates everything after it automatically, exactly the dependency a notebook
 needs. `plan` then finds the warm prefix the live kernel already holds and the run
 range; any suffix whose keys are already on disk is restored without running.
 
 So editing the last cell re-runs one cell; editing the first re-runs all. The
-kernel stays warm across all of it — no per-edit cold start (goal #3). A
+kernel stays warm across all of it: no per-edit cold start (goal #3). A
 `#| include: false` cell still runs (for its kernel-state side effects) but emits
 no output block; a `#| cache: false` cell always re-runs and is never cached.
 
 ## The persistent cache (`_freeze/`)
 
 The warm prefix only exists while a kernel is alive. To skip work *across* `build`
-runs and preview restarts — when the kernel holds nothing — outputs are also
+runs and preview restarts (when the kernel holds nothing), outputs are also
 written to `_freeze/<page>.json`, keyed by the **same** cumulative hash
 (`crates/server/src/freeze.rs`). On a **cold start** the in-memory prefix is empty,
 so if every cell's key hits the disk cache the whole document **replays from disk
@@ -88,12 +88,12 @@ build replays the plot from `_freeze/` without ever starting Python. Bump `tau` 
 That cumulative key is what makes this safe where Quarto's per-cell `cache` is
 fragile. It encodes *every byte of code the kernel ran to reach this output*, so:
 
-- **a stale hit is impossible by construction** — no mtime heuristics, nothing to
+- **a stale hit is impossible by construction**: no mtime heuristics, nothing to
   clear by hand; the content *is* the key;
 - a different interpreter (say a Python upgrade) busts every key, since it can't
   serve outputs the old one computed;
-- kernel **variable state is deliberately never cached** — that is the fragile part
-  of per-cell caching — which is why a cold start can only skip a cell when its
+- kernel **variable state is deliberately never cached** (that is the fragile part
+  of per-cell caching), which is why a cold start can only skip a cell when its
   *whole upstream* is unchanged, never an arbitrary one in the middle.
 
 What's stored is just the cell's output HTML (kernel images are already inline data
@@ -113,15 +113,15 @@ client connections. `start()`:
 2. spawns the interpreter (`python -m ipykernel` / `R -e IRkernel::main()`) with
    **stderr piped**,
 3. connects the `shell` + `iopub` ZMQ channels, and **races the connect against
-   the process exiting** — so a missing `ipykernel` fails in ~1s with its real
+   the process exiting**, so a missing `ipykernel` fails in ~1s with its real
    stderr ("No module named ipykernel") instead of hanging the 30s connect
    timeout and reporting something opaque,
 4. reads one iopub message to confirm the SUB subscription is live (sidestepping
    the ZMQ slow-joiner problem before the first run).
 
 `execute(code)` sends an `execute_request` on the shell channel and collects iopub
-messages parented by that request — `stream` (stdout/stderr), `execute_result`,
-`display_data`, `error` — until the kernel returns to `idle`. A **total
+messages parented by that request, namely `stream` (stdout/stderr), `execute_result`,
+`display_data`, and `error`, until the kernel returns to `idle`. A **total
 wall-clock cap** (`QMD_FAST_CELL_TIMEOUT`, default 120s) guards a runaway cell:
 on hit it SIGINTs the kernel (the `interrupt_mode: signal` path → `KeyboardInterrupt`)
 and drains a short grace window so the channels resync and the *next* cell still
@@ -143,4 +143,4 @@ condition rather than a latch:
   "kernel unavailable" tells you *why*.
 
 With no kernel at all, cells render as highlighted source and the preview shows a
-quiet "kernel unavailable" note — the document still builds.
+quiet "kernel unavailable" note: the document still builds.

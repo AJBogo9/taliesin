@@ -4,7 +4,7 @@ bibliography: ../references.bib
 ---
 
 Everything you'd reach for in a technical post works out of the box, rendered
-server-side and shipped offline — no CDN, no client re-run on a theme toggle.
+server-side and shipped offline: no CDN, no client re-run on a theme toggle.
 
 ## Prose and typography
 
@@ -59,7 +59,7 @@ $$
 ## Diagrams
 
 A `{mermaid}` code block renders client-side with mermaid.js, loaded lazily the
-first time a diagram appears — and like figures they are **click-to-zoom**.
+first time a diagram appears, and like figures they are **click-to-zoom**.
 Diagrams-from-code is a first-class feature, not an afterthought; the colours are
 CSS-driven, so they follow the theme. Adding `%%| label: fig-…` and `%%| fig-cap:`
 turns a diagram into a numbered, captioned figure you can cross-reference, just
@@ -75,8 +75,8 @@ flowchart LR
   BM --> K["book + TOC"]
 ```
 
-Every mermaid diagram type works — **sequence**, **state**, class, ER, gantt,
-and more — so you can document a protocol or a state machine from a few lines of
+Every mermaid diagram type works (**sequence**, **state**, class, ER, gantt,
+and more), so you can document a protocol or a state machine from a few lines of
 text. Here is the live-edit loop as a sequence diagram:
 
 ```{mermaid}
@@ -170,7 +170,7 @@ This page cites the *TeXbook* [@knuth1984] and the FFT paper [@cooley1965], and
 groups with locators work too: [@knuth1984; @cooley1965, p. 297]. Cross-references
 resolve to labelled links across `@fig-`, `@sec-`, `@tbl-`, `@eq-`, `@lst-`,
 `@thm-`, and `@def-`, carrying the resolved number when known (as `@eq-dft` and
-`@fig-scree` above do) — **across chapters**, so a `@fig-` in one chapter resolves
+`@fig-scree` above do): **across chapters**, so a `@fig-` in one chapter resolves
 to its figure in another.
 
 ## Footnotes and sidenotes
@@ -180,11 +180,11 @@ link, and the definitions (which can span paragraphs) are gathered into a number
 footnotes section at the end of the page, in reference order, each with a backlink.[^demo]
 
 [^demo]: Like this one. Write `[^label]` where you want the marker, and `[^label]: …`
-    anywhere for the body — qmd-fast does the numbering and the return arrow.
+    anywhere for the body; qmd-fast does the numbering and the return arrow.
 
 For an aside that belongs *beside* the text rather than at the bottom, a
 `::: {.sidenote}` (or `.marginnote`) block floats into the right margin on a wide
-screen and folds into the flow on a narrow one — web-native marginalia a PDF can't do.
+screen and folds into the flow on a narrow one: web-native marginalia a PDF can't do.
 
 ::: {.sidenote}
 This is a sidenote. On a wide screen it sits in the margin, aligned to where it was

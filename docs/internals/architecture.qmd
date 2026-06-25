@@ -60,7 +60,7 @@ The same save as an interaction over time, module by module, is @fig-save-seq:
 
 ```{mermaid}
 %%| label: fig-save-seq
-%%| fig-cap: "A save, module by module — only changed blocks (and re-run cells) cross the wire."
+%%| fig-cap: "A save, module by module: only changed blocks (and re-run cells) cross the wire."
 sequenceDiagram
   autonumber
   participant FS as .qmd file
@@ -87,7 +87,7 @@ client is a thin layer that mounts blocks and applies the ops the server sends.
 
 ## The codebase map
 
-The dependency shape first — who leans on whom (@fig-modules). The server
+The dependency shape first, who leans on whom (@fig-modules). The server
 orchestrates and owns the runtime; the core does all the rendering and never
 touches the network; the browser client only mounts blocks and applies ops.
 
@@ -146,7 +146,7 @@ block lists into a stream of `BlockOp`s.
 
 ```{mermaid}
 %%| label: fig-data-model
-%%| fig-cap: "The core data model — what flows from the parser to the client."
+%%| fig-cap: "The core data model: what flows from the parser to the client."
 classDiagram
   class RenderedDoc {
     Option~String~ title
@@ -182,7 +182,7 @@ classDiagram
 
 With the shape in mind, here is the file-by-file detail, one table per layer.
 
-`crates/core/src` — the library (`qmd-fast-core`):
+`crates/core/src`, the library (`qmd-fast-core`):
 
 | Path | Responsibility |
 |---|---|
@@ -200,7 +200,7 @@ With the shape in mind, here is the file-by-file detail, one table per layer.
 | `site/` | Multi-page projects: `config` (`_site.yml` model), `book`, `xref` (cross-page refs), `search` (cross-page index), and `mod` (discovery, chrome, page render). |
 | `frontmatter.rs` | Front-matter parsing + unknown-key linting. |
 
-`crates/server/src` — the binary (`qmd-fast`):
+`crates/server/src`, the binary (`qmd-fast`):
 
 | Path | Responsibility |
 |---|---|
@@ -213,7 +213,7 @@ With the shape in mind, here is the file-by-file detail, one table per layer.
 | `freeze.rs` | The persistent `_freeze/` execution cache, keyed by a cumulative content hash. |
 | `log.rs` | Colourised dev-server console output. |
 
-`web-client/` — the browser preview (vanilla JS, no build step): `client.js`
+`web-client/`, the browser preview (vanilla JS, no build step): `client.js`
 (mounts blocks, applies ops, the dev menu, click-to-source), `search.js` (the
 Cmd-K palette), `toc-spy.js` (the scrollspy). The core also ships JS *assets*
 (`code-enhance.js` with the `window.qmdEnhancers` registry, `mermaid.js`) that

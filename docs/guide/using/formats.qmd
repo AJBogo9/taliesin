@@ -23,29 +23,29 @@ qmd-fast build   docs/demo.qmd      # one self-contained .html
 
 The engine ships the things you actually present with:
 
-- **Fragments** — `::: {.incremental}` lists (or `.fragment`) reveal step by step.
-- **Pause** — a `. . .` line is a pause: everything after it on the slide reveals on
+- **Fragments**: `::: {.incremental}` lists (or `.fragment`) reveal step by step.
+- **Pause**: a `. . .` line is a pause: everything after it on the slide reveals on
   the next click (Quarto's shorthand for a fragment break).
-- **Code line-stepping** — add `code-line-numbers="1|2-3|all"` to a code block to
+- **Code line-stepping**: add `code-line-numbers="1|2-3|all"` to a code block to
   walk it line by line.
-- **Magic-move** — `::: {.magic-move}` around two code snapshots tweens matched
+- **Magic-move**: `::: {.magic-move}` around two code snapshots tweens matched
   lines from one to the other.
-- **Auto-animate** — `## Title {auto-animate=true}` on consecutive slides tweens
+- **Auto-animate**: `## Title {auto-animate=true}` on consecutive slides tweens
   matched elements (text, code, images) between them.
-- **Backgrounds** — `{background-color="…"}`, `background-gradient`,
+- **Backgrounds**: `{background-color="…"}`, `background-gradient`,
   `background-image` on a heading; light text on dark is automatic.
-- **Stretch to fit** — wrap an image in `::: {.r-stretch}` and it grows to fill the
+- **Stretch to fit**: wrap an image in `::: {.r-stretch}` and it grows to fill the
   slide's leftover height (aspect preserved), so a chart isn't left tiny.
-- **Speaker view** — press <kbd>S</kbd> for current + next slide, notes
+- **Speaker view**: press <kbd>S</kbd> for current + next slide, notes
   (`::: {.notes}`), and a timer, synced across windows.
-- **PDF export** — <kbd>Ctrl/Cmd-P</kbd> prints one slide per page.
-- **Reader mode** — on a narrow / portrait screen the fixed-aspect deck flattens to
+- **PDF export**: <kbd>Ctrl/Cmd-P</kbd> prints one slide per page.
+- **Reader mode**: on a narrow / portrait screen the fixed-aspect deck flattens to
   a scrollable column.
-- **Drawing** — press <kbd>D</kbd> to annotate the current slide with a pen.
-- **Black screen** — press <kbd>B</kbd> (or <kbd>.</kbd>) to blank the deck mid-talk
+- **Drawing**: press <kbd>D</kbd> to annotate the current slide with a pen.
+- **Black screen**: press <kbd>B</kbd> (or <kbd>.</kbd>) to blank the deck mid-talk
   and pull attention back to you; any of <kbd>B</kbd>/<kbd>.</kbd>/<kbd>Esc</kbd>
   restores it.
-- **Live code + `{js}`** — `{python}` / `{r}` cells execute and native `{js}` cells
+- **Live code + `{js}`**: `{python}` / `{r}` cells execute and native `{js}` cells
   stay interactive, right in the deck.
 
 ### Embedding a deck in a page
@@ -64,11 +64,11 @@ anchors and rebuilt live as you edit, with the current section highlighted as yo
 scroll (a scrollspy). On a wide screen it's a sticky sidebar; on a phone it
 collapses into a pull-up sheet.
 
-A **multi-chapter book** is a directory whose `_site.yml` lists `chapters:` —
+A **multi-chapter book** is a directory whose `_site.yml` lists `chapters:`:
 their presence makes it a book (no `type:` needed), optionally grouped into
 `part:`s. qmd-fast numbers the chapters, builds the left sidebar, wires prev/next
 navigation, and resolves cross-references across chapters. *These very docs are
-such a book* — look at the sidebar and press <kbd>Cmd/Ctrl-K</kbd> to search.
+such a book*: look at the sidebar and press <kbd>Cmd/Ctrl-K</kbd> to search.
 
 ```yaml
 title: "My Book"
@@ -125,7 +125,7 @@ qmd-fast build docs --out my-site/_site/docs   # the book, nested at /docs
 
 Config is **two levels, no cascade**: the root `_site.yml` sets project-wide
 defaults and a page's own front matter overrides them. There is deliberately no
-Quarto-style `_metadata.yml` directory merge — the single most confusing part of
+Quarto-style `_metadata.yml` directory merge, the single most confusing part of
 its model.
 
 A `listing:` block turns a page into an index: it crawls a `contents:` directory
@@ -141,4 +141,4 @@ matter.
 or an installed `_extensions/<name>/` bundle. A theme is just a `:root` block of
 CSS custom properties (`--qmd-*`); the navbar, footer, callouts, diagrams, and
 code all read those variables, so one small file restyles everything and the
-light/dark toggle just swaps the values — nothing re-renders.
+light/dark toggle just swaps the values: nothing re-renders.

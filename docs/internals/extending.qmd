@@ -45,7 +45,7 @@ in the User Guide for the authoring side):
 
 1. **Format extensions** (`render/extension/`). `_extensions/<name>/_extension.yml`
    contributes includes, a theme, and resources to a base format. A failed load is
-   reported through the `warnings` channel — never silent.
+   reported through the `warnings` channel, never silent.
 2. **Declarative shortcodes** (`render/extension/`). A top-level `shortcodes:` map
    (native), or `contributes.shortcodes` (the Quarto-compat shape), maps a name to an
    HTML template, expanded at pipeline stage 2.

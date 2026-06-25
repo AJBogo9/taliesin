@@ -34,7 +34,7 @@ export QMD_FAST_PYTHON="$(pwd)/.venv/bin/python"
 ```
 
 Now `preview`/`build` run `{python}` cells against that interpreter. No kernel is
-fine too — cells just render as highlighted source, and the preview shows a quiet
+fine too: cells just render as highlighted source, and the preview shows a quiet
 "kernel unavailable" note instead of failing.
 :::
 
@@ -158,7 +158,7 @@ too**. This cell pulls Three.js and `OrbitControls` from a CDN, wraps an equirec
 map onto a sphere, and returns the live `<canvas>`. Drag to spin the globe (it
 also auto-rotates), the **⛶** button takes it fullscreen, and the renderer is
 transparent so the globe follows the light/dark theme. `invalidation` stops the
-animation loop when the block re-renders — so a live save never leaks a running
+animation loop when the block re-renders, so a live save never leaks a running
 loop.
 
 ```{js}

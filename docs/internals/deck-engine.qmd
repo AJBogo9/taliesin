@@ -45,7 +45,7 @@ flowchart TB
 
 ## The runtime (`deck.js`)
 
-A single `deck` state object holds the position (`h`, `v`, `f` — horizontal,
+A single `deck` state object holds the position (`h`, `v`, `f`: horizontal,
 vertical, fragment step), the mode, and the plugin/listener registries. The core
 loop is small:
 
@@ -64,9 +64,9 @@ Fragments, code line-stepping, and magic-move all advance with the same key, so 
 share one ordered step list. `fragsOf(slide)` returns step descriptors in document
 order:
 
-- `{frag: el}` — an incremental list item or `.fragment`.
-- `{code: pre, seg}` — the next segment of a `code-line-numbers` block.
-- `{mm: div}` — the next snapshot of a `.magic-move` block.
+- `{frag: el}`: an incremental list item or `.fragment`.
+- `{code: pre, seg}`: the next segment of a `code-line-numbers` block.
+- `{mm: div}`: the next snapshot of a `.magic-move` block.
 
 `deck.f` is how many steps have been taken; advancing dispatches to the matching
 handler. Magic-move and auto-animate animate with **FLIP** (measure First and Last

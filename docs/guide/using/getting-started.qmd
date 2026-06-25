@@ -16,7 +16,7 @@ cargo build --release
 The binary is `target/release/qmd-fast`. The repo also ships a `~/.local/bin/qmd-fast`
 launcher that rebuilds the release binary whenever the tool's sources change and
 then runs it, so once it's on your `PATH` you can just say `qmd-fast preview …`
-from any directory. Every command below works either way — substitute
+from any directory. Every command below works either way: substitute
 `cargo run -p qmd-fast-server --` for `qmd-fast` if you prefer not to install the
 launcher.
 
@@ -34,7 +34,7 @@ export QMD_FAST_PYTHON="$(pwd)/.venv/bin/python"
 
 For R cells, install `IRkernel` and set `QMD_FAST_R`. Without a kernel, cells
 render as highlighted source and the preview shows a quiet "kernel unavailable"
-note instead of failing — so you can always start writing and add a kernel later.
+note instead of failing, so you can always start writing and add a kernel later.
 
 ## Your first document
 
@@ -84,7 +84,7 @@ qmd-fast build hello.qmd --out dist      # -> dist/index.html + copied local ass
 ```
 
 Point `build`/`preview` at a **directory** instead and you get a whole
-multi-page site or book (see [Slides, books & sites](formats.qmd)):
+multi-page site or book (see [Slides, books and sites](formats.qmd)):
 
 ```sh
 qmd-fast build blog/                     # -> blog/_site/   (one .html per page)
@@ -150,11 +150,11 @@ jobs:
 
 `build` **executes code cells**, so if your pages run `{python}` / `{r}`, add a
 step to install that interpreter plus `ipykernel` / `IRkernel` and set
-`QMD_FAST_PYTHON` / `QMD_FAST_R` — otherwise those cells render as source in CI.
+`QMD_FAST_PYTHON` / `QMD_FAST_R`, otherwise those cells render as source in CI.
 
 ::: {.callout-note}
 The interactive `{js}`/Three.js demos need to be served over `http(s)` (not opened
 from `file://`): a cell's relative `import()` and Three.js's module are blocked on
-`file://`. (d3 and Plot are bundled, so they need no network.) Once deployed — or
-under `preview` — they are fully live.
+`file://`. (d3 and Plot are bundled, so they need no network.) Once deployed (or
+under `preview`) they are fully live.
 :::

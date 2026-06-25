@@ -5,8 +5,8 @@ title: "The dev server"
 The server (`crates/server`) is the long-running process behind `preview`: an
 [axum](https://github.com/tokio-rs/axum) HTTP/websocket server, a
 [`notify`](https://github.com/notify-rs/notify) file watcher, and the kernel pool
-from [the previous chapter](execution.qmd). There are two of them — `serve.rs`
-for a single document and `serve_site.rs` for a directory (site/book) — sharing
+from [the previous chapter](execution.qmd). There are two of them, `serve.rs`
+for a single document and `serve_site.rs` for a directory (site/book), sharing
 the small HTTP/asset helpers and the websocket message contract.
 
 ## The save → preview loop
@@ -56,7 +56,7 @@ with an op stream).
 The rebuild runs in a spawned task, so a panic in the render/exec path would
 silently kill hot-reload for the rest of the session. `rebuild_guarded` wraps each
 rebuild in `catch_unwind`: a panic is logged, surfaced to the client as an error
-overlay, and the loop survives — the next good save recovers. (Because the state
+overlay, and the loop survives: the next good save recovers. (Because the state
 is a `parking_lot::Mutex`, a panic mid-update releases the lock cleanly instead of
 poisoning it.)
 

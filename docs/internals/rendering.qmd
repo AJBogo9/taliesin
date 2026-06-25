@@ -61,10 +61,10 @@ flag, includes, and any non-fatal `warnings`.
 Every emitted block carries three data attributes, and **the whole system depends
 on them** (`crates/core/tests/corpus.rs` enforces it):
 
-- `data-block-id` — a content hash. Because it's content-derived, an unchanged
+- `data-block-id`: a content hash. Because it's content-derived, an unchanged
   block keeps its id across edits and is never touched by the diff.
-- `data-sourcepos` — the original source range (drives click-to-source).
-- `data-source-file` — present only on blocks pulled in from an include.
+- `data-sourcepos`: the original source range (drives click-to-source).
+- `data-source-file`: present only on blocks pulled in from an include.
 
 ## Citations & cross-references
 
@@ -85,7 +85,7 @@ On a save the server re-runs the pipeline and calls `diff_blocks(old, new)`
 (`diff.rs`): an LCS over the block-id sequences finds the stable anchors, and the
 gaps between them become `Update` / `Insert` / `Remove` ops. Only those ops cross
 the websocket, so the browser swaps a handful of elements while everything
-else — including live canvases — stays put. (Code-cell *outputs* are blocks too,
+else, including live canvases, stays put. (Code-cell *outputs* are blocks too,
 keyed to the cell id, so re-running a cell updates only its output block.) Our
 `tau` edit is the smallest case of all: only the cell's code changed, so the cell
 re-runs and its output block re-renders, while the heading and the paragraph keep
@@ -112,7 +112,7 @@ kinds come from `//|` options: `//| viewof: name` returns a DOM input registered
 under `name`, `//| name: x` publishes the return value into a shared scope, and
 `//| input: a, b` re-runs the cell when input `a` or `b` fires. The corpus's whole
 reactive surface is single-input fan-out (one input → a few sink cells), so there is
-no dataflow engine — sinks just re-run on a named input, and cross-cell helpers are
+no dataflow engine: sinks just re-run on a named input, and cross-cell helpers are
 read with `qmd.get()` after a sequential (document-order, awaited) pass. A Python
 cell's `ojs_define(...)` bridges values across via a `<script type="qmd-define">`
 blob the enhancer ingests, re-running dependents when it lands after first paint.
@@ -121,5 +121,5 @@ Two decisions keep this cheap and robust. The page assembler ships the vendored
 d3 + Observable Plot libs (UMD globals) **only when a page actually contains `{js}`
 cells** (gated on the rendered body), so a page without them carries no extra weight.
 And because every `{js}` cell is a block with a content-hash id, an unedited cell is
-**never touched by the diff**, so it keeps its runtime state across a save — the same
+**never touched by the diff**, so it keeps its runtime state across a save, the same
 live-state guarantee a Three.js canvas gets.
