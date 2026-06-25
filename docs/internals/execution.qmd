@@ -118,7 +118,11 @@ client connections. `start()`:
 
 1. picks free ports and writes a Jupyter `connection.json`,
 2. spawns the interpreter (`python -m ipykernel` / `R -e IRkernel::main()`) with
-   **stderr piped**,
+   **stderr piped**, and with its **working directory set to the document's own
+   directory** (each `Executor` is created `.in_dir(...)` of its page) so a cell's
+   relative file writes, audio from `scipy.io.wavfile`, a `#| fig-export:` /
+   `ggsave` figure, land beside the source rather than in whatever directory the
+   server was launched from,
 3. connects the `shell` + `iopub` ZMQ channels, and **races the connect against
    the process exiting**, so a missing `ipykernel` fails in ~1s with its real
    stderr ("No module named ipykernel") instead of hanging the 30s connect

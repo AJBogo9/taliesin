@@ -683,23 +683,26 @@ impl ExecPool {
         }
     }
 
-    /// A fresh executor for `rel`, cache-backed when the pool has a `_freeze/` dir.
-    fn make(&self, rel: &str) -> crate::exec::Executor {
-        if self.freeze_dir.as_os_str().is_empty() {
+    /// A fresh executor for `rel`, cache-backed when the pool has a `_freeze/` dir,
+    /// running its kernels in `work_dir` (the page's own directory).
+    fn make(&self, rel: &str, work_dir: &Path) -> crate::exec::Executor {
+        let ex = if self.freeze_dir.as_os_str().is_empty() {
             crate::exec::Executor::new()
         } else {
             crate::exec::Executor::with_freeze(crate::freeze::page_path(&self.freeze_dir, rel))
-        }
+        };
+        ex.in_dir(work_dir)
     }
 
     /// The executor for `rel` (created if absent), marked most-recently-used. If
     /// that pushes the live set past the cap, the least-recently-built page's
-    /// executor is dropped (killing its kernels).
-    fn get(&mut self, rel: &str) -> &mut crate::exec::Executor {
+    /// executor is dropped (killing its kernels). `work_dir` is the page's own
+    /// directory, used only when the executor is first created.
+    fn get(&mut self, rel: &str, work_dir: &Path) -> &mut crate::exec::Executor {
         self.mru.retain(|r| r != rel);
         self.mru.insert(0, rel.to_string());
         if !self.execs.contains_key(rel) {
-            let ex = self.make(rel);
+            let ex = self.make(rel, work_dir);
             self.execs.insert(rel.to_string(), ex);
         }
         while self.mru.len() > MAX_WARM_PAGES {
@@ -732,7 +735,7 @@ mod exec_pool_tests {
     fn evicts_least_recently_built_beyond_cap() {
         let mut pool = ExecPool::default();
         for i in 0..MAX_WARM_PAGES + 3 {
-            pool.get(&format!("p{i}"));
+            pool.get(&format!("p{i}"), Path::new("."));
         }
         assert_eq!(pool.execs.len(), MAX_WARM_PAGES, "live set must be capped");
         assert_eq!(
@@ -751,12 +754,12 @@ mod exec_pool_tests {
     fn touching_a_page_keeps_it_warm() {
         let mut pool = ExecPool::default();
         for i in 0..MAX_WARM_PAGES {
-            pool.get(&format!("p{i}"));
+            pool.get(&format!("p{i}"), Path::new("."));
         }
         // Re-build the oldest page: it becomes most-recent and must survive the
         // next eviction instead of being dropped.
-        pool.get("p0");
-        pool.get("newer");
+        pool.get("p0", Path::new("."));
+        pool.get("newer", Path::new("."));
         assert!(pool.execs.contains_key("p0"), "re-touched page survived");
         assert!(
             !pool.execs.contains_key("p1"),
@@ -834,7 +837,7 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
     let base = page.input.parent().unwrap_or(Path::new(".")).to_path_buf();
     let doc = qmd_fast_core::render_document_with_includes(&src, &base);
 
-    let exec = pool.get(rel);
+    let exec = pool.get(rel, &base);
     let mut blocks = exec.run(doc.blocks).await;
     // Finish the executed blocks exactly as the build does (numbering, cross-refs +
     // broken-ref warnings, listing/about expansion, post decoration). Queries the

@@ -120,6 +120,10 @@ pub struct Executor {
     /// The safe way to preview a document you don't trust (executing it would run
     /// its `{python}`/`{r}` cells against a live kernel).
     no_exec: bool,
+    /// Working directory for this document's kernels (the document's own dir), so a
+    /// cell's relative writes land beside the source instead of in the server's
+    /// launch dir. `None` inherits the server's cwd (the default; used by tests).
+    work_dir: Option<PathBuf>,
 }
 
 impl Executor {
@@ -136,6 +140,21 @@ impl Executor {
         Self::build(FreezeCache::for_page(freeze_path))
     }
 
+    /// Run this executor's kernels in `dir` (the document's directory), so a cell's
+    /// relative file writes (audio, `#| fig-export:` figures, `ggsave`) land beside
+    /// the source rather than wherever the server was launched. Canonicalized to an
+    /// absolute path (an empty/relative `dir` resolves against the current dir); a
+    /// path that can't be canonicalized is used as given.
+    pub fn in_dir(mut self, dir: &std::path::Path) -> Self {
+        let dir = if dir.as_os_str().is_empty() {
+            std::path::Path::new(".")
+        } else {
+            dir
+        };
+        self.work_dir = Some(dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf()));
+        self
+    }
+
     fn build(freeze: FreezeCache) -> Self {
         let python = std::env::var_os("QMD_FAST_PYTHON")
             .map(PathBuf::from)
@@ -150,6 +169,7 @@ impl Executor {
             freeze,
             force_next: false,
             no_exec: std::env::var_os("QMD_FAST_NO_EXEC").is_some(),
+            work_dir: None,
         }
     }
 
@@ -412,6 +432,7 @@ impl Executor {
         let Some((spec, program)) = self.spec(lang) else {
             return;
         };
+        let work_dir = self.work_dir.clone();
         let state = self.langs.entry(lang).or_default();
         if let Some(k) = state.kernel.as_mut() {
             if k.is_alive() {
@@ -427,7 +448,7 @@ impl Executor {
             return; // still backing off; cells render as source
         }
         crate::log::kernel(&format!("starting {lang} ({})", program.display()));
-        match Kernel::start(&spec).await {
+        match Kernel::start(&spec, work_dir.as_deref()).await {
             Ok(k) => {
                 crate::log::kernel(&format!("{lang} ready ({})", program.display()));
                 state.kernel = Some(k);
@@ -733,6 +754,35 @@ mod tests {
         assert!(
             ex.diagnostic().is_none(),
             "no_exec is deliberate, not a kernel failure -> no diagnostic"
+        );
+    }
+
+    #[tokio::test]
+    async fn cells_run_in_the_document_directory() {
+        // A cell's relative file write must land in the executor's working dir (the
+        // document's own directory), not wherever the server process was launched.
+        // This is what keeps generated media (audio, `#| fig-export:` figures) beside
+        // the source instead of cluttering the repo root. Skipped (not failed) when no
+        // Python kernel is installed, so it stays green in a kernel-less CI.
+        let dir = std::env::temp_dir().join(format!("qmd-fast-cwd-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let mut blk = python_cell_block("b-cwd");
+        if let Some(c) = blk.cell.as_mut() {
+            c.code = "open('qmd-cwd-marker.txt', 'w').close()".into();
+        }
+        let mut ex = Executor::new().in_dir(&dir);
+        let _ = ex.run(vec![blk]).await;
+        if ex.diagnostic().is_some() {
+            // No working Python kernel here — can't exercise the behavior.
+            let _ = std::fs::remove_dir_all(&dir);
+            return;
+        }
+        let canon = dir.canonicalize().unwrap_or_else(|_| dir.clone());
+        let landed = canon.join("qmd-cwd-marker.txt").exists();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            landed,
+            "the cell's relative write should land in the document dir, not the cwd"
         );
     }
 

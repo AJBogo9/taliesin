@@ -354,7 +354,12 @@ async fn startup_failure(
 impl Kernel {
     /// Spawn the kernel described by `spec` (Python ipykernel or R IRkernel) and
     /// connect to it. The kernel stays warm for the lifetime of this value.
-    pub async fn start(spec: &KernelSpec) -> io::Result<Kernel> {
+    ///
+    /// `cwd` is the kernel process's working directory: a cell's relative file I/O
+    /// (`scipy.io.wavfile.write`, a `#| fig-export:` `savefig`, R's `ggsave`)
+    /// resolves against it, so generated media lands beside the document rather
+    /// than wherever the server was launched. `None` inherits the server's cwd.
+    pub async fn start(spec: &KernelSpec, cwd: Option<&Path>) -> io::Result<Kernel> {
         let ip: IpAddr = "127.0.0.1".parse().unwrap();
         let ports = peek_ports(ip, 5).await.map_err(io::Error::other)?;
         let info = ConnectionInfo {
@@ -401,18 +406,23 @@ impl Kernel {
 
         // Capture stderr so a startup failure (e.g. the interpreter lacks the
         // ipykernel/IRkernel module) can be reported instead of swallowed.
-        let mut child = Command::new(&spec.program)
-            .args((spec.argv)(&conn_file))
+        let mut cmd = Command::new(&spec.program);
+        cmd.args((spec.argv)(&conn_file))
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|e| {
-                io::Error::other(format!(
-                    "cannot launch `{}`: {e} (is it installed / on PATH?)",
-                    spec.program.display()
-                ))
-            })?;
+            .stderr(std::process::Stdio::piped());
+        // Run cells in the document's directory so their relative file writes land
+        // beside the source (the connection file is an absolute path, so this
+        // doesn't disturb the ZMQ handshake).
+        if let Some(dir) = cwd {
+            cmd.current_dir(dir);
+        }
+        let mut child = cmd.spawn().map_err(|e| {
+            io::Error::other(format!(
+                "cannot launch `{}`: {e} (is it installed / on PATH?)",
+                spec.program.display()
+            ))
+        })?;
         let child_stderr = child.stderr.take();
 
         let session = uuid::Uuid::new_v4().to_string();
@@ -825,7 +835,7 @@ mod tests {
         let py = PathBuf::from(py);
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async move {
-            let mut k = Kernel::start(&KernelSpec::python(&py))
+            let mut k = Kernel::start(&KernelSpec::python(&py), None)
                 .await
                 .expect("kernel should start");
 

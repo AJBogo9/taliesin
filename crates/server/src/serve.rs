@@ -999,7 +999,7 @@ fn spawn_watcher(app: Arc<AppState>, mut signal_rx: mpsc::UnboundedReceiver<()>)
             .and_then(|s| s.to_str())
             .unwrap_or("document");
         let freeze_path = crate::freeze::page_path(&app.base_dir.join("_freeze"), stem);
-        let mut executor = crate::exec::Executor::with_freeze(freeze_path);
+        let mut executor = crate::exec::Executor::with_freeze(freeze_path).in_dir(&app.base_dir);
         // Initial execution pass: markdown is already live; this fills in outputs
         // (and starts the warm kernel) shortly after the page loads.
         rebuild_guarded(&app, &mut executor).await;

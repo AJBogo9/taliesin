@@ -211,7 +211,8 @@ fn build_page_executing(
         }
         // Persistent execution cache keyed off the doc's stem, beside the source.
         let mut ex =
-            exec::Executor::with_freeze(freeze::page_path(&base.join("_freeze"), fallback));
+            exec::Executor::with_freeze(freeze::page_path(&base.join("_freeze"), fallback))
+                .in_dir(base);
         doc.blocks = ex.run(std::mem::take(&mut doc.blocks)).await;
         if ex.diagnostic().is_some() {
             log::warn(
@@ -534,7 +535,8 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
         };
         let base = page.input.parent().unwrap_or(root);
         let mut doc = qmd_fast_core::render_document_with_includes(&src, base);
-        let mut exec = exec::Executor::with_freeze(freeze::page_path(&freeze_dir, &page.rel));
+        let mut exec =
+            exec::Executor::with_freeze(freeze::page_path(&freeze_dir, &page.rel)).in_dir(base);
         doc.blocks = exec.run(std::mem::take(&mut doc.blocks)).await;
         kernel_unavailable |= exec.diagnostic().is_some();
         let resources = doc.includes.resources.clone();
@@ -569,7 +571,8 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
         };
         let base = deck.input.parent().unwrap_or(root);
         let mut doc = qmd_fast_core::render_document_with_includes(&src, base);
-        let mut ex = exec::Executor::with_freeze(freeze::page_path(&freeze_dir, &deck.url));
+        let mut ex =
+            exec::Executor::with_freeze(freeze::page_path(&freeze_dir, &deck.url)).in_dir(base);
         doc.blocks = ex.run(std::mem::take(&mut doc.blocks)).await;
         kernel_unavailable |= ex.diagnostic().is_some();
         let stem = deck
