@@ -570,6 +570,24 @@ fn execute_block_sets_document_cell_defaults() {
 }
 
 #[test]
+fn execute_flow_mapping_sets_document_cell_defaults() {
+    // The inline YAML flow form `execute: {echo: false}` must behave like the
+    // block form (`execute:\n  echo: false`).
+    let doc = render_document("---\nexecute: {echo: false}\n---\n\n```{python}\nprint(1)\n```\n");
+    let cell = doc
+        .blocks
+        .iter()
+        .find(|b| b.cell.is_some())
+        .expect("a code cell");
+    // echo:false renders the cell as the hidden marker (no source listing).
+    assert!(
+        cell.html.contains("qmd-cell-hidden"),
+        "execute: {{echo: false}} (flow form) should hide the cell source: {}",
+        cell.html
+    );
+}
+
+#[test]
 fn explicit_heading_id_is_applied_and_stripped() {
     let doc = render_document("## Methods {#sec-methods}\n\nText.\n");
     let h = &doc.blocks[0].html;

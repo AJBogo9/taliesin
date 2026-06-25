@@ -656,15 +656,23 @@ fn rewrite_text(
     let chars: Vec<char> = text.chars().collect();
     let mut out = String::new();
     let mut i = 0;
+    // Once a scan from some `[` finds no `]` to its right, no later `[` can either
+    // (the remaining text only shrinks), so stop re-scanning to the end. Without
+    // this, a run of N unmatched `[` is O(N^2) (one full scan per `[`).
+    let mut no_close = false;
     while i < chars.len() {
-        if chars[i] == '[' {
-            if let Some(close) = chars[i + 1..].iter().position(|&c| c == ']') {
-                let inner: String = chars[i + 1..i + 1 + close].iter().collect();
-                if inner.contains('@') {
-                    out.push_str(&render_citation_group(&inner, cite_key, xrefs));
-                    i += close + 2;
-                    continue;
+        if chars[i] == '[' && !no_close {
+            match chars[i + 1..].iter().position(|&c| c == ']') {
+                Some(close) => {
+                    let inner = &chars[i + 1..i + 1 + close];
+                    if inner.contains(&'@') {
+                        let inner: String = inner.iter().collect();
+                        out.push_str(&render_citation_group(&inner, cite_key, xrefs));
+                        i += close + 2;
+                        continue;
+                    }
                 }
+                None => no_close = true,
             }
         } else if chars[i] == '@'
             && let Some((label, anchor, len)) = parse_xref(&chars[i..])
@@ -790,6 +798,29 @@ mod tests {
         parse_bib(
             "@book{bishop2006pattern,\n  title = {Pattern Recognition and Machine Learning},\n  author = {Bishop, Christopher M},\n  year = {2006},\n  publisher = {Springer}\n}\n",
         )
+    }
+
+    #[test]
+    fn rewrite_text_leaves_unmatched_and_non_citation_brackets_literal() {
+        let xrefs = HashMap::new();
+        let mut key = |_: &str| 1usize;
+        // A run of '[' with no closing ']' is emitted verbatim (this is also the
+        // O(n^2)-pathological input the scan must not choke on).
+        assert_eq!(
+            rewrite_text("[[[[ no close here", &mut key, &xrefs),
+            "[[[[ no close here"
+        );
+        // A bracket group without '@' is not a citation; the brackets stay.
+        assert_eq!(
+            rewrite_text("see [ref 12] here", &mut key, &xrefs),
+            "see [ref 12] here"
+        );
+        // A real citation is still rewritten.
+        let out = rewrite_text("see [@bishop2006pattern]", &mut key, &xrefs);
+        assert!(
+            out.contains("<a") && !out.contains("[@"),
+            "citation not rewritten: {out}"
+        );
     }
 
     #[test]

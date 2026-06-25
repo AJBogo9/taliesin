@@ -105,19 +105,35 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         kick,
     });
 
-    // Initial render.
-    if let Some(doc) = render_doc(&app) {
-        let mut d = app.doc.lock();
-        d.title = doc.title;
-        d.subtitle = doc.subtitle;
-        d.format = doc.format;
-        d.toc = doc.toc;
-        d.theme_css = doc.theme_css;
-        d.theme_default = doc.theme_default;
-        d.theme_is_custom = doc.theme_is_custom;
-        d.includes = doc.includes;
-        d.warnings = doc.warnings;
-        d.blocks = doc.blocks;
+    // Initial render. Guard it like the rebuild loop (`rebuild_guarded`): a
+    // pathological document that panics the renderer must not crash startup before
+    // the server can show the error. On a panic, surface it as a diagnostic (the
+    // connect snapshot carries it) and mark the doc errored so the first good save
+    // recovers with a full re-mount.
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| render_doc(&app))) {
+        Ok(Some(doc)) => {
+            let mut d = app.doc.lock();
+            d.title = doc.title;
+            d.subtitle = doc.subtitle;
+            d.format = doc.format;
+            d.toc = doc.toc;
+            d.theme_css = doc.theme_css;
+            d.theme_default = doc.theme_default;
+            d.theme_is_custom = doc.theme_is_custom;
+            d.includes = doc.includes;
+            d.warnings = doc.warnings;
+            d.blocks = doc.blocks;
+        }
+        Ok(None) => {}
+        Err(payload) => {
+            let msg = panic_msg(&*payload);
+            crate::log::error(&format!(
+                "render panicked on initial load (preview kept alive): {msg}"
+            ));
+            let mut d = app.doc.lock();
+            d.errored = true;
+            d.diagnostics = vec![Diagnostic::error(format!("internal render error: {msg}"))];
+        }
     }
 
     spawn_watcher(app.clone(), kick_rx);
@@ -1133,10 +1149,10 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
             for op in &ops {
                 let _ = app.tx.send(op_json(op));
             }
-            // CSS-only change (a theme/`.css` edit, content unchanged): hot-swap the
-            // theme `<style>` in place instead of reloading, so scroll + the current
-            // slide survive. Only when no block ops also went out this pass.
-            if theme_changed && ops.is_empty() {
+            // A theme/`.css` edit: hot-swap the theme `<style>` in place instead of
+            // reloading, so scroll + the current slide survive. Sent alongside any
+            // block ops, so a combined content+theme save updates both with no reload.
+            if theme_changed {
                 let _ = app.tx.send(protocol::style(&d.theme_css));
             }
         }

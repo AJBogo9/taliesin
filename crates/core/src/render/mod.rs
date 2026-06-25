@@ -1635,14 +1635,38 @@ fn cell_flag_or(literal: &str, key: &str, default: bool) -> bool {
 /// Returns `(echo, include, cache)`, each defaulting to `true`. Per-cell `#|`
 /// options override these. (`eval`/`output`/`warning` are not yet honoured.)
 fn detect_execute_defaults(front_matter: &str) -> (bool, bool, bool) {
+    // Apply one `key: value` pair from an `execute:` mapping (shared by the block
+    // and the inline flow form).
+    fn apply_kv(k: &str, v: &str, echo: &mut bool, include: &mut bool, cache: &mut bool) {
+        let v = v.trim().trim_matches(['"', '\'']);
+        match k.trim() {
+            "echo" => *echo = v != "false",
+            "include" => *include = v != "false",
+            "cache" => *cache = v != "false",
+            _ => {}
+        }
+    }
+
     let (mut echo, mut include, mut cache) = (true, true, true);
     let mut in_block = false;
     for line in front_matter.lines() {
         let indent = line.len() - line.trim_start().len();
         let t = line.trim();
         if !in_block {
-            if indent == 0 && t.starts_with("execute:") {
-                in_block = true;
+            if indent == 0
+                && let Some(rest) = t.strip_prefix("execute:")
+            {
+                let rest = rest.trim();
+                if let Some(inner) = rest.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
+                    // Flow form on one line: `execute: {echo: false, cache: false}`.
+                    for pair in inner.split(',') {
+                        if let Some((k, v)) = pair.split_once(':') {
+                            apply_kv(k, v, &mut echo, &mut include, &mut cache);
+                        }
+                    }
+                } else if rest.is_empty() {
+                    in_block = true; // block form: indented lines follow
+                }
             }
             continue;
         }
@@ -1653,13 +1677,7 @@ fn detect_execute_defaults(front_matter: &str) -> (bool, bool, bool) {
             break; // dedent ends the block
         }
         if let Some((k, v)) = t.split_once(':') {
-            let v = v.trim().trim_matches(['"', '\'']);
-            match k.trim() {
-                "echo" => echo = v != "false",
-                "include" => include = v != "false",
-                "cache" => cache = v != "false",
-                _ => {}
-            }
+            apply_kv(k, v, &mut echo, &mut include, &mut cache);
         }
     }
     (echo, include, cache)

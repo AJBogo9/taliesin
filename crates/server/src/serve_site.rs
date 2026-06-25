@@ -282,6 +282,22 @@ async fn page_or_asset(
             if let Some(html) = m.site.render_page(lookup) {
                 return Html(html).into_response();
             }
+            // A deck embedded by a mounted page (e.g. `/docs/guide/tour.html`):
+            // render it self-contained on the fly, mirroring the parent's deck
+            // branch above. Without this the embedding iframe 404s in preview.
+            if let Some(deck) = m.site.deck(lookup)
+                && let Ok(src) = std::fs::read_to_string(&deck.input)
+            {
+                let base = deck.input.parent().unwrap_or(&m.root).to_path_buf();
+                let doc = qmd_fast_core::render_document_with_includes(&src, &base);
+                let stem = deck
+                    .url
+                    .rsplit('/')
+                    .next()
+                    .and_then(|f| f.strip_suffix(".html"))
+                    .unwrap_or("deck");
+                return Html(qmd_fast_core::render_doc_to_page(&doc, stem)).into_response();
+            }
             return serve_asset(&m.root, lookup);
         }
     }
@@ -860,8 +876,9 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
         for op in &ops {
             let _ = ps.tx.send(op_json(op));
         }
-        // CSS-only change: hot-swap the theme style in place (no reload).
-        if theme_changed && ops.is_empty() {
+        // A theme/`.css` edit: hot-swap the theme style in place (no reload),
+        // alongside any block ops, so a combined content+theme save updates both.
+        if theme_changed {
             let _ = ps.tx.send(protocol::style(&ps.doc.theme_css));
         }
     }

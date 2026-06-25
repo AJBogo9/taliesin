@@ -273,15 +273,18 @@ fn build_dir(html: &str, base: &Path, dir: &Path) -> ExitCode {
 fn copy_local_assets(html: &str, base: &Path, dest: &Path) -> usize {
     let mut copied = 0usize;
     for r in local_refs(html) {
-        if r.starts_with('/') || r.split('/').any(|seg| seg == "..") {
+        // The filesystem path is the ref without any ?query / #fragment (a static
+        // host ignores those, so `img.png?v=2` is the file `img.png`).
+        let path = &r[..r.find(['?', '#']).unwrap_or(r.len())];
+        if path.starts_with('/') || path.split('/').any(|seg| seg == "..") {
             log::warn(&format!("asset outside the doc tree, not bundled: {r}"));
             continue;
         }
-        let from = base.join(&r);
+        let from = base.join(path);
         if !from.is_file() {
             continue; // e.g. an href to something that isn't a local file
         }
-        let to = dest.join(&r);
+        let to = dest.join(path);
         // In-place build: the asset is already where the page points, and copying a
         // file onto itself would truncate it.
         if same_file(&from, &to) {
@@ -794,6 +797,32 @@ mod mirror_tests {
             "remote import must not be fetched/copied"
         );
         assert_eq!(copied, 3, "pic.png + helper.js + util.js, got {copied}");
+
+        let _ = fs::remove_dir_all(&base);
+        let _ = fs::remove_dir_all(&out);
+    }
+
+    #[test]
+    fn copy_local_assets_strips_query_and_fragment_from_refs() {
+        let base = tmp("query");
+        let out = tmp("query-out");
+        fs::write(base.join("pic.png"), b"x").unwrap();
+        fs::write(base.join("doc.pdf"), b"x").unwrap();
+        // A cache-busted image and a fragment-anchored link: the file paths are
+        // `pic.png` / `doc.pdf` (a static host ignores the ?query / #fragment).
+        let html = "<img src=\"pic.png?v=2\"><a href=\"doc.pdf#page=3\">x</a>";
+
+        let copied = copy_local_assets(html, &base, &out);
+
+        assert!(
+            out.join("pic.png").exists(),
+            "?query asset should be bundled"
+        );
+        assert!(
+            out.join("doc.pdf").exists(),
+            "#fragment asset should be bundled"
+        );
+        assert_eq!(copied, 2, "got {copied}");
 
         let _ = fs::remove_dir_all(&base);
         let _ = fs::remove_dir_all(&out);
