@@ -1323,6 +1323,20 @@ fn assembled_page_ships_line_spacing() {
 }
 
 #[test]
+fn assembled_page_ships_letter_word_spacing() {
+    let page = render_html_page("# Title\n\nProse.\n", "doc");
+    // The reader letter/word-spacing controls (WCAG 1.4.12) drive prose tracking via these vars.
+    assert!(
+        page.contains("--qmd-reader-letter"),
+        "reader letter-spacing var not shipped in the assembled page"
+    );
+    assert!(
+        page.contains("--qmd-reader-word"),
+        "reader word-spacing var not shipped in the assembled page"
+    );
+}
+
+#[test]
 fn toc_page_lists_headings_with_anchor_links() {
     let page = render_html_page(
         "---\ntitle: Doc\nformat:\n  html:\n    toc: true\n---\n\n# A\n\ntext\n\n## B\n",

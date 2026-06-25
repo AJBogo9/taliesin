@@ -144,13 +144,23 @@
   /* Reader line-spacing (Display menu): prose blocks only, so headings (own optical
      line-heights), pre/code (monospace), .katex, and tables are untouched. Default 1.7 = the
      body line-height, so nothing changes until the reader opts in. */
+  /* Reader letter/word spacing (Display menu, WCAG 1.4.12 Text Spacing): same prose scope.
+     Default `normal` = no change until the reader opts in; `em` keeps each proportional to the
+     (reader-scaled) font size. */
   body p, body li, body dd, body blockquote, body figcaption {
-    line-height: var(--qmd-reader-leading, 1.7); }
-  /* Re-pin chrome that wraps prose in <li>/<p> with its own leading, so the reader var above
-     never leaks into navigation (TOC, sidebars, postnav, navbar — all <nav>), search results,
-     or margin notes. `inherit` restores each element's container leading. */
+    line-height: var(--qmd-reader-leading, 1.7);
+    letter-spacing: var(--qmd-reader-letter, normal);
+    word-spacing: var(--qmd-reader-word, normal); }
+  /* Keep monospace + math metrically exact: tracking INHERITS into inline descendants, so an
+     inline <code>/.katex inside a tracked <p> would distort without this direct reset (a rule on
+     the child beats the inherited value regardless of the ancestor's higher specificity). */
+  code, pre, kbd, samp, .katex { letter-spacing: normal; word-spacing: normal; }
+  /* Re-pin chrome that wraps prose in <li>/<p> with its own leading, so the reader vars above
+     never leak into navigation (TOC, sidebars, postnav, navbar — all <nav>), search results,
+     or margin notes. `inherit` restores each leading; `normal` resets the tracking. */
   nav li, [role="listbox"] li,
-  .sidenote p, .marginnote p, .column-margin p, .aside p { line-height: inherit; }
+  .sidenote p, .marginnote p, .column-margin p, .aside p {
+    line-height: inherit; letter-spacing: normal; word-spacing: normal; }
   /* Tabular figures where columns/alignment matter (prose keeps proportional numerals). */
   pre, code, table, .katex { font-variant-numeric: tabular-nums; }
   a { color: var(--qmd-link); }

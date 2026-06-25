@@ -542,12 +542,18 @@ function qmdInitReaderPrefs() {
   var SIZES = [['0.9', 'small'], ['1', 'normal'], ['1.15', 'large'], ['1.3', 'x-large']];
   var WIDTHS = [['38rem', 'Narrow'], ['', 'Normal'], ['58rem', 'Wide']];
   var LEADINGS = [['1.5', 'Tight'], ['1.7', 'Normal'], ['2', 'Relaxed']];
+  // Letter/word spacing (WCAG 1.4.12): the "Wider" step hits the WCAG minimum (letter 0.12em,
+  // word 0.16em); em keeps it proportional to the reader-scaled font size.
+  var LETTERS = [['0', 'Normal'], ['0.06em', 'Wide'], ['0.12em', 'Wider']];
+  var WORDS = [['0', 'Normal'], ['0.08em', 'Wide'], ['0.16em', 'Wider']];
   var SIZE_FS = { '0.9': '.78rem', '1': '.95rem', '1.15': '1.15rem', '1.3': '1.4rem' };
 
   function curTheme() { return (window.qmdGetThemePref && window.qmdGetThemePref()) || 'light'; }
   function curSize() { return window.qmdGetReaderPref('scale') || '1'; }
   function curWidth() { return window.qmdGetReaderPref('width') || ''; }
   function curLeading() { return window.qmdGetReaderPref('leading') || '1.7'; }
+  function curLetter() { return window.qmdGetReaderPref('letter') || '0'; }
+  function curWord() { return window.qmdGetReaderPref('word') || '0'; }
 
   // One segmented control row. `labelFn(btn, opt)` customizes a button (else opt[1] text).
   function seg(title, options, getCur, onPick, labelFn) {
@@ -589,10 +595,16 @@ function qmdInitReaderPrefs() {
     function (v) { window.qmdSetReaderPref('width', v || null); });
   var leadingSeg = seg('Line spacing', LEADINGS, curLeading,
     function (v) { window.qmdSetReaderPref('leading', v === '1.7' ? null : v); });
+  var letterSeg = seg('Letter spacing', LETTERS, curLetter,
+    function (v) { window.qmdSetReaderPref('letter', v === '0' ? null : v); });
+  var wordSeg = seg('Word spacing', WORDS, curWord,
+    function (v) { window.qmdSetReaderPref('word', v === '0' ? null : v); });
   body.appendChild(themeSeg.row);
   body.appendChild(sizeSeg.row);
   body.appendChild(widthSeg.row);
   body.appendChild(leadingSeg.row);
+  body.appendChild(letterSeg.row);
+  body.appendChild(wordSeg.row);
 
   var reset = document.createElement('button');
   reset.className = 'qmd-reader-reset';
@@ -601,7 +613,7 @@ function qmdInitReaderPrefs() {
   reset.addEventListener('click', function () { if (window.qmdResetReader) window.qmdResetReader(); });
   body.appendChild(reset);
 
-  function syncAll() { themeSeg.sync(); sizeSeg.sync(); widthSeg.sync(); leadingSeg.sync(); }
+  function syncAll() { themeSeg.sync(); sizeSeg.sync(); widthSeg.sync(); leadingSeg.sync(); letterSeg.sync(); wordSeg.sync(); }
   window.addEventListener('qmd:themechange', syncAll);
   window.addEventListener('qmd:readerchange', syncAll);
   window.qmdReaderMenu.addSection('Display', body, syncAll);

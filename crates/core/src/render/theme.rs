@@ -92,19 +92,23 @@ pub fn theme_head(default_mode: &str) -> String {
   // Reader display preferences (text size + reading width), reader-local, applied
   // here in the pre-paint head so a returning reader never flashes the default size.
   function applyReader(){{
-    var el = document.documentElement, s = null, w = null, l = null;
+    var el = document.documentElement, s = null, w = null, l = null, lt = null, wd = null;
     try {{ s = localStorage.getItem("qmd-reader-scale"); }} catch(e) {{}}
     try {{ w = localStorage.getItem("qmd-reader-width"); }} catch(e) {{}}
     try {{ l = localStorage.getItem("qmd-reader-leading"); }} catch(e) {{}}
+    try {{ lt = localStorage.getItem("qmd-reader-letter"); }} catch(e) {{}}
+    try {{ wd = localStorage.getItem("qmd-reader-word"); }} catch(e) {{}}
     if (s) el.style.setProperty("--qmd-reader-scale", s); else el.style.removeProperty("--qmd-reader-scale");
     if (w) el.style.setProperty("--qmd-maxw", w); else el.style.removeProperty("--qmd-maxw");
     if (l) el.style.setProperty("--qmd-reader-leading", l); else el.style.removeProperty("--qmd-reader-leading");
+    if (lt) el.style.setProperty("--qmd-reader-letter", lt); else el.style.removeProperty("--qmd-reader-letter");
+    if (wd) el.style.setProperty("--qmd-reader-word", wd); else el.style.removeProperty("--qmd-reader-word");
   }}
   apply();
   applyReader();
   window.qmdSetTheme = function(p){{ try {{ localStorage.setItem("qmd-theme", p); }} catch(e) {{}} apply(); }};
   window.qmdGetThemePref = function(){{ return pref(); }};
-  // key is "scale" | "width" | "leading"; value null clears it. Mirrors qmdSetTheme.
+  // key is "scale" | "width" | "leading" | "letter" | "word"; value null clears it. Mirrors qmdSetTheme.
   window.qmdSetReaderPref = function(k, v){{
     try {{ if (v === null) localStorage.removeItem("qmd-reader-" + k); else localStorage.setItem("qmd-reader-" + k, v); }} catch(e) {{}}
     applyReader();
@@ -112,7 +116,7 @@ pub fn theme_head(default_mode: &str) -> String {
   }};
   window.qmdGetReaderPref = function(k){{ try {{ return localStorage.getItem("qmd-reader-" + k); }} catch(e) {{ return null; }} }};
   window.qmdResetReader = function(){{
-    try {{ localStorage.removeItem("qmd-theme"); localStorage.removeItem("qmd-reader-scale"); localStorage.removeItem("qmd-reader-width"); localStorage.removeItem("qmd-reader-leading"); }} catch(e) {{}}
+    try {{ localStorage.removeItem("qmd-theme"); localStorage.removeItem("qmd-reader-scale"); localStorage.removeItem("qmd-reader-width"); localStorage.removeItem("qmd-reader-leading"); localStorage.removeItem("qmd-reader-letter"); localStorage.removeItem("qmd-reader-word"); }} catch(e) {{}}
     apply(); applyReader();
     try {{ window.dispatchEvent(new CustomEvent("qmd:readerchange")); }} catch(e) {{}}
   }};
