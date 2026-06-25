@@ -1263,6 +1263,16 @@ fn assembled_page_ships_highlight_index() {
 }
 
 #[test]
+fn assembled_page_ships_reader_menu() {
+    let page = render_html_page("# Title\n\nProse.\n", "doc");
+    // The reader-menu host consolidates the reader controls into one launcher + menu.
+    assert!(
+        page.contains("qmdInitReaderMenu") && page.contains("qmdReaderMenu"),
+        "reader-menu host not shipped in the assembled page"
+    );
+}
+
+#[test]
 fn toc_page_lists_headings_with_anchor_links() {
     let page = render_html_page(
         "---\ntitle: Doc\nformat:\n  html:\n    toc: true\n---\n\n# A\n\ntext\n\n## B\n",

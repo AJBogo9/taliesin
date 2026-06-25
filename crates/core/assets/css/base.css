@@ -25,23 +25,29 @@
     color-scheme: light;
   }
 
-  /* Reader "Aa" control + settings popover (injected by qmdInitReaderPrefs). */
-  .qmd-reader-toggle {
+  /* Reader menu: one "Aa" launcher (bottom-right) + the consolidated menu panel and its
+     sections (qmdInitReaderMenu; the prefs / progress / highlights enhancers add sections).
+     The segmented controls + highlight list further down are reused inside it. */
+  .qmd-rmenu-toggle {
     position: fixed; right: 1rem; bottom: 1rem; z-index: 2147481500;
     width: 2.4rem; height: 2.4rem; border-radius: 50%;
     border: 1px solid var(--qmd-border); background: var(--qmd-bg); color: var(--qmd-fg);
     box-shadow: 0 2px 12px var(--qmd-edge-shadow); cursor: pointer;
     font: 600 1rem/1 var(--qmd-font-head); display: flex; align-items: center; justify-content: center; }
-  .qmd-reader-toggle:hover { border-color: var(--qmd-accent); color: var(--qmd-accent); }
-  .qmd-reader-panel {
+  .qmd-rmenu-toggle:hover { border-color: var(--qmd-accent); color: var(--qmd-accent); }
+  .qmd-rmenu-panel {
     position: fixed; right: 1rem; bottom: 4rem; z-index: 2147481600;
-    width: min(17rem, 92vw); padding: .9rem 1rem 1rem;
+    width: min(18rem, 92vw); max-height: 70vh; overflow: auto; padding: .4rem 1rem 1rem;
     background: var(--qmd-bg); color: var(--qmd-fg);
     border: 1px solid var(--qmd-border); border-radius: 12px;
     box-shadow: 0 8px 34px var(--qmd-edge-shadow); font: var(--qmd-font-head); }
-  .qmd-reader-panel[hidden] { display: none; }
-  .qmd-reader-panel h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em;
+  .qmd-rmenu-panel[hidden] { display: none; }
+  .qmd-rmenu-section { padding: .6rem 0; }
+  .qmd-rmenu-section[hidden] { display: none; }
+  .qmd-rmenu-section + .qmd-rmenu-section { border-top: 1px solid var(--qmd-border); }
+  .qmd-rmenu-section h2 { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em;
     color: var(--qmd-muted); margin: 0 0 .6rem; }
+  .qmd-rmenu-readout { font-size: .85rem; color: var(--qmd-fg); }
   .qmd-reader-row { display: flex; align-items: center; justify-content: space-between;
     gap: .5rem; margin: 0 0 .7rem; }
   .qmd-reader-row > span { font-size: .82rem; color: var(--qmd-muted); }
@@ -55,18 +61,13 @@
   .qmd-reader-seg button[aria-pressed="true"] { background: var(--qmd-accent); color: #fff; }
   .qmd-reader-reset { background: none; border: 0; color: var(--qmd-link); cursor: pointer;
     font: inherit; font-size: .8rem; padding: 0; }
-  @media print { .qmd-reader-toggle, .qmd-reader-panel { display: none !important; } }
+  @media print { .qmd-rmenu-toggle, .qmd-rmenu-panel { display: none !important; } }
 
   /* Reading progress (top bar + "min left") + block-id-anchored resume (qmdInitReadingProgress). */
   .qmd-readbar { position: fixed; top: 0; left: 0; right: 0; height: 3px;
     z-index: 2147481400; pointer-events: none; }
   .qmd-readbar-fill { height: 100%; width: 0; background: var(--qmd-accent);
     transition: width .08s linear; }
-  .qmd-readbar-time { position: fixed; right: 1rem; bottom: 3.9rem; z-index: 2147481450;
-    font: 500 .72rem/1 var(--qmd-font-head); color: var(--qmd-muted);
-    background: var(--qmd-bg); border: 1px solid var(--qmd-border); border-radius: 999px;
-    padding: .25rem .55rem; pointer-events: none; opacity: .9; }
-  .qmd-readbar-time[hidden] { display: none; }
   .qmd-resume { position: fixed; left: 1rem; bottom: 1rem; z-index: 2147481500;
     display: flex; align-items: stretch; background: var(--qmd-bg);
     border: 1px solid var(--qmd-border); border-radius: 10px; overflow: hidden;
@@ -78,7 +79,7 @@
     color: var(--qmd-muted); cursor: pointer; font: inherit; font-size: 1rem; line-height: 1;
     padding: 0 .6rem; }
   .qmd-resume-x:hover { color: var(--qmd-fg); }
-  @media print { .qmd-readbar, .qmd-readbar-time, .qmd-resume { display: none !important; } }
+  @media print { .qmd-readbar, .qmd-resume { display: none !important; } }
 
   /* Reader highlights: theme-aware mark colour + the highlight/remove action button. */
   :root { --qmd-userhl-bg: rgba(255, 213, 0, .40); }
@@ -94,22 +95,7 @@
   .qmd-hl-action[hidden] { display: none; }
   @media print { .qmd-hl-action { display: none !important; } }
 
-  /* My highlights: the index toggle (bottom-left) + its panel (qmdInitHighlightIndex). */
-  .qmd-hlx-toggle { position: fixed; left: 1rem; bottom: 1rem; z-index: 2147481500;
-    font: 600 .76rem/1 var(--qmd-font-head); background: var(--qmd-bg); color: var(--qmd-fg);
-    border: 1px solid var(--qmd-border); border-radius: 999px; padding: .42rem .8rem;
-    cursor: pointer; box-shadow: 0 2px 12px var(--qmd-edge-shadow); }
-  .qmd-hlx-toggle:hover { border-color: var(--qmd-accent); color: var(--qmd-accent); }
-  .qmd-hlx-toggle[hidden] { display: none; }
-  .qmd-hlx-panel { position: fixed; left: 1rem; bottom: 3.8rem; z-index: 2147481600;
-    width: min(21rem, 92vw); max-height: 60vh; overflow: auto;
-    background: var(--qmd-bg); color: var(--qmd-fg); border: 1px solid var(--qmd-border);
-    border-radius: 12px; box-shadow: 0 8px 34px var(--qmd-edge-shadow);
-    padding: .9rem 1rem 1rem; font: var(--qmd-font-head); }
-  .qmd-hlx-panel[hidden] { display: none; }
-  .qmd-hlx-panel h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em;
-    color: var(--qmd-muted); margin: 0 0 .6rem; }
-  .qmd-hlx-empty { font-size: .85rem; color: var(--qmd-muted); margin: 0; }
+  /* My highlights: list + export, reused inside the reader menu's Highlights section. */
   .qmd-hlx-list { list-style: none; margin: 0 0 .7rem; padding: 0; }
   .qmd-hlx-list li { display: flex; align-items: flex-start; gap: .4rem; margin: 0 0 .35rem; }
   .qmd-hlx-go { flex: 1; text-align: left; border: 0; background: transparent; cursor: pointer;
@@ -127,7 +113,6 @@
     font: .78rem/1.4 var(--qmd-font-mono); color: var(--qmd-fg); background: var(--qmd-code-bg);
     border: 1px solid var(--qmd-border); border-radius: 7px; padding: .5rem; resize: vertical; }
   .qmd-hlx-out[hidden] { display: none; }
-  @media print { .qmd-hlx-toggle, .qmd-hlx-panel { display: none !important; } }
   body { max-width: var(--qmd-maxw); margin: 2rem auto; padding: 0 1rem;
          font: var(--qmd-font-body); color: var(--qmd-fg); background: var(--qmd-bg);
          overflow-wrap: break-word;

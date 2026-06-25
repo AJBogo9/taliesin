@@ -92,6 +92,7 @@ function qmdCopyButtons(root) {
 window.qmdEnhancers.register(qmdCopyButtons);
 window.qmdEnhancers.register(function () { qmdInitLightbox(); });
 window.qmdEnhancers.register(function () { qmdInitLinkPreview(); });
+window.qmdEnhancers.register(function () { qmdInitReaderMenu(); });
 window.qmdEnhancers.register(function () { qmdInitReaderPrefs(); });
 window.qmdEnhancers.register(function () { qmdInitReadingProgress(); });
 window.qmdEnhancers.register(function () { qmdInitHighlights(); });
@@ -403,14 +404,67 @@ function qmdInitLinkPreview() {
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(); });
 }
 
-// Reader preferences ("Aa" control): a reader-local text size / reading width / theme
-// picker. State lives in the reader's own localStorage and is applied before paint by the
-// pre-paint head script (qmdSetTheme / qmdSetReaderPref / qmdResetReader in theme.rs), so
-// this enhancer is only the UI. Read-only: it never writes the author's source. Skipped on
-// decks (own chrome). Idempotent (document-level, builds once).
+// Reader menu: one launcher ("Aa", bottom-right) opening a single menu that the reader
+// features mount their sections into (Reading, Display, Highlights) via
+// window.qmdReaderMenu.addSection(title, node, onOpen). Consolidates what used to be three
+// separate floating controls. Reader-side, read-only. Skipped on decks. Built once.
+function qmdInitReaderMenu() {
+  if (window.qmdReaderMenu) return;
+  if (document.querySelector('.qmd-deck')) return; // a slide deck has its own chrome
+
+  var launcher = document.createElement('button');
+  launcher.type = 'button';
+  launcher.className = 'qmd-rmenu-toggle';
+  launcher.textContent = 'Aa';
+  launcher.setAttribute('aria-label', 'Reader menu');
+  launcher.setAttribute('aria-haspopup', 'dialog');
+  launcher.setAttribute('aria-expanded', 'false');
+
+  var panel = document.createElement('div');
+  panel.className = 'qmd-rmenu-panel';
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-label', 'Reader');
+  panel.hidden = true;
+
+  document.body.appendChild(launcher);
+  document.body.appendChild(panel);
+
+  var sections = [];
+  function openMenu() {
+    panel.hidden = false; launcher.setAttribute('aria-expanded', 'true');
+    sections.forEach(function (s) { if (s.onOpen) s.onOpen(); });
+  }
+  function closeMenu() { panel.hidden = true; launcher.setAttribute('aria-expanded', 'false'); }
+  launcher.addEventListener('click', function (e) { e.stopPropagation(); if (panel.hidden) openMenu(); else closeMenu(); });
+  document.addEventListener('click', function (e) {
+    if (!panel.hidden && !panel.contains(e.target) && e.target !== launcher) closeMenu();
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !panel.hidden) { closeMenu(); launcher.focus(); } });
+
+  // Public API: each reader feature adds its own section and an optional refresh hook
+  // (called when the menu opens). Returns a handle to show/hide the section.
+  window.qmdReaderMenu = {
+    close: closeMenu,
+    addSection: function (title, node, onOpen) {
+      var wrap = document.createElement('section');
+      wrap.className = 'qmd-rmenu-section';
+      if (title) { var h = document.createElement('h2'); h.textContent = title; wrap.appendChild(h); }
+      wrap.appendChild(node);
+      panel.appendChild(wrap);
+      sections.push({ wrap: wrap, onOpen: onOpen });
+      if (onOpen) onOpen();
+      return { setVisible: function (v) { wrap.hidden = !v; } };
+    }
+  };
+}
+
+// Reader preferences: a reader-local text size / reading width / theme picker, mounted as
+// the "Display" section of the reader menu. State lives in the reader's own localStorage and
+// is applied before paint by the pre-paint head script (qmdSetTheme / qmdSetReaderPref /
+// qmdResetReader in theme.rs), so this enhancer is only the UI. Read-only. Skipped on decks.
 function qmdInitReaderPrefs() {
   if (window.__qmdReaderPrefs) return;
-  if (!window.qmdSetReaderPref) return;            // pre-paint API absent (older page)
+  if (!window.qmdSetReaderPref || !window.qmdReaderMenu) return; // need the pre-paint API + the menu host
   if (document.querySelector('.qmd-deck')) return; // a slide deck has its own chrome
   window.__qmdReaderPrefs = true;
 
@@ -453,24 +507,7 @@ function qmdInitReaderPrefs() {
     return { row: row, sync: sync };
   }
 
-  var btn = document.createElement('button');
-  btn.className = 'qmd-reader-toggle';
-  btn.type = 'button';
-  btn.textContent = 'Aa';
-  btn.setAttribute('aria-label', 'Reading settings');
-  btn.setAttribute('aria-haspopup', 'dialog');
-  btn.setAttribute('aria-expanded', 'false');
-
-  var panel = document.createElement('div');
-  panel.className = 'qmd-reader-panel';
-  panel.setAttribute('role', 'dialog');
-  panel.setAttribute('aria-label', 'Reading settings');
-  panel.hidden = true;
-
-  var head = document.createElement('h2');
-  head.textContent = 'Reading settings';
-  panel.appendChild(head);
-
+  var body = document.createElement('div');
   var themeSeg = seg('Theme', THEMES, curTheme, function (v) { window.qmdSetTheme(v); });
   var sizeSeg = seg('Text size', SIZES, curSize,
     function (v) { window.qmdSetReaderPref('scale', v === '1' ? null : v); },
@@ -478,36 +515,21 @@ function qmdInitReaderPrefs() {
       b.setAttribute('aria-label', opt[1] + ' text'); });
   var widthSeg = seg('Width', WIDTHS, curWidth,
     function (v) { window.qmdSetReaderPref('width', v || null); });
-
-  panel.appendChild(themeSeg.row);
-  panel.appendChild(sizeSeg.row);
-  panel.appendChild(widthSeg.row);
+  body.appendChild(themeSeg.row);
+  body.appendChild(sizeSeg.row);
+  body.appendChild(widthSeg.row);
 
   var reset = document.createElement('button');
   reset.className = 'qmd-reader-reset';
   reset.type = 'button';
   reset.textContent = 'Reset to defaults';
   reset.addEventListener('click', function () { if (window.qmdResetReader) window.qmdResetReader(); });
-  panel.appendChild(reset);
+  body.appendChild(reset);
 
   function syncAll() { themeSeg.sync(); sizeSeg.sync(); widthSeg.sync(); }
-  syncAll();
-
-  function open() { panel.hidden = false; btn.setAttribute('aria-expanded', 'true'); }
-  function close() { panel.hidden = true; btn.setAttribute('aria-expanded', 'false'); }
-
-  btn.addEventListener('click', function (e) { e.stopPropagation(); if (panel.hidden) open(); else close(); });
-  document.addEventListener('click', function (e) {
-    if (!panel.hidden && !panel.contains(e.target) && e.target !== btn) close();
-  });
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape' && !panel.hidden) { close(); btn.focus(); }
-  });
   window.addEventListener('qmd:themechange', syncAll);
   window.addEventListener('qmd:readerchange', syncAll);
-
-  document.body.appendChild(btn);
-  document.body.appendChild(panel);
+  window.qmdReaderMenu.addSection('Display', body, syncAll);
 }
 
 // Reading progress + resume: a thin top progress bar tied to scroll, a "N min left"
@@ -549,12 +571,16 @@ function qmdInitReadingProgress() {
   var fill = document.createElement('div');
   fill.className = 'qmd-readbar-fill';
   bar.appendChild(fill);
-  var time = document.createElement('div');
-  time.className = 'qmd-readbar-time';
-  time.setAttribute('aria-hidden', 'true');
-  time.hidden = true;
   document.body.appendChild(bar);
-  document.body.appendChild(time);
+
+  // The "N min left" readout lives in the reader menu's "Reading" section (registered at
+  // the end, once the word count is known); the bar itself stays ambient at the top.
+  var readout = document.createElement('div');
+  readout.className = 'qmd-rmenu-readout';
+  function updateReadout() {
+    var f = frac(), left = Math.ceil(totalMin * (1 - f));
+    readout.textContent = (left > 0 ? '~' + left + ' min left' : 'Finished') + ' · ' + Math.round(f * 100) + '% read';
+  }
 
   function frac() {
     var h = document.documentElement;
@@ -569,9 +595,6 @@ function qmdInitReadingProgress() {
     ticking = false;
     var f = frac();
     fill.style.width = (f * 100).toFixed(2) + '%';
-    var left = Math.ceil(totalMin * (1 - f));
-    if (f > 0.985 || left <= 0) { time.hidden = true; }
-    else { time.hidden = false; time.textContent = left + ' min left'; }
   }
   function schedule() { if (!ticking) { ticking = true; requestAnimationFrame(render); } }
 
@@ -634,6 +657,7 @@ function qmdInitReadingProgress() {
 
   countWords();
   render();
+  if (window.qmdReaderMenu) window.qmdReaderMenu.addSection('Reading', readout, updateReadout);
   window.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('resize', schedule, { passive: true });
   window.addEventListener('qmd:readerchange', schedule);
@@ -794,6 +818,7 @@ function qmdInitHighlights() {
 // localStorage; coordinates with the highlighter via the qmd:hlchange event. Skipped on decks.
 function qmdInitHighlightIndex() {
   if (document.querySelector('.qmd-deck')) return;
+  if (!window.qmdReaderMenu) return;          // need the menu host
   if (window.__qmdHLIndex) return;
   window.__qmdHLIndex = true;
 
@@ -821,38 +846,21 @@ function qmdInitHighlightIndex() {
     return document.querySelector('[data-block-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
   }
   function textOf(h) { var b = findBlock(h.id); return b ? blockText(b).slice(h.s, h.e) : null; }
-
-  var btn = document.createElement('button');
-  btn.type = 'button';
-  btn.className = 'qmd-hlx-toggle';
-  btn.hidden = true;
-  btn.setAttribute('aria-haspopup', 'dialog');
-  var panel = document.createElement('div');
-  panel.className = 'qmd-hlx-panel';
-  panel.setAttribute('role', 'dialog');
-  panel.setAttribute('aria-label', 'Highlights');
-  panel.hidden = true;
-  document.body.appendChild(btn);
-  document.body.appendChild(panel);
-
   function flash(block) { block.classList.remove('qmd-flash'); void block.offsetWidth; block.classList.add('qmd-flash'); }
 
-  function renderPanel() {
-    var list = load();
-    while (panel.firstChild) panel.removeChild(panel.firstChild);
-    var head = document.createElement('h2'); head.textContent = 'Highlights'; panel.appendChild(head);
-    var resolvable = 0;
+  var body = document.createElement('div');
+  function render() {
+    while (body.firstChild) body.removeChild(body.firstChild);
     var ul = document.createElement('ul'); ul.className = 'qmd-hlx-list';
-    list.forEach(function (h) {
+    load().forEach(function (h) {
       var t = textOf(h); if (t == null) return; // block gone (orphaned highlight)
-      resolvable++;
       var li = document.createElement('li');
       var go = document.createElement('button');
       go.type = 'button'; go.className = 'qmd-hlx-go';
       go.textContent = t.length > 90 ? t.slice(0, 90) + '…' : t;
       go.addEventListener('click', function () {
         var b = findBlock(h.id);
-        if (b) { b.scrollIntoView({ block: 'center', behavior: 'smooth' }); flash(b); panel.hidden = true; }
+        if (b) { window.qmdReaderMenu.close(); b.scrollIntoView({ block: 'center', behavior: 'smooth' }); flash(b); }
       });
       var rm = document.createElement('button');
       rm.type = 'button'; rm.className = 'qmd-hlx-rm';
@@ -864,11 +872,7 @@ function qmdInitHighlightIndex() {
       });
       li.appendChild(go); li.appendChild(rm); ul.appendChild(li);
     });
-    if (!resolvable) {
-      var empty = document.createElement('p'); empty.className = 'qmd-hlx-empty';
-      empty.textContent = 'No highlights yet.'; panel.appendChild(empty);
-    }
-    panel.appendChild(ul);
+    body.appendChild(ul);
 
     var actions = document.createElement('div'); actions.className = 'qmd-hlx-actions';
     var exp = document.createElement('button');
@@ -882,27 +886,16 @@ function qmdInitHighlightIndex() {
       ta.value = md; ta.hidden = false; ta.focus(); ta.select();
       try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(md); } catch (e) {}
     });
-    actions.appendChild(exp); actions.appendChild(ta); panel.appendChild(actions);
+    actions.appendChild(exp); actions.appendChild(ta); body.appendChild(actions);
   }
 
+  var section = window.qmdReaderMenu.addSection('Highlights', body, render);
   function refresh() {
     var n = load().filter(function (h) { return textOf(h) != null; }).length;
-    if (n > 0) { btn.hidden = false; btn.textContent = n + (n === 1 ? ' highlight' : ' highlights'); }
-    else { btn.hidden = true; panel.hidden = true; }
-    if (!panel.hidden) renderPanel();
+    section.setVisible(n > 0);
+    render();
   }
-
-  btn.addEventListener('click', function (e) {
-    e.stopPropagation();
-    panel.hidden = !panel.hidden;
-    if (!panel.hidden) renderPanel();
-  });
-  document.addEventListener('click', function (e) {
-    if (!panel.hidden && !panel.contains(e.target) && e.target !== btn) panel.hidden = true;
-  });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !panel.hidden) panel.hidden = true; });
   window.addEventListener('qmd:hlchange', refresh);
-
   refresh();
 }
 
