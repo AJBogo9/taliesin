@@ -21,6 +21,7 @@ use notify::Watcher;
 use parking_lot::Mutex;
 use qmd_fast_core::{Block, BlockOp, Page, Site, diff_blocks};
 use std::collections::{HashMap, HashSet};
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -28,8 +29,8 @@ use tokio::sync::{broadcast, mpsc};
 
 use crate::protocol::{self, Diagnostic};
 use crate::serve::{
-    CLIENT_JS, FAVICON, STATUS_CSS, bind_with_fallback, js_str, local_ip, open_in_browser,
-    percent_decode, print_qr, ws_origin_ok,
+    CLIENT_JS, FAVICON, STATUS_CSS, bind_with_fallback, js_str, lan_url, local_ip,
+    new_session_token, open_in_browser, percent_decode, print_qr, with_lan_guard, ws_origin_ok,
 };
 
 struct SiteApp {
@@ -143,12 +144,17 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
     spawn_builder(app.clone(), build_rx);
     spawn_watcher(app.clone());
 
+    // With --host the whole site is LAN-reachable; gate non-loopback access behind a
+    // per-session token threaded into the LAN URL/QR (loopback stays token-free).
+    let token: Option<Arc<str>> = expose.then(|| Arc::from(new_session_token()));
+
     let router = Router::new()
         .route("/favicon.ico", get(favicon))
         .route("/search.json", get(search_json))
         .route("/ws", get(ws_handler))
         .fallback(page_or_asset)
         .with_state(app.clone());
+    let router = with_lan_guard(router, token.clone());
 
     let (listener, addr) = bind_with_fallback(port, expose).await?;
     let port = addr.port();
@@ -156,7 +162,7 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
     let network = expose
         .then(local_ip)
         .flatten()
-        .map(|ip| format!("http://{ip}:{port}"));
+        .map(|ip| lan_url(&format!("http://{ip}:{port}"), token.as_ref()));
 
     crate::log::clear_screen();
     crate::log::banner(qmd_fast_core::VERSION);
@@ -182,9 +188,14 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
     if open {
         open_in_browser(&local);
     }
-    axum::serve(listener, router)
-        .await
-        .map_err(std::io::Error::other)
+    // `into_make_service_with_connect_info` surfaces the peer address to the LAN guard
+    // (loopback detection); harmless when no guard is installed.
+    axum::serve(
+        listener,
+        router.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .map_err(std::io::Error::other)
 }
 
 // --- HTTP ---------------------------------------------------------------

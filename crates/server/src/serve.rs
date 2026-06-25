@@ -122,6 +122,10 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
 
     spawn_watcher(app.clone(), kick_rx);
 
+    // With --host the preview is LAN-reachable; gate non-loopback access behind a
+    // per-session token threaded into the LAN URL/QR (loopback stays token-free).
+    let token: Option<Arc<str>> = expose.then(|| Arc::from(new_session_token()));
+
     let router = Router::new()
         .route("/", get(index))
         .route("/favicon.ico", get(favicon))
@@ -130,15 +134,17 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         // document's directory, so figures display in the live preview.
         .fallback(static_asset)
         .with_state(app.clone());
+    let router = with_lan_guard(router, token.clone());
 
     let (listener, addr) = bind_with_fallback(port, expose).await?;
     let port = addr.port();
     let local = format!("http://127.0.0.1:{port}");
-    // With --host we bound 0.0.0.0; surface the LAN URL (and a QR for phones).
+    // With --host we bound 0.0.0.0; surface the LAN URL (and a QR for phones), with the
+    // session token in `?t=` so the first load authenticates and sets the cookie.
     let network = expose
         .then(local_ip)
         .flatten()
-        .map(|ip| format!("http://{ip}:{port}"));
+        .map(|ip| lan_url(&format!("http://{ip}:{port}"), token.as_ref()));
     let desc = {
         let d = app.doc.lock();
         let mut parts = vec![match d.format {
@@ -171,9 +177,14 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
     if open {
         open_in_browser(&local);
     }
-    axum::serve(listener, router)
-        .await
-        .map_err(std::io::Error::other)
+    // `into_make_service_with_connect_info` surfaces the peer address to the LAN guard
+    // (loopback detection); harmless when no guard is installed.
+    axum::serve(
+        listener,
+        router.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .map_err(std::io::Error::other)
 }
 
 /// Bind `port`, falling back to the next few ports if it's in use (so a second
@@ -238,6 +249,128 @@ pub(crate) fn ws_origin_ok(headers: &axum::http::HeaderMap) -> bool {
     let origin = headers.get(ORIGIN).and_then(|v| v.to_str().ok());
     let host = headers.get(HOST).and_then(|v| v.to_str().ok());
     origin_allowed(origin, host)
+}
+
+// --- LAN access token (`--host` only) -------------------------------------------
+// `--host` binds 0.0.0.0, so anyone on the LAN can reach the preview. A per-session
+// token, carried in the QR / printed LAN URL, gates *non-loopback* access: a snooper
+// on the same network can't read your draft or drive the control channel without it.
+// Loopback (the author's own machine; the localhost VS Code companion) is always
+// allowed and never needs the token, so the local workflow is unchanged. Without
+// `--host` there is no token and the guard is never installed at all.
+
+/// A fresh per-session access token (a random UUID).
+pub(crate) fn new_session_token() -> String {
+    uuid::Uuid::new_v4().to_string()
+}
+
+/// What the [`lan_token_guard`] does with a request.
+pub(crate) enum LanAccess {
+    /// Serve it (loopback peer, or a valid `qmd_token` cookie already present).
+    Allow,
+    /// Serve it and set the session cookie (a valid `?t=` token — e.g. the first load
+    /// from the QR), so later same-origin asset/ws requests authenticate by cookie and
+    /// no longer need the token in the URL.
+    AllowSetCookie,
+    /// Reject: a non-loopback peer with no/incorrect token.
+    Deny,
+}
+
+/// The `t=` value of a URL query string, if present.
+fn query_token(query: &str) -> Option<&str> {
+    query.split('&').find_map(|kv| kv.strip_prefix("t="))
+}
+
+/// The `qmd_token` value of a `Cookie` header, if present.
+fn cookie_token(cookie: &str) -> Option<&str> {
+    cookie
+        .split(';')
+        .find_map(|kv| kv.trim_start().strip_prefix("qmd_token="))
+}
+
+/// Decide LAN access for one request. Loopback is always allowed; a LAN peer must
+/// present the token in the `?t=` query (→ set a cookie) or the `qmd_token` cookie.
+pub(crate) fn lan_access(
+    peer_loopback: bool,
+    query: Option<&str>,
+    cookie: Option<&str>,
+    token: &str,
+) -> LanAccess {
+    if peer_loopback {
+        return LanAccess::Allow;
+    }
+    if query.and_then(query_token) == Some(token) {
+        return LanAccess::AllowSetCookie;
+    }
+    if cookie.and_then(cookie_token) == Some(token) {
+        return LanAccess::Allow;
+    }
+    LanAccess::Deny
+}
+
+/// Axum middleware enforcing [`lan_access`]. Installed on the router only when a token
+/// exists (i.e. `--host`), so a loopback-only preview keeps its exact prior behavior.
+/// Reads the peer address from `ConnectInfo`, so the router must be served with
+/// `into_make_service_with_connect_info::<SocketAddr>()`.
+pub(crate) async fn lan_token_guard(
+    token: Arc<str>,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let peer_loopback = req
+        .extensions()
+        .get::<axum::extract::ConnectInfo<SocketAddr>>()
+        .is_some_and(|ci| ci.0.ip().is_loopback());
+    let query = req.uri().query().map(str::to_owned);
+    let cookie = req
+        .headers()
+        .get(axum::http::header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_owned);
+    match lan_access(peer_loopback, query.as_deref(), cookie.as_deref(), &token) {
+        LanAccess::Deny => (
+            axum::http::StatusCode::FORBIDDEN,
+            "qmd-fast: this --host preview needs its session link. Scan the QR code or \
+             open the printed LAN URL (it carries the access token).",
+        )
+            .into_response(),
+        LanAccess::Allow => next.run(req).await,
+        LanAccess::AllowSetCookie => {
+            let mut resp = next.run(req).await;
+            // Session-scoped: a new token each server start, so a stale cookie just
+            // fails closed and the author re-scans. SameSite=Lax + Path=/ so the cookie
+            // rides every same-origin asset/ws request from the page.
+            let value = format!("qmd_token={token}; Path=/; SameSite=Lax; Max-Age=86400");
+            if let Ok(hv) = axum::http::HeaderValue::from_str(&value) {
+                resp.headers_mut()
+                    .append(axum::http::header::SET_COOKIE, hv);
+            }
+            resp
+        }
+    }
+}
+
+/// Wrap a router with the LAN token guard for a `--host` session. Returns the router
+/// unchanged when there is no token (loopback-only preview).
+pub(crate) fn with_lan_guard(router: Router, token: Option<Arc<str>>) -> Router {
+    match token {
+        None => router,
+        Some(token) => router.layer(axum::middleware::from_fn(
+            move |req: axum::extract::Request, next: axum::middleware::Next| {
+                let token = token.clone();
+                async move { lan_token_guard(token, req, next).await }
+            },
+        )),
+    }
+}
+
+/// The LAN URL to advertise (QR + console): the base plus the session token in `?t=`
+/// when one exists, so the first load authenticates and sets the cookie.
+pub(crate) fn lan_url(base: &str, token: Option<&Arc<str>>) -> String {
+    match token {
+        Some(t) => format!("{base}/?t={t}"),
+        None => base.to_string(),
+    }
 }
 
 /// Print a scannable QR code (terminal half-blocks) for `url`, so the preview can
@@ -1229,5 +1362,64 @@ mod security {
         ));
         // A `null` origin (sandboxed iframe / file://) can't control the server.
         assert!(!origin_allowed(Some("null"), Some("localhost:4388")));
+    }
+
+    #[test]
+    fn lan_token_gates_non_loopback_only() {
+        let tok = "abc123";
+        // The author's own machine (loopback peer) is always allowed, token or not —
+        // so localhost browsing and the editor companion are unaffected by `--host`.
+        assert!(matches!(
+            lan_access(true, None, None, tok),
+            LanAccess::Allow
+        ));
+        // A LAN peer with no token is rejected (the snooping defense).
+        assert!(matches!(
+            lan_access(false, None, None, tok),
+            LanAccess::Deny
+        ));
+        // A LAN peer with the wrong token is rejected.
+        assert!(matches!(
+            lan_access(false, Some("t=nope"), Some("qmd_token=nope"), tok),
+            LanAccess::Deny
+        ));
+        // First load from the QR carries `?t=<token>` -> allowed, and we set the cookie.
+        assert!(matches!(
+            lan_access(false, Some("t=abc123"), None, tok),
+            LanAccess::AllowSetCookie
+        ));
+        // A `?t=` among other params still authenticates (e.g. `?page=x&t=abc123`).
+        assert!(matches!(
+            lan_access(false, Some("page=intro.qmd&t=abc123"), None, tok),
+            LanAccess::AllowSetCookie
+        ));
+        // Subsequent same-origin asset/ws requests carry the cookie -> allowed.
+        assert!(matches!(
+            lan_access(false, None, Some("qmd_token=abc123"), tok),
+            LanAccess::Allow
+        ));
+        // A cookie among other cookies still authenticates.
+        assert!(matches!(
+            lan_access(false, None, Some("other=1; qmd_token=abc123"), tok),
+            LanAccess::Allow
+        ));
+    }
+
+    #[test]
+    fn lan_url_appends_token_only_when_present() {
+        let tok: Arc<str> = Arc::from("abc123");
+        assert_eq!(
+            lan_url("http://192.168.1.5:4388", Some(&tok)),
+            "http://192.168.1.5:4388/?t=abc123"
+        );
+        assert_eq!(
+            lan_url("http://192.168.1.5:4388", None),
+            "http://192.168.1.5:4388"
+        );
+    }
+
+    #[test]
+    fn session_tokens_are_unique() {
+        assert_ne!(new_session_token(), new_session_token());
     }
 }
