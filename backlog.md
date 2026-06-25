@@ -9,12 +9,13 @@ by a target corpus doc. Output stays **HTML-only**. The active roadmap is
 > in git + the history docs: `BEYOND-QUARTO.md` (Beyond-Quarto waves), `DROP-QUARTO.md`
 > (the native-rewrite), `AUDITS.md` (the three audit passes). Don't re-add `[x]` items.
 
-## State (2026-06-25, `main` @ `a2617ae`, version 0.1.0)
+## State (2026-06-25, local `main` @ `57356ce`, version 0.1.0; author pushes between sessions)
 
 All four formats render + deploy; the dev loop is strong (block-level incremental updates
 with DOM-state preservation, warm server + Jupyter kernel, `_freeze` cache, Alt-click
 click-to-source + reverse cursor sync, located/framed diagnostics, CSS hot-swap, Cmd-K
-search). Nothing is pushed to any remote.
+search). The author syncs to `origin` between sessions (agents do NOT push); the public
+open-source release + site publish is still gated on readiness (the security token, now shipped).
 
 **Shipped initiatives** (history in the docs above): DROP-QUARTO (fully native, no shims/
 reveal.js/OJS). Beyond-Quarto **Waves 0-3 complete** + **Wave 4 built**: the schema
@@ -32,6 +33,21 @@ see below), the **project-structure & reserved-names** docs reference, **corpus 
 (bayesian-book→bayesian-website rename, README native-schema fixes, liquid-glass deck
 vendored offline), and the **tour.qmd embed** (was an orphaned deck).
 
+**2026-06-25 session (later): the reader-experience cluster** (the active thrust; all merged;
+built ultracode-style with design + adversarial-review workflows). A set of **reader-side,
+read-only** enhancers (state in the reader's own `localStorage` keyed by `location.pathname`;
+never writes the author `.qmd`; in-scope per the single-editing-surface invariant), all
+`qmdEnhancers`-registered in `crates/core/assets/js/code-enhance.js`, deck-skipped,
+corpus-pinned under `corpus/reader/`, spec'd in `docs/superpowers/specs/2026-06-25-*`,
+chrome-devtools-verified: reader **display prefs** (theme incl. sepia / text size / width /
+**line spacing**, applied pre-paint via `render/theme.rs`), **reading progress + resume**,
+**highlights + index + Markdown export**, **section bookmarks**, a **selection toolbar** (copy /
+quote / native W3C text-fragment share link), and a **modal focus-trap** (lightbox + Cmd-K; the
+reader menu stays an untrapped popover). All controls consolidated into one **Reader menu**
+(`qmdInitReaderMenu` + `window.qmdReaderMenu.addSection`). Also **Cmd-K search relevance**
+rewritten hand-rolled (multi-term / prefix / fuzzy, replacing the single `indexOf`; MiniSearch
+rejected — it inlines on every TOC page). Idea pool = repo-root `FEATURE-IDEAS.md`.
+
 ## To resume
 
 **Working method:** branch per feature; brainstorm if there's a fork; write a spec under
@@ -48,6 +64,23 @@ install && npm run build`, then F5 and run the `editor/vscode/README.md` checkli
 → block highlight; Alt-click → source). Report anything off and I'll fix it.
 
 ## Open / next
+
+### Reader experience (the active thrust; idea pool in `FEATURE-IDEAS.md`)
+Pattern for any new reader control: `window.qmdReaderMenu.addSection(title, node, onOpen)`; state
+in the reader's own `localStorage` keyed by `location.pathname`; deck-skip; pre-paint via
+`render/theme.rs` for anything that must not flash. **GOTCHA (line-spacing review):** prose CSS
+like `body p, body li { … }` leaks into chrome that wraps prose (TOC, sidebars, navbar — all
+`<nav><ul><li>`, search `role=listbox`, margin notes); re-pin with `nav li, [role="listbox"] li,
+.sidenote p, .column-margin p, … { line-height: inherit }`.
+- [ ] **Letter / word spacing** — completes WCAG 1.4.12 alongside the shipped line-spacing (a
+  Display-menu row + pre-paint var). Scope to prose; do NOT apply to `pre`/`code`/`.katex`
+  (monospace/math integrity); mind the chrome-leak above.
+- [ ] **Read-state TOC** — mark sections the reader has scrolled through in the TOC (reader-side,
+  builds on reading-progress + `toc-spy.js`).
+- [ ] **Copy-as-citation** — a "Cite" action on the selection toolbar (doc title + access date +
+  the text-fragment deep link the share-link already builds).
+- Decided/known: the reader menu is intentionally an untrapped popover (not a modal); highlights
+  are single-block prose only (margin notes / cross-block / colours were scoped out — see specs).
 
 ### Polish / docs
 - [ ] **CI: wire `cargo-deny`.** `deny.toml` exists (Wave 0); the CI step was deferred
