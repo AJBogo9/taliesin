@@ -71,12 +71,18 @@
   cellErrEl.id = "qmd-cell-errors";
   cellErrEl.style.display = "none";
   let cellErrCount = 0;
+  // A third source: accessibility issues found by scanning the rendered output
+  // (missing alt text, heading skips, …). Each row jumps to the offending source.
+  const a11yEl = document.createElement("div");
+  a11yEl.id = "qmd-a11y";
+  a11yEl.style.display = "none";
+  let a11yCount = 0;
 
   // Reflect the total issue count on the collapsed dev button (amber + a badge),
   // so problems are noticeable without expanding the panel.
   const refreshAlert = () => {
     const diagCount = diagEl.style.display === "none" ? 0 : diagEl.children.length;
-    const total = diagCount + cellErrCount;
+    const total = diagCount + cellErrCount + a11yCount;
     const toggle = document.getElementById("qmd-dev-toggle");
     if (toggle) toggle.classList.toggle("qmd-dev-alert", total > 0);
     const badge = document.getElementById("qmd-dev-count");
@@ -134,6 +140,135 @@
       });
       cellErrEl.appendChild(row);
     });
+    refreshAlert();
+  };
+
+  // --- accessibility audit of the rendered output ----------------------------
+  // A handful of high-confidence, recurring-and-invisible a11y checks run over the
+  // mounted DOM after every render. Each issue becomes a panel row; located ones
+  // (tied to a block) jump to the offending source line on click, like a server
+  // diagnostic. Cheap, advisory, and never blocks rendering.
+
+  // The source file:line of the nearest locatable ancestor of `el` (a `data-block-id`
+  // block or `data-source-file` include), or null when nothing carries a sourcepos.
+  const a11yLoc = (/** @type {Element} */ el) => {
+    const block = el.closest("[data-sourcepos], [data-block-id]");
+    if (!(block instanceof HTMLElement)) return null;
+    const m = /^(\d+):/.exec(block.dataset.sourcepos || "");
+    if (!m) return null;
+    const fileEl = el.closest("[data-source-file]");
+    const file = fileEl instanceof HTMLElement ? fileEl.dataset.sourceFile || null : null;
+    return { file, line: Number(m[1]) };
+  };
+
+  // WCAG relative-luminance contrast ratio between two `[r,g,b]` colors.
+  const contrastRatio = (/** @type {number[]} */ a, /** @type {number[]} */ b) => {
+    const lum = (/** @type {number[]} */ c) => {
+      const f = c.map((v) => {
+        const s = v / 255;
+        return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+      });
+      return 0.2126 * f[0] + 0.7152 * f[1] + 0.0722 * f[2];
+    };
+    const l1 = lum(a), l2 = lum(b);
+    return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+  };
+  const parseRgb = (/** @type {string} */ s) => {
+    const m = /rgba?\(([^)]+)\)/.exec(s);
+    if (!m) return null;
+    const p = m[1].split(",").map((x) => parseFloat(x));
+    // A fully transparent color carries no contrast signal.
+    if (p.length >= 4 && p[3] === 0) return null;
+    return [p[0], p[1], p[2]];
+  };
+  // The first opaque background walking up from `el` (defaults to white).
+  const bgColor = (/** @type {Element|null} */ el) => {
+    for (let e = el; e; e = e.parentElement) {
+      const rgb = parseRgb(getComputedStyle(e).backgroundColor);
+      if (rgb) return rgb;
+    }
+    return [255, 255, 255];
+  };
+
+  const scanA11y = () => {
+    /** @type {{message:string, file:?string, line?:number}[]} */
+    const issues = [];
+    /** @param {string} message @param {Element} [near] */
+    const add = (message, near) => {
+      const loc = near ? a11yLoc(near) : null;
+      issues.push({ message, file: loc?.file ?? null, line: loc?.line });
+    };
+    if (root) {
+      // 1. Images need an `alt` attribute (decorative images use `alt=""`).
+      let nAlt = 0;
+      for (const img of root.querySelectorAll("img:not([alt])")) {
+        if (nAlt++ < 8) add("Image is missing alt text (use alt=\"\" if decorative)", img);
+      }
+      if (nAlt > 8) add(`…and ${nAlt - 8} more images missing alt text`);
+
+      // 2. Heading levels shouldn't skip a level going deeper (h2 → h4).
+      let prev = 0;
+      for (const h of root.querySelectorAll("h1,h2,h3,h4,h5,h6")) {
+        const lvl = Number(h.tagName[1]);
+        if (prev && lvl > prev + 1) {
+          add(`Heading level skips from h${prev} to h${lvl}`, h);
+        }
+        prev = lvl;
+      }
+
+      // 3. Links/buttons need an accessible name (text, aria-label, title, or an
+      //    alt-bearing image), or a screen reader announces nothing.
+      let nName = 0;
+      for (const el of root.querySelectorAll("a[href], button")) {
+        const named =
+          (el.textContent || "").trim() ||
+          el.getAttribute("aria-label") ||
+          el.getAttribute("title") ||
+          el.querySelector("img[alt]:not([alt=''])") ||
+          el.querySelector("svg [role='img'], svg title");
+        if (!named && nName++ < 5) {
+          add(`${el.tagName === "A" ? "Link" : "Button"} has no accessible name`, el);
+        }
+      }
+    }
+
+    // 4. The document needs a language (set on <html lang>).
+    const lang = document.documentElement.getAttribute("lang");
+    if (!lang || !lang.trim()) add("Document is missing a language (<html lang>)");
+
+    // 5. Body-text contrast should meet WCAG AA (4.5:1).
+    try {
+      const probe = root && root.querySelector("p") ? root.querySelector("p") : document.body;
+      if (probe) {
+        const fg = parseRgb(getComputedStyle(probe).color);
+        if (fg) {
+          const ratio = contrastRatio(fg, bgColor(probe));
+          if (ratio < 4.5) {
+            add(`Body text contrast ${ratio.toFixed(1)}:1 is below WCAG AA (4.5:1)`);
+          }
+        }
+      }
+    } catch (_e) {
+      /* getComputedStyle can throw in odd layouts; a contrast miss is non-fatal */
+    }
+
+    a11yCount = issues.length;
+    a11yEl.textContent = "";
+    a11yEl.style.display = issues.length ? "flex" : "none";
+    for (const it of issues) {
+      const located = typeof it.line === "number";
+      const row = document.createElement(located ? "button" : "div");
+      row.className = "qmd-diag qmd-diag-warning" + (located ? " qmd-diag-loc" : "");
+      const msg = document.createElement("div");
+      msg.textContent = "♿ " + it.message;
+      row.appendChild(msg);
+      if (located) {
+        /** @type {HTMLButtonElement} */ (row).type = "button";
+        row.title = "Open this line in your editor";
+        row.addEventListener("click", () => gotoSource(it.file, /** @type {number} */ (it.line)));
+      }
+      a11yEl.appendChild(row);
+    }
     refreshAlert();
   };
 
@@ -292,8 +427,8 @@
       if (window.qmdWireThemeToggles) window.qmdWireThemeToggles();
     }
 
-    // Diagnostics + per-cell errors both live inside the panel.
-    panel.append(diagEl, cellErrEl);
+    // Diagnostics, per-cell errors, and a11y findings all live inside the panel.
+    panel.append(diagEl, cellErrEl, a11yEl);
     host.append(toggle, panel);
     setStatus("connecting…");
   })();
@@ -510,6 +645,7 @@
     updateWordCount();
     if (window.qmdEnhanceCode) window.qmdEnhanceCode(root);
     scanCellErrors();
+    scanA11y();
   };
 
   // The server renders the initial body into the page (so content paints before
