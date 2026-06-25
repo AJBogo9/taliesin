@@ -82,12 +82,12 @@ fn push_chapter_entry(
         push_chapter(root, file, None, entries, num);
         return true;
     }
-    if let Some(map) = value.as_mapping() {
-        if let Some(file) = map.get("file").and_then(|v| v.as_str()) {
-            let label = map.get("text").and_then(|v| v.as_str());
-            push_chapter(root, file, label, entries, num);
-            return true;
-        }
+    if let Some(map) = value.as_mapping()
+        && let Some(file) = map.get("file").and_then(|v| v.as_str())
+    {
+        let label = map.get("text").and_then(|v| v.as_str());
+        push_chapter(root, file, label, entries, num);
+        return true;
     }
     false
 }

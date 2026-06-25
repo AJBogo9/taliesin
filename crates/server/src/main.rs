@@ -705,6 +705,9 @@ fn mirror_assets(root: &Path, out: &Path) -> (usize, Vec<String>) {
     (copied, skipped)
 }
 
+// Helper fns (local_refs, is_local_ref, cmd_render, …) deliberately follow this
+// build-test module; the lint about that ordering is a style preference here.
+#[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 mod mirror_tests {
     use super::*;
