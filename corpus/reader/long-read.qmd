@@ -1,5 +1,6 @@
 ---
 title: "A longer read"
+toc: true
 ---
 
 This page is deliberately long. It exists to be scrolled, so the reading-progress bar at the

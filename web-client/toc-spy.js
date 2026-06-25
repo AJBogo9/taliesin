@@ -9,6 +9,46 @@
   var entries = []; // [{ link, heading }] in document order
   var active = null;
   var installed = false;
+  // Read-state: sections the reader has scrolled through, decorated in the TOC.
+  // Reader-side + read-only: the set lives in the reader's OWN localStorage, keyed by
+  // path and anchored to each heading's stable `data-block-id` (the same anchor that
+  // bookmarks/highlights/resume use), so it survives reflow and never touches source.
+  var read = {}; // read[headingBlockId] = 1 once that section is scrolled through
+  var readHigh = 0; // forward-only high-water index of scrolled-through entries
+  var READ_KEY = "qmd-read:" + location.pathname;
+
+  function loadRead() {
+    read = {};
+    try {
+      var raw = localStorage.getItem(READ_KEY);
+      var arr = raw && JSON.parse(raw);
+      if (arr && arr.length) for (var i = 0; i < arr.length; i++) read[arr[i]] = 1;
+    } catch (e) {}
+  }
+  function saveRead() {
+    try {
+      localStorage.setItem(READ_KEY, JSON.stringify(Object.keys(read)));
+    } catch (e) {}
+  }
+  // Decorate a TOC link as read (idempotent): the class drives the ✓ + fade, and a
+  // visually-hidden label announces "read" to a screen reader.
+  function markRead(link) {
+    if (!link || link.classList.contains("qmd-toc-read")) return;
+    link.classList.add("qmd-toc-read");
+    var vh = document.createElement("span");
+    vh.className = "qmd-sr-only";
+    vh.textContent = " (read)";
+    link.appendChild(vh);
+  }
+  // Restore a returning reader's trail: mark every entry whose heading is already read,
+  // regardless of current scroll position (the high-water loop only reaches the current
+  // section). Called on (re)init against the fresh links.
+  function applySeededRead() {
+    entries.forEach(function (e) {
+      var bid = e.heading.getAttribute("data-block-id");
+      if (bid && read[bid]) markRead(e.link);
+    });
+  }
 
   // The activation line sits just under the sticky navbar so the highlighted
   // section matches what a clicked TOC link lands at (headings carry a
@@ -47,6 +87,26 @@
         cur = entries[i];
       }
     }
+    // Read-state advance: every entry strictly before the current section has been
+    // scrolled through; the final entry counts once the page bottom is reached. The
+    // high-water index only moves forward, so scrolling back up never un-marks a
+    // section. (A forward jump — TOC click / resume — counts the skipped sections as
+    // read, matching the position-anchored resume/progress model.)
+    var reached = atBottom ? entries.length : cur ? entries.indexOf(cur) : 0;
+    if (reached > readHigh) {
+      var changed = false;
+      for (; readHigh < reached; readHigh++) {
+        var e = entries[readHigh];
+        var bid = e.heading.getAttribute("data-block-id");
+        if (bid && !read[bid]) {
+          read[bid] = 1;
+          changed = true;
+        }
+        markRead(e.link);
+      }
+      if (changed) saveRead();
+    }
+
     // cur stays null while above the first heading, so nothing is highlighted in
     // the intro (rather than prematurely lighting the first entry).
     if (cur === active) return;
@@ -87,6 +147,9 @@
     if (!document.getElementById("TOC")) return; // no TOC on this page
     collect();
     active = null;
+    readHigh = 0; // fresh links on a live-preview rebuild: re-seed from storage
+    loadRead();
+    applySeededRead();
     if (!installed) {
       window.addEventListener("scroll", onScroll, { passive: true });
       window.addEventListener("resize", onScroll);

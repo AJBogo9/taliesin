@@ -1431,6 +1431,34 @@ fn no_toc_when_not_requested() {
 }
 
 #[test]
+fn toc_page_ships_read_state_marker() {
+    // A page with a TOC ships the read-state scrollspy decoration: the script marks the
+    // sections a reader has scrolled through (`.qmd-toc-read`) and persists them in the
+    // reader's OWN localStorage (`qmd-read:<path>`). Reader-side, read-only.
+    let toc_page = render_html_page(
+        "---\ntitle: Doc\nformat:\n  html:\n    toc: true\n---\n\n# A\n\ntext\n\n## B\n\nmore\n",
+        "fb",
+    );
+    assert!(
+        toc_page.contains("qmd-toc-read"),
+        "read-state class/CSS missing from a TOC page"
+    );
+    assert!(
+        toc_page.contains("qmd-read:"),
+        "read-state storage key missing from the TOC scrollspy"
+    );
+
+    // No TOC -> no scrollspy script -> the read-state persistence logic never ships
+    // (guards against the feature being always-on). The CSS class lives in base.css
+    // unconditionally, so the storage key is the TOC-only discriminator.
+    let plain = render_html_page("---\ntitle: Doc\n---\n\n# A\n", "fb");
+    assert!(
+        !plain.contains("qmd-read:"),
+        "read-state logic should ship only with a TOC"
+    );
+}
+
+#[test]
 fn missing_bibliography_and_theme_files_warn() {
     // A named `.bib`/`.css` that can't be read is reported on the doc's
     // `warnings` (the core's non-fatal error channel), not silently dropped.

@@ -499,6 +499,13 @@
            color: var(--qmd-muted); text-decoration: none; }
   #TOC a:hover { color: var(--qmd-fg); }
   #TOC a.qmd-toc-active { color: var(--qmd-fg); border-left-color: var(--qmd-accent); }
+  /* Read-state: a section the reader has scrolled through gets a trailing ✓ and recedes
+     a touch. Distinct from .qmd-toc-active (the current section). Reader-side: toc-spy.js
+     stores the read set in the reader's own localStorage; the source is never touched. */
+  #TOC a.qmd-toc-read { opacity: .62; }
+  #TOC a.qmd-toc-read::after { content: "\2713"; margin-left: .45ch; color: var(--qmd-accent);
+    font-size: .82em; opacity: .85; }
+  #TOC a.qmd-toc-read.qmd-toc-active { opacity: 1; } /* current + finished: full strength */
   /* mobile pull-up-sheet chrome: hidden on desktop, revealed in the sheet media query */
   #qmd-toc-handle, #qmd-toc-backdrop { display: none; }
   @media (max-width: 60rem) {
