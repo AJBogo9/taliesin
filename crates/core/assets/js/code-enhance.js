@@ -541,11 +541,13 @@ function qmdInitReaderPrefs() {
   var THEMES = [['light', 'Light'], ['dark', 'Dark'], ['sepia', 'Sepia']];
   var SIZES = [['0.9', 'small'], ['1', 'normal'], ['1.15', 'large'], ['1.3', 'x-large']];
   var WIDTHS = [['38rem', 'Narrow'], ['', 'Normal'], ['58rem', 'Wide']];
+  var LEADINGS = [['1.5', 'Tight'], ['1.7', 'Normal'], ['2', 'Relaxed']];
   var SIZE_FS = { '0.9': '.78rem', '1': '.95rem', '1.15': '1.15rem', '1.3': '1.4rem' };
 
   function curTheme() { return (window.qmdGetThemePref && window.qmdGetThemePref()) || 'light'; }
   function curSize() { return window.qmdGetReaderPref('scale') || '1'; }
   function curWidth() { return window.qmdGetReaderPref('width') || ''; }
+  function curLeading() { return window.qmdGetReaderPref('leading') || '1.7'; }
 
   // One segmented control row. `labelFn(btn, opt)` customizes a button (else opt[1] text).
   function seg(title, options, getCur, onPick, labelFn) {
@@ -585,9 +587,12 @@ function qmdInitReaderPrefs() {
       b.setAttribute('aria-label', opt[1] + ' text'); });
   var widthSeg = seg('Width', WIDTHS, curWidth,
     function (v) { window.qmdSetReaderPref('width', v || null); });
+  var leadingSeg = seg('Line spacing', LEADINGS, curLeading,
+    function (v) { window.qmdSetReaderPref('leading', v === '1.7' ? null : v); });
   body.appendChild(themeSeg.row);
   body.appendChild(sizeSeg.row);
   body.appendChild(widthSeg.row);
+  body.appendChild(leadingSeg.row);
 
   var reset = document.createElement('button');
   reset.className = 'qmd-reader-reset';
@@ -596,7 +601,7 @@ function qmdInitReaderPrefs() {
   reset.addEventListener('click', function () { if (window.qmdResetReader) window.qmdResetReader(); });
   body.appendChild(reset);
 
-  function syncAll() { themeSeg.sync(); sizeSeg.sync(); widthSeg.sync(); }
+  function syncAll() { themeSeg.sync(); sizeSeg.sync(); widthSeg.sync(); leadingSeg.sync(); }
   window.addEventListener('qmd:themechange', syncAll);
   window.addEventListener('qmd:readerchange', syncAll);
   window.qmdReaderMenu.addSection('Display', body, syncAll);

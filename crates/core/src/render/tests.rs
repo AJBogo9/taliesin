@@ -1313,6 +1313,16 @@ fn assembled_page_ships_focus_trap() {
 }
 
 #[test]
+fn assembled_page_ships_line_spacing() {
+    let page = render_html_page("# Title\n\nProse.\n", "doc");
+    // The reader line-spacing control drives prose line-height via this CSS var.
+    assert!(
+        page.contains("--qmd-reader-leading"),
+        "reader line-spacing var not shipped in the assembled page"
+    );
+}
+
+#[test]
 fn toc_page_lists_headings_with_anchor_links() {
     let page = render_html_page(
         "---\ntitle: Doc\nformat:\n  html:\n    toc: true\n---\n\n# A\n\ntext\n\n## B\n",

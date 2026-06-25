@@ -141,6 +141,16 @@
          overflow-wrap: break-word;
          font-feature-settings: "liga" 1, "calt" 1, "kern" 1;
          -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  /* Reader line-spacing (Display menu): prose blocks only, so headings (own optical
+     line-heights), pre/code (monospace), .katex, and tables are untouched. Default 1.7 = the
+     body line-height, so nothing changes until the reader opts in. */
+  body p, body li, body dd, body blockquote, body figcaption {
+    line-height: var(--qmd-reader-leading, 1.7); }
+  /* Re-pin chrome that wraps prose in <li>/<p> with its own leading, so the reader var above
+     never leaks into navigation (TOC, sidebars, postnav, navbar — all <nav>), search results,
+     or margin notes. `inherit` restores each element's container leading. */
+  nav li, [role="listbox"] li,
+  .sidenote p, .marginnote p, .column-margin p, .aside p { line-height: inherit; }
   /* Tabular figures where columns/alignment matter (prose keeps proportional numerals). */
   pre, code, table, .katex { font-variant-numeric: tabular-nums; }
   a { color: var(--qmd-link); }
@@ -225,6 +235,7 @@
   .qmd-title-block .qmd-title-meta { margin-top: .6rem; display: flex; flex-wrap: wrap; gap: .25rem 1rem;
     font: 14px var(--qmd-font-head); color: var(--qmd-muted); }
   pre { position: relative; padding: 1rem; border-radius: 6px; overflow: auto; font-size: .9em;
+        line-height: 1.5; /* fixed code leading: immune to reader line-spacing, even nested in a list */
         /* same scroll-shadow trick as wide tables: bg-coloured covers (local) ride
            with the content and mask the edge shadows (scroll, pinned to the box)
            until a long line actually has more to scroll toward. */
