@@ -9,7 +9,7 @@ by a target corpus doc. Output stays **HTML-only**. The active roadmap is
 > in git + the history docs: `BEYOND-QUARTO.md` (Beyond-Quarto waves), `DROP-QUARTO.md`
 > (the native-rewrite), `AUDITS.md` (the three audit passes). Don't re-add `[x]` items.
 
-## State (2026-06-24, `main` @ `1c9905a`, version 0.1.0)
+## State (2026-06-25, `main` @ `a2617ae`, version 0.1.0)
 
 All four formats render + deploy; the dev loop is strong (block-level incremental updates
 with DOM-state preservation, warm server + Jupyter kernel, `_freeze` cache, Alt-click
@@ -23,6 +23,14 @@ validator + JSON schemas, the live-edit benchmark, all six Wave-3 craft/breadth 
 graph), the reverse-sync audit, and the VS Code editor companion (Phase 1, headlessly
 verified). Recent backlog fixes: build-residue skip, `{js}`-import bundling, `mounts:`
 build warning, `draft:` wire-up.
+
+**2026-06-25 session** (all merged to `main`): the **`--host` session token** (LAN-snooping
+defense, the OSS gate), the **per-chapter `{ file:, text: }` book-label override**, the
+**client-side a11y audit** (diagnostics panel), the **corpus fidelity sweep vs Quarto**
+(`qmd-fast-testbed/sweep_corpus.py` + `CORPUS-FINDINGS.md`; surfaced 2 bug-candidates,
+see below), the **project-structure & reserved-names** docs reference, **corpus hygiene**
+(bayesian-book→bayesian-website rename, README native-schema fixes, liquid-glass deck
+vendored offline), and the **tour.qmd embed** (was an orphaned deck).
 
 ## To resume
 
@@ -41,40 +49,17 @@ install && npm run build`, then F5 and run the `editor/vscode/README.md` checkli
 
 ## Open / next
 
-### Highest-value
-- [ ] **Security #1d: per-session token in the `--host` URL/QR (pre-OSS gate).** The last
-  piece of the security pass: a token gating LAN access (LAN-snooping defense). Touches
-  `client.js` + both servers' routing; the VS Code companion is localhost-only so it's
-  unaffected, but the token must thread into the `--host` URL/QR. Do before any OSS release.
-- [ ] **Book chapter label ignores front-matter `title:` for dual-use docs.** A chapter's
-  sidebar label comes from its first `# H1` (`site/book.rs` `push_chapter`, ~`book.rs:70-73`),
-  falling back to `title:` only when there's no H1 — so a stand-alone-capable doc (`title:` +
-  flat `#` sections) is labelled by its first *section*, not its title. Fix: prefer
-  front-matter `title:`, or allow a `_site.yml` per-chapter label override (`- file:, text:`).
-  **Decide bug-vs-Quarto-parity first** (Quarto treats the first H1 as the chapter title).
-  Trivial fix; affects any book built from standalone docs.
-- [ ] **Output fidelity vs Quarto, systematized (#4).** Turn the `qmd-fast-testbed` sibling
-  repo into a corpus-wide sweep: render each doc in both, structural-diff, catalog each
-  divergence as bug-or-deliberate. The only thing that de-risks "replaces Quarto" past
-  self-judgment.
-- [ ] **a11y audit of the *output*.** ~4-5 high-confidence client-side DOM checks (missing
-  alt text, heading-level skips, low-contrast `--qmd-*`, missing `lang`) surfaced as
-  click-to-source diagnostics in the existing panel. No server work; recurring + invisible
-  issues, so worth it.
-
 ### Polish / docs
-- [ ] **Docs: "Project structure & reserved names" reference (medium).** Annotated-tree
-  section in `configuration.qmd`: the `_`/`.`-skip rule, `_freeze/`, `_includes/`, and a
-  "how a deck gets built" note (chaptered vs embedded vs standalone — the omission that
-  orphaned `docs/guide/tour.qmd`).
-- [ ] **Corpus hygiene (low).** Rename `corpus/bayesian-book` (a single-page *website*, not
-  a book; dir + the `book_*` test fn). Delete `tech-blog/**/_metadata.yml` (ignored; teaches
-  a non-existent cascade). Fix the `corpus/README.md` demo-book row (`book: chapters:` →
-  native flat `chapters:`). Vendor the liquid-glass deck's remote Unsplash + Google Fonts.
-- [ ] **`docs/guide/tour.qmd` is orphaned (low).** A deck in the book dir, neither chaptered
-  nor embedded, so the build never produces it. Embed / chapter / or move it out.
 - [ ] **CI: wire `cargo-deny`.** `deny.toml` exists (Wave 0); the CI step was deferred
   (cargo-deny not installable/verifiable locally). Add it when CI is set up.
+
+### Fidelity follow-ups (from the 2026-06-25 corpus sweep; detail in `AUDITS.md`)
+- [ ] **`#|` option lines leak into displayed code.** A non-executed `{python}` cell renders
+  its `#| label:` / `#| fig-cap:` directive lines as visible code (Quarto strips them).
+  Affects the no-kernel render/preview path. Strip leading `#|`/`//|` option lines before
+  highlighting source-rendered cells (`crates/core/src/render/emit.rs`). *Confirmed.*
+- [ ] **Captioned code listing isn't a `<figure>`.** qmd-fast emits `div.qmd-listing` with a
+  bare `<figcaption>` where Quarto uses `<figure class="quarto-float-lst">`. Minor/semantic.
 
 ### Deck
 - [ ] **Mobile / touch (deeper).** Pinch/pan + touch gestures on the deck, and `{js}` widgets
