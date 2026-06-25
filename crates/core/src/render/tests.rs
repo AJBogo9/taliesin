@@ -1217,6 +1217,23 @@ fn inline_image_in_a_sentence_stays_inline() {
 }
 
 #[test]
+fn assembled_page_ships_reader_preferences() {
+    let page = render_html_page("# Title\n\nProse to read.\n", "doc");
+    // The reader-preferences enhancer ("Aa" control) ships on every built page via
+    // code_scripts(), so a reader can pick size / width / theme.
+    assert!(
+        page.contains("qmdInitReaderPrefs"),
+        "reader-preferences enhancer not shipped in the assembled page"
+    );
+    // The pre-paint head script applies the reader's saved size/width before paint
+    // (no flash), so it must reference the reader-scale preference.
+    assert!(
+        page.contains("qmd-reader-scale"),
+        "pre-paint reader-preference apply missing from the page head"
+    );
+}
+
+#[test]
 fn toc_page_lists_headings_with_anchor_links() {
     let page = render_html_page(
         "---\ntitle: Doc\nformat:\n  html:\n    toc: true\n---\n\n# A\n\ntext\n\n## B\n",

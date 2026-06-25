@@ -8,13 +8,54 @@
     --qmd-callout-note: #4c8dff; --qmd-callout-tip: #2bb673; --qmd-callout-warning: #e0a800;
     --qmd-callout-important: #e0566b; --qmd-callout-caution: #e8730c;
     color-scheme: light;
-    --qmd-font-body: 17px/1.7 ui-serif, Georgia, "Times New Roman", serif;
+    --qmd-font-body: 1.0625rem/1.7 ui-serif, Georgia, "Times New Roman", serif;
     --qmd-font-head: ui-sans-serif, system-ui, sans-serif;
     --qmd-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
     --qmd-maxw: 46rem;
     --qmd-scale: 1.2; /* modular type-scale ratio (minor third) for the heading sizes */
   }
-  html { scroll-behavior: smooth; }
+  /* Reader text-size: one root multiplier scales every rem/em (body + headings). */
+  html { scroll-behavior: smooth; font-size: calc(100% * var(--qmd-reader-scale, 1)); }
+
+  /* Sepia: a warm, low-contrast reading theme (reader-selectable via the Aa panel). */
+  html[data-theme="sepia"] {
+    --qmd-bg: #f4ecd8; --qmd-fg: #5b4636; --qmd-muted: #7a6a55; --qmd-accent: #9a6a3a;
+    --qmd-link: #8a5a2b; --qmd-code-bg: #ece2c8; --qmd-border: #ddd0b0;
+    --qmd-edge-shadow: rgba(91, 70, 54, .14);
+    color-scheme: light;
+  }
+
+  /* Reader "Aa" control + settings popover (injected by qmdInitReaderPrefs). */
+  .qmd-reader-toggle {
+    position: fixed; right: 1rem; bottom: 1rem; z-index: 2147481500;
+    width: 2.4rem; height: 2.4rem; border-radius: 50%;
+    border: 1px solid var(--qmd-border); background: var(--qmd-bg); color: var(--qmd-fg);
+    box-shadow: 0 2px 12px var(--qmd-edge-shadow); cursor: pointer;
+    font: 600 1rem/1 var(--qmd-font-head); display: flex; align-items: center; justify-content: center; }
+  .qmd-reader-toggle:hover { border-color: var(--qmd-accent); color: var(--qmd-accent); }
+  .qmd-reader-panel {
+    position: fixed; right: 1rem; bottom: 4rem; z-index: 2147481600;
+    width: min(17rem, 92vw); padding: .9rem 1rem 1rem;
+    background: var(--qmd-bg); color: var(--qmd-fg);
+    border: 1px solid var(--qmd-border); border-radius: 12px;
+    box-shadow: 0 8px 34px var(--qmd-edge-shadow); font: var(--qmd-font-head); }
+  .qmd-reader-panel[hidden] { display: none; }
+  .qmd-reader-panel h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em;
+    color: var(--qmd-muted); margin: 0 0 .6rem; }
+  .qmd-reader-row { display: flex; align-items: center; justify-content: space-between;
+    gap: .5rem; margin: 0 0 .7rem; }
+  .qmd-reader-row > span { font-size: .82rem; color: var(--qmd-muted); }
+  .qmd-reader-seg { display: inline-flex; border: 1px solid var(--qmd-border);
+    border-radius: 7px; overflow: hidden; }
+  .qmd-reader-seg button {
+    border: 0; border-left: 1px solid var(--qmd-border); background: transparent;
+    color: var(--qmd-fg); cursor: pointer; padding: .28rem .55rem;
+    font: inherit; font-size: .8rem; line-height: 1; }
+  .qmd-reader-seg button:first-child { border-left: 0; }
+  .qmd-reader-seg button[aria-pressed="true"] { background: var(--qmd-accent); color: #fff; }
+  .qmd-reader-reset { background: none; border: 0; color: var(--qmd-link); cursor: pointer;
+    font: inherit; font-size: .8rem; padding: 0; }
+  @media print { .qmd-reader-toggle, .qmd-reader-panel { display: none !important; } }
   body { max-width: var(--qmd-maxw); margin: 2rem auto; padding: 0 1rem;
          font: var(--qmd-font-body); color: var(--qmd-fg); background: var(--qmd-bg);
          overflow-wrap: break-word;

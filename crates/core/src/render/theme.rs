@@ -72,8 +72,9 @@ pub fn theme_head(default_mode: &str) -> String {
   function pref(){{
     var v = null;
     try {{ v = localStorage.getItem("qmd-theme"); }} catch(e) {{}}
-    return (v === "light" || v === "dark") ? v : DEFAULT;
+    return (v === "light" || v === "dark" || v === "sepia") ? v : DEFAULT;
   }}
+  var BG = {{ dark: '#16181d', sepia: '#f4ecd8', light: '#ffffff' }};
   function apply(){{
     var mode = pref();
     var el = document.documentElement;
@@ -82,15 +83,37 @@ pub fn theme_head(default_mode: &str) -> String {
     // script, so the browser's canvas is the theme colour from the very first
     // frame. Without this the canvas stays white until the inline <style> parses,
     // which shows as a white flash on every (cross-page) navigation in dark mode.
-    el.style.colorScheme = mode;
-    el.style.background = mode === "dark" ? '#16181d' : '#ffffff';
+    el.style.colorScheme = mode === "dark" ? "dark" : "light";
+    el.style.background = BG[mode] || '#ffffff';
     // Let theme-dependent renderers (e.g. mermaid, whose SVG colours are baked at
     // render time) re-render on a toggle.
     try {{ window.dispatchEvent(new CustomEvent("qmd:themechange", {{ detail: {{ mode: mode }} }})); }} catch(e) {{}}
   }}
+  // Reader display preferences (text size + reading width), reader-local, applied
+  // here in the pre-paint head so a returning reader never flashes the default size.
+  function applyReader(){{
+    var el = document.documentElement, s = null, w = null;
+    try {{ s = localStorage.getItem("qmd-reader-scale"); }} catch(e) {{}}
+    try {{ w = localStorage.getItem("qmd-reader-width"); }} catch(e) {{}}
+    if (s) el.style.setProperty("--qmd-reader-scale", s); else el.style.removeProperty("--qmd-reader-scale");
+    if (w) el.style.setProperty("--qmd-maxw", w); else el.style.removeProperty("--qmd-maxw");
+  }}
   apply();
+  applyReader();
   window.qmdSetTheme = function(p){{ try {{ localStorage.setItem("qmd-theme", p); }} catch(e) {{}} apply(); }};
   window.qmdGetThemePref = function(){{ return pref(); }};
+  // key is "scale" | "width"; value null clears it. Mirrors qmdSetTheme.
+  window.qmdSetReaderPref = function(k, v){{
+    try {{ if (v === null) localStorage.removeItem("qmd-reader-" + k); else localStorage.setItem("qmd-reader-" + k, v); }} catch(e) {{}}
+    applyReader();
+    try {{ window.dispatchEvent(new CustomEvent("qmd:readerchange")); }} catch(e) {{}}
+  }};
+  window.qmdGetReaderPref = function(k){{ try {{ return localStorage.getItem("qmd-reader-" + k); }} catch(e) {{ return null; }} }};
+  window.qmdResetReader = function(){{
+    try {{ localStorage.removeItem("qmd-theme"); localStorage.removeItem("qmd-reader-scale"); localStorage.removeItem("qmd-reader-width"); }} catch(e) {{}}
+    apply(); applyReader();
+    try {{ window.dispatchEvent(new CustomEvent("qmd:readerchange")); }} catch(e) {{}}
+  }};
   // Wire any `[data-qmd-theme-toggle]` button (the site navbar's, or the dev
   // menu's on a single doc): toggle light <-> dark, icon reflects the current mode.
   // Shipped here (not in the preview client) so the toggle works in `build` too.

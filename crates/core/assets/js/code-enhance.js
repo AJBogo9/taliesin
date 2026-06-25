@@ -92,6 +92,7 @@ function qmdCopyButtons(root) {
 window.qmdEnhancers.register(qmdCopyButtons);
 window.qmdEnhancers.register(function () { qmdInitLightbox(); });
 window.qmdEnhancers.register(function () { qmdInitLinkPreview(); });
+window.qmdEnhancers.register(function () { qmdInitReaderPrefs(); });
 window.qmdEnhancers.register(qmdInitCategoryFilter);
 
 // Native category filter for `listing: { categories: true }`: the server emits a
@@ -397,5 +398,112 @@ function qmdInitLinkPreview() {
   card.addEventListener('mouseleave', scheduleHide);
   window.addEventListener('scroll', hide, true);
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(); });
+}
+
+// Reader preferences ("Aa" control): a reader-local text size / reading width / theme
+// picker. State lives in the reader's own localStorage and is applied before paint by the
+// pre-paint head script (qmdSetTheme / qmdSetReaderPref / qmdResetReader in theme.rs), so
+// this enhancer is only the UI. Read-only: it never writes the author's source. Skipped on
+// decks (own chrome). Idempotent (document-level, builds once).
+function qmdInitReaderPrefs() {
+  if (window.__qmdReaderPrefs) return;
+  if (!window.qmdSetReaderPref) return;            // pre-paint API absent (older page)
+  if (document.querySelector('.qmd-deck')) return; // a slide deck has its own chrome
+  window.__qmdReaderPrefs = true;
+
+  var THEMES = [['light', 'Light'], ['dark', 'Dark'], ['sepia', 'Sepia']];
+  var SIZES = [['0.9', 'small'], ['1', 'normal'], ['1.15', 'large'], ['1.3', 'x-large']];
+  var WIDTHS = [['38rem', 'Narrow'], ['', 'Normal'], ['58rem', 'Wide']];
+  var SIZE_FS = { '0.9': '.78rem', '1': '.95rem', '1.15': '1.15rem', '1.3': '1.4rem' };
+
+  function curTheme() { return (window.qmdGetThemePref && window.qmdGetThemePref()) || 'light'; }
+  function curSize() { return window.qmdGetReaderPref('scale') || '1'; }
+  function curWidth() { return window.qmdGetReaderPref('width') || ''; }
+
+  // One segmented control row. `labelFn(btn, opt)` customizes a button (else opt[1] text).
+  function seg(title, options, getCur, onPick, labelFn) {
+    var row = document.createElement('div');
+    row.className = 'qmd-reader-row';
+    var label = document.createElement('span');
+    label.textContent = title;
+    var group = document.createElement('div');
+    group.className = 'qmd-reader-seg';
+    group.setAttribute('role', 'group');
+    group.setAttribute('aria-label', title);
+    var buttons = [];
+    options.forEach(function (opt) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      if (labelFn) labelFn(b, opt); else b.textContent = opt[1];
+      b.addEventListener('click', function () { onPick(opt[0]); });
+      group.appendChild(b);
+      buttons.push(b);
+    });
+    function sync() {
+      var cur = getCur();
+      buttons.forEach(function (b, i) {
+        b.setAttribute('aria-pressed', options[i][0] === cur ? 'true' : 'false');
+      });
+    }
+    row.appendChild(label);
+    row.appendChild(group);
+    return { row: row, sync: sync };
+  }
+
+  var btn = document.createElement('button');
+  btn.className = 'qmd-reader-toggle';
+  btn.type = 'button';
+  btn.textContent = 'Aa';
+  btn.setAttribute('aria-label', 'Reading settings');
+  btn.setAttribute('aria-haspopup', 'dialog');
+  btn.setAttribute('aria-expanded', 'false');
+
+  var panel = document.createElement('div');
+  panel.className = 'qmd-reader-panel';
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-label', 'Reading settings');
+  panel.hidden = true;
+
+  var head = document.createElement('h2');
+  head.textContent = 'Reading settings';
+  panel.appendChild(head);
+
+  var themeSeg = seg('Theme', THEMES, curTheme, function (v) { window.qmdSetTheme(v); });
+  var sizeSeg = seg('Text size', SIZES, curSize,
+    function (v) { window.qmdSetReaderPref('scale', v === '1' ? null : v); },
+    function (b, opt) { b.textContent = 'A'; b.style.fontSize = SIZE_FS[opt[0]] || '.95rem';
+      b.setAttribute('aria-label', opt[1] + ' text'); });
+  var widthSeg = seg('Width', WIDTHS, curWidth,
+    function (v) { window.qmdSetReaderPref('width', v || null); });
+
+  panel.appendChild(themeSeg.row);
+  panel.appendChild(sizeSeg.row);
+  panel.appendChild(widthSeg.row);
+
+  var reset = document.createElement('button');
+  reset.className = 'qmd-reader-reset';
+  reset.type = 'button';
+  reset.textContent = 'Reset to defaults';
+  reset.addEventListener('click', function () { if (window.qmdResetReader) window.qmdResetReader(); });
+  panel.appendChild(reset);
+
+  function syncAll() { themeSeg.sync(); sizeSeg.sync(); widthSeg.sync(); }
+  syncAll();
+
+  function open() { panel.hidden = false; btn.setAttribute('aria-expanded', 'true'); }
+  function close() { panel.hidden = true; btn.setAttribute('aria-expanded', 'false'); }
+
+  btn.addEventListener('click', function (e) { e.stopPropagation(); if (panel.hidden) open(); else close(); });
+  document.addEventListener('click', function (e) {
+    if (!panel.hidden && !panel.contains(e.target) && e.target !== btn) close();
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !panel.hidden) { close(); btn.focus(); }
+  });
+  window.addEventListener('qmd:themechange', syncAll);
+  window.addEventListener('qmd:readerchange', syncAll);
+
+  document.body.appendChild(btn);
+  document.body.appendChild(panel);
 }
 
