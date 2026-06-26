@@ -113,6 +113,21 @@ function qmdAnchorUrl(id) {
   return u.href + '#' + encodeURIComponent(id);
 }
 
+// Read a caption's visible text without the interactive chrome that qmdInitAnchorLinks splices
+// in: the `#` permalink (a `.qmd-anchor`, transiently `✓` mid-copy) lives inside the figcaption,
+// so a verbatim `.textContent` reads "Figure 1: No pooling.#". Clone-strip-read (the same trick
+// the link-preview card's cleanClone uses) keeps the read-only original intact. Returns '' for
+// a missing node.
+function qmdCleanCaptionText(node) {
+  if (!node) return '';
+  if (!node.cloneNode) return (node.textContent || '').trim();
+  var c = node.cloneNode(true);
+  if (c.querySelectorAll) {
+    [].forEach.call(c.querySelectorAll('.qmd-anchor, .qmd-copy'), function (x) { x.remove(); });
+  }
+  return (c.textContent || '').trim();
+}
+
 // Reveal a `#` on each heading and numbered float (figure / listing / table); activating it
 // copies that anchor's canonical deep link (the section/figure permalink, complementing the
 // selection toolbar's text-fragment Share). Reader-side, clipboard-only — never writes the
@@ -936,7 +951,7 @@ function qmdInitLightbox() {
     lbImg.alt = img.alt || '';
     var fig = img.closest('figure');
     var fc = fig && fig.querySelector('figcaption');
-    var cap = fc ? fc.textContent : (img.alt || '');
+    var cap = fc ? qmdCleanCaptionText(fc) : (img.alt || '');
     if (gallery.length > 1) cap = (cap ? cap + '  ' : '') + '(' + (gIdx + 1) + ' / ' + gallery.length + ')';
     lbCap.textContent = cap;
     markOpen();
@@ -960,7 +975,7 @@ function qmdInitLightbox() {
     // Show the figure's caption in the zoom too (empty -> hidden by CSS).
     var fig = pre.closest('figure');
     var fc = fig && fig.querySelector('figcaption');
-    lbCap.textContent = fc ? fc.textContent : '';
+    lbCap.textContent = qmdCleanCaptionText(fc);
     markOpen();
   }
   // A `{{< video >}}` screencast: play an enlarged copy (the clicked element is the
@@ -972,7 +987,7 @@ function qmdInitLightbox() {
     var p = lbVideo.play(); if (p && p.catch) p.catch(function () {});
     var fig = vid.closest('figure');
     var fc = fig && fig.querySelector('figcaption');
-    lbCap.textContent = fc ? fc.textContent : '';
+    lbCap.textContent = qmdCleanCaptionText(fc);
     markOpen();
   }
   function close() {
@@ -1608,6 +1623,20 @@ function qmdInitHighlights() {
     document.addEventListener('keyup', function (e) {
       if (e.shiftKey || e.key === 'ArrowLeft' || e.key === 'ArrowRight') setTimeout(onSelect, 0);
     });
+    // Touch / pen: a long-press selection never emits `mouseup`, so mirror it on `pointerup`
+    // (mouse is already covered above — skip it here to avoid a double onSelect).
+    document.addEventListener('pointerup', function (e) {
+      if (e.pointerType && e.pointerType !== 'mouse') setTimeout(onSelect, 0);
+    });
+    // Safety net for mobile: dragging the selection handles after the press often surfaces only
+    // `selectionchange`, never a fresh pointer event. Debounced so the bar settles (not flickers)
+    // once the selection stops moving; onSelect itself guards single-block prose + bar-internal
+    // selections, so a stray change can't mis-place the toolbar.
+    var selTimer = null;
+    document.addEventListener('selectionchange', function () {
+      if (selTimer) clearTimeout(selTimer);
+      selTimer = setTimeout(function () { selTimer = null; onSelect(); }, 350);
+    });
     document.addEventListener('click', function (e) {
       var m = e.target.closest && e.target.closest('mark.qmd-userhl');
       if (m) {
@@ -1775,13 +1804,28 @@ function qmdInitBookmarks() {
       clearTimeout(hideTimer);
       hideTimer = setTimeout(function () { if (!overToggle) toggle.hidden = true; }, 140);
     }
-    document.addEventListener('mouseover', function (e) {
+    // Hover reveal is desktop-only: a touch device has no hover, so `mouseover` either never
+    // fires or fires once on tap and sticks. Gate it behind `(hover: hover)` and give touch its
+    // own tap affordance below.
+    var canHover = !window.matchMedia || window.matchMedia('(hover: hover)').matches;
+    if (canHover) {
+      document.addEventListener('mouseover', function (e) {
+        var h = headingFrom(e.target);
+        if (h) show(h);
+        else if (e.target !== toggle) scheduleHide();
+      });
+      toggle.addEventListener('mouseenter', function () { overToggle = true; clearTimeout(hideTimer); });
+      toggle.addEventListener('mouseleave', function () { overToggle = false; scheduleHide(); });
+    }
+    // Touch / pen: tapping a heading reveals its star (so a phone reader can bookmark it); the
+    // toggle's own click then flips it. Tapping elsewhere (and not on the star) dismisses the
+    // star. Gated to non-mouse pointers so it never double-fires with the hover path on desktop.
+    document.addEventListener('pointerup', function (e) {
+      if (e.pointerType === 'mouse') return;
       var h = headingFrom(e.target);
-      if (h) show(h);
-      else if (e.target !== toggle) scheduleHide();
+      if (h) { show(h); return; }
+      if (e.target !== toggle && (!toggle.contains || !toggle.contains(e.target))) toggle.hidden = true;
     });
-    toggle.addEventListener('mouseenter', function () { overToggle = true; clearTimeout(hideTimer); });
-    toggle.addEventListener('mouseleave', function () { overToggle = false; scheduleHide(); });
     toggle.addEventListener('click', function () {
       if (!active) return;
       var id = active.getAttribute('data-block-id'), list = load(), i = list.indexOf(id);
