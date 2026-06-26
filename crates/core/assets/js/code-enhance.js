@@ -490,6 +490,17 @@ function qmdInitLinkPreview() {
     if (href.charAt(0) !== '#' || href.length < 2) return false;
     return !a.closest('#TOC') && !a.closest('#qmd-link-preview');
   }
+  // Clone a node for the card, stripping interactive chrome that has no place in a
+  // read-only preview: the heading/caption `#` permalink (qmdInitAnchorLinks) and code
+  // copy buttons. Without this the cloned `#` shows in the card (and in a heading's
+  // textContent as "Title#").
+  function cleanClone(node) {
+    var c = node.cloneNode(true);
+    if (c.querySelectorAll) {
+      [].forEach.call(c.querySelectorAll('.qmd-anchor, .qmd-copy'), function (x) { x.remove(); });
+    }
+    return c;
+  }
   // Build the preview body for a target element. A heading shows itself plus the
   // following block(s) up to the next heading; anything else is cloned whole.
   function buildPreview(target) {
@@ -497,16 +508,16 @@ function qmdInitLinkPreview() {
       var frag = document.createElement('div');
       var head = document.createElement('div');
       head.className = 'qmd-lp-head';
-      head.textContent = target.textContent;
+      head.textContent = cleanClone(target).textContent;
       frag.appendChild(head);
       var n = target.nextElementSibling, added = 0;
       while (n && added < 2 && !/^H[1-6]$/.test(n.tagName) && !n.id) {
-        frag.appendChild(n.cloneNode(true));
+        frag.appendChild(cleanClone(n));
         added++; n = n.nextElementSibling;
       }
       return frag;
     }
-    return target.cloneNode(true);
+    return cleanClone(target);
   }
   function place(link) {
     var r = link.getBoundingClientRect();
