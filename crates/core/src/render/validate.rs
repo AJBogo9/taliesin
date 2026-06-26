@@ -154,6 +154,33 @@ pub(crate) fn validate_input(
     out
 }
 
+/// Validate a `.scrolly` container (located, click-to-source). Warns when there is no
+/// sticky stage block or no `.step` divs to scroll through. Purely diagnostic — it still
+/// renders. Mirrors `validate_walkthrough`.
+pub(crate) fn validate_scrolly(
+    has_stage: bool,
+    has_steps: bool,
+    line: usize,
+    file: Option<String>,
+) -> Vec<Warning> {
+    let mut out = Vec::new();
+    if !has_stage {
+        out.push(
+            Warning::new(
+                "`.scrolly` has no sticky stage (add a figure or `{js}` cell)".to_string(),
+            )
+            .at(file.clone(), line as u32),
+        );
+    }
+    if !has_steps {
+        out.push(
+            Warning::new("`.scrolly` has no `.step` divs to scroll through".to_string())
+                .at(file, line as u32),
+        );
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,5 +288,29 @@ mod tests {
     fn input_valid_slider_is_clean() {
         assert!(validate_input(Some("k"), Some("slider"), None, 1, None).is_empty());
         assert!(validate_input(Some("c"), Some("select"), Some("a,b"), 1, None).is_empty());
+    }
+
+    #[test]
+    fn scrolly_without_stage_is_flagged() {
+        let w = validate_scrolly(false, true, 3, Some("s.qmd".into()));
+        assert_eq!(w.len(), 1);
+        assert!(
+            w[0].message.contains("no sticky stage"),
+            "got: {}",
+            w[0].message
+        );
+        assert_eq!(w[0].line, Some(3));
+    }
+
+    #[test]
+    fn scrolly_without_steps_is_flagged() {
+        let w = validate_scrolly(true, false, 5, None);
+        assert_eq!(w.len(), 1);
+        assert!(w[0].message.contains("no `.step`"), "got: {}", w[0].message);
+    }
+
+    #[test]
+    fn scrolly_complete_is_clean() {
+        assert!(validate_scrolly(true, true, 1, None).is_empty());
     }
 }
