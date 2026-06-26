@@ -1407,6 +1407,20 @@ fn search_js_ships_tokenizing_matcher() {
 }
 
 #[test]
+fn search_js_localizes_the_kbd_hint_off_mac() {
+    // The kbd badge is server-rendered with the Mac glyph (⌘K); the shipped client JS must
+    // rewrite it to "Ctrl K" on non-Mac platforms (the badge class is the rewrite target).
+    assert!(
+        super::SEARCH_JS.contains("Ctrl K"),
+        "search.js must localize the ⌘K hint to Ctrl K off Mac"
+    );
+    assert!(
+        super::SEARCH_JS.contains("qmd-search-kbd"),
+        "search.js must target the .qmd-search-kbd badge to localize it"
+    );
+}
+
+#[test]
 fn assembled_page_ships_focus_trap() {
     let page = render_html_page("# Title\n\n![alt](x.png)\n", "doc");
     // The shared modal focus-trap utility (lightbox / reader menu / Cmd-K) ships in the page.

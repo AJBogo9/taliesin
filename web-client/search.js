@@ -463,4 +463,23 @@
   // Programmatic opener so the keyboard reader's `/` shortcut (and any UI) can open the
   // palette without synthesizing a Cmd-K event.
   window.qmdOpenSearch = open;
+
+  // The `.qmd-search-kbd` badge is server-rendered with the Mac glyph (⌘K) since the same
+  // HTML ships to every OS. On non-Mac platforms, rewrite it to "Ctrl K". (The button's
+  // aria-keyshortcuts already lists both Control+K and Meta+K, so only the visible hint
+  // needs localizing.)
+  var IS_MAC = /Mac|iPhone|iPad|iPod/i.test(
+    navigator.platform || navigator.userAgent || "",
+  );
+  function localizeSearchKbd() {
+    if (IS_MAC) return;
+    document.querySelectorAll(".qmd-search-kbd").forEach(function (kbd) {
+      kbd.textContent = "Ctrl K";
+    });
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", localizeSearchKbd);
+  } else {
+    localizeSearchKbd();
+  }
 })();
