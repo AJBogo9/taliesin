@@ -152,14 +152,17 @@ re-resolves the element per step).
 
 Primary: the **CSS Custom Highlight API**. A module-level `Highlight` is registered once
 (`CSS.highlights.set('qmd-readaloud', hl)`); each `say` step does `hl.clear();
-hl.add(step.range)`. Styled in base.css:
+hl.add(step.range)`. Styled in base.css with its **own** token (NOT the reader-highlight
+`--qmd-mark`) so the moving spoken-sentence cursor reads as distinct from a saved
+highlight:
 
 ```css
-::highlight(qmd-readaloud) { background: var(--qmd-mark, #fde68a); color: inherit; }
+::highlight(qmd-readaloud) { background: var(--qmd-ra-highlight, #bfdbfe); color: inherit; }
 ```
 
-No DOM mutation, no offset corruption, no interaction with the reader's own highlights,
-and it auto-clears on stop (`CSS.highlights.delete('qmd-readaloud')`).
+`--qmd-ra-highlight` is defined per theme (light / dark / sepia) so the reading cursor
+stays legible on each. No DOM mutation, no offset corruption, no interaction with the
+reader's own highlights, and it auto-clears on stop (`CSS.highlights.delete('qmd-readaloud')`).
 
 Fallback (when `CSS.highlights` is unsupported): wrap the step's Range in a transient
 `<mark class="qmd-ra-mark">` via `range.surroundContents` (or a split-safe equivalent) and
