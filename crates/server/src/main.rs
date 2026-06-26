@@ -251,9 +251,11 @@ fn cmd_check(args: &[String]) -> ExitCode {
 }
 
 fn cmd_build(args: &[String]) -> ExitCode {
-    // Positionals: <file> [out.html]. Flag: `--out <dir>` (alias `--dir`).
+    // Positionals: <file> [out.html]. Flags: `--out <dir>` (alias `--dir`),
+    // `--strict` (a cell error / broken-ref warning fails the build).
     let mut positionals: Vec<&str> = Vec::new();
     let mut out_dir: Option<&str> = None;
+    let mut strict = false;
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -265,18 +267,19 @@ fn cmd_build(args: &[String]) -> ExitCode {
                     .map(|s| s.as_str())
                     .filter(|s| !s.starts_with("--"));
             }
+            "--strict" => strict = true,
             s if s.starts_with("--") => {}
             s => positionals.push(s),
         }
     }
     let Some(path) = positionals.first().copied() else {
-        eprintln!("usage: qmd-fast build <file.qmd|dir> [out.html] [--out <dir>]");
+        eprintln!("usage: qmd-fast build <file.qmd|dir> [out.html] [--out <dir>] [--strict]");
         return ExitCode::FAILURE;
     };
     // A directory is a multi-page site project (`_site.yml` + `.qmd` pages);
     // a single `.qmd` keeps the original self-contained-page behaviour.
     if Path::new(path).is_dir() {
-        return build_site(Path::new(path), out_dir);
+        return build_site(Path::new(path), out_dir, strict);
     }
     let src = match std::fs::read_to_string(path) {
         Ok(s) => s,
@@ -288,7 +291,7 @@ fn cmd_build(args: &[String]) -> ExitCode {
     let p = Path::new(path);
     let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("document");
     let base = p.parent().unwrap_or_else(|| Path::new("."));
-    let (html, resources) = match build_page_executing(&src, base, stem) {
+    let (html, resources, problems) = match build_page_executing(&src, base, stem) {
         Ok(h) => h,
         Err(e) => {
             log::error(&format!("cannot start runtime: {e}"));
@@ -296,10 +299,15 @@ fn cmd_build(args: &[String]) -> ExitCode {
         }
     };
 
+    // In `--strict` mode, a cell that crashed (its traceback is baked into the HTML)
+    // or any located warning fails the build instead of shipping a broken page with
+    // exit 0. Without `--strict` the warnings were already logged; we still write.
+    let strict_fail = strict && problems > 0;
+
     if let Some(dir) = out_dir {
         let code = build_dir(&html, base, Path::new(dir));
         copy_resources(&resources, Path::new(dir));
-        return code;
+        return strict_exit(code, strict_fail, problems);
     }
     let out: PathBuf = positionals
         .get(1)
@@ -314,13 +322,50 @@ fn cmd_build(args: &[String]) -> ExitCode {
             // leave them dangling. A no-op for an in-place build.
             copy_local_assets(&html, base, dest);
             log::built(&out.display().to_string());
-            ExitCode::SUCCESS
+            strict_exit(ExitCode::SUCCESS, strict_fail, problems)
         }
         Err(e) => {
             log::error(&format!("cannot write {}: {e}", out.display()));
             ExitCode::FAILURE
         }
     }
+}
+
+/// Turn a successful build into a failure when `--strict` saw problems (the page is
+/// still written, but CI gets a non-zero exit). A pre-existing non-success `code`
+/// (a write/create error) is returned unchanged.
+fn strict_exit(code: ExitCode, strict_fail: bool, problems: usize) -> ExitCode {
+    if strict_fail {
+        log::error(&format!(
+            "--strict: {problems} problem{} (cell error or located warning); failing the build",
+            if problems == 1 { "" } else { "s" }
+        ));
+        return ExitCode::FAILURE;
+    }
+    code
+}
+
+/// Count the executed output blocks that are uncaught runtime errors (their HTML
+/// carries the `qmd-error` marker), logging a located warning per failing cell so a
+/// crashing cell isn't baked into the build silently. Returns the count.
+fn report_cell_errors(blocks: &[qmd_fast_core::Block], page_label: &str) -> usize {
+    let mut n = 0;
+    for b in blocks {
+        if b.html.contains("class=\"qmd-error\"") {
+            n += 1;
+            let where_ = b
+                .source_file
+                .as_deref()
+                .map(|f| format!("{f} "))
+                .unwrap_or_default();
+            log::warn(&format!(
+                "cell error in {page_label} ({where_}@ {}): code cell raised an uncaught \
+                 exception; its traceback is baked into the output",
+                b.sourcepos
+            ));
+        }
+    }
+    n
 }
 
 /// Render a single document to a self-contained HTML page, executing its code
@@ -331,22 +376,20 @@ fn build_page_executing(
     src: &str,
     base: &Path,
     fallback: &str,
-) -> std::io::Result<(String, Vec<PathBuf>)> {
-    // An include that doesn't resolve leaves its `{{< include … >}}` directive
-    // literal in the output; warn rather than ship it silently (the preview's
-    // diagnostics already flag this, so build matches that behaviour).
-    for dep in qmd_fast_core::includes::dependencies(src, base) {
-        if !dep.exists() {
-            let shown = dep.strip_prefix(base).unwrap_or(&dep);
-            log::warn(&format!("include not found: {}", shown.display()));
-        }
-    }
+) -> std::io::Result<(String, Vec<PathBuf>, usize)> {
     let rt = tokio::runtime::Runtime::new()?;
     Ok(rt.block_on(async {
+        // `problems` is what `--strict` fails on: located render warnings, broken
+        // cross-refs, and crashed code cells — each already logged below.
+        let mut problems = 0usize;
         let mut doc = qmd_fast_core::render_document_with_includes(src, base);
+        // Located render warnings (front-matter typos, broken refs, and now
+        // unresolved `{{< include … >}}` directives — the path-resolution channel)
+        // are logged here so a `build` never ships a silently dropped include.
         for w in &doc.warnings {
             log::warn(&w.message);
         }
+        problems += doc.warnings.len();
         // `{{< embed >}}` only resolves in a SITE build, which also builds the
         // embedded target beside the page. A single-doc build ships the iframe but
         // not its target, so the embed would 404 — warn instead of failing silently.
@@ -359,9 +402,11 @@ fn build_page_executing(
         }
         // Broken cross-refs (a single doc has no site to resolve them across pages),
         // so a `build` doesn't ship a dangling `@fig-`/`@sec-` link silently.
-        for w in qmd_fast_core::cite::validate_xrefs(&doc.blocks) {
+        let xrefs = qmd_fast_core::cite::validate_xrefs(&doc.blocks);
+        for w in &xrefs {
             log::warn(&w.message);
         }
+        problems += xrefs.len();
         // Persistent execution cache keyed off the doc's stem, beside the source.
         let mut ex =
             exec::Executor::with_freeze(freeze::page_path(&base.join("_freeze"), fallback))
@@ -373,8 +418,15 @@ fn build_page_executing(
                  (set QMD_FAST_PYTHON to a python with ipykernel)",
             );
         }
+        // A crashed cell bakes its traceback into the page (exit 0 + silent stderr
+        // before this); log it located and count it toward `--strict`.
+        problems += report_cell_errors(&doc.blocks, fallback);
         let resources = doc.includes.resources.clone();
-        (qmd_fast_core::render_doc_to_page(&doc, fallback), resources)
+        (
+            qmd_fast_core::render_doc_to_page(&doc, fallback),
+            resources,
+            problems,
+        )
     }))
 }
 
@@ -610,7 +662,7 @@ fn mount_warnings(mounts: &[qmd_fast_core::site::Mount], root: &Path, out: &Path
         .collect()
 }
 
-fn build_site(root: &Path, out_override: Option<&str>) -> ExitCode {
+fn build_site(root: &Path, out_override: Option<&str>, strict: bool) -> ExitCode {
     // Executing code cells needs the async kernel, so the whole site build runs on
     // a tokio runtime (mirrors the preview server's setup).
     let rt = match tokio::runtime::Runtime::new() {
@@ -620,10 +672,10 @@ fn build_site(root: &Path, out_override: Option<&str>) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    rt.block_on(build_site_async(root, out_override))
+    rt.block_on(build_site_async(root, out_override, strict))
 }
 
-async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
+async fn build_site_async(root: &Path, out_override: Option<&str>, strict: bool) -> ExitCode {
     let site = qmd_fast_core::Site::discover(root);
     for w in &site.warnings {
         log::warn(w);
@@ -681,6 +733,9 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
     //    boot one), so the static `_site/` carries real computed outputs.
     let mut pages = 0usize;
     let mut kernel_unavailable = false;
+    // `--strict` problem tally across the whole site: per-page located warnings +
+    // broken cross-refs + crashed cells (each already logged where it occurs).
+    let mut problems = 0usize;
     for page in &site.pages {
         let Ok(src) = std::fs::read_to_string(&page.input) else {
             log::warn(&format!("cannot read {}", page.input.display()));
@@ -692,6 +747,8 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
             exec::Executor::with_freeze(freeze::page_path(&freeze_dir, &page.rel)).in_dir(base);
         doc.blocks = exec.run(std::mem::take(&mut doc.blocks)).await;
         kernel_unavailable |= exec.diagnostic().is_some();
+        // A crashed cell bakes its traceback into the page; log it located + count it.
+        problems += report_cell_errors(&doc.blocks, &page.rel);
         let resources = doc.includes.resources.clone();
         // Surface render warnings *and* broken cross-refs so a broken site doesn't
         // deploy silently (these previously only showed in the preview dev menu).
@@ -699,6 +756,7 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
         for w in &warnings {
             log::warn(&format!("{}: {}", page.rel, w.message));
         }
+        problems += warnings.len();
         let dest = out.join(&page.url);
         if let Some(parent) = dest.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -728,6 +786,7 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
             exec::Executor::with_freeze(freeze::page_path(&freeze_dir, &deck.url)).in_dir(base);
         doc.blocks = ex.run(std::mem::take(&mut doc.blocks)).await;
         kernel_unavailable |= ex.diagnostic().is_some();
+        problems += report_cell_errors(&doc.blocks, &deck.url);
         let stem = deck
             .url
             .rsplit('/')
@@ -781,7 +840,9 @@ async fn build_site_async(root: &Path, out_override: Option<&str>) -> ExitCode {
         if pages == 1 { "" } else { "s" },
         if assets == 1 { "" } else { "s" },
     ));
-    ExitCode::SUCCESS
+    // In `--strict` mode a problem (crashed cell / located warning / broken ref)
+    // fails the build after writing it, so CI catches a broken site.
+    strict_exit(ExitCode::SUCCESS, strict && problems > 0, problems)
 }
 
 /// Source-only file extensions that are build *inputs*, never referenced by the rendered
@@ -1142,10 +1203,29 @@ fn cmd_render(path: Option<&String>) -> ExitCode {
             let p = Path::new(path);
             let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("document");
             let base = p.parent().unwrap_or_else(|| Path::new("."));
-            print!(
-                "{}",
-                qmd_fast_core::render_html_page_with_includes(&src, base, stem)
-            );
+            let doc = qmd_fast_core::render_document_with_includes(&src, base);
+            // `render` is a static, one-shot HTML dump: unlike `build`/`preview` it
+            // never starts a kernel, so kernel-executed cells (python/r) emit as
+            // source with empty output blocks — broken `@fig-` refs, no plots. Warn
+            // loudly so the empty output isn't mistaken for a render bug. (`{js}` cells
+            // run in the browser, so they're fine here.)
+            let kernel_cells = doc
+                .blocks
+                .iter()
+                .filter(|b| {
+                    b.cell
+                        .as_ref()
+                        .is_some_and(|c| matches!(c.lang.as_str(), "python" | "r"))
+                })
+                .count();
+            if kernel_cells > 0 {
+                log::warn(&format!(
+                    "render does not execute code cells ({kernel_cells} kernel cell{} emitted as \
+                     source; figures/outputs will be empty). Use `build` or `preview` to run them.",
+                    if kernel_cells == 1 { "" } else { "s" }
+                ));
+            }
+            print!("{}", qmd_fast_core::render_doc_to_page(&doc, stem));
             ExitCode::SUCCESS
         }
         Err(e) => {
@@ -1275,12 +1355,15 @@ fn usage() {
     println!("                             to open on a phone; --open launches a browser;");
     println!("                             --no-exec previews untrusted docs as source,");
     println!("                             never running their code cells)");
-    println!("  build  <file.qmd> [out.html] [--out <dir>]");
+    println!("  build  <file.qmd> [out.html] [--out <dir>] [--strict]");
     println!("                             render a self-contained HTML file");
     println!("                             (default <name>.html beside the source);");
     println!("                             --out <dir> writes <dir>/index.html and");
-    println!("                             copies referenced assets for a portable folder");
+    println!("                             copies referenced assets for a portable folder;");
+    println!("                             --strict exits non-zero on a cell error or");
+    println!("                             located warning (broken ref, bad include)");
     println!("  render <file.qmd>          render a full HTML page to stdout");
+    println!("                             (static; does NOT execute code cells)");
     println!("  blocks <file.qmd>          list block ids + sourcepos (debug)");
     println!(
         "  schema [--out <dir>]       emit JSON Schemas for _site.yml + front matter (editor autocomplete)"
@@ -1293,4 +1376,62 @@ fn usage() {
     println!("     QMD_FAST_HOST (=--host), QMD_FAST_NO_CLEAR,");
     println!("     QMD_FAST_NO_CACHE (skip the _freeze/ execution cache),");
     println!("     QMD_FAST_NO_EXEC (=--no-exec, never run code cells)");
+}
+
+#[cfg(test)]
+mod build_diag_tests {
+    use super::*;
+    use qmd_fast_core::Block;
+    use qmd_fast_core::render::{Cell, JsOpts};
+
+    /// A block standing in for an executed cell output, with the given inner HTML.
+    fn output_block(html: &str) -> Block {
+        Block {
+            id: "c-out".into(),
+            sourcepos: "7:1-9:3".into(),
+            source_file: None,
+            html: html.into(),
+            cell: None,
+        }
+    }
+
+    #[test]
+    fn report_cell_errors_counts_only_qmd_error_outputs() {
+        let blocks = vec![
+            output_block("<div class=\"qmd-output\"><pre class=\"qmd-error\">boom</pre></div>"),
+            output_block("<div class=\"qmd-output\"><pre>ok</pre></div>"),
+            // A *successful* cell that merely prints the text "qmd-error" must not count
+            // (we match the class attribute, not the bare substring).
+            output_block("<div class=\"qmd-output\"><pre>printed qmd-error here</pre></div>"),
+        ];
+        assert_eq!(report_cell_errors(&blocks, "page"), 1);
+    }
+
+    /// `render` must flag kernel-executed cells (python/r) — but not `{js}` cells,
+    /// which run in the browser. This pins the cell-detection predicate `cmd_render`
+    /// uses, without spawning a process.
+    #[test]
+    fn render_flags_kernel_cells_not_js() {
+        let cell = |lang: &str| {
+            Some(Cell {
+                lang: lang.into(),
+                code: String::new(),
+                figure: None,
+                table: None,
+                echo: true,
+                include: true,
+                cache: true,
+                fig_export: None,
+                js: JsOpts::default(),
+            })
+        };
+        let kernel = |c: &Option<Cell>| {
+            c.as_ref()
+                .is_some_and(|c| matches!(c.lang.as_str(), "python" | "r"))
+        };
+        assert!(kernel(&cell("python")));
+        assert!(kernel(&cell("r")));
+        assert!(!kernel(&cell("js")));
+        assert!(!kernel(&None));
+    }
 }

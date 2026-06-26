@@ -86,13 +86,27 @@ pub fn render_document(src: &str) -> RenderedDoc {
 /// relative to `base_dir`, mapping each block back to its origin file, and
 /// resolves citations/cross-references against the doc's bibliography.
 pub fn render_document_with_includes(src: &str, base_dir: &Path) -> RenderedDoc {
-    let (expanded, origins) = crate::includes::resolve(src, base_dir);
+    let (expanded, origins, include_warnings) = crate::includes::resolve_warned(src, base_dir);
     // Declarative shortcodes (`{{< name args >}}`) from the active format
     // extension expand after includes, line-preserving so `origins` stays valid.
     // A `{{< name >}}` that no extension/built-in declares is left verbatim but
     // reported, so a typo'd shortcode doesn't ship silently as literal text.
     let (expanded, shortcode_warnings) = extension::expand_shortcodes(&expanded, Some(base_dir));
     let mut doc = render_internal(&expanded, Some(&origins), Some(base_dir));
+    // An include that couldn't be expanded (unsafe path, cycle, unreadable) leaves
+    // its `{{< include … >}}` directive literal in the output; surface it as a
+    // located, click-to-source diagnostic on the same channel as broken refs so it
+    // shows in build/preview/`check` instead of shipping silently.
+    doc.warnings.extend(include_warnings.into_iter().map(|iw| {
+        let w = Warning::new(format!(
+            "include not resolved ({}): {{{{< include {} >}}}}",
+            iw.reason, iw.target
+        ));
+        match iw.line {
+            line if line > 0 => w.at(iw.file, line as u32),
+            _ => w,
+        }
+    }));
     doc.warnings.extend(shortcode_warnings);
     doc
 }
