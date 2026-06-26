@@ -64,6 +64,16 @@ Pinned `corpus/reader/read-aloud.qmd`. Math a11y was found **already handled** (
 the reader-experience cluster has no User Guide page yet (only `corpus/reader/` + specs) — a
 worthwhile follow-up docs task covering the whole cluster.
 
+**2026-06-26: Pillar III `{input}` reactive controls shipped.** A built-in shortcode
+`{{< input name="k" type="slider" … >}}` (5 types: slider/number/checkbox/text/select) emits a
+static, keyboard-accessible labeled control feeding the shipped `{js}` reactive graph — "drag
+the slider, the chart updates" with no `//| viewof` boilerplate. **Authored as a shortcode, NOT
+a `:::` div** (a bodyless div is dropped by `group_divs`; emitting empty containers would touch
+the Do-NOT-touch `:::` machine). Reuses `registerInput`/`scheduleFrom` (additive ~15-line
+`qmd-js.js` scan) + `validate_input` (located diagnostics) + the `.qmd-input` CSS. Pinned
+`corpus/reactive/inputs.qmd`; browser-verified incl. transitive propagation. (Same surface-fork
+lesson as elsewhere: bodyless controls belong in the shortcode seam, not the div machine.)
+
 ## To resume
 
 **Working method:** branch per feature; brainstorm if there's a fork; write a spec under

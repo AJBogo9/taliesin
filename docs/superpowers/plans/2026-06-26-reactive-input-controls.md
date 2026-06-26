@@ -8,6 +8,14 @@
 
 **Tech Stack:** Rust (render module, edition 2024), vanilla JS (the bundled `qmd-js.js`, ES5-style), native form controls, the CSS Custom-property theme system. Tests: Rust unit + corpus + chrome-devtools.
 
+> **Implementation note:** Task 2 pivoted from a `::: {.input}` `build_container` arm to a
+> built-in **shortcode `{{< input … >}}`** in `render/extension/mod.rs`. Reason: a bodyless
+> fenced div is dropped by `group_divs` (no anchor block), and emitting empty containers would
+> rewrite the Do-NOT-touch `:::` div machine. The shortcode (same seam as `{{< video >}}`)
+> reuses `validate_input`, the `.qmd-input` HTML contract, the CSS, and the Task 3 runtime
+> registration unchanged. Render tests use `render_document_with_includes` (shortcodes only
+> expand there).
+
 ## Global Constraints
 
 - **HTML-only output**; **offline** (native controls + bundled `qmd-js.js`; no new dependency).

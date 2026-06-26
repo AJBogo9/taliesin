@@ -1,9 +1,20 @@
 # `{input}` reactive controls (design)
 
 Date: 2026-06-26
-Status: approved (brainstorm), pre-implementation
+Status: implemented
 Feature branch: `feat/reactive-input-controls`
 Pillar: BEYOND-QUARTO.md Pillar III (new web-native capability) + FEATURE-IDEAS.md #47.
+
+> **Amendment (during implementation): the authoring surface is a shortcode, not a `:::`
+> div.** The design below specifies `::: {.input …}`, but a bodyless fenced div cannot work:
+> `group_divs` drops empty divs (they have no block to anchor them), and emitting empty
+> containers would require rewriting the Do-NOT-touch `:::` three-pass div machine. So the
+> control ships as a **built-in shortcode `{{< input name="k" type="slider" … >}}`** (the
+> same supported seam as `{{< video >}}`/`{{< embed >}}`, in `render/extension/mod.rs`), which
+> needs no body and expands to the control HTML as a block. Everything else in this spec holds
+> verbatim — the emitted `.qmd-input` HTML, `data-qmd-input`, `validate_input`, the `qmd-js.js`
+> registration, the five types, the slider readout, and all invariants. Mentally read
+> "`::: {.input …}`" as "`{{< input … >}}`" throughout.
 
 ## Summary
 

@@ -323,12 +323,15 @@ as *read-only* preview/build affordances, never as preview-pane edits.
     walkthrough, figure-stepping, and equation-derivation-stepping all share. — Distill/Idyll
     explorable explanations with zero bespoke JS. — **M** — build/reader — fits. Pin:
     `corpus/explorable/scrolly.qmd`.
-47. **Reader input vocabulary `{input}` bound to the reactive graph** —
-    `::: {.input name="k" type="slider" min=1 max=10}` emits a labeled control whose value
-    becomes a `//| name` node; the shipped transitive-downstream scheduler reacts. No `{js}`
-    boilerplate, no server round-trip. — Marimo/Observable "drag the slider, the chart
-    updates" as a one-liner, fully client-side and offline. — **M** — build/reader — fits
-    *(roadmap-adjacent: js-reactive-graph)*.
+47. **Reader input vocabulary `{input}` bound to the reactive graph** — ✅ SHIPPED 2026-06-26.
+    Authored as a built-in **shortcode** `{{< input name="k" type="slider" min=1 max=10 >}}`
+    (NOT a `:::` div — a bodyless div is dropped by `group_divs` and emitting empty containers
+    would touch the Do-NOT-touch div machine). Five types (slider/number/checkbox/text/select);
+    a static, keyboard-accessible labeled control tagged `data-qmd-input` that the shipped
+    runtime registers (reusing `registerInput`/`scheduleFrom`), so a `//| input:` cell re-runs
+    transitively. Slider gets a live `<output>`; `validate_input` gives located diagnostics.
+    Pinned `corpus/reactive/inputs.qmd`. — Marimo/Observable "drag the slider, the chart
+    updates" as a one-liner, fully client-side and offline.
 48. **Provenance dots on executed-cell output** — each output gets a tiny affordance: green =
     matches current code (freeze hit), amber = re-running; Alt-click → the source cell. —
     Marimo's "no hidden stale state" made *visible to the reader*; a trust signal unique to a

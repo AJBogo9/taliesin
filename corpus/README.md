@@ -21,6 +21,7 @@ author's own projects; provenance is below.
 | `callouts/kinds.qmd` | Callout contract | all 5 callout kinds with bundled icons + `appearance=` (simple/minimal) + `icon="false"` | (purpose-built) |
 | `media/gallery.qmd` | Image lightbox / gallery | `layout-ncol` figure grid; click-to-zoom + ←/→ gallery navigation in the lightbox | (purpose-built) |
 | `reactive/graph.qmd` | `{js}` reactive graph | `//| viewof`/`//| name`/`//| input` chains; a slider re-runs only its transitive-downstream closure | (purpose-built) |
+| `reactive/inputs.qmd` | `{{< input >}}` controls | declarative reactive controls (slider/number/checkbox/text/select) feeding `{js}` cells through the graph (incl. a transitive chain) | (purpose-built) |
 | `reader/` | Reader experience | read-only reader enhancers: display prefs (theme/sepia/size/width/spacing), reading progress + resume, highlights + index + export, bookmarks, selection toolbar, hover cross-ref cards, anchor copy-links, focus mode, read-state TOC, and read-aloud study mode (`read-aloud.qmd`: prose sentences, code line-step, figure/equation/table announce) | (purpose-built) |
 | `diagnostics/` | Validator coverage | docs that deliberately trip qmd-fast's schema validators | (purpose-built) |
 
