@@ -127,6 +127,17 @@
   }
   @keyframes qmd-ra-in { from { opacity: 0; transform: translate(-50%, 6px); }
     to { opacity: 1; transform: translateX(-50%); } }
+
+  /* Reactive input controls ({{< input ... >}}). A labeled native control feeding the
+     {js} reactive graph; native controls inherit color-scheme so dark/sepia just work. */
+  .qmd-input { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+    margin: 1rem 0; font: inherit; }
+  .qmd-input-label { font-weight: 600; }
+  .qmd-input-control { font: inherit; accent-color: var(--qmd-accent); }
+  .qmd-input-control[type="range"] { flex: 1 1 12rem; max-width: 22rem; }
+  .qmd-input-out { font-variant-numeric: tabular-nums; min-width: 2.5em;
+    color: var(--qmd-muted); }
+
   .qmd-hl-action { position: fixed; z-index: 2147481600;
     font: 600 .78rem/1 var(--qmd-font-head); background: var(--qmd-fg); color: var(--qmd-bg);
     border: 0; border-radius: 7px; padding: .42rem .7rem; cursor: pointer;

@@ -433,6 +433,17 @@ fn expand_in_line(
             };
             let end = i + 3 + rel_end;
             let inner = line[i + 3..end].trim();
+            // The built-in `{{< input >}}` reactive control needs the line number + the
+            // warning sink (for located diagnostics), which render_shortcode doesn't carry,
+            // so it is expanded here. An extension may still override `input` with its own
+            // declared template (checked first).
+            if inner.split_whitespace().next() == Some("input") && !templates.contains_key("input")
+            {
+                let toks = tokenize_args(inner);
+                out.push_str(&input_shortcode(&toks[1..], line_no, warnings));
+                i = end + 3;
+                continue;
+            }
             match render_shortcode(inner, templates) {
                 Some(html) => out.push_str(&html),
                 None => {
@@ -570,6 +581,97 @@ fn shortcode_named(args: &[String], key: &str) -> Option<String> {
     let prefix = format!("{key}=");
     args.iter()
         .find_map(|a| a.strip_prefix(&prefix).map(str::to_string))
+}
+
+/// The built-in `{{< input name="k" type="slider" … >}}` reactive control: a static,
+/// keyboard-accessible labeled control whose value feeds the `{js}` reactive graph
+/// (qmd-js.js registers `[data-qmd-input]` and reuses the same `registerInput`/`scheduleFrom`
+/// path as `//| viewof` cells). Five types (slider/range, number, checkbox, text, select);
+/// the slider gets a live `<output>` readout. Emits located diagnostics (missing name,
+/// unknown type with a did-you-mean, select without options) via `validate_input`. Raw-HTML,
+/// passed through — the block model assigns it an id/sourcepos like any HTML block. Read-only:
+/// reader interaction with the rendered view, never a source write.
+fn input_shortcode(args: &[String], line_no: usize, warnings: &mut Vec<Warning>) -> String {
+    let name = shortcode_named(args, "name").unwrap_or_default();
+    let kind = shortcode_named(args, "type").unwrap_or_else(|| "slider".to_string());
+    let label = shortcode_named(args, "label").unwrap_or_else(|| name.clone());
+    let options = shortcode_named(args, "options");
+    let value = shortcode_named(args, "value");
+    for w in super::validate::validate_input(
+        (!name.is_empty()).then_some(name.as_str()),
+        Some(kind.as_str()),
+        options.as_deref(),
+        line_no,
+        None,
+    ) {
+        warnings.push(w);
+    }
+    let ctrl_id = format!("qin-{line_no}");
+    let name_a = escape_attr(&name);
+    let num_attr = |k: &str| {
+        shortcode_named(args, k)
+            .map(|v| format!(" {k}=\"{}\"", escape_attr(&v)))
+            .unwrap_or_default()
+    };
+    let control = match kind.as_str() {
+        "select" => {
+            let opts: String = options
+                .as_deref()
+                .unwrap_or("")
+                .split(',')
+                .map(str::trim)
+                .filter(|o| !o.is_empty())
+                .map(|o| {
+                    let sel = if value.as_deref() == Some(o) {
+                        " selected"
+                    } else {
+                        ""
+                    };
+                    format!("<option{sel}>{}</option>", html_escape(o))
+                })
+                .collect();
+            format!(
+                "<select id=\"{ctrl_id}\" class=\"qmd-input-control\" data-qmd-input=\"{name_a}\">{opts}</select>"
+            )
+        }
+        "checkbox" => {
+            let checked = if value.as_deref() == Some("true") {
+                " checked"
+            } else {
+                ""
+            };
+            format!(
+                "<input id=\"{ctrl_id}\" class=\"qmd-input-control\" data-qmd-input=\"{name_a}\" type=\"checkbox\"{checked}>"
+            )
+        }
+        "text" => format!(
+            "<input id=\"{ctrl_id}\" class=\"qmd-input-control\" data-qmd-input=\"{name_a}\" type=\"text\"{}>",
+            num_attr("value")
+        ),
+        other => {
+            // slider/range/number: numeric, sharing min/max/step/value
+            let html_type = if other == "number" { "number" } else { "range" };
+            format!(
+                "<input id=\"{ctrl_id}\" class=\"qmd-input-control\" data-qmd-input=\"{name_a}\" type=\"{html_type}\"{}{}{}{}>",
+                num_attr("min"),
+                num_attr("max"),
+                num_attr("step"),
+                num_attr("value")
+            )
+        }
+    };
+    let readout = if kind == "slider" || kind == "range" {
+        format!(
+            "<output class=\"qmd-input-out\" data-qmd-out>{}</output>",
+            html_escape(value.as_deref().unwrap_or(""))
+        )
+    } else {
+        String::new()
+    };
+    format!(
+        "<div class=\"qmd-input\"><label class=\"qmd-input-label\" for=\"{ctrl_id}\">{}</label>{control}{readout}</div>",
+        html_escape(&label)
+    )
 }
 
 /// The HTML for a `{{< video >}}`: a framed autoplaying/muted/looping `<video>` (a

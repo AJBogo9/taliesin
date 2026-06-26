@@ -1642,3 +1642,57 @@ fn sidenote_div_renders_with_class() {
     assert!(page.contains("class=\"sidenote\""), "sidenote div: {page}");
     assert!(page.contains("A margin note"), "sidenote content");
 }
+
+#[test]
+fn input_slider_shortcode_emits_reactive_control() {
+    let doc = render_document_with_includes(
+        "{{< input name=\"k\" type=\"slider\" min=\"1\" max=\"10\" value=\"3\" label=\"k\" >}}\n",
+        std::path::Path::new("."),
+    );
+    let h = doc.body_html();
+    assert!(h.contains("class=\"qmd-input\""), "wrapper: {h}");
+    assert!(h.contains("data-qmd-input=\"k\""), "named input: {h}");
+    assert!(h.contains("type=\"range\""), "range control: {h}");
+    assert!(h.contains("min=\"1\"") && h.contains("max=\"10\"") && h.contains("value=\"3\""));
+    assert!(
+        h.contains("<output class=\"qmd-input-out\" data-qmd-out>3</output>"),
+        "slider readout: {h}"
+    );
+    assert!(h.contains(">k</label>"), "label: {h}");
+}
+
+#[test]
+fn input_shortcode_other_types_emit_their_native_control() {
+    let p = std::path::Path::new(".");
+    let num =
+        render_document_with_includes("{{< input name=\"n\" type=\"number\" step=\"0.1\" >}}\n", p)
+            .body_html();
+    assert!(num.contains("type=\"number\"") && num.contains("step=\"0.1\""));
+    assert!(!num.contains("data-qmd-out"), "no readout on number: {num}");
+
+    let cb = render_document_with_includes(
+        "{{< input name=\"on\" type=\"checkbox\" value=\"true\" >}}\n",
+        p,
+    )
+    .body_html();
+    assert!(
+        cb.contains("type=\"checkbox\"") && cb.contains(" checked"),
+        "checked: {cb}"
+    );
+
+    let tx =
+        render_document_with_includes("{{< input name=\"q\" type=\"text\" value=\"hi\" >}}\n", p)
+            .body_html();
+    assert!(tx.contains("type=\"text\"") && tx.contains("value=\"hi\""));
+
+    let sel = render_document_with_includes(
+        "{{< input name=\"c\" type=\"select\" options=\"a,b,c\" value=\"b\" >}}\n",
+        p,
+    )
+    .body_html();
+    assert!(sel.contains("<select"), "select: {sel}");
+    assert!(
+        sel.contains("<option>a</option>") && sel.contains("<option selected>b</option>"),
+        "options: {sel}"
+    );
+}
