@@ -22,6 +22,7 @@ author's own projects; provenance is below.
 | `media/gallery.qmd` | Image lightbox / gallery | `layout-ncol` figure grid; click-to-zoom + ←/→ gallery navigation in the lightbox | (purpose-built) |
 | `reactive/graph.qmd` | `{js}` reactive graph | `//| viewof`/`//| name`/`//| input` chains; a slider re-runs only its transitive-downstream closure | (purpose-built) |
 | `reactive/inputs.qmd` | `{{< input >}}` controls | declarative reactive controls (slider/number/checkbox/text/select) feeding `{js}` cells through the graph (incl. a transitive chain) | (purpose-built) |
+| `reactive/js-error.qmd` | `{js}` cell error state | a throwing `{js}` cell surfaces the `.qmd-js-error` box (themed light + dark); pins the runtime-error state for browser verification | (purpose-built) |
 | `explorable/scrolly.qmd` | Scrollytelling | `::: {.scrolly}` sticky stage + `.step` scenes; the active step drives a reactive value a `{js}` cell reads (`//| input:`) | (purpose-built) |
 | `reader/` | Reader experience | read-only reader enhancers: display prefs (theme/sepia/size/width/spacing), reading progress + resume, highlights + index + export, bookmarks, selection toolbar, hover cross-ref cards, anchor copy-links, focus mode, read-state TOC, and read-aloud study mode (`read-aloud.qmd`: prose sentences, code line-step, figure/equation/table announce) | (purpose-built) |
 | `diagnostics/` | Validator coverage | docs that deliberately trip qmd-fast's schema validators (`typos.qmd`) + the opt-in prose linter (`prose.qmd`: doubled/weasel/banned, markdown-aware) | (purpose-built) |

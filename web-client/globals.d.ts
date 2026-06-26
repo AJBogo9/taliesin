@@ -17,6 +17,10 @@ interface Window {
 
   /** Deck engine API (deck mode only), defined by deck.js; typed loosely. */
   QmdDeck?: any;
+  /** `{js}` reactive runtime API (defined by qmd-js.js): teardown a removed cell
+   *  subtree and reset the whole runtime on a full re-mount, to avoid leaking
+   *  WebGL contexts / RAF loops across edits + reconnects. */
+  qmdJs?: { teardown?: (n: Element) => void; reset?: () => void };
   /** Theme API from the head script (`theme_head`). */
   qmdSetTheme?: (mode: string) => void;
   qmdGetThemePref?: () => string;

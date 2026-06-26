@@ -381,6 +381,25 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
     let blog = site.render_page("blog.qmd").expect("blog renders");
     assert!(blog.contains("qmd-site-nav"), "navbar missing");
     assert!(blog.contains("qmd-site-footer"), "footer missing");
+    // Mobile nav toggle must stay a real, keyboard/SR-operable <button> (WCAG 2.1.1):
+    // never regress to the old display:none `<input type=checkbox>` + role-less label hack.
+    assert!(
+        blog.contains("<button")
+            && blog.contains("class=\"qmd-nav-burger\"")
+            && blog.contains("aria-expanded")
+            && blog.contains("aria-controls=\"qmd-nav-links\""),
+        "mobile nav toggle must be an aria <button.qmd-nav-burger> controlling #qmd-nav-links"
+    );
+    assert!(
+        blog.contains("id=\"qmd-nav-links\""),
+        "nav menu must carry the controlled id"
+    );
+    // The exact old-hack signature (a checkbox input as the toggle) must be gone. (Bare
+    // `type="checkbox"` would false-match the unrelated `input[type="checkbox"]` CSS selector.)
+    assert!(
+        !blog.contains("<input type=\"checkbox\" id=\"qmd-nav-toggle\""),
+        "mobile nav must not use the inaccessible checkbox-hack toggle"
+    );
     assert!(
         blog.contains("href=\"blog.html\""),
         "nav link not rewritten"

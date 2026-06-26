@@ -98,14 +98,13 @@ pub fn render_document_with_includes(src: &str, base_dir: &Path) -> RenderedDoc 
     // located, click-to-source diagnostic on the same channel as broken refs so it
     // shows in build/preview/`check` instead of shipping silently.
     doc.warnings.extend(include_warnings.into_iter().map(|iw| {
-        let w = Warning::new(format!(
+        // `iw.line` is always >= 1 (constructed as `idx + 1` in includes.rs), so the
+        // warning is always located on the directive line.
+        Warning::new(format!(
             "include not resolved ({}): {{{{< include {} >}}}}",
             iw.reason, iw.target
-        ));
-        match iw.line {
-            line if line > 0 => w.at(iw.file, line as u32),
-            _ => w,
-        }
+        ))
+        .at(iw.file, iw.line as u32)
     }));
     doc.warnings.extend(shortcode_warnings);
     doc

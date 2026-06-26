@@ -118,14 +118,20 @@ function qmdAnchorUrl(id) {
 // so a verbatim `.textContent` reads "Figure 1: No pooling.#". Clone-strip-read (the same trick
 // the link-preview card's cleanClone uses) keeps the read-only original intact. Returns '' for
 // a missing node.
-function qmdCleanCaptionText(node) {
-  if (!node) return '';
-  if (!node.cloneNode) return (node.textContent || '').trim();
+// Clone a node, stripping interactive chrome that has no place in a read-only clone:
+// the heading/caption `#` permalink (qmdInitAnchorLinks) and code copy buttons. Shared by
+// the lightbox caption reader and the link-preview card builder. Returns the clone.
+function qmdCloneStripped(node) {
   var c = node.cloneNode(true);
   if (c.querySelectorAll) {
     [].forEach.call(c.querySelectorAll('.qmd-anchor, .qmd-copy'), function (x) { x.remove(); });
   }
-  return (c.textContent || '').trim();
+  return c;
+}
+function qmdCleanCaptionText(node) {
+  if (!node) return '';
+  if (!node.cloneNode) return (node.textContent || '').trim();
+  return (qmdCloneStripped(node).textContent || '').trim();
 }
 
 // Reveal a `#` on each heading and numbered float (figure / listing / table); activating it
@@ -1076,11 +1082,7 @@ function qmdInitLinkPreview() {
   // copy buttons. Without this the cloned `#` shows in the card (and in a heading's
   // textContent as "Title#").
   function cleanClone(node) {
-    var c = node.cloneNode(true);
-    if (c.querySelectorAll) {
-      [].forEach.call(c.querySelectorAll('.qmd-anchor, .qmd-copy'), function (x) { x.remove(); });
-    }
-    return c;
+    return qmdCloneStripped(node);
   }
   // Build the preview body for a target element. A heading shows itself plus the
   // following block(s) up to the next heading; anything else is cloned whole.

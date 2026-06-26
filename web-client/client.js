@@ -643,17 +643,13 @@
   // `{js}`/Three.js cell (which changes its content-hash block id, so we replaceWith a
   // fresh node) would leak a WebGL context + RAF loop on every edit. No-op when qmd-js
   // isn't loaded (decks/pages with no `{js}` cells). `window.qmdJs` is set by qmd-js.js
-  // and not declared on the shared `Window` type, so reach it through a loose cast.
-  const qmdJsApi = () =>
-    /** @type {{ teardown?: (n: Element) => void, reset?: () => void }|undefined} */ (
-      /** @type {any} */ (window).qmdJs
-    );
+  // and declared on the shared `Window` type in globals.d.ts.
   const teardownJs = (/** @type {Element|null} */ el) => {
-    const q = qmdJsApi();
+    const q = window.qmdJs;
     if (q && q.teardown && el) q.teardown(el);
   };
   const resetJs = () => {
-    const q = qmdJsApi();
+    const q = window.qmdJs;
     if (q && q.reset) q.reset();
   };
 
