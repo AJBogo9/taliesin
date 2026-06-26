@@ -25,6 +25,7 @@ fn main() -> ExitCode {
         Some("build") => cmd_build(&args),
         Some("blocks") => cmd_blocks(args.get(2)),
         Some("schema") => cmd_schema(&args),
+        Some("check") => cmd_check(&args),
         // `preview`/`dev` are vite-style aliases for the live server.
         Some("serve" | "preview" | "dev") => cmd_serve(&args),
         Some("--version" | "-V") => {
@@ -97,6 +98,158 @@ fn cmd_serve(args: &[String]) -> ExitCode {
 /// (default `<stem>.html` beside the source). With `--out <dir>` it instead
 /// writes `<dir>/index.html` and copies every referenced local asset alongside
 /// (paths preserved), so the directory is deployable as-is. `render` is stdout.
+/// One located diagnostic from the render warning channel, ready to print or serialize.
+#[derive(Debug, Clone, serde::Serialize)]
+struct Diagnostic {
+    file: String,
+    line: Option<u32>,
+    message: String,
+}
+
+fn diag_from(w: &qmd_fast_core::render::Warning, fallback_file: &str) -> Diagnostic {
+    Diagnostic {
+        file: w.file.clone().unwrap_or_else(|| fallback_file.to_string()),
+        line: w.line,
+        message: w.message.clone(),
+    }
+}
+
+/// Render `path` (a file or a site directory) in memory and return every located
+/// diagnostic. No code execution, no output written. `Err` for an unreadable file or
+/// an empty site.
+fn collect_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
+    if path.is_dir() {
+        collect_site_diagnostics(path)
+    } else {
+        collect_file_diagnostics(path)
+    }
+}
+
+fn collect_file_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
+    let src = std::fs::read_to_string(path)
+        .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+    let base = path.parent().unwrap_or_else(|| Path::new("."));
+    let doc = qmd_fast_core::render_document_with_includes(&src, base);
+    let path_str = path.display().to_string();
+    let xref = qmd_fast_core::cite::validate_xrefs(&doc.blocks);
+    Ok(doc
+        .warnings
+        .iter()
+        .chain(xref.iter())
+        .map(|w| diag_from(w, &path_str))
+        .collect())
+}
+
+fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
+    let site = qmd_fast_core::Site::discover(root);
+    if site.pages.is_empty() {
+        return Err(format!("no .qmd pages found under {}", root.display()));
+    }
+    let mut out: Vec<Diagnostic> = site
+        .warnings
+        .iter()
+        .map(|m| Diagnostic {
+            file: "_site.yml".to_string(),
+            line: None,
+            message: m.clone(),
+        })
+        .collect();
+    for page in &site.pages {
+        let Ok(src) = std::fs::read_to_string(&page.input) else {
+            out.push(Diagnostic {
+                file: page.rel.clone(),
+                line: None,
+                message: format!("cannot read {}", page.input.display()),
+            });
+            continue;
+        };
+        let base = page.input.parent().unwrap_or(root);
+        let doc = qmd_fast_core::render_document_with_includes(&src, base);
+        let (_html, warnings) = site.render_page_doc_warned(page, doc);
+        for w in &warnings {
+            out.push(diag_from(w, &page.rel));
+        }
+    }
+    Ok(out)
+}
+
+fn format_json(diags: &[Diagnostic]) -> String {
+    serde_json::to_string_pretty(diags).unwrap_or_else(|_| "[]".to_string())
+}
+
+fn format_human(diags: &[Diagnostic]) -> String {
+    let mut s = String::new();
+    for d in diags {
+        match d.line {
+            Some(l) => s.push_str(&format!("{}:{}: {}\n", d.file, l, d.message)),
+            None => s.push_str(&format!("{}: {}\n", d.file, d.message)),
+        }
+    }
+    s
+}
+
+/// `qmd-fast check <file|dir> [--format human|json]`: render in memory, list every
+/// located diagnostic, and exit non-zero if any are found (a CI gate). Static-only
+/// (no code execution).
+fn cmd_check(args: &[String]) -> ExitCode {
+    let mut path: Option<&str> = None;
+    let mut format = "human";
+    let mut it = args[2..].iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--format" => {
+                if let Some(v) = it.next() {
+                    format = v;
+                }
+            }
+            s if s.starts_with("--") => {}
+            s => {
+                if path.is_none() {
+                    path = Some(s);
+                }
+            }
+        }
+    }
+    let Some(path) = path else {
+        eprintln!("usage: qmd-fast check <file.qmd|dir> [--format human|json]");
+        return ExitCode::FAILURE;
+    };
+    if format != "human" && format != "json" {
+        log::error(&format!(
+            "unknown --format `{format}` (expected human or json)"
+        ));
+        return ExitCode::FAILURE;
+    }
+    let diags = match collect_diagnostics(Path::new(path)) {
+        Ok(d) => d,
+        Err(e) => {
+            log::error(&e);
+            return ExitCode::FAILURE;
+        }
+    };
+    if format == "json" {
+        // JSON to stdout only, so it pipes cleanly.
+        println!("{}", format_json(&diags));
+    } else {
+        // Greppable `path:line: message` lines to stderr (linter-style), then a summary.
+        eprint!("{}", format_human(&diags));
+        if diags.is_empty() {
+            eprintln!("no problems found");
+        } else {
+            eprintln!(
+                "{} problem{}",
+                diags.len(),
+                if diags.len() == 1 { "" } else { "s" }
+            );
+        }
+    }
+    if diags.is_empty() {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
+}
+
 fn cmd_build(args: &[String]) -> ExitCode {
     // Positionals: <file> [out.html]. Flag: `--out <dir>` (alias `--dir`).
     let mut positionals: Vec<&str> = Vec::new();
@@ -865,6 +1018,85 @@ mod mirror_tests {
             "points at <out>/<at>: {w}"
         );
     }
+
+    #[test]
+    fn collect_diagnostics_flags_frontmatter_typo_and_broken_xref() {
+        let dir = tmp("check-file");
+        let f = dir.join("doc.qmd");
+        fs::write(&f, "---\ntitle: T\ntitel: oops\n---\n\nSee @fig-nope.\n").unwrap();
+        let diags = collect_diagnostics(&f).expect("ok");
+        assert!(
+            diags.iter().any(|d| d.message.contains("titel")),
+            "front-matter typo: {diags:?}"
+        );
+        assert!(
+            diags.iter().any(|d| d.message.contains("@fig-nope")),
+            "broken xref: {diags:?}"
+        );
+        assert!(
+            diags.iter().all(|d| d.file.contains("doc.qmd")),
+            "located to file: {diags:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn collect_diagnostics_clean_doc_is_empty() {
+        let dir = tmp("check-clean");
+        let f = dir.join("ok.qmd");
+        fs::write(&f, "---\ntitle: T\n---\n\nJust clean prose.\n").unwrap();
+        assert!(collect_diagnostics(&f).expect("ok").is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn collect_diagnostics_empty_site_is_err() {
+        let dir = tmp("check-emptysite");
+        fs::write(dir.join("_site.yml"), "title: Empty\n").unwrap();
+        assert!(collect_diagnostics(&dir).is_err(), "empty site -> Err");
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn format_json_emits_file_line_message_array() {
+        let diags = vec![
+            Diagnostic {
+                file: "a.qmd".into(),
+                line: Some(3),
+                message: "weasel word `very`".into(),
+            },
+            Diagnostic {
+                file: "b.qmd".into(),
+                line: None,
+                message: "needs a \"name\"".into(),
+            },
+        ];
+        let json = format_json(&diags);
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid json");
+        assert_eq!(parsed[0]["file"], "a.qmd");
+        assert_eq!(parsed[0]["line"], 3);
+        assert_eq!(parsed[1]["line"], serde_json::Value::Null);
+        assert_eq!(parsed[1]["message"], "needs a \"name\"");
+    }
+
+    #[test]
+    fn format_human_lists_located_lines() {
+        let diags = vec![
+            Diagnostic {
+                file: "a.qmd".into(),
+                line: Some(3),
+                message: "m1".into(),
+            },
+            Diagnostic {
+                file: "b.qmd".into(),
+                line: None,
+                message: "m2".into(),
+            },
+        ];
+        let text = format_human(&diags);
+        assert!(text.contains("a.qmd:3: m1"), "located line: {text}");
+        assert!(text.contains("b.qmd: m2"), "unlocated line: {text}");
+    }
 }
 
 /// Unique local `src=`/`href=` values in `html` (skips external URLs, protocol-
@@ -1052,6 +1284,9 @@ fn usage() {
     println!("  blocks <file.qmd>          list block ids + sourcepos (debug)");
     println!(
         "  schema [--out <dir>]       emit JSON Schemas for _site.yml + front matter (editor autocomplete)"
+    );
+    println!(
+        "  check <file|dir> [--format human|json]  list located diagnostics; exits non-zero if any"
     );
     println!();
     println!("ENV: QMD_FAST_PYTHON (kernel), QMD_FAST_OPEN (=--open),");
