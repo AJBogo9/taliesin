@@ -272,6 +272,19 @@ pub(crate) fn group_divs(
     result
 }
 
+/// The `data-state="…"` of the first `.step` block in `inner` (already attribute-escaped,
+/// since it is read back out of the step's emitted html). Used to seed the scrolly hidden
+/// input's initial value so consumer cells read a sane value before any scroll.
+fn first_step_state(inner: &[Block]) -> Option<String> {
+    let step = inner
+        .iter()
+        .find(|b| b.html.trim_start().starts_with("<div class=\"step\""))?;
+    let i = step.html.find("data-state=\"")?;
+    let rest = &step.html[i + "data-state=\"".len()..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
+}
+
 /// Bundled inline icon for a callout `kind` (GitHub Octicons, MIT — see THIRD_PARTY.md;
 /// `fill="currentColor"` so it takes the kind's accent). Empty for an unknown kind, which
 /// is already flagged by `validate_callout_kind`. Keyed by the same vocabulary as
@@ -408,9 +421,9 @@ fn build_container(
             }
         }
     } else if attrs.classes.iter().any(|c| c == "step") {
-        // A walkthrough step: carry its line-focus spec as `data-cw-lines` (read by
-        // walkthrough.js) and keep the div's own id/sourcepos so its prose stays
-        // locatable. Meaningful only inside `.code-walkthrough`; harmless elsewhere.
+        // A scroll step: carry its line-focus spec as `data-cw-lines` (walkthrough.js) and/or
+        // its scrolly state as `data-state` (scrolly.js); keep the div's own id/sourcepos so
+        // its prose stays locatable. Meaningful inside `.code-walkthrough`/`.scrolly`.
         let id_attr = id_attr(attrs.id.as_deref());
         let cw_lines = match attrs.get("lines") {
             Some(spec) if !spec.is_empty() => {
@@ -418,8 +431,12 @@ fn build_container(
             }
             _ => String::new(),
         };
+        let state = match attrs.get("state") {
+            Some(s) if !s.is_empty() => format!(" data-state=\"{}\"", escape_attr(s)),
+            _ => String::new(),
+        };
         let body = concat(&inner);
-        format!("<div class=\"step\"{id_attr}{data}{cw_lines}>{body}</div>")
+        format!("<div class=\"step\"{id_attr}{data}{cw_lines}{state}>{body}</div>")
     } else if attrs.classes.iter().any(|c| c == "panel-tabset") {
         // Tabbed panels: child headings at the shallowest level present become tabs, and
         // the blocks after each become its panel body (deeper headings stay in the body).
@@ -470,6 +487,48 @@ fn build_container(
                 format!("<div class=\"panel-tabset\"{data}>{intro}{tablist}{panels}</div>")
             }
         }
+    } else if attrs.classes.iter().any(|c| c == "scrolly") {
+        // Scrollytelling: a sticky visual stage (the non-.step inner blocks) beside a
+        // scrolling column of `.step` divs. The active step (scrolly.js, IntersectionObserver)
+        // sets `data-scrolly-state` on the root for CSS, and — when `name=` is set — drives a
+        // hidden `data-qmd-input` so a sticky `{js}` cell reacts via `//| input:` through the
+        // shipped reactive graph. Read-only: scroll is reader interaction, never a source write.
+        let is_step = |b: &Block| b.html.trim_start().starts_with("<div class=\"step\"");
+        let steps: String = inner
+            .iter()
+            .filter(|b| is_step(b))
+            .map(|b| b.html.as_str())
+            .collect();
+        let stage: String = inner
+            .iter()
+            .filter(|b| !is_step(b))
+            .map(|b| b.html.as_str())
+            .collect();
+        let has_steps = inner.iter().any(is_step);
+        let has_stage = inner.iter().any(|b| !is_step(b));
+        for w in super::validate::validate_scrolly(has_stage, has_steps, open_line, file.clone()) {
+            warnings.push(w);
+        }
+        // The reactive bridge: a hidden input named `name` whose value is the active step's
+        // state (initial = the first .step's state, so consumer cells read a sane value).
+        let (name_attr, hidden) = match attrs.get("name") {
+            Some(n) if !n.is_empty() => {
+                // `first_step_state` is read back out of the already-emitted step html, so it
+                // is already attribute-escaped — do NOT re-escape it.
+                let first_state = first_step_state(&inner).unwrap_or_default();
+                (
+                    format!(" data-scrolly-name=\"{}\"", escape_attr(n)),
+                    format!(
+                        "<input type=\"hidden\" class=\"qmd-scrolly-input\" data-qmd-input=\"{}\" value=\"{first_state}\">",
+                        escape_attr(n)
+                    ),
+                )
+            }
+            _ => (String::new(), String::new()),
+        };
+        format!(
+            "<div class=\"qmd-scrolly\"{data}{name_attr}>{hidden}<div class=\"scrolly-steps\">{steps}</div><div class=\"scrolly-stage\">{stage}</div></div>"
+        )
     } else {
         let mut class = attrs.classes.join(" ");
         if class.is_empty() {

@@ -441,6 +441,31 @@
     .cw-code { max-height: 42vh; }
     .cw-steps .step { min-height: auto; padding: 1.4rem .9rem; }
   }
+  /* Scrollytelling (`::: {.scrolly}`): prose steps scroll past a sticky visual stage.
+     Generalizes the code-walkthrough layout; the active step drives data-scrolly-state +
+     (with name=) a hidden reactive input the sticky {js} cell reads. */
+  .qmd-scrolly { display: grid; grid-template-columns: 1fr minmax(18rem, .9fr);
+    gap: clamp(1rem, 4vw, 3rem); align-items: start; margin: 1.5rem 0; }
+  .qmd-scrolly .scrolly-steps, .qmd-scrolly .scrolly-stage { min-width: 0; }
+  .scrolly-steps .step { min-height: 60vh; display: flex; flex-direction: column;
+    justify-content: center; opacity: .4; border-left: 3px solid transparent;
+    padding: .4rem 0 .4rem 1rem; }
+  .scrolly-steps .step.scrolly-step-active { opacity: 1; border-left-color: var(--qmd-accent); }
+  .scrolly-steps .step > :first-child { margin-top: 0; }
+  .scrolly-steps .step > :last-child { margin-bottom: 0; }
+  .scrolly-stage { position: sticky; top: 0; align-self: start; height: 100vh;
+    display: flex; flex-direction: column; justify-content: center; overflow: auto; }
+  .qmd-scrolly-input { display: none; }
+  @media (prefers-reduced-motion: no-preference) {
+    .scrolly-steps .step { transition: opacity .25s ease, border-color .25s ease; }
+  }
+  @media (max-width: 73rem) {
+    /* single column: lift the stage to a sticky strip on top, prose flows beneath */
+    .qmd-scrolly { display: flex; flex-direction: column; gap: 0; }
+    .scrolly-stage { order: -1; position: sticky; top: 0; height: auto; max-height: 48vh;
+      z-index: 5; background: var(--qmd-bg); }
+    .scrolly-steps .step { min-height: auto; padding: 1.4rem .9rem; }
+  }
   /* Tabbed panels (`::: {.panel-tabset}`): a tablist of underline-on-active tab buttons
      over the active panel; switching (tabset.js) toggles aria-selected + [hidden]. */
   .panel-tabset { margin: 1.4rem 0; }

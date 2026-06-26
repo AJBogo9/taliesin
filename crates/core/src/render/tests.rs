@@ -1696,3 +1696,43 @@ fn input_shortcode_other_types_emit_their_native_control() {
         "options: {sel}"
     );
 }
+
+#[test]
+fn scrolly_arm_emits_stage_steps_and_reactive_input() {
+    let doc = render_document(
+        "::: {.scrolly name=\"scene\"}\nThe stage paragraph.\n\n::: {.step state=\"a\"}\nStep A.\n:::\n\n::: {.step state=\"b\"}\nStep B.\n:::\n:::\n",
+    );
+    let h = doc.body_html();
+    assert!(h.contains("class=\"qmd-scrolly\""), "wrapper: {h}");
+    assert!(
+        h.contains("class=\"scrolly-steps\"") && h.contains("class=\"scrolly-stage\""),
+        "split: {h}"
+    );
+    assert!(h.contains("data-scrolly-name=\"scene\""), "name attr: {h}");
+    assert!(
+        h.contains(
+            "<input type=\"hidden\" class=\"qmd-scrolly-input\" data-qmd-input=\"scene\" value=\"a\">"
+        ),
+        "hidden reactive input with first step's state: {h}"
+    );
+    assert!(
+        h.contains("data-state=\"a\"") && h.contains("data-state=\"b\""),
+        "step states: {h}"
+    );
+    assert!(
+        h.contains("The stage paragraph."),
+        "stage content present: {h}"
+    );
+}
+
+#[test]
+fn scrolly_without_name_omits_hidden_input() {
+    let doc = render_document("::: {.scrolly}\nStage.\n\n::: {.step state=\"a\"}\nA.\n:::\n:::\n");
+    let h = doc.body_html();
+    assert!(h.contains("class=\"qmd-scrolly\""));
+    assert!(
+        !h.contains("data-qmd-input"),
+        "no hidden input without name=: {h}"
+    );
+    assert!(!h.contains("data-scrolly-name"), "no name attr: {h}");
+}
