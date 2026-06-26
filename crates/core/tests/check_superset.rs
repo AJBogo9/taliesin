@@ -112,6 +112,19 @@ fn valid_internal_anchor_and_cross_page_href_are_clean() {
 }
 
 #[test]
+fn manual_anchor_is_not_flagged_when_doc_has_executable_cells() {
+    // A {python} cell can emit `id="results"` at runtime (e.g. HTML('<div id="results">')).
+    // Static check never runs cells, so a doc with executable cells must not flag manual
+    // anchors — the id may exist in the built/served page. (No false positive.)
+    let src = "---\ntitle: T\n---\n\nSee [results](#results) below.\n\n```{python}\nfrom IPython.display import HTML\nHTML('<div id=\"results\">ok</div>')\n```\n";
+    let doc = qmd_fast_core::render_document_with_includes(src, Path::new("."));
+    assert!(
+        diagnostics::validate_internal_anchors(&doc.blocks).is_empty(),
+        "docs with executable cells must not flag manual anchors (ids may be cell-emitted)"
+    );
+}
+
+#[test]
 fn xref_placeholder_anchor_is_not_flagged_as_broken_internal_link() {
     // `@sec-elsewhere` lowers to href="#sec-elsewhere" data-qmd-xref="sec-elsewhere"; it is
     // an xref (validate_xrefs' job + resolved cross-page by the site layer), not a manual
@@ -152,6 +165,30 @@ fn corpus_check_superset_doc_trips_each_validator() {
         1,
         "citation with no bibliography"
     );
+}
+
+#[test]
+fn audio_video_src_is_skipped_only_img_is_checked() {
+    // Load-bearing scoping: <audio>/<video>/<source> refs are frequently code-generated or
+    // streamed (the corpus has fourier-transform's cell-written .wav, supercollider's .mp3),
+    // so a static check must skip them; only a missing <img> is flagged.
+    let dir = std::env::temp_dir().join("qmd-check-assets-av");
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let src = "---\ntitle: T\n---\n\n```{=html}\n<audio><source src=\"gone.wav\"></audio>\n<video src=\"gone.mp4\"></video>\n<img src=\"gone.png\">\n```\n";
+    let doc = qmd_fast_core::render_document_with_includes(src, &dir);
+    let warns = diagnostics::validate_local_assets(&doc.blocks, &dir);
+    assert_eq!(
+        warns.len(),
+        1,
+        "only the <img> is checked, not audio/video: {warns:?}"
+    );
+    assert!(
+        warns[0].message.contains("gone.png"),
+        "the image, not the av: {:?}",
+        warns[0]
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]

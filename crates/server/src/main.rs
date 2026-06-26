@@ -1186,6 +1186,90 @@ mod mirror_tests {
     }
 
     #[test]
+    fn collect_site_diagnostics_surfaces_validators_located_per_page() {
+        // The site path (per-page base dir + page.rel plumbing) must trip the validators too.
+        let dir = tmp("check-site");
+        fs::write(dir.join("_site.yml"), "title: S\n").unwrap();
+        fs::write(dir.join("index.qmd"), "---\ntitle: Home\n---\n\nWelcome.\n").unwrap();
+        fs::write(
+            dir.join("page.qmd"),
+            "---\ntitle: P\n---\n\n## A {#dup}\n\n## B {#dup}\n\nA missing ![x](nope.png).\n",
+        )
+        .unwrap();
+        let diags = collect_diagnostics(&dir).expect("site ok");
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.message.contains("duplicate heading id") && d.file.contains("page.qmd")),
+            "dup id located to its page: {diags:?}"
+        );
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.message.contains("nope.png") && d.file.contains("page.qmd")),
+            "missing image located to its page: {diags:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn check_superset_has_no_false_positives_across_corpus() {
+        // The load-bearing half of the feature ("a green check is publishable") pinned to the
+        // REAL check flow: projects as dirs, standalone docs as files, diagnostics/ exempt.
+        let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus");
+        let new_checks = [
+            "duplicate heading id",
+            "broken in-page link",
+            "local asset not found",
+            "citations are present",
+            "not valid YAML",
+        ];
+        fn walk(dir: &Path, skip: &[&str], out: &mut Vec<std::path::PathBuf>) {
+            for e in fs::read_dir(dir).unwrap() {
+                let p = e.unwrap().path();
+                let name = p.file_name().unwrap().to_string_lossy().into_owned();
+                if p.is_dir() {
+                    if !skip.contains(&name.as_str()) {
+                        walk(&p, skip, out);
+                    }
+                } else if p.extension().is_some_and(|x| x == "qmd") && !name.starts_with('_') {
+                    out.push(p);
+                }
+            }
+        }
+        // projects (sites/books) are checked as dirs, mirroring `check <dir>`.
+        let mut targets: Vec<std::path::PathBuf> = ["bayesian-website", "demo-book", "tech-blog"]
+            .iter()
+            .map(|s| corpus.join(s))
+            .collect();
+        // everything else is a standalone doc; diagnostics/ is deliberately tripping (exempt).
+        walk(
+            &corpus,
+            &[
+                "diagnostics",
+                "bayesian-website",
+                "demo-book",
+                "tech-blog",
+                "_includes",
+            ],
+            &mut targets,
+        );
+        for t in &targets {
+            let diags = collect_diagnostics(t).unwrap_or_default();
+            for d in &diags {
+                for c in new_checks {
+                    assert!(
+                        !d.message.contains(c),
+                        "check-superset false positive in {}: {}",
+                        t.display(),
+                        d.message
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
     fn collect_diagnostics_clean_doc_is_empty() {
         let dir = tmp("check-clean");
         let f = dir.join("ok.qmd");
