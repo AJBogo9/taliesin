@@ -165,6 +165,16 @@ fn render_internal_impl(
     // keys + the nested execute/listing/about/hero children); located warnings flow to
     // the dev panel as click-to-source diagnostics, the same channel as broken refs.
     warnings.extend(crate::frontmatter::validate_front_matter(src));
+    // Opt-in prose lint (front-matter `prose-lint:`): markdown-aware, diagnostic-only,
+    // located via map_origin like every other warning.
+    if let Some(cfg) =
+        crate::prose::config(crate::frontmatter::front_matter_block(src).unwrap_or(""))
+    {
+        for (line, msg) in crate::prose::lint(src, &cfg) {
+            let (file, mapped) = map_origin(origins, line);
+            warnings.push(Warning::new(msg).at(file, mapped as u32));
+        }
+    }
     // Document-level cell defaults from a front-matter `execute:` block; a cell's
     // own `#| echo`/`#| include`/`#| cache` overrides these.
     let mut exec_echo = true;

@@ -1736,3 +1736,33 @@ fn scrolly_without_name_omits_hidden_input() {
     );
     assert!(!h.contains("data-scrolly-name"), "no name attr: {h}");
 }
+
+#[test]
+fn prose_lint_emits_located_warnings_when_opted_in() {
+    let doc = render_document("---\ntitle: T\nprose-lint: true\n---\n\nThis is very very good.\n");
+    // "very very" -> a doubled word AND two weasel-word hits, all on line 6.
+    let msgs: Vec<_> = doc.warnings.iter().map(|w| w.message.as_str()).collect();
+    assert!(
+        msgs.contains(&"repeated word `very`"),
+        "expected doubled-word warning, got: {msgs:?}"
+    );
+    assert!(
+        doc.warnings
+            .iter()
+            .any(|w| w.message.contains("weasel word `very`") && w.line == Some(6)),
+        "weasel warning should be located on line 6, got: {:?}",
+        doc.warnings
+    );
+}
+
+#[test]
+fn prose_lint_is_silent_when_not_opted_in() {
+    let doc = render_document("# T\n\nThis is very very good.\n");
+    assert!(
+        !doc.warnings
+            .iter()
+            .any(|w| w.message.contains("weasel") || w.message.contains("repeated word")),
+        "prose-lint must be off without opt-in, got: {:?}",
+        doc.warnings
+    );
+}
