@@ -636,6 +636,27 @@
     window.scrollTo({ top: y, left: 0, behavior: "instant" });
   };
 
+  // Tear down any `{js}` cells inside `el` (a block about to be detached on
+  // update/remove): qmd-js resolves the cell's `invalidation`, so the author's
+  // `invalidation.then(() => renderer.dispose() / cancelAnimationFrame(...))` cleanup
+  // runs, and splices the cell out of its push-only registry. Without this, editing a
+  // `{js}`/Three.js cell (which changes its content-hash block id, so we replaceWith a
+  // fresh node) would leak a WebGL context + RAF loop on every edit. No-op when qmd-js
+  // isn't loaded (decks/pages with no `{js}` cells). `window.qmdJs` is set by qmd-js.js
+  // and not declared on the shared `Window` type, so reach it through a loose cast.
+  const qmdJsApi = () =>
+    /** @type {{ teardown?: (n: Element) => void, reset?: () => void }|undefined} */ (
+      /** @type {any} */ (window).qmdJs
+    );
+  const teardownJs = (/** @type {Element|null} */ el) => {
+    const q = qmdJsApi();
+    if (q && q.teardown && el) q.teardown(el);
+  };
+  const resetJs = () => {
+    const q = qmdJsApi();
+    if (q && q.reset) q.reset();
+  };
+
   // Re-attach the deck, rebuild the TOC, and (re)highlight + add copy buttons to
   // code blocks after any DOM change (each is a no-op when not applicable).
   const afterChange = () => {
@@ -663,6 +684,11 @@
         if (ssrPending) {
           ssrPending = false; // content already server-rendered into #qmd-root
         } else {
+          // Wholesale re-mount (reconnect / structural change): tear down ALL prior
+          // `{js}` cells first (resolving every outstanding `invalidation`) so their
+          // WebGL contexts + RAF loops are released and the qmd-js runtime is rebuilt
+          // fresh, rather than re-pushing duplicate cells onto a never-reset registry.
+          resetJs();
           keepScroll(() => { root.innerHTML = msg.body_html; });
         }
         afterChange();
@@ -676,6 +702,7 @@
         const el = elById(msg.target_id);
         const node = fragment(msg.html);
         if (el && node) {
+          teardownJs(el); // resolve invalidation + drop {js} cells in the outgoing block
           keepScroll(() => el.replaceWith(node));
           pulse(node, "qmd-flash");
         }
@@ -693,6 +720,7 @@
           // block into Remove+Insert of the same id).
           const newId = node.getAttribute && node.getAttribute("data-block-id");
           const stale = newId && elById(newId);
+          if (stale) teardownJs(stale); // tear down {js} cells in a stale duplicate before dropping it
           keepScroll(() => {
             if (stale) stale.remove();
             const after = msg.after_id && elById(msg.after_id);
@@ -707,7 +735,10 @@
       case "remove": {
         renderOk();
         const el = elById(msg.target_id);
-        if (el) keepScroll(() => el.remove());
+        if (el) {
+          teardownJs(el); // resolve invalidation + drop {js} cells in the removed block
+          keepScroll(() => el.remove());
+        }
         afterChange();
         break;
       }
