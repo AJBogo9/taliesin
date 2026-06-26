@@ -148,11 +148,16 @@ collaboration** (no backend, no shared server) and is explicitly in-scope.
    popover with a definition (bundled wordlist offline, or Wiktionary/Wikipedia fetch
    online). — resolve jargon without leaving the page. — **M** offline / **S** online —
    reader — fits (reuses `qmdInitLinkPreview`).
-9. **Read-aloud with highlight-follows-voice** — Web Speech API + the reader's OS voices
-   (offline), block-by-block, `boundary` events highlight + auto-scroll the current
-   sentence; code read as a label or line-stepped, equations announced ("Equation 3"). —
-   listen while commuting; major accessibility win. — **L** — reader — fits (walks the
-   block DOM; no media files, no new format).
+9. **Read-aloud with highlight-follows-voice** — ✅ SHIPPED 2026-06-26 (+ moonshot 3). Web
+   Speech API + the reader's OS voices (offline), block-by-block from the block in view;
+   prose spoken **sentence-by-sentence** (per-sentence utterances, not flaky `boundary`
+   events) with the sentence highlighted (CSS Custom Highlight API) + auto-scrolled; code
+   **announced + line-stepped** (line Ranges, no code text spoken — author's pick over
+   reading source verbatim); figures/equations/tables announced. Floating mini-player
+   (play/pause, prev/next block, speed) + reader-menu Listen (speed + voice); rate/voice
+   persisted, position ephemeral; `window.__qmdSpeakImpl` seam for headless test. Pinned
+   `corpus/reader/read-aloud.qmd`. — **L** — reader — fits (walks the block DOM; no media
+   files, no new format).
 10. **Bookmarks rail** — star any block; a "My bookmarks" panel lists them with heading +
     snippet, click to jump. — pin the lemma / the API call you keep returning to. — **S** —
     reader — fits.

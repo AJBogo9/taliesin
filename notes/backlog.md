@@ -49,6 +49,21 @@ reader menu stays an untrapped popover). All controls consolidated into one **Re
 rewritten hand-rolled (multi-term / prefix / fuzzy, replacing the single `indexOf`; MiniSearch
 rejected — it inlines on every TOC page). Idea pool = repo-root `FEATURE-IDEAS.md`.
 
+**2026-06-26 session: reader cluster continued** (all in `code-enhance.js`, deck-skipped,
+chrome-devtools-verified, specs under `docs/superpowers/specs/2026-06-26-*`): **read-state TOC**,
+**copy-as-citation** (Cite → BibTeX), **anchor copy-link** (`#` on hover → deep link),
+**hover cross-reference cards** (`link-preview`, `#`-stripped + pinnable), **focus / reading
+mode**, and **read-aloud study mode** — a "Listen" control (reader menu + floating mini-player:
+play/pause, prev/next block, speed, voice) that speaks the page from the block in view, prose
+sentence-by-sentence with the sentence highlighted (CSS Custom Highlight API, distinct
+`--qmd-ra-highlight` token) + auto-scrolled, code announced then **line-stepped** (line Ranges,
+no `.qhl-ln` dependency), figures/equations/tables announced; offline (Web Speech), ephemeral
+position, rate+voice persisted; injectable `window.__qmdSpeakImpl` speak seam for headless test.
+Pinned `corpus/reader/read-aloud.qmd`. Math a11y was found **already handled** (KaTeX
+`htmlAndMathml` emits MathML + `aria-hidden` visual layer), so not rebuilt. **Docs gap noted:**
+the reader-experience cluster has no User Guide page yet (only `corpus/reader/` + specs) — a
+worthwhile follow-up docs task covering the whole cluster.
+
 ## To resume
 
 **Working method:** branch per feature; brainstorm if there's a fork; write a spec under
