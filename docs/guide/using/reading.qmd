@@ -127,3 +127,19 @@ A floating mini-player (play/pause, previous/next block, speed, stop) controls
 playback without reopening the menu. Your **speed** (0.8x to 2x) and **voice** are
 remembered across pages; the playback position itself is momentary. Read-aloud
 respects `prefers-reduced-motion` (no smooth scroll when reduced motion is set).
+
+## Keyboard and accessibility
+
+Tab from the top of any page reveals a **Skip to content** link that jumps focus past
+the chrome straight to the prose. A handful of keyboard shortcuts speed up reading
+(each is ignored while you are typing in a field or a dialog is open):
+
+- `?` opens (and closes) a shortcuts cheatsheet.
+- `/` opens the search palette.
+- `f` toggles focus mode.
+- `←` / `→` move to the previous / next chapter (in a book).
+- `Esc` closes the open menu, dialog, or palette.
+
+Prose also gets quiet typographic polish that needs no configuration: balanced
+headings and captions, pretty last-line wrapping, and figures that keep their caption
+attached.

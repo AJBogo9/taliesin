@@ -181,7 +181,7 @@ collaboration** (no backend, no shared server) and is explicitly in-scope.
 
 ### Category 2 — Typography & accessibility craft (CSS-cheap, mostly invariant-free)
 
-16. **`text-wrap: pretty` on prose + `balance` on display text** — `pretty` on `p, li`;
+16. ✅ SHIPPED 2026-06-26 (reader polish bundle). **`text-wrap: pretty` on prose + `balance` on display text** — `pretty` on `p, li`;
     `balance` on `h1-h6, figcaption, blockquote, .callout-title`. — kills orphaned last
     words and lopsided headings; zero markup. — **S** — CSS — fits. *Highest
     value-to-effort win in the whole audit.*
@@ -193,7 +193,7 @@ collaboration** (no backend, no shared server) and is explicitly in-scope.
     screen readers finally voice equations: **the single biggest a11y hole for a tool whose
     own corpus is math-heavy.** — **M** — build (`math.rs`) — fits (KaTeX already bundled).
     Add an a11y-panel check to dogfood it.
-19. **Skip-to-content link + focus management** — visually-hidden-until-focused skip link as
+19. ✅ SHIPPED 2026-06-26 (reader polish bundle). **Skip-to-content link + focus management** — visually-hidden-until-focused skip link as
     the first body child; focusable `<main>`. — keyboard/SR users reach prose in one
     keystroke. — **S** — build/CSS — fits.
 20. **`forced-colors` + `prefers-contrast: more` support** — `@media (forced-colors: active)`
@@ -206,7 +206,7 @@ collaboration** (no backend, no shared server) and is explicitly in-scope.
 22. **Hanging punctuation / optical margins** — `hanging-punctuation: first last` (Safari)
     + an `@supports` text-indent fallback for leading quotes/bullets. — flush, intentional
     left edge (Bringhurst). — **S/M** — CSS — fits.
-23. **Widow/orphan + figure-caption keep** — `orphans: 2; widows: 2` and
+23. ✅ SHIPPED 2026-06-26 (reader polish bundle). **Widow/orphan + figure-caption keep** — `orphans: 2; widows: 2` and
     `break-after: avoid` so a caption never separates from its figure (screen *and* print).
     — **S** — CSS — fits.
 24. **Vendored typeface track (the enabler)** — one subset variable serif + sans (woff2,
@@ -376,7 +376,7 @@ the single most delightful low-risk upgrade to *reading*.
 54. **Definition popovers / glossary** — `[term]{.gloss}` or a `glossary:` block; uses show a
     hover card with the definition; "go to definition" in Cmd-K. — readers of dense prose stop
     context-switching to look up jargon. — **M** — build/reader — fits.
-55. **Keyboard reader: `?` cheatsheet + arrow chapter nav** — `←/→` prev/next chapter, `/`
+55. ✅ SHIPPED 2026-06-26 (reader polish bundle). **Keyboard reader: `?` cheatsheet + arrow chapter nav** — `←/→` prev/next chapter, `/`
     focus search, `g` index, `?` overlay; the deck already has this vocabulary, port it to
     the long-form reader. — mdBook/Bookdown power-reader ergonomics. — **S** — reader — fits.
 56. **"Edit in editor" on the served site** — hovering any block on a *served* site shows a

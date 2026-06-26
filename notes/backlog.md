@@ -105,6 +105,18 @@ both formatters). Documented in `docs/guide/reference/cli.qmd`. **Deferred:** `-
 Also: the reader + interactive User Guide pages shipped (`docs/guide/using/{reading,interactive}.qmd`),
 closing the reader/explorable docs gap.
 
+**2026-06-26: reader polish bundle shipped** (FEATURE-IDEAS #16/#19/#23/#55; all client-side +
+CSS, no core change). (1) **Typography polish** (base.css, global): `text-wrap: pretty` on prose,
+`balance` on headings/captions, `orphans/widows: 2`, figure `break-inside: avoid` + caption
+`break-before: avoid`. (2) **Skip-to-content link** (`qmdInitSkipLink`): visually-hidden-until-focus,
+resolves the content container (`main`/`#qmd-root`/first block) at runtime, focuses it on activate.
+(3) **Keyboard reader** (`qmdInitKeyboard` + a `window.qmdOpenSearch` export in search.js): `?`
+cheatsheet (focus-trapped via `qmdFocusTrap`), `/` search, `←`/`→` prev/next chapter (the book
+anchors), all guarded against typing/modals/focused controls. Browser-verified on the guide book
+(arrow nav navigated reading→interactive; cheatsheet; `/`; skip link; guard; 0 console errors).
+Documented in `docs/guide/using/reading.qmd`. Deferred: hyphenation (#17), forced-colors/contrast
+(#20), hanging punctuation (#22).
+
 ## To resume
 
 **Working method:** branch per feature; brainstorm if there's a fork; write a spec under
