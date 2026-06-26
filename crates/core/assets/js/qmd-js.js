@@ -239,6 +239,25 @@
   function enhance(root) {
     bindDefines(); // ingest any define blobs already present before running cells
     var r = rt();
+    // Register declarative `{{< input >}}` controls (static HTML tagged data-qmd-input) as
+    // named reactive inputs, BEFORE cells run so their value is available on first run.
+    // Reuses the same registerInput path as `//| viewof` cells; the change event fires the
+    // existing scheduleFrom (transitive-downstream re-run). Live-swap re-registers via the
+    // :not(...) guard. A sibling [data-qmd-out] (the slider readout) tracks the value.
+    (root || document)
+      .querySelectorAll("[data-qmd-input]:not([data-qmd-input-bound])")
+      .forEach(function (el) {
+        el.setAttribute("data-qmd-input-bound", "1");
+        var name = el.getAttribute("data-qmd-input");
+        if (!name) return;
+        registerInput(r, name, el);
+        var out = el.parentNode && el.parentNode.querySelector("[data-qmd-out]");
+        if (out) {
+          var upd = function () { out.textContent = readValue(el); };
+          el.addEventListener("input", upd);
+          upd();
+        }
+      });
     var fresh = [];
     (root || document).querySelectorAll(
       'script[type="application/qmd-js"]:not([data-qmd-ran])'
