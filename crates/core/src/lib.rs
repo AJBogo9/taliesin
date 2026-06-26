@@ -32,6 +32,7 @@ pub mod frontmatter;
 pub mod highlight;
 pub mod includes;
 pub mod math;
+pub(crate) mod prose;
 pub mod render;
 pub mod schema;
 pub mod site;
