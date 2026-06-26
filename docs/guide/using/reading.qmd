@@ -1,0 +1,129 @@
+---
+title: "The reader experience"
+---
+
+A qmd-fast page is not just rendered HTML, it is a reading surface. Every built
+page carries a suite of reader tools behind a single **Aa** control in the
+bottom-right corner. They need no author configuration: they appear on every
+article automatically (slide decks have their own chrome, so they are skipped).
+
+Two principles hold for everything on this page:
+
+- **Reader-side and read-only.** Each tool stores its state in the *reader's own*
+  browser `localStorage`, keyed by the page path. Nothing is written back to your
+  `.qmd` source, and nothing leaves the browser. This is the single-editing-surface
+  rule applied to the output: the reader owns a reading of the document, the
+  document stays authoritative.
+- **Exact and durable.** Because every block carries a content-hash
+  `data-block-id`, highlights, bookmarks, and reading position anchor to block
+  identity, not to fragile scroll offsets or fuzzy text. They survive a re-render
+  and a change of window size.
+
+## The reader menu
+
+The **Aa** button opens a light-dismiss popover (not a modal: it never covers or
+inerts the page). It hosts every reader tool as a labelled section: Display,
+Reading, Highlights, Bookmarks, and Listen. Close it with Esc, a click outside, or
+by activating a jump button inside.
+
+## Display preferences
+
+The **Display** section is a comfort suite. Each control is a segmented row, and
+every choice persists and is applied *before the page paints*, so a returning
+reader never sees a flash of the default:
+
+- **Theme**: Light, Dark, or Sepia.
+- **Text size**: small, normal, large, or x-large.
+- **Width**: Narrow, Normal, or Wide reading measure.
+- **Line spacing**: Tight, Normal, or Relaxed.
+- **Letter spacing** and **Word spacing**: Normal, Wide, or Wider. The Wider steps
+  meet the WCAG 1.4.12 text-spacing minimums (0.12em letter, 0.16em word), and use
+  `em` units so they scale with the chosen text size.
+
+A **Reset to defaults** button clears all six preferences at once.
+
+## Reading progress and resume
+
+For long reads, the **Reading** section answers "how much is left?" and "where was
+I?":
+
+- A thin **progress bar** at the top of the page fills as you scroll.
+- A **minutes-left readout** estimates the remaining time from the prose word
+  count below the cursor (code and equations are excluded), shown as
+  `~N min left, X% read`.
+- A **Resume reading** pill appears when you reopen a page you left partway
+  through. It scrolls you back to the exact block you stopped at, anchored to that
+  block's content hash. It dismisses itself after a few seconds or on your next
+  scroll.
+- On pages with a table of contents, sections you have scrolled through gain a
+  **read checkmark** in the TOC, so a long reference page shows your trail at a
+  glance.
+
+## Highlights, notes, and bookmarks
+
+Select any prose and a small toolbar appears. Click **Highlight** to mark the
+passage; click a mark again to remove it. Highlights are anchored to the block id
+plus character offsets in the prose (code and math are skipped), so they persist
+across reloads and survive edits to *other* blocks.
+
+When a page has highlights, a **My highlights** entry collects them with jump and
+remove buttons, and an **Export as Markdown** action that produces a clean list of
+quotes (with the page title and a link) to paste into your notes.
+
+Hovering a heading reveals a **star** in the margin; click it to bookmark the
+section. The menu's **Bookmarks** section lists every bookmarked heading for
+one-click jumps. Highlights are single-block prose only; bookmarks attach to
+headings.
+
+## The selection toolbar
+
+The same selection toolbar carries clipboard actions, all local (no server):
+
+- **Copy**: the plain selected text.
+- **Quote**: a Markdown blockquote with the document title and a link.
+- **Share link**: a W3C text-fragment URL (`#:~:text=`) that scrolls a reader
+  straight to the exact passage and highlights it. (Text fragments do not work over
+  `file://`, so the action says so there.)
+- **Cite**: a ready-to-paste BibTeX `@misc` entry with the title, a deep link, and
+  the access date.
+
+## Hover cross-reference cards
+
+Hovering an internal reference, a `@fig-`/`@sec-`/`@eq-` cross-reference, a `[@cite]`
+citation, or a footnote, pops a card showing the *target block itself* (the figure,
+the equation, the bibliography entry, or a heading with its first lines). You read
+the target without losing your place. The cards render the already-rendered content,
+so there is no re-execution, and table-of-contents links are excluded.
+
+## Anchor copy-links
+
+Hovering a heading or a numbered float (figure, table, listing) reveals a small
+`#`. Click it to copy the canonical deep link to that anchor. The `#` flashes to a
+check on success and announces "Link copied" for screen readers. It works in
+insecure contexts (a `--host` LAN preview, `file://`) through a clipboard fallback.
+
+## Focus mode
+
+Press **f** (or use the menu toggle) to enter focus mode: the navbar, footer, TOC,
+and sidebar disappear, and the prose centres into one calm column. The progress bar
+and the Aa button stay, so you keep your exit paths and your size and theme
+controls. Press **f** again or **Esc** to leave. Focus mode is momentary: it is not
+remembered across reloads, and the `f` key is ignored while you are typing in a
+field or a dialog is open.
+
+## Listen (read-aloud)
+
+The **Listen** control reads the page aloud with the browser's built-in speech, so
+it works offline with your operating system's voices. It starts from the block in
+view, so press Listen wherever you are.
+
+- **Prose** is read one sentence at a time, with the current sentence highlighted
+  and scrolled to the centre.
+- **Code** is announced ("Code block, 12 lines, Python") and then its lines light
+  up one by one, without reading the code aloud.
+- **Figures, equations, and tables** are announced by their caption or number.
+
+A floating mini-player (play/pause, previous/next block, speed, stop) controls
+playback without reopening the menu. Your **speed** (0.8x to 2x) and **voice** are
+remembered across pages; the playback position itself is momentary. Read-aloud
+respects `prefers-reduced-motion` (no smooth scroll when reduced motion is set).

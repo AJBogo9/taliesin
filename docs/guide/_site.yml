@@ -10,6 +10,8 @@ chapters:
       - using/preview.qmd
       - using/code.qmd
       - using/writing.qmd
+      - using/reading.qmd
+      - using/interactive.qmd
       - using/formats.qmd
       - using/extensions.qmd
   - part: "Reference"
