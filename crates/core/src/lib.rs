@@ -27,6 +27,7 @@
 //! exception.
 
 pub mod cite;
+pub mod diagnostics;
 pub mod diff;
 pub mod frontmatter;
 pub mod highlight;

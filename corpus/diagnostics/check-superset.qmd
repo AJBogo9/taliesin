@@ -1,0 +1,19 @@
+---
+title: "check-superset diagnostics"
+---
+
+This document deliberately trips every static `qmd-fast check` superset validator. It
+lives in `corpus/diagnostics/`, which is exempt from the corpus clean-render guards.
+
+## Heading {#dup}
+
+First section.
+
+## Another {#dup}
+
+A second heading reusing the same explicit id (duplicate DOM id).
+
+A [broken in-page jump](#no-such-anchor) that lands nowhere, and a missing image:
+![alt text](no-such-image.png).
+
+Cited [@ghost2020] with no `bibliography:` declared, so the reference renders as a raw key.

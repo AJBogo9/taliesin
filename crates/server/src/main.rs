@@ -131,13 +131,33 @@ fn collect_file_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
     let base = path.parent().unwrap_or_else(|| Path::new("."));
     let doc = qmd_fast_core::render_document_with_includes(&src, base);
     let path_str = path.display().to_string();
+    use qmd_fast_core::diagnostics as dx;
     let xref = qmd_fast_core::cite::validate_xrefs(&doc.blocks);
-    Ok(doc
-        .warnings
-        .iter()
-        .chain(xref.iter())
-        .map(|w| diag_from(w, &path_str))
-        .collect())
+    let dups = dx::validate_duplicate_heading_ids(&doc.blocks);
+    let anchors = dx::validate_internal_anchors(&doc.blocks);
+    let assets = dx::validate_local_assets(&doc.blocks, base);
+    let cites = dx::citations_without_bibliography(&src, &doc.blocks);
+    let mut out: Vec<Diagnostic> = Vec::new();
+    // Malformed YAML front matter: the lenient line-parser silently mis-extracts
+    // fields, so surface the parse error here too (the live servers already do).
+    if let Some((message, line)) = qmd_fast_core::frontmatter::yaml_error(&src) {
+        out.push(Diagnostic {
+            file: path_str.clone(),
+            line: Some(line),
+            message,
+        });
+    }
+    out.extend(
+        doc.warnings
+            .iter()
+            .chain(xref.iter())
+            .chain(dups.iter())
+            .chain(anchors.iter())
+            .chain(assets.iter())
+            .chain(cites.iter())
+            .map(|w| diag_from(w, &path_str)),
+    );
+    Ok(out)
 }
 
 fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
@@ -163,8 +183,30 @@ fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
             });
             continue;
         };
+        if let Some((message, line)) = qmd_fast_core::frontmatter::yaml_error(&src) {
+            out.push(Diagnostic {
+                file: page.rel.clone(),
+                line: Some(line),
+                message,
+            });
+        }
         let base = page.input.parent().unwrap_or(root);
         let doc = qmd_fast_core::render_document_with_includes(&src, base);
+        // Static lints over the page's blocks (xrefs are added by render_page_doc_warned
+        // below); run before `doc` is consumed.
+        use qmd_fast_core::diagnostics as dx;
+        let dups = dx::validate_duplicate_heading_ids(&doc.blocks);
+        let anchors = dx::validate_internal_anchors(&doc.blocks);
+        let assets = dx::validate_local_assets(&doc.blocks, base);
+        let cites = dx::citations_without_bibliography(&src, &doc.blocks);
+        for w in dups
+            .iter()
+            .chain(anchors.iter())
+            .chain(assets.iter())
+            .chain(cites.iter())
+        {
+            out.push(diag_from(w, &page.rel));
+        }
         let (_html, warnings) = site.render_page_doc_warned(page, doc);
         for w in &warnings {
             out.push(diag_from(w, &page.rel));
@@ -1094,6 +1136,48 @@ mod mirror_tests {
             diags.iter().any(|d| d.message.contains("@fig-nope")),
             "broken xref: {diags:?}"
         );
+        assert!(
+            diags.iter().all(|d| d.file.contains("doc.qmd")),
+            "located to file: {diags:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn collect_diagnostics_flags_malformed_yaml_front_matter() {
+        // The live servers report a YAML parse error via frontmatter::yaml_error, but
+        // `check`/`build`/`render` silently accept malformed front matter (the lenient
+        // line-parser then mis-extracts fields). `check` must surface it too.
+        let dir = tmp("check-badyaml");
+        let f = dir.join("doc.qmd");
+        // Unterminated double-quoted scalar -> serde_yaml parse error.
+        fs::write(&f, "---\ntitle: \"unterminated\nauthor: A\n---\n\nBody.\n").unwrap();
+        let diags = collect_diagnostics(&f).expect("ok");
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.message.contains("YAML") && d.file.contains("doc.qmd")),
+            "malformed YAML must be reported, located: {diags:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn collect_diagnostics_surfaces_check_superset_validators() {
+        // One doc tripping each new static check; `check` must surface them all.
+        let dir = tmp("check-superset");
+        let f = dir.join("doc.qmd");
+        fs::write(
+            &f,
+            "---\ntitle: T\n---\n\n## A {#dup}\n\n## B {#dup}\n\nSee [bad](#nope) and ![x](missing.png) and [@key2020].\n",
+        )
+        .unwrap();
+        let diags = collect_diagnostics(&f).expect("ok");
+        let has = |needle: &str| diags.iter().any(|d| d.message.contains(needle));
+        assert!(has("duplicate heading id"), "dup id: {diags:?}");
+        assert!(has("#nope"), "broken anchor: {diags:?}");
+        assert!(has("missing.png"), "missing asset: {diags:?}");
+        assert!(has("bibliography"), "citation w/o bib: {diags:?}");
         assert!(
             diags.iter().all(|d| d.file.contains("doc.qmd")),
             "located to file: {diags:?}"

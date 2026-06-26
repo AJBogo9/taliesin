@@ -25,7 +25,7 @@ author's own projects; provenance is below.
 | `reactive/js-error.qmd` | `{js}` cell error state | a throwing `{js}` cell surfaces the `.qmd-js-error` box (themed light + dark); pins the runtime-error state for browser verification | (purpose-built) |
 | `explorable/scrolly.qmd` | Scrollytelling | `::: {.scrolly}` sticky stage + `.step` scenes; the active step drives a reactive value a `{js}` cell reads (`//| input:`) | (purpose-built) |
 | `reader/` | Reader experience | read-only reader enhancers: display prefs (theme/sepia/size/width/spacing), reading progress + resume, highlights + index + export, bookmarks, selection toolbar, hover cross-ref cards, anchor copy-links, focus mode, read-state TOC, and read-aloud study mode (`read-aloud.qmd`: prose sentences, code line-step, figure/equation/table announce) | (purpose-built) |
-| `diagnostics/` | Validator coverage | docs that deliberately trip qmd-fast's schema validators (`typos.qmd`) + the opt-in prose linter (`prose.qmd`: doubled/weasel/banned, markdown-aware) | (purpose-built) |
+| `diagnostics/` | Validator coverage | docs that deliberately trip qmd-fast's schema validators (`typos.qmd`) + the opt-in prose linter (`prose.qmd`: doubled/weasel/banned, markdown-aware) + the `check`-superset static lints (`check-superset.qmd`: duplicate `{#id}`, broken in-page anchor, missing image, citation with no `bibliography:`) | (purpose-built) |
 
 `tech-blog/` is the multi-page spec (the destination in `todo.md` §4). It is the
 author's real blog with the deploy caches stripped (`.venv`, `_freeze`, `_site`,
