@@ -1,0 +1,52 @@
+---
+title: "Listening to a document"
+toc: true
+---
+
+This page exists to be **listened to**. Open the reader menu (the *Aa* button) and press
+*Listen*: the page is read aloud from the block in view, one sentence at a time, with the
+current sentence highlighted and scrolled to the centre. It is read-only, like every reader
+feature; nothing here is written back to the source.
+
+Read-aloud is a study aid, e.g. for revising on a commute, and an accessibility feature: a
+math-heavy or code-heavy page becomes something you can follow without looking. The voice and
+speed are yours to choose, and they persist across pages.
+
+## How non-prose is handled
+
+Some blocks are not sentences. The reader announces them instead of reading their contents:
+
+- A code block is announced ("Code block, N lines") and then its lines light up one by one.
+- A figure is announced by its caption and number.
+- A display equation is announced as "Equation"; inline math like $e^{i\pi} + 1 = 0$ inside a
+  sentence is skipped in the spoken stream, but the words around it still read.
+- A table is announced by its caption.
+
+## A code block
+
+```python
+import numpy as np
+
+def em_step(x, theta):
+    resp = e_step(x, theta)
+    return m_step(x, resp)
+```
+
+## A figure
+
+![The reading cursor advances through the document.](https://upload.wikimedia.org/wikipedia/commons/thumb/a/a7/Camponotus_flavomarginatus_ant.jpg/320px-Camponotus_flavomarginatus_ant.jpg){#fig-cursor}
+
+## An equation
+
+$$
+\mathcal{L}(\theta) = \sum_{i} \log p(x_i \mid \theta)
+$$
+
+## A table
+
+| Symbol | Meaning      |
+|--------|--------------|
+| x      | observation  |
+| theta  | parameters   |
+
+: Notation used above {#tbl-notation}
