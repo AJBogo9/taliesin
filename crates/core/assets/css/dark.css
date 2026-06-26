@@ -1,6 +1,9 @@
 
   html[data-theme="dark"] {
     --qmd-bg: #16181d; --qmd-fg: #e6e6e6; --qmd-muted: #9aa0aa; --qmd-accent: #6ea8ff;
+    /* darker filled-accent surface so white text on active/pressed/selected fills clears
+       WCAG-AA (white on #2563eb = 5.17:1; the bare --qmd-accent #6ea8ff is only 2.41:1) */
+    --qmd-accent-fill: #2563eb; --qmd-on-accent: #ffffff;
     --qmd-link: #6ea8ff; --qmd-code-bg: #21242b; --qmd-border: #363a44;
     --qmd-edge-shadow: rgba(255, 255, 255, .14); --qmd-flash: rgba(110, 168, 255, .22);
     --qmd-ra-highlight: rgba(96, 165, 250, .30);
@@ -22,3 +25,5 @@
   html[data-theme="dark"] .qmd-output > pre { background: #1b1e24; border-left-color: var(--qmd-border); }
   html[data-theme="dark"] .qmd-stderr { border-left-color: #d0a215 !important; background: #2a2415 !important; color: #e8dcc0; }
   html[data-theme="dark"] .qmd-error { border-left-color: #e0566b !important; background: #2a1820 !important; color: #f2b8c2; }
+  /* a throwing {js} cell's error box: dark equivalent of the light .qmd-js-error in base.css */
+  html[data-theme="dark"] .qmd-js-error { border-color: #5a2a32; background: #2a1820; color: #f2b8c2; }

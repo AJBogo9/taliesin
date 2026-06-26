@@ -1,6 +1,11 @@
 
   :root {
     --qmd-bg: #ffffff; --qmd-fg: #1a1a1a; --qmd-muted: #555; --qmd-accent: #4c8dff;
+    /* Filled active/pressed/selected surfaces (segmented controls, pressed buttons,
+       active chips, primary CTAs): --qmd-accent itself fails WCAG-AA with white text
+       (3.20:1 light / 2.41:1 dark), so use the darker --qmd-accent-fill for the fill
+       and --qmd-on-accent for its text. Both clear 4.5:1 per theme (overridden in dark.css). */
+    --qmd-accent-fill: #1f6feb; --qmd-on-accent: #ffffff;
     --qmd-link: #2563eb; --qmd-code-bg: #f5f5f5; --qmd-border: #e3e3e3;
     --qmd-edge-shadow: rgba(0, 0, 0, .16); --qmd-flash: rgba(76, 141, 255, .18);
     /* Per-kind callout accents: the border + icon take these; the title-bar tint is
@@ -20,6 +25,7 @@
   /* Sepia: a warm, low-contrast reading theme (reader-selectable via the Aa panel). */
   html[data-theme="sepia"] {
     --qmd-bg: #f4ecd8; --qmd-fg: #5b4636; --qmd-muted: #7a6a55; --qmd-accent: #9a6a3a;
+    --qmd-accent-fill: #8a5a2b; --qmd-on-accent: #ffffff;
     --qmd-link: #8a5a2b; --qmd-code-bg: #ece2c8; --qmd-border: #ddd0b0;
     --qmd-edge-shadow: rgba(91, 70, 54, .14);
     color-scheme: light;
@@ -58,7 +64,7 @@
     color: var(--qmd-fg); cursor: pointer; padding: .28rem .55rem;
     font: inherit; font-size: .8rem; line-height: 1; }
   .qmd-reader-seg button:first-child { border-left: 0; }
-  .qmd-reader-seg button[aria-pressed="true"] { background: var(--qmd-accent); color: #fff; }
+  .qmd-reader-seg button[aria-pressed="true"] { background: var(--qmd-accent-fill); color: var(--qmd-on-accent); }
   .qmd-reader-reset { background: none; border: 0; color: var(--qmd-link); cursor: pointer;
     font: inherit; font-size: .8rem; padding: 0; }
   @media print { .qmd-rmenu-toggle, .qmd-rmenu-panel { display: none !important; } }
@@ -249,7 +255,7 @@
   a.btn { display: inline-block; font: 500 .9rem var(--qmd-font-head); text-decoration: none;
     padding: .4rem .95rem; border-radius: 7px; border: 1px solid var(--qmd-accent);
     color: var(--qmd-accent); transition: background .12s ease, color .12s ease; }
-  a.btn:hover { background: var(--qmd-accent); color: #fff; }
+  a.btn:hover { background: var(--qmd-accent-fill); color: var(--qmd-on-accent); }
   a.btn-outline-secondary { border-color: var(--qmd-border); color: var(--qmd-muted); }
   a.btn-outline-secondary:hover { background: var(--qmd-fg); color: var(--qmd-bg); border-color: var(--qmd-fg); }
   a.btn-sm { font-size: .8rem; padding: .25rem .7rem; }
@@ -286,8 +292,8 @@
   html[data-theme="dark"] .qmd-video video.qmd-video-dark { display: block; }
   /* Filled + large button variants, layered on `.btn` (a landing-page primary CTA
      is `[Start](x){.btn .btn-primary .btn-lg}`; the base `.btn` is the outline style). */
-  a.btn-primary { background: var(--qmd-accent); border-color: var(--qmd-accent); color: #fff; }
-  a.btn-primary:hover { filter: brightness(1.08); background: var(--qmd-accent); color: #fff; }
+  a.btn-primary { background: var(--qmd-accent-fill); border-color: var(--qmd-accent-fill); color: var(--qmd-on-accent); }
+  a.btn-primary:hover { filter: brightness(1.08); background: var(--qmd-accent-fill); color: var(--qmd-on-accent); }
   a.btn-lg { font-size: 1.02rem; padding: .62rem 1.35rem; border-radius: 9px; }
   /* Marketing primitives. The top hero is best authored with the `hero:` front
      matter (renders this `.hero` markup, no HTML); `::: {.hero}` / `::: {.feature-grid}`
@@ -402,7 +408,7 @@
   th, td { border: 1px solid var(--qmd-border); padding: .35rem .6rem; }
   table caption { caption-side: top; font-size: .9em; color: var(--qmd-muted); padding-bottom: .4rem; text-align: left; }
   thead th { border-bottom: 2px solid var(--qmd-border); }
-  .callout { border: 1px solid #e0e0e0; border-left-width: 4px; border-radius: 5px;
+  .callout { border: 1px solid var(--qmd-border); border-left-width: 4px; border-radius: 5px;
              margin: 1rem 0; overflow: hidden; }
   .callout-title { font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 600;
                    padding: .5rem .9rem; display: flex; align-items: center; gap: .45rem; }
@@ -597,7 +603,7 @@
   .katex-display > .katex { font-size: 1.18em; }
   /* toc layout: content beside a sticky table of contents on wide screens */
   body.has-toc { max-width: 72rem; display: grid; align-items: start; gap: 2.5rem;
-                 grid-template-columns: minmax(0, 46rem) 14rem; justify-content: center; }
+                 grid-template-columns: minmax(0, var(--qmd-maxw, 46rem)) 14rem; justify-content: center; }
   body.has-toc > main { min-width: 0; }
   #TOC { position: sticky; top: 2rem; max-height: 92vh; overflow: auto;
          font: 14px/1.5 ui-sans-serif, system-ui, sans-serif; }
