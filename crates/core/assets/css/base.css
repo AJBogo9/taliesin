@@ -63,6 +63,18 @@
     font: inherit; font-size: .8rem; padding: 0; }
   @media print { .qmd-rmenu-toggle, .qmd-rmenu-panel { display: none !important; } }
 
+  /* Focus / reading mode (qmdInitFocusMode): hide site chrome and centre the prose into one
+     calm column. Reader-side + ephemeral. The reader-menu launcher and the progress bar stay
+     (the exit path + reading support); decks never get the class. */
+  body.qmd-focus .qmd-site-nav, body.qmd-focus .qmd-site-footer,
+  body.qmd-focus #TOC, body.qmd-focus #qmd-toc-handle, body.qmd-focus #qmd-toc-backdrop,
+  body.qmd-focus .qmd-book-sidebar, body.qmd-focus #qmd-controls { display: none !important; }
+  /* Collapse each layout's content|TOC grid (single-doc body, book-inner, site-main) to a
+     single block and centre the reading column at the comfortable measure. */
+  body.qmd-focus.has-toc, body.qmd-focus .qmd-book-inner, body.qmd-focus .qmd-site-main { display: block; }
+  body.qmd-focus main, body.qmd-focus .qmd-book-inner, body.qmd-focus .qmd-site-main {
+    max-width: var(--qmd-maxw); margin-inline: auto; }
+
   /* Reading progress (top bar + "min left") + block-id-anchored resume (qmdInitReadingProgress). */
   .qmd-readbar { position: fixed; top: 0; left: 0; right: 0; height: 3px;
     z-index: 2147481400; pointer-events: none; }

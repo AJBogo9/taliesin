@@ -1344,6 +1344,17 @@ fn assembled_page_ships_anchor_links() {
 }
 
 #[test]
+fn assembled_page_ships_focus_mode() {
+    let page = render_html_page("# Title\n\nProse to read in focus.\n", "doc");
+    // Focus/reading mode hides site chrome and centers the prose; qmdInitFocusMode is its
+    // discriminator, and body.qmd-focus is the CSS hook.
+    assert!(
+        page.contains("qmdInitFocusMode") && page.contains("qmd-focus"),
+        "focus/reading mode not shipped in the assembled page"
+    );
+}
+
+#[test]
 fn assembled_page_ships_hover_cards() {
     let page = render_html_page("# Title\n\nProse with a [link](#title).\n", "doc");
     // Hover cross-reference cards: hovering any in-page reference (@fig-/@sec-/[@cite]/
