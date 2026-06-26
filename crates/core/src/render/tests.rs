@@ -1344,6 +1344,18 @@ fn assembled_page_ships_anchor_links() {
 }
 
 #[test]
+fn assembled_page_ships_hover_cards() {
+    let page = render_html_page("# Title\n\nProse with a [link](#title).\n", "doc");
+    // Hover cross-reference cards: hovering any in-page reference (@fig-/@sec-/[@cite]/
+    // footnote) previews its target block. qmdInitLinkPreview is the enhancer; this guards
+    // it against accidental removal (parity with the other reader enhancers' ships-tests).
+    assert!(
+        page.contains("qmdInitLinkPreview"),
+        "hover cross-reference cards (link-preview) enhancer not shipped"
+    );
+}
+
+#[test]
 fn assembled_page_ships_reader_menu() {
     let page = render_html_page("# Title\n\nProse.\n", "doc");
     // The reader-menu host consolidates the reader controls into one launcher + menu.
