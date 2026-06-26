@@ -35,6 +35,10 @@ pub(crate) const CELL_OPTION_KEYS: &[&str] = &[
 /// Callout kinds qmd-fast recognizes (`::: {.callout-<kind>}`).
 pub(crate) const CALLOUT_KINDS: &[&str] = &["note", "tip", "warning", "important", "caution"];
 
+/// Input control types `.input type=` recognizes.
+pub(crate) const INPUT_TYPES: &[&str] =
+    &["slider", "range", "number", "checkbox", "text", "select"];
+
 /// Enumerate a cell's leading option keys with each key's 0-based line offset within
 /// `literal` (the fence body). Mirrors `cell_option`'s scan: only the contiguous
 /// leading `#|` / `//|` / `%%|` block, stopping at the first code line.
@@ -115,6 +119,41 @@ pub(crate) fn validate_tabset(
     })
 }
 
+/// Validate a `.input` reactive-control container (located, click-to-source). Warns when
+/// `name` is missing (the control can't feed the reactive graph), when `type` is unknown
+/// (with a did-you-mean), or when a `select` has no `options`. Purely diagnostic — the
+/// div still renders.
+pub(crate) fn validate_input(
+    name: Option<&str>,
+    kind: Option<&str>,
+    options: Option<&str>,
+    line: usize,
+    file: Option<String>,
+) -> Vec<Warning> {
+    let mut out = Vec::new();
+    if name.unwrap_or("").trim().is_empty() {
+        out.push(
+            Warning::new("`.input` needs a `name=` to feed the reactive graph".to_string())
+                .at(file.clone(), line as u32),
+        );
+    }
+    if let Some(t) = kind {
+        if !INPUT_TYPES.contains(&t) {
+            out.push(
+                Warning::new(unknown_key_message("input type", t, INPUT_TYPES))
+                    .at(file.clone(), line as u32),
+            );
+        }
+    }
+    if kind == Some("select") && options.unwrap_or("").trim().is_empty() {
+        out.push(
+            Warning::new("`.input type=select` needs `options=\"a,b,c\"`".to_string())
+                .at(file, line as u32),
+        );
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -185,5 +224,42 @@ mod tests {
             validate_tabset(true, 4, None).is_none(),
             "silent when headings are present"
         );
+    }
+
+    #[test]
+    fn input_without_name_is_flagged() {
+        let w = validate_input(None, Some("slider"), None, 4, Some("d.qmd".into()));
+        assert_eq!(w.len(), 1);
+        assert_eq!(
+            w[0].message,
+            "`.input` needs a `name=` to feed the reactive graph"
+        );
+        assert_eq!(w[0].line, Some(4));
+    }
+
+    #[test]
+    fn input_unknown_type_has_did_you_mean() {
+        let w = validate_input(Some("k"), Some("slidr"), None, 2, None);
+        assert_eq!(w.len(), 1);
+        assert_eq!(
+            w[0].message,
+            "unknown input type `slidr` (did you mean `slider`?)"
+        );
+    }
+
+    #[test]
+    fn input_select_without_options_is_flagged() {
+        let w = validate_input(Some("c"), Some("select"), None, 9, None);
+        assert_eq!(w.len(), 1);
+        assert_eq!(
+            w[0].message,
+            "`.input type=select` needs `options=\"a,b,c\"`"
+        );
+    }
+
+    #[test]
+    fn input_valid_slider_is_clean() {
+        assert!(validate_input(Some("k"), Some("slider"), None, 1, None).is_empty());
+        assert!(validate_input(Some("c"), Some("select"), Some("a,b"), 1, None).is_empty());
     }
 }
