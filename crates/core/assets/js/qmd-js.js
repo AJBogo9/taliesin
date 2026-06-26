@@ -110,6 +110,12 @@
 
     // Per-run invalidation: resolve the prior run's promise before re-running, so
     // cells can tear down Three.js renderers / RAF loops / listeners on re-run.
+    // The same `resolveInv` is also fired by the cell's `dispose()` (below) when its
+    // block is edited away / unmounted, so DOM removal triggers author teardown too
+    // — not only a re-run does. Without that, editing a `{js}`/Three.js cell (which
+    // changes its content-hash block id, so the client replaces the node) would
+    // detach the old renderer with its `invalidation.then(...)` cleanup never run,
+    // leaking a WebGL context + RAF loop on every edit.
     var resolveInv = null;
     var currentInv = null;
     function freshInv() {
@@ -161,10 +167,62 @@
       defines: name || viewof,
       inputs: inputs,
       container: container,
+      // Resolve the outstanding `invalidation` (running the author's
+      // `invalidation.then(() => renderer.dispose())` teardown) so the cell can be
+      // dropped. Idempotent: nulls the resolver so a later dispose is a no-op.
+      dispose: function () {
+        if (resolveInv) { resolveInv(); resolveInv = null; }
+      },
     };
     r.cells.push(cell);
     return cell;
   }
+
+  // Tear down + drop every cell whose container is inside (or is) `node`: resolve its
+  // `invalidation` so author cleanup runs (renderer.dispose / cancelAnimationFrame /
+  // removeEventListener), then splice it out of `r.cells` so the push-only list can't
+  // accumulate stale cells across edits. Also unregister any input the cell published,
+  // so a re-mount re-registers a live element rather than firing a detached one. Called
+  // by the client BEFORE it detaches an outgoing block (Update/Remove).
+  function teardownIn(node) {
+    if (!node || !window.__qmdjs) return;
+    var r = window.__qmdjs;
+    var kept = [];
+    r.cells.forEach(function (c) {
+      var inside = c.container && (c.container === node || (node.contains && node.contains(c.container)));
+      if (inside) {
+        try { if (c.dispose) c.dispose(); } catch (e) { console.error("qmd-js: cell teardown failed", e); }
+        if (c.defines && r.inputs[c.defines] && c.container.contains(r.inputs[c.defines])) {
+          delete r.inputs[c.defines];
+        }
+      } else {
+        kept.push(c);
+      }
+    });
+    if (kept.length !== r.cells.length) {
+      r.cells = kept;
+      delete r.graph; // the dependency graph is stale once cells are removed
+    }
+  }
+
+  // Resolve EVERY outstanding invalidation and drop the whole runtime, so a
+  // `full_render` (which blows away `#qmd-root` wholesale) doesn't leak the prior
+  // page's WebGL contexts / RAF loops and doesn't re-push duplicate cells onto a
+  // never-reset `r.cells`. The next `enhance()` lazily rebuilds a fresh `window.__qmdjs`.
+  function resetRuntime() {
+    var r = window.__qmdjs;
+    if (!r) return;
+    (r.cells || []).forEach(function (c) {
+      try { if (c.dispose) c.dispose(); } catch (e) { console.error("qmd-js: cell teardown failed", e); }
+    });
+    window.__qmdjs = null;
+  }
+
+  // Public teardown API for the live-preview client (web-client/client.js): one hook to
+  // tear down a block about to be replaced/removed, one to reset before a full re-mount.
+  window.qmdJs = window.qmdJs || {};
+  window.qmdJs.teardown = teardownIn;
+  window.qmdJs.reset = resetRuntime;
 
   // Run a list of cells in document order, awaiting each — so `//| name:` outputs
   // are stored before dependent cells run.
