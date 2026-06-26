@@ -288,10 +288,15 @@ as *read-only* preview/build affordances, never as preview-pane edits.
     heading-skips (extends the a11y audit) + payload + perf, each located. — brings the loved
     coverage/Lighthouse/link-check trio into the live loop where it's actually run. — **M/L**
     (ship link/asset existence first) — diagnostics — fits.
-39. **`qmd-fast check <file|dir>`** — emit the same located diagnostics (broken refs, a11y,
-    dead links, schema, prose) as JSON/SARIF for CI + the companion's Problems panel. —
-    makes the live diagnostics a publish gate, not just an in-preview nicety. — **S/M** —
-    CLI — fits.
+39. **`qmd-fast check <file|dir>`** — ✅ SHIPPED 2026-06-26 (v1). A static, kernel-free CLI
+    gate that renders in memory and emits every located diagnostic from the warning channel
+    (schema/front-matter/`_site.yml`/cell-option/container validation with did-you-mean, broken
+    `@xref`, unknown shortcodes, missing bibliography, opt-in prose-lint) as `path:line: message`
+    or `--format json` (`[{file,line,message}]`); exits non-zero on any finding for CI. Pure
+    `crates/server` addition reusing `render_document_with_includes` + `cite::validate_xrefs` +
+    `Site::render_page_doc_warned`; no core change. **Deferred:** `--format sarif` (needs a
+    `rule`/ruleId field on `Warning`), a11y/dead-link checks, and an `--exec` mode for runtime
+    cell errors. — **S/M** — CLI.
 40. **Inline render-frame in the error overlay** — on a render panic, show the offending
     source frame (file + lines, caret on the column) in the overlay (the located-warning
     struct already carries file/line). — cuts the overlay→editor→find-line round-trip (Next

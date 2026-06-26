@@ -93,6 +93,18 @@ terms, emitting located click-to-source warnings through the existing diagnostic
 `corpus/diagnostics/prose.qmd` exact-warning test); no browser needed. **Passive voice deferred**
 (too noisy). Documented in `docs/guide/reference/configuration.qmd`.
 
+**2026-06-26: Pillar I `qmd-fast check` CLI shipped.** A static, kernel-free subcommand that
+renders a file or site in memory and lists every located diagnostic from the warning channel
+(schema/front-matter/`_site.yml`/cell-option/container validation + did-you-mean, broken `@xref`,
+unknown shortcodes, missing bibliography, opt-in prose-lint), `--format human|json`, exit 1 on
+any finding (a CI gate). Pure `crates/server` addition (`collect_diagnostics`/`cmd_check`) reusing
+`render_document_with_includes` + `cite::validate_xrefs` + `Site::render_page_doc_warned`; no core
+change; serde_json (already a server dep) for JSON. Tested in `main.rs` (file/clean/empty-site +
+both formatters). Documented in `docs/guide/reference/cli.qmd`. **Deferred:** `--format sarif`
+(needs a rule/ruleId field on `Warning`), a11y/dead-link checks, an `--exec` runtime-error mode.
+Also: the reader + interactive User Guide pages shipped (`docs/guide/using/{reading,interactive}.qmd`),
+closing the reader/explorable docs gap.
+
 ## To resume
 
 **Working method:** branch per feature; brainstorm if there's a fork; write a spec under

@@ -12,6 +12,22 @@ title: "CLI reference"
 | `render <file.qmd>` | Render a one-shot full HTML page to stdout |
 | `blocks <file.qmd>` | List block ids and sourcepos (for debugging) |
 | `schema [--out <dir>]` | Emit the bundled JSON Schemas for `_site.yml` + front matter (editor autocomplete) |
+| `check <file.qmd\|dir> [--format human\|json]` | List every located diagnostic and exit non-zero if any (a CI / pre-publish gate) |
+
+`check` renders the document or site in memory and reports everything that flows
+through the diagnostics channel: unknown front-matter / `_site.yml` / cell-option /
+container keys (with did-you-mean), unknown callout kinds, broken `@xref`
+cross-references, unknown shortcodes, a missing `bibliography:`, and opt-in
+`prose-lint:` findings. It does **not** execute code cells (it is fast, kernel-free,
+and deterministic, so runtime cell errors stay in `preview`/`build`). Output is
+`path:line: message` by default, or a `[{file, line, message}]` array with
+`--format json`. It exits `0` when clean and `1` when any diagnostic is found, so it
+drops straight into CI or a pre-commit hook:
+
+```sh
+qmd-fast check .                          # fails (exit 1) if any page has a diagnostic
+qmd-fast check . --format json > problems.json
+```
 
 `--version` / `-V` prints the version; `--help` / `-h` (or no arguments) prints usage. If
 the default port (or one you pass) is already in use, `preview` auto-picks the next free
