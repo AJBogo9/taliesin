@@ -459,4 +459,8 @@
       isOpen() ? close() : open();
     }
   });
+
+  // Programmatic opener so the keyboard reader's `/` shortcut (and any UI) can open the
+  // palette without synthesizing a Cmd-K event.
+  window.qmdOpenSearch = open;
 })();

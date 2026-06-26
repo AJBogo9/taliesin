@@ -218,6 +218,30 @@
   figure, .qmd-figure { break-inside: avoid; }
   figcaption { break-before: avoid; }
   h1, h2, h3, h4, h5, h6 { break-after: avoid; }
+  /* Skip-to-content link (qmdInitSkipLink): hidden until focused, then pinned top-left. */
+  .qmd-skip { position: fixed; top: -3rem; left: .5rem; z-index: 2147482000;
+    background: var(--qmd-fg); color: var(--qmd-bg); padding: .5rem .8rem;
+    border-radius: 6px; font: 600 .9rem var(--qmd-font-head); text-decoration: none; }
+  .qmd-skip:focus { top: .5rem; }
+  @media (prefers-reduced-motion: no-preference) { .qmd-skip { transition: top .15s ease; } }
+
+  /* Keyboard shortcuts cheatsheet (qmdInitKeyboard). */
+  .qmd-keys { position: fixed; inset: 0; z-index: 2147482000; display: flex;
+    align-items: center; justify-content: center; background: rgba(0, 0, 0, .45); }
+  .qmd-keys[hidden] { display: none; }
+  .qmd-keys-card { position: relative; background: var(--qmd-bg); color: var(--qmd-fg);
+    border: 1px solid var(--qmd-border); border-radius: 12px; padding: 1.4rem 1.6rem;
+    max-width: 22rem; box-shadow: 0 10px 40px rgba(0, 0, 0, .3); }
+  .qmd-keys-card h2 { margin: 0 0 .8rem; font-size: 1.1rem; }
+  .qmd-keys-list { margin: 0; }
+  .qmd-keys-list > div { display: flex; gap: .8rem; align-items: baseline; margin: .35rem 0; }
+  .qmd-keys-list dt { flex: 0 0 5rem; margin: 0; }
+  .qmd-keys-list dd { margin: 0; color: var(--qmd-muted); }
+  .qmd-keys kbd { font: inherit; font-size: .8rem; background: var(--qmd-code-bg);
+    border: 1px solid var(--qmd-border); border-radius: 4px; padding: .05rem .35rem; }
+  .qmd-keys-close { position: absolute; top: .5rem; right: .6rem; border: 0;
+    background: transparent; color: var(--qmd-muted); cursor: pointer; font-size: 1.2rem; line-height: 1; }
+
   /* Tabular figures where columns/alignment matter (prose keeps proportional numerals). */
   pre, code, table, .katex { font-variant-numeric: tabular-nums; }
   a { color: var(--qmd-link); }
