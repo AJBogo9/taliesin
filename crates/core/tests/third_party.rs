@@ -10,6 +10,7 @@ const OWN_JS: &[&str] = &[
     "qmd-js.js",
     "walkthrough.js",
     "tabset.js",
+    "scrolly.js",
 ];
 
 fn third_party_md() -> String {

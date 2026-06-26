@@ -74,6 +74,17 @@ the Do-NOT-touch `:::` machine). Reuses `registerInput`/`scheduleFrom` (additive
 `corpus/reactive/inputs.qmd`; browser-verified incl. transitive propagation. (Same surface-fork
 lesson as elsewhere: bodyless controls belong in the shortcode seam, not the div machine.)
 
+**2026-06-26: Pillar III scrollytelling `:::{.scrolly}` shipped.** A sticky visual stage (the
+non-`.step` inner blocks) beside a scrolling `.step` column; the active step (a new
+`scrolly.js` enhancer reusing the walkthrough IntersectionObserver band) sets
+`data-scrolly-state` on the root (pure-CSS effects) and, with `name=`, drives a hidden
+`data-qmd-input` so a sticky `{js}` cell re-runs via `//| input:` — **reusing the shipped
+`{input}` registration with NO `qmd-js.js`/reactive-runtime change** (scrollytelling = a
+reactive input driven by scroll). Generalizes the `.code-walkthrough` machine; `.step` gained
+`state=`→`data-state`; `validate_scrolly` for located diagnostics. Pinned
+`corpus/explorable/scrolly.qmd`; browser-verified (scrollIntoView flips the active step +
+state; the `{js}` chart re-runs linear↔quadratic per scene; 0 console errors).
+
 ## To resume
 
 **Working method:** branch per feature; brainstorm if there's a fork; write a spec under

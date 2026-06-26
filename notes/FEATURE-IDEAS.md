@@ -316,13 +316,15 @@ as *read-only* preview/build affordances, never as preview-pane edits.
 
 ### Category 5 — Interactivity & explorable documents (genuinely-past-Quarto)
 
-46. **`::: {.scrolly}` sticky-figure scrollytelling** — one sticky visual column + `.step`
-    prose divs carrying `data-state`; scroll swaps a class / fires a `qmd-scrolly` event a
-    sticky `{js}` cell listens to. **Generalizes the already-shipped `code-walkthrough`
-    machine** (IntersectionObserver + sticky panel + class contract) into a primitive code-
-    walkthrough, figure-stepping, and equation-derivation-stepping all share. — Distill/Idyll
-    explorable explanations with zero bespoke JS. — **M** — build/reader — fits. Pin:
-    `corpus/explorable/scrolly.qmd`.
+46. **`::: {.scrolly}` sticky-figure scrollytelling** — ✅ SHIPPED 2026-06-26. A sticky visual
+    stage (the non-`.step` inner blocks) beside a scrolling `.step` column carrying `state=`
+    (→ `data-state`). The active step (a new `scrolly.js`, reusing the walkthrough
+    IntersectionObserver band) sets `data-scrolly-state` on the root for pure-CSS effects AND —
+    with `name=` — drives a hidden `data-qmd-input` so a sticky `{js}` cell reacts via
+    `//| input:`. **Reuses the shipped `{input}` registration (#47) — no bespoke `qmd-scrolly`
+    event, no `qmd-js.js` change**: scrollytelling = a reactive input driven by scroll position.
+    **Generalizes the shipped `code-walkthrough` machine.** Pinned `corpus/explorable/scrolly.qmd`;
+    browser-verified. — Distill/Idyll explorable explanations with zero bespoke JS.
 47. **Reader input vocabulary `{input}` bound to the reactive graph** — ✅ SHIPPED 2026-06-26.
     Authored as a built-in **shortcode** `{{< input name="k" type="slider" min=1 max=10 >}}`
     (NOT a `:::` div — a bodyless div is dropped by `group_divs` and emitting empty containers
