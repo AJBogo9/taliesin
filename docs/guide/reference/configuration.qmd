@@ -27,6 +27,7 @@ the note at the end).
 | `categories`, `image`, `image-alt` | `categories`/`image` feed `listing:` cards + social meta; `image-alt` sets the alt text on an `about:` profile image (listing-card images emit an empty `alt`) |
 | `extensions` | A list of `_extensions/<name>/` to load (shortcodes, format theming) |
 | `draft` | `true` excludes the page from a website build (output, nav, and listings) |
+| `prose-lint` | Opt-in prose linter: `true` enables the built-in rules (doubled words, weasel words), or `{ banned: [term, …] }` adds custom banned terms. Emits located, click-to-source warnings (code/math/links skipped); off by default |
 
 ### Code-cell options
 

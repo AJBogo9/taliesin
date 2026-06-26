@@ -85,6 +85,14 @@ reactive input driven by scroll). Generalizes the `.code-walkthrough` machine; `
 `corpus/explorable/scrolly.qmd`; browser-verified (scrollIntoView flips the active step +
 state; the `{js}` chart re-runs linear↔quadratic per scene; 0 console errors).
 
+**2026-06-26: Pillar I prose-lint shipped.** An opt-in (`prose-lint: true | { banned: [...] }`),
+markdown-aware prose linter (new `crate::prose`): doubled words + weasel words + custom banned
+terms, emitting located click-to-source warnings through the existing diagnostics channel
+(skips code/math/links/HTML/fences). `prose-lint` added to `KNOWN_KEYS` + `PROSE_LINT_KEYS`
+(nested-validated; the generated JSON Schema regenerated/blessed). Fully Rust-tested (unit +
+`corpus/diagnostics/prose.qmd` exact-warning test); no browser needed. **Passive voice deferred**
+(too noisy). Documented in `docs/guide/reference/configuration.qmd`.
+
 ## To resume
 
 **Working method:** branch per feature; brainstorm if there's a fork; write a spec under

@@ -239,12 +239,13 @@ as *read-only* preview/build affordances, never as preview-pane edits.
     the origin. — single-source reuse (Roam/Logseq) without copy-paste drift. — **M** —
     build — needs-care (additive parse of the `#frag` suffix only; `includes.rs` is
     Do-NOT-touch).
-29. **Prose-lint diagnostics** — a native, offline prose pass (passive voice, weasel words,
-    repeated/doubled words, a `style:` term-banlist) emitting **located** warnings into the
-    *existing* diagnostics channel with click-to-source, markdown-aware (skips code/math/
-    links). — the Vale/Hemingway loop without a second tool or a network call; the most
-    natural growth of the validation moat. — **L** — diagnostics — fits. Pin:
-    `corpus/diagnostics/prose.qmd`.
+29. **Prose-lint diagnostics** — ✅ SHIPPED 2026-06-26. A native, offline, **opt-in**
+    (`prose-lint: true | { banned: [...] }`) prose pass (`crate::prose`): doubled words, weasel
+    words, custom banned terms — emitting **located** click-to-source warnings into the
+    *existing* diagnostics channel, markdown-aware (skips code/math/links/HTML/fences). The
+    Vale/Hemingway loop without a second tool or a network call. **Passive voice deferred**
+    (its is/was+-ed heuristic is too noisy). Pinned `corpus/diagnostics/prose.qmd`. — the most
+    natural growth of the validation moat. — **L** — diagnostics.
 30. **Link-health / orphan report** — a build+diagnostics sweep: broken `[@cite]`, dangling
     `@xref`, includes pointing at missing files/anchors, headings nothing links to, images
     with no `alt`, oversized images, total payload. One consolidated "doc health" panel,
