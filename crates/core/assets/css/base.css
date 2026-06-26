@@ -211,6 +211,13 @@
   nav li, [role="listbox"] li,
   .sidenote p, .marginnote p, .column-margin p, .aside p {
     line-height: inherit; letter-spacing: normal; word-spacing: normal; }
+  /* Reading-typography polish. Global: text-wrap/orphans are no-ops on short chrome
+     (nav/TOC), and global scope also covers no-TOC build pages (no <main> wrapper). */
+  p, li { text-wrap: pretty; orphans: 2; widows: 2; }
+  h1, h2, h3, h4, h5, h6, figcaption, blockquote, .callout-title { text-wrap: balance; }
+  figure, .qmd-figure { break-inside: avoid; }
+  figcaption { break-before: avoid; }
+  h1, h2, h3, h4, h5, h6 { break-after: avoid; }
   /* Tabular figures where columns/alignment matter (prose keeps proportional numerals). */
   pre, code, table, .katex { font-variant-numeric: tabular-nums; }
   a { color: var(--qmd-link); }

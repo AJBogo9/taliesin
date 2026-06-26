@@ -1766,3 +1766,16 @@ fn prose_lint_is_silent_when_not_opted_in() {
         doc.warnings
     );
 }
+
+#[test]
+fn typography_polish_css_ships() {
+    let page = render_html_page("# Title\n\nSome prose.\n", "doc");
+    assert!(
+        page.contains("text-wrap: pretty"),
+        "pretty wrap rule must ship"
+    );
+    assert!(
+        page.contains("text-wrap: balance"),
+        "balance rule must ship"
+    );
+}
