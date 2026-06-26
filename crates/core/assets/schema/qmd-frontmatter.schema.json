@@ -93,6 +93,25 @@
       ]
     },
     "page-layout": {},
+    "prose-lint": {
+      "oneOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "banned": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        }
+      ]
+    },
     "subtitle": {},
     "theme": {},
     "title": {},

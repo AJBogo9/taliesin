@@ -17,7 +17,9 @@ pub const SITE_SCHEMA: &str = include_str!("../assets/schema/qmd-site.schema.jso
 
 #[cfg(test)]
 mod generate {
-    use crate::frontmatter::{ABOUT_KEYS, EXECUTE_KEYS, HERO_KEYS, KNOWN_KEYS, LISTING_KEYS};
+    use crate::frontmatter::{
+        ABOUT_KEYS, EXECUTE_KEYS, HERO_KEYS, KNOWN_KEYS, LISTING_KEYS, PROSE_LINT_KEYS,
+    };
     use crate::site::NATIVE_KEYS;
     use serde_json::{Map, Value, json};
 
@@ -66,12 +68,23 @@ mod generate {
         });
         let about = closed_object(ABOUT_KEYS, &[]);
         let hero = closed_object(HERO_KEYS, &[]);
+        // prose-lint: `true` (built-in rules) or `{ banned: [strings] }`.
+        let prose_lint = json!({
+            "oneOf": [
+                boolean(),
+                closed_object(
+                    PROSE_LINT_KEYS,
+                    &[("banned", json!({ "type": "array", "items": { "type": "string" } }))],
+                )
+            ]
+        });
         let overrides = [
             ("toc", boolean()),
             ("execute", execute),
             ("listing", listing),
             ("about", about),
             ("hero", hero),
+            ("prose-lint", prose_lint),
             // An extension owns `format:`'s sub-keys, so leave it fully permissive.
             ("format", json!({})),
         ];

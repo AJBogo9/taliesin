@@ -54,6 +54,8 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     "listing",
     "about",
     "hero",
+    // Prose lint (opt-in): `prose-lint: true | { banned: [...] }`; see `crate::prose`.
+    "prose-lint",
 ];
 
 /// `execute:` sub-keys qmd-fast honors (document-level cell defaults; see
@@ -69,6 +71,9 @@ pub(crate) const ABOUT_KEYS: &[&str] = &["template", "image", "image-alt", "link
 
 /// `hero:` sub-keys qmd-fast honors (see `site::frontmatter::parse_hero`).
 pub(crate) const HERO_KEYS: &[&str] = &["eyebrow", "headline", "lead", "actions"];
+
+/// `prose-lint:` sub-keys qmd-fast honors (the mapping form; see `crate::prose::config`).
+pub(crate) const PROSE_LINT_KEYS: &[&str] = &["banned"];
 
 /// Validate a document's front matter against qmd-fast's vocabulary: every unknown
 /// top-level key, plus every unknown immediate child of the nested `execute:`,
@@ -103,6 +108,14 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
     validate_nested(map, "execute", "execute key", EXECUTE_KEYS, block, &mut out);
     validate_nested(map, "about", "about key", ABOUT_KEYS, block, &mut out);
     validate_nested(map, "hero", "hero key", HERO_KEYS, block, &mut out);
+    validate_nested(
+        map,
+        "prose-lint",
+        "prose-lint key",
+        PROSE_LINT_KEYS,
+        block,
+        &mut out,
+    );
     // `listing:` is one mapping or a sequence of mappings (cv.qmd).
     match map.get("listing") {
         Some(serde_yaml::Value::Mapping(m)) => {
@@ -391,6 +404,20 @@ mod tests {
         let (msg, line) = yaml_error("---\ntitle: ok\nbad: : x\n---\n\nbody\n").expect("an error");
         assert!(msg.contains("not valid YAML"), "got: {msg}");
         assert_eq!(line, 3);
+    }
+
+    #[test]
+    fn prose_lint_key_is_recognized_and_nested_validated() {
+        assert!(
+            validate_front_matter("---\ntitle: T\nprose-lint: true\n---\n").is_empty(),
+            "prose-lint should be a known top-level key"
+        );
+        let w = validate_front_matter("---\ntitle: T\nprose-lint:\n  bnned: [x]\n---\n");
+        assert!(
+            w.iter()
+                .any(|x| x.message.contains("bnned") && x.message.contains("banned")),
+            "nested prose-lint typo should be flagged, got: {w:?}"
+        );
     }
 
     #[test]
