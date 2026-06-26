@@ -15,12 +15,41 @@ pub struct LineOrigin {
     pub line: usize,
 }
 
+/// An include directive that could not be expanded (unsafe path, cycle, or
+/// unreadable file), located back to the file + line that holds the directive so
+/// the caller can surface a click-to-source diagnostic instead of silently
+/// shipping the literal `{{< include … >}}`.
+#[derive(Debug, Clone)]
+pub struct IncludeWarning {
+    /// The raw include target as written in the directive.
+    pub target: String,
+    /// Why it couldn't be resolved (a short human phrase).
+    pub reason: String,
+    /// The file holding the directive (`None` = the primary document), matching
+    /// [`LineOrigin::file`].
+    pub file: Option<String>,
+    /// 1-based line of the directive within `file`.
+    pub line: usize,
+}
+
 /// Expand includes in `src`. `base_dir` is the directory of the primary
 /// document; include paths are resolved relative to the file that contains
 /// them. Returns the expanded text plus one [`LineOrigin`] per line.
 pub fn resolve(src: &str, base_dir: &Path) -> (String, Vec<LineOrigin>) {
+    let (text, origins, _warnings) = resolve_warned(src, base_dir);
+    (text, origins)
+}
+
+/// Like [`resolve`], but also returns one [`IncludeWarning`] per include that
+/// could not be expanded (so build/preview/`check` can report it located rather
+/// than leaking the directive silently).
+pub fn resolve_warned(
+    src: &str,
+    base_dir: &Path,
+) -> (String, Vec<LineOrigin>, Vec<IncludeWarning>) {
     let mut lines = Vec::new();
     let mut origins = Vec::new();
+    let mut warnings = Vec::new();
     let mut stack = Vec::new(); // cycle guard: absolute paths currently expanding
     let had_trailing_newline = src.ends_with('\n');
     expand(
@@ -31,13 +60,14 @@ pub fn resolve(src: &str, base_dir: &Path) -> (String, Vec<LineOrigin>) {
         &mut stack,
         &mut lines,
         &mut origins,
+        &mut warnings,
     );
 
     let mut text = lines.join("\n");
     if had_trailing_newline {
         text.push('\n');
     }
-    (text, origins)
+    (text, origins, warnings)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -49,6 +79,7 @@ fn expand(
     stack: &mut Vec<PathBuf>,
     out_lines: &mut Vec<String>,
     out_origins: &mut Vec<LineOrigin>,
+    out_warnings: &mut Vec<IncludeWarning>,
 ) {
     let mut in_code: Option<(char, usize)> = None;
     for (idx, line) in src.lines().enumerate() {
@@ -57,6 +88,18 @@ fn expand(
         let mut keep_line = || {
             out_lines.push(line.to_string());
             out_origins.push(LineOrigin {
+                file: file_label.clone(),
+                line: idx + 1,
+            });
+        };
+        // Record a located warning for an include that couldn't be expanded, so the
+        // dropped directive surfaces as a click-to-source diagnostic in
+        // build/preview/`check` instead of leaking silently.
+        let mut drop_with_warning = |target: &str, reason: &str| {
+            keep_line();
+            out_warnings.push(IncludeWarning {
+                target: target.to_string(),
+                reason: reason.to_string(),
                 file: file_label.clone(),
                 line: idx + 1,
             });
@@ -76,10 +119,14 @@ fn expand(
         };
         // Unsafe path (absolute or escaping the project root), or an include cycle:
         // leave the directive visible rather than reading outside the project / looping.
-        let Some(target) = safe_join(base_dir, rel).filter(|t| !stack.contains(t)) else {
-            keep_line();
+        let Some(target) = safe_join(base_dir, rel) else {
+            drop_with_warning(rel, "path escapes the project root (or is absolute)");
             continue;
         };
+        if stack.contains(&target) {
+            drop_with_warning(rel, "include cycle");
+            continue;
+        }
         match std::fs::read_to_string(&target) {
             Ok(content) => {
                 let label = label_for(&target, primary_base);
@@ -93,11 +140,12 @@ fn expand(
                     stack,
                     out_lines,
                     out_origins,
+                    out_warnings,
                 );
                 stack.pop();
             }
             // unreadable include: leave the directive visible
-            Err(_) => keep_line(),
+            Err(_) => drop_with_warning(rel, "file not found or unreadable"),
         }
     }
 }
@@ -187,8 +235,10 @@ fn parse_include(line: &str) -> Option<&str> {
 
 /// A nice label for an included file: relative to the primary document's
 /// directory when it lives underneath it, otherwise the normalized path.
+/// `target` is absolute (it comes from [`safe_join`]), so `primary_base` is
+/// absolutized to the same coordinate system before stripping.
 fn label_for(target: &Path, primary_base: &Path) -> String {
-    let primary = normalize(primary_base);
+    let primary = absolutize(primary_base);
     match target.strip_prefix(&primary) {
         Ok(rel) => rel.to_string_lossy().into_owned(),
         Err(_) => target.to_string_lossy().into_owned(),
@@ -208,16 +258,36 @@ pub(crate) fn safe_join(base_dir: &Path, rel: &str) -> Option<PathBuf> {
     if relp.has_root() || relp.is_absolute() {
         return None;
     }
-    let target = normalize(&base_dir.join(relp));
-    let root = containment_root(base_dir);
+    // Resolve against an *absolute* base so the containment check and the returned
+    // target share one coordinate system: a relative CLI path (e.g. the doc's
+    // `corpus/posts/x` parent) would otherwise make `containment_root`'s absolute
+    // boundary and a relative `target` incomparable, silently rejecting legitimate
+    // `../../_includes/…` includes. `std::path::absolute` only prepends the cwd +
+    // normalizes lexically (no filesystem touch, no symlink resolution).
+    let abs_base = absolutize(base_dir);
+    let target = normalize(&abs_base.join(relp));
+    let root = containment_root(&abs_base);
     target.starts_with(&root).then_some(target)
+}
+
+/// Make `p` absolute by prepending the current working directory if needed, then
+/// normalizing `.`/`..` lexically. No filesystem access, no symlink resolution.
+fn absolutize(p: &Path) -> PathBuf {
+    normalize(&std::path::absolute(p).unwrap_or_else(|_| p.to_path_buf()))
 }
 
 /// The containment boundary for [`safe_join`]: the nearest ancestor of `base_dir`
 /// that looks like a project root (`.git` or `_site.yml`), falling back to
 /// `base_dir` itself when none is found.
+///
+/// Expects an **absolute, normalized** `base_dir` (see [`absolutize`] in
+/// [`safe_join`]). The parent-walk must start absolute: when the CLI is given a
+/// relative path (e.g. `corpus/posts/x/index.qmd`), a relative parent-walk hits an
+/// empty path before ever seeing the absolute ancestor that actually holds
+/// `.git`/`_site.yml`, so it would fall back to `base_dir` itself and then reject a
+/// legitimate `../../_includes/…` include as "escaping" that fake root.
 fn containment_root(base_dir: &Path) -> PathBuf {
-    let base = normalize(base_dir);
+    let base = base_dir.to_path_buf();
     let mut cur: &Path = &base;
     loop {
         if cur.join(".git").exists() || cur.join("_site.yml").exists() {
@@ -267,5 +337,58 @@ mod tests {
     fn normalize_resolves_dotdot() {
         assert_eq!(normalize(Path::new("a/b/../c")), PathBuf::from("a/c"));
         assert_eq!(normalize(Path::new("./a/./b")), PathBuf::from("a/b"));
+    }
+
+    #[test]
+    fn unresolvable_include_is_reported_not_silently_dropped() {
+        // An escaping include leaves the directive literal *and* emits a located
+        // warning (the silent-drop fix), rather than vanishing without a trace.
+        let (text, _origins, warnings) = resolve_warned(
+            "a\n{{< include ../../../etc/passwd >}}\nb\n",
+            Path::new("."),
+        );
+        assert!(
+            text.contains("{{< include ../../../etc/passwd >}}"),
+            "the directive stays literal when it can't be expanded"
+        );
+        let w = warnings
+            .first()
+            .expect("an unresolvable include produces a warning");
+        assert_eq!(w.line, 2, "warning is located on the directive line");
+        assert_eq!(w.file, None, "directive lives in the primary document");
+        assert!(w.target.contains("etc/passwd"));
+    }
+
+    #[test]
+    fn safe_join_allows_sibling_include_under_project_root() {
+        // The regression in miniature: a project root marked by `.git`, a doc in a
+        // nested subdir, and a `../`-reaching include into a sibling `_includes/`.
+        // `containment_root` must find the marked root (not fall back to the doc
+        // dir), so the sibling include is allowed.
+        let root = std::env::temp_dir().join(format!(
+            "qmd-safejoin-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("post")).unwrap();
+        std::fs::create_dir_all(root.join("_includes")).unwrap();
+        std::fs::write(root.join(".git"), b"").unwrap();
+
+        let base = root.join("post");
+        // A sibling include under the marked root resolves.
+        assert!(
+            safe_join(&base, "../_includes/x.qmd").is_some(),
+            "a sibling include under the project root must resolve"
+        );
+        // Climbing above the root is refused.
+        assert!(safe_join(&base, "../../escape.qmd").is_none());
+        // An absolute target is always refused.
+        assert!(safe_join(&base, "/etc/passwd").is_none());
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
