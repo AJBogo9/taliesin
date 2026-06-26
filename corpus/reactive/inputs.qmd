@@ -1,0 +1,68 @@
+---
+title: "Reactive inputs"
+---
+
+`{{< input >}}` emits a labeled control whose value is a reactive node. A `{js}` cell that
+lists the name in `//| input:` re-runs when the control changes, including transitively.
+
+{{< input name="k" type="slider" min="1" max="10" step="1" value="3" label="k" >}}
+
+```{js}
+//| name: doubled
+//| input: k
+return qmd.value("k") * 2;
+```
+
+```{js}
+//| input: doubled
+const p = document.createElement("p");
+p.textContent = "k doubled (transitively) = " + qmd.get("doubled");
+return p;
+```
+
+A number, a checkbox, a text box, and a dropdown, each driving their own cell:
+
+{{< input name="n" type="number" min="0" max="100" step="5" value="20" label="n" >}}
+
+```{js}
+//| input: n
+const p = document.createElement("p");
+p.textContent = "n = " + qmd.value("n");
+return p;
+```
+
+{{< input name="on" type="checkbox" value="true" label="enabled" >}}
+
+```{js}
+//| input: on
+const p = document.createElement("p");
+p.textContent = qmd.value("on") ? "enabled" : "disabled";
+return p;
+```
+
+{{< input name="q" type="text" value="hello" label="query" >}}
+
+```{js}
+//| input: q
+const p = document.createElement("p");
+p.textContent = "query: " + qmd.value("q");
+return p;
+```
+
+{{< input name="c" type="select" options="alpha,beta,gamma" value="beta" label="channel" >}}
+
+```{js}
+//| input: c
+const p = document.createElement("p");
+p.textContent = "channel: " + qmd.value("c");
+return p;
+```
+
+One cell reading several inputs at once:
+
+```{js}
+//| input: k, n, on
+const p = document.createElement("p");
+p.textContent = `k=${qmd.value("k")} n=${qmd.value("n")} on=${qmd.value("on")}`;
+return p;
+```
