@@ -9,6 +9,14 @@ use super::*;
 /// double-quoted Rust string; `currentColor` so it inherits the control's colour).
 const SEARCH_ICON: &str = "<svg width='15' height='15' viewBox='0 0 16 16' fill='none' stroke='currentColor' stroke-width='1.6' aria-hidden='true'><circle cx='7' cy='7' r='4.5'/><path d='M10.5 10.5 14 14' stroke-linecap='round'/></svg>";
 
+/// Tiny idempotent script that makes the mobile burger keyboard- and
+/// screen-reader-operable: it toggles the button's `aria-expanded` and a
+/// `.qmd-nav-open` class on the `.qmd-nav-links` menu (the CSS reveals the menu on
+/// that class instead of the old `:checked` selector), and closes the menu on
+/// Escape or when a nav link is followed. The `data-nav-wired` guard makes it safe
+/// to re-run when the live preview re-injects the navbar on hot reload.
+const NAV_TOGGLE_SCRIPT: &str = "<script>(function(){var b=document.getElementById('qmd-nav-toggle'),m=document.getElementById('qmd-nav-links');if(!b||!m||b.dataset.navWired)return;b.dataset.navWired='1';function set(o){b.setAttribute('aria-expanded',o?'true':'false');m.classList.toggle('qmd-nav-open',o);}b.addEventListener('click',function(){set(b.getAttribute('aria-expanded')!=='true');});m.addEventListener('click',function(e){if(e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&b.getAttribute('aria-expanded')==='true'){set(false);b.focus();}});})();</script>";
+
 /// A search control that opens the Cmd-K palette. It carries `data-qmd-search`,
 /// which `web-client/search.js` wires (by click delegation) to open the same
 /// palette the keyboard shortcut does. Rendered in the navbar (websites) and the
@@ -47,12 +55,18 @@ impl Site {
             "<a class=\"qmd-nav-brand\" href=\"{up}index.html\">{}</a>",
             esc(&brand_text)
         ));
-        // A hidden checkbox toggles the mobile menu with no JS dependency.
+        // A real, focusable button toggles the mobile menu, so keyboard and
+        // screen-reader users can open it (the old display:none checkbox + an
+        // unfocusable, role-less label was a WCAG 2.1.1 failure). `aria-expanded`
+        // reflects open/closed; `aria-controls` points at the menu it reveals. The
+        // tiny inline script below wires the click + Escape-to-close; CSS hides the
+        // button above 640px so the desktop bar is unchanged.
         s.push_str(
-            "<input type=\"checkbox\" id=\"qmd-nav-toggle\" class=\"qmd-nav-toggle\" hidden>",
+            "<button type=\"button\" class=\"qmd-nav-burger\" id=\"qmd-nav-toggle\" \
+             aria-label=\"Menu\" aria-expanded=\"false\" aria-controls=\"qmd-nav-links\">\
+             <span></span><span></span><span></span></button>",
         );
-        s.push_str("<label for=\"qmd-nav-toggle\" class=\"qmd-nav-burger\" aria-label=\"Menu\"><span></span><span></span><span></span></label>");
-        s.push_str("<div class=\"qmd-nav-links\">");
+        s.push_str("<div class=\"qmd-nav-links\" id=\"qmd-nav-links\">");
         for it in &self.config.nav.left {
             s.push_str(&self.nav_link(it, current, &up));
         }
@@ -70,6 +84,12 @@ impl Site {
              aria-label=\"Toggle theme\"></button>",
         );
         s.push_str("</div></nav></header>");
+        // Wire the burger button: toggle `aria-expanded` + a `.qmd-nav-open` class
+        // the CSS shows the menu on, and close on Escape / link click. Idempotent
+        // (a `data-wired` guard) so re-running it (live hot-reload re-injects the
+        // navbar) never double-binds. Inlined here, in the navbar's own HTML, to
+        // keep this fix inside the two owned files (no new asset, no other JS).
+        s.push_str(NAV_TOGGLE_SCRIPT);
         s
     }
 

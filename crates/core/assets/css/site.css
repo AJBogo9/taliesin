@@ -59,12 +59,17 @@
   /* book sidebar: a full-width search box under the title */
   .qmd-search-full { width: 100%; margin: .1rem 0 1.1rem; }
   .qmd-search-full .qmd-search-label { margin-right: auto; }
-  .qmd-nav-burger { display: none; }
-  .qmd-nav-toggle { display: none; }
+  /* burger menu button: hidden at desktop widths, revealed in the ≤640px block.
+     A real <button>, so reset its native chrome to look like the bare icon. */
+  .qmd-nav-burger { display: none; background: transparent; border: 0; }
 
-  /* the reading column; grows to fill the column so the footer is pushed down */
-  .qmd-site-main { flex: 1 0 auto; width: 100%; max-width: var(--qmd-maxw);
-    margin: 0 auto; padding: 2rem 1rem; }
+  /* the reading column; grows to fill the column so the footer is pushed down.
+     `box-sizing: border-box` is load-bearing: the global reset is content-box, so a
+     `width: 100%` column plus the 1rem side padding would render 2rem WIDER than the
+     viewport at narrow widths (the ~32px horizontal overflow at 390px). Border-box
+     draws the padding inside the 100%, so the column never exceeds the screen. */
+  .qmd-site-main { box-sizing: border-box; flex: 1 0 auto; width: 100%;
+    max-width: var(--qmd-maxw); margin: 0 auto; padding: 2rem 1rem; }
   .qmd-site-main > main { min-width: 0; }
   /* `page-layout: full` widens the column (the blog/projects card indexes) */
   .qmd-site-main.qmd-wide { max-width: 60rem; }
@@ -143,15 +148,20 @@
   @media (max-width: 640px) {
     .qmd-listing-default .qmd-card { flex-direction: column; }
     .qmd-listing-default .qmd-card-img { width: 100%; aspect-ratio: 16 / 9; }
-    .qmd-nav-burger { display: flex; flex-direction: column; gap: 4px; cursor: pointer;
-      margin-left: auto; padding: .45rem; }
+    /* ≥44px square tap target (WCAG 2.5.5); centred icon, no auto-margin (the
+       brand + spacer already push it right) so it can't bleed past the edge. */
+    .qmd-nav-burger { display: flex; flex-direction: column; justify-content: center;
+      align-items: center; gap: 4px; cursor: pointer; margin-left: auto;
+      width: 44px; height: 44px; padding: 0; }
     .qmd-nav-burger span { display: block; width: 22px; height: 2px; border-radius: 2px;
       background: var(--qmd-fg); transition: transform .15s ease, opacity .15s ease; }
     .qmd-nav-links { display: none; position: absolute; top: 100%; left: 0; right: 0;
       flex-direction: column; align-items: stretch; gap: 0; flex: none;
       background: var(--qmd-bg); border-bottom: 1px solid var(--qmd-border);
       box-shadow: 0 8px 20px rgba(0,0,0,.12); padding: .35rem 0; }
-    .qmd-nav-toggle:checked ~ .qmd-nav-links { display: flex; }
+    /* The button toggles this class (see the inline nav script); replaces the old
+       `.qmd-nav-toggle:checked ~ .qmd-nav-links` checkbox-hack selector. */
+    .qmd-nav-links.qmd-nav-open { display: flex; }
     .qmd-nav-spacer { display: none; }
     .qmd-nav-link { padding: .7rem 1.15rem; border-radius: 0; }
     .qmd-nav-controls { padding: .5rem 1.15rem; }
