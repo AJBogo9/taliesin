@@ -77,6 +77,34 @@ function qmdBuildTextFragmentUrl(rawText) {
   return u.href + '#' + id + ':~:' + directive;
 }
 
+// Build a BibTeX @misc entry citing `title` at `url`, accessed on `date`. Pure. The URL
+// rides verbatim inside \url{} (so the deep link's '# : ~ % &' survive LaTeX); the title is
+// LaTeX-escaped and double-braced to preserve its casing; the cite key is a slug of the
+// title plus the access year. BibTeX is the most portable cite format — reference managers
+// import it and re-export to any style — so the toolbar's four actions stay distinct (Copy
+// raw / Quote markdown / Share url / Cite bibtex).
+function qmdBuildBibtex(title, url, date) {
+  var MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'];
+  var ESC = {
+    '\\': '\\textbackslash{}', '{': '\\{', '}': '\\}', '&': '\\&', '%': '\\%',
+    '$': '\\$', '#': '\\#', '_': '\\_', '~': '\\textasciitilde{}', '^': '\\textasciicircum{}'
+  };
+  // Single pass over the originals, so the braces introduced by a replacement are never
+  // themselves re-escaped (a two-pass escape would corrupt \textbackslash{}).
+  function latexEsc(s) { return String(s).replace(/[\\{}&%$#_~^]/g, function (c) { return ESC[c]; }); }
+  var name = (title || 'Untitled').trim() || 'Untitled';
+  var year = date.getFullYear();
+  var slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  var key = (slug || 'qmd-citation') + '-' + year;
+  var accessed = MONTHS[date.getMonth()] + ' ' + date.getDate() + ', ' + year;
+  return '@misc{' + key + ',\n' +
+    '  title        = {{' + latexEsc(name) + '}},\n' +
+    '  howpublished = {\\url{' + url + '}},\n' +
+    '  note         = {Accessed ' + accessed + '}\n' +
+    '}\n';
+}
+
 // Shared modal focus trap: while a modal is open, confine Tab/Shift+Tab to `container`, mark it
 // aria-modal, and (on release) restore focus to the opener IF focus is still inside (a keyboard
 // or programmatic close) — not when the user clicked elsewhere. Used by the lightbox + reader
@@ -883,7 +911,15 @@ function qmdInitHighlights() {
         if (location.protocol === 'file:') announce('Link copied; the highlight opens when served over http or https');
       }, function () { done('Copy failed'); });
     });
-    var extras = [copyBtn, quoteBtn, shareBtn];
+    // Cite: a BibTeX @misc entry that deep-links to the selection (drop straight into a .bib).
+    var citeBtn = action('Cite', function (done) {
+      var url = qmdBuildTextFragmentUrl(pending.text) || location.href;
+      qmdCopyText(qmdBuildBibtex(document.title, url, new Date()), function () {
+        done('Cited');
+        if (location.protocol === 'file:') announce('Citation copied; the deep link opens when served over http or https');
+      }, function () { done('Copy failed'); });
+    });
+    var extras = [copyBtn, quoteBtn, shareBtn, citeBtn];
 
     var btn = document.createElement('button'); // the Highlight / Remove-highlight child
     btn.type = 'button';

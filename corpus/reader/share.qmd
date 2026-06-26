@@ -3,8 +3,9 @@ title: "Share a passage"
 ---
 
 Select any sentence on this page and a small toolbar appears above it. You can copy the
-plain text, copy it as a Markdown quote ready to paste into your notes, or copy a share
-link that points a reader straight at the exact words you picked.
+plain text, copy it as a Markdown quote ready to paste into your notes, copy a share
+link that points a reader straight at the exact words you picked, or cite the passage as a
+BibTeX entry that deep-links to it, ready to drop into a reference manager or a `.bib` file.
 
 ## A link to the words, not just the page
 

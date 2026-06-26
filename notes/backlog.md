@@ -75,8 +75,6 @@ like `body p, body li { … }` leaks into chrome that wraps prose (TOC, sidebars
 .sidenote p, .column-margin p, … { line-height: inherit }`. **For letter/word spacing the leak is
 worse** (tracking *inherits into inline descendants*), so `5bca91a` also resets monospace + math
 directly: `code, pre, kbd, samp, .katex { letter-spacing: normal; word-spacing: normal }`.
-- [ ] **Copy-as-citation** — a "Cite" action on the selection toolbar (doc title + access date +
-  the text-fragment deep link the share-link already builds).
 - Decided/known: the reader menu is intentionally an untrapped popover (not a modal); highlights
   are single-block prose only (margin notes / cross-block / colours were scoped out — see specs).
 
