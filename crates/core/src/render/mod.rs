@@ -1002,7 +1002,7 @@ const MERMAID: &str = "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.
 pub fn code_scripts() -> String {
     let mermaid = MERMAID_JS.replace("{{MERMAID}}", MERMAID);
     format!(
-        "<script>{CODE_ENHANCE_JS}</script>\n<script>{mermaid}</script>\n<script>{QMD_JS}</script>\n<script>{WALKTHROUGH_JS}</script>\n<script>{TABSET_JS}</script>"
+        "<script>{CODE_ENHANCE_JS}</script>\n<script>{mermaid}</script>\n<script>{QMD_JS}</script>\n<script>{WALKTHROUGH_JS}</script>\n<script>{TABSET_JS}</script>\n<script>{SCROLLY_JS}</script>"
     )
 }
 
@@ -1050,6 +1050,9 @@ const WALKTHROUGH_JS: &str = include_str!("../../assets/js/walkthrough.js");
 /// ARIA tabs interaction for `::: {.panel-tabset}` (click + arrow-key tab switching).
 /// Registers through `qmdEnhancers`, no-ops without a tabset, rides in [`code_scripts`].
 const TABSET_JS: &str = include_str!("../../assets/js/tabset.js");
+/// Scroll-driven sticky-stage scenes for `::: {.scrolly}`. Registers through `qmdEnhancers`,
+/// no-ops without a `.scrolly`, rides in [`code_scripts`].
+const SCROLLY_JS: &str = include_str!("../../assets/js/scrolly.js");
 
 /// Heading level (1–6) for a block whose root element is `<hN ...>`/`<hN>`.
 pub(crate) fn block_heading_level(html: &str) -> Option<u8> {
