@@ -231,6 +231,15 @@
      vertical rhythm (more space before a heading than after, binding it to its section).
      Replaces the browser-default sizes the headings used to fall back to. */
   h1, h2, h3, h4, h5, h6 { font-family: var(--qmd-font-head); font-weight: 600; }
+  /* Anchor copy-link (qmdInitAnchorLinks): a `#` revealed on hover/focus of a heading or a
+     float caption; clicking copies that anchor's canonical deep link. Reader-side. */
+  .qmd-anchor { margin-left: .35em; color: var(--qmd-muted); text-decoration: none;
+    font-weight: 400; opacity: 0; transition: opacity .12s ease, color .12s ease; }
+  :is(h1, h2, h3, h4, h5, h6):hover > .qmd-anchor,
+  figcaption:hover > .qmd-anchor, caption:hover > .qmd-anchor,
+  .qmd-anchor:focus-visible { opacity: 1; }
+  .qmd-anchor:hover, .qmd-anchor.qmd-anchor-copied { color: var(--qmd-accent); opacity: 1; }
+  @media print { .qmd-anchor { display: none; } }
   h1 { font-size: 2rem; line-height: 1.15; letter-spacing: -.011em; margin: 0 0 .6rem; }
   h2 { font-size: 1.62rem; line-height: 1.2; letter-spacing: -.011em; margin: 2.2rem 0 .7rem; }
   h3 { font-size: 1.35rem; line-height: 1.25; margin: 1.8rem 0 .55rem; }

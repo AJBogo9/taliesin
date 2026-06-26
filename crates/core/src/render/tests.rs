@@ -1333,6 +1333,17 @@ fn assembled_page_ships_cite_action() {
 }
 
 #[test]
+fn assembled_page_ships_anchor_links() {
+    let page = render_html_page("# Title\n\n## A section\n\nProse.\n", "doc");
+    // The anchor-copy-link enhancer reveals a `#` on each heading/float and copies its
+    // canonical deep link; qmdInitAnchorLinks is its unique discriminator token.
+    assert!(
+        page.contains("qmdInitAnchorLinks"),
+        "anchor copy-link enhancer not shipped in the assembled page"
+    );
+}
+
+#[test]
 fn assembled_page_ships_reader_menu() {
     let page = render_html_page("# Title\n\nProse.\n", "doc");
     // The reader-menu host consolidates the reader controls into one launcher + menu.
