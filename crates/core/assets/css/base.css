@@ -100,6 +100,33 @@
   mark.qmd-userhl { background: var(--qmd-userhl-bg); color: inherit; border-radius: 2px;
     padding: 0 .03em; cursor: pointer;
     -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+
+  /* Read-aloud: the moving spoken-sentence / code-line cursor. A DISTINCT token from the
+     reader-highlight (--qmd-userhl-bg) so the transient reading cursor never looks like a
+     saved highlight. */
+  :root { --qmd-ra-highlight: rgba(96, 165, 250, .38); }
+  html[data-theme="sepia"] { --qmd-ra-highlight: rgba(56, 132, 200, .32); }
+  ::highlight(qmd-readaloud) { background-color: var(--qmd-ra-highlight); color: inherit; }
+  mark.qmd-ra-mark { background-color: var(--qmd-ra-highlight); color: inherit; border-radius: 2px; }
+
+  /* Read-aloud mini-player: a small floating transport, shown only while listening. */
+  .qmd-ra-bar { position: fixed; left: 50%; bottom: 1rem; transform: translateX(-50%);
+    z-index: 2147481600; display: flex; align-items: center; gap: .35rem;
+    background: var(--qmd-bg); border: 1px solid var(--qmd-border); border-radius: 999px;
+    padding: .3rem .5rem; box-shadow: 0 4px 18px var(--qmd-edge-shadow); font-size: .85rem; }
+  .qmd-ra-bar[hidden] { display: none; }
+  .qmd-ra-btn { border: 0; background: transparent; color: var(--qmd-fg); cursor: pointer;
+    font-size: 1rem; line-height: 1; padding: .25rem .4rem; border-radius: 999px; }
+  .qmd-ra-btn:hover { background: var(--qmd-code-bg); }
+  .qmd-ra-speed { font-variant-numeric: tabular-nums; opacity: .8; min-width: 2.6em;
+    text-align: center; }
+  .qmd-ra-voice-sel { max-width: 11rem; }
+  @media print { .qmd-ra-bar { display: none !important; } }
+  @media (prefers-reduced-motion: no-preference) {
+    .qmd-ra-bar { animation: qmd-ra-in .18s ease-out; }
+  }
+  @keyframes qmd-ra-in { from { opacity: 0; transform: translate(-50%, 6px); }
+    to { opacity: 1; transform: translateX(-50%); } }
   .qmd-hl-action { position: fixed; z-index: 2147481600;
     font: 600 .78rem/1 var(--qmd-font-head); background: var(--qmd-fg); color: var(--qmd-bg);
     border: 0; border-radius: 7px; padding: .42rem .7rem; cursor: pointer;
