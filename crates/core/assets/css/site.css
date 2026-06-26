@@ -119,7 +119,7 @@
   /* a card's category tag doubles as a filter toggle */
   .qmd-cat[data-cat] { cursor: pointer; }
   .qmd-cat[data-cat]:hover { color: var(--qmd-fg); border-color: var(--qmd-muted); }
-  .qmd-cat.qmd-cat-on { background: var(--qmd-accent); border-color: var(--qmd-accent); color: #fff; }
+  .qmd-cat.qmd-cat-on { background: var(--qmd-accent-fill); border-color: var(--qmd-accent-fill); color: var(--qmd-on-accent); }
 
   /* category filter chip row (listing: categories: true) */
   .qmd-cat-filter { display: flex; flex-wrap: wrap; gap: .45rem; margin: 0 0 1.5rem; }
@@ -128,7 +128,7 @@
     background: var(--qmd-code-bg); border: 1px solid var(--qmd-border); border-radius: 999px;
     padding: .25rem .7rem; transition: background .12s ease, color .12s ease, border-color .12s ease; }
   .qmd-cat-chip:hover { color: var(--qmd-fg); border-color: var(--qmd-muted); }
-  .qmd-cat-chip.qmd-cat-active { background: var(--qmd-accent); border-color: var(--qmd-accent); color: #fff; }
+  .qmd-cat-chip.qmd-cat-active { background: var(--qmd-accent-fill); border-color: var(--qmd-accent-fill); color: var(--qmd-on-accent); }
   .qmd-cat-count { font-size: .82em; opacity: .65; font-variant-numeric: tabular-nums; }
   .qmd-cat-chip.qmd-cat-active .qmd-cat-count { opacity: .85; }
 
