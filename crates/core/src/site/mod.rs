@@ -804,6 +804,11 @@ fn discover_decks(root: &Path, pages: &[Page], warnings: &mut Vec<String>) -> Ve
         let Ok(src) = std::fs::read_to_string(&page.input) else {
             continue;
         };
+        // Expand `{{< include >}}` first: an `{{< embed >}}` living inside an included
+        // partial must be discovered too (else the deck flattens to an article + leaks
+        // into search). The embed path stays relative to the embedding page.
+        let base = page.input.parent().unwrap_or(root);
+        let (src, _origins) = crate::includes::resolve(&src, base);
         for target in crate::render::embed_targets(&src) {
             let rel = join_rel(&page.rel, &target);
             let url = qmd_to_html(&rel);

@@ -95,3 +95,41 @@ fn quarto_shaped_config_is_no_longer_parsed_and_warns() {
         site.warnings
     );
 }
+
+/// A `{{< embed deck.qmd >}}` living inside an `{{< include >}}`d partial must still be
+/// discovered as a deck (otherwise the deck flattens to a chrome-wrapped article, its
+/// slides leak into search, and the embed iframe loads the wrong page).
+#[test]
+fn embed_inside_an_included_partial_is_discovered_as_a_deck() {
+    let d = TempProj::new();
+    d.file("_site.yml", "title: S\n");
+    d.file(
+        "index.qmd",
+        "---\ntitle: Home\n---\n\n{{< include _includes/_talk.qmd >}}\n",
+    );
+    d.file(
+        "_includes/_talk.qmd",
+        "Here is a talk:\n\n{{< embed slides.qmd title=\"Talk\" >}}\n",
+    );
+    d.file(
+        "slides.qmd",
+        "---\ntitle: Slides\nformat: revealjs\n---\n\n## One\n\n## Two\n",
+    );
+    let site = Site::discover(&d.0);
+    assert!(
+        site.decks.iter().any(|deck| deck.url == "slides.html"),
+        "deck embedded via an included partial must be discovered; got decks: {:?}",
+        site.decks.iter().map(|deck| &deck.url).collect::<Vec<_>>()
+    );
+    // Downstream: a discovered deck is dropped from the page set, so it is not flattened to
+    // a chrome-wrapped article, not indexed into search, and not warned about as a loose page.
+    assert!(
+        !site.pages.iter().any(|p| p.url == "slides.html"),
+        "the discovered deck must be removed from the page set"
+    );
+    assert!(
+        !site.warnings.iter().any(|w| w.contains("loose page")),
+        "no false loose-page warning once the embed is discovered: {:?}",
+        site.warnings
+    );
+}
