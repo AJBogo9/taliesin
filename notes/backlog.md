@@ -9,7 +9,7 @@ by a target corpus doc. Output stays **HTML-only**. The active roadmap is
 > in git + the history docs: `BEYOND-QUARTO.md` (Beyond-Quarto waves), `DROP-QUARTO.md`
 > (the native-rewrite), `AUDITS.md` (the three audit passes). Don't re-add `[x]` items.
 
-## State (2026-06-25, local `main` @ `5bca91a`, version 0.1.0; author pushes between sessions)
+## State (2026-06-27, local `main`, version 0.2.0 [tagged `v0.2.0`]; author pushes between sessions)
 
 All four formats render + deploy; the dev loop is strong (block-level incremental updates
 with DOM-state preservation, warm server + Jupyter kernel, `_freeze` cache, Alt-click

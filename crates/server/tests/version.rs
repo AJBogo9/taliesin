@@ -9,9 +9,12 @@ fn version_flag_prints_semver_and_colophon() {
         .expect("the qmd-fast binary should run");
     assert!(out.status.success(), "exit status: {:?}", out.status);
     let stdout = String::from_utf8_lossy(&out.stdout);
+    // Assert against the crate version rather than a hard-coded string, so a
+    // version bump never breaks this test.
+    let expected = format!("qmd-fast {} (", env!("CARGO_PKG_VERSION"));
     assert!(
-        stdout.starts_with("qmd-fast 0.1.0 ("),
-        "expected `qmd-fast 0.1.0 (<sha>)`, got: {stdout:?}"
+        stdout.starts_with(&expected),
+        "expected `{expected}<sha>)`, got: {stdout:?}"
     );
     assert!(
         stdout.trim_end().ends_with(')'),
