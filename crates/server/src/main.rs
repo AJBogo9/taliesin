@@ -84,11 +84,11 @@ fn cmd_init(dir: Option<&str>) -> ExitCode {
                 log::built(&f.display().to_string());
             }
             let where_ = if dir == Path::new(".") {
-                String::new()
+                ".".to_string()
             } else {
-                format!(" {}", dir.display())
+                dir.display().to_string()
             };
-            println!("Scaffolded a qmd-fast site. Preview it:\n  qmd-fast preview{where_}");
+            println!("Scaffolded a qmd-fast site. Preview it:\n  qmd-fast preview {where_}");
             ExitCode::SUCCESS
         }
         Err(e) => {

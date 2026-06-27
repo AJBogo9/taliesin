@@ -1232,6 +1232,10 @@ fn manual_local_links(html: &str) -> Vec<(&str, Option<&str>)> {
             Some((p, f)) => (p, Some(f)),
             None => (val, None),
         };
+        // Strip a `?query` so a cache-busting / signed link (`page.qmd?v=2`) still
+        // resolves to its page instead of false-flagging — mirrors the single-doc
+        // checker (`diagnostics::validate_local_links`).
+        let path = &path[..path.find('?').unwrap_or(path.len())];
         if !path.is_empty() {
             out.push((path, frag));
         }
@@ -1308,6 +1312,17 @@ mod tests {
         let html = r##"<a href="other.qmd">o</a> <a href="page.html#sec">p</a> <a href="https://x.com">e</a> <a href="#top">t</a> <a href="x.html" class="qmd-xref">r</a>"##;
         let links = manual_local_links(html);
         assert_eq!(links, vec![("other.qmd", None), ("page.html", Some("sec"))]);
+    }
+
+    #[test]
+    fn manual_local_links_strips_query_string_keeps_fragment() {
+        // A cache-busting / signed link must resolve to its page, not false-flag.
+        let html = r##"<a href="report.qmd?v=2">q</a> <a href="dash.html?token=abc#sec">d</a>"##;
+        let links = manual_local_links(html);
+        assert_eq!(
+            links,
+            vec![("report.qmd", None), ("dash.html", Some("sec"))]
+        );
     }
 
     #[test]
