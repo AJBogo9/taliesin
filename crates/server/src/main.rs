@@ -217,6 +217,7 @@ fn collect_file_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
     let media = dx::validate_local_media(&doc.blocks, base);
     let links = dx::validate_local_links(&doc.blocks, base);
     let reactive = dx::validate_js_reactive_graph(&doc.blocks);
+    let a11y = dx::validate_a11y(&doc.blocks, doc.format);
     let cites = dx::citations_without_bibliography(&src, &doc.blocks);
     let mut out: Vec<Diagnostic> = Vec::new();
     // Malformed YAML front matter: the lenient line-parser silently mis-extracts
@@ -238,6 +239,7 @@ fn collect_file_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
             .chain(media.iter())
             .chain(links.iter())
             .chain(reactive.iter())
+            .chain(a11y.iter())
             .chain(cites.iter())
             .map(|w| diag_from(w, &path_str)),
     );
@@ -284,6 +286,7 @@ fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
         let assets = dx::validate_local_assets(&doc.blocks, base);
         let media = dx::validate_local_media(&doc.blocks, base);
         let reactive = dx::validate_js_reactive_graph(&doc.blocks);
+        let a11y = dx::validate_a11y(&doc.blocks, doc.format);
         let cites = dx::citations_without_bibliography(&src, &doc.blocks);
         for w in dups
             .iter()
@@ -291,6 +294,7 @@ fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
             .chain(assets.iter())
             .chain(media.iter())
             .chain(reactive.iter())
+            .chain(a11y.iter())
             .chain(cites.iter())
         {
             out.push(diag_from(w, &page.rel));
@@ -1408,6 +1412,9 @@ mod mirror_tests {
             "local video not found",
             "unknown reactive input",
             "reactive dependency cycle",
+            "heading level skips",
+            "has no accessible name",
+            "image is missing alt text",
         ];
         fn walk(dir: &Path, skip: &[&str], out: &mut Vec<std::path::PathBuf>) {
             for e in fs::read_dir(dir).unwrap() {
@@ -1494,6 +1501,100 @@ mod mirror_tests {
         assert!(
             diags.iter().all(|d| d.file.contains("doc.qmd")),
             "located to file: {diags:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn collect_diagnostics_surfaces_a11y_rules() {
+        // One doc tripping each new static a11y rule: a raw `<img>` with no alt, an h2->h4
+        // heading skip, and an empty (icon-only) link. `check` must surface them all, located,
+        // while leaving an `alt`-bearing image and a single-level heading step alone.
+        let dir = tmp("check-a11y");
+        let f = dir.join("doc.qmd");
+        fs::write(
+            &f,
+            "---\ntitle: T\n---\n\n\
+             ## Section\n\n\
+             <img src=\"raw.png\">\n\n\
+             ![described](ok.png) and a [real link](page.html).\n\n\
+             #### Skips a level\n\n\
+             Here is [](#) an icon-only link.\n",
+        )
+        .unwrap();
+        let diags = collect_diagnostics(&f).expect("ok");
+        let has = |needle: &str| diags.iter().any(|d| d.message.contains(needle));
+        assert!(has("image is missing alt text"), "raw img: {diags:?}");
+        assert!(
+            has("heading level skips from h2 to h4"),
+            "heading skip: {diags:?}"
+        );
+        assert!(has("link has no accessible name"), "empty link: {diags:?}");
+        // The markdown image (auto-alt) and the text link must NOT be flagged.
+        assert_eq!(
+            diags
+                .iter()
+                .filter(|d| d.message.contains("image is missing alt text"))
+                .count(),
+            1,
+            "only the raw alt-less img: {diags:?}"
+        );
+        assert_eq!(
+            diags
+                .iter()
+                .filter(|d| d.message.contains("link has no accessible name"))
+                .count(),
+            1,
+            "only the empty link: {diags:?}"
+        );
+        assert!(
+            diags
+                .iter()
+                .filter(|d| d.message.contains("has no accessible name")
+                    || d.message.contains("missing alt text")
+                    || d.message.contains("heading level skips"))
+                .all(|d| d.line.is_some() && d.file.contains("doc.qmd")),
+            "a11y diagnostics located to file+line: {diags:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn corpus_a11y_pin_doc_trips_each_rule_through_check() {
+        // The corpus pin (`corpus/diagnostics/a11y.qmd`, exempt from the no-false-positive
+        // guard) must fire every a11y rule through the real `collect_diagnostics` flow.
+        let doc = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/diagnostics/a11y.qmd");
+        let diags = collect_diagnostics(&doc).expect("pin doc checks");
+        let has = |needle: &str| diags.iter().any(|d| d.message.contains(needle));
+        assert!(has("image is missing alt text"), "raw img: {diags:?}");
+        assert!(
+            has("heading level skips from h2 to h4"),
+            "heading skip: {diags:?}"
+        );
+        assert!(has("link has no accessible name"), "empty link: {diags:?}");
+        assert!(
+            has("button has no accessible name"),
+            "empty button: {diags:?}"
+        );
+    }
+
+    #[test]
+    fn collect_diagnostics_skips_heading_skip_for_decks() {
+        // A reveal deck's `## … ####` is per-slide structure, not a single outline, so the
+        // heading-skip rule must not fire on a deck.
+        let dir = tmp("check-a11y-deck");
+        let f = dir.join("deck.qmd");
+        fs::write(
+            &f,
+            "---\ntitle: T\nformat: revealjs\n---\n\n## Slide one\n\n#### A deeper heading\n",
+        )
+        .unwrap();
+        let diags = collect_diagnostics(&f).expect("ok");
+        assert!(
+            !diags
+                .iter()
+                .any(|d| d.message.contains("heading level skips")),
+            "decks skip the heading-skip rule: {diags:?}"
         );
         let _ = fs::remove_dir_all(&dir);
     }
