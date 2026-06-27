@@ -41,7 +41,18 @@ qmd-fast check .                          # fails (exit 1) if any page has a dia
 qmd-fast check . --format json > problems.json
 ```
 
-`--version` / `-V` prints the version; `--help` / `-h` (or no arguments) prints usage. If
+`--format json` stays valid JSON even when `check` itself can't run: an unreadable or
+missing path (or an empty site) is reported as a single `{"error": "…"}` object on
+**stdout** (with a non-zero exit), so `qmd-fast check x --format json | jq` never chokes
+on a stray human message. Human format keeps that error on stderr. Pointing `check` at a
+directory that has a `_quarto.yml` but no `_site.yml` reports a migration breadcrumb
+(qmd-fast uses the flat-native `_site.yml`, not Quarto's `_quarto.yml`) rather than a
+confusing `no _site.yml`; `build` logs the same breadcrumb.
+
+`--version` / `-V` prints the version; `--help` / `-h` (or no arguments) prints the
+top-level usage. Putting `--help` / `-h` **after** a subcommand
+(`qmd-fast build --help`, `qmd-fast check -h`, …) prints a focused page for just that
+command: its synopsis, its flags, and a one-line example. If
 the default port (or one you pass) is already in use, `preview` auto-picks the next free
 port and logs the chosen URL.
 

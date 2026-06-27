@@ -20,6 +20,17 @@ use std::process::ExitCode;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().collect();
+    // `qmd-fast <cmd> --help` (or `-h`): print that subcommand's focused help and
+    // succeed, before the command's own arg parsing (which would otherwise treat
+    // `--help` as an unknown flag + then error on the missing positional). Only fires
+    // when the first token is a real subcommand with a dedicated help page.
+    if let Some(cmd) = args.get(1).map(String::as_str)
+        && args[2..].iter().any(|a| a == "--help" || a == "-h")
+        && let Some(help) = subcommand_help(cmd)
+    {
+        print!("{help}");
+        return ExitCode::SUCCESS;
+    }
     match args.get(1).map(String::as_str) {
         Some("render") => cmd_render(args.get(2)),
         Some("build") => cmd_build(&args),
@@ -313,6 +324,29 @@ fn format_json(diags: &[Diagnostic]) -> String {
     serde_json::to_string_pretty(diags).unwrap_or_else(|_| "[]".to_string())
 }
 
+/// Serialize a `check --format json` failure (an unreadable path, an empty site) as a
+/// single `{"error": "<message>"}` object, so the JSON stream a caller pipes to `jq`
+/// stays valid even when `check` couldn't run. The message is JSON-escaped (quotes,
+/// newlines), never raw-concatenated.
+fn json_error(message: &str) -> String {
+    serde_json::json!({ "error": message }).to_string()
+}
+
+/// A migration breadcrumb when `dir` is a Quarto project (`_quarto.yml` present) with
+/// no native `_site.yml`. Without it, the site walker reports `no _site.yml at <root>`
+/// — a message naming a file the user never created. Returns `None` for any directory
+/// that already has a `_site.yml`, lacks a `_quarto.yml`, or isn't a directory.
+fn quarto_migration_hint(dir: &Path) -> Option<String> {
+    if !dir.is_dir() || dir.join("_site.yml").exists() || !dir.join("_quarto.yml").exists() {
+        return None;
+    }
+    Some(
+        "found `_quarto.yml` — qmd-fast uses `_site.yml` (a flat native schema), not \
+         Quarto's `_quarto.yml`; run `qmd-fast init` for a starter, or see the docs"
+            .to_string(),
+    )
+}
+
 fn format_human(diags: &[Diagnostic]) -> String {
     let mut s = String::new();
     for d in diags {
@@ -356,10 +390,35 @@ fn cmd_check(args: &[String]) -> ExitCode {
         ));
         return ExitCode::FAILURE;
     }
-    let diags = match collect_diagnostics(Path::new(path)) {
+    let target = Path::new(path);
+    // A directory carrying a `_quarto.yml` but no `_site.yml` is a Quarto project, not
+    // a native one: surface a migration breadcrumb instead of the confusing
+    // `_site.yml: no _site.yml` diagnostic the site walker would otherwise emit.
+    if let Some(hint) = quarto_migration_hint(target) {
+        if format == "json" {
+            let diag = Diagnostic {
+                file: "_quarto.yml".to_string(),
+                line: None,
+                message: hint,
+            };
+            println!("{}", format_json(std::slice::from_ref(&diag)));
+        } else {
+            eprintln!("{path}: {hint}");
+            eprintln!("1 problem");
+        }
+        return ExitCode::FAILURE;
+    }
+    let diags = match collect_diagnostics(target) {
         Ok(d) => d,
+        // Honour `--format json` on the error path too: a human stderr line would
+        // corrupt a `check … --format json | jq` stream (and leave stdout empty), so
+        // emit a `{"error": …}` object to stdout. Human format keeps the stderr message.
         Err(e) => {
-            log::error(&e);
+            if format == "json" {
+                println!("{}", json_error(&e));
+            } else {
+                log::error(&e);
+            }
             return ExitCode::FAILURE;
         }
     };
@@ -624,11 +683,11 @@ fn build_page_executing(
             exec::Executor::with_freeze(freeze::page_path(&base.join("_freeze"), fallback))
                 .in_dir(base);
         doc.blocks = ex.run(std::mem::take(&mut doc.blocks)).await;
-        if ex.diagnostic().is_some() {
-            log::warn(
-                "kernel unavailable; code cells emitted as source \
-                 (set QMD_FAST_PYTHON to a python with ipykernel)",
-            );
+        // The executor's own diagnostic already names the failing language and the
+        // right env var (`QMD_FAST_R` for R, `QMD_FAST_PYTHON` otherwise) — use it
+        // verbatim instead of a hardcoded python-only hint.
+        if let Some(d) = ex.diagnostic() {
+            log::warn(&d);
         }
         // A crashed cell bakes its traceback into the page (exit 0 + silent stderr
         // before this); log it located and count it toward `--strict`.
@@ -891,8 +950,18 @@ fn build_site(root: &Path, out_override: Option<&str>, strict: bool) -> ExitCode
 }
 
 async fn build_site_async(root: &Path, out_override: Option<&str>, strict: bool) -> ExitCode {
+    // A `_quarto.yml`-only directory gets the migration breadcrumb instead of the
+    // site walker's `no _site.yml at <root>` (which names a file the user never made).
+    let quarto_hint = quarto_migration_hint(root);
+    if let Some(hint) = &quarto_hint {
+        log::warn(hint);
+    }
     let site = qmd_fast_core::Site::discover(root);
     for w in &site.warnings {
+        // When the breadcrumb already fired, drop the redundant `no _site.yml` warning.
+        if quarto_hint.is_some() && w.starts_with("no _site.yml") {
+            continue;
+        }
         log::warn(w);
     }
     if site.pages.is_empty() {
@@ -1835,6 +1904,99 @@ fn usage() {
     println!("     QMD_FAST_NO_EXEC (=--no-exec, never run code cells)");
 }
 
+/// Focused help for one subcommand (synopsis + its flags + a one-line example), or
+/// `None` for a name with no dedicated page (the caller falls back to `usage()`).
+/// Aliases (`dev`/`serve`) resolve to their canonical command's help. Kept as a flat
+/// match over the canonical name to mirror the hand-rolled `usage()` style; printed by
+/// `main()` when `--help`/`-h` follows a known subcommand.
+fn subcommand_help(cmd: &str) -> Option<&'static str> {
+    let text = match cmd {
+        "preview" | "dev" | "serve" => {
+            "qmd-fast preview <file.qmd | dir> [port] [--host] [--open] [--no-exec]\n\
+             \n\
+             Live preview server (aliases: dev, serve). A file previews one document; a\n\
+             directory previews the whole SITE with cross-page nav + per-page hot reload.\n\
+             Default port 4321 (auto-picks the next free one if it's taken).\n\
+             \n\
+             Flags:\n\
+             \x20 --host      bind your LAN + print a QR code for phones (token-gated)\n\
+             \x20 --open      launch the default browser at the preview URL\n\
+             \x20 --no-exec   render code cells as source, never executing them\n\
+             \n\
+             Example:\n\
+             \x20 qmd-fast preview index.qmd --open\n"
+        }
+        "build" => {
+            "qmd-fast build <file.qmd | dir> [out.html] [--out <dir>] [--strict] [--bare]\n\
+             \n\
+             Render a self-contained HTML file. A directory builds the whole SITE to\n\
+             _site/. Default output is <name>.html beside the source.\n\
+             \n\
+             Flags:\n\
+             \x20 --out <dir>  write a portable folder (<dir>/index.html + copied assets)\n\
+             \x20 --strict     exit non-zero on a cell error or located warning (CI gate)\n\
+             \x20 --bare       single-doc only: zero-<script>, CSS-only-theme HTML\n\
+             \n\
+             Example:\n\
+             \x20 qmd-fast build post.qmd --strict\n"
+        }
+        "check" => {
+            "qmd-fast check <file.qmd | dir> [--format human|json]\n\
+             \n\
+             Render in memory and list every located diagnostic; exits non-zero if any\n\
+             are found (a CI / pre-publish gate). Does NOT execute code cells.\n\
+             \n\
+             Flags:\n\
+             \x20 --format human  path:line: message lines to stderr (default)\n\
+             \x20 --format json   a [{file,line,message}] array to stdout (pipes to jq)\n\
+             \n\
+             Example:\n\
+             \x20 qmd-fast check . --format json | jq\n"
+        }
+        "render" => {
+            "qmd-fast render <file.qmd>\n\
+             \n\
+             Render a full HTML page to stdout (one-shot). Static: it does NOT execute\n\
+             code cells, so kernel cells emit as source with empty outputs. Use build or\n\
+             preview to run them.\n\
+             \n\
+             Example:\n\
+             \x20 qmd-fast render post.qmd > post.html\n"
+        }
+        "schema" => {
+            "qmd-fast schema [--out <dir>]\n\
+             \n\
+             Emit the bundled JSON Schemas for qmd-fast's YAML config (document front\n\
+             matter + _site.yml) so an editor's YAML language server can validate them.\n\
+             Prints both to stdout, or writes two files with --out <dir>.\n\
+             \n\
+             Example:\n\
+             \x20 qmd-fast schema --out .schemas\n"
+        }
+        "blocks" => {
+            "qmd-fast blocks <file.qmd>\n\
+             \n\
+             List the document's block ids + sourcepos + source file + a short preview\n\
+             (a debugging aid for the block model). Does NOT execute code cells.\n\
+             \n\
+             Example:\n\
+             \x20 qmd-fast blocks post.qmd\n"
+        }
+        "init" => {
+            "qmd-fast init [dir]\n\
+             \n\
+             Scaffold a minimal previewable site into dir (default the current\n\
+             directory): writes _site.yml + index.qmd, then prints the preview hint.\n\
+             Refuses to overwrite existing files.\n\
+             \n\
+             Example:\n\
+             \x20 qmd-fast init my-site\n"
+        }
+        _ => return None,
+    };
+    Some(text)
+}
+
 #[cfg(test)]
 mod build_diag_tests {
     use super::*;
@@ -1984,5 +2146,92 @@ mod cli_onboarding_tests {
         assert_eq!(qmd_fast_core::closest("innit", COMMANDS), Some("init"));
         // Something far from every command yields no suggestion (not a wild guess).
         assert_eq!(qmd_fast_core::closest("frobnicate", COMMANDS), None);
+    }
+}
+
+#[cfg(test)]
+mod cli_microcopy_tests {
+    use super::*;
+    use std::fs;
+
+    fn tmp(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("qmd-microcopy-{}-{name}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// The `--format json` error path must produce a single valid JSON object
+    /// (`{"error": "..."}`) so a `check … --format json | jq` pipeline stays parseable
+    /// even when the path can't be read. This pins the serialized shape.
+    #[test]
+    fn json_error_is_valid_json_object() {
+        let s = json_error("cannot read missing.qmd: No such file or directory");
+        let v: serde_json::Value = serde_json::from_str(&s).expect("error envelope is valid JSON");
+        assert_eq!(
+            v.get("error").and_then(|e| e.as_str()),
+            Some("cannot read missing.qmd: No such file or directory")
+        );
+        // Quotes/newlines in the message stay escaped (not a raw concatenation).
+        let tricky = json_error("bad \"path\"\nline2");
+        let v2: serde_json::Value = serde_json::from_str(&tricky).expect("escaped JSON");
+        assert_eq!(
+            v2.get("error").and_then(|e| e.as_str()),
+            Some("bad \"path\"\nline2")
+        );
+    }
+
+    /// A directory with a `_quarto.yml` but no `_site.yml` gets a clear migration
+    /// breadcrumb (naming both files), not the confusing `no _site.yml` message.
+    #[test]
+    fn quarto_hint_fires_only_without_site_yml() {
+        let dir = tmp("quarto-only");
+        fs::write(dir.join("_quarto.yml"), "project:\n  type: website\n").unwrap();
+
+        let hint =
+            quarto_migration_hint(&dir).expect("breadcrumb fires for a _quarto.yml-only dir");
+        assert!(
+            hint.contains("_quarto.yml"),
+            "names the Quarto file: {hint}"
+        );
+        assert!(hint.contains("_site.yml"), "names the native file: {hint}");
+
+        // Once a native `_site.yml` exists, the project is native — no breadcrumb.
+        fs::write(dir.join("_site.yml"), "title: S\n").unwrap();
+        assert!(
+            quarto_migration_hint(&dir).is_none(),
+            "no breadcrumb once _site.yml is present"
+        );
+
+        // A plain directory (neither file) never triggers it.
+        let plain = tmp("plain");
+        assert!(quarto_migration_hint(&plain).is_none());
+
+        let _ = fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&plain);
+    }
+
+    /// Each covered subcommand has a focused help that names itself and shows an
+    /// example; an unknown command has none.
+    #[test]
+    fn subcommand_help_covers_documented_commands() {
+        for cmd in [
+            "preview", "build", "check", "render", "schema", "blocks", "init",
+        ] {
+            let help = subcommand_help(cmd).unwrap_or_else(|| panic!("help for `{cmd}`"));
+            assert!(
+                help.contains(cmd),
+                "`{cmd}` help should name the subcommand: {help}"
+            );
+            assert!(
+                help.contains("qmd-fast"),
+                "`{cmd}` help should show a `qmd-fast …` example: {help}"
+            );
+        }
+        // Aliases resolve to the canonical (preview) help.
+        assert_eq!(subcommand_help("dev"), subcommand_help("preview"));
+        assert_eq!(subcommand_help("serve"), subcommand_help("preview"));
+        // An unrecognized command has no focused help (falls back to top-level usage).
+        assert!(subcommand_help("frobnicate").is_none());
     }
 }
