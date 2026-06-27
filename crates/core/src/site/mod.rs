@@ -242,6 +242,14 @@ impl Site {
             .unwrap_or(if self.is_book() { "_book" } else { "_site" })
     }
 
+    /// Whether the author supplies their own `404.qmd` (output URL `404.html`). When
+    /// true the build must NOT clobber it with the built-in not-found template, and
+    /// the page is kept out of the Cmd-K search index (a 404 is navigation chrome, not
+    /// content). When false the build emits [`render_404_page`](Self::render_404_page).
+    pub fn has_author_404(&self) -> bool {
+        self.pages.iter().any(|p| p.url == "404.html")
+    }
+
     /// Look up a page by its source rel-path or its output URL (`serve` accepts
     /// either an editor path or a browser request).
     pub fn page(&self, rel_or_url: &str) -> Option<&Page> {
@@ -1082,5 +1090,49 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn author_404_is_honored_and_excluded_from_search() {
+        use std::fs;
+        let root = std::env::temp_dir().join(format!("qmd-404-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("_site.yml"), "title: Demo\n").unwrap();
+        fs::write(root.join("index.qmd"), "---\ntitle: Home\n---\n\nHome.\n").unwrap();
+        fs::write(
+            root.join("404.qmd"),
+            "---\ntitle: Lost\n---\n\n# Custom not found\n\nNope.\n",
+        )
+        .unwrap();
+
+        let site = Site::discover(&root);
+        assert!(
+            site.has_author_404(),
+            "a root 404.qmd is detected as the author's own 404 page"
+        );
+        // The author's 404 must never leak into the Cmd-K full-text index.
+        assert!(
+            !site.search_index_json.contains("\"u\":\"404.html\""),
+            "404.html excluded from search: {}",
+            site.search_index_json
+        );
+        // The real content page is still indexed.
+        assert!(
+            site.search_index_json.contains("\"u\":\"index.html\""),
+            "index.html still indexed: {}",
+            site.search_index_json
+        );
+
+        // A site with no 404.qmd reports false (the built-in template applies).
+        let bare = std::env::temp_dir().join(format!("qmd-no404-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&bare);
+        fs::create_dir_all(&bare).unwrap();
+        fs::write(bare.join("_site.yml"), "title: Demo\n").unwrap();
+        fs::write(bare.join("index.qmd"), "---\ntitle: Home\n---\n\nHome.\n").unwrap();
+        assert!(!Site::discover(&bare).has_author_404());
+
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&bare);
     }
 }

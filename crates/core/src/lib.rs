@@ -39,6 +39,7 @@ pub mod schema;
 pub mod site;
 
 pub use diff::{BlockOp, diff_blocks};
+pub use frontmatter::closest;
 pub use render::{
     Block, DeckParts, DocFormat, OutputMode, PageParts, RenderedDoc, SEARCH_JS, SiteCtx,
     TOC_SPY_JS, assemble_deck_page, assemble_html_page, code_scripts, code_scripts_for,
