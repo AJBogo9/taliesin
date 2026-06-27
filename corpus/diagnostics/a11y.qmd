@@ -2,9 +2,11 @@
 title: "Accessibility diagnostics demo"
 ---
 
-This page deliberately contains accessibility problems so the preview's client-side
-a11y audit has something to flag in the dev-menu panel. Each located finding (the
-ones tied to a block) jumps to its source line on click, like any other diagnostic.
+This page deliberately contains accessibility problems so both the preview's
+client-side a11y audit (the dev-menu panel) and the static `qmd-fast check` a11y gate
+(`validate_a11y`) have something to flag. It lives in `corpus/diagnostics/`, which is
+exempt from the corpus clean-render guards. Each located finding (the ones tied to a
+block) jumps to its source line on click, like any other diagnostic.
 
 ## A section with a raw image
 
@@ -17,4 +19,5 @@ The raw `<img>` above has no `alt` attribute, so a screen reader can't describe 
 
 This heading is an `h4` directly under the `h2` above, skipping `h3`.
 
-Here is [](#) — a link with no text, so it has no accessible name.
+Here is [](#) — a link with no text, so it has no accessible name. And here is a
+<button></button> with no label, which a screen reader announces as just "button".
