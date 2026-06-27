@@ -134,6 +134,28 @@ unit/corpus tests (gating, all 3 theme branches, site-path gating, click-to-sour
 browser-verified light+dark, 0 console msgs; ~58% smaller than a normal build. Documented in
 `docs/guide/reference/cli.qmd` (also documented the previously-undocumented `--strict`).
 
+**2026-06-27 (later): release-hardening batch shipped** (branch `release-hardening`, 5 parallel
+worktree lanes + coordinator integration; all merged on the branch, full `cargo test` green +
+chrome-devtools-verified). **(1) `check` superset extended** (`crate::diagnostics`): broken
+internal/relative links + cross-page link/anchor existence (site page registry), local **video**
+paths, and a static mirror of the `{js}` reactive graph flagging dangling `//| input` names +
+dependency cycles (Kahn's). External `http(s)` links are deliberately never fetched (offline +
+deterministic). Pinned `corpus/diagnostics/links.qmd`. **(2) a11y/touch chrome parity:** every nav
+landmark aria-labelled (Primary / Chapters / Pagination / Table of contents — incl. `site/chrome.rs`
++ the preview TOC placeholders), one shared `--qmd-focus` `:focus-visible` ring, lightbox dialog
+name, deck **slide roles + "Slide N of M"** + a polite live region, `forced-colors`/`prefers-contrast`
+blocks, and **server-side** skip-link + focusable `<main>` + real image `alt` (no longer JS-only).
+**(3) `.bib` fixes** (cite.rs, author-greenlit, byte-stable IEEE guard): LaTeX accents→Unicode,
+brace-protected corporate authors render whole, `@string`, `@inbook`/`@incollection` booktitle+pages,
+auto-References dedup vs a manual `# References`. **(4) render/asset:** Mermaid offline now shows a
+visible `[data-mermaid-error]` banner (+ `QMD_FAST_MERMAID_URL` to self-host) instead of failing
+silently; `figure height=` honored; `{{< video …?query >}}` ships intact; `THIRD_PARTY.md` CDN
+inventory corrected. **(5) CLI onboarding:** `qmd-fast init` scaffold, README install/prereqs,
+`usage()` advertises the `<dir>` site mode, unknown-command did-you-mean; **site `build` honors the
+author's `404.qmd`** (no overwrite, excluded from search). Cross-lane snag caught at integration:
+lane-D's corpus video tripped lane-A's new local-video rule → switched it to a (realistic) remote
+token URL.
+
 ## To resume
 
 **Working method:** branch per feature; brainstorm if there's a fork; write a spec under
@@ -169,39 +191,23 @@ and `include_relative_base.rs`. Browser-verified across 390/900/1440; **touch ge
 the F5 round-trip still want real-device confirmation.**
 
 **Still open — high value**
-- [ ] **Extend `check` further (most of the superset shipped).** `1aa7653`/`1cf902c` added duplicate
-  heading `{#id}`, manual `#anchor` targets, local image paths, citation-with-no-`bibliography:`, and
-  malformed YAML to the static channel. Still missing: broken plain/external links, local **video** paths,
-  cross-page link/anchor existence (needs the site page registry), dangling `//| input` names + reactive
-  cycles. Read-only static analysis; matches the "diagnostics not silence" doctrine.
-- [ ] **Touch + a11y parity for the rest of the chrome:** aria-labels on the multiple nav landmarks, one
-  consistent `:focus-visible` ring, focus management for `role=dialog` menus, slide roles + "slide N of M",
-  forced-colors/`prefers-contrast`, and an a11y gate runnable from `check` (audit lives only in live preview).
-- [ ] **[a] `.bib` LaTeX accents / `@inbook` / `@string` / corporate authors** render wrong (`M{\"u}ller`,
-  `Erd{\H{o}}s`, `{World Health Organization}` → `W. H. Organization`); cited-with-no-`bibliography:` is
-  silent; auto-References duplicates a manual `# References`. **DEFERRED: `cite.rs` is Do-NOT-touch — needs
-  explicit greenlight.** Fix: accent→Unicode table + `clean()` on name parts; `@string`; inbook fields.
+- [ ] **a11y gate runnable from `check`** (the last slice of the a11y-parity item; the rest shipped
+  2026-06-27). The client-side a11y audit still lives only in live preview — port a static subset
+  (missing landmarks, `img:not([alt])`, statically-knowable contrast) into the `check` channel so a
+  green `check` also vouches for a11y. Pairs with the now-server-side `alt`/landmarks/skip-link.
+- [ ] **`check`: broken plain/external links + per-subcommand `--help`.** External `http(s)` links are
+  intentionally not fetched (the rest of the link/anchor/video/reactive superset shipped 2026-06-27);
+  if ever wanted, gate behind an opt-in online flag. `usage()` now advertises `<dir>` + did-you-mean,
+  but a true per-subcommand `--help` is still a one-line-each gap.
 
 **Still open — medium**
 - [ ] **[B] Book chapter sidebar dumps stacked on top of content at ≤~900px (laptop-portrait band)** instead
   of collapsing to a drawer. (Deck scales+centers gracefully in portrait — leave it.)
-- [ ] **Mermaid hardcoded CDN + silent unstyled offline failure** (`render/mod.rs:1004`); breaks the
-  offline-first promise; `THIRD_PARTY.md` also wrongly calls it "the sole CDN dependency" while three.js/unpkg
-  ship too. Vendor it (or make configurable + copy into `--out`) + a `[data-mermaid-error]` message.
-- [ ] **Site `build` clobbers author's `404.qmd`** with the built-in template (renders+counts it, then
-  overwrites) and indexes the original into Cmd-K search. Honor or skip-and-warn.
 - [ ] **CLI microcopy:** build kernel hint hardcodes `QMD_FAST_PYTHON` even when R failed (discards the
   language-aware `exec.rs` diagnostic); raw ANSI leaks into HTML for R stream/stderr (`kernel.rs:672` —
   **DEFERRED, exec/kernel Do-NOT-touch**); `check --format json` on an unreadable path prints human text to
   stderr (breaks `| jq`); a `_quarto.yml` project yields a `_site.yml: no _site.yml` diagnostic naming a
   nonexistent file (add a migration breadcrumb).
-- [ ] **Onboarding ~zero:** no README install/prereqs section, no scaffold/init command, no per-subcommand
-  `--help`, no docs URL in the banner, top-level usage hides the `<dir>` site capability; reuse the existing
-  Levenshtein helper for unknown-command did-you-mean.
-- [ ] **Figure `height=` silently dropped** (`figure.rs:70`); `{{< video clip.mp4?token=… >}}` / any `=`-bearing
-  src ships as literal braces (`embed_path` rejects `=`, `extension/mod.rs:568`).
-- [ ] **Static-build vs JS-runtime divergence:** skip-link + focusable `<main>` only exist at runtime (emit
-  server-side in `page.rs`); `![]` always emits `alt=''` so the live a11y audit's `img:not([alt])` can never fire.
 - [ ] Long tail (perf: shared/minified/compressed assets, O(change) per-edit; SEO: sitemap/robots/JSON-LD;
   publish hygiene: stop mirroring `.md`/`.scss`/planning into `_site/`; dead CSS/tokens `--qmd-ink`/`--qmd-scale`;
   doc/code drift) — see the audit digest `polishThemes` + `whatsMissing`.

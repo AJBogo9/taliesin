@@ -14,6 +14,7 @@ title: "CLI reference"
 | `blocks <file.qmd>` | List block ids and sourcepos (for debugging) |
 | `schema [--out <dir>]` | Emit the bundled JSON Schemas for `_site.yml` + front matter (editor autocomplete) |
 | `check <file.qmd\|dir> [--format human\|json]` | List every located diagnostic and exit non-zero if any (a CI / pre-publish gate) |
+| `init [dir]` | Scaffold a minimal previewable site (`_site.yml` + `index.qmd`) in `dir` (default `.`); refuses to overwrite |
 
 `check` renders the document or site in memory and reports everything that flows
 through the diagnostics channel: unknown front-matter / `_site.yml` / cell-option /
@@ -92,6 +93,7 @@ works from anywhere.
 | `QMD_FAST_NO_EXEC` | Same as `--no-exec` (never execute code cells) |
 | `QMD_FAST_NO_CACHE` | Ignore and skip writing the `_freeze/` execution cache |
 | `QMD_FAST_NO_CLEAR` | Don't clear the terminal on each render (keep scrollback) |
+| `QMD_FAST_MERMAID_URL` | Override the Mermaid library URL (self-host next to your site for a fully offline build; on load failure a visible `[data-mermaid-error]` banner shows the diagram source) |
 
 Without a kernel, cells render as highlighted source and the preview shows a
 "kernel unavailable" diagnostic rather than failing.
