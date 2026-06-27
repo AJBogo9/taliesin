@@ -120,6 +120,24 @@ pub enum DocFormat {
     Reveal,
 }
 
+/// How a page is being emitted, which decides how much optional machinery ships.
+/// Threaded from the build CLI through the page builders onto [`PageParts`]; the
+/// live preview always uses [`OutputMode::Preview`] so the dev loop is untouched.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OutputMode {
+    /// Live dev preview: ship every enhancer unconditionally (a doc can gain any
+    /// construct on an edit, so gating would race the live mount). The default.
+    #[default]
+    Preview,
+    /// A static `build`/`render`: content-gate the DOM-specific enhancer scripts to
+    /// what the page actually contains. `code-enhance.js` (reader menu + a11y) still
+    /// ships on every page.
+    Build,
+    /// A bare single-doc build: zero `<script>`, zero CDN, CSS-only theming. For a
+    /// rough draft, an archive, or a future print pipeline.
+    Bare,
+}
+
 /// A non-fatal render warning, optionally carrying a click-to-source location.
 /// When `line` is `Some`, the dev server renders it as a clickable diagnostic
 /// (jump-to-source); `file` is doc-base-relative (matching `Block::source_file`)

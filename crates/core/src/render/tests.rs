@@ -1793,3 +1793,123 @@ fn typography_polish_css_ships() {
         "balance rule must ship"
     );
 }
+
+#[test]
+fn build_mode_content_gates_separate_enhancers() {
+    // Pure prose: a static build keeps code-enhance.js (the reader menu + a11y layer
+    // that every page benefits from) but drops the DOM-specific enhancers it can't use.
+    let prose = code_scripts_for("<p>Just prose.</p>", OutputMode::Build);
+    assert!(
+        prose.contains("qmdInitReaderMenu"),
+        "build keeps code-enhance.js"
+    );
+    assert!(
+        !prose.contains("Narrated code walkthrough"),
+        "no walkthrough.js on a prose page"
+    );
+    assert!(
+        !prose.contains("Tabbed panels: the interaction layer"),
+        "no tabset.js on a prose page"
+    );
+    assert!(
+        !prose.contains("Scrollytelling: scroll-driven sticky-stage"),
+        "no scrolly.js on a prose page"
+    );
+    assert!(
+        !prose.contains("self-contained enhancer module"),
+        "no mermaid.js on a prose page"
+    );
+    assert!(
+        !prose.contains("a tiny enhancer that replaces the vendored"),
+        "no qmd-js.js on a prose page"
+    );
+
+    // A page that actually contains a tabset gets tabset.js in a build (but still not
+    // the enhancers for constructs it lacks).
+    let tabset = code_scripts_for("<div class=\"panel-tabset\"></div>", OutputMode::Build);
+    assert!(
+        tabset.contains("Tabbed panels: the interaction layer"),
+        "a tabset on the page ships tabset.js"
+    );
+    assert!(
+        !tabset.contains("Narrated code walkthrough"),
+        "still no walkthrough.js"
+    );
+
+    // Preview ships every enhancer regardless of body (a doc can gain any construct on
+    // an edit — same reasoning as KaTeX/d3 always-on in preview). Gating is Build-only.
+    let preview = code_scripts_for("<p>Just prose.</p>", OutputMode::Preview);
+    assert!(
+        preview.contains("self-contained enhancer module"),
+        "preview ships mermaid.js unconditionally"
+    );
+    assert!(
+        preview.contains("Tabbed panels: the interaction layer"),
+        "preview ships tabset.js unconditionally"
+    );
+
+    // Bare ships no enhancer scripts at all (the zero-<script> contract).
+    assert!(
+        code_scripts_for("<p>x</p>", OutputMode::Bare).is_empty(),
+        "bare ships no enhancer scripts"
+    );
+}
+
+#[test]
+fn bare_theming_resolves_per_theme_default() {
+    // CSS-only theming has three branches: a forced dark theme hard-codes the dark
+    // layer onto :root (no media query); a forced light theme adds nothing (base
+    // :root is light); an unforced (auto) theme follows the OS via a media query.
+    // `#16181d` is the dark `--qmd-bg`, present only in the dark layer.
+    let bare = |src: &str| render_doc_to_page(&render_document(src), "t", OutputMode::Bare);
+
+    let dark = bare("---\ntheme: dark\n---\n\nx\n");
+    assert!(dark.contains("#16181d"), "forced dark ships the dark layer");
+    assert!(
+        !dark.contains("@media (prefers-color-scheme: dark)"),
+        "forced dark is unconditional, not OS-gated"
+    );
+    assert!(!dark.contains("<script"), "still script-free");
+
+    let light = bare("---\ntheme: light\n---\n\nx\n");
+    assert!(
+        !light.contains("#16181d"),
+        "forced light ships no dark layer (base :root is light)"
+    );
+
+    let auto = bare("---\ntitle: T\n---\n\nx\n");
+    assert!(
+        auto.contains("@media (prefers-color-scheme: dark)"),
+        "an unforced theme follows the OS via a media query"
+    );
+    assert!(
+        auto.contains("#16181d"),
+        "the OS-gated layer still carries the dark vars"
+    );
+}
+
+#[test]
+fn site_build_path_content_gates_enhancers() {
+    // The in-site page builder hardcodes OutputMode::Build, so a site/book build
+    // content-gates the separate enhancers just like a single-doc build (this pins
+    // the spec's "site builds get Phase-1 gating too" claim). Markers are each
+    // script's distinctive comment (absent from base.css, unlike "walkthrough").
+    let doc = render_document("# A chapter\n\nProse only — no tabset, mermaid, or scrolly.\n");
+    let page = html_page_from_doc_in_site(&doc, "chapter", &SiteCtx::default());
+    assert!(
+        page.contains("qmdInitReaderMenu"),
+        "a site page still ships code-enhance.js (reader menu + a11y)"
+    );
+    assert!(
+        !page.contains("Tabbed panels: the interaction"),
+        "no tabset.js on a prose site page"
+    );
+    assert!(
+        !page.contains("Scrollytelling: scroll-driven"),
+        "no scrolly.js on a prose site page"
+    );
+    assert!(
+        !page.contains("self-contained enhancer module"),
+        "no mermaid.js on a prose site page"
+    );
+}

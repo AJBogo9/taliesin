@@ -254,7 +254,12 @@ async fn page_or_asset(
             .next()
             .and_then(|f| f.strip_suffix(".html"))
             .unwrap_or("deck");
-        return Html(qmd_fast_core::render_doc_to_page(&doc, stem)).into_response();
+        return Html(qmd_fast_core::render_doc_to_page(
+            &doc,
+            stem,
+            qmd_fast_core::OutputMode::Preview,
+        ))
+        .into_response();
     }
     // A `mounts:` sub-project (e.g. the docs book under /docs): render the requested
     // page from it on the fly (so its links resolve in preview, mirroring the
@@ -296,7 +301,12 @@ async fn page_or_asset(
                     .next()
                     .and_then(|f| f.strip_suffix(".html"))
                     .unwrap_or("deck");
-                return Html(qmd_fast_core::render_doc_to_page(&doc, stem)).into_response();
+                return Html(qmd_fast_core::render_doc_to_page(
+                    &doc,
+                    stem,
+                    qmd_fast_core::OutputMode::Preview,
+                ))
+                .into_response();
             }
             return serve_asset(&m.root, lookup);
         }
@@ -502,6 +512,8 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
         search_js = qmd_fast_core::SEARCH_JS,
     );
     qmd_fast_core::assemble_html_page(&qmd_fast_core::PageParts {
+        // Live preview always ships everything (a doc can gain any construct on an edit).
+        mode: qmd_fast_core::OutputMode::Preview,
         title: &title_txt,
         // Preview chrome defaults to English; the built `_site/` honours each
         // page's front-matter `lang:` via the core page builder.

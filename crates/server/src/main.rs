@@ -298,6 +298,7 @@ fn cmd_build(args: &[String]) -> ExitCode {
     let mut positionals: Vec<&str> = Vec::new();
     let mut out_dir: Option<&str> = None;
     let mut strict = false;
+    let mut bare = false;
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -310,19 +311,35 @@ fn cmd_build(args: &[String]) -> ExitCode {
                     .filter(|s| !s.starts_with("--"));
             }
             "--strict" => strict = true,
+            // `--bare`: zero-`<script>`, zero-CDN, CSS-only-theme single-doc output.
+            "--bare" => bare = true,
             s if s.starts_with("--") => {}
             s => positionals.push(s),
         }
     }
     let Some(path) = positionals.first().copied() else {
-        eprintln!("usage: qmd-fast build <file.qmd|dir> [out.html] [--out <dir>] [--strict]");
+        eprintln!(
+            "usage: qmd-fast build <file.qmd|dir> [out.html] [--out <dir>] [--strict] [--bare]"
+        );
         return ExitCode::FAILURE;
     };
     // A directory is a multi-page site project (`_site.yml` + `.qmd` pages);
     // a single `.qmd` keeps the original self-contained-page behaviour.
     if Path::new(path).is_dir() {
+        if bare {
+            log::error(
+                "--bare builds a single document, not a site (a site's navigation + \
+                 search need JavaScript)",
+            );
+            return ExitCode::FAILURE;
+        }
         return build_site(Path::new(path), out_dir, strict);
     }
+    let mode = if bare {
+        qmd_fast_core::OutputMode::Bare
+    } else {
+        qmd_fast_core::OutputMode::Build
+    };
     let src = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) => {
@@ -333,8 +350,17 @@ fn cmd_build(args: &[String]) -> ExitCode {
     let p = Path::new(path);
     let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("document");
     let base = p.parent().unwrap_or_else(|| Path::new("."));
-    let (html, resources, problems) = match build_page_executing(&src, base, stem) {
-        Ok(h) => h,
+    let (html, resources, problems) = match build_page_executing(&src, base, stem, mode) {
+        Ok(BuildResult::Page {
+            html,
+            resources,
+            problems,
+        }) => (html, resources, problems),
+        // `--bare` refused (e.g. a slide deck): the message is already user-facing.
+        Ok(BuildResult::Refused(msg)) => {
+            log::error(&msg);
+            return ExitCode::FAILURE;
+        }
         Err(e) => {
             log::error(&format!("cannot start runtime: {e}"));
             return ExitCode::FAILURE;
@@ -414,17 +440,67 @@ fn report_cell_errors(blocks: &[qmd_fast_core::Block], page_label: &str) -> usiz
 /// cells first so figures / `ojs_define` outputs are baked in (mirrors the site
 /// build's per-page execution). A missing kernel logs a warning and the cells fall
 /// back to source, matching the preview's behaviour.
+/// Result of building a single page: the rendered HTML (+ its referenced resources
+/// and `--strict` problem count), or a `--bare` refusal whose message is user-facing.
+enum BuildResult {
+    Page {
+        html: String,
+        resources: Vec<PathBuf>,
+        problems: usize,
+    },
+    Refused(String),
+}
+
+/// Warn (never silently degrade) about the constructs `--bare` drops: a `{js}` cell
+/// is inert without its browser runtime, and Mermaid ships its diagram as source.
+fn warn_bare_exclusions(doc: &qmd_fast_core::RenderedDoc) {
+    let js_cells = doc
+        .blocks
+        .iter()
+        .filter(|b| b.cell.as_ref().is_some_and(|c| c.lang == "js"))
+        .count();
+    if js_cells > 0 {
+        log::warn(&format!(
+            "--bare drops {js_cells} interactive {{js}} cell{} (no browser runtime ships); \
+             the output container is left empty",
+            if js_cells == 1 { "" } else { "s" }
+        ));
+    }
+    let mermaid = doc
+        .blocks
+        .iter()
+        .filter(|b| b.html.contains("class=\"mermaid\""))
+        .count();
+    if mermaid > 0 {
+        log::warn(&format!(
+            "--bare shows {mermaid} Mermaid diagram{} as source (no renderer ships)",
+            if mermaid == 1 { "" } else { "s" }
+        ));
+    }
+}
+
 fn build_page_executing(
     src: &str,
     base: &Path,
     fallback: &str,
-) -> std::io::Result<(String, Vec<PathBuf>, usize)> {
+    mode: qmd_fast_core::OutputMode,
+) -> std::io::Result<BuildResult> {
     let rt = tokio::runtime::Runtime::new()?;
     Ok(rt.block_on(async {
         // `problems` is what `--strict` fails on: located render warnings, broken
         // cross-refs, and crashed code cells — each already logged below.
         let mut problems = 0usize;
         let mut doc = qmd_fast_core::render_document_with_includes(src, base);
+        // `--bare` is prose-shaped, JS-free output: a slide deck (whose navigation is
+        // JavaScript) can't be one. Refuse before doing any execution work.
+        if mode == qmd_fast_core::OutputMode::Bare && doc.format == qmd_fast_core::DocFormat::Reveal
+        {
+            return BuildResult::Refused(
+                "--bare cannot build a slide deck: deck navigation needs JavaScript. \
+                 Build it without --bare."
+                    .to_string(),
+            );
+        }
         // Located render warnings (front-matter typos, broken refs, and now
         // unresolved `{{< include … >}}` directives — the path-resolution channel)
         // are logged here so a `build` never ships a silently dropped include.
@@ -463,12 +539,15 @@ fn build_page_executing(
         // A crashed cell bakes its traceback into the page (exit 0 + silent stderr
         // before this); log it located and count it toward `--strict`.
         problems += report_cell_errors(&doc.blocks, fallback);
+        if mode == qmd_fast_core::OutputMode::Bare {
+            warn_bare_exclusions(&doc);
+        }
         let resources = doc.includes.resources.clone();
-        (
-            qmd_fast_core::render_doc_to_page(&doc, fallback),
+        BuildResult::Page {
+            html: qmd_fast_core::render_doc_to_page(&doc, fallback, mode),
             resources,
             problems,
-        )
+        }
     }))
 }
 
@@ -835,7 +914,7 @@ async fn build_site_async(root: &Path, out_override: Option<&str>, strict: bool)
             .next()
             .and_then(|f| f.strip_suffix(".html"))
             .unwrap_or("deck");
-        let html = qmd_fast_core::render_doc_to_page(&doc, stem);
+        let html = qmd_fast_core::render_doc_to_page(&doc, stem, qmd_fast_core::OutputMode::Build);
         let dest = out.join(&deck.url);
         if let Some(parent) = dest.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -1393,7 +1472,10 @@ fn cmd_render(path: Option<&String>) -> ExitCode {
                     if kernel_cells == 1 { "" } else { "s" }
                 ));
             }
-            print!("{}", qmd_fast_core::render_doc_to_page(&doc, stem));
+            print!(
+                "{}",
+                qmd_fast_core::render_doc_to_page(&doc, stem, qmd_fast_core::OutputMode::Build)
+            );
             ExitCode::SUCCESS
         }
         Err(e) => {
@@ -1601,5 +1683,49 @@ mod build_diag_tests {
         assert!(kernel(&cell("r")));
         assert!(!kernel(&cell("js")));
         assert!(!kernel(&None));
+    }
+
+    /// `--bare` refuses a slide deck (its navigation is JavaScript). The refusal
+    /// happens before any execution, so no kernel is needed here.
+    #[test]
+    fn bare_refuses_a_slide_deck() {
+        let src = "---\nformat: revealjs\n---\n\n# Slide one\n\n## Slide two\n";
+        let res = build_page_executing(
+            src,
+            std::path::Path::new("."),
+            "deck",
+            qmd_fast_core::OutputMode::Bare,
+        )
+        .unwrap();
+        match res {
+            BuildResult::Refused(msg) => {
+                assert!(msg.contains("--bare"), "message names the flag: {msg}");
+                assert!(
+                    msg.to_lowercase().contains("deck"),
+                    "message names decks: {msg}"
+                );
+            }
+            BuildResult::Page { .. } => panic!("--bare on a slide deck must be refused"),
+        }
+    }
+
+    /// A plain document still builds under `--bare`, and the page is script-free.
+    #[test]
+    fn bare_builds_a_plain_doc_script_free() {
+        let base = std::env::temp_dir().join(format!("qmd-bare-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&base);
+        let res = build_page_executing(
+            "---\ntitle: Draft\n---\n\nProse.\n",
+            &base,
+            "draft",
+            qmd_fast_core::OutputMode::Bare,
+        )
+        .unwrap();
+        match res {
+            BuildResult::Page { html, .. } => {
+                assert!(!html.contains("<script"), "bare page must have no scripts")
+            }
+            BuildResult::Refused(m) => panic!("a plain doc should build under --bare: {m}"),
+        }
     }
 }

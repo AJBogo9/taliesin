@@ -404,7 +404,7 @@ impl Site {
             html: body,
             cell: None,
         }];
-        render::render_doc_to_page(&doc, "Page not found")
+        render::render_doc_to_page(&doc, "Page not found", render::OutputMode::Build)
     }
 
     /// Whether a page shows a table of contents: its own front-matter `toc:` wins

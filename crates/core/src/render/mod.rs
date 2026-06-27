@@ -14,7 +14,8 @@ use std::path::{Path, PathBuf};
 mod model;
 pub(crate) use model::CellRole;
 pub use model::{
-    Block, Cell, CellFigure, CellTable, DocFormat, JsOpts, PageIncludes, RenderedDoc, Warning,
+    Block, Cell, CellFigure, CellTable, DocFormat, JsOpts, OutputMode, PageIncludes, RenderedDoc,
+    Warning,
 };
 
 fn parse_options() -> Options<'static> {
@@ -987,7 +988,9 @@ fn map_origin(origins: Option<&[LineOrigin]>, buffer_line: usize) -> (Option<Str
 /// assert!(html.contains("Hi."));
 /// ```
 pub fn render_html_page(src: &str, fallback_title: &str) -> String {
-    page_from_doc(&render_document(src), fallback_title)
+    // The in-process full-page API ships everything (like a preview); the static
+    // `build`/`render` CLI opts into content-gating via `render_doc_to_page`.
+    page_from_doc(&render_document(src), fallback_title, OutputMode::Preview)
 }
 
 /// Like [`render_html_page`], resolving `{{< include >}}` relative to `base_dir`.
@@ -995,6 +998,7 @@ pub fn render_html_page_with_includes(src: &str, base_dir: &Path, fallback_title
     page_from_doc(
         &render_document_with_includes(src, base_dir),
         fallback_title,
+        OutputMode::Preview,
     )
 }
 
@@ -1023,9 +1027,38 @@ const MERMAID: &str = "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.
 /// Syntax highlighting arrives already done from the server. Callers invoke
 /// `window.qmdEnhanceCode(root)` after (re)mounting; it is idempotent.
 pub fn code_scripts() -> String {
+    code_scripts_for("", OutputMode::Preview)
+}
+
+/// The client enhancer scripts, content-gated by [`OutputMode`]. `code-enhance.js`
+/// (copy buttons / lightbox / link-preview + the whole reader menu + skip-link and
+/// keyboard a11y) rides on every non-bare page, since every page benefits. The
+/// DOM-specific enhancers (mermaid, `{js}`, walkthrough, tabset, scrolly) ship
+/// unconditionally in [`OutputMode::Preview`] (a doc can gain any construct on an
+/// edit, same reasoning as the always-on KaTeX/d3 in preview) but only when their
+/// target DOM is present in a static [`OutputMode::Build`]. [`OutputMode::Bare`]
+/// ships nothing (the zero-`<script>` contract).
+pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
+    if mode == OutputMode::Bare {
+        return String::new();
+    }
     let mermaid = MERMAID_JS.replace("{{MERMAID}}", MERMAID);
+    // In Preview every gate is open; in Build a gate opens only when the rendered
+    // body carries that enhancer's DOM marker.
+    let gate = |present: bool, script: &str| -> String {
+        if mode == OutputMode::Preview || present {
+            format!("\n<script>{script}</script>")
+        } else {
+            String::new()
+        }
+    };
     format!(
-        "<script>{CODE_ENHANCE_JS}</script>\n<script>{mermaid}</script>\n<script>{QMD_JS}</script>\n<script>{WALKTHROUGH_JS}</script>\n<script>{TABSET_JS}</script>\n<script>{SCROLLY_JS}</script>"
+        "<script>{CODE_ENHANCE_JS}</script>{mermaid_s}{qmdjs_s}{walk_s}{tabset_s}{scrolly_s}",
+        mermaid_s = gate(body.contains("class=\"mermaid\""), &mermaid),
+        qmdjs_s = gate(has_js_cells(body), QMD_JS),
+        walk_s = gate(body.contains("code-walkthrough"), WALKTHROUGH_JS),
+        tabset_s = gate(body.contains("panel-tabset"), TABSET_JS),
+        scrolly_s = gate(body.contains("qmd-scrolly"), SCROLLY_JS),
     )
 }
 

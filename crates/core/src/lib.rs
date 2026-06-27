@@ -40,10 +40,11 @@ pub mod site;
 
 pub use diff::{BlockOp, diff_blocks};
 pub use render::{
-    Block, DeckParts, DocFormat, PageParts, RenderedDoc, SEARCH_JS, SiteCtx, TOC_SPY_JS,
-    assemble_deck_page, assemble_html_page, code_scripts, deck_client_script, escape_attr,
-    favicon_link, html_escape, html_page_from_doc_in_site, render_doc_to_page, render_document,
-    render_document_with_includes, render_html_page, render_html_page_with_includes, slides_html,
+    Block, DeckParts, DocFormat, OutputMode, PageParts, RenderedDoc, SEARCH_JS, SiteCtx,
+    TOC_SPY_JS, assemble_deck_page, assemble_html_page, code_scripts, code_scripts_for,
+    deck_client_script, escape_attr, favicon_link, html_escape, html_page_from_doc_in_site,
+    render_doc_to_page, render_document, render_document_with_includes, render_html_page,
+    render_html_page_with_includes, slides_html,
 };
 pub use site::{DeckRef, Page, Site, SiteConfig};
 

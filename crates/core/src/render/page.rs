@@ -4,18 +4,21 @@
 
 use super::*;
 
-pub(crate) fn page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
+pub(crate) fn page_from_doc(doc: &RenderedDoc, fallback_title: &str, mode: OutputMode) -> String {
     match doc.format {
+        // A deck assembles its own page (deck.js + native `.qmd-deck`), unaffected by
+        // the enhancer-gating modes; `--bare` on a deck is refused at the CLI.
         DocFormat::Reveal => deck::deck_page_from_doc(doc, fallback_title),
-        DocFormat::Html => html_page_from_doc(doc, fallback_title),
+        DocFormat::Html => html_page_from_doc(doc, fallback_title, mode),
     }
 }
 
 /// Render an already-built [`RenderedDoc`] into a standalone HTML page (no site
 /// chrome). Lets the `build` CLI run code cells first and then emit the page from
 /// the executed blocks; the in-process [`render_html_page`] path stays unchanged.
-pub fn render_doc_to_page(doc: &RenderedDoc, fallback_title: &str) -> String {
-    page_from_doc(doc, fallback_title)
+/// `mode` decides how much optional machinery ships (see [`OutputMode`]).
+pub fn render_doc_to_page(doc: &RenderedDoc, fallback_title: &str, mode: OutputMode) -> String {
+    page_from_doc(doc, fallback_title, mode)
 }
 
 /// Shared chrome for a page rendered inside a multi-page site: pre-built navbar,
@@ -51,6 +54,10 @@ pub struct SiteCtx {
 /// (`extra_head`/`scripts_*` = `""`) reproduce the static build; the dev servers
 /// fill those slots with their live machinery (dev menu, websocket client).
 pub struct PageParts<'a> {
+    /// How the page is emitted: live `Preview` (ship everything), static `Build`
+    /// (content-gate enhancers), or `Bare` (zero `<script>`, CSS-only theming). The
+    /// live servers set `Preview`; the build CLI threads `Build`/`Bare`.
+    pub mode: OutputMode,
     /// Already HTML-escaped `<title>` text.
     pub title: &'a str,
     /// BCP-47 language tag for `<html lang>` (e.g. `en`); callers default to `en`.
@@ -91,19 +98,40 @@ pub struct PageParts<'a> {
 /// servers. Keeping it here means a new meta tag, a bundled stylesheet, or a head
 /// reordering happens once instead of in three hand-rolled templates.
 pub fn assemble_html_page(p: &PageParts) -> String {
+    let bare = p.mode == OutputMode::Bare;
     let katex = if p.ship_katex {
         format!("\n<style>{KATEX_CSS}</style>")
     } else {
         String::new()
     };
     let site_css = if p.with_site_css { SITE_CSS } else { "" };
+    // Bare output carries no `[data-theme]` script, so the JS-keyed dark layer never
+    // matches: drop it from the main sheet and append CSS-only theming instead.
+    let dark = if bare { "" } else { DARK_CSS };
+    let bare_theme = if bare {
+        bare_theme_css(p.theme_default)
+    } else {
+        String::new()
+    };
+    // The pre-paint theme bootstrap is JS; bare output is script-free.
+    let theme_init = if bare {
+        String::new()
+    } else {
+        theme_head(p.theme_default)
+    };
     // Native `{js}` cells need the vendored d3 + Plot libs in <head>; the enhancer
     // itself rides in code_scripts(). Gated on the rendered body (no PageParts flag).
-    let js_head_html = if has_js_cells(p.body) {
+    // Bare drops `{js}` entirely (its script blocks are stripped from the body too).
+    let js_head_html = if !bare && has_js_cells(p.body) {
         js_cell_head()
     } else {
         String::new()
     };
+    // Bare's guarantee is zero `<script>`: suppress every script source — the passed-in
+    // pre/post scripts, the enhancer bundle, and (above) the theme bootstrap + js head.
+    let scripts_pre = if bare { "" } else { p.scripts_pre };
+    let scripts_post = if bare { "" } else { p.scripts_post };
+    let code_scripts = code_scripts_for(p.body, p.mode);
     format!(
         r#"<!DOCTYPE html>
 <html lang="{lang}">
@@ -113,7 +141,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
 <title>{title}</title>
 {favicon}
 {theme_init}
-<style>{base}{dark}{site}</style>{katex}
+<style>{base}{dark}{site}{bare_theme}</style>{katex}
 {js_head}
 {theme_css}
 {include_in_header}
@@ -131,10 +159,11 @@ pub fn assemble_html_page(p: &PageParts) -> String {
         lang = escape_attr(p.lang),
         title = p.title,
         favicon = p.favicon,
-        theme_init = theme_head(p.theme_default),
+        theme_init = theme_init,
         base = BASE_CSS,
-        dark = DARK_CSS,
+        dark = dark,
         site = site_css,
+        bare_theme = bare_theme,
         js_head = js_head_html,
         theme_css = theme_style(p.theme_css),
         include_in_header = p.include_in_header,
@@ -142,11 +171,25 @@ pub fn assemble_html_page(p: &PageParts) -> String {
         body_class = p.body_class,
         include_before_body = p.include_before_body,
         body = p.body,
-        scripts_pre = p.scripts_pre,
-        code_scripts = code_scripts(),
-        scripts_post = p.scripts_post,
+        scripts_pre = scripts_pre,
+        code_scripts = code_scripts,
+        scripts_post = scripts_post,
         include_after_body = p.include_after_body,
     )
+}
+
+/// CSS-only theming for `--bare` output (no `[data-theme]` script). `dark.css` is
+/// uniformly `html[data-theme="dark"]`-prefixed, so rewriting that prefix to `:root`
+/// yields a flat dark layer: emitted unconditionally for a forced dark theme, wrapped
+/// in a `prefers-color-scheme: dark` media query for an unforced (`auto`) theme so it
+/// follows the OS. A forced light theme needs nothing (base.css `:root` is light).
+fn bare_theme_css(default_mode: &str) -> String {
+    let dark = DARK_CSS.replace("html[data-theme=\"dark\"]", ":root");
+    match default_mode {
+        "dark" => dark,
+        "light" => String::new(),
+        _ => format!("@media (prefers-color-scheme: dark){{{dark}}}"),
+    }
 }
 
 /// Static-page click-to-source: clicking a block logs its id + sourcepos to the
@@ -168,26 +211,44 @@ const STATIC_CLICK_TO_SOURCE: &str = r#"<script>
 /// to call them after a mount).
 const STATIC_ENHANCE: &str = "<script>document.addEventListener('DOMContentLoaded',function(){window.qmdEnhanceCode&&window.qmdEnhanceCode(document.body);});</script>";
 
-fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
-    html_page_inner(doc, fallback_title, None)
+fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str, mode: OutputMode) -> String {
+    html_page_inner(doc, fallback_title, None, mode)
 }
 
 /// Like `html_page_from_doc`, but wraps the page body in the site chrome
 /// (navbar above, prev/next + footer below) and ships the site CSS. The
 /// single-page path (`html_page_from_doc`) is unchanged (`site == None`).
+///
+/// Every caller is a static-build context (the `build` CLI, the 404 page, mounted
+/// sub-site serving, `check`'s discard); the live site preview assembles its own
+/// `PageParts` directly. So this content-gates enhancers like any other build.
+/// `--bare` is single-doc only, so a site never reaches `OutputMode::Bare`.
 pub fn html_page_from_doc_in_site(
     doc: &RenderedDoc,
     fallback_title: &str,
     site: &SiteCtx,
 ) -> String {
-    html_page_inner(doc, fallback_title, Some(site))
+    html_page_inner(doc, fallback_title, Some(site), OutputMode::Build)
 }
 
-fn html_page_inner(doc: &RenderedDoc, fallback_title: &str, site: Option<&SiteCtx>) -> String {
+fn html_page_inner(
+    doc: &RenderedDoc,
+    fallback_title: &str,
+    site: Option<&SiteCtx>,
+    mode: OutputMode,
+) -> String {
     let title = doc.title.as_deref().unwrap_or(fallback_title);
     let mut t = String::new();
     escape_html(title, &mut t);
     let body = doc.body_html();
+    // Bare output must contain zero `<script>`; a `{js}` cell's runtime payload is a
+    // `<script type="application/qmd-js">` in the body, so strip those (the cell is
+    // inert without its browser runtime; the build warns separately).
+    let body = if mode == OutputMode::Bare {
+        strip_qmd_js_scripts(&body)
+    } else {
+        body
+    };
     // Only ship the (large) KaTeX stylesheet when the page actually has math
     // (computed before `body` is moved into the content layout below).
     let ship_katex = body.contains("class=\"katex");
@@ -285,6 +346,7 @@ fn html_page_inner(doc: &RenderedDoc, fallback_title: &str, site: Option<&SiteCt
         _ => default_favicon(),
     };
     assemble_html_page(&PageParts {
+        mode,
         title: &t,
         lang: doc.lang.as_deref().unwrap_or("en"),
         favicon: &favicon,
@@ -334,4 +396,31 @@ fn default_favicon() -> String {
         "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml;base64,{}\" />",
         base64_encode(FAVICON_SVG.as_bytes())
     )
+}
+
+/// Remove `<script type="application/qmd-js">…</script>` blocks (a `{js}` cell's
+/// runtime payload) from a rendered body, leaving the empty output container behind.
+/// Used only for `--bare` output, whose contract is zero `<script>`; a `{js}` cell is
+/// inert without its browser runtime. The author source escapes any `</script` to
+/// `<\/script` (see `emit_js_cell`), so the first `</script>` after the opening tag
+/// is always the real terminator.
+fn strip_qmd_js_scripts(body: &str) -> String {
+    const OPEN: &str = "<script type=\"application/qmd-js\"";
+    const CLOSE: &str = "</script>";
+    let mut out = String::with_capacity(body.len());
+    let mut rest = body;
+    while let Some(start) = rest.find(OPEN) {
+        out.push_str(&rest[..start]);
+        let after = &rest[start..];
+        match after.find(CLOSE) {
+            Some(end) => rest = &after[end + CLOSE.len()..],
+            None => {
+                // Unterminated (shouldn't happen given the escaping): keep the rest.
+                out.push_str(after);
+                return out;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }

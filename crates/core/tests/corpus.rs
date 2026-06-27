@@ -489,7 +489,8 @@ fn standalone_doc_carries_opengraph_seo_meta() {
     let doc = qmd_fast_core::render_document(
         "---\ntitle: \"T\"\ndescription: \"D\"\n---\n\n# Hi\n\nbody\n",
     );
-    let page = qmd_fast_core::render_doc_to_page(&doc, "fallback");
+    let page =
+        qmd_fast_core::render_doc_to_page(&doc, "fallback", qmd_fast_core::OutputMode::Build);
     assert!(
         page.contains("property=\"og:title\" content=\"T\""),
         "og:title"
@@ -512,11 +513,83 @@ fn standalone_doc_carries_opengraph_seo_meta() {
     let bare = qmd_fast_core::render_doc_to_page(
         &qmd_fast_core::render_document("---\ntitle: \"Only\"\n---\n\n# x\n"),
         "fb",
+        qmd_fast_core::OutputMode::Build,
     );
     assert!(bare.contains("property=\"og:title\" content=\"Only\""));
     assert!(
         !bare.contains("name=\"description\""),
         "no description tag when absent"
+    );
+}
+
+#[test]
+fn bare_build_is_script_free_css_themed_and_drops_js() {
+    // The `--bare` build target: zero <script>, zero CDN, CSS-only theming — yet
+    // server-rendered math still works and a {js} cell is dropped (not shipped dead).
+    let src = fs::read_to_string(corpus_dir().join("bare-draft.qmd")).unwrap();
+    let doc = qmd_fast_core::render_document_with_includes(&src, &corpus_dir());
+    let bare = qmd_fast_core::render_doc_to_page(&doc, "bare", qmd_fast_core::OutputMode::Bare);
+
+    // The contract: not one <script> tag (no theme bootstrap, no enhancers, no {js}
+    // runtime, no TOC/search) and no CDN host.
+    assert!(
+        !bare.contains("<script"),
+        "bare output ships zero <script> tags"
+    );
+    assert!(!bare.contains("cdn.jsdelivr"), "no jsDelivr CDN reference");
+    assert!(!bare.contains("unpkg.com"), "no unpkg CDN reference");
+
+    // Server-rendered math survives a script-free page.
+    assert!(
+        bare.contains("class=\"katex"),
+        "KaTeX math renders without JS"
+    );
+
+    // The {js} cell's runtime `<script type="application/qmd-js">` is stripped.
+    assert!(
+        !bare.contains("application/qmd-js"),
+        "bare drops the {{js}} cell script block"
+    );
+
+    // Click-to-source must survive the {js}-script strip: the cell wrapper keeps its
+    // block id + sourcepos (the strip removes only the inner <script>, and
+    // `emit_js_cell` puts the block attrs on the outer <div>). This pins the
+    // load-bearing block-model invariants on the bare-assembled page specifically.
+    let cell_at = bare
+        .find("class=\"cell qmd-js-cell\"")
+        .expect("the {js} cell wrapper survives the strip");
+    let tag_open = bare[..cell_at].rfind('<').expect("wrapper open tag");
+    let wrapper_tag = &bare[tag_open..cell_at];
+    assert!(
+        wrapper_tag.contains("data-block-id=\"b-"),
+        "bare {{js}} cell wrapper keeps its data-block-id: {wrapper_tag}"
+    );
+    assert!(
+        wrapper_tag.contains("data-sourcepos=\""),
+        "bare {{js}} cell wrapper keeps its data-sourcepos: {wrapper_tag}"
+    );
+
+    // Theming is CSS-only: an unforced (auto) theme follows the OS via a media query
+    // that carries the dark layer rewritten from `[data-theme="dark"]` onto `:root`.
+    assert!(
+        bare.contains("@media (prefers-color-scheme: dark)"),
+        "bare auto-theme uses a prefers-color-scheme media query"
+    );
+    assert!(
+        bare.contains(":root .qhl-"),
+        "the dark layer is rewritten from [data-theme] onto :root"
+    );
+
+    // Contrast: a normal (non-bare) build of the same doc DOES ship the enhancer
+    // bundle and the {js} cell, proving `--bare` is what strips them.
+    let build = qmd_fast_core::render_doc_to_page(&doc, "build", qmd_fast_core::OutputMode::Build);
+    assert!(
+        build.contains("<script"),
+        "a normal build still ships scripts"
+    );
+    assert!(
+        build.contains("application/qmd-js"),
+        "a normal build keeps the {{js}} cell"
     );
 }
 

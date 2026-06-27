@@ -8,6 +8,7 @@ title: "CLI reference"
 | `preview <dir>` | Live **multi-page site/book** preview (cross-page nav + per-page hot reload) |
 | `build <file.qmd> [out.html]` | Write a self-contained HTML file (default `<name>.html`) |
 | `build <file.qmd> --out <dir>` | Write `<dir>/index.html` + copied assets (a portable folder) |
+| `build <file.qmd> --bare` | Write a **bare** page: zero `<script>`, zero CDN, CSS-only theme (drafts / archives / print input) |
 | `build <dir> [--out <dir>]` | Build a **multi-page site/book** to `_site/` / `_book/` |
 | `render <file.qmd>` | Render a one-shot full HTML page to stdout |
 | `blocks <file.qmd>` | List block ids and sourcepos (for debugging) |
@@ -41,9 +42,24 @@ port and logs the chosen URL.
 | `--open` | Launch the default browser at the preview URL |
 | `--no-exec` | Render code cells as source without executing them (preview untrusted docs safely) |
 
-`build` takes only `--out <dir>` (alias `--dir`) to write a portable folder instead of a
-single file; other `--` flags are ignored. A `build` skips code execution only through the
-`QMD_FAST_NO_EXEC=1` environment variable, not a `--no-exec` flag.
+`build` takes these flags (they may appear anywhere on the line):
+
+| Flag | Effect |
+|---|---|
+| `--out <dir>` (alias `--dir`) | Write a portable `<dir>/index.html` + copied assets instead of a single file |
+| `--strict` | Exit non-zero if any cell errored or any located warning fired (a CI gate; the page is still written) |
+| `--bare` | Single-doc only: emit a **bare** page (zero `<script>`, zero CDN, CSS-only theming) |
+
+A regular `build` already content-gates the optional enhancer scripts (mermaid, `{js}`,
+walkthrough, tabset, scrolly) to the constructs a page actually uses, so a prose page
+ships less JavaScript without losing any feature. `--bare` goes further for a
+single document: it ships **no** `<script>` at all and themes purely with CSS (a forced
+`theme:` is hard-coded; otherwise it follows the OS via `prefers-color-scheme`).
+Server-rendered math still works; `{js}` cells, Mermaid rendering, and the
+copy/lightbox/reader controls are dropped (each warned, never silently). A slide deck or
+a `<dir>` site is refused (their navigation needs JavaScript). A `build` skips code
+execution only through the `QMD_FAST_NO_EXEC=1` environment variable, not a `--no-exec`
+flag.
 
 `--host` binds `0.0.0.0`, so it gates non-loopback access behind a token baked into
 the printed LAN URL and QR (`?t=…`, then a `qmd_token` cookie); a fresh token is

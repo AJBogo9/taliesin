@@ -735,6 +735,8 @@ fn blog_index_html(ctx: &PageCtx) -> String {
     };
     let scripts_post = format!("{toc_spy}<script>\n{CLIENT_JS}\n</script>");
     qmd_fast_core::assemble_html_page(&qmd_fast_core::PageParts {
+        // Live preview always ships everything (a doc can gain any construct on an edit).
+        mode: qmd_fast_core::OutputMode::Preview,
         title: "qmd-fast",
         // The preview page chrome is English ("qmd-fast"); the built artifact honours
         // the doc's front-matter `lang:`.
