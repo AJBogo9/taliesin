@@ -419,7 +419,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
     let (base_cls, toc_nav, toc_flag) = if toc {
         (
             "qmd-site-main has-toc",
-            "<nav id=\"TOC\"></nav>",
+            "<nav id=\"TOC\" aria-label=\"Table of contents\"></nav>",
             "window.QMD_TOC = true;",
         )
     } else {

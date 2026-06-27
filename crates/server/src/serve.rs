@@ -699,7 +699,7 @@ fn blog_index_html(ctx: &PageCtx) -> String {
     let (body_class, toc_nav, toc_flag) = if ctx.toc {
         (
             " class=\"has-toc qmd-toc-sheet\"",
-            "<nav id=\"TOC\"></nav>\n\
+            "<nav id=\"TOC\" aria-label=\"Table of contents\"></nav>\n\
              <div id=\"qmd-toc-backdrop\"></div>\n\
              <button id=\"qmd-toc-handle\" type=\"button\" aria-label=\"Contents\">\
              <span id=\"qmd-toc-cur\"></span><span class=\"qmd-toc-grip\"></span></button>",

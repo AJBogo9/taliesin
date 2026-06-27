@@ -438,6 +438,10 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
     // A top-level page renders with the site chrome and rewrites its nav links.
     let blog = site.render_page("blog.qmd").expect("blog renders");
     assert!(blog.contains("qmd-site-nav"), "navbar missing");
+    assert!(
+        blog.contains("<nav class=\"qmd-nav-inner\" aria-label=\"Primary\">"),
+        "the website primary nav must be aria-labelled"
+    );
     assert!(blog.contains("qmd-site-footer"), "footer missing");
     // Mobile nav toggle must stay a real, keyboard/SR-operable <button> (WCAG 2.1.1):
     // never regress to the old display:none `<input type=checkbox>` + role-less label hack.
@@ -697,6 +701,14 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
     assert!(
         methods.contains("<nav class=\"qmd-book-sidebar\""),
         "book sidebar missing"
+    );
+    // Every structural nav landmark carries a distinguishing accessible name
+    // (a screen reader can tell the chapter list from the pager).
+    assert!(
+        methods.contains(
+            "class=\"qmd-book-sidebar\" data-qmd-src=\"_site.yml\" aria-label=\"Chapters\""
+        ) && methods.contains("class=\"qmd-postnav qmd-book-postnav\" aria-label=\"Pagination\""),
+        "book nav landmarks must be aria-labelled"
     );
     assert!(
         methods.contains("qmd-book-chapter qmd-book-active"),

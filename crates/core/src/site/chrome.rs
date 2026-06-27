@@ -49,7 +49,7 @@ impl Site {
             .clone()
             .unwrap_or_else(|| "Home".to_string());
         let mut s = String::from(
-            "<header class=\"qmd-site-nav\" data-qmd-src=\"_site.yml\"><nav class=\"qmd-nav-inner\">",
+            "<header class=\"qmd-site-nav\" data-qmd-src=\"_site.yml\"><nav class=\"qmd-nav-inner\" aria-label=\"Primary\">",
         );
         s.push_str(&format!(
             "<a class=\"qmd-nav-brand\" href=\"{up}index.html\">{}</a>",
@@ -199,7 +199,9 @@ impl Site {
             return String::new();
         };
         let up = "../".repeat(depth);
-        let mut s = String::from("<nav class=\"qmd-book-sidebar\" data-qmd-src=\"_site.yml\">");
+        let mut s = String::from(
+            "<nav class=\"qmd-book-sidebar\" data-qmd-src=\"_site.yml\" aria-label=\"Chapters\">",
+        );
         // Sidebar header: book title (links home) + a light/dark toggle. A book has
         // no top navbar, so without this the toggle (wired by theme_head) has no home.
         s.push_str("<div class=\"qmd-book-sidebar-head\">");
@@ -283,7 +285,7 @@ impl Site {
             })
             .unwrap_or_default();
         format!(
-            "<nav class=\"qmd-postnav qmd-book-postnav\">{left}\
+            "<nav class=\"qmd-postnav qmd-book-postnav\" aria-label=\"Pagination\">{left}\
              <span class=\"qmd-nav-spacer\"></span>{right}</nav>"
         )
     }
