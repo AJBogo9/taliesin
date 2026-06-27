@@ -1,0 +1,45 @@
+---
+title: "Link, video & reactive-input diagnostics"
+---
+
+This document deliberately trips the static `qmd-fast check` rules for broken relative
+links, missing local video, and dangling/cyclic `{js}` reactive inputs. It lives in
+`corpus/diagnostics/`, which is exempt from the corpus clean-render guards. Each located
+finding jumps to its source line on click, like any other diagnostic.
+
+## Broken relative links
+
+A [link to a missing doc](no-such-doc.qmd) and a [link to a missing page](sub/gone.html)
+both point at files that do not exist beside this document.
+
+An [external link](https://example.com/anything) is never fetched, so it is left alone,
+and an [in-page anchor](#broken-relative-links) to a real heading on this page is fine.
+
+## Missing local video
+
+A `{{< video >}}` whose clip file is absent:
+
+{{< video missing-clip.mp4 >}}
+
+## Dangling and cyclic reactive inputs
+
+A `{js}` cell consuming an input that nothing defines:
+
+```{js}
+//| input: undefined_name
+return undefined_name;
+```
+
+A pair of `{js}` cells that depend on each other (a reactive dependency cycle):
+
+```{js}
+//| name: ping
+//| input: pong
+return pong;
+```
+
+```{js}
+//| name: pong
+//| input: ping
+return ping;
+```

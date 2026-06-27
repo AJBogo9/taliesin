@@ -339,6 +339,111 @@ impl Site {
         (rewrite_qmd_links(&html), warnings)
     }
 
+    /// Static `check` cross-page link validation: for every page, resolve each manual
+    /// relative `<a href>` against the project's **page registry** (the set of built
+    /// `.html` urls) and the target page's id set, flagging (a) a link whose target page
+    /// is not in the site, and (b) a `page.html#frag` whose `frag` is no id on that page.
+    /// Returns `(page_rel, Warning)` so the caller can locate each to its source page.
+    ///
+    /// Read-only and offline: external/absolute links are skipped (never fetched — a
+    /// network probe would make `check` nondeterministic). The anchor half is suppressed
+    /// for a target page that runs executable cells (a cell can emit an id at runtime),
+    /// mirroring `diagnostics::validate_internal_anchors`'s no-false-positive promise.
+    pub fn validate_cross_page_links(&self) -> Vec<(String, Warning)> {
+        // Build the registry once: url -> (ids, has_executable_cells).
+        let mut ids_by_url: HashMap<String, std::collections::HashSet<String>> = HashMap::new();
+        let mut cells_by_url: HashMap<String, bool> = HashMap::new();
+        for page in &self.pages {
+            let Ok(src) = std::fs::read_to_string(&page.input) else {
+                continue;
+            };
+            let base = page.input.parent().unwrap_or(&self.root);
+            let doc = render::render_document_with_includes(&src, base);
+            let mut ids = std::collections::HashSet::new();
+            for b in &doc.blocks {
+                collect_html_ids(&b.html, &mut ids);
+            }
+            cells_by_url.insert(
+                page.url.clone(),
+                doc.blocks.iter().any(|b| b.cell.is_some()),
+            );
+            ids_by_url.insert(page.url.clone(), ids);
+        }
+
+        let mut out = Vec::new();
+        for page in &self.pages {
+            let Ok(src) = std::fs::read_to_string(&page.input) else {
+                continue;
+            };
+            let base = page.input.parent().unwrap_or(&self.root);
+            let doc = render::render_document_with_includes(&src, base);
+            for b in &doc.blocks {
+                let line = sourcepos_start_line(&b.sourcepos);
+                for (path, frag) in manual_local_links(&b.html) {
+                    // Resolve to a site-root-relative `.html` url. `.qmd`→`.html`, then
+                    // join against the page's directory. A link that climbs *above* the
+                    // site root (`../other-book/…`, a mounted sibling) is unresolvable
+                    // offline and deliberately skipped — only the marketing site that
+                    // mounts both books can resolve it, so flagging it here would be a
+                    // false positive (cross-book/mount links are written as relative
+                    // `.html` by design; see docs/ CLAUDE.md).
+                    let Some(target_url) = join_rel_in_root(&page.url, &qmd_to_html(path)) else {
+                        continue;
+                    };
+                    // A directory-style link (`dir/`) targets that dir's index.
+                    let target_url = if target_url.is_empty() || target_url.ends_with('/') {
+                        format!("{target_url}index.html")
+                    } else {
+                        target_url
+                    };
+                    let Some(target_ids) = ids_by_url.get(&target_url) else {
+                        // A target outside the page registry is only "broken" if nothing
+                        // on disk backs it: an `{{< embed >}}`-referenced deck (built +
+                        // served but kept out of nav/registry) and any source file that
+                        // exists under the root are legitimate targets.
+                        if self.decks.iter().any(|d| d.url == target_url)
+                            || self.root.join(&target_url).is_file()
+                            || self.root.join(html_to_qmd(&target_url)).is_file()
+                        {
+                            continue;
+                        }
+                        let w = Warning::new(format!(
+                            "broken link: `{path}` resolves to `{target_url}`, which is no page in this site"
+                        ));
+                        out.push((
+                            page.rel.clone(),
+                            match line {
+                                Some(l) => w.at(b.source_file.clone(), l),
+                                None => w,
+                            },
+                        ));
+                        continue;
+                    };
+                    // Anchor existence: only when the link carries a fragment, the target
+                    // page does not run cells (a cell can emit the id at runtime), and the
+                    // anchor is missing.
+                    if let Some(frag) = frag
+                        && !frag.is_empty()
+                        && !cells_by_url.get(&target_url).copied().unwrap_or(false)
+                        && !target_ids.contains(frag)
+                    {
+                        let w = Warning::new(format!(
+                            "broken link anchor: `#{frag}` is no element id on `{target_url}`"
+                        ));
+                        out.push((
+                            page.rel.clone(),
+                            match line {
+                                Some(l) => w.at(b.source_file.clone(), l),
+                                None => w,
+                            },
+                        ));
+                    }
+                }
+            }
+        }
+        out
+    }
+
     /// Finish a page's blocks in place: chapter numbering, site-wide cross-ref
     /// resolution (+ broken-ref warnings), and site front-matter expansion
     /// (`about:`/`listing:`). The single block-finishing step shared by the static
@@ -1015,6 +1120,117 @@ fn join_rel(from_rel: &str, target: &str) -> String {
     parts.join("/")
 }
 
+/// Like [`join_rel`] but returns `None` when `target` climbs *above* the file's directory
+/// (`../` past the site root). A root-escaping link points at a sibling project/mount the
+/// single-site registry can't see, so the cross-page link checker skips it rather than
+/// false-flag a legitimate cross-book link.
+fn join_rel_in_root(from_rel: &str, target: &str) -> Option<String> {
+    if target.starts_with('/') {
+        return Some(target.trim_start_matches('/').to_string());
+    }
+    let dir = from_rel.rsplit_once('/').map(|(d, _)| d).unwrap_or("");
+    let mut parts: Vec<&str> = if dir.is_empty() {
+        Vec::new()
+    } else {
+        dir.split('/').collect()
+    };
+    for seg in target.split('/') {
+        match seg {
+            "" | "." => {}
+            ".." => {
+                parts.pop()?; // None when the link climbs above the site root
+            }
+            s => parts.push(s),
+        }
+    }
+    Some(parts.join("/"))
+}
+
+/// `.html`→`.qmd` on a url path (`x.html` → `x.qmd`), so the checker can test whether a
+/// link target is backed by a source file on disk. A non-`.html` path round-trips.
+fn html_to_qmd(url: &str) -> String {
+    match url.strip_suffix(".html") {
+        Some(stem) => format!("{stem}.qmd"),
+        None => url.to_string(),
+    }
+}
+
+/// The 1-based start line from a block's `sourcepos` (`"startLine:col-…"`), if positive.
+/// A local copy of `diagnostics::start_line` (that one is private to its module); used to
+/// locate cross-page link warnings to their source line.
+fn sourcepos_start_line(sourcepos: &str) -> Option<u32> {
+    sourcepos
+        .split(':')
+        .next()?
+        .parse::<u32>()
+        .ok()
+        .filter(|&l| l > 0)
+}
+
+/// Every `id="…"` value in a block's HTML, added to `out` (the page's anchor set for the
+/// cross-page link check). Plain substring scan, matching how `search`/`diagnostics` read ids.
+fn collect_html_ids(html: &str, out: &mut std::collections::HashSet<String>) {
+    let needle = "id=\"";
+    let mut i = 0;
+    while let Some(pos) = html[i..].find(needle) {
+        let start = i + pos + needle.len();
+        let Some(len) = html[start..].find('"') else {
+            break;
+        };
+        out.insert(html[start..start + len].to_string());
+        i = start + len;
+    }
+}
+
+/// Manual relative `<a href>` links in a block's HTML, as `(path, Option<fragment>)`.
+/// External (`http(s)://`, `//`, `mailto:`, `tel:`), data-URI, empty, bare in-page
+/// `#frag`, and cross-reference (`qmd-xref`) links are skipped — the cross-page checker
+/// only resolves intra-site file links (anchors handled per target page). The path keeps
+/// its authored form (`other.qmd`, `../sec/page.html`); the fragment is split off.
+fn manual_local_links(html: &str) -> Vec<(&str, Option<&str>)> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    while let Some(pos) = html[i..].find("<a ") {
+        let tag_start = i + pos;
+        let Some(rel_end) = html[tag_start..].find('>') else {
+            break;
+        };
+        let tag = &html[tag_start..tag_start + rel_end];
+        i = tag_start + rel_end + 1;
+        if tag.contains("qmd-xref") {
+            continue;
+        }
+        let Some(hpos) = tag.find("href=\"") else {
+            continue;
+        };
+        let vstart = hpos + "href=\"".len();
+        let Some(vlen) = tag[vstart..].find('"') else {
+            continue;
+        };
+        let val = &tag[vstart..vstart + vlen];
+        // Skip external / non-file / bare-anchor links.
+        if val.is_empty()
+            || val.starts_with('#')
+            || val.starts_with("//")
+            || val.contains("://")
+            || val.starts_with("data:")
+            || val.starts_with("mailto:")
+            || val.starts_with("tel:")
+            || val.starts_with("vscode:")
+        {
+            continue;
+        }
+        let (path, frag) = match val.split_once('#') {
+            Some((p, f)) => (p, Some(f)),
+            None => (val, None),
+        };
+        if !path.is_empty() {
+            out.push((path, frag));
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1050,6 +1266,40 @@ mod tests {
         assert_eq!(resolve_href("/blog.qmd", "../"), "/blog.html");
         assert_eq!(resolve_href("https://x.com", "../"), "https://x.com");
         assert_eq!(resolve_href("#top", "../"), "#top");
+    }
+
+    #[test]
+    fn join_rel_in_root_resolves_and_rejects_escapes() {
+        // In-site sibling + nested resolve to a site-root-relative url.
+        assert_eq!(
+            join_rel_in_root("posts/x/index.html", "../y/index.html").as_deref(),
+            Some("posts/y/index.html")
+        );
+        assert_eq!(
+            join_rel_in_root("index.html", "about.html").as_deref(),
+            Some("about.html")
+        );
+        assert_eq!(
+            join_rel_in_root("index.html", "/abs.html").as_deref(),
+            Some("abs.html")
+        );
+        // A link climbing ABOVE the site root (a sibling book / mount) is rejected, so the
+        // cross-page checker skips it rather than false-flag a legitimate cross-book link.
+        assert_eq!(
+            join_rel_in_root("index.html", "../internals/index.html"),
+            None
+        );
+        assert_eq!(
+            join_rel_in_root("guide/index.html", "../../escape.html"),
+            None
+        );
+    }
+
+    #[test]
+    fn manual_local_links_skips_external_anchor_and_xref() {
+        let html = r##"<a href="other.qmd">o</a> <a href="page.html#sec">p</a> <a href="https://x.com">e</a> <a href="#top">t</a> <a href="x.html" class="qmd-xref">r</a>"##;
+        let links = manual_local_links(html);
+        assert_eq!(links, vec![("other.qmd", None), ("page.html", Some("sec"))]);
     }
 
     #[test]

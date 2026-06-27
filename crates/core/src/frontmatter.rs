@@ -278,7 +278,7 @@ pub(crate) fn unknown_key_message(what: &str, key: &str, candidates: &[&'static 
 }
 
 /// Plain Levenshtein edit distance (two-row DP).
-fn levenshtein(a: &str, b: &str) -> usize {
+pub(crate) fn levenshtein(a: &str, b: &str) -> usize {
     let a: Vec<char> = a.chars().collect();
     let b: Vec<char> = b.chars().collect();
     let mut prev: Vec<usize> = (0..=b.len()).collect();
