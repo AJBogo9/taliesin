@@ -4,11 +4,158 @@ description: "Interactive demos of qmd-fast, every one a real capability with it
 page-layout: full
 ---
 
-# See it live {.unnumbered}
-
 Everything below runs in your browser, right here on this page, which is itself a
 qmd-fast document. Each demo shows its **Result** and the real **Source** that
 produced it: open the Source tab and you are reading the exact `.qmd` cell. No
 screenshots, no video.
 
 {{< include _includes/three-scene.qmd >}}
+
+## A surface you can shape and spin
+
+A parametric wave-interference mesh, rendered with WebGL. Drag to orbit, scroll to
+zoom, and move the sliders to reshape it in real time. The renderer is transparent,
+so it follows the page theme, and the whole thing is the `{js}` cell in the
+**Source** tab, around forty lines of plain text.
+
+::: {.panel-tabset}
+
+### Result
+
+{{< input name="detail" type="slider" min="16" max="80" step="4" value="48" label="detail" >}}
+{{< input name="twist" type="slider" min="0" max="6" step="0.2" value="2" label="twist" >}}
+{{< input name="amplitude" type="slider" min="0" max="1.4" step="0.05" value="0.7" label="amplitude" >}}
+
+```{js}
+//| echo: false
+const makeScene3D = qmd.get("makeScene3D");
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const host = document.createElement("div");
+host.style.minHeight = "460px";
+
+const build = async () => {
+  let el;
+  try {
+    let S = null, mesh = null, lastN = -1, lastT = NaN, lastA = NaN;
+    el = await makeScene3D((scene, THREE) => {
+      S = { scene, THREE };
+      const key = new THREE.DirectionalLight(0xffffff, 1.1);
+      key.position.set(4, 6, 5);
+      scene.add(key);
+    }, invalidation, {
+      width: 640, height: 460, alpha: true, cameraPos: [0, 5.5, 7.5],
+      ambientIntensity: 0.9, autoRotate: !reduce, minDistance: 4, maxDistance: 14,
+      onFrame: () => {
+        if (!S) return;
+        const n = Math.round(qmd.value("detail") ?? 48);
+        const twist = +(qmd.value("twist") ?? 2);
+        const amp = +(qmd.value("amplitude") ?? 0.7);
+        if (n !== lastN) {
+          lastN = n; lastT = NaN;
+          if (mesh) { S.scene.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose(); }
+          const geo = new S.THREE.PlaneGeometry(6, 6, n, n);
+          mesh = new S.THREE.Mesh(geo, new S.THREE.MeshStandardMaterial({
+            color: 0x4c8dff, metalness: 0.12, roughness: 0.5, side: S.THREE.DoubleSide,
+          }));
+          mesh.rotation.x = -Math.PI / 2.3;
+          S.scene.add(mesh);
+        }
+        if (twist !== lastT || amp !== lastA) {
+          lastT = twist; lastA = amp;
+          const p = mesh.geometry.attributes.position;
+          for (let i = 0; i < p.count; i++) {
+            const x = p.getX(i), y = p.getY(i), r = Math.hypot(x, y);
+            p.setZ(i, amp * Math.sin(r * twist) * Math.cos(x * 0.9));
+          }
+          p.needsUpdate = true;
+          mesh.geometry.computeVertexNormals();
+        }
+      },
+    });
+  } catch (e) {
+    el = document.createElement("p");
+    el.className = "qmd-muted";
+    el.textContent = "The 3D preview needs network access to load Three.js from esm.sh.";
+  }
+  host.replaceChildren(el);
+};
+
+if (reduce) build();
+else {
+  const io = new IntersectionObserver((es, o) => {
+    if (es[0].isIntersecting) { o.disconnect(); build(); }
+  });
+  io.observe(host);
+  invalidation.then(() => io.disconnect());
+}
+return host;
+```
+
+### Source
+
+```js
+//| echo: false
+const makeScene3D = qmd.get("makeScene3D");
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const host = document.createElement("div");
+host.style.minHeight = "460px";
+
+const build = async () => {
+  let el;
+  try {
+    let S = null, mesh = null, lastN = -1, lastT = NaN, lastA = NaN;
+    el = await makeScene3D((scene, THREE) => {
+      S = { scene, THREE };
+      const key = new THREE.DirectionalLight(0xffffff, 1.1);
+      key.position.set(4, 6, 5);
+      scene.add(key);
+    }, invalidation, {
+      width: 640, height: 460, alpha: true, cameraPos: [0, 5.5, 7.5],
+      ambientIntensity: 0.9, autoRotate: !reduce, minDistance: 4, maxDistance: 14,
+      onFrame: () => {
+        if (!S) return;
+        const n = Math.round(qmd.value("detail") ?? 48);
+        const twist = +(qmd.value("twist") ?? 2);
+        const amp = +(qmd.value("amplitude") ?? 0.7);
+        if (n !== lastN) {
+          lastN = n; lastT = NaN;
+          if (mesh) { S.scene.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose(); }
+          const geo = new S.THREE.PlaneGeometry(6, 6, n, n);
+          mesh = new S.THREE.Mesh(geo, new S.THREE.MeshStandardMaterial({
+            color: 0x4c8dff, metalness: 0.12, roughness: 0.5, side: S.THREE.DoubleSide,
+          }));
+          mesh.rotation.x = -Math.PI / 2.3;
+          S.scene.add(mesh);
+        }
+        if (twist !== lastT || amp !== lastA) {
+          lastT = twist; lastA = amp;
+          const p = mesh.geometry.attributes.position;
+          for (let i = 0; i < p.count; i++) {
+            const x = p.getX(i), y = p.getY(i), r = Math.hypot(x, y);
+            p.setZ(i, amp * Math.sin(r * twist) * Math.cos(x * 0.9));
+          }
+          p.needsUpdate = true;
+          mesh.geometry.computeVertexNormals();
+        }
+      },
+    });
+  } catch (e) {
+    el = document.createElement("p");
+    el.className = "qmd-muted";
+    el.textContent = "The 3D preview needs network access to load Three.js from esm.sh.";
+  }
+  host.replaceChildren(el);
+};
+
+if (reduce) build();
+else {
+  const io = new IntersectionObserver((es, o) => {
+    if (es[0].isIntersecting) { o.disconnect(); build(); }
+  });
+  io.observe(host);
+  invalidation.then(() => io.disconnect());
+}
+return host;
+```
+
+:::

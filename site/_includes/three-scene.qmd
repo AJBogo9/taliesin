@@ -20,6 +20,7 @@ return async function makeScene3D(buildScene, invalidation, opts = {}) {
     minDistance      = 3,
     maxDistance      = 20,
     ambientIntensity = 1.0,
+    autoRotate       = false,
     onFrame          = null,
   } = opts;
 
@@ -58,6 +59,8 @@ return async function makeScene3D(buildScene, invalidation, opts = {}) {
   ctrl.dampingFactor = 0.06;
   ctrl.minDistance   = minDistance;
   ctrl.maxDistance   = maxDistance;
+  ctrl.autoRotate    = autoRotate;
+  ctrl.autoRotateSpeed = 0.6;
 
   buildScene(scene, THREE, { O, spriteLabel, ctrl });
 

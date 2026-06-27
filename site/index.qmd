@@ -16,6 +16,59 @@ immediate as editing code. You save the file, and only the block you changed
 re-renders — your scroll position, your live canvas, and your warm kernel all stay
 exactly as they were. No cold start, no full-page flash, no waiting.
 
+{{< include _includes/three-scene.qmd >}}
+
+```{js}
+//| echo: false
+const makeScene3D = qmd.get("makeScene3D");
+const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const host = document.createElement("div");
+host.style.minHeight = "440px";
+const build = async () => {
+  let el;
+  try {
+    el = await makeScene3D((scene, THREE) => {
+      const n = 56;
+      const geo = new THREE.PlaneGeometry(6, 6, n, n);
+      const p = geo.attributes.position;
+      for (let i = 0; i < p.count; i++) {
+        const x = p.getX(i), y = p.getY(i), r = Math.hypot(x, y);
+        p.setZ(i, 0.7 * Math.sin(r * 2) * Math.cos(x * 0.9));
+      }
+      geo.computeVertexNormals();
+      const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({
+        color: 0x4c8dff, metalness: 0.12, roughness: 0.5, side: THREE.DoubleSide,
+      }));
+      mesh.rotation.x = -Math.PI / 2.3;
+      scene.add(mesh);
+      const key = new THREE.DirectionalLight(0xffffff, 1.1);
+      key.position.set(4, 6, 5);
+      scene.add(key);
+    }, invalidation, {
+      width: 720, height: 440, alpha: true, cameraPos: [0, 5.5, 7.5],
+      ambientIntensity: 0.9, autoRotate: !reduce, minDistance: 4, maxDistance: 14,
+    });
+  } catch (e) {
+    el = document.createElement("p");
+    el.className = "qmd-muted";
+    el.textContent = "The 3D preview needs network access to load Three.js from esm.sh.";
+  }
+  host.replaceChildren(el);
+};
+if (reduce) build();
+else {
+  const io = new IntersectionObserver((es, o) => {
+    if (es[0].isIntersecting) { o.disconnect(); build(); }
+  });
+  io.observe(host);
+  invalidation.then(() => io.disconnect());
+}
+return host;
+```
+
+This scene is live WebGL, authored in the one `{js}` cell above. Drag to orbit it.
+See more, with the source beside each, on [the showcase](showcase.qmd).
+
 ```sh
 qmd-fast preview post.qmd   # live at http://127.0.0.1:4321 — edit, and watch one block update
 ```
