@@ -137,13 +137,13 @@ pub(crate) fn validate_input(
                 .at(file.clone(), line as u32),
         );
     }
-    if let Some(t) = kind {
-        if !INPUT_TYPES.contains(&t) {
-            out.push(
-                Warning::new(unknown_key_message("input type", t, INPUT_TYPES))
-                    .at(file.clone(), line as u32),
-            );
-        }
+    if let Some(t) = kind
+        && !INPUT_TYPES.contains(&t)
+    {
+        out.push(
+            Warning::new(unknown_key_message("input type", t, INPUT_TYPES))
+                .at(file.clone(), line as u32),
+        );
     }
     if kind == Some("select") && options.unwrap_or("").trim().is_empty() {
         out.push(
