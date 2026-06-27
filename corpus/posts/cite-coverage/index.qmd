@@ -1,0 +1,28 @@
+---
+title: "Citation coverage"
+description: "A focused corpus document that exercises the .bib rendering fixes: LaTeX accents, corporate authors, @string macros, @incollection chapters, and manual-References de-duplication."
+date: 2026-06-27
+categories:
+  - meta
+bibliography: references.bib
+---
+
+This document pins the citation/bibliography rendering fixes. Each paragraph cites
+an entry that exercises one fix, and the page supplies its own `# References`
+heading so the auto-generated list must render under it (no duplicate heading).
+
+Kernel methods were popularised by a line of work surveyed in
+[@muller2018kernel]; the surname accents (`M{\"u}ller`, `Sch{\"o}lkopf`) must
+render as Unicode.
+
+The random-graph model of [@erdos1959random] uses the Hungarian double-acute
+accent (`Erd{\H{o}}s`), which must compose to "Erdős".
+
+Air-quality limits are set by a corporate author [@who2021guidelines]: a
+brace-protected name must render whole, never initialised to "W. H. Organization".
+
+The `@string` macro `springer` is referenced by both a book [@bishop2006pattern]
+and a book chapter [@bengio2012practical]; the chapter is an `@incollection`, so
+its `booktitle` and `pages` must appear.
+
+# References

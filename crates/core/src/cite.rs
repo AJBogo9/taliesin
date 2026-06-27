@@ -47,6 +47,9 @@ impl Bibliography {
         let f = &e.fields;
         let body = match e.kind.as_str() {
             "article" => fmt_article(f),
+            // A chapter in a book/collection: quoted chapter title + "in <booktitle>"
+            // + pages. Falls back to plain-book formatting when no `booktitle` is set.
+            "inbook" | "incollection" if f.contains_key("booktitle") => fmt_inbook(f),
             "book" | "inbook" | "incollection" => fmt_book(f),
             _ => fmt_misc(f),
         };
@@ -142,6 +145,51 @@ fn fmt_book(f: &Fields) -> String {
     out
 }
 
+/// IEEE chapter (`@inbook`/`@incollection` WITH a `booktitle`):
+/// `"Chapter," in <Booktitle>, Nth ed. City: Publisher, Year, pp. X–Y.`
+/// The chapter title is quoted (like an article); the containing work is italic.
+fn fmt_inbook(f: &Fields) -> String {
+    // `"Chapter," in <Booktitle>`
+    let mut out = quoted_title(f);
+    if let Some(bt) = f.get("booktitle").filter(|s| !s.is_empty()) {
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        out.push_str(&format!("in <em>{}</em>", esc(&clean(bt))));
+    }
+    if let Some(ed) = f.get("edition").filter(|s| !s.is_empty()) {
+        out.push_str(&format!(", {} ed.", ordinal(&clean(ed))));
+    }
+    let publisher = match (f.get("address"), f.get("publisher")) {
+        (Some(a), Some(p)) if !a.is_empty() => format!("{}: {}", clean(a), clean(p)),
+        (_, Some(p)) => clean(p),
+        _ => String::new(),
+    };
+    let mut segs: Vec<String> = Vec::new();
+    if !publisher.is_empty() {
+        segs.push(esc(&publisher));
+    }
+    if let Some(y) = f.get("year").filter(|s| !s.is_empty()) {
+        segs.push(esc(&clean(y)));
+    }
+    if let Some(p) = f.get("pages").filter(|s| !s.is_empty()) {
+        segs.push(format!("pp. {}", esc(&clean_pages(p))));
+    }
+    // After the italic booktitle (which ends in `</em>`), a comma separates the
+    // publisher/year/pages list; the whole entry ends with a period.
+    if !segs.is_empty() {
+        if !out.is_empty() {
+            out.push_str(", ");
+        }
+        out.push_str(&segs.join(", "));
+    }
+    if !out.is_empty() && !out.ends_with('.') {
+        out.push('.');
+    }
+    append_url(&mut out, f);
+    out
+}
+
 /// IEEE misc / online (the fallback): `"Title," Year. [Online]. Available: URL.`
 fn fmt_misc(f: &Fields) -> String {
     let mut segs: Vec<String> = Vec::new();
@@ -193,18 +241,240 @@ fn append_url(out: &mut String, f: &Fields) {
     }
 }
 
-/// Strip BibTeX/LaTeX cruft from a field value: `\url{}` wrappers, brace groups
-/// (capitalization guards), and the common backslash escapes.
+/// Strip BibTeX/LaTeX cruft from a field value: resolve accent macros to Unicode,
+/// unescape the common backslash escapes (`\&`/`\%`/`\_`/`\#`/`\$`), and drop
+/// `\url{}` wrappers and brace groups (capitalization guards). Accent + escape
+/// resolution (both in `latex_accents`) runs FIRST, while braces still delimit a
+/// macro argument (`M{\"u}ller` -> `Müller`); the surviving braces are then stripped.
 fn clean(s: &str) -> String {
-    let s = s
-        .replace("\\url", "")
-        .replace(['{', '}'], "")
-        .replace("\\&", "&")
-        .replace("\\%", "%")
-        .replace("\\_", "_")
-        .replace("\\#", "#")
-        .replace("\\$", "$");
-    s.trim().to_string()
+    let s = s.replace("\\url", "");
+    let s = latex_accents(&s);
+    s.replace(['{', '}'], "").trim().to_string()
+}
+
+/// Resolve the common LaTeX accent / special-letter macros to composed Unicode.
+///
+/// Two macro shapes are handled:
+///
+/// * **No-argument letters** (`\ss`, `\AA`, `\o`, `\i`, …): mapped directly, with a
+///   trailing `{}` or word-break consumed (`\ss{}` and `\ss ` both -> `ß`).
+/// * **Accent + base letter** (`\"o`, `\'e`, `\H{o}`, `\c{c}`, …): the accent macro
+///   names a combining diacritic; the next letter (optionally brace-wrapped, and
+///   itself possibly a nested macro like `{\H{o}}`) is the base. Resolved to the
+///   precomposed character when one exists, else base + combining mark.
+///
+/// Unknown macros degrade gracefully: the backslash + macro name are dropped and the
+/// argument letter is kept, so nothing renders worse than the previous brace-strip.
+fn latex_accents(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] != '\\' {
+            out.push(chars[i]);
+            i += 1;
+            continue;
+        }
+        // chars[i] == '\\': read the macro name (a run of letters, or a single
+        // non-letter accent char like " ' ` ^ ~ = . ).
+        let mut j = i + 1;
+        let name: String = if j < chars.len() && chars[j].is_ascii_alphabetic() {
+            let start = j;
+            while j < chars.len() && chars[j].is_ascii_alphabetic() {
+                j += 1;
+            }
+            chars[start..j].iter().collect()
+        } else if j < chars.len() {
+            let c = chars[j];
+            j += 1;
+            c.to_string()
+        } else {
+            out.push('\\');
+            break;
+        };
+        // Literal-escape macros (`\&`, `\%`, `\_`, `\#`, `\$`): the macro IS the
+        // character — keep it verbatim. (Escaped braces `\{`/`\}` are intentionally
+        // NOT special-cased: like the original `clean`, all braces are stripped.)
+        if name.len() == 1 && matches!(name.as_str(), "&" | "%" | "_" | "#" | "$") {
+            out.push_str(&name);
+            i = j;
+            continue;
+        }
+        // No-argument special letters (ß, Å, ø, ı, …).
+        if let Some(rep) = special_letter(&name) {
+            out.push_str(rep);
+            // Consume an immediately following `{}` (the `\ss{}` idiom) so it doesn't
+            // leak as empty braces, and skip the macro-terminating space if any.
+            if j + 1 < chars.len() && chars[j] == '{' && chars[j + 1] == '}' {
+                j += 2;
+            } else if j < chars.len() && chars[j] == ' ' {
+                j += 1;
+            }
+            i = j;
+            continue;
+        }
+        // Accent macros take a base letter argument.
+        if let Some(diacritic) = accent_diacritic(&name) {
+            // A macro-terminating space (`\v s`) is not part of the argument.
+            while j < chars.len() && chars[j] == ' ' {
+                j += 1;
+            }
+            let (base, next) = read_accent_arg(&chars, j);
+            if let Some(base) = base {
+                out.push_str(&compose(base, diacritic));
+            }
+            i = next;
+            continue;
+        }
+        // Unknown macro: drop the backslash + name, keep going (argument letters,
+        // if any, are emitted as ordinary characters by later iterations).
+        i = j;
+    }
+    out
+}
+
+/// Read the single base "letter" an accent macro applies to, starting at `j`:
+/// a brace group `{...}` (recursively de-accented), a nested macro `\i`/`\j`/… (the
+/// dotless-i idiom `\"\i`), or one character. Returns the resolved base string
+/// (`None` if absent, e.g. `\"{}`) and the index past it.
+fn read_accent_arg(chars: &[char], j: usize) -> (Option<String>, usize) {
+    match chars.get(j) {
+        Some('{') => {
+            // Find the matching close brace.
+            let mut depth = 0usize;
+            let mut k = j;
+            while k < chars.len() {
+                match chars[k] {
+                    '{' => depth += 1,
+                    '}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+                k += 1;
+            }
+            let inner: String = chars[j + 1..k.min(chars.len())].iter().collect();
+            let resolved = latex_accents(&inner);
+            let arg = (!resolved.is_empty()).then_some(resolved);
+            (arg, (k + 1).min(chars.len()))
+        }
+        // A nested control sequence as the base (`\"\i` -> ï): consume `\` + the
+        // macro name (a letter run, or one symbol) and resolve it.
+        Some('\\') => {
+            let mut k = j + 1;
+            if k < chars.len() && chars[k].is_ascii_alphabetic() {
+                while k < chars.len() && chars[k].is_ascii_alphabetic() {
+                    k += 1;
+                }
+            } else if k < chars.len() {
+                k += 1;
+            }
+            let macro_src: String = chars[j..k].iter().collect();
+            // `\i`/`\j` are dotless ONLY so an accent can sit on them; when they are
+            // the base of an accent, the precomposed letter uses the DOTTED i/j (e.g.
+            // `\"\i` -> ï = U+00EF, not the decomposed ı + diaeresis).
+            let resolved = match macro_src.as_str() {
+                r"\i" => "i".to_string(),
+                r"\j" => "j".to_string(),
+                _ => latex_accents(&macro_src),
+            };
+            // A macro-terminating space after a control WORD is swallowed.
+            if k < chars.len()
+                && chars[k] == ' '
+                && macro_src
+                    .chars()
+                    .nth(1)
+                    .is_some_and(|c| c.is_ascii_alphabetic())
+            {
+                k += 1;
+            }
+            ((!resolved.is_empty()).then_some(resolved), k)
+        }
+        Some(&c) => (Some(c.to_string()), j + 1),
+        None => (None, j),
+    }
+}
+
+/// Combine a base string with a combining diacritic, preferring a precomposed
+/// character. Only the first scalar of `base` carries the accent (the common case
+/// is a single letter; a multi-char base keeps its tail verbatim).
+fn compose(base: String, combining: char) -> String {
+    let mut it = base.chars();
+    let Some(first) = it.next() else {
+        return String::new();
+    };
+    let rest: String = it.collect();
+    let combined = match precomposed(first, combining) {
+        Some(c) => c.to_string(),
+        None => format!("{first}{combining}"),
+    };
+    format!("{combined}{rest}")
+}
+
+/// Map an accent macro name to its Unicode COMBINING diacritic.
+fn accent_diacritic(name: &str) -> Option<char> {
+    Some(match name {
+        "`" => '\u{0300}',  // grave
+        "'" => '\u{0301}',  // acute
+        "^" => '\u{0302}',  // circumflex
+        "~" => '\u{0303}',  // tilde
+        "\"" => '\u{0308}', // diaeresis / umlaut
+        "=" => '\u{0304}',  // macron
+        "." => '\u{0307}',  // dot above
+        "u" => '\u{0306}',  // breve
+        "v" => '\u{030C}',  // caron / háček
+        "H" => '\u{030B}',  // double acute
+        "c" => '\u{0327}',  // cedilla
+        "k" => '\u{0328}',  // ogonek
+        "r" => '\u{030A}',  // ring above
+        "d" => '\u{0323}',  // dot below
+        "b" => '\u{0331}',  // bar/macron below
+        "t" => '\u{0361}',  // tie (double inverted breve)
+        _ => return None,
+    })
+}
+
+/// No-argument special letters / ligatures.
+fn special_letter(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "AA" => "Å",
+        "aa" => "å",
+        "AE" => "Æ",
+        "ae" => "æ",
+        "OE" => "Œ",
+        "oe" => "œ",
+        "O" => "Ø",
+        "o" => "ø",
+        "ss" => "ß",
+        "L" => "Ł",
+        "l" => "ł",
+        "DH" => "Ð",
+        "dh" => "ð",
+        "TH" => "Þ",
+        "th" => "þ",
+        "i" => "ı",
+        "j" => "ȷ",
+        _ => return None,
+    })
+}
+
+/// Precomposed character for a base letter + combining diacritic, when one exists in
+/// Unicode. Uses canonical composition (NFC): a base + a single combining mark that
+/// has a precomposed form collapses to one scalar (e.g. `o` + `\u{0308}` -> `ö`).
+/// Anything without a precomposed form returns `None`, and the caller keeps the
+/// base + combining mark (which still renders correctly, just decomposed).
+fn precomposed(base: char, combining: char) -> Option<char> {
+    use unicode_normalization::UnicodeNormalization;
+    let s = format!("{base}{combining}");
+    let composed: String = s.nfc().collect();
+    let mut it = composed.chars();
+    match (it.next(), it.next()) {
+        (Some(c), None) => Some(c),
+        _ => None,
+    }
 }
 
 /// Page ranges use an en dash (`12--34` -> `12\u{2013}34`).
@@ -246,6 +516,9 @@ pub fn parse_bib(text: &str) -> Bibliography {
 pub fn parse_bib_warned(text: &str) -> (Bibliography, Vec<String>) {
     let mut warnings = Vec::new();
     let mut entries = HashMap::new();
+    // `@string{ key = "value" }` macro table (keys are case-insensitive in BibTeX),
+    // resolved as we parse so later entries can reference earlier definitions.
+    let mut strings: HashMap<String, String> = HashMap::new();
     let chars: Vec<char> = text.chars().collect();
     let mut i = 0;
     while i < chars.len() {
@@ -256,11 +529,30 @@ pub fn parse_bib_warned(text: &str) -> (Bibliography, Vec<String>) {
         i += 1;
         let kind = take_while(&chars, &mut i, |c| c.is_alphanumeric()).to_ascii_lowercase();
         skip_ws(&chars, &mut i);
-        if i >= chars.len() || chars[i] != '{' {
+        // `@string` / `@preamble` may use either `{...}` or `(...)` delimiters.
+        if i >= chars.len() || !matches!(chars[i], '{' | '(') {
             continue;
         }
-        i += 1; // past '{'
-        if kind == "comment" || kind == "string" || kind == "preamble" {
+        i += 1; // past the opening delimiter
+        if kind == "comment" || kind == "preamble" {
+            skip_entry(&chars, &mut i);
+            continue;
+        }
+        if kind == "string" {
+            // One `name = value` pair; `value` may itself reference earlier strings.
+            skip_ws(&chars, &mut i);
+            let name = take_while(&chars, &mut i, |c| c != '=' && c != '}' && c != ')')
+                .trim()
+                .to_ascii_lowercase();
+            skip_ws(&chars, &mut i);
+            if i < chars.len() && chars[i] == '=' {
+                i += 1;
+                skip_ws(&chars, &mut i);
+                let value = read_value(&chars, &mut i, &strings);
+                if !name.is_empty() {
+                    strings.insert(name, value);
+                }
+            }
             skip_entry(&chars, &mut i);
             continue;
         }
@@ -285,7 +577,7 @@ pub fn parse_bib_warned(text: &str) -> (Bibliography, Vec<String>) {
             }
             i += 1; // past '='
             skip_ws(&chars, &mut i);
-            let value = read_value(&chars, &mut i);
+            let value = read_value(&chars, &mut i, &strings);
             if !name.is_empty() {
                 fields.insert(name, value);
             }
@@ -335,48 +627,91 @@ fn skip_entry(chars: &[char], i: &mut usize) {
     }
 }
 
-/// Read a field value: `{...}` (brace-nested), `"..."`, or a bare token.
-fn read_value(chars: &[char], i: &mut usize) -> String {
-    let mut out = String::new();
-    match chars.get(*i) {
-        Some('{') => {
-            let mut depth = 0;
-            while *i < chars.len() {
-                match chars[*i] {
-                    '{' => {
-                        depth += 1;
-                        if depth > 1 {
-                            out.push('{');
+/// Read a (possibly `#`-concatenated) field value: a sequence of `{...}`
+/// (brace-nested), `"..."`, or bare-token parts joined by `#`. A bare token is
+/// resolved against the `@string` macro table (`strings`); an unknown bare token is
+/// kept verbatim (BibTeX would error, but tolerance beats dropping content). One
+/// level of braces is stripped, so a double-brace value (`{{Corporate Name}}`)
+/// retains its inner braces for the author formatter to treat as a literal name.
+fn read_value(chars: &[char], i: &mut usize, strings: &HashMap<String, String>) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    loop {
+        skip_ws(chars, i);
+        match chars.get(*i) {
+            Some('{') => {
+                let mut inner = String::new();
+                let mut depth = 0;
+                while *i < chars.len() {
+                    match chars[*i] {
+                        '{' => {
+                            depth += 1;
+                            if depth > 1 {
+                                inner.push('{');
+                            }
                         }
+                        '}' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                *i += 1;
+                                break;
+                            }
+                            inner.push('}');
+                        }
+                        c => inner.push(c),
                     }
-                    '}' => {
-                        depth -= 1;
-                        if depth == 0 {
+                    *i += 1;
+                }
+                parts.push(inner);
+            }
+            Some('"') => {
+                let mut inner = String::new();
+                *i += 1;
+                // A `"..."` value may contain brace groups; honor their nesting so an
+                // embedded `"` inside braces doesn't end the value prematurely.
+                let mut depth: usize = 0;
+                while *i < chars.len() {
+                    match chars[*i] {
+                        '{' => depth += 1,
+                        '}' => depth = depth.saturating_sub(1),
+                        '"' if depth == 0 => {
                             *i += 1;
                             break;
                         }
-                        out.push('}');
+                        _ => {}
                     }
-                    c => out.push(c),
+                    inner.push(chars[*i]);
+                    *i += 1;
                 }
-                *i += 1;
+                // Drop a trailing close-quote we may have pushed before the break check.
+                parts.push(inner);
+            }
+            _ => {
+                let token = take_while(chars, i, |c| {
+                    c != ',' && c != '}' && c != ')' && c != '#' && !c.is_whitespace()
+                });
+                if token.is_empty() {
+                    break;
+                }
+                // Bare token: a number stays literal, otherwise resolve as a @string ref.
+                let resolved = strings
+                    .get(&token.to_ascii_lowercase())
+                    .cloned()
+                    .unwrap_or(token);
+                parts.push(resolved);
             }
         }
-        Some('"') => {
-            *i += 1;
-            while *i < chars.len() && chars[*i] != '"' {
-                out.push(chars[*i]);
-                *i += 1;
-            }
-            if *i < chars.len() {
-                *i += 1;
-            }
+        skip_ws(chars, i);
+        if *i < chars.len() && chars[*i] == '#' {
+            *i += 1; // concatenation: keep reading parts
+            continue;
         }
-        _ => {
-            out = take_while(chars, i, |c| c != ',' && c != '}');
-        }
+        break;
     }
-    normalize_ws(&out)
+    // A double-brace value (`{{World Health Organization}}`) keeps its INNER braces
+    // here (the brace arm strips only one level), so the author formatter sees a
+    // leading `{` and renders it as a literal corporate name. A single-brace
+    // `{First Last}` keeps no braces and initials normally — the standard convention.
+    normalize_ws(&parts.join(""))
 }
 
 fn normalize_ws(s: &str) -> String {
@@ -431,23 +766,25 @@ fn format_one_author(name: &str) -> String {
         return clean(name);
     }
     if let Some((last, first)) = name.split_once(',') {
-        format!("{}{}", initials(first), last.trim())
+        format!("{}{}", initials(first), clean(last.trim()))
     } else {
         let words: Vec<&str> = name.split_whitespace().collect();
         match words.split_last() {
             Some((last, firsts)) if !firsts.is_empty() => {
-                format!("{}{last}", initials(&firsts.join(" ")))
+                format!("{}{}", initials(&firsts.join(" ")), clean(last))
             }
-            _ => name.to_string(),
+            _ => clean(name),
         }
     }
 }
 
 /// First/middle names -> space-terminated initials: "Daniel M." -> "D. M. ".
+/// Each word is `clean`ed first so an accented initial (`{\'E}mile` -> `Émile`)
+/// initials as its Unicode letter (`É.`), not a stray brace/backslash.
 fn initials(first: &str) -> String {
     first
         .split_whitespace()
-        .filter_map(|w| w.chars().find(|c| c.is_alphabetic()))
+        .filter_map(|w| clean(w).chars().find(|c| c.is_alphabetic()))
         .map(|c| format!("{}. ", c.to_uppercase()))
         .collect()
 }
@@ -518,10 +855,15 @@ pub fn process(
     if order.is_empty() {
         return Vec::new();
     }
+    // If the author already wrote a `# References` / `# Bibliography` heading, render
+    // the reference list under it instead of emitting a second "References" heading.
+    let has_manual_heading = blocks.iter().any(|b| is_manual_references_heading(&b.html));
     let mut warnings: Vec<Warning> = Vec::new();
-    let mut list = String::from(
-        "<section class=\"qmd-references\" data-block-id=\"qmd-references\"><h2>References</h2>",
-    );
+    let mut list =
+        String::from("<section class=\"qmd-references\" data-block-id=\"qmd-references\">");
+    if !has_manual_heading {
+        list.push_str("<h2>References</h2>");
+    }
     for (idx, key) in order.iter().enumerate() {
         let formatted = match bib.format(key) {
             Some(f) => f,
@@ -557,6 +899,37 @@ pub fn process(
         cell: None,
     });
     warnings
+}
+
+/// Whether a block is a manual heading (`<h1>`…`<h6>`) whose visible text is exactly
+/// "References" or "Bibliography" (case-insensitive). Such a heading means the author
+/// is placing the reference list themselves, so the auto section drops its own
+/// `<h2>References</h2>` to avoid a duplicate heading. Matches only a heading block
+/// (not, say, a paragraph that merely mentions "references").
+fn is_manual_references_heading(html: &str) -> bool {
+    let t = html.trim_start();
+    // Must open with an <h1>..<h6> tag.
+    let bytes = t.as_bytes();
+    if bytes.len() < 4
+        || bytes[0] != b'<'
+        || (bytes[1] | 0x20) != b'h'
+        || !bytes[2].is_ascii_digit()
+    {
+        return false;
+    }
+    // Strip every tag, leaving the text content; then compare case-insensitively.
+    let mut text = String::new();
+    let mut in_tag = false;
+    for c in t.chars() {
+        match c {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => text.push(c),
+            _ => {}
+        }
+    }
+    let text = text.trim().to_ascii_lowercase();
+    text == "references" || text == "bibliography"
 }
 
 /// Parse the 1-based start line out of a `startLine:col-endLine:col` sourcepos.
@@ -1026,5 +1399,165 @@ mod tests {
             "code was rewritten"
         );
         assert_eq!(blocks.len(), 1, "no citation should have been counted");
+    }
+
+    // --- Lane C: `.bib` rendering fixes ---------------------------------------
+
+    #[test]
+    fn latex_accents_render_as_unicode() {
+        // Brace-grouped umlaut, double-acute (Erdős), and standalone forms.
+        assert_eq!(clean(r#"M{\"u}ller"#), "Müller");
+        assert_eq!(clean(r#"Erd{\H{o}}s"#), "Erdős");
+        assert_eq!(clean(r#"\'Emile"#), "Émile");
+        assert_eq!(clean(r#"Caf\'e"#), "Café");
+        assert_eq!(clean(r#"\`a"#), "à");
+        assert_eq!(clean(r#"\^o"#), "ô");
+        assert_eq!(clean(r#"\~n"#), "ñ");
+        assert_eq!(clean(r#"\c{c}"#), "ç");
+        assert_eq!(clean(r#"\v{s}"#), "š");
+        assert_eq!(clean(r#"Stra\ss{}e"#), "Straße");
+        // A control WORD (`\AA`) must be terminated by a brace or space, not run into
+        // the following letters — `{\AA}rhus` / `\AA{}rhus` / `\AA rhus` are the valid
+        // forms (`\AArhus` is one undefined macro in real TeX).
+        assert_eq!(clean(r#"{\AA}rhus"#), "Århus");
+        assert_eq!(clean(r#"\AA{}rhus"#), "Århus");
+        assert_eq!(clean(r#"\o{}re"#), "øre");
+        assert_eq!(clean(r#"\j"#), "ȷ");
+        // Accent on a nested dotless-i/j macro (the standard `\"\i` idiom): the
+        // precomposed form uses the dotted letter (`\"\i` -> ï, not ı + diaeresis).
+        assert_eq!(clean(r#"Na\"\i ve"#), "Naïve");
+        assert_eq!(clean(r#"\'\j"#), "j\u{301}"); // no precomposed j-acute: decomposed
+        // Literal-escape macros are UNescaped, not dropped (regression: AT&T / 50% / C#).
+        assert_eq!(clean(r#"AT\&T"#), "AT&T");
+        assert_eq!(clean(r#"50\% off"#), "50% off");
+        assert_eq!(clean(r#"C\#"#), "C#");
+        assert_eq!(clean(r#"foo\_bar"#), "foo_bar");
+        assert_eq!(clean(r#"\$5"#), "$5");
+        // Author formatting routes through clean(): accents survive initialization.
+        let b = parse_bib(
+            "@article{m,\n author = {M{\\\"u}ller, Hans and Erd{\\H{o}}s, P{\\'a}l},\n title = {T},\n journal = {J},\n year = {2020}\n}\n",
+        );
+        let f = b.format("m").unwrap();
+        assert!(f.starts_with("H. Müller and P. Erdős, "), "got: {f}");
+    }
+
+    #[test]
+    fn corporate_brace_author_stays_whole() {
+        // The DOUBLE brace `{{...}}` is the BibTeX corporate marker: rendered whole.
+        let b = parse_bib(
+            "@misc{who,\n author = {{World Health Organization}},\n title = {Guidelines},\n year = {2021}\n}\n",
+        );
+        let f = b.format("who").unwrap();
+        assert!(
+            f.starts_with("World Health Organization, "),
+            "corporate author was split/initialized: {f}"
+        );
+        assert!(!f.contains("W. H. Organization"), "got: {f}");
+    }
+
+    #[test]
+    fn single_brace_first_last_author_is_still_initialized() {
+        // Regression guard: a single-brace `{First Last}` is an ordinary author and
+        // MUST initialize (it is NOT corporate — only `{{...}}` is). Without this,
+        // existing corpus entries like `{Umar Jamil}` regressed to "Umar Jamil".
+        let b = parse_bib("@misc{j,\n author = {Umar Jamil},\n title = {T},\n year = {2023}\n}\n");
+        let f = b.format("j").unwrap();
+        assert!(f.starts_with("U. Jamil, "), "got: {f}");
+    }
+
+    #[test]
+    fn string_macros_are_resolved_and_substituted() {
+        let b = parse_bib(
+            "@string{springer = \"Springer-Verlag\"}\n@string{jmlr = \"Journal of Machine Learning Research\"}\n@book{x,\n author = {Doe, Jane},\n title = {A Book},\n publisher = springer,\n year = {2020}\n}\n@article{y,\n author = {Roe, Rich},\n title = {A Paper},\n journal = jmlr,\n year = {2021}\n}\n",
+        );
+        let fb = b.format("x").unwrap();
+        assert!(fb.contains("Springer-Verlag"), "got: {fb}");
+        let fa = b.format("y").unwrap();
+        assert!(
+            fa.contains("<em>Journal of Machine Learning Research</em>"),
+            "got: {fa}"
+        );
+    }
+
+    #[test]
+    fn inbook_and_incollection_render_booktitle_and_pages() {
+        let b = parse_bib(
+            "@incollection{c,\n author = {Bengio, Yoshua},\n title = {Practical Recommendations},\n booktitle = {Neural Networks: Tricks of the Trade},\n pages = {437--478},\n publisher = {Springer},\n year = {2012}\n}\n",
+        );
+        let f = b.format("c").unwrap();
+        assert!(
+            f.contains("\u{201c}Practical Recommendations,\u{201d}"),
+            "chapter title not quoted: {f}"
+        );
+        assert!(
+            f.contains("in <em>Neural Networks: Tricks of the Trade</em>"),
+            "booktitle missing/not italic: {f}"
+        );
+        assert!(f.contains("pp. 437\u{2013}478"), "pages dropped: {f}");
+        assert!(f.contains("Springer") && f.contains("2012"), "got: {f}");
+    }
+
+    #[test]
+    fn manual_references_heading_suppresses_auto_heading() {
+        let b = bib();
+        let mut blocks = vec![
+            Block {
+                id: "p".into(),
+                sourcepos: "1:1-1:1".into(),
+                source_file: None,
+                html: "<p>see [@bishop2006pattern].</p>".into(),
+                cell: None,
+            },
+            Block {
+                id: "h".into(),
+                sourcepos: "3:1-3:12".into(),
+                source_file: None,
+                html: "<h1 id=\"references\" data-block-id=\"h\" data-sourcepos=\"3:1-3:12\">References</h1>".into(),
+                cell: None,
+            },
+        ];
+        process(&mut blocks, &b, &HashMap::new());
+        let refs = blocks.last().unwrap();
+        // The list + anchors are still emitted...
+        assert!(
+            refs.html.contains("id=\"ref-bishop2006pattern\""),
+            "got: {}",
+            refs.html
+        );
+        assert!(
+            refs.html.contains("class=\"qmd-references\""),
+            "got: {}",
+            refs.html
+        );
+        // ...but the auto <h2>References</h2> is suppressed (the manual one stands).
+        assert!(
+            !refs.html.contains("<h2>References</h2>"),
+            "auto References heading should be suppressed when a manual one exists: {}",
+            refs.html
+        );
+        // Exactly one "References" heading remains across all blocks.
+        let count: usize = blocks
+            .iter()
+            .map(|b| b.html.matches("References</h").count())
+            .sum();
+        assert_eq!(
+            count, 1,
+            "expected one References heading, blocks: {blocks:?}"
+        );
+    }
+
+    #[test]
+    fn no_manual_heading_keeps_auto_references_heading() {
+        // Regression guard: without a manual heading, the auto <h2> stays.
+        let b = bib();
+        let mut blocks = vec![Block {
+            id: "p".into(),
+            sourcepos: "1:1-1:1".into(),
+            source_file: None,
+            html: "<p>see [@bishop2006pattern].</p>".into(),
+            cell: None,
+        }];
+        process(&mut blocks, &b, &HashMap::new());
+        assert!(blocks.last().unwrap().html.contains("<h2>References</h2>"));
     }
 }
