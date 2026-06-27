@@ -1186,6 +1186,7 @@
 
   // --- slide number -------------------------------------------------------
   function updateNumber() {
+    updateSlideLabels(); // keep the per-slide aria-labels + live announcement current
     if (!deck.config.slideNumber) return;
     var rev = deckEl();
     if (!rev) return;
@@ -1193,6 +1194,33 @@
     if (!el) { el = document.createElement('div'); el.className = 'qmd-slide-number'; rev.appendChild(el); }
     var all = allSlides();
     el.textContent = (all.indexOf(currentSlide()) + 1) + ' / ' + all.length;
+  }
+
+  // a11y: name each leaf slide "Slide N of M" (the server-side <section> already carries
+  // role="group" + aria-roledescription="slide", but only JS knows the flat order across
+  // vertical stacks), and announce the current slide through a polite live region so a
+  // screen-reader user hears the position change on every navigation. Re-run on every
+  // slide change + after a live edit re-splits the deck, so the count stays right.
+  function updateSlideLabels() {
+    var rev = deckEl();
+    if (!rev) return;
+    var all = allSlides(), cur = currentSlide(), idx = all.indexOf(cur);
+    for (var i = 0; i < all.length; i++) {
+      all[i].setAttribute('aria-label', 'Slide ' + (i + 1) + ' of ' + all.length);
+    }
+    var live = rev.querySelector('.qmd-deck-live');
+    if (!live) {
+      live = document.createElement('div');
+      live.className = 'qmd-deck-live';
+      live.setAttribute('aria-live', 'polite');
+      live.setAttribute('aria-atomic', 'true');
+      rev.appendChild(live);
+    }
+    if (idx >= 0) {
+      var hd = cur && cur.querySelector('h1,h2,h3');
+      var title = hd ? hd.textContent.trim() : '';
+      live.textContent = 'Slide ' + (idx + 1) + ' of ' + all.length + (title ? ': ' + title : '');
+    }
   }
 
   // --- keyboard + touch ---------------------------------------------------

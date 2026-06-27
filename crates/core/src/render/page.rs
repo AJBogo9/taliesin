@@ -132,6 +132,17 @@ pub fn assemble_html_page(p: &PageParts) -> String {
     let scripts_pre = if bare { "" } else { p.scripts_pre };
     let scripts_post = if bare { "" } else { p.scripts_post };
     let code_scripts = code_scripts_for(p.body, p.mode);
+    // Skip-to-content link: the first focusable thing in the body, so a keyboard /
+    // screen-reader user can jump past the chrome to the reading region. Emitted
+    // server-side (works with JS off) whenever the body carries the focusable
+    // `<main id="qmd-main">` (build + site pages always do; the live `#qmd-root`
+    // mount does not — the runtime `qmdInitSkipLink` synthesizes the pair there).
+    // Bare output is link-only chrome but keeps the skip link (it's pure HTML/CSS).
+    let skip_link = if p.body.contains("id=\"qmd-main\"") {
+        "<a class=\"qmd-skip\" href=\"#qmd-main\">Skip to content</a>\n"
+    } else {
+        ""
+    };
     format!(
         r#"<!DOCTYPE html>
 <html lang="{lang}">
@@ -147,7 +158,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
 {include_in_header}
 {extra_head}</head>
 <body{body_class}>
-{include_before_body}
+{skip_link}{include_before_body}
 {body}
 {scripts_pre}
 {code_scripts}
@@ -252,9 +263,16 @@ fn html_page_inner(
     // Only ship the (large) KaTeX stylesheet when the page actually has math
     // (computed before `body` is moved into the content layout below).
     let ship_katex = body.contains("class=\"katex");
-    // With `toc: true`, lay the content beside a sticky table of contents.
+    // With `toc: true`, lay the content beside a sticky table of contents. Name the
+    // TOC landmark so a screen reader's landmark list distinguishes it from the other
+    // `<nav>`s (navbar / post-nav). `toc_html` already gives it `role="doc-toc"`; the
+    // accessible name is added here (its builder lives in mod.rs).
     let toc = if doc.toc {
-        toc_html(&doc.blocks)
+        toc_html(&doc.blocks).replacen(
+            "<nav id=\"TOC\"",
+            "<nav id=\"TOC\" aria-label=\"Table of contents\"",
+            1,
+        )
     } else {
         String::new()
     };
@@ -271,13 +289,22 @@ fn html_page_inner(
             None => toc_scripts(),
         }
     };
+    // The reading region is always a focusable `<main id="qmd-main">`, emitted
+    // server-side so the skip-to-content link (added in `assemble_html_page`) and
+    // keyboard "skip the chrome" work with JS off. `tabindex="-1"` lets the skip link
+    // move focus into it without making it a tab stop. The runtime `qmdInitSkipLink`
+    // no-ops when this server markup is present (it only synthesizes the pair on the
+    // live `#qmd-root` mount, which has no `<main>`).
     // Content first (left, wide column), TOC second (right, sticky column).
     let (mut body_class, content) = if toc.is_empty() {
-        (String::new(), body)
+        (
+            String::new(),
+            format!("<main id=\"qmd-main\" tabindex=\"-1\">\n{body}</main>\n"),
+        )
     } else {
         (
             " class=\"has-toc\"".to_string(),
-            format!("<main>\n{body}</main>\n{toc}\n"),
+            format!("<main id=\"qmd-main\" tabindex=\"-1\">\n{body}</main>\n{toc}\n"),
         )
     };
     // Site mode: body becomes a full-width flex column (navbar, a centred content

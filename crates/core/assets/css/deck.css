@@ -793,3 +793,32 @@ html.qmd-deck-dark .qmd-deck .qmd-copy { background: #21242b; color: var(--deck-
 /* Alt-held click-to-source affordance (deck accent; see base.css for the rationale). */
 html.qmd-alt [data-block-id] { cursor: pointer; }
 .qmd-src-hover { outline: 2px dashed var(--deck-accent); outline-offset: 3px; }
+
+/* a11y live region (deck.js updateSlideLabels): announces "Slide N of M" on every
+   navigation. Visually hidden but present for assistive tech (not display:none, which
+   removes it from the accessibility tree). */
+.qmd-deck-live {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+
+/* One consistent keyboard-focus ring across the deck's interactive controls, mirroring
+   the page-side `--qmd-focus` token (deck chrome lives on its own dark surface, so it
+   uses the deck accent). Mouse clicks don't show it (:focus-visible). */
+.qmd-ctl:focus-visible, .qmd-menu-item:focus-visible, .qmd-menu-slide:focus-visible,
+.qmd-ov-search:focus-visible {
+  outline: 2px solid var(--deck-accent, #4c8dff); outline-offset: 2px; border-radius: 6px;
+}
+
+/* High-contrast / forced-colors (Windows High Contrast): keep the focus ring, control
+   borders, and the progress fill visible by mapping them to system colors. */
+@media (forced-colors: active) {
+  .qmd-ctl:focus-visible, .qmd-menu-item:focus-visible, .qmd-menu-slide:focus-visible,
+  .qmd-ov-search:focus-visible { outline-color: Highlight; }
+  .qmd-ctl, .qmd-menu, .qmd-ov-search { border: 1px solid CanvasText; }
+  .qmd-progress-fill { background: Highlight; forced-color-adjust: none; }
+  .qmd-deck.overview .qmd-slides section.qmd-ov-hit { outline-color: Highlight; }
+}
+@media (prefers-contrast: more) {
+  .qmd-ctl { border: 1px solid currentColor; }
+}

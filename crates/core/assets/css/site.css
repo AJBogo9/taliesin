@@ -214,3 +214,17 @@ body.qmd-book-body { max-width: none; margin: 0; padding: 0; --qmd-nav-h: 0rem; 
   /* single-column: no TOC beside the text, so the book post-nav spans full width again */
   .qmd-book-inner.has-toc + .qmd-book-postnav { width: auto; }
 }
+
+/* High-contrast / forced-colors: the site chrome leans on subtle 1px borders + a tinted
+   active state, both of which a forced palette can flatten. Re-assert a visible separator
+   on the navbar / sidebar / footer and a clear marker on the active nav item so the
+   landmarks stay legible in Windows High Contrast mode. */
+@media (forced-colors: active) {
+  .qmd-site-nav { border-bottom: 1px solid CanvasText; }
+  .qmd-site-footer { border-top: 1px solid CanvasText; }
+  .qmd-book-sidebar { border-right: 1px solid CanvasText; }
+  .qmd-nav-active, .qmd-book-active, a[aria-current="page"] {
+    forced-color-adjust: none; text-decoration: underline; text-underline-offset: 3px;
+  }
+  .qmd-search-btn, .qmd-theme-toggle, .qmd-nav-burger { border: 1px solid CanvasText; }
+}

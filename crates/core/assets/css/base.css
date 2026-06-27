@@ -18,6 +18,11 @@
     --qmd-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
     --qmd-maxw: 46rem;
     --qmd-scale: 1.2; /* modular type-scale ratio (minor third) for the heading sizes */
+    /* One keyboard-focus ring for every interactive control (links, buttons, tabs,
+       reader-menu + deck controls). One token so a theme can retune the ring once and
+       every control follows; the global rule below applies it via :focus-visible. */
+    --qmd-focus: 2px solid var(--qmd-accent);
+    --qmd-focus-offset: 2px;
   }
   /* Reader text-size: one root multiplier scales every rem/em (body + headings). */
   html { scroll-behavior: smooth; font-size: calc(100% * var(--qmd-reader-scale, 1)); }
@@ -230,6 +235,19 @@
     border-radius: 6px; font: 600 .9rem var(--qmd-font-head); text-decoration: none; }
   .qmd-skip:focus { top: .5rem; }
   @media (prefers-reduced-motion: no-preference) { .qmd-skip { transition: top .15s ease; } }
+
+  /* One consistent keyboard-focus ring across every interactive control (the
+     `--qmd-focus` token). `:focus-visible` shows it for keyboard/AT focus but not on a
+     mouse click. Scoped to the controls that take focus so it never paints on a clicked
+     paragraph or a programmatically-focused `<main>` (`tabindex="-1"`, focused by the
+     skip link). Components keep their own visual treatment; this only supplies the ring. */
+  a:focus-visible, button:focus-visible, [role="button"]:focus-visible,
+  [role="tab"]:focus-visible, input:focus-visible, select:focus-visible,
+  textarea:focus-visible, summary:focus-visible, [tabindex="0"]:focus-visible {
+    outline: var(--qmd-focus); outline-offset: var(--qmd-focus-offset); border-radius: 4px;
+  }
+  /* The skip link is pinned chrome with its own box; keep its offset tight. */
+  .qmd-skip:focus-visible { outline: var(--qmd-focus); outline-offset: 2px; }
 
   /* Keyboard shortcuts cheatsheet (qmdInitKeyboard). */
   .qmd-keys { position: fixed; inset: 0; z-index: 2147482000; display: flex;
@@ -513,7 +531,8 @@
     color: var(--qmd-muted); border-bottom: 2px solid transparent; }
   .tabset-tab:hover { color: var(--qmd-fg); }
   .tabset-tab[aria-selected="true"] { color: var(--qmd-accent); border-bottom-color: var(--qmd-accent); }
-  .tabset-tab:focus-visible { outline: 2px solid var(--qmd-accent); outline-offset: -2px; border-radius: 3px; }
+  /* The tab sits on the tablist's bottom border, so the shared ring is inset (-2px). */
+  .tabset-tab:focus-visible { outline: var(--qmd-focus); outline-offset: -2px; border-radius: 3px; }
   .tabset-panel[hidden] { display: none; }
   .tabset-panel > :first-child { margin-top: 0; }
   @media (prefers-reduced-motion: no-preference) {
@@ -696,6 +715,32 @@
     *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important;
       transition-duration: .001ms !important; scroll-behavior: auto !important; }
   }
+  /* High-contrast / forced-colors (Windows High Contrast, `prefers-contrast`). In
+     forced-colors mode the UA replaces colors with the user's system palette and drops
+     box-shadows, so borders/rings/icons that relied on subtle color or shadow can
+     vanish: re-assert them via system color keywords so the chrome stays legible. */
+  @media (forced-colors: active) {
+    /* The shared focus ring maps to the system Highlight color (the token's accent is
+       ignored in forced-colors, so name a system color explicitly). */
+    a:focus-visible, button:focus-visible, [role="button"]:focus-visible,
+    [role="tab"]:focus-visible, input:focus-visible, select:focus-visible,
+    textarea:focus-visible, summary:focus-visible, [tabindex="0"]:focus-visible,
+    .qmd-skip:focus-visible, .tabset-tab:focus-visible {
+      outline: 2px solid Highlight; outline-offset: 2px;
+    }
+    /* Callout/border edges that leaned on a tinted border get a visible system border. */
+    .callout, .panel-tabset, blockquote, table, .qmd-figure figure, pre {
+      border: 1px solid CanvasText;
+    }
+    .tabset-tab[aria-selected="true"] { border-bottom-color: Highlight; }
+    .qmd-reader-seg button[aria-pressed="true"],
+    .qmd-nav-active, a[aria-current="page"] { forced-color-adjust: none; }
+  }
+  /* `prefers-contrast: more`: nudge the muted/border tones toward full contrast. */
+  @media (prefers-contrast: more) {
+    :root, html[data-theme="dark"] { --qmd-muted: var(--qmd-fg); --qmd-border: var(--qmd-fg); }
+  }
+
   /* print: drop the live chrome, force a light palette, flow content full width
      with the contents list lifted to the top, and avoid clipping/awkward breaks.
      Placed last so it outranks the width-query rules that also match on paper. */

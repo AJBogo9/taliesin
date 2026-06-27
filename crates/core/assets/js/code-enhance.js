@@ -667,9 +667,10 @@ function qmdInitReadAloud() {
 }
 
 // Skip-to-content link: a visually-hidden-until-focused link that jumps keyboard /
-// screen-reader users past the chrome to the content. The content container varies by
-// mode (build <main>, preview #qmd-root, no-TOC build = first block), so resolve it at
-// runtime. Read-only, deck-skipped, idempotent.
+// screen-reader users past the chrome to the content. Build + site pages now emit the
+// link + a focusable `<main id="qmd-main" tabindex="-1">` SERVER-SIDE (page.rs), so it
+// works with JS off; this only enhances. The live `#qmd-root` mount has no server `<main>`,
+// so the pair is synthesized there. Read-only, deck-skipped, idempotent.
 function qmdInitSkipLink() {
   if (window.__qmdSkipLink) return;
   if (document.querySelector('.qmd-deck')) return;
@@ -681,15 +682,17 @@ function qmdInitSkipLink() {
   window.__qmdSkipLink = true;
   if (!main.id) main.id = 'qmd-main';
   main.setAttribute('tabindex', '-1');
-  if (document.querySelector('.qmd-skip')) return;
+  // Move focus (not just scroll) so a keyboard reader continues from the content. Wire
+  // this onto the server-rendered link too (it ships as a plain anchor), so this path
+  // enhances both the server-emitted and the JS-synthesized link.
+  var focusMain = function () { setTimeout(function () { main.focus(); }, 0); };
+  var existing = document.querySelector('.qmd-skip');
+  if (existing) { existing.addEventListener('click', focusMain); return; }
   var a = document.createElement('a');
   a.className = 'qmd-skip';
   a.href = '#' + main.id;
   a.textContent = 'Skip to content';
-  a.addEventListener('click', function () {
-    // move focus (not just scroll) so the keyboard reader continues from the content
-    setTimeout(function () { main.focus(); }, 0);
-  });
+  a.addEventListener('click', focusMain);
   document.body.insertBefore(a, document.body.firstChild);
 }
 
@@ -921,6 +924,7 @@ function qmdInitLightbox() {
   var box = document.createElement('div');
   box.id = 'qmd-lightbox';
   box.setAttribute('role', 'dialog');
+  box.setAttribute('aria-label', 'Image viewer'); // a role=dialog needs an accessible name
   box.innerHTML = '<button class="qmd-lb-close" aria-label="Close">×</button>' +
     '<img alt=""><video class="qmd-lb-video" muted loop playsinline></video>' +
     '<div class="qmd-lb-svg"></div><div class="qmd-lb-cap"></div>';

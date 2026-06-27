@@ -1013,11 +1013,15 @@ fn deck_splits_into_title_slide_and_one_section_per_heading() {
     );
     // One <section> per h2, id slugged from the heading text.
     assert!(
-        slides.contains("<section id=\"first\" class=\"qmd-slide\" data-level=\"2\">"),
+        slides.contains(
+            "<section id=\"first\" class=\"qmd-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"2\">"
+        ),
         "got: {slides}"
     );
     assert!(
-        slides.contains("<section id=\"second\" class=\"qmd-slide\" data-level=\"2\">"),
+        slides.contains(
+            "<section id=\"second\" class=\"qmd-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"2\">"
+        ),
         "got: {slides}"
     );
     // Heading keeps its block id inside the section (block-swap/click-to-source).
@@ -1071,15 +1075,19 @@ fn h1_wraps_following_h2s_in_a_vertical_stack() {
     // Outer wrapper section, then the h1 lead slide, then the two h2 children.
     assert!(
         slides
-            .contains("<section>\n<section id=\"part-one\" class=\"qmd-slide\" data-level=\"1\">"),
+            .contains("<section>\n<section id=\"part-one\" class=\"qmd-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"1\">"),
         "got: {slides}"
     );
     assert!(
-        slides.contains("<section id=\"a\" class=\"qmd-slide\" data-level=\"2\">"),
+        slides.contains(
+            "<section id=\"a\" class=\"qmd-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"2\">"
+        ),
         "got: {slides}"
     );
     assert!(
-        slides.contains("<section id=\"b\" class=\"qmd-slide\" data-level=\"2\">"),
+        slides.contains(
+            "<section id=\"b\" class=\"qmd-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"2\">"
+        ),
         "got: {slides}"
     );
     // 1 wrapper + lead + 2 children = 4 sections.

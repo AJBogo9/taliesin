@@ -233,6 +233,64 @@ fn reveal_deck_detects_format_and_splits_into_slides() {
 }
 
 #[test]
+fn a11y_chrome_emits_landmarks_skip_link_and_slide_roles() {
+    use qmd_fast_core::{render_document_with_includes, slides_html};
+    // --- deck slides carry ARIA slide roles (additive on the <section> open tag, so
+    // the inner [data-block-id] blocks are untouched — block ids stay byte-stable). ---
+    let dir = corpus_dir().join("liquid-glass-slides");
+    let src = fs::read_to_string(dir.join("example.qmd")).unwrap();
+    let doc = render_document_with_includes(&src, &dir);
+    let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
+    // Every content slide announces as a slide group so a screen reader can navigate
+    // the deck. (The "N of M" aria-label is applied at runtime by deck.js, where the
+    // flat slide order across stacks is known.)
+    assert!(
+        slides.contains("role=\"group\""),
+        "deck slides must carry role=\"group\""
+    );
+    assert!(
+        slides.contains("aria-roledescription=\"slide\""),
+        "deck slides must carry aria-roledescription=\"slide\""
+    );
+    // The slide role rides on the same <section> as the slide class — never on an
+    // inner block — so it can't perturb a [data-block-id].
+    assert!(
+        slides.contains("class=\"qmd-slide\" role=\"group\" aria-roledescription=\"slide\""),
+        "slide ARIA must sit on the .qmd-slide <section>, got: {slides}"
+    );
+    // Headings still keep their block ids inside the now-role'd section.
+    assert!(
+        slides.contains("<h2 data-block-id="),
+        "headings lost their block id after adding slide roles"
+    );
+
+    // --- a page with a TOC emits the skip-link + focusable <main> SERVER-SIDE (works
+    // with JS off) and a distinguishable TOC landmark. ---
+    let page = qmd_fast_core::render_doc_to_page(
+        &qmd_fast_core::render_document(
+            "---\ntitle: \"T\"\ntoc: true\n---\n\n# One\n\nbody\n\n## Two\n\nmore\n",
+        ),
+        "fallback",
+        qmd_fast_core::OutputMode::Build,
+    );
+    // Skip-to-content link is the first thing in the body, before JS runs.
+    assert!(
+        page.contains("class=\"qmd-skip\"") && page.contains("href=\"#qmd-main\""),
+        "server-side skip-to-content link missing"
+    );
+    // The content container is a focusable <main id="qmd-main">.
+    assert!(
+        page.contains("<main id=\"qmd-main\" tabindex=\"-1\">"),
+        "server-side focusable <main id=qmd-main> missing"
+    );
+    // The TOC is a distinguishable landmark (named + role) for screen-reader landmark nav.
+    assert!(
+        page.contains("role=\"doc-toc\"") && page.contains("aria-label=\"Table of contents\""),
+        "TOC landmark must carry role + an aria-label"
+    );
+}
+
+#[test]
 fn website_renders_with_toc_anchored_headings_and_numbered_figures() {
     // bayesian-website is a single-page website (no `chapters:`), assembled from
     // `subsections/` includes — not a book; the assertions below exercise TOC,
