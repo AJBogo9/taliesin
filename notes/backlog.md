@@ -190,24 +190,28 @@ pages; VS Code F5 `launch.json`. Pinned by `corpus/reactive/js-error.qmd`, a nav
 and `include_relative_base.rs`. Browser-verified across 390/900/1440; **touch gestures + WebGL-cap +
 the F5 round-trip still want real-device confirmation.**
 
+**Tier 1 release-hardening shipped (2026-06-27, branch `tier1-hardening`; tagged `v0.2.0`).**
+Made "a green `check`/build = publishable" stronger + clippy green: (1) **a11y gate in `check`**
+(`diagnostics::validate_a11y`) — heading-level skips (≥2, mid-doc, decks exempt), `<img>` missing
+`alt`, and `<a>`/`<button>` with no accessible name; ported from the live `scanA11y`, conservative,
+**0 false positives across the corpus**, pinned `corpus/diagnostics/a11y.qmd`. (2) **per-subcommand
+`--help`/`-h`** (focused synopsis + flags + example for preview/build/check/render/schema/blocks/init).
+(3) **`check --format json` honesty** — an unreadable/missing path now emits `{"error":…}` on stdout
+(exit 1) so `| jq` never chokes. (4) **`_quarto.yml` migration breadcrumb** (replaces the confusing
+`no _site.yml`; `build` logs it too). (5) **R-aware build kernel hint** (uses `exec::diagnostic()`
+instead of hardcoding `QMD_FAST_PYTHON`). (6) **clippy green** (`collapsible_if`→let-chain).
+
 **Still open — high value**
-- [ ] **a11y gate runnable from `check`** (the last slice of the a11y-parity item; the rest shipped
-  2026-06-27). The client-side a11y audit still lives only in live preview — port a static subset
-  (missing landmarks, `img:not([alt])`, statically-knowable contrast) into the `check` channel so a
-  green `check` also vouches for a11y. Pairs with the now-server-side `alt`/landmarks/skip-link.
-- [ ] **`check`: broken plain/external links + per-subcommand `--help`.** External `http(s)` links are
-  intentionally not fetched (the rest of the link/anchor/video/reactive superset shipped 2026-06-27);
-  if ever wanted, gate behind an opt-in online flag. `usage()` now advertises `<dir>` + did-you-mean,
-  but a true per-subcommand `--help` is still a one-line-each gap.
+- [ ] **`check` online-link mode (opt-in).** Broken plain/external `http(s)` links are intentionally
+  NOT fetched (offline + deterministic by design). If ever wanted, gate a real fetch behind an explicit
+  opt-in flag (e.g. `--online`) so the default `check` stays kernel-free and network-free.
 
 **Still open — medium**
 - [ ] **[B] Book chapter sidebar dumps stacked on top of content at ≤~900px (laptop-portrait band)** instead
   of collapsing to a drawer. (Deck scales+centers gracefully in portrait — leave it.)
-- [ ] **CLI microcopy:** build kernel hint hardcodes `QMD_FAST_PYTHON` even when R failed (discards the
-  language-aware `exec.rs` diagnostic); raw ANSI leaks into HTML for R stream/stderr (`kernel.rs:672` —
-  **DEFERRED, exec/kernel Do-NOT-touch**); `check --format json` on an unreadable path prints human text to
-  stderr (breaks `| jq`); a `_quarto.yml` project yields a `_site.yml: no _site.yml` diagnostic naming a
-  nonexistent file (add a migration breadcrumb).
+- [ ] **CLI microcopy (residual):** raw ANSI leaks into HTML for R stream/stderr (`kernel.rs:672` —
+  **DEFERRED, exec/kernel Do-NOT-touch**). The `check --format json`-on-unreadable-path, `_quarto.yml`
+  breadcrumb, and the language-aware build kernel hint all shipped in the 2026-06-27 Tier 1 batch.
 - [ ] Long tail (perf: shared/minified/compressed assets, O(change) per-edit; SEO: sitemap/robots/JSON-LD;
   publish hygiene: stop mirroring `.md`/`.scss`/planning into `_site/`; dead CSS/tokens `--qmd-ink`/`--qmd-scale`;
   doc/code drift) — see the audit digest `polishThemes` + `whatsMissing`.
