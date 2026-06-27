@@ -409,7 +409,7 @@ fn corpus_render_fixes_pins_height_and_video_query() {
         "figure must honor both width and height: {body}"
     );
     assert!(
-        body.contains("src=\"clip.mp4?token=demo123\""),
+        body.contains("src=\"https://media.example.com/clip.mp4?token=demo123\""),
         "video query-string src must be intact: {body}"
     );
     assert!(

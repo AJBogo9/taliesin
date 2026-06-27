@@ -18,7 +18,7 @@ A token-bearing media URL carries an `=` *after* a `?`, so it is the
 positional path, not a `key=value` named arg. The whole `src` must survive
 intact (no literal `{{<` braces shipped).
 
-{{< video clip.mp4?token=demo123 caption="A token-signed screencast" >}}
+{{< video https://media.example.com/clip.mp4?token=demo123 caption="A token-signed screencast" >}}
 
 ## A mermaid diagram (offline-aware)
 
