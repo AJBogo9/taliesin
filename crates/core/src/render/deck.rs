@@ -336,7 +336,11 @@ fn render_section(s: &SlideBuf, out: &mut String) {
     if let Some(id) = s.id.as_deref().filter(|id| !id.is_empty()) {
         out.push_str(&format!(" id=\"{}\"", escape_attr(id)));
     }
-    out.push_str(" class=\"qmd-slide\"");
+    // ARIA: each leaf slide announces as a slide group so a screen reader can navigate
+    // the deck. Additive on the <section> open tag (never on an inner [data-block-id]),
+    // so block ids stay byte-stable. The "Slide N of M" aria-label is applied at runtime
+    // by deck.js, where the flat slide order across vertical stacks is known.
+    out.push_str(" class=\"qmd-slide\" role=\"group\" aria-roledescription=\"slide\"");
     if s.level != 0 {
         out.push_str(&format!(" data-level=\"{}\"", s.level));
     }

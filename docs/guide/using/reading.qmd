@@ -131,14 +131,39 @@ respects `prefers-reduced-motion` (no smooth scroll when reduced motion is set).
 ## Keyboard and accessibility
 
 Tab from the top of any page reveals a **Skip to content** link that jumps focus past
-the chrome straight to the prose. A handful of keyboard shortcuts speed up reading
-(each is ignored while you are typing in a field or a dialog is open):
+the chrome straight to the prose. The link and its focusable `<main>` target are
+emitted server-side, so they work even with JavaScript disabled. A handful of keyboard
+shortcuts speed up reading (each is ignored while you are typing in a field or a dialog
+is open):
 
 - `?` opens (and closes) a shortcuts cheatsheet.
 - `/` opens the search palette.
 - `f` toggles focus mode.
 - `←` / `→` move to the previous / next chapter (in a book).
 - `Esc` closes the open menu, dialog, or palette.
+
+Keyboard focus is always visible: every interactive control (links, buttons, tabs,
+the reader-menu controls, and the deck controls) shares one consistent focus ring,
+shown only for keyboard or assistive-technology focus and never on a mouse click. The
+ring is a single theme token, so it follows the active theme (including Sepia and the
+high-contrast modes below).
+
+**Landmarks and dialogs.** Each `<nav>` on a page carries a distinguishing accessible
+name (the table of contents announces as "Table of contents", separate from the
+navbar and the prev/next pager), so a screen reader's landmark list is navigable.
+Modal overlays (the search palette, the image viewer, the keyboard cheatsheet) move
+focus into themselves on open, trap Tab while open, and restore focus to whatever
+opened them on close; the **Aa** reader menu is a light-dismiss popover, so it does
+not trap focus but returns it to the **Aa** button when you press Esc.
+
+**Slide decks** announce as you navigate. Each slide is a labelled group ("Slide 3 of
+12"), and a polite live region speaks the new position (and its title) on every move,
+so a deck is navigable and announceable with a screen reader.
+
+**High contrast.** In Windows High Contrast / `forced-colors` mode, and under
+`prefers-contrast: more`, borders, focus rings, separators, and the active-item
+markers are re-asserted with system colors so the chrome stays legible when the
+palette is forced.
 
 Prose also gets quiet typographic polish that needs no configuration: balanced
 headings and captions, pretty last-line wrapping, and figures that keep their caption
