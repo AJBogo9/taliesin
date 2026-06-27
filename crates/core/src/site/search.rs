@@ -18,6 +18,11 @@ pub(super) fn build_index_json(pages: &[Page]) -> String {
     let mut out = String::from("[");
     let mut first = true;
     for page in pages {
+        // The author's own 404 page (output URL `404.html`) is navigation chrome, not
+        // content: keep it out of the full-text index so a search never surfaces it.
+        if page.url == "404.html" {
+            continue;
+        }
         let Ok(src) = std::fs::read_to_string(&page.input) else {
             continue;
         };

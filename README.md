@@ -29,6 +29,52 @@ crates/server   dev server, websocket, file watcher, kernel pool
 web-client/     browser preview client (vanilla JS), the only client
 ```
 
+## Install & prerequisites
+
+**Build from source.** qmd-fast is a Rust workspace (edition 2024); a recent stable
+toolchain (via [rustup](https://rustup.rs)) is all you need to build it:
+
+```sh
+git clone https://github.com/anthropics/qmd-fast && cd qmd-fast
+cargo build --release            # binary at target/release/qmd-fast
+cargo run -p qmd-fast-server -- --help   # or run it straight from the workspace
+```
+
+Put `target/release/qmd-fast` on your `PATH` to call `qmd-fast` from anywhere.
+
+**Jupyter-kernel prerequisites (only for executing code cells).** Prose, math,
+highlighting, decks, and sites render with no kernel at all; a kernel is needed only
+to *run* `{python}`/`{r}` code cells (without one they render as source). Each
+language runs against its own warm kernel:
+
+- **`{python}` cells** need a Python with [`ipykernel`](https://pypi.org/project/ipykernel/)
+  (`python3 -m pip install ipykernel`).
+- **`{r}` cells** need an R with [IRkernel](https://irkernel.github.io)
+  (`install.packages("IRkernel")`).
+
+`{js}` cells run in the browser and need no kernel.
+
+**Environment variables.**
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `QMD_FAST_PYTHON` | `python3` | Interpreter used for `{python}` cells (point it at a venv). |
+| `QMD_FAST_R` | `R` | Interpreter used for `{r}` cells. |
+| `QMD_FAST_CELL_TIMEOUT` | `120` | Per-cell wall-clock seconds before a runaway cell is interrupted (SIGINT); `0` disables the limit. |
+| `QMD_FAST_NO_CACHE` | unset | Ignore and skip writing the `_freeze/` execution cache (always re-run cells). |
+
+(See `qmd-fast --help` for the rest: `QMD_FAST_OPEN`, `QMD_FAST_HOST`,
+`QMD_FAST_NO_EXEC`, `QMD_FAST_NO_CLEAR`.)
+
+**Quick start.** Scaffold a starter site and preview it:
+
+```sh
+qmd-fast init my-site        # writes my-site/_site.yml + my-site/index.qmd
+qmd-fast preview my-site     # live preview at http://localhost:4321
+```
+
+`init` refuses to overwrite existing files, so it is safe to run in a populated dir.
+
 ## Usage
 
 `qmd-fast preview` runs a long-lived dev server: it watches the `.qmd` (and its

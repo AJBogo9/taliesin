@@ -26,6 +26,7 @@ fn main() -> ExitCode {
         Some("blocks") => cmd_blocks(args.get(2)),
         Some("schema") => cmd_schema(&args),
         Some("check") => cmd_check(&args),
+        Some("init") => cmd_init(args.get(2).map(String::as_str)),
         // `preview`/`dev` are vite-style aliases for the live server.
         Some("serve" | "preview" | "dev") => cmd_serve(&args),
         Some("--version" | "-V") => {
@@ -42,12 +43,89 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         // An unrecognized command is an error (non-zero), not a silent success.
+        // Suggest the nearest valid command (reusing core's Levenshtein helper).
         Some(other) => {
-            log::error(&format!("unknown command: `{other}`"));
+            let hint = match qmd_fast_core::closest(other, COMMANDS) {
+                Some(c) => format!("unknown command: `{other}` (did you mean `{c}`?)"),
+                None => format!("unknown command: `{other}`"),
+            };
+            log::error(&hint);
             usage();
             ExitCode::FAILURE
         }
     }
+}
+
+/// Every subcommand name (aliases included), for the unknown-command did-you-mean.
+const COMMANDS: &[&str] = &[
+    "render", "build", "blocks", "schema", "check", "init", "serve", "preview", "dev", "help",
+];
+
+/// `_site.yml` for the scaffold: the minimal flat-native config (just a title).
+const INIT_SITE_YML: &str = "title: My site\n";
+
+/// `index.qmd` for the scaffold: a hello-world page that previews immediately and
+/// points the new user at the next steps.
+const INIT_INDEX_QMD: &str = "---\ntitle: Hello, qmd-fast\n---\n\n\
+    Welcome to your new [qmd-fast](https://github.com/anthropics/qmd-fast) site.\n\n\
+    Edit `index.qmd` and the preview reloads as you save.\n\n\
+    ## Next steps\n\n\
+    - Add more `.qmd` pages beside this one — each becomes its own page.\n\
+    - Configure navigation and the title in `_site.yml`.\n\
+    - Drop in a `{python}` or `{r}` code cell to run live output.\n";
+
+/// `qmd-fast init [dir]`: scaffold a minimal previewable site into `dir` (default the
+/// current directory). Writes `_site.yml` + `index.qmd`, then prints the preview hint.
+fn cmd_init(dir: Option<&str>) -> ExitCode {
+    let dir = Path::new(dir.unwrap_or("."));
+    match scaffold_init(dir) {
+        Ok(written) => {
+            for f in &written {
+                log::built(&f.display().to_string());
+            }
+            let where_ = if dir == Path::new(".") {
+                String::new()
+            } else {
+                format!(" {}", dir.display())
+            };
+            println!("Scaffolded a qmd-fast site. Preview it:\n  qmd-fast preview{where_}");
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            log::error(&e);
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Write the starter files (`_site.yml`, `index.qmd`) into `dir`, creating it if
+/// needed. Refuses to overwrite an existing file (so re-running `init` never clobbers
+/// the user's work) and returns the paths written, or a human-readable error.
+fn scaffold_init(dir: &Path) -> Result<Vec<PathBuf>, String> {
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        return Err(format!("cannot create {}: {e}", dir.display()));
+    }
+    let files = [("_site.yml", INIT_SITE_YML), ("index.qmd", INIT_INDEX_QMD)];
+    // Refuse to overwrite *any* target before writing *any*, so a partial scaffold
+    // never lands on top of an existing project.
+    for (name, _) in files {
+        let path = dir.join(name);
+        if path.exists() {
+            return Err(format!(
+                "{} already exists; refusing to overwrite (run `init` in an empty directory)",
+                path.display()
+            ));
+        }
+    }
+    let mut written = Vec::new();
+    for (name, contents) in files {
+        let path = dir.join(name);
+        if let Err(e) = std::fs::write(&path, contents) {
+            return Err(format!("cannot write {}: {e}", path.display()));
+        }
+        written.push(path);
+    }
+    Ok(written)
 }
 
 fn cmd_serve(args: &[String]) -> ExitCode {
@@ -959,11 +1037,18 @@ async fn build_site_async(root: &Path, out_override: Option<&str>, strict: bool)
     }
 
     // Self-contained `404.html` at the site root: most static hosts serve it for
-    // any unknown path (root-absolute links inside, so it works at any depth).
+    // any unknown path (root-absolute links inside, so it works at any depth). But
+    // honor an author's own `404.qmd` — it already rendered to `out/404.html` in the
+    // page loop above, so emitting the built-in template would clobber it. Only fall
+    // back to the built-in when the author supplied none.
     let mut not_found = "";
-    match std::fs::write(out.join("404.html"), site.render_404_page()) {
-        Ok(()) => not_found = "  ·  404.html",
-        Err(e) => log::warn(&format!("cannot write 404.html: {e}")),
+    if site.has_author_404() {
+        not_found = "  ·  404.html (yours)";
+    } else {
+        match std::fs::write(out.join("404.html"), site.render_404_page()) {
+            Ok(()) => not_found = "  ·  404.html",
+            Err(e) => log::warn(&format!("cannot write 404.html: {e}")),
+        }
     }
     let deck_note = if decks > 0 {
         format!("  ·  {decks} deck{}", if decks == 1 { "" } else { "s" })
@@ -1707,25 +1792,31 @@ fn usage() {
         env!("QMD_FAST_GIT_SHA")
     );
     println!("A fast .qmd -> HTML renderer and live preview server.");
+    println!("Docs: https://github.com/anthropics/qmd-fast");
     println!();
     println!("USAGE:");
-    println!("  qmd-fast <command> <file.qmd> [args]");
+    println!("  qmd-fast <command> <file.qmd | dir> [args]");
+    println!("  (a directory argument is a multi-page SITE project: an _site.yml + .qmd pages)");
     println!();
     println!("COMMANDS:");
-    println!("  preview <file.qmd> [port] [--host] [--open] [--no-exec]");
+    println!("  init   [dir]               scaffold a starter site you can preview right away");
+    println!("                             (writes _site.yml + index.qmd; default: current dir)");
+    println!("  preview <file.qmd | dir> [port] [--host] [--open] [--no-exec]");
     println!("                             live preview server (aliases: dev, serve;");
+    println!("                             a dir previews the whole SITE with nav + hot reload;");
     println!("                             default port 4321, auto-picks a free one;");
     println!("                             --host exposes it on your LAN with a QR code");
     println!("                             to open on a phone; --open launches a browser;");
     println!("                             --no-exec previews untrusted docs as source,");
     println!("                             never running their code cells)");
-    println!("  build  <file.qmd> [out.html] [--out <dir>] [--strict]");
-    println!("                             render a self-contained HTML file");
-    println!("                             (default <name>.html beside the source);");
-    println!("                             --out <dir> writes <dir>/index.html and");
-    println!("                             copies referenced assets for a portable folder;");
-    println!("                             --strict exits non-zero on a cell error or");
-    println!("                             located warning (broken ref, bad include)");
+    println!("  build  <file.qmd | dir> [out.html] [--out <dir>] [--strict] [--bare]");
+    println!("                             render a self-contained HTML file (a dir builds the");
+    println!("                             whole SITE to _site/); default <name>.html beside");
+    println!("                             the source; --out <dir> writes a portable folder;");
+    println!("                             --strict exits non-zero on a cell error or located");
+    println!(
+        "                             warning; --bare emits zero-JS, CSS-only single-doc HTML"
+    );
     println!("  render <file.qmd>          render a full HTML page to stdout");
     println!("                             (static; does NOT execute code cells)");
     println!("  blocks <file.qmd>          list block ids + sourcepos (debug)");
@@ -1735,9 +1826,11 @@ fn usage() {
     println!(
         "  check <file|dir> [--format human|json]  list located diagnostics; exits non-zero if any"
     );
+    println!("  help, --version            show this help / the version");
     println!();
-    println!("ENV: QMD_FAST_PYTHON (kernel), QMD_FAST_OPEN (=--open),");
-    println!("     QMD_FAST_HOST (=--host), QMD_FAST_NO_CLEAR,");
+    println!("ENV: QMD_FAST_PYTHON (python kernel), QMD_FAST_R (r kernel),");
+    println!("     QMD_FAST_CELL_TIMEOUT (per-cell seconds; 0 disables),");
+    println!("     QMD_FAST_OPEN (=--open), QMD_FAST_HOST (=--host), QMD_FAST_NO_CLEAR,");
     println!("     QMD_FAST_NO_CACHE (skip the _freeze/ execution cache),");
     println!("     QMD_FAST_NO_EXEC (=--no-exec, never run code cells)");
 }
@@ -1841,5 +1934,55 @@ mod build_diag_tests {
             }
             BuildResult::Refused(m) => panic!("a plain doc should build under --bare: {m}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod cli_onboarding_tests {
+    use super::*;
+    use std::fs;
+
+    fn tmp(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("qmd-init-{}-{name}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        d
+    }
+
+    #[test]
+    fn init_scaffolds_a_previewable_site() {
+        let dir = tmp("scaffold");
+        // The dir doesn't exist yet — `scaffold_init` must create it.
+        let written = scaffold_init(&dir).expect("scaffold succeeds into a fresh dir");
+
+        let site_yml = dir.join("_site.yml");
+        let index = dir.join("index.qmd");
+        assert!(site_yml.exists(), "_site.yml written");
+        assert!(index.exists(), "index.qmd written");
+        assert_eq!(written, vec![site_yml.clone(), index.clone()]);
+
+        // The scaffold is a real, parseable site whose one page previews.
+        let cfg = fs::read_to_string(&site_yml).unwrap();
+        assert!(cfg.contains("title:"), "config has a title: {cfg}");
+        let page = fs::read_to_string(&index).unwrap();
+        assert!(
+            page.starts_with("---") && page.contains("title:"),
+            "index has front matter: {page}"
+        );
+
+        // Re-running refuses to overwrite (never clobbers existing work).
+        let err = scaffold_init(&dir).expect_err("second init refuses to overwrite");
+        assert!(err.contains("already exists"), "overwrite refused: {err}");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn closest_command_suggests_nearest() {
+        // A near-miss typo resolves to the intended command.
+        assert_eq!(qmd_fast_core::closest("biuld", COMMANDS), Some("build"));
+        assert_eq!(qmd_fast_core::closest("previw", COMMANDS), Some("preview"));
+        assert_eq!(qmd_fast_core::closest("innit", COMMANDS), Some("init"));
+        // Something far from every command yields no suggestion (not a wild guess).
+        assert_eq!(qmd_fast_core::closest("frobnicate", COMMANDS), None);
     }
 }
