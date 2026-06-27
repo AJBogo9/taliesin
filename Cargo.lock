@@ -1444,6 +1444,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "syntect",
+ "unicode-normalization",
 ]
 
 [[package]]
