@@ -18,8 +18,18 @@ title: "CLI reference"
 `check` renders the document or site in memory and reports everything that flows
 through the diagnostics channel: unknown front-matter / `_site.yml` / cell-option /
 container keys (with did-you-mean), unknown callout kinds, broken `@xref`
-cross-references, unknown shortcodes, a missing `bibliography:`, and opt-in
-`prose-lint:` findings. It does **not** execute code cells (it is fast, kernel-free,
+cross-references, unknown shortcodes, a missing `bibliography:`, duplicate heading
+`{#id}`s, broken in-page `#anchor` links, and opt-in `prose-lint:` findings. It also
+catches these **publish-blocking** mistakes:
+
+| Rule | Flags |
+|---|---|
+| Broken relative link | A `[text](other.qmd)` / `[text](page.html#x)` whose **local target file** is missing. In a site, links resolve against the page registry (`.qmd`→`.html`), so a cross-page anchor `page.html#frag` whose `frag` is no id on that page is flagged too. **External `http(s)://` links are never checked** — `check` stays offline and deterministic, and a `{{< embed >}}` deck or a cross-book / mounted link (one that climbs above the site root) is left alone. |
+| Missing local video | A `{{< video clip.mp4 >}}` (or a raw `<video src>` / `<video><source></video>`) whose local file is absent — the video sibling of the local-image check. `<audio>` sources are skipped (often streamed/generated). |
+| Dangling reactive input | A `{js}` cell's `//\| input: x` that no `{js}` cell (`//\| name`/`//\| viewof`) or `{{< input >}}` control defines, with a did-you-mean over the known names. Suppressed when the doc has a Python/R cell (a runtime `ojs_define` may publish the name). |
+| Reactive dependency cycle | A loop among `{js}` cells (`a` consumes `b`, `b` consumes `a`), statically mirroring the runtime graph so none would run. |
+
+It does **not** execute code cells (it is fast, kernel-free,
 and deterministic, so runtime cell errors stay in `preview`/`build`). Output is
 `path:line: message` by default, or a `[{file, line, message}]` array with
 `--format json`. It exits `0` when clean and `1` when any diagnostic is found, so it

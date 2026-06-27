@@ -136,6 +136,9 @@ fn collect_file_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
     let dups = dx::validate_duplicate_heading_ids(&doc.blocks);
     let anchors = dx::validate_internal_anchors(&doc.blocks);
     let assets = dx::validate_local_assets(&doc.blocks, base);
+    let media = dx::validate_local_media(&doc.blocks, base);
+    let links = dx::validate_local_links(&doc.blocks, base);
+    let reactive = dx::validate_js_reactive_graph(&doc.blocks);
     let cites = dx::citations_without_bibliography(&src, &doc.blocks);
     let mut out: Vec<Diagnostic> = Vec::new();
     // Malformed YAML front matter: the lenient line-parser silently mis-extracts
@@ -154,6 +157,9 @@ fn collect_file_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
             .chain(dups.iter())
             .chain(anchors.iter())
             .chain(assets.iter())
+            .chain(media.iter())
+            .chain(links.iter())
+            .chain(reactive.iter())
             .chain(cites.iter())
             .map(|w| diag_from(w, &path_str)),
     );
@@ -198,11 +204,15 @@ fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
         let dups = dx::validate_duplicate_heading_ids(&doc.blocks);
         let anchors = dx::validate_internal_anchors(&doc.blocks);
         let assets = dx::validate_local_assets(&doc.blocks, base);
+        let media = dx::validate_local_media(&doc.blocks, base);
+        let reactive = dx::validate_js_reactive_graph(&doc.blocks);
         let cites = dx::citations_without_bibliography(&src, &doc.blocks);
         for w in dups
             .iter()
             .chain(anchors.iter())
             .chain(assets.iter())
+            .chain(media.iter())
+            .chain(reactive.iter())
             .chain(cites.iter())
         {
             out.push(diag_from(w, &page.rel));
@@ -211,6 +221,12 @@ fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
         for w in &warnings {
             out.push(diag_from(w, &page.rel));
         }
+    }
+    // Cross-page relative-link + anchor existence, resolved against the site page
+    // registry (file links here, not the single-doc `validate_local_links`: a `.qmd`
+    // link rewrites to its built `.html` and only the registry knows the real urls).
+    for (page_rel, w) in site.validate_cross_page_links() {
+        out.push(diag_from(&w, &page_rel));
     }
     Ok(out)
 }
@@ -1302,6 +1318,11 @@ mod mirror_tests {
             "local asset not found",
             "citations are present",
             "not valid YAML",
+            "broken link",
+            "broken link anchor",
+            "local video not found",
+            "unknown reactive input",
+            "reactive dependency cycle",
         ];
         fn walk(dir: &Path, skip: &[&str], out: &mut Vec<std::path::PathBuf>) {
             for e in fs::read_dir(dir).unwrap() {
@@ -1346,6 +1367,99 @@ mod mirror_tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn collect_diagnostics_surfaces_links_video_and_reactive_rules() {
+        // One doc tripping each NEW static rule: broken relative link, missing local
+        // video, dangling `//| input`, and a reactive cycle. `check` must surface them all,
+        // located, while leaving an external link + an existing sibling alone.
+        let dir = tmp("check-links");
+        fs::write(dir.join("real.qmd"), "x").unwrap();
+        let f = dir.join("doc.qmd");
+        fs::write(
+            &f,
+            "---\ntitle: T\n---\n\n\
+             A [gone](missing.qmd), an [ok](real.qmd), an [ext](https://example.com).\n\n\
+             {{< video clip.mp4 >}}\n\n\
+             ```{js}\n//| input: nope\nreturn nope;\n```\n\n\
+             ```{js}\n//| name: a\n//| input: b\nreturn b;\n```\n\n\
+             ```{js}\n//| name: b\n//| input: a\nreturn a;\n```\n",
+        )
+        .unwrap();
+        let diags = collect_diagnostics(&f).expect("ok");
+        let has = |needle: &str| diags.iter().any(|d| d.message.contains(needle));
+        assert!(has("broken link: `missing.qmd`"), "broken link: {diags:?}");
+        assert!(has("local video not found"), "missing video: {diags:?}");
+        assert!(has("`clip.mp4`"), "video path: {diags:?}");
+        assert!(
+            has("unknown reactive input `nope`"),
+            "dangling input: {diags:?}"
+        );
+        assert!(has("reactive dependency cycle"), "cycle: {diags:?}");
+        // The existing sibling + external link must NOT be flagged.
+        assert!(
+            !has("real.qmd"),
+            "sibling that exists must be clean: {diags:?}"
+        );
+        assert!(
+            !has("example.com"),
+            "external link must be skipped: {diags:?}"
+        );
+        assert!(
+            diags.iter().all(|d| d.file.contains("doc.qmd")),
+            "located to file: {diags:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn collect_site_diagnostics_flags_broken_cross_page_link_and_anchor() {
+        // The site path resolves links against the page registry: a `.qmd` link to a
+        // missing page, and a `page.html#frag` whose anchor isn't on the target page.
+        let dir = tmp("check-site-links");
+        fs::write(dir.join("_site.yml"), "title: S\n").unwrap();
+        fs::write(dir.join("index.qmd"), "---\ntitle: Home\n---\n\nWelcome.\n").unwrap();
+        fs::write(
+            dir.join("about.qmd"),
+            "---\ntitle: About\n---\n\n## Team {#team}\n\nAbout us.\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("page.qmd"),
+            "---\ntitle: P\n---\n\n\
+             A [missing page](ghost.qmd), a [good page](about.qmd), \
+             a [good anchor](about.qmd#team), a [bad anchor](about.qmd#nope).\n",
+        )
+        .unwrap();
+        let diags = collect_diagnostics(&dir).expect("site ok");
+        let has = |needle: &str| diags.iter().any(|d| d.message.contains(needle));
+        // `ghost.qmd` -> `ghost.html`, no such page.
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.message.contains("ghost.html") && d.file.contains("page.qmd")),
+            "missing cross-page link located to its page: {diags:?}"
+        );
+        // `about.html#nope` -> the anchor `nope` is not on `about.html`.
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.message.contains("broken link anchor") && d.message.contains("#nope")),
+            "broken cross-page anchor: {diags:?}"
+        );
+        // The good page link + good anchor must NOT be flagged.
+        assert!(
+            !has("about.html#team"),
+            "good anchor must be clean: {diags:?}"
+        );
+        assert!(
+            !diags
+                .iter()
+                .any(|d| d.message.contains("broken link") && d.message.contains("about.html\"")),
+            "good page link must be clean: {diags:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
