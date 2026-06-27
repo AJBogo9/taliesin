@@ -11,7 +11,10 @@ chapters:
   - deck-engine.qmd
   - sites.qmd
   - block-model.qmd
+  - data-types.qmd
+  - protocol.qmd
   - execution.qmd
   - server.qmd
+  - client.qmd
   - validation.qmd
   - extending.qmd

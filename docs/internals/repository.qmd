@@ -12,13 +12,13 @@ all in one tree.
 
 ```
 qmd-fast/
-├─ crates/            the engine — a Cargo workspace
+├─ crates/            the engine, a Cargo workspace
 │  ├─ core/           qmd-fast-core: parse → block model → render   (see Architecture)
 │  └─ server/         qmd-fast (binary): CLI, dev server, Jupyter kernel
 ├─ web-client/        browser preview client (vanilla JS, no build step)
 ├─ editor/vscode/     VS Code companion: hosts the preview + bidirectional source sync
 ├─ corpus/            the real .qmd docs that ARE the spec (cargo test renders them all)
-├─ docs/              this manual — two sibling .qmd books: guide/ + internals/
+├─ docs/              this manual, two sibling .qmd books: guide/ + internals/
 ├─ site/              the marketing landing site, built by qmd-fast itself
 ├─ samples/           one standalone document per HTML format, for isolated polish
 ├─ tools/             dev tooling: live-edit-bench (workspace member) + record-demo (npm)
@@ -144,13 +144,13 @@ in `notes/` so the root stays uncluttered:
 
 ## Build, config, and what git ignores
 
-- **`Cargo.toml` / `Cargo.lock`** — the workspace manifest and lockfile.
-- **`deny.toml`** — the `cargo-deny` policy (licenses + security advisories).
-- **`build.rs` (×2)** — `crates/core/build.rs` inlines KaTeX's woff2 fonts into a
+- **`Cargo.toml` / `Cargo.lock`**: the workspace manifest and lockfile.
+- **`deny.toml`**: the `cargo-deny` policy (licenses + security advisories).
+- **`build.rs` (×2)**: `crates/core/build.rs` inlines KaTeX's woff2 fonts into a
   single self-contained CSS at build time (so rendered pages need no sidecar font
   files); `crates/server/build.rs` stamps the short git SHA into the binary for the
   `--version` colophon, falling back to `"unknown"` outside a checkout.
-- **`.github/`** — CI: formatting, tests, and `cargo-deny`.
+- **`.github/`**: CI formatting, tests, and `cargo-deny`.
 
 Several directories are **generated and gitignored**, so do not be surprised when
 they appear: `target/` (the Rust build), `_freeze/` (the persistent per-page

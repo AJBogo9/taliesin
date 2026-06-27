@@ -17,36 +17,200 @@ position, and Alt-clicking (Option-clicking on Mac) a block jumps to its source,
 exactly like a page.
 
 ```sh
-qmd-fast preview docs/demo.qmd      # live, click-to-source, hot reload
-qmd-fast build   docs/demo.qmd      # one self-contained .html
+qmd-fast preview docs/guide/demo.qmd   # live, click-to-source, hot reload
+qmd-fast build   docs/guide/demo.qmd   # one self-contained .html
 ```
 
-The engine ships the things you actually present with:
+The engine ships the things you actually present with, and the demo deck embedded
+further down this page puts each one on its own slide. The rest of this section is the
+exact authoring syntax for those features. (The deck's source lives at
+`docs/guide/demo.qmd`, so you can read it side by side with these snippets.)
 
-- **Fragments**: `::: {.incremental}` lists (or `.fragment`) reveal step by step.
-- **Pause**: a `. . .` line is a pause: everything after it on the slide reveals on
-  the next click (Quarto's shorthand for a fragment break).
-- **Code line-stepping**: add `code-line-numbers="1|2-3|all"` to a code block to
-  walk it line by line.
-- **Magic-move**: `::: {.magic-move}` around two code snapshots tweens matched
-  lines from one to the other.
-- **Auto-animate**: `## Title {auto-animate=true}` on consecutive slides tweens
-  matched elements (text, code, images) between them.
-- **Backgrounds**: `{background-color="…"}`, `background-gradient`,
-  `background-image` on a heading; light text on dark is automatic.
-- **Stretch to fit**: wrap an image in `::: {.r-stretch}` and it grows to fill the
-  slide's leftover height (aspect preserved), so a chart isn't left tiny.
-- **Speaker view**: press <kbd>S</kbd> for current + next slide, notes
-  (`::: {.notes}`), and a timer, synced across windows.
-- **PDF export**: <kbd>Ctrl/Cmd-P</kbd> prints one slide per page.
-- **Reader mode**: on a narrow / portrait screen the fixed-aspect deck flattens to
-  a scrollable column.
-- **Drawing**: press <kbd>D</kbd> to annotate the current slide with a pen.
-- **Black screen**: press <kbd>B</kbd> (or <kbd>.</kbd>) to blank the deck mid-talk
-  and pull attention back to you; any of <kbd>B</kbd>/<kbd>.</kbd>/<kbd>Esc</kbd>
-  restores it.
-- **Live code + `{js}`**: `{python}` / `{r}` cells execute and native `{js}` cells
-  stay interactive, right in the deck.
+### Reveal content step by step
+
+Two ways to stage a slide, both standard Markdown-in-a-fence:
+
+```markdown
+::: {.incremental}
+- This bullet shows first
+- then this one
+- then this one
+:::
+```
+
+`::: {.incremental}` turns each list item into its own step. For finer control, mark
+any single block `.fragment` and it reveals on its own click. To split a slide into
+two halves at an arbitrary point, drop a line that is only `. . .` (three
+dots, spaces between them):
+
+```markdown
+## A two-beat slide
+
+Here is the setup, visible immediately.
+
+. . .
+
+And here is the payoff, revealed on the next click.
+```
+
+The pause marker is dropped from the output and everything after it (until the next
+pause or the end of the slide) becomes a fragment, so the audience reads the setup,
+then you click for the punchline.
+
+### Step through code line by line
+
+Put a `code-line-numbers` attribute on a fenced code block (note the leading dot on
+the language, the deck's display form for a non-executing block):
+
+````markdown
+```{.python code-line-numbers="1|2-3|4"}
+import numpy as np
+x = np.linspace(0, 1, 100)
+y = np.sin(2 * np.pi * x)
+print(y.max())
+```
+````
+
+The `|`-separated segments are the steps: `1`, then `2-3`, then `4`. Each segment is a
+line spec (`3`, `3-5`, `1,4`, or `all`); the lines in the current segment are
+highlighted and the rest dim. The first segment is the slide's resting state, applied
+before you take any step, so segment `1` above is lit the moment the slide appears.
+
+### Magic-move between code snapshots
+
+Wrap two or more consecutive code blocks in `::: {.magic-move}` and the deck tweens
+between them: lines with matching text glide to their new position, new lines fade in,
+removed lines fade out. Each block-to-block hop is one step.
+
+````markdown
+::: {.magic-move}
+```python
+def area(r):
+    return 3.14 * r * r
+```
+
+```python
+import math
+
+def area(r):
+    return math.pi * r ** 2
+```
+:::
+````
+
+### Auto-animate matched elements
+
+Give two consecutive slides the same `auto-animate` attribute and the engine morphs
+matched elements (by tag and text) from their place on the first slide to their place
+on the second: a heading slides up, a code block grows, an image moves. Reusing the
+same `##` title across both is the usual trick (the deck dedupes the slide ids for
+you, so the repeat does not collide):
+
+```markdown
+## One source, many views {auto-animate=true}
+
+The same `.qmd` renders as a page, a book, a website, or this deck.
+
+## One source, many views {auto-animate=true}
+
+The same `.qmd` renders as a page, a book, a website, or this deck.
+
+> The title above tweened into place.
+```
+
+Unmatched elements just appear; matched ones tween.
+
+### Per-slide backgrounds
+
+Set a background on the slide's heading and the engine hoists it onto the slide and
+flips the text to light when the backdrop is dark:
+
+```markdown
+## On a dark panel {background-color="#0f172a"}
+
+## With a gradient {background-gradient="linear-gradient(135deg,#4c6ef5,#9775fa)"}
+
+## Over a photo {background-image="cover.jpg"}
+```
+
+`background-image` also accepts companion attributes for the layer:
+`background-size` (default `cover`), `background-position` (default `center`), and
+`background-repeat` (default `no-repeat`). A background travels with its slide as the
+camera pans and shows as a per-tile backdrop in the overview.
+
+### Vertical stacks
+
+A `#` (section) heading opens a vertical stack and the `##` slides that follow nest
+under it; the audience presses <kbd>↓</kbd> to go deeper and <kbd>→</kbd> to move on
+to the next topic. So a section can carry its own thread without cluttering the main
+left-to-right flow.
+
+```markdown
+# A topic with depth
+
+## The headline point
+
+## A supporting sub-slide
+```
+
+### Stretch an image to fit
+
+Wrap an image in `::: {.r-stretch}` and it grows to fill the slide's leftover vertical
+space (aspect ratio preserved), so a chart or screenshot is not left tiny under a
+heading.
+
+```markdown
+## A chart that fills the slide
+
+::: {.r-stretch}
+![](chart.svg)
+:::
+```
+
+### Present, export, and annotate
+
+These are all keyboard / menu actions on a running deck (every one is also in the
+corner control menu, opened with <kbd>m</kbd> or <kbd>?</kbd>, so nothing is
+keyboard-only):
+
+| Key | Action |
+|---|---|
+| <kbd>→</kbd> / <kbd>Space</kbd> | Next step or slide |
+| <kbd>←</kbd> | Previous |
+| <kbd>↑</kbd> / <kbd>↓</kbd> | Jump to the topic above / below (vertical stacks) |
+| <kbd>o</kbd> / <kbd>Esc</kbd> | Overview: a zoomable map of every slide (press <kbd>/</kbd> to filter by title) |
+| <kbd>s</kbd> | Speaker view (see below) |
+| <kbd>f</kbd> | Fullscreen |
+| <kbd>d</kbd> | Drawing mode: a pen to annotate the current slide (colours, eraser, clear) |
+| <kbd>b</kbd> / <kbd>.</kbd> | Black the screen mid-talk; any of <kbd>b</kbd>/<kbd>.</kbd>/<kbd>Esc</kbd> restores it |
+| <kbd>Ctrl/Cmd-P</kbd> | Export PDF (one clean slide per page) |
+
+**Speaker view** (<kbd>s</kbd>) opens a second window showing the current and next
+slide as live previews, the current slide's speaker notes, and a running timer plus a
+clock. Write notes in a `::: {.notes}` block on the slide and they appear only in the
+speaker window:
+
+```markdown
+## A slide with notes
+
+The audience sees this.
+
+::: {.notes}
+Only you see this, in speaker view. Remember to slow down here.
+:::
+```
+
+The two windows stay in sync over the local connection (it even works from a built
+`file://` deck), and either window can drive the navigation.
+
+**Reader mode** is automatic: on a narrow or portrait screen the fixed-aspect deck
+would letterbox badly, so it flattens to a scrollable, full-width column with every
+fragment shown. You can force it from the control menu, or by opening the deck with
+`?qmd=scroll`.
+
+**Live code and `{js}`** work in a deck exactly as on a page: `{python}` / `{r}` cells
+execute against the warm kernel and native `{js}` cells stay interactive, right on the
+slide. See [Executable content](code.qmd) and [Interactive documents](interactive.qmd).
 
 ### Embedding a deck in a page
 
@@ -128,12 +292,83 @@ defaults and a page's own front matter overrides them. There is deliberately no
 Quarto-style `_metadata.yml` directory merge, the single most confusing part of
 its model.
 
-A `listing:` block turns a page into an index: it crawls a `contents:` directory
-and emits a card per document (image, date, title, description, categories),
-sorted by date and capped by `max-items`, as a `type: grid` card grid or a stacked
-list. An `about:` block turns a page into a centered profile header. So a blog
-index, a projects index, and a homepage's "recent posts" all generate from front
-matter.
+Three front-matter blocks generate whole page sections so you do not hand-write the
+chrome: `hero:` (a landing header), `about:` (a profile header), and `listing:` (an
+index that crawls a directory). All three are page front matter, documented in full in
+the [front-matter reference](../reference/frontmatter.qmd); the practical shapes
+follow.
+
+### A landing header with `hero:`
+
+`hero:` builds a centered landing band: an optional small uppercase `eyebrow:` kicker,
+a big `headline:` (it falls back to the page `title:` when omitted), a supporting
+`lead:` sentence, and a row of call-to-action buttons. Mark one button
+`primary: true` to render it as the filled accent button; the rest are outlined.
+
+```yaml
+title: "My Project"
+hero:
+  eyebrow: "Open source"
+  headline: "A faster way to publish"
+  lead: "One source file, four output shapes, zero CDN."
+  actions:
+    - { text: "Get started", href: docs/index.html, primary: true }
+    - { text: "Source", href: "https://github.com/me/proj" }
+```
+
+### A profile header with `about:`
+
+`about:` builds a centered profile header (a round `image:`, the page `title:` as the
+name, and a row of `links:`). The default `template:` is `jolla`, the centered style
+the corpus uses; it is kept as a CSS class on the header so a theme can restyle it.
+
+```yaml
+title: "Jane Rivera"
+about:
+  template: jolla
+  image: avatar.jpg
+  image-alt: "Jane Rivera"
+  links:
+    - { text: GitHub, href: "https://github.com/jane", icon: github }
+    - { text: Email, href: "mailto:jane@example.com", icon: email }
+```
+
+`hero:` and `about:` are alternative treatments of the same page header, so a page
+declares one or the other (each replaces the title block; if both are somehow present,
+`hero:` wins). Reach for `hero:` on a marketing or landing page where you want a
+pitch plus buttons, and `about:` on a person-or-project page where you want an avatar
+plus profile links.
+
+### An index of pages with `listing:`
+
+`listing:` turns a page into an index. It crawls the directory named by `contents:`
+(relative to the page) and emits a card per document there, pulling each card's image,
+date, title, description, and categories from that document's own front matter. So a
+blog index, a projects index, or a homepage's "recent posts" all generate from front
+matter, and adding a post is just adding a file.
+
+```yaml
+title: "Blog"
+listing:
+  contents: posts
+  type: grid
+  sort: "date desc"
+  categories: true
+  max-items: 12
+```
+
+The knobs:
+
+- `contents:` (required) is the directory to list, relative to this page.
+- `type: grid` renders a card grid with cover images; omit it (or any other value) for
+  a stacked list without images.
+- `sort:` orders by date. The default is `"date desc"` (newest first); use
+  `"date asc"` for oldest first. (Any value containing `asc` sorts ascending;
+  otherwise it is descending.)
+- `max-items:` caps how many cards appear.
+- `categories: true` adds a filter-chip row above the cards, one chip per category
+  found across the listing (with a count), plus an "All" chip; clicking a chip filters
+  the grid in the browser.
 
 ## Themes
 
@@ -141,4 +376,8 @@ matter.
 or an installed `_extensions/<name>/` bundle. A theme is just a `:root` block of
 CSS custom properties (`--qmd-*`); the navbar, footer, callouts, diagrams, and
 code all read those variables, so one small file restyles everything and the
-light/dark toggle just swaps the values: nothing re-renders.
+light/dark toggle just swaps the values: nothing re-renders. The full list of
+`--qmd-*` variables and how to author a theme is in [Theming](theming.qmd).
+
+The `{{< embed >}}` shortcode used above, and its sibling `{{< video >}}`, are
+documented in the [shortcodes reference](../reference/shortcodes.qmd).

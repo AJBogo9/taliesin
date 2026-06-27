@@ -25,8 +25,8 @@ catches these **publish-blocking** mistakes:
 
 | Rule | Flags |
 |---|---|
-| Broken relative link | A `[text](other.qmd)` / `[text](page.html#x)` whose **local target file** is missing. In a site, links resolve against the page registry (`.qmd`→`.html`), so a cross-page anchor `page.html#frag` whose `frag` is no id on that page is flagged too. **External `http(s)://` links are never checked** — `check` stays offline and deterministic, and a `{{< embed >}}` deck or a cross-book / mounted link (one that climbs above the site root) is left alone. |
-| Missing local video | A `{{< video clip.mp4 >}}` (or a raw `<video src>` / `<video><source></video>`) whose local file is absent — the video sibling of the local-image check. `<audio>` sources are skipped (often streamed/generated). |
+| Broken relative link | A `[text](other.qmd)` / `[text](page.html#x)` whose **local target file** is missing. In a site, links resolve against the page registry (`.qmd`→`.html`), so a cross-page anchor `page.html#frag` whose `frag` is no id on that page is flagged too. **External `http(s)://` links are never checked**: `check` stays offline and deterministic, and a `{{< embed >}}` deck or a cross-book / mounted link (one that climbs above the site root) is left alone. |
+| Missing local video | A `{{< video clip.mp4 >}}` (or a raw `<video src>` / `<video><source></video>`) whose local file is absent (the video sibling of the local-image check). `<audio>` sources are skipped (often streamed/generated). |
 | Dangling reactive input | A `{js}` cell's `//\| input: x` that no `{js}` cell (`//\| name`/`//\| viewof`) or `{{< input >}}` control defines, with a did-you-mean over the known names. Suppressed when the doc has a Python/R cell (a runtime `ojs_define` may publish the name). |
 | Reactive dependency cycle | A loop among `{js}` cells (`a` consumes `b`, `b` consumes `a`), statically mirroring the runtime graph so none would run. |
 | Heading-level skip | A heading that jumps two or more levels deeper than the one before it (an `h2` directly followed by an `h4`, skipping `h3`), which breaks the document outline for screen readers. Only a true *mid-document* skip is flagged (never "doesn't start at `h1`"), and slide decks are skipped (they are slide-structured). The static half of the live preview's a11y audit. |
@@ -52,7 +52,39 @@ directory that has a `_quarto.yml` but no `_site.yml` reports a migration breadc
 (qmd-fast uses the flat-native `_site.yml`, not Quarto's `_quarto.yml`) rather than a
 confusing `no _site.yml`; `build` logs the same breadcrumb.
 
-`--version` / `-V` prints the version; `--help` / `-h` (or no arguments) prints the
+At a glance, here is everything `check` looks at, grouped by what it protects:
+
+| Category | Catches |
+|---|---|
+| **Config typos** | Unknown front-matter, `_site.yml`, cell-option, and `:::` container keys (with did-you-mean), unknown callout kinds, unknown shortcodes, YAML parse errors |
+| **Cross-references** | Broken `@fig-` / `@sec-` / `@eq-` / `@lst-` / `@tbl-` refs (no matching label), a citation with no `bibliography:` |
+| **Links & anchors** | Broken relative `.qmd`/`.html` links (and, in a site, cross-page links + cross-page `#anchor`s), broken in-page `#anchor`s, duplicate heading `{#id}`s |
+| **Local media** | Missing local images (`src`/`href`) and `{{< video >}}`/`<video>` files |
+| **Reactive `{js}`** | A `//\| input:` naming nothing that's defined, a dependency cycle among `{js}` cells |
+| **Accessibility** | An `<img>` with no `alt`, a mid-document heading-level skip (decks exempt), an `<a>`/`<button>` with no accessible name |
+| **Opt-in** | `prose-lint:` banned-word findings |
+
+External `http(s)://` links are never fetched (`check` stays offline and
+deterministic), and it never executes code cells. On its own, `check` exits `1` if it
+finds **anything** in any of those categories; it is the kernel-free gate.
+
+`--strict` is a separate flag on **`build`** (not on `check`). It promotes a normally
+non-fatal build into a hard failure: the page is still written, but `build` exits
+non-zero if **any located warning** fired or **any code cell errored** at runtime.
+Because `build` does run cells, `--strict` adds the one thing `check` structurally
+can't see (a cell that *throws*) on top of the located diagnostics, which makes
+`qmd-fast check . && qmd-fast build . --strict` a thorough two-stage CI gate: `check`
+fails fast and kernel-free on structure, then a strict `build` proves every cell
+actually runs.
+
+`--version` / `-V` prints the version followed by the git commit it was built from,
+in parentheses:
+
+```text
+qmd-fast 0.2.0 (cdf0a13)
+```
+
+`--help` / `-h` (or no arguments) prints the
 top-level usage. Putting `--help` / `-h` **after** a subcommand
 (`qmd-fast build --help`, `qmd-fast check -h`, …) prints a focused page for just that
 command: its synopsis, its flags, and a one-line example. If
@@ -85,6 +117,57 @@ copy/lightbox/reader controls are dropped (each warned, never silently). A slide
 a `<dir>` site is refused (their navigation needs JavaScript). A `build` skips code
 execution only through the `QMD_FAST_NO_EXEC=1` environment variable, not a `--no-exec`
 flag.
+
+A `--bare` page is still **responsive**: the viewport meta tag and every CSS media
+query ship as usual, so it reflows on a phone and respects `prefers-color-scheme`. It
+just has no behaviour that needs scripting. Because `{js}` cells and Mermaid both
+render in the browser, a `--bare` build empties them (and warns once per kind) rather
+than shipping a broken placeholder, so reach for `--bare` on prose, math, and
+server-executed figures, not on pages built around live `{js}` or diagrams.
+
+## Inspecting a document: `render` and `blocks`
+
+Two commands print to a terminal instead of starting a server, which is handy for
+piping, diffing, and debugging.
+
+`render` writes one complete, self-contained HTML page to **stdout**. It is the
+non-interactive twin of a single-file `build`, so you can redirect or pipe it:
+
+```sh
+qmd-fast render post.qmd > post.html
+qmd-fast render post.qmd | grep -c data-block-id   # count emitted blocks
+```
+
+Unlike `build` and `preview`, `render` **never starts a kernel**: `{python}` and
+`{r}` cells emit as highlighted source with an empty output block (no plots, and any
+`@fig-` reference to a computed figure dangles), so it warns when it sees kernel cells:
+
+```text
+warn: render does not execute code cells (2 kernel cells emitted as source;
+      figures/outputs will be empty). Use `build` or `preview` to run them.
+```
+
+`{js}` cells are fine, since they run in the browser. Use `build`/`preview` when you
+need the executed outputs.
+
+`blocks` is a debug view of the block model: for each block it prints the
+content-hash id, the `line:col-line:col` sourcepos, the origin file (`(primary)` or
+an `{{< include >}}`d path), and a 64-character text preview of the rendered HTML.
+It does not execute anything. The shape is one aligned row per block:
+
+```text
+title: Some("Hello")
+3 block(s)
+
+id                sourcepos       source-file             preview
+a1b2c3d4e5f6a7b8  1:1-1:14        (primary)               Hello
+0f9e8d7c6b5a4039  3:1-5:32        (primary)               A short paragraph that introduces…
+7c6b5a4039f0e1d2  7:1-9:3         _includes/note.qmd      Note: included from another file
+```
+
+This is the same `data-block-id` + `data-sourcepos` that drive click-to-source and
+incremental updates, so `blocks` is the way to confirm a block carries the source map
+you expect (and which file it came from) without opening the browser dev tools.
 
 `--host` binds `0.0.0.0`, so it gates non-loopback access behind a token baked into
 the printed LAN URL and QR (`?t=…`, then a `qmd_token` cookie); a fresh token is

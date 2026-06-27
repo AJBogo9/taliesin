@@ -34,6 +34,21 @@ reader never sees a flash of the default:
 
 - **Theme**: Light, Dark, or Sepia.
 - **Text size**: small, normal, large, or x-large.
+
+The first two themes are the familiar pair. The third, **Sepia**, is a warm,
+low-contrast reading mode: a soft cream page (`#f4ecd8`) with a dark-brown ink
+(`#5b4636`) instead of black on white. The point is comfort for long, plain-prose
+reads, where full Light contrast can feel harsh, especially in dim light or on a bright
+panel. It is a true theme, not a tint: links, code backgrounds, borders, and the focus
+ring all shift to the sepia palette together, and it declares `color-scheme: light` so
+native form controls match. Like every Display choice, the picked theme persists in the
+reader's `localStorage` and is applied before the page paints, so a returning reader
+opens straight into Sepia with no white flash.
+
+Sepia is **reader-menu only**. It is not a value you can set in a page's front-matter
+`theme:` (that field selects Light, Dark, or an extension bundle): it is a reading mode
+the reader chooses for themselves, the same way they choose a text size. An author who
+wants a warm default ships a custom theme through the usual extension or `css:` route.
 - **Width**: Narrow, Normal, or Wide reading measure.
 - **Line spacing**: Tight, Normal, or Relaxed.
 - **Letter spacing** and **Word spacing**: Normal, Wide, or Wider. The Wider steps
@@ -49,8 +64,8 @@ I?":
 
 - A thin **progress bar** at the top of the page fills as you scroll.
 - A **minutes-left readout** estimates the remaining time from the prose word
-  count below the cursor (code and equations are excluded), shown as
-  `~N min left, X% read`.
+  count (code and equations are excluded) scaled by how far you have scrolled,
+  shown as `~N min left · X% read`.
 - A **Resume reading** pill appears when you reopen a page you left partway
   through. It scrolls you back to the exact block you stopped at, anchored to that
   block's content hash. It dismisses itself after a few seconds or on your next
@@ -82,10 +97,42 @@ The same selection toolbar carries clipboard actions, all local (no server):
 - **Copy**: the plain selected text.
 - **Quote**: a Markdown blockquote with the document title and a link.
 - **Share link**: a W3C text-fragment URL (`#:~:text=`) that scrolls a reader
-  straight to the exact passage and highlights it. (Text fragments do not work over
-  `file://`, so the action says so there.)
+  straight to the exact passage and highlights it, with no anchor or id required at the
+  target.
 - **Cite**: a ready-to-paste BibTeX `@misc` entry with the title, a deep link, and
   the access date.
+
+### How text-fragment links work
+
+The Share link encodes the selected words into the URL's fragment, after a `:~:`
+sentinel, as a `text=` directive. A short selection rides whole; a long one is
+shortened to a `textStart,textEnd` range (the first and last few words) so the URL
+stays manageable. Any existing element id in the hash is preserved, and a previous
+text fragment is dropped, so re-sharing never stacks directives:
+
+```text
+https://example.com/post.html#sec-intro:~:text=the%20exact%20phrase
+```
+
+When a browser opens that URL, it finds the matching text on its own and scrolls to
+it, highlighting the passage. That is why the target needs no `id` and no author
+markup: the link points at *words*, not at an anchor.
+
+Two caveats are worth knowing, and the toolbar surfaces both:
+
+- **An http(s) origin is required.** Text fragments are ignored over `file://`, so a
+  page opened straight from disk will not scroll. When you copy a Share link from a
+  `file://` page, the toolbar says so: it announces "Link copied; the highlight opens
+  when served over http or https." Serve the build (any static host, or
+  `qmd-fast preview`) and the same link resolves. The plain anchor copy-links below
+  have no such limit (they fall back to an `execCommand` copy in insecure contexts), so
+  prefer a `#`-anchor link when you must share from `file://`.
+- **Browser support varies.** Text-fragment navigation is a Chromium-era feature and
+  is well supported in Chrome, Edge, and other Chromium browsers; support in Firefox
+  and Safari has lagged and differs by version. A browser that does not understand the
+  `:~:text=` directive simply ignores it and lands at the top of the page (or at the
+  element id, if the link carries one), so the link degrades gracefully rather than
+  breaking.
 
 ## Hover cross-reference cards
 

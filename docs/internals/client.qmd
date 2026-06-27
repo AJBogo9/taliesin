@@ -1,0 +1,312 @@
+---
+title: "The browser client"
+---
+
+The server does the rendering; the browser does almost nothing. The client
+(`web-client/`) is plain vanilla JavaScript, no framework and no build step, that
+mounts the server's HTML and then applies the [block diff](block-model.qmd) one op
+at a time. There is no virtual DOM and no reconciliation pass of its own: the
+*server* decided what changed, and the client's whole job is to splice those few
+blocks into a live page without disturbing the rest. Math is rendered server-side,
+so there is nothing to re-run on the client; code highlighting is too. The result
+is a thin layer whose hardest problem is *not* breaking the things the diff worked
+to preserve.
+
+The client is four files, each shipped as one `<script>` with no bundling:
+
+| File | Role |
+|---|---|
+| `web-client/client.js` | Mounts the render, applies ops, reverse sync, click-to-source, the dev menu. Type-checked (`// @ts-check`). |
+| `web-client/search.js` | The Cmd-K command palette. |
+| `web-client/toc-spy.js` | The table-of-contents scrollspy. |
+| `crates/core/assets/js/code-enhance.js` | The enhancer registry plus the built-in enhancers (copy buttons, reader menu, lightbox, …). |
+
+`client.js` is the only one that talks to the websocket. The other three are
+self-contained features that ride along beside it, and the static `build` ships
+the same `search.js` / `toc-spy.js` / `code-enhance.js` so a built page behaves
+like the preview.
+
+## Mounting and applying ops
+
+`client.js` mounts into a single element, `#qmd-root`; without it the script is a
+no-op. On connect the server sends a `full_render` (and the page body was *already*
+server-rendered into `#qmd-root` so content paints before the socket opens), and on
+each save it sends only the [diff ops](block-model.qmd). The full message contract
+is documented in [the block model](block-model.qmd); here is what the client does
+with each one.
+
+The first paint is the subtle case. Because the body is server-rendered, the very
+first `full_render` after connect is **identical** to what is already on screen, so
+the client *skips* the destructive part of mounting it (a `window.QMD_SSR` flag,
+consumed once): no `resetJs()` teardown of `{js}` cells and no `root.innerHTML`
+replacement, so there is no flash. It does *not* skip the `afterChange()` pass that
+runs after every render, so the deck is still initialized (the first `syncDeck`
+calls `QmdDeck.initialize`) and the code enhancers still run over the SSR'd DOM. A
+reconnect, by contrast, re-mounts normally, and a dropped socket retries on a
+one-second loop (`onclose` → `setTimeout(connect, 1000)`).
+
+For the incremental ops, every block is found by its `data-block-id`
+(`elById(id)`, a `[data-block-id="…"]` query with `CSS.escape`):
+
+- **`update`** finds the target and `replaceWith`s a fresh element built from the
+  HTML, then pulses it (`qmd-flash`) so the change is visible.
+- **`insert`** builds the element and places it after `after_id` (or `prepend`s it
+  when `after_id` is null). Because block ids are unique, it first drops any element
+  already carrying the incoming id; the server emits all removes before any inserts,
+  so this is normally a no-op, and only matters if a reorder's `remove` + `insert` of
+  the same id ever arrived out of order.
+- **`remove`** drops the element by id.
+- **`set_meta`** patches position attributes on the *existing* element and **does
+  not re-render it**: it always sets `data-sourcepos`, and it sets `data-source-file`
+  when the op carries one or *removes* it otherwise. This is the path a block takes
+  when an edit above it shifted its line numbers without changing its content: its
+  HTML is byte-identical (same content-hash id), so re-rendering would needlessly
+  rebuild it and drop its live DOM state, but its source mapping is now stale.
+  Patching the two attributes in place keeps both the live state *and* exact
+  click-to-source.
+
+The other server messages are handled too: `diagnostics` repaints the issue panel,
+`style` hot-swaps the theme `<style id="qmd-theme">` in place (no reload, so scroll
+and the current slide survive a theme edit), `error` raises a full-screen overlay
+over the last good content, and `reload` (sent after a kernel restart or a config
+change) does a plain `location.reload()`.
+
+The traffic is almost entirely server → client; the client sends only two messages
+back over the socket:
+
+```js
+{ type: "click_block", block_id?, source_file, sourcepos }  // on an Alt-click
+{ type: "restart_kernel" }                                  // from the dev menu
+```
+
+`click_block` is the websocket half of forward click-to-source (sent alongside the
+`vscode://`/`postMessage` jump); `restart_kernel` is the Restart-kernel button. Both
+go out only when the socket is `OPEN`.
+
+### The dev control bar
+
+The preview's only chrome is one collapsed corner widget, `#qmd-controls`: a `</>`
+toggle carrying the live-status dot, expanding to a panel of preview-only tools. The
+panel shows the connection status, the word/reading-time count, the Alt-click hint,
+a Restart-kernel button, and (only in single-doc preview, where there is no site
+navbar) a theme toggle. It also aggregates three issue sources into one list, each
+row jumping to the offending source line: server `diagnostics` (broken include,
+missing kernel), per-cell runtime errors (Python `.qmd-error`, `{js}`
+`.qmd-js-error`), and an in-browser a11y audit run after every render (missing alt
+text, heading-level skips, links/buttons with no accessible name, a missing
+`<html lang>`, and body text below WCAG AA contrast). The total issue count shows as
+an amber badge on the collapsed toggle, so a problem is visible without expanding
+the panel. In deck mode (no control bar) the status survives as a standalone pill.
+
+### Scroll and live-state preservation
+
+The diff guarantees an unchanged block is never touched. The client's job is to not
+spoil that for the blocks that *are* touched, and the work is concentrated in two
+small functions.
+
+`keepScroll(fn)` wraps every mutation: it reads `window.scrollY`, runs the
+mutation, then restores the scroll position with `behavior: "instant"` so the
+restore is never animated even on a page with smooth scrolling. Without it, an
+`update` to a block above the viewport would shift everything below and bump the
+reader's place.
+
+`afterChange()` runs after each mount and re-attaches everything that lives
+*outside* the block model: it re-syncs the deck, rebuilds the live TOC, re-inits the
+scrollspy against the fresh nav, recomputes the word count, re-runs the code
+enhancers (`window.qmdEnhanceCode(root)`), and re-scans for cell errors and a11y
+issues. `set_meta` deliberately **skips** `afterChange()`, because nothing was
+rendered.
+
+::: {.callout-note}
+## Why `{js}` cells get an explicit teardown
+
+When an `update`, `insert` (of a stale duplicate), or `remove` detaches a block,
+the client first calls `teardownJs(el)`. A `{js}` cell registers an `invalidation`
+promise; `teardownJs` resolves it, so the author's
+`invalidation.then(() => renderer.dispose())`-style cleanup runs and the cell is
+spliced out of the `{js}` runtime's registry. Without this, editing a Three.js cell
+(whose content-hash id changes, so the block is replaced wholesale) would leak a
+WebGL context and an animation-frame loop on every save. A wholesale re-mount calls
+`resetJs()` first, tearing down *every* cell so the runtime rebuilds clean. Both are
+no-ops when `qmd-js.js` is not loaded (a deck or a page with no `{js}` cells).
+:::
+
+## Reverse sync: `highlightAtLine`
+
+Click-to-source runs in both directions off the same `data-sourcepos` attribute.
+The reverse direction, editor cursor to preview block, is `highlightAtLine(file,
+line)`. It walks every `[data-sourcepos]` element under `#qmd-root` and, filtering
+to blocks whose `data-source-file` matches the cursor's file, parses each position
+with one regex:
+
+```js
+/^(\d+):\d+-(\d+):\d+$/
+```
+
+A block whose `data-sourcepos` does not match this shape (the synthesized title
+block and the references section carry an empty string) is skipped, because it has
+no source line. Among the matches the function picks the **smallest block whose
+`[start, end]` range contains the line**, breaking ties by the narrowest span so a
+nested block beats its container. If no block *contains* the line (the cursor is on
+a blank line between blocks), it falls back to the **nearest block starting before
+it**.
+
+The chosen block gets a `qmd-hl` outline (any previous one is cleared first), and
+then the view follows the cursor:
+
+- in a normal page, the block is scrolled into view only if it is off-screen
+  (`getBoundingClientRect` outside the viewport), with `block: "center"`;
+- in a **deck**, scrolling makes no sense, so the client finds the
+  `.qmd-slides > section` containing the block and jumps the deck to it with
+  `window.QmdDeck.slide(i)`.
+
+This is the same smallest-containing-block model the [deck engine](deck-engine.qmd)
+and the source map were built around, run backwards.
+
+## The `postMessage` bridge
+
+The client speaks two `postMessage` messages so an editor host (an `<iframe>`) can
+own the preview and add cursor sync without forking any code. The in-repo
+[VS Code companion](extending.qmd) is that host, but the bridge is generic: any
+parent frame can use it.
+
+| Direction | Message | Payload | Meaning |
+|---|---|---|---|
+| client → parent | `qmd-goto` | `source_file`, `sourcepos` (plus `block_id` on a `data-block-id` click) | Forward click-to-source: reveal this source line in the editor. |
+| parent → client | `qmd-cursor` | `file`, `line` | The editor cursor moved; highlight/scroll to the covering block. |
+
+`block_id` rides along only on the `data-block-id` click path; a located-diagnostic
+click and a `data-qmd-src` click post just `{ source_file, sourcepos }`. The host
+needs only the file and line, so the field is informational.
+
+The client decides which transport to use from whether it is framed
+(`window.parent !== window`). When it is framed, Alt-clicking a block (or clicking a
+located diagnostic) posts a `qmd-goto` up to the parent rather than navigating;
+the host turns that into an editor `revealRange`. When it is *not* framed, the same
+gesture opens a `vscode://file/<path>:<line>:<col>` deep link directly. Inbound,
+`window.addEventListener("message", …)` listens for `qmd-cursor` and calls
+`highlightAtLine(m.file, m.line)`.
+
+::: {.callout-important}
+## The preview never writes back
+
+The bridge is deliberately one-way as a *write* path: click-to-source and
+`qmd-cursor` both only **navigate** and **highlight**. The `.qmd` file is the single
+editing surface and the preview is a read-only view, so nothing the client posts can
+mutate the source. There is no `qmd-edit` message, by design.
+:::
+
+Forward click-to-source is a modifier *gesture*, not a mode: a plain click always
+browses normally, and holding Alt (Option on Mac) turns the cursor into a pointer
+over every source-mapped block (`html.qmd-alt`) and outlines the exact block a click
+would resolve to. Both the affordance and the click resolve the target through the
+same `locatable()` helper (nearest `[data-qmd-src]` or `[data-block-id]` ancestor),
+so the highlight and the jump can never drift apart.
+
+## The enhancer registry
+
+`code-enhance.js` opens with the one public client-side extension point:
+`window.qmdEnhancers`. An **enhancer** is a function `fn(root)` that decorates
+freshly-mounted DOM, and an extension's JS opts in with one call:
+
+```js
+window.qmdEnhancers.register(function (root) {
+  root.querySelectorAll(".my-widget:not([data-enhanced])").forEach(function (el) {
+    el.dataset.enhanced = "1"; // idempotency guard, see below
+    // …decorate el…
+  });
+});
+```
+
+A registered enhancer runs:
+
+- after **every** (re)mount in the live preview, via `afterChange()` →
+  `window.qmdEnhanceCode(root)`;
+- once on `DOMContentLoaded` in the static build;
+- once immediately when it registers *after* the page is already mounted (the
+  registry tracks a `mounted` flag, so an extension script loaded in
+  `include-after-body` still gets to run on the existing DOM).
+
+::: {.callout-warning}
+## Enhancers must be idempotent
+
+Because an enhancer re-runs on every change, it must be safe to run twice on the
+same element. The convention is a data-attribute guard: select with
+`:not([data-enhanced])` and set `data-enhanced` as the first thing you do. The
+built-in copy-button enhancer does exactly this (`if (pre.dataset.enhanced) return;`
+then `pre.dataset.enhanced = "1"`), and every built-in follows the same pattern.
+:::
+
+The built-ins register through this exact API, so a third-party enhancer is
+indistinguishable from core's. The notable ones:
+
+- **Copy buttons** (`qmdCopyButtons`) on every `pre > code`, using a clipboard
+  helper that falls back to a hidden-textarea `execCommand` in insecure contexts
+  (`file://`, a plain-HTTP `--host` LAN preview).
+- **`{js}` cells** (`qmd-js.js`): finds each `<script type="application/qmd-js">`,
+  runs the author's code with a small scope, and mounts the result into its sibling
+  target `<div>`. It is idempotent through a `data-qmd-ran` guard and drives the
+  reactive graph; the [interactive cells chapter](../guide/using/interactive.qmd)
+  covers the runtime.
+- **Mermaid** (`mermaid.js`): renders `{mermaid}` cells, lazy-loading the Mermaid
+  library (offline-overridable via `QMD_FAST_MERMAID_URL`).
+- The **reader menu** and its features (theme / text-size / spacing prefs, focus
+  mode, read-aloud, reading progress, highlights, bookmarks), the **image
+  lightbox**, **anchor permalinks**, the **link-preview card**, the **keyboard
+  shortcuts** layer, the **skip link**, and the listing **category filter**.
+
+`window.qmdEnhanceCode(root)` is the single entry point every caller (live client,
+static build) uses to run the whole list.
+
+## Cmd-K search (`search.js`)
+
+`search.js` is a self-contained command palette, opened with Cmd-K (Ctrl-K off Mac),
+by clicking any `[data-qmd-search]` control, or programmatically via
+`window.qmdOpenSearch()`. It injects its own themed overlay CSS and is *not* part of
+the type-checked `client.js` bundle.
+
+Its index has two sources:
+
+- **A single document** builds the index from the live DOM on open, walking every
+  anchored heading (`h1[id]`…`h4[id]`) and the body text that follows it up to the
+  next heading. Building from the DOM means the index reflects live edits with no
+  server round-trip.
+- **A site or book** reads `window.QMD_SEARCH_INDEX`, the cross-page index the build
+  emits (each entry is a page title plus its anchored headings, carrying the page's
+  url so a result can navigate across chapters). To keep that index from bloating
+  every page, the site links to it via `window.QMD_SEARCH_URL` and `search.js`
+  **lazy-loads `search.json` on first open** (a "Loading…" row shows meanwhile),
+  caching it onto `QMD_SEARCH_INDEX`.
+
+Matching is a multi-term AND with a field-boosted score: a title hit outranks a body
+hit, with bonuses for an all-title match, a title-leading match, and an exact
+contiguous phrase. Terms of four or more characters also match by edit-distance-1
+typo (`within1`, a bounded no-matrix Levenshtein) against a whole word. Selecting a
+result on another page navigates there anchored to the heading; on the current page
+(or in a single doc) it scrolls in place.
+
+## TOC scrollspy (`toc-spy.js`)
+
+`toc-spy.js` highlights the table-of-contents entry whose section currently sits
+just under the sticky navbar. It is the canonical scrollspy shared by two callers so
+the behaviour matches exactly: the static build inlines it and lets it auto-init on
+load, and the live preview rebuilds `#TOC` on every edit and then calls
+`window.qmdInitTocSpy()` to re-collect against the fresh links.
+
+On each scroll (throttled to one `requestAnimationFrame`) it finds the last heading
+above the activation line, toggles `qmd-toc-active`, expands only the active entry's
+branch of a long nested TOC, and keeps the active link visible inside the TOC's own
+scroll area. It also tracks **read state**: every entry strictly before the current
+section is marked read (a forward-only high-water index, so scrolling back never
+un-marks). That read set is the reader's own, stored in `localStorage` keyed by path
+and anchored to each heading's stable `data-block-id`, so it survives reflow and
+never touches the source: the same read-only, content-hash-anchored model the
+bookmarks and resume features use.
+
+## Where to read next
+
+- [The block model & protocol](block-model.qmd) defines the ops the client applies
+  and the full websocket message contract.
+- [The dev server](server.qmd) is the producer on the other end of that socket.
+- [Extending qmd-fast](extending.qmd) covers the enhancer registry and the VS Code
+  companion from the authoring side.

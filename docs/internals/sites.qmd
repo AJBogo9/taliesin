@@ -38,6 +38,45 @@ prev/next entry; books do not consult `draft`), and a deck pulled in by
 inclusion, not a page. A loose `format: revealjs` file that no page embeds warns rather
 than silently becoming a chrome-wrapped article.
 
+### How `draft:` filtering works
+
+The exclusion is structural, not cosmetic: `website_pages` reads each candidate's front
+matter and, on `draft: true`, returns `None` *before* the file ever becomes a `Page`. The
+draft therefore never enters `self.pages`, the one list every downstream feature reads
+from. Because listings, prev/next navigation, the navbar, the search index, and the
+xref registry all derive from `self.pages`, a draft drops out of every one of them at
+once, and `build` emits no file for it. (Books are different: a book's page set comes from
+the explicit `chapters:` list, so it never walks the directory and never consults
+`draft:`; to hold a chapter back from a book, leave it out of `chapters:`.)
+
+### How embedded decks are discovered {#sec-deck-discovery}
+
+A website discovers *every* `.qmd` as a page, so a slide deck that exists only to be
+embedded would otherwise become a navigable, chrome-wrapped article with no slides. The
+flow that prevents that, @fig-deck-discovery:
+
+```{mermaid}
+%%| label: fig-deck-discovery
+%%| fig-cap: "Embedded decks are discovered from the pages, then removed from the page set and kept as standalone DeckRefs."
+flowchart TB
+  pages["pages (every .qmd)"] --> scan["discover_decks:<br/>resolve includes · scan {{< embed >}} targets"]
+  scan --> exist{"target is a file?"}
+  exist -->|yes| ref["DeckRef { input, url }<br/>(deduped by URL)"]
+  exist -->|no| warn["warn: embedded deck not found"]
+  ref --> retain["pages.retain(not a deck)"]
+  retain --> served["served standalone<br/>(no nav · no search)"]
+```
+
+`discover_decks` walks the page set, resolves `{{< include >}}` in each page first (so an
+`{{< embed >}}` living inside an included partial is still found), then collects every
+embed target. Each target is written relative to its embedding page, so it is mapped back
+to a site-root-relative path; a target that is not a real file warns and is skipped (the
+embed iframe would otherwise 404). The surviving targets become deduplicated `DeckRef`s,
+and `pages.retain(...)` then drops every page whose URL matches a `DeckRef`, so the deck
+leaves the navigable set while staying reachable as a standalone deck (the preview looks
+it up by output URL via `Site::deck`). What is left after that retain is a true page; a
+`format: revealjs` file *still* in the set is the loose-deck case above, and it warns.
+
 ## The config model
 
 The typed `SiteConfig` is qmd-fast's **native, flat** schema (title, nav, footer,
@@ -51,6 +90,25 @@ mean" hint (`config/mod.rs` `validate_keys`). A Quarto-shaped nested config
 (`project:` / `website:` / `book:` / `format:`) is no longer accepted: those keys
 warn as unknown and their nested values are ignored, so a Quarto config must be
 flattened to the native shape.
+
+`validate_keys` is deliberately a **warning, not an error**: every top-level key in
+`_site.yml` is checked against the `NATIVE_KEYS` constant (`title`, `author`,
+`description`, `url`, `favicon`, `image`, `output`, `toc`, `css`, `head`, `body-start`,
+`body-end`, `nav`, `footer`, `chapters`, `mounts`), and an unknown one is reported but the
+rest of the config still parses. The "did you mean" comes from the same `closest()` the
+front-matter linter and the CLI's unknown-command suggestion use: the nearest known key
+within **Levenshtein edit distance 2** (so `favicn` suggests `favicon`, but a key two-plus
+edits away suggests nothing rather than guessing wildly). Two harder failures also degrade
+gracefully rather than aborting: a missing `_site.yml` and a YAML file that does not parse
+both warn and fall back to a `SiteConfig::default()`, so `check` and `preview` still run
+and surface the problem instead of crashing.
+
+::: {.callout-note}
+The closed set is the *whole* contract for `_site.yml`: there is no second tier that
+tolerates Quarto keys. This is what lets `qmd-fast schema` generate a JSON Schema directly
+from `NATIVE_KEYS`, the very same list `validate_keys` checks against, so the editor
+autocomplete and the runtime validator can never drift apart.
+:::
 
 qmd-fast generates a JSON Schema for `_site.yml` from `NATIVE_KEYS` (the same
 closed set the config validator uses), emitted by `qmd-fast schema`. See the
@@ -94,6 +152,33 @@ Two related rewrites stitch the pages together:
   sections), then rewrites `data-qmd-xref`-marked links to point at the right page.
   So a `@fig-` in one chapter resolves, with its number, to its figure in another.
 
+The cross-page resolution is a deliberate **two pass** design, because a `@fig-`
+reference can point at a label defined on a page that has not been rendered yet:
+
+1. **Scan all pages first.** `scan_xref_targets` walks every page's *source* (a
+   lightweight pass, no render, no execution) and records each cross-referenceable anchor
+   into a `HashMap<label, XrefTarget>`. The recognized prefixes are `sec-`, `fig-`,
+   `tbl-`, `eq-`, `lst-`, `thm-`, and `def-`. Each `XrefTarget` stores the anchor's page
+   URL and, for a numbered book section, its section number. Includes are resolved during
+   this scan exactly as the render pipeline resolves them, so section counters advance
+   over included headings and the numbers match the rendered page. **First definition
+   wins** project-wide; if a *different* page redefines the same label, it warns once
+   (a within-page duplicate is caught separately by the per-page render).
+
+2. **Rewrite during page render.** When a page is rendered, `cite::process` has already
+   turned each `@sec-` reference into a bare-label link that carries a `data-qmd-xref`
+   marker naming the anchor:
+
+   ```html
+   <a href="#sec-intro" data-qmd-xref="sec-intro">Section</a>
+   ```
+
+   `rewrite_cross_refs` then scans that HTML for those markers: a marker whose anchor
+   resolves to a *different* page is rewritten to `href="<up><page>#anchor"` with its
+   number folded in (and a chapter-level `@sec-` reference reads "Chapter N" the way Quarto
+   does), while a same-page or unknown anchor is left exactly as `cite` emitted it. So the
+   local case and the cross-page case share one syntax and the reader never sees the seam.
+
 ## Full-text search
 
 `search.rs` builds **one cross-page index**: every page's title and each anchored
@@ -103,6 +188,28 @@ prose, not just headings. It is built once at discovery and **written to a separ
 every page, so the index never bloats page weight. (On a 17-page book that saved
 over a megabyte across the pages.) The palette is opened by the navbar search
 control (or the book sidebar's, for a book) or the <kbd>Cmd/Ctrl-K</kbd> shortcut.
+
+`build_index_json` renders each page's Markdown once (no code execution, so the anchor
+ids match the served pages exactly), then emits a flat JSON array of compact records, one
+per searchable target. Each record is `{u, p, i, l, t, b}`: the page **u**rl, the **p**age
+title, the anchor **i**d, the heading **l**evel, the heading **t**ext, and the **b**ody
+text of that section. Every page contributes one record for the page itself (id `""`,
+level `0`, body = the intro before the first heading) plus one record per anchored heading
+(body = the plain text from that heading's close to the next heading's open). The section
+body is capped at 1500 characters so one long section or a big code listing cannot blow up
+the index, and the author's own `404.html` is skipped so a search never surfaces it.
+
+Search is entirely **in-browser**: there is no server query endpoint. The client fetches
+`search.json` once (via `window.QMD_SEARCH_URL`, set in the page head) the first time the
+palette opens, caches the parsed array on `window.QMD_SEARCH_INDEX`, and filters it
+locally as you type. A static `build` ships the same `search.json` beside the pages, so
+search works on a deployed, server-less site identically to the live preview.
+
+::: {.callout-note}
+The index is built from `self.pages`, so the two exclusions compound automatically: a
+`draft:` page and an embedded deck are both absent from `self.pages`, and therefore absent
+from search, without search needing any special case for either.
+:::
 
 ## Social & SEO metadata
 
@@ -127,3 +234,22 @@ own assets, but a `mounts:` sub-project is a separate project, so `build <site>`
 yourself into the matching sub-path, e.g. `qmd-fast build docs/internals --out _site/docs/internals`,
 so the deployed `/docs/internals/` links resolve. (Auto-building mounts is a planned
 follow-up.)
+
+The reason `build` stops at a warning rather than recursing is that a mounted project is a
+**genuinely separate project with its own build**: it has its own `_site.yml`, its own
+output mode (a book builds to `_book`, a website to `_site`), its own theme and execution
+needs, possibly its own kernel. Recursing would mean one `build` silently inheriting and
+overriding another project's configuration, the exact directory-cascade ambiguity the
+flat, no-cascade config model was designed to avoid. So `build` keeps each project's build
+explicit and independent, and tells you precisely which command to run for each mount
+instead of guessing. In preview the calculus is different: there is no output directory to
+get wrong, the mounted pages are rendered on request, and live mounting is what makes the
+marketing site's `/docs/guide` and `/docs/internals` links work in one `preview` session,
+so the live server takes on that convenience while the static build stays principled.
+
+::: {.callout-tip}
+Because a mounted page under `preview` is rendered as plain static output (no websocket, no
+click-to-source), preview a mounted book *directly* (`preview docs/internals`) when you
+want the full incremental live loop on it, and use the mount only to check that the
+cross-project links resolve.
+:::

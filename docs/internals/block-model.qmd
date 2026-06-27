@@ -24,6 +24,31 @@ Source mapping, incremental re-render, and live-state preservation all build on
 this one model. A code cell's *output* is itself a block, keyed to the cell's id,
 so when an upstream cell re-runs, only the affected output blocks update.
 
+The exact field shapes (`Block`, `Cell`, `RenderedDoc`, and friends) live in
+[the data-type reference](data-types.qmd); this chapter explains how the diff and
+the protocol *use* them.
+
+### How the id is computed
+
+`make_id` (`render/mod.rs`) is small and deterministic, so two renders of the same
+source always agree and the diff has a stable anchor:
+
+1. Take the block's **raw Markdown source**, trimmed of leading and trailing
+   whitespace.
+2. Hash it with **64-bit FNV-1a** (offset basis `0xcbf29ce484222325`, prime
+   `0x100000001b3`), the same hash the freeze cache uses for cell keys.
+3. Format the digest as 16 hex digits, keep the **first 12**, and prefix `b-`. So
+   an id looks like `b-3af19c0b7e21`.
+4. If a byte-identical block already produced that base id, append a positional
+   `-N` suffix (the first duplicate becomes `b-…-1`, the next `b-…-2`, and so on),
+   via `dedup_with_suffix`. This is the *only* place position enters the id, and
+   only to break exact-content ties, so ids stay unique within a document.
+
+The hash is over content, not position, on purpose. Inserting a paragraph at the
+top of a document leaves every following block's id unchanged, so the diff sees one
+insert rather than "everything moved". The `-N` tiebreak is what lets the diff
+treat ids as *unique* (the basis for the `O(n log n)` shortcut below).
+
 ## The diff (`diff.rs`)
 
 `diff_blocks(old, new)` turns two block lists into the minimal set of DOM ops the
@@ -46,6 +71,30 @@ id in both lists, so the algorithm is an **LCS over the id sequences**:
    - if the body itself changed, it emits an **`Update`**. This is the path a
      **derived** block whose id isn't a pure content hash (a code cell's output block,
      keyed to the cell id) takes when an upstream cell re-runs.
+
+### How `SetMeta` vs `Update` is decided
+
+The "with the source-position attributes masked out" step is a precise string
+comparison, `eq_ignoring_sourcepos`. It runs `mask_sourcepos` over **both** the old
+and the new block HTML: every `data-sourcepos="…"` is rewritten to an empty
+`data-sourcepos=""` (the value is dropped, the attribute and quotes kept) before the
+two strings are compared byte for byte. The same masking blanks the
+`data-source-file` value, so a block that moved between files but kept its content
+still reads as equal:
+
+- **bodies equal after masking** (so the *only* difference was the position
+  attributes) → `SetMeta`. The element is left in the DOM; just its
+  `data-sourcepos` and `data-source-file` are patched. Its scroll, a running canvas,
+  a `{js}` widget, a `<video>` position, an open `<details>` all survive, while
+  click-to-source stays exact.
+- **bodies differ after masking** → `Update`, a full re-render of the element. The
+  guard in front of the mask is `old.sourcepos != new.sourcepos`: if even the
+  *position* is identical, there is nothing to patch and `anchor_op` is never called
+  in the first place.
+
+This is why a cell's output block, whose id is keyed to the cell rather than to the
+output content, takes the `Update` path when the cell re-runs: its body genuinely
+changed, the mask comparison fails, and the element is rebuilt.
 
 The whole decision is mechanical once the anchors are known (@fig-diff):
 
@@ -105,6 +154,23 @@ This is the deliberate trade of content-hash ids (a pinned regression test
 documents it); moves are rare in editing, and the simplicity is worth it.
 :::
 
+### Removes before inserts (the ordering rule)
+
+`diff_blocks` produces the ops anchor by anchor in document order, then does one
+last thing: a **stable sort that hoists every `Remove` ahead of every `Insert`**.
+The client applies the ops in the order it receives them, so this ordering is load
+bearing.
+
+The reason is exactly the no-`Move` case above. A block that moves *forward* is
+emitted as a `Remove` at its old slot plus an `Insert` of the **same id** at its new
+slot. If the `Insert` ran first, the new element (carrying that id) would already be
+in the DOM when the `Remove` ran, and `Remove`'s id-based lookup would find and
+delete the **freshly inserted** element instead of the stale one. Hoisting the
+`Remove` makes the old element gone before the new one arrives, so the lookup is
+unambiguous. Removes are positionally independent (each names a concrete
+`target_id`), so reordering them is safe; the sort is *stable*, which keeps the
+`Insert`s in document order so their `after_id` chains still resolve.
+
 ## The websocket protocol
 
 On connect, the server sends a `full_render`; on each save it diffs the new block
@@ -128,7 +194,12 @@ differences**.
 These message shapes are defined **once**, in `protocol.rs`, and shared by both
 dev servers and the browser client. The single-document server, the multi-page
 server, and `web-client/` are all ends of this one contract, so they can't drift
-apart from each other.
+apart from each other. The `update` / `insert` / `remove` / `set_meta` messages are
+just the serialized `BlockOp` enum (the variant name lowercased into the `type`
+field); its four Rust variants and their fields are catalogued in [the data-type
+reference](data-types.qmd#blockop). For the exact JSON shape of every message,
+when each is sent, and how the client applies it, see [the websocket
+protocol](protocol.qmd).
 
 ### Applying the ops (the client)
 

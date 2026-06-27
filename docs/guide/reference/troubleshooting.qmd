@@ -27,6 +27,46 @@ A cell that exceeds `QMD_FAST_CELL_TIMEOUT` seconds (default 120) is interrupted
 for tighter feedback, or set `0` to disable the cap. The dev menu's **Restart
 kernel** drops and respawns the kernel if it's truly wedged.
 
+## A cell ran, but I think the kernel crashed
+
+If a kernel process dies mid-session (a segfault in a native library, an
+out-of-memory kill), qmd-fast self-heals rather than hanging. The cell that was
+running when the kernel died gets a *"kernel exited before this cell ran; it will
+re-run on the next save"* placeholder, and the **next** run notices the dead
+process, drops it, respawns a fresh kernel, and re-runs every cell from the top
+(the new kernel holds no state, so the warm prefix is gone). You don't have to
+touch **Restart kernel** for this: a crash recovers on its own with the next save.
+
+A failed *start* (a missing or misconfigured interpreter, not a mid-run crash) is
+different: qmd-fast backs off for about 20 seconds before retrying, so a genuinely
+broken `QMD_FAST_PYTHON`/`QMD_FAST_R` doesn't re-hang every save. During the
+backoff the cells render as source with the "kernel unavailable" diagnostic. Fix
+the interpreter and the next save within a few tries recovers on its own; or hit
+**Restart kernel** to clear the backoff and try immediately.
+
+## Outputs look stale, or I want to force a clean re-run
+
+Cell outputs are cached in `_freeze/` (gitignored) keyed by a cumulative content
+hash, so an unchanged cell (and everything upstream) restores from disk instead of
+re-executing. The key folds in this cell's code, every same-language cell above it,
+and the interpreter id, so a real edit always busts the cache: there are no stale
+hits to clear by hand. Two escape hatches exist if you suspect the cache anyway:
+
+- The dev menu's **Restart kernel** forces the next run to ignore disk-cache hits
+  and re-execute every cell against a fresh kernel (then re-persist), so it doubles
+  as a "re-run everything from scratch" button.
+- `QMD_FAST_NO_CACHE` ignores the cache entirely and never writes it, so every run
+  re-executes. Reach for it when comparing timings, when a cell has a hidden
+  non-determinism you're debugging (a clock, a random seed, an external fetch), or
+  to confirm a result reproduces from cold rather than from a replayed output:
+
+  ```sh
+  QMD_FAST_NO_CACHE=1 qmd-fast build report.qmd
+  ```
+
+  Note the cache is already correct by construction (errors and `#| cache: false`
+  cells are never persisted), so this is a debugging tool, not a routine step.
+
 ## Diagrams / `{js}` cells don't render
 
 Mermaid loads from a CDN, so it needs `http(s)` and a network. `{js}` cells run
@@ -67,3 +107,41 @@ line (it carries the `?t=…` token); a hand-typed `http://<ip>:<port>/` is refu
 on purpose. The token is regenerated on every server start, so an old QR or a
 bookmarked URL from a previous run stops working: rescan the current one. Browsing
 from the same machine (`127.0.0.1`) never needs the token.
+
+## The VS Code companion preview won't connect
+
+The companion spawns a plain `qmd-fast preview <file> <port>` and points its webview
+at `http://127.0.0.1:<port>/`. It binds **loopback only**: it does **not** pass
+`--host`, so there is no LAN token to fumble and no firewall hop to clear. If the
+panel stays blank:
+
+- Make sure `qmd-fast` is on the path the extension uses. It runs whatever the
+  `qmdFast.path` setting points at (default `qmd-fast`); set it to an absolute path
+  if the editor's environment doesn't see your shell's `PATH`.
+- The extension waits up to a few seconds for the server to answer on its port. If
+  you see *"qmd-fast preview did not answer"*, the binary failed to start: run the
+  same `qmd-fast preview <file>` in a terminal to read the real error.
+- Because it's a loopback URL, do **not** add `--host` or a token: that's for phones
+  on your LAN, not for the local webview.
+
+## A large site previews or builds slowly
+
+A first cold build of a site with many executed cells has to run them once; after
+that, `_freeze/` does the heavy lifting. Things that keep it fast:
+
+- **Let the freeze cache warm up.** The first run populates `_freeze/<page>.json`;
+  every later `build`/`preview` of an unchanged page replays its outputs from disk
+  and never boots a kernel. Don't delete `_freeze/` between builds (it's safe to
+  commit if you want CI to skip execution), and don't set `QMD_FAST_NO_CACHE`, which
+  defeats exactly this.
+- **Use `--no-exec` for a structure-only pass.** When you're iterating on layout,
+  navigation, or prose and don't need fresh cell outputs, render the code cells as
+  source and skip the kernel entirely:
+
+  ```sh
+  qmd-fast preview ./site --no-exec
+  ```
+
+  The pages render in full (chrome, links, math, figures already in the cache stay
+  put as source) at a fraction of the cost, which is also the right call when you
+  just want to eyeball a big site's shape.

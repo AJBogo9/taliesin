@@ -32,9 +32,34 @@ pip install ipykernel numpy matplotlib   # + whatever your cells import
 export QMD_FAST_PYTHON="$(pwd)/.venv/bin/python"
 ```
 
-For R cells, install `IRkernel` and set `QMD_FAST_R`. Without a kernel, cells
-render as highlighted source and the preview shows a quiet "kernel unavailable"
-note instead of failing, so you can always start writing and add a kernel later.
+For R cells, run `install.packages("IRkernel")` (then `IRkernel::installspec()`)
+in your R and point `QMD_FAST_R` at that R binary:
+
+```sh
+export QMD_FAST_R="$(which R)"          # or a full path, e.g. /usr/local/bin/R
+```
+
+`{python}` and `{r}` cells each run against their own warm kernel, so a document
+can mix both. Without a kernel, cells render as highlighted source and the preview
+shows a quiet "kernel unavailable" note instead of failing, so you can always start
+writing and add a kernel later. The kernel setup is covered in more depth (and with
+the same callout) in [Executable content](code.qmd).
+
+## Scaffold a project (the fast path)
+
+The quickest way to a previewable project is `init`, which writes a minimal
+`_site.yml` plus a hello-world `index.qmd` into a directory (the current one by
+default):
+
+```sh
+qmd-fast init my-site        # writes my-site/_site.yml + my-site/index.qmd
+qmd-fast preview my-site     # live, immediately
+```
+
+`init` refuses to overwrite: if either file already exists it stops without
+touching anything, so re-running it never clobbers your work (run it in an empty
+directory, or just hand-write the two files). When you'd rather start from a single
+document, skip straight to the next section.
 
 ## Your first document
 
@@ -84,12 +109,33 @@ qmd-fast build hello.qmd --out dist      # -> dist/index.html + copied local ass
 ```
 
 Point `build`/`preview` at a **directory** instead and you get a whole
-multi-page site or book (see [Slides, books and sites](formats.qmd)):
+multi-page site or book (see [Slides, books & sites](formats.qmd)):
 
 ```sh
 qmd-fast build blog/                     # -> blog/_site/   (one .html per page)
 qmd-fast build docs/                     # -> docs/_book/   (a book, if _site.yml says so)
 ```
+
+### Where the build goes
+
+| You build | qmd-fast writes |
+|---|---|
+| `build doc.qmd` | `doc.html` next to the source: one self-contained file |
+| `build doc.qmd page.html` | `page.html` (your chosen path) instead of `<stem>.html` |
+| `build doc.qmd --out dist` | `dist/index.html` plus the document's referenced local assets, a portable folder |
+| `build site/` | `site/_site/` (a website) or `site/_book/` (a book, when `_site.yml` declares `chapters:`) |
+| `build site/ --out public` | the same site, into `public/` instead of the default |
+
+A site/book build (and the `--out` form) copies the local files your pages
+*reference* (images, audio, videos, vendored scripts) next to the HTML, so the
+output folder is self-contained and you can copy or `rsync` it as-is. The walker
+**skips** what isn't deliverable: `.qmd` sources, `.bib`, `.Rproj`, anything whose
+name starts with `_` or `.` (so `_freeze/` and dotfiles stay out), `*_cache` /
+`*_files` working directories, and the output directory itself. A built-in
+`404.html` is emitted unless you supply your own `404.qmd`, and a `mounts:` entry
+is preview-only (the static build logs a warning with the command to build it
+separately). The full set of flags is in the [CLI reference](../reference/cli.qmd);
+common build-and-deploy patterns live in [Recipes](recipes.qmd).
 
 ## Publish it
 

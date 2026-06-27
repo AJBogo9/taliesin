@@ -1,0 +1,362 @@
+---
+title: "The websocket protocol"
+---
+
+The preview is one long-lived **websocket** carrying **line-delimited JSON**: one
+JSON object per text frame, no framing of its own beyond what the websocket gives
+you. The server is the producer (it pushes renders and diffs); the browser is the
+consumer (it applies them to the DOM). A small client-to-server back-channel
+carries click-to-source reports and the "restart kernel" action, and nothing else.
+
+The message shapes are defined **once**, in `crates/server/src/protocol.rs`, and
+shared by both dev servers: the single-document [`serve.rs`](server.qmd) and the
+multi-page `serve_site.rs` push the *same* messages, and `web-client/client.js` is
+the other end of the contract. A contract test (`protocol_contract`) and the
+client's `// @ts-check` typedefs lock the two ends to one shape, so the server and
+the browser can't drift apart. This chapter is the catalog of that contract.
+
+::: {.callout-note}
+This page documents the *wire* protocol. How the diff that produces these ops is
+computed (and why it is `O(n log n)`) lives in [the block model](block-model.qmd);
+how the server's rebuild loop drives it lives in [the dev server](server.qmd).
+:::
+
+## Server → client messages
+
+Every message is a JSON object with a `type` field; the client switches on it.
+Nine types travel this direction.
+
+| `type` | When it is sent | Client does |
+|---|---|---|
+| `full_render` | on connect, and after a change too large for ops | replace the whole body + diagnostics |
+| `update` | a block's HTML changed | replace one element in place |
+| `insert` | a new block appeared | build + place one element |
+| `remove` | a block disappeared | drop one element |
+| `set_meta` | a block's *source position* shifted but its content didn't | patch its position attributes only |
+| `diagnostics` | the issue list changed (alone, or alongside block ops) | refresh the dev-menu issue stack |
+| `style` | only the theme CSS changed | hot-swap the theme `<style>` in place |
+| `error` | a render/read failure | show an error overlay |
+| `reload` | a config / kernel-restart change | full page reload |
+
+### `full_render`
+
+The whole document body and the diagnostics list, in one message. Sent as the
+first message on every connect, and again whenever a change is too large to express
+as ops (recovering from a failed render, or a structural deck change).
+
+```json
+{
+  "type": "full_render",
+  "title": "Cooling coffee",
+  "body_html": "<h1 ...>…</h1><p ...>…</p>…",
+  "diagnostics": [
+    { "level": "warning", "message": "kernel unavailable", "file": "post.qmd", "line": 12, "frame": "…" }
+  ]
+}
+```
+
+- `title` is the document title (or `null`); the client sets `document.title`.
+- `body_html` is the full inner HTML of `#qmd-root`.
+- `diagnostics` is an array of issue objects (see [the shape below](#the-diagnostic-shape)).
+
+The client handles it specially on the **first** message. Because the server
+already server-rendered the body into `#qmd-root` for the first paint, the first
+`full_render` after connect is byte-identical, so the client **skips re-mounting
+it** (no flash, no needless deck or `{js}` re-init) and only wires up diagnostics.
+A *reconnect* re-mounts normally: it tears down all prior `{js}` cells first (so
+their WebGL contexts and animation loops are released) and replaces the body.
+
+### `update`
+
+One block's HTML changed; replace exactly that element.
+
+```json
+{ "type": "update", "target_id": "b-3f2a1c0d9e8b", "html": "<pre ...>…</pre>" }
+```
+
+The client finds the element by `data-block-id` equal to `target_id`, tears down
+any `{js}` cells inside the outgoing block (resolving their `invalidation`), then
+`replaceWith`s the new HTML and pulses it with `.qmd-flash`. This is also the op a
+code cell's **output block** takes when an upstream cell re-runs: its id is keyed
+to the cell, so the body differs while the id stays put.
+
+### `insert`
+
+A new block appeared; place it after a given block (or at the top).
+
+```json
+{ "type": "insert", "after_id": "b-3f2a1c0d9e8b", "html": "<p ...>…</p>" }
+```
+
+`after_id` is the id of the preceding block, or `null` to `prepend` at the start of
+`#qmd-root`. Because block ids are unique per document, the client first drops any
+element already carrying the incoming id (tearing down its `{js}` cells) before
+inserting. The server emits **all `remove`s before any `insert`s**, so that defense
+is normally a no-op; it only matters if a reorder (which splits a moved block into a
+`remove` + `insert` of the same id) ever arrived out of order.
+
+### `remove`
+
+A block disappeared; drop it.
+
+```json
+{ "type": "remove", "target_id": "b-3f2a1c0d9e8b" }
+```
+
+The client finds it by id, tears down any `{js}` cells inside it, and removes it.
+
+### `set_meta`
+
+This is the subtle one, and the common one. An edit *above* a block shifts its
+line numbers without changing its content. The block's HTML is byte-identical (same
+content-hash id), so re-`update`ing it would needlessly rebuild the element and drop
+its live DOM state; but its source position is now stale, which would break
+click-to-source. `set_meta` patches **only** the position attributes on the
+existing element.
+
+```json
+{ "type": "set_meta", "target_id": "b-3f2a1c0d9e8b", "sourcepos": "42:1-44:18", "source_file": null }
+```
+
+The client sets `data-sourcepos` to the new value, and sets or removes
+`data-source-file` depending on whether `source_file` is present. It runs **no**
+post-change work (the content is unchanged), so a live block (a video mid-play, a
+`{js}` widget, an open `<details>`) keeps its DOM state *and* still maps to the
+right source line.
+
+### `diagnostics`
+
+The issue list changed (the kernel came back, an include resolved). A standalone
+`diagnostics` message is sent on **every** rebuild where the issues differ, whether
+or not the body also changed: the rebuild sends its block ops (or a `full_render`)
+first, then this message follows so the dev-menu issue stack refreshes alongside any
+body update.
+
+```json
+{
+  "type": "diagnostics",
+  "messages": [
+    { "level": "warning", "message": "unresolved include: partial.qmd", "file": "post.qmd", "line": 7 }
+  ]
+}
+```
+
+Note the field name: `full_render` carries the array under `diagnostics`, but a
+standalone update carries it under **`messages`**.
+
+#### The diagnostic shape
+
+Both `full_render` and `diagnostics` carry the same per-issue object:
+
+```json
+{ "level": "warning", "message": "…", "file": "post.qmd", "line": 12, "frame": "…" }
+```
+
+- `level` is `"warning"` or `"error"`.
+- `message` is the human-readable text.
+- `file` (optional) is the source file for click-to-source, relative to the doc's
+  base dir; absent means "the document being previewed" (the client falls back to
+  its own path).
+- `line` (optional) is the 1-based line. When it is present the client makes the row
+  **clickable** (it jumps to source).
+- `frame` (optional) is a small code frame (a few source lines around `line`, with
+  the offending one marked) shown inline under the row.
+
+### `style`
+
+Only the theme CSS changed. Rather than reload, the client hot-swaps the contents
+of `<style id="qmd-theme">` in place (creating the element if absent).
+
+```json
+{ "type": "style", "css": ":root { --qmd-accent: #4c8dff; … }" }
+```
+
+Because nothing in the body is rebuilt, scroll position, the current deck slide, and
+open callouts all survive a theme edit. A combined content-plus-theme save sends the
+block ops *and* a `style` message in the same rebuild, so both update with no reload.
+
+### `error`
+
+A render or read failure (a panic in the render path, a file that won't read). The
+client switches its status to `error` and shows the message as an overlay.
+
+```json
+{ "type": "error", "message": "internal render error: …" }
+```
+
+The server keeps serving: the rebuild loop catches the panic, broadcasts this
+error, and the **next good save recovers** with a fresh `full_render`. See [panic
+isolation](server.qmd#panic-isolation).
+
+### `reload`
+
+A blunt instrument: tell the client to do a full `location.reload()`. Sent when a
+block diff can't express the change, for example after a **kernel restart** (so
+`{js}` cells re-bind to freshly-defined `ojs_define` values) or, in a site, a
+`_site.yml` change that re-discovers the whole project.
+
+```json
+{ "type": "reload" }
+```
+
+## Client → server messages
+
+The back-channel is deliberately tiny. The browser is a **read-only view**: it
+never sends edits, only navigations and one control action. Two types travel this
+direction.
+
+| `type` | When | Server does |
+|---|---|---|
+| `click_block` | the author Alt/Option-clicks a block | logs the source location to the console |
+| `restart_kernel` | the dev-menu "Restart kernel" action | flags a restart + wakes the rebuild loop |
+
+### `click_block`
+
+Reports the block the author Alt-clicked, so the location shows in the dev console.
+(The actual jump-to-editor happens browser-side, or via the editor companion's
+relay; see [click-to-source](#click-to-source-and-reverse-sync) below.)
+
+```json
+{ "type": "click_block", "block_id": "b-3f2a1c0d9e8b", "source_file": null, "sourcepos": "42:1-44:18" }
+```
+
+### `restart_kernel`
+
+```json
+{ "type": "restart_kernel" }
+```
+
+Sets a flag and kicks the rebuild loop, which drops and respawns the kernel,
+re-runs every cell, and broadcasts a `reload`.
+
+::: {.callout-warning}
+## The server does not validate inbound messages
+
+`handle_client_msg` parses the JSON, switches on `type`, and reads each field with
+a fallback (a missing `source_file` logs as `(primary)`, a missing `sourcepos` as
+`?`); an unknown `type` or unparseable frame is silently ignored. There is no
+schema check and no per-connection auth on these messages. That is **intentional**
+under the [trust model](block-model.qmd#trust-model): qmd-fast serves one author's
+own documents, and the only state these messages reach is the author's local
+render or kernel (worst case, a LAN peer triggers a kernel restart). A
+multi-tenant or hosted deployment would have to add authorization here.
+:::
+
+## The connect handshake
+
+The single most important detail of the protocol is *ordering*: a client that
+connects mid-rebuild must not miss an op or apply one twice. The handshake closes
+that window by taking the same lock the rebuild loop uses.
+
+```{mermaid}
+%%| label: fig-handshake
+%%| fig-cap: "The connect handshake. The snapshot and the subscription are taken under one lock, so the client's first full_render and the op stream that follows cannot interleave with a concurrent rebuild."
+sequenceDiagram
+  participant C as client.js
+  participant S as serve.rs (ws upgrade)
+  participant L as doc lock + broadcast
+  C->>S: WebSocket upgrade (Origin checked first)
+  S->>L: lock doc
+  L-->>S: subscribe to broadcast + snapshot full_render
+  S->>L: unlock
+  S-->>C: full_render (initial)
+  loop on each save
+    L-->>S: ops broadcast (under the lock)
+    S-->>C: update / insert / remove / set_meta
+  end
+```
+
+When a client upgrades, the server does two things **under one lock**: it
+`subscribe`s to the broadcast channel *and* snapshots the current document as a
+`full_render`. Because the rebuild loop also takes that lock to broadcast its ops,
+the snapshot and the subscription happen as one atomic step: the client is
+guaranteed to receive the snapshot first and then every op *after* it, with none
+straddling the boundary. The client sends the snapshot, then `select!`s between
+incoming control messages and outgoing broadcasts.
+
+If a slow client ever falls behind and the broadcast channel **lags**, the server
+re-syncs it with a fresh `full_render` rather than trying to replay missed ops.
+
+## Guarding the channel
+
+Because the control channel lives on the websocket, two orthogonal guards protect
+it. Both are in `serve.rs` and apply to both servers.
+
+### Cross-origin guard (always on)
+
+A page on another site must not be able to open a websocket against your dev server
+and drive the control channel (a CSRF on the control channel). `origin_allowed`
+compares the upgrade request's `Origin` against its `Host`:
+
+- **No `Origin`** means the request isn't from a browser (a non-browser client sends
+  none), so it is allowed.
+- **`Origin` authority equals `Host`** (same origin) is allowed. This also covers
+  the LAN case: a phone dials the exact `Host` it sees.
+- **`Origin` host is loopback** (`localhost`, `127.0.0.1`, `::1`, `[::1]`) is allowed.
+- Anything else gets a **`403`** ("cross-origin websocket refused").
+
+This is always installed, with or without `--host`, because a browser always sends
+`Origin`, so it blocks cross-site driving without affecting non-browser clients.
+
+### LAN access token (`--host` only)
+
+By default the server binds loopback only. `--host` binds `0.0.0.0` so a phone on
+the same network can open the preview, which also means anyone on the LAN could
+reach it. A **per-session token** gates non-loopback access.
+
+| Caller | Token needed? | Outcome |
+|---|---|---|
+| Loopback (your own machine, the [VS Code companion](extending.qmd)) | no | always allowed |
+| LAN peer with valid `?t=` in the URL | yes | allowed; server sets a `qmd_token` cookie |
+| LAN peer with a valid `qmd_token` cookie | yes | allowed |
+| LAN peer with no / wrong token | yes | `403` |
+
+The token is a random UUID minted at startup and threaded into the printed LAN URL
+and QR code as `?t=…`. The first tokened load sets a `qmd_token` cookie
+(`Path=/; SameSite=Lax; Max-Age=86400`, a 24-hour expiry), so every later
+same-origin request (assets, the websocket upgrade, reloads) authenticates by cookie
+with no client changes. The token is regenerated each server start, so a stale cookie
+simply fails closed and the author re-scans. **Loopback peers
+are detected from the connection address and exempted entirely**, so the local
+workflow and the editor companion never see the token. Without `--host` there is no
+token and the guard is never installed at all. Full rationale lives in [the dev
+server](server.qmd#lan-exposure-the-host-token).
+
+## Click-to-source and reverse sync
+
+Click-to-source and editor sync ride on the two source-position attributes every
+block carries (`data-sourcepos`, and `data-source-file` for included blocks). This
+is a separate channel from the websocket: it is the `postMessage` protocol between
+`client.js` and an embedding editor host.
+
+- **Forward (preview → editor).** Alt-clicking (Option-clicking on Mac) a block
+  reads its `data-sourcepos` and `data-source-file` and opens that source line. In a
+  plain browser it navigates to a `vscode://file/<path>:<line>:<col>` deep link; in
+  an editor webview it posts a `qmd-goto` message up to the host. (It also sends a
+  `click_block` over the websocket so the location logs to the console.) The forward
+  message is `qmd-goto { type, source_file, sourcepos }`, where `source_file` is the
+  source path (`null` = the previewed doc) and `sourcepos` is the `line:col` to jump
+  to. The `data-block-id` click path additionally spreads `block_id` into the message;
+  the located-diagnostic path omits it.
+- **Reverse (editor → preview).** The client listens for a `qmd-cursor {file, line}`
+  `postMessage` and calls `highlightAtLine`, which picks the **smallest** block whose
+  `data-sourcepos` range covers the line in the same file (else the nearest block
+  starting before it), outlines it with `.qmd-hl`, and scrolls it into view, or, in a
+  deck, jumps `QmdDeck` to the containing slide.
+
+The in-repo VS Code companion is the host that drives this; it is documented in
+[extending qmd-fast](extending.qmd). Because the surface is just two `postMessage`
+shapes, any editor can host the preview and add cursor sync without forking the
+client.
+
+::: {.callout-tip}
+The websocket and the `postMessage` channel never overlap: edits never cross either
+one (the preview is a read-only view), the websocket carries renders and diffs, and
+`postMessage` carries cursor navigations. That clean split is what lets the
+[block model](block-model.qmd) stay the single source of truth for both directions
+of source mapping.
+:::
+
+The browser end of this contract, how `client.js` mounts a `full_render` and then
+applies each `update` / `insert` / `remove` / `set_meta` in place, is documented in
+[the browser client](client.qmd).

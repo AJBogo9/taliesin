@@ -71,9 +71,31 @@ control-building code. Five types are available:
 
 `name` is required (it is the reactive node); `type` defaults to `slider`; `label`
 defaults to the name. `qmd.value()` returns a number for slider and number, a
-boolean for checkbox, and a string for text and select. The slider shows a live
-value readout. A consuming cell is then just a `{js}` cell with `//| input: k` that
-reads `qmd.value("k")`.
+boolean for checkbox, and a string for text and select. A consuming cell is then just
+a `{js}` cell with `//| input: k` that reads `qmd.value("k")`.
+
+**`slider` is an alias of `range`.** Both render the same HTML `<input type="range">`
+and both get a live `<output>` readout that updates as you drag, so the reader always
+sees the current value beside the track. `number` shares their numeric `min`/`max`/
+`step`/`value` attributes but renders as a spinner with no readout. The two names are
+interchangeable; use whichever reads better in your source.
+
+A **`select`** gives a closed set of choices. Its `options` are a comma-separated list,
+and `options` is required for this type (omit it and `check` warns). `value` picks the
+initially selected option:
+
+```markdown
+{{< input name="palette" type="select" options="viridis,magma,cividis" value="magma" label="Palette" >}}
+```
+
+That publishes a reactive node `palette` whose value is the chosen string. A chart cell
+then reacts to it:
+
+```js
+//| input: palette
+const name = qmd.value("palette");          // "viridis" | "magma" | "cividis"
+return Plot.plot({ color: { scheme: name }, marks: [/* … */] });
+```
 
 ## Scrollytelling: `::: {.scrolly}`
 
@@ -119,8 +141,22 @@ Then one EM iteration: an E-step, then an M-step.
 :::
 ```
 
-The line spec is a comma-separated list of single lines and ranges (`"3"`,
-`"3-5"`, `"1,4,6-8"`); `"all"` or an empty spec clears the focus.
+The line spec is a comma-separated list of single lines and ranges, so one step can
+focus several non-contiguous regions at once: a leading block plus a later call site,
+say.
+
+```markdown
+::: {.step lines="1-5,8"}
+The setup (lines 1 through 5) plus the one call site on line 8.
+:::
+```
+
+Here `"1-5,8"` lights lines 1 through 5 and line 8 together and dims everything else.
+Line numbers are 1-based and count the panel's own lines. Other valid specs are a
+single line (`"3"`), a single range (`"3-5"`), or a longer mix (`"1,4,6-8"`). To show
+the whole block with nothing dimmed, use `"all"` or leave `lines` off entirely; that is
+the right choice for an opening "here is the finished code" step before you start
+walking through it.
 
 ## Tabbed panels: `::: {.panel-tabset}`
 

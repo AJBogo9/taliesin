@@ -40,9 +40,58 @@ fine too: cells just render as highlighted source, and the preview shows a quiet
 
 The kernel is resilient: if it crashes mid-session the server detects the dead
 process and respawns it on the next run, and a runaway cell is interrupted at a
-configurable timeout instead of wedging the kernel. The dev menu's **Restart
-kernel** action drops the kernel, re-runs every cell against a fresh one, and
-reloads so `ojs_define` values re-bind.
+configurable timeout instead of wedging the kernel. That cap is
+`QMD_FAST_CELL_TIMEOUT` (default 120 seconds): a cell that runs longer is sent
+SIGINT so a runaway loop can't lock up the kernel, and set it to `0` to disable
+the cap entirely. The dev menu's **Restart kernel** action drops the kernel,
+re-runs every cell against a fresh one, and reloads so `ojs_define` values
+re-bind.
+
+### `echo`, `include`, and `cache`: three different switches
+
+These three boolean options look similar but control different stages, and it
+helps to keep them straight:
+
+| Option | Does the cell run? | Source shown? | Output shown? | Cached in `_freeze/`? |
+|---|---|---|---|---|
+| `#\| echo: false` | yes | no | yes | yes |
+| `#\| include: false` | yes | no | no | yes |
+| `#\| cache: false` | yes | yes | yes | **never** |
+
+`echo: false` hides the source listing only; the cell still runs and its output
+still appears. `include: false` goes further and hides *both* source and output,
+but the cell **still executes**, so it is the way to run setup that mutates kernel
+state (imports, seeding an RNG, defining a helper) without showing anything: a
+later cell sees those variables. `cache: false` is orthogonal to both: the cell
+runs and shows normally, but its output is never frozen, so it always re-executes
+on the next build or preview. Reach for it when a cell reads the clock, hits the
+network, or draws from a fresh random source, anything whose value should not be
+restored from a stale cache.
+
+::: {.callout-note}
+`echo`, `include`, and `cache` also exist as document-wide defaults under the
+`execute:` front-matter key, and a per-cell `#|` option overrides the default for
+that one cell. See the [cell-options reference](../reference/cell-options.qmd) for
+the full table.
+:::
+
+### Captions: figures, listings, and tables
+
+`#| fig-cap:` adds a caption *and* makes the output a numbered figure, so a
+`#| label: fig-x` cell can be cross-referenced as `@fig-x`. Two siblings caption
+the other kinds of output:
+
+- `#| lst-cap:` captions a code *listing* (pair it with a `#| label: lst-x`
+  to reference it as `@lst-x`).
+- `#| tbl-cap:` captions a *table* the cell prints (pair it with `#| label: tbl-x`
+  for `@tbl-x`).
+
+```python
+#| label: tbl-summary
+#| tbl-cap: "Summary statistics by group"
+import pandas as pd
+df.groupby("group").describe()
+```
 
 ### Folded code
 
@@ -94,7 +143,20 @@ native `viewof` inputs and vendored `Plot` + `d3` all work, and a cell re-runs
 when an input it declares changes. A cell tags
 itself with `//| viewof: NAME` to publish a control, and a consuming cell lists
 `//| input: NAME` to re-run when that control changes (read the current value with
-`qmd.value("NAME")`). Drag the slider to add odd harmonics to a square-wave Fourier
+`qmd.value("NAME")`).
+
+The reactive surface is small and worth knowing exactly:
+
+- `qmd.value("NAME")` reads the live value of an input (a `//| viewof` cell or an
+  `{{< input >}}` control) or, failing that, an `ojs_define` value of that name.
+- `qmd.defines.NAME` reads a value published from Python by `ojs_define`.
+- `//| input: A, B` takes a **comma-separated list** of names; the cell re-runs
+  when any one of them (input *or* define) changes. There is also
+  `//| name: NAME` to publish this cell's return value under `NAME` for other cells
+  to consume. (For the reactive graph itself, see
+  [Interactive and explorable documents](interactive.qmd).)
+
+Drag the slider to add odd harmonics to a square-wave Fourier
 synthesis and watch the curve sharpen:
 
 ```{js}
@@ -125,12 +187,15 @@ return Plot.lineY(
 ### The Python → JS bridge
 
 `ojs_define()` in a Python cell hands values to `{js}` cells, so you can **compute
-in Python and render reactively in the browser**. In live preview the Python cell
-executes *after* the page loads, so its values arrive a moment after the `{js}`
-cells; a `{js}` cell reads them as `qmd.defines.NAME` and re-runs automatically
-when they land (and rebinds when a Python input changes), so the cell recomputes
-in place without a reload. Guard against the value not having arrived yet with an
-early `return`.
+in Python and render reactively in the browser**. Its signature is keyword-only,
+`ojs_define(name=value, ...)`: each keyword becomes a published name, and each
+value is JSON-serialized into the page for the `{js}` runtime to pick up. A `{js}`
+cell then reads the value as `qmd.defines.NAME` (or `qmd.value("NAME")`, which
+falls back to defines when no live input owns that name). In live preview the
+Python cell executes *after* the page loads, so its values arrive a moment after
+the `{js}` cells; a `{js}` cell reads them and re-runs automatically when they land
+(and rebinds when a Python input changes), so the cell recomputes in place without
+a reload. Guard against the value not having arrived yet with an early `return`.
 
 ```{python}
 #| code-fold: true
@@ -157,9 +222,15 @@ Because a `{js}` cell can `await import()` any ES module, **3D visualizations wo
 too**. This cell pulls Three.js and `OrbitControls` from a CDN, wraps an equirectangular world
 map onto a sphere, and returns the live `<canvas>`. Drag to spin the globe (it
 also auto-rotates), the **⛶** button takes it fullscreen, and the renderer is
-transparent so the globe follows the light/dark theme. `invalidation` stops the
-animation loop when the block re-renders, so a live save never leaks a running
-loop.
+transparent so the globe follows the light/dark theme.
+
+Every cell is handed an `invalidation` promise. It **resolves the moment the
+block is about to re-render or be unmounted** (an edit changes the block's id and
+the client replaces the node, or an upstream input fires a re-run). Hang your
+teardown off `invalidation.then(...)` to cancel anything long-lived: an animation
+loop, an event listener, a WebGL context. The Three.js cell below relies on it,
+calling `cancelAnimationFrame` and disposing the renderer when the promise
+resolves, so a live save never leaks a running loop or a stranded GL context.
 
 ```{js}
 //| echo: false

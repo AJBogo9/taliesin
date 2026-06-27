@@ -60,6 +60,47 @@ in the User Guide for the authoring side):
    built-in copy buttons and `mermaid.js` use this same public API, so a
    third-party enhancer is indistinguishable from core's.
 
+### The client enhancer contract
+
+An **enhancer** is a `function(root)` that decorates freshly-mounted DOM. It is the only
+sanctioned way to add client-side behaviour, and the contract is small enough to state in
+full:
+
+- **Register** with `window.qmdEnhancers.register(fn)`. `fn` receives a `root` element
+  (the just-mounted subtree, or `document` for a whole-page run); scope your queries to
+  it (`root.querySelectorAll(...)`), not to `document`, so an incremental update only
+  re-decorates the block that changed.
+- **When it runs.** The same `fn` fires on three occasions: once on the **initial full
+  render** (`DOMContentLoaded` in a static build, the `full_render` snapshot in the live
+  preview), again **after every incremental block op** (the client calls
+  `qmdEnhancers.run(root)` on the swapped-in DOM, so a re-rendered block is enhanced just
+  like a fresh one), and **immediately on registration** if the page is already mounted
+  (the case when an extension script loads late in `include-after-body`).
+- **Idempotency is mandatory.** Because the same `fn` re-runs on every change, it must do
+  nothing the second time it sees a node. The convention is a marker `data-` attribute:
+  check for it, bail if present, set it once you've decorated. An enhancer that appends a
+  button without this guard will stack a new button on every keystroke.
+- **Failures are contained.** Each enhancer runs inside a `try/catch`; a throw is logged
+  to the console (`[qmd] enhancer failed`) and the other enhancers still run. An enhancer
+  bug degrades one decoration, it does not blank the page.
+
+A minimal, idempotent enhancer that adds a "Run" affordance to every `pre.shell` block:
+
+```js
+window.qmdEnhancers.register(function (root) {
+  root.querySelectorAll('pre.shell:not([data-ran])').forEach(function (pre) {
+    pre.dataset.ran = '1';                 // guard: only decorate once
+    var btn = document.createElement('button');
+    btn.textContent = 'Run';
+    btn.addEventListener('click', function () { /* ... */ });
+    pre.appendChild(btn);
+  });
+});
+```
+
+Ship that file as a `resources:` entry of an extension and inject it (typically via the
+extension's `body-end:`), and it is wired into the same mount cycle the built-ins use.
+
 ### How a format extension loads
 
 `format: <name>-revealjs` (or `-html`) names a base format plus an installed
@@ -76,6 +117,32 @@ Besides that `format: <name>-base` form, an extension can be activated
 **format-agnostically** with an `extensions: [a, b]` front-matter list, merged in order
 so a later one wins. That is how a plain `format: html` page pulls in a shortcode pack or
 a theme without naming a base format.
+
+#### Where the extension is found
+
+Both forms resolve the directory the same way (`find_extension_dir` in
+`render/extension/`): starting from the page's own directory, qmd-fast looks for
+`_extensions/<name>/_extension.yml` and, if it isn't there, **walks up toward the
+filesystem root**, trying `_extensions/<name>/` at each parent. The first hit wins. So a
+chapter buried at `book/part-two/ch-7.qmd` finds an extension vendored once at the project
+root (`book/_extensions/<name>/`), not only one copied next to the page.
+
+That walk-up is also why nested books behave: each book is its own project rooted at its
+`_site.yml`, and the search bottoms out at whichever `_extensions/` it reaches first
+climbing from the page, so a sibling book's extensions never leak in by accident. When no
+`_extensions/<name>/` is found anywhere up the tree, the lookup falls back to the
+**page-relative** path so the not-found warning still names a sensible location.
+
+#### When a load fails
+
+A `format:`/`extensions:` reference that names an extension whose manifest can't be read
+or parsed is an **authoring mistake worth surfacing**, not a silent no-op:
+`load_manifest` pushes a located entry onto the `warnings` channel (`format extension
+'<name>' not found (looked for …)` or `could not parse …`) and the page **still renders**
+without the contribution. Likewise, the manifest is a closed set: any top-level key
+outside `NATIVE_MANIFEST_KEYS` warns with a did-you-mean hint. Nothing in an extension's
+load path aborts the render; the worst case is a page that renders unstyled plus a warning
+in the dev menu / build log.
 
 ## Editor integration: the VS Code companion
 
@@ -107,6 +174,71 @@ holding the line that the `.qmd` file is the single editing surface and the prev
 read-only view. Phase 1 is exactly this host-plus-cursor loop, localhost only; editor
 *commands* that transform the buffer (insert-block, reorder-slide) are deferred to a
 later phase, and strictly as `.qmd`-text transforms when they land.
+
+## Recipes
+
+### Add a new cell option
+
+Cell options (`#| key: value`, `//|` for `{js}`, `%%|` for `{mermaid}`) are a **closed
+vocabulary**: any key not in the recognized set warns with a did-you-mean hint at its
+exact source line. So adding one is two steps, in order.
+
+1. **Stop the warning.** Add the key to `CELL_OPTION_KEYS` in `render/validate.rs` (a flat
+   `&[&str]`). This is the single list `validate_cell_options` checks; until the key is
+   there, every author who uses it gets `unknown cell option \`yourkey\``. The list is the
+   union across all cell languages, so a `{js}`-only option lives here too (`name`,
+   `viewof`, `input` already do).
+
+2. **Read it where cells are processed.** The key is now *allowed* but still *inert*. Two
+   places consume options depending on what the option does:
+   - **Render-time** options (presentation: `code-fold`, `code-summary`,
+     `code-line-numbers`, `label`, `fig-cap`) are read in the render pipeline as the cell's
+     HTML is emitted (`render/mod.rs` parses the leading `#|` block; `emit.rs` applies the
+     code-fold / line-number wrappers). Add your read there if the option only changes how
+     the cell or its output looks.
+   - **Execution-time** options (`echo`, `include`, `cache`, `fig-export`) are read in
+     `server/exec.rs`, where each is captured onto the per-cell `CellRef` before the run
+     and consulted while planning what re-runs. Add your read there if the option changes
+     *whether or how* a cell runs.
+
+A render-only option needs no kernel and shows up immediately in `render`/`check`; an
+execution option only takes effect under `preview`/`build` with a live kernel. Pin the new
+option with a corpus document that uses it (the corpus is the spec), and `check` will keep
+it from regressing into an unknown-key warning.
+
+::: {.callout-note}
+The parser only reads the **leading contiguous** `#|` block: the first non-option line
+stops option parsing. A `#|` comment further down the cell body is just code, not an
+option, so your new key has to appear at the top of the cell.
+:::
+
+### Write a figure file on execution: `#| fig-export:`
+
+`#| fig-export: figures/x.pdf` (a comma-separated list for several files at once, e.g. a
+vector `.pdf` plus a raster `.png`) is the path through `exec.rs` worth understanding
+because it touches three things at once: the executor, the cache key, and the kernel
+preamble.
+
+- **It is executor-side, not a render transform.** For a Python cell, `export_wrapped`
+  (`server/exec.rs`) prepends a one-line `_qmd_export([...], install=True)` trigger to the
+  cell's code before sending it to the kernel. The `_qmd_export` hook itself is defined
+  once in the Python preamble (`server/kernel.rs`); `install=True` makes it idempotently
+  wrap the figure even for a cell that produces a plot without naming matplotlib directly.
+- **Paths are relative to the document directory.** The warm kernel's working directory is
+  the document's own directory (`kernel.rs`), so an exported `figures/x.pdf`, like any
+  other file a cell writes (`ggsave`, an audio file), lands beside the source where the
+  build can find and copy it.
+- **It is written at display time, before any inline recolour.** The figure is saved
+  print-clean (real black axes/text for LaTeX/print) the moment the plot is displayed,
+  *before* the light/dark inline recolouring that produces the `.qmd-fig-light` /
+  `.qmd-fig-dark` pair the page swaps on a theme change. So the on-disk file is a clean
+  print artifact, not a theme-tinted screen image.
+- **It is folded into the cache key.** The export spec is appended to the cell's hashed
+  code (`# qmd-fig-export: <spec>`), so adding or changing it **moves the cell's
+  cumulative hash** and forces a re-run, which rewrites the file. A cell *without*
+  `fig-export:` hashes exactly as before, so existing `_freeze/` entries stay valid. This
+  is what guarantees the exported file is never stale relative to the cell that produced
+  it.
 
 ## The dev loop
 

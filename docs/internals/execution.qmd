@@ -77,6 +77,44 @@ kernel stays warm across all of it: no per-edit cold start (goal #3). A
 `#| include: false` cell still runs (for its kernel-state side effects) but emits
 no output block; a `#| cache: false` cell always re-runs and is never cached.
 
+### The cumulative-hash chain in detail
+
+The whole scheme rests on one tiny function. For a language's cells in document
+order, `cumulative_hashes(interp, codes)` folds each cell's code into the running
+digest of everything before it:
+
+```text
+key₀ = FNV1a( seed )
+keyᵢ = FNV1a( keyᵢ₋₁  +  "\n"  +  codeᵢ )      (each digest is the 16-hex string of the previous)
+```
+
+The chain is seeded not by an empty string but by the **interpreter identity**, a
+stable id of the form
+
+```text
+python::/path/to/python3::Python 3.11.9
+```
+
+built by `interp_id`: the language, the resolved interpreter path, and the first
+line of `<program> --version`, run once and memoised. Because the seed flows into
+*every* key, swapping the interpreter (a Python upgrade, a different `QMD_FAST_PYTHON`)
+shifts the whole chain at once, so the old interpreter's cached outputs are never
+served by a new one. Worked through for two cells `x = 1` then `print(x)`:
+
+```text
+seed  = "python::…::Python 3.11.9"
+key₀  = FNV1a( seed + "\n" + "x = 1" )
+key₁  = FNV1a( key₀ + "\n" + "print(x)" )
+```
+
+Edit `x = 1` to `x = 2` and `key₀` moves; because `key₁` is computed *from* `key₀`,
+it moves too, even though `print(x)` is byte-for-byte unchanged. That is the
+upstream-invalidation property the planner relies on, and it falls straight out of
+the chaining: there is no separate dependency graph to keep correct. (FNV-1a is the
+same 64-bit hash the core uses for block ids, chosen because it is small,
+deterministic, and stable across runs and tool versions, so a cache written today
+still hits tomorrow.)
+
 ## The persistent cache (`_freeze/`)
 
 The warm prefix only exists while a kernel is alive. To skip work *across* `build`
@@ -104,12 +142,64 @@ fragile. It encodes *every byte of code the kernel ran to reach this output*, so
   *whole upstream* is unchanged, never an arbitrary one in the middle.
 
 What's stored is just the cell's output HTML (kernel images are already inline data
-URIs, so there are no sidecar files). **Errors, and output the kernel truncated at the
-size cap, are never cached**, so a transient failure (or a clipped result) can't bake in. The file is written atomically (temp + rename), tolerates a
-missing / corrupt / old-version file by starting empty, evicts least-recently-used
-entries past a cap (so toggling an edit back and forth still restores instantly),
-and `QMD_FAST_NO_CACHE` disables it outright. "Restart kernel" forces a fresh run
-rather than a replay.
+URIs, so there are no sidecar files).
+
+### The on-disk file
+
+`_freeze/<stem>.json` mirrors the source tree (`posts/x.qmd` caches to
+`_freeze/posts/x.json`) so it's easy to inspect, and holds a flat, versioned list of
+key/output pairs:
+
+```json
+{
+  "version": 2,
+  "entries": [
+    { "k": "9f1c…", "v": "<pre class=\"qmd-stream\">…</pre>" },
+    { "k": "a37e…", "v": "<img class=\"qmd-fig qmd-fig-light\" …>" }
+  ]
+}
+```
+
+A few properties earn their place:
+
+- **`version` gating.** The loader compares `version` against the binary's
+  `FORMAT_VERSION` and, on a mismatch, treats the file as **empty** rather than
+  replaying entries it might no longer be able to interpret. The version is bumped
+  not only when the file shape changes but when the *bundled output format* of a
+  cached cell changes (the cell code is identical, so the cumulative key wouldn't
+  move on its own); the next save rewrites the file fresh. A missing or corrupt file
+  is tolerated the same way: start empty, rewrite on the next save.
+- **Oldest-first order.** `entries` is written oldest-first so eviction can drop from
+  the front. The cache keeps up to `MAX_ENTRIES` (1024) per page in a small
+  LRU-ish set: a `put` moves the touched key to the most-recent end, and once the set
+  is over the cap the front (least-recently-touched) entries are evicted. Because the
+  live set is usually a few dozen cells, this holds a deep edit history while staying
+  small on disk, which is why toggling an edit back and forth keeps restoring
+  instantly instead of re-running.
+- **Atomic write.** A save serialises to a sibling `*.json.tmp` and renames it into
+  place, so a crash mid-write can't corrupt an existing cache; `_freeze/` (and any
+  sub-dirs) are created on demand, and a write failure is logged but non-fatal (the
+  build still works, just uncached).
+
+### What is never persisted
+
+The planner is deliberately stingy about what it hands the cache, so a bad result
+can never bake in:
+
+- **Error outputs** (anything carrying `class="qmd-error"`: an exception, a timeout,
+  or the mid-run "kernel died" marker), so a transient failure re-runs next time. The
+  check matches the *class*, not a bare substring, so a cell that merely prints the
+  text "qmd-error" still caches.
+- **Truncated outputs** (a result clipped at the size cap, marked
+  `qmd-fast: output truncated`), so a clipped result is never frozen as if complete.
+- **`#| cache: false` cells**, which always re-execute by contract.
+- **The cached tail the kernel didn't actually run.** Only cells `[shared, run_end)`,
+  the cells that genuinely executed this rebuild, are recorded as the kernel's "ran"
+  state; the disk-restored tail is left out, because the live kernel never produced
+  it and recording it would falsely claim warm state the kernel doesn't hold.
+
+`QMD_FAST_NO_CACHE` disables the cache outright (every lookup misses, nothing is
+written), and "Restart kernel" forces a fresh run rather than a replay.
 
 ## The warm kernel (`kernel.rs`)
 
@@ -136,13 +226,65 @@ client connections. `start()`:
 
 `execute(code)` sends an `execute_request` on the shell channel and collects iopub
 messages parented by that request, namely `stream` (stdout/stderr), `execute_result`,
-`display_data`, and `error`, until the kernel returns to `idle`. A **total
-wall-clock cap** (`QMD_FAST_CELL_TIMEOUT`, default 120s) guards a runaway cell:
-on hit it SIGINTs the kernel (the `interrupt_mode: signal` path → `KeyboardInterrupt`)
-and drains a short grace window so the channels resync and the *next* cell still
-works. Setting the cap to `0` disables it, but a per-output silent-hang backstop (60s with
-no new output) still ends a wait that would otherwise hang forever. `Drop` kills the child
+`display_data`, and `error`, until the kernel returns to `idle`.
+
+A **total wall-clock cap** (`QMD_FAST_CELL_TIMEOUT`, default 120s) guards a runaway
+cell. Crucially it is a cap on the whole cell, **not** on the gap between messages,
+which is what lets it catch a *streaming* runaway (a `while True: print(...)` that
+keeps the channel busy would defeat any per-message idle timeout). On hit, `execute`
+SIGINTs the kernel (the `interrupt_mode: signal` path, which surfaces as a
+`KeyboardInterrupt` inside the cell) and then drains a short **grace window** (5s) so
+the resulting interrupt error and the trailing `idle` arrive and the channels resync,
+leaving the warm kernel usable for the *next* cell. If the kernel ignores SIGINT
+within the grace window, `execute` gives up on that message and returns what it has.
+The same interrupt-then-grace path also fires when the output caps trip
+(512 KB of stream text or 4096 output items), so a megabyte-spewing cell stops
+flooding the reader rather than being read and discarded. Setting the cap to `0`
+disables the wall-clock limit, but a per-output silent-hang backstop (60s with no new
+output) still ends a wait that would otherwise hang forever. `Drop` kills the child
 and removes the connection dir.
+
+## From a kernel message to HTML
+
+Each collected iopub message is normalised into one `Output` value, and
+`render_outputs` turns the list into the HTML that becomes the cell's output block
+(@fig-msg-to-html):
+
+```{mermaid}
+%%| label: fig-msg-to-html
+%%| fig-cap: "Each iopub message kind maps to one Output, then to a self-contained HTML fragment."
+flowchart LR
+  stream["stream<br/>(stdout / stderr)"] --> pre["&lt;pre class=qmd-stream&gt;<br/>(+ qmd-stderr)"]
+  result["execute_result /<br/>display_data"] --> rich["richest MIME wins:<br/>html › png › svg › jpeg › plain"]
+  error["error"] --> err["&lt;pre class=qmd-error&gt;<br/>(ANSI-stripped traceback)"]
+```
+
+The mapping is small and explicit:
+
+- **`stream`** becomes a `<pre class="qmd-stream">` (with `qmd-stderr` added for the
+  stderr channel), HTML-escaped.
+- **`execute_result`** and **`display_data`** are both "rich" outputs; rendering picks
+  the **richest representation the kernel offered**, preferring `text/html`, then
+  `image/png` (wrapped as an inline `data:` `<img>`), then SVG, then JPEG, then
+  `text/plain` (as a `<pre>`). The cell's `text/plain` fallback is only used when
+  nothing richer exists.
+- **`error`** becomes a `<pre class="qmd-error">` holding the traceback with its ANSI
+  colour codes stripped (IPython colourises tracebacks for a terminal). This is the
+  one class the freeze cache refuses to store, so an error never sticks.
+
+### Why matplotlib figures render twice
+
+A plain inline matplotlib PNG would bake one foreground colour into the image, so it
+would look wrong against the other theme. The Python startup preamble installs (lazily,
+the first time a cell touches matplotlib) a `text/html` figure formatter that renders
+each figure **twice**, once recoloured for the light theme and once for the dark, and
+emits them together as `<img class="qmd-fig qmd-fig-light">` + `<img class="qmd-fig
+qmd-fig-dark">`. The standalone `image/png` representation is suppressed so only the
+dual-theme HTML survives. The page then swaps which image shows on a `data-theme`
+change, so a plot's axes and text always match the surrounding page with no
+re-execution, the same trick the theme-matched `{{< video >}}` uses. Only data colours
+are left untouched; a `#| fig-export:` writes the *pristine* figure to disk before any
+recolouring.
 
 ## Resilience
 

@@ -9,6 +9,12 @@ project config uses a flat, native schema. A Quarto-shaped nested config (a
 unknown top-level keys warn, and its nested values are ignored. Flatten it (see
 the note at the end).
 
+This page is the project (`_site.yml`) and page-block (`listing:` / `about:`)
+reference. For the full per-key catalogue of a document's front matter, see
+[Front matter](frontmatter.qmd); for cell options and shortcodes, see
+[Cell options](cell-options.qmd) and [Shortcodes](shortcodes.qmd). The summary
+table below repeats the front-matter keys most often paired with project config.
+
 ## Document front matter
 
 | Key | Meaning |
@@ -19,7 +25,7 @@ the note at the end).
 | `toc` | `true` adds a live table of contents (+ the Cmd-K search palette) |
 | `title-block-style` | `none` keeps the title metadata but hides the visible `<h1>` header |
 | `bibliography` | A `.bib` file enabling `[@key]` citations + an auto References section (rendered in a single built-in IEEE style) |
-| `page-layout` | `full` widens the content column (for listing indexes) |
+| `page-layout` | `full` widens the content column (the full page width, good for listing indexes and wide tables/figures); omit it for the default centered reading width set by `--qmd-maxw` |
 | `include-in-header` / `include-before-body` / `include-after-body` | Inject raw markup; each is a path, a `{ text: … }` / `{ file: … }` map, or a list of those |
 | `css` | Stylesheet(s) wrapped in `<style>` and inlined |
 | `lang` | BCP-47 language tag for `<html lang>` (default `en`) |
@@ -169,24 +175,70 @@ The nested Quarto shape is no longer parsed, so flatten it: lift
 
 ### Page blocks (sites)
 
-Two front-matter blocks turn a page into something special:
+Three front-matter blocks turn a page into something special: `listing:` (an
+index of other pages), `about:` (a profile header), and `hero:` (a landing
+banner). The first two are detailed below; `hero:` is documented in
+[Front matter](frontmatter.qmd) and shown in context in
+[Formats](../using/formats.qmd).
+
+#### `listing:` (an index page)
+
+A `listing:` block fills the page with one card per document found under
+`contents:`, newest-first by default:
 
 ```yaml
-# an index page: a card per document under `contents:`
 listing:
-  contents: posts          # directory to crawl
+  contents: posts          # directory to crawl (relative to this page); required
   type: grid               # grid | (default) stacked list
-  sort: "date desc"
-  max-items: 10
-  categories: true         # render a category filter row
+  sort: "date desc"        # date desc (default, newest first) | date asc (oldest first)
+  max-items: 10            # cap the number of cards (omit for all)
+  categories: true         # render a category filter row above the cards
   id: recent               # optional: fill a `::: {#recent}` block instead of appending
+```
 
-# a profile page (the homepage)
+| Key | Meaning |
+|---|---|
+| `contents` | Directory to crawl, relative to the index page. Every `.qmd` under it with a `title:` becomes a card. Required |
+| `type` | `grid` lays the cards out as a grid (card images show only in `grid`); the default stacked `list` shows date, title, and description |
+| `sort` | `"date desc"` (the default) is newest-first; `"date asc"` is oldest-first. The sort key is each page's front-matter `date:` (ISO strings sort chronologically), with the file path as the tiebreak. Any value that isn't `asc` is treated as descending |
+| `max-items` | Cap the number of cards shown; omit it to list every match |
+| `categories` | `true` renders a filter row above the cards: one chip per category found across the listing (with a count), plus an "All" chip that clears the filter. Clicking a chip (or a card's category badge) filters the cards in the browser |
+| `id` | Fill an existing `::: {#id}` container with the listing instead of appending it to the page, so you can place prose around it |
+
+A card's date, categories, and image come from each listed page's own front
+matter. To put a page into a listing's category filter, set `categories:` on
+**that page**:
+
+```yaml
+---
+title: "A post about rust"
+date: 2026-06-20
+categories: [rust, performance]   # these become the card's badges + filter chips
+image: cover.png                  # shown on the card in a `type: grid` listing
+---
+```
+
+#### `about:` (a profile header)
+
+An `about:` block replaces the page's title block with a centered profile
+header (round image, name, optional links), the usual shape for a homepage:
+
+```yaml
 about:
   template: jolla
   image: me.jpg
-  links: [{ text: "GitHub", href: "https://github.com/…" }]
+  image-alt: "A photo of me"
+  links:
+    - { text: "GitHub", href: "https://github.com/…", icon: github }
 ```
+
+| Key | Meaning |
+|---|---|
+| `template` | A style name. `jolla` is the confirmed, corpus-tested style (a centered column). The value is emitted as a `qmd-about-<template>` CSS class hook, so another name still renders the centered layout but lets you target it from your own CSS |
+| `image` | Profile image, relative to the page; `image-alt` sets its alt text |
+| `links` | A list of `{ text, href, icon }` social/profile links (the same `icon:` glyph names as the navbar) |
+
+The page's `title:` supplies the displayed name.
 
 ## Project structure & reserved names
 
@@ -240,3 +292,14 @@ distinction is the usual way a deck goes missing from a build:
   page embeds and that isn't a standalone target. It is neither chaptered nor embedded,
   so the build has no reason to emit it; qmd-fast warns and would otherwise flatten it
   into a chrome-wrapped article. **Fix:** embed it from a page, or build it standalone.
+
+## See also
+
+The other reference pages cover the rest of the configurable surface:
+
+- [Front matter](frontmatter.qmd): every document-level `---` key, including
+  `hero:`, in full.
+- [Cell options](cell-options.qmd): the `#|` / `//|` / `%%|` options on code
+  cells.
+- [Shortcodes](shortcodes.qmd): `{{< include >}}`, `{{< embed >}}`,
+  `{{< video >}}`, `{{< input >}}`, and extension-declared shortcodes.

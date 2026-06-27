@@ -51,32 +51,88 @@ because the rendered output was theme-agnostic to begin with.
 ## Memoizing the per-render cost
 
 Rendering server-side has one cost: the dev server re-renders the *whole* document
-on every save, so a math-heavy page would re-render hundreds of KaTeX expressions
-on each keystroke (hundreds of ms). KaTeX output is a pure function of
-`(latex, display_mode)` under fixed options, so `math.rs` **memoizes** results in a
-process-global cache. After the first render, all the unchanged math on a save
-(everything but the block being edited) is a hashmap hit, and the cache is shared
-across a whole site's pages. The cache is **bounded** at 8192 entries keyed on
-`(latex, display_mode)`, and clears wholesale on overflow rather than evicting one entry
-at a time, since real documents have small, stable math sets that a long session never
-outgrows. This is the render-time analogue of [the block diff](block-model.qmd): do the
-expensive work once, reuse it everywhere it didn't change.
+on every save, and each KaTeX expression is a JS evaluation (roughly a millisecond
+each). A math-heavy page would re-render hundreds of expressions on each keystroke,
+which adds up to hundreds of milliseconds of work to redraw math that didn't change.
+KaTeX output is a pure function of `(latex, display_mode)` under fixed options, so
+`math.rs` **memoizes** results in a process-global `HashMap<(String, bool), String>`.
+The key is `(latex, display_mode)`: the same expression rendered inline and in display
+mode are two distinct entries, so they never alias. After the first render, all the
+unchanged math on a save (everything but the block being edited) is a hashmap hit, the
+cache persists for the life of the process, and it is shared across a whole site's pages.
+
+The cache is **bounded at 8192 entries**, and clears *wholesale* on overflow rather than
+evicting one entry at a time. A real document has a small, stable set of expressions that
+a long session never outgrows, so the cap is rarely reached, and when it is, a plain
+clear-and-refill is enough: a full LRU isn't worth the complexity for this access pattern.
+This is the render-time analogue of [the block diff](block-model.qmd): do the expensive
+work once, reuse it everywhere it didn't change.
+
+The memo is transparent: it never changes *what* gets rendered. An expression KaTeX
+can't parse is still rendered inline in red (`throw_on_error` is off), and an
+engine-level failure still falls back to the escaped source in a `qmd-math-error` span.
+The cache only ever skips repeating work whose answer it already has.
 
 ## No flash: the pre-paint script
 
 A theme that is chosen at runtime risks a flash of the wrong one. `theme.rs` ships
 a small **pre-paint `<head>` script** that runs before the body renders. It:
 
-- sets `<html data-theme>` from the saved choice (`localStorage`), else the
-  front-matter default, else dark; and
-- sets `color-scheme` and the page `background` **inline, in that same pre-paint
-  script**, so the browser's canvas is the theme colour from the very first frame.
+- sets `<html data-theme>` from the saved choice (`localStorage` key `qmd-theme`),
+  else the front-matter default, else dark (there is no OS-following `auto` mode: an
+  unspecified or `darkly`-style default resolves to dark, an explicit `light` theme to
+  light); and
+- sets the `color-scheme` CSS property and the page `background` **inline on
+  `<html>`, in that same pre-paint script**, so the browser's canvas (and its native
+  form controls, scrollbars, and `<select>` popups) are the theme colour from the very
+  first frame. The background comes from a small fixed map in the script itself
+  (`{ dark: #16181d, sepia: #f4ecd8, light: #ffffff }`), not from a stylesheet, so it
+  is in effect before any CSS parses.
 
 Without that inline background, the canvas stays white until the inline `<style>`
 parses, which shows as a white flash on every cross-page navigation in dark mode.
+Setting `color-scheme` alongside it is what stops the browser from drawing a *light*
+default scrollbar and form-control chrome over a dark page for that same first frame.
 The script is shipped *in the page* (not in the preview client) so the toggle and
 the no-flash behaviour work in static `build` output too, and it defines the
 `qmdSetTheme` / `qmdWireThemeToggles` helpers the navbar and dev-menu toggles call.
+
+## Reader preferences: the same pre-paint trick, applied to typography
+
+Theme is not the only thing a reader gets to choose. The reader menu (the
+**Display** section, see [The reader experience](../guide/using/reading.html))
+also exposes text size, reading width, and line, letter, and word spacing. These ride
+the *same* mechanism as the theme: a value persisted in `localStorage` and applied as a
+CSS custom property on `<html>` by the pre-paint head script (`applyReader`), so a
+returning reader never sees a flash of the default size before their choice takes hold.
+
+Each control writes through one helper, `qmdSetReaderPref(key, value)`, which stores
+`localStorage["qmd-reader-<key>"]` (or removes it when the value is `null`, i.e. the
+default) and re-applies. The pre-paint script reads those keys back and sets the matching
+variable. The preference lives entirely in the browser: it is per-reader, never written to
+the source, and never part of the rendered HTML.
+
+The five knobs, their variables, and their value sets:
+
+| Reader control | localStorage key | CSS variable set | Values (label) |
+|---|---|---|---|
+| Text size | `qmd-reader-scale` | `--qmd-reader-scale` | `0.9` (small), `1` (normal, default), `1.15` (large), `1.3` (x-large) |
+| Reading width | `qmd-reader-width` | `--qmd-maxw` (override) | `38rem` (Narrow), normal (default), `58rem` (Wide) |
+| Line spacing | `qmd-reader-leading` | `--qmd-reader-leading` | `1.5` (Tight), `1.7` (Normal, default), `2` (Relaxed) |
+| Letter spacing | `qmd-reader-letter` | `--qmd-reader-letter` | `0` (Normal), `0.06em` (Wide), `0.12em` (Wider) |
+| Word spacing | `qmd-reader-word` | `--qmd-reader-word` | `0` (Normal), `0.08em` (Wide), `0.16em` (Wider) |
+
+Two details are worth calling out. Width reuses `--qmd-maxw`, the *same* variable the
+base theme already uses for the reading column, so a reader's choice is just an override
+of that one width, not a separate code path. And the "Wider" letter/word steps are picked
+to hit the WCAG 1.4.12 text-spacing minimums (letter `0.12em`, word `0.16em`); the values
+are in `em`, so they stay proportional to the reader-scaled font size rather than fighting
+it.
+
+::: {.callout-note}
+Resetting clears the theme *and* all five reader keys at once (`qmdResetReader`), so a
+reader can get back to the document's defaults without clearing site storage by hand.
+:::
 
 ## The exceptions that must re-render
 

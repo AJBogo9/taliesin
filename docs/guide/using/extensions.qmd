@@ -30,13 +30,26 @@ head: liquid-glass-head.html       # = include-in-header (also: body-start, body
 body-end: liquid-glass-init.html
 ```
 
-The keys mirror the [project config](../reference/configuration.qmd)
+The contribution keys mirror the [project config](../reference/configuration.qmd)
 (`head`/`body-start`/`body-end`/`resources`/`css`/`theme`), so it's one
 vocabulary. The contributed markup is injected **before** the document's own
 front-matter `include-*`, so your page can still override the extension; a file in
 `resources` is copied next to the built page (and resolved by bare name in the
-live preview), so an injected `<script src="liquid-glass.js">` works in both. An
-unknown key is reported with a "did you mean …".
+live preview), so an injected `<script src="liquid-glass.js">` works in both.
+
+The full set of recognized top-level keys is closed and small. There are five
+informational metadata keys (they document the extension and have no rendering
+effect): `name`, `title`, `description`, `author`, `version`. The rest are the
+contributions: `theme`, `css`, `head`, `body-start`, `body-end`, `resources`,
+and `shortcodes`. Anything outside that set is reported with a "did you mean …"
+warning and otherwise ignored.
+
+A failed load never takes the page down with it. If the named extension folder
+has no `_extension.yml`, or the YAML doesn't parse, qmd-fast records a warning
+(surfaced in the dev menu and the build log) and renders the page *without* that
+extension's contributions, rather than aborting. A typo'd `extensions:` name
+behaves the same way: you get a "not found" warning, and the document still
+renders. The contract is loud-and-degraded, never silent-and-broken.
 
 ::: {.callout-note}
 ## Coming from a Quarto extension?
@@ -49,6 +62,13 @@ unknown and its contributions are ignored.
 :::
 
 ## Declarative shortcodes
+
+qmd-fast ships four shortcodes built in: `{{< include >}}` (inline another
+`.qmd`), `{{< embed >}}` (a deck or doc as a framed iframe), `{{< video >}}` (a
+framed screencast), and `{{< input >}}` (a reactive control feeding `{js}`
+cells). You do not need an extension for any of these. The
+[shortcodes reference](../reference/shortcodes.qmd) documents every argument of
+each one; this section is about teaching an *extension* to add its own.
 
 A shortcode is a `{{< name args >}}` tag in the body that expands to an HTML
 template, perfect for embeds, with no JavaScript. Declare them at the top level
@@ -69,12 +89,15 @@ Then in any document that activates the extension:
 
 Positional args fill `{{1}}`, `{{2}}`, …; named `key=value` args (quotes group
 spaces) fill `{{key}}`. Expansion is line-preserving, so click-to-source still
-points at the right line. Unknown `{{< … >}}` tags are left untouched.
+points at the right line. Unknown `{{< … >}}` tags are left in the page verbatim
+**and** reported as a located diagnostic (dev menu, build log, and `qmd-fast
+check`), so a typo'd name shows up rather than shipping silently as literal text.
 
 ## Client enhancers
 
-For anything interactive, ship a `.js` file (via `format-resources` or an
-`include-after-body`) that registers an **enhancer** through the public API:
+For anything interactive, ship a `.js` file (via `resources` or a
+`body-end` include) that registers an **enhancer** through the public API. The
+one method you call is `register`:
 
 ```js
 window.qmdEnhancers.register(function (root) {
@@ -85,11 +108,38 @@ window.qmdEnhancers.register(function (root) {
 });
 ```
 
-A registered `fn(root)` runs after every (re)mount in the live preview, on load in
-the static build, and once immediately if it registers after the page is already
-mounted. Make it **idempotent** (guard with a data-attribute), since it re-runs on
-every change. This is the same registry the built-in copy buttons and mermaid use,
-so a third-party enhancer is indistinguishable from core's.
+`register(fn)` takes a single function `fn(root)`, where `root` is the DOM
+subtree to decorate. It returns the registry, so calls chain.
+
+### When your enhancer runs
+
+`fn(root)` fires at three moments:
+
+- **On the initial render.** In the static build, on `DOMContentLoaded`; in the
+  live preview, when the first `full_render` mounts the body. `root` is the
+  `#qmd-root` mount container (so a descendant `querySelectorAll` reaches the
+  whole document).
+- **After every incremental block op.** When you save the `.qmd`, the preview
+  sends `update` / `insert` / `remove` ops that swap individual blocks, then
+  re-runs *all* registered enhancers over the whole `#qmd-root` again. (A
+  metadata-only `set_meta` op, which just repatches `data-sourcepos`, does not
+  re-run them: the content is unchanged.)
+- **Once immediately on late registration.** If your script loads after the page
+  is already mounted (the usual case for a `body-end` include), `register`
+  invokes your `fn` once right away so it catches up on the existing DOM.
+
+::: {.callout-important}
+## Enhancers MUST be idempotent
+
+Because a single `insert` re-runs every enhancer over the *entire* `#qmd-root`,
+your `fn` will revisit blocks it already decorated. Running twice must be a
+no-op: guard each element with a `data-` attribute (the `:not([data-done])`
+filter above), or you will stack duplicate buttons, listeners, and nodes on every
+keystroke. This is the same registry the built-in copy buttons, lightbox, and
+Mermaid renderer use, and they all guard exactly this way, so a third-party
+enhancer is indistinguishable from core's. Errors thrown inside an enhancer are
+caught and logged to the console; one broken enhancer never stops the others.
+:::
 
 ::: {.callout-tip}
 ## Diagnostics, not silence

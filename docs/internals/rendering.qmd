@@ -37,23 +37,34 @@ flowchart TB
    content then parses as ordinary blocks.
 4. **Parse** (`comrak`, with `sourcepos` on). One AST for the whole document, with
    every node carrying its `startLine:col-endLine:col`. The parse and the walk that
-   follows run on a worker thread with a 256 MB stack, so pathologically nested markdown
-   overflows nothing and cannot crash a build or preview.
+   follows run on a worker thread with a **256 MB stack** (`render_internal` spawns a
+   scoped thread, `stack_size(256 * 1024 * 1024)`). The reason is concrete: deeply
+   nested Markdown (blockquotes, lists) drives deep recursion in both comrak's parser
+   and qmd-fast's block emission, and on the default ~8 MB thread stack that recursion
+   overflows at around 3000 levels. A stack overflow is not a catchable panic, it
+   **aborts the whole process**: one pathological document would crash a `build` or take
+   down the live preview server outright. The big stack absorbs any realistic nesting;
+   an ordinary panic inside the worker is propagated to the caller unchanged. (If
+   spawning the big-stack worker fails, for instance under a strict `ulimit -v`, render
+   falls back to the current default-stack thread rather than failing the render.)
 5. **Walk → FlatBlock** (`render/mod.rs` + `render/emit.rs`). Each *top-level* node
    becomes one block: the emitter renders it to HTML (code highlighted by
-   `highlight.rs`, math by `math.rs`), and the block gets a **content-hash id**
-   (`b-<hex>`, with a positional tiebreak for duplicates) and a `data-sourcepos`
-   mapped back through the source map. A `` ```{lang} `` fence is recognised as an
-   executable **cell** and recorded for the server to run later. The front-matter
-   node is where metadata, the theme, and a format extension's includes are
-   resolved.
+   `highlight.rs`, math by `math.rs`), and the block gets a **content-hash id** and a
+   `data-sourcepos` mapped back through the source map. A `` ```{lang} `` fence is
+   recognised as an executable **cell** and recorded for the server to run later. The
+   front-matter node is where metadata, the theme, and a format extension's includes
+   are resolved.
 6. **Regroup divs** (`render/divs.rs`). The flat blocks are wrapped back into
    callout / layout-grid / generic container blocks using the spans from stage 3.
    Inner blocks keep their own ids and sourcepos, so click-to-source works inside a
    callout.
-7. **Captions + citations** (`cite.rs`). Table captions are numbered, then
-   `[@key]` citations and `@fig-`/`@sec-`/… cross-references are resolved against
-   the bibliography and the cross-reference registry.
+7. **Captions + citations** (`apply_table_captions`, then `cite.rs`). A Pandoc table
+   caption (`: caption {#tbl-x}` on the paragraph directly after a table) is **not** a
+   sibling block in the output: `apply_table_captions` numbers it, folds it into the
+   table as a `<caption>` first child, registers `tbl-x` for `@tbl-` references, and
+   then **removes the caption paragraph block** so the caption lives as metadata *on*
+   the table block. After that, `[@key]` citations and `@fig-`/`@sec-`/… cross-references
+   are resolved against the bibliography and the cross-reference registry.
 
 The result is a `RenderedDoc`: an ordered `Vec<Block>` plus the title, theme, TOC
 flag, includes, and any non-fatal `warnings`.
@@ -68,6 +79,28 @@ on them** (`crates/core/tests/corpus.rs` enforces it):
 - `data-sourcepos`: the original source range (drives click-to-source).
 - `data-source-file`: present only on blocks pulled in from an include.
 
+### The id formula
+
+`make_id` (`render/mod.rs`) computes the id from the block's **raw Markdown source**,
+trimmed of surrounding whitespace, not from its rendered HTML. It hashes that text with
+**64-bit FNV-1a** (`fnv1a`, the same small deterministic algorithm `freeze.rs` uses for
+the execution cache, stable across runs and qmd-fast versions), then formats the id as
+`b-` followed by the **first 12 hex digits** of the 16-digit hash (e.g. `b-3af19c0e21d4`).
+
+Two blocks with identical source text therefore hash to the same base id. To keep
+`data-block-id` unique within a document (the diff's whole correctness rests on it),
+`dedup_with_suffix` appends a positional `-N` to the second and later occurrences:
+`b-…`, then `b-…-1`, `b-…-2`. So the first copy keeps the clean hash and only the
+duplicates carry a tiebreak, which means inserting an *identical* paragraph above an
+existing one renumbers only the duplicates, not every block below.
+
+Hashing source text rather than position is the load-bearing choice: insert a paragraph
+at the top of the document and every block below it keeps its id, so the diff sees one
+insertion instead of a wholesale renumber, and an unchanged block is never repainted. A
+generated block that has no source text of its own (the synthesized title header, the
+References block, the footnotes section) skips the hash and uses a fixed id and an empty
+`data-sourcepos`.
+
 ## Citations & cross-references
 
 Citations and cross-references (`cite.rs`) are the last pipeline stage, and they
@@ -79,10 +112,23 @@ BibTeX. `@fig-` / `@sec-` / `@tbl-` / `@lst-` / `@eq-` references become links t
 anchor, carrying the resolved number when it is known. It is deliberately **pragmatic, not
 a full CSL engine**. Cross-*page* references (a `@fig-` that lives in another
 chapter) are resolved a layer up, in the site subsystem (see [The multi-page
-subsystem](sites.qmd)). Markdown footnotes (`[^name]`) ride the same idea: their
-definitions are gathered into a generated `qmd-footnotes` section appended after any
-References, an empty-sourcepos block that flows through the block model and the diff like
-References itself.
+subsystem](sites.qmd)).
+
+Markdown footnotes (`[^name]`) split across **two separate emit paths**, and it is worth
+being precise about which is which:
+
+- A footnote **reference** (`[^name]` in the prose) is rendered *in place*, inline, as a
+  superscript link (`<sup class="qmd-fnref"><a href="#fn-name">N</a></sup>`) by the
+  per-node emitter (`emit.rs`). It stays inside its surrounding block.
+- A footnote **definition** (`[^name]: the note text`) is *not* rendered where it
+  appears. The walk recognises comrak's footnote-definition nodes, collects them as
+  `<li>`s in comrak's reference order, and after the citation pass appends them as one
+  trailing `<section class="footnotes" role="doc-endnotes">` block (fixed id
+  `qmd-footnotes`, empty `data-sourcepos`) after any References block.
+
+That trailing section flows through the block model and the diff exactly like the
+References block: a generated, source-less block that the client treats no differently
+from any other.
 
 ## Incremental updates
 
@@ -99,28 +145,48 @@ their ids and are never touched.
 ## Output assembly
 
 A `RenderedDoc` becomes a full page through one assembler, `render/page.rs`
-(`assemble_html_page`): it wraps the block HTML in the document shell, the `<head>`
-theme script, the bundled offline assets, and, for a page with `{js}` cells, the
-`{js}` enhancer. A deck routes through `render/deck.rs` instead, and a site/book page adds
-chrome from `site/`, but the **same assembler builds the page shell for the static
-`build` and for both live-preview servers** (preview just injects the websocket
-client into that shell), so they can't drift apart. The same block list backs all
-three outputs (see [Architecture](architecture.qmd)).
+(`assemble_html_page`). The blocks are joined into the body, and that body is dropped
+into a single fixed HTML shell (the `PAGE_TEMPLATE` `format!` string) that supplies the
+page chrome the reader never authored:
+
+- A **pre-paint theme bootstrap** in `<head>` (`theme_head`): a tiny inline `<script>`
+  that reads the saved theme/reader preferences and sets `data-theme` on `<html>`
+  *before the first paint*, so a dark-mode reader never sees a white flash. (This is the
+  one piece `--bare` output drops, because bare output is script-free; it falls back to
+  CSS-only theming via a `prefers-color-scheme` media query instead.)
+- The **bundled offline assets**: `base.css`, the dark layer, the optional site CSS, and
+  (only when the document actually uses math) the KaTeX stylesheet, all `include_str!`d
+  into the binary so a built page is self-contained with no CDN.
+- A **skip-to-content link** when the body carries the focusable `<main id="qmd-main">`,
+  plus any `include-in-header` / `include-before-body` / `include-after-body` raw HTML.
+- For a page with `{js}` cells, the vendored d3 + Observable Plot libs and the `{js}`
+  enhancer (gated on the rendered body, so a page without `{js}` carries none of it).
+
+A deck routes through `render/deck.rs` instead, and a site/book page adds chrome from
+`site/`, but the **same assembler builds the page shell for the static `build` and for
+both live-preview servers** (preview just injects the websocket client into that shell),
+so they can't drift apart. The same block list backs all three outputs (see
+[Architecture](architecture.qmd)).
 
 ## Interactive cells (`{js}`)
 
 `{js}` cells are client-side, not kernel-executed, so they sit outside the
 [execution](execution.qmd) path. A small native enhancer (`qmd-js.js`)
 runs each cell's source against a small per-cell scope (`qmd.get`/`set`/`value`,
-`onInput`, `container`, `invalidation`); there is **no dataflow graph**. Cell
-kinds come from `//|` options: `//| viewof: name` returns a DOM input registered
-under `name`, `//| name: x` publishes the return value into a shared scope, and
-`//| input: a, b` re-runs the cell when input `a` or `b` fires. The corpus's whole
-reactive surface is single-input fan-out (one input → a few sink cells), so there is
-no dataflow engine: sinks just re-run on a named input, and cross-cell helpers are
-read with `qmd.get()` after a sequential (document-order, awaited) pass. A Python
-cell's `ojs_define(...)` bridges values across via a `<script type="qmd-define">`
-blob the enhancer ingests, re-running dependents when it lands after first paint.
+`onInput`, `container`, `invalidation`); it is a small scheduler, not a full
+reactive VM. Cell kinds come from `//|` options: `//| viewof: name` returns a DOM
+input registered under `name`, `//| name: x` publishes the return value into a
+shared scope, and `//| input: a, b` re-runs the cell when input `a` or `b` fires.
+From the cells' `defines`/`inputs` the enhancer builds a dependency graph
+(`buildGraph`): a name → consumers map plus a global topological order via Kahn's
+algorithm. When an input fires, `scheduleFrom` re-runs exactly the cell's
+*transitive-downstream* closure (following each hit cell's own `defines`, so a
+`n → squared → …` chain re-runs end to end), once each, in that topological order,
+rather than cascading listener fires. The initial run is a single document-order
+(producer-before-consumer) awaited pass; cells left over after Kahn's are in a cycle
+and show a diagnostic instead of running. A Python cell's `ojs_define(...)` bridges
+values across via a `<script type="qmd-define">` blob the enhancer ingests,
+re-running dependents when it lands after first paint.
 
 Two decisions keep this cheap and robust. The page assembler ships the vendored
 d3 + Observable Plot libs (UMD globals) **only when a page actually contains `{js}`
