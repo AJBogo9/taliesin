@@ -17,6 +17,7 @@ nav:
   left:
     - { text: "Features", href: features.qmd }
     - { text: "Document types", href: formats.qmd }
+    - { text: "See it live", href: showcase.qmd }
     - { text: "Guide", href: "docs/guide/" }
     - { text: "Internals", href: "docs/internals/" }
   right:

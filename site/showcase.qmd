@@ -1,0 +1,14 @@
+---
+title: "See it live"
+description: "Interactive demos of qmd-fast, every one a real capability with its source beside it."
+page-layout: full
+---
+
+# See it live {.unnumbered}
+
+Everything below runs in your browser, right here on this page, which is itself a
+qmd-fast document. Each demo shows its **Result** and the real **Source** that
+produced it: open the Source tab and you are reading the exact `.qmd` cell. No
+screenshots, no video.
+
+{{< include _includes/three-scene.qmd >}}
