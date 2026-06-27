@@ -117,6 +117,23 @@ anchors), all guarded against typing/modals/focused controls. Browser-verified o
 Documented in `docs/guide/using/reading.qmd`. Deferred: hyphenation (#17), forced-colors/contrast
 (#20), hanging punctuation (#22).
 
+**2026-06-27: `--bare` build output + content-gated enhancer JS shipped** (spec
+`docs/superpowers/specs/2026-06-27-bare-build-and-enhancer-gating.md`; audit-qmd reviewed, 5
+low/med findings — all test/doc-coverage gaps, pinned). A new `enum OutputMode {Preview, Build,
+Bare}` threaded onto `PageParts` (live preview stays `Preview`, byte-identical). **Phase 1** (every
+build, no flag): `code_scripts_for(body, mode)` content-gates the *separate* enhancers
+(mermaid/`{js}`/walkthrough/tabset/scrolly) to the DOM a page actually contains; `code-enhance.js`
+(reader menu + skip-link/keyboard a11y) still ships on every page (the coarse-gate-it-off-prose idea
+was **rejected** — that file carries the whole reader+a11y layer, not 4 small features, so dropping it
+from prose was an a11y regression). **Phase 2** `qmd-fast build <file> --bare` (single-doc only):
+guaranteed **zero `<script>`/zero CDN**, CSS-only theming (`bare_theme_css` rewrites
+`html[data-theme="dark"]`→`:root`; forced theme hard-coded, else OS-following via
+`prefers-color-scheme`), math kept (server-rendered), `{js}` script blocks stripped from the body,
+decks/sites refused, `{js}`/Mermaid drops warned (never silent). Pinned `corpus/bare-draft.qmd` +
+unit/corpus tests (gating, all 3 theme branches, site-path gating, click-to-source survives the strip);
+browser-verified light+dark, 0 console msgs; ~58% smaller than a normal build. Documented in
+`docs/guide/reference/cli.qmd` (also documented the previously-undocumented `--strict`).
+
 ## To resume
 
 **Working method:** branch per feature; brainstorm if there's a fork; write a spec under
@@ -152,19 +169,11 @@ and `include_relative_base.rs`. Browser-verified across 390/900/1440; **touch ge
 the F5 round-trip still want real-device confirmation.**
 
 **Still open — high value**
-- [ ] **Make `check` a true preflight superset** of build/preview warnings. Wave 1 added the broken-include
-  warning to the channel; still missing: broken plain links / `#anchors` / local image+video paths,
-  malformed YAML front-matter surfaced in `check`, citation-with-no-`bibliography:`, duplicate explicit
-  heading `{#id}`, dangling `//| input` names + reactive cycles. Read-only static analysis; matches the
-  project's own "diagnostics not silence" doctrine.
-- [ ] **[a] `{{< embed >}}` inside an `{{< include >}}` partial is never discovered as a deck** (loose page,
-  flat iframe, slides leak into search). `discover_decks` scans un-expanded source (`site/mod.rs:801`).
-  Fix: expand includes before `embed_targets`.
-- [ ] **[a/B] Liquid-glass corpus extension is dead** — live `Uncaught ReferenceError: Reveal is not
-  defined`; CSS targets `.reveal` DOM the native engine never emits, so the headline glass effect of THE
-  worked extension example is non-functional. Fix: port to `window.QmdDeck` + `.qmd-slide`/`.qmd-deck`;
-  add a corpus test asserting the theme actually applies.
-- [ ] **[B] `⌘K` search hint hardcoded on non-Mac** (shows the Mac glyph on Linux). Detect platform → `Ctrl K`.
+- [ ] **Extend `check` further (most of the superset shipped).** `1aa7653`/`1cf902c` added duplicate
+  heading `{#id}`, manual `#anchor` targets, local image paths, citation-with-no-`bibliography:`, and
+  malformed YAML to the static channel. Still missing: broken plain/external links, local **video** paths,
+  cross-page link/anchor existence (needs the site page registry), dangling `//| input` names + reactive
+  cycles. Read-only static analysis; matches the "diagnostics not silence" doctrine.
 - [ ] **Touch + a11y parity for the rest of the chrome:** aria-labels on the multiple nav landmarks, one
   consistent `:focus-visible` ring, focus management for `role=dialog` menus, slide roles + "slide N of M",
   forced-colors/`prefers-contrast`, and an a11y gate runnable from `check` (audit lives only in live preview).
@@ -250,6 +259,22 @@ directly: `code, pre, kbd, samp, .katex { letter-spacing: normal; word-spacing: 
   `color-mix`); IntersectionObserver/scrollspy libs (can't do the dynamic activation line +
   bottom-pinning); deck micro-helpers d3-interpolate/screenfull/hotkeys/hammer (each force an
   offline bundle onto every deck for a few lines).
+
+### Extension ecosystem audit (deferred — its own separate pass)
+*Author decision (2026-06-27): the `_extensions/` story (themes + functionality extensions) gets
+its own dedicated audit pass, not piecemeal fixes. Goal: survey the whole extension ecosystem —
+what an extension can hook (theme `--qmd-*` tokens, bundled CSS/JS, shortcodes, `{{< embed >}}`),
+where the seams are sharp vs. sharp-edged, and which capabilities are missing or under-documented —
+and produce a prioritized list of improvements. Treat the native deck contract (`window.QmdDeck`,
+`.qmd-deck`/`.qmd-slide`) as the stable target any extension must build against.*
+- [ ] **Run the extension-ecosystem audit** (themes + functionality): inventory the worked
+  examples under `_extensions/`, exercise each against the real binary, and find rough edges +
+  gaps + missing docs. Output a prioritized improvement list.
+- [ ] **Known finding to fold in — liquid-glass corpus extension is dead.** Live `Uncaught
+  ReferenceError: Reveal is not defined`; its CSS targets `.reveal` DOM the native engine never
+  emits, so the headline glass effect of THE worked extension example is non-functional. Fix:
+  port to `window.QmdDeck` + `.qmd-slide`/`.qmd-deck`; add a corpus test asserting the theme
+  actually applies. (Deferred out of the polish-audit high-value list into this pass.)
 
 ### Deck
 - [ ] **Mobile / touch (deeper).** Pinch/pan + touch gestures on the deck, and `{js}` widgets
