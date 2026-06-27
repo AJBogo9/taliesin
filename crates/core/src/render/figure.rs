@@ -66,7 +66,7 @@ pub(super) fn figure_parts<'a>(node: &'a AstNode<'a>) -> Option<FigureParts> {
 }
 
 /// Render a recognized figure as a numbered `<figure>` carrying the block data
-/// attributes, honoring `width=` and `fig-align=`.
+/// attributes, honoring `width=`, `height=`, and `fig-align=`.
 pub(super) fn emit_figure(fig: &FigureParts, block_attrs: &str, num: usize) -> String {
     let id_attr = id_attr(fig.attrs.id.as_deref());
     let align_class = match fig.attrs.get("fig-align") {
@@ -74,9 +74,22 @@ pub(super) fn emit_figure(fig: &FigureParts, block_attrs: &str, num: usize) -> S
         Some("right") => " qmd-figure-right",
         _ => " qmd-figure-center",
     };
-    let style = match fig.attrs.get("width") {
-        Some(w) => format!(" style=\"width:{}\"", escape_attr(w)),
-        None => String::new(),
+    // Honor `width=` and `height=` (each escaped) in the inline style; either, both,
+    // or neither may be present.
+    let mut dims = String::new();
+    if let Some(w) = fig.attrs.get("width") {
+        dims.push_str(&format!("width:{}", escape_attr(w)));
+    }
+    if let Some(hgt) = fig.attrs.get("height") {
+        if !dims.is_empty() {
+            dims.push(';');
+        }
+        dims.push_str(&format!("height:{}", escape_attr(hgt)));
+    }
+    let style = if dims.is_empty() {
+        String::new()
+    } else {
+        format!(" style=\"{dims}\"")
     };
     // `alt` is the caption HTML with tags stripped: it already carries valid
     // entities, so only quote-escape it (escape_attr would double-escape `&`).

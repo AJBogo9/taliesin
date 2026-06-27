@@ -563,12 +563,28 @@ fn tokenize_args(inner: &str) -> Vec<String> {
     toks
 }
 
-/// The first bare (non `key=value`) argument of an `embed` shortcode: the path to
-/// the deck document, relative to the embedding page.
+/// The first bare (non `key=value`) argument of an `embed`/`video` shortcode: the path
+/// to the deck document or media file, relative to the embedding page.
+///
+/// A token is a *named* argument only when it looks like `key=value` with a plain
+/// identifier key (`[A-Za-z][A-Za-z0-9_-]*` before the first `=`). Anything else is the
+/// positional path, so a path carrying a query string (`clip.mp4?token=abc`) is **not**
+/// mistaken for a named arg just because it contains an `=` after the `?`.
 fn embed_path(args: &[String]) -> Option<String> {
-    args.iter()
-        .find(|a| !a.contains('=') || a.starts_with('='))
-        .cloned()
+    args.iter().find(|a| !is_named_arg(a)).cloned()
+}
+
+/// Whether `tok` is a `key=value` named shortcode argument: an identifier key
+/// (`[A-Za-z][A-Za-z0-9_-]*`) immediately followed by `=`. A `?` (or any other
+/// non-identifier character) before the first `=` means the `=` belongs to a query
+/// string / value, not a key, so the token is positional (a path) instead.
+fn is_named_arg(tok: &str) -> bool {
+    let Some(key) = tok.split('=').next().filter(|_| tok.contains('=')) else {
+        return false;
+    };
+    let mut chars = key.chars();
+    matches!(chars.next(), Some(c) if c.is_ascii_alphabetic())
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
 /// The optional `title="…"` argument (used as the iframe's accessible name).

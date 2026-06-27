@@ -6,7 +6,7 @@ use std::fs;
 use std::path::Path;
 
 mod common;
-use common::TempProj;
+use common::{TempProj, corpus_dir};
 
 fn fixture(rel: &str) -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -333,6 +333,92 @@ fn builtin_video_emits_autoplay_figure() {
     assert!(
         body.contains("<figcaption>A demo</figcaption>"),
         "caption: {body}"
+    );
+}
+
+/// A `{{< video … >}}` whose path carries a `?query=string` (e.g. a signed/token URL)
+/// must still be recognised as the positional path — the `=` inside the query string
+/// is not a `key=value` named arg — so the `src` is emitted intact and the shortcode
+/// does not ship as literal `{{<` braces.
+#[test]
+fn builtin_video_keeps_query_string_in_src() {
+    let src = "---\ntitle: T\n---\n\n{{< video clip.mp4?token=abc >}}\n";
+    let doc = qmd_fast_core::render_document_with_includes(src, std::path::Path::new("."));
+    let body = doc.body_html();
+    assert!(
+        !body.contains("{{<"),
+        "shortcode shipped as literal braces: {body}"
+    );
+    assert!(
+        body.contains("src=\"clip.mp4?token=abc\""),
+        "query-string src must be intact: {body}"
+    );
+    assert!(
+        body.contains("class=\"qmd-video\""),
+        "video wrapper: {body}"
+    );
+}
+
+/// An `&`-bearing multi-key query string is preserved and HTML-attribute-escaped
+/// (`&` → `&amp;`), and the named `caption=` arg is still parsed (not swallowed by the
+/// query string in the path token).
+#[test]
+fn builtin_video_query_string_escapes_ampersand() {
+    let src = "---\ntitle: T\n---\n\n{{< video clip.mp4?a=1&b=2 caption=\"Demo\" >}}\n";
+    let doc = qmd_fast_core::render_document_with_includes(src, std::path::Path::new("."));
+    let body = doc.body_html();
+    assert!(
+        body.contains("src=\"clip.mp4?a=1&amp;b=2\""),
+        "ampersand query must be escaped in src: {body}"
+    );
+    assert!(
+        body.contains("<figcaption>Demo</figcaption>"),
+        "caption arg must still parse alongside a query-string path: {body}"
+    );
+}
+
+/// A genuine `key=value` named arg (`dark=`) is still classified as named, not picked
+/// up as the positional path — the query-string fix must not regress the named-arg rule.
+#[test]
+fn builtin_video_named_dark_arg_is_not_the_path() {
+    let src = "---\ntitle: T\n---\n\n{{< video light.mp4 dark=dark.mp4 >}}\n";
+    let doc = qmd_fast_core::render_document_with_includes(src, std::path::Path::new("."));
+    let body = doc.body_html();
+    assert!(
+        body.contains("src=\"light.mp4\"") && body.contains("src=\"dark.mp4\""),
+        "the bare path is light.mp4, dark= is the dark variant: {body}"
+    );
+    assert!(
+        body.contains("qmd-video-light") && body.contains("qmd-video-dark"),
+        "dark= must produce the light/dark video pair: {body}"
+    );
+}
+
+/// The `corpus/render-fixes/index.qmd` pin renders all three lane-d fixes together:
+/// the `height=` figure style, the intact `?query=string` video src, and a mermaid
+/// diagram (whose offline error banner is browser-verified). The corpus is the spec,
+/// so assert the rendered output against the real document.
+#[test]
+fn corpus_render_fixes_pins_height_and_video_query() {
+    let dir = corpus_dir().join("render-fixes");
+    let src = std::fs::read_to_string(dir.join("index.qmd")).unwrap();
+    let doc = qmd_fast_core::render_document_with_includes(&src, &dir);
+    let body = doc.body_html();
+    assert!(
+        body.contains("style=\"width:320px;height:240px\""),
+        "figure must honor both width and height: {body}"
+    );
+    assert!(
+        body.contains("src=\"clip.mp4?token=demo123\""),
+        "video query-string src must be intact: {body}"
+    );
+    assert!(
+        !body.contains("{{<"),
+        "no shortcode may ship as literal braces: {body}"
+    );
+    assert!(
+        body.contains("<pre class=\"mermaid\">"),
+        "mermaid diagram must render as a pre.mermaid: {body}"
     );
 }
 
