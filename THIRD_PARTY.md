@@ -28,9 +28,26 @@ The other scripts under `crates/core/assets/js/` (`code-enhance.js`, `deck.js`,
 
 ## Loaded at runtime from a CDN (not redistributed here)
 
-- **Mermaid** (MIT, diagrams). Pulled lazily from jsDelivr by the bundled
-  `mermaid.js` loader only on pages that contain a `mermaid` block. This is the
-  sole CDN dependency.
+The only library qmd-fast *itself* fetches over the network is the Mermaid diagram
+engine, and only on a page that actually has a diagram. Everything else above is
+bundled offline.
+
+- **Mermaid** (MIT, diagrams). The bundled `mermaid.js` loader lazy-loads the ~2.8 MB
+  Mermaid library the first time a `mermaid` block renders — a client-side
+  presentation layer that never touches the block model. The source URL defaults to a
+  pinned jsDelivr build but is **configurable**: set the `QMD_FAST_MERMAID_URL`
+  environment variable to self-host the library (a relative or absolute URL) for a
+  fully offline build. We deliberately do not `include_str!` the 2.8 MB library into
+  the binary / every built page to cover this minority case. When the library cannot
+  load (offline or blocked), the diagram is replaced by a **visible**
+  `[data-mermaid-error]` banner with the source kept below, so the failure is loud and
+  diagnosable rather than silent.
+
+Note that **author content can introduce its own CDN dependencies** outside
+qmd-fast's control: a `{js}` cell may `import` from a CDN (e.g. the corpus
+`three-scene` demo imports `three` from esm.sh), and a project's `_site.yml` may add
+its own `<link rel="preconnect">` or `<script>`. Those are the author's choices, not
+shipped by qmd-fast; only the Mermaid loader above is emitted by the tool.
 
 ## Build dependencies
 

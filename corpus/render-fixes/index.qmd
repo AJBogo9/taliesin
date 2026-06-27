@@ -1,0 +1,34 @@
+---
+title: "Render fixes: figure height, video query-strings, mermaid offline"
+---
+
+A small regression pin for three render/asset fixes (lane-d-render,
+2026-06-27). Each construct below exercises one fix.
+
+## A figure honoring both `width=` and `height=`
+
+`height=` used to be silently dropped from the inline style; now it rides
+alongside `width=`.
+
+![A sized diagram.](diagram.png){#fig-sized width=320px height=240px}
+
+## A video with a query-string in its source
+
+A token-bearing media URL carries an `=` *after* a `?`, so it is the
+positional path, not a `key=value` named arg. The whole `src` must survive
+intact (no literal `{{<` braces shipped).
+
+{{< video clip.mp4?token=demo123 caption="A token-signed screencast" >}}
+
+## A mermaid diagram (offline-aware)
+
+The diagram library is lazy-loaded; offline it now shows a visible
+`[data-mermaid-error]` banner instead of failing silently. Set
+`QMD_FAST_MERMAID_URL` to self-host it for a fully offline build.
+
+```{mermaid}
+%%| label: fig-flow
+%%| fig-cap: "A tiny pipeline"
+flowchart LR
+  A[source] --> B[render] --> C[html]
+```

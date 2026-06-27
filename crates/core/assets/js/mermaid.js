@@ -38,6 +38,28 @@ function qmdRunMermaid(nodes) {
   } catch (e) {}
 }
 
+// Make a failed diagram load visible: flag the <pre> and insert a styled banner right
+// before it (once). The diagram's source stays in the <pre> below, so the content is
+// never lost and a later successful retry can still render it. The inline styles keep the
+// banner legible even on a page with no stylesheet (offline / bare).
+function qmdMermaidShowError(p) {
+  p.setAttribute('data-mermaid-error', '1');
+  if (p.previousSibling && p.previousSibling.classList &&
+      p.previousSibling.classList.contains('mermaid-error')) {
+    return; // banner already present (idempotent on retry)
+  }
+  var banner = document.createElement('div');
+  banner.className = 'mermaid-error';
+  banner.setAttribute('role', 'alert');
+  banner.setAttribute('data-mermaid-error', '1');
+  banner.style.cssText =
+    'border:1px solid #c0392b;border-radius:4px;padding:.5em .75em;margin:.5em 0;' +
+    'color:#c0392b;background:rgba(192,57,43,.08);font-size:.9em';
+  banner.textContent =
+    'Diagram could not be loaded (offline or blocked). Showing the source below.';
+  p.parentNode.insertBefore(banner, p);
+}
+
 function qmdRenderMermaid(root) {
   var pending = root.querySelectorAll('pre.mermaid:not([data-processed])');
   if (!pending.length) return;
@@ -52,13 +74,14 @@ function qmdRenderMermaid(root) {
     qmdRunMermaid(document.querySelectorAll('pre.mermaid:not([data-processed])'));
   };
   s.onerror = function () {
-    // The library couldn't load (offline / blocked). Don't wedge: clear the flag so
-    // a later mutation can retry, and leave each diagram's source text visible as a
-    // readable fallback (it's already the <pre>'s content).
+    // The library couldn't load (offline / blocked). Don't wedge: clear the flag so a
+    // later mutation can retry, and make the failure VISIBLE — render a banner in each
+    // diagram's place instead of leaving a silent unstyled blob of source. The original
+    // source is kept below the banner so nothing is lost (and a retry can restore it).
     window.__qmdMermaidLoading = false;
     document
       .querySelectorAll('pre.mermaid:not([data-processed])')
-      .forEach(function (p) { p.setAttribute('data-mermaid-error', '1'); });
+      .forEach(qmdMermaidShowError);
   };
   document.head.appendChild(s);
 }

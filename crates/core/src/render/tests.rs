@@ -1264,6 +1264,28 @@ fn standalone_image_becomes_a_numbered_figure() {
 }
 
 #[test]
+fn figure_honors_both_width_and_height() {
+    // `height=` must land in the inline style alongside `width=` (it was silently
+    // dropped before), each escaped like width.
+    let doc = render_document("![Plot](p.png){#fig-p width=50% height=200px}\n");
+    let h = &doc.blocks[0].html;
+    assert!(
+        h.contains("style=\"width:50%;height:200px\""),
+        "both width and height must be in the style: {h}"
+    );
+}
+
+#[test]
+fn figure_height_only_emits_height_style() {
+    let doc = render_document("![Plot](p.png){#fig-p height=200px}\n");
+    let h = &doc.blocks[0].html;
+    assert!(
+        h.contains("style=\"height:200px\""),
+        "a height-only figure must emit a height style: {h}"
+    );
+}
+
+#[test]
 fn inline_image_in_a_sentence_stays_inline() {
     let doc = render_document("See ![logo](l.png) for the mark.\n");
     let h = &doc.blocks[0].html;

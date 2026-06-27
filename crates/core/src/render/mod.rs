@@ -1010,15 +1010,32 @@ const KATEX_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/katex-inlined.cs
 /// along when the page has (or, in a live preview, may gain) math.
 const BASE_CSS: &str = include_str!("../../assets/css/base.css");
 
-// mermaid (pinned) is the one asset still loaded from a CDN rather than bundled:
-// it's large (~3 MB) and only needed when a diagram is actually present, so it's
-// lazy-loaded by `mermaid.js` (the self-registering enhancer) the first time a
-// `{mermaid}` block appears. It's a client-side presentation layer, so it never
-// affects the block model or the diff. NOTE: this is the sole exception to the
-// "self-contained / offline" guarantee — a built page with a mermaid diagram needs
-// network at view time. (Syntax highlighting is server-side; the deck engine and
-// KaTeX are all bundled offline.)
-const MERMAID: &str = "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js";
+// mermaid (pinned) is loaded as a separate script rather than bundled: the library is
+// large (~2.8 MB) and only needed when a diagram is actually present, so it's lazy-loaded
+// by `mermaid.js` (the self-registering enhancer) the first time a `{mermaid}` block
+// appears. It's a client-side presentation layer, so it never affects the block model or
+// the diff. (Syntax highlighting is server-side; the deck engine and KaTeX are bundled
+// offline.)
+//
+// OFFLINE: the default source below is a jsDelivr CDN URL, so the *default* build needs
+// the network at view time only on a page that has a diagram. We deliberately do NOT
+// `include_str!` the 2.8 MB library into the binary / every built page just to cover that
+// minority case. To build fully offline, self-host `mermaid.min.js` and point the
+// `QMD_FAST_MERMAID_URL` env var at it (a relative URL next to the site, or an absolute
+// one); the loader uses that value verbatim. Either way, a load failure is now *visible*
+// (a `[data-mermaid-error]` banner replaces the diagram), never a silent blank — so the
+// offline-first promise is honored by a loud, diagnosable failure rather than a fragile
+// silent one.
+const MERMAID_DEFAULT: &str = "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js";
+
+/// The URL the lazy mermaid loader fetches the diagram library from: the
+/// `QMD_FAST_MERMAID_URL` override when set (and non-empty), else the pinned CDN default.
+fn mermaid_url() -> String {
+    match std::env::var("QMD_FAST_MERMAID_URL") {
+        Ok(u) if !u.trim().is_empty() => u,
+        _ => MERMAID_DEFAULT.to_string(),
+    }
+}
 
 /// The client enhancers: the `window.qmdEnhancers` registry + built-ins (copy
 /// buttons, lightbox, link-preview, category-filter) in code-enhance.js, then the
@@ -1042,7 +1059,7 @@ pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
     if mode == OutputMode::Bare {
         return String::new();
     }
-    let mermaid = MERMAID_JS.replace("{{MERMAID}}", MERMAID);
+    let mermaid = MERMAID_JS.replace("{{MERMAID}}", &mermaid_url());
     // In Preview every gate is open; in Build a gate opens only when the rendered
     // body carries that enhancer's DOM marker.
     let gate = |present: bool, script: &str| -> String {
