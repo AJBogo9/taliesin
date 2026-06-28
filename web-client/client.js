@@ -557,9 +557,13 @@
       setFaviconDot(null);
       return;
     }
-    // A fresh build starting (first non-idle message) clears any latched error and
-    // starts the build timer.
-    if (buildStartMs === null) { buildStartMs = Date.now(); buildErrored = false; }
+    // A fresh build starting: clear any latched error so the chip can recover, and
+    // start (or restart) the build timer. We trigger on warming-kernel/executing rather
+    // than on buildStartMs===null because after a failure buildStartMs is still set
+    // (the idle branch returned early without clearing it), so the null-check alone
+    // would never fire and the error latch would never clear.
+    var isNewBuild = msg.phase === "warming-kernel" || msg.phase === "executing";
+    if (isNewBuild) { buildErrored = false; if (buildStartMs === null) buildStartMs = Date.now(); }
     if (msg.phase === "error") {
       buildErrored = true; // latch: subsequent `idle` won't overwrite the error chip
       stopWarmTimer();

@@ -487,6 +487,7 @@ impl Executor {
                     // doesn't stay queued/spinning forever in the client (it didn't run,
                     // and won't this pass). `build-state` stays `executing`/settles on
                     // `idle` for the cells that did run before the crash.
+                    // (This mid-run dead-kernel path is production-only; toy runs rarely hit it.)
                     emit(
                         &sink,
                         crate::protocol::cell_state(page.as_deref(), &cell.id, "error", None, None),
