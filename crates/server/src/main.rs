@@ -5,6 +5,7 @@
 //!   - `qmd-fast render <file.qmd>`         one-shot full HTML page to stdout
 //!   - `qmd-fast blocks <file.qmd>`         list block ids + sourcepos (debugging)
 
+mod build_budget;
 mod exec;
 mod freeze;
 mod kernel;
