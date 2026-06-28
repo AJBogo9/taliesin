@@ -671,7 +671,17 @@ pub(crate) const STATUS_CSS: &str = "\
       font: 12px/1.4 var(--qmd-mono, monospace); padding: 4px 10px; border-radius: 6px; \
       background: var(--qmd-bg, #fff); color: var(--qmd-fg, #222); \
       border: 1px solid color-mix(in srgb, currentColor 25%, transparent); } \
-    #qmd-progress[data-state=\"idle\"] { opacity: .6; }";
+    #qmd-progress[data-state=\"idle\"] { opacity: .6; } \
+    [data-qmd-cell-state] { border-left: 3px solid transparent; padding-left: 8px; } \
+    [data-qmd-cell-state=\"queued\"] { border-left-color: color-mix(in srgb, currentColor 30%, transparent); opacity: .7; } \
+    [data-qmd-cell-state=\"running\"] { border-left-color: #4c8dff; } \
+    [data-qmd-cell-state=\"done\"] { border-left-color: #2bb673; } \
+    [data-qmd-cell-state=\"error\"] { border-left-color: #cc3333; } \
+    .qmd-cell-badge { font: 11px/1 var(--qmd-mono, monospace); opacity: .75; margin-right: 6px; } \
+    @media (prefers-reduced-motion: no-preference) { \
+      [data-qmd-cell-state=\"running\"] .qmd-cell-badge { animation: qmd-pulse 1s ease-in-out infinite; } \
+      @keyframes qmd-pulse { 50% { opacity: .35; } } \
+    }";
 
 /// Minimal JS-string escape for embedding a filesystem path in a `\"...\"` literal.
 pub(crate) fn js_str(s: &str) -> String {

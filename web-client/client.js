@@ -25,7 +25,8 @@
  * @typedef {{ type: "reload" }} ReloadMsg
  * @typedef {{ type: "style", css: string }} StyleMsg
  * @typedef {{ type: "build-state", page: ?string, phase: "warming-kernel"|"executing"|"idle"|"error", ran: number, total: number, lang: string }} BuildStateMsg
- * @typedef {FullRenderMsg|DiagnosticsMsg|UpdateMsg|InsertMsg|RemoveMsg|SetMetaMsg|ErrorMsg|ReloadMsg|StyleMsg|BuildStateMsg} ServerMessage
+ * @typedef {{ type: "cell-state", page: ?string, cell_id: string, state: "queued"|"running"|"done"|"error", started_ms: ?number, duration_ms: ?number }} CellStateMsg
+ * @typedef {FullRenderMsg|DiagnosticsMsg|UpdateMsg|InsertMsg|RemoveMsg|SetMetaMsg|ErrorMsg|ReloadMsg|StyleMsg|BuildStateMsg|CellStateMsg} ServerMessage
  */
 (() => {
   const root = document.getElementById("qmd-root");
@@ -439,6 +440,40 @@
   // --- in-browser execution progress chip ------------------------------------
   // A small fixed chip (bottom-right) that shows k/N while code cells are
   // executing, then "Up to date" when idle. Preview-only — never in build output.
+  // --- per-cell execution state decoration ------------------------------------
+  // Decorates each output block ({cell_id}-out) with a colored left-border and
+  // a small badge showing queued/running (with live elapsed)/done/error state.
+  // Driven entirely by server `cell-state` messages; we never infer state.
+  var runningTimers = {}; // cell_id -> started_ms
+  function fmtElapsed(ms) { return (ms / 1000).toFixed(1) + "s"; }
+  function applyCellState(/** @type {CellStateMsg} */ msg) {
+    var out = elById(msg.cell_id + "-out") || elById(msg.cell_id);
+    if (!out) return;
+    out.setAttribute("data-qmd-cell-state", msg.state);
+    var badge = out.querySelector(":scope > .qmd-cell-badge") || (function () {
+      var b = document.createElement("span"); b.className = "qmd-cell-badge";
+      out.insertBefore(b, out.firstChild); return b;
+    })();
+    if (msg.state === "running") {
+      runningTimers[msg.cell_id] = msg.started_ms || Date.now();
+      badge.textContent = "⏳ 0.0s";
+    } else {
+      delete runningTimers[msg.cell_id];
+      if (msg.state === "done") badge.textContent = "✓ " + (msg.duration_ms != null ? fmtElapsed(msg.duration_ms) : "");
+      else if (msg.state === "error") badge.textContent = "✕";
+      else badge.textContent = "⏳"; // queued
+    }
+  }
+  setInterval(function () {
+    var now = Date.now();
+    Object.keys(runningTimers).forEach(function (id) {
+      var out = elById(id + "-out") || elById(id);
+      if (!out) return;
+      var b = out.querySelector(":scope > .qmd-cell-badge");
+      if (b) b.textContent = "⏳ " + fmtElapsed(now - runningTimers[id]);
+    });
+  }, 200);
+
   var progressEl = /** @type {HTMLElement|null} */ (null);
   function ensureProgress() {
     if (progressEl) return progressEl;
@@ -724,6 +759,9 @@
         break;
       case "build-state":
         updateProgress(/** @type {BuildStateMsg} */ (msg));
+        break;
+      case "cell-state":
+        applyCellState(/** @type {CellStateMsg} */ (msg));
         break;
       case "update": {
         renderOk();
