@@ -144,6 +144,11 @@ pub fn exec(done: usize, total: usize) {
     line(Style::Exec, &format!("cell {done}/{total}"));
 }
 
+/// General informational message (used for startup notes like the build concurrency cap).
+pub fn info(msg: &str) {
+    line(Style::Built, msg);
+}
+
 pub fn warn(msg: &str) {
     line(Style::Warn, msg);
 }

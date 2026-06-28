@@ -108,6 +108,7 @@ port and logs the chosen URL.
 | `--out <dir>` (alias `--dir`) | Write a portable `<dir>/index.html` + copied assets instead of a single file |
 | `--strict` | Exit non-zero if any cell errored or any located warning fired (a CI gate; the page is still written) |
 | `--bare` | Single-doc only: emit a **bare** page (zero `<script>`, zero CDN, CSS-only theming) |
+| `--jobs <N>` (alias `-j`) | Maximum pages to build in parallel (default: auto, memory- and core-capped; `--jobs 1` forces sequential; `--jobs 0` same as auto) |
 
 A regular `build` already content-gates the optional enhancer scripts (mermaid, `{js}`,
 walkthrough, tabset, scrolly) to the constructs a page actually uses, so a prose page

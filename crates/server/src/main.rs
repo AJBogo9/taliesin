@@ -450,6 +450,29 @@ fn cmd_check(args: &[String]) -> ExitCode {
     }
 }
 
+/// Parse a single `--jobs` raw value token into `Option<usize>` or an error string.
+///
+/// `raw` is the token immediately following `--jobs`/`-j` on the command line,
+/// already filtered to `None` when no non-flag token follows.
+///
+/// - `None` (flag with no following token): `Err` (requires a value)
+/// - `"auto"` or `"0"`: `Ok(None)` (auto, memory- and core-capped)
+/// - `"1"` / `"N"`: `Ok(Some(N))`
+/// - anything unparseable: `Err(message)`
+fn parse_jobs_value(raw: Option<&str>) -> Result<Option<usize>, String> {
+    match raw {
+        None => Err("--jobs requires a value (e.g. --jobs 4 or --jobs 0 for auto)".to_string()),
+        Some("auto") => Ok(None),
+        Some(n) => match n.parse::<usize>() {
+            Ok(0) => Ok(None),
+            Ok(v) => Ok(Some(v)),
+            Err(_) => Err(format!(
+                "--jobs: invalid value {n:?} (expected a non-negative integer or \"auto\")"
+            )),
+        },
+    }
+}
+
 fn cmd_build(args: &[String]) -> ExitCode {
     // Positionals: <file> [out.html]. Flags: `--out <dir>` (alias `--dir`),
     // `--strict` (a cell error / broken-ref warning fails the build).
@@ -457,11 +480,10 @@ fn cmd_build(args: &[String]) -> ExitCode {
     let mut out_dir: Option<&str> = None;
     let mut strict = false;
     let mut bare = false;
-    // `--jobs <n>`: max pages built concurrently in a site build. Defaults to 1
-    // (sequential) for now — byte-identical to the historical build. Task 10 flips
-    // the default to memory-aware auto. `Some(0)`/`auto` already means auto in
-    // `concurrency_cap`, so we accept that spelling too.
-    let mut jobs: Option<usize> = Some(1);
+    // `--jobs <N>`: max pages built concurrently in a site build.
+    // `None` (the default) = auto (memory- and core-capped via `concurrency_cap`).
+    // `Some(0)` / "auto" = same as None.  `Some(1)` = sequential.  `Some(N)` = N.
+    let mut jobs_result: Result<Option<usize>, String> = Ok(None);
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -474,14 +496,8 @@ fn cmd_build(args: &[String]) -> ExitCode {
                     .filter(|s| !s.starts_with("--"));
             }
             "--jobs" | "-j" => {
-                jobs = it
-                    .next()
-                    .filter(|s| !s.starts_with("--"))
-                    .map(|s| match s.as_str() {
-                        "auto" => None,
-                        n => Some(n.parse::<usize>().unwrap_or(1)),
-                    })
-                    .unwrap_or(Some(1));
+                let raw = it.next().filter(|s| !s.starts_with("--"));
+                jobs_result = parse_jobs_value(raw.map(|s| s.as_str()));
             }
             "--strict" => strict = true,
             // `--bare`: zero-`<script>`, zero-CDN, CSS-only-theme single-doc output.
@@ -490,9 +506,16 @@ fn cmd_build(args: &[String]) -> ExitCode {
             s => positionals.push(s),
         }
     }
+    let jobs = match jobs_result {
+        Ok(v) => v,
+        Err(msg) => {
+            eprintln!("error: {msg}");
+            return ExitCode::FAILURE;
+        }
+    };
     let Some(path) = positionals.first().copied() else {
         eprintln!(
-            "usage: qmd-fast build <file.qmd|dir> [out.html] [--out <dir>] [--strict] [--bare]"
+            "usage: qmd-fast build <file.qmd|dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>]"
         );
         return ExitCode::FAILURE;
     };
@@ -1164,6 +1187,7 @@ async fn build_site_async(
     //    Cross-page ordering edges (a page that must build after another) are deferred to
     //    Task 9; here every dirty page is treated as independent.
     let cap = build_budget::concurrency_cap(jobs, PER_KERNEL_MB).max(1);
+    log::info(&format!("building with up to {} parallel page(s)", cap));
     let mut pages = 0usize;
     let mut kernel_unavailable = false;
     // `--strict` problem tally across the whole site: per-page located warnings +
@@ -2197,7 +2221,7 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 qmd-fast preview index.qmd --open\n"
         }
         "build" => {
-            "qmd-fast build <file.qmd | dir> [out.html] [--out <dir>] [--strict] [--bare]\n\
+            "qmd-fast build <file.qmd | dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>]\n\
              \n\
              Render a self-contained HTML file. A directory builds the whole SITE to\n\
              _site/. Default output is <name>.html beside the source.\n\
@@ -2206,9 +2230,12 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 --out <dir>  write a portable folder (<dir>/index.html + copied assets)\n\
              \x20 --strict     exit non-zero on a cell error or located warning (CI gate)\n\
              \x20 --bare       single-doc only: zero-<script>, CSS-only-theme HTML\n\
+             \x20 --jobs <N>   max parallel pages (default: auto, memory- and core-capped;\n\
+             \x20              --jobs 1 forces sequential; --jobs 0 same as auto)\n\
              \n\
              Example:\n\
-             \x20 qmd-fast build post.qmd --strict\n"
+             \x20 qmd-fast build post.qmd --strict\n\
+             \x20 qmd-fast build . --jobs 4\n"
         }
         "check" => {
             "qmd-fast check <file.qmd | dir> [--format human|json]\n\
@@ -2503,5 +2530,53 @@ mod cli_microcopy_tests {
         assert_eq!(subcommand_help("serve"), subcommand_help("preview"));
         // An unrecognized command has no focused help (falls back to top-level usage).
         assert!(subcommand_help("frobnicate").is_none());
+        // `--jobs` is documented in build help.
+        let build_help = subcommand_help("build").unwrap();
+        assert!(
+            build_help.contains("--jobs"),
+            "build help must document --jobs: {build_help}"
+        );
+    }
+
+    /// `parse_jobs_value` maps the token that follows `--jobs` to `Option<usize>`:
+    /// - `None` (flag present, no token follows) → Err (requires a value)
+    /// - `"auto"` or `"0"`                       → Ok(None)  (auto)
+    /// - `"1"`                                    → Ok(Some(1))  (sequential)
+    /// - `"N"` (e.g. `"4"`)                      → Ok(Some(N))  (explicit)
+    /// - bad string                               → Err
+    ///
+    /// The "flag absent" case is handled by the caller: `jobs_result` defaults to
+    /// `Ok(None)` (auto) and is only overwritten when `--jobs` actually appears.
+    #[test]
+    fn jobs_flag_parses_correctly() {
+        // "auto" keyword → auto
+        assert_eq!(parse_jobs_value(Some("auto")), Ok(None));
+        // "0" → auto (same as None/absent)
+        assert_eq!(parse_jobs_value(Some("0")), Ok(None));
+        // "1" → sequential
+        assert_eq!(parse_jobs_value(Some("1")), Ok(Some(1)));
+        // explicit N
+        assert_eq!(parse_jobs_value(Some("4")), Ok(Some(4)));
+        assert_eq!(parse_jobs_value(Some("16")), Ok(Some(16)));
+        // --jobs with no following token (e.g. at end of arg list) → clear error
+        let no_val = parse_jobs_value(None);
+        assert!(no_val.is_err(), "--jobs with no value should error");
+        let msg_no_val = no_val.unwrap_err();
+        assert!(
+            msg_no_val.contains("--jobs"),
+            "error names the flag: {msg_no_val}"
+        );
+        // bad value → error
+        let bad = parse_jobs_value(Some("fish"));
+        assert!(bad.is_err(), "non-integer should be an error");
+        let msg = bad.unwrap_err();
+        assert!(
+            msg.contains("fish"),
+            "error message names the bad value: {msg}"
+        );
+        assert!(
+            msg.contains("--jobs"),
+            "error message names the flag: {msg}"
+        );
     }
 }
