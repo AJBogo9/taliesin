@@ -106,6 +106,17 @@ pub fn error(message: &str) -> String {
     serde_json::json!({ "type": "error", "message": message }).to_string()
 }
 
+/// `build-state`: document-level execution phase + a deterministic k-of-N count.
+/// `phase` is one of "warming-kernel" | "executing" | "idle" | "error". `page` is
+/// the source rel-path for the multi-page server, `None` for the single-doc server.
+pub fn build_state(page: Option<&str>, phase: &str, ran: u32, total: u32, lang: &str) -> String {
+    serde_json::json!({
+        "type": "build-state", "page": page,
+        "phase": phase, "ran": ran, "total": total, "lang": lang
+    })
+    .to_string()
+}
+
 /// A single incremental block op. `rewrite_html` is applied to the block HTML of
 /// `Update`/`Insert` before it goes over the wire: identity for the single-doc
 /// server, and `.qmd`→`.html` link rewriting for the site server.
@@ -130,4 +141,19 @@ pub fn op(op: &BlockOp, rewrite_html: impl Fn(&str) -> String) -> String {
         }),
     }
     .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn build_state_serializes_phase_and_counts() {
+        let s = super::build_state(Some("ch1.qmd"), "executing", 3, 8, "python");
+        let v: serde_json::Value = serde_json::from_str(&s).unwrap();
+        assert_eq!(v["type"], "build-state");
+        assert_eq!(v["page"], "ch1.qmd");
+        assert_eq!(v["phase"], "executing");
+        assert_eq!(v["ran"], 3);
+        assert_eq!(v["total"], 8);
+        assert_eq!(v["lang"], "python");
+    }
 }

@@ -850,6 +850,19 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
     let doc = qmd_fast_core::render_document_with_includes(&src, &base);
 
     let exec = pool.get(rel, &base);
+    // Stream this page's code-cell execution progress (`build-state`) onto its own
+    // broadcast, tagged with the page rel so the client knows which page it's about.
+    // The page's `Sender` is created on first visit (before this build is queued), so
+    // it's normally present; if it isn't yet, we just don't stream this pass.
+    {
+        let tx = app.pages.lock().get(rel).map(|ps| ps.tx.clone());
+        let sink: crate::exec::ProgressSink = tx.map(|tx| {
+            std::sync::Arc::new(move |m: String| {
+                let _ = tx.send(m);
+            }) as std::sync::Arc<dyn Fn(String) + Send + Sync>
+        });
+        exec.set_progress(sink, Some(rel.to_string()));
+    }
     let mut blocks = exec.run(doc.blocks).await;
     // Finish the executed blocks exactly as the build does (numbering, cross-refs +
     // broken-ref warnings, listing/about expansion, post decoration). Queries the

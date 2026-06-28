@@ -1013,6 +1013,17 @@ fn spawn_watcher(app: Arc<AppState>, mut signal_rx: mpsc::UnboundedReceiver<()>)
             .unwrap_or("document");
         let freeze_path = crate::freeze::page_path(&app.base_dir.join("_freeze"), stem);
         let mut executor = crate::exec::Executor::with_freeze(freeze_path).in_dir(&app.base_dir);
+        // Stream code-cell execution progress (`build-state`) onto the session
+        // broadcast, so the previewing client can show "warming kernel" / "cell k/N".
+        // Single-doc => no page key. Cloning the `Sender` is cheap; each progress
+        // message is just sent like any other render op.
+        {
+            let tx = app.tx.clone();
+            let sink: crate::exec::ProgressSink = Some(std::sync::Arc::new(move |m| {
+                let _ = tx.send(m);
+            }));
+            executor.set_progress(sink, None);
+        }
         // Initial execution pass: markdown is already live; this fills in outputs
         // (and starts the warm kernel) shortly after the page loads.
         rebuild_guarded(&app, &mut executor).await;

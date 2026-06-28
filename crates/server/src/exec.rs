@@ -23,7 +23,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
@@ -44,6 +44,21 @@ const KERNEL_RETRY_AFTER: Duration = Duration::from_secs(20);
 /// Shown for cells skipped after the kernel died mid-run (see `compute_outputs`):
 /// they didn't execute, and the next rebuild respawns the kernel and re-runs them.
 const KERNEL_DIED_HTML: &str = "<pre class=\"qmd-error\">kernel exited before this cell ran; it will re-run on the next save</pre>";
+
+/// A callback the server hands the executor to stream build progress
+/// (`build-state` messages) to the previewing client: each call receives a
+/// ready-to-send JSON string (built by [`crate::protocol::build_state`]). `None`
+/// on the headless `build` path, where there's no client to push to. Emission is
+/// side-effect-free w.r.t. what executes or caches, so a `None` sink changes
+/// nothing else.
+pub type ProgressSink = Option<Arc<dyn Fn(String) + Send + Sync>>;
+
+/// Send a progress message if a sink is wired; a no-op when it isn't.
+fn emit(sink: &ProgressSink, msg: String) {
+    if let Some(s) = sink {
+        s(msg);
+    }
+}
 
 /// Cell languages qmd-fast can execute, mapped to a stable kernel key. Anything
 /// else renders as highlighted source.
@@ -124,6 +139,14 @@ pub struct Executor {
     /// cell's relative writes land beside the source instead of in the server's
     /// launch dir. `None` inherits the server's cwd (the default; used by tests).
     work_dir: Option<PathBuf>,
+    /// Where to push `build-state` progress (set by a dev server before a build);
+    /// `None` on the headless `build` path. Side-effect-free: never changes what
+    /// runs or caches.
+    sink: ProgressSink,
+    /// The source rel-path this executor builds (the site server's page key), tagged
+    /// onto each `build-state` so a multi-page client knows which page it's about.
+    /// `None` for the single-doc server.
+    page: Option<String>,
 }
 
 impl Executor {
@@ -170,7 +193,21 @@ impl Executor {
             force_next: false,
             no_exec: std::env::var_os("QMD_FAST_NO_EXEC").is_some(),
             work_dir: None,
+            sink: None,
+            page: None,
         }
+    }
+
+    /// Stream this executor's per-build progress (`build-state` messages) through
+    /// `sink`, tagged with the page rel-path `page` (the site server's page key;
+    /// `None` for the single-doc server). The server sets this once after creating the
+    /// executor; the `build` path leaves it unset (no client). Emission never changes
+    /// what executes or caches, so freeze determinism is preserved regardless of the
+    /// sink. A `&mut self` setter (not a consuming builder) so it can be applied to a
+    /// pooled `&mut Executor`.
+    pub fn set_progress(&mut self, sink: ProgressSink, page: Option<String>) {
+        self.sink = sink;
+        self.page = page;
     }
 
     /// The launch spec + interpreter path (for logging) for a language.
@@ -325,8 +362,20 @@ impl Executor {
         let to_run = run_end.saturating_sub(shared);
         // Boot the kernel up-front (the real wait), so the per-cell progress below
         // reflects actual execution rather than the startup it used to hide. A full
-        // replay (to_run == 0) never boots: that's the cold-start fast path.
+        // replay (to_run == 0) never boots: that's the cold-start fast path — and it
+        // must never claim "warming-kernel", so the warming signal is gated on the
+        // same `to_run > 0` that gates the boot.
         if to_run > 0 {
+            emit(
+                &self.sink,
+                crate::protocol::build_state(
+                    self.page.as_deref(),
+                    "warming-kernel",
+                    0,
+                    to_run as u32,
+                    lang,
+                ),
+            );
             self.ensure_kernel(lang).await;
         }
         let has_kernel = self
@@ -353,6 +402,12 @@ impl Executor {
             .map(|i| self.freeze.get(&hashes[i]).unwrap_or_default().to_string())
             .collect();
 
+        // Cloned out of `self` so the execute loop can still borrow `self` mutably
+        // (`exec_cell`/`kernel_alive`) while emitting progress. The sink is an `Arc`
+        // (cheap clone), the page a small `Option<String>`.
+        let sink = self.sink.clone();
+        let page = self.page.clone();
+
         let mut outputs = Vec::with_capacity(cells.len());
         let mut ran_count = 0;
         for (i, cell) in cells.iter().enumerate() {
@@ -372,6 +427,16 @@ impl Executor {
                     if has_kernel {
                         ran_count += 1;
                         crate::log::exec(ran_count, to_run);
+                        emit(
+                            &sink,
+                            crate::protocol::build_state(
+                                page.as_deref(),
+                                "executing",
+                                ran_count as u32,
+                                to_run as u32,
+                                lang,
+                            ),
+                        );
                     }
                     // Python `#| fig-export:` cells get a one-line trigger prepended
                     // so the kernel writes the figure to disk when it's displayed.
@@ -415,6 +480,20 @@ impl Executor {
                 })
                 .collect();
         }
+
+        // The build for this language settled: report `idle` with the full count.
+        // An all-cached page (to_run == 0) reaches here without ever emitting
+        // `warming-kernel`/`executing`, so its first and only signal is `idle`.
+        emit(
+            &sink,
+            crate::protocol::build_state(
+                page.as_deref(),
+                "idle",
+                to_run as u32,
+                to_run as u32,
+                lang,
+            ),
+        );
         outputs
     }
 
@@ -755,6 +834,92 @@ mod tests {
             ex.diagnostic().is_none(),
             "no_exec is deliberate, not a kernel failure -> no diagnostic"
         );
+    }
+
+    fn python_cell_block_with(id: &str, code: &str) -> Block {
+        let mut b = python_cell_block(id);
+        if let Some(c) = b.cell.as_mut() {
+            c.code = code.to_string();
+        }
+        b
+    }
+
+    #[test]
+    fn progress_sink_streams_executing_then_idle_for_a_3_cell_doc() {
+        // The exec→client progress seam Task 1 introduces: with a wired `ProgressSink`,
+        // running a 3-cell python doc must push `build-state` messages whose `ran`
+        // climbs 1→2→3 (== total) under "executing", then a final "idle" with
+        // ran == total. Gated on a live kernel (the same env/skip the other
+        // kernel-exercising tests use): without `QMD_FAST_PYTHON` it reports ok WITHOUT
+        // exercising a kernel — the serialization is covered unconditionally in
+        // `protocol.rs`.
+        if std::env::var_os("QMD_FAST_PYTHON").is_none() {
+            eprintln!(
+                "SKIPPED (no live kernel): set QMD_FAST_PYTHON to a python with ipykernel to \
+                 exercise build-state progress; this run did not."
+            );
+            return;
+        }
+
+        use std::sync::Mutex as StdMutex;
+        let captured: Arc<StdMutex<Vec<serde_json::Value>>> = Arc::new(StdMutex::new(Vec::new()));
+        let sink: ProgressSink = {
+            let captured = captured.clone();
+            Some(Arc::new(move |m: String| {
+                captured
+                    .lock()
+                    .unwrap()
+                    .push(serde_json::from_str(&m).unwrap());
+            }))
+        };
+
+        let mut ex = Executor::new();
+        ex.set_progress(sink, Some("ch1.qmd".into()));
+        // Distinct code per cell so each is a genuine cell with its own cache key.
+        let blocks = vec![
+            python_cell_block_with("b-1", "a = 1"),
+            python_cell_block_with("b-2", "b = 2"),
+            python_cell_block_with("b-3", "print(a + b)"),
+        ];
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let _ = ex.run(blocks).await;
+        });
+
+        if ex.diagnostic().is_some() {
+            // No working python kernel here — can't exercise execution progress.
+            return;
+        }
+
+        let msgs = captured.lock().unwrap();
+        // Every message is a well-formed build-state for this page.
+        for v in msgs.iter() {
+            assert_eq!(v["type"], "build-state", "unexpected message: {v}");
+            assert_eq!(v["page"], "ch1.qmd");
+            assert_eq!(v["lang"], "python");
+        }
+        // The "executing" `ran` values climb 1, 2, 3 (one per cell), each ≤ total.
+        let executing: Vec<u64> = msgs
+            .iter()
+            .filter(|v| v["phase"] == "executing")
+            .map(|v| {
+                assert_eq!(v["total"], 3, "total should be the run count: {v}");
+                let ran = v["ran"].as_u64().unwrap();
+                assert!(ran >= 1 && ran <= 3, "ran out of [1,total]: {v}");
+                ran
+            })
+            .collect();
+        assert_eq!(
+            executing,
+            vec![1, 2, 3],
+            "executing `ran` must climb monotonically up to total: {executing:?}"
+        );
+        // The final message is an `idle` with ran == total.
+        let last = msgs.last().expect("at least one build-state was emitted");
+        assert_eq!(last["phase"], "idle", "build must settle on idle: {last}");
+        assert_eq!(last["ran"], 3, "idle must report ran == total: {last}");
+        assert_eq!(last["total"], 3, "idle must report ran == total: {last}");
     }
 
     #[tokio::test]
