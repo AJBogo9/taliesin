@@ -666,7 +666,12 @@ pub(crate) const STATUS_CSS: &str = "\
       border-left: 3px solid #e5534b; border-radius: 6px; padding: .3rem .5rem; \
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } \
     .qmd-cellerr:hover { border-color: #e5534b; } \
-    @media (max-width: 60rem) { body.qmd-toc-sheet #qmd-controls.qmd-dev { bottom: 2.4rem; } }";
+    @media (max-width: 60rem) { body.qmd-toc-sheet #qmd-controls.qmd-dev { bottom: 2.4rem; } } \
+    #qmd-progress { position: fixed; bottom: 12px; right: 12px; z-index: 9999; \
+      font: 12px/1.4 var(--qmd-mono, monospace); padding: 4px 10px; border-radius: 6px; \
+      background: var(--qmd-bg, #fff); color: var(--qmd-fg, #222); \
+      border: 1px solid color-mix(in srgb, currentColor 25%, transparent); } \
+    #qmd-progress[data-state=\"idle\"] { opacity: .6; }";
 
 /// Minimal JS-string escape for embedding a filesystem path in a `\"...\"` literal.
 pub(crate) fn js_str(s: &str) -> String {

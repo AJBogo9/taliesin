@@ -24,7 +24,8 @@
  * @typedef {{ type: "error", message: string }} ErrorMsg
  * @typedef {{ type: "reload" }} ReloadMsg
  * @typedef {{ type: "style", css: string }} StyleMsg
- * @typedef {FullRenderMsg|DiagnosticsMsg|UpdateMsg|InsertMsg|RemoveMsg|SetMetaMsg|ErrorMsg|ReloadMsg|StyleMsg} ServerMessage
+ * @typedef {{ type: "build-state", page: ?string, phase: "warming-kernel"|"executing"|"idle"|"error", ran: number, total: number, lang: string }} BuildStateMsg
+ * @typedef {FullRenderMsg|DiagnosticsMsg|UpdateMsg|InsertMsg|RemoveMsg|SetMetaMsg|ErrorMsg|ReloadMsg|StyleMsg|BuildStateMsg} ServerMessage
  */
 (() => {
   const root = document.getElementById("qmd-root");
@@ -435,6 +436,34 @@
   // Deck mode (and any layout without the control bar) keeps its status pill.
   if (!statusEl) statusEl = document.getElementById("qmd-status");
 
+  // --- in-browser execution progress chip ------------------------------------
+  // A small fixed chip (bottom-right) that shows k/N while code cells are
+  // executing, then "Up to date" when idle. Preview-only — never in build output.
+  var progressEl = /** @type {HTMLElement|null} */ (null);
+  function ensureProgress() {
+    if (progressEl) return progressEl;
+    progressEl = document.createElement("div");
+    progressEl.id = "qmd-progress";
+    progressEl.setAttribute("aria-live", "polite");
+    document.body.appendChild(progressEl);
+    return progressEl;
+  }
+  function updateProgress(/** @type {BuildStateMsg} */ msg) {
+    var el = ensureProgress();
+    if (msg.phase === "idle") {
+      el.textContent = "Up to date";
+      el.setAttribute("data-state", "idle");
+      return;
+    }
+    if (msg.phase === "warming-kernel") {
+      el.textContent = "Starting " + msg.lang + " kernel…";
+      el.setAttribute("data-state", "busy");
+      return;
+    }
+    el.textContent = "Executing " + msg.ran + "/" + msg.total;
+    el.setAttribute("data-state", "busy");
+  }
+
   // A `{js}` cell can error asynchronously (its async body runs after the mount);
   // watch the content for them (debounced) so the dev-menu count stays live.
   if (window.MutationObserver) {
@@ -692,6 +721,9 @@
         break;
       case "diagnostics":
         setDiagnostics(msg.messages);
+        break;
+      case "build-state":
+        updateProgress(/** @type {BuildStateMsg} */ (msg));
         break;
       case "update": {
         renderOk();
