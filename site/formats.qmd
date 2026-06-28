@@ -1,11 +1,11 @@
 ---
 title: "Document types"
-description: "One .qmd source, four outputs: blog posts and papers, slide decks, multi-chapter books, and multi-page websites — all from the same block model."
+description: "One .qmd source, four outputs: blog posts and papers, slide decks, multi-chapter books, and multi-page websites, all from the same block model."
 page-layout: full
 hero:
   eyebrow: "One source, four outputs"
   headline: "Pick the output in the front matter"
-  lead: "A blog post, a slide deck, a book, and a website are the same document seen four ways — they share the block model, the offline math and highlighting, and the live edit loop."
+  lead: "A blog post, a slide deck, a book, and a website are the same document seen four ways: they share the block model, the offline math and highlighting, and the live edit loop."
   actions:
     - { text: "See the features", href: "features.qmd", primary: true }
     - { text: "Read the docs", href: "docs/guide/" }
@@ -16,8 +16,7 @@ hero:
 The default output: prose with everything a technical piece actually needs. Write
 Markdown and get a clean reading column with web-native typography. Add display and
 inline math, mermaid diagrams, numbered figures, callouts, and `[@key]` citations
-with a real bibliography. Drop in `{python}` or `{r}` cells and their output —
-including matplotlib figures — renders inline and re-runs only when the code changes.
+with a real bibliography. Drop in `{python}` or `{r}` cells and their output (including matplotlib figures) renders inline and re-runs only when the code changes.
 
 ```yaml
 ---
@@ -40,7 +39,7 @@ re-runs as you edit it.
 
 {{< embed demo.qmd title="The qmd-fast deck engine" >}}
 
-The deck above is live — click it, arrow through it, press <kbd>F</kbd> for fullscreen.
+The deck above is live: click it, arrow through it, press <kbd>F</kbd> for fullscreen.
 
 ## Multi-chapter books {#books}
 
@@ -49,18 +48,18 @@ references. References like `@fig-` and `@sec-` resolve and number across chapte
 Cmd-K palette searches the whole book, and each chapter is still a normal `.qmd` you
 can preview on its own.
 
-[Read the docs — they are a qmd-fast book](docs/guide/){.btn .btn-primary}
+[Read the docs (a qmd-fast book)](docs/guide/){.btn .btn-primary}
 
 ## Multi-page websites {#websites}
 
 Point qmd-fast at a directory with a `_site.yml` and you get a whole site: a themed
 navbar and footer, post listings and an `about:` profile header, an RSS feed,
-OpenGraph and Twitter-card metadata, light/dark with a toggle, and Cmd-K search —
+OpenGraph and Twitter-card metadata, light/dark with a toggle, and Cmd-K search,
 built to a static `_site/` you can host anywhere. Intra-site `.qmd` links are
 rewritten to `.html` automatically.
 
 This site is the example. The page you are reading, its navbar and footer, and the
-dark/light toggle are all a qmd-fast website — and the [docs](docs/guide/) it links to are
+dark/light toggle are all a qmd-fast website, and the [docs](docs/guide/) it links to are
 a qmd-fast book, deployed in the same tree under `/docs`.
 
 ::: {.hero}

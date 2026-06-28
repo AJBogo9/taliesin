@@ -3,9 +3,10 @@
 # separate book projects; `mounts:` serves them under /docs/guide and /docs/internals
 # in `preview` (the static `build` wires each with its own `build ... --out` step).
 title: "qmd-fast"
-description: "A fast, single-purpose dev server that turns one .qmd file into a live blog post, slide deck, book, or website — with executable code and an edit loop that updates the instant you save."
+description: "A fast, single-purpose dev server that turns one .qmd file into a live blog post, slide deck, book, or website, with executable code and an edit loop that updates the instant you save."
 url: "https://qmd-fast.dev"
 favicon: favicon.svg
+image: assets/og-card.png   # default social card (og:image / twitter:image) for every page
 toc: false
 
 # Serve the two sibling docs books so the nav links resolve live in `preview`.

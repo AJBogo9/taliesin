@@ -1,11 +1,11 @@
 ---
 title: "Features"
-description: "The live edit loop, everything technical writing needs, live interactive graphics, and offline-first publishing — every feature of the qmd-fast dev server."
+description: "The live edit loop, everything technical writing needs, live interactive graphics, and offline-first publishing: every feature of the qmd-fast dev server."
 page-layout: full
 hero:
   eyebrow: "Everything the dev server does"
   headline: "Built for the edit loop"
-  lead: "qmd-fast does one thing — author HTML from .qmd — and makes the loop from keystroke to rendered page instant. Here is what that buys you."
+  lead: "qmd-fast does one thing (author HTML from .qmd) and makes the loop from keystroke to rendered page instant. Here is what that buys you."
   actions:
     - { text: "See the document types", href: "formats.qmd", primary: true }
     - { text: "Read the docs", href: "docs/guide/" }
@@ -28,7 +28,7 @@ bibliography) and re-renders the moment you save.
 ::: {.feature}
 ### Block-level diffing
 Each save diffs the new blocks against the old and ships only the differences.
-Unchanged blocks are never touched — scroll, focus, and live state survive.
+Unchanged blocks are never touched; scroll, focus, and live state survive.
 :::
 
 ::: {.feature}
@@ -40,7 +40,7 @@ even across `{{< include >}}`d files.
 ::: {.feature}
 ### Warm kernel
 A persistent Jupyter kernel (Python or R) runs your cells. A code change re-runs
-only the earliest changed cell and everything downstream — never the whole document.
+only the earliest changed cell and everything downstream, never the whole document.
 :::
 
 ::: {.feature}
@@ -52,13 +52,13 @@ real, updating page on a phone while you write.
 ::: {.feature}
 ### No runaway cells
 A cell that runs too long is interrupted, and kernel failures surface in seconds
-with the real cause — the warm kernel and prior cells survive.
+with the real cause; the warm kernel and prior cells survive.
 :::
 :::
 
 ## Everything technical writing needs
 
-Math, diagrams, runnable code, citations — all rendered offline, all part of the
+Math, diagrams, runnable code, citations: all rendered offline, all part of the
 block model.
 
 ::: {.feature-grid}
@@ -70,20 +70,20 @@ equations need no network and never reflow on load.
 
 ::: {.feature}
 ### Diagrams
-Mermaid flowcharts, sequence, and state diagrams from fenced code — re-themed
+Mermaid flowcharts, sequence, and state diagrams from fenced code, re-themed
 automatically when you toggle light and dark.
 :::
 
 ::: {.feature}
 ### Executable code
-Python and R cells run against the warm kernel; their output — text and matplotlib
-figures alike — is spliced back into the page as real blocks.
+Python and R cells run against the warm kernel; their output (text and matplotlib
+figures alike) is spliced back into the page as real blocks.
 :::
 
 ::: {.feature}
 ### Citations & cross-refs
 `[@key]` citations with IEEE/CSL bibliographies, and `@fig-` / `@sec-`
-cross-references that number and link themselves — across chapters.
+cross-references that number and link themselves across chapters.
 :::
 
 ::: {.feature}
@@ -101,7 +101,7 @@ flagged as you write, before they bite.
 
 ## Live, and it stays alive
 
-Interactive graphics keep their runtime state across edits — because the page never
+Interactive graphics keep their runtime state across edits, because the page never
 reloads.
 
 ::: {.feature-grid}
@@ -114,13 +114,13 @@ reactive graph recomputes live, in place.
 ::: {.feature}
 ### 3D graphics
 Drop in a Three.js / WebGL canvas. Edit the prose around it and the canvas keeps
-spinning — its WebGL context is never torn down.
+spinning; its WebGL context is never torn down.
 :::
 
 ::: {.feature}
 ### Code that runs on slides
 The same executable cells work in a deck. Edit a `{python}` cell mid-talk and the
-slide updates in place — no other framework does this.
+slide updates in place. No other framework does this.
 :::
 :::
 
@@ -137,14 +137,15 @@ render identically offline and never phone home.
 
 ::: {.feature}
 ### Self-contained HTML
-One command turns a document into a single HTML file — or a portable folder with
+One command turns a document into a single HTML file, or a portable folder with
 its local assets copied alongside.
 :::
 
 ::: {.feature}
 ### Whole sites
-Point it at a directory for a multi-page website or book: navbar, footer, listings,
-RSS, OpenGraph, and search — built to a static `_site/`.
+Point it at a directory and the same engine builds a multi-page website or book to a
+static `_site/` you can host anywhere. See [the document types](formats.qmd#websites)
+for what each output gives you.
 :::
 :::
 

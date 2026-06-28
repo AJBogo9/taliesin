@@ -1,11 +1,11 @@
 ---
 title: "qmd-fast"
-description: "A fast, single-purpose dev server that turns one .qmd file into a live blog post, slide deck, book, or website — with executable code and an edit loop that updates the instant you save."
+description: "A fast, single-purpose dev server that turns one .qmd file into a live blog post, slide deck, book, or website, with executable code and an edit loop that updates the instant you save."
 page-layout: full
 hero:
   eyebrow: "Markdown in · live HTML out"
   headline: "Technical writing at the speed of code"
-  lead: "A focused dev server that turns one .qmd file into a live post, slide deck, book, or website — updating the instant you save."
+  lead: "A focused dev server that turns one .qmd file into a live post, slide deck, book, or website, updating the instant you save."
   actions:
     - { text: "Read the docs", href: "docs/guide/", primary: true }
     - { text: "Explore the features", href: "features.qmd" }
@@ -13,7 +13,7 @@ hero:
 
 qmd-fast is built around one idea: writing technical content should feel as
 immediate as editing code. You save the file, and only the block you changed
-re-renders — your scroll position, your live canvas, and your warm kernel all stay
+re-renders. Your scroll position, your live canvas, and your warm kernel all stay
 exactly as they were. No cold start, no full-page flash, no waiting.
 
 {{< include _includes/three-scene.qmd >}}
@@ -70,16 +70,16 @@ This scene is live WebGL, authored in the one `{js}` cell above. Drag to orbit i
 See more, with the source beside each, on [the showcase](showcase.qmd).
 
 ```sh
-qmd-fast preview post.qmd   # live at http://127.0.0.1:4321 — edit, and watch one block update
+qmd-fast preview post.qmd   # live at http://127.0.0.1:4321 (edit, and watch one block update)
 ```
 
-{{< video assets/live-edit-light.mp4 dark=assets/live-edit-dark.mp4 caption="Save the file, and only the block you touched re-renders — in place, with scroll and live state preserved." >}}
+{{< video assets/live-edit-light.mp4 dark=assets/live-edit-dark.mp4 caption="Save the file, and only the block you touched re-renders in place, with scroll and live state preserved." >}}
 
 ## One source, many outputs
 
 Write once in plain text and choose the output in the front matter. Every format
 shares the same block model, the offline math and highlighting, and the live edit
-loop — so anything you learn for one carries to the rest.
+loop, so anything you learn for one carries to the rest.
 
 ::: {.feature-grid}
 ::: {.feature}
@@ -92,7 +92,7 @@ cells and live interactive graphics.
 
 ::: {.feature}
 ### Slide decks
-A native slide engine: fragments, presenter view, PDF export, code stepping — and
+A native slide engine: fragments, presenter view, PDF export, code stepping, and
 code that actually runs on the slide.
 
 [Open the live deck →](formats.qmd#slide-decks)
@@ -125,7 +125,7 @@ press <kbd>F</kbd> for fullscreen, or open it in its own tab.
 ## Edit the code. The output re-runs in place.
 
 A `{python}` or `{r}` cell runs against a warm kernel. Change a parameter and only
-that cell — and the figure it produced — re-renders. The rest of the page never
+that cell (and the figure it produced) re-renders. The rest of the page never
 moves, and the kernel never cold-starts.
 
 {{< video assets/live-code-light.mp4 dark=assets/live-code-dark.mp4 caption="One value changes in the source; the matplotlib figure updates in place, scroll preserved." >}}
@@ -134,13 +134,13 @@ moves, and the kernel never cold-starts.
 
 There is nothing here a screenshot could fake: **this landing page, its
 [documentation book](docs/guide/), and the slide deck above are all built and served by
-qmd-fast** — from plain `.qmd` files in one repository. If it reads well here, the
+qmd-fast**, from plain `.qmd` files in one repository. If it reads well here, the
 framework is doing its job.
 
 ::: {.hero}
 ## Write your next thing in plain text
 
-Author in `.qmd`, preview it live, and ship self-contained HTML — a post, a deck, a
+Author in `.qmd`, preview it live, and ship self-contained HTML: a post, a deck, a
 book, or a site.
 
 [Get started](docs/guide/using/getting-started.html){.btn .btn-primary .btn-lg} [Browse the docs](docs/guide/){.btn .btn-lg}
