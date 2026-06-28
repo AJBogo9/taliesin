@@ -149,6 +149,97 @@ fn concurrent_build_is_self_consistent_across_runs() {
     let _ = fs::remove_dir_all(&base);
 }
 
+/// Write a minimal website whose `index.qmd` carries a `listing:` over a `posts/`
+/// directory of N sibling pages. The index is the canonical *cross-page consumer*: its
+/// rendered cards are built from each sibling's front matter (title/date/description/
+/// category). No code cells, so the build is kernel-free and fast. Returns the sibling
+/// titles in the order the listing should show them (newest date first, the spec default).
+fn write_listing_site(root: &Path, n_posts: usize) -> Vec<String> {
+    fs::create_dir_all(root.join("posts")).unwrap();
+    fs::write(
+        root.join("_site.yml"),
+        "title: Listing Site\nnav:\n  left:\n    - text: Blog\n      href: index.qmd\n",
+    )
+    .unwrap();
+    // The index page: a `listing:` grid over `posts/`. This is the page whose *output*
+    // would depend on its siblings if any build-order edge existed.
+    fs::write(
+        root.join("index.qmd"),
+        "---\ntitle: Blog\nlisting:\n  contents: posts\n  sort: \"date desc\"\n  type: grid\n  categories: true\n---\n\nWelcome to the blog.\n",
+    )
+    .unwrap();
+    // Siblings with ascending dates → the listing (date desc) shows them newest first.
+    let mut titles_newest_first = Vec::new();
+    for i in 0..n_posts {
+        let title = format!("Post Number {i}");
+        let dir = root.join(format!("posts/post-{i}"));
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("index.qmd"),
+            format!(
+                "---\ntitle: \"{title}\"\ndate: \"2026-01-{day:02}\"\n\
+                 description: \"Summary of post {i}.\"\ncategories: [cat{i}]\n---\n\n\
+                 # {title}\n\nBody of post {i}.\n",
+                day = i + 1,
+            ),
+        )
+        .unwrap();
+        titles_newest_first.push(title);
+    }
+    titles_newest_first.reverse(); // newest date (highest i) first
+    titles_newest_first
+}
+
+/// Cross-page ordering safety (Task 9). A `listing:` index page is the canonical case the
+/// brief flags: its output is assembled from its *sibling* pages. We assert two things at
+/// once: (1) the jobs=1 and jobs=N builds are byte-identical (so concurrency never reordered
+/// what the index renders), and (2) the index's cards reflect *every* sibling, in the
+/// listing's declared order. Together these lock in the finding that this path has **no
+/// build-order dependency**: listing cards come from sibling front matter resolved on the
+/// in-memory `Site` model at discovery (before any page builds), never from a sibling's
+/// rendered HTML — so a future change that started reading built output would break this.
+#[test]
+fn listing_index_reflects_all_siblings_jobs1_vs_jobs_n() {
+    let base = tmp_dir("listing");
+    let seq_root = base.join("seq");
+    let par_root = base.join("par");
+    let titles_newest_first = write_listing_site(&seq_root, 6);
+    write_listing_site(&par_root, 6);
+
+    let seq = build_and_collect(&seq_root, "_site", "1");
+    let par = build_and_collect(&par_root, "_site", "4");
+
+    // (1) Determinism: the whole site (index + every post) is byte-identical.
+    assert_identical(&seq, &par);
+
+    // (2) The concurrent index reflects every sibling, in listing order. Read the
+    //     concurrently-built index (the harder case: posts may finish in any order).
+    let index = String::from_utf8(par["index.html"].clone()).expect("index.html is utf-8");
+    let mut last_pos = 0usize;
+    for title in &titles_newest_first {
+        let needle = format!("class=\"qmd-card-title\">{title}</h3>");
+        let pos = index.as_str()[last_pos..].find(&needle).unwrap_or_else(|| {
+            panic!(
+                "listing index is missing sibling card `{title}` (or it is out of date-desc \
+                 order) under a concurrent build — cross-page listing aggregation is not \
+                 honoring all siblings:\n{index}"
+            )
+        });
+        last_pos += pos + needle.len();
+    }
+    // Each sibling's description + category also rode along (card built from front matter).
+    assert!(
+        index.contains("Summary of post 0."),
+        "listing card did not carry the sibling's description"
+    );
+    assert!(
+        index.contains("data-cat=\"cat0\""),
+        "listing card did not carry the sibling's category badge/filter"
+    );
+
+    let _ = fs::remove_dir_all(&base);
+}
+
 /// Write a minimal multi-page site (`_site.yml` + N pages) whose Python cells emit
 /// **deterministic** output (arithmetic + a fixed DataFrame — no matplotlib, whose PNG
 /// bytes are nondeterministic even between two sequential runs, see the doc note below).
