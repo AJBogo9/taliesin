@@ -556,14 +556,16 @@
     }
     // warming-kernel or executing: show dot + k/N text + mini bar
     var isWarming = msg.phase === "warming-kernel";
-    var label = isWarming ? "warming " + msg.lang : msg.ran + "/" + msg.total;
     var barPct = (msg.total > 0 && !isWarming) ? (msg.ran / msg.total) : 0;
     el.innerHTML =
       "<span class=\"qmd-prog-dot\"></span>" +
-      "<span class=\"qmd-prog-label\">" + label + "</span>" +
+      "<span class=\"qmd-prog-label\"></span>" +
       "<span class=\"qmd-prog-bar\" aria-hidden=\"true\">" +
         "<span class=\"qmd-prog-fill\" style=\"width:" + Math.round(barPct * 100) + "%\"></span>" +
       "</span>";
+    // Set label via textContent so server-controlled msg.lang cannot inject HTML
+    el.querySelector(".qmd-prog-label").textContent =
+      isWarming ? "warming " + msg.lang : msg.ran + "/" + msg.total;
     el.setAttribute("data-state", "busy");
     el.title = "Click to scroll to active cell";
     document.title = "● building… — " + baseTitle;
