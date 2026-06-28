@@ -59,6 +59,38 @@ doubled letter) without guessing wildly at a key that is simply absent from qmd-
 vocabulary. When nothing is close enough, the message is just the bare "unknown" form,
 no misleading suggestion.
 
+## The prose linter (opt-in)
+
+The vocabulary checks above are always on; the prose linter (`prose.rs`) is the one
+validator a document **opts into**, since prose rules are a matter of taste. It stays off
+unless the front matter sets a `prose-lint:` key: `prose-lint: true` enables the built-in
+rules, and a mapping form additionally reads a custom `banned:` string list
+(`prose-lint:` with `banned: [utilize, leverage]`). Any other value (`false`, null, a
+scalar) leaves it off.
+
+It is markdown-aware and, like every other validator, **purely diagnostic**: it returns
+`(line, message)` pairs that render maps onto the same located, click-to-source channel
+as a broken xref or an unknown key. The messages carry no prefix; they read like
+"repeated word `we`", "weasel word `very` (consider cutting)", or "banned term
+`utilize`". Three high-precision rules ship:
+
+- **doubled words** (`the the`),
+- a fixed list of **weasel words** (`very`, `really`, `just`, `actually`, `basically`,
+  `simply`, `clearly`, `obviously`, ...), and
+- the document's own **banned-terms** list.
+
+All three are whole-word and case-insensitive. The scanner first strips everything that
+is not prose, front matter, fenced code blocks, `:::` fence lines, inline code, math,
+link/image targets, autolinks, and HTML tags, so only running prose is checked (a `very`
+inside `$...$` or a banned term in a code span never fires).
+
+Because the linter scans the fully-expanded source (after `{{< include >}}` resolution),
+a hit inside an included partial is attributed back to that partial's file and line, the
+same source-map the block model uses. Only the **top-level** document's `prose-lint:` key
+controls whether it runs, though: an included partial can't turn the linter on or off.
+The warnings flow through the normal `doc.warnings` channel, so they appear in both the
+live preview's dev panel and `qmd-fast check`.
+
 ## The clean break: no Quarto-tolerance tier
 
 A key that is unknown because it is a *Quarto* term qmd-fast does not implement is
@@ -106,3 +138,41 @@ server to build or install**, just two schema files and the YAML support the edi
 already has. The authoring side is covered in the [Configuration
 reference](../guide/reference/configuration.html); the config validator's role in a
 multi-page project is in [the multi-page subsystem](sites.qmd).
+
+## `qmd-fast check`: the static preflight superset
+
+`qmd-fast check <file|dir>` renders the document **in memory**, with **no code
+execution**, lists every located diagnostic (greppable `path:line: message` lines, or
+`--format json` for a CI gate), and exits non-zero if any are found. It is a strict
+*superset* of what preview and build surface: it collects `doc.warnings` (every validator
+above) **and** a family of static document lints that only `check` runs, all on the same
+click-to-source channel. The lints live in `diagnostics.rs` and are read-only static
+analysis over the rendered block model, plus the cross-page checks in the site layer:
+
+| Check | Function | What it catches |
+|---|---|---|
+| Cross-references | `cite::validate_xrefs` | a `@fig-`/`@sec-`/... pointing at no label |
+| Duplicate heading ids | `validate_duplicate_heading_ids` | two headings emitting the same explicit `{#id}` |
+| In-page anchors | `validate_internal_anchors` | a `[text](#anchor)` matching no element id |
+| Local images | `validate_local_assets` | an `<img src>` whose file is missing under the doc dir |
+| Local video | `validate_local_media` | a `{{< video clip.mp4 >}}` / `<video src>`/`poster=` whose file is missing |
+| Local links | `validate_local_links` | a relative `[text](other.qmd)` link whose target file (or its `.qmd` source) is missing |
+| Reactive graph | `validate_js_reactive_graph` | a `{js}` cell's `//\| input:` naming nothing defined, or a dependency cycle |
+| Accessibility | `validate_a11y` | a heading-level skip, an `<a>`/`<button>` with no accessible name, an `<img>` with no `alt` |
+| Citations | `citations_without_bibliography` | references present but no `bibliography:` declared |
+
+Each lint is conservative by design, so a green `check` is a no-false-positive promise.
+Two patterns recur: anything a static (no-execution) pass can't resolve is **skipped**
+rather than guessed at, so the internal-anchor and dangling-input checks bail out for any
+document with executable cells (a `{python}`/`{r}` cell can emit an id, or an `ojs_define`
+can publish a name, at runtime); and image-only asset checks skip `<audio>`/streamed
+media a static pass can't verify. A `.html` link whose `.qmd` source exists on disk is
+accepted (the site build will emit the page), so an intra-project link is never
+false-flagged. External links are never fetched: `check` stays offline and deterministic.
+
+A site `check` runs the same per-page lints over every discovered page, then adds the
+cross-page link + anchor existence check (`Site::validate_cross_page_links`), which a
+single-doc `check` can't do because only the page registry knows each `.qmd`'s real
+output URL. A directory that has a `_quarto.yml` but no `_site.yml` gets a migration
+breadcrumb instead of the confusing "no `_site.yml`" diagnostic. Using `check` in
+practice is covered in the guide's [CLI reference](../guide/reference/cli.html).

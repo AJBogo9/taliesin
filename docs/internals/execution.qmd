@@ -286,6 +286,38 @@ re-execution, the same trick the theme-matched `{{< video >}}` uses. Only data c
 are left untouched; a `#| fig-export:` writes the *pristine* figure to disk before any
 recolouring.
 
+## How generated outputs reach the build
+
+Inline kernel images, a matplotlib figure, an `image/png`, an SVG, are emitted as `data:`
+URIs baked straight into the cell's output HTML, so they ship inside the page and need no
+sidecar copy at all. A file a cell **writes to disk** (a `#| fig-export:` PNG, a `ggsave`,
+audio from `scipy.io.wavfile`) is different: it lands in the document's own directory,
+because each `Executor` runs `.in_dir(<doc dir>)` and the kernel inherits that working
+directory (see [the warm kernel](#the-warm-kernel-kernel-rs)). The cell then references it
+with a relative `src=`, e.g. `<img src="figures/plot.png">`.
+
+The `build` subcommand collects those references so the output is portable, but the two
+build shapes do it differently:
+
+- **A single-document `build`** (`build doc.qmd --out <dir>`, or `build doc.qmd out.html`
+  into another directory) runs `copy_local_assets` over the rendered HTML **after**
+  execution: it scans every `src=`/`href=` value (`local_refs`), keeps the local ones
+  (`is_local_ref` drops external URLs, `data:` URIs, in-page anchors), strips any
+  `?query`/`#fragment`, and copies each existing file to the same relative path beside the
+  page. Because the scan runs after the cells ran, a freshly written `#| fig-export:`
+  figure is on disk and gets picked up like any hand-placed image. A separate pass
+  (`copy_js_imports`) follows a `{js}` cell's relative `import()`/`fetch()` specifiers,
+  which the `src=`/`href=` scan can't see, and `copy_resources` copies a format
+  extension's `format-resources` by file name. An **in-place** build (output beside the
+  source) skips every self-copy.
+- **A site `build`** does not scan HTML at all. `mirror_assets` walks the whole source
+  tree once and mirrors every non-source file into `_site/` at the same relative path,
+  skipping `.qmd`/`.bib`/`.Rproj` sources, `_`-prefixed and dot entries, and build-cache
+  residue (`*_cache`/`*_files`). Since this mirror runs **before** the pages render, a
+  figure a cell generates *this* build is not in the mirror unless it was already on disk
+  (for instance restored from `_freeze/` on a prior run); a clean rebuild of a doc that
+  writes a new sidecar file is the one case to keep in mind.
+
 ## Resilience
 
 `ensure_kernel` makes a missing or crashed kernel a recoverable, visible

@@ -25,8 +25,10 @@ theme: dark
 ```
 
 Only `theme: light` (or `theme: default`) starts light; everything else, including
-no `theme:` at all, resolves to "auto", which the pre-paint script settles to **dark**
-(there is no OS-following mode). `theme: dark` is dark for the same reason. Either way
+no `theme:` at all, resolves to "auto", which the pre-paint script settles to **dark**.
+A standalone page never follows the OS; the one exception is `--bare` output, a fragment
+that ships no pre-paint script and so falls back to the OS `prefers-color-scheme`.
+`theme: dark` is dark for the same reason. Either way
 the reader can still flip the page with the theme toggle (the site navbar's button, or
 the dev menu on a single doc), and the choice persists in their browser. A page with a
 *custom* CSS theme that doesn't name a built-in mode is one of those "auto" cases, so it

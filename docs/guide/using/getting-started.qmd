@@ -45,6 +45,28 @@ shows a quiet "kernel unavailable" note instead of failing, so you can always st
 writing and add a kernel later. The kernel setup is covered in more depth (and with
 the same callout) in [Executable content](code.qmd).
 
+## Environment variables
+
+Every knob the server reads from the environment, in one place. None are required:
+the defaults work, and the only ones most projects ever set are the kernel paths.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `QMD_FAST_PYTHON` | `python3` | Python binary (with `ipykernel`) used for `{python}` cells |
+| `QMD_FAST_R` | `R` | R binary (with `IRkernel`) used for `{r}` cells |
+| `QMD_FAST_CELL_TIMEOUT` | `120` | Per-cell wall-clock seconds before a runaway cell is interrupted (SIGINT); `0` disables the cap |
+| `QMD_FAST_NO_CACHE` | unset | When set, skip the `_freeze/` execution cache (no reads, no writes) for this run |
+| `QMD_FAST_NO_EXEC` | unset | When set, never run code cells (render them as source); same as `--no-exec` |
+| `QMD_FAST_OPEN` | unset | When set, open the preview in a browser on start; same as `--open` |
+| `QMD_FAST_HOST` | unset | When set, expose the preview on the LAN; same as `--host` |
+| `QMD_FAST_NO_CLEAR` | unset | When set, keep the dev-server console from clearing the screen between renders |
+| `QMD_FAST_MERMAID_URL` | jsDelivr CDN | Override the Mermaid library URL (a relative path next to the site, or an absolute one) to self-host diagrams offline |
+
+`QMD_FAST_*` flags that have a `--flag` equivalent (`--open`, `--host`, `--no-exec`)
+are read on the same run; the flag and the variable mean the same thing, so use
+whichever fits (the variable is handy in CI). The kernel paths and
+`QMD_FAST_CELL_TIMEOUT` come up most; the rest are situational.
+
 ## Scaffold a project (the fast path)
 
 The quickest way to a previewable project is `init`, which writes a minimal

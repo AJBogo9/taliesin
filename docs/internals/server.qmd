@@ -55,19 +55,45 @@ with an op stream).
 
 The rebuild runs in a spawned task, so a panic in the render/exec path would
 silently kill hot-reload for the rest of the session. `rebuild_guarded` wraps each
-rebuild in `catch_unwind`: a panic is logged, surfaced to the client as an error
-overlay, and the loop survives: the next good save recovers. (Because the state
-is a `parking_lot::Mutex`, a panic mid-update releases the lock cleanly instead of
-poisoning it.)
+rebuild in `catch_unwind` (via `AssertUnwindSafe` over the awaited future, so the
+panic is caught rather than propagated): on a caught panic it pulls a human message
+off the payload (`panic_msg` downcasts the `Box<dyn Any>` to `&str`/`String`), logs
+it, marks the doc `errored`, and broadcasts a `protocol::error` so every connected
+client shows an error overlay. The loop itself survives, so the next good save
+re-renders and clears the overlay (the `errored` flag makes that recovery a full
+re-mount even when the diff is empty). The **initial render** is guarded the same
+way: a document that panics the renderer on first load surfaces the panic as a
+connect-time diagnostic instead of crashing startup, so the server still comes up
+and can show the error. Because `AppState.doc` is a `parking_lot::Mutex` (not
+`std::sync::Mutex`), a panic while the lock is held releases it cleanly rather than
+poisoning it, so the next rebuild can take the lock normally.
 
 ### The watcher
 
-`spawn_watcher` runs `notify` on its own thread and forwards relevant events to
-the rebuild task. `relevant_event` filters to source/asset extensions (`.qmd`,
-`.bib`, `.css`, images, …) outside build-output/VCS dirs (`_site`, `_book`,
-`.git`), so an unrelated save doesn't trigger a wasteful 0-op rebuild.
-`watch_dirs` watches the document's directory **plus every `{{< include >}}`d
-file's directory**, so editing an included partial refreshes the preview too.
+`spawn_watcher` runs `notify` on its own thread (notify is synchronous; the thread
+just parks to stay alive) and forwards qualifying events to the rebuild task through
+the same `kick` channel the dev-menu restart uses. It reacts only to
+`Modify`/`Create`/`Remove` event kinds, then applies `relevant_path` to each touched
+path: the extension must be a known source/asset type, and no path component may be a
+generated or VCS directory. The two lists are explicit:
+
+- **extensions:** `qmd`, `md`, `bib`, `csl`, `css`, `scss`, `yml`, `yaml`, `json`,
+  `js`, `html`, `svg`, `png`, `jpg`, `jpeg`, `webp`, `gif`;
+- **skipped directories:** `_site`, `_book`, `_freeze`, `.git`, `.quarto`,
+  `node_modules`.
+
+Skipping `_freeze` matters: the executor writes its own cache there on every run, and
+without the skip each write would kick a redundant rebuild. The filter as a whole
+keeps an unrelated save (an editor swap file, a build-output write) from triggering a
+wasteful 0-op rebuild.
+
+A burst of saves is debounced in the rebuild task, not the watcher: on the first
+`kick` it sleeps ~80 ms and then drains any further pending kicks (`try_recv` in a
+loop) before doing one rebuild, so a save that touches several files coalesces into a
+single re-render. `watch_dirs` watches the document's own directory **plus the
+directory of every `{{< include >}}`d file** (recursively, via
+`includes::dependencies`), so editing an out-of-tree included partial still refreshes
+the preview.
 
 ## Multi-page server (`serve_site.rs`)
 

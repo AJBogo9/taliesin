@@ -2,6 +2,8 @@
 title: "Cell-options reference"
 ---
 
+*Reference: [CLI](cli.qmd) · [Front matter](frontmatter.qmd) · Cell options · [Configuration](configuration.qmd) · [Shortcodes](shortcodes.qmd) · [Troubleshooting](troubleshooting.qmd)*
+
 A code cell carries per-cell options on its leading comment lines. These tune
 whether the source shows, whether the cell runs, whether its output is cached, and
 how the output is captioned, numbered, and cross-referenced. This page is the

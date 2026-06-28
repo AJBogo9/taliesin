@@ -2,6 +2,8 @@
 title: "Troubleshooting"
 ---
 
+*Reference: [CLI](cli.qmd) · [Front matter](frontmatter.qmd) · [Cell options](cell-options.qmd) · [Configuration](configuration.qmd) · [Shortcodes](shortcodes.qmd) · Troubleshooting*
+
 The preview surfaces most problems as a small **diagnostics** note in the corner
 (non-fatal) or a dismissible **error overlay** (a failed render). Here are the
 common ones.

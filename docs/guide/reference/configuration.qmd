@@ -2,6 +2,8 @@
 title: "Configuration reference"
 ---
 
+*Reference: [CLI](cli.qmd) · [Front matter](frontmatter.qmd) · [Cell options](cell-options.qmd) · Configuration · [Shortcodes](shortcodes.qmd) · [Troubleshooting](troubleshooting.qmd)*
+
 Two places hold configuration: a document's **YAML front matter** (the `---`
 block at the top), and a project's **`_site.yml`** (for a site or book). The
 project config uses a flat, native schema. A Quarto-shaped nested config (a

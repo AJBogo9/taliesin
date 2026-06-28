@@ -2,6 +2,8 @@
 title: "CLI reference"
 ---
 
+*Reference: CLI · [Front matter](frontmatter.qmd) · [Cell options](cell-options.qmd) · [Configuration](configuration.qmd) · [Shortcodes](shortcodes.qmd) · [Troubleshooting](troubleshooting.qmd)*
+
 | Command | Effect |
 |---|---|
 | `preview <file.qmd> [port]` | Live preview server (default port 4321; aliases `dev`, `serve`) |

@@ -28,14 +28,37 @@ on Mac) any block to open its exact source line in your editor** (including acro
 add reverse cursor sync (highlighting the block under your cursor) without forking
 anything. The in-repo **VS Code companion** (`editor/vscode/`) is exactly that host.
 
+## The dev menu
+
+Every live preview carries a small **dev menu**: a `</>` button tucked in the
+bottom corner of the page, styled after the Next.js dev indicator. It belongs to
+the preview only, so a static `build` never ships it.
+
+The button itself is a **connection light**: a coloured dot that reads *live* while
+the websocket is connected, *reconnecting* while the server restarts, and *error*
+on a failed render. A small badge appears on it when there are diagnostics waiting.
+
+Click it to expand a panel with the preview-only tools:
+
+- **Status** and a live **word count / reading time** for the prose.
+- **Restart kernel**: drops the warm Jupyter kernel and re-runs every cell against
+  a fresh one. Reach for it when the kernel wedges, or after you fix
+  `QMD_FAST_PYTHON` or install a missing package and want a clean replay.
+- A reminder that **Alt-click (Option-click on Mac)** opens any block's source in
+  your editor.
+- On a single-document preview, a **theme toggle** (light/dark). A site puts that
+  toggle in its navbar instead, so the dev menu only adds one when the page chrome
+  has none.
+- The **diagnostics** list (detailed below), each entry click-to-source, with the
+  button's badge tracking the count.
+
 ## Live-edit feedback
 
 The loop surfaces what is happening without you watching the terminal:
 
-- The control bar shows a live **word count and reading time** for the prose.
 - A non-fatal problem (a broken `{{< include >}}`, a missing kernel, a typo'd
-  extension, a **broken `[@citation]` or `@cross-reference`**) appears as a small
-  **diagnostics** note in the corner.
+  extension, a **broken `[@citation]` or `@cross-reference`**) appears in the dev
+  menu's **diagnostics** list.
 - A **broken front matter** points right at the bad line: the diagnostic shows a
   small code frame and is clickable to open that line in your editor.
 - An advisory **accessibility audit** scans the rendered output for a handful of
@@ -82,6 +105,6 @@ token. The token is regenerated every server start, so scan the current QR or co
 the current URL: an old link from a previous run stops working, and a bare
 `http://<lan-ip>:<port>/` typed by hand (or by a snooping neighbour) is refused.
 
-Pressing <kbd>Cmd/Ctrl-P</kbd> gives a clean print/PDF: the control bar, TOC
-handle, and diagnostics are hidden, the palette forces light, and content flows
+Pressing <kbd>Cmd/Ctrl-P</kbd> gives a clean print/PDF: the dev menu, the TOC
+handle, and any diagnostics are hidden, the palette forces light, and content flows
 full width without clipping code, tables, or math.

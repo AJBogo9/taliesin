@@ -2,6 +2,8 @@
 title: "Shortcode reference"
 ---
 
+*Reference: [CLI](cli.qmd) · [Front matter](frontmatter.qmd) · [Cell options](cell-options.qmd) · [Configuration](configuration.qmd) · Shortcodes · [Troubleshooting](troubleshooting.qmd)*
+
 A shortcode is a `{{< name args >}}` tag in the body of a document. qmd-fast
 expands the built-in shortcodes (and any an extension declares) in a single pass
 **before** the Markdown is parsed, so the result is just HTML or Markdown by the

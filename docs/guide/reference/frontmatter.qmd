@@ -53,7 +53,7 @@ or `{ file: … }` map, or a list of those.
 | `extensions` | list | `_extensions/<name>/` directories to load (shortcodes, format theming) |
 | `page-layout` | string | `full` widens the content column (good for listing indexes); the default is the reading-width column |
 | `image` | string | The image on a `listing:` card; also the social-card / OpenGraph image (the `og:image`/`twitter:image` tags are emitted for **site/book builds only**, never for a single-file `build`/`render`) |
-| `image-alt` | string | Recognized so it never warns, but the top-level key has **no rendering effect**: the only `image-alt` actually read is the `about:` sub-key (alt text for an `about:` profile image). Listing-card images emit an empty `alt` |
+| `image-alt` | string | Accepted (so it never warns) but **not rendered** at the page level. The only alt text qmd-fast actually reads is the `about:` block's own `image-alt` sub-key (for an `about:` profile image). A `listing:` card's image is treated as decorative and emits an empty `alt`, since the card's title and description already label the link |
 | `draft` | bool | `true` excludes the page from a website build entirely (output, nav, and listings) |
 | `title-block-style` | string | `none` keeps the title metadata (still drives `<title>`, OpenGraph, nav) but hides the visible `<h1>` title block |
 
