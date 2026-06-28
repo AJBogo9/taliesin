@@ -457,6 +457,11 @@ fn cmd_build(args: &[String]) -> ExitCode {
     let mut out_dir: Option<&str> = None;
     let mut strict = false;
     let mut bare = false;
+    // `--jobs <n>`: max pages built concurrently in a site build. Defaults to 1
+    // (sequential) for now — byte-identical to the historical build. Task 10 flips
+    // the default to memory-aware auto. `Some(0)`/`auto` already means auto in
+    // `concurrency_cap`, so we accept that spelling too.
+    let mut jobs: Option<usize> = Some(1);
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -467,6 +472,16 @@ fn cmd_build(args: &[String]) -> ExitCode {
                     .next()
                     .map(|s| s.as_str())
                     .filter(|s| !s.starts_with("--"));
+            }
+            "--jobs" | "-j" => {
+                jobs = it
+                    .next()
+                    .filter(|s| !s.starts_with("--"))
+                    .map(|s| match s.as_str() {
+                        "auto" => None,
+                        n => Some(n.parse::<usize>().unwrap_or(1)),
+                    })
+                    .unwrap_or(Some(1));
             }
             "--strict" => strict = true,
             // `--bare`: zero-`<script>`, zero-CDN, CSS-only-theme single-doc output.
@@ -491,7 +506,7 @@ fn cmd_build(args: &[String]) -> ExitCode {
             );
             return ExitCode::FAILURE;
         }
-        return build_site(Path::new(path), out_dir, strict);
+        return build_site(Path::new(path), out_dir, strict, jobs);
     }
     let mode = if bare {
         qmd_fast_core::OutputMode::Bare
@@ -941,20 +956,139 @@ fn mount_warnings(mounts: &[qmd_fast_core::site::Mount], root: &Path, out: &Path
         .collect()
 }
 
-fn build_site(root: &Path, out_override: Option<&str>, strict: bool) -> ExitCode {
+/// Estimated peak RSS of one warm kernel (Python/R), in MiB. Used by the memory-aware
+/// concurrency cap so a site build doesn't spawn more parallel kernels than free RAM can
+/// hold. Conservative on the high side; pages with no code cells never boot a kernel.
+const PER_KERNEL_MB: u64 = 150;
+
+/// Concurrent page builds move an owned [`exec::Executor`] into a spawned task, so it must
+/// be `Send`. It is — its kernel handles are `tokio::process::{Child, Child*}` (all `Send`)
+/// and everything else is plain data — but assert it at compile time so a future field that
+/// breaks `Send` (e.g. an `Rc`) is caught here, not as an opaque spawn error.
+const _: fn() = || {
+    fn assert_send<T: Send>() {}
+    assert_send::<exec::Executor>();
+};
+
+/// The result of building one page concurrently: the deferred log lines (replayed in
+/// page order so parallel and sequential builds log identically), the `--strict` problem
+/// count, whether a kernel was unavailable, and whether the page file was written.
+///
+/// Logging is *collected*, not emitted, inside the per-page task: only file writes happen
+/// off-thread, and those go to per-page destinations (the page's own `url`, its own
+/// `_freeze/<rel>.json`), so concurrent pages never race on the same path. The caller
+/// replays everything in `site.pages` order, making the whole build deterministic.
+struct PageOutcome {
+    /// Warn lines, in the exact order the sequential build emitted them (cell errors
+    /// first, then render/cross-ref warnings), replayed by the caller in page order.
+    warnings: Vec<String>,
+    problems: usize,
+    kernel_unavailable: bool,
+    written: bool,
+}
+
+/// Build one page: render its markdown, execute its code cells on a *fresh, page-private*
+/// executor (own kernel + own `_freeze/<rel>.json`, cwd = the page's own dir), render the
+/// chrome-wrapped HTML, then write it and copy its resources. Pure w.r.t. shared state:
+/// the only writes are to this page's own output file + freeze file, so it is safe to run
+/// many of these at once. All logging is deferred into the returned [`PageOutcome`].
+async fn build_one_page(
+    site: &qmd_fast_core::Site,
+    page: &qmd_fast_core::site::Page,
+    freeze_dir: &Path,
+    out: &Path,
+    root: &Path,
+) -> PageOutcome {
+    let mut warnings = Vec::new();
+    let Ok(src) = std::fs::read_to_string(&page.input) else {
+        warnings.push(format!("cannot read {}", page.input.display()));
+        return PageOutcome {
+            warnings,
+            problems: 0,
+            kernel_unavailable: false,
+            written: false,
+        };
+    };
+    let base = page.input.parent().unwrap_or(root);
+    let mut doc = qmd_fast_core::render_document_with_includes(&src, base);
+    let mut exec =
+        exec::Executor::with_freeze(freeze::page_path(freeze_dir, &page.rel)).in_dir(base);
+    doc.blocks = exec.run(std::mem::take(&mut doc.blocks)).await;
+    let kernel_unavailable = exec.diagnostic().is_some();
+    let mut problems = 0usize;
+    // A crashed cell bakes its traceback into the page; collect a located line + count it
+    // (same shape/order as the sequential `report_cell_errors`, but deferred).
+    for b in &doc.blocks {
+        if b.html.contains("class=\"qmd-error\"") {
+            problems += 1;
+            let where_ = b
+                .source_file
+                .as_deref()
+                .map(|f| format!("{f} "))
+                .unwrap_or_default();
+            warnings.push(format!(
+                "cell error in {} ({where_}@ {}): code cell raised an uncaught \
+                 exception; its traceback is baked into the output",
+                page.rel, b.sourcepos
+            ));
+        }
+    }
+    let resources = doc.includes.resources.clone();
+    // Surface render warnings *and* broken cross-refs so a broken site doesn't deploy
+    // silently (these previously only showed in the preview dev menu).
+    let (html, render_warnings) = site.render_page_doc_warned(page, doc);
+    for w in &render_warnings {
+        warnings.push(format!("{}: {}", page.rel, w.message));
+    }
+    problems += render_warnings.len();
+    let dest = out.join(&page.url);
+    if let Some(parent) = dest.parent() {
+        let _ = std::fs::create_dir_all(parent);
+        copy_resources(&resources, parent);
+    }
+    let written = match std::fs::write(&dest, html) {
+        Ok(()) => true,
+        Err(e) => {
+            warnings.push(format!("cannot write {}: {e}", dest.display()));
+            false
+        }
+    };
+    PageOutcome {
+        warnings,
+        problems,
+        kernel_unavailable,
+        written,
+    }
+}
+
+fn build_site(
+    root: &Path,
+    out_override: Option<&str>,
+    strict: bool,
+    jobs: Option<usize>,
+) -> ExitCode {
     // Executing code cells needs the async kernel, so the whole site build runs on
-    // a tokio runtime (mirrors the preview server's setup).
-    let rt = match tokio::runtime::Runtime::new() {
+    // a tokio runtime (mirrors the preview server's setup). A multi-thread runtime so
+    // concurrent page builds (each its own kernel) actually overlap on the CPU.
+    let rt = match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+    {
         Ok(rt) => rt,
         Err(e) => {
             log::error(&format!("cannot start runtime: {e}"));
             return ExitCode::FAILURE;
         }
     };
-    rt.block_on(build_site_async(root, out_override, strict))
+    rt.block_on(build_site_async(root, out_override, strict, jobs))
 }
 
-async fn build_site_async(root: &Path, out_override: Option<&str>, strict: bool) -> ExitCode {
+async fn build_site_async(
+    root: &Path,
+    out_override: Option<&str>,
+    strict: bool,
+    jobs: Option<usize>,
+) -> ExitCode {
     // A `_quarto.yml`-only directory gets the migration breadcrumb instead of the
     // site walker's `no _site.yml at <root>` (which names a file the user never made).
     let quarto_hint = quarto_migration_hint(root);
@@ -1020,42 +1154,76 @@ async fn build_site_async(root: &Path, out_override: Option<&str>, strict: bool)
     // 2. Render each page with chrome + rewritten links. Code cells run against a
     //    fresh kernel per page (clean state per document; pages with no cells never
     //    boot one), so the static `_site/` carries real computed outputs.
+    //
+    //    Pages are independent (each writes only its own output + `_freeze/<rel>.json`,
+    //    runs its own kernel in its own cwd), so we build up to `cap` of them at once.
+    //    Determinism is preserved: scheduling only changes *when* a page builds, never
+    //    *what* it produces, and per-page outcomes (file bytes + log lines) are replayed
+    //    in `site.pages` order so a `--jobs N` build is byte- and log-identical to the
+    //    sequential one. `--jobs 1` (today's default) takes the in-order serial path.
+    //    Cross-page ordering edges (a page that must build after another) are deferred to
+    //    Task 9; here every dirty page is treated as independent.
+    let cap = build_budget::concurrency_cap(jobs, PER_KERNEL_MB).max(1);
     let mut pages = 0usize;
     let mut kernel_unavailable = false;
     // `--strict` problem tally across the whole site: per-page located warnings +
     // broken cross-refs + crashed cells (each already logged where it occurs).
     let mut problems = 0usize;
-    for page in &site.pages {
-        let Ok(src) = std::fs::read_to_string(&page.input) else {
-            log::warn(&format!("cannot read {}", page.input.display()));
-            continue;
-        };
-        let base = page.input.parent().unwrap_or(root);
-        let mut doc = qmd_fast_core::render_document_with_includes(&src, base);
-        let mut exec =
-            exec::Executor::with_freeze(freeze::page_path(&freeze_dir, &page.rel)).in_dir(base);
-        doc.blocks = exec.run(std::mem::take(&mut doc.blocks)).await;
-        kernel_unavailable |= exec.diagnostic().is_some();
-        // A crashed cell bakes its traceback into the page; log it located + count it.
-        problems += report_cell_errors(&doc.blocks, &page.rel);
-        let resources = doc.includes.resources.clone();
-        // Surface render warnings *and* broken cross-refs so a broken site doesn't
-        // deploy silently (these previously only showed in the preview dev menu).
-        let (html, warnings) = site.render_page_doc_warned(page, doc);
-        for w in &warnings {
-            log::warn(&format!("{}: {}", page.rel, w.message));
-        }
-        problems += warnings.len();
-        let dest = out.join(&page.url);
-        if let Some(parent) = dest.parent() {
-            let _ = std::fs::create_dir_all(parent);
-            copy_resources(&resources, parent);
-        }
-        match std::fs::write(&dest, html) {
-            Ok(()) => pages += 1,
-            Err(e) => log::warn(&format!("cannot write {}: {e}", dest.display())),
+
+    // Build into a slot per page (indexed by page order) so results aggregate
+    // deterministically regardless of completion order. A `Semaphore` of size `cap`
+    // bounds how many kernels run at once (memory-aware); the pool lookup / file write
+    // each page does is on its own paths, so no lock is held across the `.await`.
+    let site = std::sync::Arc::new(site);
+    let out = std::sync::Arc::new(out);
+    let freeze_dir = std::sync::Arc::new(freeze_dir);
+    let root_arc = std::sync::Arc::new(root.to_path_buf());
+    let sem = std::sync::Arc::new(tokio::sync::Semaphore::new(cap));
+    let mut set: tokio::task::JoinSet<(usize, PageOutcome)> = tokio::task::JoinSet::new();
+    for (idx, _page) in site.pages.iter().enumerate() {
+        let site = site.clone();
+        let out = out.clone();
+        let freeze_dir = freeze_dir.clone();
+        let root_arc = root_arc.clone();
+        let sem = sem.clone();
+        set.spawn(async move {
+            // Hold a permit only for this page's build; dropping it on return frees the
+            // slot for the next queued page. The permit guards kernel count, not any
+            // shared data structure, so nothing is locked across the build's `.await`.
+            let _permit = sem.acquire().await.expect("build semaphore not closed");
+            let page = &site.pages[idx];
+            let outcome = build_one_page(&site, page, &freeze_dir, &out, &root_arc).await;
+            (idx, outcome)
+        });
+    }
+
+    let mut outcomes: Vec<Option<PageOutcome>> = (0..site.pages.len()).map(|_| None).collect();
+    while let Some(joined) = set.join_next().await {
+        match joined {
+            Ok((idx, outcome)) => outcomes[idx] = Some(outcome),
+            // A page task panicked: the catch is the build itself failing, but keep
+            // going so the rest of the site still builds (the missing page just won't
+            // be written). Surface it as a problem.
+            Err(e) => log::error(&format!("page build task failed: {e}")),
         }
     }
+
+    // Replay every page's deferred logs + tally counters in page order, so the build's
+    // output is identical whether it ran 1-wide or N-wide.
+    for outcome in outcomes.into_iter().flatten() {
+        for w in &outcome.warnings {
+            log::warn(w);
+        }
+        problems += outcome.problems;
+        kernel_unavailable |= outcome.kernel_unavailable;
+        if outcome.written {
+            pages += 1;
+        }
+    }
+    // Reclaim the owned values the deck loop below still uses.
+    let site = std::sync::Arc::try_unwrap(site).unwrap_or_else(|arc| (*arc).clone());
+    let out = std::sync::Arc::try_unwrap(out).unwrap_or_else(|arc| (*arc).clone());
+    let freeze_dir = std::sync::Arc::try_unwrap(freeze_dir).unwrap_or_else(|arc| (*arc).clone());
 
     // 3. Build each deck referenced by a `{{< embed >}}` to its own self-contained
     //    `.html` (not a chapter/page: no site chrome), so the embedding iframes

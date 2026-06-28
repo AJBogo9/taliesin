@@ -5,7 +5,6 @@
 //! and CPU core count when running in auto mode.
 
 /// Pure inner function for testing.
-#[allow(dead_code)]
 ///
 /// Semantics:
 /// - `jobs == Some(1)`      → 1 (sequential)
@@ -55,11 +54,10 @@ fn probe_free_mb() -> Option<u64> {
 const FALLBACK_FREE_MB: u64 = 2_048;
 
 /// Public API: returns the number of parallel build jobs to run.
-#[allow(dead_code)]
 ///
 /// `jobs` mirrors `--jobs` CLI flag (`None` / `Some(0)` = auto).
 /// `per_kernel_mb` is the estimated peak RSS per kernel process in MiB.
-pub fn concurrency_cap(jobs: Option<usize>, per_kernel_mb: u64) -> usize {
+pub(crate) fn concurrency_cap(jobs: Option<usize>, per_kernel_mb: u64) -> usize {
     let cores = std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(1);

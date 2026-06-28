@@ -1019,7 +1019,7 @@ mod tests {
             .map(|v| {
                 assert_eq!(v["total"], 3, "total should be the run count: {v}");
                 let ran = v["ran"].as_u64().unwrap();
-                assert!(ran >= 1 && ran <= 3, "ran out of [1,total]: {v}");
+                assert!((1..=3).contains(&ran), "ran out of [1,total]: {v}");
                 ran
             })
             .collect();

@@ -185,6 +185,6 @@ mod tests {
         assert_eq!(v["cell_id"], "abc");
         assert_eq!(v["state"], "running");
         assert_eq!(v["started_ms"], 1000);
-        assert!(v.get("duration_ms").map_or(true, |d| d.is_null()));
+        assert!(v.get("duration_ms").is_none_or(|d| d.is_null()));
     }
 }
