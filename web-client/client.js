@@ -480,6 +480,9 @@
   // --- progress chip: idle/busy dot, k/N bar, click-to-scroll, tab-title/favicon ---
   var progressEl = /** @type {HTMLElement|null} */ (null);
   var buildStartMs = /** @type {number|null} */ (null); // set on first non-idle build-state
+  var warmStartMs = /** @type {number|null} */ (null); // set at first warming-kernel of a build
+  var warmTimer = 0; // interval id ticking the warm-up elapsed label
+  var buildErrored = false; // latched on `error`; cleared only when a fresh build starts
   var baseTitle = document.title || "qmd-fast"; // save original title for restore
 
   // Canvas-drawn favicon: a coloured dot superimposed on the base favicon SVG.
@@ -525,9 +528,21 @@
     return progressEl;
   }
 
+  // Stop the warm-up elapsed ticker (called whenever we leave the warming phase).
+  function stopWarmTimer() {
+    if (warmTimer) { clearInterval(warmTimer); warmTimer = 0; }
+    warmStartMs = null;
+  }
+
   function updateProgress(/** @type {BuildStateMsg} */ msg) {
     var el = ensureProgress();
     if (msg.phase === "idle") {
+      // Honest failures: a build that settled on `error` must NOT be flipped to
+      // "Up to date" by a stray/later `idle` for that same failed build. The server
+      // no longer emits a trailing `idle` after a boot failure, but we latch here
+      // too so the error chip survives until a genuinely new build begins.
+      if (buildErrored) return;
+      stopWarmTimer();
       var elapsed = buildStartMs !== null ? Math.round((Date.now() - buildStartMs) / 1000) : null;
       buildStartMs = null;
       var elapsedTxt = elapsed !== null ? ", built in " + elapsed + "s" : "";
@@ -542,9 +557,12 @@
       setFaviconDot(null);
       return;
     }
-    // First non-idle message: start the build timer
-    if (buildStartMs === null) buildStartMs = Date.now();
+    // A fresh build starting (first non-idle message) clears any latched error and
+    // starts the build timer.
+    if (buildStartMs === null) { buildStartMs = Date.now(); buildErrored = false; }
     if (msg.phase === "error") {
+      buildErrored = true; // latch: subsequent `idle` won't overwrite the error chip
+      stopWarmTimer();
       el.innerHTML =
         "<span class=\"qmd-prog-dot\"></span>" +
         "<span class=\"qmd-prog-label\">Error</span>";
@@ -554,22 +572,50 @@
       setFaviconDot("#e5534b");
       return;
     }
-    // warming-kernel or executing: show dot + k/N text + mini bar
+    // warming-kernel: a distinct, timed phase — "Starting <lang> kernel… (Ns)". No
+    // k/N bar (nothing has run yet), and queued cells stay `queued` (the server emits
+    // no `running` cell-state during warm-up), so nothing falsely shows as running.
     var isWarming = msg.phase === "warming-kernel";
-    var barPct = (msg.total > 0 && !isWarming) ? (msg.ran / msg.total) : 0;
+    if (isWarming) {
+      if (warmStartMs === null) {
+        warmStartMs = Date.now();
+        warmTimer = setInterval(function () { renderWarming(el, msg.lang); }, 200);
+      }
+      renderWarming(el, msg.lang);
+      el.setAttribute("data-state", "warming");
+      el.title = "Starting kernel…";
+      document.title = "● starting kernel… — " + baseTitle;
+      setFaviconDot("#d9a23a");
+      return;
+    }
+    // executing: show dot + k/N text + mini bar.
+    stopWarmTimer();
+    var barPct = msg.total > 0 ? (msg.ran / msg.total) : 0;
     el.innerHTML =
       "<span class=\"qmd-prog-dot\"></span>" +
       "<span class=\"qmd-prog-label\"></span>" +
       "<span class=\"qmd-prog-bar\" aria-hidden=\"true\">" +
         "<span class=\"qmd-prog-fill\" style=\"width:" + Math.round(barPct * 100) + "%\"></span>" +
       "</span>";
-    // Set label via textContent so server-controlled msg.lang cannot inject HTML
-    el.querySelector(".qmd-prog-label").textContent =
-      isWarming ? "warming " + msg.lang : msg.ran + "/" + msg.total;
+    // Set label via textContent so server-controlled values can't inject HTML.
+    el.querySelector(".qmd-prog-label").textContent = msg.ran + "/" + msg.total;
     el.setAttribute("data-state", "busy");
     el.title = "Click to scroll to active cell";
     document.title = "● building… — " + baseTitle;
     setFaviconDot("#4c8dff");
+  }
+
+  // Render the warm-up chip: a dot + "Starting <lang> kernel… (Ns)". The lang and
+  // elapsed are set via textContent so a server-controlled `lang` can't inject HTML.
+  function renderWarming(/** @type {HTMLElement} */ el, /** @type {string} */ lang) {
+    if (!el.querySelector(".qmd-prog-label")) {
+      el.innerHTML =
+        "<span class=\"qmd-prog-dot\"></span>" +
+        "<span class=\"qmd-prog-label\"></span>";
+    }
+    var secs = warmStartMs !== null ? ((Date.now() - warmStartMs) / 1000).toFixed(1) : "0.0";
+    el.querySelector(".qmd-prog-label").textContent =
+      "Starting " + lang + " kernel… (" + secs + "s)";
   }
 
   // A `{js}` cell can error asynchronously (its async body runs after the mount);

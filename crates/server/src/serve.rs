@@ -674,15 +674,18 @@ pub(crate) const STATUS_CSS: &str = "\
       border: 1px solid color-mix(in srgb, currentColor 20%, transparent); \
       box-shadow: 0 1px 6px rgba(0,0,0,.10); cursor: default; user-select: none; } \
     #qmd-progress[data-state=\"busy\"] { cursor: pointer; } \
+    #qmd-progress[data-state=\"warming\"] { border-color: color-mix(in srgb, #d9a23a 55%, transparent); } \
     #qmd-progress[data-state=\"error\"] { cursor: pointer; border-color: #e5534b; } \
     #qmd-progress[data-state=\"idle\"] { opacity: .65; } \
     .qmd-prog-dot { width: .5rem; height: .5rem; border-radius: 50%; flex: none; \
       background: var(--qmd-muted, #aaa); } \
     #qmd-progress[data-state=\"busy\"] .qmd-prog-dot { background: #4c8dff; } \
+    #qmd-progress[data-state=\"warming\"] .qmd-prog-dot { background: #d9a23a; } \
     #qmd-progress[data-state=\"idle\"] .qmd-prog-dot { background: #3fb950; } \
     #qmd-progress[data-state=\"error\"] .qmd-prog-dot { background: #e5534b; } \
     @media (prefers-reduced-motion: no-preference) { \
-      #qmd-progress[data-state=\"busy\"] .qmd-prog-dot { \
+      #qmd-progress[data-state=\"busy\"] .qmd-prog-dot, \
+      #qmd-progress[data-state=\"warming\"] .qmd-prog-dot { \
         animation: qmd-dot-pulse 1.2s ease-in-out infinite; } \
       @keyframes qmd-dot-pulse { 0%,100% { opacity:1; } 50% { opacity:.3; } } \
     } \

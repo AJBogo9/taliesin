@@ -60,6 +60,25 @@ fn emit(sink: &ProgressSink, msg: String) {
     }
 }
 
+/// Emit a terminal `error` `cell-state` for each cell in the half-open `range`.
+/// Used on the two paths where run-range cells *can't* run: the kernel boot failed,
+/// or it died mid-run before reaching them. Those cells were already announced
+/// `queued`; without this terminal `error` they'd stay `queued` and spin forever in
+/// the client. Pure observation — never changes what executes or caches.
+fn emit_cell_errors(
+    sink: &ProgressSink,
+    page: Option<&str>,
+    cells: &[CellRef],
+    range: std::ops::Range<usize>,
+) {
+    for cell in &cells[range] {
+        emit(
+            sink,
+            crate::protocol::cell_state(page, &cell.id, "error", None, None),
+        );
+    }
+}
+
 /// Wall-clock epoch millis, for tagging `cell-state` messages with a `started_ms`
 /// and computing a cell's `duration_ms`. Saturates to 0 before the epoch (never
 /// happens in practice); only ever observed, so it can't change what runs/caches.
@@ -412,6 +431,21 @@ impl Executor {
             .map(|s| s.kernel.is_some())
             .unwrap_or(false);
 
+        // Kernel BOOT failed (we needed to run cells but couldn't start the kernel).
+        // Be honest: the build did NOT succeed, so it must not later emit a clean
+        // `idle` claiming `ran == total`. Settle on `error` and give every run-range
+        // cell a terminal `error` now, so none stays `queued`/spinning (without a
+        // kernel the execute loop below treats them as instant no-ops and would never
+        // emit a terminal state for them). The cells still render as source.
+        let boot_failed = to_run > 0 && !has_kernel;
+        if boot_failed {
+            emit(
+                &self.sink,
+                crate::protocol::build_state(self.page.as_deref(), "error", 0, to_run as u32, lang),
+            );
+            emit_cell_errors(&self.sink, self.page.as_deref(), cells, shared..run_end);
+        }
+
         // Outputs already known without running, pulled out before the execute loop
         // so they don't hold a borrow on `self` across `exec_cell`: the warm prefix
         // from the live kernel's in-memory record, the tail from the disk cache.
@@ -448,6 +482,15 @@ impl Executor {
                     // would just wait out the full cell timeout on a kernel that will
                     // never reply. Fail fast; the next rebuild detects the dead
                     // kernel, respawns it, and re-runs everything.
+                    //
+                    // This cell was announced `queued`; give it a terminal `error` so it
+                    // doesn't stay queued/spinning forever in the client (it didn't run,
+                    // and won't this pass). `build-state` stays `executing`/settles on
+                    // `idle` for the cells that did run before the crash.
+                    emit(
+                        &sink,
+                        crate::protocol::cell_state(page.as_deref(), &cell.id, "error", None, None),
+                    );
                     outputs.push(KERNEL_DIED_HTML.to_string());
                 } else {
                     // Progress only when the kernel is up; otherwise cells are instant
@@ -548,16 +591,20 @@ impl Executor {
         // The build for this language settled: report `idle` with the full count.
         // An all-cached page (to_run == 0) reaches here without ever emitting
         // `warming-kernel`/`executing`, so its first and only signal is `idle`.
-        emit(
-            &sink,
-            crate::protocol::build_state(
-                page.as_deref(),
-                "idle",
-                to_run as u32,
-                to_run as u32,
-                lang,
-            ),
-        );
+        // Skipped when the kernel boot failed: that build already settled on `error`
+        // above, and a trailing `idle` would falsely overwrite it with "success".
+        if !boot_failed {
+            emit(
+                &sink,
+                crate::protocol::build_state(
+                    page.as_deref(),
+                    "idle",
+                    to_run as u32,
+                    to_run as u32,
+                    lang,
+                ),
+            );
+        }
         outputs
     }
 
@@ -1129,6 +1176,140 @@ mod tests {
             vec!["queued", "running", "done"],
             "the edited last cell must re-run queued→running→done",
         );
+    }
+
+    /// The ordered `build-state` phases emitted, in emission order.
+    fn build_phases(msgs: &[serde_json::Value]) -> Vec<String> {
+        msgs.iter()
+            .filter(|v| v["type"] == "build-state")
+            .map(|v| v["phase"].as_str().unwrap().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn emit_cell_errors_marks_only_the_given_range() {
+        // The seam both failure paths reuse: cells that could not run (boot failed, or
+        // the kernel died before reaching them) must get a terminal `error` so they
+        // never stay `queued`/spinning. Pure (no kernel): a fast, always-run guard that
+        // the run-range → error mapping is exactly the cells in the half-open range.
+        let (sink, captured) = capturing_sink();
+        let cells = vec![cell("b-0"), cell("b-1"), cell("b-2"), cell("b-3")];
+        emit_cell_errors(&sink, Some("ch1.qmd"), &cells, 1..3);
+        let msgs = captured.lock().unwrap();
+        let errored: Vec<&str> = msgs
+            .iter()
+            .filter(|v| v["type"] == "cell-state" && v["state"] == "error")
+            .map(|v| v["cell_id"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            errored,
+            vec!["b-1", "b-2"],
+            "exactly the half-open run range must be marked `error`",
+        );
+        // Page is carried; out-of-range cells emit nothing here.
+        for v in msgs.iter() {
+            assert_eq!(v["page"], "ch1.qmd");
+        }
+        assert_eq!(msgs.len(), 2, "only the two in-range cells emit: {msgs:?}");
+    }
+
+    #[test]
+    fn all_cached_rebuild_emits_one_idle_and_no_running_or_error() {
+        // Brief Step 2: a fully-cached rebuild (warm executor, nothing changed →
+        // to_run == 0) must settle on a single `idle` and never claim a cell ran:
+        // zero `running`/`error` cell-states, zero `warming-kernel`/`executing`.
+        if std::env::var_os("QMD_FAST_PYTHON").is_none() {
+            eprintln!(
+                "SKIPPED (no live kernel): set QMD_FAST_PYTHON to a python with ipykernel to \
+                 exercise the all-cached rebuild; this run did not."
+            );
+            return;
+        }
+
+        let mut ex = Executor::new();
+        ex.set_progress(None, Some("ch1.qmd".into()));
+        let doc = vec![
+            python_cell_block_with("b-1", "a = 1"),
+            python_cell_block_with("b-2", "b = 2"),
+            python_cell_block_with("b-3", "print(a + b)"),
+        ];
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let _ = ex.run(doc.clone()).await; // warm the kernel
+        });
+        if ex.diagnostic().is_some() {
+            return; // no working python kernel here
+        }
+
+        // Re-run the identical doc against the warm executor: to_run == 0.
+        let (sink, captured) = capturing_sink();
+        ex.set_progress(sink, Some("ch1.qmd".into()));
+        rt.block_on(async {
+            let _ = ex.run(doc).await;
+        });
+
+        let msgs = captured.lock().unwrap();
+        let phases = build_phases(&msgs);
+        assert_eq!(
+            phases,
+            vec!["idle"],
+            "an all-cached rebuild must emit exactly one `idle`: {phases:?}",
+        );
+        let cell_msgs: Vec<&str> = msgs
+            .iter()
+            .filter(|v| v["type"] == "cell-state")
+            .map(|v| v["state"].as_str().unwrap())
+            .collect();
+        assert!(
+            cell_msgs.iter().all(|s| *s == "done"),
+            "no cell ran, so no `running`/`error`/`queued` — only `done`: {cell_msgs:?}",
+        );
+    }
+
+    #[test]
+    fn boot_failure_emits_error_build_state_and_errors_run_range_cells() {
+        // Fix 2: when the kernel BOOT fails (to_run > 0 but no live kernel), the build
+        // must be honest — `build-state` `error` (never a trailing clean `idle`
+        // claiming success), and every run-range cell ends on `error`, not stuck at
+        // `queued`. Forced deterministically (no real kernel needed) by pointing the
+        // interpreter at a path that can't start.
+        let (sink, captured) = capturing_sink();
+        let mut ex = Executor::new();
+        ex.python = PathBuf::from("/nonexistent/qmd-fast-no-such-python");
+        ex.set_progress(sink, Some("ch1.qmd".into()));
+        let doc = vec![
+            python_cell_block_with("b-1", "a = 1"),
+            python_cell_block_with("b-2", "b = 2"),
+        ];
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let _ = ex.run(doc).await;
+        });
+        assert!(
+            ex.diagnostic().is_some(),
+            "the bogus interpreter must fail to boot (precondition)",
+        );
+
+        let msgs = captured.lock().unwrap();
+        let phases = build_phases(&msgs);
+        // Warming is announced, then the build settles on `error` — never `idle`.
+        assert!(
+            phases.last() == Some(&"error".to_string()),
+            "a failed boot must settle on `error`, not `idle`: {phases:?}",
+        );
+        assert!(
+            !phases.contains(&"idle".to_string()),
+            "a failed boot must not emit a misleading clean `idle`: {phases:?}",
+        );
+        // No run-range cell is left stuck at `queued`: each ends on `error`.
+        for id in ["b-1", "b-2"] {
+            let states = cell_states(&msgs, id);
+            assert_eq!(
+                states.last(),
+                Some(&"error".to_string()),
+                "run-range cell {id} must end on `error`, not stay queued: {states:?}",
+            );
+        }
     }
 
     #[tokio::test]
