@@ -338,3 +338,10 @@ return Plot.lineY(ys, { stroke: "#4c8dff" }).plot({ height: 240 });
 :::
 ````
 :::
+
+## It is all just qmd-fast
+
+Every demo on this page is plain text in one `.qmd` file, served by qmd-fast itself,
+exactly like this whole site. Nothing here is a screenshot or a recording. See the
+full feature set on the [Features](features.qmd) page, or open the **Guide** in the
+nav to start writing your own.
