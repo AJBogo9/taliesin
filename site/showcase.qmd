@@ -247,3 +247,41 @@ return wrap;
 ````
 
 :::
+
+## A live equation and its plot
+
+The square wave is a sum of odd harmonics. Drag $N$ and watch the partial sum
+sharpen toward the square. The equation is rendered offline by KaTeX, the chart by
+the vendored Observable Plot, and both react to the same slider:
+
+$$ f(t)=\sum_{k=1}^{N}\frac{\sin\!\big((2k-1)\,2\pi t\big)}{2k-1}. $$
+
+::: {.panel-tabset}
+
+### Result
+
+{{< input name="harmonics" type="slider" min="1" max="24" step="1" value="5" label="N (harmonics)" >}}
+
+```{js}
+//| input: harmonics
+//| echo: false
+const N = qmd.value("harmonics");
+const ys = Array.from({ length: 500 }, (_, t) =>
+  d3.range(1, N + 1).reduce((s, k) => s + Math.sin(2 * Math.PI * (2 * k - 1) * t / 500) / (2 * k - 1), 0));
+return Plot.lineY(ys, { curve: "basis", stroke: "#4c8dff" })
+  .plot({ height: 240, marginLeft: 40, x: { label: "t" }, y: { label: "amplitude" } });
+```
+
+### Source
+
+```js
+//| input: harmonics
+//| echo: false
+const N = qmd.value("harmonics");
+const ys = Array.from({ length: 500 }, (_, t) =>
+  d3.range(1, N + 1).reduce((s, k) => s + Math.sin(2 * Math.PI * (2 * k - 1) * t / 500) / (2 * k - 1), 0));
+return Plot.lineY(ys, { curve: "basis", stroke: "#4c8dff" })
+  .plot({ height: 240, marginLeft: 40, x: { label: "t" }, y: { label: "amplitude" } });
+```
+
+:::
