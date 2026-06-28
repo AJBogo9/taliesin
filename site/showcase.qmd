@@ -285,3 +285,56 @@ return Plot.lineY(ys, { curve: "basis", stroke: "#4c8dff" })
 ```
 
 :::
+
+## Code that explains itself as you read
+
+The reactive chart above is six lines. Scroll this walkthrough and the focus moves
+down the code as each line is explained. The scroll-synced highlight is the
+framework's `.code-walkthrough` feature, a sticky code panel beside scrolling steps.
+
+::: {.code-walkthrough}
+
+```js
+//| input: harmonics
+const N = qmd.value("harmonics");
+const ys = Array.from({ length: 500 }, (_, t) =>
+  d3.range(1, N + 1).reduce(
+    (s, k) => s + Math.sin(2 * Math.PI * (2 * k - 1) * t / 500) / (2 * k - 1), 0));
+return Plot.lineY(ys, { stroke: "#4c8dff" }).plot({ height: 240 });
+```
+
+::: {.step lines="1"}
+The `//| input: harmonics` directive subscribes this cell to the `harmonics` control. qmd-fast re-runs the cell, and only this cell, whenever that value changes.
+:::
+::: {.step lines="2"}
+`qmd.value("harmonics")` reads the slider's current number out of the reactive scope.
+:::
+::: {.step lines="3-5"}
+Build the partial sum: for each of 500 sample points, add up the first `N` odd harmonics.
+:::
+::: {.step lines="6"}
+Return an Observable Plot chart. A `{js}` cell mounts whatever DOM node it returns, so there is no glue code between the data and the page.
+:::
+
+:::
+
+::: {.callout-note collapse="true"}
+## The markdown behind this walkthrough
+
+````markdown
+::: {.code-walkthrough}
+```js
+//| input: harmonics
+const N = qmd.value("harmonics");
+const ys = Array.from({ length: 500 }, (_, t) =>
+  d3.range(1, N + 1).reduce(
+    (s, k) => s + Math.sin(2 * Math.PI * (2 * k - 1) * t / 500) / (2 * k - 1), 0));
+return Plot.lineY(ys, { stroke: "#4c8dff" }).plot({ height: 240 });
+```
+::: {.step lines="1"} ... :::
+::: {.step lines="2"} ... :::
+::: {.step lines="3-5"} ... :::
+::: {.step lines="6"} ... :::
+:::
+````
+:::
