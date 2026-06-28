@@ -117,6 +117,26 @@ pub fn build_state(page: Option<&str>, phase: &str, ran: u32, total: u32, lang: 
     .to_string()
 }
 
+/// `cell-state`: per-cell execution state. `state` is one of
+/// "queued" | "running" | "done" | "error". `started_ms`/`duration_ms` are epoch
+/// millis / elapsed millis when known; the client ticks the live timer itself.
+/// `cell_id` is the cell's own id (the same id the output block is built from as
+/// `{cell_id}-out`), so the client can target that block. `page` is the source
+/// rel-path for the multi-page server, `None` for the single-doc server.
+pub fn cell_state(
+    page: Option<&str>,
+    cell_id: &str,
+    state: &str,
+    started_ms: Option<u64>,
+    duration_ms: Option<u64>,
+) -> String {
+    serde_json::json!({
+        "type": "cell-state", "page": page, "cell_id": cell_id,
+        "state": state, "started_ms": started_ms, "duration_ms": duration_ms
+    })
+    .to_string()
+}
+
 /// A single incremental block op. `rewrite_html` is applied to the block HTML of
 /// `Update`/`Insert` before it goes over the wire: identity for the single-doc
 /// server, and `.qmd`→`.html` link rewriting for the site server.
@@ -155,5 +175,16 @@ mod tests {
         assert_eq!(v["ran"], 3);
         assert_eq!(v["total"], 8);
         assert_eq!(v["lang"], "python");
+    }
+
+    #[test]
+    fn cell_state_includes_state_and_optional_timing() {
+        let s = super::cell_state(Some("p.qmd"), "abc", "running", Some(1000), None);
+        let v: serde_json::Value = serde_json::from_str(&s).unwrap();
+        assert_eq!(v["type"], "cell-state");
+        assert_eq!(v["cell_id"], "abc");
+        assert_eq!(v["state"], "running");
+        assert_eq!(v["started_ms"], 1000);
+        assert!(v.get("duration_ms").map_or(true, |d| d.is_null()));
     }
 }

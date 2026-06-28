@@ -24,7 +24,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use parking_lot::Mutex;
 use qmd_fast_core::{
@@ -58,6 +58,16 @@ fn emit(sink: &ProgressSink, msg: String) {
     if let Some(s) = sink {
         s(msg);
     }
+}
+
+/// Wall-clock epoch millis, for tagging `cell-state` messages with a `started_ms`
+/// and computing a cell's `duration_ms`. Saturates to 0 before the epoch (never
+/// happens in practice); only ever observed, so it can't change what runs/caches.
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 
 /// Cell languages qmd-fast can execute, mapped to a stable kernel key. Anything
@@ -359,6 +369,24 @@ impl Executor {
             .unwrap_or_default();
         let (shared, run_end) = plan(&ran, &hashes, known, |i| cells[i].cache);
 
+        // Per-cell states from the zones `plan()` just computed (pure observation —
+        // doesn't change what runs or caches). The warm prefix `[0, shared)` and the
+        // cached tail `[run_end, len)` are already available, so they're `done`; the
+        // run range `[shared, run_end)` is `queued` and turns `running`/`done`/`error`
+        // in the loop below. `cell_id` is each cell's own id (the id the output block
+        // is built from as `{id}-out`), so the client can target that block.
+        for (i, cell) in cells.iter().enumerate() {
+            let state = if i < shared || i >= run_end {
+                "done"
+            } else {
+                "queued"
+            };
+            emit(
+                &self.sink,
+                crate::protocol::cell_state(self.page.as_deref(), &cell.id, state, None, None),
+            );
+        }
+
         let to_run = run_end.saturating_sub(shared);
         // Boot the kernel up-front (the real wait), so the per-cell progress below
         // reflects actual execution rather than the startup it used to hide. A full
@@ -445,7 +473,43 @@ impl Executor {
                     } else {
                         cell.code.clone()
                     };
-                    outputs.push(self.exec_cell(lang, &code).await);
+                    // queued → running → done|error per cell. Only when a kernel is
+                    // actually live: without one the cell is an instant no-op that
+                    // stays honestly `queued` (it never ran), and we never emit
+                    // `running` without a prior `queued`.
+                    let t0 = has_kernel.then(|| {
+                        let t0 = now_ms();
+                        emit(
+                            &sink,
+                            crate::protocol::cell_state(
+                                page.as_deref(),
+                                &cell.id,
+                                "running",
+                                Some(t0),
+                                None,
+                            ),
+                        );
+                        t0
+                    });
+                    let out = self.exec_cell(lang, &code).await;
+                    if let Some(t0) = t0 {
+                        let state = if is_uncacheable(&out) {
+                            "error"
+                        } else {
+                            "done"
+                        };
+                        emit(
+                            &sink,
+                            crate::protocol::cell_state(
+                                page.as_deref(),
+                                &cell.id,
+                                state,
+                                Some(t0),
+                                Some(now_ms().saturating_sub(t0)),
+                            ),
+                        );
+                    }
+                    outputs.push(out);
                 }
             } else {
                 outputs.push(tail[i - run_end].clone());
@@ -893,9 +957,10 @@ mod tests {
         }
 
         let msgs = captured.lock().unwrap();
-        // Every message is a well-formed build-state for this page.
-        for v in msgs.iter() {
-            assert_eq!(v["type"], "build-state", "unexpected message: {v}");
+        // Every `build-state` is well-formed for this page. (The same sink now also
+        // carries `cell-state` messages — covered by the cell-state tests below — so
+        // this is scoped to build-state rather than asserting over every message.)
+        for v in msgs.iter().filter(|v| v["type"] == "build-state") {
             assert_eq!(v["page"], "ch1.qmd");
             assert_eq!(v["lang"], "python");
         }
@@ -920,6 +985,150 @@ mod tests {
         assert_eq!(last["phase"], "idle", "build must settle on idle: {last}");
         assert_eq!(last["ran"], 3, "idle must report ran == total: {last}");
         assert_eq!(last["total"], 3, "idle must report ran == total: {last}");
+    }
+
+    /// A `ProgressSink` that records every emitted message as parsed JSON, plus the
+    /// captured buffer, for the cell-state tests below.
+    fn capturing_sink() -> (ProgressSink, Arc<std::sync::Mutex<Vec<serde_json::Value>>>) {
+        let captured: Arc<std::sync::Mutex<Vec<serde_json::Value>>> =
+            Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink: ProgressSink = {
+            let captured = captured.clone();
+            Some(Arc::new(move |m: String| {
+                captured
+                    .lock()
+                    .unwrap()
+                    .push(serde_json::from_str(&m).unwrap());
+            }))
+        };
+        (sink, captured)
+    }
+
+    /// The ordered `cell-state` states emitted for `cell_id`, in emission order.
+    fn cell_states(msgs: &[serde_json::Value], cell_id: &str) -> Vec<String> {
+        msgs.iter()
+            .filter(|v| v["type"] == "cell-state" && v["cell_id"] == cell_id)
+            .map(|v| v["state"].as_str().unwrap().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn cell_state_emits_queued_running_done_per_cell_and_error_for_failures() {
+        // The per-cell honest-state seam: each executed cell must emit its states in
+        // the monotonic order queued → running → done (never `running` without a
+        // prior `queued`), and a cell whose execution errors must end on `error`, not
+        // `done`. Kernel-gated like the other exec tests: without `QMD_FAST_PYTHON`
+        // it reports ok without exercising a kernel — `cell_state` serialization is
+        // covered unconditionally in `protocol.rs`.
+        if std::env::var_os("QMD_FAST_PYTHON").is_none() {
+            eprintln!(
+                "SKIPPED (no live kernel): set QMD_FAST_PYTHON to a python with ipykernel to \
+                 exercise cell-state progress; this run did not."
+            );
+            return;
+        }
+
+        let (sink, captured) = capturing_sink();
+        let mut ex = Executor::new();
+        ex.set_progress(sink, Some("ch1.qmd".into()));
+        // Cell b-3 raises, so its output is a `qmd-error` block (uncacheable) → `error`.
+        let blocks = vec![
+            python_cell_block_with("b-1", "a = 1"),
+            python_cell_block_with("b-2", "b = 2"),
+            python_cell_block_with("b-3", "raise ValueError('boom')"),
+        ];
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let _ = ex.run(blocks).await;
+        });
+
+        if ex.diagnostic().is_some() {
+            // No working python kernel here — can't exercise execution progress.
+            return;
+        }
+
+        let msgs = captured.lock().unwrap();
+        // Every cell-state is well-formed and tagged with this page.
+        for v in msgs.iter().filter(|v| v["type"] == "cell-state") {
+            assert_eq!(v["page"], "ch1.qmd", "cell-state page wrong: {v}");
+        }
+        // The two clean cells go queued → running → done, in that order.
+        for id in ["b-1", "b-2"] {
+            assert_eq!(
+                cell_states(&msgs, id),
+                vec!["queued", "running", "done"],
+                "cell {id} must be monotonic queued→running→done",
+            );
+        }
+        // The erroring cell ends on `error`, not `done`, after queued → running.
+        assert_eq!(
+            cell_states(&msgs, "b-3"),
+            vec!["queued", "running", "error"],
+            "an erroring cell must end on `error`, never `done`",
+        );
+    }
+
+    #[test]
+    fn cell_state_reuses_earlier_cells_and_reruns_only_the_edited_last_cell() {
+        // After editing only the last cell, the warm prefix must restore (each earlier
+        // cell emits exactly `done`, no running), and only the edited cell re-runs
+        // (queued → running → done). This pins that emission tracks the `plan()` zones
+        // — observation of what actually ran, not a blanket "everything ran".
+        if std::env::var_os("QMD_FAST_PYTHON").is_none() {
+            eprintln!(
+                "SKIPPED (no live kernel): set QMD_FAST_PYTHON to a python with ipykernel to \
+                 exercise cell-state warm reuse; this run did not."
+            );
+            return;
+        }
+
+        let mut ex = Executor::new();
+        ex.set_progress(None, Some("ch1.qmd".into()));
+        let base = vec![
+            python_cell_block_with("b-1", "a = 1"),
+            python_cell_block_with("b-2", "b = 2"),
+            python_cell_block_with("b-3", "print(a + b)"),
+        ];
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            // First run warms the kernel for [b-1, b-2, b-3].
+            let _ = ex.run(base.clone()).await;
+        });
+
+        if ex.diagnostic().is_some() {
+            // No working python kernel here — can't exercise warm reuse.
+            return;
+        }
+
+        // Second run: edit only the last cell, capturing this pass's cell-states.
+        let (sink, captured) = capturing_sink();
+        ex.set_progress(sink, Some("ch1.qmd".into()));
+        let edited = vec![
+            python_cell_block_with("b-1", "a = 1"),
+            python_cell_block_with("b-2", "b = 2"),
+            python_cell_block_with("b-3", "print(a * b)"),
+        ];
+        rt.block_on(async {
+            let _ = ex.run(edited).await;
+        });
+
+        let msgs = captured.lock().unwrap();
+        // Earlier cells restore from the warm prefix: exactly one `done`, no `running`.
+        for id in ["b-1", "b-2"] {
+            assert_eq!(
+                cell_states(&msgs, id),
+                vec!["done"],
+                "warm-prefix cell {id} must restore as `done` without re-running",
+            );
+        }
+        // Only the edited last cell re-runs: queued → running → done.
+        assert_eq!(
+            cell_states(&msgs, "b-3"),
+            vec!["queued", "running", "done"],
+            "the edited last cell must re-run queued→running→done",
+        );
     }
 
     #[tokio::test]
