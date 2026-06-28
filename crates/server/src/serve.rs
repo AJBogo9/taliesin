@@ -668,10 +668,29 @@ pub(crate) const STATUS_CSS: &str = "\
     .qmd-cellerr:hover { border-color: #e5534b; } \
     @media (max-width: 60rem) { body.qmd-toc-sheet #qmd-controls.qmd-dev { bottom: 2.4rem; } } \
     #qmd-progress { position: fixed; bottom: 12px; right: 12px; z-index: 9999; \
-      font: 12px/1.4 var(--qmd-mono, monospace); padding: 4px 10px; border-radius: 6px; \
+      display: flex; align-items: center; gap: 6px; \
+      font: 12px/1.4 ui-sans-serif, system-ui, sans-serif; padding: 5px 10px; border-radius: 6px; \
       background: var(--qmd-bg, #fff); color: var(--qmd-fg, #222); \
-      border: 1px solid color-mix(in srgb, currentColor 25%, transparent); } \
-    #qmd-progress[data-state=\"idle\"] { opacity: .6; } \
+      border: 1px solid color-mix(in srgb, currentColor 20%, transparent); \
+      box-shadow: 0 1px 6px rgba(0,0,0,.10); cursor: default; user-select: none; } \
+    #qmd-progress[data-state=\"busy\"] { cursor: pointer; } \
+    #qmd-progress[data-state=\"error\"] { cursor: pointer; border-color: #e5534b; } \
+    #qmd-progress[data-state=\"idle\"] { opacity: .65; } \
+    .qmd-prog-dot { width: .5rem; height: .5rem; border-radius: 50%; flex: none; \
+      background: var(--qmd-muted, #aaa); } \
+    #qmd-progress[data-state=\"busy\"] .qmd-prog-dot { background: #4c8dff; } \
+    #qmd-progress[data-state=\"idle\"] .qmd-prog-dot { background: #3fb950; } \
+    #qmd-progress[data-state=\"error\"] .qmd-prog-dot { background: #e5534b; } \
+    @media (prefers-reduced-motion: no-preference) { \
+      #qmd-progress[data-state=\"busy\"] .qmd-prog-dot { \
+        animation: qmd-dot-pulse 1.2s ease-in-out infinite; } \
+      @keyframes qmd-dot-pulse { 0%,100% { opacity:1; } 50% { opacity:.3; } } \
+    } \
+    .qmd-prog-label { white-space: nowrap; } \
+    .qmd-prog-bar { display: inline-block; width: 48px; height: 4px; border-radius: 2px; \
+      background: color-mix(in srgb, currentColor 15%, transparent); flex: none; } \
+    .qmd-prog-fill { display: block; height: 100%; border-radius: 2px; \
+      background: #4c8dff; transition: width .15s linear; } \
     [data-qmd-cell-state] { border-left: 3px solid transparent; padding-left: 8px; } \
     [data-qmd-cell-state=\"queued\"] { border-left-color: color-mix(in srgb, currentColor 30%, transparent); opacity: .7; } \
     [data-qmd-cell-state=\"running\"] { border-left-color: #4c8dff; } \

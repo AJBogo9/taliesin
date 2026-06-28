@@ -445,6 +445,7 @@
   // a small badge showing queued/running (with live elapsed)/done/error state.
   // Driven entirely by server `cell-state` messages; we never infer state.
   var runningTimers = {}; // cell_id -> started_ms
+  var activeCell = /** @type {string|null} */ (null); // last cell_id seen in "running" state
   function fmtElapsed(ms) { return (ms / 1000).toFixed(1) + "s"; }
   function applyCellState(/** @type {CellStateMsg} */ msg) {
     var out = elById(msg.cell_id + "-out") || elById(msg.cell_id);
@@ -455,10 +456,12 @@
       out.insertBefore(b, out.firstChild); return b;
     })();
     if (msg.state === "running") {
+      activeCell = msg.cell_id; // track the active cell for click-to-scroll
       runningTimers[msg.cell_id] = msg.started_ms || Date.now();
       badge.textContent = "⏳ 0.0s";
     } else {
       delete runningTimers[msg.cell_id];
+      if (msg.state === "error") activeCell = msg.cell_id; // keep erroring cell as scroll target
       if (msg.state === "done") badge.textContent = "✓ " + (msg.duration_ms != null ? fmtElapsed(msg.duration_ms) : "");
       else if (msg.state === "error") badge.textContent = "✕";
       else badge.textContent = "⏳"; // queued
@@ -474,29 +477,97 @@
     });
   }, 200);
 
+  // --- progress chip: idle/busy dot, k/N bar, click-to-scroll, tab-title/favicon ---
   var progressEl = /** @type {HTMLElement|null} */ (null);
+  var buildStartMs = /** @type {number|null} */ (null); // set on first non-idle build-state
+  var baseTitle = document.title || "qmd-fast"; // save original title for restore
+
+  // Canvas-drawn favicon: a coloured dot superimposed on the base favicon SVG.
+  // Swapped in while busy/error; the link[rel=icon] href is restored on idle.
+  var origFavicon = /** @type {string|null} */ (null); // original href, captured once
+  function setFaviconDot(/** @type {string|null} */ color) {
+    var link = /** @type {HTMLLinkElement|null} */ (document.querySelector("link[rel~='icon']"));
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      document.head.appendChild(link);
+    }
+    if (origFavicon === null) origFavicon = link.href; // capture once
+    if (!color) { link.href = origFavicon || ""; return; } // restore on idle
+    try {
+      var c = document.createElement("canvas");
+      c.width = 32; c.height = 32;
+      var ctx = c.getContext("2d");
+      if (!ctx) return;
+      // Draw the dot (bottom-right quadrant, radius 7, with a 1.5px white ring)
+      ctx.clearRect(0, 0, 32, 32);
+      ctx.beginPath(); ctx.arc(24, 24, 8.5, 0, 2 * Math.PI);
+      ctx.fillStyle = "#fff"; ctx.fill();
+      ctx.beginPath(); ctx.arc(24, 24, 7, 0, 2 * Math.PI);
+      ctx.fillStyle = color; ctx.fill();
+      link.href = c.toDataURL("image/png");
+    } catch (_e) { /* canvas blocked (CSP / non-browser env) */ }
+  }
+
   function ensureProgress() {
     if (progressEl) return progressEl;
     progressEl = document.createElement("div");
     progressEl.id = "qmd-progress";
     progressEl.setAttribute("aria-live", "polite");
+    progressEl.setAttribute("role", "status");
+    // Click-to-scroll: jump to the currently running or last-errored cell output.
+    progressEl.addEventListener("click", function () {
+      if (!activeCell) return;
+      var target = elById(activeCell + "-out") || elById(activeCell);
+      if (target) target.scrollIntoView({ block: "center", behavior: "smooth" });
+    });
     document.body.appendChild(progressEl);
     return progressEl;
   }
+
   function updateProgress(/** @type {BuildStateMsg} */ msg) {
     var el = ensureProgress();
     if (msg.phase === "idle") {
-      el.textContent = "Up to date";
+      var elapsed = buildStartMs !== null ? Math.round((Date.now() - buildStartMs) / 1000) : null;
+      buildStartMs = null;
+      var elapsedTxt = elapsed !== null ? ", built in " + elapsed + "s" : "";
+      // Inner HTML: dot + text label
+      el.innerHTML =
+        "<span class=\"qmd-prog-dot\"></span>" +
+        "<span class=\"qmd-prog-label\">Up to date" + elapsedTxt + "</span>";
       el.setAttribute("data-state", "idle");
+      el.removeAttribute("title");
+      // Restore tab title and favicon
+      document.title = baseTitle;
+      setFaviconDot(null);
       return;
     }
-    if (msg.phase === "warming-kernel") {
-      el.textContent = "Starting " + msg.lang + " kernel…";
-      el.setAttribute("data-state", "busy");
+    // First non-idle message: start the build timer
+    if (buildStartMs === null) buildStartMs = Date.now();
+    if (msg.phase === "error") {
+      el.innerHTML =
+        "<span class=\"qmd-prog-dot\"></span>" +
+        "<span class=\"qmd-prog-label\">Error</span>";
+      el.setAttribute("data-state", "error");
+      el.title = "Click to scroll to erroring cell";
+      document.title = "⚠ error — " + baseTitle;
+      setFaviconDot("#e5534b");
       return;
     }
-    el.textContent = "Executing " + msg.ran + "/" + msg.total;
+    // warming-kernel or executing: show dot + k/N text + mini bar
+    var isWarming = msg.phase === "warming-kernel";
+    var label = isWarming ? "warming " + msg.lang : msg.ran + "/" + msg.total;
+    var barPct = (msg.total > 0 && !isWarming) ? (msg.ran / msg.total) : 0;
+    el.innerHTML =
+      "<span class=\"qmd-prog-dot\"></span>" +
+      "<span class=\"qmd-prog-label\">" + label + "</span>" +
+      "<span class=\"qmd-prog-bar\" aria-hidden=\"true\">" +
+        "<span class=\"qmd-prog-fill\" style=\"width:" + Math.round(barPct * 100) + "%\"></span>" +
+      "</span>";
     el.setAttribute("data-state", "busy");
+    el.title = "Click to scroll to active cell";
+    document.title = "● building… — " + baseTitle;
+    setFaviconDot("#4c8dff");
   }
 
   // A `{js}` cell can error asynchronously (its async body runs after the mount);
