@@ -7,8 +7,10 @@
 // a hidden `.qmd-scrolly-input[data-qmd-input]` (value + an `input` event) so the shipped
 // reactive graph re-runs the sticky `{js}` cell via `//| input:`. Read-only / scroll-only.
 //
-// Reuses the deck/walkthrough IntersectionObserver activation band, but does NOT depend on
-// walkthrough.js. Registered through `qmdEnhancers`; idempotent (`data-scrolly-init`).
+// Activation is a scroll-driven trigger line (not an IntersectionObserver band, which cannot
+// isolate steps shorter than the viewport, so it broke on portrait / mobile). Does NOT depend
+// on walkthrough.js. Registered through `qmdEnhancers`; idempotent (`data-scrolly-init`);
+// self-cleans its scroll listener when its container is swapped out by a live diff.
 (function () {
   function initScrolly(root) {
     var steps = Array.prototype.slice.call(root.querySelectorAll('.scrolly-steps .step'));
@@ -26,21 +28,45 @@
         input.dispatchEvent(new Event('input', { bubbles: true }));
       }
     }
-    // Track which steps straddle the activation band; the LAST one wins. Before any step
-    // crosses, the first is active so the stage never starts blank.
-    var visible = new Set();
-    var io = new IntersectionObserver(function (entries) {
-      entries.forEach(function (e) {
-        if (e.isIntersecting) visible.add(e.target); else visible.delete(e.target);
+    // Active step = the LAST one whose top has scrolled above a trigger line at the viewport
+    // centre. Unlike an IntersectionObserver activation band, this is robust to short steps
+    // and to a stage shorter than the viewport (portrait / mobile, where a band can never
+    // isolate a step): the trigger line crosses each step top in document order, so every
+    // step is reachable and the active index is monotonic: it never snaps back to the first
+    // step mid-scroll, and the last step stays active past the end.
+    function currentStep() {
+      var vh = window.innerHeight, doc = document.documentElement;
+      // Past the very bottom of a scrollable page, force the last step: a story whose final
+      // narration sits near the page end has too little runout to bring its top up to the
+      // trigger, so without this it would stall one step short of the end.
+      if (doc.scrollHeight > vh + 4 && window.scrollY + vh >= doc.scrollHeight - 2) return steps.length - 1;
+      var triggerY = vh * 0.5;
+      var idx = 0;
+      for (var j = 0; j < steps.length; j++) {
+        if (steps[j].getBoundingClientRect().top <= triggerY) idx = j;
+      }
+      return idx;
+    }
+    var ticking = false;
+    function onScroll() {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(function () {
+        ticking = false;
+        if (!root.isConnected) { // container swapped out by a live diff: self-clean and stop
+          window.removeEventListener('scroll', onScroll);
+          window.removeEventListener('resize', onScroll);
+          return;
+        }
+        apply(currentStep(), true);
       });
-      var last = -1;
-      steps.forEach(function (s, j) { if (visible.has(s)) last = j; });
-      apply(last === -1 ? 0 : last, true);
-    }, { rootMargin: '-45% 0px -45% 0px', threshold: 0 });
-    steps.forEach(function (s) { io.observe(s); });
-    // Initial: set the state attribute but do NOT dispatch — the hidden input's
-    // server-rendered value already matches step 0, and the cell ran once on mount.
-    apply(0, false);
+    }
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+    // Initial: sync to the step under the trigger (handles a page that loads already
+    // scrolled). The `input.value !== state` guard in apply() skips a redundant dispatch at
+    // the top, where the server-rendered value already matches step 0.
+    apply(currentStep(), true);
   }
 
   function enhance(root) {

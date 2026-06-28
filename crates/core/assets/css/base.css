@@ -494,7 +494,9 @@
       background: var(--qmd-bg); padding: .4rem 0 .6rem;
       box-shadow: 0 4px 12px var(--qmd-edge-shadow); }
     .cw-code { max-height: 42vh; }
-    .cw-steps .step { min-height: auto; padding: 1.4rem .9rem; }
+    /* Real dwell height so each step owns enough scroll to be focused in turn (the
+       activation is the scroll trigger line in walkthrough.js, not a fixed band). */
+    .cw-steps .step { min-height: 55vh; padding: 1.4rem .9rem; }
   }
   /* Scrollytelling (`::: {.scrolly}`): prose steps scroll past a sticky visual stage.
      Generalizes the code-walkthrough layout; the active step drives data-scrolly-state +
@@ -519,7 +521,9 @@
     .qmd-scrolly { display: flex; flex-direction: column; gap: 0; }
     .scrolly-stage { order: -1; position: sticky; top: 0; height: auto; max-height: 48vh;
       z-index: 5; background: var(--qmd-bg); }
-    .scrolly-steps .step { min-height: auto; padding: 1.4rem .9rem; }
+    /* Real dwell height so each step owns enough scroll to drive the stage in turn (the
+       activation is the scroll trigger line in scrolly.js, not a fixed band). */
+    .scrolly-steps .step { min-height: 70vh; padding: 1.4rem .9rem; }
   }
   /* Tabbed panels (`::: {.panel-tabset}`): a tablist of underline-on-active tab buttons
      over the active panel; switching (tabset.js) toggles aria-selected + [hidden]. */
