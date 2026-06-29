@@ -582,6 +582,9 @@ fn render_internal_impl(
     // Pandoc table captions (`: caption {#tbl-x}` after a table) are numbered and
     // folded into the table's `<caption>`; registers `tbl-x` for `@tbl-` refs.
     apply_table_captions(&mut blocks, &mut xref_registry, &mut warnings);
+    // Theorem environments: number per-kind in document order + register #thm-/#lem-/…
+    // anchors. Must run before cite::process resolves @thm-/@lem-/… references.
+    number_theorems(&mut blocks, &mut xref_registry, &mut warnings);
     let bib = load_bibliography(bib_field.as_deref(), base_dir, &mut warnings);
     warnings.extend(crate::cite::process(&mut blocks, &bib, &xref_registry));
     // Gather the footnote definitions (collected above, in comrak's reference order)
@@ -1210,6 +1213,42 @@ fn register_xref(
         )));
     } else {
         reg.insert(anchor.to_string(), number);
+    }
+}
+
+/// Assign continuous, per-kind theorem numbers in document order (Theorem 1, 2, …;
+/// Lemma 1, 2, … independently), fill each theorem's number slot, and register its
+/// `#thm-`/`#lem-`/… anchor so `@thm-x` resolves. Runs after `apply_table_captions`
+/// and before `cite::process`. `proof` carries no `data-qmd-theorem-kind`, so it is
+/// skipped (unnumbered, unreferenceable). Top-level theorems only — a theorem nested
+/// inside another container is embedded in the parent block's HTML (same limitation as
+/// table captions). The container id is read from the OPENING tag only (via `tag_end`)
+/// so a child block's `id=` is never mistaken for the theorem anchor.
+fn number_theorems(
+    blocks: &mut [Block],
+    xrefs: &mut HashMap<String, String>,
+    warnings: &mut Vec<Warning>,
+) {
+    let mut counts: HashMap<String, u32> = HashMap::new();
+    for b in blocks.iter_mut() {
+        let tag_end_idx = tag_end(&b.html).map(|i| i + 1).unwrap_or(b.html.len());
+        let open_tag = b.html[..tag_end_idx].to_string();
+        let Some(kind) = extract_attr(&open_tag, "data-qmd-theorem-kind") else {
+            continue;
+        };
+        let n = {
+            let c = counts.entry(kind).or_insert(0);
+            *c += 1;
+            *c
+        };
+        b.html = b.html.replacen(
+            "<span class=\"qmd-theorem-number\"></span>",
+            &format!("<span class=\"qmd-theorem-number\">&nbsp;{n}</span>"),
+            1,
+        );
+        if let Some(id) = extract_attr(&open_tag, "id") {
+            register_xref(xrefs, warnings, &id, n.to_string());
+        }
     }
 }
 

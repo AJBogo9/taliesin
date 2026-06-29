@@ -16,7 +16,12 @@ fn xref_label(prefix: &str) -> Option<&'static str> {
         "eq" => Some("Equation"),
         "lst" => Some("Listing"),
         "thm" => Some("Theorem"),
+        "lem" => Some("Lemma"),
+        "cor" => Some("Corollary"),
+        "prp" => Some("Proposition"),
         "def" => Some("Definition"),
+        "exm" => Some("Example"),
+        "rem" => Some("Remark"),
         _ => None,
     }
 }

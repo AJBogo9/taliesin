@@ -2011,9 +2011,9 @@ fn theorem_div_emits_styled_block_with_number_slot() {
     );
     assert!(
         h.contains(
-            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\"></span></span>"
+            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\">&nbsp;1</span></span>"
         ),
-        "head carries the kind name + an empty number slot: {h}"
+        "head carries the kind name + the number filled by the post-pass: {h}"
     );
     assert!(
         h.contains("<span class=\"qmd-theorem-title\">(Pythagorean theorem)</span>"),
@@ -2077,5 +2077,58 @@ fn proof_emits_qed_and_no_number_slot() {
             .contains("<p class=\"qmd-proof-head\">Proof of the main theorem.</p>"),
         "got: {}",
         renamed.blocks[0].html
+    );
+}
+
+#[test]
+fn theorems_number_continuously_per_kind() {
+    let doc = render_document(
+        "::: {.theorem}\nA.\n:::\n\n::: {.lemma}\nB.\n:::\n\n::: {.theorem}\nC.\n:::\n",
+    );
+    let body = doc.body_html();
+    assert!(
+        body.contains(
+            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\">&nbsp;1</span></span>"
+        ),
+        "first theorem is 1: {body}"
+    );
+    assert!(
+        body.contains(
+            "<span class=\"qmd-theorem-label\">Lemma<span class=\"qmd-theorem-number\">&nbsp;1</span></span>"
+        ),
+        "lemma counts independently: {body}"
+    );
+    assert!(
+        body.contains(
+            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\">&nbsp;2</span></span>"
+        ),
+        "second theorem is 2: {body}"
+    );
+}
+
+#[test]
+fn theorem_crossref_resolves_with_label_and_number() {
+    let doc = render_document(
+        "See @thm-pyth and @lem-bound.\n\n::: {.theorem #thm-pyth}\nA.\n:::\n\n::: {.lemma #lem-bound}\nB.\n:::\n",
+    );
+    let body = doc.body_html();
+    assert!(
+        body.contains("<a href=\"#thm-pyth\" class=\"qmd-xref\">Theorem&nbsp;1</a>"),
+        "got: {body}"
+    );
+    assert!(
+        body.contains("<a href=\"#lem-bound\" class=\"qmd-xref\">Lemma&nbsp;1</a>"),
+        "got: {body}"
+    );
+    assert!(!body.contains("@thm-pyth"), "ref left unresolved: {body}");
+}
+
+#[test]
+fn proof_is_not_numbered() {
+    let doc = render_document("::: {.proof}\nx.\n:::\n");
+    assert!(
+        !doc.body_html().contains("qmd-theorem-number"),
+        "proof has no number slot: {}",
+        doc.body_html()
     );
 }
