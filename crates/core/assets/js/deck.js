@@ -1371,11 +1371,12 @@
     ctl.innerHTML =
       '<button class="qmd-ctl qmd-ctl-prev" aria-label="Previous slide" title="Previous (←)">‹</button>' +
       '<button class="qmd-ctl qmd-ctl-next" aria-label="Next slide" title="Next (→)">›</button>' +
-      '<button class="qmd-ctl qmd-ctl-menu" aria-label="Menu" title="Menu (m)">' + IC.menu + '</button>';
+      '<button class="qmd-ctl qmd-ctl-menu" aria-label="Menu" title="Menu (m)" aria-haspopup="menu" aria-expanded="false">' + IC.menu + '</button>';
     rev.appendChild(ctl);
     ctl.querySelector('.qmd-ctl-prev').addEventListener('click', function () { prev(); });
     ctl.querySelector('.qmd-ctl-next').addEventListener('click', function () { next(); });
-    ctl.querySelector('.qmd-ctl-menu').addEventListener('click', function () { toggleMenu(); });
+    deck.menuBtn = ctl.querySelector('.qmd-ctl-menu');
+    deck.menuBtn.addEventListener('click', function () { toggleMenu(); });
     deck.chrome = { fill: prog.querySelector('.qmd-progress-fill'), ctl: ctl };
     buildMenu();
     document.addEventListener('mousemove', showChrome);
@@ -1457,6 +1458,11 @@
     if (!deck.menu) return;
     var open = (force == null) ? deck.menu.hasAttribute('hidden') : force;
     deck.menuOpen = open;
+    // The control menu is a light-dismiss POPOVER (transparent backdrop, Esc + click-away),
+    // not a content-covering modal — so, like the reader menu, it is deliberately NOT
+    // focus-trapped (aria-modal would misrepresent it). aria-expanded on the launcher is
+    // the correct popover signal.
+    if (deck.menuBtn) deck.menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
     if (open) {
       refreshSlideList(); markActiveTools();
       deck.menu.removeAttribute('hidden'); deck.menuBackdrop.removeAttribute('hidden');
