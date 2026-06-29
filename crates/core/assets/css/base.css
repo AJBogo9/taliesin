@@ -12,6 +12,8 @@
        derived via color-mix, so light + dark work from one definition. */
     --qmd-callout-note: #4c8dff; --qmd-callout-tip: #2bb673; --qmd-callout-warning: #e0a800;
     --qmd-callout-important: #e0566b; --qmd-callout-caution: #e8730c;
+    /* Theorem-environment accents, keyed by amsthm style; tints derived via color-mix. */
+    --qmd-thm-plain: #6b5ea8; --qmd-thm-definition: #2a7a5e; --qmd-thm-remark: #7a7f87;
     color-scheme: light;
     --qmd-font-body: 1.0625rem/1.7 ui-serif, Georgia, "Times New Roman", serif;
     --qmd-font-head: ui-sans-serif, system-ui, sans-serif;
@@ -456,6 +458,25 @@
   .callout-minimal .callout-icon { color: var(--qmd-muted); }
   .callout-collapse > details > summary.callout-title { cursor: pointer; }
   .callout-collapse > details[open] > summary.callout-title { margin-bottom: 0; }
+  /* theorem environments (definition/theorem/lemma/proof/…); light + dark from one
+     token set via color-mix, matching the callout aesthetic but lighter. */
+  .qmd-theorem { border: 1px solid var(--qmd-border); border-left-width: 4px; border-radius: 5px; margin: 1.1rem 0; }
+  .qmd-theorem-head { font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 600; margin: 0; padding: .3rem .9rem; }
+  .qmd-theorem-title { font-weight: 600; }
+  .qmd-theorem-body { padding: .3rem .9rem .6rem; }
+  .qmd-theorem-body > :first-child { margin-top: .4rem; }
+  .qmd-thm-style-plain { border-left-color: var(--qmd-thm-plain); }
+  .qmd-thm-style-definition { border-left-color: var(--qmd-thm-definition); }
+  .qmd-thm-style-remark { border-left-color: var(--qmd-thm-remark); }
+  .qmd-thm-style-plain .qmd-theorem-head { background: color-mix(in srgb, var(--qmd-thm-plain) 12%, transparent); }
+  .qmd-thm-style-definition .qmd-theorem-head { background: color-mix(in srgb, var(--qmd-thm-definition) 12%, transparent); }
+  .qmd-thm-style-remark .qmd-theorem-head { background: color-mix(in srgb, var(--qmd-thm-remark) 10%, transparent); }
+  /* amsthm convention: plain-style bodies are italic; definition/remark stay upright. */
+  .qmd-thm-style-plain .qmd-theorem-body { font-style: italic; }
+  /* proof: italic lead, right-floated QED. */
+  .qmd-proof { margin: 1.1rem 0; }
+  .qmd-proof-head { font-style: italic; font-weight: 600; margin: 0 0 .2rem; }
+  .qmd-qed { display: block; text-align: right; }
   details.qmd-code-fold > summary { cursor: pointer; color: var(--qmd-muted);
     font: 600 .85em var(--qmd-font-head); padding: .15rem 0; margin-bottom: .35rem; }
   details.qmd-code-fold > summary:hover { color: var(--qmd-fg); }
