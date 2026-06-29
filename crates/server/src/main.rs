@@ -6,6 +6,7 @@
 //!   - `qmd-fast blocks <file.qmd>`         list block ids + sourcepos (debugging)
 
 mod build_budget;
+mod cli;
 mod exec;
 mod freeze;
 mod kernel;
@@ -40,9 +41,9 @@ fn main() -> ExitCode {
         Some("blocks") => query::cmd_blocks(args.get(2)),
         Some("schema") => query::cmd_schema(&args),
         Some("check") => cmd_check(&args),
-        Some("init") => cmd_init(args.get(2).map(String::as_str)),
+        Some("init") => cli::cmd_init(args.get(2).map(String::as_str)),
         // `preview`/`dev` are vite-style aliases for the live server.
-        Some("serve" | "preview" | "dev") => cmd_serve(&args),
+        Some("serve" | "preview" | "dev") => cli::cmd_serve(&args),
         Some("--version" | "-V") => {
             println!(
                 "qmd-fast {} ({})",
@@ -74,117 +75,6 @@ fn main() -> ExitCode {
 const COMMANDS: &[&str] = &[
     "render", "build", "blocks", "schema", "check", "init", "serve", "preview", "dev", "help",
 ];
-
-/// `_site.yml` for the scaffold: the minimal flat-native config (just a title).
-const INIT_SITE_YML: &str = "title: My site\n";
-
-/// `index.qmd` for the scaffold: a hello-world page that previews immediately and
-/// points the new user at the next steps.
-const INIT_INDEX_QMD: &str = "---\ntitle: Hello, qmd-fast\n---\n\n\
-    Welcome to your new [qmd-fast](https://github.com/anthropics/qmd-fast) site.\n\n\
-    Edit `index.qmd` and the preview reloads as you save.\n\n\
-    ## Next steps\n\n\
-    - Add more `.qmd` pages beside this one — each becomes its own page.\n\
-    - Configure navigation and the title in `_site.yml`.\n\
-    - Drop in a `{python}` or `{r}` code cell to run live output.\n";
-
-/// `qmd-fast init [dir]`: scaffold a minimal previewable site into `dir` (default the
-/// current directory). Writes `_site.yml` + `index.qmd`, then prints the preview hint.
-fn cmd_init(dir: Option<&str>) -> ExitCode {
-    let dir = Path::new(dir.unwrap_or("."));
-    match scaffold_init(dir) {
-        Ok(written) => {
-            for f in &written {
-                log::built(&f.display().to_string());
-            }
-            let where_ = if dir == Path::new(".") {
-                ".".to_string()
-            } else {
-                dir.display().to_string()
-            };
-            println!("Scaffolded a qmd-fast site. Preview it:\n  qmd-fast preview {where_}");
-            ExitCode::SUCCESS
-        }
-        Err(e) => {
-            log::error(&e);
-            ExitCode::FAILURE
-        }
-    }
-}
-
-/// Write the starter files (`_site.yml`, `index.qmd`) into `dir`, creating it if
-/// needed. Refuses to overwrite an existing file (so re-running `init` never clobbers
-/// the user's work) and returns the paths written, or a human-readable error.
-fn scaffold_init(dir: &Path) -> Result<Vec<PathBuf>, String> {
-    if let Err(e) = std::fs::create_dir_all(dir) {
-        return Err(format!("cannot create {}: {e}", dir.display()));
-    }
-    let files = [("_site.yml", INIT_SITE_YML), ("index.qmd", INIT_INDEX_QMD)];
-    // Refuse to overwrite *any* target before writing *any*, so a partial scaffold
-    // never lands on top of an existing project.
-    for (name, _) in files {
-        let path = dir.join(name);
-        if path.exists() {
-            return Err(format!(
-                "{} already exists; refusing to overwrite (run `init` in an empty directory)",
-                path.display()
-            ));
-        }
-    }
-    let mut written = Vec::new();
-    for (name, contents) in files {
-        let path = dir.join(name);
-        if let Err(e) = std::fs::write(&path, contents) {
-            return Err(format!("cannot write {}: {e}", path.display()));
-        }
-        written.push(path);
-    }
-    Ok(written)
-}
-
-fn cmd_serve(args: &[String]) -> ExitCode {
-    // Positionals are <file.qmd> [port]; flags (--open, --host) may appear anywhere.
-    let positionals: Vec<&String> = args[2..].iter().filter(|a| !a.starts_with("--")).collect();
-    let flag = |name: &str| args.iter().any(|a| a == name);
-    let open = flag("--open") || std::env::var_os("QMD_FAST_OPEN").is_some();
-    let expose = flag("--host") || std::env::var_os("QMD_FAST_HOST").is_some();
-    // `--no-exec` is sugar for `QMD_FAST_NO_EXEC=1`, which `exec::Executor` reads:
-    // preview a document you don't trust without running its code cells.
-    if flag("--no-exec") {
-        // SAFETY: set once at CLI startup, before the tokio runtime / kernel
-        // threads spawn, so no other thread is touching the environment.
-        unsafe { std::env::set_var("QMD_FAST_NO_EXEC", "1") };
-    }
-    let Some(path) = positionals.first() else {
-        eprintln!("usage: qmd-fast preview <file.qmd|dir> [port] [--host] [--open] [--no-exec]");
-        return ExitCode::FAILURE;
-    };
-    // The optional second positional is the port; a present-but-unparseable value
-    // is an error rather than a silent fall-back to the default.
-    let port: u16 = match positionals.get(1) {
-        None => 4321,
-        Some(p) => match p.parse() {
-            Ok(n) => n,
-            Err(_) => {
-                log::error(&format!("invalid port: `{p}` (expected 0-65535)"));
-                return ExitCode::FAILURE;
-            }
-        },
-    };
-    // A directory is a multi-page site project; a single `.qmd` is one document.
-    let result = if Path::new(path.as_str()).is_dir() {
-        serve_site::run(PathBuf::from(path), port, open, expose)
-    } else {
-        serve::run(PathBuf::from(path), port, open, expose)
-    };
-    match result {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(e) => {
-            log::error(&format!("serve: {e}"));
-            ExitCode::FAILURE
-        }
-    }
-}
 
 /// `build <file.qmd> [out.html]`: write a self-contained HTML page to a file
 /// (default `<stem>.html` beside the source). With `--out <dir>` it instead
@@ -2274,43 +2164,8 @@ mod build_diag_tests {
 }
 
 #[cfg(test)]
-mod cli_onboarding_tests {
+mod dispatch_tests {
     use super::*;
-    use std::fs;
-
-    fn tmp(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("qmd-init-{}-{name}", std::process::id()));
-        let _ = fs::remove_dir_all(&d);
-        d
-    }
-
-    #[test]
-    fn init_scaffolds_a_previewable_site() {
-        let dir = tmp("scaffold");
-        // The dir doesn't exist yet — `scaffold_init` must create it.
-        let written = scaffold_init(&dir).expect("scaffold succeeds into a fresh dir");
-
-        let site_yml = dir.join("_site.yml");
-        let index = dir.join("index.qmd");
-        assert!(site_yml.exists(), "_site.yml written");
-        assert!(index.exists(), "index.qmd written");
-        assert_eq!(written, vec![site_yml.clone(), index.clone()]);
-
-        // The scaffold is a real, parseable site whose one page previews.
-        let cfg = fs::read_to_string(&site_yml).unwrap();
-        assert!(cfg.contains("title:"), "config has a title: {cfg}");
-        let page = fs::read_to_string(&index).unwrap();
-        assert!(
-            page.starts_with("---") && page.contains("title:"),
-            "index has front matter: {page}"
-        );
-
-        // Re-running refuses to overwrite (never clobbers existing work).
-        let err = scaffold_init(&dir).expect_err("second init refuses to overwrite");
-        assert!(err.contains("already exists"), "overwrite refused: {err}");
-
-        let _ = fs::remove_dir_all(&dir);
-    }
 
     #[test]
     fn closest_command_suggests_nearest() {
