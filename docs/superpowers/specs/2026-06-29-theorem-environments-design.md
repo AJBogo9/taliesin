@@ -56,8 +56,17 @@ per-kind cross-ref prefixes, the post-pass numbering pattern, the callout aesthe
 - **Cross-refs:** `cite/render.rs::xref_label` already maps `thm -> "Theorem"` and
   `def -> "Definition"`, and `@thm-x` already parses today. Registration and resolution
   are two passes: targets are registered into `xref_registry`, then `cite::process`
-  rewrites `@thm-x` runs. Broken-ref warnings (`data-qmd-xref` marker) and cross-page
-  resolution (`site/xref.rs`) are automatic.
+  rewrites `@thm-x` runs. SAME-page broken-ref warnings (`data-qmd-xref` marker) work.
+  **CROSS-page resolution does NOT yet work for theorems** (a `@thm-x` to a theorem in
+  another book chapter): the site-wide scanner `site/xref.rs::brace_id` only matches an
+  id written as the FIRST `{#…}` token, whereas a theorem id is class-first
+  (`::: {.theorem #thm-x}`), so the anchor is never registered as a cross-page target;
+  `is_ref_anchor` also omits `lem-`/`cor-`/`prp-`/`exm-`/`rem-`, and a source-only scan
+  can't reproduce `number_theorems`'s shared/scoped/numbered logic. **This is a known gap
+  (own increment): generalize `brace_id` to find an `#id` anywhere in a `{…}` attribute
+  block, extend `is_ref_anchor`, propagate the render-computed number into the cross-page
+  registry, and pin with a two-chapter book corpus doc.** (Found by the 2026-06-29
+  adversarial review; latent, since no corpus/doc currently cross-references a theorem.)
 - **Numbering pattern:** `apply_table_captions` (`crates/core/src/render/mod.rs`) is the
   model post-pass: it receives the assembled `Vec<Block>` + the xref registry + warnings,
   walks blocks in document order, assigns numbers, injects label HTML, and registers

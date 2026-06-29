@@ -247,6 +247,9 @@ fn is_cite_key_char(c: char) -> bool {
 /// bare-label link. Shared by the bracketed (`[@fig-x]`) and bare (`@fig-x`) paths.
 fn xref_anchor_link(anchor: &str, label: &str, xrefs: &HashMap<String, String>) -> String {
     let (text, marker) = match xrefs.get(anchor) {
+        // A registered anchor with no number (an unnumbered theorem) resolves to a bare
+        // label, not a broken-ref marker; a numbered one renders "Figure&nbsp;3".
+        Some(n) if n.is_empty() => (label.to_string(), String::new()),
         Some(n) => (format!("{label}&nbsp;{n}"), String::new()),
         None => (
             label.to_string(),

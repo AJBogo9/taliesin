@@ -1324,9 +1324,9 @@ fn number_theorems(
             &format!("<span class=\"qmd-theorem-number\">{slot}</span>"),
             1,
         );
-        if !display.is_empty()
-            && let Some(id) = extract_attr(&open_tag, "id")
-        {
+        // Register the anchor even when unnumbered (`display` empty): an id'd theorem is a
+        // valid same-page ref target that resolves to a bare label, not a broken ref.
+        if let Some(id) = extract_attr(&open_tag, "id") {
             register_xref(xrefs, warnings, &id, display);
         }
     }

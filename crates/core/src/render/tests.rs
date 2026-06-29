@@ -2290,3 +2290,21 @@ fn numbered_unless_unique_numbers_only_repeated_kinds() {
         "a repeated kind is numbered: {body}"
     );
 }
+
+#[test]
+fn unnumbered_theorem_ref_resolves_to_bare_label_not_broken() {
+    // An id'd but unnumbered theorem (numbered: false) is still a valid same-page ref
+    // target: the ref resolves to a bare label and is NOT left as a broken marker.
+    let doc = render_document(
+        "---\ntheorems:\n  numbered: false\n---\n\n::: {.theorem #thm-x}\nA.\n:::\n\nSee @thm-x.\n",
+    );
+    let body = doc.body_html();
+    assert!(
+        body.contains("<a href=\"#thm-x\" class=\"qmd-xref\">Theorem</a>"),
+        "unnumbered theorem ref resolves to a bare label: {body}"
+    );
+    assert!(
+        !body.contains("data-qmd-xref=\"thm-x\""),
+        "the ref must not be left as a broken-ref marker: {body}"
+    );
+}

@@ -115,7 +115,10 @@ fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
             });
         }
         let base = page.input.parent().unwrap_or(root);
-        let doc = qmd_fast_core::render_document_with_includes(&src, base);
+        // Scope a numbered book chapter's theorems to its chapter ("Theorem 2.3"), matching
+        // the build + live-preview paths; otherwise `number-within: chapter` would warn here.
+        let doc =
+            qmd_fast_core::render_document_with_includes_scoped(&src, base, site.chapter_for(page));
         // Static lints over the page's blocks (xrefs are added by render_page_doc_warned
         // below); run before `doc` is consumed.
         use qmd_fast_core::diagnostics as dx;
