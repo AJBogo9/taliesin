@@ -4,7 +4,10 @@ A directory with a `_site.yml` is a `Site`. `chapters:` present ⇒ a **book** (
 chapter sidebar); otherwise a **website** (top navbar).
 
 Module map:
-- `mod.rs`        discovery, page render, listings, `about:`/`hero:` blocks, link rewrite, helpers
+- `mod.rs`        the `Site` type + its `impl` (discover, page render, listings, `about:`/`hero:` blocks)
+- `discovery.rs`  `.qmd` page + loose-deck filesystem walk (`website_pages`, `discover_decks`)
+- `chapter.rs`    book-chapter section numbering (`number_chapter_headings`, `section_number`)
+- `links.rs`      `.qmd`→`.html` href rewrite (`rewrite_qmd_links`, pub) + cross-page link validation
 - `chrome.rs`     navbar / footer / post-nav / book sidebar HTML + social-icon glyphs
                   (a second `impl Site`, methods `pub(super)` so `page_chrome()` calls them)
 - `frontmatter.rs` per-page `---` parsing (reuses `crate::frontmatter::front_matter_block`)
