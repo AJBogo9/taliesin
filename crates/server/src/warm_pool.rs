@@ -351,10 +351,12 @@ impl WarmPool {
             ready.pop_front()
         };
         if kernel.is_some() {
-            // Slot freed: trigger a background refill toward `cap`.
-            let mut n = self.inner.in_flight.lock().await;
-            *n = n.saturating_sub(1);
-            drop(n);
+            // Trigger a background refill toward `cap`.  Do NOT touch
+            // `in_flight`: a kernel sitting in `ready` already had its
+            // in_flight slot released by the refill fork that produced it.
+            // Decrementing here would under-count occupancy and let the next
+            // refill spawn an extra fork, transiently pushing resident kernels
+            // to cap+1 and overshooting the RAM budget.
             PoolInner::refill(Arc::clone(&self.inner));
         }
         kernel
