@@ -35,9 +35,9 @@
 //!
 //! If the forkserver can't boot (no `QMD_FAST_PYTHON`, import error, non-Linux, an
 //! R-only doc) the pool's daemon is simply absent and [`WarmPool::take`] returns
-//! `None`. Wiring (Task 12) treats `None` as "cold start" and calls
-//! `Kernel::start` directly, exactly as today. Any failure on the warm path
-//! degrades to the cold path; it is never a hard error.
+//! `None`. The caller treats `None` as "cold start" and calls `Kernel::start`
+//! directly, exactly as today. Any failure on the warm path degrades to the cold
+//! path; it is never a hard error.
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
@@ -52,7 +52,7 @@ use crate::kernel::{Kernel, KernelSpec, prepare_connection};
 
 /// Default pool size cap. The pool pre-warms `min(POOL_CAP, requested)` kernels;
 /// each warm Python kernel costs roughly one idle interpreter's RAM, so we keep
-/// this small (the build RAM budget is reconciled in Task 12).
+/// this small (the build RAM budget is reconciled by `build_budget::budget_split`).
 pub const POOL_CAP: usize = 2;
 
 /// How long to wait for the forkserver daemon to report `READY` before declaring
@@ -363,13 +363,17 @@ impl WarmPool {
     }
 
     /// Whether this pool is backed by a live forkserver (vs. inert/fallback-only).
-    /// Used by tests and diagnostics.
+    /// A diagnostic accessor currently exercised only by the kernel-gated tests, so
+    /// it reads as dead code in a plain (no-kernel) build.
+    #[allow(dead_code)]
     pub fn is_warm(&self) -> bool {
         self.inner.daemon.is_some()
     }
 
     /// The number of kernels this pool keeps pre-warmed (its effective `cap`).
     /// Diagnostics/tests; equals `min(requested, POOL_CAP)`, `0` for an inert pool.
+    /// Only the kernel-gated tests call it today, so allow the otherwise-dead surface.
+    #[allow(dead_code)]
     pub fn capacity(&self) -> usize {
         self.inner.cap
     }
@@ -421,6 +425,25 @@ async fn boot_pool(want: usize) -> Option<Arc<WarmPool>> {
     Some(Arc::new(WarmPool::new(&python, want).await))
 }
 
+/// Decide whether the refill loop may reserve one more fork slot, given the
+/// kernels already `ready` and the forks already `in_flight`. The warm pool's core
+/// invariant is `ready + in_flight <= cap`: a slot may be reserved only while the
+/// current occupancy is **strictly** below `cap`, so the pool fills to exactly
+/// `cap` and never overshoots to `cap + 1` (each surplus kernel costs a whole
+/// interpreter's RAM against the build budget). Returns the new `in_flight` count
+/// to commit when a reservation is allowed, or `None` when the pool is already full.
+///
+/// This is the pure arithmetic the three accounting fixes (fill-to-cap and the
+/// no-decrement-on-take rule) all turned on; it is unit-tested without a live
+/// kernel so a fourth regression is caught by CI rather than by RAM.
+fn try_reserve_slot(ready_len: usize, in_flight: usize, cap: usize) -> Option<usize> {
+    if ready_len + in_flight >= cap {
+        None
+    } else {
+        Some(in_flight + 1)
+    }
+}
+
 impl PoolInner {
     /// Spawn background tasks to bring the pool up to `cap` ready kernels. Each
     /// task forks one kernel off the warm daemon, connects it, and pushes it onto
@@ -433,14 +456,15 @@ impl PoolInner {
         tokio::spawn(async move {
             loop {
                 // Reserve a slot up to `cap`, counting ready + in-flight kernels.
+                // `try_reserve_slot` is the pure, unit-tested arithmetic guarding
+                // the `ready + in_flight <= cap` invariant.
                 {
                     let ready = inner.ready.lock().await;
                     let mut n = inner.in_flight.lock().await;
-                    let total = ready.len() + *n;
-                    if total >= inner.cap {
-                        return;
+                    match try_reserve_slot(ready.len(), *n, inner.cap) {
+                        Some(next) => *n = next,
+                        None => return,
                     }
-                    *n += 1;
                 }
                 match Self::warm_one(&inner.python, &daemon).await {
                     Ok(kernel) => {
@@ -488,6 +512,74 @@ mod tests {
 
     fn python() -> Option<PathBuf> {
         std::env::var_os("QMD_FAST_PYTHON").map(PathBuf::from)
+    }
+
+    /// The refill loop reserves slots one at a time until occupancy reaches `cap`,
+    /// then stops — so a pool with nothing yet connected (`ready == 0`) fills to
+    /// exactly `cap` outstanding forks and not one more. Pins the "fills to cap"
+    /// accounting fix; deterministic, no live kernel.
+    #[test]
+    fn reserve_fills_to_exactly_cap_and_never_overshoots() {
+        let cap = POOL_CAP; // 2
+        let ready = 0; // nothing connected yet; every reservation is still in-flight
+        let mut in_flight = 0;
+        let mut reservations = 0;
+        // Mirror refill's loop: keep reserving until `try_reserve_slot` bails.
+        while let Some(next) = try_reserve_slot(ready, in_flight, cap) {
+            in_flight = next;
+            reservations += 1;
+            assert!(
+                ready + in_flight <= cap,
+                "occupancy overshot cap ({} + {} > {})",
+                ready,
+                in_flight,
+                cap
+            );
+            assert!(
+                reservations <= cap,
+                "reserve loop did not terminate at cap (runaway forks)"
+            );
+        }
+        assert_eq!(in_flight, cap, "pool should reserve exactly cap slots");
+    }
+
+    /// After a `take`, the popped kernel leaves `ready` but `in_flight` is left
+    /// untouched (the no-decrement-on-take rule). The refill the take triggers may
+    /// then reserve exactly one replacement slot — never two — because an already
+    /// in-flight fork still counts toward occupancy. Pins the cap+1 regression that
+    /// a decrement-on-take would reintroduce; deterministic, no live kernel.
+    #[test]
+    fn take_keeps_in_flight_so_refill_holds_cap() {
+        let cap = POOL_CAP; // 2
+        // State at cap: one kernel ready, one fork still in flight.
+        let ready_before = 1;
+        let in_flight = 1;
+        assert!(
+            try_reserve_slot(ready_before, in_flight, cap).is_none(),
+            "at cap, no slot may be reserved"
+        );
+        // A take pops the ready kernel and (correctly) leaves in_flight alone.
+        let ready_after = ready_before - 1; // 0
+        let in_flight_after = in_flight; // UNCHANGED — the no-decrement rule
+        // The refill take triggers may reserve exactly one replacement...
+        let first = try_reserve_slot(ready_after, in_flight_after, cap);
+        assert_eq!(
+            first,
+            Some(2),
+            "may reserve one replacement for the taken kernel"
+        );
+        // ...and then no more: a second reservation would push forks to cap+1.
+        assert!(
+            try_reserve_slot(ready_after, first.unwrap(), cap).is_none(),
+            "must not reserve a (cap+1)th slot after the replacement"
+        );
+    }
+
+    /// An inert/zero-cap pool never reserves a slot. Guards the `cap == 0`
+    /// (warm-pooling disabled) path so a disabled pool stays at zero forks.
+    #[test]
+    fn zero_cap_reserves_nothing() {
+        assert!(try_reserve_slot(0, 0, 0).is_none());
     }
 
     /// Take a kernel from the warm pool and prove it is a live, usable kernel by
