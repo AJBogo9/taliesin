@@ -985,11 +985,6 @@ fn mount_warnings(mounts: &[qmd_fast_core::site::Mount], root: &Path, out: &Path
         .collect()
 }
 
-/// Estimated peak RSS of one warm kernel (Python/R), in MiB. Used by the memory-aware
-/// concurrency cap so a site build doesn't spawn more parallel kernels than free RAM can
-/// hold. Conservative on the high side; pages with no code cells never boot a kernel.
-const PER_KERNEL_MB: u64 = 150;
-
 /// Concurrent page builds move an owned [`exec::Executor`] into a spawned task, so it must
 /// be `Send`. It is — its kernel handles are `tokio::process::{Child, Child*}` (all `Send`)
 /// and everything else is plain data — but assert it at compile time so a future field that
@@ -1027,6 +1022,7 @@ async fn build_one_page(
     freeze_dir: &Path,
     out: &Path,
     root: &Path,
+    warm_pool: Option<std::sync::Arc<warm_pool::WarmPool>>,
 ) -> PageOutcome {
     let mut warnings = Vec::new();
     let Ok(src) = std::fs::read_to_string(&page.input) else {
@@ -1042,6 +1038,10 @@ async fn build_one_page(
     let mut doc = qmd_fast_core::render_document_with_includes(&src, base);
     let mut exec =
         exec::Executor::with_freeze(freeze::page_path(freeze_dir, &page.rel)).in_dir(base);
+    // Draw this page's Python kernel from the shared warm pool (when one booted) so a
+    // page with code cells starts near-instantly instead of cold-booting. `None`
+    // (unset interpreter / inert pool) cold-starts exactly as before.
+    exec.set_warm_pool(warm_pool);
     doc.blocks = exec.run(std::mem::take(&mut doc.blocks)).await;
     let kernel_unavailable = exec.diagnostic().is_some();
     let mut problems = 0usize;
@@ -1192,23 +1192,42 @@ async fn build_site_async(
     //    sequential one. `--jobs 1` (today's default) takes the in-order serial path.
     //    Cross-page ordering edges (a page that must build after another) are deferred to
     //    Task 9; here every dirty page is treated as independent.
-    let cap = build_budget::concurrency_cap(jobs, PER_KERNEL_MB).max(1);
-    log::info(&format!("building with up to {} parallel page(s)", cap));
+    // One memory/core budget covers *all* resident kernels: the eager warm pool plus
+    // the kernels the concurrent build runs at once. `budget_split` reserves a small
+    // warm pool (build-first: never below 1 build kernel) so the two never together
+    // exceed the cap. The build semaphore is sized to `build_kernels`; the warm pool
+    // pre-warms `warm_pool` so each page build can draw a hot kernel instead of paying
+    // a cold boot. Determinism is untouched: a pooled kernel runs the same ipykernel
+    // with the same preambles as a cold one, so it produces identical bytes — the pool
+    // only changes *when* a kernel is ready, never *what* it computes.
+    let cap = build_budget::concurrency_cap(jobs, build_budget::PER_KERNEL_MB).max(1);
+    let split = build_budget::budget_split(cap);
+    let build_cap = split.build_kernels.max(1);
+    log::info(&format!(
+        "building with up to {} parallel page(s); pre-warming {} kernel(s)",
+        build_cap, split.warm_pool
+    ));
     let mut pages = 0usize;
     let mut kernel_unavailable = false;
     // `--strict` problem tally across the whole site: per-page located warnings +
     // broken cross-refs + crashed cells (each already logged where it occurs).
     let mut problems = 0usize;
 
+    // The one process-wide warm pool for this build. `None` (so every page cold-starts
+    // exactly as today) when `QMD_FAST_PYTHON` is unset or the forkserver can't boot;
+    // dropped at the end of this fn, killing the daemon + idle kernels.
+    let warm_pool = warm_pool::warm_pool_for_build(split.warm_pool).await;
+
     // Build into a slot per page (indexed by page order) so results aggregate
-    // deterministically regardless of completion order. A `Semaphore` of size `cap`
-    // bounds how many kernels run at once (memory-aware); the pool lookup / file write
-    // each page does is on its own paths, so no lock is held across the `.await`.
+    // deterministically regardless of completion order. A `Semaphore` of size
+    // `build_cap` bounds how many build kernels run at once (memory-aware, reconciled
+    // with the warm pool); the pool lookup / file write each page does is on its own
+    // paths, so no lock is held across the `.await`.
     let site = std::sync::Arc::new(site);
     let out = std::sync::Arc::new(out);
     let freeze_dir = std::sync::Arc::new(freeze_dir);
     let root_arc = std::sync::Arc::new(root.to_path_buf());
-    let sem = std::sync::Arc::new(tokio::sync::Semaphore::new(cap));
+    let sem = std::sync::Arc::new(tokio::sync::Semaphore::new(build_cap));
     let mut set: tokio::task::JoinSet<(usize, PageOutcome)> = tokio::task::JoinSet::new();
     for (idx, _page) in site.pages.iter().enumerate() {
         let site = site.clone();
@@ -1216,13 +1235,15 @@ async fn build_site_async(
         let freeze_dir = freeze_dir.clone();
         let root_arc = root_arc.clone();
         let sem = sem.clone();
+        let warm_pool = warm_pool.clone();
         set.spawn(async move {
             // Hold a permit only for this page's build; dropping it on return frees the
             // slot for the next queued page. The permit guards kernel count, not any
             // shared data structure, so nothing is locked across the build's `.await`.
             let _permit = sem.acquire().await.expect("build semaphore not closed");
             let page = &site.pages[idx];
-            let outcome = build_one_page(&site, page, &freeze_dir, &out, &root_arc).await;
+            let outcome =
+                build_one_page(&site, page, &freeze_dir, &out, &root_arc, warm_pool).await;
             (idx, outcome)
         });
     }

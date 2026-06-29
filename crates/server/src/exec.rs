@@ -176,6 +176,12 @@ pub struct Executor {
     /// onto each `build-state` so a multi-page client knows which page it's about.
     /// `None` for the single-doc server.
     page: Option<String>,
+    /// Optional eager warm pool of pre-booted Python kernels (one per server
+    /// process; see [`crate::warm_pool::WarmPool`]). When set, `ensure_kernel` claims
+    /// a ready kernel from it for `python` instead of paying a cold `Kernel::start`,
+    /// so the first edit is near-instant. `None` (the default, and the `build`/test
+    /// path with no pool) cold-starts exactly as before — no behavioral change.
+    pool: Option<Arc<crate::warm_pool::WarmPool>>,
 }
 
 impl Executor {
@@ -224,6 +230,7 @@ impl Executor {
             work_dir: None,
             sink: None,
             page: None,
+            pool: None,
         }
     }
 
@@ -237,6 +244,17 @@ impl Executor {
     pub fn set_progress(&mut self, sink: ProgressSink, page: Option<String>) {
         self.sink = sink;
         self.page = page;
+    }
+
+    /// Draw this executor's `python` kernel from the shared warm `pool` when one is
+    /// ready, instead of cold-starting it. Mirrors [`Executor::set_progress`]: a
+    /// `&mut self` setter so a server can apply one process-wide pool to each pooled
+    /// `&mut Executor` it reuses. A pooled kernel runs the **same** ipykernel with the
+    /// same startup preambles as a cold one, so it executes cells identically — the
+    /// pool changes only *boot latency*, never outputs (determinism preserved).
+    /// Unset (the `build`/test default) → every kernel cold-starts as before.
+    pub fn set_warm_pool(&mut self, pool: Option<Arc<crate::warm_pool::WarmPool>>) {
+        self.pool = pool;
     }
 
     /// The launch spec + interpreter path (for logging) for a language.
@@ -410,20 +428,15 @@ impl Executor {
         // Boot the kernel up-front (the real wait), so the per-cell progress below
         // reflects actual execution rather than the startup it used to hide. A full
         // replay (to_run == 0) never boots: that's the cold-start fast path — and it
-        // must never claim "warming-kernel", so the warming signal is gated on the
-        // same `to_run > 0` that gates the boot.
+        // must never claim "warming-kernel", so the boot is gated on `to_run > 0`.
+        //
+        // The `warming-kernel` signal itself is now gated *inside* `ensure_kernel`,
+        // which emits it **only** when it actually pays a cold `Kernel::start`. A
+        // warm-pool HIT (a ready, pre-booted kernel) is near-instant, so it must not
+        // present a long warming state; passing `to_run` lets `ensure_kernel` build
+        // the same `build-state` message on the cold path only.
         if to_run > 0 {
-            emit(
-                &self.sink,
-                crate::protocol::build_state(
-                    self.page.as_deref(),
-                    "warming-kernel",
-                    0,
-                    to_run as u32,
-                    lang,
-                ),
-            );
-            self.ensure_kernel(lang).await;
+            self.ensure_kernel(lang, to_run).await;
         }
         let has_kernel = self
             .langs
@@ -609,37 +622,85 @@ impl Executor {
         outputs
     }
 
-    /// Ensure a live kernel for `lang` before executing. Three cases:
+    /// Ensure a live kernel for `lang` before executing. Cases, in order:
     ///   - a kernel that died mid-session is dropped and respawned (self-healing,
     ///     so a crash doesn't make every later cell hang on the execute timeout);
     ///   - after a failed *start* we back off for `KERNEL_RETRY_AFTER` before
     ///     retrying, so a missing/bad interpreter doesn't re-hang every save, but a
     ///     fixed config recovers on its own within a few saves;
-    ///   - otherwise (no kernel, not in backoff) we start one.
+    ///   - for `python`, a ready kernel from the **warm pool** (if one is wired) is
+    ///     claimed instead of cold-starting — near-instant, no `warming-kernel`;
+    ///   - otherwise (no kernel, not in backoff, no warm hit) we cold-start one,
+    ///     emitting the `warming-kernel` build-state around the real (multi-second)
+    ///     wait. `to_run` is the cell count that boot is unblocking, for that message.
     ///
-    /// Logs the (often multi-second) boot so the wait is visible.
-    async fn ensure_kernel(&mut self, lang: &'static str) {
+    /// The `warming-kernel` signal is emitted **only** on the genuine cold-start
+    /// path, so a warm-pool hit (or a still-live kernel) never shows a long warm-up.
+    /// A pooled kernel is the same ipykernel running the same preambles as a cold
+    /// one, so it executes cells identically — pooling changes only latency.
+    async fn ensure_kernel(&mut self, lang: &'static str, to_run: usize) {
         // Build the launch spec before borrowing the per-language state mutably.
         let Some((spec, program)) = self.spec(lang) else {
             return;
         };
         let work_dir = self.work_dir.clone();
-        let state = self.langs.entry(lang).or_default();
-        if let Some(k) = state.kernel.as_mut() {
-            if k.is_alive() {
-                return;
-            }
-            crate::log::warn(&format!("{lang} kernel exited; restarting"));
-            state.kernel = None;
-            state.ran.clear(); // kernel state is gone; re-run everything
-        }
-        if let Some(at) = state.failed_at
-            && at.elapsed() < KERNEL_RETRY_AFTER
         {
-            return; // still backing off; cells render as source
+            let state = self.langs.entry(lang).or_default();
+            if let Some(k) = state.kernel.as_mut() {
+                if k.is_alive() {
+                    return; // already warm — no boot, no warming signal
+                }
+                crate::log::warn(&format!("{lang} kernel exited; restarting"));
+                state.kernel = None;
+                state.ran.clear(); // kernel state is gone; re-run everything
+            }
+            if let Some(at) = state.failed_at
+                && at.elapsed() < KERNEL_RETRY_AFTER
+            {
+                return; // still backing off; cells render as source (no signal)
+            }
         }
+
+        // Warm-pool fast path (python only): a ready, pre-booted kernel is claimed
+        // with no perceptible wait, so we emit **no** `warming-kernel` state. The
+        // pool may yield `None` (inert pool, empty queue, or a non-python lang) — in
+        // which case we fall through to the unchanged cold start below. A pooled
+        // kernel is forked from the daemon's cwd, so we chdir it to this document's
+        // `work_dir` to match a cold kernel started with `current_dir(work_dir)`;
+        // this keeps relative cell writes (fig-export, audio) landing beside the
+        // source, exactly as before (and preserves the per-page file isolation the
+        // determinism/clobber tests rely on).
+        if lang == "python"
+            && let Some(pool) = self.pool.clone()
+            && let Some(mut kernel) = pool.take().await
+        {
+            if let Some(dir) = work_dir.as_deref() {
+                set_kernel_cwd(&mut kernel, dir).await;
+            }
+            crate::log::kernel(&format!("{lang} ready (warm pool)"));
+            let state = self.langs.entry(lang).or_default();
+            state.kernel = Some(kernel);
+            state.failed_at = None;
+            state.last_error = None;
+            return;
+        }
+
+        // Cold start: the real (often multi-second) wait. This is the *only* path
+        // that presents `warming-kernel`, so the signal is honest.
+        emit(
+            &self.sink,
+            crate::protocol::build_state(
+                self.page.as_deref(),
+                "warming-kernel",
+                0,
+                to_run as u32,
+                lang,
+            ),
+        );
         crate::log::kernel(&format!("starting {lang} ({})", program.display()));
-        match Kernel::start(&spec, work_dir.as_deref()).await {
+        let started = Kernel::start(&spec, work_dir.as_deref()).await;
+        let state = self.langs.entry(lang).or_default();
+        match started {
             Ok(k) => {
                 crate::log::kernel(&format!("{lang} ready ({})", program.display()));
                 state.kernel = Some(k);
@@ -679,6 +740,34 @@ impl Executor {
                 )
             }
         }
+    }
+}
+
+/// Point a freshly-claimed warm-pool kernel at `dir`, so its relative file writes
+/// (fig-export PDFs, `ggsave`, audio) land beside the document's source — matching a
+/// cold kernel that `Kernel::start` launches with `current_dir(dir)`. The pool forks
+/// kernels from the daemon's cwd, so without this they'd write into the server's
+/// launch dir instead; setting it here keeps behavior (and the per-page file
+/// isolation the determinism tests assert) identical to the cold path.
+///
+/// Runs `os.chdir(...)` as a setup statement — it yields no display output, so it
+/// never appears in any cell's rendered HTML (output-invisible; can't perturb the
+/// freeze cache or the determinism invariant). A failure is logged and ignored: the
+/// kernel still works, just with the daemon's cwd, no worse than a fallback.
+async fn set_kernel_cwd(kernel: &mut Kernel, dir: &Path) {
+    // A normal path string in a Python single-quoted literal; embedded quotes/
+    // backslashes are escaped so a path like `O'Brien` or a Windows path can't break
+    // out of the literal. (Build dirs are tame, but keep it injection-safe.)
+    let escaped = dir
+        .to_string_lossy()
+        .replace('\\', "\\\\")
+        .replace('\'', "\\'");
+    let code = format!("import os as _qmd_os; _qmd_os.chdir('{escaped}'); del _qmd_os");
+    if let Err(e) = kernel.execute(&code).await {
+        crate::log::warn(&format!(
+            "warm-pool: could not set kernel cwd to {} ({e}); using daemon cwd",
+            dir.display()
+        ));
     }
 }
 
@@ -1311,6 +1400,72 @@ mod tests {
                 "run-range cell {id} must end on `error`, not stay queued: {states:?}",
             );
         }
+    }
+
+    #[test]
+    fn pooled_kernel_serves_cells_without_a_long_warming_state() {
+        // Task 12 Step 1: an Executor wired to a warm pool draws its python kernel
+        // from the pool and runs a cell to a correct result, and — because a pooled
+        // kernel is near-instant — never presents a `warming-kernel` build-state. The
+        // cold path *does* emit `warming-kernel`; here it must be absent. Kernel-gated:
+        // the warm pool needs a real `QMD_FAST_PYTHON` with ipykernel.
+        let Some(py) = std::env::var_os("QMD_FAST_PYTHON").map(PathBuf::from) else {
+            eprintln!(
+                "SKIPPED (no live kernel): set QMD_FAST_PYTHON to a python with ipykernel to \
+                 exercise the warm-pool exec path; this run did not."
+            );
+            return;
+        };
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let pool = Arc::new(crate::warm_pool::WarmPool::new(&py, 2).await);
+            assert!(
+                pool.is_warm() && pool.capacity() >= 1,
+                "a real python must boot a warm forkserver with capacity >= 1"
+            );
+            // Let the pool pre-warm at least one kernel so `take` is a hit, not a miss
+            // (a miss would legitimately fall back to a cold start + warming signal).
+            let mut ready = false;
+            for _ in 0..100 {
+                if pool.ready_len().await > 0 {
+                    ready = true;
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            assert!(ready, "warm pool should pre-warm a kernel within 10s");
+
+            let (sink, captured) = capturing_sink();
+            let mut ex = Executor::new();
+            ex.set_progress(sink, Some("ch1.qmd".into()));
+            ex.set_warm_pool(Some(pool));
+            // A cell with a deterministic textual result, so we can prove the pooled
+            // kernel actually executed it.
+            let blocks = vec![python_cell_block_with("b-1", "print(6 * 7)")];
+            let _ = ex.run(blocks).await;
+
+            assert!(
+                ex.diagnostic().is_none(),
+                "the pooled kernel must be live (no boot diagnostic)"
+            );
+            // Output proves the pooled kernel ran the cell.
+            let msgs = captured.lock().unwrap();
+            let phases = build_phases(&msgs);
+            assert!(
+                !phases.contains(&"warming-kernel".to_string()),
+                "a warm-pool hit must NOT present a `warming-kernel` state: {phases:?}"
+            );
+            // It still reaches `executing` then settles on `idle` with ran == total.
+            assert!(
+                phases.contains(&"executing".to_string()),
+                "the pooled build should still emit `executing`: {phases:?}"
+            );
+            assert_eq!(
+                phases.last(),
+                Some(&"idle".to_string()),
+                "the pooled build must settle on `idle`: {phases:?}"
+            );
+        });
     }
 
     #[tokio::test]

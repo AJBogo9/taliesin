@@ -684,26 +684,36 @@ struct ExecPool {
     /// `_freeze/` directory for the project; each page's executor caches its outputs
     /// under it. Empty (the `Default`) disables caching — used by the unit tests.
     freeze_dir: PathBuf,
+    /// The one process-wide warm pool of pre-booted Python kernels, shared by every
+    /// page executor so the first edit on a fresh page is near-instant instead of
+    /// paying a cold boot. `None` (the `Default`, and when `QMD_FAST_PYTHON` is unset
+    /// / the forkserver can't boot) → every page cold-starts, exactly as before.
+    warm_pool: Option<Arc<crate::warm_pool::WarmPool>>,
 }
 
 impl ExecPool {
-    /// A pool whose executors persist their outputs under `freeze_dir`.
-    fn new(freeze_dir: PathBuf) -> Self {
+    /// A pool whose executors persist their outputs under `freeze_dir` and draw their
+    /// Python kernels from the shared `warm_pool` (when one booted).
+    fn new(freeze_dir: PathBuf, warm_pool: Option<Arc<crate::warm_pool::WarmPool>>) -> Self {
         ExecPool {
             freeze_dir,
+            warm_pool,
             ..Default::default()
         }
     }
 
     /// A fresh executor for `rel`, cache-backed when the pool has a `_freeze/` dir,
-    /// running its kernels in `work_dir` (the page's own directory).
+    /// running its kernels in `work_dir` (the page's own directory), drawing Python
+    /// kernels from the shared warm pool when one is wired.
     fn make(&self, rel: &str, work_dir: &Path) -> crate::exec::Executor {
         let ex = if self.freeze_dir.as_os_str().is_empty() {
             crate::exec::Executor::new()
         } else {
             crate::exec::Executor::with_freeze(crate::freeze::page_path(&self.freeze_dir, rel))
         };
-        ex.in_dir(work_dir)
+        let mut ex = ex.in_dir(work_dir);
+        ex.set_warm_pool(self.warm_pool.clone());
+        ex
     }
 
     /// The executor for `rel` (created if absent), marked most-recently-used. If
@@ -783,7 +793,14 @@ mod exec_pool_tests {
 
 fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildMsg>) {
     tokio::spawn(async move {
-        let mut pool = ExecPool::new(app.root.join("_freeze"));
+        // Boot one process-wide warm pool of Python kernels so the first edit on any
+        // page is near-instant. Owned by this builder task: it lives for the server's
+        // lifetime and is dropped when the build channel closes (server shutdown),
+        // which kills the forkserver daemon + idle kernels. If `QMD_FAST_PYTHON` is
+        // unset or the forkserver can't boot, `WarmPool::new` returns an inert pool
+        // and every page cold-starts — no regression.
+        let warm_pool = crate::warm_pool::warm_pool_for_preview().await;
+        let mut pool = ExecPool::new(app.root.join("_freeze"), warm_pool);
         while let Some(msg) = build_rx.recv().await {
             match msg {
                 BuildMsg::Build(rel) => build_page_guarded(&app, &rel, &mut pool).await,

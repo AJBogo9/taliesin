@@ -365,6 +365,58 @@ impl WarmPool {
     pub fn is_warm(&self) -> bool {
         self.inner.daemon.is_some()
     }
+
+    /// The number of kernels this pool keeps pre-warmed (its effective `cap`).
+    /// Diagnostics/tests; equals `min(requested, POOL_CAP)`, `0` for an inert pool.
+    pub fn capacity(&self) -> usize {
+        self.inner.cap
+    }
+
+    /// How many kernels are currently sitting ready in the queue. Test-only: lets a
+    /// test wait for the background pre-warm to land at least one kernel so a `take`
+    /// is a deterministic *hit* rather than a race that could legitimately fall back.
+    #[cfg(test)]
+    pub(crate) async fn ready_len(&self) -> usize {
+        self.inner.ready.lock().await.len()
+    }
+}
+
+/// Build the one warm pool a **preview server** owns, sized within the same budget
+/// the parallel build respects. Returns `None` (so every page cold-starts, exactly
+/// as before) when `QMD_FAST_PYTHON` is unset: we don't speculatively boot a
+/// forkserver against a possibly-absent `python3`. When it *is* set, the pool boots
+/// the forkserver; if that fails the returned pool is inert and the caller still
+/// cold-starts (no regression).
+///
+/// The preview builder runs pages serially (one build kernel at a time), so the
+/// resident set during a build is `warm_pool + 1`; we ask for the budget-split warm
+/// size against the same memory cap the build uses, then let `WarmPool::new` clamp it
+/// to [`POOL_CAP`]. Wrapped in an `Arc` so it's shared by every page executor.
+pub async fn warm_pool_for_preview() -> Option<Arc<WarmPool>> {
+    let want = crate::build_budget::preview_warm_pool_size();
+    boot_pool(want).await
+}
+
+/// Build the one warm pool a **site build** owns, asking for `size` pre-warmed
+/// kernels (already reconciled against the build's memory budget by
+/// `budget_split`, so `warm_pool + build_kernels <= cap`). Returns `None` (every
+/// page cold-starts, exactly as before) when `size == 0` or `QMD_FAST_PYTHON` is
+/// unset. Dropped at the end of the build, killing the daemon + idle kernels.
+pub async fn warm_pool_for_build(size: usize) -> Option<Arc<WarmPool>> {
+    if size == 0 {
+        return None;
+    }
+    boot_pool(size).await
+}
+
+/// Resolve `QMD_FAST_PYTHON` and boot a warm pool of `want` kernels, or `None` when
+/// the interpreter isn't configured (so we never speculatively boot a forkserver
+/// against a possibly-absent `python3`; the caller then cold-starts as before). A
+/// boot failure isn't `None` here — `WarmPool::new` already degrades to an inert pool
+/// that returns `None` from `take`, which the executor treats as a cold start.
+async fn boot_pool(want: usize) -> Option<Arc<WarmPool>> {
+    let python = PathBuf::from(std::env::var_os("QMD_FAST_PYTHON")?);
+    Some(Arc::new(WarmPool::new(&python, want).await))
 }
 
 impl PoolInner {
