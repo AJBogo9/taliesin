@@ -17,7 +17,6 @@
     --qmd-font-head: ui-sans-serif, system-ui, sans-serif;
     --qmd-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
     --qmd-maxw: 46rem;
-    --qmd-scale: 1.2; /* modular type-scale ratio (minor third) for the heading sizes */
     /* One keyboard-focus ring for every interactive control (links, buttons, tabs,
        reader-menu + deck controls). One token so a theme can retune the ring once and
        every control follows; the global rule below applies it via :focus-visible. */
@@ -782,5 +781,5 @@
 }
 .qmd-input input[type="range"] { flex: 0 1 16rem; accent-color: var(--qmd-accent); }
 .qmd-input input[type="checkbox"], .qmd-input input[type="radio"] { accent-color: var(--qmd-accent); }
-.qmd-input select { color: var(--qmd-ink); background: var(--qmd-bg); border: 1px solid var(--qmd-border); border-radius: 4px; padding: 0.1em 0.3em; }
+.qmd-input select { color: var(--qmd-fg); background: var(--qmd-bg); border: 1px solid var(--qmd-border); border-radius: 4px; padding: 0.1em 0.3em; }
 .qmd-js-error { color: #b00020; background: #fff0f0; border: 1px solid #f3c0c0; padding: .5em .7em; border-radius: 6px; overflow: auto; font-size: .85em; }
