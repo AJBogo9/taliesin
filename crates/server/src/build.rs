@@ -959,15 +959,21 @@ async fn build_site_async(
     strict_exit(ExitCode::SUCCESS, strict && problems > 0, problems)
 }
 
-/// Source-only file extensions that are build *inputs*, never referenced by the rendered
-/// HTML, so they are not mirrored into the deploy: `.qmd` (rendered separately), `.bib`
-/// (citations are resolved server-side), `.Rproj` (an editor project file).
-const SKIP_EXT: &[&str] = &["qmd", "bib", "Rproj"];
+/// Source-only file extensions that are build *inputs* / prose / stylesheet sources,
+/// never referenced by the rendered HTML, so they are not mirrored into the deploy:
+/// `.qmd` (rendered separately), `.bib` (citations resolved server-side), `.Rproj` (an
+/// editor project file), `.md` (prose/planning the renderer never serves), and `.scss`/
+/// `.sass` (stylesheet sources — output references the compiled `.css`). Keeping these
+/// out of `_site/` is publish hygiene: a stray `notes.md` or `theme.scss` in the source
+/// tree never leaks onto the live site. (To deploy a private *binary* asset selectively,
+/// the `_`/`.`-prefix convention still applies; these are excluded by kind.)
+const SKIP_EXT: &[&str] = &["qmd", "bib", "Rproj", "md", "scss", "sass"];
 
 /// Copy every non-source file under `root` into `out`, mirroring the directory tree.
-/// Skips: `.qmd`/`.bib`/`.Rproj` sources ([`SKIP_EXT`]), `_`-prefixed and dot entries
-/// (`_site.yml`, `_includes`, `_site`, `.RData`, …), build-tool cache/artifact dirs
-/// (`*_cache/`, `*_files/` — knitr/RMarkdown/Quarto residue), and the output dir itself.
+/// Skips: source-only extensions ([`SKIP_EXT`]: `.qmd`/`.bib`/`.Rproj`/`.md`/`.scss`/
+/// `.sass`), `_`-prefixed and dot entries (`_site.yml`, `_includes`, `_site`, `.RData`, …),
+/// build-tool cache/artifact dirs (`*_cache/`, `*_files/` — knitr/RMarkdown/Quarto
+/// residue), and the output dir itself.
 /// Returns `(files copied, names of skipped cache dirs)` so the caller can report residue
 /// it dropped rather than silently omitting it.
 fn mirror_assets(root: &Path, out: &Path) -> (usize, Vec<String>) {
@@ -1130,7 +1136,8 @@ mod mirror_tests {
         let root = tmp("residue");
         let out = tmp("residue-out");
         fs::write(root.join("keep.png"), b"x").unwrap();
-        fs::write(root.join("notes.md"), b"x").unwrap(); // not residue -> kept (use _/. to hide)
+        fs::write(root.join("notes.md"), b"x").unwrap(); // prose/planning source -> not deployed
+        fs::write(root.join("theme.scss"), b"x").unwrap(); // stylesheet source -> not deployed
         fs::write(root.join("refs.bib"), b"x").unwrap(); // source-only -> skipped
         for d in ["index_cache", "report_files", "_freeze"] {
             fs::create_dir_all(root.join(d)).unwrap();
@@ -1142,8 +1149,12 @@ mod mirror_tests {
 
         assert!(out.join("keep.png").exists(), "plain asset should copy");
         assert!(
-            out.join("notes.md").exists(),
-            "non-residue file copies (the _/. convention marks private)"
+            !out.join("notes.md").exists(),
+            ".md is a prose/planning source, never referenced by the rendered HTML -> not deployed"
+        );
+        assert!(
+            !out.join("theme.scss").exists(),
+            ".scss is a stylesheet source (output references compiled .css) -> not deployed"
         );
         assert!(
             !out.join("refs.bib").exists(),
@@ -1153,7 +1164,7 @@ mod mirror_tests {
         assert!(!out.join("report_files").exists(), "*_files dir is residue");
         assert!(!out.join("_freeze").exists(), "_-prefixed dir skipped");
         assert!(!out.join(".RData").exists(), "dotfile skipped");
-        assert_eq!(copied, 2, "only keep.png + notes.md copied");
+        assert_eq!(copied, 1, "only keep.png is a deployable asset");
         assert!(
             skipped.contains(&"index_cache".to_string())
                 && skipped.contains(&"report_files".to_string()),
