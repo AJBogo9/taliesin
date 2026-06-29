@@ -492,6 +492,33 @@ mod tests {
     }
 
     #[test]
+    fn collect_diagnostics_does_not_flag_links_into_a_mounted_subsite() {
+        // A site that `mounts:` another project under a URL prefix; a page links into
+        // that prefix (both the `dir/page.html` and the `dir/` index forms). Those links
+        // resolve only when the mount is served, so `check` must NOT report them broken.
+        // Regression guard: validate_cross_page_links ignored `mounts:` and flagged the
+        // project's own deployed marketing-site links (8 false positives).
+        let dir = tmp("check-mounts");
+        fs::write(
+            dir.join("_site.yml"),
+            "output: _site\nmounts:\n  docs: ../docs\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.join("index.qmd"),
+            "---\ntitle: Home\n---\n\n\
+             See the [guide](docs/intro.html) and the [docs home](docs/).\n",
+        )
+        .unwrap();
+        let diags = collect_diagnostics(&dir).expect("ok");
+        assert!(
+            !diags.iter().any(|d| d.message.contains("broken link")),
+            "links into a mount prefix must not be flagged broken: {diags:?}"
+        );
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn collect_diagnostics_surfaces_a11y_rules() {
         // One doc tripping each new static a11y rule: a raw `<img>` with no alt, an h2->h4
         // heading skip, and an empty (icon-only) link. `check` must surface them all, located,

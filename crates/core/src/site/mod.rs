@@ -422,7 +422,18 @@ impl Site {
                         // on disk backs it: an `{{< embed >}}`-referenced deck (built +
                         // served but kept out of nav/registry) and any source file that
                         // exists under the root are legitimate targets.
-                        if self.decks.iter().any(|d| d.url == target_url)
+                        // A target under a configured `mounts:` prefix resolves only when
+                        // the mounted project is served (preview) or copied in (build) — it is
+                        // not in this site's own page registry, so it is not "broken". (build
+                        // separately warns these links are preview-only.) Matches the mount
+                        // root (`docs`), its index (`docs/index.html`), and anything beneath it.
+                        let under_mount = self.config.mounts.iter().any(|m| {
+                            target_url == m.at
+                                || target_url == format!("{}/index.html", m.at)
+                                || target_url.starts_with(&format!("{}/", m.at))
+                        });
+                        if under_mount
+                            || self.decks.iter().any(|d| d.url == target_url)
                             || self.root.join(&target_url).is_file()
                             || self.root.join(html_to_qmd(&target_url)).is_file()
                         {
