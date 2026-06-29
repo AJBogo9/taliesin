@@ -202,24 +202,6 @@ Made "a green `check`/build = publishable" stronger + clippy green: (1) **a11y g
 instead of hardcoding `QMD_FAST_PYTHON`). (6) **clippy green** (`collapsible_if`→let-chain).
 
 **Still open — high value**
-- [ ] **Silent missing cell output under kernel load (determinism flake + correctness).**
-  `crates/server/tests/parallel_build_determinism.rs::sequential_and_concurrent_match_with_code_cells`
-  flakes under full-suite load: passes in isolation, fails in `cargo test --workspace`. Root cause
-  (reproduced 2026-06-29 by running ~12 concurrent kernel-site build pairs): under heavy kernel/memory
-  contention a code cell's **entire `<div class="qmd-output">` is silently dropped** — the cell's source
-  still renders, no error/`qmd-error`/"kernel unavailable" notice is shown, the output just vanishes
-  (~155-byte page delta). It hits *either* the `--jobs 1` or the `--jobs 4` build (so it is NOT
-  concurrency-specific; oversubscription is the trigger), which is why the seq-vs-par determinism
-  assertion catches it. Two distinct harms: (a) **CI instability** — a real `cargo test --workspace`
-  can fail through no fault of the diff; (b) **silent failure** — a real busy-machine `--jobs N` build
-  could ship a page missing a computed result with no diagnostic, the exact anti-pattern the polish-audit
-  doctrine targets. Likely in the exec/kernel path (`exec.rs` output splicing / `ensure_kernel` under a
-  failed-to-start-within-retry-window or interrupted cell). Lives in the **Do-NOT-touch exec/kernel zone**,
-  so it needs a careful root-cause pass: first make the drop *loud* (a cell that was supposed to execute
-  but produced no output must emit a visible diagnostic, never an empty splice), then decide whether to
-  bound build concurrency harder under memory pressure. Until fixed, the determinism test is a known
-  load-sensitive flake. NOT introduced by the warm-pool accounting work (verified: fails on the clean
-  base too).
 - [ ] **`check` online-link mode (opt-in).** Broken plain/external `http(s)` links are intentionally
   NOT fetched (offline + deterministic by design). If ever wanted, gate a real fetch behind an explicit
   opt-in flag (e.g. `--online`) so the default `check` stays kernel-free and network-free.
