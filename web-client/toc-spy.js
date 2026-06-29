@@ -124,7 +124,14 @@
       li.classList.toggle("qmd-toc-expanded", open.indexOf(li) !== -1);
     });
     var chip = document.getElementById("qmd-toc-cur"); // mobile pull-up handle label
-    if (chip && cur) chip.textContent = cur.heading.textContent;
+    if (chip && cur) {
+      // Strip the hover `#` permalink the anchor-links enhancer appends to a heading,
+      // so the chip reads "Section title", not "Section title#".
+      var h = cur.heading.cloneNode(true);
+      var anchors = h.querySelectorAll(".qmd-anchor");
+      for (var ai = 0; ai < anchors.length; ai++) anchors[ai].remove();
+      chip.textContent = (h.textContent || "").trim();
+    }
     if (cur) {
       // keep the active link in view when the TOC is its own scroll area
       var lr = cur.link.getBoundingClientRect();

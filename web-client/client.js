@@ -444,9 +444,9 @@
   // Decorates each output block ({cell_id}-out) with a colored left-border and
   // a small badge showing queued/running (with live elapsed)/done/error state.
   // Driven entirely by server `cell-state` messages; we never infer state.
-  var runningTimers = {}; // cell_id -> started_ms
+  var runningTimers = /** @type {Record<string, number>} */ ({}); // cell_id -> started_ms
   var activeCell = /** @type {string|null} */ (null); // last cell_id seen in "running" state
-  function fmtElapsed(ms) { return (ms / 1000).toFixed(1) + "s"; }
+  function fmtElapsed(/** @type {number} */ ms) { return (ms / 1000).toFixed(1) + "s"; }
   function applyCellState(/** @type {CellStateMsg} */ msg) {
     var out = elById(msg.cell_id + "-out") || elById(msg.cell_id);
     if (!out) return;
@@ -602,7 +602,8 @@
         "<span class=\"qmd-prog-fill\" style=\"width:" + Math.round(barPct * 100) + "%\"></span>" +
       "</span>";
     // Set label via textContent so server-controlled values can't inject HTML.
-    el.querySelector(".qmd-prog-label").textContent = msg.ran + "/" + msg.total;
+    var busyLabel = el.querySelector(".qmd-prog-label");
+    if (busyLabel) busyLabel.textContent = msg.ran + "/" + msg.total;
     el.setAttribute("data-state", "busy");
     el.title = "Click to scroll to active cell";
     document.title = "● building… — " + baseTitle;
@@ -618,8 +619,9 @@
         "<span class=\"qmd-prog-label\"></span>";
     }
     var secs = warmStartMs !== null ? ((Date.now() - warmStartMs) / 1000).toFixed(1) : "0.0";
-    el.querySelector(".qmd-prog-label").textContent =
-      "Starting " + lang + " kernel… (" + secs + "s)";
+    var warmLabel = el.querySelector(".qmd-prog-label");
+    if (warmLabel)
+      warmLabel.textContent = "Starting " + lang + " kernel… (" + secs + "s)";
   }
 
   // A `{js}` cell can error asynchronously (its async body runs after the mount);
