@@ -75,8 +75,10 @@ per-kind cross-ref prefixes, the post-pass numbering pattern, the callout aesthe
   container is `cell: None` (never executed), correct for prose theorems.
 - **Math:** KaTeX renders into child blocks during `emit`, before `build_container` sees
   them, so math inside a theorem Just Works; `cite::process` skips KaTeX `<annotation>`.
-- **Validation:** `CALLOUT_KINDS` + `validate_callout_kind` in `render/validate.rs` is the
-  did-you-mean pattern to mirror for a `THEOREM_KINDS` const.
+- **Validation:** `CALLOUT_KINDS` + `validate_callout_kind` in `render/validate.rs` show the
+  const + dispatch pattern to mirror for a `THEOREM_KINDS` const (callouts get did-you-mean
+  off the `callout-` prefix; theorems have no prefix, so no kind-typo did-you-mean — see
+  Validation below).
 - **Decks:** decks go through the SAME `render_internal_impl -> group_divs ->
   build_container` pipeline, so a `.theorem` arm reaches slides for free with attrs intact;
   but decks load only `deck.css` (not `base.css`); the deck has a complete fragment
@@ -136,15 +138,20 @@ one container `Block` carrying the standard `data-block-id`/`data-sourcepos`/
 
 ```html
 <div class="qmd-theorem qmd-theorem-theorem qmd-thm-style-plain"
-     data-qmd-theorem-kind="theorem" id="thm-pyth"
-     data-block-id="…" data-sourcepos="…" aria-labelledby="…-head">
-  <p class="qmd-theorem-head" id="…-head">
-    <span class="qmd-theorem-label">Theorem<!-- number slot --></span>
+     id="thm-pyth" data-qmd-theorem-kind="theorem"
+     data-block-id="…" data-sourcepos="…">
+  <p class="qmd-theorem-head">
+    <span class="qmd-theorem-label">Theorem<span class="qmd-theorem-number"></span></span>
     <span class="qmd-theorem-title">(Pythagorean theorem)</span>
   </p>
   <div class="qmd-theorem-body"> …child blocks… </div>
 </div>
 ```
+
+The number slot (`<span class="qmd-theorem-number"></span>`) is emitted empty; the
+post-pass fills it with `&nbsp;N`. The optional author `id` sits on the opening tag (the
+post-pass reads it from that tag only, via `tag_end`, so a child block's `id` is never
+mistaken for the theorem anchor).
 
 `proof` emits `class="qmd-proof"`, a `qmd-proof-head` lead, the body, and a trailing
 `<span class="qmd-qed" aria-hidden="true">∎</span>`.
@@ -181,19 +188,24 @@ plural/capitalized variants are phase 2. No change to the BibTeX parser/formatte
 
 ### Validation
 
-`THEOREM_KINDS: &[&str]` + `validate_theorem_kind(kind, line, file)` in
-`render/validate.rs`, mirroring `validate_callout_kind` (Levenshtein did-you-mean). Called
-from the theorem arm. Unknown classes still fall through to the generic `<div>` arm, per
-existing policy. (An id-prefix/kind mismatch warning, e.g. `.lemma #thm-x`, is a phase-2
-polish, not MVP.)
+`THEOREM_KINDS: &[&str]` in `render/validate.rs` is the dispatch vocabulary (single source
+of truth, reused by `DivAttrs::theorem_kind` and later phases). Unlike callouts, theorems
+have **no namespace prefix** (a kind is a bare class like `theorem`, not `callout-note`), so
+a misspelled kind is indistinguishable from any other div class and falls through to the
+generic `<div>` arm (rendering unstyled, which the author notices). The MVP therefore adds
+**no kind-typo did-you-mean** (a tight edit-distance heuristic that avoids false positives
+is deferred). The validation the MVP gets for free: `register_xref`'s duplicate-label
+warning. An id-prefix/kind mismatch warning (e.g. `.lemma #thm-x`) is phase-2 polish.
 
 ### Accessibility (baseline)
 
-The container gets `aria-labelledby` pointing at the head element, so a screen reader
-announces "Theorem 1 (Pythagorean theorem)" then reads the body; the QED ∎ is
-`aria-hidden`. Math keeps KaTeX's existing MathML/aria. No forced landmark role (avoids SR
-clutter). Reconcile specifics against the existing a11y-check tooling
-(`docs/superpowers/specs/2026-06-25-a11y-output-audit-design.md` and the a11y check gate).
+The theorem head is real text ("Theorem 1 (Pythagorean theorem)"), read in document order
+by a screen reader before the body, so the label is conveyed without any ARIA. The MVP adds
+**no forced landmark role** (a theorem is primary content, not a "note", so `role="note"`
+would mislabel it). The QED ∎ is `aria-hidden`. Math keeps KaTeX's existing MathML/aria.
+Richer region semantics (e.g. a labeled region, if warranted) are reconciled against the
+existing a11y-check tooling (`docs/superpowers/specs/2026-06-25-a11y-output-audit-design.md`
+and the a11y check gate) rather than guessed at here.
 
 ### CSS / theming
 
@@ -212,8 +224,7 @@ phase 4 can extract it to a shared `theorem.css` fragment without churn.
 - `render/tests.rs`: emitted-contract test (each kind emits its classes +
   `data-qmd-theorem-kind`; `title=` renders the parenthetical; proof emits the QED;
   numbering is continuous per-kind).
-- `validate.rs`: a misspelled kind warns with did-you-mean.
-- A cross-ref test: `@thm-pyth` resolves to "Theorem 1" with the right anchor.
+- A cross-ref test: `@thm-pyth` resolves to "Theorem&nbsp;1" with the right anchor.
 - `corpus.rs` invariants (block ids/sourcepos/order/uniqueness) hold for the new doc.
 
 ### Invariants (phase 1)
