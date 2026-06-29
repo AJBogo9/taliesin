@@ -384,9 +384,30 @@ Wave 2 (benchmark + hero demo).
   plans):** Phase 2 (a `theorems:` config: `number-within` book scoping → "Theorem 2.3" +
   shared counters [the differentiator bookdown HTML can't / Quarto struggles with] + reference
   names), Phase 3 (web-native: hover-preview of refs, collapsible proofs, deep-link anchors),
-  Phase 4 (rich deck support, all additive). *Invariant: read-only-additive; rides
-  `build_container` + a post-pass + additive `xref_label`/CSS; no scanner/numbering-scanner/
-  cite-lowering/deck-core rewrite.*
+  Phase 4 (rich deck support, all additive).
+
+  **STATUS UPDATE (end of 2026-06-29): Phases 1-3 + the adversarial-review fixes are ALL
+  SHIPPED to main + corpus-pinned + browser-verified.** Shipped: Phase 2's `theorems:` config
+  (`shared` counters, `number-within: chapter` book scoping via the new
+  `render_document_with_includes_scoped` + `Site::chapter_for`, `numbered: false|unless-unique`;
+  parsed in `fm_extract.rs::TheoremConfig`, validated via `frontmatter.rs::THEOREM_KEYS`,
+  schema'd); Phase 3 (hover-preview free via `12-link-preview.js`, collapsible proofs
+  `::: {.proof collapse="true"}`, deep-link anchors via `02-anchor-links.js`); and the
+  2026-06-29 adversarial-review fixes (the `check` gate now scopes book chapters; unnumbered
+  theorem refs resolve to a bare label; **cross-PAGE `@thm-` refs in books resolve** via
+  `site/xref.rs::brace_id`/`is_ref_anchor`, bare label like `@fig-`). Pins:
+  `corpus/refs/theorems{,-shared,-unnumbered,-interactive}.qmd` + `corpus/demo-book`. Per-phase
+  plans under `docs/superpowers/plans/2026-06-29-theorem-environments-*`.
+
+  **Remaining (OPTIONAL, demand-driven, NOT started):** (a) reference-name polish
+  (plural/capitalized cleveref-style names; low value for the single-`@ref` model); (b) Phase 4
+  rich deck support, theorems on slides currently render UNSTYLED (decks load `deck.css`, not
+  `base.css`): the design-doc plan is to extract a shared `theorem.css` into both, reveal
+  proofs via the existing `.fragment` mechanism, and number per-slide-group via a
+  `QmdDeck.registerPlugin` client plugin, pinned by a deck corpus doc.
+  *Invariant held throughout: read-only-additive; rode `build_container` + a post-pass +
+  additive `xref_label`/CSS/validator/schema + the `render_…_scoped` chapter thread; no
+  `:::`-scanner / numbering-scanner / cite-lowering / deck-core rewrite.*
 - **DEFER, `deck-typed-slide-effects`** (`take_bg_attrs` string surgery → typed `Block`
   field): high-invariant-risk `model.rs` refactor (must emit byte-identical `<section>`
   HTML or block ids shift) whose win is mostly internal tidiness. Defer until a NEW slide
