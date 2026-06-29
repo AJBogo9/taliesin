@@ -207,13 +207,11 @@ instead of hardcoding `QMD_FAST_PYTHON`). (6) **clippy green** (`collapsible_if`
   opt-in flag (e.g. `--online`) so the default `check` stays kernel-free and network-free.
 
 **Still open — medium**
-- [ ] **[B] Book chapter sidebar dumps stacked on top of content at ≤~900px (laptop-portrait band)** instead
-  of collapsing to a drawer. (Deck scales+centers gracefully in portrait — leave it.)
 - [ ] **CLI microcopy (residual):** raw ANSI leaks into HTML for R stream/stderr (`kernel.rs:672` —
   **DEFERRED, exec/kernel Do-NOT-touch**). The `check --format json`-on-unreadable-path, `_quarto.yml`
   breadcrumb, and the language-aware build kernel hint all shipped in the 2026-06-27 Tier 1 batch.
 - [ ] Long tail (perf: shared/minified/compressed assets, O(change) per-edit; SEO: sitemap/robots/JSON-LD;
-  publish hygiene: stop mirroring `.md`/`.scss`/planning into `_site/`; dead CSS/tokens `--qmd-ink`/`--qmd-scale`;
+  publish hygiene: stop mirroring `.md`/`.scss`/planning into `_site/`;
   doc/code drift) — see the audit digest `polishThemes` + `whatsMissing`.
 
 ### Reader experience (the active thrust; idea pool in `FEATURE-IDEAS.md`)
