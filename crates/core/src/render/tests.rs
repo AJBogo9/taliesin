@@ -1851,6 +1851,29 @@ fn code_enhance_bundle_matches_fragments_in_order() {
 }
 
 #[test]
+fn captioned_code_listing_is_a_figure_not_a_bare_div() {
+    // A `<figcaption>` is only valid inside a `<figure>`; the numbered code listing must
+    // wrap as `<figure class="qmd-listing">` (valid HTML, and the same float semantics
+    // Quarto uses for `lst-`). The `.qmd-listing` margin already zeroes the UA figure
+    // indent, so the element swap is style-neutral.
+    let doc =
+        render_document("```{python}\n#| label: lst-demo\n#| lst-cap: My listing\nx = 1\n```\n");
+    let html: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
+    assert!(
+        html.contains("<figure") && html.contains("class=\"qmd-listing\""),
+        "the listing must wrap in a <figure class=\"qmd-listing\">: {html}"
+    );
+    assert!(
+        html.contains("class=\"qmd-listing-caption\""),
+        "the numbered caption must survive: {html}"
+    );
+    assert!(
+        !html.contains("<div class=\"qmd-listing\""),
+        "the listing must no longer be a bare <div> (invalid figcaption): {html}"
+    );
+}
+
+#[test]
 fn build_mode_content_gates_separate_enhancers() {
     // Pure prose: a static build keeps code-enhance.js (the reader menu + a11y layer
     // that every page benefits from) but drops the DOM-specific enhancers it can't use.

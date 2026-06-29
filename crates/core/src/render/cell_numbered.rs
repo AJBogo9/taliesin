@@ -99,8 +99,11 @@ pub(super) fn emit_code_listing(
         ),
         None => format!("<pre><code{class}>{code_html}</code></pre>"),
     };
+    // A `<figure>` (not a `<div>`): a `<figcaption>` is only valid inside a `<figure>`,
+    // and a numbered code listing IS a captioned float (same float semantics as a figure).
+    // `.qmd-listing` already zeroes the UA figure margin, so the element swap is style-neutral.
     format!(
-        "<div{block_attrs}{id_attr} class=\"qmd-listing\">\
-         <figcaption class=\"qmd-listing-caption\">{figcap}</figcaption>{code_html}</div>"
+        "<figure{block_attrs}{id_attr} class=\"qmd-listing\">\
+         <figcaption class=\"qmd-listing-caption\">{figcap}</figcaption>{code_html}</figure>"
     )
 }
