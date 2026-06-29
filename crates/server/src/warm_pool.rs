@@ -288,8 +288,10 @@ struct PoolInner {
     cap: usize,
     /// Ready, fully-connected kernels waiting to be handed out.
     ready: Mutex<VecDeque<Kernel>>,
-    /// Number of warm kernels currently ready or in-flight (being forked), so
-    /// concurrent refills don't overshoot `cap`.
+    /// Number of kernels currently being forked (in-flight) but not yet pushed
+    /// into `ready`. The total pool size is `ready.len() + *in_flight`; both
+    /// terms are counted separately so that a successful fork decrements
+    /// `in_flight` when it pushes into `ready`, keeping the invariant exact.
     in_flight: Mutex<usize>,
 }
 
@@ -390,6 +392,10 @@ impl PoolInner {
                     Ok(kernel) => {
                         let mut ready = inner.ready.lock().await;
                         ready.push_back(kernel);
+                        // Kernel is now in `ready`; release the in-flight slot so
+                        // `ready.len() + *in_flight` stays accurate.
+                        let mut n = inner.in_flight.lock().await;
+                        *n = n.saturating_sub(1);
                     }
                     Err(e) => {
                         // Give the slot back and stop refilling for now; the next
