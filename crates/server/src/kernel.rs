@@ -280,9 +280,8 @@ impl KernelSpec {
     }
 
     /// The kernel-spec name (`python3` / `ir`), used to stamp connection files for
-    /// the warm-pool's forkserver-spawned kernels just as `start` stamps them.
-    /// (Warm-pool-only until Task 12 wires the pool in.)
-    #[allow(dead_code)]
+    /// the warm-pool's forkserver-spawned kernels just as `start` stamps them
+    /// (called from `warm_pool::PoolInner::warm_one`).
     pub(crate) fn kernel_name(&self) -> &'static str {
         self.kernel_name
     }
@@ -320,9 +319,9 @@ enum KernelProc {
     Owned(Child),
     /// A forkserver-spawned kernel, addressed by PID. Holding the daemon handle
     /// keeps the forkserver alive for the kernel's lifetime (and lets later
-    /// children reuse its warm preloaded image). Constructed by the warm pool,
-    /// which Task 12 wires into `ensure_kernel`; until then only its tests build it.
-    #[allow(dead_code)]
+    /// children reuse its warm preloaded image). Constructed by the warm pool
+    /// (`Kernel::adopt_forked`), which the preview server and parallel build now
+    /// draw their kernels from.
     Forked {
         pid: u32,
         _daemon: std::sync::Arc<crate::warm_pool::ForkserverDaemon>,
@@ -580,8 +579,7 @@ impl Kernel {
     /// Unlike `start`, there is no owned `Child` to race the connect against, so a
     /// dead fork surfaces as a connect timeout. The warm-pool spawns these eagerly
     /// off the hot path, so that latency is hidden; callers still treat a `None`
-    /// pool result as "fall back to `start`". (Warm-pool-only until Task 12.)
-    #[allow(dead_code)]
+    /// pool result as "fall back to `start`".
     pub(crate) async fn adopt_forked(
         pid: u32,
         info: ConnectionInfo,

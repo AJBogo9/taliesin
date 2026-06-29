@@ -13,13 +13,8 @@ mod log;
 mod protocol;
 mod serve;
 mod serve_site;
-// The warm pool is built and tested here (Task 11) but not yet wired into
-// `ensure_kernel` — that, plus reconciling its RAM against the build budget, is
-// Task 12. Until then its API is exercised only by its own kernel-gated tests, so
-// allow the otherwise-unused public surface rather than scattering attributes.
 #[cfg(test)]
 mod testutil;
-#[allow(dead_code)]
 mod warm_pool;
 
 use std::path::{Path, PathBuf};

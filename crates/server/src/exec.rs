@@ -1404,7 +1404,7 @@ mod tests {
 
     #[test]
     fn pooled_kernel_serves_cells_without_a_long_warming_state() {
-        // Task 12 Step 1: an Executor wired to a warm pool draws its python kernel
+        // An Executor wired to a warm pool draws its python kernel
         // from the pool and runs a cell to a correct result, and — because a pooled
         // kernel is near-instant — never presents a `warming-kernel` build-state. The
         // cold path *does* emit `warming-kernel`; here it must be absent. Kernel-gated:
