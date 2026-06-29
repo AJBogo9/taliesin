@@ -1,0 +1,22 @@
+---
+title: "Numbered unless unique"
+theorems:
+  numbered: unless-unique
+---
+
+# Numbering only when it helps
+
+With `numbered: unless-unique`, a kind that appears once carries no number (the label
+alone reads cleanly), while a kind that recurs is numbered so the references stay precise.
+
+::: {.definition}
+A sole definition needs no number.
+:::
+
+::: {.theorem}
+The first of several theorems.
+:::
+
+::: {.theorem}
+The second, so theorems are numbered.
+:::
