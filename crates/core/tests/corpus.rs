@@ -756,3 +756,21 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
         "resolved cross-ref still carries its marker"
     );
 }
+
+#[test]
+fn book_chapter_scopes_theorem_numbers() {
+    use qmd_fast_core::Site;
+    let site = Site::discover(&corpus_dir().join("demo-book"));
+    // methods.qmd is chapter 2, with `theorems: number-within: chapter`.
+    let methods = site.render_page("methods.qmd").expect("methods renders");
+    assert!(
+        methods.contains(
+            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\">&nbsp;2.1</span></span>"
+        ),
+        "the chapter-2 theorem numbers as 2.1: {methods}"
+    );
+    assert!(
+        methods.contains("<a href=\"#thm-kl\" class=\"qmd-xref\">Theorem&nbsp;2.1</a>"),
+        "its in-page cross-ref agrees: {methods}"
+    );
+}
