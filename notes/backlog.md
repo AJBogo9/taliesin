@@ -295,6 +295,18 @@ and produce a prioritized list of improvements. Treat the native deck contract (
   quick-jump anchors (redundant with the minimap + `/` filter).
 
 ### Execution cache
+- [ ] **Kernel/forkserver resource leaks on build exit (observed during the 2026-06-29 port-race
+  fix).** Two cleanups, both in the exec/kernel Do-NOT-touch zone (careful): (a) warm-pool
+  **forkserver daemons survive a completed `build`** — ~30 orphaned `multiprocessing.forkserver`
+  procs (each ~100 MB preloaded numpy/matplotlib) were left after a batch of normal-exit builds;
+  likely the daemon child isn't reaped on CLI exit (check whether `build` exits via `process::exit`,
+  which skips `Drop`, or whether the daemon `Arc` outlives the runtime). (b) a **failed
+  `Kernel::start` leaks its `/tmp/qmd-kernel-<uuid>` connection dir** — only a *successful* `Kernel`
+  owns the dir for Drop-cleanup; the early-return error paths drop the `PathBuf` without removing the
+  dir. The 2026-06-29 kernel-start retry slightly amplifies (b) (each failed attempt leaks one). Fix:
+  kill the forkserver daemon on build teardown; remove the conn dir on a failed start (or have the
+  retry loop clean up its abandoned attempts). Low-priority (temp dirs + procs, reclaimed on reboot)
+  but unbounded under repeated failures.
 - [ ] **Cold-start kernel warming (follow-up, deferred).** After a cold full-replay, the
   first edit re-runs the whole doc to rebuild kernel state. Could speculatively warm the
   kernel in the background. Inherent to a plain Jupyter kernel; not worth it until it bites.
