@@ -56,17 +56,19 @@ per-kind cross-ref prefixes, the post-pass numbering pattern, the callout aesthe
 - **Cross-refs:** `cite/render.rs::xref_label` already maps `thm -> "Theorem"` and
   `def -> "Definition"`, and `@thm-x` already parses today. Registration and resolution
   are two passes: targets are registered into `xref_registry`, then `cite::process`
-  rewrites `@thm-x` runs. SAME-page broken-ref warnings (`data-qmd-xref` marker) work.
-  **CROSS-page resolution does NOT yet work for theorems** (a `@thm-x` to a theorem in
-  another book chapter): the site-wide scanner `site/xref.rs::brace_id` only matches an
-  id written as the FIRST `{#…}` token, whereas a theorem id is class-first
-  (`::: {.theorem #thm-x}`), so the anchor is never registered as a cross-page target;
-  `is_ref_anchor` also omits `lem-`/`cor-`/`prp-`/`exm-`/`rem-`, and a source-only scan
-  can't reproduce `number_theorems`'s shared/scoped/numbered logic. **This is a known gap
-  (own increment): generalize `brace_id` to find an `#id` anywhere in a `{…}` attribute
-  block, extend `is_ref_anchor`, propagate the render-computed number into the cross-page
-  registry, and pin with a two-chapter book corpus doc.** (Found by the 2026-06-29
-  adversarial review; latent, since no corpus/doc currently cross-references a theorem.)
+  rewrites `@thm-x` runs. SAME-page refs resolve with their number ("Theorem 2.1").
+  **CROSS-page refs** (a `@thm-x` to a theorem in another book chapter) **resolve to a
+  working link with a bare "Theorem" label** (`<a href="methods.html#thm-x">Theorem</a>`),
+  exactly like a cross-page `@fig-`/`@eq-`: the site-wide scanner `site/xref.rs` now
+  generalizes `brace_id` to find a `#id` anywhere in a `{…}` block (so class-first
+  `::: {.theorem #thm-x}` registers) and `is_ref_anchor` covers all theorem prefixes.
+  **No NUMBER cross-page** — `scan_page_anchors` stores an empty number for every
+  non-heading anchor (figures/equations/theorems alike), so the bare label is the
+  consistent, established behavior; propagating computed numbers cross-page is a general
+  non-heading-xref limitation (would need a render-harvest pass), out of scope.
+  (The brace_id/is_ref_anchor fix landed 2026-06-29 after the adversarial review caught
+  the dead-link + false-broken-warning bug; pinned by the `@thm-kl` ref in
+  `corpus/demo-book/results.qmd`.)
 - **Numbering pattern:** `apply_table_captions` (`crates/core/src/render/mod.rs`) is the
   model post-pass: it receives the assembled `Vec<Block>` + the xref registry + warnings,
   walks blocks in document order, assigns numbers, injects label HTML, and registers

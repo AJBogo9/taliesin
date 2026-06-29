@@ -755,6 +755,16 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
         !results.contains("data-qmd-xref=\"sec-methods\""),
         "resolved cross-ref still carries its marker"
     );
+    // A cross-PAGE theorem ref resolves to the defining chapter with a bare label
+    // (no number cross-page, consistent with figures/equations).
+    assert!(
+        results.contains("<a href=\"methods.html#thm-kl\" class=\"qmd-xref\">Theorem</a>"),
+        "cross-chapter theorem ref not resolved: {results}"
+    );
+    assert!(
+        !results.contains("data-qmd-xref=\"thm-kl\""),
+        "resolved theorem cross-ref still carries its broken marker"
+    );
 }
 
 #[test]

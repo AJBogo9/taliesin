@@ -110,20 +110,35 @@ fn scan_page_anchors(src: &str, chapter: Option<u32>) -> Vec<(String, String)> {
     }
     out
 }
-/// The id from a `{#id …}` attribute block on a line, if any (up to a space, `.`,
-/// or `}`).
+/// The id from a `{…}` attribute block on a line, if any: a `#id` token that starts the
+/// block (id-first `{#sec-x}` headings/floats) or follows a space (class-first
+/// `::: {.theorem #thm-x}` divs), read up to a space, `.`, or `}`. The start-or-after-space
+/// guard means a `#` inside an attribute value never false-matches.
 fn brace_id(line: &str) -> Option<String> {
-    let start = line.find("{#")? + 2;
-    let rest = &line[start..];
-    let end = rest.find([' ', '.', '}']).unwrap_or(rest.len());
-    let id = &rest[..end];
-    (!id.is_empty()).then(|| id.to_string())
+    let open = line.find('{')?;
+    let block = &line[open + 1..];
+    let block = &block[..block.find('}').unwrap_or(block.len())];
+    let bytes = block.as_bytes();
+    for (i, &b) in bytes.iter().enumerate() {
+        if b == b'#' && (i == 0 || bytes[i - 1] == b' ') {
+            let after = &block[i + 1..];
+            let end = after.find([' ', '.', '}']).unwrap_or(after.len());
+            let id = &after[..end];
+            if !id.is_empty() {
+                return Some(id.to_string());
+            }
+        }
+    }
+    None
 }
 /// Whether an id is a Quarto cross-reference anchor (`sec-`, `fig-`, …).
 fn is_ref_anchor(id: &str) -> bool {
-    ["sec-", "fig-", "tbl-", "eq-", "lst-", "thm-", "def-"]
-        .iter()
-        .any(|p| id.starts_with(p))
+    [
+        "sec-", "fig-", "tbl-", "eq-", "lst-", "thm-", "lem-", "cor-", "prp-", "def-", "exm-",
+        "rem-",
+    ]
+    .iter()
+    .any(|p| id.starts_with(p))
 }
 /// Rewrite the `data-qmd-xref`-marked links in one block's HTML: a marker whose
 /// anchor is a known cross-page target becomes a link to that page (with its
