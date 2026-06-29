@@ -38,6 +38,12 @@ fn parse_options() -> Options<'static> {
 
 /// Parse `src` into ordered top-level blocks with stable ids + sourcepos.
 /// Does not resolve `{{< include >}}` (use [`render_document_with_includes`]).
+mod doc_includes;
+pub use doc_includes::includes_from_parts;
+use doc_includes::resolve_doc_includes;
+mod fm_extract;
+pub use fm_extract::is_reveal_doc;
+use fm_extract::{detect_format, detect_title_block_hidden, detect_toc, extract_field};
 mod deck;
 pub use deck::{DeckParts, assemble_deck_page, deck_client_script, slides_html};
 // `deck_theme_head` is used inside `deck.rs` (the deck builder) and by the unit
@@ -690,225 +696,11 @@ fn title_block_html(
     Some(h)
 }
 
-/// Resolve the `include-in-header`/`include-before-body`/`include-after-body` +
-/// `css` keys from a doc's front-matter YAML into ready-to-inject markup, reading
-/// referenced files relative to `base_dir`.
-fn resolve_doc_includes(front_matter: &str, base_dir: Option<&Path>) -> PageIncludes {
-    // comrak hands us the block *with* its `---` fences; strip them so serde_yaml
-    // sees a single document (the bare `---` would otherwise read as a separator).
-    let body = {
-        let mut lines: Vec<&str> = front_matter.lines().collect();
-        while lines.first().is_some_and(|l| l.trim().is_empty()) {
-            lines.remove(0);
-        }
-        if lines.first().is_some_and(|l| l.trim() == "---") {
-            lines.remove(0);
-        }
-        while lines.last().is_some_and(|l| l.trim().is_empty()) {
-            lines.pop();
-        }
-        if lines.last().is_some_and(|l| l.trim() == "---") {
-            lines.pop();
-        }
-        lines.join("\n")
-    };
-    let Ok(v) = serde_yaml::from_str::<serde_yaml::Value>(&body) else {
-        return PageIncludes::default();
-    };
-    includes_from_parts(
-        v.get("include-in-header"),
-        v.get("include-before-body"),
-        v.get("include-after-body"),
-        v.get("css"),
-        base_dir,
-    )
-}
-
-/// Build [`PageIncludes`] from already-located YAML values for each key. Shared by
-/// the single-doc front-matter path and the site `format: html:` path (which keep
-/// these as typed `serde_yaml::Value` fields). `css` files are wrapped in `<style>`
-/// and placed ahead of the header text so an author stylesheet can override ours.
-pub fn includes_from_parts(
-    in_header: Option<&serde_yaml::Value>,
-    before_body: Option<&serde_yaml::Value>,
-    after_body: Option<&serde_yaml::Value>,
-    css: Option<&serde_yaml::Value>,
-    base_dir: Option<&Path>,
-) -> PageIncludes {
-    let mut head = resolve_include_value(css, base_dir, true);
-    head.push_str(&resolve_include_value(in_header, base_dir, false));
-    PageIncludes {
-        in_header: head,
-        before_body: resolve_include_value(before_body, base_dir, false),
-        after_body: resolve_include_value(after_body, base_dir, false),
-        resources: Vec::new(),
-    }
-}
-
-/// Resolve one include value: a path string (file contents), a `{text: …}` or
-/// `{file: …}` map, or a list of those. `css == true` wraps each resolved chunk
-/// in a `<style>` block; otherwise the markup is injected verbatim.
-fn resolve_include_value(
-    v: Option<&serde_yaml::Value>,
-    base_dir: Option<&Path>,
-    css: bool,
-) -> String {
-    let mut out = String::new();
-    if let Some(v) = v {
-        resolve_include_into(v, base_dir, css, &mut out);
-    }
-    out
-}
-
-fn resolve_include_into(
-    v: &serde_yaml::Value,
-    base_dir: Option<&Path>,
-    css: bool,
-    out: &mut String,
-) {
-    use serde_yaml::Value;
-    match v {
-        Value::String(s) => append_include(&read_include_file(base_dir, s), css, out),
-        Value::Mapping(_) => {
-            if let Some(Value::String(t)) = v.get("text") {
-                append_include(t, css, out);
-            } else if let Some(Value::String(f)) = v.get("file") {
-                append_include(&read_include_file(base_dir, f), css, out);
-            }
-        }
-        Value::Sequence(seq) => {
-            for item in seq {
-                resolve_include_into(item, base_dir, css, out);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn append_include(content: &str, css: bool, out: &mut String) {
-    if css {
-        out.push_str("<style>\n");
-        out.push_str(content);
-        out.push_str("\n</style>\n");
-    } else {
-        out.push_str(content);
-        out.push('\n');
-    }
-}
-
-/// Read an include/css file relative to the doc (or site root). A missing file is
-/// reported as an HTML comment rather than aborting the render (warn, don't reject).
-fn read_include_file(base_dir: Option<&Path>, rel: &str) -> String {
-    // Containment: an absolute path or one escaping the project root is refused
-    // (path-traversal guard), reported the same as a missing file.
-    let path = match base_dir {
-        Some(dir) => crate::includes::safe_join(dir, rel),
-        None => Path::new(rel).is_relative().then(|| PathBuf::from(rel)),
-    };
-    match path.and_then(|p| std::fs::read_to_string(&p).ok()) {
-        Some(s) => s,
-        None => format!(
-            "<!-- qmd-fast: include file not found: {} -->",
-            esc_comment(rel)
-        ),
-    }
-}
-
-/// Sanitize a path for an HTML comment (no `--`, which would close the comment).
-fn esc_comment(s: &str) -> String {
-    s.replace("--", "__")
-}
-
 /// The built-in dark theme, scoped to `html[data-theme="dark"]` so it can be
 /// flipped at runtime (the toggle / OS preference set the attribute). Always
 /// shipped alongside the light `:root` base. The `:root` light vars plus this
 /// block are the reference template for a community theme.
 const DARK_CSS: &str = include_str!("../../assets/css/dark.css");
-
-/// The front-matter `toc:` setting (typically under `format: html:`) as a
-/// tri-state: `Some(true)`/`Some(false)` when the page sets it, `None` when
-/// absent. A lightweight scan, matching the corpus book's usage. Returning
-/// `Option` lets a site distinguish an explicit `toc: false` (which overrides
-/// the site default) from an unset toc (which inherits it).
-fn detect_toc(front_matter: &str) -> Option<bool> {
-    front_matter.lines().find_map(|l| {
-        let t = l.trim();
-        match t.strip_prefix("toc:").map(str::trim) {
-            Some("true") => Some(true),
-            Some("false") => Some(false),
-            _ => None,
-        }
-    })
-}
-
-/// `title-block-style: none` suppresses the visible title-block header while
-/// keeping the `title` metadata (Quarto-compatible). Used by nav landing pages
-/// (Blog/Projects/Publications) where a big `<h1>` repeats the navbar.
-fn detect_title_block_hidden(front_matter: &str) -> bool {
-    front_matter.lines().any(|l| {
-        let t = l.trim();
-        t.strip_prefix("title-block-style:").map(str::trim) == Some("none")
-    })
-}
-
-/// Whether a document's front matter selects a revealjs deck. Reads only the
-/// front matter (no full parse), so site discovery can cheaply flag a loose deck
-/// dropped into a website — which would otherwise be flattened into an article.
-pub fn is_reveal_doc(src: &str) -> bool {
-    crate::frontmatter::front_matter_block(src)
-        .is_some_and(|fm| detect_format(fm) == DocFormat::Reveal)
-}
-
-/// Detect the output format from raw front matter. A reveal.js deck declares a
-/// `format:` whose inline value or indented sub-keys name a revealjs variant
-/// (`revealjs`, `liquid-glass-revealjs`, …). Everything else is a standard page.
-fn detect_format(front_matter: &str) -> DocFormat {
-    let lines: Vec<&str> = front_matter.lines().collect();
-    for (i, line) in lines.iter().enumerate() {
-        // Only consider the top-level `format:` key, not nested ones.
-        if line.starts_with(char::is_whitespace) {
-            continue;
-        }
-        let Some(rest) = line.trim_end().strip_prefix("format:") else {
-            continue;
-        };
-        let inline = rest.trim();
-        if !inline.is_empty() {
-            // `format: revealjs` (or a list `[html, revealjs]`): match a format
-            // *name*, not any substring, so a theme/filename that merely contains
-            // "revealjs" (e.g. `theme: my-revealjs.css`) can't flip an HTML doc to
-            // a deck.
-            return if inline.split(['[', ']', ',', ' ']).any(is_reveal_format) {
-                DocFormat::Reveal
-            } else {
-                DocFormat::Html
-            };
-        }
-        // Block form: the sub-keys are format *names* (`html:`, `revealjs:`,
-        // `liquid-glass-revealjs:`). Match the key, never a value substring.
-        for sub in &lines[i + 1..] {
-            if sub.trim().is_empty() {
-                continue;
-            }
-            if !sub.starts_with(char::is_whitespace) {
-                break;
-            }
-            let key = sub.trim().split(':').next().unwrap_or("");
-            if is_reveal_format(key) {
-                return DocFormat::Reveal;
-            }
-        }
-        return DocFormat::Html;
-    }
-    DocFormat::Html
-}
-
-/// Whether a `format:` name selects a revealjs deck: `revealjs` itself or an
-/// extension variant `<ext>-revealjs` (e.g. `liquid-glass-revealjs`).
-fn is_reveal_format(name: &str) -> bool {
-    let n = name.trim().trim_matches(['"', '\'']);
-    n == "revealjs" || n.ends_with("-revealjs")
-}
 
 /// Load and merge the bibliography file(s) named in the front matter, resolved
 /// relative to `base_dir`. Returns an empty bibliography when none is found
@@ -1817,25 +1609,6 @@ fn slice_lines(lines: &[&str], start: usize, end: usize) -> String {
         return String::new();
     }
     lines[s..e].join("\n")
-}
-
-/// Extract a top-level `key:` value from raw front matter. Lightweight scan,
-/// not a YAML parse; returns the inline value (empty for block/list values).
-fn extract_field(front_matter: &str, key: &str) -> Option<String> {
-    let prefix = format!("{key}:");
-    for line in front_matter.lines() {
-        // top-level keys only (not indented sub-keys)
-        if line.starts_with(char::is_whitespace) {
-            continue;
-        }
-        if let Some(rest) = line.trim().strip_prefix(&prefix) {
-            let v = rest.trim().trim_matches(['"', '\'']).trim();
-            if !v.is_empty() {
-                return Some(v.to_string());
-            }
-        }
-    }
-    None
 }
 
 /// Language for a fenced block: `{python}`/`{.python}`/`{js}` -> "python"/"js",
