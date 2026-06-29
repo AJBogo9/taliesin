@@ -634,7 +634,8 @@ async fn build_one_page(
         };
     };
     let base = page.input.parent().unwrap_or(root);
-    let mut doc = qmd_fast_core::render_document_with_includes(&src, base);
+    let mut doc =
+        qmd_fast_core::render_document_with_includes_scoped(&src, base, site.chapter_for(page));
     let mut exec =
         exec::Executor::with_freeze(freeze::page_path(freeze_dir, &page.rel)).in_dir(base);
     // Draw this page's Python kernel from the shared warm pool (when one booted) so a

@@ -360,7 +360,8 @@ fn render_markdown_only(site: &qmd_fast_core::Site, page: &Page) -> PageDoc {
         };
     };
     let base = page.input.parent().unwrap_or(Path::new("."));
-    let doc = qmd_fast_core::render_document_with_includes(&src, base);
+    let doc =
+        qmd_fast_core::render_document_with_includes_scoped(&src, base, site.chapter_for(page));
     let mut blocks = doc.blocks;
     let toc = site.page_toc(page, doc.toc_explicit);
     // One shared finishing step (numbering, cross-refs + broken-ref warnings,
@@ -743,7 +744,8 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
         return;
     };
     let base = page.input.parent().unwrap_or(Path::new(".")).to_path_buf();
-    let doc = qmd_fast_core::render_document_with_includes(&src, &base);
+    let chapter = app.site.lock().chapter_for(&page);
+    let doc = qmd_fast_core::render_document_with_includes_scoped(&src, &base, chapter);
 
     let exec = pool.get(rel, &base);
     // Stream this page's code-cell execution progress (`build-state`) onto its own

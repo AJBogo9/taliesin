@@ -329,13 +329,7 @@ impl Site {
         let base = page.input.parent().unwrap_or(&self.root);
         // A numbered book chapter scopes its theorems to its chapter number
         // ("Theorem 2.3"); non-book / unnumbered pages pass None (continuous).
-        let chapter = self.book.as_ref().and_then(|b| {
-            b.entries
-                .iter()
-                .find(|e| e.rel == page.rel)
-                .and_then(|e| e.number)
-        });
-        let doc = render::render_document_with_includes_scoped(&src, base, chapter);
+        let doc = render::render_document_with_includes_scoped(&src, base, self.chapter_for(page));
         Some(self.render_page_doc(page, doc))
     }
 
@@ -570,17 +564,23 @@ impl Site {
         }
     }
 
+    /// This page's book chapter number, if it is a numbered chapter (None for a
+    /// website page or an unnumbered preface). Drives both heading section numbering
+    /// and `theorems: number-within: chapter` scoping, so they stay in lockstep.
+    pub fn chapter_for(&self, page: &Page) -> Option<u32> {
+        self.book.as_ref().and_then(|b| {
+            b.entries
+                .iter()
+                .find(|e| e.rel == page.rel)
+                .and_then(|e| e.number)
+        })
+    }
+
     /// Number a book chapter's headings in place (chapter N, then N.1, N.1.1 …),
     /// like Quarto's `number-sections`. A no-op for a website or an unnumbered
     /// preface. Called by both the static build and the live preview.
     pub fn number_chapter(&self, page: &Page, blocks: &mut [Block]) {
-        if let Some(book) = &self.book
-            && let Some(number) = book
-                .entries
-                .iter()
-                .find(|e| e.rel == page.rel)
-                .and_then(|e| e.number)
-        {
+        if let Some(number) = self.chapter_for(page) {
             number_chapter_headings(blocks, number);
         }
     }

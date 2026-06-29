@@ -111,7 +111,7 @@ pub fn render_document_with_includes(src: &str, base_dir: &Path) -> RenderedDoc 
 /// Like [`render_document_with_includes`] but with an optional book chapter number, so
 /// `theorems: number-within: chapter` can render "Theorem 2.3". Only the site book path
 /// passes `Some(n)`; everything else is `None` (continuous numbering).
-pub(crate) fn render_document_with_includes_scoped(
+pub fn render_document_with_includes_scoped(
     src: &str,
     base_dir: &Path,
     chapter: Option<u32>,
