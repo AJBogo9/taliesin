@@ -121,8 +121,18 @@ pub(crate) enum NumberWithin {
     Chapter,
 }
 
-/// Parsed `theorems:` front-matter config (`shared` counters + `number-within` scope).
-/// `numbered` is a future increment.
+/// `theorems: numbered:` mode. `UnlessUnique` numbers a kind only when it appears more
+/// than once (a lone Theorem shows just "Theorem").
+#[derive(Default, PartialEq, Eq, Clone, Copy)]
+pub(crate) enum Numbered {
+    #[default]
+    Yes,
+    No,
+    UnlessUnique,
+}
+
+/// Parsed `theorems:` front-matter config (`shared` counters + `number-within` scope +
+/// `numbered` mode).
 #[derive(Default)]
 pub(crate) struct TheoremConfig {
     /// Kinds that share a single counter, in declaration order. Empty = the default
@@ -130,6 +140,8 @@ pub(crate) struct TheoremConfig {
     shared: Vec<String>,
     /// Numbering scope. `Chapter` prepends the book chapter number ("Theorem 2.3").
     number_within: NumberWithin,
+    /// Whether/when a number is shown.
+    numbered: Numbered,
 }
 
 impl TheoremConfig {
@@ -147,6 +159,11 @@ impl TheoremConfig {
     /// Whether theorem numbers are chapter-scoped (`number-within: chapter`).
     pub(crate) fn chapter_scoped(&self) -> bool {
         self.number_within == NumberWithin::Chapter
+    }
+
+    /// The `numbered:` mode (whether/when to show a number).
+    pub(crate) fn numbered(&self) -> Numbered {
+        self.numbered
     }
 }
 
@@ -181,6 +198,11 @@ pub(crate) fn parse_theorem_config(front_matter: &str) -> TheoremConfig {
         == Some("chapter")
     {
         config.number_within = NumberWithin::Chapter;
+    }
+    match value.get("theorems").and_then(|t| t.get("numbered")) {
+        Some(serde_yaml::Value::Bool(false)) => config.numbered = Numbered::No,
+        Some(v) if v.as_str() == Some("unless-unique") => config.numbered = Numbered::UnlessUnique,
+        _ => {} // true / absent / unrecognized -> Yes (default)
     }
     config
 }

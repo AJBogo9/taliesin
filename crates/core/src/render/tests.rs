@@ -2248,3 +2248,45 @@ fn number_within_chapter_falls_back_and_warns_without_a_chapter() {
         doc.warnings
     );
 }
+
+#[test]
+fn numbered_false_suppresses_the_number() {
+    let doc = render_document(
+        "---\ntheorems:\n  numbered: false\n---\n\n::: {.theorem}\nA.\n:::\n\n::: {.theorem}\nB.\n:::\n",
+    );
+    let body = doc.body_html();
+    assert!(
+        body.contains(
+            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\"></span></span>"
+        ),
+        "numbered: false leaves the number slot empty: {body}"
+    );
+    assert!(
+        !body.contains("qmd-theorem-number\">&nbsp;"),
+        "no number is emitted anywhere: {body}"
+    );
+}
+
+#[test]
+fn numbered_unless_unique_numbers_only_repeated_kinds() {
+    let doc = render_document(
+        "---\ntheorems:\n  numbered: unless-unique\n---\n\n::: {.definition}\nLone.\n:::\n\n::: {.theorem}\nT1.\n:::\n\n::: {.theorem}\nT2.\n:::\n",
+    );
+    let body = doc.body_html();
+    // definition appears once -> unnumbered
+    assert!(
+        body.contains(
+            "<span class=\"qmd-theorem-label\">Definition<span class=\"qmd-theorem-number\"></span></span>"
+        ),
+        "a lone kind is unnumbered: {body}"
+    );
+    // theorem appears twice -> numbered 1, 2
+    assert!(
+        body.contains(
+            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\">&nbsp;1</span></span>"
+        ) && body.contains(
+            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\">&nbsp;2</span></span>"
+        ),
+        "a repeated kind is numbered: {body}"
+    );
+}

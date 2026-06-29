@@ -88,6 +88,10 @@ mod generate {
                     json!({ "type": "array", "items": { "type": "string" } }),
                 ),
                 ("number-within", json!({ "type": "string" })),
+                (
+                    "numbered",
+                    json!({ "oneOf": [{ "type": "boolean" }, { "type": "string" }] }),
+                ),
             ],
         );
         let overrides = [

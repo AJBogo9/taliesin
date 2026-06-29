@@ -44,7 +44,7 @@ use doc_includes::resolve_doc_includes;
 mod fm_extract;
 pub use fm_extract::is_reveal_doc;
 use fm_extract::{
-    TheoremConfig, detect_format, detect_title_block_hidden, detect_toc, extract_field,
+    Numbered, TheoremConfig, detect_format, detect_title_block_hidden, detect_toc, extract_field,
     parse_theorem_config,
 };
 mod cell_extract;
@@ -1258,6 +1258,19 @@ fn number_theorems(
 ) {
     let mut counts: HashMap<String, u32> = HashMap::new();
     let mut warned_no_chapter = false;
+    // For `numbered: unless-unique`, a kind is numbered only if it occurs more than once;
+    // pre-count occurrences per counter-key.
+    let mut totals: HashMap<String, u32> = HashMap::new();
+    if config.numbered() == Numbered::UnlessUnique {
+        for b in blocks.iter() {
+            let end = tag_end(&b.html).map(|i| i + 1).unwrap_or(b.html.len());
+            if let Some(kind) = extract_attr(&b.html[..end], "data-qmd-theorem-kind") {
+                *totals
+                    .entry(config.counter_key(&kind).to_string())
+                    .or_insert(0) += 1;
+            }
+        }
+    }
     for b in blocks.iter_mut() {
         let tag_end_idx = tag_end(&b.html).map(|i| i + 1).unwrap_or(b.html.len());
         let open_tag = b.html[..tag_end_idx].to_string();
@@ -1268,14 +1281,23 @@ fn number_theorems(
         // per-kind (only the number is shared).
         let key = config.counter_key(&kind).to_string();
         let n = {
-            let c = counts.entry(key).or_insert(0);
+            let c = counts.entry(key.clone()).or_insert(0);
             *c += 1;
             *c
+        };
+        // Whether to show a number: `numbered: false` never; `unless-unique` only when the
+        // kind occurs more than once; otherwise yes.
+        let show_number = match config.numbered() {
+            Numbered::Yes => true,
+            Numbered::No => false,
+            Numbered::UnlessUnique => totals.get(&key).copied().unwrap_or(0) > 1,
         };
         // `number-within: chapter` prepends the book chapter number ("Theorem 2.3").
         // Outside a numbered chapter there is no chapter to scope to, so fall back to
         // continuous numbering and warn once.
-        let display = if config.chapter_scoped() {
+        let display = if !show_number {
+            String::new()
+        } else if config.chapter_scoped() {
             match chapter {
                 Some(c) => format!("{c}.{n}"),
                 None => {
@@ -1291,12 +1313,20 @@ fn number_theorems(
         } else {
             n.to_string()
         };
+        // An unnumbered theorem leaves the slot empty (no &nbsp;) and is not a ref target.
+        let slot = if display.is_empty() {
+            String::new()
+        } else {
+            format!("&nbsp;{display}")
+        };
         b.html = b.html.replacen(
             "<span class=\"qmd-theorem-number\"></span>",
-            &format!("<span class=\"qmd-theorem-number\">&nbsp;{display}</span>"),
+            &format!("<span class=\"qmd-theorem-number\">{slot}</span>"),
             1,
         );
-        if let Some(id) = extract_attr(&open_tag, "id") {
+        if !display.is_empty()
+            && let Some(id) = extract_attr(&open_tag, "id")
+        {
             register_xref(xrefs, warnings, &id, display);
         }
     }

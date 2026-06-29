@@ -120,6 +120,16 @@
         "number-within": {
           "type": "string"
         },
+        "numbered": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ]
+        },
         "shared": {
           "items": {
             "type": "string"
