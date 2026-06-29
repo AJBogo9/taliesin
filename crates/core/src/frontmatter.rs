@@ -77,10 +77,19 @@ pub(crate) const HERO_KEYS: &[&str] = &["eyebrow", "headline", "lead", "actions"
 /// `prose-lint:` sub-keys qmd-fast honors (the mapping form; see `crate::prose::config`).
 pub(crate) const PROSE_LINT_KEYS: &[&str] = &["banned"];
 
-/// `theorems:` sub-keys qmd-fast honors. This increment honors only `shared` (shared
-/// counters); `number-within` + `numbered` are added when those features land, so an
-/// author using them still gets an "unknown theorems key" warning until then.
+/// `theorems:` sub-keys qmd-fast honors: `shared` (shared counters), `number-within`
+/// (chapter scoping), `numbered` (whether/when to number). The VALUES of the latter two
+/// are checked by [`validate_theorem_values`] so an unrecognized value warns rather than
+/// being silently ignored.
 pub(crate) const THEOREM_KEYS: &[&str] = &["shared", "number-within", "numbered"];
+
+/// Values `theorems.number-within` honors (see `render::fm_extract::parse_theorem_config`);
+/// any other value is silently ignored by the parser, so it warns instead.
+const THEOREM_NUMBER_WITHIN: &[&str] = &["chapter"];
+
+/// String values `theorems.numbered` honors besides a YAML bool; also the did-you-mean
+/// suggestion candidates.
+const THEOREM_NUMBERED: &[&str] = &["false", "unless-unique"];
 
 /// Validate a document's front matter against qmd-fast's vocabulary: every unknown
 /// top-level key, plus every unknown immediate child of the nested `execute:`,
@@ -131,6 +140,7 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
         block,
         &mut out,
     );
+    validate_theorem_values(map, block, &mut out);
     // `listing:` is one mapping or a sequence of mappings (cv.qmd).
     match map.get("listing") {
         Some(serde_yaml::Value::Mapping(m)) => {
@@ -184,6 +194,59 @@ fn validate_child_keys(
             let line = nested_key_line(block, parent, key);
             out.push(located(unknown_key_message(what, key, allowed), line));
         }
+    }
+}
+
+/// Value-level checks for `theorems:`. The parser silently ignores an unrecognized
+/// `number-within`/`numbered` value (rendering the OPPOSITE of intent — e.g.
+/// `numbered: never` stays numbered), so flag it with a did-you-mean rather than
+/// certifying it on a green check. Mirrors the accepted set in
+/// `render::fm_extract::parse_theorem_config`.
+fn validate_theorem_values(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
+    let Some(serde_yaml::Value::Mapping(thm)) = map.get("theorems") else {
+        return;
+    };
+    if let Some(v) = thm.get("number-within")
+        && v.as_str() != Some("chapter")
+    {
+        let line = nested_key_line(block, "theorems", "number-within");
+        out.push(located(
+            unknown_value_message(
+                "theorems number-within value",
+                &value_label(v),
+                THEOREM_NUMBER_WITHIN,
+            ),
+            line,
+        ));
+    }
+    // `numbered` honors a YAML bool (true/false) or the string `unless-unique`.
+    if let Some(v) = thm.get("numbered")
+        && !(matches!(v, serde_yaml::Value::Bool(_)) || v.as_str() == Some("unless-unique"))
+    {
+        let line = nested_key_line(block, "theorems", "numbered");
+        out.push(located(
+            unknown_value_message("theorems numbered value", &value_label(v), THEOREM_NUMBERED),
+            line,
+        ));
+    }
+}
+
+/// A YAML scalar rendered for a diagnostic message (best-effort).
+fn value_label(v: &serde_yaml::Value) -> String {
+    match v {
+        serde_yaml::Value::String(s) => s.clone(),
+        serde_yaml::Value::Bool(b) => b.to_string(),
+        serde_yaml::Value::Number(n) => n.to_string(),
+        serde_yaml::Value::Null => "null".to_string(),
+        _ => "<value>".to_string(),
+    }
+}
+
+/// Like [`unknown_key_message`] but for an unrecognized VALUE.
+fn unknown_value_message(what: &str, value: &str, candidates: &[&'static str]) -> String {
+    match closest(value, candidates) {
+        Some(s) => format!("unknown {what} `{value}` (did you mean `{s}`?)"),
+        None => format!("unknown {what} `{value}`"),
     }
 }
 
@@ -343,6 +406,41 @@ mod tests {
         assert!(
             msgs("---\ntheorems:\n  number-within: chapter\n---\n").is_empty(),
             "number-within is a recognized theorems key"
+        );
+    }
+
+    #[test]
+    fn theorems_flags_unrecognized_number_within_and_numbered_values() {
+        // A value the parser silently ignores (renders the OPPOSITE of intent) must warn,
+        // not pass a green check — `number-within` honors only `chapter`, `numbered` only
+        // a bool or `unless-unique`.
+        let m = msgs("---\ntheorems:\n  number-within: section\n  numbered: never\n---\n");
+        assert!(
+            m.iter()
+                .any(|w| w.contains("number-within") && w.contains("section")),
+            "bad number-within value warns: {m:?}"
+        );
+        assert!(
+            m.iter()
+                .any(|w| w.contains("numbered") && w.contains("never")),
+            "bad numbered value warns: {m:?}"
+        );
+    }
+
+    #[test]
+    fn theorems_accepts_every_valid_number_within_and_numbered_value() {
+        assert!(
+            msgs("---\ntheorems:\n  number-within: chapter\n  numbered: unless-unique\n---\n")
+                .is_empty(),
+            "chapter + unless-unique are valid"
+        );
+        assert!(
+            msgs("---\ntheorems:\n  numbered: false\n---\n").is_empty(),
+            "numbered: false (bool) is valid"
+        );
+        assert!(
+            msgs("---\ntheorems:\n  numbered: true\n---\n").is_empty(),
+            "numbered: true (bool) is valid"
         );
     }
 
