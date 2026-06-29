@@ -383,6 +383,20 @@ pub struct Kernel {
     conn_dir: PathBuf,
 }
 
+/// Whether a kernel-start failure is worth retrying with a fresh port allocation.
+/// Under concurrent starts, `peek_ports` can hand two kernels the same loopback port
+/// (it tests-then-releases each), so the loser exits with "address already in use" or
+/// an incompatible-sockets error — transient, since a retry re-rolls the ports. A
+/// missing interpreter / kernel module is permanent: retrying only delays the honest
+/// error. Default to transient (retry) for unrecognized failures, since the harm being
+/// fixed is a *silent* drop from a recoverable race, and the permanent cases are named.
+pub(crate) fn start_error_is_transient(msg: &str) -> bool {
+    let m = msg.to_ascii_lowercase();
+    !(m.contains("cannot launch") // spawn failed: the interpreter binary is missing
+        || m.contains("no such file") // ditto (the OS error for a missing program)
+        || m.contains("no module named")) // the kernel module (ipykernel/IRkernel) is absent
+}
+
 /// The error for a kernel process that exited during startup: read its stderr
 /// tail (the interpreter's own message, e.g. "No module named ipykernel") so the
 /// failure is actionable rather than an opaque connect timeout.
@@ -937,6 +951,35 @@ fn strip_ansi(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn transient_start_errors_retry_but_missing_interpreter_does_not() {
+        // A port-allocation race / socket reuse under concurrent kernel starts is
+        // transient: a retry with a fresh port allocation typically succeeds, so the
+        // page never silently loses its cell output. A missing interpreter or kernel
+        // module is permanent: retrying only wastes time, so it must fail fast.
+        assert!(start_error_is_transient(
+            "`python` exited at startup: zmq.error.ZMQError: Address already in use (addr='tcp://127.0.0.1:43049')"
+        ));
+        assert!(start_error_is_transient(
+            "python kernel unavailable (Provided sockets combination is not compatible)"
+        ));
+        assert!(start_error_is_transient(
+            "forked kernel did not bind its ZMQ ports in time"
+        ));
+        assert!(
+            !start_error_is_transient(
+                "cannot launch `/nonexistent/python`: No such file or directory (is it installed / on PATH?)"
+            ),
+            "a missing interpreter is permanent"
+        );
+        assert!(
+            !start_error_is_transient(
+                "`python` exited at startup: ModuleNotFoundError: No module named 'ipykernel'"
+            ),
+            "a missing kernel module is permanent"
+        );
+    }
 
     // `render_outputs` turns kernel messages into the output block's inner HTML.
     // It's pure, so it's covered here unconditionally — the live-kernel test below

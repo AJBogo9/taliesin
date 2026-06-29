@@ -489,7 +489,21 @@ impl Executor {
             if i < shared {
                 outputs.push(warm.get(i).cloned().unwrap_or_default());
             } else if i < run_end {
-                if has_kernel && !self.kernel_alive(lang) {
+                if !has_kernel {
+                    // The kernel could not boot (a port-allocation race under
+                    // concurrent starts, a backoff after a failed start, or no
+                    // interpreter): this cell was meant to run but can't. Splice a
+                    // VISIBLE diagnostic where its output would go — a build has no
+                    // websocket, so the `error` cell_state/build_state emitted above
+                    // never reaches the HTML; without this the output div would simply
+                    // be absent (the silent drop). The cell still renders as source
+                    // above this block. (`qmd-error` => styled as an error AND treated
+                    // as uncacheable, so it is never persisted to the freeze cache.)
+                    outputs.push(kernel_unavailable_html(
+                        lang,
+                        self.langs.get(lang).and_then(|s| s.last_error.as_deref()),
+                    ));
+                } else if !self.kernel_alive(lang) {
                     // The kernel was up when this run started but has since exited (an
                     // earlier cell crashed it). Don't run the rest: each `execute`
                     // would just wait out the full cell timeout on a kernel that will
@@ -698,7 +712,28 @@ impl Executor {
             ),
         );
         crate::log::kernel(&format!("starting {lang} ({})", program.display()));
-        let started = Kernel::start(&spec, work_dir.as_deref()).await;
+        // Retry a transient start failure with a fresh port allocation. Under
+        // concurrent builds `peek_ports` can hand two kernels the same loopback port
+        // (it tests-then-releases each), so the loser exits with "address already in
+        // use" and — before this — silently rendered its cells as source. A re-roll
+        // almost always lands free ports; the short, attempt-scaled backoff lets the
+        // colliding peer finish binding first. A permanent failure (missing
+        // interpreter/module) breaks out at once so the honest error isn't delayed.
+        const START_ATTEMPTS: usize = 4;
+        let mut started = Kernel::start(&spec, work_dir.as_deref()).await;
+        let mut attempt = 1;
+        while let Err(e) = &started {
+            if attempt >= START_ATTEMPTS || !crate::kernel::start_error_is_transient(&e.to_string())
+            {
+                break;
+            }
+            crate::log::warn(&format!(
+                "{lang} kernel start hit a transient failure ({e}); retrying ({attempt}/{START_ATTEMPTS})"
+            ));
+            tokio::time::sleep(Duration::from_millis(40 * attempt as u64)).await;
+            started = Kernel::start(&spec, work_dir.as_deref()).await;
+            attempt += 1;
+        }
         let state = self.langs.entry(lang).or_default();
         match started {
             Ok(k) => {
@@ -894,6 +929,24 @@ fn interp_id(lang: &str, program: &Path) -> String {
     let id = format!("{lang}::{}::{version}", program.display());
     cache.lock().insert(key, id.clone());
     id
+}
+
+/// A visible "this cell could not run" diagnostic, spliced where a boot-failed (or
+/// otherwise kernel-unavailable) cell's output would go. Without it the output `<div>`
+/// is simply absent — a silent drop — because a build emits no websocket diagnostic
+/// (only the live preview's status banner would show it). Carries `qmd-error` so it is
+/// styled as an error AND treated as uncacheable (never persisted to the freeze cache).
+/// The last kernel error (e.g. a ZMQ "address already in use" from a port-allocation
+/// race under concurrent starts) is appended when known, so the page names *why*.
+fn kernel_unavailable_html(lang: &str, last_error: Option<&str>) -> String {
+    let detail = match last_error {
+        Some(e) if !e.is_empty() => format!(" ({})", esc(e)),
+        _ => String::new(),
+    };
+    format!(
+        "<pre class=\"qmd-error\">{} kernel unavailable; this cell did not execute{detail}</pre>",
+        esc(lang)
+    )
 }
 
 /// Build the output block for a cell. Its id is the cell id + `-out`, and it
@@ -1400,6 +1453,35 @@ mod tests {
                 "run-range cell {id} must end on `error`, not stay queued: {states:?}",
             );
         }
+    }
+
+    #[test]
+    fn boot_failure_renders_a_visible_diagnostic_not_a_silent_drop() {
+        // Silent-output-drop fix: when the kernel can't boot, a cell that was supposed
+        // to RUN must emit a VISIBLE diagnostic block in the output — never vanish
+        // silently. In a build there is no websocket, so the `cell_state`/`build_state`
+        // `error` signals never reach the HTML; without an in-page marker a build ships
+        // a page missing computed output with no hint why. (Root cause: a ZMQ
+        // port-allocation race made kernels fail to boot under concurrent builds.)
+        let mut ex = Executor::new();
+        ex.python = PathBuf::from("/nonexistent/qmd-fast-no-such-python");
+        let doc = vec![python_cell_block_with("b-1", "print('hello')\n1 + 1")];
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let blocks = rt.block_on(async { ex.run(doc).await });
+        let out = blocks
+            .iter()
+            .find(|b| b.id == "b-1-out")
+            .expect("a cell that could not run must still emit an output block (loud, not silent)");
+        assert!(
+            out.html.contains("class=\"qmd-error\""),
+            "the output block must be a visible diagnostic, got: {}",
+            out.html
+        );
+        assert!(
+            out.html.to_lowercase().contains("kernel"),
+            "the diagnostic should name the unavailable kernel, got: {}",
+            out.html
+        );
     }
 
     #[test]
