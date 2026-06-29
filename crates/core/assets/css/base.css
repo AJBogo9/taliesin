@@ -489,7 +489,11 @@
      (source/click order); the grid columns place them left, the code right. */
   .code-walkthrough { display: grid; grid-template-columns: 1fr minmax(18rem, .85fr);
     gap: 2rem; align-items: start; margin: 1.6rem 0; }
-  .code-walkthrough .cw-steps, .code-walkthrough .cw-stage { min-width: 0; }
+  /* `min-width: 0` lets the grid/flex items shrink below content size; `max-width: 100%`
+     clamps the code stage to its column so a long, unwrapped `<pre>` scrolls *inside*
+     `.cw-code` (overflow:auto) instead of stretching the stage past its parent and
+     forcing page-level horizontal scroll on narrow viewports (tablet/phone). */
+  .code-walkthrough .cw-steps, .code-walkthrough .cw-stage { min-width: 0; max-width: 100%; }
   .cw-steps .step { min-height: 30vh; display: flex; flex-direction: column; justify-content: center;
     padding: 1.2rem 0 1.2rem 1rem; border-left: 2px solid transparent; opacity: .62; }
   .cw-steps .step.cw-step-active { opacity: 1; border-left-color: var(--qmd-accent); }

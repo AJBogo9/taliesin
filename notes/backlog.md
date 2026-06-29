@@ -173,6 +173,185 @@ install && npm run build`, then F5 and run the `editor/vscode/README.md` checkli
 
 ## Open / next
 
+### Reading-first default layout & style re-evaluation (2026-06-30)
+Method: a design re-audit of the three formats' DEFAULTS against a reading-first / iA-Writer-Bear-Tufte
+brief (author's chosen direction, willing to rethink structural paradigms, not just polish). Inputs: a
+3-agent read-only inventory of the design tokens + site/book chrome + deck engine; live headless
+screenshots of the built site/book/deck at desktop+mobile, light+dark; and a `deep-research` web pass
+(23 sources, 25 claims adversarially verified, 16 confirmed). Verified evidence cited per item.
+**Surprise finding: the typographic foundation already matches the brief** (ui-serif 17px/1.7, ~70ch
+measure, system-fonts-only, right-rail scrollspy TOC, sidenotes degrade-to-inline, scroll book, deck
+scroll mode). The deltas below are targeted, not a rewrite.
+
+**Keep / do NOT "fix" (research-validated, logged so they aren't re-litigated):**
+- Serif body is fine for long-form screen reading ("serif hurts legibility" refuted 0-3; Section508 +
+  Tufte CSS). Do not switch to sans.
+- ~70ch measure (`--qmd-maxw: 46rem`) is correct: 45-75 CPL band, target the upper end for screens
+  (Bringhurst/Rutter; Baymard). Do not narrow it.
+- Right-rail scrollspy "on this page" TOC is the NN/g-correct placement; sidenotes as a width-gated
+  progressive enhancement matches Tufte/Gwern. Keep both.
+- Scroll (not pagination) book reading: no comprehension difference (Joshi et al., CHI EA '25). Keep scroll.
+- System-font-only (no webfont) is right for offline + no reflow. If a serif webfont is ever bundled,
+  ship REAL bold/italic faces, never browser-synthesized (Tufte rule).
+
+#### The one paradigm rethink (P1, highest payoff)
+- [ ] **Book: collapse the three-pane into one measured reading column.** Today a book is a left chapter
+  rail (15rem) + content + right TOC (13rem) at max-width 80rem (site.css `.qmd-book*`, page.rs book
+  branch, site/mod.rs `is_book` chrome). On short chapters the two nav rails dwarf a sliver of prose
+  (lopsided, content left-of-center). Target: center the SAME ~70ch column the blog post uses; move the
+  chapter list into a drawer/overlay (promote the mobile `☰`) or a slim collapsed-by-default rail; keep
+  prev/next at the foot + scroll + sidenotes. Lean on semantic-zoom nav (collapsible sections, heading
+  scale, thin reading-progress) so structure is the map (Gwern; NN/g "show TOC only for long, chunkable
+  pages"). Pin a corpus book target in the same change.
+
+#### Cross-cutting defaults (P1)
+- [ ] **Theme default -> follow the OS (`prefers-color-scheme`), fall back light.** Today it is hardcoded
+  dark with explicitly NO OS-following (theme.rs:65-81, "Two fixed modes only ... No OS-following auto").
+  Research: never ship dark as the SOLE default (~47% astigmatism halation; BOIA), and a reading-first /
+  iA-Bear tool should respect the reader's system choice. Light toggle + sepia already exist, so this is a
+  resolution-order change, not new UI. (Softer alternative if auto-follow is unwanted: at minimum keep the
+  one-click light option first-class, which already holds.)
+- [ ] **Fix accent contrast (accessibility bug).** `--qmd-accent` (#4c8dff / #6ea8ff) fails WCAG-AA on
+  white per its own base.css comment; use `--qmd-accent-fill` for text/links or darken `--qmd-link` to
+  clear 4.5:1 (WCAG 2.2 / Section508; base.css + dark.css).
+- [ ] **Nudge body 17px -> 18px.** Just under the 18-20px reading-first optimum (Section508; Medium runs
+  18-21px). One-line `--qmd-font-body` bump (base.css:18); the reader-scale menu already lets readers opt out.
+
+#### Website + deck (P2)
+- [ ] **Website: auto-gate the "on this page" TOC by heading count** instead of manual `toc: true`. NN/g:
+  show only on long, chunkable pages; suppress on short/sequential. Gate rendering on a heading-count
+  heuristic (site/mod.rs:552 suppression path; page.rs:281/337).
+- [ ] **Deck: make scroll-view the reader-facing default when opened as a link; keep step mode for
+  presenting.** Scroll mode exists but is keyed off viewport width / `?qmd=scroll` (deck.js:1562-1565).
+  reveal.js 5 ships scroll-view as the read-on-your-own default because step decks are for presenting
+  (reveal docs). Also unify scroll-mode font with the reading serif (currently sans).
+- [ ] **Website navbar spans too narrow.** Centered to the 46rem column leaves dead zones on wide screens
+  (site.css `.qmd-nav-inner` max-width `var(--qmd-maxw)`). Let the bar use a wider container while the
+  READING column stays ~70ch (chrome width and reading measure are separate decisions).
+
+#### Identity polish (P3, design judgment; the "templated" diagnosis itself is UNVERIFIED, see caveat)
+- [ ] **Hero as typeset reading, not a marketing slab.** The eyebrow + big headline + lead + two-button
+  hero is the generic SaaS shape (site/mod.rs hero block); for a typography tool the most honest hero is
+  beautifully-set prose that shows the real type system.
+- [ ] **Drop bordered feature-card grids** for a typeset list with strong hierarchy (site.css `.qmd-card`).
+- [ ] **Reconsider the tech-blue accent** for a quieter near-monochrome plus one restrained accent (Bear/iA
+  register).
+- [ ] **Introduce a spacing scale** (`--space-1..6`). Spacing is ad-hoc rem literals throughout (base.css),
+  which makes the calm, consistent rhythm reading-first design needs hard to enforce.
+
+**Research caveats (do not over-claim):** the deep-research pass could NOT verify (a) what
+Stripe/Linear/Mintlify/Docusaurus/GitBook/Vercel docs concretely do in 2025-26, (b) the "Bootstrap/Quarto
+looks dated/templated" homogenization thesis, or (c) command-palette-as-nav-replacement and Gamma/Pitch
+deck specifics. Treat the P3 items and any competitor framing as judgment, not evidence; re-check
+competitor layouts live before banking a default on "X does Y." Suggested order: book relayout -> OS theme
+default -> website TOC auto-gate -> accent/size fixes -> deck scroll default -> identity polish.
+
+### Deep audit findings (2026-06-30; 16-dimension, 33-agent sweep, adversarially verified)
+Method: 16 harsh-critic dimension agents (render / diff / deck / exec / dev-server / site / cite-math /
+client-js / enhancer-js / css / a11y / security / robustness / testing / perf / dx) in 4 waves -> a fresh
+skeptic re-read the code to refute/dedupe each finding. **131 survived (128 confirmed): 11 high, 28 med,
+92 low.** Full per-dimension write-ups + the executive verdict are in `notes/AUDITS.md` (2026-06-30 section).
+Three recurring themes: (1) **silent failure is still the default** (the dominant cross-cutting weakness);
+(2) **a11y is advertised but shallow** (a real focus-trap + ARIA tabs alongside a mouse-only lightbox,
+AT-visible off-camera deck slides, and a 3-rule static gate that can't see any of it, so a green `check`
+over-vouches); (3) **the JS layer + executed-code stack have no CI** (kernel tests no-op when
+`QMD_FAST_PYTHON` is unset; client.js + `assets/js/` untyped + untested). Highest-leverage systemic move:
+a discovery/parse warnings channel that reaches `check`/`--strict` + the preview diagnostics overlay, then
+route the long tail of silently-dropped cases through it.
+
+**Done this session (2026-06-30):**
+- [x] **README/site "double-click" -> "Alt-click (Option-click on Mac)"** (top finding: the marquee
+  feature's own instruction was wrong in the most-read files; code binds `e.altKey`, client.js:1044).
+  Fixed README.md:8/22/86, web-client/README.md:6, site/demo.qmd:13, site/features.qmd:36.
+- [x] **`.code-walkthrough` horizontal overflow on narrow viewports (<~800px)** (found in the parallel
+  responsive-viewport sweep, not the agent audit). `.cw-code`'s unwrapped `<pre>` forced `.cw-stage` to
+  ~752px, overflowing the page on tablet/phone (showcase + corpus/narrate). Fixed with `max-width:100%`
+  on `.cw-stage`/`.cw-steps` (base.css:492); verified at 390/500/1440 (page overflow 0, desktop 2-col grid
+  intact), `cargo test -p qmd-fast-core` green.
+
+#### Correctness / robustness (P1)
+- [ ] build/serve: unknown `--flag` is a hard error with did-you-mean (build.rs:86, cli.rs:99-108) — restores the `--strict` gate
+- [ ] Wrap build/check/render in the preview `catch_unwind` guard (build.rs:294, check.rs:48, query.rs:26,70) via a shared helper
+- [ ] Kernel-died-mid-cell: probe `is_alive()` on iopub read timeout, fail fast instead of hanging the full cell-timeout + mislabeling as "Timeout" (kernel.rs:671-709)
+- [ ] Bare `@`-xref: require a word boundary so `bob@rem-server.com`/@-mentions aren't xref'd + phantom-diagnosed (cite/render.rs:219-229)
+- [ ] SetMeta with >1 inner `data-sourcepos`: fall through to full Update + add corpus test — else Alt-click/reverse-sync inside fenced divs go to the wrong line (diff.rs:83-119, client.js:934-947)
+- [ ] Explicit heading `{#id}`: route through `dedup_with_suffix` or warn-and-suffix duplicates (render/mod.rs:407-417)
+- [ ] Malformed `_site.yml`: count as a `--strict` problem; keep last-good config in the watcher (config/mod.rs:122, build.rs:727, serve_site/mod.rs:937)
+- [ ] Site-build page-task panic: increment `problems` so `--strict` fails (build.rs:852-873)
+- [ ] ws.onmessage: try/catch `JSON.parse` + `handle()`; surface errors via the overlay (client.js:977)
+- [ ] Out-of-tree includes added after startup: recompute/diff the watch set or warn (serve/mod.rs:863-895)
+- [ ] Theme hot-swap: move `if theme_changed { send style }` out of the else (serve/mod.rs:1059, serve_site/mod.rs:799) — covers deck-structural + error-recovery re-mounts (supersedes the old AUDITS "combined content+theme" residual)
+
+#### Accessibility (P1)
+- [ ] Lightbox: tabindex + role=button + aria-label + Enter/Space keydown on decorated media — WCAG 2.1.1 (11-lightbox.js:124)
+- [ ] Deck: `inert` non-current leaf slides per commit (fixes both AT-tree + tab-order) (deck.js ~252, 570)
+- [ ] Single-key shortcuts (f / ? / arrows): Reader-menu opt-out flag; add `SELECT` to focus-mode typing guard (07-keyboard.js:55, 03-focus-mode.js:54)
+- [ ] Reader-menu role=dialog: move focus into the panel on open (or drop role) (13-reader-menu.js:31)
+- [ ] Min 24x24 target on `.qmd-ra-btn` + `.qmd-anchor` — WCAG 2.5.8 (base.css:130,342)
+- [ ] a11y.rs gate: match `[role=button|link|tab]`; plan a headless `scanA11y` gate (a11y.rs:106)
+- [ ] aria-hidden on `.qmd-lod` / minimap / threads (deck.js:303)
+
+#### Visual craft / theming (P2)
+- [ ] Sepia overrides: `.qhl-*` syntax palette + output/stderr/error boxes + copy button; darken `--qmd-muted` to AA (base.css:33,385,599) — sepia is first-class but only redefines 6 tokens
+- [ ] Tokenize copy button + overlay shadows (`var(--qmd-*)` / `--qmd-edge-shadow`) (base.css:255,293,398,696)
+- [ ] Add prose rhythm: tokenized p/list margins + a flat `hr` (base.css; currently UA defaults)
+- [ ] Dark-mode `--qmd-thm-*` theorem border variants (dark.css)
+- [ ] Drop dead `.hero h1` border/padding reset (base.css:321)
+
+#### Deck engine (P2)
+- [ ] Debounce/rAF resize; drop `fitSlide` from the resize path (deck.js:1536,242)
+- [ ] Speaker view: snapshot clones or embed-mode skips `{js}` execution (currently 2 live iframes) (deck.js:970)
+- [ ] Encode + restore fragment index in the URL hash (deck.js:514,1142)
+- [ ] Blackout: any nav key resumes; unhide cursor on pointermove (deck.js:1255)
+- [ ] fragsOf: skip `PRE` inside `.magic-move` (double-counted as steps) (deck.js:406)
+- [ ] Speaker window: `pagehide` clears spClock + nulls speakerWin (deck.js:976)
+
+#### Site / books — surface silent omissions (P2)
+- [ ] `contents: .` / own-dir listing: match siblings or reject (currently lists nothing) (mod.rs:627, links.rs:112)
+- [ ] `listing:` without `contents:`: warn instead of silently drop (frontmatter.rs:137)
+- [ ] Warn when `image:` set but `url:` missing (og/canonical/twitter silently suppressed) (meta.rs:20)
+- [ ] Don't drop titleless posts from listings (or warn) (mod.rs:633)
+- [ ] Warn on mount/page collision (config/mod.rs:161); warn on missing chapter file (book.rs:98)
+- [ ] Per-page `image-alt:` for listing cards (mod.rs:694)
+
+#### Citations / math / bib (P2)
+- [ ] Math render failure: harvest the KaTeX error, thread a located Warning (only render path with no diagnostic) (math.rs:31)
+- [ ] Quoted single-brace author `"{First Last}"`: strip one brace level like the brace arm + test (cite/parse.rs:165)
+- [ ] `strip_tags`: make quote-aware (alt-text truncation + math-heading TOC/slug garble) (mod.rs:1537,1408)
+- [ ] `\url`: require `\url{...}`, strip to arg (currently naive global replace) (cite/clean.rs:11)
+- [ ] Bibliography path: parse YAML value as string/seq (spaces split it); `.at()` the dup-key warning (mod.rs:754, parse.rs:91)
+- [ ] Reconcile cite-key vs bib-key char sets (render.rs:240 / parse.rs:58)
+
+#### Performance (P2-P3)
+- [ ] Batch WS ops into one message; run `afterChange()`/scrollspy once per batch, rAF-coalesced — kills the O(ops x doc) cliff on the save hot path (client.js:845, serve/mod.rs:1065, toc-spy.js:86)
+- [ ] Merge the two `validate_cross_page_links` renders; make the discover-time search index lazy (mod.rs:382, search.rs:30)
+- [ ] math/KaTeX cache: evict a fraction / bounded LRU instead of full clear on overflow (math.rs:40)
+- [ ] emit.rs: `write!`/`push_str` instead of `format!`+push_str per tag (emit.rs:16,274,330)
+
+#### Testing / CI (P1-P2)
+- [ ] CI job: `pip install ipykernel` + `QMD_FAST_PYTHON=… cargo test -p qmd-fast-server`; add `QMD_FAST_REQUIRE_KERNEL=1` so an env regression can't silently re-skip (the whole exec stack is currently unverified in CI)
+- [ ] CI: `tsc -p jsconfig.json` (extend include to search.js/toc-spy.js/assets/js/*); add `@ts-check` headers
+- [ ] insta snapshots on `body_html()` for reactive/explorable/bayesian docs through the exec path (corpus.rs is structural-only) (corpus.rs:99)
+- [ ] CI job for editor/vscode tests (gated to editor/vscode/**)
+- [ ] deny.toml: `multiple-versions = deny` + skip-tree allowlist (or document allowed dups)
+- [ ] `#[serial]` the kernel-load determinism tests; assert a dropped output is a hard named error (the known silent-drop flake)
+
+#### CLI / docs polish (P3)
+- [ ] `build --out` with no value: hard error instead of silent default target (build.rs:73)
+- [ ] render/blocks: `is_dir()` branch with a clear message (raw OS error today) (query.rs:21,66)
+- [ ] usage() build line: add `[--jobs <N>]` + extend the microcopy test (main.rs:104)
+- [ ] Reconcile scaffold/usage/README/getting-started repo-URL placeholders (cli.rs:24, main.rs:87, README.md:38)
+- [ ] Drop the `{mermaid}` cell from the first getting-started example, or add an offline note (getting-started.qmd:100)
+- [ ] README Usage: add `qmd-fast check .`; tie the diagnostics bullet to `check` (README.md:90,136)
+
+#### Security hardening (P3, single-author trust model)
+- [ ] `history.replaceState` to scrub `?t=` after mount (security.rs:150, client.js)
+- [ ] `qmd_token` cookie: add `; HttpOnly` (security.rs:124)
+- [ ] Injected Mermaid `<script>`: `integrity` + `crossorigin`; emit `Referrer-Policy: no-referrer` (mod.rs:858, page.rs:150)
+- [ ] `origin_allowed`: only blanket-allow loopback when loopback-bound (security.rs:13)
+- [ ] Deck postMessage: gate null/'' origin on `file://` only (deck.js:893)
+- [ ] Extension-resource fallback: re-check containment after the symlink walk (serve/mod.rs:387)
+
 ### Polish audit findings (2026-06-26; 32-agent UX/polish sweep, adversarially verified)
 Method: 20 personas + 12 polish dimensions exercised the real binary + read render/client-JS code;
 every bug claim was adversarially refuted against the code; 95 confirmed (1 critical, 10 high, 58 med,
@@ -222,6 +401,15 @@ like `body p, body li { … }` leaks into chrome that wraps prose (TOC, sidebars
 .sidenote p, .column-margin p, … { line-height: inherit }`. **For letter/word spacing the leak is
 worse** (tracking *inherits into inline descendants*), so `5bca91a` also resets monospace + math
 directly: `code, pre, kbd, samp, .katex { letter-spacing: normal; word-spacing: normal }`.
+- [ ] **Search-hit visual cue (design settled 2026-06-30, spec pending).** On a Cmd-K result click,
+  land on the heading as today, then **flash the matched term** via the CSS Custom Highlight API (zero
+  DOM mutation — honours read-only-preview; theme-token styled like read-aloud; fades out), and auto-scroll
+  to the first occurrence *only if it is off-screen* (option B). Cross-page handoff via **sessionStorage**
+  (option A): write the query terms before `location.href`, read + clear on load, then run the same
+  locate-and-flash so in-page and cross-page share one code path. Fuzzy/title-only matches just land on the
+  heading (no cue). Deck-skip. Next: write the spec under `docs/superpowers/specs/`, then TDD. Reuses the
+  `termRanges` logic in search.js + the read-aloud highlight precedent; native `#:~:text=` rejected as
+  primary (highlight not theme-able, no fade control, patchy in Firefox).
 - Decided/known: the reader menu is intentionally an untrapped popover (not a modal); highlights
   are single-block prose only (margin notes / cross-block / colours were scoped out — see specs).
 

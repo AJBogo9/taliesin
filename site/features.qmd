@@ -33,7 +33,7 @@ Unchanged blocks are never touched; scroll, focus, and live state survive.
 
 ::: {.feature}
 ### Click to source
-Double-click any rendered element and your editor jumps to the line it came from,
+Alt-click (Option-click on Mac) any rendered element and your editor jumps to the line it came from,
 even across `{{< include >}}`d files.
 :::
 
