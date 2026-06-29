@@ -75,8 +75,9 @@ publishable.**
 - The bundled `_extensions/` showcase (liquid-glass) is currently non-functional
   against the native deck engine; an extension-ecosystem audit is the next
   dedicated pass.
-- No CI workflow yet (the local `test`/`clippy`/`fmt`/`check` gates are the
-  current safety net); `cargo-deny` is configured (`deny.toml`) but not wired.
+- CI runs `fmt`/`test`/`clippy` plus a weekly `cargo-audit` advisory scan
+  (`.github/workflows/ci.yml`); `cargo-deny` is configured (`deny.toml`) but its
+  CI step is not wired yet.
 - Mermaid still loads from a CDN by default (now configurable and non-silent,
   but not yet vendored).
 - Long-running previews can grow memory unboundedly (visited pages are not

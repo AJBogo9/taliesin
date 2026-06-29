@@ -244,6 +244,86 @@ disables the wall-clock limit, but a per-output silent-hang backstop (60s with n
 output) still ends a wait that would otherwise hang forever. `Drop` kills the child
 and removes the connection dir.
 
+## The warm pool: forking kernels ahead of the edit (`warm_pool.rs`)
+
+The single warm kernel above removes the *per-edit* cold start: once a language's
+kernel is up, later edits reuse it. But the **first** edit of a session still pays
+the full interpreter boot plus the heavy `import numpy` / `import matplotlib`, which
+on a real document is the slow one. The **warm pool** takes the warm-kernel idea one
+step further and pays that cost **once at server start**, off the hot path, so the
+first edit is near-instant too.
+
+It works by **forking**, not re-spawning. The pool fronts a long-lived **forkserver
+daemon** (an embedded Python helper): the daemon boots a `multiprocessing` forkserver
+once and `set_forkserver_preload`s the heavy libraries that are importable (`numpy`,
+`matplotlib`, and `torch` *only if present*). Every kernel the pool hands out is then
+a **fork** of that already-warm image, so copy-on-write gives the child the preloaded
+modules for free:
+
+```{mermaid}
+flowchart LR
+  boot["server start:<br/>boot forkserver,<br/>preload numpy/matplotlib"] --> ready["pool of pre-warmed<br/>forked kernels"]
+  ready --> take["first edit:<br/>take() a ready kernel<br/>(no import cost)"]
+  take --> refill["background refill<br/>back toward cap"]
+  refill --> ready
+```
+
+The one subtlety (handled in the helper) is that a forked child must start ipykernel
+**in-process** (`IPKernelApp.instance().initialize(...)`), never by `exec`ing a fresh
+`python -m ipykernel_launcher`: an `exec` would replace the process image and throw
+away every preloaded module. qmd-fast then connects to the forked kernel over ZMQ
+with the **same handshake** `Kernel::start` uses (`Kernel::adopt_forked`), so the rest
+of the executor never has to care whether a kernel was forked or cold-started.
+
+**The fallback is the whole safety story.** If the forkserver can't boot, no
+`QMD_FAST_PYTHON`, an import error, a non-Linux host, an R-only document, the pool's
+daemon is simply absent, `WarmPool::take` returns `None`, and the caller cold-starts a
+kernel exactly as before. Any failure on the warm path degrades to the cold path; it
+is never a hard error, so behaviour is **never worse than the single-kernel design**.
+The pool is also **Python-only**: R cells always cold-start (there is no R forkserver
+preload), which is why `QMD_FAST_PYTHON` is the precondition for a warm first edit.
+
+### One RAM budget for warm + parallel build
+
+A forked kernel is still a *real resident interpreter* costing roughly the same RAM as
+a cold one (~`PER_KERNEL_MB`, 150 MiB, conservatively). So the warm pool can't be sized
+in isolation: when `build <dir>` runs pages in parallel, the pre-warmed kernels and the
+concurrent build kernels are drawn from **one** budget. `build_budget.rs` makes that
+split:
+
+- `concurrency_cap(jobs, PER_KERNEL_MB)` decides the total resident-kernel budget
+  `cap`. With `--jobs N` it is just `N`; in **auto** mode (the default, `--jobs 0` or
+  absent) it is `min(cores, free_mb / PER_KERNEL_MB)`, probed from `/proc/meminfo`, so
+  a memory-starved machine builds with fewer parallel kernels rather than swapping.
+- `budget_split(cap)` then carves that into `warm_pool + build_kernels`, **build-first**:
+  the build is guaranteed at least one slot, and the warm pool claims up to
+  `WARM_POOL_TARGET` (2) of whatever is left above that floor. So `cap == 1` → no warm
+  pool (the single slot builds); `cap == 2` → 1 warm + 1 build; `cap >= 3` → 2 warm +
+  the rest build. The invariant `warm_pool + build_kernels <= cap` holds for every
+  `cap`, and the warm pool is an **accelerator, never a gate** (`split_*` tests in
+  `build_budget.rs` pin this). The preview server runs pages serially, so it just keeps
+  `budget_split(auto_cap).warm_pool` kernels ready.
+
+### Keeping the pool full without overshooting
+
+Within its `cap`, the pool keeps itself topped up with a small background refill loop,
+and the accounting here is load-bearing: each surplus kernel is a whole interpreter's
+worth of RAM charged against the budget above. The pool tracks two numbers, the kernels
+already `ready` in the queue and the forks currently `in_flight`, and its core invariant
+is
+
+```text
+ready + in_flight  <=  cap          (never cap + 1)
+```
+
+The refill loop reserves a new fork slot only while occupancy is **strictly** below
+`cap` (the pure, unit-tested `try_reserve_slot` helper), and a `take` pops a ready
+kernel but deliberately **does not** decrement `in_flight`, because a kernel sitting in
+`ready` already had its in-flight slot released when its fork completed. Decrementing on
+take would under-count occupancy and let the next refill spawn an extra fork, transiently
+pushing the resident set to `cap + 1` and overshooting the RAM budget, the exact bug the
+`try_reserve_slot` tests now guard against without needing a live kernel.
+
 ## From a kernel message to HTML
 
 Each collected iopub message is normalised into one `Output` value, and
