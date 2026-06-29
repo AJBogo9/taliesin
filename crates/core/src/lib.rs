@@ -30,6 +30,7 @@ pub mod cite;
 pub mod diagnostics;
 pub mod diff;
 pub mod frontmatter;
+pub mod hash;
 pub mod highlight;
 pub mod includes;
 pub mod math;

@@ -1353,19 +1353,10 @@ fn extract_attr(html: &str, name: &str) -> Option<String> {
 /// Build a stable block id from its source text, with a positional tiebreak
 /// so duplicate-content blocks still get distinct ids.
 fn make_id(block_src: &str, counts: &mut HashMap<String, u32>) -> String {
-    let hex = format!("{:016x}", fnv1a(block_src.trim()));
+    // Block ids and the freeze cache key share one hashing scheme; see `crate::hash`.
+    let hex = format!("{:016x}", crate::hash::fnv1a(block_src.trim()));
     let base = format!("b-{}", &hex[..12]);
     dedup_with_suffix(base, counts)
-}
-
-/// 64-bit FNV-1a — a small, deterministic hash stable across runs and versions.
-fn fnv1a(s: &str) -> u64 {
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in s.bytes() {
-        h ^= b as u64;
-        h = h.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    h
 }
 
 // --- helpers -------------------------------------------------------------

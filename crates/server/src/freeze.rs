@@ -42,18 +42,11 @@ const FORMAT_VERSION: u32 = 2;
 /// few dozen cells, so this holds a deep edit history while staying small on disk.
 const MAX_ENTRIES: usize = 1024;
 
-/// 64-bit FNV-1a — small, deterministic, and stable across runs and tool versions
-/// (the same scheme the core uses for block ids). The cumulative chain feeds each
-/// step's hex digest into the next, so the per-cell keys are independent of any
-/// other document's cells.
-pub fn fnv1a(s: &str) -> u64 {
-    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
-    for b in s.bytes() {
-        h ^= b as u64;
-        h = h.wrapping_mul(0x0000_0100_0000_01b3);
-    }
-    h
-}
+/// The cache key uses the **same** 64-bit FNV-1a as the core's block-id scheme — one
+/// shared definition in [`qmd_fast_core::hash`] (they must hash identically). The
+/// cumulative chain below feeds each step's hex digest into the next, so the per-cell
+/// keys are independent of any other document's cells.
+pub use qmd_fast_core::hash::fnv1a;
 
 /// Cumulative per-cell cache keys for one language's cells, in document order.
 ///
