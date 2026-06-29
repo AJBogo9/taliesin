@@ -429,6 +429,78 @@ fn copy_local_assets(html: &str, base: &Path, dest: &Path) -> usize {
     copied + copy_js_imports(html, base, dest)
 }
 
+/// Deploy any in-tree file a page links to whose extension is in [`SKIP_EXT`] — the
+/// source-only set [`mirror_assets`] drops as potential stray residue. A *referenced*
+/// source (a linked `.md` download, a `.scss` offered for inspection) is intentional, so
+/// dropping it leaves a dead link on an otherwise-green build. Non-source assets are
+/// already mirrored, and cross-page / out-of-tree refs are silently ignored here (the
+/// loud out-of-tree warning belongs to the single-doc [`copy_local_assets`]).
+fn deploy_referenced_sources(html: &str, base: &Path, dest: &Path) -> usize {
+    let mut copied = 0usize;
+    for r in local_refs(html) {
+        let path = &r[..r.find(['?', '#']).unwrap_or(r.len())];
+        // Cross-page / out-of-tree refs aren't ours to ship; mirror_assets already
+        // handled every non-source asset, so only the SKIP_EXT files can be missing.
+        if path.starts_with('/') || path.split('/').any(|seg| seg == "..") {
+            continue;
+        }
+        let ext = Path::new(path)
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+        if !SKIP_EXT.contains(&ext) {
+            continue;
+        }
+        let from = base.join(path);
+        if !from.is_file() {
+            continue;
+        }
+        let to = dest.join(path);
+        if same_file(&from, &to) {
+            continue;
+        }
+        if let Some(parent) = to.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if std::fs::copy(&from, &to).is_ok() {
+            copied += 1;
+        }
+    }
+    copied
+}
+
+/// Second asset pass for a site build: after every page is written, ship the source
+/// files (`.md`/`.scss`/…) that pages actually *link to*. The output tree mirrors the
+/// source tree, so each page's relative refs resolve from its source directory. Returns
+/// the count deployed. See [`deploy_referenced_sources`].
+fn deploy_referenced_sources_for_site(root: &Path, out: &Path) -> usize {
+    fn walk(dir: &Path, root: &Path, out: &Path, copied: &mut usize) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                walk(&p, root, out, copied);
+            } else if p.extension().and_then(|s| s.to_str()) == Some("html") {
+                let Ok(html) = std::fs::read_to_string(&p) else {
+                    continue;
+                };
+                let rel_dir = p
+                    .strip_prefix(out)
+                    .ok()
+                    .and_then(Path::parent)
+                    .unwrap_or(Path::new(""));
+                *copied +=
+                    deploy_referenced_sources(&html, &root.join(rel_dir), &out.join(rel_dir));
+            }
+        }
+    }
+    let mut copied = 0usize;
+    walk(out, root, out, &mut copied);
+    copied
+}
+
 /// Whether two paths resolve to the same file on disk (so we don't self-copy).
 fn same_file(a: &Path, b: &Path) -> bool {
     matches!((a.canonicalize(), b.canonicalize()), (Ok(x), Ok(y)) if x == y)
@@ -949,6 +1021,11 @@ async fn build_site_async(
         String::new()
     };
 
+    // Second asset pass: ship source files (`.md`/`.scss`/…) that pages actually link to.
+    // mirror_assets drops them by extension (publish hygiene), but a *referenced* source is
+    // an intentional download — skipping it would leave a dead link on a green build.
+    let assets = assets + deploy_referenced_sources_for_site(root, &out);
+
     log::built(&format!(
         "{}  ·  {pages} page{}  ·  {assets} asset{}{search}{deck_note}{not_found}",
         out.display(),
@@ -1171,6 +1248,35 @@ mod mirror_tests {
                 && skipped.contains(&"report_files".to_string()),
             "skipped cache dirs reported: {skipped:?}"
         );
+
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&out);
+    }
+
+    #[test]
+    fn deploy_referenced_sources_ships_linked_source_but_not_stray() {
+        // A page linking a `.md`/`.scss` source means an intentional download; mirror_assets
+        // drops those by extension, so this second pass must ship the REFERENCED ones while
+        // leaving an unreferenced stray source out (publish hygiene preserved).
+        let root = tmp("refsrc");
+        let out = tmp("refsrc-out");
+        fs::write(root.join("notes.md"), b"# notes").unwrap();
+        fs::write(root.join("stray.md"), b"stray").unwrap();
+        fs::write(root.join("theme.scss"), b"x").unwrap();
+        let html = r#"<a href="notes.md">notes</a> <link href="theme.scss">"#;
+
+        let copied = deploy_referenced_sources(html, &root, &out);
+
+        assert!(out.join("notes.md").is_file(), "a linked .md must deploy");
+        assert!(
+            out.join("theme.scss").is_file(),
+            "a linked .scss must deploy"
+        );
+        assert!(
+            !out.join("stray.md").exists(),
+            "an unreferenced source must NOT deploy"
+        );
+        assert_eq!(copied, 2, "exactly the two referenced sources");
 
         let _ = fs::remove_dir_all(&root);
         let _ = fs::remove_dir_all(&out);
