@@ -82,6 +82,17 @@ fn scaffold_init(dir: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(written)
 }
 
+/// Parse the optional `[port]` positional: absent -> the 4321 default; a present but
+/// unparseable value is an error (not a silent fall-back to the default). Pure/unit-tested.
+fn parse_port(raw: Option<&str>) -> Result<u16, String> {
+    match raw {
+        None => Ok(4321),
+        Some(p) => p
+            .parse()
+            .map_err(|_| format!("invalid port: `{p}` (expected 0-65535)")),
+    }
+}
+
 pub(crate) fn cmd_serve(args: &[String]) -> ExitCode {
     // Positionals are <file.qmd> [port]; flags (--open, --host) may appear anywhere.
     let positionals: Vec<&String> = args[2..].iter().filter(|a| !a.starts_with("--")).collect();
@@ -101,15 +112,12 @@ pub(crate) fn cmd_serve(args: &[String]) -> ExitCode {
     };
     // The optional second positional is the port; a present-but-unparseable value
     // is an error rather than a silent fall-back to the default.
-    let port: u16 = match positionals.get(1) {
-        None => 4321,
-        Some(p) => match p.parse() {
-            Ok(n) => n,
-            Err(_) => {
-                log::error(&format!("invalid port: `{p}` (expected 0-65535)"));
-                return ExitCode::FAILURE;
-            }
-        },
+    let port: u16 = match parse_port(positionals.get(1).map(|s| s.as_str())) {
+        Ok(n) => n,
+        Err(msg) => {
+            log::error(&msg);
+            return ExitCode::FAILURE;
+        }
     };
     // A directory is a multi-page site project; a single `.qmd` is one document.
     let result = if Path::new(path.as_str()).is_dir() {
@@ -130,6 +138,17 @@ pub(crate) fn cmd_serve(args: &[String]) -> ExitCode {
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn preview_port_defaults_parses_and_rejects() {
+        // No port positional -> the 4321 default; a valid number parses; a present-but-
+        // unparseable value is an error (not a silent fall-back); > u16::MAX is rejected.
+        assert_eq!(parse_port(None).unwrap(), 4321);
+        assert_eq!(parse_port(Some("8080")).unwrap(), 8080);
+        assert_eq!(parse_port(Some("0")).unwrap(), 0);
+        assert!(parse_port(Some("not-a-port")).is_err());
+        assert!(parse_port(Some("70000")).is_err());
+    }
 
     fn tmp(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("qmd-init-{}-{name}", std::process::id()));

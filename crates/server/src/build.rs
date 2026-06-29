@@ -44,20 +44,26 @@ fn parse_jobs_value(raw: Option<&str>) -> Result<Option<usize>, String> {
     }
 }
 
-/// `build <file.qmd> [out.html]`: write a self-contained HTML page to a file
-/// (default `<stem>.html` beside the source). With `--out <dir>` it instead
-/// writes `<dir>/index.html` and copies every referenced local asset alongside
-/// (paths preserved), so the directory is deployable as-is. `render` is stdout.
-pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
-    // Positionals: <file> [out.html]. Flags: `--out <dir>` (alias `--dir`),
-    // `--strict` (a cell error / broken-ref warning fails the build).
+/// The parsed `build` argv (pure; no I/O), so the positional/flag rules are unit-testable.
+/// `out_html` (the second positional) and `out_dir` (`--out`/`--dir`) are the two distinct
+/// "where to write" meanings: a single-file target vs. a portable folder.
+struct BuildArgs<'a> {
+    path: &'a str,
+    out_html: Option<&'a str>,
+    out_dir: Option<&'a str>,
+    strict: bool,
+    bare: bool,
+    jobs: Option<usize>,
+}
+
+/// Parse `build` argv (`args[2..]`; `args[0..2]` are the binary + "build"). Flags may
+/// appear anywhere; the first positional is the source, the optional second is `[out.html]`.
+/// Returns `Err(usage/error message)` for a bad `--jobs` value or a missing source path.
+fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
     let mut positionals: Vec<&str> = Vec::new();
     let mut out_dir: Option<&str> = None;
     let mut strict = false;
     let mut bare = false;
-    // `--jobs <N>`: max pages built concurrently in a site build.
-    // `None` (the default) = auto (memory- and core-capped via `concurrency_cap`).
-    // `Some(0)` / "auto" = same as None.  `Some(1)` = sequential.  `Some(N)` = N.
     let mut jobs_result: Result<Option<usize>, String> = Ok(None);
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
@@ -81,18 +87,43 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
             s => positionals.push(s),
         }
     }
-    let jobs = match jobs_result {
-        Ok(v) => v,
+    // Errors are returned ready-to-print, preserving cmd_build's original messages
+    // (the `--jobs` failure was prefixed `error: `; the missing-path one was the usage line).
+    let jobs = jobs_result.map_err(|m| format!("error: {m}"))?;
+    let path = positionals.first().copied().ok_or_else(|| {
+        "usage: qmd-fast build <file.qmd|dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>]"
+            .to_string()
+    })?;
+    Ok(BuildArgs {
+        path,
+        out_html: positionals.get(1).copied(),
+        out_dir,
+        strict,
+        bare,
+        jobs,
+    })
+}
+
+/// `build <file.qmd> [out.html]`: write a self-contained HTML page to a file
+/// (default `<stem>.html` beside the source). With `--out <dir>` it instead
+/// writes `<dir>/index.html` and copies every referenced local asset alongside
+/// (paths preserved), so the directory is deployable as-is. `render` is stdout.
+pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
+    // Positionals: <file> [out.html]. Flags: `--out <dir>` (alias `--dir`),
+    // `--strict` (a cell error / broken-ref warning fails the build).
+    let BuildArgs {
+        path,
+        out_html,
+        out_dir,
+        strict,
+        bare,
+        jobs,
+    } = match parse_build_args(args) {
+        Ok(p) => p,
         Err(msg) => {
-            eprintln!("error: {msg}");
+            eprintln!("{msg}");
             return ExitCode::FAILURE;
         }
-    };
-    let Some(path) = positionals.first().copied() else {
-        eprintln!(
-            "usage: qmd-fast build <file.qmd|dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>]"
-        );
-        return ExitCode::FAILURE;
     };
     // A directory is a multi-page site project (`_site.yml` + `.qmd` pages);
     // a single `.qmd` keeps the original self-contained-page behaviour.
@@ -148,9 +179,8 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
         copy_resources(&resources, Path::new(dir));
         return strict_exit(code, strict_fail, problems);
     }
-    let out: PathBuf = positionals
-        .get(1)
-        .map(|&s| PathBuf::from(s))
+    let out: PathBuf = out_html
+        .map(PathBuf::from)
         .unwrap_or_else(|| base.join(format!("{stem}.html")));
     match std::fs::write(&out, &html) {
         Ok(()) => {
@@ -1043,6 +1073,50 @@ fn is_local_ref(v: &str) -> bool {
 mod mirror_tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn build_args_distinguish_outhtml_positional_from_out_dir_flag() {
+        // `BuildArgs` borrows from the argv, so each case binds its vec first.
+        let argv = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<String>>();
+
+        // file only: path, no [out.html] target, no portable-folder dir.
+        let a = argv(&["qmd-fast", "build", "doc.qmd"]);
+        let p = parse_build_args(&a).unwrap();
+        assert_eq!((p.path, p.out_html, p.out_dir), ("doc.qmd", None, None));
+
+        // second positional = the [out.html] single-file target.
+        let a = argv(&["qmd-fast", "build", "doc.qmd", "out.html"]);
+        let p = parse_build_args(&a).unwrap();
+        assert_eq!(
+            (p.path, p.out_html, p.out_dir),
+            ("doc.qmd", Some("out.html"), None)
+        );
+
+        // --out <dir> is the portable-folder flag, distinct from the positional.
+        let a = argv(&["qmd-fast", "build", "doc.qmd", "--out", "site"]);
+        let p = parse_build_args(&a).unwrap();
+        assert_eq!(
+            (p.path, p.out_html, p.out_dir),
+            ("doc.qmd", None, Some("site"))
+        );
+
+        // --out never captures a following flag as its directory (out_dir stays None).
+        // (It does consume that token from the stream — a flag right after a value-less
+        // --out is dropped — but that malformed-input quirk isn't the contract here.)
+        let a = argv(&["qmd-fast", "build", "doc.qmd", "--out", "--bare"]);
+        let p = parse_build_args(&a).unwrap();
+        assert_eq!(p.out_dir, None);
+
+        // flags may appear anywhere; both positionals still bind in order.
+        let a = argv(&["qmd-fast", "build", "--bare", "doc.qmd", "out.html"]);
+        let p = parse_build_args(&a).unwrap();
+        assert!(p.bare);
+        assert_eq!((p.path, p.out_html), ("doc.qmd", Some("out.html")));
+
+        // a missing path is a usage error.
+        assert!(parse_build_args(&argv(&["qmd-fast", "build"])).is_err());
+        assert!(parse_build_args(&argv(&["qmd-fast", "build", "--strict"])).is_err());
+    }
 
     fn tmp(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("qmd-mirror-{}-{name}", std::process::id()));
