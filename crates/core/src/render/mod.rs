@@ -50,6 +50,9 @@ use cell_extract::{
     cell_flag_or, cell_option, code_fold, code_lang, detect_execute_defaults, hidden_cell,
     parse_js_opts, slice_lines, strip_cell_options,
 };
+mod cell_numbered;
+pub(crate) use cell_numbered::numbered_caption;
+use cell_numbered::{emit_code_listing, emit_js_cell, emit_js_figure};
 mod deck;
 pub use deck::{DeckParts, assemble_deck_page, deck_client_script, slides_html};
 // `deck_theme_head` is used inside `deck.rs` (the deck builder) and by the unit
@@ -1443,16 +1446,6 @@ fn labelled_display_eq(block_src: &str) -> Option<(String, String)> {
         .then(|| (latex.trim().to_string(), anchor.to_string()))
 }
 
-/// A numbered figure/listing caption: `"<Label>&nbsp;<num>"`, with `": <caption>"`
-/// appended (HTML-escaped) when a non-empty caption is given. Shared by the
-/// figure, listing, mermaid, and `{js}`-figure emitters.
-fn numbered_caption(label: &str, num: usize, caption: Option<&str>) -> String {
-    match caption.map(str::trim).filter(|c| !c.is_empty()) {
-        Some(c) => format!("{label}&nbsp;{num}: {}", html_escape(c)),
-        None => format!("{label}&nbsp;{num}"),
-    }
-}
-
 /// Render a numbered display equation: the KaTeX body plus a right-aligned
 /// `(N)` number, carrying the `#eq-` id so `@eq-x` cross-refs link to it.
 fn emit_equation(latex: &str, anchor: &str, block_attrs: &str, num: usize) -> String {
@@ -1497,90 +1490,6 @@ fn base64_encode(data: &[u8]) -> String {
         });
     }
     s
-}
-
-/// Emit a native interactive `{js}` cell: an output target div plus an
-/// `application/qmd-js` script carrying the author source verbatim (only `</script`
-/// escaped, so it is readable in devtools — no base64). The `data-*` attrs tell the
-/// `qmd-js` enhancer how to wire the cell (shared-scope name, named input, re-run
-/// inputs). Block data attrs ride on the wrapper for click-to-source.
-fn emit_js_cell(src: &str, block_id: &str, js: &JsOpts, block_attrs: &str) -> String {
-    let target = format!("qmd-js-{block_id}");
-    let mut data = format!(" data-target=\"{target}\"");
-    if let Some(n) = js.name.as_deref() {
-        data.push_str(&format!(" data-name=\"{}\"", escape_attr(n)));
-    }
-    if let Some(v) = js.viewof.as_deref() {
-        data.push_str(&format!(" data-viewof=\"{}\"", escape_attr(v)));
-    }
-    if !js.inputs.is_empty() {
-        data.push_str(&format!(
-            " data-inputs=\"{}\"",
-            escape_attr(&js.inputs.join(","))
-        ));
-    }
-    // `</script` is the only sequence that can terminate the script element; escape
-    // it so author source carrying it (e.g. in a template literal) stays intact.
-    let safe_src = src.replace("</script", "<\\/script");
-    format!(
-        "<div{block_attrs} class=\"cell qmd-js-cell\"><div class=\"qmd-js-out\" id=\"{target}\"></div>\
-         <script type=\"application/qmd-js\"{data}>{safe_src}</script></div>"
-    )
-}
-
-/// Wrap a native `{js}` cell in a numbered `<figure>` (for `label: fig-x` js cells,
-/// e.g. a Three.js scene). The block attrs + `#fig-` anchor ride on the figure.
-fn emit_js_figure(
-    src: &str,
-    block_id: &str,
-    js: Option<&JsOpts>,
-    anchor: Option<&str>,
-    caption: Option<&str>,
-    block_attrs: &str,
-    num: usize,
-) -> String {
-    let default = JsOpts::default();
-    let cell = emit_js_cell(src, block_id, js.unwrap_or(&default), "");
-    let id_attr = id_attr(anchor);
-    let figcap = numbered_caption("Figure", num, caption);
-    format!(
-        "<figure{block_attrs}{id_attr} class=\"qmd-figure qmd-figure-center\">\
-         {cell}<figcaption>{figcap}</figcaption></figure>"
-    )
-}
-
-/// Render a labelled code cell's source as a numbered listing (`@lst-x`),
-/// caption above the code. The block attrs + `#lst-` anchor ride on the wrapper.
-fn emit_code_listing(
-    code: &str,
-    lang: &str,
-    anchor: Option<&str>,
-    caption: Option<&str>,
-    fold: Option<&(bool, String)>,
-    block_attrs: &str,
-    num: usize,
-) -> String {
-    let id_attr = id_attr(anchor);
-    let class = if lang.is_empty() {
-        String::new()
-    } else {
-        format!(" class=\"language-{lang}\"")
-    };
-    let code_html = crate::highlight::highlight(code, (!lang.is_empty()).then_some(lang));
-    let figcap = numbered_caption("Listing", num, caption);
-    // `code-fold` collapses the listing's source behind its summary.
-    let code_html = match fold {
-        Some((open, summary)) => format!(
-            "<details class=\"qmd-code-fold\"{}><summary>{}</summary><pre><code{class}>{code_html}</code></pre></details>",
-            if *open { " open" } else { "" },
-            html_escape(summary),
-        ),
-        None => format!("<pre><code{class}>{code_html}</code></pre>"),
-    };
-    format!(
-        "<div{block_attrs}{id_attr} class=\"qmd-listing\">\
-         <figcaption class=\"qmd-listing-caption\">{figcap}</figcaption>{code_html}</div>"
-    )
 }
 
 fn escape_html(s: &str, out: &mut String) {

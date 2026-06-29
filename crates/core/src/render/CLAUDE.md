@@ -1,8 +1,12 @@
 # render/ — parse → block model → HTML emission
 
 Module map:
-- `mod.rs`    the render pipeline (`render_internal`), bundled-asset consts/accessors, small helpers
+- `mod.rs`    the render pipeline (`render_internal_impl` orchestrator), bundled-asset consts/accessors, the shared-state mutators (id/slug/xref dedup), small helpers
 - `model.rs`  data types: `Cell`, `Block`, `RenderedDoc`, `PageIncludes`, `DocFormat`
+- `doc_includes.rs` front-matter `include-*`/`css` resolution + isolated file I/O
+- `fm_extract.rs`   front-matter FIELD scans (format/toc/title-block detect, `extract_field`, `is_reveal_doc`)
+- `cell_extract.rs` cell-option parsing (`#|`/`//|`/`%%|` directive + leaf parsers)
+- `cell_numbered.rs` numbered `{js}`/figure/listing emitters + `numbered_caption` (interpolate the orchestrator's `attrs`; never build data-attrs)
 - `page.rs`   full HTML-page assembly (the `PAGE_TEMPLATE` shell, `SiteCtx` wiring, favicon)
 - `emit.rs`   per-block HTML (server-side highlight, code line-wrapping)
 - `divs.rs`   `:::` fenced divs (callouts, columns, magic-move)
