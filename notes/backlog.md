@@ -225,10 +225,6 @@ directly: `code, pre, kbd, samp, .katex { letter-spacing: normal; word-spacing: 
 - Decided/known: the reader menu is intentionally an untrapped popover (not a modal); highlights
   are single-block prose only (margin notes / cross-block / colours were scoped out — see specs).
 
-### Polish / docs
-- [ ] **CI: wire `cargo-deny`.** `deny.toml` exists (Wave 0); the CI step was deferred
-  (cargo-deny not installable/verifiable locally). Add it when CI is set up.
-
 ### Library-outsourcing audit follow-ups (2026-06-25; method: multi-agent sweep of every from-scratch subsystem vs mature OSS, each candidate adversarially verified against the invariants)
 - [ ] **Correct the `serde_yaml` fallback target (watch-item).** The `Cargo.toml` workspace
   comment names `serde_yml` as the fallback, but it carries **RUSTSEC-2025-0068 (unsound +
