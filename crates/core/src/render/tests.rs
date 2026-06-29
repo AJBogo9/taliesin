@@ -1992,3 +1992,90 @@ fn site_build_path_content_gates_enhancers() {
         "no mermaid.js on a prose site page"
     );
 }
+
+#[test]
+fn theorem_div_emits_styled_block_with_number_slot() {
+    let doc = render_document(
+        "::: {.theorem #thm-pyth title=\"Pythagorean theorem\"}\n$a^2+b^2=c^2$.\n:::\n",
+    );
+    assert_eq!(doc.blocks.len(), 1, "the theorem is one container block");
+    let h = &doc.blocks[0].html;
+    assert!(
+        h.contains("class=\"qmd-theorem qmd-theorem-theorem qmd-thm-style-plain\""),
+        "got: {h}"
+    );
+    assert!(h.contains("data-qmd-theorem-kind=\"theorem\""), "got: {h}");
+    assert!(
+        h.contains(" id=\"thm-pyth\""),
+        "author anchor on container: {h}"
+    );
+    assert!(
+        h.contains(
+            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\"></span></span>"
+        ),
+        "head carries the kind name + an empty number slot: {h}"
+    );
+    assert!(
+        h.contains("<span class=\"qmd-theorem-title\">(Pythagorean theorem)</span>"),
+        "got: {h}"
+    );
+    // inner content keeps its own block id (click-to-source) and math is KaTeX-rendered
+    assert!(h.contains("data-block-id"), "inner block lost id: {h}");
+    assert!(
+        h.contains("katex"),
+        "math should render inside the theorem: {h}"
+    );
+}
+
+#[test]
+fn theorem_styles_map_kinds() {
+    let d = render_document("::: {.definition}\nA set.\n:::\n");
+    assert!(
+        d.blocks[0]
+            .html
+            .contains("qmd-theorem-definition qmd-thm-style-definition"),
+        "got: {}",
+        d.blocks[0].html
+    );
+    assert!(
+        d.blocks[0]
+            .html
+            .contains("<span class=\"qmd-theorem-label\">Definition"),
+        "got: {}",
+        d.blocks[0].html
+    );
+    let r = render_document("::: {.remark}\nAside.\n:::\n");
+    assert!(
+        r.blocks[0].html.contains("qmd-thm-style-remark"),
+        "got: {}",
+        r.blocks[0].html
+    );
+}
+
+#[test]
+fn proof_emits_qed_and_no_number_slot() {
+    let p = render_document("::: {.proof}\nBy the diagram.\n:::\n");
+    let h = &p.blocks[0].html;
+    assert!(h.contains("class=\"qmd-proof\""), "got: {h}");
+    assert!(
+        h.contains("<p class=\"qmd-proof-head\">Proof.</p>"),
+        "got: {h}"
+    );
+    assert!(
+        h.contains("<span class=\"qmd-qed\" aria-hidden=\"true\">\u{220e}</span>"),
+        "got: {h}"
+    );
+    assert!(
+        !h.contains("qmd-theorem-number"),
+        "proof is unnumbered: {h}"
+    );
+
+    let renamed = render_document("::: {.proof title=\"Proof of the main theorem\"}\nx.\n:::\n");
+    assert!(
+        renamed.blocks[0]
+            .html
+            .contains("<p class=\"qmd-proof-head\">Proof of the main theorem.</p>"),
+        "got: {}",
+        renamed.blocks[0].html
+    );
+}

@@ -35,6 +35,22 @@ pub(crate) const CELL_OPTION_KEYS: &[&str] = &[
 /// Callout kinds qmd-fast recognizes (`::: {.callout-<kind>}`).
 pub(crate) const CALLOUT_KINDS: &[&str] = &["note", "tip", "warning", "important", "caution"];
 
+/// Theorem-environment kinds qmd-fast recognizes (`::: {.theorem}`, `::: {.proof}`, …).
+/// Unlike callouts there is no namespace prefix, so this set IS the dispatch vocabulary:
+/// a div whose class is one of these enters the theorem arm. `proof` is included but is
+/// unnumbered + unreferenceable. A misspelled kind has no prefix to anchor a did-you-mean,
+/// so it falls through to a plain div (see the design doc).
+pub(crate) const THEOREM_KINDS: &[&str] = &[
+    "theorem",
+    "lemma",
+    "corollary",
+    "proposition",
+    "definition",
+    "example",
+    "remark",
+    "proof",
+];
+
 /// Input control types `.input type=` recognizes.
 pub(crate) const INPUT_TYPES: &[&str] =
     &["slider", "range", "number", "checkbox", "text", "select"];

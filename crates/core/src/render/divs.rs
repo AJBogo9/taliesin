@@ -315,6 +315,21 @@ fn callout_icon(kind: &str) -> &'static str {
     }
 }
 
+/// (display name, amsthm style suffix) for a NUMBERED theorem kind. `proof` is handled
+/// separately (unnumbered) and never reaches here; an unknown kind never enters the arm.
+fn theorem_meta(kind: &str) -> (&'static str, &'static str) {
+    match kind {
+        "theorem" => ("Theorem", "plain"),
+        "lemma" => ("Lemma", "plain"),
+        "corollary" => ("Corollary", "plain"),
+        "proposition" => ("Proposition", "plain"),
+        "definition" => ("Definition", "definition"),
+        "example" => ("Example", "definition"),
+        "remark" => ("Remark", "remark"),
+        _ => ("", "plain"),
+    }
+}
+
 /// Render one fenced div as a container block: callouts, layout grids, or a
 /// generic class div.
 fn build_container(
@@ -529,6 +544,33 @@ fn build_container(
         format!(
             "<div class=\"qmd-scrolly\"{data}{name_attr}>{hidden}<div class=\"scrolly-steps\">{steps}</div><div class=\"scrolly-stage\">{stage}</div></div>"
         )
+    } else if let Some(kind) = attrs.theorem_kind() {
+        let body = concat(&inner);
+        if kind == "proof" {
+            // Unnumbered, not cross-referenceable (matches Quarto/bookdown). Auto-QED.
+            let head = attrs
+                .get("title")
+                .map(html_escape)
+                .unwrap_or_else(|| "Proof".to_string());
+            format!(
+                "<div class=\"qmd-proof\"{data}><p class=\"qmd-proof-head\">{head}.</p><div class=\"qmd-theorem-body\">{body}</div><span class=\"qmd-qed\" aria-hidden=\"true\">\u{220e}</span></div>"
+            )
+        } else {
+            // The number slot is filled by the `number_theorems` post-pass (after
+            // group_divs, before cite::process), so numbering stays document-ordered.
+            let (name, style) = theorem_meta(kind);
+            let id_attr = id_attr(attrs.id.as_deref());
+            let title = match attrs.get("title") {
+                Some(t) => format!(
+                    " <span class=\"qmd-theorem-title\">({})</span>",
+                    html_escape(t)
+                ),
+                None => String::new(),
+            };
+            format!(
+                "<div class=\"qmd-theorem qmd-theorem-{kind} qmd-thm-style-{style}\"{id_attr} data-qmd-theorem-kind=\"{kind}\"{data}><p class=\"qmd-theorem-head\"><span class=\"qmd-theorem-label\">{name}<span class=\"qmd-theorem-number\"></span></span>{title}</p><div class=\"qmd-theorem-body\">{body}</div></div>"
+            )
+        }
     } else {
         let mut class = attrs.classes.join(" ");
         if class.is_empty() {

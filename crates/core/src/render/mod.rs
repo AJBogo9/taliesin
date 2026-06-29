@@ -1380,6 +1380,13 @@ impl DivAttrs {
     fn callout_kind(&self) -> Option<&str> {
         self.classes.iter().find_map(|c| c.strip_prefix("callout-"))
     }
+    /// The first class that names a theorem-environment kind, or `None`.
+    fn theorem_kind(&self) -> Option<&str> {
+        self.classes
+            .iter()
+            .map(String::as_str)
+            .find(|c| validate::THEOREM_KINDS.contains(c))
+    }
 }
 
 fn is_heading(html: &str) -> bool {
