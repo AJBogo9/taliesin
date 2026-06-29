@@ -372,9 +372,21 @@ Wave 2 (benchmark + hero demo).
 - **CUT, `deck-structural-incremental-swap`:** optimizes the rarest edit (add/remove a
   slide heading) on a fallback that already works, at the highest risk in its pillar.
   The full-render fallback is the permanent answer.
-- **CUT, `crossref-family-and-labels`** (`lem-`/`cor-`/`prp-`/`exm-`/`exr-` + label
-  overrides): speculative breadth for math docs not in the corpus. Revisit if backlog
-  #4's testbed sweep shows real demand, then pin with `corpus/refs/theorems.qmd`.
+- **REVIVED as `theorem-environments` (Pillar IV) — Phase 1 SHIPPED 2026-06-29.** The cut
+  `crossref-family-and-labels` was revived: demand was evidenced (deep-research, 2026-06-29)
+  and pinned by the pre-named `corpus/refs/theorems.qmd`. Full amsthm-style theorem
+  environments (definition/theorem/lemma/proof + the `thm-`/`lem-`/`cor-`/`prp-`/`def-`/
+  `exm-`/`rem-` cross-ref family), phased. **Phase 1 (MVP) merged to main:** the core 8 kinds
+  + proof/QED as a `build_container` arm, per-kind continuous numbering via a
+  `number_theorems` post-pass, the cross-ref prefixes, CSS, ARIA-baseline, browser-verified
+  light+dark. Spec: `docs/superpowers/specs/2026-06-29-theorem-environments-design.md`; Phase 1
+  plan: `docs/superpowers/plans/2026-06-29-theorem-environments-phase1.md`. **Remaining (own
+  plans):** Phase 2 (a `theorems:` config: `number-within` book scoping → "Theorem 2.3" +
+  shared counters [the differentiator bookdown HTML can't / Quarto struggles with] + reference
+  names), Phase 3 (web-native: hover-preview of refs, collapsible proofs, deep-link anchors),
+  Phase 4 (rich deck support, all additive). *Invariant: read-only-additive; rides
+  `build_container` + a post-pass + additive `xref_label`/CSS; no scanner/numbering-scanner/
+  cite-lowering/deck-core rewrite.*
 - **DEFER, `deck-typed-slide-effects`** (`take_bg_attrs` string surgery → typed `Block`
   field): high-invariant-risk `model.rs` refactor (must emit byte-identical `<section>`
   HTML or block ids shift) whose win is mostly internal tidiness. Defer until a NEW slide
