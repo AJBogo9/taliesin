@@ -458,6 +458,38 @@ and produce a prioritized list of improvements. Treat the native deck contract (
 - Decided against: inline `{.r-stretch}` image (use the `:::{.r-stretch}` div), `#`-section
   quick-jump anchors (redundant with the minimap + `/` filter).
 
+### Release regression-hunt deferrals (2026-06-30; adversarially-verified, LOW / pre-existing / by-design)
+From the pre-release 8-dimension regression hunt over the `stable-2026-06-25..HEAD` delta. Its 7
+in-window regressions were FIXED (brace_id quote/multi-block; `check` mount-link false positives +
+mounted-site test; theorem `number-within`/`numbered` value validation + schema enums; site
+referenced-asset deploy; client.js tsc-clean; TOC chip `#` strip). These remaining findings are real
+but LOW, pre-existing, or by-design:
+- [ ] **Boot-failure diagnostic overwrites a cache-hit cell's output** (`exec.rs:491-505`). Only fires
+  when a cached cell sits upstream of an uncached one AND the kernel fails to boot through all retries —
+  the build is already flagged `error` (never green) and the cell still shows its source, so it is
+  strictly more honest than the old silent empty. Optional: restore from freeze for `known(i)` before
+  the diagnostic. (exec/kernel Do-NOT-touch.)
+- [ ] **Warm-pool `in_flight` counter can leak (inert the pool) if a refill task panics**
+  (`warm_pool.rs:456-490`). No reachable panic site today (the `warm_one` chain is all `Result`/`?`);
+  worst case is graceful cold-start fallback. An RAII drop-guard on `in_flight` would harden it — fold
+  into the forkserver Do-NOT-touch pass below.
+- [ ] **Cross-page theorem refs drop the number** ("Theorem 2.1" renders bare "Theorem" across pages;
+  `site/xref.rs` pushes an empty number for non-heading anchors). Pre-existing (`@fig-`/`@eq-` always
+  had it); HEAD is a net gain (the link resolves at all). Harvest numbers from the per-page rendered
+  registry if parity is wanted. Ties into the theorem ref-name polish in `BEYOND-QUARTO.md`.
+- [ ] **A theorem nested inside another fenced div** (`.column-margin`/`.callout`) loses its number +
+  xref registration (`number_theorems` walks only top-level blocks). The xref half IS surfaced by
+  `check`/`build` (not silent); residual: an *unreferenced* nested theorem renders unnumbered on a green
+  check. Optional: warn when a `data-qmd-theorem-kind` div is found nested.
+- [ ] **Backslash-escaped quotes in a `title=`/`fig-cap=`/`lst-cap=` value truncate it + leak `\`**
+  (`render/divs.rs` `tokenize_attrs`). Pre-existing, narrow (escaped-quote-in-quoted-title; the
+  single/double swap is not a reliable workaround). Teach `tokenize_attrs` to honor `\` escapes, or lint
+  a backslash-before-quote.
+- [ ] **Doc drift: the no-kernel build now embeds a per-cell "kernel unavailable" diagnostic** (intended;
+  fixes the silent-output-drop bug, test-covered), not just the old preview-only banner. Reconcile the
+  wording in `CLAUDE.md:122-123` + `docs/guide/using/getting-started.qmd:44`, and the misleading
+  `build.rs:232` stderr "uncaught exception" for the kernel-never-launched case.
+
 ### Execution cache
 - [ ] **Kernel/forkserver resource leaks on build exit (observed during the 2026-06-29 port-race
   fix).** Two cleanups, both in the exec/kernel Do-NOT-touch zone (careful): (a) warm-pool
