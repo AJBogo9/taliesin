@@ -82,10 +82,13 @@ mod generate {
         // theorems: `shared` is a list of kind names sharing one counter.
         let theorems = closed_object(
             THEOREM_KEYS,
-            &[(
-                "shared",
-                json!({ "type": "array", "items": { "type": "string" } }),
-            )],
+            &[
+                (
+                    "shared",
+                    json!({ "type": "array", "items": { "type": "string" } }),
+                ),
+                ("number-within", json!({ "type": "string" })),
+            ],
         );
         let overrides = [
             ("toc", boolean()),

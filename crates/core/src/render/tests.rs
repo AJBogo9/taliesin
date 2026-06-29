@@ -2187,3 +2187,64 @@ fn shared_counter_numbers_across_kinds() {
         "unlisted kind keeps its own counter: {body}"
     );
 }
+
+#[test]
+fn theorem_config_parses_number_within_chapter() {
+    let cfg = parse_theorem_config("theorems:\n  number-within: chapter\n");
+    assert!(
+        cfg.chapter_scoped(),
+        "number-within: chapter sets chapter scoping"
+    );
+    let none = parse_theorem_config("theorems:\n  shared: [theorem]\n");
+    assert!(
+        !none.chapter_scoped(),
+        "absent number-within is not chapter-scoped"
+    );
+}
+
+#[test]
+fn number_within_chapter_scopes_to_book_chapter() {
+    let doc = render_document_with_includes_scoped(
+        "---\ntheorems:\n  number-within: chapter\n---\n\n::: {.theorem #thm-a}\nA.\n:::\n\nSee @thm-a.\n\n::: {.theorem #thm-b}\nB.\n:::\n",
+        std::path::Path::new("."),
+        Some(2),
+    );
+    let body = doc.body_html();
+    assert!(
+        body.contains(
+            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\">&nbsp;2.1</span></span>"
+        ),
+        "first theorem in chapter 2 is 2.1: {body}"
+    );
+    assert!(
+        body.contains(
+            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\">&nbsp;2.2</span></span>"
+        ),
+        "second is 2.2: {body}"
+    );
+    assert!(
+        body.contains("<a href=\"#thm-a\" class=\"qmd-xref\">Theorem&nbsp;2.1</a>"),
+        "the in-page ref agrees with the chapter-scoped number: {body}"
+    );
+}
+
+#[test]
+fn number_within_chapter_falls_back_and_warns_without_a_chapter() {
+    let doc = render_document(
+        "---\ntheorems:\n  number-within: chapter\n---\n\n::: {.theorem}\nA.\n:::\n",
+    );
+    assert!(
+        doc.body_html().contains(
+            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\">&nbsp;1</span></span>"
+        ),
+        "no chapter context falls back to continuous numbering: {}",
+        doc.body_html()
+    );
+    assert!(
+        doc.warnings
+            .iter()
+            .any(|w| w.message.contains("number-within")),
+        "a warning explains the no-op outside a book: {:?}",
+        doc.warnings
+    );
+}

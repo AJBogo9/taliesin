@@ -112,14 +112,24 @@ pub(super) fn extract_field(front_matter: &str, key: &str) -> Option<String> {
     None
 }
 
-/// Parsed `theorems:` front-matter config. This increment carries only `shared` (the
-/// kinds that draw one shared numbering sequence); `number-within` and `numbered` are
-/// future increments.
+/// `theorems: number-within:` scope. Only `Chapter` is honored this increment (book
+/// chapter pages render "Theorem 2.3"); other values degrade to `None`.
+#[derive(Default, PartialEq, Eq, Clone, Copy)]
+pub(crate) enum NumberWithin {
+    #[default]
+    None,
+    Chapter,
+}
+
+/// Parsed `theorems:` front-matter config (`shared` counters + `number-within` scope).
+/// `numbered` is a future increment.
 #[derive(Default)]
 pub(crate) struct TheoremConfig {
     /// Kinds that share a single counter, in declaration order. Empty = the default
     /// (each kind counts independently).
     shared: Vec<String>,
+    /// Numbering scope. `Chapter` prepends the book chapter number ("Theorem 2.3").
+    number_within: NumberWithin,
 }
 
 impl TheoremConfig {
@@ -132,6 +142,11 @@ impl TheoremConfig {
         } else {
             kind
         }
+    }
+
+    /// Whether theorem numbers are chapter-scoped (`number-within: chapter`).
+    pub(crate) fn chapter_scoped(&self) -> bool {
+        self.number_within == NumberWithin::Chapter
     }
 }
 
@@ -158,6 +173,14 @@ pub(crate) fn parse_theorem_config(front_matter: &str) -> TheoremConfig {
             .iter()
             .filter_map(|v| v.as_str().map(str::to_string))
             .collect();
+    }
+    if value
+        .get("theorems")
+        .and_then(|t| t.get("number-within"))
+        .and_then(|v| v.as_str())
+        == Some("chapter")
+    {
+        config.number_within = NumberWithin::Chapter;
     }
     config
 }

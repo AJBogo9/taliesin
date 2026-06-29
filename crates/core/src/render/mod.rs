@@ -98,20 +98,31 @@ use theme::{detect_theme, resolve_theme, resolve_theme_layers, theme_default_mod
 /// assert!(doc.blocks[0].html.contains("<h1"));
 /// ```
 pub fn render_document(src: &str) -> RenderedDoc {
-    render_internal(src, None, None)
+    render_internal(src, None, None, None)
 }
 
 /// Like [`render_document`], but first expands `{{< include >}}` shortcodes
 /// relative to `base_dir`, mapping each block back to its origin file, and
 /// resolves citations/cross-references against the doc's bibliography.
 pub fn render_document_with_includes(src: &str, base_dir: &Path) -> RenderedDoc {
+    render_document_with_includes_scoped(src, base_dir, None)
+}
+
+/// Like [`render_document_with_includes`] but with an optional book chapter number, so
+/// `theorems: number-within: chapter` can render "Theorem 2.3". Only the site book path
+/// passes `Some(n)`; everything else is `None` (continuous numbering).
+pub(crate) fn render_document_with_includes_scoped(
+    src: &str,
+    base_dir: &Path,
+    chapter: Option<u32>,
+) -> RenderedDoc {
     let (expanded, origins, include_warnings) = crate::includes::resolve_warned(src, base_dir);
     // Declarative shortcodes (`{{< name args >}}`) from the active format
     // extension expand after includes, line-preserving so `origins` stays valid.
     // A `{{< name >}}` that no extension/built-in declares is left verbatim but
     // reported, so a typo'd shortcode doesn't ship silently as literal text.
     let (expanded, shortcode_warnings) = extension::expand_shortcodes(&expanded, Some(base_dir));
-    let mut doc = render_internal(&expanded, Some(&origins), Some(base_dir));
+    let mut doc = render_internal(&expanded, Some(&origins), Some(base_dir), chapter);
     // An include that couldn't be expanded (unsafe path, cycle, unreadable) leaves
     // its `{{< include … >}}` directive literal in the output; surface it as a
     // located, click-to-source diagnostic on the same channel as broken refs so it
@@ -139,12 +150,14 @@ fn render_internal(
     src: &str,
     origins: Option<&[LineOrigin]>,
     base_dir: Option<&Path>,
+    chapter: Option<u32>,
 ) -> RenderedDoc {
     std::thread::scope(|scope| {
         match std::thread::Builder::new()
             .stack_size(256 * 1024 * 1024)
-            .spawn_scoped(scope, || render_internal_impl(src, origins, base_dir))
-        {
+            .spawn_scoped(scope, || {
+                render_internal_impl(src, origins, base_dir, chapter)
+            }) {
             Ok(handle) => match handle.join() {
                 Ok(doc) => doc,
                 Err(payload) => std::panic::resume_unwind(payload),
@@ -152,7 +165,7 @@ fn render_internal(
             // Spawning the big-stack worker can fail under a strict address-space
             // limit (e.g. `ulimit -v`). Fall back to rendering inline on the current
             // (default-stack) thread rather than panicking — same as before this guard.
-            Err(_) => render_internal_impl(src, origins, base_dir),
+            Err(_) => render_internal_impl(src, origins, base_dir, chapter),
         }
     })
 }
@@ -161,6 +174,7 @@ fn render_internal_impl(
     src: &str,
     origins: Option<&[LineOrigin]>,
     base_dir: Option<&Path>,
+    chapter: Option<u32>,
 ) -> RenderedDoc {
     let arena = Arena::new();
     let options = parse_options();
@@ -594,6 +608,7 @@ fn render_internal_impl(
         &mut xref_registry,
         &mut warnings,
         &theorem_config,
+        chapter,
     );
     let bib = load_bibliography(bib_field.as_deref(), base_dir, &mut warnings);
     warnings.extend(crate::cite::process(&mut blocks, &bib, &xref_registry));
@@ -1239,8 +1254,10 @@ fn number_theorems(
     xrefs: &mut HashMap<String, String>,
     warnings: &mut Vec<Warning>,
     config: &TheoremConfig,
+    chapter: Option<u32>,
 ) {
     let mut counts: HashMap<String, u32> = HashMap::new();
+    let mut warned_no_chapter = false;
     for b in blocks.iter_mut() {
         let tag_end_idx = tag_end(&b.html).map(|i| i + 1).unwrap_or(b.html.len());
         let open_tag = b.html[..tag_end_idx].to_string();
@@ -1255,13 +1272,32 @@ fn number_theorems(
             *c += 1;
             *c
         };
+        // `number-within: chapter` prepends the book chapter number ("Theorem 2.3").
+        // Outside a numbered chapter there is no chapter to scope to, so fall back to
+        // continuous numbering and warn once.
+        let display = if config.chapter_scoped() {
+            match chapter {
+                Some(c) => format!("{c}.{n}"),
+                None => {
+                    if !warned_no_chapter {
+                        warnings.push(Warning::new(
+                            "`theorems: number-within: chapter` has no effect outside a book chapter; using continuous theorem numbering".to_string(),
+                        ));
+                        warned_no_chapter = true;
+                    }
+                    n.to_string()
+                }
+            }
+        } else {
+            n.to_string()
+        };
         b.html = b.html.replacen(
             "<span class=\"qmd-theorem-number\"></span>",
-            &format!("<span class=\"qmd-theorem-number\">&nbsp;{n}</span>"),
+            &format!("<span class=\"qmd-theorem-number\">&nbsp;{display}</span>"),
             1,
         );
         if let Some(id) = extract_attr(&open_tag, "id") {
-            register_xref(xrefs, warnings, &id, n.to_string());
+            register_xref(xrefs, warnings, &id, display);
         }
     }
 }

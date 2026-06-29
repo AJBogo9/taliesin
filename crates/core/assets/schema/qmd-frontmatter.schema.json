@@ -117,6 +117,9 @@
     "theorems": {
       "additionalProperties": false,
       "properties": {
+        "number-within": {
+          "type": "string"
+        },
         "shared": {
           "items": {
             "type": "string"

@@ -80,7 +80,7 @@ pub(crate) const PROSE_LINT_KEYS: &[&str] = &["banned"];
 /// `theorems:` sub-keys qmd-fast honors. This increment honors only `shared` (shared
 /// counters); `number-within` + `numbered` are added when those features land, so an
 /// author using them still gets an "unknown theorems key" warning until then.
-pub(crate) const THEOREM_KEYS: &[&str] = &["shared"];
+pub(crate) const THEOREM_KEYS: &[&str] = &["shared", "number-within"];
 
 /// Validate a document's front matter against qmd-fast's vocabulary: every unknown
 /// top-level key, plus every unknown immediate child of the nested `execute:`,
@@ -330,6 +330,14 @@ mod tests {
             "unknown front-matter key `treme` (did you mean `theme`?)"
         );
         assert_eq!(w[0].line, Some(2), "`treme` is on file line 2");
+    }
+
+    #[test]
+    fn theorems_number_within_is_recognized() {
+        assert!(
+            msgs("---\ntheorems:\n  number-within: chapter\n---\n").is_empty(),
+            "number-within is a recognized theorems key"
+        );
     }
 
     #[test]

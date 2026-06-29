@@ -327,7 +327,15 @@ impl Site {
         let page = self.page(rel_or_url)?;
         let src = std::fs::read_to_string(&page.input).ok()?;
         let base = page.input.parent().unwrap_or(&self.root);
-        let doc = render::render_document_with_includes(&src, base);
+        // A numbered book chapter scopes its theorems to its chapter number
+        // ("Theorem 2.3"); non-book / unnumbered pages pass None (continuous).
+        let chapter = self.book.as_ref().and_then(|b| {
+            b.entries
+                .iter()
+                .find(|e| e.rel == page.rel)
+                .and_then(|e| e.number)
+        });
+        let doc = render::render_document_with_includes_scoped(&src, base, chapter);
         Some(self.render_page_doc(page, doc))
     }
 
