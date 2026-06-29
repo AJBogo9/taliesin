@@ -156,6 +156,11 @@ mod config;
 mod frontmatter;
 pub use config::*;
 pub(crate) use frontmatter::*;
+mod chapter;
+use chapter::number_chapter_headings;
+pub(crate) use chapter::section_number; // also used by xref.rs (via `use super::*`)
+mod discovery;
+use discovery::{discover_decks, website_pages};
 
 impl Site {
     /// Discover the site rooted at `root`: parse `_site.yml`, enumerate input
@@ -816,155 +821,6 @@ impl Site {
     }
 
     // --- chrome -----------------------------------------------------------
-}
-
-/// Prefix each heading in a book chapter with its section number: the chapter's
-/// `# H1` becomes "N", and the deeper headings count within it ("N.1", "N.1.1"),
-/// emitted as a `qmd-section-number` span.
-fn number_chapter_headings(blocks: &mut [Block], chapter: u32) {
-    let mut counters = [0u32; 5]; // counters[0] = h2, [1] = h3, …
-    for b in blocks.iter_mut() {
-        if let Some(level) = heading_level(&b.html) {
-            let number = section_number(chapter, level, &mut counters);
-            b.html = prefix_heading_number(&b.html, &number);
-        }
-    }
-}
-
-/// The number for a heading at `level` within chapter `chapter`: the chapter's H1
-/// is "N", a level-`k` heading is "N.c2.…ck", with `counters` (h2..h6) carried and
-/// reset on a shallower heading. Shared by the render-time numbering and the
-/// source scan that builds the cross-reference registry, so they never diverge.
-fn section_number(chapter: u32, level: usize, counters: &mut [u32; 5]) -> String {
-    if level <= 1 {
-        return chapter.to_string();
-    }
-    let i = (level - 2).min(counters.len() - 1);
-    counters[i] += 1;
-    for c in &mut counters[i + 1..] {
-        *c = 0;
-    }
-    let mut parts = vec![chapter.to_string()];
-    parts.extend(counters[..=i].iter().map(u32::to_string));
-    parts.join(".")
-}
-
-/// The heading level (1–6) of a block whose root element is `<hN …>`, else `None`.
-/// Delegates to the render crate's parser so the two never diverge.
-fn heading_level(html: &str) -> Option<usize> {
-    block_heading_level(html).map(usize::from)
-}
-
-/// Insert a `qmd-section-number` span just after a heading's opening tag.
-fn prefix_heading_number(html: &str, number: &str) -> String {
-    match html.find('>') {
-        Some(i) => format!(
-            "{}<span class=\"qmd-section-number\">{number}</span> {}",
-            &html[..=i],
-            &html[i + 1..]
-        ),
-        None => html.to_string(),
-    }
-}
-
-/// A website's pages: every `.qmd` under `root` (path-ordered), each mapped to a
-/// [`Page`] from its front matter.
-fn website_pages(root: &Path) -> Vec<Page> {
-    let mut inputs = Vec::new();
-    collect_pages(root, &mut inputs);
-    inputs.sort();
-    let mut pages: Vec<Page> = inputs
-        .into_iter()
-        .filter_map(|input| {
-            let rel = rel_str(root, &input);
-            let url = qmd_to_html(&rel);
-            let fm = parse_front_matter(&input);
-            // `draft: true` excludes the page from the build entirely — and, because
-            // listings + prev/next nav derive from `self.pages`, from those too.
-            if fm.draft {
-                return None;
-            }
-            // `image` is relative to the page's own directory; store it
-            // site-root-relative so a listing card on another page can link it.
-            let card_image = fm.image.map(|img| join_rel(&rel, &img));
-            Some(Page {
-                input,
-                rel,
-                url,
-                title: fm.title,
-                date: fm.date,
-                description: fm.description,
-                card_image,
-                categories: fm.categories,
-                listings: fm.listings,
-                about: fm.about,
-                hero: fm.hero,
-                page_layout: fm.page_layout,
-            })
-        })
-        .collect();
-    pages.sort_by(|a, b| a.rel.cmp(&b.rel));
-    pages
-}
-
-/// Resolve every `{{< embed PATH >}}` across the pages to a deduped [`DeckRef`].
-/// The path is written relative to the embedding page, so it's mapped to a
-/// site-root-relative path via [`join_rel`]; a target that isn't a file is warned
-/// about and skipped (the embed iframe would otherwise 404).
-fn discover_decks(root: &Path, pages: &[Page], warnings: &mut Vec<String>) -> Vec<DeckRef> {
-    let mut decks: Vec<DeckRef> = Vec::new();
-    for page in pages {
-        let Ok(src) = std::fs::read_to_string(&page.input) else {
-            continue;
-        };
-        // Expand `{{< include >}}` first: an `{{< embed >}}` living inside an included
-        // partial must be discovered too (else the deck flattens to an article + leaks
-        // into search). The embed path stays relative to the embedding page.
-        let base = page.input.parent().unwrap_or(root);
-        let (src, _origins) = crate::includes::resolve(&src, base);
-        for target in crate::render::embed_targets(&src) {
-            let rel = join_rel(&page.rel, &target);
-            let url = qmd_to_html(&rel);
-            if decks.iter().any(|d| d.url == url) {
-                continue;
-            }
-            let input = root.join(&rel);
-            if input.is_file() {
-                decks.push(DeckRef { input, url });
-            } else {
-                warnings.push(format!("{}: embedded deck not found: {target}", page.rel));
-            }
-        }
-    }
-    decks
-}
-
-/// Recursively collect input `.qmd` pages under `dir`, skipping `_`-prefixed
-/// directories (`_includes`, `_freeze`, `_site`, …) and dotfiles.
-fn collect_pages(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let p = entry.path();
-        let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
-        if name.starts_with('_') || name.starts_with('.') {
-            continue;
-        }
-        if p.is_dir() {
-            collect_pages(&p, out);
-        } else if p.extension().and_then(|s| s.to_str()) == Some("qmd") {
-            out.push(p);
-        }
-    }
-}
-
-/// Path of `p` relative to `root`, using `/` separators.
-fn rel_str(root: &Path, p: &Path) -> String {
-    p.strip_prefix(root)
-        .unwrap_or(p)
-        .to_string_lossy()
-        .replace('\\', "/")
 }
 
 /// Map a `.qmd` rel-path to its built `.html` URL (`x.qmd` → `x.html`).
