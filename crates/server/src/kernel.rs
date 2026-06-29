@@ -279,6 +279,14 @@ impl KernelSpec {
         }
     }
 
+    /// The kernel-spec name (`python3` / `ir`), used to stamp connection files for
+    /// the warm-pool's forkserver-spawned kernels just as `start` stamps them.
+    /// (Warm-pool-only until Task 12 wires the pool in.)
+    #[allow(dead_code)]
+    pub(crate) fn kernel_name(&self) -> &'static str {
+        self.kernel_name
+    }
+
     /// R via `R --slave -e 'IRkernel::main()'` (the IRkernel kernelspec invocation).
     pub fn r(program: &Path) -> KernelSpec {
         KernelSpec {
@@ -294,6 +302,60 @@ impl KernelSpec {
                 ]
             },
             preambles: &[],
+        }
+    }
+}
+
+/// The OS process backing a [`Kernel`].
+///
+/// A directly-spawned kernel (`python -m ipykernel_launcher`, today's cold path and
+/// the warm-pool's eager-preboot fallback) is an [`Owned`](KernelProc::Owned) tokio
+/// `Child` we wait/kill directly. A kernel forked from the forkserver warm-pool
+/// daemon is a [`Forked`](KernelProc::Forked) bare PID: it is *not* our direct
+/// child (the forkserver server reaps it), so liveness, SIGINT, and teardown go
+/// through the PID with plain signals — exactly the same primitives `interrupt()`
+/// already uses. Either way the ZMQ handshake, preambles, and `execute()` loop are
+/// identical, so the rest of `Kernel` never has to care which spawn path produced it.
+enum KernelProc {
+    Owned(Child),
+    /// A forkserver-spawned kernel, addressed by PID. Holding the daemon handle
+    /// keeps the forkserver alive for the kernel's lifetime (and lets later
+    /// children reuse its warm preloaded image). Constructed by the warm pool,
+    /// which Task 12 wires into `ensure_kernel`; until then only its tests build it.
+    #[allow(dead_code)]
+    Forked {
+        pid: u32,
+        _daemon: std::sync::Arc<crate::warm_pool::ForkserverDaemon>,
+    },
+}
+
+impl KernelProc {
+    /// Liveness without blocking: `try_wait` for an owned child, `kill(pid, 0)` for
+    /// a forked PID (ESRCH => gone). Mirrors the old direct-child `is_alive`.
+    fn is_alive(&mut self) -> bool {
+        match self {
+            KernelProc::Owned(child) => matches!(child.try_wait(), Ok(None)),
+            KernelProc::Forked { pid, .. } => {
+                #[cfg(unix)]
+                {
+                    // Safety: signal 0 only probes for the process; a stale pid
+                    // returns ESRCH (-> false), never touching another process
+                    // within the brief window before our Drop kills it.
+                    unsafe { libc::kill(*pid as libc::pid_t, 0) == 0 }
+                }
+                #[cfg(not(unix))]
+                {
+                    true
+                }
+            }
+        }
+    }
+
+    /// The PID for signalling (SIGINT/SIGKILL), if known.
+    fn pid(&self) -> Option<u32> {
+        match self {
+            KernelProc::Owned(child) => child.id(),
+            KernelProc::Forked { pid, .. } => Some(*pid),
         }
     }
 }
@@ -316,7 +378,7 @@ pub enum Output {
 
 /// A live kernel process plus its shell/iopub client connections.
 pub struct Kernel {
-    child: Child,
+    proc: KernelProc,
     shell: ClientShellConnection,
     iopub: ClientIoPubConnection,
     conn_dir: PathBuf,
@@ -351,6 +413,118 @@ async fn startup_failure(
     ))
 }
 
+/// Peek 5 free loopback ports and write a locked-down `connection.json` for a
+/// kernel of `kernel_name`. The connection file holds the HMAC key + ZMQ ports —
+/// anyone who can read it can drive the kernel — so it lives in a 0700 temp dir as
+/// a 0600 file, created with those modes from the start (no world-readable window)
+/// on Unix. Returns the connection info, the temp dir (owned by the `Kernel` so it
+/// is removed on drop), and the connection-file path.
+///
+/// Shared verbatim by the direct-spawn (`Kernel::start`) and forkserver warm-pool
+/// paths so both produce identical, equally-secured connection files.
+pub(crate) async fn prepare_connection(
+    kernel_name: &str,
+) -> io::Result<(ConnectionInfo, PathBuf, PathBuf)> {
+    let ip: IpAddr = "127.0.0.1".parse().unwrap();
+    let ports = peek_ports(ip, 5).await.map_err(io::Error::other)?;
+    let info = ConnectionInfo {
+        ip: ip.to_string(),
+        transport: Transport::TCP,
+        shell_port: ports[0],
+        iopub_port: ports[1],
+        stdin_port: ports[2],
+        control_port: ports[3],
+        hb_port: ports[4],
+        key: uuid::Uuid::new_v4().to_string(),
+        signature_scheme: "hmac-sha256".to_string(),
+        kernel_name: Some(kernel_name.to_string()),
+    };
+
+    let conn_dir = std::env::temp_dir().join(format!("qmd-kernel-{}", uuid::Uuid::new_v4()));
+    {
+        let mut b = std::fs::DirBuilder::new();
+        b.recursive(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            b.mode(0o700);
+        }
+        b.create(&conn_dir)?;
+    }
+    let conn_file = conn_dir.join("connection.json");
+    {
+        use std::io::Write;
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            opts.mode(0o600);
+        }
+        opts.open(&conn_file)?
+            .write_all(&serde_json::to_vec(&info)?)?;
+    }
+    Ok((info, conn_dir, conn_file))
+}
+
+/// Wait until the kernel's shell + iopub ports accept a TCP connection, i.e. the
+/// kernel has bound its ZMQ sockets. The pure-Rust `zeromq` client's `connect`
+/// eagerly establishes the TCP link and, if the endpoint isn't listening yet, can
+/// burn its full 30s connect timeout before erroring — so for a freshly *forked*
+/// kernel (which binds a beat after the daemon reports its PID) we must let it
+/// finish binding first. A directly-spawned kernel races connect against the child
+/// exiting, so it doesn't need this; the fork path has no owned child to race.
+///
+/// Cheap fast-failing `TcpStream::connect` probes (not ZMQ) poll until both ports
+/// listen or `deadline` passes; the subsequent ZMQ handshake then completes
+/// immediately instead of fighting the connect-retry backoff.
+async fn wait_until_reachable(info: &ConnectionInfo, deadline: Instant) -> io::Result<()> {
+    use tokio::net::TcpStream;
+    let ip: IpAddr = info.ip.parse().map_err(io::Error::other)?;
+    let ports = [info.shell_port, info.iopub_port];
+    loop {
+        let mut all = true;
+        for p in ports {
+            // A short per-probe timeout so a refused/hung port retries quickly.
+            match timeout(Duration::from_millis(200), TcpStream::connect((ip, p))).await {
+                Ok(Ok(_stream)) => {} // listening; the probe socket drops immediately
+                _ => {
+                    all = false;
+                    break;
+                }
+            }
+        }
+        if all {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(io::Error::other(
+                "forked kernel did not bind its ZMQ ports in time",
+            ));
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+}
+
+/// Connect both ZMQ channels (iopub + shell) to a kernel described by `info` and
+/// wait for the iopub welcome. Reading one iopub message confirms the SUB
+/// subscription is live, sidestepping the ZMQ slow-joiner problem before the first
+/// execution. Shared by every spawn path.
+async fn connect_handshake(
+    info: &ConnectionInfo,
+) -> io::Result<(ClientIoPubConnection, ClientShellConnection)> {
+    let session = uuid::Uuid::new_v4().to_string();
+    let mut iopub = create_client_iopub_connection(info, "", &session)
+        .await
+        .map_err(io::Error::other)?;
+    let identity = peer_identity_for_session(&session).map_err(io::Error::other)?;
+    let shell = create_client_shell_connection_with_identity(info, &session, identity)
+        .await
+        .map_err(io::Error::other)?;
+    let _ = wait_for_iopub_welcome(&mut iopub, Duration::from_secs(5)).await;
+    Ok((iopub, shell))
+}
+
 impl Kernel {
     /// Spawn the kernel described by `spec` (Python ipykernel or R IRkernel) and
     /// connect to it. The kernel stays warm for the lifetime of this value.
@@ -360,49 +534,7 @@ impl Kernel {
     /// resolves against it, so generated media lands beside the document rather
     /// than wherever the server was launched. `None` inherits the server's cwd.
     pub async fn start(spec: &KernelSpec, cwd: Option<&Path>) -> io::Result<Kernel> {
-        let ip: IpAddr = "127.0.0.1".parse().unwrap();
-        let ports = peek_ports(ip, 5).await.map_err(io::Error::other)?;
-        let info = ConnectionInfo {
-            ip: ip.to_string(),
-            transport: Transport::TCP,
-            shell_port: ports[0],
-            iopub_port: ports[1],
-            stdin_port: ports[2],
-            control_port: ports[3],
-            hb_port: ports[4],
-            key: uuid::Uuid::new_v4().to_string(),
-            signature_scheme: "hmac-sha256".to_string(),
-            kernel_name: Some(spec.kernel_name.to_string()),
-        };
-
-        // The connection file holds the HMAC key + ZMQ ports — anyone who can read
-        // it can drive the kernel. It lives in the shared temp dir, so lock it down:
-        // a 0700 dir and a 0600 file, created with those modes from the start (no
-        // world-readable window) on Unix.
-        let conn_dir = std::env::temp_dir().join(format!("qmd-kernel-{}", uuid::Uuid::new_v4()));
-        {
-            let mut b = std::fs::DirBuilder::new();
-            b.recursive(true);
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::DirBuilderExt;
-                b.mode(0o700);
-            }
-            b.create(&conn_dir)?;
-        }
-        let conn_file = conn_dir.join("connection.json");
-        {
-            use std::io::Write;
-            let mut opts = std::fs::OpenOptions::new();
-            opts.write(true).create(true).truncate(true);
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::OpenOptionsExt;
-                opts.mode(0o600);
-            }
-            opts.open(&conn_file)?
-                .write_all(&serde_json::to_vec(&info)?)?;
-        }
+        let (info, conn_dir, conn_file) = prepare_connection(spec.kernel_name).await?;
 
         // Capture stderr so a startup failure (e.g. the interpreter lacks the
         // ipykernel/IRkernel module) can be reported instead of swallowed.
@@ -425,26 +557,10 @@ impl Kernel {
         })?;
         let child_stderr = child.stderr.take();
 
-        let session = uuid::Uuid::new_v4().to_string();
-        // Connect over ZMQ. The client's connect has a long (30s) timeout, so if
-        // the interpreter dies at startup (missing ipykernel/IRkernel) we'd hang
-        // the full timeout and then report an opaque "connect timed out". Instead,
-        // race the connect against the process exiting: a bad interpreter then
-        // fails in ~1s with its actual stderr (e.g. "No module named ipykernel").
-        let connect = async {
-            let mut iopub = create_client_iopub_connection(&info, "", &session)
-                .await
-                .map_err(io::Error::other)?;
-            let identity = peer_identity_for_session(&session).map_err(io::Error::other)?;
-            let shell = create_client_shell_connection_with_identity(&info, &session, identity)
-                .await
-                .map_err(io::Error::other)?;
-            // Reading one iopub message confirms our SUB subscription is live, which
-            // sidesteps the ZMQ slow-joiner problem before the first execution.
-            let _ = wait_for_iopub_welcome(&mut iopub, Duration::from_secs(5)).await;
-            Ok::<(ClientIoPubConnection, ClientShellConnection), io::Error>((iopub, shell))
-        };
-
+        // Connect over ZMQ, racing the handshake against the process exiting so a
+        // bad interpreter fails fast with its actual stderr instead of the full
+        // connect timeout.
+        let connect = connect_handshake(&info);
         let (iopub, shell) = tokio::select! {
             r = connect => r?,
             _ = child.wait() => {
@@ -452,8 +568,50 @@ impl Kernel {
             }
         };
 
+        Kernel::finish(KernelProc::Owned(child), conn_dir, iopub, shell, spec).await
+    }
+
+    /// Adopt an already-spawned kernel **PID** (forked from the warm-pool
+    /// forkserver daemon) by completing the same ZMQ handshake + preambles
+    /// `start` runs for a directly-spawned child. `info`/`conn_dir` are the
+    /// connection this PID was launched against; `daemon` is kept alive for the
+    /// kernel's lifetime so the forkserver stays warm.
+    ///
+    /// Unlike `start`, there is no owned `Child` to race the connect against, so a
+    /// dead fork surfaces as a connect timeout. The warm-pool spawns these eagerly
+    /// off the hot path, so that latency is hidden; callers still treat a `None`
+    /// pool result as "fall back to `start`". (Warm-pool-only until Task 12.)
+    #[allow(dead_code)]
+    pub(crate) async fn adopt_forked(
+        pid: u32,
+        info: ConnectionInfo,
+        conn_dir: PathBuf,
+        daemon: std::sync::Arc<crate::warm_pool::ForkserverDaemon>,
+        spec: &KernelSpec,
+    ) -> io::Result<Kernel> {
+        // The forked kernel binds its ZMQ ports a beat after the daemon reports its
+        // PID; wait for them to listen so the ZMQ connect succeeds immediately
+        // rather than burning the client's 30s connect timeout.
+        wait_until_reachable(&info, Instant::now() + Duration::from_secs(15)).await?;
+        let (iopub, shell) = connect_handshake(&info).await?;
+        let proc = KernelProc::Forked {
+            pid,
+            _daemon: daemon,
+        };
+        Kernel::finish(proc, conn_dir, iopub, shell, spec).await
+    }
+
+    /// Shared tail of every spawn path: build the `Kernel` and run each startup
+    /// preamble once against the now-live kernel.
+    async fn finish(
+        proc: KernelProc,
+        conn_dir: PathBuf,
+        iopub: ClientIoPubConnection,
+        shell: ClientShellConnection,
+        spec: &KernelSpec,
+    ) -> io::Result<Kernel> {
         let mut kernel = Kernel {
-            child,
+            proc,
             shell,
             iopub,
             conn_dir,
@@ -470,7 +628,7 @@ impl Kernel {
     /// (`try_wait`) used to detect a kernel that died mid-session so it can be
     /// respawned instead of hanging on the next execute's timeout.
     pub fn is_alive(&mut self) -> bool {
-        matches!(self.child.try_wait(), Ok(None))
+        self.proc.is_alive()
     }
 
     /// Run `code` and collect its outputs (waits until the kernel is idle).
@@ -646,9 +804,11 @@ impl Kernel {
     /// state survive. Unix-only; a no-op (the cap still ends the wait) elsewhere.
     fn interrupt(&self) {
         #[cfg(unix)]
-        if let Some(pid) = self.child.id() {
+        if let Some(pid) = self.proc.pid() {
             // Safety: `kill` with a valid pid + signal is sound; a stale pid just
-            // returns ESRCH, which we ignore.
+            // returns ESRCH, which we ignore. For a forkserver child this is the
+            // exact same `kill(pid, SIGINT)` an owned child gets — the fork-spawn
+            // path keeps runaway-cell interruption working identically.
             unsafe {
                 libc::kill(pid as libc::pid_t, libc::SIGINT);
             }
@@ -658,7 +818,20 @@ impl Kernel {
 
 impl Drop for Kernel {
     fn drop(&mut self) {
-        let _ = self.child.start_kill();
+        match &mut self.proc {
+            KernelProc::Owned(child) => {
+                let _ = child.start_kill();
+            }
+            KernelProc::Forked { pid, .. } => {
+                // Not our direct child (the forkserver server reaps it), so we
+                // can't `start_kill`; signal it to exit by PID. SIGKILL is the
+                // teardown analogue of the owned child's `start_kill`.
+                #[cfg(unix)]
+                unsafe {
+                    libc::kill(*pid as libc::pid_t, libc::SIGKILL);
+                }
+            }
+        }
         let _ = std::fs::remove_dir_all(&self.conn_dir);
     }
 }
