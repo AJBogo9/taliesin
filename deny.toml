@@ -1,13 +1,23 @@
-# cargo-deny configuration. Run `cargo deny check`.
-# Keeps the dependency tree to redistribution-friendly licenses and flags
-# advisories, mirroring the licenses we actually ship (MIT/Apache/ISC/BSD).
+# cargo-deny configuration. Run `cargo deny check` (wired into CI alongside cargo-audit).
+# Keeps the dependency tree to redistribution-friendly licenses and flags advisories,
+# mirroring the licenses we actually ship (MIT/Apache/ISC/BSD/…).
 [advisories]
 version = 2
+# Two transitive deps are flagged *unmaintained* (not a security vulnerability, and no
+# safe upgrade exists). Both ride in through `syntect` (server-side syntax highlighting)
+# via `comrak`, so we can't drop them without replacing the highlighter. cargo-audit (the
+# other CI job) already tolerates these as warnings; ignoring them here keeps cargo-deny's
+# stricter gate meaningful — a NEW advisory (or any *vulnerability*) still fails the build.
+ignore = [
+    "RUSTSEC-2024-0320", # yaml-rust 0.4.5 unmaintained (syntect→comrak); no upgrade available
+    "RUSTSEC-2025-0141", # bincode 1.x unmaintained (syntect→comrak); no upgrade available
+]
 
 [licenses]
 version = 2
 allow = [
     "MIT",
+    "MITNFA",        # MIT + no-false-attributions (fmt2io, via comrak) — permissive, MIT-equivalent
     "Apache-2.0",
     "ISC",
     "BSD-2-Clause",
@@ -16,8 +26,18 @@ allow = [
     "Unicode-DFS-2016",
     "Zlib",
     "CC0-1.0",
+    "Unlicense",     # public-domain dedication (win_uds, a Windows-only transitive dep) — permissive
 ]
 confidence-threshold = 0.9
+
+# `option-ext` (pulled in transitively by `dirs`, which `jupyter-zmq-client` uses) is
+# MPL-2.0 — weak, *file-level* copyleft: using it as an unmodified dependency imposes no
+# license obligation on qmd-fast's own code. Confined to a per-crate exception rather than
+# allowing MPL-2.0 globally, so the project's license policy stays permissive-only and a
+# NEW MPL-2.0 dependency would still be flagged for review.
+[[licenses.exceptions]]
+crate = "option-ext"
+allow = ["MPL-2.0"]
 
 [bans]
 multiple-versions = "warn"

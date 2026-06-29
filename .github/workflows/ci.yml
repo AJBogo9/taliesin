@@ -39,3 +39,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: taiki-e/install-action@cargo-audit
       - run: cargo audit
+
+  # Dependency *policy* gate (`deny.toml`): redistribution-friendly licenses only, no
+  # unknown registries/git sources, and a stricter advisory pass than `audit` above (so a
+  # new dep with a disallowed license or a banned source fails the build, not just a CVE).
+  # Verified locally against the current tree — advisories/licenses/bans/sources all ok.
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@cargo-deny
+      - run: cargo deny check
