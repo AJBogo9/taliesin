@@ -232,16 +232,7 @@ directly: `code, pre, kbd, samp, .katex { letter-spacing: normal; word-spacing: 
 - [ ] **CI: wire `cargo-deny`.** `deny.toml` exists (Wave 0); the CI step was deferred
   (cargo-deny not installable/verifiable locally). Add it when CI is set up.
 
-### Fidelity follow-ups (from the 2026-06-25 corpus sweep; detail in `AUDITS.md`)
-- [ ] **Captioned code listing isn't a `<figure>`.** qmd-fast emits `div.qmd-listing` with a
-  bare `<figcaption>` where Quarto uses `<figure class="quarto-float-lst">`. Minor/semantic.
-
 ### Library-outsourcing audit follow-ups (2026-06-25; method: multi-agent sweep of every from-scratch subsystem vs mature OSS, each candidate adversarially verified against the invariants)
-- [ ] **Deck control-menu focus trap (small, deferred).** The lightbox + Cmd-K palette got the
-  shared `qmdFocusTrap` (`7febc97`, hand-rolled, no npm dep); the deck control menus (`deck.js`)
-  weren't covered. First check whether they are truly modal (vs. simple toggles) before trapping.
-  The reader menu is intentionally a light-dismiss popover (not trapped — `aria-modal` would
-  misrepresent it). Reject the `focus-trap` npm dep.
 - [ ] **Correct the `serde_yaml` fallback target (watch-item).** The `Cargo.toml` workspace
   comment names `serde_yml` as the fallback, but it carries **RUSTSEC-2025-0068 (unsound +
   unmaintained)**; `serde_norway` is 1+ yr stale. The maintained continuation is
@@ -249,14 +240,6 @@ directly: `code, pre, kbd, samp, .katex { letter-spacing: normal; word-spacing: 
   0.9 ever breaks against a future serde/edition, swap to `serde_yaml_ng`, gated on a test that
   `Error::location().line()` still works (the only click-to-source-relevant API). Fix the stale
   comment when touched.
-- [ ] **Dedup the FNV-1a hash (small footgun).** Byte-identical copies in `freeze.rs:49` +
-  `render/mod.rs:1458` that MUST stay identical (the block-id scheme == the cache-key scheme).
-  Pull into one shared helper. Do NOT swap the algorithm: seahash reintroduces cross-version
-  instability that would break content-hash block ids, and xxhash/blake3 solve a non-problem.
-- [ ] **Arg-parser unit tests (small).** `main.rs` hand-rolled arg dispatch is NOT test-covered
-  (existing tests cover asset-mirroring only). Keep the parser (clap rejected: no real burden,
-  fiddly to match the permissive flags-anywhere + `QMD_FAST_*` env-var ergonomics) but add tests
-  around the `[out.html]` positional vs `--out <dir>` dual meaning + the port parse.
 - Decided against (so they aren't re-litigated): **hayagriva**/**biblatex** (citations — mature
   but large integration, heavy deps incl. the very serde_yaml 0.9 we're leaving, and zero corpus
   demand: only IEEE is used, which the hand-roll already produces; revisit only for live
