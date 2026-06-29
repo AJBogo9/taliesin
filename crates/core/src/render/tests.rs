@@ -1825,6 +1825,32 @@ fn typography_polish_css_ships() {
 }
 
 #[test]
+fn code_enhance_bundle_matches_fragments_in_order() {
+    // CODE_ENHANCE_JS is concat!'d from the ordered per-feature fragments under
+    // assets/js/code-enhance/ (no separators). Re-read them here, sorted by name
+    // (the numeric prefix == load order), and assert the concatenation matches the
+    // emitted const — so a new fragment that is not wired into the concat!, a
+    // reordering, or a dropped include fails loudly instead of silently shipping a
+    // broken/incomplete reader layer.
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/js/code-enhance");
+    let mut paths: Vec<_> = std::fs::read_dir(&dir)
+        .expect("assets/js/code-enhance should exist")
+        .map(|e| e.unwrap().path())
+        .filter(|p| p.extension().is_some_and(|x| x == "js"))
+        .collect();
+    paths.sort();
+    let joined: String = paths
+        .iter()
+        .map(|p| std::fs::read_to_string(p).unwrap())
+        .collect();
+    assert_eq!(
+        joined, CODE_ENHANCE_JS,
+        "the code-enhance/ fragments (in filename order) must tile exactly into \
+         CODE_ENHANCE_JS — update the concat! in mod.rs when adding/reordering fragments"
+    );
+}
+
+#[test]
 fn build_mode_content_gates_separate_enhancers() {
     // Pure prose: a static build keeps code-enhance.js (the reader menu + a11y layer
     // that every page benefits from) but drops the DOM-specific enhancers it can't use.

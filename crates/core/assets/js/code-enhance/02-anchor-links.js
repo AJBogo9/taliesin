@@ -1,0 +1,46 @@
+// Reveal a `#` on each heading and numbered float (figure / listing / table); activating it
+// copies that anchor's canonical deep link (the section/figure permalink, complementing the
+// selection toolbar's text-fragment Share). Reader-side, clipboard-only — never writes the
+// source. Per-element idempotent (a host already carrying its .qmd-anchor is skipped), so it
+// survives the live-preview re-mounts; skipped on decks (their own nav). `root` is always the
+// whole #qmd-root container, so a descendant query suffices.
+function qmdInitAnchorLinks(root) {
+  if (document.querySelector('.qmd-deck')) return;
+  if (!window.__qmdAnchorLive) {
+    var l = document.createElement('span');
+    l.className = 'qmd-sr-only';
+    l.setAttribute('aria-live', 'polite');
+    document.body.appendChild(l);
+    window.__qmdAnchorLive = l;
+  }
+  function announce(msg) { var r = window.__qmdAnchorLive; r.textContent = ''; r.textContent = msg; }
+  function decorate(host, id) {
+    if (!host || !id || host.dataset.qmdAnchored) return;
+    host.dataset.qmdAnchored = '1';
+    var a = document.createElement('a');
+    a.className = 'qmd-anchor';
+    a.href = '#' + id;
+    a.setAttribute('aria-label', 'Copy link to this section');
+    a.textContent = '#';
+    a.addEventListener('click', function () {
+      // Don't preventDefault: clicking also sets the URL hash, so the address bar shows the
+      // shareable anchor (the page is already here, so there is no jump).
+      qmdCopyText(qmdAnchorUrl(id), function () {
+        a.classList.add('qmd-anchor-copied');
+        a.textContent = '✓';
+        announce('Link copied');
+        setTimeout(function () { a.classList.remove('qmd-anchor-copied'); a.textContent = '#'; }, 1200);
+      }, function () { announce('Copy failed'); });
+    });
+    host.appendChild(a);
+  }
+  var scope = root || document;
+  [].forEach.call(scope.querySelectorAll('h1[id],h2[id],h3[id],h4[id],h5[id],h6[id]'),
+    function (h) { decorate(h, h.id); });
+  // A numbered float carries its id on the wrapper; drop the `#` into its caption.
+  [].forEach.call(scope.querySelectorAll('figcaption, caption'), function (c) {
+    var wrap = c.parentElement;
+    if (wrap && wrap.id) decorate(c, wrap.id);
+  });
+}
+

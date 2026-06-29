@@ -915,7 +915,34 @@ pub fn has_js_cells(body: &str) -> bool {
     body.contains("application/qmd-js")
 }
 
-const CODE_ENHANCE_JS: &str = include_str!("../../assets/js/code-enhance.js");
+// `code-enhance.js` is authored as ordered per-feature fragments under
+// `assets/js/code-enhance/` and concatenated (in filename order) into one inline
+// `<script>`. The numeric prefix IS the load order: the registry IIFE (`01`) must
+// define `window.qmdEnhancers` before the registration block (`09`) runs, and every
+// built-in's `function` declaration is hoisted within this single concatenated
+// script, so `09` can forward-reference features defined in later fragments. The
+// `code_enhance_bundle_matches_fragments_in_order` test (tests.rs) guards that this
+// list stays complete + in load order (no separators — the fragments tile exactly).
+const CODE_ENHANCE_JS: &str = concat!(
+    include_str!("../../assets/js/code-enhance/01-registry.js"),
+    include_str!("../../assets/js/code-enhance/02-anchor-links.js"),
+    include_str!("../../assets/js/code-enhance/03-focus-mode.js"),
+    include_str!("../../assets/js/code-enhance/04-focus-trap.js"),
+    include_str!("../../assets/js/code-enhance/05-read-aloud.js"),
+    include_str!("../../assets/js/code-enhance/06-skip-link.js"),
+    include_str!("../../assets/js/code-enhance/07-keyboard.js"),
+    include_str!("../../assets/js/code-enhance/08-copy-buttons.js"),
+    include_str!("../../assets/js/code-enhance/09-register.js"),
+    include_str!("../../assets/js/code-enhance/10-category-filter.js"),
+    include_str!("../../assets/js/code-enhance/11-lightbox.js"),
+    include_str!("../../assets/js/code-enhance/12-link-preview.js"),
+    include_str!("../../assets/js/code-enhance/13-reader-menu.js"),
+    include_str!("../../assets/js/code-enhance/14-reader-prefs.js"),
+    include_str!("../../assets/js/code-enhance/15-reading-progress.js"),
+    include_str!("../../assets/js/code-enhance/16-highlights.js"),
+    include_str!("../../assets/js/code-enhance/17-highlight-index.js"),
+    include_str!("../../assets/js/code-enhance/18-bookmarks.js"),
+);
 const MERMAID_JS: &str = include_str!("../../assets/js/mermaid.js");
 /// Scroll-driven line-range highlighter for `::: {.code-walkthrough}`. Registers
 /// through `qmdEnhancers`, no-ops without a walkthrough (like mermaid/qmd-js), so it

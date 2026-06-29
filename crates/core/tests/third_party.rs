@@ -3,8 +3,9 @@ use std::path::Path;
 /// qmd-fast's OWN (MIT) bundled scripts. Everything else in `assets/js/` is a
 /// vendored third party that MUST be attributed by filename in THIRD_PARTY.md.
 /// Adding a new vendored lib without documenting it fails `vendored_js_is_attributed`.
+// (code-enhance.js is now authored as per-feature fragments under the
+// `code-enhance/` subdirectory, which the non-recursive read_dir below skips.)
 const OWN_JS: &[&str] = &[
-    "code-enhance.js",
     "deck.js",
     "mermaid.js",
     "qmd-js.js",
