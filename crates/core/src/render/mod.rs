@@ -1490,6 +1490,12 @@ pub(crate) struct DivAttrs {
 }
 
 impl DivAttrs {
+    /// The `#id` parsed from the attribute block, if any. `pub(crate)` so the
+    /// cross-page xref scanner (`site::xref`) reuses this one quote-aware parser
+    /// instead of re-implementing brace scanning and drifting from the renderer.
+    pub(crate) fn id(&self) -> Option<&str> {
+        self.id.as_deref()
+    }
     fn get(&self, key: &str) -> Option<&str> {
         self.kv
             .iter()

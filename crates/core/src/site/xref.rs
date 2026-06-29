@@ -4,6 +4,7 @@
 //! Book, section_number, Block.
 
 use super::*;
+use crate::render::parse_attrs;
 
 /// Where a cross-referenceable anchor (`sec-x`, `fig-x`, …) lives in the project:
 /// its page url and, for a numbered section, its number ("2.1"; empty otherwise).
@@ -110,26 +111,47 @@ fn scan_page_anchors(src: &str, chapter: Option<u32>) -> Vec<(String, String)> {
     }
     out
 }
-/// The id from a `{…}` attribute block on a line, if any: a `#id` token that starts the
-/// block (id-first `{#sec-x}` headings/floats) or follows a space (class-first
-/// `::: {.theorem #thm-x}` divs), read up to a space, `.`, or `}`. The start-or-after-space
-/// guard means a `#` inside an attribute value never false-matches.
+/// The `#id` from a `{…}` attribute block on a line, if any. Scans *every* brace
+/// block on the line (so a split-brace heading `## T {.unnumbered} {#sec-x}` is
+/// found, not only the first block) and parses each with the renderer's own
+/// quote-aware [`parse_attrs`], so a `#` inside a quoted value (`title="see #x"`)
+/// is never read as an id and the scan can't drift from what the renderer emits.
 fn brace_id(line: &str) -> Option<String> {
-    let open = line.find('{')?;
-    let block = &line[open + 1..];
-    let block = &block[..block.find('}').unwrap_or(block.len())];
-    let bytes = block.as_bytes();
-    for (i, &b) in bytes.iter().enumerate() {
-        if b == b'#' && (i == 0 || bytes[i - 1] == b' ') {
-            let after = &block[i + 1..];
-            let end = after.find([' ', '.', '}']).unwrap_or(after.len());
-            let id = &after[..end];
-            if !id.is_empty() {
-                return Some(id.to_string());
+    brace_blocks(line)
+        .into_iter()
+        .find_map(|block| parse_attrs(block).id().map(str::to_string))
+}
+
+/// The contents of each top-level `{…}` block on a line, quote-aware so a `}`
+/// inside a quoted attribute value (`title="a } b"`) doesn't close the block early.
+fn brace_blocks(line: &str) -> Vec<&str> {
+    let bytes = line.as_bytes();
+    let mut blocks = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'{' {
+            let start = i + 1;
+            let mut j = start;
+            let mut quote: Option<u8> = None;
+            while j < bytes.len() {
+                match quote {
+                    Some(q) if bytes[j] == q => quote = None,
+                    Some(_) => {}
+                    None => match bytes[j] {
+                        b'"' | b'\'' => quote = Some(bytes[j]),
+                        b'}' => break,
+                        _ => {}
+                    },
+                }
+                j += 1;
             }
+            blocks.push(&line[start..j]);
+            i = j + 1;
+        } else {
+            i += 1;
         }
     }
-    None
+    blocks
 }
 /// Whether an id is a Quarto cross-reference anchor (`sec-`, `fig-`, …).
 fn is_ref_anchor(id: &str) -> bool {
@@ -207,4 +229,45 @@ fn rewrite_one_xref(
         "<a href=\"{up}{}#{anchor}\" class=\"qmd-xref\">{label}{number}</a>",
         target.url
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn brace_id_reads_an_id_in_a_later_brace_block() {
+        // split-brace heading: `## Setup {.unnumbered} {#sec-setup}` — the id lives in
+        // a brace block that is not the first one on the line.
+        assert_eq!(
+            brace_id("## Setup {.unnumbered} {#sec-setup}").as_deref(),
+            Some("sec-setup")
+        );
+    }
+
+    #[test]
+    fn brace_id_ignores_a_hash_inside_a_quoted_attribute_value() {
+        // a `#word` inside a quoted `title=` is prose, not an id — it must not invent a target.
+        assert_eq!(
+            brace_id(r#"::: {.theorem title="see #thm-ghost below"}"#),
+            None
+        );
+    }
+
+    #[test]
+    fn brace_id_finds_the_real_id_after_a_quoted_value_containing_a_hash() {
+        assert_eq!(
+            brace_id(r#"::: {.theorem title="bound #thm-fake" #thm-real}"#).as_deref(),
+            Some("thm-real")
+        );
+    }
+
+    #[test]
+    fn brace_id_still_handles_id_first_and_class_first_single_blocks() {
+        assert_eq!(
+            brace_id("## Setup {#sec-x .unnumbered}").as_deref(),
+            Some("sec-x")
+        );
+        assert_eq!(brace_id("::: {.theorem #thm-x}").as_deref(), Some("thm-x"));
+    }
 }
