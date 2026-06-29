@@ -182,6 +182,9 @@ body.qmd-book-body { max-width: none; margin: 0; padding: 0; --qmd-nav-h: 0rem; 
 .qmd-book-brand:hover { color: var(--qmd-accent); }
 .qmd-book-sidebar-head .qmd-theme-toggle { flex: 0 0 auto; margin-top: -.15rem; }
 .qmd-book-chapters { list-style: none; margin: 0; padding: 0; }
+/* Chapter-list toggle: hidden on desktop (the list is always shown); revealed only at
+   the laptop-portrait band below, where it collapses the list instead of stacking it. */
+.qmd-book-toc-toggle { display: none; }
 .qmd-book-part { margin: 1.1rem 0 .35rem; font-size: .76rem; font-weight: 700;
   letter-spacing: .04em; text-transform: uppercase; color: var(--qmd-muted); }
 .qmd-book-chapter { display: block; padding: .26rem 0; color: var(--qmd-muted);
@@ -213,6 +216,16 @@ body.qmd-book-body { max-width: none; margin: 0; padding: 0; --qmd-nav-h: 0rem; 
   .qmd-book-inner.has-toc { grid-template-columns: minmax(0, 1fr); }
   /* single-column: no TOC beside the text, so the book post-nav spans full width again */
   .qmd-book-inner.has-toc + .qmd-book-postnav { width: auto; }
+  /* Collapse the chapter list behind a toggle so it no longer stacks above the content
+     (the bug: the whole list dumped on top in the laptop-portrait band). The header +
+     search stay; the list expands inline only when the reader opens it (JS-wired button). */
+  .qmd-book-toc-toggle { display: flex; align-items: center; gap: .5rem; width: 100%;
+    padding: .55rem 0; background: transparent; border: 0; cursor: pointer; font: inherit;
+    font-weight: 600; color: var(--qmd-fg); }
+  .qmd-book-toc-toggle::before { content: "\25B8"; color: var(--qmd-muted); } /* ▸ */
+  .qmd-book-toc-toggle[aria-expanded="true"]::before { content: "\25BE"; }     /* ▾ */
+  .qmd-book-chapters { display: none; }
+  .qmd-book-chapters.qmd-book-toc-open { display: block; margin-top: .4rem; }
 }
 
 /* High-contrast / forced-colors: the site chrome leans on subtle 1px borders + a tinted

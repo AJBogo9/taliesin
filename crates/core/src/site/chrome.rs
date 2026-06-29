@@ -17,6 +17,15 @@ const SEARCH_ICON: &str = "<svg width='15' height='15' viewBox='0 0 16 16' fill=
 /// to re-run when the live preview re-injects the navbar on hot reload.
 const NAV_TOGGLE_SCRIPT: &str = "<script>(function(){var b=document.getElementById('qmd-nav-toggle'),m=document.getElementById('qmd-nav-links');if(!b||!m||b.dataset.navWired)return;b.dataset.navWired='1';function set(o){b.setAttribute('aria-expanded',o?'true':'false');m.classList.toggle('qmd-nav-open',o);}b.addEventListener('click',function(){set(b.getAttribute('aria-expanded')!=='true');});m.addEventListener('click',function(e){if(e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&b.getAttribute('aria-expanded')==='true'){set(false);b.focus();}});})();</script>";
 
+/// Same shape as [`NAV_TOGGLE_SCRIPT`], for the BOOK chapter sidebar: at the laptop-
+/// portrait band (<=60rem) the sidebar would otherwise stack the whole chapter list
+/// above the content (pushing it far down). The CSS collapses the list to a "Chapters"
+/// toggle there; this wires the button (toggle `aria-expanded` + a `.qmd-book-toc-open`
+/// class the CSS reveals on), closing on Escape or after a chapter link is followed.
+/// Above 60rem the CSS hides the button and the list is always shown, so the desktop
+/// sidebar is unchanged. `data-toc-wired` keeps it idempotent across hot-reload re-injects.
+const BOOK_TOC_TOGGLE_SCRIPT: &str = "<script>(function(){var b=document.getElementById('qmd-book-toc-toggle'),m=document.getElementById('qmd-book-chapters');if(!b||!m||b.dataset.tocWired)return;b.dataset.tocWired='1';function set(o){b.setAttribute('aria-expanded',o?'true':'false');m.classList.toggle('qmd-book-toc-open',o);}b.addEventListener('click',function(){set(b.getAttribute('aria-expanded')!=='true');});m.addEventListener('click',function(e){if(e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&b.getAttribute('aria-expanded')==='true'){set(false);b.focus();}});})();</script>";
+
 /// A search control that opens the Cmd-K palette. It carries `data-qmd-search`,
 /// which `web-client/search.js` wires (by click delegation) to open the same
 /// palette the keyboard shortcut does. Rendered in the navbar (websites) and the
@@ -218,7 +227,14 @@ impl Site {
         s.push_str("</div>");
         // A visible search box under the title (opens the same Cmd-K palette).
         s.push_str(&search_button(true));
-        s.push_str("<ul class=\"qmd-book-chapters\">");
+        // A real, focusable toggle for the chapter list. Hidden above 60rem (the list is
+        // always shown); at the laptop-portrait band it collapses the list to this button
+        // so the chapters don't stack above the content. `aria-controls` points at the list.
+        s.push_str(
+            "<button type=\"button\" class=\"qmd-book-toc-toggle\" id=\"qmd-book-toc-toggle\" \
+             aria-label=\"Chapters\" aria-expanded=\"false\" aria-controls=\"qmd-book-chapters\">Chapters</button>",
+        );
+        s.push_str("<ul class=\"qmd-book-chapters\" id=\"qmd-book-chapters\">");
         for e in &book.entries {
             if let Some(part) = &e.part {
                 s.push_str(&format!("<li class=\"qmd-book-part\">{}</li>", esc(part)));
@@ -241,7 +257,10 @@ impl Site {
                 esc(&e.title)
             ));
         }
-        s.push_str("</ul></nav>");
+        s.push_str("</ul>");
+        // Wire the chapter-list toggle (keyboard + SR operable; idempotent on hot reload).
+        s.push_str(BOOK_TOC_TOGGLE_SCRIPT);
+        s.push_str("</nav>");
         s
     }
 
