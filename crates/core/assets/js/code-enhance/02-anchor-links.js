@@ -42,5 +42,10 @@ function qmdInitAnchorLinks(root) {
     var wrap = c.parentElement;
     if (wrap && wrap.id) decorate(c, wrap.id);
   });
+  // A theorem carries its id on the wrapper; drop the `#` into its head paragraph.
+  [].forEach.call(scope.querySelectorAll('.qmd-theorem[id]'), function (t) {
+    var head = t.querySelector('.qmd-theorem-head');
+    if (head) decorate(head, t.id);
+  });
 }
 

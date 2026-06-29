@@ -552,9 +552,21 @@ fn build_container(
                 .get("title")
                 .map(html_escape)
                 .unwrap_or_else(|| "Proof".to_string());
-            format!(
-                "<div class=\"qmd-proof\"{data}><p class=\"qmd-proof-head\">{head}.</p><div class=\"qmd-theorem-body\">{body}</div><span class=\"qmd-qed\" aria-hidden=\"true\">\u{220e}</span></div>"
-            )
+            let qed = "<span class=\"qmd-qed\" aria-hidden=\"true\">\u{220e}</span>";
+            // `collapse="true"` folds the proof behind a native <details> (starts closed);
+            // `collapse="false"` is collapsible but starts open. QED rides inside <details>
+            // so a collapsed proof shows only its "Proof." summary.
+            match attrs.get("collapse") {
+                Some(v) => {
+                    let open = if v == "false" { " open" } else { "" };
+                    format!(
+                        "<div class=\"qmd-proof qmd-proof-collapse\"{data}><details{open}><summary class=\"qmd-proof-head\">{head}.</summary><div class=\"qmd-theorem-body\">{body}</div>{qed}</details></div>"
+                    )
+                }
+                None => format!(
+                    "<div class=\"qmd-proof\"{data}><p class=\"qmd-proof-head\">{head}.</p><div class=\"qmd-theorem-body\">{body}</div>{qed}</div>"
+                ),
+            }
         } else {
             // The number slot is filled by the `number_theorems` post-pass (after
             // group_divs, before cite::process), so numbering stays document-ordered.

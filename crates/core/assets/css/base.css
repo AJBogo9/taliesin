@@ -343,6 +343,7 @@
     font-weight: 400; opacity: 0; transition: opacity .12s ease, color .12s ease; }
   :is(h1, h2, h3, h4, h5, h6):hover > .qmd-anchor,
   figcaption:hover > .qmd-anchor, caption:hover > .qmd-anchor,
+  .qmd-theorem-head:hover > .qmd-anchor,
   .qmd-anchor:focus-visible { opacity: 1; }
   .qmd-anchor:hover, .qmd-anchor.qmd-anchor-copied { color: var(--qmd-accent); opacity: 1; }
   @media print { .qmd-anchor { display: none; } }
@@ -477,6 +478,8 @@
   .qmd-proof { margin: 1.1rem 0; }
   .qmd-proof-head { font-style: italic; font-weight: 600; margin: 0 0 .2rem; }
   .qmd-qed { display: block; text-align: right; }
+  .qmd-proof-collapse > details > summary.qmd-proof-head { cursor: pointer; margin: 0; }
+  .qmd-proof-collapse > details[open] > summary.qmd-proof-head { margin-bottom: .2rem; }
   details.qmd-code-fold > summary { cursor: pointer; color: var(--qmd-muted);
     font: 600 .85em var(--qmd-font-head); padding: .15rem 0; margin-bottom: .35rem; }
   details.qmd-code-fold > summary:hover { color: var(--qmd-fg); }

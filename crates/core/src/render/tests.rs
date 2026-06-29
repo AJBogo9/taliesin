@@ -2308,3 +2308,30 @@ fn unnumbered_theorem_ref_resolves_to_bare_label_not_broken() {
         "the ref must not be left as a broken-ref marker: {body}"
     );
 }
+
+#[test]
+fn proof_collapse_folds_into_details() {
+    let closed = render_document("::: {.proof collapse=\"true\"}\nBody.\n:::\n");
+    let h = &closed.blocks[0].html;
+    assert!(
+        h.contains("<div class=\"qmd-proof qmd-proof-collapse\"")
+            && h.contains("<details><summary class=\"qmd-proof-head\">Proof.</summary>"),
+        "collapse=true folds the proof behind a closed <details>: {h}"
+    );
+    assert!(
+        h.contains("<span class=\"qmd-qed\" aria-hidden=\"true\">\u{220e}</span></details>"),
+        "QED sits inside <details> (shown only when expanded): {h}"
+    );
+    let open = render_document("::: {.proof collapse=\"false\"}\nBody.\n:::\n");
+    assert!(
+        open.blocks[0].html.contains("<details open>"),
+        "collapse=false starts open: {}",
+        open.blocks[0].html
+    );
+    let plain = render_document("::: {.proof}\nBody.\n:::\n");
+    assert!(
+        !plain.blocks[0].html.contains("<details"),
+        "a plain proof is not a <details>: {}",
+        plain.blocks[0].html
+    );
+}
