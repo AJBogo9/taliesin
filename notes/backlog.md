@@ -211,7 +211,6 @@ instead of hardcoding `QMD_FAST_PYTHON`). (6) **clippy green** (`collapsible_if`
   **DEFERRED, exec/kernel Do-NOT-touch**). The `check --format json`-on-unreadable-path, `_quarto.yml`
   breadcrumb, and the language-aware build kernel hint all shipped in the 2026-06-27 Tier 1 batch.
 - [ ] Long tail (perf: shared/minified/compressed assets, O(change) per-edit; SEO: sitemap/robots/JSON-LD;
-  publish hygiene: stop mirroring `.md`/`.scss`/planning into `_site/`;
   doc/code drift) — see the audit digest `polishThemes` + `whatsMissing`.
 
 ### Reader experience (the active thrust; idea pool in `FEATURE-IDEAS.md`)
