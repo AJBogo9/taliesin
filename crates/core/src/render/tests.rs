@@ -2132,3 +2132,58 @@ fn proof_is_not_numbered() {
         doc.body_html()
     );
 }
+
+#[test]
+fn theorem_config_shared_group_shares_counter_key() {
+    let cfg = parse_theorem_config("theorems:\n  shared: [theorem, lemma]\n");
+    assert_eq!(
+        cfg.counter_key("theorem"),
+        cfg.counter_key("lemma"),
+        "shared kinds collapse to one counter key"
+    );
+    assert_ne!(
+        cfg.counter_key("theorem"),
+        cfg.counter_key("definition"),
+        "an unlisted kind keeps its own key"
+    );
+    let none = parse_theorem_config("title: x\n");
+    assert_ne!(
+        none.counter_key("theorem"),
+        none.counter_key("lemma"),
+        "no config means per-kind counters"
+    );
+}
+
+#[test]
+fn shared_counter_numbers_across_kinds() {
+    let doc = render_document(
+        "---\ntheorems:\n  shared: [theorem, lemma]\n---\n\n::: {.theorem}\nA.\n:::\n\n::: {.lemma}\nB.\n:::\n\n::: {.theorem}\nC.\n:::\n\n::: {.definition}\nD.\n:::\n",
+    );
+    let body = doc.body_html();
+    // theorem + lemma draw one sequence: Theorem 1, Lemma 2, Theorem 3
+    assert!(
+        body.contains(
+            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\">&nbsp;1</span></span>"
+        ),
+        "got: {body}"
+    );
+    assert!(
+        body.contains(
+            "<span class=\"qmd-theorem-label\">Lemma<span class=\"qmd-theorem-number\">&nbsp;2</span></span>"
+        ),
+        "lemma takes the shared sequence's 2: {body}"
+    );
+    assert!(
+        body.contains(
+            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\">&nbsp;3</span></span>"
+        ),
+        "got: {body}"
+    );
+    // definition is NOT shared: its own counter starts at 1
+    assert!(
+        body.contains(
+            "<span class=\"qmd-theorem-label\">Definition<span class=\"qmd-theorem-number\">&nbsp;1</span></span>"
+        ),
+        "unlisted kind keeps its own counter: {body}"
+    );
+}

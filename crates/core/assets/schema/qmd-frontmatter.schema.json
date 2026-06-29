@@ -114,6 +114,18 @@
     },
     "subtitle": {},
     "theme": {},
+    "theorems": {
+      "additionalProperties": false,
+      "properties": {
+        "shared": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
     "title": {},
     "title-block-style": {},
     "toc": {

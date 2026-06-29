@@ -111,3 +111,53 @@ pub(super) fn extract_field(front_matter: &str, key: &str) -> Option<String> {
     }
     None
 }
+
+/// Parsed `theorems:` front-matter config. This increment carries only `shared` (the
+/// kinds that draw one shared numbering sequence); `number-within` and `numbered` are
+/// future increments.
+#[derive(Default)]
+pub(crate) struct TheoremConfig {
+    /// Kinds that share a single counter, in declaration order. Empty = the default
+    /// (each kind counts independently).
+    shared: Vec<String>,
+}
+
+impl TheoremConfig {
+    /// The counter key for `kind`: every kind in the shared group collapses to one key
+    /// (the group's first member) so they draw a single sequence; an unlisted kind keys
+    /// by itself. This governs only the NUMBER; the visible label stays per-kind.
+    pub(crate) fn counter_key<'a>(&'a self, kind: &'a str) -> &'a str {
+        if self.shared.iter().any(|k| k == kind) {
+            self.shared.first().map(String::as_str).unwrap_or(kind)
+        } else {
+            kind
+        }
+    }
+}
+
+/// Parse the `theorems:` block out of a front-matter string into a `TheoremConfig`.
+/// An absent block, a parse failure, or an unexpected shape yields the default
+/// (per-kind numbering). `shared:` is a YAML list of kind names. Uses serde_yaml,
+/// already a dependency (see `frontmatter::validate_front_matter`).
+pub(crate) fn parse_theorem_config(front_matter: &str) -> TheoremConfig {
+    let mut config = TheoremConfig::default();
+    // comrak's FrontMatter node includes the `---` fences; serde_yaml treats a leading or
+    // trailing `---` as a document marker, so strip the fences to one YAML document.
+    let body = front_matter.trim();
+    let body = body.strip_prefix("---").unwrap_or(body);
+    let body = body.strip_suffix("---").unwrap_or(body);
+    let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(body) else {
+        return config;
+    };
+    if let Some(shared) = value
+        .get("theorems")
+        .and_then(|t| t.get("shared"))
+        .and_then(|s| s.as_sequence())
+    {
+        config.shared = shared
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect();
+    }
+    config
+}

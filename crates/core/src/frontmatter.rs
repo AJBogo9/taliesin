@@ -56,6 +56,8 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     "hero",
     // Prose lint (opt-in): `prose-lint: true | { banned: [...] }`; see `crate::prose`.
     "prose-lint",
+    // Theorem environments (per-document numbering config; see render::TheoremConfig).
+    "theorems",
 ];
 
 /// `execute:` sub-keys qmd-fast honors (document-level cell defaults; see
@@ -74,6 +76,11 @@ pub(crate) const HERO_KEYS: &[&str] = &["eyebrow", "headline", "lead", "actions"
 
 /// `prose-lint:` sub-keys qmd-fast honors (the mapping form; see `crate::prose::config`).
 pub(crate) const PROSE_LINT_KEYS: &[&str] = &["banned"];
+
+/// `theorems:` sub-keys qmd-fast honors. This increment honors only `shared` (shared
+/// counters); `number-within` + `numbered` are added when those features land, so an
+/// author using them still gets an "unknown theorems key" warning until then.
+pub(crate) const THEOREM_KEYS: &[&str] = &["shared"];
 
 /// Validate a document's front matter against qmd-fast's vocabulary: every unknown
 /// top-level key, plus every unknown immediate child of the nested `execute:`,
@@ -113,6 +120,14 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
         "prose-lint",
         "prose-lint key",
         PROSE_LINT_KEYS,
+        block,
+        &mut out,
+    );
+    validate_nested(
+        map,
+        "theorems",
+        "theorems key",
+        THEOREM_KEYS,
         block,
         &mut out,
     );
@@ -315,6 +330,20 @@ mod tests {
             "unknown front-matter key `treme` (did you mean `theme`?)"
         );
         assert_eq!(w[0].line, Some(2), "`treme` is on file line 2");
+    }
+
+    #[test]
+    fn theorems_block_is_validated() {
+        assert!(
+            msgs("---\ntheorems:\n  shared: [theorem, lemma]\n---\n").is_empty(),
+            "a valid theorems block must not warn"
+        );
+        let m = msgs("---\ntheorems:\n  shard: [theorem]\n---\n");
+        assert!(
+            m.iter()
+                .any(|w| w.contains("unknown theorems key `shard`") && w.contains("shared")),
+            "a typo'd child key warns with did-you-mean: {m:?}"
+        );
     }
 
     #[test]

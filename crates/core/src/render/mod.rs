@@ -43,7 +43,10 @@ pub use doc_includes::includes_from_parts;
 use doc_includes::resolve_doc_includes;
 mod fm_extract;
 pub use fm_extract::is_reveal_doc;
-use fm_extract::{detect_format, detect_title_block_hidden, detect_toc, extract_field};
+use fm_extract::{
+    TheoremConfig, detect_format, detect_title_block_hidden, detect_toc, extract_field,
+    parse_theorem_config,
+};
 mod cell_extract;
 pub(crate) use cell_extract::option_directive;
 use cell_extract::{
@@ -209,6 +212,7 @@ fn render_internal_impl(
     let mut exec_echo = true;
     let mut exec_include = true;
     let mut exec_cache = true;
+    let mut theorem_config = TheoremConfig::default();
     let mut flat: Vec<FlatBlock> = Vec::new();
     // Footnote definitions, rendered as `<li>`s and gathered into a section at the
     // end (comrak moves them here in reference order); see below the loop.
@@ -274,6 +278,7 @@ fn render_internal_impl(
                     theme = fmt_theme_base.map(String::from);
                 }
                 (exec_echo, exec_include, exec_cache) = detect_execute_defaults(fm);
+                theorem_config = parse_theorem_config(fm);
                 continue;
             }
             let sp = data.sourcepos;
@@ -584,7 +589,12 @@ fn render_internal_impl(
     apply_table_captions(&mut blocks, &mut xref_registry, &mut warnings);
     // Theorem environments: number per-kind in document order + register #thm-/#lem-/…
     // anchors. Must run before cite::process resolves @thm-/@lem-/… references.
-    number_theorems(&mut blocks, &mut xref_registry, &mut warnings);
+    number_theorems(
+        &mut blocks,
+        &mut xref_registry,
+        &mut warnings,
+        &theorem_config,
+    );
     let bib = load_bibliography(bib_field.as_deref(), base_dir, &mut warnings);
     warnings.extend(crate::cite::process(&mut blocks, &bib, &xref_registry));
     // Gather the footnote definitions (collected above, in comrak's reference order)
@@ -1228,6 +1238,7 @@ fn number_theorems(
     blocks: &mut [Block],
     xrefs: &mut HashMap<String, String>,
     warnings: &mut Vec<Warning>,
+    config: &TheoremConfig,
 ) {
     let mut counts: HashMap<String, u32> = HashMap::new();
     for b in blocks.iter_mut() {
@@ -1236,8 +1247,11 @@ fn number_theorems(
         let Some(kind) = extract_attr(&open_tag, "data-qmd-theorem-kind") else {
             continue;
         };
+        // Shared-group kinds collapse to one counter key; the visible label stays
+        // per-kind (only the number is shared).
+        let key = config.counter_key(&kind).to_string();
         let n = {
-            let c = counts.entry(kind).or_insert(0);
+            let c = counts.entry(key).or_insert(0);
             *c += 1;
             *c
         };

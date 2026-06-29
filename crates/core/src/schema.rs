@@ -19,6 +19,7 @@ pub const SITE_SCHEMA: &str = include_str!("../assets/schema/qmd-site.schema.jso
 mod generate {
     use crate::frontmatter::{
         ABOUT_KEYS, EXECUTE_KEYS, HERO_KEYS, KNOWN_KEYS, LISTING_KEYS, PROSE_LINT_KEYS,
+        THEOREM_KEYS,
     };
     use crate::site::NATIVE_KEYS;
     use serde_json::{Map, Value, json};
@@ -78,6 +79,14 @@ mod generate {
                 )
             ]
         });
+        // theorems: `shared` is a list of kind names sharing one counter.
+        let theorems = closed_object(
+            THEOREM_KEYS,
+            &[(
+                "shared",
+                json!({ "type": "array", "items": { "type": "string" } }),
+            )],
+        );
         let overrides = [
             ("toc", boolean()),
             ("execute", execute),
@@ -85,6 +94,7 @@ mod generate {
             ("about", about),
             ("hero", hero),
             ("prose-lint", prose_lint),
+            ("theorems", theorems),
             // An extension owns `format:`'s sub-keys, so leave it fully permissive.
             ("format", json!({})),
         ];
