@@ -1609,8 +1609,10 @@ fn theme_dark_default_drives_data_theme_resolver() {
         "scoped dark CSS not shipped"
     );
     assert!(page.contains("--qmd-bg: #16181d"), "dark vars missing");
+    // The resolver threads the forced mode in as `var MODE = "dark"`; with no saved choice
+    // its DEFAULT() returns that mode (an unspecified `MODE` would instead follow the OS).
     assert!(
-        page.contains("var DEFAULT = \"dark\""),
+        page.contains("var MODE = \"dark\""),
         "resolver default should be dark"
     );
 

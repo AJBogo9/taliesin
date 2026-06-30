@@ -363,7 +363,7 @@ fn render_markdown_only(site: &qmd_fast_core::Site, page: &Page) -> PageDoc {
     let doc =
         qmd_fast_core::render_document_with_includes_scoped(&src, base, site.chapter_for(page));
     let mut blocks = doc.blocks;
-    let toc = site.page_toc(page, doc.toc_explicit);
+    let toc = site.page_toc(page, doc.toc_explicit, &blocks);
     // One shared finishing step (numbering, cross-refs + broken-ref warnings,
     // listing/about expansion, post decoration) so preview matches the build.
     let mut warnings = doc.warnings;
@@ -470,10 +470,20 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
         qmd_fast_core::favicon_link(&chrome.favicon)
     };
 
-    // A book lays out a left chapter sidebar | reading area (the live `#qmd-root`
-    // + TOC) | prev/next-chapter; a website keeps the navbar-on-top layout.
+    // A book lays out a sticky topbar + off-canvas chapter drawer over a centred reading
+    // column (the live `#qmd-root` + TOC), with prev/next-chapter under it; a website keeps
+    // the navbar-on-top layout. (Kept structurally identical to the build path in page.rs.)
     let (body_class, layout) = match chrome.book_sidebar.as_deref() {
         Some(sidebar) => {
+            // Keep this layout byte-aligned with the build path (`render/page.rs` book
+            // branch): a sticky topbar + off-canvas chapter drawer (`sidebar`), then the
+            // reading content centred in `.qmd-book-main`, widened to the content+TOC grid
+            // only when the chapter carries a TOC.
+            let main_cls = if toc_nav.is_empty() {
+                "qmd-book-main"
+            } else {
+                "qmd-book-main has-toc"
+            };
             let inner_cls = if toc_nav.is_empty() {
                 "qmd-book-inner"
             } else {
@@ -482,9 +492,9 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
             (
                 "qmd-book-body",
                 format!(
-                    "<div class=\"qmd-book\">\n{sidebar}\n<div class=\"qmd-book-main\">\n\
+                    "{sidebar}\n<div class=\"{main_cls}\">\n\
                      <div class=\"{inner_cls}\">\n<main id=\"qmd-root\">{body}</main>\n{toc_nav}\n</div>\n\
-                     {post_nav}</div>\n</div>\n{footer}",
+                     {post_nav}</div>\n{footer}",
                     post_nav = chrome.post_nav_html,
                     footer = chrome.footer_html,
                 ),
@@ -769,7 +779,7 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
     let toc = {
         let site = app.site.lock();
         site.finish_blocks(&page, &mut blocks, &mut warnings);
-        site.page_toc(&page, doc.toc_explicit)
+        site.page_toc(&page, doc.toc_explicit, &blocks)
     };
     let mut diags = page_diagnostics(&page.input, &base, exec);
     for w in &warnings {

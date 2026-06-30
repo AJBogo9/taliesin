@@ -79,9 +79,9 @@ A theme that is chosen at runtime risks a flash of the wrong one. `theme.rs` shi
 a small **pre-paint `<head>` script** that runs before the body renders. It:
 
 - sets `<html data-theme>` from the saved choice (`localStorage` key `qmd-theme`),
-  else the front-matter default, else dark (there is no OS-following `auto` mode: an
-  unspecified or `darkly`-style default resolves to dark, an explicit `light` theme to
-  light); and
+  else a front-matter-forced `light`/`dark`, else **follows the OS** `prefers-color-scheme`
+  (dark when the OS prefers dark, otherwise falling back to light); an unsaved "auto" page
+  also re-applies when the OS theme flips, except for a reader who explicitly toggled; and
 - sets the `color-scheme` CSS property and the page `background` **inline on
   `<html>`, in that same pre-paint script**, so the browser's canvas (and its native
   form controls, scrollbars, and `<select>` popups) are the theme colour from the very

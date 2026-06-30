@@ -161,6 +161,9 @@ use chapter::number_chapter_headings;
 pub(crate) use chapter::section_number; // also used by xref.rs (via `use super::*`)
 mod discovery;
 use discovery::{discover_decks, website_pages};
+/// Minimum number of `toc_entry_count` headings for a site-wide `toc: true` to render the
+/// sidebar TOC (the auto-gate in [`Site::page_toc`]). Below this a page reads as one column.
+const MIN_TOC_HEADINGS: usize = 3;
 mod links;
 pub use links::rewrite_qmd_links;
 use links::{
@@ -299,8 +302,8 @@ impl Site {
             )
         };
         SiteCtx {
-            // A book replaces the top navbar with a left chapter sidebar and uses
-            // chapter prev/next instead of the post "back to listing" link.
+            // A book replaces the top navbar with a slim topbar + off-canvas chapter
+            // drawer and uses chapter prev/next instead of the post "back to listing" link.
             navbar_html: if book {
                 String::new()
             } else {
@@ -351,7 +354,7 @@ impl Site {
         page: &Page,
         mut doc: render::RenderedDoc,
     ) -> (String, Vec<Warning>) {
-        doc.toc = self.page_toc(page, doc.toc_explicit);
+        doc.toc = self.page_toc(page, doc.toc_explicit, &doc.blocks);
         let mut warnings = std::mem::take(&mut doc.warnings);
         self.finish_blocks(page, &mut doc.blocks, &mut warnings);
         let ctx = self.page_chrome(page);
@@ -545,16 +548,21 @@ impl Site {
     }
 
     /// Whether a page shows a table of contents: its own front-matter `toc:` wins
-    /// (an explicit `toc: false` suppresses it even when the site enables TOCs);
-    /// otherwise the site-wide `format: html: toc:` applies, but only to article
-    /// pages — a listing or about page would otherwise get a TOC built from its card
-    /// titles. Used by both the static build and the live preview.
-    pub fn page_toc(&self, page: &Page, doc_toc: Option<bool>) -> bool {
+    /// (an explicit `toc: false` suppresses it even when the site enables TOCs, and an
+    /// explicit `toc: true` forces it on regardless of length); otherwise the site-wide
+    /// `toc:` applies, but only to article pages with enough headings to warrant it — the
+    /// page's rendered `blocks` are counted by `render::toc_entry_count`, and a page below
+    /// [`MIN_TOC_HEADINGS`] (or a listing / about / hero page) reads as a single column
+    /// instead of getting a near-empty TOC. Used by both the static build and live preview.
+    pub fn page_toc(&self, page: &Page, doc_toc: Option<bool>, blocks: &[Block]) -> bool {
         doc_toc.unwrap_or_else(|| {
             self.config.toc.unwrap_or(false)
                 && page.listings.is_empty()
                 && page.about.is_none()
                 && page.hero.is_none()
+                // Auto-gate (NN/g: show a TOC only on long, chunkable pages): a site-wide
+                // `toc: true` lands the sidebar TOC only when the page has enough sections.
+                && render::toc_entry_count(blocks) >= MIN_TOC_HEADINGS
         })
     }
 

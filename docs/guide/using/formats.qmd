@@ -203,10 +203,12 @@ Only you see this, in speaker view. Remember to slow down here.
 The two windows stay in sync over the local connection (it even works from a built
 `file://` deck), and either window can drive the navigation.
 
-**Reader mode** is automatic: on a narrow or portrait screen the fixed-aspect deck
-would letterbox badly, so it flattens to a scrollable, full-width column with every
-fragment shown. You can force it from the control menu, or by opening the deck with
-`?qmd=scroll`.
+**Reader mode** is the default when you open a deck as a link: it flattens to a
+scrollable, full-width reading column (set in the reading serif) with every fragment
+shown, since that is how a reader meets the deck on their own. It is also automatic on a
+narrow or portrait screen, where the fixed-aspect deck would letterbox badly. To
+**present** the stepped deck instead, open it with `?qmd=present` (or `?qmd=slides`); you
+can also switch modes from the control menu, and `?qmd=scroll` always forces reader mode.
 
 **Live code and `{js}`** work in a deck exactly as on a page: `{python}` / `{r}` cells
 execute against the warm kernel and native `{js}` cells stay interactive, right on the

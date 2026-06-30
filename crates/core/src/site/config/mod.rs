@@ -26,7 +26,7 @@ use serde::Deserialize;
 /// consumer reads.
 #[derive(Debug, Clone, Default)]
 pub struct SiteConfig {
-    /// `chapters:` present ⇒ a book (a left chapter sidebar instead of a navbar).
+    /// `chapters:` present ⇒ a book (a centred reading column + chapter drawer, no navbar).
     pub is_book: bool,
     /// `build` output dir (default `_site`, or `_book` for a book).
     pub output_dir: Option<String>,

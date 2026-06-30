@@ -15,10 +15,14 @@
     /* Theorem-environment accents, keyed by amsthm style; tints derived via color-mix. */
     --qmd-thm-plain: #6b5ea8; --qmd-thm-definition: #2a7a5e; --qmd-thm-remark: #7a7f87;
     color-scheme: light;
-    --qmd-font-body: 1.0625rem/1.7 ui-serif, Georgia, "Times New Roman", serif;
+    --qmd-font-body: 1.125rem/1.7 ui-serif, Georgia, "Times New Roman", serif;
     --qmd-font-head: ui-sans-serif, system-ui, sans-serif;
     --qmd-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
     --qmd-maxw: 46rem;
+    /* Chrome bars (site navbar, book topbar, footer) span a WIDER container than the
+       ~70ch reading measure, so they don't pool dead space on wide screens. Chrome width
+       and reading measure are deliberately separate levers. */
+    --qmd-chrome-maxw: 62rem;
     /* One keyboard-focus ring for every interactive control (links, buttons, tabs,
        reader-menu + deck controls). One token so a theme can retune the ring once and
        every control follows; the global rule below applies it via :focus-visible. */
@@ -46,7 +50,7 @@
     border: 1px solid var(--qmd-border); background: var(--qmd-bg); color: var(--qmd-fg);
     box-shadow: 0 2px 12px var(--qmd-edge-shadow); cursor: pointer;
     font: 600 1rem/1 var(--qmd-font-head); display: flex; align-items: center; justify-content: center; }
-  .qmd-rmenu-toggle:hover { border-color: var(--qmd-accent); color: var(--qmd-accent); }
+  .qmd-rmenu-toggle:hover { border-color: var(--qmd-accent); color: var(--qmd-link); }
   .qmd-rmenu-panel {
     position: fixed; right: 1rem; bottom: 4rem; z-index: 2147481600;
     width: min(18rem, 92vw); max-height: 70vh; overflow: auto; padding: .4rem 1rem 1rem;
@@ -179,7 +183,7 @@
   .qmd-hlx-actions { border-top: 1px solid var(--qmd-border); padding-top: .7rem; }
   .qmd-hlx-export { border: 1px solid var(--qmd-border); background: transparent; color: var(--qmd-fg);
     cursor: pointer; font: inherit; font-size: .8rem; border-radius: 7px; padding: .35rem .7rem; }
-  .qmd-hlx-export:hover { border-color: var(--qmd-accent); color: var(--qmd-accent); }
+  .qmd-hlx-export:hover { border-color: var(--qmd-accent); color: var(--qmd-link); }
   .qmd-hlx-out { display: block; width: 100%; margin-top: .6rem; min-height: 6rem;
     font: .78rem/1.4 var(--qmd-font-mono); color: var(--qmd-fg); background: var(--qmd-code-bg);
     border: 1px solid var(--qmd-border); border-radius: 7px; padding: .5rem; resize: vertical; }
@@ -191,12 +195,12 @@
     width: 1.7rem; height: 1.7rem; display: flex; align-items: center; justify-content: center;
     padding: 0; border: 0; border-radius: 6px; background: transparent; cursor: pointer;
     color: var(--qmd-muted); font-size: 1.05rem; line-height: 1; }
-  .qmd-bm-toggle:hover { color: var(--qmd-accent); background: var(--qmd-code-bg); }
-  .qmd-bm-toggle[aria-pressed="true"] { color: var(--qmd-accent); }
+  .qmd-bm-toggle:hover { color: var(--qmd-link); background: var(--qmd-code-bg); }
+  .qmd-bm-toggle[aria-pressed="true"] { color: var(--qmd-link); }
   .qmd-bm-toggle[hidden] { display: none; }
   .qmd-bookmarked { position: relative; }
   .qmd-bookmarked::before { content: "\2605"; position: absolute; left: -1.15em; top: .05em;
-    color: var(--qmd-accent); font-size: .72em; line-height: inherit; pointer-events: none; }
+    color: var(--qmd-link); font-size: .72em; line-height: inherit; pointer-events: none; }
   @media print { .qmd-bm-toggle { display: none !important; } }
   body { max-width: var(--qmd-maxw); margin: 2rem auto; padding: 0 1rem;
          font: var(--qmd-font-body); color: var(--qmd-fg); background: var(--qmd-bg);
@@ -273,7 +277,7 @@
   /* button-style links (Pandoc `[text](url){.btn .btn-outline-* .btn-sm}`) */
   a.btn { display: inline-block; font: 500 .9rem var(--qmd-font-head); text-decoration: none;
     padding: .4rem .95rem; border-radius: 7px; border: 1px solid var(--qmd-accent);
-    color: var(--qmd-accent); transition: background .12s ease, color .12s ease; }
+    color: var(--qmd-link); transition: background .12s ease, color .12s ease; }
   a.btn:hover { background: var(--qmd-accent-fill); color: var(--qmd-on-accent); }
   a.btn-outline-secondary { border-color: var(--qmd-border); color: var(--qmd-muted); }
   a.btn-outline-secondary:hover { background: var(--qmd-fg); color: var(--qmd-bg); border-color: var(--qmd-fg); }
@@ -298,7 +302,7 @@
     padding: .4rem .85rem; border-radius: 7px; border: 1px solid var(--qmd-border);
     background: transparent; color: var(--qmd-muted); text-decoration: none;
     transition: border-color .12s ease, color .12s ease; }
-  .qmd-embed-btn:hover { border-color: var(--qmd-accent); color: var(--qmd-accent); }
+  .qmd-embed-btn:hover { border-color: var(--qmd-accent); color: var(--qmd-link); }
   /* `{{< video >}}` — a framed silent screencast (autoplay/muted/loop) + optional caption. */
   .qmd-video { margin: 1.6rem 0; }
   .qmd-video video { display: block; width: 100%; height: auto; border: 1px solid var(--qmd-border);
@@ -323,7 +327,7 @@
   .hero p, .hero .hero-lead { font-size: clamp(1.05rem, 2.4vw, 1.28rem); color: var(--qmd-muted);
     max-width: 36rem; margin: 0 auto 1.5rem; line-height: 1.5; }
   .hero-eyebrow { font: 600 .8rem/1 var(--qmd-font-mono); letter-spacing: .12em;
-    text-transform: uppercase; color: var(--qmd-accent); margin: 0 0 1rem; }
+    text-transform: uppercase; color: var(--qmd-link); margin: 0 0 1rem; }
   .hero-actions { display: flex; flex-wrap: wrap; gap: .6rem; justify-content: center; margin-top: 1.5rem; }
   .hero a.btn { margin: .35rem .3rem 0; }
   .hero-actions a.btn { margin: 0; }
@@ -345,7 +349,7 @@
   figcaption:hover > .qmd-anchor, caption:hover > .qmd-anchor,
   .qmd-theorem-head:hover > .qmd-anchor,
   .qmd-anchor:focus-visible { opacity: 1; }
-  .qmd-anchor:hover, .qmd-anchor.qmd-anchor-copied { color: var(--qmd-accent); opacity: 1; }
+  .qmd-anchor:hover, .qmd-anchor.qmd-anchor-copied { color: var(--qmd-link); opacity: 1; }
   @media print { .qmd-anchor { display: none; } }
   h1 { font-size: 2rem; line-height: 1.15; letter-spacing: -.011em; margin: 0 0 .6rem; }
   h2 { font-size: 1.62rem; line-height: 1.2; letter-spacing: -.011em; margin: 2.2rem 0 .7rem; }
@@ -561,7 +565,7 @@
     padding: .45rem .9rem; margin-bottom: -1px; font: 600 .9rem var(--qmd-font-head);
     color: var(--qmd-muted); border-bottom: 2px solid transparent; }
   .tabset-tab:hover { color: var(--qmd-fg); }
-  .tabset-tab[aria-selected="true"] { color: var(--qmd-accent); border-bottom-color: var(--qmd-accent); }
+  .tabset-tab[aria-selected="true"] { color: var(--qmd-link); border-bottom-color: var(--qmd-accent); }
   /* The tab sits on the tablist's bottom border, so the shared ring is inset (-2px). */
   .tabset-tab:focus-visible { outline: var(--qmd-focus); outline-offset: -2px; border-radius: 3px; }
   .tabset-panel[hidden] { display: none; }
@@ -674,7 +678,7 @@
      a touch. Distinct from .qmd-toc-active (the current section). Reader-side: toc-spy.js
      stores the read set in the reader's own localStorage; the source is never touched. */
   #TOC a.qmd-toc-read { opacity: .62; }
-  #TOC a.qmd-toc-read::after { content: "\2713"; margin-left: .45ch; color: var(--qmd-accent);
+  #TOC a.qmd-toc-read::after { content: "\2713"; margin-left: .45ch; color: var(--qmd-link);
     font-size: .82em; opacity: .85; }
   #TOC a.qmd-toc-read.qmd-toc-active { opacity: 1; } /* current + finished: full strength */
   /* mobile pull-up-sheet chrome: hidden on desktop, revealed in the sheet media query */

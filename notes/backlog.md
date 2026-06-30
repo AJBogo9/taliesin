@@ -194,42 +194,25 @@ scroll mode). The deltas below are targeted, not a rewrite.
 - System-font-only (no webfont) is right for offline + no reflow. If a serif webfont is ever bundled,
   ship REAL bold/italic faces, never browser-synthesized (Tufte rule).
 
-#### The one paradigm rethink (P1, highest payoff)
-- [ ] **Book: collapse the three-pane into one measured reading column.** Today a book is a left chapter
-  rail (15rem) + content + right TOC (13rem) at max-width 80rem (site.css `.qmd-book*`, page.rs book
-  branch, site/mod.rs `is_book` chrome). On short chapters the two nav rails dwarf a sliver of prose
-  (lopsided, content left-of-center). Target: center the SAME ~70ch column the blog post uses; move the
-  chapter list into a drawer/overlay (promote the mobile `☰`) or a slim collapsed-by-default rail; keep
-  prev/next at the foot + scroll + sidenotes. Lean on semantic-zoom nav (collapsible sections, heading
-  scale, thin reading-progress) so structure is the map (Gwern; NN/g "show TOC only for long, chunkable
-  pages"). Pin a corpus book target in the same change.
+**Shipped (branch `reading-first-redesign`, 2026-06-30; all 7 P1+P2 items, corpus-pinned +
+browser-verified light/dark, cargo+clippy+fmt green):**
+- **Book: one centred ~70ch reading column.** The three-pane rail|content|rail is gone — a slim
+  sticky `.qmd-book-topbar` (Chapters launcher · brand · search · theme toggle) over a centred
+  column, with the chapter list in a focus-managed off-canvas drawer (`#qmd-book-drawer`,
+  `BOOK_DRAWER_SCRIPT`). Build (`page.rs`) + preview (`serve_site/mod.rs`) kept byte-aligned.
+- **Theme default -> follow the OS** `prefers-color-scheme`, fall back light (`theme.rs`: `var MODE`
+  + `DEFAULT()`; OS-change re-applies unless a reader explicitly toggled). Pinned + browser-verified.
+- **Accent WCAG-AA:** foreground `color: var(--qmd-accent)` -> `var(--qmd-link)` across base.css +
+  site.css (decorative border/outline/accent-color kept `--qmd-accent`).
+- **Body 17 -> 18px** (`--qmd-font-body`).
+- **Website TOC auto-gate by heading count:** `Site::page_toc` gates a site-wide `toc:` on
+  `render::toc_entry_count(blocks) >= MIN_TOC_HEADINGS` (3); explicit per-page `toc:` still forces.
+  Pinned by `site_auto_gates_on_this_page_toc_by_heading_count`.
+- **Deck scroll-view default when opened as a link** (standalone, non-embedded); `?qmd=present` /
+  `?qmd=slides` opts into the stepped deck; embedded decks unchanged; scroll-mode reading text in serif.
+- **Chrome wider than the reading column:** new `--qmd-chrome-maxw` (62rem) on navbar + footer + book topbar.
 
-#### Cross-cutting defaults (P1)
-- [ ] **Theme default -> follow the OS (`prefers-color-scheme`), fall back light.** Today it is hardcoded
-  dark with explicitly NO OS-following (theme.rs:65-81, "Two fixed modes only ... No OS-following auto").
-  Research: never ship dark as the SOLE default (~47% astigmatism halation; BOIA), and a reading-first /
-  iA-Bear tool should respect the reader's system choice. Light toggle + sepia already exist, so this is a
-  resolution-order change, not new UI. (Softer alternative if auto-follow is unwanted: at minimum keep the
-  one-click light option first-class, which already holds.)
-- [ ] **Fix accent contrast (accessibility bug).** `--qmd-accent` (#4c8dff / #6ea8ff) fails WCAG-AA on
-  white per its own base.css comment; use `--qmd-accent-fill` for text/links or darken `--qmd-link` to
-  clear 4.5:1 (WCAG 2.2 / Section508; base.css + dark.css).
-- [ ] **Nudge body 17px -> 18px.** Just under the 18-20px reading-first optimum (Section508; Medium runs
-  18-21px). One-line `--qmd-font-body` bump (base.css:18); the reader-scale menu already lets readers opt out.
-
-#### Website + deck (P2)
-- [ ] **Website: auto-gate the "on this page" TOC by heading count** instead of manual `toc: true`. NN/g:
-  show only on long, chunkable pages; suppress on short/sequential. Gate rendering on a heading-count
-  heuristic (site/mod.rs:552 suppression path; page.rs:281/337).
-- [ ] **Deck: make scroll-view the reader-facing default when opened as a link; keep step mode for
-  presenting.** Scroll mode exists but is keyed off viewport width / `?qmd=scroll` (deck.js:1562-1565).
-  reveal.js 5 ships scroll-view as the read-on-your-own default because step decks are for presenting
-  (reveal docs). Also unify scroll-mode font with the reading serif (currently sans).
-- [ ] **Website navbar spans too narrow.** Centered to the 46rem column leaves dead zones on wide screens
-  (site.css `.qmd-nav-inner` max-width `var(--qmd-maxw)`). Let the bar use a wider container while the
-  READING column stays ~70ch (chrome width and reading measure are separate decisions).
-
-#### Identity polish (P3, design judgment; the "templated" diagnosis itself is UNVERIFIED, see caveat)
+#### Identity polish (P3, design judgment; the "templated" diagnosis itself is UNVERIFIED, see caveat) — STILL OPEN, deferred
 - [ ] **Hero as typeset reading, not a marketing slab.** The eyebrow + big headline + lead + two-button
   hero is the generic SaaS shape (site/mod.rs hero block); for a typography tool the most honest hero is
   beautifully-set prose that shows the real type system.
@@ -243,8 +226,8 @@ scroll mode). The deltas below are targeted, not a rewrite.
 Stripe/Linear/Mintlify/Docusaurus/GitBook/Vercel docs concretely do in 2025-26, (b) the "Bootstrap/Quarto
 looks dated/templated" homogenization thesis, or (c) command-palette-as-nav-replacement and Gamma/Pitch
 deck specifics. Treat the P3 items and any competitor framing as judgment, not evidence; re-check
-competitor layouts live before banking a default on "X does Y." Suggested order: book relayout -> OS theme
-default -> website TOC auto-gate -> accent/size fixes -> deck scroll default -> identity polish.
+competitor layouts live before banking a default on "X does Y." Only the P3 identity-polish items remain
+(the P1+P2 set shipped, see above); treat them as judgment, and they overlap the deferred marketing-site work.
 
 ### Deep audit findings (2026-06-30; 16-dimension, 33-agent sweep, adversarially verified)
 Method: 16 harsh-critic dimension agents (render / diff / deck / exec / dev-server / site / cite-math /

@@ -129,12 +129,12 @@ One engine, several presentations, selected by a `?qmd=` query param or a class:
 
 | Mode | Trigger | What it does |
 |------|---------|--------------|
-| normal | (default) | the interactive deck |
+| normal | `?qmd=present` / `?qmd=slides`, or embedded | the interactive (stepped) deck — the presenting surface |
 | speaker | `S` → popup at `?qmd=speaker` | current + next slide previews, notes, timer |
 | embed | `?qmd=embed` | passive preview (no key/scroll capture); used by speaker previews and `{{< embed >}}` |
 | overview | `Esc` / `O` | zoomed grid of all slides |
 | print | `Ctrl/Cmd-P` / `?qmd=print` | flattened, one slide per page |
-| scroll | narrow screen / `?qmd=scroll` | a single scrollable reading column |
+| scroll | **standalone open (default)**, narrow screen, or `?qmd=scroll` | a single scrollable reading column |
 
 Speaker view and the audience window stay in sync over `postMessage` (it works on
 `file://`, unlike `BroadcastChannel`). When the deck flattens into a reading column or

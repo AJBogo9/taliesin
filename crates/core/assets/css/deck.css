@@ -545,6 +545,17 @@ html.qmd-scroll .qmd-deck .qmd-slides {
   position: static; transform: none !important; left: auto; top: auto;
   width: auto; height: auto; max-width: 46rem; margin: 0 auto; padding: 0 1rem 3rem;
 }
+/* In reader mode the running text reads like prose, so set it in the project
+   reading serif (the same stack as base.css `--qmd-font-body`; a standalone deck
+   page bundles only deck.css, so base.css's custom property isn't defined here —
+   the family is written out literally). Headings/title stay on the deck sans for
+   contrast; only the body copy (paragraphs, lists, blockquotes) becomes serif. */
+html.qmd-scroll .qmd-deck .qmd-slides p,
+html.qmd-scroll .qmd-deck .qmd-slides li,
+html.qmd-scroll .qmd-deck .qmd-slides blockquote {
+  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  line-height: 1.7;
+}
 html.qmd-scroll .qmd-deck .qmd-slides > section,
 html.qmd-scroll .qmd-deck .qmd-slides > section > section {
   position: relative !important; display: block !important;

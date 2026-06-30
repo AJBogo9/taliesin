@@ -656,6 +656,39 @@ fn bare_build_is_script_free_css_themed_and_drops_js() {
 }
 
 #[test]
+fn site_auto_gates_on_this_page_toc_by_heading_count() {
+    use qmd_fast_core::Site;
+    // tech-blog sets a site-wide `toc: true`. The "on this page" TOC is auto-gated by
+    // heading count (NN/g: only long, chunkable pages earn it), so a substantial post
+    // keeps the sidebar TOC while a short article reads as one column — with no per-page
+    // `toc:` toggling.
+    let site = Site::discover(&corpus_dir().join("tech-blog"));
+
+    // A post with 4 section headings (Theory / Key properties / Code demo / Summary; the
+    // `#`-prefixed lines inside the {python} cell are code comments, not headings) -> the
+    // TOC nav + the has-toc two-column layout (`.qmd-site-main has-toc` on a site page).
+    let post = site
+        .render_page("posts/KL-divergence/index.qmd")
+        .expect("KL-divergence post renders");
+    // `id="TOC"` is the unambiguous signal: the rendered TOC <nav>. (`has-toc` is unusable
+    // here — the bundled CSS ships `.has-toc` selectors, so it is always present.)
+    assert!(
+        post.contains("id=\"TOC\""),
+        "a long, chunkable post should keep the auto-gated sidebar TOC"
+    );
+
+    // A 2-heading project article (below MIN_TOC_HEADINGS, no hero/listing, no explicit
+    // `toc:`) -> a single reading column, no near-empty TOC, despite the site enabling TOCs.
+    let short = site
+        .render_page("projects/iphone-premium-analysis/index.qmd")
+        .expect("project article renders");
+    assert!(
+        !short.contains("id=\"TOC\""),
+        "a short article must not get a near-empty auto-gated TOC"
+    );
+}
+
+#[test]
 fn book_discovers_chapters_with_parts_numbering_and_chrome() {
     use qmd_fast_core::Site;
     let root = corpus_dir().join("demo-book");
@@ -695,12 +728,25 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
         "the `Core` part header should be in the sidebar"
     );
 
-    // A chapter renders with the book chrome: left sidebar (active chapter),
+    // A chapter renders with the book chrome: the chapter-list nav (active chapter),
     // section numbers on its headings, and prev/next-chapter navigation.
     let methods = site.render_page("methods.qmd").expect("methods renders");
     assert!(
         methods.contains("<nav class=\"qmd-book-sidebar\""),
-        "book sidebar missing"
+        "book chapter-list nav missing"
+    );
+    // The book is the single-column relayout: a sticky topbar with a "Chapters" drawer
+    // launcher + an off-canvas drawer holding the list — NOT the old three-pane `.qmd-book`
+    // flex wrapper (rail | content | rail). A regression to that wrapper must fail here.
+    assert!(
+        methods.contains("class=\"qmd-book-topbar\"")
+            && methods.contains("id=\"qmd-book-drawer-btn\"")
+            && methods.contains("id=\"qmd-book-drawer\""),
+        "book topbar + chapter drawer chrome missing"
+    );
+    assert!(
+        !methods.contains("class=\"qmd-book\""),
+        "the removed three-pane `.qmd-book` flex wrapper must not return"
     );
     // Every structural nav landmark carries a distinguishing accessible name
     // (a screen reader can tell the chapter list from the pager).

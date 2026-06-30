@@ -29,9 +29,10 @@ pub struct SiteCtx {
     pub navbar_html: String,
     pub footer_html: String,
     pub post_nav_html: String,
-    /// A book's left chapter sidebar (Some only for `project: type: book`); when
-    /// set, the page uses the book layout (sidebar | content | TOC) instead of the
-    /// website layout (navbar on top).
+    /// A book's chapter chrome — the sticky `.qmd-book-topbar` + the off-canvas chapter
+    /// drawer (Some only for a book project); when set, the page uses the centred book
+    /// reading column instead of the website layout (navbar on top). (Field name kept for
+    /// stability; it no longer holds a left sidebar.)
     pub book_sidebar: Option<String>,
     /// `page-layout: full` — widen the content column (for listing indexes).
     pub wide: bool,
@@ -312,19 +313,27 @@ fn html_page_inner(
     // chrome lines up with the reading column. The `has-toc` grid moves onto the
     // wrapper, leaving the body free to be the flex shell.
     let body_content = match site {
-        // Book: a left chapter sidebar beside the reading area (content + TOC),
-        // with prev/next-chapter navigation under it.
+        // Book: a centred reading column (content + optional TOC) under a sticky topbar;
+        // the chapter list is an off-canvas drawer, with prev/next-chapter under the column.
         Some(s) if s.book_sidebar.is_some() => {
             body_class = " class=\"qmd-book-body\"".to_string();
+            let main_cls = if toc.is_empty() {
+                "qmd-book-main"
+            } else {
+                "qmd-book-main has-toc"
+            };
             let inner_cls = if toc.is_empty() {
                 "qmd-book-inner"
             } else {
                 "qmd-book-inner has-toc"
             };
+            // `chrome` = the sticky topbar + the off-canvas chapter drawer; the reading
+            // content centres in `.qmd-book-main` (the same ~70ch measure as a blog post),
+            // widening to the content+TOC grid only when the chapter carries a TOC.
             format!(
-                "<div class=\"qmd-book\">\n{sidebar}\n<div class=\"qmd-book-main\">\n\
-                 <div class=\"{inner_cls}\">\n{content}</div>\n{post_nav}</div>\n</div>\n{footer}\n",
-                sidebar = s.book_sidebar.as_deref().unwrap_or(""),
+                "{chrome}\n<div class=\"{main_cls}\">\n\
+                 <div class=\"{inner_cls}\">\n{content}</div>\n{post_nav}</div>\n{footer}\n",
+                chrome = s.book_sidebar.as_deref().unwrap_or(""),
                 post_nav = s.post_nav_html,
                 footer = s.footer_html,
             )

@@ -1,7 +1,8 @@
 # site/ — multi-page projects (websites + books)
 
-A directory with a `_site.yml` is a `Site`. `chapters:` present ⇒ a **book** (left
-chapter sidebar); otherwise a **website** (top navbar).
+A directory with a `_site.yml` is a `Site`. `chapters:` present ⇒ a **book** (one centred
+reading column; the chapter list is an off-canvas drawer summoned from a slim sticky
+`.qmd-book-topbar`); otherwise a **website** (top navbar).
 
 Module map:
 - `mod.rs`        the `Site` type + its `impl` (discover, page render, listings, `about:`/`hero:` blocks)

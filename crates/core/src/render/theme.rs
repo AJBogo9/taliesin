@@ -49,7 +49,8 @@ pub(super) fn resolve_theme(
 }
 /// The default theme mode for the resolver script: an explicit `dark`/`light`
 /// from front matter forces that mode; anything else returns `"auto"`, which the
-/// pre-paint head script resolves to **dark** (there is no OS-following mode — see
+/// pre-paint head script resolves by following the OS `prefers-color-scheme`,
+/// falling back to **light** when the OS expresses no dark preference (see
 /// [`theme_head`]). Custom CSS themes don't force a built-in mode.
 pub(super) fn theme_default_mode(theme: Option<&str>) -> &'static str {
     match theme {
@@ -66,13 +67,31 @@ pub fn theme_head(default_mode: &str) -> String {
     format!(
         r#"<script>
 (function(){{
-  // Two fixed modes only — light or dark. No OS-following "auto": a `darkly`-style
-  // (or unspecified) default resolves to dark; an explicit light theme to light.
-  var DEFAULT = "{default_mode}" === "light" ? "light" : "dark";
+  // Resolution order for the active mode: a saved reader choice (qmd-theme) always
+  // wins; else a front-matter-forced "light"/"dark" mode; else (an unspecified or
+  // `darkly`-style default, i.e. "auto") follow the OS `prefers-color-scheme`,
+  // falling back to light when the OS expresses no dark preference. DEFAULT is a
+  // function (not a constant) so the auto fallback re-reads the OS on every call —
+  // the toggle, video sync, and the OS-change listener all see the live value.
+  var MODE = "{default_mode}";
+  function DEFAULT(){{
+    if (MODE === "light" || MODE === "dark") return MODE;
+    try {{
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) return "dark";
+    }} catch(e) {{}}
+    return "light";
+  }}
   function pref(){{
     var v = null;
     try {{ v = localStorage.getItem("qmd-theme"); }} catch(e) {{}}
-    return (v === "light" || v === "dark" || v === "sepia") ? v : DEFAULT;
+    return (v === "light" || v === "dark" || v === "sepia") ? v : DEFAULT();
+  }}
+  // Whether the active mode is currently coming from a saved choice (so an OS flip
+  // must not override a reader who explicitly toggled).
+  function hasSaved(){{
+    var v = null;
+    try {{ v = localStorage.getItem("qmd-theme"); }} catch(e) {{}}
+    return v === "light" || v === "dark" || v === "sepia";
   }}
   var BG = {{ dark: '#16181d', sepia: '#f4ecd8', light: '#ffffff' }};
   function apply(){{
@@ -106,6 +125,18 @@ pub fn theme_head(default_mode: &str) -> String {
   }}
   apply();
   applyReader();
+  // Keep an unsaved "auto" page reactive to OS theme flips: re-apply only when the
+  // mode is auto AND no saved choice exists, so a reader who explicitly toggled is
+  // never overridden by the OS. (Older Safari exposes addListener instead of
+  // addEventListener; guard for it the way the rest of the code guards matchMedia.)
+  try {{
+    if (MODE !== "light" && MODE !== "dark" && window.matchMedia) {{
+      var osDark = window.matchMedia('(prefers-color-scheme: dark)');
+      var onOsChange = function(){{ if (!hasSaved()) apply(); }};
+      if (osDark.addEventListener) osDark.addEventListener('change', onOsChange);
+      else if (osDark.addListener) osDark.addListener(onOsChange);
+    }}
+  }} catch(e) {{}}
   window.qmdSetTheme = function(p){{ try {{ localStorage.setItem("qmd-theme", p); }} catch(e) {{}} apply(); }};
   window.qmdGetThemePref = function(){{ return pref(); }};
   // key is "scale" | "width" | "leading" | "letter" | "word"; value null clears it. Mirrors qmdSetTheme.

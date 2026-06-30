@@ -1557,10 +1557,24 @@
       }
       window.addEventListener('beforeprint', enterPrint); // Cmd/Ctrl+P -> one slide per page
       window.addEventListener('afterprint', exitPrint);
-      // Scroll/reader mode: explicit ?qmd=scroll, or auto on a narrow/portrait screen
-      // (the fixed-aspect deck letterboxes badly there); re-evaluated on resize/rotate.
+      // Scroll/reader mode vs. step (presentation) mode.
+      //   - A deck opened directly as its own page (standalone, NOT embedded in a
+      //     host page) defaults to scroll/reader view: that's how a reader meets it
+      //     on their own. The stepped deck is the *presenting* surface; reach it with
+      //     the ?qmd=present (or ?qmd=slides) opt-in.
+      //   - An embedded deck ({{< embed deck.qmd >}}, detected via the iframe flag
+      //     window.qmdDeckEmbedded) is NOT "opened as a link": it keeps the old
+      //     contract — step mode unless ?qmd=scroll or a narrow viewport.
+      //   - ?qmd=scroll always forces scroll; a narrow/portrait screen always uses
+      //     scroll (the fixed-aspect deck letterboxes badly there).
+      //   Re-evaluated on resize/rotate via the media-query change listener.
       var narrow = window.matchMedia('(max-width: 600px)');
-      var syncScroll = function () { (qmd === 'scroll' || narrow.matches) ? enterScroll() : exitScroll(); };
+      var present = (qmd === 'present' || qmd === 'slides'); // step-mode opt-in
+      var standalone = !window.qmdDeckEmbedded;              // a directly-opened deck page
+      var syncScroll = function () {
+        var scroll = qmd === 'scroll' || narrow.matches || (standalone && !present);
+        scroll ? enterScroll() : exitScroll();
+      };
       if (narrow.addEventListener) narrow.addEventListener('change', syncScroll);
       syncScroll();
     }

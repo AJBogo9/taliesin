@@ -17,14 +17,15 @@ const SEARCH_ICON: &str = "<svg width='15' height='15' viewBox='0 0 16 16' fill=
 /// to re-run when the live preview re-injects the navbar on hot reload.
 const NAV_TOGGLE_SCRIPT: &str = "<script>(function(){var b=document.getElementById('qmd-nav-toggle'),m=document.getElementById('qmd-nav-links');if(!b||!m||b.dataset.navWired)return;b.dataset.navWired='1';function set(o){b.setAttribute('aria-expanded',o?'true':'false');m.classList.toggle('qmd-nav-open',o);}b.addEventListener('click',function(){set(b.getAttribute('aria-expanded')!=='true');});m.addEventListener('click',function(e){if(e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&b.getAttribute('aria-expanded')==='true'){set(false);b.focus();}});})();</script>";
 
-/// Same shape as [`NAV_TOGGLE_SCRIPT`], for the BOOK chapter sidebar: at the laptop-
-/// portrait band (<=60rem) the sidebar would otherwise stack the whole chapter list
-/// above the content (pushing it far down). The CSS collapses the list to a "Chapters"
-/// toggle there; this wires the button (toggle `aria-expanded` + a `.qmd-book-toc-open`
-/// class the CSS reveals on), closing on Escape or after a chapter link is followed.
-/// Above 60rem the CSS hides the button and the list is always shown, so the desktop
-/// sidebar is unchanged. `data-toc-wired` keeps it idempotent across hot-reload re-injects.
-const BOOK_TOC_TOGGLE_SCRIPT: &str = "<script>(function(){var b=document.getElementById('qmd-book-toc-toggle'),m=document.getElementById('qmd-book-chapters');if(!b||!m||b.dataset.tocWired)return;b.dataset.tocWired='1';function set(o){b.setAttribute('aria-expanded',o?'true':'false');m.classList.toggle('qmd-book-toc-open',o);}b.addEventListener('click',function(){set(b.getAttribute('aria-expanded')!=='true');});m.addEventListener('click',function(e){if(e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&b.getAttribute('aria-expanded')==='true'){set(false);b.focus();}});})();</script>";
+/// Same shape as [`NAV_TOGGLE_SCRIPT`], for the BOOK chapter drawer. A book is laid out
+/// as one centred reading column (the same measure as a blog post); the chapter list is
+/// not a permanent rail but an off-canvas drawer summoned from the topbar's "Chapters"
+/// button at every width. This wires that button: toggle `aria-expanded` + reveal the
+/// `#qmd-book-drawer` overlay (which starts `hidden`), move focus into it on open, and
+/// close it on Escape, on a backdrop / close-button click (`[data-qmd-drawer-close]`), or
+/// after a chapter link is followed (restoring focus to the opener). `data-drawer-wired`
+/// keeps it idempotent across hot-reload re-injects.
+const BOOK_DRAWER_SCRIPT: &str = "<script>(function(){var b=document.getElementById('qmd-book-drawer-btn'),d=document.getElementById('qmd-book-drawer');if(!b||!d||b.dataset.drawerWired)return;b.dataset.drawerWired='1';function set(o){d.hidden=!o;b.setAttribute('aria-expanded',o?'true':'false');if(o){var f=d.querySelector('.qmd-book-chapter')||d.querySelector('a,button');if(f)f.focus();}else{b.focus();}}b.addEventListener('click',function(){set(d.hidden);});d.addEventListener('click',function(e){if(e.target.closest('[data-qmd-drawer-close]')||e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!d.hidden)set(false);});})();</script>";
 
 /// A search control that opens the Cmd-K palette. It carries `data-qmd-search`,
 /// which `web-client/search.js` wires (by click delegation) to open the same
@@ -200,19 +201,57 @@ impl Site {
 }
 
 impl Site {
-    /// The book's left sidebar: the title, then the ordered chapters (part
-    /// headers interspersed), each prefixed with its number, the current chapter
-    /// highlighted.
+    /// The book chrome: a slim sticky topbar (a "Chapters" drawer launcher, the title
+    /// linking home, a search button, and the light/dark toggle) followed by the chapter
+    /// list inside an off-canvas drawer. A book reads as one centred column, so the chapter
+    /// list is summoned, not a permanent rail. (Returned together from one method because
+    /// the page assembler threads a single `book_sidebar` string; the topbar is `.qmd-book-
+    /// topbar`, never the website `.qmd-site-nav`.)
     pub(super) fn sidebar_html(&self, current: &Page, depth: usize) -> String {
         let Some(book) = &self.book else {
             return String::new();
         };
         let up = "../".repeat(depth);
-        let mut s = String::from(
+        let mut s = String::new();
+        // --- slim sticky topbar: Chapters launcher · brand · search · theme toggle ---
+        s.push_str(
+            "<header class=\"qmd-book-topbar\" data-qmd-src=\"_site.yml\">\
+             <div class=\"qmd-book-topbar-inner\">",
+        );
+        s.push_str(
+            "<button type=\"button\" class=\"qmd-book-drawer-btn\" id=\"qmd-book-drawer-btn\" \
+             aria-label=\"Chapters\" aria-haspopup=\"dialog\" aria-expanded=\"false\" \
+             aria-controls=\"qmd-book-drawer\">\
+             <svg width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='currentColor' \
+             stroke-width='1.6' stroke-linecap='round' aria-hidden='true'>\
+             <path d='M2 4h12M2 8h12M2 12h12'/></svg><span>Chapters</span></button>",
+        );
+        if let Some(t) = &book.title {
+            s.push_str(&format!(
+                "<a class=\"qmd-book-brand\" href=\"{up}index.html\">{}</a>",
+                esc(t)
+            ));
+        }
+        s.push_str("<span class=\"qmd-nav-spacer\"></span>");
+        // A search button (opens the same Cmd-K palette) + the light/dark toggle. A book
+        // has no website navbar, so the toggle (wired by theme_head) lives here.
+        s.push_str(&search_button(false));
+        s.push_str(
+            "<button class=\"qmd-theme-toggle\" type=\"button\" data-qmd-theme-toggle \
+             aria-label=\"Toggle light/dark theme\"></button>",
+        );
+        s.push_str("</div></header>");
+        // --- the chapter drawer: an off-canvas overlay summoned from the topbar ---
+        s.push_str(
+            "<div class=\"qmd-book-drawer\" id=\"qmd-book-drawer\" hidden>\
+             <div class=\"qmd-book-drawer-backdrop\" data-qmd-drawer-close></div>\
+             <div class=\"qmd-book-drawer-panel\">",
+        );
+        // The `qmd-book-sidebar` nav (kept for the chapter list + its aria-label) now lives
+        // inside the drawer panel rather than a left rail.
+        s.push_str(
             "<nav class=\"qmd-book-sidebar\" data-qmd-src=\"_site.yml\" aria-label=\"Chapters\">",
         );
-        // Sidebar header: book title (links home) + a light/dark toggle. A book has
-        // no top navbar, so without this the toggle (wired by theme_head) has no home.
         s.push_str("<div class=\"qmd-book-sidebar-head\">");
         if let Some(t) = &book.title {
             s.push_str(&format!(
@@ -221,19 +260,10 @@ impl Site {
             ));
         }
         s.push_str(
-            "<button class=\"qmd-theme-toggle\" type=\"button\" data-qmd-theme-toggle \
-             aria-label=\"Toggle light/dark theme\"></button>",
+            "<button type=\"button\" class=\"qmd-book-drawer-close\" data-qmd-drawer-close \
+             aria-label=\"Close chapters\">\u{2715}</button>",
         );
         s.push_str("</div>");
-        // A visible search box under the title (opens the same Cmd-K palette).
-        s.push_str(&search_button(true));
-        // A real, focusable toggle for the chapter list. Hidden above 60rem (the list is
-        // always shown); at the laptop-portrait band it collapses the list to this button
-        // so the chapters don't stack above the content. `aria-controls` points at the list.
-        s.push_str(
-            "<button type=\"button\" class=\"qmd-book-toc-toggle\" id=\"qmd-book-toc-toggle\" \
-             aria-label=\"Chapters\" aria-expanded=\"false\" aria-controls=\"qmd-book-chapters\">Chapters</button>",
-        );
         s.push_str("<ul class=\"qmd-book-chapters\" id=\"qmd-book-chapters\">");
         for e in &book.entries {
             if let Some(part) = &e.part {
@@ -258,9 +288,9 @@ impl Site {
             ));
         }
         s.push_str("</ul>");
-        // Wire the chapter-list toggle (keyboard + SR operable; idempotent on hot reload).
-        s.push_str(BOOK_TOC_TOGGLE_SCRIPT);
-        s.push_str("</nav>");
+        s.push_str("</nav></div></div>");
+        // Wire the Chapters drawer (keyboard + SR operable; idempotent on hot reload).
+        s.push_str(BOOK_DRAWER_SCRIPT);
         s
     }
 

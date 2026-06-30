@@ -118,12 +118,13 @@ autocomplete on-ramp.
 ## Books vs websites
 
 The same machinery produces both, branched on one key: **`chapters:` present ⇒ a
-book** (a left chapter sidebar, numbered chapters + sections, prev/next-*chapter*
-navigation), otherwise a website (a top navbar). `book.rs` computes
-the section numbers that the sidebar and cross-references display. No `type:` is
+book** (one centred reading column; the chapter list lives in an off-canvas drawer
+summoned from a slim sticky topbar, with numbered chapters + sections and
+prev/next-*chapter* navigation), otherwise a website (a top navbar). `book.rs` computes
+the section numbers that the chapter list and cross-references display. No `type:` is
 needed; the shape of the config decides. A `chapters:` entry is a bare path, a
 `{ part:, chapters: }` group, or a `{ file:, text: }` mapping whose `text:`
-overrides the sidebar label (otherwise the label is the chapter's first `# H1`).
+overrides the chapter label (otherwise the label is the chapter's first `# H1`).
 
 ## Front-matter primitives
 

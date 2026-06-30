@@ -1399,6 +1399,19 @@ fn parse_table_caption(p_html: &str) -> Option<(String, Option<String>)> {
 
 /// Build a `<nav id="TOC">` from the document's heading blocks (levels 1–3),
 /// linking to their anchor ids. Empty when the doc has no anchored headings.
+/// How many entries the table of contents would list: headings at level <= 3 that carry
+/// an `id` (exactly the set [`toc_html`] renders). The site auto-gates the "on this page"
+/// TOC on this count — a short / sequential page reads as one column; only long, chunkable
+/// pages earn the sidebar TOC (NN/g). Kept in lockstep with `toc_html`'s filter below.
+pub(crate) fn toc_entry_count(blocks: &[Block]) -> usize {
+    blocks
+        .iter()
+        .filter(|b| {
+            block_heading_level(&b.html).is_some_and(|l| l <= 3)
+                && extract_attr(&b.html, "id").is_some()
+        })
+        .count()
+}
 fn toc_html(blocks: &[Block]) -> String {
     let mut items: Vec<(u8, String, String)> = Vec::new();
     for b in blocks {
