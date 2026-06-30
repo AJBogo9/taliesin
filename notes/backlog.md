@@ -9,7 +9,28 @@ by a target corpus doc. Output stays **HTML-only**. The active roadmap is
 > in git + the history docs: `BEYOND-QUARTO.md` (Beyond-Quarto waves), `DROP-QUARTO.md`
 > (the native-rewrite), `AUDITS.md` (the three audit passes). Don't re-add `[x]` items.
 
-## State (2026-06-27, local `main`, version 0.2.0 [tagged `v0.2.0`]; author pushes between sessions)
+## State (2026-06-30, `main` @ `6cdbc21` on origin, version 0.2.0; I commit+merge+push to main on request)
+
+**Continue from here (two big merges landed on `main` 2026-06-30):**
+1. **Reading-first redesign** (squash `280f451`): book is now ONE centred ~70ch column + a
+   chapter drawer (no left rail); theme **follows the OS** (falls back light); accent is
+   WCAG-AA (`--qmd-link`); body 18px; website TOC **auto-gated by heading count**; a deck
+   opened as a link defaults to **scroll/reader** (`?qmd=present` to present); `--qmd-chrome-maxw`
+   widens the chrome bars past the reading column.
+2. **Deep-audit P1** (squash `6cdbc21`): all 11 correctness/robustness + all 7 a11y + the CI
+   P1 items (kernel **KernelDied** fast-fail, shared `catch_unwind` guard, `--strict` honesty
+   on malformed `_site.yml`/panics/`--out`/unknown-flags, bare-@-xref boundary, `{#id}` dedup,
+   SetMeta multi-sourcepos→Update, lightbox keyboard, deck `inert`, reader-menu disclosure,
+   24x24, `[role]` a11y gate, kernel+tsc CI jobs). Detail in "### Deep audit findings" below.
+
+**Highest-value next (all detailed in their sections below):** the deep-audit **P2** clusters
+(visual craft / sepia first-classing, deck engine, site/books silent-omissions, citations/math/bib,
+performance) and the reading-first **P3 identity polish** (judgment-based; overlaps the deferred
+marketing site, so confirm direction first). Lower: deep-audit **P3** (CLI/docs polish, security
+hardening), the **extension-ecosystem audit** (incl. the dead liquid-glass `Reveal` extension), and
+the Testing/CI residuals (headless `scanA11y` gate; tsc + `@ts-check` over all of `assets/js/*`).
+Process unchanged: branch per feature, TDD, browser-verify via chrome-devtools, audit-qmd review,
+Do-NOT-touch the exec/kernel zone + the single-editing-surface invariant.
 
 All four formats render + deploy; the dev loop is strong (block-level incremental updates
 with DOM-state preservation, warm server + Jupyter kernel, `_freeze` cache, Alt-click
