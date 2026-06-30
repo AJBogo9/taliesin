@@ -112,21 +112,39 @@ pub(crate) const NATIVE_KEYS: &[&str] = &[
     "mounts",
 ];
 
+/// Stable prefix on the warning a malformed `_site.yml` pushes. A malformed config is a
+/// *real* error (the site silently degrades to defaults), distinct from a legitimately
+/// absent `_site.yml`. The site build matches this prefix to count a malformed config as a
+/// `--strict` problem, and the live preview watcher matches it to keep the last-good site
+/// instead of replacing it with the degraded default. Keep it stable: those consumers key
+/// off it (see `crates/server/src/build.rs` + `serve_site/mod.rs`).
+pub const MALFORMED_CONFIG_PREFIX: &str = "_site.yml is not valid YAML";
+
 /// Load + parse `_site.yml` at `root` into the native flat schema.
 pub(in crate::site) fn load_config(root: &Path, warnings: &mut Vec<String>) -> SiteConfig {
     let path = root.join("_site.yml");
     let Ok(text) = std::fs::read_to_string(&path) else {
+        // A missing `_site.yml` is legitimate (a bare directory of `.qmd` pages), not an
+        // error — distinct from the malformed case below, which downstream counts.
         warnings.push(format!("no _site.yml at {}", root.display()));
         return SiteConfig::default();
     };
     let value: serde_yaml::Value = match serde_yaml::from_str(&text) {
         Ok(v) => v,
         Err(e) => {
-            warnings.push(format!("_site.yml is not valid YAML: {e}"));
+            // Malformed YAML: degrade to defaults but tag the warning so the build can
+            // fail `--strict` on it and the preview can keep its last-good config.
+            warnings.push(format!("{MALFORMED_CONFIG_PREFIX}: {e}"));
             return SiteConfig::default();
         }
     };
     parse_native(&value, warnings)
+}
+
+/// Whether a discovery warning is the malformed-`_site.yml` marker (a real error, not the
+/// benign "no _site.yml" case). Shared by the server's build + watcher.
+pub fn is_malformed_config_warning(warning: &str) -> bool {
+    warning.starts_with(MALFORMED_CONFIG_PREFIX)
 }
 
 fn parse_native(value: &serde_yaml::Value, warnings: &mut Vec<String>) -> SiteConfig {
@@ -252,5 +270,66 @@ fn nav_item(v: &serde_yaml::Value) -> Option<NavItem> {
             ..NavItem::default()
         }),
         other => serde_yaml::from_value(other.clone()).ok(),
+    }
+}
+
+#[cfg(test)]
+mod config_tests {
+    use super::*;
+
+    fn tmp(name: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("qmd-cfg-{}-{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn malformed_site_yml_pushes_tagged_warning_distinct_from_missing() {
+        // A malformed `_site.yml` is a real error: it degrades to defaults AND tags its
+        // warning so the build/preview can treat it differently from a missing file.
+        let dir = tmp("malformed");
+        // Unterminated double-quoted scalar -> serde_yaml parse error.
+        std::fs::write(dir.join("_site.yml"), "title: \"unterminated\nfoo: bar\n").unwrap();
+        let mut warnings = Vec::new();
+        let cfg = load_config(&dir, &mut warnings);
+        assert!(cfg.title.is_none(), "malformed config degrades to default");
+        assert!(
+            warnings.iter().any(|w| is_malformed_config_warning(w)),
+            "malformed YAML must be tagged: {warnings:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn missing_site_yml_is_not_a_malformed_config() {
+        // A bare directory with no `_site.yml` is legitimate; its warning must NOT match
+        // the malformed marker (so the build doesn't fail `--strict` on a missing file).
+        let dir = tmp("missing");
+        let mut warnings = Vec::new();
+        let _ = load_config(&dir, &mut warnings);
+        assert!(
+            warnings.iter().any(|w| w.starts_with("no _site.yml")),
+            "missing config warns: {warnings:?}"
+        );
+        assert!(
+            !warnings.iter().any(|w| is_malformed_config_warning(w)),
+            "a missing file must not be reported as malformed: {warnings:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn valid_site_yml_has_no_config_warnings() {
+        let dir = tmp("valid");
+        std::fs::write(dir.join("_site.yml"), "title: My Site\n").unwrap();
+        let mut warnings = Vec::new();
+        let cfg = load_config(&dir, &mut warnings);
+        assert_eq!(cfg.title.as_deref(), Some("My Site"));
+        assert!(
+            !warnings.iter().any(|w| is_malformed_config_warning(w)),
+            "a valid config is not malformed: {warnings:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

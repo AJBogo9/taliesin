@@ -5,23 +5,56 @@ use qmd_fast_core::diagnostics;
 use std::path::Path;
 
 #[test]
-fn duplicate_explicit_heading_id_is_flagged() {
-    // Two headings with the same explicit {#id} emit duplicate DOM ids; auto-slug
-    // dedup does not catch explicit ids, so anchors/TOC/xrefs jump to the first.
+fn duplicate_explicit_heading_id_is_deduped_at_render_time() {
+    // The renderer now routes explicit `{#id}`s through the same dedup as auto-slugs
+    // (fix(core) "explicit heading id dedup"): two `{#dup}` headings emit distinct DOM
+    // ids (`dup`, `dup-1`) so anchors/TOC/xrefs resolve, and the render emits its own
+    // located "duplicate heading id" warning. The post-hoc DOM scan
+    // (`validate_duplicate_heading_ids`) therefore finds no surviving collision — the
+    // bug is fixed upstream, not merely detected. (That validator stays as a belt-and-
+    // suspenders guard for any future id source that bypasses the renderer's dedup.)
     let src = "---\ntitle: T\n---\n\n## First {#dup}\n\nText.\n\n## Second {#dup}\n\nMore.\n";
     let doc = qmd_fast_core::render_document_with_includes(src, Path::new("."));
-    let warns = diagnostics::validate_duplicate_heading_ids(&doc.blocks);
+
+    // Distinct ids in the rendered DOM.
+    let ids: Vec<&str> = doc
+        .blocks
+        .iter()
+        .filter_map(|b| {
+            let h = &b.html;
+            (h.starts_with("<h") && h.as_bytes().get(2).is_some_and(u8::is_ascii_digit))
+                .then(|| {
+                    let head = &h[..h.find('>').unwrap_or(h.len())];
+                    let i = head.find(" id=\"")? + 5;
+                    let rest = &head[i..];
+                    Some(&rest[..rest.find('"')?])
+                })
+                .flatten()
+        })
+        .collect();
     assert_eq!(
-        warns.len(),
-        1,
-        "exactly one duplicate-id warning: {warns:?}"
+        ids,
+        vec!["dup", "dup-1"],
+        "explicit ids must be deduped: {ids:?}"
     );
+
+    // The renderer emits a located duplicate-id warning.
+    let render_warn = doc
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("duplicate heading id"))
+        .expect("render emits a duplicate-id warning");
     assert!(
-        warns[0].message.contains("dup"),
-        "names the id: {:?}",
-        warns[0]
+        render_warn.message.contains("dup"),
+        "names the id: {render_warn:?}"
     );
-    assert!(warns[0].line.is_some(), "located: {:?}", warns[0]);
+    assert!(render_warn.line.is_some(), "located: {render_warn:?}");
+
+    // The DOM scan sees no surviving duplicate (the renderer already resolved it).
+    assert!(
+        diagnostics::validate_duplicate_heading_ids(&doc.blocks).is_empty(),
+        "render-time dedup leaves no duplicate id for the DOM scan to find"
+    );
 }
 
 #[test]
@@ -143,10 +176,16 @@ fn corpus_check_superset_doc_trips_each_validator() {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/diagnostics");
     let src = std::fs::read_to_string(dir.join("check-superset.qmd")).unwrap();
     let doc = qmd_fast_core::render_document_with_includes(&src, &dir);
-    assert_eq!(
-        diagnostics::validate_duplicate_heading_ids(&doc.blocks).len(),
-        1,
-        "duplicate {{#dup}} heading id"
+    // The duplicate `{#dup}` heading id is now resolved at render time (explicit ids go
+    // through the same dedup as auto-slugs), so the diagnostic arrives on the render
+    // `warnings` channel (which `qmd-fast check` already aggregates) rather than from
+    // the post-hoc DOM scan. Coverage is unchanged: the duplicate is still reported.
+    assert!(
+        doc.warnings
+            .iter()
+            .any(|w| w.message.contains("duplicate heading id")),
+        "duplicate {{#dup}} heading id (render-time warning): {:?}",
+        doc.warnings.iter().map(|w| &w.message).collect::<Vec<_>>()
     );
     let anchors = diagnostics::validate_internal_anchors(&doc.blocks);
     assert!(

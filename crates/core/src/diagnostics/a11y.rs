@@ -99,6 +99,89 @@ struct Interactive<'a> {
     inner: &'a str,
 }
 
+/// Every element carrying `role="button" | "link" | "tab"` that is NOT itself a native
+/// `<a>`/`<button>` (those are already covered by [`interactives`]), returned as the
+/// open tag + inner HTML so the caller can test for an accessible name. This catches a
+/// `<div role="button">` / `<span role="link">` / `[role="tab"]` that is interactive to
+/// assistive tech but invisible to the literal-tag scan. Conservative: the matching
+/// close tag is found by tag name with simple nesting depth, and an element with any
+/// accessible name passes — never a false *positive*.
+fn role_interactives(html: &str) -> Vec<Interactive<'_>> {
+    let mut out = Vec::new();
+    for (role, kind) in [
+        ("role=\"button\"", "button"),
+        ("role=\"link\"", "link"),
+        ("role=\"tab\"", "tab"),
+    ] {
+        let mut i = 0;
+        while let Some(pos) = html[i..].find(role) {
+            let role_at = i + pos;
+            i = role_at + role.len();
+            // Find the enclosing tag's `<` (scan left) and `>` (scan right). The role
+            // attribute lives inside one open tag, so the nearest `<` before it that is
+            // not a `</` close starts the element.
+            let Some(lt) = html[..role_at].rfind('<') else {
+                continue;
+            };
+            if html[lt..].starts_with("</") {
+                continue; // role text inside a close tag — not an open tag
+            }
+            let Some(rel_gt) = html[role_at..].find('>') else {
+                continue;
+            };
+            let open_end = role_at + rel_gt; // index of this tag's '>'
+            // Tag name: letters right after `<`.
+            let name: String = html[lt + 1..]
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric())
+                .collect::<String>()
+                .to_ascii_lowercase();
+            // Native `<a>`/`<button>` are already audited by `interactives`; skip to
+            // avoid a duplicate finding. A self-closing/void element has no inner name.
+            if name == "a" || name == "button" || html[lt..open_end].ends_with('/') {
+                i = open_end + 1;
+                continue;
+            }
+            let open = &html[lt + 1..open_end];
+            // Match the close tag for `name`, accounting for same-name nesting.
+            let inner_start = open_end + 1;
+            let inner = matching_inner(html, &name, inner_start);
+            out.push(Interactive { kind, open, inner });
+            i = inner_start;
+        }
+    }
+    out
+}
+
+/// The HTML between `inner_start` and the close tag that matches the element of tag
+/// `name` opened just before `inner_start`, accounting for same-name nesting. Falls back
+/// to the rest of the string if no balanced close is found (a conservative scan).
+fn matching_inner<'a>(html: &'a str, name: &str, inner_start: usize) -> &'a str {
+    let open_tag = format!("<{name}");
+    let close_tag = format!("</{name}");
+    let mut depth = 1usize;
+    let mut j = inner_start;
+    while j < html.len() {
+        let next_open = html[j..].find(&open_tag).map(|p| j + p);
+        let next_close = html[j..].find(&close_tag).map(|p| j + p);
+        match (next_open, next_close) {
+            (_, None) => break, // no close: fall through to rest-of-string
+            (Some(o), Some(c)) if o < c => {
+                depth += 1;
+                j = o + open_tag.len();
+            }
+            (_, Some(c)) => {
+                depth -= 1;
+                if depth == 0 {
+                    return &html[inner_start..c];
+                }
+                j = c + close_tag.len();
+            }
+        }
+    }
+    &html[inner_start..]
+}
+
 /// Every `<a href …>…</a>` and `<button …>…</button>` in `html`, returned as the open
 /// tag + inner HTML so the caller can test for an accessible name. Nested same-type
 /// elements are rare in content; the first close tag wins (a conservative scan, never a
@@ -143,7 +226,8 @@ fn interactives(html: &str) -> Vec<Interactive<'_>> {
 ///    previous one (e.g. `<h2>` then `<h4>`). Conservative: only a *mid-document* skip
 ///    is flagged (never "doesn't start at h1"), and decks are skipped entirely
 ///    (slides are slide-structured, not a single outline).
-/// 2. **Interactive element with no accessible name** — an `<a href>`/`<button>` whose
+/// 2. **Interactive element with no accessible name** — an `<a href>`/`<button>`, or any
+///    element with `role="button"|"link"|"tab"` (e.g. a `<div role="button">`), whose
 ///    text is empty and which carries no `aria-label`/`title` and no labelled
 ///    `<img>`/`<svg>` descendant (e.g. an icon-only link).
 /// 3. **`<img>` without `alt`** — a raw/passthrough `<img>` with no `alt` attribute at
@@ -175,8 +259,14 @@ pub fn validate_a11y(blocks: &[Block], format: DocFormat) -> Vec<Warning> {
     for b in blocks {
         let line = start_line(&b.sourcepos);
 
-        // (2) Interactive elements with no accessible name.
-        for el in interactives(&b.html) {
+        // (2) Interactive elements with no accessible name. Both native `<a>`/`<button>`
+        // and `role="button"|"link"|"tab"` elements (e.g. a `<div role="button">`) are
+        // audited; the role scan deliberately skips native `<a>`/`<button>` so they are
+        // not flagged twice.
+        for el in interactives(&b.html)
+            .into_iter()
+            .chain(role_interactives(&b.html))
+        {
             let named_on_tag = el.open.contains("aria-label=\"") || el.open.contains("title=\"");
             if named_on_tag || has_accessible_name(el.inner) {
                 continue;

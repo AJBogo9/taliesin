@@ -252,27 +252,29 @@ route the long tail of silently-dropped cases through it.
   on `.cw-stage`/`.cw-steps` (base.css:492); verified at 390/500/1440 (page overflow 0, desktop 2-col grid
   intact), `cargo test -p qmd-fast-core` green.
 
-#### Correctness / robustness (P1)
-- [ ] build/serve: unknown `--flag` is a hard error with did-you-mean (build.rs:86, cli.rs:99-108) — restores the `--strict` gate
-- [ ] Wrap build/check/render in the preview `catch_unwind` guard (build.rs:294, check.rs:48, query.rs:26,70) via a shared helper
-- [ ] Kernel-died-mid-cell: probe `is_alive()` on iopub read timeout, fail fast instead of hanging the full cell-timeout + mislabeling as "Timeout" (kernel.rs:671-709)
-- [ ] Bare `@`-xref: require a word boundary so `bob@rem-server.com`/@-mentions aren't xref'd + phantom-diagnosed (cite/render.rs:219-229)
-- [ ] SetMeta with >1 inner `data-sourcepos`: fall through to full Update + add corpus test — else Alt-click/reverse-sync inside fenced divs go to the wrong line (diff.rs:83-119, client.js:934-947)
-- [ ] Explicit heading `{#id}`: route through `dedup_with_suffix` or warn-and-suffix duplicates (render/mod.rs:407-417)
-- [ ] Malformed `_site.yml`: count as a `--strict` problem; keep last-good config in the watcher (config/mod.rs:122, build.rs:727, serve_site/mod.rs:937)
-- [ ] Site-build page-task panic: increment `problems` so `--strict` fails (build.rs:852-873)
-- [ ] ws.onmessage: try/catch `JSON.parse` + `handle()`; surface errors via the overlay (client.js:977)
-- [ ] Out-of-tree includes added after startup: recompute/diff the watch set or warn (serve/mod.rs:863-895)
-- [ ] Theme hot-swap: move `if theme_changed { send style }` out of the else (serve/mod.rs:1059, serve_site/mod.rs:799) — covers deck-structural + error-recovery re-mounts (supersedes the old AUDITS "combined content+theme" residual)
+**Deep-audit P1 SHIPPED (branch `deep-audit-p1`, 2026-06-30; 4 parallel tracks — core / a11y-frontend /
+server-robustness + a foreground kernel/client/CI lane — corpus-pinned, browser-verified, audit-qmd reviewed;
+cargo+clippy+fmt green incl. a live-kernel CI job):**
+- **Correctness / robustness (all 11):** unknown `--flag` -> hard error + did-you-mean (build/check/serve);
+  a shared `catch_unwind` guard for build/check/render/blocks (`serve::guarded`); **kernel-died-mid-cell**
+  now fast-fails as a distinct `KernelDied` (poll the iopub read + `is_alive()` probe — no full-cap hang or
+  "Timeout" mislabel; live-tested); bare `@`-xref word boundary (`bob@host.com` no longer xref'd); SetMeta
+  with >1 `data-sourcepos` -> full Update (fixes Alt-click inside fenced divs); explicit `{#id}` dedup
+  (+ located warning; `check` coverage preserved); malformed `_site.yml` -> a `--strict` problem + last-good
+  kept in the watcher; page-task panic -> `problems`; `--out` no-value -> hard error; `ws.onmessage`
+  try/catch -> overlay; theme hot-swap moved out of the `else` (fires on re-mounts); out-of-tree includes
+  -> recursive base-dir watch + a warn.
+- **Accessibility (all 7):** lightbox keyboard-open (Enter/Space, WCAG 2.1.1); deck `inert` on non-current
+  leaf slides (cleared in overview/scroll/print, re-applied on exit); `aria-hidden` on
+  `.qmd-lod`/minimap/threads; single-key shortcut opt-out (localStorage, honored by both keyboard.js +
+  focus-mode.js) + `SELECT` guard; reader-menu `role=dialog` -> clean disclosure (aria-expanded +
+  aria-controls); 24x24 targets (`.qmd-ra-btn`/`.qmd-anchor`); `a11y.rs` gate now matches `[role=button|link|tab]`.
+- **Testing / CI:** a CI **kernel job** (ipykernel + a `QMD_FAST_REQUIRE_KERNEL=1` canary so the exec stack
+  can't silently re-skip) + a **tsc job** (client.js).
 
-#### Accessibility (P1)
-- [ ] Lightbox: tabindex + role=button + aria-label + Enter/Space keydown on decorated media — WCAG 2.1.1 (11-lightbox.js:124)
-- [ ] Deck: `inert` non-current leaf slides per commit (fixes both AT-tree + tab-order) (deck.js ~252, 570)
-- [ ] Single-key shortcuts (f / ? / arrows): Reader-menu opt-out flag; add `SELECT` to focus-mode typing guard (07-keyboard.js:55, 03-focus-mode.js:54)
-- [ ] Reader-menu role=dialog: move focus into the panel on open (or drop role) (13-reader-menu.js:31)
-- [ ] Min 24x24 target on `.qmd-ra-btn` + `.qmd-anchor` — WCAG 2.5.8 (base.css:130,342)
-- [ ] a11y.rs gate: match `[role=button|link|tab]`; plan a headless `scanA11y` gate (a11y.rs:106)
-- [ ] aria-hidden on `.qmd-lod` / minimap / threads (deck.js:303)
+**Residual (deferred):** the *headless `scanA11y` gate* (run the runtime contrast/lang checks in a headless
+browser during `check`/`build` — its own browser-in-CI project), and **extending tsc + `@ts-check` to
+search.js/toc-spy.js/assets/js/*** (surfaces a large pre-existing error backlog; client.js is gated now).
 
 #### Visual craft / theming (P2)
 - [ ] Sepia overrides: `.qhl-*` syntax palette + output/stderr/error boxes + copy button; darken `--qmd-muted` to AA (base.css:33,385,599) — sepia is first-class but only redefines 6 tokens
@@ -312,8 +314,10 @@ route the long tail of silently-dropped cases through it.
 - [ ] emit.rs: `write!`/`push_str` instead of `format!`+push_str per tag (emit.rs:16,274,330)
 
 #### Testing / CI (P1-P2)
-- [ ] CI job: `pip install ipykernel` + `QMD_FAST_PYTHON=… cargo test -p qmd-fast-server`; add `QMD_FAST_REQUIRE_KERNEL=1` so an env regression can't silently re-skip (the whole exec stack is currently unverified in CI)
-- [ ] CI: `tsc -p jsconfig.json` (extend include to search.js/toc-spy.js/assets/js/*); add `@ts-check` headers
+- [x] **CI kernel job SHIPPED** (`ci.yml`: ipykernel + `QMD_FAST_PYTHON=python` + `QMD_FAST_REQUIRE_KERNEL=1`
+  canary that hard-fails the live test if the interpreter goes missing) — the exec stack is now CI-verified.
+- [x] **CI tsc job SHIPPED** for `client.js` (`ci.yml` typecheck job). *Still open:* extending tsc + `@ts-check`
+  to `search.js`/`toc-spy.js`/`assets/js/*` (surfaces a large pre-existing error backlog — its own pass).
 - [ ] insta snapshots on `body_html()` for reactive/explorable/bayesian docs through the exec path (corpus.rs is structural-only) (corpus.rs:99)
 - [ ] CI job for editor/vscode tests (gated to editor/vscode/**)
 - [ ] deny.toml: `multiple-versions = deny` + skip-tree allowlist (or document allowed dups)

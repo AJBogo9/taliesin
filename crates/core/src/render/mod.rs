@@ -407,7 +407,24 @@ fn render_internal_impl(
         let id_attr = match heading_level {
             Some(_) if format == DocFormat::Html => {
                 let id = match &h_attr {
-                    Some((_, Some(id))) => id.clone(),
+                    // An explicit `{#id}` must be deduped too: two same explicit ids
+                    // (or an explicit id colliding with an autoslug) would otherwise
+                    // emit DUPLICATE element ids, silently breaking in-page anchors
+                    // and `@sec-` refs. Route it through the SAME `heading_slugs` map
+                    // the autoslug path uses (so explicit-vs-autoslug collisions are
+                    // caught), and warn on the duplicate.
+                    Some((_, Some(id))) => {
+                        let deduped = dedup_with_suffix(id.clone(), &mut heading_slugs);
+                        if &deduped != id {
+                            warnings.push(
+                                Warning::new(format!(
+                                    "duplicate heading id \u{201c}{id}\u{201d} (using \u{201c}{deduped}\u{201d}; in-page links to \u{201c}{id}\u{201d} may not resolve)"
+                                ))
+                                .at(source_file.clone(), buf_start as u32),
+                            );
+                        }
+                        deduped
+                    }
                     Some((clean, None)) => dedup_slug(clean, &mut heading_slugs),
                     None => dedup_slug(&block_src, &mut heading_slugs),
                 };

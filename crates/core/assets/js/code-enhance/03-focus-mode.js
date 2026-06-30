@@ -1,3 +1,12 @@
+// Single-key-shortcut opt-out (WCAG 2.1.4 "Character Key Shortcuts"): a reader who finds the
+// bare-letter shortcuts (f / ? / / / arrows) hostile — speech-input users especially — can
+// turn them off. Persisted in localStorage under `qmd-keyshortcuts` ("off" disables; absent or
+// any other value = on). Defined here (03, before 07-keyboard.js) as a hoisted top-level fn so
+// both single-key handlers in this one concatenated script can gate on it. Defaults to ON.
+function __qmdShortcutsOn() {
+  try { return localStorage.getItem('qmd-keyshortcuts') !== 'off'; } catch (e) { return true; }
+}
+
 // Focus / reading mode: hide site chrome and centre the prose into one calm column for
 // distraction-free reading. Reader-side, ephemeral (no localStorage) — toggled by the `f`
 // key (ignored while typing or while a modal is open), Esc, or a Reader-menu toggle. All
@@ -51,9 +60,11 @@ function qmdInitFocusMode() {
   // ([aria-modal="true"] — the Cmd-K palette / lightbox) is open, so they never steal keys.
   document.addEventListener('keydown', function (e) {
     var t = e.target;
-    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
     var modal = document.querySelector('[aria-modal="true"]');
-    if (e.key === 'f' && !e.metaKey && !e.ctrlKey && !e.altKey && !modal) {
+    // The single-key `f` honours the opt-out; Esc-to-exit always works (it's a universal
+    // dismiss, not a character shortcut, so leaving focus mode never depends on the flag).
+    if (e.key === 'f' && __qmdShortcutsOn() && !e.metaKey && !e.ctrlKey && !e.altKey && !modal) {
       e.preventDefault();
       setFocus(!on());
     } else if (e.key === 'Escape' && on() && !modal) {

@@ -812,11 +812,13 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
         for op in &ops {
             let _ = ps.tx.send(op_json(op));
         }
-        // A theme/`.css` edit: hot-swap the theme style in place (no reload),
-        // alongside any block ops, so a combined content+theme save updates both.
-        if theme_changed {
-            let _ = ps.tx.send(protocol::style(&ps.doc.theme_css));
-        }
+    }
+    // A theme/`.css` edit: hot-swap the theme style in place (no reload). Sent AFTER the
+    // if/else (not only on the incremental path), so a save that both changes the theme
+    // and triggers a full re-mount (error recovery) still applies the new theme — the
+    // re-mounted HTML carries the old `<style>` body.
+    if theme_changed {
+        let _ = ps.tx.send(protocol::style(&ps.doc.theme_css));
     }
     if diags_changed {
         let _ = ps.tx.send(protocol::diagnostics(&ps.doc.diagnostics));
@@ -945,7 +947,20 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
         .iter()
         .any(|p| p.file_name().and_then(|n| n.to_str()) == Some("_site.yml"));
     if config_changed {
-        *app.site.lock() = Site::discover(&app.root);
+        let new = Site::discover(&app.root);
+        // A mid-edit save can leave `_site.yml` transiently malformed; re-discovering then
+        // would replace the live site with the degraded default (losing nav/title/output).
+        // Keep the last-good `Site` instead, and surface the parse error, so the preview
+        // doesn't visibly collapse on every keystroke. The next valid save reloads cleanly.
+        if let Some(w) = new
+            .warnings
+            .iter()
+            .find(|w| qmd_fast_core::site::is_malformed_config_warning(w))
+        {
+            crate::log::warn(&format!("{w}; keeping the last-good _site.yml"));
+            return;
+        }
+        *app.site.lock() = new;
         reload_open_tabs(app);
         return;
     }

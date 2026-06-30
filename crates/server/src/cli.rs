@@ -93,9 +93,21 @@ fn parse_port(raw: Option<&str>) -> Result<u16, String> {
     }
 }
 
+/// Every long flag `preview`/`serve`/`dev` accepts (drives the unknown-flag did-you-mean).
+/// `--help`/`-h` are intercepted by `main()` before this parser runs, so they aren't here.
+const SERVE_FLAGS: &[&str] = &["--open", "--host", "--no-exec"];
+
 pub(crate) fn cmd_serve(args: &[String]) -> ExitCode {
     // Positionals are <file.qmd> [port]; flags (--open, --host) may appear anywhere.
     let positionals: Vec<&String> = args[2..].iter().filter(|a| !a.starts_with("--")).collect();
+    // An unrecognized `--flag` is a hard error with a did-you-mean (not silently filtered
+    // out of the positionals — a typo'd `--hots` would otherwise preview without exposing).
+    for a in &args[2..] {
+        if a.starts_with("--") && !SERVE_FLAGS.contains(&a.as_str()) {
+            log::error(&serve::unknown_flag_error(a, SERVE_FLAGS));
+            return ExitCode::FAILURE;
+        }
+    }
     let flag = |name: &str| args.iter().any(|a| a == name);
     let open = flag("--open") || std::env::var_os("QMD_FAST_OPEN").is_some();
     let expose = flag("--host") || std::env::var_os("QMD_FAST_HOST").is_some();

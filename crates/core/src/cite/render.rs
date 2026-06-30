@@ -217,6 +217,7 @@ fn rewrite_text(
                 None => no_close = true,
             }
         } else if chars[i] == '@'
+            && at_word_boundary(&chars, i)
             && let Some((label, anchor, len)) = parse_xref(&chars[i..])
         {
             // A locally-resolved number renders "Figure&nbsp;3". An anchor not in
@@ -271,6 +272,19 @@ fn xref_link(key: &str, xrefs: &HashMap<String, String>) -> Option<String> {
         return None;
     }
     Some(xref_anchor_link(key, label, xrefs))
+}
+
+/// Whether a bare `@` at `chars[i]` begins a word (so `@fig-x` is an xref, but the
+/// `@` in `bob@rem-server.com` or an `@handle` glued to a word/`.`/`-`/`_`/`/` is not).
+/// The char immediately before must be start-of-string or whitespace/opening
+/// punctuation — never alphanumeric or `.` `-` `_` `/` (which are token-internal, and
+/// `-`/`_`/`/` are also valid cross-reference-anchor chars). Mirrors the bracketed
+/// path, where the `[` already provides the boundary.
+fn at_word_boundary(chars: &[char], i: usize) -> bool {
+    match i.checked_sub(1).map(|p| chars[p]) {
+        None => true,
+        Some(c) => !(c.is_alphanumeric() || matches!(c, '.' | '-' | '_' | '/')),
+    }
 }
 
 /// `@fig-x` -> ("Figure", "fig-x", consumed_len).
@@ -359,6 +373,36 @@ mod tests {
         assert!(
             out.contains("<a") && !out.contains("[@"),
             "citation not rewritten: {out}"
+        );
+    }
+
+    #[test]
+    fn bare_xref_requires_a_word_boundary_before_at() {
+        let mut xrefs = HashMap::new();
+        xrefs.insert("fig-x".to_string(), "3".to_string());
+        let mut key = |_: &str| 1usize;
+
+        // A mid-word `@` (an email / @-mention glued to a word) is NOT an xref: the
+        // `rem-` after the `@` looks like a `rem-` (Remark) anchor, but the preceding
+        // `b` of `bob` is a word char, so it's left verbatim — no link, no diagnostic.
+        let out = rewrite_text("mail bob@rem-server.com today", &mut key, &xrefs);
+        assert_eq!(out, "mail bob@rem-server.com today");
+
+        // The same anchor still resolves when `@` starts a word.
+        let out = rewrite_text("see @fig-x for this", &mut key, &xrefs);
+        assert!(
+            out.contains("href=\"#fig-x\"") && out.contains("Figure"),
+            "@fig-x at a word boundary must still resolve: {out}"
+        );
+
+        // Boundary forms that must keep working: start-of-string, after `(`, and a
+        // trailing `.` after the anchor.
+        let after_paren = rewrite_text("(@fig-x)", &mut key, &xrefs);
+        assert!(after_paren.contains("href=\"#fig-x\""), "{after_paren}");
+        let at_start = rewrite_text("@fig-x.", &mut key, &xrefs);
+        assert!(
+            at_start.contains("href=\"#fig-x\""),
+            "start-of-string @fig-x must resolve: {at_start}"
         );
     }
 }

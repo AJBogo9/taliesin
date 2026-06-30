@@ -976,7 +976,29 @@
     const wsPath = window.QMD_WS_PATH || "/ws";
     ws = new WebSocket(`ws://${location.host}${wsPath}`);
     ws.onopen = () => setStatus("live");
-    ws.onmessage = (e) => handle(JSON.parse(e.data));
+    ws.onmessage = (e) => {
+      // Never let a malformed message or a handler bug throw uncaught (which would kill
+      // the socket silently): surface it in the diagnostics overlay + console and keep
+      // the connection live so the next good message still applies.
+      let msg;
+      try {
+        msg = JSON.parse(e.data);
+      } catch (err) {
+        const m = err instanceof Error ? err.message : String(err);
+        console.error("qmd: could not parse server message", err, e.data);
+        setStatus("error");
+        showError("malformed server message: " + m);
+        return;
+      }
+      try {
+        handle(msg);
+      } catch (err) {
+        const m = err instanceof Error ? err.message : String(err);
+        console.error("qmd: error handling server message", err, msg);
+        setStatus("error");
+        showError("client error applying a server update: " + m);
+      }
+    };
     ws.onclose = () => { setStatus("reconnecting…"); setTimeout(connect, 1000); };
     ws.onerror = () => ws?.close();
   };

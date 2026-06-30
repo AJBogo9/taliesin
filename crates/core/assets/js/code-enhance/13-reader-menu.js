@@ -6,27 +6,33 @@ function qmdInitReaderMenu() {
   if (window.qmdReaderMenu) return;
   if (document.querySelector('.qmd-deck')) return; // a slide deck has its own chrome
 
+  // A DISCLOSURE, not a dialog: the launcher's aria-expanded + aria-controls point at a labelled
+  // group, which is the correct ARIA shape for a light-dismiss popover that does NOT trap or move
+  // focus. (role="dialog"/aria-haspopup="dialog" would promise a modal with managed focus we
+  // deliberately don't provide — see the openMenu/closeMenu note below.)
+  var panelId = 'qmd-rmenu-panel';
   var launcher = document.createElement('button');
   launcher.type = 'button';
   launcher.className = 'qmd-rmenu-toggle';
   launcher.textContent = 'Aa';
   launcher.setAttribute('aria-label', 'Reader menu');
-  launcher.setAttribute('aria-haspopup', 'dialog');
+  launcher.setAttribute('aria-controls', panelId);
   launcher.setAttribute('aria-expanded', 'false');
 
   var panel = document.createElement('div');
   panel.className = 'qmd-rmenu-panel';
-  panel.setAttribute('role', 'dialog');
-  panel.setAttribute('aria-label', 'Reader');
+  panel.id = panelId;
+  panel.setAttribute('role', 'group');
+  panel.setAttribute('aria-label', 'Reader settings');
   panel.hidden = true;
 
   document.body.appendChild(launcher);
   document.body.appendChild(panel);
 
   // The reader menu is a light-dismiss POPOVER, not a modal (it doesn't cover/inert the page),
-  // so it deliberately does NOT use qmdFocusTrap: aria-modal would mislead a screen reader, and
-  // trapping/focus-restore fights the jump buttons + outside-click dismissal. aria-expanded on
-  // the launcher + Esc-to-close (returning focus to the launcher) + click-away is the right shape.
+  // so it deliberately does NOT use qmdFocusTrap and is exposed as a disclosure (above): trapping
+  // /focus-restore would fight the jump buttons + outside-click dismissal. aria-expanded on the
+  // launcher + Esc-to-close (returning focus to the launcher) + click-away is the right shape.
   var sections = [];
   function openMenu() {
     panel.hidden = false; launcher.setAttribute('aria-expanded', 'true');
@@ -54,5 +60,35 @@ function qmdInitReaderMenu() {
       return { setVisible: function (v) { wrap.hidden = !v; } };
     }
   };
+
+  // WCAG 2.1.4 opt-out, surfaced in the menu so it's discoverable: a toggle that turns the
+  // single-key shortcuts (f / ? / / / arrows) on or off via the shared `qmd-keyshortcuts`
+  // localStorage flag that 03-focus-mode.js + 07-keyboard.js read (__qmdShortcutsOn).
+  (function () {
+    var row = document.createElement('div');
+    row.className = 'qmd-reader-row';
+    var label = document.createElement('span');
+    label.textContent = 'Keyboard shortcuts';
+    var seg = document.createElement('div');
+    seg.className = 'qmd-reader-seg';
+    var ksBtn = document.createElement('button');
+    ksBtn.type = 'button';
+    ksBtn.title = 'Single-key shortcuts: f focus, ? help, / search, ←/→ chapters';
+    function ksOn() { return typeof __qmdShortcutsOn === 'function' ? __qmdShortcutsOn() : true; }
+    function ksSync() {
+      var v = ksOn();
+      ksBtn.setAttribute('aria-pressed', v ? 'true' : 'false');
+      ksBtn.textContent = v ? 'On' : 'Off';
+    }
+    ksBtn.addEventListener('click', function () {
+      try { localStorage.setItem('qmd-keyshortcuts', ksOn() ? 'off' : 'on'); } catch (e) {}
+      ksSync();
+    });
+    ksSync();
+    seg.appendChild(ksBtn);
+    row.appendChild(label);
+    row.appendChild(seg);
+    window.qmdReaderMenu.addSection('Keyboard', row, ksSync);
+  })();
 }
 

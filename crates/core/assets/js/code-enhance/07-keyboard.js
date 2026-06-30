@@ -57,8 +57,12 @@ function qmdInitKeyboard() {
     var typing =
       t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
     var modal = document.querySelector('[aria-modal="true"]');
+    // WCAG 2.1.4 opt-out: when single-key shortcuts are disabled, `?` / `/` / arrows do nothing.
+    // Esc-to-close the cheatsheet still works below (it's a universal dismiss, not a character
+    // shortcut, so a reader can never get stuck with the help sheet open).
+    var shortcuts = __qmdShortcutsOn();
     // `?` (Shift+/) toggles help — allowed even when the cheatsheet itself is open.
-    if (e.key === '?' && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    if (shortcuts && e.key === '?' && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
       if (modal && !sheetOpen()) return; // a different modal owns the keys
       e.preventDefault();
       if (sheetOpen()) closeSheet(); else openSheet();
@@ -67,6 +71,7 @@ function qmdInitKeyboard() {
     if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
     if (e.key === 'Escape' && sheetOpen()) { e.preventDefault(); closeSheet(); return; }
     if (modal) return;
+    if (!shortcuts) return; // opt-out: skip the remaining single-key shortcuts (/ and arrows)
     if (e.key === '/') {
       if (window.qmdOpenSearch) { e.preventDefault(); window.qmdOpenSearch(); }
       return;

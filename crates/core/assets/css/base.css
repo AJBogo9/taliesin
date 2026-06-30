@@ -132,7 +132,10 @@
     padding: .3rem .5rem; box-shadow: 0 4px 18px var(--qmd-edge-shadow); font-size: .85rem; }
   .qmd-ra-bar[hidden] { display: none; }
   .qmd-ra-btn { border: 0; background: transparent; color: var(--qmd-fg); cursor: pointer;
-    font-size: 1rem; line-height: 1; padding: .25rem .4rem; border-radius: 999px; }
+    font-size: 1rem; line-height: 1; padding: .25rem .4rem; border-radius: 999px;
+    /* WCAG 2.5.8: guarantee a >=24x24 target without moving the glyph (flex-centred). */
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 24px; min-height: 24px; box-sizing: border-box; }
   .qmd-ra-btn:hover { background: var(--qmd-code-bg); }
   .qmd-ra-speed { font-variant-numeric: tabular-nums; opacity: .8; min-width: 2.6em;
     text-align: center; }
@@ -343,8 +346,13 @@
   h1, h2, h3, h4, h5, h6 { font-family: var(--qmd-font-head); font-weight: 600; }
   /* Anchor copy-link (qmdInitAnchorLinks): a `#` revealed on hover/focus of a heading or a
      float caption; clicking copies that anchor's canonical deep link. Reader-side. */
-  .qmd-anchor { margin-left: .35em; color: var(--qmd-muted); text-decoration: none;
-    font-weight: 400; opacity: 0; transition: opacity .12s ease, color .12s ease; }
+  .qmd-anchor { position: relative; margin-left: .35em; color: var(--qmd-muted);
+    text-decoration: none; font-weight: 400; opacity: 0;
+    transition: opacity .12s ease, color .12s ease; }
+  /* WCAG 2.5.8: the visible `#` stays small, but a centred invisible >=24x24 overlay
+     expands the click/tap target without shifting the heading or caption layout. */
+  .qmd-anchor::after { content: ""; position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%); width: 24px; height: 24px; }
   :is(h1, h2, h3, h4, h5, h6):hover > .qmd-anchor,
   figcaption:hover > .qmd-anchor, caption:hover > .qmd-anchor,
   .qmd-theorem-head:hover > .qmd-anchor,

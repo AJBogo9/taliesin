@@ -30,6 +30,40 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+  # Exercise the live execution stack (kernel.rs / exec.rs) against a REAL ipykernel —
+  # the `test` job above cannot, because QMD_FAST_PYTHON is unset there so every kernel
+  # test skips, leaving the most behavior-rich subsystem unverified. QMD_FAST_REQUIRE_KERNEL=1
+  # turns the canary test into a HARD FAIL if the interpreter ever goes missing, so the exec
+  # stack can never silently re-skip back to zero coverage.
+  kernel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ipykernel
+        run: python -m pip install --upgrade pip ipykernel
+      - name: Test with a live kernel
+        env:
+          QMD_FAST_PYTHON: python
+          QMD_FAST_REQUIRE_KERNEL: "1"
+        run: cargo test -p qmd-fast-server
+
+  # Type-check the preview client. client.js carries `// @ts-check` and has silently
+  # regressed to multiple tsc errors before a release; this gate keeps it honest.
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Type-check client.js
+        run: cd web-client && npx -y -p typescript tsc -p jsconfig.json
+
   # Dependency advisory scan, kept off the fmt+test hot path. `serde_yaml` is
   # deprecated but currently advisory-free; this is the backstop that tells us if
   # that (or any transitive dep) ever grows a CVE — at which point we migrate.

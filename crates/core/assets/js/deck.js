@@ -134,7 +134,7 @@
   function drawThreads(rows, W, H, s) {
     if (!s) return;
     var tl = s.querySelector(':scope > .qmd-threads');
-    if (!tl) { tl = document.createElement('div'); tl.className = 'qmd-threads'; s.insertBefore(tl, s.firstChild); }
+    if (!tl) { tl = document.createElement('div'); tl.className = 'qmd-threads'; tl.setAttribute('aria-hidden', 'true'); s.insertBefore(tl, s.firstChild); }
     tl.innerHTML = '';
     rows.forEach(function (rowArr, r) {
       if (rowArr.length < 2) return;
@@ -244,6 +244,24 @@
     setCamera(false);
   }
 
+  // Off-camera slides stay in the DOM (the camera just frames the current cell), but for
+  // assistive tech + the tab order that means every non-visible slide is still reachable.
+  // `inert` removes a leaf from the AT tree AND tab order (and blocks its clicks) in one
+  // attribute, so a screen-reader/keyboard user only meets the current slide in step mode.
+  // The single source of truth: in overview / scroll(reader) / print every slide is meant
+  // to be readable, so inert is cleared from all of them; otherwise only the current leaf
+  // is non-inert. Called from applyClasses (commit + init), the mode enter/exit hooks, and
+  // setOverview, so any path that changes "what's visible" re-derives inert consistently.
+  function syncInert() {
+    var showAll = deck.overview || deck.scroll ||
+      document.documentElement.classList.contains('qmd-print');
+    var cur = showAll ? null : currentSlide();
+    allSlides().forEach(function (s) {
+      if (showAll || s === cur) s.removeAttribute('inert');
+      else s.setAttribute('inert', '');
+    });
+  }
+
   // --- the non-camera part of a slide change -----------------------------
   // Fragment visibility, chrome, and the annotation redraw. Split out so
   // auto-animate can update these without moving the camera. Per-slide visibility
@@ -253,6 +271,7 @@
     applyFragments();
     if (deck.draw) redrawAnnotations(); // restore the new slide's annotations
     updateChrome(); // progress bar / menu state follow the current slide
+    syncInert(); // keep off-camera slides out of the AT tree + tab order (step mode)
     deck.lastSlide = currentSlide(); // remember for the next auto-animate transition
   }
   function apply() {
@@ -306,6 +325,7 @@
       if (!card) {
         card = document.createElement('div');
         card.className = 'qmd-lod';
+        card.setAttribute('aria-hidden', 'true'); // decorative overview title card; the real heading stays in the AT tree
         card.innerHTML = '<div class="qmd-lod-title"></div><div class="qmd-lod-num"></div>';
         sec.appendChild(card);
       }
@@ -726,6 +746,7 @@
     if (on && deck.draw && deck.draw.on) { deck.draw.on = false; rev.classList.remove('qmd-drawing'); }
     if (on) { fitOverview(); markCurrentTile(); }
     else { deck.ov = null; clearFilter(); allSlides().forEach(function (s) { s.classList.remove('qmd-overview-current'); }); }
+    syncInert(); // overview: every tile is browsable, so clear inert; exiting re-inerts off-camera
     positionGrid(); // add (or remove) the per-tile gutter shrink
     setCamera(true); // zoom out to the map, or back into the current cell
   }
@@ -765,6 +786,7 @@
     if (!mm) {
       mm = document.createElement('div');
       mm.className = 'qmd-minimap';
+      mm.setAttribute('aria-hidden', 'true'); // decorative overview map; navigation is keyboard-driven
       mm.innerHTML = '<div class="qmd-minimap-inner"><div class="qmd-mini-view"></div></div>';
       rev.appendChild(mm);
       inner = mm.firstChild;
@@ -1003,11 +1025,12 @@
       pres.forEach(function (p, i) { p.classList.toggle('qmd-mm-active', i === pres.length - 1); });
     });
     allSlides().forEach(fitSlide); // size every slide to its page (not just visited ones)
+    syncInert(); // print shows every slide: clear inert so all pages are readable
   }
   function exitPrint() {
     document.documentElement.classList.remove('qmd-print');
     tops().forEach(function (t) { t.classList.remove('qmd-print-stack'); });
-    apply();
+    apply(); // -> applyClasses -> syncInert re-inerts the off-camera slides
   }
 
   // --- scroll / reader mode ----------------------------------------------
@@ -1035,13 +1058,14 @@
       var pres = mmBlocks(div);
       pres.forEach(function (p, i) { p.classList.toggle('qmd-mm-active', i === pres.length - 1); });
     });
+    syncInert(); // reader mode stacks every slide for reading: clear inert from all of them
   }
   function exitScroll() {
     if (!deck.scroll) return;
     deck.scroll = false;
     document.documentElement.classList.remove('qmd-scroll');
     tops().forEach(function (t) { t.classList.remove('qmd-scroll-stack'); });
-    apply();
+    apply(); // -> applyClasses -> syncInert re-inerts the off-camera slides
     layout();
   }
 

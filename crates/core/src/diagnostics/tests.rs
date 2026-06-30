@@ -310,6 +310,56 @@ fn a11y_flags_button_with_no_name() {
 }
 
 #[test]
+fn a11y_flags_role_button_with_no_name() {
+    // A `<div role="button">` with no text/label is a control to assistive tech but
+    // invisible to the literal `<a>`/`<button>` scan: it must be flagged. One carrying
+    // an aria-label, and one with visible text, are clean.
+    let doc = render_document(
+        "<div role=\"button\"></div>\n\n\
+         <div role=\"button\" aria-label=\"Close\"></div>\n\n\
+         <div role=\"button\">Submit</div>\n",
+    );
+    let ws = validate_a11y(&doc.blocks, DocFormat::Html);
+    let m = msgs(&ws);
+    assert_eq!(m.len(), 1, "only the unnamed role=button div: {m:?}");
+    assert!(
+        m[0].contains("button has no accessible name"),
+        "wrong message: {m:?}"
+    );
+}
+
+#[test]
+fn a11y_flags_role_link_and_role_tab_without_name() {
+    // `role="link"` and `role="tab"` on a non-native element are audited too.
+    let doc =
+        render_document("A <span role=\"link\"></span> and a <span role=\"tab\"></span> here.\n");
+    let m = msgs(&validate_a11y(&doc.blocks, DocFormat::Html));
+    assert_eq!(m.len(), 2, "both the unnamed role link + tab: {m:?}");
+    assert!(
+        m.iter().any(|s| s.contains("link has no accessible name")),
+        "{m:?}"
+    );
+    assert!(
+        m.iter().any(|s| s.contains("tab has no accessible name")),
+        "{m:?}"
+    );
+}
+
+#[test]
+fn a11y_native_button_with_role_tab_is_not_flagged_twice() {
+    // The panel-tabset emits `<button role="tab">Label</button>`: a named native button.
+    // It must produce ZERO findings — the role scan skips native `<a>`/`<button>`, and
+    // the label gives it an accessible name anyway (no double-count even if unnamed).
+    let doc =
+        render_document("A <button role=\"tab\" aria-selected=\"true\">Overview</button> tab.\n");
+    let m = msgs(&validate_a11y(&doc.blocks, DocFormat::Html));
+    assert!(
+        m.is_empty(),
+        "a labelled role=tab button must be silent: {m:?}"
+    );
+}
+
+#[test]
 fn a11y_clean_document_is_silent() {
     // Markdown headings stepping by one, a markdown image (auto-alt), and a text link:
     // no a11y warnings at all.

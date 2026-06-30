@@ -673,6 +673,57 @@ fn explicit_heading_id_is_applied_and_stripped() {
 }
 
 #[test]
+fn duplicate_explicit_heading_ids_are_deduped() {
+    // Two headings with the SAME explicit `{#dup}` must NOT emit duplicate element
+    // ids (which would silently break in-page anchors + `@sec-` refs): the second
+    // gets a `-N` suffix, and a located warning is raised.
+    let doc = render_document("# Title {#dup}\n\nText.\n\n# Title {#dup}\n\nMore.\n");
+    let headings: Vec<&str> = doc
+        .blocks
+        .iter()
+        .filter(|b| b.html.starts_with("<h"))
+        .map(|b| b.html.as_str())
+        .collect();
+    assert_eq!(
+        headings.len(),
+        2,
+        "expected two heading blocks: {headings:?}"
+    );
+    assert!(
+        headings[0].contains("id=\"dup\""),
+        "first id missing: {}",
+        headings[0]
+    );
+    assert!(
+        headings[1].contains("id=\"dup-1\"") && !headings[1].contains("id=\"dup\""),
+        "second duplicate explicit id not deduped: {}",
+        headings[1]
+    );
+    assert!(
+        doc.warnings
+            .iter()
+            .any(|w| w.message.contains("duplicate heading id")),
+        "no duplicate-heading-id warning: {:?}",
+        doc.warnings.iter().map(|w| &w.message).collect::<Vec<_>>()
+    );
+
+    // An explicit id colliding with an autoslug is also deduped (autoslug first).
+    let mixed = render_document("# Intro\n\nText.\n\n# Other {#intro}\n");
+    let mixed_h: Vec<&str> = mixed
+        .blocks
+        .iter()
+        .filter(|b| b.html.starts_with("<h"))
+        .map(|b| b.html.as_str())
+        .collect();
+    assert!(mixed_h[0].contains("id=\"intro\""), "{}", mixed_h[0]);
+    assert!(
+        mixed_h[1].contains("id=\"intro-1\""),
+        "explicit id colliding with an autoslug not deduped: {}",
+        mixed_h[1]
+    );
+}
+
+#[test]
 fn sec_label_makes_at_sec_resolve_to_a_number() {
     let doc = render_document("## Methods {#sec-methods}\n\nSee @sec-methods.\n");
     let body = doc.body_html();

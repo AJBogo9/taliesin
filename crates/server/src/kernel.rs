@@ -668,44 +668,74 @@ impl Kernel {
         let cap = cell_timeout();
         let deadline = cap.map(|d| Instant::now() + d);
         let mut grace_until: Option<Instant> = None;
+        // Last time any iopub message arrived; drives the uncapped "no output for 60s"
+        // budget so it resets on every output (matching the old per-`read` timeout).
+        let mut last_msg = Instant::now();
         loop {
+            let now = Instant::now();
+            // Time left before this cell's REAL deadline: the post-interrupt grace window,
+            // the hard cap, or — when uncapped — 60s of silence since the last output.
             let budget = match grace_until {
-                Some(g) => g.saturating_duration_since(Instant::now()),
-                None => deadline
-                    .map(|dl| dl.saturating_duration_since(Instant::now()))
-                    .unwrap_or(Duration::from_secs(60)),
+                Some(g) => g.saturating_duration_since(now),
+                None => match deadline {
+                    Some(dl) => dl.saturating_duration_since(now),
+                    None => Duration::from_secs(60).saturating_sub(now.duration_since(last_msg)),
+                },
             };
-            let msg = match timeout(budget, self.iopub.read()).await {
-                Ok(Ok(msg)) => msg,
-                Ok(Err(e)) => return Err(io::Error::other(e)),
-                Err(_) if grace_until.is_some() => {
-                    // The kernel ignored SIGINT within the grace window; give up on
-                    // this cell. The channels may be desynced — the dev-menu
-                    // "Restart kernel" is the escape hatch.
-                    break;
+            // Poll on a short interval (capped at the budget) so a kernel that EXITS
+            // mid-cell is noticed within ~1s and reported as a distinct `KernelDied`,
+            // instead of blocking the full budget and then mislabeling the crash as
+            // "Timeout" (and interrupting a corpse). A healthy long cell just re-polls.
+            let poll = budget.min(Duration::from_secs(1));
+            let msg = match timeout(poll, self.iopub.read()).await {
+                Ok(Ok(msg)) => {
+                    last_msg = Instant::now();
+                    msg
                 }
-                Err(_) => match cap {
-                    // Hit the hard cap: interrupt and switch to the grace window.
-                    Some(d) => {
-                        self.interrupt();
+                Ok(Err(e)) => return Err(io::Error::other(e)),
+                Err(_) => {
+                    // No output this interval. Did the kernel process die?
+                    if !self.is_alive() {
                         outputs.push(Output::Error {
-                            ename: "Timeout".into(),
-                            evalue: format!("cell exceeded {}s; sent interrupt", d.as_secs()),
-                            traceback: vec![],
-                        });
-                        grace_until = Some(Instant::now() + Duration::from_secs(5));
-                        continue;
-                    }
-                    // No cap (opt-out): a silent hang still times out per-output.
-                    None => {
-                        outputs.push(Output::Error {
-                            ename: "Timeout".into(),
-                            evalue: "cell produced no output for 60s".into(),
+                            ename: "KernelDied".into(),
+                            evalue: "kernel process exited mid-cell".into(),
                             traceback: vec![],
                         });
                         break;
                     }
-                },
+                    // Still alive: only act once the REAL budget (not just a poll) is spent.
+                    if !budget.is_zero() {
+                        continue;
+                    }
+                    if grace_until.is_some() {
+                        // Ignored SIGINT within the grace window; give up on this cell. The
+                        // channels may be desynced — the dev-menu "Restart kernel" is the
+                        // escape hatch.
+                        break;
+                    }
+                    match cap {
+                        // Hit the hard cap: interrupt and switch to the grace window.
+                        Some(d) => {
+                            self.interrupt();
+                            outputs.push(Output::Error {
+                                ename: "Timeout".into(),
+                                evalue: format!("cell exceeded {}s; sent interrupt", d.as_secs()),
+                                traceback: vec![],
+                            });
+                            grace_until = Some(Instant::now() + Duration::from_secs(5));
+                            continue;
+                        }
+                        // No cap (opt-out): a silent hang still times out per-output.
+                        None => {
+                            outputs.push(Output::Error {
+                                ename: "Timeout".into(),
+                                evalue: "cell produced no output for 60s".into(),
+                                traceback: vec![],
+                            });
+                            break;
+                        }
+                    }
+                }
             };
             // Only messages parented by our request belong to this execution.
             let ours = msg.parent_header.as_ref().map(|h| h.msg_id.as_str()) == Some(&msg_id);
@@ -1036,6 +1066,14 @@ mod tests {
     #[test]
     fn kernel_executes_state_errors_and_interrupts_runaway_cell() {
         let Some(py) = std::env::var_os("QMD_FAST_PYTHON") else {
+            // QMD_FAST_REQUIRE_KERNEL=1 (set by the CI kernel job) turns the usual skip into
+            // a HARD FAIL, so an env regression that unsets QMD_FAST_PYTHON can't silently
+            // re-green the whole exec stack — this test is the canary.
+            assert!(
+                std::env::var_os("QMD_FAST_REQUIRE_KERNEL").is_none(),
+                "QMD_FAST_REQUIRE_KERNEL is set but QMD_FAST_PYTHON is unset: the live-kernel \
+                 tests would silently skip. Point QMD_FAST_PYTHON at a python with ipykernel."
+            );
             eprintln!(
                 "SKIPPED (no live kernel): set QMD_FAST_PYTHON to a python with ipykernel to \
                  actually exercise kernel.rs; this run did not."
@@ -1089,6 +1127,35 @@ mod tests {
             assert!(
                 recovered.contains("42"),
                 "kernel did not recover after interrupt: {recovered}"
+            );
+
+            // A kernel that DIES mid-cell is caught by the is_alive() probe and reported
+            // as a distinct `KernelDied` — not mislabeled "Timeout" after blocking the full
+            // cap + grace. Fails fast (the probe fires within a poll interval; only the
+            // shell-drain post-amble remains). Runs LAST: it SIGKILLs the kernel.
+            let t = std::time::Instant::now();
+            // The path we hardened: the read timed out and is_alive() saw the corpse, so
+            // execute returns Ok with a KernelDied output. (If instead the iopub socket
+            // errored on the dead peer, execute returns Err — also acceptable; either way
+            // it must not hang, which the elapsed assertion below enforces.)
+            if let Ok(outputs) = k
+                .execute("import os, signal\nos.kill(os.getpid(), signal.SIGKILL)")
+                .await
+            {
+                let html = render_outputs(&outputs);
+                assert!(
+                    html.contains("KernelDied"),
+                    "a kernel that exits mid-cell must report KernelDied, got: {html}"
+                );
+                assert!(
+                    !html.contains("Timeout"),
+                    "a dead kernel must not be mislabeled a timeout: {html}"
+                );
+            }
+            assert!(
+                t.elapsed() < Duration::from_secs(10),
+                "a dead kernel must fail fast, not hang the full cap+grace (took {:?})",
+                t.elapsed()
             );
         });
     }

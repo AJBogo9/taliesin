@@ -81,7 +81,18 @@ pub fn diff_blocks(old: &[Block], new: &[Block]) -> Vec<BlockOp> {
 /// structural edit elsewhere. Otherwise the content actually changed (a derived
 /// block such as a cell's output), so re-render it with a full `Update`.
 fn anchor_op(old: &Block, new: &Block) -> BlockOp {
-    if old.sourcepos != new.sourcepos && eq_ignoring_sourcepos(&old.html, &new.html) {
+    // SetMeta patches only the OUTER block element's `data-sourcepos`. A block whose
+    // html carries more than one `data-sourcepos` (a fenced `:::` div with inner
+    // blocks) would keep its inner sourcepos stale after a line-shifting edit above —
+    // silently sending Alt-click and reverse cursor-sync *inside* the div to the wrong
+    // line. For those, fall through to a full `Update`, which replaces the whole block
+    // html and refreshes every inner `data-sourcepos`. (The client already applies
+    // Update without losing block identity, keyed off the unchanged `data-block-id`.)
+    let single_sourcepos = sourcepos_count(&new.html) <= 1;
+    if single_sourcepos
+        && old.sourcepos != new.sourcepos
+        && eq_ignoring_sourcepos(&old.html, &new.html)
+    {
         BlockOp::SetMeta {
             target_id: new.id.clone(),
             sourcepos: new.sourcepos.clone(),
@@ -93,6 +104,13 @@ fn anchor_op(old: &Block, new: &Block) -> BlockOp {
             html: new.html.clone(),
         }
     }
+}
+
+/// How many `data-sourcepos="…"` attributes the html carries. A leaf block has one
+/// (on its outer element); a fenced `:::` div wraps inner blocks that each carry their
+/// own, so it has more.
+fn sourcepos_count(html: &str) -> usize {
+    html.matches("data-sourcepos=\"").count()
 }
 
 /// Two block htmls compared with every `data-sourcepos="…"` value blanked, so a
@@ -352,6 +370,39 @@ mod tests {
                 sourcepos: "3:1-3:6".into(),
                 source_file: None,
             }]
+        );
+    }
+
+    #[test]
+    fn nested_div_sourcepos_shift_is_a_full_update_not_setmeta() {
+        // A fenced `:::` div carries its OWN data-sourcepos plus an inner block's. A
+        // line-shifting edit above moves BOTH. SetMeta would patch only the outer one,
+        // leaving the inner block's sourcepos stale (Alt-click + reverse cursor-sync
+        // inside the div would jump to the wrong line). So the op must be a full
+        // Update, which refreshes every inner data-sourcepos.
+        let old = Block {
+            id: "d".into(),
+            sourcepos: "5:1-7:3".into(),
+            source_file: None,
+            html: "<div data-block-id=\"d\" data-sourcepos=\"5:1-7:3\">\
+                   <p data-sourcepos=\"6:1-6:5\">Inner.</p></div>"
+                .into(),
+            cell: None,
+        };
+        let new = Block {
+            sourcepos: "3:1-5:3".into(),
+            html: "<div data-block-id=\"d\" data-sourcepos=\"3:1-5:3\">\
+                   <p data-sourcepos=\"4:1-4:5\">Inner.</p></div>"
+                .into(),
+            ..old.clone()
+        };
+        assert_eq!(
+            diff_blocks(std::slice::from_ref(&old), std::slice::from_ref(&new)),
+            vec![BlockOp::Update {
+                target_id: "d".into(),
+                html: new.html,
+            }],
+            "a multi-sourcepos block must full-Update so inner sourcepos refresh"
         );
     }
 

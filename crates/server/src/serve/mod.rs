@@ -975,16 +975,33 @@ pub(crate) fn relevant_path(p: &Path) -> bool {
     ext_ok && !in_skip_dir
 }
 
-/// Directories to watch: the primary doc's directory plus the directory of any
-/// included file (so out-of-tree includes still trigger refreshes).
+/// Directories to watch: the project base dir (recursively — the site server's model),
+/// which covers every in-tree include, including ones added after startup. An include that
+/// resolves OUTSIDE the base dir (a sibling file up the tree) can't be covered by the
+/// recursive base-dir watch and the watch set is fixed at startup, so we still register its
+/// dir (so an out-of-tree include present now keeps refreshing) but warn once that an
+/// out-of-tree sibling needs a manual reload — `relevant_path` still filters every event.
 fn watch_dirs(app: &AppState) -> Vec<PathBuf> {
     let mut dirs: HashSet<PathBuf> = HashSet::new();
+    // Recursive watch of the base dir is the primary mechanism: it covers any in-tree
+    // include without enumerating each one, so a NEW in-tree include is picked up too.
     dirs.insert(app.base_dir.clone());
     if let Ok(src) = std::fs::read_to_string(&app.path) {
         for dep in qmd_fast_core::includes::dependencies(&src, &app.base_dir) {
+            // In-tree includes are already covered by the recursive base-dir watch.
+            if dep.starts_with(&app.base_dir) {
+                continue;
+            }
+            // Out-of-tree (a sibling above base_dir): register its dir so a currently-present
+            // one keeps refreshing, but warn — a sibling added later won't be auto-watched.
             if let Some(parent) = dep.parent() {
                 dirs.insert(parent.to_path_buf());
             }
+            crate::log::warn(&format!(
+                "include lives outside the preview root: {}; edits to it refresh only while it \
+                 exists now — a sibling added later needs a manual reload",
+                dep.display()
+            ));
         }
     }
     dirs.into_iter().collect()
@@ -1065,12 +1082,13 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
             for op in &ops {
                 let _ = app.tx.send(op_json(op));
             }
-            // A theme/`.css` edit: hot-swap the theme `<style>` in place instead of
-            // reloading, so scroll + the current slide survive. Sent alongside any
-            // block ops, so a combined content+theme save updates both with no reload.
-            if theme_changed {
-                let _ = app.tx.send(protocol::style(&d.theme_css));
-            }
+        }
+        // A theme/`.css` edit: hot-swap the theme `<style>` in place. Sent AFTER the
+        // if/else (not only on the incremental path), so a save that both changes the
+        // theme and triggers a full re-mount (error recovery, a deck restructure) still
+        // applies the new theme — the re-mounted HTML carries the old `<style>` body.
+        if theme_changed {
+            let _ = app.tx.send(protocol::style(&d.theme_css));
         }
         if diags_changed {
             let _ = app.tx.send(protocol::diagnostics(&d.diagnostics));
@@ -1110,6 +1128,29 @@ pub(crate) fn panic_msg(payload: &(dyn std::any::Any + Send)) -> String {
         s.clone()
     } else {
         "unknown panic".to_string()
+    }
+}
+
+/// Run a synchronous `f` under [`std::panic::catch_unwind`], turning a panic into a clean
+/// `Err(message)` (via [`panic_msg`]) instead of aborting the process. The one-shot
+/// commands (`build`/`check`/`render`/`blocks`) call core rendering directly with no
+/// async rebuild loop to absorb a panic, so without this a malformed doc that panics the
+/// renderer crashes the CLI with a raw backtrace + abort instead of a located error and a
+/// non-zero exit. `AssertUnwindSafe` is sound here: a panic mid-`f` is surfaced and the
+/// caller returns immediately, so no half-updated state is observed afterward.
+pub(crate) fn guarded<T>(f: impl FnOnce() -> T) -> Result<T, String> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).map_err(|p| panic_msg(&*p))
+}
+
+/// Build a hard-error message for an unrecognized `--flag`, appending a `closest`-based
+/// "did you mean `--strict`?" when a known flag is within edit distance 2. Shared by the
+/// `build`/`check`/`serve` flag parsers so a typo'd flag fails loudly instead of being
+/// silently dropped. `known` is each parser's own accepted long-flag set. No `error:`
+/// prefix — the caller frames it (raw `eprintln!` adds `error: `; `log::error` styles it).
+pub(crate) fn unknown_flag_error(flag: &str, known: &[&'static str]) -> String {
+    match qmd_fast_core::closest(flag, known) {
+        Some(s) => format!("unknown flag `{flag}` (did you mean `{s}`?)"),
+        None => format!("unknown flag `{flag}`"),
     }
 }
 

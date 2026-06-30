@@ -153,5 +153,39 @@ function qmdInitLightbox() {
       else if (e.key === 'ArrowLeft') { e.preventDefault(); showImageAt(gIdx - 1); }
     }
   });
+
+  // Expose the open helpers so the keyboard decoration (which runs per-mount through the
+  // enhancer registry) can drive the lightbox by element type without re-delegating clicks.
+  window.__qmdLightboxOpen = function (el) {
+    if (el.matches && el.matches('figure img, img.lightbox')) openImg(el);
+    else if (el.matches && el.matches('.qmd-video video')) openVideo(el);
+    else if (el.matches && el.matches('pre.mermaid')) { if (el.querySelector('svg')) openMermaid(el); }
+  };
 }
+
+// Keyboard affordance (WCAG 2.1.1): the lightbox otherwise opens only via a delegated mouse
+// click, so decoratable media is unreachable by keyboard. This per-mount, idempotent pass
+// (guard `data-qmd-lb`) makes each zoomable element a focusable button that opens on
+// Enter/Space. The capture-phase click delegation, focus-trap-on-open, Escape, and the ←/→
+// gallery nav inside qmdInitLightbox are untouched; this only adds the keyboard entry point.
+function qmdDecorateLightbox(root) {
+  qmdInitLightbox(); // ensure the document-level machinery + window.__qmdLightboxOpen exist
+  var scope = root || document;
+  var els = scope.querySelectorAll('figure img, img.lightbox, pre.mermaid, .qmd-video video');
+  [].forEach.call(els, function (el) {
+    if (el.getAttribute('data-qmd-lb')) return; // idempotent: decorate once per element
+    el.setAttribute('data-qmd-lb', '1');
+    el.setAttribute('tabindex', '0');
+    el.setAttribute('role', 'button');
+    var alt = el.getAttribute && el.getAttribute('alt');
+    el.setAttribute('aria-label', alt ? alt : 'View image full size');
+    el.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+        e.preventDefault(); // stop Space from scrolling the page
+        if (window.__qmdLightboxOpen) window.__qmdLightboxOpen(el);
+      }
+    });
+  });
+}
+window.qmdEnhancers.register(qmdDecorateLightbox);
 

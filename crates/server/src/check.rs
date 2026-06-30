@@ -193,6 +193,9 @@ fn format_human(diags: &[Diagnostic]) -> String {
     s
 }
 
+/// Every long flag `check` accepts (drives the unknown-flag did-you-mean).
+const CHECK_FLAGS: &[&str] = &["--format"];
+
 /// `qmd-fast check <file|dir> [--format human|json]`: render in memory, list every
 /// located diagnostic, and exit non-zero if any are found (a CI gate). Static-only
 /// (no code execution).
@@ -207,7 +210,12 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
                     format = v;
                 }
             }
-            s if s.starts_with("--") => {}
+            // An unrecognized `--flag` is a hard error with a did-you-mean (not silently
+            // dropped — a typo'd `--formt json` would otherwise run with default human output).
+            s if s.starts_with("--") => {
+                log::error(&crate::serve::unknown_flag_error(s, CHECK_FLAGS));
+                return ExitCode::FAILURE;
+            }
             s => {
                 if path.is_none() {
                     path = Some(s);
@@ -243,7 +251,13 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
         }
         return ExitCode::FAILURE;
     }
-    let diags = match collect_diagnostics(target) {
+    // Guard the render: a panic in core rendering becomes a clean located error + non-zero
+    // exit (routed through the same error path, so `--format json` stays valid) instead of
+    // a raw abort that would crash a CI gate.
+    let collected = crate::serve::guarded(|| collect_diagnostics(target))
+        .map_err(|panic| format!("render panicked on {path}: {panic}"))
+        .and_then(|r| r);
+    let diags = match collected {
         Ok(d) => d,
         // Honour `--format json` on the error path too: a human stderr line would
         // corrupt a `check … --format json | jq` stream (and leave stdout empty), so
@@ -588,6 +602,18 @@ mod tests {
         assert!(
             has("button has no accessible name"),
             "empty button: {diags:?}"
+        );
+        // The `[role=button|link|tab]` path fires the same rule on a `<div role="button">` /
+        // `<span role="link">` with no name — so BOTH the native and the role-based elements
+        // are flagged (count >= 2 each). Pins `role_interactives` end-to-end through the doc.
+        let count = |needle: &str| diags.iter().filter(|d| d.message.contains(needle)).count();
+        assert!(
+            count("button has no accessible name") >= 2,
+            "native <button> + <div role=button> should both flag: {diags:?}"
+        );
+        assert!(
+            count("link has no accessible name") >= 2,
+            "native <a> + <span role=link> should both flag: {diags:?}"
         );
     }
 

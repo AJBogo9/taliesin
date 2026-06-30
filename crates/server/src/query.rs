@@ -23,33 +23,44 @@ pub(crate) fn cmd_render(path: Option<&String>) -> ExitCode {
             let p = Path::new(path);
             let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("document");
             let base = p.parent().unwrap_or_else(|| Path::new("."));
-            let doc = qmd_fast_core::render_document_with_includes(&src, base);
-            // `render` is a static, one-shot HTML dump: unlike `build`/`preview` it
-            // never starts a kernel, so kernel-executed cells (python/r) emit as
-            // source with empty output blocks — broken `@fig-` refs, no plots. Warn
-            // loudly so the empty output isn't mistaken for a render bug. (`{js}` cells
-            // run in the browser, so they're fine here.)
-            let kernel_cells = doc
-                .blocks
-                .iter()
-                .filter(|b| {
-                    b.cell
-                        .as_ref()
-                        .is_some_and(|c| matches!(c.lang.as_str(), "python" | "r"))
-                })
-                .count();
-            if kernel_cells > 0 {
-                log::warn(&format!(
-                    "render does not execute code cells ({kernel_cells} kernel cell{} emitted as \
-                     source; figures/outputs will be empty). Use `build` or `preview` to run them.",
-                    if kernel_cells == 1 { "" } else { "s" }
-                ));
-            }
-            print!(
-                "{}",
+            // Guard the render: a panic in core rendering becomes a located error +
+            // non-zero exit, not a raw abort (this one-shot has no async loop to absorb it).
+            let rendered = crate::serve::guarded(|| {
+                let doc = qmd_fast_core::render_document_with_includes(&src, base);
+                // `render` is a static, one-shot HTML dump: unlike `build`/`preview` it
+                // never starts a kernel, so kernel-executed cells (python/r) emit as
+                // source with empty output blocks — broken `@fig-` refs, no plots. Warn
+                // loudly so the empty output isn't mistaken for a render bug. (`{js}` cells
+                // run in the browser, so they're fine here.)
+                let kernel_cells = doc
+                    .blocks
+                    .iter()
+                    .filter(|b| {
+                        b.cell
+                            .as_ref()
+                            .is_some_and(|c| matches!(c.lang.as_str(), "python" | "r"))
+                    })
+                    .count();
+                if kernel_cells > 0 {
+                    log::warn(&format!(
+                        "render does not execute code cells ({kernel_cells} kernel cell{} emitted \
+                         as source; figures/outputs will be empty). Use `build` or `preview` to \
+                         run them.",
+                        if kernel_cells == 1 { "" } else { "s" }
+                    ));
+                }
                 qmd_fast_core::render_doc_to_page(&doc, stem, qmd_fast_core::OutputMode::Build)
-            );
-            ExitCode::SUCCESS
+            });
+            match rendered {
+                Ok(html) => {
+                    print!("{html}");
+                    ExitCode::SUCCESS
+                }
+                Err(panic) => {
+                    log::error(&format!("render panicked on {path}: {panic}"));
+                    ExitCode::FAILURE
+                }
+            }
         }
         Err(e) => {
             log::error(&format!("cannot read {path}: {e}"));
@@ -67,7 +78,16 @@ pub(crate) fn cmd_blocks(path: Option<&String>) -> ExitCode {
         Ok(src) => {
             let p = Path::new(path);
             let base = p.parent().unwrap_or_else(|| Path::new("."));
-            let doc = qmd_fast_core::render_document_with_includes(&src, base);
+            // Guard the render so a panic becomes a clean error + non-zero exit.
+            let doc = match crate::serve::guarded(|| {
+                qmd_fast_core::render_document_with_includes(&src, base)
+            }) {
+                Ok(doc) => doc,
+                Err(panic) => {
+                    log::error(&format!("render panicked on {path}: {panic}"));
+                    return ExitCode::FAILURE;
+                }
+            };
             eprintln!("title: {:?}", doc.title);
             eprintln!("{} block(s)\n", doc.blocks.len());
             println!(

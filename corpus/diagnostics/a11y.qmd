@@ -21,3 +21,7 @@ This heading is an `h4` directly under the `h2` above, skipping `h3`.
 
 Here is [](#) — a link with no text, so it has no accessible name. And here is a
 <button></button> with no label, which a screen reader announces as just "button".
+
+Finally, a <div role="button"></div> and a <span role="link"></span>: ARIA roles make a
+plain element interactive, but with no accessible name a screen reader announces them as a
+bare "button" / "link" (the static gate flags `[role=button|link|tab]` without a name too).

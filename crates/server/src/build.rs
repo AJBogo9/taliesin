@@ -47,6 +47,7 @@ fn parse_jobs_value(raw: Option<&str>) -> Result<Option<usize>, String> {
 /// The parsed `build` argv (pure; no I/O), so the positional/flag rules are unit-testable.
 /// `out_html` (the second positional) and `out_dir` (`--out`/`--dir`) are the two distinct
 /// "where to write" meanings: a single-file target vs. a portable folder.
+#[derive(Debug)]
 struct BuildArgs<'a> {
     path: &'a str,
     out_html: Option<&'a str>,
@@ -56,9 +57,14 @@ struct BuildArgs<'a> {
     jobs: Option<usize>,
 }
 
+/// Every long flag `build` accepts (drives the unknown-flag did-you-mean). `-j` is the
+/// only short alias; it's not in this set (suggestions are between long flags).
+const BUILD_FLAGS: &[&str] = &["--out", "--dir", "--jobs", "--strict", "--bare"];
+
 /// Parse `build` argv (`args[2..]`; `args[0..2]` are the binary + "build"). Flags may
 /// appear anywhere; the first positional is the source, the optional second is `[out.html]`.
-/// Returns `Err(usage/error message)` for a bad `--jobs` value or a missing source path.
+/// Returns `Err(usage/error message)` for a bad `--jobs` value, a value-less `--out`/`--dir`,
+/// an unknown `--flag`, or a missing source path.
 fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
     let mut positionals: Vec<&str> = Vec::new();
     let mut out_dir: Option<&str> = None;
@@ -68,14 +74,17 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
         match a.as_str() {
-            // Take the next token as the value, but not if it's itself a flag (so
-            // `--out --open` doesn't silently swallow `--open` as the directory).
-            "--out" | "--dir" => {
-                out_dir = it
-                    .next()
-                    .map(|s| s.as_str())
-                    .filter(|s| !s.starts_with("--"));
-            }
+            // `--out <dir>` needs a real value. A missing one (end of args, or a flag
+            // follows) is a hard error rather than silently leaving out_dir None and
+            // writing `<stem>.html` to an unexpected place.
+            "--out" | "--dir" => match it.next().map(|s| s.as_str()) {
+                Some(v) if !v.starts_with("--") => out_dir = Some(v),
+                _ => {
+                    return Err(format!(
+                        "error: {a} requires a directory value (e.g. {a} site)"
+                    ));
+                }
+            },
             "--jobs" | "-j" => {
                 let raw = it.next().filter(|s| !s.starts_with("--"));
                 jobs_result = parse_jobs_value(raw.map(|s| s.as_str()));
@@ -83,7 +92,14 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
             "--strict" => strict = true,
             // `--bare`: zero-`<script>`, zero-CDN, CSS-only-theme single-doc output.
             "--bare" => bare = true,
-            s if s.starts_with("--") => {}
+            // An unrecognized `--flag` is a hard error with a did-you-mean, not silently
+            // dropped (a typo'd `--stict` would otherwise build without the intended flag).
+            s if s.starts_with("--") => {
+                return Err(format!(
+                    "error: {}",
+                    crate::serve::unknown_flag_error(s, BUILD_FLAGS)
+                ));
+            }
             s => positionals.push(s),
         }
     }
@@ -152,19 +168,28 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     let p = Path::new(path);
     let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("document");
     let base = p.parent().unwrap_or_else(|| Path::new("."));
-    let (html, resources, problems) = match build_page_executing(&src, base, stem, mode) {
-        Ok(BuildResult::Page {
+    // Guard the render/execute path: a panic in core rendering (a malformed doc that trips
+    // a renderer assertion) must become a located error + non-zero exit, not a raw abort.
+    // `block_on` propagates a panic from the directly-awaited future, so the catch here
+    // sees it. Outer `Result` = panic; inner = runtime-start I/O failure.
+    let executed = crate::serve::guarded(|| build_page_executing(&src, base, stem, mode));
+    let (html, resources, problems) = match executed {
+        Ok(Ok(BuildResult::Page {
             html,
             resources,
             problems,
-        }) => (html, resources, problems),
+        })) => (html, resources, problems),
         // `--bare` refused (e.g. a slide deck): the message is already user-facing.
-        Ok(BuildResult::Refused(msg)) => {
+        Ok(Ok(BuildResult::Refused(msg))) => {
             log::error(&msg);
             return ExitCode::FAILURE;
         }
-        Err(e) => {
+        Ok(Err(e)) => {
             log::error(&format!("cannot start runtime: {e}"));
+            return ExitCode::FAILURE;
+        }
+        Err(panic) => {
+            log::error(&format!("render panicked while building {path}: {panic}"));
             return ExitCode::FAILURE;
         }
     };
@@ -797,10 +822,16 @@ async fn build_site_async(
         log::warn(hint);
     }
     let site = qmd_fast_core::Site::discover(root);
+    // A malformed `_site.yml` silently degrades the whole site to defaults (no nav, no
+    // title, wrong output dir): a real `--strict` problem, unlike a benign missing config.
+    let mut config_problems = 0usize;
     for w in &site.warnings {
         // When the breadcrumb already fired, drop the redundant `no _site.yml` warning.
         if quarto_hint.is_some() && w.starts_with("no _site.yml") {
             continue;
+        }
+        if qmd_fast_core::site::is_malformed_config_warning(w) {
+            config_problems += 1;
         }
         log::warn(w);
     }
@@ -881,9 +912,10 @@ async fn build_site_async(
     ));
     let mut pages = 0usize;
     let mut kernel_unavailable = false;
-    // `--strict` problem tally across the whole site: per-page located warnings +
-    // broken cross-refs + crashed cells (each already logged where it occurs).
-    let mut problems = 0usize;
+    // `--strict` problem tally across the whole site: a malformed `_site.yml`, per-page
+    // located warnings, broken cross-refs, crashed cells, and page-task panics (each
+    // already logged where it occurs).
+    let mut problems = config_problems;
 
     // The one process-wide warm pool for this build. `None` (so every page cold-starts
     // exactly as today) when `QMD_FAST_PYTHON` is unset or the forkserver can't boot;
@@ -924,10 +956,13 @@ async fn build_site_async(
     while let Some(joined) = set.join_next().await {
         match joined {
             Ok((idx, outcome)) => outcomes[idx] = Some(outcome),
-            // A page task panicked: the catch is the build itself failing, but keep
-            // going so the rest of the site still builds (the missing page just won't
-            // be written). Surface it as a problem.
-            Err(e) => log::error(&format!("page build task failed: {e}")),
+            // A page task panicked: keep going so the rest of the site still builds (the
+            // missing page just won't be written), but count it as a `--strict` problem so
+            // a panicked page can't ship a green build with a silently dropped page.
+            Err(e) => {
+                problems += 1;
+                log::error(&format!("page build task failed: {e}"));
+            }
         }
     }
 
@@ -1184,12 +1219,17 @@ mod mirror_tests {
             ("doc.qmd", None, Some("site"))
         );
 
-        // --out never captures a following flag as its directory (out_dir stays None).
-        // (It does consume that token from the stream — a flag right after a value-less
-        // --out is dropped — but that malformed-input quirk isn't the contract here.)
-        let a = argv(&["qmd-fast", "build", "doc.qmd", "--out", "--bare"]);
-        let p = parse_build_args(&a).unwrap();
-        assert_eq!(p.out_dir, None);
+        // --out never captures a following flag as its directory: a value-less --out is
+        // now a HARD ERROR (rather than silently dropping the flag + writing <stem>.html).
+        let err = parse_build_args(&argv(&["qmd-fast", "build", "doc.qmd", "--out", "--bare"]))
+            .expect_err("value-less --out errors");
+        assert!(err.contains("--out") && err.contains("requires"), "{err}");
+        // --out at the very end (no following token) is the same hard error.
+        let err = parse_build_args(&argv(&["qmd-fast", "build", "doc.qmd", "--out"]))
+            .expect_err("trailing --out errors");
+        assert!(err.contains("--out"), "{err}");
+        // --dir is the alias and errors the same way.
+        assert!(parse_build_args(&argv(&["qmd-fast", "build", "doc.qmd", "--dir"])).is_err());
 
         // flags may appear anywhere; both positionals still bind in order.
         let a = argv(&["qmd-fast", "build", "--bare", "doc.qmd", "out.html"]);
@@ -1200,6 +1240,24 @@ mod mirror_tests {
         // a missing path is a usage error.
         assert!(parse_build_args(&argv(&["qmd-fast", "build"])).is_err());
         assert!(parse_build_args(&argv(&["qmd-fast", "build", "--strict"])).is_err());
+    }
+
+    #[test]
+    fn build_unknown_flag_errors_with_did_you_mean() {
+        let argv = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<String>>();
+        // A typo'd flag is a hard error (not silently dropped) and suggests the real one.
+        let err = parse_build_args(&argv(&["qmd-fast", "build", "doc.qmd", "--stict"]))
+            .expect_err("--stict must error");
+        assert!(err.contains("--stict"), "names the bad flag: {err}");
+        assert!(err.contains("--strict"), "suggests the near match: {err}");
+        // A flag with no near match still errors (no wild guess).
+        let err = parse_build_args(&argv(&["qmd-fast", "build", "doc.qmd", "--frobnicate"]))
+            .expect_err("unknown flag must error");
+        assert!(err.contains("--frobnicate"), "{err}");
+        assert!(!err.contains("did you mean"), "no wild guess: {err}");
+        // The real flags still parse (no regression).
+        assert!(parse_build_args(&argv(&["qmd-fast", "build", "doc.qmd", "--strict"])).is_ok());
+        assert!(parse_build_args(&argv(&["qmd-fast", "build", "doc.qmd", "--bare"])).is_ok());
     }
 
     fn tmp(name: &str) -> PathBuf {
