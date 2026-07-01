@@ -167,13 +167,16 @@ theorem-border variants, dead `.hero h1` reset dropped. Residual (deferred, low)
   polish pass.
 
 ### Deck engine (deep-audit P2)
-- [ ] Debounce/rAF resize; drop `fitSlide` from the resize path (deck.js:1536,242).
-- [ ] Speaker view: snapshot clones or embed-mode skips `{js}` execution (currently 2 live iframes)
-  (deck.js:970).
-- [ ] Encode + restore fragment index in the URL hash (deck.js:514,1142).
-- [ ] Blackout: any nav key resumes; unhide cursor on pointermove (deck.js:1255).
-- [ ] fragsOf: skip `PRE` inside `.magic-move` (double-counted as steps) (deck.js:406).
-- [ ] Speaker window: `pagehide` clears spClock + nulls speakerWin (deck.js:976).
+*Cluster shipped 2026-07-01 (`main` @ 2be9428), browser-verified in present mode: fragment-in-hash
+encode+restore, blackout resume-on-any-nav-key + idle-gated cursor, rAF-coalesced resize, fragsOf
+skips `<pre>` in `.magic-move`, speaker/presentation `pagehide` cleanups. Two items deferred:*
+- [ ] **Speaker-preview iframes still run `{js}` live** (2 live embed iframes). Skipping `{js}` in
+  `deck.mode==='embed'` is a one-line guard in qmd-js.js, BUT it loses the presenter's live preview
+  visual — an author call (skip for perf vs snapshot-clone the current state). Deferred pending that
+  decision (deck.js `initSpeaker`).
+- [ ] **Drop `fitSlide` from the resize path** (the coalesce shipped; the full re-fit of every slide
+  per frame remains). `apply()` doesn't fit the current slide today, so a lazy fit-on-show refactor
+  (fit current on resize/nav, mark others dirty) is needed to safely drop the all-slides fit. Medium.
 
 ### Site / books: silent omissions (deep-audit P2)
 *Cluster shipped 2026-07-01 (`main` @ b3beabc): all six items — `contents: .` root listing fix,
