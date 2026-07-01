@@ -854,6 +854,20 @@
     scanA11y();
   };
 
+  // A single save emits a BURST of block ops (each its own websocket message).
+  // afterChange() is entirely O(document) derived-UI recompute (TOC + scrollspy +
+  // word count deep-clones #qmd-root + a11y/code scans), so running it per op was an
+  // O(ops × doc) cliff on the save hot path. Coalesce the burst into ONE afterChange on
+  // the next animation frame — every op in the frame has applied by then.
+  let afterChangeRAF = 0;
+  const scheduleAfterChange = () => {
+    if (afterChangeRAF) return;
+    afterChangeRAF = requestAnimationFrame(() => {
+      afterChangeRAF = 0;
+      afterChange();
+    });
+  };
+
   // The server renders the initial body into the page (so content paints before
   // the websocket connects). The first `full_render` after that is identical, so
   // skip re-mounting it (avoids a flash + needless {js}/deck re-init); reconnects
@@ -876,7 +890,7 @@
           resetJs();
           keepScroll(() => { root.innerHTML = msg.body_html; });
         }
-        afterChange();
+        scheduleAfterChange();
         setDiagnostics(msg.diagnostics);
         break;
       case "diagnostics":
@@ -897,7 +911,7 @@
           keepScroll(() => el.replaceWith(node));
           pulse(node, "qmd-flash");
         }
-        afterChange();
+        scheduleAfterChange();
         break;
       }
       case "insert": {
@@ -920,7 +934,7 @@
           });
           pulse(node, "qmd-flash");
         }
-        afterChange();
+        scheduleAfterChange();
         break;
       }
       case "remove": {
@@ -930,7 +944,7 @@
           teardownJs(el); // resolve invalidation + drop {js} cells in the removed block
           keepScroll(() => el.remove());
         }
-        afterChange();
+        scheduleAfterChange();
         break;
       }
       case "set_meta": {

@@ -430,9 +430,18 @@ impl Site {
     /// for a target page that runs executable cells (a cell can emit an id at runtime),
     /// mirroring `diagnostics::validate_internal_anchors`'s no-false-positive promise.
     pub fn validate_cross_page_links(&self) -> Vec<(String, Warning)> {
-        // Build the registry once: url -> (ids, has_executable_cells).
+        // ONE render pass per page: build the id/cell registry AND capture every page's
+        // outgoing local links at the same time, so the resolution scan below reuses the
+        // captured links instead of rendering the whole site a SECOND time.
+        struct LinkRef {
+            path: String,
+            frag: Option<String>,
+            line: Option<u32>,
+            source_file: Option<String>,
+        }
         let mut ids_by_url: HashMap<String, std::collections::HashSet<String>> = HashMap::new();
         let mut cells_by_url: HashMap<String, bool> = HashMap::new();
+        let mut pages_links: Vec<(String, String, Vec<LinkRef>)> = Vec::new();
         for page in &self.pages {
             let Ok(src) = std::fs::read_to_string(&page.input) else {
                 continue;
@@ -440,26 +449,35 @@ impl Site {
             let base = page.input.parent().unwrap_or(&self.root);
             let doc = render::render_document_with_includes(&src, base);
             let mut ids = std::collections::HashSet::new();
+            let mut links = Vec::new();
             for b in &doc.blocks {
                 collect_html_ids(&b.html, &mut ids);
+                let line = sourcepos_start_line(&b.sourcepos);
+                for (path, frag) in manual_local_links(&b.html) {
+                    links.push(LinkRef {
+                        path: path.to_string(),
+                        frag: frag.map(str::to_string),
+                        line,
+                        source_file: b.source_file.clone(),
+                    });
+                }
             }
             cells_by_url.insert(
                 page.url.clone(),
                 doc.blocks.iter().any(|b| b.cell.is_some()),
             );
             ids_by_url.insert(page.url.clone(), ids);
+            pages_links.push((page.rel.clone(), page.url.clone(), links));
         }
 
         let mut out = Vec::new();
-        for page in &self.pages {
-            let Ok(src) = std::fs::read_to_string(&page.input) else {
-                continue;
-            };
-            let base = page.input.parent().unwrap_or(&self.root);
-            let doc = render::render_document_with_includes(&src, base);
-            for b in &doc.blocks {
-                let line = sourcepos_start_line(&b.sourcepos);
-                for (path, frag) in manual_local_links(&b.html) {
+        for (rel, url, links) in &pages_links {
+            for lk in links {
+                let path = lk.path.as_str();
+                let frag = lk.frag.as_deref();
+                let line = lk.line;
+                let source_file = &lk.source_file;
+                {
                     // Resolve to a site-root-relative `.html` url. `.qmd`→`.html`, then
                     // join against the page's directory. A link that climbs *above* the
                     // site root (`../other-book/…`, a mounted sibling) is unresolvable
@@ -467,7 +485,7 @@ impl Site {
                     // mounts both books can resolve it, so flagging it here would be a
                     // false positive (cross-book/mount links are written as relative
                     // `.html` by design; see docs/ CLAUDE.md).
-                    let Some(target_url) = join_rel_in_root(&page.url, &qmd_to_html(path)) else {
+                    let Some(target_url) = join_rel_in_root(url, &qmd_to_html(path)) else {
                         continue;
                     };
                     // A directory-style link (`dir/`) targets that dir's index.
@@ -502,9 +520,9 @@ impl Site {
                             "broken link: `{path}` resolves to `{target_url}`, which is no page in this site"
                         ));
                         out.push((
-                            page.rel.clone(),
+                            rel.clone(),
                             match line {
-                                Some(l) => w.at(b.source_file.clone(), l),
+                                Some(l) => w.at(source_file.clone(), l),
                                 None => w,
                             },
                         ));
@@ -522,9 +540,9 @@ impl Site {
                             "broken link anchor: `#{frag}` is no element id on `{target_url}`"
                         ));
                         out.push((
-                            page.rel.clone(),
+                            rel.clone(),
                             match line {
-                                Some(l) => w.at(b.source_file.clone(), l),
+                                Some(l) => w.at(source_file.clone(), l),
                                 None => w,
                             },
                         ));

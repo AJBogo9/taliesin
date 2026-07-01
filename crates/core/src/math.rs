@@ -13,15 +13,41 @@
 //! (i.e. all of it but the block being edited) is a hashmap hit. The cache persists
 //! for the life of the process (and is shared across a site's pages).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::{LazyLock, Mutex};
 
-/// `(latex, display_mode) -> rendered HTML`. Bounded so a very long session with
-/// many distinct expressions can't grow it without limit; math sets are small and
-/// stable, so the cap is rarely reached (a plain clear-on-overflow is enough — a
-/// full LRU isn't worth the complexity for this access pattern).
-static CACHE: LazyLock<Mutex<HashMap<(String, bool), String>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+type Key = (String, bool);
+
+/// A bounded `(latex, display_mode) -> rendered HTML` memo. On overflow it evicts the
+/// OLDEST-inserted entries (FIFO via `order`) one at a time rather than clearing the
+/// whole map, so a burst of distinct expressions past the cap doesn't drop the entire
+/// warm set (which the previous full-clear did, cold-starting every subsequent save).
+#[derive(Default)]
+struct MathCache {
+    map: HashMap<Key, String>,
+    order: VecDeque<Key>,
+}
+impl MathCache {
+    /// Insert `key -> html`, keeping at most `cap` entries by evicting the oldest-
+    /// inserted first (FIFO). A no-op if `key` is already present (so `order` never
+    /// holds duplicates and a re-render doesn't disturb the eviction order).
+    fn insert_bounded(&mut self, key: Key, html: String, cap: usize) {
+        if self.map.contains_key(&key) {
+            return;
+        }
+        while self.map.len() >= cap {
+            match self.order.pop_front() {
+                Some(old) => {
+                    self.map.remove(&old);
+                }
+                None => break,
+            }
+        }
+        self.order.push_back(key.clone());
+        self.map.insert(key, html);
+    }
+}
+static CACHE: LazyLock<Mutex<MathCache>> = LazyLock::new(|| Mutex::new(MathCache::default()));
 const CACHE_CAP: usize = 8192;
 
 /// Render a LaTeX fragment to HTML (memoized). KaTeX is configured with
@@ -32,15 +58,19 @@ pub fn render(latex: &str, display: bool) -> String {
     // A poisoned lock can only happen if a thread panicked *holding* it; we never
     // render (the only fallible work) under the lock, so recover the map either way.
     let key = (latex.to_string(), display);
-    if let Some(hit) = CACHE.lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
+    if let Some(hit) = CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .map
+        .get(&key)
+    {
         return hit.clone();
     }
     let html = render_uncached(latex, display);
-    let mut cache = CACHE.lock().unwrap_or_else(|e| e.into_inner());
-    if cache.len() >= CACHE_CAP {
-        cache.clear();
-    }
-    cache.insert(key, html.clone());
+    CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert_bounded(key, html.clone(), CACHE_CAP);
     html
 }
 
@@ -91,6 +121,29 @@ mod tests {
     fn invalid_math_does_not_panic() {
         // throw_on_error=false: KaTeX renders the error inline rather than failing.
         let _ = render("\\frac{", false);
+    }
+
+    #[test]
+    fn cache_evicts_oldest_first_and_stays_bounded() {
+        // FIFO eviction (no KaTeX needed): at cap, the oldest-inserted key is dropped,
+        // recent keys survive, and the map never exceeds the cap (was a full clear).
+        let mut c = MathCache::default();
+        for i in 0..3 {
+            c.insert_bounded((i.to_string(), false), format!("h{i}"), 3);
+        }
+        assert_eq!(c.map.len(), 3);
+        c.insert_bounded(("3".into(), false), "h3".into(), 3); // over cap: evict "0"
+        assert_eq!(c.map.len(), 3, "stays bounded, not cleared");
+        assert!(
+            !c.map.contains_key(&("0".to_string(), false)),
+            "oldest evicted"
+        );
+        assert!(c.map.contains_key(&("3".to_string(), false)), "newest kept");
+        assert!(c.map.contains_key(&("2".to_string(), false)), "recent kept");
+        // Re-inserting an existing key is a no-op (doesn't reorder or grow).
+        c.insert_bounded(("2".into(), false), "dup".into(), 3);
+        assert_eq!(c.map.get(&("2".to_string(), false)).unwrap(), "h2");
+        assert_eq!(c.order.len(), 3, "no duplicate in the eviction queue");
     }
 
     #[test]
