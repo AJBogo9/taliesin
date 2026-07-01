@@ -28,12 +28,35 @@ function qmdInitFocusMode() {
     btn.setAttribute('aria-pressed', on() ? 'true' : 'false');
     btn.textContent = on() ? 'On' : 'Off';
   }
+  // Focus mode also enters native fullscreen so nothing but the text remains (the
+  // author's ask). Best-effort: `requestFullscreen` needs a user gesture — the `f` key
+  // and the menu button both are — and it degrades silently where the API is blocked.
+  // Exiting focus mode leaves fullscreen; leaving fullscreen via the browser (F11/Esc)
+  // exits focus mode (the fullscreenchange sync below), so the two stay coupled.
+  function goFullscreen(v) {
+    try {
+      var el = document.documentElement;
+      if (v && !document.fullscreenElement && el.requestFullscreen) {
+        var p = el.requestFullscreen();
+        if (p && p.catch) p.catch(function () {});
+      } else if (!v && document.fullscreenElement && document.exitFullscreen) {
+        var q = document.exitFullscreen();
+        if (q && q.catch) q.catch(function () {});
+      }
+    } catch (e) {}
+  }
   function setFocus(v) {
     document.body.classList.toggle('qmd-focus', v);
+    goFullscreen(v);
     sync();
     live.textContent = '';
     live.textContent = v ? 'Focus mode on' : 'Focus mode off';
   }
+  // If the reader leaves fullscreen through the browser (F11 / Esc) while focus mode is
+  // on, drop focus mode too so the two never desync.
+  document.addEventListener('fullscreenchange', function () {
+    if (!document.fullscreenElement && on()) setFocus(false);
+  });
 
   // Reader-menu toggle (discoverable). The launcher stays visible in focus mode, so this
   // remains the mouse exit + the size/theme controls.

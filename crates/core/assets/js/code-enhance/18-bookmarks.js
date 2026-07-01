@@ -1,17 +1,30 @@
 // Reader bookmarks: section markers. Hovering a heading reveals a star toggle in its left
 // margin; clicking bookmarks that section. Bookmarked headings keep a persistent star, and
-// the reader menu gathers them into a "Bookmarks" list (jump / remove). Bookmarks live in
-// the reader's own localStorage, anchored to the heading's data-block-id (exact; an orphaned
-// id is skipped). Reader-side + read-only. Decks skipped. Markers re-apply each pass; the
-// toggle + listeners + menu section are set up once.
+// the reader menu gathers them into a "Bookmarks" list (jump / remove). BOOK-WIDE: on a book
+// every chapter shares one bookmark store (keyed by the book root), so the list shows marks
+// from every chapter and jumps across pages; a single doc / website stays per-page. Bookmarks
+// live in the reader's own localStorage; an entry is {page, anchor, block, label}. Reader-side
+// + read-only. Decks skipped. Markers re-apply each pass; the toggle + listeners + menu section
+// are set up once. (Note: some browsers isolate localStorage per file path, so "book-wide"
+// spans chapters only when served over http(s) — see the portability audit.)
 function qmdInitBookmarks() {
   if (document.querySelector('.qmd-deck')) return; // a slide deck has its own chrome
-  var KEY = 'qmd-bm:' + location.pathname;
+
+  // A book shares one store across its chapters, keyed by the resolved book-root URL from the
+  // topbar brand link (stable per book, present on every chapter); anything else stays per-page.
+  var brand = document.querySelector('.qmd-book-brand');
+  var KEY = brand && brand.href ? 'qmd-bm-book:' + brand.href : 'qmd-bm:' + location.pathname;
+  function thisPage() { return location.origin + location.pathname; }
 
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { return []; } }
   function save(list) { try { localStorage.setItem(KEY, JSON.stringify(list)); } catch (e) {} }
   function dispatch() { try { window.dispatchEvent(new CustomEvent('qmd:bmchange')); } catch (e) {} }
-  function has(id) { return load().indexOf(id) !== -1; }
+  function onThisPage(e) { return !!e && e.page === thisPage(); }
+  function indexOfBlock(list, block) {
+    for (var i = 0; i < list.length; i++) if (onThisPage(list[i]) && list[i].block === block) return i;
+    return -1;
+  }
+  function has(block) { return indexOfBlock(load(), block) !== -1; }
   function findBlock(id) {
     return document.querySelector('[data-block-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
   }
@@ -19,13 +32,17 @@ function qmdInitBookmarks() {
     var h = t && t.closest ? t.closest('h1,h2,h3,h4,h5,h6') : null;
     return (h && h.getAttribute('data-block-id')) ? h : null;
   }
+  // A short page label ("using/code.html" -> "code") for a cross-chapter entry.
+  function pageName(url) {
+    try { return (new URL(url).pathname.split('/').pop() || '').replace(/\.html?$/, ''); } catch (e) { return ''; }
+  }
   var HEADS = 'h1[data-block-id],h2[data-block-id],h3[data-block-id],h4[data-block-id],h5[data-block-id],h6[data-block-id]';
 
-  // Re-apply the persistent margin star to every bookmarked heading (idempotent).
+  // Re-apply the persistent margin star to every bookmarked heading ON THIS PAGE (idempotent).
   function applyMarkers() {
-    var ids = load();
+    var list = load();
     document.querySelectorAll(HEADS).forEach(function (h) {
-      h.classList.toggle('qmd-bookmarked', ids.indexOf(h.getAttribute('data-block-id')) !== -1);
+      h.classList.toggle('qmd-bookmarked', indexOfBlock(list, h.getAttribute('data-block-id')) !== -1);
     });
   }
 
@@ -79,36 +96,53 @@ function qmdInitBookmarks() {
     });
     toggle.addEventListener('click', function () {
       if (!active) return;
-      var id = active.getAttribute('data-block-id'), list = load(), i = list.indexOf(id);
-      if (i === -1) list.push(id); else list.splice(i, 1);
+      var block = active.getAttribute('data-block-id'), list = load(), i = indexOfBlock(list, block);
+      if (i === -1) {
+        list.push({
+          page: thisPage(),
+          anchor: active.id || '',
+          block: block,
+          label: (active.textContent || '').replace(/\s+/g, ' ').trim().replace(/#$/, '').trim(),
+        });
+      } else {
+        list.splice(i, 1);
+      }
       save(list); dispatch(); show(active);
     });
     window.addEventListener('scroll', function () { if (!toggle.hidden) toggle.hidden = true; }, { passive: true });
     window.addEventListener('qmd:bmchange', applyMarkers);
 
     // The Bookmarks list in the reader menu (jump / remove). Degrades to just the margin
-    // stars + hover toggle if the menu host is absent.
+    // stars + hover toggle if the menu host is absent. A cross-chapter entry jumps to its
+    // page; a current-page entry scrolls + flashes in place.
     if (window.qmdReaderMenu) {
       var body = document.createElement('div');
-      function flash(block) { block.classList.remove('qmd-flash'); void block.offsetWidth; block.classList.add('qmd-flash'); }
+      function flash(b) { b.classList.remove('qmd-flash'); void b.offsetWidth; b.classList.add('qmd-flash'); }
       function renderList() {
         while (body.firstChild) body.removeChild(body.firstChild);
         var ul = document.createElement('ul'); ul.className = 'qmd-hlx-list';
-        load().forEach(function (id) {
-          var block = findBlock(id); if (!block) return; // orphaned heading
+        load().forEach(function (e) {
+          var current = onThisPage(e);
+          var block = current ? findBlock(e.block) : null;
+          if (current && !block) return; // orphaned on the current page
           var li = document.createElement('li');
           var go = document.createElement('button');
           go.type = 'button'; go.className = 'qmd-hlx-go';
-          var t = (block.textContent || '').replace(/\s+/g, ' ').trim();
-          go.textContent = t.length > 60 ? t.slice(0, 60) + '…' : t;
+          var label = e.label || (block ? block.textContent : '') || 'Bookmark';
+          label = label.replace(/\s+/g, ' ').trim().replace(/#$/, '').trim();
+          if (label.length > 56) label = label.slice(0, 56) + '…';
+          go.textContent = current ? label : label + ' · ' + (pageName(e.page) || 'other');
           go.addEventListener('click', function () {
-            window.qmdReaderMenu.close(); block.scrollIntoView({ block: 'center', behavior: 'smooth' }); flash(block);
+            window.qmdReaderMenu.close();
+            if (current && block) { block.scrollIntoView({ block: 'center', behavior: 'smooth' }); flash(block); }
+            else { location.href = e.page + (e.anchor ? '#' + e.anchor : ''); }
           });
           var rm = document.createElement('button');
           rm.type = 'button'; rm.className = 'qmd-hlx-rm';
           rm.setAttribute('aria-label', 'Remove bookmark'); rm.textContent = '×';
           rm.addEventListener('click', function () {
-            save(load().filter(function (x) { return x !== id; })); dispatch();
+            save(load().filter(function (x) { return !(x.page === e.page && x.block === e.block); }));
+            dispatch();
           });
           li.appendChild(go); li.appendChild(rm); ul.appendChild(li);
         });
@@ -116,7 +150,9 @@ function qmdInitBookmarks() {
       }
       var section = window.qmdReaderMenu.addSection('Bookmarks', body, renderList);
       function refresh() {
-        section.setVisible(load().filter(function (id) { return !!findBlock(id); }).length > 0);
+        // Visible when there is any book-wide entry (a current-page one must still resolve).
+        var any = load().some(function (e) { return !onThisPage(e) || !!findBlock(e.block); });
+        section.setVisible(any);
         renderList();
       }
       window.addEventListener('qmd:bmchange', refresh);
@@ -126,4 +162,3 @@ function qmdInitBookmarks() {
 
   applyMarkers();
 }
-

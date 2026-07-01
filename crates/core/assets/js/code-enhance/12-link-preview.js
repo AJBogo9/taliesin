@@ -26,7 +26,7 @@ function qmdInitLinkPreview() {
   card.setAttribute('role', 'tooltip');
   document.body.appendChild(card);
 
-  var showTimer = null, hideTimer = null;
+  var showTimer = null, hideTimer = null, pinned = false, currentLink = null;
 
   function eligible(a) {
     if (!a) return false;
@@ -76,6 +76,7 @@ function qmdInitLinkPreview() {
     if (!body || !body.textContent.trim()) return;
     card.innerHTML = '';
     card.appendChild(body);
+    currentLink = link;
     card.classList.add('open');
     place(link);
   }
@@ -83,7 +84,10 @@ function qmdInitLinkPreview() {
     clearTimeout(hideTimer); clearTimeout(showTimer);
     showTimer = setTimeout(function () { show(link); }, 140);
   }
-  function hide() { clearTimeout(showTimer); card.classList.remove('open'); }
+  // A pinned card survives mouse-leave / page scroll; only Esc or a click outside
+  // releases it (`forceHide`). `hide` is the soft dismiss used by hover/scroll.
+  function hide() { clearTimeout(showTimer); if (pinned) return; card.classList.remove('open'); currentLink = null; }
+  function forceHide() { pinned = false; card.classList.remove('pinned'); clearTimeout(showTimer); card.classList.remove('open'); currentLink = null; }
   function scheduleHide() { clearTimeout(hideTimer); hideTimer = setTimeout(hide, 160); }
 
   document.addEventListener('mouseover', function (e) {
@@ -100,7 +104,23 @@ function qmdInitLinkPreview() {
   });
   card.addEventListener('mouseenter', function () { clearTimeout(hideTimer); });
   card.addEventListener('mouseleave', scheduleHide);
-  window.addEventListener('scroll', hide, true);
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(); });
+  // Scrolling the page dismisses the card, but scrolling INSIDE the card (its own
+  // overflow, `max-height:50vh`) must not — otherwise you can never read past the fold.
+  window.addEventListener('scroll', function (e) {
+    var t = e.target;
+    if (t && t.nodeType === 1 && t.closest && t.closest('#qmd-link-preview')) return;
+    hide();
+  }, true);
+  // Click the card to PIN it (survives mouse-leave + page scroll) so you can move into
+  // an overflowing card and scroll it; Esc or a click outside releases the pin.
+  card.addEventListener('click', function () { pinned = true; card.classList.add('pinned'); });
+  document.addEventListener('mousedown', function (e) {
+    if (!card.classList.contains('open')) return;
+    var t = e.target;
+    if (t && t.closest && (t.closest('#qmd-link-preview') ||
+        (currentLink && (t === currentLink || currentLink.contains(t))))) return;
+    forceHide();
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') forceHide(); });
 }
 

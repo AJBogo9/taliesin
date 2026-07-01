@@ -10,7 +10,11 @@ use super::*;
 pub(super) fn number_chapter_headings(blocks: &mut [Block], chapter: u32) {
     let mut counters = [0u32; 5]; // counters[0] = h2, [1] = h3, …
     for b in blocks.iter_mut() {
-        if let Some(level) = heading_level(&b.html) {
+        if is_title_block(&b.html) {
+            // The chapter's title-block header is the visible chapter heading; give it the
+            // bare chapter number ("N") for continuity, without advancing the h2+ counters.
+            b.html = prefix_title_number(&b.html, &chapter.to_string());
+        } else if let Some(level) = heading_level(&b.html) {
             let number = section_number(chapter, level, &mut counters);
             b.html = prefix_heading_number(&b.html, &number);
         }
@@ -50,5 +54,53 @@ fn prefix_heading_number(html: &str, number: &str) -> String {
             &html[i + 1..]
         ),
         None => html.to_string(),
+    }
+}
+
+/// Whether a block is the front-matter `title:` block (a `<header class="qmd-title-block">`,
+/// not a markdown heading — so `heading_level` never sees it as an `<h1>`).
+fn is_title_block(html: &str) -> bool {
+    html.contains("class=\"qmd-title-block\"")
+}
+
+/// Number a numbered chapter's TITLE: insert the chapter number just inside the
+/// title block's `<h1 class="title">`, so the chapter reads "N Title" and its `N.1`
+/// subsections no longer look like numbers appearing from nowhere.
+fn prefix_title_number(html: &str, number: &str) -> String {
+    let marker = "<h1 class=\"title\">";
+    match html.find(marker) {
+        Some(i) => {
+            let at = i + marker.len();
+            format!(
+                "{}<span class=\"qmd-section-number\">{number}</span> {}",
+                &html[..at],
+                &html[at..]
+            )
+        }
+        None => html.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn numbers_the_chapter_title_block() {
+        let title = "<header class=\"qmd-title-block\" data-block-id=\"qmd-title-block\">\
+            <h1 class=\"title\">Executable content</h1></header>";
+        assert_eq!(
+            prefix_title_number(title, "3"),
+            "<header class=\"qmd-title-block\" data-block-id=\"qmd-title-block\">\
+             <h1 class=\"title\"><span class=\"qmd-section-number\">3</span> Executable content</h1></header>"
+        );
+    }
+
+    #[test]
+    fn detects_the_title_block_but_not_a_heading() {
+        assert!(is_title_block(
+            "<header class=\"qmd-title-block\"><h1 class=\"title\">T</h1></header>"
+        ));
+        assert!(!is_title_block("<h2 id=\"x\">A section</h2>"));
     }
 }
