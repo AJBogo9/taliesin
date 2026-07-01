@@ -931,8 +931,15 @@ pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
 /// `window.qmdInitTocSpy()` after each TOC rebuild. Emitted only on TOC pages.
 pub const TOC_SPY_JS: &str = include_str!("../../../../web-client/toc-spy.js");
 
+/// Mobile pull-up TOC sheet for static builds (self-inits on load). The live preview
+/// drives its own copy from client.js, so this ships only in the static build path
+/// (`toc_scripts`), never the preview, to avoid double-wiring the sheet.
+pub const TOC_SHEET_JS: &str = include_str!("../../../../web-client/toc-sheet.js");
+
 pub fn toc_scripts() -> String {
-    format!("<script>{TOC_SPY_JS}</script>\n<script>{SEARCH_JS}</script>")
+    format!(
+        "<script>{TOC_SPY_JS}</script>\n<script>{TOC_SHEET_JS}</script>\n<script>{SEARCH_JS}</script>"
+    )
 }
 
 /// Cmd/Ctrl-K command palette to search the document's headings. Rides along on

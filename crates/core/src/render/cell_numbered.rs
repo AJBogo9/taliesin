@@ -11,12 +11,32 @@
 
 use super::*;
 
+/// Render a caption STRING (from a `fig-cap:`/`lst-cap:` cell option) as inline
+/// markdown, so `$...$` math, `*emphasis*`, and `` `code` `` render the same way an
+/// image-alt caption does (via `emit_children`) instead of surviving as literal
+/// escaped text. Parses with the shared options (`math_dollars` on) and emits the
+/// first paragraph's inline children. Falls back to a plain escape if the input
+/// somehow parses without a paragraph.
+fn caption_inline_html(caption: &str) -> String {
+    let arena = Arena::new();
+    let options = parse_options();
+    let root = parse_document(&arena, caption, &options);
+    for child in root.children() {
+        if matches!(child.data.borrow().value, NodeValue::Paragraph) {
+            let mut out = String::new();
+            emit_children(child, &mut out);
+            return out;
+        }
+    }
+    html_escape(caption)
+}
+
 /// A numbered figure/listing caption: `"<Label>&nbsp;<num>"`, with `": <caption>"`
-/// appended (HTML-escaped) when a non-empty caption is given. Shared by the
-/// figure, listing, mermaid, and `{js}`-figure emitters.
+/// appended (rendered as inline markdown) when a non-empty caption is given. Shared
+/// by the figure, listing, mermaid, and `{js}`-figure emitters.
 pub(crate) fn numbered_caption(label: &str, num: usize, caption: Option<&str>) -> String {
     match caption.map(str::trim).filter(|c| !c.is_empty()) {
-        Some(c) => format!("{label}&nbsp;{num}: {}", html_escape(c)),
+        Some(c) => format!("{label}&nbsp;{num}: {}", caption_inline_html(c)),
         None => format!("{label}&nbsp;{num}"),
     }
 }

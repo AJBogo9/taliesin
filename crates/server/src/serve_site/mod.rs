@@ -153,7 +153,7 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
 
     let router = Router::new()
         .route("/favicon.ico", get(favicon))
-        .route("/search.json", get(search_json))
+        .route("/search-index.js", get(search_index_js))
         .route("/ws", get(ws_handler))
         .fallback(page_or_asset)
         .with_state(app.clone());
@@ -210,19 +210,23 @@ async fn favicon() -> impl IntoResponse {
     )
 }
 
-/// The full-text search index, lazy-loaded by the Cmd-K palette on first open.
-async fn search_json(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
+/// The full-text search index as a `search-index.js` script (assigns
+/// `window.QMD_SEARCH_INDEX`), lazy-loaded by the Cmd-K palette on first open. Served
+/// as JS (not raw JSON) so the client can load it with a `<script>`, which also works
+/// under file:// for a built book opened from disk.
+async fn search_index_js(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
     let json = { app.site.lock().search_index_json.clone() };
+    let json = if json.is_empty() {
+        "[]".to_string()
+    } else {
+        json
+    };
     (
         [(
             axum::http::header::CONTENT_TYPE,
-            "application/json; charset=utf-8",
+            "text/javascript; charset=utf-8",
         )],
-        if json.is_empty() {
-            "[]".to_string()
-        } else {
-            json
-        },
+        format!("window.QMD_SEARCH_INDEX={json};"),
     )
         .into_response()
 }
@@ -280,12 +284,13 @@ async fn page_or_asset(
             let lookup = if sub.is_empty() { "index.html" } else { sub };
             // The mounted site's search + feed are route-served (not written to disk
             // in preview), exactly like the parent's. Without this, Cmd-K search on a
-            // mounted-book page fetches `/<mount>/search.json` → 404.
-            let json_ct = "application/json; charset=utf-8";
-            if lookup == "search.json" {
+            // mounted-book page loads `/<mount>/search-index.js` → 404.
+            if lookup == "search-index.js" {
                 let j = m.site.search_index_json.clone();
-                let body = if j.is_empty() { "[]".to_string() } else { j };
-                return ([(axum::http::header::CONTENT_TYPE, json_ct)], body).into_response();
+                let j = if j.is_empty() { "[]".to_string() } else { j };
+                let js_ct = "text/javascript; charset=utf-8";
+                let body = format!("window.QMD_SEARCH_INDEX={j};");
+                return ([(axum::http::header::CONTENT_TYPE, js_ct)], body).into_response();
             }
             if let Some(html) = m.site.render_page(lookup) {
                 return Html(html).into_response();
@@ -453,7 +458,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
         js_str(&app.root.to_string_lossy()),
     );
     let ws_path = format!("/ws?page={}", encode_query(&page.rel));
-    // Cross-page Cmd-K search: point the palette at the lazy-loaded `search.json`
+    // Cross-page Cmd-K search: point the palette at the lazy-loaded `search-index.js`
     // (depth-relative, served at the root). Empty for a project with no index.
     let search_cfg = if chrome.search_index.is_empty() {
         String::new()

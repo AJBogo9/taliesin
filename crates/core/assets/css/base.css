@@ -495,6 +495,23 @@
   details.qmd-code-fold > summary { cursor: pointer; color: var(--qmd-muted);
     font: 600 .85em var(--qmd-font-head); padding: .15rem 0; margin-bottom: .35rem; }
   details.qmd-code-fold > summary:hover { color: var(--qmd-fg); }
+  /* Themed disclosure chevron for folded code (`qmd-code-fold`) + collapsible proofs:
+     the browser-default triangle is small, inconsistent, and easy to read as plain text,
+     so hide it and draw a `currentColor` caret that rotates from a right-pointing to a
+     down-pointing chevron when the details opens. (Callouts keep their icon header, which
+     is already an affordance.) */
+  details.qmd-code-fold > summary,
+  .qmd-proof-collapse > details > summary.qmd-proof-head {
+    display: flex; align-items: center; gap: .45em; list-style: none; }
+  details.qmd-code-fold > summary::-webkit-details-marker,
+  .qmd-proof-collapse > details > summary.qmd-proof-head::-webkit-details-marker { display: none; }
+  details.qmd-code-fold > summary::before,
+  .qmd-proof-collapse > details > summary.qmd-proof-head::before {
+    content: ""; flex: 0 0 auto; width: .42em; height: .42em; margin-bottom: .12em;
+    border-top: 2px solid currentColor; border-right: 2px solid currentColor;
+    transform: rotate(45deg); transition: transform .15s ease; opacity: .75; }
+  details.qmd-code-fold[open] > summary::before,
+  .qmd-proof-collapse > details[open] > summary.qmd-proof-head::before { transform: rotate(135deg); }
   /* Narrated code walkthrough (`::: {.code-walkthrough}`): prose steps scroll on the
      left, the code panel is pinned on the right; scrolling focuses line ranges (the
      `.qhl-ln-hl` toggle is driven by walkthrough.js). Steps come first in the DOM

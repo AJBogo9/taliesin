@@ -449,6 +449,78 @@ fn labelled_mermaid_becomes_numbered_referenceable_figure() {
 }
 
 #[test]
+fn static_toc_page_ships_the_mobile_pull_up_sheet() {
+    // A static TOC page opts into the mobile pull-up sheet (markup + body class + the
+    // toc-sheet.js enhancer) so its "on this page" TOC is a bottom sheet on narrow
+    // screens instead of stranding at the page bottom.
+    let html = render_html_page(
+        "---\ntitle: T\ntoc: true\n---\n\n# A\n\ntext\n\n## B\n\nmore\n",
+        "f",
+    );
+    assert!(
+        html.contains("id=\"qmd-toc-handle\""),
+        "sheet handle markup missing"
+    );
+    assert!(
+        html.contains("id=\"qmd-toc-backdrop\""),
+        "sheet backdrop markup missing"
+    );
+    assert!(
+        !TOC_SHEET_JS.is_empty() && toc_scripts().contains(TOC_SHEET_JS),
+        "toc-sheet.js enhancer not bundled on TOC pages"
+    );
+    // Progressive enhancement: the enhancer (not the server) opts the body into the sheet,
+    // so a no-JS page keeps its in-flow TOC layout.
+    assert!(
+        TOC_SHEET_JS.contains("classList.add(\"qmd-toc-sheet\")"),
+        "toc-sheet.js should add the qmd-toc-sheet class at runtime"
+    );
+}
+
+#[test]
+fn static_page_has_no_dead_click_to_source_outline() {
+    // A built/rendered static page is a read-only view with no editor bridge, so it must
+    // NOT ship the click-to-source click handler (it drew a `.qmd-hl` outline on every
+    // click + console.logged with nothing listening). Click-to-source lives only in the
+    // live preview (client.js wires it to the editor).
+    let html = render_html_page("# Title\n\nBody.\n", "fallback");
+    assert!(
+        !html.contains("Click any block"),
+        "static page still ships the click-to-source handler"
+    );
+    assert!(
+        !html.contains("console.log('block'"),
+        "static page still logs click-to-source to the console"
+    );
+}
+
+#[test]
+fn math_in_option_string_caption_renders_katex() {
+    // `$...$` in a `fig-cap:`/`lst-cap:` option string must render as KaTeX, exactly
+    // like an image-alt caption does — not survive as literal `$E=mc^2$` text.
+    let doc = render_document(
+        "```{mermaid}\n%%| label: fig-e\n%%| fig-cap: \"Energy is $E=mc^2$ ok\"\nflowchart LR\n  A --> B\n```\n",
+    );
+    let body = doc.body_html();
+    let cap_start = body.find("<figcaption>").expect("no figcaption");
+    let cap_end = body[cap_start..].find("</figcaption>").unwrap() + cap_start;
+    let caption = &body[cap_start..cap_end];
+    assert!(
+        caption.contains("katex"),
+        "caption math not rendered to KaTeX: {caption}"
+    );
+    assert!(
+        !caption.contains("$E=mc^2$"),
+        "literal math delimiters leaked into the caption: {caption}"
+    );
+    // The surrounding prose still renders.
+    assert!(
+        caption.contains("Energy is"),
+        "caption prose lost: {caption}"
+    );
+}
+
+#[test]
 fn spaced_option_directives_are_recognized() {
     // Quarto tolerates whitespace between the comment marker and the pipe (`# |`,
     // `// |`, `%% |`); qmd-fast must too, or the spaced lines leak into the displayed

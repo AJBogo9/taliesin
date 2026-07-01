@@ -1,6 +1,6 @@
 //! Cross-page **full-text** search index: every page's title + each anchored
 //! heading, each carrying the plain-text body of its section so Cmd-K matches
-//! prose, not just headings. Built once at discovery; written to `search.json`
+//! prose, not just headings. Built once at discovery; written to `search-index.js`
 //! and lazy-loaded by the client on first open (so it never bloats every page).
 //! `use super::*` reaches Page + the render entry point.
 

@@ -293,11 +293,13 @@ impl Site {
         let search_index = if self.search_index_json.is_empty() || self.search_index_json == "[]" {
             String::new()
         } else {
-            // Point the client at the lazy-loaded `search.json` (fetched on first
-            // open) instead of inlining the full-text index into every page.
+            // Point the client at the lazy-loaded `search-index.js` (a script that
+            // assigns window.QMD_SEARCH_INDEX, injected on first palette open) instead
+            // of inlining the full-text index into every page. A script subresource
+            // loads under file:// too, so Cmd-K works from disk with no dev server.
             let up = "../".repeat(depth);
             format!(
-                "window.QMD_SEARCH_URL=\"{up}search.json\";window.QMD_SITE_ROOT=\"{up}\";window.QMD_PAGE_URL=\"{}\"",
+                "window.QMD_SEARCH_URL=\"{up}search-index.js\";window.QMD_SITE_ROOT=\"{up}\";window.QMD_PAGE_URL=\"{}\"",
                 page.url
             )
         };

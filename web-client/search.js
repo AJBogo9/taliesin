@@ -2,7 +2,7 @@
 // long document — the book, a paper, any page with a table of contents. Matches
 // both headings and the body text of each section, and shows a snippet around the
 // hit. A single doc builds its index from the live DOM on open; a site/book lazy-
-// loads the cross-page index (search.json) on first open via window.QMD_SEARCH_URL,
+// loads the cross-page index (search-index.js) on first open via window.QMD_SEARCH_URL,
 // so the full-text index never bloats every page. Self-contained: injects its own
 // themed overlay CSS and rides along as one <script> beside the TOC scrollspy. Not
 // part of the type-checked client.js bundle.
@@ -105,7 +105,7 @@
     return txt.replace(/\s+/g, " ").trim();
   }
 
-  // Lazy-load the cross-page index from `search.json` on first open (a site/book
+  // Lazy-load the cross-page index from `search-index.js` on first open (a site/book
   // links to it via QMD_SEARCH_URL instead of inlining it into every page), then
   // run `cb`. A single doc (no URL) just runs `cb` against the DOM index.
   var indexFetched = false;
@@ -115,17 +115,21 @@
       return;
     }
     indexFetched = true;
-    fetch(window.QMD_SEARCH_URL)
-      .then(function (r) {
-        return r.json();
-      })
-      .then(function (data) {
-        window.QMD_SEARCH_INDEX = data;
-        cb();
-      })
-      .catch(function () {
-        cb();
-      });
+    // Load the index with a <script> element (it assigns window.QMD_SEARCH_INDEX)
+    // rather than fetch(): a script subresource loads under file:// too, so Cmd-K
+    // works when the book is opened from disk with no dev server (fetch() of a local
+    // file is CORS-blocked). Still lazy: only injected on the first palette open.
+    var s = document.createElement("script");
+    s.src = window.QMD_SEARCH_URL;
+    s.onload = function () {
+      cb();
+    };
+    s.onerror = function () {
+      // Surface the failure instead of a silently-empty palette.
+      window.QMD_SEARCH_LOAD_FAILED = true;
+      cb();
+    };
+    document.head.appendChild(s);
   }
 
   function ensureUi() {
@@ -259,7 +263,9 @@
     if (!matches.length) {
       var empty = document.createElement("li");
       empty.className = "qmd-s-empty";
-      empty.textContent = "No matches";
+      empty.textContent = window.QMD_SEARCH_LOAD_FAILED
+        ? "Search index failed to load"
+        : "No matches";
       list.appendChild(empty);
       return;
     }

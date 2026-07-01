@@ -163,16 +163,30 @@ function qmdInitHighlights() {
       var r = sel.getRangeAt(0);
       if (bar.contains(r.startContainer)) return;
       var b1 = blockOf(r.startContainer), b2 = blockOf(r.endContainer);
-      if (!b1 || b1 !== b2 || skip(r.startContainer, b1) || skip(r.endContainer, b1)) {
-        if (mode === 'add') hideBtn(); return;
+      // A single-block prose selection can be HIGHLIGHTED (its offsets anchor to one
+      // block-id). Any OTHER selection — spanning two blocks, or in code/math where the
+      // offset walk skips — still gets the clipboard actions (Copy/Quote/Share/Cite),
+      // which only need `pending.text`; it just doesn't get the Highlight button.
+      var single = !!(b1 && b1 === b2 && !skip(r.startContainer, b1) && !skip(r.endContainer, b1));
+      var s = -1, e = -1, text = '';
+      if (single) {
+        s = offsetOf(b1, r.startContainer, r.startOffset);
+        e = offsetOf(b1, r.endContainer, r.endOffset);
+        if (s < 0 || e < 0 || e <= s) single = false;
+        else text = textNodes(b1).map(function (n) { return n.nodeValue; }).join('').slice(s, e);
       }
-      var s = offsetOf(b1, r.startContainer, r.startOffset), e = offsetOf(b1, r.endContainer, r.endOffset);
-      if (s < 0 || e < 0 || e <= s) { if (mode === 'add') hideBtn(); return; }
-      // The selection text from the SAME math/code-free walk the offsets use (single block).
-      var text = textNodes(b1).map(function (n) { return n.nodeValue; }).join('').slice(s, e);
-      mode = 'add'; pending = { id: b1.getAttribute('data-block-id'), s: s, e: e, text: text }; pendingTag = null;
+      if (!single) {
+        text = (sel.toString() || '').trim();
+        if (!text) { if (mode === 'add') hideBtn(); return; } // nothing usable to copy/quote
+      }
+      mode = 'add';
+      pending = single
+        ? { id: b1.getAttribute('data-block-id'), s: s, e: e, text: text }
+        : { id: null, s: -1, e: -1, text: text };
+      pendingTag = null;
       resetExtras();
       extras.forEach(function (b) { b.hidden = false; });
+      btn.hidden = !single;                 // Highlight needs a single-block anchor
       btn.textContent = 'Highlight';
       placeBtn(r.getBoundingClientRect());
     }
@@ -215,6 +229,7 @@ function qmdInitHighlights() {
         mode = 'remove'; pendingTag = m.getAttribute('data-hl'); pending = null;
         resetExtras();
         extras.forEach(function (b) { b.hidden = true; });
+        btn.hidden = false;                 // ensure the Remove button shows (a prior cross-block selection may have hidden it)
         btn.textContent = 'Remove highlight';
         placeBtn(m.getBoundingClientRect());
         e.stopPropagation();

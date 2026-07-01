@@ -1026,13 +1026,16 @@ async fn build_site_async(
              (set QMD_FAST_PYTHON to a python with ipykernel)",
         );
     }
-    // Full-text search index, lazy-loaded by the Cmd-K palette (pages link to it
-    // via window.QMD_SEARCH_URL rather than inlining it).
+    // Full-text search index, lazy-loaded by the Cmd-K palette (pages link to it via
+    // window.QMD_SEARCH_URL rather than inlining it). Written as a `search-index.js`
+    // script that assigns window.QMD_SEARCH_INDEX (not a raw `.json`): the client loads
+    // it with a <script>, which works under file:// too, so Cmd-K works from disk.
     let mut search = "";
     if !site.search_index_json.is_empty() && site.search_index_json != "[]" {
-        match std::fs::write(out.join("search.json"), &site.search_index_json) {
-            Ok(()) => search = "  ·  search.json",
-            Err(e) => log::warn(&format!("cannot write search.json: {e}")),
+        let js = format!("window.QMD_SEARCH_INDEX={};", site.search_index_json);
+        match std::fs::write(out.join("search-index.js"), js) {
+            Ok(()) => search = "  ·  search-index.js",
+            Err(e) => log::warn(&format!("cannot write search-index.js: {e}")),
         }
     }
 

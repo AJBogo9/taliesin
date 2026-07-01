@@ -204,24 +204,16 @@ fn bare_theme_css(default_mode: &str) -> String {
     }
 }
 
-/// Static-page click-to-source: clicking a block logs its id + sourcepos to the
-/// console (a no-server preview of click-to-source; the live server replaces this
-/// with the editor wiring in `client.js`).
-const STATIC_CLICK_TO_SOURCE: &str = r#"<script>
-  // Click any block to see its source position in the console (a static preview
-  // of click-to-source; the live server wires this to the editor).
-  document.addEventListener('click', (e) => {
-    const el = e.target.closest('[data-block-id]');
-    document.querySelectorAll('.qmd-hl').forEach(n => n.classList.remove('qmd-hl'));
-    if (!el) return;
-    el.classList.add('qmd-hl');
-    console.log('block', el.dataset.blockId, '@', el.dataset.sourcepos);
-  });
-</script>"#;
-
 /// Run the client enhancers once on load (the static page has no websocket client
 /// to call them after a mount).
 const STATIC_ENHANCE: &str = "<script>document.addEventListener('DOMContentLoaded',function(){window.qmdEnhanceCode&&window.qmdEnhanceCode(document.body);});</script>";
+
+/// Mobile pull-up-sheet chrome for a static TOC page: a dim backdrop + a grabber handle
+/// (with a current-section chip). Body-level and `position: fixed`, revealed by CSS only
+/// at the sheet breakpoint (`<= 60rem`); `toc-sheet.js` wires the drag/tap/keyboard.
+const TOC_SHEET_MARKUP: &str = "<div id=\"qmd-toc-backdrop\"></div>\n\
+     <button id=\"qmd-toc-handle\" type=\"button\" aria-label=\"Contents\">\
+     <span id=\"qmd-toc-cur\"></span><span class=\"qmd-toc-grip\"></span></button>\n";
 
 fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str, mode: OutputMode) -> String {
     html_page_inner(doc, fallback_title, None, mode)
@@ -312,7 +304,7 @@ fn html_page_inner(
     // wrapper, footer) so the footer sits at the bottom of short pages and the
     // chrome lines up with the reading column. The `has-toc` grid moves onto the
     // wrapper, leaving the body free to be the flex shell.
-    let body_content = match site {
+    let mut body_content = match site {
         // Book: a centred reading column (content + optional TOC) under a sticky topbar;
         // the chapter list is an off-canvas drawer, with prev/next-chapter under the column.
         Some(s) if s.book_sidebar.is_some() => {
@@ -356,6 +348,15 @@ fn html_page_inner(
         }
         None => content,
     };
+    // On a TOC page, ship the mobile pull-up-sheet chrome so the "on this page" TOC can
+    // become a bottom sheet on narrow screens instead of stranding at the very bottom of
+    // the chapter. Progressive enhancement: the handle/backdrop are hidden by default and
+    // `toc-sheet.js` ADDS `qmd-toc-sheet` to the body at runtime, then wires the drag/tap
+    // — so with JS off the TOC still degrades to the in-flow layout (never off-screen and
+    // unreachable). Desktop is unaffected (the sheet CSS lives in the `<= 60rem` query).
+    if !toc.is_empty() {
+        body_content.push_str(TOC_SHEET_MARKUP);
+    }
     // Site-level `format: html:` includes (from `_site.yml`) apply to every page
     // first; the page's own front-matter includes follow.
     let mut includes = match site {
@@ -395,9 +396,11 @@ fn html_page_inner(
         include_in_header: &includes.in_header,
         include_before_body: &includes.before_body,
         body: &body_content,
-        // The static page has no websocket client, so it logs click-to-source to
-        // the console and runs the enhancers once on load itself.
-        scripts_pre: STATIC_CLICK_TO_SOURCE,
+        // A static page is a read-only view with no editor bridge, so it ships no
+        // click-to-source handler (that would draw a dead `.qmd-hl` outline on every
+        // click); it only runs the enhancers once on load. Click-to-source is a
+        // live-preview-only feature (client.js wires it to the editor).
+        scripts_pre: "",
         scripts_post: &format!("{STATIC_ENHANCE}\n{toc_script}"),
         include_after_body: &includes.after_body,
     })
