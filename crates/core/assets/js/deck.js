@@ -431,6 +431,9 @@
         var n = node.querySelectorAll(':scope > pre').length;
         for (var k = 1; k < n; k++) steps.push({ mm: node }); // one step per block-to-block morph
       } else if (node.tagName === 'PRE') {
+        // A `<pre>` INSIDE a `.magic-move` is one of its morph blocks, already counted
+        // by the `.magic-move` branch above — don't double-count it as its own step.
+        if (node.closest('.magic-move')) return;
         // A code-step pre that also follows a `. . .` pause carries `.fragment`;
         // give it a fragment step first (else it stays visibility:hidden for the
         // whole talk), then its per-segment line-highlight steps.
@@ -536,6 +539,7 @@
     if (deck.mode === 'speaker') updateSpeakerUI();
     else applyFragments();
     deck.animSteps = false;
+    writeHash(); // reflect the in-slide step in the URL so a fragment is deep-linkable
     broadcastState();
   }
   function showNextFrag() {
@@ -997,6 +1001,11 @@
     root.querySelector('.sp-reset').addEventListener('click', function () { deck.spStart = Date.now(); updateSpeakerClock(); });
     if (deck.spClock) clearInterval(deck.spClock); // don't stack intervals on re-init
     deck.spClock = setInterval(updateSpeakerClock, 500);
+    // Stop the clock when the speaker window is closed / navigated away (a bfcache
+    // restore re-runs initSpeaker, which re-arms it) so the interval can't leak.
+    window.addEventListener('pagehide', function () {
+      if (deck.spClock) { clearInterval(deck.spClock); deck.spClock = null; }
+    });
     updateSpeakerClock();
     clampIndices();
     if (window.opener) { try { window.opener.postMessage({ qmd: 'deck', type: 'hello' }, targetOrigin()); } catch (e) {} }
@@ -1166,7 +1175,13 @@
   function writeHash() {
     if (!deck.config.hash) return;
     var c = currentSlide();
-    var frag = c && c.id ? c.id : deck.h + (deck.v ? '/' + deck.v : '');
+    // #/<slide>[/<v>]/<frag>: append the in-slide step index when past step 0 so a deep
+    // link restores the exact fragment. A numeric slide includes its `v` when a frag
+    // follows (keeping the frag slot unambiguous); a named slide takes `/<frag>`.
+    var parts = c && c.id ? [c.id] : [deck.h];
+    if (!(c && c.id) && (deck.v || deck.frag > 0)) parts.push(deck.v);
+    if (deck.frag > 0) parts.push(deck.frag);
+    var frag = parts.join('/');
     var url = '#/' + frag;
     if (url === location.hash) return;
     if (deck.config.history) location.hash = '/' + frag;
@@ -1176,15 +1191,20 @@
     var raw = location.hash.replace(/^#\/?/, '');
     if (!raw) return false;
     var parts = raw.split('/');
+    var fragPart;
     if (parts[0] && isNaN(parseInt(parts[0], 10))) {
       var el = document.getElementById(parts[0]);
       if (!el) return false;
       var ix = indexOf(el);
       deck.h = ix.h; deck.v = ix.v;
-      return true;
+      fragPart = parts[1]; // named slide: the fragment index follows the id
+    } else {
+      deck.h = parseInt(parts[0], 10) || 0;
+      deck.v = parseInt(parts[1], 10) || 0;
+      fragPart = parts[2];
     }
-    deck.h = parseInt(parts[0], 10) || 0;
-    deck.v = parseInt(parts[1], 10) || 0;
+    var f = parseInt(fragPart, 10);
+    deck.pendingFrag = isNaN(f) ? null : f; // consumed by onHashChange / init
     return true;
   }
   function indexOf(el) {
@@ -1199,12 +1219,17 @@
     return { h: 0, v: 0 };
   }
   function onHashChange() {
-    var ph = deck.h, pv = deck.v;
+    var ph = deck.h, pv = deck.v, pf = deck.frag;
     if (!readHash()) return;
     clampIndices();
-    if (deck.h === ph && deck.v === pv) return; // our own writeHash, or no real change
+    var target = deck.pendingFrag;
+    // Our own writeHash echo (history mode fires hashchange): nothing actually moved.
+    if (deck.h === ph && deck.v === pv && (target == null || target === pf)) return;
     if (deck.blackout) toggleBlackout(false); // an external slide change lifts the curtain
-    deck.frag = fragCount(); apply(); updateNumber(); fire('slidechanged'); // apply pans the camera
+    var fc = fragCount();
+    // Restore the linked fragment step; without one (a plain slide link) show them all.
+    deck.frag = target != null ? Math.max(0, Math.min(target, fc)) : fc;
+    apply(); updateNumber(); fire('slidechanged'); // apply pans the camera
     broadcastState(); // keep a speaker/embed window in sync on hash (back/forward) nav
   }
 
@@ -1274,10 +1299,13 @@
       if (handled) e.preventDefault();
       return;
     }
-    // Black-screen / pause: while blacked out, only b / . / Esc unblank; all other
-    // keys are swallowed so navigation can't run behind the curtain.
+    // Black-screen / pause: while blacked out, any navigation key (plus b / . / Esc)
+    // RESUMES — it lifts the curtain without also advancing, so a presenter tapping a
+    // clicker to continue is met by the slide, not a jump. All other keys are swallowed.
     if (deck.blackout) {
-      if (e.key === 'b' || e.key === '.' || e.key === 'Escape') { toggleBlackout(false); e.preventDefault(); }
+      var RESUME = [' ', 'PageDown', 'PageUp', 'ArrowRight', 'ArrowLeft', 'ArrowDown',
+        'ArrowUp', 'Home', 'End', 'Enter', 'b', '.', 'Escape'];
+      if (RESUME.indexOf(e.key) !== -1) { toggleBlackout(false); e.preventDefault(); }
       return;
     }
     switch (e.key) {
@@ -1555,9 +1583,19 @@
     }
 
     if (!readHash()) { deck.h = 0; deck.v = 0; }
-    clampIndices(); apply(); layout(); updateNumber();
+    clampIndices();
+    // Restore a deep-linked fragment step (#/h/v/frag) once the slide is known.
+    if (deck.pendingFrag != null) deck.frag = Math.max(0, Math.min(deck.pendingFrag, fragCount()));
+    apply(); layout(); updateNumber();
     rev.classList.add('qmd-ready'); // show the deck now the first slide is placed
-    window.addEventListener('resize', layout);
+    // Coalesce a burst of resize events (a drag-resize / rotate fires many) into ONE
+    // layout per animation frame — layout re-fits every slide (fitSlide measures each),
+    // so running it per-event thrashed the main thread.
+    var resizeRAF = null;
+    window.addEventListener('resize', function () {
+      if (resizeRAF) return;
+      resizeRAF = requestAnimationFrame(function () { resizeRAF = null; layout(); });
+    });
     window.addEventListener('message', onMessage); // sync (audience) / goto (embed)
     // An embed preview (in the speaker window's iframes) is passive: no input, no
     // broadcasting; it only follows postMessage 'goto'.
@@ -1571,6 +1609,12 @@
       window.addEventListener('pointermove', onOverviewPointerMove);
       window.addEventListener('pointerup', onOverviewPointerUp);
       window.addEventListener('hashchange', onHashChange);
+      // If the presentation window goes away, close its speaker popup + drop the ref so
+      // a stale `deck.speakerWin` isn't messaged after this window is gone.
+      window.addEventListener('pagehide', function () {
+        if (deck.speakerWin && !deck.speakerWin.closed) { try { deck.speakerWin.close(); } catch (e) {} }
+        deck.speakerWin = null;
+      });
       buildChrome(); // the control menu + progress bar + nav arrows
       // Embedded in a same-origin page: follow the host's light/dark toggle live.
       if (window.qmdDeckEmbedded && window.qmdDeckApplyTheme) {

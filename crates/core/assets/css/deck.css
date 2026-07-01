@@ -616,7 +616,11 @@ html.qmd-deck-dark.qmd-scroll, html.qmd-deck-dark.qmd-scroll body { background: 
    attention back to the speaker. A body-level element (see deck.js toggleBlackout),
    above ALL chrome including the preview dev menu (z-9999); hidden in print/reader,
    and lifted on overview / external navigation in deck.js. */
-.qmd-blackout-overlay { position: fixed; inset: 0; background: #000; z-index: 100000; cursor: none; }
+/* Cursor shows while the pointer is active (so the presenter can find it to
+   click-dismiss the blackout) and hides only once idle — the mousemove -> showChrome
+   handler clears `qmd-idle`, so moving the mouse un-hides the cursor. */
+.qmd-blackout-overlay { position: fixed; inset: 0; background: #000; z-index: 100000; cursor: default; }
+html.qmd-idle .qmd-blackout-overlay { cursor: none; }
 html.qmd-print .qmd-blackout-overlay,
 html.qmd-scroll .qmd-blackout-overlay { display: none !important; }
 
