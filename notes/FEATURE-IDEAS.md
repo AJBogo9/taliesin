@@ -355,6 +355,48 @@ as *read-only* preview/build affordances, never as preview-pane edits.
     default bundles stay lean; vendor for offline). *(roadmap: cell-language-registry, cut
     until a corpus doc needs it.)*
 
+*New (2026-07-01, dogfooding — building an interactive PML/Bayesian-ML study site on the shipped
+`{input}` (#47) + `{js}` graph): the reactive substrate ships; what math/ML explorables still need is
+a numerics story plus two controls. All stay HTML-only / offline and must **not** reintroduce a
+reactive VM (BEYOND-QUARTO's stated top design risk). Highest-leverage: #62 + #63.*
+
+62. **Bundled numerics/stats global for `{js}` cells** — ship a small curated numerics namespace as a
+    drawing-global beside `Plot`/`d3`: distribution pdf/cdf (gaussian/gamma/beta/poisson/exp), summary
+    stats (mean/var), a **seeded** PRNG, and small dense linear algebra (matmul, Cholesky, 2×2 eig/inv).
+    Removes the #1 friction of scientific explorables — hand-rolling pdfs/quadrature in every cell — and
+    lands as another global with **no reactive-graph change**. — numpy / `scipy.stats` in a Jupyter cell;
+    jStat. — **S–M** — build/reader — fits (lean-core: a bundled global; keep it small/curated +
+    offline-vendored, resist growing into a numeric VM). Pin `corpus/reactive/numerics.qmd`.
+63. **Two ML-explorable `{{< input >}}` types: `animate`/play tick + draggable `point`** — extend the
+    shipped input vocabulary (#47) with (a) a **play/pause/step/reset** control publishing a monotonic
+    tick node so iterative demos advance a frame (EM sweeps, CAVI, gradient descent), and (b) a
+    **drag/click 2-D point** control publishing an `{x,y}` (or point-set) node for "place a data point"
+    demos (mixtures, factor analysis). Both reuse `registerInput`/`scheduleFrom` — like scrolly (#46), an
+    input driven by something other than a slider. — ipywidgets `Play`; Observable interactive canvases.
+    — **M** — build/reader — needs-care: the tick must schedule **one** downstream pass per frame via the
+    existing scheduler + `invalidation`, **not** a continuous dataflow loop (the reactive-VM trap). Pin
+    `corpus/reactive/animate.qmd` + `.../point.qmd`.
+64. **`qmd.state` — a blessed cross-re-run state store** — a small keyed store that survives scheduled
+    re-runs so an iterative demo accumulates (EM parameters across ticks) instead of recomputing from
+    scratch each frame; cleared on cell edit; deck-skip; never writes back to source. Formalizes what
+    `invalidation` today only tears down. Pairs with #63's tick. — a Jupyter kernel holding a model between
+    runs; Observable `mutable`. — **S–M** — build/reader — needs-care: scope to a per-name store with an
+    explicit lifecycle; must NOT become general mutable dataflow (reactive-VM trap).
+65. **Richer `{js}` output helpers: KaTeX value + mini table** — convenience builders over the existing
+    DOM-return contract: typeset a returned number/array/matrix as KaTeX math (reuse the bundled KaTeX —
+    e.g. echo a posterior precision typeset, not as plain text), and a minimal table renderer for
+    arrays/records. Closes the rich-display gap vs Jupyter's MIME protocol with no new machinery. —
+    Jupyter rich display (LaTeX / DataFrame); Observable `tex` / `Inputs.table`. — **S** — build/reader —
+    fits.
+66. **Opt-in Pyodide `{python}` cell (numpy/scipy in-browser, no kernel)** — a client-side `{python}`
+    execution mode backed by Pyodide, feeding the reactive graph like any cell; the general "match
+    Jupyter's Python" answer (this is exactly JupyterLite). Closes the fully-general gap — a
+    scientific-Python stack inside an interactive, static, offline page. — JupyterLite / Pyodide. — **L**
+    — build/reader — needs-care: **bundle guard** (Pyodide ~10 MB+, opt-in per page, vendored offline);
+    sibling to the DuckDB-WASM `{sql}` idea (#50). Caveats: **no torch in Pyodide** (Bayes-by-Backprop
+    won't run), cold-start cost. *(roadmap: cell-language-registry graduate; cut until a corpus doc needs
+    it.)*
+
 ### Category 6 — Hover, cross-reference & navigation cluster (cheap, high-delight)
 
 These share one small enhancer + the existing resolved-ref/numbering data. Bundling them is
