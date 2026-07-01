@@ -155,13 +155,16 @@ directly (`code, pre, kbd, samp, .katex { letter-spacing: normal; word-spacing: 
   single-block prose only (margin notes / cross-block / colours scoped out — see specs).
 
 ### Visual craft / theming (deep-audit P2)
-- [ ] Sepia overrides: `.qhl-*` syntax palette + output/stderr/error boxes + copy button; darken
-  `--qmd-muted` to AA (base.css:33,385,599) — sepia is first-class but only redefines 6 tokens.
-- [ ] Tokenize copy button + overlay shadows (`var(--qmd-*)` / `--qmd-edge-shadow`)
-  (base.css:255,293,398,696).
-- [ ] Add prose rhythm: tokenized p/list margins + a flat `hr` (base.css; currently UA defaults).
-- [ ] Dark-mode `--qmd-thm-*` theorem border variants (dark.css).
-- [ ] Drop dead `.hero h1` border/padding reset (base.css:321).
+*Cluster shipped 2026-07-01 (`main` @ 0a99528), browser-verified light/dark/sepia: sepia
+first-classed (warm `.qhl-*` + warm output/stderr/error/js-error boxes + AA `--qmd-muted`),
+copy button + four box-shadows tokenized, prose rhythm (paragraph margin + flat `hr`), dark
+theorem-border variants, dead `.hero h1` reset dropped. Residual (deferred, low):*
+- [ ] **List-margin rhythm** left to UA defaults: a global `li { margin }` leaks into chrome
+  nav/TOC `<li>`s. A scoped content-only selector (`#qmd-main`/`#qmd-root`) would let lists get
+  the same tokenized rhythm as paragraphs; skipped for now (paragraphs + `hr` cover most of it).
+- [ ] **Sepia callout/theorem HEADER tints** still color-mix from fixed cool colors, so a Note
+  header reads slightly cool on the warm page (borders are fine). Low; revisit if sepia gets a
+  polish pass.
 
 ### Deck engine (deep-audit P2)
 - [ ] Debounce/rAF resize; drop `fitSlide` from the resize path (deck.js:1536,242).
