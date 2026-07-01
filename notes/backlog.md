@@ -222,12 +222,12 @@ Tick items in the detailed subsections as they land.
 4. **A3** narrow-screen static book right-TOC: ship the pull-up sheet (P2) [DONE]
 5. **B1** cross-block selection toolbar decouple (P3, JS) [DONE]
 6. **B3** themed chevron on folded `<details>` (P3, CSS) [DONE]
-7. **F2b** cross-page number for non-heading anchors (P3, Rust)
-8. **B2** hover card: add pin, or correct the "pinnable" wording (P3, JS/doc)
-9. **F2a** cross-page hover preview (P3, JS/build; needs a site-wide label index)
-10. **F2c** book-wide bookmarks (P3, JS)
-11. **B4a** focus-mode optional native fullscreen (P3, JS)
-12. **A1** number the chapter H1 for continuity (P3, Rust; behavior choice)
+7. **F2b** cross-page number for non-heading anchors (P3, Rust) [DEFERRED: needs a design call, see below]
+8. **B2** hover card: add pin + fix scroll-inside dismiss (P3, JS) [DONE]
+9. **F2a** cross-page hover preview (P3) [DEFERRED: needs the cross-page index, groups with F2b]
+10. **F2c** book-wide bookmarks (P3, JS) [DONE]
+11. **B4a** focus-mode native fullscreen (P3, JS) [DONE] · prev-arrow half still open (needs your input)
+12. **A1** number the chapter title for continuity (P3, Rust) [DONE]
 13. **G1** Google-Scholar `citation_*` meta (P3, Rust)
 14. **A2** document the right-TOC `>=3` gate (P3, docs)
 15. **D1** `.code-walkthrough`/`.scrolly` wide-desktop layout (P3, CSS design-fork)
@@ -279,16 +279,37 @@ output is opened from disk with no dev server.
 lacks parity with the richer in-page ref path. These generalize the existing theorem-only bullet
 under "Release regression-hunt deferrals" (cross-page theorem refs drop the number); widen that
 item rather than duplicating it.
-- [ ] **Cross-page number lost for ALL non-heading anchors** (P3): `xref.rs:108-109` pushes an empty
-  number for every `fig-`/`eq-`/`tbl-`/`lst-`/`thm-` anchor (headings resolve book-wide, the rest
-  render bare across pages). Harvest numbers from the per-page rendered registry.
-- [ ] **No hover preview for cross-page refs** (P3): `12-link-preview.js:34,72` only fires on
-  same-page `#` links (`getElementById` on the current page); cross-page xrefs are rewritten to
-  `{url}#{anchor}` (`xref.rs:229`) so they never qualify. Needs a site-wide label→block index
-  (FEATURE-IDEAS #52).
-- [ ] **Reader bookmarks are per-page, not book-wide** (P3): `18-bookmarks.js:9` keys localStorage by
-  `location.pathname`, so a book's bookmarks don't aggregate across chapters. Design tension: reader
-  state is intentionally pathname-scoped, so book-wide needs a per-book key plus a cross-page jump.
+- [ ] **Cross-page number lost for ALL non-heading anchors** (P3, DEFERRED — needs a design call).
+  `xref.rs:108-109` pushes an empty number for every `fig-`/`eq-`/`tbl-`/`lst-`/`thm-` anchor
+  (headings resolve book-wide via `section_number`; the rest render bare cross-page). *Investigated
+  2026-07-01:* not a quick fix. The xref registry (`scan_xref_targets`) is a deliberate **source-scan
+  with NO render** (avoids a second execution pass); but fig/eq/tbl/lst/thm numbers only exist AFTER
+  render (`render/mod.rs` `xref_registry`, built by `apply_table_captions`/`number_theorems`/figure
+  counters). So a correct fix is either **(a)** a render-harvest: render all pages once, collect each
+  page's anchor→number map (expose it on `RenderedDoc`), enrich `Site::xref_targets`, THEN
+  `resolve_cross_refs` — reversing the no-double-render design (acceptable for `build`, slows preview
+  startup); or **(b)** replicate the full figure/theorem counting (incl. number-within + shared
+  counters) in the source scan — high drift risk vs the render. Section numbers work only because
+  heading counting is trivial. Recommend (a), build-gated, or accept the bare label. Touches
+  load-bearing numbering — do it deliberately, not in an autonomous sweep.
+- [ ] **No hover preview for cross-page refs** (P3, DEFERRED — needs the cross-page index, groups with
+  F2b): `12-link-preview.js` only fires on same-page `#` links (`getElementById`); a cross-page xref is
+  `{url}#{anchor}` (`xref.rs:229`), whose target block lives on another page. *Investigated 2026-07-01:*
+  a real preview needs cross-page TARGET CONTENT, i.e. a site-wide anchor→preview index (same
+  render-harvest gap as F2b). Lighter path worth a focused effort: for `@sec-` refs, reuse the already-
+  shipped `search-index.js` (it has heading text + a section-body snippet per `sec-` anchor) to render a
+  text card — lazy-load the index on first cross-page-ref hover, build the card from the entry; `fig-`/
+  `eq-`/`thm-` cross-page previews still need rendered HTML (the F2b index). Not a quick sweep item.
+- [x] **Reader bookmarks are per-page, not book-wide** (P3).
+  DONE 2026-07-01 (branch `author-testing-fixes`): a book now shares ONE bookmark store across chapters,
+  keyed by the resolved book-root URL (the topbar `.qmd-book-brand` href, stable + present on every
+  chapter); single docs / websites stay per-page. Entry schema is now `{page, anchor, block, label}`;
+  the reader-menu list shows bookmarks from ALL chapters (a cross-chapter one carries a ` · <page>`
+  suffix and jumps to `{page}#{anchor}`; a current-page one scrolls + flashes in place), and the margin
+  star marks only current-page entries. Browser-verified from `file://` (Chromium shares the `file://`
+  localStorage bucket): capture stores the right schema; the menu lists a current + a cross-chapter
+  bookmark. **Caveat (ties to E1):** some browsers (Firefox) isolate `file://` localStorage per path, so
+  "book-wide" only spans chapters when served over http(s); logged in the portability audit.
 - [ ] **Cross-reference graph / backlinks (Obsidian-style)** (strategic, open question): "referenced
   by" backlinks already fit (FEATURE-IDEAS #27: read-only, build-time, reuses `xref.rs`'s forward-ref
   scan) and are the cheap high-value core. A full interactive force-directed graph canvas is a
@@ -304,17 +325,27 @@ item rather than duplicating it.
   path resets `btn.hidden`. Browser-verified from `file://`: cross-block selection shows
   Copy/Quote/Share/Cite (Highlight hidden), single-block shows all five, 0 relevant console errors.
   Cross-block *highlighting* stays scoped out (per the reader-experience note below).
-- [ ] **Hover cross-ref card is not pinnable** (P3, confirmed + doc drift): `12-link-preview.js` has
-  no click-to-pin handler and dismisses on scroll/mouseout (`:103` `scroll` listener), so you can't
-  scroll into an overflowing (`overflow:auto`) card. Yet the backlog and FEATURE-IDEAS wording claim
-  it is "pinnable." Either add click-to-pin (keep it open, stop the scroll-dismiss while pinned, Esc
-  or outside-click releases) or correct the wording.
-- [ ] **Focus mode: optional native fullscreen** (P3, feature): focus mode is CSS-only
-  (`03-focus-mode.js:31`, `base.css:85-92`); add an optional `requestFullscreen()` on toggle (reuse
-  the `deck.js:1507` pattern), degrading where the API is blocked. NOTE: the "prev arrow too far left"
-  half does NOT reproduce: the book pager (`.qmd-book-postnav`/`.qmd-book-prev`, `site.css:200-215`)
-  already sits inside the centred reading column, and there is no viewport-edge prev arrow in the code.
-  Ask the reporter which view/viewport showed it.
+- [x] **Hover cross-ref card is not pinnable** (P3, confirmed + doc drift).
+  DONE 2026-07-01 (branch `author-testing-fixes`): the real bug was the `scroll` listener
+  (`12-link-preview.js`) firing on ANY scroll incl. scrolling INSIDE the overflowing card, so it
+  dismissed the moment you tried to read past the fold. Now: (1) a scroll whose target is inside the
+  card no longer dismisses it (you can scroll the `max-height:50vh` overflow); (2) click-to-pin
+  (`pinned` state) keeps it open through mouse-leave + page scroll, with Esc / outside-click to
+  release. Resolves the "pinnable" doc-drift (backlog:78 / FEATURE-IDEAS #52 now true). Browser-verified
+  from `file://`: card-internal scroll keeps it open, page scroll hides it, click pins (survives page
+  scroll), Esc closes + unpins. Core suite + tsc green.
+- [x] **Focus mode: native fullscreen** (P3, feature).
+  DONE 2026-07-01 (branch `author-testing-fixes`): focus mode now enters native fullscreen too (the
+  author's "hide everything but the text" ask). `03-focus-mode.js` `setFocus` calls a best-effort
+  `goFullscreen` (requestFullscreen on enter / exitFullscreen on leave; both `f` and the menu button
+  are user gestures; degrades silently where blocked), and a `fullscreenchange` sync drops focus mode
+  if the reader leaves fullscreen via F11/Esc, so the two stay coupled. Browser-verified: `f` toggles
+  focus on/off, Esc exits, no JS errors (the requestFullscreen rejection under *synthetic* test events
+  is caught; a real keypress engages fullscreen with no warning). Coupled by design per the request;
+  trivially decouple-able to opt-in if it reads as jarring.
+  - [ ] **STILL OPEN — "prev arrow too far left" (needs your input):** does NOT reproduce in code — the
+    book pager (`.qmd-book-postnav`/`.qmd-book-prev`, `site.css:200-215`) already sits inside the centred
+    reading column, and there is no viewport-edge prev arrow. Which view/viewport showed it?
 - [x] (Polish) **Themed chevron on folded `<details>`** (P3).
   DONE 2026-07-01 (branch `author-testing-fixes`): folded code (`qmd-code-fold`) + collapsible proofs
   now hide the browser-default triangle and draw a `currentColor` caret that rotates from right (▶) to
@@ -336,13 +367,15 @@ item rather than duplicating it.
   sheet, backdrop closes, `aria-expanded` correct) and 1440px (handle hidden, TOC = sticky sidebar).
   *Real-device follow-up:* the drag-gesture physics (drag up to open / drag down to dismiss) were ported
   but only tap/keyboard/backdrop were exercised headlessly; confirm drag on a touch device.
-- [ ] **Book section-number UX confusion** (P3, explains "strange numbers in the left TOC"): the
-  chapter H1 title (a front-matter `title:` block, not a markdown `#`) carries no number, but its
-  H2/H3 jump to N.1 / N.1.1 (`chapter.rs:10-53` numbers h2+ only), and those numbers also surface in
-  the right "on this page" TOC (`toc_html` strips heading tags after `finish_blocks` numbers them,
-  `page.rs:272` + `mod.rs:489`). Reads as "numbers from nowhere." Consider numbering the chapter H1
-  ("3 Executable content") for continuity, or a toggle. NOT a left-drawer bug: the left Chapters
-  drawer numbers are clean sequential 1..N (`chrome.rs:280`, `book.rs:98-119`).
+- [x] **Book section-number UX confusion** (P3, explains "strange numbers in the left TOC").
+  DONE 2026-07-01 (branch `author-testing-fixes`, author chose "number the chapter title"):
+  `number_chapter_headings` (`site/chapter.rs`) now numbers the chapter's title block too — a new
+  `prefix_title_number` inserts the bare chapter number just inside `<h1 class="title">` (the title is
+  a `<header class="qmd-title-block">`, so `heading_level` never saw it), without advancing the h2+
+  counters. So a numbered chapter reads "4 Executable content" and its "4.1 Code cells" flows naturally
+  instead of a number appearing from nowhere; unnumbered prefaces (index / `{.unnumbered}`) stay
+  unnumbered. TDD unit tests (`numbers_the_chapter_title_block`, `detects_the_title_block_but_not_a_heading`);
+  core suite green; browser-verified on the guide book. (The left Chapters drawer was already correct.)
 - [ ] **Right-TOC auto-gate reads as arbitrary** (P3, design-decision): the "double numbers ↔ has a
   right TOC" correlation the author spotted is REAL, and both are downstream of one fact, how many
   subsections a chapter has. The `>=3` heading gate (`mod.rs:565`, `toc_entry_count`) hides the right
