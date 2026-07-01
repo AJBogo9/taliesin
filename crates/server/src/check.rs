@@ -56,6 +56,7 @@ fn collect_file_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
     let links = dx::validate_local_links(&doc.blocks, base);
     let reactive = dx::validate_js_reactive_graph(&doc.blocks);
     let a11y = dx::validate_a11y(&doc.blocks, doc.format);
+    let math = dx::validate_math(&doc.blocks);
     let cites = dx::citations_without_bibliography(&src, &doc.blocks);
     let mut out: Vec<Diagnostic> = Vec::new();
     // Malformed YAML front matter: the lenient line-parser silently mis-extracts
@@ -78,6 +79,7 @@ fn collect_file_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
             .chain(links.iter())
             .chain(reactive.iter())
             .chain(a11y.iter())
+            .chain(math.iter())
             .chain(cites.iter())
             .map(|w| diag_from(w, &path_str)),
     );
@@ -128,6 +130,7 @@ fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
         let media = dx::validate_local_media(&doc.blocks, base);
         let reactive = dx::validate_js_reactive_graph(&doc.blocks);
         let a11y = dx::validate_a11y(&doc.blocks, doc.format);
+        let math = dx::validate_math(&doc.blocks);
         let cites = dx::citations_without_bibliography(&src, &doc.blocks);
         for w in dups
             .iter()
@@ -136,6 +139,7 @@ fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
             .chain(media.iter())
             .chain(reactive.iter())
             .chain(a11y.iter())
+            .chain(math.iter())
             .chain(cites.iter())
         {
             out.push(diag_from(w, &page.rel));

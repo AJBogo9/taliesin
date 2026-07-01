@@ -7,9 +7,14 @@
 /// `\url{}` wrappers and brace groups (capitalization guards). Accent + escape
 /// resolution (both in `latex_accents`) runs FIRST, while braces still delimit a
 /// macro argument (`M{\"u}ller` -> `Müller`); the surviving braces are then stripped.
+///
+/// `\url{...}` is handled as an unknown macro inside `latex_accents`: the `\url`
+/// control word is dropped and its braced argument kept verbatim (then de-braced
+/// below), so `\url{http://a.com/x_y}` -> `http://a.com/x_y`. (An earlier naive
+/// `replace("\\url", "")` corrupted any word merely CONTAINING the substring, e.g.
+/// `\urlstyle`, and deleted a bare `\url` with no argument.)
 pub(crate) fn clean(s: &str) -> String {
-    let s = s.replace("\\url", "");
-    let s = latex_accents(&s);
+    let s = latex_accents(s);
     s.replace(['{', '}'], "").trim().to_string()
 }
 

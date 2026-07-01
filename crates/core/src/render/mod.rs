@@ -44,8 +44,8 @@ use doc_includes::resolve_doc_includes;
 mod fm_extract;
 pub use fm_extract::is_reveal_doc;
 use fm_extract::{
-    Numbered, TheoremConfig, detect_format, detect_title_block_hidden, detect_toc, extract_field,
-    parse_theorem_config,
+    Numbered, TheoremConfig, bibliography_paths, detect_format, detect_title_block_hidden,
+    detect_toc, extract_field, parse_theorem_config,
 };
 mod cell_extract;
 pub(crate) use cell_extract::option_directive;
@@ -199,7 +199,7 @@ fn render_internal_impl(
     // but skips the visible `<h1>` header (nav landing pages don't need it).
     let mut hide_title_block = false;
     let mut theme: Option<String> = None;
-    let mut bib_field: Option<String> = None;
+    let mut bib_paths: Vec<String> = Vec::new();
     let mut includes = PageIncludes::default();
     // Whether a format/named extension contributed head/body markup (e.g. a reveal
     // theme extension like liquid-glass): such a theme owns the deck's colours.
@@ -270,7 +270,7 @@ fn render_internal_impl(
                 author = extract_field(fm, "author");
                 description = extract_field(fm, "description");
                 lang = extract_field(fm, "lang");
-                bib_field = extract_field(fm, "bibliography");
+                bib_paths = bibliography_paths(fm);
                 format = detect_format(fm);
                 toc_explicit = detect_toc(fm);
                 hide_title_block = detect_title_block_hidden(fm);
@@ -627,7 +627,7 @@ fn render_internal_impl(
         &theorem_config,
         chapter,
     );
-    let bib = load_bibliography(bib_field.as_deref(), base_dir, &mut warnings);
+    let bib = load_bibliography(&bib_paths, base_dir, &mut warnings);
     warnings.extend(crate::cite::process(&mut blocks, &bib, &xref_registry));
     // Gather the footnote definitions (collected above, in comrak's reference order)
     // into one footnotes section, appended after any References.
@@ -760,20 +760,23 @@ const DARK_CSS: &str = include_str!("../../assets/css/dark.css");
 /// relative to `base_dir`. Returns an empty bibliography when none is found
 /// (citations still de-leak; cross-references still resolve).
 fn load_bibliography(
-    field: Option<&str>,
+    paths: &[String],
     base_dir: Option<&Path>,
     warnings: &mut Vec<Warning>,
 ) -> crate::cite::Bibliography {
-    let (Some(field), Some(base)) = (field, base_dir) else {
+    let Some(base) = base_dir else {
         return crate::cite::Bibliography::default();
     };
     let mut text = String::new();
-    for tok in field.split([',', '[', ']', ' ']) {
-        let tok = tok.trim().trim_matches(['"', '\'']);
-        if !tok.ends_with(".bib") {
+    for path in paths {
+        let path = path.trim();
+        // Only `.bib` is supported; a differently-suffixed path (a stray token or an
+        // unsupported CSL-JSON) is skipped rather than mis-read.
+        if !path.ends_with(".bib") {
             continue;
         }
-        match crate::includes::safe_join(base, tok).and_then(|p| std::fs::read_to_string(&p).ok()) {
+        match crate::includes::safe_join(base, path).and_then(|p| std::fs::read_to_string(&p).ok())
+        {
             Some(content) => {
                 text.push_str(&content);
                 text.push('\n');
@@ -781,7 +784,7 @@ fn load_bibliography(
             // An explicitly named `.bib` that can't be read (or escapes the project
             // root) is a typo worth flagging: citations would otherwise just
             // silently fail to resolve.
-            None => warnings.push(Warning::new(format!("bibliography file not found: {tok}"))),
+            None => warnings.push(Warning::new(format!("bibliography file not found: {path}"))),
         }
     }
     let (bib, bib_warnings) = crate::cite::parse_bib_warned(&text);
@@ -1576,16 +1579,29 @@ pub(crate) fn tag_end(html: &str) -> Option<usize> {
     None
 }
 
-/// Strip HTML tags, returning the visible text (used for callout titles).
+/// Strip HTML tags, returning the visible text (callout/tabset titles, TOC entries,
+/// figure alt-text, deck slugs). Quote-aware, like [`tag_end`]: a `>` inside a quoted
+/// attribute value (e.g. KaTeX's `<span title="a>b">`) does NOT end the tag, so the
+/// visible text isn't truncated mid-attribute.
 fn strip_tags(html: &str) -> String {
     let mut out = String::new();
     let mut in_tag = false;
+    let mut quote: Option<char> = None;
     for ch in html.chars() {
-        match ch {
-            '<' => in_tag = true,
-            '>' => in_tag = false,
-            c if !in_tag => out.push(c),
-            _ => {}
+        if in_tag {
+            match quote {
+                Some(q) if ch == q => quote = None,
+                Some(_) => {}
+                None => match ch {
+                    '"' | '\'' => quote = Some(ch),
+                    '>' => in_tag = false,
+                    _ => {}
+                },
+            }
+        } else if ch == '<' {
+            in_tag = true;
+        } else {
+            out.push(ch);
         }
     }
     out.trim().to_string()

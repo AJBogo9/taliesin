@@ -55,10 +55,14 @@ pub fn parse_bib_warned(text: &str) -> (Bibliography, Vec<String>) {
             skip_entry(&chars, &mut i);
             continue;
         }
-        let key = take_while(&chars, &mut i, |c| c != ',' && c != '}')
-            .trim()
-            .to_string();
+        // Read the entry key with the SAME predicate the in-prose reference scanner
+        // uses (`is_cite_key_char`), so any key the bib stores can also be `[@cited]`.
+        // Skip whitespace on both sides (`@article{ key ,` stays tolerant) since the
+        // predicate — unlike the old `!= ',' && != '}'` catch-all — stops at spaces.
+        skip_ws(&chars, &mut i);
+        let key = take_while(&chars, &mut i, super::is_cite_key_char);
         let mut fields = HashMap::new();
+        skip_ws(&chars, &mut i);
         if i < chars.len() && chars[i] == ',' {
             i += 1;
         }
@@ -181,8 +185,12 @@ fn read_value(chars: &[char], i: &mut usize, strings: &HashMap<String, String>) 
                     inner.push(chars[*i]);
                     *i += 1;
                 }
-                // Drop a trailing close-quote we may have pushed before the break check.
-                parts.push(inner);
+                // Strip one outer brace level, matching the `{...}` arm: a
+                // `"{First Last}"` is an ordinary (case-protected) person name, so it
+                // must reach the author formatter WITHOUT the leading `{` that would
+                // otherwise mark it a literal corporate name; `"{{Corp}}"` keeps one
+                // brace pair and stays literal, exactly like the `{{Corp}}` form.
+                parts.push(strip_one_outer_brace_group(&inner));
             }
             _ => {
                 let token = take_while(chars, i, |c| {
@@ -215,4 +223,35 @@ fn read_value(chars: &[char], i: &mut usize, strings: &HashMap<String, String>) 
 
 fn normalize_ws(s: &str) -> String {
     s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// If `s` is entirely one brace group (`{...}` whose opening brace matches the final
+/// char), return the inside; otherwise return `s` unchanged. Used to give the `"..."`
+/// value arm the same single-level strip the `{...}` arm performs inline, so a
+/// whole-value brace group is peeled once (and no more) regardless of the delimiter.
+fn strip_one_outer_brace_group(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    if chars.first() != Some(&'{') {
+        return s.to_string();
+    }
+    let mut depth = 0usize;
+    for (idx, &c) in chars.iter().enumerate() {
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    // The opening brace closes here; only peel it if it wraps the WHOLE
+                    // value (`{First Last}`), not a leading group (`{A} and {B}`).
+                    return if idx == chars.len() - 1 {
+                        chars[1..idx].iter().collect()
+                    } else {
+                        s.to_string()
+                    };
+                }
+            }
+            _ => {}
+        }
+    }
+    s.to_string() // unbalanced: leave as-is
 }

@@ -371,3 +371,72 @@ fn no_manual_heading_keeps_auto_references_heading() {
     process(&mut blocks, &b, &HashMap::new());
     assert!(blocks.last().unwrap().html.contains("<h2>References</h2>"));
 }
+
+#[test]
+fn url_macro_unwraps_and_keeps_underscores_without_mangling_words() {
+    // \url{...} resolves to its argument with underscores intact (not read as \_),
+    // via the generic unknown-macro path (the old naive `replace("\\url","")` both
+    // deleted a bare \url and corrupted any word merely CONTAINING the substring).
+    assert_eq!(clean(r"\url{http://a.com/x_y}"), "http://a.com/x_y");
+    assert_eq!(
+        clean(r"See \url{http://a.com/p_q} now"),
+        "See http://a.com/p_q now"
+    );
+    assert_eq!(clean(r"\urlstyle{same}"), "same"); // not "stylesame"
+}
+
+#[test]
+fn quoted_single_brace_author_is_initialized_like_the_brace_form() {
+    // author = "{First Last}" is an ordinary (case-protected) person, NOT corporate:
+    // the `"..."` arm now strips one outer brace level like the `{..}` arm, so it
+    // initializes rather than rendering whole.
+    let b =
+        parse_bib("@misc{q,\n author = \"{Ada Lovelace}\",\n title = {T},\n year = {2020}\n}\n");
+    let f = b.format("q").unwrap();
+    assert!(
+        f.starts_with("A. Lovelace, "),
+        "quoted single-brace author not initialized: {f}"
+    );
+}
+
+#[test]
+fn quoted_double_brace_author_stays_corporate() {
+    // Consistency: `"{{Corp}}"` keeps one brace pair after the single strip, so it is
+    // still literal, exactly like the `{{Corp}}` (brace-delimited) form.
+    let b = parse_bib(
+        "@misc{q2,\n author = \"{{Open Data Institute}}\",\n title = {T},\n year = {2020}\n}\n",
+    );
+    let f = b.format("q2").unwrap();
+    assert!(f.starts_with("Open Data Institute, "), "got: {f}");
+    assert!(!f.contains("O. D. Institute"), "got: {f}");
+}
+
+#[test]
+fn cite_key_and_bib_key_charsets_agree() {
+    // A key using every allowed special char must (a) parse into the bib WHOLE and
+    // (b) be read WHOLE from prose — both sides share one `is_cite_key_char`.
+    let key = "smith.2020:v2/rev+1_a";
+    let src = "@article{".to_string()
+        + key
+        + ",\n author = {Smith, Jo},\n title = {T},\n journal = {J},\n year = {2020}\n}\n";
+    let b = parse_bib(&src);
+    assert!(
+        b.format(key).is_some(),
+        "bib parser truncated the special-char key"
+    );
+    let mut blocks = vec![Block {
+        id: "p".into(),
+        sourcepos: "1:1-1:1".into(),
+        source_file: None,
+        html: format!("<p>see [@{key}].</p>"),
+        cell: None,
+    }];
+    process(&mut blocks, &b, &HashMap::new());
+    assert!(
+        blocks[0]
+            .html
+            .contains("href=\"#ref-smith.2020:v2/rev+1_a\""),
+        "reference didn't read the whole key: {}",
+        blocks[0].html
+    );
+}

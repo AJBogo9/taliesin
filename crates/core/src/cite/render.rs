@@ -234,13 +234,7 @@ fn rewrite_text(
     out
 }
 
-/// Characters allowed in a citation key. BibTeX keys permit far more than
-/// alphanumerics (e.g. `smith.2020`, `doe+roe`, `path/key`); the reference parser
-/// must accept the same set the bib parser does, or `[@smith.2020]` truncates to
-/// `smith` and falsely warns "broken citation".
-fn is_cite_key_char(c: char) -> bool {
-    c.is_alphanumeric() || matches!(c, '-' | '_' | ':' | '.' | '+' | '/')
-}
+use super::is_cite_key_char;
 
 /// A cross-reference link to `anchor`, labelled by kind. A locally-resolved number
 /// renders "Figure&nbsp;3"; an anchor unknown to this document's registry emits a

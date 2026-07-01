@@ -95,6 +95,35 @@ fn is_reveal_format(name: &str) -> bool {
 
 /// Extract a top-level `key:` value from raw front matter. Lightweight scan,
 /// not a YAML parse; returns the inline value (empty for block/list values).
+/// The `bibliography:` front-matter value as a list of paths. Accepts a scalar
+/// (`bibliography: refs.bib`, INCLUDING a quoted path with spaces), an inline seq
+/// (`[a.bib, b.bib]`), or a block seq (`- a.bib` / `- b.bib`). Parses the front matter
+/// as YAML for a faithful read; falls back to the lenient line-scanner + `,[]`-split
+/// (the prior behaviour, MINUS the space split that broke spaced paths) when the YAML
+/// won't parse, so a malformed-but-linted doc still resolves what it can.
+pub(super) fn bibliography_paths(front_matter: &str) -> Vec<String> {
+    if let Ok(val) = serde_yaml::from_str::<serde_yaml::Value>(front_matter) {
+        match val.get("bibliography") {
+            Some(serde_yaml::Value::Sequence(seq)) => {
+                return seq
+                    .iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect();
+            }
+            Some(serde_yaml::Value::String(s)) => return vec![s.clone()],
+            _ => {}
+        }
+    }
+    match extract_field(front_matter, "bibliography") {
+        Some(raw) => raw
+            .split([',', '[', ']'])
+            .map(|t| t.trim().trim_matches(['"', '\'']).to_string())
+            .filter(|t| !t.is_empty())
+            .collect(),
+        None => Vec::new(),
+    }
+}
+
 pub(super) fn extract_field(front_matter: &str, key: &str) -> Option<String> {
     let prefix = format!("{key}:");
     for line in front_matter.lines() {

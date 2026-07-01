@@ -2460,3 +2460,38 @@ fn proof_collapse_folds_into_details() {
         plain.blocks[0].html
     );
 }
+
+#[test]
+fn strip_tags_is_quote_aware() {
+    // A `>` inside a quoted attribute value must not end the tag early, else the
+    // visible text truncates mid-attribute (KaTeX emits `title="…>…"` on inline math).
+    assert_eq!(strip_tags(r#"<span title="a > b">hi</span>"#), "hi");
+    assert_eq!(
+        strip_tags(r#"<a href="x" title="p>q">text</a> tail"#),
+        "text tail"
+    );
+    assert_eq!(strip_tags("<p>plain <em>text</em></p>"), "plain text");
+}
+
+#[test]
+fn bibliography_paths_accepts_scalar_seq_and_spaced_path() {
+    let s = |v: &[&str]| v.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+    assert_eq!(
+        bibliography_paths("bibliography: refs.bib"),
+        s(&["refs.bib"])
+    );
+    // Quoted scalar with a space: the old space-split broke this into two tokens.
+    assert_eq!(
+        bibliography_paths("bibliography: \"my refs.bib\""),
+        s(&["my refs.bib"])
+    );
+    assert_eq!(
+        bibliography_paths("bibliography: [a.bib, b.bib]"),
+        s(&["a.bib", "b.bib"])
+    );
+    assert_eq!(
+        bibliography_paths("bibliography:\n  - a.bib\n  - b.bib"),
+        s(&["a.bib", "b.bib"])
+    );
+    assert!(bibliography_paths("title: X").is_empty());
+}

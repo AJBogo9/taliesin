@@ -379,3 +379,32 @@ fn a11y_named_anchor_is_not_a_link() {
     let m = msgs(&validate_a11y(&doc.blocks, DocFormat::Html));
     assert!(m.is_empty(), "named anchor (no href) is not a link: {m:?}");
 }
+
+#[test]
+fn validate_math_flags_only_unparseable_katex_located() {
+    // A malformed inline expression renders a red `katex-error` span (KaTeX runs with
+    // throw_on_error off), which used to ship with NO diagnostic; validate_math
+    // re-surfaces it on the located channel.
+    let doc = render_document("Intro.\n\nBad math $\\frac{$ here.\n");
+    let ws = validate_math(&doc.blocks);
+    assert_eq!(ws.len(), 1, "one broken expression: {:?}", msgs(&ws));
+    assert!(
+        ws[0].message.contains("math failed to render"),
+        "{:?}",
+        ws[0].message
+    );
+    assert_eq!(
+        ws[0].line,
+        Some(3),
+        "located at the math's source line: {:?}",
+        ws[0]
+    );
+
+    // Valid math produces no diagnostic.
+    let ok = render_document("Good $x^2 + y^2$ math.\n");
+    assert!(
+        validate_math(&ok.blocks).is_empty(),
+        "valid math must be silent: {:?}",
+        msgs(&validate_math(&ok.blocks))
+    );
+}

@@ -60,6 +60,16 @@ impl Bibliography {
     }
 }
 
+/// Characters allowed in a citation key, the single source of truth shared by the
+/// BibTeX entry-key parser (`parse`) and the in-prose reference scanner (`render`).
+/// BibTeX keys permit far more than alphanumerics (`smith.2020`, `doe+roe`,
+/// `path/key`, `smith:2020a`); if the two sides disagree, either `[@smith.2020]`
+/// truncates to `smith` and falsely warns "broken citation", or the bib stores a key
+/// the reference can never name. Keeping ONE predicate makes them agree by construction.
+pub(crate) fn is_cite_key_char(c: char) -> bool {
+    c.is_alphanumeric() || matches!(c, '-' | '_' | ':' | '.' | '+' | '/')
+}
+
 /// Parse the 1-based start line out of a `startLine:col-endLine:col` sourcepos.
 /// Returns `None` for a generated block (empty sourcepos) or a malformed value.
 /// Shared by `render::process` and `validate::validate_xrefs`.
