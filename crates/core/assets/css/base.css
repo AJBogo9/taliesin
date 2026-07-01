@@ -34,7 +34,9 @@
 
   /* Sepia: a warm, low-contrast reading theme (reader-selectable via the Aa panel). */
   html[data-theme="sepia"] {
-    --qmd-bg: #f4ecd8; --qmd-fg: #5b4636; --qmd-muted: #7a6a55; --qmd-accent: #9a6a3a;
+    /* --qmd-muted darkened from #7a6a55 (4.44:1, below AA) to #6e5d46 (5.38:1) on the
+       sepia bg, so muted prose/labels/captions clear WCAG-AA. */
+    --qmd-bg: #f4ecd8; --qmd-fg: #5b4636; --qmd-muted: #6e5d46; --qmd-accent: #9a6a3a;
     --qmd-accent-fill: #8a5a2b; --qmd-on-accent: #ffffff;
     --qmd-link: #8a5a2b; --qmd-code-bg: #ece2c8; --qmd-border: #ddd0b0;
     --qmd-edge-shadow: rgba(91, 70, 54, .14);
@@ -263,7 +265,7 @@
   .qmd-keys[hidden] { display: none; }
   .qmd-keys-card { position: relative; background: var(--qmd-bg); color: var(--qmd-fg);
     border: 1px solid var(--qmd-border); border-radius: 12px; padding: 1.4rem 1.6rem;
-    max-width: 22rem; box-shadow: 0 10px 40px rgba(0, 0, 0, .3); }
+    max-width: 22rem; box-shadow: 0 10px 40px var(--qmd-edge-shadow); }
   .qmd-keys-card h2 { margin: 0 0 .8rem; font-size: 1.1rem; }
   .qmd-keys-list { margin: 0; }
   .qmd-keys-list > div { display: flex; gap: .8rem; align-items: baseline; margin: .35rem 0; }
@@ -326,7 +328,7 @@
      fenced divs cover in-body sections. Styled so a landing page needs no bespoke CSS. */
   .hero { text-align: center; padding: 3.2rem 1rem 2.4rem; }
   .hero h1, .hero h2 { font-family: var(--qmd-font-head); font-size: clamp(2rem, 6vw, 3.2rem);
-    line-height: 1.08; letter-spacing: -0.02em; margin: 0 0 .7rem; border: 0; padding: 0; }
+    line-height: 1.08; letter-spacing: -0.02em; margin: 0 0 .7rem; }
   .hero p, .hero .hero-lead { font-size: clamp(1.05rem, 2.4vw, 1.28rem); color: var(--qmd-muted);
     max-width: 36rem; margin: 0 auto 1.5rem; line-height: 1.5; }
   .hero-eyebrow { font: 600 .8rem/1 var(--qmd-font-mono); letter-spacing: .12em;
@@ -344,6 +346,12 @@
      vertical rhythm (more space before a heading than after, binding it to its section).
      Replaces the browser-default sizes the headings used to fall back to. */
   h1, h2, h3, h4, h5, h6 { font-family: var(--qmd-font-head); font-weight: 600; }
+  /* Prose rhythm: an explicit paragraph bottom-margin (was the browser default) and a
+     flat, tokenised `<hr>` (was the browser's beveled default). List margins are left to
+     the UA default so a low-specificity rule can't leak into chrome nav/TOC `<li>`s;
+     `.hero p`/`.feature p` etc. keep their own tighter margins by specificity. */
+  p { margin: 0 0 1.1rem; }
+  hr { border: 0; border-top: 1px solid var(--qmd-border); margin: 2rem 0; }
   /* Anchor copy-link (qmdInitAnchorLinks): a `#` revealed on hover/focus of a heading or a
      float caption; clicking copies that anchor's canonical deep link. Reader-side. */
   .qmd-anchor { position: relative; margin-left: .35em; color: var(--qmd-muted);
@@ -405,15 +413,18 @@
      the mono glyphs down to the serif x-height. It also breaks rather than overflowing. */
   :not(pre) > code { background: var(--qmd-code-bg); padding: .1em .35em; border-radius: 4px;
     font-size: .875em; overflow-wrap: anywhere; }
+  /* Tokenised so the copy button follows every theme (light / dark / sepia) from one
+     definition; DARK_CSS no longer needs a per-theme override. */
   .qmd-copy { position: absolute; top: .45rem; right: .45rem;
               display: inline-flex; align-items: center; justify-content: center;
-              padding: .28rem; line-height: 0; color: #555;
-              background: #fff; border: 1px solid #d4d4d4; border-radius: 5px; cursor: pointer;
+              padding: .28rem; line-height: 0; color: var(--qmd-muted);
+              background: var(--qmd-bg); border: 1px solid var(--qmd-border); border-radius: 5px;
+              cursor: pointer;
               opacity: 0; transition: opacity .12s ease, color .12s ease, border-color .12s ease; }
   .qmd-copy svg { display: block; width: 14px; height: 14px; }
   pre:hover .qmd-copy, .qmd-copy:focus-visible { opacity: 1; }
-  .qmd-copy:hover { color: #111; border-color: #999; }
-  .qmd-copy.qmd-copied { color: #2bb673; border-color: #2bb673; }
+  .qmd-copy:hover { color: var(--qmd-fg); border-color: var(--qmd-muted); }
+  .qmd-copy.qmd-copied { color: var(--qmd-callout-tip); border-color: var(--qmd-callout-tip); }
   pre.mermaid { background: transparent; padding: .5rem 0; text-align: center; overflow: visible; }
   pre.mermaid svg { max-width: 100%; height: auto; }
   blockquote { border-left: 3px solid var(--qmd-border); margin: 0 0 1rem; padding-left: 1rem; color: var(--qmd-muted); }
@@ -633,6 +644,18 @@
   html[data-theme="dark"] img.qmd-fig-dark { display: block; }
   .qmd-stderr { border-left-color: #e0a800 !important; background: #fdf6e3 !important; }
   .qmd-error { border-left-color: #e0566b !important; background: #fdecef !important; color: #862033; }
+  /* Sepia code + diagnostics: the light syntax palette and near-white output/error
+     boxes clash with the warm sepia page, so restyle them warm (parallels DARK_CSS).
+     Sepia is a low-contrast reading theme, so these stay muted, not vivid. */
+  html[data-theme="sepia"] .qhl-comment { color: #8a7c62; }
+  html[data-theme="sepia"] .qhl-string { color: #3f6a44; }
+  html[data-theme="sepia"] .qhl-keyword, html[data-theme="sepia"] .qhl-storage { color: #9a3b28; }
+  html[data-theme="sepia"] .qhl-constant, html[data-theme="sepia"] .qhl-support { color: #2f5f84; }
+  html[data-theme="sepia"] .qhl-entity { color: #7d4a86; }
+  html[data-theme="sepia"] .qhl-variable { color: #9a4a1a; }
+  html[data-theme="sepia"] .qmd-output > pre { background: #ece2c8; border-left-color: var(--qmd-border); }
+  html[data-theme="sepia"] .qmd-stderr { border-left-color: #b8860b !important; background: #efe4c0 !important; color: #5b4636; }
+  html[data-theme="sepia"] .qmd-error { border-left-color: #b0452f !important; background: #f0dcc8 !important; color: #7a2e22; }
   [data-block-id] { scroll-margin-top: 1rem; }
   [data-block-id].qmd-hl { outline: 2px solid var(--qmd-accent); outline-offset: 3px; border-radius: 3px; }
   /* live-edit feedback: a block that just (re)rendered pulses an accent tint, so
@@ -718,7 +741,7 @@
     /* the nav becomes the sheet: off-screen until .qmd-toc-open slides it up */
     body.qmd-toc-sheet #TOC { position: fixed; inset: auto 0 0 0; z-index: 10001; margin: 0;
       max-height: 72vh; padding: .25rem .6rem calc(1.4rem + env(safe-area-inset-bottom, 0px));
-      background: var(--qmd-bg); border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px rgba(0, 0, 0, .22);
+      background: var(--qmd-bg); border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px var(--qmd-edge-shadow);
       overflow: auto; overscroll-behavior: contain;
       transform: translateY(100%); transition: transform .3s cubic-bezier(.2, .8, .2, 1); }
     body.qmd-toc-sheet #TOC::before { content: ""; display: block; width: 40px; height: 5px;
@@ -736,7 +759,7 @@
       position: fixed; left: 50%; transform: translateX(-50%); z-index: 9997;
       bottom: calc(.45rem + env(safe-area-inset-bottom, 0px)); padding: .4rem 1.3rem .5rem; gap: .3rem;
       border: 0; border-radius: 13px; background: color-mix(in srgb, var(--qmd-bg) 72%, transparent);
-      -webkit-backdrop-filter: blur(7px); backdrop-filter: blur(7px); box-shadow: 0 1px 7px rgba(0, 0, 0, .16);
+      -webkit-backdrop-filter: blur(7px); backdrop-filter: blur(7px); box-shadow: 0 1px 7px var(--qmd-edge-shadow);
       cursor: grab; touch-action: none; -webkit-user-select: none; user-select: none; }
     body.qmd-toc-sheet.qmd-toc-open #qmd-toc-handle { display: none; }
     #qmd-toc-handle .qmd-toc-grip { width: 42px; height: 5px; border-radius: 3px; background: var(--qmd-muted); opacity: .6; }
@@ -745,7 +768,7 @@
       transform: translateX(-50%) translateY(5px); max-width: 72vw; white-space: nowrap;
       overflow: hidden; text-overflow: ellipsis; font: 600 12px ui-sans-serif, system-ui, sans-serif;
       color: var(--qmd-muted); background: var(--qmd-bg); border: 1px solid var(--qmd-border);
-      padding: .2rem .55rem; border-radius: 9px; box-shadow: 0 2px 8px rgba(0, 0, 0, .12);
+      padding: .2rem .55rem; border-radius: 9px; box-shadow: 0 2px 8px var(--qmd-edge-shadow);
       opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease; }
     #qmd-toc-handle.qmd-show-label #qmd-toc-cur { opacity: 1; transform: translateX(-50%) translateY(0); }
     @keyframes qmdPeekHint { 0%, 100% { bottom: calc(.45rem + env(safe-area-inset-bottom, 0px)); }
@@ -832,3 +855,4 @@
 .qmd-input input[type="checkbox"], .qmd-input input[type="radio"] { accent-color: var(--qmd-accent); }
 .qmd-input select { color: var(--qmd-fg); background: var(--qmd-bg); border: 1px solid var(--qmd-border); border-radius: 4px; padding: 0.1em 0.3em; }
 .qmd-js-error { color: #b00020; background: #fff0f0; border: 1px solid #f3c0c0; padding: .5em .7em; border-radius: 6px; overflow: auto; font-size: .85em; }
+html[data-theme="sepia"] .qmd-js-error { color: #7a2e22; background: #f0dcc8; border-color: #d8b89a; }
