@@ -6,7 +6,7 @@ use super::*;
 
 /// A website's pages: every `.qmd` under `root` (path-ordered), each mapped to a
 /// [`Page`] from its front matter.
-pub(super) fn website_pages(root: &Path) -> Vec<Page> {
+pub(super) fn website_pages(root: &Path, warnings: &mut Vec<String>) -> Vec<Page> {
     let mut inputs = Vec::new();
     collect_pages(root, &mut inputs);
     inputs.sort();
@@ -15,7 +15,7 @@ pub(super) fn website_pages(root: &Path) -> Vec<Page> {
         .filter_map(|input| {
             let rel = rel_str(root, &input);
             let url = qmd_to_html(&rel);
-            let fm = parse_front_matter(&input);
+            let fm = parse_front_matter(&input, &rel, warnings);
             // `draft: true` excludes the page from the build entirely — and, because
             // listings + prev/next nav derive from `self.pages`, from those too.
             if fm.draft {
@@ -33,6 +33,7 @@ pub(super) fn website_pages(root: &Path) -> Vec<Page> {
                 description: fm.description,
                 authors: fm.authors,
                 card_image,
+                card_image_alt: fm.image_alt,
                 categories: fm.categories,
                 listings: fm.listings,
                 about: fm.about,

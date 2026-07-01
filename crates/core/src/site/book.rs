@@ -108,7 +108,9 @@ fn push_chapter(
     let title = label
         .map(str::to_string)
         .or(h1)
-        .or_else(|| parse_front_matter(&input).title)
+        // Throwaway warnings: `book_pages` re-parses this file with the real sink, so a
+        // listing-without-contents warning here would just duplicate it.
+        .or_else(|| parse_front_matter(&input, file, &mut Vec::new()).title)
         .unwrap_or_else(|| rel.trim_end_matches(".qmd").to_string());
     // The `index.qmd` preface is unnumbered by convention, like Quarto.
     let number = if unnumbered || rel == "index.qmd" {
@@ -163,12 +165,12 @@ fn chapter_heading(input: &Path) -> (Option<String>, bool) {
     (None, false)
 }
 /// A book's pages: one [`Page`] per chapter, in reading order.
-pub(super) fn book_pages(root: &Path, book: &Book) -> Vec<Page> {
+pub(super) fn book_pages(root: &Path, book: &Book, warnings: &mut Vec<String>) -> Vec<Page> {
     book.chapters()
         .into_iter()
         .map(|c| {
             let input = root.join(&c.rel);
-            let fm = parse_front_matter(&input);
+            let fm = parse_front_matter(&input, &c.rel, warnings);
             Page {
                 input,
                 rel: c.rel.clone(),
@@ -178,6 +180,7 @@ pub(super) fn book_pages(root: &Path, book: &Book) -> Vec<Page> {
                 description: fm.description,
                 authors: fm.authors,
                 card_image: None,
+                card_image_alt: None,
                 categories: fm.categories,
                 listings: fm.listings,
                 about: fm.about,

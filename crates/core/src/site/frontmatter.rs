@@ -12,6 +12,8 @@ pub(crate) struct FrontInfo {
     /// Front-matter `author` (a scalar or a list), for scholarly `citation_author` meta.
     pub(crate) authors: Vec<String>,
     pub(crate) image: Option<String>,
+    /// Front-matter `image-alt`: alt text for the listing card image.
+    pub(crate) image_alt: Option<String>,
     pub(crate) categories: Vec<String>,
     pub(crate) listings: Vec<ListingSpec>,
     pub(crate) about: Option<AboutSpec>,
@@ -22,8 +24,14 @@ pub(crate) struct FrontInfo {
 }
 
 /// Parse a page's `---` front-matter block (YAML) into the fields discovery
-/// needs. Tolerant: a missing or malformed block just yields defaults.
-pub(crate) fn parse_front_matter(path: &Path) -> FrontInfo {
+/// needs. Tolerant: a missing or malformed block just yields defaults. `label` (the
+/// page rel) tags any warning (`warnings`) raised while parsing, e.g. a `listing:`
+/// with no `contents:`.
+pub(crate) fn parse_front_matter(
+    path: &Path,
+    label: &str,
+    warnings: &mut Vec<String>,
+) -> FrontInfo {
     let Ok(src) = std::fs::read_to_string(path) else {
         return FrontInfo::default();
     };
@@ -39,8 +47,9 @@ pub(crate) fn parse_front_matter(path: &Path) -> FrontInfo {
         description: scalar(val.get("description")),
         authors: string_list(val.get("author")),
         image: scalar(val.get("image")),
+        image_alt: scalar(val.get("image-alt")),
         categories: string_list(val.get("categories")),
-        listings: parse_listings(val.get("listing")),
+        listings: parse_listings(val.get("listing"), label, warnings),
         about: parse_about(val.get("about")),
         hero: parse_hero(val.get("hero")),
         page_layout: scalar(val.get("page-layout")),
@@ -126,15 +135,32 @@ pub(crate) fn string_list(v: Option<&serde_yaml::Value>) -> Vec<String> {
     }
 }
 
-/// Parse a `listing:` value: a single map, or a sequence of maps (cv.qmd).
-pub(crate) fn parse_listings(v: Option<&serde_yaml::Value>) -> Vec<ListingSpec> {
-    match v {
-        Some(serde_yaml::Value::Sequence(seq)) => {
-            seq.iter().filter_map(parse_listing_spec).collect()
+/// Parse a `listing:` value: a single map, or a sequence of maps (cv.qmd). A map with
+/// no `contents:` (nothing to list) is warned about via `warnings`, keyed by `label`
+/// (the page rel), instead of being silently dropped.
+pub(crate) fn parse_listings(
+    v: Option<&serde_yaml::Value>,
+    label: &str,
+    warnings: &mut Vec<String>,
+) -> Vec<ListingSpec> {
+    let maps: Vec<&serde_yaml::Value> = match v {
+        Some(serde_yaml::Value::Sequence(seq)) => seq.iter().collect(),
+        Some(map @ serde_yaml::Value::Mapping(_)) => vec![map],
+        _ => return Vec::new(),
+    };
+    let mut specs = Vec::new();
+    for m in maps {
+        match parse_listing_spec(m) {
+            Some(spec) => specs.push(spec),
+            // A `listing:` mapping that parsed to nothing lacks `contents:`, so it
+            // renders no cards — warn rather than drop it silently.
+            None if m.is_mapping() => warnings.push(format!(
+                "`{label}`: a `listing:` block has no `contents:` and was skipped (nothing to list)"
+            )),
+            None => {}
         }
-        Some(map @ serde_yaml::Value::Mapping(_)) => parse_listing_spec(map).into_iter().collect(),
-        _ => Vec::new(),
     }
+    specs
 }
 
 pub(crate) fn parse_listing_spec(v: &serde_yaml::Value) -> Option<ListingSpec> {

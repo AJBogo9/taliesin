@@ -50,6 +50,9 @@ pub struct Page {
     pub authors: Vec<String>,
     /// Front-matter `image`, resolved to a site-root-relative path (for cards).
     pub card_image: Option<String>,
+    /// Front-matter `image-alt`: alt text for the listing card image (a11y). `None`
+    /// falls back to empty alt (a decorative card image).
+    pub card_image_alt: Option<String>,
     /// Front-matter `categories` (shown as badges on a card).
     pub categories: Vec<String>,
     /// `listing:` blocks declared on this page (the blog index, projects, etc.).
@@ -184,9 +187,10 @@ impl Site {
         // a website discovers every `.qmd` and orders by path.
         let (mut pages, book) = if config.is_book {
             let book = build_book(root, &config);
-            (book_pages(root, &book), Some(book))
+            let pages = book_pages(root, &book, &mut warnings);
+            (pages, Some(book))
         } else {
-            (website_pages(root), None)
+            (website_pages(root, &mut warnings), None)
         };
 
         // Decks referenced by `{{< embed >}}`. A website discovers *every* `.qmd` as a
@@ -209,6 +213,54 @@ impl Site {
                     p.rel, p.rel
                 ));
             }
+        }
+
+        // A `mounts:` prefix that collides with a real page URL: the mounted sub-site
+        // and the page share a route, so one silently shadows the other depending on
+        // match order. Flag it rather than serve an unpredictable page.
+        for m in &config.mounts {
+            let at = m.at.trim_matches('/');
+            if at.is_empty() {
+                continue;
+            }
+            let prefix = format!("{at}/");
+            if let Some(p) = pages
+                .iter()
+                .find(|p| p.url == at || p.url.starts_with(&prefix))
+            {
+                warnings.push(format!(
+                    "mount `{}` collides with page `{}`: the mounted project and the page \
+                     share a URL prefix and will shadow each other",
+                    m.at, p.url
+                ));
+            }
+        }
+
+        // A `chapters:` entry naming a file that does not exist: the chapter is silently
+        // skipped (its title falls back to the file stem, its body is empty), so a typo
+        // in `_site.yml` drops a chapter with no signal.
+        if let Some(book) = &book {
+            for c in book.chapters() {
+                if !root.join(&c.rel).exists() {
+                    warnings.push(format!(
+                        "chapter file not found: `{}` (listed in _site.yml `chapters:`)",
+                        c.rel
+                    ));
+                }
+            }
+        }
+
+        // A site-wide `image:` (the og/twitter social-card default) with no `url:`: the
+        // card image is absolute-URL-only, so it is silently dropped from og:image /
+        // twitter:image. One site-level nudge (per-page `image:` still works for listing
+        // cards, which don't need an absolute URL, so those are intentionally not flagged).
+        if config.url.is_none() && config.card_image.is_some() {
+            warnings.push(
+                "`image:` is set in _site.yml but `url:` is not: the default social-card \
+                 image (og:image / twitter:image) is absolute-URL-only and is being \
+                 suppressed. Set `url:` to enable it."
+                    .to_string(),
+            );
         }
 
         // Resolve the site-wide head/body/css includes once, relative to the site
@@ -494,7 +546,7 @@ impl Site {
         self.resolve_cross_refs(blocks, &page.url);
         // Cross-refs that survived the site-wide resolution are genuinely broken.
         warnings.extend(crate::cite::validate_xrefs(blocks));
-        self.expand_page(page, blocks);
+        self.expand_page(page, blocks, warnings);
     }
 
     /// A self-contained `404.html` for the static build. A static host (GitHub
@@ -615,7 +667,7 @@ impl Site {
     /// `listing:` expands into post cards. Both the static build and the live
     /// preview call this, so the results stay in the block model (mounted + diffed
     /// like any other block).
-    pub fn expand_page(&self, page: &Page, blocks: &mut Vec<Block>) {
+    pub fn expand_page(&self, page: &Page, blocks: &mut Vec<Block>, warnings: &mut Vec<Warning>) {
         // A `hero:` or `about:` block replaces the title block (they're alternative
         // page-header treatments; hero wins if a page somehow declares both).
         if let Some(hero) = &page.hero {
@@ -624,7 +676,7 @@ impl Site {
             set_title_block(blocks, self.about_html(page, about));
         }
         for (li, spec) in page.listings.iter().enumerate() {
-            let cards = self.listing_html(page, spec);
+            let cards = self.listing_html(page, spec, warnings);
             match &spec.id {
                 Some(id) => {
                     match blocks.iter().position(|b| block_tag_has_id(&b.html, id)) {
@@ -647,16 +699,38 @@ impl Site {
 
     /// The pages a listing covers: those under its `contents:` directory (relative
     /// to the hosting page), newest-first (or oldest-first), capped by `max-items`.
-    fn collection(&self, host: &Page, spec: &ListingSpec) -> Vec<&Page> {
-        let prefix = format!(
-            "{}/",
-            join_rel(&host.rel, spec.contents.trim_end_matches('/'))
-        );
-        let mut items: Vec<&Page> = self
-            .pages
-            .iter()
-            .filter(|p| p.rel != host.rel && p.title.is_some() && p.rel.starts_with(&prefix))
-            .collect();
+    fn collection(
+        &self,
+        host: &Page,
+        spec: &ListingSpec,
+        warnings: &mut Vec<Warning>,
+    ) -> Vec<&Page> {
+        let dir = join_rel(&host.rel, spec.contents.trim_end_matches('/'));
+        // `contents: .` on a root page resolves to the empty dir; that must match the
+        // whole project (an empty prefix), not `"/"` — which matched nothing, so the
+        // listing silently came up empty. A named subdir keeps its trailing slash so
+        // only that subtree matches.
+        let prefix = if dir.is_empty() {
+            String::new()
+        } else {
+            format!("{dir}/")
+        };
+        let mut items: Vec<&Page> = Vec::new();
+        for p in &self.pages {
+            if p.rel == host.rel || !p.rel.starts_with(&prefix) {
+                continue;
+            }
+            if p.title.is_none() {
+                // A card needs a title to render, so a titleless post was silently
+                // dropped from the listing — surface it rather than lose the post.
+                warnings.push(Warning::new(format!(
+                    "`{}` has no `title:` and is omitted from the listing on `{}`",
+                    p.rel, host.rel
+                )));
+                continue;
+            }
+            items.push(p);
+        }
         // Order by date (string-ISO sorts chronologically), tiebreak on rel.
         items.sort_by(|a, b| a.date.cmp(&b.date).then_with(|| a.rel.cmp(&b.rel)));
         if spec.sort_desc {
@@ -670,10 +744,10 @@ impl Site {
 
     /// Render a listing's cards. `host` fixes the link/image depth so cards on a
     /// nested page still resolve.
-    fn listing_html(&self, host: &Page, spec: &ListingSpec) -> String {
+    fn listing_html(&self, host: &Page, spec: &ListingSpec, warnings: &mut Vec<Warning>) -> String {
         let up = "../".repeat(host.url.matches('/').count());
         let layout = if spec.grid { "grid" } else { "default" };
-        let items = self.collection(host, spec);
+        let items = self.collection(host, spec, warnings);
         let cards: String = items
             .iter()
             .map(|p| self.card_html(p, &up, spec.grid))
@@ -716,8 +790,9 @@ impl Site {
         let href = format!("{up}{}", p.url);
         let img = match (grid, &p.card_image) {
             (true, Some(src)) => format!(
-                "<img class=\"qmd-card-img\" src=\"{up}{}\" alt=\"\" loading=\"lazy\">",
-                esc(src)
+                "<img class=\"qmd-card-img\" src=\"{up}{}\" alt=\"{}\" loading=\"lazy\">",
+                esc(src),
+                esc(p.card_image_alt.as_deref().unwrap_or(""))
             ),
             _ => String::new(),
         };
@@ -914,7 +989,10 @@ mod tests {
         )
         .unwrap();
 
-        let rels: Vec<String> = website_pages(&root).iter().map(|p| p.rel.clone()).collect();
+        let rels: Vec<String> = website_pages(&root, &mut Vec::new())
+            .iter()
+            .map(|p| p.rel.clone())
+            .collect();
         assert!(rels.contains(&"index.qmd".to_string()), "kept: {rels:?}");
         assert!(
             rels.contains(&"published.qmd".to_string()),
@@ -970,5 +1048,167 @@ mod tests {
 
         let _ = fs::remove_dir_all(&root);
         let _ = fs::remove_dir_all(&bare);
+    }
+
+    /// Write a throwaway site fixture (relative path → body) and return its root.
+    fn write_site(tag: &str, files: &[(&str, &str)]) -> std::path::PathBuf {
+        use std::fs;
+        let root = std::env::temp_dir().join(format!("qmd-omit-{tag}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        for (rel, body) in files {
+            let p = root.join(rel);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, body).unwrap();
+        }
+        root
+    }
+
+    /// Render `rel` in `site` and return (html, render-warnings).
+    fn render_page(site: &Site, rel: &str) -> (String, Vec<Warning>) {
+        let page = site.pages.iter().find(|p| p.rel == rel).unwrap();
+        let src = std::fs::read_to_string(&page.input).unwrap();
+        let doc = crate::render::render_document_with_includes(&src, &site.root);
+        site.render_page_doc_warned(page, doc)
+    }
+
+    #[test]
+    fn contents_dot_at_root_lists_siblings_and_warns_titleless() {
+        let root = write_site(
+            "dotlist",
+            &[
+                ("_site.yml", "title: Demo\n"),
+                (
+                    "index.qmd",
+                    "---\ntitle: Home\nlisting:\n  contents: \".\"\n---\n\n# Posts\n",
+                ),
+                ("a.qmd", "---\ntitle: Post A\n---\n\nA.\n"),
+                ("b.qmd", "---\n# no title here\n---\n\nB.\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let (html, warnings) = render_page(&site, "index.qmd");
+        assert!(
+            html.contains("Post A"),
+            "root `contents: .` lists siblings: {html}"
+        );
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.message.contains("b.qmd") && w.message.contains("no `title:`")),
+            "titleless post warned: {warnings:?}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn listing_without_contents_warns() {
+        let root = write_site(
+            "nocontents",
+            &[
+                ("_site.yml", "title: Demo\n"),
+                (
+                    "index.qmd",
+                    "---\ntitle: Home\nlisting:\n  type: grid\n---\n\nHi.\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        assert!(
+            site.warnings
+                .iter()
+                .any(|w| w.contains("listing") && w.contains("contents")),
+            "{:?}",
+            site.warnings
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn missing_chapter_file_warns() {
+        let root = write_site(
+            "missingch",
+            &[
+                (
+                    "_site.yml",
+                    "title: Book\nchapters:\n  - index.qmd\n  - missing.qmd\n",
+                ),
+                ("index.qmd", "---\ntitle: Intro\n---\n\n# Intro\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        assert!(
+            site.warnings
+                .iter()
+                .any(|w| w.contains("missing.qmd") && w.contains("chapter file not found")),
+            "{:?}",
+            site.warnings
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn mount_page_collision_warns() {
+        let root = write_site(
+            "mountcol",
+            &[
+                ("_site.yml", "title: Demo\nmounts:\n  docs: ../other\n"),
+                ("index.qmd", "---\ntitle: Home\n---\n\nHi.\n"),
+                ("docs/page.qmd", "---\ntitle: Doc\n---\n\nDoc.\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        assert!(
+            site.warnings
+                .iter()
+                .any(|w| w.contains("mount") && w.contains("collides")),
+            "{:?}",
+            site.warnings
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn site_image_without_url_warns() {
+        let root = write_site(
+            "imgnourl",
+            &[
+                ("_site.yml", "title: Demo\nimage: card.png\n"),
+                ("index.qmd", "---\ntitle: Home\n---\n\nHi.\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        assert!(
+            site.warnings
+                .iter()
+                .any(|w| w.contains("image") && w.contains("url")),
+            "{:?}",
+            site.warnings
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn listing_card_emits_image_alt() {
+        let root = write_site(
+            "cardalt",
+            &[
+                ("_site.yml", "title: Demo\n"),
+                (
+                    "index.qmd",
+                    "---\ntitle: Home\nlisting:\n  contents: posts\n  type: grid\n---\n\n# Posts\n",
+                ),
+                (
+                    "posts/p.qmd",
+                    "---\ntitle: Post\nimage: pic.png\nimage-alt: A nice pic\n---\n\nBody.\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let (html, _) = render_page(&site, "index.qmd");
+        assert!(
+            html.contains("alt=\"A nice pic\""),
+            "card alt emitted: {html}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
