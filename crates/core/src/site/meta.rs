@@ -77,5 +77,27 @@ pub(super) fn social_head(site: &Site, page: &Page) -> String {
     if let Some(u) = &page_url {
         h.push_str(&format!("\n<link rel=\"canonical\" href=\"{}\">", esc(u)));
     }
+    // Google Scholar / Highwire-Press `citation_*` meta so a scholarly post is indexable
+    // by academic databases. Emitted only for an article (has a `date`) that names an
+    // `author` — a blog post's shape, not a nav/landing page. `citation_pdf_url` is
+    // intentionally absent (there is no PDF; the print-pdf track is deferred).
+    if page.date.is_some() && !page.authors.is_empty() {
+        if !title.is_empty() {
+            h.push_str(&meta("name", "citation_title", title));
+        }
+        for author in &page.authors {
+            h.push_str(&meta("name", "citation_author", author));
+        }
+        if let Some(d) = page.date.as_deref() {
+            h.push_str(&meta("name", "citation_publication_date", d));
+        }
+        // The site title is the closest thing to a journal/venue name.
+        if let Some(journal) = cfg.title.as_deref() {
+            h.push_str(&meta("name", "citation_journal_title", journal));
+        }
+        if let Some(u) = &page_url {
+            h.push_str(&meta("name", "citation_public_url", u));
+        }
+    }
     h
 }

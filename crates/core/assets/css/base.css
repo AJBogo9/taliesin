@@ -512,26 +512,24 @@
     transform: rotate(45deg); transition: transform .15s ease; opacity: .75; }
   details.qmd-code-fold[open] > summary::before,
   .qmd-proof-collapse > details[open] > summary.qmd-proof-head::before { transform: rotate(135deg); }
-  /* Narrated code walkthrough (`::: {.code-walkthrough}`): prose steps scroll on the
-     left, the code panel is pinned on the right; scrolling focuses line ranges (the
-     `.qhl-ln-hl` toggle is driven by walkthrough.js). Steps come first in the DOM
-     (source/click order); the grid columns place them left, the code right. */
-  .code-walkthrough { display: grid; grid-template-columns: 1fr minmax(18rem, .85fr);
-    gap: 2rem; align-items: start; margin: 1.6rem 0; }
-  /* `min-width: 0` lets the grid/flex items shrink below content size; `max-width: 100%`
-     clamps the code stage to its column so a long, unwrapped `<pre>` scrolls *inside*
-     `.cw-code` (overflow:auto) instead of stretching the stage past its parent and
-     forcing page-level horizontal scroll on narrow viewports (tablet/phone). */
+  /* Narrated code walkthrough (`::: {.code-walkthrough}`): the code panel is pinned
+     full-width at the TOP of the viewport and the prose steps scroll beneath it — the
+     same shape at every width (a wide 2-column split left the code column too narrow and
+     scrolled long lines out of view). Scrolling focuses line ranges (`.qhl-ln-hl`, driven
+     by walkthrough.js). Steps come first in the DOM; `order:-1` lifts the code above them. */
+  .code-walkthrough { display: flex; flex-direction: column; gap: 0; margin: 1.6rem 0; }
+  /* `min-width: 0` + `max-width: 100%` let a long, unwrapped `<pre>` scroll INSIDE
+     `.cw-code` (overflow:auto) instead of forcing page-level horizontal scroll. */
   .code-walkthrough .cw-steps, .code-walkthrough .cw-stage { min-width: 0; max-width: 100%; }
-  .cw-steps .step { min-height: 30vh; display: flex; flex-direction: column; justify-content: center;
-    padding: 1.2rem 0 1.2rem 1rem; border-left: 2px solid transparent; opacity: .62; }
+  .cw-stage { order: -1; position: sticky; top: 0; z-index: 5; background: var(--qmd-bg);
+    padding: .5rem 0 .7rem; box-shadow: 0 6px 14px var(--qmd-edge-shadow); }
+  .cw-code { max-height: 52vh; overflow: auto; }
+  .cw-code pre { margin: 0; }
+  .cw-steps .step { min-height: 48vh; display: flex; flex-direction: column; justify-content: center;
+    padding: 1.3rem 0 1.3rem 1rem; border-left: 2px solid transparent; opacity: .62; }
   .cw-steps .step.cw-step-active { opacity: 1; border-left-color: var(--qmd-accent); }
   .cw-steps .step > :first-child { margin-top: 0; }
   .cw-steps .step > :last-child { margin-bottom: 0; }
-  .cw-stage { position: sticky; top: 0; align-self: start; height: 100vh;
-    display: flex; flex-direction: column; justify-content: center; }
-  .cw-code { max-height: 82vh; overflow: auto; }
-  .cw-code pre { margin: 0; }
   /* Reuse the deck's line-focus contract (block lines, dim the rest, accent the
      focused range), scoped to the page-side walkthrough so it never touches decks. */
   .code-walkthrough pre .qhl-ln { display: block; }
@@ -544,14 +542,8 @@
     .code-walkthrough pre .qhl-ln { transition: opacity .25s ease, background .25s ease; }
   }
   @media (max-width: 60rem) {
-    /* Single column: lift the code to a sticky strip at the top, prose flows beneath. */
-    .code-walkthrough { display: flex; flex-direction: column; gap: 0; }
-    .cw-stage { order: -1; position: sticky; top: 0; height: auto; z-index: 5;
-      background: var(--qmd-bg); padding: .4rem 0 .6rem;
-      box-shadow: 0 4px 12px var(--qmd-edge-shadow); }
+    /* Same code-on-top shape; just a shorter code strip + roomier step dwell on phones. */
     .cw-code { max-height: 42vh; }
-    /* Real dwell height so each step owns enough scroll to be focused in turn (the
-       activation is the scroll trigger line in walkthrough.js, not a fixed band). */
     .cw-steps .step { min-height: 55vh; padding: 1.4rem .9rem; }
   }
   /* Scrollytelling (`::: {.scrolly}`): prose steps scroll past a sticky visual stage.

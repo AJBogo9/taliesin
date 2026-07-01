@@ -31,6 +31,7 @@ pub(super) fn website_pages(root: &Path) -> Vec<Page> {
                 title: fm.title,
                 date: fm.date,
                 description: fm.description,
+                authors: fm.authors,
                 card_image,
                 categories: fm.categories,
                 listings: fm.listings,

@@ -128,6 +128,23 @@ render in the browser, a `--bare` build empties them (and warns once per kind) r
 than shipping a broken placeholder, so reach for `--bare` on prose, math, and
 server-executed figures, not on pages built around live `{js}` or diagrams.
 
+### Portable, offline builds (email the whole thing as a zip)
+
+A `--out <dir>` build (single doc, site, or book) is a **self-contained folder**: open
+`index.html` straight from disk (`file://`), or zip the folder and send it. Everything
+the reader needs is copied in and works with no server and no network, **offline**:
+navigation and prev/next, the Cmd-K search across the whole book, all math (rendered to
+KaTeX at build time with the fonts inlined), the reading enhancers (theme toggle,
+bookmarks, highlights, the mobile pull-up table of contents), and any `{js}` cells (the
+`d3` / `Plot` runtimes are vendored, not fetched). Click-to-source is *not* shipped into
+a build (it belongs to the live preview), so a reader never gets a dead outline.
+
+The **one** external dependency is **Mermaid diagrams**, which load the Mermaid runtime
+from a CDN by default. For a truly offline book, point `QMD_FAST_MERMAID_URL` at a local
+copy of `mermaid.min.js` (copied into the folder) before building, or use `--bare` /
+server-rendered figures on pages that don't need live diagrams. (Everything else is
+already local.)
+
 ## Inspecting a document: `render` and `blocks`
 
 Two commands print to a terminal instead of starting a server, which is handy for

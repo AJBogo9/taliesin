@@ -46,6 +46,8 @@ pub struct Page {
     pub date: Option<String>,
     /// Front-matter `description` (shown on a listing card).
     pub description: Option<String>,
+    /// Front-matter `author`(s), for scholarly `citation_author` meta (Google Scholar).
+    pub authors: Vec<String>,
     /// Front-matter `image`, resolved to a site-root-relative path (for cards).
     pub card_image: Option<String>,
     /// Front-matter `categories` (shown as badges on a card).

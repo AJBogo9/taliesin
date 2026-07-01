@@ -9,6 +9,8 @@ pub(crate) struct FrontInfo {
     pub(crate) title: Option<String>,
     pub(crate) date: Option<String>,
     pub(crate) description: Option<String>,
+    /// Front-matter `author` (a scalar or a list), for scholarly `citation_author` meta.
+    pub(crate) authors: Vec<String>,
     pub(crate) image: Option<String>,
     pub(crate) categories: Vec<String>,
     pub(crate) listings: Vec<ListingSpec>,
@@ -35,6 +37,7 @@ pub(crate) fn parse_front_matter(path: &Path) -> FrontInfo {
         title: scalar(val.get("title")),
         date: scalar(val.get("date")),
         description: scalar(val.get("description")),
+        authors: string_list(val.get("author")),
         image: scalar(val.get("image")),
         categories: string_list(val.get("categories")),
         listings: parse_listings(val.get("listing")),

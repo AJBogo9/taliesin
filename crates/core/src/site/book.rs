@@ -176,6 +176,7 @@ pub(super) fn book_pages(root: &Path, book: &Book) -> Vec<Page> {
                 title: Some(c.title.clone()),
                 date: fm.date,
                 description: fm.description,
+                authors: fm.authors,
                 card_image: None,
                 categories: fm.categories,
                 listings: fm.listings,
