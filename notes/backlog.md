@@ -182,16 +182,16 @@ directly (`code, pre, kbd, samp, .katex { letter-spacing: normal; word-spacing: 
 - [ ] Per-page `image-alt:` for listing cards (mod.rs:694).
 
 ### Citations / math / bib (deep-audit P2)
-- [ ] Math render failure: harvest the KaTeX error, thread a located Warning (only render path with no
-  diagnostic) (math.rs:31).
-- [ ] Quoted single-brace author `"{First Last}"`: strip one brace level like the brace arm + test
-  (cite/parse.rs:165).
-- [ ] `strip_tags`: make quote-aware (alt-text truncation + math-heading TOC/slug garble)
-  (mod.rs:1537,1408).
-- [ ] `\url`: require `\url{...}`, strip to arg (currently naive global replace) (cite/clean.rs:11).
-- [ ] Bibliography path: parse YAML value as string/seq (spaces split it); `.at()` the dup-key warning
-  (mod.rs:754, parse.rs:91).
-- [ ] Reconcile cite-key vs bib-key char sets (render.rs:240 / parse.rs:58).
+*Cluster shipped 2026-07-01 (`main` @ ba6de8d): math-render diagnostic (`diagnostics::validate_math`),
+`\url` naive-replace fix, quoted single/double-brace authors, string/seq `bibliography:`, shared
+`is_cite_key_char`, quote-aware `strip_tags`. Remaining low residuals:*
+- [ ] **Dup-key bib warning stays unlocated** (parse.rs): a `.bib` duplicate-key warning can't point at
+  a meaningful `.qmd` line (it's about an external file); left unlocated deliberately. If wanted, locate
+  it at the front-matter `bibliography:` line (needs that line threaded through `load_bibliography`).
+- [ ] **Math-in-heading TOC/slug garble** (mod.rs `strip_tags` on KaTeX): quote-awareness shipped, but
+  KaTeX's `<annotation>` source text still concatenates into slug/TOC text for a heading containing
+  `$…$`. Cheap follow-up: skip `<annotation …>…</annotation>` contents in `strip_tags` (or prefer the
+  MathML aria text).
 
 ### Performance (deep-audit P2-P3)
 - [ ] Batch WS ops into one message; run `afterChange()`/scrollspy once per batch, rAF-coalesced —
