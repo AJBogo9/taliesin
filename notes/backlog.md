@@ -197,12 +197,17 @@ warning, mount/page-collision + missing-chapter-file warnings, per-page `image-a
   MathML aria text).
 
 ### Performance (deep-audit P2-P3)
-- [ ] Batch WS ops into one message; run `afterChange()`/scrollspy once per batch, rAF-coalesced —
-  kills the O(ops × doc) cliff on the save hot path (client.js:845, serve/mod.rs:1065, toc-spy.js:86).
-- [ ] Merge the two `validate_cross_page_links` renders; make the discover-time search index lazy
-  (mod.rs:382, search.rs:30).
-- [ ] math/KaTeX cache: evict a fraction / bounded LRU instead of full clear on overflow (math.rs:40).
-- [ ] emit.rs: `write!`/`push_str` instead of `format!`+push_str per tag (emit.rs:16,274,330).
+*Shipped 2026-07-01 (`main` @ 3612fa5): rAF-coalesced `afterChange` on the save hot path (the
+dominant O(ops × doc) win, browser-verified live-edit), single-render `validate_cross_page_links`,
+FIFO-bounded KaTeX cache (+ test). Remaining, lower-value:*
+- [ ] **Protocol-level op-message batching**: send a save's block ops in ONE websocket message
+  instead of one-per-op (client.js + serve/mod.rs + a `protocol_contract` update). Smaller win than
+  the coalesced `afterChange` already shipped (message overhead ≪ the O(doc) recompute), so deferred.
+- [ ] **Lazy discover-time search index** (search.rs:30): build `search_index_json` on first use
+  rather than eagerly in `Site::discover`. Lower value (it's a text scan, not a render); needs an
+  `Option<String>` + interior mutability on `Site`.
+- [ ] emit.rs: `write!` instead of `format!`+`push_str` per tag (emit.rs; 19 sites). Low-value P3
+  micro-opt (saves a temp alloc per tag); deferred to avoid churn risk in the hot emit path.
 
 ### Testing / CI
 - [ ] insta snapshots on `body_html()` for reactive/explorable/bayesian docs through the exec path
