@@ -173,13 +173,10 @@ directly (`code, pre, kbd, samp, .katex { letter-spacing: normal; word-spacing: 
 - [ ] Speaker window: `pagehide` clears spClock + nulls speakerWin (deck.js:976).
 
 ### Site / books: silent omissions (deep-audit P2)
-- [ ] `contents: .` / own-dir listing: match siblings or reject (currently lists nothing)
-  (mod.rs:627, links.rs:112).
-- [ ] `listing:` without `contents:`: warn instead of silently drop (frontmatter.rs:137).
-- [ ] Warn when `image:` set but `url:` missing (og/canonical/twitter silently suppressed) (meta.rs:20).
-- [ ] Don't drop titleless posts from listings (or warn) (mod.rs:633).
-- [ ] Warn on mount/page collision (config/mod.rs:161); warn on missing chapter file (book.rs:98).
-- [ ] Per-page `image-alt:` for listing cards (mod.rs:694).
+*Cluster shipped 2026-07-01 (`main` @ b3beabc): all six items — `contents: .` root listing fix,
+`listing:`-without-`contents:` warning, site-`image:`-without-`url:` warning, titleless-post
+warning, mount/page-collision + missing-chapter-file warnings, per-page `image-alt:` on cards.
+6 new tests; verified no spurious warnings across all 5 real corpus/docs sites. Nothing open here.*
 
 ### Citations / math / bib (deep-audit P2)
 *Cluster shipped 2026-07-01 (`main` @ ba6de8d): math-render diagnostic (`diagnostics::validate_math`),
