@@ -228,11 +228,11 @@ Tick items in the detailed subsections as they land.
 10. **F2c** book-wide bookmarks (P3, JS) [DONE]
 11. **B4a** focus-mode native fullscreen (P3, JS) [DONE] · prev-arrow half still open (needs your input)
 12. **A1** number the chapter title for continuity (P3, Rust) [DONE]
-13. **G1** Google-Scholar `citation_*` meta (P3, Rust)
-14. **A2** document the right-TOC `>=3` gate (P3, docs)
-15. **D1** `.code-walkthrough`/`.scrolly` wide-desktop layout (P3, CSS design-fork)
-16. **E2b** self-contained portable site/book build (P2, larger)
-17. **E1** `file://` theme-isolation (accept, or a non-localStorage carrier)
+13. **G1** Google-Scholar `citation_*` meta (P3, Rust) [DONE]
+14. **A2** document the right-TOC `>=3` gate (P3, docs) [DONE]
+15. **D1** `.code-walkthrough` wide-desktop layout: code pinned top (P3, CSS) [DONE] · `.scrolly` left as-is
+16. **E2b** self-contained portable site/book build (P2) [DONE via E2a+E3 + docs; mermaid-vendor deferred]
+17. **E1** `file://` theme-isolation [DONE: accepted (browser limit); OS-follow default mitigates]
 
 *Parked, needs the author's input (not tickable solo):* **C1** (need a repro), **B4-arrow**
 (which viewport?), **F3** cross-ref graph (backlinks-first vs graph-canvas decision), **G3**
@@ -257,22 +257,35 @@ output is opened from disk with no dev server.
   cross-page results resolve, 0 relevant console errors). *Noted in passing (out of scope):* the
   search palette + wiring only ride on pages that have a TOC, so short chapters (`<3` headings)
   have no Cmd-K at all — ties into A2/A3.
-- [ ] **Self-contained site/book build** (P2, confirmed gap): `--bare` is single-doc only
-  (`page.rs:237`, "a site never reaches OutputMode::Bare"). Add a Bare-equivalent / "portable" flag
-  for `build <dir>` so a book or website is a self-contained folder/zip that works fully offline
-  (strips the dead click-to-source, inlines search, no CDN). Broader than the PWA idea (FEATURE-IDEAS
-  #… line 174).
+- [x] **Self-contained site/book build** (P2) — mostly delivered incidentally by E2a + E3.
+  DONE 2026-07-01 (branch `author-testing-fixes`): `build <dir> --out <folder>` is now an offline,
+  self-contained folder for the common case, WITHOUT a new flag: E2a stripped the dead click-to-source
+  from static output, E3 made cross-page search load via a `<script>` (works on `file://`), and math
+  (KaTeX + inlined fonts) / `{js}` runtimes (vendored d3+Plot) / nav / theme / bookmarks / the mobile
+  TOC sheet are all already local. **Verified**: a built guide-book page opened from `file://` makes
+  exactly ONE external request (see below); everything else is `file://`. Documented in
+  `docs/guide/reference/cli.qmd` (new "Portable, offline builds" section). `check docs/guide` clean.
+  - [ ] **Remaining gap (deferred, distinct decision): vendor Mermaid offline.** The one external
+    request is `cdn.jsdelivr.net/.../mermaid.min.js` — a book WITH Mermaid diagrams isn't fully offline
+    unless `QMD_FAST_MERMAID_URL` points at a local copy (documented). Closing it means vendoring
+    `mermaid.min.js` (~2–3 MB) into the repo + copying it to the build (content-gated to mermaid pages)
+    — a repo-bloat call worth making deliberately, not in a sweep. Until then, the escape hatch +
+    error banner (from the release-hardening batch) cover it.
 - [x] **Dead click-to-source in static output** (P3, confirmed).
   DONE 2026-07-01 (branch `author-testing-fixes`): removed `STATIC_CLICK_TO_SOURCE` from the static
   page assembler (`page.rs`; `scripts_pre: ""` + deleted the const). Built/rendered pages (single-doc
   `render`/`build` + sites/books) no longer draw a `.qmd-hl` outline or `console.log` on every click.
   Click-to-source is now live-preview-only (client.js, which is unchanged). TDD test
   `static_page_has_no_dead_click_to_source_outline` (render/tests.rs); core suite + clippy green.
-- [ ] **Book theme not book-wide from disk** (P3, partially-true, cause corrected): NOT a keying
-  bug. The theme key is a single global `qmd-theme` (`theme.rs:86,140`); the symptom is browser
-  `file://` localStorage origin isolation (Firefox isolates per file path, so each page gets its own
-  store). A book-wide file-mode pref needs a non-localStorage carrier, or is accepted as
-  "hosted / dev-server only." Same caveat applies to the size/width prefs.
+- [x] **Book theme not book-wide from disk** (P3) — ACCEPTED (browser limitation, not a bug).
+  Resolved 2026-07-01 as a known caveat: NOT a keying bug (the theme key is a single global
+  `qmd-theme`, `theme.rs:86,140`); the symptom is browser `file://` localStorage origin isolation
+  (Firefox isolates per file path; **Chromium shares one bucket, so it already works there**).
+  **Mitigated by default:** the theme follows the OS (`prefers-color-scheme`) unless the reader
+  explicitly toggles, so a fresh `file://` page is themed correctly regardless; only a manual toggle
+  fails to propagate across chapters on Firefox-from-disk. Accepted as "hosted / dev-server (or
+  Chromium) for a book-wide manual toggle"; documented alongside F2c's book-wide-bookmarks caveat. A
+  non-localStorage carrier would be hacky for a narrow case; revisit only on demand.
 
 #### Cross-page references [NEW, the author raised this twice]
 `site/xref.rs` is a deliberately lightweight source-scan (page URLs + section numbers only), so it
@@ -376,19 +389,28 @@ item rather than duplicating it.
   instead of a number appearing from nowhere; unnumbered prefaces (index / `{.unnumbered}`) stay
   unnumbered. TDD unit tests (`numbers_the_chapter_title_block`, `detects_the_title_block_but_not_a_heading`);
   core suite green; browser-verified on the guide book. (The left Chapters drawer was already correct.)
-- [ ] **Right-TOC auto-gate reads as arbitrary** (P3, design-decision): the "double numbers ↔ has a
-  right TOC" correlation the author spotted is REAL, and both are downstream of one fact, how many
+- [x] **Right-TOC auto-gate documented** (P3, was "reads as arbitrary").
+  DONE 2026-07-01 (branch `author-testing-fixes`): added a **Table of contents** note to
+  `docs/guide/reference/configuration.qmd` explaining the `>=3` heading auto-gate, the per-page `toc:`
+  override (explicit always wins), and the new narrow-screen pull-up sheet. `check docs/guide` clean.
+  (Kept as a docs clarification rather than changing the gate; the correlation the author spotted is
+  real and explained below.)
+- [ ] ~~Right-TOC auto-gate reads as arbitrary~~ (superseded by the documented note above): the
+  "double numbers ↔ has a right TOC" correlation the author spotted is REAL, and both are downstream of
+  one fact, how many
   subsections a chapter has. The `>=3` heading gate (`mod.rs:565`, `toc_entry_count`) hides the right
   TOC on short chapters while `chapter.rs` still numbers their subsections, so which chapters get a
   right rail looks random. Consider documenting the per-chapter `toc:` override, or surfacing the gate
   decision. (The numbers do not cause the TOC; the section numbers just make the shared cause visible.)
-- [ ] **`.code-walkthrough` / `.scrolly` wide-desktop layout** (P3, design/feature): on wide screens
-  the code sits in a too-narrow RIGHT column (`base.css:502`, `grid-template-columns: 1fr
-  minmax(18rem,.85fr)`) so long lines scroll inside `.cw-code` instead of getting full width. The
-  narrow `@media(max-width:60rem)` variant (`base.css:529-539`, `.cw-stage{order:-1;position:sticky;
-  top:0}`) already pins the code full-width on top with prose scrolling beneath, which the author
-  prefers. Scope: promote that layout to the default at wide widths, OR add an author opt-in; mirror
-  for `.scrolly` (`base.css:558-566`). Pure reader-asset CSS. Keep the `base.css:270-274` overflow fix.
+- [x] **`.code-walkthrough` wide-desktop layout** (P3, design/feature, author's explicit request).
+  DONE 2026-07-01 (branch `author-testing-fixes`): promoted the narrow "code pinned full-width on top,
+  prose steps scroll beneath" layout to the DEFAULT at all widths for `.code-walkthrough` (base.css:
+  flex-column + `.cw-stage{order:-1;position:sticky;top:0}` full-width, was a 1fr/.85fr 2-col grid that
+  made the code column too narrow). Directly delivers the author's ask ("code pinned at top, steps go
+  over it, code block wider"). Line-focus (`.qhl-ln-hl`) unchanged; the `max-width:100%` overflow guard
+  kept. Browser-verified at 1440px (code stage 100% width, sticky, above the steps; line-focus intact).
+  **`.scrolly` left as the classic side-by-side** (sticky viz + scrolling text is the standard
+  scrollytelling pattern; the author only flagged the CODE walkthrough — change it too if wanted).
 
 #### Render
 - [x] **Math (`$...$`) in `fig-cap:`/`lst-cap:` captions renders as literal text** (P2, confirmed).
@@ -414,13 +436,16 @@ item rather than duplicating it.
   `qmd-fast publish` that pushes `_site/` to a rendered-HTML branch. Distinct from the DEFERRED
   marketing-site deploy (that publishes the project's OWN site). Tool stays closed-source (the stance
   under Product / distribution holds; publish is a read-only export, no write-back to source).
-- [ ] **Google-Scholar `citation_*` (Highwire) meta** (P3, feature): no `citation_*` tags are emitted
-  (`meta.rs:social_head` has only og/twitter/canonical). Emit `citation_title` / `citation_author` /
-  `citation_publication_date` / `citation_journal_title` gated on `url:` + author + date; needs a
-  per-page `author` plumbed into `Page` (`site/mod.rs:44-48`, only date/title/description today).
-  `citation_pdf_url` is blocked on the deferred `print-pdf-track`. Fold into `build-seo-completeness`.
-  NOTE: "farming references" by self-citing is a non-goal and a misconception; Scholar wants a
-  scholarly-article shape (abstract + references + usually a PDF), not HTML meta alone.
+- [x] **Google-Scholar `citation_*` (Highwire) meta** (P3, feature).
+  DONE 2026-07-01 (branch `author-testing-fixes`): plumbed a per-page `authors: Vec<String>` (front
+  matter `author`, scalar or list, via `string_list`) through `FrontInfo` -> `Page` (both the website +
+  book constructors) and `meta.rs:social_head` now emits `citation_title` / one `citation_author` per
+  author / `citation_publication_date` / `citation_journal_title` (site title) / `citation_public_url`,
+  gated to an ARTICLE (has a `date`) that names an author. `citation_pdf_url` intentionally absent
+  (no PDF; print track deferred). TDD test `scholarly_citation_meta_for_authored_dated_posts_only`
+  (emits per-author for a dated+authored post; absent on a plain page); core+clippy+fmt green. NOTE:
+  "farming references" by self-citing is a non-goal/misconception (Scholar wants a real article shape,
+  not HTML meta alone). Complements (does not duplicate) `build-seo-completeness`'s JSON-LD.
 - Already tracked (no new entry): **generic SEO** (sitemap.xml / robots.txt / JSON-LD) is fully
   specced in `build-seo-completeness` (Wave 5) + the Long-tail SEO line + `BEYOND-QUARTO.md:308-312`.
   Existing SEO today is og/twitter/canonical, gated on a configured `url:`.
@@ -806,6 +831,32 @@ and own the highlighting" ask). Owner-gated identity call; ties into public-OSS-
 - [ ] **Own the syntax-highlighting grammar** via the `.tmd` language association (the VS Code
   companion already sets its own regardless; spec §3). This is the concrete answer to "rename so I
   fully control the highlighting."
+
+### Interactive/explorable numerics for scientific docs (2026-07-01; idea pool in `FEATURE-IDEAS.md` #62–66)
+Surfaced by dogfooding: building an interactive PML/Bayesian-ML study site on the shipped `{input}`
+(#47) + `{js}` reactive graph. The substrate is there; what math/ML explorables lack is a numerics
+story and two controls. All stay HTML-only/offline and must **not** reintroduce a reactive VM (the
+stated top design risk). None spec'd or corpus-pinned yet, so the detail lives upstream in
+`FEATURE-IDEAS.md`; promote an item here with a corpus pin when it graduates. Highest-leverage first:
+**#62 + #63**.
+- [ ] **#62 Bundled numerics/stats global for `{js}`** (P2): a small curated global beside `Plot`/`d3`
+  — distribution pdf/cdf (gaussian/gamma/beta/poisson/exp), mean/var, a **seeded** PRNG, small dense
+  linalg (matmul, Cholesky, 2×2 eig/inv). Kills the #1 friction (hand-rolling pdfs); a bundled global,
+  not new machinery. Pin `corpus/reactive/numerics.qmd`.
+- [ ] **#63 Two ML `{{< input >}}` types — `animate`/play tick + draggable `point`** (P2–P3): a
+  play/step/reset tick for iterative demos (EM/CAVI/gradient descent) and a drag/click 2-D point for
+  "place a data point" (mixtures/FA). Reuse `registerInput`/`scheduleFrom` (scrolly #46 already proves
+  non-slider inputs); the tick schedules **one** downstream pass per frame via the scheduler +
+  `invalidation` — not a dataflow loop.
+- [ ] **#64 `qmd.state` cross-re-run store** (P3, needs-care): keyed state that survives scheduled
+  re-runs so iterative demos accumulate (EM params across ticks); cleared on cell edit; deck-skip; no
+  write-back. Pairs with #63; scope tightly (not general mutable dataflow).
+- [ ] **#65 Richer `{js}` output helpers** (P3): KaTeX-typeset a returned number/array/matrix + a minimal
+  table renderer, over the existing DOM-return contract. Closes the rich-display gap vs Jupyter.
+- [ ] **#66 Opt-in Pyodide `{python}` cell** (L, needs-care): client-side numpy/scipy/sklearn, no kernel
+  (this is JupyterLite) — the general "match Jupyter's Python" answer. **Bundle guard**: ~10 MB+, opt-in
+  per page, vendored offline; sibling to DuckDB-WASM `{sql}` (#50). Caveat: **no torch in Pyodide**
+  (Bayes-by-Backprop won't run). Cell-language-registry graduate; cut until a corpus doc needs it.
 
 ## Product / distribution
 
