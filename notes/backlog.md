@@ -23,6 +23,16 @@ by a target corpus doc. Output stays **HTML-only**. The active roadmap is
    SetMeta multi-sourcepos→Update, lightbox keyboard, deck `inert`, reader-menu disclosure,
    24x24, `[role]` a11y gate, kernel+tsc CI jobs). Detail in "### Deep audit findings" below.
 
+**New (2026-07-01): author book-testing triage.** The author read the built book and filed
+21 bugs/ideas; all were validated against the code and deduped (an 8-lane audit workflow,
+each finding adversarially re-checked) into the new "### Author book-testing findings
+(2026-07-01)" section below. It adds two subsections the author explicitly asked for
+(**Portability audit** and **Cross-page references**). Biggest confirmed bugs (all P2): the
+static book right-TOC drops to the page bottom on narrow screens, cross-page Cmd-K search
+silently dies on `file://`, and `$...$` math is not rendered in `fig-cap:`/`lst-cap:` captions.
+Also surfaced and now tracked: the settled-but-unshipped **Taliesin rename** (its own `###`
+section near the end of Open/next).
+
 **Highest-value next (all detailed in their sections below):** the deep-audit **P2** clusters
 (visual craft / sepia first-classing, deck engine, site/books silent-omissions, citations/math/bib,
 performance) and the reading-first **P3 identity polish** (judgment-based; overlaps the deferred
@@ -193,6 +203,211 @@ install && npm run build`, then F5 and run the `editor/vscode/README.md` checkli
 → block highlight; Alt-click → source). Report anything off and I'll fix it.
 
 ## Open / next
+
+### Author book-testing findings (2026-07-01)
+Source: the author read through the built book and filed 21 bugs/ideas. Each was validated
+against the code by an 8-lane audit workflow (one lane per cluster), then a fresh skeptic
+re-checked every "already fixed / already tracked / not reproducible" call so nothing real got
+dropped. Tally: **6 confirmed bugs, 3 design-decisions/explanations, 10 feature-requests or
+open questions, 2 not-reproducible-in-code (need a repro).** The recurring theme matches the
+deep audit: **file:// / no-server "portability" is under-built, and silent failure is the
+default.** Verdicts + file:line evidence below.
+
+**Priority order / work queue (2026-07-01, being ticked top-down).** Confirmed bugs first,
+then polish, then design-forks; items needing the author's input are parked at the bottom.
+Tick items in the detailed subsections as they land.
+1. **C2** math in `fig-cap:`/`lst-cap:` captions (P2, Rust) [DONE]
+2. **E3** `file://` cross-page search: script-loadable index (P2, Rust) [DONE]
+3. **E2a** gate dead click-to-source out of static builds (P2/P3, Rust) [DONE]
+4. **A3** narrow-screen static book right-TOC: ship the pull-up sheet (P2) [DONE]
+5. **B1** cross-block selection toolbar decouple (P3, JS) [DONE]
+6. **B3** themed chevron on folded `<details>` (P3, CSS) [DONE]
+7. **F2b** cross-page number for non-heading anchors (P3, Rust)
+8. **B2** hover card: add pin, or correct the "pinnable" wording (P3, JS/doc)
+9. **F2a** cross-page hover preview (P3, JS/build; needs a site-wide label index)
+10. **F2c** book-wide bookmarks (P3, JS)
+11. **B4a** focus-mode optional native fullscreen (P3, JS)
+12. **A1** number the chapter H1 for continuity (P3, Rust; behavior choice)
+13. **G1** Google-Scholar `citation_*` meta (P3, Rust)
+14. **A2** document the right-TOC `>=3` gate (P3, docs)
+15. **D1** `.code-walkthrough`/`.scrolly` wide-desktop layout (P3, CSS design-fork)
+16. **E2b** self-contained portable site/book build (P2, larger)
+17. **E1** `file://` theme-isolation (accept, or a non-localStorage carrier)
+
+*Parked, needs the author's input (not tickable solo):* **C1** (need a repro), **B4-arrow**
+(which viewport?), **F3** cross-ref graph (backlinks-first vs graph-canvas decision), **G3**
+publishing workflow (product design), **H1** `.qmd` format-on-save (brainstorm the
+click-to-source line-stability tradeoff), **H2** Taliesin rename (owner-gated identity call),
+**H3** FL-weather migrate (needs the external project).
+
+#### Portability audit (file:// / no-server output) [NEW, the author's explicit "portability audit" ask]
+The self-contained-zip / email-a-book story. `--bare` (shipped above) solved this for SINGLE
+docs only; sites and books have no equivalent, and several things silently break when the built
+output is opened from disk with no dev server.
+- [x] **Cross-page Cmd-K search silently dies on `file://`** (P2, confirmed).
+  DONE 2026-07-01 (branch `author-testing-fixes`): the index is now written/served as a
+  `search-index.js` script that assigns `window.QMD_SEARCH_INDEX`, and `search.js` loads it via a
+  dynamically-injected `<script>` (works under `file://`, still lazy: first palette open only)
+  instead of `fetch` (CORS-blocked on `file://`). On a genuine load error it now shows "Search index
+  failed to load" instead of a silent empty palette. Touched: `search.js` (loadIndexThen +
+  error row), `site/mod.rs` (wire `search-index.js`), `build.rs` (write the `.js`), `serve_site`
+  (route `/search-index.js` + mounted guard, `text/javascript`). TDD test
+  `cross_page_search_wires_a_script_loadable_index_not_a_raw_fetch` (core/tests/search.rs); core +
+  server suites green; tsc clean; browser-verified from `file://` (169-entry index loads,
+  cross-page results resolve, 0 relevant console errors). *Noted in passing (out of scope):* the
+  search palette + wiring only ride on pages that have a TOC, so short chapters (`<3` headings)
+  have no Cmd-K at all — ties into A2/A3.
+- [ ] **Self-contained site/book build** (P2, confirmed gap): `--bare` is single-doc only
+  (`page.rs:237`, "a site never reaches OutputMode::Bare"). Add a Bare-equivalent / "portable" flag
+  for `build <dir>` so a book or website is a self-contained folder/zip that works fully offline
+  (strips the dead click-to-source, inlines search, no CDN). Broader than the PWA idea (FEATURE-IDEAS
+  #… line 174).
+- [x] **Dead click-to-source in static output** (P3, confirmed).
+  DONE 2026-07-01 (branch `author-testing-fixes`): removed `STATIC_CLICK_TO_SOURCE` from the static
+  page assembler (`page.rs`; `scripts_pre: ""` + deleted the const). Built/rendered pages (single-doc
+  `render`/`build` + sites/books) no longer draw a `.qmd-hl` outline or `console.log` on every click.
+  Click-to-source is now live-preview-only (client.js, which is unchanged). TDD test
+  `static_page_has_no_dead_click_to_source_outline` (render/tests.rs); core suite + clippy green.
+- [ ] **Book theme not book-wide from disk** (P3, partially-true, cause corrected): NOT a keying
+  bug. The theme key is a single global `qmd-theme` (`theme.rs:86,140`); the symptom is browser
+  `file://` localStorage origin isolation (Firefox isolates per file path, so each page gets its own
+  store). A book-wide file-mode pref needs a non-localStorage carrier, or is accepted as
+  "hosted / dev-server only." Same caveat applies to the size/width prefs.
+
+#### Cross-page references [NEW, the author raised this twice]
+`site/xref.rs` is a deliberately lightweight source-scan (page URLs + section numbers only), so it
+lacks parity with the richer in-page ref path. These generalize the existing theorem-only bullet
+under "Release regression-hunt deferrals" (cross-page theorem refs drop the number); widen that
+item rather than duplicating it.
+- [ ] **Cross-page number lost for ALL non-heading anchors** (P3): `xref.rs:108-109` pushes an empty
+  number for every `fig-`/`eq-`/`tbl-`/`lst-`/`thm-` anchor (headings resolve book-wide, the rest
+  render bare across pages). Harvest numbers from the per-page rendered registry.
+- [ ] **No hover preview for cross-page refs** (P3): `12-link-preview.js:34,72` only fires on
+  same-page `#` links (`getElementById` on the current page); cross-page xrefs are rewritten to
+  `{url}#{anchor}` (`xref.rs:229`) so they never qualify. Needs a site-wide label→block index
+  (FEATURE-IDEAS #52).
+- [ ] **Reader bookmarks are per-page, not book-wide** (P3): `18-bookmarks.js:9` keys localStorage by
+  `location.pathname`, so a book's bookmarks don't aggregate across chapters. Design tension: reader
+  state is intentionally pathname-scoped, so book-wide needs a per-book key plus a cross-page jump.
+- [ ] **Cross-reference graph / backlinks (Obsidian-style)** (strategic, open question): "referenced
+  by" backlinks already fit (FEATURE-IDEAS #27: read-only, build-time, reuses `xref.rs`'s forward-ref
+  scan) and are the cheap high-value core. A full interactive force-directed graph canvas is a
+  distinct, scope-risky second nav surface. Recommendation: ship backlinks first, defer or decide on
+  the graph. Read-only + HTML-only if pursued (no new write path, single-editing-surface holds).
+
+#### Reader interactions
+- [x] **Cross-block text selection shows NO toolbar** (P3, confirmed).
+  DONE 2026-07-01 (branch `author-testing-fixes`): `onSelect` (`16-highlights.js`) now computes a
+  `single` flag; a single-block prose selection gets the full toolbar incl. Highlight, while ANY other
+  selection (cross-block, or code/math where the offset walk skips) still gets Copy/Quote/Share/Cite
+  (they use `pending.text = sel.toString()` only) with just the Highlight button hidden. Remove-highlight
+  path resets `btn.hidden`. Browser-verified from `file://`: cross-block selection shows
+  Copy/Quote/Share/Cite (Highlight hidden), single-block shows all five, 0 relevant console errors.
+  Cross-block *highlighting* stays scoped out (per the reader-experience note below).
+- [ ] **Hover cross-ref card is not pinnable** (P3, confirmed + doc drift): `12-link-preview.js` has
+  no click-to-pin handler and dismisses on scroll/mouseout (`:103` `scroll` listener), so you can't
+  scroll into an overflowing (`overflow:auto`) card. Yet the backlog and FEATURE-IDEAS wording claim
+  it is "pinnable." Either add click-to-pin (keep it open, stop the scroll-dismiss while pinned, Esc
+  or outside-click releases) or correct the wording.
+- [ ] **Focus mode: optional native fullscreen** (P3, feature): focus mode is CSS-only
+  (`03-focus-mode.js:31`, `base.css:85-92`); add an optional `requestFullscreen()` on toggle (reuse
+  the `deck.js:1507` pattern), degrading where the API is blocked. NOTE: the "prev arrow too far left"
+  half does NOT reproduce: the book pager (`.qmd-book-postnav`/`.qmd-book-prev`, `site.css:200-215`)
+  already sits inside the centred reading column, and there is no viewport-edge prev arrow in the code.
+  Ask the reporter which view/viewport showed it.
+- [x] (Polish) **Themed chevron on folded `<details>`** (P3).
+  DONE 2026-07-01 (branch `author-testing-fixes`): folded code (`qmd-code-fold`) + collapsible proofs
+  now hide the browser-default triangle and draw a `currentColor` caret that rotates from right (▶) to
+  down (▼) on `[open]` (base.css). Callouts left alone (their icon header is already an affordance).
+  Browser-verified from `file://` (chevron rotates 45°→135° on open, native marker hidden, source
+  reveals). Directly addresses the author's "collapsed cells need an arrow indicator."
+
+#### Book TOC / layout (ties into the reading-first redesign)
+- [x] **Static book right-TOC useless on narrow screens** (P2, confirmed).
+  DONE 2026-07-01 (branch `author-testing-fixes`, author chose "ship the pull-up sheet"): the mobile
+  pull-up TOC sheet is now shipped into static builds (was preview-only). New self-contained
+  `web-client/toc-sheet.js` enhancer (self-inits; drag/tap/keyboard/backdrop/a11y-inert, ported from
+  client.js but standalone), bundled build-only via `render::toc_scripts()` (`TOC_SHEET_JS`); page.rs
+  emits the `#qmd-toc-handle`/`#qmd-toc-backdrop` chrome on any TOC page. **Progressive enhancement:**
+  the server ships the body WITHOUT `qmd-toc-sheet` (so no-JS keeps the in-flow TOC, never off-screen)
+  and `toc-sheet.js` adds the class at runtime, then wires the sheet. client.js (preview) untouched (no
+  double-wiring: `toc_scripts` is build-only). TDD smoke test `static_toc_page_ships_the_mobile_pull_up_sheet`
+  (render/tests.rs); core+clippy+tsc green; browser-verified at 390px (handle at bottom, tap opens the
+  sheet, backdrop closes, `aria-expanded` correct) and 1440px (handle hidden, TOC = sticky sidebar).
+  *Real-device follow-up:* the drag-gesture physics (drag up to open / drag down to dismiss) were ported
+  but only tap/keyboard/backdrop were exercised headlessly; confirm drag on a touch device.
+- [ ] **Book section-number UX confusion** (P3, explains "strange numbers in the left TOC"): the
+  chapter H1 title (a front-matter `title:` block, not a markdown `#`) carries no number, but its
+  H2/H3 jump to N.1 / N.1.1 (`chapter.rs:10-53` numbers h2+ only), and those numbers also surface in
+  the right "on this page" TOC (`toc_html` strips heading tags after `finish_blocks` numbers them,
+  `page.rs:272` + `mod.rs:489`). Reads as "numbers from nowhere." Consider numbering the chapter H1
+  ("3 Executable content") for continuity, or a toggle. NOT a left-drawer bug: the left Chapters
+  drawer numbers are clean sequential 1..N (`chrome.rs:280`, `book.rs:98-119`).
+- [ ] **Right-TOC auto-gate reads as arbitrary** (P3, design-decision): the "double numbers ↔ has a
+  right TOC" correlation the author spotted is REAL, and both are downstream of one fact, how many
+  subsections a chapter has. The `>=3` heading gate (`mod.rs:565`, `toc_entry_count`) hides the right
+  TOC on short chapters while `chapter.rs` still numbers their subsections, so which chapters get a
+  right rail looks random. Consider documenting the per-chapter `toc:` override, or surfacing the gate
+  decision. (The numbers do not cause the TOC; the section numbers just make the shared cause visible.)
+- [ ] **`.code-walkthrough` / `.scrolly` wide-desktop layout** (P3, design/feature): on wide screens
+  the code sits in a too-narrow RIGHT column (`base.css:502`, `grid-template-columns: 1fr
+  minmax(18rem,.85fr)`) so long lines scroll inside `.cw-code` instead of getting full width. The
+  narrow `@media(max-width:60rem)` variant (`base.css:529-539`, `.cw-stage{order:-1;position:sticky;
+  top:0}`) already pins the code full-width on top with prose scrolling beneath, which the author
+  prefers. Scope: promote that layout to the default at wide widths, OR add an author opt-in; mirror
+  for `.scrolly` (`base.css:558-566`). Pure reader-asset CSS. Keep the `base.css:270-274` overflow fix.
+
+#### Render
+- [x] **Math (`$...$`) in `fig-cap:`/`lst-cap:` captions renders as literal text** (P2, confirmed).
+  DONE 2026-07-01 (branch `author-testing-fixes`): `numbered_caption` now renders the caption string
+  as inline markdown via a new `caption_inline_html` helper (`cell_numbered.rs`), reusing the same
+  `parse_options()` (math_dollars on) + `emit_children` path the image-alt caption uses, instead of
+  html-escaping. So `$...$`, `*emphasis*`, and `` `code` `` in `fig-cap:`/`lst-cap:` (mermaid /
+  code-listing / {js}-figure / code-cell) render like an image-alt caption. TDD unit test
+  `math_in_option_string_caption_renders_katex` (render/tests.rs); full core suite green; browser-verified
+  (listing caption shows KaTeX, no literal `$`, 0 relevant console errors).
+- [ ] **"Code blocks need a refresh to appear": NOT reproducible in code, need a repro** (author to
+  confirm): highlighting is server-side and present in the first paint (`highlight.rs:49`→`emit.rs:65,
+  82`); the only client code enhancer is the copy button; there is no hydration step to miss (even
+  un-run `{python}` cells render as highlighted source on first paint). If it recurs, capture exact
+  steps (viewport / kernel state / after a WS reconnect?) and reopen as an open question.
+
+#### Discoverability & distribution
+- [ ] **Author publishing/share workflow** (P2, product): the distribution primitives already exist,
+  `qmd-fast build <dir> --out <folder>` is a portable static site you can host or zip. The immediate
+  answer for sharing the book with supervisors: build `--out` a folder, then push it to a
+  `gh-pages`/rendered-HTML branch or any static host (the author's own instinct is right). The gap is
+  a *designed, documented* publishing UX: (a) document the recipe in the guide; (b) consider a thin
+  `qmd-fast publish` that pushes `_site/` to a rendered-HTML branch. Distinct from the DEFERRED
+  marketing-site deploy (that publishes the project's OWN site). Tool stays closed-source (the stance
+  under Product / distribution holds; publish is a read-only export, no write-back to source).
+- [ ] **Google-Scholar `citation_*` (Highwire) meta** (P3, feature): no `citation_*` tags are emitted
+  (`meta.rs:social_head` has only og/twitter/canonical). Emit `citation_title` / `citation_author` /
+  `citation_publication_date` / `citation_journal_title` gated on `url:` + author + date; needs a
+  per-page `author` plumbed into `Page` (`site/mod.rs:44-48`, only date/title/description today).
+  `citation_pdf_url` is blocked on the deferred `print-pdf-track`. Fold into `build-seo-completeness`.
+  NOTE: "farming references" by self-citing is a non-goal and a misconception; Scholar wants a
+  scholarly-article shape (abstract + references + usually a PDF), not HTML meta alone.
+- Already tracked (no new entry): **generic SEO** (sitemap.xml / robots.txt / JSON-LD) is fully
+  specced in `build-seo-completeness` (Wave 5) + the Long-tail SEO line + `BEYOND-QUARTO.md:308-312`.
+  Existing SEO today is og/twitter/canonical, gated on a configured `url:`.
+
+#### Tooling / format future
+- [ ] **Companion: surface `check`/prose-lint as editor diagnostics** (P3): VS Code squiggles from
+  `qmd-fast check --format json` / `crate::prose` located warnings (read-only, no buffer writes). New
+  vs the Phase-2 text-transform commands. The onboarding sub-ask ("how do I start using it daily") is
+  already answered by `editor/vscode/README.md` + the pending F5-accept, so it needs no new code.
+- [ ] **`.qmd` format-on-save** (open question, NOT Phase 2): a source pretty-printer would write the
+  editor BUFFER (an allowed surface, that IS the single editing surface) but must preserve
+  `data-sourcepos` line stability for click-to-source. Brainstorm whether the reflow is worth the
+  click-to-source risk before any work.
+- [ ] **Dogfood: migrate the external FL-weather book to qmd-fast** (P3): a real-world Quarto→qmd-fast
+  migration and portability stress test (exercises `book.rs`, includes, the freeze cache, the
+  `_quarto.yml` breadcrumb, and file-mode portability). If it renders clean, consider pinning a
+  reduced version under `corpus/` as a regression doc.
+- **Drop `.qmd` / own the syntax highlighting**: this ask IS the already-settled **Taliesin rename**,
+  which was spec'd but never tracked. Now logged under its own `### Taliesin rename` section near the
+  end of Open/next.
 
 ### Reading-first default layout & style re-evaluation (2026-06-30)
 Method: a design re-audit of the three formats' DEFAULTS against a reading-first / iA-Writer-Bear-Tufte
@@ -545,6 +760,19 @@ but LOW, pre-existing, or by-design:
 - [ ] **Bib / build edge cases.** `@inbook`/`@incollection` drop `booktitle`/pages;
   query-string asset refs aren't bundled (`main.rs`). The remaining LOW findings live in
   `AUDITS.md`; pull up only when relevant.
+
+### Taliesin rename (settled design, UNSHIPPED, was untracked until 2026-07-01)
+Spec: `docs/superpowers/specs/2026-06-27-taliesin-rename-design.md` (decisions settled). Surfaced by
+the 2026-07-01 book-testing triage as a large, settled-but-untracked task (the author's "drop `.qmd`
+and own the highlighting" ask). Owner-gated identity call; ties into public-OSS-release timing.
+- [ ] **Execute the Taliesin rename**: `.qmd`→`.tmd` routed through a central `crates/core/src/ext.rs`
+  constant module (`.qmd` kept as deprecated-accepted input with a warn-nudge, i.e. a clean break WITH
+  a migration path, not a hard drop, per the spec's Markdown-familiarity north star); package names
+  →`taliesin-*`; binary `taliesin` + `tali`; the `qmd-*` contract prefix →`tali-*` with back-compat
+  aliases. Large multi-surface change (corpus + docs churn).
+- [ ] **Own the syntax-highlighting grammar** via the `.tmd` language association (the VS Code
+  companion already sets its own regardless; spec §3). This is the concrete answer to "rename so I
+  fully control the highlighting."
 
 ## Product / distribution
 
