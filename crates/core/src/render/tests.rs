@@ -417,6 +417,35 @@ fn mermaid_block_emits_pre_mermaid_without_code() {
 }
 
 #[test]
+fn mermaid_library_inlined_into_build_pages_only() {
+    // A static Build page WITH a diagram inlines the vendored mermaid library (it sets
+    // globalThis.mermaid, which the loader short-circuits on) so the diagram renders
+    // fully offline — no CDN fetch.
+    let body = "<pre class=\"mermaid\">flowchart LR\n A --&gt; B</pre>";
+    let build = code_scripts_for(body, OutputMode::Build);
+    assert!(
+        build.contains("__esbuild_esm_mermaid") && build.contains("globalThis.mermaid"),
+        "Build must inline the vendored mermaid library for a diagram page"
+    );
+    assert!(
+        build.contains("__qmdMermaidLoading"),
+        "Build still ships the loader (uses the inlined global)"
+    );
+    // Content-gated: a Build page with NO diagram inlines nothing.
+    let build_plain = code_scripts_for("<p>no diagram</p>", OutputMode::Build);
+    assert!(
+        !build_plain.contains("__esbuild_esm_mermaid"),
+        "Build must NOT inline mermaid on a diagram-less page"
+    );
+    // Preview keeps the lean lazy loader (inlining 2.5 MB on every save would bloat it).
+    let preview = code_scripts_for(body, OutputMode::Preview);
+    assert!(
+        !preview.contains("__esbuild_esm_mermaid") && preview.contains("__qmdMermaidLoading"),
+        "Preview keeps only the lazy loader, not the inlined library"
+    );
+}
+
+#[test]
 fn labelled_mermaid_becomes_numbered_referenceable_figure() {
     let doc = render_document(
         "See @fig-flow.\n\n```{mermaid}\n%%| label: fig-flow\n%%| fig-cap: \"The pipeline\"\nflowchart LR\n  A --> B\n```\n",

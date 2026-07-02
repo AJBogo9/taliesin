@@ -866,15 +866,14 @@ const BASE_CSS: &str = include_str!("../../assets/css/base.css");
 // the diff. (Syntax highlighting is server-side; the deck engine and KaTeX are bundled
 // offline.)
 //
-// OFFLINE: the default source below is a jsDelivr CDN URL, so the *default* build needs
-// the network at view time only on a page that has a diagram. We deliberately do NOT
-// `include_str!` the 2.8 MB library into the binary / every built page just to cover that
-// minority case. To build fully offline, self-host `mermaid.min.js` and point the
-// `QMD_FAST_MERMAID_URL` env var at it (a relative URL next to the site, or an absolute
-// one); the loader uses that value verbatim. Either way, a load failure is now *visible*
-// (a `[data-mermaid-error]` banner replaces the diagram), never a silent blank — so the
-// offline-first promise is honored by a loud, diagnosable failure rather than a fragile
-// silent one.
+// OFFLINE: a static Build with a diagram INLINES the vendored library (`MERMAID_MIN_JS`,
+// ~2.5 MB, content-gated to pages that actually have a `pre.mermaid`), so a `--out` doc /
+// book renders diagrams with zero network. The live Preview instead keeps the lazy loader
+// pointed at the CDN default below (inlining 2.5 MB on every save would bloat the payload,
+// and dev-time network is fine); `QMD_FAST_MERMAID_URL` overrides that Preview/loader URL
+// (e.g. to a self-hosted copy) and is also the loader's never-reached Build fallback if the
+// inlined global somehow isn't present. Either way a load failure is *visible* (a
+// `[data-mermaid-error]` banner), never a silent blank.
 const MERMAID_DEFAULT: &str = "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js";
 
 /// The URL the lazy mermaid loader fetches the diagram library from: the
@@ -908,7 +907,22 @@ pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
     if mode == OutputMode::Bare {
         return String::new();
     }
-    let mermaid = MERMAID_JS.replace("{{MERMAID}}", &mermaid_url());
+    let mermaid_present = body.contains("class=\"mermaid\"");
+    // A static Build inlines the vendored mermaid library (it sets `globalThis.mermaid`,
+    // which the loader below short-circuits on) so a diagram renders FULLY OFFLINE — no
+    // CDN, no external request. Preview keeps just the lean lazy loader (dev-time network
+    // is fine, and inlining 2.5 MB on every save would bloat the payload). The loader's
+    // `{{MERMAID}}` CDN URL stays as a never-reached fallback (window.mermaid is already
+    // set), so a stripped/edited inline still degrades gracefully rather than blank.
+    let mermaid_lib = if mode == OutputMode::Build && mermaid_present {
+        format!("\n<script>{MERMAID_MIN_JS}</script>")
+    } else {
+        String::new()
+    };
+    let mermaid = format!(
+        "{mermaid_lib}\n<script>{}</script>",
+        MERMAID_JS.replace("{{MERMAID}}", &mermaid_url())
+    );
     // In Preview every gate is open; in Build a gate opens only when the rendered
     // body carries that enhancer's DOM marker.
     let gate = |present: bool, script: &str| -> String {
@@ -920,7 +934,11 @@ pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
     };
     format!(
         "<script>{CODE_ENHANCE_JS}</script>{mermaid_s}{qmdjs_s}{walk_s}{tabset_s}{scrolly_s}",
-        mermaid_s = gate(body.contains("class=\"mermaid\""), &mermaid),
+        mermaid_s = if mode == OutputMode::Preview || mermaid_present {
+            mermaid.clone()
+        } else {
+            String::new()
+        },
         qmdjs_s = gate(has_js_cells(body), QMD_JS),
         walk_s = gate(body.contains("code-walkthrough"), WALKTHROUGH_JS),
         tabset_s = gate(body.contains("panel-tabset"), TABSET_JS),
@@ -999,6 +1017,10 @@ const CODE_ENHANCE_JS: &str = concat!(
     include_str!("../../assets/js/code-enhance/18-bookmarks.js"),
 );
 const MERMAID_JS: &str = include_str!("../../assets/js/mermaid.js");
+/// The vendored Mermaid library (pinned mermaid@11.4.1, ~2.5 MB; sets `globalThis.mermaid`).
+/// Inlined into a static Build page that has a diagram so it renders with no CDN; the
+/// live Preview keeps the lazy loader instead (see `code_scripts_for`).
+const MERMAID_MIN_JS: &str = include_str!("../../assets/js/mermaid.min.js");
 /// Scroll-driven line-range highlighter for `::: {.code-walkthrough}`. Registers
 /// through `qmdEnhancers`, no-ops without a walkthrough (like mermaid/qmd-js), so it
 /// rides unconditionally in [`code_scripts`].

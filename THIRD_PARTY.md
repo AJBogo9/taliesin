@@ -17,6 +17,11 @@ Bundled so the tool works fully offline.
   Copyright 2020-2023 Observable, Inc.). The high-level chart library for `{js}`
   cells; depends on the vendored D3 above. License:
   <https://github.com/observablehq/plot/blob/main/LICENSE>.
+- **Mermaid** (`crates/core/assets/js/mermaid.min.js`, MIT, v11.4.1, Copyright (c)
+  2014-2024 Knut Sveidqvist). The diagram engine. Inlined into a static build page
+  that has a diagram so it renders fully offline (content-gated); the live preview
+  lazy-loads it instead (see the runtime note below). License:
+  <https://github.com/mermaid-js/mermaid/blob/develop/LICENSE>.
 - **GitHub Octicons** (MIT, Copyright (c) GitHub, Inc.). A handful of inline SVG
   glyph paths are embedded directly in source — the copy/check button in
   `code-enhance.js` and the callout-kind icons in `crates/core/src/render/divs.rs`.
@@ -26,22 +31,18 @@ Bundled so the tool works fully offline.
 The other scripts under `crates/core/assets/js/` (`code-enhance.js`, `deck.js`,
 `mermaid.js`, `qmd-js.js`, `walkthrough.js`, `tabset.js`) are qmd-fast's own (MIT).
 
-## Loaded at runtime from a CDN (not redistributed here)
+## Loaded at runtime from a CDN (live preview only)
 
-The only library qmd-fast *itself* fetches over the network is the Mermaid diagram
-engine, and only on a page that actually has a diagram. Everything else above is
-bundled offline.
+qmd-fast itself fetches nothing over the network in a **static build** — Mermaid is now
+vendored (above) and inlined into build pages that have a diagram, so a `--out` doc/book
+is fully offline. The one runtime fetch remaining is in the **live preview**:
 
-- **Mermaid** (MIT, diagrams). The bundled `mermaid.js` loader lazy-loads the ~2.8 MB
-  Mermaid library the first time a `mermaid` block renders — a client-side
-  presentation layer that never touches the block model. The source URL defaults to a
-  pinned jsDelivr build but is **configurable**: set the `QMD_FAST_MERMAID_URL`
-  environment variable to self-host the library (a relative or absolute URL) for a
-  fully offline build. We deliberately do not `include_str!` the 2.8 MB library into
-  the binary / every built page to cover this minority case. When the library cannot
-  load (offline or blocked), the diagram is replaced by a **visible**
-  `[data-mermaid-error]` banner with the source kept below, so the failure is loud and
-  diagnosable rather than silent.
+- **Mermaid loader.** In preview, `mermaid.js` lazy-loads the ~2.5 MB Mermaid library the
+  first time a diagram renders, from the pinned jsDelivr build (`QMD_FAST_MERMAID_URL`
+  overrides the URL — e.g. to the vendored copy for offline dev). Inlining 2.5 MB on every
+  save would bloat the preview payload, so preview keeps the lazy loader; the *build* path
+  inlines it. When the library cannot load (offline or blocked), the diagram is replaced by
+  a **visible** `[data-mermaid-error]` banner with the source kept below, never a silent blank.
 
 Note that **author content can introduce its own CDN dependencies** outside
 qmd-fast's control: a `{js}` cell may `import` from a CDN (e.g. the corpus
