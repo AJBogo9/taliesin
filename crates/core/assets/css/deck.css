@@ -77,33 +77,34 @@ body { background: transparent; }
   justify-content: center;
 }
 
-/* `.r-stretch`: let an image fill the slide's remaining vertical space (a Quarto
-   authoring class). The slide turns into a flex column so the marked element grows into
-   what's left after the heading and other content. Authored as a fenced div:
-   `:::{.r-stretch}` wrapping an image. */
-.qmd-deck .qmd-slides > section:has(> .r-stretch),
-.qmd-deck .qmd-slides > section > section:has(> .r-stretch) {
+/* `.tali-stretch`: let an image fill the slide's remaining vertical space. The
+   slide turns into a flex column so the marked element grows into what's left after
+   the heading and other content. Authored as a fenced div: `:::{.tali-stretch}`
+   wrapping an image. `.r-stretch` (the Quarto authoring class) stays accepted as a
+   deprecated alias, so every selector matches both spellings. */
+.qmd-deck .qmd-slides > section:has(> :is(.tali-stretch, .r-stretch)),
+.qmd-deck .qmd-slides > section > section:has(> :is(.tali-stretch, .r-stretch)) {
   display: flex;
   flex-direction: column;
 }
-.qmd-deck .r-stretch {
+.qmd-deck :is(.tali-stretch, .r-stretch) {
   flex: 1 1 auto;
   min-height: 0;
   margin: 0.4em 0;
 }
 /* Unwrap the paragraph/figure comrak puts around the image so the media itself is
    the box that fills the stretch region. */
-.qmd-deck .r-stretch > p {
+.qmd-deck :is(.tali-stretch, .r-stretch) > p {
   display: contents;
 }
-.qmd-deck .r-stretch > figure {
+.qmd-deck :is(.tali-stretch, .r-stretch) > figure {
   margin: 0;
   height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
 }
-.qmd-deck .r-stretch :is(img, svg, canvas) {
+.qmd-deck :is(.tali-stretch, .r-stretch) :is(img, svg, canvas) {
   display: block;
   width: 100%;
   height: 100%;
@@ -113,12 +114,12 @@ body { background: transparent; }
 /* In a *captioned* figure the media shares the box with the figcaption, so let it
    flex-grow instead of forcing height:100% (which ignores the caption and overflows
    the slide); the caption keeps its content height. */
-.qmd-deck .r-stretch > figure > :is(img, svg, canvas) {
+.qmd-deck :is(.tali-stretch, .r-stretch) > figure > :is(img, svg, canvas) {
   flex: 1 1 auto;
   height: auto;
   min-height: 0;
 }
-.qmd-deck .r-stretch > figure > figcaption {
+.qmd-deck :is(.tali-stretch, .r-stretch) > figure > figcaption {
   flex: none;
 }
 

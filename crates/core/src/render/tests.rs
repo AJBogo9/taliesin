@@ -1145,6 +1145,22 @@ fn reveal_format_detected_from_front_matter() {
     // A normal post is Html, even if a nested non-format key mentions revealjs.
     let post = render_document("---\ntitle: Post\nformat: html\n---\n\nHi.\n");
     assert_eq!(post.format, DocFormat::Html);
+
+    // Native spelling: `format: deck` selects a deck, inline and in block form,
+    // and as an extension variant `<ext>-deck` (the `revealjs` spellings above
+    // remain accepted as the deprecated Quarto vocabulary).
+    let native_inline = render_document("---\nformat: deck\n---\n\n## A\n");
+    assert_eq!(native_inline.format, DocFormat::Reveal);
+    let native_block =
+        render_document("---\nformat:\n  deck:\n    slide-number: true\n---\n\n## A\n");
+    assert_eq!(native_block.format, DocFormat::Reveal);
+    let native_ext = render_document(
+        "---\nformat:\n  liquid-glass-deck:\n    slide-number: true\n---\n\n## A\n",
+    );
+    assert_eq!(native_ext.format, DocFormat::Reveal);
+    // A theme filename that merely contains "deck" must not flip an HTML doc.
+    let not_a_deck = render_document("---\nformat: html\ntheme: my-deck.css\n---\n\nHi.\n");
+    assert_eq!(not_a_deck.format, DocFormat::Html);
 }
 
 #[test]

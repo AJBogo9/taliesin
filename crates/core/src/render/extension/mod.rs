@@ -53,7 +53,7 @@ struct ExtensionRef {
 /// request"; a request that *is* made but then fails to load *does* warn.
 fn extension_ref(front_matter: &str, base_dir: Option<&Path>) -> Option<ExtensionRef> {
     let fmt = detect_format_name(front_matter)?;
-    let ext = ["revealjs", "html"]
+    let ext = ["deck", "revealjs", "html"]
         .iter()
         .find_map(|b| fmt.strip_suffix(&format!("-{b}")))?;
     let dir = base_dir?;
