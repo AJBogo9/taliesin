@@ -32,7 +32,6 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     "format",
     "theme",
     "css",
-    "extensions",
     "page-layout",
     // Drafts: `draft: true` excludes a page from a website build (output, nav, listings).
     "draft",
@@ -503,7 +502,8 @@ mod tests {
 
     #[test]
     fn format_subkeys_are_not_linted() {
-        // `format:` is owned by extensions; its children must not warn.
+        // `format:` sub-keys (a deck's `revealjs:`/`deck:` options) are format config,
+        // not top-level keys, so they must not warn.
         let w = validate_front_matter(
             "---\ntitle: X\nformat:\n  html:\n    toc: true\n    anything: 1\n---\n",
         );

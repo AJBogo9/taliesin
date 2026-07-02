@@ -9,7 +9,7 @@ use crate::includes::LineOrigin;
 use comrak::nodes::{AstNode, ListType, NodeList, NodeValue, TableAlignment};
 use comrak::{Arena, Options, parse_document};
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 mod model;
 pub(crate) use model::CellRole;
@@ -65,7 +65,6 @@ pub use deck::{DeckParts, assemble_deck_page, deck_client_script, slides_html};
 use deck::deck_theme_head;
 mod extension;
 pub use extension::embed_targets;
-use extension::{resolve_format_extension, resolve_named_extensions};
 mod divs;
 mod validate;
 pub(crate) use divs::parse_attrs;
@@ -85,7 +84,7 @@ pub use page::{
     PageParts, SiteCtx, assemble_html_page, favicon_link, html_page_from_doc_in_site,
     render_doc_to_page,
 };
-use theme::{detect_theme, resolve_theme, resolve_theme_layers, theme_default_mode, theme_style};
+use theme::{detect_theme, resolve_theme, theme_default_mode, theme_style};
 
 /// Render a `.qmd` source string into the `RenderedDoc` block model: the parse
 /// step only (no code execution, no page chrome). The dev server diffs these
@@ -117,11 +116,11 @@ pub fn render_document_with_includes_scoped(
     chapter: Option<u32>,
 ) -> RenderedDoc {
     let (expanded, origins, include_warnings) = crate::includes::resolve_warned(src, base_dir);
-    // Declarative shortcodes (`{{< name args >}}`) from the active format
-    // extension expand after includes, line-preserving so `origins` stays valid.
-    // A `{{< name >}}` that no extension/built-in declares is left verbatim but
-    // reported, so a typo'd shortcode doesn't ship silently as literal text.
-    let (expanded, shortcode_warnings) = extension::expand_shortcodes(&expanded, Some(base_dir));
+    // Declarative shortcodes (`{{< embed >}}` / `{{< video >}}` / `{{< input >}}`)
+    // expand after includes, line-preserving so `origins` stays valid. A `{{< name >}}`
+    // that no built-in declares is left verbatim but reported, so a typo'd shortcode
+    // doesn't ship silently as literal text.
+    let (expanded, shortcode_warnings) = extension::expand_shortcodes(&expanded);
     let mut doc = render_internal(&expanded, Some(&origins), Some(base_dir), chapter);
     // An include that couldn't be expanded (unsafe path, cycle, unreadable) leaves
     // its `{{< include … >}}` directive literal in the output; surface it as a
@@ -201,10 +200,7 @@ fn render_internal_impl(
     let mut theme: Option<String> = None;
     let mut bib_paths: Vec<String> = Vec::new();
     let mut includes = PageIncludes::default();
-    // Whether a format/named extension contributed head/body markup (e.g. a reveal
-    // theme extension like liquid-glass): such a theme owns the deck's colours.
-    let mut ext_contributes = false;
-    // Non-fatal render warnings (missing/broken extension, bibliography, theme),
+    // Non-fatal render warnings (a missing `bibliography:`/`theme:` file, …),
     // collected through the whole render and surfaced in the dev menu / build log.
     let mut warnings: Vec<Warning> = Vec::new();
     // Validate the document's front matter against taliesin's vocabulary (top-level
@@ -275,22 +271,7 @@ fn render_internal_impl(
                 toc_explicit = detect_toc(fm);
                 hide_title_block = detect_title_block_hidden(fm);
                 theme = detect_theme(fm);
-                // Extensions contribute first (the `format:` one, then each
-                // `extensions: [..]` entry), and the doc's own front matter
-                // appends/overrides last.
-                let (fmt_inc, fmt_theme_base) =
-                    resolve_format_extension(fm, base_dir, &mut warnings);
-                let named_inc = resolve_named_extensions(fm, base_dir, &mut warnings);
-                ext_contributes = fmt_inc.has_markup() || named_inc.has_markup();
-                includes = fmt_inc;
-                includes.merge(&named_inc);
-                includes.merge(&resolve_doc_includes(fm, base_dir));
-                // A format extension's `theme: [dark|light, …]` selects the
-                // built-in base mode when the doc itself named no `theme:` (the
-                // extension owns the look, matching Quarto).
-                if theme.is_none() {
-                    theme = fmt_theme_base.map(String::from);
-                }
+                includes = resolve_doc_includes(fm, base_dir);
                 (exec_echo, exec_include, exec_cache) = detect_execute_defaults(fm);
                 theorem_config = parse_theorem_config(fm);
                 continue;
@@ -669,7 +650,7 @@ fn render_internal_impl(
     }
     let theme_css = resolve_theme(theme.as_deref(), base_dir, &mut warnings);
     let theme_default = theme_default_mode(theme.as_deref()).to_string();
-    let theme_is_custom = ext_contributes || !theme_css.trim().is_empty();
+    let theme_is_custom = !theme_css.trim().is_empty();
     RenderedDoc {
         title,
         subtitle,

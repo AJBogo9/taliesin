@@ -1,375 +1,17 @@
-//! Format extensions: `format: <ext>-revealjs|-html` loads
-//! `_extensions/<ext>/_extension.yml` and injects the includes/theme/resources its
-//! flat native manifest declares. Kept in its own module so the core stays a thin
-//! injector; `use super::*` reaches PageIncludes + the shared include/theme helpers.
+//! Declarative shortcodes: expand `{{< name args >}}` invocations to inline HTML. The
+//! built-ins are `{{< embed deck.tmd >}}` (an isolated deck iframe), `{{< video
+//! clip.mp4 >}}` (a framed screencast), and `{{< input … >}}` (a reactive control).
+//! Line-preserving so the include source map stays valid; `use super::*` reaches the
+//! shared `Warning` and HTML-escape helpers.
 
 use super::*;
 
-/// The raw `format:` key (`glass-revealjs`, `revealjs`, `html`, …) — inline value
-/// or the first block sub-key. Used to spot a format-extension reference.
-fn detect_format_name(front_matter: &str) -> Option<String> {
-    let lines: Vec<&str> = front_matter.lines().collect();
-    for (i, line) in lines.iter().enumerate() {
-        if line.starts_with(char::is_whitespace) {
-            continue;
-        }
-        let Some(rest) = line.trim_end().strip_prefix("format:") else {
-            continue;
-        };
-        let inline = rest.trim();
-        if !inline.is_empty() {
-            return Some(inline.trim_matches(['"', '\'']).to_string());
-        }
-        // Block form: the first indented sub-key is the format name.
-        for sub in &lines[i + 1..] {
-            if sub.trim().is_empty() {
-                continue;
-            }
-            if !sub.starts_with(char::is_whitespace) {
-                break; // dedented out of the block without a sub-key
-            }
-            let key = sub.trim().trim_end_matches(':').trim_matches(['"', '\'']);
-            if !key.is_empty() {
-                return Some(key.to_string());
-            }
-        }
-        return None;
-    }
-    None
-}
-/// A `format: <ext>-<base>` reference to an installed format extension, resolved
-/// to its directory. Recognized base formats; the part before `-<base>` is the
-/// extension name (the native manifest is format-agnostic, so the base itself is
-/// only used to *recognize* the reference, not retained).
-struct ExtensionRef {
-    name: String,
-    /// `<base_dir>/_extensions/<name>`.
-    dir: PathBuf,
-}
-
-/// Parse `format:` into an [`ExtensionRef`], or `None` when it is absent, names a
-/// bare base format (`revealjs`/`html`), or there is no project dir — none of
-/// which is an error (so no warning). A `None` here means "not an extension
-/// request"; a request that *is* made but then fails to load *does* warn.
-fn extension_ref(front_matter: &str, base_dir: Option<&Path>) -> Option<ExtensionRef> {
-    let fmt = detect_format_name(front_matter)?;
-    let ext = ["deck", "revealjs", "html"]
-        .iter()
-        .find_map(|b| fmt.strip_suffix(&format!("-{b}")))?;
-    let dir = base_dir?;
-    if ext.is_empty() {
-        return None;
-    }
-    Some(ExtensionRef {
-        name: ext.to_string(),
-        dir: find_extension_dir(dir, ext),
-    })
-}
-
-/// Locate an installed extension: the nearest `_extensions/<name>/` walking up from
-/// `base_dir` to the filesystem root, so a chapter deep in a book finds extensions
-/// vendored at the project root (not just beside the page). Falls back to the
-/// page-relative path when none is found, so the not-found warning still points
-/// somewhere sensible.
-fn find_extension_dir(base_dir: &Path, name: &str) -> PathBuf {
-    let mut dir = Some(base_dir);
-    while let Some(d) = dir {
-        let cand = d.join("_extensions").join(name);
-        if cand.join("_extension.yml").is_file() {
-            return cand;
-        }
-        dir = d.parent();
-    }
-    base_dir.join("_extensions").join(name)
-}
-
-/// Load + parse an extension's `_extension.yml`. Because the caller asked for this
-/// extension explicitly via `format:`, a missing or malformed manifest is an
-/// authoring mistake worth surfacing (the dev menu / build log), not a silent
-/// no-op — so failures push a `warnings` entry.
-fn load_manifest(r: &ExtensionRef, warnings: &mut Vec<Warning>) -> Option<serde_yaml::Value> {
-    let manifest = r.dir.join("_extension.yml");
-    let text = match std::fs::read_to_string(&manifest) {
-        Ok(t) => t,
-        Err(_) => {
-            warnings.push(Warning::new(format!(
-                "format extension '{}' not found (looked for {})",
-                r.name,
-                manifest.display()
-            )));
-            return None;
-        }
-    };
-    match serde_yaml::from_str::<serde_yaml::Value>(&text) {
-        Ok(v) => Some(v),
-        Err(e) => {
-            warnings.push(Warning::new(format!(
-                "could not parse {}: {e}",
-                manifest.display()
-            )));
-            None
-        }
-    }
-}
-
-/// The normalized set of things an extension contributes, built from the flat
-/// native manifest. Values are the raw YAML (resolved into includes/resources by
-/// the caller).
-#[derive(Default)]
-struct Contribution {
-    head: Option<serde_yaml::Value>,
-    body_start: Option<serde_yaml::Value>,
-    body_end: Option<serde_yaml::Value>,
-    css: Option<serde_yaml::Value>,
-    theme: Option<serde_yaml::Value>,
-    resources: Option<serde_yaml::Value>,
-    shortcodes: Option<serde_yaml::Value>,
-}
-
-impl Contribution {
-    /// The flat native manifest: contribution keys live at the top level.
-    fn from_native(m: &serde_yaml::Value) -> Contribution {
-        Contribution {
-            head: m.get("head").cloned(),
-            body_start: m.get("body-start").cloned(),
-            body_end: m.get("body-end").cloned(),
-            css: m.get("css").cloned(),
-            theme: m.get("theme").cloned(),
-            resources: m.get("resources").cloned(),
-            shortcodes: m.get("shortcodes").cloned(),
-        }
-    }
-}
-
-/// Recognized native top-level keys: metadata (informational) + contributions.
-const NATIVE_MANIFEST_KEYS: &[&str] = &[
-    "name",
-    "title",
-    "description",
-    "author",
-    "version",
-    "theme",
-    "css",
-    "head",
-    "body-start",
-    "body-end",
-    "resources",
-    "shortcodes",
-];
-
-/// Warn on unrecognized top-level keys of a native manifest (a closed set).
-fn validate_manifest(m: &serde_yaml::Value, ext: &str, warnings: &mut Vec<Warning>) {
-    let Some(map) = m.as_mapping() else { return };
-    for k in map.keys() {
-        let Some(key) = k.as_str() else { continue };
-        if !NATIVE_MANIFEST_KEYS.contains(&key) {
-            let hint = crate::frontmatter::closest(key, NATIVE_MANIFEST_KEYS)
-                .map(|s| format!(" (did you mean `{s}`?)"))
-                .unwrap_or_default();
-            warnings.push(Warning::new(format!(
-                "extension '{ext}': unknown manifest key `{key}`{hint}"
-            )));
-        }
-    }
-}
-
-/// Build a [`Contribution`] from the flat native manifest, warning on any
-/// unrecognized top-level key.
-fn load_contribution(
-    r: &ExtensionRef,
-    m: &serde_yaml::Value,
-    warnings: &mut Vec<Warning>,
-) -> Contribution {
-    validate_manifest(m, &r.name, warnings);
-    Contribution::from_native(m)
-}
-
-impl ExtensionRef {
-    /// A reference to an explicitly-named extension (the `extensions: [..]` key).
-    fn named(name: &str, base_dir: &Path) -> ExtensionRef {
-        ExtensionRef {
-            name: name.to_string(),
-            dir: find_extension_dir(base_dir, name),
-        }
-    }
-}
-
-/// Load an extension's manifest and build its [`Contribution`] (+ its directory),
-/// or `None` if the manifest can't be read/parsed.
-fn contribution_for(
-    r: &ExtensionRef,
-    warnings: &mut Vec<Warning>,
-) -> Option<(PathBuf, Contribution)> {
-    let m = load_manifest(r, warnings)?;
-    Some((r.dir.clone(), load_contribution(r, &m, warnings)))
-}
-
-/// Turn a [`Contribution`] into the `PageIncludes` it injects (head/body/css +
-/// theme layers ahead of the header, and `resources` recorded for copying).
-fn apply_contribution(c: &Contribution, ext_dir: &Path) -> PageIncludes {
-    let mut inc = includes_from_parts(
-        c.head.as_ref(),
-        c.body_start.as_ref(),
-        c.body_end.as_ref(),
-        c.css.as_ref(),
-        Some(ext_dir),
-    );
-    // Contributed `theme:` CSS layers, inlined ahead of the header so the doc's own
-    // front matter can still override. (`.scss` needs a compiler we don't ship; only
-    // `.css` is inlined.)
-    let theme = resolve_theme_layers(c.theme.as_ref(), ext_dir);
-    if !theme.is_empty() {
-        inc.in_header = format!("{theme}{}", inc.in_header);
-    }
-    // `resources` (file names relative to the extension) are copied next to the
-    // output so an injected `<script src="x.js">` resolves at runtime.
-    if let Some(res) = &c.resources {
-        for name in res
-            .as_sequence()
-            .map(|s| s.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>())
-            .unwrap_or_else(|| res.as_str().into_iter().collect())
-        {
-            inc.resources.push(ext_dir.join(name));
-        }
-    }
-    inc
-}
-
-/// The built-in base mode (`dark`/`light`) a contributed `theme:` selects, if any:
-/// the first entry of a `[dark, x.css]` list or a bare `theme: dark` scalar.
-/// `.css`/`.scss` layer names are not base modes (they're inlined separately).
-fn contributed_theme_base(theme: Option<&serde_yaml::Value>) -> Option<&'static str> {
-    let first = match theme? {
-        serde_yaml::Value::String(s) => s.as_str(),
-        serde_yaml::Value::Sequence(seq) => seq.first()?.as_str()?,
-        _ => return None,
-    };
-    match first {
-        "dark" => Some("dark"),
-        "light" | "default" => Some("light"),
-        _ => None,
-    }
-}
-
-/// If the doc's `format:` names a format extension (`<ext>-revealjs`/`<ext>-html`),
-/// load `_extensions/<ext>/_extension.yml` and resolve what it contributes: the
-/// injected `PageIncludes` plus the built-in theme base it selects (so the deck
-/// defaults to the extension's light/dark when the doc names no `theme:`). Empty
-/// when there's no such extension; a *failed* load is reported via `warnings`.
-pub(super) fn resolve_format_extension(
-    front_matter: &str,
-    base_dir: Option<&Path>,
-    warnings: &mut Vec<Warning>,
-) -> (PageIncludes, Option<&'static str>) {
-    let Some(r) = extension_ref(front_matter, base_dir) else {
-        return (PageIncludes::default(), None);
-    };
-    match contribution_for(&r, warnings) {
-        Some((dir, c)) => (
-            apply_contribution(&c, &dir),
-            contributed_theme_base(c.theme.as_ref()),
-        ),
-        None => (PageIncludes::default(), None),
-    }
-}
-
-/// Apply the `extensions: [a, b]` list — the general (format-agnostic) activation.
-/// Each named extension is merged in order (so a later one wins). This is how a
-/// shortcode/enhancer extension is switched on without hijacking `format:`.
-pub(super) fn resolve_named_extensions(
-    front_matter: &str,
-    base_dir: Option<&Path>,
-    warnings: &mut Vec<Warning>,
-) -> PageIncludes {
-    let Some(dir) = base_dir else {
-        return PageIncludes::default();
-    };
-    let mut inc = PageIncludes::default();
-    for name in parse_extensions(front_matter) {
-        let r = ExtensionRef::named(&name, dir);
-        if let Some((d, c)) = contribution_for(&r, warnings) {
-            inc.merge(&apply_contribution(&c, &d));
-        }
-    }
-    inc
-}
-
-/// The `extensions:` front-matter list (explicitly activated extensions), or empty.
-fn parse_extensions(front_matter: &str) -> Vec<String> {
-    // Strip the leading `---` and everything from the closing fence, then parse the
-    // body as YAML — robust whether or not the fences are present.
-    let body = match front_matter.trim_start().strip_prefix("---") {
-        Some(rest) => rest.rsplit_once("---").map(|(b, _)| b).unwrap_or(rest),
-        None => front_matter,
-    };
-    serde_yaml::from_str::<serde_yaml::Value>(body)
-        .ok()
-        .as_ref()
-        .and_then(|v| v.get("extensions"))
-        .and_then(|v| v.as_sequence())
-        .map(|s| {
-            s.iter()
-                .filter_map(|v| v.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-// --- Declarative shortcodes --------------------------------------------------
-
-/// Shortcode templates (name → HTML template) from every active extension: the
-/// `format:` one plus each `extensions:` entry. Loads silently — failures are
-/// reported once by the include resolvers on the same render (this runs in the
-/// earlier shortcode-expansion pass).
-fn shortcode_templates(front_matter: &str, base_dir: Option<&Path>) -> HashMap<String, String> {
-    let mut out = HashMap::new();
-    let mut ignore: Vec<Warning> = Vec::new();
-    // the format extension (`format: <ext>-base`)
-    if let Some(r) = extension_ref(front_matter, base_dir) {
-        gather_shortcodes(&r, &mut out, &mut ignore);
-    }
-    // each `extensions: [..]` entry
-    if let Some(dir) = base_dir {
-        for name in parse_extensions(front_matter) {
-            gather_shortcodes(&ExtensionRef::named(&name, dir), &mut out, &mut ignore);
-        }
-    }
-    out
-}
-
-/// Merge one extension's declared shortcodes into `out`.
-fn gather_shortcodes(
-    r: &ExtensionRef,
-    out: &mut HashMap<String, String>,
-    warnings: &mut Vec<Warning>,
-) {
-    let Some(m) = load_manifest(r, warnings) else {
-        return;
-    };
-    let c = load_contribution(r, &m, warnings);
-    if let Some(map) = c.shortcodes.as_ref().and_then(|s| s.as_mapping()) {
-        for (k, val) in map {
-            if let (Some(name), Some(tmpl)) = (k.as_str(), val.as_str()) {
-                out.insert(name.to_string(), tmpl.to_string());
-            }
-        }
-    }
-}
-
-/// Expand declarative shortcodes (`{{< name args >}}`) using the templates the
-/// active extensions contribute. Line-preserving — each invocation opens and
-/// closes on one line and expands to inline HTML — so the include source map stays
-/// valid. Fenced code blocks are skipped, so a `{{< … >}}` shown as an *example*
-/// in ```` ``` ```` stays literal; unknown shortcodes are left untouched.
-pub(super) fn expand_shortcodes(src: &str, base_dir: Option<&Path>) -> (String, Vec<Warning>) {
-    let templates = shortcode_templates(
-        crate::frontmatter::front_matter_block(src).unwrap_or(""),
-        base_dir,
-    );
+/// Expand declarative shortcodes (`{{< name args >}}`) to inline HTML. Line-preserving
+/// — each invocation opens and closes on one line — so the include source map stays
+/// valid. Fenced code blocks are skipped, so a `{{< … >}}` shown as an *example* in a
+/// code fence stays literal; unknown shortcodes are left untouched (with a warning).
+pub(super) fn expand_shortcodes(src: &str) -> (String, Vec<Warning>) {
     let mut warnings: Vec<Warning> = Vec::new();
-    // Process whenever a `{{<` is present: besides extension-declared templates,
-    // `render_shortcode` also handles the built-in `{{< embed >}}`, which must work
-    // with no extensions loaded.
     if !src.contains("{{<") {
         return (src.to_string(), warnings);
     }
@@ -386,7 +28,7 @@ pub(super) fn expand_shortcodes(src: &str, base_dir: Option<&Path>) -> (String, 
         } else if in_code {
             out.push_str(line); // literal inside a code block (it's an example)
         } else {
-            out.push_str(&expand_in_line(line, &templates, i + 1, &mut warnings));
+            out.push_str(&expand_in_line(line, i + 1, &mut warnings));
         }
     }
     if src.ends_with('\n') {
@@ -400,12 +42,7 @@ pub(super) fn expand_shortcodes(src: &str, base_dir: Option<&Path>) -> (String, 
 /// Inline code spans (`` `…` ``, ``` ``…`` ```) are copied through untouched, so a
 /// shortcode shown as an *example* in backticks (e.g. `` `{{< embed x.qmd >}}` ``)
 /// stays literal — mirroring how fenced blocks are skipped in `expand_shortcodes`.
-fn expand_in_line(
-    line: &str,
-    templates: &HashMap<String, String>,
-    line_no: usize,
-    warnings: &mut Vec<Warning>,
-) -> String {
+fn expand_in_line(line: &str, line_no: usize, warnings: &mut Vec<Warning>) -> String {
     if !line.contains("{{<") {
         return line.to_string();
     }
@@ -435,30 +72,27 @@ fn expand_in_line(
             let inner = line[i + 3..end].trim();
             // The built-in `{{< input >}}` reactive control needs the line number + the
             // warning sink (for located diagnostics), which render_shortcode doesn't carry,
-            // so it is expanded here. An extension may still override `input` with its own
-            // declared template (checked first).
-            if inner.split_whitespace().next() == Some("input") && !templates.contains_key("input")
-            {
+            // so it is expanded here.
+            if inner.split_whitespace().next() == Some("input") {
                 let toks = tokenize_args(inner);
                 out.push_str(&input_shortcode(&toks[1..], line_no, warnings));
                 i = end + 3;
                 continue;
             }
-            match render_shortcode(inner, templates) {
+            match render_shortcode(inner) {
                 Some(html) => out.push_str(&html),
                 None => {
-                    // No extension or built-in declares this name. Keep it verbatim
-                    // (nothing is lost), but warn: a typo'd shortcode name should be
-                    // visible in the build log / preview diagnostics, not shipped as
-                    // literal text into the page. `include` is handled in an earlier
-                    // pass (`includes::resolve`); a leftover one means that pass already
-                    // reported it (file missing/unsafe/cyclic), so don't double-warn.
+                    // Not a built-in shortcode. Keep it verbatim (nothing is lost), but
+                    // warn: a typo'd shortcode name should be visible in the build log /
+                    // preview diagnostics, not shipped as literal text into the page.
+                    // `include` is handled in an earlier pass (`includes::resolve`); a
+                    // leftover one means that pass already reported it, so don't double-warn.
                     let name = inner.split_whitespace().next().unwrap_or(inner);
                     if name != "include" {
                         warnings.push(
                             Warning::new(format!(
                                 "unknown shortcode `{{{{< {name} >}}}}` at line {line_no} \
-                                 (no extension declares it; left as literal text)"
+                                 (left as literal text)"
                             ))
                             .at(None, line_no as u32),
                         );
@@ -476,61 +110,33 @@ fn expand_in_line(
     out
 }
 
-/// Render one `name args` shortcode body against the templates, or `None` when
-/// the name isn't declared. Args are `key=value` (named → `{{key}}`) or bare
-/// (positional → `{{1}}`, `{{2}}`, …); quotes group values with spaces.
-fn render_shortcode(inner: &str, templates: &HashMap<String, String>) -> Option<String> {
+/// Render one built-in `name args` shortcode (`embed` / `video`), or `None` for any
+/// other name (left verbatim by the caller). Args are `key=value` (named) or bare
+/// (positional path); quotes group values with spaces.
+fn render_shortcode(inner: &str) -> Option<String> {
     let toks = tokenize_args(inner);
     let (name, args) = toks.split_first()?;
-    let Some(template) = templates.get(name) else {
-        // No extension declares this name. `{{< embed deck.qmd [title="…"] >}}` is a
-        // built-in fallback: it embeds another document's deck view in an isolating
-        // iframe with a fullscreen affordance (the deck is built/served as a
-        // dependency, see `embed_targets`). An extension's own `embed` template, if
-        // declared, takes precedence above.
-        if name == "embed" {
-            return embed_path(args).map(|p| embed_html(&p, embed_title(args).as_deref()));
-        }
-        // `{{< video clip.mp4 [dark=clip-dark.mp4] [poster=…] [caption="…"] >}}` — a
-        // framed, autoplaying, muted, looping screencast (the marketing pattern),
-        // authored in Markdown so a page needs no raw `<video>` HTML. With `dark=`, the
-        // light clip plays on a light page and the dark clip on a dark page (toggled by
-        // `html[data-theme]`), so the screencast matches the surrounding theme.
-        if name == "video" {
-            return embed_path(args).map(|src| {
-                video_html(
-                    &src,
-                    shortcode_named(args, "dark").as_deref(),
-                    shortcode_named(args, "poster").as_deref(),
-                    shortcode_named(args, "caption").as_deref(),
-                )
-            });
-        }
-        return None;
-    };
-    let mut positional = Vec::new();
-    let mut named = Vec::new();
-    for a in args {
-        match a.split_once('=') {
-            Some((k, v))
-                if !k.is_empty()
-                    && k.chars()
-                        .all(|c| c.is_alphanumeric() || c == '_' || c == '-') =>
-            {
-                named.push((k.to_string(), v.to_string()))
-            }
-            _ => positional.push(a.clone()),
-        }
+    // `{{< embed deck.tmd [title="…"] >}}` embeds another document's deck view in an
+    // isolating iframe with a fullscreen affordance (the deck is built/served as a
+    // dependency, see `embed_targets`).
+    if name == "embed" {
+        return embed_path(args).map(|p| embed_html(&p, embed_title(args).as_deref()));
     }
-    // Collapse the template to one line (line-preserving), then substitute.
-    let mut html = template.replace('\n', " ");
-    for (i, v) in positional.iter().enumerate() {
-        html = html.replace(&format!("{{{{{}}}}}", i + 1), v);
+    // `{{< video clip.mp4 [dark=clip-dark.mp4] [poster=…] [caption="…"] >}}` — a framed,
+    // autoplaying, muted, looping screencast, authored in Markdown so a page needs no raw
+    // `<video>` HTML. With `dark=`, the light clip plays on a light page and the dark clip
+    // on a dark page (toggled by `html[data-theme]`), so the screencast matches the theme.
+    if name == "video" {
+        return embed_path(args).map(|src| {
+            video_html(
+                &src,
+                shortcode_named(args, "dark").as_deref(),
+                shortcode_named(args, "poster").as_deref(),
+                shortcode_named(args, "caption").as_deref(),
+            )
+        });
     }
-    for (k, v) in &named {
-        html = html.replace(&format!("{{{{{k}}}}}"), v);
-    }
-    Some(html)
+    None
 }
 
 /// Whitespace-split `inner`, keeping quoted values (`key="a b"`) as one token and

@@ -47,10 +47,9 @@ or `{ file: … }` map, or a list of those.
 
 | Key | Type | Meaning |
 |---|---|---|
-| `format` | string | `html` (default) or `revealjs` (a slide deck); or `<ext>-html` / `<ext>-revealjs` to load a format extension. **Its sub-keys are not validated** (an extension owns them) |
+| `format` | string | `html` (default), `deck`/`revealjs` (a slide deck), or a `<name>-deck` / `<name>-revealjs` variant. **Its sub-keys are not validated** |
 | `theme` | string | `light`, `dark`, a `.css`/`.scss` file path, or an installed `_extensions/<name>/` theme bundle. Unspecified starts **dark** (in `--bare` output, unspecified follows the OS via `prefers-color-scheme`); only an explicit `light` (or `default`) starts light |
 | `css` | string \| list \| map | Extra stylesheet(s) inlined into the page: a path, a `{ text: … }` / `{ file: … }` map, or a list of those |
-| `extensions` | list | `_extensions/<name>/` directories to load (shortcodes, format theming) |
 | `page-layout` | string | `full` widens the content column (good for listing indexes); the default is the reading-width column |
 | `image` | string | The image on a `listing:` card; also the social-card / OpenGraph image (the `og:image`/`twitter:image` tags are emitted for **site/book builds only**, never for a single-file `build`/`render`) |
 | `image-alt` | string | Accepted (so it never warns) but **not rendered** at the page level. The only alt text qmd-fast actually reads is the `about:` block's own `image-alt` sub-key (for an `about:` profile image). A `listing:` card's image is treated as decorative and emits an empty `alt`, since the card's title and description already label the link |
@@ -300,7 +299,6 @@ format: html                                      # html (default) or revealjs
 theme: dark                                        # light / dark / file / extension (unspecified starts dark)
 page-layout: full                                 # widen the column (default: reading width)
 css: extra.css                                     # inlined stylesheet(s)
-extensions: [callout-extras]                       # load _extensions/callout-extras/
 
 # --- Social / images ---
 image: cover.png                                   # listing-card image; social card on site/book builds

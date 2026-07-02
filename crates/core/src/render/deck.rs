@@ -73,7 +73,7 @@ pub fn assemble_deck_page(p: &DeckParts) -> String {
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no\" />\n\
          <meta name=\"referrer\" content=\"no-referrer\" />\n\
          <title>{title}</title>\n{favicon}{deck_theme}<style>{DECK_CSS}</style>\n{katex}{js_head}{theme}{in_header}{extra_head}\
-         </head>\n<body>\n{before_body}<div class=\"tali-deck qmd-deck\">\n<div class=\"tali-slides qmd-slides\"{slides_attr}>\n{slides}</div>\n</div>\n{after_deck}\
+         </head>\n<body>\n{before_body}<div class=\"tali-deck\">\n<div class=\"tali-slides\"{slides_attr}>\n{slides}</div>\n</div>\n{after_deck}\
          {tail}</body>\n</html>\n",
         lang = escape_attr(p.lang),
         title = p.title,
@@ -341,7 +341,7 @@ fn render_section(s: &SlideBuf, out: &mut String) {
     // the deck. Additive on the <section> open tag (never on an inner [data-block-id]),
     // so block ids stay byte-stable. The "Slide N of M" aria-label is applied at runtime
     // by deck.js, where the flat slide order across vertical stacks is known.
-    out.push_str(" class=\"tali-slide qmd-slide\" role=\"group\" aria-roledescription=\"slide\"");
+    out.push_str(" class=\"tali-slide\" role=\"group\" aria-roledescription=\"slide\"");
     if s.level != 0 {
         out.push_str(&format!(" data-level=\"{}\"", s.level));
     }

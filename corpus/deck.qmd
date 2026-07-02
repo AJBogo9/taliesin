@@ -1,0 +1,36 @@
+---
+title: "A Plain Deck"
+subtitle: "Slides on the native engine"
+format: deck
+---
+
+## What decks are
+
+A deck renders to HTML slides on Taliesin's own engine, one slide per `##`
+heading. No reveal.js, no extension required.
+
+- one point
+- another point
+
+## Fragments
+
+A bullet list can reveal one item at a time.
+
+::: {.fragment}
+And a whole block can be revealed as an aside.
+:::
+
+## Code on a slide
+
+```python
+def double(x):
+    return x * 2
+```
+
+## Speaker notes
+
+The audience sees the slide; only the presenter sees the notes.
+
+::: {.notes}
+This is a speaker note, hidden from the audience view.
+:::

@@ -83,10 +83,8 @@ an explicit port if you want a specific one: `qmd-fast preview file.qmd 5000`.
 
 ## A broken `{{< include >}}` or extension
 
-A missing include leaves an HTML comment breadcrumb and a diagnostics note. A
-format extension that fails to load (a typo'd `format:` name, or a malformed
-`_extension.yml` whose keys don't match the native manifest) is reported in the
-dev menu and the build log, so it never fails silently.
+A missing include leaves an HTML comment breadcrumb and a diagnostics note, so it
+never fails silently.
 
 ## Edits aren't picked up
 

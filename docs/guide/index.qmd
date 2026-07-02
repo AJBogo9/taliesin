@@ -98,6 +98,5 @@ predictable.
 The rest of this guide tours what you can put on a page: [the live preview
 loop](using/preview.qmd), [executable content](using/code.qmd) (Python/R cells,
 `{js}` cells, 3D graphics), [rich writing](using/writing.qmd) (math, diagrams,
-figures, citations), [slides, books and sites](using/formats.qmd), and the
-[extension system](using/extensions.qmd). For how qmd-fast works inside, read the
-companion [Internals](../internals/) book.
+figures, citations), and [slides, books and sites](using/formats.qmd). For how
+Taliesin works inside, read the companion [Internals](../internals/) book.

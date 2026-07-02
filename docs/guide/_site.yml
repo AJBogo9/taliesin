@@ -15,7 +15,6 @@ chapters:
       - using/interactive.qmd
       - using/formats.qmd
       - using/theming.qmd
-      - using/extensions.qmd
       - using/recipes.qmd
   - part: "Reference"
     chapters:

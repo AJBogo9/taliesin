@@ -61,7 +61,6 @@ pub fn includes_from_parts(
         in_header: head,
         before_body: resolve_include_value(before_body, base_dir, false),
         after_body: resolve_include_value(after_body, base_dir, false),
-        resources: Vec::new(),
     }
 }
 

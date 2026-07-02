@@ -211,10 +211,8 @@ theme: brand
 ---
 ```
 
-A bundle can also ship a custom format and contribute `head`/`body-end` markup and
-JS resources alongside the CSS, which is how a richer look (custom fonts, a styled
-title block) travels as one unit. See [Extensions](extensions.qmd) for the manifest
-shape and how a `theme:` layer is inlined.
+The `theme.css` is inlined exactly like a plain `.css` file, so a bundle is simply a
+reusable place to keep a palette, selected by name from any document, book, or site.
 
 ## A worked example
 

@@ -35,7 +35,6 @@
       },
       "type": "object"
     },
-    "extensions": {},
     "format": {},
     "hero": {
       "additionalProperties": false,

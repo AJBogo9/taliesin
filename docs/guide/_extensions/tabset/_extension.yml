@@ -1,6 +1,0 @@
-name: Tabset
-description: "Turn a panel-tabset of headings into clickable tabs."
-css: tabset.css
-resources: [tabset.js]
-body-end:
-  text: '<script src="tabset.js"></script>'

@@ -23,9 +23,7 @@ time comrak sees it. Two rules keep that pass from surprising you:
 Expansion is line-preserving: each shortcode opens and closes on one line and
 expands inline, so click-to-source still points at the right line.
 
-There are four built-in shortcodes, documented below, plus the
-[extension-declared](#extension-declared-shortcodes) shortcodes any active
-extension contributes.
+There are four built-in shortcodes, documented below.
 
 ## `{{< include >}}`: inline a partial
 
@@ -169,33 +167,3 @@ The preview stays read-only: a reader moves the control to explore the output, b
 the control never writes back to the source. For the full reactive model (how a
 change re-runs exactly the cells downstream, in order) see
 [Interactive and explorable documents](../using/interactive.qmd).
-
-## Extension-declared shortcodes
-
-An [extension](../using/extensions.qmd) can add its own shortcodes by declaring a
-name → HTML-template map in its `_extension.yml`, with no JavaScript:
-
-```yaml
-shortcodes:
-  youtube: '<div class="ratio"><iframe src="https://www.youtube.com/embed/{{1}}" allowfullscreen></iframe></div>'
-  callout: '<aside class="note"><strong>{{title}}</strong> {{body}}</aside>'
-```
-
-Once the document activates the extension (with the `extensions:` front-matter
-list, or by naming a format extension in `format:`), the declared tags expand
-against those templates. Arguments fill the template's placeholders two ways:
-
-- **Positional** bare arguments fill `{{1}}`, `{{2}}`, … in order.
-- **Named** `key=value` arguments fill `{{key}}`. Wrap a value in quotes to group
-  spaces (`title="Heads up"`).
-
-```markdown
-{{< youtube dQw4w9WgXcQ >}}
-{{< callout title="Heads up" body="this expanded from a shortcode" >}}
-```
-
-An extension may also override a built-in name with its own template (a declared
-`embed` or `input` template wins over the built-in one), so the same vocabulary is
-fully extensible. See [Extensions](../using/extensions.qmd) for the manifest, the
-`{{< … >}}` template syntax, and the client-enhancer API for anything that needs
-real interactivity.

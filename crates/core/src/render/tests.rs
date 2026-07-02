@@ -1011,7 +1011,7 @@ fn reveal_deck_injects_includes_and_theme() {
             ---\n\n## Slide\n";
     let page = render_html_page(src, "deck");
     assert!(
-        page.contains("<div class=\"tali-deck qmd-deck\">"),
+        page.contains("<div class=\"tali-deck\">"),
         "should render as a deck"
     );
     let head = &page[..page.find("</head>").expect("has </head>")];
@@ -1137,10 +1137,9 @@ fn special_chars_in_inline_code_are_escaped_not_interpreted() {
 
 #[test]
 fn reveal_format_detected_from_front_matter() {
-    // Nested block form (the corpus shape): `format:` with a *-revealjs subkey.
-    let deck = render_document(
-        "---\nformat:\n  liquid-glass-revealjs:\n    slide-number: true\n---\n\n## A\n",
-    );
+    // Nested block form: `format:` with a `<name>-revealjs` subkey.
+    let deck =
+        render_document("---\nformat:\n  custom-revealjs:\n    slide-number: true\n---\n\n## A\n");
     assert_eq!(deck.format, DocFormat::Reveal);
     // Inline form.
     let inline = render_document("---\nformat: revealjs\n---\n\n## A\n");
@@ -1150,16 +1149,15 @@ fn reveal_format_detected_from_front_matter() {
     assert_eq!(post.format, DocFormat::Html);
 
     // Native spelling: `format: deck` selects a deck, inline and in block form,
-    // and as an extension variant `<ext>-deck` (the `revealjs` spellings above
-    // remain accepted as the deprecated Quarto vocabulary).
+    // and as a `<name>-deck` variant (the `revealjs` spellings above remain accepted
+    // as the deprecated Quarto vocabulary).
     let native_inline = render_document("---\nformat: deck\n---\n\n## A\n");
     assert_eq!(native_inline.format, DocFormat::Reveal);
     let native_block =
         render_document("---\nformat:\n  deck:\n    slide-number: true\n---\n\n## A\n");
     assert_eq!(native_block.format, DocFormat::Reveal);
-    let native_ext = render_document(
-        "---\nformat:\n  liquid-glass-deck:\n    slide-number: true\n---\n\n## A\n",
-    );
+    let native_ext =
+        render_document("---\nformat:\n  custom-deck:\n    slide-number: true\n---\n\n## A\n");
     assert_eq!(native_ext.format, DocFormat::Reveal);
     // A theme filename that merely contains "deck" must not flip an HTML doc.
     let not_a_deck = render_document("---\nformat: html\ntheme: my-deck.css\n---\n\nHi.\n");
@@ -1185,13 +1183,13 @@ fn deck_splits_into_title_slide_and_one_section_per_heading() {
     // One <section> per h2, id slugged from the heading text.
     assert!(
         slides.contains(
-            "<section id=\"first\" class=\"tali-slide qmd-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"2\">"
+            "<section id=\"first\" class=\"tali-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"2\">"
         ),
         "got: {slides}"
     );
     assert!(
         slides.contains(
-            "<section id=\"second\" class=\"tali-slide qmd-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"2\">"
+            "<section id=\"second\" class=\"tali-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"2\">"
         ),
         "got: {slides}"
     );
@@ -1246,18 +1244,18 @@ fn h1_wraps_following_h2s_in_a_vertical_stack() {
     // Outer wrapper section, then the h1 lead slide, then the two h2 children.
     assert!(
         slides
-            .contains("<section>\n<section id=\"part-one\" class=\"tali-slide qmd-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"1\">"),
+            .contains("<section>\n<section id=\"part-one\" class=\"tali-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"1\">"),
         "got: {slides}"
     );
     assert!(
         slides.contains(
-            "<section id=\"a\" class=\"tali-slide qmd-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"2\">"
+            "<section id=\"a\" class=\"tali-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"2\">"
         ),
         "got: {slides}"
     );
     assert!(
         slides.contains(
-            "<section id=\"b\" class=\"tali-slide qmd-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"2\">"
+            "<section id=\"b\" class=\"tali-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"2\">"
         ),
         "got: {slides}"
     );
@@ -1271,8 +1269,8 @@ fn deck_page_carries_native_scaffolding() {
         "---\ntitle: D\nformat: revealjs\n---\n\n## Slide\n",
         "fallback",
     );
-    assert!(page.contains("class=\"tali-deck qmd-deck\""));
-    assert!(page.contains("class=\"tali-slides qmd-slides\""));
+    assert!(page.contains("class=\"tali-deck\""));
+    assert!(page.contains("class=\"tali-slides\""));
     // The deck engine is bundled (no CDN); it exposes the window.TaliesinDeck API.
     assert!(page.contains("window.TaliesinDeck"));
     assert!(page.contains("TaliesinDeck.initialize("));

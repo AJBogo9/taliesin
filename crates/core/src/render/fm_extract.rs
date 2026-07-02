@@ -42,9 +42,9 @@ pub fn is_reveal_doc(src: &str) -> bool {
         .is_some_and(|fm| detect_format(fm) == DocFormat::Reveal)
 }
 
-/// Detect the output format from raw front matter. A reveal.js deck declares a
-/// `format:` whose inline value or indented sub-keys name a revealjs variant
-/// (`revealjs`, `liquid-glass-revealjs`, …). Everything else is a standard page.
+/// Detect the output format from raw front matter. A deck declares a `format:`
+/// whose inline value or indented sub-keys name a deck variant (`deck`, `revealjs`,
+/// or a `<name>-deck` / `<name>-revealjs` form). Everything else is a standard page.
 pub(super) fn detect_format(front_matter: &str) -> DocFormat {
     let lines: Vec<&str> = front_matter.lines().collect();
     for (i, line) in lines.iter().enumerate() {
@@ -68,7 +68,7 @@ pub(super) fn detect_format(front_matter: &str) -> DocFormat {
             };
         }
         // Block form: the sub-keys are format *names* (`html:`, `revealjs:`,
-        // `liquid-glass-revealjs:`). Match the key, never a value substring.
+        // `deck:`, `<name>-revealjs:`). Match the key, never a value substring.
         for sub in &lines[i + 1..] {
             if sub.trim().is_empty() {
                 continue;

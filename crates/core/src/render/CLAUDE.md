@@ -11,7 +11,7 @@ Module map:
 - `emit.rs`   per-block HTML (server-side highlight, code line-wrapping)
 - `divs.rs`   `:::` fenced divs (callouts, columns, magic-move)
 - `figure.rs` numbered figures + captions
-- `deck.rs` the slide-deck engine (bundles `deck.css`/`deck.js`; native `.tali-deck` (+ legacy `.qmd-deck`) + `window.TaliesinDeck`)
+- `deck.rs` the slide-deck engine (bundles `deck.css`/`deck.js`; native `.tali-deck`/`.tali-slide` + `window.TaliesinDeck`)
 - `theme.rs`  `--tali-*` themes (light/dark), `theme_head`
 - `extension/` format extensions + shortcode expansion (`{{< embed >}}`, `{{< video >}}`)
 

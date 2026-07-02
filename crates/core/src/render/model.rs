@@ -2,8 +2,6 @@
 //! consumes (cells, blocks, the rendered doc, page includes). Split out of
 //! mod.rs so the data model is separate from the render pipeline + emission.
 
-use std::path::PathBuf;
-
 /// An executable Quarto code cell (```` ```{lang} ````), exposed so the dev
 /// server can run it against a kernel.
 #[derive(Debug, Clone)]
@@ -200,10 +198,9 @@ pub struct RenderedDoc {
     /// Default theme mode for the resolver script: `"dark"`/`"light"` force it,
     /// `"auto"` follows the OS `prefers-color-scheme`.
     pub theme_default: String,
-    /// Whether a custom theme owns this doc's colours — a `theme:` CSS/extension,
-    /// or a `format: <ext>-revealjs` / `extensions:` that contributes markup. Decks
-    /// use this to skip the built-in light/dark management when an extension theme
-    /// (e.g. liquid-glass) is in charge.
+    /// Whether a custom `theme:` (a CSS file or bundle) owns this doc's colours.
+    /// Decks use this to skip the built-in light/dark management when a custom theme
+    /// is in charge.
     pub theme_is_custom: bool,
     /// Resolved `include-in-header`/`include-before-body`/`include-after-body` +
     /// `css` from the doc's front matter, injected into the page template.
@@ -234,19 +231,9 @@ pub struct PageIncludes {
     pub in_header: String,
     pub before_body: String,
     pub after_body: String,
-    /// Files a format extension contributes via `format-resources` (e.g. a reveal
-    /// plugin's `.js`). Absolute source paths; the build copies each next to the
-    /// output page (by file name) so the deck's `<script src="...">` resolves, and
-    /// the preview serves them from the `_extensions/` tree.
-    pub resources: Vec<PathBuf>,
 }
 
 impl PageIncludes {
-    /// Whether this contributes any head/body markup (ignores `resources`). Used to
-    /// tell whether an extension contributed a theme/plugin to a deck.
-    pub fn has_markup(&self) -> bool {
-        !self.in_header.is_empty() || !self.before_body.is_empty() || !self.after_body.is_empty()
-    }
     /// Append `other` after `self` (site-level first, then the page's own).
     pub fn merge(&mut self, other: &PageIncludes) {
         for (dst, src) in [
@@ -258,7 +245,6 @@ impl PageIncludes {
                 dst.push_str(src);
             }
         }
-        self.resources.extend(other.resources.iter().cloned());
     }
 }
 

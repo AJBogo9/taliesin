@@ -205,34 +205,6 @@ pub(super) fn detect_theme(front_matter: &str) -> Option<String> {
         (!v.is_empty()).then(|| v.to_string())
     })
 }
-/// Inline every `.css` entry of an extension's `theme:` (a scalar or list) as a
-/// `<style>` block, read relative to `dir`. Non-`.css` entries (named base themes,
-/// uncompiled `.scss`) are skipped.
-pub(super) fn resolve_theme_layers(v: Option<&serde_yaml::Value>, dir: &Path) -> String {
-    let mut out = String::new();
-    let mut push = |name: &str| {
-        if name.ends_with(".css")
-            && let Some(css) =
-                crate::includes::safe_join(dir, name).and_then(|p| std::fs::read_to_string(&p).ok())
-        {
-            out.push_str("<style>\n");
-            out.push_str(&css);
-            out.push_str("\n</style>\n");
-        }
-    };
-    match v {
-        Some(serde_yaml::Value::String(s)) => push(s),
-        Some(serde_yaml::Value::Sequence(seq)) => {
-            for item in seq {
-                if let serde_yaml::Value::String(s) = item {
-                    push(s);
-                }
-            }
-        }
-        _ => {}
-    }
-    out
-}
 /// Wrap resolved theme override CSS in a `<style>` (empty string when there is
 /// no override, i.e. the default light theme).
 pub(super) fn theme_style(theme_css: &str) -> String {

@@ -360,78 +360,22 @@ async fn static_asset(
     )
 }
 
-/// Serve a static file a page references: first a plain file under `base`, else a
-/// format extension's resource (looked up by file name in `_extensions/*/`, so an
-/// injected `<script src="plugin.js">` resolves in preview the same way the build
-/// copies it next to the page). Shared by the single-doc and site servers.
+/// Serve a static file a page references (an image, a stylesheet, …): a plain file
+/// under `base`, contained by the canonical root. Shared by the single-doc and site
+/// servers.
 pub(crate) fn serve_asset_from(base: &Path, rel: &str) -> axum::response::Response {
     use axum::http::{StatusCode, header};
     let not_found = || (StatusCode::NOT_FOUND, "not found").into_response();
-    let serve = |full: &Path| match std::fs::read(full) {
-        Ok(bytes) => ([(header::CONTENT_TYPE, content_type(full))], bytes).into_response(),
-        Err(_) => not_found(),
-    };
     if let (Ok(root), Ok(full)) = (base.canonicalize(), base.join(rel).canonicalize())
         && full.starts_with(&root)
         && full.is_file()
     {
-        return serve(&full);
+        return match std::fs::read(&full) {
+            Ok(bytes) => ([(header::CONTENT_TYPE, content_type(&full))], bytes).into_response(),
+            Err(_) => not_found(),
+        };
     }
-    match find_in_extensions(base, rel) {
-        Some(p) => serve(&p),
-        None => not_found(),
-    }
-}
-
-/// Find a file by its bare name anywhere under `base/_extensions/` (where a
-/// format extension's `format-resources` live, possibly in a subdir like
-/// `assets/`). `build` copies those resources flat next to the page, so the
-/// preview must resolve a bare `<script src="x.js">` regardless of which subdir
-/// it sits in. Only the file name is used, so the *request* can't traverse out.
-fn find_in_extensions(base: &Path, rel: &str) -> Option<PathBuf> {
-    let name = Path::new(rel).file_name()?;
-    let ext_root = base.join("_extensions");
-    let hit = find_file_named(&ext_root, name)?;
-    // `find_file_named` descends through directory symlinks, so a symlink *inside*
-    // `_extensions/` (e.g. `_extensions/x -> /etc`) could otherwise surface a file
-    // from outside the project. Re-check the resolved path is still contained under
-    // the canonical `_extensions/` root before serving it. (This deliberately also
-    // refuses a symlink that escapes to elsewhere *in* the project, e.g.
-    // `_extensions/theme/assets -> ../../shared`: `build` copies declared
-    // `format-resources` flat, so that pattern is uncommon, and containing to
-    // `_extensions/` keeps the rule simple.)
-    let root = ext_root.canonicalize().ok()?;
-    let full = hit.canonicalize().ok()?;
-    full.starts_with(&root).then_some(hit)
-}
-
-/// Depth-first search for a file named `name` under `dir`: files at each level
-/// are matched before descending, so a top-level resource still wins.
-fn find_file_named(dir: &Path, name: &std::ffi::OsStr) -> Option<PathBuf> {
-    fn walk(
-        dir: &Path,
-        name: &std::ffi::OsStr,
-        seen: &mut std::collections::HashSet<PathBuf>,
-    ) -> Option<PathBuf> {
-        // Visit each directory at most once (by canonical path) so a symlink cycle
-        // can't recurse forever.
-        if let Ok(canon) = dir.canonicalize()
-            && !seen.insert(canon)
-        {
-            return None;
-        }
-        let mut subdirs = Vec::new();
-        for entry in std::fs::read_dir(dir).ok()?.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                subdirs.push(path);
-            } else if path.file_name() == Some(name) {
-                return Some(path);
-            }
-        }
-        subdirs.iter().find_map(|sub| walk(sub, name, seen))
-    }
-    walk(dir, name, &mut std::collections::HashSet::new())
+    not_found()
 }
 
 /// Guess a content type from a file extension (covers the asset types a doc
@@ -1292,89 +1236,5 @@ mod protocol_contract {
             .await;
         let payload = outcome.expect_err("the panic must be caught, not propagated");
         assert_eq!(panic_msg(&*payload), "render boom");
-    }
-}
-
-#[cfg(test)]
-mod extension_assets {
-    //! The preview's `find_in_extensions` fallback resolves a format extension's
-    //! `format-resources` by *bare file name*, mirroring how `build` copies them
-    //! flat next to the output page.
-    use super::*;
-    use std::fs;
-    use std::sync::atomic::{AtomicU32, Ordering};
-
-    fn tmp() -> PathBuf {
-        static N: AtomicU32 = AtomicU32::new(0);
-        let p = std::env::temp_dir().join(format!(
-            "tali-srv-ext-{}-{}",
-            std::process::id(),
-            N.fetch_add(1, Ordering::Relaxed)
-        ));
-        let _ = fs::remove_dir_all(&p);
-        p
-    }
-
-    #[test]
-    fn resolves_top_level_resource_by_bare_name_and_strips_paths() {
-        let root = tmp();
-        fs::create_dir_all(root.join("_extensions/deck")).unwrap();
-        fs::write(root.join("_extensions/deck/plugin.js"), "// x").unwrap();
-
-        // A bare `<script src="plugin.js">` resolves into the extension dir.
-        assert_eq!(
-            find_in_extensions(&root, "plugin.js"),
-            Some(root.join("_extensions/deck/plugin.js"))
-        );
-        // Only the file name is used, so a path can't traverse out.
-        assert_eq!(
-            find_in_extensions(&root, "../../etc/plugin.js"),
-            Some(root.join("_extensions/deck/plugin.js"))
-        );
-        // A miss is None (not a panic).
-        assert_eq!(find_in_extensions(&root, "missing.js"), None);
-
-        // A *subdir* resource (e.g. `format-resources: [assets/x.css]`, which
-        // `build` copies flat as `x.css`) resolves too, by bare name — so preview
-        // and build agree on what an injected `src="x.css"` points at.
-        fs::create_dir_all(root.join("_extensions/deck/assets")).unwrap();
-        fs::write(root.join("_extensions/deck/assets/x.css"), "/* */").unwrap();
-        assert_eq!(
-            find_in_extensions(&root, "x.css"),
-            Some(root.join("_extensions/deck/assets/x.css"))
-        );
-
-        let _ = fs::remove_dir_all(&root);
-    }
-
-    // A symlink *inside* `_extensions/` that points outside the project must not let
-    // a bare-name request surface a file from outside the extension tree. The walk
-    // follows directory symlinks, so the containment re-check is what stops it.
-    #[cfg(unix)]
-    #[test]
-    fn symlink_out_of_extensions_is_not_served() {
-        let root = tmp();
-        fs::create_dir_all(root.join("_extensions/deck")).unwrap();
-        // A secret living outside the project entirely.
-        let outside = tmp();
-        fs::create_dir_all(&outside).unwrap();
-        fs::write(outside.join("secret.js"), "// nope").unwrap();
-        // An extension dir contains a symlink that escapes to `outside`.
-        std::os::unix::fs::symlink(&outside, root.join("_extensions/deck/escape")).unwrap();
-
-        // Even though `escape/secret.js` is reachable through the symlink, the
-        // resolved path is outside `_extensions/`, so it is refused.
-        assert_eq!(find_in_extensions(&root, "secret.js"), None);
-
-        // A real resource beside the symlink still resolves (the guard only rejects
-        // escapes, not legitimate hits).
-        fs::write(root.join("_extensions/deck/ok.js"), "// ok").unwrap();
-        assert_eq!(
-            find_in_extensions(&root, "ok.js"),
-            Some(root.join("_extensions/deck/ok.js"))
-        );
-
-        let _ = fs::remove_dir_all(&root);
-        let _ = fs::remove_dir_all(&outside);
     }
 }

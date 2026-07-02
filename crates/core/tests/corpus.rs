@@ -195,8 +195,8 @@ fn includes_are_resolved_with_origin_files() {
 #[test]
 fn reveal_deck_detects_format_and_splits_into_slides() {
     use taliesin_core::{DocFormat, render_document_with_includes, slides_html};
-    let dir = corpus_dir().join("liquid-glass-slides");
-    let src = fs::read_to_string(dir.join("example.qmd")).unwrap();
+    let dir = corpus_dir();
+    let src = fs::read_to_string(dir.join("deck.qmd")).unwrap();
     let doc = render_document_with_includes(&src, &dir);
 
     assert_eq!(
@@ -208,19 +208,16 @@ fn reveal_deck_detects_format_and_splits_into_slides() {
     let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
     // Title slide built from front matter.
     assert!(slides.contains("id=\"title-slide\""), "missing title slide");
-    assert!(slides.contains("<h1 class=\"title\">Liquid Glass</h1>"));
-    assert!(slides.contains("<p class=\"subtitle\">A RevealJS theme for Quarto</p>"));
+    assert!(slides.contains("<h1 class=\"title\">A Plain Deck</h1>"));
+    assert!(slides.contains("<p class=\"subtitle\">Slides on the native engine</p>"));
     // One slide per `##` heading (the corpus deck has four).
     let content_slides = slides.matches("data-level=\"2\"").count();
     assert_eq!(
         content_slides, 4,
         "expected 4 content slides, got {content_slides}"
     );
-    // Slide ids are slugged from the heading text, matching Quarto.
-    assert!(
-        slides.contains("id=\"what-is-liquid-glass\""),
-        "got: {slides}"
-    );
+    // Slide ids are slugged from the heading text.
+    assert!(slides.contains("id=\"what-decks-are\""), "got: {slides}");
     // Blocks keep their data attributes inside sections (block-swap/click-to-source).
     assert!(
         slides.contains("<h2 data-block-id="),
@@ -237,8 +234,8 @@ fn a11y_chrome_emits_landmarks_skip_link_and_slide_roles() {
     use taliesin_core::{render_document_with_includes, slides_html};
     // --- deck slides carry ARIA slide roles (additive on the <section> open tag, so
     // the inner [data-block-id] blocks are untouched — block ids stay byte-stable). ---
-    let dir = corpus_dir().join("liquid-glass-slides");
-    let src = fs::read_to_string(dir.join("example.qmd")).unwrap();
+    let dir = corpus_dir();
+    let src = fs::read_to_string(dir.join("deck.qmd")).unwrap();
     let doc = render_document_with_includes(&src, &dir);
     let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
     // Every content slide announces as a slide group so a screen reader can navigate
@@ -255,9 +252,7 @@ fn a11y_chrome_emits_landmarks_skip_link_and_slide_roles() {
     // The slide role rides on the same <section> as the slide class — never on an
     // inner block — so it can't perturb a [data-block-id].
     assert!(
-        slides.contains(
-            "class=\"tali-slide qmd-slide\" role=\"group\" aria-roledescription=\"slide\""
-        ),
+        slides.contains("class=\"tali-slide\" role=\"group\" aria-roledescription=\"slide\""),
         "slide ARIA must sit on the .tali-slide <section>, got: {slides}"
     );
     // Headings still keep their block ids inside the now-role'd section.

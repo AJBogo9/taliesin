@@ -74,8 +74,8 @@ It now also *leads*: under the corpus-plus-roadmap scope, each new capability sh
 pinned by a new corpus document added in the same change. The documents span every
 format and feature, one subdirectory per concern, for example `posts/` (blog
 posts, from pure prose to heavy math + live `{js}`), `tech-blog/` (the multi-page
-website spec), `demo-book/` (the multi-chapter book), `liquid-glass-slides/` (a
-deck with a format extension), `narrate/`, `layout/`, `callouts/`, `media/`,
+website spec), `demo-book/` (the multi-chapter book), `deck.qmd` (a slide deck),
+`narrate/`, `layout/`, `callouts/`, `media/`,
 `reactive/`, `reader/`, and `diagnostics/` (documents that deliberately trip the
 validators). `corpus/README.md` is the index, with provenance and what each
 exercises.

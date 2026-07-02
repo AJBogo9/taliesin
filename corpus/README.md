@@ -14,7 +14,7 @@ author's own projects; provenance is below.
 | `posts/pca-geometry/` | Live-demo blog post | `{js}` cells + Three.js + math + code | `personal/tech-blog` |
 | `posts/fourier-transform/` | Interactive blog post | `ojs_define` Python→`{js}` bridge, raw-HTML (`{=html}`) audio players, labelled equations (`@eq-`) | `personal/tech-blog` |
 | `posts/cite-coverage/` | Citation/bibliography fixes | `.bib` rendering edge cases: LaTeX accents → Unicode (Müller/Schölkopf/Erdős/Rényi), brace-protected corporate author, `@string` macro substitution, `@incollection` `booktitle`+`pages`, and a manual `# References` heading suppressing the auto one | (purpose-built) |
-| `liquid-glass-slides/example.qmd` | Slide deck (`format: revealjs`) | slide structure, custom `liquid-glass` format extension | `personal/liquid-glass-revealjs` |
+| `deck.qmd` | Slide deck (`format: deck`) | slide structure on the native engine (headings→slides, fragments, speaker notes, code) | (purpose-built) |
 | `bayesian-website/` | Single-page website | one page assembled from `subsections/` includes, cross-refs, bib + CSL, TOC | `personal/bayesian-fatality-analysis` |
 | `tech-blog/` | Multi-page website | `_site.yml` project config, many pages + posts, navbar/footer, prev/next, `.qmd`→`.html` cross-page links | `personal/tech-blog` |
 | `demo-book/` | Multi-chapter book | flat native `chapters:` (with a `part:` and `{ file:, text: }` label overrides), left chapter sidebar, chapter + section numbering, prev/next-chapter nav | (purpose-built for the book format) |

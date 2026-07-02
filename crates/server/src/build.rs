@@ -173,12 +173,8 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     // `block_on` propagates a panic from the directly-awaited future, so the catch here
     // sees it. Outer `Result` = panic; inner = runtime-start I/O failure.
     let executed = crate::serve::guarded(|| build_page_executing(&src, base, stem, mode));
-    let (html, resources, problems) = match executed {
-        Ok(Ok(BuildResult::Page {
-            html,
-            resources,
-            problems,
-        })) => (html, resources, problems),
+    let (html, problems) = match executed {
+        Ok(Ok(BuildResult::Page { html, problems })) => (html, problems),
         // `--bare` refused (e.g. a slide deck): the message is already user-facing.
         Ok(Ok(BuildResult::Refused(msg))) => {
             log::error(&msg);
@@ -201,7 +197,6 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
 
     if let Some(dir) = out_dir {
         let code = build_dir(&html, base, Path::new(dir));
-        copy_resources(&resources, Path::new(dir));
         return strict_exit(code, strict_fail, problems);
     }
     let out: PathBuf = out_html
@@ -210,7 +205,6 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     match std::fs::write(&out, &html) {
         Ok(()) => {
             let dest = out.parent().unwrap_or(base);
-            copy_resources(&resources, dest);
             // Bundle the doc's own referenced assets (images, audio, …) next to the
             // page too, so `build doc.qmd out.html` into another directory doesn't
             // leave them dangling. A no-op for an in-place build.
@@ -266,14 +260,10 @@ fn report_cell_errors(blocks: &[taliesin_core::Block], page_label: &str) -> usiz
 /// cells first so figures / `ojs_define` outputs are baked in (mirrors the site
 /// build's per-page execution). A missing kernel logs a warning and the cells fall
 /// back to source, matching the preview's behaviour.
-/// Result of building a single page: the rendered HTML (+ its referenced resources
-/// and `--strict` problem count), or a `--bare` refusal whose message is user-facing.
+/// Result of building a single page: the rendered HTML (+ its `--strict` problem
+/// count), or a `--bare` refusal whose message is user-facing.
 enum BuildResult {
-    Page {
-        html: String,
-        resources: Vec<PathBuf>,
-        problems: usize,
-    },
+    Page { html: String, problems: usize },
     Refused(String),
 }
 
@@ -368,30 +358,11 @@ fn build_page_executing(
         if mode == taliesin_core::OutputMode::Bare {
             warn_bare_exclusions(&doc);
         }
-        let resources = doc.includes.resources.clone();
         BuildResult::Page {
             html: taliesin_core::render_doc_to_page(&doc, fallback, mode),
-            resources,
             problems,
         }
     }))
-}
-
-/// Copy a format extension's `format-resources` (a reveal plugin's `.js`, etc.)
-/// next to the output page by file name, so an injected `<script src="x.js">`
-/// resolves. Skips silently when there are none.
-fn copy_resources(resources: &[PathBuf], dest_dir: &Path) {
-    for r in resources {
-        let Some(name) = r.file_name() else { continue };
-        let dest = dest_dir.join(name);
-        // Don't copy a resource onto itself (fs::copy truncates the dest first).
-        if same_file(r, &dest) {
-            continue;
-        }
-        if let Err(e) = std::fs::copy(r, &dest) {
-            log::warn(&format!("cannot copy resource {}: {e}", r.display()));
-        }
-    }
 }
 
 /// Write `<dir>/index.html` and copy each referenced local asset (an `src=`/
@@ -759,7 +730,6 @@ async fn build_one_page(
             ));
         }
     }
-    let resources = doc.includes.resources.clone();
     // Surface render warnings *and* broken cross-refs so a broken site doesn't deploy
     // silently (these previously only showed in the preview dev menu).
     let (html, render_warnings) = site.render_page_doc_warned(page, doc);
@@ -770,7 +740,6 @@ async fn build_one_page(
     let dest = out.join(&page.url);
     if let Some(parent) = dest.parent() {
         let _ = std::fs::create_dir_all(parent);
-        copy_resources(&resources, parent);
     }
     let written = match std::fs::write(&dest, html) {
         Ok(()) => true,
@@ -1016,7 +985,6 @@ async fn build_site_async(
         let dest = out.join(&deck.url);
         if let Some(parent) = dest.parent() {
             let _ = std::fs::create_dir_all(parent);
-            copy_resources(&doc.includes.resources, parent);
         }
         match std::fs::write(&dest, html) {
             Ok(()) => decks += 1,
