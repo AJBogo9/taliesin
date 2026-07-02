@@ -71,6 +71,7 @@ pub fn assemble_deck_page(p: &DeckParts) -> String {
         "<!DOCTYPE html>\n<html lang=\"{lang}\">\n<head>\n\
          <meta charset=\"utf-8\" />\n\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no\" />\n\
+         <meta name=\"referrer\" content=\"no-referrer\" />\n\
          <title>{title}</title>\n{favicon}{deck_theme}<style>{DECK_CSS}</style>\n{katex}{js_head}{theme}{in_header}{extra_head}\
          </head>\n<body>\n{before_body}<div class=\"tali-deck qmd-deck\">\n<div class=\"tali-slides qmd-slides\"{slides_attr}>\n{slides}</div>\n</div>\n{after_deck}\
          {tail}</body>\n</html>\n",

@@ -40,6 +40,9 @@ struct AppState {
     restart_kernel: AtomicBool,
     /// Wakes the rebuild loop (the file watcher and the restart action both kick it).
     kick: mpsc::UnboundedSender<()>,
+    /// Whether the server is loopback-bound (i.e. not `--host`). Gates whether a
+    /// loopback *origin* may open the control-channel ws (see [`security::origin_allowed`]).
+    loopback_bound: bool,
 }
 
 #[derive(Default)]
@@ -107,6 +110,7 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         tx,
         restart_kernel: AtomicBool::new(false),
         kick,
+        loopback_bound: !expose,
     });
 
     // Initial render. Guard it like the rebuild loop (`rebuild_guarded`): a
@@ -383,10 +387,22 @@ pub(crate) fn serve_asset_from(base: &Path, rel: &str) -> axum::response::Respon
 /// format extension's `format-resources` live, possibly in a subdir like
 /// `assets/`). `build` copies those resources flat next to the page, so the
 /// preview must resolve a bare `<script src="x.js">` regardless of which subdir
-/// it sits in. Only the file name is used, so a path can't traverse out.
+/// it sits in. Only the file name is used, so the *request* can't traverse out.
 fn find_in_extensions(base: &Path, rel: &str) -> Option<PathBuf> {
     let name = Path::new(rel).file_name()?;
-    find_file_named(&base.join("_extensions"), name)
+    let ext_root = base.join("_extensions");
+    let hit = find_file_named(&ext_root, name)?;
+    // `find_file_named` descends through directory symlinks, so a symlink *inside*
+    // `_extensions/` (e.g. `_extensions/x -> /etc`) could otherwise surface a file
+    // from outside the project. Re-check the resolved path is still contained under
+    // the canonical `_extensions/` root before serving it. (This deliberately also
+    // refuses a symlink that escapes to elsewhere *in* the project, e.g.
+    // `_extensions/theme/assets -> ../../shared`: `build` copies declared
+    // `format-resources` flat, so that pattern is uncommon, and containing to
+    // `_extensions/` keeps the rule simple.)
+    let root = ext_root.canonicalize().ok()?;
+    let full = hit.canonicalize().ok()?;
+    full.starts_with(&root).then_some(hit)
 }
 
 /// Depth-first search for a file named `name` under `dir`: files at each level
@@ -709,7 +725,7 @@ async fn ws_handler(
     headers: axum::http::HeaderMap,
     State(app): State<Arc<AppState>>,
 ) -> axum::response::Response {
-    if !ws_origin_ok(&headers) {
+    if !ws_origin_ok(&headers, app.loopback_bound) {
         return (
             axum::http::StatusCode::FORBIDDEN,
             "cross-origin websocket refused",
@@ -1329,5 +1345,36 @@ mod extension_assets {
         );
 
         let _ = fs::remove_dir_all(&root);
+    }
+
+    // A symlink *inside* `_extensions/` that points outside the project must not let
+    // a bare-name request surface a file from outside the extension tree. The walk
+    // follows directory symlinks, so the containment re-check is what stops it.
+    #[cfg(unix)]
+    #[test]
+    fn symlink_out_of_extensions_is_not_served() {
+        let root = tmp();
+        fs::create_dir_all(root.join("_extensions/deck")).unwrap();
+        // A secret living outside the project entirely.
+        let outside = tmp();
+        fs::create_dir_all(&outside).unwrap();
+        fs::write(outside.join("secret.js"), "// nope").unwrap();
+        // An extension dir contains a symlink that escapes to `outside`.
+        std::os::unix::fs::symlink(&outside, root.join("_extensions/deck/escape")).unwrap();
+
+        // Even though `escape/secret.js` is reachable through the symlink, the
+        // resolved path is outside `_extensions/`, so it is refused.
+        assert_eq!(find_in_extensions(&root, "secret.js"), None);
+
+        // A real resource beside the symlink still resolves (the guard only rejects
+        // escapes, not legitimate hits).
+        fs::write(root.join("_extensions/deck/ok.js"), "// ok").unwrap();
+        assert_eq!(
+            find_in_extensions(&root, "ok.js"),
+            Some(root.join("_extensions/deck/ok.js"))
+        );
+
+        let _ = fs::remove_dir_all(&root);
+        let _ = fs::remove_dir_all(&outside);
     }
 }

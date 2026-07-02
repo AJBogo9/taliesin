@@ -191,13 +191,19 @@ LRU). Remaining, lower-value:
   misleading `build.rs:232` stderr "uncaught exception".
 
 ### Security hardening (P3, single-author trust model)
-- [ ] `history.replaceState` to scrub `?t=` after mount (security.rs:150, client.js).
-- [ ] `qmd_token` cookie: add `; HttpOnly` (security.rs:124).
-- [ ] Injected Mermaid `<script>`: `integrity` + `crossorigin`; emit `Referrer-Policy: no-referrer`
-  (mod.rs:858, page.rs:150).
-- [ ] `origin_allowed`: only blanket-allow loopback when loopback-bound (security.rs:13).
-- [ ] Deck postMessage: gate null/'' origin on `file://` only (deck.js:893).
-- [ ] Extension-resource fallback: re-check containment after the symlink walk (serve/mod.rs:387).
+Most of the cluster shipped 2026-07-02: `?t=` scrubbed from the URL after mount (client.js
+`history.replaceState`, keeps other params + hash), `qmd_token` cookie is `HttpOnly`,
+`Referrer-Policy: no-referrer` meta on every page + deck head, `origin_allowed` drops the
+loopback-origin blanket-allow under `--host` (only same-origin drives the control-channel ws),
+deck postMessage gates `''`/`'null'` origin to `file://`, and the extension-resource fallback
+re-checks containment after the symlink walk. Remaining:
+- [ ] **Injected Mermaid `<script>`: `integrity` (SRI) + `crossorigin`** — deferred, not just
+  dropped. Only the live *Preview* still lazy-loads mermaid from the jsdelivr CDN (a static Build
+  inlines the vendored copy, fully offline); Preview is dev-time on the author's own machine. SRI
+  needs a hash pinned to the CDN build, which may differ from the vendored `mermaid.min.js`, so it
+  can't be derived from the local copy without fetching + verifying; and both `integrity` and
+  `crossOrigin='anonymous'` would break a non-CORS `QMD_FAST_MERMAID_URL` override. Revisit if a
+  verified hash for the pinned CDN artifact is on hand.
 
 ### Reading-first identity polish (P3, design judgment; deferred, overlaps marketing)
 The "templated" diagnosis is itself UNVERIFIED (see caveat); treat these as judgment, not evidence,

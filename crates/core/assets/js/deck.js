@@ -914,9 +914,12 @@
   function deckBaseUrl() { return location.href.split('#')[0].split('?')[0]; }
   // Only accept/sync with windows of our own origin, so a third-party page that
   // embeds the deck can't drive it (or read its slide position). file:// has no
-  // real origin ("" / "null"), so allow it there. When posting, target our origin
-  // on http(s) and fall back to '*' on file:// (a "null" targetOrigin would throw).
-  function sameOrigin(e) { return e.origin === location.origin || e.origin === '' || e.origin === 'null'; }
+  // real origin ("" / "null"), so allow those ONLY when we are ourselves on file://
+  // — on http(s) a "" / "null" origin is an opaque/sandboxed context (a sandboxed
+  // iframe embedding the deck) and must not drive it. When posting, target our
+  // origin on http(s) and fall back to '*' on file:// (a "null" targetOrigin throws).
+  var onFile = location.protocol === 'file:';
+  function sameOrigin(e) { return e.origin === location.origin || ((e.origin === '' || e.origin === 'null') && onFile); }
   function targetOrigin() { return (location.origin && location.origin !== 'null') ? location.origin : '*'; }
 
   // Apply a position received from the other window (or, in an embed iframe, from

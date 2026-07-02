@@ -46,6 +46,9 @@ struct SiteApp {
     /// prefix, so a site's link to `/docs` resolves in `preview` (not just `build`).
     /// Discovered once; pages render on request (content edits show on refresh).
     mounts: Vec<MountedSite>,
+    /// Whether the server is loopback-bound (i.e. not `--host`). Gates whether a
+    /// loopback *origin* may open the control-channel ws (see [`origin_allowed`]).
+    loopback_bound: bool,
 }
 
 /// A mounted sub-project: serve `site` (rooted at `root`) under the `/at/` prefix.
@@ -142,6 +145,7 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         pages: Mutex::new(HashMap::new()),
         build_tx,
         mounts,
+        loopback_bound: !expose,
     });
 
     spawn_builder(app.clone(), build_rx);
@@ -569,7 +573,7 @@ async fn ws_handler(
     Query(q): Query<HashMap<String, String>>,
     State(app): State<Arc<SiteApp>>,
 ) -> axum::response::Response {
-    if !ws_origin_ok(&headers) {
+    if !ws_origin_ok(&headers, app.loopback_bound) {
         return (
             axum::http::StatusCode::FORBIDDEN,
             "cross-origin websocket refused",

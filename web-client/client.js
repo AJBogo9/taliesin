@@ -1186,5 +1186,19 @@
     if (m && m.type === "qmd-cursor") highlightAtLine(m.file, m.line);
   });
 
+  // `--host` puts the session token in the first URL (`?t=…`); the server has
+  // already set the auth cookie on this very response, so the token in the address
+  // bar is now just leakage (browser history, a bookmark, a copied link, an outbound
+  // Referer). Strip only `t`, preserving the path, any other query params, and the
+  // hash. A no-op when there is no token (the common, non-`--host` case).
+  try {
+    const u = new URL(window.location.href);
+    if (u.searchParams.has("t")) {
+      u.searchParams.delete("t");
+      const qs = u.searchParams.toString();
+      history.replaceState(history.state, "", u.pathname + (qs ? "?" + qs : "") + u.hash);
+    }
+  } catch (e) {}
+
   connect();
 })();

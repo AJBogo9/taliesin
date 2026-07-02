@@ -10,7 +10,18 @@ use super::*;
 /// websocket, so a page on another site must not be able to open it against your
 /// dev server (a browser always sends `Origin`, so this blocks cross-site driving
 /// without affecting non-browser clients, which send none).
-pub(crate) fn origin_allowed(origin: Option<&str>, host: Option<&str>) -> bool {
+///
+/// `allow_loopback_origins` is `true` for a loopback-bound preview (the default),
+/// where a page at another local port (a second dev server, the editor companion)
+/// is a trusted local peer. It is `false` under `--host`: there a page at
+/// `http://localhost:X` open in the author's *own* browser is a loopback *peer*
+/// (so the LAN token guard waves it through) yet may be hostile, so it must be
+/// same-origin to drive the control channel.
+pub(crate) fn origin_allowed(
+    origin: Option<&str>,
+    host: Option<&str>,
+    allow_loopback_origins: bool,
+) -> bool {
     let Some(origin) = origin else {
         return true; // no Origin => not a browser => not a cross-site request
     };
@@ -19,17 +30,21 @@ pub(crate) fn origin_allowed(origin: Option<&str>, host: Option<&str>) -> bool {
     if Some(authority) == host {
         return true; // same origin (covers the LAN case: phone dials the Host it sees)
     }
+    if !allow_loopback_origins {
+        return false; // --host: only same-origin drives the ws
+    }
     let host_only = authority.split(':').next().unwrap_or("");
     matches!(host_only, "localhost" | "127.0.0.1" | "::1" | "[::1]")
 }
 
 /// Apply [`origin_allowed`] to a request's headers; both websocket handlers gate
-/// the upgrade on this.
-pub(crate) fn ws_origin_ok(headers: &axum::http::HeaderMap) -> bool {
+/// the upgrade on this. `allow_loopback_origins` is the server's `loopback_bound`
+/// flag (false under `--host`).
+pub(crate) fn ws_origin_ok(headers: &axum::http::HeaderMap, allow_loopback_origins: bool) -> bool {
     use axum::http::header::{HOST, ORIGIN};
     let origin = headers.get(ORIGIN).and_then(|v| v.to_str().ok());
     let host = headers.get(HOST).and_then(|v| v.to_str().ok());
-    origin_allowed(origin, host)
+    origin_allowed(origin, host, allow_loopback_origins)
 }
 
 // --- LAN access token (`--host` only) -------------------------------------------
@@ -55,6 +70,15 @@ pub(crate) enum LanAccess {
     AllowSetCookie,
     /// Reject: a non-loopback peer with no/incorrect token.
     Deny,
+}
+
+/// The `Set-Cookie` value for the session token. Session-scoped: a new token each
+/// server start, so a stale cookie just fails closed and the author re-scans.
+/// `HttpOnly` (the page never needs to read it from JS — it authenticates by riding
+/// requests), `SameSite=Lax` + `Path=/` so it rides every same-origin asset/ws
+/// request from the page.
+fn session_cookie(token: &str) -> String {
+    format!("qmd_token={token}; Path=/; SameSite=Lax; HttpOnly; Max-Age=86400")
 }
 
 /// The `t=` value of a URL query string, if present.
@@ -118,10 +142,7 @@ pub(crate) async fn lan_token_guard(
         LanAccess::Allow => next.run(req).await,
         LanAccess::AllowSetCookie => {
             let mut resp = next.run(req).await;
-            // Session-scoped: a new token each server start, so a stale cookie just
-            // fails closed and the author re-scans. SameSite=Lax + Path=/ so the cookie
-            // rides every same-origin asset/ws request from the page.
-            let value = format!("qmd_token={token}; Path=/; SameSite=Lax; Max-Age=86400");
+            let value = session_cookie(&token);
             if let Ok(hv) = axum::http::HeaderValue::from_str(&value) {
                 resp.headers_mut()
                     .append(axum::http::header::SET_COOKIE, hv);
@@ -160,36 +181,83 @@ mod tests {
 
     #[test]
     fn origin_check_allows_same_origin_and_blocks_cross_site() {
+        // A loopback-bound preview (the default): loopback origins are trusted local
+        // peers.
+        let loopback_bound = true;
         // No Origin header (curl / websocat — not a browser) can't be a cross-site
         // request, so it's allowed.
-        assert!(origin_allowed(None, Some("localhost:4388")));
+        assert!(origin_allowed(None, Some("localhost:4388"), loopback_bound));
         // A same-origin browser connection is allowed.
         assert!(origin_allowed(
             Some("http://localhost:4388"),
-            Some("localhost:4388")
+            Some("localhost:4388"),
+            loopback_bound
         ));
         // The `--host` LAN case: the phone's Origin is the Host it dialed -> allowed.
         assert!(origin_allowed(
             Some("http://192.168.1.5:4388"),
-            Some("192.168.1.5:4388")
+            Some("192.168.1.5:4388"),
+            loopback_bound
         ));
         // Loopback is allowed regardless of port (a second local dev server).
         assert!(origin_allowed(
             Some("http://127.0.0.1:9999"),
-            Some("localhost:4388")
+            Some("localhost:4388"),
+            loopback_bound
         ));
         // The attack: a malicious page open in your browser tries to drive your dev
         // server's control channel. Blocked.
         assert!(!origin_allowed(
             Some("http://evil.example"),
-            Some("localhost:4388")
+            Some("localhost:4388"),
+            loopback_bound
         ));
         assert!(!origin_allowed(
             Some("https://evil.example:4388"),
-            Some("192.168.1.5:4388")
+            Some("192.168.1.5:4388"),
+            loopback_bound
         ));
         // A `null` origin (sandboxed iframe / file://) can't control the server.
-        assert!(!origin_allowed(Some("null"), Some("localhost:4388")));
+        assert!(!origin_allowed(
+            Some("null"),
+            Some("localhost:4388"),
+            loopback_bound
+        ));
+    }
+
+    #[test]
+    fn host_mode_drops_the_loopback_origin_blanket_allow() {
+        // Under `--host` (LAN-bound), only same-origin drives the ws. The phone (its
+        // Origin is the LAN Host it dialed) still connects...
+        assert!(origin_allowed(
+            Some("http://192.168.1.5:4388"),
+            Some("192.168.1.5:4388"),
+            false
+        ));
+        // ...and a non-browser client (no Origin) is unaffected.
+        assert!(origin_allowed(None, Some("192.168.1.5:4388"), false));
+        // But a page at http://localhost:X open in the author's OWN browser is a
+        // loopback peer (so the LAN token guard waves it through) — the origin check
+        // is the only thing that stops it driving the control channel. Blocked.
+        assert!(!origin_allowed(
+            Some("http://localhost:9999"),
+            Some("192.168.1.5:4388"),
+            false
+        ));
+        assert!(!origin_allowed(
+            Some("http://127.0.0.1:9999"),
+            Some("192.168.1.5:4388"),
+            false
+        ));
+    }
+
+    #[test]
+    fn session_cookie_is_httponly_and_scoped() {
+        let c = session_cookie("abc123");
+        assert!(c.contains("qmd_token=abc123"));
+        assert!(c.contains("HttpOnly"), "cookie must be HttpOnly: {c}");
+        assert!(c.contains("SameSite=Lax"));
+        assert!(c.contains("Path=/"));
     }
 
     #[test]
