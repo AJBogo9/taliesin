@@ -117,11 +117,11 @@ pub fn theme_head(default_mode: &str) -> String {
     try {{ l = localStorage.getItem("qmd-reader-leading"); }} catch(e) {{}}
     try {{ lt = localStorage.getItem("qmd-reader-letter"); }} catch(e) {{}}
     try {{ wd = localStorage.getItem("qmd-reader-word"); }} catch(e) {{}}
-    if (s) el.style.setProperty("--qmd-reader-scale", s); else el.style.removeProperty("--qmd-reader-scale");
-    if (w) el.style.setProperty("--qmd-maxw", w); else el.style.removeProperty("--qmd-maxw");
-    if (l) el.style.setProperty("--qmd-reader-leading", l); else el.style.removeProperty("--qmd-reader-leading");
-    if (lt) el.style.setProperty("--qmd-reader-letter", lt); else el.style.removeProperty("--qmd-reader-letter");
-    if (wd) el.style.setProperty("--qmd-reader-word", wd); else el.style.removeProperty("--qmd-reader-word");
+    if (s) el.style.setProperty("--tali-reader-scale", s); else el.style.removeProperty("--tali-reader-scale");
+    if (w) el.style.setProperty("--tali-maxw", w); else el.style.removeProperty("--tali-maxw");
+    if (l) el.style.setProperty("--tali-reader-leading", l); else el.style.removeProperty("--tali-reader-leading");
+    if (lt) el.style.setProperty("--tali-reader-letter", lt); else el.style.removeProperty("--tali-reader-letter");
+    if (wd) el.style.setProperty("--tali-reader-word", wd); else el.style.removeProperty("--tali-reader-word");
   }}
   apply();
   applyReader();

@@ -31,8 +31,8 @@ body { background: transparent; }
   position: absolute;
   left: 0;
   top: 0;
-  width: var(--qmd-deck-w, 960px);
-  height: var(--qmd-deck-h, 540px); /* one cell; sections translate out into the grid */
+  width: var(--tali-deck-w, 960px);
+  height: var(--tali-deck-h, 540px); /* one cell; sections translate out into the grid */
   transform-origin: 0 0;
 }
 /* The pan/zoom transition. Gated by a class so resize + first paint don't animate. */
@@ -163,8 +163,8 @@ body { background: transparent; }
   position: absolute;
   left: 0;
   top: 0;
-  height: var(--qmd-thread, 16px);
-  margin-top: calc(var(--qmd-thread, 16px) / -2);
+  height: var(--tali-thread, 16px);
+  margin-top: calc(var(--tali-thread, 16px) / -2);
   transform-origin: 0 0;
   background: var(--deck-accent, #4c8dff);
   opacity: .42;
@@ -298,7 +298,7 @@ body { background: transparent; }
   background: rgba(20, 22, 28, .72);
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
-  color: var(--qmd-deck-fg, #e8eaf0);
+  color: var(--tali-deck-fg, #e8eaf0);
   font: 500 15px/1 system-ui, sans-serif;
   outline: none;
   z-index: 41;
@@ -547,7 +547,7 @@ html.tali-scroll .tali-deck .tali-slides {
   width: auto; height: auto; max-width: 46rem; margin: 0 auto; padding: 0 1rem 3rem;
 }
 /* In reader mode the running text reads like prose, so set it in the project
-   reading serif (the same stack as base.css `--qmd-font-body`; a standalone deck
+   reading serif (the same stack as base.css `--tali-font-body`; a standalone deck
    page bundles only deck.css, so base.css's custom property isn't defined here —
    the family is written out literally). Headings/title stay on the deck sans for
    contrast; only the body copy (paragraphs, lists, blockquotes) becomes serif. */
@@ -819,7 +819,7 @@ html.tali-alt [data-block-id] { cursor: pointer; }
 }
 
 /* One consistent keyboard-focus ring across the deck's interactive controls, mirroring
-   the page-side `--qmd-focus` token (deck chrome lives on its own dark surface, so it
+   the page-side `--tali-focus` token (deck chrome lives on its own dark surface, so it
    uses the deck accent). Mouse clicks don't show it (:focus-visible). */
 .tali-ctl:focus-visible, .tali-menu-item:focus-visible, .tali-menu-slide:focus-visible,
 .tali-ov-search:focus-visible {

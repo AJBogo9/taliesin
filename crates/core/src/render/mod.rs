@@ -1760,7 +1760,7 @@ pub fn escape_attr(s: &str) -> String {
 
 /// Multi-page site chrome: a sticky theme-aware navbar, a slim footer, and post
 /// prev/next nav. Only shipped when a page renders inside a site (see
-/// [`html_page_from_doc_in_site`]); all of it is driven by `--qmd-*` vars so a
+/// [`html_page_from_doc_in_site`]); all of it is driven by `--tali-*` vars so a
 /// theme extension restyles it for free. Deliberately leaner than Quarto's
 /// Bootstrap chrome (no banner, no search bar, no feed).
 const SITE_CSS: &str = include_str!("../../assets/css/site.css");

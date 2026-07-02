@@ -10,21 +10,21 @@
 // mermaid bakes colours into the SVG at run() time, so a diagram can't be
 // recoloured by CSS when the theme flips — it has to be re-rendered. The config is
 // CSS-driven so a theme extension can style diagrams with no JS: set
-// `--qmd-mermaid-theme` (a mermaid theme name; defaults to dark/default by mode),
-// and optionally `--qmd-mermaid-{bg,node,node-border,text,line}` to tune colours
-// (most effective with `--qmd-mermaid-theme: base`). Each diagram's source is
+// `--tali-mermaid-theme` (a mermaid theme name; defaults to dark/default by mode),
+// and optionally `--tali-mermaid-{bg,node,node-border,text,line}` to tune colours
+// (most effective with `--tali-mermaid-theme: base`). Each diagram's source is
 // stashed (dataset.src) so a later `qmd:themechange` can restore and re-run it.
 function qmdMermaidConfig() {
   var cs = getComputedStyle(document.documentElement);
   var get = function (n) { return cs.getPropertyValue(n).trim(); };
   var dark = document.documentElement.getAttribute('data-theme') === 'dark';
-  var cfg = { startOnLoad: false, theme: get('--qmd-mermaid-theme') || (dark ? 'dark' : 'default') };
+  var cfg = { startOnLoad: false, theme: get('--tali-mermaid-theme') || (dark ? 'dark' : 'default') };
   var map = {
-    background: '--qmd-mermaid-bg',
-    primaryColor: '--qmd-mermaid-node',
-    primaryBorderColor: '--qmd-mermaid-node-border',
-    primaryTextColor: '--qmd-mermaid-text',
-    lineColor: '--qmd-mermaid-line',
+    background: '--tali-mermaid-bg',
+    primaryColor: '--tali-mermaid-node',
+    primaryBorderColor: '--tali-mermaid-node-border',
+    primaryTextColor: '--tali-mermaid-text',
+    lineColor: '--tali-mermaid-line',
   };
   var vars = {};
   for (var key in map) { var v = get(map[key]); if (v) vars[key] = v; }

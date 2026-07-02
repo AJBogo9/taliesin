@@ -1636,7 +1636,7 @@ fn assembled_page_ships_line_spacing() {
     let page = render_html_page("# Title\n\nProse.\n", "doc");
     // The reader line-spacing control drives prose line-height via this CSS var.
     assert!(
-        page.contains("--qmd-reader-leading"),
+        page.contains("--tali-reader-leading"),
         "reader line-spacing var not shipped in the assembled page"
     );
 }
@@ -1646,11 +1646,11 @@ fn assembled_page_ships_letter_word_spacing() {
     let page = render_html_page("# Title\n\nProse.\n", "doc");
     // The reader letter/word-spacing controls (WCAG 1.4.12) drive prose tracking via these vars.
     assert!(
-        page.contains("--qmd-reader-letter"),
+        page.contains("--tali-reader-letter"),
         "reader letter-spacing var not shipped in the assembled page"
     );
     assert!(
-        page.contains("--qmd-reader-word"),
+        page.contains("--tali-reader-word"),
         "reader word-spacing var not shipped in the assembled page"
     );
 }
@@ -1779,7 +1779,7 @@ fn theme_dark_default_drives_data_theme_resolver() {
         page.contains("html[data-theme=\"dark\"]"),
         "scoped dark CSS not shipped"
     );
-    assert!(page.contains("--qmd-bg: #16181d"), "dark vars missing");
+    assert!(page.contains("--tali-bg: #16181d"), "dark vars missing");
     // The resolver threads the forced mode in as `var MODE = "dark"`; with no saved choice
     // its DEFAULT() returns that mode (an unspecified `MODE` would instead follow the OS).
     assert!(
@@ -2115,7 +2115,7 @@ fn bare_theming_resolves_per_theme_default() {
     // CSS-only theming has three branches: a forced dark theme hard-codes the dark
     // layer onto :root (no media query); a forced light theme adds nothing (base
     // :root is light); an unforced (auto) theme follows the OS via a media query.
-    // `#16181d` is the dark `--qmd-bg`, present only in the dark layer.
+    // `#16181d` is the dark `--tali-bg`, present only in the dark layer.
     let bare = |src: &str| render_doc_to_page(&render_document(src), "t", OutputMode::Bare);
 
     let dark = bare("---\ntheme: dark\n---\n\nx\n");

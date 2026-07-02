@@ -12,7 +12,7 @@ Module map:
 - `divs.rs`   `:::` fenced divs (callouts, columns, magic-move)
 - `figure.rs` numbered figures + captions
 - `deck.rs` the slide-deck engine (bundles `deck.css`/`deck.js`; native `.qmd-deck` + `window.QmdDeck`)
-- `theme.rs`  `--qmd-*` themes (light/dark), `theme_head`
+- `theme.rs`  `--tali-*` themes (light/dark), `theme_head`
 - `extension/` format extensions + shortcode expansion (`{{< embed >}}`, `{{< video >}}`)
 
 Conventions:

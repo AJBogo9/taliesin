@@ -16,11 +16,11 @@ function qmdInitLightbox() {
     'background:rgba(10,12,16,.9);cursor:zoom-out;opacity:0;transition:opacity .15s ease}' +
     '#tali-lightbox.open{display:flex;opacity:1}' +
     '#tali-lightbox img{max-width:93vw;max-height:86vh;object-fit:contain;cursor:default;' +
-    'background:var(--qmd-bg,#fff);border-radius:4px;box-shadow:0 10px 50px rgba(0,0,0,.5)}' +
+    'background:var(--tali-bg,#fff);border-radius:4px;box-shadow:0 10px 50px rgba(0,0,0,.5)}' +
     '#tali-lightbox video{display:none;max-width:93vw;max-height:86vh;object-fit:contain;cursor:default;' +
     'border-radius:6px;background:#000;box-shadow:0 10px 50px rgba(0,0,0,.5)}' +
     '#tali-lightbox .tali-lb-svg{display:none;width:92vw;max-width:1400px;max-height:86vh;overflow:auto;' +
-    'cursor:default;background:var(--qmd-bg,#fff);border-radius:4px;padding:1.2rem;box-sizing:border-box;' +
+    'cursor:default;background:var(--tali-bg,#fff);border-radius:4px;padding:1.2rem;box-sizing:border-box;' +
     'box-shadow:0 10px 50px rgba(0,0,0,.5)}' +
     '#tali-lightbox .tali-lb-svg svg{display:block;width:100%;height:auto;max-width:100%}' +
     '#tali-lightbox .tali-lb-cap{color:#e8e8e8;font:14px ui-sans-serif,system-ui,sans-serif;' +

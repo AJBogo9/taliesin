@@ -98,7 +98,7 @@ try:
         # Transparency for the inline image only (not global rcParams).
         _ip.run_line_magic('config', "InlineBackend.print_figure_kwargs = {'facecolor': 'none', 'edgecolor': 'none', 'bbox_inches': 'tight'}")
 
-        # (foreground, grid) per theme — kept in sync with --qmd-fg / --qmd-border
+        # (foreground, grid) per theme — kept in sync with --tali-fg / --tali-border
         # in assets/css/{base,dark}.css.
         _QMD_LIGHT = ('#1a1a1a', '#d0d0d0')
         _QMD_DARK = ('#e6e6e6', '#363a44')

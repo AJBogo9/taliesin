@@ -602,15 +602,15 @@ impl Site {
     /// fallback too, so preview matches production.
     pub fn render_404_page(&self) -> String {
         // Scoped styling for the centred 404 body, injected into the head. Uses the
-        // theme `--qmd-*` vars so it tracks light/dark like the rest of the site.
+        // theme `--tali-*` vars so it tracks light/dark like the rest of the site.
         const NOT_FOUND_STYLE: &str = "\n<style>\n\
             .tali-404{min-height:60vh;display:flex;flex-direction:column;\
             align-items:center;justify-content:center;text-align:center;gap:.3rem}\n\
-            .tali-404-code{font-family:var(--qmd-font-head);\
+            .tali-404-code{font-family:var(--tali-font-head);\
             font-size:clamp(4.5rem,20vw,9rem);font-weight:800;line-height:.9;\
-            letter-spacing:-.04em;color:var(--qmd-accent)}\n\
+            letter-spacing:-.04em;color:var(--tali-accent)}\n\
             .tali-404 h1{margin:.4rem 0 0;font-size:1.5rem}\n\
-            .tali-404 p{margin:.2rem 0;color:var(--qmd-muted)}\n\
+            .tali-404 p{margin:.2rem 0;color:var(--tali-muted)}\n\
             .tali-404-home{display:inline-block;margin-top:1.4rem;font-weight:600}\n\
             </style>";
 

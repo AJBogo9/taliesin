@@ -11,8 +11,8 @@ function qmdInitLinkPreview() {
   var style = document.createElement('style');
   style.textContent =
     '#tali-link-preview{position:fixed;z-index:2147482000;max-width:min(440px,90vw);max-height:50vh;' +
-    'overflow:auto;background:var(--qmd-bg,#fff);color:var(--qmd-fg,#111);' +
-    'border:1px solid var(--qmd-border,#e0e0e0);border-radius:8px;box-shadow:0 6px 30px rgba(0,0,0,.22);' +
+    'overflow:auto;background:var(--tali-bg,#fff);color:var(--tali-fg,#111);' +
+    'border:1px solid var(--tali-border,#e0e0e0);border-radius:8px;box-shadow:0 6px 30px rgba(0,0,0,.22);' +
     'padding:.7rem .9rem;font-size:.9rem;line-height:1.45;opacity:0;transform:translateY(3px);' +
     'transition:opacity .12s ease,transform .12s ease;pointer-events:none;visibility:hidden;}' +
     '#tali-link-preview.open{opacity:1;transform:none;pointer-events:auto;visibility:visible;}' +

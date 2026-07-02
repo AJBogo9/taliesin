@@ -111,8 +111,8 @@
       rowArr.forEach(function (cell, c) { if (!(cell.h in loc)) loc[cell.h] = { row: r, col0: c }; });
     });
     if (s) {
-      s.style.setProperty('--qmd-cols', maxCols);
-      s.style.setProperty('--qmd-rows', rows.length);
+      s.style.setProperty('--tali-cols', maxCols);
+      s.style.setProperty('--tali-rows', rows.length);
     }
     T.forEach(function (top, h) {
       var L = loc[h] || { row: 0, col0: 0 };
@@ -165,12 +165,12 @@
     var s = slidesEl(), rev = deckEl(); if (!s || !rev) return;
     var W = deck.config.width;
     var sw = rev.clientWidth || window.innerWidth, sh = rev.clientHeight || window.innerHeight;
-    s.style.setProperty('--qmd-thread', (3.5 / scale).toFixed(1) + 'px'); // constant ~3.5px on-screen thread
+    s.style.setProperty('--tali-thread', (3.5 / scale).toFixed(1) + 'px'); // constant ~3.5px on-screen thread
     rev.classList.toggle('tali-lod-far', !!deck.overview && scale * W < 200); // semantic zoom threshold
     var tx = sw / 2 - scale * cx, ty = sh / 2 - scale * cy;
     s.classList.toggle('tali-cam-anim', mode === 'css');
     s.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
-    document.documentElement.style.setProperty('--qmd-deck-scale', String(scale));
+    document.documentElement.style.setProperty('--tali-deck-scale', String(scale));
     deck.cam = { cx: cx, cy: cy, scale: scale };
     updateMinimapView();
   }
@@ -376,7 +376,7 @@
     return snap;
   }
   function flipTo(snap, to) {
-    var scale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--qmd-deck-scale')) || 1;
+    var scale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tali-deck-scale')) || 1;
     snap.forEach(function (s) {
       var el = s.to, st = el.style;
       var dx = (s.fr.left - s.tr.left) / scale, dy = (s.fr.top - s.tr.top) / scale;
@@ -484,7 +484,7 @@
   }
   function morphMM(div, pres, from, to) {
     var blockFrom = pres[from], blockTo = pres[to];
-    var scale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--qmd-deck-scale')) || 1;
+    var scale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tali-deck-scale')) || 1;
     var byText = {};
     Array.prototype.forEach.call(blockFrom.querySelectorAll('.tali-hl-ln'), function (l) {
       (byText[lineText(l)] || (byText[lineText(l)] = [])).push(l);
@@ -1567,8 +1567,8 @@
     deck.mode = qmd === 'speaker' ? 'speaker' : qmd === 'embed' ? 'embed'
       : qmd === 'print' ? 'print' : 'normal';
     var d = document.documentElement.style;
-    d.setProperty('--qmd-deck-w', deck.config.width + 'px');
-    d.setProperty('--qmd-deck-h', deck.config.height + 'px');
+    d.setProperty('--tali-deck-w', deck.config.width + 'px');
+    d.setProperty('--tali-deck-h', deck.config.height + 'px');
 
     // The speaker window doesn't render the deck itself; it builds the control UI.
     if (deck.mode === 'speaker') { initSpeaker(); deck.ready = true; return facade; }

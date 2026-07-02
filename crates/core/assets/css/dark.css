@@ -1,19 +1,19 @@
 
   html[data-theme="dark"] {
-    --qmd-bg: #16181d; --qmd-fg: #e6e6e6; --qmd-muted: #9aa0aa; --qmd-accent: #6ea8ff;
+    --tali-bg: #16181d; --tali-fg: #e6e6e6; --tali-muted: #9aa0aa; --tali-accent: #6ea8ff;
     /* darker filled-accent surface so white text on active/pressed/selected fills clears
-       WCAG-AA (white on #2563eb = 5.17:1; the bare --qmd-accent #6ea8ff is only 2.41:1) */
-    --qmd-accent-fill: #2563eb; --qmd-on-accent: #ffffff;
-    --qmd-link: #6ea8ff; --qmd-code-bg: #21242b; --qmd-border: #363a44;
-    --qmd-edge-shadow: rgba(255, 255, 255, .14); --qmd-flash: rgba(110, 168, 255, .22);
-    --qmd-ra-highlight: rgba(96, 165, 250, .30);
+       WCAG-AA (white on #2563eb = 5.17:1; the bare --tali-accent #6ea8ff is only 2.41:1) */
+    --tali-accent-fill: #2563eb; --tali-on-accent: #ffffff;
+    --tali-link: #6ea8ff; --tali-code-bg: #21242b; --tali-border: #363a44;
+    --tali-edge-shadow: rgba(255, 255, 255, .14); --tali-flash: rgba(110, 168, 255, .22);
+    --tali-ra-highlight: rgba(96, 165, 250, .30);
     /* Theorem-environment left-border accents, brightened for the dark bg (the light
        #6b5ea8/#2a7a5e/#7a7f87 read muddy on #16181d). Tints still derive via color-mix. */
-    --qmd-thm-plain: #9385d6; --qmd-thm-definition: #3fae7f; --qmd-thm-remark: #9aa0aa;
+    --tali-thm-plain: #9385d6; --tali-thm-definition: #3fae7f; --tali-thm-remark: #9aa0aa;
     color-scheme: dark; /* native form controls ({js} cell inputs) + scrollbars render dark */
   }
   /* (.tali-copy is fully tokenised in base.css now — no dark override needed.) */
-  /* Callout title tints are derived from --qmd-callout-* via color-mix with transparent,
+  /* Callout title tints are derived from --tali-callout-* via color-mix with transparent,
      so they adapt to the dark background automatically — no per-kind dark override needed. */
   html[data-theme="dark"] pre.mermaid { background: transparent; }
   /* server-side syntax-highlight scope classes (syntect), recoloured for dark */
@@ -24,7 +24,7 @@
   html[data-theme="dark"] .tali-hl-entity { color: #d2a8ff; }
   html[data-theme="dark"] .tali-hl-variable { color: #ffa657; }
   /* code-cell output, warnings, and errors: dark equivalents of the light boxes */
-  html[data-theme="dark"] .tali-output > pre { background: #1b1e24; border-left-color: var(--qmd-border); }
+  html[data-theme="dark"] .tali-output > pre { background: #1b1e24; border-left-color: var(--tali-border); }
   html[data-theme="dark"] .tali-stderr { border-left-color: #d0a215 !important; background: #2a2415 !important; color: #e8dcc0; }
   html[data-theme="dark"] .tali-error { border-left-color: #e0566b !important; background: #2a1820 !important; color: #f2b8c2; }
   /* a throwing {js} cell's error box: dark equivalent of the light .tali-js-error in base.css */
