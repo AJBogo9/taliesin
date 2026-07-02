@@ -960,7 +960,7 @@ pub const TOC_SHEET_JS: &str = include_str!("../../../../web-client/toc-sheet.js
 
 pub fn toc_scripts() -> String {
     format!(
-        "<script>{TOC_SPY_JS}</script>\n<script>{TOC_SHEET_JS}</script>\n<script>{SEARCH_JS}</script>"
+        "<script>{TOC_SPY_JS}</script>\n<script>{TOC_SHEET_JS}</script>\n<script>{SEARCH_JS}</script>\n<script>{GRAPH_JS}</script>"
     )
 }
 
@@ -968,6 +968,11 @@ pub fn toc_scripts() -> String {
 /// pages that have a table of contents (the long ones: the book, a paper), where
 /// jumping between sections matters most.
 pub const SEARCH_JS: &str = include_str!("../../../../web-client/search.js");
+
+/// The cross-reference graph modal (`window.QMD_REF_GRAPH` → an interactive force-directed
+/// map of the project's pages + their cross-page links). Rides alongside search on site
+/// pages; opened by a `[data-qmd-graph]` chrome control. No-ops without graph data.
+pub const GRAPH_JS: &str = include_str!("../../assets/js/graph.js");
 
 // Native interactive `{js}` cells: vendored d3 + Observable Plot (UMD globals) the
 // cells draw with, shipped only when a page has `{js}` cells. The small enhancer (`qmd-js.js`)

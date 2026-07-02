@@ -526,9 +526,10 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
     );
     // The cross-page TOC scrollspy + Cmd-K search, then the websocket client.
     let scripts_post = format!(
-        "<script>{toc_spy}</script>\n<script>{search_js}</script>\n<script>\n{CLIENT_JS}\n</script>",
+        "<script>{toc_spy}</script>\n<script>{search_js}</script>\n<script>{graph_js}</script>\n<script>\n{CLIENT_JS}\n</script>",
         toc_spy = qmd_fast_core::TOC_SPY_JS,
         search_js = qmd_fast_core::SEARCH_JS,
+        graph_js = qmd_fast_core::GRAPH_JS,
     );
     qmd_fast_core::assemble_html_page(&qmd_fast_core::PageParts {
         // Live preview always ships everything (a doc can gain any construct on an edit).

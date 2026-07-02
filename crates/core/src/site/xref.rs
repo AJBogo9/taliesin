@@ -154,7 +154,7 @@ fn brace_blocks(line: &str) -> Vec<&str> {
     blocks
 }
 /// Whether an id is a Quarto cross-reference anchor (`sec-`, `fig-`, …).
-fn is_ref_anchor(id: &str) -> bool {
+pub(super) fn is_ref_anchor(id: &str) -> bool {
     [
         "sec-", "fig-", "tbl-", "eq-", "lst-", "thm-", "lem-", "cor-", "prp-", "def-", "exm-",
         "rem-",

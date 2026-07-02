@@ -47,7 +47,26 @@ fn search_button(full: bool) -> String {
     )
 }
 
+/// Three connected nodes — the reference-graph control glyph.
+const GRAPH_ICON: &str = "<svg width='15' height='15' viewBox='0 0 16 16' fill='none' stroke='currentColor' stroke-width='1.4' aria-hidden='true'><path d='M4.6 4.4 11 4.4M4.4 5.4 7.2 10.2M11.4 5.4 8.6 10.2' stroke-linecap='round'/><circle cx='3.6' cy='3.8' r='1.7'/><circle cx='12.4' cy='3.8' r='1.7'/><circle cx='8' cy='11.6' r='1.7'/></svg>";
+
+/// A control that opens the cross-reference graph modal (`graph.js`, via `data-qmd-graph`
+/// click delegation). Rendered next to search on a project that HAS cross-page edges.
+fn graph_button() -> String {
+    format!(
+        "<button class='qmd-graph-btn' type='button' data-qmd-graph \
+         aria-label='Reference graph'>{GRAPH_ICON}</button>"
+    )
+}
+
 impl Site {
+    /// Whether the project has any cross-page reference edges (so a graph is worth
+    /// offering). Gates the `[data-qmd-graph]` control + the inlined graph data.
+    pub(super) fn has_reference_graph(&self) -> bool {
+        !self.reference_graph_json.is_empty()
+            && self.reference_graph_json != "{\"nodes\":[],\"edges\":[]}"
+    }
+
     /// The site navbar: a brand (site title → home) plus the configured left/right
     /// item groups. `depth` is the current page's path depth so links resolve
     /// relative to it (a post two levels deep prefixes `../../`).
@@ -89,6 +108,9 @@ impl Site {
         // light/dark toggle (wired by theme_head; works in `build` too). Dev-only
         // tools live in the floating dev menu, not the navbar.
         s.push_str(&search_button(false));
+        if self.has_reference_graph() {
+            s.push_str(&graph_button());
+        }
         s.push_str(
             "<button class=\"qmd-theme-toggle\" type=\"button\" data-qmd-theme-toggle \
              aria-label=\"Toggle theme\"></button>",
@@ -236,6 +258,9 @@ impl Site {
         // A search button (opens the same Cmd-K palette) + the light/dark toggle. A book
         // has no website navbar, so the toggle (wired by theme_head) lives here.
         s.push_str(&search_button(false));
+        if self.has_reference_graph() {
+            s.push_str(&graph_button());
+        }
         s.push_str(
             "<button class=\"qmd-theme-toggle\" type=\"button\" data-qmd-theme-toggle \
              aria-label=\"Toggle light/dark theme\"></button>",

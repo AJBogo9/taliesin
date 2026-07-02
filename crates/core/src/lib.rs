@@ -42,7 +42,7 @@ pub mod site;
 pub use diff::{BlockOp, diff_blocks};
 pub use frontmatter::closest;
 pub use render::{
-    Block, DeckParts, DocFormat, OutputMode, PageParts, RenderedDoc, SEARCH_JS, SiteCtx,
+    Block, DeckParts, DocFormat, GRAPH_JS, OutputMode, PageParts, RenderedDoc, SEARCH_JS, SiteCtx,
     TOC_SPY_JS, assemble_deck_page, assemble_html_page, code_scripts, code_scripts_for,
     deck_client_script, escape_attr, favicon_link, html_escape, html_page_from_doc_in_site,
     render_doc_to_page, render_document, render_document_with_includes,

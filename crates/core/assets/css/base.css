@@ -310,6 +310,31 @@
   .qmd-keys-close { position: absolute; top: .5rem; right: .6rem; border: 0;
     background: transparent; color: var(--qmd-muted); cursor: pointer; font-size: 1.2rem; line-height: 1; }
 
+  /* Cross-reference graph (graph.js): a focus-trapped modal with an interactive
+     force-directed map of the project's pages + their cross-page links. */
+  .qmd-graph-btn { display: inline-flex; align-items: center; justify-content: center;
+    width: 2rem; height: 2rem; padding: 0; border: 1px solid var(--qmd-border);
+    border-radius: 7px; background: var(--qmd-bg); color: var(--qmd-muted); cursor: pointer; }
+  .qmd-graph-btn:hover { color: var(--qmd-fg); border-color: var(--qmd-muted); }
+  .qmd-graph-overlay { position: fixed; inset: 0; z-index: 2147482000; display: flex;
+    align-items: center; justify-content: center; background: rgba(0, 0, 0, .45); }
+  .qmd-graph-panel { display: flex; flex-direction: column; background: var(--qmd-bg);
+    color: var(--qmd-fg); border: 1px solid var(--qmd-border); border-radius: 12px;
+    box-shadow: 0 10px 40px var(--qmd-edge-shadow); overflow: hidden; }
+  .qmd-graph-head { display: flex; align-items: center; justify-content: space-between;
+    padding: .5rem .9rem; border-bottom: 1px solid var(--qmd-border); font: var(--qmd-font-head); }
+  .qmd-graph-title { font-weight: 600; }
+  .qmd-graph-close { border: 0; background: transparent; color: var(--qmd-muted);
+    cursor: pointer; font-size: 1.1rem; line-height: 1; }
+  .qmd-graph-close:hover { color: var(--qmd-fg); }
+  .qmd-graph-svg { display: block; flex: 1; }
+  .qmd-graph-edge { stroke: var(--qmd-border); stroke-width: 1.2; }
+  .qmd-graph-node { cursor: pointer; }
+  .qmd-graph-node circle { fill: var(--qmd-muted); transition: fill .15s; }
+  .qmd-graph-node:hover circle, .qmd-graph-node:focus-visible circle { fill: var(--qmd-link); }
+  .qmd-graph-current circle { fill: var(--qmd-accent-fill); }
+  .qmd-graph-label { fill: var(--qmd-fg); font: 12px var(--qmd-font-head); pointer-events: none; }
+
   /* Tabular figures where columns/alignment matter (prose keeps proportional numerals). */
   pre, code, table, .katex { font-variant-numeric: tabular-nums; }
   a { color: var(--qmd-link); }
