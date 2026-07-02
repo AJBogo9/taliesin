@@ -83,31 +83,20 @@ lower-value residuals within each cluster logged in its section):**
 ## Open tasks (by area)
 
 ### Cross-page references
-`site/xref.rs` is a deliberately lightweight source-scan (page URLs + section numbers only), so it
-lacks parity with the richer in-page ref path. Both deferred items below hit the same root gap.
-- [ ] **Cross-page number lost for ALL non-heading anchors** (P3, DEFERRED — design call).
-  `xref.rs:108-109` pushes an empty number for every `fig-`/`eq-`/`tbl-`/`lst-`/`thm-` anchor
-  (headings resolve book-wide via `section_number`; the rest render bare cross-page). Not a quick
-  fix: the source scan does NO render, but fig/eq/tbl/lst/thm numbers only exist AFTER render. A
-  correct fix is either **(a)** a render-harvest — render all pages once, collect each page's
-  anchor→number map on `RenderedDoc`, enrich `Site::xref_targets`, then `resolve_cross_refs`
-  (reverses the no-double-render design; fine for `build`, slows preview startup); or **(b)**
-  replicate the full figure/theorem counting (incl. number-within + shared counters) in the source
-  scan (high drift risk). Recommend (a), build-gated, or accept the bare label. Touches load-bearing
-  numbering — do it deliberately, not in an autonomous sweep. (Supersedes the theorem-only bullet
-  under Release regression-hunt deferrals.)
-- [ ] **No hover preview for cross-page refs** (P3, DEFERRED — needs the cross-page index, groups
-  with the above). `12-link-preview.js` only fires on same-page `#` links (`getElementById`); a
-  cross-page xref is `{url}#{anchor}` (`xref.rs:229`) whose target lives on another page. A real
-  preview needs a site-wide anchor→preview index (same render-harvest gap). Lighter path: for
-  `@sec-` refs reuse the shipped `search-index.js` (has heading text + a section-body snippet per
-  `sec-` anchor) to render a text card lazily on first cross-page-ref hover; `fig-`/`eq-`/`thm-`
-  still need rendered HTML.
-- [ ] **Cross-reference graph / backlinks (Obsidian-style)** (strategic, open question). "Referenced
-  by" backlinks already fit (FEATURE-IDEAS #27: read-only, build-time, reuses `xref.rs`'s
-  forward-ref scan) and are the cheap high-value core. A full interactive force-directed graph canvas
-  is a distinct, scope-risky second nav surface. Recommendation: ship backlinks first, defer/decide
-  the graph. Read-only + HTML-only if pursued (single-editing-surface holds).
+`site/xref.rs` is a deliberately lightweight source-scan (page URLs + section numbers only).
+*F2b (cross-page NUMBERS) SHIPPED 2026-07-02 (`main` @ 68f7740, author-approved render-harvest):
+`RenderedDoc.xref_numbers` + build-only `Site::harvest_xref_numbers()` fill the fig/eq/tbl/lst/thm
+numbers the scan couldn't, so a cross-page `@fig-x` renders "Figure&nbsp;1"; preview stays bare (the
+accepted no-double-render tradeoff). Pinned by `harvest_numbers_cross_page_figure_refs`.*
+- [ ] **F2a: hover preview for cross-page refs** (P3). `12-link-preview.js` only fires on same-page
+  `#` links; a cross-page xref target lives on another page. The render-harvest infra is now in place
+  (extend it to collect an anchor→preview snippet, serve it like `search-index.js`, wire the hover
+  card for `.qmd-xref` cross-page links). Grouped with the graph below (shared cross-page content
+  index). Deferred behind the graph canvas.
+- [ ] **Cross-reference graph canvas (Obsidian-style)** (author chose the FULL graph, not
+  backlinks-first). An interactive force-directed graph of the project's pages + their cross-page
+  references, click-to-navigate. Read-only + HTML-only (single-editing-surface holds). Reuses the
+  vendored d3 (has `d3-force`) + a build-time reference-edge scan. NEXT Tier-2 build.
 *Vendor Mermaid offline: SHIPPED 2026-07-02 (`main` @ 30bdb17, author-approved). `mermaid@11.4.1`
 vendored + inlined into static Build pages that have a diagram (content-gated); a `--out` doc/book
 renders diagrams with ZERO network (browser-verified from `file://`, 1 request). Preview keeps the
