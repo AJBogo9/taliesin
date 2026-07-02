@@ -323,15 +323,13 @@ under-documented; produce a prioritized improvement list. Treat the native deck 
 - Decided against: inline `{.r-stretch}` image (use the `:::{.r-stretch}` div); `#`-section quick-jump
   anchors (redundant with the minimap + `/` filter).
 
-### Taliesin rename (settled design, UNSHIPPED)
-Spec: `docs/superpowers/specs/2026-06-27-taliesin-rename-design.md` (decisions settled). Owner-gated
-identity call; ties into public-OSS-release timing. The author's "drop `.qmd` and own the highlighting"
-ask.
-- [ ] **Execute the rename**: `.qmd`→`.tmd` routed through a central `crates/core/src/ext.rs` constant
-  module (`.qmd` kept as deprecated-accepted input with a warn-nudge — a clean break WITH a migration
-  path, per the spec's Markdown-familiarity north star); package names →`taliesin-*`; binary `taliesin`
-  + `tali`; the `qmd-*` contract prefix →`tali-*` with back-compat aliases. Large multi-surface change
-  (corpus + docs churn).
+### Taliesin rename
+Spec: `docs/superpowers/specs/2026-06-27-taliesin-rename-design.md`. The code rename is **executed**
+(Phases 0–3 + residuals): `.qmd`→`.tmd` via `crates/core/src/ext.rs` (`.qmd` still accepted with a
+warn-nudge), packages `taliesin-*`, binary `taliesin`+`tali`, and the `qmd-*` / `--qmd-*` / JS-global
+contract prefixes →`tali-*`/`--tali-*`/`Taliesin*` with back-compat aliases (vendored `.qmd-deck`
+dual-class, public `window.Qmd*` aliases; frozen IPC strings, localStorage keys, and the
+`application/qmd-js`/`qmd-define` script types). Remaining:
 - [ ] **Own the syntax-highlighting grammar** via the `.tmd` language association (the VS Code companion
   already sets its own regardless; spec §3). The concrete answer to "rename so I fully control the
   highlighting."
