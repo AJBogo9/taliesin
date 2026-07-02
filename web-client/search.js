@@ -430,7 +430,7 @@
 
   // --- search-hit flash (land on the heading, then flash the matched term) --------
   // CSS Custom Highlight API (zero DOM mutation → honours read-only preview), with a
-  // <mark> fallback like read-aloud. Registered once, lazily.
+  // transient <mark> fallback for engines without it. Registered once, lazily.
   var FLASH_KEY = "tali-search-flash";
   var flashHl = null;
   // Create + register the highlight LAZILY on first use (not at module load — the Custom

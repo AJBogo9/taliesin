@@ -12,7 +12,7 @@
   // Read-state: sections the reader has scrolled through, decorated in the TOC.
   // Reader-side + read-only: the set lives in the reader's OWN localStorage, keyed by
   // path and anchored to each heading's stable `data-block-id` (the same anchor that
-  // bookmarks/highlights/resume use), so it survives reflow and never touches source.
+  // reading-progress + resume use), so it survives reflow and never touches source.
   var read = {}; // read[headingBlockId] = 1 once that section is scrolled through
   var readHigh = 0; // forward-only high-water index of scrolled-through entries
   var READ_KEY = "qmd-read:" + location.pathname;

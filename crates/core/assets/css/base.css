@@ -111,14 +111,6 @@
   .tali-resume-x:hover { color: var(--tali-fg); }
   @media print { .tali-readbar, .tali-resume { display: none !important; } }
 
-  /* Reader highlights: theme-aware mark colour + the highlight/remove action button. */
-  :root { --tali-userhl-bg: rgba(255, 213, 0, .40); }
-  html[data-theme="dark"] { --tali-userhl-bg: rgba(214, 178, 60, .34); }
-  html[data-theme="sepia"] { --tali-userhl-bg: rgba(176, 120, 32, .32); }
-  mark.tali-userhl { background: var(--tali-userhl-bg); color: inherit; border-radius: 2px;
-    padding: 0 .03em; cursor: pointer;
-    -webkit-box-decoration-break: clone; box-decoration-break: clone; }
-
   /* Search-hit flash (Cmd-K → land on the heading, then flash the matched term via the
      CSS Custom Highlight API; search.js). Registered as an animatable colour so it can
      fade to transparent; the keyframes are per-theme because @keyframes can't read a var

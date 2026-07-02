@@ -11,9 +11,12 @@ corpus doc. Output stays **HTML-only**. The active roadmap is `BEYOND-QUARTO.md`
 
 ## State (2026-07-02)
 
-Local `main` @ `7ef27c5`, version 0.2.0. **This session's Taliesin rename + `.tmd` editor grammar
-are committed to LOCAL main only — NOT pushed.** The author pushes/syncs between sessions; agents
-commit + fast-forward-merge to local main on request, never push. All four formats render + deploy.
+Local `main` @ `f5239cb` (in sync with `origin/main`), version 0.2.0. Since the Taliesin rename + `.tmd`
+grammar landed, a **security-hardening (P3) batch + a simplification/removal sweep** shipped: the
+third-party `_extensions` system, the reader-social features (highlights/bookmarks/read-aloud/share),
+and assorted dead CSS / env-aliases / surplus re-exports are gone. The author pushes/syncs between
+sessions; agents commit + fast-forward-merge to local main on request, never push. All four formats
+render + deploy.
 The dev loop is strong: block-level incremental updates with DOM-state preservation, warm server +
 Jupyter kernel, `_freeze` cache, Alt-click click-to-source + reverse cursor sync, located/framed
 diagnostics, CSS hot-swap, Cmd-K search.
@@ -39,7 +42,6 @@ single-editing-surface invariant. Review subagents use read-only git (`git diff 
 `live-edit-hero-demo` clip + the "Marketing site" section stay deferred until then.
 
 **Pending author actions:**
-- **Push local main to `origin`** when ready — the rename + grammar commits are local-only.
 - **F5-accept the companion PREVIEW / cursor-sync** (separate from the grammar, which is already
   accepted + installed): `cd editor/vscode && npm install && npm run build`, then F5 and run the
   `editor/vscode/README.md` checklist (cursor → block highlight; Alt-click → source). Report anything off.
@@ -56,8 +58,6 @@ Tiers, not a strict rank. **Tier 1 (the 7-cluster priority queue), the Taliesin 
   *Cross-page references*
 - Reading-first identity polish (hero / cards / accent / spacing scale): overlaps deferred marketing;
   confirm direction. → *Reading-first identity polish*
-- Extension-ecosystem audit (its own pass; incl. the dead liquid-glass extension). →
-  *Extension ecosystem audit*
 - **Shed Quarto compatibility** — the confirmed "separate tool, keep Markdown" direction: close the
   deprecation windows (drop `.qmd` input, the `revealjs`/`ojs_define` aliases, `_quarto.yml` detection,
   the migration framing) while KEEPING Markdown/Pandoc syntax. Owner-gated; scope when ready. →
@@ -114,8 +114,7 @@ directly (`code, pre, kbd, samp, .katex { letter-spacing: normal; word-spacing: 
   highlighting is server-side and present on first paint (`highlight.rs:49`→`emit.rs:65,82`); the only
   client enhancer is the copy button; no hydration step to miss. If it recurs, capture exact steps
   (viewport / kernel state / after a WS reconnect?) and reopen.
-- Decided/known: the reader menu is intentionally an untrapped popover (not a modal); highlights are
-  single-block prose only (margin notes / cross-block / colours scoped out — see specs).
+- Decided/known: the reader menu is intentionally an untrapped popover (not a modal).
 
 ### Visual craft / theming (deep-audit P2)
 The cluster shipped 2026-07-01 (sepia first-classing, tokenized copy/shadows, prose rhythm, dark
@@ -215,20 +214,6 @@ and re-check competitor layouts live before banking a default on "X does Y."
 - [ ] **Reconsider the tech-blue accent** for a quieter near-monochrome plus one restrained accent.
 - [ ] **Introduce a spacing scale** (`--space-1..6`). Spacing is ad-hoc rem literals throughout
   (base.css), making the calm, consistent rhythm reading-first design needs hard to enforce.
-
-### Extension ecosystem audit (deferred, its own pass)
-*Author decision (2026-06-27): the `_extensions/` story (themes + functionality) gets a dedicated
-audit pass, not piecemeal fixes. Survey what an extension can hook (theme `--tali-*` tokens, bundled
-CSS/JS, shortcodes, `{{< embed >}}`), where the seams are sharp vs sharp-edged, and what's missing /
-under-documented; produce a prioritized improvement list. Treat the native deck contract
-(`window.TaliesinDeck` + legacy `window.QmdDeck`, `.tali-deck`/`.tali-slide` + dual-emitted
-`.qmd-deck`/`.qmd-slide`) as the stable target.*
-- [ ] **Run the audit** (themes + functionality): inventory the worked examples under `_extensions/`,
-  exercise each against the real binary, find rough edges + gaps + missing docs.
-- [ ] **Known finding to fold in — liquid-glass corpus extension is dead.** Live `Uncaught
-  ReferenceError: Reveal is not defined`; its CSS targets `.reveal` DOM the native engine never emits,
-  so the headline glass effect of THE worked example is non-functional. Fix: port to
-  `window.TaliesinDeck` + `.tali-slide`/`.tali-deck`; add a corpus test asserting the theme applies.
 
 ### Tooling / format future
 - [ ] **Companion: surface `check`/prose-lint as editor diagnostics** (P3). VS Code squiggles from
