@@ -165,7 +165,6 @@
     .tali-nav-links.tali-nav-open { display: flex; }
     .tali-nav-spacer { display: none; }
     .tali-nav-link { padding: .7rem 1.15rem; border-radius: 0; }
-    .tali-nav-controls { padding: .5rem 1.15rem; }
     .tali-site-main.has-toc { grid-template-columns: minmax(0, 1fr); }
   }
 

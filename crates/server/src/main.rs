@@ -90,8 +90,6 @@ fn bridge_legacy_env() {
         "OPEN",
         "MERMAID_URL",
         "NO_CLEAR",
-        "REQUIRE_KERNEL",
-        "BLESS",
     ];
     for knob in KNOBS {
         let new = format!("TALIESIN_{knob}");
