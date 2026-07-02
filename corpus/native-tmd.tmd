@@ -1,0 +1,23 @@
+---
+title: A native .tmd document
+subtitle: The Taliesin-native source extension
+---
+
+This document is authored in `.tmd`, Taliesin's native source extension. The
+renderer treats it exactly like a `.qmd` file: the pipeline reads the source
+string, so the extension only governs *recognition* (which files the site walker,
+the `check` walker, and link rewriting pick up), never rendering.
+
+## A code block
+
+```python
+def greet(name: str) -> str:
+    return f"Hello from a .tmd file, {name}!"
+```
+
+## A callout
+
+::: {.callout-note}
+`.qmd` stays accepted, so existing trees keep working; `.tmd` is simply the name
+the project now leads with.
+:::

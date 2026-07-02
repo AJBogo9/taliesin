@@ -428,7 +428,7 @@ mod tests {
                     if !skip.contains(&name.as_str()) {
                         walk(&p, skip, out);
                     }
-                } else if p.extension().is_some_and(|x| x == "qmd") && !name.starts_with('_') {
+                } else if taliesin_core::ext::is_source_path(&p) && !name.starts_with('_') {
                     out.push(p);
                 }
             }

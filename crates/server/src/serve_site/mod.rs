@@ -873,9 +873,10 @@ struct Change {
 }
 
 fn is_qmd(p: &Path) -> bool {
+    // Native `.tmd` + accepted `.qmd` source docs, plus `.md` (watched for includes).
     matches!(
         p.extension().and_then(|e| e.to_str()),
-        Some("qmd") | Some("md")
+        Some("tmd") | Some("qmd") | Some("md")
     )
 }
 

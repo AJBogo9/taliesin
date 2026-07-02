@@ -727,10 +727,10 @@ fn video_html(
     format!("<figure class=\"qmd-video\">{videos}{cap}</figure>")
 }
 
-/// Map a deck source path to its built output URL (`x.qmd` → `x.html`), leaving a
-/// path that is already `.html` (or anything else) untouched.
+/// Map a deck source path to its built output URL (`x.tmd` / `x.qmd` → `x.html`),
+/// leaving a path that is already `.html` (or anything else) untouched.
 fn deck_href(path: &str) -> String {
-    match path.strip_suffix(".qmd") {
+    match crate::ext::strip_source_ext(path) {
         Some(stem) => format!("{stem}.html"),
         None => path.to_string(),
     }

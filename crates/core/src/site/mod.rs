@@ -1173,6 +1173,39 @@ mod tests {
     }
 
     #[test]
+    fn tmd_pages_are_discovered_with_html_urls() {
+        // `.tmd` is the native source extension; a site authored in `.tmd` must be
+        // walked like a `.qmd` one, and each page's built URL is still `.html`.
+        let root = write_site(
+            "tmd-native",
+            &[
+                ("_site.yml", "title: Demo\n"),
+                ("index.tmd", "---\ntitle: Home\n---\n\n[Next](page.tmd).\n"),
+                (
+                    "page.tmd",
+                    "---\ntitle: Page\n---\n\nHi from a .tmd page.\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let mut got: Vec<(String, String)> = site
+            .pages
+            .iter()
+            .map(|p| (p.rel.clone(), p.url.clone()))
+            .collect();
+        got.sort();
+        assert_eq!(
+            got,
+            vec![
+                ("index.tmd".to_string(), "index.html".to_string()),
+                ("page.tmd".to_string(), "page.html".to_string()),
+            ],
+            "both .tmd pages discovered with .html urls"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn listing_without_contents_warns() {
         let root = write_site(
             "nocontents",

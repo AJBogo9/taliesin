@@ -1,7 +1,7 @@
 //! Front-door subcommands: `init` (scaffold a starter site) and `serve`/`preview`/`dev`
 //! (launch the live preview server).
 //!
-//! **What:** `init` writes a minimal previewable site (`_site.yml` + `index.qmd`);
+//! **What:** `init` writes a minimal previewable site (`_site.yml` + `index.tmd`);
 //! `serve` parses the preview flags (`--open`/`--host`/`--no-exec`/port) and dispatches
 //! to the single-doc or multi-page server.
 //!
@@ -18,13 +18,14 @@ use std::process::ExitCode;
 /// `_site.yml` for the scaffold: the minimal flat-native config (just a title).
 const INIT_SITE_YML: &str = "title: My site\n";
 
-/// `index.qmd` for the scaffold: a hello-world page that previews immediately and
-/// points the new user at the next steps.
-const INIT_INDEX_QMD: &str = "---\ntitle: Hello, qmd-fast\n---\n\n\
-    Welcome to your new [qmd-fast](https://github.com/anthropics/qmd-fast) site.\n\n\
-    Edit `index.qmd` and the preview reloads as you save.\n\n\
+/// `index.tmd` for the scaffold: a hello-world page that previews immediately and
+/// points the new user at the next steps. `.tmd` is the native extension (`.qmd`
+/// still works if you prefer it).
+const INIT_INDEX_TMD: &str = "---\ntitle: Hello, Taliesin\n---\n\n\
+    Welcome to your new [Taliesin](https://github.com/AJBogo9/qmd-fast) site.\n\n\
+    Edit `index.tmd` and the preview reloads as you save.\n\n\
     ## Next steps\n\n\
-    - Add more `.qmd` pages beside this one — each becomes its own page.\n\
+    - Add more `.tmd` pages beside this one — each becomes its own page.\n\
     - Configure navigation and the title in `_site.yml`.\n\
     - Drop in a `{python}` or `{r}` code cell to run live output.\n";
 
@@ -42,7 +43,7 @@ pub(crate) fn cmd_init(dir: Option<&str>) -> ExitCode {
             } else {
                 dir.display().to_string()
             };
-            println!("Scaffolded a qmd-fast site. Preview it:\n  qmd-fast preview {where_}");
+            println!("Scaffolded a Taliesin site. Preview it:\n  taliesin preview {where_}");
             ExitCode::SUCCESS
         }
         Err(e) => {
@@ -59,7 +60,7 @@ fn scaffold_init(dir: &Path) -> Result<Vec<PathBuf>, String> {
     if let Err(e) = std::fs::create_dir_all(dir) {
         return Err(format!("cannot create {}: {e}", dir.display()));
     }
-    let files = [("_site.yml", INIT_SITE_YML), ("index.qmd", INIT_INDEX_QMD)];
+    let files = [("_site.yml", INIT_SITE_YML), ("index.tmd", INIT_INDEX_TMD)];
     // Refuse to overwrite *any* target before writing *any*, so a partial scaffold
     // never lands on top of an existing project.
     for (name, _) in files {
@@ -119,7 +120,7 @@ pub(crate) fn cmd_serve(args: &[String]) -> ExitCode {
         unsafe { std::env::set_var("QMD_FAST_NO_EXEC", "1") };
     }
     let Some(path) = positionals.first() else {
-        eprintln!("usage: qmd-fast preview <file.qmd|dir> [port] [--host] [--open] [--no-exec]");
+        eprintln!("usage: taliesin preview <file.tmd|dir> [port] [--host] [--open] [--no-exec]");
         return ExitCode::FAILURE;
     };
     // The optional second positional is the port; a present-but-unparseable value
@@ -175,9 +176,9 @@ mod tests {
         let written = scaffold_init(&dir).expect("scaffold succeeds into a fresh dir");
 
         let site_yml = dir.join("_site.yml");
-        let index = dir.join("index.qmd");
+        let index = dir.join("index.tmd");
         assert!(site_yml.exists(), "_site.yml written");
-        assert!(index.exists(), "index.qmd written");
+        assert!(index.exists(), "index.tmd written");
         assert_eq!(written, vec![site_yml.clone(), index.clone()]);
 
         // The scaffold is a real, parseable site whose one page previews.

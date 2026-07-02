@@ -5,9 +5,10 @@
 
 use super::*;
 
-/// Map a `.qmd` rel-path to its built `.html` URL (`x.qmd` → `x.html`).
+/// Map a source rel-path to its built `.html` URL (`x.tmd` / `x.qmd` → `x.html`);
+/// a non-source path round-trips unchanged.
 pub(super) fn qmd_to_html(rel: &str) -> String {
-    match rel.strip_suffix(".qmd") {
+    match crate::ext::strip_source_ext(rel) {
         Some(stem) => format!("{stem}.html"),
         None => rel.to_string(),
     }
@@ -262,15 +263,25 @@ mod tests {
             "posts/em-algorithm/index.html"
         );
         assert_eq!(qmd_to_html("style.css"), "style.css");
+        // The native `.tmd` extension maps just like `.qmd`.
+        assert_eq!(qmd_to_html("blog.tmd"), "blog.html");
+        assert_eq!(
+            qmd_to_html("posts/intro/index.tmd"),
+            "posts/intro/index.html"
+        );
     }
 
     #[test]
     fn link_rewrite_preserves_prefix_and_fragment() {
-        let html = r##"<a href="blog.qmd">b</a> <a href="../KL-divergence/index.qmd#sec-x">k</a> <a href="/projects.qmd">p</a> <a href="https://x.com/a.qmd">ext</a> <a href="#local">l</a>"##;
+        let html = r##"<a href="blog.qmd">b</a> <a href="../KL-divergence/index.qmd#sec-x">k</a> <a href="/projects.qmd">p</a> <a href="talk.tmd">t</a> <a href="https://x.com/a.qmd">ext</a> <a href="#local">l</a>"##;
         let out = rewrite_qmd_links(html);
         assert!(out.contains("href=\"blog.html\""));
         assert!(out.contains("href=\"../KL-divergence/index.html#sec-x\""));
         assert!(out.contains("href=\"/projects.html\""));
+        assert!(
+            out.contains("href=\"talk.html\""),
+            "an intra-site .tmd link rewrites to .html too"
+        );
         assert!(
             out.contains("href=\"https://x.com/a.qmd\""),
             "external untouched"

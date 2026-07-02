@@ -111,9 +111,13 @@ fn push_chapter(
         // Throwaway warnings: `book_pages` re-parses this file with the real sink, so a
         // listing-without-contents warning here would just duplicate it.
         .or_else(|| parse_front_matter(&input, file, &mut Vec::new()).title)
-        .unwrap_or_else(|| rel.trim_end_matches(".qmd").to_string());
-    // The `index.qmd` preface is unnumbered by convention, like Quarto.
-    let number = if unnumbered || rel == "index.qmd" {
+        .unwrap_or_else(|| {
+            crate::ext::strip_source_ext(&rel)
+                .unwrap_or(&rel)
+                .to_string()
+        });
+    // The `index.{tmd,qmd}` preface is unnumbered by convention, like Quarto.
+    let number = if unnumbered || crate::ext::strip_source_ext(&rel) == Some("index") {
         None
     } else {
         *num += 1;

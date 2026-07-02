@@ -19,7 +19,7 @@ fn collect_qmd(dir: &Path, out: &mut Vec<PathBuf>) {
                 continue; // not source documents
             }
             collect_qmd(&p, out);
-        } else if p.extension().and_then(|s| s.to_str()) == Some("qmd") {
+        } else if taliesin_core::ext::is_source_path(&p) {
             out.push(p);
         }
     }

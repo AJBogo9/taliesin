@@ -96,7 +96,7 @@ fn collect_pages(dir: &Path, out: &mut Vec<PathBuf>) {
         }
         if p.is_dir() {
             collect_pages(&p, out);
-        } else if p.extension().and_then(|s| s.to_str()) == Some("qmd") {
+        } else if crate::ext::is_source_path(&p) {
             out.push(p);
         }
     }

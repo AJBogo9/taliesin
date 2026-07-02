@@ -8,6 +8,7 @@ author's own projects; provenance is below.
 
 | Path | Category | Exercises | Source |
 |---|---|---|---|
+| `native-tmd.tmd` | Native source extension | authored in `.tmd` (Taliesin's native extension); pins that the walker/`check`/link-rewrite recognize `.tmd` and render it identically to `.qmd` | (purpose-built) |
 | `posts/born-machines.qmd` | Prose blog post | pure prose (no math/code) — the simplest Phase 1 target | `personal/blog` |
 | `posts/em-algorithm/` | Math blog post | heavy KaTeX (~100 math spans), 6 code cells, `{js}` cells | `personal/tech-blog` |
 | `posts/pca-geometry/` | Live-demo blog post | `{js}` cells + Three.js + math + code | `personal/tech-blog` |
