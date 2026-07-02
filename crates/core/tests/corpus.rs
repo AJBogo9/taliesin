@@ -638,7 +638,7 @@ fn bare_build_is_script_free_css_themed_and_drops_js() {
         "bare auto-theme uses a prefers-color-scheme media query"
     );
     assert!(
-        bare.contains(":root .qhl-"),
+        bare.contains(":root .tali-hl-"),
         "the dark layer is rewritten from [data-theme] onto :root"
     );
 
