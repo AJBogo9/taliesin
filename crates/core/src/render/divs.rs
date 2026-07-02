@@ -89,7 +89,7 @@ fn next_code_state(state: Option<(char, usize)>, line: &str) -> Option<(char, us
     }
 }
 
-/// A pandoc/Quarto fenced-div marker: 3+ colons, then nothing (close) or an
+/// A Pandoc fenced-div marker: 3+ colons, then nothing (close) or an
 /// attribute block / bare class name (open).
 enum Fence {
     /// Opening fence; carries the raw attribute string (without the braces).

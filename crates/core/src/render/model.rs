@@ -116,7 +116,8 @@ pub enum DocFormat {
     /// A standard HTML page (blog post, book): the default.
     #[default]
     Html,
-    /// A reveal.js slide deck (`format: revealjs` / `*-revealjs`).
+    /// A slide deck, rendered by qmd-fast's OWN native engine (reveal.js was removed);
+    /// selected by `format: revealjs` / `*-revealjs`.
     Reveal,
 }
 
