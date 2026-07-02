@@ -461,12 +461,12 @@
   /* server-side syntax-highlight scope classes (syntect), light palette (GitHub-ish);
      the dark overrides live in DARK_CSS so the theme toggle restyles code with no
      re-highlight. Unmapped scopes inherit the default code colour. */
-  .qhl-comment { color: #6e7781; font-style: italic; }
-  .qhl-string { color: #0a3069; }
-  .qhl-keyword, .qhl-storage { color: #cf222e; }
-  .qhl-constant, .qhl-support { color: #0550ae; }
-  .qhl-entity { color: #8250df; }
-  .qhl-variable { color: #953800; }
+  .tali-hl-comment { color: #6e7781; font-style: italic; }
+  .tali-hl-string { color: #0a3069; }
+  .tali-hl-keyword, .tali-hl-storage { color: #cf222e; }
+  .tali-hl-constant, .tali-hl-support { color: #0550ae; }
+  .tali-hl-entity { color: #8250df; }
+  .tali-hl-variable { color: #953800; }
   /* inline code (not the scrollable <pre> kind): a subtle tinted chip so it reads
      as code in prose instead of blending in as same-colour monospace; .875em pulls
      the mono glyphs down to the serif x-height. It also breaks rather than overflowing. */
@@ -585,7 +585,7 @@
   /* Narrated code walkthrough (`::: {.code-walkthrough}`): the code panel is pinned
      full-width at the TOP of the viewport and the prose steps scroll beneath it — the
      same shape at every width (a wide 2-column split left the code column too narrow and
-     scrolled long lines out of view). Scrolling focuses line ranges (`.qhl-ln-hl`, driven
+     scrolled long lines out of view). Scrolling focuses line ranges (`.tali-hl-ln-hl`, driven
      by walkthrough.js). Steps come first in the DOM; `order:-1` lifts the code above them. */
   .code-walkthrough { display: flex; flex-direction: column; gap: 0; margin: 1.6rem 0; }
   /* `min-width: 0` + `max-width: 100%` let a long, unwrapped `<pre>` scroll INSIDE
@@ -602,14 +602,14 @@
   .cw-steps .step > :last-child { margin-bottom: 0; }
   /* Reuse the deck's line-focus contract (block lines, dim the rest, accent the
      focused range), scoped to the page-side walkthrough so it never touches decks. */
-  .code-walkthrough pre .qhl-ln { display: block; }
-  .code-walkthrough pre.qhl-lines-active .qhl-ln { opacity: .32; }
-  .code-walkthrough pre.qhl-lines-active .qhl-ln-hl { opacity: 1;
+  .code-walkthrough pre .tali-hl-ln { display: block; }
+  .code-walkthrough pre.tali-hl-lines-active .tali-hl-ln { opacity: .32; }
+  .code-walkthrough pre.tali-hl-lines-active .tali-hl-ln-hl { opacity: 1;
     background: color-mix(in srgb, var(--qmd-accent) 14%, transparent);
     box-shadow: inset .18em 0 0 var(--qmd-accent); }
   @media (prefers-reduced-motion: no-preference) {
     .code-walkthrough .cw-steps .step { transition: opacity .25s ease, border-color .25s ease; }
-    .code-walkthrough pre .qhl-ln { transition: opacity .25s ease, background .25s ease; }
+    .code-walkthrough pre .tali-hl-ln { transition: opacity .25s ease, background .25s ease; }
   }
   @media (max-width: 60rem) {
     /* Same code-on-top shape; just a shorter code strip + roomier step dwell on phones. */
@@ -706,12 +706,12 @@
   /* Sepia code + diagnostics: the light syntax palette and near-white output/error
      boxes clash with the warm sepia page, so restyle them warm (parallels DARK_CSS).
      Sepia is a low-contrast reading theme, so these stay muted, not vivid. */
-  html[data-theme="sepia"] .qhl-comment { color: #8a7c62; }
-  html[data-theme="sepia"] .qhl-string { color: #3f6a44; }
-  html[data-theme="sepia"] .qhl-keyword, html[data-theme="sepia"] .qhl-storage { color: #9a3b28; }
-  html[data-theme="sepia"] .qhl-constant, html[data-theme="sepia"] .qhl-support { color: #2f5f84; }
-  html[data-theme="sepia"] .qhl-entity { color: #7d4a86; }
-  html[data-theme="sepia"] .qhl-variable { color: #9a4a1a; }
+  html[data-theme="sepia"] .tali-hl-comment { color: #8a7c62; }
+  html[data-theme="sepia"] .tali-hl-string { color: #3f6a44; }
+  html[data-theme="sepia"] .tali-hl-keyword, html[data-theme="sepia"] .tali-hl-storage { color: #9a3b28; }
+  html[data-theme="sepia"] .tali-hl-constant, html[data-theme="sepia"] .tali-hl-support { color: #2f5f84; }
+  html[data-theme="sepia"] .tali-hl-entity { color: #7d4a86; }
+  html[data-theme="sepia"] .tali-hl-variable { color: #9a4a1a; }
   html[data-theme="sepia"] .qmd-output > pre { background: #ece2c8; border-left-color: var(--qmd-border); }
   html[data-theme="sepia"] .qmd-stderr { border-left-color: #b8860b !important; background: #efe4c0 !important; color: #5b4636; }
   html[data-theme="sepia"] .qmd-error { border-left-color: #b0452f !important; background: #f0dcc8 !important; color: #7a2e22; }

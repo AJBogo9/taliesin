@@ -5,7 +5,7 @@
 // (`.cw-stage > .cw-code > pre`). As the reader scrolls, the step nearest the
 // viewport centre becomes active and its `data-cw-lines` spec focuses the matching
 // lines in the panel — dimming the rest. Read-only / scroll-only: it never writes
-// source. Reuses the deck's `.qhl-ln` / `.qhl-ln-hl` / `.qhl-lines-active` class
+// source. Reuses the deck's `.tali-hl-ln` / `.tali-hl-ln-hl` / `.tali-hl-lines-active` class
 // contract (styled in base.css), but does NOT depend on deck.js (not loaded on
 // pages), so the tiny line-spec parse lives here.
 //
@@ -28,16 +28,16 @@
   // Focus the lines named by `spec` in `pre`, dimming the rest. ""/"all" clears it.
   function focusLines(pre, spec) {
     if (!pre) return;
-    var lines = pre.querySelectorAll('.qhl-ln');
+    var lines = pre.querySelectorAll('.tali-hl-ln');
     spec = (spec || '').trim();
     if (!spec || spec === 'all') {
-      pre.classList.remove('qhl-lines-active');
-      lines.forEach(function (l) { l.classList.remove('qhl-ln-hl'); });
+      pre.classList.remove('tali-hl-lines-active');
+      lines.forEach(function (l) { l.classList.remove('tali-hl-ln-hl'); });
       return;
     }
     var on = parseLineSpec(spec);
-    pre.classList.add('qhl-lines-active');
-    lines.forEach(function (l, i) { l.classList.toggle('qhl-ln-hl', on.has(i + 1)); });
+    pre.classList.add('tali-hl-lines-active');
+    lines.forEach(function (l, i) { l.classList.toggle('tali-hl-ln-hl', on.has(i + 1)); });
   }
 
   function initWalkthrough(cw) {

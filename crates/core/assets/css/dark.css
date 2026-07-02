@@ -17,12 +17,12 @@
      so they adapt to the dark background automatically — no per-kind dark override needed. */
   html[data-theme="dark"] pre.mermaid { background: transparent; }
   /* server-side syntax-highlight scope classes (syntect), recoloured for dark */
-  html[data-theme="dark"] .qhl-comment { color: #8b949e; }
-  html[data-theme="dark"] .qhl-string { color: #a5d6ff; }
-  html[data-theme="dark"] .qhl-keyword, html[data-theme="dark"] .qhl-storage { color: #ff7b72; }
-  html[data-theme="dark"] .qhl-constant, html[data-theme="dark"] .qhl-support { color: #79c0ff; }
-  html[data-theme="dark"] .qhl-entity { color: #d2a8ff; }
-  html[data-theme="dark"] .qhl-variable { color: #ffa657; }
+  html[data-theme="dark"] .tali-hl-comment { color: #8b949e; }
+  html[data-theme="dark"] .tali-hl-string { color: #a5d6ff; }
+  html[data-theme="dark"] .tali-hl-keyword, html[data-theme="dark"] .tali-hl-storage { color: #ff7b72; }
+  html[data-theme="dark"] .tali-hl-constant, html[data-theme="dark"] .tali-hl-support { color: #79c0ff; }
+  html[data-theme="dark"] .tali-hl-entity { color: #d2a8ff; }
+  html[data-theme="dark"] .tali-hl-variable { color: #ffa657; }
   /* code-cell output, warnings, and errors: dark equivalents of the light boxes */
   html[data-theme="dark"] .qmd-output > pre { background: #1b1e24; border-left-color: var(--qmd-border); }
   html[data-theme="dark"] .qmd-stderr { border-left-color: #d0a215 !important; background: #2a2415 !important; color: #e8dcc0; }

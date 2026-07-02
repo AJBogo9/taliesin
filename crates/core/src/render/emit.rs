@@ -167,7 +167,7 @@ fn code_line_numbers(info: &str, literal: &str) -> Option<String> {
     }
 }
 
-/// Wrap each source line of already-highlighted code HTML in `<span class="qhl-ln">`
+/// Wrap each source line of already-highlighted code HTML in `<span class="tali-hl-ln">`
 /// so a deck can address individual lines. A highlight span left open across a
 /// newline is closed at the line end and reopened at the next line's start, so each
 /// line is self-contained. Lines are block-displayed (no trailing newline needed);
@@ -205,7 +205,7 @@ pub(crate) fn wrap_code_lines(html: &str) -> String {
     }
     lines
         .into_iter()
-        .map(|l| format!("<span class=\"qhl-ln\">{l}</span>"))
+        .map(|l| format!("<span class=\"tali-hl-ln\">{l}</span>"))
         .collect()
 }
 
@@ -215,7 +215,7 @@ pub(crate) fn wrap_code_lines(html: &str) -> String {
 /// magic-move blocks, which need addressable lines to morph between). Returns the
 /// html unchanged if it isn't a code block or is already line-wrapped.
 pub(crate) fn wrap_pre_lines(html: &str) -> String {
-    if html.contains("class=\"qhl-ln\"") || !html.contains("<code") {
+    if html.contains("class=\"tali-hl-ln\"") || !html.contains("<code") {
         return html.to_string();
     }
     let Some(cs) = html.find("<code") else {

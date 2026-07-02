@@ -486,12 +486,12 @@
     var blockFrom = pres[from], blockTo = pres[to];
     var scale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--qmd-deck-scale')) || 1;
     var byText = {};
-    Array.prototype.forEach.call(blockFrom.querySelectorAll('.qhl-ln'), function (l) {
+    Array.prototype.forEach.call(blockFrom.querySelectorAll('.tali-hl-ln'), function (l) {
       (byText[lineText(l)] || (byText[lineText(l)] = [])).push(l);
     });
     blockTo.classList.add('qmd-mm-active');
     blockFrom.classList.remove('qmd-mm-active'); // fades out (CSS opacity transition)
-    Array.prototype.forEach.call(blockTo.querySelectorAll('.qhl-ln'), function (lt) {
+    Array.prototype.forEach.call(blockTo.querySelectorAll('.tali-hl-ln'), function (lt) {
       var list = byText[lineText(lt)], st = lt.style;
       if (list && list.length) { // matched line: glide from its old position
         var lf = list.shift(), rf = lf.getBoundingClientRect(), rt = lt.getBoundingClientRect();
@@ -511,16 +511,16 @@
   // Highlight the lines named by `spec` ("3-5", "1,4", "all", "") in a code block,
   // dimming the rest. "all"/empty clears the dim.
   function highlightLines(pre, spec) {
-    var lines = pre.querySelectorAll('.qhl-ln');
+    var lines = pre.querySelectorAll('.tali-hl-ln');
     spec = (spec || '').trim();
     if (!spec || spec === 'all') {
-      pre.classList.remove('qhl-lines-active');
-      lines.forEach(function (l) { l.classList.remove('qhl-ln-hl'); });
+      pre.classList.remove('tali-hl-lines-active');
+      lines.forEach(function (l) { l.classList.remove('tali-hl-ln-hl'); });
       return;
     }
     var on = parseLineSpec(spec);
-    pre.classList.add('qhl-lines-active');
-    lines.forEach(function (l, i) { l.classList.toggle('qhl-ln-hl', on.has(i + 1)); });
+    pre.classList.add('tali-hl-lines-active');
+    lines.forEach(function (l, i) { l.classList.toggle('tali-hl-ln-hl', on.has(i + 1)); });
   }
   function parseLineSpec(spec) {
     var on = new Set();

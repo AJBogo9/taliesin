@@ -52,7 +52,7 @@ The base palette lives in a `:root` block; `html[data-theme="dark"]` (and
 A pre-paint `<head>` script reads the saved choice from `localStorage` before the
 first frame, so a returning reader never sees a flash of the wrong theme. Crucially,
 **syntax highlighting recolours with no re-highlight**: code is highlighted once,
-server-side, into scope classes (`qhl-keyword`, `qhl-string`, …), and the dark
+server-side, into scope classes (`tali-hl-keyword`, `tali-hl-string`, …), and the dark
 theme simply restyles those classes, so a toggle is pure CSS with nothing to
 recompute. The same holds for math, figures (a light/dark image swap), and callouts:
 all **fully offline**, the colours baked into the page, no CDN and no client re-run.

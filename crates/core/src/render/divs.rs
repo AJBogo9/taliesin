@@ -404,7 +404,7 @@ fn build_container(
     } else if attrs.classes.iter().any(|c| c == "code-walkthrough") {
         // Narrated code walkthrough: the first code block becomes a sticky panel; the
         // remaining blocks (the `.step` divs) scroll alongside it and drive line-range
-        // highlighting (walkthrough.js, reusing the `.qhl-ln` contract). Read-only:
+        // highlighting (walkthrough.js, reusing the `.tali-hl-ln` contract). Read-only:
         // inner blocks keep their own ids/sourcepos via the regular grouping.
         let code_idx = inner
             .iter()

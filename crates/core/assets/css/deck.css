@@ -394,16 +394,16 @@ html.qmd-print .qmd-slide-bg { display: none; } /* per-slide backgrounds aren't 
 
 /* Code line highlighting / stepping (code-line-numbers). Lines are block so the
    highlight + dim span the full code width; the copy button reads innerText, which
-   still reconstructs the breaks. deck.js toggles .qhl-lines-active / .qhl-ln-hl. */
-.qmd-deck pre .qhl-ln { display: block; } /* wrapped lines (code-line-numbers + magic-move) stack */
-.qmd-deck pre.qhl-lines-active .qhl-ln { opacity: .3; }
-.qmd-deck pre.qhl-lines-active .qhl-ln-hl {
+   still reconstructs the breaks. deck.js toggles .tali-hl-lines-active / .tali-hl-ln-hl. */
+.qmd-deck pre .tali-hl-ln { display: block; } /* wrapped lines (code-line-numbers + magic-move) stack */
+.qmd-deck pre.tali-hl-lines-active .tali-hl-ln { opacity: .3; }
+.qmd-deck pre.tali-hl-lines-active .tali-hl-ln-hl {
   opacity: 1;
   background: color-mix(in srgb, var(--deck-accent, #4c6ef5) 13%, transparent);
   box-shadow: inset .18em 0 0 var(--deck-accent, #4c6ef5);
 }
 @media (prefers-reduced-motion: no-preference) {
-  .qmd-deck pre[data-code-lines] .qhl-ln { transition: opacity .3s ease; }
+  .qmd-deck pre[data-code-lines] .tali-hl-ln { transition: opacity .3s ease; }
 }
 
 /* Presenter (speaker) window: a dark control surface with live current + next
@@ -669,7 +669,7 @@ html.qmd-scroll .qmd-progress, html.qmd-scroll .qmd-ctl-prev, html.qmd-scroll .q
    properties so a deck or extension theme can retheme with a few overrides, or
    override wholesale. Also carries the content styling base.css gives normal HTML
    pages but which decks don't load (decks ship deck.css + KaTeX).
-   Keep the .qhl-* palette in sync with base.css.
+   Keep the .tali-hl-* palette in sync with base.css.
    =========================================================================== */
 
 .qmd-deck {
@@ -758,12 +758,12 @@ html.qmd-scroll .qmd-progress, html.qmd-scroll .qmd-ctl-prev, html.qmd-scroll .q
 
 /* server-side syntax-highlight palette (syntect); keep in sync with base.css.
    Unmapped scopes inherit the default ink colour. */
-.qmd-deck .qhl-comment { color: #6e7781; font-style: italic; }
-.qmd-deck .qhl-string { color: #0a3069; }
-.qmd-deck .qhl-keyword, .qmd-deck .qhl-storage { color: #cf222e; }
-.qmd-deck .qhl-constant, .qmd-deck .qhl-support { color: #0550ae; }
-.qmd-deck .qhl-entity { color: #8250df; }
-.qmd-deck .qhl-variable { color: #953800; }
+.qmd-deck .tali-hl-comment { color: #6e7781; font-style: italic; }
+.qmd-deck .tali-hl-string { color: #0a3069; }
+.qmd-deck .tali-hl-keyword, .qmd-deck .tali-hl-storage { color: #cf222e; }
+.qmd-deck .tali-hl-constant, .qmd-deck .tali-hl-support { color: #0550ae; }
+.qmd-deck .tali-hl-entity { color: #8250df; }
+.qmd-deck .tali-hl-variable { color: #953800; }
 
 /* Tables and blockquotes (base.css equivalents, deck-safe concrete values). */
 .qmd-deck table { border-collapse: collapse; margin: 0 0 .6em; }
@@ -791,12 +791,12 @@ html.qmd-deck-dark .qmd-deck {
   --deck-rule: #363a44;
   --deck-code-bg: #21242b;
 }
-html.qmd-deck-dark .qmd-deck .qhl-comment { color: #8b949e; }
-html.qmd-deck-dark .qmd-deck .qhl-string { color: #a5d6ff; }
-html.qmd-deck-dark .qmd-deck .qhl-keyword, html.qmd-deck-dark .qmd-deck .qhl-storage { color: #ff7b72; }
-html.qmd-deck-dark .qmd-deck .qhl-constant, html.qmd-deck-dark .qmd-deck .qhl-support { color: #79c0ff; }
-html.qmd-deck-dark .qmd-deck .qhl-entity { color: #d2a8ff; }
-html.qmd-deck-dark .qmd-deck .qhl-variable { color: #ffa657; }
+html.qmd-deck-dark .qmd-deck .tali-hl-comment { color: #8b949e; }
+html.qmd-deck-dark .qmd-deck .tali-hl-string { color: #a5d6ff; }
+html.qmd-deck-dark .qmd-deck .tali-hl-keyword, html.qmd-deck-dark .qmd-deck .tali-hl-storage { color: #ff7b72; }
+html.qmd-deck-dark .qmd-deck .tali-hl-constant, html.qmd-deck-dark .qmd-deck .tali-hl-support { color: #79c0ff; }
+html.qmd-deck-dark .qmd-deck .tali-hl-entity { color: #d2a8ff; }
+html.qmd-deck-dark .qmd-deck .tali-hl-variable { color: #ffa657; }
 html.qmd-deck-dark .qmd-deck .qmd-copy { background: #21242b; color: var(--deck-muted); border-color: var(--deck-rule); }
 
 /* Speaker notes (`::: {.notes}`) are for the presenter window only. */

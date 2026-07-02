@@ -263,7 +263,7 @@ fn code_walkthrough_builds_sticky_panel_and_line_focused_steps() {
 
     // The panel code block is line-wrapped so its lines are addressable by ordinal.
     assert!(
-        h.contains("class=\"qhl-ln\""),
+        h.contains("class=\"tali-hl-ln\""),
         "panel lines not wrapped: {h}"
     );
 
@@ -1291,7 +1291,7 @@ fn code_line_numbers_wraps_lines_for_stepping() {
     );
     // two source lines -> two line spans (the trailing-newline line is dropped).
     assert_eq!(
-        page.matches("class=\"qhl-ln\"").count(),
+        page.matches("class=\"tali-hl-ln\"").count(),
         2,
         "expected one line span per source line"
     );
@@ -1300,9 +1300,9 @@ fn code_line_numbers_wraps_lines_for_stepping() {
         "---\nformat: revealjs\n---\n\n## S\n\n```python\na = 1\n```\n",
         "fb",
     );
-    // (check the attribute, not bare "qhl-ln" — the inlined CSS mentions `.qhl-ln`.)
+    // (check the attribute, not bare "tali-hl-ln" — the inlined CSS mentions `.tali-hl-ln`.)
     assert!(
-        !plain.contains("class=\"qhl-ln\""),
+        !plain.contains("class=\"tali-hl-ln\""),
         "plain code should not be line-wrapped"
     );
 }
@@ -1361,7 +1361,7 @@ fn magic_move_div_wraps_code_lines() {
     );
     // both blocks' lines are wrapped so the engine can match/glide them (1 + 2 = 3).
     assert_eq!(
-        page.matches("class=\"qhl-ln\"").count(),
+        page.matches("class=\"tali-hl-ln\"").count(),
         3,
         "magic-move code blocks should be line-wrapped"
     );
