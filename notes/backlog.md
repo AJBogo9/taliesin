@@ -116,13 +116,13 @@ lacks parity with the richer in-page ref path. Both deferred items below hit the
   it. (Everything else in a `build <dir> --out` folder is already `file://`-portable.)
 
 ### Discoverability & distribution
-- [ ] **Author publishing/share workflow** (P2, product). The primitives exist: `qmd-fast build
-  <dir> --out <folder>` is a portable static site you can host or zip; the immediate answer for
-  sharing a book with supervisors is build `--out` a folder, then push to a `gh-pages`/rendered-HTML
-  branch or any static host. The gap is a *designed, documented* publishing UX: (a) document the
-  recipe in the guide; (b) consider a thin `qmd-fast publish` that pushes `_site/` to a rendered-HTML
-  branch. Distinct from the deferred marketing-site deploy. ***REMOVED***
-  read-only export, no write-back.
+*Publishing recipe DOCUMENTED 2026-07-02 (`main`): a "Publishing & sharing" section in
+`docs/guide/reference/cli.qmd` (send-a-zip, GitHub Pages 3-line push, drag-drop hosts, rsync/S3, +
+the `url:`-before-publish + `check`-first notes). Remaining, deferred:*
+- [ ] **Thin `qmd-fast publish` command** (P3, optional): push `_site/` to a rendered-HTML branch
+  (e.g. `gh-pages`) in one step. Its own design (git integration, force-push safety, auth) — deferred;
+  the documented manual recipe fully covers the need today. ***REMOVED***
+  read-only export, no write-back. Distinct from the deferred marketing-site deploy.
 - Already tracked (no new entry): **generic SEO** (sitemap.xml / robots.txt / JSON-LD) is fully
   specced in `build-seo-completeness` (Wave 5) + `BEYOND-QUARTO.md:308-312`. Existing SEO today is
   og/twitter/canonical, gated on a configured `url:`.
