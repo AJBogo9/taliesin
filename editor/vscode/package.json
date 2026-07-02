@@ -64,7 +64,7 @@
       "editor/title": [
         {
           "command": "qmdFast.openPreview",
-          "when": "resourceExtname == .qmd",
+          "when": "resourceExtname == .tmd || resourceExtname == .qmd",
           "group": "navigation"
         }
       ]

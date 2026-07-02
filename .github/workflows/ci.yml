@@ -64,6 +64,32 @@ jobs:
       - name: Type-check client.js
         run: cd web-client && npx -y -p typescript tsc -p jsconfig.json
 
+  # The VS Code companion: build the extension, type-check its TS, and run the OFFLINE
+  # TextMate grammar tokenization gate (loads the .tmd grammar + the bundled MIT
+  # markdown/python/yaml base grammars from a downloaded VS Code build — no Extension Host
+  # launch, no display needed). Keeps the .tmd editor syntax highlighting from silently
+  # rotting. The heavier @vscode/test-electron e2e (real Extension Host) stays a local/F5 check.
+  editor-vscode:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editor/vscode
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install
+        run: npm ci
+      - name: Build + type-check
+        run: |
+          npm run build
+          npx tsc -p . --noEmit
+      - name: Fetch base grammars for the offline grammar test
+        run: node scripts/ensure-vscode.cjs
+      - name: Grammar + unit tests
+        run: npm test
+
   # Dependency advisory scan, kept off the fmt+test hot path. `serde_yaml` is
   # deprecated but currently advisory-free; this is the backstop that tells us if
   # that (or any transitive dep) ever grows a CVE — at which point we migrate.

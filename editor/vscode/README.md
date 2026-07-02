@@ -13,14 +13,37 @@ It is the missing *producer* for the source-sync protocol the preview client
 The preview stays **read-only**: the extension only navigates and highlights; it never
 writes back to the source.
 
+## Syntax highlighting (the `.tmd` grammar)
+
+The extension also **owns editor syntax highlighting for `.tmd`** via a `taliesin` language
+(`contributes.languages` / `contributes.grammars`). The grammar is a thin superset: it
+`include`s VS Code's built-in **MIT** `text.html.markdown` for all CommonMark, then adds only
+the Taliesin deltas — braced exec cells (` ```{python} `/`{r}`/`{js}`/…, with real embedded
+inner-language color and `#|`/`//|`/`%%|` cell options scoped as directives), `:::` fenced divs
++ `{.class #id key=val}` attrs, `$…$`/`$$…$$` math (with `{#eq-…}` labels), `{{< shortcodes >}}`,
+`@fig-`/`@sec-`/… cross-refs, `[@cite]` citations, and the deck `. . .` pause. Leading `---` YAML
+front matter is handled by the inherited markdown grammar. Inline deltas live in a small
+**injection grammar** scoped to `text.tmd.markdown` (so they fire mid-paragraph but never leak
+into plain `.md` files).
+
+`.tmd` **only** is claimed — `.qmd` is deliberately left to Quarto's extension (or plaintext), so
+there's no association conflict. A user who wants their legacy `.qmd` files highlighted by
+Taliesin can opt in with `"files.associations": { "*.qmd": "taliesin" }`. (The preview command
+still works on `.qmd` files — the renderer accepts them — they just don't get the `taliesin`
+language.)
+
+No Quarto grammar is copied: the base is the MIT `markdown-basics` grammar; Quarto's own VS Code
+grammar is **AGPL-3.0** and is not used.
+
 ## Develop / run
 
 1. `cd editor/vscode && npm install && npm run build`
 2. Open the **`editor/vscode`** folder in VS Code and press **F5** ("Run qmd-fast
    Companion"). A second *Extension Development Host* window opens with the extension
    loaded. (Run `npm run build` again after any source change, then reload the host.)
-3. Ensure `qmd-fast` is on `PATH` (the launcher), or set the `qmdFast.path` setting to the
-   binary (e.g. `target/release/qmd-fast`).
+3. Ensure the `taliesin` binary is on `PATH` (the launcher), or set the `qmdFast.path` setting
+   to the binary (e.g. `target/release/taliesin`). To exercise the grammar, open any `.tmd`
+   file (e.g. `corpus/native-tmd.tmd`) — the status bar should read **Taliesin**.
 
 ## Manual verification (the loop the headless tests can't close)
 
@@ -54,18 +77,24 @@ needed yet). Phase 2 (editor commands like insert-block / reorder-slide, strictl
 
 ## Automated verification (three layers)
 
-1. **Unit (`npm test`)** — `node:test` for `ports.ts` (free-port pick, HTTP wait) and
-   `paths.ts` (sourcepos parse, source-file mapping). No VS Code needed.
+1. **Unit + grammar (`npm test`)** — `node:test` for `ports.ts` (free-port pick, HTTP wait),
+   `paths.ts` (sourcepos parse, source-file mapping, `isSourceFile`), and **`grammar.test.ts`**:
+   an offline `vscode-textmate` + `vscode-oniguruma` tokenization gate that loads the `.tmd`
+   grammar + injection and asserts token scopes for every delta (cells embed their language,
+   `#|` options are directives, `{=html}` is not a cell, math/div/shortcode/xref/cite scopes,
+   `bob@rem-x` is not a ref, `$`/`@` inside a cell stay code). It reads the bundled base
+   grammars from a downloaded VS Code build (`node scripts/ensure-vscode.cjs` fetches it in CI;
+   locally it's already present). No Extension Host launch. This is the `editor-vscode` CI gate.
 2. **Relay bridge (`node scripts/relay-harness.cjs`)** — serves the real `relayHtml` with a
    same-origin stub iframe so a browser can drive both message directions against the actual
    code (see the script header). Verified: `qmd-goto` from the iframe reaches the host;
    `qmd-cursor` from the host reaches the iframe.
 3. **Extension Host (`npm run test:e2e`)** — `@vscode/test-electron` downloads a throwaway
    VS Code and runs `src/e2e/` inside the real Extension Host: asserts the command is
-   registered and that *Open Preview* on a `.qmd` actually opens a webview panel (which
-   spawns the server). Needs the locally-built `target/debug/qmd-fast`. The runner clears
-   `ELECTRON_RUN_AS_NODE` (set in some sandboxes) and passes `--no-sandbox` so VS Code
-   launches headless.
+   registered, that the **`taliesin` language is contributed and a `.tmd` file resolves to it**,
+   and that *Open Preview* actually opens a webview panel (which spawns the server). The preview
+   test needs the locally-built `target/debug/taliesin`. The runner clears `ELECTRON_RUN_AS_NODE`
+   (set in some sandboxes) and passes `--no-sandbox` so VS Code launches headless.
 
 What those three **don't** cover — and what the F5 checklist above is for — is the final
 visual round-trip *through the live preview iframe*: cursor-move → the block actually

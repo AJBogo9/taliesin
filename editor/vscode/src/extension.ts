@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import { PreviewServer } from "./server";
 import { relayHtml } from "./webview";
-import { parseSourcepos, resolveSourceFile, relativeKey } from "./paths";
+import { parseSourcepos, resolveSourceFile, relativeKey, isSourceFile } from "./paths";
 
 export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
@@ -11,8 +11,8 @@ export function activate(context: vscode.ExtensionContext) {
 
 async function openPreview(context: vscode.ExtensionContext) {
   const editor = vscode.window.activeTextEditor;
-  if (!editor || !editor.document.fileName.endsWith(".qmd")) {
-    vscode.window.showWarningMessage("qmd-fast: open a .qmd file first.");
+  if (!editor || !isSourceFile(editor.document.fileName)) {
+    vscode.window.showWarningMessage("qmd-fast: open a .tmd (or .qmd) file first.");
     return;
   }
   const docPath = editor.document.fileName;
@@ -61,7 +61,7 @@ async function openPreview(context: vscode.ExtensionContext) {
   let timer: NodeJS.Timeout | undefined;
   const sel = vscode.window.onDidChangeTextEditorSelection((e) => {
     const f = e.textEditor.document.fileName;
-    if (!f.endsWith(".qmd")) return;
+    if (!isSourceFile(f)) return;
     const key = relativeKey(docPath, f);
     const line = e.selections[0].active.line + 1;
     if (timer) clearTimeout(timer);

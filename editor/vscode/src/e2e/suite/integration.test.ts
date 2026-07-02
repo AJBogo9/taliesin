@@ -4,7 +4,8 @@ import * as vscode from "vscode";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../../"); // out/e2e/suite -> editor/vscode -> editor -> repo
 const SAMPLE_QMD = path.join(REPO_ROOT, "corpus/posts/born-machines.qmd");
-const QMD_FAST_BIN = path.join(REPO_ROOT, "target/debug/qmd-fast");
+const SAMPLE_TMD = path.join(REPO_ROOT, "corpus/native-tmd.tmd");
+const QMD_FAST_BIN = path.join(REPO_ROOT, "target/debug/taliesin");
 
 suite("qmd-fast companion (integration)", () => {
   suiteSetup(async () => {
@@ -21,6 +22,13 @@ suite("qmd-fast companion (integration)", () => {
       cmds.includes("qmdFast.openPreview"),
       "qmdFast.openPreview should be registered after activation"
     );
+  });
+
+  test("contributes the `taliesin` language and assigns it to a .tmd file", async () => {
+    const langs = await vscode.languages.getLanguages();
+    assert.ok(langs.includes("taliesin"), "the taliesin language is registered");
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(SAMPLE_TMD));
+    assert.equal(doc.languageId, "taliesin", ".tmd resolves to the taliesin language");
   });
 
   test("Open Preview creates a webview panel for the active .qmd", async () => {

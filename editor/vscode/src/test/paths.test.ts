@@ -1,6 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert";
-import { parseSourcepos, resolveSourceFile, relativeKey } from "../paths";
+import { parseSourcepos, resolveSourceFile, relativeKey, isSourceFile } from "../paths";
+
+test("isSourceFile: accepts .tmd (native) and .qmd (deprecated), rejects others", () => {
+  assert.equal(isSourceFile("/p/index.tmd"), true);
+  assert.equal(isSourceFile("/p/post/old.qmd"), true);
+  assert.equal(isSourceFile("/p/notes.md"), false);
+  assert.equal(isSourceFile("/p/data.tmdx"), false);
+  assert.equal(isSourceFile("README"), false);
+});
 
 test("parseSourcepos reads leading L:C", () => {
   assert.deepEqual(parseSourcepos("12:3-14:7"), { line: 12, col: 3 });
