@@ -655,6 +655,41 @@ impl Site {
         }
     }
 
+    /// Build-time render-harvest: render each page once (scoped to its chapter) and fill
+    /// in the CROSS-PAGE numbers the lightweight source-scan can't know — a figure /
+    /// equation / table / listing / theorem number is assigned only during render, so
+    /// `scan_xref_targets` left it empty. This enriches `xref_targets[anchor].number`
+    /// (for those non-heading anchors), so a `@fig-x` to another page renders
+    /// "Figure&nbsp;2.3" instead of a bare "Figure". A full extra render pass, so it is
+    /// **build-only**: the live preview skips it (a cross-page fig/eq ref stays bare
+    /// there — the link still resolves). Call once, after `discover`, before rendering.
+    pub fn harvest_xref_numbers(&mut self) {
+        // Collect during the `&self.pages` pass, then apply — keeps the borrows disjoint.
+        let mut updates: Vec<(String, String)> = Vec::new();
+        for page in &self.pages {
+            let Ok(src) = std::fs::read_to_string(&page.input) else {
+                continue;
+            };
+            let base = page.input.parent().unwrap_or(&self.root);
+            let doc =
+                render::render_document_with_includes_scoped(&src, base, self.chapter_for(page));
+            for (anchor, number) in doc.xref_numbers {
+                if !number.is_empty() {
+                    updates.push((anchor, number));
+                }
+            }
+        }
+        for (anchor, number) in updates {
+            if let Some(t) = self.xref_targets.get_mut(&anchor) {
+                // Only fill a gap the source-scan left (fig/eq/tbl/lst/thm); a book
+                // heading's section number is already authoritative from the scan.
+                if t.number.is_empty() {
+                    t.number = number;
+                }
+            }
+        }
+    }
+
     /// This page's book chapter number, if it is a numbered chapter (None for a
     /// website page or an unnumbered preface). Drives both heading section numbering
     /// and `theorems: number-within: chapter` scoping, so they stay in lockstep.
@@ -1224,6 +1259,47 @@ mod tests {
         assert!(
             html.contains("alt=\"A nice pic\""),
             "card alt emitted: {html}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn harvest_numbers_cross_page_figure_refs() {
+        let root = write_site(
+            "xrefharvest",
+            &[
+                (
+                    "_site.yml",
+                    "title: Book\nchapters:\n  - a.qmd\n  - b.qmd\n",
+                ),
+                (
+                    "a.qmd",
+                    "---\ntitle: Alpha\n---\n\nSee @fig-plot for the result.\n",
+                ),
+                (
+                    "b.qmd",
+                    "---\ntitle: Beta\n---\n\n![A scatter plot](plot.png){#fig-plot}\n",
+                ),
+            ],
+        );
+        // Without the harvest, the source-scan knows fig-plot's PAGE but not its NUMBER
+        // (figure numbers exist only after render), so the cross-page ref is a bare label.
+        let mut site = Site::discover(&root);
+        let before = site.render_page("a.qmd").unwrap();
+        assert!(
+            before.contains("b.html#fig-plot"),
+            "cross-page link resolves: {before}"
+        );
+        assert!(
+            !before.contains("Figure&nbsp;"),
+            "bare label before harvest: {before}"
+        );
+        // After the build-time harvest, the rendered figure number is filled in.
+        site.harvest_xref_numbers();
+        let after = site.render_page("a.qmd").unwrap();
+        assert!(
+            after.contains("<a href=\"b.html#fig-plot\" class=\"qmd-xref\">Figure&nbsp;1</a>"),
+            "cross-page figure ref numbered after harvest: {after}"
         );
         let _ = std::fs::remove_dir_all(&root);
     }

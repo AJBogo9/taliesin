@@ -212,6 +212,11 @@ pub struct RenderedDoc {
     /// surface in the dev menu. Front-matter typo warnings are separate (the
     /// `frontmatter` linter runs off the source).
     pub warnings: Vec<Warning>,
+    /// Cross-reference anchor → its rendered number (`fig-x`→"3", a book `sec-x`→"2.1",
+    /// `thm-x`, `tbl-x`, `eq-x`, `lst-x`). Only the RENDER knows figure/equation/theorem
+    /// numbers (they're assigned during emission), so a site build harvests this map per
+    /// page to give CROSS-PAGE `@ref`s their number — the source-scan xref pass can't.
+    pub xref_numbers: std::collections::HashMap<String, String>,
     pub blocks: Vec<Block>,
 }
 

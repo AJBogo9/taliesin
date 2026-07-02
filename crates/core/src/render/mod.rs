@@ -685,6 +685,7 @@ fn render_internal_impl(
         theme_is_custom,
         includes,
         warnings,
+        xref_numbers: xref_registry,
         blocks,
     }
 }
