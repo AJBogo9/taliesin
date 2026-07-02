@@ -332,7 +332,10 @@ dual-class, public `window.Qmd*` aliases; frozen IPC strings, localStorage keys,
 `application/qmd-js`/`qmd-define` script types). Remaining:
 - [ ] **Own the syntax-highlighting grammar** via the `.tmd` language association (the VS Code companion
   already sets its own regardless; spec §3). The concrete answer to "rename so I fully control the
-  highlighting."
+  highlighting." **Plan ready:** `docs/superpowers/plans/2026-07-02-tmd-editor-grammar-plan.md` —
+  a thin owned `taliesin` language (`include: text.html.markdown` + ~8 Taliesin deltas +
+  `embeddedLanguages`), license-clean off the MIT markdown grammar (NOT Quarto's AGPL fork), 4 phases,
+  editor-only (no render-pipeline/invariant risk). Quick start + acceptance criteria in the plan.
 
 ### Interactive/explorable numerics (idea pool in `FEATURE-IDEAS.md` #62-66)
 Surfaced by dogfooding a Bayesian-ML study site on the shipped `{input}` + `{js}` reactive graph. The
