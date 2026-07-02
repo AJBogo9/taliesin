@@ -11,25 +11,18 @@ corpus doc. Output stays **HTML-only**. The active roadmap is `BEYOND-QUARTO.md`
 
 ## State (2026-07-02)
 
-Local `main` @ `f5239cb` (in sync with `origin/main`), version 0.2.0. Since the Taliesin rename + `.tmd`
-grammar landed, a **security-hardening (P3) batch + a simplification/removal sweep** shipped: the
-third-party `_extensions` system, the reader-social features (highlights/bookmarks/read-aloud/share),
-and assorted dead CSS / env-aliases / surplus re-exports are gone. The author pushes/syncs between
-sessions; agents commit + fast-forward-merge to local main on request, never push. All four formats
-render + deploy.
-The dev loop is strong: block-level incremental updates with DOM-state preservation, warm server +
+Local `main` @ `f5239cb` (in sync with `origin/main`), version 0.2.0. All four formats render + deploy;
+the dev loop is strong: block-level incremental updates with DOM-state preservation, warm server +
 Jupyter kernel, `_freeze` cache, Alt-click click-to-source + reverse cursor sync, located/framed
-diagnostics, CSS hot-swap, Cmd-K search.
+diagnostics, CSS hot-swap, Cmd-K search. The author pushes/syncs between sessions; agents commit +
+fast-forward-merge to local main on request, never push.
 
-**Shipped initiatives** (history in the docs above + git): DROP-QUARTO (fully native, no
-shims/reveal.js/OJS); Beyond-Quarto **Waves 0-4**; the reader-experience cluster; Pillars I + III
-(`check`/prose-lint, `{input}` + scrolly); the `--bare` build; release + Tier-1 hardening; the
-**reading-first redesign** + **deep-audit P1** (2026-06-30); the **author book-testing fixes**
-(2026-07-01); the **deep-audit P2 clusters** (2026-07-01: citations/math/bib, site/books omissions,
-visual/theming, deck engine, performance); the **Tier-1 priority queue** (2026-07-02: cross-page
-numbers, xref graph canvas, vendored Mermaid, search-hit cue, publishing recipe); the **Taliesin
-rename** (2026-07-02: `.qmd`→`.tmd`, packages/binary/prefixes → `tali-*` with back-compat aliases);
-and the **`.tmd` VS Code editor grammar** (2026-07-02, F5-accepted + installed locally).
+**Shipped** (details in git + `BEYOND-QUARTO.md` / `DROP-QUARTO.md` / `AUDITS.md`): the native rewrite,
+Beyond-Quarto Waves 0-4, the reader-experience cluster, the `check`/prose-lint + `{input}`/scrolly
+pillars, the `--bare` build, the reading-first redesign, the deep-audit P1 + P2 clusters, the Tier-1
+priority queue, the **Taliesin rename** (`.qmd`→`.tmd`, `tali-*` prefixes w/ back-compat aliases), the
+**`.tmd` editor grammar**, and the latest security-P3 + simplification sweep (third-party `_extensions`
++ reader-social features removed).
 
 **Working method:** branch per feature; brainstorm if there's a fork; spec under
 `docs/superpowers/specs/`; implement TDD; verify (cargo + browser via chrome-devtools, or the
@@ -78,11 +71,10 @@ Tiers, not a strict rank. **Tier 1 (the 7-cluster priority queue), the Taliesin 
 ## Open tasks (by area)
 
 ### Cross-page references
-`site/xref.rs` is a deliberately lightweight source-scan (page URLs + section numbers only). Cross-page
-NUMBERS (fig/eq/tbl/lst/thm via the build-only render-harvest `RenderedDoc.xref_numbers` +
-`Site::harvest_xref_numbers()`), the interactive xref **graph canvas** (`site/graph.rs` + `graph.js`),
-and **vendored offline Mermaid** all shipped 2026-07-02 — so the render-harvest + cross-page-content
-infra the items below build on is now in place.
+`site/xref.rs` is a deliberately lightweight source-scan (page URLs + section numbers only). The
+build-only render-harvest infra (`RenderedDoc.xref_numbers` + `Site::harvest_xref_numbers()`), the xref
+**graph canvas**, and vendored offline Mermaid all shipped 2026-07-02, so the cross-page-content infra
+the item below builds on is in place.
 - [ ] **F2a: hover preview for cross-page refs** (P3). `12-link-preview.js` only fires on same-page
   `#` links; a cross-page xref target lives on another page. The render-harvest infra is now in place
   (extend it to collect an anchor→preview snippet, serve it like `search-index.js`, wire the hover
@@ -117,8 +109,7 @@ directly (`code, pre, kbd, samp, .katex { letter-spacing: normal; word-spacing: 
 - Decided/known: the reader menu is intentionally an untrapped popover (not a modal).
 
 ### Visual craft / theming (deep-audit P2)
-The cluster shipped 2026-07-01 (sepia first-classing, tokenized copy/shadows, prose rhythm, dark
-theorem borders). Residuals (deferred, low):
+Residuals from the 2026-07-01 cluster (deferred, low):
 - [ ] **List-margin rhythm** left to UA defaults: a global `li { margin }` leaks into chrome
   nav/TOC `<li>`s. A scoped content-only selector (`#tali-main`/`#tali-root`) would let lists get
   the same tokenized rhythm as paragraphs; skipped for now (paragraphs + `hr` cover most of it).
@@ -127,8 +118,7 @@ theorem borders). Residuals (deferred, low):
   polish pass.
 
 ### Deck engine (deep-audit P2)
-The cluster shipped 2026-07-01 (fragment-in-hash, blackout resume, coalesced resize, speaker cleanups).
-Two items deferred:
+Two items deferred from the 2026-07-01 cluster:
 - [ ] **Speaker-preview iframes still run `{js}` live** (2 live embed iframes). Skipping `{js}` in
   `deck.mode==='embed'` is a one-line guard in qmd-js.js, BUT it loses the presenter's live preview
   visual — an author call (skip for perf vs snapshot-clone the current state). Deferred pending that
@@ -138,15 +128,13 @@ Two items deferred:
   (fit current on resize/nav, mark others dirty) is needed to safely drop the all-slides fit. Medium.
 
 ### Site / books: silent omissions (deep-audit P2)
-The cluster shipped 2026-07-01 (all six warn/reject cases + `contents: .` root listing + card `image-alt`).
 - [ ] **`contents: .` lacks a persistent corpus PAGE** (LOW, audit-qmd residual). The root-listing fix
   is solidly unit-tested (`contents_dot_at_root_lists_siblings_and_warns_titleless`) but no `corpus/`
   doc uses `contents: .`, so the corpus arbiter doesn't see it. Deferred rather than distort the real
   tech-blog nav with a synthetic "list everything" page; add a small dedicated fixture if pinning is wanted.
 
 ### Citations / math / bib (deep-audit P2)
-The cluster shipped 2026-07-01 (math-render diagnostic, `\url`, quoted-brace authors, string/seq
-bibliography, shared key charset, quote-aware `strip_tags`). Remaining low residuals:
+Remaining low residuals from the 2026-07-01 cluster:
 - [ ] **Dup-key bib warning stays unlocated** (parse.rs): a `.bib` duplicate-key warning can't point at
   a meaningful `.qmd` line (it's about an external file); left unlocated deliberately. If wanted, locate
   it at the front-matter `bibliography:` line (needs that line threaded through `load_bibliography`).
@@ -156,8 +144,7 @@ bibliography, shared key charset, quote-aware `strip_tags`). Remaining low resid
   MathML aria text).
 
 ### Performance (deep-audit P2-P3)
-The cluster shipped 2026-07-01 (rAF-coalesced `afterChange`, single-render cross-page-link check, KaTeX
-LRU). Remaining, lower-value:
+Remaining lower-value items from the 2026-07-01 cluster:
 - [ ] **Protocol-level op-message batching**: send a save's block ops in ONE websocket message
   instead of one-per-op (client.js + serve/mod.rs + a `protocol_contract` update). Smaller win than
   the coalesced `afterChange` already shipped (message overhead ≪ the O(doc) recompute), so deferred.
@@ -190,12 +177,8 @@ LRU). Remaining, lower-value:
   misleading `build.rs:232` stderr "uncaught exception".
 
 ### Security hardening (P3, single-author trust model)
-Most of the cluster shipped 2026-07-02: `?t=` scrubbed from the URL after mount (client.js
-`history.replaceState`, keeps other params + hash), `qmd_token` cookie is `HttpOnly`,
-`Referrer-Policy: no-referrer` meta on every page + deck head, `origin_allowed` drops the
-loopback-origin blanket-allow under `--host` (only same-origin drives the control-channel ws),
-deck postMessage gates `''`/`'null'` origin to `file://`, and the extension-resource fallback
-re-checks containment after the symlink walk. Remaining:
+Most of the cluster shipped 2026-07-02 (URL token scrub, `HttpOnly` cookie, `no-referrer` meta,
+`origin_allowed` under `--host`, deck postMessage origin gate, symlink-containment recheck). Remaining:
 - [ ] **Injected Mermaid `<script>`: `integrity` (SRI) + `crossorigin`** — deferred, not just
   dropped. Only the live *Preview* still lazy-loads mermaid from the jsdelivr CDN (a static Build
   inlines the vendored copy, fully offline); Preview is dev-time on the author's own machine. SRI
@@ -286,18 +269,10 @@ and re-check competitor layouts live before banking a default on "X does Y."
   anchors (redundant with the minimap + `/` filter).
 
 ### Taliesin rename
-Spec: `docs/superpowers/specs/2026-06-27-taliesin-rename-design.md`. **The code rename + the `.tmd`
-editor grammar are DONE** (on local main, unpushed):
-- Code rename (Phases 0–3 + residuals): `.qmd`→`.tmd` via `crates/core/src/ext.rs` (`.qmd` still
-  accepted), packages `taliesin-*`, binary `taliesin`+`tali`, and the `qmd-*` / `--qmd-*` / JS-global
-  contract prefixes → `tali-*`/`--tali-*`/`Taliesin*` with back-compat aliases (vendored `.qmd-deck`
-  dual-class, public `window.Qmd*` aliases; frozen IPC strings, localStorage keys, and the
-  `application/qmd-js`/`qmd-define` script types).
-- `.tmd` VS Code editor grammar (commits 48aa243→7ef27c5): a thin owned `taliesin` language (`.tmd`-only)
-  that `include`s the MIT `text.html.markdown` + the Taliesin deltas (braced `{lang}` exec cells +
-  `#|` options, `:::` divs, `$math$`, `{{< shortcodes >}}`, `@xref`, `[@cite]`, deck `. . .` via an
-  injection scoped to `text.tmd.markdown`), a `.tmd` file icon, the `editor-vscode` CI grammar gate.
-  F5-accepted + installed locally. Plan: `docs/superpowers/plans/2026-07-02-tmd-editor-grammar-plan.md`.
+The code rename (`.qmd`→`.tmd`, packages `taliesin-*`, binary `taliesin`+`tali`, `tali-*`/`--tali-*`/
+`Taliesin*` prefixes with `qmd-*` back-compat aliases) and the `.tmd` VS Code editor grammar are DONE
+and in git. Specs: `docs/superpowers/specs/2026-06-27-taliesin-rename-design.md` +
+`docs/superpowers/plans/2026-07-02-tmd-editor-grammar-plan.md`.
 
 Remaining (all optional / owner-gated):
 - [ ] **Companion manifest rebrand** (`qmd-fast-companion` → Taliesin identity: name, publisher,
