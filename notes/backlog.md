@@ -329,13 +329,19 @@ Spec: `docs/superpowers/specs/2026-06-27-taliesin-rename-design.md`. The code re
 warn-nudge), packages `taliesin-*`, binary `taliesin`+`tali`, and the `qmd-*` / `--qmd-*` / JS-global
 contract prefixes →`tali-*`/`--tali-*`/`Taliesin*` with back-compat aliases (vendored `.qmd-deck`
 dual-class, public `window.Qmd*` aliases; frozen IPC strings, localStorage keys, and the
-`application/qmd-js`/`qmd-define` script types). Remaining:
-- [ ] **Own the syntax-highlighting grammar** via the `.tmd` language association (the VS Code companion
-  already sets its own regardless; spec §3). The concrete answer to "rename so I fully control the
-  highlighting." **Plan ready:** `docs/superpowers/plans/2026-07-02-tmd-editor-grammar-plan.md` —
-  a thin owned `taliesin` language (`include: text.html.markdown` + ~8 Taliesin deltas +
-  `embeddedLanguages`), license-clean off the MIT markdown grammar (NOT Quarto's AGPL fork), 4 phases,
-  editor-only (no render-pipeline/invariant risk). Quick start + acceptance criteria in the plan.
+`application/qmd-js`/`qmd-define` script types).
+
+**`.tmd` editor syntax-highlighting grammar — BUILT (4 phases, commits 48aa243→5edc5ac), pending
+author F5 visual acceptance.** A thin owned `taliesin` VS Code language (`.tmd`-only; `.qmd` left to
+Quarto/plaintext — opt in via `files.associations`) that `include`s the MIT `text.html.markdown` and
+adds the Taliesin deltas: braced `{lang}` exec cells (embedded + `#|`/`//|`/`%%|` options), `:::` divs,
+inline/display `$math$`, `{{< shortcodes >}}`, `@xref`, `[@cite]`, deck `. . .` (inline deltas via an
+injection scoped to `text.tmd.markdown`, so no `.md` leak). No Quarto AGPL grammar used. Gates learn
+`.tmd`; new `editor-vscode` CI job runs an offline `vscode-textmate` tokenization gate. Verified
+headlessly (25 unit/grammar + e2e 3/3). Plan: `docs/superpowers/plans/2026-07-02-tmd-editor-grammar-plan.md`.
+RESUME = author F5 (open a `.tmd`, confirm the status bar reads "Taliesin" + real-theme coloring); then
+optionally the deferred manifest rebrand (`qmd-fast-companion`→Taliesin identity) + a decision on bespoke
+vs standard theme scopes.
 
 ### Interactive/explorable numerics (idea pool in `FEATURE-IDEAS.md` #62-66)
 Surfaced by dogfooding a Bayesian-ML study site on the shipped `{input}` + `{js}` reactive graph. The
