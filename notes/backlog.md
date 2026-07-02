@@ -108,12 +108,10 @@ lacks parity with the richer in-page ref path. Both deferred items below hit the
   forward-ref scan) and are the cheap high-value core. A full interactive force-directed graph canvas
   is a distinct, scope-risky second nav surface. Recommendation: ship backlinks first, defer/decide
   the graph. Read-only + HTML-only if pursued (single-editing-surface holds).
-- [ ] **Vendor Mermaid offline** (portability, distinct decision). A built book WITH Mermaid isn't
-  fully offline: the one remaining external request is `cdn.jsdelivr.net/.../mermaid.min.js` unless
-  `QMD_FAST_MERMAID_URL` points at a local copy (documented). Closing it means vendoring
-  `mermaid.min.js` (~2-3 MB) into the repo + copying it to the build (content-gated to mermaid
-  pages) — a repo-bloat call to make deliberately. Until then the escape hatch + error banner cover
-  it. (Everything else in a `build <dir> --out` folder is already `file://`-portable.)
+*Vendor Mermaid offline: SHIPPED 2026-07-02 (`main` @ 30bdb17, author-approved). `mermaid@11.4.1`
+vendored + inlined into static Build pages that have a diagram (content-gated); a `--out` doc/book
+renders diagrams with ZERO network (browser-verified from `file://`, 1 request). Preview keeps the
+lean lazy loader. THIRD_PARTY updated; pinned by `mermaid_library_inlined_into_build_pages_only`.*
 
 ### Discoverability & distribution
 *Publishing recipe DOCUMENTED 2026-07-02 (`main`): a "Publishing & sharing" section in
