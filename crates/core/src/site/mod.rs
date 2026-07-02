@@ -477,76 +477,74 @@ impl Site {
                 let frag = lk.frag.as_deref();
                 let line = lk.line;
                 let source_file = &lk.source_file;
-                {
-                    // Resolve to a site-root-relative `.html` url. `.qmd`→`.html`, then
-                    // join against the page's directory. A link that climbs *above* the
-                    // site root (`../other-book/…`, a mounted sibling) is unresolvable
-                    // offline and deliberately skipped — only the marketing site that
-                    // mounts both books can resolve it, so flagging it here would be a
-                    // false positive (cross-book/mount links are written as relative
-                    // `.html` by design; see docs/ CLAUDE.md).
-                    let Some(target_url) = join_rel_in_root(url, &qmd_to_html(path)) else {
-                        continue;
-                    };
-                    // A directory-style link (`dir/`) targets that dir's index.
-                    let target_url = if target_url.is_empty() || target_url.ends_with('/') {
-                        format!("{target_url}index.html")
-                    } else {
-                        target_url
-                    };
-                    let Some(target_ids) = ids_by_url.get(&target_url) else {
-                        // A target outside the page registry is only "broken" if nothing
-                        // on disk backs it: an `{{< embed >}}`-referenced deck (built +
-                        // served but kept out of nav/registry) and any source file that
-                        // exists under the root are legitimate targets.
-                        // A target under a configured `mounts:` prefix resolves only when
-                        // the mounted project is served (preview) or copied in (build) — it is
-                        // not in this site's own page registry, so it is not "broken". (build
-                        // separately warns these links are preview-only.) Matches the mount
-                        // root (`docs`), its index (`docs/index.html`), and anything beneath it.
-                        let under_mount = self.config.mounts.iter().any(|m| {
-                            target_url == m.at
-                                || target_url == format!("{}/index.html", m.at)
-                                || target_url.starts_with(&format!("{}/", m.at))
-                        });
-                        if under_mount
-                            || self.decks.iter().any(|d| d.url == target_url)
-                            || self.root.join(&target_url).is_file()
-                            || self.root.join(html_to_qmd(&target_url)).is_file()
-                        {
-                            continue;
-                        }
-                        let w = Warning::new(format!(
-                            "broken link: `{path}` resolves to `{target_url}`, which is no page in this site"
-                        ));
-                        out.push((
-                            rel.clone(),
-                            match line {
-                                Some(l) => w.at(source_file.clone(), l),
-                                None => w,
-                            },
-                        ));
-                        continue;
-                    };
-                    // Anchor existence: only when the link carries a fragment, the target
-                    // page does not run cells (a cell can emit the id at runtime), and the
-                    // anchor is missing.
-                    if let Some(frag) = frag
-                        && !frag.is_empty()
-                        && !cells_by_url.get(&target_url).copied().unwrap_or(false)
-                        && !target_ids.contains(frag)
+                // Resolve to a site-root-relative `.html` url. `.qmd`→`.html`, then
+                // join against the page's directory. A link that climbs *above* the
+                // site root (`../other-book/…`, a mounted sibling) is unresolvable
+                // offline and deliberately skipped — only the marketing site that
+                // mounts both books can resolve it, so flagging it here would be a
+                // false positive (cross-book/mount links are written as relative
+                // `.html` by design; see docs/ CLAUDE.md).
+                let Some(target_url) = join_rel_in_root(url, &qmd_to_html(path)) else {
+                    continue;
+                };
+                // A directory-style link (`dir/`) targets that dir's index.
+                let target_url = if target_url.is_empty() || target_url.ends_with('/') {
+                    format!("{target_url}index.html")
+                } else {
+                    target_url
+                };
+                let Some(target_ids) = ids_by_url.get(&target_url) else {
+                    // A target outside the page registry is only "broken" if nothing
+                    // on disk backs it: an `{{< embed >}}`-referenced deck (built +
+                    // served but kept out of nav/registry) and any source file that
+                    // exists under the root are legitimate targets.
+                    // A target under a configured `mounts:` prefix resolves only when
+                    // the mounted project is served (preview) or copied in (build) — it is
+                    // not in this site's own page registry, so it is not "broken". (build
+                    // separately warns these links are preview-only.) Matches the mount
+                    // root (`docs`), its index (`docs/index.html`), and anything beneath it.
+                    let under_mount = self.config.mounts.iter().any(|m| {
+                        target_url == m.at
+                            || target_url == format!("{}/index.html", m.at)
+                            || target_url.starts_with(&format!("{}/", m.at))
+                    });
+                    if under_mount
+                        || self.decks.iter().any(|d| d.url == target_url)
+                        || self.root.join(&target_url).is_file()
+                        || self.root.join(html_to_qmd(&target_url)).is_file()
                     {
-                        let w = Warning::new(format!(
-                            "broken link anchor: `#{frag}` is no element id on `{target_url}`"
-                        ));
-                        out.push((
-                            rel.clone(),
-                            match line {
-                                Some(l) => w.at(source_file.clone(), l),
-                                None => w,
-                            },
-                        ));
+                        continue;
                     }
+                    let w = Warning::new(format!(
+                        "broken link: `{path}` resolves to `{target_url}`, which is no page in this site"
+                    ));
+                    out.push((
+                        rel.clone(),
+                        match line {
+                            Some(l) => w.at(source_file.clone(), l),
+                            None => w,
+                        },
+                    ));
+                    continue;
+                };
+                // Anchor existence: only when the link carries a fragment, the target
+                // page does not run cells (a cell can emit the id at runtime), and the
+                // anchor is missing.
+                if let Some(frag) = frag
+                    && !frag.is_empty()
+                    && !cells_by_url.get(&target_url).copied().unwrap_or(false)
+                    && !target_ids.contains(frag)
+                {
+                    let w = Warning::new(format!(
+                        "broken link anchor: `#{frag}` is no element id on `{target_url}`"
+                    ));
+                    out.push((
+                        rel.clone(),
+                        match line {
+                            Some(l) => w.at(source_file.clone(), l),
+                            None => w,
+                        },
+                    ));
                 }
             }
         }

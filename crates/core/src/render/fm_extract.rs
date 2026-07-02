@@ -93,8 +93,6 @@ fn is_reveal_format(name: &str) -> bool {
     n == "revealjs" || n.ends_with("-revealjs")
 }
 
-/// Extract a top-level `key:` value from raw front matter. Lightweight scan,
-/// not a YAML parse; returns the inline value (empty for block/list values).
 /// The `bibliography:` front-matter value as a list of paths. Accepts a scalar
 /// (`bibliography: refs.bib`, INCLUDING a quoted path with spaces), an inline seq
 /// (`[a.bib, b.bib]`), or a block seq (`- a.bib` / `- b.bib`). Parses the front matter
@@ -124,6 +122,8 @@ pub(super) fn bibliography_paths(front_matter: &str) -> Vec<String> {
     }
 }
 
+/// Extract a top-level `key:` value from raw front matter. Lightweight scan,
+/// not a YAML parse; returns the inline value (empty for block/list values).
 pub(super) fn extract_field(front_matter: &str, key: &str) -> Option<String> {
     let prefix = format!("{key}:");
     for line in front_matter.lines() {

@@ -161,4 +161,34 @@ fn cite_coverage_corpus_doc_renders_all_fixes() {
         heading_count, 1,
         "expected exactly one References heading, found {heading_count}"
     );
+
+    // Fix 6: a `\url{...}` macro in `howpublished` unwraps to a bare URL (underscores
+    // intact), rendered as an Available link — no backslash leaks (asserted above).
+    assert!(
+        refs.contains(
+            "[6] Wikipedia contributors, \u{201c}Analysis of Variance,\u{201d} 2025. \
+             [Online]. Available: \
+             <a href=\"https://en.wikipedia.org/wiki/Analysis_of_variance\">"
+        ),
+        "\\url{{}} not unwrapped to a bare URL: {refs}"
+    );
+
+    // Fix 7: a quoted single-brace author `"{Ada Lovelace}"` initialises (a person),
+    // it is NOT treated as a literal corporate name.
+    assert!(
+        refs.contains("[7] A. Lovelace,"),
+        "quoted single-brace author not initialised: {refs}"
+    );
+    assert!(!refs.contains("Ada Lovelace,"), "rendered whole: {refs}");
+
+    // Fix 8: a cite key with a `.` resolves (shared cite/bib key charset), so it is
+    // numbered in the References, not truncated / dropped as a broken key.
+    assert!(
+        refs.contains("[8] J. Smith,"),
+        "dotted cite key `smith.2020a` did not resolve: {refs}"
+    );
+
+    // Fix 9: the front matter loads its bibliography via the INLINE-SEQUENCE form
+    // (`bibliography: [references.bib]`); if the seq-parsing path regressed, the bib
+    // would not load and every citation above would be a raw key, failing this test.
 }

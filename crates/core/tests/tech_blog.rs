@@ -297,6 +297,14 @@ fn listing_frontmatter_emits_post_cards() {
     let fourier = blog.find("posts/fourier-transform/").unwrap(); // 2026-05-15
     let em = blog.find("posts/em-algorithm/").unwrap(); // 2026-04-14
     assert!(fourier < em, "blog: cards not sorted newest-first");
+    // Grid card <img> carries the post's front-matter `image-alt:` (a11y), not an
+    // empty alt: every tech-blog post supplies one.
+    assert!(
+        blog.contains(
+            "alt=\"Visualisation of the EM-algorithm fitting two Gaussian distributions to unlabelled data\""
+        ),
+        "blog: card image-alt not emitted from post front matter"
+    );
 
     // The homepage fills its `::: {#recent-posts}` placeholder, capped at 2.
     let home = site.render_page("index.qmd").expect("home renders");

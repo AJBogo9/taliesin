@@ -204,6 +204,12 @@ fn corpus_check_superset_doc_trips_each_validator() {
         1,
         "citation with no bibliography"
     );
+    let math = diagnostics::validate_math(&doc.blocks);
+    assert!(
+        math.iter()
+            .any(|w| w.message.contains("math failed to render")),
+        "unparseable inline math (server-side KaTeX render diagnostic): {math:?}"
+    );
 }
 
 #[test]

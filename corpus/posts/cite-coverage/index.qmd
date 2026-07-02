@@ -1,10 +1,10 @@
 ---
 title: "Citation coverage"
-description: "A focused corpus document that exercises the .bib rendering fixes: LaTeX accents, corporate authors, @string macros, @incollection chapters, and manual-References de-duplication."
+description: "A focused corpus document that exercises the .bib rendering fixes: LaTeX accents, corporate authors, @string macros, @incollection chapters, manual-References de-duplication, `\\url{}` unwrapping, quoted-brace authors, and special-character cite keys."
 date: 2026-06-27
 categories:
   - meta
-bibliography: references.bib
+bibliography: [references.bib]
 ---
 
 This document pins the citation/bibliography rendering fixes. Each paragraph cites
@@ -24,5 +24,15 @@ brace-protected name must render whole, never initialised to "W. H. Organization
 The `@string` macro `springer` is referenced by both a book [@bishop2006pattern]
 and a book chapter [@bengio2012practical]; the chapter is an `@incollection`, so
 its `booktitle` and `pages` must appear.
+
+An online source [@wiki2025anova] carries its link as a `\url{...}` macro in
+`howpublished`; the macro must unwrap to a bare URL (underscores intact), never leak
+a backslash.
+
+A quoted single-brace author `"{Ada Lovelace}"` [@lovelace1843notes] is an ordinary
+(case-protected) person, so it must initialise to "A. Lovelace", not render whole.
+
+A citation whose key carries a dot [@smith.2020a] must resolve rather than truncate at
+the `.` — the reference parser and the `.bib` parser share one key charset.
 
 # References

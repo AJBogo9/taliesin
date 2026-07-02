@@ -17,3 +17,5 @@ A [broken in-page jump](#no-such-anchor) that lands nowhere, and a missing image
 ![alt text](no-such-image.png).
 
 Cited [@ghost2020] with no `bibliography:` declared, so the reference renders as a raw key.
+
+Broken inline math $\frac{$ that KaTeX cannot parse (server-side math-render diagnostic).
