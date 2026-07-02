@@ -1,0 +1,38 @@
+{
+  "comment": "Editor behaviour for .tmd (Taliesin) files. Authored fresh (NOT copied from Quarto's AGPL config).",
+  "comments": {
+    "blockComment": ["<!--", "-->"]
+  },
+  "brackets": [
+    ["{", "}"],
+    ["[", "]"],
+    ["(", ")"]
+  ],
+  "autoClosingPairs": [
+    { "open": "{", "close": "}" },
+    { "open": "[", "close": "]" },
+    { "open": "(", "close": ")" },
+    { "open": "\"", "close": "\"", "notIn": ["string"] },
+    { "open": "`", "close": "`", "notIn": ["string"] },
+    { "open": "$", "close": "$", "notIn": ["string"] },
+    { "open": "{{< ", "close": " >}}" }
+  ],
+  "surroundingPairs": [
+    ["{", "}"],
+    ["[", "]"],
+    ["(", ")"],
+    ["\"", "\""],
+    ["`", "`"],
+    ["*", "*"],
+    ["_", "_"],
+    ["$", "$"]
+  ],
+  "wordPattern": "([*_]{1,2}|~~|`)?[\\p{L}\\p{N}][\\p{L}\\p{N}_'-]*([*_]{1,2}|~~|`)?",
+  "onEnterRules": [
+    {
+      "comment": "Continue a `:::` fenced-div block sensibly (no auto-content, just keep indentation).",
+      "beforeText": "^\\s*:::+.*$",
+      "action": { "indent": "none" }
+    }
+  ]
+}

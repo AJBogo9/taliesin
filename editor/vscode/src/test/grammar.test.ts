@@ -1,0 +1,129 @@
+// Offline TextMate tokenization tests for the Taliesin (.tmd) grammar.
+//
+// Runs fully headless (no VS Code download, no network): it loads the grammar under test
+// (syntaxes/tmd.tmLanguage.json) into a real vscode-textmate + vscode-oniguruma registry,
+// alongside the built-in MIT markdown/python/yaml grammars that ship inside the .vscode-test
+// VS Code download, and asserts token SCOPES on fixture lines. This is the CI-safe gate for the
+// grammar (the manual F5 visual check is the author's; e2e asserts language *registration*).
+//
+// Grammars are located by glob under .vscode-test so the pinned VS Code version can change
+// without editing paths. Missing embedded sub-grammars resolve to null (no color, not an error).
+import { test } from "node:test";
+import assert from "node:assert";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { globSync } from "glob";
+import * as vsctm from "vscode-textmate";
+import * as oniguruma from "vscode-oniguruma";
+
+const EXT_ROOT = path.join(__dirname, "..", "..");
+const VST = path.join(EXT_ROOT, ".vscode-test");
+
+/** First file matching a glob under .vscode-test (robust to the pinned VS Code version). */
+function findGrammar(rel: string): string | null {
+  const hits = globSync(`**/${rel}`, { cwd: VST, absolute: true });
+  return hits.length ? hits[0] : null;
+}
+
+// scopeName -> grammar file on disk. Our grammar + the download's bundled base grammars.
+const GRAMMAR_FILES: Record<string, string | null> = {
+  "text.tmd.markdown": path.join(EXT_ROOT, "syntaxes", "tmd.tmLanguage.json"),
+  "text.html.markdown": findGrammar("markdown-basics/syntaxes/markdown.tmLanguage.json"),
+  "source.python": findGrammar("python/syntaxes/MagicPython.tmLanguage.json"),
+  "source.yaml": findGrammar("yaml/syntaxes/yaml.tmLanguage.json"),
+};
+
+let registryPromise: Promise<vsctm.Registry> | null = null;
+function getRegistry(): Promise<vsctm.Registry> {
+  if (registryPromise) return registryPromise;
+  const wasm = fs.readFileSync(
+    path.join(EXT_ROOT, "node_modules", "vscode-oniguruma", "release", "onig.wasm")
+  );
+  // Pass the Buffer (an ArrayBufferView) directly — `.buffer` can carry a nonzero byteOffset.
+  const onigLib = oniguruma.loadWASM(wasm).then(() => ({
+    createOnigScanner: (patterns: string[]) => new oniguruma.OnigScanner(patterns),
+    createOnigString: (s: string) => new oniguruma.OnigString(s),
+  }));
+  registryPromise = Promise.resolve(
+    new vsctm.Registry({
+      onigLib,
+      loadGrammar: async (scopeName: string) => {
+        const file = GRAMMAR_FILES[scopeName];
+        if (!file || !fs.existsSync(file)) return null; // unknown/missing → graceful null
+        const content = fs.readFileSync(file, "utf8");
+        return vsctm.parseRawGrammar(content, file);
+      },
+    })
+  );
+  return registryPromise;
+}
+
+interface Tok {
+  line: number;
+  text: string;
+  scopes: string[];
+}
+
+/** Tokenize .tmd source (multi-line, threading the rule stack) into flat tokens. */
+async function tokenizeTmd(src: string): Promise<Tok[]> {
+  const registry = await getRegistry();
+  const grammar = await registry.loadGrammar("text.tmd.markdown");
+  assert.ok(grammar, "text.tmd.markdown grammar must load");
+  const out: Tok[] = [];
+  let ruleStack = vsctm.INITIAL;
+  const lines = src.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const r = grammar!.tokenizeLine(lines[i], ruleStack);
+    for (const t of r.tokens) {
+      out.push({ line: i, text: lines[i].substring(t.startIndex, t.endIndex), scopes: t.scopes });
+    }
+    ruleStack = r.ruleStack;
+  }
+  return out;
+}
+
+/** Scopes of the first token whose text contains `needle` (optionally on a given line). */
+function scopesOf(toks: Tok[], needle: string, line?: number): string[] {
+  const t = toks.find((x) => x.text.includes(needle) && (line === undefined || x.line === line));
+  assert.ok(t, `no token containing ${JSON.stringify(needle)}${line !== undefined ? ` on line ${line}` : ""}`);
+  return t!.scopes;
+}
+
+/** True if any token covering `needle` has a scope that starts with `scopePrefix`. */
+function hasScope(toks: Tok[], needle: string, scopePrefix: string, line?: number): boolean {
+  return toks
+    .filter((x) => x.text.includes(needle) && (line === undefined || x.line === line))
+    .some((x) => x.scopes.some((s) => s.startsWith(scopePrefix)));
+}
+
+// ---------------------------------------------------------------------------
+// Phase 0 — the grammar registers and inherits CommonMark via `include: text.html.markdown`.
+// ---------------------------------------------------------------------------
+
+test("base grammars are discoverable in the .vscode-test download", () => {
+  assert.ok(GRAMMAR_FILES["text.html.markdown"], "bundled markdown grammar found under .vscode-test");
+});
+
+test("Phase 0: the tmd grammar loads and its top scope is text.tmd.markdown", async () => {
+  const toks = await tokenizeTmd("# Hello\n");
+  assert.ok(
+    toks.every((t) => t.scopes[0] === "text.tmd.markdown"),
+    "every token carries the owned top scope text.tmd.markdown (not markdown's)"
+  );
+});
+
+test("Phase 0: inherited markdown — heading + bold get markdown scopes", async () => {
+  const toks = await tokenizeTmd("# Title\n\nsome **bold** text\n");
+  assert.ok(hasScope(toks, "Title", "markup.heading"), "heading inherited from text.html.markdown");
+  assert.ok(hasScope(toks, "bold", "markup.bold"), "bold inherited from text.html.markdown");
+});
+
+test("Phase 0: inherited markdown — a BARE ```python fence embeds source.python", async () => {
+  // The base markdown grammar already handles bare info strings; the BRACED {python} form is a
+  // Phase-1 delta (added later). This pins the inherited baseline so the Phase-1 delta is a real add.
+  const toks = await tokenizeTmd("```python\nprint(1)\n```\n");
+  assert.ok(
+    hasScope(toks, "print", "meta.embedded.block.python"),
+    "bare fenced python body embeds via the inherited markdown grammar"
+  );
+});

@@ -5,17 +5,60 @@
   "version": "0.1.0",
   "publisher": "qmd-fast",
   "private": true,
-  "engines": { "vscode": "^1.85.0", "node": ">=18" },
-  "categories": ["Other"],
+  "engines": {
+    "vscode": "^1.85.0",
+    "node": ">=18"
+  },
+  "categories": [
+    "Other"
+  ],
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
+    "languages": [
+      {
+        "id": "taliesin",
+        "aliases": [
+          "Taliesin",
+          "tmd"
+        ],
+        "extensions": [
+          ".tmd"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "taliesin",
+        "scopeName": "text.tmd.markdown",
+        "path": "./syntaxes/tmd.tmLanguage.json",
+        "embeddedLanguages": {
+          "meta.embedded.block.frontmatter": "yaml",
+          "meta.embedded.block.python": "python",
+          "meta.embedded.block.r": "r",
+          "meta.embedded.block.js": "javascript",
+          "meta.embedded.block.julia": "julia",
+          "meta.embedded.block.mermaid": "mermaid",
+          "meta.embedded.block.sql": "sql",
+          "meta.embedded.math.tmd": "latex"
+        }
+      }
+    ],
     "commands": [
-      { "command": "qmdFast.openPreview", "title": "qmd-fast: Open Preview", "category": "qmd-fast" }
+      {
+        "command": "qmdFast.openPreview",
+        "title": "qmd-fast: Open Preview",
+        "category": "qmd-fast"
+      }
     ],
     "menus": {
       "editor/title": [
-        { "command": "qmdFast.openPreview", "when": "resourceExtname == .qmd", "group": "navigation" }
+        {
+          "command": "qmdFast.openPreview",
+          "when": "resourceExtname == .qmd",
+          "group": "navigation"
+        }
       ]
     },
     "configuration": {
@@ -43,6 +86,8 @@
     "esbuild": "^0.21.0",
     "glob": "^10.3.0",
     "mocha": "^10.4.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.3.2"
   }
 }

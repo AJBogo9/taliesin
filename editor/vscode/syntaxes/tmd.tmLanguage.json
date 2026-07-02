@@ -1,0 +1,10 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Taliesin",
+  "scopeName": "text.tmd.markdown",
+  "comment": "Taliesin (.tmd) grammar: a thin owned superset that includes VS Code's built-in MIT text.html.markdown for all CommonMark and adds only the Taliesin deltas. Author-owned deltas are registered BEFORE the markdown include so they win over markdown's generic rules (esp. the braced {lang} fence vs markdown's generic fenced-code rule).",
+  "patterns": [
+    { "include": "text.html.markdown" }
+  ],
+  "repository": {}
+}
