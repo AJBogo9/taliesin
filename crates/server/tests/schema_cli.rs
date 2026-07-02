@@ -5,7 +5,7 @@ use std::process::Command;
 fn schema_subcommand_writes_both_files() {
     let dir = std::env::temp_dir().join(format!("qmd-schema-cli-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
-    let status = Command::new(env!("CARGO_BIN_EXE_qmd-fast"))
+    let status = Command::new(env!("CARGO_BIN_EXE_taliesin"))
         .args(["schema", "--out", dir.to_str().unwrap()])
         .status()
         .expect("run qmd-fast schema");
@@ -27,7 +27,7 @@ fn schema_subcommand_writes_both_files() {
 /// `qmd-fast schema` with no args prints both schemas to stdout.
 #[test]
 fn schema_subcommand_prints_to_stdout() {
-    let out = Command::new(env!("CARGO_BIN_EXE_qmd-fast"))
+    let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
         .arg("schema")
         .output()
         .expect("run qmd-fast schema");

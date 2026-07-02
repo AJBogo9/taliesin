@@ -1,6 +1,6 @@
 [package]
-name = "qmd-fast-core"
-description = "Parser, block model, and HTML rendering for qmd-fast"
+name = "taliesin-core"
+description = "Parser, block model, and HTML rendering for Taliesin"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

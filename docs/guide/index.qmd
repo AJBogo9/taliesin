@@ -60,13 +60,13 @@ anywhere. To execute code cells you also point it at a Jupyter kernel: see
 
 ```sh
 # live preview, updating as you save (aliases: dev, serve)
-cargo run -p qmd-fast-server -- preview post.qmd 4321
+cargo run -p taliesin-server -- preview post.qmd 4321
 
 # build a self-contained HTML file (code cells are executed)
-cargo run -p qmd-fast-server -- build post.qmd
+cargo run -p taliesin-server -- build post.qmd
 
 # point either command at a directory to get a whole multi-page site
-cargo run -p qmd-fast-server -- preview blog/
+cargo run -p taliesin-server -- preview blog/
 ```
 
 Open `http://127.0.0.1:4321`, edit, and watch a single block update in place with

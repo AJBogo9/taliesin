@@ -21,7 +21,7 @@ use jupyter_zmq_client::{
     create_client_shell_connection_with_identity, peek_ports, peer_identity_for_session,
     wait_for_iopub_welcome,
 };
-use qmd_fast_core::html_escape as esc;
+use taliesin_core::html_escape as esc;
 use tokio::process::{Child, Command};
 use tokio::time::{Instant, timeout};
 

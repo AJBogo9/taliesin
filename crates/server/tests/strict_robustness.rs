@@ -1,6 +1,6 @@
 //! Server-robustness CLI behaviors, exercised end-to-end through the real binary (the
 //! exit codes are `std::process::ExitCode`, opaque to a unit test, so these go through
-//! `CARGO_BIN_EXE_qmd-fast`):
+//! `CARGO_BIN_EXE_taliesin`):
 //!
 //! - a malformed `_site.yml` is a `--strict` build problem (a silently-degraded site must
 //!   not ship green), while a *missing* `_site.yml` is not;
@@ -18,7 +18,7 @@ fn tmp_dir(name: &str) -> std::path::PathBuf {
 }
 
 fn qmd_fast() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_qmd-fast"))
+    Command::new(env!("CARGO_BIN_EXE_taliesin"))
 }
 
 #[test]

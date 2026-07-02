@@ -18,7 +18,7 @@ locations and are listed here so the whole test set is in one place.
 | 4 | Slide deck (all slide features) | `samples/deck.qmd` | `qmd-fast preview samples/deck.qmd` |
 | 5 | Research paper (single page) | `samples/paper.qmd` | `qmd-fast preview samples/paper.qmd` |
 
-(Each command also works as `cargo run -p qmd-fast-server -- preview <path>`. The deck
+(Each command also works as `cargo run -p taliesin-server -- preview <path>`. The deck
 and the paper execute `{python}` cells, so they need a Python with `ipykernel` +
 `numpy` + `matplotlib` on `QMD_FAST_PYTHON`; without it those cells render as source.)
 

@@ -10,7 +10,7 @@
 //!
 //! **Depends on:** [`crate::exec`] + [`crate::freeze`] + [`crate::warm_pool`] +
 //! [`crate::build_budget`] (execution + the memory budget split), [`crate::check`] (the
-//! `_quarto.yml` breadcrumb), [`crate::log`], and [`qmd_fast_core`] for rendering.
+//! `_quarto.yml` breadcrumb), [`crate::log`], and [`taliesin_core`] for rendering.
 //!
 //! **Load-bearing:** the concurrent site build (`build_site_async`/`PageOutcome`) defers
 //! all logging and replays it in `site.pages` order, so a parallel build is byte-for-byte
@@ -154,9 +154,9 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
         return build_site(Path::new(path), out_dir, strict, jobs);
     }
     let mode = if bare {
-        qmd_fast_core::OutputMode::Bare
+        taliesin_core::OutputMode::Bare
     } else {
-        qmd_fast_core::OutputMode::Build
+        taliesin_core::OutputMode::Build
     };
     let src = match std::fs::read_to_string(path) {
         Ok(s) => s,
@@ -242,7 +242,7 @@ fn strict_exit(code: ExitCode, strict_fail: bool, problems: usize) -> ExitCode {
 /// Count the executed output blocks that are uncaught runtime errors (their HTML
 /// carries the `qmd-error` marker), logging a located warning per failing cell so a
 /// crashing cell isn't baked into the build silently. Returns the count.
-fn report_cell_errors(blocks: &[qmd_fast_core::Block], page_label: &str) -> usize {
+fn report_cell_errors(blocks: &[taliesin_core::Block], page_label: &str) -> usize {
     let mut n = 0;
     for b in blocks {
         if b.html.contains("class=\"qmd-error\"") {
@@ -279,7 +279,7 @@ enum BuildResult {
 
 /// Warn (never silently degrade) about the constructs `--bare` drops: a `{js}` cell
 /// is inert without its browser runtime, and Mermaid ships its diagram as source.
-fn warn_bare_exclusions(doc: &qmd_fast_core::RenderedDoc) {
+fn warn_bare_exclusions(doc: &taliesin_core::RenderedDoc) {
     let js_cells = doc
         .blocks
         .iter()
@@ -309,17 +309,17 @@ fn build_page_executing(
     src: &str,
     base: &Path,
     fallback: &str,
-    mode: qmd_fast_core::OutputMode,
+    mode: taliesin_core::OutputMode,
 ) -> std::io::Result<BuildResult> {
     let rt = tokio::runtime::Runtime::new()?;
     Ok(rt.block_on(async {
         // `problems` is what `--strict` fails on: located render warnings, broken
         // cross-refs, and crashed code cells — each already logged below.
         let mut problems = 0usize;
-        let mut doc = qmd_fast_core::render_document_with_includes(src, base);
+        let mut doc = taliesin_core::render_document_with_includes(src, base);
         // `--bare` is prose-shaped, JS-free output: a slide deck (whose navigation is
         // JavaScript) can't be one. Refuse before doing any execution work.
-        if mode == qmd_fast_core::OutputMode::Bare && doc.format == qmd_fast_core::DocFormat::Reveal
+        if mode == taliesin_core::OutputMode::Bare && doc.format == taliesin_core::DocFormat::Reveal
         {
             return BuildResult::Refused(
                 "--bare cannot build a slide deck: deck navigation needs JavaScript. \
@@ -337,7 +337,7 @@ fn build_page_executing(
         // `{{< embed >}}` only resolves in a SITE build, which also builds the
         // embedded target beside the page. A single-doc build ships the iframe but
         // not its target, so the embed would 404 — warn instead of failing silently.
-        for target in qmd_fast_core::render::embed_targets(src) {
+        for target in taliesin_core::render::embed_targets(src) {
             log::warn(&format!(
                 "{{{{< embed {target} >}}}} won't resolve in a single-doc build (its \
                  target isn't built); build the containing directory as a site, or \
@@ -346,7 +346,7 @@ fn build_page_executing(
         }
         // Broken cross-refs (a single doc has no site to resolve them across pages),
         // so a `build` doesn't ship a dangling `@fig-`/`@sec-` link silently.
-        let xrefs = qmd_fast_core::cite::validate_xrefs(&doc.blocks);
+        let xrefs = taliesin_core::cite::validate_xrefs(&doc.blocks);
         for w in &xrefs {
             log::warn(&w.message);
         }
@@ -365,12 +365,12 @@ fn build_page_executing(
         // A crashed cell bakes its traceback into the page (exit 0 + silent stderr
         // before this); log it located and count it toward `--strict`.
         problems += report_cell_errors(&doc.blocks, fallback);
-        if mode == qmd_fast_core::OutputMode::Bare {
+        if mode == taliesin_core::OutputMode::Bare {
             warn_bare_exclusions(&doc);
         }
         let resources = doc.includes.resources.clone();
         BuildResult::Page {
-            html: qmd_fast_core::render_doc_to_page(&doc, fallback, mode),
+            html: taliesin_core::render_doc_to_page(&doc, fallback, mode),
             resources,
             problems,
         }
@@ -666,7 +666,7 @@ fn copy_js_imports(html: &str, base: &Path, dest: &Path) -> usize {
 /// `preview` serves them), so a previewed site's `/<at>/` links 404 in the deploy. Each
 /// line gives the exact command to build that mount into `<out>/<at>/`. Empty when the
 /// site has no mounts. (Auto-building mounts is a deferred follow-up.)
-fn mount_warnings(mounts: &[qmd_fast_core::site::Mount], root: &Path, out: &Path) -> Vec<String> {
+fn mount_warnings(mounts: &[taliesin_core::site::Mount], root: &Path, out: &Path) -> Vec<String> {
     mounts
         .iter()
         .map(|m| {
@@ -713,8 +713,8 @@ struct PageOutcome {
 /// the only writes are to this page's own output file + freeze file, so it is safe to run
 /// many of these at once. All logging is deferred into the returned [`PageOutcome`].
 async fn build_one_page(
-    site: &qmd_fast_core::Site,
-    page: &qmd_fast_core::site::Page,
+    site: &taliesin_core::Site,
+    page: &taliesin_core::site::Page,
     freeze_dir: &Path,
     out: &Path,
     root: &Path,
@@ -732,7 +732,7 @@ async fn build_one_page(
     };
     let base = page.input.parent().unwrap_or(root);
     let mut doc =
-        qmd_fast_core::render_document_with_includes_scoped(&src, base, site.chapter_for(page));
+        taliesin_core::render_document_with_includes_scoped(&src, base, site.chapter_for(page));
     let mut exec =
         exec::Executor::with_freeze(freeze::page_path(freeze_dir, &page.rel)).in_dir(base);
     // Draw this page's Python kernel from the shared warm pool (when one booted) so a
@@ -821,7 +821,7 @@ async fn build_site_async(
     if let Some(hint) = &quarto_hint {
         log::warn(hint);
     }
-    let mut site = qmd_fast_core::Site::discover(root);
+    let mut site = taliesin_core::Site::discover(root);
     // A malformed `_site.yml` silently degrades the whole site to defaults (no nav, no
     // title, wrong output dir): a real `--strict` problem, unlike a benign missing config.
     let mut config_problems = 0usize;
@@ -830,7 +830,7 @@ async fn build_site_async(
         if quarto_hint.is_some() && w.starts_with("no _site.yml") {
             continue;
         }
-        if qmd_fast_core::site::is_malformed_config_warning(w) {
+        if taliesin_core::site::is_malformed_config_warning(w) {
             config_problems += 1;
         }
         log::warn(w);
@@ -1000,7 +1000,7 @@ async fn build_site_async(
             continue;
         };
         let base = deck.input.parent().unwrap_or(root);
-        let mut doc = qmd_fast_core::render_document_with_includes(&src, base);
+        let mut doc = taliesin_core::render_document_with_includes(&src, base);
         let mut ex =
             exec::Executor::with_freeze(freeze::page_path(&freeze_dir, &deck.url)).in_dir(base);
         doc.blocks = ex.run(std::mem::take(&mut doc.blocks)).await;
@@ -1012,7 +1012,7 @@ async fn build_site_async(
             .next()
             .and_then(|f| f.strip_suffix(".html"))
             .unwrap_or("deck");
-        let html = qmd_fast_core::render_doc_to_page(&doc, stem, qmd_fast_core::OutputMode::Build);
+        let html = taliesin_core::render_doc_to_page(&doc, stem, taliesin_core::OutputMode::Build);
         let dest = out.join(&deck.url);
         if let Some(parent) = dest.parent() {
             let _ = std::fs::create_dir_all(parent);
@@ -1421,7 +1421,7 @@ mod mirror_tests {
 
     #[test]
     fn mount_warnings_name_each_unwired_mount_with_a_build_command() {
-        use qmd_fast_core::site::Mount;
+        use taliesin_core::site::Mount;
         let root = Path::new("/proj/site");
         let out = Path::new("/proj/site/_site");
 
@@ -1455,8 +1455,8 @@ mod mirror_tests {
 #[cfg(test)]
 mod build_diag_tests {
     use super::*;
-    use qmd_fast_core::Block;
-    use qmd_fast_core::render::{Cell, JsOpts};
+    use taliesin_core::Block;
+    use taliesin_core::render::{Cell, JsOpts};
 
     /// A block standing in for an executed cell output, with the given inner HTML.
     fn output_block(html: &str) -> Block {
@@ -1518,7 +1518,7 @@ mod build_diag_tests {
             src,
             std::path::Path::new("."),
             "deck",
-            qmd_fast_core::OutputMode::Bare,
+            taliesin_core::OutputMode::Bare,
         )
         .unwrap();
         match res {
@@ -1542,7 +1542,7 @@ mod build_diag_tests {
             "---\ntitle: Draft\n---\n\nProse.\n",
             &base,
             "draft",
-            qmd_fast_core::OutputMode::Bare,
+            taliesin_core::OutputMode::Bare,
         )
         .unwrap();
         match res {

@@ -4,7 +4,7 @@ argument-hint: "[path/to/file.qmd] (defaults to docs/index.qmd)"
 ---
 Preview and verify a `.qmd` document end to end. Steps:
 
-1. `cargo build -p qmd-fast-server` (report any compile error and stop).
+1. `cargo build -p taliesin-server` (report any compile error and stop).
 2. Pick the target file: `$ARGUMENTS` if given, else `docs/index.qmd`.
 3. Free port 4388 if busy (`fuser -k 4388/tcp`), then start the server detached:
    `./target/debug/qmd-fast serve <file> 4388` (run_in_background). Wait for HTTP 200.

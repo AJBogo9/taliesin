@@ -5,9 +5,9 @@
 //! a `SetMeta`, not an `Update`). Pure measurement: it edits an in-memory copy of the
 //! source, never the file, and reads only block id / sourcepos / html.
 
-use qmd_fast_core::{BlockOp, diff_blocks, render_document_with_includes};
 use std::path::Path;
 use std::time::Instant;
+use taliesin_core::{BlockOp, diff_blocks, render_document_with_includes};
 
 /// One live edit's measurements. Times are nanoseconds and machine-dependent (the
 /// regression gate asserts the deterministic structural fields, not the times).

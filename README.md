@@ -37,7 +37,7 @@ toolchain (via [rustup](https://rustup.rs)) is all you need to build it:
 ```sh
 git clone https://github.com/anthropics/qmd-fast && cd qmd-fast
 cargo build --release            # binary at target/release/qmd-fast
-cargo run -p qmd-fast-server -- --help   # or run it straight from the workspace
+cargo run -p taliesin-server -- --help   # or run it straight from the workspace
 ```
 
 Put `target/release/qmd-fast` on your `PATH` to call `qmd-fast` from anywhere.
@@ -88,12 +88,12 @@ the preview in a browser; Alt-clicking a block jumps to its `.qmd` source.
 Point it at a **single file** or a **directory** (a multi-page site project):
 
 ```sh
-cargo run -p qmd-fast-server -- preview corpus/posts/born-machines.qmd  # one doc
-cargo run -p qmd-fast-server -- preview corpus/tech-blog                # a whole site
-cargo run -p qmd-fast-server -- preview corpus/tech-blog --host         # + LAN URL & QR
-cargo run -p qmd-fast-server -- build   corpus/tech-blog                # static _site/
-cargo run -p qmd-fast-server -- render  corpus/posts/born-machines.qmd > out.html
-cargo run -p qmd-fast-server -- blocks  corpus/posts/born-machines.qmd
+cargo run -p taliesin-server -- preview corpus/posts/born-machines.qmd  # one doc
+cargo run -p taliesin-server -- preview corpus/tech-blog                # a whole site
+cargo run -p taliesin-server -- preview corpus/tech-blog --host         # + LAN URL & QR
+cargo run -p taliesin-server -- build   corpus/tech-blog                # static _site/
+cargo run -p taliesin-server -- render  corpus/posts/born-machines.qmd > out.html
+cargo run -p taliesin-server -- blocks  corpus/posts/born-machines.qmd
 ```
 
 `--host` exposes the preview on your LAN with a phone-scannable QR code, gated by a

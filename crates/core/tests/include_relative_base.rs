@@ -55,7 +55,7 @@ fn relative_base_resolves_include_against_repo_root() {
     let src = std::fs::read_to_string(rel_doc).expect("read corpus doc");
     let base = rel_doc.parent().unwrap();
 
-    let html = qmd_fast_core::render_html_page_with_includes(&src, base, "pca");
+    let html = taliesin_core::render_html_page_with_includes(&src, base, "pca");
 
     // The include (`../../_includes/three-scene.qmd`) defines `makeScene3D`; it must
     // be present, proving the include was expanded rather than dropped.
@@ -84,7 +84,7 @@ fn unresolvable_include_warns_instead_of_silently_dropping() {
 
     let src = std::fs::read_to_string(proj.0.join("post/index.qmd")).unwrap();
     let base = proj.0.join("post");
-    let doc = qmd_fast_core::render_document_with_includes(&src, &base);
+    let doc = taliesin_core::render_document_with_includes(&src, &base);
 
     let msgs: Vec<&str> = doc.warnings.iter().map(|w| w.message.as_str()).collect();
     // The escaping path is refused, located, and reported (not silently dropped).

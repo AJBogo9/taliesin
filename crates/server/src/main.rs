@@ -1,9 +1,9 @@
-//! qmd-fast — dev server & CLI entry point.
+//! taliesin — dev server & CLI entry point.
 //!
-//!   - `qmd-fast preview <file.qmd> [port]` live preview server (aliases: dev, serve)
-//!   - `qmd-fast build  <file.qmd> [out]`   render a self-contained HTML file
-//!   - `qmd-fast render <file.qmd>`         one-shot full HTML page to stdout
-//!   - `qmd-fast blocks <file.qmd>`         list block ids + sourcepos (debugging)
+//!   - `taliesin preview <file.qmd> [port]` live preview server (aliases: dev, serve)
+//!   - `taliesin build  <file.qmd> [out]`   render a self-contained HTML file
+//!   - `taliesin render <file.qmd>`         one-shot full HTML page to stdout
+//!   - `taliesin blocks <file.qmd>`         list block ids + sourcepos (debugging)
 
 mod build;
 mod build_budget;
@@ -24,8 +24,9 @@ mod warm_pool;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
+    bridge_legacy_env();
     let args: Vec<String> = std::env::args().collect();
-    // `qmd-fast <cmd> --help` (or `-h`): print that subcommand's focused help and
+    // `taliesin <cmd> --help` (or `-h`): print that subcommand's focused help and
     // succeed, before the command's own arg parsing (which would otherwise treat
     // `--help` as an unknown flag + then error on the missing positional). Only fires
     // when the first token is a real subcommand with a dedicated help page.
@@ -47,8 +48,8 @@ fn main() -> ExitCode {
         Some("serve" | "preview" | "dev") => cli::cmd_serve(&args),
         Some("--version" | "-V") => {
             println!(
-                "qmd-fast {} ({})",
-                qmd_fast_core::VERSION,
+                "taliesin {} ({})",
+                taliesin_core::VERSION,
                 env!("QMD_FAST_GIT_SHA")
             );
             ExitCode::SUCCESS
@@ -61,13 +62,46 @@ fn main() -> ExitCode {
         // An unrecognized command is an error (non-zero), not a silent success.
         // Suggest the nearest valid command (reusing core's Levenshtein helper).
         Some(other) => {
-            let hint = match qmd_fast_core::closest(other, COMMANDS) {
+            let hint = match taliesin_core::closest(other, COMMANDS) {
                 Some(c) => format!("unknown command: `{other}` (did you mean `{c}`?)"),
                 None => format!("unknown command: `{other}`"),
             };
             log::error(&hint);
             usage();
             ExitCode::FAILURE
+        }
+    }
+}
+
+/// Accept the native `TALIESIN_*` spelling of every runtime env knob while keeping
+/// the historical `QMD_FAST_*` names working. For each knob, if the caller set the
+/// `TALIESIN_*` form and left the `QMD_FAST_*` form unset, copy it across so the rest
+/// of the code (which still reads the `QMD_FAST_*` names internally) picks it up.
+fn bridge_legacy_env() {
+    // Runtime knobs only. `QMD_FAST_GIT_SHA` is baked in at compile time (via `env!`),
+    // not read here, so it is intentionally absent.
+    const KNOBS: &[&str] = &[
+        "PYTHON",
+        "R",
+        "CELL_TIMEOUT",
+        "NO_CACHE",
+        "NO_EXEC",
+        "HOST",
+        "OPEN",
+        "MERMAID_URL",
+        "NO_CLEAR",
+        "REQUIRE_KERNEL",
+        "BLESS",
+    ];
+    for knob in KNOBS {
+        let new = format!("TALIESIN_{knob}");
+        let old = format!("QMD_FAST_{knob}");
+        if let Ok(val) = std::env::var(&new)
+            && std::env::var_os(&old).is_none()
+        {
+            // SAFETY: run once at the very top of `main`, before any thread or async
+            // runtime spawns, so there is no concurrent access to the environment.
+            unsafe { std::env::set_var(&old, val) };
         }
     }
 }
@@ -79,15 +113,15 @@ const COMMANDS: &[&str] = &[
 
 fn usage() {
     println!(
-        "qmd-fast {} ({})",
-        qmd_fast_core::VERSION,
+        "taliesin {} ({})",
+        taliesin_core::VERSION,
         env!("QMD_FAST_GIT_SHA")
     );
     println!("A fast .qmd -> HTML renderer and live preview server.");
-    println!("Docs: https://github.com/anthropics/qmd-fast");
+    println!("Docs: https://github.com/AJBogo9/qmd-fast");
     println!();
     println!("USAGE:");
-    println!("  qmd-fast <command> <file.qmd | dir> [args]");
+    println!("  taliesin <command> <file.qmd | dir> [args]");
     println!("  (a directory argument is a multi-page SITE project: an _site.yml + .qmd pages)");
     println!();
     println!("COMMANDS:");
@@ -135,7 +169,7 @@ fn usage() {
 fn subcommand_help(cmd: &str) -> Option<&'static str> {
     let text = match cmd {
         "preview" | "dev" | "serve" => {
-            "qmd-fast preview <file.qmd | dir> [port] [--host] [--open] [--no-exec]\n\
+            "taliesin preview <file.qmd | dir> [port] [--host] [--open] [--no-exec]\n\
              \n\
              Live preview server (aliases: dev, serve). A file previews one document; a\n\
              directory previews the whole SITE with cross-page nav + per-page hot reload.\n\
@@ -147,10 +181,10 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 --no-exec   render code cells as source, never executing them\n\
              \n\
              Example:\n\
-             \x20 qmd-fast preview index.qmd --open\n"
+             \x20 taliesin preview index.qmd --open\n"
         }
         "build" => {
-            "qmd-fast build <file.qmd | dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>]\n\
+            "taliesin build <file.qmd | dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>]\n\
              \n\
              Render a self-contained HTML file. A directory builds the whole SITE to\n\
              _site/. Default output is <name>.html beside the source.\n\
@@ -163,11 +197,11 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20              --jobs 1 forces sequential; --jobs 0 same as auto)\n\
              \n\
              Example:\n\
-             \x20 qmd-fast build post.qmd --strict\n\
-             \x20 qmd-fast build . --jobs 4\n"
+             \x20 taliesin build post.qmd --strict\n\
+             \x20 taliesin build . --jobs 4\n"
         }
         "check" => {
-            "qmd-fast check <file.qmd | dir> [--format human|json]\n\
+            "taliesin check <file.qmd | dir> [--format human|json]\n\
              \n\
              Render in memory and list every located diagnostic; exits non-zero if any\n\
              are found (a CI / pre-publish gate). Does NOT execute code cells.\n\
@@ -177,46 +211,46 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 --format json   a [{file,line,message}] array to stdout (pipes to jq)\n\
              \n\
              Example:\n\
-             \x20 qmd-fast check . --format json | jq\n"
+             \x20 taliesin check . --format json | jq\n"
         }
         "render" => {
-            "qmd-fast render <file.qmd>\n\
+            "taliesin render <file.qmd>\n\
              \n\
              Render a full HTML page to stdout (one-shot). Static: it does NOT execute\n\
              code cells, so kernel cells emit as source with empty outputs. Use build or\n\
              preview to run them.\n\
              \n\
              Example:\n\
-             \x20 qmd-fast render post.qmd > post.html\n"
+             \x20 taliesin render post.qmd > post.html\n"
         }
         "schema" => {
-            "qmd-fast schema [--out <dir>]\n\
+            "taliesin schema [--out <dir>]\n\
              \n\
-             Emit the bundled JSON Schemas for qmd-fast's YAML config (document front\n\
+             Emit the bundled JSON Schemas for taliesin's YAML config (document front\n\
              matter + _site.yml) so an editor's YAML language server can validate them.\n\
              Prints both to stdout, or writes two files with --out <dir>.\n\
              \n\
              Example:\n\
-             \x20 qmd-fast schema --out .schemas\n"
+             \x20 taliesin schema --out .schemas\n"
         }
         "blocks" => {
-            "qmd-fast blocks <file.qmd>\n\
+            "taliesin blocks <file.qmd>\n\
              \n\
              List the document's block ids + sourcepos + source file + a short preview\n\
              (a debugging aid for the block model). Does NOT execute code cells.\n\
              \n\
              Example:\n\
-             \x20 qmd-fast blocks post.qmd\n"
+             \x20 taliesin blocks post.qmd\n"
         }
         "init" => {
-            "qmd-fast init [dir]\n\
+            "taliesin init [dir]\n\
              \n\
              Scaffold a minimal previewable site into dir (default the current\n\
              directory): writes _site.yml + index.qmd, then prints the preview hint.\n\
              Refuses to overwrite existing files.\n\
              \n\
              Example:\n\
-             \x20 qmd-fast init my-site\n"
+             \x20 taliesin init my-site\n"
         }
         _ => return None,
     };
@@ -230,11 +264,11 @@ mod dispatch_tests {
     #[test]
     fn closest_command_suggests_nearest() {
         // A near-miss typo resolves to the intended command.
-        assert_eq!(qmd_fast_core::closest("biuld", COMMANDS), Some("build"));
-        assert_eq!(qmd_fast_core::closest("previw", COMMANDS), Some("preview"));
-        assert_eq!(qmd_fast_core::closest("innit", COMMANDS), Some("init"));
+        assert_eq!(taliesin_core::closest("biuld", COMMANDS), Some("build"));
+        assert_eq!(taliesin_core::closest("previw", COMMANDS), Some("preview"));
+        assert_eq!(taliesin_core::closest("innit", COMMANDS), Some("init"));
         // Something far from every command yields no suggestion (not a wild guess).
-        assert_eq!(qmd_fast_core::closest("frobnicate", COMMANDS), None);
+        assert_eq!(taliesin_core::closest("frobnicate", COMMANDS), None);
     }
 }
 
@@ -254,8 +288,8 @@ mod cli_microcopy_tests {
                 "`{cmd}` help should name the subcommand: {help}"
             );
             assert!(
-                help.contains("qmd-fast"),
-                "`{cmd}` help should show a `qmd-fast …` example: {help}"
+                help.contains("taliesin"),
+                "`{cmd}` help should show a `taliesin …` example: {help}"
             );
         }
         // Aliases resolve to the canonical (preview) help.

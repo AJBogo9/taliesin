@@ -14,7 +14,7 @@
 
 use std::fs;
 
-use qmd_fast_core::{Site, render_document_with_includes};
+use taliesin_core::{Site, render_document_with_includes};
 
 mod common;
 use common::corpus_dir;
@@ -212,7 +212,7 @@ fn js_cells_render_as_live_placeholders() {
 fn js_page_ships_libs_when_cells_present() {
     let dir = corpus_dir().join("posts/fourier-transform");
     let src = std::fs::read_to_string(dir.join("index.qmd")).unwrap();
-    let page = qmd_fast_core::render_html_page_with_includes(&src, &dir, "post");
+    let page = taliesin_core::render_html_page_with_includes(&src, &dir, "post");
     assert!(
         page.contains("@observablehq/plot") && page.contains("d3js.org"),
         "vendored Plot/d3 not shipped on a page with {{js}} cells"
@@ -224,7 +224,7 @@ fn js_page_ships_libs_when_cells_present() {
 
     // A doc with no live cells must not pay for the (large) libs.
     let prose =
-        qmd_fast_core::render_html_page("---\ntitle: x\n---\n\nJust prose, no cells.\n", "p");
+        taliesin_core::render_html_page("---\ntitle: x\n---\n\nJust prose, no cells.\n", "p");
     assert!(
         !prose.contains("@observablehq/plot"),
         "Plot shipped on a doc with no cells"

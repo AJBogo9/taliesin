@@ -25,7 +25,7 @@ fn fixture(rel: &str) -> std::path::PathBuf {
 #[test]
 fn unknown_shortcode_warns_with_its_name_and_line() {
     let proj = TempProj::new();
-    let doc = qmd_fast_core::render_document_with_includes(
+    let doc = taliesin_core::render_document_with_includes(
         "# Title\n\nIntro.\n\n{{< videoo clip.mp4 >}}\n",
         &proj.0,
     );
@@ -46,7 +46,7 @@ fn unknown_shortcode_warns_with_its_name_and_line() {
 #[test]
 fn a_leftover_include_directive_is_not_flagged_as_an_unknown_shortcode() {
     let proj = TempProj::new();
-    let doc = qmd_fast_core::render_document_with_includes(
+    let doc = taliesin_core::render_document_with_includes(
         "# Title\n\n{{< include does-not-exist.qmd >}}\n",
         &proj.0,
     );
@@ -77,7 +77,7 @@ body-start:
     );
 
     let src = "---\ntitle: T\nformat: brand-html\n---\n\n# H\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    let doc = taliesin_core::render_document_with_includes(src, &d.0);
     assert!(
         doc.includes.in_header.contains("name=\"brand\""),
         "header not injected: {}",
@@ -106,7 +106,7 @@ fn format_resources_are_collected_for_copying() {
     d.file("_extensions/deck/assets/extra.css", "/* css */");
 
     let src = "---\ntitle: T\nformat: deck-revealjs\n---\n\n## S\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    let doc = taliesin_core::render_document_with_includes(src, &d.0);
     let names: Vec<String> = doc
         .includes
         .resources
@@ -134,7 +134,7 @@ fn extension_header_precedes_document_header() {
 ",
     );
     let src = "---\ntitle: T\nformat: lib-revealjs\ninclude-in-header:\n  - text: \"<!--DOC-->\"\n---\n\n## S\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    let doc = taliesin_core::render_document_with_includes(src, &d.0);
     let h = &doc.includes.in_header;
     let ext_at = h.find("EXT").expect("extension header present");
     let doc_at = h.find("DOC").expect("document header present");
@@ -150,7 +150,7 @@ fn extension_theme_inlines_css_and_applies_builtin_base() {
     d.ext("glassy", "theme: [dark, glassy.css]\n");
     d.file("_extensions/glassy/glassy.css", ".qmd-deck{--marker:1}");
     let src = "---\ntitle: T\nformat: glassy-revealjs\n---\n\n## S\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    let doc = taliesin_core::render_document_with_includes(src, &d.0);
     assert!(
         doc.includes.in_header.contains("--marker:1"),
         "css layer should be inlined: {}",
@@ -170,7 +170,7 @@ fn doc_theme_overrides_extension_theme_base() {
     d.ext("glassy", "theme: [dark, glassy.css]\n");
     d.file("_extensions/glassy/glassy.css", ".qmd-deck{--marker:1}");
     let src = "---\ntitle: T\nformat: glassy-revealjs\ntheme: light\n---\n\n## S\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    let doc = taliesin_core::render_document_with_includes(src, &d.0);
     assert_eq!(
         doc.theme_default, "light",
         "the doc's own theme: must beat the extension's contributed base"
@@ -183,7 +183,7 @@ fn doc_theme_overrides_extension_theme_base() {
 fn unknown_extension_name_is_reported() {
     let d = TempProj::new();
     let src = "---\ntitle: T\nformat: doesnotexist-revealjs\n---\n\n## S\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    let doc = taliesin_core::render_document_with_includes(src, &d.0);
     assert!(doc.includes.in_header.is_empty());
     assert!(!doc.blocks.is_empty(), "the doc still renders normally");
     assert!(
@@ -201,7 +201,7 @@ fn unknown_extension_name_is_reported() {
 fn bare_base_format_does_not_warn() {
     let d = TempProj::new();
     let src = "---\ntitle: T\nformat: revealjs\n---\n\n## S\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    let doc = taliesin_core::render_document_with_includes(src, &d.0);
     assert!(
         doc.warnings
             .iter()
@@ -218,7 +218,7 @@ fn malformed_manifest_is_reported_not_fatal() {
     let d = TempProj::new();
     d.ext("broken", "theme: [this is not, valid: yaml");
     let src = "---\ntitle: T\nformat: broken-revealjs\n---\n\n## S\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    let doc = taliesin_core::render_document_with_includes(src, &d.0);
     assert!(doc.includes.in_header.is_empty(), "malformed ext ignored");
     assert!(!doc.blocks.is_empty(), "render still succeeds");
     assert!(
@@ -244,7 +244,7 @@ fn missing_referenced_file_leaves_a_breadcrumb_comment() {
 ",
     );
     let src = "---\ntitle: T\nformat: partial-revealjs\n---\n\n## S\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    let doc = taliesin_core::render_document_with_includes(src, &d.0);
     assert!(
         doc.includes
             .in_header
@@ -267,7 +267,7 @@ fn declarative_shortcode_expands_positional() {
 ",
     );
     let src = "---\ntitle: T\nformat: media-html\n---\n\nWatch {{< yt dQw4 >}} now.\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    let doc = taliesin_core::render_document_with_includes(src, &d.0);
     let body = doc.body_html();
     assert!(
         body.contains("youtube.com/embed/dQw4"),
@@ -287,7 +287,7 @@ fn declarative_shortcode_named_args() {
 ",
     );
     let src = "---\ntitle: T\nformat: media-html\n---\n\n{{< embed id=abc width=560 title=\"A Clip\" >}}\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    let doc = taliesin_core::render_document_with_includes(src, &d.0);
     let body = doc.body_html();
     assert!(body.contains("width=\"560\""), "named width: {body}");
     assert!(body.contains("/v/abc"), "named id: {body}");
@@ -300,7 +300,7 @@ fn declarative_shortcode_named_args() {
 #[test]
 fn builtin_embed_emits_deck_iframe() {
     let src = "---\ntitle: T\n---\n\n{{< embed talk.qmd title=\"My Talk\" >}}\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, std::path::Path::new("."));
+    let doc = taliesin_core::render_document_with_includes(src, std::path::Path::new("."));
     let body = doc.body_html();
     assert!(
         body.contains("class=\"qmd-embed\""),
@@ -316,7 +316,7 @@ fn builtin_embed_emits_deck_iframe() {
 #[test]
 fn builtin_video_emits_autoplay_figure() {
     let src = "---\ntitle: T\n---\n\n{{< video assets/clip.mp4 caption=\"A demo\" >}}\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, std::path::Path::new("."));
+    let doc = taliesin_core::render_document_with_includes(src, std::path::Path::new("."));
     let body = doc.body_html();
     assert!(
         body.contains("class=\"qmd-video\""),
@@ -343,7 +343,7 @@ fn builtin_video_emits_autoplay_figure() {
 #[test]
 fn builtin_video_keeps_query_string_in_src() {
     let src = "---\ntitle: T\n---\n\n{{< video clip.mp4?token=abc >}}\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, std::path::Path::new("."));
+    let doc = taliesin_core::render_document_with_includes(src, std::path::Path::new("."));
     let body = doc.body_html();
     assert!(
         !body.contains("{{<"),
@@ -365,7 +365,7 @@ fn builtin_video_keeps_query_string_in_src() {
 #[test]
 fn builtin_video_query_string_escapes_ampersand() {
     let src = "---\ntitle: T\n---\n\n{{< video clip.mp4?a=1&b=2 caption=\"Demo\" >}}\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, std::path::Path::new("."));
+    let doc = taliesin_core::render_document_with_includes(src, std::path::Path::new("."));
     let body = doc.body_html();
     assert!(
         body.contains("src=\"clip.mp4?a=1&amp;b=2\""),
@@ -382,7 +382,7 @@ fn builtin_video_query_string_escapes_ampersand() {
 #[test]
 fn builtin_video_named_dark_arg_is_not_the_path() {
     let src = "---\ntitle: T\n---\n\n{{< video light.mp4 dark=dark.mp4 >}}\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, std::path::Path::new("."));
+    let doc = taliesin_core::render_document_with_includes(src, std::path::Path::new("."));
     let body = doc.body_html();
     assert!(
         body.contains("src=\"light.mp4\"") && body.contains("src=\"dark.mp4\""),
@@ -402,7 +402,7 @@ fn builtin_video_named_dark_arg_is_not_the_path() {
 fn corpus_render_fixes_pins_height_and_video_query() {
     let dir = corpus_dir().join("render-fixes");
     let src = std::fs::read_to_string(dir.join("index.qmd")).unwrap();
-    let doc = qmd_fast_core::render_document_with_includes(&src, &dir);
+    let doc = taliesin_core::render_document_with_includes(&src, &dir);
     let body = doc.body_html();
     assert!(
         body.contains("style=\"width:320px;height:240px\""),
@@ -427,7 +427,7 @@ fn corpus_render_fixes_pins_height_and_video_query() {
 #[test]
 fn shortcode_in_inline_code_stays_literal() {
     let src = "---\ntitle: T\n---\n\nUse `{{< embed deck.qmd >}}` to embed a deck.\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, std::path::Path::new("."));
+    let doc = taliesin_core::render_document_with_includes(src, std::path::Path::new("."));
     let body = doc.body_html();
     assert!(
         body.contains("{{&lt; embed deck.qmd &gt;}}") || body.contains("{{< embed deck.qmd >}}"),
@@ -451,7 +451,7 @@ fn unknown_shortcode_is_left_verbatim() {
 ",
     );
     let src = "---\ntitle: T\nformat: media-html\n---\n\nText {{< unknownsc x >}} more.\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    let doc = taliesin_core::render_document_with_includes(src, &d.0);
     assert!(
         doc.body_html().contains("unknownsc x"),
         "unknown shortcode should survive: {}",
@@ -463,7 +463,7 @@ fn unknown_shortcode_is_left_verbatim() {
 fn format_extension_injects_theme_and_includes() {
     let dir = fixture("deck-ext");
     let src = fs::read_to_string(dir.join("slides.qmd")).expect("read slides.qmd");
-    let html = qmd_fast_core::render_html_page_with_includes(&src, &dir, "Glass Deck");
+    let html = taliesin_core::render_html_page_with_includes(&src, &dir, "Glass Deck");
 
     // Renders as a deck (the `-revealjs` base format is detected).
     assert!(
@@ -492,7 +492,7 @@ fn format_extension_injects_theme_and_includes() {
 fn plain_format_without_extension_is_untouched() {
     // A bare `format: revealjs` has no extension prefix, so nothing extra is pulled.
     let src = "---\ntitle: T\nformat: revealjs\n---\n\n## S\n";
-    let html = qmd_fast_core::render_html_page_with_includes(src, &fixture("deck-ext"), "T");
+    let html = taliesin_core::render_html_page_with_includes(src, &fixture("deck-ext"), "T");
     assert!(html.contains("<div class=\"qmd-deck\">"));
     assert!(
         !html.contains("glass-ext"),
@@ -523,7 +523,7 @@ fn native_flat_manifest_contributes_everything() {
     d.file("_extensions/glassy/glassy.js", "// js");
 
     let src = "---\ntitle: T\nformat: glassy-revealjs\n---\n\nWatch {{< yt abc >}}.\n\n## S\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    let doc = taliesin_core::render_document_with_includes(src, &d.0);
     assert!(
         doc.includes.in_header.contains("--g:1"),
         "theme layer inlined"
@@ -560,7 +560,7 @@ fn native_manifest_unknown_key_is_warned() {
     let d = TempProj::new();
     d.ext("typo", "name: T\nresorces: [x.js]\n"); // resorces -> resources
     let src = "---\ntitle: T\nformat: typo-revealjs\n---\n\n## S\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    let doc = taliesin_core::render_document_with_includes(src, &d.0);
     assert!(
         doc.warnings
             .iter()
@@ -581,7 +581,7 @@ fn extensions_list_activates_without_format() {
     );
     d.file("_extensions/widgets/w.css", ".w{color:red}");
     let src = "---\ntitle: T\nextensions: [widgets]\n---\n\nSay {{< hi there >}}.\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    let doc = taliesin_core::render_document_with_includes(src, &d.0);
     assert!(
         doc.body_html().contains("<b>hi there</b>"),
         "shortcode from the extensions: list: {}",
@@ -602,7 +602,7 @@ fn extension_resolved_from_project_root() {
     d.ext("widgets", "name: W\nshortcodes:\n  hi: '<b>{{1}}</b>'\n"); // at <root>/_extensions
     let src = "---\ntitle: T\nextensions: [widgets]\n---\n\n{{< hi yo >}}\n";
     let base = d.0.join("chapters"); // a doc one level deeper than the extension
-    let doc = qmd_fast_core::render_document_with_includes(src, &base);
+    let doc = taliesin_core::render_document_with_includes(src, &base);
     assert!(
         doc.body_html().contains("<b>yo</b>"),
         "extension should be found by walking up to the project root: {}",
@@ -620,7 +620,7 @@ fn shortcode_in_code_block_is_left_literal() {
         "name: M\nshortcodes:\n  yt: '<iframe src=\"/v/{{1}}\"></iframe>'\n",
     );
     let src = "---\ntitle: T\nextensions: [media]\n---\n\nExample:\n\n```\n{{< yt abc >}}\n```\n\nLive: {{< yt xyz >}}\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, &d.0);
+    let doc = taliesin_core::render_document_with_includes(src, &d.0);
     let body = doc.body_html();
     assert!(
         body.contains("/v/xyz"),

@@ -13,7 +13,7 @@ use std::fs;
 fn body() -> String {
     let path = corpus_dir().join("reader/read-aloud.qmd");
     let src = fs::read_to_string(&path).unwrap();
-    qmd_fast_core::render_document_with_includes(&src, path.parent().unwrap()).body_html()
+    taliesin_core::render_document_with_includes(&src, path.parent().unwrap()).body_html()
 }
 
 #[test]

@@ -1145,9 +1145,9 @@ checksum = "32a66949e030da00e8c7d4434b251670a91556f4144941d37452769c25d58a53"
 name = "live-edit-bench"
 version = "0.2.0"
 dependencies = [
- "qmd-fast-core",
  "serde",
  "serde_json",
+ "taliesin-core",
 ]
 
 [[package]]
@@ -1432,39 +1432,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8fd00f0bb2e90d81d1044c2b32617f68fcb9fa3bb7640c23e9c748e53fb30934"
 dependencies = [
  "unicode-ident",
-]
-
-[[package]]
-name = "qmd-fast-core"
-version = "0.2.0"
-dependencies = [
- "comrak",
- "katex",
- "serde",
- "serde_json",
- "serde_yaml",
- "syntect",
- "unicode-normalization",
-]
-
-[[package]]
-name = "qmd-fast-server"
-version = "0.2.0"
-dependencies = [
- "axum",
- "futures-util",
- "jupyter-protocol",
- "jupyter-zmq-client",
- "libc",
- "notify",
- "parking_lot",
- "qmd-fast-core",
- "qrcode",
- "serde",
- "serde_json",
- "terminal_size",
- "tokio",
- "uuid",
 ]
 
 [[package]]
@@ -1903,6 +1870,39 @@ dependencies = [
  "thiserror 2.0.18",
  "walkdir",
  "yaml-rust",
+]
+
+[[package]]
+name = "taliesin-core"
+version = "0.2.0"
+dependencies = [
+ "comrak",
+ "katex",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "syntect",
+ "unicode-normalization",
+]
+
+[[package]]
+name = "taliesin-server"
+version = "0.2.0"
+dependencies = [
+ "axum",
+ "futures-util",
+ "jupyter-protocol",
+ "jupyter-zmq-client",
+ "libc",
+ "notify",
+ "parking_lot",
+ "qrcode",
+ "serde",
+ "serde_json",
+ "taliesin-core",
+ "terminal_size",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

@@ -100,15 +100,15 @@ corpus/          the real .qmd docs (the spec); cargo test renders them all
 ## Commands
 
 ```sh
-cargo run -p qmd-fast-server -- preview <file.qmd> [port]      # live preview (aliases: dev, serve)
-cargo run -p qmd-fast-server -- preview <file.qmd> --host      # + expose on LAN with a phone QR code
-cargo run -p qmd-fast-server -- preview <dir>                  # live multi-page SITE preview (nav + per-page hot reload)
-cargo run -p qmd-fast-server -- build  <file.qmd> [out.html]   # self-contained HTML file (default <name>.html)
-cargo run -p qmd-fast-server -- build  <file.qmd> --out <dir>  # portable folder: <dir>/index.html + copied local assets
-cargo run -p qmd-fast-server -- build  <dir> [--out <dir>]     # multi-page SITE -> _site/ (one .html per page + assets)
-cargo run -p qmd-fast-server -- render <file.qmd> > out.html   # one-shot full page to stdout
-cargo run -p qmd-fast-server -- blocks <file.qmd>              # block ids + sourcepos (debug)
-cargo test -p qmd-fast-core                                    # corpus invariants + unit tests
+cargo run -p taliesin-server -- preview <file.qmd> [port]      # live preview (aliases: dev, serve)
+cargo run -p taliesin-server -- preview <file.qmd> --host      # + expose on LAN with a phone QR code
+cargo run -p taliesin-server -- preview <dir>                  # live multi-page SITE preview (nav + per-page hot reload)
+cargo run -p taliesin-server -- build  <file.qmd> [out.html]   # self-contained HTML file (default <name>.html)
+cargo run -p taliesin-server -- build  <file.qmd> --out <dir>  # portable folder: <dir>/index.html + copied local assets
+cargo run -p taliesin-server -- build  <dir> [--out <dir>]     # multi-page SITE -> _site/ (one .html per page + assets)
+cargo run -p taliesin-server -- render <file.qmd> > out.html   # one-shot full page to stdout
+cargo run -p taliesin-server -- blocks <file.qmd>              # block ids + sourcepos (debug)
+cargo test -p taliesin-core                                    # corpus invariants + unit tests
 cd web-client && npx -y -p typescript tsc -p jsconfig.json     # type-check client.js (// @ts-check, no build step)
 ```
 

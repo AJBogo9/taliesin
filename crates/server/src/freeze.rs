@@ -43,10 +43,10 @@ const FORMAT_VERSION: u32 = 2;
 const MAX_ENTRIES: usize = 1024;
 
 /// The cache key uses the **same** 64-bit FNV-1a as the core's block-id scheme — one
-/// shared definition in [`qmd_fast_core::hash`] (they must hash identically). The
+/// shared definition in [`taliesin_core::hash`] (they must hash identically). The
 /// cumulative chain below feeds each step's hex digest into the next, so the per-cell
 /// keys are independent of any other document's cells.
-pub use qmd_fast_core::hash::fnv1a;
+pub use taliesin_core::hash::fnv1a;
 
 /// Cumulative per-cell cache keys for one language's cells, in document order.
 ///

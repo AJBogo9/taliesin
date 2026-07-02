@@ -11,7 +11,7 @@
 
 use std::fs;
 
-use qmd_fast_core::render_document_with_includes;
+use taliesin_core::render_document_with_includes;
 
 mod common;
 use common::corpus_dir;

@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use qmd_fast_core::Site;
+use taliesin_core::Site;
 
 /// A throwaway site directory under the system temp dir (no `tempfile` dev-dep).
 fn tmp_site(name: &str) -> PathBuf {

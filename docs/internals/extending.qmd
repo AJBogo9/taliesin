@@ -243,8 +243,8 @@ preamble.
 ## The dev loop
 
 ```sh
-cargo run -p qmd-fast-server -- preview corpus/<doc>   # iterate on a real doc
-cargo test -p qmd-fast-core                            # corpus invariants + unit tests
+cargo run -p taliesin-server -- preview corpus/<doc>   # iterate on a real doc
+cargo test -p taliesin-core                            # corpus invariants + unit tests
 cargo clippy --workspace --all-targets -- -D warnings
 cd web-client && npx -y -p typescript tsc -p jsconfig.json   # type-check client.js
 ```

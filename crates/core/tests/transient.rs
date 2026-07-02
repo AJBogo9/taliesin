@@ -5,8 +5,8 @@
 //! overlay and drops the live preview, which is exactly the value prop this tool is
 //! built on. `render_document` is the pure core pipeline (no kernel/includes).
 
-use qmd_fast_core::{diff_blocks, render_document};
 use std::panic::{AssertUnwindSafe, catch_unwind};
+use taliesin_core::{diff_blocks, render_document};
 
 /// Render `src`, capturing a panic as `Err(message)` instead of aborting the run.
 fn try_render(src: &str) -> Result<usize, String> {

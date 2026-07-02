@@ -1,5 +1,5 @@
 [package]
-name = "qmd-fast-server"
+name = "taliesin-server"
 description = "Long-running dev server: websocket protocol, file watcher, kernel pool"
 version.workspace = true
 edition.workspace = true
@@ -8,7 +8,7 @@ authors.workspace = true
 repository.workspace = true
 
 [[bin]]
-name = "qmd-fast"
+name = "taliesin"
 path = "src/main.rs"
 
 [dependencies]
@@ -19,7 +19,7 @@ jupyter-zmq-client = { version = "1.0.0", features = ["tokio-runtime"] }
 libc = { workspace = true }
 notify = "8.2.0"
 parking_lot = { workspace = true }
-qmd-fast-core = { workspace = true }
+taliesin-core = { workspace = true }
 # terminal QR rendering only; default features pull in image/svg backends we don't need
 qrcode = { version = "0.14", default-features = false }
 serde = { version = "1.0.228", features = ["derive"] }

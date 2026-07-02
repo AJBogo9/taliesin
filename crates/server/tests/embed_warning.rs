@@ -25,7 +25,7 @@ fn single_doc_build_warns_on_unresolved_embed() {
     )
     .unwrap();
 
-    let out = Command::new(env!("CARGO_BIN_EXE_qmd-fast"))
+    let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
         .arg("build")
         .arg(&doc)
         .arg(dir.join("post.html"))
@@ -45,7 +45,7 @@ fn single_doc_build_without_embed_does_not_warn_about_embeds() {
     let doc = dir.join("post.qmd");
     fs::write(&doc, "---\ntitle: Post\n---\n\nJust prose, no embed.\n").unwrap();
 
-    let out = Command::new(env!("CARGO_BIN_EXE_qmd-fast"))
+    let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
         .arg("build")
         .arg(&doc)
         .arg(dir.join("post.html"))

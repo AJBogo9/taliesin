@@ -6,7 +6,7 @@
 //!
 //! **How to use:** `main()` dispatches `render`/`blocks`/`schema` to the `cmd_*` fns here.
 //!
-//! **Depends on:** [`qmd_fast_core`] for rendering + the bundled schemas, and
+//! **Depends on:** [`taliesin_core`] for rendering + the bundled schemas, and
 //! [`crate::log`] for the no-execution warning. No code execution, no kernel.
 
 use crate::log;
@@ -26,7 +26,7 @@ pub(crate) fn cmd_render(path: Option<&String>) -> ExitCode {
             // Guard the render: a panic in core rendering becomes a located error +
             // non-zero exit, not a raw abort (this one-shot has no async loop to absorb it).
             let rendered = crate::serve::guarded(|| {
-                let doc = qmd_fast_core::render_document_with_includes(&src, base);
+                let doc = taliesin_core::render_document_with_includes(&src, base);
                 // `render` is a static, one-shot HTML dump: unlike `build`/`preview` it
                 // never starts a kernel, so kernel-executed cells (python/r) emit as
                 // source with empty output blocks — broken `@fig-` refs, no plots. Warn
@@ -49,7 +49,7 @@ pub(crate) fn cmd_render(path: Option<&String>) -> ExitCode {
                         if kernel_cells == 1 { "" } else { "s" }
                     ));
                 }
-                qmd_fast_core::render_doc_to_page(&doc, stem, qmd_fast_core::OutputMode::Build)
+                taliesin_core::render_doc_to_page(&doc, stem, taliesin_core::OutputMode::Build)
             });
             match rendered {
                 Ok(html) => {
@@ -80,7 +80,7 @@ pub(crate) fn cmd_blocks(path: Option<&String>) -> ExitCode {
             let base = p.parent().unwrap_or_else(|| Path::new("."));
             // Guard the render so a panic becomes a clean error + non-zero exit.
             let doc = match crate::serve::guarded(|| {
-                qmd_fast_core::render_document_with_includes(&src, base)
+                taliesin_core::render_document_with_includes(&src, base)
             }) {
                 Ok(doc) => doc,
                 Err(panic) => {
@@ -118,7 +118,7 @@ pub(crate) fn cmd_blocks(path: Option<&String>) -> ExitCode {
 /// it writes two files there; otherwise it prints both to stdout. The strings are the
 /// committed, bundled schemas (no runtime JSON generation).
 pub(crate) fn cmd_schema(args: &[String]) -> ExitCode {
-    use qmd_fast_core::schema::{FRONTMATTER_SCHEMA, SITE_SCHEMA};
+    use taliesin_core::schema::{FRONTMATTER_SCHEMA, SITE_SCHEMA};
     let files = [
         ("qmd-frontmatter.schema.json", FRONTMATTER_SCHEMA),
         ("qmd-site.schema.json", SITE_SCHEMA),

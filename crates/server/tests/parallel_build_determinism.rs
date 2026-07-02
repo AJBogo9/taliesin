@@ -51,7 +51,7 @@ fn copy_tree(src: &Path, dst: &Path) {
 /// Run `qmd-fast build <root> --jobs <jobs>` and return every rendered HTML file under
 /// `<root>/<out_subdir>`, keyed by its path relative to that output dir.
 fn build_and_collect(root: &Path, out_subdir: &str, jobs: &str) -> BTreeMap<String, Vec<u8>> {
-    let status = Command::new(env!("CARGO_BIN_EXE_qmd-fast"))
+    let status = Command::new(env!("CARGO_BIN_EXE_taliesin"))
         .arg("build")
         .arg(root)
         .arg("--jobs")

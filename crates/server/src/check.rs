@@ -7,7 +7,7 @@
 //!
 //! **How to use:** `main()` dispatches `check` to [`cmd_check`]; `--format human|json`.
 //!
-//! **Depends on:** [`qmd_fast_core`] for rendering + the `diagnostics`/`cite` validators
+//! **Depends on:** [`taliesin_core`] for rendering + the `diagnostics`/`cite` validators
 //! + `Site`, [`crate::log`], and `serde_json` for the JSON formatter.
 
 use crate::log;
@@ -22,7 +22,7 @@ struct Diagnostic {
     message: String,
 }
 
-fn diag_from(w: &qmd_fast_core::render::Warning, fallback_file: &str) -> Diagnostic {
+fn diag_from(w: &taliesin_core::render::Warning, fallback_file: &str) -> Diagnostic {
     Diagnostic {
         file: w.file.clone().unwrap_or_else(|| fallback_file.to_string()),
         line: w.line,
@@ -45,10 +45,10 @@ fn collect_file_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
     let src = std::fs::read_to_string(path)
         .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
     let base = path.parent().unwrap_or_else(|| Path::new("."));
-    let doc = qmd_fast_core::render_document_with_includes(&src, base);
+    let doc = taliesin_core::render_document_with_includes(&src, base);
     let path_str = path.display().to_string();
-    use qmd_fast_core::diagnostics as dx;
-    let xref = qmd_fast_core::cite::validate_xrefs(&doc.blocks);
+    use taliesin_core::diagnostics as dx;
+    let xref = taliesin_core::cite::validate_xrefs(&doc.blocks);
     let dups = dx::validate_duplicate_heading_ids(&doc.blocks);
     let anchors = dx::validate_internal_anchors(&doc.blocks);
     let assets = dx::validate_local_assets(&doc.blocks, base);
@@ -61,7 +61,7 @@ fn collect_file_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
     let mut out: Vec<Diagnostic> = Vec::new();
     // Malformed YAML front matter: the lenient line-parser silently mis-extracts
     // fields, so surface the parse error here too (the live servers already do).
-    if let Some((message, line)) = qmd_fast_core::frontmatter::yaml_error(&src) {
+    if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(&src) {
         out.push(Diagnostic {
             file: path_str.clone(),
             line: Some(line),
@@ -87,7 +87,7 @@ fn collect_file_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
 }
 
 fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
-    let site = qmd_fast_core::Site::discover(root);
+    let site = taliesin_core::Site::discover(root);
     if site.pages.is_empty() {
         return Err(format!("no .qmd pages found under {}", root.display()));
     }
@@ -109,7 +109,7 @@ fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
             });
             continue;
         };
-        if let Some((message, line)) = qmd_fast_core::frontmatter::yaml_error(&src) {
+        if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(&src) {
             out.push(Diagnostic {
                 file: page.rel.clone(),
                 line: Some(line),
@@ -120,10 +120,10 @@ fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
         // Scope a numbered book chapter's theorems to its chapter ("Theorem 2.3"), matching
         // the build + live-preview paths; otherwise `number-within: chapter` would warn here.
         let doc =
-            qmd_fast_core::render_document_with_includes_scoped(&src, base, site.chapter_for(page));
+            taliesin_core::render_document_with_includes_scoped(&src, base, site.chapter_for(page));
         // Static lints over the page's blocks (xrefs are added by render_page_doc_warned
         // below); run before `doc` is consumed.
-        use qmd_fast_core::diagnostics as dx;
+        use taliesin_core::diagnostics as dx;
         let dups = dx::validate_duplicate_heading_ids(&doc.blocks);
         let anchors = dx::validate_internal_anchors(&doc.blocks);
         let assets = dx::validate_local_assets(&doc.blocks, base);

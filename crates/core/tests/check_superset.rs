@@ -1,8 +1,8 @@
 //! `qmd-fast check` superset validators: each renders a real doc and asserts the
 //! static lint surfaces (or stays silent on) the right located warning.
 
-use qmd_fast_core::diagnostics;
 use std::path::Path;
+use taliesin_core::diagnostics;
 
 #[test]
 fn duplicate_explicit_heading_id_is_deduped_at_render_time() {
@@ -14,7 +14,7 @@ fn duplicate_explicit_heading_id_is_deduped_at_render_time() {
     // bug is fixed upstream, not merely detected. (That validator stays as a belt-and-
     // suspenders guard for any future id source that bypasses the renderer's dedup.)
     let src = "---\ntitle: T\n---\n\n## First {#dup}\n\nText.\n\n## Second {#dup}\n\nMore.\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, Path::new("."));
+    let doc = taliesin_core::render_document_with_includes(src, Path::new("."));
 
     // Distinct ids in the rendered DOM.
     let ids: Vec<&str> = doc
@@ -60,7 +60,7 @@ fn duplicate_explicit_heading_id_is_deduped_at_render_time() {
 #[test]
 fn unique_heading_ids_are_clean() {
     let src = "---\ntitle: T\n---\n\n## First {#a}\n\n## Second {#b}\n\n## Auto heading here\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, Path::new("."));
+    let doc = taliesin_core::render_document_with_includes(src, Path::new("."));
     assert!(
         diagnostics::validate_duplicate_heading_ids(&doc.blocks).is_empty(),
         "distinct ids must not warn"
@@ -74,7 +74,7 @@ fn missing_local_image_is_flagged_existing_is_clean() {
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("real.png"), b"\x89PNG").unwrap();
     let src = "---\ntitle: T\n---\n\n![ok](real.png)\n\n![missing](gone.png)\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, &dir);
+    let doc = taliesin_core::render_document_with_includes(src, &dir);
     let warns = diagnostics::validate_local_assets(&doc.blocks, &dir);
     assert_eq!(warns.len(), 1, "only the missing asset warns: {warns:?}");
     assert!(
@@ -89,7 +89,7 @@ fn missing_local_image_is_flagged_existing_is_clean() {
 #[test]
 fn citation_without_bibliography_is_flagged() {
     let src = "---\ntitle: T\n---\n\nAs shown [@smith2020], it works.\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, Path::new("."));
+    let doc = taliesin_core::render_document_with_includes(src, Path::new("."));
     let warns = diagnostics::citations_without_bibliography(src, &doc.blocks);
     assert_eq!(warns.len(), 1, "cited with no bibliography: {warns:?}");
     assert!(
@@ -103,7 +103,7 @@ fn citation_without_bibliography_is_flagged() {
 fn citation_with_bibliography_key_declared_is_clean() {
     // The `bibliography:` key is present (a missing FILE is a separate warning).
     let src = "---\ntitle: T\nbibliography: refs.bib\n---\n\nAs shown [@smith2020].\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, Path::new("."));
+    let doc = taliesin_core::render_document_with_includes(src, Path::new("."));
     assert!(
         diagnostics::citations_without_bibliography(src, &doc.blocks).is_empty(),
         "a declared bibliography must not trip this check"
@@ -113,7 +113,7 @@ fn citation_with_bibliography_key_declared_is_clean() {
 #[test]
 fn no_citations_is_clean_for_bibliography_check() {
     let src = "---\ntitle: T\n---\n\nNo citations here at all.\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, Path::new("."));
+    let doc = taliesin_core::render_document_with_includes(src, Path::new("."));
     assert!(
         diagnostics::citations_without_bibliography(src, &doc.blocks).is_empty(),
         "no citations -> no warning"
@@ -123,7 +123,7 @@ fn no_citations_is_clean_for_bibliography_check() {
 #[test]
 fn broken_internal_anchor_is_flagged() {
     let src = "---\ntitle: T\n---\n\n## Section One {#sec-one}\n\nJump to [good](#sec-one) or [bad](#nope).\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, Path::new("."));
+    let doc = taliesin_core::render_document_with_includes(src, Path::new("."));
     let warns = diagnostics::validate_internal_anchors(&doc.blocks);
     assert_eq!(warns.len(), 1, "only the broken anchor warns: {warns:?}");
     assert!(
@@ -137,7 +137,7 @@ fn broken_internal_anchor_is_flagged() {
 fn valid_internal_anchor_and_cross_page_href_are_clean() {
     // #sec-one resolves; the cross-page `other.html#x` is out of scope for this check.
     let src = "---\ntitle: T\n---\n\n## Section One {#sec-one}\n\n[ok](#sec-one) and [page](other.html#x).\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, Path::new("."));
+    let doc = taliesin_core::render_document_with_includes(src, Path::new("."));
     assert!(
         diagnostics::validate_internal_anchors(&doc.blocks).is_empty(),
         "valid + cross-page anchors must not warn"
@@ -150,7 +150,7 @@ fn manual_anchor_is_not_flagged_when_doc_has_executable_cells() {
     // Static check never runs cells, so a doc with executable cells must not flag manual
     // anchors — the id may exist in the built/served page. (No false positive.)
     let src = "---\ntitle: T\n---\n\nSee [results](#results) below.\n\n```{python}\nfrom IPython.display import HTML\nHTML('<div id=\"results\">ok</div>')\n```\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, Path::new("."));
+    let doc = taliesin_core::render_document_with_includes(src, Path::new("."));
     assert!(
         diagnostics::validate_internal_anchors(&doc.blocks).is_empty(),
         "docs with executable cells must not flag manual anchors (ids may be cell-emitted)"
@@ -163,7 +163,7 @@ fn xref_placeholder_anchor_is_not_flagged_as_broken_internal_link() {
     // an xref (validate_xrefs' job + resolved cross-page by the site layer), not a manual
     // in-page link, so the anchor check must skip it — no double-flag.
     let src = "---\ntitle: T\n---\n\nSee @sec-elsewhere for details.\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, Path::new("."));
+    let doc = taliesin_core::render_document_with_includes(src, Path::new("."));
     assert!(
         diagnostics::validate_internal_anchors(&doc.blocks).is_empty(),
         "xref placeholder anchors must not be flagged as broken internal links"
@@ -175,7 +175,7 @@ fn corpus_check_superset_doc_trips_each_validator() {
     // The canonical corpus pin: one diagnostics doc that fires every new static check.
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/diagnostics");
     let src = std::fs::read_to_string(dir.join("check-superset.qmd")).unwrap();
-    let doc = qmd_fast_core::render_document_with_includes(&src, &dir);
+    let doc = taliesin_core::render_document_with_includes(&src, &dir);
     // The duplicate `{#dup}` heading id is now resolved at render time (explicit ids go
     // through the same dedup as auto-slugs), so the diagnostic arrives on the render
     // `warnings` channel (which `qmd-fast check` already aggregates) rather than from
@@ -221,7 +221,7 @@ fn audio_video_src_is_skipped_only_img_is_checked() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let src = "---\ntitle: T\n---\n\n```{=html}\n<audio><source src=\"gone.wav\"></audio>\n<video src=\"gone.mp4\"></video>\n<img src=\"gone.png\">\n```\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, &dir);
+    let doc = taliesin_core::render_document_with_includes(src, &dir);
     let warns = diagnostics::validate_local_assets(&doc.blocks, &dir);
     assert_eq!(
         warns.len(),
@@ -242,7 +242,7 @@ fn external_and_anchor_refs_are_not_treated_as_local_assets() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let src = "---\ntitle: T\n---\n\n![remote](https://example.com/x.png)\n\n[jump](#sec)\n\n[mail](mailto:a@b.c)\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, &dir);
+    let doc = taliesin_core::render_document_with_includes(src, &dir);
     assert!(
         diagnostics::validate_local_assets(&doc.blocks, &dir).is_empty(),
         "external/anchor/mailto refs must not be checked for local existence"

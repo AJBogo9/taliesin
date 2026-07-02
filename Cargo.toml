@@ -11,7 +11,7 @@ repository = "https://github.com/AJBogo9/qmd-fast"
 
 [workspace.dependencies]
 # Internal crates
-qmd-fast-core = { path = "crates/core" }
+taliesin-core = { path = "crates/core" }
 
 # Shared external dependencies are declared here as the project grows
 # (e.g. comrak in Phase 1, axum/tokio/notify in Phase 2) so versions stay

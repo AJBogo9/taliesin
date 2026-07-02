@@ -7,7 +7,7 @@ use common::TempProj;
 fn unknown_callout_kind_warns_and_still_renders() {
     let proj = TempProj::new();
     let src = "# T\n\nIntro.\n\n::: {.callout-importnat}\nBody.\n:::\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, &proj.0);
+    let doc = taliesin_core::render_document_with_includes(src, &proj.0);
     let w = doc
         .warnings
         .iter()
@@ -34,7 +34,7 @@ fn unknown_callout_kind_warns_and_still_renders() {
 fn recognized_callout_kind_does_not_warn() {
     let proj = TempProj::new();
     let src = "# T\n\n::: {.callout-tip}\nUse the thing.\n:::\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, &proj.0);
+    let doc = taliesin_core::render_document_with_includes(src, &proj.0);
     assert!(
         !doc.warnings
             .iter()

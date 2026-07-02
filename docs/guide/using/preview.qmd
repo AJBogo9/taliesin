@@ -90,7 +90,7 @@ section flashing in as you scroll. It is keyboard- and screen-reader-friendly
 To see it on a real device, start the server with `--host`:
 
 ```sh
-cargo run -p qmd-fast-server -- preview docs/ --host
+cargo run -p taliesin-server -- preview docs/ --host
 ```
 
 That binds your LAN, prints a `network` URL, and renders a **QR code** in the

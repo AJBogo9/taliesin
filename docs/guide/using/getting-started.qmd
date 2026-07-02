@@ -17,7 +17,7 @@ The binary is `target/release/qmd-fast`. The repo also ships a `~/.local/bin/qmd
 launcher that rebuilds the release binary whenever the tool's sources change and
 then runs it, so once it's on your `PATH` you can just say `qmd-fast preview …`
 from any directory. Every command below works either way: substitute
-`cargo run -p qmd-fast-server --` for `qmd-fast` if you prefer not to install the
+`cargo run -p taliesin-server --` for `qmd-fast` if you prefer not to install the
 launcher.
 
 ## Set up a kernel (for code execution)
@@ -168,7 +168,7 @@ deploys anywhere that serves files.
   and enable Pages, or use an action that runs `qmd-fast build` and uploads the
   output directory as the Pages artifact.
 - **Netlify / Vercel / Cloudflare Pages.** Set the build command to
-  `cargo run -p qmd-fast-server -- build <dir>` and the publish directory to the
+  `cargo run -p taliesin-server -- build <dir>` and the publish directory to the
   emitted `_site/` / `_book/`.
 - **Any static host / `rsync`.** Copy the output folder as-is. The `--out <dir>`
   form and the site/book builds copy referenced local assets next to the HTML, so

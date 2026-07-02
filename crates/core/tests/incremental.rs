@@ -5,7 +5,7 @@
 //! ids stay stable for untouched blocks, and change only where the source did,
 //! so an edit re-renders one block and leaves live blocks' state intact.
 
-use qmd_fast_core::{BlockOp, diff_blocks, render_document};
+use taliesin_core::{BlockOp, diff_blocks, render_document};
 
 #[test]
 fn editing_one_paragraph_is_a_single_in_place_update() {

@@ -9,11 +9,11 @@ You are the verification gate for **qmd-fast**. You actually run the checks and 
 evidence — never claim green without command output to back it.
 
 ## Run, in order, and report each
-1. `cargo test -p qmd-fast-core` — the corpus invariants + unit tests (the regression
+1. `cargo test -p taliesin-core` — the corpus invariants + unit tests (the regression
    net; the corpus under `corpus/` is the arbiter of "done").
 2. If client JS changed: `cd web-client && npx -y -p typescript tsc -p jsconfig.json`
    (type-check only, no build step).
-3. `cargo fmt --check` and `cargo clippy -p qmd-fast-core -p qmd-fast-server` if the
+3. `cargo fmt --check` and `cargo clippy -p taliesin-core -p taliesin-server` if the
    diff touched `.rs` (CI enforces fmt; a PostToolUse hook already runs rustfmt on edits).
 
 ## Reporting rules

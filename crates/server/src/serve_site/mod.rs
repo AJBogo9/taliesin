@@ -19,12 +19,12 @@ use axum::routing::get;
 use futures_util::{SinkExt, StreamExt};
 use notify::Watcher;
 use parking_lot::Mutex;
-use qmd_fast_core::{Block, BlockOp, Page, Site, diff_blocks};
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
+use taliesin_core::{Block, BlockOp, Page, Site, diff_blocks};
 use tokio::sync::{broadcast, mpsc};
 
 use crate::protocol::{self, Diagnostic};
@@ -75,7 +75,7 @@ struct PageDoc {
     theme_css: String,
     theme_default: String,
     /// The page's own front-matter `include-*`/`css` (merged after the site's).
-    includes: qmd_fast_core::render::PageIncludes,
+    includes: taliesin_core::render::PageIncludes,
     blocks: Vec<Block>,
     diagnostics: Vec<Diagnostic>,
     errored: bool,
@@ -168,7 +168,7 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         .map(|ip| lan_url(&format!("http://{ip}:{port}"), token.as_ref()));
 
     crate::log::clear_screen();
-    crate::log::banner(qmd_fast_core::VERSION);
+    crate::log::banner(taliesin_core::VERSION);
     crate::log::ready(&local, start.elapsed());
     if let Some(net) = &network {
         crate::log::network(net);
@@ -254,17 +254,17 @@ async fn page_or_asset(
         && let Ok(src) = std::fs::read_to_string(&deck.input)
     {
         let base = deck.input.parent().unwrap_or(&app.root).to_path_buf();
-        let doc = qmd_fast_core::render_document_with_includes(&src, &base);
+        let doc = taliesin_core::render_document_with_includes(&src, &base);
         let stem = deck
             .url
             .rsplit('/')
             .next()
             .and_then(|f| f.strip_suffix(".html"))
             .unwrap_or("deck");
-        return Html(qmd_fast_core::render_doc_to_page(
+        return Html(taliesin_core::render_doc_to_page(
             &doc,
             stem,
-            qmd_fast_core::OutputMode::Preview,
+            taliesin_core::OutputMode::Preview,
         ))
         .into_response();
     }
@@ -302,17 +302,17 @@ async fn page_or_asset(
                 && let Ok(src) = std::fs::read_to_string(&deck.input)
             {
                 let base = deck.input.parent().unwrap_or(&m.root).to_path_buf();
-                let doc = qmd_fast_core::render_document_with_includes(&src, &base);
+                let doc = taliesin_core::render_document_with_includes(&src, &base);
                 let stem = deck
                     .url
                     .rsplit('/')
                     .next()
                     .and_then(|f| f.strip_suffix(".html"))
                     .unwrap_or("deck");
-                return Html(qmd_fast_core::render_doc_to_page(
+                return Html(taliesin_core::render_doc_to_page(
                     &doc,
                     stem,
-                    qmd_fast_core::OutputMode::Preview,
+                    taliesin_core::OutputMode::Preview,
                 ))
                 .into_response();
             }
@@ -357,7 +357,7 @@ fn ensure_and_render_page(app: &SiteApp, page: &Page) -> String {
 
 /// A first-paint render without code execution (the worker fills outputs after).
 /// Listing cards are expanded here so the blog index paints with its posts.
-fn render_markdown_only(site: &qmd_fast_core::Site, page: &Page) -> PageDoc {
+fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
     let Ok(src) = std::fs::read_to_string(&page.input) else {
         return PageDoc {
             errored: true,
@@ -366,7 +366,7 @@ fn render_markdown_only(site: &qmd_fast_core::Site, page: &Page) -> PageDoc {
     };
     let base = page.input.parent().unwrap_or(Path::new("."));
     let doc =
-        qmd_fast_core::render_document_with_includes_scoped(&src, base, site.chapter_for(page));
+        taliesin_core::render_document_with_includes_scoped(&src, base, site.chapter_for(page));
     let mut blocks = doc.blocks;
     let toc = site.page_toc(page, doc.toc_explicit, &blocks);
     // One shared finishing step (numbering, cross-refs + broken-ref warnings,
@@ -466,13 +466,13 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
         format!("{};", chrome.search_index)
     };
     // Body links (author `.qmd` references) -> `.html`; chrome links already are.
-    let body = qmd_fast_core::site::rewrite_qmd_links(&body);
+    let body = taliesin_core::site::rewrite_qmd_links(&body);
     let title_txt = title.unwrap_or_else(|| page.title.clone().unwrap_or_default());
     // The site's configured favicon (depth-relative); else the dev server's own.
     let favicon = if chrome.favicon.is_empty() {
         "<link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.ico\" />".to_string()
     } else {
-        qmd_fast_core::favicon_link(&chrome.favicon)
+        taliesin_core::favicon_link(&chrome.favicon)
     };
 
     // A book lays out a sticky topbar + off-canvas chapter drawer over a centred reading
@@ -527,13 +527,13 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
     // The cross-page TOC scrollspy + Cmd-K search, then the websocket client.
     let scripts_post = format!(
         "<script>{toc_spy}</script>\n<script>{search_js}</script>\n<script>{graph_js}</script>\n<script>\n{CLIENT_JS}\n</script>",
-        toc_spy = qmd_fast_core::TOC_SPY_JS,
-        search_js = qmd_fast_core::SEARCH_JS,
-        graph_js = qmd_fast_core::GRAPH_JS,
+        toc_spy = taliesin_core::TOC_SPY_JS,
+        search_js = taliesin_core::SEARCH_JS,
+        graph_js = taliesin_core::GRAPH_JS,
     );
-    qmd_fast_core::assemble_html_page(&qmd_fast_core::PageParts {
+    taliesin_core::assemble_html_page(&taliesin_core::PageParts {
         // Live preview always ships everything (a doc can gain any construct on an edit).
-        mode: qmd_fast_core::OutputMode::Preview,
+        mode: taliesin_core::OutputMode::Preview,
         title: &title_txt,
         // Preview chrome defaults to English; the built `_site/` honours each
         // page's front-matter `lang:` via the core page builder.
@@ -671,7 +671,7 @@ fn handle_client_msg(text: &str) {
 // --- messages -----------------------------------------------------------
 
 fn full_render_json(d: &PageDoc) -> String {
-    use qmd_fast_core::site::rewrite_qmd_links;
+    use taliesin_core::site::rewrite_qmd_links;
     protocol::full_render(
         d.title.as_deref(),
         &rewrite_qmd_links(&d.body_html()),
@@ -682,7 +682,7 @@ fn full_render_json(d: &PageDoc) -> String {
 /// Like the single-doc server's `op_json`, but rewrites any author `.qmd` links
 /// in the block HTML to their `.html` targets before it goes over the wire.
 fn op_json(op: &BlockOp) -> String {
-    protocol::op(op, qmd_fast_core::site::rewrite_qmd_links)
+    protocol::op(op, taliesin_core::site::rewrite_qmd_links)
 }
 
 // --- build worker -------------------------------------------------------
@@ -761,7 +761,7 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
     };
     let base = page.input.parent().unwrap_or(Path::new(".")).to_path_buf();
     let chapter = app.site.lock().chapter_for(&page);
-    let doc = qmd_fast_core::render_document_with_includes_scoped(&src, &base, chapter);
+    let doc = taliesin_core::render_document_with_includes_scoped(&src, &base, chapter);
 
     let exec = pool.get(rel, &base);
     // Stream this page's code-cell execution progress (`build-state`) onto its own
@@ -840,14 +840,14 @@ fn page_diagnostics(input: &Path, base: &Path, exec: &crate::exec::Executor) -> 
     if let Ok(src) = std::fs::read_to_string(input) {
         // Broken front matter: a located, framed error (same as the single-doc server).
         // (Front-matter key warnings now arrive via `doc.warnings` from the render pass.)
-        if let Some((message, line)) = qmd_fast_core::frontmatter::yaml_error(&src) {
+        if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(&src) {
             diags.push(
                 Diagnostic::error(message)
                     .at(None, line)
                     .with_frame(crate::serve::code_frame(&src, line)),
             );
         }
-        for dep in qmd_fast_core::includes::dependencies(&src, base) {
+        for dep in taliesin_core::includes::dependencies(&src, base) {
             if !dep.exists() {
                 let shown = dep.strip_prefix(base).unwrap_or(&dep);
                 diags.push(Diagnostic::warn(format!(
@@ -961,7 +961,7 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
         if let Some(w) = new
             .warnings
             .iter()
-            .find(|w| qmd_fast_core::site::is_malformed_config_warning(w))
+            .find(|w| taliesin_core::site::is_malformed_config_warning(w))
         {
             crate::log::warn(&format!("{w}; keeping the last-good _site.yml"));
             return;
@@ -1000,7 +1000,7 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
         );
         if let Ok(src) = std::fs::read_to_string(&page.input) {
             let base = page.input.parent().unwrap_or(Path::new("."));
-            for dep in qmd_fast_core::includes::dependencies(&src, base) {
+            for dep in taliesin_core::includes::dependencies(&src, base) {
                 deps.insert(dep.canonicalize().unwrap_or(dep));
             }
         }
@@ -1038,7 +1038,7 @@ mod protocol_contract {
     //! of one contract. The `serve.rs` producers are covered by a sibling test.
     use super::*;
     use crate::testutil::parse;
-    use qmd_fast_core::{BlockOp, render_document};
+    use taliesin_core::{BlockOp, render_document};
 
     #[test]
     fn op_messages_match_client_contract() {

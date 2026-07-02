@@ -12,13 +12,13 @@ use axum::routing::get;
 use futures_util::{SinkExt, StreamExt};
 use notify::Watcher;
 use parking_lot::Mutex;
-use qmd_fast_core::{Block, BlockOp, DocFormat, RenderedDoc};
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
+use taliesin_core::{Block, BlockOp, DocFormat, RenderedDoc};
 use tokio::sync::{broadcast, mpsc};
 
 pub(crate) const CLIENT_JS: &str = include_str!("../../../../web-client/client.js");
@@ -55,10 +55,10 @@ struct DocState {
     theme_is_custom: bool,
     /// The doc's front-matter `include-*`/`css` (and any format-extension theme),
     /// injected into the page head/body so a single-doc preview matches the build.
-    includes: qmd_fast_core::render::PageIncludes,
+    includes: taliesin_core::render::PageIncludes,
     /// Non-fatal render warnings (missing `bibliography:`/`theme:` file), surfaced
     /// in the dev menu + terminal.
-    warnings: Vec<qmd_fast_core::render::Warning>,
+    warnings: Vec<taliesin_core::render::Warning>,
     blocks: Vec<Block>,
     diagnostics: Vec<Diagnostic>,
     /// True while the last render failed, so the next success can re-mount fully
@@ -72,7 +72,7 @@ impl DocState {
     /// blocks keep their ids, so incremental ops apply the same to both.
     fn body_html(&self) -> String {
         match self.format {
-            DocFormat::Reveal => qmd_fast_core::slides_html(
+            DocFormat::Reveal => taliesin_core::slides_html(
                 self.title.as_deref(),
                 self.subtitle.as_deref(),
                 &self.blocks,
@@ -177,7 +177,7 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         parts.join(", ")
     };
     crate::log::clear_screen();
-    crate::log::banner(qmd_fast_core::VERSION);
+    crate::log::banner(taliesin_core::VERSION);
     crate::log::ready(&local, start.elapsed());
     if let Some(net) = &network {
         crate::log::network(net);
@@ -275,7 +275,7 @@ pub(crate) fn open_in_browser(url: &str) {
 
 fn render_doc(app: &AppState) -> Option<RenderedDoc> {
     let src = std::fs::read_to_string(&app.path).ok()?;
-    Some(qmd_fast_core::render_document_with_includes(
+    Some(taliesin_core::render_document_with_includes(
         &src,
         &app.base_dir,
     ))
@@ -328,7 +328,7 @@ struct PageCtx<'a> {
     base_dir: &'a str,
     /// The doc's front-matter `include-*`/`css` + format-extension theme, injected
     /// into the page head/body (so a single-doc deck's theme + plugin appear live).
-    includes: &'a qmd_fast_core::render::PageIncludes,
+    includes: &'a taliesin_core::render::PageIncludes,
     /// The rendered body, server-rendered into the page so content shows on the
     /// first paint (the websocket then only drives live updates).
     body: &'a str,
@@ -621,14 +621,14 @@ fn blog_index_html(ctx: &PageCtx) -> String {
     // state only worked in the static build / site preview). Search (Cmd-K) stays out:
     // the client doesn't re-index it on a live edit, so its index would go stale.
     let toc_spy = if ctx.toc {
-        format!("<script>\n{}\n</script>\n", qmd_fast_core::TOC_SPY_JS)
+        format!("<script>\n{}\n</script>\n", taliesin_core::TOC_SPY_JS)
     } else {
         String::new()
     };
     let scripts_post = format!("{toc_spy}<script>\n{CLIENT_JS}\n</script>");
-    qmd_fast_core::assemble_html_page(&qmd_fast_core::PageParts {
+    taliesin_core::assemble_html_page(&taliesin_core::PageParts {
         // Live preview always ships everything (a doc can gain any construct on an edit).
-        mode: qmd_fast_core::OutputMode::Preview,
+        mode: taliesin_core::OutputMode::Preview,
         title: "qmd-fast",
         // The preview page chrome is English ("qmd-fast"); the built artifact honours
         // the doc's front-matter `lang:`.
@@ -672,11 +672,11 @@ fn deck_index_html(ctx: &PageCtx) -> String {
         "{deck_script}\n{code_scripts}\n\
          <script>{doc_global} window.QMD_FORMAT = \"deck\"; window.QMD_SSR = true;</script>\n\
          {include_after_body}\n<script>\n{CLIENT_JS}\n</script>\n",
-        deck_script = qmd_fast_core::deck_client_script(),
-        code_scripts = qmd_fast_core::code_scripts(),
+        deck_script = taliesin_core::deck_client_script(),
+        code_scripts = taliesin_core::code_scripts(),
         include_after_body = ctx.includes.after_body,
     );
-    qmd_fast_core::assemble_deck_page(&qmd_fast_core::DeckParts {
+    taliesin_core::assemble_deck_page(&taliesin_core::DeckParts {
         title: "qmd-fast",
         // The preview page chrome is English ("qmd-fast"); the built artifact honours
         // the doc's front-matter `lang:`.
@@ -812,14 +812,14 @@ fn compute_diagnostics(app: &AppState, executor: &crate::exec::Executor) -> Vec<
         // A broken front matter is worth pointing AT: a located, framed error that
         // jumps to the bad line on click. (Front-matter key warnings now arrive via
         // `doc.warnings` from the render pass, so they are not re-collected here.)
-        if let Some((message, line)) = qmd_fast_core::frontmatter::yaml_error(&src) {
+        if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(&src) {
             diags.push(
                 Diagnostic::error(message)
                     .at(None, line)
                     .with_frame(code_frame(&src, line)),
             );
         }
-        for dep in qmd_fast_core::includes::dependencies(&src, &app.base_dir) {
+        for dep in taliesin_core::includes::dependencies(&src, &app.base_dir) {
             if !dep.exists() {
                 let shown = dep.strip_prefix(&app.base_dir).unwrap_or(&dep);
                 diags.push(Diagnostic::warn(format!(
@@ -987,7 +987,7 @@ fn watch_dirs(app: &AppState) -> Vec<PathBuf> {
     // include without enumerating each one, so a NEW in-tree include is picked up too.
     dirs.insert(app.base_dir.clone());
     if let Ok(src) = std::fs::read_to_string(&app.path) {
-        for dep in qmd_fast_core::includes::dependencies(&src, &app.base_dir) {
+        for dep in taliesin_core::includes::dependencies(&src, &app.base_dir) {
             // In-tree includes are already covered by the recursive base-dir watch.
             if dep.starts_with(&app.base_dir) {
                 continue;
@@ -1032,7 +1032,7 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
     }
     // A standalone doc has no site to resolve cross-page refs, so any cross-ref
     // still marked unresolved is broken.
-    for w in qmd_fast_core::cite::validate_xrefs(&blocks) {
+    for w in taliesin_core::cite::validate_xrefs(&blocks) {
         let mut d = Diagnostic::warn(&w.message);
         if let Some(line) = w.line {
             d = d.at(w.file.clone(), line);
@@ -1042,7 +1042,7 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
     let ops = {
         let mut d = app.doc.lock();
         let recovered = std::mem::take(&mut d.errored);
-        let ops = qmd_fast_core::diff_blocks(&d.blocks, &blocks);
+        let ops = taliesin_core::diff_blocks(&d.blocks, &blocks);
         // A deck re-mounts fully only when an insert/remove touches a slide HEADING
         // (add / remove a slide in the source): its `<section>`-grouped slides can't
         // be restructured by flat block ops. Content edits within a slide (inserting a
@@ -1148,7 +1148,7 @@ pub(crate) fn guarded<T>(f: impl FnOnce() -> T) -> Result<T, String> {
 /// silently dropped. `known` is each parser's own accepted long-flag set. No `error:`
 /// prefix — the caller frames it (raw `eprintln!` adds `error: `; `log::error` styles it).
 pub(crate) fn unknown_flag_error(flag: &str, known: &[&'static str]) -> String {
-    match qmd_fast_core::closest(flag, known) {
+    match taliesin_core::closest(flag, known) {
         Some(s) => format!("unknown flag `{flag}` (did you mean `{s}`?)"),
         None => format!("unknown flag `{flag}`"),
     }
@@ -1185,7 +1185,7 @@ mod protocol_contract {
         // The deck page has no scripts_pre, so its tail must inject QMD_DOC — without
         // it, client.js's openSource bails (no doc) and click-to-source is dead on
         // slides, even though every block carries data-block-id/sourcepos.
-        let includes = qmd_fast_core::render::PageIncludes::default();
+        let includes = taliesin_core::render::PageIncludes::default();
         let ctx = PageCtx {
             format: DocFormat::Reveal,
             toc: false,
@@ -1211,7 +1211,7 @@ mod protocol_contract {
         // (client.js rebuilds the nav, then calls window.qmdInitTocSpy). The `qmd-read:`
         // storage key is unique to toc-spy.js — client.js only *calls* qmdInitTocSpy —
         // so it discriminates "script loaded" from "script merely referenced".
-        let includes = qmd_fast_core::render::PageIncludes::default();
+        let includes = taliesin_core::render::PageIncludes::default();
         let mk = |toc| {
             let ctx = PageCtx {
                 format: DocFormat::Html,

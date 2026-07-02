@@ -5,7 +5,7 @@
 //! each server) means the two servers can't drift apart from each other or from
 //! the client.
 
-use qmd_fast_core::BlockOp;
+use taliesin_core::BlockOp;
 
 /// A non-fatal issue surfaced in the preview (an unresolved include, the kernel
 /// state, a front-matter typo). Held in each document's state and serialized

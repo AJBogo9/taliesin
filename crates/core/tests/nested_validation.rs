@@ -9,7 +9,7 @@ use common::corpus_dir;
 fn typos_doc_warns_exactly_on_each_unknown_key() {
     let dir = corpus_dir().join("diagnostics");
     let src = std::fs::read_to_string(dir.join("typos.qmd")).unwrap();
-    let doc = qmd_fast_core::render_document_with_includes(&src, &dir);
+    let doc = taliesin_core::render_document_with_includes(&src, &dir);
     let msgs: Vec<&str> = doc.warnings.iter().map(|w| w.message.as_str()).collect();
 
     let expected = [

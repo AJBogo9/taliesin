@@ -8,7 +8,7 @@ use common::TempProj;
 fn typo_cell_option_warns_with_location() {
     let proj = TempProj::new();
     let src = "# Title\n\nIntro.\n\n```{python}\n#| eccho: false\nprint(1)\n```\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, &proj.0);
+    let doc = taliesin_core::render_document_with_includes(src, &proj.0);
     let w = doc
         .warnings
         .iter()
@@ -28,7 +28,7 @@ fn recognized_cell_options_do_not_warn() {
     let proj = TempProj::new();
     let src =
         "# T\n\n```{python}\n#| echo: false\n#| label: fig-x\n#| fig-cap: Cap\nprint(1)\n```\n";
-    let doc = qmd_fast_core::render_document_with_includes(src, &proj.0);
+    let doc = taliesin_core::render_document_with_includes(src, &proj.0);
     assert!(
         !doc.warnings
             .iter()

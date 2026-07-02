@@ -22,7 +22,7 @@ pub fn render_doc_to_page(doc: &RenderedDoc, fallback_title: &str, mode: OutputM
 }
 
 /// Shared chrome for a page rendered inside a multi-page site: pre-built navbar,
-/// footer, and post prev/next HTML. Built by `qmd_fast_core::site` and injected
+/// footer, and post prev/next HTML. Built by `taliesin_core::site` and injected
 /// around the page body. Empty fields render nothing.
 #[derive(Debug, Clone, Default)]
 pub struct SiteCtx {

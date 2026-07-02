@@ -50,7 +50,7 @@ jobs:
         env:
           QMD_FAST_PYTHON: python
           QMD_FAST_REQUIRE_KERNEL: "1"
-        run: cargo test -p qmd-fast-server
+        run: cargo test -p taliesin-server
 
   # Type-check the preview client. client.js carries `// @ts-check` and has silently
   # regressed to multiple tsc errors before a release; this gate keeps it honest.

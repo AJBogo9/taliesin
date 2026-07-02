@@ -27,7 +27,7 @@ use std::sync::{Arc, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use parking_lot::Mutex;
-use qmd_fast_core::{
+use taliesin_core::{
     Block, escape_attr as esc,
     render::{CellFigure, CellTable},
 };
@@ -1034,7 +1034,7 @@ mod tests {
     //! (output id keyed to the cell, sourcepos/source-file carried through) and
     //! the `#fig-` anchor that lets `@fig-x` resolve to the output.
     use super::*;
-    use qmd_fast_core::render::Cell;
+    use taliesin_core::render::Cell;
 
     fn cell(id: &str) -> CellRef {
         CellRef {

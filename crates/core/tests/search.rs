@@ -4,7 +4,7 @@
 //! The index builder's text helpers are unit-tested in `site/search.rs`; this
 //! covers the end-to-end shape over a discovered site.
 
-use qmd_fast_core::Site;
+use taliesin_core::Site;
 
 mod common;
 use common::TempProj;

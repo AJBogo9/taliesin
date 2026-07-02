@@ -92,7 +92,7 @@ use theme::{detect_theme, resolve_theme, resolve_theme_layers, theme_default_mod
 /// block lists for incremental updates; the CLI wraps the result in a page.
 ///
 /// ```
-/// let doc = qmd_fast_core::render_document("# Title\n\nHello *world*.\n");
+/// let doc = taliesin_core::render_document("# Title\n\nHello *world*.\n");
 /// assert_eq!(doc.title, None); // no front-matter title
 /// assert_eq!(doc.blocks.len(), 2); // the heading + the paragraph
 /// assert!(doc.blocks[0].html.contains("<h1"));
@@ -833,7 +833,7 @@ fn map_origin(origins: Option<&[LineOrigin]>, buffer_line: usize) -> (Option<Str
 /// used when the source declares none.
 ///
 /// ```
-/// let html = qmd_fast_core::render_html_page("---\ntitle: Demo\n---\n\nHi.\n", "fallback");
+/// let html = taliesin_core::render_html_page("---\ntitle: Demo\n---\n\nHi.\n", "fallback");
 /// assert!(html.contains("<title>Demo</title>"));
 /// assert!(html.contains("Hi."));
 /// ```

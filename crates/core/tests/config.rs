@@ -1,7 +1,7 @@
 //! The native flat `_site.yml` schema: parsing, `chapters:`-implies-book
 //! inference, the `icon:` shorthand, and typo validation.
 
-use qmd_fast_core::Site;
+use taliesin_core::Site;
 
 mod common;
 use common::TempProj;

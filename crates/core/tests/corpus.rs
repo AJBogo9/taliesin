@@ -51,7 +51,7 @@ fn every_corpus_doc_has_clean_front_matter() {
             continue;
         }
         let src = fs::read_to_string(f).unwrap();
-        for w in qmd_fast_core::frontmatter::validate_front_matter(&src) {
+        for w in taliesin_core::frontmatter::validate_front_matter(&src) {
             let label = f.strip_prefix(corpus_dir()).unwrap_or(f).display();
             offenders.push(format!("{label}: {}", w.message));
         }
@@ -78,7 +78,7 @@ fn every_corpus_doc_emits_no_unknown_key_warnings() {
         }
         let src = fs::read_to_string(f).unwrap();
         let base = f.parent().unwrap();
-        let doc = qmd_fast_core::render_document_with_includes(&src, base);
+        let doc = taliesin_core::render_document_with_includes(&src, base);
         for w in doc
             .warnings
             .iter()
@@ -114,7 +114,7 @@ fn every_corpus_doc_renders_with_invariants() {
             .to_string();
         let src = fs::read_to_string(f).unwrap();
         let base = f.parent().unwrap();
-        let doc = qmd_fast_core::render_document_with_includes(&src, base);
+        let doc = taliesin_core::render_document_with_includes(&src, base);
 
         assert!(!doc.blocks.is_empty(), "{label}: produced no blocks");
 
@@ -153,7 +153,7 @@ fn includes_are_resolved_with_origin_files() {
     // pca-geometry pulls in _includes/three-scene.qmd via {{< include >}}.
     let dir = corpus_dir().join("posts/pca-geometry");
     let src = fs::read_to_string(dir.join("index.qmd")).unwrap();
-    let doc = qmd_fast_core::render_document_with_includes(&src, &dir);
+    let doc = taliesin_core::render_document_with_includes(&src, &dir);
 
     let body = doc.body_html();
     assert!(
@@ -179,7 +179,7 @@ fn includes_are_resolved_with_origin_files() {
     // the single-page report pulls in subsections; every subsection contributes blocks
     let book = corpus_dir().join("bayesian-website");
     let bsrc = fs::read_to_string(book.join("index.qmd")).unwrap();
-    let bdoc = qmd_fast_core::render_document_with_includes(&bsrc, &book);
+    let bdoc = taliesin_core::render_document_with_includes(&bsrc, &book);
     assert!(!bdoc.body_html().contains("{{< include"));
     let included_files: HashSet<_> = bdoc
         .blocks
@@ -194,7 +194,7 @@ fn includes_are_resolved_with_origin_files() {
 
 #[test]
 fn reveal_deck_detects_format_and_splits_into_slides() {
-    use qmd_fast_core::{DocFormat, render_document_with_includes, slides_html};
+    use taliesin_core::{DocFormat, render_document_with_includes, slides_html};
     let dir = corpus_dir().join("liquid-glass-slides");
     let src = fs::read_to_string(dir.join("example.qmd")).unwrap();
     let doc = render_document_with_includes(&src, &dir);
@@ -234,7 +234,7 @@ fn reveal_deck_detects_format_and_splits_into_slides() {
 
 #[test]
 fn a11y_chrome_emits_landmarks_skip_link_and_slide_roles() {
-    use qmd_fast_core::{render_document_with_includes, slides_html};
+    use taliesin_core::{render_document_with_includes, slides_html};
     // --- deck slides carry ARIA slide roles (additive on the <section> open tag, so
     // the inner [data-block-id] blocks are untouched — block ids stay byte-stable). ---
     let dir = corpus_dir().join("liquid-glass-slides");
@@ -266,12 +266,12 @@ fn a11y_chrome_emits_landmarks_skip_link_and_slide_roles() {
 
     // --- a page with a TOC emits the skip-link + focusable <main> SERVER-SIDE (works
     // with JS off) and a distinguishable TOC landmark. ---
-    let page = qmd_fast_core::render_doc_to_page(
-        &qmd_fast_core::render_document(
+    let page = taliesin_core::render_doc_to_page(
+        &taliesin_core::render_document(
             "---\ntitle: \"T\"\ntoc: true\n---\n\n# One\n\nbody\n\n## Two\n\nmore\n",
         ),
         "fallback",
-        qmd_fast_core::OutputMode::Build,
+        taliesin_core::OutputMode::Build,
     );
     // Skip-to-content link is the first thing in the body, before JS runs.
     assert!(
@@ -297,7 +297,7 @@ fn website_renders_with_toc_anchored_headings_and_numbered_figures() {
     // heading anchors, and document-order figure numbering on that one page.
     let dir = corpus_dir().join("bayesian-website");
     let src = fs::read_to_string(dir.join("index.qmd")).unwrap();
-    let page = qmd_fast_core::render_html_page_with_includes(&src, &dir, "report");
+    let page = taliesin_core::render_html_page_with_includes(&src, &dir, "report");
 
     // toc: true -> a TOC nav + the sidebar layout, with anchor-linked entries.
     assert!(
@@ -367,7 +367,7 @@ fn reverse_sync_sourcepos_is_total() {
     for f in &files {
         let src = fs::read_to_string(f).unwrap();
         let base = f.parent().unwrap();
-        let doc = qmd_fast_core::render_document_with_includes(&src, base);
+        let doc = taliesin_core::render_document_with_includes(&src, base);
         // Scan EVERY data-sourcepos="..." in the emitted HTML (what highlightAtLine sees),
         // not just top-level blocks — nested elements inside containers carry their own.
         let html = doc.body_html();
@@ -399,7 +399,7 @@ fn ids_and_sourcepos_present_on_visible_blocks() {
     // Every visible block element should carry both data attributes. (Raw HTML
     // comment blocks legitimately carry neither — they are emitted verbatim.)
     let src = fs::read_to_string(corpus_dir().join("posts/em-algorithm/index.qmd")).unwrap();
-    let doc = qmd_fast_core::render_document(&src);
+    let doc = taliesin_core::render_document(&src);
     for b in &doc.blocks {
         // Raw HTML comments are emitted verbatim; generated blocks (References)
         // have no sourcepos. Both legitimately lack the data attributes.
@@ -416,7 +416,7 @@ fn ids_and_sourcepos_present_on_visible_blocks() {
 
 #[test]
 fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
-    use qmd_fast_core::Site;
+    use taliesin_core::Site;
     let root = corpus_dir().join("tech-blog");
     let site = Site::discover(&root);
 
@@ -548,11 +548,11 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
 #[test]
 fn standalone_doc_carries_opengraph_seo_meta() {
     // A single .qmd (no site) gets text OpenGraph/SEO meta from its own front matter.
-    let doc = qmd_fast_core::render_document(
+    let doc = taliesin_core::render_document(
         "---\ntitle: \"T\"\ndescription: \"D\"\n---\n\n# Hi\n\nbody\n",
     );
     let page =
-        qmd_fast_core::render_doc_to_page(&doc, "fallback", qmd_fast_core::OutputMode::Build);
+        taliesin_core::render_doc_to_page(&doc, "fallback", taliesin_core::OutputMode::Build);
     assert!(
         page.contains("property=\"og:title\" content=\"T\""),
         "og:title"
@@ -572,10 +572,10 @@ fn standalone_doc_carries_opengraph_seo_meta() {
     assert!(page.contains("name=\"twitter:card\""), "twitter card");
 
     // A doc with no description omits the description tags but still has og:title.
-    let bare = qmd_fast_core::render_doc_to_page(
-        &qmd_fast_core::render_document("---\ntitle: \"Only\"\n---\n\n# x\n"),
+    let bare = taliesin_core::render_doc_to_page(
+        &taliesin_core::render_document("---\ntitle: \"Only\"\n---\n\n# x\n"),
         "fb",
-        qmd_fast_core::OutputMode::Build,
+        taliesin_core::OutputMode::Build,
     );
     assert!(bare.contains("property=\"og:title\" content=\"Only\""));
     assert!(
@@ -589,8 +589,8 @@ fn bare_build_is_script_free_css_themed_and_drops_js() {
     // The `--bare` build target: zero <script>, zero CDN, CSS-only theming — yet
     // server-rendered math still works and a {js} cell is dropped (not shipped dead).
     let src = fs::read_to_string(corpus_dir().join("bare-draft.qmd")).unwrap();
-    let doc = qmd_fast_core::render_document_with_includes(&src, &corpus_dir());
-    let bare = qmd_fast_core::render_doc_to_page(&doc, "bare", qmd_fast_core::OutputMode::Bare);
+    let doc = taliesin_core::render_document_with_includes(&src, &corpus_dir());
+    let bare = taliesin_core::render_doc_to_page(&doc, "bare", taliesin_core::OutputMode::Bare);
 
     // The contract: not one <script> tag (no theme bootstrap, no enhancers, no {js}
     // runtime, no TOC/search) and no CDN host.
@@ -644,7 +644,7 @@ fn bare_build_is_script_free_css_themed_and_drops_js() {
 
     // Contrast: a normal (non-bare) build of the same doc DOES ship the enhancer
     // bundle and the {js} cell, proving `--bare` is what strips them.
-    let build = qmd_fast_core::render_doc_to_page(&doc, "build", qmd_fast_core::OutputMode::Build);
+    let build = taliesin_core::render_doc_to_page(&doc, "build", taliesin_core::OutputMode::Build);
     assert!(
         build.contains("<script"),
         "a normal build still ships scripts"
@@ -657,7 +657,7 @@ fn bare_build_is_script_free_css_themed_and_drops_js() {
 
 #[test]
 fn site_auto_gates_on_this_page_toc_by_heading_count() {
-    use qmd_fast_core::Site;
+    use taliesin_core::Site;
     // tech-blog sets a site-wide `toc: true`. The "on this page" TOC is auto-gated by
     // heading count (NN/g: only long, chunkable pages earn it), so a substantial post
     // keeps the sidebar TOC while a short article reads as one column — with no per-page
@@ -690,7 +690,7 @@ fn site_auto_gates_on_this_page_toc_by_heading_count() {
 
 #[test]
 fn book_discovers_chapters_with_parts_numbering_and_chrome() {
-    use qmd_fast_core::Site;
+    use taliesin_core::Site;
     let root = corpus_dir().join("demo-book");
     let site = Site::discover(&root);
 
@@ -815,7 +815,7 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
 
 #[test]
 fn book_chapter_scopes_theorem_numbers() {
-    use qmd_fast_core::Site;
+    use taliesin_core::Site;
     let site = Site::discover(&corpus_dir().join("demo-book"));
     // methods.qmd is chapter 2, with `theorems: number-within: chapter`.
     let methods = site.render_page("methods.qmd").expect("methods renders");
