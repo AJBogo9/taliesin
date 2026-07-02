@@ -1,6 +1,12 @@
-# qmd-fast
+# Taliesin
 
-A single-purpose, performance-oriented tool for authoring HTML from `.qmd`
+> **Taliesin** is the new name for **qmd-fast**. The native source extension is
+> `.tmd`, but `.qmd` is still fully accepted, and the CLI is `taliesin` (with
+> `tali` and the legacy `qmd-fast` as aliases). Existing projects keep working
+> unchanged. (The repository, package history, and some deep links still carry
+> the `qmd-fast` name during the transition.)
+
+A single-purpose, performance-oriented tool for authoring HTML from `.tmd` / `.qmd`
 files: blog posts, slide decks, books, and **multi-page websites**. A
 focused replacement for Quarto for one author's workflow, built around three
 goals Quarto's architecture can't deliver:

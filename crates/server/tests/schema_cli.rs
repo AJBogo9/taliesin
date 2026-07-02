@@ -34,11 +34,11 @@ fn schema_subcommand_prints_to_stdout() {
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
-        stdout.contains("qmd-fast document front matter"),
+        stdout.contains("Taliesin document front matter"),
         "prints the front-matter schema"
     );
     assert!(
-        stdout.contains("qmd-fast _site.yml"),
+        stdout.contains("Taliesin _site.yml"),
         "prints the site schema"
     );
 }

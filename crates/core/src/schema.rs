@@ -110,7 +110,7 @@ mod generate {
         ];
         json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "qmd-fast document front matter",
+            "title": "Taliesin document front matter",
             "type": "object",
             "additionalProperties": false,
             "properties": properties(KNOWN_KEYS, &overrides),
@@ -152,7 +152,7 @@ mod generate {
         });
         json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "title": "qmd-fast _site.yml",
+            "title": "Taliesin _site.yml",
             "type": "object",
             "additionalProperties": false,
             "properties": properties(NATIVE_KEYS, &[("toc", boolean()), ("chapters", chapters)]),
