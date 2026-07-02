@@ -251,9 +251,9 @@ indistinguishable from core's. The notable ones:
 - **Mermaid** (`mermaid.js`): renders `{mermaid}` cells, lazy-loading the Mermaid
   library (offline-overridable via `QMD_FAST_MERMAID_URL`).
 - The **reader menu** and its features (theme / text-size / spacing prefs, focus
-  mode, read-aloud, reading progress, highlights, bookmarks), the **image
-  lightbox**, **anchor permalinks**, the **link-preview card**, the **keyboard
-  shortcuts** layer, the **skip link**, and the listing **category filter**.
+  mode, reading progress), the **image lightbox**, **anchor permalinks**, the
+  **link-preview card**, the **keyboard shortcuts** layer, the **skip link**, and
+  the listing **category filter**.
 
 `window.qmdEnhanceCode(root)` is the single entry point every caller (live client,
 static build) uses to run the whole list.
@@ -301,7 +301,7 @@ section is marked read (a forward-only high-water index, so scrolling back never
 un-marks). That read set is the reader's own, stored in `localStorage` keyed by path
 and anchored to each heading's stable `data-block-id`, so it survives reflow and
 never touches the source: the same read-only, content-hash-anchored model the
-bookmarks and resume features use.
+resume feature uses.
 
 ## Where to read next
 

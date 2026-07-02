@@ -15,16 +15,15 @@ Two principles hold for everything on this page:
   rule applied to the output: the reader owns a reading of the document, the
   document stays authoritative.
 - **Exact and durable.** Because every block carries a content-hash
-  `data-block-id`, highlights, bookmarks, and reading position anchor to block
-  identity, not to fragile scroll offsets or fuzzy text. They survive a re-render
-  and a change of window size.
+  `data-block-id`, your reading position anchors to block identity, not to fragile
+  scroll offsets or fuzzy text. It survives a re-render and a change of window size.
 
 ## The reader menu
 
 The **Aa** button opens a light-dismiss popover (not a modal: it never covers or
 inerts the page). It hosts every reader tool as a labelled section: Display,
-Reading, Highlights, Bookmarks, and Listen. Close it with Esc, a click outside, or
-by activating a jump button inside.
+Reading, Focus, and Keyboard. Close it with Esc, a click outside, or by activating
+a jump button inside.
 
 ## Display preferences
 
@@ -74,66 +73,6 @@ I?":
   **read checkmark** in the TOC, so a long reference page shows your trail at a
   glance.
 
-## Highlights, notes, and bookmarks
-
-Select any prose and a small toolbar appears. Click **Highlight** to mark the
-passage; click a mark again to remove it. Highlights are anchored to the block id
-plus character offsets in the prose (code and math are skipped), so they persist
-across reloads and survive edits to *other* blocks.
-
-When a page has highlights, a **My highlights** entry collects them with jump and
-remove buttons, and an **Export as Markdown** action that produces a clean list of
-quotes (with the page title and a link) to paste into your notes.
-
-Hovering a heading reveals a **star** in the margin; click it to bookmark the
-section. The menu's **Bookmarks** section lists every bookmarked heading for
-one-click jumps. Highlights are single-block prose only; bookmarks attach to
-headings.
-
-## The selection toolbar
-
-The same selection toolbar carries clipboard actions, all local (no server):
-
-- **Copy**: the plain selected text.
-- **Quote**: a Markdown blockquote with the document title and a link.
-- **Share link**: a W3C text-fragment URL (`#:~:text=`) that scrolls a reader
-  straight to the exact passage and highlights it, with no anchor or id required at the
-  target.
-- **Cite**: a ready-to-paste BibTeX `@misc` entry with the title, a deep link, and
-  the access date.
-
-### How text-fragment links work
-
-The Share link encodes the selected words into the URL's fragment, after a `:~:`
-sentinel, as a `text=` directive. A short selection rides whole; a long one is
-shortened to a `textStart,textEnd` range (the first and last few words) so the URL
-stays manageable. Any existing element id in the hash is preserved, and a previous
-text fragment is dropped, so re-sharing never stacks directives:
-
-```text
-https://example.com/post.html#sec-intro:~:text=the%20exact%20phrase
-```
-
-When a browser opens that URL, it finds the matching text on its own and scrolls to
-it, highlighting the passage. That is why the target needs no `id` and no author
-markup: the link points at *words*, not at an anchor.
-
-Two caveats are worth knowing, and the toolbar surfaces both:
-
-- **An http(s) origin is required.** Text fragments are ignored over `file://`, so a
-  page opened straight from disk will not scroll. When you copy a Share link from a
-  `file://` page, the toolbar says so: it announces "Link copied; the highlight opens
-  when served over http or https." Serve the build (any static host, or
-  `qmd-fast preview`) and the same link resolves. The plain anchor copy-links below
-  have no such limit (they fall back to an `execCommand` copy in insecure contexts), so
-  prefer a `#`-anchor link when you must share from `file://`.
-- **Browser support varies.** Text-fragment navigation is a Chromium-era feature and
-  is well supported in Chrome, Edge, and other Chromium browsers; support in Firefox
-  and Safari has lagged and differs by version. A browser that does not understand the
-  `:~:text=` directive simply ignores it and lands at the top of the page (or at the
-  element id, if the link carries one), so the link degrades gracefully rather than
-  breaking.
-
 ## Hover cross-reference cards
 
 Hovering an internal reference, a `@fig-`/`@sec-`/`@eq-` cross-reference, a `[@cite]`
@@ -157,23 +96,6 @@ and the Aa button stay, so you keep your exit paths and your size and theme
 controls. Press **f** again or **Esc** to leave. Focus mode is momentary: it is not
 remembered across reloads, and the `f` key is ignored while you are typing in a
 field or a dialog is open.
-
-## Listen (read-aloud)
-
-The **Listen** control reads the page aloud with the browser's built-in speech, so
-it works offline with your operating system's voices. It starts from the block in
-view, so press Listen wherever you are.
-
-- **Prose** is read one sentence at a time, with the current sentence highlighted
-  and scrolled to the centre.
-- **Code** is announced ("Code block, 12 lines, Python") and then its lines light
-  up one by one, without reading the code aloud.
-- **Figures, equations, and tables** are announced by their caption or number.
-
-A floating mini-player (play/pause, previous/next block, speed, stop) controls
-playback without reopening the menu. Your **speed** (0.8x to 2x) and **voice** are
-remembered across pages; the playback position itself is momentary. Read-aloud
-respects `prefers-reduced-motion` (no smooth scroll when reduced motion is set).
 
 ## Keyboard and accessibility
 

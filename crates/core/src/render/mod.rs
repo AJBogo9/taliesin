@@ -1007,7 +1007,6 @@ const CODE_ENHANCE_JS: &str = concat!(
     include_str!("../../assets/js/code-enhance/02-anchor-links.js"),
     include_str!("../../assets/js/code-enhance/03-focus-mode.js"),
     include_str!("../../assets/js/code-enhance/04-focus-trap.js"),
-    include_str!("../../assets/js/code-enhance/05-read-aloud.js"),
     include_str!("../../assets/js/code-enhance/06-skip-link.js"),
     include_str!("../../assets/js/code-enhance/07-keyboard.js"),
     include_str!("../../assets/js/code-enhance/08-copy-buttons.js"),
@@ -1018,9 +1017,6 @@ const CODE_ENHANCE_JS: &str = concat!(
     include_str!("../../assets/js/code-enhance/13-reader-menu.js"),
     include_str!("../../assets/js/code-enhance/14-reader-prefs.js"),
     include_str!("../../assets/js/code-enhance/15-reading-progress.js"),
-    include_str!("../../assets/js/code-enhance/16-highlights.js"),
-    include_str!("../../assets/js/code-enhance/17-highlight-index.js"),
-    include_str!("../../assets/js/code-enhance/18-bookmarks.js"),
 );
 const MERMAID_JS: &str = include_str!("../../assets/js/mermaid.js");
 /// The vendored Mermaid library (pinned mermaid@11.4.1, ~2.5 MB; sets `globalThis.mermaid`).

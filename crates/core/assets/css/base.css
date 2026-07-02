@@ -119,14 +119,6 @@
     padding: 0 .03em; cursor: pointer;
     -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 
-  /* Read-aloud: the moving spoken-sentence / code-line cursor. A DISTINCT token from the
-     reader-highlight (--tali-userhl-bg) so the transient reading cursor never looks like a
-     saved highlight. */
-  :root { --tali-ra-highlight: rgba(96, 165, 250, .38); }
-  html[data-theme="sepia"] { --tali-ra-highlight: rgba(56, 132, 200, .32); }
-  ::highlight(tali-readaloud) { background-color: var(--tali-ra-highlight); color: inherit; }
-  mark.tali-ra-mark { background-color: var(--tali-ra-highlight); color: inherit; border-radius: 2px; }
-
   /* Search-hit flash (Cmd-K → land on the heading, then flash the matched term via the
      CSS Custom Highlight API; search.js). Registered as an animatable colour so it can
      fade to transparent; the keyframes are per-theme because @keyframes can't read a var
@@ -161,28 +153,6 @@
     html.tali-search-flashing { animation-duration: .01ms; }
   }
 
-  /* Read-aloud mini-player: a small floating transport, shown only while listening. */
-  .tali-ra-bar { position: fixed; left: 50%; bottom: 1rem; transform: translateX(-50%);
-    z-index: 2147481600; display: flex; align-items: center; gap: .35rem;
-    background: var(--tali-bg); border: 1px solid var(--tali-border); border-radius: 999px;
-    padding: .3rem .5rem; box-shadow: 0 4px 18px var(--tali-edge-shadow); font-size: .85rem; }
-  .tali-ra-bar[hidden] { display: none; }
-  .tali-ra-btn { border: 0; background: transparent; color: var(--tali-fg); cursor: pointer;
-    font-size: 1rem; line-height: 1; padding: .25rem .4rem; border-radius: 999px;
-    /* WCAG 2.5.8: guarantee a >=24x24 target without moving the glyph (flex-centred). */
-    display: inline-flex; align-items: center; justify-content: center;
-    min-width: 24px; min-height: 24px; box-sizing: border-box; }
-  .tali-ra-btn:hover { background: var(--tali-code-bg); }
-  .tali-ra-speed { font-variant-numeric: tabular-nums; opacity: .8; min-width: 2.6em;
-    text-align: center; }
-  .tali-ra-voice-sel { max-width: 11rem; }
-  @media print { .tali-ra-bar { display: none !important; } }
-  @media (prefers-reduced-motion: no-preference) {
-    .tali-ra-bar { animation: tali-ra-in .18s ease-out; }
-  }
-  @keyframes tali-ra-in { from { opacity: 0; transform: translate(-50%, 6px); }
-    to { opacity: 1; transform: translateX(-50%); } }
-
   /* Reactive input controls ({{< input ... >}}). A labeled native control feeding the
      {js} reactive graph; native controls inherit color-scheme so dark/sepia just work. */
   .tali-input { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
@@ -193,54 +163,10 @@
   .tali-input-out { font-variant-numeric: tabular-nums; min-width: 2.5em;
     color: var(--tali-muted); }
 
-  .tali-hl-action { position: fixed; z-index: 2147481600;
-    font: 600 .78rem/1 var(--tali-font-head); background: var(--tali-fg); color: var(--tali-bg);
-    border: 0; border-radius: 7px; padding: .42rem .7rem; cursor: pointer;
-    box-shadow: 0 3px 14px var(--tali-edge-shadow); }
-  .tali-hl-action[hidden] { display: none; }
-  /* Selection toolbar: a row of .tali-hl-action pills (Copy / Quote / Share link / Highlight)
-     shown above a selection. The bar is the fixed host; the pills flow inside it. */
-  .tali-seltools { position: fixed; z-index: 2147481600; display: inline-flex; gap: .3rem;
-    white-space: nowrap; }
-  .tali-seltools[hidden] { display: none; }
-  .tali-seltools .tali-hl-action { position: static; z-index: auto; }
+  /* Screen-reader-only utility (used by anchor-links / focus-mode / toc-spy live regions). */
   .tali-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-  @media print { .tali-hl-action, .tali-seltools { display: none !important; } }
-  @media (max-width: 380px) { .tali-seltools .tali-hl-action { padding: .38rem .5rem; font-size: .72rem; } }
 
-  /* My highlights: list + export, reused inside the reader menu's Highlights section. */
-  .tali-hlx-list { list-style: none; margin: 0 0 .7rem; padding: 0; }
-  .tali-hlx-list li { display: flex; align-items: flex-start; gap: .4rem; margin: 0 0 .35rem; }
-  .tali-hlx-go { flex: 1; text-align: left; border: 0; background: transparent; cursor: pointer;
-    font: inherit; font-size: .82rem; line-height: 1.35; color: var(--tali-fg);
-    padding: .25rem .35rem; border-radius: 6px; }
-  .tali-hlx-go:hover { background: var(--tali-code-bg); }
-  .tali-hlx-rm { border: 0; background: transparent; color: var(--tali-muted); cursor: pointer;
-    font: inherit; font-size: 1rem; line-height: 1; padding: .2rem .3rem; }
-  .tali-hlx-rm:hover { color: var(--tali-fg); }
-  .tali-hlx-actions { border-top: 1px solid var(--tali-border); padding-top: .7rem; }
-  .tali-hlx-export { border: 1px solid var(--tali-border); background: transparent; color: var(--tali-fg);
-    cursor: pointer; font: inherit; font-size: .8rem; border-radius: 7px; padding: .35rem .7rem; }
-  .tali-hlx-export:hover { border-color: var(--tali-accent); color: var(--tali-link); }
-  .tali-hlx-out { display: block; width: 100%; margin-top: .6rem; min-height: 6rem;
-    font: .78rem/1.4 var(--tali-font-mono); color: var(--tali-fg); background: var(--tali-code-bg);
-    border: 1px solid var(--tali-border); border-radius: 7px; padding: .5rem; resize: vertical; }
-  .tali-hlx-out[hidden] { display: none; }
-
-  /* Reader bookmarks: the hover star toggle + a persistent margin star on a bookmarked
-     heading (qmdInitBookmarks). */
-  .tali-bm-toggle { position: absolute; z-index: 2147481400;
-    width: 1.7rem; height: 1.7rem; display: flex; align-items: center; justify-content: center;
-    padding: 0; border: 0; border-radius: 6px; background: transparent; cursor: pointer;
-    color: var(--tali-muted); font-size: 1.05rem; line-height: 1; }
-  .tali-bm-toggle:hover { color: var(--tali-link); background: var(--tali-code-bg); }
-  .tali-bm-toggle[aria-pressed="true"] { color: var(--tali-link); }
-  .tali-bm-toggle[hidden] { display: none; }
-  .tali-bookmarked { position: relative; }
-  .tali-bookmarked::before { content: "\2605"; position: absolute; left: -1.15em; top: .05em;
-    color: var(--tali-link); font-size: .72em; line-height: inherit; pointer-events: none; }
-  @media print { .tali-bm-toggle { display: none !important; } }
   body { max-width: var(--tali-maxw); margin: 2rem auto; padding: 0 1rem;
          font: var(--tali-font-body); color: var(--tali-fg); background: var(--tali-bg);
          overflow-wrap: break-word;

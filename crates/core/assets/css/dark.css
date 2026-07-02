@@ -6,7 +6,6 @@
     --tali-accent-fill: #2563eb; --tali-on-accent: #ffffff;
     --tali-link: #6ea8ff; --tali-code-bg: #21242b; --tali-border: #363a44;
     --tali-edge-shadow: rgba(255, 255, 255, .14); --tali-flash: rgba(110, 168, 255, .22);
-    --tali-ra-highlight: rgba(96, 165, 250, .30);
     /* Theorem-environment left-border accents, brightened for the dark bg (the light
        #6b5ea8/#2a7a5e/#7a7f87 read muddy on #16181d). Tints still derive via color-mix. */
     --tali-thm-plain: #9385d6; --tali-thm-definition: #3fae7f; --tali-thm-remark: #9aa0aa;

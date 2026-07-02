@@ -1505,35 +1505,6 @@ fn assembled_page_ships_reading_progress() {
 }
 
 #[test]
-fn assembled_page_ships_reader_highlights() {
-    let page = render_html_page("# Title\n\nProse a reader can highlight.\n", "doc");
-    assert!(
-        page.contains("taliInitHighlights"),
-        "reader-highlights enhancer not shipped in the assembled page"
-    );
-}
-
-#[test]
-fn assembled_page_ships_highlight_index() {
-    let page = render_html_page("# Title\n\nProse to highlight and review.\n", "doc");
-    assert!(
-        page.contains("taliInitHighlightIndex"),
-        "highlight-index enhancer not shipped in the assembled page"
-    );
-}
-
-#[test]
-fn assembled_page_ships_cite_action() {
-    let page = render_html_page("# Title\n\nProse a reader can cite.\n", "doc");
-    // The selection toolbar's "Cite" action copies a BibTeX entry deep-linking to the
-    // selection; the pure builder taliBuildBibtex is its unique discriminator token.
-    assert!(
-        page.contains("taliBuildBibtex"),
-        "copy-as-citation (BibTeX) builder not shipped in the assembled page"
-    );
-}
-
-#[test]
 fn assembled_page_ships_anchor_links() {
     let page = render_html_page("# Title\n\n## A section\n\nProse.\n", "doc");
     // The anchor-copy-link enhancer reveals a `#` on each heading/float and copies its
@@ -1574,26 +1545,6 @@ fn assembled_page_ships_reader_menu() {
     assert!(
         page.contains("taliInitReaderMenu") && page.contains("taliReaderMenu"),
         "reader-menu host not shipped in the assembled page"
-    );
-}
-
-#[test]
-fn assembled_page_ships_bookmarks() {
-    let page = render_html_page("# Title\n\nProse.\n", "doc");
-    // Section bookmarks: hover-heading toggle + a Bookmarks menu section.
-    assert!(
-        page.contains("taliInitBookmarks"),
-        "bookmarks enhancer not shipped in the assembled page"
-    );
-}
-
-#[test]
-fn assembled_page_ships_selection_toolbar() {
-    let page = render_html_page("# Title\n\nProse.\n", "doc");
-    // Selection toolbar: the .tali-seltools bar + the text-fragment share-link builder.
-    assert!(
-        page.contains("tali-seltools") && page.contains("taliBuildTextFragmentUrl"),
-        "selection toolbar not shipped in the assembled page"
     );
 }
 
