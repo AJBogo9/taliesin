@@ -176,7 +176,12 @@ skips `<pre>` in `.magic-move`, speaker/presentation `pagehide` cleanups. Two it
 *Cluster shipped 2026-07-01 (`main` @ b3beabc): all six items — `contents: .` root listing fix,
 `listing:`-without-`contents:` warning, site-`image:`-without-`url:` warning, titleless-post
 warning, mount/page-collision + missing-chapter-file warnings, per-page `image-alt:` on cards.
-6 new tests; verified no spurious warnings across all 5 real corpus/docs sites. Nothing open here.*
+6 new tests; verified no spurious warnings across all 5 real corpus/docs sites. Image-alt now also
+corpus-pinned (tech-blog listing test @ 52ae47d).*
+- [ ] **`contents: .` lacks a persistent corpus PAGE** (LOW, audit-qmd residual). The root-listing fix
+  is solidly unit-tested (`contents_dot_at_root_lists_siblings_and_warns_titleless`) but no `corpus/`
+  doc uses `contents: .`, so the corpus arbiter doesn't see it. Deferred rather than distort the real
+  tech-blog nav with a synthetic "list everything" page; add a small dedicated fixture if pinning is wanted.
 
 ### Citations / math / bib (deep-audit P2)
 *Cluster shipped 2026-07-01 (`main` @ ba6de8d): math-render diagnostic (`diagnostics::validate_math`),
