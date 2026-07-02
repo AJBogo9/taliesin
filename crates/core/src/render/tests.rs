@@ -552,7 +552,7 @@ fn math_in_option_string_caption_renders_katex() {
 #[test]
 fn spaced_option_directives_are_recognized() {
     // Quarto tolerates whitespace between the comment marker and the pipe (`# |`,
-    // `// |`, `%% |`); qmd-fast must too, or the spaced lines leak into the displayed
+    // `// |`, `%% |`); taliesin must too, or the spaced lines leak into the displayed
     // source AND their options (echo/label/...) are silently ignored.
     // Regression: corpus/posts/pca-geometry writes `# | label:` / `# | echo: false`.
 

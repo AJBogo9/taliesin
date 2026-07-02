@@ -19,14 +19,14 @@
 //! **in-process**. If it `exec`'d `python -m ipykernel_launcher` the process image
 //! would be replaced and every preloaded module lost. So the forked child starts
 //! ipykernel programmatically — `IPKernelApp.instance().initialize([...]);
-//! app.start()` — against a connection file *qmd-fast* (not Python) created with
-//! [`crate::kernel::prepare_connection`]. qmd-fast then connects over ZMQ with the
+//! app.start()` — against a connection file *taliesin* (not Python) created with
+//! [`crate::kernel::prepare_connection`]. taliesin then connects over ZMQ with the
 //! same handshake `Kernel::start` uses ([`Kernel::adopt_forked`]).
 //!
 //! ## Process model
 //!
-//! A forked kernel is **not** qmd-fast's direct child (the forkserver server reaps
-//! it); the daemon reports the kernel's PID back over stdout and qmd-fast drives
+//! A forked kernel is **not** taliesin's direct child (the forkserver server reaps
+//! it); the daemon reports the kernel's PID back over stdout and taliesin drives
 //! SIGINT / liveness / teardown through that PID with the same `kill(pid, …)`
 //! primitives the owned-child path already uses. Each handed-out [`Kernel`] holds
 //! an `Arc<ForkserverDaemon>` so the forkserver stays warm for its lifetime.
@@ -491,7 +491,7 @@ impl PoolInner {
     }
 
     /// Fork one warm kernel and complete its ZMQ handshake + preambles. The
-    /// connection file is created by qmd-fast (same locked-down 0600/0700 path as
+    /// connection file is created by taliesin (same locked-down 0600/0700 path as
     /// `Kernel::start`), the daemon forks an in-process ipykernel bound to it, and
     /// `Kernel::adopt_forked` connects.
     async fn warm_one(

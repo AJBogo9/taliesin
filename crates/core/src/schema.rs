@@ -1,13 +1,13 @@
-//! JSON Schema for qmd-fast's YAML config surfaces (document front matter + `_site.yml`).
+//! JSON Schema for taliesin's YAML config surfaces (document front matter + `_site.yml`).
 //!
 //! The committed `assets/schema/*.schema.json` files, bundled here as static strings, are
 //! generated from the SAME closed-set consts the validator uses (`frontmatter::KNOWN_KEYS`
 //! plus the nested `EXECUTE`/`LISTING`/`ABOUT`/`HERO` sets, and `site::NATIVE_KEYS`), so the
 //! schema cannot drift from what the validator enforces. They are regenerated ONLY via the
 //! bless path in this module's tests (`QMD_FAST_BLESS=1 cargo test -p taliesin-core --lib
-//! schema`), never hand-edited. The `qmd-fast schema` CLI emits these strings so an editor's
+//! schema`), never hand-edited. The `taliesin schema` CLI emits these strings so an editor's
 //! YAML language server can validate config: the in-scope single-editing-surface on-ramp,
-//! with no qmd-fast language server to build.
+//! with no taliesin language server to build.
 
 /// The Draft-2020-12 JSON Schema for a document's YAML front matter.
 pub const FRONTMATTER_SCHEMA: &str = include_str!("../assets/schema/tali-frontmatter.schema.json");

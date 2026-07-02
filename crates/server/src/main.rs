@@ -118,7 +118,7 @@ fn usage() {
         env!("QMD_FAST_GIT_SHA")
     );
     println!("A fast .qmd -> HTML renderer and live preview server.");
-    println!("Docs: https://github.com/AJBogo9/qmd-fast");
+    println!("Docs: https://github.com/AJBogo9/taliesin");
     println!();
     println!("USAGE:");
     println!("  taliesin <command> <file.qmd | dir> [args]");

@@ -122,7 +122,7 @@ try:
                 try:
                     fig.savefig(_p, **_kw)
                 except Exception as _e:
-                    print('qmd-fast: fig-export failed for %r: %s' % (_p, _e), file=_sys.stderr)
+                    print('taliesin: fig-export failed for %r: %s' % (_p, _e), file=_sys.stderr)
             _qmd_pending_export.clear()
 
         def _qmd_recolour(fig, fg, grid):

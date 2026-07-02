@@ -113,7 +113,7 @@ pub(crate) fn cmd_blocks(path: Option<&String>) -> ExitCode {
     }
 }
 
-/// Emit the bundled JSON Schemas for qmd-fast's YAML config (document front matter +
+/// Emit the bundled JSON Schemas for taliesin's YAML config (document front matter +
 /// `_site.yml`) so an editor's YAML language server can validate them. With `--out <dir>`
 /// it writes two files there; otherwise it prints both to stdout. The strings are the
 /// committed, bundled schemas (no runtime JSON generation).

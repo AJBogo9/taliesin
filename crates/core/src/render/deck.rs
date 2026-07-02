@@ -6,7 +6,7 @@
 
 use super::*;
 
-/// qmd-fast's own deck engine, bundled (no CDN): `deck.css` is the layout + theme
+/// taliesin's own deck engine, bundled (no CDN): `deck.css` is the layout + theme
 /// and `deck.js` the navigation/scaling engine (`window.TaliesinDeck`). Inlined into
 /// both the one-shot page and the live client, like KaTeX/mermaid.
 const DECK_CSS: &str = include_str!("../../assets/css/deck.css");

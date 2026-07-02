@@ -349,7 +349,7 @@ fn build_container(
     let concat = |inner: &[Block]| -> String { inner.iter().map(|b| b.html.as_str()).collect() };
 
     let html = if let Some(kind) = attrs.callout_kind() {
-        // Validate the kind against qmd-fast's callout vocabulary (an unknown kind
+        // Validate the kind against taliesin's callout vocabulary (an unknown kind
         // warns, click-to-source, and still renders with its given class).
         if let Some(w) = super::validate::validate_callout_kind(kind, open_line, file.clone()) {
             warnings.push(w);

@@ -1,7 +1,7 @@
 //! Front-matter schema validation.
 //!
-//! qmd-fast reads a leading YAML `---` block and validates it against its OWN
-//! recognized key set, defined independently of Quarto. A key qmd-fast does not
+//! taliesin reads a leading YAML `---` block and validates it against its OWN
+//! recognized key set, defined independently of Quarto. A key taliesin does not
 //! implement, whether a typo like `treme:` or a Quarto term it does not honor, is
 //! flagged by [`validate_front_matter`]: every unknown top-level key, plus every
 //! unknown immediate child of the nested `execute:` / `listing:` / `about:` /
@@ -10,9 +10,9 @@
 
 use crate::render::Warning;
 
-/// Top-level front-matter keys qmd-fast recognizes: the closed set of keys it
+/// Top-level front-matter keys taliesin recognizes: the closed set of keys it
 /// actually implements, plus every key the corpus/docs use. Intentionally tight
-/// (Phase 3 of the Quarto drop), so a key qmd-fast doesn't implement, or a typo,
+/// (Phase 3 of the Quarto drop), so a key taliesin doesn't implement, or a typo,
 /// now warns instead of being silently ignored. Top-level keys plus the immediate
 /// children of `execute:` / `listing:` / `about:` / `hero:` are linted; `format:`
 /// sub-keys are not (an extension owns them).
@@ -60,24 +60,24 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     "theorems",
 ];
 
-/// `execute:` sub-keys qmd-fast honors (document-level cell defaults; see
+/// `execute:` sub-keys taliesin honors (document-level cell defaults; see
 /// `render::detect_execute_defaults`).
 pub(crate) const EXECUTE_KEYS: &[&str] = &["echo", "include", "cache"];
 
-/// `listing:` sub-keys qmd-fast honors (see `site::frontmatter::parse_listing_spec`).
+/// `listing:` sub-keys taliesin honors (see `site::frontmatter::parse_listing_spec`).
 pub(crate) const LISTING_KEYS: &[&str] =
     &["contents", "id", "sort", "type", "max-items", "categories"];
 
-/// `about:` sub-keys qmd-fast honors (see `site::frontmatter::parse_about`).
+/// `about:` sub-keys taliesin honors (see `site::frontmatter::parse_about`).
 pub(crate) const ABOUT_KEYS: &[&str] = &["template", "image", "image-alt", "links"];
 
-/// `hero:` sub-keys qmd-fast honors (see `site::frontmatter::parse_hero`).
+/// `hero:` sub-keys taliesin honors (see `site::frontmatter::parse_hero`).
 pub(crate) const HERO_KEYS: &[&str] = &["eyebrow", "headline", "lead", "actions"];
 
-/// `prose-lint:` sub-keys qmd-fast honors (the mapping form; see `crate::prose::config`).
+/// `prose-lint:` sub-keys taliesin honors (the mapping form; see `crate::prose::config`).
 pub(crate) const PROSE_LINT_KEYS: &[&str] = &["banned"];
 
-/// `theorems:` sub-keys qmd-fast honors: `shared` (shared counters), `number-within`
+/// `theorems:` sub-keys taliesin honors: `shared` (shared counters), `number-within`
 /// (chapter scoping), `numbered` (whether/when to number). The VALUES of the latter two
 /// are checked by [`validate_theorem_values`] so an unrecognized value warns rather than
 /// being silently ignored.
@@ -91,7 +91,7 @@ const THEOREM_NUMBER_WITHIN: &[&str] = &["chapter"];
 /// suggestion candidates.
 const THEOREM_NUMBERED: &[&str] = &["false", "unless-unique"];
 
-/// Validate a document's front matter against qmd-fast's vocabulary: every unknown
+/// Validate a document's front matter against taliesin's vocabulary: every unknown
 /// top-level key, plus every unknown immediate child of the nested `execute:`,
 /// `listing:`, `about:`, and `hero:` blocks. Membership is decided by a real YAML
 /// parse (so structure, lists, nested maps, never causes a false positive); each

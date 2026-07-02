@@ -111,7 +111,7 @@ pub(crate) async fn lan_token_guard(
     match lan_access(peer_loopback, query.as_deref(), cookie.as_deref(), &token) {
         LanAccess::Deny => (
             axum::http::StatusCode::FORBIDDEN,
-            "qmd-fast: this --host preview needs its session link. Scan the QR code or \
+            "taliesin: this --host preview needs its session link. Scan the QR code or \
              open the printed LAN URL (it carries the access token).",
         )
             .into_response(),

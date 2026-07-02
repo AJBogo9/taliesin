@@ -180,8 +180,8 @@ pub(crate) fn quarto_migration_hint(dir: &Path) -> Option<String> {
         return None;
     }
     Some(
-        "found `_quarto.yml` — qmd-fast uses `_site.yml` (a flat native schema), not \
-         Quarto's `_quarto.yml`; run `qmd-fast init` for a starter, or see the docs"
+        "found `_quarto.yml` — taliesin uses `_site.yml` (a flat native schema), not \
+         Quarto's `_quarto.yml`; run `taliesin init` for a starter, or see the docs"
             .to_string(),
     )
 }
@@ -200,7 +200,7 @@ fn format_human(diags: &[Diagnostic]) -> String {
 /// Every long flag `check` accepts (drives the unknown-flag did-you-mean).
 const CHECK_FLAGS: &[&str] = &["--format"];
 
-/// `qmd-fast check <file|dir> [--format human|json]`: render in memory, list every
+/// `taliesin check <file|dir> [--format human|json]`: render in memory, list every
 /// located diagnostic, and exit non-zero if any are found (a CI gate). Static-only
 /// (no code execution).
 pub(crate) fn cmd_check(args: &[String]) -> ExitCode {

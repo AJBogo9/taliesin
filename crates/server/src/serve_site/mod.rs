@@ -42,7 +42,7 @@ struct SiteApp {
     pages: Mutex<HashMap<String, PageState>>,
     /// Page rel-paths queued for a (re)build by the executor worker.
     build_tx: mpsc::UnboundedSender<BuildMsg>,
-    /// `mounts:` — other qmd-fast projects (e.g. a docs `book`) served under a URL
+    /// `mounts:` — other taliesin projects (e.g. a docs `book`) served under a URL
     /// prefix, so a site's link to `/docs` resolves in `preview` (not just `build`).
     /// Discovered once; pages render on request (content edits show on refresh).
     mounts: Vec<MountedSite>,
@@ -92,7 +92,7 @@ impl PageDoc {
     }
 }
 
-/// Entry point for `qmd-fast preview <dir>` when the path is a site project.
+/// Entry point for `taliesin preview <dir>` when the path is a site project.
 pub fn run(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(serve(root, port, open, expose))

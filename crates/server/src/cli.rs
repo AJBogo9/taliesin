@@ -22,14 +22,14 @@ const INIT_SITE_YML: &str = "title: My site\n";
 /// points the new user at the next steps. `.tmd` is the native extension (`.qmd`
 /// still works if you prefer it).
 const INIT_INDEX_TMD: &str = "---\ntitle: Hello, Taliesin\n---\n\n\
-    Welcome to your new [Taliesin](https://github.com/AJBogo9/qmd-fast) site.\n\n\
+    Welcome to your new [Taliesin](https://github.com/AJBogo9/taliesin) site.\n\n\
     Edit `index.tmd` and the preview reloads as you save.\n\n\
     ## Next steps\n\n\
     - Add more `.tmd` pages beside this one — each becomes its own page.\n\
     - Configure navigation and the title in `_site.yml`.\n\
     - Drop in a `{python}` or `{r}` code cell to run live output.\n";
 
-/// `qmd-fast init [dir]`: scaffold a minimal previewable site into `dir` (default the
+/// `taliesin init [dir]`: scaffold a minimal previewable site into `dir` (default the
 /// current directory). Writes `_site.yml` + `index.qmd`, then prints the preview hint.
 pub(crate) fn cmd_init(dir: Option<&str>) -> ExitCode {
     let dir = Path::new(dir.unwrap_or("."));

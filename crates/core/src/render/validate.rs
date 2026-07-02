@@ -1,18 +1,18 @@
-//! qmd-fast's closed body vocabularies + did-you-mean validation for code-cell `#|`
+//! taliesin's closed body vocabularies + did-you-mean validation for code-cell `#|`
 //! options and `:::` callout kinds. Front-matter keys are validated in
 //! `crate::frontmatter`; site-config keys in `crate::site::config`. Every validator is
 //! purely diagnostic: an unrecognized key still renders exactly as before, plus one
 //! located [`Warning`] (click-to-source in the dev panel).
 //!
-//! The vocabularies are qmd-fast's OWN, defined independently of Quarto. A key not in
-//! the relevant set, whether a typo or a Quarto term qmd-fast does not implement, is
+//! The vocabularies are taliesin's OWN, defined independently of Quarto. A key not in
+//! the relevant set, whether a typo or a Quarto term taliesin does not implement, is
 //! reported as unknown (with the closest known key when within edit distance 2). This
-//! is deliberate: qmd-fast is its own tool, not a Quarto runtime.
+//! is deliberate: taliesin is its own tool, not a Quarto runtime.
 
 use super::Warning;
 use crate::frontmatter::unknown_key_message;
 
-/// Cell options qmd-fast recognizes on a code cell's leading `#|` / `//|` / `%%|`
+/// Cell options taliesin recognizes on a code cell's leading `#|` / `//|` / `%%|`
 /// lines (the union across all cell languages; each is read in `cell_option` /
 /// `parse_js_opts` / `code_fold` / `emit::code_line_numbers`).
 pub(crate) const CELL_OPTION_KEYS: &[&str] = &[
@@ -32,10 +32,10 @@ pub(crate) const CELL_OPTION_KEYS: &[&str] = &[
     "input",  // {js}
 ];
 
-/// Callout kinds qmd-fast recognizes (`::: {.callout-<kind>}`).
+/// Callout kinds taliesin recognizes (`::: {.callout-<kind>}`).
 pub(crate) const CALLOUT_KINDS: &[&str] = &["note", "tip", "warning", "important", "caution"];
 
-/// Theorem-environment kinds qmd-fast recognizes (`::: {.theorem}`, `::: {.proof}`, …).
+/// Theorem-environment kinds taliesin recognizes (`::: {.theorem}`, `::: {.proof}`, …).
 /// Unlike callouts there is no namespace prefix, so this set IS the dispatch vocabulary:
 /// a div whose class is one of these enters the theorem arm. `proof` is included but is
 /// unnumbered + unreferenceable. A misspelled kind has no prefix to anchor a did-you-mean,

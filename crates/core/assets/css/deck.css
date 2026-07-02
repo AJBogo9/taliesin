@@ -1,4 +1,4 @@
-/* qmd-fast deck engine: the slide layout, on qmd-fast's own contract
+/* taliesin deck engine: the slide layout, on taliesin's own contract
    (.tali-deck > .tali-slides > section, nested <section> stacks). Behaviour
    lives in deck.js; this is only layout. */
 

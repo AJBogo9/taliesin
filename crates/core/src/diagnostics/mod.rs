@@ -1,4 +1,4 @@
-//! Static document-lint validators for `qmd-fast check` (the "check-superset").
+//! Static document-lint validators for `taliesin check` (the "check-superset").
 //!
 //! **What:** one read-only validator per family — headings, anchors, bibliography,
 //! assets, media, links, reactive graph, a11y, math-render — each takes the rendered block model
@@ -7,7 +7,7 @@
 //! document is publishable.
 //!
 //! **How to use:** call the re-exported `validate_*` / `citations_without_bibliography`
-//! fns; `qmd-fast check` (`crates/server/src/main.rs`) runs the whole set.
+//! fns; `taliesin check` (`crates/server/src/main.rs`) runs the whole set.
 //!
 //! **Depends on:** [`crate::render`] for the block model + `Warning` channel, and
 //! `std::path` for the asset/link existence checks. Pure static analysis; the only IO

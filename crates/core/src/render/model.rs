@@ -31,7 +31,7 @@ pub struct Cell {
     /// the cell's figure to those files with print-clean styling (black-on-white,
     /// no web theming), for inclusion in a LaTeX/print document. Vector `.pdf`/`.svg`
     /// stay resolution-independent; `.png` is saved at a print DPI. Paths resolve
-    /// relative to where qmd-fast runs (normally the document's directory). The
+    /// relative to where taliesin runs (normally the document's directory). The
     /// export itself is performed by the Python kernel preamble at display time.
     pub fig_export: Option<String>,
     /// Native `{js}` cell options (`//| name:`/`//| viewof:`/`//| input:`). Empty
@@ -116,7 +116,7 @@ pub enum DocFormat {
     /// A standard HTML page (blog post, book): the default.
     #[default]
     Html,
-    /// A slide deck, rendered by qmd-fast's OWN native engine (reveal.js was removed);
+    /// A slide deck, rendered by taliesin's OWN native engine (reveal.js was removed);
     /// selected by `format: revealjs` / `*-revealjs`.
     Reveal,
 }

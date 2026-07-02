@@ -89,7 +89,7 @@ fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
-/// Cell languages qmd-fast can execute, mapped to a stable kernel key. Anything
+/// Cell languages taliesin can execute, mapped to a stable kernel key. Anything
 /// else renders as highlighted source.
 fn kernel_lang(lang: &str) -> Option<&'static str> {
     match lang {

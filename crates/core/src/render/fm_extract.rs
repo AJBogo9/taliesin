@@ -88,7 +88,7 @@ pub(super) fn detect_format(front_matter: &str) -> DocFormat {
 
 /// Whether a `format:` name selects a slide deck. The native spelling is `deck`
 /// (or an extension variant `<ext>-deck`); `revealjs` / `<ext>-revealjs` is the
-/// deprecated-but-accepted Quarto spelling (the engine is qmd-fast's own either way).
+/// deprecated-but-accepted Quarto spelling (the engine is taliesin's own either way).
 fn is_reveal_format(name: &str) -> bool {
     let n = name.trim().trim_matches(['"', '\'']);
     n == "deck" || n.ends_with("-deck") || n == "revealjs" || n.ends_with("-revealjs")

@@ -672,7 +672,7 @@ fn mount_warnings(mounts: &[taliesin_core::site::Mount], root: &Path, out: &Path
         .map(|m| {
             format!(
                 "mount '/{}/' is preview-only and not in the static build (its links will 404). \
-                 Build it: qmd-fast build {} --out {}",
+                 Build it: taliesin build {} --out {}",
                 m.at,
                 root.join(&m.path).display(),
                 out.join(&m.at).display(),

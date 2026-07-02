@@ -1,6 +1,6 @@
-// qmd-fast deck engine: the navigation + scaling for slides, owned by the project
+// taliesin deck engine: the navigation + scaling for slides, owned by the project
 // so block-level incremental updates and click-to-source work in decks the same
-// way they do on a page. It drives qmd-fast's own DOM contract
+// way they do on a page. It drives taliesin's own DOM contract
 // (.tali-deck > .tali-slides > section, nested <section> stacks) and exposes a
 // window.TaliesinDeck API (initialize/sync/layout/slide + on/getSlides/getCurrentSlide/
 // registerPlugin) that the preview client and theme extensions bind to.

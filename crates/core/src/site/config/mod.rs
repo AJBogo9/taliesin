@@ -48,7 +48,7 @@ pub struct SiteConfig {
     pub footer: Option<Footer>,
     /// Ordered chapter list (book only): a file name or `{ part, chapters }`.
     pub chapters: Vec<serde_yaml::Value>,
-    /// `mounts:` — other qmd-fast projects to mount under a URL prefix, so a site
+    /// `mounts:` — other taliesin projects to mount under a URL prefix, so a site
     /// can link to e.g. a separate docs `book` at `/docs`. In `preview` they're
     /// served live; the static `build` recipe wires them with a second `build`.
     pub mounts: Vec<Mount>,

@@ -1,5 +1,5 @@
 //! The one content-hashing primitive, shared by the block-id scheme (`render`) and the
-//! freeze cache-key scheme (`qmd-fast-server`'s `freeze`). A block's content-hash id and
+//! freeze cache-key scheme (`taliesin-server`'s `freeze`). A block's content-hash id and
 //! its execution-cache key are the **same** scheme, so they must hash identically — kept
 //! here as a single definition rather than byte-identical copies that could silently drift.
 //!

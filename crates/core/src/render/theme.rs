@@ -38,7 +38,7 @@ pub(super) fn resolve_theme(
             }
         }
         // An installed extension bundle: `_extensions/<name>/theme.css`. A bare
-        // name isn't warned (it may be a Quarto built-in theme qmd-fast doesn't
+        // name isn't warned (it may be a Quarto built-in theme taliesin doesn't
         // ship, e.g. `darkly`, which harmlessly falls back to the default).
         ext => base_dir
             .and_then(|b| {

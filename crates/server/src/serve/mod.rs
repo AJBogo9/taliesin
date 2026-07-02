@@ -89,7 +89,7 @@ impl DocState {
     }
 }
 
-/// Entry point for `qmd-fast serve <file> [port] [--open]`.
+/// Entry point for `taliesin serve <file> [port] [--open]`.
 pub fn run(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(serve(path, port, open, expose))
@@ -1208,7 +1208,7 @@ mod protocol_contract {
     #[test]
     fn blog_index_ships_toc_scrollspy_when_toc_enabled() {
         // The single-doc live preview must load toc-spy.js when the doc has a TOC, so
-        // scrollspy highlighting + read-state TOC work in `qmd-fast preview <file>`
+        // scrollspy highlighting + read-state TOC work in `taliesin preview <file>`
         // (client.js rebuilds the nav, then calls window.taliInitTocSpy). The `qmd-read:`
         // storage key is unique to toc-spy.js — client.js only *calls* taliInitTocSpy —
         // so it discriminates "script loaded" from "script merely referenced".
