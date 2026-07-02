@@ -135,15 +135,9 @@ leaks into chrome that wraps prose (TOC, sidebars, navbar `<nav><ul><li>`, searc
 margin notes); re-pin with `nav li, [role="listbox"] li, .sidenote p, … { line-height: inherit }`.
 Letter/word spacing leaks worse (inherits into inline descendants), so also reset monospace + math
 directly (`code, pre, kbd, samp, .katex { letter-spacing: normal; word-spacing: normal }`).
-- [ ] **Search-hit visual cue** (design settled 2026-06-30, spec pending). On a Cmd-K result click,
-  land on the heading as today, then **flash the matched term** via the CSS Custom Highlight API (zero
-  DOM mutation — honours read-only preview; theme-token styled like read-aloud; fades out), and
-  auto-scroll to the first occurrence *only if off-screen*. Cross-page handoff via **sessionStorage**:
-  write the query terms before `location.href`, read + clear on load, then run the same locate-and-flash
-  so in-page and cross-page share one code path. Fuzzy/title-only matches just land on the heading.
-  Deck-skip. Next: write the spec, then TDD. Reuses the `termRanges` logic in search.js + the
-  read-aloud highlight precedent; native `#:~:text=` rejected as primary (not theme-able, no fade,
-  patchy in Firefox).
+*Search-hit visual cue SHIPPED 2026-07-02 (`main` @ ab6437c): Cmd-K result → flash the matched term
+via the CSS Custom Highlight API, theme-aware fade, cross-page `sessionStorage` handoff. Spec
+`docs/superpowers/specs/2026-07-02-search-hit-visual-cue.md`.*
 - [ ] **Focus mode "prev arrow too far left"** (needs the author's input). Does NOT reproduce in code —
   the book pager (`.qmd-book-postnav`/`.qmd-book-prev`, `site.css:200-215`) already sits inside the
   centred reading column and there's no viewport-edge prev arrow. Which view/viewport showed it?
