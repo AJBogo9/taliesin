@@ -8,12 +8,12 @@
 // are set up once. (Note: some browsers isolate localStorage per file path, so "book-wide"
 // spans chapters only when served over http(s) — see the portability audit.)
 function qmdInitBookmarks() {
-  if (document.querySelector('.qmd-deck')) return; // a slide deck has its own chrome
+  if (document.querySelector('.tali-deck')) return; // a slide deck has its own chrome
 
   // A book shares one store across its chapters, keyed by the resolved book-root URL from the
   // topbar brand link (stable per book, present on every chapter); anything else stays per-page.
-  var brand = document.querySelector('.qmd-book-brand');
-  var KEY = brand && brand.href ? 'qmd-bm-book:' + brand.href : 'qmd-bm:' + location.pathname;
+  var brand = document.querySelector('.tali-book-brand');
+  var KEY = brand && brand.href ? 'tali-bm-book:' + brand.href : 'tali-bm:' + location.pathname;
   function thisPage() { return location.origin + location.pathname; }
 
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { return []; } }
@@ -42,7 +42,7 @@ function qmdInitBookmarks() {
   function applyMarkers() {
     var list = load();
     document.querySelectorAll(HEADS).forEach(function (h) {
-      h.classList.toggle('qmd-bookmarked', indexOfBlock(list, h.getAttribute('data-block-id')) !== -1);
+      h.classList.toggle('tali-bookmarked', indexOfBlock(list, h.getAttribute('data-block-id')) !== -1);
     });
   }
 
@@ -51,7 +51,7 @@ function qmdInitBookmarks() {
 
     var toggle = document.createElement('button');
     toggle.type = 'button';
-    toggle.className = 'qmd-bm-toggle';
+    toggle.className = 'tali-bm-toggle';
     toggle.hidden = true;
     toggle.setAttribute('aria-label', 'Bookmark this section');
     document.body.appendChild(toggle);
@@ -117,17 +117,17 @@ function qmdInitBookmarks() {
     // page; a current-page entry scrolls + flashes in place.
     if (window.qmdReaderMenu) {
       var body = document.createElement('div');
-      function flash(b) { b.classList.remove('qmd-flash'); void b.offsetWidth; b.classList.add('qmd-flash'); }
+      function flash(b) { b.classList.remove('tali-flash'); void b.offsetWidth; b.classList.add('tali-flash'); }
       function renderList() {
         while (body.firstChild) body.removeChild(body.firstChild);
-        var ul = document.createElement('ul'); ul.className = 'qmd-hlx-list';
+        var ul = document.createElement('ul'); ul.className = 'tali-hlx-list';
         load().forEach(function (e) {
           var current = onThisPage(e);
           var block = current ? findBlock(e.block) : null;
           if (current && !block) return; // orphaned on the current page
           var li = document.createElement('li');
           var go = document.createElement('button');
-          go.type = 'button'; go.className = 'qmd-hlx-go';
+          go.type = 'button'; go.className = 'tali-hlx-go';
           var label = e.label || (block ? block.textContent : '') || 'Bookmark';
           label = label.replace(/\s+/g, ' ').trim().replace(/#$/, '').trim();
           if (label.length > 56) label = label.slice(0, 56) + '…';
@@ -138,7 +138,7 @@ function qmdInitBookmarks() {
             else { location.href = e.page + (e.anchor ? '#' + e.anchor : ''); }
           });
           var rm = document.createElement('button');
-          rm.type = 'button'; rm.className = 'qmd-hlx-rm';
+          rm.type = 'button'; rm.className = 'tali-hlx-rm';
           rm.setAttribute('aria-label', 'Remove bookmark'); rm.textContent = '×';
           rm.addEventListener('click', function () {
             save(load().filter(function (x) { return !(x.page === e.page && x.block === e.block); }));

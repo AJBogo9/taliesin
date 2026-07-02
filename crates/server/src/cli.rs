@@ -164,7 +164,7 @@ mod tests {
     }
 
     fn tmp(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("qmd-init-{}-{name}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("tali-init-{}-{name}", std::process::id()));
         let _ = fs::remove_dir_all(&d);
         d
     }

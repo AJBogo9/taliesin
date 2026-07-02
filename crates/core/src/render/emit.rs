@@ -66,7 +66,7 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
                 if let Some((open, summary)) = &fold {
                     let open_attr = if *open { " open" } else { "" };
                     out.push_str(&format!(
-                        "<details{attrs} class=\"qmd-code-fold\"{open_attr}><summary>{}</summary><pre><code{class}>{highlighted}</code></pre></details>",
+                        "<details{attrs} class=\"tali-code-fold\"{open_attr}><summary>{}</summary><pre><code{class}>{highlighted}</code></pre></details>",
                         html_escape(summary)
                     ));
                 } else {
@@ -92,7 +92,7 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
         NodeValue::Math(m) => out.push_str(&crate::math::render(&m.literal, m.display_math)),
         // `[^name]` reference → a superscript link to the gathered footnote section.
         NodeValue::FootnoteReference(r) => out.push_str(&format!(
-            "<sup class=\"qmd-fnref\" id=\"fnref-{name}-{rn}\"><a href=\"#fn-{name}\">{ix}</a></sup>",
+            "<sup class=\"tali-fnref\" id=\"fnref-{name}-{rn}\"><a href=\"#fn-{name}\">{ix}</a></sup>",
             name = escape_attr(&r.name),
             rn = r.ref_num,
             ix = r.ix,
@@ -143,7 +143,7 @@ pub(crate) fn footnote_def_li<'a>(node: &'a AstNode<'a>, name: &str) -> String {
     emit_children(node, &mut inner);
     let n = escape_attr(name);
     format!(
-        "<li id=\"fn-{n}\" class=\"qmd-fn\">{inner}<a class=\"qmd-fn-back\" href=\"#fnref-{n}-1\" aria-label=\"Back to content\">\u{21a9}\u{fe0e}</a></li>"
+        "<li id=\"fn-{n}\" class=\"tali-fn\">{inner}<a class=\"tali-fn-back\" href=\"#fnref-{n}-1\" aria-label=\"Back to content\">\u{21a9}\u{fe0e}</a></li>"
     )
 }
 

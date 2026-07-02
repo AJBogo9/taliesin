@@ -240,12 +240,12 @@ fn strict_exit(code: ExitCode, strict_fail: bool, problems: usize) -> ExitCode {
 }
 
 /// Count the executed output blocks that are uncaught runtime errors (their HTML
-/// carries the `qmd-error` marker), logging a located warning per failing cell so a
+/// carries the `tali-error` marker), logging a located warning per failing cell so a
 /// crashing cell isn't baked into the build silently. Returns the count.
 fn report_cell_errors(blocks: &[taliesin_core::Block], page_label: &str) -> usize {
     let mut n = 0;
     for b in blocks {
-        if b.html.contains("class=\"qmd-error\"") {
+        if b.html.contains("class=\"tali-error\"") {
             n += 1;
             let where_ = b
                 .source_file
@@ -745,7 +745,7 @@ async fn build_one_page(
     // A crashed cell bakes its traceback into the page; collect a located line + count it
     // (same shape/order as the sequential `report_cell_errors`, but deferred).
     for b in &doc.blocks {
-        if b.html.contains("class=\"qmd-error\"") {
+        if b.html.contains("class=\"tali-error\"") {
             problems += 1;
             let where_ = b
                 .source_file
@@ -1268,7 +1268,7 @@ mod mirror_tests {
     }
 
     fn tmp(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("qmd-mirror-{}-{name}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("tali-mirror-{}-{name}", std::process::id()));
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
@@ -1472,11 +1472,11 @@ mod build_diag_tests {
     #[test]
     fn report_cell_errors_counts_only_qmd_error_outputs() {
         let blocks = vec![
-            output_block("<div class=\"qmd-output\"><pre class=\"qmd-error\">boom</pre></div>"),
-            output_block("<div class=\"qmd-output\"><pre>ok</pre></div>"),
-            // A *successful* cell that merely prints the text "qmd-error" must not count
+            output_block("<div class=\"tali-output\"><pre class=\"tali-error\">boom</pre></div>"),
+            output_block("<div class=\"tali-output\"><pre>ok</pre></div>"),
+            // A *successful* cell that merely prints the text "tali-error" must not count
             // (we match the class attribute, not the bare substring).
-            output_block("<div class=\"qmd-output\"><pre>printed qmd-error here</pre></div>"),
+            output_block("<div class=\"tali-output\"><pre>printed tali-error here</pre></div>"),
         ];
         assert_eq!(report_cell_errors(&blocks, "page"), 1);
     }
@@ -1536,7 +1536,7 @@ mod build_diag_tests {
     /// A plain document still builds under `--bare`, and the page is script-free.
     #[test]
     fn bare_builds_a_plain_doc_script_free() {
-        let base = std::env::temp_dir().join(format!("qmd-bare-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("tali-bare-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&base);
         let res = build_page_executing(
             "---\ntitle: Draft\n---\n\nProse.\n",

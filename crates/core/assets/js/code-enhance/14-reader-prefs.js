@@ -5,7 +5,7 @@
 function qmdInitReaderPrefs() {
   if (window.__qmdReaderPrefs) return;
   if (!window.qmdSetReaderPref || !window.qmdReaderMenu) return; // need the pre-paint API + the menu host
-  if (document.querySelector('.qmd-deck')) return; // a slide deck has its own chrome
+  if (document.querySelector('.tali-deck')) return; // a slide deck has its own chrome
   window.__qmdReaderPrefs = true;
 
   var THEMES = [['light', 'Light'], ['dark', 'Dark'], ['sepia', 'Sepia']];
@@ -28,11 +28,11 @@ function qmdInitReaderPrefs() {
   // One segmented control row. `labelFn(btn, opt)` customizes a button (else opt[1] text).
   function seg(title, options, getCur, onPick, labelFn) {
     var row = document.createElement('div');
-    row.className = 'qmd-reader-row';
+    row.className = 'tali-reader-row';
     var label = document.createElement('span');
     label.textContent = title;
     var group = document.createElement('div');
-    group.className = 'qmd-reader-seg';
+    group.className = 'tali-reader-seg';
     group.setAttribute('role', 'group');
     group.setAttribute('aria-label', title);
     var buttons = [];
@@ -77,7 +77,7 @@ function qmdInitReaderPrefs() {
   body.appendChild(wordSeg.row);
 
   var reset = document.createElement('button');
-  reset.className = 'qmd-reader-reset';
+  reset.className = 'tali-reader-reset';
   reset.type = 'button';
   reset.textContent = 'Reset to defaults';
   reset.addEventListener('click', function () { if (window.qmdResetReader) window.qmdResetReader(); });

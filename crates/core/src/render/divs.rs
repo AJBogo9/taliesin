@@ -391,7 +391,7 @@ fn build_container(
     } else if let Some(ncol) = attrs.get("layout-ncol").and_then(|n| n.parse::<u32>().ok()) {
         let body = concat(&inner);
         format!(
-            "<div class=\"qmd-layout\" style=\"display:grid;grid-template-columns:repeat({ncol},minmax(0,1fr));gap:1rem\"{data}>{body}</div>"
+            "<div class=\"tali-layout\" style=\"display:grid;grid-template-columns:repeat({ncol},minmax(0,1fr));gap:1rem\"{data}>{body}</div>"
         )
     } else if attrs.classes.iter().any(|c| c == "magic-move") {
         // Magic-move: the contained code blocks are animation steps. Line-wrap each so
@@ -534,7 +534,7 @@ fn build_container(
                 (
                     format!(" data-scrolly-name=\"{}\"", escape_attr(n)),
                     format!(
-                        "<input type=\"hidden\" class=\"qmd-scrolly-input\" data-qmd-input=\"{}\" value=\"{first_state}\">",
+                        "<input type=\"hidden\" class=\"tali-scrolly-input\" data-qmd-input=\"{}\" value=\"{first_state}\">",
                         escape_attr(n)
                     ),
                 )
@@ -542,7 +542,7 @@ fn build_container(
             _ => (String::new(), String::new()),
         };
         format!(
-            "<div class=\"qmd-scrolly\"{data}{name_attr}>{hidden}<div class=\"scrolly-steps\">{steps}</div><div class=\"scrolly-stage\">{stage}</div></div>"
+            "<div class=\"tali-scrolly\"{data}{name_attr}>{hidden}<div class=\"scrolly-steps\">{steps}</div><div class=\"scrolly-stage\">{stage}</div></div>"
         )
     } else if let Some(kind) = attrs.theorem_kind() {
         let body = concat(&inner);
@@ -552,7 +552,7 @@ fn build_container(
                 .get("title")
                 .map(html_escape)
                 .unwrap_or_else(|| "Proof".to_string());
-            let qed = "<span class=\"qmd-qed\" aria-hidden=\"true\">\u{220e}</span>";
+            let qed = "<span class=\"tali-qed\" aria-hidden=\"true\">\u{220e}</span>";
             // `collapse="true"` folds the proof behind a native <details> (starts closed);
             // `collapse="false"` is collapsible but starts open. QED rides inside <details>
             // so a collapsed proof shows only its "Proof." summary.
@@ -560,11 +560,11 @@ fn build_container(
                 Some(v) => {
                     let open = if v == "false" { " open" } else { "" };
                     format!(
-                        "<div class=\"qmd-proof qmd-proof-collapse\"{data}><details{open}><summary class=\"qmd-proof-head\">{head}.</summary><div class=\"qmd-theorem-body\">{body}</div>{qed}</details></div>"
+                        "<div class=\"tali-proof tali-proof-collapse\"{data}><details{open}><summary class=\"tali-proof-head\">{head}.</summary><div class=\"tali-theorem-body\">{body}</div>{qed}</details></div>"
                     )
                 }
                 None => format!(
-                    "<div class=\"qmd-proof\"{data}><p class=\"qmd-proof-head\">{head}.</p><div class=\"qmd-theorem-body\">{body}</div>{qed}</div>"
+                    "<div class=\"tali-proof\"{data}><p class=\"tali-proof-head\">{head}.</p><div class=\"tali-theorem-body\">{body}</div>{qed}</div>"
                 ),
             }
         } else {
@@ -574,19 +574,19 @@ fn build_container(
             let id_attr = id_attr(attrs.id.as_deref());
             let title = match attrs.get("title") {
                 Some(t) => format!(
-                    " <span class=\"qmd-theorem-title\">({})</span>",
+                    " <span class=\"tali-theorem-title\">({})</span>",
                     html_escape(t)
                 ),
                 None => String::new(),
             };
             format!(
-                "<div class=\"qmd-theorem qmd-theorem-{kind} qmd-thm-style-{style}\"{id_attr} data-qmd-theorem-kind=\"{kind}\"{data}><p class=\"qmd-theorem-head\"><span class=\"qmd-theorem-label\">{name}<span class=\"qmd-theorem-number\"></span></span>{title}</p><div class=\"qmd-theorem-body\">{body}</div></div>"
+                "<div class=\"tali-theorem tali-theorem-{kind} tali-thm-style-{style}\"{id_attr} data-qmd-theorem-kind=\"{kind}\"{data}><p class=\"tali-theorem-head\"><span class=\"tali-theorem-label\">{name}<span class=\"tali-theorem-number\"></span></span>{title}</p><div class=\"tali-theorem-body\">{body}</div></div>"
             )
         }
     } else {
         let mut class = attrs.classes.join(" ");
         if class.is_empty() {
-            class.push_str("qmd-div");
+            class.push_str("tali-div");
         }
         let id_attr = id_attr(attrs.id.as_deref());
         let body = concat(&inner);

@@ -3,170 +3,170 @@
      viewport even on short pages. The navbar + footer centre their inner box on the
      wider `--qmd-chrome-maxw` container (so the bars don't pool dead space on wide
      screens), while the content keeps the ~70ch reading measure. */
-  body.qmd-site { max-width: none; margin: 0; padding: 0;
+  body.tali-site { max-width: none; margin: 0; padding: 0;
     min-height: 100vh; display: flex; flex-direction: column;
     /* height of the sticky navbar; the TOC and jumped-to headings clear it */
     --qmd-nav-h: 3.25rem; }
   /* the sticky navbar would otherwise cover the top of the sticky TOC and the top
      of any heading a TOC link jumps to — offset both by the navbar height + a gap */
-  body.qmd-site #TOC { top: calc(var(--qmd-nav-h) + 1rem); }
-  body.qmd-site [data-block-id] { scroll-margin-top: calc(var(--qmd-nav-h) + 1rem); }
+  body.tali-site #TOC { top: calc(var(--qmd-nav-h) + 1rem); }
+  body.tali-site [data-block-id] { scroll-margin-top: calc(var(--qmd-nav-h) + 1rem); }
 
   /* sticky theme-aware navbar (spans full width as a flex child; inner centres) */
-  .qmd-site-nav { position: sticky; top: 0; z-index: 50;
+  .tali-site-nav { position: sticky; top: 0; z-index: 50;
     background: color-mix(in srgb, var(--qmd-bg) 88%, transparent);
     -webkit-backdrop-filter: saturate(1.4) blur(9px); backdrop-filter: saturate(1.4) blur(9px);
     border-bottom: 1px solid var(--qmd-border); }
-  .qmd-nav-inner { position: relative; max-width: var(--qmd-chrome-maxw); margin: 0 auto;
+  .tali-nav-inner { position: relative; max-width: var(--qmd-chrome-maxw); margin: 0 auto;
     padding: .6rem 1rem; display: flex; align-items: center; gap: 1.1rem;
     font: 500 15px/1 var(--qmd-font-head); }
-  .qmd-nav-brand { color: var(--qmd-fg); font-weight: 700; font-size: 1.02rem; text-decoration: none;
+  .tali-nav-brand { color: var(--qmd-fg); font-weight: 700; font-size: 1.02rem; text-decoration: none;
     letter-spacing: -0.01em; white-space: nowrap; }
-  .qmd-nav-brand:hover { color: var(--qmd-link); }
-  .qmd-nav-links { display: flex; align-items: center; gap: .35rem; flex: 1; }
-  .qmd-nav-spacer { flex: 1 1 auto; }
-  .qmd-nav-link { display: inline-flex; flex-direction: column; align-items: flex-start;
+  .tali-nav-brand:hover { color: var(--qmd-link); }
+  .tali-nav-links { display: flex; align-items: center; gap: .35rem; flex: 1; }
+  .tali-nav-spacer { flex: 1 1 auto; }
+  .tali-nav-link { display: inline-flex; flex-direction: column; align-items: flex-start;
     color: var(--qmd-muted); text-decoration: none; padding: .35rem .6rem;
     border-radius: 6px; white-space: nowrap;
     transition: color .12s ease, background .12s ease; }
   /* Reserve the bold (active) width on every item so bolding the current page's
      link never changes its width — the bar stays put across navigations. */
-  .qmd-nav-link::after { content: attr(data-label); font-weight: 600; height: 0;
+  .tali-nav-link::after { content: attr(data-label); font-weight: 600; height: 0;
     overflow: hidden; visibility: hidden; pointer-events: none; }
-  .qmd-nav-link:hover { color: var(--qmd-fg); background: var(--qmd-code-bg); }
+  .tali-nav-link:hover { color: var(--qmd-fg); background: var(--qmd-code-bg); }
   /* icon-only nav links (social): a compact, centered square. No bold-width
      reservation (no text to bold), so the hit box is just the icon + padding. */
-  .qmd-nav-icon { align-items: center; padding: .35rem .5rem; }
-  .qmd-nav-icon::after { content: none; }
-  .qmd-nav-icon svg { display: block; }
-  .qmd-nav-active { color: var(--qmd-fg); font-weight: 600; }
-  .qmd-nav-active:hover { background: transparent; }
+  .tali-nav-icon { align-items: center; padding: .35rem .5rem; }
+  .tali-nav-icon::after { content: none; }
+  .tali-nav-icon svg { display: block; }
+  .tali-nav-active { color: var(--qmd-fg); font-weight: 600; }
+  .tali-nav-active:hover { background: transparent; }
   /* real (shipped) light/dark toggle: a subtle icon, not a dev-style button */
-  .qmd-theme-toggle { display: inline-flex; align-items: center; justify-content: center;
+  .tali-theme-toggle { display: inline-flex; align-items: center; justify-content: center;
     width: 2rem; height: 2rem; padding: 0; border: 0; border-radius: 7px; cursor: pointer;
     background: transparent; color: var(--qmd-muted); transition: color .12s ease, background .12s ease; }
-  .qmd-theme-toggle:hover { color: var(--qmd-fg); background: var(--qmd-code-bg); }
-  .qmd-theme-toggle svg { display: block; }
+  .tali-theme-toggle:hover { color: var(--qmd-fg); background: var(--qmd-code-bg); }
+  .tali-theme-toggle svg { display: block; }
   /* visible search control (navbar + book sidebar) that opens the Cmd-K palette */
-  .qmd-search-btn { display: inline-flex; align-items: center; gap: .4rem;
+  .tali-search-btn { display: inline-flex; align-items: center; gap: .4rem;
     background: var(--qmd-code-bg); color: var(--qmd-muted);
     border: 1px solid var(--qmd-border); border-radius: 8px;
     padding: .32rem .55rem; font: inherit; font-size: .9rem; line-height: 1;
     cursor: pointer; transition: border-color .12s ease, color .12s ease; }
-  .qmd-search-btn:hover { border-color: var(--qmd-accent); color: var(--qmd-fg); }
-  .qmd-search-btn svg { flex: none; }
-  .qmd-search-kbd { font-size: .72rem; border: 1px solid var(--qmd-border);
+  .tali-search-btn:hover { border-color: var(--qmd-accent); color: var(--qmd-fg); }
+  .tali-search-btn svg { flex: none; }
+  .tali-search-kbd { font-size: .72rem; border: 1px solid var(--qmd-border);
     border-radius: 4px; padding: 0 .3rem; color: var(--qmd-muted); }
   /* book sidebar: a full-width search box under the title */
-  .qmd-search-full { width: 100%; margin: .1rem 0 1.1rem; }
-  .qmd-search-full .qmd-search-label { margin-right: auto; }
+  .tali-search-full { width: 100%; margin: .1rem 0 1.1rem; }
+  .tali-search-full .tali-search-label { margin-right: auto; }
   /* burger menu button: hidden at desktop widths, revealed in the ≤640px block.
      A real <button>, so reset its native chrome to look like the bare icon. */
-  .qmd-nav-burger { display: none; background: transparent; border: 0; }
+  .tali-nav-burger { display: none; background: transparent; border: 0; }
 
   /* the reading column; grows to fill the column so the footer is pushed down.
      `box-sizing: border-box` is load-bearing: the global reset is content-box, so a
      `width: 100%` column plus the 1rem side padding would render 2rem WIDER than the
      viewport at narrow widths (the ~32px horizontal overflow at 390px). Border-box
      draws the padding inside the 100%, so the column never exceeds the screen. */
-  .qmd-site-main { box-sizing: border-box; flex: 1 0 auto; width: 100%;
+  .tali-site-main { box-sizing: border-box; flex: 1 0 auto; width: 100%;
     max-width: var(--qmd-maxw); margin: 0 auto; padding: 2rem 1rem; }
-  .qmd-site-main > main { min-width: 0; }
+  .tali-site-main > main { min-width: 0; }
   /* `page-layout: full` widens the column (the blog/projects card indexes) */
-  .qmd-site-main.qmd-wide { max-width: 60rem; }
+  .tali-site-main.tali-wide { max-width: 60rem; }
   /* a page with a TOC widens into a two-column grid (content + sticky sidebar).
      max-width is exactly the column sum (46 + 2.5 gap + 14) so the block centres
      with no dead space pooling to the right of the TOC. */
-  .qmd-site-main.has-toc { max-width: 62.5rem; display: grid; align-items: start;
+  .tali-site-main.has-toc { max-width: 62.5rem; display: grid; align-items: start;
     gap: 2.5rem; grid-template-columns: minmax(0, 46rem) 14rem; }
 
   /* slim footer pinned to the bottom of the flex column (icons = author raw HTML) */
-  .qmd-site-footer { flex-shrink: 0; border-top: 1px solid var(--qmd-border); }
-  .qmd-foot-inner { max-width: var(--qmd-chrome-maxw); margin: 0 auto; padding: 1.4rem 1rem;
+  .tali-site-footer { flex-shrink: 0; border-top: 1px solid var(--qmd-border); }
+  .tali-foot-inner { max-width: var(--qmd-chrome-maxw); margin: 0 auto; padding: 1.4rem 1rem;
     display: flex; align-items: center; gap: 1.25rem; flex-wrap: wrap;
     font: 14px var(--qmd-font-head); color: var(--qmd-muted); }
-  .qmd-foot-left, .qmd-foot-center, .qmd-foot-right { display: inline-flex; align-items: center; gap: 1.1rem; }
-  .qmd-foot-left:empty, .qmd-foot-center:empty, .qmd-foot-right:empty { display: none; }
-  .qmd-foot-center { flex: 1 1 auto; justify-content: center; }
-  .qmd-foot-right { margin-left: auto; }
-  .qmd-foot-item { color: var(--qmd-muted); text-decoration: none; display: inline-flex; align-items: center; gap: .35rem; }
+  .tali-foot-left, .tali-foot-center, .tali-foot-right { display: inline-flex; align-items: center; gap: 1.1rem; }
+  .tali-foot-left:empty, .tali-foot-center:empty, .tali-foot-right:empty { display: none; }
+  .tali-foot-center { flex: 1 1 auto; justify-content: center; }
+  .tali-foot-right { margin-left: auto; }
+  .tali-foot-item { color: var(--qmd-muted); text-decoration: none; display: inline-flex; align-items: center; gap: .35rem; }
   /* Only actual links highlight on hover — the copyright span is not a link. */
-  a.qmd-foot-item:hover { color: var(--qmd-fg); }
-  .qmd-foot-item svg { width: 16px; height: 16px; }
+  a.tali-foot-item:hover { color: var(--qmd-fg); }
+  .tali-foot-item svg { width: 16px; height: 16px; }
 
   /* listing: post cards (a `grid` of cards, or a stacked `default` list) */
-  .qmd-listing { margin: 1.75rem 0; }
-  .qmd-listing-grid { display: grid; gap: 1.25rem;
+  .tali-listing { margin: 1.75rem 0; }
+  .tali-listing-grid { display: grid; gap: 1.25rem;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); }
-  .qmd-listing-default { display: flex; flex-direction: column; gap: 1rem; }
-  .qmd-card { display: flex; flex-direction: column; text-decoration: none; color: var(--qmd-fg);
+  .tali-listing-default { display: flex; flex-direction: column; gap: 1rem; }
+  .tali-card { display: flex; flex-direction: column; text-decoration: none; color: var(--qmd-fg);
     border: 1px solid var(--qmd-border); border-radius: 10px; overflow: hidden; background: var(--qmd-bg);
     transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease; }
-  .qmd-card:hover { border-color: var(--qmd-accent); transform: translateY(-2px);
+  .tali-card:hover { border-color: var(--qmd-accent); transform: translateY(-2px);
     box-shadow: 0 6px 20px var(--qmd-edge-shadow); }
-  .qmd-listing-default .qmd-card { flex-direction: row; align-items: stretch; }
-  .qmd-card-img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block;
+  .tali-listing-default .tali-card { flex-direction: row; align-items: stretch; }
+  .tali-card-img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block;
     background: var(--qmd-code-bg); }
-  .qmd-listing-default .qmd-card-img { width: 12rem; aspect-ratio: 4 / 3; flex: none; }
-  .qmd-card-body { padding: .85rem 1rem 1rem; display: flex; flex-direction: column; gap: .35rem; }
-  .qmd-card-date { font: 600 .72rem var(--qmd-font-head); color: var(--qmd-muted);
+  .tali-listing-default .tali-card-img { width: 12rem; aspect-ratio: 4 / 3; flex: none; }
+  .tali-card-body { padding: .85rem 1rem 1rem; display: flex; flex-direction: column; gap: .35rem; }
+  .tali-card-date { font: 600 .72rem var(--qmd-font-head); color: var(--qmd-muted);
     text-transform: uppercase; letter-spacing: .04em; }
-  .qmd-card-title { font: 600 1.08rem/1.25 var(--qmd-font-head); margin: 0; }
-  .qmd-card-desc { margin: 0; font-size: .92rem; color: var(--qmd-muted); line-height: 1.5; }
-  .qmd-card-cats { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .25rem; }
-  .qmd-cat { font: 500 .72rem var(--qmd-font-head); color: var(--qmd-muted);
+  .tali-card-title { font: 600 1.08rem/1.25 var(--qmd-font-head); margin: 0; }
+  .tali-card-desc { margin: 0; font-size: .92rem; color: var(--qmd-muted); line-height: 1.5; }
+  .tali-card-cats { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .25rem; }
+  .tali-cat { font: 500 .72rem var(--qmd-font-head); color: var(--qmd-muted);
     background: var(--qmd-code-bg); border: 1px solid var(--qmd-border);
     border-radius: 999px; padding: .1rem .55rem; transition: background .12s ease, color .12s ease, border-color .12s ease; }
   /* a card's category tag doubles as a filter toggle */
-  .qmd-cat[data-cat] { cursor: pointer; }
-  .qmd-cat[data-cat]:hover { color: var(--qmd-fg); border-color: var(--qmd-muted); }
-  .qmd-cat.qmd-cat-on { background: var(--qmd-accent-fill); border-color: var(--qmd-accent-fill); color: var(--qmd-on-accent); }
+  .tali-cat[data-cat] { cursor: pointer; }
+  .tali-cat[data-cat]:hover { color: var(--qmd-fg); border-color: var(--qmd-muted); }
+  .tali-cat.tali-cat-on { background: var(--qmd-accent-fill); border-color: var(--qmd-accent-fill); color: var(--qmd-on-accent); }
 
   /* category filter chip row (listing: categories: true) */
-  .qmd-cat-filter { display: flex; flex-wrap: wrap; gap: .45rem; margin: 0 0 1.5rem; }
-  .qmd-cat-chip { display: inline-flex; align-items: center; gap: .35rem; cursor: pointer;
+  .tali-cat-filter { display: flex; flex-wrap: wrap; gap: .45rem; margin: 0 0 1.5rem; }
+  .tali-cat-chip { display: inline-flex; align-items: center; gap: .35rem; cursor: pointer;
     font: 500 .8rem var(--qmd-font-head); color: var(--qmd-muted);
     background: var(--qmd-code-bg); border: 1px solid var(--qmd-border); border-radius: 999px;
     padding: .25rem .7rem; transition: background .12s ease, color .12s ease, border-color .12s ease; }
-  .qmd-cat-chip:hover { color: var(--qmd-fg); border-color: var(--qmd-muted); }
-  .qmd-cat-chip.qmd-cat-active { background: var(--qmd-accent-fill); border-color: var(--qmd-accent-fill); color: var(--qmd-on-accent); }
-  .qmd-cat-count { font-size: .82em; opacity: .65; font-variant-numeric: tabular-nums; }
-  .qmd-cat-chip.qmd-cat-active .qmd-cat-count { opacity: .85; }
+  .tali-cat-chip:hover { color: var(--qmd-fg); border-color: var(--qmd-muted); }
+  .tali-cat-chip.tali-cat-active { background: var(--qmd-accent-fill); border-color: var(--qmd-accent-fill); color: var(--qmd-on-accent); }
+  .tali-cat-count { font-size: .82em; opacity: .65; font-variant-numeric: tabular-nums; }
+  .tali-cat-chip.tali-cat-active .tali-cat-count { opacity: .85; }
 
   /* about: a centered profile header (jolla), replacing the title block */
-  .qmd-about { display: flex; flex-direction: column; align-items: center; text-align: center;
+  .tali-about { display: flex; flex-direction: column; align-items: center; text-align: center;
     gap: .85rem; margin: 1rem 0 2.5rem; padding-bottom: 1.5rem;
     border-bottom: 1px solid var(--qmd-border); }
-  .qmd-about-img { width: 9rem; height: 9rem; border-radius: 50%; object-fit: cover;
+  .tali-about-img { width: 9rem; height: 9rem; border-radius: 50%; object-fit: cover;
     border: 1px solid var(--qmd-border); }
-  .qmd-about-name { margin: 0; font-size: 2rem; line-height: 1.15; }
-  .qmd-about-links { display: flex; flex-wrap: wrap; gap: .6rem; justify-content: center; }
-  .qmd-about-link { font: 500 .9rem var(--qmd-font-head); text-decoration: none;
+  .tali-about-name { margin: 0; font-size: 2rem; line-height: 1.15; }
+  .tali-about-links { display: flex; flex-wrap: wrap; gap: .6rem; justify-content: center; }
+  .tali-about-link { font: 500 .9rem var(--qmd-font-head); text-decoration: none;
     color: var(--qmd-fg); border: 1px solid var(--qmd-border); border-radius: 999px;
     padding: .3rem .9rem; transition: border-color .12s ease, color .12s ease; }
-  .qmd-about-link:hover { border-color: var(--qmd-accent); color: var(--qmd-link); }
+  .tali-about-link:hover { border-color: var(--qmd-accent); color: var(--qmd-link); }
 
   @media (max-width: 640px) {
-    .qmd-listing-default .qmd-card { flex-direction: column; }
-    .qmd-listing-default .qmd-card-img { width: 100%; aspect-ratio: 16 / 9; }
+    .tali-listing-default .tali-card { flex-direction: column; }
+    .tali-listing-default .tali-card-img { width: 100%; aspect-ratio: 16 / 9; }
     /* ≥44px square tap target (WCAG 2.5.5); centred icon, no auto-margin (the
        brand + spacer already push it right) so it can't bleed past the edge. */
-    .qmd-nav-burger { display: flex; flex-direction: column; justify-content: center;
+    .tali-nav-burger { display: flex; flex-direction: column; justify-content: center;
       align-items: center; gap: 4px; cursor: pointer; margin-left: auto;
       width: 44px; height: 44px; padding: 0; }
-    .qmd-nav-burger span { display: block; width: 22px; height: 2px; border-radius: 2px;
+    .tali-nav-burger span { display: block; width: 22px; height: 2px; border-radius: 2px;
       background: var(--qmd-fg); transition: transform .15s ease, opacity .15s ease; }
-    .qmd-nav-links { display: none; position: absolute; top: 100%; left: 0; right: 0;
+    .tali-nav-links { display: none; position: absolute; top: 100%; left: 0; right: 0;
       flex-direction: column; align-items: stretch; gap: 0; flex: none;
       background: var(--qmd-bg); border-bottom: 1px solid var(--qmd-border);
       box-shadow: 0 8px 20px rgba(0,0,0,.12); padding: .35rem 0; }
     /* The button toggles this class (see the inline nav script); replaces the old
-       `.qmd-nav-toggle:checked ~ .qmd-nav-links` checkbox-hack selector. */
-    .qmd-nav-links.qmd-nav-open { display: flex; }
-    .qmd-nav-spacer { display: none; }
-    .qmd-nav-link { padding: .7rem 1.15rem; border-radius: 0; }
-    .qmd-nav-controls { padding: .5rem 1.15rem; }
-    .qmd-site-main.has-toc { grid-template-columns: minmax(0, 1fr); }
+       `.tali-nav-toggle:checked ~ .tali-nav-links` checkbox-hack selector. */
+    .tali-nav-links.tali-nav-open { display: flex; }
+    .tali-nav-spacer { display: none; }
+    .tali-nav-link { padding: .7rem 1.15rem; border-radius: 0; }
+    .tali-nav-controls { padding: .5rem 1.15rem; }
+    .tali-site-main.has-toc { grid-template-columns: minmax(0, 1fr); }
   }
 
 /* --- book format: ONE centred reading column; the chapter list is a summoned drawer ---
@@ -174,81 +174,81 @@
    pane rail|content|rail that dwarfs short chapters. Navigation lives in a slim sticky
    topbar + an off-canvas chapter drawer; the within-chapter "on this page" TOC stays as a
    width-gated right rail (`has-toc`) the same way a website page widens for it. */
-body.qmd-book-body { max-width: none; margin: 0; padding: 0; --qmd-nav-h: 3rem;
+body.tali-book-body { max-width: none; margin: 0; padding: 0; --qmd-nav-h: 3rem;
   min-height: 100vh; display: flex; flex-direction: column; }
 /* the sticky topbar would cover the top of the sticky TOC / a jumped-to heading */
-body.qmd-book-body #TOC { top: calc(var(--qmd-nav-h) + 1rem); }
-body.qmd-book-body [data-block-id] { scroll-margin-top: calc(var(--qmd-nav-h) + 1rem); }
+body.tali-book-body #TOC { top: calc(var(--qmd-nav-h) + 1rem); }
+body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--qmd-nav-h) + 1rem); }
 
-/* slim sticky topbar (a book's only chrome bar — NOT the website .qmd-site-nav). The inner
+/* slim sticky topbar (a book's only chrome bar — NOT the website .tali-site-nav). The inner
    box is wider than the reading column so the bar doesn't pool dead space on wide screens. */
-.qmd-book-topbar { position: sticky; top: 0; z-index: 50;
+.tali-book-topbar { position: sticky; top: 0; z-index: 50;
   background: color-mix(in srgb, var(--qmd-bg) 88%, transparent);
   -webkit-backdrop-filter: saturate(1.4) blur(9px); backdrop-filter: saturate(1.4) blur(9px);
   border-bottom: 1px solid var(--qmd-border); }
-.qmd-book-topbar-inner { max-width: var(--qmd-chrome-maxw); margin: 0 auto; padding: .45rem 1rem;
+.tali-book-topbar-inner { max-width: var(--qmd-chrome-maxw); margin: 0 auto; padding: .45rem 1rem;
   display: flex; align-items: center; gap: .7rem; font: 500 15px/1 var(--qmd-font-head); }
-.qmd-book-drawer-btn { display: inline-flex; align-items: center; gap: .45rem;
+.tali-book-drawer-btn { display: inline-flex; align-items: center; gap: .45rem;
   background: transparent; border: 1px solid var(--qmd-border); border-radius: 8px;
   color: var(--qmd-fg); cursor: pointer; padding: .35rem .6rem; font: inherit; font-size: .9rem;
   transition: border-color .12s ease, color .12s ease; }
-.qmd-book-drawer-btn:hover { border-color: var(--qmd-accent); }
-.qmd-book-drawer-btn svg { display: block; }
-.qmd-book-topbar .qmd-nav-spacer { flex: 1 1 auto; }
+.tali-book-drawer-btn:hover { border-color: var(--qmd-accent); }
+.tali-book-drawer-btn svg { display: block; }
+.tali-book-topbar .tali-nav-spacer { flex: 1 1 auto; }
 
 /* the centred reading column — the same measure as a blog post */
-.qmd-book-main { box-sizing: border-box; flex: 1 0 auto; width: 100%;
+.tali-book-main { box-sizing: border-box; flex: 1 0 auto; width: 100%;
   max-width: var(--qmd-maxw); margin: 0 auto; padding: 2rem 1rem; }
 /* a chapter with an "on this page" TOC widens into the content+TOC grid, still centred */
-.qmd-book-main.has-toc { max-width: 62.5rem; }
-.qmd-book-inner.has-toc { display: grid; align-items: start; gap: 2.5rem;
+.tali-book-main.has-toc { max-width: 62.5rem; }
+.tali-book-inner.has-toc { display: grid; align-items: start; gap: 2.5rem;
   grid-template-columns: minmax(0, 46rem) 14rem; }
-.qmd-book-inner > main { min-width: 0; }
-.qmd-book-postnav { display: flex; align-items: center; gap: 1rem;
+.tali-book-inner > main { min-width: 0; }
+.tali-book-postnav { display: flex; align-items: center; gap: 1rem;
   margin-top: 2.5rem; padding-top: 1.2rem; border-top: 1px solid var(--qmd-border); }
-.qmd-book-prev, .qmd-book-next { color: var(--qmd-muted); text-decoration: none; font-size: .95rem; }
-.qmd-book-prev:hover, .qmd-book-next:hover { color: var(--qmd-link); }
-.qmd-book-postnav .qmd-nav-spacer { flex: 1 1 auto; }
+.tali-book-prev, .tali-book-next { color: var(--qmd-muted); text-decoration: none; font-size: .95rem; }
+.tali-book-prev:hover, .tali-book-next:hover { color: var(--qmd-link); }
+.tali-book-postnav .tali-nav-spacer { flex: 1 1 auto; }
 /* The book post-nav is a sibling AFTER the content+TOC grid, so it would otherwise span the
    full width and push "next" past the TOC's right edge. Constrain it to the text column
-   (total minus the TOC column + grid gap; keep in sync with `.qmd-book-inner.has-toc`). */
-.qmd-book-inner.has-toc + .qmd-book-postnav { width: calc(100% - 14rem - 2.5rem); }
-.qmd-section-number { color: var(--qmd-muted); font-weight: inherit; margin-right: .15em; }
+   (total minus the TOC column + grid gap; keep in sync with `.tali-book-inner.has-toc`). */
+.tali-book-inner.has-toc + .tali-book-postnav { width: calc(100% - 14rem - 2.5rem); }
+.tali-section-number { color: var(--qmd-muted); font-weight: inherit; margin-right: .15em; }
 
 /* the chapter drawer: an off-canvas overlay summoned from the topbar (a focus-managed
    disclosure, not a permanent rail). Starts `hidden`; the script reveals it. */
-.qmd-book-drawer[hidden] { display: none; }
-.qmd-book-drawer { position: fixed; inset: 0; z-index: 60; }
-.qmd-book-drawer-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, .38); }
-.qmd-book-drawer-panel { position: absolute; top: 0; left: 0; bottom: 0;
+.tali-book-drawer[hidden] { display: none; }
+.tali-book-drawer { position: fixed; inset: 0; z-index: 60; }
+.tali-book-drawer-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, .38); }
+.tali-book-drawer-panel { position: absolute; top: 0; left: 0; bottom: 0;
   width: min(20rem, 86vw); overflow-y: auto; padding: 1.4rem 1.25rem 2rem;
   background: var(--qmd-bg); border-right: 1px solid var(--qmd-border);
-  box-shadow: 2px 0 28px var(--qmd-edge-shadow); animation: qmd-book-drawer-in .16s ease; }
-@keyframes qmd-book-drawer-in { from { transform: translateX(-100%); } to { transform: translateX(0); } }
-@media (prefers-reduced-motion: reduce) { .qmd-book-drawer-panel { animation: none; } }
-.qmd-book-sidebar-head { display: flex; align-items: center; justify-content: space-between;
+  box-shadow: 2px 0 28px var(--qmd-edge-shadow); animation: tali-book-drawer-in .16s ease; }
+@keyframes tali-book-drawer-in { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+@media (prefers-reduced-motion: reduce) { .tali-book-drawer-panel { animation: none; } }
+.tali-book-sidebar-head { display: flex; align-items: center; justify-content: space-between;
   gap: .5rem; margin: 0 0 1.1rem; }
-.qmd-book-brand { display: block; font-weight: 700; font-size: 1.02rem; line-height: 1.25;
+.tali-book-brand { display: block; font-weight: 700; font-size: 1.02rem; line-height: 1.25;
   color: var(--qmd-fg); text-decoration: none; }
-.qmd-book-brand:hover { color: var(--qmd-link); }
-.qmd-book-drawer-close { flex: 0 0 auto; background: transparent; border: 0; cursor: pointer;
+.tali-book-brand:hover { color: var(--qmd-link); }
+.tali-book-drawer-close { flex: 0 0 auto; background: transparent; border: 0; cursor: pointer;
   color: var(--qmd-muted); font-size: 1.1rem; line-height: 1; padding: .15rem .35rem;
   border-radius: 6px; }
-.qmd-book-drawer-close:hover { color: var(--qmd-fg); background: var(--qmd-code-bg); }
-.qmd-book-chapters { list-style: none; margin: 0; padding: 0; }
-.qmd-book-part { margin: 1.1rem 0 .35rem; font-size: .76rem; font-weight: 700;
+.tali-book-drawer-close:hover { color: var(--qmd-fg); background: var(--qmd-code-bg); }
+.tali-book-chapters { list-style: none; margin: 0; padding: 0; }
+.tali-book-part { margin: 1.1rem 0 .35rem; font-size: .76rem; font-weight: 700;
   letter-spacing: .04em; text-transform: uppercase; color: var(--qmd-muted); }
-.qmd-book-chapter { display: block; padding: .3rem 0; color: var(--qmd-muted);
+.tali-book-chapter { display: block; padding: .3rem 0; color: var(--qmd-muted);
   text-decoration: none; font-size: .95rem; line-height: 1.3; }
-.qmd-book-chapter:hover { color: var(--qmd-fg); }
-.qmd-book-active { color: var(--qmd-link); font-weight: 600; }
-.qmd-chap-num { color: var(--qmd-muted); margin-right: .25rem; }
-.qmd-book-active .qmd-chap-num { color: var(--qmd-link); }
+.tali-book-chapter:hover { color: var(--qmd-fg); }
+.tali-book-active { color: var(--qmd-link); font-weight: 600; }
+.tali-chap-num { color: var(--qmd-muted); margin-right: .25rem; }
+.tali-book-active .tali-chap-num { color: var(--qmd-link); }
 @media (max-width: 60rem) {
   /* single column: the on-this-page TOC stacks below the text, pager spans full width */
-  .qmd-book-main.has-toc { max-width: var(--qmd-maxw); }
-  .qmd-book-inner.has-toc { grid-template-columns: minmax(0, 1fr); }
-  .qmd-book-inner.has-toc + .qmd-book-postnav { width: auto; }
+  .tali-book-main.has-toc { max-width: var(--qmd-maxw); }
+  .tali-book-inner.has-toc { grid-template-columns: minmax(0, 1fr); }
+  .tali-book-inner.has-toc + .tali-book-postnav { width: auto; }
 }
 
 /* High-contrast / forced-colors: the site chrome leans on subtle 1px borders + a tinted
@@ -256,11 +256,11 @@ body.qmd-book-body [data-block-id] { scroll-margin-top: calc(var(--qmd-nav-h) + 
    on the navbar / sidebar / footer and a clear marker on the active nav item so the
    landmarks stay legible in Windows High Contrast mode. */
 @media (forced-colors: active) {
-  .qmd-site-nav, .qmd-book-topbar { border-bottom: 1px solid CanvasText; }
-  .qmd-site-footer { border-top: 1px solid CanvasText; }
-  .qmd-book-drawer-panel { border-right: 1px solid CanvasText; }
-  .qmd-nav-active, .qmd-book-active, a[aria-current="page"] {
+  .tali-site-nav, .tali-book-topbar { border-bottom: 1px solid CanvasText; }
+  .tali-site-footer { border-top: 1px solid CanvasText; }
+  .tali-book-drawer-panel { border-right: 1px solid CanvasText; }
+  .tali-nav-active, .tali-book-active, a[aria-current="page"] {
     forced-color-adjust: none; text-decoration: underline; text-underline-offset: 3px;
   }
-  .qmd-search-btn, .qmd-theme-toggle, .qmd-nav-burger, .qmd-book-drawer-btn { border: 1px solid CanvasText; }
+  .tali-search-btn, .tali-theme-toggle, .tali-nav-burger, .tali-book-drawer-btn { border: 1px solid CanvasText; }
 }

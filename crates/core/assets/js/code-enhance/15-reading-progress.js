@@ -5,7 +5,7 @@
 // decks. Idempotent (document-level, builds once).
 function qmdInitReadingProgress() {
   if (window.__qmdProgress) return;
-  if (document.querySelector('.qmd-deck')) return; // a slide deck has its own chrome
+  if (document.querySelector('.tali-deck')) return; // a slide deck has its own chrome
   window.__qmdProgress = true;
 
   // Top-level content blocks (a [data-block-id] not nested inside another block).
@@ -32,17 +32,17 @@ function qmdInitReadingProgress() {
   }
 
   var bar = document.createElement('div');
-  bar.className = 'qmd-readbar';
+  bar.className = 'tali-readbar';
   bar.setAttribute('aria-hidden', 'true');
   var fill = document.createElement('div');
-  fill.className = 'qmd-readbar-fill';
+  fill.className = 'tali-readbar-fill';
   bar.appendChild(fill);
   document.body.appendChild(bar);
 
   // The "N min left" readout lives in the reader menu's "Reading" section (registered at
   // the end, once the word count is known); the bar itself stays ambient at the top.
   var readout = document.createElement('div');
-  readout.className = 'qmd-rmenu-readout';
+  readout.className = 'tali-rmenu-readout';
   function updateReadout() {
     var f = frac(), left = Math.ceil(totalMin * (1 - f));
     readout.textContent = (left > 0 ? '~' + left + ' min left' : 'Finished') + ' · ' + Math.round(f * 100) + '% read';
@@ -65,7 +65,7 @@ function qmdInitReadingProgress() {
   function schedule() { if (!ticking) { ticking = true; requestAnimationFrame(render); } }
 
   // Resume position (block-id anchored), reader-local, keyed by page path.
-  var KEY = 'qmd-pos:' + location.pathname;
+  var KEY = 'tali-pos:' + location.pathname;
   function topBlockId() {
     var blocks = contentBlocks();
     for (var i = 0; i < blocks.length; i++) {
@@ -97,15 +97,15 @@ function qmdInitReadingProgress() {
     var target = document.querySelector(sel);
     if (!target || Math.abs(frac() - f) < 0.03) return; // missing or already roughly there
     resumeEl = document.createElement('div');
-    resumeEl.className = 'qmd-resume';
+    resumeEl.className = 'tali-resume';
     var go = document.createElement('button');
-    go.type = 'button'; go.className = 'qmd-resume-go';
+    go.type = 'button'; go.className = 'tali-resume-go';
     go.textContent = 'Resume reading · ' + Math.round(f * 100) + '% →';
     go.addEventListener('click', function () {
       target.scrollIntoView({ block: 'start', behavior: 'smooth' }); dismissResume();
     });
     var x = document.createElement('button');
-    x.type = 'button'; x.className = 'qmd-resume-x';
+    x.type = 'button'; x.className = 'tali-resume-x';
     x.setAttribute('aria-label', 'Dismiss'); x.textContent = '×';
     x.addEventListener('click', dismissResume);
     resumeEl.appendChild(go); resumeEl.appendChild(x);

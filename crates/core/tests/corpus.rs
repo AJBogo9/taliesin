@@ -255,8 +255,10 @@ fn a11y_chrome_emits_landmarks_skip_link_and_slide_roles() {
     // The slide role rides on the same <section> as the slide class — never on an
     // inner block — so it can't perturb a [data-block-id].
     assert!(
-        slides.contains("class=\"qmd-slide\" role=\"group\" aria-roledescription=\"slide\""),
-        "slide ARIA must sit on the .qmd-slide <section>, got: {slides}"
+        slides.contains(
+            "class=\"tali-slide qmd-slide\" role=\"group\" aria-roledescription=\"slide\""
+        ),
+        "slide ARIA must sit on the .tali-slide <section>, got: {slides}"
     );
     // Headings still keep their block ids inside the now-role'd section.
     assert!(
@@ -275,13 +277,13 @@ fn a11y_chrome_emits_landmarks_skip_link_and_slide_roles() {
     );
     // Skip-to-content link is the first thing in the body, before JS runs.
     assert!(
-        page.contains("class=\"qmd-skip\"") && page.contains("href=\"#qmd-main\""),
+        page.contains("class=\"tali-skip\"") && page.contains("href=\"#tali-main\""),
         "server-side skip-to-content link missing"
     );
-    // The content container is a focusable <main id="qmd-main">.
+    // The content container is a focusable <main id="tali-main">.
     assert!(
-        page.contains("<main id=\"qmd-main\" tabindex=\"-1\">"),
-        "server-side focusable <main id=qmd-main> missing"
+        page.contains("<main id=\"tali-main\" tabindex=\"-1\">"),
+        "server-side focusable <main id=tali-main> missing"
     );
     // The TOC is a distinguishable landmark (named + role) for screen-reader landmark nav.
     assert!(
@@ -437,29 +439,29 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
 
     // A top-level page renders with the site chrome and rewrites its nav links.
     let blog = site.render_page("blog.qmd").expect("blog renders");
-    assert!(blog.contains("qmd-site-nav"), "navbar missing");
+    assert!(blog.contains("tali-site-nav"), "navbar missing");
     assert!(
-        blog.contains("<nav class=\"qmd-nav-inner\" aria-label=\"Primary\">"),
+        blog.contains("<nav class=\"tali-nav-inner\" aria-label=\"Primary\">"),
         "the website primary nav must be aria-labelled"
     );
-    assert!(blog.contains("qmd-site-footer"), "footer missing");
+    assert!(blog.contains("tali-site-footer"), "footer missing");
     // Mobile nav toggle must stay a real, keyboard/SR-operable <button> (WCAG 2.1.1):
     // never regress to the old display:none `<input type=checkbox>` + role-less label hack.
     assert!(
         blog.contains("<button")
-            && blog.contains("class=\"qmd-nav-burger\"")
+            && blog.contains("class=\"tali-nav-burger\"")
             && blog.contains("aria-expanded")
-            && blog.contains("aria-controls=\"qmd-nav-links\""),
-        "mobile nav toggle must be an aria <button.qmd-nav-burger> controlling #qmd-nav-links"
+            && blog.contains("aria-controls=\"tali-nav-links\""),
+        "mobile nav toggle must be an aria <button.tali-nav-burger> controlling #tali-nav-links"
     );
     assert!(
-        blog.contains("id=\"qmd-nav-links\""),
+        blog.contains("id=\"tali-nav-links\""),
         "nav menu must carry the controlled id"
     );
     // The exact old-hack signature (a checkbox input as the toggle) must be gone. (Bare
     // `type="checkbox"` would false-match the unrelated `input[type="checkbox"]` CSS selector.)
     assert!(
-        !blog.contains("<input type=\"checkbox\" id=\"qmd-nav-toggle\""),
+        !blog.contains("<input type=\"checkbox\" id=\"tali-nav-toggle\""),
         "mobile nav must not use the inaccessible checkbox-hack toggle"
     );
     assert!(
@@ -489,9 +491,9 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
         .render_page("posts/evidence-lower-bound/index.qmd")
         .expect("post renders");
     assert!(
-        !post.contains("qmd-back-link")
+        !post.contains("tali-back-link")
             && !post.contains("Back to Blog")
-            && !post.contains("qmd-postnav"),
+            && !post.contains("tali-postnav"),
         "post should have no back-to-listing / post-nav"
     );
     assert!(
@@ -530,7 +532,7 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
 
     // No reading-time decoration: a post's title block is like any page's.
     assert!(
-        !post.contains("class=\"qmd-read-time\"") && !post.contains("min read"),
+        !post.contains("class=\"tali-read-time\"") && !post.contains("min read"),
         "reading-time decoration should be gone"
     );
 
@@ -540,7 +542,7 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
         .render_page("posts/fourier-transform/index.qmd")
         .expect("fourier post renders");
     assert!(
-        !fourier.contains("qmd-post-cats") && !fourier.contains("categories/signal-processing/"),
+        !fourier.contains("tali-post-cats") && !fourier.contains("categories/signal-processing/"),
         "post should not carry a category archive strip"
     );
 }
@@ -618,7 +620,7 @@ fn bare_build_is_script_free_css_themed_and_drops_js() {
     // `emit_js_cell` puts the block attrs on the outer <div>). This pins the
     // load-bearing block-model invariants on the bare-assembled page specifically.
     let cell_at = bare
-        .find("class=\"cell qmd-js-cell\"")
+        .find("class=\"cell tali-js-cell\"")
         .expect("the {js} cell wrapper survives the strip");
     let tag_open = bare[..cell_at].rfind('<').expect("wrapper open tag");
     let wrapper_tag = &bare[tag_open..cell_at];
@@ -666,7 +668,7 @@ fn site_auto_gates_on_this_page_toc_by_heading_count() {
 
     // A post with 4 section headings (Theory / Key properties / Code demo / Summary; the
     // `#`-prefixed lines inside the {python} cell are code comments, not headings) -> the
-    // TOC nav + the has-toc two-column layout (`.qmd-site-main has-toc` on a site page).
+    // TOC nav + the has-toc two-column layout (`.tali-site-main has-toc` on a site page).
     let post = site
         .render_page("posts/KL-divergence/index.qmd")
         .expect("KL-divergence post renders");
@@ -732,48 +734,48 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
     // section numbers on its headings, and prev/next-chapter navigation.
     let methods = site.render_page("methods.qmd").expect("methods renders");
     assert!(
-        methods.contains("<nav class=\"qmd-book-sidebar\""),
+        methods.contains("<nav class=\"tali-book-sidebar\""),
         "book chapter-list nav missing"
     );
     // The book is the single-column relayout: a sticky topbar with a "Chapters" drawer
-    // launcher + an off-canvas drawer holding the list — NOT the old three-pane `.qmd-book`
+    // launcher + an off-canvas drawer holding the list — NOT the old three-pane `.tali-book`
     // flex wrapper (rail | content | rail). A regression to that wrapper must fail here.
     assert!(
-        methods.contains("class=\"qmd-book-topbar\"")
-            && methods.contains("id=\"qmd-book-drawer-btn\"")
-            && methods.contains("id=\"qmd-book-drawer\""),
+        methods.contains("class=\"tali-book-topbar\"")
+            && methods.contains("id=\"tali-book-drawer-btn\"")
+            && methods.contains("id=\"tali-book-drawer\""),
         "book topbar + chapter drawer chrome missing"
     );
     assert!(
-        !methods.contains("class=\"qmd-book\""),
-        "the removed three-pane `.qmd-book` flex wrapper must not return"
+        !methods.contains("class=\"tali-book\""),
+        "the removed three-pane `.tali-book` flex wrapper must not return"
     );
     // Every structural nav landmark carries a distinguishing accessible name
     // (a screen reader can tell the chapter list from the pager).
     assert!(
         methods.contains(
-            "class=\"qmd-book-sidebar\" data-qmd-src=\"_site.yml\" aria-label=\"Chapters\""
-        ) && methods.contains("class=\"qmd-postnav qmd-book-postnav\" aria-label=\"Pagination\""),
+            "class=\"tali-book-sidebar\" data-qmd-src=\"_site.yml\" aria-label=\"Chapters\""
+        ) && methods.contains("class=\"tali-postnav tali-book-postnav\" aria-label=\"Pagination\""),
         "book nav landmarks must be aria-labelled"
     );
     assert!(
-        methods.contains("qmd-book-chapter qmd-book-active"),
+        methods.contains("tali-book-chapter tali-book-active"),
         "active chapter not marked"
     );
     assert!(
-        methods.contains("qmd-section-number\">2</span>")
-            && methods.contains("qmd-section-number\">2.1</span>"),
+        methods.contains("tali-section-number\">2</span>")
+            && methods.contains("tali-section-number\">2.1</span>"),
         "chapter/section numbering missing"
     );
     assert!(
-        methods.contains("qmd-book-postnav")
+        methods.contains("tali-book-postnav")
             && methods.contains("3  Results")
             && methods.contains("1  Introduction"),
         "prev/next-chapter navigation missing"
     );
     // A book uses the sidebar, not the website navbar element.
     assert!(
-        !methods.contains("<header class=\"qmd-site-nav\""),
+        !methods.contains("<header class=\"tali-site-nav\""),
         "a book should not emit the website navbar"
     );
 
@@ -782,18 +784,20 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
     // `@sec-setup` (a subsection -> "Section 2.1"), both on methods.html.
     let results = site.render_page("results.qmd").expect("results renders");
     assert!(
-        results
-            .contains("<a href=\"methods.html#sec-methods\" class=\"qmd-xref\">Chapter&nbsp;2</a>"),
+        results.contains(
+            "<a href=\"methods.html#sec-methods\" class=\"tali-xref\">Chapter&nbsp;2</a>"
+        ),
         "cross-chapter ref to a chapter not resolved: {}",
         results
-            .match_indices("qmd-xref")
+            .match_indices("tali-xref")
             .next()
-            .map(|_| "(see qmd-xref links)")
-            .unwrap_or("(no qmd-xref at all)")
+            .map(|_| "(see tali-xref links)")
+            .unwrap_or("(no tali-xref at all)")
     );
     assert!(
-        results
-            .contains("<a href=\"methods.html#sec-setup\" class=\"qmd-xref\">Section&nbsp;2.1</a>"),
+        results.contains(
+            "<a href=\"methods.html#sec-setup\" class=\"tali-xref\">Section&nbsp;2.1</a>"
+        ),
         "cross-chapter ref to a subsection not resolved"
     );
     // No unresolved marker should leak into the output once a target is known.
@@ -804,7 +808,7 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
     // A cross-PAGE theorem ref resolves to the defining chapter with a bare label
     // (no number cross-page, consistent with figures/equations).
     assert!(
-        results.contains("<a href=\"methods.html#thm-kl\" class=\"qmd-xref\">Theorem</a>"),
+        results.contains("<a href=\"methods.html#thm-kl\" class=\"tali-xref\">Theorem</a>"),
         "cross-chapter theorem ref not resolved: {results}"
     );
     assert!(
@@ -821,12 +825,12 @@ fn book_chapter_scopes_theorem_numbers() {
     let methods = site.render_page("methods.qmd").expect("methods renders");
     assert!(
         methods.contains(
-            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\">&nbsp;2.1</span></span>"
+            "<span class=\"tali-theorem-label\">Theorem<span class=\"tali-theorem-number\">&nbsp;2.1</span></span>"
         ),
         "the chapter-2 theorem numbers as 2.1: {methods}"
     );
     assert!(
-        methods.contains("<a href=\"#thm-kl\" class=\"qmd-xref\">Theorem&nbsp;2.1</a>"),
+        methods.contains("<a href=\"#thm-kl\" class=\"tali-xref\">Theorem&nbsp;2.1</a>"),
         "its in-page cross-ref agrees: {methods}"
     );
 }

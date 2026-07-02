@@ -132,7 +132,7 @@ fn validate_xrefs_flags_only_unresolved_markers() {
         id: "x".into(),
         sourcepos: "1:1-1:1".into(),
         source_file: None,
-        html: "<a href=\"#fig-gone\" class=\"qmd-xref\" data-qmd-xref=\"fig-gone\">Figure</a>"
+        html: "<a href=\"#fig-gone\" class=\"tali-xref\" data-qmd-xref=\"fig-gone\">Figure</a>"
             .into(),
         cell: None,
     }];
@@ -144,7 +144,7 @@ fn validate_xrefs_flags_only_unresolved_markers() {
         id: "y".into(),
         sourcepos: "1:1-1:1".into(),
         source_file: None,
-        html: "<a href=\"#fig-x\" class=\"qmd-xref\">Figure&nbsp;1</a>".into(),
+        html: "<a href=\"#fig-x\" class=\"tali-xref\">Figure&nbsp;1</a>".into(),
         cell: None,
     }];
     assert!(validate_xrefs(&ok).is_empty());
@@ -164,7 +164,7 @@ fn crossref_becomes_labelled_link() {
     // Unresolved here: linked label, marked for cross-page resolution by a site.
     assert!(
         blocks[0].html.contains(
-            "<a href=\"#fig-scree\" class=\"qmd-xref\" data-qmd-xref=\"fig-scree\">Figure</a>"
+            "<a href=\"#fig-scree\" class=\"tali-xref\" data-qmd-xref=\"fig-scree\">Figure</a>"
         ),
         "got: {}",
         blocks[0].html
@@ -188,7 +188,7 @@ fn crossref_resolves_number_from_registry() {
     assert!(
         blocks[0]
             .html
-            .contains("<a href=\"#fig-scree\" class=\"qmd-xref\">Figure&nbsp;3</a>"),
+            .contains("<a href=\"#fig-scree\" class=\"tali-xref\">Figure&nbsp;3</a>"),
         "got: {}",
         blocks[0].html
     );
@@ -336,7 +336,7 @@ fn manual_references_heading_suppresses_auto_heading() {
         refs.html
     );
     assert!(
-        refs.html.contains("class=\"qmd-references\""),
+        refs.html.contains("class=\"tali-references\""),
         "got: {}",
         refs.html
     );

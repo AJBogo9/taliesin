@@ -65,7 +65,7 @@ pub(super) fn emit_js_cell(src: &str, block_id: &str, js: &JsOpts, block_attrs: 
     // it so author source carrying it (e.g. in a template literal) stays intact.
     let safe_src = src.replace("</script", "<\\/script");
     format!(
-        "<div{block_attrs} class=\"cell qmd-js-cell\"><div class=\"qmd-js-out\" id=\"{target}\"></div>\
+        "<div{block_attrs} class=\"cell tali-js-cell\"><div class=\"tali-js-out\" id=\"{target}\"></div>\
          <script type=\"application/qmd-js\"{data}>{safe_src}</script></div>"
     )
 }
@@ -86,7 +86,7 @@ pub(super) fn emit_js_figure(
     let id_attr = id_attr(anchor);
     let figcap = numbered_caption("Figure", num, caption);
     format!(
-        "<figure{block_attrs}{id_attr} class=\"qmd-figure qmd-figure-center\">\
+        "<figure{block_attrs}{id_attr} class=\"tali-figure tali-figure-center\">\
          {cell}<figcaption>{figcap}</figcaption></figure>"
     )
 }
@@ -113,7 +113,7 @@ pub(super) fn emit_code_listing(
     // `code-fold` collapses the listing's source behind its summary.
     let code_html = match fold {
         Some((open, summary)) => format!(
-            "<details class=\"qmd-code-fold\"{}><summary>{}</summary><pre><code{class}>{code_html}</code></pre></details>",
+            "<details class=\"tali-code-fold\"{}><summary>{}</summary><pre><code{class}>{code_html}</code></pre></details>",
             if *open { " open" } else { "" },
             html_escape(summary),
         ),
@@ -121,9 +121,9 @@ pub(super) fn emit_code_listing(
     };
     // A `<figure>` (not a `<div>`): a `<figcaption>` is only valid inside a `<figure>`,
     // and a numbered code listing IS a captioned float (same float semantics as a figure).
-    // `.qmd-listing` already zeroes the UA figure margin, so the element swap is style-neutral.
+    // `.tali-listing` already zeroes the UA figure margin, so the element swap is style-neutral.
     format!(
-        "<figure{block_attrs}{id_attr} class=\"qmd-listing\">\
-         <figcaption class=\"qmd-listing-caption\">{figcap}</figcaption>{code_html}</figure>"
+        "<figure{block_attrs}{id_attr} class=\"tali-listing\">\
+         <figcaption class=\"tali-listing-caption\">{figcap}</figcaption>{code_html}</figure>"
     )
 }

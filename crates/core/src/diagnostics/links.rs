@@ -5,7 +5,7 @@ use crate::render::{Block, Warning};
 use std::path::Path;
 
 /// Unique local link targets from MANUAL `<a href>` tags only, paired with their tag
-/// span so the caller can locate each. Cross-reference links (`qmd-xref`) are skipped
+/// span so the caller can locate each. Cross-reference links (`tali-xref`) are skipped
 /// (validated by `validate_xrefs`); bare in-page `#fragment` links are skipped (validated
 /// by [`super::anchors::validate_internal_anchors`]). Returns each `href` value verbatim
 /// (path + optional `#frag`), so a caller can split the path from the fragment.
@@ -19,7 +19,7 @@ fn local_link_refs(html: &str) -> Vec<&str> {
         };
         let tag = &html[tag_start..tag_start + rel_end];
         i = tag_start + rel_end + 1;
-        if tag.contains("qmd-xref") {
+        if tag.contains("tali-xref") {
             continue; // a cross-reference, validated separately
         }
         let Some(val) = tag_attr(tag, "href=\"") else {

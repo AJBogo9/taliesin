@@ -12,7 +12,7 @@
     --qmd-thm-plain: #9385d6; --qmd-thm-definition: #3fae7f; --qmd-thm-remark: #9aa0aa;
     color-scheme: dark; /* native form controls ({js} cell inputs) + scrollbars render dark */
   }
-  /* (.qmd-copy is fully tokenised in base.css now — no dark override needed.) */
+  /* (.tali-copy is fully tokenised in base.css now — no dark override needed.) */
   /* Callout title tints are derived from --qmd-callout-* via color-mix with transparent,
      so they adapt to the dark background automatically — no per-kind dark override needed. */
   html[data-theme="dark"] pre.mermaid { background: transparent; }
@@ -24,8 +24,8 @@
   html[data-theme="dark"] .tali-hl-entity { color: #d2a8ff; }
   html[data-theme="dark"] .tali-hl-variable { color: #ffa657; }
   /* code-cell output, warnings, and errors: dark equivalents of the light boxes */
-  html[data-theme="dark"] .qmd-output > pre { background: #1b1e24; border-left-color: var(--qmd-border); }
-  html[data-theme="dark"] .qmd-stderr { border-left-color: #d0a215 !important; background: #2a2415 !important; color: #e8dcc0; }
-  html[data-theme="dark"] .qmd-error { border-left-color: #e0566b !important; background: #2a1820 !important; color: #f2b8c2; }
-  /* a throwing {js} cell's error box: dark equivalent of the light .qmd-js-error in base.css */
-  html[data-theme="dark"] .qmd-js-error { border-color: #5a2a32; background: #2a1820; color: #f2b8c2; }
+  html[data-theme="dark"] .tali-output > pre { background: #1b1e24; border-left-color: var(--qmd-border); }
+  html[data-theme="dark"] .tali-stderr { border-left-color: #d0a215 !important; background: #2a2415 !important; color: #e8dcc0; }
+  html[data-theme="dark"] .tali-error { border-left-color: #e0566b !important; background: #2a1820 !important; color: #f2b8c2; }
+  /* a throwing {js} cell's error box: dark equivalent of the light .tali-js-error in base.css */
+  html[data-theme="dark"] .tali-js-error { border-color: #5a2a32; background: #2a1820; color: #f2b8c2; }

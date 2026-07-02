@@ -4,23 +4,23 @@
 // separate floating controls. Reader-side, read-only. Skipped on decks. Built once.
 function qmdInitReaderMenu() {
   if (window.qmdReaderMenu) return;
-  if (document.querySelector('.qmd-deck')) return; // a slide deck has its own chrome
+  if (document.querySelector('.tali-deck')) return; // a slide deck has its own chrome
 
   // A DISCLOSURE, not a dialog: the launcher's aria-expanded + aria-controls point at a labelled
   // group, which is the correct ARIA shape for a light-dismiss popover that does NOT trap or move
   // focus. (role="dialog"/aria-haspopup="dialog" would promise a modal with managed focus we
   // deliberately don't provide — see the openMenu/closeMenu note below.)
-  var panelId = 'qmd-rmenu-panel';
+  var panelId = 'tali-rmenu-panel';
   var launcher = document.createElement('button');
   launcher.type = 'button';
-  launcher.className = 'qmd-rmenu-toggle';
+  launcher.className = 'tali-rmenu-toggle';
   launcher.textContent = 'Aa';
   launcher.setAttribute('aria-label', 'Reader menu');
   launcher.setAttribute('aria-controls', panelId);
   launcher.setAttribute('aria-expanded', 'false');
 
   var panel = document.createElement('div');
-  panel.className = 'qmd-rmenu-panel';
+  panel.className = 'tali-rmenu-panel';
   panel.id = panelId;
   panel.setAttribute('role', 'group');
   panel.setAttribute('aria-label', 'Reader settings');
@@ -51,7 +51,7 @@ function qmdInitReaderMenu() {
     close: closeMenu,
     addSection: function (title, node, onOpen) {
       var wrap = document.createElement('section');
-      wrap.className = 'qmd-rmenu-section';
+      wrap.className = 'tali-rmenu-section';
       if (title) { var h = document.createElement('h2'); h.textContent = title; wrap.appendChild(h); }
       wrap.appendChild(node);
       panel.appendChild(wrap);
@@ -66,11 +66,11 @@ function qmdInitReaderMenu() {
   // localStorage flag that 03-focus-mode.js + 07-keyboard.js read (__qmdShortcutsOn).
   (function () {
     var row = document.createElement('div');
-    row.className = 'qmd-reader-row';
+    row.className = 'tali-reader-row';
     var label = document.createElement('span');
     label.textContent = 'Keyboard shortcuts';
     var seg = document.createElement('div');
-    seg.className = 'qmd-reader-seg';
+    seg.className = 'tali-reader-seg';
     var ksBtn = document.createElement('button');
     ksBtn.type = 'button';
     ksBtn.title = 'Single-key shortcuts: f focus, ? help, / search, ←/→ chapters';

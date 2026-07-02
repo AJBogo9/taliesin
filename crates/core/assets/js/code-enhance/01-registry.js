@@ -96,7 +96,7 @@ function qmdBuildBibtex(title, url, date) {
   var name = (title || 'Untitled').trim() || 'Untitled';
   var year = date.getFullYear();
   var slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-  var key = (slug || 'qmd-citation') + '-' + year;
+  var key = (slug || 'tali-citation') + '-' + year;
   var accessed = MONTHS[date.getMonth()] + ' ' + date.getDate() + ', ' + year;
   return '@misc{' + key + ',\n' +
     '  title        = {{' + latexEsc(name) + '}},\n' +
@@ -114,7 +114,7 @@ function qmdAnchorUrl(id) {
 }
 
 // Read a caption's visible text without the interactive chrome that qmdInitAnchorLinks splices
-// in: the `#` permalink (a `.qmd-anchor`, transiently `✓` mid-copy) lives inside the figcaption,
+// in: the `#` permalink (a `.tali-anchor`, transiently `✓` mid-copy) lives inside the figcaption,
 // so a verbatim `.textContent` reads "Figure 1: No pooling.#". Clone-strip-read (the same trick
 // the link-preview card's cleanClone uses) keeps the read-only original intact. Returns '' for
 // a missing node.
@@ -124,7 +124,7 @@ function qmdAnchorUrl(id) {
 function qmdCloneStripped(node) {
   var c = node.cloneNode(true);
   if (c.querySelectorAll) {
-    [].forEach.call(c.querySelectorAll('.qmd-anchor, .qmd-copy'), function (x) { x.remove(); });
+    [].forEach.call(c.querySelectorAll('.tali-anchor, .tali-copy'), function (x) { x.remove(); });
   }
   return c;
 }

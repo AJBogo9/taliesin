@@ -174,7 +174,7 @@ pub fn theme_head(default_mode: &str) -> String {
   // (and pause the hidden one). Also runs once on load so a non-default-theme page
   // starts its visible clip.
   function syncThemeVideos(){{
-    var vids = document.querySelectorAll(".qmd-video video");
+    var vids = document.querySelectorAll(".tali-video video");
     for (var i = 0; i < vids.length; i++) {{
       var v = vids[i];
       if (getComputedStyle(v).display === "none") {{ try {{ v.pause(); }} catch(e) {{}} }}

@@ -66,7 +66,7 @@ fn title_block_includes_subtitle_date_and_description() {
         "---\ntitle: T\nsubtitle: S\ndate: 2026-05-15\nauthor: A\ndescription: D\n---\n\nx\n",
     );
     let h = &doc.blocks[0].html;
-    assert!(h.contains("class=\"qmd-title-block\""));
+    assert!(h.contains("class=\"tali-title-block\""));
     assert!(h.contains("<p class=\"subtitle\">S</p>"), "got: {h}");
     assert!(h.contains("<p class=\"description\">D</p>"), "got: {h}");
     assert!(
@@ -184,7 +184,7 @@ fn layout_ncol_div_becomes_grid() {
     let doc = render_document("::: {layout-ncol=2}\n![](a.png)\n\n![](b.png)\n:::\n");
     assert_eq!(doc.blocks.len(), 1);
     let h = &doc.blocks[0].html;
-    assert!(h.contains("qmd-layout"), "got: {h}");
+    assert!(h.contains("tali-layout"), "got: {h}");
     assert!(h.contains("repeat(2,"), "got: {h}");
 }
 
@@ -213,7 +213,7 @@ fn stray_closing_fence_is_ignored() {
     let body = doc.body_html();
     assert!(body.contains("A paragraph."), "got: {body}");
     assert!(!body.contains(":::"), "got: {body}");
-    assert!(!body.contains("qmd-div"), "got: {body}");
+    assert!(!body.contains("tali-div"), "got: {body}");
 }
 
 #[test]
@@ -457,7 +457,7 @@ fn labelled_mermaid_becomes_numbered_referenceable_figure() {
         "figure anchor missing: {body}"
     );
     assert!(
-        body.contains("class=\"qmd-figure"),
+        body.contains("class=\"tali-figure"),
         "mermaid not wrapped in a figure: {body}"
     );
     assert!(
@@ -472,7 +472,7 @@ fn labelled_mermaid_becomes_numbered_referenceable_figure() {
     assert!(!body.contains("%%|"), "mermaid cell options leaked: {body}");
     // and `@fig-flow` resolves to the numbered link
     assert!(
-        body.contains("<a href=\"#fig-flow\" class=\"qmd-xref\">Figure&nbsp;1</a>"),
+        body.contains("<a href=\"#fig-flow\" class=\"tali-xref\">Figure&nbsp;1</a>"),
         "cross-reference did not resolve: {body}"
     );
 }
@@ -487,11 +487,11 @@ fn static_toc_page_ships_the_mobile_pull_up_sheet() {
         "f",
     );
     assert!(
-        html.contains("id=\"qmd-toc-handle\""),
+        html.contains("id=\"tali-toc-handle\""),
         "sheet handle markup missing"
     );
     assert!(
-        html.contains("id=\"qmd-toc-backdrop\""),
+        html.contains("id=\"tali-toc-backdrop\""),
         "sheet backdrop markup missing"
     );
     assert!(
@@ -501,15 +501,15 @@ fn static_toc_page_ships_the_mobile_pull_up_sheet() {
     // Progressive enhancement: the enhancer (not the server) opts the body into the sheet,
     // so a no-JS page keeps its in-flow TOC layout.
     assert!(
-        TOC_SHEET_JS.contains("classList.add(\"qmd-toc-sheet\")"),
-        "toc-sheet.js should add the qmd-toc-sheet class at runtime"
+        TOC_SHEET_JS.contains("classList.add(\"tali-toc-sheet\")"),
+        "toc-sheet.js should add the tali-toc-sheet class at runtime"
     );
 }
 
 #[test]
 fn static_page_has_no_dead_click_to_source_outline() {
     // A built/rendered static page is a read-only view with no editor bridge, so it must
-    // NOT ship the click-to-source click handler (it drew a `.qmd-hl` outline on every
+    // NOT ship the click-to-source click handler (it drew a `.tali-hl` outline on every
     // click + console.logged with nothing listening). Click-to-source lives only in the
     // live preview (client.js wires it to the editor).
     let html = render_html_page("# Title\n\nBody.\n", "fallback");
@@ -574,7 +574,7 @@ fn spaced_option_directives_are_recognized() {
         "spaced echo:false must be parsed onto the cell"
     );
     assert!(
-        b.html.contains("qmd-cell-hidden") && !b.html.contains("print(1)"),
+        b.html.contains("tali-cell-hidden") && !b.html.contains("print(1)"),
         "spaced echo:false must hide the source: {}",
         b.html
     );
@@ -594,7 +594,7 @@ fn spaced_option_directives_are_recognized() {
         "spaced mermaid options leaked: {body}"
     );
     assert!(
-        body.contains("<a href=\"#fig-x\" class=\"qmd-xref\">Figure&nbsp;1</a>"),
+        body.contains("<a href=\"#fig-x\" class=\"tali-xref\">Figure&nbsp;1</a>"),
         "spaced-label cross-reference did not resolve: {body}"
     );
 
@@ -615,7 +615,7 @@ fn unlabelled_mermaid_stays_a_bare_diagram() {
     let h = &doc.blocks[0].html;
     assert!(h.contains("<pre data-block-id"), "got: {h}");
     assert!(
-        !h.contains("qmd-figure"),
+        !h.contains("tali-figure"),
         "unlabelled mermaid should not be a figure: {h}"
     );
     assert!(
@@ -637,7 +637,7 @@ fn cell_option_lines_are_dropped() {
     let js = render_document("```{js}\n//| name: x\n//| echo: false\nreturn 1;\n```\n");
     let jh = &js.blocks[0].html;
     assert!(
-        jh.contains("class=\"cell qmd-js-cell\""),
+        jh.contains("class=\"cell tali-js-cell\""),
         "js cell should be a live placeholder: {jh}"
     );
     assert!(
@@ -670,7 +670,7 @@ fn echo_and_include_false_hide_source_but_keep_the_cell() {
         b.html
     );
     assert!(
-        b.html.contains("qmd-cell-hidden"),
+        b.html.contains("tali-cell-hidden"),
         "expected a hidden marker: {}",
         b.html
     );
@@ -741,7 +741,7 @@ fn execute_flow_mapping_sets_document_cell_defaults() {
         .expect("a code cell");
     // echo:false renders the cell as the hidden marker (no source listing).
     assert!(
-        cell.html.contains("qmd-cell-hidden"),
+        cell.html.contains("tali-cell-hidden"),
         "execute: {{echo: false}} (flow form) should hide the cell source: {}",
         cell.html
     );
@@ -833,7 +833,7 @@ fn sec_label_makes_at_sec_resolve_to_a_number() {
         "heading id missing: {body}"
     );
     assert!(
-        body.contains("class=\"qmd-xref\">Section&nbsp;1</a>"),
+        body.contains("class=\"tali-xref\">Section&nbsp;1</a>"),
         "@sec-methods did not resolve to a numbered Section link: {body}"
     );
 }
@@ -857,7 +857,7 @@ fn table_caption_is_numbered_folded_and_referenceable() {
         "the caption paragraph leaked instead of folding into the table: {body}"
     );
     assert!(
-        body.contains("class=\"qmd-xref\">Table&nbsp;1</a>"),
+        body.contains("class=\"tali-xref\">Table&nbsp;1</a>"),
         "@tbl-data did not resolve to a number: {body}"
     );
 }
@@ -869,7 +869,7 @@ fn js_cell_emits_native_wire_format_with_options() {
     let d = render_document("```{js}\n//| name: signalX\nreturn [1, 2, 3];\n```\n");
     let h = &d.blocks[0].html;
     assert!(
-        h.contains("class=\"cell qmd-js-cell\""),
+        h.contains("class=\"cell tali-js-cell\""),
         "js placeholder: {h}"
     );
     assert!(
@@ -922,7 +922,7 @@ fn bare_latex_environment_renders_as_display_math() {
     let h = &doc.blocks[0].html;
     // rendered as a display-math block (the raw TeX only survives inside
     // KaTeX's <annotation>, which is expected).
-    assert!(h.contains("qmd-math-block"), "got: {h}");
+    assert!(h.contains("tali-math-block"), "got: {h}");
     assert!(
         h.contains("katex-display"),
         "expected display math, got: {h}"
@@ -943,7 +943,10 @@ fn display_equation_label_becomes_numbered_id() {
         !html.contains("{#eq-foo}"),
         "the {{#eq-foo}} attribute leaked as text"
     );
-    assert!(html.contains("qmd-eqn-number"), "equation was not numbered");
+    assert!(
+        html.contains("tali-eqn-number"),
+        "equation was not numbered"
+    );
 }
 
 #[test]
@@ -1008,7 +1011,7 @@ fn reveal_deck_injects_includes_and_theme() {
             ---\n\n## Slide\n";
     let page = render_html_page(src, "deck");
     assert!(
-        page.contains("<div class=\"qmd-deck\">"),
+        page.contains("<div class=\"tali-deck qmd-deck\">"),
         "should render as a deck"
     );
     let head = &page[..page.find("</head>").expect("has </head>")];
@@ -1182,13 +1185,13 @@ fn deck_splits_into_title_slide_and_one_section_per_heading() {
     // One <section> per h2, id slugged from the heading text.
     assert!(
         slides.contains(
-            "<section id=\"first\" class=\"qmd-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"2\">"
+            "<section id=\"first\" class=\"tali-slide qmd-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"2\">"
         ),
         "got: {slides}"
     );
     assert!(
         slides.contains(
-            "<section id=\"second\" class=\"qmd-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"2\">"
+            "<section id=\"second\" class=\"tali-slide qmd-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"2\">"
         ),
         "got: {slides}"
     );
@@ -1243,18 +1246,18 @@ fn h1_wraps_following_h2s_in_a_vertical_stack() {
     // Outer wrapper section, then the h1 lead slide, then the two h2 children.
     assert!(
         slides
-            .contains("<section>\n<section id=\"part-one\" class=\"qmd-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"1\">"),
+            .contains("<section>\n<section id=\"part-one\" class=\"tali-slide qmd-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"1\">"),
         "got: {slides}"
     );
     assert!(
         slides.contains(
-            "<section id=\"a\" class=\"qmd-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"2\">"
+            "<section id=\"a\" class=\"tali-slide qmd-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"2\">"
         ),
         "got: {slides}"
     );
     assert!(
         slides.contains(
-            "<section id=\"b\" class=\"qmd-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"2\">"
+            "<section id=\"b\" class=\"tali-slide qmd-slide\" role=\"group\" aria-roledescription=\"slide\" data-level=\"2\">"
         ),
         "got: {slides}"
     );
@@ -1268,8 +1271,8 @@ fn deck_page_carries_native_scaffolding() {
         "---\ntitle: D\nformat: revealjs\n---\n\n## Slide\n",
         "fallback",
     );
-    assert!(page.contains("class=\"qmd-deck\""));
-    assert!(page.contains("class=\"qmd-slides\""));
+    assert!(page.contains("class=\"tali-deck qmd-deck\""));
+    assert!(page.contains("class=\"tali-slides qmd-slides\""));
     // The deck engine is bundled (no CDN); it exposes the window.QmdDeck API.
     assert!(page.contains("window.QmdDeck"));
     assert!(page.contains("QmdDeck.initialize("));
@@ -1422,7 +1425,7 @@ fn standalone_image_becomes_a_numbered_figure() {
     assert!(h.starts_with("<figure"), "got: {h}");
     assert!(h.contains("id=\"fig-scree\""), "got: {h}");
     assert!(
-        h.contains("class=\"qmd-figure qmd-figure-center\""),
+        h.contains("class=\"tali-figure tali-figure-center\""),
         "got: {h}"
     );
     assert!(h.contains("<img src=\"scree.png\""), "got: {h}");
@@ -1545,9 +1548,9 @@ fn assembled_page_ships_anchor_links() {
 fn assembled_page_ships_focus_mode() {
     let page = render_html_page("# Title\n\nProse to read in focus.\n", "doc");
     // Focus/reading mode hides site chrome and centers the prose; qmdInitFocusMode is its
-    // discriminator, and body.qmd-focus is the CSS hook.
+    // discriminator, and body.tali-focus is the CSS hook.
     assert!(
-        page.contains("qmdInitFocusMode") && page.contains("qmd-focus"),
+        page.contains("qmdInitFocusMode") && page.contains("tali-focus"),
         "focus/reading mode not shipped in the assembled page"
     );
 }
@@ -1587,9 +1590,9 @@ fn assembled_page_ships_bookmarks() {
 #[test]
 fn assembled_page_ships_selection_toolbar() {
     let page = render_html_page("# Title\n\nProse.\n", "doc");
-    // Selection toolbar: the .qmd-seltools bar + the text-fragment share-link builder.
+    // Selection toolbar: the .tali-seltools bar + the text-fragment share-link builder.
     assert!(
-        page.contains("qmd-seltools") && page.contains("qmdBuildTextFragmentUrl"),
+        page.contains("tali-seltools") && page.contains("qmdBuildTextFragmentUrl"),
         "selection toolbar not shipped in the assembled page"
     );
 }
@@ -1613,8 +1616,8 @@ fn search_js_localizes_the_kbd_hint_off_mac() {
         "search.js must localize the ⌘K hint to Ctrl K off Mac"
     );
     assert!(
-        super::SEARCH_JS.contains("qmd-search-kbd"),
-        "search.js must target the .qmd-search-kbd badge to localize it"
+        super::SEARCH_JS.contains("tali-search-kbd"),
+        "search.js must target the .tali-search-kbd badge to localize it"
     );
 }
 
@@ -1690,14 +1693,14 @@ fn no_toc_when_not_requested() {
 #[test]
 fn toc_page_ships_read_state_marker() {
     // A page with a TOC ships the read-state scrollspy decoration: the script marks the
-    // sections a reader has scrolled through (`.qmd-toc-read`) and persists them in the
+    // sections a reader has scrolled through (`.tali-toc-read`) and persists them in the
     // reader's OWN localStorage (`qmd-read:<path>`). Reader-side, read-only.
     let toc_page = render_html_page(
         "---\ntitle: Doc\nformat:\n  html:\n    toc: true\n---\n\n# A\n\ntext\n\n## B\n\nmore\n",
         "fb",
     );
     assert!(
-        toc_page.contains("qmd-toc-read"),
+        toc_page.contains("tali-toc-read"),
         "read-state class/CSS missing from a TOC page"
     );
     assert!(
@@ -1836,13 +1839,16 @@ fn footnotes_emit_ref_and_gathered_section() {
         "fb",
     );
     // The reference is a superscript link to the definition.
-    assert!(page.contains("class=\"qmd-fnref\""), "footnote ref: {page}");
+    assert!(
+        page.contains("class=\"tali-fnref\""),
+        "footnote ref: {page}"
+    );
     assert!(page.contains("href=\"#fn-1\""), "ref links to def");
     // Definitions are gathered into one footnotes section (not rendered in place).
     assert!(page.contains("class=\"footnotes\""), "footnotes section");
     assert!(page.contains("id=\"fn-1\""), "footnote def id");
     assert!(page.contains("The supporting note"), "footnote body");
-    assert!(page.contains("qmd-fn-back"), "backlink to the reference");
+    assert!(page.contains("tali-fn-back"), "backlink to the reference");
 }
 
 #[test]
@@ -1864,12 +1870,12 @@ fn input_slider_shortcode_emits_reactive_control() {
         std::path::Path::new("."),
     );
     let h = doc.body_html();
-    assert!(h.contains("class=\"qmd-input\""), "wrapper: {h}");
+    assert!(h.contains("class=\"tali-input\""), "wrapper: {h}");
     assert!(h.contains("data-qmd-input=\"k\""), "named input: {h}");
     assert!(h.contains("type=\"range\""), "range control: {h}");
     assert!(h.contains("min=\"1\"") && h.contains("max=\"10\"") && h.contains("value=\"3\""));
     assert!(
-        h.contains("<output class=\"qmd-input-out\" data-qmd-out>3</output>"),
+        h.contains("<output class=\"tali-input-out\" data-qmd-out>3</output>"),
         "slider readout: {h}"
     );
     assert!(h.contains(">k</label>"), "label: {h}");
@@ -1917,7 +1923,7 @@ fn scrolly_arm_emits_stage_steps_and_reactive_input() {
         "::: {.scrolly name=\"scene\"}\nThe stage paragraph.\n\n::: {.step state=\"a\"}\nStep A.\n:::\n\n::: {.step state=\"b\"}\nStep B.\n:::\n:::\n",
     );
     let h = doc.body_html();
-    assert!(h.contains("class=\"qmd-scrolly\""), "wrapper: {h}");
+    assert!(h.contains("class=\"tali-scrolly\""), "wrapper: {h}");
     assert!(
         h.contains("class=\"scrolly-steps\"") && h.contains("class=\"scrolly-stage\""),
         "split: {h}"
@@ -1925,7 +1931,7 @@ fn scrolly_arm_emits_stage_steps_and_reactive_input() {
     assert!(h.contains("data-scrolly-name=\"scene\""), "name attr: {h}");
     assert!(
         h.contains(
-            "<input type=\"hidden\" class=\"qmd-scrolly-input\" data-qmd-input=\"scene\" value=\"a\">"
+            "<input type=\"hidden\" class=\"tali-scrolly-input\" data-qmd-input=\"scene\" value=\"a\">"
         ),
         "hidden reactive input with first step's state: {h}"
     );
@@ -1943,7 +1949,7 @@ fn scrolly_arm_emits_stage_steps_and_reactive_input() {
 fn scrolly_without_name_omits_hidden_input() {
     let doc = render_document("::: {.scrolly}\nStage.\n\n::: {.step state=\"a\"}\nA.\n:::\n:::\n");
     let h = doc.body_html();
-    assert!(h.contains("class=\"qmd-scrolly\""));
+    assert!(h.contains("class=\"tali-scrolly\""));
     assert!(
         !h.contains("data-qmd-input"),
         "no hidden input without name=: {h}"
@@ -2023,22 +2029,22 @@ fn code_enhance_bundle_matches_fragments_in_order() {
 #[test]
 fn captioned_code_listing_is_a_figure_not_a_bare_div() {
     // A `<figcaption>` is only valid inside a `<figure>`; the numbered code listing must
-    // wrap as `<figure class="qmd-listing">` (valid HTML, and the same float semantics
-    // Quarto uses for `lst-`). The `.qmd-listing` margin already zeroes the UA figure
+    // wrap as `<figure class="tali-listing">` (valid HTML, and the same float semantics
+    // Quarto uses for `lst-`). The `.tali-listing` margin already zeroes the UA figure
     // indent, so the element swap is style-neutral.
     let doc =
         render_document("```{python}\n#| label: lst-demo\n#| lst-cap: My listing\nx = 1\n```\n");
     let html: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
     assert!(
-        html.contains("<figure") && html.contains("class=\"qmd-listing\""),
-        "the listing must wrap in a <figure class=\"qmd-listing\">: {html}"
+        html.contains("<figure") && html.contains("class=\"tali-listing\""),
+        "the listing must wrap in a <figure class=\"tali-listing\">: {html}"
     );
     assert!(
-        html.contains("class=\"qmd-listing-caption\""),
+        html.contains("class=\"tali-listing-caption\""),
         "the numbered caption must survive: {html}"
     );
     assert!(
-        !html.contains("<div class=\"qmd-listing\""),
+        !html.contains("<div class=\"tali-listing\""),
         "the listing must no longer be a bare <div> (invalid figcaption): {html}"
     );
 }
@@ -2171,7 +2177,7 @@ fn theorem_div_emits_styled_block_with_number_slot() {
     assert_eq!(doc.blocks.len(), 1, "the theorem is one container block");
     let h = &doc.blocks[0].html;
     assert!(
-        h.contains("class=\"qmd-theorem qmd-theorem-theorem qmd-thm-style-plain\""),
+        h.contains("class=\"tali-theorem tali-theorem-theorem tali-thm-style-plain\""),
         "got: {h}"
     );
     assert!(h.contains("data-qmd-theorem-kind=\"theorem\""), "got: {h}");
@@ -2181,12 +2187,12 @@ fn theorem_div_emits_styled_block_with_number_slot() {
     );
     assert!(
         h.contains(
-            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\">&nbsp;1</span></span>"
+            "<span class=\"tali-theorem-label\">Theorem<span class=\"tali-theorem-number\">&nbsp;1</span></span>"
         ),
         "head carries the kind name + the number filled by the post-pass: {h}"
     );
     assert!(
-        h.contains("<span class=\"qmd-theorem-title\">(Pythagorean theorem)</span>"),
+        h.contains("<span class=\"tali-theorem-title\">(Pythagorean theorem)</span>"),
         "got: {h}"
     );
     // inner content keeps its own block id (click-to-source) and math is KaTeX-rendered
@@ -2203,20 +2209,20 @@ fn theorem_styles_map_kinds() {
     assert!(
         d.blocks[0]
             .html
-            .contains("qmd-theorem-definition qmd-thm-style-definition"),
+            .contains("tali-theorem-definition tali-thm-style-definition"),
         "got: {}",
         d.blocks[0].html
     );
     assert!(
         d.blocks[0]
             .html
-            .contains("<span class=\"qmd-theorem-label\">Definition"),
+            .contains("<span class=\"tali-theorem-label\">Definition"),
         "got: {}",
         d.blocks[0].html
     );
     let r = render_document("::: {.remark}\nAside.\n:::\n");
     assert!(
-        r.blocks[0].html.contains("qmd-thm-style-remark"),
+        r.blocks[0].html.contains("tali-thm-style-remark"),
         "got: {}",
         r.blocks[0].html
     );
@@ -2226,17 +2232,17 @@ fn theorem_styles_map_kinds() {
 fn proof_emits_qed_and_no_number_slot() {
     let p = render_document("::: {.proof}\nBy the diagram.\n:::\n");
     let h = &p.blocks[0].html;
-    assert!(h.contains("class=\"qmd-proof\""), "got: {h}");
+    assert!(h.contains("class=\"tali-proof\""), "got: {h}");
     assert!(
-        h.contains("<p class=\"qmd-proof-head\">Proof.</p>"),
+        h.contains("<p class=\"tali-proof-head\">Proof.</p>"),
         "got: {h}"
     );
     assert!(
-        h.contains("<span class=\"qmd-qed\" aria-hidden=\"true\">\u{220e}</span>"),
+        h.contains("<span class=\"tali-qed\" aria-hidden=\"true\">\u{220e}</span>"),
         "got: {h}"
     );
     assert!(
-        !h.contains("qmd-theorem-number"),
+        !h.contains("tali-theorem-number"),
         "proof is unnumbered: {h}"
     );
 
@@ -2244,7 +2250,7 @@ fn proof_emits_qed_and_no_number_slot() {
     assert!(
         renamed.blocks[0]
             .html
-            .contains("<p class=\"qmd-proof-head\">Proof of the main theorem.</p>"),
+            .contains("<p class=\"tali-proof-head\">Proof of the main theorem.</p>"),
         "got: {}",
         renamed.blocks[0].html
     );
@@ -2258,19 +2264,19 @@ fn theorems_number_continuously_per_kind() {
     let body = doc.body_html();
     assert!(
         body.contains(
-            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\">&nbsp;1</span></span>"
+            "<span class=\"tali-theorem-label\">Theorem<span class=\"tali-theorem-number\">&nbsp;1</span></span>"
         ),
         "first theorem is 1: {body}"
     );
     assert!(
         body.contains(
-            "<span class=\"qmd-theorem-label\">Lemma<span class=\"qmd-theorem-number\">&nbsp;1</span></span>"
+            "<span class=\"tali-theorem-label\">Lemma<span class=\"tali-theorem-number\">&nbsp;1</span></span>"
         ),
         "lemma counts independently: {body}"
     );
     assert!(
         body.contains(
-            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\">&nbsp;2</span></span>"
+            "<span class=\"tali-theorem-label\">Theorem<span class=\"tali-theorem-number\">&nbsp;2</span></span>"
         ),
         "second theorem is 2: {body}"
     );
@@ -2283,11 +2289,11 @@ fn theorem_crossref_resolves_with_label_and_number() {
     );
     let body = doc.body_html();
     assert!(
-        body.contains("<a href=\"#thm-pyth\" class=\"qmd-xref\">Theorem&nbsp;1</a>"),
+        body.contains("<a href=\"#thm-pyth\" class=\"tali-xref\">Theorem&nbsp;1</a>"),
         "got: {body}"
     );
     assert!(
-        body.contains("<a href=\"#lem-bound\" class=\"qmd-xref\">Lemma&nbsp;1</a>"),
+        body.contains("<a href=\"#lem-bound\" class=\"tali-xref\">Lemma&nbsp;1</a>"),
         "got: {body}"
     );
     assert!(!body.contains("@thm-pyth"), "ref left unresolved: {body}");
@@ -2297,7 +2303,7 @@ fn theorem_crossref_resolves_with_label_and_number() {
 fn proof_is_not_numbered() {
     let doc = render_document("::: {.proof}\nx.\n:::\n");
     assert!(
-        !doc.body_html().contains("qmd-theorem-number"),
+        !doc.body_html().contains("tali-theorem-number"),
         "proof has no number slot: {}",
         doc.body_html()
     );
@@ -2333,26 +2339,26 @@ fn shared_counter_numbers_across_kinds() {
     // theorem + lemma draw one sequence: Theorem 1, Lemma 2, Theorem 3
     assert!(
         body.contains(
-            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\">&nbsp;1</span></span>"
+            "<span class=\"tali-theorem-label\">Theorem<span class=\"tali-theorem-number\">&nbsp;1</span></span>"
         ),
         "got: {body}"
     );
     assert!(
         body.contains(
-            "<span class=\"qmd-theorem-label\">Lemma<span class=\"qmd-theorem-number\">&nbsp;2</span></span>"
+            "<span class=\"tali-theorem-label\">Lemma<span class=\"tali-theorem-number\">&nbsp;2</span></span>"
         ),
         "lemma takes the shared sequence's 2: {body}"
     );
     assert!(
         body.contains(
-            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\">&nbsp;3</span></span>"
+            "<span class=\"tali-theorem-label\">Theorem<span class=\"tali-theorem-number\">&nbsp;3</span></span>"
         ),
         "got: {body}"
     );
     // definition is NOT shared: its own counter starts at 1
     assert!(
         body.contains(
-            "<span class=\"qmd-theorem-label\">Definition<span class=\"qmd-theorem-number\">&nbsp;1</span></span>"
+            "<span class=\"tali-theorem-label\">Definition<span class=\"tali-theorem-number\">&nbsp;1</span></span>"
         ),
         "unlisted kind keeps its own counter: {body}"
     );
@@ -2382,18 +2388,18 @@ fn number_within_chapter_scopes_to_book_chapter() {
     let body = doc.body_html();
     assert!(
         body.contains(
-            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\">&nbsp;2.1</span></span>"
+            "<span class=\"tali-theorem-label\">Theorem<span class=\"tali-theorem-number\">&nbsp;2.1</span></span>"
         ),
         "first theorem in chapter 2 is 2.1: {body}"
     );
     assert!(
         body.contains(
-            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\">&nbsp;2.2</span></span>"
+            "<span class=\"tali-theorem-label\">Theorem<span class=\"tali-theorem-number\">&nbsp;2.2</span></span>"
         ),
         "second is 2.2: {body}"
     );
     assert!(
-        body.contains("<a href=\"#thm-a\" class=\"qmd-xref\">Theorem&nbsp;2.1</a>"),
+        body.contains("<a href=\"#thm-a\" class=\"tali-xref\">Theorem&nbsp;2.1</a>"),
         "the in-page ref agrees with the chapter-scoped number: {body}"
     );
 }
@@ -2405,7 +2411,7 @@ fn number_within_chapter_falls_back_and_warns_without_a_chapter() {
     );
     assert!(
         doc.body_html().contains(
-            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\">&nbsp;1</span></span>"
+            "<span class=\"tali-theorem-label\">Theorem<span class=\"tali-theorem-number\">&nbsp;1</span></span>"
         ),
         "no chapter context falls back to continuous numbering: {}",
         doc.body_html()
@@ -2427,12 +2433,12 @@ fn numbered_false_suppresses_the_number() {
     let body = doc.body_html();
     assert!(
         body.contains(
-            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\"></span></span>"
+            "<span class=\"tali-theorem-label\">Theorem<span class=\"tali-theorem-number\"></span></span>"
         ),
         "numbered: false leaves the number slot empty: {body}"
     );
     assert!(
-        !body.contains("qmd-theorem-number\">&nbsp;"),
+        !body.contains("tali-theorem-number\">&nbsp;"),
         "no number is emitted anywhere: {body}"
     );
 }
@@ -2446,16 +2452,16 @@ fn numbered_unless_unique_numbers_only_repeated_kinds() {
     // definition appears once -> unnumbered
     assert!(
         body.contains(
-            "<span class=\"qmd-theorem-label\">Definition<span class=\"qmd-theorem-number\"></span></span>"
+            "<span class=\"tali-theorem-label\">Definition<span class=\"tali-theorem-number\"></span></span>"
         ),
         "a lone kind is unnumbered: {body}"
     );
     // theorem appears twice -> numbered 1, 2
     assert!(
         body.contains(
-            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\">&nbsp;1</span></span>"
+            "<span class=\"tali-theorem-label\">Theorem<span class=\"tali-theorem-number\">&nbsp;1</span></span>"
         ) && body.contains(
-            "<span class=\"qmd-theorem-label\">Theorem<span class=\"qmd-theorem-number\">&nbsp;2</span></span>"
+            "<span class=\"tali-theorem-label\">Theorem<span class=\"tali-theorem-number\">&nbsp;2</span></span>"
         ),
         "a repeated kind is numbered: {body}"
     );
@@ -2470,7 +2476,7 @@ fn unnumbered_theorem_ref_resolves_to_bare_label_not_broken() {
     );
     let body = doc.body_html();
     assert!(
-        body.contains("<a href=\"#thm-x\" class=\"qmd-xref\">Theorem</a>"),
+        body.contains("<a href=\"#thm-x\" class=\"tali-xref\">Theorem</a>"),
         "unnumbered theorem ref resolves to a bare label: {body}"
     );
     assert!(
@@ -2484,12 +2490,12 @@ fn proof_collapse_folds_into_details() {
     let closed = render_document("::: {.proof collapse=\"true\"}\nBody.\n:::\n");
     let h = &closed.blocks[0].html;
     assert!(
-        h.contains("<div class=\"qmd-proof qmd-proof-collapse\"")
-            && h.contains("<details><summary class=\"qmd-proof-head\">Proof.</summary>"),
+        h.contains("<div class=\"tali-proof tali-proof-collapse\"")
+            && h.contains("<details><summary class=\"tali-proof-head\">Proof.</summary>"),
         "collapse=true folds the proof behind a closed <details>: {h}"
     );
     assert!(
-        h.contains("<span class=\"qmd-qed\" aria-hidden=\"true\">\u{220e}</span></details>"),
+        h.contains("<span class=\"tali-qed\" aria-hidden=\"true\">\u{220e}</span></details>"),
         "QED sits inside <details> (shown only when expanded): {h}"
     );
     let open = render_document("::: {.proof collapse=\"false\"}\nBody.\n:::\n");

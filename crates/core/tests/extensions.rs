@@ -148,7 +148,7 @@ fn extension_header_precedes_document_header() {
 fn extension_theme_inlines_css_and_applies_builtin_base() {
     let d = TempProj::new();
     d.ext("glassy", "theme: [dark, glassy.css]\n");
-    d.file("_extensions/glassy/glassy.css", ".qmd-deck{--marker:1}");
+    d.file("_extensions/glassy/glassy.css", ".tali-deck{--marker:1}");
     let src = "---\ntitle: T\nformat: glassy-revealjs\n---\n\n## S\n";
     let doc = taliesin_core::render_document_with_includes(src, &d.0);
     assert!(
@@ -168,7 +168,7 @@ fn extension_theme_inlines_css_and_applies_builtin_base() {
 fn doc_theme_overrides_extension_theme_base() {
     let d = TempProj::new();
     d.ext("glassy", "theme: [dark, glassy.css]\n");
-    d.file("_extensions/glassy/glassy.css", ".qmd-deck{--marker:1}");
+    d.file("_extensions/glassy/glassy.css", ".tali-deck{--marker:1}");
     let src = "---\ntitle: T\nformat: glassy-revealjs\ntheme: light\n---\n\n## S\n";
     let doc = taliesin_core::render_document_with_includes(src, &d.0);
     assert_eq!(
@@ -303,7 +303,7 @@ fn builtin_embed_emits_deck_iframe() {
     let doc = taliesin_core::render_document_with_includes(src, std::path::Path::new("."));
     let body = doc.body_html();
     assert!(
-        body.contains("class=\"qmd-embed\""),
+        body.contains("class=\"tali-embed\""),
         "embed wrapper: {body}"
     );
     assert!(body.contains("src=\"talk.html\""), "qmd->html src: {body}");
@@ -319,7 +319,7 @@ fn builtin_video_emits_autoplay_figure() {
     let doc = taliesin_core::render_document_with_includes(src, std::path::Path::new("."));
     let body = doc.body_html();
     assert!(
-        body.contains("class=\"qmd-video\""),
+        body.contains("class=\"tali-video\""),
         "video wrapper: {body}"
     );
     assert!(
@@ -354,7 +354,7 @@ fn builtin_video_keeps_query_string_in_src() {
         "query-string src must be intact: {body}"
     );
     assert!(
-        body.contains("class=\"qmd-video\""),
+        body.contains("class=\"tali-video\""),
         "video wrapper: {body}"
     );
 }
@@ -389,7 +389,7 @@ fn builtin_video_named_dark_arg_is_not_the_path() {
         "the bare path is light.mp4, dark= is the dark variant: {body}"
     );
     assert!(
-        body.contains("qmd-video-light") && body.contains("qmd-video-dark"),
+        body.contains("tali-video-light") && body.contains("tali-video-dark"),
         "dark= must produce the light/dark video pair: {body}"
     );
 }
@@ -434,7 +434,7 @@ fn shortcode_in_inline_code_stays_literal() {
         "inline-code shortcode should stay literal: {body}"
     );
     assert!(
-        !body.contains("class=\"qmd-embed\""),
+        !body.contains("class=\"tali-embed\""),
         "must not expand inside inline code: {body}"
     );
 }
@@ -467,10 +467,13 @@ fn format_extension_injects_theme_and_includes() {
 
     // Renders as a deck (the `-revealjs` base format is detected).
     assert!(
-        html.contains("<div class=\"qmd-deck\">"),
+        html.contains("<div class=\"tali-deck qmd-deck\">"),
         "should render as a deck"
     );
-    // contributed theme: glass.css inlined as <style>.
+    // contributed theme: glass.css inlined as <style>. The vendored stylesheet targets
+    // the LEGACY `.qmd-deck`/`.qmd-slides` names verbatim; it is inlined unchanged and
+    // still themes the deck because the container dual-emits `tali-deck qmd-deck` etc.
+    // (this is the back-compat contract — do NOT rename this to `tali-`).
     assert!(
         html.contains(".qmd-deck .qmd-slides section h2 { color: #2bd4a0; }"),
         "extension theme css not inlined"
@@ -493,7 +496,7 @@ fn plain_format_without_extension_is_untouched() {
     // A bare `format: revealjs` has no extension prefix, so nothing extra is pulled.
     let src = "---\ntitle: T\nformat: revealjs\n---\n\n## S\n";
     let html = taliesin_core::render_html_page_with_includes(src, &fixture("deck-ext"), "T");
-    assert!(html.contains("<div class=\"qmd-deck\">"));
+    assert!(html.contains("<div class=\"tali-deck qmd-deck\">"));
     assert!(
         !html.contains("glass-ext"),
         "a non-extension format must not pull extension includes"
@@ -514,7 +517,7 @@ fn native_flat_manifest_contributes_everything() {
          resources: [glassy.js]\n\
          shortcodes:\n  yt: '<iframe src=\"/v/{{1}}\"></iframe>'\n",
     );
-    d.file("_extensions/glassy/glassy.css", ".qmd-deck{--g:1}");
+    d.file("_extensions/glassy/glassy.css", ".tali-deck{--g:1}");
     d.file("_extensions/glassy/head.html", "<meta name=\"glassy\">");
     d.file(
         "_extensions/glassy/init.html",

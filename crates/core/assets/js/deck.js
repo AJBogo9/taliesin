@@ -1,7 +1,7 @@
 // qmd-fast deck engine: the navigation + scaling for slides, owned by the project
 // so block-level incremental updates and click-to-source work in decks the same
 // way they do on a page. It drives qmd-fast's own DOM contract
-// (.qmd-deck > .qmd-slides > section, nested <section> stacks) and exposes a
+// (.tali-deck > .tali-slides > section, nested <section> stacks) and exposes a
 // window.QmdDeck API (initialize/sync/layout/slide + on/getSlides/getCurrentSlide/
 // registerPlugin) that the preview client and theme extensions bind to.
 (function () {
@@ -17,8 +17,8 @@
     listeners: {},
   };
 
-  function slidesEl() { return document.querySelector('.qmd-deck .qmd-slides'); }
-  function deckEl() { return document.querySelector('.qmd-deck'); }
+  function slidesEl() { return document.querySelector('.tali-deck .tali-slides'); }
+  function deckEl() { return document.querySelector('.tali-deck'); }
 
   // Top-level horizontal sections (a stack wrapper counts as one).
   function tops() {
@@ -63,7 +63,7 @@
   // --- grid layout + camera ----------------------------------------------
   // Every slide is laid out once in a 2-D grid: top-level slides across (column =
   // h), a stack's sub-slides down under their column (row = v). One transform on
-  // `.qmd-slides` is the "camera": focused on the current cell at full scale (normal),
+  // `.tali-slides` is the "camera": focused on the current cell at full scale (normal),
   // or zoomed out to frame the whole map (overview). Panning the camera between
   // cells IS the slide transition; zooming it out IS the overview. There is no
   // second view, so the two animate into each other with no cut.
@@ -117,7 +117,7 @@
     T.forEach(function (top, h) {
       var L = loc[h] || { row: 0, col0: 0 };
       if (isStack(top)) {
-        top.classList.add('qmd-stack');
+        top.classList.add('tali-stack');
         top.style.transform = 'translate(' + (L.col0 * W) + 'px,' + (L.row * H) + 'px)';
         vertsOf(top).forEach(function (sec, v) {
           sec.style.transform = 'translate(' + (v * W) + 'px,0px)' + gut; // sub-slides flow ACROSS the row
@@ -129,17 +129,17 @@
     drawThreads(rows, W, H, s);
   }
   // A horizontal connector thread per multi-slide row (topic), drawn behind the tiles
-  // in `.qmd-slides` world coords so it pans/zooms with the camera and reads as a line
+  // in `.tali-slides` world coords so it pans/zooms with the camera and reads as a line
   // joining the cards through the gutters. Rebuilt each layout; shown only in overview.
   function drawThreads(rows, W, H, s) {
     if (!s) return;
-    var tl = s.querySelector(':scope > .qmd-threads');
-    if (!tl) { tl = document.createElement('div'); tl.className = 'qmd-threads'; tl.setAttribute('aria-hidden', 'true'); s.insertBefore(tl, s.firstChild); }
+    var tl = s.querySelector(':scope > .tali-threads');
+    if (!tl) { tl = document.createElement('div'); tl.className = 'tali-threads'; tl.setAttribute('aria-hidden', 'true'); s.insertBefore(tl, s.firstChild); }
     tl.innerHTML = '';
     rows.forEach(function (rowArr, r) {
       if (rowArr.length < 2) return;
       var d = document.createElement('div');
-      d.className = 'qmd-thread-line';
+      d.className = 'tali-thread-line';
       d.style.transform = 'translate(' + (W / 2) + 'px,' + (r * H + H / 2) + 'px)';
       d.style.width = ((rowArr.length - 1) * W) + 'px';
       tl.appendChild(d);
@@ -159,16 +159,16 @@
     var p = posOf(deck.h, deck.v);
     return { cx: p.col * W + W / 2, cy: p.row * H + H / 2, scale: scale > 0 ? scale : 1 };
   }
-  // Apply a camera (one translate+scale on `.qmd-slides`, mapping world -> screen so the
+  // Apply a camera (one translate+scale on `.tali-slides`, mapping world -> screen so the
   // target lands centred). mode: 'css' = CSS transition, anything else = instant.
   function applyCam(cx, cy, scale, mode) {
     var s = slidesEl(), rev = deckEl(); if (!s || !rev) return;
     var W = deck.config.width;
     var sw = rev.clientWidth || window.innerWidth, sh = rev.clientHeight || window.innerHeight;
     s.style.setProperty('--qmd-thread', (3.5 / scale).toFixed(1) + 'px'); // constant ~3.5px on-screen thread
-    rev.classList.toggle('qmd-lod-far', !!deck.overview && scale * W < 200); // semantic zoom threshold
+    rev.classList.toggle('tali-lod-far', !!deck.overview && scale * W < 200); // semantic zoom threshold
     var tx = sw / 2 - scale * cx, ty = sh / 2 - scale * cy;
-    s.classList.toggle('qmd-cam-anim', mode === 'css');
+    s.classList.toggle('tali-cam-anim', mode === 'css');
     s.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
     document.documentElement.style.setProperty('--qmd-deck-scale', String(scale));
     deck.cam = { cx: cx, cy: cy, scale: scale };
@@ -254,7 +254,7 @@
   // setOverview, so any path that changes "what's visible" re-derives inert consistently.
   function syncInert() {
     var showAll = deck.overview || deck.scroll ||
-      document.documentElement.classList.contains('qmd-print');
+      document.documentElement.classList.contains('tali-print');
     var cur = showAll ? null : currentSlide();
     allSlides().forEach(function (s) {
       if (showAll || s === cur) s.removeAttribute('inert');
@@ -281,13 +281,13 @@
   // --- per-slide backgrounds ---------------------------------------------
   // Each slide carries its own `data-background-*` as a layer behind its content,
   // so the background travels with the slide as the camera pans, and shows per-tile
-  // in overview. `.qmd-dark-bg` on the section flips its own text light over a dark
+  // in overview. `.tali-dark-bg` on the section flips its own text light over a dark
   // / image / gradient background. Set once per layout (the attributes are static).
   function ensureSlideBg(sec) {
-    var bg = sec.querySelector(':scope > .qmd-slide-bg');
+    var bg = sec.querySelector(':scope > .tali-slide-bg');
     if (!bg) {
       bg = document.createElement('div');
-      bg.className = 'qmd-slide-bg';
+      bg.className = 'tali-slide-bg';
       sec.insertBefore(bg, sec.firstChild);
     }
     return bg;
@@ -297,8 +297,8 @@
       var color = sec.getAttribute('data-background-color');
       var gradient = sec.getAttribute('data-background-gradient');
       var image = sec.getAttribute('data-background-image');
-      sec.classList.remove('qmd-dark-bg');
-      var existing = sec.querySelector(':scope > .qmd-slide-bg');
+      sec.classList.remove('tali-dark-bg');
+      var existing = sec.querySelector(':scope > .tali-slide-bg');
       if (!color && !gradient && !image) { if (existing) existing.remove(); return; }
       var bg = ensureSlideBg(sec);
       bg.style.cssText = '';
@@ -310,23 +310,23 @@
         bg.style.backgroundPosition = sec.getAttribute('data-background-position') || 'center';
         bg.style.backgroundRepeat = sec.getAttribute('data-background-repeat') || 'no-repeat';
       }
-      if (image || gradient || (color && isDarkColor(color))) sec.classList.add('qmd-dark-bg');
+      if (image || gradient || (color && isDarkColor(color))) sec.classList.add('tali-dark-bg');
     });
   }
   // --- semantic zoom (level-of-detail) -----------------------------------
   // When the overview is zoomed out far enough that full slide content is an
   // illegible smudge, each tile collapses to a clean title card (shown by the
-  // `.qmd-lod-far` class that setCamera toggles on tile on-screen size). The real
+  // `.tali-lod-far` class that setCamera toggles on tile on-screen size). The real
   // content stays in the DOM, just faded, so live state is never lost. Cards are
   // built once and their title/number refreshed on each layout.
   function buildLodCards() {
     allSlides().forEach(function (sec, i) {
-      var card = sec.querySelector(':scope > .qmd-lod');
+      var card = sec.querySelector(':scope > .tali-lod');
       if (!card) {
         card = document.createElement('div');
-        card.className = 'qmd-lod';
+        card.className = 'tali-lod';
         card.setAttribute('aria-hidden', 'true'); // decorative overview title card; the real heading stays in the AT tree
-        card.innerHTML = '<div class="qmd-lod-title"></div><div class="qmd-lod-num"></div>';
+        card.innerHTML = '<div class="tali-lod-title"></div><div class="tali-lod-num"></div>';
         sec.appendChild(card);
       }
       var h = sec.querySelector('h1, h2, h3, h4, h5, h6');
@@ -395,7 +395,7 @@
         if (animFont) st.fontSize = '';
       }, 520);
     });
-    setTimeout(function () { to.classList.remove('qmd-aa'); }, 520);
+    setTimeout(function () { to.classList.remove('tali-aa'); }, 520);
   }
   // Auto-animate in the camera model: instead of panning between the two cells, hold
   // the camera and overlay `to` on `from`'s cell so the matched elements morph in
@@ -404,7 +404,7 @@
   function autoAnimateTo(from, to) {
     var toTransform = to.style.transform;       // to's real grid cell
     to.style.transform = from.style.transform;  // overlap `to` onto `from`'s cell
-    to.classList.add('qmd-aa');
+    to.classList.add('tali-aa');
     var snap = snapshotMatched(from, to);        // measure both at the same screen spot
     from.style.opacity = '0';                    // hide the old slide; the morph carries the motion
     applyClasses();                              // update state, but DON'T move the camera
@@ -456,13 +456,13 @@
     slide.querySelectorAll('pre[data-code-lines]').forEach(function (pre) {
       highlightLines(pre, pre.getAttribute('data-code-lines').split('|')[0]);
     });
-    slide.querySelectorAll(FRAG_SEL).forEach(function (el) { el.classList.remove('qmd-frag-visible'); });
+    slide.querySelectorAll(FRAG_SEL).forEach(function (el) { el.classList.remove('tali-frag-visible'); });
     var mmCount = new Map();
     slide.querySelectorAll('.magic-move').forEach(function (d) { mmCount.set(d, 0); });
     // then apply each taken step in order (later code steps overwrite earlier)
     for (var i = 0; i < deck.frag; i++) {
       var s = steps[i];
-      if (s.frag) s.frag.classList.add('qmd-frag-visible');
+      if (s.frag) s.frag.classList.add('tali-frag-visible');
       else if (s.code) highlightLines(s.code, s.seg);
       else if (s.mm) mmCount.set(s.mm, (mmCount.get(s.mm) || 0) + 1);
     }
@@ -479,7 +479,7 @@
     target = Math.max(0, Math.min(target, pres.length - 1));
     var prev = div.__mm;
     if (deck.animSteps && prev != null && prev !== target) morphMM(div, pres, prev, target);
-    else pres.forEach(function (p, i) { p.classList.toggle('qmd-mm-active', i === target); });
+    else pres.forEach(function (p, i) { p.classList.toggle('tali-mm-active', i === target); });
     div.__mm = target;
   }
   function morphMM(div, pres, from, to) {
@@ -489,8 +489,8 @@
     Array.prototype.forEach.call(blockFrom.querySelectorAll('.tali-hl-ln'), function (l) {
       (byText[lineText(l)] || (byText[lineText(l)] = [])).push(l);
     });
-    blockTo.classList.add('qmd-mm-active');
-    blockFrom.classList.remove('qmd-mm-active'); // fades out (CSS opacity transition)
+    blockTo.classList.add('tali-mm-active');
+    blockFrom.classList.remove('tali-mm-active'); // fades out (CSS opacity transition)
     Array.prototype.forEach.call(blockTo.querySelectorAll('.tali-hl-ln'), function (lt) {
       var list = byText[lineText(lt)], st = lt.style;
       if (list && list.length) { // matched line: glide from its old position
@@ -646,7 +646,7 @@
   // the zoomed-in bound. Wheel zooms toward the cursor, drag pans, `0` re-fits.
   function markCurrentTile() {
     var cur = currentSlide();
-    allSlides().forEach(function (s) { s.classList.toggle('qmd-overview-current', s === cur); });
+    allSlides().forEach(function (s) { s.classList.toggle('tali-overview-current', s === cur); });
     markMinimapCurrent();
   }
   function fitOverview() {
@@ -713,7 +713,7 @@
     var dx = e.clientX - ovDrag.x, dy = e.clientY - ovDrag.y;
     if (!ovDrag.moved && dx * dx + dy * dy < 25) return;    // 5px before it counts as a drag
     ovDrag.moved = true;
-    deckEl().classList.add('qmd-ov-panning');
+    deckEl().classList.add('tali-ov-panning');
     deck.ov.cx = ovDrag.cx - dx / deck.ov.scale;
     deck.ov.cy = ovDrag.cy - dy / deck.ov.scale;
     clampOv();
@@ -723,7 +723,7 @@
     var rev = deckEl();
     if (ovDrag && ovDrag.moved) deck.ovDragged = true;      // a pan: swallow the click that follows
     ovDrag = null;
-    if (rev) rev.classList.remove('qmd-ov-panning');
+    if (rev) rev.classList.remove('tali-ov-panning');
   }
   // Pan (if needed) so the highlighted tile stays comfortably on-screen; keep zoom.
   function ensureCurrentTileVisible(animate) {
@@ -747,9 +747,9 @@
     deck.overview = on;
     rev.classList.toggle('overview', on);
     if (on && deck.blackout) toggleBlackout(false); // can't navigate a map you can't see
-    if (on && deck.draw && deck.draw.on) { deck.draw.on = false; rev.classList.remove('qmd-drawing'); }
+    if (on && deck.draw && deck.draw.on) { deck.draw.on = false; rev.classList.remove('tali-drawing'); }
     if (on) { fitOverview(); markCurrentTile(); }
-    else { deck.ov = null; clearFilter(); allSlides().forEach(function (s) { s.classList.remove('qmd-overview-current'); }); }
+    else { deck.ov = null; clearFilter(); allSlides().forEach(function (s) { s.classList.remove('tali-overview-current'); }); }
     syncInert(); // overview: every tile is browsable, so clear inert; exiting re-inerts off-camera
     positionGrid(); // add (or remove) the per-tile gutter shrink
     setCamera(true); // zoom out to the map, or back into the current cell
@@ -768,7 +768,7 @@
   function onSlidesClick(e) {
     if (!deck.overview) return;
     if (deck.ovDragged) { deck.ovDragged = false; return; } // that was a pan, not a pick
-    var sec = e.target.closest && e.target.closest('.qmd-deck .qmd-slides section');
+    var sec = e.target.closest && e.target.closest('.tali-deck .tali-slides section');
     if (!sec) return;
     e.preventDefault();
     var T = tops();
@@ -786,12 +786,12 @@
   // efficient navigation technique.) Rebuilt on layout; the view rect tracks setCamera.
   function buildMinimap() {
     var rev = deckEl(); if (!rev) return;
-    var mm = rev.querySelector(':scope > .qmd-minimap'), inner;
+    var mm = rev.querySelector(':scope > .tali-minimap'), inner;
     if (!mm) {
       mm = document.createElement('div');
-      mm.className = 'qmd-minimap';
+      mm.className = 'tali-minimap';
       mm.setAttribute('aria-hidden', 'true'); // decorative overview map; navigation is keyboard-driven
-      mm.innerHTML = '<div class="qmd-minimap-inner"><div class="qmd-mini-view"></div></div>';
+      mm.innerHTML = '<div class="tali-minimap-inner"><div class="tali-mini-view"></div></div>';
       rev.appendChild(mm);
       inner = mm.firstChild;
       var dragging = false;
@@ -813,12 +813,12 @@
     deck.mini = { scale: ms };
     inner.style.width = (gw * ms) + 'px';
     inner.style.height = (gh * ms) + 'px';
-    var view = inner.querySelector('.qmd-mini-view');
-    Array.prototype.slice.call(inner.querySelectorAll('.qmd-mini-tile')).forEach(function (t) { t.remove(); });
+    var view = inner.querySelector('.tali-mini-view');
+    Array.prototype.slice.call(inner.querySelectorAll('.tali-mini-tile')).forEach(function (t) { t.remove(); });
     rows.forEach(function (rowArr, r) {
       rowArr.forEach(function (cell, c) {
         var t = document.createElement('div');
-        t.className = 'qmd-mini-tile';
+        t.className = 'tali-mini-tile';
         t.style.cssText = 'left:' + (c * W * ms) + 'px;top:' + (r * H * ms) + 'px;width:' + (W * ms - 2) + 'px;height:' + (H * ms - 2) + 'px';
         t.dataset.h = cell.h; t.dataset.v = cell.v;
         inner.insertBefore(t, view);
@@ -828,22 +828,22 @@
   }
   function markMinimapCurrent() {
     var rev = deckEl(); if (!rev) return;
-    var mm = rev.querySelector(':scope > .qmd-minimap'); if (!mm) return;
-    Array.prototype.forEach.call(mm.querySelectorAll('.qmd-mini-tile'), function (t) {
-      t.classList.toggle('qmd-mini-cur', +t.dataset.h === deck.h && +t.dataset.v === deck.v);
+    var mm = rev.querySelector(':scope > .tali-minimap'); if (!mm) return;
+    Array.prototype.forEach.call(mm.querySelectorAll('.tali-mini-tile'), function (t) {
+      t.classList.toggle('tali-mini-cur', +t.dataset.h === deck.h && +t.dataset.v === deck.v);
     });
   }
   // Position the "current view" rectangle; show the minimap only when zoomed beyond fit
   // (otherwise the whole deck is already on screen and it would be redundant).
   function updateMinimapView() {
     var rev = deckEl(); if (!rev) return;
-    var mm = rev.querySelector(':scope > .qmd-minimap'); if (!mm || !deck.mini) return;
+    var mm = rev.querySelector(':scope > .tali-minimap'); if (!mm || !deck.mini) return;
     var show = deck.overview && deck.ov && deck.ov.scale > deck.ov.fit * 1.12;
-    mm.classList.toggle('qmd-minimap-on', show);
+    mm.classList.toggle('tali-minimap-on', show);
     if (!show) return;
     var st = ovStage(), ms = deck.mini.scale;
     var vw = st.sw / deck.ov.scale, vh = st.sh / deck.ov.scale;
-    var view = mm.querySelector('.qmd-mini-view');
+    var view = mm.querySelector('.tali-mini-view');
     view.style.cssText = 'left:' + ((deck.ov.cx - vw / 2) * ms) + 'px;top:' + ((deck.ov.cy - vh / 2) * ms) + 'px;width:' + (vw * ms) + 'px;height:' + (vh * ms) + 'px';
   }
 
@@ -851,9 +851,9 @@
   // Press `/` in the overview to filter slides by title: non-matches dim, matches get
   // an accent ring, Enter jumps to the first match. Type -> locate -> dive in.
   function buildOverviewSearch() {
-    var rev = deckEl(); if (!rev || rev.querySelector(':scope > .qmd-ov-search')) return;
+    var rev = deckEl(); if (!rev || rev.querySelector(':scope > .tali-ov-search')) return;
     var box = document.createElement('input');
-    box.className = 'qmd-ov-search';
+    box.className = 'tali-ov-search';
     box.type = 'text';
     box.setAttribute('placeholder', 'Filter slides…  ( / focus · ↵ jump )');
     box.addEventListener('input', function () { filterTiles(box.value); });
@@ -876,20 +876,20 @@
       var h = sec.querySelector('h1, h2, h3, h4, h5, h6');
       var title = (h ? h.textContent : sec.textContent || '').toLowerCase();
       var hit = !!q && title.indexOf(q) >= 0;
-      sec.classList.toggle('qmd-ov-dim', !!q && !hit);
-      sec.classList.toggle('qmd-ov-hit', hit);
+      sec.classList.toggle('tali-ov-dim', !!q && !hit);
+      sec.classList.toggle('tali-ov-hit', hit);
     });
-    if (rev) rev.classList.toggle('qmd-ov-filtering', !!q); // dims the threads via CSS
-    var mm = rev && rev.querySelector(':scope > .qmd-minimap'); // mirror onto the minimap
-    if (mm) Array.prototype.forEach.call(mm.querySelectorAll('.qmd-mini-tile'), function (t) {
+    if (rev) rev.classList.toggle('tali-ov-filtering', !!q); // dims the threads via CSS
+    var mm = rev && rev.querySelector(':scope > .tali-minimap'); // mirror onto the minimap
+    if (mm) Array.prototype.forEach.call(mm.querySelectorAll('.tali-mini-tile'), function (t) {
       var leaf = leafAt(+t.dataset.h, +t.dataset.v);
-      t.classList.toggle('qmd-mini-dim', !!leaf && leaf.classList.contains('qmd-ov-dim'));
-      t.classList.toggle('qmd-mini-hit', !!leaf && leaf.classList.contains('qmd-ov-hit'));
+      t.classList.toggle('tali-mini-dim', !!leaf && leaf.classList.contains('tali-ov-dim'));
+      t.classList.toggle('tali-mini-hit', !!leaf && leaf.classList.contains('tali-ov-hit'));
     });
   }
   function clearFilter() {
     var rev = deckEl(); if (!rev) return;
-    var box = rev.querySelector(':scope > .qmd-ov-search');
+    var box = rev.querySelector(':scope > .tali-ov-search');
     if (box) box.value = '';
     filterTiles('');
   }
@@ -898,7 +898,7 @@
     for (var h = 0; h < T.length; h++) {
       var leaves = vertsOf(T[h]);
       for (var v = 0; v < leaves.length; v++) {
-        if (leaves[v].classList.contains('qmd-ov-hit')) {
+        if (leaves[v].classList.contains('tali-ov-hit')) {
           deck.h = h; deck.v = v; markCurrentTile(); ensureCurrentTileVisible(true); return;
         }
       }
@@ -946,7 +946,7 @@
   function openSpeaker() {
     if (deck.mode !== 'normal') return;
     if (deck.speakerWin && !deck.speakerWin.closed) { deck.speakerWin.focus(); return; }
-    deck.speakerWin = window.open(withQmd(deckBaseUrl(), 'speaker'), 'qmd-speaker', 'width=1180,height=760');
+    deck.speakerWin = window.open(withQmd(deckBaseUrl(), 'speaker'), 'tali-speaker', 'width=1180,height=760');
   }
   function nextIndex(h, v) {
     var T = tops(), top = T[h];
@@ -969,8 +969,8 @@
     if (deck.spNotesBody) deck.spNotesBody.innerHTML = notes ? notes.innerHTML : '<span class="sp-empty">No notes for this slide.</span>';
   }
   function updateSpeakerClock() {
-    var t = document.querySelector('.qmd-speaker .sp-timer');
-    var c = document.querySelector('.qmd-speaker .sp-clock');
+    var t = document.querySelector('.tali-speaker .sp-timer');
+    var c = document.querySelector('.tali-speaker .sp-clock');
     if (t) { var s = Math.max(0, Math.floor((Date.now() - deck.spStart) / 1000)); t.textContent = Math.floor(s / 60) + ':' + ('0' + (s % 60)).slice(-2); }
     if (c) c.textContent = new Date().toLocaleTimeString();
   }
@@ -978,7 +978,7 @@
     document.title = 'Speaker · ' + document.title;
     var rev = deckEl(); if (rev) rev.style.display = 'none'; // keep as data source for notes/counts
     var root = document.createElement('div');
-    root.className = 'qmd-speaker';
+    root.className = 'tali-speaker';
     root.innerHTML =
       '<div class="sp-top"><div class="sp-timer">0:00</div><button class="sp-reset">Reset</button><div class="sp-clock"></div></div>' +
       '<div class="sp-stage">' +
@@ -1018,27 +1018,27 @@
   // yields a clean handout. `?qmd=print` enters the same layout on screen.
   function enterPrint() {
     var rev = deckEl(); if (!rev) return;
-    document.documentElement.classList.add('qmd-print');
-    rev.classList.remove('qmd-dark-bg'); // bg layer is hidden in print; keep text readable on the page
+    document.documentElement.classList.add('tali-print');
+    rev.classList.remove('tali-dark-bg'); // bg layer is hidden in print; keep text readable on the page
     tops().forEach(function (top) {
       top.style.removeProperty('display'); top.removeAttribute('aria-hidden');
       if (isStack(top)) {
-        top.classList.add('qmd-print-stack');
+        top.classList.add('tali-print-stack');
         vertsOf(top).forEach(function (s) { s.style.removeProperty('display'); s.removeAttribute('aria-hidden'); });
       }
     });
-    rev.querySelectorAll(FRAG_SEL).forEach(function (e) { e.classList.add('qmd-frag-visible'); });
+    rev.querySelectorAll(FRAG_SEL).forEach(function (e) { e.classList.add('tali-frag-visible'); });
     rev.querySelectorAll('pre[data-code-lines]').forEach(function (p) { highlightLines(p, 'all'); });
     rev.querySelectorAll('.magic-move').forEach(function (div) { // show the final block
       var pres = mmBlocks(div);
-      pres.forEach(function (p, i) { p.classList.toggle('qmd-mm-active', i === pres.length - 1); });
+      pres.forEach(function (p, i) { p.classList.toggle('tali-mm-active', i === pres.length - 1); });
     });
     allSlides().forEach(fitSlide); // size every slide to its page (not just visited ones)
     syncInert(); // print shows every slide: clear inert so all pages are readable
   }
   function exitPrint() {
-    document.documentElement.classList.remove('qmd-print');
-    tops().forEach(function (t) { t.classList.remove('qmd-print-stack'); });
+    document.documentElement.classList.remove('tali-print');
+    tops().forEach(function (t) { t.classList.remove('tali-print-stack'); });
     apply(); // -> applyClasses -> syncInert re-inerts the off-camera slides
   }
 
@@ -1050,65 +1050,65 @@
     var rev = deckEl();
     if (!rev || deck.scroll) return;
     deck.scroll = true;
-    document.documentElement.classList.add('qmd-scroll');
-    rev.classList.remove('qmd-dark-bg'); // backgrounds are hidden in reader; keep text readable
+    document.documentElement.classList.add('tali-scroll');
+    rev.classList.remove('tali-dark-bg'); // backgrounds are hidden in reader; keep text readable
     tops().forEach(function (top) {
       top.style.removeProperty('display');
       top.style.removeProperty('font-size');
       top.removeAttribute('aria-hidden');
       if (isStack(top)) {
-        top.classList.add('qmd-scroll-stack');
+        top.classList.add('tali-scroll-stack');
         vertsOf(top).forEach(function (s) { s.style.removeProperty('display'); s.style.removeProperty('font-size'); });
       }
     });
-    rev.querySelectorAll(FRAG_SEL).forEach(function (e) { e.classList.add('qmd-frag-visible'); });
+    rev.querySelectorAll(FRAG_SEL).forEach(function (e) { e.classList.add('tali-frag-visible'); });
     rev.querySelectorAll('pre[data-code-lines]').forEach(function (p) { highlightLines(p, 'all'); });
     rev.querySelectorAll('.magic-move').forEach(function (div) {
       var pres = mmBlocks(div);
-      pres.forEach(function (p, i) { p.classList.toggle('qmd-mm-active', i === pres.length - 1); });
+      pres.forEach(function (p, i) { p.classList.toggle('tali-mm-active', i === pres.length - 1); });
     });
     syncInert(); // reader mode stacks every slide for reading: clear inert from all of them
   }
   function exitScroll() {
     if (!deck.scroll) return;
     deck.scroll = false;
-    document.documentElement.classList.remove('qmd-scroll');
-    tops().forEach(function (t) { t.classList.remove('qmd-scroll-stack'); });
+    document.documentElement.classList.remove('tali-scroll');
+    tops().forEach(function (t) { t.classList.remove('tali-scroll-stack'); });
     apply(); // -> applyClasses -> syncInert re-inerts the off-camera slides
     layout();
   }
 
   // --- drawing / annotations ---------------------------------------------
-  // `d` toggles a pen: a canvas inside `.qmd-slides` (so it scales with the deck) that
+  // `d` toggles a pen: a canvas inside `.tali-slides` (so it scales with the deck) that
   // captures pointer strokes over the current slide. Strokes are kept per slide and
   // redrawn on navigation. A small toolbar offers colours, an eraser and clear.
   function ensureDraw() {
     if (deck.draw) return deck.draw;
     var canvas = document.createElement('canvas');
-    canvas.className = 'qmd-draw';
+    canvas.className = 'tali-draw';
     canvas.width = deck.config.width;
     canvas.height = deck.config.height;
     slidesEl().appendChild(canvas);
     var bar = document.createElement('div');
-    bar.className = 'qmd-draw-bar';
+    bar.className = 'tali-draw-bar';
     bar.innerHTML =
-      '<button class="qmd-draw-color" data-c="#ef4444" style="background:#ef4444"></button>' +
-      '<button class="qmd-draw-color" data-c="#3b82f6" style="background:#3b82f6"></button>' +
-      '<button class="qmd-draw-color" data-c="#22c55e" style="background:#22c55e"></button>' +
-      '<button class="qmd-draw-erase" title="Erase">erase</button>' +
-      '<button class="qmd-draw-clear" title="Clear slide">clear</button>' +
-      '<button class="qmd-draw-done" title="Done (d)">done</button>';
+      '<button class="tali-draw-color" data-c="#ef4444" style="background:#ef4444"></button>' +
+      '<button class="tali-draw-color" data-c="#3b82f6" style="background:#3b82f6"></button>' +
+      '<button class="tali-draw-color" data-c="#22c55e" style="background:#22c55e"></button>' +
+      '<button class="tali-draw-erase" title="Erase">erase</button>' +
+      '<button class="tali-draw-clear" title="Clear slide">clear</button>' +
+      '<button class="tali-draw-done" title="Done (d)">done</button>';
     deckEl().appendChild(bar);
     var d = deck.draw = {
       canvas: canvas, ctx: canvas.getContext('2d'), bar: bar,
       color: '#ef4444', erase: false, on: false, strokes: {}, drawing: false, stroke: null,
     };
-    bar.querySelectorAll('.qmd-draw-color').forEach(function (b) {
+    bar.querySelectorAll('.tali-draw-color').forEach(function (b) {
       b.addEventListener('click', function () { d.color = b.getAttribute('data-c'); d.erase = false; updateDrawBar(); });
     });
-    bar.querySelector('.qmd-draw-erase').addEventListener('click', function () { d.erase = !d.erase; updateDrawBar(); });
-    bar.querySelector('.qmd-draw-clear').addEventListener('click', clearSlideDrawing);
-    bar.querySelector('.qmd-draw-done').addEventListener('click', function () { toggleDraw(false); });
+    bar.querySelector('.tali-draw-erase').addEventListener('click', function () { d.erase = !d.erase; updateDrawBar(); });
+    bar.querySelector('.tali-draw-clear').addEventListener('click', clearSlideDrawing);
+    bar.querySelector('.tali-draw-done').addEventListener('click', function () { toggleDraw(false); });
     canvas.addEventListener('pointerdown', drawStart);
     canvas.addEventListener('pointermove', drawMove);
     window.addEventListener('pointerup', function () { if (deck.draw) deck.draw.drawing = false; });
@@ -1116,16 +1116,16 @@
   }
   function updateDrawBar() {
     var d = deck.draw; if (!d) return;
-    d.bar.querySelectorAll('.qmd-draw-color').forEach(function (b) {
+    d.bar.querySelectorAll('.tali-draw-color').forEach(function (b) {
       b.classList.toggle('sel', !d.erase && b.getAttribute('data-c') === d.color);
     });
-    d.bar.querySelector('.qmd-draw-erase').classList.toggle('sel', d.erase);
+    d.bar.querySelector('.tali-draw-erase').classList.toggle('sel', d.erase);
   }
   function toggleDraw(force) {
     if (deck.mode !== 'normal' || deck.scroll || deck.overview) return;
     var d = ensureDraw();
     d.on = (force == null) ? !d.on : force;
-    deckEl().classList.toggle('qmd-drawing', d.on);
+    deckEl().classList.toggle('tali-drawing', d.on);
     if (d.on) { redrawAnnotations(); updateDrawBar(); }
   }
   function drawKey() { var c = currentSlide(); return c ? (c.id || 'i' + deck.h + '-' + deck.v) : ''; }
@@ -1239,8 +1239,8 @@
     if (!deck.config.slideNumber) return;
     var rev = deckEl();
     if (!rev) return;
-    var el = rev.querySelector('.qmd-slide-number');
-    if (!el) { el = document.createElement('div'); el.className = 'qmd-slide-number'; rev.appendChild(el); }
+    var el = rev.querySelector('.tali-slide-number');
+    if (!el) { el = document.createElement('div'); el.className = 'tali-slide-number'; rev.appendChild(el); }
     var all = allSlides();
     el.textContent = (all.indexOf(currentSlide()) + 1) + ' / ' + all.length;
   }
@@ -1257,10 +1257,10 @@
     for (var i = 0; i < all.length; i++) {
       all[i].setAttribute('aria-label', 'Slide ' + (i + 1) + ' of ' + all.length);
     }
-    var live = rev.querySelector('.qmd-deck-live');
+    var live = rev.querySelector('.tali-deck-live');
     if (!live) {
       live = document.createElement('div');
-      live.className = 'qmd-deck-live';
+      live.className = 'tali-deck-live';
       live.setAttribute('aria-live', 'polite');
       live.setAttribute('aria-atomic', 'true');
       rev.appendChild(live);
@@ -1293,7 +1293,7 @@
         case 'ArrowDown': moveHighlight(0, 1); break;
         case 'ArrowUp': moveHighlight(0, -1); break;
         case '0': fitOverview(); setCamera(true); break; // re-fit the whole map
-        case '/': { var b = deckEl().querySelector(':scope > .qmd-ov-search'); if (b) b.focus(); break; } // filter
+        case '/': { var b = deckEl().querySelector(':scope > .tali-ov-search'); if (b) b.focus(); break; } // filter
         default: handled = false;
       }
       if (handled) e.preventDefault();
@@ -1333,19 +1333,19 @@
     if (handled) e.preventDefault();
   }
   // Black the whole viewport (pull attention back to the speaker). The overlay is a
-  // body-level element (not a `.qmd-deck` child) so it escapes `.qmd-deck`'s stacking
+  // body-level element (not a `.tali-deck` child) so it escapes `.tali-deck`'s stacking
   // context and covers ALL chrome — including the preview dev menu at z-9999. Keys
   // are gated in onKey; a tap dismisses it where there's no Esc/B (touch).
   function toggleBlackout(on) {
     var rev = deckEl();
     deck.blackout = !!on;
-    if (rev) rev.classList.toggle('qmd-blackout', deck.blackout);
+    if (rev) rev.classList.toggle('tali-blackout', deck.blackout);
     if (deck.blackout) {
       // Blackout means eyes on the speaker — drop drawing too (mirrors setOverview).
-      if (deck.draw && deck.draw.on) { deck.draw.on = false; if (rev) rev.classList.remove('qmd-drawing'); }
+      if (deck.draw && deck.draw.on) { deck.draw.on = false; if (rev) rev.classList.remove('tali-drawing'); }
       if (!deck.blackoutEl) {
         deck.blackoutEl = document.createElement('div');
-        deck.blackoutEl.className = 'qmd-blackout-overlay';
+        deck.blackoutEl.className = 'tali-blackout-overlay';
         deck.blackoutEl.addEventListener('pointerdown', function () { toggleBlackout(false); });
         document.body.appendChild(deck.blackoutEl);
       }
@@ -1387,7 +1387,7 @@
   // were keyboard-only and so undiscoverable; this surfaces them in a corner
   // menu plus a progress bar + prev/next arrows. Built once in
   // normal mode; auto-hides on idle. Fixed to the viewport (not the scaled
-  // .qmd-slides), so it doesn't ride the deck transform.
+  // .tali-slides), so it doesn't ride the deck transform.
   function svg(p) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>'; }
   var IC = {
     menu: svg('<path d="M4 7h16M4 12h16M4 17h16"/>'),
@@ -1401,10 +1401,10 @@
   };
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function tool(action, ico, label, hint) {
-    return '<button class="qmd-menu-item" data-action="' + action + '"><span class="qmd-menu-ico">' + ico +
-      '</span><span class="qmd-menu-label">' + label + '</span>' + (hint ? '<span class="qmd-menu-hint">' + hint + '</span>' : '') + '</button>';
+    return '<button class="tali-menu-item" data-action="' + action + '"><span class="tali-menu-ico">' + ico +
+      '</span><span class="tali-menu-label">' + label + '</span>' + (hint ? '<span class="tali-menu-hint">' + hint + '</span>' : '') + '</button>';
   }
-  function key(k, d) { return '<div class="qmd-key"><kbd>' + k + '</kbd><span>' + d + '</span></div>'; }
+  function key(k, d) { return '<div class="tali-key"><kbd>' + k + '</kbd><span>' + d + '</span></div>'; }
   var KEYS_HTML =
     key('← →', 'Navigate') + key('↑ ↓', 'Vertical slides') + key('Space', 'Next') +
     key('O', 'Overview') + key('F', 'Fullscreen') + key('S', 'Speaker view') +
@@ -1415,21 +1415,21 @@
     var rev = deckEl();
     if (!rev || deck.chrome) return;
     var prog = document.createElement('div');
-    prog.className = 'qmd-progress';
-    prog.innerHTML = '<div class="qmd-progress-fill"></div>';
+    prog.className = 'tali-progress';
+    prog.innerHTML = '<div class="tali-progress-fill"></div>';
     rev.appendChild(prog);
     var ctl = document.createElement('div');
-    ctl.className = 'qmd-controls';
+    ctl.className = 'tali-controls';
     ctl.innerHTML =
-      '<button class="qmd-ctl qmd-ctl-prev" aria-label="Previous slide" title="Previous (←)">‹</button>' +
-      '<button class="qmd-ctl qmd-ctl-next" aria-label="Next slide" title="Next (→)">›</button>' +
-      '<button class="qmd-ctl qmd-ctl-menu" aria-label="Menu" title="Menu (m)" aria-haspopup="menu" aria-expanded="false">' + IC.menu + '</button>';
+      '<button class="tali-ctl tali-ctl-prev" aria-label="Previous slide" title="Previous (←)">‹</button>' +
+      '<button class="tali-ctl tali-ctl-next" aria-label="Next slide" title="Next (→)">›</button>' +
+      '<button class="tali-ctl tali-ctl-menu" aria-label="Menu" title="Menu (m)" aria-haspopup="menu" aria-expanded="false">' + IC.menu + '</button>';
     rev.appendChild(ctl);
-    ctl.querySelector('.qmd-ctl-prev').addEventListener('click', function () { prev(); });
-    ctl.querySelector('.qmd-ctl-next').addEventListener('click', function () { next(); });
-    deck.menuBtn = ctl.querySelector('.qmd-ctl-menu');
+    ctl.querySelector('.tali-ctl-prev').addEventListener('click', function () { prev(); });
+    ctl.querySelector('.tali-ctl-next').addEventListener('click', function () { next(); });
+    deck.menuBtn = ctl.querySelector('.tali-ctl-menu');
     deck.menuBtn.addEventListener('click', function () { toggleMenu(); });
-    deck.chrome = { fill: prog.querySelector('.qmd-progress-fill'), ctl: ctl };
+    deck.chrome = { fill: prog.querySelector('.tali-progress-fill'), ctl: ctl };
     buildMenu();
     document.addEventListener('mousemove', showChrome);
     document.addEventListener('touchstart', showChrome, { passive: true });
@@ -1438,15 +1438,15 @@
   }
   function buildMenu() {
     var menu = document.createElement('div');
-    menu.className = 'qmd-menu';
+    menu.className = 'tali-menu';
     menu.setAttribute('hidden', '');
     var themeRow = (window.qmdDeckThemeManaged && !window.qmdDeckEmbedded)
-      ? '<div class="qmd-menu-head">Theme</div><div class="qmd-menu-tools">' +
-        tool('theme', IC.moon, 'Dark mode', '<span class="qmd-theme-state"></span>') + '</div>'
+      ? '<div class="tali-menu-head">Theme</div><div class="tali-menu-tools">' +
+        tool('theme', IC.moon, 'Dark mode', '<span class="tali-theme-state"></span>') + '</div>'
       : '';
     menu.innerHTML =
-      '<div class="qmd-menu-head">Slides</div><div class="qmd-menu-slides"></div>' +
-      '<div class="qmd-menu-head">Tools</div><div class="qmd-menu-tools">' +
+      '<div class="tali-menu-head">Slides</div><div class="tali-menu-slides"></div>' +
+      '<div class="tali-menu-head">Tools</div><div class="tali-menu-tools">' +
         tool('overview', IC.grid, 'Overview', 'O') +
         tool('reader', IC.reader, 'Reader mode', '') +
         tool('draw', IC.pen, 'Annotate', 'D') +
@@ -1454,10 +1454,10 @@
         tool('fullscreen', IC.fs, 'Fullscreen', 'F') +
         tool('print', IC.pdf, 'Export PDF', '⌘P') +
       '</div>' + themeRow +
-      '<div class="qmd-menu-head">Keyboard</div><div class="qmd-menu-keys">' + KEYS_HTML + '</div>';
+      '<div class="tali-menu-head">Keyboard</div><div class="tali-menu-keys">' + KEYS_HTML + '</div>';
     document.body.appendChild(menu);
     var backdrop = document.createElement('div');
-    backdrop.className = 'qmd-menu-backdrop';
+    backdrop.className = 'tali-menu-backdrop';
     backdrop.setAttribute('hidden', '');
     backdrop.addEventListener('click', function () { toggleMenu(false); });
     document.body.appendChild(backdrop);
@@ -1466,35 +1466,35 @@
     deck.menuBackdrop = backdrop;
   }
   function refreshSlideList() {
-    var box = deck.menu && deck.menu.querySelector('.qmd-menu-slides');
+    var box = deck.menu && deck.menu.querySelector('.tali-menu-slides');
     if (!box) return;
     var all = allSlides(), cur = currentSlide(), html = '';
     for (var i = 0; i < all.length; i++) {
       var hd = all[i].querySelector('h1,h2,h3');
       var label = hd ? hd.textContent.trim() : ('Slide ' + (i + 1));
-      html += '<button class="qmd-menu-slide' + (all[i] === cur ? ' qmd-on' : '') + '" data-i="' + i + '">' +
-        '<span class="qmd-menu-slide-n">' + (i + 1) + '</span><span class="qmd-menu-slide-t">' + esc(label) + '</span></button>';
+      html += '<button class="tali-menu-slide' + (all[i] === cur ? ' tali-on' : '') + '" data-i="' + i + '">' +
+        '<span class="tali-menu-slide-n">' + (i + 1) + '</span><span class="tali-menu-slide-t">' + esc(label) + '</span></button>';
     }
     box.innerHTML = html;
-    var on = box.querySelector('.qmd-on');
+    var on = box.querySelector('.tali-on');
     if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
   }
   function markActiveTools() {
     if (!deck.menu) return;
     var set = function (action, on) {
       var b = deck.menu.querySelector('[data-action="' + action + '"]');
-      if (b) b.classList.toggle('qmd-on', !!on);
+      if (b) b.classList.toggle('tali-on', !!on);
     };
     set('reader', deck.scroll);
     set('draw', deck.draw && deck.draw.on);
     set('overview', deck.overview);
-    var st = deck.menu.querySelector('.qmd-theme-state');
-    if (st) st.textContent = document.documentElement.classList.contains('qmd-deck-dark') ? 'On' : 'Off';
+    var st = deck.menu.querySelector('.tali-theme-state');
+    if (st) st.textContent = document.documentElement.classList.contains('tali-deck-dark') ? 'On' : 'Off';
   }
   function onMenuClick(e) {
-    var slide = e.target.closest && e.target.closest('.qmd-menu-slide');
+    var slide = e.target.closest && e.target.closest('.tali-menu-slide');
     if (slide) { jumpToIndex(parseInt(slide.getAttribute('data-i'), 10)); return; }
-    var item = e.target.closest && e.target.closest('.qmd-menu-item');
+    var item = e.target.closest && e.target.closest('.tali-menu-item');
     if (!item) return;
     var a = item.getAttribute('data-action');
     if (a === 'theme') { toggleThemeMode(); return; } // stay open; reflects state
@@ -1540,7 +1540,7 @@
   }
   function toggleThemeMode() {
     if (!window.qmdDeckSetTheme) return;
-    var dark = document.documentElement.classList.contains('qmd-deck-dark');
+    var dark = document.documentElement.classList.contains('tali-deck-dark');
     window.qmdDeckSetTheme(dark ? 'light' : 'dark');
     markActiveTools();
   }
@@ -1552,9 +1552,9 @@
   }
   var idleTimer;
   function showChrome() {
-    document.documentElement.classList.remove('qmd-idle');
+    document.documentElement.classList.remove('tali-idle');
     clearTimeout(idleTimer);
-    idleTimer = setTimeout(function () { if (!deck.menuOpen) document.documentElement.classList.add('qmd-idle'); }, 3000);
+    idleTimer = setTimeout(function () { if (!deck.menuOpen) document.documentElement.classList.add('tali-idle'); }, 3000);
   }
 
   // --- lifecycle ----------------------------------------------------------
@@ -1576,7 +1576,7 @@
     // Print preview: lay every slide out as a page on screen (same layout Cmd/Ctrl+P uses).
     if (deck.mode === 'print') {
       clampIndices();
-      rev.classList.add('qmd-ready');
+      rev.classList.add('tali-ready');
       enterPrint();
       deck.ready = true;
       return facade;
@@ -1587,7 +1587,7 @@
     // Restore a deep-linked fragment step (#/h/v/frag) once the slide is known.
     if (deck.pendingFrag != null) deck.frag = Math.max(0, Math.min(deck.pendingFrag, fragCount()));
     apply(); layout(); updateNumber();
-    rev.classList.add('qmd-ready'); // show the deck now the first slide is placed
+    rev.classList.add('tali-ready'); // show the deck now the first slide is placed
     // Coalesce a burst of resize events (a drag-resize / rotate fires many) into ONE
     // layout per animation frame — layout re-fits every slide (fitSlide measures each),
     // so running it per-event thrashed the main thread.

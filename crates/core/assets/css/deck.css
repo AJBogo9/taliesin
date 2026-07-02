@@ -1,10 +1,10 @@
 /* qmd-fast deck engine: the slide layout, on qmd-fast's own contract
-   (.qmd-deck > .qmd-slides > section, nested <section> stacks). Behaviour
+   (.tali-deck > .tali-slides > section, nested <section> stacks). Behaviour
    lives in deck.js; this is only layout. */
 
 html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
 /* The default deck background is the `html` canvas; `body` stays transparent so the
-   per-slide `.qmd-bg` layer (z-index -1) can paint above the canvas and below the
+   per-slide `.tali-bg` layer (z-index -1) can paint above the canvas and below the
    (transparent) slides. A `body` background would sit above z-index -1 and hide it. */
 html { background: #fff; }
 body { background: transparent; }
@@ -12,7 +12,7 @@ body { background: transparent; }
 /* The deck is a fixed 16:9 "stage" centred in the viewport; deck.js's camera fits a
    cell to it exactly so adjacent cells fall outside and are clipped (no peek), and
    the area around the stage is the letterbox. */
-.qmd-deck {
+.tali-deck {
   position: absolute;
   inset: 0;
   margin: auto; /* centre the stage in the viewport */
@@ -27,7 +27,7 @@ body { background: transparent; }
 /* The slides container is the "camera": deck.js sets a `translate() scale()`
    transform that frames the current cell (normal) or the whole grid (overview).
    Sections are positioned into a grid relative to it (see deck.js positionGrid). */
-.qmd-deck .qmd-slides {
+.tali-deck .tali-slides {
   position: absolute;
   left: 0;
   top: 0;
@@ -36,16 +36,16 @@ body { background: transparent; }
   transform-origin: 0 0;
 }
 /* The pan/zoom transition. Gated by a class so resize + first paint don't animate. */
-.qmd-deck .qmd-slides.qmd-cam-anim,
-.qmd-deck .qmd-slides.qmd-cam-anim > section,
-.qmd-deck .qmd-slides.qmd-cam-anim > section > section {
+.tali-deck .tali-slides.tali-cam-anim,
+.tali-deck .tali-slides.tali-cam-anim > section,
+.tali-deck .tali-slides.tali-cam-anim > section > section {
   transition: transform .5s cubic-bezier(.2, .8, .2, 1);
 }
 
 /* Hide the deck until deck.js positions the first slide, so neither the plain
    `display:none` (blank) nor a theme's forced per-section display (all slides
-   stacked) flashes before JS runs. deck.js adds `.qmd-ready` after first layout. */
-.qmd-deck:not(.qmd-ready) .qmd-slides {
+   stacked) flashes before JS runs. deck.js adds `.tali-ready` after first layout. */
+.tali-deck:not(.tali-ready) .tali-slides {
   visibility: hidden;
 }
 
@@ -55,8 +55,8 @@ body { background: transparent; }
 /* Every slide is laid out: deck.js positions each into its grid cell via an inline
    transform (visibility is driven by the camera, not a per-slide class).
    transform-origin centre so the overview gutter-shrink scales toward the middle. */
-.qmd-deck .qmd-slides > section,
-.qmd-deck .qmd-slides > section > section {
+.tali-deck .tali-slides > section,
+.tali-deck .tali-slides > section > section {
   position: absolute;
   inset: 0;
   box-sizing: border-box;
@@ -67,11 +67,11 @@ body { background: transparent; }
 }
 /* A stack wrapper is a transparent container; its sub-slides drop below it, so it
    must not clip them or carry its own padding. */
-.qmd-deck .qmd-slides > section.qmd-stack { overflow: visible; padding: 0; }
+.tali-deck .tali-slides > section.tali-stack { overflow: visible; padding: 0; }
 
 /* Per-slide vertical centering (the front-matter title slide carries .center). */
-.qmd-deck .qmd-slides > section.center,
-.qmd-deck .qmd-slides > section > section.center {
+.tali-deck .tali-slides > section.center,
+.tali-deck .tali-slides > section > section.center {
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -82,29 +82,29 @@ body { background: transparent; }
    the heading and other content. Authored as a fenced div: `:::{.tali-stretch}`
    wrapping an image. `.r-stretch` (the Quarto authoring class) stays accepted as a
    deprecated alias, so every selector matches both spellings. */
-.qmd-deck .qmd-slides > section:has(> :is(.tali-stretch, .r-stretch)),
-.qmd-deck .qmd-slides > section > section:has(> :is(.tali-stretch, .r-stretch)) {
+.tali-deck .tali-slides > section:has(> :is(.tali-stretch, .r-stretch)),
+.tali-deck .tali-slides > section > section:has(> :is(.tali-stretch, .r-stretch)) {
   display: flex;
   flex-direction: column;
 }
-.qmd-deck :is(.tali-stretch, .r-stretch) {
+.tali-deck :is(.tali-stretch, .r-stretch) {
   flex: 1 1 auto;
   min-height: 0;
   margin: 0.4em 0;
 }
 /* Unwrap the paragraph/figure comrak puts around the image so the media itself is
    the box that fills the stretch region. */
-.qmd-deck :is(.tali-stretch, .r-stretch) > p {
+.tali-deck :is(.tali-stretch, .r-stretch) > p {
   display: contents;
 }
-.qmd-deck :is(.tali-stretch, .r-stretch) > figure {
+.tali-deck :is(.tali-stretch, .r-stretch) > figure {
   margin: 0;
   height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
 }
-.qmd-deck :is(.tali-stretch, .r-stretch) :is(img, svg, canvas) {
+.tali-deck :is(.tali-stretch, .r-stretch) :is(img, svg, canvas) {
   display: block;
   width: 100%;
   height: 100%;
@@ -114,12 +114,12 @@ body { background: transparent; }
 /* In a *captioned* figure the media shares the box with the figcaption, so let it
    flex-grow instead of forcing height:100% (which ignores the caption and overflows
    the slide); the caption keeps its content height. */
-.qmd-deck :is(.tali-stretch, .r-stretch) > figure > :is(img, svg, canvas) {
+.tali-deck :is(.tali-stretch, .r-stretch) > figure > :is(img, svg, canvas) {
   flex: 1 1 auto;
   height: auto;
   min-height: 0;
 }
-.qmd-deck :is(.tali-stretch, .r-stretch) > figure > figcaption {
+.tali-deck :is(.tali-stretch, .r-stretch) > figure > figcaption {
   flex: none;
 }
 
@@ -128,7 +128,7 @@ body { background: transparent; }
    scrolls into the 16:9 stage. A fade-in here would start the incoming slide at
    opacity 0 (invisible until landed) and add a vertical shift that fights the
    horizontal pan, breaking the "slides sitting in a line" illusion. The first
-   slide is shown cleanly by the .qmd-ready visibility gate above. */
+   slide is shown cleanly by the .tali-ready visibility gate above. */
 
 /* Overview: a scrollable grid of all slides. Built with `zoom` + grid (no 3D
    transforms), so themes using `backdrop-filter` keep working (a transform-based
@@ -138,8 +138,8 @@ body { background: transparent; }
    their cells, so the move is a continuous zoom, not a relayout. Tiles get card
    styling, a per-section gutter-shrink (positionGrid) opens the gaps, and the
    current tile is ringed in the accent colour. Click a tile to zoom into it. */
-.qmd-deck.overview .qmd-slides > section:not(.qmd-stack),
-.qmd-deck.overview .qmd-slides > section > section {
+.tali-deck.overview .tali-slides > section:not(.tali-stack),
+.tali-deck.overview .tali-slides > section > section {
   border-radius: 12px;
   box-shadow: 0 12px 34px rgba(0, 0, 0, .5);
   outline: 1px solid rgba(127, 127, 127, .25);
@@ -147,18 +147,18 @@ body { background: transparent; }
   cursor: pointer;
   overflow: hidden;
 }
-.qmd-deck.overview .qmd-slides > section.qmd-overview-current,
-.qmd-deck.overview .qmd-slides > section > section.qmd-overview-current {
+.tali-deck.overview .tali-slides > section.tali-overview-current,
+.tali-deck.overview .tali-slides > section > section.tali-overview-current {
   outline: 3px solid var(--deck-accent, #4c8dff);
   box-shadow: 0 16px 46px rgba(0, 0, 0, .6);
 }
 /* Storyline threads: a horizontal connector along each multi-slide topic row, drawn
-   as `.qmd-thread-line` divs (deck.js drawThreads) in `.qmd-slides` world coords so they
+   as `.tali-thread-line` divs (deck.js drawThreads) in `.tali-slides` world coords so they
    pan/zoom with the camera and read as a line joining a topic's cards through the
    gutters. Shown only in overview. */
-.qmd-threads { position: absolute; left: 0; top: 0; pointer-events: none; }
-.qmd-thread-line { display: none; }
-.qmd-deck.overview .qmd-thread-line {
+.tali-threads { position: absolute; left: 0; top: 0; pointer-events: none; }
+.tali-thread-line { display: none; }
+.tali-deck.overview .tali-thread-line {
   display: block;
   position: absolute;
   left: 0;
@@ -170,20 +170,20 @@ body { background: transparent; }
   opacity: .42;
   border-radius: 999px;
 }
-.qmd-deck.overview.qmd-ov-filtering .qmd-thread-line { opacity: .1; } /* recede under a filter */
-.qmd-deck.overview .qmd-slides > section:not(.qmd-stack):hover,
-.qmd-deck.overview .qmd-slides > section > section:hover {
+.tali-deck.overview.tali-ov-filtering .tali-thread-line { opacity: .1; } /* recede under a filter */
+.tali-deck.overview .tali-slides > section:not(.tali-stack):hover,
+.tali-deck.overview .tali-slides > section > section:hover {
   outline-color: rgba(160, 170, 190, .55);
   box-shadow: 0 18px 52px rgba(0, 0, 0, .62);
 }
 /* The overview is a draggable map: grab cursor on the canvas (tiles keep pointer),
    grabbing while panning. */
-.qmd-deck.overview { cursor: grab; }
-.qmd-deck.overview.qmd-ov-panning,
-.qmd-deck.overview.qmd-ov-panning .qmd-slides > section { cursor: grabbing; }
-/* A hint on how to drive the map, shown in screen space (not the scaled .qmd-slides) and
+.tali-deck.overview { cursor: grab; }
+.tali-deck.overview.tali-ov-panning,
+.tali-deck.overview.tali-ov-panning .tali-slides > section { cursor: grabbing; }
+/* A hint on how to drive the map, shown in screen space (not the scaled .tali-slides) and
    auto-fading a few seconds after the overview opens. */
-.qmd-deck.overview::after {
+.tali-deck.overview::after {
   content: "scroll to zoom · drag to pan · 0 to fit";
   position: absolute;
   left: 50%;
@@ -199,17 +199,17 @@ body { background: transparent; }
   backdrop-filter: blur(6px);
   pointer-events: none;
   z-index: 30;
-  animation: qmd-ov-hint 4.5s ease forwards;
+  animation: tali-ov-hint 4.5s ease forwards;
 }
-@keyframes qmd-ov-hint { 0%, 64% { opacity: 1; } 100% { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .qmd-deck.overview::after { animation: none; opacity: .85; } }
+@keyframes tali-ov-hint { 0%, 64% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .tali-deck.overview::after { animation: none; opacity: .85; } }
 
 /* Semantic zoom (level-of-detail): when the camera is zoomed out far enough that a
    tile's real content is an illegible smudge, each tile collapses to a clean title
    card (built by deck.js buildLodCards). The real content stays in the DOM, only
    faded, so live state and the auto-animate/FLIP machinery are never disturbed.
-   `.qmd-lod-far` is toggled by setCamera on the tile's on-screen size. */
-.qmd-lod {
+   `.tali-lod-far` is toggled by setCamera on the tile's on-screen size. */
+.tali-lod {
   position: absolute;
   inset: 0;
   z-index: 2;
@@ -223,7 +223,7 @@ body { background: transparent; }
   pointer-events: none;
   transition: opacity .18s ease;
 }
-.qmd-lod-title {
+.tali-lod-title {
   font-size: 84px;
   font-weight: 700;
   line-height: 1.08;
@@ -232,7 +232,7 @@ body { background: transparent; }
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
-.qmd-lod-num {
+.tali-lod-num {
   position: absolute;
   top: 24px;
   right: 34px;
@@ -240,21 +240,21 @@ body { background: transparent; }
   font-weight: 600;
   opacity: .5;
 }
-.qmd-deck.qmd-lod-far .qmd-slides section > .qmd-lod { opacity: 1; }
+.tali-deck.tali-lod-far .tali-slides section > .tali-lod { opacity: 1; }
 /* Fade the real content out (but keep the bg layer, the title card, and any nested
    sub-slide sections, which carry their own cards). */
-.qmd-deck.qmd-lod-far .qmd-slides section > :not(.qmd-slide-bg):not(.qmd-lod):not(section) {
+.tali-deck.tali-lod-far .tali-slides section > :not(.tali-slide-bg):not(.tali-lod):not(section) {
   opacity: 0;
   transition: opacity .18s ease;
 }
 @media (prefers-reduced-motion: reduce) {
-  .qmd-lod,
-  .qmd-deck.qmd-lod-far .qmd-slides section > :not(.qmd-slide-bg):not(.qmd-lod):not(section) { transition: none; }
+  .tali-lod,
+  .tali-deck.tali-lod-far .tali-slides section > :not(.tali-slide-bg):not(.tali-lod):not(section) { transition: none; }
 }
 
 /* Minimap (overview+detail): a schematic of the whole deck in the corner, with a
    rectangle for the current view; appears only when the map is zoomed beyond fit. */
-.qmd-minimap {
+.tali-minimap {
   position: absolute;
   right: 16px;
   bottom: 16px;
@@ -269,23 +269,23 @@ body { background: transparent; }
   transition: opacity .2s ease;
   z-index: 40;
 }
-.qmd-minimap.qmd-minimap-on { opacity: 1; pointer-events: auto; }
-.qmd-minimap-inner { position: relative; cursor: pointer; }
-.qmd-mini-tile { position: absolute; background: rgba(165, 175, 195, .26); border-radius: 2px; }
-.qmd-mini-tile.qmd-mini-cur { background: var(--deck-accent, #4c8dff); }
-.qmd-mini-tile.qmd-mini-dim { opacity: .22; } /* under an active filter */
-.qmd-mini-tile.qmd-mini-hit { background: var(--deck-accent, #4c8dff); }
-.qmd-mini-view {
+.tali-minimap.tali-minimap-on { opacity: 1; pointer-events: auto; }
+.tali-minimap-inner { position: relative; cursor: pointer; }
+.tali-mini-tile { position: absolute; background: rgba(165, 175, 195, .26); border-radius: 2px; }
+.tali-mini-tile.tali-mini-cur { background: var(--deck-accent, #4c8dff); }
+.tali-mini-tile.tali-mini-dim { opacity: .22; } /* under an active filter */
+.tali-mini-tile.tali-mini-hit { background: var(--deck-accent, #4c8dff); }
+.tali-mini-view {
   position: absolute;
   border: 1.5px solid var(--deck-accent, #4c8dff);
   background: rgba(76, 141, 255, .14);
   border-radius: 3px;
   pointer-events: none;
 }
-@media (prefers-reduced-motion: reduce) { .qmd-minimap { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .tali-minimap { transition: none; } }
 
 /* Overview filter: a box (press `/`) that dims non-matching tiles and rings matches. */
-.qmd-ov-search {
+.tali-ov-search {
   position: absolute;
   top: 16px;
   left: 50%;
@@ -304,28 +304,28 @@ body { background: transparent; }
   z-index: 41;
   display: none;
 }
-.qmd-deck.overview .qmd-ov-search { display: block; }
-.qmd-ov-search:focus { border-color: var(--deck-accent, #4c8dff); }
-.qmd-ov-search::placeholder { color: rgba(150, 160, 180, .7); }
-.qmd-deck.overview .qmd-slides section.qmd-ov-dim { opacity: .2; }
-.qmd-deck.overview .qmd-slides section.qmd-ov-hit { outline: 3px solid var(--deck-accent, #4c8dff); }
+.tali-deck.overview .tali-ov-search { display: block; }
+.tali-ov-search:focus { border-color: var(--deck-accent, #4c8dff); }
+.tali-ov-search::placeholder { color: rgba(150, 160, 180, .7); }
+.tali-deck.overview .tali-slides section.tali-ov-dim { opacity: .2; }
+.tali-deck.overview .tali-slides section.tali-ov-hit { outline: 3px solid var(--deck-accent, #4c8dff); }
 
 /* Magic-move: the code blocks in a `::: {.magic-move}` are stacked in one grid
    cell (so the container sizes to the tallest); deck.js shows the active block and,
    on a step, glides matched lines + fades new/old ones between consecutive blocks. */
-.qmd-deck .magic-move { display: grid; }
-.qmd-deck .magic-move > pre {
+.tali-deck .magic-move { display: grid; }
+.tali-deck .magic-move > pre {
   grid-area: 1 / 1;
   margin: 0;
   opacity: 0;
   transition: opacity .4s ease;
 }
-.qmd-deck .magic-move > pre.qmd-mm-active { opacity: 1; }
+.tali-deck .magic-move > pre.tali-mm-active { opacity: 1; }
 
 /* Callouts on slides. The deck doesn't load base.css, so style them here with
    translucent fills (so they read on a light OR dark deck): an accent left border per
    kind + a tinted title bar. Matches the page/book callout structure. */
-.qmd-deck .qmd-slides .callout {
+.tali-deck .tali-slides .callout {
   border: 1px solid rgba(127, 127, 127, .28);
   border-left-width: 5px;
   border-radius: 8px;
@@ -333,27 +333,27 @@ body { background: transparent; }
   overflow: hidden;
   text-align: left;
 }
-.qmd-deck .qmd-slides .callout-title { font-weight: 700; padding: 0.28em 0.7em; margin: 0; }
-.qmd-deck .qmd-slides .callout-body { padding: 0.1em 0.75em 0.4em; }
-.qmd-deck .qmd-slides .callout-body > :first-child { margin-top: 0.35em; }
-.qmd-deck .qmd-slides .callout-collapse > details > summary.callout-title { cursor: pointer; list-style: none; }
-.qmd-deck .qmd-slides .callout-note { border-left-color: #4c8dff; }
-.qmd-deck .qmd-slides .callout-note > .callout-title, .qmd-deck .qmd-slides .callout-note summary.callout-title { background: rgba(76, 141, 255, .16); }
-.qmd-deck .qmd-slides .callout-tip { border-left-color: #2bb673; }
-.qmd-deck .qmd-slides .callout-tip > .callout-title, .qmd-deck .qmd-slides .callout-tip summary.callout-title { background: rgba(43, 182, 115, .16); }
-.qmd-deck .qmd-slides .callout-warning { border-left-color: #e0a800; }
-.qmd-deck .qmd-slides .callout-warning > .callout-title, .qmd-deck .qmd-slides .callout-warning summary.callout-title { background: rgba(224, 168, 0, .18); }
-.qmd-deck .qmd-slides .callout-important { border-left-color: #e0566b; }
-.qmd-deck .qmd-slides .callout-important > .callout-title, .qmd-deck .qmd-slides .callout-important summary.callout-title { background: rgba(224, 86, 107, .16); }
-.qmd-deck .qmd-slides .callout-caution { border-left-color: #e8730c; }
-.qmd-deck .qmd-slides .callout-caution > .callout-title, .qmd-deck .qmd-slides .callout-caution summary.callout-title { background: rgba(232, 115, 12, .16); }
+.tali-deck .tali-slides .callout-title { font-weight: 700; padding: 0.28em 0.7em; margin: 0; }
+.tali-deck .tali-slides .callout-body { padding: 0.1em 0.75em 0.4em; }
+.tali-deck .tali-slides .callout-body > :first-child { margin-top: 0.35em; }
+.tali-deck .tali-slides .callout-collapse > details > summary.callout-title { cursor: pointer; list-style: none; }
+.tali-deck .tali-slides .callout-note { border-left-color: #4c8dff; }
+.tali-deck .tali-slides .callout-note > .callout-title, .tali-deck .tali-slides .callout-note summary.callout-title { background: rgba(76, 141, 255, .16); }
+.tali-deck .tali-slides .callout-tip { border-left-color: #2bb673; }
+.tali-deck .tali-slides .callout-tip > .callout-title, .tali-deck .tali-slides .callout-tip summary.callout-title { background: rgba(43, 182, 115, .16); }
+.tali-deck .tali-slides .callout-warning { border-left-color: #e0a800; }
+.tali-deck .tali-slides .callout-warning > .callout-title, .tali-deck .tali-slides .callout-warning summary.callout-title { background: rgba(224, 168, 0, .18); }
+.tali-deck .tali-slides .callout-important { border-left-color: #e0566b; }
+.tali-deck .tali-slides .callout-important > .callout-title, .tali-deck .tali-slides .callout-important summary.callout-title { background: rgba(224, 86, 107, .16); }
+.tali-deck .tali-slides .callout-caution { border-left-color: #e8730c; }
+.tali-deck .tali-slides .callout-caution > .callout-title, .tali-deck .tali-slides .callout-caution summary.callout-title { background: rgba(232, 115, 12, .16); }
 
 /* Per-slide backgrounds: a layer behind each slide's own content, filling the slide
    box, so it travels with the slide as the camera pans and shows per-tile in
-   overview. deck.js sets it from the section's data-background-*. `.qmd-dark-bg` on
+   overview. deck.js sets it from the section's data-background-*. `.tali-dark-bg` on
    the section flips its own text light over a dark/image/gradient background (code
    panels keep their own light background, so code stays readable). */
-.qmd-deck .qmd-slides section > .qmd-slide-bg {
+.tali-deck .tali-slides section > .tali-slide-bg {
   position: absolute;
   inset: 0;
   z-index: -1;
@@ -361,55 +361,55 @@ body { background: transparent; }
   background-position: center;
   border-radius: inherit;
 }
-.qmd-deck .qmd-slides section.qmd-dark-bg,
-.qmd-deck .qmd-slides section.qmd-dark-bg h1,
-.qmd-deck .qmd-slides section.qmd-dark-bg h2,
-.qmd-deck .qmd-slides section.qmd-dark-bg h3,
-.qmd-deck .qmd-slides section.qmd-dark-bg h4,
-.qmd-deck .qmd-slides section.qmd-dark-bg strong { color: #fff; }
-.qmd-deck .qmd-slides section.qmd-dark-bg .subtitle { color: rgba(255, 255, 255, .8); }
-.qmd-deck .qmd-slides section.qmd-dark-bg a { color: #c7d2fe; }
-.qmd-deck .qmd-slides section.qmd-dark-bg li::marker { color: #c7d2fe; }
-html.qmd-print .qmd-slide-bg { display: none; } /* per-slide backgrounds aren't in the PDF (v1) */
+.tali-deck .tali-slides section.tali-dark-bg,
+.tali-deck .tali-slides section.tali-dark-bg h1,
+.tali-deck .tali-slides section.tali-dark-bg h2,
+.tali-deck .tali-slides section.tali-dark-bg h3,
+.tali-deck .tali-slides section.tali-dark-bg h4,
+.tali-deck .tali-slides section.tali-dark-bg strong { color: #fff; }
+.tali-deck .tali-slides section.tali-dark-bg .subtitle { color: rgba(255, 255, 255, .8); }
+.tali-deck .tali-slides section.tali-dark-bg a { color: #c7d2fe; }
+.tali-deck .tali-slides section.tali-dark-bg li::marker { color: #c7d2fe; }
+html.tali-print .tali-slide-bg { display: none; } /* per-slide backgrounds aren't in the PDF (v1) */
 
 /* Fragments / incremental steps: hidden but keeping layout space (visibility,
    not display) so the slide doesn't reflow and shrink-to-fit sizes for the final
-   state. deck.js toggles .qmd-frag-visible to show them one step at a time. */
-.qmd-deck .fragment,
-.qmd-deck .incremental > ul > li,
-.qmd-deck .incremental > ol > li {
+   state. deck.js toggles .tali-frag-visible to show them one step at a time. */
+.tali-deck .fragment,
+.tali-deck .incremental > ul > li,
+.tali-deck .incremental > ol > li {
   opacity: 0;
   visibility: hidden;
 }
 @media (prefers-reduced-motion: no-preference) {
-  .qmd-deck .fragment,
-  .qmd-deck .incremental > ul > li,
-  .qmd-deck .incremental > ol > li { transition: opacity .25s ease; }
+  .tali-deck .fragment,
+  .tali-deck .incremental > ul > li,
+  .tali-deck .incremental > ol > li { transition: opacity .25s ease; }
 }
-.qmd-deck .qmd-frag-visible { opacity: 1 !important; visibility: visible !important; }
+.tali-deck .tali-frag-visible { opacity: 1 !important; visibility: visible !important; }
 /* Overview shows every slide complete, regardless of fragment state. */
-.qmd-deck.overview .fragment,
-.qmd-deck.overview .incremental > ul > li,
-.qmd-deck.overview .incremental > ol > li { opacity: 1 !important; visibility: visible !important; }
+.tali-deck.overview .fragment,
+.tali-deck.overview .incremental > ul > li,
+.tali-deck.overview .incremental > ol > li { opacity: 1 !important; visibility: visible !important; }
 
 /* Code line highlighting / stepping (code-line-numbers). Lines are block so the
    highlight + dim span the full code width; the copy button reads innerText, which
    still reconstructs the breaks. deck.js toggles .tali-hl-lines-active / .tali-hl-ln-hl. */
-.qmd-deck pre .tali-hl-ln { display: block; } /* wrapped lines (code-line-numbers + magic-move) stack */
-.qmd-deck pre.tali-hl-lines-active .tali-hl-ln { opacity: .3; }
-.qmd-deck pre.tali-hl-lines-active .tali-hl-ln-hl {
+.tali-deck pre .tali-hl-ln { display: block; } /* wrapped lines (code-line-numbers + magic-move) stack */
+.tali-deck pre.tali-hl-lines-active .tali-hl-ln { opacity: .3; }
+.tali-deck pre.tali-hl-lines-active .tali-hl-ln-hl {
   opacity: 1;
   background: color-mix(in srgb, var(--deck-accent, #4c6ef5) 13%, transparent);
   box-shadow: inset .18em 0 0 var(--deck-accent, #4c6ef5);
 }
 @media (prefers-reduced-motion: no-preference) {
-  .qmd-deck pre[data-code-lines] .tali-hl-ln { transition: opacity .3s ease; }
+  .tali-deck pre[data-code-lines] .tali-hl-ln { transition: opacity .3s ease; }
 }
 
 /* Presenter (speaker) window: a dark control surface with live current + next
    previews (iframes), the slide's notes, and a timer + clock. Built by deck.js
    when the page is opened at ?qmd=speaker; stays in sync with the audience. */
-.qmd-speaker {
+.tali-speaker {
   position: fixed;
   inset: 0;
   box-sizing: border-box;
@@ -421,25 +421,25 @@ html.qmd-print .qmd-slide-bg { display: none; } /* per-slide backgrounds aren't 
   color: #e6e8ec;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
-.qmd-speaker .sp-top { display: flex; align-items: center; gap: 16px; }
-.qmd-speaker .sp-timer { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.qmd-speaker .sp-clock { margin-left: auto; color: #9aa0aa; font-variant-numeric: tabular-nums; }
-.qmd-speaker .sp-reset {
+.tali-speaker .sp-top { display: flex; align-items: center; gap: 16px; }
+.tali-speaker .sp-timer { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.tali-speaker .sp-clock { margin-left: auto; color: #9aa0aa; font-variant-numeric: tabular-nums; }
+.tali-speaker .sp-reset {
   background: #262a32; color: #e6e8ec; border: 1px solid #363b44;
   border-radius: 6px; padding: 4px 10px; font: inherit; font-size: 13px; cursor: pointer;
 }
-.qmd-speaker .sp-reset:hover { background: #2f343d; }
-.qmd-speaker .sp-stage { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; min-height: 0; }
-.qmd-speaker .sp-pane { display: flex; flex-direction: column; min-height: 0; }
-.qmd-speaker .sp-label { font-size: 11px; text-transform: uppercase; letter-spacing: .09em; color: #8b919c; margin-bottom: 6px; }
-.qmd-speaker iframe { flex: 1; width: 100%; min-height: 0; border: 0; border-radius: 10px; background: #fff; }
-.qmd-speaker .sp-notes { background: #1b1e24; border-radius: 10px; padding: 12px 16px; max-height: 26vh; overflow: auto; }
-.qmd-speaker .sp-notes-body { font-size: 19px; line-height: 1.5; }
-.qmd-speaker .sp-notes-body :last-child { margin-bottom: 0; }
-.qmd-speaker .sp-empty { color: #6b7079; font-style: italic; }
+.tali-speaker .sp-reset:hover { background: #2f343d; }
+.tali-speaker .sp-stage { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; min-height: 0; }
+.tali-speaker .sp-pane { display: flex; flex-direction: column; min-height: 0; }
+.tali-speaker .sp-label { font-size: 11px; text-transform: uppercase; letter-spacing: .09em; color: #8b919c; margin-bottom: 6px; }
+.tali-speaker iframe { flex: 1; width: 100%; min-height: 0; border: 0; border-radius: 10px; background: #fff; }
+.tali-speaker .sp-notes { background: #1b1e24; border-radius: 10px; padding: 12px 16px; max-height: 26vh; overflow: auto; }
+.tali-speaker .sp-notes-body { font-size: 19px; line-height: 1.5; }
+.tali-speaker .sp-notes-body :last-child { margin-bottom: 0; }
+.tali-speaker .sp-empty { color: #6b7079; font-style: italic; }
 
 /* slideNumber: 'c/t' chip (top-right, clear of the bottom control chrome). */
-.qmd-deck .qmd-slide-number {
+.tali-deck .tali-slide-number {
   position: absolute;
   right: 12px;
   top: 10px;
@@ -452,9 +452,9 @@ html.qmd-print .qmd-slide-bg { display: none; } /* per-slide backgrounds aren't 
   pointer-events: none;
 }
 
-/* Drawing / annotations: a canvas inside .qmd-slides (so it scales with the deck)
+/* Drawing / annotations: a canvas inside .tali-slides (so it scales with the deck)
    captures pointer strokes while the pen is on (`d`); the toolbar floats bottom-left. */
-.qmd-deck .qmd-draw {
+.tali-deck .tali-draw {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -463,8 +463,8 @@ html.qmd-print .qmd-slide-bg { display: none; } /* per-slide backgrounds aren't 
   pointer-events: none;
   touch-action: none;
 }
-.qmd-deck.qmd-drawing .qmd-draw { pointer-events: auto; cursor: crosshair; }
-.qmd-deck .qmd-draw-bar {
+.tali-deck.tali-drawing .tali-draw { pointer-events: auto; cursor: crosshair; }
+.tali-deck .tali-draw-bar {
   position: fixed;
   left: 14px;
   bottom: 14px;
@@ -476,8 +476,8 @@ html.qmd-print .qmd-slide-bg { display: none; } /* per-slide backgrounds aren't 
   border-radius: 10px;
   align-items: center;
 }
-.qmd-deck.qmd-drawing .qmd-draw-bar { display: flex; }
-.qmd-deck .qmd-draw-bar button {
+.tali-deck.tali-drawing .tali-draw-bar { display: flex; }
+.tali-deck .tali-draw-bar button {
   height: 28px;
   min-width: 28px;
   padding: 0 8px;
@@ -488,30 +488,30 @@ html.qmd-print .qmd-slide-bg { display: none; } /* per-slide backgrounds aren't 
   background: #2a2e36;
   font: 600 12px ui-sans-serif, system-ui, sans-serif;
 }
-.qmd-deck .qmd-draw-bar .qmd-draw-color { width: 28px; padding: 0; }
-.qmd-deck .qmd-draw-bar button.sel { border-color: #fff; }
+.tali-deck .tali-draw-bar .tali-draw-color { width: 28px; padding: 0; }
+.tali-deck .tali-draw-bar button.sel { border-color: #fff; }
 /* annotations are a live-presenting feature: hidden in reader, print and overview. */
-html.qmd-scroll .qmd-draw, html.qmd-scroll .qmd-draw-bar,
-html.qmd-print .qmd-draw, html.qmd-print .qmd-draw-bar,
-.qmd-deck.overview .qmd-draw, .qmd-deck.overview .qmd-draw-bar { display: none !important; }
-.qmd-deck.overview .qmd-bg { display: none; } /* the per-slide bg layer isn't shown in the grid */
+html.tali-scroll .tali-draw, html.tali-scroll .tali-draw-bar,
+html.tali-print .tali-draw, html.tali-print .tali-draw-bar,
+.tali-deck.overview .tali-draw, .tali-deck.overview .tali-draw-bar { display: none !important; }
+.tali-deck.overview .tali-bg { display: none; } /* the per-slide bg layer isn't shown in the grid */
 
-/* PDF export: deck.js adds `qmd-print` to <html> on Cmd/Ctrl+P (and for the
+/* PDF export: deck.js adds `tali-print` to <html> on Cmd/Ctrl+P (and for the
    ?qmd=print preview), flattening the deck to one fixed-size slide per page —
    no transform, every slide shown, fragments expanded. `@page` makes each
    printed page the deck's aspect so "Save as PDF" produces a clean handout. */
-html.qmd-print, html.qmd-print body {
+html.tali-print, html.tali-print body {
   width: 960px; height: auto; margin: 0; overflow: visible; background: #fff;
 }
-html.qmd-print .qmd-deck {
+html.tali-print .tali-deck {
   position: static; width: 960px; height: auto; overflow: visible;
 }
-html.qmd-print .qmd-deck .qmd-slides {
+html.tali-print .tali-deck .tali-slides {
   position: static; transform: none !important; left: auto; top: auto;
   width: 960px; height: auto;
 }
-html.qmd-print .qmd-deck .qmd-slides > section,
-html.qmd-print .qmd-deck .qmd-slides > section > section {
+html.tali-print .tali-deck .tali-slides > section,
+html.tali-print .tali-deck .tali-slides > section > section {
   position: relative !important;
   display: block !important;
   width: 960px; height: 540px; box-sizing: border-box;
@@ -519,30 +519,30 @@ html.qmd-print .qmd-deck .qmd-slides > section > section {
   break-after: page;
   background: #fff;
 }
-html.qmd-print .qmd-deck .qmd-slides > section.center {
+html.tali-print .tali-deck .tali-slides > section.center {
   display: flex !important; flex-direction: column; justify-content: center; /* keep title slides centered */
 }
-html.qmd-print .qmd-deck .qmd-slides > section.qmd-print-stack {
+html.tali-print .tali-deck .tali-slides > section.tali-print-stack {
   height: auto; break-after: auto; padding: 0; /* a stack wrapper isn't itself a page */
 }
-html.qmd-print .qmd-slide-number { display: none; }
+html.tali-print .tali-slide-number { display: none; }
 @media print {
   @page { size: 960px 540px; margin: 0; }
 }
 
-/* Scroll / reader mode: deck.js adds `qmd-scroll` to <html> on a narrow/portrait
+/* Scroll / reader mode: deck.js adds `tali-scroll` to <html> on a narrow/portrait
    screen (or ?qmd=scroll). The deck flattens to a vertically-scrollable document —
    every slide a full-width section in a centered reading column, at a responsive
    font size (no fixed-aspect scaling) so it reads well on a phone. */
-html.qmd-scroll, html.qmd-scroll body {
+html.tali-scroll, html.tali-scroll body {
   width: auto; height: auto; overflow: auto; margin: 0; background: #fff;
 }
-html.qmd-scroll .qmd-bg { display: none; }
-html.qmd-scroll .qmd-deck {
+html.tali-scroll .tali-bg { display: none; }
+html.tali-scroll .tali-deck {
   position: static; width: auto; height: auto; overflow: visible;
   font-size: clamp(15px, 4.2vw, 21px);
 }
-html.qmd-scroll .qmd-deck .qmd-slides {
+html.tali-scroll .tali-deck .tali-slides {
   position: static; transform: none !important; left: auto; top: auto;
   width: auto; height: auto; max-width: 46rem; margin: 0 auto; padding: 0 1rem 3rem;
 }
@@ -551,67 +551,67 @@ html.qmd-scroll .qmd-deck .qmd-slides {
    page bundles only deck.css, so base.css's custom property isn't defined here —
    the family is written out literally). Headings/title stay on the deck sans for
    contrast; only the body copy (paragraphs, lists, blockquotes) becomes serif. */
-html.qmd-scroll .qmd-deck .qmd-slides p,
-html.qmd-scroll .qmd-deck .qmd-slides li,
-html.qmd-scroll .qmd-deck .qmd-slides blockquote {
+html.tali-scroll .tali-deck .tali-slides p,
+html.tali-scroll .tali-deck .tali-slides li,
+html.tali-scroll .tali-deck .tali-slides blockquote {
   font-family: ui-serif, Georgia, "Times New Roman", serif;
   line-height: 1.7;
 }
-html.qmd-scroll .qmd-deck .qmd-slides > section,
-html.qmd-scroll .qmd-deck .qmd-slides > section > section {
+html.tali-scroll .tali-deck .tali-slides > section,
+html.tali-scroll .tali-deck .tali-slides > section > section {
   position: relative !important; display: block !important;
   transform: none !important; /* drop the grid-cell transform so sections stack in flow */
   width: auto; height: auto; min-height: 0; box-sizing: border-box;
   padding: 1.6rem 0; border-top: 1px solid var(--deck-rule, #e6e7ea); overflow: visible;
 }
 /* The per-slide background layer + LOD title cards have no place in the reader. */
-html.qmd-scroll .qmd-slide-bg, html.qmd-scroll .qmd-lod, html.qmd-scroll .qmd-threads { display: none !important; }
-/* The per-slide background is hidden in the reader, so `.qmd-dark-bg`'s light text
+html.tali-scroll .tali-slide-bg, html.tali-scroll .tali-lod, html.tali-scroll .tali-threads { display: none !important; }
+/* The per-slide background is hidden in the reader, so `.tali-dark-bg`'s light text
    would go invisible on a light deck — fall back to the reading column's own colour. */
-html.qmd-scroll .qmd-deck .qmd-slides section.qmd-dark-bg,
-html.qmd-scroll .qmd-deck .qmd-slides section.qmd-dark-bg strong,
-html.qmd-scroll .qmd-deck .qmd-slides section.qmd-dark-bg a,
-html.qmd-scroll .qmd-deck .qmd-slides section.qmd-dark-bg .subtitle,
-html.qmd-scroll .qmd-deck .qmd-slides section.qmd-dark-bg li::marker { color: inherit; }
-html.qmd-scroll .qmd-deck .qmd-slides > section:first-child { border-top: 0; }
-html.qmd-scroll .qmd-deck .qmd-slides > section.qmd-scroll-stack { padding: 0; border-top: 0; }
-html.qmd-scroll .qmd-slide-number { display: none; }
+html.tali-scroll .tali-deck .tali-slides section.tali-dark-bg,
+html.tali-scroll .tali-deck .tali-slides section.tali-dark-bg strong,
+html.tali-scroll .tali-deck .tali-slides section.tali-dark-bg a,
+html.tali-scroll .tali-deck .tali-slides section.tali-dark-bg .subtitle,
+html.tali-scroll .tali-deck .tali-slides section.tali-dark-bg li::marker { color: inherit; }
+html.tali-scroll .tali-deck .tali-slides > section:first-child { border-top: 0; }
+html.tali-scroll .tali-deck .tali-slides > section.tali-scroll-stack { padding: 0; border-top: 0; }
+html.tali-scroll .tali-slide-number { display: none; }
 
 /* === Dark theme backgrounds (palette/colours defined at the top of this file) =====
    The slides and body are transparent, so the deck background is the html canvas
-   (which lets the per-slide `.qmd-bg` layer paint above it). Overview tiles, the
+   (which lets the per-slide `.tali-bg` layer paint above it). Overview tiles, the
    slide-number chip, and reader mode each carry their own hardcoded light surface,
-   so override those too. PDF print stays light (deck.js removes qmd-deck-dark). */
-html.qmd-deck-dark { background: #16181d; }
-html.qmd-deck-dark .qmd-deck.overview .qmd-slides > section:not(.qmd-stack),
-html.qmd-deck-dark .qmd-deck.overview .qmd-slides > section > section { background: #20242b; }
+   so override those too. PDF print stays light (deck.js removes tali-deck-dark). */
+html.tali-deck-dark { background: #16181d; }
+html.tali-deck-dark .tali-deck.overview .tali-slides > section:not(.tali-stack),
+html.tali-deck-dark .tali-deck.overview .tali-slides > section > section { background: #20242b; }
 @media (prefers-reduced-motion: reduce) {
-  .qmd-deck .qmd-slides.qmd-cam-anim,
-  .qmd-deck .qmd-slides.qmd-cam-anim > section,
-  .qmd-deck .qmd-slides.qmd-cam-anim > section > section { transition: none !important; }
+  .tali-deck .tali-slides.tali-cam-anim,
+  .tali-deck .tali-slides.tali-cam-anim > section,
+  .tali-deck .tali-slides.tali-cam-anim > section > section { transition: none !important; }
 }
-html.qmd-deck-dark .qmd-deck .qmd-slide-number { background: rgba(255, 255, 255, .12); color: rgba(255, 255, 255, .62); }
-html.qmd-deck-dark.qmd-scroll, html.qmd-deck-dark.qmd-scroll body { background: #16181d; }
+html.tali-deck-dark .tali-deck .tali-slide-number { background: rgba(255, 255, 255, .12); color: rgba(255, 255, 255, .62); }
+html.tali-deck-dark.tali-scroll, html.tali-deck-dark.tali-scroll body { background: #16181d; }
 
 /* === On-screen chrome: progress bar, nav arrows, control menu =============
    A control surface built by deck.js in normal mode, surfacing the
    keyboard-only features (overview / annotate / speaker / fullscreen / PDF /
    reader / dark mode) + a jump-to-slide list + a shortcut sheet. Fixed to the
-   viewport (outside the scaled .qmd-slides). A consistent dark glass surface that
+   viewport (outside the scaled .tali-slides). A consistent dark glass surface that
    reads on both light and dark decks; arrows + menu auto-hide on idle. */
-.qmd-progress { position: fixed; left: 0; right: 0; bottom: 0; height: 3px; z-index: 60;
+.tali-progress { position: fixed; left: 0; right: 0; bottom: 0; height: 3px; z-index: 60;
   background: rgba(127, 127, 127, .18); pointer-events: none; }
-.qmd-progress-fill { height: 100%; width: 0; background: var(--deck-accent, #4c6ef5); transition: width .25s ease; }
+.tali-progress-fill { height: 100%; width: 0; background: var(--deck-accent, #4c6ef5); transition: width .25s ease; }
 
-.qmd-controls { position: fixed; right: 14px; bottom: 14px; z-index: 61; display: flex; gap: 6px;
+.tali-controls { position: fixed; right: 14px; bottom: 14px; z-index: 61; display: flex; gap: 6px;
   transition: opacity .25s ease; }
-.qmd-ctl { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center;
+.tali-ctl { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center;
   padding: 0; border: 0; border-radius: 8px; cursor: pointer; color: #e6e8ec;
   background: rgba(20, 22, 27, .78); font: 600 21px/1 ui-sans-serif, system-ui, sans-serif;
   -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
-.qmd-ctl:hover { background: rgba(20, 22, 27, .96); }
-.qmd-ctl svg { width: 18px; height: 18px; display: block; }
-.qmd-idle .qmd-controls { opacity: 0; pointer-events: none; }
+.tali-ctl:hover { background: rgba(20, 22, 27, .96); }
+.tali-ctl svg { width: 18px; height: 18px; display: block; }
+.tali-idle .tali-controls { opacity: 0; pointer-events: none; }
 
 /* Black-screen / pause (B or .): a full-viewport blackout to pull the room's
    attention back to the speaker. A body-level element (see deck.js toggleBlackout),
@@ -619,49 +619,49 @@ html.qmd-deck-dark.qmd-scroll, html.qmd-deck-dark.qmd-scroll body { background: 
    and lifted on overview / external navigation in deck.js. */
 /* Cursor shows while the pointer is active (so the presenter can find it to
    click-dismiss the blackout) and hides only once idle — the mousemove -> showChrome
-   handler clears `qmd-idle`, so moving the mouse un-hides the cursor. */
-.qmd-blackout-overlay { position: fixed; inset: 0; background: #000; z-index: 100000; cursor: default; }
-html.qmd-idle .qmd-blackout-overlay { cursor: none; }
-html.qmd-print .qmd-blackout-overlay,
-html.qmd-scroll .qmd-blackout-overlay { display: none !important; }
+   handler clears `tali-idle`, so moving the mouse un-hides the cursor. */
+.tali-blackout-overlay { position: fixed; inset: 0; background: #000; z-index: 100000; cursor: default; }
+html.tali-idle .tali-blackout-overlay { cursor: none; }
+html.tali-print .tali-blackout-overlay,
+html.tali-scroll .tali-blackout-overlay { display: none !important; }
 
-.qmd-menu-backdrop { position: fixed; inset: 0; z-index: 70; background: transparent; }
-.qmd-menu[hidden], .qmd-menu-backdrop[hidden] { display: none; }
-.qmd-menu { position: fixed; right: 14px; bottom: 58px; z-index: 71; width: 300px; max-height: 78vh;
+.tali-menu-backdrop { position: fixed; inset: 0; z-index: 70; background: transparent; }
+.tali-menu[hidden], .tali-menu-backdrop[hidden] { display: none; }
+.tali-menu { position: fixed; right: 14px; bottom: 58px; z-index: 71; width: 300px; max-height: 78vh;
   overflow-y: auto; box-sizing: border-box; padding: 10px;
   background: rgba(20, 22, 27, .97); color: #e6e8ec; border: 1px solid #2c313b; border-radius: 12px;
   box-shadow: 0 18px 50px rgba(0, 0, 0, .5);
   font: 14px/1.3 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
-.qmd-menu-head { font-size: 10.5px; text-transform: uppercase; letter-spacing: .09em; color: #8b919c; margin: 11px 6px 4px; }
-.qmd-menu-head:first-child { margin-top: 2px; }
-.qmd-menu-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
-.qmd-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px;
+.tali-menu-head { font-size: 10.5px; text-transform: uppercase; letter-spacing: .09em; color: #8b919c; margin: 11px 6px 4px; }
+.tali-menu-head:first-child { margin-top: 2px; }
+.tali-menu-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.tali-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px;
   border: 0; border-radius: 8px; cursor: pointer; text-align: left; background: transparent; color: #e6e8ec; font: inherit; }
-.qmd-menu-item:hover { background: rgba(255, 255, 255, .08); }
-.qmd-menu-item.qmd-on { background: color-mix(in srgb, var(--deck-accent, #4c6ef5) 32%, transparent); }
-.qmd-menu-ico { display: inline-flex; color: #aeb4bf; }
-.qmd-menu-ico svg { width: 17px; height: 17px; }
-.qmd-menu-item.qmd-on .qmd-menu-ico { color: #fff; }
-.qmd-menu-label { flex: 1; }
-.qmd-menu-hint { color: #8b919c; font-size: 12px; }
-.qmd-menu-slides { max-height: 30vh; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
-.qmd-menu-slide { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 6px 10px;
+.tali-menu-item:hover { background: rgba(255, 255, 255, .08); }
+.tali-menu-item.tali-on { background: color-mix(in srgb, var(--deck-accent, #4c6ef5) 32%, transparent); }
+.tali-menu-ico { display: inline-flex; color: #aeb4bf; }
+.tali-menu-ico svg { width: 17px; height: 17px; }
+.tali-menu-item.tali-on .tali-menu-ico { color: #fff; }
+.tali-menu-label { flex: 1; }
+.tali-menu-hint { color: #8b919c; font-size: 12px; }
+.tali-menu-slides { max-height: 30vh; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+.tali-menu-slide { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 6px 10px;
   border: 0; border-radius: 7px; cursor: pointer; text-align: left; background: transparent; color: #c7ccd6; font: inherit; }
-.qmd-menu-slide:hover { background: rgba(255, 255, 255, .08); color: #fff; }
-.qmd-menu-slide.qmd-on .qmd-menu-slide-n { color: var(--deck-accent, #6ea8ff); }
-.qmd-menu-slide.qmd-on .qmd-menu-slide-t { color: #fff; }
-.qmd-menu-slide-n { flex: 0 0 1.5em; color: #6b7079; font-variant-numeric: tabular-nums; font-size: 12px; }
-.qmd-menu-slide-t { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.qmd-menu-keys { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 10px; padding: 2px 6px 4px; }
-.qmd-key { display: flex; align-items: center; gap: 7px; color: #aeb4bf; font-size: 12px; }
-.qmd-key kbd { font: 600 11px ui-monospace, SFMono-Regular, Menlo, monospace; color: #e6e8ec;
+.tali-menu-slide:hover { background: rgba(255, 255, 255, .08); color: #fff; }
+.tali-menu-slide.tali-on .tali-menu-slide-n { color: var(--deck-accent, #6ea8ff); }
+.tali-menu-slide.tali-on .tali-menu-slide-t { color: #fff; }
+.tali-menu-slide-n { flex: 0 0 1.5em; color: #6b7079; font-variant-numeric: tabular-nums; font-size: 12px; }
+.tali-menu-slide-t { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tali-menu-keys { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 10px; padding: 2px 6px 4px; }
+.tali-key { display: flex; align-items: center; gap: 7px; color: #aeb4bf; font-size: 12px; }
+.tali-key kbd { font: 600 11px ui-monospace, SFMono-Regular, Menlo, monospace; color: #e6e8ec;
   background: #2a2e36; border: 1px solid #3a3f49; border-radius: 5px; padding: 1px 5px; white-space: nowrap; }
 
 /* live-presenting chrome only: gone in print + overview; reader keeps just the menu button */
-html.qmd-print .qmd-progress, html.qmd-print .qmd-controls, html.qmd-print .qmd-menu, html.qmd-print .qmd-menu-backdrop,
-.qmd-deck.overview .qmd-progress, .qmd-deck.overview .qmd-controls { display: none !important; }
-html.qmd-scroll .qmd-progress, html.qmd-scroll .qmd-ctl-prev, html.qmd-scroll .qmd-ctl-next { display: none; }
+html.tali-print .tali-progress, html.tali-print .tali-controls, html.tali-print .tali-menu, html.tali-print .tali-menu-backdrop,
+.tali-deck.overview .tali-progress, .tali-deck.overview .tali-controls { display: none !important; }
+html.tali-scroll .tali-progress, html.tali-scroll .tali-ctl-prev, html.tali-scroll .tali-ctl-next { display: none; }
 
 /* ===========================================================================
    Deck theme: the typographic + content styling for slides. Clean, modern, fully
@@ -672,7 +672,7 @@ html.qmd-scroll .qmd-progress, html.qmd-scroll .qmd-ctl-prev, html.qmd-scroll .q
    Keep the .tali-hl-* palette in sync with base.css.
    =========================================================================== */
 
-.qmd-deck {
+.tali-deck {
   --deck-ink: #1b1c22;
   --deck-muted: #6b6e7b;
   --deck-accent: #4c6ef5;
@@ -688,24 +688,24 @@ html.qmd-scroll .qmd-progress, html.qmd-scroll .qmd-ctl-prev, html.qmd-scroll .q
 }
 
 /* Content is left-aligned; the front-matter title slide is centered. */
-.qmd-deck .qmd-slides { text-align: left; }
-.qmd-deck section.qmd-title-slide, .qmd-deck h1.title { text-align: center; }
+.tali-deck .tali-slides { text-align: left; }
+.tali-deck section.tali-title-slide, .tali-deck h1.title { text-align: center; }
 
 /* Type scale (the deck base font-size is 40px, set above). Headings inherit
-   font-family from .qmd-deck (low specificity) rather than setting it, so a theme
-   extension's `.qmd-deck *` font rule can still win. */
-.qmd-deck h1, .qmd-deck h2, .qmd-deck h3, .qmd-deck h4 {
+   font-family from .tali-deck (low specificity) rather than setting it, so a theme
+   extension's `.tali-deck *` font rule can still win. */
+.tali-deck h1, .tali-deck h2, .tali-deck h3, .tali-deck h4 {
   font-weight: 700;
   line-height: 1.1;
   letter-spacing: -0.02em;
   color: var(--deck-ink);
   margin: 0 0 .5em;
 }
-.qmd-deck h1 { font-size: 1.9em; }
-.qmd-deck h2 { font-size: 1.5em; }
-.qmd-deck h3 { font-size: 1.15em; }
-.qmd-deck h1.title { font-size: 2.3em; letter-spacing: -0.035em; margin-bottom: .2em; }
-.qmd-deck .subtitle {
+.tali-deck h1 { font-size: 1.9em; }
+.tali-deck h2 { font-size: 1.5em; }
+.tali-deck h3 { font-size: 1.15em; }
+.tali-deck h1.title { font-size: 2.3em; letter-spacing: -0.035em; margin-bottom: .2em; }
+.tali-deck .subtitle {
   text-align: center;
   font-size: 1.05em;
   font-style: normal;
@@ -713,23 +713,23 @@ html.qmd-scroll .qmd-progress, html.qmd-scroll .qmd-ctl-prev, html.qmd-scroll .q
   letter-spacing: 0;
   color: var(--deck-muted);
 }
-.qmd-deck p { margin: 0 0 .6em; line-height: 1.4; }
-.qmd-deck strong { font-weight: 700; color: var(--deck-ink); }
-.qmd-deck a {
+.tali-deck p { margin: 0 0 .6em; line-height: 1.4; }
+.tali-deck strong { font-weight: 700; color: var(--deck-ink); }
+.tali-deck a {
   color: var(--deck-accent);
   text-decoration: none;
   border-bottom: 1px solid color-mix(in srgb, var(--deck-accent) 35%, transparent);
 }
-.qmd-deck a:hover { border-bottom-color: var(--deck-accent); }
+.tali-deck a:hover { border-bottom-color: var(--deck-accent); }
 
 /* Lists: comfortable rhythm, accent markers. */
-.qmd-deck ul, .qmd-deck ol { margin: 0 0 .6em; padding-left: 1.1em; }
-.qmd-deck li { margin: .32em 0; line-height: 1.35; }
-.qmd-deck li::marker { color: var(--deck-accent); }
+.tali-deck ul, .tali-deck ol { margin: 0 0 .6em; padding-left: 1.1em; }
+.tali-deck li { margin: .32em 0; line-height: 1.35; }
+.tali-deck li::marker { color: var(--deck-accent); }
 
 /* Code: highlighted blocks read as a tinted panel; inline code as a chip. */
-.qmd-deck code { font-family: var(--deck-mono); }
-.qmd-deck pre {
+.tali-deck code { font-family: var(--deck-mono); }
+.tali-deck pre {
   position: relative;
   width: 100%;
   box-shadow: none;
@@ -740,80 +740,80 @@ html.qmd-scroll .qmd-progress, html.qmd-scroll .qmd-ctl-prev, html.qmd-scroll .q
   padding: .8em 1em;
   margin: 0 0 .6em;
 }
-.qmd-deck pre code { max-height: none; background: transparent; padding: 0; }
-.qmd-deck :not(pre) > code {
+.tali-deck pre code { max-height: none; background: transparent; padding: 0; }
+.tali-deck :not(pre) > code {
   background: var(--deck-code-bg);
   border: 1px solid var(--deck-rule);
   padding: .08em .3em;
   border-radius: .25em;
   font-size: .9em;
 }
-.qmd-deck .qmd-copy {
+.tali-deck .tali-copy {
   position: absolute; top: .4em; right: .4em; padding: .1em .4em;
   font: 600 .5em var(--deck-font); color: var(--deck-muted);
   background: #fff; border: 1px solid var(--deck-rule); border-radius: 5px; cursor: pointer;
 }
-.qmd-deck .qmd-copy.qmd-copied { color: #2bb673; border-color: #2bb673; }
-.qmd-deck pre.mermaid { background: transparent; border: 0; padding: 0; text-align: center; }
+.tali-deck .tali-copy.tali-copied { color: #2bb673; border-color: #2bb673; }
+.tali-deck pre.mermaid { background: transparent; border: 0; padding: 0; text-align: center; }
 
 /* server-side syntax-highlight palette (syntect); keep in sync with base.css.
    Unmapped scopes inherit the default ink colour. */
-.qmd-deck .tali-hl-comment { color: #6e7781; font-style: italic; }
-.qmd-deck .tali-hl-string { color: #0a3069; }
-.qmd-deck .tali-hl-keyword, .qmd-deck .tali-hl-storage { color: #cf222e; }
-.qmd-deck .tali-hl-constant, .qmd-deck .tali-hl-support { color: #0550ae; }
-.qmd-deck .tali-hl-entity { color: #8250df; }
-.qmd-deck .tali-hl-variable { color: #953800; }
+.tali-deck .tali-hl-comment { color: #6e7781; font-style: italic; }
+.tali-deck .tali-hl-string { color: #0a3069; }
+.tali-deck .tali-hl-keyword, .tali-deck .tali-hl-storage { color: #cf222e; }
+.tali-deck .tali-hl-constant, .tali-deck .tali-hl-support { color: #0550ae; }
+.tali-deck .tali-hl-entity { color: #8250df; }
+.tali-deck .tali-hl-variable { color: #953800; }
 
 /* Tables and blockquotes (base.css equivalents, deck-safe concrete values). */
-.qmd-deck table { border-collapse: collapse; margin: 0 0 .6em; }
-.qmd-deck th, .qmd-deck td { padding: .15em .6em; text-align: left; border-bottom: 1px solid var(--deck-rule); }
-.qmd-deck thead th { border-bottom: 2px solid var(--deck-ink); font-weight: 700; }
-.qmd-deck blockquote {
+.tali-deck table { border-collapse: collapse; margin: 0 0 .6em; }
+.tali-deck th, .tali-deck td { padding: .15em .6em; text-align: left; border-bottom: 1px solid var(--deck-rule); }
+.tali-deck thead th { border-bottom: 2px solid var(--deck-ink); font-weight: 700; }
+.tali-deck blockquote {
   border-left: .12em solid var(--deck-accent);
   margin: 0 0 .6em; padding-left: .7em;
   color: var(--deck-muted);
 }
 
-.qmd-deck .katex-display { margin: .4em 0; }
+.tali-deck .katex-display { margin: .4em 0; }
 
-/* === Dark theme (html.qmd-deck-dark) ====================================== */
+/* === Dark theme (html.tali-deck-dark) ====================================== */
 /* The class is set, pre-paint, by the deck theme head script (deck_theme_head):
    from `theme: dark/light`, the embedding page's theme (a same-origin host), or
    the OS preference for a standalone deck. Only the built-in theme participates:
    a custom/extension theme owns its colours, so the head script emits nothing for
    it. Palette mirrors the page dark theme (dark.css). PDF export
    forces light: deck.js drops the class while printing. */
-html.qmd-deck-dark .qmd-deck {
+html.tali-deck-dark .tali-deck {
   --deck-ink: #e6e6e6;
   --deck-muted: #9aa0aa;
   --deck-accent: #6ea8ff;
   --deck-rule: #363a44;
   --deck-code-bg: #21242b;
 }
-html.qmd-deck-dark .qmd-deck .tali-hl-comment { color: #8b949e; }
-html.qmd-deck-dark .qmd-deck .tali-hl-string { color: #a5d6ff; }
-html.qmd-deck-dark .qmd-deck .tali-hl-keyword, html.qmd-deck-dark .qmd-deck .tali-hl-storage { color: #ff7b72; }
-html.qmd-deck-dark .qmd-deck .tali-hl-constant, html.qmd-deck-dark .qmd-deck .tali-hl-support { color: #79c0ff; }
-html.qmd-deck-dark .qmd-deck .tali-hl-entity { color: #d2a8ff; }
-html.qmd-deck-dark .qmd-deck .tali-hl-variable { color: #ffa657; }
-html.qmd-deck-dark .qmd-deck .qmd-copy { background: #21242b; color: var(--deck-muted); border-color: var(--deck-rule); }
+html.tali-deck-dark .tali-deck .tali-hl-comment { color: #8b949e; }
+html.tali-deck-dark .tali-deck .tali-hl-string { color: #a5d6ff; }
+html.tali-deck-dark .tali-deck .tali-hl-keyword, html.tali-deck-dark .tali-deck .tali-hl-storage { color: #ff7b72; }
+html.tali-deck-dark .tali-deck .tali-hl-constant, html.tali-deck-dark .tali-deck .tali-hl-support { color: #79c0ff; }
+html.tali-deck-dark .tali-deck .tali-hl-entity { color: #d2a8ff; }
+html.tali-deck-dark .tali-deck .tali-hl-variable { color: #ffa657; }
+html.tali-deck-dark .tali-deck .tali-copy { background: #21242b; color: var(--deck-muted); border-color: var(--deck-rule); }
 
 /* Speaker notes (`::: {.notes}`) are for the presenter window only. */
-.qmd-deck .notes { display: none; }
+.tali-deck .notes { display: none; }
 
 /* Click-to-source highlight; programmatic slide focus is not a visible affordance. */
-[data-block-id].qmd-hl { outline: 2px solid var(--deck-accent); outline-offset: 3px; }
-.qmd-deck .qmd-slides > section:focus, .qmd-deck .qmd-slides > section:focus-visible { outline: none; }
+[data-block-id].tali-hl { outline: 2px solid var(--deck-accent); outline-offset: 3px; }
+.tali-deck .tali-slides > section:focus, .tali-deck .tali-slides > section:focus-visible { outline: none; }
 
 /* Alt-held click-to-source affordance (deck accent; see base.css for the rationale). */
-html.qmd-alt [data-block-id] { cursor: pointer; }
-.qmd-src-hover { outline: 2px dashed var(--deck-accent); outline-offset: 3px; }
+html.tali-alt [data-block-id] { cursor: pointer; }
+.tali-src-hover { outline: 2px dashed var(--deck-accent); outline-offset: 3px; }
 
 /* a11y live region (deck.js updateSlideLabels): announces "Slide N of M" on every
    navigation. Visually hidden but present for assistive tech (not display:none, which
    removes it from the accessibility tree). */
-.qmd-deck-live {
+.tali-deck-live {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
 }
@@ -821,20 +821,20 @@ html.qmd-alt [data-block-id] { cursor: pointer; }
 /* One consistent keyboard-focus ring across the deck's interactive controls, mirroring
    the page-side `--qmd-focus` token (deck chrome lives on its own dark surface, so it
    uses the deck accent). Mouse clicks don't show it (:focus-visible). */
-.qmd-ctl:focus-visible, .qmd-menu-item:focus-visible, .qmd-menu-slide:focus-visible,
-.qmd-ov-search:focus-visible {
+.tali-ctl:focus-visible, .tali-menu-item:focus-visible, .tali-menu-slide:focus-visible,
+.tali-ov-search:focus-visible {
   outline: 2px solid var(--deck-accent, #4c8dff); outline-offset: 2px; border-radius: 6px;
 }
 
 /* High-contrast / forced-colors (Windows High Contrast): keep the focus ring, control
    borders, and the progress fill visible by mapping them to system colors. */
 @media (forced-colors: active) {
-  .qmd-ctl:focus-visible, .qmd-menu-item:focus-visible, .qmd-menu-slide:focus-visible,
-  .qmd-ov-search:focus-visible { outline-color: Highlight; }
-  .qmd-ctl, .qmd-menu, .qmd-ov-search { border: 1px solid CanvasText; }
-  .qmd-progress-fill { background: Highlight; forced-color-adjust: none; }
-  .qmd-deck.overview .qmd-slides section.qmd-ov-hit { outline-color: Highlight; }
+  .tali-ctl:focus-visible, .tali-menu-item:focus-visible, .tali-menu-slide:focus-visible,
+  .tali-ov-search:focus-visible { outline-color: Highlight; }
+  .tali-ctl, .tali-menu, .tali-ov-search { border: 1px solid CanvasText; }
+  .tali-progress-fill { background: Highlight; forced-color-adjust: none; }
+  .tali-deck.overview .tali-slides section.tali-ov-hit { outline-color: Highlight; }
 }
 @media (prefers-contrast: more) {
-  .qmd-ctl { border: 1px solid currentColor; }
+  .tali-ctl { border: 1px solid currentColor; }
 }

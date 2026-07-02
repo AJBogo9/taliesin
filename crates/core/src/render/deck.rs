@@ -33,11 +33,11 @@ pub struct DeckParts<'a> {
     pub extra_head: &'a str,
     pub include_in_header: &'a str,
     pub include_before_body: &'a str,
-    /// Attributes on the `.qmd-slides` container (` id="qmd-root"` for the live mount).
+    /// Attributes on the `.tali-slides` container (` id="tali-root"` for the live mount).
     pub slides_attr: &'a str,
     /// The slide HTML (`<section>`s).
     pub slides: &'a str,
-    /// Markup right after the `.qmd-deck` container (the live status node); `""` build.
+    /// Markup right after the `.tali-deck` container (the live status node); `""` build.
     pub after_deck: &'a str,
     /// Everything after the deck body: the deck-engine script + the format-specific
     /// init/enhancer/client scripts + `include-after-body`, composed by the caller
@@ -72,7 +72,7 @@ pub fn assemble_deck_page(p: &DeckParts) -> String {
          <meta charset=\"utf-8\" />\n\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no\" />\n\
          <title>{title}</title>\n{favicon}{deck_theme}<style>{DECK_CSS}</style>\n{katex}{js_head}{theme}{in_header}{extra_head}\
-         </head>\n<body>\n{before_body}<div class=\"qmd-deck\">\n<div class=\"qmd-slides\"{slides_attr}>\n{slides}</div>\n</div>\n{after_deck}\
+         </head>\n<body>\n{before_body}<div class=\"tali-deck qmd-deck\">\n<div class=\"tali-slides qmd-slides\"{slides_attr}>\n{slides}</div>\n</div>\n{after_deck}\
          {tail}</body>\n</html>\n",
         lang = escape_attr(p.lang),
         title = p.title,
@@ -164,7 +164,7 @@ pub fn deck_theme_head(theme_default: &str, custom_theme: bool) -> String {
   }}
   window.qmdDeckEmbedded = embedded;
   window.qmdDeckThemeManaged = true;
-  window.qmdDeckApplyTheme = function(){{ var m = resolve(); var el = document.documentElement; el.classList.toggle('qmd-deck-dark', m==='dark'); el.style.colorScheme = m; return m; }};
+  window.qmdDeckApplyTheme = function(){{ var m = resolve(); var el = document.documentElement; el.classList.toggle('tali-deck-dark', m==='dark'); el.style.colorScheme = m; return m; }};
   window.qmdDeckSetTheme = function(m){{ if (!embedded) {{ try {{ localStorage.setItem('qmd-deck-theme', m); }} catch(e){{}} }} return window.qmdDeckApplyTheme(); }};
   window.qmdDeckApplyTheme();
 }})();
@@ -198,7 +198,7 @@ enum Top {
     },
 }
 
-/// Build the inner HTML of the deck's `<div class="qmd-slides">`: an optional title
+/// Build the inner HTML of the deck's `<div class="tali-slides">`: an optional title
 /// slide from front matter, then one `<section>` per slide. Blocks are grouped
 /// into slides by heading level (`SLIDE_LEVEL`) and `---` breaks, with h1s
 /// wrapping their h2s as a vertical stack.
@@ -206,7 +206,7 @@ pub fn slides_html(title: Option<&str>, subtitle: Option<&str>, blocks: &[Block]
     let mut out = String::new();
     if let Some(title) = title {
         out.push_str(
-            "<section id=\"title-slide\" class=\"qmd-title-slide center\">\n<h1 class=\"title\">",
+            "<section id=\"title-slide\" class=\"tali-title-slide center\">\n<h1 class=\"title\">",
         );
         escape_html(title, &mut out);
         out.push_str("</h1>\n");
@@ -340,7 +340,7 @@ fn render_section(s: &SlideBuf, out: &mut String) {
     // the deck. Additive on the <section> open tag (never on an inner [data-block-id]),
     // so block ids stay byte-stable. The "Slide N of M" aria-label is applied at runtime
     // by deck.js, where the flat slide order across vertical stacks is known.
-    out.push_str(" class=\"qmd-slide\" role=\"group\" aria-roledescription=\"slide\"");
+    out.push_str(" class=\"tali-slide qmd-slide\" role=\"group\" aria-roledescription=\"slide\"");
     if s.level != 0 {
         out.push_str(&format!(" data-level=\"{}\"", s.level));
     }

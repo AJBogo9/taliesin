@@ -199,7 +199,7 @@ pub(super) fn collect_html_ids(html: &str, out: &mut std::collections::HashSet<S
 
 /// Manual relative `<a href>` links in a block's HTML, as `(path, Option<fragment>)`.
 /// External (`http(s)://`, `//`, `mailto:`, `tel:`), data-URI, empty, bare in-page
-/// `#frag`, and cross-reference (`qmd-xref`) links are skipped — the cross-page checker
+/// `#frag`, and cross-reference (`tali-xref`) links are skipped — the cross-page checker
 /// only resolves intra-site file links (anchors handled per target page). The path keeps
 /// its authored form (`other.qmd`, `../sec/page.html`); the fragment is split off.
 pub(super) fn manual_local_links(html: &str) -> Vec<(&str, Option<&str>)> {
@@ -212,7 +212,7 @@ pub(super) fn manual_local_links(html: &str) -> Vec<(&str, Option<&str>)> {
         };
         let tag = &html[tag_start..tag_start + rel_end];
         i = tag_start + rel_end + 1;
-        if tag.contains("qmd-xref") {
+        if tag.contains("tali-xref") {
             continue;
         }
         let Some(hpos) = tag.find("href=\"") else {
@@ -326,7 +326,7 @@ mod tests {
 
     #[test]
     fn manual_local_links_skips_external_anchor_and_xref() {
-        let html = r##"<a href="other.qmd">o</a> <a href="page.html#sec">p</a> <a href="https://x.com">e</a> <a href="#top">t</a> <a href="x.html" class="qmd-xref">r</a>"##;
+        let html = r##"<a href="other.qmd">o</a> <a href="page.html#sec">p</a> <a href="https://x.com">e</a> <a href="#top">t</a> <a href="x.html" class="tali-xref">r</a>"##;
         let links = manual_local_links(html);
         assert_eq!(links, vec![("other.qmd", None), ("page.html", Some("sec"))]);
     }

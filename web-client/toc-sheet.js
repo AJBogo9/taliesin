@@ -16,15 +16,15 @@
 
   function init() {
     var toc = byId("TOC");
-    var handle = byId("qmd-toc-handle");
-    var backdrop = byId("qmd-toc-backdrop");
-    var cur = byId("qmd-toc-cur");
+    var handle = byId("tali-toc-handle");
+    var backdrop = byId("tali-toc-backdrop");
+    var cur = byId("tali-toc-cur");
     // Nothing to wire without the sheet chrome (e.g. a page with no TOC).
     if (!toc || !handle || !backdrop) return;
     // Opt the body into the sheet ONLY now that JS is running (progressive enhancement):
     // the server ships the chrome hidden + leaves the body in its in-flow layout, so with
     // JS off the TOC never ends up off-screen and unreachable.
-    document.body.classList.add("qmd-toc-sheet");
+    document.body.classList.add("tali-toc-sheet");
 
     var isSheetMode = function () {
       return !window.matchMedia || matchMedia("(max-width: 60rem)").matches;
@@ -32,7 +32,7 @@
     // `#TOC` doubles as the desktop sidebar, so only hide it from assistive tech and
     // pull it from the tab order when it is an off-screen sheet (narrow + closed).
     var syncA11y = function () {
-      var open = document.body.classList.contains("qmd-toc-open");
+      var open = document.body.classList.contains("tali-toc-open");
       handle.setAttribute("aria-expanded", open ? "true" : "false");
       if (isSheetMode() && !open) {
         toc.setAttribute("inert", ""); toc.setAttribute("aria-hidden", "true");
@@ -42,7 +42,7 @@
     };
     /** @param {boolean} open */
     var setOpen = function (open) {
-      document.body.classList.toggle("qmd-toc-open", open);
+      document.body.classList.toggle("tali-toc-open", open);
       syncA11y();
       if (open) { var f = toc.querySelector("a"); if (f) f.focus(); }
     };
@@ -88,7 +88,7 @@
     // pointer: native scroll won't deliver pointermove, so we take over with preventDefault.
     var sd = null;
     toc.addEventListener("touchstart", function (e) {
-      if (!document.body.classList.contains("qmd-toc-open")) { sd = null; return; }
+      if (!document.body.classList.contains("tali-toc-open")) { sd = null; return; }
       sd = { y: e.touches[0].clientY, t0: Date.now(), atTop: toc.scrollTop <= 0,
              active: false, dy: 0, h: toc.offsetHeight || Math.round(innerHeight * 0.6) };
     }, { passive: true });
@@ -120,7 +120,7 @@
       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(true); }
     });
     document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape" && document.body.classList.contains("qmd-toc-open")) {
+      if (e.key === "Escape" && document.body.classList.contains("tali-toc-open")) {
         setOpen(false); handle.focus();
       }
     });
@@ -130,12 +130,12 @@
     // handle stays quiet. Source the label from whatever toc-spy.js marks active.
     var labelTimer = 0;
     var flash = function () {
-      if (!isSheetMode() || document.body.classList.contains("qmd-toc-open")) return;
-      var active = toc.querySelector("a.qmd-toc-active");
+      if (!isSheetMode() || document.body.classList.contains("tali-toc-open")) return;
+      var active = toc.querySelector("a.tali-toc-active");
       if (cur && active) cur.textContent = active.textContent;
-      handle.classList.add("qmd-show-label");
+      handle.classList.add("tali-show-label");
       clearTimeout(labelTimer);
-      labelTimer = setTimeout(function () { handle.classList.remove("qmd-show-label"); }, 1000);
+      labelTimer = setTimeout(function () { handle.classList.remove("tali-show-label"); }, 1000);
     };
     window.addEventListener("scroll", flash, { passive: true });
 

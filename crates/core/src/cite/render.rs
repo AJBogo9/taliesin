@@ -73,7 +73,7 @@ pub fn process(
     let has_manual_heading = blocks.iter().any(|b| is_manual_references_heading(&b.html));
     let mut warnings: Vec<Warning> = Vec::new();
     let mut list =
-        String::from("<section class=\"qmd-references\" data-block-id=\"qmd-references\">");
+        String::from("<section class=\"tali-references\" data-block-id=\"qmd-references\">");
     if !has_manual_heading {
         list.push_str("<h2>References</h2>");
     }
@@ -252,7 +252,7 @@ fn xref_anchor_link(anchor: &str, label: &str, xrefs: &HashMap<String, String>) 
         ),
     };
     format!(
-        "<a href=\"#{}\" class=\"qmd-xref\"{marker}>{text}</a>",
+        "<a href=\"#{}\" class=\"tali-xref\"{marker}>{text}</a>",
         esc(anchor)
     )
 }

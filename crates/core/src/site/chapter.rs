@@ -1,12 +1,12 @@
 //! Book-chapter section numbering: prefix each heading in a numbered chapter with its
-//! section number (`N`, `N.1`, `N.1.1`) as a `qmd-section-number` span. Pure block-HTML
+//! section number (`N`, `N.1`, `N.1.1`) as a `tali-section-number` span. Pure block-HTML
 //! surgery driven by the chapter number the orchestrator passes in.
 
 use super::*;
 
 /// Prefix each heading in a book chapter with its section number: the chapter's
 /// `# H1` becomes "N", and the deeper headings count within it ("N.1", "N.1.1"),
-/// emitted as a `qmd-section-number` span.
+/// emitted as a `tali-section-number` span.
 pub(super) fn number_chapter_headings(blocks: &mut [Block], chapter: u32) {
     let mut counters = [0u32; 5]; // counters[0] = h2, [1] = h3, …
     for b in blocks.iter_mut() {
@@ -45,11 +45,11 @@ fn heading_level(html: &str) -> Option<usize> {
     block_heading_level(html).map(usize::from)
 }
 
-/// Insert a `qmd-section-number` span just after a heading's opening tag.
+/// Insert a `tali-section-number` span just after a heading's opening tag.
 fn prefix_heading_number(html: &str, number: &str) -> String {
     match html.find('>') {
         Some(i) => format!(
-            "{}<span class=\"qmd-section-number\">{number}</span> {}",
+            "{}<span class=\"tali-section-number\">{number}</span> {}",
             &html[..=i],
             &html[i + 1..]
         ),
@@ -57,10 +57,10 @@ fn prefix_heading_number(html: &str, number: &str) -> String {
     }
 }
 
-/// Whether a block is the front-matter `title:` block (a `<header class="qmd-title-block">`,
+/// Whether a block is the front-matter `title:` block (a `<header class="tali-title-block">`,
 /// not a markdown heading — so `heading_level` never sees it as an `<h1>`).
 fn is_title_block(html: &str) -> bool {
-    html.contains("class=\"qmd-title-block\"")
+    html.contains("class=\"tali-title-block\"")
 }
 
 /// Number a numbered chapter's TITLE: insert the chapter number just inside the
@@ -72,7 +72,7 @@ fn prefix_title_number(html: &str, number: &str) -> String {
         Some(i) => {
             let at = i + marker.len();
             format!(
-                "{}<span class=\"qmd-section-number\">{number}</span> {}",
+                "{}<span class=\"tali-section-number\">{number}</span> {}",
                 &html[..at],
                 &html[at..]
             )
@@ -87,19 +87,19 @@ mod tests {
 
     #[test]
     fn numbers_the_chapter_title_block() {
-        let title = "<header class=\"qmd-title-block\" data-block-id=\"qmd-title-block\">\
+        let title = "<header class=\"tali-title-block\" data-block-id=\"qmd-title-block\">\
             <h1 class=\"title\">Executable content</h1></header>";
         assert_eq!(
             prefix_title_number(title, "3"),
-            "<header class=\"qmd-title-block\" data-block-id=\"qmd-title-block\">\
-             <h1 class=\"title\"><span class=\"qmd-section-number\">3</span> Executable content</h1></header>"
+            "<header class=\"tali-title-block\" data-block-id=\"qmd-title-block\">\
+             <h1 class=\"title\"><span class=\"tali-section-number\">3</span> Executable content</h1></header>"
         );
     }
 
     #[test]
     fn detects_the_title_block_but_not_a_heading() {
         assert!(is_title_block(
-            "<header class=\"qmd-title-block\"><h1 class=\"title\">T</h1></header>"
+            "<header class=\"tali-title-block\"><h1 class=\"title\">T</h1></header>"
         ));
         assert!(!is_title_block("<h2 id=\"x\">A section</h2>"));
     }

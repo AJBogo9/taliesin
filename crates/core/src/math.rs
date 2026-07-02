@@ -53,7 +53,7 @@ const CACHE_CAP: usize = 8192;
 /// Render a LaTeX fragment to HTML (memoized). KaTeX is configured with
 /// `throw_on_error = false`, so an invalid expression renders inline (in red)
 /// rather than aborting the document; engine-level failures fall back to the
-/// escaped source wrapped in a `qmd-math-error` span.
+/// escaped source wrapped in a `tali-math-error` span.
 pub fn render(latex: &str, display: bool) -> String {
     // A poisoned lock can only happen if a thread panicked *holding* it; we never
     // render (the only fallible work) under the lock, so recover the map either way.
@@ -95,7 +95,7 @@ fn fallback(latex: &str) -> String {
             _ => escaped.push(ch),
         }
     }
-    format!("<span class=\"qmd-math-error\" title=\"math render failed\">{escaped}</span>")
+    format!("<span class=\"tali-math-error\" title=\"math render failed\">{escaped}</span>")
 }
 
 #[cfg(test)]

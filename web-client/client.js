@@ -29,8 +29,8 @@
  * @typedef {FullRenderMsg|DiagnosticsMsg|UpdateMsg|InsertMsg|RemoveMsg|SetMetaMsg|ErrorMsg|ReloadMsg|StyleMsg|BuildStateMsg|CellStateMsg} ServerMessage
  */
 (() => {
-  const root = document.getElementById("qmd-root");
-  if (!root) return; // the client mounts into #qmd-root; nothing to do without it
+  const root = document.getElementById("tali-root");
+  if (!root) return; // the client mounts into #tali-root; nothing to do without it
   let statusEl = /** @type {HTMLElement|null} */ (null);
   let wordCountEl = /** @type {HTMLElement|null} */ (null);
   let ws = /** @type {WebSocket|undefined} */ (undefined);
@@ -43,7 +43,7 @@
       statusEl.dataset.state = state;
     }
     // The collapsed dev-menu button shows this state as a colored dot.
-    const dot = document.getElementById("qmd-dev-dot");
+    const dot = document.getElementById("tali-dev-dot");
     if (dot) dot.dataset.state = state;
   };
 
@@ -52,7 +52,7 @@
   const updateWordCount = () => {
     if (!wordCountEl) return;
     const clone = /** @type {Element} */ (root.cloneNode(true));
-    clone.querySelectorAll("pre, .katex, .qmd-eqn-number").forEach((n) => n.remove());
+    clone.querySelectorAll("pre, .katex, .tali-eqn-number").forEach((n) => n.remove());
     const words = ((clone.textContent || "").match(/[^\s]+/g) || []).length;
     const mins = Math.max(1, Math.round(words / 200));
     wordCountEl.textContent = `${words.toLocaleString()} words · ${mins} min`;
@@ -65,18 +65,18 @@
   // menu is built). Its style is part of the dev-menu CSS (STATUS_CSS).
   // Two issue sources, both shown in the dev panel and counted on the collapsed
   // pill: server diagnostics (include/kernel) in `diagEl`, and per-cell runtime
-  // errors (Python `.qmd-error`, `{js}` cell `.qmd-js-error`) in `cellErrEl`.
+  // errors (Python `.tali-error`, `{js}` cell `.tali-js-error`) in `cellErrEl`.
   const diagEl = document.createElement("div");
-  diagEl.id = "qmd-diagnostics";
+  diagEl.id = "tali-diagnostics";
   diagEl.style.display = "none";
   const cellErrEl = document.createElement("div");
-  cellErrEl.id = "qmd-cell-errors";
+  cellErrEl.id = "tali-cell-errors";
   cellErrEl.style.display = "none";
   let cellErrCount = 0;
   // A third source: accessibility issues found by scanning the rendered output
   // (missing alt text, heading skips, …). Each row jumps to the offending source.
   const a11yEl = document.createElement("div");
-  a11yEl.id = "qmd-a11y";
+  a11yEl.id = "tali-a11y";
   a11yEl.style.display = "none";
   let a11yCount = 0;
 
@@ -85,9 +85,9 @@
   const refreshAlert = () => {
     const diagCount = diagEl.style.display === "none" ? 0 : diagEl.children.length;
     const total = diagCount + cellErrCount + a11yCount;
-    const toggle = document.getElementById("qmd-dev-toggle");
-    if (toggle) toggle.classList.toggle("qmd-dev-alert", total > 0);
-    const badge = document.getElementById("qmd-dev-count");
+    const toggle = document.getElementById("tali-dev-toggle");
+    if (toggle) toggle.classList.toggle("tali-dev-alert", total > 0);
+    const badge = document.getElementById("tali-dev-count");
     if (badge) {
       badge.textContent = total ? String(total) : "";
       badge.hidden = total === 0;
@@ -102,13 +102,13 @@
       const level = it.level === "error" ? "error" : "warning";
       const located = typeof it.line === "number"; // clickable jump-to-source
       const row = document.createElement(located ? "button" : "div");
-      row.className = "qmd-diag qmd-diag-" + level + (located ? " qmd-diag-loc" : "");
+      row.className = "tali-diag tali-diag-" + level + (located ? " tali-diag-loc" : "");
       const msg = document.createElement("div");
       msg.textContent = (level === "error" ? "✗ " : "⚠ ") + (it.message || it);
       row.appendChild(msg);
       if (it.frame) {
         const pre = document.createElement("pre");
-        pre.className = "qmd-diag-frame";
+        pre.className = "tali-diag-frame";
         pre.textContent = it.frame;
         row.appendChild(pre);
       }
@@ -126,19 +126,19 @@
   // button that scrolls to + flashes the failing cell), and update the pill badge.
   // Re-run after every mount and (via a MutationObserver) when async `{js}` errors land.
   const scanCellErrors = () => {
-    const errs = root ? [...root.querySelectorAll(".qmd-error, .qmd-js-error")] : [];
+    const errs = root ? [...root.querySelectorAll(".tali-error, .tali-js-error")] : [];
     cellErrCount = errs.length;
     cellErrEl.textContent = "";
     cellErrEl.style.display = errs.length ? "flex" : "none";
     errs.forEach((el, i) => {
-      if (!el.id) el.id = "qmd-cellerr-" + i;
+      if (!el.id) el.id = "tali-cellerr-" + i;
       const row = document.createElement("button");
       row.type = "button";
-      row.className = "qmd-cellerr";
+      row.className = "tali-cellerr";
       row.textContent = "✗ " + (el.textContent || "cell error").trim().slice(0, 90);
       row.addEventListener("click", () => {
         el.scrollIntoView({ block: "center", behavior: "smooth" });
-        pulse(/** @type {HTMLElement} */ (el), "qmd-hl-flash");
+        pulse(/** @type {HTMLElement} */ (el), "tali-hl-flash");
       });
       cellErrEl.appendChild(row);
     });
@@ -260,7 +260,7 @@
     for (const it of issues) {
       const located = typeof it.line === "number";
       const row = document.createElement(located ? "button" : "div");
-      row.className = "qmd-diag qmd-diag-warning" + (located ? " qmd-diag-loc" : "");
+      row.className = "tali-diag tali-diag-warning" + (located ? " tali-diag-loc" : "");
       const msg = document.createElement("div");
       msg.textContent = "♿ " + it.message;
       row.appendChild(msg);
@@ -281,44 +281,44 @@
   const errorEl = (() => {
     const style = document.createElement("style");
     style.textContent =
-      "#qmd-error{position:fixed;inset:0;z-index:2147482500;display:none;flex-direction:column;" +
+      "#tali-error{position:fixed;inset:0;z-index:2147482500;display:none;flex-direction:column;" +
       "align-items:center;justify-content:center;padding:2rem;box-sizing:border-box;" +
       "background:rgba(10,12,16,.86);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);}" +
-      "#qmd-error.qmd-show{display:flex;}" +
-      "#qmd-error .qmd-error-card{max-width:min(680px,92vw);width:100%;max-height:74vh;overflow:auto;" +
+      "#tali-error.tali-show{display:flex;}" +
+      "#tali-error .tali-error-card{max-width:min(680px,92vw);width:100%;max-height:74vh;overflow:auto;" +
       "background:#1b1d23;border:1px solid #5a2a2a;border-left:4px solid #e5534b;border-radius:10px;" +
       "padding:1rem 1.2rem;box-shadow:0 14px 44px rgba(0,0,0,.55);}" +
-      "#qmd-error .qmd-error-title{font:600 13px ui-sans-serif,system-ui,sans-serif;color:#ff8c82;margin-bottom:.55rem;}" +
-      "#qmd-error pre{margin:0;padding:0;background:transparent;white-space:pre-wrap;word-break:break-word;" +
+      "#tali-error .tali-error-title{font:600 13px ui-sans-serif,system-ui,sans-serif;color:#ff8c82;margin-bottom:.55rem;}" +
+      "#tali-error pre{margin:0;padding:0;background:transparent;white-space:pre-wrap;word-break:break-word;" +
       "font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;color:#f2d5d5;}" +
-      "#qmd-error .qmd-error-hint{margin-top:.85rem;font:12px ui-sans-serif,system-ui,sans-serif;color:#9aa0aa;}";
+      "#tali-error .tali-error-hint{margin-top:.85rem;font:12px ui-sans-serif,system-ui,sans-serif;color:#9aa0aa;}";
     (document.head || document.documentElement).appendChild(style);
     const el = document.createElement("div");
-    el.id = "qmd-error";
+    el.id = "tali-error";
     el.innerHTML =
-      '<div class="qmd-error-card"><div class="qmd-error-title">⚠ Render failed</div><pre></pre>' +
-      '<div class="qmd-error-hint">Fix the source and save; this clears on the next successful render. (Esc to dismiss)</div></div>';
+      '<div class="tali-error-card"><div class="tali-error-title">⚠ Render failed</div><pre></pre>' +
+      '<div class="tali-error-hint">Fix the source and save; this clears on the next successful render. (Esc to dismiss)</div></div>';
     document.body.appendChild(el);
-    el.addEventListener("click", (e) => { if (e.target === el) el.classList.remove("qmd-show"); });
+    el.addEventListener("click", (e) => { if (e.target === el) el.classList.remove("tali-show"); });
     return el;
   })();
   const showError = (/** @type {string=} */ message) => {
     const pre = errorEl.querySelector("pre");
     if (pre) pre.textContent = message || "Unknown error";
-    errorEl.classList.add("qmd-show");
+    errorEl.classList.add("tali-show");
   };
-  const hideError = () => errorEl.classList.remove("qmd-show");
+  const hideError = () => errorEl.classList.remove("tali-show");
   // A successful render arrived: drop the overlay and clear the "error" status.
   const renderOk = () => {
     hideError();
     if (statusEl && statusEl.textContent === "error") setStatus("live");
   };
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && errorEl.classList.contains("qmd-show")) hideError();
+    if (e.key === "Escape" && errorEl.classList.contains("tali-show")) hideError();
   });
 
   // Briefly pulse a block with a self-removing animated class: the change-flash on
-  // re-render (`qmd-flash`), and the click-to-source highlight (`qmd-hl-flash`).
+  // re-render (`tali-flash`), and the click-to-source highlight (`tali-hl-flash`).
   const pulse = (/** @type {Element|null} */ el, /** @type {string} */ cls) => {
     if (!el || !el.classList) return;
     el.classList.remove(cls);
@@ -339,33 +339,33 @@
   // chrome has no real theme toggle, i.e. single-doc preview) a theme toggle.
   // The site navbar's theme toggle is a real, shipped feature, not a dev tool.
   (function buildDevMenu() {
-    const host = document.getElementById("qmd-controls");
+    const host = document.getElementById("tali-controls");
     if (!host) return;
-    host.classList.add("qmd-dev");
+    host.classList.add("tali-dev");
 
     const devRow = (/** @type {string} */ label, /** @type {HTMLElement} */ valueEl) => {
       const row = document.createElement("div");
-      row.className = "qmd-dev-row";
+      row.className = "tali-dev-row";
       const l = document.createElement("span");
-      l.className = "qmd-dev-label";
+      l.className = "tali-dev-label";
       l.textContent = label;
       row.append(l, valueEl);
       return row;
     };
 
     const toggle = document.createElement("button");
-    toggle.id = "qmd-dev-toggle";
-    toggle.className = "qmd-dev-toggle";
+    toggle.id = "tali-dev-toggle";
+    toggle.className = "tali-dev-toggle";
     toggle.type = "button";
     toggle.setAttribute("aria-label", "Developer tools");
     toggle.setAttribute("aria-expanded", "false");
     toggle.innerHTML =
-      '<span class="qmd-dev-dot" id="qmd-dev-dot"></span><span class="qmd-dev-glyph">&lt;/&gt;</span>' +
-      '<span class="qmd-dev-count" id="qmd-dev-count" hidden></span>';
+      '<span class="tali-dev-dot" id="tali-dev-dot"></span><span class="tali-dev-glyph">&lt;/&gt;</span>' +
+      '<span class="tali-dev-count" id="tali-dev-count" hidden></span>';
 
     const panel = document.createElement("div");
-    panel.id = "qmd-dev-panel";
-    panel.className = "qmd-dev-panel";
+    panel.id = "tali-dev-panel";
+    panel.className = "tali-dev-panel";
     panel.hidden = true;
 
     toggle.addEventListener("click", (e) => {
@@ -381,14 +381,14 @@
     });
 
     statusEl = document.createElement("span");
-    statusEl.id = "qmd-status";
+    statusEl.id = "tali-status";
     wordCountEl = document.createElement("span");
-    wordCountEl.id = "qmd-wordcount";
+    wordCountEl.id = "tali-wordcount";
 
     // Click-to-source hint: Alt/Option-click any block to open its source. No toggle
     // — a plain click browses normally; the modifier is the whole gesture.
     const srcHint = document.createElement("span");
-    srcHint.id = "qmd-src-hint";
+    srcHint.id = "tali-src-hint";
     srcHint.textContent = "Alt-click a block";
     srcHint.title =
       "Hold Alt (Option on Mac) and click any block to open its source" +
@@ -397,8 +397,8 @@
     // Restart the warm Jupyter kernel: drops the (possibly dead/wedged) kernel and
     // re-runs every cell against a fresh one. Recovers after fixing QMD_FAST_PYTHON.
     const kernelBtn = document.createElement("button");
-    kernelBtn.id = "qmd-kernel-ctl";
-    kernelBtn.className = "qmd-dev-ctl";
+    kernelBtn.id = "tali-kernel-ctl";
+    kernelBtn.className = "tali-dev-ctl";
     kernelBtn.type = "button";
     kernelBtn.textContent = "Restart kernel";
     kernelBtn.title = "Drop the Jupyter kernel and re-run all cells against a fresh one";
@@ -422,7 +422,7 @@
     // toggle (wired by the shared theme_head). Sites use the navbar's instead.
     if (!document.querySelector("[data-qmd-theme-toggle]")) {
       const themeBtn = document.createElement("button");
-      themeBtn.className = "qmd-dev-ctl qmd-dev-theme";
+      themeBtn.className = "tali-dev-ctl tali-dev-theme";
       themeBtn.type = "button";
       themeBtn.setAttribute("data-qmd-theme-toggle", "");
       panel.appendChild(themeBtn);
@@ -435,7 +435,7 @@
     setStatus("connecting…");
   })();
   // Deck mode (and any layout without the control bar) keeps its status pill.
-  if (!statusEl) statusEl = document.getElementById("qmd-status");
+  if (!statusEl) statusEl = document.getElementById("tali-status");
 
   // --- in-browser execution progress chip ------------------------------------
   // A small fixed chip (bottom-right) that shows k/N while code cells are
@@ -451,8 +451,8 @@
     var out = elById(msg.cell_id + "-out") || elById(msg.cell_id);
     if (!out) return;
     out.setAttribute("data-qmd-cell-state", msg.state);
-    var badge = out.querySelector(":scope > .qmd-cell-badge") || (function () {
-      var b = document.createElement("span"); b.className = "qmd-cell-badge";
+    var badge = out.querySelector(":scope > .tali-cell-badge") || (function () {
+      var b = document.createElement("span"); b.className = "tali-cell-badge";
       out.insertBefore(b, out.firstChild); return b;
     })();
     if (msg.state === "running") {
@@ -472,7 +472,7 @@
     Object.keys(runningTimers).forEach(function (id) {
       var out = elById(id + "-out") || elById(id);
       if (!out) return;
-      var b = out.querySelector(":scope > .qmd-cell-badge");
+      var b = out.querySelector(":scope > .tali-cell-badge");
       if (b) b.textContent = "⏳ " + fmtElapsed(now - runningTimers[id]);
     });
   }, 200);
@@ -515,7 +515,7 @@
   function ensureProgress() {
     if (progressEl) return progressEl;
     progressEl = document.createElement("div");
-    progressEl.id = "qmd-progress";
+    progressEl.id = "tali-progress";
     progressEl.setAttribute("aria-live", "polite");
     progressEl.setAttribute("role", "status");
     // Click-to-scroll: jump to the currently running or last-errored cell output.
@@ -548,8 +548,8 @@
       var elapsedTxt = elapsed !== null ? ", built in " + elapsed + "s" : "";
       // Inner HTML: dot + text label
       el.innerHTML =
-        "<span class=\"qmd-prog-dot\"></span>" +
-        "<span class=\"qmd-prog-label\">Up to date" + elapsedTxt + "</span>";
+        "<span class=\"tali-prog-dot\"></span>" +
+        "<span class=\"tali-prog-label\">Up to date" + elapsedTxt + "</span>";
       el.setAttribute("data-state", "idle");
       el.removeAttribute("title");
       // Restore tab title and favicon
@@ -568,8 +568,8 @@
       buildErrored = true; // latch: subsequent `idle` won't overwrite the error chip
       stopWarmTimer();
       el.innerHTML =
-        "<span class=\"qmd-prog-dot\"></span>" +
-        "<span class=\"qmd-prog-label\">Error</span>";
+        "<span class=\"tali-prog-dot\"></span>" +
+        "<span class=\"tali-prog-label\">Error</span>";
       el.setAttribute("data-state", "error");
       el.title = "Click to scroll to erroring cell";
       document.title = "⚠ error — " + baseTitle;
@@ -596,13 +596,13 @@
     stopWarmTimer();
     var barPct = msg.total > 0 ? (msg.ran / msg.total) : 0;
     el.innerHTML =
-      "<span class=\"qmd-prog-dot\"></span>" +
-      "<span class=\"qmd-prog-label\"></span>" +
-      "<span class=\"qmd-prog-bar\" aria-hidden=\"true\">" +
-        "<span class=\"qmd-prog-fill\" style=\"width:" + Math.round(barPct * 100) + "%\"></span>" +
+      "<span class=\"tali-prog-dot\"></span>" +
+      "<span class=\"tali-prog-label\"></span>" +
+      "<span class=\"tali-prog-bar\" aria-hidden=\"true\">" +
+        "<span class=\"tali-prog-fill\" style=\"width:" + Math.round(barPct * 100) + "%\"></span>" +
       "</span>";
     // Set label via textContent so server-controlled values can't inject HTML.
-    var busyLabel = el.querySelector(".qmd-prog-label");
+    var busyLabel = el.querySelector(".tali-prog-label");
     if (busyLabel) busyLabel.textContent = msg.ran + "/" + msg.total;
     el.setAttribute("data-state", "busy");
     el.title = "Click to scroll to active cell";
@@ -613,13 +613,13 @@
   // Render the warm-up chip: a dot + "Starting <lang> kernel… (Ns)". The lang and
   // elapsed are set via textContent so a server-controlled `lang` can't inject HTML.
   function renderWarming(/** @type {HTMLElement} */ el, /** @type {string} */ lang) {
-    if (!el.querySelector(".qmd-prog-label")) {
+    if (!el.querySelector(".tali-prog-label")) {
       el.innerHTML =
-        "<span class=\"qmd-prog-dot\"></span>" +
-        "<span class=\"qmd-prog-label\"></span>";
+        "<span class=\"tali-prog-dot\"></span>" +
+        "<span class=\"tali-prog-label\"></span>";
     }
     var secs = warmStartMs !== null ? ((Date.now() - warmStartMs) / 1000).toFixed(1) : "0.0";
-    var warmLabel = el.querySelector(".qmd-prog-label");
+    var warmLabel = el.querySelector(".tali-prog-label");
     if (warmLabel)
       warmLabel.textContent = "Starting " + lang + " kernel… (" + secs + "s)";
   }
@@ -634,7 +634,7 @@
     }).observe(root, { childList: true, subtree: true });
   }
 
-  // Deck mode: the body is sectioned slides mounted into `.qmd-deck > .qmd-slides`
+  // Deck mode: the body is sectioned slides mounted into `.tali-deck > .tali-slides`
   // (root). After any DOM change we (re)attach the deck engine: the first change
   // initializes, later ones only `sync()`, so the current slide and the runtime
   // state of live blocks survive edits.
@@ -655,8 +655,8 @@
   // every change, so the contents stay live as headings are edited/added/removed.
   const tocEl = window.QMD_TOC === true ? document.getElementById("TOC") : null;
   // Mobile pull-up sheet chrome (present only on the live TOC page).
-  const tocHandle = tocEl && document.getElementById("qmd-toc-handle");
-  const tocBackdrop = tocEl && document.getElementById("qmd-toc-backdrop");
+  const tocHandle = tocEl && document.getElementById("tali-toc-handle");
+  const tocBackdrop = tocEl && document.getElementById("tali-toc-backdrop");
   const escText = (/** @type {string|null} */ s) =>
     (s || "").replace(/[&<>]/g, (/** @type {string} */ c) =>
       /** @type {Record<string, string>} */ ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
@@ -697,16 +697,16 @@
   let tocLabelTimer = 0;
   function flashTocLabel() {
     if (!tocHandle) return;
-    tocHandle.classList.add("qmd-show-label");
+    tocHandle.classList.add("tali-show-label");
     clearTimeout(tocLabelTimer);
-    tocLabelTimer = setTimeout(() => tocHandle.classList.remove("qmd-show-label"), 1000);
+    tocLabelTimer = setTimeout(() => tocHandle.classList.remove("tali-show-label"), 1000);
   }
   if (tocHandle && tocEl && tocBackdrop) {
     const isSheetMode = () => !window.matchMedia || matchMedia("(max-width: 60rem)").matches;
     // #TOC doubles as the desktop sidebar, so only hide it from assistive tech and
     // pull it out of the tab order when it is an off-screen sheet (narrow + closed).
     const syncSheetA11y = () => {
-      const open = document.body.classList.contains("qmd-toc-open");
+      const open = document.body.classList.contains("tali-toc-open");
       tocHandle.setAttribute("aria-expanded", open ? "true" : "false");
       if (isSheetMode() && !open) {
         tocEl.setAttribute("inert", ""); tocEl.setAttribute("aria-hidden", "true");
@@ -715,7 +715,7 @@
       }
     };
     const setOpen = (/** @type {boolean} */ open) => {
-      document.body.classList.toggle("qmd-toc-open", open);
+      document.body.classList.toggle("tali-toc-open", open);
       syncSheetA11y();
       if (open) { const f = tocEl.querySelector("a"); if (f) f.focus(); } // focus into the sheet
     };
@@ -758,7 +758,7 @@
     // stream with preventDefault instead.
     let sd = /** @type {{ y: number, t0: number, atTop: boolean, active: boolean, dy: number, h: number }|null} */ (null);
     tocEl.addEventListener("touchstart", (e) => {
-      if (!document.body.classList.contains("qmd-toc-open")) { sd = null; return; }
+      if (!document.body.classList.contains("tali-toc-open")) { sd = null; return; }
       sd = { y: e.touches[0].clientY, t0: Date.now(), atTop: tocEl.scrollTop <= 0,
              active: false, dy: 0, h: tocEl.offsetHeight || Math.round(innerHeight * 0.6) };
     }, { passive: true });
@@ -790,7 +790,7 @@
       if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setOpen(true); }
     });
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && document.body.classList.contains("qmd-toc-open")) {
+      if (e.key === "Escape" && document.body.classList.contains("tali-toc-open")) {
         setOpen(false); tocHandle.focus();
       }
     });
@@ -799,8 +799,8 @@
 
     // teach the gesture once on a narrow screen
     if (isSheetMode()) {
-      tocHandle.classList.add("qmd-hint");
-      setTimeout(() => tocHandle.classList.remove("qmd-hint"), 2700);
+      tocHandle.classList.add("tali-hint");
+      setTimeout(() => tocHandle.classList.remove("tali-hint"), 2700);
       flashTocLabel();
     }
   }
@@ -856,7 +856,7 @@
 
   // A single save emits a BURST of block ops (each its own websocket message).
   // afterChange() is entirely O(document) derived-UI recompute (TOC + scrollspy +
-  // word count deep-clones #qmd-root + a11y/code scans), so running it per op was an
+  // word count deep-clones #tali-root + a11y/code scans), so running it per op was an
   // O(ops × doc) cliff on the save hot path. Coalesce the burst into ONE afterChange on
   // the next animation frame — every op in the frame has applied by then.
   let afterChangeRAF = 0;
@@ -881,7 +881,7 @@
         renderOk(); // a fresh render arrived: any prior failure is resolved
         document.title = msg.title || "qmd-fast";
         if (ssrPending) {
-          ssrPending = false; // content already server-rendered into #qmd-root
+          ssrPending = false; // content already server-rendered into #tali-root
         } else {
           // Wholesale re-mount (reconnect / structural change): tear down ALL prior
           // `{js}` cells first (resolving every outstanding `invalidation`) so their
@@ -909,7 +909,7 @@
         if (el && node) {
           teardownJs(el); // resolve invalidation + drop {js} cells in the outgoing block
           keepScroll(() => el.replaceWith(node));
-          pulse(node, "qmd-flash");
+          pulse(node, "tali-flash");
         }
         scheduleAfterChange();
         break;
@@ -932,7 +932,7 @@
             if (after) after.after(node);
             else root.prepend(node);
           });
-          pulse(node, "qmd-flash");
+          pulse(node, "tali-flash");
         }
         scheduleAfterChange();
         break;
@@ -1074,7 +1074,7 @@
     window.location.href = "vscode://file" + encodeURI(abs) + ":" + line + ":" + col;
   };
 
-  const inDevMenu = (/** @type {Element} */ t) => !!t.closest("#qmd-controls");
+  const inDevMenu = (/** @type {Element} */ t) => !!t.closest("#tali-controls");
 
   // Click-to-source: Alt/Option-click any block to jump to its source line (browser
   // -> vscode://, webview -> host). A plain click browses normally, so there's no
@@ -1086,7 +1086,7 @@
     const el = locatable(t);
     if (!el) return;
     e.preventDefault(); // suppress text selection / link navigation on the Alt-click
-    pulse(el, "qmd-hl-flash");
+    pulse(el, "tali-hl-flash");
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "click_block", ...blockRef(el) }));
     }
@@ -1094,7 +1094,7 @@
   });
 
   // Click-to-source affordance: while Alt is held, make the otherwise-invisible
-  // gesture visible. `html.qmd-alt` flips every source-mapped block to a pointer
+  // gesture visible. `html.tali-alt` flips every source-mapped block to a pointer
   // cursor, and the single block a click would actually resolve to (via the same
   // `locatable()` used by the click handler, so highlight and jump can never drift)
   // wears a dashed outline that tracks the mouse. Pure feedback — no write path,
@@ -1110,21 +1110,21 @@
     const markEl = (/** @type {Element|null} */ target) => {
       const el = target && !inDevMenu(target) ? locatable(target) : null;
       if (el === hovered) return;
-      if (hovered) hovered.classList.remove("qmd-src-hover");
+      if (hovered) hovered.classList.remove("tali-src-hover");
       hovered = el;
-      if (el) el.classList.add("qmd-src-hover");
+      if (el) el.classList.add("tali-src-hover");
     };
 
     const enterAlt = () => {
       if (altOn) return;
       altOn = true;
-      document.documentElement.classList.add("qmd-alt");
+      document.documentElement.classList.add("tali-alt");
       markEl(document.elementFromPoint(lastX, lastY)); // highlight what's already under the cursor
     };
     const exitAlt = () => {
       if (!altOn) return;
       altOn = false;
-      document.documentElement.classList.remove("qmd-alt");
+      document.documentElement.classList.remove("tali-alt");
       markEl(null);
     };
 
@@ -1166,11 +1166,11 @@
     }
     const target = contained || preceding;
     if (!target) return;
-    document.querySelectorAll(".qmd-hl").forEach((n) => n.classList.remove("qmd-hl"));
-    target.classList.add("qmd-hl");
+    document.querySelectorAll(".tali-hl").forEach((n) => n.classList.remove("tali-hl"));
+    target.classList.add("tali-hl");
     if (isDeck && window.QmdDeck) {
-      const sections = [...root.querySelectorAll(".qmd-slides > section")];
-      const sec = target.closest(".qmd-slides > section");
+      const sections = [...root.querySelectorAll(".tali-slides > section")];
+      const sec = target.closest(".tali-slides > section");
       const i = sec ? sections.indexOf(sec) : -1;
       if (i >= 0) window.QmdDeck.slide(i);
     } else {

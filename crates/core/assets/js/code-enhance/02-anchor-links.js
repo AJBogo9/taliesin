@@ -1,14 +1,14 @@
 // Reveal a `#` on each heading and numbered float (figure / listing / table); activating it
 // copies that anchor's canonical deep link (the section/figure permalink, complementing the
 // selection toolbar's text-fragment Share). Reader-side, clipboard-only — never writes the
-// source. Per-element idempotent (a host already carrying its .qmd-anchor is skipped), so it
+// source. Per-element idempotent (a host already carrying its .tali-anchor is skipped), so it
 // survives the live-preview re-mounts; skipped on decks (their own nav). `root` is always the
-// whole #qmd-root container, so a descendant query suffices.
+// whole #tali-root container, so a descendant query suffices.
 function qmdInitAnchorLinks(root) {
-  if (document.querySelector('.qmd-deck')) return;
+  if (document.querySelector('.tali-deck')) return;
   if (!window.__qmdAnchorLive) {
     var l = document.createElement('span');
-    l.className = 'qmd-sr-only';
+    l.className = 'tali-sr-only';
     l.setAttribute('aria-live', 'polite');
     document.body.appendChild(l);
     window.__qmdAnchorLive = l;
@@ -18,7 +18,7 @@ function qmdInitAnchorLinks(root) {
     if (!host || !id || host.dataset.qmdAnchored) return;
     host.dataset.qmdAnchored = '1';
     var a = document.createElement('a');
-    a.className = 'qmd-anchor';
+    a.className = 'tali-anchor';
     a.href = '#' + id;
     a.setAttribute('aria-label', 'Copy link to this section');
     a.textContent = '#';
@@ -26,10 +26,10 @@ function qmdInitAnchorLinks(root) {
       // Don't preventDefault: clicking also sets the URL hash, so the address bar shows the
       // shareable anchor (the page is already here, so there is no jump).
       qmdCopyText(qmdAnchorUrl(id), function () {
-        a.classList.add('qmd-anchor-copied');
+        a.classList.add('tali-anchor-copied');
         a.textContent = '✓';
         announce('Link copied');
-        setTimeout(function () { a.classList.remove('qmd-anchor-copied'); a.textContent = '#'; }, 1200);
+        setTimeout(function () { a.classList.remove('tali-anchor-copied'); a.textContent = '#'; }, 1200);
       }, function () { announce('Copy failed'); });
     });
     host.appendChild(a);
@@ -43,8 +43,8 @@ function qmdInitAnchorLinks(root) {
     if (wrap && wrap.id) decorate(c, wrap.id);
   });
   // A theorem carries its id on the wrapper; drop the `#` into its head paragraph.
-  [].forEach.call(scope.querySelectorAll('.qmd-theorem[id]'), function (t) {
-    var head = t.querySelector('.qmd-theorem-head');
+  [].forEach.call(scope.querySelectorAll('.tali-theorem[id]'), function (t) {
+    var head = t.querySelector('.tali-theorem-head');
     if (head) decorate(head, t.id);
   });
 }

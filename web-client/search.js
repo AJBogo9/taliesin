@@ -11,45 +11,45 @@
   window.qmdSearchInstalled = true;
 
   var CSS =
-    "#qmd-search{position:fixed;inset:0;z-index:10050;display:flex;justify-content:center;" +
+    "#tali-search{position:fixed;inset:0;z-index:10050;display:flex;justify-content:center;" +
     "align-items:flex-start;padding-top:12vh}" +
-    "#qmd-search[hidden]{display:none}" +
-    "#qmd-search .qmd-s-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.45);" +
+    "#tali-search[hidden]{display:none}" +
+    "#tali-search .tali-s-backdrop{position:absolute;inset:0;background:rgba(0,0,0,.45);" +
     "backdrop-filter:blur(2px)}" +
-    "#qmd-search .qmd-s-box{position:relative;width:min(38rem,92vw);max-height:70vh;display:flex;" +
+    "#tali-search .tali-s-box{position:relative;width:min(38rem,92vw);max-height:70vh;display:flex;" +
     "flex-direction:column;background:var(--qmd-bg,#fff);color:var(--qmd-fg,#111);" +
     "border:1px solid var(--qmd-border,#e0e0e0);border-radius:12px;" +
     "box-shadow:0 18px 60px rgba(0,0,0,.4);overflow:hidden}" +
-    "#qmd-search .qmd-s-input{width:100%;box-sizing:border-box;border:0;outline:0;" +
+    "#tali-search .tali-s-input{width:100%;box-sizing:border-box;border:0;outline:0;" +
     "padding:.95rem 1.1rem;font-size:1.05rem;background:transparent;color:inherit;" +
     "border-bottom:1px solid var(--qmd-border,#e0e0e0)}" +
-    "#qmd-search .qmd-s-results{list-style:none;margin:0;padding:.3rem;overflow:auto;flex:1}" +
-    "#qmd-search .qmd-s-item{display:flex;flex-direction:column;gap:.15rem;padding:.5rem .7rem;" +
+    "#tali-search .tali-s-results{list-style:none;margin:0;padding:.3rem;overflow:auto;flex:1}" +
+    "#tali-search .tali-s-item{display:flex;flex-direction:column;gap:.15rem;padding:.5rem .7rem;" +
     "border-radius:7px;cursor:pointer;scroll-margin:.4rem}" +
-    "#qmd-search .qmd-s-head{display:flex;align-items:baseline;gap:.6rem}" +
-    "#qmd-search .qmd-s-item[aria-selected=true]{background:var(--qmd-accent,#4c8dff);color:#fff}" +
-    "#qmd-search .qmd-s-item[aria-selected=true] .qmd-s-sec{color:rgba(255,255,255,.8)}" +
-    "#qmd-search .qmd-s-snip{font-size:.78rem;color:var(--qmd-muted,#888);overflow:hidden;" +
+    "#tali-search .tali-s-head{display:flex;align-items:baseline;gap:.6rem}" +
+    "#tali-search .tali-s-item[aria-selected=true]{background:var(--qmd-accent,#4c8dff);color:#fff}" +
+    "#tali-search .tali-s-item[aria-selected=true] .tali-s-sec{color:rgba(255,255,255,.8)}" +
+    "#tali-search .tali-s-snip{font-size:.78rem;color:var(--qmd-muted,#888);overflow:hidden;" +
     "text-overflow:ellipsis;white-space:nowrap}" +
-    "#qmd-search .qmd-s-snip mark{background:transparent;color:var(--qmd-accent,#4c8dff);font-weight:700;padding:0}" +
-    "#qmd-search .qmd-s-item[aria-selected=true] .qmd-s-snip{color:rgba(255,255,255,.85)}" +
-    "#qmd-search .qmd-s-item[aria-selected=true] .qmd-s-snip mark{color:#fff}" +
-    "#qmd-search .qmd-s-title{font-weight:600}" +
-    "#qmd-search .qmd-s-title mark{background:transparent;color:var(--qmd-accent,#4c8dff);" +
+    "#tali-search .tali-s-snip mark{background:transparent;color:var(--qmd-accent,#4c8dff);font-weight:700;padding:0}" +
+    "#tali-search .tali-s-item[aria-selected=true] .tali-s-snip{color:rgba(255,255,255,.85)}" +
+    "#tali-search .tali-s-item[aria-selected=true] .tali-s-snip mark{color:#fff}" +
+    "#tali-search .tali-s-title{font-weight:600}" +
+    "#tali-search .tali-s-title mark{background:transparent;color:var(--qmd-accent,#4c8dff);" +
     "font-weight:800;padding:0}" +
-    "#qmd-search .qmd-s-item[aria-selected=true] .qmd-s-title mark{color:#fff;" +
+    "#tali-search .tali-s-item[aria-selected=true] .tali-s-title mark{color:#fff;" +
     "text-decoration:underline}" +
-    "#qmd-search .qmd-s-sec{font-size:.8rem;color:var(--qmd-muted,#888);white-space:nowrap;margin-left:auto}" +
-    "#qmd-search .qmd-s-empty{padding:1rem 1.1rem;color:var(--qmd-muted,#888)}" +
-    "#qmd-search .qmd-s-hint{display:flex;gap:1rem;padding:.45rem .9rem;font-size:.72rem;" +
+    "#tali-search .tali-s-sec{font-size:.8rem;color:var(--qmd-muted,#888);white-space:nowrap;margin-left:auto}" +
+    "#tali-search .tali-s-empty{padding:1rem 1.1rem;color:var(--qmd-muted,#888)}" +
+    "#tali-search .tali-s-hint{display:flex;gap:1rem;padding:.45rem .9rem;font-size:.72rem;" +
     "color:var(--qmd-muted,#888);border-top:1px solid var(--qmd-border,#e0e0e0)}" +
-    "#qmd-search .qmd-s-hint kbd{font:inherit;border:1px solid var(--qmd-border,#e0e0e0);" +
+    "#tali-search .tali-s-hint kbd{font:inherit;border:1px solid var(--qmd-border,#e0e0e0);" +
     "border-radius:4px;padding:0 .3rem}";
 
   function injectCss() {
-    if (document.getElementById("qmd-search-css")) return;
+    if (document.getElementById("tali-search-css")) return;
     var s = document.createElement("style");
-    s.id = "qmd-search-css";
+    s.id = "tali-search-css";
     s.textContent = CSS;
     document.head.appendChild(s);
   }
@@ -137,21 +137,21 @@
     injectCss();
     if (overlay) return;
     overlay = document.createElement("div");
-    overlay.id = "qmd-search";
+    overlay.id = "tali-search";
     overlay.hidden = true;
     overlay.innerHTML =
-      '<div class="qmd-s-backdrop"></div>' +
-      '<div class="qmd-s-box" role="combobox" aria-expanded="true" aria-haspopup="listbox">' +
-      '<input class="qmd-s-input" type="text" autocomplete="off" spellcheck="false" ' +
+      '<div class="tali-s-backdrop"></div>' +
+      '<div class="tali-s-box" role="combobox" aria-expanded="true" aria-haspopup="listbox">' +
+      '<input class="tali-s-input" type="text" autocomplete="off" spellcheck="false" ' +
       'placeholder="Search this document…" aria-label="Search this document" ' +
-      'aria-controls="qmd-s-results" />' +
-      '<ul class="qmd-s-results" id="qmd-s-results" role="listbox"></ul>' +
-      '<div class="qmd-s-hint"><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>' +
+      'aria-controls="tali-s-results" />' +
+      '<ul class="tali-s-results" id="tali-s-results" role="listbox"></ul>' +
+      '<div class="tali-s-hint"><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>' +
       "<span><kbd>↵</kbd> go to</span><span><kbd>esc</kbd> close</span></div>";
     document.body.appendChild(overlay);
-    input = overlay.querySelector(".qmd-s-input");
-    list = overlay.querySelector(".qmd-s-results");
-    overlay.querySelector(".qmd-s-backdrop").addEventListener("click", close);
+    input = overlay.querySelector(".tali-s-input");
+    list = overlay.querySelector(".tali-s-results");
+    overlay.querySelector(".tali-s-backdrop").addEventListener("click", close);
     input.addEventListener("input", function () {
       render(input.value);
     });
@@ -170,7 +170,7 @@
     list.innerHTML = "";
     if (isSite && !window.QMD_SEARCH_INDEX) {
       var li = document.createElement("li");
-      li.className = "qmd-s-empty";
+      li.className = "tali-s-empty";
       li.textContent = "Loading…";
       list.appendChild(li);
     }
@@ -264,7 +264,7 @@
     list.innerHTML = "";
     if (!matches.length) {
       var empty = document.createElement("li");
-      empty.className = "qmd-s-empty";
+      empty.className = "tali-s-empty";
       empty.textContent = window.QMD_SEARCH_LOAD_FAILED
         ? "Search index failed to load"
         : "No matches";
@@ -277,16 +277,16 @@
 
   function itemEl(item, terms, i) {
     var li = document.createElement("li");
-    li.className = "qmd-s-item";
+    li.className = "tali-s-item";
     li.setAttribute("role", "option");
-    li.id = "qmd-s-opt-" + i;
+    li.id = "tali-s-opt-" + i;
     var head = document.createElement("div");
-    head.className = "qmd-s-head";
+    head.className = "tali-s-head";
     var title = document.createElement("span");
-    title.className = "qmd-s-title";
+    title.className = "tali-s-title";
     highlight(title, item.title, terms);
     var sec = document.createElement("span");
-    sec.className = "qmd-s-sec";
+    sec.className = "tali-s-sec";
     // In a book, label the result with its chapter; otherwise its heading level.
     sec.textContent = item.page || "H" + item.level;
     head.append(title, sec);
@@ -299,7 +299,7 @@
     });
     if (terms.length && !everyInTitle && item.body) {
       var snip = document.createElement("div");
-      snip.className = "qmd-s-snip";
+      snip.className = "tali-s-snip";
       snippet(snip, item.body, terms);
       li.appendChild(snip);
     }
@@ -396,7 +396,7 @@
   }
 
   function markSel() {
-    list.querySelectorAll(".qmd-s-item").forEach(function (opt, i) {
+    list.querySelectorAll(".tali-s-item").forEach(function (opt, i) {
       var on = i === sel;
       opt.setAttribute("aria-selected", on ? "true" : "false");
       if (on) {
@@ -431,7 +431,7 @@
   // --- search-hit flash (land on the heading, then flash the matched term) --------
   // CSS Custom Highlight API (zero DOM mutation → honours read-only preview), with a
   // <mark> fallback like read-aloud. Registered once, lazily.
-  var FLASH_KEY = "qmd-search-flash";
+  var FLASH_KEY = "tali-search-flash";
   var flashHl = null;
   // Create + register the highlight LAZILY on first use (not at module load — the Custom
   // Highlight API guard can read falsy during early script evaluation on some engines),
@@ -453,7 +453,7 @@
   var flashTimer = 0, flashMark = null;
   function clearFlash() {
     clearTimeout(flashTimer);
-    document.documentElement.classList.remove("qmd-search-flashing");
+    document.documentElement.classList.remove("tali-search-flashing");
     if (flashHl) flashHl.clear();
     if (flashMark) {
       var p = flashMark.parentNode;
@@ -498,7 +498,7 @@
   // Flash the first occurrence of `terms` in the section headed by `headingEl`. Scrolls
   // to it only if off-screen (the heading is already in view). No-op on decks / no match.
   function flashTermsIn(headingEl, terms) {
-    if (document.querySelector(".qmd-deck")) return; // decks have their own chrome
+    if (document.querySelector(".tali-deck")) return; // decks have their own chrome
     if (!headingEl || !terms || !terms.length) return;
     var range = firstTermRange(headingEl, terms);
     if (!range) return;
@@ -514,16 +514,16 @@
     else {
       try {
         var m = document.createElement("mark");
-        m.className = "qmd-search-mark";
+        m.className = "tali-search-mark";
         range.surroundContents(m);
         flashMark = m;
       } catch (e) { return; }
     }
     // Restart the fade animation (remove → reflow → add) even on a repeat search.
     var de = document.documentElement;
-    de.classList.remove("qmd-search-flashing");
+    de.classList.remove("tali-search-flashing");
     void de.offsetWidth;
-    de.classList.add("qmd-search-flashing");
+    de.classList.add("tali-search-flashing");
     flashTimer = setTimeout(clearFlash, 1600);
   }
 
@@ -596,7 +596,7 @@
   // palette without synthesizing a Cmd-K event.
   window.qmdOpenSearch = open;
 
-  // The `.qmd-search-kbd` badge is server-rendered with the Mac glyph (⌘K) since the same
+  // The `.tali-search-kbd` badge is server-rendered with the Mac glyph (⌘K) since the same
   // HTML ships to every OS. On non-Mac platforms, rewrite it to "Ctrl K". (The button's
   // aria-keyshortcuts already lists both Control+K and Meta+K, so only the visible hint
   // needs localizing.)
@@ -605,7 +605,7 @@
   );
   function localizeSearchKbd() {
     if (IS_MAC) return;
-    document.querySelectorAll(".qmd-search-kbd").forEach(function (kbd) {
+    document.querySelectorAll(".tali-search-kbd").forEach(function (kbd) {
       kbd.textContent = "Ctrl K";
     });
   }

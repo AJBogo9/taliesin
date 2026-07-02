@@ -46,76 +46,76 @@
   /* Reader menu: one "Aa" launcher (bottom-right) + the consolidated menu panel and its
      sections (qmdInitReaderMenu; the prefs / progress / highlights enhancers add sections).
      The segmented controls + highlight list further down are reused inside it. */
-  .qmd-rmenu-toggle {
+  .tali-rmenu-toggle {
     position: fixed; right: 1rem; bottom: 1rem; z-index: 2147481500;
     width: 2.4rem; height: 2.4rem; border-radius: 50%;
     border: 1px solid var(--qmd-border); background: var(--qmd-bg); color: var(--qmd-fg);
     box-shadow: 0 2px 12px var(--qmd-edge-shadow); cursor: pointer;
     font: 600 1rem/1 var(--qmd-font-head); display: flex; align-items: center; justify-content: center; }
-  .qmd-rmenu-toggle:hover { border-color: var(--qmd-accent); color: var(--qmd-link); }
-  .qmd-rmenu-panel {
+  .tali-rmenu-toggle:hover { border-color: var(--qmd-accent); color: var(--qmd-link); }
+  .tali-rmenu-panel {
     position: fixed; right: 1rem; bottom: 4rem; z-index: 2147481600;
     width: min(18rem, 92vw); max-height: 70vh; overflow: auto; padding: .4rem 1rem 1rem;
     background: var(--qmd-bg); color: var(--qmd-fg);
     border: 1px solid var(--qmd-border); border-radius: 12px;
     box-shadow: 0 8px 34px var(--qmd-edge-shadow); font: var(--qmd-font-head); }
-  .qmd-rmenu-panel[hidden] { display: none; }
-  .qmd-rmenu-section { padding: .6rem 0; }
-  .qmd-rmenu-section[hidden] { display: none; }
-  .qmd-rmenu-section + .qmd-rmenu-section { border-top: 1px solid var(--qmd-border); }
-  .qmd-rmenu-section h2 { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em;
+  .tali-rmenu-panel[hidden] { display: none; }
+  .tali-rmenu-section { padding: .6rem 0; }
+  .tali-rmenu-section[hidden] { display: none; }
+  .tali-rmenu-section + .tali-rmenu-section { border-top: 1px solid var(--qmd-border); }
+  .tali-rmenu-section h2 { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em;
     color: var(--qmd-muted); margin: 0 0 .6rem; }
-  .qmd-rmenu-readout { font-size: .85rem; color: var(--qmd-fg); }
-  .qmd-reader-row { display: flex; align-items: center; justify-content: space-between;
+  .tali-rmenu-readout { font-size: .85rem; color: var(--qmd-fg); }
+  .tali-reader-row { display: flex; align-items: center; justify-content: space-between;
     gap: .5rem; margin: 0 0 .7rem; }
-  .qmd-reader-row > span { font-size: .82rem; color: var(--qmd-muted); }
-  .qmd-reader-seg { display: inline-flex; border: 1px solid var(--qmd-border);
+  .tali-reader-row > span { font-size: .82rem; color: var(--qmd-muted); }
+  .tali-reader-seg { display: inline-flex; border: 1px solid var(--qmd-border);
     border-radius: 7px; overflow: hidden; }
-  .qmd-reader-seg button {
+  .tali-reader-seg button {
     border: 0; border-left: 1px solid var(--qmd-border); background: transparent;
     color: var(--qmd-fg); cursor: pointer; padding: .28rem .55rem;
     font: inherit; font-size: .8rem; line-height: 1; }
-  .qmd-reader-seg button:first-child { border-left: 0; }
-  .qmd-reader-seg button[aria-pressed="true"] { background: var(--qmd-accent-fill); color: var(--qmd-on-accent); }
-  .qmd-reader-reset { background: none; border: 0; color: var(--qmd-link); cursor: pointer;
+  .tali-reader-seg button:first-child { border-left: 0; }
+  .tali-reader-seg button[aria-pressed="true"] { background: var(--qmd-accent-fill); color: var(--qmd-on-accent); }
+  .tali-reader-reset { background: none; border: 0; color: var(--qmd-link); cursor: pointer;
     font: inherit; font-size: .8rem; padding: 0; }
-  @media print { .qmd-rmenu-toggle, .qmd-rmenu-panel { display: none !important; } }
+  @media print { .tali-rmenu-toggle, .tali-rmenu-panel { display: none !important; } }
 
   /* Focus / reading mode (qmdInitFocusMode): hide site chrome and centre the prose into one
      calm column. Reader-side + ephemeral. The reader-menu launcher and the progress bar stay
      (the exit path + reading support); decks never get the class. */
-  body.qmd-focus .qmd-site-nav, body.qmd-focus .qmd-site-footer,
-  body.qmd-focus #TOC, body.qmd-focus #qmd-toc-handle, body.qmd-focus #qmd-toc-backdrop,
-  body.qmd-focus .qmd-book-sidebar, body.qmd-focus #qmd-controls { display: none !important; }
+  body.tali-focus .tali-site-nav, body.tali-focus .tali-site-footer,
+  body.tali-focus #TOC, body.tali-focus #tali-toc-handle, body.tali-focus #tali-toc-backdrop,
+  body.tali-focus .tali-book-sidebar, body.tali-focus #tali-controls { display: none !important; }
   /* Collapse each layout's content|TOC grid (single-doc body, book-inner, site-main) to a
      single block and centre the reading column at the comfortable measure. */
-  body.qmd-focus.has-toc, body.qmd-focus .qmd-book-inner, body.qmd-focus .qmd-site-main { display: block; }
-  body.qmd-focus main, body.qmd-focus .qmd-book-inner, body.qmd-focus .qmd-site-main {
+  body.tali-focus.has-toc, body.tali-focus .tali-book-inner, body.tali-focus .tali-site-main { display: block; }
+  body.tali-focus main, body.tali-focus .tali-book-inner, body.tali-focus .tali-site-main {
     max-width: var(--qmd-maxw); margin-inline: auto; }
 
   /* Reading progress (top bar + "min left") + block-id-anchored resume (qmdInitReadingProgress). */
-  .qmd-readbar { position: fixed; top: 0; left: 0; right: 0; height: 3px;
+  .tali-readbar { position: fixed; top: 0; left: 0; right: 0; height: 3px;
     z-index: 2147481400; pointer-events: none; }
-  .qmd-readbar-fill { height: 100%; width: 0; background: var(--qmd-accent);
+  .tali-readbar-fill { height: 100%; width: 0; background: var(--qmd-accent);
     transition: width .08s linear; }
-  .qmd-resume { position: fixed; left: 1rem; bottom: 1rem; z-index: 2147481500;
+  .tali-resume { position: fixed; left: 1rem; bottom: 1rem; z-index: 2147481500;
     display: flex; align-items: stretch; background: var(--qmd-bg);
     border: 1px solid var(--qmd-border); border-radius: 10px; overflow: hidden;
     box-shadow: 0 4px 20px var(--qmd-edge-shadow); font: var(--qmd-font-head); }
-  .qmd-resume-go { border: 0; background: transparent; color: var(--qmd-link); cursor: pointer;
+  .tali-resume-go { border: 0; background: transparent; color: var(--qmd-link); cursor: pointer;
     font: inherit; font-size: .82rem; padding: .5rem .8rem; }
-  .qmd-resume-go:hover { background: var(--qmd-code-bg); }
-  .qmd-resume-x { border: 0; border-left: 1px solid var(--qmd-border); background: transparent;
+  .tali-resume-go:hover { background: var(--qmd-code-bg); }
+  .tali-resume-x { border: 0; border-left: 1px solid var(--qmd-border); background: transparent;
     color: var(--qmd-muted); cursor: pointer; font: inherit; font-size: 1rem; line-height: 1;
     padding: 0 .6rem; }
-  .qmd-resume-x:hover { color: var(--qmd-fg); }
-  @media print { .qmd-readbar, .qmd-resume { display: none !important; } }
+  .tali-resume-x:hover { color: var(--qmd-fg); }
+  @media print { .tali-readbar, .tali-resume { display: none !important; } }
 
   /* Reader highlights: theme-aware mark colour + the highlight/remove action button. */
   :root { --qmd-userhl-bg: rgba(255, 213, 0, .40); }
   html[data-theme="dark"] { --qmd-userhl-bg: rgba(214, 178, 60, .34); }
   html[data-theme="sepia"] { --qmd-userhl-bg: rgba(176, 120, 32, .32); }
-  mark.qmd-userhl { background: var(--qmd-userhl-bg); color: inherit; border-radius: 2px;
+  mark.tali-userhl { background: var(--qmd-userhl-bg); color: inherit; border-radius: 2px;
     padding: 0 .03em; cursor: pointer;
     -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 
@@ -124,123 +124,123 @@
      saved highlight. */
   :root { --qmd-ra-highlight: rgba(96, 165, 250, .38); }
   html[data-theme="sepia"] { --qmd-ra-highlight: rgba(56, 132, 200, .32); }
-  ::highlight(qmd-readaloud) { background-color: var(--qmd-ra-highlight); color: inherit; }
-  mark.qmd-ra-mark { background-color: var(--qmd-ra-highlight); color: inherit; border-radius: 2px; }
+  ::highlight(tali-readaloud) { background-color: var(--qmd-ra-highlight); color: inherit; }
+  mark.tali-ra-mark { background-color: var(--qmd-ra-highlight); color: inherit; border-radius: 2px; }
 
   /* Search-hit flash (Cmd-K → land on the heading, then flash the matched term via the
      CSS Custom Highlight API; search.js). Registered as an animatable colour so it can
      fade to transparent; the keyframes are per-theme because @keyframes can't read a var
-     dynamically. `search.js` toggles `.qmd-search-flashing` for the run. */
+     dynamically. `search.js` toggles `.tali-search-flashing` for the run. */
   @property --qmd-search-flash {
     syntax: "<color>";
     inherits: true;
     initial-value: transparent;
   }
-  ::highlight(qmd-search-flash) { background-color: var(--qmd-search-flash); color: inherit; }
+  ::highlight(tali-search-flash) { background-color: var(--qmd-search-flash); color: inherit; }
   /* Fallback for engines without the Custom Highlight API: a transient <mark> that
      fades itself out (a mark CAN be CSS-animated, unlike ::highlight). */
-  mark.qmd-search-mark { color: inherit; border-radius: 2px; background-color: rgba(250, 204, 21, .5);
-    animation: qmd-search-mark-fade 1.5s ease-out forwards; }
-  @keyframes qmd-search-mark-fade { 0%, 45% { background-color: rgba(250, 204, 21, .5); } 100% { background-color: transparent; } }
-  html.qmd-search-flashing { animation: qmd-search-flash 1.5s ease-out forwards; }
-  @keyframes qmd-search-flash {
+  mark.tali-search-mark { color: inherit; border-radius: 2px; background-color: rgba(250, 204, 21, .5);
+    animation: tali-search-mark-fade 1.5s ease-out forwards; }
+  @keyframes tali-search-mark-fade { 0%, 45% { background-color: rgba(250, 204, 21, .5); } 100% { background-color: transparent; } }
+  html.tali-search-flashing { animation: tali-search-flash 1.5s ease-out forwards; }
+  @keyframes tali-search-flash {
     0%, 45% { --qmd-search-flash: rgba(250, 204, 21, .55); }
     100% { --qmd-search-flash: transparent; }
   }
-  html[data-theme="dark"].qmd-search-flashing { animation-name: qmd-search-flash-dark; }
-  @keyframes qmd-search-flash-dark {
+  html[data-theme="dark"].tali-search-flashing { animation-name: tali-search-flash-dark; }
+  @keyframes tali-search-flash-dark {
     0%, 45% { --qmd-search-flash: rgba(96, 165, 250, .5); }
     100% { --qmd-search-flash: transparent; }
   }
-  html[data-theme="sepia"].qmd-search-flashing { animation-name: qmd-search-flash-sepia; }
-  @keyframes qmd-search-flash-sepia {
+  html[data-theme="sepia"].tali-search-flashing { animation-name: tali-search-flash-sepia; }
+  @keyframes tali-search-flash-sepia {
     0%, 45% { --qmd-search-flash: rgba(154, 106, 58, .45); }
     100% { --qmd-search-flash: transparent; }
   }
   @media (prefers-reduced-motion: reduce) {
-    html.qmd-search-flashing { animation-duration: .01ms; }
+    html.tali-search-flashing { animation-duration: .01ms; }
   }
 
   /* Read-aloud mini-player: a small floating transport, shown only while listening. */
-  .qmd-ra-bar { position: fixed; left: 50%; bottom: 1rem; transform: translateX(-50%);
+  .tali-ra-bar { position: fixed; left: 50%; bottom: 1rem; transform: translateX(-50%);
     z-index: 2147481600; display: flex; align-items: center; gap: .35rem;
     background: var(--qmd-bg); border: 1px solid var(--qmd-border); border-radius: 999px;
     padding: .3rem .5rem; box-shadow: 0 4px 18px var(--qmd-edge-shadow); font-size: .85rem; }
-  .qmd-ra-bar[hidden] { display: none; }
-  .qmd-ra-btn { border: 0; background: transparent; color: var(--qmd-fg); cursor: pointer;
+  .tali-ra-bar[hidden] { display: none; }
+  .tali-ra-btn { border: 0; background: transparent; color: var(--qmd-fg); cursor: pointer;
     font-size: 1rem; line-height: 1; padding: .25rem .4rem; border-radius: 999px;
     /* WCAG 2.5.8: guarantee a >=24x24 target without moving the glyph (flex-centred). */
     display: inline-flex; align-items: center; justify-content: center;
     min-width: 24px; min-height: 24px; box-sizing: border-box; }
-  .qmd-ra-btn:hover { background: var(--qmd-code-bg); }
-  .qmd-ra-speed { font-variant-numeric: tabular-nums; opacity: .8; min-width: 2.6em;
+  .tali-ra-btn:hover { background: var(--qmd-code-bg); }
+  .tali-ra-speed { font-variant-numeric: tabular-nums; opacity: .8; min-width: 2.6em;
     text-align: center; }
-  .qmd-ra-voice-sel { max-width: 11rem; }
-  @media print { .qmd-ra-bar { display: none !important; } }
+  .tali-ra-voice-sel { max-width: 11rem; }
+  @media print { .tali-ra-bar { display: none !important; } }
   @media (prefers-reduced-motion: no-preference) {
-    .qmd-ra-bar { animation: qmd-ra-in .18s ease-out; }
+    .tali-ra-bar { animation: tali-ra-in .18s ease-out; }
   }
-  @keyframes qmd-ra-in { from { opacity: 0; transform: translate(-50%, 6px); }
+  @keyframes tali-ra-in { from { opacity: 0; transform: translate(-50%, 6px); }
     to { opacity: 1; transform: translateX(-50%); } }
 
   /* Reactive input controls ({{< input ... >}}). A labeled native control feeding the
      {js} reactive graph; native controls inherit color-scheme so dark/sepia just work. */
-  .qmd-input { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+  .tali-input { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
     margin: 1rem 0; font: inherit; }
-  .qmd-input-label { font-weight: 600; }
-  .qmd-input-control { font: inherit; accent-color: var(--qmd-accent); }
-  .qmd-input-control[type="range"] { flex: 1 1 12rem; max-width: 22rem; }
-  .qmd-input-out { font-variant-numeric: tabular-nums; min-width: 2.5em;
+  .tali-input-label { font-weight: 600; }
+  .tali-input-control { font: inherit; accent-color: var(--qmd-accent); }
+  .tali-input-control[type="range"] { flex: 1 1 12rem; max-width: 22rem; }
+  .tali-input-out { font-variant-numeric: tabular-nums; min-width: 2.5em;
     color: var(--qmd-muted); }
 
-  .qmd-hl-action { position: fixed; z-index: 2147481600;
+  .tali-hl-action { position: fixed; z-index: 2147481600;
     font: 600 .78rem/1 var(--qmd-font-head); background: var(--qmd-fg); color: var(--qmd-bg);
     border: 0; border-radius: 7px; padding: .42rem .7rem; cursor: pointer;
     box-shadow: 0 3px 14px var(--qmd-edge-shadow); }
-  .qmd-hl-action[hidden] { display: none; }
-  /* Selection toolbar: a row of .qmd-hl-action pills (Copy / Quote / Share link / Highlight)
+  .tali-hl-action[hidden] { display: none; }
+  /* Selection toolbar: a row of .tali-hl-action pills (Copy / Quote / Share link / Highlight)
      shown above a selection. The bar is the fixed host; the pills flow inside it. */
-  .qmd-seltools { position: fixed; z-index: 2147481600; display: inline-flex; gap: .3rem;
+  .tali-seltools { position: fixed; z-index: 2147481600; display: inline-flex; gap: .3rem;
     white-space: nowrap; }
-  .qmd-seltools[hidden] { display: none; }
-  .qmd-seltools .qmd-hl-action { position: static; z-index: auto; }
-  .qmd-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  .tali-seltools[hidden] { display: none; }
+  .tali-seltools .tali-hl-action { position: static; z-index: auto; }
+  .tali-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
-  @media print { .qmd-hl-action, .qmd-seltools { display: none !important; } }
-  @media (max-width: 380px) { .qmd-seltools .qmd-hl-action { padding: .38rem .5rem; font-size: .72rem; } }
+  @media print { .tali-hl-action, .tali-seltools { display: none !important; } }
+  @media (max-width: 380px) { .tali-seltools .tali-hl-action { padding: .38rem .5rem; font-size: .72rem; } }
 
   /* My highlights: list + export, reused inside the reader menu's Highlights section. */
-  .qmd-hlx-list { list-style: none; margin: 0 0 .7rem; padding: 0; }
-  .qmd-hlx-list li { display: flex; align-items: flex-start; gap: .4rem; margin: 0 0 .35rem; }
-  .qmd-hlx-go { flex: 1; text-align: left; border: 0; background: transparent; cursor: pointer;
+  .tali-hlx-list { list-style: none; margin: 0 0 .7rem; padding: 0; }
+  .tali-hlx-list li { display: flex; align-items: flex-start; gap: .4rem; margin: 0 0 .35rem; }
+  .tali-hlx-go { flex: 1; text-align: left; border: 0; background: transparent; cursor: pointer;
     font: inherit; font-size: .82rem; line-height: 1.35; color: var(--qmd-fg);
     padding: .25rem .35rem; border-radius: 6px; }
-  .qmd-hlx-go:hover { background: var(--qmd-code-bg); }
-  .qmd-hlx-rm { border: 0; background: transparent; color: var(--qmd-muted); cursor: pointer;
+  .tali-hlx-go:hover { background: var(--qmd-code-bg); }
+  .tali-hlx-rm { border: 0; background: transparent; color: var(--qmd-muted); cursor: pointer;
     font: inherit; font-size: 1rem; line-height: 1; padding: .2rem .3rem; }
-  .qmd-hlx-rm:hover { color: var(--qmd-fg); }
-  .qmd-hlx-actions { border-top: 1px solid var(--qmd-border); padding-top: .7rem; }
-  .qmd-hlx-export { border: 1px solid var(--qmd-border); background: transparent; color: var(--qmd-fg);
+  .tali-hlx-rm:hover { color: var(--qmd-fg); }
+  .tali-hlx-actions { border-top: 1px solid var(--qmd-border); padding-top: .7rem; }
+  .tali-hlx-export { border: 1px solid var(--qmd-border); background: transparent; color: var(--qmd-fg);
     cursor: pointer; font: inherit; font-size: .8rem; border-radius: 7px; padding: .35rem .7rem; }
-  .qmd-hlx-export:hover { border-color: var(--qmd-accent); color: var(--qmd-link); }
-  .qmd-hlx-out { display: block; width: 100%; margin-top: .6rem; min-height: 6rem;
+  .tali-hlx-export:hover { border-color: var(--qmd-accent); color: var(--qmd-link); }
+  .tali-hlx-out { display: block; width: 100%; margin-top: .6rem; min-height: 6rem;
     font: .78rem/1.4 var(--qmd-font-mono); color: var(--qmd-fg); background: var(--qmd-code-bg);
     border: 1px solid var(--qmd-border); border-radius: 7px; padding: .5rem; resize: vertical; }
-  .qmd-hlx-out[hidden] { display: none; }
+  .tali-hlx-out[hidden] { display: none; }
 
   /* Reader bookmarks: the hover star toggle + a persistent margin star on a bookmarked
      heading (qmdInitBookmarks). */
-  .qmd-bm-toggle { position: absolute; z-index: 2147481400;
+  .tali-bm-toggle { position: absolute; z-index: 2147481400;
     width: 1.7rem; height: 1.7rem; display: flex; align-items: center; justify-content: center;
     padding: 0; border: 0; border-radius: 6px; background: transparent; cursor: pointer;
     color: var(--qmd-muted); font-size: 1.05rem; line-height: 1; }
-  .qmd-bm-toggle:hover { color: var(--qmd-link); background: var(--qmd-code-bg); }
-  .qmd-bm-toggle[aria-pressed="true"] { color: var(--qmd-link); }
-  .qmd-bm-toggle[hidden] { display: none; }
-  .qmd-bookmarked { position: relative; }
-  .qmd-bookmarked::before { content: "\2605"; position: absolute; left: -1.15em; top: .05em;
+  .tali-bm-toggle:hover { color: var(--qmd-link); background: var(--qmd-code-bg); }
+  .tali-bm-toggle[aria-pressed="true"] { color: var(--qmd-link); }
+  .tali-bm-toggle[hidden] { display: none; }
+  .tali-bookmarked { position: relative; }
+  .tali-bookmarked::before { content: "\2605"; position: absolute; left: -1.15em; top: .05em;
     color: var(--qmd-link); font-size: .72em; line-height: inherit; pointer-events: none; }
-  @media print { .qmd-bm-toggle { display: none !important; } }
+  @media print { .tali-bm-toggle { display: none !important; } }
   body { max-width: var(--qmd-maxw); margin: 2rem auto; padding: 0 1rem;
          font: var(--qmd-font-body); color: var(--qmd-fg); background: var(--qmd-bg);
          overflow-wrap: break-word;
@@ -270,15 +270,15 @@
      (nav/TOC), and global scope also covers no-TOC build pages (no <main> wrapper). */
   p, li { text-wrap: pretty; orphans: 2; widows: 2; }
   h1, h2, h3, h4, h5, h6, figcaption, blockquote, .callout-title { text-wrap: balance; }
-  figure, .qmd-figure { break-inside: avoid; }
+  figure, .tali-figure { break-inside: avoid; }
   figcaption { break-before: avoid; }
   h1, h2, h3, h4, h5, h6 { break-after: avoid; }
   /* Skip-to-content link (qmdInitSkipLink): hidden until focused, then pinned top-left. */
-  .qmd-skip { position: fixed; top: -3rem; left: .5rem; z-index: 2147482000;
+  .tali-skip { position: fixed; top: -3rem; left: .5rem; z-index: 2147482000;
     background: var(--qmd-fg); color: var(--qmd-bg); padding: .5rem .8rem;
     border-radius: 6px; font: 600 .9rem var(--qmd-font-head); text-decoration: none; }
-  .qmd-skip:focus { top: .5rem; }
-  @media (prefers-reduced-motion: no-preference) { .qmd-skip { transition: top .15s ease; } }
+  .tali-skip:focus { top: .5rem; }
+  @media (prefers-reduced-motion: no-preference) { .tali-skip { transition: top .15s ease; } }
 
   /* One consistent keyboard-focus ring across every interactive control (the
      `--qmd-focus` token). `:focus-visible` shows it for keyboard/AT focus but not on a
@@ -291,49 +291,49 @@
     outline: var(--qmd-focus); outline-offset: var(--qmd-focus-offset); border-radius: 4px;
   }
   /* The skip link is pinned chrome with its own box; keep its offset tight. */
-  .qmd-skip:focus-visible { outline: var(--qmd-focus); outline-offset: 2px; }
+  .tali-skip:focus-visible { outline: var(--qmd-focus); outline-offset: 2px; }
 
   /* Keyboard shortcuts cheatsheet (qmdInitKeyboard). */
-  .qmd-keys { position: fixed; inset: 0; z-index: 2147482000; display: flex;
+  .tali-keys { position: fixed; inset: 0; z-index: 2147482000; display: flex;
     align-items: center; justify-content: center; background: rgba(0, 0, 0, .45); }
-  .qmd-keys[hidden] { display: none; }
-  .qmd-keys-card { position: relative; background: var(--qmd-bg); color: var(--qmd-fg);
+  .tali-keys[hidden] { display: none; }
+  .tali-keys-card { position: relative; background: var(--qmd-bg); color: var(--qmd-fg);
     border: 1px solid var(--qmd-border); border-radius: 12px; padding: 1.4rem 1.6rem;
     max-width: 22rem; box-shadow: 0 10px 40px var(--qmd-edge-shadow); }
-  .qmd-keys-card h2 { margin: 0 0 .8rem; font-size: 1.1rem; }
-  .qmd-keys-list { margin: 0; }
-  .qmd-keys-list > div { display: flex; gap: .8rem; align-items: baseline; margin: .35rem 0; }
-  .qmd-keys-list dt { flex: 0 0 5rem; margin: 0; }
-  .qmd-keys-list dd { margin: 0; color: var(--qmd-muted); }
-  .qmd-keys kbd { font: inherit; font-size: .8rem; background: var(--qmd-code-bg);
+  .tali-keys-card h2 { margin: 0 0 .8rem; font-size: 1.1rem; }
+  .tali-keys-list { margin: 0; }
+  .tali-keys-list > div { display: flex; gap: .8rem; align-items: baseline; margin: .35rem 0; }
+  .tali-keys-list dt { flex: 0 0 5rem; margin: 0; }
+  .tali-keys-list dd { margin: 0; color: var(--qmd-muted); }
+  .tali-keys kbd { font: inherit; font-size: .8rem; background: var(--qmd-code-bg);
     border: 1px solid var(--qmd-border); border-radius: 4px; padding: .05rem .35rem; }
-  .qmd-keys-close { position: absolute; top: .5rem; right: .6rem; border: 0;
+  .tali-keys-close { position: absolute; top: .5rem; right: .6rem; border: 0;
     background: transparent; color: var(--qmd-muted); cursor: pointer; font-size: 1.2rem; line-height: 1; }
 
   /* Cross-reference graph (graph.js): a focus-trapped modal with an interactive
      force-directed map of the project's pages + their cross-page links. */
-  .qmd-graph-btn { display: inline-flex; align-items: center; justify-content: center;
+  .tali-graph-btn { display: inline-flex; align-items: center; justify-content: center;
     width: 2rem; height: 2rem; padding: 0; border: 1px solid var(--qmd-border);
     border-radius: 7px; background: var(--qmd-bg); color: var(--qmd-muted); cursor: pointer; }
-  .qmd-graph-btn:hover { color: var(--qmd-fg); border-color: var(--qmd-muted); }
-  .qmd-graph-overlay { position: fixed; inset: 0; z-index: 2147482000; display: flex;
+  .tali-graph-btn:hover { color: var(--qmd-fg); border-color: var(--qmd-muted); }
+  .tali-graph-overlay { position: fixed; inset: 0; z-index: 2147482000; display: flex;
     align-items: center; justify-content: center; background: rgba(0, 0, 0, .45); }
-  .qmd-graph-panel { display: flex; flex-direction: column; background: var(--qmd-bg);
+  .tali-graph-panel { display: flex; flex-direction: column; background: var(--qmd-bg);
     color: var(--qmd-fg); border: 1px solid var(--qmd-border); border-radius: 12px;
     box-shadow: 0 10px 40px var(--qmd-edge-shadow); overflow: hidden; }
-  .qmd-graph-head { display: flex; align-items: center; justify-content: space-between;
+  .tali-graph-head { display: flex; align-items: center; justify-content: space-between;
     padding: .5rem .9rem; border-bottom: 1px solid var(--qmd-border); font: var(--qmd-font-head); }
-  .qmd-graph-title { font-weight: 600; }
-  .qmd-graph-close { border: 0; background: transparent; color: var(--qmd-muted);
+  .tali-graph-title { font-weight: 600; }
+  .tali-graph-close { border: 0; background: transparent; color: var(--qmd-muted);
     cursor: pointer; font-size: 1.1rem; line-height: 1; }
-  .qmd-graph-close:hover { color: var(--qmd-fg); }
-  .qmd-graph-svg { display: block; flex: 1; }
-  .qmd-graph-edge { stroke: var(--qmd-border); stroke-width: 1.2; }
-  .qmd-graph-node { cursor: pointer; }
-  .qmd-graph-node circle { fill: var(--qmd-muted); transition: fill .15s; }
-  .qmd-graph-node:hover circle, .qmd-graph-node:focus-visible circle { fill: var(--qmd-link); }
-  .qmd-graph-current circle { fill: var(--qmd-accent-fill); }
-  .qmd-graph-label { fill: var(--qmd-fg); font: 12px var(--qmd-font-head); pointer-events: none; }
+  .tali-graph-close:hover { color: var(--qmd-fg); }
+  .tali-graph-svg { display: block; flex: 1; }
+  .tali-graph-edge { stroke: var(--qmd-border); stroke-width: 1.2; }
+  .tali-graph-node { cursor: pointer; }
+  .tali-graph-node circle { fill: var(--qmd-muted); transition: fill .15s; }
+  .tali-graph-node:hover circle, .tali-graph-node:focus-visible circle { fill: var(--qmd-link); }
+  .tali-graph-current circle { fill: var(--qmd-accent-fill); }
+  .tali-graph-label { fill: var(--qmd-fg); font: 12px var(--qmd-font-head); pointer-events: none; }
 
   /* Tabular figures where columns/alignment matter (prose keeps proportional numerals). */
   pre, code, table, .katex { font-variant-numeric: tabular-nums; }
@@ -348,35 +348,35 @@
   a.btn-sm { font-size: .8rem; padding: .25rem .7rem; }
   /* Embedded slide deck (`{{< embed deck.qmd >}}`): a 16:9 iframe that isolates the
      deck's full-viewport CSS/JS/keyboard from the page, plus fullscreen + open. */
-  .qmd-embed { margin: 1.6rem 0; }
-  .qmd-embed-stage { position: relative; width: 100%; aspect-ratio: 16 / 9;
+  .tali-embed { margin: 1.6rem 0; }
+  .tali-embed-stage { position: relative; width: 100%; aspect-ratio: 16 / 9;
     border: 1px solid var(--qmd-border); border-radius: 10px; overflow: hidden;
     background: var(--qmd-code-bg); box-shadow: 0 1px 4px var(--qmd-edge-shadow); }
-  .qmd-embed-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
+  .tali-embed-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
   /* hover-revealed corner "expand" (the deck is interactive, so it can't be
      click-to-zoom; this enlarges via real fullscreen, like a video player's icon). */
-  .qmd-embed-expand { position: absolute; top: .55rem; right: .55rem; z-index: 3;
+  .tali-embed-expand { position: absolute; top: .55rem; right: .55rem; z-index: 3;
     width: 2rem; height: 2rem; display: inline-flex; align-items: center; justify-content: center;
     padding: 0; border: 0; border-radius: 7px; cursor: pointer; font-size: 1.05rem; line-height: 1;
     color: #fff; background: rgba(20, 22, 27, .72); opacity: 0; transition: opacity .15s ease;
     -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
-  .qmd-embed-stage:hover .qmd-embed-expand, .qmd-embed-expand:focus-visible { opacity: 1; }
-  .qmd-embed-bar { display: flex; gap: .5rem; justify-content: flex-end; margin-top: .55rem; }
-  .qmd-embed-btn { font: 500 .82rem var(--qmd-font-head); cursor: pointer; line-height: 1;
+  .tali-embed-stage:hover .tali-embed-expand, .tali-embed-expand:focus-visible { opacity: 1; }
+  .tali-embed-bar { display: flex; gap: .5rem; justify-content: flex-end; margin-top: .55rem; }
+  .tali-embed-btn { font: 500 .82rem var(--qmd-font-head); cursor: pointer; line-height: 1;
     padding: .4rem .85rem; border-radius: 7px; border: 1px solid var(--qmd-border);
     background: transparent; color: var(--qmd-muted); text-decoration: none;
     transition: border-color .12s ease, color .12s ease; }
-  .qmd-embed-btn:hover { border-color: var(--qmd-accent); color: var(--qmd-link); }
+  .tali-embed-btn:hover { border-color: var(--qmd-accent); color: var(--qmd-link); }
   /* `{{< video >}}` — a framed silent screencast (autoplay/muted/loop) + optional caption. */
-  .qmd-video { margin: 1.6rem 0; }
-  .qmd-video video { display: block; width: 100%; height: auto; border: 1px solid var(--qmd-border);
+  .tali-video { margin: 1.6rem 0; }
+  .tali-video video { display: block; width: 100%; height: auto; border: 1px solid var(--qmd-border);
     border-radius: 12px; background: var(--qmd-code-bg); box-shadow: 0 4px 18px var(--qmd-edge-shadow); }
-  .qmd-video figcaption { text-align: center; color: var(--qmd-muted); font-size: .9rem; margin-top: .6rem; }
+  .tali-video figcaption { text-align: center; color: var(--qmd-muted); font-size: .9rem; margin-top: .6rem; }
   /* `dark=` variant: show the clip that matches the page theme (selectors carry the
-     element so they beat the `.qmd-video video` base rule). */
-  .qmd-video video.qmd-video-dark { display: none; }
-  html[data-theme="dark"] .qmd-video video.qmd-video-light { display: none; }
-  html[data-theme="dark"] .qmd-video video.qmd-video-dark { display: block; }
+     element so they beat the `.tali-video video` base rule). */
+  .tali-video video.tali-video-dark { display: none; }
+  html[data-theme="dark"] .tali-video video.tali-video-light { display: none; }
+  html[data-theme="dark"] .tali-video video.tali-video-dark { display: block; }
   /* Filled + large button variants, layered on `.btn` (a landing-page primary CTA
      is `[Start](x){.btn .btn-primary .btn-lg}`; the base `.btn` is the outline style). */
   a.btn-primary { background: var(--qmd-accent-fill); border-color: var(--qmd-accent-fill); color: var(--qmd-on-accent); }
@@ -413,19 +413,19 @@
   hr { border: 0; border-top: 1px solid var(--qmd-border); margin: 2rem 0; }
   /* Anchor copy-link (qmdInitAnchorLinks): a `#` revealed on hover/focus of a heading or a
      float caption; clicking copies that anchor's canonical deep link. Reader-side. */
-  .qmd-anchor { position: relative; margin-left: .35em; color: var(--qmd-muted);
+  .tali-anchor { position: relative; margin-left: .35em; color: var(--qmd-muted);
     text-decoration: none; font-weight: 400; opacity: 0;
     transition: opacity .12s ease, color .12s ease; }
   /* WCAG 2.5.8: the visible `#` stays small, but a centred invisible >=24x24 overlay
      expands the click/tap target without shifting the heading or caption layout. */
-  .qmd-anchor::after { content: ""; position: absolute; top: 50%; left: 50%;
+  .tali-anchor::after { content: ""; position: absolute; top: 50%; left: 50%;
     transform: translate(-50%, -50%); width: 24px; height: 24px; }
-  :is(h1, h2, h3, h4, h5, h6):hover > .qmd-anchor,
-  figcaption:hover > .qmd-anchor, caption:hover > .qmd-anchor,
-  .qmd-theorem-head:hover > .qmd-anchor,
-  .qmd-anchor:focus-visible { opacity: 1; }
-  .qmd-anchor:hover, .qmd-anchor.qmd-anchor-copied { color: var(--qmd-link); opacity: 1; }
-  @media print { .qmd-anchor { display: none; } }
+  :is(h1, h2, h3, h4, h5, h6):hover > .tali-anchor,
+  figcaption:hover > .tali-anchor, caption:hover > .tali-anchor,
+  .tali-theorem-head:hover > .tali-anchor,
+  .tali-anchor:focus-visible { opacity: 1; }
+  .tali-anchor:hover, .tali-anchor.tali-anchor-copied { color: var(--qmd-link); opacity: 1; }
+  @media print { .tali-anchor { display: none; } }
   h1 { font-size: 2rem; line-height: 1.15; letter-spacing: -.011em; margin: 0 0 .6rem; }
   h2 { font-size: 1.62rem; line-height: 1.2; letter-spacing: -.011em; margin: 2.2rem 0 .7rem; }
   h3 { font-size: 1.35rem; line-height: 1.25; margin: 1.8rem 0 .55rem; }
@@ -433,11 +433,11 @@
   h5 { font-size: 1rem; line-height: 1.35; margin: 1.3rem 0 .4rem;
        text-transform: uppercase; letter-spacing: .04em; color: var(--qmd-muted); }
   h6 { font-size: .9rem; line-height: 1.35; margin: 1.2rem 0 .4rem; color: var(--qmd-muted); }
-  .qmd-title-block { margin: 0 0 2rem; padding-bottom: 1rem; border-bottom: 1px solid var(--qmd-border); }
-  .qmd-title-block .title { margin: 0 0 .3rem; font-size: 2.1rem; line-height: 1.15; }
-  .qmd-title-block .subtitle { margin: .2rem 0; font-size: 1.15rem; color: var(--qmd-muted); font-weight: 400; }
-  .qmd-title-block .description { margin: .4rem 0; color: var(--qmd-fg); }
-  .qmd-title-block .qmd-title-meta { margin-top: .6rem; display: flex; flex-wrap: wrap; gap: .25rem 1rem;
+  .tali-title-block { margin: 0 0 2rem; padding-bottom: 1rem; border-bottom: 1px solid var(--qmd-border); }
+  .tali-title-block .title { margin: 0 0 .3rem; font-size: 2.1rem; line-height: 1.15; }
+  .tali-title-block .subtitle { margin: .2rem 0; font-size: 1.15rem; color: var(--qmd-muted); font-weight: 400; }
+  .tali-title-block .description { margin: .4rem 0; color: var(--qmd-fg); }
+  .tali-title-block .tali-title-meta { margin-top: .6rem; display: flex; flex-wrap: wrap; gap: .25rem 1rem;
     font: 14px var(--qmd-font-head); color: var(--qmd-muted); }
   pre { position: relative; padding: 1rem; border-radius: 6px; overflow: auto; font-size: .9em;
         line-height: 1.5; /* fixed code leading: immune to reader line-spacing, even nested in a list */
@@ -474,16 +474,16 @@
     font-size: .875em; overflow-wrap: anywhere; }
   /* Tokenised so the copy button follows every theme (light / dark / sepia) from one
      definition; DARK_CSS no longer needs a per-theme override. */
-  .qmd-copy { position: absolute; top: .45rem; right: .45rem;
+  .tali-copy { position: absolute; top: .45rem; right: .45rem;
               display: inline-flex; align-items: center; justify-content: center;
               padding: .28rem; line-height: 0; color: var(--qmd-muted);
               background: var(--qmd-bg); border: 1px solid var(--qmd-border); border-radius: 5px;
               cursor: pointer;
               opacity: 0; transition: opacity .12s ease, color .12s ease, border-color .12s ease; }
-  .qmd-copy svg { display: block; width: 14px; height: 14px; }
-  pre:hover .qmd-copy, .qmd-copy:focus-visible { opacity: 1; }
-  .qmd-copy:hover { color: var(--qmd-fg); border-color: var(--qmd-muted); }
-  .qmd-copy.qmd-copied { color: var(--qmd-callout-tip); border-color: var(--qmd-callout-tip); }
+  .tali-copy svg { display: block; width: 14px; height: 14px; }
+  pre:hover .tali-copy, .tali-copy:focus-visible { opacity: 1; }
+  .tali-copy:hover { color: var(--qmd-fg); border-color: var(--qmd-muted); }
+  .tali-copy.tali-copied { color: var(--qmd-callout-tip); border-color: var(--qmd-callout-tip); }
   pre.mermaid { background: transparent; padding: .5rem 0; text-align: center; overflow: visible; }
   pre.mermaid svg { max-width: 100%; height: auto; }
   blockquote { border-left: 3px solid var(--qmd-border); margin: 0 0 1rem; padding-left: 1rem; color: var(--qmd-muted); }
@@ -543,45 +543,45 @@
   .callout-collapse > details[open] > summary.callout-title { margin-bottom: 0; }
   /* theorem environments (definition/theorem/lemma/proof/…); light + dark from one
      token set via color-mix, matching the callout aesthetic but lighter. */
-  .qmd-theorem { border: 1px solid var(--qmd-border); border-left-width: 4px; border-radius: 5px; margin: 1.1rem 0; }
-  .qmd-theorem-head { font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 600; margin: 0; padding: .3rem .9rem; }
-  .qmd-theorem-title { font-weight: 600; }
-  .qmd-theorem-body { padding: .3rem .9rem .6rem; }
-  .qmd-theorem-body > :first-child { margin-top: .4rem; }
-  .qmd-thm-style-plain { border-left-color: var(--qmd-thm-plain); }
-  .qmd-thm-style-definition { border-left-color: var(--qmd-thm-definition); }
-  .qmd-thm-style-remark { border-left-color: var(--qmd-thm-remark); }
-  .qmd-thm-style-plain .qmd-theorem-head { background: color-mix(in srgb, var(--qmd-thm-plain) 12%, transparent); }
-  .qmd-thm-style-definition .qmd-theorem-head { background: color-mix(in srgb, var(--qmd-thm-definition) 12%, transparent); }
-  .qmd-thm-style-remark .qmd-theorem-head { background: color-mix(in srgb, var(--qmd-thm-remark) 10%, transparent); }
+  .tali-theorem { border: 1px solid var(--qmd-border); border-left-width: 4px; border-radius: 5px; margin: 1.1rem 0; }
+  .tali-theorem-head { font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 600; margin: 0; padding: .3rem .9rem; }
+  .tali-theorem-title { font-weight: 600; }
+  .tali-theorem-body { padding: .3rem .9rem .6rem; }
+  .tali-theorem-body > :first-child { margin-top: .4rem; }
+  .tali-thm-style-plain { border-left-color: var(--qmd-thm-plain); }
+  .tali-thm-style-definition { border-left-color: var(--qmd-thm-definition); }
+  .tali-thm-style-remark { border-left-color: var(--qmd-thm-remark); }
+  .tali-thm-style-plain .tali-theorem-head { background: color-mix(in srgb, var(--qmd-thm-plain) 12%, transparent); }
+  .tali-thm-style-definition .tali-theorem-head { background: color-mix(in srgb, var(--qmd-thm-definition) 12%, transparent); }
+  .tali-thm-style-remark .tali-theorem-head { background: color-mix(in srgb, var(--qmd-thm-remark) 10%, transparent); }
   /* amsthm convention: plain-style bodies are italic; definition/remark stay upright. */
-  .qmd-thm-style-plain .qmd-theorem-body { font-style: italic; }
+  .tali-thm-style-plain .tali-theorem-body { font-style: italic; }
   /* proof: italic lead, right-floated QED. */
-  .qmd-proof { margin: 1.1rem 0; }
-  .qmd-proof-head { font-style: italic; font-weight: 600; margin: 0 0 .2rem; }
-  .qmd-qed { display: block; text-align: right; }
-  .qmd-proof-collapse > details > summary.qmd-proof-head { cursor: pointer; margin: 0; }
-  .qmd-proof-collapse > details[open] > summary.qmd-proof-head { margin-bottom: .2rem; }
-  details.qmd-code-fold > summary { cursor: pointer; color: var(--qmd-muted);
+  .tali-proof { margin: 1.1rem 0; }
+  .tali-proof-head { font-style: italic; font-weight: 600; margin: 0 0 .2rem; }
+  .tali-qed { display: block; text-align: right; }
+  .tali-proof-collapse > details > summary.tali-proof-head { cursor: pointer; margin: 0; }
+  .tali-proof-collapse > details[open] > summary.tali-proof-head { margin-bottom: .2rem; }
+  details.tali-code-fold > summary { cursor: pointer; color: var(--qmd-muted);
     font: 600 .85em var(--qmd-font-head); padding: .15rem 0; margin-bottom: .35rem; }
-  details.qmd-code-fold > summary:hover { color: var(--qmd-fg); }
-  /* Themed disclosure chevron for folded code (`qmd-code-fold`) + collapsible proofs:
+  details.tali-code-fold > summary:hover { color: var(--qmd-fg); }
+  /* Themed disclosure chevron for folded code (`tali-code-fold`) + collapsible proofs:
      the browser-default triangle is small, inconsistent, and easy to read as plain text,
      so hide it and draw a `currentColor` caret that rotates from a right-pointing to a
      down-pointing chevron when the details opens. (Callouts keep their icon header, which
      is already an affordance.) */
-  details.qmd-code-fold > summary,
-  .qmd-proof-collapse > details > summary.qmd-proof-head {
+  details.tali-code-fold > summary,
+  .tali-proof-collapse > details > summary.tali-proof-head {
     display: flex; align-items: center; gap: .45em; list-style: none; }
-  details.qmd-code-fold > summary::-webkit-details-marker,
-  .qmd-proof-collapse > details > summary.qmd-proof-head::-webkit-details-marker { display: none; }
-  details.qmd-code-fold > summary::before,
-  .qmd-proof-collapse > details > summary.qmd-proof-head::before {
+  details.tali-code-fold > summary::-webkit-details-marker,
+  .tali-proof-collapse > details > summary.tali-proof-head::-webkit-details-marker { display: none; }
+  details.tali-code-fold > summary::before,
+  .tali-proof-collapse > details > summary.tali-proof-head::before {
     content: ""; flex: 0 0 auto; width: .42em; height: .42em; margin-bottom: .12em;
     border-top: 2px solid currentColor; border-right: 2px solid currentColor;
     transform: rotate(45deg); transition: transform .15s ease; opacity: .75; }
-  details.qmd-code-fold[open] > summary::before,
-  .qmd-proof-collapse > details[open] > summary.qmd-proof-head::before { transform: rotate(135deg); }
+  details.tali-code-fold[open] > summary::before,
+  .tali-proof-collapse > details[open] > summary.tali-proof-head::before { transform: rotate(135deg); }
   /* Narrated code walkthrough (`::: {.code-walkthrough}`): the code panel is pinned
      full-width at the TOP of the viewport and the prose steps scroll beneath it — the
      same shape at every width (a wide 2-column split left the code column too narrow and
@@ -619,9 +619,9 @@
   /* Scrollytelling (`::: {.scrolly}`): prose steps scroll past a sticky visual stage.
      Generalizes the code-walkthrough layout; the active step drives data-scrolly-state +
      (with name=) a hidden reactive input the sticky {js} cell reads. */
-  .qmd-scrolly { display: grid; grid-template-columns: 1fr minmax(18rem, .9fr);
+  .tali-scrolly { display: grid; grid-template-columns: 1fr minmax(18rem, .9fr);
     gap: clamp(1rem, 4vw, 3rem); align-items: start; margin: 1.5rem 0; }
-  .qmd-scrolly .scrolly-steps, .qmd-scrolly .scrolly-stage { min-width: 0; }
+  .tali-scrolly .scrolly-steps, .tali-scrolly .scrolly-stage { min-width: 0; }
   .scrolly-steps .step { min-height: 60vh; display: flex; flex-direction: column;
     justify-content: center; opacity: .4; border-left: 3px solid transparent;
     padding: .4rem 0 .4rem 1rem; }
@@ -630,13 +630,13 @@
   .scrolly-steps .step > :last-child { margin-bottom: 0; }
   .scrolly-stage { position: sticky; top: 0; align-self: start; height: 100vh;
     display: flex; flex-direction: column; justify-content: center; overflow: auto; }
-  .qmd-scrolly-input { display: none; }
+  .tali-scrolly-input { display: none; }
   @media (prefers-reduced-motion: no-preference) {
     .scrolly-steps .step { transition: opacity .25s ease, border-color .25s ease; }
   }
   @media (max-width: 73rem) {
     /* single column: lift the stage to a sticky strip on top, prose flows beneath */
-    .qmd-scrolly { display: flex; flex-direction: column; gap: 0; }
+    .tali-scrolly { display: flex; flex-direction: column; gap: 0; }
     .scrolly-stage { order: -1; position: sticky; top: 0; height: auto; max-height: 48vh;
       z-index: 5; background: var(--qmd-bg); }
     /* Real dwell height so each step owns enough scroll to drive the stage in turn (the
@@ -660,18 +660,18 @@
   @media (prefers-reduced-motion: no-preference) {
     .tabset-tab { transition: color .15s ease, border-color .15s ease; }
   }
-  .qmd-xref { text-decoration: none; }
-  .qmd-references .csl-entry { margin: .4rem 0; padding-left: 2.2rem; text-indent: -2.2rem; }
+  .tali-xref { text-decoration: none; }
+  .tali-references .csl-entry { margin: .4rem 0; padding-left: 2.2rem; text-indent: -2.2rem; }
   /* Footnotes: `[^1]` superscript refs + the gathered footnote section at page end. */
-  .qmd-fnref { font-size: .75em; line-height: 0; white-space: nowrap; }
-  .qmd-fnref a { text-decoration: none; padding: 0 .1em; }
+  .tali-fnref { font-size: .75em; line-height: 0; white-space: nowrap; }
+  .tali-fnref a { text-decoration: none; padding: 0 .1em; }
   .footnotes { margin-top: 2.5rem; font-size: .9rem; color: var(--qmd-muted); }
   .footnotes hr { border: 0; border-top: 1px solid var(--qmd-border); margin: 0 0 1rem; }
   .footnotes ol { padding-left: 1.3rem; }
   .footnotes li { margin: .4rem 0; }
   .footnotes li > :first-child { display: inline; } /* keep the backlink on the text's line */
   .footnotes li:target, [id^="fnref-"]:target { background: var(--qmd-flash); border-radius: 4px; }
-  .qmd-fn-back { text-decoration: none; margin-left: .4em; }
+  .tali-fn-back { text-decoration: none; margin-left: .4em; }
   /* Sidenotes / margin notes (Tufte/Distill): `::: {.sidenote}` (aliases `.marginnote`,
      `.column-margin`, `.aside`) floats into the right margin on a wide screen — marginalia
      that don't interrupt the body, impossible to do in a PDF. Below ~73rem (no margin
@@ -690,19 +690,19 @@
       float: none; width: auto; margin: 1rem 0;
       padding-left: .9rem; border-left: 2px solid var(--qmd-accent); }
   }
-  .qmd-output { margin: 0 0 1rem; }
-  .qmd-output > pre { background: #fbfbfb; border-left: 3px solid #e3e3e3; }
-  .qmd-output img { display: block; max-width: 100%; }
+  .tali-output { margin: 0 0 1rem; }
+  .tali-output > pre { background: #fbfbfb; border-left: 3px solid #e3e3e3; }
+  .tali-output img { display: block; max-width: 100%; }
   /* Theme-matched matplotlib figures: the kernel emits a light (near-black) and a
      dark (near-white) variant of each plot; show the one matching the active theme
      so axes/text match the page exactly. Same idea as the dual {{< video >}} clip.
-     Specificity is matched to `.qmd-output img` so the right variant wins. */
-  img.qmd-fig { display: block; max-width: 100%; }
-  img.qmd-fig-dark { display: none; }
-  html[data-theme="dark"] img.qmd-fig-light { display: none; }
-  html[data-theme="dark"] img.qmd-fig-dark { display: block; }
-  .qmd-stderr { border-left-color: #e0a800 !important; background: #fdf6e3 !important; }
-  .qmd-error { border-left-color: #e0566b !important; background: #fdecef !important; color: #862033; }
+     Specificity is matched to `.tali-output img` so the right variant wins. */
+  img.tali-fig { display: block; max-width: 100%; }
+  img.tali-fig-dark { display: none; }
+  html[data-theme="dark"] img.tali-fig-light { display: none; }
+  html[data-theme="dark"] img.tali-fig-dark { display: block; }
+  .tali-stderr { border-left-color: #e0a800 !important; background: #fdf6e3 !important; }
+  .tali-error { border-left-color: #e0566b !important; background: #fdecef !important; color: #862033; }
   /* Sepia code + diagnostics: the light syntax palette and near-white output/error
      boxes clash with the warm sepia page, so restyle them warm (parallels DARK_CSS).
      Sepia is a low-contrast reading theme, so these stay muted, not vivid. */
@@ -712,41 +712,41 @@
   html[data-theme="sepia"] .tali-hl-constant, html[data-theme="sepia"] .tali-hl-support { color: #2f5f84; }
   html[data-theme="sepia"] .tali-hl-entity { color: #7d4a86; }
   html[data-theme="sepia"] .tali-hl-variable { color: #9a4a1a; }
-  html[data-theme="sepia"] .qmd-output > pre { background: #ece2c8; border-left-color: var(--qmd-border); }
-  html[data-theme="sepia"] .qmd-stderr { border-left-color: #b8860b !important; background: #efe4c0 !important; color: #5b4636; }
-  html[data-theme="sepia"] .qmd-error { border-left-color: #b0452f !important; background: #f0dcc8 !important; color: #7a2e22; }
+  html[data-theme="sepia"] .tali-output > pre { background: #ece2c8; border-left-color: var(--qmd-border); }
+  html[data-theme="sepia"] .tali-stderr { border-left-color: #b8860b !important; background: #efe4c0 !important; color: #5b4636; }
+  html[data-theme="sepia"] .tali-error { border-left-color: #b0452f !important; background: #f0dcc8 !important; color: #7a2e22; }
   [data-block-id] { scroll-margin-top: 1rem; }
-  [data-block-id].qmd-hl { outline: 2px solid var(--qmd-accent); outline-offset: 3px; border-radius: 3px; }
+  [data-block-id].tali-hl { outline: 2px solid var(--qmd-accent); outline-offset: 3px; border-radius: 3px; }
   /* live-edit feedback: a block that just (re)rendered pulses an accent tint, so
      the eye (or a phone) lands on what changed. reduced-motion collapses it away. */
-  @keyframes qmd-flash { from { background-color: var(--qmd-flash); } to { background-color: transparent; } }
-  [data-block-id].qmd-flash { animation: qmd-flash .8s ease-out; border-radius: 4px; }
+  @keyframes tali-flash { from { background-color: var(--qmd-flash); } to { background-color: transparent; } }
+  [data-block-id].tali-flash { animation: tali-flash .8s ease-out; border-radius: 4px; }
   /* single-click click-to-source feedback: the clicked block's accent outline
      fades out (a transient "you clicked here", not a persistent box). The plain
-     .qmd-hl above stays reserved for the editor cursor sync, which persists. */
-  @keyframes qmd-hl-fade { from { outline-color: var(--qmd-accent); } to { outline-color: transparent; } }
-  [data-block-id].qmd-hl-flash { outline: 2px solid var(--qmd-accent); outline-offset: 3px;
-    border-radius: 3px; animation: qmd-hl-fade .7s ease-out forwards; }
-  /* click-to-source affordance: while Alt is held (html.qmd-alt) every source-mapped
+     .tali-hl above stays reserved for the editor cursor sync, which persists. */
+  @keyframes tali-hl-fade { from { outline-color: var(--qmd-accent); } to { outline-color: transparent; } }
+  [data-block-id].tali-hl-flash { outline: 2px solid var(--qmd-accent); outline-offset: 3px;
+    border-radius: 3px; animation: tali-hl-fade .7s ease-out forwards; }
+  /* click-to-source affordance: while Alt is held (html.tali-alt) every source-mapped
      block reads as clickable (pointer), and the block a click would resolve to gets a
-     dashed accent outline that tracks the mouse (.qmd-src-hover, toggled in client.js).
-     Dashed distinguishes this "click to open source" hover from the solid .qmd-hl that
+     dashed accent outline that tracks the mouse (.tali-src-hover, toggled in client.js).
+     Dashed distinguishes this "click to open source" hover from the solid .tali-hl that
      marks the editor-cursor sync. Outline (not border) so tracking never reflows the
      page; no animation, because continuous hover feedback must read as instantaneous. */
-  html.qmd-alt [data-block-id], html.qmd-alt [data-qmd-src] { cursor: pointer; }
-  .qmd-src-hover { outline: 2px dashed var(--qmd-accent); outline-offset: 3px; border-radius: 3px; }
-  figure.qmd-figure { margin: 1.5rem 0; }
-  figure.qmd-figure img { max-width: 100%; height: auto; }
-  figure.qmd-figure figcaption { font-size: .9em; color: var(--qmd-muted); margin-top: .5rem; }
-  .qmd-listing { margin: 1.5rem 0; }
-  .qmd-listing-caption { font-size: .9em; color: var(--qmd-muted); margin-bottom: .35rem; }
-  .qmd-figure-center { text-align: center; }
-  .qmd-figure-right { text-align: right; }
+  html.tali-alt [data-block-id], html.tali-alt [data-qmd-src] { cursor: pointer; }
+  .tali-src-hover { outline: 2px dashed var(--qmd-accent); outline-offset: 3px; border-radius: 3px; }
+  figure.tali-figure { margin: 1.5rem 0; }
+  figure.tali-figure img { max-width: 100%; height: auto; }
+  figure.tali-figure figcaption { font-size: .9em; color: var(--qmd-muted); margin-top: .5rem; }
+  .tali-listing { margin: 1.5rem 0; }
+  .tali-listing-caption { font-size: .9em; color: var(--qmd-muted); margin-bottom: .35rem; }
+  .tali-figure-center { text-align: center; }
+  .tali-figure-right { text-align: right; }
   /* numbered display equation: body centered, (N) right-aligned */
-  .qmd-eqn { display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 1rem; }
-  .qmd-eqn .qmd-eqn-body { min-width: 0; }
-  .qmd-eqn .qmd-eqn-body .katex-display { margin: 0; }
-  .qmd-eqn .qmd-eqn-number { color: var(--qmd-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tali-eqn { display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 1rem; }
+  .tali-eqn .tali-eqn-body { min-width: 0; }
+  .tali-eqn .tali-eqn-body .katex-display { margin: 0; }
+  .tali-eqn .tali-eqn-number { color: var(--qmd-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
   /* a display equation wider than the column scrolls horizontally inside its own
      box instead of overflowing the page (the #1 mobile breakage for math docs) */
   .katex-display { overflow-x: auto; overflow-y: hidden; padding: .3rem 0; }
@@ -763,85 +763,85 @@
   #TOC ul { list-style: none; margin: .2rem 0; padding-left: .9rem; }
   #TOC > ul { padding-left: 0; }
   /* Collapse subsection lists; the scrollspy expands only the active section's
-     branch (qmd-toc-expanded on its <li> + ancestors), like Quarto's toc-expand,
+     branch (tali-toc-expanded on its <li> + ancestors), like Quarto's toc-expand,
      so a long book/document shows top-level entries plus the current section. */
   #TOC ul ul { display: none; }
-  #TOC li.qmd-toc-expanded > ul { display: block; }
+  #TOC li.tali-toc-expanded > ul { display: block; }
   /* the transparent left border reserves the accent rail's space, so toggling the
-     active entry never shifts the text; the client's scrollspy sets .qmd-toc-active */
+     active entry never shifts the text; the client's scrollspy sets .tali-toc-active */
   #TOC a { display: block; padding: .12rem 0 .12rem .6rem; border-left: 2px solid transparent;
            color: var(--qmd-muted); text-decoration: none; }
   #TOC a:hover { color: var(--qmd-fg); }
-  #TOC a.qmd-toc-active { color: var(--qmd-fg); border-left-color: var(--qmd-accent); }
+  #TOC a.tali-toc-active { color: var(--qmd-fg); border-left-color: var(--qmd-accent); }
   /* Read-state: a section the reader has scrolled through gets a trailing ✓ and recedes
-     a touch. Distinct from .qmd-toc-active (the current section). Reader-side: toc-spy.js
+     a touch. Distinct from .tali-toc-active (the current section). Reader-side: toc-spy.js
      stores the read set in the reader's own localStorage; the source is never touched. */
-  #TOC a.qmd-toc-read { opacity: .62; }
-  #TOC a.qmd-toc-read::after { content: "\2713"; margin-left: .45ch; color: var(--qmd-link);
+  #TOC a.tali-toc-read { opacity: .62; }
+  #TOC a.tali-toc-read::after { content: "\2713"; margin-left: .45ch; color: var(--qmd-link);
     font-size: .82em; opacity: .85; }
-  #TOC a.qmd-toc-read.qmd-toc-active { opacity: 1; } /* current + finished: full strength */
+  #TOC a.tali-toc-read.tali-toc-active { opacity: 1; } /* current + finished: full strength */
   /* mobile pull-up-sheet chrome: hidden on desktop, revealed in the sheet media query */
-  #qmd-toc-handle, #qmd-toc-backdrop { display: none; }
+  #tali-toc-handle, #tali-toc-backdrop { display: none; }
   @media (max-width: 60rem) {
     /* keep the fixed control bar / diagnostics from covering the last line */
     body { padding-bottom: 2.75rem; }
     /* sheet pages lift the control bar above the bottom TOC handle, so clear more */
-    body.qmd-toc-sheet { padding-bottom: 4.4rem; }
+    body.tali-toc-sheet { padding-bottom: 4.4rem; }
     /* Static export (no JS): stack the TOC above the content. Keep it a grid so
        the minmax(0,1fr) track clamps <main> to the viewport, and `order` lifts
        the TOC (which follows <main> in the DOM) up instead of stranding it at the
-       bottom. The live preview opts out via .qmd-toc-sheet and uses the sheet. */
-    body.has-toc:not(.qmd-toc-sheet) { grid-template-columns: minmax(0, 1fr); max-width: var(--qmd-maxw); gap: 0; }
-    body.has-toc:not(.qmd-toc-sheet) > #TOC { order: -1; position: static; max-height: 45vh; overflow: auto;
+       bottom. The live preview opts out via .tali-toc-sheet and uses the sheet. */
+    body.has-toc:not(.tali-toc-sheet) { grid-template-columns: minmax(0, 1fr); max-width: var(--qmd-maxw); gap: 0; }
+    body.has-toc:not(.tali-toc-sheet) > #TOC { order: -1; position: static; max-height: 45vh; overflow: auto;
            border-bottom: 1px solid var(--qmd-border); margin-bottom: 1.5rem; padding-bottom: 1rem; }
 
     /* Live preview: a quiet pull-up handle opens the TOC as a bottom sheet. */
-    body.has-toc.qmd-toc-sheet { display: block; max-width: var(--qmd-maxw); }
-    /* the nav becomes the sheet: off-screen until .qmd-toc-open slides it up */
-    body.qmd-toc-sheet #TOC { position: fixed; inset: auto 0 0 0; z-index: 10001; margin: 0;
+    body.has-toc.tali-toc-sheet { display: block; max-width: var(--qmd-maxw); }
+    /* the nav becomes the sheet: off-screen until .tali-toc-open slides it up */
+    body.tali-toc-sheet #TOC { position: fixed; inset: auto 0 0 0; z-index: 10001; margin: 0;
       max-height: 72vh; padding: .25rem .6rem calc(1.4rem + env(safe-area-inset-bottom, 0px));
       background: var(--qmd-bg); border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px var(--qmd-edge-shadow);
       overflow: auto; overscroll-behavior: contain;
       transform: translateY(100%); transition: transform .3s cubic-bezier(.2, .8, .2, 1); }
-    body.qmd-toc-sheet #TOC::before { content: ""; display: block; width: 40px; height: 5px;
+    body.tali-toc-sheet #TOC::before { content: ""; display: block; width: 40px; height: 5px;
       margin: .15rem auto .6rem; border-radius: 3px; background: var(--qmd-border); }
-    body.qmd-toc-sheet #TOC a { padding-top: .45rem; padding-bottom: .45rem; }
+    body.tali-toc-sheet #TOC a { padding-top: .45rem; padding-bottom: .45rem; }
     /* the pull-up sheet shows the full tree (you tap any entry to navigate) */
-    body.qmd-toc-sheet #TOC ul ul { display: block; }
-    body.qmd-toc-sheet.qmd-toc-open #TOC { transform: translateY(0); }
+    body.tali-toc-sheet #TOC ul ul { display: block; }
+    body.tali-toc-sheet.tali-toc-open #TOC { transform: translateY(0); }
     /* dim backdrop behind the open sheet */
-    body.qmd-toc-sheet #qmd-toc-backdrop { display: block; position: fixed; inset: 0; z-index: 10000;
+    body.tali-toc-sheet #tali-toc-backdrop { display: block; position: fixed; inset: 0; z-index: 10000;
       background: rgba(0, 0, 0, .42); opacity: 0; pointer-events: none; transition: opacity .25s; }
-    body.qmd-toc-sheet.qmd-toc-open #qmd-toc-backdrop { opacity: 1; pointer-events: auto; }
+    body.tali-toc-sheet.tali-toc-open #tali-toc-backdrop { opacity: 1; pointer-events: auto; }
     /* the resting handle: a quiet grabber you drag up or tap */
-    body.qmd-toc-sheet #qmd-toc-handle { display: flex; flex-direction: column; align-items: center;
+    body.tali-toc-sheet #tali-toc-handle { display: flex; flex-direction: column; align-items: center;
       position: fixed; left: 50%; transform: translateX(-50%); z-index: 9997;
       bottom: calc(.45rem + env(safe-area-inset-bottom, 0px)); padding: .4rem 1.3rem .5rem; gap: .3rem;
       border: 0; border-radius: 13px; background: color-mix(in srgb, var(--qmd-bg) 72%, transparent);
       -webkit-backdrop-filter: blur(7px); backdrop-filter: blur(7px); box-shadow: 0 1px 7px var(--qmd-edge-shadow);
       cursor: grab; touch-action: none; -webkit-user-select: none; user-select: none; }
-    body.qmd-toc-sheet.qmd-toc-open #qmd-toc-handle { display: none; }
-    #qmd-toc-handle .qmd-toc-grip { width: 42px; height: 5px; border-radius: 3px; background: var(--qmd-muted); opacity: .6; }
+    body.tali-toc-sheet.tali-toc-open #tali-toc-handle { display: none; }
+    #tali-toc-handle .tali-toc-grip { width: 42px; height: 5px; border-radius: 3px; background: var(--qmd-muted); opacity: .6; }
     /* current-section chip: hidden at rest, flashes in while scrolling, then fades */
-    #qmd-toc-cur { position: absolute; bottom: calc(100% + .35rem); left: 50%;
+    #tali-toc-cur { position: absolute; bottom: calc(100% + .35rem); left: 50%;
       transform: translateX(-50%) translateY(5px); max-width: 72vw; white-space: nowrap;
       overflow: hidden; text-overflow: ellipsis; font: 600 12px ui-sans-serif, system-ui, sans-serif;
       color: var(--qmd-muted); background: var(--qmd-bg); border: 1px solid var(--qmd-border);
       padding: .2rem .55rem; border-radius: 9px; box-shadow: 0 2px 8px var(--qmd-edge-shadow);
       opacity: 0; pointer-events: none; transition: opacity .2s ease, transform .2s ease; }
-    #qmd-toc-handle.qmd-show-label #qmd-toc-cur { opacity: 1; transform: translateX(-50%) translateY(0); }
+    #tali-toc-handle.tali-show-label #tali-toc-cur { opacity: 1; transform: translateX(-50%) translateY(0); }
     @keyframes qmdPeekHint { 0%, 100% { bottom: calc(.45rem + env(safe-area-inset-bottom, 0px)); }
       50% { bottom: calc(1.3rem + env(safe-area-inset-bottom, 0px)); } }
-    body.qmd-toc-sheet #qmd-toc-handle.qmd-hint { animation: qmdPeekHint 1.15s ease-in-out 2; }
+    body.tali-toc-sheet #tali-toc-handle.tali-hint { animation: qmdPeekHint 1.15s ease-in-out 2; }
     /* custom multi-column layouts collapse to one column (inline style ⇒ !important).
        minmax(0,1fr), not 1fr: the 0 floor lets wide children (figures/images) shrink
        to the column instead of forcing their intrinsic width and overflowing the page. */
-    .qmd-layout { grid-template-columns: minmax(0, 1fr) !important; }
+    .tali-layout { grid-template-columns: minmax(0, 1fr) !important; }
   }
   @media (max-width: 30rem) {
     body { padding-left: .85rem; padding-right: .85rem; font-size: 16px; }
-    .qmd-title-block .title { font-size: 1.7rem; }
-    .qmd-title-block .subtitle { font-size: 1.05rem; }
+    .tali-title-block .title { font-size: 1.7rem; }
+    .tali-title-block .subtitle { font-size: 1.05rem; }
   }
   /* honor reduced-motion: collapse transitions/animations (the TOC sheet slide,
      the handle hint bounce, fades) to near-instant, and drop smooth scrolling */
@@ -859,16 +859,16 @@
     a:focus-visible, button:focus-visible, [role="button"]:focus-visible,
     [role="tab"]:focus-visible, input:focus-visible, select:focus-visible,
     textarea:focus-visible, summary:focus-visible, [tabindex="0"]:focus-visible,
-    .qmd-skip:focus-visible, .tabset-tab:focus-visible {
+    .tali-skip:focus-visible, .tabset-tab:focus-visible {
       outline: 2px solid Highlight; outline-offset: 2px;
     }
     /* Callout/border edges that leaned on a tinted border get a visible system border. */
-    .callout, .panel-tabset, blockquote, table, .qmd-figure figure, pre {
+    .callout, .panel-tabset, blockquote, table, .tali-figure figure, pre {
       border: 1px solid CanvasText;
     }
     .tabset-tab[aria-selected="true"] { border-bottom-color: Highlight; }
-    .qmd-reader-seg button[aria-pressed="true"],
-    .qmd-nav-active, a[aria-current="page"] { forced-color-adjust: none; }
+    .tali-reader-seg button[aria-pressed="true"],
+    .tali-nav-active, a[aria-current="page"] { forced-color-adjust: none; }
   }
   /* `prefers-contrast: more`: nudge the muted/border tones toward full contrast. */
   @media (prefers-contrast: more) {
@@ -883,10 +883,10 @@
       --qmd-bg: #fff; --qmd-fg: #111; --qmd-muted: #555; --qmd-border: #ccc;
       --qmd-code-bg: #f5f5f5; --qmd-link: #0645ad; --qmd-accent: #0645ad;
     }
-    #qmd-controls, #qmd-diagnostics, #qmd-toc-handle, #qmd-toc-backdrop, .qmd-copy { display: none !important; }
+    #tali-controls, #tali-diagnostics, #tali-toc-handle, #tali-toc-backdrop, .tali-copy { display: none !important; }
     body { max-width: none !important; margin: 0 !important; }
     body.has-toc { display: grid !important; grid-template-columns: 1fr !important; gap: 0 !important; }
-    body.qmd-toc-sheet #TOC, body.has-toc > #TOC {
+    body.tali-toc-sheet #TOC, body.has-toc > #TOC {
       position: static !important; transform: none !important; order: -1 !important;
       max-height: none !important; overflow: visible !important; z-index: auto !important;
       background: transparent !important; box-shadow: none !important; border-radius: 0 !important;
@@ -896,13 +896,13 @@
     pre { white-space: pre-wrap !important; overflow: visible !important; }
     table { display: table !important; overflow: visible !important; background: none !important; }
     .katex-display { overflow: visible !important; }
-    pre, figure, table, blockquote, .callout, .qmd-eqn { break-inside: avoid; }
+    pre, figure, table, blockquote, .callout, .tali-eqn { break-inside: avoid; }
     h2, h3, h4 { break-after: avoid; }
   }
 
 /* Interactive `{js}`-cell inputs (the `//| viewof:` controls). A native, minimal
    control style replacing the inputs the Observable runtime used to provide. */
-.qmd-input {
+.tali-input {
   display: flex;
   align-items: center;
   gap: 0.5em;
@@ -910,8 +910,8 @@
   font-size: 0.9rem;
   color: var(--qmd-muted);
 }
-.qmd-input input[type="range"] { flex: 0 1 16rem; accent-color: var(--qmd-accent); }
-.qmd-input input[type="checkbox"], .qmd-input input[type="radio"] { accent-color: var(--qmd-accent); }
-.qmd-input select { color: var(--qmd-fg); background: var(--qmd-bg); border: 1px solid var(--qmd-border); border-radius: 4px; padding: 0.1em 0.3em; }
-.qmd-js-error { color: #b00020; background: #fff0f0; border: 1px solid #f3c0c0; padding: .5em .7em; border-radius: 6px; overflow: auto; font-size: .85em; }
-html[data-theme="sepia"] .qmd-js-error { color: #7a2e22; background: #f0dcc8; border-color: #d8b89a; }
+.tali-input input[type="range"] { flex: 0 1 16rem; accent-color: var(--qmd-accent); }
+.tali-input input[type="checkbox"], .tali-input input[type="radio"] { accent-color: var(--qmd-accent); }
+.tali-input select { color: var(--qmd-fg); background: var(--qmd-bg); border: 1px solid var(--qmd-border); border-radius: 4px; padding: 0.1em 0.3em; }
+.tali-js-error { color: #b00020; background: #fff0f0; border: 1px solid #f3c0c0; padding: .5em .7em; border-radius: 6px; overflow: auto; font-size: .85em; }
+html[data-theme="sepia"] .tali-js-error { color: #7a2e22; background: #f0dcc8; border-color: #d8b89a; }

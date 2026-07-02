@@ -151,7 +151,7 @@
       } catch (e) {
         console.error("qmd-js cell error:", e);
         var pre = document.createElement("pre");
-        pre.className = "qmd-js-error";
+        pre.className = "tali-js-error";
         pre.textContent = String((e && e.stack) || e);
         container.replaceChildren(pre);
       }
@@ -206,7 +206,7 @@
   }
 
   // Resolve EVERY outstanding invalidation and drop the whole runtime, so a
-  // `full_render` (which blows away `#qmd-root` wholesale) doesn't leak the prior
+  // `full_render` (which blows away `#tali-root` wholesale) doesn't leak the prior
   // page's WebGL contexts / RAF loops and doesn't re-push duplicate cells onto a
   // never-reset `r.cells`. The next `enhance()` lazily rebuilds a fresh `window.__qmdjs`.
   function resetRuntime() {
@@ -262,7 +262,7 @@
       console.error("qmd-js: dependency cycle involving", c.defines || "(unnamed cell)");
       if (c.container) {
         var pre = document.createElement("pre");
-        pre.className = "qmd-js-error";
+        pre.className = "tali-js-error";
         pre.textContent = "qmd-js: dependency cycle involving `" + (c.defines || "this cell") + "`";
         c.container.replaceChildren(pre);
       }

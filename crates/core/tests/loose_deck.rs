@@ -9,7 +9,7 @@ use taliesin_core::Site;
 
 /// A throwaway site directory under the system temp dir (no `tempfile` dev-dep).
 fn tmp_site(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("qmd-loose-deck-{}-{name}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("tali-loose-deck-{}-{name}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     dir

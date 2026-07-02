@@ -22,7 +22,7 @@ impl TempProj {
     pub fn new() -> Self {
         static N: AtomicU32 = AtomicU32::new(0);
         let p = std::env::temp_dir().join(format!(
-            "qmd-test-{}-{}",
+            "tali-test-{}-{}",
             std::process::id(),
             N.fetch_add(1, Ordering::Relaxed)
         ));

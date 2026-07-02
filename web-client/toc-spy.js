@@ -33,10 +33,10 @@
   // Decorate a TOC link as read (idempotent): the class drives the ✓ + fade, and a
   // visually-hidden label announces "read" to a screen reader.
   function markRead(link) {
-    if (!link || link.classList.contains("qmd-toc-read")) return;
-    link.classList.add("qmd-toc-read");
+    if (!link || link.classList.contains("tali-toc-read")) return;
+    link.classList.add("tali-toc-read");
     var vh = document.createElement("span");
-    vh.className = "qmd-sr-only";
+    vh.className = "tali-sr-only";
     vh.textContent = " (read)";
     link.appendChild(vh);
   }
@@ -55,7 +55,7 @@
   // scroll-margin that clears the same navbar). Standalone pages have no navbar,
   // so the line falls back to a small top margin.
   function line() {
-    var nav = document.querySelector(".qmd-site-nav");
+    var nav = document.querySelector(".tali-site-nav");
     return (nav ? nav.getBoundingClientRect().height : 0) + 16;
   }
 
@@ -112,7 +112,7 @@
     if (cur === active) return;
     active = cur;
     entries.forEach(function (e) {
-      e.link.classList.toggle("qmd-toc-active", e === cur);
+      e.link.classList.toggle("tali-toc-active", e === cur);
     });
     // Collapse: expand only the active entry's branch (its <li> and ancestors), so
     // a long TOC shows top-level entries plus the current section's subsections.
@@ -121,14 +121,14 @@
       if (node.tagName === "LI") open.push(node);
     }
     Array.prototype.forEach.call(toc.getElementsByTagName("li"), function (li) {
-      li.classList.toggle("qmd-toc-expanded", open.indexOf(li) !== -1);
+      li.classList.toggle("tali-toc-expanded", open.indexOf(li) !== -1);
     });
-    var chip = document.getElementById("qmd-toc-cur"); // mobile pull-up handle label
+    var chip = document.getElementById("tali-toc-cur"); // mobile pull-up handle label
     if (chip && cur) {
       // Strip the hover `#` permalink the anchor-links enhancer appends to a heading,
       // so the chip reads "Section title", not "Section title#".
       var h = cur.heading.cloneNode(true);
-      var anchors = h.querySelectorAll(".qmd-anchor");
+      var anchors = h.querySelectorAll(".tali-anchor");
       for (var ai = 0; ai < anchors.length; ai++) anchors[ai].remove();
       chip.textContent = (h.textContent || "").trim();
     }

@@ -69,7 +69,7 @@ fn unique_heading_ids_are_clean() {
 
 #[test]
 fn missing_local_image_is_flagged_existing_is_clean() {
-    let dir = std::env::temp_dir().join("qmd-check-assets-missing-img");
+    let dir = std::env::temp_dir().join("tali-check-assets-missing-img");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("real.png"), b"\x89PNG").unwrap();
@@ -217,7 +217,7 @@ fn audio_video_src_is_skipped_only_img_is_checked() {
     // Load-bearing scoping: <audio>/<video>/<source> refs are frequently code-generated or
     // streamed (the corpus has fourier-transform's cell-written .wav, supercollider's .mp3),
     // so a static check must skip them; only a missing <img> is flagged.
-    let dir = std::env::temp_dir().join("qmd-check-assets-av");
+    let dir = std::env::temp_dir().join("tali-check-assets-av");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let src = "---\ntitle: T\n---\n\n```{=html}\n<audio><source src=\"gone.wav\"></audio>\n<video src=\"gone.mp4\"></video>\n<img src=\"gone.png\">\n```\n";
@@ -238,7 +238,7 @@ fn audio_video_src_is_skipped_only_img_is_checked() {
 
 #[test]
 fn external_and_anchor_refs_are_not_treated_as_local_assets() {
-    let dir = std::env::temp_dir().join("qmd-check-assets-external");
+    let dir = std::env::temp_dir().join("tali-check-assets-external");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let src = "---\ntitle: T\n---\n\n![remote](https://example.com/x.png)\n\n[jump](#sec)\n\n[mail](mailto:a@b.c)\n";

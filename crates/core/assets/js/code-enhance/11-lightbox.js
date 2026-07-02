@@ -10,39 +10,39 @@ function qmdInitLightbox() {
 
   var style = document.createElement('style');
   style.textContent =
-    'figure img,img.lightbox,pre.mermaid,.qmd-video video{cursor:zoom-in}' +
-    '#qmd-lightbox{position:fixed;inset:0;z-index:2147483000;display:none;flex-direction:column;' +
+    'figure img,img.lightbox,pre.mermaid,.tali-video video{cursor:zoom-in}' +
+    '#tali-lightbox{position:fixed;inset:0;z-index:2147483000;display:none;flex-direction:column;' +
     'align-items:center;justify-content:center;gap:.9rem;padding:2rem;box-sizing:border-box;' +
     'background:rgba(10,12,16,.9);cursor:zoom-out;opacity:0;transition:opacity .15s ease}' +
-    '#qmd-lightbox.open{display:flex;opacity:1}' +
-    '#qmd-lightbox img{max-width:93vw;max-height:86vh;object-fit:contain;cursor:default;' +
+    '#tali-lightbox.open{display:flex;opacity:1}' +
+    '#tali-lightbox img{max-width:93vw;max-height:86vh;object-fit:contain;cursor:default;' +
     'background:var(--qmd-bg,#fff);border-radius:4px;box-shadow:0 10px 50px rgba(0,0,0,.5)}' +
-    '#qmd-lightbox video{display:none;max-width:93vw;max-height:86vh;object-fit:contain;cursor:default;' +
+    '#tali-lightbox video{display:none;max-width:93vw;max-height:86vh;object-fit:contain;cursor:default;' +
     'border-radius:6px;background:#000;box-shadow:0 10px 50px rgba(0,0,0,.5)}' +
-    '#qmd-lightbox .qmd-lb-svg{display:none;width:92vw;max-width:1400px;max-height:86vh;overflow:auto;' +
+    '#tali-lightbox .tali-lb-svg{display:none;width:92vw;max-width:1400px;max-height:86vh;overflow:auto;' +
     'cursor:default;background:var(--qmd-bg,#fff);border-radius:4px;padding:1.2rem;box-sizing:border-box;' +
     'box-shadow:0 10px 50px rgba(0,0,0,.5)}' +
-    '#qmd-lightbox .qmd-lb-svg svg{display:block;width:100%;height:auto;max-width:100%}' +
-    '#qmd-lightbox .qmd-lb-cap{color:#e8e8e8;font:14px ui-sans-serif,system-ui,sans-serif;' +
+    '#tali-lightbox .tali-lb-svg svg{display:block;width:100%;height:auto;max-width:100%}' +
+    '#tali-lightbox .tali-lb-cap{color:#e8e8e8;font:14px ui-sans-serif,system-ui,sans-serif;' +
     'text-align:center;max-width:93vw}' +
-    '#qmd-lightbox .qmd-lb-cap:empty{display:none}' +
-    '#qmd-lightbox .qmd-lb-close{position:fixed;top:.6rem;right:1rem;color:#fff;background:none;' +
+    '#tali-lightbox .tali-lb-cap:empty{display:none}' +
+    '#tali-lightbox .tali-lb-close{position:fixed;top:.6rem;right:1rem;color:#fff;background:none;' +
     'border:0;font-size:2.2rem;line-height:1;cursor:pointer;opacity:.75}' +
-    '#qmd-lightbox .qmd-lb-close:hover{opacity:1}';
+    '#tali-lightbox .tali-lb-close:hover{opacity:1}';
   document.head.appendChild(style);
 
   var box = document.createElement('div');
-  box.id = 'qmd-lightbox';
+  box.id = 'tali-lightbox';
   box.setAttribute('role', 'dialog');
   box.setAttribute('aria-label', 'Image viewer'); // a role=dialog needs an accessible name
-  box.innerHTML = '<button class="qmd-lb-close" aria-label="Close">×</button>' +
-    '<img alt=""><video class="qmd-lb-video" muted loop playsinline></video>' +
-    '<div class="qmd-lb-svg"></div><div class="qmd-lb-cap"></div>';
+  box.innerHTML = '<button class="tali-lb-close" aria-label="Close">×</button>' +
+    '<img alt=""><video class="tali-lb-video" muted loop playsinline></video>' +
+    '<div class="tali-lb-svg"></div><div class="tali-lb-cap"></div>';
   document.body.appendChild(box);
   var lbImg = box.querySelector('img');
-  var lbVideo = box.querySelector('.qmd-lb-video');
-  var lbSvg = box.querySelector('.qmd-lb-svg');
-  var lbCap = box.querySelector('.qmd-lb-cap');
+  var lbVideo = box.querySelector('.tali-lb-video');
+  var lbSvg = box.querySelector('.tali-lb-svg');
+  var lbCap = box.querySelector('.tali-lb-cap');
   var gallery = [], gIdx = -1; // the page's zoomable images, for ←/→ navigation
   var lbRelease = null;        // active focus-trap release while the lightbox is open
 
@@ -50,7 +50,7 @@ function qmdInitLightbox() {
   function markOpen() {
     box.classList.add('open');
     document.documentElement.style.overflow = 'hidden';
-    if (!lbRelease && window.qmdFocusTrap) lbRelease = window.qmdFocusTrap(box, box.querySelector('.qmd-lb-close'));
+    if (!lbRelease && window.qmdFocusTrap) lbRelease = window.qmdFocusTrap(box, box.querySelector('.tali-lb-close'));
   }
 
   function hideAll() {
@@ -126,7 +126,7 @@ function qmdInitLightbox() {
     var img = e.target.closest('figure img, img.lightbox'), vid;
     if (img && unmodified(e)) {
       e.preventDefault(); e.stopPropagation(); openImg(img);
-    } else if ((vid = e.target.closest('.qmd-video video')) && unmodified(e)) {
+    } else if ((vid = e.target.closest('.tali-video video')) && unmodified(e)) {
       e.preventDefault(); e.stopPropagation(); openVideo(vid);
     } else {
       var pre = e.target.closest('pre.mermaid');
@@ -137,7 +137,7 @@ function qmdInitLightbox() {
   }, true);
   // Keep a double-click on a figure/diagram/video from reaching click-to-source.
   document.addEventListener('dblclick', function (e) {
-    if (e.target.closest && e.target.closest('figure img, img.lightbox, pre.mermaid, .qmd-video video')) {
+    if (e.target.closest && e.target.closest('figure img, img.lightbox, pre.mermaid, .tali-video video')) {
       e.preventDefault(); e.stopPropagation();
     }
   }, true);
@@ -158,7 +158,7 @@ function qmdInitLightbox() {
   // enhancer registry) can drive the lightbox by element type without re-delegating clicks.
   window.__qmdLightboxOpen = function (el) {
     if (el.matches && el.matches('figure img, img.lightbox')) openImg(el);
-    else if (el.matches && el.matches('.qmd-video video')) openVideo(el);
+    else if (el.matches && el.matches('.tali-video video')) openVideo(el);
     else if (el.matches && el.matches('pre.mermaid')) { if (el.querySelector('svg')) openMermaid(el); }
   };
 }
@@ -171,7 +171,7 @@ function qmdInitLightbox() {
 function qmdDecorateLightbox(root) {
   qmdInitLightbox(); // ensure the document-level machinery + window.__qmdLightboxOpen exist
   var scope = root || document;
-  var els = scope.querySelectorAll('figure img, img.lightbox, pre.mermaid, .qmd-video video');
+  var els = scope.querySelectorAll('figure img, img.lightbox, pre.mermaid, .tali-video video');
   [].forEach.call(els, function (el) {
     if (el.getAttribute('data-qmd-lb')) return; // idempotent: decorate once per element
     el.setAttribute('data-qmd-lb', '1');

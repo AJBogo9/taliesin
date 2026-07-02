@@ -647,7 +647,7 @@ fn input_shortcode(args: &[String], line_no: usize, warnings: &mut Vec<Warning>)
                 })
                 .collect();
             format!(
-                "<select id=\"{ctrl_id}\" class=\"qmd-input-control\" data-qmd-input=\"{name_a}\">{opts}</select>"
+                "<select id=\"{ctrl_id}\" class=\"tali-input-control\" data-qmd-input=\"{name_a}\">{opts}</select>"
             )
         }
         "checkbox" => {
@@ -657,18 +657,18 @@ fn input_shortcode(args: &[String], line_no: usize, warnings: &mut Vec<Warning>)
                 ""
             };
             format!(
-                "<input id=\"{ctrl_id}\" class=\"qmd-input-control\" data-qmd-input=\"{name_a}\" type=\"checkbox\"{checked}>"
+                "<input id=\"{ctrl_id}\" class=\"tali-input-control\" data-qmd-input=\"{name_a}\" type=\"checkbox\"{checked}>"
             )
         }
         "text" => format!(
-            "<input id=\"{ctrl_id}\" class=\"qmd-input-control\" data-qmd-input=\"{name_a}\" type=\"text\"{}>",
+            "<input id=\"{ctrl_id}\" class=\"tali-input-control\" data-qmd-input=\"{name_a}\" type=\"text\"{}>",
             num_attr("value")
         ),
         other => {
             // slider/range/number: numeric, sharing min/max/step/value
             let html_type = if other == "number" { "number" } else { "range" };
             format!(
-                "<input id=\"{ctrl_id}\" class=\"qmd-input-control\" data-qmd-input=\"{name_a}\" type=\"{html_type}\"{}{}{}{}>",
+                "<input id=\"{ctrl_id}\" class=\"tali-input-control\" data-qmd-input=\"{name_a}\" type=\"{html_type}\"{}{}{}{}>",
                 num_attr("min"),
                 num_attr("max"),
                 num_attr("step"),
@@ -678,14 +678,14 @@ fn input_shortcode(args: &[String], line_no: usize, warnings: &mut Vec<Warning>)
     };
     let readout = if kind == "slider" || kind == "range" {
         format!(
-            "<output class=\"qmd-input-out\" data-qmd-out>{}</output>",
+            "<output class=\"tali-input-out\" data-qmd-out>{}</output>",
             html_escape(value.as_deref().unwrap_or(""))
         )
     } else {
         String::new()
     };
     format!(
-        "<div class=\"qmd-input\"><label class=\"qmd-input-label\" for=\"{ctrl_id}\">{}</label>{control}{readout}</div>",
+        "<div class=\"tali-input\"><label class=\"tali-input-label\" for=\"{ctrl_id}\">{}</label>{control}{readout}</div>",
         html_escape(&label)
     )
 }
@@ -716,15 +716,15 @@ fn video_html(
     let videos = match dark {
         Some(d) => format!(
             "{}{}",
-            video(src, "qmd-video-light"),
-            video(d, "qmd-video-dark")
+            video(src, "tali-video-light"),
+            video(d, "tali-video-dark")
         ),
         None => video(src, ""),
     };
     let cap = caption
         .map(|c| format!("<figcaption>{}</figcaption>", html_escape(c)))
         .unwrap_or_default();
-    format!("<figure class=\"qmd-video\">{videos}{cap}</figure>")
+    format!("<figure class=\"tali-video\">{videos}{cap}</figure>")
 }
 
 /// Map a deck source path to its built output URL (`x.tmd` / `x.qmd` → `x.html`),
@@ -746,14 +746,14 @@ fn embed_html(path: &str, title: Option<&str>) -> String {
     // not html_escape) — otherwise a `"` in the title breaks out of the attribute.
     let title = escape_attr(title.unwrap_or("Embedded slide deck"));
     format!(
-        "<div class=\"qmd-embed\">\
-         <div class=\"qmd-embed-stage\">\
-         <iframe class=\"qmd-embed-frame\" src=\"{href}\" title=\"{title}\" loading=\"lazy\" allowfullscreen></iframe>\
-         <button type=\"button\" class=\"qmd-embed-expand\" aria-label=\"Fullscreen\" onclick=\"this.closest('.qmd-embed').querySelector('iframe').requestFullscreen()\">\u{2922}</button>\
+        "<div class=\"tali-embed\">\
+         <div class=\"tali-embed-stage\">\
+         <iframe class=\"tali-embed-frame\" src=\"{href}\" title=\"{title}\" loading=\"lazy\" allowfullscreen></iframe>\
+         <button type=\"button\" class=\"tali-embed-expand\" aria-label=\"Fullscreen\" onclick=\"this.closest('.tali-embed').querySelector('iframe').requestFullscreen()\">\u{2922}</button>\
          </div>\
-         <div class=\"qmd-embed-bar\">\
-         <button type=\"button\" class=\"qmd-embed-btn\" onclick=\"this.closest('.qmd-embed').querySelector('iframe').requestFullscreen()\">\u{2922} Fullscreen</button>\
-         <a class=\"qmd-embed-btn\" href=\"{href}\" target=\"_blank\" rel=\"noopener\">Open \u{2197}</a>\
+         <div class=\"tali-embed-bar\">\
+         <button type=\"button\" class=\"tali-embed-btn\" onclick=\"this.closest('.tali-embed').querySelector('iframe').requestFullscreen()\">\u{2922} Fullscreen</button>\
+         <a class=\"tali-embed-btn\" href=\"{href}\" target=\"_blank\" rel=\"noopener\">Open \u{2197}</a>\
          </div></div>"
     )
 }

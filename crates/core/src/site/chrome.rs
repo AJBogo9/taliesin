@@ -11,21 +11,21 @@ const SEARCH_ICON: &str = "<svg width='15' height='15' viewBox='0 0 16 16' fill=
 
 /// Tiny idempotent script that makes the mobile burger keyboard- and
 /// screen-reader-operable: it toggles the button's `aria-expanded` and a
-/// `.qmd-nav-open` class on the `.qmd-nav-links` menu (the CSS reveals the menu on
+/// `.tali-nav-open` class on the `.tali-nav-links` menu (the CSS reveals the menu on
 /// that class instead of the old `:checked` selector), and closes the menu on
 /// Escape or when a nav link is followed. The `data-nav-wired` guard makes it safe
 /// to re-run when the live preview re-injects the navbar on hot reload.
-const NAV_TOGGLE_SCRIPT: &str = "<script>(function(){var b=document.getElementById('qmd-nav-toggle'),m=document.getElementById('qmd-nav-links');if(!b||!m||b.dataset.navWired)return;b.dataset.navWired='1';function set(o){b.setAttribute('aria-expanded',o?'true':'false');m.classList.toggle('qmd-nav-open',o);}b.addEventListener('click',function(){set(b.getAttribute('aria-expanded')!=='true');});m.addEventListener('click',function(e){if(e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&b.getAttribute('aria-expanded')==='true'){set(false);b.focus();}});})();</script>";
+const NAV_TOGGLE_SCRIPT: &str = "<script>(function(){var b=document.getElementById('tali-nav-toggle'),m=document.getElementById('tali-nav-links');if(!b||!m||b.dataset.navWired)return;b.dataset.navWired='1';function set(o){b.setAttribute('aria-expanded',o?'true':'false');m.classList.toggle('tali-nav-open',o);}b.addEventListener('click',function(){set(b.getAttribute('aria-expanded')!=='true');});m.addEventListener('click',function(e){if(e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&b.getAttribute('aria-expanded')==='true'){set(false);b.focus();}});})();</script>";
 
 /// Same shape as [`NAV_TOGGLE_SCRIPT`], for the BOOK chapter drawer. A book is laid out
 /// as one centred reading column (the same measure as a blog post); the chapter list is
 /// not a permanent rail but an off-canvas drawer summoned from the topbar's "Chapters"
 /// button at every width. This wires that button: toggle `aria-expanded` + reveal the
-/// `#qmd-book-drawer` overlay (which starts `hidden`), move focus into it on open, and
+/// `#tali-book-drawer` overlay (which starts `hidden`), move focus into it on open, and
 /// close it on Escape, on a backdrop / close-button click (`[data-qmd-drawer-close]`), or
 /// after a chapter link is followed (restoring focus to the opener). `data-drawer-wired`
 /// keeps it idempotent across hot-reload re-injects.
-const BOOK_DRAWER_SCRIPT: &str = "<script>(function(){var b=document.getElementById('qmd-book-drawer-btn'),d=document.getElementById('qmd-book-drawer');if(!b||!d||b.dataset.drawerWired)return;b.dataset.drawerWired='1';function set(o){d.hidden=!o;b.setAttribute('aria-expanded',o?'true':'false');if(o){var f=d.querySelector('.qmd-book-chapter')||d.querySelector('a,button');if(f)f.focus();}else{b.focus();}}b.addEventListener('click',function(){set(d.hidden);});d.addEventListener('click',function(e){if(e.target.closest('[data-qmd-drawer-close]')||e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!d.hidden)set(false);});})();</script>";
+const BOOK_DRAWER_SCRIPT: &str = "<script>(function(){var b=document.getElementById('tali-book-drawer-btn'),d=document.getElementById('tali-book-drawer');if(!b||!d||b.dataset.drawerWired)return;b.dataset.drawerWired='1';function set(o){d.hidden=!o;b.setAttribute('aria-expanded',o?'true':'false');if(o){var f=d.querySelector('.tali-book-chapter')||d.querySelector('a,button');if(f)f.focus();}else{b.focus();}}b.addEventListener('click',function(){set(d.hidden);});d.addEventListener('click',function(e){if(e.target.closest('[data-qmd-drawer-close]')||e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!d.hidden)set(false);});})();</script>";
 
 /// A search control that opens the Cmd-K palette. It carries `data-qmd-search`,
 /// which `web-client/search.js` wires (by click delegation) to open the same
@@ -34,16 +34,16 @@ const BOOK_DRAWER_SCRIPT: &str = "<script>(function(){var b=document.getElementB
 fn search_button(full: bool) -> String {
     let (cls, label) = if full {
         (
-            "qmd-search-btn qmd-search-full",
-            "<span class='qmd-search-label'>Search the book</span>",
+            "tali-search-btn tali-search-full",
+            "<span class='tali-search-label'>Search the book</span>",
         )
     } else {
-        ("qmd-search-btn", "")
+        ("tali-search-btn", "")
     };
     format!(
         "<button class='{cls}' type='button' data-qmd-search aria-label='Search' \
          aria-keyshortcuts='Control+K Meta+K'>{SEARCH_ICON}{label}\
-         <kbd class='qmd-search-kbd'>\u{2318}K</kbd></button>"
+         <kbd class='tali-search-kbd'>\u{2318}K</kbd></button>"
     )
 }
 
@@ -54,7 +54,7 @@ const GRAPH_ICON: &str = "<svg width='15' height='15' viewBox='0 0 16 16' fill='
 /// click delegation). Rendered next to search on a project that HAS cross-page edges.
 fn graph_button() -> String {
     format!(
-        "<button class='qmd-graph-btn' type='button' data-qmd-graph \
+        "<button class='tali-graph-btn' type='button' data-qmd-graph \
          aria-label='Reference graph'>{GRAPH_ICON}</button>"
     )
 }
@@ -78,10 +78,10 @@ impl Site {
             .clone()
             .unwrap_or_else(|| "Home".to_string());
         let mut s = String::from(
-            "<header class=\"qmd-site-nav\" data-qmd-src=\"_site.yml\"><nav class=\"qmd-nav-inner\" aria-label=\"Primary\">",
+            "<header class=\"tali-site-nav\" data-qmd-src=\"_site.yml\"><nav class=\"tali-nav-inner\" aria-label=\"Primary\">",
         );
         s.push_str(&format!(
-            "<a class=\"qmd-nav-brand\" href=\"{up}index.html\">{}</a>",
+            "<a class=\"tali-nav-brand\" href=\"{up}index.html\">{}</a>",
             esc(&brand_text)
         ));
         // A real, focusable button toggles the mobile menu, so keyboard and
@@ -91,16 +91,16 @@ impl Site {
         // tiny inline script below wires the click + Escape-to-close; CSS hides the
         // button above 640px so the desktop bar is unchanged.
         s.push_str(
-            "<button type=\"button\" class=\"qmd-nav-burger\" id=\"qmd-nav-toggle\" \
-             aria-label=\"Menu\" aria-expanded=\"false\" aria-controls=\"qmd-nav-links\">\
+            "<button type=\"button\" class=\"tali-nav-burger\" id=\"tali-nav-toggle\" \
+             aria-label=\"Menu\" aria-expanded=\"false\" aria-controls=\"tali-nav-links\">\
              <span></span><span></span><span></span></button>",
         );
-        s.push_str("<div class=\"qmd-nav-links\" id=\"qmd-nav-links\">");
+        s.push_str("<div class=\"tali-nav-links\" id=\"tali-nav-links\">");
         for it in &self.config.nav.left {
             s.push_str(&self.nav_link(it, current, &up));
         }
         // Everything after the spacer is pushed to the far right of the bar.
-        s.push_str("<span class=\"qmd-nav-spacer\"></span>");
+        s.push_str("<span class=\"tali-nav-spacer\"></span>");
         for it in &self.config.nav.right {
             s.push_str(&self.nav_link(it, current, &up));
         }
@@ -112,11 +112,11 @@ impl Site {
             s.push_str(&graph_button());
         }
         s.push_str(
-            "<button class=\"qmd-theme-toggle\" type=\"button\" data-qmd-theme-toggle \
+            "<button class=\"tali-theme-toggle\" type=\"button\" data-qmd-theme-toggle \
              aria-label=\"Toggle theme\"></button>",
         );
         s.push_str("</div></nav></header>");
-        // Wire the burger button: toggle `aria-expanded` + a `.qmd-nav-open` class
+        // Wire the burger button: toggle `aria-expanded` + a `.tali-nav-open` class
         // the CSS shows the menu on, and close on Escape / link click. Idempotent
         // (a `data-wired` guard) so re-running it (live hot-reload re-injects the
         // navbar) never double-binds. Inlined here, in the navbar's own HTML, to
@@ -135,12 +135,12 @@ impl Site {
         let active = href_matches_page(href, current);
         // `icon:` shorthand renders a bundled SVG; otherwise the (escaped) label.
         let icon = it.icon.as_deref().and_then(social_icon);
-        let mut classes = String::from("qmd-nav-link");
+        let mut classes = String::from("tali-nav-link");
         if icon.is_some() {
-            classes.push_str(" qmd-nav-icon");
+            classes.push_str(" tali-nav-icon");
         }
         if active {
-            classes.push_str(" qmd-nav-active");
+            classes.push_str(" tali-nav-active");
         }
         let aria = if active { " aria-current=\"page\"" } else { "" };
         // `data-label` carries the text so the CSS can reserve the bold (active)
@@ -200,20 +200,20 @@ impl Site {
                     }
                     Some(h) => {
                         g.push_str(&format!(
-                            "<a class=\"qmd-foot-item\"{aria} href=\"{}\">{content}</a>",
+                            "<a class=\"tali-foot-item\"{aria} href=\"{}\">{content}</a>",
                             resolve_href(h, &up)
                         ));
                     }
-                    None => g.push_str(&format!("<span class=\"qmd-foot-item\">{content}</span>")),
+                    None => g.push_str(&format!("<span class=\"tali-foot-item\">{content}</span>")),
                 }
             }
             g
         };
         format!(
-            "<footer class=\"qmd-site-footer\" data-qmd-src=\"_site.yml\"><div class=\"qmd-foot-inner\">\
-             <div class=\"qmd-foot-left\">{}</div>\
-             <div class=\"qmd-foot-center\">{}</div>\
-             <div class=\"qmd-foot-right\">{}</div>\
+            "<footer class=\"tali-site-footer\" data-qmd-src=\"_site.yml\"><div class=\"tali-foot-inner\">\
+             <div class=\"tali-foot-left\">{}</div>\
+             <div class=\"tali-foot-center\">{}</div>\
+             <div class=\"tali-foot-right\">{}</div>\
              </div></footer>",
             group(&footer.left),
             group(&footer.center),
@@ -227,8 +227,8 @@ impl Site {
     /// linking home, a search button, and the light/dark toggle) followed by the chapter
     /// list inside an off-canvas drawer. A book reads as one centred column, so the chapter
     /// list is summoned, not a permanent rail. (Returned together from one method because
-    /// the page assembler threads a single `book_sidebar` string; the topbar is `.qmd-book-
-    /// topbar`, never the website `.qmd-site-nav`.)
+    /// the page assembler threads a single `book_sidebar` string; the topbar is `.tali-book-
+    /// topbar`, never the website `.tali-site-nav`.)
     pub(super) fn sidebar_html(&self, current: &Page, depth: usize) -> String {
         let Some(book) = &self.book else {
             return String::new();
@@ -237,24 +237,24 @@ impl Site {
         let mut s = String::new();
         // --- slim sticky topbar: Chapters launcher · brand · search · theme toggle ---
         s.push_str(
-            "<header class=\"qmd-book-topbar\" data-qmd-src=\"_site.yml\">\
-             <div class=\"qmd-book-topbar-inner\">",
+            "<header class=\"tali-book-topbar\" data-qmd-src=\"_site.yml\">\
+             <div class=\"tali-book-topbar-inner\">",
         );
         s.push_str(
-            "<button type=\"button\" class=\"qmd-book-drawer-btn\" id=\"qmd-book-drawer-btn\" \
+            "<button type=\"button\" class=\"tali-book-drawer-btn\" id=\"tali-book-drawer-btn\" \
              aria-label=\"Chapters\" aria-haspopup=\"dialog\" aria-expanded=\"false\" \
-             aria-controls=\"qmd-book-drawer\">\
+             aria-controls=\"tali-book-drawer\">\
              <svg width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='currentColor' \
              stroke-width='1.6' stroke-linecap='round' aria-hidden='true'>\
              <path d='M2 4h12M2 8h12M2 12h12'/></svg><span>Chapters</span></button>",
         );
         if let Some(t) = &book.title {
             s.push_str(&format!(
-                "<a class=\"qmd-book-brand\" href=\"{up}index.html\">{}</a>",
+                "<a class=\"tali-book-brand\" href=\"{up}index.html\">{}</a>",
                 esc(t)
             ));
         }
-        s.push_str("<span class=\"qmd-nav-spacer\"></span>");
+        s.push_str("<span class=\"tali-nav-spacer\"></span>");
         // A search button (opens the same Cmd-K palette) + the light/dark toggle. A book
         // has no website navbar, so the toggle (wired by theme_head) lives here.
         s.push_str(&search_button(false));
@@ -262,49 +262,49 @@ impl Site {
             s.push_str(&graph_button());
         }
         s.push_str(
-            "<button class=\"qmd-theme-toggle\" type=\"button\" data-qmd-theme-toggle \
+            "<button class=\"tali-theme-toggle\" type=\"button\" data-qmd-theme-toggle \
              aria-label=\"Toggle light/dark theme\"></button>",
         );
         s.push_str("</div></header>");
         // --- the chapter drawer: an off-canvas overlay summoned from the topbar ---
         s.push_str(
-            "<div class=\"qmd-book-drawer\" id=\"qmd-book-drawer\" hidden>\
-             <div class=\"qmd-book-drawer-backdrop\" data-qmd-drawer-close></div>\
-             <div class=\"qmd-book-drawer-panel\">",
+            "<div class=\"tali-book-drawer\" id=\"tali-book-drawer\" hidden>\
+             <div class=\"tali-book-drawer-backdrop\" data-qmd-drawer-close></div>\
+             <div class=\"tali-book-drawer-panel\">",
         );
-        // The `qmd-book-sidebar` nav (kept for the chapter list + its aria-label) now lives
+        // The `tali-book-sidebar` nav (kept for the chapter list + its aria-label) now lives
         // inside the drawer panel rather than a left rail.
         s.push_str(
-            "<nav class=\"qmd-book-sidebar\" data-qmd-src=\"_site.yml\" aria-label=\"Chapters\">",
+            "<nav class=\"tali-book-sidebar\" data-qmd-src=\"_site.yml\" aria-label=\"Chapters\">",
         );
-        s.push_str("<div class=\"qmd-book-sidebar-head\">");
+        s.push_str("<div class=\"tali-book-sidebar-head\">");
         if let Some(t) = &book.title {
             s.push_str(&format!(
-                "<a class=\"qmd-book-brand\" href=\"{up}index.html\">{}</a>",
+                "<a class=\"tali-book-brand\" href=\"{up}index.html\">{}</a>",
                 esc(t)
             ));
         }
         s.push_str(
-            "<button type=\"button\" class=\"qmd-book-drawer-close\" data-qmd-drawer-close \
+            "<button type=\"button\" class=\"tali-book-drawer-close\" data-qmd-drawer-close \
              aria-label=\"Close chapters\">\u{2715}</button>",
         );
         s.push_str("</div>");
-        s.push_str("<ul class=\"qmd-book-chapters\" id=\"qmd-book-chapters\">");
+        s.push_str("<ul class=\"tali-book-chapters\" id=\"tali-book-chapters\">");
         for e in &book.entries {
             if let Some(part) = &e.part {
-                s.push_str(&format!("<li class=\"qmd-book-part\">{}</li>", esc(part)));
+                s.push_str(&format!("<li class=\"tali-book-part\">{}</li>", esc(part)));
                 continue;
             }
             let active = e.rel == current.rel;
             let cls = if active {
-                "qmd-book-chapter qmd-book-active"
+                "tali-book-chapter tali-book-active"
             } else {
-                "qmd-book-chapter"
+                "tali-book-chapter"
             };
             let aria = if active { " aria-current=\"page\"" } else { "" };
             let num = e
                 .number
-                .map(|n| format!("<span class=\"qmd-chap-num\">{n}</span> "))
+                .map(|n| format!("<span class=\"tali-chap-num\">{n}</span> "))
                 .unwrap_or_default();
             s.push_str(&format!(
                 "<li><a class=\"{cls}\" href=\"{up}{}\"{aria}>{num}{}</a></li>",
@@ -341,8 +341,8 @@ impl Site {
         let left = prev
             .map(|p| {
                 format!(
-                    "<a class=\"qmd-book-prev\" href=\"{up}{}\">\
-                     <span class=\"qmd-back-glyph\">\u{2190}</span> {}</a>",
+                    "<a class=\"tali-book-prev\" href=\"{up}{}\">\
+                     <span class=\"tali-back-glyph\">\u{2190}</span> {}</a>",
                     p.url,
                     label(p)
                 )
@@ -351,16 +351,16 @@ impl Site {
         let right = next
             .map(|n| {
                 format!(
-                    "<a class=\"qmd-book-next\" href=\"{up}{}\">{} \
-                     <span class=\"qmd-fwd-glyph\">\u{2192}</span></a>",
+                    "<a class=\"tali-book-next\" href=\"{up}{}\">{} \
+                     <span class=\"tali-fwd-glyph\">\u{2192}</span></a>",
                     n.url,
                     label(n)
                 )
             })
             .unwrap_or_default();
         format!(
-            "<nav class=\"qmd-postnav qmd-book-postnav\" aria-label=\"Pagination\">{left}\
-             <span class=\"qmd-nav-spacer\"></span>{right}</nav>"
+            "<nav class=\"tali-postnav tali-book-postnav\" aria-label=\"Pagination\">{left}\
+             <span class=\"tali-nav-spacer\"></span>{right}</nav>"
         )
     }
 }

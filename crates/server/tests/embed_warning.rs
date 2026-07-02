@@ -8,7 +8,7 @@ use std::process::Command;
 fn tmp_dir(name: &str) -> std::path::PathBuf {
     // NB: keep "embed" out of the dir name — it lands in the printed output path and
     // would pollute the `stderr.contains("embed")` assertions below.
-    let dir = std::env::temp_dir().join(format!("qmd-singledoc-{}-{name}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("tali-singledoc-{}-{name}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     dir

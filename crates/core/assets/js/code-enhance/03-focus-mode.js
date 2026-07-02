@@ -10,19 +10,19 @@ function __qmdShortcutsOn() {
 // Focus / reading mode: hide site chrome and centre the prose into one calm column for
 // distraction-free reading. Reader-side, ephemeral (no localStorage) — toggled by the `f`
 // key (ignored while typing or while a modal is open), Esc, or a Reader-menu toggle. All
-// the hiding/centring is CSS on body.qmd-focus; this just flips the class + wires triggers.
+// the hiding/centring is CSS on body.tali-focus; this just flips the class + wires triggers.
 function qmdInitFocusMode() {
-  if (document.querySelector('.qmd-deck')) return;
+  if (document.querySelector('.tali-deck')) return;
   if (window.__qmdFocus) return;
   window.__qmdFocus = true;
 
   var live = document.createElement('span');
-  live.className = 'qmd-sr-only';
+  live.className = 'tali-sr-only';
   live.setAttribute('aria-live', 'polite');
   document.body.appendChild(live);
 
   var btn = null;
-  function on() { return document.body.classList.contains('qmd-focus'); }
+  function on() { return document.body.classList.contains('tali-focus'); }
   function sync() {
     if (!btn) return;
     btn.setAttribute('aria-pressed', on() ? 'true' : 'false');
@@ -46,7 +46,7 @@ function qmdInitFocusMode() {
     } catch (e) {}
   }
   function setFocus(v) {
-    document.body.classList.toggle('qmd-focus', v);
+    document.body.classList.toggle('tali-focus', v);
     goFullscreen(v);
     sync();
     live.textContent = '';
@@ -62,11 +62,11 @@ function qmdInitFocusMode() {
   // remains the mouse exit + the size/theme controls.
   if (window.qmdReaderMenu) {
     var row = document.createElement('div');
-    row.className = 'qmd-reader-row';
+    row.className = 'tali-reader-row';
     var label = document.createElement('span');
     label.textContent = 'Focus mode';
     var seg = document.createElement('div');
-    seg.className = 'qmd-reader-seg';
+    seg.className = 'tali-reader-seg';
     btn = document.createElement('button');
     btn.type = 'button';
     btn.textContent = 'Off';

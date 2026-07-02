@@ -21,7 +21,7 @@ fn corpus(name: &str) -> PathBuf {
 }
 
 fn tmp_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("qmd-parbuild-{}-{name}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("tali-parbuild-{}-{name}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     dir
@@ -217,7 +217,7 @@ fn listing_index_reflects_all_siblings_jobs1_vs_jobs_n() {
     let index = String::from_utf8(par["index.html"].clone()).expect("index.html is utf-8");
     let mut last_pos = 0usize;
     for title in &titles_newest_first {
-        let needle = format!("class=\"qmd-card-title\">{title}</h3>");
+        let needle = format!("class=\"tali-card-title\">{title}</h3>");
         let pos = index.as_str()[last_pos..].find(&needle).unwrap_or_else(|| {
             panic!(
                 "listing index is missing sibling card `{title}` (or it is out of date-desc \

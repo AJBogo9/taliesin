@@ -3,23 +3,23 @@
 // fire while typing or under another modal. Read-only, deck-skipped, idempotent.
 function qmdInitKeyboard() {
   if (window.__qmdKeyboard) return;
-  if (document.querySelector('.qmd-deck')) return;
+  if (document.querySelector('.tali-deck')) return;
   window.__qmdKeyboard = true;
 
   var sheet = null;
   var sheetRelease = null;
   function buildSheet() {
     var wrap = document.createElement('div');
-    wrap.className = 'qmd-keys';
+    wrap.className = 'tali-keys';
     wrap.setAttribute('role', 'dialog');
     wrap.setAttribute('aria-modal', 'true');
     wrap.setAttribute('aria-label', 'Keyboard shortcuts');
     wrap.hidden = true;
     var card = document.createElement('div');
-    card.className = 'qmd-keys-card';
+    card.className = 'tali-keys-card';
     card.innerHTML =
       '<h2>Keyboard shortcuts</h2>' +
-      '<dl class="qmd-keys-list">' +
+      '<dl class="tali-keys-list">' +
       '<div><dt><kbd>?</kbd></dt><dd>Show this help</dd></div>' +
       '<div><dt><kbd>/</kbd></dt><dd>Search</dd></div>' +
       '<div><dt><kbd>f</kbd></dt><dd>Focus mode</dd></div>' +
@@ -27,7 +27,7 @@ function qmdInitKeyboard() {
       '<div><dt><kbd>Esc</kbd></dt><dd>Close</dd></div>' +
       '</dl>';
     var close = document.createElement('button');
-    close.className = 'qmd-keys-close';
+    close.className = 'tali-keys-close';
     close.type = 'button';
     close.setAttribute('aria-label', 'Close');
     close.textContent = '×';
@@ -43,7 +43,7 @@ function qmdInitKeyboard() {
     if (!sheet) buildSheet();
     sheet.hidden = false;
     if (window.qmdFocusTrap) {
-      sheetRelease = window.qmdFocusTrap(sheet, sheet.querySelector('.qmd-keys-close'));
+      sheetRelease = window.qmdFocusTrap(sheet, sheet.querySelector('.tali-keys-close'));
     }
   }
   function closeSheet() {
@@ -79,7 +79,7 @@ function qmdInitKeyboard() {
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       // leave arrows to a focused interactive control (slider, tablist, link, button)
       if (t && t.closest && t.closest('a,button,input,select,textarea,[role="tab"]')) return;
-      var nav = document.querySelector(e.key === 'ArrowRight' ? '.qmd-book-next' : '.qmd-book-prev');
+      var nav = document.querySelector(e.key === 'ArrowRight' ? '.tali-book-next' : '.tali-book-prev');
       if (nav && nav.href) { e.preventDefault(); window.location.assign(nav.href); }
     }
   });

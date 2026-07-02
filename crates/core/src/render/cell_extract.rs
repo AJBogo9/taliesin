@@ -114,7 +114,7 @@ pub(super) fn detect_execute_defaults(front_matter: &str) -> (bool, bool, bool) 
 /// still needs a block in the list so the executor runs it and the output can be
 /// placed after it; render it as an empty hidden marker carrying the data attrs.
 pub(super) fn hidden_cell(attrs: &str) -> String {
-    format!("<div{attrs} class=\"qmd-cell-hidden\" hidden></div>")
+    format!("<div{attrs} class=\"tali-cell-hidden\" hidden></div>")
 }
 
 /// If a cell sets `code-fold`, return `(start_open, summary)`. `true` folds

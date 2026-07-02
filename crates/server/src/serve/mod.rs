@@ -476,88 +476,88 @@ fn index_html(ctx: &PageCtx) -> String {
 /// source toggle, diagnostics, and on a single doc a theme toggle). All
 /// preview-only — none of this ships in `build`.
 pub(crate) const STATUS_CSS: &str = "\
-    #qmd-controls.qmd-dev { position: fixed; bottom: .6rem; left: .6rem; z-index: 9999; \
+    #tali-controls.tali-dev { position: fixed; bottom: .6rem; left: .6rem; z-index: 9999; \
       font: 12px ui-sans-serif, system-ui, sans-serif; } \
-    .qmd-dev-toggle { display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; \
+    .tali-dev-toggle { display: inline-flex; align-items: center; gap: .4rem; cursor: pointer; \
       background: var(--qmd-bg, #fff); color: var(--qmd-muted, #888); \
       border: 1px solid var(--qmd-border, #e0e0e0); border-radius: 999px; padding: .25rem .6rem; \
       box-shadow: 0 1px 6px rgba(0,0,0,.12); } \
-    .qmd-dev-toggle:hover { color: var(--qmd-fg, #111); } \
-    .qmd-dev-toggle.qmd-dev-alert { border-color: #d9a23a; color: #d9a23a; } \
-    .qmd-dev-glyph { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -1px; } \
-    .qmd-dev-count { min-width: 1rem; padding: 0 .3rem; border-radius: 999px; background: #d9a23a; color: #fff; \
+    .tali-dev-toggle:hover { color: var(--qmd-fg, #111); } \
+    .tali-dev-toggle.tali-dev-alert { border-color: #d9a23a; color: #d9a23a; } \
+    .tali-dev-glyph { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: -1px; } \
+    .tali-dev-count { min-width: 1rem; padding: 0 .3rem; border-radius: 999px; background: #d9a23a; color: #fff; \
       font-weight: 700; font-size: 11px; line-height: 1.3; text-align: center; } \
-    .qmd-dev-count[hidden] { display: none; } \
-    .qmd-dev-dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--qmd-muted, #888); flex: none; } \
-    .qmd-dev-dot[data-state=\"live\"] { background: #3fb950; } \
-    .qmd-dev-dot[data-state=\"warn\"] { background: #d9a23a; } \
-    .qmd-dev-dot[data-state=\"error\"] { background: #e5534b; } \
-    .qmd-dev-panel { position: absolute; bottom: calc(100% + .45rem); left: 0; min-width: 13rem; \
+    .tali-dev-count[hidden] { display: none; } \
+    .tali-dev-dot { width: .5rem; height: .5rem; border-radius: 50%; background: var(--qmd-muted, #888); flex: none; } \
+    .tali-dev-dot[data-state=\"live\"] { background: #3fb950; } \
+    .tali-dev-dot[data-state=\"warn\"] { background: #d9a23a; } \
+    .tali-dev-dot[data-state=\"error\"] { background: #e5534b; } \
+    .tali-dev-panel { position: absolute; bottom: calc(100% + .45rem); left: 0; min-width: 13rem; \
       display: flex; flex-direction: column; gap: .5rem; padding: .65rem; \
       background: var(--qmd-bg, #fff); color: var(--qmd-fg, #111); \
       border: 1px solid var(--qmd-border, #e0e0e0); border-radius: 9px; box-shadow: 0 8px 28px rgba(0,0,0,.2); } \
-    .qmd-dev-panel[hidden] { display: none; } \
-    .qmd-dev-row { display: flex; justify-content: space-between; gap: 1rem; color: var(--qmd-muted, #888); } \
-    .qmd-dev-row .qmd-dev-label { font-weight: 600; } \
-    #qmd-wordcount { font-variant-numeric: tabular-nums; } \
-    .qmd-dev-ctl { display: inline-flex; align-items: center; gap: .4rem; text-align: left; cursor: pointer; \
+    .tali-dev-panel[hidden] { display: none; } \
+    .tali-dev-row { display: flex; justify-content: space-between; gap: 1rem; color: var(--qmd-muted, #888); } \
+    .tali-dev-row .tali-dev-label { font-weight: 600; } \
+    #tali-wordcount { font-variant-numeric: tabular-nums; } \
+    .tali-dev-ctl { display: inline-flex; align-items: center; gap: .4rem; text-align: left; cursor: pointer; \
       background: var(--qmd-code-bg, #f5f5f5); color: var(--qmd-fg, #111); \
       border: 1px solid var(--qmd-border, #e0e0e0); border-radius: 6px; padding: .3rem .55rem; } \
-    .qmd-dev-ctl:hover { border-color: var(--qmd-accent, #4c8dff); } \
-    .qmd-dev-theme svg { width: 14px; height: 14px; } \
-    #qmd-diagnostics { display: none; flex-direction: column; gap: .3rem; max-width: 22rem; } \
-    #qmd-diagnostics .qmd-diag { padding: .3rem .5rem; border-radius: 6px; background: var(--qmd-code-bg, #f5f5f5); \
+    .tali-dev-ctl:hover { border-color: var(--qmd-accent, #4c8dff); } \
+    .tali-dev-theme svg { width: 14px; height: 14px; } \
+    #tali-diagnostics { display: none; flex-direction: column; gap: .3rem; max-width: 22rem; } \
+    #tali-diagnostics .tali-diag { padding: .3rem .5rem; border-radius: 6px; background: var(--qmd-code-bg, #f5f5f5); \
       border: 1px solid var(--qmd-border, #e0e0e0); line-height: 1.35; } \
-    #qmd-diagnostics .qmd-diag-error { border-left: 3px solid #e5534b; } \
-    #qmd-diagnostics .qmd-diag-warning { border-left: 3px solid #d9a23a; } \
-    #qmd-diagnostics .qmd-diag-loc { cursor: pointer; text-align: left; width: 100%; font: inherit; color: inherit; } \
-    #qmd-diagnostics .qmd-diag-loc:hover { border-color: var(--qmd-accent, #4c8dff); } \
-    #qmd-diagnostics .qmd-diag-loc::after { content: \"  \\2192 source\"; color: var(--qmd-muted, #888); font-size: 11px; } \
-    #qmd-diagnostics .qmd-diag-frame { margin: .35rem 0 0; padding: .35rem .45rem; border-radius: 4px; overflow-x: auto; \
+    #tali-diagnostics .tali-diag-error { border-left: 3px solid #e5534b; } \
+    #tali-diagnostics .tali-diag-warning { border-left: 3px solid #d9a23a; } \
+    #tali-diagnostics .tali-diag-loc { cursor: pointer; text-align: left; width: 100%; font: inherit; color: inherit; } \
+    #tali-diagnostics .tali-diag-loc:hover { border-color: var(--qmd-accent, #4c8dff); } \
+    #tali-diagnostics .tali-diag-loc::after { content: \"  \\2192 source\"; color: var(--qmd-muted, #888); font-size: 11px; } \
+    #tali-diagnostics .tali-diag-frame { margin: .35rem 0 0; padding: .35rem .45rem; border-radius: 4px; overflow-x: auto; \
       background: var(--qmd-bg, #fff); white-space: pre; font: 11px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; } \
-    #qmd-cell-errors { flex-direction: column; gap: .3rem; max-width: 22rem; } \
-    .qmd-cellerr { text-align: left; cursor: pointer; font: 12px ui-sans-serif, system-ui, sans-serif; \
+    #tali-cell-errors { flex-direction: column; gap: .3rem; max-width: 22rem; } \
+    .tali-cellerr { text-align: left; cursor: pointer; font: 12px ui-sans-serif, system-ui, sans-serif; \
       color: var(--qmd-fg, #111); background: var(--qmd-code-bg, #f5f5f5); border: 1px solid var(--qmd-border, #e0e0e0); \
       border-left: 3px solid #e5534b; border-radius: 6px; padding: .3rem .5rem; \
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } \
-    .qmd-cellerr:hover { border-color: #e5534b; } \
-    @media (max-width: 60rem) { body.qmd-toc-sheet #qmd-controls.qmd-dev { bottom: 2.4rem; } } \
-    #qmd-progress { position: fixed; bottom: 12px; right: 12px; z-index: 9999; \
+    .tali-cellerr:hover { border-color: #e5534b; } \
+    @media (max-width: 60rem) { body.tali-toc-sheet #tali-controls.tali-dev { bottom: 2.4rem; } } \
+    #tali-progress { position: fixed; bottom: 12px; right: 12px; z-index: 9999; \
       display: flex; align-items: center; gap: 6px; \
       font: 12px/1.4 ui-sans-serif, system-ui, sans-serif; padding: 5px 10px; border-radius: 6px; \
       background: var(--qmd-bg, #fff); color: var(--qmd-fg, #222); \
       border: 1px solid color-mix(in srgb, currentColor 20%, transparent); \
       box-shadow: 0 1px 6px rgba(0,0,0,.10); cursor: default; user-select: none; } \
-    #qmd-progress[data-state=\"busy\"] { cursor: pointer; } \
-    #qmd-progress[data-state=\"warming\"] { border-color: color-mix(in srgb, #d9a23a 55%, transparent); } \
-    #qmd-progress[data-state=\"error\"] { cursor: pointer; border-color: #e5534b; } \
-    #qmd-progress[data-state=\"idle\"] { opacity: .65; } \
-    .qmd-prog-dot { width: .5rem; height: .5rem; border-radius: 50%; flex: none; \
+    #tali-progress[data-state=\"busy\"] { cursor: pointer; } \
+    #tali-progress[data-state=\"warming\"] { border-color: color-mix(in srgb, #d9a23a 55%, transparent); } \
+    #tali-progress[data-state=\"error\"] { cursor: pointer; border-color: #e5534b; } \
+    #tali-progress[data-state=\"idle\"] { opacity: .65; } \
+    .tali-prog-dot { width: .5rem; height: .5rem; border-radius: 50%; flex: none; \
       background: var(--qmd-muted, #aaa); } \
-    #qmd-progress[data-state=\"busy\"] .qmd-prog-dot { background: #4c8dff; } \
-    #qmd-progress[data-state=\"warming\"] .qmd-prog-dot { background: #d9a23a; } \
-    #qmd-progress[data-state=\"idle\"] .qmd-prog-dot { background: #3fb950; } \
-    #qmd-progress[data-state=\"error\"] .qmd-prog-dot { background: #e5534b; } \
+    #tali-progress[data-state=\"busy\"] .tali-prog-dot { background: #4c8dff; } \
+    #tali-progress[data-state=\"warming\"] .tali-prog-dot { background: #d9a23a; } \
+    #tali-progress[data-state=\"idle\"] .tali-prog-dot { background: #3fb950; } \
+    #tali-progress[data-state=\"error\"] .tali-prog-dot { background: #e5534b; } \
     @media (prefers-reduced-motion: no-preference) { \
-      #qmd-progress[data-state=\"busy\"] .qmd-prog-dot, \
-      #qmd-progress[data-state=\"warming\"] .qmd-prog-dot { \
-        animation: qmd-dot-pulse 1.2s ease-in-out infinite; } \
-      @keyframes qmd-dot-pulse { 0%,100% { opacity:1; } 50% { opacity:.3; } } \
+      #tali-progress[data-state=\"busy\"] .tali-prog-dot, \
+      #tali-progress[data-state=\"warming\"] .tali-prog-dot { \
+        animation: tali-dot-pulse 1.2s ease-in-out infinite; } \
+      @keyframes tali-dot-pulse { 0%,100% { opacity:1; } 50% { opacity:.3; } } \
     } \
-    .qmd-prog-label { white-space: nowrap; } \
-    .qmd-prog-bar { display: inline-block; width: 48px; height: 4px; border-radius: 2px; \
+    .tali-prog-label { white-space: nowrap; } \
+    .tali-prog-bar { display: inline-block; width: 48px; height: 4px; border-radius: 2px; \
       background: color-mix(in srgb, currentColor 15%, transparent); flex: none; } \
-    .qmd-prog-fill { display: block; height: 100%; border-radius: 2px; \
+    .tali-prog-fill { display: block; height: 100%; border-radius: 2px; \
       background: #4c8dff; transition: width .15s linear; } \
     [data-qmd-cell-state] { border-left: 3px solid transparent; padding-left: 8px; } \
     [data-qmd-cell-state=\"queued\"] { border-left-color: color-mix(in srgb, currentColor 30%, transparent); opacity: .7; } \
     [data-qmd-cell-state=\"running\"] { border-left-color: #4c8dff; } \
     [data-qmd-cell-state=\"done\"] { border-left-color: #2bb673; } \
     [data-qmd-cell-state=\"error\"] { border-left-color: #cc3333; } \
-    .qmd-cell-badge { font: 11px/1 var(--qmd-mono, monospace); opacity: .75; margin-right: 6px; } \
+    .tali-cell-badge { font: 11px/1 var(--qmd-mono, monospace); opacity: .75; margin-right: 6px; } \
     @media (prefers-reduced-motion: no-preference) { \
-      [data-qmd-cell-state=\"running\"] .qmd-cell-badge { animation: qmd-pulse 1s ease-in-out infinite; } \
-      @keyframes qmd-pulse { 50% { opacity: .35; } } \
+      [data-qmd-cell-state=\"running\"] .tali-cell-badge { animation: tali-pulse 1s ease-in-out infinite; } \
+      @keyframes tali-pulse { 50% { opacity: .35; } } \
     }";
 
 /// Minimal JS-string escape for embedding a filesystem path in a `\"...\"` literal.
@@ -585,16 +585,16 @@ pub(crate) fn js_str(s: &str) -> String {
 fn blog_index_html(ctx: &PageCtx) -> String {
     // With a TOC, lay the content beside a sticky `<nav id="TOC">` (the client
     // rebuilds its entries from the mounted headings, so it stays live). The
-    // `QMD_TOC` flag switches the client into that mode. `qmd-toc-sheet` opts the
+    // `QMD_TOC` flag switches the client into that mode. `tali-toc-sheet` opts the
     // live page into the mobile pull-up-sheet TOC (the static export keeps the
     // plain stacked-top TOC).
     let (body_class, toc_nav, toc_flag) = if ctx.toc {
         (
-            " class=\"has-toc qmd-toc-sheet\"",
+            " class=\"has-toc tali-toc-sheet\"",
             "<nav id=\"TOC\" aria-label=\"Table of contents\"></nav>\n\
-             <div id=\"qmd-toc-backdrop\"></div>\n\
-             <button id=\"qmd-toc-handle\" type=\"button\" aria-label=\"Contents\">\
-             <span id=\"qmd-toc-cur\"></span><span class=\"qmd-toc-grip\"></span></button>",
+             <div id=\"tali-toc-backdrop\"></div>\n\
+             <button id=\"tali-toc-handle\" type=\"button\" aria-label=\"Contents\">\
+             <span id=\"tali-toc-cur\"></span><span class=\"tali-toc-grip\"></span></button>",
             "window.QMD_TOC = true;",
         )
     } else {
@@ -606,10 +606,10 @@ fn blog_index_html(ctx: &PageCtx) -> String {
         js_str(ctx.doc_path),
         js_str(ctx.base_dir),
     );
-    // The live body: a mountable `#qmd-root`, the live TOC nav, and the dev-menu
+    // The live body: a mountable `#tali-root`, the live TOC nav, and the dev-menu
     // mount. The websocket client drives everything after the first paint.
     let body = format!(
-        "<main id=\"qmd-root\">{}</main>\n{toc_nav}\n<div id=\"qmd-controls\"></div>",
+        "<main id=\"tali-root\">{}</main>\n{toc_nav}\n<div id=\"tali-controls\"></div>",
         ctx.body
     );
     let extra_head = format!("<style>{STATUS_CSS}</style>\n");
@@ -651,7 +651,7 @@ fn blog_index_html(ctx: &PageCtx) -> String {
 }
 
 /// Live deck: the same preview client, but mounting sectioned slides into
-/// `.qmd-deck > .qmd-slides` and (re)syncing the deck engine as blocks change. The
+/// `.tali-deck > .tali-slides` and (re)syncing the deck engine as blocks change. The
 /// `QMD_FORMAT` flag switches the client into deck mode.
 fn deck_index_html(ctx: &PageCtx) -> String {
     let extra_head = format!("<style>{STATUS_CSS}</style>\n");
@@ -690,13 +690,13 @@ fn deck_index_html(ctx: &PageCtx) -> String {
         extra_head: &extra_head,
         include_in_header: &ctx.includes.in_header,
         include_before_body: &ctx.includes.before_body,
-        slides_attr: " id=\"qmd-root\"",
+        slides_attr: " id=\"tali-root\"",
         slides: ctx.body,
         // The dev-menu host (the floating `</>` button), same as the single-doc
         // page: `client.js`'s buildDevMenu fills it with the live status dot,
         // click-to-source toggle, and restart-kernel control. (Was a bare
-        // `#qmd-status` node, which only showed an orphaned "live" label.)
-        after_deck: "<div id=\"qmd-controls\"></div>\n",
+        // `#tali-status` node, which only showed an orphaned "live" label.)
+        after_deck: "<div id=\"tali-controls\"></div>\n",
         tail: &tail,
     })
 }
@@ -1290,7 +1290,7 @@ mod extension_assets {
     fn tmp() -> PathBuf {
         static N: AtomicU32 = AtomicU32::new(0);
         let p = std::env::temp_dir().join(format!(
-            "qmd-srv-ext-{}-{}",
+            "tali-srv-ext-{}-{}",
             std::process::id(),
             N.fetch_add(1, Ordering::Relaxed)
         ));

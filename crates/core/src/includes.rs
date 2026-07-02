@@ -366,7 +366,7 @@ mod tests {
         // `containment_root` must find the marked root (not fall back to the doc
         // dir), so the sibling include is allowed.
         let root = std::env::temp_dir().join(format!(
-            "qmd-safejoin-{}-{}",
+            "tali-safejoin-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

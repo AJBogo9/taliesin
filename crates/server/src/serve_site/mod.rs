@@ -427,15 +427,15 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
 
     let (base_cls, toc_nav, toc_flag) = if toc {
         (
-            "qmd-site-main has-toc",
+            "tali-site-main has-toc",
             "<nav id=\"TOC\" aria-label=\"Table of contents\"></nav>",
             "window.QMD_TOC = true;",
         )
     } else {
-        ("qmd-site-main", "", "")
+        ("tali-site-main", "", "")
     };
     let main_cls = if chrome.wide {
-        format!("{base_cls} qmd-wide")
+        format!("{base_cls} tali-wide")
     } else {
         base_cls.to_string()
     };
@@ -476,29 +476,29 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
     };
 
     // A book lays out a sticky topbar + off-canvas chapter drawer over a centred reading
-    // column (the live `#qmd-root` + TOC), with prev/next-chapter under it; a website keeps
+    // column (the live `#tali-root` + TOC), with prev/next-chapter under it; a website keeps
     // the navbar-on-top layout. (Kept structurally identical to the build path in page.rs.)
     let (body_class, layout) = match chrome.book_sidebar.as_deref() {
         Some(sidebar) => {
             // Keep this layout byte-aligned with the build path (`render/page.rs` book
             // branch): a sticky topbar + off-canvas chapter drawer (`sidebar`), then the
-            // reading content centred in `.qmd-book-main`, widened to the content+TOC grid
+            // reading content centred in `.tali-book-main`, widened to the content+TOC grid
             // only when the chapter carries a TOC.
             let main_cls = if toc_nav.is_empty() {
-                "qmd-book-main"
+                "tali-book-main"
             } else {
-                "qmd-book-main has-toc"
+                "tali-book-main has-toc"
             };
             let inner_cls = if toc_nav.is_empty() {
-                "qmd-book-inner"
+                "tali-book-inner"
             } else {
-                "qmd-book-inner has-toc"
+                "tali-book-inner has-toc"
             };
             (
-                "qmd-book-body",
+                "tali-book-body",
                 format!(
                     "{sidebar}\n<div class=\"{main_cls}\">\n\
-                     <div class=\"{inner_cls}\">\n<main id=\"qmd-root\">{body}</main>\n{toc_nav}\n</div>\n\
+                     <div class=\"{inner_cls}\">\n<main id=\"tali-root\">{body}</main>\n{toc_nav}\n</div>\n\
                      {post_nav}</div>\n{footer}",
                     post_nav = chrome.post_nav_html,
                     footer = chrome.footer_html,
@@ -506,9 +506,9 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
             )
         }
         None => (
-            "qmd-site",
+            "tali-site",
             format!(
-                "{navbar}\n<div class=\"{main_cls}\">\n<main id=\"qmd-root\">{body}</main>\n\
+                "{navbar}\n<div class=\"{main_cls}\">\n<main id=\"tali-root\">{body}</main>\n\
                  {toc_nav}\n{post_nav}\n</div>\n{footer}",
                 navbar = chrome.navbar_html,
                 post_nav = chrome.post_nav_html,
@@ -517,9 +517,9 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
         ),
     };
 
-    // The live body: the site chrome + the mountable `#qmd-root`, plus the
+    // The live body: the site chrome + the mountable `#tali-root`, plus the
     // dev-menu mount. The websocket client drives everything after first paint.
-    let body = format!("{layout}\n<div id=\"qmd-controls\"></div>");
+    let body = format!("{layout}\n<div id=\"tali-controls\"></div>");
     let extra_head = format!("<style>{STATUS_CSS}</style>\n");
     let scripts_pre = format!(
         "<script>{doc_global} {toc_flag} {search_cfg} window.QMD_SSR = true; window.QMD_WS_PATH = \"{ws_path}\";</script>"

@@ -100,7 +100,7 @@ def _child_entry(conn_file):
         app.initialize(["-f", conn_file])
         app.start()
     except Exception as e:
-        sys.stderr.write("qmd-warm: child kernel failed: %r\n" % (e,)); sys.stderr.flush()
+        sys.stderr.write("tali-warm: child kernel failed: %r\n" % (e,)); sys.stderr.flush()
         os._exit(1)
 
 def main():
@@ -113,7 +113,7 @@ def main():
         # so the first real take() doesn't pay the import cost.
         w = ctx.Process(target=_noop); w.start(); w.join()
     except Exception as e:
-        sys.stderr.write("qmd-warm: forkserver unavailable: %r\n" % (e,)); sys.stderr.flush()
+        sys.stderr.write("tali-warm: forkserver unavailable: %r\n" % (e,)); sys.stderr.flush()
         os._exit(2)
     sys.stdout.write("READY " + json.dumps(preload) + "\n"); sys.stdout.flush()
     for line in sys.stdin:
@@ -125,7 +125,7 @@ def main():
             p.start()
             sys.stdout.write("SPAWNED %d\n" % (p.pid,)); sys.stdout.flush()
         except Exception as e:
-            sys.stderr.write("qmd-warm: fork failed: %r\n" % (e,)); sys.stderr.flush()
+            sys.stderr.write("tali-warm: fork failed: %r\n" % (e,)); sys.stderr.flush()
             sys.stdout.write("ERROR\n"); sys.stdout.flush()
 
 if __name__ == "__main__":
@@ -170,7 +170,7 @@ impl ForkserverDaemon {
         // `-c` string module ("Can't get attribute '_child_entry' on __main__").
         // Write it to a private 0700 dir, removed when the daemon drops.
         let helper_dir =
-            std::env::temp_dir().join(format!("qmd-warmpool-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("tali-warmpool-{}", uuid::Uuid::new_v4()));
         {
             let mut b = std::fs::DirBuilder::new();
             b.recursive(true);

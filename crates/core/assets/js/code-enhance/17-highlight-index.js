@@ -4,12 +4,12 @@
 // textarea (and best-effort to the clipboard). Reader-side + read-only: reads the same
 // localStorage; coordinates with the highlighter via the qmd:hlchange event. Skipped on decks.
 function qmdInitHighlightIndex() {
-  if (document.querySelector('.qmd-deck')) return;
+  if (document.querySelector('.tali-deck')) return;
   if (!window.qmdReaderMenu) return;          // need the menu host
   if (window.__qmdHLIndex) return;
   window.__qmdHLIndex = true;
 
-  var KEY = 'qmd-hl:' + location.pathname;
+  var KEY = 'tali-hl:' + location.pathname;
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { return []; } }
   function save(list) { try { localStorage.setItem(KEY, JSON.stringify(list)); } catch (e) {} }
   function changed() { try { window.dispatchEvent(new CustomEvent('qmd:hlchange')); } catch (e) {} }
@@ -33,24 +33,24 @@ function qmdInitHighlightIndex() {
     return document.querySelector('[data-block-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
   }
   function textOf(h) { var b = findBlock(h.id); return b ? blockText(b).slice(h.s, h.e) : null; }
-  function flash(block) { block.classList.remove('qmd-flash'); void block.offsetWidth; block.classList.add('qmd-flash'); }
+  function flash(block) { block.classList.remove('tali-flash'); void block.offsetWidth; block.classList.add('tali-flash'); }
 
   var body = document.createElement('div');
   function render() {
     while (body.firstChild) body.removeChild(body.firstChild);
-    var ul = document.createElement('ul'); ul.className = 'qmd-hlx-list';
+    var ul = document.createElement('ul'); ul.className = 'tali-hlx-list';
     load().forEach(function (h) {
       var t = textOf(h); if (t == null) return; // block gone (orphaned highlight)
       var li = document.createElement('li');
       var go = document.createElement('button');
-      go.type = 'button'; go.className = 'qmd-hlx-go';
+      go.type = 'button'; go.className = 'tali-hlx-go';
       go.textContent = t.length > 90 ? t.slice(0, 90) + '…' : t;
       go.addEventListener('click', function () {
         var b = findBlock(h.id);
         if (b) { window.qmdReaderMenu.close(); b.scrollIntoView({ block: 'center', behavior: 'smooth' }); flash(b); }
       });
       var rm = document.createElement('button');
-      rm.type = 'button'; rm.className = 'qmd-hlx-rm';
+      rm.type = 'button'; rm.className = 'tali-hlx-rm';
       rm.setAttribute('aria-label', 'Remove'); rm.textContent = '×';
       rm.addEventListener('click', function () {
         var tag = h.id + ':' + h.s + ':' + h.e;
@@ -61,11 +61,11 @@ function qmdInitHighlightIndex() {
     });
     body.appendChild(ul);
 
-    var actions = document.createElement('div'); actions.className = 'qmd-hlx-actions';
+    var actions = document.createElement('div'); actions.className = 'tali-hlx-actions';
     var exp = document.createElement('button');
-    exp.type = 'button'; exp.className = 'qmd-hlx-export'; exp.textContent = 'Export as Markdown';
+    exp.type = 'button'; exp.className = 'tali-hlx-export'; exp.textContent = 'Export as Markdown';
     var ta = document.createElement('textarea');
-    ta.className = 'qmd-hlx-out'; ta.readOnly = true; ta.hidden = true;
+    ta.className = 'tali-hlx-out'; ta.readOnly = true; ta.hidden = true;
     ta.setAttribute('aria-label', 'Highlights as Markdown');
     exp.addEventListener('click', function () {
       var md = '# ' + (document.title || 'Highlights') + '\n\n' + location.href + '\n\n';

@@ -443,7 +443,7 @@ fn render_internal_impl(
         // Quarto/pandoc treat a bare `\begin{env}...\end{env}` block as display
         // math even without `$$`; comrak doesn't, so detect and render it here.
         if let Some(env) = is_paragraph.then(|| bare_math_env(&block_src)).flatten() {
-            html.push_str(&format!("<div{attrs} class=\"qmd-math-block\">"));
+            html.push_str(&format!("<div{attrs} class=\"tali-math-block\">"));
             html.push_str(&crate::math::render(env, true));
             html.push_str("</div>");
         } else if let Some((latex, anchor)) = is_paragraph
@@ -725,7 +725,7 @@ fn title_block_html(
 ) -> Option<String> {
     let title = title?;
     let mut h = String::from(
-        "<header class=\"qmd-title-block\" data-block-id=\"qmd-title-block\"><h1 class=\"title\">",
+        "<header class=\"tali-title-block\" data-block-id=\"qmd-title-block\"><h1 class=\"title\">",
     );
     h.push_str(&html_escape(title));
     h.push_str("</h1>");
@@ -743,7 +743,7 @@ fn title_block_html(
         .collect();
     if !meta.is_empty() {
         h.push_str(&format!(
-            "<div class=\"qmd-title-meta\">{}</div>",
+            "<div class=\"tali-title-meta\">{}</div>",
             meta.join("")
         ));
     }
@@ -943,7 +943,7 @@ pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
         qmdjs_s = gate(has_js_cells(body), QMD_JS),
         walk_s = gate(body.contains("code-walkthrough"), WALKTHROUGH_JS),
         tabset_s = gate(body.contains("panel-tabset"), TABSET_JS),
-        scrolly_s = gate(body.contains("qmd-scrolly"), SCROLLY_JS),
+        scrolly_s = gate(body.contains("tali-scrolly"), SCROLLY_JS),
     )
 }
 
@@ -1375,8 +1375,8 @@ fn number_theorems(
             format!("&nbsp;{display}")
         };
         b.html = b.html.replacen(
-            "<span class=\"qmd-theorem-number\"></span>",
-            &format!("<span class=\"qmd-theorem-number\">{slot}</span>"),
+            "<span class=\"tali-theorem-number\"></span>",
+            &format!("<span class=\"tali-theorem-number\">{slot}</span>"),
             1,
         );
         // Register the anchor even when unnumbered (`display` empty): an id'd theorem is a
@@ -1480,7 +1480,7 @@ fn toc_html(blocks: &[Block]) -> String {
         return String::new();
     }
     let base = items.iter().map(|(l, _, _)| *l).min().unwrap();
-    let mut out = String::from("<nav id=\"TOC\" class=\"qmd-toc\" role=\"doc-toc\"><ul>");
+    let mut out = String::from("<nav id=\"TOC\" class=\"tali-toc\" role=\"doc-toc\"><ul>");
     let mut level = base;
     let mut open_li = false;
     for (lvl, id, text) in &items {
@@ -1681,9 +1681,9 @@ fn labelled_display_eq(block_src: &str) -> Option<(String, String)> {
 /// `(N)` number, carrying the `#eq-` id so `@eq-x` cross-refs link to it.
 fn emit_equation(latex: &str, anchor: &str, block_attrs: &str, num: usize) -> String {
     format!(
-        "<div id=\"{anchor}\"{block_attrs} class=\"qmd-eqn\">\
-         <span class=\"qmd-eqn-body\">{}</span>\
-         <span class=\"qmd-eqn-number\">({num})</span></div>",
+        "<div id=\"{anchor}\"{block_attrs} class=\"tali-eqn\">\
+         <span class=\"tali-eqn-body\">{}</span>\
+         <span class=\"tali-eqn-number\">({num})</span></div>",
         crate::math::render(latex, true)
     )
 }

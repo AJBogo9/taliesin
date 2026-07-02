@@ -10,19 +10,19 @@ function qmdInitLinkPreview() {
 
   var style = document.createElement('style');
   style.textContent =
-    '#qmd-link-preview{position:fixed;z-index:2147482000;max-width:min(440px,90vw);max-height:50vh;' +
+    '#tali-link-preview{position:fixed;z-index:2147482000;max-width:min(440px,90vw);max-height:50vh;' +
     'overflow:auto;background:var(--qmd-bg,#fff);color:var(--qmd-fg,#111);' +
     'border:1px solid var(--qmd-border,#e0e0e0);border-radius:8px;box-shadow:0 6px 30px rgba(0,0,0,.22);' +
     'padding:.7rem .9rem;font-size:.9rem;line-height:1.45;opacity:0;transform:translateY(3px);' +
     'transition:opacity .12s ease,transform .12s ease;pointer-events:none;visibility:hidden;}' +
-    '#qmd-link-preview.open{opacity:1;transform:none;pointer-events:auto;visibility:visible;}' +
-    '#qmd-link-preview > :first-child{margin-top:0;}#qmd-link-preview > :last-child{margin-bottom:0;}' +
-    '#qmd-link-preview img{max-width:100%;height:auto;}#qmd-link-preview figure{margin:0;}' +
-    '#qmd-link-preview .qmd-lp-head{font-weight:600;}';
+    '#tali-link-preview.open{opacity:1;transform:none;pointer-events:auto;visibility:visible;}' +
+    '#tali-link-preview > :first-child{margin-top:0;}#tali-link-preview > :last-child{margin-bottom:0;}' +
+    '#tali-link-preview img{max-width:100%;height:auto;}#tali-link-preview figure{margin:0;}' +
+    '#tali-link-preview .tali-lp-head{font-weight:600;}';
   document.head.appendChild(style);
 
   var card = document.createElement('div');
-  card.id = 'qmd-link-preview';
+  card.id = 'tali-link-preview';
   card.setAttribute('role', 'tooltip');
   document.body.appendChild(card);
 
@@ -32,7 +32,7 @@ function qmdInitLinkPreview() {
     if (!a) return false;
     var href = a.getAttribute('href') || '';
     if (href.charAt(0) !== '#' || href.length < 2) return false;
-    return !a.closest('#TOC') && !a.closest('#qmd-link-preview');
+    return !a.closest('#TOC') && !a.closest('#tali-link-preview');
   }
   // Clone a node for the card, stripping interactive chrome that has no place in a
   // read-only preview: the heading/caption `#` permalink (qmdInitAnchorLinks) and code
@@ -47,7 +47,7 @@ function qmdInitLinkPreview() {
     if (/^H[1-6]$/.test(target.tagName)) {
       var frag = document.createElement('div');
       var head = document.createElement('div');
-      head.className = 'qmd-lp-head';
+      head.className = 'tali-lp-head';
       head.textContent = cleanClone(target).textContent;
       frag.appendChild(head);
       var n = target.nextElementSibling, added = 0;
@@ -98,7 +98,7 @@ function qmdInitLinkPreview() {
     var a = e.target.closest && e.target.closest("a[href^='#']");
     if (a && eligible(a)) {
       var to = e.relatedTarget;
-      if (to && to.closest && to.closest('#qmd-link-preview')) return; // moving into the card
+      if (to && to.closest && to.closest('#tali-link-preview')) return; // moving into the card
       scheduleHide();
     }
   });
@@ -108,7 +108,7 @@ function qmdInitLinkPreview() {
   // overflow, `max-height:50vh`) must not — otherwise you can never read past the fold.
   window.addEventListener('scroll', function (e) {
     var t = e.target;
-    if (t && t.nodeType === 1 && t.closest && t.closest('#qmd-link-preview')) return;
+    if (t && t.nodeType === 1 && t.closest && t.closest('#tali-link-preview')) return;
     hide();
   }, true);
   // Click the card to PIN it (survives mouse-leave + page scroll) so you can move into
@@ -117,7 +117,7 @@ function qmdInitLinkPreview() {
   document.addEventListener('mousedown', function (e) {
     if (!card.classList.contains('open')) return;
     var t = e.target;
-    if (t && t.closest && (t.closest('#qmd-link-preview') ||
+    if (t && t.closest && (t.closest('#tali-link-preview') ||
         (currentLink && (t === currentLink || currentLink.contains(t))))) return;
     forceHide();
   });

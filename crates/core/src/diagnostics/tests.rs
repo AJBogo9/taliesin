@@ -7,7 +7,7 @@ struct Tmp(std::path::PathBuf);
 impl Tmp {
     fn new(tag: &str) -> Self {
         let p = std::env::temp_dir().join(format!(
-            "qmd-diag-{tag}-{}-{}",
+            "tali-diag-{tag}-{}-{}",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)

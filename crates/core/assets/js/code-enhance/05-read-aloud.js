@@ -26,7 +26,7 @@ function qmdRaSkip(node, block) {
   var p = node.parentNode;
   while (p && p !== block) {
     if (p.nodeType === 1 && (p.tagName === 'PRE' || p.tagName === 'CODE' ||
-        (p.classList && (p.classList.contains('katex') || p.classList.contains('qmd-anchor'))))) return true;
+        (p.classList && (p.classList.contains('katex') || p.classList.contains('tali-anchor'))))) return true;
     p = p.parentNode;
   }
   return false;
@@ -123,7 +123,7 @@ function qmdRaCompileProse(el, steps) {
 // Compile one top-level block into ordered steps (code/figure/equation/table/prose).
 function qmdRaCompileBlock(block, steps) {
   var pre = block.matches('pre') ? block : block.querySelector('pre');
-  var code = pre && !pre.closest('.qmd-output') ? pre.querySelector('code') : null;
+  var code = pre && !pre.closest('.tali-output') ? pre.querySelector('code') : null;
   if (code) {
     var ranges = qmdRaCodeLineRanges(code);
     var lang = '', cls = (code.className || '').match(/language-([\w+-]+)/);
@@ -183,11 +183,11 @@ function qmdRaCompile(startEl) {
   return { steps: steps, blocks: blocks };
 }
 
-// A segmented control reusing the prefs CSS (.qmd-reader-row/.qmd-reader-seg).
+// A segmented control reusing the prefs CSS (.tali-reader-row/.tali-reader-seg).
 function qmdRaSeg(title, options, getCur, onPick) {
-  var row = document.createElement('div'); row.className = 'qmd-reader-row';
+  var row = document.createElement('div'); row.className = 'tali-reader-row';
   var label = document.createElement('span'); label.textContent = title;
-  var group = document.createElement('div'); group.className = 'qmd-reader-seg';
+  var group = document.createElement('div'); group.className = 'tali-reader-seg';
   group.setAttribute('role', 'group'); group.setAttribute('aria-label', title);
   var buttons = [];
   function sync() { var cur = getCur(); buttons.forEach(function (b, i) { b.setAttribute('aria-pressed', options[i][0] === cur ? 'true' : 'false'); }); }
@@ -202,13 +202,13 @@ function qmdRaSeg(title, options, getCur, onPick) {
 
 // The voice picker row (OS voices); refresh() re-reads getVoices() (async on some browsers).
 function qmdRaVoiceRow(onPick) {
-  var row = document.createElement('div'); row.className = 'qmd-reader-row';
+  var row = document.createElement('div'); row.className = 'tali-reader-row';
   var label = document.createElement('span'); label.textContent = 'Voice';
-  var sel = document.createElement('select'); sel.className = 'qmd-ra-voice-sel';
+  var sel = document.createElement('select'); sel.className = 'tali-ra-voice-sel';
   sel.setAttribute('aria-label', 'Reading voice');
   sel.addEventListener('change', function () { onPick(sel.value); });
   function refresh() {
-    var cur = qmdRaGet('qmd-ra-voice', '');
+    var cur = qmdRaGet('tali-ra-voice', '');
     var vs = (window.speechSynthesis && window.speechSynthesis.getVoices()) || [];
     sel.innerHTML = '';
     var def = document.createElement('option'); def.value = ''; def.textContent = 'Default'; sel.appendChild(def);
@@ -221,13 +221,13 @@ function qmdRaVoiceRow(onPick) {
 
 function qmdInitReadAloud() {
   if (window.__qmdReadAloud && window.__qmdReadAloud.__inited) return;
-  if (document.querySelector('.qmd-deck')) return;        // decks have their own chrome
+  if (document.querySelector('.tali-deck')) return;        // decks have their own chrome
   if (!window.speechSynthesis || typeof SpeechSynthesisUtterance === 'undefined') return; // no API -> no UI
   if (!window.qmdReaderMenu) return;                       // need the menu host
 
   // --- highlight (CSS Custom Highlight API, with a <mark> fallback) ---------------
   var hl = (window.CSS && CSS.highlights && window.Highlight) ? new Highlight() : null;
-  if (hl) CSS.highlights.set('qmd-readaloud', hl);
+  if (hl) CSS.highlights.set('tali-readaloud', hl);
   var marks = [];
   function clearMark() {
     marks.forEach(function (m) {
@@ -240,14 +240,14 @@ function qmdInitReadAloud() {
   function setHighlight(range) {
     if (hl) { hl.clear(); if (range) hl.add(range); return; }
     clearMark();
-    if (range) { try { var m = document.createElement('mark'); m.className = 'qmd-ra-mark'; range.surroundContents(m); marks.push(m); } catch (e) {} }
+    if (range) { try { var m = document.createElement('mark'); m.className = 'tali-ra-mark'; range.surroundContents(m); marks.push(m); } catch (e) {} }
   }
   function clearHighlight() { if (hl) hl.clear(); else clearMark(); }
 
   function reducedMotion() { return window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches; }
-  function rate() { var r = parseFloat(qmdRaGet('qmd-ra-rate', '1')); return r > 0 ? r : 1; }
+  function rate() { var r = parseFloat(qmdRaGet('tali-ra-rate', '1')); return r > 0 ? r : 1; }
   function currentVoice() {
-    var name = qmdRaGet('qmd-ra-voice', '');
+    var name = qmdRaGet('tali-ra-voice', '');
     if (!name) return null;
     var vs = (window.speechSynthesis.getVoices && window.speechSynthesis.getVoices()) || [];
     for (var i = 0; i < vs.length; i++) if (vs[i].name === name) return vs[i];
@@ -322,15 +322,15 @@ function qmdInitReadAloud() {
   var driver = { start: start, pause: pause, resume: resume, stop: stop, jumpBlock: jumpBlock, applyRate: applyRate, isPlaying: function () { return state.playing; } };
 
   // --- mini-player UI --------------------------------------------------------------
-  function btn(cls, label, txt) { var b = document.createElement('button'); b.type = 'button'; b.className = 'qmd-ra-btn ' + cls; b.setAttribute('aria-label', label); b.textContent = txt; return b; }
+  function btn(cls, label, txt) { var b = document.createElement('button'); b.type = 'button'; b.className = 'tali-ra-btn ' + cls; b.setAttribute('aria-label', label); b.textContent = txt; return b; }
   var bar = document.createElement('div');
-  bar.className = 'qmd-ra-bar'; bar.setAttribute('role', 'group'); bar.setAttribute('aria-label', 'Read aloud'); bar.hidden = true;
-  var prev = btn('qmd-ra-prev', 'Previous block', '⏮');
-  var toggle = btn('qmd-ra-toggle', 'Pause', '⏸');
-  var next = btn('qmd-ra-next', 'Next block', '⏭');
-  var speed = document.createElement('span'); speed.className = 'qmd-ra-speed';
-  var stopb = btn('qmd-ra-stop', 'Stop', '✕');
-  var live = document.createElement('span'); live.className = 'qmd-sr-only'; live.setAttribute('aria-live', 'polite');
+  bar.className = 'tali-ra-bar'; bar.setAttribute('role', 'group'); bar.setAttribute('aria-label', 'Read aloud'); bar.hidden = true;
+  var prev = btn('tali-ra-prev', 'Previous block', '⏮');
+  var toggle = btn('tali-ra-toggle', 'Pause', '⏸');
+  var next = btn('tali-ra-next', 'Next block', '⏭');
+  var speed = document.createElement('span'); speed.className = 'tali-ra-speed';
+  var stopb = btn('tali-ra-stop', 'Stop', '✕');
+  var live = document.createElement('span'); live.className = 'tali-sr-only'; live.setAttribute('aria-live', 'polite');
   bar.appendChild(prev); bar.appendChild(toggle); bar.appendChild(next); bar.appendChild(speed); bar.appendChild(stopb); bar.appendChild(live);
   document.body.appendChild(bar);
 
@@ -341,7 +341,7 @@ function qmdInitReadAloud() {
     announce: function (m) { live.textContent = m; },
     setSpeed: function (r) { speed.textContent = r + '×'; }
   };
-  ui.setSpeed(qmdRaGet('qmd-ra-rate', '1'));
+  ui.setSpeed(qmdRaGet('tali-ra-rate', '1'));
 
   toggle.addEventListener('click', function () {
     if (driver.isPlaying()) { driver.pause(); ui.announce('Paused'); }
@@ -354,7 +354,7 @@ function qmdInitReadAloud() {
   // --- reader-menu "Listen" section ------------------------------------------------
   var bodyEl = document.createElement('div');
   var listen = document.createElement('button');
-  listen.type = 'button'; listen.className = 'qmd-reader-reset'; listen.textContent = 'Listen';
+  listen.type = 'button'; listen.className = 'tali-reader-reset'; listen.textContent = 'Listen';
   listen.addEventListener('click', function () {
     driver.start(qmdRaCompile(qmdRaStartBlock()).steps);
     window.qmdReaderMenu.close();
@@ -362,11 +362,11 @@ function qmdInitReadAloud() {
   bodyEl.appendChild(listen);
 
   var SPEEDS = [['0.8', '0.8×'], ['1', '1×'], ['1.25', '1.25×'], ['1.5', '1.5×'], ['2', '2×']];
-  bodyEl.appendChild(qmdRaSeg('Speed', SPEEDS, function () { return qmdRaGet('qmd-ra-rate', '1'); }, function (v) {
-    qmdRaSet('qmd-ra-rate', v === '1' ? null : v); ui.setSpeed(v); driver.applyRate();
+  bodyEl.appendChild(qmdRaSeg('Speed', SPEEDS, function () { return qmdRaGet('tali-ra-rate', '1'); }, function (v) {
+    qmdRaSet('tali-ra-rate', v === '1' ? null : v); ui.setSpeed(v); driver.applyRate();
   }));
 
-  var voiceRow = qmdRaVoiceRow(function (name) { qmdRaSet('qmd-ra-voice', name || null); });
+  var voiceRow = qmdRaVoiceRow(function (name) { qmdRaSet('tali-ra-voice', name || null); });
   bodyEl.appendChild(voiceRow.row);
   voiceRow.refresh();
   if (typeof window.speechSynthesis.onvoiceschanged !== 'undefined') {

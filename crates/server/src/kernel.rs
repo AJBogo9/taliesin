@@ -81,8 +81,8 @@ globals()["ojs_define"] = define
 ///     once with the light theme's near-black foreground, once with the dark
 ///     theme's near-white foreground — by recolouring the figure's artists right
 ///     before each inline image is produced, then restoring them. The two PNGs are
-///     emitted together as a `text/html` fragment whose `.qmd-fig-light` /
-///     `.qmd-fig-dark` images the page swaps on a `data-theme` change, so the axes
+///     emitted together as a `text/html` fragment whose `.tali-fig-light` /
+///     `.tali-fig-dark` images the page swaps on a `data-theme` change, so the axes
 ///     and text always match the surrounding page exactly (same mechanism as the
 ///     theme-matched `{{< video >}}`). The standalone `image/png` is suppressed so
 ///     only the dual-theme HTML is emitted.
@@ -210,8 +210,8 @@ try:
                 _d = _qmd_render(fig, *_QMD_DARK)
                 if _l is None or _d is None:
                     return None
-                return ('<img class="qmd-fig qmd-fig-light" alt="" src="data:image/png;base64,' + _l + '">'
-                        '<img class="qmd-fig qmd-fig-dark" alt="" src="data:image/png;base64,' + _d + '">')
+                return ('<img class="tali-fig tali-fig-light" alt="" src="data:image/png;base64,' + _l + '">'
+                        '<img class="tali-fig tali-fig-dark" alt="" src="data:image/png;base64,' + _d + '">')
             _themed_html._qmd_themed = True
             _html.for_type(Figure, _themed_html)
             def _suppress(fig):
@@ -455,7 +455,7 @@ pub(crate) async fn prepare_connection(
         kernel_name: Some(kernel_name.to_string()),
     };
 
-    let conn_dir = std::env::temp_dir().join(format!("qmd-kernel-{}", uuid::Uuid::new_v4()));
+    let conn_dir = std::env::temp_dir().join(format!("tali-kernel-{}", uuid::Uuid::new_v4()));
     {
         let mut b = std::fs::DirBuilder::new();
         b.recursive(true);
@@ -888,9 +888,9 @@ pub fn render_outputs(outputs: &[Output]) -> String {
         match o {
             Output::Stream { stderr, text } => {
                 let class = if *stderr {
-                    "qmd-stream qmd-stderr"
+                    "tali-stream tali-stderr"
                 } else {
-                    "qmd-stream"
+                    "tali-stream"
                 };
                 s.push_str(&format!("<pre class=\"{class}\">{}</pre>", esc(text)));
             }
@@ -910,7 +910,7 @@ pub fn render_outputs(outputs: &[Output]) -> String {
                 } else {
                     tb
                 };
-                s.push_str(&format!("<pre class=\"qmd-error\">{}</pre>", esc(&body)));
+                s.push_str(&format!("<pre class=\"tali-error\">{}</pre>", esc(&body)));
             }
         }
     }
@@ -1026,13 +1026,13 @@ mod tests {
             stderr: false,
             text: "a < b\n".into(),
         }]);
-        assert_eq!(out, "<pre class=\"qmd-stream\">a &lt; b\n</pre>");
+        assert_eq!(out, "<pre class=\"tali-stream\">a &lt; b\n</pre>");
         let err = render_outputs(&[Output::Stream {
             stderr: true,
             text: "oops".into(),
         }]);
         assert!(
-            err.contains("class=\"qmd-stream qmd-stderr\""),
+            err.contains("class=\"tali-stream tali-stderr\""),
             "got: {err}"
         );
 
@@ -1048,7 +1048,7 @@ mod tests {
             evalue: "bad".into(),
             traceback: vec![],
         }]);
-        assert_eq!(bare, "<pre class=\"qmd-error\">ValueError: bad</pre>");
+        assert_eq!(bare, "<pre class=\"tali-error\">ValueError: bad</pre>");
 
         // A traceback is ANSI-stripped, joined, and escaped.
         let tb = render_outputs(&[Output::Error {
@@ -1056,7 +1056,7 @@ mod tests {
             evalue: "v".into(),
             traceback: vec!["\u{1b}[31mline 1\u{1b}[0m".into(), "a < b".into()],
         }]);
-        assert!(tb.contains("class=\"qmd-error\""), "got: {tb}");
+        assert!(tb.contains("class=\"tali-error\""), "got: {tb}");
         assert!(tb.contains("line 1"), "ansi not stripped: {tb}");
         assert!(!tb.contains("\u{1b}["), "raw ANSI leaked: {tb}");
         assert!(tb.contains("a &lt; b"), "traceback not escaped: {tb}");

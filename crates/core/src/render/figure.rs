@@ -70,9 +70,9 @@ pub(super) fn figure_parts<'a>(node: &'a AstNode<'a>) -> Option<FigureParts> {
 pub(super) fn emit_figure(fig: &FigureParts, block_attrs: &str, num: usize) -> String {
     let id_attr = id_attr(fig.attrs.id.as_deref());
     let align_class = match fig.attrs.get("fig-align") {
-        Some("left") => " qmd-figure-left",
-        Some("right") => " qmd-figure-right",
-        _ => " qmd-figure-center",
+        Some("left") => " tali-figure-left",
+        Some("right") => " tali-figure-right",
+        _ => " tali-figure-center",
     };
     // Honor `width=` and `height=` (each escaped) in the inline style; either, both,
     // or neither may be present.
@@ -95,7 +95,7 @@ pub(super) fn emit_figure(fig: &FigureParts, block_attrs: &str, num: usize) -> S
     // entities, so only quote-escape it (escape_attr would double-escape `&`).
     let alt = strip_tags(&fig.caption);
     format!(
-        "<figure{block_attrs}{id_attr} class=\"qmd-figure{align_class}\">\
+        "<figure{block_attrs}{id_attr} class=\"tali-figure{align_class}\">\
          <img src=\"{}\" alt=\"{}\"{style} />\
          <figcaption>Figure&nbsp;{num}: {}</figcaption></figure>",
         escape_attr(&fig.url),
@@ -119,7 +119,7 @@ pub(super) fn emit_mermaid_figure(
     escape_html(code, &mut diagram);
     let figcap = numbered_caption("Figure", num, caption);
     format!(
-        "<figure{block_attrs}{id_attr} class=\"qmd-figure qmd-figure-center\">\
+        "<figure{block_attrs}{id_attr} class=\"tali-figure tali-figure-center\">\
          <pre class=\"mermaid\">{diagram}</pre>\
          <figcaption>{figcap}</figcaption></figure>"
     )

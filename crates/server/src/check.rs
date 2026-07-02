@@ -304,7 +304,7 @@ mod tests {
     use std::fs;
 
     fn tmp(name: &str) -> std::path::PathBuf {
-        let d = std::env::temp_dir().join(format!("qmd-check-{}-{name}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("tali-check-{}-{name}", std::process::id()));
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d

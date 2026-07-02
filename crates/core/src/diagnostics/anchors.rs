@@ -4,7 +4,7 @@ use super::helpers::{collect_attr_values, start_line};
 use crate::render::{Block, Warning};
 
 /// Same-page `href="#fragment"` values (without `#`) from MANUAL `<a>` links only.
-/// `@fig-`/`@sec-`/`@tbl-` cross-references (anchors carrying `qmd-xref`) are skipped:
+/// `@fig-`/`@sec-`/`@tbl-` cross-references (anchors carrying `tali-xref`) are skipped:
 /// they are validated by `validate_xrefs`, resolved cross-page by the site layer, and may
 /// target an id emitted only by code-cell execution (which static `check` does not run).
 /// Cross-page `href="page.html#x"` and empty `href="#"` are also skipped.
@@ -18,7 +18,7 @@ fn same_page_manual_fragments(html: &str) -> Vec<&str> {
         };
         let tag = &html[tag_start..tag_start + rel_end];
         i = tag_start + rel_end + 1;
-        if tag.contains("qmd-xref") {
+        if tag.contains("tali-xref") {
             continue; // a cross-reference, not a manual in-page link
         }
         let Some(hpos) = tag.find("href=\"") else {

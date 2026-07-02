@@ -4,7 +4,7 @@
 // per scene) beside a sticky `.scrolly-stage`. As the reader scrolls, the step nearest the
 // viewport centre becomes active: its `data-state` is mirrored to `data-scrolly-state` on
 // the root (for pure-CSS effects) and, when the `.scrolly` was given a `name=`, pushed into
-// a hidden `.qmd-scrolly-input[data-qmd-input]` (value + an `input` event) so the shipped
+// a hidden `.tali-scrolly-input[data-qmd-input]` (value + an `input` event) so the shipped
 // reactive graph re-runs the sticky `{js}` cell via `//| input:`. Read-only / scroll-only.
 //
 // Activation is a scroll-driven trigger line (not an IntersectionObserver band, which cannot
@@ -15,7 +15,7 @@
   function initScrolly(root) {
     var steps = Array.prototype.slice.call(root.querySelectorAll('.scrolly-steps .step'));
     if (!steps.length) return;
-    var input = root.querySelector('.qmd-scrolly-input');
+    var input = root.querySelector('.tali-scrolly-input');
     var active = -1;
     function apply(i, dispatch) {
       if (i === active) return;
@@ -71,7 +71,7 @@
 
   function enhance(root) {
     (root || document)
-      .querySelectorAll('.qmd-scrolly:not([data-scrolly-init])')
+      .querySelectorAll('.tali-scrolly:not([data-scrolly-init])')
       .forEach(function (el) {
         el.setAttribute('data-scrolly-init', '1');
         initScrolly(el);

@@ -211,7 +211,7 @@ mod tests {
     fn tmp() -> PathBuf {
         static N: AtomicU32 = AtomicU32::new(0);
         std::env::temp_dir().join(format!(
-            "qmd-freeze-{}-{}.json",
+            "tali-freeze-{}-{}.json",
             std::process::id(),
             N.fetch_add(1, Ordering::Relaxed)
         ))

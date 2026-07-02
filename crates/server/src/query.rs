@@ -120,8 +120,8 @@ pub(crate) fn cmd_blocks(path: Option<&String>) -> ExitCode {
 pub(crate) fn cmd_schema(args: &[String]) -> ExitCode {
     use taliesin_core::schema::{FRONTMATTER_SCHEMA, SITE_SCHEMA};
     let files = [
-        ("qmd-frontmatter.schema.json", FRONTMATTER_SCHEMA),
-        ("qmd-site.schema.json", SITE_SCHEMA),
+        ("tali-frontmatter.schema.json", FRONTMATTER_SCHEMA),
+        ("tali-site.schema.json", SITE_SCHEMA),
     ];
     // Optional `--out <dir>` (alias `--dir`), parsed like `cmd_build`.
     let mut out: Option<String> = None;
@@ -147,7 +147,7 @@ pub(crate) fn cmd_schema(args: &[String]) -> ExitCode {
                 println!("wrote {}", path.display());
             }
             println!(
-                "add `# yaml-language-server: $schema={dir}/qmd-site.schema.json` atop _site.yml"
+                "add `# yaml-language-server: $schema={dir}/tali-site.schema.json` atop _site.yml"
             );
         }
         None => {

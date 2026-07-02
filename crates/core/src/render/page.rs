@@ -6,7 +6,7 @@ use super::*;
 
 pub(crate) fn page_from_doc(doc: &RenderedDoc, fallback_title: &str, mode: OutputMode) -> String {
     match doc.format {
-        // A deck assembles its own page (deck.js + native `.qmd-deck`), unaffected by
+        // A deck assembles its own page (deck.js + native `.tali-deck`), unaffected by
         // the enhancer-gating modes; `--bare` on a deck is refused at the CLI.
         DocFormat::Reveal => deck::deck_page_from_doc(doc, fallback_title),
         DocFormat::Html => html_page_from_doc(doc, fallback_title, mode),
@@ -29,7 +29,7 @@ pub struct SiteCtx {
     pub navbar_html: String,
     pub footer_html: String,
     pub post_nav_html: String,
-    /// A book's chapter chrome — the sticky `.qmd-book-topbar` + the off-canvas chapter
+    /// A book's chapter chrome — the sticky `.tali-book-topbar` + the off-canvas chapter
     /// drawer (Some only for a book project); when set, the page uses the centred book
     /// reading column instead of the website layout (navbar on top). (Field name kept for
     /// stability; it no longer holds a left sidebar.)
@@ -82,7 +82,7 @@ pub struct PageParts<'a> {
     pub body_class: &'a str,
     pub include_in_header: &'a str,
     pub include_before_body: &'a str,
-    /// The body region: chrome + content (build/site) or the live `#qmd-root`.
+    /// The body region: chrome + content (build/site) or the live `#tali-root`.
     pub body: &'a str,
     /// Scripts emitted *before* the shared enhancer registry (the static
     /// click-to-source logger, or the live `window.QMD_*` globals).
@@ -136,11 +136,11 @@ pub fn assemble_html_page(p: &PageParts) -> String {
     // Skip-to-content link: the first focusable thing in the body, so a keyboard /
     // screen-reader user can jump past the chrome to the reading region. Emitted
     // server-side (works with JS off) whenever the body carries the focusable
-    // `<main id="qmd-main">` (build + site pages always do; the live `#qmd-root`
+    // `<main id="tali-main">` (build + site pages always do; the live `#tali-root`
     // mount does not — the runtime `qmdInitSkipLink` synthesizes the pair there).
     // Bare output is link-only chrome but keeps the skip link (it's pure HTML/CSS).
-    let skip_link = if p.body.contains("id=\"qmd-main\"") {
-        "<a class=\"qmd-skip\" href=\"#qmd-main\">Skip to content</a>\n"
+    let skip_link = if p.body.contains("id=\"tali-main\"") {
+        "<a class=\"tali-skip\" href=\"#tali-main\">Skip to content</a>\n"
     } else {
         ""
     };
@@ -211,9 +211,9 @@ const STATIC_ENHANCE: &str = "<script>document.addEventListener('DOMContentLoade
 /// Mobile pull-up-sheet chrome for a static TOC page: a dim backdrop + a grabber handle
 /// (with a current-section chip). Body-level and `position: fixed`, revealed by CSS only
 /// at the sheet breakpoint (`<= 60rem`); `toc-sheet.js` wires the drag/tap/keyboard.
-const TOC_SHEET_MARKUP: &str = "<div id=\"qmd-toc-backdrop\"></div>\n\
-     <button id=\"qmd-toc-handle\" type=\"button\" aria-label=\"Contents\">\
-     <span id=\"qmd-toc-cur\"></span><span class=\"qmd-toc-grip\"></span></button>\n";
+const TOC_SHEET_MARKUP: &str = "<div id=\"tali-toc-backdrop\"></div>\n\
+     <button id=\"tali-toc-handle\" type=\"button\" aria-label=\"Contents\">\
+     <span id=\"tali-toc-cur\"></span><span class=\"tali-toc-grip\"></span></button>\n";
 
 fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str, mode: OutputMode) -> String {
     html_page_inner(doc, fallback_title, None, mode)
@@ -282,22 +282,22 @@ fn html_page_inner(
             None => toc_scripts(),
         }
     };
-    // The reading region is always a focusable `<main id="qmd-main">`, emitted
+    // The reading region is always a focusable `<main id="tali-main">`, emitted
     // server-side so the skip-to-content link (added in `assemble_html_page`) and
     // keyboard "skip the chrome" work with JS off. `tabindex="-1"` lets the skip link
     // move focus into it without making it a tab stop. The runtime `qmdInitSkipLink`
     // no-ops when this server markup is present (it only synthesizes the pair on the
-    // live `#qmd-root` mount, which has no `<main>`).
+    // live `#tali-root` mount, which has no `<main>`).
     // Content first (left, wide column), TOC second (right, sticky column).
     let (mut body_class, content) = if toc.is_empty() {
         (
             String::new(),
-            format!("<main id=\"qmd-main\" tabindex=\"-1\">\n{body}</main>\n"),
+            format!("<main id=\"tali-main\" tabindex=\"-1\">\n{body}</main>\n"),
         )
     } else {
         (
             " class=\"has-toc\"".to_string(),
-            format!("<main id=\"qmd-main\" tabindex=\"-1\">\n{body}</main>\n{toc}\n"),
+            format!("<main id=\"tali-main\" tabindex=\"-1\">\n{body}</main>\n{toc}\n"),
         )
     };
     // Site mode: body becomes a full-width flex column (navbar, a centred content
@@ -308,19 +308,19 @@ fn html_page_inner(
         // Book: a centred reading column (content + optional TOC) under a sticky topbar;
         // the chapter list is an off-canvas drawer, with prev/next-chapter under the column.
         Some(s) if s.book_sidebar.is_some() => {
-            body_class = " class=\"qmd-book-body\"".to_string();
+            body_class = " class=\"tali-book-body\"".to_string();
             let main_cls = if toc.is_empty() {
-                "qmd-book-main"
+                "tali-book-main"
             } else {
-                "qmd-book-main has-toc"
+                "tali-book-main has-toc"
             };
             let inner_cls = if toc.is_empty() {
-                "qmd-book-inner"
+                "tali-book-inner"
             } else {
-                "qmd-book-inner has-toc"
+                "tali-book-inner has-toc"
             };
             // `chrome` = the sticky topbar + the off-canvas chapter drawer; the reading
-            // content centres in `.qmd-book-main` (the same ~70ch measure as a blog post),
+            // content centres in `.tali-book-main` (the same ~70ch measure as a blog post),
             // widening to the content+TOC grid only when the chapter carries a TOC.
             format!(
                 "{chrome}\n<div class=\"{main_cls}\">\n\
@@ -331,14 +331,14 @@ fn html_page_inner(
             )
         }
         Some(s) => {
-            let mut main_cls = String::from("qmd-site-main");
+            let mut main_cls = String::from("tali-site-main");
             if !toc.is_empty() {
                 main_cls.push_str(" has-toc");
             }
             if s.wide {
-                main_cls.push_str(" qmd-wide");
+                main_cls.push_str(" tali-wide");
             }
-            body_class = " class=\"qmd-site\"".to_string();
+            body_class = " class=\"tali-site\"".to_string();
             format!(
                 "{nav}\n<div class=\"{main_cls}\">\n{content}{post_nav}</div>\n{footer}\n",
                 nav = s.navbar_html,
@@ -351,7 +351,7 @@ fn html_page_inner(
     // On a TOC page, ship the mobile pull-up-sheet chrome so the "on this page" TOC can
     // become a bottom sheet on narrow screens instead of stranding at the very bottom of
     // the chapter. Progressive enhancement: the handle/backdrop are hidden by default and
-    // `toc-sheet.js` ADDS `qmd-toc-sheet` to the body at runtime, then wires the drag/tap
+    // `toc-sheet.js` ADDS `tali-toc-sheet` to the body at runtime, then wires the drag/tap
     // — so with JS off the TOC still degrades to the in-flow layout (never off-screen and
     // unreachable). Desktop is unaffected (the sheet CSS lives in the `<= 60rem` query).
     if !toc.is_empty() {
@@ -397,7 +397,7 @@ fn html_page_inner(
         include_before_body: &includes.before_body,
         body: &body_content,
         // A static page is a read-only view with no editor bridge, so it ships no
-        // click-to-source handler (that would draw a dead `.qmd-hl` outline on every
+        // click-to-source handler (that would draw a dead `.tali-hl` outline on every
         // click); it only runs the enhancers once on load. Click-to-source is a
         // live-preview-only feature (client.js wires it to the editor).
         scripts_pre: "",

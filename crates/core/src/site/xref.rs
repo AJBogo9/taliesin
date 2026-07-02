@@ -226,7 +226,7 @@ fn rewrite_one_xref(
         format!("&nbsp;{}", target.number)
     };
     format!(
-        "<a href=\"{up}{}#{anchor}\" class=\"qmd-xref\">{label}{number}</a>",
+        "<a href=\"{up}{}#{anchor}\" class=\"tali-xref\">{label}{number}</a>",
         target.url
     )
 }

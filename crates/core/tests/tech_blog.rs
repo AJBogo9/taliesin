@@ -154,7 +154,7 @@ fn callout_collapse_renders_as_details() {
 fn code_fold_wraps_listing_in_details() {
     let html = render_post("posts/pca-geometry/index.qmd");
     assert!(
-        html.contains("class=\"qmd-code-fold\""),
+        html.contains("class=\"tali-code-fold\""),
         "code-fold did not produce a <details>"
     );
     assert!(
@@ -173,7 +173,7 @@ fn code_fold_wraps_listing_in_details() {
 fn code_fold_defaults_to_code_label() {
     let html = render_post("posts/em-algorithm/index.qmd");
     assert!(
-        html.contains("class=\"qmd-code-fold\""),
+        html.contains("class=\"tali-code-fold\""),
         "code-fold did not produce a <details>"
     );
     assert!(
@@ -189,7 +189,7 @@ fn code_fold_defaults_to_code_label() {
 fn js_cells_render_as_live_placeholders() {
     let html = render_post("posts/fourier-transform/index.qmd");
     assert!(
-        html.contains("class=\"cell qmd-js-cell\""),
+        html.contains("class=\"cell tali-js-cell\""),
         "js cell not emitted as a live placeholder"
     );
     assert!(
@@ -263,7 +263,7 @@ fn equation_crossref_resolves_to_number() {
     );
     assert!(!html.contains("{#eq-dft}"), "equation label leaked as text");
     assert!(
-        html.contains("<a href=\"#eq-dft\" class=\"qmd-xref\">Equation&nbsp;1</a>"),
+        html.contains("<a href=\"#eq-dft\" class=\"tali-xref\">Equation&nbsp;1</a>"),
         "@eq-dft did not resolve to a numbered Equation link"
     );
 }
@@ -278,10 +278,10 @@ fn listing_frontmatter_emits_post_cards() {
     // The blog index lists every post as a card, newest-first.
     let blog = site.render_page("blog.qmd").expect("blog renders");
     assert!(
-        blog.contains("qmd-listing-grid"),
+        blog.contains("tali-listing-grid"),
         "blog: no listing grid produced"
     );
-    let card_count = blog.matches("class=\"qmd-card\"").count();
+    let card_count = blog.matches("class=\"tali-card\"").count();
     assert!(
         card_count >= 5,
         "blog: expected a card per post, got {card_count}"
@@ -291,8 +291,8 @@ fn listing_frontmatter_emits_post_cards() {
         blog.contains("href=\"posts/em-algorithm/index.html\""),
         "blog: post card link not rewritten to .html"
     );
-    assert!(blog.contains("qmd-card-title"), "blog: card has no title");
-    assert!(blog.contains("qmd-cat"), "blog: category badges missing");
+    assert!(blog.contains("tali-card-title"), "blog: card has no title");
+    assert!(blog.contains("tali-cat"), "blog: category badges missing");
     // Newest-first: the latest-dated post's card precedes an older one.
     let fourier = blog.find("posts/fourier-transform/").unwrap(); // 2026-05-15
     let em = blog.find("posts/em-algorithm/").unwrap(); // 2026-04-14
@@ -312,7 +312,7 @@ fn listing_frontmatter_emits_post_cards() {
         home.contains("id=\"recent-posts\""),
         "home: recent-posts container missing"
     );
-    let recent = home.matches("class=\"qmd-card\"").count();
+    let recent = home.matches("class=\"tali-card\"").count();
     assert_eq!(recent, 2, "home: max-items: 2 not honoured (got {recent})");
 }
 
@@ -323,20 +323,20 @@ fn about_page_renders_profile_block() {
     let site = Site::discover(&corpus_dir().join("tech-blog"));
     let home = site.render_page("index.qmd").expect("home renders");
     assert!(
-        home.contains("qmd-about-jolla"),
+        home.contains("tali-about-jolla"),
         "about: produced no jolla profile block"
     );
     assert!(
-        home.contains("qmd-about-img") && home.contains("src=\"profile.webp\""),
+        home.contains("tali-about-img") && home.contains("src=\"profile.webp\""),
         "about: profile image missing"
     );
     assert!(
-        home.contains("<h1 class=\"qmd-about-name\">Andreas Bogossian</h1>"),
+        home.contains("<h1 class=\"tali-about-name\">Andreas Bogossian</h1>"),
         "about: name (page title) missing"
     );
     // The profile replaces the default title block (no duplicate header).
     assert!(
-        !home.contains("class=\"qmd-title-block\""),
+        !home.contains("class=\"tali-title-block\""),
         "about: default title block should be replaced"
     );
 }
@@ -450,7 +450,7 @@ fn every_js_cell_has_matching_target_and_script() {
         "posts/pca-geometry/index.qmd",
     ] {
         let html = render_post(post);
-        let cells = html.matches("class=\"cell qmd-js-cell\"").count();
+        let cells = html.matches("class=\"cell tali-js-cell\"").count();
         let scripts = html.matches("<script type=\"application/qmd-js\"").count();
         assert!(cells > 0, "{post}: no live js cells emitted");
         assert_eq!(cells, scripts, "{post}: cell/script count mismatch");
@@ -473,7 +473,7 @@ fn computed_output_crossrefs_resolve() {
     // figure is a real <figure> anchor.
     let f = render_post("posts/fourier-transform/index.qmd");
     assert!(
-        f.contains("<a href=\"#fig-components\" class=\"qmd-xref\">Figure&nbsp;1</a>"),
+        f.contains("<a href=\"#fig-components\" class=\"tali-xref\">Figure&nbsp;1</a>"),
         "@fig-components did not resolve to a numbered link"
     );
     assert!(
@@ -489,21 +489,21 @@ fn computed_output_crossrefs_resolve() {
         "js-cell figure anchor missing"
     );
     assert!(
-        p.contains("<a href=\"#fig-3d-pca\" class=\"qmd-xref\">Figure&nbsp;"),
+        p.contains("<a href=\"#fig-3d-pca\" class=\"tali-xref\">Figure&nbsp;"),
         "@fig-3d-pca did not resolve to a numbered link"
     );
     assert!(
-        p.contains("class=\"qmd-listing\"") && p.contains("id=\"lst-data-generation\""),
+        p.contains("class=\"tali-listing\"") && p.contains("id=\"lst-data-generation\""),
         "code listing anchor missing"
     );
     assert!(
-        p.contains("<a href=\"#lst-data-generation\" class=\"qmd-xref\">Listing&nbsp;1</a>"),
+        p.contains("<a href=\"#lst-data-generation\" class=\"tali-xref\">Listing&nbsp;1</a>"),
         "@lst-data-generation did not resolve to a numbered Listing link"
     );
     // a Python matplotlib figure still resolves to a number (its anchor appears
     // once executed — verified live in serve, not here).
     assert!(
-        p.contains("<a href=\"#fig-cov\" class=\"qmd-xref\">Figure&nbsp;"),
+        p.contains("<a href=\"#fig-cov\" class=\"tali-xref\">Figure&nbsp;"),
         "@fig-cov did not resolve to a numbered link"
     );
 }

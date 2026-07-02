@@ -30,27 +30,27 @@
     var H = Math.min(window.innerHeight * 0.86, 720);
 
     overlay = document.createElement('div');
-    overlay.className = 'qmd-graph-overlay';
+    overlay.className = 'tali-graph-overlay';
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
     overlay.setAttribute('aria-label', 'Reference graph');
     var panel = document.createElement('div');
-    panel.className = 'qmd-graph-panel';
+    panel.className = 'tali-graph-panel';
     panel.style.width = W + 'px';
     panel.style.height = H + 'px';
     panel.innerHTML =
-      '<div class="qmd-graph-head"><span class="qmd-graph-title">Reference graph</span>' +
-      '<button class="qmd-graph-close" type="button" aria-label="Close">✕</button></div>' +
-      '<svg class="qmd-graph-svg" width="' + W + '" height="' + (H - 44) + '"></svg>';
+      '<div class="tali-graph-head"><span class="tali-graph-title">Reference graph</span>' +
+      '<button class="tali-graph-close" type="button" aria-label="Close">✕</button></div>' +
+      '<svg class="tali-graph-svg" width="' + W + '" height="' + (H - 44) + '"></svg>';
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
 
     overlay.addEventListener('pointerdown', function (e) { if (e.target === overlay) close(); });
-    panel.querySelector('.qmd-graph-close').addEventListener('click', close);
+    panel.querySelector('.tali-graph-close').addEventListener('click', close);
     document.addEventListener('keydown', onKey, true);
     if (window.qmdFocusTrap) releaseTrap = window.qmdFocusTrap(panel);
 
-    layout(panel.querySelector('.qmd-graph-svg'), g, W, H - 44);
+    layout(panel.querySelector('.tali-graph-svg'), g, W, H - 44);
   }
 
   // Build the sim + SVG, then run the force loop.
@@ -79,20 +79,20 @@
     // --- SVG elements ---
     var edgeEls = links.map(function () {
       var l = document.createElementNS(SVGNS, 'line');
-      l.setAttribute('class', 'qmd-graph-edge');
+      l.setAttribute('class', 'tali-graph-edge');
       svg.appendChild(l);
       return l;
     });
     var nodeEls = nodes.map(function (nd) {
       var gEl = document.createElementNS(SVGNS, 'g');
-      gEl.setAttribute('class', 'qmd-graph-node' + (nd.u === here ? ' qmd-graph-current' : ''));
+      gEl.setAttribute('class', 'tali-graph-node' + (nd.u === here ? ' tali-graph-current' : ''));
       gEl.setAttribute('tabindex', '0');
       gEl.setAttribute('role', 'link');
       var r = 6 + Math.min(nd.deg, 6);
       var c = document.createElementNS(SVGNS, 'circle');
       c.setAttribute('r', r);
       var label = document.createElementNS(SVGNS, 'text');
-      label.setAttribute('class', 'qmd-graph-label');
+      label.setAttribute('class', 'tali-graph-label');
       label.setAttribute('x', r + 4);
       label.setAttribute('y', 4);
       label.textContent = nd.t;
@@ -110,7 +110,7 @@
     // --- pointer drag (pins a node under the cursor) ---
     var drag = null;
     svg.addEventListener('pointerdown', function (e) {
-      var t = e.target.closest && e.target.closest('.qmd-graph-node');
+      var t = e.target.closest && e.target.closest('.tali-graph-node');
       if (!t) return;
       var i = nodeEls.indexOf(t);
       if (i < 0) return;

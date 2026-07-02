@@ -43,7 +43,7 @@ const KERNEL_RETRY_AFTER: Duration = Duration::from_secs(20);
 
 /// Shown for cells skipped after the kernel died mid-run (see `compute_outputs`):
 /// they didn't execute, and the next rebuild respawns the kernel and re-runs them.
-const KERNEL_DIED_HTML: &str = "<pre class=\"qmd-error\">kernel exited before this cell ran; it will re-run on the next save</pre>";
+const KERNEL_DIED_HTML: &str = "<pre class=\"tali-error\">kernel exited before this cell ran; it will re-run on the next save</pre>";
 
 /// A callback the server hands the executor to stream build progress
 /// (`build-state` messages) to the previewing client: each call receives a
@@ -387,7 +387,7 @@ impl Executor {
         let codes: Vec<String> = cells
             .iter()
             .map(|c| match &c.fig_export {
-                Some(spec) => format!("{}\n# qmd-fig-export: {spec}", c.code),
+                Some(spec) => format!("{}\n# tali-fig-export: {spec}", c.code),
                 None => c.code.clone(),
             })
             .collect();
@@ -497,7 +497,7 @@ impl Executor {
                     // websocket, so the `error` cell_state/build_state emitted above
                     // never reaches the HTML; without this the output div would simply
                     // be absent (the silent drop). The cell still renders as source
-                    // above this block. (`qmd-error` => styled as an error AND treated
+                    // above this block. (`tali-error` => styled as an error AND treated
                     // as uncacheable, so it is never persisted to the freeze cache.)
                     outputs.push(kernel_unavailable_html(
                         lang,
@@ -770,7 +770,7 @@ impl Executor {
             Err(e) => {
                 crate::log::error(&format!("execution error: {e}"));
                 format!(
-                    "<pre class=\"qmd-error\">execution error: {}</pre>",
+                    "<pre class=\"tali-error\">execution error: {}</pre>",
                     esc(&e.to_string())
                 )
             }
@@ -884,15 +884,15 @@ fn py_str_literal(s: &str) -> String {
 }
 
 /// Whether an output must not be cached: any execution error (a cell error, a
-/// timeout, or the mid-run kernel-died marker — all rendered as a `qmd-error` block),
+/// timeout, or the mid-run kernel-died marker — all rendered as a `tali-error` block),
 /// so a transient failure is never replayed and the cell re-runs next time. Matches
-/// the emitted `class="qmd-error"` rather than a bare substring, so a *successful*
-/// cell whose output merely prints the text "qmd-error" still caches. Also refuses to
+/// the emitted `class="tali-error"` rather than a bare substring, so a *successful*
+/// cell whose output merely prints the text "tali-error" still caches. Also refuses to
 /// cache an output the kernel *truncated* at the size cap: if the cell completes
 /// cleanly (no KeyboardInterrupt error) the truncated result would otherwise be frozen
 /// and replayed silently. The marker text comes from `kernel.rs`'s output caps.
 fn is_uncacheable(output: &str) -> bool {
-    output.contains("class=\"qmd-error\"") || output.contains("qmd-fast: output truncated")
+    output.contains("class=\"tali-error\"") || output.contains("qmd-fast: output truncated")
 }
 
 /// A stable identity for a language's interpreter, used to seed the cumulative
@@ -934,7 +934,7 @@ fn interp_id(lang: &str, program: &Path) -> String {
 /// A visible "this cell could not run" diagnostic, spliced where a boot-failed (or
 /// otherwise kernel-unavailable) cell's output would go. Without it the output `<div>`
 /// is simply absent — a silent drop — because a build emits no websocket diagnostic
-/// (only the live preview's status banner would show it). Carries `qmd-error` so it is
+/// (only the live preview's status banner would show it). Carries `tali-error` so it is
 /// styled as an error AND treated as uncacheable (never persisted to the freeze cache).
 /// The last kernel error (e.g. a ZMQ "address already in use" from a port-allocation
 /// race under concurrent starts) is appended when known, so the page names *why*.
@@ -944,7 +944,7 @@ fn kernel_unavailable_html(lang: &str, last_error: Option<&str>) -> String {
         _ => String::new(),
     };
     format!(
-        "<pre class=\"qmd-error\">{} kernel unavailable; this cell did not execute{detail}</pre>",
+        "<pre class=\"tali-error\">{} kernel unavailable; this cell did not execute{detail}</pre>",
         esc(lang)
     )
 }
@@ -966,7 +966,7 @@ fn output_block(cell: &CellRef, inner: &str) -> Block {
         inner.to_string()
     };
     let html = format!(
-        "<div class=\"qmd-output\" data-block-id=\"{id}\" data-sourcepos=\"{}\"{source_file_attr}>{inner}</div>",
+        "<div class=\"tali-output\" data-block-id=\"{id}\" data-sourcepos=\"{}\"{source_file_attr}>{inner}</div>",
         cell.sourcepos
     );
     Block {
@@ -992,7 +992,7 @@ fn figure_wrap(fig: &CellFigure, inner: &str) -> String {
         format!("Figure&nbsp;{}: {}", fig.number, esc(caption))
     };
     format!(
-        "<figure{id_attr} class=\"qmd-figure qmd-figure-center\">{inner}\
+        "<figure{id_attr} class=\"tali-figure tali-figure-center\">{inner}\
          <figcaption>{figcap}</figcaption></figure>"
     )
 }
@@ -1221,7 +1221,7 @@ mod tests {
         let (sink, captured) = capturing_sink();
         let mut ex = Executor::new();
         ex.set_progress(sink, Some("ch1.qmd".into()));
-        // Cell b-3 raises, so its output is a `qmd-error` block (uncacheable) → `error`.
+        // Cell b-3 raises, so its output is a `tali-error` block (uncacheable) → `error`.
         let blocks = vec![
             python_cell_block_with("b-1", "a = 1"),
             python_cell_block_with("b-2", "b = 2"),
@@ -1473,7 +1473,7 @@ mod tests {
             .find(|b| b.id == "b-1-out")
             .expect("a cell that could not run must still emit an output block (loud, not silent)");
         assert!(
-            out.html.contains("class=\"qmd-error\""),
+            out.html.contains("class=\"tali-error\""),
             "the output block must be a visible diagnostic, got: {}",
             out.html
         );
@@ -1561,7 +1561,7 @@ mod tests {
         let _ = std::fs::create_dir_all(&dir);
         let mut blk = python_cell_block("b-cwd");
         if let Some(c) = blk.cell.as_mut() {
-            c.code = "open('qmd-cwd-marker.txt', 'w').close()".into();
+            c.code = "open('tali-cwd-marker.txt', 'w').close()".into();
         }
         let mut ex = Executor::new().in_dir(&dir);
         let _ = ex.run(vec![blk]).await;
@@ -1571,7 +1571,7 @@ mod tests {
             return;
         }
         let canon = dir.canonicalize().unwrap_or_else(|_| dir.clone());
-        let landed = canon.join("qmd-cwd-marker.txt").exists();
+        let landed = canon.join("tali-cwd-marker.txt").exists();
         let _ = std::fs::remove_dir_all(&dir);
         assert!(
             landed,
@@ -1681,7 +1681,7 @@ mod tests {
         );
         assert!(b.cell.is_none(), "an output block is not itself a cell");
         assert!(
-            b.html.contains("class=\"qmd-output\"")
+            b.html.contains("class=\"tali-output\"")
                 && b.html.contains("data-block-id=\"b-abc-out\"")
                 && b.html.contains("data-sourcepos=\"5:1-7:3\""),
             "missing block-model attributes: {}",
@@ -1718,7 +1718,7 @@ mod tests {
         };
         let html = figure_wrap(&fig, "<img src=\"c.png\">");
         assert!(
-            html.starts_with("<figure id=\"fig-cov\" class=\"qmd-figure qmd-figure-center\">"),
+            html.starts_with("<figure id=\"fig-cov\" class=\"tali-figure tali-figure-center\">"),
             "anchor/classes wrong: {html}"
         );
         assert!(
@@ -1740,7 +1740,7 @@ mod tests {
         };
         let html = figure_wrap(&fig, "out");
         assert!(
-            html.starts_with("<figure class=\"qmd-figure"),
+            html.starts_with("<figure class=\"tali-figure"),
             "an unlabelled figure must carry no id: {html}"
         );
         assert!(
@@ -1759,8 +1759,8 @@ mod tests {
             number: 3,
         });
         let b = output_block(&c, "<img>");
-        // the figure nests inside the qmd-output wrapper, anchored for @fig-x.
-        assert!(b.html.contains("class=\"qmd-output\""), "{}", b.html);
+        // the figure nests inside the tali-output wrapper, anchored for @fig-x.
+        assert!(b.html.contains("class=\"tali-output\""), "{}", b.html);
         assert!(
             b.html.contains("id=\"fig-x\""),
             "figure anchor missing: {}",

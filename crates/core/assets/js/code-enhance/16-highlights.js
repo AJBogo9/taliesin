@@ -6,8 +6,8 @@
 // re-render. Reader-side + read-only: never writes the author's source, never changes a
 // block id/sourcepos. Skipped on decks.
 function qmdInitHighlights() {
-  if (document.querySelector('.qmd-deck')) return; // a slide deck has its own chrome
-  var KEY = 'qmd-hl:' + location.pathname;
+  if (document.querySelector('.tali-deck')) return; // a slide deck has its own chrome
+  var KEY = 'tali-hl:' + location.pathname;
 
   function load() { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { return []; } }
   function save(list) { try { localStorage.setItem(KEY, JSON.stringify(list)); } catch (e) {} }
@@ -56,14 +56,14 @@ function qmdInitHighlights() {
       if (seg.ls > 0) t = t.splitText(seg.ls);
       if (seg.le - seg.ls < t.nodeValue.length) t.splitText(seg.le - seg.ls);
       var mark = document.createElement('mark');
-      mark.className = 'qmd-userhl';
+      mark.className = 'tali-userhl';
       mark.setAttribute('data-hl', tag);
       t.parentNode.insertBefore(mark, t);
       mark.appendChild(t);
     });
   }
   function unwrapAll() {
-    var marks = [].slice.call(document.querySelectorAll('mark.qmd-userhl')), blocks = [];
+    var marks = [].slice.call(document.querySelectorAll('mark.tali-userhl')), blocks = [];
     marks.forEach(function (m) {
       var b = m.closest('[data-block-id]'); if (b && blocks.indexOf(b) < 0) blocks.push(b);
       m.replaceWith(document.createTextNode(m.textContent));
@@ -85,12 +85,12 @@ function qmdInitHighlights() {
     // The selection toolbar: a bar holding Copy / Quote / Share link (clipboard-only) plus the
     // Highlight button (which keeps its exact behaviour, now as one child).
     var bar = document.createElement('div');
-    bar.className = 'qmd-seltools';
+    bar.className = 'tali-seltools';
     bar.setAttribute('role', 'toolbar');
     bar.setAttribute('aria-label', 'Selection actions');
     bar.hidden = true;
     var live = document.createElement('span');
-    live.className = 'qmd-sr-only';
+    live.className = 'tali-sr-only';
     live.setAttribute('aria-live', 'polite');
 
     var mode = null, pending = null, pendingTag = null;
@@ -99,7 +99,7 @@ function qmdInitHighlights() {
     // A clipboard-action child: clicking runs `run(done)`; `done(msg)` flashes the label.
     function action(label, run) {
       var b = document.createElement('button');
-      b.type = 'button'; b.className = 'qmd-hl-action';
+      b.type = 'button'; b.className = 'tali-hl-action';
       b.textContent = label;
       var t = null;
       b.__reset = function () { if (t) { clearTimeout(t); t = null; } b.textContent = label; };
@@ -142,7 +142,7 @@ function qmdInitHighlights() {
 
     var btn = document.createElement('button'); // the Highlight / Remove-highlight child
     btn.type = 'button';
-    btn.className = 'qmd-hl-action';
+    btn.className = 'tali-hl-action';
     extras.forEach(function (b) { bar.appendChild(b); });
     bar.appendChild(btn);
     document.body.appendChild(bar);
@@ -224,7 +224,7 @@ function qmdInitHighlights() {
       selTimer = setTimeout(function () { selTimer = null; onSelect(); }, 350);
     });
     document.addEventListener('click', function (e) {
-      var m = e.target.closest && e.target.closest('mark.qmd-userhl');
+      var m = e.target.closest && e.target.closest('mark.tali-userhl');
       if (m) {
         mode = 'remove'; pendingTag = m.getAttribute('data-hl'); pending = null;
         resetExtras();

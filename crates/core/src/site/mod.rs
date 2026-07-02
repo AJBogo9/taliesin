@@ -604,23 +604,23 @@ impl Site {
         // Scoped styling for the centred 404 body, injected into the head. Uses the
         // theme `--qmd-*` vars so it tracks light/dark like the rest of the site.
         const NOT_FOUND_STYLE: &str = "\n<style>\n\
-            .qmd-404{min-height:60vh;display:flex;flex-direction:column;\
+            .tali-404{min-height:60vh;display:flex;flex-direction:column;\
             align-items:center;justify-content:center;text-align:center;gap:.3rem}\n\
-            .qmd-404-code{font-family:var(--qmd-font-head);\
+            .tali-404-code{font-family:var(--qmd-font-head);\
             font-size:clamp(4.5rem,20vw,9rem);font-weight:800;line-height:.9;\
             letter-spacing:-.04em;color:var(--qmd-accent)}\n\
-            .qmd-404 h1{margin:.4rem 0 0;font-size:1.5rem}\n\
-            .qmd-404 p{margin:.2rem 0;color:var(--qmd-muted)}\n\
-            .qmd-404-home{display:inline-block;margin-top:1.4rem;font-weight:600}\n\
+            .tali-404 h1{margin:.4rem 0 0;font-size:1.5rem}\n\
+            .tali-404 p{margin:.2rem 0;color:var(--qmd-muted)}\n\
+            .tali-404-home{display:inline-block;margin-top:1.4rem;font-weight:600}\n\
             </style>";
 
         let site_title = self.config.title.as_deref().unwrap_or("the site");
         let body = format!(
-            "<div class=\"qmd-404\">\n\
-             <div class=\"qmd-404-code\">404</div>\n\
+            "<div class=\"tali-404\">\n\
+             <div class=\"tali-404-code\">404</div>\n\
              <h1>Page not found</h1>\n\
              <p>The page you’re looking for doesn’t exist or may have moved.</p>\n\
-             <p><a class=\"qmd-404-home\" href=\"/\">Back to {}</a></p>\n\
+             <p><a class=\"tali-404-home\" href=\"/\">Back to {}</a></p>\n\
              </div>",
             crate::html_escape(site_title),
         );
@@ -631,7 +631,7 @@ impl Site {
         doc.title = Some("Page not found".to_string());
         doc.includes.in_header.push_str(NOT_FOUND_STYLE);
         doc.blocks = vec![Block {
-            id: "qmd-404".to_string(),
+            id: "tali-404".to_string(),
             sourcepos: "1:1-1:1".to_string(),
             source_file: None,
             html: body,
@@ -824,7 +824,7 @@ impl Site {
             .iter()
             .map(|p| self.card_html(p, &up, spec.grid))
             .collect();
-        let grid = format!("<div class=\"qmd-listing qmd-listing-{layout}\">{cards}</div>");
+        let grid = format!("<div class=\"tali-listing tali-listing-{layout}\">{cards}</div>");
 
         if !spec.categories {
             return grid;
@@ -842,19 +842,19 @@ impl Site {
             return grid;
         }
         let mut chips = String::from(
-            "<button class=\"qmd-cat-chip qmd-cat-active\" type=\"button\" data-cat=\"\">All</button>",
+            "<button class=\"tali-cat-chip tali-cat-active\" type=\"button\" data-cat=\"\">All</button>",
         );
         for (cat, n) in &counts {
             chips.push_str(&format!(
-                "<button class=\"qmd-cat-chip\" type=\"button\" data-cat=\"{c}\">{label}\
-                 <span class=\"qmd-cat-count\">{n}</span></button>",
+                "<button class=\"tali-cat-chip\" type=\"button\" data-cat=\"{c}\">{label}\
+                 <span class=\"tali-cat-count\">{n}</span></button>",
                 c = esc(cat),
                 label = esc(cat),
             ));
         }
         format!(
-            "<div class=\"qmd-listing-wrap\">\
-             <nav class=\"qmd-cat-filter\" aria-label=\"Filter by category\">{chips}</nav>{grid}</div>"
+            "<div class=\"tali-listing-wrap\">\
+             <nav class=\"tali-cat-filter\" aria-label=\"Filter by category\">{chips}</nav>{grid}</div>"
         )
     }
 
@@ -862,7 +862,7 @@ impl Site {
         let href = format!("{up}{}", p.url);
         let img = match (grid, &p.card_image) {
             (true, Some(src)) => format!(
-                "<img class=\"qmd-card-img\" src=\"{up}{}\" alt=\"{}\" loading=\"lazy\">",
+                "<img class=\"tali-card-img\" src=\"{up}{}\" alt=\"{}\" loading=\"lazy\">",
                 esc(src),
                 esc(p.card_image_alt.as_deref().unwrap_or(""))
             ),
@@ -871,13 +871,13 @@ impl Site {
         let date = p
             .date
             .as_deref()
-            .map(|d| format!("<div class=\"qmd-card-date\">{}</div>", esc(d)))
+            .map(|d| format!("<div class=\"tali-card-date\">{}</div>", esc(d)))
             .unwrap_or_default();
         let title = esc(p.title.as_deref().unwrap_or(&p.rel));
         let desc = p
             .description
             .as_deref()
-            .map(|d| format!("<p class=\"qmd-card-desc\">{}</p>", esc(d)))
+            .map(|d| format!("<p class=\"tali-card-desc\">{}</p>", esc(d)))
             .unwrap_or_default();
         // Each badge carries `data-cat` so a click on it toggles that category in
         // the filter; the filter also reads these badges to know a card's categories.
@@ -889,21 +889,21 @@ impl Site {
                 .iter()
                 .map(|c| {
                     format!(
-                        "<span class=\"qmd-cat\" data-cat=\"{c}\">{c}</span>",
+                        "<span class=\"tali-cat\" data-cat=\"{c}\">{c}</span>",
                         c = esc(c)
                     )
                 })
                 .collect();
-            format!("<div class=\"qmd-card-cats\">{badges}</div>")
+            format!("<div class=\"tali-card-cats\">{badges}</div>")
         };
         // No delimited `data-categories` list: the client filter reads each card's
-        // own `.qmd-cat[data-cat]` badges (exact names), so a category name
+        // own `.tali-cat[data-cat]` badges (exact names), so a category name
         // containing a comma still matches.
         // `data-qmd-src` lets the click-to-source locator jump to the post's source
         // (it's site-root-relative; resolved client-side, inert in the static build).
         format!(
-            "<a class=\"qmd-card\" href=\"{href}\" data-qmd-src=\"{src}\">{img}\
-             <div class=\"qmd-card-body\">{date}<h3 class=\"qmd-card-title\">{title}</h3>{desc}{cats}</div></a>",
+            "<a class=\"tali-card\" href=\"{href}\" data-qmd-src=\"{src}\">{img}\
+             <div class=\"tali-card-body\">{date}<h3 class=\"tali-card-title\">{title}</h3>{desc}{cats}</div></a>",
             src = esc(&p.rel)
         )
     }
@@ -971,7 +971,7 @@ impl Site {
             .map(|src| {
                 let alt = about.image_alt.as_deref().unwrap_or("");
                 format!(
-                    "<img class=\"qmd-about-img\" src=\"{}\" alt=\"{}\">",
+                    "<img class=\"tali-about-img\" src=\"{}\" alt=\"{}\">",
                     esc(src),
                     esc(alt)
                 )
@@ -987,17 +987,17 @@ impl Site {
                     let href = l.href.as_deref()?;
                     let label = l.text.as_deref().or(l.icon.as_deref()).unwrap_or(href);
                     Some(format!(
-                        "<a class=\"qmd-about-link\" href=\"{}\">{}</a>",
+                        "<a class=\"tali-about-link\" href=\"{}\">{}</a>",
                         esc(href),
                         esc(label)
                     ))
                 })
                 .collect();
-            format!("<div class=\"qmd-about-links\">{items}</div>")
+            format!("<div class=\"tali-about-links\">{items}</div>")
         };
         format!(
-            "<header class=\"qmd-about qmd-about-{tpl}\" data-block-id=\"qmd-title-block\" data-qmd-src=\"{src}\">\
-             {img}<h1 class=\"qmd-about-name\">{name}</h1>{links}</header>",
+            "<header class=\"tali-about tali-about-{tpl}\" data-block-id=\"qmd-title-block\" data-qmd-src=\"{src}\">\
+             {img}<h1 class=\"tali-about-name\">{name}</h1>{links}</header>",
             tpl = esc(&about.template),
             name = esc(&name),
             src = esc(&page.rel),
@@ -1046,7 +1046,7 @@ mod tests {
     #[test]
     fn website_pages_excludes_drafts() {
         use std::fs;
-        let root = std::env::temp_dir().join(format!("qmd-draft-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("tali-draft-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
         fs::write(root.join("index.qmd"), "---\ntitle: Home\n---\n\nHome.\n").unwrap();
@@ -1081,7 +1081,7 @@ mod tests {
     #[test]
     fn author_404_is_honored_and_excluded_from_search() {
         use std::fs;
-        let root = std::env::temp_dir().join(format!("qmd-404-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("tali-404-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
         fs::write(root.join("_site.yml"), "title: Demo\n").unwrap();
@@ -1111,7 +1111,7 @@ mod tests {
         );
 
         // A site with no 404.qmd reports false (the built-in template applies).
-        let bare = std::env::temp_dir().join(format!("qmd-no404-{}", std::process::id()));
+        let bare = std::env::temp_dir().join(format!("tali-no404-{}", std::process::id()));
         let _ = fs::remove_dir_all(&bare);
         fs::create_dir_all(&bare).unwrap();
         fs::write(bare.join("_site.yml"), "title: Demo\n").unwrap();
@@ -1125,7 +1125,7 @@ mod tests {
     /// Write a throwaway site fixture (relative path → body) and return its root.
     fn write_site(tag: &str, files: &[(&str, &str)]) -> std::path::PathBuf {
         use std::fs;
-        let root = std::env::temp_dir().join(format!("qmd-omit-{tag}-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("tali-omit-{tag}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         for (rel, body) in files {
             let p = root.join(rel);
@@ -1352,7 +1352,7 @@ mod tests {
         site.harvest_xref_numbers();
         let after = site.render_page("a.qmd").unwrap();
         assert!(
-            after.contains("<a href=\"b.html#fig-plot\" class=\"qmd-xref\">Figure&nbsp;1</a>"),
+            after.contains("<a href=\"b.html#fig-plot\" class=\"tali-xref\">Figure&nbsp;1</a>"),
             "cross-page figure ref numbered after harvest: {after}"
         );
         let _ = std::fs::remove_dir_all(&root);
