@@ -59,6 +59,7 @@
   var index = [];
   var matches = [];
   var sel = 0;
+  var lastTerms = []; // the current query's terms, for the search-hit flash
 
   // Build the index: every anchored heading, plus the lowercased text of the
   // blocks that follow it until the next heading (so body keywords match too).
@@ -245,6 +246,7 @@
   function render(query) {
     var q = query.trim().toLowerCase();
     var terms = q ? q.split(/\s+/).filter(Boolean) : [];
+    lastTerms = terms; // so go() can flash the matched term after navigating
     if (!terms.length) {
       // No query: a book shows its chapter list (the level-0 page entries) as a
       // jump menu; a single doc shows its full heading outline.
@@ -426,11 +428,117 @@
     }
   }
 
+  // --- search-hit flash (land on the heading, then flash the matched term) --------
+  // CSS Custom Highlight API (zero DOM mutation → honours read-only preview), with a
+  // <mark> fallback like read-aloud. Registered once, lazily.
+  var FLASH_KEY = "qmd-search-flash";
+  var flashHl = null;
+  // Create + register the highlight LAZILY on first use (not at module load — the Custom
+  // Highlight API guard can read falsy during early script evaluation on some engines),
+  // and RETRY on each call until it succeeds (no one-shot latch that would strand a
+  // transient early failure on the <mark> fallback for the rest of the session).
+  // NOTE: this module shadows the global `CSS` with a local `var CSS` (the overlay
+  // stylesheet string), so the Custom Highlight API must be reached via `window.CSS`.
+  function flashHighlight() {
+    if (!flashHl && window.CSS && window.CSS.highlights && window.Highlight) {
+      try {
+        flashHl = new Highlight();
+        window.CSS.highlights.set(FLASH_KEY, flashHl);
+      } catch (e) {
+        flashHl = null;
+      }
+    }
+    return flashHl;
+  }
+  var flashTimer = 0, flashMark = null;
+  function clearFlash() {
+    clearTimeout(flashTimer);
+    document.documentElement.classList.remove("qmd-search-flashing");
+    if (flashHl) flashHl.clear();
+    if (flashMark) {
+      var p = flashMark.parentNode;
+      if (p) {
+        while (flashMark.firstChild) p.insertBefore(flashMark.firstChild, flashMark);
+        p.removeChild(flashMark);
+        p.normalize();
+      }
+      flashMark = null;
+    }
+  }
+  // The first substring occurrence of any `terms` entry within `[start, next heading)`,
+  // as a Range — or null (fuzzy-/title-only matches have no substring occurrence here).
+  function firstTermRange(startEl, terms) {
+    var low = terms.filter(Boolean).map(function (t) { return t.toLowerCase(); });
+    if (!low.length || !startEl) return null;
+    var el = startEl;
+    while (el) {
+      var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+      var tn;
+      while ((tn = walker.nextNode())) {
+        var text = tn.nodeValue, tl = text.toLowerCase();
+        if (tl.length !== text.length) continue; // offset-safety, as in termRanges
+        var best = -1, bestLen = 0;
+        for (var k = 0; k < low.length; k++) {
+          var pos = tl.indexOf(low[k]);
+          if (pos >= 0 && (best < 0 || pos < best)) { best = pos; bestLen = low[k].length; }
+        }
+        if (best >= 0) {
+          var r = document.createRange();
+          r.setStart(tn, best);
+          r.setEnd(tn, best + bestLen);
+          return r;
+        }
+      }
+      // Advance to the next sibling block; stop at the next heading (section boundary).
+      el = el.nextElementSibling;
+      if (el && /^H[1-6]$/.test(el.tagName)) break;
+    }
+    return null;
+  }
+  // Flash the first occurrence of `terms` in the section headed by `headingEl`. Scrolls
+  // to it only if off-screen (the heading is already in view). No-op on decks / no match.
+  function flashTermsIn(headingEl, terms) {
+    if (document.querySelector(".qmd-deck")) return; // decks have their own chrome
+    if (!headingEl || !terms || !terms.length) return;
+    var range = firstTermRange(headingEl, terms);
+    if (!range) return;
+    var rect = range.getBoundingClientRect();
+    var vh = window.innerHeight || document.documentElement.clientHeight;
+    if (rect.bottom < 0 || rect.top > vh) {
+      var host = range.startContainer.parentElement;
+      if (host) host.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+    clearFlash();
+    var hl = flashHighlight();
+    if (hl) hl.add(range);
+    else {
+      try {
+        var m = document.createElement("mark");
+        m.className = "qmd-search-mark";
+        range.surroundContents(m);
+        flashMark = m;
+      } catch (e) { return; }
+    }
+    // Restart the fade animation (remove → reflow → add) even on a repeat search.
+    var de = document.documentElement;
+    de.classList.remove("qmd-search-flashing");
+    void de.offsetWidth;
+    de.classList.add("qmd-search-flashing");
+    flashTimer = setTimeout(clearFlash, 1600);
+  }
+
   function go(item) {
     close();
+    var terms = lastTerms.slice();
     // A result on another page navigates there (a real page load, anchored to the
-    // heading); on this page — or in a single doc — it scrolls in place.
+    // heading); on this page — or in a single doc — it scrolls in place. The flash is
+    // handed to the destination via sessionStorage so both paths share one code path.
     if (item.url != null && item.url !== window.QMD_PAGE_URL) {
+      try {
+        if (terms.length && item.id) {
+          sessionStorage.setItem(FLASH_KEY, JSON.stringify(terms));
+        }
+      } catch (e) {}
       window.location.href =
         (window.QMD_SITE_ROOT || "") + item.url + (item.id ? "#" + item.id : "");
       return;
@@ -443,6 +551,24 @@
     if (!target) return;
     if (history.replaceState) history.replaceState(null, "", "#" + item.id);
     target.scrollIntoView({ behavior: "smooth", block: "start" });
+    flashTermsIn(target, terms);
+  }
+
+  // Cross-page arrival: if the previous page stashed search terms, flash the term at the
+  // URL's #anchor once, then clear the stash (so a manual reload doesn't re-flash).
+  function flashFromSession() {
+    var raw;
+    try { raw = sessionStorage.getItem(FLASH_KEY); } catch (e) { return; }
+    if (!raw) return;
+    try { sessionStorage.removeItem(FLASH_KEY); } catch (e) {}
+    var terms;
+    try { terms = JSON.parse(raw); } catch (e) { return; }
+    if (!Array.isArray(terms) || !terms.length) return;
+    var id = decodeURIComponent((location.hash || "").replace(/^#/, ""));
+    var target = id && document.getElementById(id);
+    if (!target) return;
+    // Let the browser settle on the anchor first, then flash.
+    setTimeout(function () { flashTermsIn(target, terms); }, 60);
   }
 
   document.addEventListener(
@@ -483,9 +609,13 @@
       kbd.textContent = "Ctrl K";
     });
   }
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", localizeSearchKbd);
-  } else {
+  function onReady() {
     localizeSearchKbd();
+    flashFromSession(); // flash a cross-page search hit on arrival
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", onReady);
+  } else {
+    onReady();
   }
 })();

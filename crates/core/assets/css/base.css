@@ -127,6 +127,40 @@
   ::highlight(qmd-readaloud) { background-color: var(--qmd-ra-highlight); color: inherit; }
   mark.qmd-ra-mark { background-color: var(--qmd-ra-highlight); color: inherit; border-radius: 2px; }
 
+  /* Search-hit flash (Cmd-K → land on the heading, then flash the matched term via the
+     CSS Custom Highlight API; search.js). Registered as an animatable colour so it can
+     fade to transparent; the keyframes are per-theme because @keyframes can't read a var
+     dynamically. `search.js` toggles `.qmd-search-flashing` for the run. */
+  @property --qmd-search-flash {
+    syntax: "<color>";
+    inherits: true;
+    initial-value: transparent;
+  }
+  ::highlight(qmd-search-flash) { background-color: var(--qmd-search-flash); color: inherit; }
+  /* Fallback for engines without the Custom Highlight API: a transient <mark> that
+     fades itself out (a mark CAN be CSS-animated, unlike ::highlight). */
+  mark.qmd-search-mark { color: inherit; border-radius: 2px; background-color: rgba(250, 204, 21, .5);
+    animation: qmd-search-mark-fade 1.5s ease-out forwards; }
+  @keyframes qmd-search-mark-fade { 0%, 45% { background-color: rgba(250, 204, 21, .5); } 100% { background-color: transparent; } }
+  html.qmd-search-flashing { animation: qmd-search-flash 1.5s ease-out forwards; }
+  @keyframes qmd-search-flash {
+    0%, 45% { --qmd-search-flash: rgba(250, 204, 21, .55); }
+    100% { --qmd-search-flash: transparent; }
+  }
+  html[data-theme="dark"].qmd-search-flashing { animation-name: qmd-search-flash-dark; }
+  @keyframes qmd-search-flash-dark {
+    0%, 45% { --qmd-search-flash: rgba(96, 165, 250, .5); }
+    100% { --qmd-search-flash: transparent; }
+  }
+  html[data-theme="sepia"].qmd-search-flashing { animation-name: qmd-search-flash-sepia; }
+  @keyframes qmd-search-flash-sepia {
+    0%, 45% { --qmd-search-flash: rgba(154, 106, 58, .45); }
+    100% { --qmd-search-flash: transparent; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html.qmd-search-flashing { animation-duration: .01ms; }
+  }
+
   /* Read-aloud mini-player: a small floating transport, shown only while listening. */
   .qmd-ra-bar { position: fixed; left: 50%; bottom: 1rem; transform: translateX(-50%);
     z-index: 2147481600; display: flex; align-items: center; gap: .35rem;
