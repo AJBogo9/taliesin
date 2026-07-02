@@ -757,7 +757,7 @@ impl Kernel {
             if !capped && accumulating && outputs.len() >= MAX_OUTPUTS {
                 outputs.push(Output::Stream {
                     stderr: true,
-                    text: format!("\n[qmd-fast: output truncated at {MAX_OUTPUTS} items]\n"),
+                    text: format!("\n[taliesin: output truncated at {MAX_OUTPUTS} items]\n"),
                 });
                 capped = true;
             }
@@ -786,7 +786,7 @@ impl Kernel {
                         outputs.push(Output::Stream {
                             stderr: true,
                             text: format!(
-                                "\n[qmd-fast: output truncated at {} KB]\n",
+                                "\n[taliesin: output truncated at {} KB]\n",
                                 MAX_STREAM_BYTES / 1024
                             ),
                         });

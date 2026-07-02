@@ -14,7 +14,7 @@
   var list = [];
   var mounted = false;
   function run1(fn, root) {
-    try { fn(root || document); } catch (e) { console.error('[qmd] enhancer failed', e); }
+    try { fn(root || document); } catch (e) { console.error('[taliesin] enhancer failed', e); }
   }
   window.taliEnhancers = {
     register: function (fn) {

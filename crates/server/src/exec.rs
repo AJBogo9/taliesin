@@ -892,7 +892,7 @@ fn py_str_literal(s: &str) -> String {
 /// cleanly (no KeyboardInterrupt error) the truncated result would otherwise be frozen
 /// and replayed silently. The marker text comes from `kernel.rs`'s output caps.
 fn is_uncacheable(output: &str) -> bool {
-    output.contains("class=\"tali-error\"") || output.contains("qmd-fast: output truncated")
+    output.contains("class=\"tali-error\"") || output.contains("taliesin: output truncated")
 }
 
 /// A stable identity for a language's interpreter, used to seed the cumulative

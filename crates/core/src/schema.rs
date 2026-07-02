@@ -10,10 +10,10 @@
 //! with no qmd-fast language server to build.
 
 /// The Draft-2020-12 JSON Schema for a document's YAML front matter.
-pub const FRONTMATTER_SCHEMA: &str = include_str!("../assets/schema/qmd-frontmatter.schema.json");
+pub const FRONTMATTER_SCHEMA: &str = include_str!("../assets/schema/tali-frontmatter.schema.json");
 
 /// The Draft-2020-12 JSON Schema for a project's `_site.yml`.
-pub const SITE_SCHEMA: &str = include_str!("../assets/schema/qmd-site.schema.json");
+pub const SITE_SCHEMA: &str = include_str!("../assets/schema/tali-site.schema.json");
 
 #[cfg(test)]
 mod generate {
@@ -194,7 +194,7 @@ mod tests {
         bless_or_assert(
             to_pretty_json(&front_matter_schema()),
             FRONTMATTER_SCHEMA,
-            "assets/schema/qmd-frontmatter.schema.json",
+            "assets/schema/tali-frontmatter.schema.json",
         );
     }
 
@@ -203,7 +203,7 @@ mod tests {
         bless_or_assert(
             to_pretty_json(&site_config_schema()),
             SITE_SCHEMA,
-            "assets/schema/qmd-site.schema.json",
+            "assets/schema/tali-site.schema.json",
         );
     }
 

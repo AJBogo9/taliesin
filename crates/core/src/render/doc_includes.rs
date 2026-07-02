@@ -128,7 +128,7 @@ fn read_include_file(base_dir: Option<&Path>, rel: &str) -> String {
     match path.and_then(|p| std::fs::read_to_string(&p).ok()) {
         Some(s) => s,
         None => format!(
-            "<!-- qmd-fast: include file not found: {} -->",
+            "<!-- taliesin: include file not found: {} -->",
             esc_comment(rel)
         ),
     }

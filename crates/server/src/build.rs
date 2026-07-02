@@ -107,7 +107,7 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
     // (the `--jobs` failure was prefixed `error: `; the missing-path one was the usage line).
     let jobs = jobs_result.map_err(|m| format!("error: {m}"))?;
     let path = positionals.first().copied().ok_or_else(|| {
-        "usage: qmd-fast build <file.qmd|dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>]"
+        "usage: taliesin build <file.qmd|dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>]"
             .to_string()
     })?;
     Ok(BuildArgs {

@@ -83,7 +83,7 @@ pub fn banner(version: &str) {
     eprintln!();
     eprintln!(
         "  {} {}",
-        paint("qmd-fast", "\x1b[1;32m"),
+        paint("taliesin", "\x1b[1;32m"),
         paint(version, "\x1b[2m")
     );
 }

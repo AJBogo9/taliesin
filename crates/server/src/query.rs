@@ -15,7 +15,7 @@ use std::process::ExitCode;
 
 pub(crate) fn cmd_render(path: Option<&String>) -> ExitCode {
     let Some(path) = path else {
-        eprintln!("usage: qmd-fast render <file.qmd>");
+        eprintln!("usage: taliesin render <file.qmd>");
         return ExitCode::FAILURE;
     };
     match std::fs::read_to_string(path) {
@@ -71,7 +71,7 @@ pub(crate) fn cmd_render(path: Option<&String>) -> ExitCode {
 
 pub(crate) fn cmd_blocks(path: Option<&String>) -> ExitCode {
     let Some(path) = path else {
-        eprintln!("usage: qmd-fast blocks <file.qmd>");
+        eprintln!("usage: taliesin blocks <file.qmd>");
         return ExitCode::FAILURE;
     };
     match std::fs::read_to_string(path) {
@@ -135,13 +135,13 @@ pub(crate) fn cmd_schema(args: &[String]) -> ExitCode {
     match out {
         Some(dir) => {
             if let Err(e) = std::fs::create_dir_all(&dir) {
-                eprintln!("qmd-fast schema: cannot create {dir}: {e}");
+                eprintln!("taliesin schema: cannot create {dir}: {e}");
                 return ExitCode::FAILURE;
             }
             for (name, body) in files {
                 let path = std::path::Path::new(&dir).join(name);
                 if let Err(e) = std::fs::write(&path, body) {
-                    eprintln!("qmd-fast schema: cannot write {}: {e}", path.display());
+                    eprintln!("taliesin schema: cannot write {}: {e}", path.display());
                     return ExitCode::FAILURE;
                 }
                 println!("wrote {}", path.display());

@@ -228,7 +228,7 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
         }
     }
     let Some(path) = path else {
-        eprintln!("usage: qmd-fast check <file.qmd|dir> [--format human|json]");
+        eprintln!("usage: taliesin check <file.qmd|dir> [--format human|json]");
         return ExitCode::FAILURE;
     };
     if format != "human" && format != "json" {
