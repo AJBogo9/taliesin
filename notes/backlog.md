@@ -93,10 +93,11 @@ accepted no-double-render tradeoff). Pinned by `harvest_numbers_cross_page_figur
   (extend it to collect an anchor→preview snippet, serve it like `search-index.js`, wire the hover
   card for `.qmd-xref` cross-page links). Grouped with the graph below (shared cross-page content
   index). Deferred behind the graph canvas.
-- [ ] **Cross-reference graph canvas (Obsidian-style)** (author chose the FULL graph, not
-  backlinks-first). An interactive force-directed graph of the project's pages + their cross-page
-  references, click-to-navigate. Read-only + HTML-only (single-editing-surface holds). Reuses the
-  vendored d3 (has `d3-force`) + a build-time reference-edge scan. NEXT Tier-2 build.
+*Cross-reference graph canvas SHIPPED 2026-07-02 (`main` @ 4ebef43, author chose the full graph):
+interactive force-directed map of pages + cross-page `@ref`/`.qmd`-link edges, click-to-navigate,
+current page highlighted. `site/graph.rs` (source-scan, works preview+build) + `assets/js/graph.js`
+(self-contained force sim, no d3 dep) + a `[data-qmd-graph]` chrome control gated on edges.
+Browser-verified preview+build; pinned by `site::graph` tests + `cross_page_links_produce_graph_*`.*
 *Vendor Mermaid offline: SHIPPED 2026-07-02 (`main` @ 30bdb17, author-approved). `mermaid@11.4.1`
 vendored + inlined into static Build pages that have a diagram (content-gated); a `--out` doc/book
 renders diagrams with ZERO network (browser-verified from `file://`, 1 request). Preview keeps the
