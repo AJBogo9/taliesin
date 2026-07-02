@@ -7,7 +7,7 @@
 // `hidden`, and a roving `tabindex`). Left/Right move between tabs, Home/End jump to
 // the ends. Read-only: it toggles only `aria-*`/`hidden`, never source.
 //
-// Registered through the shared `qmdEnhancers` API, so it re-runs after every
+// Registered through the shared `taliEnhancers` API, so it re-runs after every
 // incremental block swap and is idempotent (guarded with `data-tabset-init`). A
 // replaced subtree's listeners are GC'd with it; the fresh tabset re-initialises.
 (function () {
@@ -54,8 +54,8 @@
       });
   }
 
-  if (window.qmdEnhancers && window.qmdEnhancers.register) {
-    window.qmdEnhancers.register(enhance);
+  if (window.taliEnhancers && window.taliEnhancers.register) {
+    window.taliEnhancers.register(enhance);
   } else {
     document.addEventListener('DOMContentLoaded', function () { enhance(document); });
   }

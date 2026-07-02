@@ -2,7 +2,7 @@
 // so block-level incremental updates and click-to-source work in decks the same
 // way they do on a page. It drives qmd-fast's own DOM contract
 // (.tali-deck > .tali-slides > section, nested <section> stacks) and exposes a
-// window.QmdDeck API (initialize/sync/layout/slide + on/getSlides/getCurrentSlide/
+// window.TaliesinDeck API (initialize/sync/layout/slide + on/getSlides/getCurrentSlide/
 // registerPlugin) that the preview client and theme extensions bind to.
 (function () {
   var deck = {
@@ -1440,7 +1440,7 @@
     var menu = document.createElement('div');
     menu.className = 'tali-menu';
     menu.setAttribute('hidden', '');
-    var themeRow = (window.qmdDeckThemeManaged && !window.qmdDeckEmbedded)
+    var themeRow = (window.taliDeckThemeManaged && !window.taliDeckEmbedded)
       ? '<div class="tali-menu-head">Theme</div><div class="tali-menu-tools">' +
         tool('theme', IC.moon, 'Dark mode', '<span class="tali-theme-state"></span>') + '</div>'
       : '';
@@ -1539,9 +1539,9 @@
     } catch (e) {}
   }
   function toggleThemeMode() {
-    if (!window.qmdDeckSetTheme) return;
+    if (!window.taliDeckSetTheme) return;
     var dark = document.documentElement.classList.contains('tali-deck-dark');
-    window.qmdDeckSetTheme(dark ? 'light' : 'dark');
+    window.taliDeckSetTheme(dark ? 'light' : 'dark');
     markActiveTools();
   }
   function updateChrome() {
@@ -1617,9 +1617,9 @@
       });
       buildChrome(); // the control menu + progress bar + nav arrows
       // Embedded in a same-origin page: follow the host's light/dark toggle live.
-      if (window.qmdDeckEmbedded && window.qmdDeckApplyTheme) {
+      if (window.taliDeckEmbedded && window.taliDeckApplyTheme) {
         try {
-          new MutationObserver(window.qmdDeckApplyTheme)
+          new MutationObserver(window.taliDeckApplyTheme)
             .observe(window.top.document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
         } catch (e) {}
       }
@@ -1631,14 +1631,14 @@
       //     on their own. The stepped deck is the *presenting* surface; reach it with
       //     the ?qmd=present (or ?qmd=slides) opt-in.
       //   - An embedded deck ({{< embed deck.qmd >}}, detected via the iframe flag
-      //     window.qmdDeckEmbedded) is NOT "opened as a link": it keeps the old
+      //     window.taliDeckEmbedded) is NOT "opened as a link": it keeps the old
       //     contract — step mode unless ?qmd=scroll or a narrow viewport.
       //   - ?qmd=scroll always forces scroll; a narrow/portrait screen always uses
       //     scroll (the fixed-aspect deck letterboxes badly there).
       //   Re-evaluated on resize/rotate via the media-query change listener.
       var narrow = window.matchMedia('(max-width: 600px)');
       var present = (qmd === 'present' || qmd === 'slides'); // step-mode opt-in
-      var standalone = !window.qmdDeckEmbedded;              // a directly-opened deck page
+      var standalone = !window.taliDeckEmbedded;              // a directly-opened deck page
       var syncScroll = function () {
         var scroll = qmd === 'scroll' || narrow.matches || (standalone && !present);
         scroll ? enterScroll() : exitScroll();
@@ -1676,5 +1676,8 @@
     isReady: function () { return deck.ready; },
   };
 
-  window.QmdDeck = facade;
+  window.TaliesinDeck = facade;
+  // Back-compat: the pre-rename public global. Same live object, so every method
+  // (and any spec-added method) is reachable through either name.
+  window.QmdDeck = window.TaliesinDeck;
 })();

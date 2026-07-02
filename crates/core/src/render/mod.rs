@@ -886,12 +886,12 @@ fn mermaid_url() -> String {
     }
 }
 
-/// The client enhancers: the `window.qmdEnhancers` registry + built-ins (copy
+/// The client enhancers: the `window.taliEnhancers` registry + built-ins (copy
 /// buttons, lightbox, link-preview, category-filter) in code-enhance.js, then the
 /// self-registering mermaid module (which lazy-loads the mermaid library on first
 /// use). Emitted after the registry so it is defined when mermaid registers.
 /// Syntax highlighting arrives already done from the server. Callers invoke
-/// `window.qmdEnhanceCode(root)` after (re)mounting; it is idempotent.
+/// `window.taliEnhanceCode(root)` after (re)mounting; it is idempotent.
 pub fn code_scripts() -> String {
     code_scripts_for("", OutputMode::Preview)
 }
@@ -940,7 +940,7 @@ pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
         } else {
             String::new()
         },
-        qmdjs_s = gate(has_js_cells(body), QMD_JS),
+        qmdjs_s = gate(has_js_cells(body), TALIESIN_JS),
         walk_s = gate(body.contains("code-walkthrough"), WALKTHROUGH_JS),
         tabset_s = gate(body.contains("panel-tabset"), TABSET_JS),
         scrolly_s = gate(body.contains("tali-scrolly"), SCROLLY_JS),
@@ -950,7 +950,7 @@ pub fn code_scripts_for(body: &str, mode: OutputMode) -> String {
 /// The canonical TOC scrollspy (highlights the section under the navbar). Shared
 /// so the static build and the live preview behave identically: the static build
 /// inlines this once (it auto-inits on load); the preview also ships it and calls
-/// `window.qmdInitTocSpy()` after each TOC rebuild. Emitted only on TOC pages.
+/// `window.taliInitTocSpy()` after each TOC rebuild. Emitted only on TOC pages.
 pub const TOC_SPY_JS: &str = include_str!("../../../../web-client/toc-spy.js");
 
 /// Mobile pull-up TOC sheet for static builds (self-inits on load). The live preview
@@ -969,7 +969,7 @@ pub fn toc_scripts() -> String {
 /// jumping between sections matters most.
 pub const SEARCH_JS: &str = include_str!("../../../../web-client/search.js");
 
-/// The cross-reference graph modal (`window.QMD_REF_GRAPH` → an interactive force-directed
+/// The cross-reference graph modal (`window.TALIESIN_REF_GRAPH` → an interactive force-directed
 /// map of the project's pages + their cross-page links). Rides alongside search on site
 /// pages; opened by a `[data-qmd-graph]` chrome control. No-ops without graph data.
 pub const GRAPH_JS: &str = include_str!("../../assets/js/graph.js");
@@ -980,7 +980,7 @@ pub const GRAPH_JS: &str = include_str!("../../assets/js/graph.js");
 // like mermaid); only these heavy libs are gated on `has_js_cells`.
 const D3_JS: &str = include_str!("../../assets/js/d3.min.js");
 const PLOT_JS: &str = include_str!("../../assets/js/plot.umd.min.js");
-const QMD_JS: &str = include_str!("../../assets/js/qmd-js.js");
+const TALIESIN_JS: &str = include_str!("../../assets/js/qmd-js.js");
 
 /// `<head>` assets for native `{js}` cells: vendored d3 + Observable Plot. Emit
 /// only when a page actually has `{js}` cells (gated on [`has_js_cells`]). The
@@ -997,7 +997,7 @@ pub fn has_js_cells(body: &str) -> bool {
 // `code-enhance.js` is authored as ordered per-feature fragments under
 // `assets/js/code-enhance/` and concatenated (in filename order) into one inline
 // `<script>`. The numeric prefix IS the load order: the registry IIFE (`01`) must
-// define `window.qmdEnhancers` before the registration block (`09`) runs, and every
+// define `window.taliEnhancers` before the registration block (`09`) runs, and every
 // built-in's `function` declaration is hoisted within this single concatenated
 // script, so `09` can forward-reference features defined in later fragments. The
 // `code_enhance_bundle_matches_fragments_in_order` test (tests.rs) guards that this
@@ -1028,13 +1028,13 @@ const MERMAID_JS: &str = include_str!("../../assets/js/mermaid.js");
 /// live Preview keeps the lazy loader instead (see `code_scripts_for`).
 const MERMAID_MIN_JS: &str = include_str!("../../assets/js/mermaid.min.js");
 /// Scroll-driven line-range highlighter for `::: {.code-walkthrough}`. Registers
-/// through `qmdEnhancers`, no-ops without a walkthrough (like mermaid/qmd-js), so it
+/// through `taliEnhancers`, no-ops without a walkthrough (like mermaid/qmd-js), so it
 /// rides unconditionally in [`code_scripts`].
 const WALKTHROUGH_JS: &str = include_str!("../../assets/js/walkthrough.js");
 /// ARIA tabs interaction for `::: {.panel-tabset}` (click + arrow-key tab switching).
-/// Registers through `qmdEnhancers`, no-ops without a tabset, rides in [`code_scripts`].
+/// Registers through `taliEnhancers`, no-ops without a tabset, rides in [`code_scripts`].
 const TABSET_JS: &str = include_str!("../../assets/js/tabset.js");
-/// Scroll-driven sticky-stage scenes for `::: {.scrolly}`. Registers through `qmdEnhancers`,
+/// Scroll-driven sticky-stage scenes for `::: {.scrolly}`. Registers through `taliEnhancers`,
 /// no-ops without a `.scrolly`, rides in [`code_scripts`].
 const SCROLLY_JS: &str = include_str!("../../assets/js/scrolly.js");
 

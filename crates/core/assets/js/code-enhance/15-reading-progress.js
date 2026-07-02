@@ -3,7 +3,7 @@
 // (reader-local, exact, survives reflow). Reader-side + read-only: derives from the live
 // DOM and the reader's own localStorage; never writes the author's source. Skipped on
 // decks. Idempotent (document-level, builds once).
-function qmdInitReadingProgress() {
+function taliInitReadingProgress() {
   if (window.__qmdProgress) return;
   if (document.querySelector('.tali-deck')) return; // a slide deck has its own chrome
   window.__qmdProgress = true;
@@ -123,7 +123,7 @@ function qmdInitReadingProgress() {
 
   countWords();
   render();
-  if (window.qmdReaderMenu) window.qmdReaderMenu.addSection('Reading', readout, updateReadout);
+  if (window.taliReaderMenu) window.taliReaderMenu.addSection('Reading', readout, updateReadout);
   window.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('resize', schedule, { passive: true });
   window.addEventListener('qmd:readerchange', schedule);

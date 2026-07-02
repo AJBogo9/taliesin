@@ -9,7 +9,7 @@
 // contract (styled in base.css), but does NOT depend on deck.js (not loaded on
 // pages), so the tiny line-spec parse lives here.
 //
-// Registered through the shared `qmdEnhancers` API, so it re-runs after every
+// Registered through the shared `taliEnhancers` API, so it re-runs after every
 // incremental block swap and is idempotent (guarded with `data-cw-init`). When a
 // container is replaced by the live diff, its scroll listener self-cleans on the next
 // scroll and the fresh container re-initialises on the next enhancer run.
@@ -100,8 +100,8 @@
       });
   }
 
-  if (window.qmdEnhancers && window.qmdEnhancers.register) {
-    window.qmdEnhancers.register(enhance);
+  if (window.taliEnhancers && window.taliEnhancers.register) {
+    window.taliEnhancers.register(enhance);
   } else {
     document.addEventListener('DOMContentLoaded', function () { enhance(document); });
   }

@@ -61,7 +61,7 @@ pub(super) fn theme_default_mode(theme: Option<&str>) -> &'static str {
 }
 /// Inline `<head>` script (runs before paint, so no flash): set
 /// `<html data-theme>` from the saved choice, else the front-matter default,
-/// else the OS `prefers-color-scheme`. Also defines `qmdSetTheme`/`qmdGetThemePref`
+/// else the OS `prefers-color-scheme`. Also defines `taliSetTheme`/`taliGetThemePref`
 /// for the preview toggle and keeps `auto` in sync with OS changes.
 pub fn theme_head(default_mode: &str) -> String {
     format!(
@@ -137,16 +137,16 @@ pub fn theme_head(default_mode: &str) -> String {
       else if (osDark.addListener) osDark.addListener(onOsChange);
     }}
   }} catch(e) {{}}
-  window.qmdSetTheme = function(p){{ try {{ localStorage.setItem("qmd-theme", p); }} catch(e) {{}} apply(); }};
-  window.qmdGetThemePref = function(){{ return pref(); }};
-  // key is "scale" | "width" | "leading" | "letter" | "word"; value null clears it. Mirrors qmdSetTheme.
-  window.qmdSetReaderPref = function(k, v){{
+  window.taliSetTheme = function(p){{ try {{ localStorage.setItem("qmd-theme", p); }} catch(e) {{}} apply(); }};
+  window.taliGetThemePref = function(){{ return pref(); }};
+  // key is "scale" | "width" | "leading" | "letter" | "word"; value null clears it. Mirrors taliSetTheme.
+  window.taliSetReaderPref = function(k, v){{
     try {{ if (v === null) localStorage.removeItem("qmd-reader-" + k); else localStorage.setItem("qmd-reader-" + k, v); }} catch(e) {{}}
     applyReader();
     try {{ window.dispatchEvent(new CustomEvent("qmd:readerchange")); }} catch(e) {{}}
   }};
-  window.qmdGetReaderPref = function(k){{ try {{ return localStorage.getItem("qmd-reader-" + k); }} catch(e) {{ return null; }} }};
-  window.qmdResetReader = function(){{
+  window.taliGetReaderPref = function(k){{ try {{ return localStorage.getItem("qmd-reader-" + k); }} catch(e) {{ return null; }} }};
+  window.taliResetReader = function(){{
     try {{ localStorage.removeItem("qmd-theme"); localStorage.removeItem("qmd-reader-scale"); localStorage.removeItem("qmd-reader-width"); localStorage.removeItem("qmd-reader-leading"); localStorage.removeItem("qmd-reader-letter"); localStorage.removeItem("qmd-reader-word"); }} catch(e) {{}}
     apply(); applyReader();
     try {{ window.dispatchEvent(new CustomEvent("qmd:readerchange")); }} catch(e) {{}}
@@ -155,7 +155,7 @@ pub fn theme_head(default_mode: &str) -> String {
   // menu's on a single doc): toggle light <-> dark, icon reflects the current mode.
   // Shipped here (not in the preview client) so the toggle works in `build` too.
   var ICONS = {{ light: "{sun_icon}", dark: "{moon_icon}" }};
-  window.qmdWireThemeToggles = function(){{
+  window.taliWireThemeToggles = function(){{
     var btns = document.querySelectorAll("[data-qmd-theme-toggle]");
     for (var i = 0; i < btns.length; i++) {{
       (function(btn){{
@@ -163,7 +163,7 @@ pub fn theme_head(default_mode: &str) -> String {
         btn.setAttribute("data-wired", "1");
         function sync(){{ var p = pref(); btn.innerHTML = ICONS[p] || ICONS.dark;
           btn.setAttribute("aria-label", "Theme: " + p + " (click to toggle light / dark)"); }}
-        btn.addEventListener("click", function(){{ window.qmdSetTheme(pref() === "dark" ? "light" : "dark"); sync(); }});
+        btn.addEventListener("click", function(){{ window.taliSetTheme(pref() === "dark" ? "light" : "dark"); sync(); }});
         window.addEventListener("qmd:themechange", sync);
         sync();
       }})(btns[i]);
@@ -182,8 +182,8 @@ pub fn theme_head(default_mode: &str) -> String {
     }}
   }}
   window.addEventListener("qmd:themechange", syncThemeVideos);
-  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", function(){{ window.qmdWireThemeToggles(); syncThemeVideos(); }});
-  else {{ window.qmdWireThemeToggles(); syncThemeVideos(); }}
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", function(){{ window.taliWireThemeToggles(); syncThemeVideos(); }});
+  else {{ window.taliWireThemeToggles(); syncThemeVideos(); }}
 }})();
 </script>"#,
         sun_icon = THEME_ICON_SUN,

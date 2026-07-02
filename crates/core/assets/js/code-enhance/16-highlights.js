@@ -5,7 +5,7 @@
 // syntax spans don't corrupt offsets). Re-applied on every mount; exact and survives a
 // re-render. Reader-side + read-only: never writes the author's source, never changes a
 // block id/sourcepos. Skipped on decks.
-function qmdInitHighlights() {
+function taliInitHighlights() {
   if (document.querySelector('.tali-deck')) return; // a slide deck has its own chrome
   var KEY = 'tali-hl:' + location.pathname;
 
@@ -113,27 +113,27 @@ function qmdInitHighlights() {
       return b;
     }
     var copyBtn = action('Copy', function (done) {
-      qmdCopyText(pending.text, function () { done('Copied'); }, function () { done('Copy failed'); });
+      taliCopyText(pending.text, function () { done('Copied'); }, function () { done('Copy failed'); });
     });
     var quoteBtn = action('Quote', function (done) {
-      var url = qmdBuildTextFragmentUrl(pending.text) || location.href;
+      var url = taliBuildTextFragmentUrl(pending.text) || location.href;
       var label = (document.title || location.href).replace(/[\[\]()\\]/g, '\\$&');
       var md = pending.text.split(/\r?\n/).map(function (l) { return '> ' + l; }).join('\n') +
         '\n>\n> -- [' + label + '](<' + url + '>)'; // angle-bracket dest tolerates parens in url
-      qmdCopyText(md, function () { done('Quote copied'); }, function () { done('Copy failed'); });
+      taliCopyText(md, function () { done('Quote copied'); }, function () { done('Copy failed'); });
     });
     var shareBtn = action('Share link', function (done) {
-      var url = qmdBuildTextFragmentUrl(pending.text);
+      var url = taliBuildTextFragmentUrl(pending.text);
       if (!url) { done('Nothing to link'); return; }
-      qmdCopyText(url, function () {
+      taliCopyText(url, function () {
         done('Link copied');
         if (location.protocol === 'file:') announce('Link copied; the highlight opens when served over http or https');
       }, function () { done('Copy failed'); });
     });
     // Cite: a BibTeX @misc entry that deep-links to the selection (drop straight into a .bib).
     var citeBtn = action('Cite', function (done) {
-      var url = qmdBuildTextFragmentUrl(pending.text) || location.href;
-      qmdCopyText(qmdBuildBibtex(document.title, url, new Date()), function () {
+      var url = taliBuildTextFragmentUrl(pending.text) || location.href;
+      taliCopyText(taliBuildBibtex(document.title, url, new Date()), function () {
         done('Cited');
         if (location.protocol === 'file:') announce('Citation copied; the deep link opens when served over http or https');
       }, function () { done('Copy failed'); });

@@ -11,7 +11,7 @@ function __qmdShortcutsOn() {
 // distraction-free reading. Reader-side, ephemeral (no localStorage) — toggled by the `f`
 // key (ignored while typing or while a modal is open), Esc, or a Reader-menu toggle. All
 // the hiding/centring is CSS on body.tali-focus; this just flips the class + wires triggers.
-function qmdInitFocusMode() {
+function taliInitFocusMode() {
   if (document.querySelector('.tali-deck')) return;
   if (window.__qmdFocus) return;
   window.__qmdFocus = true;
@@ -60,7 +60,7 @@ function qmdInitFocusMode() {
 
   // Reader-menu toggle (discoverable). The launcher stays visible in focus mode, so this
   // remains the mouse exit + the size/theme controls.
-  if (window.qmdReaderMenu) {
+  if (window.taliReaderMenu) {
     var row = document.createElement('div');
     row.className = 'tali-reader-row';
     var label = document.createElement('span');
@@ -72,11 +72,11 @@ function qmdInitFocusMode() {
     btn.textContent = 'Off';
     btn.setAttribute('aria-pressed', 'false');
     btn.title = 'Hide chrome for distraction-free reading (press f)';
-    btn.addEventListener('click', function () { setFocus(!on()); window.qmdReaderMenu.close(); });
+    btn.addEventListener('click', function () { setFocus(!on()); window.taliReaderMenu.close(); });
     seg.appendChild(btn);
     row.appendChild(label);
     row.appendChild(seg);
-    window.qmdReaderMenu.addSection('Focus', row, sync);
+    window.taliReaderMenu.addSection('Focus', row, sync);
   }
 
   // `f` toggles; Esc exits. Both are off while typing in a field or while a modal

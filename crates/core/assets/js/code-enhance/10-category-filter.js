@@ -3,10 +3,10 @@
 // from its `.tali-cat[data-cat]` badges. Clicking a chip — or a category tag on a card — toggles it
 // (multi-select, OR semantics); an empty `data-cat` ("All") clears the filter.
 // Works in the static build and the live preview; idempotent per filter.
-function qmdInitCategoryFilter(root) {
+function taliInitCategoryFilter(root) {
   (root || document).querySelectorAll('.tali-cat-filter').forEach(function (filter) {
-    if (filter.dataset.qmdCat) return;
-    filter.dataset.qmdCat = '1';
+    if (filter.dataset.taliCat) return;
+    filter.dataset.taliCat = '1';
     var wrap = filter.closest('.tali-listing-wrap');
     var listing = wrap && wrap.querySelector('.tali-listing');
     if (!listing) return;

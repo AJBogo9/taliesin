@@ -1,9 +1,9 @@
 // Reader menu: one launcher ("Aa", bottom-right) opening a single menu that the reader
 // features mount their sections into (Reading, Display, Highlights) via
-// window.qmdReaderMenu.addSection(title, node, onOpen). Consolidates what used to be three
+// window.taliReaderMenu.addSection(title, node, onOpen). Consolidates what used to be three
 // separate floating controls. Reader-side, read-only. Skipped on decks. Built once.
-function qmdInitReaderMenu() {
-  if (window.qmdReaderMenu) return;
+function taliInitReaderMenu() {
+  if (window.taliReaderMenu) return;
   if (document.querySelector('.tali-deck')) return; // a slide deck has its own chrome
 
   // A DISCLOSURE, not a dialog: the launcher's aria-expanded + aria-controls point at a labelled
@@ -30,7 +30,7 @@ function qmdInitReaderMenu() {
   document.body.appendChild(panel);
 
   // The reader menu is a light-dismiss POPOVER, not a modal (it doesn't cover/inert the page),
-  // so it deliberately does NOT use qmdFocusTrap and is exposed as a disclosure (above): trapping
+  // so it deliberately does NOT use taliFocusTrap and is exposed as a disclosure (above): trapping
   // /focus-restore would fight the jump buttons + outside-click dismissal. aria-expanded on the
   // launcher + Esc-to-close (returning focus to the launcher) + click-away is the right shape.
   var sections = [];
@@ -47,7 +47,7 @@ function qmdInitReaderMenu() {
 
   // Public API: each reader feature adds its own section and an optional refresh hook
   // (called when the menu opens). Returns a handle to show/hide the section.
-  window.qmdReaderMenu = {
+  window.taliReaderMenu = {
     close: closeMenu,
     addSection: function (title, node, onOpen) {
       var wrap = document.createElement('section');
@@ -88,7 +88,7 @@ function qmdInitReaderMenu() {
     seg.appendChild(ksBtn);
     row.appendChild(label);
     row.appendChild(seg);
-    window.qmdReaderMenu.addSection('Keyboard', row, ksSync);
+    window.taliReaderMenu.addSection('Keyboard', row, ksSync);
   })();
 }
 

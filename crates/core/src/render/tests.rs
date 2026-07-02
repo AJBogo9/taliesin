@@ -1273,9 +1273,9 @@ fn deck_page_carries_native_scaffolding() {
     );
     assert!(page.contains("class=\"tali-deck qmd-deck\""));
     assert!(page.contains("class=\"tali-slides qmd-slides\""));
-    // The deck engine is bundled (no CDN); it exposes the window.QmdDeck API.
-    assert!(page.contains("window.QmdDeck"));
-    assert!(page.contains("QmdDeck.initialize("));
+    // The deck engine is bundled (no CDN); it exposes the window.TaliesinDeck API.
+    assert!(page.contains("window.TaliesinDeck"));
+    assert!(page.contains("TaliesinDeck.initialize("));
     assert!(
         !page.contains("jsdelivr") || !page.contains("reveal.js@"),
         "the deck must not load reveal.js from a CDN"
@@ -1482,7 +1482,7 @@ fn assembled_page_ships_reader_preferences() {
     // The reader-preferences enhancer ("Aa" control) ships on every built page via
     // code_scripts(), so a reader can pick size / width / theme.
     assert!(
-        page.contains("qmdInitReaderPrefs"),
+        page.contains("taliInitReaderPrefs"),
         "reader-preferences enhancer not shipped in the assembled page"
     );
     // The pre-paint head script applies the reader's saved size/width before paint
@@ -1499,7 +1499,7 @@ fn assembled_page_ships_reading_progress() {
     // The reading-progress enhancer (progress bar + min-left + resume) ships on every
     // built page via code_scripts().
     assert!(
-        page.contains("qmdInitReadingProgress"),
+        page.contains("taliInitReadingProgress"),
         "reading-progress enhancer not shipped in the assembled page"
     );
 }
@@ -1508,7 +1508,7 @@ fn assembled_page_ships_reading_progress() {
 fn assembled_page_ships_reader_highlights() {
     let page = render_html_page("# Title\n\nProse a reader can highlight.\n", "doc");
     assert!(
-        page.contains("qmdInitHighlights"),
+        page.contains("taliInitHighlights"),
         "reader-highlights enhancer not shipped in the assembled page"
     );
 }
@@ -1517,7 +1517,7 @@ fn assembled_page_ships_reader_highlights() {
 fn assembled_page_ships_highlight_index() {
     let page = render_html_page("# Title\n\nProse to highlight and review.\n", "doc");
     assert!(
-        page.contains("qmdInitHighlightIndex"),
+        page.contains("taliInitHighlightIndex"),
         "highlight-index enhancer not shipped in the assembled page"
     );
 }
@@ -1526,9 +1526,9 @@ fn assembled_page_ships_highlight_index() {
 fn assembled_page_ships_cite_action() {
     let page = render_html_page("# Title\n\nProse a reader can cite.\n", "doc");
     // The selection toolbar's "Cite" action copies a BibTeX entry deep-linking to the
-    // selection; the pure builder qmdBuildBibtex is its unique discriminator token.
+    // selection; the pure builder taliBuildBibtex is its unique discriminator token.
     assert!(
-        page.contains("qmdBuildBibtex"),
+        page.contains("taliBuildBibtex"),
         "copy-as-citation (BibTeX) builder not shipped in the assembled page"
     );
 }
@@ -1537,9 +1537,9 @@ fn assembled_page_ships_cite_action() {
 fn assembled_page_ships_anchor_links() {
     let page = render_html_page("# Title\n\n## A section\n\nProse.\n", "doc");
     // The anchor-copy-link enhancer reveals a `#` on each heading/float and copies its
-    // canonical deep link; qmdInitAnchorLinks is its unique discriminator token.
+    // canonical deep link; taliInitAnchorLinks is its unique discriminator token.
     assert!(
-        page.contains("qmdInitAnchorLinks"),
+        page.contains("taliInitAnchorLinks"),
         "anchor copy-link enhancer not shipped in the assembled page"
     );
 }
@@ -1547,10 +1547,10 @@ fn assembled_page_ships_anchor_links() {
 #[test]
 fn assembled_page_ships_focus_mode() {
     let page = render_html_page("# Title\n\nProse to read in focus.\n", "doc");
-    // Focus/reading mode hides site chrome and centers the prose; qmdInitFocusMode is its
+    // Focus/reading mode hides site chrome and centers the prose; taliInitFocusMode is its
     // discriminator, and body.tali-focus is the CSS hook.
     assert!(
-        page.contains("qmdInitFocusMode") && page.contains("tali-focus"),
+        page.contains("taliInitFocusMode") && page.contains("tali-focus"),
         "focus/reading mode not shipped in the assembled page"
     );
 }
@@ -1559,10 +1559,10 @@ fn assembled_page_ships_focus_mode() {
 fn assembled_page_ships_hover_cards() {
     let page = render_html_page("# Title\n\nProse with a [link](#title).\n", "doc");
     // Hover cross-reference cards: hovering any in-page reference (@fig-/@sec-/[@cite]/
-    // footnote) previews its target block. qmdInitLinkPreview is the enhancer; this guards
+    // footnote) previews its target block. taliInitLinkPreview is the enhancer; this guards
     // it against accidental removal (parity with the other reader enhancers' ships-tests).
     assert!(
-        page.contains("qmdInitLinkPreview"),
+        page.contains("taliInitLinkPreview"),
         "hover cross-reference cards (link-preview) enhancer not shipped"
     );
 }
@@ -1572,7 +1572,7 @@ fn assembled_page_ships_reader_menu() {
     let page = render_html_page("# Title\n\nProse.\n", "doc");
     // The reader-menu host consolidates the reader controls into one launcher + menu.
     assert!(
-        page.contains("qmdInitReaderMenu") && page.contains("qmdReaderMenu"),
+        page.contains("taliInitReaderMenu") && page.contains("taliReaderMenu"),
         "reader-menu host not shipped in the assembled page"
     );
 }
@@ -1582,7 +1582,7 @@ fn assembled_page_ships_bookmarks() {
     let page = render_html_page("# Title\n\nProse.\n", "doc");
     // Section bookmarks: hover-heading toggle + a Bookmarks menu section.
     assert!(
-        page.contains("qmdInitBookmarks"),
+        page.contains("taliInitBookmarks"),
         "bookmarks enhancer not shipped in the assembled page"
     );
 }
@@ -1592,7 +1592,7 @@ fn assembled_page_ships_selection_toolbar() {
     let page = render_html_page("# Title\n\nProse.\n", "doc");
     // Selection toolbar: the .tali-seltools bar + the text-fragment share-link builder.
     assert!(
-        page.contains("tali-seltools") && page.contains("qmdBuildTextFragmentUrl"),
+        page.contains("tali-seltools") && page.contains("taliBuildTextFragmentUrl"),
         "selection toolbar not shipped in the assembled page"
     );
 }
@@ -1626,7 +1626,7 @@ fn assembled_page_ships_focus_trap() {
     let page = render_html_page("# Title\n\n![alt](x.png)\n", "doc");
     // The shared modal focus-trap utility (lightbox / reader menu / Cmd-K) ships in the page.
     assert!(
-        page.contains("qmdFocusTrap"),
+        page.contains("taliFocusTrap"),
         "modal focus-trap utility not shipped in the assembled page"
     );
 }
@@ -1804,7 +1804,7 @@ fn deck_theme_is_custom_and_head_gating() {
     let plain = render_document("---\nformat: revealjs\n---\n\n# A\n");
     assert!(!plain.theme_is_custom, "a plain deck has no custom theme");
     assert!(
-        deck_theme_head(&plain.theme_default, plain.theme_is_custom).contains("qmdDeckApplyTheme"),
+        deck_theme_head(&plain.theme_default, plain.theme_is_custom).contains("taliDeckApplyTheme"),
         "a built-in-theme deck should get the theme head"
     );
     // A user `include-in-header` is not a theme extension, so it must not flip
@@ -2055,7 +2055,7 @@ fn build_mode_content_gates_separate_enhancers() {
     // that every page benefits from) but drops the DOM-specific enhancers it can't use.
     let prose = code_scripts_for("<p>Just prose.</p>", OutputMode::Build);
     assert!(
-        prose.contains("qmdInitReaderMenu"),
+        prose.contains("taliInitReaderMenu"),
         "build keeps code-enhance.js"
     );
     assert!(
@@ -2152,7 +2152,7 @@ fn site_build_path_content_gates_enhancers() {
     let doc = render_document("# A chapter\n\nProse only — no tabset, mermaid, or scrolly.\n");
     let page = html_page_from_doc_in_site(&doc, "chapter", &SiteCtx::default());
     assert!(
-        page.contains("qmdInitReaderMenu"),
+        page.contains("taliInitReaderMenu"),
         "a site page still ships code-enhance.js (reader menu + a11y)"
     );
     assert!(

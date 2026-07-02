@@ -426,7 +426,7 @@
       themeBtn.type = "button";
       themeBtn.setAttribute("data-qmd-theme-toggle", "");
       panel.appendChild(themeBtn);
-      if (window.qmdWireThemeToggles) window.qmdWireThemeToggles();
+      if (window.taliWireThemeToggles) window.taliWireThemeToggles();
     }
 
     // Diagnostics, per-cell errors, and a11y findings all live inside the panel.
@@ -638,22 +638,22 @@
   // (root). After any DOM change we (re)attach the deck engine: the first change
   // initializes, later ones only `sync()`, so the current slide and the runtime
   // state of live blocks survive edits.
-  const isDeck = window.QMD_FORMAT === "deck";
+  const isDeck = window.TALIESIN_FORMAT === "deck";
   let deckReady = false;
   const syncDeck = () => {
-    if (!isDeck || !window.QmdDeck) return;
+    if (!isDeck || !window.TaliesinDeck) return;
     if (!deckReady) {
-      window.QmdDeck.initialize({ hash: true, slideNumber: "c/t", center: false });
+      window.TaliesinDeck.initialize({ hash: true, slideNumber: "c/t", center: false });
       deckReady = true;
     } else {
-      window.QmdDeck.sync();
-      window.QmdDeck.layout();
+      window.TaliesinDeck.sync();
+      window.TaliesinDeck.layout();
     }
   };
 
   // TOC mode: rebuild `<nav id="TOC">` from the mounted, anchored headings after
   // every change, so the contents stay live as headings are edited/added/removed.
-  const tocEl = window.QMD_TOC === true ? document.getElementById("TOC") : null;
+  const tocEl = window.TALIESIN_TOC === true ? document.getElementById("TOC") : null;
   // Mobile pull-up sheet chrome (present only on the live TOC page).
   const tocHandle = tocEl && document.getElementById("tali-toc-handle");
   const tocBackdrop = tocEl && document.getElementById("tali-toc-backdrop");
@@ -685,11 +685,11 @@
     tocEl.innerHTML = html + "</ul>";
   };
 
-  // TOC scrollspy lives in the shared toc-spy.js (window.qmdInitTocSpy) so the
+  // TOC scrollspy lives in the shared toc-spy.js (window.taliInitTocSpy) so the
   // live preview and the static build highlight the active section identically.
   // The client only re-inits it after rebuilding the nav (see mountAll) and feeds
   // it the mobile pull-up label flash on scroll.
-  if (tocEl) window.qmdTocScrollHook = () => flashTocLabel();
+  if (tocEl) window.taliTocScrollHook = () => flashTocLabel();
 
   // Mobile pull-up TOC: drag the handle up (the sheet follows) or tap it to open;
   // tap the backdrop or a TOC entry to close. The current-section chip flashes in
@@ -831,14 +831,14 @@
   // runs, and splices the cell out of its push-only registry. Without this, editing a
   // `{js}`/Three.js cell (which changes its content-hash block id, so we replaceWith a
   // fresh node) would leak a WebGL context + RAF loop on every edit. No-op when qmd-js
-  // isn't loaded (decks/pages with no `{js}` cells). `window.qmdJs` is set by qmd-js.js
+  // isn't loaded (decks/pages with no `{js}` cells). `window.taliJs` is set by qmd-js.js
   // and declared on the shared `Window` type in globals.d.ts.
   const teardownJs = (/** @type {Element|null} */ el) => {
-    const q = window.qmdJs;
+    const q = window.taliJs;
     if (q && q.teardown && el) q.teardown(el);
   };
   const resetJs = () => {
-    const q = window.qmdJs;
+    const q = window.taliJs;
     if (q && q.reset) q.reset();
   };
 
@@ -847,9 +847,9 @@
   const afterChange = () => {
     syncDeck();
     buildToc();
-    if (window.qmdInitTocSpy) window.qmdInitTocSpy(); // re-collect against the fresh nav
+    if (window.taliInitTocSpy) window.taliInitTocSpy(); // re-collect against the fresh nav
     updateWordCount();
-    if (window.qmdEnhanceCode) window.qmdEnhanceCode(root);
+    if (window.taliEnhanceCode) window.taliEnhanceCode(root);
     scanCellErrors();
     scanA11y();
   };
@@ -872,7 +872,7 @@
   // the websocket connects). The first `full_render` after that is identical, so
   // skip re-mounting it (avoids a flash + needless {js}/deck re-init); reconnects
   // still re-mount normally.
-  let ssrPending = window.QMD_SSR === true;
+  let ssrPending = window.TALIESIN_SSR === true;
 
   /** @param {ServerMessage} msg */
   const handle = (msg) => {
@@ -985,9 +985,9 @@
   };
 
   const connect = () => {
-    // In a multi-page site the ws is scoped to the current page (QMD_WS_PATH);
+    // In a multi-page site the ws is scoped to the current page (TALIESIN_WS_PATH);
     // a single-doc preview uses the plain "/ws".
-    const wsPath = window.QMD_WS_PATH || "/ws";
+    const wsPath = window.TALIESIN_WS_PATH || "/ws";
     ws = new WebSocket(`ws://${location.host}${wsPath}`);
     ws.onopen = () => setStatus("live");
     ws.onmessage = (e) => {
@@ -1035,7 +1035,7 @@
   // dir, or null = the previewed doc itself). Used by located diagnostics; webview
   // relays to the host, a browser opens vscode://. openSource() handles the el case.
   const gotoSource = (/** @type {?string} */ file, /** @type {number} */ line) => {
-    const doc = window.QMD_DOC;
+    const doc = window.TALIESIN_DOC;
     if (!doc) return;
     if (inWebview) {
       window.parent.postMessage({ type: "qmd-goto", source_file: file, sourcepos: line + ":1" }, "*");
@@ -1049,7 +1049,7 @@
   // `rel` or `rel:line`) wins; else the block's sourcepos on the current page (or an
   // included file). In the webview, relay to the host; in a browser, `vscode://`.
   const openSource = (/** @type {HTMLElement} */ el) => {
-    const doc = window.QMD_DOC;
+    const doc = window.TALIESIN_DOC;
     if (!doc) return;
     const src = el.getAttribute("data-qmd-src");
     let abs, line = "1", col = "1";
@@ -1168,11 +1168,11 @@
     if (!target) return;
     document.querySelectorAll(".tali-hl").forEach((n) => n.classList.remove("tali-hl"));
     target.classList.add("tali-hl");
-    if (isDeck && window.QmdDeck) {
+    if (isDeck && window.TaliesinDeck) {
       const sections = [...root.querySelectorAll(".tali-slides > section")];
       const sec = target.closest(".tali-slides > section");
       const i = sec ? sections.indexOf(sec) : -1;
-      if (i >= 0) window.QmdDeck.slide(i);
+      if (i >= 0) window.TaliesinDeck.slide(i);
     } else {
       const r = target.getBoundingClientRect();
       if (r.top < 0 || r.bottom > window.innerHeight) {

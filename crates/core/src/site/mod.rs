@@ -139,7 +139,7 @@ pub struct Site {
     /// caller (build logs / preview diagnostics).
     pub warnings: Vec<String>,
     /// Inlinable JSON of every page's title + anchored headings, so the Cmd-K
-    /// palette searches the whole project (`window.QMD_SEARCH_INDEX`). Built once
+    /// palette searches the whole project (`window.TALIESIN_SEARCH_INDEX`). Built once
     /// at discovery.
     pub search_index_json: String,
     /// The project reference graph (pages + cross-page `@ref`/link edges) as JSON, for
@@ -364,15 +364,17 @@ impl Site {
             // works from disk with no dev server; the graph JSON is small, so it's inlined.
             let up = "../".repeat(depth);
             let mut js = format!(
-                "window.QMD_SITE_ROOT=\"{up}\";window.QMD_PAGE_URL=\"{}\"",
+                "window.TALIESIN_SITE_ROOT=\"{up}\";window.TALIESIN_PAGE_URL=\"{}\"",
                 page.url
             );
             if has_search {
-                js.push_str(&format!(";window.QMD_SEARCH_URL=\"{up}search-index.js\""));
+                js.push_str(&format!(
+                    ";window.TALIESIN_SEARCH_URL=\"{up}search-index.js\""
+                ));
             }
             if has_graph {
                 js.push_str(&format!(
-                    ";window.QMD_REF_GRAPH={}",
+                    ";window.TALIESIN_REF_GRAPH={}",
                     self.reference_graph_json
                 ));
             }
@@ -1387,7 +1389,7 @@ mod tests {
         );
         let html = site.render_page("index.qmd").unwrap();
         assert!(
-            html.contains("window.QMD_REF_GRAPH="),
+            html.contains("window.TALIESIN_REF_GRAPH="),
             "graph data embedded on the page"
         );
         assert!(

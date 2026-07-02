@@ -2,7 +2,7 @@
 // aria-modal, and (on release) restore focus to the opener IF focus is still inside (a keyboard
 // or programmatic close) — not when the user clicked elsewhere. Used by the lightbox + reader
 // menu here and, via this global, by the Cmd-K palette in search.js. Returns release().
-window.qmdFocusTrap = window.qmdFocusTrap || function (container, initial) {
+window.taliFocusTrap = window.taliFocusTrap || function (container, initial) {
   var prev = document.activeElement;
   var SEL = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
   container.setAttribute('aria-modal', 'true');

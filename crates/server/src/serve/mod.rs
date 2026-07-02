@@ -585,7 +585,7 @@ pub(crate) fn js_str(s: &str) -> String {
 fn blog_index_html(ctx: &PageCtx) -> String {
     // With a TOC, lay the content beside a sticky `<nav id="TOC">` (the client
     // rebuilds its entries from the mounted headings, so it stays live). The
-    // `QMD_TOC` flag switches the client into that mode. `tali-toc-sheet` opts the
+    // `TALIESIN_TOC` flag switches the client into that mode. `tali-toc-sheet` opts the
     // live page into the mobile pull-up-sheet TOC (the static export keeps the
     // plain stacked-top TOC).
     let (body_class, toc_nav, toc_flag) = if ctx.toc {
@@ -595,14 +595,14 @@ fn blog_index_html(ctx: &PageCtx) -> String {
              <div id=\"tali-toc-backdrop\"></div>\n\
              <button id=\"tali-toc-handle\" type=\"button\" aria-label=\"Contents\">\
              <span id=\"tali-toc-cur\"></span><span class=\"tali-toc-grip\"></span></button>",
-            "window.QMD_TOC = true;",
+            "window.TALIESIN_TOC = true;",
         )
     } else {
         ("", "", "")
     };
     // Absolute paths so click-to-source can build `vscode://file/…` links.
     let doc_global = format!(
-        "window.QMD_DOC = {{ path: \"{}\", baseDir: \"{}\" }};",
+        "window.TALIESIN_DOC = {{ path: \"{}\", baseDir: \"{}\" }};",
         js_str(ctx.doc_path),
         js_str(ctx.base_dir),
     );
@@ -613,9 +613,10 @@ fn blog_index_html(ctx: &PageCtx) -> String {
         ctx.body
     );
     let extra_head = format!("<style>{STATUS_CSS}</style>\n");
-    let scripts_pre = format!("<script>{doc_global} {toc_flag} window.QMD_SSR = true;</script>");
+    let scripts_pre =
+        format!("<script>{doc_global} {toc_flag} window.TALIESIN_SSR = true;</script>");
     // With a TOC, load the shared scrollspy (toc-spy.js) ahead of the client so
-    // `window.qmdInitTocSpy` is defined when client.js rebuilds the nav and calls it
+    // `window.taliInitTocSpy` is defined when client.js rebuilds the nav and calls it
     // after every edit — that drives the active-section highlight and the read-state
     // marks. Without this the TOC sits inert in single-doc preview (scrollspy + read
     // state only worked in the static build / site preview). Search (Cmd-K) stays out:
@@ -652,15 +653,15 @@ fn blog_index_html(ctx: &PageCtx) -> String {
 
 /// Live deck: the same preview client, but mounting sectioned slides into
 /// `.tali-deck > .tali-slides` and (re)syncing the deck engine as blocks change. The
-/// `QMD_FORMAT` flag switches the client into deck mode.
+/// `TALIESIN_FORMAT` flag switches the client into deck mode.
 fn deck_index_html(ctx: &PageCtx) -> String {
     let extra_head = format!("<style>{STATUS_CSS}</style>\n");
     // Absolute paths so click-to-source can build `vscode://file/…` links. The
     // single-doc page sets this in its scripts_pre; the deck has none, so the tail
-    // carries it — without it, `openSource` bails (no QMD_DOC) and click-to-source
+    // carries it — without it, `openSource` bails (no TALIESIN_DOC) and click-to-source
     // silently does nothing on slides.
     let doc_global = format!(
-        "window.QMD_DOC = {{ path: \"{}\", baseDir: \"{}\" }};",
+        "window.TALIESIN_DOC = {{ path: \"{}\", baseDir: \"{}\" }};",
         js_str(ctx.doc_path),
         js_str(ctx.base_dir),
     );
@@ -670,7 +671,7 @@ fn deck_index_html(ctx: &PageCtx) -> String {
     // the websocket client last.
     let tail = format!(
         "{deck_script}\n{code_scripts}\n\
-         <script>{doc_global} window.QMD_FORMAT = \"deck\"; window.QMD_SSR = true;</script>\n\
+         <script>{doc_global} window.TALIESIN_FORMAT = \"deck\"; window.TALIESIN_SSR = true;</script>\n\
          {include_after_body}\n<script>\n{CLIENT_JS}\n</script>\n",
         deck_script = taliesin_core::deck_client_script(),
         code_scripts = taliesin_core::code_scripts(),
@@ -1182,7 +1183,7 @@ mod protocol_contract {
 
     #[test]
     fn reveal_index_carries_qmd_doc_for_click_to_source() {
-        // The deck page has no scripts_pre, so its tail must inject QMD_DOC — without
+        // The deck page has no scripts_pre, so its tail must inject TALIESIN_DOC — without
         // it, client.js's openSource bails (no doc) and click-to-source is dead on
         // slides, even though every block carries data-block-id/sourcepos.
         let includes = taliesin_core::render::PageIncludes::default();
@@ -1199,8 +1200,8 @@ mod protocol_contract {
         };
         let html = deck_index_html(&ctx);
         assert!(
-            html.contains("window.QMD_DOC = { path: \"/tmp/deck.qmd\", baseDir: \"/tmp\" }"),
-            "deck page must carry QMD_DOC for click-to-source"
+            html.contains("window.TALIESIN_DOC = { path: \"/tmp/deck.qmd\", baseDir: \"/tmp\" }"),
+            "deck page must carry TALIESIN_DOC for click-to-source"
         );
     }
 
@@ -1208,8 +1209,8 @@ mod protocol_contract {
     fn blog_index_ships_toc_scrollspy_when_toc_enabled() {
         // The single-doc live preview must load toc-spy.js when the doc has a TOC, so
         // scrollspy highlighting + read-state TOC work in `qmd-fast preview <file>`
-        // (client.js rebuilds the nav, then calls window.qmdInitTocSpy). The `qmd-read:`
-        // storage key is unique to toc-spy.js — client.js only *calls* qmdInitTocSpy —
+        // (client.js rebuilds the nav, then calls window.taliInitTocSpy). The `qmd-read:`
+        // storage key is unique to toc-spy.js — client.js only *calls* taliInitTocSpy —
         // so it discriminates "script loaded" from "script merely referenced".
         let includes = taliesin_core::render::PageIncludes::default();
         let mk = |toc| {

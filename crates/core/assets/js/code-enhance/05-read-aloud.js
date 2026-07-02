@@ -10,11 +10,11 @@
 // playlist deterministically: override window.__qmdSpeakImpl to invoke u.onend().
 window.__qmdSpeakImpl = window.__qmdSpeakImpl || function (u) { window.speechSynthesis.speak(u); };
 
-function qmdRaGet(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
-function qmdRaSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
+function taliRaGet(k, d) { try { return localStorage.getItem(k) || d; } catch (e) { return d; } }
+function taliRaSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) {} }
 
 // Top-level content blocks: a [data-block-id] not nested inside another block.
-function qmdRaContentBlocks() {
+function taliRaContentBlocks() {
   return [].slice.call(document.querySelectorAll('[data-block-id]')).filter(function (el) {
     return !el.parentElement || !el.parentElement.closest('[data-block-id]');
   });
@@ -22,7 +22,7 @@ function qmdRaContentBlocks() {
 
 // A text node is non-spoken if it sits inside math/code, or inside the reader's own
 // injected chrome (the `#` copy-link anchor), within the block.
-function qmdRaSkip(node, block) {
+function taliRaSkip(node, block) {
   var p = node.parentNode;
   while (p && p !== block) {
     if (p.nodeType === 1 && (p.tagName === 'PRE' || p.tagName === 'CODE' ||
@@ -34,11 +34,11 @@ function qmdRaSkip(node, block) {
 
 // Collect a root's text nodes (optionally skipping math/code) as one string + a map
 // back to text nodes, so a global offset can be turned into a DOM position.
-function qmdRaTextMap(root, skipCodeMath) {
+function taliRaTextMap(root, skipCodeMath) {
   var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, null);
   var full = '', spans = [], n;
   while ((n = walker.nextNode())) {
-    if (skipCodeMath && qmdRaSkip(n, root)) continue;
+    if (skipCodeMath && taliRaSkip(n, root)) continue;
     spans.push([full.length, n]);
     full += n.nodeValue;
   }
@@ -46,7 +46,7 @@ function qmdRaTextMap(root, skipCodeMath) {
 }
 
 // Map a global offset in `full` back to [textNode, localOffset].
-function qmdRaLocate(spans, off) {
+function taliRaLocate(spans, off) {
   for (var i = spans.length - 1; i >= 0; i--) {
     if (off >= spans[i][0]) {
       var nd = spans[i][1];
@@ -57,22 +57,22 @@ function qmdRaLocate(spans, off) {
 }
 
 // A DOM Range over [s,e) of `map.full`, or null if it can't be formed.
-function qmdRaRange(map, s, e) {
-  var a = qmdRaLocate(map.spans, s), b = qmdRaLocate(map.spans, e);
+function taliRaRange(map, s, e) {
+  var a = taliRaLocate(map.spans, s), b = taliRaLocate(map.spans, e);
   if (!a || !b) return null;
   var r = document.createRange();
   try { r.setStart(a[0], a[1]); r.setEnd(b[0], b[1]); return r; } catch (err) { return null; }
 }
 
 // Trim whitespace off a [s,e) offset window.
-function qmdRaTrim(full, s, e) {
+function taliRaTrim(full, s, e) {
   while (s < e && /\s/.test(full.charAt(s))) s++;
   while (e > s && /\s/.test(full.charAt(e - 1))) e--;
   return [s, e];
 }
 
 // Sentence boundaries in `full` as [start,end) offsets (Intl.Segmenter, regex fallback).
-function qmdRaSentences(full, lang) {
+function taliRaSentences(full, lang) {
   var ranges = [];
   if (window.Intl && Intl.Segmenter) {
     try {
@@ -92,12 +92,12 @@ function qmdRaSentences(full, lang) {
 }
 
 // One Range per non-blank source line of a <code> element (preserves highlight spans).
-function qmdRaCodeLineRanges(code) {
-  var map = qmdRaTextMap(code, false), ranges = [], start = 0, full = map.full;
+function taliRaCodeLineRanges(code) {
+  var map = taliRaTextMap(code, false), ranges = [], start = 0, full = map.full;
   for (var i = 0; i <= full.length; i++) {
     if (i === full.length || full.charAt(i) === '\n') {
       if (i > start && /\S/.test(full.slice(start, i))) {
-        var r = qmdRaRange(map, start, i);
+        var r = taliRaRange(map, start, i);
         if (r) ranges.push(r);
       }
       start = i + 1;
@@ -107,25 +107,25 @@ function qmdRaCodeLineRanges(code) {
 }
 
 // Compile a prose element into per-sentence `say` steps (a DOM Range each).
-function qmdRaCompileProse(el, steps) {
-  var map = qmdRaTextMap(el, true);
+function taliRaCompileProse(el, steps) {
+  var map = taliRaTextMap(el, true);
   if (!map.full.trim()) return;
   var lang = document.documentElement.lang || undefined;
-  qmdRaSentences(map.full, lang).forEach(function (r) {
-    var t = qmdRaTrim(map.full, r[0], r[1]);
+  taliRaSentences(map.full, lang).forEach(function (r) {
+    var t = taliRaTrim(map.full, r[0], r[1]);
     var text = map.full.slice(t[0], t[1]);
     if (!text.trim()) return;
-    var range = qmdRaRange(map, t[0], t[1]);
+    var range = taliRaRange(map, t[0], t[1]);
     if (range) steps.push({ kind: 'say', text: text, range: range, el: el });
   });
 }
 
 // Compile one top-level block into ordered steps (code/figure/equation/table/prose).
-function qmdRaCompileBlock(block, steps) {
+function taliRaCompileBlock(block, steps) {
   var pre = block.matches('pre') ? block : block.querySelector('pre');
   var code = pre && !pre.closest('.tali-output') ? pre.querySelector('code') : null;
   if (code) {
-    var ranges = qmdRaCodeLineRanges(code);
+    var ranges = taliRaCodeLineRanges(code);
     var lang = '', cls = (code.className || '').match(/language-([\w+-]+)/);
     if (cls) lang = cls[1];
     var n = ranges.length;
@@ -137,33 +137,33 @@ function qmdRaCompileBlock(block, steps) {
   var fig = block.matches('figure') ? block : block.querySelector('figure');
   if (fig) {
     var cap = fig.querySelector('figcaption');
-    var ftext = (cap ? qmdRaTextMap(cap, true).full.replace(/ /g, ' ').trim() : '') || 'Figure';
+    var ftext = (cap ? taliRaTextMap(cap, true).full.replace(/ /g, ' ').trim() : '') || 'Figure';
     steps.push({ kind: 'say', text: ftext, el: fig });
     return;
   }
-  if (block.querySelector('.katex-display') && !qmdRaTextMap(block, true).full.trim()) {
+  if (block.querySelector('.katex-display') && !taliRaTextMap(block, true).full.trim()) {
     steps.push({ kind: 'say', text: 'Equation.', el: block });
     return;
   }
   var table = block.matches('table') ? block : block.querySelector('table');
   if (table) {
     var tcap = table.querySelector('caption');
-    var ttext = (tcap ? qmdRaTextMap(tcap, true).full.replace(/ /g, ' ').trim() : '') || 'Table';
+    var ttext = (tcap ? taliRaTextMap(tcap, true).full.replace(/ /g, ' ').trim() : '') || 'Table';
     steps.push({ kind: 'say', text: ttext.replace(/\.?$/, '.'), el: table });
     return;
   }
   if (block.matches('ul, ol, dl')) {
     [].slice.call(block.children).forEach(function (li) {
-      if (li.matches && li.matches('li, dd, dt')) qmdRaCompileProse(li, steps);
+      if (li.matches && li.matches('li, dd, dt')) taliRaCompileProse(li, steps);
     });
     return;
   }
-  qmdRaCompileProse(block, steps);
+  taliRaCompileProse(block, steps);
 }
 
 // The first content block at/below the viewport top (where Listen starts).
-function qmdRaStartBlock() {
-  var blocks = qmdRaContentBlocks();
+function taliRaStartBlock() {
+  var blocks = taliRaContentBlocks();
   for (var i = 0; i < blocks.length; i++) {
     if (blocks[i].getBoundingClientRect().top >= -4) return blocks[i];
   }
@@ -171,20 +171,20 @@ function qmdRaStartBlock() {
 }
 
 // Compile the whole playlist from `startEl` to the end; tag each step with its block index.
-function qmdRaCompile(startEl) {
-  var blocks = qmdRaContentBlocks(), startIdx = 0;
+function taliRaCompile(startEl) {
+  var blocks = taliRaContentBlocks(), startIdx = 0;
   if (startEl) { var i = blocks.indexOf(startEl); if (i >= 0) startIdx = i; }
   var steps = [];
   for (var k = startIdx; k < blocks.length; k++) {
     var before = steps.length;
-    qmdRaCompileBlock(blocks[k], steps);
+    taliRaCompileBlock(blocks[k], steps);
     for (var j = before; j < steps.length; j++) steps[j].block = k;
   }
   return { steps: steps, blocks: blocks };
 }
 
 // A segmented control reusing the prefs CSS (.tali-reader-row/.tali-reader-seg).
-function qmdRaSeg(title, options, getCur, onPick) {
+function taliRaSeg(title, options, getCur, onPick) {
   var row = document.createElement('div'); row.className = 'tali-reader-row';
   var label = document.createElement('span'); label.textContent = title;
   var group = document.createElement('div'); group.className = 'tali-reader-seg';
@@ -201,14 +201,14 @@ function qmdRaSeg(title, options, getCur, onPick) {
 }
 
 // The voice picker row (OS voices); refresh() re-reads getVoices() (async on some browsers).
-function qmdRaVoiceRow(onPick) {
+function taliRaVoiceRow(onPick) {
   var row = document.createElement('div'); row.className = 'tali-reader-row';
   var label = document.createElement('span'); label.textContent = 'Voice';
   var sel = document.createElement('select'); sel.className = 'tali-ra-voice-sel';
   sel.setAttribute('aria-label', 'Reading voice');
   sel.addEventListener('change', function () { onPick(sel.value); });
   function refresh() {
-    var cur = qmdRaGet('tali-ra-voice', '');
+    var cur = taliRaGet('tali-ra-voice', '');
     var vs = (window.speechSynthesis && window.speechSynthesis.getVoices()) || [];
     sel.innerHTML = '';
     var def = document.createElement('option'); def.value = ''; def.textContent = 'Default'; sel.appendChild(def);
@@ -219,11 +219,11 @@ function qmdRaVoiceRow(onPick) {
   return { row: row, refresh: refresh };
 }
 
-function qmdInitReadAloud() {
+function taliInitReadAloud() {
   if (window.__qmdReadAloud && window.__qmdReadAloud.__inited) return;
   if (document.querySelector('.tali-deck')) return;        // decks have their own chrome
   if (!window.speechSynthesis || typeof SpeechSynthesisUtterance === 'undefined') return; // no API -> no UI
-  if (!window.qmdReaderMenu) return;                       // need the menu host
+  if (!window.taliReaderMenu) return;                       // need the menu host
 
   // --- highlight (CSS Custom Highlight API, with a <mark> fallback) ---------------
   var hl = (window.CSS && CSS.highlights && window.Highlight) ? new Highlight() : null;
@@ -245,9 +245,9 @@ function qmdInitReadAloud() {
   function clearHighlight() { if (hl) hl.clear(); else clearMark(); }
 
   function reducedMotion() { return window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches; }
-  function rate() { var r = parseFloat(qmdRaGet('tali-ra-rate', '1')); return r > 0 ? r : 1; }
+  function rate() { var r = parseFloat(taliRaGet('tali-ra-rate', '1')); return r > 0 ? r : 1; }
   function currentVoice() {
-    var name = qmdRaGet('tali-ra-voice', '');
+    var name = taliRaGet('tali-ra-voice', '');
     if (!name) return null;
     var vs = (window.speechSynthesis.getVoices && window.speechSynthesis.getVoices()) || [];
     for (var i = 0; i < vs.length; i++) if (vs[i].name === name) return vs[i];
@@ -341,7 +341,7 @@ function qmdInitReadAloud() {
     announce: function (m) { live.textContent = m; },
     setSpeed: function (r) { speed.textContent = r + '×'; }
   };
-  ui.setSpeed(qmdRaGet('tali-ra-rate', '1'));
+  ui.setSpeed(taliRaGet('tali-ra-rate', '1'));
 
   toggle.addEventListener('click', function () {
     if (driver.isPlaying()) { driver.pause(); ui.announce('Paused'); }
@@ -356,31 +356,31 @@ function qmdInitReadAloud() {
   var listen = document.createElement('button');
   listen.type = 'button'; listen.className = 'tali-reader-reset'; listen.textContent = 'Listen';
   listen.addEventListener('click', function () {
-    driver.start(qmdRaCompile(qmdRaStartBlock()).steps);
-    window.qmdReaderMenu.close();
+    driver.start(taliRaCompile(taliRaStartBlock()).steps);
+    window.taliReaderMenu.close();
   });
   bodyEl.appendChild(listen);
 
   var SPEEDS = [['0.8', '0.8×'], ['1', '1×'], ['1.25', '1.25×'], ['1.5', '1.5×'], ['2', '2×']];
-  bodyEl.appendChild(qmdRaSeg('Speed', SPEEDS, function () { return qmdRaGet('tali-ra-rate', '1'); }, function (v) {
-    qmdRaSet('tali-ra-rate', v === '1' ? null : v); ui.setSpeed(v); driver.applyRate();
+  bodyEl.appendChild(taliRaSeg('Speed', SPEEDS, function () { return taliRaGet('tali-ra-rate', '1'); }, function (v) {
+    taliRaSet('tali-ra-rate', v === '1' ? null : v); ui.setSpeed(v); driver.applyRate();
   }));
 
-  var voiceRow = qmdRaVoiceRow(function (name) { qmdRaSet('tali-ra-voice', name || null); });
+  var voiceRow = taliRaVoiceRow(function (name) { taliRaSet('tali-ra-voice', name || null); });
   bodyEl.appendChild(voiceRow.row);
   voiceRow.refresh();
   if (typeof window.speechSynthesis.onvoiceschanged !== 'undefined') {
     window.speechSynthesis.addEventListener('voiceschanged', voiceRow.refresh);
   }
 
-  window.qmdReaderMenu.addSection('Listen', bodyEl);
+  window.taliReaderMenu.addSection('Listen', bodyEl);
 
   // --- test hook -------------------------------------------------------------------
   window.__qmdReadAloud = {
     __inited: true,
     driver: driver,
     compile: function () {
-      return qmdRaCompile(qmdRaStartBlock()).steps.map(function (s) {
+      return taliRaCompile(taliRaStartBlock()).steps.map(function (s) {
         return { kind: s.kind, text: s.text || null, block: s.block, lines: s.ranges ? s.ranges.length : null };
       });
     }

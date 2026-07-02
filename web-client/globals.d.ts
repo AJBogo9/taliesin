@@ -5,36 +5,36 @@
 
 interface Window {
   /** Absolute doc + base-dir (+ site root) paths for click-to-source `vscode://` links. */
-  QMD_DOC?: { path: string; baseDir: string; root?: string };
+  TALIESIN_DOC?: { path: string; baseDir: string; root?: string };
   /** Live page has a table of contents (client rebuilds `#TOC`). */
-  QMD_TOC?: boolean;
+  TALIESIN_TOC?: boolean;
   /** The body was server-rendered, so skip the first re-mount. */
-  QMD_SSR?: boolean;
+  TALIESIN_SSR?: boolean;
   /** Document format flag (`"deck"` switches the client into deck mode). */
-  QMD_FORMAT?: string;
+  TALIESIN_FORMAT?: string;
   /** Per-page websocket path for the multi-page site server. */
-  QMD_WS_PATH?: string;
+  TALIESIN_WS_PATH?: string;
 
   /** Deck engine API (deck mode only), defined by deck.js; typed loosely. */
-  QmdDeck?: any;
+  TaliesinDeck?: any;
   /** `{js}` reactive runtime API (defined by qmd-js.js): teardown a removed cell
    *  subtree and reset the whole runtime on a full re-mount, to avoid leaking
    *  WebGL contexts / RAF loops across edits + reconnects. */
-  qmdJs?: { teardown?: (n: Element) => void; reset?: () => void };
+  taliJs?: { teardown?: (n: Element) => void; reset?: () => void };
   /** Theme API from the head script (`theme_head`). */
-  qmdSetTheme?: (mode: string) => void;
-  qmdGetThemePref?: () => string;
+  taliSetTheme?: (mode: string) => void;
+  taliGetThemePref?: () => string;
   /** Wires every `[data-qmd-theme-toggle]` button (defined in theme_head). */
-  qmdWireThemeToggles?: () => void;
+  taliWireThemeToggles?: () => void;
   /** Runs all registered enhancers over `root` (the registry runner, code-enhance.js). */
-  qmdEnhanceCode?: (root: ParentNode | null) => void;
+  taliEnhanceCode?: (root: ParentNode | null) => void;
   /** Public extension hook: register `fn(root)` to enhance freshly-mounted DOM. */
-  qmdEnhancers?: {
+  taliEnhancers?: {
     register: (fn: (root: ParentNode) => void) => unknown;
     run: (root: ParentNode | null) => void;
   };
   /** (Re)collects `#TOC` links and runs the scrollspy (shared toc-spy.js). */
-  qmdInitTocSpy?: () => void;
+  taliInitTocSpy?: () => void;
   /** Per-scroll hook the shared scrollspy calls (preview flashes the mobile label). */
-  qmdTocScrollHook?: () => void;
+  taliTocScrollHook?: () => void;
 }

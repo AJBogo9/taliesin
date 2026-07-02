@@ -15,7 +15,7 @@
 //   (none)            -> one-shot: runs once; re-runs when a Python define lands.
 //
 // Cell scope: { get(n), set(n,v), value(n), defines, onInput(names,cb), container,
-// invalidation }. Registered through the same qmdEnhancers registry as mermaid;
+// invalidation }. Registered through the same taliEnhancers registry as mermaid;
 // idempotent (a `data-qmd-ran` guard) so it is safe to re-run after every mount.
 (function () {
   "use strict";
@@ -24,10 +24,10 @@
   // Per-page singleton. Reset implicitly on navigation/reload; on a full re-mount
   // the fresh DOM has no `data-qmd-ran` guards, so every cell re-runs and rebuilds.
   function rt() {
-    if (!window.__qmdjs) {
-      window.__qmdjs = { scope: {}, inputs: {}, defines: {}, listeners: {}, cells: [] };
+    if (!window.__talijs) {
+      window.__talijs = { scope: {}, inputs: {}, defines: {}, listeners: {}, cells: [] };
     }
-    return window.__qmdjs;
+    return window.__talijs;
   }
 
   function readValue(el) {
@@ -124,8 +124,10 @@
       return currentInv;
     }
     var api = makeApi(r, container, function () { return currentInv; });
+    // `tali` is the current name for the cell API; `qmd` is kept as a back-compat
+    // alias (same object) so pre-rename `{js}` cells keep working.
     var fn = new AsyncFunction(
-      "qmd", "Plot", "d3", "container", "invalidation",
+      "tali", "qmd", "Plot", "d3", "container", "invalidation",
       src
     );
 
@@ -135,7 +137,7 @@
     async function run() {
       freshInv();
       try {
-        var node = await fn(api, window.Plot, window.d3, container, currentInv);
+        var node = await fn(api, api, window.Plot, window.d3, container, currentInv);
         if (node instanceof Node) {
           container.replaceChildren(node);
           if (viewof) {
@@ -185,8 +187,8 @@
   // so a re-mount re-registers a live element rather than firing a detached one. Called
   // by the client BEFORE it detaches an outgoing block (Update/Remove).
   function teardownIn(node) {
-    if (!node || !window.__qmdjs) return;
-    var r = window.__qmdjs;
+    if (!node || !window.__talijs) return;
+    var r = window.__talijs;
     var kept = [];
     r.cells.forEach(function (c) {
       var inside = c.container && (c.container === node || (node.contains && node.contains(c.container)));
@@ -208,21 +210,23 @@
   // Resolve EVERY outstanding invalidation and drop the whole runtime, so a
   // `full_render` (which blows away `#tali-root` wholesale) doesn't leak the prior
   // page's WebGL contexts / RAF loops and doesn't re-push duplicate cells onto a
-  // never-reset `r.cells`. The next `enhance()` lazily rebuilds a fresh `window.__qmdjs`.
+  // never-reset `r.cells`. The next `enhance()` lazily rebuilds a fresh `window.__talijs`.
   function resetRuntime() {
-    var r = window.__qmdjs;
+    var r = window.__talijs;
     if (!r) return;
     (r.cells || []).forEach(function (c) {
       try { if (c.dispose) c.dispose(); } catch (e) { console.error("qmd-js: cell teardown failed", e); }
     });
-    window.__qmdjs = null;
+    window.__talijs = null;
   }
 
   // Public teardown API for the live-preview client (web-client/client.js): one hook to
   // tear down a block about to be replaced/removed, one to reset before a full re-mount.
-  window.qmdJs = window.qmdJs || {};
-  window.qmdJs.teardown = teardownIn;
-  window.qmdJs.reset = resetRuntime;
+  window.taliJs = window.taliJs || {};
+  window.taliJs.teardown = teardownIn;
+  window.taliJs.reset = resetRuntime;
+  // Back-compat: the pre-rename public global (same live object).
+  window.qmdJs = window.taliJs;
 
   // Run a list of cells in document order, awaiting each — so `//| name:` outputs
   // are stored before dependent cells run.
@@ -332,8 +336,8 @@
     }));
   }
 
-  if (window.qmdEnhancers && window.qmdEnhancers.register) {
-    window.qmdEnhancers.register(enhance);
+  if (window.taliEnhancers && window.taliEnhancers.register) {
+    window.taliEnhancers.register(enhance);
   } else {
     document.addEventListener("DOMContentLoaded", function () { enhance(document); });
   }

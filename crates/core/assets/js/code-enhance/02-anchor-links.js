@@ -4,7 +4,7 @@
 // source. Per-element idempotent (a host already carrying its .tali-anchor is skipped), so it
 // survives the live-preview re-mounts; skipped on decks (their own nav). `root` is always the
 // whole #tali-root container, so a descendant query suffices.
-function qmdInitAnchorLinks(root) {
+function taliInitAnchorLinks(root) {
   if (document.querySelector('.tali-deck')) return;
   if (!window.__qmdAnchorLive) {
     var l = document.createElement('span');
@@ -15,8 +15,8 @@ function qmdInitAnchorLinks(root) {
   }
   function announce(msg) { var r = window.__qmdAnchorLive; r.textContent = ''; r.textContent = msg; }
   function decorate(host, id) {
-    if (!host || !id || host.dataset.qmdAnchored) return;
-    host.dataset.qmdAnchored = '1';
+    if (!host || !id || host.dataset.taliAnchored) return;
+    host.dataset.taliAnchored = '1';
     var a = document.createElement('a');
     a.className = 'tali-anchor';
     a.href = '#' + id;
@@ -25,7 +25,7 @@ function qmdInitAnchorLinks(root) {
     a.addEventListener('click', function () {
       // Don't preventDefault: clicking also sets the URL hash, so the address bar shows the
       // shareable anchor (the page is already here, so there is no jump).
-      qmdCopyText(qmdAnchorUrl(id), function () {
+      taliCopyText(taliAnchorUrl(id), function () {
         a.classList.add('tali-anchor-copied');
         a.textContent = '✓';
         announce('Link copied');

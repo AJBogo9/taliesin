@@ -2,7 +2,7 @@
 // just below the sticky navbar. Shared by two callers so the behaviour matches:
 //   - the static build inlines this and lets it auto-init on load;
 //   - the live preview rebuilds `#TOC` on every edit, then calls
-//     window.qmdInitTocSpy() to re-collect against the fresh links.
+//     window.taliInitTocSpy() to re-collect against the fresh links.
 // Inlined as one <script>; not part of the type-checked client.js bundle.
 (function () {
   var raf = 0;
@@ -142,7 +142,7 @@
   }
 
   function onScroll() {
-    if (window.qmdTocScrollHook) window.qmdTocScrollHook(); // preview's mobile-label flash
+    if (window.taliTocScrollHook) window.taliTocScrollHook(); // preview's mobile-label flash
     if (raf) return;
     raf = requestAnimationFrame(function () {
       raf = 0;
@@ -165,7 +165,7 @@
     update();
   }
 
-  window.qmdInitTocSpy = init;
+  window.taliInitTocSpy = init;
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);
   } else {

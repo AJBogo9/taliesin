@@ -2,13 +2,13 @@
 // long document — the book, a paper, any page with a table of contents. Matches
 // both headings and the body text of each section, and shows a snippet around the
 // hit. A single doc builds its index from the live DOM on open; a site/book lazy-
-// loads the cross-page index (search-index.js) on first open via window.QMD_SEARCH_URL,
+// loads the cross-page index (search-index.js) on first open via window.TALIESIN_SEARCH_URL,
 // so the full-text index never bloats every page. Self-contained: injects its own
 // themed overlay CSS and rides along as one <script> beside the TOC scrollspy. Not
 // part of the type-checked client.js bundle.
 (function () {
-  if (window.qmdSearchInstalled) return;
-  window.qmdSearchInstalled = true;
+  if (window.taliSearchInstalled) return;
+  window.taliSearchInstalled = true;
 
   var CSS =
     "#tali-search{position:fixed;inset:0;z-index:10050;display:flex;justify-content:center;" +
@@ -67,8 +67,8 @@
     // Site/book: search the whole project from the inlined cross-page index
     // (every page's title + anchored headings). A result carries its page url so
     // selecting it can navigate across chapters.
-    if (window.QMD_SEARCH_INDEX) {
-      return window.QMD_SEARCH_INDEX.map(function (e) {
+    if (window.TALIESIN_SEARCH_INDEX) {
+      return window.TALIESIN_SEARCH_INDEX.map(function (e) {
         var body = e.b || "";
         // tLow/bLow are memoized once so the per-keystroke matcher is just indexOf scans.
         return { id: e.i, title: e.t, level: e.l, body: body, url: e.u, page: e.p,
@@ -107,27 +107,27 @@
   }
 
   // Lazy-load the cross-page index from `search-index.js` on first open (a site/book
-  // links to it via QMD_SEARCH_URL instead of inlining it into every page), then
+  // links to it via TALIESIN_SEARCH_URL instead of inlining it into every page), then
   // run `cb`. A single doc (no URL) just runs `cb` against the DOM index.
   var indexFetched = false;
   function loadIndexThen(cb) {
-    if (window.QMD_SEARCH_INDEX || !window.QMD_SEARCH_URL || indexFetched) {
+    if (window.TALIESIN_SEARCH_INDEX || !window.TALIESIN_SEARCH_URL || indexFetched) {
       cb();
       return;
     }
     indexFetched = true;
-    // Load the index with a <script> element (it assigns window.QMD_SEARCH_INDEX)
+    // Load the index with a <script> element (it assigns window.TALIESIN_SEARCH_INDEX)
     // rather than fetch(): a script subresource loads under file:// too, so Cmd-K
     // works when the book is opened from disk with no dev server (fetch() of a local
     // file is CORS-blocked). Still lazy: only injected on the first palette open.
     var s = document.createElement("script");
-    s.src = window.QMD_SEARCH_URL;
+    s.src = window.TALIESIN_SEARCH_URL;
     s.onload = function () {
       cb();
     };
     s.onerror = function () {
       // Surface the failure instead of a silently-empty palette.
-      window.QMD_SEARCH_LOAD_FAILED = true;
+      window.TALIESIN_SEARCH_LOAD_FAILED = true;
       cb();
     };
     document.head.appendChild(s);
@@ -160,7 +160,7 @@
 
   function open() {
     ensureUi();
-    var isSite = !!(window.QMD_SEARCH_URL || window.QMD_SEARCH_INDEX);
+    var isSite = !!(window.TALIESIN_SEARCH_URL || window.TALIESIN_SEARCH_INDEX);
     // Single doc with no headings: nothing to search.
     if (!isSite && !buildIndex().length) return;
     overlay.hidden = false;
@@ -168,7 +168,7 @@
     input.placeholder = isSite ? "Search…" : "Search this document…";
     // While the cross-page index is fetching on first open, show a loading row.
     list.innerHTML = "";
-    if (isSite && !window.QMD_SEARCH_INDEX) {
+    if (isSite && !window.TALIESIN_SEARCH_INDEX) {
       var li = document.createElement("li");
       li.className = "tali-s-empty";
       li.textContent = "Loading…";
@@ -179,7 +179,7 @@
       render(input.value);
     });
     // Trap focus in the palette (focus the input); fall back to a bare focus if absent.
-    if (window.qmdFocusTrap) searchRelease = window.qmdFocusTrap(overlay, input);
+    if (window.taliFocusTrap) searchRelease = window.taliFocusTrap(overlay, input);
     else input.focus();
   }
 
@@ -250,7 +250,7 @@
     if (!terms.length) {
       // No query: a book shows its chapter list (the level-0 page entries) as a
       // jump menu; a single doc shows its full heading outline.
-      matches = window.QMD_SEARCH_INDEX
+      matches = window.TALIESIN_SEARCH_INDEX
         ? index.filter(function (it) { return it.level === 0; })
         : index.slice();
     } else {
@@ -265,7 +265,7 @@
     if (!matches.length) {
       var empty = document.createElement("li");
       empty.className = "tali-s-empty";
-      empty.textContent = window.QMD_SEARCH_LOAD_FAILED
+      empty.textContent = window.TALIESIN_SEARCH_LOAD_FAILED
         ? "Search index failed to load"
         : "No matches";
       list.appendChild(empty);
@@ -533,14 +533,14 @@
     // A result on another page navigates there (a real page load, anchored to the
     // heading); on this page — or in a single doc — it scrolls in place. The flash is
     // handed to the destination via sessionStorage so both paths share one code path.
-    if (item.url != null && item.url !== window.QMD_PAGE_URL) {
+    if (item.url != null && item.url !== window.TALIESIN_PAGE_URL) {
       try {
         if (terms.length && item.id) {
           sessionStorage.setItem(FLASH_KEY, JSON.stringify(terms));
         }
       } catch (e) {}
       window.location.href =
-        (window.QMD_SITE_ROOT || "") + item.url + (item.id ? "#" + item.id : "");
+        (window.TALIESIN_SITE_ROOT || "") + item.url + (item.id ? "#" + item.id : "");
       return;
     }
     if (!item.id) {
@@ -594,7 +594,7 @@
 
   // Programmatic opener so the keyboard reader's `/` shortcut (and any UI) can open the
   // palette without synthesizing a Cmd-K event.
-  window.qmdOpenSearch = open;
+  window.taliOpenSearch = open;
 
   // The `.tali-search-kbd` badge is server-rendered with the Mac glyph (⌘K) since the same
   // HTML ships to every OS. On non-Mac platforms, rewrite it to "Ctrl K". (The button's

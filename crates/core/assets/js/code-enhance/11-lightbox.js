@@ -4,7 +4,7 @@
 // click-to-source). Images are shown via <img>; mermaid SVGs are cloned live
 // (so <foreignObject> labels keep rendering, which an <img> would drop). Modifier
 // clicks pass through (new tab, reveal alt-zoom). Dismiss: backdrop, Esc, or x.
-function qmdInitLightbox() {
+function taliInitLightbox() {
   if (window.__qmdLightbox) return;
   window.__qmdLightbox = true;
 
@@ -50,7 +50,7 @@ function qmdInitLightbox() {
   function markOpen() {
     box.classList.add('open');
     document.documentElement.style.overflow = 'hidden';
-    if (!lbRelease && window.qmdFocusTrap) lbRelease = window.qmdFocusTrap(box, box.querySelector('.tali-lb-close'));
+    if (!lbRelease && window.taliFocusTrap) lbRelease = window.taliFocusTrap(box, box.querySelector('.tali-lb-close'));
   }
 
   function hideAll() {
@@ -71,7 +71,7 @@ function qmdInitLightbox() {
     lbImg.alt = img.alt || '';
     var fig = img.closest('figure');
     var fc = fig && fig.querySelector('figcaption');
-    var cap = fc ? qmdCleanCaptionText(fc) : (img.alt || '');
+    var cap = fc ? taliCleanCaptionText(fc) : (img.alt || '');
     if (gallery.length > 1) cap = (cap ? cap + '  ' : '') + '(' + (gIdx + 1) + ' / ' + gallery.length + ')';
     lbCap.textContent = cap;
     markOpen();
@@ -95,7 +95,7 @@ function qmdInitLightbox() {
     // Show the figure's caption in the zoom too (empty -> hidden by CSS).
     var fig = pre.closest('figure');
     var fc = fig && fig.querySelector('figcaption');
-    lbCap.textContent = qmdCleanCaptionText(fc);
+    lbCap.textContent = taliCleanCaptionText(fc);
     markOpen();
   }
   // A `{{< video >}}` screencast: play an enlarged copy (the clicked element is the
@@ -107,7 +107,7 @@ function qmdInitLightbox() {
     var p = lbVideo.play(); if (p && p.catch) p.catch(function () {});
     var fig = vid.closest('figure');
     var fc = fig && fig.querySelector('figcaption');
-    lbCap.textContent = qmdCleanCaptionText(fc);
+    lbCap.textContent = taliCleanCaptionText(fc);
     markOpen();
   }
   function close() {
@@ -167,9 +167,9 @@ function qmdInitLightbox() {
 // click, so decoratable media is unreachable by keyboard. This per-mount, idempotent pass
 // (guard `data-qmd-lb`) makes each zoomable element a focusable button that opens on
 // Enter/Space. The capture-phase click delegation, focus-trap-on-open, Escape, and the ←/→
-// gallery nav inside qmdInitLightbox are untouched; this only adds the keyboard entry point.
-function qmdDecorateLightbox(root) {
-  qmdInitLightbox(); // ensure the document-level machinery + window.__qmdLightboxOpen exist
+// gallery nav inside taliInitLightbox are untouched; this only adds the keyboard entry point.
+function taliDecorateLightbox(root) {
+  taliInitLightbox(); // ensure the document-level machinery + window.__qmdLightboxOpen exist
   var scope = root || document;
   var els = scope.querySelectorAll('figure img, img.lightbox, pre.mermaid, .tali-video video');
   [].forEach.call(els, function (el) {
@@ -187,5 +187,5 @@ function qmdDecorateLightbox(root) {
     });
   });
 }
-window.qmdEnhancers.register(qmdDecorateLightbox);
+window.taliEnhancers.register(taliDecorateLightbox);
 

@@ -1,11 +1,11 @@
 // Cross-reference graph: an interactive force-directed map of the project's pages and
 // their cross-page connections (a `@sec-`/`@fig-` cross-reference or a prose `.qmd` link).
-// Data is `window.QMD_REF_GRAPH` (built at discovery); this draws it in a focus-trapped
+// Data is `window.TALIESIN_REF_GRAPH` (built at discovery); this draws it in a focus-trapped
 // modal, click-a-node-to-navigate. Read-only — it navigates, never writes to source.
 // Self-contained (no d3): a small hand-rolled force simulation, so it works on any page.
 (function () {
   function data() {
-    var g = window.QMD_REF_GRAPH;
+    var g = window.TALIESIN_REF_GRAPH;
     return g && g.nodes ? g : null;
   }
 
@@ -48,7 +48,7 @@
     overlay.addEventListener('pointerdown', function (e) { if (e.target === overlay) close(); });
     panel.querySelector('.tali-graph-close').addEventListener('click', close);
     document.addEventListener('keydown', onKey, true);
-    if (window.qmdFocusTrap) releaseTrap = window.qmdFocusTrap(panel);
+    if (window.taliFocusTrap) releaseTrap = window.taliFocusTrap(panel);
 
     layout(panel.querySelector('.tali-graph-svg'), g, W, H - 44);
   }
@@ -56,7 +56,7 @@
   // Build the sim + SVG, then run the force loop.
   function layout(svg, g, w, h) {
     var SVGNS = 'http://www.w3.org/2000/svg';
-    var here = window.QMD_PAGE_URL;
+    var here = window.TALIESIN_PAGE_URL;
     // Nodes laid out on a circle to start (deterministic, no Math.random needed).
     var n = g.nodes.length;
     var nodes = g.nodes.map(function (nd, i) {
@@ -98,7 +98,7 @@
       label.textContent = nd.t;
       gEl.appendChild(c);
       gEl.appendChild(label);
-      var nav = function () { location.href = (window.QMD_SITE_ROOT || '') + nd.u; };
+      var nav = function () { location.href = (window.TALIESIN_SITE_ROOT || '') + nd.u; };
       gEl.addEventListener('click', nav);
       gEl.addEventListener('keydown', function (e) {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); nav(); }
@@ -184,5 +184,5 @@
       overlay ? close() : open();
     }
   });
-  window.qmdOpenGraph = open;
+  window.taliOpenGraph = open;
 })();

@@ -1,10 +1,10 @@
 // Reader preferences: a reader-local text size / reading width / theme picker, mounted as
 // the "Display" section of the reader menu. State lives in the reader's own localStorage and
-// is applied before paint by the pre-paint head script (qmdSetTheme / qmdSetReaderPref /
-// qmdResetReader in theme.rs), so this enhancer is only the UI. Read-only. Skipped on decks.
-function qmdInitReaderPrefs() {
+// is applied before paint by the pre-paint head script (taliSetTheme / taliSetReaderPref /
+// taliResetReader in theme.rs), so this enhancer is only the UI. Read-only. Skipped on decks.
+function taliInitReaderPrefs() {
   if (window.__qmdReaderPrefs) return;
-  if (!window.qmdSetReaderPref || !window.qmdReaderMenu) return; // need the pre-paint API + the menu host
+  if (!window.taliSetReaderPref || !window.taliReaderMenu) return; // need the pre-paint API + the menu host
   if (document.querySelector('.tali-deck')) return; // a slide deck has its own chrome
   window.__qmdReaderPrefs = true;
 
@@ -18,12 +18,12 @@ function qmdInitReaderPrefs() {
   var WORDS = [['0', 'Normal'], ['0.08em', 'Wide'], ['0.16em', 'Wider']];
   var SIZE_FS = { '0.9': '.78rem', '1': '.95rem', '1.15': '1.15rem', '1.3': '1.4rem' };
 
-  function curTheme() { return (window.qmdGetThemePref && window.qmdGetThemePref()) || 'light'; }
-  function curSize() { return window.qmdGetReaderPref('scale') || '1'; }
-  function curWidth() { return window.qmdGetReaderPref('width') || ''; }
-  function curLeading() { return window.qmdGetReaderPref('leading') || '1.7'; }
-  function curLetter() { return window.qmdGetReaderPref('letter') || '0'; }
-  function curWord() { return window.qmdGetReaderPref('word') || '0'; }
+  function curTheme() { return (window.taliGetThemePref && window.taliGetThemePref()) || 'light'; }
+  function curSize() { return window.taliGetReaderPref('scale') || '1'; }
+  function curWidth() { return window.taliGetReaderPref('width') || ''; }
+  function curLeading() { return window.taliGetReaderPref('leading') || '1.7'; }
+  function curLetter() { return window.taliGetReaderPref('letter') || '0'; }
+  function curWord() { return window.taliGetReaderPref('word') || '0'; }
 
   // One segmented control row. `labelFn(btn, opt)` customizes a button (else opt[1] text).
   function seg(title, options, getCur, onPick, labelFn) {
@@ -56,19 +56,19 @@ function qmdInitReaderPrefs() {
   }
 
   var body = document.createElement('div');
-  var themeSeg = seg('Theme', THEMES, curTheme, function (v) { window.qmdSetTheme(v); });
+  var themeSeg = seg('Theme', THEMES, curTheme, function (v) { window.taliSetTheme(v); });
   var sizeSeg = seg('Text size', SIZES, curSize,
-    function (v) { window.qmdSetReaderPref('scale', v === '1' ? null : v); },
+    function (v) { window.taliSetReaderPref('scale', v === '1' ? null : v); },
     function (b, opt) { b.textContent = 'A'; b.style.fontSize = SIZE_FS[opt[0]] || '.95rem';
       b.setAttribute('aria-label', opt[1] + ' text'); });
   var widthSeg = seg('Width', WIDTHS, curWidth,
-    function (v) { window.qmdSetReaderPref('width', v || null); });
+    function (v) { window.taliSetReaderPref('width', v || null); });
   var leadingSeg = seg('Line spacing', LEADINGS, curLeading,
-    function (v) { window.qmdSetReaderPref('leading', v === '1.7' ? null : v); });
+    function (v) { window.taliSetReaderPref('leading', v === '1.7' ? null : v); });
   var letterSeg = seg('Letter spacing', LETTERS, curLetter,
-    function (v) { window.qmdSetReaderPref('letter', v === '0' ? null : v); });
+    function (v) { window.taliSetReaderPref('letter', v === '0' ? null : v); });
   var wordSeg = seg('Word spacing', WORDS, curWord,
-    function (v) { window.qmdSetReaderPref('word', v === '0' ? null : v); });
+    function (v) { window.taliSetReaderPref('word', v === '0' ? null : v); });
   body.appendChild(themeSeg.row);
   body.appendChild(sizeSeg.row);
   body.appendChild(widthSeg.row);
@@ -80,12 +80,12 @@ function qmdInitReaderPrefs() {
   reset.className = 'tali-reader-reset';
   reset.type = 'button';
   reset.textContent = 'Reset to defaults';
-  reset.addEventListener('click', function () { if (window.qmdResetReader) window.qmdResetReader(); });
+  reset.addEventListener('click', function () { if (window.taliResetReader) window.taliResetReader(); });
   body.appendChild(reset);
 
   function syncAll() { themeSeg.sync(); sizeSeg.sync(); widthSeg.sync(); leadingSeg.sync(); letterSeg.sync(); wordSeg.sync(); }
   window.addEventListener('qmd:themechange', syncAll);
   window.addEventListener('qmd:readerchange', syncAll);
-  window.qmdReaderMenu.addSection('Display', body, syncAll);
+  window.taliReaderMenu.addSection('Display', body, syncAll);
 }
 

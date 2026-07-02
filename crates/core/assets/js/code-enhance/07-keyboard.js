@@ -1,7 +1,7 @@
 // Keyboard reader: `?` opens a shortcuts cheatsheet, `/` opens search, left/right move
 // to the previous/next chapter (the book prev/next anchors). All guarded so they never
 // fire while typing or under another modal. Read-only, deck-skipped, idempotent.
-function qmdInitKeyboard() {
+function taliInitKeyboard() {
   if (window.__qmdKeyboard) return;
   if (document.querySelector('.tali-deck')) return;
   window.__qmdKeyboard = true;
@@ -42,8 +42,8 @@ function qmdInitKeyboard() {
   function openSheet() {
     if (!sheet) buildSheet();
     sheet.hidden = false;
-    if (window.qmdFocusTrap) {
-      sheetRelease = window.qmdFocusTrap(sheet, sheet.querySelector('.tali-keys-close'));
+    if (window.taliFocusTrap) {
+      sheetRelease = window.taliFocusTrap(sheet, sheet.querySelector('.tali-keys-close'));
     }
   }
   function closeSheet() {
@@ -73,7 +73,7 @@ function qmdInitKeyboard() {
     if (modal) return;
     if (!shortcuts) return; // opt-out: skip the remaining single-key shortcuts (/ and arrows)
     if (e.key === '/') {
-      if (window.qmdOpenSearch) { e.preventDefault(); window.qmdOpenSearch(); }
+      if (window.taliOpenSearch) { e.preventDefault(); window.taliOpenSearch(); }
       return;
     }
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {

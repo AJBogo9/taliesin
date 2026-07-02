@@ -1,11 +1,11 @@
 // Mermaid diagrams as a self-contained enhancer module that registers through
-// the public `window.qmdEnhancers` API — exactly how a third-party extension
+// the public `window.taliEnhancers` API — exactly how a third-party extension
 // would add a renderer. Shipped by core but fully decoupled from the mount
 // logic; the mermaid library itself is still fetched lazily (only when a
 // `pre.mermaid` is actually present). Loaded right after code-enhance.js, so
 // the registry already exists.
 (function () {
-  if (!window.qmdEnhancers) return; // registry (code-enhance.js) must load first
+  if (!window.taliEnhancers) return; // registry (code-enhance.js) must load first
 
 // mermaid bakes colours into the SVG at run() time, so a diagram can't be
 // recoloured by CSS when the theme flips — it has to be re-rendered. The config is
@@ -14,7 +14,7 @@
 // and optionally `--tali-mermaid-{bg,node,node-border,text,line}` to tune colours
 // (most effective with `--tali-mermaid-theme: base`). Each diagram's source is
 // stashed (dataset.src) so a later `qmd:themechange` can restore and re-run it.
-function qmdMermaidConfig() {
+function taliMermaidConfig() {
   var cs = getComputedStyle(document.documentElement);
   var get = function (n) { return cs.getPropertyValue(n).trim(); };
   var dark = document.documentElement.getAttribute('data-theme') === 'dark';
@@ -31,9 +31,9 @@ function qmdMermaidConfig() {
   if (Object.keys(vars).length) cfg.themeVariables = vars;
   return cfg;
 }
-function qmdRunMermaid(nodes) {
+function taliRunMermaid(nodes) {
   try {
-    window.mermaid.initialize(qmdMermaidConfig());
+    window.mermaid.initialize(taliMermaidConfig());
     window.mermaid.run({ nodes: nodes });
   } catch (e) {}
 }
@@ -42,7 +42,7 @@ function qmdRunMermaid(nodes) {
 // before it (once). The diagram's source stays in the <pre> below, so the content is
 // never lost and a later successful retry can still render it. The inline styles keep the
 // banner legible even on a page with no stylesheet (offline / bare).
-function qmdMermaidShowError(p) {
+function taliMermaidShowError(p) {
   p.setAttribute('data-mermaid-error', '1');
   if (p.previousSibling && p.previousSibling.classList &&
       p.previousSibling.classList.contains('mermaid-error')) {
@@ -60,18 +60,18 @@ function qmdMermaidShowError(p) {
   p.parentNode.insertBefore(banner, p);
 }
 
-function qmdRenderMermaid(root) {
+function taliRenderMermaid(root) {
   var pending = root.querySelectorAll('pre.mermaid:not([data-processed])');
   if (!pending.length) return;
   // Keep the source text so the diagram survives a theme-driven re-render.
   pending.forEach(function (p) { if (p.dataset.src == null) p.dataset.src = p.textContent; });
-  if (window.mermaid) { qmdRunMermaid(pending); return; }
+  if (window.mermaid) { taliRunMermaid(pending); return; }
   if (window.__qmdMermaidLoading) return; // its onload will sweep the whole doc
   window.__qmdMermaidLoading = true;
   var s = document.createElement('script');
   s.src = '{{MERMAID}}';
   s.onload = function () {
-    qmdRunMermaid(document.querySelectorAll('pre.mermaid:not([data-processed])'));
+    taliRunMermaid(document.querySelectorAll('pre.mermaid:not([data-processed])'));
   };
   s.onerror = function () {
     // The library couldn't load (offline / blocked). Don't wedge: clear the flag so a
@@ -81,12 +81,12 @@ function qmdRenderMermaid(root) {
     window.__qmdMermaidLoading = false;
     document
       .querySelectorAll('pre.mermaid:not([data-processed])')
-      .forEach(qmdMermaidShowError);
+      .forEach(taliMermaidShowError);
   };
   document.head.appendChild(s);
 }
 // Re-render every diagram from its stashed source under the new theme.
-function qmdReRenderMermaid() {
+function taliReRenderMermaid() {
   if (!window.mermaid) return; // not loaded yet => first render will use the theme
   var all = document.querySelectorAll('pre.mermaid');
   if (!all.length) return;
@@ -95,9 +95,9 @@ function qmdReRenderMermaid() {
     p.textContent = p.dataset.src;
     p.removeAttribute('data-processed');
   });
-  qmdRunMermaid(document.querySelectorAll('pre.mermaid:not([data-processed])'));
+  taliRunMermaid(document.querySelectorAll('pre.mermaid:not([data-processed])'));
 }
-window.addEventListener('qmd:themechange', qmdReRenderMermaid);
+window.addEventListener('qmd:themechange', taliReRenderMermaid);
 
-  window.qmdEnhancers.register(qmdRenderMermaid);
+  window.taliEnhancers.register(taliRenderMermaid);
 })();

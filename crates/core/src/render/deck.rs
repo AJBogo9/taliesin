@@ -7,7 +7,7 @@
 use super::*;
 
 /// qmd-fast's own deck engine, bundled (no CDN): `deck.css` is the layout + theme
-/// and `deck.js` the navigation/scaling engine (`window.QmdDeck`). Inlined into
+/// and `deck.js` the navigation/scaling engine (`window.TaliesinDeck`). Inlined into
 /// both the one-shot page and the live client, like KaTeX/mermaid.
 const DECK_CSS: &str = include_str!("../../assets/css/deck.css");
 const DECK_JS: &str = include_str!("../../assets/js/deck.js");
@@ -41,7 +41,7 @@ pub struct DeckParts<'a> {
     pub after_deck: &'a str,
     /// Everything after the deck body: the deck-engine script + the format-specific
     /// init/enhancer/client scripts + `include-after-body`, composed by the caller
-    /// (the static `QmdDeck.initialize` flow and the client-driven live flow differ,
+    /// (the static `TaliesinDeck.initialize` flow and the client-driven live flow differ,
     /// and the live flow is load-order-sensitive).
     pub tail: &'a str,
 }
@@ -99,9 +99,9 @@ pub(super) fn deck_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> Str
     // once (no websocket client to drive them after a mount).
     let tail = format!(
         "<script>{DECK_JS}</script>\n\
-         <script>\n  QmdDeck.initialize({{ hash: true, slideNumber: 'c/t', center: false }});\n</script>\n\
+         <script>\n  TaliesinDeck.initialize({{ hash: true, slideNumber: 'c/t', center: false }});\n</script>\n\
          {code_scripts}\n\
-         <script>document.addEventListener('DOMContentLoaded',function(){{window.qmdEnhanceCode&&window.qmdEnhanceCode(document.body);}});</script>\n\
+         <script>document.addEventListener('DOMContentLoaded',function(){{window.taliEnhanceCode&&window.taliEnhanceCode(document.body);}});</script>\n\
          {after_body}",
         code_scripts = code_scripts(),
         after_body = doc.includes.after_body,
@@ -125,7 +125,7 @@ pub(super) fn deck_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> Str
 }
 
 /// The deck engine `<script>` for the live deck client; load it before the
-/// preview client so `window.QmdDeck` is defined when the deck mounts.
+/// preview client so `window.TaliesinDeck` is defined when the deck mounts.
 pub fn deck_client_script() -> String {
     format!("<script>{DECK_JS}</script>")
 }
@@ -136,7 +136,7 @@ pub fn deck_client_script() -> String {
 /// `light` forces it; the built-in default theme (`theme_default` "auto", no
 /// custom CSS) follows the embedding page (a same-origin host) or the OS for a
 /// standalone deck; a custom/extension theme (`custom_theme`) owns its own colours
-/// and gets no script. The runtime helpers (`qmdDeckApplyTheme`/`qmdDeckSetTheme`)
+/// and gets no script. The runtime helpers (`taliDeckApplyTheme`/`taliDeckSetTheme`)
 /// are used by deck.js for the menu toggle and live host-theme following.
 pub fn deck_theme_head(theme_default: &str, custom_theme: bool) -> String {
     let mode = match theme_default {
@@ -162,11 +162,11 @@ pub fn deck_theme_head(theme_default: &str, custom_theme: bool) -> String {
     if (DEFAULT==='dark'||DEFAULT==='light') return DEFAULT;                   // explicit front-matter
     return osDark() ? 'dark' : 'light';                                       // else the OS preference
   }}
-  window.qmdDeckEmbedded = embedded;
-  window.qmdDeckThemeManaged = true;
-  window.qmdDeckApplyTheme = function(){{ var m = resolve(); var el = document.documentElement; el.classList.toggle('tali-deck-dark', m==='dark'); el.style.colorScheme = m; return m; }};
-  window.qmdDeckSetTheme = function(m){{ if (!embedded) {{ try {{ localStorage.setItem('qmd-deck-theme', m); }} catch(e){{}} }} return window.qmdDeckApplyTheme(); }};
-  window.qmdDeckApplyTheme();
+  window.taliDeckEmbedded = embedded;
+  window.taliDeckThemeManaged = true;
+  window.taliDeckApplyTheme = function(){{ var m = resolve(); var el = document.documentElement; el.classList.toggle('tali-deck-dark', m==='dark'); el.style.colorScheme = m; return m; }};
+  window.taliDeckSetTheme = function(m){{ if (!embedded) {{ try {{ localStorage.setItem('qmd-deck-theme', m); }} catch(e){{}} }} return window.taliDeckApplyTheme(); }};
+  window.taliDeckApplyTheme();
 }})();
 </script>"#
     )

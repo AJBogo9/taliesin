@@ -3,7 +3,7 @@
 // link + a focusable `<main id="tali-main" tabindex="-1">` SERVER-SIDE (page.rs), so it
 // works with JS off; this only enhances. The live `#tali-root` mount has no server `<main>`,
 // so the pair is synthesized there. Read-only, deck-skipped, idempotent.
-function qmdInitSkipLink() {
+function taliInitSkipLink() {
   if (window.__qmdSkipLink) return;
   if (document.querySelector('.tali-deck')) return;
   var main =

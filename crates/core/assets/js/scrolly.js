@@ -9,7 +9,7 @@
 //
 // Activation is a scroll-driven trigger line (not an IntersectionObserver band, which cannot
 // isolate steps shorter than the viewport, so it broke on portrait / mobile). Does NOT depend
-// on walkthrough.js. Registered through `qmdEnhancers`; idempotent (`data-scrolly-init`);
+// on walkthrough.js. Registered through `taliEnhancers`; idempotent (`data-scrolly-init`);
 // self-cleans its scroll listener when its container is swapped out by a live diff.
 (function () {
   function initScrolly(root) {
@@ -78,8 +78,8 @@
       });
   }
 
-  if (window.qmdEnhancers && window.qmdEnhancers.register) {
-    window.qmdEnhancers.register(enhance);
+  if (window.taliEnhancers && window.taliEnhancers.register) {
+    window.taliEnhancers.register(enhance);
   } else {
     document.addEventListener('DOMContentLoaded', function () { enhance(document); });
   }

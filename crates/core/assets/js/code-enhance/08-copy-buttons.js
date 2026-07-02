@@ -1,7 +1,7 @@
 // --- Built-in enhancers (registered through the same public API) -------------
 
 // Code blocks are highlighted server-side; the client only adds a copy button.
-function qmdCopyButtons(root) {
+function taliCopyButtons(root) {
   (root || document).querySelectorAll('pre > code').forEach(function (code) {
     var pre = code.parentElement;
     if (pre.dataset.enhanced) return;
@@ -17,7 +17,7 @@ function qmdCopyButtons(root) {
     btn.innerHTML = copyIcon;
     btn.addEventListener('click', function () {
       // Secure context → navigator.clipboard; --host LAN / file:// → execCommand fallback.
-      qmdCopyText(code.innerText, function () {
+      taliCopyText(code.innerText, function () {
         btn.innerHTML = checkIcon;
         btn.classList.add('tali-copied');
         btn.setAttribute('aria-label', 'Copied');

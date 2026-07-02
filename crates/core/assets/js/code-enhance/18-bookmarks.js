@@ -7,7 +7,7 @@
 // + read-only. Decks skipped. Markers re-apply each pass; the toggle + listeners + menu section
 // are set up once. (Note: some browsers isolate localStorage per file path, so "book-wide"
 // spans chapters only when served over http(s) — see the portability audit.)
-function qmdInitBookmarks() {
+function taliInitBookmarks() {
   if (document.querySelector('.tali-deck')) return; // a slide deck has its own chrome
 
   // A book shares one store across its chapters, keyed by the resolved book-root URL from the
@@ -115,7 +115,7 @@ function qmdInitBookmarks() {
     // The Bookmarks list in the reader menu (jump / remove). Degrades to just the margin
     // stars + hover toggle if the menu host is absent. A cross-chapter entry jumps to its
     // page; a current-page entry scrolls + flashes in place.
-    if (window.qmdReaderMenu) {
+    if (window.taliReaderMenu) {
       var body = document.createElement('div');
       function flash(b) { b.classList.remove('tali-flash'); void b.offsetWidth; b.classList.add('tali-flash'); }
       function renderList() {
@@ -133,7 +133,7 @@ function qmdInitBookmarks() {
           if (label.length > 56) label = label.slice(0, 56) + '…';
           go.textContent = current ? label : label + ' · ' + (pageName(e.page) || 'other');
           go.addEventListener('click', function () {
-            window.qmdReaderMenu.close();
+            window.taliReaderMenu.close();
             if (current && block) { block.scrollIntoView({ block: 'center', behavior: 'smooth' }); flash(block); }
             else { location.href = e.page + (e.anchor ? '#' + e.anchor : ''); }
           });
@@ -148,7 +148,7 @@ function qmdInitBookmarks() {
         });
         body.appendChild(ul);
       }
-      var section = window.qmdReaderMenu.addSection('Bookmarks', body, renderList);
+      var section = window.taliReaderMenu.addSection('Bookmarks', body, renderList);
       function refresh() {
         // Visible when there is any book-wide entry (a current-page one must still resolve).
         var any = load().some(function (e) { return !onThisPage(e) || !!findBlock(e.block); });

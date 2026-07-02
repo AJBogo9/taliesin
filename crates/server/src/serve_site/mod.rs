@@ -211,7 +211,7 @@ async fn favicon() -> impl IntoResponse {
 }
 
 /// The full-text search index as a `search-index.js` script (assigns
-/// `window.QMD_SEARCH_INDEX`), lazy-loaded by the Cmd-K palette on first open. Served
+/// `window.TALIESIN_SEARCH_INDEX`), lazy-loaded by the Cmd-K palette on first open. Served
 /// as JS (not raw JSON) so the client can load it with a `<script>`, which also works
 /// under file:// for a built book opened from disk.
 async fn search_index_js(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
@@ -226,7 +226,7 @@ async fn search_index_js(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
             axum::http::header::CONTENT_TYPE,
             "text/javascript; charset=utf-8",
         )],
-        format!("window.QMD_SEARCH_INDEX={json};"),
+        format!("window.TALIESIN_SEARCH_INDEX={json};"),
     )
         .into_response()
 }
@@ -289,7 +289,7 @@ async fn page_or_asset(
                 let j = m.site.search_index_json.clone();
                 let j = if j.is_empty() { "[]".to_string() } else { j };
                 let js_ct = "text/javascript; charset=utf-8";
-                let body = format!("window.QMD_SEARCH_INDEX={j};");
+                let body = format!("window.TALIESIN_SEARCH_INDEX={j};");
                 return ([(axum::http::header::CONTENT_TYPE, js_ct)], body).into_response();
             }
             if let Some(html) = m.site.render_page(lookup) {
@@ -429,7 +429,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
         (
             "tali-site-main has-toc",
             "<nav id=\"TOC\" aria-label=\"Table of contents\"></nav>",
-            "window.QMD_TOC = true;",
+            "window.TALIESIN_TOC = true;",
         )
     } else {
         ("tali-site-main", "", "")
@@ -452,7 +452,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
     // `root` lets the locator resolve site-root-relative `data-qmd-src` targets
     // (a card → its post's source, the navbar/footer → _site.yml, etc.).
     let doc_global = format!(
-        "window.QMD_DOC = {{ path: \"{}\", baseDir: \"{}\", root: \"{}\" }};",
+        "window.TALIESIN_DOC = {{ path: \"{}\", baseDir: \"{}\", root: \"{}\" }};",
         js_str(&doc_path.to_string_lossy()),
         js_str(&base_dir.to_string_lossy()),
         js_str(&app.root.to_string_lossy()),
@@ -522,7 +522,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
     let body = format!("{layout}\n<div id=\"tali-controls\"></div>");
     let extra_head = format!("<style>{STATUS_CSS}</style>\n");
     let scripts_pre = format!(
-        "<script>{doc_global} {toc_flag} {search_cfg} window.QMD_SSR = true; window.QMD_WS_PATH = \"{ws_path}\";</script>"
+        "<script>{doc_global} {toc_flag} {search_cfg} window.TALIESIN_SSR = true; window.TALIESIN_WS_PATH = \"{ws_path}\";</script>"
     );
     // The cross-page TOC scrollspy + Cmd-K search, then the websocket client.
     let scripts_post = format!(

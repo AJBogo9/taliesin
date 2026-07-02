@@ -4,7 +4,7 @@
 // first lines). Server-rendered, so the clone needs no re-running (math is already
 // KaTeX HTML). Set up once via event delegation, so it survives block swaps;
 // table-of-contents links are skipped (navigational, not worth a popup).
-function qmdInitLinkPreview() {
+function taliInitLinkPreview() {
   if (window.__qmdLinkPreview) return;
   window.__qmdLinkPreview = true;
 
@@ -35,11 +35,11 @@ function qmdInitLinkPreview() {
     return !a.closest('#TOC') && !a.closest('#tali-link-preview');
   }
   // Clone a node for the card, stripping interactive chrome that has no place in a
-  // read-only preview: the heading/caption `#` permalink (qmdInitAnchorLinks) and code
+  // read-only preview: the heading/caption `#` permalink (taliInitAnchorLinks) and code
   // copy buttons. Without this the cloned `#` shows in the card (and in a heading's
   // textContent as "Title#").
   function cleanClone(node) {
-    return qmdCloneStripped(node);
+    return taliCloneStripped(node);
   }
   // Build the preview body for a target element. A heading shows itself plus the
   // following block(s) up to the next heading; anything else is cloned whole.

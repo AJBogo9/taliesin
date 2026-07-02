@@ -42,7 +42,7 @@ pub struct SiteCtx {
     /// Site `favicon:` resolved to a path relative to this page's depth (empty if
     /// none configured), emitted as `<link rel="icon">`.
     pub favicon: String,
-    /// JS that sets `window.QMD_SEARCH_INDEX` (+ `QMD_SITE_ROOT`/`QMD_PAGE_URL`)
+    /// JS that sets `window.TALIESIN_SEARCH_INDEX` (+ `TALIESIN_SITE_ROOT`/`TALIESIN_PAGE_URL`)
     /// for the whole-project Cmd-K search; empty for a single doc. Injected next to
     /// the search script on TOC pages.
     pub search_index: String,
@@ -87,7 +87,7 @@ pub struct PageParts<'a> {
     /// Scripts emitted *before* the shared enhancer registry (the static
     /// click-to-source logger, or the live `window.QMD_*` globals).
     pub scripts_pre: &'a str,
-    /// Scripts emitted *after* it (the static `qmdEnhanceCode` call + TOC scripts,
+    /// Scripts emitted *after* it (the static `taliEnhanceCode` call + TOC scripts,
     /// or the live websocket client).
     pub scripts_post: &'a str,
     pub include_after_body: &'a str,
@@ -137,7 +137,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
     // screen-reader user can jump past the chrome to the reading region. Emitted
     // server-side (works with JS off) whenever the body carries the focusable
     // `<main id="tali-main">` (build + site pages always do; the live `#tali-root`
-    // mount does not — the runtime `qmdInitSkipLink` synthesizes the pair there).
+    // mount does not — the runtime `taliInitSkipLink` synthesizes the pair there).
     // Bare output is link-only chrome but keeps the skip link (it's pure HTML/CSS).
     let skip_link = if p.body.contains("id=\"tali-main\"") {
         "<a class=\"tali-skip\" href=\"#tali-main\">Skip to content</a>\n"
@@ -206,7 +206,7 @@ fn bare_theme_css(default_mode: &str) -> String {
 
 /// Run the client enhancers once on load (the static page has no websocket client
 /// to call them after a mount).
-const STATIC_ENHANCE: &str = "<script>document.addEventListener('DOMContentLoaded',function(){window.qmdEnhanceCode&&window.qmdEnhanceCode(document.body);});</script>";
+const STATIC_ENHANCE: &str = "<script>document.addEventListener('DOMContentLoaded',function(){window.taliEnhanceCode&&window.taliEnhanceCode(document.body);});</script>";
 
 /// Mobile pull-up-sheet chrome for a static TOC page: a dim backdrop + a grabber handle
 /// (with a current-section chip). Body-level and `position: fixed`, revealed by CSS only
@@ -285,7 +285,7 @@ fn html_page_inner(
     // The reading region is always a focusable `<main id="tali-main">`, emitted
     // server-side so the skip-to-content link (added in `assemble_html_page`) and
     // keyboard "skip the chrome" work with JS off. `tabindex="-1"` lets the skip link
-    // move focus into it without making it a tab stop. The runtime `qmdInitSkipLink`
+    // move focus into it without making it a tab stop. The runtime `taliInitSkipLink`
     // no-ops when this server markup is present (it only synthesizes the pair on the
     // live `#tali-root` mount, which has no `<main>`).
     // Content first (left, wide column), TOC second (right, sticky column).
