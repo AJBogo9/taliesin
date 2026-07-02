@@ -46,19 +46,19 @@ highlight; Alt-click → source). Report anything off.
 
 The single ordered view; each line points into a detail section below. Tiers, not a strict rank.
 
-**Tier 1: highest-value, actionable now (mostly deep-audit P2):**
-1. Citations / math / bib cluster, esp. the math-render-failure diagnostic (only render path with
-   no located Warning). → *Citations / math / bib*
-2. Site / books silent omissions: the dominant cross-cutting weakness ("silent failure is the
-   default"): warn/reject instead of dropping. → *Site / books: silent omissions*
-3. Visual craft / theming: sepia first-classing, tokenized shadows, prose rhythm. → *Visual craft / theming*
-4. Deck engine polish: resize debounce, speaker-view iframes, fragment-in-hash. → *Deck engine*
-5. Performance: batch WS ops on the save hot path (kills the O(ops × doc) cliff). → *Performance*
-6. Search-hit visual cue: design settled, spec pending; near-ready to build. → *Reader experience*
-7. Author publishing/share workflow: document the `--out` → static-host recipe; maybe a thin
-   `qmd-fast publish`. → *Discoverability & distribution*
+**Tier 1: COMPLETE (2026-07-02, all 7 clusters shipped to `main`, each browser-/test-verified;
+lower-value residuals within each cluster logged in its section):**
+1. ✅ Citations / math / bib (`ba6de8d`) — math-render diagnostic, `\url`, quoted-brace authors,
+   string/seq bibliography, shared key charset, quote-aware `strip_tags`.
+2. ✅ Site / books silent omissions (`b3beabc`) — 6 warn/reject cases + `contents:.` + card `image-alt`.
+3. ✅ Visual craft / theming (`0a99528`) — sepia first-classing, tokenized copy/shadows, prose rhythm,
+   dark theorem borders.
+4. ✅ Deck engine (`2be9428`) — fragment-in-hash, blackout resume, coalesced resize, fragsOf/pagehide.
+5. ✅ Performance (`3612fa5`) — rAF-coalesced save `afterChange`, single-render cross-page check, KaTeX LRU.
+6. ✅ Search-hit visual cue (`ab6437c`) — CSS Custom Highlight flash + cross-page `sessionStorage` handoff.
+7. ✅ Author publishing/share recipe (`e48e869`) — documented in the guide (publish CLI deferred).
 
-**Tier 2: needs a design or owner decision before building:**
+**Tier 2: needs a design or owner decision before building (NEXT — the author decides):**
 - Cross-page refs (F2b number for non-heading anchors, F2a hover preview): both blocked on the
   render-harvest vs source-scan design call. → *Cross-page references*
 - Cross-reference graph / backlinks: ship backlinks first vs graph-canvas decision. → *Cross-page references*
