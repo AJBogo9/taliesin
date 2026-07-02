@@ -12,15 +12,15 @@ Grounded by a 4-reader / 3-approach-judged scoping workflow; raw output at
 ## 0. TL;DR for the executing session
 
 Ship a **thin owned `taliesin` language** in `editor/vscode/`: a real `contributes.languages`
-+ `contributes.grammars` pair bound to `.tmd` **and** `.qmd`, whose TextMate grammar `include`s
-VS Code's built-in **MIT** `text.html.markdown` grammar for all CommonMark and adds **only the ~8
-Taliesin deltas** (braced `{python}`/`{r}`/`{js}` cells, `#|`/`//|`/`%%|` cell options, `---` YAML
-front matter, `:::` divs + `{.class #id key=val}` attrs, `$…$`/`$$…$$` math, `{{< shortcodes >}}`,
-`@fig-`/`[@cite]` refs, deck `. . .` pause), plus an `embeddedLanguages` map so cells/front-matter/math
-delegate to the real sub-grammars.
++ `contributes.grammars` pair bound to **`.tmd` only** (see §6 decision 1 — `.qmd` is deliberately
+NOT claimed), whose TextMate grammar `include`s VS Code's built-in **MIT** `text.html.markdown`
+grammar for all CommonMark and adds **only the ~8 Taliesin deltas** (braced `{python}`/`{r}`/`{js}`
+cells, `#|`/`//|`/`%%|` cell options, `---` YAML front matter, `:::` divs + `{.class #id key=val}`
+attrs, `$…$`/`$$…$$` math, `{{< shortcodes >}}`, `@fig-`/`[@cite]` refs, deck `. . .` pause), plus an
+`embeddedLanguages` map so cells/front-matter/math delegate to the real sub-grammars.
 
 **Quick start (do this first, prove registration before authoring any rule):**
-In `editor/vscode/`, add `contributes.languages` (id `taliesin`, extensions `[".tmd", ".qmd"]`) +
+In `editor/vscode/`, add `contributes.languages` (id `taliesin`, extensions `[".tmd"]`) +
 `contributes.grammars` (scopeName `text.tmd.markdown`) to `package.json`, and create
 `syntaxes/tmd.tmLanguage.json` containing only:
 ```json
@@ -57,9 +57,12 @@ There are **two** highlighting systems; only one is the goal.
   `src/extension.ts:14` (open guard), `src/extension.ts:63` (reverse-sync filter), `package.json:18`
   (menu `when: resourceExtname == .qmd`). Phases 2/3 of the rename never reached `editor/vscode/`
   (its last commit `2836454` predates them). **`.tmd` cannot even open the preview today.**
-- **Canonical extension list to mirror:** `crates/core/src/ext.rs:12,16` — `SOURCE_EXT = "tmd"`,
-  `ACCEPTED_SOURCE_EXTS = ["tmd", "qmd"]` (native-first). Not importable from TypeScript → the
-  grammar's `extensions` array is a **manual-sync point**; leave a comment on both sides.
+- **Two different extension scopes — keep them distinct:** the *renderer* still accepts both
+  (`crates/core/src/ext.rs:16` `ACCEPTED_SOURCE_EXTS = ["tmd", "qmd"]`, `.qmd` deprecated-but-accepted),
+  but the *editor grammar/language* claims **`.tmd` only** (decision 1). So: `contributes.languages`
+  `extensions` = `[".tmd"]`; the preview **gates** (Phase 3) still accept `.qmd` so existing `.qmd`
+  files can be previewed — they just aren't given the `taliesin` language/highlighting. A `.qmd` file
+  keeps whatever language another extension (Quarto) or the plaintext fallback assigns it.
 - **Build/test:** esbuild bundles `src/` → `out/extension.js`; `tsc -p . --noEmit` is clean today.
   Two tiers: `npm test` (node:test unit for ports/paths) and `npm run test:e2e`
   (`@vscode/test-electron`, downloads a throwaway VS Code into gitignored `.vscode-test/`). The
@@ -85,10 +88,11 @@ minimal authoring of an injection:
 | **A — inject onto built-in `markdown`** | Cheapest, but a pure injection binds to the `markdown` language id: it **leaks our tokens into every `.md` file** (TextMate has no filename scoping) and the status bar still says "Markdown". Fails the "own it" intent. |
 | **B — full standalone grammar** | Total control, but you must re-own ~150 base-markdown + ~55 fenced rules (that's the 165KB Quarto file) for **zero coverage gain** over `include`. Maintenance/regression surface. |
 | **C — fork Quarto's grammar** | **Disqualified: AGPL-3.0** contaminates a ***REMOVED***, and it re-imports the `text.html.quarto` vocabulary the rename is shedding. Salvage the *technique*, never the file. |
-| **✅ Thin owned language (A⊕B)** | Define a real `taliesin` language owning `.tmd`(+`.qmd`); its small grammar `include`s `text.html.markdown` and adds only the deltas + its own `embeddedLanguages`. Owns the brand, stops the `.md` leak, claims `.qmd` deterministically, license-clean (MIT base only), tiny reviewable data-only diff. |
+| **✅ Thin owned language (A⊕B)** | Define a real `taliesin` language owning **`.tmd` only**; its small grammar `include`s `text.html.markdown` and adds only the deltas + its own `embeddedLanguages`. Owns the brand, stops the `.md` leak, **stays entirely clear of the Quarto `.qmd` association** (no precedence fight), license-clean (MIT base only), tiny reviewable data-only diff. |
 
 **Why:** it is the only option that (1) owns a distinct `taliesin` language/brand, (2) doesn't leak into
-`.md`, (3) can win `.qmd` from Quarto by precedence, (4) has zero AGPL exposure, (5) inherits all
+`.md`, (3) never collides with Quarto (it doesn't touch `.qmd` — a clean separation, per the owner's
+"leave Quarto behind" direction), (4) has zero AGPL exposure, (5) inherits all
 CommonMark + embedding for free via `include`, and (6) delivers the two deltas the owner most wants and
 even Quarto leaves as plain comments: **`#|` cell options** and **`@xref`/`[@cite]`**. The one unavoidable
 piece in *every* approach — highlighting the **braced** `{python}` form (base markdown only matches bare
@@ -111,11 +115,12 @@ Scope-name convention: `text.tmd.markdown` (grammar scopeName), sub-token scopes
 ## 5. Phased plan
 
 ### Phase 0 — Scaffold the language + grammar (registration only)
-**Goal:** a real `taliesin` language resolves for `.tmd`/`.qmd` with an empty grammar that `include`s
+**Goal:** a real `taliesin` language resolves for `.tmd` with an empty grammar that `include`s
 markdown, so CommonMark + inherited YAML/math already color. Prove registration headlessly first.
 - `package.json` → `contributes.languages`: `{ "id": "taliesin", "aliases": ["Taliesin","tmd"],
-  "extensions": [".tmd",".qmd"], "configuration": "./language-configuration.json" }`. Mirror `ext.rs`
-  `ACCEPTED_SOURCE_EXTS` + comment the manual-sync point.
+  "extensions": [".tmd"], "configuration": "./language-configuration.json" }`. **`.tmd` only** —
+  do NOT list `.qmd` (decision 1: no Quarto `.qmd` association). Leave a comment noting `.tmd` is the
+  native extension and `.qmd` is intentionally left to Quarto/plaintext.
 - `package.json` → `contributes.grammars`: `{ "language": "taliesin", "scopeName": "text.tmd.markdown",
   "path": "./syntaxes/tmd.tmLanguage.json", "embeddedLanguages": { "meta.embedded.block.frontmatter":
   "yaml", "meta.embedded.block.python": "python", "meta.embedded.block.r": "r",
@@ -182,22 +187,35 @@ option lines + keys get distinct scopes.
 **Goal:** the companion recognizes `.tmd` everywhere it hardcodes `.qmd`; land the grammar under an
 automated CI gate. **Manifest rebrand is OUT of scope.**
 - Teach the three gates `.tmd`: `extension.ts:14` + `:63` → factor an `isSourceFile(name)` helper
-  mirroring `ACCEPTED_SOURCE_EXTS`; `package.json:18` menu `when` → `resourceLangId == taliesin`
-  (cleaner than an extname `||` now that the language exists). **Leave `qmd-goto`/`qmd-cursor` alone.**
+  accepting **both** `.tmd` and `.qmd` (mirror `ACCEPTED_SOURCE_EXTS` — the *renderer* handles both, so
+  an existing `.qmd` file must still be previewable even though its editor language isn't `taliesin`).
+  `package.json:18` menu `when` → `resourceExtname == .tmd || resourceExtname == .qmd` (extname, NOT
+  `resourceLangId == taliesin` — that would strand `.qmd` files from the preview button since the
+  grammar is `.tmd`-only). **Leave `qmd-goto`/`qmd-cursor` alone.**
 - Add the `editor/vscode/**` CI job (`notes/backlog.md:202`): path-gated `npm ci` + `npm run build` +
   `npm test` + the grammar tokenization test. Prefer the **offline `vscode-textmate` harness** for the
   grammar gate so CI needs no VS Code download; keep `test:e2e` as an optional/local gate.
-- Update `editor/vscode/README.md`: document the `.tmd`/`.qmd` language, the `.qmd`-vs-Quarto precedence
-  note + `files.associations` escape hatch, and how to run the grammar test.
+- Update `editor/vscode/README.md`: document the `.tmd` language association (`.tmd`-only — `.qmd` is
+  intentionally left to Quarto/plaintext), the optional `"files.associations": {"*.qmd": "taliesin"}`
+  opt-in for anyone who wants their `.qmd` files highlighted by Taliesin, and how to run the grammar test.
 - **Files:** `src/extension.ts`, `package.json`, `README.md`, `.github/workflows/ci.yml`.
 - **Verify:** `npm run build` + `tsc -p . --noEmit` exit 0; grammar test + CI job pass; Open Preview
   now works from a `.tmd`; F5 regression check that cursor sync still works after the gate change.
 
-## 6. Decide these before/at the start of the execution session (recommendations included)
+## 6. Decisions
 
-1. **Claim `.qmd` too, or `.tmd`-only?** → *Recommend claim both* (matches `ext.rs` + the ownership
-   intent); document the `"files.associations": {"*.qmd": "taliesin"}` escape hatch for the Quarto
-   coexistence conflict. `.tmd`-only is the conflict-free fallback.
+1. **Claim `.qmd` too, or `.tmd`-only?** → **DECIDED 2026-07-02: `.tmd` only.** The grammar/language
+   binds `.tmd` and never touches `.qmd`, so there is no Quarto precedence conflict — Taliesin owns its
+   own extension cleanly. This is the deliberate first step of the owner's "completely leave Quarto
+   behind / a separate tool" direction (see `[[quarto-separation-direction]]` in memory). The *renderer*
+   still accepts `.qmd` as deprecated input, and the preview command/gates still accept `.qmd` files, so
+   nothing existing breaks — those `.qmd` files simply keep whatever editor language another extension
+   (Quarto) or the plaintext fallback gives them. No `files.associations` escape hatch is shipped (a user
+   who wants `.qmd` to use the Taliesin grammar can add `"files.associations": {"*.qmd": "taliesin"}`
+   themselves).
+
+Still to decide at execution time:
+
 2. **Bespoke themable scopes for `#|`/`@xref`/`[@cite]`, or reuse `comment.*`/`markup.*`?** → *Recommend
    bespoke* (the owner wants full control) — pick scope names most themes color reasonably.
 3. **Grammar test mechanism:** `vscode-textmate` offline unit harness (2 new devDeps, no VS Code
@@ -214,8 +232,9 @@ automated CI gate. **Manifest rebrand is OUT of scope.**
 - **Embedded scope names must be exact** (`source.python`, `source.r`, `source.js`, `source.yaml`,
   `text.tex.latex`, `source.sql`). A typo → silent no-inner-color. `source.mermaid`/`source.julia`
   need the user's language extension; absent → plaintext body (document it).
-- **`.qmd` vs Quarto precedence** is an inherent UX conflict of claiming `.qmd` (VS Code resolves by
-  precedence/last-installed + `files.associations`).
+- **~~`.qmd` vs Quarto precedence~~ — RESOLVED by decision 1** (`.tmd`-only): the grammar never claims
+  `.qmd`, so there is no association conflict with Quarto. (If a user *wants* `.qmd` to use the Taliesin
+  grammar, that's their opt-in `files.associations`, not our default.)
 - **Rule greediness / ordering:** deltas MUST precede `include: text.html.markdown`; verify by
   tokenization test, not by eye.
 - **Front-matter double-handling:** the inherited grammar may already tokenize `---` front matter;
@@ -226,8 +245,9 @@ automated CI gate. **Manifest rebrand is OUT of scope.**
 ## 8. Acceptance criteria
 
 - F5 on a `.tmd` shows **"Taliesin"** in the status bar; `getLanguages()` includes `taliesin` (asserted).
-- `.qmd` resolves to `taliesin` when Taliesin wins (documented precedence + escape hatch); the
-  `extensions` array matches `ACCEPTED_SOURCE_EXTS`.
+- The `contributes.languages` `extensions` array is **`[".tmd"]`** — opening a `.qmd` file does NOT
+  resolve to the `taliesin` language (it stays Quarto/markdown/plaintext); no `.qmd` association is
+  contributed. The preview **command** still works on a `.qmd` file (renderer back-compat).
 - A `{python}` cell body tokenizes as `meta.embedded.block.python`; `{=html}` does **not** (real
   Oniguruma tokenization test).
 - `#|`/`//|`/`%%|` options + keys, `@fig-`/`@sec-`, `[@cite]`, `::: {.class #id}`, `{{< shortcode >}}`,
