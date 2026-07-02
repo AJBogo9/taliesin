@@ -145,6 +145,44 @@ copy of `mermaid.min.js` (copied into the folder) before building, or use `--bar
 server-rendered figures on pages that don't need live diagrams. (Everything else is
 already local.)
 
+### Publishing & sharing
+
+A `--out <dir>` folder (a single doc, a site, or a book) is **plain static HTML** — no
+server runtime, no build step to reproduce, no database. So *any* way of serving static
+files publishes it. Pick whichever fits how you already work:
+
+- **Send it directly.** Zip the folder and email it, or drop it in a shared drive. The
+  recipient opens `index.html` from disk — everything works offline (see above). Best for
+  a draft to a supervisor or a co-author who just needs to read it.
+- **GitHub Pages** (free, good for a book/site tied to a repo). Build into a folder, then
+  publish that folder to a `gh-pages` branch (or commit it to `/docs` on your default
+  branch) and enable Pages in the repo settings:
+
+  ```sh
+  qmd-fast build mybook --out _site       # build the static site/book
+  cd _site
+  git init -q && git add -A && git commit -qm "publish"
+  git push -f git@github.com:you/mybook.git HEAD:gh-pages   # a throwaway history is fine
+  ```
+
+  (Add a `.nojekyll` file to the folder so GitHub serves the `_`-prefixed asset dirs.)
+- **A drag-and-drop host** (Netlify, Cloudflare Pages, Vercel, Surge). Point it at the
+  `--out` folder as the publish directory, or drag the folder into their web uploader.
+  Nothing to configure — it's already built.
+- **Your own server / object storage.** `rsync -a _site/ you@host:/var/www/mybook/`, or
+  `aws s3 sync _site s3://your-bucket` behind a CDN. It's just files.
+
+**Set `url:` in `_site.yml` before publishing to a real domain.** The absolute-URL
+`<meta>` tags (Open Graph / Twitter card image, canonical link) are only emitted when a
+`url:` is configured — `qmd-fast check` warns if you set a social `image:` without one.
+Run `qmd-fast check <dir>` first: a green check means no broken links, missing anchors, or
+other publish-blocking mistakes ship to your readers.
+
+qmd-fast has no built-in `publish` command yet — because the output is an ordinary static
+folder, the host's own workflow (above) already covers it. A thin `qmd-fast publish` that
+pushes `_site/` to a rendered-HTML branch is on the roadmap; until then the three-line
+`gh-pages` recipe is the whole story.
+
 ## Inspecting a document: `render` and `blocks`
 
 Two commands print to a terminal instead of starting a server, which is handy for
