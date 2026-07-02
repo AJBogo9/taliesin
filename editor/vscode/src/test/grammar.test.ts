@@ -96,6 +96,18 @@ function hasScope(toks: Tok[], needle: string, scopePrefix: string, line?: numbe
     .some((x) => x.scopes.some((s) => s.startsWith(scopePrefix)));
 }
 
+/**
+ * True if the token covering `needle` was tokenized by a REAL embedded sub-grammar for `.lang`
+ * (a rule scope ending in `.lang`, e.g. `support.function.builtin.python`). Note: an embedded
+ * grammar's own root scopeName (`source.python`) is NOT pushed onto the stack, so we look for its
+ * rule scopes instead — the proof that `include: source.<lang>` actually ran.
+ */
+function embedsLang(toks: Tok[], needle: string, lang: string): boolean {
+  return toks
+    .filter((x) => x.text.includes(needle))
+    .some((x) => x.scopes.some((s) => s.endsWith("." + lang) && !s.startsWith("meta.embedded")));
+}
+
 // ---------------------------------------------------------------------------
 // Phase 0 — the grammar registers and inherits CommonMark via `include: text.html.markdown`.
 // ---------------------------------------------------------------------------
@@ -126,4 +138,39 @@ test("Phase 0: inherited markdown — a BARE ```python fence embeds source.pytho
     hasScope(toks, "print", "meta.embedded.block.python"),
     "bare fenced python body embeds via the inherited markdown grammar"
   );
+});
+
+// ---------------------------------------------------------------------------
+// Phase 1 — braced executable cells + #|/// |/%%| cell options.
+// ---------------------------------------------------------------------------
+
+test("Phase 1: a braced ```{python} cell embeds source.python (the delta over base markdown)", async () => {
+  const toks = await tokenizeTmd("```{python}\nprint(1)\n```\n");
+  assert.ok(hasScope(toks, "print", "meta.embedded.block.python"), "braced {python} body embeds python");
+  assert.ok(embedsLang(toks, "print", "python"), "inner tokens are tokenized by the real python grammar");
+  assert.ok(hasScope(toks, "python", "keyword.other.taliesin.cell"), "the {python} header is scoped as a cell keyword");
+});
+
+test("Phase 1: ```{r} and ```{js} cells embed their languages", async () => {
+  const r = await tokenizeTmd("```{r}\nx <- 1\n```\n");
+  assert.ok(hasScope(r, "<-", "meta.embedded.block.r"), "{r} body embeds r");
+  const js = await tokenizeTmd("```{js}\nconst x = 1\n```\n");
+  assert.ok(hasScope(js, "const", "meta.embedded.block.js"), "{js} body embeds js");
+});
+
+test("Phase 1: #| cell options get a directive scope, not a plain comment", async () => {
+  const toks = await tokenizeTmd("```{python}\n#| echo: false\nprint(1)\n```\n");
+  assert.ok(hasScope(toks, "#|", "keyword.control.directive.tmd"), "the #| marker is a directive keyword");
+  assert.ok(hasScope(toks, "echo", "entity.name.tag.tmd"), "the option key is scoped like a tag/key");
+  // the space-before-pipe form + the //| (js) and %%| (mermaid) forms:
+  const spaced = await tokenizeTmd("```{python}\n# | echo: false\n```\n");
+  assert.ok(hasScope(spaced, "# |", "keyword.control.directive.tmd"), "'# |' (space) is tolerated");
+  const jsopt = await tokenizeTmd("```{js}\n//| input: scene\n```\n");
+  assert.ok(hasScope(jsopt, "//|", "keyword.control.directive.tmd"), "//| (js) marker recognized");
+});
+
+test("Phase 1: {=html} raw-output is NOT a cell (excluded; falls through to markdown)", async () => {
+  const toks = await tokenizeTmd("```{=html}\n<b>hi</b>\n```\n");
+  assert.ok(!hasScope(toks, "hi", "meta.embedded.block.python"), "{=html} is not a python cell");
+  assert.ok(!hasScope(toks, "html", "keyword.other.taliesin.cell"), "{=html} does not get the taliesin cell keyword");
 });

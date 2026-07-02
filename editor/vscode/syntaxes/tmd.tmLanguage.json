@@ -2,9 +2,120 @@
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
   "name": "Taliesin",
   "scopeName": "text.tmd.markdown",
-  "comment": "Taliesin (.tmd) grammar: a thin owned superset that includes VS Code's built-in MIT text.html.markdown for all CommonMark and adds only the Taliesin deltas. Author-owned deltas are registered BEFORE the markdown include so they win over markdown's generic rules (esp. the braced {lang} fence vs markdown's generic fenced-code rule).",
+  "comment": "Taliesin (.tmd) grammar: a thin owned superset that includes VS Code's built-in MIT text.html.markdown for all CommonMark and adds only the Taliesin deltas. Deltas are registered BEFORE the markdown include so they win over markdown's generic rules (esp. the braced {lang} exec-cell fence vs markdown's generic fenced-code rule). Grounded in the Rust parser: cell fence = cell_extract.rs:165 (code_lang), cell options = cell_extract.rs:15 (#|//|%%|).",
   "patterns": [
+    { "include": "#taliesin_cells" },
     { "include": "text.html.markdown" }
   ],
-  "repository": {}
+  "repository": {
+    "taliesin_cells": {
+      "comment": "Braced executable cells ```{lang}. Base markdown only matches BARE info strings (```python) — the braced form is Taliesin's. Specific langs embed their real grammar; a generic fallback still scopes the fence + #| options for any other {lang}. {=html}/{=latex} raw-output attrs are NOT langs (cell_extract.rs returns None) and fall through to markdown (their info starts with '=', excluded by the letter-led capture).",
+      "patterns": [
+        { "include": "#cell_python" },
+        { "include": "#cell_r" },
+        { "include": "#cell_js" },
+        { "include": "#cell_julia" },
+        { "include": "#cell_mermaid" },
+        { "include": "#cell_sql" },
+        { "include": "#cell_generic" }
+      ]
+    },
+
+    "cell_python": {
+      "begin": "(^|\\G)(\\s*)(`{3,}|~{3,})\\s*\\{\\.?(python)\\b[^}]*\\}\\s*$",
+      "end": "(^|\\G)(\\2|\\s{0,3})(\\3)\\s*$",
+      "beginCaptures": {
+        "3": { "name": "punctuation.definition.tmd.codefence.begin" },
+        "4": { "name": "fenced_code.block.language.tmd keyword.other.taliesin.cell" }
+      },
+      "endCaptures": { "3": { "name": "punctuation.definition.tmd.codefence.end" } },
+      "name": "markup.fenced_code.block.tmd",
+      "contentName": "meta.embedded.block.python",
+      "patterns": [{ "include": "#cell_option" }, { "include": "source.python" }]
+    },
+    "cell_r": {
+      "begin": "(^|\\G)(\\s*)(`{3,}|~{3,})\\s*\\{\\.?(r)\\b[^}]*\\}\\s*$",
+      "end": "(^|\\G)(\\2|\\s{0,3})(\\3)\\s*$",
+      "beginCaptures": {
+        "3": { "name": "punctuation.definition.tmd.codefence.begin" },
+        "4": { "name": "fenced_code.block.language.tmd keyword.other.taliesin.cell" }
+      },
+      "endCaptures": { "3": { "name": "punctuation.definition.tmd.codefence.end" } },
+      "name": "markup.fenced_code.block.tmd",
+      "contentName": "meta.embedded.block.r",
+      "patterns": [{ "include": "#cell_option" }, { "include": "source.r" }]
+    },
+    "cell_js": {
+      "begin": "(^|\\G)(\\s*)(`{3,}|~{3,})\\s*\\{\\.?(js|javascript|ojs)\\b[^}]*\\}\\s*$",
+      "end": "(^|\\G)(\\2|\\s{0,3})(\\3)\\s*$",
+      "beginCaptures": {
+        "3": { "name": "punctuation.definition.tmd.codefence.begin" },
+        "4": { "name": "fenced_code.block.language.tmd keyword.other.taliesin.cell" }
+      },
+      "endCaptures": { "3": { "name": "punctuation.definition.tmd.codefence.end" } },
+      "name": "markup.fenced_code.block.tmd",
+      "contentName": "meta.embedded.block.js",
+      "patterns": [{ "include": "#cell_option" }, { "include": "source.js" }]
+    },
+    "cell_julia": {
+      "begin": "(^|\\G)(\\s*)(`{3,}|~{3,})\\s*\\{\\.?(julia)\\b[^}]*\\}\\s*$",
+      "end": "(^|\\G)(\\2|\\s{0,3})(\\3)\\s*$",
+      "beginCaptures": {
+        "3": { "name": "punctuation.definition.tmd.codefence.begin" },
+        "4": { "name": "fenced_code.block.language.tmd keyword.other.taliesin.cell" }
+      },
+      "endCaptures": { "3": { "name": "punctuation.definition.tmd.codefence.end" } },
+      "name": "markup.fenced_code.block.tmd",
+      "contentName": "meta.embedded.block.julia",
+      "patterns": [{ "include": "#cell_option" }, { "include": "source.julia" }]
+    },
+    "cell_mermaid": {
+      "begin": "(^|\\G)(\\s*)(`{3,}|~{3,})\\s*\\{\\.?(mermaid|dot)\\b[^}]*\\}\\s*$",
+      "end": "(^|\\G)(\\2|\\s{0,3})(\\3)\\s*$",
+      "beginCaptures": {
+        "3": { "name": "punctuation.definition.tmd.codefence.begin" },
+        "4": { "name": "fenced_code.block.language.tmd keyword.other.taliesin.cell" }
+      },
+      "endCaptures": { "3": { "name": "punctuation.definition.tmd.codefence.end" } },
+      "name": "markup.fenced_code.block.tmd",
+      "contentName": "meta.embedded.block.mermaid",
+      "patterns": [{ "include": "#cell_option" }, { "include": "source.mermaid" }]
+    },
+    "cell_sql": {
+      "begin": "(^|\\G)(\\s*)(`{3,}|~{3,})\\s*\\{\\.?(sql)\\b[^}]*\\}\\s*$",
+      "end": "(^|\\G)(\\2|\\s{0,3})(\\3)\\s*$",
+      "beginCaptures": {
+        "3": { "name": "punctuation.definition.tmd.codefence.begin" },
+        "4": { "name": "fenced_code.block.language.tmd keyword.other.taliesin.cell" }
+      },
+      "endCaptures": { "3": { "name": "punctuation.definition.tmd.codefence.end" } },
+      "name": "markup.fenced_code.block.tmd",
+      "contentName": "meta.embedded.block.sql",
+      "patterns": [{ "include": "#cell_option" }, { "include": "source.sql" }]
+    },
+    "cell_generic": {
+      "comment": "Any other braced executable cell {lang}: scope the fence + #| options even without a bundled sub-grammar. The letter-led lang capture excludes {=html}/{=latex} (which start with '=').",
+      "begin": "(^|\\G)(\\s*)(`{3,}|~{3,})\\s*\\{\\.?([a-zA-Z][\\w-]*)\\b[^}]*\\}\\s*$",
+      "end": "(^|\\G)(\\2|\\s{0,3})(\\3)\\s*$",
+      "beginCaptures": {
+        "3": { "name": "punctuation.definition.tmd.codefence.begin" },
+        "4": { "name": "fenced_code.block.language.tmd keyword.other.taliesin.cell" }
+      },
+      "endCaptures": { "3": { "name": "punctuation.definition.tmd.codefence.end" } },
+      "name": "markup.fenced_code.block.tmd",
+      "contentName": "meta.embedded.block.tmd",
+      "patterns": [{ "include": "#cell_option" }]
+    },
+
+    "cell_option": {
+      "comment": "A #| / //| / %%| cell-option directive line (a space before the pipe is tolerated: '# |', '// |', '%% |'). Consumes the whole line so the host sub-grammar (which would read it as a comment) doesn't re-tokenize it. key: value — cell_extract.rs:15-40; keys: validate.rs:18.",
+      "match": "^(\\s*)(#\\s?\\||//\\s?\\||%%\\s?\\|)(\\s*)([\\w-]+)(\\s*:)(.*)$",
+      "captures": {
+        "2": { "name": "keyword.control.directive.tmd" },
+        "4": { "name": "entity.name.tag.tmd.cell-option" },
+        "5": { "name": "punctuation.separator.key-value.tmd" },
+        "6": { "name": "string.unquoted.tmd.cell-option" }
+      }
+    }
+  }
 }
