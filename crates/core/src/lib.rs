@@ -43,13 +43,13 @@ pub mod site;
 pub use diff::{BlockOp, diff_blocks};
 pub use frontmatter::closest;
 pub use render::{
-    Block, DeckParts, DocFormat, GRAPH_JS, OutputMode, PageParts, RenderedDoc, SEARCH_JS, SiteCtx,
+    Block, DeckParts, DocFormat, GRAPH_JS, OutputMode, PageParts, RenderedDoc, SEARCH_JS,
     TOC_SPY_JS, assemble_deck_page, assemble_html_page, code_scripts, deck_client_script,
     escape_attr, favicon_link, html_escape, render_doc_to_page, render_document,
     render_document_with_includes, render_document_with_includes_scoped, render_html_page,
     render_html_page_with_includes, slides_html,
 };
-pub use site::{Page, Site, SiteConfig};
+pub use site::{Page, Site};
 
 /// Crate version, surfaced so the server/CLI can report a single source of truth.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

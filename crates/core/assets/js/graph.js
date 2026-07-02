@@ -184,5 +184,4 @@
       overlay ? close() : open();
     }
   });
-  window.taliOpenGraph = open;
 })();

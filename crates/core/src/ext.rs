@@ -8,9 +8,6 @@
 
 use std::path::Path;
 
-/// The native source extension (no leading dot). New scaffolding writes this.
-pub const SOURCE_EXT: &str = "tmd";
-
 /// Every accepted source extension (no leading dot), native first. A file is a
 /// Taliesin source document iff its extension is one of these.
 pub const ACCEPTED_SOURCE_EXTS: &[&str] = &["tmd", "qmd"];

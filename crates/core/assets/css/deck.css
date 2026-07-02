@@ -4,7 +4,7 @@
 
 html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
 /* The default deck background is the `html` canvas; `body` stays transparent so the
-   per-slide `.tali-bg` layer (z-index -1) can paint above the canvas and below the
+   per-slide `.tali-slide-bg` layer (z-index -1) can paint above the canvas and below the
    (transparent) slides. A `body` background would sit above z-index -1 and hide it. */
 html { background: #fff; }
 body { background: transparent; }
@@ -494,7 +494,6 @@ html.tali-print .tali-slide-bg { display: none; } /* per-slide backgrounds aren'
 html.tali-scroll .tali-draw, html.tali-scroll .tali-draw-bar,
 html.tali-print .tali-draw, html.tali-print .tali-draw-bar,
 .tali-deck.overview .tali-draw, .tali-deck.overview .tali-draw-bar { display: none !important; }
-.tali-deck.overview .tali-bg { display: none; } /* the per-slide bg layer isn't shown in the grid */
 
 /* PDF export: deck.js adds `tali-print` to <html> on Cmd/Ctrl+P (and for the
    ?qmd=print preview), flattening the deck to one fixed-size slide per page —
@@ -537,7 +536,6 @@ html.tali-print .tali-slide-number { display: none; }
 html.tali-scroll, html.tali-scroll body {
   width: auto; height: auto; overflow: auto; margin: 0; background: #fff;
 }
-html.tali-scroll .tali-bg { display: none; }
 html.tali-scroll .tali-deck {
   position: static; width: auto; height: auto; overflow: visible;
   font-size: clamp(15px, 4.2vw, 21px);
@@ -579,7 +577,7 @@ html.tali-scroll .tali-slide-number { display: none; }
 
 /* === Dark theme backgrounds (palette/colours defined at the top of this file) =====
    The slides and body are transparent, so the deck background is the html canvas
-   (which lets the per-slide `.tali-bg` layer paint above it). Overview tiles, the
+   (which lets the per-slide `.tali-slide-bg` layer paint above it). Overview tiles, the
    slide-number chip, and reader mode each carry their own hardcoded light surface,
    so override those too. PDF print stays light (deck.js removes tali-deck-dark). */
 html.tali-deck-dark { background: #16181d; }

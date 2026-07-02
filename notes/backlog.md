@@ -118,7 +118,7 @@ Residuals from the 2026-07-01 cluster (deferred, low):
   polish pass.
 
 ### Deck engine (deep-audit P2)
-Two items deferred from the 2026-07-01 cluster:
+Deferred:
 - [ ] **Speaker-preview iframes still run `{js}` live** (2 live embed iframes). Skipping `{js}` in
   `deck.mode==='embed'` is a one-line guard in qmd-js.js, BUT it loses the presenter's live preview
   visual — an author call (skip for perf vs snapshot-clone the current state). Deferred pending that
@@ -126,6 +126,10 @@ Two items deferred from the 2026-07-01 cluster:
 - [ ] **Drop `fitSlide` from the resize path** (the coalesce shipped; the full re-fit of every slide
   per frame remains). `apply()` doesn't fit the current slide today, so a lazy fit-on-show refactor
   (fit current on resize/nav, mark others dirty) is needed to safely drop the all-slides fit. Medium.
+- [ ] **Overview never hides the per-slide bg layer** (latent, low). The rule meant to hide it selected
+  the pre-rename `.tali-bg` (dead → no-op) and was removed in the dead-code pass. Hiding it for real
+  (like scroll mode's `deck.css` `.tali-slide-bg` rule) also needs overview's own dark-bg-text fallback,
+  else a dark slide's light text goes invisible on the light tile. Decide if wanted.
 
 ### Site / books: silent omissions (deep-audit P2)
 - [ ] **`contents: .` lacks a persistent corpus PAGE** (LOW, audit-qmd residual). The root-listing fix
