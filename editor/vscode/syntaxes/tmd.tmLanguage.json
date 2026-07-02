@@ -3,11 +3,38 @@
   "name": "Taliesin",
   "scopeName": "text.tmd.markdown",
   "comment": "Taliesin (.tmd) grammar: a thin owned superset that includes VS Code's built-in MIT text.html.markdown for all CommonMark and adds only the Taliesin deltas. Deltas are registered BEFORE the markdown include so they win over markdown's generic rules (esp. the braced {lang} exec-cell fence vs markdown's generic fenced-code rule). Grounded in the Rust parser: cell fence = cell_extract.rs:165 (code_lang), cell options = cell_extract.rs:15 (#|//|%%|).",
+  "comment_frontmatter": "Leading YAML front matter is handled by the INHERITED text.html.markdown grammar (its #frontMatter rule is \\A-anchored and already sets contentName meta.embedded.block.frontmatter → mapped to yaml by our embeddedLanguages). A custom rule here would be redundant AND both use \\A, which only fires at true document start (real VS Code handles this; a mid-doc --- correctly stays a thematic break / deck slide separator).",
   "patterns": [
     { "include": "#taliesin_cells" },
+    { "include": "#div" },
+    { "include": "#pause" },
     { "include": "text.html.markdown" }
   ],
   "repository": {
+    "div": {
+      "comment": "::: fenced div (Pandoc): scope the colons + any { .class #id key=val } attribute block or bare `::: classname`. Content between fences is normal markdown (handled by the include). GENERIC — the callout/theorem/layout vocab is NOT enumerated (would drift from validate.rs). divs.rs:101,162.",
+      "match": "^(\\s*)(:{3,})[ \\t]*(.*)$",
+      "captures": {
+        "2": { "name": "punctuation.definition.tmd.div keyword.control.tmd.div" },
+        "3": { "patterns": [{ "include": "#div_attrs" }] }
+      }
+    },
+    "div_attrs": {
+      "patterns": [
+        { "match": "\\.[A-Za-z][\\w-]*", "name": "entity.name.tag.tmd.div-class" },
+        { "match": "#[A-Za-z][\\w-]*", "name": "entity.other.attribute-name.id.tmd" },
+        { "match": "([\\w-]+)(=)", "captures": { "1": { "name": "entity.other.attribute-name.tmd" }, "2": { "name": "punctuation.separator.key-value.tmd" } } },
+        { "match": "\"[^\"]*\"", "name": "string.quoted.double.tmd" },
+        { "match": "[{}]", "name": "punctuation.definition.tmd.attributes" },
+        { "match": "^[A-Za-z][\\w-]*", "name": "entity.name.tag.tmd.div-class" }
+      ]
+    },
+    "pause": {
+      "comment": "Deck fragment/pause break: a line whose only content is `. . .` (deck.rs:378).",
+      "match": "^\\s*(\\. \\. \\.)\\s*$",
+      "captures": { "1": { "name": "keyword.control.tmd.fragment" } }
+    },
+
     "taliesin_cells": {
       "comment": "Braced executable cells ```{lang}. Base markdown only matches BARE info strings (```python) — the braced form is Taliesin's. Specific langs embed their real grammar; a generic fallback still scopes the fence + #| options for any other {lang}. {=html}/{=latex} raw-output attrs are NOT langs (cell_extract.rs returns None) and fall through to markdown (their info starts with '=', excluded by the letter-led capture).",
       "patterns": [

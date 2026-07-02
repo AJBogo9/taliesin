@@ -25,12 +25,19 @@ function findGrammar(rel: string): string | null {
   return hits.length ? hits[0] : null;
 }
 
-// scopeName -> grammar file on disk. Our grammar + the download's bundled base grammars.
+// scopeName -> grammar file on disk. Our grammars + the download's bundled base grammars.
 const GRAMMAR_FILES: Record<string, string | null> = {
   "text.tmd.markdown": path.join(EXT_ROOT, "syntaxes", "tmd.tmLanguage.json"),
+  "text.tmd.markdown.injection": path.join(EXT_ROOT, "syntaxes", "tmd.injection.tmLanguage.json"),
   "text.html.markdown": findGrammar("markdown-basics/syntaxes/markdown.tmLanguage.json"),
   "source.python": findGrammar("python/syntaxes/MagicPython.tmLanguage.json"),
   "source.yaml": findGrammar("yaml/syntaxes/yaml.tmLanguage.json"),
+};
+
+// External injection grammars, keyed by the host scope they inject into (mirrors how VS Code
+// resolves contributes.grammars `injectTo` — the offline registry needs this told explicitly).
+const INJECTIONS: Record<string, string[]> = {
+  "text.tmd.markdown": ["text.tmd.markdown.injection"],
 };
 
 let registryPromise: Promise<vsctm.Registry> | null = null;
@@ -47,6 +54,7 @@ function getRegistry(): Promise<vsctm.Registry> {
   registryPromise = Promise.resolve(
     new vsctm.Registry({
       onigLib,
+      getInjections: (scopeName: string) => INJECTIONS[scopeName],
       loadGrammar: async (scopeName: string) => {
         const file = GRAMMAR_FILES[scopeName];
         if (!file || !fs.existsSync(file)) return null; // unknown/missing → graceful null
@@ -173,4 +181,70 @@ test("Phase 1: {=html} raw-output is NOT a cell (excluded; falls through to mark
   const toks = await tokenizeTmd("```{=html}\n<b>hi</b>\n```\n");
   assert.ok(!hasScope(toks, "hi", "meta.embedded.block.python"), "{=html} is not a python cell");
   assert.ok(!hasScope(toks, "html", "keyword.other.taliesin.cell"), "{=html} does not get the taliesin cell keyword");
+});
+
+// ---------------------------------------------------------------------------
+// Phase 2 — front matter, math, divs, shortcodes, xref, cite, deck pause.
+// ---------------------------------------------------------------------------
+
+test("Phase 2: a mid-doc --- stays a thematic break (never front matter)", async () => {
+  // Leading `---` YAML front matter is handled by the INHERITED markdown grammar (its #frontMatter
+  // rule is \A-anchored and sets meta.embedded.block.frontmatter → yaml via our embeddedLanguages);
+  // \A only fires at true document start, which an isolated tokenizeLine harness can't reproduce, so
+  // that positive case is an F5 check. What the harness CAN pin (and the real risk) is that a mid-doc
+  // `---` is NOT swallowed as front matter — it stays a markdown thematic break / deck slide separator.
+  const toks = await tokenizeTmd("text\n\n---\n\nmore\n");
+  const midDash = toks.find((t) => t.text.includes("---") && t.line === 2);
+  assert.ok(midDash, "found the mid-doc ---");
+  assert.ok(
+    !midDash!.scopes.some((s) => s.includes("frontmatter")),
+    "mid-doc --- is NOT front matter"
+  );
+});
+
+test("Phase 2: ::: div fence + {.class #id} attrs are scoped", async () => {
+  const toks = await tokenizeTmd('::: {.callout-note #warn title="Heads up"}\nbody\n:::\n');
+  assert.ok(hasScope(toks, ":::", "keyword.control.tmd.div"), "::: colons scoped as a div keyword");
+  assert.ok(hasScope(toks, ".callout-note", "entity.name.tag.tmd.div-class"), ".class scoped");
+  assert.ok(hasScope(toks, "#warn", "entity.other.attribute-name.id.tmd"), "#id scoped");
+});
+
+test("Phase 2: deck pause `. . .` is scoped", async () => {
+  const toks = await tokenizeTmd("a\n\n. . .\n\nb\n");
+  assert.ok(hasScope(toks, ". . .", "keyword.control.tmd.fragment"), "the `. . .` fragment break is scoped");
+});
+
+test("Phase 2 (injection): inline $…$ and display $$…$$ math get a math scope", async () => {
+  const inl = await tokenizeTmd("Euler: $e^{i\\pi}+1=0$ is nice\n");
+  assert.ok(hasScope(inl, "e^", "meta.embedded.math.tmd") || hasScope(inl, "e^", "markup.math.inline.tmd"), "inline $…$ math scoped");
+  const dis = await tokenizeTmd("$$\\int_0^1 x\\,dx$$ {#eq-area}\n");
+  assert.ok(hasScope(dis, "int", "markup.math.display.tmd"), "display $$…$$ math scoped");
+  assert.ok(hasScope(dis, "eq-area", "entity.name.label.tmd"), "the {#eq-…} label is scoped");
+});
+
+test("Phase 2 (injection): {{< shortcode >}} name is scoped", async () => {
+  const toks = await tokenizeTmd('See {{< embed slides.tmd title="Talk" >}} here\n');
+  assert.ok(hasScope(toks, "embed", "keyword.control.tmd.shortcode"), "the shortcode name is a control keyword");
+});
+
+test("Phase 2 (injection): @xref refs scoped; email is NOT a ref", async () => {
+  const toks = await tokenizeTmd("see @fig-scree and @sec-intro but not bob@rem-server.com\n");
+  assert.ok(hasScope(toks, "@fig-scree", "markup.other.reference.tmd"), "bare @fig- is a reference");
+  assert.ok(hasScope(toks, "@sec-intro", "markup.other.reference.tmd"), "bare @sec- is a reference");
+  const email = toks.find((t) => t.text.includes("rem-server"));
+  assert.ok(
+    email && !email.scopes.some((s) => s.startsWith("markup.other.reference")),
+    "bob@rem-server.com is NOT tokenized as a reference (word-boundary guard)"
+  );
+});
+
+test("Phase 2 (injection): [@cite] citation keys scoped", async () => {
+  const toks = await tokenizeTmd("as shown [@bishop2006, p. 12] and [@a; @b]\n");
+  assert.ok(hasScope(toks, "@bishop2006", "constant.other.citekey.tmd"), "the cite key is scoped");
+});
+
+test("Phase 2 (injection): $ and @ inside a code cell are NOT math/refs", async () => {
+  const toks = await tokenizeTmd("```{python}\ncost = 5  # $5 and email@rem-x\n```\n");
+  assert.ok(!hasScope(toks, "$5", "markup.math"), "a $ inside a python cell is not math");
+  assert.ok(!hasScope(toks, "email@rem", "markup.other.reference"), "an @ inside a python cell is not a ref");
 });

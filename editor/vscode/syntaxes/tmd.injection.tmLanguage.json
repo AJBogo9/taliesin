@@ -1,0 +1,66 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Taliesin inline",
+  "scopeName": "text.tmd.markdown.injection",
+  "comment": "Inline Taliesin deltas that must fire MID-PARAGRAPH (where markdown's inline context owns tokens): $-math, {{< shortcodes >}}, @xref, [@cite]. Injected into text.tmd.markdown ONLY (via package.json injectTo) so it never leaks into plain .md files. The injectionSelector keeps these out of code cells / fenced code / comments (so an `@` in python or a `$` in a shell block is not tokenized). Grounded: math mod.rs:28,1662; shortcodes extension/mod.rs:364; xref cite/render.rs:11,285; cite render.rs:312.",
+  "injectionSelector": "L:text.tmd.markdown -comment -markup.fenced_code -markup.raw -meta.embedded.block -meta.embedded.math -markup.math -string",
+  "patterns": [
+    { "include": "#math_display" },
+    { "include": "#math_inline" },
+    { "include": "#shortcode" },
+    { "include": "#xref" },
+    { "include": "#cite" }
+  ],
+  "repository": {
+    "math_display": {
+      "comment": "$$ … $$ with an optional { #eq-label } tail (mod.rs:1662).",
+      "begin": "(\\$\\$)",
+      "end": "(\\$\\$)[ \\t]*(\\{#eq-[\\w-]+\\})?",
+      "beginCaptures": { "1": { "name": "punctuation.definition.math.begin.tmd" } },
+      "endCaptures": {
+        "1": { "name": "punctuation.definition.math.end.tmd" },
+        "2": { "name": "entity.name.label.tmd" }
+      },
+      "name": "markup.math.display.tmd",
+      "contentName": "meta.embedded.math.tmd"
+    },
+    "math_inline": {
+      "comment": "$ … $ inline. Guarded so `$5` currency / a `$` adjacent to a word is not opened. The body is scoped meta.embedded.math.tmd → mapped to latex by embeddedLanguages (VS Code embeds a LaTeX grammar IF one is installed; NO hard `include: text.tex`, which VS Code does not bundle and which silently disables the rule when unresolved).",
+      "begin": "(?<![\\w$])(\\$)(?=[^\\s$][^$]*\\$)",
+      "end": "(\\$)|$",
+      "beginCaptures": { "1": { "name": "punctuation.definition.math.begin.tmd" } },
+      "endCaptures": { "1": { "name": "punctuation.definition.math.end.tmd" } },
+      "name": "markup.math.inline.tmd",
+      "contentName": "meta.embedded.math.tmd"
+    },
+    "shortcode": {
+      "comment": "{{< name args >}} single-line shortcode (extension/mod.rs).",
+      "begin": "(\\{\\{<)[ \\t]*([\\w-]+)",
+      "end": "(>\\}\\})",
+      "beginCaptures": {
+        "1": { "name": "punctuation.definition.tmd.shortcode.begin" },
+        "2": { "name": "keyword.control.tmd.shortcode" }
+      },
+      "endCaptures": { "1": { "name": "punctuation.definition.tmd.shortcode.end" } },
+      "name": "meta.shortcode.tmd",
+      "patterns": [
+        { "match": "([\\w-]+)(=)", "captures": { "1": { "name": "entity.other.attribute-name.tmd" }, "2": { "name": "punctuation.separator.key-value.tmd" } } },
+        { "match": "\"[^\"]*\"", "name": "string.quoted.double.tmd" }
+      ]
+    },
+    "xref": {
+      "comment": "Bare @fig-/@sec-/@tbl-/@eq-/@lst-/@thm-/@lem-/@cor-/@prp-/@def-/@exm-/@rem- reference (cite/render.rs:11,285). The lookbehind reproduces the parser's word-boundary guard so bob@rem-server.com is NOT a reference.",
+      "match": "(?<![\\w@.])@(?:fig|sec|tbl|eq|lst|thm|lem|cor|prp|def|exm|rem)-[\\w:-]+",
+      "name": "markup.other.reference.tmd support.variable.reference.tmd"
+    },
+    "cite": {
+      "comment": "[@key] citation group, incl. [@a; @b, p. 5] and [-@key] (render.rs:312). A cross-ref key in brackets ([@fig-x]) is rendered as an xref by the engine but is fine cite-styled here.",
+      "begin": "(?<![\\w`])(\\[)(?=-?@[\\w:-])",
+      "end": "(\\])",
+      "beginCaptures": { "1": { "name": "punctuation.definition.tmd.cite.begin" } },
+      "endCaptures": { "1": { "name": "punctuation.definition.tmd.cite.end" } },
+      "name": "markup.other.citation.tmd",
+      "patterns": [{ "match": "-?@[\\w:-]+", "name": "constant.other.citekey.tmd" }]
+    }
+  }
+}

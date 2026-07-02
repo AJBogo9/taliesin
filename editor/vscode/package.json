@@ -43,6 +43,14 @@
           "meta.embedded.block.sql": "sql",
           "meta.embedded.math.tmd": "latex"
         }
+      },
+      {
+        "scopeName": "text.tmd.markdown.injection",
+        "path": "./syntaxes/tmd.injection.tmLanguage.json",
+        "injectTo": ["text.tmd.markdown"],
+        "embeddedLanguages": {
+          "meta.embedded.math.tmd": "latex"
+        }
       }
     ],
     "commands": [
