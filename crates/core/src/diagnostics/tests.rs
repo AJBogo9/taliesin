@@ -83,9 +83,9 @@ fn local_links_flag_html_link_whose_only_source_is_qmd() {
 
 #[test]
 fn local_links_accept_html_link_with_tmd_source() {
-    // Same as `local_links_accept_html_link_with_qmd_source`, but the on-disk source is
-    // spelled `.tmd` (Taliesin's native extension): the probe must try every accepted
-    // source ext, not just `.qmd`, or a real `.tmd` page's `.html` link is false-flagged.
+    // Unlike `local_links_flag_html_link_whose_only_source_is_qmd`, the on-disk source
+    // here is spelled `.tmd` (Taliesin's native and only source extension), so the
+    // probe finds it and the `.html` link resolves clean.
     let dir = Tmp::new("links-html-tmd");
     std::fs::write(dir.0.join("page.tmd"), "x").unwrap();
     std::fs::create_dir_all(dir.0.join("guide")).unwrap();
