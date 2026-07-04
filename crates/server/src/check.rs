@@ -150,7 +150,7 @@ fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
         }
     }
     // Cross-page relative-link + anchor existence, resolved against the site page
-    // registry (file links here, not the single-doc `validate_local_links`: a `.qmd`
+    // registry (file links here, not the single-doc `validate_local_links`: a `.tmd`
     // link rewrites to its built `.html` and only the registry knows the real urls).
     for (page_rel, w) in site.validate_cross_page_links() {
         out.push(diag_from(&w, &page_rel));
@@ -313,7 +313,7 @@ mod tests {
     #[test]
     fn collect_diagnostics_flags_frontmatter_typo_and_broken_xref() {
         let dir = tmp("check-file");
-        let f = dir.join("doc.qmd");
+        let f = dir.join("doc.tmd");
         fs::write(&f, "---\ntitle: T\ntitel: oops\n---\n\nSee @fig-nope.\n").unwrap();
         let diags = collect_diagnostics(&f).expect("ok");
         assert!(
@@ -325,7 +325,7 @@ mod tests {
             "broken xref: {diags:?}"
         );
         assert!(
-            diags.iter().all(|d| d.file.contains("doc.qmd")),
+            diags.iter().all(|d| d.file.contains("doc.tmd")),
             "located to file: {diags:?}"
         );
         let _ = fs::remove_dir_all(&dir);
@@ -337,14 +337,14 @@ mod tests {
         // `check`/`build`/`render` silently accept malformed front matter (the lenient
         // line-parser then mis-extracts fields). `check` must surface it too.
         let dir = tmp("check-badyaml");
-        let f = dir.join("doc.qmd");
+        let f = dir.join("doc.tmd");
         // Unterminated double-quoted scalar -> serde_yaml parse error.
         fs::write(&f, "---\ntitle: \"unterminated\nauthor: A\n---\n\nBody.\n").unwrap();
         let diags = collect_diagnostics(&f).expect("ok");
         assert!(
             diags
                 .iter()
-                .any(|d| d.message.contains("YAML") && d.file.contains("doc.qmd")),
+                .any(|d| d.message.contains("YAML") && d.file.contains("doc.tmd")),
             "malformed YAML must be reported, located: {diags:?}"
         );
         let _ = fs::remove_dir_all(&dir);
@@ -354,7 +354,7 @@ mod tests {
     fn collect_diagnostics_surfaces_check_superset_validators() {
         // One doc tripping each new static check; `check` must surface them all.
         let dir = tmp("check-superset");
-        let f = dir.join("doc.qmd");
+        let f = dir.join("doc.tmd");
         fs::write(
             &f,
             "---\ntitle: T\n---\n\n## A {#dup}\n\n## B {#dup}\n\nSee [bad](#nope) and ![x](missing.png) and [@key2020].\n",
@@ -367,7 +367,7 @@ mod tests {
         assert!(has("missing.png"), "missing asset: {diags:?}");
         assert!(has("bibliography"), "citation w/o bib: {diags:?}");
         assert!(
-            diags.iter().all(|d| d.file.contains("doc.qmd")),
+            diags.iter().all(|d| d.file.contains("doc.tmd")),
             "located to file: {diags:?}"
         );
         let _ = fs::remove_dir_all(&dir);
@@ -378,9 +378,9 @@ mod tests {
         // The site path (per-page base dir + page.rel plumbing) must trip the validators too.
         let dir = tmp("check-site");
         fs::write(dir.join("_site.yml"), "title: S\n").unwrap();
-        fs::write(dir.join("index.qmd"), "---\ntitle: Home\n---\n\nWelcome.\n").unwrap();
+        fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nWelcome.\n").unwrap();
         fs::write(
-            dir.join("page.qmd"),
+            dir.join("page.tmd"),
             "---\ntitle: P\n---\n\n## A {#dup}\n\n## B {#dup}\n\nA missing ![x](nope.png).\n",
         )
         .unwrap();
@@ -388,13 +388,13 @@ mod tests {
         assert!(
             diags
                 .iter()
-                .any(|d| d.message.contains("duplicate heading id") && d.file.contains("page.qmd")),
+                .any(|d| d.message.contains("duplicate heading id") && d.file.contains("page.tmd")),
             "dup id located to its page: {diags:?}"
         );
         assert!(
             diags
                 .iter()
-                .any(|d| d.message.contains("nope.png") && d.file.contains("page.qmd")),
+                .any(|d| d.message.contains("nope.png") && d.file.contains("page.tmd")),
             "missing image located to its page: {diags:?}"
         );
         let _ = fs::remove_dir_all(&dir);
@@ -471,12 +471,12 @@ mod tests {
         // video, dangling `//| input`, and a reactive cycle. `check` must surface them all,
         // located, while leaving an external link + an existing sibling alone.
         let dir = tmp("check-links");
-        fs::write(dir.join("real.qmd"), "x").unwrap();
-        let f = dir.join("doc.qmd");
+        fs::write(dir.join("real.tmd"), "x").unwrap();
+        let f = dir.join("doc.tmd");
         fs::write(
             &f,
             "---\ntitle: T\n---\n\n\
-             A [gone](missing.qmd), an [ok](real.qmd), an [ext](https://example.com).\n\n\
+             A [gone](missing.tmd), an [ok](real.tmd), an [ext](https://example.com).\n\n\
              {{< video clip.mp4 >}}\n\n\
              ```{js}\n//| input: nope\nreturn nope;\n```\n\n\
              ```{js}\n//| name: a\n//| input: b\nreturn b;\n```\n\n\
@@ -485,7 +485,7 @@ mod tests {
         .unwrap();
         let diags = collect_diagnostics(&f).expect("ok");
         let has = |needle: &str| diags.iter().any(|d| d.message.contains(needle));
-        assert!(has("broken link: `missing.qmd`"), "broken link: {diags:?}");
+        assert!(has("broken link: `missing.tmd`"), "broken link: {diags:?}");
         assert!(has("local video not found"), "missing video: {diags:?}");
         assert!(has("`clip.mp4`"), "video path: {diags:?}");
         assert!(
@@ -495,7 +495,7 @@ mod tests {
         assert!(has("reactive dependency cycle"), "cycle: {diags:?}");
         // The existing sibling + external link must NOT be flagged.
         assert!(
-            !has("real.qmd"),
+            !has("real.tmd"),
             "sibling that exists must be clean: {diags:?}"
         );
         assert!(
@@ -503,7 +503,7 @@ mod tests {
             "external link must be skipped: {diags:?}"
         );
         assert!(
-            diags.iter().all(|d| d.file.contains("doc.qmd")),
+            diags.iter().all(|d| d.file.contains("doc.tmd")),
             "located to file: {diags:?}"
         );
         let _ = fs::remove_dir_all(&dir);
@@ -523,7 +523,7 @@ mod tests {
         )
         .unwrap();
         fs::write(
-            dir.join("index.qmd"),
+            dir.join("index.tmd"),
             "---\ntitle: Home\n---\n\n\
              See the [guide](docs/intro.html) and the [docs home](docs/).\n",
         )
@@ -542,7 +542,7 @@ mod tests {
         // heading skip, and an empty (icon-only) link. `check` must surface them all, located,
         // while leaving an `alt`-bearing image and a single-level heading step alone.
         let dir = tmp("check-a11y");
-        let f = dir.join("doc.qmd");
+        let f = dir.join("doc.tmd");
         fs::write(
             &f,
             "---\ntitle: T\n---\n\n\
@@ -584,7 +584,7 @@ mod tests {
                 .filter(|d| d.message.contains("has no accessible name")
                     || d.message.contains("missing alt text")
                     || d.message.contains("heading level skips"))
-                .all(|d| d.line.is_some() && d.file.contains("doc.qmd")),
+                .all(|d| d.line.is_some() && d.file.contains("doc.tmd")),
             "a11y diagnostics located to file+line: {diags:?}"
         );
         let _ = fs::remove_dir_all(&dir);
@@ -626,7 +626,7 @@ mod tests {
         // A reveal deck's `## … ####` is per-slide structure, not a single outline, so the
         // heading-skip rule must not fire on a deck.
         let dir = tmp("check-a11y-deck");
-        let f = dir.join("deck.qmd");
+        let f = dir.join("deck.tmd");
         fs::write(
             &f,
             "---\ntitle: T\nformat: revealjs\n---\n\n## Slide one\n\n#### A deeper heading\n",
@@ -644,30 +644,30 @@ mod tests {
 
     #[test]
     fn collect_site_diagnostics_flags_broken_cross_page_link_and_anchor() {
-        // The site path resolves links against the page registry: a `.qmd` link to a
+        // The site path resolves links against the page registry: a `.tmd` link to a
         // missing page, and a `page.html#frag` whose anchor isn't on the target page.
         let dir = tmp("check-site-links");
         fs::write(dir.join("_site.yml"), "title: S\n").unwrap();
-        fs::write(dir.join("index.qmd"), "---\ntitle: Home\n---\n\nWelcome.\n").unwrap();
+        fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nWelcome.\n").unwrap();
         fs::write(
-            dir.join("about.qmd"),
+            dir.join("about.tmd"),
             "---\ntitle: About\n---\n\n## Team {#team}\n\nAbout us.\n",
         )
         .unwrap();
         fs::write(
-            dir.join("page.qmd"),
+            dir.join("page.tmd"),
             "---\ntitle: P\n---\n\n\
-             A [missing page](ghost.qmd), a [good page](about.qmd), \
-             a [good anchor](about.qmd#team), a [bad anchor](about.qmd#nope).\n",
+             A [missing page](ghost.tmd), a [good page](about.tmd), \
+             a [good anchor](about.tmd#team), a [bad anchor](about.tmd#nope).\n",
         )
         .unwrap();
         let diags = collect_diagnostics(&dir).expect("site ok");
         let has = |needle: &str| diags.iter().any(|d| d.message.contains(needle));
-        // `ghost.qmd` -> `ghost.html`, no such page.
+        // `ghost.tmd` -> `ghost.html`, no such page.
         assert!(
             diags
                 .iter()
-                .any(|d| d.message.contains("ghost.html") && d.file.contains("page.qmd")),
+                .any(|d| d.message.contains("ghost.html") && d.file.contains("page.tmd")),
             "missing cross-page link located to its page: {diags:?}"
         );
         // `about.html#nope` -> the anchor `nope` is not on `about.html`.
@@ -694,7 +694,7 @@ mod tests {
     #[test]
     fn collect_diagnostics_clean_doc_is_empty() {
         let dir = tmp("check-clean");
-        let f = dir.join("ok.qmd");
+        let f = dir.join("ok.tmd");
         fs::write(&f, "---\ntitle: T\n---\n\nJust clean prose.\n").unwrap();
         assert!(collect_diagnostics(&f).expect("ok").is_empty());
         let _ = fs::remove_dir_all(&dir);
@@ -712,19 +712,19 @@ mod tests {
     fn format_json_emits_file_line_message_array() {
         let diags = vec![
             Diagnostic {
-                file: "a.qmd".into(),
+                file: "a.tmd".into(),
                 line: Some(3),
                 message: "weasel word `very`".into(),
             },
             Diagnostic {
-                file: "b.qmd".into(),
+                file: "b.tmd".into(),
                 line: None,
                 message: "needs a \"name\"".into(),
             },
         ];
         let json = format_json(&diags);
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid json");
-        assert_eq!(parsed[0]["file"], "a.qmd");
+        assert_eq!(parsed[0]["file"], "a.tmd");
         assert_eq!(parsed[0]["line"], 3);
         assert_eq!(parsed[1]["line"], serde_json::Value::Null);
         assert_eq!(parsed[1]["message"], "needs a \"name\"");
@@ -734,19 +734,19 @@ mod tests {
     fn format_human_lists_located_lines() {
         let diags = vec![
             Diagnostic {
-                file: "a.qmd".into(),
+                file: "a.tmd".into(),
                 line: Some(3),
                 message: "m1".into(),
             },
             Diagnostic {
-                file: "b.qmd".into(),
+                file: "b.tmd".into(),
                 line: None,
                 message: "m2".into(),
             },
         ];
         let text = format_human(&diags);
-        assert!(text.contains("a.qmd:3: m1"), "located line: {text}");
-        assert!(text.contains("b.qmd: m2"), "unlocated line: {text}");
+        assert!(text.contains("a.tmd:3: m1"), "located line: {text}");
+        assert!(text.contains("b.tmd: m2"), "unlocated line: {text}");
     }
 
     /// The `--format json` error path must produce a single valid JSON object
@@ -754,11 +754,11 @@ mod tests {
     /// even when the path can't be read. This pins the serialized shape.
     #[test]
     fn json_error_is_valid_json_object() {
-        let s = json_error("cannot read missing.qmd: No such file or directory");
+        let s = json_error("cannot read missing.tmd: No such file or directory");
         let v: serde_json::Value = serde_json::from_str(&s).expect("error envelope is valid JSON");
         assert_eq!(
             v.get("error").and_then(|e| e.as_str()),
-            Some("cannot read missing.qmd: No such file or directory")
+            Some("cannot read missing.tmd: No such file or directory")
         );
         // Quotes/newlines in the message stay escaped (not a raw concatenation).
         let tricky = json_error("bad \"path\"\nline2");

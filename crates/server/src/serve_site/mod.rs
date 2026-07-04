@@ -469,7 +469,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
     } else {
         format!("{};", chrome.search_index)
     };
-    // Body links (author `.qmd` references) -> `.html`; chrome links already are.
+    // Body links (author `.tmd` references) -> `.html`; chrome links already are.
     let body = taliesin_core::site::rewrite_qmd_links(&body);
     let title_txt = title.unwrap_or_else(|| page.title.clone().unwrap_or_default());
     // The site's configured favicon (depth-relative); else the dev server's own.
@@ -683,7 +683,7 @@ fn full_render_json(d: &PageDoc) -> String {
     )
 }
 
-/// Like the single-doc server's `op_json`, but rewrites any author `.qmd` links
+/// Like the single-doc server's `op_json`, but rewrites any author `.tmd` links
 /// in the block HTML to their `.html` targets before it goes over the wire.
 fn op_json(op: &BlockOp) -> String {
     protocol::op(op, taliesin_core::site::rewrite_qmd_links)
@@ -870,7 +870,7 @@ fn page_diagnostics(input: &Path, base: &Path, exec: &crate::exec::Executor) -> 
 // --- file watching ------------------------------------------------------
 
 /// One debounced file-change signal: the path plus whether it is *structural* (a
-/// `.qmd` created or removed, which may change the site's page set).
+/// `.tmd` created or removed, which may change the site's page set).
 struct Change {
     path: PathBuf,
     structural: bool,
@@ -944,10 +944,10 @@ fn spawn_watcher(app: Arc<SiteApp>) {
     });
 }
 
-/// Map a batch of changed files to rebuilds: a `_site.yml` change (or a `.qmd`
+/// Map a batch of changed files to rebuilds: a `_site.yml` change (or a `.tmd`
 /// added/removed that changes the page set) re-discovers the site and reloads open
 /// tabs; otherwise rebuild every *open* page whose source or include set touches a
-/// changed file. `structural` is set when the batch created/removed a `.qmd`.
+/// changed file. `structural` is set when the batch created/removed a `.tmd`.
 fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool) {
     let changed_canon: HashSet<PathBuf> = changed
         .iter()
@@ -976,7 +976,7 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
         return;
     }
 
-    // A `.qmd` was created/removed: re-discover, and if the page set actually changed
+    // A `.tmd` was created/removed: re-discover, and if the page set actually changed
     // (new/renamed/deleted page, not just an editor's save-via-rename of an existing
     // one) reload open tabs so nav + listings refresh. Otherwise fall through to the
     // normal per-page rebuild against the refreshed site.
@@ -1027,7 +1027,7 @@ fn reload_open_tabs(app: &SiteApp) {
     crate::log::update(0);
 }
 
-/// The site's page identifiers, sorted — to tell whether a `.qmd` add/remove actually
+/// The site's page identifiers, sorted — to tell whether a `.tmd` add/remove actually
 /// changed the page set (vs. an editor save-via-rename of an existing page).
 fn page_rels(site: &Site) -> Vec<String> {
     let mut v: Vec<String> = site.pages.iter().map(|p| p.rel.clone()).collect();
@@ -1074,7 +1074,7 @@ mod protocol_contract {
     fn op_json_rewrites_qmd_links_in_block_html() {
         let up = parse(op_json(&BlockOp::Update {
             target_id: "b1".into(),
-            html: "<a href=\"blog.qmd\">b</a>".into(),
+            html: "<a href=\"blog.tmd\">b</a>".into(),
         }));
         assert_eq!(up["html"], "<a href=\"blog.html\">b</a>");
     }
@@ -1084,9 +1084,9 @@ mod protocol_contract {
         // The full chain a previewing client receives: render two versions of a
         // page, diff them, and serialize. `tests/incremental.rs` covers render->
         // diff in core; this proves the serve-side serialization (incl. the
-        // .qmd->.html rewrite that happens *in* op_json, not at render time).
-        let v1 = render_document("Intro.\n\nSee [post](other.qmd).\n");
-        let v2 = render_document("Intro.\n\nSee [the post](other.qmd) now.\n");
+        // .tmd->.html rewrite that happens *in* op_json, not at render time).
+        let v1 = render_document("Intro.\n\nSee [post](other.tmd).\n");
+        let v2 = render_document("Intro.\n\nSee [the post](other.tmd) now.\n");
         let ops = diff_blocks(&v1.blocks, &v2.blocks);
         assert_eq!(ops.len(), 1, "one paragraph edit -> one op: {ops:?}");
 
@@ -1102,7 +1102,7 @@ mod protocol_contract {
             html.contains("other.html"),
             "qmd link not rewritten: {html}"
         );
-        assert!(!html.contains("other.qmd"), "raw .qmd link leaked: {html}");
+        assert!(!html.contains("other.tmd"), "raw .tmd link leaked: {html}");
     }
 
     #[test]

@@ -26,7 +26,7 @@ fn malformed_site_yml_fails_strict_build() {
     let dir = tmp_dir("malformed");
     // Unterminated double-quoted scalar -> serde_yaml parse error -> degraded default site.
     fs::write(dir.join("_site.yml"), "title: \"unterminated\nfoo: bar\n").unwrap();
-    fs::write(dir.join("index.qmd"), "---\ntitle: Home\n---\n\nWelcome.\n").unwrap();
+    fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nWelcome.\n").unwrap();
     let out = dir.join("_site");
 
     // Without --strict the build still writes (degraded), exit 0.
@@ -70,10 +70,10 @@ fn malformed_site_yml_fails_strict_build() {
 
 #[test]
 fn missing_site_yml_does_not_fail_strict_build() {
-    // A bare directory of `.qmd` pages (no `_site.yml`) is legitimate: --strict must not
+    // A bare directory of `.tmd` pages (no `_site.yml`) is legitimate: --strict must not
     // fail just because the config is absent.
     let dir = tmp_dir("nofile");
-    fs::write(dir.join("index.qmd"), "---\ntitle: Home\n---\n\nWelcome.\n").unwrap();
+    fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nWelcome.\n").unwrap();
     let out = dir.join("_site");
     let res = qmd_fast()
         .arg("build")
@@ -94,7 +94,7 @@ fn missing_site_yml_does_not_fail_strict_build() {
 #[test]
 fn build_rejects_unknown_flag_with_suggestion() {
     let dir = tmp_dir("badflag");
-    let doc = dir.join("post.qmd");
+    let doc = dir.join("post.tmd");
     fs::write(&doc, "---\ntitle: Post\n---\n\nProse.\n").unwrap();
     let res = qmd_fast()
         .arg("build")
@@ -117,7 +117,7 @@ fn build_rejects_unknown_flag_with_suggestion() {
 #[test]
 fn build_rejects_value_less_out_flag() {
     let dir = tmp_dir("noout");
-    let doc = dir.join("post.qmd");
+    let doc = dir.join("post.tmd");
     fs::write(&doc, "---\ntitle: Post\n---\n\nProse.\n").unwrap();
     // `--out` at the end of args (no directory value): a hard error, not a silent
     // `<stem>.html` write.
@@ -148,7 +148,7 @@ fn build_rejects_value_less_out_flag() {
 #[test]
 fn check_rejects_unknown_flag_with_suggestion() {
     let dir = tmp_dir("checkflag");
-    let doc = dir.join("post.qmd");
+    let doc = dir.join("post.tmd");
     fs::write(&doc, "---\ntitle: Post\n---\n\nProse.\n").unwrap();
     let res = qmd_fast()
         .arg("check")
@@ -172,7 +172,7 @@ fn check_rejects_unknown_flag_with_suggestion() {
 #[test]
 fn preview_rejects_unknown_flag_with_suggestion() {
     let dir = tmp_dir("previewflag");
-    let doc = dir.join("post.qmd");
+    let doc = dir.join("post.tmd");
     fs::write(&doc, "---\ntitle: Post\n---\n\nProse.\n").unwrap();
     // A typo'd `--hots` (for --host) must fail fast, before the server binds a port.
     let res = qmd_fast()

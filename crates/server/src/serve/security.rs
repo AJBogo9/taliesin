@@ -286,7 +286,7 @@ mod tests {
         ));
         // A `?t=` among other params still authenticates (e.g. `?page=x&t=abc123`).
         assert!(matches!(
-            lan_access(false, Some("page=intro.qmd&t=abc123"), None, tok),
+            lan_access(false, Some("page=intro.tmd&t=abc123"), None, tok),
             LanAccess::AllowSetCookie
         ));
         // Subsequent same-origin asset/ws requests carry the cookie -> allowed.

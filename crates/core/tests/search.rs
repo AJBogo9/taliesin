@@ -18,20 +18,20 @@ fn cross_page_search_wires_a_script_loadable_index_not_a_raw_fetch() {
     let d = TempProj::new();
     d.file(
         "_site.yml",
-        "title: S\nnav:\n  - { text: Home, href: index.qmd }\n  - { text: Two, href: two.qmd }\n",
+        "title: S\nnav:\n  - { text: Home, href: index.tmd }\n  - { text: Two, href: two.tmd }\n",
     );
     // `toc: true` forces the TOC (and the search palette rides with it), so the search
     // wiring is emitted regardless of heading count.
     d.file(
-        "index.qmd",
+        "index.tmd",
         "---\ntitle: One\ntoc: true\n---\n\nAlpha prose about kangaroos.\n\n## Head A {#sec-a}\n\nBody a.\n",
     );
     d.file(
-        "two.qmd",
+        "two.tmd",
         "---\ntitle: Two\n---\n\nBeta prose about wombats.\n\n## Head B {#sec-b}\n\nBody b.\n",
     );
     let site = Site::discover(&d.0);
-    let html = site.render_page("index.qmd").expect("renders");
+    let html = site.render_page("index.tmd").expect("renders");
     assert!(
         html.contains("search-index.js"),
         "page must wire the script-loadable index (search-index.js)"
@@ -47,10 +47,10 @@ fn index_captures_page_title_heading_and_section_body_prose() {
     let d = TempProj::new();
     d.file(
         "_site.yml",
-        "title: S\nnav:\n  - { text: Home, href: index.qmd }\n",
+        "title: S\nnav:\n  - { text: Home, href: index.tmd }\n",
     );
     d.file(
-        "index.qmd",
+        "index.tmd",
         "---\ntitle: Welcome\n---\n\nIntro paragraph about kangaroos.\n\n\
          ## Photosynthesis {#sec-photo}\n\nLeaves convert sunlight into glucose.\n",
     );

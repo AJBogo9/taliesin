@@ -17,10 +17,10 @@ fn tmp_dir(name: &str) -> std::path::PathBuf {
 #[test]
 fn single_doc_build_warns_on_unresolved_embed() {
     let dir = tmp_dir("warn");
-    let doc = dir.join("post.qmd");
-    fs::write(&doc, "---\ntitle: Post\n---\n\n{{< embed talk.qmd >}}\n").unwrap();
+    let doc = dir.join("post.tmd");
+    fs::write(&doc, "---\ntitle: Post\n---\n\n{{< embed talk.tmd >}}\n").unwrap();
     fs::write(
-        dir.join("talk.qmd"),
+        dir.join("talk.tmd"),
         "---\ntitle: Talk\nformat: revealjs\n---\n\n## Slide one\n",
     )
     .unwrap();
@@ -34,7 +34,7 @@ fn single_doc_build_warns_on_unresolved_embed() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     let _ = fs::remove_dir_all(&dir);
     assert!(
-        stderr.contains("embed") && stderr.contains("talk.qmd"),
+        stderr.contains("embed") && stderr.contains("talk.tmd"),
         "expected an unresolved-embed warning for a single-doc build, stderr was:\n{stderr}"
     );
 }
@@ -42,7 +42,7 @@ fn single_doc_build_warns_on_unresolved_embed() {
 #[test]
 fn single_doc_build_without_embed_does_not_warn_about_embeds() {
     let dir = tmp_dir("clean");
-    let doc = dir.join("post.qmd");
+    let doc = dir.join("post.tmd");
     fs::write(&doc, "---\ntitle: Post\n---\n\nJust prose, no embed.\n").unwrap();
 
     let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))

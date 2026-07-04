@@ -211,13 +211,13 @@ mod tests {
     #[test]
     fn flags_unknown_cell_option_with_did_you_mean_and_location() {
         // Fence is on file line 20, so the option on body line 1 is file line 22.
-        let w = validate_cell_options("#| echo: false\n#| labl: x\n", 20, Some("p.qmd".into()));
+        let w = validate_cell_options("#| echo: false\n#| labl: x\n", 20, Some("p.tmd".into()));
         assert_eq!(w.len(), 1, "only `labl` is unknown, got: {w:?}");
         assert_eq!(
             w[0].message,
             "unknown cell option `labl` (did you mean `label`?)"
         );
-        assert_eq!(w[0].file.as_deref(), Some("p.qmd"));
+        assert_eq!(w[0].file.as_deref(), Some("p.tmd"));
         assert_eq!(w[0].line, Some(22));
     }
 
@@ -247,10 +247,10 @@ mod tests {
 
     #[test]
     fn walkthrough_without_code_block_is_flagged_and_located() {
-        let w = validate_walkthrough(false, 12, Some("w.qmd".into())).expect("a no-code warning");
+        let w = validate_walkthrough(false, 12, Some("w.tmd".into())).expect("a no-code warning");
         assert!(w.message.contains("no code block"), "got: {}", w.message);
         assert_eq!(w.line, Some(12));
-        assert_eq!(w.file.as_deref(), Some("w.qmd"));
+        assert_eq!(w.file.as_deref(), Some("w.tmd"));
         assert!(
             validate_walkthrough(true, 12, None).is_none(),
             "silent when a code block is present"
@@ -259,10 +259,10 @@ mod tests {
 
     #[test]
     fn tabset_without_headings_is_flagged_and_located() {
-        let w = validate_tabset(false, 4, Some("p.qmd".into())).expect("a no-tabs warning");
+        let w = validate_tabset(false, 4, Some("p.tmd".into())).expect("a no-tabs warning");
         assert!(w.message.contains("no headings"), "got: {}", w.message);
         assert_eq!(w.line, Some(4));
-        assert_eq!(w.file.as_deref(), Some("p.qmd"));
+        assert_eq!(w.file.as_deref(), Some("p.tmd"));
         assert!(
             validate_tabset(true, 4, None).is_none(),
             "silent when headings are present"
@@ -271,7 +271,7 @@ mod tests {
 
     #[test]
     fn input_without_name_is_flagged() {
-        let w = validate_input(None, Some("slider"), None, 4, Some("d.qmd".into()));
+        let w = validate_input(None, Some("slider"), None, 4, Some("d.tmd".into()));
         assert_eq!(w.len(), 1);
         assert_eq!(
             w[0].message,
@@ -308,7 +308,7 @@ mod tests {
 
     #[test]
     fn scrolly_without_stage_is_flagged() {
-        let w = validate_scrolly(false, true, 3, Some("s.qmd".into()));
+        let w = validate_scrolly(false, true, 3, Some("s.tmd".into()));
         assert_eq!(w.len(), 1);
         assert!(
             w[0].message.contains("no sticky stage"),

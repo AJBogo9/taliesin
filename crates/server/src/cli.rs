@@ -19,8 +19,7 @@ use std::process::ExitCode;
 const INIT_SITE_YML: &str = "title: My site\n";
 
 /// `index.tmd` for the scaffold: a hello-world page that previews immediately and
-/// points the new user at the next steps. `.tmd` is the native extension (`.qmd`
-/// still works if you prefer it).
+/// points the new user at the next steps. `.tmd` is the native extension.
 const INIT_INDEX_TMD: &str = "---\ntitle: Hello, Taliesin\n---\n\n\
     Welcome to your new [Taliesin](https://github.com/AJBogo9/taliesin) site.\n\n\
     Edit `index.tmd` and the preview reloads as you save.\n\n\
@@ -30,7 +29,7 @@ const INIT_INDEX_TMD: &str = "---\ntitle: Hello, Taliesin\n---\n\n\
     - Drop in a `{python}` or `{r}` code cell to run live output.\n";
 
 /// `taliesin init [dir]`: scaffold a minimal previewable site into `dir` (default the
-/// current directory). Writes `_site.yml` + `index.qmd`, then prints the preview hint.
+/// current directory). Writes `_site.yml` + `index.tmd`, then prints the preview hint.
 pub(crate) fn cmd_init(dir: Option<&str>) -> ExitCode {
     let dir = Path::new(dir.unwrap_or("."));
     match scaffold_init(dir) {
@@ -53,7 +52,7 @@ pub(crate) fn cmd_init(dir: Option<&str>) -> ExitCode {
     }
 }
 
-/// Write the starter files (`_site.yml`, `index.qmd`) into `dir`, creating it if
+/// Write the starter files (`_site.yml`, `index.tmd`) into `dir`, creating it if
 /// needed. Refuses to overwrite an existing file (so re-running `init` never clobbers
 /// the user's work) and returns the paths written, or a human-readable error.
 fn scaffold_init(dir: &Path) -> Result<Vec<PathBuf>, String> {
@@ -99,7 +98,7 @@ fn parse_port(raw: Option<&str>) -> Result<u16, String> {
 const SERVE_FLAGS: &[&str] = &["--open", "--host", "--no-exec"];
 
 pub(crate) fn cmd_serve(args: &[String]) -> ExitCode {
-    // Positionals are <file.qmd> [port]; flags (--open, --host) may appear anywhere.
+    // Positionals are <file.tmd> [port]; flags (--open, --host) may appear anywhere.
     let positionals: Vec<&String> = args[2..].iter().filter(|a| !a.starts_with("--")).collect();
     // An unrecognized `--flag` is a hard error with a did-you-mean (not silently filtered
     // out of the positionals — a typo'd `--hots` would otherwise preview without exposing).
@@ -132,7 +131,7 @@ pub(crate) fn cmd_serve(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    // A directory is a multi-page site project; a single `.qmd` is one document.
+    // A directory is a multi-page site project; a single `.tmd` is one document.
     let result = if Path::new(path.as_str()).is_dir() {
         serve_site::run(PathBuf::from(path), port, open, expose)
     } else {

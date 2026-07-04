@@ -1,12 +1,12 @@
 //! taliesin-core
 //!
-//! The editor-agnostic rendering core: `.qmd` parsing (comrak + sourcepos),
+//! The editor-agnostic rendering core: `.tmd` parsing (comrak + sourcepos),
 //! the block model, and HTML rendering. All intelligence lives here; the
 //! server and clients are thin layers over this crate.
 //!
 //! # Trust model
 //!
-//! taliesin renders **one author's own `.qmd` files** (the single-author
+//! taliesin renders **one author's own `.tmd` files** (the single-author
 //! workflow this tool exists for), so the document source is *trusted*: it is
 //! treated like code the author runs, not like untrusted input. Concretely, the
 //! renderer passes several things through **without HTML-escaping** by design:
@@ -19,7 +19,7 @@
 //!
 //! Code cells are likewise *executed* against a live kernel. None of this is a
 //! vulnerability under the intended use, but it means taliesin must **not** be
-//! pointed at a `.qmd` from an untrusted source: doing so would be arbitrary
+//! pointed at a `.tmd` from an untrusted source: doing so would be arbitrary
 //! HTML/JS injection (and arbitrary code execution via cells). If multi-author
 //! or hosted rendering is ever added, these passthrough sites are exactly what
 //! needs sanitizing first. Navbar labels and other text *are* escaped

@@ -40,7 +40,7 @@ pub(super) fn expand_shortcodes(src: &str) -> (String, Vec<Warning>) {
 /// Replace every `{{< name args >}}` that opens and closes on this line with its
 /// declared template; leave unrecognized ones (and unterminated spans) verbatim.
 /// Inline code spans (`` `…` ``, ``` ``…`` ```) are copied through untouched, so a
-/// shortcode shown as an *example* in backticks (e.g. `` `{{< embed x.qmd >}}` ``)
+/// shortcode shown as an *example* in backticks (e.g. `` `{{< embed x.tmd >}}` ``)
 /// stays literal — mirroring how fenced blocks are skipped in `expand_shortcodes`.
 fn expand_in_line(line: &str, line_no: usize, warnings: &mut Vec<Warning>) -> String {
     if !line.contains("{{<") {
@@ -333,8 +333,8 @@ fn video_html(
     format!("<figure class=\"tali-video\">{videos}{cap}</figure>")
 }
 
-/// Map a deck source path to its built output URL (`x.tmd` / `x.qmd` → `x.html`),
-/// leaving a path that is already `.html` (or anything else) untouched.
+/// Map a deck source path to its built output URL (`x.tmd` → `x.html`), leaving a
+/// path that is already `.html` (or anything else) untouched.
 fn deck_href(path: &str) -> String {
     match crate::ext::strip_source_ext(path) {
         Some(stem) => format!("{stem}.html"),

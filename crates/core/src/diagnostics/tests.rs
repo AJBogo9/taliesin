@@ -32,18 +32,18 @@ fn msgs(ws: &[Warning]) -> Vec<String> {
 #[test]
 fn local_links_flag_missing_relative_target_only() {
     let dir = Tmp::new("links");
-    std::fs::write(dir.0.join("exists.qmd"), "x").unwrap();
+    std::fs::write(dir.0.join("exists.tmd"), "x").unwrap();
     let doc = render_document(
-        "[gone](missing.qmd) [here](exists.qmd) [ext](https://example.com) \
+        "[gone](missing.tmd) [here](exists.tmd) [ext](https://example.com) \
          [page](sub/page.html#frag) [anchor](#top) [abs](/root.html)\n",
     );
     let ws = validate_local_links(&doc.blocks, &dir.0);
     let m = msgs(&ws);
     assert_eq!(m.len(), 2, "only the two missing local files: {m:?}");
-    assert!(m.iter().any(|s| s.contains("`missing.qmd`")), "{m:?}");
+    assert!(m.iter().any(|s| s.contains("`missing.tmd`")), "{m:?}");
     assert!(m.iter().any(|s| s.contains("`sub/page.html`")), "{m:?}");
     // The existing sibling, external, in-page anchor, and absolute links are clean.
-    assert!(!m.iter().any(|s| s.contains("exists.qmd")), "{m:?}");
+    assert!(!m.iter().any(|s| s.contains("exists.tmd")), "{m:?}");
     assert!(!m.iter().any(|s| s.contains("example.com")), "{m:?}");
     assert!(!m.iter().any(|s| s.contains("/root.html")), "{m:?}");
     // Located to a line.

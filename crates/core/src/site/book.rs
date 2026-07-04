@@ -32,10 +32,10 @@ impl Book {
     }
 }
 /// Resolve `book: chapters:` into the sidebar navigation: walk the ordered list,
-/// assigning each chapter a running number (an unnumbered chapter — the `index.qmd`
+/// assigning each chapter a running number (an unnumbered chapter — the `index.tmd`
 /// preface or one whose H1 carries `.unnumbered`/`{-}` — is skipped in the count,
 /// like Quarto). Each list entry is one of three shapes: a bare path string
-/// (`- intro.qmd`), a `{ file:, text: }` chapter with a label override, or a
+/// (`- intro.tmd`), a `{ file:, text: }` chapter with a label override, or a
 /// `{ part:, chapters: }` group whose inner list takes the same string-or-`{file,text}`
 /// chapter shapes.
 pub(super) fn build_book(root: &Path, config: &SiteConfig) -> Book {

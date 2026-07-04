@@ -141,8 +141,8 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    // A directory is a multi-page site project (`_site.yml` + `.qmd` pages);
-    // a single `.qmd` keeps the original self-contained-page behaviour.
+    // A directory is a multi-page site project (`_site.yml` + `.tmd` pages);
+    // a single `.tmd` keeps the original self-contained-page behaviour.
     if Path::new(path).is_dir() {
         if bare {
             log::error(
@@ -206,7 +206,7 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
         Ok(()) => {
             let dest = out.parent().unwrap_or(base);
             // Bundle the doc's own referenced assets (images, audio, …) next to the
-            // page too, so `build doc.qmd out.html` into another directory doesn't
+            // page too, so `build doc.tmd out.html` into another directory doesn't
             // leave them dangling. A no-op for an in-place build.
             copy_local_assets(&html, base, dest);
             log::built(&out.display().to_string());
@@ -392,7 +392,7 @@ fn build_dir(html: &str, base: &Path, dir: &Path) -> ExitCode {
 /// with it. Skips paths escaping the tree (absolute or `..`) and no-op self-copies
 /// (an in-place build, where the asset already sits next to the output). Returns
 /// the number copied. Shared by the portable `--out` folder and the single-file
-/// build (so `build doc.qmd out.html` into another directory isn't left with
+/// build (so `build doc.tmd out.html` into another directory isn't left with
 /// dangling asset references).
 fn copy_local_assets(html: &str, base: &Path, dest: &Path) -> usize {
     let mut copied = 0usize;
@@ -629,7 +629,7 @@ fn copy_js_imports(html: &str, base: &Path, dest: &Path) -> usize {
     copied
 }
 
-/// Build a multi-page site: render every `.qmd` page with the shared chrome to
+/// Build a multi-page site: render every `.tmd` page with the shared chrome to
 /// `<out>/<page>.html` and mirror the project's non-source assets alongside, so
 /// the output directory is a deployable static site. `out_override` (the `--out`
 /// flag) wins over the config's `output-dir` (default `_site`).
@@ -1013,7 +1013,7 @@ async fn build_site_async(
 
     // Self-contained `404.html` at the site root: most static hosts serve it for
     // any unknown path (root-absolute links inside, so it works at any depth). But
-    // honor an author's own `404.qmd` — it already rendered to `out/404.html` in the
+    // honor an author's own `404.tmd` — it already rendered to `out/404.html` in the
     // page loop above, so emitting the built-in template would clobber it. Only fall
     // back to the built-in when the author supplied none.
     let mut not_found = "";
@@ -1174,43 +1174,43 @@ mod mirror_tests {
         let argv = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<String>>();
 
         // file only: path, no [out.html] target, no portable-folder dir.
-        let a = argv(&["qmd-fast", "build", "doc.qmd"]);
+        let a = argv(&["qmd-fast", "build", "doc.tmd"]);
         let p = parse_build_args(&a).unwrap();
-        assert_eq!((p.path, p.out_html, p.out_dir), ("doc.qmd", None, None));
+        assert_eq!((p.path, p.out_html, p.out_dir), ("doc.tmd", None, None));
 
         // second positional = the [out.html] single-file target.
-        let a = argv(&["qmd-fast", "build", "doc.qmd", "out.html"]);
+        let a = argv(&["qmd-fast", "build", "doc.tmd", "out.html"]);
         let p = parse_build_args(&a).unwrap();
         assert_eq!(
             (p.path, p.out_html, p.out_dir),
-            ("doc.qmd", Some("out.html"), None)
+            ("doc.tmd", Some("out.html"), None)
         );
 
         // --out <dir> is the portable-folder flag, distinct from the positional.
-        let a = argv(&["qmd-fast", "build", "doc.qmd", "--out", "site"]);
+        let a = argv(&["qmd-fast", "build", "doc.tmd", "--out", "site"]);
         let p = parse_build_args(&a).unwrap();
         assert_eq!(
             (p.path, p.out_html, p.out_dir),
-            ("doc.qmd", None, Some("site"))
+            ("doc.tmd", None, Some("site"))
         );
 
         // --out never captures a following flag as its directory: a value-less --out is
         // now a HARD ERROR (rather than silently dropping the flag + writing <stem>.html).
-        let err = parse_build_args(&argv(&["qmd-fast", "build", "doc.qmd", "--out", "--bare"]))
+        let err = parse_build_args(&argv(&["qmd-fast", "build", "doc.tmd", "--out", "--bare"]))
             .expect_err("value-less --out errors");
         assert!(err.contains("--out") && err.contains("requires"), "{err}");
         // --out at the very end (no following token) is the same hard error.
-        let err = parse_build_args(&argv(&["qmd-fast", "build", "doc.qmd", "--out"]))
+        let err = parse_build_args(&argv(&["qmd-fast", "build", "doc.tmd", "--out"]))
             .expect_err("trailing --out errors");
         assert!(err.contains("--out"), "{err}");
         // --dir is the alias and errors the same way.
-        assert!(parse_build_args(&argv(&["qmd-fast", "build", "doc.qmd", "--dir"])).is_err());
+        assert!(parse_build_args(&argv(&["qmd-fast", "build", "doc.tmd", "--dir"])).is_err());
 
         // flags may appear anywhere; both positionals still bind in order.
-        let a = argv(&["qmd-fast", "build", "--bare", "doc.qmd", "out.html"]);
+        let a = argv(&["qmd-fast", "build", "--bare", "doc.tmd", "out.html"]);
         let p = parse_build_args(&a).unwrap();
         assert!(p.bare);
-        assert_eq!((p.path, p.out_html), ("doc.qmd", Some("out.html")));
+        assert_eq!((p.path, p.out_html), ("doc.tmd", Some("out.html")));
 
         // a missing path is a usage error.
         assert!(parse_build_args(&argv(&["qmd-fast", "build"])).is_err());
@@ -1221,18 +1221,18 @@ mod mirror_tests {
     fn build_unknown_flag_errors_with_did_you_mean() {
         let argv = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<String>>();
         // A typo'd flag is a hard error (not silently dropped) and suggests the real one.
-        let err = parse_build_args(&argv(&["qmd-fast", "build", "doc.qmd", "--stict"]))
+        let err = parse_build_args(&argv(&["qmd-fast", "build", "doc.tmd", "--stict"]))
             .expect_err("--stict must error");
         assert!(err.contains("--stict"), "names the bad flag: {err}");
         assert!(err.contains("--strict"), "suggests the near match: {err}");
         // A flag with no near match still errors (no wild guess).
-        let err = parse_build_args(&argv(&["qmd-fast", "build", "doc.qmd", "--frobnicate"]))
+        let err = parse_build_args(&argv(&["qmd-fast", "build", "doc.tmd", "--frobnicate"]))
             .expect_err("unknown flag must error");
         assert!(err.contains("--frobnicate"), "{err}");
         assert!(!err.contains("did you mean"), "no wild guess: {err}");
         // The real flags still parse (no regression).
-        assert!(parse_build_args(&argv(&["qmd-fast", "build", "doc.qmd", "--strict"])).is_ok());
-        assert!(parse_build_args(&argv(&["qmd-fast", "build", "doc.qmd", "--bare"])).is_ok());
+        assert!(parse_build_args(&argv(&["qmd-fast", "build", "doc.tmd", "--strict"])).is_ok());
+        assert!(parse_build_args(&argv(&["qmd-fast", "build", "doc.tmd", "--bare"])).is_ok());
     }
 
     fn tmp(name: &str) -> PathBuf {

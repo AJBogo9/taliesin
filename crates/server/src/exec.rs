@@ -1128,7 +1128,7 @@ mod tests {
         };
 
         let mut ex = Executor::new();
-        ex.set_progress(sink, Some("ch1.qmd".into()));
+        ex.set_progress(sink, Some("ch1.tmd".into()));
         // Distinct code per cell so each is a genuine cell with its own cache key.
         let blocks = vec![
             python_cell_block_with("b-1", "a = 1"),
@@ -1151,7 +1151,7 @@ mod tests {
         // carries `cell-state` messages — covered by the cell-state tests below — so
         // this is scoped to build-state rather than asserting over every message.)
         for v in msgs.iter().filter(|v| v["type"] == "build-state") {
-            assert_eq!(v["page"], "ch1.qmd");
+            assert_eq!(v["page"], "ch1.tmd");
             assert_eq!(v["lang"], "python");
         }
         // The "executing" `ran` values climb 1, 2, 3 (one per cell), each ≤ total.
@@ -1220,7 +1220,7 @@ mod tests {
 
         let (sink, captured) = capturing_sink();
         let mut ex = Executor::new();
-        ex.set_progress(sink, Some("ch1.qmd".into()));
+        ex.set_progress(sink, Some("ch1.tmd".into()));
         // Cell b-3 raises, so its output is a `tali-error` block (uncacheable) → `error`.
         let blocks = vec![
             python_cell_block_with("b-1", "a = 1"),
@@ -1241,7 +1241,7 @@ mod tests {
         let msgs = captured.lock().unwrap();
         // Every cell-state is well-formed and tagged with this page.
         for v in msgs.iter().filter(|v| v["type"] == "cell-state") {
-            assert_eq!(v["page"], "ch1.qmd", "cell-state page wrong: {v}");
+            assert_eq!(v["page"], "ch1.tmd", "cell-state page wrong: {v}");
         }
         // The two clean cells go queued → running → done, in that order.
         for id in ["b-1", "b-2"] {
@@ -1274,7 +1274,7 @@ mod tests {
         }
 
         let mut ex = Executor::new();
-        ex.set_progress(None, Some("ch1.qmd".into()));
+        ex.set_progress(None, Some("ch1.tmd".into()));
         let base = vec![
             python_cell_block_with("b-1", "a = 1"),
             python_cell_block_with("b-2", "b = 2"),
@@ -1294,7 +1294,7 @@ mod tests {
 
         // Second run: edit only the last cell, capturing this pass's cell-states.
         let (sink, captured) = capturing_sink();
-        ex.set_progress(sink, Some("ch1.qmd".into()));
+        ex.set_progress(sink, Some("ch1.tmd".into()));
         let edited = vec![
             python_cell_block_with("b-1", "a = 1"),
             python_cell_block_with("b-2", "b = 2"),
@@ -1337,7 +1337,7 @@ mod tests {
         // the run-range → error mapping is exactly the cells in the half-open range.
         let (sink, captured) = capturing_sink();
         let cells = vec![cell("b-0"), cell("b-1"), cell("b-2"), cell("b-3")];
-        emit_cell_errors(&sink, Some("ch1.qmd"), &cells, 1..3);
+        emit_cell_errors(&sink, Some("ch1.tmd"), &cells, 1..3);
         let msgs = captured.lock().unwrap();
         let errored: Vec<&str> = msgs
             .iter()
@@ -1351,7 +1351,7 @@ mod tests {
         );
         // Page is carried; out-of-range cells emit nothing here.
         for v in msgs.iter() {
-            assert_eq!(v["page"], "ch1.qmd");
+            assert_eq!(v["page"], "ch1.tmd");
         }
         assert_eq!(msgs.len(), 2, "only the two in-range cells emit: {msgs:?}");
     }
@@ -1370,7 +1370,7 @@ mod tests {
         }
 
         let mut ex = Executor::new();
-        ex.set_progress(None, Some("ch1.qmd".into()));
+        ex.set_progress(None, Some("ch1.tmd".into()));
         let doc = vec![
             python_cell_block_with("b-1", "a = 1"),
             python_cell_block_with("b-2", "b = 2"),
@@ -1386,7 +1386,7 @@ mod tests {
 
         // Re-run the identical doc against the warm executor: to_run == 0.
         let (sink, captured) = capturing_sink();
-        ex.set_progress(sink, Some("ch1.qmd".into()));
+        ex.set_progress(sink, Some("ch1.tmd".into()));
         rt.block_on(async {
             let _ = ex.run(doc).await;
         });
@@ -1419,7 +1419,7 @@ mod tests {
         let (sink, captured) = capturing_sink();
         let mut ex = Executor::new();
         ex.python = PathBuf::from("/nonexistent/qmd-fast-no-such-python");
-        ex.set_progress(sink, Some("ch1.qmd".into()));
+        ex.set_progress(sink, Some("ch1.tmd".into()));
         let doc = vec![
             python_cell_block_with("b-1", "a = 1"),
             python_cell_block_with("b-2", "b = 2"),
@@ -1519,7 +1519,7 @@ mod tests {
 
             let (sink, captured) = capturing_sink();
             let mut ex = Executor::new();
-            ex.set_progress(sink, Some("ch1.qmd".into()));
+            ex.set_progress(sink, Some("ch1.tmd".into()));
             ex.set_warm_pool(Some(pool));
             // A cell with a deterministic textual result, so we can prove the pooled
             // kernel actually executed it.
@@ -1699,11 +1699,11 @@ mod tests {
     #[test]
     fn output_block_emits_escaped_data_source_file_for_included_cells() {
         let mut c = cell("b1");
-        c.source_file = Some("posts/p&q.qmd".into());
+        c.source_file = Some("posts/p&q.tmd".into());
         let b = output_block(&c, "x");
-        assert_eq!(b.source_file.as_deref(), Some("posts/p&q.qmd"));
+        assert_eq!(b.source_file.as_deref(), Some("posts/p&q.tmd"));
         assert!(
-            b.html.contains("data-source-file=\"posts/p&amp;q.qmd\""),
+            b.html.contains("data-source-file=\"posts/p&amp;q.tmd\""),
             "source file not emitted/escaped: {}",
             b.html
         );

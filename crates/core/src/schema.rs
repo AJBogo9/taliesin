@@ -63,7 +63,7 @@ mod generate {
             LISTING_KEYS,
             &[("max-items", integer()), ("categories", boolean())],
         );
-        // listing: a single mapping or a sequence of mappings (cv.qmd shape).
+        // listing: a single mapping or a sequence of mappings (cv.tmd shape).
         let listing = json!({
             "oneOf": [listing_item.clone(), { "type": "array", "items": listing_item }]
         });
@@ -118,7 +118,7 @@ mod generate {
     }
 
     pub fn site_config_schema() -> Value {
-        // A book chapter is either a bare path (`- intro.qmd`) or a `{ file:, text: }`
+        // A book chapter is either a bare path (`- intro.tmd`) or a `{ file:, text: }`
         // mapping whose `text:` overrides the sidebar label.
         let chapter = json!({
             "oneOf": [

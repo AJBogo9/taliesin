@@ -1,5 +1,5 @@
 //! Project reference graph: nodes = pages, edges = a cross-page connection (a
-//! `@sec-`/`@fig-`/… cross-reference, or a prose `.qmd`/`.html` link, from one page to
+//! `@sec-`/`@fig-`/… cross-reference, or a prose `.tmd`/`.html` link, from one page to
 //! another). Built by a lightweight SOURCE scan at discovery (no render), so it works in
 //! both the live preview and a static build; emitted as JSON for the `graph.js` client to
 //! draw as an interactive force-directed map. Read-only: it navigates, never writes.
@@ -70,7 +70,7 @@ pub(super) fn reference_graph_json(
 }
 
 /// The distinct OTHER-page urls that `page`'s source links to: a cross-page `@ref`
-/// (resolved via `xref_targets`) or a prose `.qmd`/`.html` link (resolved against the
+/// (resolved via `xref_targets`) or a prose `.tmd`/`.html` link (resolved against the
 /// page registry). Front matter + fenced code are skipped, and a `@` mid-word
 /// (`bob@host`) is ignored, mirroring the xref/citation scanners.
 fn scan_outgoing(
@@ -144,7 +144,7 @@ fn collect_xref_refs(
 }
 
 /// Push the target page url of each markdown link `](path)` on `line` whose path
-/// resolves to another page in the site (a `.qmd` source or a built `.html`).
+/// resolves to another page in the site (a `.tmd` source or a built `.html`).
 fn collect_link_targets(line: &str, page: &Page, urls: &HashSet<&str>, out: &mut Vec<String>) {
     let mut rest = line;
     while let Some(open) = rest.find("](") {
@@ -206,8 +206,8 @@ mod tests {
         xrefs.insert("fig-plot".to_string(), tgt("b.html"));
         let urls: HashSet<&str> = ["a.html", "b.html", "c.html"].into_iter().collect();
         let page = Page {
-            input: std::path::PathBuf::from("a.qmd"),
-            rel: "a.qmd".into(),
+            input: std::path::PathBuf::from("a.tmd"),
+            rel: "a.tmd".into(),
             url: "a.html".into(),
             title: Some("A".into()),
             date: None,
@@ -223,7 +223,7 @@ mod tests {
         };
         // `@fig-plot.` ends a sentence (trailing period must be trimmed, not read as
         // part of the anchor); `bob@host` is not a ref; a ref in a code fence is skipped.
-        let src = "See @fig-plot. Also [chapter C](c.qmd).\n\nMail bob@host is not a ref.\n\n```\n@fig-plot in code is skipped\n```\n";
+        let src = "See @fig-plot. Also [chapter C](c.tmd).\n\nMail bob@host is not a ref.\n\n```\n@fig-plot in code is skipped\n```\n";
         let mut got = scan_outgoing(src, &page, &xrefs, &urls);
         got.sort();
         assert_eq!(got, vec!["b.html".to_string(), "c.html".to_string()]);

@@ -65,7 +65,7 @@ pub fn cumulative_hashes(interp: &str, codes: &[&str]) -> Vec<String> {
 }
 
 /// Resolve `_freeze/<rel-without-ext>.json` for a page. `rel` is the page's path
-/// relative to the project (e.g. `posts/x.qmd`), or a bare stem for a single doc;
+/// relative to the project (e.g. `posts/x.tmd`), or a bare stem for a single doc;
 /// either way the extension is replaced with `.json` and sub-directories are
 /// preserved, so the layout mirrors the source tree and is easy to inspect.
 pub fn page_path(freeze_dir: &Path, rel: &str) -> PathBuf {

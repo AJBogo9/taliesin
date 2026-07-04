@@ -1,10 +1,10 @@
-//! Page + deck discovery: walk `.qmd` files under the project root (path-ordered) into
+//! Page + deck discovery: walk `.tmd` files under the project root (path-ordered) into
 //! [`Page`]s, and find loose reveal decks. The filesystem-walking front end of
 //! `Site::discover`.
 
 use super::*;
 
-/// A website's pages: every `.qmd` under `root` (path-ordered), each mapped to a
+/// A website's pages: every `.tmd` under `root` (path-ordered), each mapped to a
 /// [`Page`] from its front matter.
 pub(super) fn website_pages(root: &Path, warnings: &mut Vec<String>) -> Vec<Page> {
     let mut inputs = Vec::new();
@@ -82,7 +82,7 @@ pub(super) fn discover_decks(
     decks
 }
 
-/// Recursively collect input `.qmd` pages under `dir`, skipping `_`-prefixed
+/// Recursively collect input `.tmd` pages under `dir`, skipping `_`-prefixed
 /// directories (`_includes`, `_freeze`, `_site`, …) and dotfiles.
 fn collect_pages(dir: &Path, out: &mut Vec<PathBuf>) {
     let Ok(entries) = std::fs::read_dir(dir) else {

@@ -139,7 +139,7 @@ pub fn cell_state(
 
 /// A single incremental block op. `rewrite_html` is applied to the block HTML of
 /// `Update`/`Insert` before it goes over the wire: identity for the single-doc
-/// server, and `.qmd`→`.html` link rewriting for the site server.
+/// server, and `.tmd`→`.html` link rewriting for the site server.
 pub fn op(op: &BlockOp, rewrite_html: impl Fn(&str) -> String) -> String {
     match op {
         BlockOp::Update { target_id, html } => serde_json::json!({
@@ -167,10 +167,10 @@ pub fn op(op: &BlockOp, rewrite_html: impl Fn(&str) -> String) -> String {
 mod tests {
     #[test]
     fn build_state_serializes_phase_and_counts() {
-        let s = super::build_state(Some("ch1.qmd"), "executing", 3, 8, "python");
+        let s = super::build_state(Some("ch1.tmd"), "executing", 3, 8, "python");
         let v: serde_json::Value = serde_json::from_str(&s).unwrap();
         assert_eq!(v["type"], "build-state");
-        assert_eq!(v["page"], "ch1.qmd");
+        assert_eq!(v["page"], "ch1.tmd");
         assert_eq!(v["phase"], "executing");
         assert_eq!(v["ran"], 3);
         assert_eq!(v["total"], 8);
@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn cell_state_includes_state_and_optional_timing() {
-        let s = super::cell_state(Some("p.qmd"), "abc", "running", Some(1000), None);
+        let s = super::cell_state(Some("p.tmd"), "abc", "running", Some(1000), None);
         let v: serde_json::Value = serde_json::from_str(&s).unwrap();
         assert_eq!(v["type"], "cell-state");
         assert_eq!(v["cell_id"], "abc");

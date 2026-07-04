@@ -6,12 +6,12 @@ use taliesin_core::Site;
 mod common;
 use common::TempProj;
 
-/// A throwaway site project: `_site.yml` = `config`, plus a minimal `index.qmd`
+/// A throwaway site project: `_site.yml` = `config`, plus a minimal `index.tmd`
 /// (so `Site::discover` always has a home page).
 fn site(config: &str) -> TempProj {
     let d = TempProj::new();
     d.file("_site.yml", config);
-    d.file("index.qmd", "---\ntitle: Home\n---\n\n# Hi\n");
+    d.file("index.tmd", "---\ntitle: Home\n---\n\n# Hi\n");
     d
 }
 
@@ -19,7 +19,7 @@ fn site(config: &str) -> TempProj {
 fn native_flat_config_parses_nav_footer_and_icon() {
     let d = site(
         "title: \"My Site\"\n\
-         nav:\n  - { text: Home, href: index.qmd }\n\
+         nav:\n  - { text: Home, href: index.tmd }\n\
          footer:\n  left: \"© 2026\"\n  right:\n    - { icon: github, href: \"https://github.com/x\" }\n",
     );
     let site = Site::discover(&d.0);
@@ -32,7 +32,7 @@ fn native_flat_config_parses_nav_footer_and_icon() {
         site.warnings
     );
 
-    let html = site.render_page("index.qmd").expect("renders");
+    let html = site.render_page("index.tmd").expect("renders");
     assert!(html.contains("My Site"), "brand from title");
     assert!(
         html.contains("aria-label=\"github\"") && html.contains("viewBox=\"0 0 16 16\""),
@@ -45,18 +45,18 @@ fn scholarly_citation_meta_for_authored_dated_posts_only() {
     let d = TempProj::new();
     d.file(
         "_site.yml",
-        "title: \"My Journal\"\nurl: \"https://ex.org\"\nnav:\n  - { text: Home, href: index.qmd }\n",
+        "title: \"My Journal\"\nurl: \"https://ex.org\"\nnav:\n  - { text: Home, href: index.tmd }\n",
     );
     // An article: author + date -> gets citation_* (Google Scholar) meta.
     d.file(
-        "post.qmd",
+        "post.tmd",
         "---\ntitle: On Gradients\nauthor:\n  - Ada Lovelace\n  - Alan Turing\ndate: 2026-01-15\n---\n\nBody.\n",
     );
     // A plain page: no author/date -> NO citation_* meta.
-    d.file("index.qmd", "---\ntitle: Home\n---\n\n# Hi\n");
+    d.file("index.tmd", "---\ntitle: Home\n---\n\n# Hi\n");
     let site = Site::discover(&d.0);
 
-    let post = site.render_page("post.qmd").expect("renders");
+    let post = site.render_page("post.tmd").expect("renders");
     assert!(
         post.contains("<meta name=\"citation_title\" content=\"On Gradients\">"),
         "citation_title missing: {post}"
@@ -75,7 +75,7 @@ fn scholarly_citation_meta_for_authored_dated_posts_only() {
         "citation_journal_title (site title) missing"
     );
 
-    let home = site.render_page("index.qmd").expect("renders");
+    let home = site.render_page("index.tmd").expect("renders");
     assert!(
         !home.contains("citation_"),
         "a non-article (no author/date) must not emit citation_* meta"
@@ -84,7 +84,7 @@ fn scholarly_citation_meta_for_authored_dated_posts_only() {
 
 #[test]
 fn chapters_present_infers_a_book() {
-    let d = site("title: \"Bk\"\nchapters:\n  - index.qmd\n");
+    let d = site("title: \"Bk\"\nchapters:\n  - index.tmd\n");
     let site = Site::discover(&d.0);
     assert!(
         site.is_book(),
@@ -113,7 +113,7 @@ fn quarto_shaped_config_is_no_longer_parsed_and_warns() {
     // Quarto-shaped config no longer translates — its nested values are not
     // lifted, and its now-unknown top-level keys warn.
     let d = site(
-        "project:\n  type: website\nwebsite:\n  title: \"Old\"\n  navbar:\n    left:\n      - { text: Home, href: index.qmd }\n",
+        "project:\n  type: website\nwebsite:\n  title: \"Old\"\n  navbar:\n    left:\n      - { text: Home, href: index.tmd }\n",
     );
     let site = Site::discover(&d.0);
     assert!(!site.is_book());
@@ -138,7 +138,7 @@ fn quarto_shaped_config_is_no_longer_parsed_and_warns() {
     );
 }
 
-/// A `{{< embed deck.qmd >}}` living inside an `{{< include >}}`d partial must still be
+/// A `{{< embed deck.tmd >}}` living inside an `{{< include >}}`d partial must still be
 /// discovered as a deck (otherwise the deck flattens to a chrome-wrapped article, its
 /// slides leak into search, and the embed iframe loads the wrong page).
 #[test]
@@ -146,15 +146,15 @@ fn embed_inside_an_included_partial_is_discovered_as_a_deck() {
     let d = TempProj::new();
     d.file("_site.yml", "title: S\n");
     d.file(
-        "index.qmd",
-        "---\ntitle: Home\n---\n\n{{< include _includes/_talk.qmd >}}\n",
+        "index.tmd",
+        "---\ntitle: Home\n---\n\n{{< include _includes/_talk.tmd >}}\n",
     );
     d.file(
-        "_includes/_talk.qmd",
-        "Here is a talk:\n\n{{< embed slides.qmd title=\"Talk\" >}}\n",
+        "_includes/_talk.tmd",
+        "Here is a talk:\n\n{{< embed slides.tmd title=\"Talk\" >}}\n",
     );
     d.file(
-        "slides.qmd",
+        "slides.tmd",
         "---\ntitle: Slides\nformat: revealjs\n---\n\n## One\n\n## Two\n",
     );
     let site = Site::discover(&d.0);

@@ -149,7 +149,7 @@ fn concurrent_build_is_self_consistent_across_runs() {
     let _ = fs::remove_dir_all(&base);
 }
 
-/// Write a minimal website whose `index.qmd` carries a `listing:` over a `posts/`
+/// Write a minimal website whose `index.tmd` carries a `listing:` over a `posts/`
 /// directory of N sibling pages. The index is the canonical *cross-page consumer*: its
 /// rendered cards are built from each sibling's front matter (title/date/description/
 /// category). No code cells, so the build is kernel-free and fast. Returns the sibling
@@ -158,13 +158,13 @@ fn write_listing_site(root: &Path, n_posts: usize) -> Vec<String> {
     fs::create_dir_all(root.join("posts")).unwrap();
     fs::write(
         root.join("_site.yml"),
-        "title: Listing Site\nnav:\n  left:\n    - text: Blog\n      href: index.qmd\n",
+        "title: Listing Site\nnav:\n  left:\n    - text: Blog\n      href: index.tmd\n",
     )
     .unwrap();
     // The index page: a `listing:` grid over `posts/`. This is the page whose *output*
     // would depend on its siblings if any build-order edge existed.
     fs::write(
-        root.join("index.qmd"),
+        root.join("index.tmd"),
         "---\ntitle: Blog\nlisting:\n  contents: posts\n  sort: \"date desc\"\n  type: grid\n  categories: true\n---\n\nWelcome to the blog.\n",
     )
     .unwrap();
@@ -175,7 +175,7 @@ fn write_listing_site(root: &Path, n_posts: usize) -> Vec<String> {
         let dir = root.join(format!("posts/post-{i}"));
         fs::create_dir_all(&dir).unwrap();
         fs::write(
-            dir.join("index.qmd"),
+            dir.join("index.tmd"),
             format!(
                 "---\ntitle: \"{title}\"\ndate: \"2026-01-{day:02}\"\n\
                  description: \"Summary of post {i}.\"\ncategories: [cat{i}]\n---\n\n\
@@ -249,7 +249,7 @@ fn write_kernel_site(root: &Path, n_pages: usize) {
     fs::create_dir_all(root).unwrap();
     let mut nav = String::from("title: Kernel Site\ntoc: true\nnavbar:\n  left:\n");
     for i in 0..n_pages {
-        nav.push_str(&format!("    - page{i}.qmd\n"));
+        nav.push_str(&format!("    - page{i}.tmd\n"));
         let page = format!(
             "---\ntitle: Page {i}\n---\n\n# Page {i}\n\n\
              Some prose so the page is not all code.\n\n\
@@ -261,7 +261,7 @@ fn write_kernel_site(root: &Path, n_pages: usize) {
             i = i,
             n = (i + 5) * 3,
         );
-        fs::write(root.join(format!("page{i}.qmd")), page).unwrap();
+        fs::write(root.join(format!("page{i}.tmd")), page).unwrap();
     }
     fs::write(root.join("_site.yml"), nav).unwrap();
 }
@@ -321,7 +321,7 @@ fn concurrent_pages_with_same_relative_export_do_not_clobber() {
     fs::create_dir_all(root.join("beta")).unwrap();
     fs::write(
         root.join("_site.yml"),
-        "title: Fig Isolation\nnavbar:\n  left:\n    - alpha/index.qmd\n    - beta/index.qmd\n",
+        "title: Fig Isolation\nnavbar:\n  left:\n    - alpha/index.tmd\n    - beta/index.tmd\n",
     )
     .unwrap();
     // Two pages in different dirs, each exporting `figures/x.pdf` with a *different* plot.
@@ -336,8 +336,8 @@ fn concurrent_pages_with_same_relative_export_do_not_clobber() {
              ```\n"
         )
     };
-    fs::write(root.join("alpha/index.qmd"), page("Alpha", "[0, 1, 4]")).unwrap();
-    fs::write(root.join("beta/index.qmd"), page("Beta", "[4, 1, 0]")).unwrap();
+    fs::write(root.join("alpha/index.tmd"), page("Alpha", "[0, 1, 4]")).unwrap();
+    fs::write(root.join("beta/index.tmd"), page("Beta", "[4, 1, 0]")).unwrap();
 
     // Concurrent build: both pages' kernels run with cwd = their own dir.
     build_and_collect(&root, "_site", "4");

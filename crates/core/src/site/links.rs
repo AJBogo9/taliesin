@@ -1,12 +1,12 @@
-//! Link rewriting + cross-file link validation: map `.qmd` hrefs to their built `.html`
+//! Link rewriting + cross-file link validation: map `.tmd` hrefs to their built `.html`
 //! URLs, resolve depth-relative hrefs, and the manual-local-link scan used by cross-page
 //! validation. `rewrite_qmd_links` is the public entry the dev server applies to each
 //! page's body. `use super::*` reaches Page/Block/esc.
 
 use super::*;
 
-/// Map a source rel-path to its built `.html` URL (`x.tmd` / `x.qmd` → `x.html`);
-/// a non-source path round-trips unchanged.
+/// Map a source rel-path to its built `.html` URL (`x.tmd` → `x.html`); a non-source
+/// path round-trips unchanged.
 pub(super) fn qmd_to_html(rel: &str) -> String {
     match crate::ext::strip_source_ext(rel) {
         Some(stem) => format!("{stem}.html"),
@@ -15,7 +15,7 @@ pub(super) fn qmd_to_html(rel: &str) -> String {
 }
 
 /// Resolve a config/author href for emission from a page at `up` depth: leave
-/// external/absolute/anchor links alone, map intra-site `.qmd` to `.html`, and
+/// external/absolute/anchor links alone, map intra-site `.tmd` to `.html`, and
 /// prefix in-tree relative links with the page's `../` depth.
 pub(super) fn resolve_href(href: &str, up: &str) -> String {
     if href.starts_with('#')
@@ -26,15 +26,15 @@ pub(super) fn resolve_href(href: &str, up: &str) -> String {
     {
         return href.to_string();
     }
-    // Site-absolute (`/blog.qmd`): qmd→html, keep absolute.
+    // Site-absolute (`/blog.tmd`): tmd→html, keep absolute.
     if let Some(rest) = href.strip_prefix('/') {
         return format!("/{}", qmd_href(rest));
     }
-    // Relative: qmd→html, prefix with the page's depth.
+    // Relative: tmd→html, prefix with the page's depth.
     format!("{up}{}", qmd_href(href))
 }
 
-/// `.qmd`→`.html` on an href, preserving any `#fragment`.
+/// `.tmd`→`.html` on an href, preserving any `#fragment`.
 pub(super) fn qmd_href(href: &str) -> String {
     let (path, frag) = match href.split_once('#') {
         Some((p, f)) => (p, Some(f)),
@@ -54,9 +54,9 @@ pub(super) fn href_matches_page(href: &str, page: &Page) -> bool {
     target == page.url || h == page.rel
 }
 
-/// Rewrite every intra-site `.qmd` link in rendered HTML to its `.html` target,
+/// Rewrite every intra-site `.tmd` link in rendered HTML to its `.html` target,
 /// preserving the author's relative/absolute prefix and `#fragment`. External
-/// links, data URIs, and non-`.qmd` paths are untouched.
+/// links, data URIs, and non-`.tmd` paths are untouched.
 pub fn rewrite_qmd_links(html: &str) -> String {
     let mut out = String::with_capacity(html.len());
     let mut rest = html;
@@ -78,7 +78,7 @@ pub fn rewrite_qmd_links(html: &str) -> String {
 }
 
 pub(super) fn rewrite_one_href(val: &str) -> String {
-    // Only touch in-site links (skip external/anchor/data); rewrite the `.qmd`
+    // Only touch in-site links (skip external/anchor/data); rewrite the `.tmd`
     // path component, keeping prefix + fragment intact.
     if val.starts_with('#')
         || val.starts_with("//")
@@ -90,7 +90,7 @@ pub(super) fn rewrite_one_href(val: &str) -> String {
     {
         return val.to_string();
     }
-    // `.qmd`→`.html` on the path component, fragment preserved (a non-`.qmd` path
+    // `.tmd`→`.html` on the path component, fragment preserved (a non-`.tmd` path
     // round-trips unchanged through `qmd_to_html`).
     qmd_href(val)
 }
@@ -109,7 +109,7 @@ pub(super) fn block_tag_has_id(html: &str, id: &str) -> bool {
 }
 
 /// Resolve `target` (a path relative to the file at `from_rel`) to a site-root-
-/// relative path: e.g. (`posts/em/index.qmd`, `thumbnail.webp`) → `posts/em/thumbnail.webp`.
+/// relative path: e.g. (`posts/em/index.tmd`, `thumbnail.webp`) → `posts/em/thumbnail.webp`.
 pub(super) fn join_rel(from_rel: &str, target: &str) -> String {
     if target.starts_with('/') {
         return target.trim_start_matches('/').to_string();
@@ -201,7 +201,7 @@ pub(super) fn collect_html_ids(html: &str, out: &mut std::collections::HashSet<S
 /// External (`http(s)://`, `//`, `mailto:`, `tel:`), data-URI, empty, bare in-page
 /// `#frag`, and cross-reference (`tali-xref`) links are skipped — the cross-page checker
 /// only resolves intra-site file links (anchors handled per target page). The path keeps
-/// its authored form (`other.qmd`, `../sec/page.html`); the fragment is split off.
+/// its authored form (`other.tmd`, `../sec/page.html`); the fragment is split off.
 pub(super) fn manual_local_links(html: &str) -> Vec<(&str, Option<&str>)> {
     let mut out = Vec::new();
     let mut i = 0;
@@ -239,7 +239,7 @@ pub(super) fn manual_local_links(html: &str) -> Vec<(&str, Option<&str>)> {
             Some((p, f)) => (p, Some(f)),
             None => (val, None),
         };
-        // Strip a `?query` so a cache-busting / signed link (`page.qmd?v=2`) still
+        // Strip a `?query` so a cache-busting / signed link (`page.tmd?v=2`) still
         // resolves to its page instead of false-flagging — mirrors the single-doc
         // checker (`diagnostics::validate_local_links`).
         let path = &path[..path.find('?').unwrap_or(path.len())];
@@ -326,19 +326,19 @@ mod tests {
 
     #[test]
     fn manual_local_links_skips_external_anchor_and_xref() {
-        let html = r##"<a href="other.qmd">o</a> <a href="page.html#sec">p</a> <a href="https://x.com">e</a> <a href="#top">t</a> <a href="x.html" class="tali-xref">r</a>"##;
+        let html = r##"<a href="other.tmd">o</a> <a href="page.html#sec">p</a> <a href="https://x.com">e</a> <a href="#top">t</a> <a href="x.html" class="tali-xref">r</a>"##;
         let links = manual_local_links(html);
-        assert_eq!(links, vec![("other.qmd", None), ("page.html", Some("sec"))]);
+        assert_eq!(links, vec![("other.tmd", None), ("page.html", Some("sec"))]);
     }
 
     #[test]
     fn manual_local_links_strips_query_string_keeps_fragment() {
         // A cache-busting / signed link must resolve to its page, not false-flag.
-        let html = r##"<a href="report.qmd?v=2">q</a> <a href="dash.html?token=abc#sec">d</a>"##;
+        let html = r##"<a href="report.tmd?v=2">q</a> <a href="dash.html?token=abc#sec">d</a>"##;
         let links = manual_local_links(html);
         assert_eq!(
             links,
-            vec![("report.qmd", None), ("dash.html", Some("sec"))]
+            vec![("report.tmd", None), ("dash.html", Some("sec"))]
         );
     }
 }

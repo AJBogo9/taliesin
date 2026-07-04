@@ -1,14 +1,14 @@
 //! Multi-page website project model.
 //!
 //! A *site* is a directory with one explicit root config (`_site.yml`, kept for
-//! Quarto compatibility) plus a set of `.qmd` input pages. This module owns the
+//! Quarto compatibility) plus a set of `.tmd` input pages. This module owns the
 //! project-level concerns that the single-page path never had:
 //!
 //!   - parsing the root config (navbar / footer / title) into a typed [`SiteConfig`],
-//!   - discovering input pages and mapping each to its output URL (`.qmd` → `.html`),
+//!   - discovering input pages and mapping each to its output URL (`.tmd` → `.html`),
 //!   - the page order used for book chapter prev/next navigation,
 //!   - building the shared chrome (navbar, footer, book prev/next) injected into pages,
-//!   - rewriting intra-site `.qmd` links to their built `.html` targets.
+//!   - rewriting intra-site `.tmd` links to their built `.html` targets.
 //!
 //! Per the project's config decision there is **no `_metadata.yml` cascade**: the
 //! root config is the single source of project-wide defaults and a page's own
@@ -25,18 +25,18 @@ use crate::render::{self, Block, SiteCtx, Warning, block_heading_level, escape_a
 /// and the preview serves live, so the embedding iframe resolves.
 #[derive(Debug, Clone)]
 pub struct DeckRef {
-    /// Absolute path to the deck's `.qmd` source.
+    /// Absolute path to the deck's `.tmd` source.
     pub input: PathBuf,
-    /// Output URL relative to the site root (`demo.qmd` → `demo.html`).
+    /// Output URL relative to the site root (`demo.tmd` → `demo.html`).
     pub url: String,
 }
 
 /// A single input page and where it lands in the built site.
 #[derive(Debug, Clone)]
 pub struct Page {
-    /// Absolute path to the source `.qmd`.
+    /// Absolute path to the source `.tmd`.
     pub input: PathBuf,
-    /// Path relative to the site root, e.g. `posts/em-algorithm/index.qmd`.
+    /// Path relative to the site root, e.g. `posts/em-algorithm/index.tmd`.
     pub rel: String,
     /// Output URL relative to the site root, e.g. `posts/em-algorithm/index.html`.
     pub url: String,
@@ -182,13 +182,13 @@ use links::{
 
 impl Site {
     /// Discover the site rooted at `root`: parse `_site.yml`, enumerate input
-    /// `.qmd` pages, and compute their output URLs + ordering.
+    /// `.tmd` pages, and compute their output URLs + ordering.
     pub fn discover(root: &Path) -> Site {
         let mut warnings = Vec::new();
         let config = load_config(root, &mut warnings);
 
         // A book takes its page set + order from the explicit `chapters:` list;
-        // a website discovers every `.qmd` and orders by path.
+        // a website discovers every `.tmd` and orders by path.
         let (mut pages, book) = if config.is_book {
             let book = build_book(root, &config);
             let pages = book_pages(root, &book, &mut warnings);
@@ -197,7 +197,7 @@ impl Site {
             (website_pages(root, &mut warnings), None)
         };
 
-        // Decks referenced by `{{< embed >}}`. A website discovers *every* `.qmd` as a
+        // Decks referenced by `{{< embed >}}`. A website discovers *every* `.tmd` as a
         // page, so a deck that's only there to be embedded would otherwise also become
         // a navigable, chrome-wrapped page (and show up in nav/search). Drop those from
         // the page set: an embedded deck is served as a standalone deck, not a page.
@@ -316,7 +316,7 @@ impl Site {
             .unwrap_or(if self.is_book() { "_book" } else { "_site" })
     }
 
-    /// Whether the author supplies their own `404.qmd` (output URL `404.html`). When
+    /// Whether the author supplies their own `404.tmd` (output URL `404.html`). When
     /// true the build must NOT clobber it with the built-in not-found template, and
     /// the page is kept out of the Cmd-K search index (a 404 is navigation chrome, not
     /// content). When false the build emits [`render_404_page`](Self::render_404_page).
@@ -418,7 +418,7 @@ impl Site {
     /// Finish a page whose `doc.blocks` are already produced — and possibly
     /// code-executed (the static build runs cells, then calls this): apply the
     /// site front-matter expansion (`about:`/`listing:`), wrap in chrome, and
-    /// rewrite intra-site `.qmd` links. Shared by `render_page` (no execution) and
+    /// rewrite intra-site `.tmd` links. Shared by `render_page` (no execution) and
     /// the executing `build` path so both emit identical chrome + links.
     pub fn render_page_doc(&self, page: &Page, doc: render::RenderedDoc) -> String {
         self.render_page_doc_warned(page, doc).0
@@ -500,7 +500,7 @@ impl Site {
                 let frag = lk.frag.as_deref();
                 let line = lk.line;
                 let source_file = &lk.source_file;
-                // Resolve to a site-root-relative `.html` url. `.qmd`→`.html`, then
+                // Resolve to a site-root-relative `.html` url. `.tmd`→`.html`, then
                 // join against the page's directory. A link that climbs *above* the
                 // site root (`../other-book/…`, a mounted sibling) is unresolvable
                 // offline and deliberately skipped — only the marketing site that
@@ -1051,14 +1051,14 @@ mod tests {
         let root = std::env::temp_dir().join(format!("tali-draft-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
-        fs::write(root.join("index.qmd"), "---\ntitle: Home\n---\n\nHome.\n").unwrap();
+        fs::write(root.join("index.tmd"), "---\ntitle: Home\n---\n\nHome.\n").unwrap();
         fs::write(
-            root.join("published.qmd"),
+            root.join("published.tmd"),
             "---\ntitle: Pub\n---\n\nPublished.\n",
         )
         .unwrap();
         fs::write(
-            root.join("wip.qmd"),
+            root.join("wip.tmd"),
             "---\ntitle: WIP\ndraft: true\n---\n\nWork in progress.\n",
         )
         .unwrap();
@@ -1067,13 +1067,13 @@ mod tests {
             .iter()
             .map(|p| p.rel.clone())
             .collect();
-        assert!(rels.contains(&"index.qmd".to_string()), "kept: {rels:?}");
+        assert!(rels.contains(&"index.tmd".to_string()), "kept: {rels:?}");
         assert!(
-            rels.contains(&"published.qmd".to_string()),
+            rels.contains(&"published.tmd".to_string()),
             "kept: {rels:?}"
         );
         assert!(
-            !rels.contains(&"wip.qmd".to_string()),
+            !rels.contains(&"wip.tmd".to_string()),
             "draft excluded: {rels:?}"
         );
 
@@ -1087,9 +1087,9 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
         fs::write(root.join("_site.yml"), "title: Demo\n").unwrap();
-        fs::write(root.join("index.qmd"), "---\ntitle: Home\n---\n\nHome.\n").unwrap();
+        fs::write(root.join("index.tmd"), "---\ntitle: Home\n---\n\nHome.\n").unwrap();
         fs::write(
-            root.join("404.qmd"),
+            root.join("404.tmd"),
             "---\ntitle: Lost\n---\n\n# Custom not found\n\nNope.\n",
         )
         .unwrap();
@@ -1097,7 +1097,7 @@ mod tests {
         let site = Site::discover(&root);
         assert!(
             site.has_author_404(),
-            "a root 404.qmd is detected as the author's own 404 page"
+            "a root 404.tmd is detected as the author's own 404 page"
         );
         // The author's 404 must never leak into the Cmd-K full-text index.
         assert!(
@@ -1112,12 +1112,12 @@ mod tests {
             site.search_index_json
         );
 
-        // A site with no 404.qmd reports false (the built-in template applies).
+        // A site with no 404.tmd reports false (the built-in template applies).
         let bare = std::env::temp_dir().join(format!("tali-no404-{}", std::process::id()));
         let _ = fs::remove_dir_all(&bare);
         fs::create_dir_all(&bare).unwrap();
         fs::write(bare.join("_site.yml"), "title: Demo\n").unwrap();
-        fs::write(bare.join("index.qmd"), "---\ntitle: Home\n---\n\nHome.\n").unwrap();
+        fs::write(bare.join("index.tmd"), "---\ntitle: Home\n---\n\nHome.\n").unwrap();
         assert!(!Site::discover(&bare).has_author_404());
 
         let _ = fs::remove_dir_all(&root);
@@ -1152,15 +1152,15 @@ mod tests {
             &[
                 ("_site.yml", "title: Demo\n"),
                 (
-                    "index.qmd",
+                    "index.tmd",
                     "---\ntitle: Home\nlisting:\n  contents: \".\"\n---\n\n# Posts\n",
                 ),
-                ("a.qmd", "---\ntitle: Post A\n---\n\nA.\n"),
-                ("b.qmd", "---\n# no title here\n---\n\nB.\n"),
+                ("a.tmd", "---\ntitle: Post A\n---\n\nA.\n"),
+                ("b.tmd", "---\n# no title here\n---\n\nB.\n"),
             ],
         );
         let site = Site::discover(&root);
-        let (html, warnings) = render_page(&site, "index.qmd");
+        let (html, warnings) = render_page(&site, "index.tmd");
         assert!(
             html.contains("Post A"),
             "root `contents: .` lists siblings: {html}"
@@ -1168,7 +1168,7 @@ mod tests {
         assert!(
             warnings
                 .iter()
-                .any(|w| w.message.contains("b.qmd") && w.message.contains("no `title:`")),
+                .any(|w| w.message.contains("b.tmd") && w.message.contains("no `title:`")),
             "titleless post warned: {warnings:?}"
         );
         let _ = std::fs::remove_dir_all(&root);
@@ -1177,7 +1177,7 @@ mod tests {
     #[test]
     fn tmd_pages_are_discovered_with_html_urls() {
         // `.tmd` is the native source extension; a site authored in `.tmd` must be
-        // walked like a `.qmd` one, and each page's built URL is still `.html`.
+        // walked like a `.tmd` one, and each page's built URL is still `.html`.
         let root = write_site(
             "tmd-native",
             &[
@@ -1214,7 +1214,7 @@ mod tests {
             &[
                 ("_site.yml", "title: Demo\n"),
                 (
-                    "index.qmd",
+                    "index.tmd",
                     "---\ntitle: Home\nlisting:\n  type: grid\n---\n\nHi.\n",
                 ),
             ],
@@ -1237,16 +1237,16 @@ mod tests {
             &[
                 (
                     "_site.yml",
-                    "title: Book\nchapters:\n  - index.qmd\n  - missing.qmd\n",
+                    "title: Book\nchapters:\n  - index.tmd\n  - missing.tmd\n",
                 ),
-                ("index.qmd", "---\ntitle: Intro\n---\n\n# Intro\n"),
+                ("index.tmd", "---\ntitle: Intro\n---\n\n# Intro\n"),
             ],
         );
         let site = Site::discover(&root);
         assert!(
             site.warnings
                 .iter()
-                .any(|w| w.contains("missing.qmd") && w.contains("chapter file not found")),
+                .any(|w| w.contains("missing.tmd") && w.contains("chapter file not found")),
             "{:?}",
             site.warnings
         );
@@ -1259,8 +1259,8 @@ mod tests {
             "mountcol",
             &[
                 ("_site.yml", "title: Demo\nmounts:\n  docs: ../other\n"),
-                ("index.qmd", "---\ntitle: Home\n---\n\nHi.\n"),
-                ("docs/page.qmd", "---\ntitle: Doc\n---\n\nDoc.\n"),
+                ("index.tmd", "---\ntitle: Home\n---\n\nHi.\n"),
+                ("docs/page.tmd", "---\ntitle: Doc\n---\n\nDoc.\n"),
             ],
         );
         let site = Site::discover(&root);
@@ -1280,7 +1280,7 @@ mod tests {
             "imgnourl",
             &[
                 ("_site.yml", "title: Demo\nimage: card.png\n"),
-                ("index.qmd", "---\ntitle: Home\n---\n\nHi.\n"),
+                ("index.tmd", "---\ntitle: Home\n---\n\nHi.\n"),
             ],
         );
         let site = Site::discover(&root);
@@ -1301,17 +1301,17 @@ mod tests {
             &[
                 ("_site.yml", "title: Demo\n"),
                 (
-                    "index.qmd",
+                    "index.tmd",
                     "---\ntitle: Home\nlisting:\n  contents: posts\n  type: grid\n---\n\n# Posts\n",
                 ),
                 (
-                    "posts/p.qmd",
+                    "posts/p.tmd",
                     "---\ntitle: Post\nimage: pic.png\nimage-alt: A nice pic\n---\n\nBody.\n",
                 ),
             ],
         );
         let site = Site::discover(&root);
-        let (html, _) = render_page(&site, "index.qmd");
+        let (html, _) = render_page(&site, "index.tmd");
         assert!(
             html.contains("alt=\"A nice pic\""),
             "card alt emitted: {html}"
@@ -1326,14 +1326,14 @@ mod tests {
             &[
                 (
                     "_site.yml",
-                    "title: Book\nchapters:\n  - a.qmd\n  - b.qmd\n",
+                    "title: Book\nchapters:\n  - a.tmd\n  - b.tmd\n",
                 ),
                 (
-                    "a.qmd",
+                    "a.tmd",
                     "---\ntitle: Alpha\n---\n\nSee @fig-plot for the result.\n",
                 ),
                 (
-                    "b.qmd",
+                    "b.tmd",
                     "---\ntitle: Beta\n---\n\n![A scatter plot](plot.png){#fig-plot}\n",
                 ),
             ],
@@ -1341,7 +1341,7 @@ mod tests {
         // Without the harvest, the source-scan knows fig-plot's PAGE but not its NUMBER
         // (figure numbers exist only after render), so the cross-page ref is a bare label.
         let mut site = Site::discover(&root);
-        let before = site.render_page("a.qmd").unwrap();
+        let before = site.render_page("a.tmd").unwrap();
         assert!(
             before.contains("b.html#fig-plot"),
             "cross-page link resolves: {before}"
@@ -1352,7 +1352,7 @@ mod tests {
         );
         // After the build-time harvest, the rendered figure number is filled in.
         site.harvest_xref_numbers();
-        let after = site.render_page("a.qmd").unwrap();
+        let after = site.render_page("a.tmd").unwrap();
         assert!(
             after.contains("<a href=\"b.html#fig-plot\" class=\"tali-xref\">Figure&nbsp;1</a>"),
             "cross-page figure ref numbered after harvest: {after}"
@@ -1367,12 +1367,12 @@ mod tests {
             &[
                 ("_site.yml", "title: Site\n"),
                 (
-                    "index.qmd",
-                    "---\ntitle: Home\ntoc: true\n---\n\n## H\n\nSee [Alpha](a.qmd).\n\n## H2\n\nmore\n",
+                    "index.tmd",
+                    "---\ntitle: Home\ntoc: true\n---\n\n## H\n\nSee [Alpha](a.tmd).\n\n## H2\n\nmore\n",
                 ),
                 (
-                    "a.qmd",
-                    "---\ntitle: Alpha\ntoc: true\n---\n\n## A\n\nBack [Home](index.qmd).\n\n## A2\n\nmore\n",
+                    "a.tmd",
+                    "---\ntitle: Alpha\ntoc: true\n---\n\n## A\n\nBack [Home](index.tmd).\n\n## A2\n\nmore\n",
                 ),
             ],
         );
@@ -1387,7 +1387,7 @@ mod tests {
             "edge index->a present: {}",
             site.reference_graph_json
         );
-        let html = site.render_page("index.qmd").unwrap();
+        let html = site.render_page("index.tmd").unwrap();
         assert!(
             html.contains("window.TALIESIN_REF_GRAPH="),
             "graph data embedded on the page"
@@ -1403,14 +1403,14 @@ mod tests {
             "nograph",
             &[
                 ("_site.yml", "title: Site\n"),
-                ("index.qmd", "---\ntitle: Home\n---\n\nJust prose.\n"),
-                ("a.qmd", "---\ntitle: Alpha\n---\n\nAlso prose.\n"),
+                ("index.tmd", "---\ntitle: Home\n---\n\nJust prose.\n"),
+                ("a.tmd", "---\ntitle: Alpha\n---\n\nAlso prose.\n"),
             ],
         );
         let s2 = Site::discover(&bare);
         assert!(!s2.has_reference_graph(), "no cross-page refs → no graph");
         assert!(
-            !s2.render_page("index.qmd")
+            !s2.render_page("index.tmd")
                 .unwrap()
                 .contains("data-qmd-graph"),
             "no graph control when there are no edges"

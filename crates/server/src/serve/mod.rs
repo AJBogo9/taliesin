@@ -1153,14 +1153,14 @@ mod protocol_contract {
             theme_css: "",
             theme_default: "auto",
             theme_is_custom: false,
-            doc_path: "/tmp/deck.qmd",
+            doc_path: "/tmp/deck.tmd",
             base_dir: "/tmp",
             includes: &includes,
             body: "<section><h2>S</h2></section>",
         };
         let html = deck_index_html(&ctx);
         assert!(
-            html.contains("window.TALIESIN_DOC = { path: \"/tmp/deck.qmd\", baseDir: \"/tmp\" }"),
+            html.contains("window.TALIESIN_DOC = { path: \"/tmp/deck.tmd\", baseDir: \"/tmp\" }"),
             "deck page must carry TALIESIN_DOC for click-to-source"
         );
     }
@@ -1180,7 +1180,7 @@ mod protocol_contract {
                 theme_css: "",
                 theme_default: "auto",
                 theme_is_custom: false,
-                doc_path: "/tmp/doc.qmd",
+                doc_path: "/tmp/doc.tmd",
                 base_dir: "/tmp",
                 includes: &includes,
                 body: "<h2 id=\"s\" data-block-id=\"b\">S</h2>",

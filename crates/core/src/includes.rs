@@ -282,7 +282,7 @@ fn absolutize(p: &Path) -> PathBuf {
 ///
 /// Expects an **absolute, normalized** `base_dir` (see [`absolutize`] in
 /// [`safe_join`]). The parent-walk must start absolute: when the CLI is given a
-/// relative path (e.g. `corpus/posts/x/index.qmd`), a relative parent-walk hits an
+/// relative path (e.g. `corpus/posts/x/index.tmd`), a relative parent-walk hits an
 /// empty path before ever seeing the absolute ancestor that actually holds
 /// `.git`/`_site.yml`, so it would fall back to `base_dir` itself and then reject a
 /// legitimate `../../_includes/…` include as "escaping" that fake root.
@@ -324,10 +324,10 @@ mod tests {
 
     #[test]
     fn parses_include_directive() {
-        assert_eq!(parse_include("{{< include foo.qmd >}}"), Some("foo.qmd"));
+        assert_eq!(parse_include("{{< include foo.tmd >}}"), Some("foo.tmd"));
         assert_eq!(
-            parse_include("  {{< include \"a/b.qmd\" >}}  "),
-            Some("a/b.qmd")
+            parse_include("  {{< include \"a/b.tmd\" >}}  "),
+            Some("a/b.tmd")
         );
         assert_eq!(parse_include("text {{< include x >}}"), None); // not alone on the line
         assert_eq!(parse_include("{{< video x >}}"), None); // different shortcode
@@ -381,11 +381,11 @@ mod tests {
         let base = root.join("post");
         // A sibling include under the marked root resolves.
         assert!(
-            safe_join(&base, "../_includes/x.qmd").is_some(),
+            safe_join(&base, "../_includes/x.tmd").is_some(),
             "a sibling include under the project root must resolve"
         );
         // Climbing above the root is refused.
-        assert!(safe_join(&base, "../../escape.qmd").is_none());
+        assert!(safe_join(&base, "../../escape.tmd").is_none());
         // An absolute target is always refused.
         assert!(safe_join(&base, "/etc/passwd").is_none());
 

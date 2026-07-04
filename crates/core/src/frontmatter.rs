@@ -140,7 +140,7 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
         &mut out,
     );
     validate_theorem_values(map, block, &mut out);
-    // `listing:` is one mapping or a sequence of mappings (cv.qmd).
+    // `listing:` is one mapping or a sequence of mappings (cv.tmd).
     match map.get("listing") {
         Some(serde_yaml::Value::Mapping(m)) => {
             validate_child_keys(m, "listing", "listing key", LISTING_KEYS, block, &mut out)
@@ -473,7 +473,7 @@ mod tests {
             m,
             vec!["unknown listing key `max-itemz` (did you mean `max-items`?)"]
         );
-        // A sequence of listings (cv.qmd shape) validates each item.
+        // A sequence of listings (cv.tmd shape) validates each item.
         let m2 = msgs("---\ntitle: X\nlisting:\n  - contents: a\n    sort-uii: false\n---\n");
         assert_eq!(m2, vec!["unknown listing key `sort-uii`"]);
     }

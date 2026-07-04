@@ -1,4 +1,4 @@
-//! Parse `.qmd` source with comrak (sourcepos-aware) and emit our own HTML.
+//! Parse `.tmd` source with comrak (sourcepos-aware) and emit our own HTML.
 //!
 //! We deliberately do not use comrak's built-in HTML formatter: every
 //! top-level AST node is treated as a "block" and gets its own root element
@@ -86,7 +86,7 @@ pub use page::{
 };
 use theme::{detect_theme, resolve_theme, theme_default_mode, theme_style};
 
-/// Render a `.qmd` source string into the `RenderedDoc` block model: the parse
+/// Render a `.tmd` source string into the `RenderedDoc` block model: the parse
 /// step only (no code execution, no page chrome). The dev server diffs these
 /// block lists for incremental updates; the CLI wraps the result in a page.
 ///

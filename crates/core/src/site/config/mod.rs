@@ -13,10 +13,10 @@
 //! head:  head.html           # include-in-header
 //! body-end: body.html        # include-after-body  (also: body-start)
 //! nav:                       # a list ⇒ left side; or { left: […], right: […] }
-//!   - { text: Blog, href: blog.qmd }
+//!   - { text: Blog, href: blog.tmd }
 //! footer:                    # a string ⇒ left text; or { left/center/right }
 //!   right: [{ icon: github, href: "…" }]
-//! chapters: [index.qmd, …]   # presence ⇒ a book (no `type:` needed)
+//! chapters: [index.tmd, …]   # presence ⇒ a book (no `type:` needed)
 //! ```
 
 use super::*;
@@ -124,7 +124,7 @@ pub const MALFORMED_CONFIG_PREFIX: &str = "_site.yml is not valid YAML";
 pub(in crate::site) fn load_config(root: &Path, warnings: &mut Vec<String>) -> SiteConfig {
     let path = root.join("_site.yml");
     let Ok(text) = std::fs::read_to_string(&path) else {
-        // A missing `_site.yml` is legitimate (a bare directory of `.qmd` pages), not an
+        // A missing `_site.yml` is legitimate (a bare directory of `.tmd` pages), not an
         // error — distinct from the malformed case below, which downstream counts.
         warnings.push(format!("no _site.yml at {}", root.display()));
         return SiteConfig::default();

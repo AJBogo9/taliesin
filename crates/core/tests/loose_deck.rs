@@ -19,9 +19,9 @@ fn tmp_site(name: &str) -> PathBuf {
 fn loose_deck_in_site_is_warned_not_silently_flattened() {
     let dir = tmp_site("warn");
     fs::write(dir.join("_site.yml"), "title: Test Site\n").unwrap();
-    fs::write(dir.join("index.qmd"), "---\ntitle: Home\n---\n\nHi.\n").unwrap();
+    fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nHi.\n").unwrap();
     fs::write(
-        dir.join("talk.qmd"),
+        dir.join("talk.tmd"),
         "---\ntitle: My Talk\nformat: revealjs\n---\n\n## Slide one\n\n## Slide two\n",
     )
     .unwrap();
@@ -30,12 +30,12 @@ fn loose_deck_in_site_is_warned_not_silently_flattened() {
     let warned = site
         .warnings
         .iter()
-        .any(|w| w.contains("talk.qmd") && (w.contains("embed") || w.contains("deck")));
+        .any(|w| w.contains("talk.tmd") && (w.contains("embed") || w.contains("deck")));
     let warnings = site.warnings.clone();
     let _ = fs::remove_dir_all(&dir);
     assert!(
         warned,
-        "expected a loose-deck warning for talk.qmd, got: {warnings:?}"
+        "expected a loose-deck warning for talk.tmd, got: {warnings:?}"
     );
 }
 
@@ -44,18 +44,18 @@ fn embedded_deck_in_site_is_not_warned() {
     let dir = tmp_site("ok");
     fs::write(dir.join("_site.yml"), "title: Test Site\n").unwrap();
     fs::write(
-        dir.join("index.qmd"),
-        "---\ntitle: Home\n---\n\n{{< embed talk.qmd >}}\n",
+        dir.join("index.tmd"),
+        "---\ntitle: Home\n---\n\n{{< embed talk.tmd >}}\n",
     )
     .unwrap();
     fs::write(
-        dir.join("talk.qmd"),
+        dir.join("talk.tmd"),
         "---\ntitle: My Talk\nformat: revealjs\n---\n\n## Slide one\n",
     )
     .unwrap();
 
     let site = Site::discover(&dir);
-    let warned = site.warnings.iter().any(|w| w.contains("talk.qmd"));
+    let warned = site.warnings.iter().any(|w| w.contains("talk.tmd"));
     let warnings = site.warnings.clone();
     let _ = fs::remove_dir_all(&dir);
     assert!(

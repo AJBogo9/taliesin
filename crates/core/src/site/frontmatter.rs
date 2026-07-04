@@ -135,7 +135,7 @@ pub(crate) fn string_list(v: Option<&serde_yaml::Value>) -> Vec<String> {
     }
 }
 
-/// Parse a `listing:` value: a single map, or a sequence of maps (cv.qmd). A map with
+/// Parse a `listing:` value: a single map, or a sequence of maps (cv.tmd). A map with
 /// no `contents:` (nothing to list) is warned about via `warnings`, keyed by `label`
 /// (the page rel), instead of being silently dropped.
 pub(crate) fn parse_listings(

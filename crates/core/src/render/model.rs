@@ -275,8 +275,8 @@ mod warning_tests {
 
     #[test]
     fn warning_at_attaches_file_and_line() {
-        let w = Warning::new("broken cross-reference: @fig-x").at(Some("intro.qmd".into()), 12);
-        assert_eq!(w.file.as_deref(), Some("intro.qmd"));
+        let w = Warning::new("broken cross-reference: @fig-x").at(Some("intro.tmd".into()), 12);
+        assert_eq!(w.file.as_deref(), Some("intro.tmd"));
         assert_eq!(w.line, Some(12));
     }
 }
