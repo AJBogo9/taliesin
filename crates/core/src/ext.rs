@@ -1,16 +1,14 @@
 //! The source-file extension vocabulary, defined once.
 //!
-//! Taliesin's native source extension is `.tmd`; `.qmd` (the Quarto spelling) stays
-//! accepted so existing trees keep working unchanged. Every place that recognizes a
-//! source file — the site page walker, the `check` walker, link rewriting, book
-//! chapter naming, deck/embed href mapping — routes through here, so the accepted set
-//! lives in one spot and the two spellings never drift apart.
+//! Taliesin's native and only source extension is `.tmd`. Every place that
+//! recognizes a source file — the site page walker, the `check` walker, link
+//! rewriting, book chapter naming, deck/embed href mapping — routes through here.
 
 use std::path::Path;
 
-/// Every accepted source extension (no leading dot), native first. A file is a
-/// Taliesin source document iff its extension is one of these.
-pub const ACCEPTED_SOURCE_EXTS: &[&str] = &["tmd", "qmd"];
+/// Every accepted source extension (no leading dot). A file is a Taliesin source
+/// document iff its extension is one of these.
+pub const ACCEPTED_SOURCE_EXTS: &[&str] = &["tmd"];
 
 /// Whether an extension string (no dot, as returned by [`Path::extension`]) names a
 /// source document.
@@ -25,7 +23,7 @@ pub fn is_source_path(path: &Path) -> bool {
         .is_some_and(is_source_ext)
 }
 
-/// Strip a trailing accepted source extension (`.tmd` / `.qmd`) from a path string,
+/// Strip a trailing accepted source extension (`.tmd`) from a path string,
 /// returning the stem. `None` if the string has no accepted source extension — so a
 /// non-source path (or a bare `"tmd"`) round-trips through callers unchanged.
 pub fn strip_source_ext(path: &str) -> Option<&str> {
@@ -39,21 +37,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn accepts_both_spellings_rejects_others() {
-        assert!(is_source_ext("tmd") && is_source_ext("qmd"));
+    fn accepts_tmd_only_rejects_qmd_and_others() {
+        assert!(is_source_ext("tmd"));
+        assert!(
+            !is_source_ext("qmd"),
+            "qmd is no longer an accepted source extension"
+        );
         assert!(!is_source_ext("md") && !is_source_ext("html") && !is_source_ext(""));
         assert!(is_source_path(Path::new("a/b/index.tmd")));
-        assert!(is_source_path(Path::new("post.qmd")));
-        assert!(!is_source_path(Path::new("style.css")));
-        assert!(!is_source_path(Path::new("noext")));
+        assert!(!is_source_path(Path::new("a/b/index.qmd")));
     }
 
     #[test]
     fn strips_only_a_real_trailing_source_ext() {
         assert_eq!(strip_source_ext("index.tmd"), Some("index"));
-        assert_eq!(strip_source_ext("sub/index.qmd"), Some("sub/index"));
         assert_eq!(strip_source_ext("plain.html"), None);
         assert_eq!(strip_source_ext("x.notmd"), None); // not a `.tmd` boundary
         assert_eq!(strip_source_ext("tmd"), None); // bare, no dot
+        assert_eq!(
+            strip_source_ext("sub/index.qmd"),
+            None,
+            "qmd is no longer an accepted source extension"
+        );
     }
 }

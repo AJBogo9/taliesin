@@ -260,32 +260,33 @@ mod tests {
     use super::*;
 
     #[test]
-    fn qmd_urls_map_to_html() {
-        assert_eq!(qmd_to_html("blog.qmd"), "blog.html");
-        assert_eq!(qmd_to_html("index.qmd"), "index.html");
-        assert_eq!(
-            qmd_to_html("posts/em-algorithm/index.qmd"),
-            "posts/em-algorithm/index.html"
-        );
-        assert_eq!(qmd_to_html("style.css"), "style.css");
-        // The native `.tmd` extension maps just like `.qmd`.
+    fn tmd_urls_map_to_html_qmd_no_longer_a_source_link() {
         assert_eq!(qmd_to_html("blog.tmd"), "blog.html");
+        assert_eq!(qmd_to_html("index.tmd"), "index.html");
         assert_eq!(
             qmd_to_html("posts/intro/index.tmd"),
             "posts/intro/index.html"
+        );
+        assert_eq!(qmd_to_html("style.css"), "style.css");
+        // `.qmd` is no longer an accepted source extension: it round-trips unchanged,
+        // it does NOT map to `.html`.
+        assert_eq!(qmd_to_html("blog.qmd"), "blog.qmd");
+        assert_eq!(
+            qmd_to_html("posts/em-algorithm/index.qmd"),
+            "posts/em-algorithm/index.qmd"
         );
     }
 
     #[test]
     fn link_rewrite_preserves_prefix_and_fragment() {
-        let html = r##"<a href="blog.qmd">b</a> <a href="../KL-divergence/index.qmd#sec-x">k</a> <a href="/projects.qmd">p</a> <a href="talk.tmd">t</a> <a href="https://x.com/a.qmd">ext</a> <a href="#local">l</a>"##;
+        let html = r##"<a href="blog.tmd">b</a> <a href="../KL-divergence/index.tmd#sec-x">k</a> <a href="/projects.tmd">p</a> <a href="talk.qmd">t</a> <a href="https://x.com/a.qmd">ext</a> <a href="#local">l</a>"##;
         let out = rewrite_qmd_links(html);
         assert!(out.contains("href=\"blog.html\""));
         assert!(out.contains("href=\"../KL-divergence/index.html#sec-x\""));
         assert!(out.contains("href=\"/projects.html\""));
         assert!(
-            out.contains("href=\"talk.html\""),
-            "an intra-site .tmd link rewrites to .html too"
+            out.contains("href=\"talk.qmd\""),
+            "a .qmd href is no longer a source link: it must NOT rewrite to .html"
         );
         assert!(
             out.contains("href=\"https://x.com/a.qmd\""),
@@ -296,10 +297,14 @@ mod tests {
 
     #[test]
     fn resolve_href_handles_depth_and_externals() {
-        assert_eq!(resolve_href("blog.qmd", "../../"), "../../blog.html");
-        assert_eq!(resolve_href("/blog.qmd", "../"), "/blog.html");
+        assert_eq!(resolve_href("blog.tmd", "../../"), "../../blog.html");
+        assert_eq!(resolve_href("/blog.tmd", "../"), "/blog.html");
         assert_eq!(resolve_href("https://x.com", "../"), "https://x.com");
         assert_eq!(resolve_href("#top", "../"), "#top");
+        // `.qmd` is no longer an accepted source extension: a `.qmd` href round-trips
+        // unchanged (still depth-prefixed / absolute-marked), it does NOT map to `.html`.
+        assert_eq!(resolve_href("blog.qmd", "../../"), "../../blog.qmd");
+        assert_eq!(resolve_href("/blog.qmd", "../"), "/blog.qmd");
     }
 
     #[test]
@@ -337,14 +342,10 @@ mod tests {
     }
 
     #[test]
-    fn html_to_qmd_yields_every_accepted_source_ext() {
-        // A `.html` link target may be backed by a source in any accepted spelling
-        // (`.tmd` native, `.qmd` still accepted): the checker must probe both, not
-        // just `.qmd`, or a real `.tmd`-only source is false-flagged as broken.
-        assert_eq!(
-            html_to_qmd("blog.html"),
-            vec!["blog.tmd".to_string(), "blog.qmd".to_string()]
-        );
+    fn html_to_qmd_yields_the_tmd_candidate_only() {
+        // A `.html` link target is backed by its `.tmd` source only — `.tmd` is now the
+        // only accepted source extension, so `.qmd` is no longer a candidate.
+        assert_eq!(html_to_qmd("blog.html"), vec!["blog.tmd".to_string()]);
         assert_eq!(html_to_qmd("style.css"), Vec::<String>::new());
     }
 

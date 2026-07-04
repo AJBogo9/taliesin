@@ -60,19 +60,25 @@ fn local_links_skip_xref_links() {
 }
 
 #[test]
-fn local_links_accept_html_link_with_qmd_source() {
-    // A `.html` link whose `.qmd` source exists on disk (an intra-project page link the
-    // site build will emit) must NOT be flagged; only a target with no file *and* no
-    // source is broken. Mirrors the docs/ cross-book links checked standalone.
-    let dir = Tmp::new("links-html");
+fn local_links_flag_html_link_whose_only_source_is_qmd() {
+    // After the .tmd-only flip, a `.qmd` file on disk is no longer a recognized source:
+    // an `.html` link (or directory link) whose only on-disk source is `.qmd` is now
+    // flagged broken, same as any other missing target.
+    let dir = Tmp::new("links-html-qmd-gone");
     std::fs::write(dir.0.join("page.qmd"), "x").unwrap();
     std::fs::create_dir_all(dir.0.join("guide")).unwrap();
     std::fs::write(dir.0.join("guide/index.qmd"), "x").unwrap();
     let doc =
         render_document("[built page](page.html) [dir link](guide/) [really gone](ghost.html)\n");
     let m = msgs(&validate_local_links(&doc.blocks, &dir.0));
-    assert_eq!(m.len(), 1, "only the truly missing target: {m:?}");
-    assert!(m[0].contains("`ghost.html`"), "{m:?}");
+    assert_eq!(
+        m.len(),
+        3,
+        "page.html, guide/, and ghost.html are all now broken (.qmd is not a source): {m:?}"
+    );
+    assert!(m.iter().any(|s| s.contains("`page.html`")), "{m:?}");
+    assert!(m.iter().any(|s| s.contains("`guide/`")), "{m:?}");
+    assert!(m.iter().any(|s| s.contains("`ghost.html`")), "{m:?}");
 }
 
 #[test]
