@@ -534,7 +534,9 @@ impl Site {
                     if under_mount
                         || self.decks.iter().any(|d| d.url == target_url)
                         || self.root.join(&target_url).is_file()
-                        || self.root.join(html_to_qmd(&target_url)).is_file()
+                        || html_to_qmd(&target_url)
+                            .iter()
+                            .any(|p| self.root.join(p).is_file())
                     {
                         continue;
                     }
@@ -1176,8 +1178,9 @@ mod tests {
 
     #[test]
     fn tmd_pages_are_discovered_with_html_urls() {
-        // `.tmd` is the native source extension; a site authored in `.tmd` must be
-        // walked like a `.tmd` one, and each page's built URL is still `.html`.
+        // `.tmd` is the native source extension; the site walker must discover a
+        // `.tmd`-authored project exactly as it always has a `.qmd` one, and each
+        // page's built URL is still `.html`.
         let root = write_site(
             "tmd-native",
             &[

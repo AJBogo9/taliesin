@@ -161,12 +161,17 @@ pub(super) fn join_rel_in_root(from_rel: &str, target: &str) -> Option<String> {
     Some(parts.join("/"))
 }
 
-/// `.html`→`.qmd` on a url path (`x.html` → `x.qmd`), so the checker can test whether a
-/// link target is backed by a source file on disk. A non-`.html` path round-trips.
-pub(super) fn html_to_qmd(url: &str) -> String {
+/// `.html`→source-extension candidates on a url path (`x.html` → `x.tmd`, `x.qmd`, one per
+/// [`crate::ext::ACCEPTED_SOURCE_EXTS`]), so the checker can test whether a link target is
+/// backed by a source file on disk, in any accepted spelling. A non-`.html` path yields no
+/// candidates (there is nothing to probe).
+pub(super) fn html_to_qmd(url: &str) -> Vec<String> {
     match url.strip_suffix(".html") {
-        Some(stem) => format!("{stem}.qmd"),
-        None => url.to_string(),
+        Some(stem) => crate::ext::ACCEPTED_SOURCE_EXTS
+            .iter()
+            .map(|ext| format!("{stem}.{ext}"))
+            .collect(),
+        None => Vec::new(),
     }
 }
 
@@ -329,6 +334,18 @@ mod tests {
         let html = r##"<a href="other.tmd">o</a> <a href="page.html#sec">p</a> <a href="https://x.com">e</a> <a href="#top">t</a> <a href="x.html" class="tali-xref">r</a>"##;
         let links = manual_local_links(html);
         assert_eq!(links, vec![("other.tmd", None), ("page.html", Some("sec"))]);
+    }
+
+    #[test]
+    fn html_to_qmd_yields_every_accepted_source_ext() {
+        // A `.html` link target may be backed by a source in any accepted spelling
+        // (`.tmd` native, `.qmd` still accepted): the checker must probe both, not
+        // just `.qmd`, or a real `.tmd`-only source is false-flagged as broken.
+        assert_eq!(
+            html_to_qmd("blog.html"),
+            vec!["blog.tmd".to_string(), "blog.qmd".to_string()]
+        );
+        assert_eq!(html_to_qmd("style.css"), Vec::<String>::new());
     }
 
     #[test]

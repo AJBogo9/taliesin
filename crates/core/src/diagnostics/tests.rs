@@ -76,6 +76,22 @@ fn local_links_accept_html_link_with_qmd_source() {
 }
 
 #[test]
+fn local_links_accept_html_link_with_tmd_source() {
+    // Same as `local_links_accept_html_link_with_qmd_source`, but the on-disk source is
+    // spelled `.tmd` (Taliesin's native extension): the probe must try every accepted
+    // source ext, not just `.qmd`, or a real `.tmd` page's `.html` link is false-flagged.
+    let dir = Tmp::new("links-html-tmd");
+    std::fs::write(dir.0.join("page.tmd"), "x").unwrap();
+    std::fs::create_dir_all(dir.0.join("guide")).unwrap();
+    std::fs::write(dir.0.join("guide/index.tmd"), "x").unwrap();
+    let doc =
+        render_document("[built page](page.html) [dir link](guide/) [really gone](ghost.html)\n");
+    let m = msgs(&validate_local_links(&doc.blocks, &dir.0));
+    assert_eq!(m.len(), 1, "only the truly missing target: {m:?}");
+    assert!(m[0].contains("`ghost.html`"), "{m:?}");
+}
+
+#[test]
 fn local_media_flags_missing_video() {
     let dir = Tmp::new("video");
     std::fs::write(dir.0.join("there.mp4"), "x").unwrap();

@@ -1049,16 +1049,16 @@ async fn build_site_async(
 
 /// Source-only file extensions that are build *inputs* / prose / stylesheet sources,
 /// never referenced by the rendered HTML, so they are not mirrored into the deploy:
-/// `.qmd` (rendered separately), `.bib` (citations resolved server-side), `.Rproj` (an
-/// editor project file), `.md` (prose/planning the renderer never serves), and `.scss`/
+/// `.tmd`/`.qmd` (rendered separately), `.bib` (citations resolved server-side), `.Rproj`
+/// (an editor project file), `.md` (prose/planning the renderer never serves), and `.scss`/
 /// `.sass` (stylesheet sources — output references the compiled `.css`). Keeping these
 /// out of `_site/` is publish hygiene: a stray `notes.md` or `theme.scss` in the source
 /// tree never leaks onto the live site. (To deploy a private *binary* asset selectively,
 /// the `_`/`.`-prefix convention still applies; these are excluded by kind.)
-const SKIP_EXT: &[&str] = &["qmd", "bib", "Rproj", "md", "scss", "sass"];
+const SKIP_EXT: &[&str] = &["tmd", "qmd", "bib", "Rproj", "md", "scss", "sass"];
 
 /// Copy every non-source file under `root` into `out`, mirroring the directory tree.
-/// Skips: source-only extensions ([`SKIP_EXT`]: `.qmd`/`.bib`/`.Rproj`/`.md`/`.scss`/
+/// Skips: source-only extensions ([`SKIP_EXT`]: `.tmd`/`.qmd`/`.bib`/`.Rproj`/`.md`/`.scss`/
 /// `.sass`), `_`-prefixed and dot entries (`_site.yml`, `_includes`, `_site`, `.RData`, …),
 /// build-tool cache/artifact dirs (`*_cache/`, `*_files/` — knitr/RMarkdown/Quarto
 /// residue), and the output dir itself.
@@ -1250,6 +1250,7 @@ mod mirror_tests {
         fs::write(root.join("notes.md"), b"x").unwrap(); // prose/planning source -> not deployed
         fs::write(root.join("theme.scss"), b"x").unwrap(); // stylesheet source -> not deployed
         fs::write(root.join("refs.bib"), b"x").unwrap(); // source-only -> skipped
+        fs::write(root.join("post.tmd"), b"x").unwrap(); // .tmd source -> not deployed
         for d in ["index_cache", "report_files", "_freeze"] {
             fs::create_dir_all(root.join(d)).unwrap();
             fs::write(root.join(d).join("a"), b"x").unwrap();
@@ -1270,6 +1271,10 @@ mod mirror_tests {
         assert!(
             !out.join("refs.bib").exists(),
             ".bib is source-only residue"
+        );
+        assert!(
+            !out.join("post.tmd").exists(),
+            ".tmd is the native source extension -> not deployed as a stray asset"
         );
         assert!(!out.join("index_cache").exists(), "*_cache dir is residue");
         assert!(!out.join("report_files").exists(), "*_files dir is residue");

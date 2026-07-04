@@ -37,24 +37,30 @@ fn local_link_refs(html: &str) -> Vec<&str> {
 }
 
 /// Whether `path` (relative to a doc at `base`) is backed by a file on disk, accepting the
-/// forms a `.qmd`→`.html` site build produces: the literal file, a `.html` link whose
-/// `.qmd` source exists, and a directory link (`x/` or `x`) whose `x/index.qmd`/`.html`
-/// exists. So a single-doc check doesn't false-flag an intra-project `.html` link whose
-/// source page is present (the site build will emit the `.html`).
+/// forms a site build produces: the literal file, a `.html` link whose source (any
+/// extension in [`crate::ext::ACCEPTED_SOURCE_EXTS`]) exists, and a directory link (`x/` or
+/// `x`) whose `x/index.<ext>`/`.html` exists. So a single-doc check doesn't false-flag an
+/// intra-project `.html` link whose source page is present (the site build will emit the
+/// `.html`).
 fn link_target_exists(base: &Path, path: &str) -> bool {
     let join = |p: &str| base.join(p).is_file();
     if join(path) {
         return true;
     }
-    // `x.html` → its `x.qmd` source (the built page is produced from it).
+    // `x.html` → its source (the built page is produced from it), tried in every
+    // accepted spelling (`x.tmd`, `x.qmd`, …).
     if let Some(stem) = path.strip_suffix(".html")
-        && join(&format!("{stem}.qmd"))
+        && crate::ext::ACCEPTED_SOURCE_EXTS
+            .iter()
+            .any(|ext| join(&format!("{stem}.{ext}")))
     {
         return true;
     }
-    // A directory link (`dir/` or `dir`) → that dir's index page (`.qmd`/`.html`).
+    // A directory link (`dir/` or `dir`) → that dir's index page (source or `.html`).
     let dir = path.trim_end_matches('/');
-    base.join(format!("{dir}/index.qmd")).is_file()
+    crate::ext::ACCEPTED_SOURCE_EXTS
+        .iter()
+        .any(|ext| base.join(format!("{dir}/index.{ext}")).is_file())
         || base.join(format!("{dir}/index.html")).is_file()
 }
 
@@ -64,10 +70,10 @@ fn link_target_exists(base: &Path, path: &str) -> bool {
 /// out of scope (external links are never fetched — `check` stays offline + deterministic);
 /// bare `#anchor` links and the in-page fragment are handled by
 /// [`super::anchors::validate_internal_anchors`]. Cross-page `#fragment` resolution is a
-/// site-registry job (the server's site path resolves anchors). A `.html` link whose `.qmd`
-/// source exists on disk is accepted (see [`link_target_exists`]) so an intra-project link
-/// to a yet-to-be-built page is not false-flagged — only a target with no file *and* no
-/// source is broken.
+/// site-registry job (the server's site path resolves anchors). A `.html` link whose source
+/// exists on disk (any accepted extension) is accepted (see [`link_target_exists`]) so an
+/// intra-project link to a yet-to-be-built page is not false-flagged — only a target with no
+/// file *and* no source is broken.
 pub fn validate_local_links(blocks: &[Block], base: &Path) -> Vec<Warning> {
     let mut out = Vec::new();
     for b in blocks {
