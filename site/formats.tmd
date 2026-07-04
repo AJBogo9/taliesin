@@ -1,13 +1,13 @@
 ---
 title: "Document types"
-description: "One .qmd source, four outputs: blog posts and papers, slide decks, multi-chapter books, and multi-page websites, all from the same block model."
+description: "One .tmd source, four outputs: blog posts and papers, slide decks, multi-chapter books, and multi-page websites, all from the same block model."
 page-layout: full
 hero:
   eyebrow: "One source, four outputs"
   headline: "Pick the output in the front matter"
   lead: "A blog post, a slide deck, a book, and a website are the same document seen four ways: they share the block model, the offline math and highlighting, and the live edit loop."
   actions:
-    - { text: "See the features", href: "features.qmd", primary: true }
+    - { text: "See the features", href: "features.tmd", primary: true }
     - { text: "Read the docs", href: "docs/guide/" }
 ---
 
@@ -37,7 +37,7 @@ auto-animate, magic-move code, and step-through line highlighting. And because t
 exec pipeline is format-agnostic, a `{python}` cell **runs on the slide** and
 re-runs as you edit it.
 
-{{< embed demo.qmd title="The qmd-fast deck engine" >}}
+{{< embed demo.tmd title="The qmd-fast deck engine" >}}
 
 The deck above is live: click it, arrow through it, press <kbd>F</kbd> for fullscreen.
 
@@ -45,7 +45,7 @@ The deck above is live: click it, arrow through it, press <kbd>F</kbd> for fulls
 
 A `chapters:` list makes a book: a sidebar, numbered chapters, and cross-chapter
 references. References like `@fig-` and `@sec-` resolve and number across chapters, a
-Cmd-K palette searches the whole book, and each chapter is still a normal `.qmd` you
+Cmd-K palette searches the whole book, and each chapter is still a normal `.tmd` you
 can preview on its own.
 
 [Read the docs (a qmd-fast book)](docs/guide/){.btn .btn-primary}
@@ -55,7 +55,7 @@ can preview on its own.
 Point qmd-fast at a directory with a `_site.yml` and you get a whole site: a themed
 navbar and footer, post listings and an `about:` profile header, an RSS feed,
 OpenGraph and Twitter-card metadata, light/dark with a toggle, and Cmd-K search,
-built to a static `_site/` you can host anywhere. Intra-site `.qmd` links are
+built to a static `_site/` you can host anywhere. Intra-site `.tmd` links are
 rewritten to `.html` automatically.
 
 This site is the example. The page you are reading, its navbar and footer, and the
@@ -65,5 +65,5 @@ a qmd-fast book, deployed in the same tree under `/docs`.
 ::: {.hero}
 ## Try it on your own writing
 
-[Get started](docs/guide/using/getting-started.html){.btn .btn-primary .btn-lg} [Back to features](features.qmd){.btn .btn-lg}
+[Get started](docs/guide/using/getting-started.html){.btn .btn-primary .btn-lg} [Back to features](features.tmd){.btn .btn-lg}
 :::

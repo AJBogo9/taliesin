@@ -1,14 +1,14 @@
 ---
 title: "qmd-fast"
-description: "A fast, single-purpose dev server that turns one .qmd file into a live blog post, slide deck, book, or website, with executable code and an edit loop that updates the instant you save."
+description: "A fast, single-purpose dev server that turns one .tmd file into a live blog post, slide deck, book, or website, with executable code and an edit loop that updates the instant you save."
 page-layout: full
 hero:
   eyebrow: "Markdown in · live HTML out"
   headline: "Technical writing at the speed of code"
-  lead: "A focused dev server that turns one .qmd file into a live post, slide deck, book, or website, updating the instant you save."
+  lead: "A focused dev server that turns one .tmd file into a live post, slide deck, book, or website, updating the instant you save."
   actions:
     - { text: "Read the docs", href: "docs/guide/", primary: true }
-    - { text: "Explore the features", href: "features.qmd" }
+    - { text: "Explore the features", href: "features.tmd" }
 ---
 
 qmd-fast is built around one idea: writing technical content should feel as
@@ -16,7 +16,7 @@ immediate as editing code. You save the file, and only the block you changed
 re-renders. Your scroll position, your live canvas, and your warm kernel all stay
 exactly as they were. No cold start, no full-page flash, no waiting.
 
-{{< include _includes/three-scene.qmd >}}
+{{< include _includes/three-scene.tmd >}}
 
 ```{js}
 //| echo: false
@@ -67,10 +67,10 @@ return host;
 ```
 
 This scene is live WebGL, authored in the one `{js}` cell above. Drag to orbit it.
-See more, with the source beside each, on [the showcase](showcase.qmd).
+See more, with the source beside each, on [the showcase](showcase.tmd).
 
 ```sh
-qmd-fast preview post.qmd   # live at http://127.0.0.1:4321 (edit, and watch one block update)
+qmd-fast preview post.tmd   # live at http://127.0.0.1:4321 (edit, and watch one block update)
 ```
 
 {{< video assets/live-edit-light.mp4 dark=assets/live-edit-dark.mp4 caption="Save the file, and only the block you touched re-renders in place, with scroll and live state preserved." >}}
@@ -87,7 +87,7 @@ loop, so anything you learn for one carries to the rest.
 Prose, math, figures, citations, and cross-references, with executable Python/R
 cells and live interactive graphics.
 
-[See an example →](formats.qmd#blog-posts)
+[See an example →](formats.tmd#blog-posts)
 :::
 
 ::: {.feature}
@@ -95,7 +95,7 @@ cells and live interactive graphics.
 A native slide engine: fragments, presenter view, PDF export, code stepping, and
 code that actually runs on the slide.
 
-[Open the live deck →](formats.qmd#slide-decks)
+[Open the live deck →](formats.tmd#slide-decks)
 :::
 
 ::: {.feature}
@@ -111,7 +111,7 @@ very docs are a qmd-fast book.
 Navbar, footer, listings, RSS, OpenGraph, and Cmd-K search. This whole site is a
 qmd-fast website.
 
-[How this site is built →](formats.qmd#websites)
+[How this site is built →](formats.tmd#websites)
 :::
 :::
 
@@ -120,7 +120,7 @@ qmd-fast website.
 This is the running deck engine, not a screenshot. Click it and arrow through it,
 press <kbd>F</kbd> for fullscreen, or open it in its own tab.
 
-{{< embed demo.qmd title="The qmd-fast deck engine" >}}
+{{< embed demo.tmd title="The qmd-fast deck engine" >}}
 
 ## Edit the code. The output re-runs in place.
 
@@ -134,13 +134,13 @@ moves, and the kernel never cold-starts.
 
 There is nothing here a screenshot could fake: **this landing page, its
 [documentation book](docs/guide/), and the slide deck above are all built and served by
-qmd-fast**, from plain `.qmd` files in one repository. If it reads well here, the
+qmd-fast**, from plain `.tmd` files in one repository. If it reads well here, the
 framework is doing its job.
 
 ::: {.hero}
 ## Write your next thing in plain text
 
-Author in `.qmd`, preview it live, and ship self-contained HTML: a post, a deck, a
+Author in `.tmd`, preview it live, and ship self-contained HTML: a post, a deck, a
 book, or a site.
 
 [Get started](docs/guide/using/getting-started.html){.btn .btn-primary .btn-lg} [Browse the docs](docs/guide/){.btn .btn-lg}

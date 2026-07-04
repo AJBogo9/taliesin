@@ -5,9 +5,9 @@ page-layout: full
 hero:
   eyebrow: "Everything the dev server does"
   headline: "Built for the edit loop"
-  lead: "qmd-fast does one thing (author HTML from .qmd) and makes the loop from keystroke to rendered page instant. Here is what that buys you."
+  lead: "qmd-fast does one thing (author HTML from .tmd) and makes the loop from keystroke to rendered page instant. Here is what that buys you."
   actions:
-    - { text: "See the document types", href: "formats.qmd", primary: true }
+    - { text: "See the document types", href: "formats.tmd", primary: true }
     - { text: "Read the docs", href: "docs/guide/" }
 ---
 
@@ -21,7 +21,7 @@ what changed over a websocket.
 ::: {.feature-grid}
 ::: {.feature}
 ### Live preview
-Open it in any browser. The server watches the `.qmd` (and its includes and
+Open it in any browser. The server watches the `.tmd` (and its includes and
 bibliography) and re-renders the moment you save.
 :::
 
@@ -144,7 +144,7 @@ its local assets copied alongside.
 ::: {.feature}
 ### Whole sites
 Point it at a directory and the same engine builds a multi-page website or book to a
-static `_site/` you can host anywhere. See [the document types](formats.qmd#websites)
+static `_site/` you can host anywhere. See [the document types](formats.tmd#websites)
 for what each output gives you.
 :::
 :::
@@ -152,5 +152,5 @@ for what each output gives you.
 ::: {.hero}
 ## See the formats, or read the manual
 
-[Tour the document types](formats.qmd){.btn .btn-primary .btn-lg} [Read the docs](docs/guide/){.btn .btn-lg}
+[Tour the document types](formats.tmd){.btn .btn-primary .btn-lg} [Read the docs](docs/guide/){.btn .btn-lg}
 :::

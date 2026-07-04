@@ -6,10 +6,10 @@ page-layout: full
 
 Everything below runs in your browser, right here on this page, which is itself a
 qmd-fast document. Each demo shows its **Result** and the real **Source** that
-produced it: open the Source tab and you are reading the exact `.qmd` cell. No
+produced it: open the Source tab and you are reading the exact `.tmd` cell. No
 screenshots, no video.
 
-{{< include _includes/three-scene.qmd >}}
+{{< include _includes/three-scene.tmd >}}
 
 ## A surface you can shape and spin
 
@@ -188,7 +188,7 @@ const tile = (t, hi) => {
 const group = (dir, ...k) => { const g = document.createElement("div"); g.style.cssText = `display:flex;flex-direction:${dir};gap:12px;flex-wrap:wrap;justify-content:center`; k.forEach(x => g.append(x)); return g; };
 const note = (t) => { const p = document.createElement("p"); p.textContent = t; p.style.cssText = "margin:0;max-width:30rem;text-align:center;color:var(--qmd-muted)"; return p; };
 const views = {
-  "one-source": () => [tile("post.qmd"), note("One plain-text file: prose, math, and code cells.")],
+  "one-source": () => [tile("post.tmd"), note("One plain-text file: prose, math, and code cells.")],
   "blocks": () => [group("column", tile("# heading"), tile("paragraph"), tile("{python} cell"), tile("figure (output)")), note("Parsed into top-level blocks, each with a content-hash id.")],
   "diff": () => [group("column", tile("# heading"), tile("paragraph"), tile("{python} cell", true), tile("figure (output)", true)), note("Edit one cell: only that block and its output re-render. Scroll, canvas, and kernel survive.")],
   "many-outputs": () => [group("row", tile("blog post"), tile("slide deck"), tile("book")), note("The same blocks become a post, a deck, or a book.")],
@@ -197,7 +197,7 @@ const views = {
 return wrap;
 ```
 ::: {.step state="one-source"}
-**One `.qmd` file.** Plain text: prose, math, and executable code cells, together in one place.
+**One `.tmd` file.** Plain text: prose, math, and executable code cells, together in one place.
 :::
 ::: {.step state="blocks"}
 **Parsed into blocks.** Each top-level element becomes a block with a content-hash id and a source position, so the system can follow it across edits.
@@ -231,7 +231,7 @@ const tile = (t, hi) => {
 const group = (dir, ...k) => { const g = document.createElement("div"); g.style.cssText = `display:flex;flex-direction:${dir};gap:12px;flex-wrap:wrap;justify-content:center`; k.forEach(x => g.append(x)); return g; };
 const note = (t) => { const p = document.createElement("p"); p.textContent = t; p.style.cssText = "margin:0;max-width:30rem;text-align:center;color:var(--qmd-muted)"; return p; };
 const views = {
-  "one-source": () => [tile("post.qmd"), note("One plain-text file: prose, math, and code cells.")],
+  "one-source": () => [tile("post.tmd"), note("One plain-text file: prose, math, and code cells.")],
   "blocks": () => [group("column", tile("# heading"), tile("paragraph"), tile("{python} cell"), tile("figure (output)")), note("Parsed into top-level blocks, each with a content-hash id.")],
   "diff": () => [group("column", tile("# heading"), tile("paragraph"), tile("{python} cell", true), tile("figure (output)", true)), note("Edit one cell: only that block and its output re-render. Scroll, canvas, and kernel survive.")],
   "many-outputs": () => [group("row", tile("blog post"), tile("slide deck"), tile("book")), note("The same blocks become a post, a deck, or a book.")],
@@ -341,7 +341,7 @@ return Plot.lineY(ys, { stroke: "#4c8dff" }).plot({ height: 240 });
 
 ## It is all just qmd-fast
 
-Every demo on this page is plain text in one `.qmd` file, served by qmd-fast itself,
+Every demo on this page is plain text in one `.tmd` file, served by qmd-fast itself,
 exactly like this whole site. Nothing here is a screenshot or a recording. See the
-full feature set on the [Features](features.qmd) page, or open the **Guide** in the
+full feature set on the [Features](features.tmd) page, or open the **Guide** in the
 nav to start writing your own.

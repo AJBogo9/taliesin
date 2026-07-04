@@ -49,14 +49,14 @@ numbers between tools**.
 
 ## What if the slides *were* the analysis? {background-image="assets/backdrop.svg"}
 
-One `.qmd` file. The code that computes the number and the slide that shows it are
+One `.tmd` file. The code that computes the number and the slide that shows it are
 the same document, so the number is never stale and never re-typed.
 
 ## One source, every surface
 
 ```{mermaid}
 flowchart LR
-  Q["post.qmd<br/>(analysis + narrative)"] --> D["live deck<br/>(this talk)"]
+  Q["post.tmd<br/>(analysis + narrative)"] --> D["live deck<br/>(this talk)"]
   Q --> R["the written report"]
   Q --> W["a page on the portal"]
 ```
@@ -145,8 +145,8 @@ follow-up email:
 
 ```{=html}
 <style>
-.qmd-deck section label { font: 500 .45em/1.4 system-ui; display: flex; align-items: center; gap: .7rem; margin: .3em 0; }
-.qmd-deck section input[type=range] { width: 22rem; }
+.tmd-deck section label { font: 500 .45em/1.4 system-ui; display: flex; align-items: center; gap: .7rem; margin: .3em 0; }
+.tmd-deck section input[type=range] { width: 22rem; }
 </style>
 ```
 
@@ -226,11 +226,11 @@ handing it over.
 
 ## One file {auto-animate=true}
 
-A single `.qmd`.
+A single `.tmd`.
 
 ## One file → three deliverables {auto-animate=true}
 
-A single `.qmd` becomes a **live deck**, a **written report**, and a **portal
+A single `.tmd` becomes a **live deck**, a **written report**, and a **portal
 page**, every one carrying the same, current numbers.
 
 ## Stop assembling. Start deciding. {background-color="#0b1020"}

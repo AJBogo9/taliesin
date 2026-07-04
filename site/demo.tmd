@@ -6,7 +6,7 @@ format: revealjs
 
 ## One source, many views {auto-animate=true}
 
-The same `.qmd` renders as a page, a book, a website, or **this deck**.
+The same `.tmd` renders as a page, a book, a website, or **this deck**.
 
 ::: {.incremental}
 - Block-level live updates while you edit
@@ -16,7 +16,7 @@ The same `.qmd` renders as a page, a book, a website, or **this deck**.
 
 ## One source, many views {auto-animate=true}
 
-The same `.qmd` renders as a page, a book, a website, or **this deck**.
+The same `.tmd` renders as a page, a book, a website, or **this deck**.
 
 > The title above tweened into place: that's **auto-animate**.
 
