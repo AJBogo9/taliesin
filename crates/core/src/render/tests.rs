@@ -1140,6 +1140,10 @@ fn reveal_format_detected_from_front_matter() {
     // Inline form.
     let inline = render_document("---\nformat: deck\n---\n\n## A\n");
     assert_eq!(inline.format, DocFormat::Reveal);
+    // Bare block form: `format:` with just `deck:` subkey.
+    let bare_block =
+        render_document("---\nformat:\n  deck:\n    slide-number: true\n---\n\n## A\n");
+    assert_eq!(bare_block.format, DocFormat::Reveal);
     // Nested block form: `format:` with a `<name>-deck` subkey.
     let ext =
         render_document("---\nformat:\n  custom-deck:\n    slide-number: true\n---\n\n## A\n");
