@@ -1,0 +1,216 @@
+---
+title: "Cell-options reference"
+---
+
+*Reference: [CLI](cli.tmd) · [Front matter](frontmatter.tmd) · Cell options · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd)*
+
+A code cell carries per-cell options on its leading comment lines. These tune
+whether the source shows, whether the cell runs, whether its output is cached, and
+how the output is captioned, numbered, and cross-referenced. This page is the
+complete list. For the narrative on writing and running cells, see
+[Executable content](../using/code.tmd); for the document-wide `execute:` defaults
+that cell options override, see the
+[Configuration reference](configuration.tmd).
+
+## How options are written
+
+An option is a `key: value` line at the **top** of the cell, behind a directive
+prefix. By convention the prefix is the cell's own comment marker plus a pipe:
+
+| Cell language | Prefix | Example |
+|---|---|---|
+| `{python}`, `{r}` | `#\|` | `#\| echo: false` |
+| `{js}` | `//\|` | `//\| viewof: harmonics` |
+| `{mermaid}` | `%%\|` | `%%\| label: fig-flow` |
+
+Picking the cell's own comment marker keeps the option line a valid comment in that
+language. All three prefixes (`#\|`, `//\|`, `%%\|`) are accepted regardless of the
+cell's language, so the table shows the idiomatic choice rather than an enforced one.
+A space between the comment marker and the pipe is tolerated (`# | echo: false`,
+`// | name: x`), but the canonical form is tight.
+
+### The leading-block rule
+
+Options are read **only from the contiguous run of directive lines at the very top
+of the cell.** The first line that is not an option directive stops option parsing,
+and everything from there on is treated as code. So this works:
+
+```python
+#| echo: false
+#| label: fig-loss
+import matplotlib.pyplot as plt
+```
+
+But here the `label` is invisible to qmd-fast, because a blank line (and then real
+code) already ended the option block:
+
+```python
+#| echo: false
+
+#| label: fig-loss
+import matplotlib.pyplot as plt
+```
+
+Keep every option line flush against the top of the cell with no blank line
+between them. A directive that appears *after* code is just an ordinary comment.
+
+### Unknown keys are caught
+
+The option vocabulary is closed. A key qmd-fast does not recognize (a typo, or a
+Quarto option it does not implement) is reported as a **located warning** with a
+"did you mean" hint when a known key is within edit distance 2:
+
+```text
+slides.tmd:14: unknown cell option `labl` (did you mean `label`?)
+```
+
+The cell still renders exactly as before, the warning just points at the line. In
+live preview you can click it straight to the source. `qmd-fast check` surfaces the
+same warning as a publish gate. (Front-matter and `_site.yml` keys are validated
+the same way; see the [Configuration reference](configuration.tmd).)
+
+## Every option
+
+An option marked `(none)` in the **Default** column does nothing unless you set it.
+
+| Option | Languages | Default | Effect |
+|---|---|---|---|
+| `echo` | `python`, `r` | `true` | `false` hides the source listing; the cell still runs and its output still shows |
+| `include` | `python`, `r` | `true` | `false` hides **both** source and output; the cell still runs (kernel state is kept) |
+| `cache` | `python`, `r` | `true` | `false` opts the cell out of the `_freeze/` cache, so it always re-executes |
+| `label` | `python`, `r`, `mermaid`, `js` | (none) | `fig-X` / `lst-X` / `tbl-X` makes the cell a numbered, cross-referenceable figure / listing / table (resolve with `@fig-X` etc.) |
+| `fig-cap` | `python`, `r`, `mermaid`, `js` | (none) | A caption for the output; also turns the output into a numbered `<figure>` |
+| `lst-cap` | `python`, `r` | (none) | A caption for the **source listing**, making it a numbered listing |
+| `tbl-cap` | `python`, `r` | (none) | A caption for the output **table**, making it a numbered table |
+| `fig-export` | `python`, `r` | (none) | Comma-separated paths; a `python` cell's figures are auto-written print-clean to disk, while an `r` cell must write its own file (e.g. `ggsave()`). Folded into the cache key either way, so changing a path re-runs the cell |
+| `code-fold` | `python`, `r` | (none) | `true` collapses the listing into a closed `<details>`; `show` folds it but starts open |
+| `code-summary` | `python`, `r` | `"Code"` | The summary label for a `code-fold` listing |
+| `code-line-numbers` | `python`, `r` | `false` | Wraps each source line so a deck can step through / highlight `\|`-separated line ranges (e.g. `"1\|3-5"`); there is no line-number gutter |
+| `name` | `js` | (none) | Publish the cell's return value into the reactive scope under this name (a helper other `{js}` cells read) |
+| `viewof` | `js` | (none) | The cell returns a DOM input; its value is registered under this name for other cells to consume |
+| `input` | `js` | (none) | Comma-separated names; re-run this cell when any named input, `viewof`, or Python `ojs_define` value changes |
+
+Anything not in this list warns. `fig-cap` / `tbl-cap` / `lst-cap` each *imply* a
+number even without a `label`: the caption alone is enough to make a numbered
+figure, table, or listing. Add a `label` only when you want to cross-reference it.
+
+::: {.callout-note}
+## A label decides the kind
+
+A `label:` selects which numbered thing the cell becomes. `fig-`, `lst-`, and
+`tbl-` prefixes route to figure, listing, and table respectively, so a labelled
+cell's caption shows up in the matching numbering and `@fig-`/`@lst-`/`@tbl-`
+references resolve to it. A bare `fig-cap` with no label still numbers the figure,
+it just can't be referenced.
+:::
+
+## echo vs include vs cache
+
+These three are the ones worth getting right, because they look similar and do very
+different things. All three are about *execution behaviour*, and they are
+independent:
+
+| Option set | Does the cell run? | Source shown? | Output shown? | Cached? |
+|---|---|---|---|---|
+| (defaults) | yes | yes | yes | yes |
+| `echo: false` | yes | **no** | yes | yes |
+| `include: false` | yes | no | **no** | yes |
+| `cache: false` | yes | yes | yes | **no** |
+
+The crucial distinctions:
+
+- **`include: false` still runs the cell.** It only drops the *output* from the
+  page; the code executes against the warm kernel and any variables, imports, or
+  side effects persist for the cells that follow. This is the option for a setup
+  cell whose result you never want to see but whose state you need downstream. It is
+  not a way to skip a cell. (To skip execution entirely, run with `--no-exec` /
+  `QMD_FAST_NO_EXEC`, which applies to the whole document.)
+- **`echo: false` hides the source only.** The output is still rendered, the cell
+  still runs. Use it when the reader should see a plot or a table but not the code
+  that made it.
+- **`cache: false` always re-executes.** The cell never restores from the
+  `_freeze/` cache and its output is never written there. Reach for it when a cell
+  is nondeterministic (reads the clock, hits the network, samples without a fixed
+  seed) so a stale cached result would be wrong. Everything else caches by default,
+  keyed by a cumulative content hash, so an unchanged cell replays instead of
+  re-running.
+
+```python
+#| include: false
+# Runs for its side effects; nothing appears on the page.
+import pandas as pd
+df = pd.read_csv("data.csv")
+```
+
+```python
+#| echo: false
+# The code is hidden, the chart it draws is shown.
+df.plot()
+```
+
+```python
+#| cache: false
+# Always re-runs; never frozen.
+import datetime
+print(datetime.datetime.now())
+```
+
+::: {.callout-tip}
+## `include: false` keeps state; it does not skip the cell
+
+If you want a cell's variables available downstream but want nothing on the page,
+`include: false` is the answer. If you instead expect `include: false` to make a
+cell *not run* (to save time, say), it will surprise you: the cell still executes.
+There is no per-cell "don't run" option, because the cells form a single
+sequential program against one kernel, and skipping one mid-stream would leave the
+ones after it referring to undefined state.
+:::
+
+## Document-level defaults
+
+The front-matter `execute:` block sets document-wide defaults for `echo`,
+`include`, and `cache`. Each defaults to `true`, and a per-cell `#|` option always
+wins:
+
+```yaml
+---
+title: "Report"
+execute:
+  echo: false      # hide all source by default
+  cache: true      # (the default; shown for completeness)
+---
+```
+
+With `execute: echo: false` set, every cell hides its source unless a cell opts
+back in with its own `#| echo: true`. The override is per-key: a cell that sets
+`#| echo: true` still inherits the document's `include` and `cache` defaults. Only
+`echo`, `include`, and `cache` live under `execute:`; the `eval` / `output` /
+`warning` keys some other tools put there are not honoured. See the
+[Configuration reference](configuration.tmd) for where `execute:` sits in front
+matter.
+
+## `{js}` reactive options
+
+The three `{js}`-only options wire a cell into the in-browser reactive graph
+instead of the kernel. They run client-side, so `echo` / `include` / `cache` (which
+are about the Python/R kernel) are not honoured on a `{js}` cell. A `{js}` cell
+renders only its output container; its source is never shown as a listing, so there
+is nothing for `echo` to hide.
+
+- `//| viewof: NAME` makes the cell return a DOM control and registers its value
+  under `NAME`. Other cells read it with `qmd.value("NAME")`.
+- `//| name: NAME` publishes the cell's return value under `NAME` for other cells.
+  Other cells read it with `qmd.get("NAME")`.
+- `//| input: A, B` re-runs the cell whenever input `A`, input `B`, or a matching
+  Python `ojs_define` value changes.
+
+The two readers are not interchangeable. `qmd.value("NAME")` reads an input value: a
+`viewof`, an `{{< input >}}` control, or an `ojs_define` value. `qmd.get("NAME")` reads
+a value published by another cell's `//| name:`.
+
+A `//| input:` that names something no cell, `viewof`, or `{{< input >}}` control
+defines is flagged by `check` as a dangling reactive input, and a cycle among
+`{js}` cells (each consuming the other) is flagged too. The dangling-input check is
+suppressed when the document contains any Python or R cell, since a runtime
+`ojs_define` could define the name; the cycle check always runs. See
+[Executable content](../using/code.tmd) for the full reactive walkthrough.

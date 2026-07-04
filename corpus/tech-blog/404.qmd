@@ -1,7 +1,0 @@
----
-title: "Page not found"
-page-layout: article
-toc: false
----
-
-This page doesn't exist. Head back to the [home page](/) or browse the [blog](/blog.qmd).

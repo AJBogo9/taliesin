@@ -1,0 +1,259 @@
+---
+title: "The block model & protocol"
+---
+
+Everything in qmd-fast keys off one idea: the document is a list of **blocks**,
+each of which knows its identity and its origin. Our `post.tmd` is three of them,
+the `# Cooling coffee` heading, the paragraph, and the Python cell, plus a fourth
+the cell *produces*: the plot, a derived block keyed to the cell.
+
+## The block model
+
+Every top-level element is a block. Each block carries three data attributes that
+the rest of the system keys off:
+
+- `data-block-id` is a **content hash** (with a positional tiebreak for
+  duplicates). Because it is content-derived, an unchanged block keeps its id
+  across edits and is never touched.
+- `data-sourcepos` is the `startLine:startCol-endLine:endCol` range the block came
+  from. This is what powers click-to-source in both directions.
+- `data-source-file` is present only on blocks pulled in from an
+  `{{< include >}}`d file, so cross-file source mapping still works.
+
+Source mapping, incremental re-render, and live-state preservation all build on
+this one model. A code cell's *output* is itself a block, keyed to the cell's id,
+so when an upstream cell re-runs, only the affected output blocks update.
+
+The exact field shapes (`Block`, `Cell`, `RenderedDoc`, and friends) live in
+[the data-type reference](data-types.tmd); this chapter explains how the diff and
+the protocol *use* them.
+
+### How the id is computed
+
+`make_id` (`render/mod.rs`) is small and deterministic, so two renders of the same
+source always agree and the diff has a stable anchor:
+
+1. Take the block's **raw Markdown source**, trimmed of leading and trailing
+   whitespace.
+2. Hash it with **64-bit FNV-1a** (offset basis `0xcbf29ce484222325`, prime
+   `0x100000001b3`), the same hash the freeze cache uses for cell keys.
+3. Format the digest as 16 hex digits, keep the **first 12**, and prefix `b-`. So
+   an id looks like `b-3af19c0b7e21`.
+4. If a byte-identical block already produced that base id, append a positional
+   `-N` suffix (the first duplicate becomes `b-…-1`, the next `b-…-2`, and so on),
+   via `dedup_with_suffix`. This is the *only* place position enters the id, and
+   only to break exact-content ties, so ids stay unique within a document.
+
+The hash is over content, not position, on purpose. Inserting a paragraph at the
+top of a document leaves every following block's id unchanged, so the diff sees one
+insert rather than "everything moved". The `-N` tiebreak is what lets the diff
+treat ids as *unique* (the basis for the `O(n log n)` shortcut below).
+
+## The diff (`diff.rs`)
+
+`diff_blocks(old, new)` turns two block lists into the minimal set of DOM ops the
+client applies. Because ids are content hashes, an unchanged block has the *same*
+id in both lists, so the algorithm is an **LCS over the id sequences**:
+
+1. The LCS finds the matched id pairs: the **stable anchors** that didn't move.
+2. The runs of blocks *between* consecutive anchors are the changed regions.
+   `emit_gap` pairs them positionally: each pair → an **`Update`** (replace the old
+   block's element with the new HTML); a surplus of old blocks → **`Remove`**; a
+   surplus of new blocks → **`Insert`** after the preceding block's id (or at the
+   start when there is none).
+3. A matched anchor is normally left untouched. When its HTML *does* differ,
+   `anchor_op` chooses between two outcomes by comparing the bodies with the
+   source-position attributes masked out:
+   - if only `data-sourcepos` / `data-source-file` moved (an edit *above* shifted the
+     block's line numbers, but its content is byte-identical), it emits a **`SetMeta`**:
+     patch those two attributes in place, with no re-render, so the live element keeps
+     its DOM state;
+   - if the body itself changed, it emits an **`Update`**. This is the path a
+     **derived** block whose id isn't a pure content hash (a code cell's output block,
+     keyed to the cell id) takes when an upstream cell re-runs.
+
+### How `SetMeta` vs `Update` is decided
+
+The "with the source-position attributes masked out" step is a precise string
+comparison, `eq_ignoring_sourcepos`. It runs `mask_sourcepos` over **both** the old
+and the new block HTML: every `data-sourcepos="…"` is rewritten to an empty
+`data-sourcepos=""` (the value is dropped, the attribute and quotes kept) before the
+two strings are compared byte for byte. The same masking blanks the
+`data-source-file` value, so a block that moved between files but kept its content
+still reads as equal:
+
+- **bodies equal after masking** (so the *only* difference was the position
+  attributes) → `SetMeta`. The element is left in the DOM; just its
+  `data-sourcepos` and `data-source-file` are patched. Its scroll, a running canvas,
+  a `{js}` widget, a `<video>` position, an open `<details>` all survive, while
+  click-to-source stays exact.
+- **bodies differ after masking** → `Update`, a full re-render of the element. The
+  guard in front of the mask is `old.sourcepos != new.sourcepos`: if even the
+  *position* is identical, there is nothing to patch and `anchor_op` is never called
+  in the first place.
+
+This is why a cell's output block, whose id is keyed to the cell rather than to the
+output content, takes the `Update` path when the cell re-runs: its body genuinely
+changed, the mask comparison fails, and the element is rebuilt.
+
+The whole decision is mechanical once the anchors are known (@fig-diff):
+
+```{mermaid}
+%%| label: fig-diff
+%%| fig-cap: "How diff_blocks turns two block-id lists into DOM ops. Matched anchors are normally left alone (so scroll + live state survive); only the gaps between them, plus anchors whose source position shifted (SetMeta) or whose body changed (Update), cross the wire."
+flowchart TD
+  lists["old block ids vs new block ids"] --> lcs["LCS over the ids"]
+  lcs --> anchor{"matched anchor?"}
+  anchor -->|"HTML identical"| keep["leave untouched"]
+  anchor -->|"only sourcepos moved"| sm["SetMeta"]
+  anchor -->|"body changed (cell output)"| u1["Update"]
+  lcs --> gap{"gap between anchors"}
+  gap -->|"old / new pair"| u2["Update"]
+  gap -->|"surplus old"| rem["Remove"]
+  gap -->|"surplus new"| ins["Insert after prev id"]
+```
+
+### Why the diff is `O(n log n)`
+
+Calling this "an LCS" is a lie of omission. The textbook LCS is an `O(m·n)`
+dynamic-programming table, and on a save it would be reallocated on **every
+keystroke**: tens of megabytes once a document reaches a few thousand blocks.
+qmd-fast never builds it.
+
+The shortcut is that block ids are **unique** within a document. A common
+subsequence is then just a set of shared ids in the same relative order, so the
+LCS collapses to a **Longest Increasing Subsequence**: map each old block to its
+position in the new list, and the longest still-increasing run is the set of
+anchors that didn't move. LIS is solved in `O(n log n)` time and `O(n)` space by
+**patience sorting**, which is what `lcs_pairs` does. The cost of a diff is
+therefore dominated by the handful of blocks that actually changed, not by the
+size of the document.
+
+The payoff: an unchanged block is **never touched**, so the browser keeps its
+scroll position and any live DOM state inside it (a running Three.js canvas, a
+`{js}` cell) survives a save untouched (goal #2).
+
+Concretely: change `tau` and the diff emits exactly one op, an `Update` for the
+plot's block, while the heading and the paragraph, their content hashes unchanged,
+never move.
+
+That `SetMeta` outcome is worth dwelling on, because it is the common one: an edit
+*above* a block shifts its line numbers without changing its content. The block's HTML
+is identical (same content-hash id), so re-`Update`ing it would needlessly rebuild the
+element and drop its live DOM state; but its `data-sourcepos` (and `data-source-file`)
+is now stale, which would break click-to-source. `SetMeta` patches just those
+attributes on the existing element, in place, so the live block keeps its state
+*and* still maps to the right source line.
+
+::: {.callout-note}
+## The one limitation: no Move
+
+There is no `Move` op. Reordering two blocks keeps one as an anchor and rebuilds
+the other as remove + insert, so a *moved* live block loses its runtime state.
+This is the deliberate trade of content-hash ids (a pinned regression test
+documents it); moves are rare in editing, and the simplicity is worth it.
+:::
+
+### Removes before inserts (the ordering rule)
+
+`diff_blocks` produces the ops anchor by anchor in document order, then does one
+last thing: a **stable sort that hoists every `Remove` ahead of every `Insert`**.
+The client applies the ops in the order it receives them, so this ordering is load
+bearing.
+
+The reason is exactly the no-`Move` case above. A block that moves *forward* is
+emitted as a `Remove` at its old slot plus an `Insert` of the **same id** at its new
+slot. If the `Insert` ran first, the new element (carrying that id) would already be
+in the DOM when the `Remove` ran, and `Remove`'s id-based lookup would find and
+delete the **freshly inserted** element instead of the stale one. Hoisting the
+`Remove` makes the old element gone before the new one arrives, so the lookup is
+unambiguous. Removes are positionally independent (each names a concrete
+`target_id`), so reordering them is safe; the sort is *stable*, which keeps the
+`Insert`s in document order so their `after_id` chains still resolve.
+
+## The websocket protocol
+
+On connect, the server sends a `full_render`; on each save it diffs the new block
+list against the old one (an LCS over block ids) and broadcasts **only the
+differences**.
+
+| Direction | Message | Payload |
+|---|---|---|
+| server → client | `full_render` | `title`, `body_html`, `diagnostics` |
+| server → client | `update` | `target_id`, `html` |
+| server → client | `insert` | `after_id`, `html` |
+| server → client | `remove` | `target_id` |
+| server → client | `set_meta` | `target_id`, `sourcepos`, `source_file` (patch a shifted block's source mapping in place) |
+| server → client | `diagnostics` | `messages` (non-fatal include / kernel / extension issues) |
+| server → client | `style` | `css` (hot-swaps the theme `<style>` in place on a CSS/theme edit, no reload) |
+| server → client | `error` | `message` (a failed render; shown as an overlay) |
+| server → client | `reload` | *(none)*; full page reload (config change, kernel restart) |
+| client → server | `click_block` | `block_id`, `source_file`, `sourcepos` |
+| client → server | `restart_kernel` | *(none)*; drop + respawn the kernel, re-run all cells |
+
+These message shapes are defined **once**, in `protocol.rs`, and shared by both
+dev servers and the browser client. The single-document server, the multi-page
+server, and `web-client/` are all ends of this one contract, so they can't drift
+apart from each other. The `update` / `insert` / `remove` / `set_meta` messages are
+just the serialized `BlockOp` enum (the variant name lowercased into the `type`
+field); its four Rust variants and their fields are catalogued in [the data-type
+reference](data-types.tmd#blockop). For the exact JSON shape of every message,
+when each is sent, and how the client applies it, see [the websocket
+protocol](protocol.tmd).
+
+### Applying the ops (the client)
+
+The browser side (`web-client/client.js`) is deliberately thin: each op is one small
+DOM mutation, and the diff above is what keeps that set small.
+
+- **`update`** finds the target by id and `replaceWith`s the new HTML; **`insert`**
+  builds a fragment and places it after `after_id` (or `prepend`s it when there is
+  none); **`remove`** drops the element. **`set_meta`** patches only `data-sourcepos` /
+  `data-source-file` on the existing element and **does not re-render**, so a live
+  block (a video, a `{js}` widget, an open `<details>`) keeps its DOM state while its
+  source mapping stays exact.
+- Every mutation runs inside **`keepScroll`**, which pins `window.scrollY` across the
+  change (instantly, never animated), and is followed by **`afterChange`**, which
+  re-attaches the deck, rebuilds the TOC, re-runs the code enhancers, and re-scans for
+  cell errors and a11y issues. `set_meta` skips `afterChange` (nothing rendered).
+- The first paint is **server-rendered** into `#qmd-root`, so the very first
+  `full_render` after connect is identical and is **skipped** (no flash, no needless
+  deck/`{js}` re-init). A *reconnect* re-mounts normally, and a dropped socket retries
+  on a short loop.
+- Because block ids are unique, an `insert` first drops any element already carrying
+  the incoming id. The server emits all **`remove`s before any `insert`s**, so this is
+  normally a no-op; it only matters if a reorder (a `remove` + `insert` of the same id)
+  ever arrived out of order.
+
+Reverse sync runs the same model backwards: `highlightAtLine(file, line)` picks the
+**smallest** block whose `data-sourcepos` covers the line (else the nearest block
+starting before it), outlines it with `.tmd-hl`, and scrolls it into view, or, in a
+deck, jumps `QmdDeck` to the containing slide.
+
+## Click-to-source & editor sync
+
+Click-to-source (goal #1) rides entirely on the two source attributes:
+
+- **Forward (preview → editor).** Alt-clicking (Option-clicking on Mac) a block
+  reads its `data-sourcepos` (+ `data-source-file`) and opens the exact source
+  line: a `vscode://file/<path>:<line>:<col>` deep link by default. The source positions
+  start as comrak's per-node ranges; on the way to becoming blocks they are
+  **translated through the include source map** (`includes.rs` records a
+  `LineOrigin` for every expanded line → its origin file + line), so a block that
+  came from an `{{< include >}}`d partial carries that file in `data-source-file`
+  and the *original* line: click-to-source works across files.
+- **Reverse (editor → preview).** The client also speaks a `postMessage` protocol
+  as the integration surface for an embedded editor host. The in-repo [VS Code
+  companion](extending.tmd) is that host: the client posts `qmd-goto` up to it (which
+  reveals the source), and accepts `qmd-cursor {file, line}` to highlight/scroll to the
+  block whose `data-sourcepos` covers that line (in a deck, jumping to the containing
+  slide). So an editor can host the preview and add cursor sync without forking the
+  client.
+
+## Trust model
+
+qmd-fast renders **one author's own `.tmd` files**, so the source is *trusted*:
+raw HTML in the body, `{=html}` blocks, `include-*` markup, and footer icon SVGs
+are passed through **unescaped** by design, and code cells are executed. None of
+this is a vulnerability under the intended use, but it does mean qmd-fast must
+not be pointed at a `.tmd` from an untrusted source.

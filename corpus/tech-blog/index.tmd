@@ -1,0 +1,28 @@
+---
+title: "Andreas Bogossian"
+about:
+  template: jolla
+  image: profile.webp
+  image-alt: "Andreas Bogossian"
+page-layout: article
+toc: false
+include-in-header:
+  text: |
+    <meta name="description" content="MSc student in Machine Learning, Data Science and AI at Aalto University. I write about ML, statistics, and algorithms.">
+    <link rel="preload" as="image" href="profile.webp" fetchpriority="high">
+listing:
+  id: recent-posts
+  contents: posts
+  sort: "date desc"
+  max-items: 2
+  type: grid
+---
+
+MSc student in ML, Data Science and AI at Aalto University. I write about machine learning, statistics, and algorithms.
+
+## Recent Posts
+
+::: {#recent-posts}
+:::
+
+[View all posts →](blog.tmd){.btn .btn-outline-primary}

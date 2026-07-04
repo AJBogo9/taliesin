@@ -592,9 +592,9 @@ mod tests {
 
     #[test]
     fn corpus_a11y_pin_doc_trips_each_rule_through_check() {
-        // The corpus pin (`corpus/diagnostics/a11y.qmd`, exempt from the no-false-positive
+        // The corpus pin (`corpus/diagnostics/a11y.tmd`, exempt from the no-false-positive
         // guard) must fire every a11y rule through the real `collect_diagnostics` flow.
-        let doc = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/diagnostics/a11y.qmd");
+        let doc = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/diagnostics/a11y.tmd");
         let diags = collect_diagnostics(&doc).expect("pin doc checks");
         let has = |needle: &str| diags.iter().any(|d| d.message.contains(needle));
         assert!(has("image is missing alt text"), "raw img: {diags:?}");

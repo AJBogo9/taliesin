@@ -45,7 +45,7 @@ fn references_section(html: &str) -> &str {
 /// EXACTLY so a regression in the accent/string/heading paths is caught.
 #[test]
 fn ieee_corpus_reference_output_is_byte_stable() {
-    let html = render_post("posts/em-algorithm/index.qmd");
+    let html = render_post("posts/em-algorithm/index.tmd");
     let refs = references_section(&html);
     assert_eq!(
         refs,
@@ -66,7 +66,7 @@ fn ieee_corpus_reference_output_is_byte_stable() {
 #[test]
 fn single_and_double_brace_author_corpus_output_is_byte_stable() {
     let elbo = references_section(&render_post(
-        "tech-blog/posts/evidence-lower-bound/index.qmd",
+        "tech-blog/posts/evidence-lower-bound/index.tmd",
     ))
     .to_string();
     assert_eq!(
@@ -84,7 +84,7 @@ fn single_and_double_brace_author_corpus_output_is_byte_stable() {
     );
 
     let kw = references_section(&render_post(
-        "tech-blog/posts/Kruskal-Wallis-test/index.qmd",
+        "tech-blog/posts/Kruskal-Wallis-test/index.tmd",
     ))
     .to_string();
     assert_eq!(
@@ -108,7 +108,7 @@ fn single_and_double_brace_author_corpus_output_is_byte_stable() {
 
 #[test]
 fn cite_coverage_corpus_doc_renders_all_fixes() {
-    let html = render_post("posts/cite-coverage/index.qmd");
+    let html = render_post("posts/cite-coverage/index.tmd");
     let refs = references_section(&html);
 
     // Fix 1: LaTeX accents -> composed Unicode in author names.

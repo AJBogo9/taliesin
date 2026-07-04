@@ -1,0 +1,199 @@
+---
+title: "The repository"
+---
+
+[Architecture](architecture.tmd) is the *logical* map: the crates, the data flow,
+and the file-by-file table of the engine. This chapter is the *physical* one, a
+zoom-out to the **whole tree**, so when you clone the repo and feel lost, you know
+which directory owns what before you open a single `.rs` file. Most of the code you
+will read lives in two crates, but the repository is bigger than the engine: it also
+carries its own spec, its own manual, its own marketing site, and its own tooling,
+all in one tree.
+
+```
+qmd-fast/
+├─ crates/            the engine, a Cargo workspace
+│  ├─ core/           qmd-fast-core: parse → block model → render   (see Architecture)
+│  └─ server/         qmd-fast (binary): CLI, dev server, Jupyter kernel
+├─ web-client/        browser preview client (vanilla JS, no build step)
+├─ editor/vscode/     VS Code companion: hosts the preview + bidirectional source sync
+├─ corpus/            the real .tmd docs that ARE the spec (cargo test renders them all)
+├─ docs/              this manual, two sibling .tmd books: guide/ + internals/
+├─ site/              the marketing landing site, built by qmd-fast itself
+├─ samples/           one standalone document per HTML format, for isolated polish
+├─ tools/             dev tooling: live-edit-bench (workspace member) + record-demo (npm)
+├─ notes/             roadmap & process notes (backlog, BEYOND-QUARTO, AUDITS, …)
+├─ README.md, LICENSE, CLAUDE.md, THIRD_PARTY.md   the root Markdown that stays
+├─ Cargo.toml         workspace manifest (resolver 3, edition 2024)
+└─ deny.toml, .github/   license/advisory policy + CI
+```
+
+## The engine: crates and clients
+
+The Rust side is a three-member **Cargo workspace** (`Cargo.toml`): `crates/core`,
+`crates/server`, and `tools/live-edit-bench`. The workspace pins `resolver = "3"`,
+`edition = "2024"`, and centralizes shared dependency versions under
+`[workspace.dependencies]`, so versions never drift between crates.
+
+- **`crates/core`** is `qmd-fast-core`, the library that does all the thinking and
+  touches no network: it parses a `.tmd` (comrak + sourcepos), builds the block
+  model, and renders each block to HTML.
+- **`crates/server`** is the `qmd-fast` binary: the CLI, the websocket dev server,
+  the file watcher, and the warm Jupyter kernel pool. It is the only long-running
+  process.
+
+Both are mapped to the function level in [Architecture's codebase map](architecture.tmd),
+so this chapter does not repeat that table.
+
+Two clients live outside the workspace but are part of the same product, because
+they are just consumers of the core's stable protocol:
+
+- **`web-client/`** is the browser preview, written in plain JavaScript with **no
+  build step**: `client.js` (mounts blocks, applies ops, click-to-source),
+  `search.js` (the Cmd-K palette), `toc-spy.js` (the scrollspy). It is type-checked
+  in place with `// @ts-check` + `tsc` against `globals.d.ts`; there is no bundler.
+- **`editor/vscode/`** is the VS Code companion, with its own npm/TypeScript build.
+  It hosts the live preview in a webview and is the missing *producer* for the
+  source-sync protocol the browser client already consumes: Alt-click in the
+  preview jumps the editor, and moving the editor cursor highlights the matching
+  block. It is the first non-browser client of the protocol, which is the whole
+  point of keeping that protocol open.
+
+## The spec: `corpus/`
+
+`corpus/` is the load-bearing directory that is **not** code: it holds the real
+`.tmd` documents that serve as the specification. "Done" means these render
+correctly, and `crates/core/tests/corpus.rs` renders every one of them on each test
+run and asserts the load-bearing invariants (every block has an id + valid
+sourcepos, ids are unique, blocks stay in document order, includes resolve, decks
+split into slides, books get a numbered TOC, sites discover their pages and rewrite
+`.tmd`→`.html` links). The corpus is both the regression net and the arbiter of
+done, so it must stay green.
+
+It now also *leads*: under the corpus-plus-roadmap scope, each new capability ships
+pinned by a new corpus document added in the same change. The documents span every
+format and feature, one subdirectory per concern, for example `posts/` (blog
+posts, from pure prose to heavy math + live `{js}`), `tech-blog/` (the multi-page
+website spec), `demo-book/` (the multi-chapter book), `deck.tmd` (a slide deck),
+`narrate/`, `layout/`, `callouts/`, `media/`,
+`reactive/`, `reader/`, and `diagnostics/` (documents that deliberately trip the
+validators). `corpus/README.md` is the index, with provenance and what each
+exercises.
+
+## The manual: `docs/`
+
+The project documents itself in `.tmd`, dogfooding the tool. `docs/` is **just a
+container** (it has no `_site.yml`); the manual is two *sibling* book projects so
+the page-walker does not swallow a nested book's pages:
+
+- **`docs/guide/`** is the User Guide: how to *use* qmd-fast (`using/` feature
+  showcase + `reference/`).
+- **`docs/internals/`** is this book: how it is *built*.
+
+The marketing site mounts each at `/docs/guide` and `/docs/internals`; cross-book
+links are written as relative `.html`. Preview either directly with
+`qmd-fast preview docs/guide` or `qmd-fast preview docs/internals`.
+
+## The showcase: `site/` and `samples/`
+
+- **`site/`** is the marketing landing site, **built by qmd-fast itself** from
+  nothing but Markdown + YAML with no custom stylesheet, the framework's own
+  dogfood test of its defaults.
+- **`samples/`** is one comprehensive, standalone-previewable document per HTML
+  format, for honing each format's UX in isolation. The two documents that did not
+  already exist as standalone projects (`deck.tmd`, `paper.tmd`) live here; the
+  website and books are referenced from their canonical homes.
+Source media lives **next to the document that uses it**, never in a central pile:
+the Fourier-transform post ships its `*.wav` and the blog its `*.webp` images under
+`corpus/tech-blog/`, the showcase its assets under `samples/assets/`. Media a cell
+*generates* (audio from `scipy.io.wavfile`, a `#| fig-export:` or `ggsave` figure)
+also lands beside its document, because [code cells run in the document's own
+directory](execution.tmd) rather than wherever the server was launched. Those
+generated outputs regenerate on render, so `.gitignore` keeps them out of git
+(`corpus/posts/fourier-transform/*.wav`, `**/figures/`) while the deliberate
+`corpus/tech-blog/` fixtures stay tracked; `/*.wav` remains as a backstop for the
+old repo-root dump from before cells ran in the document's directory.
+
+## Developer tooling: `tools/`
+
+- **`tools/live-edit-bench/`** (a workspace member) measures the headline
+  incremental-update claim: for a keystroke-sized edit it reports op counts, the
+  payload ratio against a full rebuild, and DOM preservation. The structural rows
+  are deterministic, gated invariants (`tests/regression.rs`); run it with
+  `cargo run -p live-edit-bench`.
+- **`tools/record-demo/`** (a standalone npm project) scripts a Playwright
+  recording of a live preview into an optimized MP4 + GIF, so the marketing demos
+  are reproducible rather than hand-captured.
+
+## Process and planning: `notes/`
+
+A few Markdown files stay at the **root** because tooling and convention expect
+them there: `README.md` (the public overview), `LICENSE` (MIT), `THIRD_PARTY.md`
+(the vendored components and their licenses), and `CLAUDE.md` (instructions for the
+AI coding assistant). Everything else is internal notes-to-self and roadmap, kept
+in `notes/` so the root stays uncluttered:
+
+| File | What it is |
+|---|---|
+| `notes/backlog.md` | The **canonical** to-do list (what is still to build). |
+| `notes/BEYOND-QUARTO.md` | The **active** roadmap: the corpus-plus-roadmap initiative. |
+| `notes/DROP-QUARTO.md` | The completed predecessor initiative (native engine, no Quarto compat). |
+| `notes/AUDITS.md` | Consolidated historical audit reports. |
+| `notes/FEATURE-IDEAS.md` | A research-backed pool of candidate features that feeds the backlog. |
+| `notes/FUNDING-RESEARCH.md`, `notes/STARTUP-PLAN.md` | Funding/commercial working notes. |
+
+## Build, config, and what git ignores
+
+- **`Cargo.toml` / `Cargo.lock`**: the workspace manifest and lockfile.
+- **`deny.toml`**: the `cargo-deny` policy (licenses + security advisories).
+- **`build.rs` (×2)**: `crates/core/build.rs` inlines KaTeX's woff2 fonts into a
+  single self-contained CSS at build time (so rendered pages need no sidecar font
+  files); `crates/server/build.rs` stamps the short git SHA into the binary for the
+  `--version` colophon, falling back to `"unknown"` outside a checkout.
+- **`.github/`**: CI formatting, tests, and `cargo-deny`.
+
+Several directories are **generated and gitignored**, so do not be surprised when
+they appear: `target/` (the Rust build), `_freeze/` (the persistent per-page
+execution cache, see [Code execution & the kernel](execution.tmd)), `_site/` and
+`_book/` (build outputs), `node_modules/`, and `editor/vscode/.vscode-test/` (the
+downloaded VS Code used by the companion's headless tests).
+
+## Environment variables
+
+The runtime knobs all share a `QMD_FAST_` prefix and mirror a CLI flag where one
+exists:
+
+| Variable | Effect |
+|---|---|
+| `QMD_FAST_PYTHON` / `QMD_FAST_R` | The interpreter for `{python}` / `{r}` cells (defaults: `python3`, `R`). |
+| `QMD_FAST_CELL_TIMEOUT` | Per-cell timeout in seconds (default `120`; `0` disables). |
+| `QMD_FAST_NO_CACHE` | Ignore and skip the `_freeze/` execution cache. |
+| `QMD_FAST_NO_EXEC` (`--no-exec`) | Render code cells as source instead of running them; `--host` turns this on automatically. |
+| `QMD_FAST_HOST` (`--host`) | Expose the preview on the LAN behind a per-session token. |
+| `QMD_FAST_OPEN` (`--open`) | Open the browser when the preview starts. |
+| `QMD_FAST_NO_CLEAR` | Keep the dev-server banner from clearing the terminal. |
+
+A few more are for build and test time rather than authoring: `QMD_FAST_GIT_SHA`
+(set by the server build script for the colophon), `QMD_FAST_BIN` (points the VS
+Code end-to-end tests at the built binary), and `QMD_FAST_BLESS` (regenerates the
+committed JSON Schemas when `schema.rs` detects drift).
+
+## Where the tests live
+
+Tests sit next to the code they pin, and reading them is often the fastest way to
+learn a seam's contract. `crates/core/tests/corpus.rs` is the arbiter (the whole
+corpus must render and satisfy the invariants); the rest lock down one seam each:
+
+| Test | Locks in |
+|---|---|
+| `corpus.rs` | The corpus-wide invariants (ids, sourcepos, order, includes, decks, books, sites). |
+| `incremental.rs` / `transient.rs` | The incremental-update seam and per-keystroke re-render robustness. |
+| `tech_blog.rs` | Per-post feature coverage for replacing Quarto on the author's real blog. |
+| `config.rs` / `search.rs` / `extensions.rs` | The `_site.yml` schema, the search index, and `_extensions/` resolution. |
+| `nested_validation.rs`, `cell_option_validation.rs`, `callout_kind_validation.rs`, `located_warnings.rs` | The validators and their click-to-source warnings (see [Validation & schemas](validation.tmd)). |
+| `stale_docs.rs` | Guards that deleted-machinery phrases never return to the docs. |
+| `crates/server/tests/` | The CLI surface: `--version`, `qmd-fast schema`, the dead-`{{< embed >}}` warning. |
+
+With the lay of the land in hand, [Architecture](architecture.tmd) goes from here
+into the engine's internals, and [Extending qmd-fast](extending.tmd) covers the
+conventions and the day-to-day dev loop.

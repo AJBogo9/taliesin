@@ -8,23 +8,23 @@ fn read(rel: &str) -> String {
 /// These phrases describe machinery deleted in DROP-QUARTO and must not return.
 #[test]
 fn docs_do_not_claim_quarto_config_still_works() {
-    let cfg = read("docs/guide/reference/configuration.qmd");
+    let cfg = read("docs/guide/reference/configuration.tmd");
     assert!(
         !cfg.contains("still works"),
-        "configuration.qmd still claims a Quarto config works"
+        "configuration.tmd still claims a Quarto config works"
     );
     assert!(
         !cfg.contains("Coming from a Quarto config?"),
-        "configuration.qmd still has the stale Quarto-config callout"
+        "configuration.tmd still has the stale Quarto-config callout"
     );
 }
 
 #[test]
 fn internals_do_not_describe_the_deleted_shim() {
-    let sites = read("docs/internals/sites.qmd");
+    let sites = read("docs/internals/sites.tmd");
     assert!(
         !sites.contains("site/config/quarto.rs"),
-        "sites.qmd still describes the deleted quarto.rs shim"
+        "sites.tmd still describes the deleted quarto.rs shim"
     );
 }
 

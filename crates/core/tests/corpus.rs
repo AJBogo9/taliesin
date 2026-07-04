@@ -1,7 +1,7 @@
 //! Corpus-wide invariants: every real document must render and satisfy the
 //! load-bearing guarantees (a block id + valid sourcepos on every block, ids
 //! unique, blocks in document order). The corpus is the spec, so this runs the
-//! whole pipeline over each real `.qmd` rather than synthetic snippets.
+//! whole pipeline over each real `.tmd` rather than synthetic snippets.
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -150,9 +150,9 @@ fn every_corpus_doc_renders_with_invariants() {
 
 #[test]
 fn includes_are_resolved_with_origin_files() {
-    // pca-geometry pulls in _includes/three-scene.qmd via {{< include >}}.
+    // pca-geometry pulls in _includes/three-scene.tmd via {{< include >}}.
     let dir = corpus_dir().join("posts/pca-geometry");
-    let src = fs::read_to_string(dir.join("index.qmd")).unwrap();
+    let src = fs::read_to_string(dir.join("index.tmd")).unwrap();
     let doc = taliesin_core::render_document_with_includes(&src, &dir);
 
     let body = doc.body_html();
@@ -173,12 +173,12 @@ fn includes_are_resolved_with_origin_files() {
         .collect();
     assert!(
         !from_include.is_empty(),
-        "expected blocks sourced from the included three-scene.qmd"
+        "expected blocks sourced from the included three-scene.tmd"
     );
 
     // the single-page report pulls in subsections; every subsection contributes blocks
     let book = corpus_dir().join("bayesian-website");
-    let bsrc = fs::read_to_string(book.join("index.qmd")).unwrap();
+    let bsrc = fs::read_to_string(book.join("index.tmd")).unwrap();
     let bdoc = taliesin_core::render_document_with_includes(&bsrc, &book);
     assert!(!bdoc.body_html().contains("{{< include"));
     let included_files: HashSet<_> = bdoc
@@ -196,7 +196,7 @@ fn includes_are_resolved_with_origin_files() {
 fn reveal_deck_detects_format_and_splits_into_slides() {
     use taliesin_core::{DocFormat, render_document_with_includes, slides_html};
     let dir = corpus_dir();
-    let src = fs::read_to_string(dir.join("deck.qmd")).unwrap();
+    let src = fs::read_to_string(dir.join("deck.tmd")).unwrap();
     let doc = render_document_with_includes(&src, &dir);
 
     assert_eq!(
@@ -235,7 +235,7 @@ fn a11y_chrome_emits_landmarks_skip_link_and_slide_roles() {
     // --- deck slides carry ARIA slide roles (additive on the <section> open tag, so
     // the inner [data-block-id] blocks are untouched — block ids stay byte-stable). ---
     let dir = corpus_dir();
-    let src = fs::read_to_string(dir.join("deck.qmd")).unwrap();
+    let src = fs::read_to_string(dir.join("deck.tmd")).unwrap();
     let doc = render_document_with_includes(&src, &dir);
     let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
     // Every content slide announces as a slide group so a screen reader can navigate
@@ -293,7 +293,7 @@ fn website_renders_with_toc_anchored_headings_and_numbered_figures() {
     // `subsections/` includes — not a book; the assertions below exercise TOC,
     // heading anchors, and document-order figure numbering on that one page.
     let dir = corpus_dir().join("bayesian-website");
-    let src = fs::read_to_string(dir.join("index.qmd")).unwrap();
+    let src = fs::read_to_string(dir.join("index.tmd")).unwrap();
     let page = taliesin_core::render_html_page_with_includes(&src, &dir, "report");
 
     // toc: true -> a TOC nav + the sidebar layout, with anchor-linked entries.
@@ -395,7 +395,7 @@ fn reverse_sync_sourcepos_is_total() {
 fn ids_and_sourcepos_present_on_visible_blocks() {
     // Every visible block element should carry both data attributes. (Raw HTML
     // comment blocks legitimately carry neither — they are emitted verbatim.)
-    let src = fs::read_to_string(corpus_dir().join("posts/em-algorithm/index.qmd")).unwrap();
+    let src = fs::read_to_string(corpus_dir().join("posts/em-algorithm/index.tmd")).unwrap();
     let doc = taliesin_core::render_document(&src);
     for b in &doc.blocks {
         // Raw HTML comments are emitted verbatim; generated blocks (References)
@@ -417,7 +417,7 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
     let root = corpus_dir().join("tech-blog");
     let site = Site::discover(&root);
 
-    // The project config parses (navbar items) and every `.qmd` page is found,
+    // The project config parses (navbar items) and every `.tmd` page is found,
     // each mapped to a `.html` output url.
     assert!(
         site.pages.len() >= 10,
@@ -433,7 +433,7 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
     }
 
     // A top-level page renders with the site chrome and rewrites its nav links.
-    let blog = site.render_page("blog.qmd").expect("blog renders");
+    let blog = site.render_page("blog.tmd").expect("blog renders");
     assert!(blog.contains("tali-site-nav"), "navbar missing");
     assert!(
         blog.contains("<nav class=\"tali-nav-inner\" aria-label=\"Primary\">"),
@@ -464,8 +464,8 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
         "nav link not rewritten"
     );
     assert!(
-        !blog.contains("href=\"blog.qmd\""),
-        "raw .qmd nav link leaked"
+        !blog.contains("href=\"blog.tmd\""),
+        "raw .tmd nav link leaked"
     );
     // Blog-specific features were removed: no RSS feed is generated, so there is
     // no discovery <link>, no rss+xml, no feed.xml anywhere, and the footer's
@@ -481,9 +481,9 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
     );
 
     // A post is a plain page: no "back to listing" button and no post-nav at all,
-    // but cross-page `.qmd` links are still rewritten to `.html`.
+    // but cross-page `.tmd` links are still rewritten to `.html`.
     let post = site
-        .render_page("posts/evidence-lower-bound/index.qmd")
+        .render_page("posts/evidence-lower-bound/index.tmd")
         .expect("post renders");
     assert!(
         !post.contains("tali-back-link")
@@ -493,11 +493,11 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
     );
     assert!(
         post.contains("../KL-divergence/index.html"),
-        "cross-page .qmd link not rewritten to .html"
+        "cross-page .tmd link not rewritten to .html"
     );
     assert!(
-        !post.contains("../KL-divergence/index.qmd"),
-        "raw cross-page .qmd link leaked"
+        !post.contains("../KL-divergence/index.tmd"),
+        "raw cross-page .tmd link leaked"
     );
 
     // OpenGraph / SEO meta for sharing: a post gets og:type=article, og:title,
@@ -534,7 +534,7 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
     // No per-tag archive pages, and a post no longer carries a category strip
     // linking to them (the in-listing category filter on the grid is unaffected).
     let fourier = site
-        .render_page("posts/fourier-transform/index.qmd")
+        .render_page("posts/fourier-transform/index.tmd")
         .expect("fourier post renders");
     assert!(
         !fourier.contains("tali-post-cats") && !fourier.contains("categories/signal-processing/"),
@@ -544,7 +544,7 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
 
 #[test]
 fn standalone_doc_carries_opengraph_seo_meta() {
-    // A single .qmd (no site) gets text OpenGraph/SEO meta from its own front matter.
+    // A single .tmd (no site) gets text OpenGraph/SEO meta from its own front matter.
     let doc = taliesin_core::render_document(
         "---\ntitle: \"T\"\ndescription: \"D\"\n---\n\n# Hi\n\nbody\n",
     );
@@ -585,7 +585,7 @@ fn standalone_doc_carries_opengraph_seo_meta() {
 fn bare_build_is_script_free_css_themed_and_drops_js() {
     // The `--bare` build target: zero <script>, zero CDN, CSS-only theming — yet
     // server-rendered math still works and a {js} cell is dropped (not shipped dead).
-    let src = fs::read_to_string(corpus_dir().join("bare-draft.qmd")).unwrap();
+    let src = fs::read_to_string(corpus_dir().join("bare-draft.tmd")).unwrap();
     let doc = taliesin_core::render_document_with_includes(&src, &corpus_dir());
     let bare = taliesin_core::render_doc_to_page(&doc, "bare", taliesin_core::OutputMode::Bare);
 
@@ -665,7 +665,7 @@ fn site_auto_gates_on_this_page_toc_by_heading_count() {
     // `#`-prefixed lines inside the {python} cell are code comments, not headings) -> the
     // TOC nav + the has-toc two-column layout (`.tali-site-main has-toc` on a site page).
     let post = site
-        .render_page("posts/KL-divergence/index.qmd")
+        .render_page("posts/KL-divergence/index.tmd")
         .expect("KL-divergence post renders");
     // `id="TOC"` is the unambiguous signal: the rendered TOC <nav>. (`has-toc` is unusable
     // here — the bundled CSS ships `.has-toc` selectors, so it is always present.)
@@ -677,7 +677,7 @@ fn site_auto_gates_on_this_page_toc_by_heading_count() {
     // A 2-heading project article (below MIN_TOC_HEADINGS, no hero/listing, no explicit
     // `toc:`) -> a single reading column, no near-empty TOC, despite the site enabling TOCs.
     let short = site
-        .render_page("projects/iphone-premium-analysis/index.qmd")
+        .render_page("projects/iphone-premium-analysis/index.tmd")
         .expect("project article renders");
     assert!(
         !short.contains("id=\"TOC\""),
@@ -727,7 +727,7 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
 
     // A chapter renders with the book chrome: the chapter-list nav (active chapter),
     // section numbers on its headings, and prev/next-chapter navigation.
-    let methods = site.render_page("methods.qmd").expect("methods renders");
+    let methods = site.render_page("methods.tmd").expect("methods renders");
     assert!(
         methods.contains("<nav class=\"tali-book-sidebar\""),
         "book chapter-list nav missing"
@@ -777,7 +777,7 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
     // Cross-chapter `@ref`s resolve to the other page with the right number: the
     // Results chapter references `@sec-methods` (a chapter -> "Chapter 2") and
     // `@sec-setup` (a subsection -> "Section 2.1"), both on methods.html.
-    let results = site.render_page("results.qmd").expect("results renders");
+    let results = site.render_page("results.tmd").expect("results renders");
     assert!(
         results.contains(
             "<a href=\"methods.html#sec-methods\" class=\"tali-xref\">Chapter&nbsp;2</a>"
@@ -816,8 +816,8 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
 fn book_chapter_scopes_theorem_numbers() {
     use taliesin_core::Site;
     let site = Site::discover(&corpus_dir().join("demo-book"));
-    // methods.qmd is chapter 2, with `theorems: number-within: chapter`.
-    let methods = site.render_page("methods.qmd").expect("methods renders");
+    // methods.tmd is chapter 2, with `theorems: number-within: chapter`.
+    let methods = site.render_page("methods.tmd").expect("methods renders");
     assert!(
         methods.contains(
             "<span class=\"tali-theorem-label\">Theorem<span class=\"tali-theorem-number\">&nbsp;2.1</span></span>"

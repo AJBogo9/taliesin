@@ -1,0 +1,212 @@
+---
+title: "Rich writing"
+bibliography: ../references.bib
+---
+
+Everything you'd reach for in a technical post works out of the box, rendered
+server-side and shipped offline: no CDN, no client re-run on a theme toggle.
+
+## Prose and typography
+
+Standard Markdown works as expected: **bold**, *italic*, ~~strikethrough~~,
+`inline code`, [links](https://example.com), nested lists, blockquotes, and pipe
+tables with per-column alignment:
+
+| Capability | Status | Where |
+|:--|:--:|--:|
+| Block model + diff | ✅ | `crates/core` |
+| Live `{js}` cells | ✅ | native enhancer + vendored d3/Plot |
+| PDF / non-HTML output | ❌ | out of scope |
+
+> Smart typography turns straight quotes into curly ones and handles ellipses…,
+> matching the look of a hand-written post.
+
+Code blocks are syntax-highlighted **server-side** (in Rust, via syntect) and get
+a hover **Copy** button. Highlighting ships fully offline: the colours are emitted
+as scope classes the theme styles, so the exported HTML needs no CDN, the first
+paint is already coloured, and the light/dark toggle restyles code with nothing to
+re-run.
+
+```rust
+/// Every rendered block carries a content-hash id and its source range.
+struct Block {
+    id: String,        // stable across edits while the content is unchanged
+    sourcepos: String, // "startLine:startCol-endLine:endCol"
+    html: String,
+}
+```
+
+## Math
+
+Math renders server-side with KaTeX and ships fully offline (the fonts are inlined
+at build time). Inline math like $e^{i\pi} + 1 = 0$ sits in running text; display
+math stands alone; and a labelled equation is **numbered and cross-referencable**.
+The discrete Fourier transform [@cooley1965] is given by @eq-dft:
+
+$$
+X[k] = \sum_{n=0}^{N-1} x[n]\, e^{-2\pi i k n / N}
+$$ {#eq-dft}
+
+Multi-line aligned environments work too:
+
+$$
+\begin{aligned}
+  \nabla \cdot \mathbf{E} &= \rho/\varepsilon_0 \\
+  \nabla \times \mathbf{B} &= \mu_0\mathbf{J} + \mu_0\varepsilon_0 \frac{\partial \mathbf{E}}{\partial t}
+\end{aligned}
+$$
+
+## Diagrams
+
+A `{mermaid}` code block renders client-side with mermaid.js, loaded lazily the
+first time a diagram appears, and like figures they are **click-to-zoom**.
+Diagrams-from-code is a first-class feature, not an afterthought; the colours are
+CSS-driven, so they follow the theme. Adding `%%| label: fig-…` and `%%| fig-cap:`
+turns a diagram into a numbered, captioned figure you can cross-reference, just
+like an image. As @fig-render shows, one block model feeds three render targets:
+
+```{mermaid}
+%%| label: fig-render
+%%| fig-cap: "One block model, three render targets."
+flowchart LR
+  Q[".tmd"] --> BM["block model"]
+  BM --> H["HTML page"]
+  BM --> R["slide deck"]
+  BM --> K["book + TOC"]
+```
+
+Every mermaid diagram type works (**sequence**, **state**, class, ER, gantt,
+and more), so you can document a protocol or a state machine from a few lines of
+text. Here is the live-edit loop as a sequence diagram:
+
+```{mermaid}
+sequenceDiagram
+  autonumber
+  participant E as Editor
+  participant S as Server
+  participant P as Preview
+  E->>S: save .tmd
+  S->>S: re-parse + diff by block id
+  S-->>P: only the changed blocks
+  P->>P: swap them in (scroll kept)
+  Note over P: live canvases keep their state
+```
+
+…and the warm kernel's lifecycle as a state diagram:
+
+```{mermaid}
+stateDiagram-v2
+  [*] --> Idle
+  Idle --> Running: run changed cell(s)
+  Running --> Idle: outputs spliced back
+  Running --> Interrupted: exceeds timeout
+  Interrupted --> Idle
+  Idle --> Respawned: process died
+  Respawned --> Idle: re-run all cells
+```
+
+## Figures, captions, and lightbox
+
+A standalone image with a `{#fig-…}` attribute, or a code cell tagged with
+`#| label: fig-…` and `#| fig-cap:`, becomes a numbered `<figure>`; clicking it
+opens a full-screen **lightbox**, and `@fig-` cross-references resolve to its
+number. @fig-scree is drawn by a matplotlib cell that sets *no* theme colours:
+inline figures default to a transparent background with neutral-grey axes, so they
+track the light/dark theme on their own.
+
+```{python}
+#| label: fig-scree
+#| fig-cap: "Variance explained per principal component. Click to zoom."
+#| echo: false
+import matplotlib.pyplot as plt
+
+components = range(1, 8)
+explained = [42, 26, 15, 8.5, 5, 2.5, 1]
+
+fig, ax = plt.subplots(figsize=(6, 3.4), tight_layout=True)
+ax.bar(components, explained, width=0.6, color="#4c8dff", alpha=0.85)
+ax.plot(
+    components, explained,
+    color="#e0566b", linewidth=2, linestyle="--", marker="o", markersize=4,
+)
+ax.annotate(
+    "elbow", xy=(3, 15), xytext=(3.6, 27),
+    color="#e0566b", fontsize=11,
+    arrowprops=dict(arrowstyle="->", color="#e0566b"),
+)
+ax.set_xlabel("Principal component")
+ax.set_ylabel("Variance explained (%)")
+ax.set_xticks(list(components))
+for spine in ("top", "right"):
+    ax.spines[spine].set_visible(False)
+plt.show()
+```
+
+## Callouts
+
+Fenced divs become callouts, layout grids, or generic containers.
+
+::: {.callout-tip}
+## Tip
+
+Use a `title=` attribute or a leading heading to label a callout; otherwise it
+falls back to the callout kind.
+:::
+
+A callout with `collapse="true"` becomes a native, JavaScript-free disclosure:
+
+::: {.callout-note collapse="true"}
+## The full block model (click to expand)
+
+Every top-level element carries `data-block-id` (a content hash), `data-sourcepos`
+(its source range), and, for included files, `data-source-file`.
+:::
+
+## Citations and cross-references
+
+With a `bibliography:` in the front matter, `[@key]` citations become numbered
+links to an auto-generated References section, formatted from the BibTeX file.
+This page cites the *TeXbook* [@knuth1984] and the FFT paper [@cooley1965], and
+groups with locators work too: [@knuth1984; @cooley1965, p. 297]. Cross-references
+resolve to labelled links across `@fig-`, `@sec-`, `@tbl-`, `@eq-`, `@lst-`,
+`@thm-`, and `@def-`, carrying the resolved number when known (as `@eq-dft` and
+`@fig-scree` above do): **across chapters**, so a `@fig-` in one chapter resolves
+to its figure in another.
+
+## Footnotes and sidenotes
+
+Footnotes use the standard `[^label]` syntax. A reference renders as a superscript
+link, and the definitions (which can span paragraphs) are gathered into a numbered
+footnotes section at the end of the page, in reference order, each with a backlink.[^demo]
+
+[^demo]: Like this one. Write `[^label]` where you want the marker, and `[^label]: …`
+    anywhere for the body; qmd-fast does the numbering and the return arrow.
+
+For an aside that belongs *beside* the text rather than at the bottom, a
+`::: {.sidenote}` (or `.marginnote`) block floats into the right margin on a wide
+screen and folds into the flow on a narrow one: web-native marginalia a PDF can't do.
+
+::: {.sidenote}
+This is a sidenote. On a wide screen it sits in the margin, aligned to where it was
+written; narrow the window and it collapses to an indented note. Math works here too:
+$\sigma^2 = \operatorname{Var}(X)$.
+:::
+
+The body keeps flowing in the reading column while the margin note sits alongside the
+paragraph it annotates, so a digression never interrupts the main thread.
+
+## Raw HTML passthrough
+
+A `{=html}` block is emitted verbatim, so you can drop in markup the Markdown
+grammar doesn't cover (custom widgets, embeds, audio players):
+
+```{=html}
+<div style="display:flex;gap:.6rem;align-items:center;padding:.7rem 1rem;border-radius:10px;
+            color:var(--qmd-fg);border:1px solid var(--qmd-border);
+            background:linear-gradient(90deg,rgba(99,102,241,.16),rgba(236,72,153,.16));
+            font:600 14px ui-sans-serif,system-ui">
+  <span style="font-size:1.5rem">🔌</span>
+  <span>This badge is raw HTML, passed through by a <code>{=html}</code> block, not escaped. Its
+        inline styles use the page's theme variables, so it tracks light/dark too.</span>
+</div>
+```

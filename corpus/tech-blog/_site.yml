@@ -27,13 +27,13 @@ body-end:
 nav:
   left:
   - text: Blog
-    href: blog.qmd
+    href: blog.tmd
   - text: Publications
-    href: publications.qmd
+    href: publications.tmd
   - text: Projects
-    href: projects.qmd
+    href: projects.tmd
   - text: CV
-    href: cv.qmd
+    href: cv.tmd
 footer:
   left:
   - text: © 2026 Andreas Bogossian

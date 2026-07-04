@@ -7,7 +7,7 @@ use common::corpus_dir;
 use std::fs;
 
 fn warnings() -> Vec<taliesin_core::render::Warning> {
-    let path = corpus_dir().join("diagnostics/prose.qmd");
+    let path = corpus_dir().join("diagnostics/prose.tmd");
     let src = fs::read_to_string(&path).unwrap();
     taliesin_core::render_document_with_includes(&src, path.parent().unwrap()).warnings
 }

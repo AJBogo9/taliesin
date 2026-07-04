@@ -1,0 +1,228 @@
+---
+title: "Getting started"
+---
+
+This chapter takes you from nothing to a published page: install the tool, set up
+a kernel for code, write your first document, and put it online.
+
+## Install
+
+qmd-fast builds from source with a Rust toolchain. From the repo:
+
+```sh
+cargo build --release
+```
+
+The binary is `target/release/qmd-fast`. The repo also ships a `~/.local/bin/qmd-fast`
+launcher that rebuilds the release binary whenever the tool's sources change and
+then runs it, so once it's on your `PATH` you can just say `qmd-fast preview …`
+from any directory. Every command below works either way: substitute
+`cargo run -p taliesin-server --` for `qmd-fast` if you prefer not to install the
+launcher.
+
+## Set up a kernel (for code execution)
+
+Prose, math, diagrams, and `{js}` cells need no setup. To *execute*
+`{python}` / `{r}` cells you point the server at a Jupyter kernel. A one-time
+Python setup:
+
+```sh
+python3 -m venv .venv && . .venv/bin/activate
+pip install ipykernel numpy matplotlib   # + whatever your cells import
+export QMD_FAST_PYTHON="$(pwd)/.venv/bin/python"
+```
+
+For R cells, run `install.packages("IRkernel")` (then `IRkernel::installspec()`)
+in your R and point `QMD_FAST_R` at that R binary:
+
+```sh
+export QMD_FAST_R="$(which R)"          # or a full path, e.g. /usr/local/bin/R
+```
+
+`{python}` and `{r}` cells each run against their own warm kernel, so a document
+can mix both. Without a kernel, cells render as highlighted source and the preview
+shows a quiet "kernel unavailable" note instead of failing, so you can always start
+writing and add a kernel later. The kernel setup is covered in more depth (and with
+the same callout) in [Executable content](code.tmd).
+
+## Environment variables
+
+Every knob the server reads from the environment, in one place. None are required:
+the defaults work, and the only ones most projects ever set are the kernel paths.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `QMD_FAST_PYTHON` | `python3` | Python binary (with `ipykernel`) used for `{python}` cells |
+| `QMD_FAST_R` | `R` | R binary (with `IRkernel`) used for `{r}` cells |
+| `QMD_FAST_CELL_TIMEOUT` | `120` | Per-cell wall-clock seconds before a runaway cell is interrupted (SIGINT); `0` disables the cap |
+| `QMD_FAST_NO_CACHE` | unset | When set, skip the `_freeze/` execution cache (no reads, no writes) for this run |
+| `QMD_FAST_NO_EXEC` | unset | When set, never run code cells (render them as source); same as `--no-exec` |
+| `QMD_FAST_OPEN` | unset | When set, open the preview in a browser on start; same as `--open` |
+| `QMD_FAST_HOST` | unset | When set, expose the preview on the LAN; same as `--host` |
+| `QMD_FAST_NO_CLEAR` | unset | When set, keep the dev-server console from clearing the screen between renders |
+| `QMD_FAST_MERMAID_URL` | jsDelivr CDN | Override the Mermaid library URL (a relative path next to the site, or an absolute one) to self-host diagrams offline |
+
+`QMD_FAST_*` flags that have a `--flag` equivalent (`--open`, `--host`, `--no-exec`)
+are read on the same run; the flag and the variable mean the same thing, so use
+whichever fits (the variable is handy in CI). The kernel paths and
+`QMD_FAST_CELL_TIMEOUT` come up most; the rest are situational.
+
+## Scaffold a project (the fast path)
+
+The quickest way to a previewable project is `init`, which writes a minimal
+`_site.yml` plus a hello-world `index.tmd` into a directory (the current one by
+default):
+
+```sh
+qmd-fast init my-site        # writes my-site/_site.yml + my-site/index.tmd
+qmd-fast preview my-site     # live, immediately
+```
+
+`init` refuses to overwrite: if either file already exists it stops without
+touching anything, so re-running it never clobbers your work (run it in an empty
+directory, or just hand-write the two files). When you'd rather start from a single
+document, skip straight to the next section.
+
+## Your first document
+
+Create `hello.tmd`:
+
+````markdown
+---
+title: "Hello, qmd-fast"
+toc: true
+---
+
+# Introduction
+
+A paragraph with **markdown**, inline math $a^2 + b^2 = c^2$, and a diagram:
+
+```{mermaid}
+flowchart LR
+  write --> preview --> publish
+```
+
+# Compute
+
+```{python}
+import numpy as np
+np.random.default_rng(0).normal(size=5).round(2)
+```
+````
+
+Preview it live:
+
+```sh
+qmd-fast preview hello.tmd
+```
+
+Open `http://127.0.0.1:4321`. Edit the file and watch only the changed block
+update in place. Alt-click (Option-click on Mac) any block to jump to its source
+line in your editor.
+
+## Build for publishing
+
+When you're happy, `build` produces output (executing code cells against the
+kernel, so the HTML carries the computed figures):
+
+```sh
+qmd-fast build hello.tmd                 # -> hello.html (one self-contained file)
+qmd-fast build hello.tmd --out dist      # -> dist/index.html + copied local assets
+```
+
+Point `build`/`preview` at a **directory** instead and you get a whole
+multi-page site or book (see [Slides, books & sites](formats.tmd)):
+
+```sh
+qmd-fast build blog/                     # -> blog/_site/   (one .html per page)
+qmd-fast build docs/                     # -> docs/_book/   (a book, if _site.yml says so)
+```
+
+### Where the build goes
+
+| You build | qmd-fast writes |
+|---|---|
+| `build doc.tmd` | `doc.html` next to the source: one self-contained file |
+| `build doc.tmd page.html` | `page.html` (your chosen path) instead of `<stem>.html` |
+| `build doc.tmd --out dist` | `dist/index.html` plus the document's referenced local assets, a portable folder |
+| `build site/` | `site/_site/` (a website) or `site/_book/` (a book, when `_site.yml` declares `chapters:`) |
+| `build site/ --out public` | the same site, into `public/` instead of the default |
+
+A site/book build (and the `--out` form) copies the local files your pages
+*reference* (images, audio, videos, vendored scripts) next to the HTML, so the
+output folder is self-contained and you can copy or `rsync` it as-is. The walker
+**skips** what isn't deliverable: `.tmd` sources, `.bib`, `.Rproj`, anything whose
+name starts with `_` or `.` (so `_freeze/` and dotfiles stay out), `*_cache` /
+`*_files` working directories, and the output directory itself. A built-in
+`404.html` is emitted unless you supply your own `404.tmd`, and a `mounts:` entry
+is preview-only (the static build logs a warning with the command to build it
+separately). The full set of flags is in the [CLI reference](../reference/cli.tmd);
+common build-and-deploy patterns live in [Recipes](recipes.tmd).
+
+## Publish it
+
+The build output is **plain static HTML + assets** with no server runtime, so it
+deploys anywhere that serves files.
+
+- **GitHub Pages.** Build into `docs/` (or push `_site/`) on your default branch
+  and enable Pages, or use an action that runs `qmd-fast build` and uploads the
+  output directory as the Pages artifact.
+- **Netlify / Vercel / Cloudflare Pages.** Set the build command to
+  `cargo run -p taliesin-server -- build <dir>` and the publish directory to the
+  emitted `_site/` / `_book/`.
+- **Any static host / `rsync`.** Copy the output folder as-is. The `--out <dir>`
+  form and the site/book builds copy referenced local assets next to the HTML, so
+  the folder is self-contained.
+
+### Deploy with GitHub Actions
+
+A copy-paste workflow that builds on every push and publishes to GitHub Pages.
+Enable **Settings → Pages → Source: GitHub Actions** once, then drop this in
+`.github/workflows/deploy.yml`:
+
+```yaml
+name: Deploy
+on:
+  push: { branches: [main] }
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency: { group: pages, cancel-in-progress: true }
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install qmd-fast
+        # point at wherever qmd-fast lives; add --tag vX.Y for reproducible builds
+        run: cargo install --git https://github.com/you/qmd-fast --locked qmd-fast-server
+      - name: Build the site
+        run: qmd-fast build .          # website -> _site/   (a book emits _book/)
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: _site }
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
+```
+
+`build` **executes code cells**, so if your pages run `{python}` / `{r}`, add a
+step to install that interpreter plus `ipykernel` / `IRkernel` and set
+`QMD_FAST_PYTHON` / `QMD_FAST_R`, otherwise those cells render as source in CI.
+
+::: {.callout-note}
+The interactive `{js}`/Three.js demos need to be served over `http(s)` (not opened
+from `file://`): a cell's relative `import()` and Three.js's module are blocked on
+`file://`. (d3 and Plot are bundled, so they need no network.) Once deployed (or
+under `preview`) they are fully live.
+:::

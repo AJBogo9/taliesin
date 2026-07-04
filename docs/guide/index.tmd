@@ -1,0 +1,102 @@
+---
+title: "qmd-fast"
+---
+
+# Why qmd-fast {.unnumbered}
+
+**A fast, single-purpose dev server that turns `.tmd` files into live HTML (blog
+posts, slide decks, books, and whole websites) with executable code blocks
+and an editing loop that updates the instant you save.**
+
+qmd-fast is built around one idea: writing technical content should feel as
+immediate as editing code. You save the file, and only the block you changed
+re-renders: your scroll position, your live 3D canvas, your warm kernel all stay
+exactly as they were. No cold start, no full-page flash, no waiting.
+
+## Three things it gets right
+
+- **Click-to-source.** Every rendered block remembers the line it came from.
+  Alt-click (Option-click on Mac) anything in the preview to jump straight to its
+  source, even across `{{< include >}}`d files.
+- **Block-level incremental updates.** A save re-renders only the blocks that
+  changed. Live canvases (Three.js, `{js}` cells) keep their state; the
+  page never reloads.
+- **No per-edit startup cost.** A warm server and a warm Jupyter kernel mean
+  edits show up immediately, and only the cells whose code actually changed
+  re-run.
+
+This guide is itself a multi-page **book** built with qmd-fast: sidebar, search
+(press <kbd>Cmd/Ctrl-K</kbd>), live diagrams, and executed code cells included. A
+companion book, [Internals](../internals/), covers how it works inside.
+
+## The 60-second tour {.unnumbered}
+
+The fastest way in: a short slide deck, embedded right here (it is itself a qmd-fast
+deck: use the arrow keys, or press <kbd>f</kbd> for fullscreen).
+
+{{< embed tour.tmd title="qmd-fast: a 60-second tour" >}}
+
+## Coming from Quarto or Jupyter?
+
+qmd-fast reads the same `.tmd` syntax you already know, but it makes a different
+trade: **do one thing, author HTML, and make the edit loop instant.**
+
+- vs **Quarto**: no PDF/Word/format matrix and no `_metadata.yml` cascade, but a
+  *live* block-incremental preview (Quarto re-renders the whole document), built-in
+  click-to-source, and a warm kernel that never cold-starts on save. The config is
+  a small subset of Quarto's, so your front matter mostly just works.
+- vs **Jupyter**: you write in plain text files (versionable, diffable) with real
+  prose, math, citations, and cross-references (not notebook JSON) while still
+  getting live, cached, in-place code execution.
+
+It is intentionally small: one author's HTML workflow, kept fast.
+
+## Get running in 30 seconds
+
+qmd-fast builds from source with a Rust toolchain (`cargo build --release`); a
+`qmd-fast` launcher on your `PATH` then keeps the binary fresh and runs it from
+anywhere. To execute code cells you also point it at a Jupyter kernel: see
+[Executable content](using/code.tmd#code-cells).
+
+```sh
+# live preview, updating as you save (aliases: dev, serve)
+cargo run -p taliesin-server -- preview post.tmd 4321
+
+# build a self-contained HTML file (code cells are executed)
+cargo run -p taliesin-server -- build post.tmd
+
+# point either command at a directory to get a whole multi-page site
+cargo run -p taliesin-server -- preview blog/
+```
+
+Open `http://127.0.0.1:4321`, edit, and watch a single block update in place with
+your scroll preserved. Add `--host` to expose it on your LAN with a QR code and
+read the *live* preview on your phone.
+
+One block model drives every output, a page, a slide deck, or a book:
+
+```{mermaid}
+flowchart LR
+  Q[".tmd"] --> BM["block model"]
+  BM --> H["HTML page"]
+  BM --> R["slide deck"]
+  BM --> K["book + TOC"]
+```
+
+## What it is (and isn't)
+
+::: {.callout-note}
+## Scope
+
+qmd-fast renders to **HTML only**: there is no PDF path and no format matrix. It
+is a focused tool for one author's writing workflow, not a general Quarto
+replacement. The "spec" is a small corpus of real documents: when those render
+correctly, the tool is done. That focus is the point: it stays fast, small, and
+predictable.
+:::
+
+The rest of this guide tours what you can put on a page: [the live preview
+loop](using/preview.tmd), [executable content](using/code.tmd) (Python/R cells,
+`{js}` cells, 3D graphics), [rich writing](using/writing.tmd) (math, diagrams,
+figures, citations), and [slides, books and sites](using/formats.tmd). For how
+Taliesin works inside, read the companion [Internals](../internals/) book.

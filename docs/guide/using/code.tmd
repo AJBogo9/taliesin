@@ -1,0 +1,353 @@
+---
+title: "Executable content"
+---
+
+This is the heart of "code-block-enhanced HTML." A fenced cell tagged with a
+language runs against a warm Jupyter kernel; its outputs become their own blocks
+tied to the cell's id. Everything on this page is produced from its own `.tmd`
+source.
+
+## Code cells
+
+```{python}
+#| echo: true
+import numpy as np
+np.arange(5).sum()
+```
+
+On save, **only cells whose source changed (plus downstream cells) re-execute**,
+and the kernel never cold-starts. Both `{python}` and `{r}` cells run, each
+against its own warm kernel: point the server at a Python with `ipykernel` via
+`QMD_FAST_PYTHON` and (for R) an R with `IRkernel` via `QMD_FAST_R`. A cell in any
+other language, or with no kernel available, renders as highlighted source rather
+than failing. With `QMD_FAST_PYTHON` set, qmd-fast also pre-warms a small pool of
+Python kernels at startup (forked from one preloaded interpreter), so even the
+*first* edit of a session is near-instant instead of paying the `import` cost;
+without it, Python and R cells just cold-start on demand as before.
+
+::: {.callout-tip}
+## Setting up a kernel
+
+Code execution needs a Jupyter kernel. A one-time Python setup:
+
+```sh
+python3 -m venv .venv && . .venv/bin/activate
+pip install ipykernel numpy matplotlib   # + whatever your cells import
+export QMD_FAST_PYTHON="$(pwd)/.venv/bin/python"
+```
+
+Now `preview`/`build` run `{python}` cells against that interpreter. No kernel is
+fine too: cells just render as highlighted source, and the preview shows a quiet
+"kernel unavailable" note instead of failing.
+:::
+
+The kernel is resilient: if it crashes mid-session the server detects the dead
+process and respawns it on the next run, and a runaway cell is interrupted at a
+configurable timeout instead of wedging the kernel. That cap is
+`QMD_FAST_CELL_TIMEOUT` (default 120 seconds): a cell that runs longer is sent
+SIGINT so a runaway loop can't lock up the kernel, and set it to `0` to disable
+the cap entirely. The dev menu's **Restart kernel** action drops the kernel,
+re-runs every cell against a fresh one, and reloads so `ojs_define` values
+re-bind.
+
+### `echo`, `include`, and `cache`: three different switches
+
+These three boolean options look similar but control different stages, and it
+helps to keep them straight:
+
+| Option | Does the cell run? | Source shown? | Output shown? | Cached in `_freeze/`? |
+|---|---|---|---|---|
+| `#\| echo: false` | yes | no | yes | yes |
+| `#\| include: false` | yes | no | no | yes |
+| `#\| cache: false` | yes | yes | yes | **never** |
+
+`echo: false` hides the source listing only; the cell still runs and its output
+still appears. `include: false` goes further and hides *both* source and output,
+but the cell **still executes**, so it is the way to run setup that mutates kernel
+state (imports, seeding an RNG, defining a helper) without showing anything: a
+later cell sees those variables. `cache: false` is orthogonal to both: the cell
+runs and shows normally, but its output is never frozen, so it always re-executes
+on the next build or preview. Reach for it when a cell reads the clock, hits the
+network, or draws from a fresh random source, anything whose value should not be
+restored from a stale cache.
+
+::: {.callout-note}
+`echo`, `include`, and `cache` also exist as document-wide defaults under the
+`execute:` front-matter key, and a per-cell `#|` option overrides the default for
+that one cell. See the [cell-options reference](../reference/cell-options.tmd) for
+the full table.
+:::
+
+### Captions: figures, listings, and tables
+
+`#| fig-cap:` adds a caption *and* makes the output a numbered figure, so a
+`#| label: fig-x` cell can be cross-referenced as `@fig-x`. Two siblings caption
+the other kinds of output:
+
+- `#| lst-cap:` captions a code *listing* (pair it with a `#| label: lst-x`
+  to reference it as `@lst-x`).
+- `#| tbl-cap:` captions a *table* the cell prints (pair it with `#| label: tbl-x`
+  for `@tbl-x`).
+
+```python
+#| label: tbl-summary
+#| tbl-cap: "Summary statistics by group"
+import pandas as pd
+df.groupby("group").describe()
+```
+
+### Folded code
+
+`#| code-fold: true` collapses a listing behind a summary (label it with
+`code-summary`), so long setup code stays out of the way until clicked:
+
+```{python}
+#| code-fold: true
+#| code-summary: "Show the setup"
+import numpy as np
+rng = np.random.default_rng(0)
+draws = rng.normal(size=10_000)
+round(float(draws.mean()), 3), round(float(draws.std()), 3)
+```
+
+### Exporting figures for print / LaTeX
+
+Inline `{python}` figures are themed for the web (transparent background, neutral
+grey axes that read on light **and** dark), but that theming never touches global
+`rcParams`, so a plain `fig.savefig("x.pdf")` in a cell already writes a clean,
+print-ready figure (black on white).
+
+To export without the boilerplate, add `#| fig-export:` and qmd-fast writes the
+cell's figure to disk with print styling the moment it renders. Give it one path,
+or a comma-separated list to emit several formats at once:
+
+```{python}
+#| label: fig-loss
+#| fig-cap: "Loss curve"
+#| fig-export: figures/loss.pdf, figures/loss.png
+import matplotlib.pyplot as plt, numpy as np
+fig, ax = plt.subplots()
+ax.plot(np.arange(40), np.exp(-0.1 * np.arange(40)))
+ax.set_xlabel("iteration"); ax.set_ylabel("loss")
+plt.show()
+```
+
+Use a vector format (`.pdf`/`.svg`) for line art so it stays sharp at any size;
+`.png` is written at a print DPI for raster content (spectrograms, heatmaps). Paths
+are relative to where you run qmd-fast (normally the document's directory), and
+parent folders are created as needed. Then in LaTeX:
+`\includegraphics[width=\columnwidth]{figures/loss.pdf}`. Changing the
+`fig-export` path re-runs the cell so the file is rewritten.
+
+## Live interactive content
+
+`{js}` cells run client-side via a tiny built-in enhancer (no Observable runtime):
+native `viewof` inputs and vendored `Plot` + `d3` all work, and a cell re-runs
+when an input it declares changes. A cell tags
+itself with `//| viewof: NAME` to publish a control, and a consuming cell lists
+`//| input: NAME` to re-run when that control changes (read the current value with
+`qmd.value("NAME")`).
+
+The reactive surface is small and worth knowing exactly:
+
+- `qmd.value("NAME")` reads the live value of an input (a `//| viewof` cell or an
+  `{{< input >}}` control) or, failing that, an `ojs_define` value of that name.
+- `qmd.defines.NAME` reads a value published from Python by `ojs_define`.
+- `//| input: A, B` takes a **comma-separated list** of names; the cell re-runs
+  when any one of them (input *or* define) changes. There is also
+  `//| name: NAME` to publish this cell's return value under `NAME` for other cells
+  to consume. (For the reactive graph itself, see
+  [Interactive and explorable documents](interactive.tmd).)
+
+Drag the slider to add odd harmonics to a square-wave Fourier
+synthesis and watch the curve sharpen:
+
+```{js}
+//| viewof: harmonics
+//| echo: false
+const wrap = document.createElement("label");
+wrap.className = "qmd-input";
+wrap.append("Harmonics ");
+const input = document.createElement("input");
+input.type = "range";
+input.min = "1"; input.max = "12"; input.step = "1"; input.value = "3";
+wrap.append(input);
+return wrap;
+```
+
+```{js}
+//| input: harmonics
+//| echo: false
+const harmonics = qmd.value("harmonics");
+return Plot.lineY(
+  Array.from({length: 500}, (_, t) =>
+    d3.range(1, harmonics + 1).reduce(
+      (sum, k) => sum + Math.sin(2 * Math.PI * (2 * k - 1) * t / 500) / (2 * k - 1), 0)),
+  {curve: "basis", stroke: "#4c8dff"}
+).plot({height: 200, marginLeft: 36, y: {label: "amplitude"}});
+```
+
+### The Python → JS bridge
+
+`ojs_define()` in a Python cell hands values to `{js}` cells, so you can **compute
+in Python and render reactively in the browser**. Its signature is keyword-only,
+`ojs_define(name=value, ...)`: each keyword becomes a published name, and each
+value is JSON-serialized into the page for the `{js}` runtime to pick up. A `{js}`
+cell then reads the value as `qmd.defines.NAME` (or `qmd.value("NAME")`, which
+falls back to defines when no live input owns that name). In live preview the
+Python cell executes *after* the page loads, so its values arrive a moment after
+the `{js}` cells; a `{js}` cell reads them and re-runs automatically when they land
+(and rebinds when a Python input changes), so the cell recomputes in place without
+a reload. Guard against the value not having arrived yet with an early `return`.
+
+```{python}
+#| code-fold: true
+#| code-summary: "Python: sample a noisy sine wave"
+import math, random
+random.seed(7)
+signal = [math.sin(2 * math.pi * i / 40) + random.uniform(-0.3, 0.3) for i in range(120)]
+ojs_define(signal=signal)
+```
+
+```{js}
+//| echo: false
+const signal = qmd.defines.signal;
+if (!signal) return;
+return Plot.plot({
+  height: 180, marginLeft: 36,
+  marks: [Plot.ruleY([0]), Plot.lineY(signal, {stroke: "#2bb673"})]
+});
+```
+
+### 3D graphics (Three.js / WebGL)
+
+Because a `{js}` cell can `await import()` any ES module, **3D visualizations work
+too**. This cell pulls Three.js and `OrbitControls` from a CDN, wraps an equirectangular world
+map onto a sphere, and returns the live `<canvas>`. Drag to spin the globe (it
+also auto-rotates), the **⛶** button takes it fullscreen, and the renderer is
+transparent so the globe follows the light/dark theme.
+
+Every cell is handed an `invalidation` promise. It **resolves the moment the
+block is about to re-render or be unmounted** (an edit changes the block's id and
+the client replaces the node, or an upstream input fires a re-run). Hang your
+teardown off `invalidation.then(...)` to cancel anything long-lived: an animation
+loop, an event listener, a WebGL context. The Three.js cell below relies on it,
+calling `cancelAnimationFrame` and disposing the renderer when the promise
+resolves, so a live save never leaks a running loop or a stranded GL context.
+
+```{js}
+//| echo: false
+const THREE = await import("https://esm.sh/three@0.163.0");
+const { OrbitControls } = await import(
+  "https://esm.sh/three@0.163.0/examples/jsm/controls/OrbitControls"
+);
+
+const w = 600, h = 360;
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(w, h, false);
+renderer.setClearColor(0x000000, 0);
+const cv = renderer.domElement;
+cv.style.cssText = `display:block;width:${w}px;max-width:100%;height:auto`;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, w / h, 0.1, 100);
+camera.position.set(0, 0, 4);
+scene.add(new THREE.AmbientLight(0xffffff, 1.7));
+const key = new THREE.DirectionalLight(0xffffff, 0.6);
+key.position.set(5, 3, 5);
+scene.add(key);
+
+const globe = new THREE.Mesh(
+  new THREE.SphereGeometry(1.3, 64, 64),
+  new THREE.MeshStandardMaterial({ roughness: 1, metalness: 0 })
+);
+scene.add(globe);
+
+function graticule() {
+  const c = document.createElement("canvas");
+  c.width = 1024; c.height = 512;
+  const x = c.getContext("2d");
+  x.fillStyle = "#1f3a5f"; x.fillRect(0, 0, c.width, c.height);
+  x.strokeStyle = "rgba(255,255,255,0.35)"; x.lineWidth = 2;
+  for (let lon = 0; lon <= c.width; lon += c.width / 24) {
+    x.beginPath(); x.moveTo(lon, 0); x.lineTo(lon, c.height); x.stroke();
+  }
+  for (let lat = 0; lat <= c.height; lat += c.height / 12) {
+    x.beginPath(); x.moveTo(0, lat); x.lineTo(c.width, lat); x.stroke();
+  }
+  return new THREE.CanvasTexture(c);
+}
+new THREE.TextureLoader().load(
+  "https://unpkg.com/three-globe/example/img/earth-day.jpg",
+  (tex) => {
+    tex.colorSpace = THREE.SRGBColorSpace;
+    globe.material.map = tex;
+    globe.material.emissiveMap = tex;
+    globe.material.emissive = new THREE.Color(0xffffff);
+    globe.material.emissiveIntensity = 0.3;
+    globe.material.needsUpdate = true;
+  },
+  undefined,
+  () => { globe.material.map = graticule(); globe.material.needsUpdate = true; }
+);
+
+const ctrl = new OrbitControls(camera, renderer.domElement);
+ctrl.enableDamping = true;
+ctrl.dampingFactor = 0.06;
+ctrl.enablePan = false;
+ctrl.minDistance = 2;
+ctrl.maxDistance = 8;
+ctrl.autoRotate = true;
+ctrl.autoRotateSpeed = 0.6;
+
+let raf;
+(function animate() {
+  raf = requestAnimationFrame(animate);
+  ctrl.update();
+  renderer.render(scene, camera);
+})();
+
+const box = document.createElement("div");
+box.style.cssText = "position:relative;display:inline-block;max-width:100%";
+box.appendChild(renderer.domElement);
+
+const fsBtn = document.createElement("button");
+fsBtn.textContent = "⛶ Fullscreen";
+fsBtn.style.cssText =
+  "position:absolute;bottom:8px;right:8px;padding:4px 10px;font-size:12px;cursor:pointer;" +
+  "background:rgba(30,30,30,.75);color:#ddd;border:1px solid #555;border-radius:4px;backdrop-filter:blur(4px)";
+fsBtn.onclick = () =>
+  document.fullscreenElement ? document.exitFullscreen() : box.requestFullscreen();
+box.appendChild(fsBtn);
+
+function onFS() {
+  const fs = document.fullscreenElement === box;
+  if (fs) {
+    box.style.maxWidth = "none"; box.style.width = "100vw"; box.style.height = "100vh";
+    cv.style.cssText = "display:block;width:100%;height:100%";
+    const fw = box.clientWidth, fh = box.clientHeight;
+    renderer.setSize(fw, fh, false);
+    camera.aspect = fw / fh;
+  } else {
+    box.style.maxWidth = "100%"; box.style.width = ""; box.style.height = "";
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    cv.style.cssText = `display:block;width:${w}px;max-width:100%;height:auto`;
+  }
+  camera.updateProjectionMatrix();
+  const cs = getComputedStyle(document.documentElement);
+  box.style.background = fs
+    ? (cs.getPropertyValue("--qmd-bg").trim() || getComputedStyle(document.body).backgroundColor)
+    : "";
+  fsBtn.textContent = fs ? "✕ Exit fullscreen" : "⛶ Fullscreen";
+}
+document.addEventListener("fullscreenchange", onFS);
+
+invalidation.then(() => {
+  cancelAnimationFrame(raf); ctrl.dispose(); renderer.dispose();
+  document.removeEventListener("fullscreenchange", onFS);
+});
+
+return box;
+```

@@ -3,18 +3,18 @@ author: "Andreas Bogossian"
 toc: true
 
 chapters:
-  - index.qmd
-  - repository.qmd
-  - architecture.qmd
-  - rendering.qmd
-  - offline-theming.qmd
-  - deck-engine.qmd
-  - sites.qmd
-  - block-model.qmd
-  - data-types.qmd
-  - protocol.qmd
-  - execution.qmd
-  - server.qmd
-  - client.qmd
-  - validation.qmd
-  - extending.qmd
+  - index.tmd
+  - repository.tmd
+  - architecture.tmd
+  - rendering.tmd
+  - offline-theming.tmd
+  - deck-engine.tmd
+  - sites.tmd
+  - block-model.tmd
+  - data-types.tmd
+  - protocol.tmd
+  - execution.tmd
+  - server.tmd
+  - client.tmd
+  - validation.tmd
+  - extending.tmd

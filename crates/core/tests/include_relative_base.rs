@@ -1,12 +1,12 @@
 //! Regression test for the relative-path `{{< include >}}` silent-drop bug.
 //!
 //! When `qmd-fast build/render` is given a *relative* path
-//! (`corpus/posts/pca-geometry/index.qmd`), the document's base dir is the
+//! (`corpus/posts/pca-geometry/index.tmd`), the document's base dir is the
 //! relative parent `corpus/posts/pca-geometry`. The include resolver's
 //! containment check used to walk the parents of that *relative* path, which hit
 //! an empty component before reaching the absolute repo root that holds `.git`,
 //! fell back to the doc dir itself, and then rejected the legitimate
-//! `../../_includes/three-scene.qmd` include as "escaping" that fake root — so the
+//! `../../_includes/three-scene.tmd` include as "escaping" that fake root — so the
 //! include was silently dropped and the literal directive leaked into the HTML.
 //!
 //! The fix absolutizes the base dir before the parent-walk. This test pins it: a
@@ -49,15 +49,15 @@ fn relative_base_resolves_include_against_repo_root() {
 
     std::env::set_current_dir(repo_root()).expect("cd to repo root");
 
-    // Exactly the CLI's `build corpus/posts/.../index.qmd` shape: a relative doc
+    // Exactly the CLI's `build corpus/posts/.../index.tmd` shape: a relative doc
     // path whose parent is the relative base.
-    let rel_doc = Path::new("corpus/posts/pca-geometry/index.qmd");
+    let rel_doc = Path::new("corpus/posts/pca-geometry/index.tmd");
     let src = std::fs::read_to_string(rel_doc).expect("read corpus doc");
     let base = rel_doc.parent().unwrap();
 
     let html = taliesin_core::render_html_page_with_includes(&src, base, "pca");
 
-    // The include (`../../_includes/three-scene.qmd`) defines `makeScene3D`; it must
+    // The include (`../../_includes/three-scene.tmd`) defines `makeScene3D`; it must
     // be present, proving the include was expanded rather than dropped.
     assert!(
         html.contains("makeScene3D"),
@@ -66,7 +66,7 @@ fn relative_base_resolves_include_against_repo_root() {
     // And the literal directive must NOT leak into the output (comrak escapes `<`
     // to `&lt;`, so match the surviving, un-escaped middle of the directive).
     assert!(
-        !html.contains("include ../../_includes/three-scene.qmd"),
+        !html.contains("include ../../_includes/three-scene.tmd"),
         "the literal `{{{{< include … >}}}}` directive must not leak into the HTML"
     );
 }
@@ -77,12 +77,12 @@ fn unresolvable_include_warns_instead_of_silently_dropping() {
     let proj = TempProj::new();
     proj.file(".git", "");
     proj.file(
-        "post/index.qmd",
+        "post/index.tmd",
         "---\ntitle: T\n---\n\nIntro.\n\n{{< include ../../../etc/passwd >}}\n\n\
-         {{< include missing.qmd >}}\n",
+         {{< include missing.tmd >}}\n",
     );
 
-    let src = std::fs::read_to_string(proj.0.join("post/index.qmd")).unwrap();
+    let src = std::fs::read_to_string(proj.0.join("post/index.tmd")).unwrap();
     let base = proj.0.join("post");
     let doc = taliesin_core::render_document_with_includes(&src, &base);
 
@@ -99,7 +99,7 @@ fn unresolvable_include_warns_instead_of_silently_dropping() {
     );
     // The missing-file include is also reported.
     assert!(
-        msgs.iter().any(|m| m.contains("missing.qmd")),
+        msgs.iter().any(|m| m.contains("missing.tmd")),
         "a warning for the not-found include, got: {msgs:?}"
     );
 }

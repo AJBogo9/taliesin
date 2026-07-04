@@ -3,12 +3,12 @@ author: "Andreas Bogossian"
 toc: true
 
 chapters:            # presence makes this a book — no project: type: needed
-  - index.qmd
-  - intro.qmd
+  - index.tmd
+  - intro.tmd
   - part: "Core"
     chapters:
-      - file: methods.qmd   # `{ file:, text: }` overrides the sidebar label
+      - file: methods.tmd   # `{ file:, text: }` overrides the sidebar label
         text: "Methodology"
-      - results.qmd
-  - file: summary.qmd       # a top-level chapter can use the override form too
+      - results.tmd
+  - file: summary.tmd       # a top-level chapter can use the override form too
     text: "Wrap-up"

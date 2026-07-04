@@ -1,4 +1,4 @@
-//! Pins qmd-fast's schema validators to corpus/diagnostics/typos.qmd: rendering it
+//! Pins qmd-fast's schema validators to corpus/diagnostics/typos.tmd: rendering it
 //! must produce exactly the expected click-to-source "unknown key" warnings, one per
 //! deliberately-misspelled key (front-matter top-level + nested, callout kind, cell
 //! option). This is the corpus pin for the nested-schema-validation epic.
@@ -8,7 +8,7 @@ use common::corpus_dir;
 #[test]
 fn typos_doc_warns_exactly_on_each_unknown_key() {
     let dir = corpus_dir().join("diagnostics");
-    let src = std::fs::read_to_string(dir.join("typos.qmd")).unwrap();
+    let src = std::fs::read_to_string(dir.join("typos.tmd")).unwrap();
     let doc = taliesin_core::render_document_with_includes(&src, &dir);
     let msgs: Vec<&str> = doc.warnings.iter().map(|w| w.message.as_str()).collect();
 

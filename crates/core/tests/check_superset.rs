@@ -174,7 +174,7 @@ fn xref_placeholder_anchor_is_not_flagged_as_broken_internal_link() {
 fn corpus_check_superset_doc_trips_each_validator() {
     // The canonical corpus pin: one diagnostics doc that fires every new static check.
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/diagnostics");
-    let src = std::fs::read_to_string(dir.join("check-superset.qmd")).unwrap();
+    let src = std::fs::read_to_string(dir.join("check-superset.tmd")).unwrap();
     let doc = taliesin_core::render_document_with_includes(&src, &dir);
     // The duplicate `{#dup}` heading id is now resolved at render time (explicit ids go
     // through the same dedup as auto-slugs), so the diagnostic arrives on the render

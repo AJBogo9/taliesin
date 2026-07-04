@@ -1,0 +1,495 @@
+---
+title: "PCA: the shape hidden in your data"
+description: "The geometry behind principal component analysis: how the covariance matrix encodes the shape of your data, and why eigenvectors are the natural axes to read it from."
+date: 2026-05-08
+image: "thumbnail.webp"
+image-alt: "3D scatter plot of NBA player measurements with three principal component vectors, PC1 capturing 80% of variance"
+categories:
+  - linear algebra
+  - machine learning
+bibliography: references.bib
+---
+
+An NBA scout records three measurements for every player he is scouting: height, wingspan and reach. The thing is that all these measures are highly correlated because
+taller players tend to have longer wingspans and higher reaches. So in practice there are three numbers (dimensions) per player, but the data could be
+represented with a single dimension representing the "overall size" of the NBA player. PCA finds this dimension automatically from the data alone.
+
+{{< include ../../_includes/three-scene.tmd >}}
+
+```{python}
+#| label: setup
+#| echo: false
+
+import numpy as np
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+
+plt.rcParams.update({
+    'figure.facecolor': '#111827',
+    'axes.facecolor':   '#111827',
+    'savefig.facecolor':'#111827',
+    'text.color':       'white',
+    'axes.labelcolor':  'white',
+    'xtick.color':      'white',
+    'ytick.color':      'white',
+    'axes.edgecolor':   '#374151',
+    'grid.color':       '#374151',
+    'axes.grid':        True,
+    'grid.linewidth':   0.5,
+})
+```
+
+```{python}
+#| label: lst-data-generation
+#| lst-cap: "Synthetic NBA player data generation"
+#| code-fold: true
+#| code-summary: "How the data was generated"
+
+rng = np.random.default_rng(42)
+N = 220
+
+feature_names = ["Height", "Wingspan", "Standing reach"]
+means = np.array([200.0, 205.0, 260.0])  # cm
+stds = np.array([8.0, 9.0, 11.0])  # cm
+
+# Correlation matrix: positively correlated but not perfectly
+corr = np.array(
+    [
+        [1.00, 0.75, 0.68],
+        [0.75, 1.00, 0.62],
+        [0.68, 0.62, 1.00],
+    ]
+)
+
+L = np.linalg.cholesky(corr)
+Z = rng.standard_normal((N, 3)) @ L.T
+X_raw = Z * stds + means
+```
+
+```{python}
+# | label: fig-data-3d
+# | fig-cap: "220 synthetic NBA player measurements in their original units. By looking at the figure, you can see that the data is elongated on a single axis."
+# | echo: false
+
+fig = plt.figure(figsize=(8, 6), tight_layout=True)
+ax = fig.add_subplot(111, projection="3d")
+ax.scatter(X_raw[:, 0], X_raw[:, 1], X_raw[:, 2], alpha=0.55, s=14, color="#aaaacc")
+for pane in [ax.xaxis.pane, ax.yaxis.pane, ax.zaxis.pane]:
+    pane.fill = True
+    pane.set_facecolor("#1c2333")
+    pane.set_edgecolor("#374151")
+ax.set_xlabel("Height (cm)", labelpad=8)
+ax.set_ylabel("Wingspan (cm)", labelpad=8)
+fig.text(
+    0.9,
+    0.5,
+    "Standing reach (cm)",
+    rotation=90,
+    va="center",
+    ha="right",
+    color="white",
+    fontsize=9,
+)
+ax.set_title("Raw player measurements")
+plt.show()
+```
+
+# Standardising the data
+
+For computing the PCA components, we need the covariance matrix. But for the covariance matrix, each feature needs to be standardized. The data points are standardized as
+
+$$
+x_{ij} \leftarrow \frac{x_{ij} - \mu_j}{\sigma_j}
+$$
+
+where $i$ indexes the player and $j$ indexes the feature (height, wingspan, or standing reach), $\mu_j$ is the mean of feature $j$ across all players, and $\sigma_j$ is its standard deviation.
+
+This step makes each variable have a mean of 0 and variance of 1. This makes the three axes comparable because otherwise larger units would artificially dominate
+the covariance matrix. The shape of the correlation stays unchanged because standardisation only rescales the values and doesn't distort them.
+
+```{python}
+#| label: standardise
+#| echo: false
+
+X = (X_raw - X_raw.mean(axis=0)) / X_raw.std(axis=0)
+ojs_define(std_pts = X.tolist())
+```
+
+```{js}
+//| echo: false
+//| label: fig-std-3d
+//| fig-cap: "The same 220 players after standardisation. Each axis now has mean 0 and variance 1. The elongated shape is preserved. Drag to rotate, scroll to zoom."
+
+const std_pts = qmd.defines.std_pts; if (!std_pts) return;
+const makeScene3D = qmd.get("makeScene3D");
+
+return makeScene3D((scene, THREE, { O, spriteLabel }) => {
+  const flat = new Float32Array(std_pts.flatMap(p => p));
+  const ptGeo = new THREE.BufferGeometry();
+  ptGeo.setAttribute("position", new THREE.Float32BufferAttribute(flat, 3));
+  scene.add(new THREE.Points(ptGeo,
+    new THREE.PointsMaterial({ color: 0xaaaacc, size: 0.07, transparent: true, opacity: 0.65 })
+  ));
+
+  const axLen    = 3.8;
+  const axColors = [0xf0956a, 0x6ddc8b, 0x7eb8f7];
+  const axNames  = ["Height", "Wingspan", "S. Reach"];
+  [[1,0,0],[0,1,0],[0,0,1]].forEach(([x,y,z], i) => {
+    const hex = "#" + axColors[i].toString(16).padStart(6, "0");
+    scene.add(new THREE.ArrowHelper(new THREE.Vector3(x,y,z), O, axLen, axColors[i], 0.15, 0.09));
+    const lbl = spriteLabel(axNames[i], hex);
+    lbl.position.set(x * (axLen + 0.5), y * (axLen + 0.5), z * (axLen + 0.5));
+    scene.add(lbl);
+  });
+}, invalidation);
+```
+
+# The covariance matrix: encoding shape
+
+After standardising the three measurements, the sample covariance matrix is computed as:
+
+$$
+\Sigma = \frac{1}{N-1} X^\top X
+$$
+
+This form holds because $X$ is already centered. Since each feature also has variance 1, the diagonal entries of $\Sigma$ are all 1 and the off-diagonal
+entries are Pearson correlation coefficients. For standardized data, the covariance matrix and the correlation matrix are the same thing.
+Geometrically the covariance matrix encodes the shape of the data cloud. Looking at @lst-data-generation, you can see that the sample covariance matrix
+is basically the same that was used to generate the synthetic data. You can see the resulting covariance matrix from @fig-cov.
+
+```{python}
+#| label: compute-sigma
+#| echo: false
+
+Sigma = np.cov(X.T)
+
+_eigs_cov, _evecs_cov = np.linalg.eigh(Sigma)
+ojs_define(
+    sigma_eigs=_eigs_cov.tolist(),
+    sigma_evecs=_evecs_cov.T.tolist(),
+)
+```
+
+```{python}
+#| label: fig-cov
+#| fig-cap: "Sample covariance matrix of the three standardised measurements (shown as a heatmap). High off-diagonal values confirm that all three features co-vary strongly."
+#| echo: false
+
+fig, ax = plt.subplots(figsize=(5, 4.5), tight_layout=True)
+im = ax.imshow(Sigma, cmap="RdBu_r", vmin=-1, vmax=1)
+for i in range(3):
+    for j in range(3):
+        ax.text(
+            j,
+            i,
+            f"{Sigma[i, j]:.2f}",
+            ha="center",
+            va="center",
+            color="white" if abs(Sigma[i, j]) > 0.4 else "#aaa",
+            fontsize=13,
+        )
+ax.set_xticks(range(3))
+ax.set_yticks(range(3))
+ax.set_xticklabels(feature_names, rotation=15, ha="right")
+ax.set_yticklabels(feature_names)
+ax.set_title("Sample covariance matrix Σ")
+plt.colorbar(im, ax=ax, shrink=0.8)
+plt.show()
+```
+
+# Eigenvectors: the natural axes of the data
+
+An eigenvector $\mathbf{v}$ of $\Sigma$ satisfies 
+
+$$
+\Sigma \mathbf{v} = \lambda \mathbf{v}
+$$
+
+In practical terms, this means that applying the matrix $\Sigma$ to $\mathbf{v}$ only scales the vector by a scalar $\lambda$ and never rotates it. These eigenvectors are natural axes for the data cloud. These eigenvectors are directions along which the data varies independently with no covariance between them (orthogonal with respect to each other). The corresponding eigenvalue $\lambda$ is the variance of the data projected onto that axis. Then sorting the eigenvalues $\lambda$ from largest to smallest gives us the principal components in order: PC1 explains most of the variance, PC2 the next most etc. All principal components are orthogonal to each other. The full decomposition is:
+
+$$
+\Sigma = V \Lambda V^\top
+$$
+
+where $V = [\mathbf{v}_1 \mid \mathbf{v}_2 \mid \mathbf{v}_3]$ has the eigenvectors as columns and $\Lambda = \text{diag}(\lambda_1, \lambda_2, \lambda_3)$.
+
+@fig-3d-pca shows the three principal component arrows as eigenvectors, scaled by $\sqrt{\lambda_i}$ to reflect the data spread better. When rotating the 3d visual, you can see that the data cloud stretches along PC1 and PC2 and PC3 explain the remaining smaller variation.
+
+```{python}
+#| label: pca-computation
+#| code-fold: true
+#| code-summary: "Computing the principal components"
+
+eigenvalues, eigenvectors = np.linalg.eigh(Sigma)
+
+# eigh returns ascending order — reverse to descending
+idx = np.argsort(eigenvalues)[::-1]
+eigenvalues = eigenvalues[idx]
+eigenvectors = eigenvectors[:, idx]  # columns are PC vectors
+
+explained_var = eigenvalues / eigenvalues.sum()
+cumulative_var = np.cumsum(explained_var)
+
+print(f"Eigenvalues:       {np.round(eigenvalues, 3)}")
+print(f"Explained variance:{np.round(explained_var, 3)}")
+print(f"\nPC1: {np.round(eigenvectors[:, 0], 3)}")
+print(f"PC2: {np.round(eigenvectors[:, 1], 3)}")
+print(f"PC3: {np.round(eigenvectors[:, 2], 3)}")
+```
+
+```{python}
+#| echo: false
+# Pass everything to {js} for the 3-D visual
+ojs_define(
+    pts=X.tolist(),
+    pcs=eigenvectors.T.tolist(),  # pcs[0] = PC1 vector, etc.
+    evr=explained_var.tolist(),
+    eigs=eigenvalues.tolist(),
+)
+```
+
+```{js}
+//| echo: false
+//| label: fig-3d-pca
+//| fig-cap: "Three-dimensional point cloud of standardised player measurements. Arrows show the three principal components scaled by their standard deviation √λ. Colour: PC1 (orange) explains the most variance, PC2 (green) the next, PC3 (blue) the least. The translucent plane is the PC1–PC2 subspace. Drag to rotate, scroll to zoom."
+
+const pts = qmd.defines.pts; if (!pts) return;
+const { pcs, evr, eigs } = qmd.defines;
+const makeScene3D = qmd.get("makeScene3D");
+
+return makeScene3D((scene, THREE, { O, spriteLabel }) => {
+  // ── Point cloud ─────────────────────────────────────────────────────────
+  const flat = new Float32Array(pts.flatMap(p => p));
+  const ptGeo = new THREE.BufferGeometry();
+  ptGeo.setAttribute("position", new THREE.Float32BufferAttribute(flat, 3));
+  scene.add(new THREE.Points(ptGeo,
+    new THREE.PointsMaterial({ color: 0xaaaacc, size: 0.07, transparent: true, opacity: 0.65 })
+  ));
+
+  // ── PC1–PC2 plane ────────────────────────────────────────────────────────
+  const planeGeo = new THREE.PlaneGeometry(7, 7, 14, 14);
+  const planeMesh = new THREE.Mesh(planeGeo, new THREE.MeshBasicMaterial({
+    color: 0x7eb8f7, transparent: true, opacity: 0.07, side: THREE.DoubleSide, depthWrite: false
+  }));
+  planeMesh.quaternion.setFromUnitVectors(
+    new THREE.Vector3(0, 0, 1),
+    new THREE.Vector3(...pcs[2]).normalize()
+  );
+  scene.add(planeMesh);
+  planeMesh.add(new THREE.LineSegments(
+    new THREE.WireframeGeometry(planeGeo),
+    new THREE.LineBasicMaterial({ color: 0x7eb8f7, transparent: true, opacity: 0.12, depthWrite: false })
+  ));
+
+  // ── PC arrows ────────────────────────────────────────────────────────────
+  const pcColors = [0xf0956a, 0x6ddc8b, 0x7eb8f7];
+  const pcCssCol = ["#f0956a", "#6ddc8b", "#7eb8f7"];
+  pcs.forEach((pc, i) => {
+    const len  = Math.sqrt(eigs[i]) * 2.2;
+    const hLen = Math.min(0.22, len * 0.14);
+    const d    = new THREE.Vector3(...pc).normalize();
+    scene.add(new THREE.ArrowHelper(d,                O, len, pcColors[i], hLen, hLen * 0.55));
+    scene.add(new THREE.ArrowHelper(d.clone().negate(), O, len, pcColors[i], hLen, hLen * 0.55));
+    const lbl = spriteLabel(`PC${i+1}  ${(evr[i]*100).toFixed(0)}%`, pcCssCol[i], 1.5);
+    lbl.position.copy(d.clone().multiplyScalar(len + 0.5));
+    scene.add(lbl);
+  });
+
+  // ── Feature axes (faint) ─────────────────────────────────────────────────
+  const axLen = 3.8;
+  [[1,0,0],[0,1,0],[0,0,1]].forEach(dir => {
+    scene.add(new THREE.ArrowHelper(new THREE.Vector3(...dir), O, axLen, 0x3a3a55, 0.12, 0.07));
+  });
+  [["Height", [axLen+0.3,0,0]], ["Wingspan", [0,axLen+0.3,0]], ["S. Reach", [0,0,axLen+0.3]]].forEach(([t,p]) => {
+    const lbl = spriteLabel(t, "#555577", 1.5);
+    lbl.position.set(...p);
+    scene.add(lbl);
+  });
+}, invalidation);
+```
+
+# Explained variance and the scree plot
+
+Each eigenvalue $\lambda_i$ is the variance of the data projected onto PC$i$. Thus the fraction of total variance explained by PC$i$ is $\lambda_i / \sum_j \lambda_j$. @fig-scree shows these fractions in descending order.
+
+```{python}
+#| label: fig-scree
+#| fig-cap: "Scree plot. Bars show individual explained variance per principal component; the line shows the cumulative total. In this dataset PC1 alone captures most of the variance. PC1 is able to capture the general \"size\" component."
+#| echo: false
+
+fig, ax1 = plt.subplots(figsize=(7, 4), tight_layout=True)
+ax2 = ax1.twinx()
+
+bars = ax1.bar(
+    range(1, 4),
+    explained_var * 100,
+    color=["#f0956a", "#6ddc8b", "#7eb8f7"],
+    alpha=0.85,
+    width=0.5,
+)
+ax1.set_xlabel("Principal component")
+ax1.set_ylabel("Explained variance (%)")
+ax1.set_xticks([1, 2, 3])
+ax1.set_xticklabels(["PC1", "PC2", "PC3"])
+ax1.set_ylim(0, 105)
+
+ax2.plot(
+    range(1, 4),
+    cumulative_var * 100,
+    color="white",
+    marker="o",
+    linewidth=2,
+    markersize=6,
+    linestyle="--",
+    alpha=0.7,
+)
+ax2.set_ylabel("Cumulative variance (%)")
+ax2.set_ylim(0, 105)
+ax2.tick_params(colors="white")
+ax2.spines["right"].set_color("#374151")
+
+for i, v in enumerate(explained_var):
+    ax1.text(
+        i + 1,
+        v * 100 + 1.5,
+        f"{v * 100:.1f}%",
+        ha="center",
+        va="bottom",
+        color="white",
+        fontsize=11,
+    )
+
+ax1.set_title("Scree plot")
+plt.show()
+```
+
+# Dimensionality reduction
+
+Keeping only the first $k$ principal components gives a rank-$k$ approximation of the data:
+
+$$
+\underbrace{Z_k}_{N \times k} = \underbrace{X}_{N \times p}\underbrace{V_k}_{p \times k}, \qquad \underbrace{\hat{X}}_{N \times p} = \underbrace{Z_k}_{N \times k}\underbrace{V_k^\top}_{k \times p}
+$$
+
+where $V_k$ contains only the first $k$ eigenvectors and $p$ is the number of features (3 in this case). In practice, the data is first projected down to $k$ dimensions, then reconstructed back into the original $p$-dimensional space. But during the reconstruction, the data is constrained to lie on a $k$-dimensional subspace, so information carried by the discarded eigenvalues is lost. The reconstruction error is exactly the sum of these discarded eigenvalues:
+
+$$
+\|X - \hat{X}\|_F^2 = \sum_{i > k} \lambda_i
+$$
+
+```{js}
+//| viewof: k_dim
+//| echo: false
+const options = [1, 2];
+const wrap = document.createElement("label");
+wrap.className = "qmd-input";
+wrap.append("Principal components to keep (k) ");
+const radios = options.map((v, i) => {
+  const opt = document.createElement("label");
+  opt.style.marginRight = "12px";
+  const input = document.createElement("input");
+  input.type = "radio";
+  input.name = "k_dim";
+  input.value = String(v);
+  if (i === 0) input.checked = true;
+  opt.append(input, " " + v);
+  wrap.append(opt);
+  return input;
+});
+// Expose a numeric `.value` so the runtime registers `wrap` as the control and
+// `qmd.value("k_dim")` returns the checked radio's number; bubble an `input`
+// event from the wrapper when any radio changes so sinks re-run.
+Object.defineProperty(wrap, "value", {
+  get() {
+    const sel = radios.find(r => r.checked);
+    return sel ? Number(sel.value) : Number(options[0]);
+  },
+});
+radios.forEach(r => r.addEventListener("change", () => {
+  wrap.dispatchEvent(new Event("input", { bubbles: true }));
+}));
+return wrap;
+```
+
+```{js}
+//| echo: false
+//| input: k_dim
+//| label: fig-recon-3d
+//| fig-cap: "Dimensionality reduction round-trip. Faint blue: original standardised players. Orange: reconstructed from k PCs. Grey lines: projection error."
+const pts = qmd.defines.pts; if (!pts) return;
+const { pcs, eigs } = qmd.defines;
+const makeScene3D = qmd.get("makeScene3D");
+const k_dim = qmd.value("k_dim");
+
+const dot = (a, b) => a.reduce((s, ai, i) => s + ai * b[i], 0);
+
+const recon = pts.map(p => {
+  let r = [0, 0, 0];
+  for (let i = 0; i < k_dim; i++) {
+    const score = dot(p, pcs[i]);
+    r = r.map((v, j) => v + score * pcs[i][j]);
+  }
+  return r;
+});
+
+return makeScene3D((scene, THREE, { O, spriteLabel }) => {
+    // Original points (faint)
+    const flat = new Float32Array(pts.flatMap(p => p));
+    const ptGeo = new THREE.BufferGeometry();
+    ptGeo.setAttribute("position", new THREE.Float32BufferAttribute(flat, 3));
+    scene.add(new THREE.Points(ptGeo,
+      new THREE.PointsMaterial({ color: 0xaaaacc, size: 0.07, transparent: true, opacity: 0.25 })
+    ));
+
+    // Reconstructed points
+    const rFlat = new Float32Array(recon.flatMap(p => p));
+    const rGeo = new THREE.BufferGeometry();
+    rGeo.setAttribute("position", new THREE.Float32BufferAttribute(rFlat, 3));
+    scene.add(new THREE.Points(rGeo,
+      new THREE.PointsMaterial({ color: 0xf0956a, size: 0.1, transparent: true, opacity: 0.85 })
+    ));
+
+    // Projection lines (original → reconstructed)
+    const linePos = [];
+    pts.forEach((p, i) => { linePos.push(...p, ...recon[i]); });
+    const lineGeo = new THREE.BufferGeometry();
+    lineGeo.setAttribute("position", new THREE.Float32BufferAttribute(new Float32Array(linePos), 3));
+    scene.add(new THREE.LineSegments(lineGeo,
+      new THREE.LineBasicMaterial({ color: 0x888888, transparent: true, opacity: 0.2 })
+    ));
+
+    // PC arrows (kept PCs bright, discarded faint)
+    const pcColors = [0xf0956a, 0x6ddc8b, 0x7eb8f7];
+    const pcCssCol = ["#f0956a", "#6ddc8b", "#7eb8f7"];
+    pcs.forEach((pc, i) => {
+      const len  = Math.sqrt(eigs[i]) * 2.2;
+      const hLen = Math.min(0.22, len * 0.14);
+      const op   = i < k_dim ? 1.0 : 0.15;
+      const d    = new THREE.Vector3(...pc).normalize();
+      [d, d.clone().negate()].forEach(dir => {
+        const arrow = new THREE.ArrowHelper(dir, O, len, pcColors[i], hLen, hLen * 0.55);
+        arrow.line.material.transparent = true;  arrow.line.material.opacity = op;
+        arrow.cone.material.transparent = true;  arrow.cone.material.opacity = op;
+        scene.add(arrow);
+      });
+      const lbl = spriteLabel(`PC${i+1}`, pcCssCol[i], 1.5);
+      lbl.position.copy(d.clone().multiplyScalar(len + 0.5));
+      scene.add(lbl);
+    });
+
+    // Feature axes (very faint)
+    const axLen = 3.8;
+    [[1,0,0],[0,1,0],[0,0,1]].forEach(dir => {
+      scene.add(new THREE.ArrowHelper(new THREE.Vector3(...dir), O, axLen, 0x3a3a55, 0.12, 0.07));
+    });
+    [["Height",[axLen+0.3,0,0]],["Wingspan",[0,axLen+0.3,0]],["S. Reach",[0,0,axLen+0.3]]].forEach(([t,p]) => {
+      const lbl = spriteLabel(t, "#555577", 1.5);
+      lbl.position.set(...p);
+      scene.add(lbl);
+    });
+  }, invalidation);
+```
+
+# What the scout found
+
+PC1 captures nearly all variation (~80%, see @fig-scree) of the three measurements. PC1 can be thought of as an "overall size" axis. PC2 and PC3 capture the remaining ~20% of the variation. The beautiful part of PCA is that all of this analysis could be done automatically with only the data set and a little bit of clever linear algebra. The method found the dominant axis automatically.

@@ -3,24 +3,24 @@ author: "Andreas Bogossian"
 toc: true
 
 chapters:
-  - index.qmd
+  - index.tmd
   - part: "Using qmd-fast"
     chapters:
-      - using/getting-started.qmd
-      - using/migrating-from-quarto.qmd
-      - using/preview.qmd
-      - using/code.qmd
-      - using/writing.qmd
-      - using/reading.qmd
-      - using/interactive.qmd
-      - using/formats.qmd
-      - using/theming.qmd
-      - using/recipes.qmd
+      - using/getting-started.tmd
+      - using/migrating-from-quarto.tmd
+      - using/preview.tmd
+      - using/code.tmd
+      - using/writing.tmd
+      - using/reading.tmd
+      - using/interactive.tmd
+      - using/formats.tmd
+      - using/theming.tmd
+      - using/recipes.tmd
   - part: "Reference"
     chapters:
-      - reference/frontmatter.qmd
-      - reference/configuration.qmd
-      - reference/cell-options.qmd
-      - reference/shortcodes.qmd
-      - reference/cli.qmd
-      - reference/troubleshooting.qmd
+      - reference/frontmatter.tmd
+      - reference/configuration.tmd
+      - reference/cell-options.tmd
+      - reference/shortcodes.tmd
+      - reference/cli.tmd
+      - reference/troubleshooting.tmd

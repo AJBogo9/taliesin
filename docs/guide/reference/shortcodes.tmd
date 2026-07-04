@@ -1,0 +1,169 @@
+---
+title: "Shortcode reference"
+---
+
+*Reference: [CLI](cli.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · Shortcodes · [Troubleshooting](troubleshooting.tmd)*
+
+A shortcode is a `{{< name args >}}` tag in the body of a document. qmd-fast
+expands the built-in shortcodes (and any an extension declares) in a single pass
+**before** the Markdown is parsed, so the result is just HTML or Markdown by the
+time comrak sees it. Two rules keep that pass from surprising you:
+
+- **Code is sacred.** A `{{< … >}}` inside a fenced block (```` ``` ````) or an
+  inline code span (`` `…` ``) is left exactly as written, so every example on this
+  page is a real, unexpanded shortcode rather than a thing that quietly ran. That is
+  also why you can document a shortcode in prose without arming it.
+- **Unknown is loud, not silent.** A `{{< … >}}` whose name no built-in and no
+  active extension declares is left in the page verbatim **and** reported as a
+  located diagnostic, so a typo shows up in the dev menu, the
+  build log, and `qmd-fast check` rather than shipping as literal text. The one
+  exception is `{{< include >}}`, which an earlier pass resolves and reports on its
+  own (see below), so it is never double-warned.
+
+Expansion is line-preserving: each shortcode opens and closes on one line and
+expands inline, so click-to-source still points at the right line.
+
+There are four built-in shortcodes, documented below.
+
+## `{{< include >}}`: inline a partial
+
+```markdown
+{{< include path/to/partial.tmd >}}
+```
+
+Splices another file's contents into this one **before** parsing, as if you had
+pasted it in place. The directive must be alone on its own line (leading and
+trailing whitespace is fine); a `{{< include … >}}` with other text on the line is
+left as ordinary content. The path is resolved relative to the file that holds the
+directive, so a partial can itself include further partials and the relative paths
+still make sense at each level.
+
+Includes are how you keep one author bio, one license footer, or one shared figure
+in a single file and pull it into many pages. Because the splice happens before the
+block model is built, the included blocks are first-class: they carry their own
+block ids and source positions, and **click-to-source jumps into the included
+file**, not the page that pulled it in. The dev server also watches every
+transitively included file, so editing a partial re-renders the pages that use it.
+
+::: {.callout-note}
+## The `_includes/` convention
+
+A partial is just a `.tmd` file, but you usually do not want it discovered as its
+own page in a site build. Two conventions keep it out of the way: a file (or
+folder) whose name starts with an underscore is skipped by the page walker, and the
+idiomatic home for shared partials is an `_includes/` directory near the project
+root. A nested post then reaches its shared partial with a relative climb, exactly
+as the corpus does:
+
+```markdown
+{{< include ../../_includes/three-scene.tmd >}}
+```
+:::
+
+An include that cannot be expanded is **left visible and reported**, never dropped
+silently. Three things stop an expansion, each with its own located warning:
+
+| Situation | What happens |
+|---|---|
+| **Unsafe path** | An absolute path, or one that climbs above the project root (`.git`/`_site.yml` marks the root), is refused: it could read `/etc/passwd` or escape the repo. The directive stays literal and warns "path escapes the project root". |
+| **Include cycle** | A file that (directly or transitively) includes itself is refused before it loops. The directive stays literal and warns "include cycle". |
+| **Unreadable file** | A missing or unreadable target leaves the directive literal and warns "file not found or unreadable". |
+
+A `{{< include >}}` inside a fenced code block is treated as documentation (this
+page relies on that) and is neither expanded nor watched.
+
+## `{{< embed >}}`: a slide deck in an iframe
+
+```markdown
+{{< embed talk.tmd >}}
+{{< embed talk.tmd title="My conference talk" >}}
+```
+
+Embeds another document's deck view inside the current page as a responsive **16:9
+iframe**, with a fullscreen button and an "Open ↗" link to view it standalone. The
+iframe is deliberate: a deck's full-viewport CSS, keyboard handlers, and JavaScript
+are isolated from the host page, so an embedded deck cannot fight the page that
+holds it.
+
+| Argument | Required | Default | Effect |
+|---|---|---|---|
+| *path* (positional) | yes | (none) | The deck source, relative to the embedding page. A `.tmd` path is mapped to its built `.html`; an already-`.html` path is used as written. |
+| `title="…"` | no | "Embedded slide deck" | The iframe's accessible name (its `title` attribute), announced by screen readers. |
+
+It emits a `<div class="qmd-embed">` containing the framed `<iframe>` and the
+control bar. A deck on a **built-in** theme is theme-aware: an embedded deck
+follows the host page's light/dark setting rather than its own. A deck with a
+custom or extension `theme:` owns its own colours and is left as-is (no
+host-following script is emitted).
+
+::: {.callout-important}
+## Embeds need a site build, not a single-doc build
+
+In a **site** build or preview, every deck referenced by an `{{< embed >}}` is
+discovered, built, and served as a dependency, yet kept **out of the navigation and
+the search index** (it is a component of a page, not a page in its own right). A
+**single-document** `build` does **not** build the embedded target (it would not
+know where to put it), so it warns and the iframe points at a file that may not
+exist. Use a site build, or build the deck yourself alongside the page.
+:::
+
+The deck syntax the embed points at is covered in
+[Output formats](../using/formats.tmd).
+
+## `{{< video >}}`: a framed screencast
+
+```markdown
+{{< video tour.mp4 >}}
+{{< video tour.mp4 dark=tour-dark.mp4 poster=tour.jpg caption="A quick tour" >}}
+```
+
+Emits a framed `<video>` that **autoplays, is muted, loops, and plays inline**: the
+silent-screencast pattern, authored in Markdown so a page never needs raw `<video>`
+HTML. It renders as a `<figure class="qmd-video">`.
+
+| Argument | Required | Default | Effect |
+|---|---|---|---|
+| *src* (positional) | yes | (none) | The video file, relative to the page. A query string is fine: `clip.mp4?v=2` is treated as a path, not a named argument. |
+| `dark=…` | no | (none) | A second clip for dark theme. Both clips are emitted; CSS shows the one matching `html[data-theme]`, so the screencast matches the surrounding theme. |
+| `poster=…` | no | (none) | A poster image shown before the video paints. |
+| `caption="…"` | no | (none) | A `<figcaption>` under the clip (quote it if it has spaces). |
+
+A `{{< video >}}` (and any raw `<video src>`) whose local file is missing is flagged
+by `qmd-fast check` as a broken local asset, so a renamed clip does not slip
+through.
+
+## `{{< input >}}`: a reactive control
+
+```markdown
+{{< input name="k" type="slider" min="1" max="10" step="1" value="3" label="k" >}}
+{{< input name="n" type="number" min="0" max="100" value="20" label="n" >}}
+{{< input name="on" type="checkbox" value="true" label="enabled" >}}
+{{< input name="q" type="text" value="hello" label="query" >}}
+{{< input name="c" type="select" options="alpha,beta,gamma" value="beta" label="channel" >}}
+```
+
+Emits a labelled, keyboard-accessible control whose value becomes a node in the
+[reactive `{js}` graph](../using/interactive.tmd). A `{js}` cell reads it with
+`//| input: NAME` and `qmd.value("NAME")`, so you get an input with no
+control-building code. It is the same wiring a `//| viewof` cell uses; the control
+just carries a `data-qmd-input="NAME"` attribute that the runtime registers.
+
+| Argument | Required | Default | Effect |
+|---|---|---|---|
+| `name=` | warns if omitted | (none) | The reactive node's name (what a consuming cell reads). Omitting it warns (the control still renders, but it can't feed the reactive graph). |
+| `type=` | no | `slider` | One of `slider`, `range`, `number`, `checkbox`, `text`, `select`. An unknown type warns with a did-you-mean. |
+| `label=` | no | the `name` | The visible label text. |
+| `value=` | no | (none) | The initial value. A `checkbox` is pre-checked only when `value` is the literal `true`; a `select`'s value must exactly string-match one of the `options` to pre-select it. |
+| `min=` `max=` `step=` | no | (none) | Numeric bounds for `slider`, `range`, and `number`. |
+| `options=` | for `select` | (none) | A comma-separated option list. **Required** for `type="select"`; omitting it warns. |
+
+`slider` and `range` are aliases: both render the same `<input type="range">`
+with a live `<output>` readout beside it (only `number` differs, dropping the
+readout for a numeric field). `qmd.value()` hands a consuming cell the right type:
+a number for `slider`, `range`, and `number`; a boolean for `checkbox`; a string
+for `text` and `select`.
+
+The preview stays read-only: a reader moves the control to explore the output, but
+the control never writes back to the source. For the full reactive model (how a
+change re-runs exactly the cells downstream, in order) see
+[Interactive and explorable documents](../using/interactive.tmd).

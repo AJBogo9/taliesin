@@ -1,0 +1,220 @@
+---
+title: "Extending qmd-fast"
+---
+
+This chapter is for working *on* qmd-fast: the conventions, where new code goes,
+the extension points, and the dev loop.
+
+## The guiding principle: a lean core
+
+The core stays small and predictable; power lives at the edges. Before adding to
+the core, ask whether it can be an **extension** or a **client enhancer** instead.
+Server-side transforms (parsing, the block model, the diff) belong in the core;
+presentation and optional features should ride the extension points below.
+
+## Conventions
+
+- **Rust edition 2024**, workspace resolver 3. Shared dependencies are declared
+  once in the root `[workspace.dependencies]` so versions stay centralized.
+- **Directory-module pattern.** When a file grows past ~1.5k lines it becomes a
+  directory module: a `mod.rs` plus focused submodules that reach shared items via
+  `use super::*` and expose what the parent needs as `pub(super)`. `render/` and
+  `site/` are split this way.
+- **The block contract is load-bearing.** Anything you emit must keep
+  `data-block-id` (content hash) + `data-sourcepos` (and `data-source-file` for
+  includes). Source mapping, the diff, and live-state preservation all key off it.
+- **`rustfmt`-clean, `clippy`-clean.** A `PostToolUse` hook formats every edited
+  `.rs`; CI enforces `cargo fmt --check`, `cargo test`, `cargo clippy -D warnings`,
+  and a weekly `cargo audit`.
+
+## Where a change goes
+
+| You want to… | Touch |
+|---|---|
+| Change how a markdown element renders | `render/emit.rs` (+ `divs.rs`/`figure.rs` for those) |
+| Add a pipeline stage | `render/mod.rs` (`render_internal`), keeping it source-map-preserving |
+| Change incremental behaviour | `diff.rs` |
+| Add a site/book feature | `site/` |
+| Change code execution / the kernel | `server/exec.rs`, `server/kernel.rs` |
+| Add a client-side behaviour | a JS enhancer (below), not the core |
+
+## The two extension points
+
+The core stays lean; two seams let you add behaviour without touching it:
+
+1. **Declarative shortcodes** (`render/extension/`). `{{< name args >}}` invocations
+   expand to inline HTML at pipeline stage 2. Three are built in: `{{< embed deck.tmd >}}`
+   (embed another document's deck as an isolating iframe), `{{< video clip.mp4 [dark=…] >}}`
+   (a theme-matched `<video>` authored in Markdown), and `{{< input … >}}` (a reactive
+   control that feeds the `{js}` graph). Any other name is left verbatim, with a warning so
+   a typo is visible rather than shipped as literal text.
+2. **Client enhancers** (`window.taliEnhancers`, in `code-enhance.js`). Your JS registers
+   `fn(root)` that runs after every (re)mount; load it via `include-after-body` in your
+   front matter. The built-in copy buttons and `mermaid.js` use this same public API, so a
+   third-party enhancer is indistinguishable from core's.
+
+### The client enhancer contract
+
+An **enhancer** is a `function(root)` that decorates freshly-mounted DOM. It is the only
+sanctioned way to add client-side behaviour, and the contract is small enough to state in
+full:
+
+- **Register** with `window.taliEnhancers.register(fn)`. `fn` receives a `root` element
+  (the just-mounted subtree, or `document` for a whole-page run); scope your queries to
+  it (`root.querySelectorAll(...)`), not to `document`, so an incremental update only
+  re-decorates the block that changed.
+- **When it runs.** The same `fn` fires on three occasions: once on the **initial full
+  render** (`DOMContentLoaded` in a static build, the `full_render` snapshot in the live
+  preview), again **after every incremental block op** (the client calls
+  `taliEnhancers.run(root)` on the swapped-in DOM, so a re-rendered block is enhanced just
+  like a fresh one), and **immediately on registration** if the page is already mounted
+  (the case when a script loads late via `include-after-body`).
+- **Idempotency is mandatory.** Because the same `fn` re-runs on every change, it must do
+  nothing the second time it sees a node. The convention is a marker `data-` attribute:
+  check for it, bail if present, set it once you've decorated. An enhancer that appends a
+  button without this guard will stack a new button on every keystroke.
+- **Failures are contained.** Each enhancer runs inside a `try/catch`; a throw is logged
+  to the console (`[taliesin] enhancer failed`) and the other enhancers still run. An enhancer
+  bug degrades one decoration, it does not blank the page.
+
+A minimal, idempotent enhancer that adds a "Run" affordance to every `pre.shell` block:
+
+```js
+window.taliEnhancers.register(function (root) {
+  root.querySelectorAll('pre.shell:not([data-ran])').forEach(function (pre) {
+    pre.dataset.ran = '1';                 // guard: only decorate once
+    var btn = document.createElement('button');
+    btn.textContent = 'Run';
+    btn.addEventListener('click', function () { /* ... */ });
+    pre.appendChild(btn);
+  });
+});
+```
+
+Ship that file and inject it via `include-after-body` in your front matter, and it is
+wired into the same mount cycle the built-ins use.
+
+## Editor integration: the VS Code companion
+
+The websocket protocol is open (see [the block model](block-model.tmd)), so an editor
+that hosts the preview is just another thin client, not a fork. One such client already
+ships in-repo, at `editor/vscode/`: the **qmd-fast Companion**. It is the concrete
+*producer* for the reverse-sync side of the protocol that `web-client/client.js` already
+*consumes*, so the two halves meet.
+
+It lives **outside the cargo workspace** with its own npm/esbuild toolchain (`cd
+editor/vscode && npm install && npm run build`, then **F5** to launch an Extension
+Development Host). A single command, `qmdFast.openPreview` (command palette or the
+editor-title button on a `.tmd`), and one setting, `qmdFast.path` (the binary, when
+`qmd-fast` is not on `PATH`), are its whole surface.
+
+The host architecture is deliberately thin:
+
+- it spawns `qmd-fast preview` on a free **localhost** port (no `--host`, so the LAN
+  token never enters the picture) and embeds that URL in a webview via
+  `vscode.env.asExternalUri`;
+- a small **relay** HTML document inside the webview bridges the preview iframe's
+  `postMessage` protocol to and from the extension host. Forward sync (`qmd-goto`) calls
+  `revealRange` to move the editor cursor; reverse sync turns a cursor move into a
+  debounced `qmd-cursor`, which the client resolves with `highlightAtLine` (and, in a
+  deck, jumps `QmdDeck` to the containing slide).
+
+The companion **never writes back to the source**: it only navigates and highlights,
+holding the line that the `.tmd` file is the single editing surface and the preview is a
+read-only view. Phase 1 is exactly this host-plus-cursor loop, localhost only; editor
+*commands* that transform the buffer (insert-block, reorder-slide) are deferred to a
+later phase, and strictly as `.tmd`-text transforms when they land.
+
+## Recipes
+
+### Add a new cell option
+
+Cell options (`#| key: value`, `//|` for `{js}`, `%%|` for `{mermaid}`) are a **closed
+vocabulary**: any key not in the recognized set warns with a did-you-mean hint at its
+exact source line. So adding one is two steps, in order.
+
+1. **Stop the warning.** Add the key to `CELL_OPTION_KEYS` in `render/validate.rs` (a flat
+   `&[&str]`). This is the single list `validate_cell_options` checks; until the key is
+   there, every author who uses it gets `unknown cell option \`yourkey\``. The list is the
+   union across all cell languages, so a `{js}`-only option lives here too (`name`,
+   `viewof`, `input` already do).
+
+2. **Read it where cells are processed.** The key is now *allowed* but still *inert*. Two
+   places consume options depending on what the option does:
+   - **Render-time** options (presentation: `code-fold`, `code-summary`,
+     `code-line-numbers`, `label`, `fig-cap`) are read in the render pipeline as the cell's
+     HTML is emitted (`render/mod.rs` parses the leading `#|` block; `emit.rs` applies the
+     code-fold / line-number wrappers). Add your read there if the option only changes how
+     the cell or its output looks.
+   - **Execution-time** options (`echo`, `include`, `cache`, `fig-export`) are read in
+     `server/exec.rs`, where each is captured onto the per-cell `CellRef` before the run
+     and consulted while planning what re-runs. Add your read there if the option changes
+     *whether or how* a cell runs.
+
+A render-only option needs no kernel and shows up immediately in `render`/`check`; an
+execution option only takes effect under `preview`/`build` with a live kernel. Pin the new
+option with a corpus document that uses it (the corpus is the spec), and `check` will keep
+it from regressing into an unknown-key warning.
+
+::: {.callout-note}
+The parser only reads the **leading contiguous** `#|` block: the first non-option line
+stops option parsing. A `#|` comment further down the cell body is just code, not an
+option, so your new key has to appear at the top of the cell.
+:::
+
+### Write a figure file on execution: `#| fig-export:`
+
+`#| fig-export: figures/x.pdf` (a comma-separated list for several files at once, e.g. a
+vector `.pdf` plus a raster `.png`) is the path through `exec.rs` worth understanding
+because it touches three things at once: the executor, the cache key, and the kernel
+preamble.
+
+- **It is executor-side, not a render transform.** For a Python cell, `export_wrapped`
+  (`server/exec.rs`) prepends a one-line `_qmd_export([...], install=True)` trigger to the
+  cell's code before sending it to the kernel. The `_qmd_export` hook itself is defined
+  once in the Python preamble (`server/kernel.rs`); `install=True` makes it idempotently
+  wrap the figure even for a cell that produces a plot without naming matplotlib directly.
+- **Paths are relative to the document directory.** The warm kernel's working directory is
+  the document's own directory (`kernel.rs`), so an exported `figures/x.pdf`, like any
+  other file a cell writes (`ggsave`, an audio file), lands beside the source where the
+  build can find and copy it.
+- **It is written at display time, before any inline recolour.** The figure is saved
+  print-clean (real black axes/text for LaTeX/print) the moment the plot is displayed,
+  *before* the light/dark inline recolouring that produces the `.tmd-fig-light` /
+  `.tmd-fig-dark` pair the page swaps on a theme change. So the on-disk file is a clean
+  print artifact, not a theme-tinted screen image.
+- **It is folded into the cache key.** The export spec is appended to the cell's hashed
+  code (`# qmd-fig-export: <spec>`), so adding or changing it **moves the cell's
+  cumulative hash** and forces a re-run, which rewrites the file. A cell *without*
+  `fig-export:` hashes exactly as before, so existing `_freeze/` entries stay valid. This
+  is what guarantees the exported file is never stale relative to the cell that produced
+  it.
+
+## The dev loop
+
+```sh
+cargo run -p taliesin-server -- preview corpus/<doc>   # iterate on a real doc
+cargo test -p taliesin-core                            # corpus invariants + unit tests
+cargo clippy --workspace --all-targets -- -D warnings
+cd web-client && npx -y -p typescript tsc -p jsconfig.json   # type-check client.js
+```
+
+### The corpus is the spec
+
+There is no exhaustive feature checklist. The contract is that the real documents
+under `corpus/` render correctly; `crates/core/tests/corpus.rs` asserts the block
+invariants across all of them. Add a representative document to the corpus when you
+add a feature.
+
+### Byte-identity for refactors
+
+A pure refactor must not change the output. The standard check is to build the
+corpus before and after and `diff` the results:
+
+```sh
+qmd-fast build corpus/tech-blog --out /tmp/before/site   # on the old tree
+qmd-fast build corpus/tech-blog --out /tmp/after/site    # on the new tree
+diff -rq /tmp/before /tmp/after                          # must be empty
+```
+
+That, plus the test suite, is what makes the larger module splits safe.

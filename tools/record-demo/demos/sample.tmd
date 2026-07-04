@@ -1,0 +1,51 @@
+---
+title: "qmd-fast"
+subtitle: "Plain text in, live HTML out"
+toc: true
+---
+
+# Write in Markdown, get a live document
+
+`qmd-fast` renders `.tmd` to HTML with **instant, block-level updates** — save the
+file and only the block you changed re-renders, in place, with scroll and live
+state preserved.
+
+It speaks the things technical writing actually needs, all rendered offline:
+
+- **Math**, server-side via KaTeX: inline $e^{i\pi} + 1 = 0$ and display —
+$$\int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi}$$
+- **Diagrams**, from fenced code:
+
+```{mermaid}
+flowchart LR
+  write["write .tmd"] --> preview["live preview"]
+  preview --> edit["edit a block"]
+  edit -->|"only that block"| preview
+  preview --> publish["build → static HTML"]
+```
+
+- **Callouts**, for the asides that documentation lives on:
+
+::: {.callout-tip}
+## Block-level updates
+Every top-level element is a block with a content-hash id. A save diffs the new
+blocks against the old and ships only the differences over a websocket.
+:::
+
+# Why it feels fast
+
+There is no per-edit startup cost. The server stays warm and so does the Jupyter
+kernel, so editing a cell re-runs just that cell and everything downstream — not
+the whole document.
+
+::: {.callout-note}
+## Click to source
+Double-click any block in the preview and your editor jumps to the exact line it
+came from, even across `{{< include >}}`d files.
+:::
+
+A second screenful of prose so the demo has somewhere to scroll: the block model
+is the one idea everything keys off — source mapping, incremental re-render, and
+live-state preservation all build on it. Code-cell outputs are themselves blocks,
+keyed to their cell, so a re-run swaps the figure in place without touching the
+rest of the page.

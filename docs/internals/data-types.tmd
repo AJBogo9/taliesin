@@ -1,0 +1,335 @@
+---
+title: "Data-type reference"
+---
+
+The rest of this book explains *how* the pipeline, the diff, and the executor
+work. This chapter is the **catalog of the types they pass around**, so you can
+read [the rendering pipeline](rendering.tmd), [the block model & protocol](block-model.tmd),
+or [execution](execution.tmd) without keeping `model.rs` and `diff.rs` open in a
+second window.
+
+Two crates own the types. The **core** (`crates/core`) defines the render block
+model, the things the parser emits: `Cell`, `Block`, `RenderedDoc`, and friends.
+The **server** (`crates/server`) defines the wire-protocol diagnostic and the
+private execution bookkeeping. Where the two meet is the one shared type the
+core hands the server: `Block` (carrying an optional `Cell`), which the server
+runs and splices outputs back into.
+
+## The block model (`render/model.rs`)
+
+### `Block`
+
+One top-level element. The parser emits a `Vec<Block>`; everything downstream,
+the diff, click-to-source, live-state preservation, keys off these three data
+attributes baked into `html`.
+
+```rust
+struct Block {
+    id: String,                  // content-hash id, "b-<hex>" (+ "-N" for a duplicate)
+    sourcepos: String,           // "startLine:startCol-endLine:endCol", relative to source_file
+    source_file: Option<String>, // Some(path) only for a block from an {{< include >}}d file
+    html: String,                // rendered HTML; the root element carries the three attrs
+    cell: Option<Cell>,          // Some(..) when this block is an executable code cell
+}
+```
+
+`id` is an FNV-1a hash of the block's raw Markdown source, prefixed `b-` (with a
+positional `-N` suffix to break ties between byte-identical blocks). Because it is
+content-derived, an unchanged block keeps its id across edits, which is the whole
+basis for the incremental diff. `cell` is the bridge to the server: a `Some(..)`
+marks a block the executor must run.
+
+### `Cell`
+
+The executable payload of a code cell (`` ```{python} ``, `` ```{r} ``, `` ```{js} ``).
+The core records it; the server runs `{python}`/`{r}` against a kernel and the
+client runs `{js}` in the browser.
+
+```rust
+struct Cell {
+    lang: String,                  // "python" | "r" | "js" | ...
+    code: String,                  // the cell body, options stripped
+    figure: Option<CellFigure>,    // #| label: fig-x + #| fig-cap: → numbered figure
+    table: Option<CellTable>,      // #| label: tbl-x + #| tbl-cap: → numbered table
+    echo: bool,                    // #| echo: false hides source (cell still runs, output shows)
+    include: bool,                 // #| include: false hides source AND output (still runs)
+    cache: bool,                   // #| cache: false → never freeze; always re-run
+    fig_export: Option<String>,    // #| fig-export: a.pdf[, b.svg] → print-clean figure files
+    js: JsOpts,                    // {js} cell wiring; default/empty for every other language
+}
+```
+
+`echo`, `include`, and `cache` default to `true` (the front-matter `execute:`
+block sets the document default, the `#|` option overrides per cell). `fig_export`
+is comma-separated; the Python kernel preamble writes the files at display time.
+
+### `JsOpts`
+
+The `//|` options of a native `{js}` cell, the surface that wires it into the
+client-side reactive runtime. Empty (`Default`) for every kernel cell.
+
+```rust
+struct JsOpts {
+    name: Option<String>,   // //| name: x → publish the return value under "x" into the shared scope
+    viewof: Option<String>, // //| viewof: x → the cell returns a DOM input registered as "x"
+    inputs: Vec<String>,    // //| input: a, b → re-run when input "a" or "b" (or an ojs_define value) changes
+}
+```
+
+::: {.callout-note}
+The cell option is spelled `//| input:` (singular) in the source; it parses to the
+plural `inputs` vector because one cell can depend on several.
+:::
+
+### `CellFigure` / `CellTable`
+
+Figure and table metadata folded onto a cell, so the **executor** can wrap the
+cell's *output* once it exists. The output HTML isn't known until the cell runs,
+which is why this is metadata on the cell rather than a separate block: the
+executor reads it, then wraps the executed output in a `<figure>` (with the
+`#fig-x` anchor and caption) or injects a numbered `<caption>` into the executed
+`<table>`.
+
+```rust
+struct CellFigure {
+    anchor: Option<String>,   // "#fig-…" when labelled, so @fig-x cross-refs resolve
+    caption: Option<String>,
+    number: usize,            // assigned in document order
+}
+
+struct CellTable {
+    anchor: Option<String>,   // "#tbl-…" when labelled, so @tbl-x cross-refs resolve
+    caption: Option<String>,
+    number: u32,              // assigned in document order alongside Markdown tables
+}
+```
+
+### `CellRole`
+
+A cell's numbered cross-reference role, derived from its `#| label:` /
+`#| *-cap:` options. Unlike `CellFigure` / `CellTable` (which live *on* the
+`Cell`), this is `pub(crate)` to the renderer; it is the one place `#| label:
+lst-x` and `#| code-fold` land. A `lst-` listing is the standout case: it wraps
+the cell's **source**, not its output, and `fold` carries the `code-fold`
+start-open flag plus the summary text so a folded listing renders.
+
+```rust
+enum CellRole {
+    // label: fig-x / fig-cap → a numbered figure (the cell's OUTPUT).
+    Figure { anchor: Option<String>, caption: Option<String> },
+    // label: lst-x / lst-cap → a numbered listing (the cell's SOURCE);
+    // fold = Some((start_open, summary)) when #| code-fold is set.
+    Listing { anchor: Option<String>, caption: Option<String>, fold: Option<(bool, String)> },
+    // label: tbl-x / tbl-cap → a numbered table (the cell's executed OUTPUT).
+    Table { anchor: Option<String>, caption: Option<String> },
+}
+```
+
+### `DocFormat`
+
+The output format from the front-matter `format:` key. Decides which page
+scaffold (and which live client) is emitted.
+
+```rust
+enum DocFormat {
+    Html,   // default: a standard HTML page (blog post, book page)
+    Reveal, // a slide deck (format: revealjs / *-revealjs)
+}
+```
+
+::: {.callout-note}
+The enum variant is `Reveal` for historical reasons (the deck engine used to be
+reveal.js). The engine is now qmd-fast's own; reveal.js was removed. The variant
+name is the only fossil left, the runtime exposes `window.QmdDeck`, not
+`window.Reveal`. See [the deck engine](deck-engine.tmd).
+:::
+
+### `OutputMode`
+
+How aggressively a page trims its optional machinery, threaded from the `build`
+CLI through the page builders. The live preview always uses `Preview`, so the dev
+loop is never affected by build-time gating.
+
+| Variant | When | What ships |
+|---|---|---|
+| `Preview` | live dev preview (the default) | every enhancer, unconditionally (a doc can gain any construct on the next edit, so gating would race the live mount) |
+| `Build` | static `build` / `render` | DOM-specific enhancer scripts gated to what the page actually contains; `code-enhance.js` (reader menu + a11y) still ships on every page |
+| `Bare` | `build --bare` | zero `<script>`, zero CDN, CSS-only theming; for a rough draft, an archive, or a future print pipeline |
+
+### `Warning`
+
+A non-fatal render warning the **core** produces. The core can't return a
+`Result` for these (it returns a `RenderedDoc` regardless), so it collects them on
+`RenderedDoc::warnings` for the server to log and surface. A located warning (`line`
+set) renders as a clickable jump-to-source row in the dev menu.
+
+```rust
+struct Warning {
+    message: String,
+    file: Option<String>, // doc-base-relative (matches Block::source_file); None = the previewed doc
+    line: Option<u32>,    // Some(..) makes it click-to-source; None is an unlocated warning
+}
+```
+
+Build it with `Warning::new(msg)` for an unlocated warning, then `.at(file, line)`
+to attach a source location.
+
+### `RenderedDoc`
+
+The output of `render_document_with_includes`: an ordered block list plus the
+front-matter metadata the page builders need.
+
+```rust
+struct RenderedDoc {
+    title: Option<String>,
+    subtitle: Option<String>,
+    lang: Option<String>,         // front-matter lang: (BCP-47), → <html lang>; None falls back to "en"
+    description: Option<String>,  // SEO/OpenGraph meta for a standalone page
+    format: DocFormat,
+    toc: bool,                    // effective TOC flag (a site recomputes this from its default)
+    toc_explicit: Option<bool>,   // the page's explicit toc: as a tri-state, so a site can tell off from unset
+    theme_css: String,            // resolved custom theme CSS; empty for the built-in light/dark themes
+    theme_default: String,        // "dark" | "light" force it; "auto" follows prefers-color-scheme
+    theme_is_custom: bool,        // a custom theme owns the colours (decks skip built-in light/dark management)
+    includes: PageIncludes,       // resolved include-* + css front-matter markup
+    warnings: Vec<Warning>,
+    blocks: Vec<Block>,
+}
+```
+
+`body_html()` is the one helper: it concatenates the block HTML, one block per line,
+the body the `full_render` message and the static `build` both emit.
+
+### `PageIncludes`
+
+The already-resolved markup from the `include-in-header` / `include-before-body` /
+`include-after-body` / `css` front-matter keys (and the site-level `format: html:`).
+Each string is fully resolved: an inline `text:`, or a referenced file's contents,
+with `css` files wrapped in `<style>`, so the page template just drops it in.
+
+```rust
+struct PageIncludes {
+    in_header: String,      // → <head>
+    before_body: String,    // → just after <body>
+    after_body: String,     // → just before </body>
+    resources: Vec<PathBuf>, // extension format-resources (e.g. a deck plugin's .js); copied next to the page on build
+}
+```
+
+::: {.callout-warning}
+These strings are injected **verbatim and unescaped**. That is by design (the
+author is trusted, see the trust model in [the block model & protocol](block-model.tmd#trust-model)),
+but it means nothing untrusted may flow into them without sanitizing first.
+:::
+
+`has_markup()` reports whether any of the three string slots is non-empty (ignoring
+`resources`); `merge(other)` appends `other` after `self` (site-level includes
+first, then the page's own).
+
+### Includes & the per-line origin map (`includes.rs`)
+
+Include resolution inlines an `{{< include path >}}`'d file *before* parsing, so
+the merged buffer has contiguous lines comrak can give exact sourcepos for. To map
+those merged lines back to their real file, it records a **`LineOrigin`** for every
+line of the expanded text:
+
+```rust
+struct LineOrigin {
+    file: Option<String>, // origin file; None for the primary doc, Some(path) for an included file
+    line: usize,          // its original 1-based line number in that file
+}
+```
+
+This is what becomes `Block::source_file` and lets click-to-source open the right
+file at the right line even for a block that came from an included partial. See the
+pipeline's [include-resolution stage](rendering.tmd#stage-by-stage).
+
+### `IncludeWarning`
+
+The other thing the same module returns: a located diagnostic for an
+`{{< include >}}` that *couldn't* be expanded (an unsafe path, a cycle, or an
+unreadable file). `resolve_warned` hands one back per dropped directive so the
+build, the preview, and `check` can surface it as a click-to-source row instead
+of silently shipping the literal `{{< include … >}}`.
+
+```rust
+struct IncludeWarning {
+    target: String,       // the raw include target as written in the directive
+    reason: String,       // short human phrase: why it couldn't resolve
+    file: Option<String>, // file holding the directive (None = primary doc), matches LineOrigin::file
+    line: usize,          // 1-based line of the directive within `file`
+}
+```
+
+## The diff (`diff.rs`)
+
+### `BlockOp`
+
+`diff_blocks(old, new) -> Vec<BlockOp>` turns two block lists into the minimal set
+of DOM mutations the client applies. Ids in `target_id` / `after_id` refer to
+elements **currently in the DOM**; the `html` payload carries the block's *new* id.
+The mechanism (an LCS over the ids, the `SetMeta` trick, and why removes are sorted
+before inserts) is covered in [the block model & protocol](block-model.tmd#the-diff-diff-rs);
+here are just the four variants.
+
+```rust
+enum BlockOp {
+    // Replace the element target_id with html (which carries the new id), then pulse it.
+    Update { target_id: String, html: String },
+    // Insert html after after_id (or prepend at the start when None).
+    Insert { after_id: Option<String>, html: String },
+    // Remove the element target_id.
+    Remove { target_id: String },
+    // Patch ONLY the position metadata of target_id, leaving its rendered content and
+    // its live DOM state in place. Emitted when an edit elsewhere shifted an unchanged
+    // block's line numbers: same content-hash id and body, only the attribute moved.
+    SetMeta { target_id: String, sourcepos: String, source_file: Option<String> },
+}
+```
+
+`protocol::op` (in the server) serializes each variant to the wire JSON, mapping each
+variant to its message `type` string (`update` / `insert` / `remove` / `set_meta`) the
+client switches on. See [the websocket protocol](protocol.tmd) for each message's wire shape.
+
+## Server types
+
+### `Diagnostic` (`protocol.rs`)
+
+The server's wire-protocol counterpart to the core's `Warning`: a non-fatal issue
+surfaced in the preview, serialized into the `full_render` and `diagnostics`
+messages. It adds a `level` (the core's `Warning` is always a warning) and an
+optional inline code `frame`.
+
+```rust
+struct Diagnostic {
+    level: &'static str,    // "warning" | "error"
+    message: String,
+    file: Option<String>,   // doc-base-relative; None = the previewed doc
+    line: Option<u32>,      // 1-based; Some(..) makes the row click-to-source
+    frame: Option<String>,  // optional small code frame (a few source lines, the offending one marked)
+}
+```
+
+Construct it with `Diagnostic::warn(msg)` / `Diagnostic::error(msg)`, then chain
+`.at(file, line)` to make it clickable and `.with_frame(frame)` to attach the code
+frame.
+
+| | `Warning` (core) | `Diagnostic` (server) |
+|---|---|---|
+| crate | `qmd-fast-core`, `render/model.rs` | `qmd-fast-server`, `protocol.rs` |
+| levels | warning only | `"warning"` / `"error"` |
+| code frame | no | yes (`frame`) |
+| produced by | the render pipeline | the server (held in each doc's state, includes the kernel state and front-matter linter) |
+
+### `CellRef` / `Ran` (`exec.rs`, internal)
+
+These two are **private to the executor** (not part of any public API); they appear
+here only so [the execution chapter](execution.tmd) reads cleanly. `CellRef` is a
+code cell pulled out of the block list with everything needed to run it and rebuild
+its output block (`block_index`, `id`, `code`, `sourcepos`, `source_file`, plus the
+same `figure` / `table` / `include` / `cache` / `fig_export` it carried on the
+`Cell`). `Ran` is one cell the **current warm kernel** has already executed: its
+cumulative cache key (`hash`) and the `output` HTML it produced. The ordered list
+of `Ran`s doubles as the record of what state the live kernel holds, which the
+planner diffs the next run against to find the warm prefix. The cumulative cache
+key itself lives in [the freeze cache](execution.tmd#the-persistent-cache-freeze).

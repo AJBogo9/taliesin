@@ -1,0 +1,170 @@
+---
+title: "The deck engine"
+---
+
+`format: revealjs` renders to a slide deck driven by qmd-fast's **own** engine, not
+reveal.js. The engine is two bundled assets, `assets/css/deck.css` and
+`assets/js/deck.js`, emitted inline by `render/deck.rs`. Three decisions shape it:
+
+- **A native DOM contract.** The markup is `.tmd-deck > .tmd-slides > section`
+  (each slide a `.tmd-slide`, with nested `<section>` stacks). Per-slide visibility
+  is the camera transform itself, not state classes. The public JS surface is
+  `window.QmdDeck` (`initialize` / `sync` / `slide` / `on` / `getSlides` /
+  `getCurrentSlide` / `registerPlugin`, …), which the preview client and theme
+  extensions bind to.
+- **Bundle everything offline.** `deck.css` / `deck.js` (and KaTeX, the `{js}`
+  enhancer, highlight CSS) are `include_str!`'d into the page. No CDN, no network.
+- **Reuse the block model.** Every slide's blocks still carry `data-block-id` +
+  `data-sourcepos`, so the block diff, click-to-source, and live execution work in a
+  deck exactly as on a page, *within the current slide*.
+
+## From document to slides
+
+Give `post.tmd` a `format: revealjs` line and the very same three blocks become a
+one-slide deck: the `# Cooling coffee` heading opens the slide, with the math and
+the live plot riding along unchanged. The deck is built from the same block list as
+every other output, and `render/deck.rs` groups those blocks into slides:
+
+```{mermaid}
+flowchart TB
+  blocks["block list<br/>(data-block-id + sourcepos)"] --> split["split_slides<br/>## → slide, # → section stack, --- → break"]
+  split --> dedup["dedup_slug<br/>distinct section ids"]
+  dedup --> thread["heading-attribute threading<br/>{background-* / auto-animate} hoisted onto &lt;section&gt;"]
+  thread --> emit["deck_page_from_doc<br/>inline deck.css/js (+ KaTeX / {js} enhancer when present)"]
+```
+
+- **`split_slides`** walks the blocks: a level-2 heading opens a slide, a level-1
+  heading opens a *section* whose following slides become a vertical stack, and a
+  `---` rule is an explicit break. Each slide gets an id from its heading text,
+  deduped (`step`, `step-1`, …) so repeated titles, common with auto-animate, don't
+  collide in the DOM or the URL hash.
+- **Heading-attribute threading.** Authors write per-slide options on the heading
+  (`## Title {background-color="#0f172a" auto-animate=true}`). The renderer lifts
+  those onto the `<section>` as `data-background-*` / `data-auto-animate`, where the
+  runtime reads them.
+
+## The runtime (`deck.js`)
+
+A single `deck` state object holds the position (`h`, `v`, `frag`: horizontal,
+vertical, fragment step), the mode, and the plugin/listener registries. The core
+loop is small:
+
+- **`layout`** scales the fixed 960×540 (16:9) stage to the viewport with a single
+  CSS transform (`--qmd-deck-scale`), so slides never reflow; `fitSlide` shrinks a
+  slide's own font if its content overflows (PowerPoint-style autofit).
+- **`apply`** updates the per-slide classes (fragment visibility, chrome,
+  annotations), records the previous slide for auto-animate, and calls `setCamera`
+  to pan and zoom the stage to the current slide. Visibility *is* that camera
+  transform, not a per-slide `display` toggle (the contract from the top of this
+  chapter).
+- **Navigation** (`right`/`left`/`down`/`up`, plus keyboard and touch) moves through
+  the step list, then across slides.
+
+### One step list per slide
+
+Fragments, code line-stepping, and magic-move all advance with the same key, so they
+share one ordered step list. `fragsOf(slide)` returns step descriptors in document
+order:
+
+- `{frag: el}`: an incremental list item or `.fragment`.
+- `{code: pre, seg}`: the next segment of a `code-line-numbers` block.
+- `{mm: div}`: the next snapshot of a `.magic-move` block.
+
+`deck.frag` is how many steps have been taken; advancing dispatches to the matching
+handler. Magic-move and auto-animate animate with **FLIP** (measure First and Last
+rects, Invert with a transform, Play), scale-corrected by `--qmd-deck-scale` so the
+motion is right inside the scaled stage.
+
+The ordering is **document order, with the right granularity per device.** `fragsOf`
+walks one combined selector (`.fragment, .incremental > ul > li, .incremental > ol > li,
+pre[data-code-lines], .magic-move`) so every step descriptor lands in the order its
+element appears in the slide. A code block contributes one step per `|`-segment *after* the first (segment 0
+is the slide's base highlight, applied on entry before any step), and a magic-move
+block contributes one step per block-to-block morph (`n` code blocks → `n-1` steps).
+That is the whole sequencing rule: a fragment, a code-step, and a magic-move step all
+weigh the same, and they interleave exactly as written. So a `## ` slide that opens a
+`code-line-numbers` walk, drops a `. . .` pause, then a `.fragment` bullet will step
+through the code first, then reveal the bullet, in source order, on the one key.
+
+### Three step kinds, three render-time contracts
+
+Each animated step kind is set up at render time so the runtime can drive it from
+static markup, never re-rendering:
+
+- **`code-line-numbers` stepping.** A `#| code-line-numbers: "1|2-3|all"` cell option
+  (or a `code-line-numbers="…"` fenced attribute) makes the emitter wrap every code
+  line in a `.qhl-ln` span and bake the spec onto the `<pre>` as
+  `data-code-lines="1|2-3|all"` (`render/emit.rs`). At runtime each step calls
+  `highlightLines(pre, seg)`: `parseLineSpec` reads a segment (`"2-3"`, `"1,4"`,
+  `"all"`, or empty), adds `qhl-lines-active` to dim the block, and toggles
+  `qhl-ln-hl` on the named lines. `all` or empty clears the dim. Stepping is pure
+  class-toggling over the already-highlighted DOM, so it costs nothing and survives
+  the block diff.
+
+- **`magic-move` (FLIP between consecutive code blocks).** A `::: {.magic-move}` div
+  holds two or more code blocks; `render/divs.rs` line-wraps each `<pre>` with the
+  same `.qhl-ln` helper. On the step from block *k* to *k+1*, `morphMM` keys both
+  blocks' lines by their trimmed **text**: a line present in both glides from its old
+  rect to its new one (FLIP, scale-corrected by `--qmd-deck-scale`), a line only in
+  the new block fades in, and the old block fades out under it. So unchanged lines
+  *move* rather than redraw, which is the whole point: the eye tracks the lines that
+  stayed and reads only what changed.
+
+- **`auto-animate` (FLIP between consecutive slides).** Writing
+  `## Title {auto-animate=true}` on two adjacent slides bakes `data-auto-animate` onto
+  each `<section>` (hoisted off the heading by `take_bg_attrs`, the same lift that
+  moves `background-*` onto the section). When navigation crosses from one
+  auto-animate slide to the next, `autoAnimateTo` matches elements by tag **plus**
+  text (the headings `h1` to `h4`, plus `p`, `li`, `pre`, `blockquote`, `img`,
+  `figure`), measures each
+  pair's before/after rect, and FLIP-tweens the survivors (position and font-size)
+  while unmatched elements just appear. The camera trick that makes it look in-place:
+  the engine overlays the incoming slide on the *outgoing* slide's grid cell, morphs
+  the matched elements there, then snaps both the slide and the camera to the real
+  cell in one move, so the reposition is a net-zero screen change.
+
+### Modes
+
+One engine, several presentations, selected by a `?qmd=` query param or a class:
+
+| Mode | Trigger | What it does |
+|------|---------|--------------|
+| normal | `?qmd=present` / `?qmd=slides`, or embedded | the interactive (stepped) deck — the presenting surface |
+| speaker | `S` → popup at `?qmd=speaker` | current + next slide previews, notes, timer |
+| embed | `?qmd=embed` | passive preview (no key/scroll capture); used by speaker previews and `{{< embed >}}` |
+| overview | `Esc` / `O` | zoomed grid of all slides |
+| print | `Ctrl/Cmd-P` / `?qmd=print` | flattened, one slide per page |
+| scroll | **standalone open (default)**, narrow screen, or `?qmd=scroll` | a single scrollable reading column |
+
+Speaker view and the audience window stay in sync over `postMessage` (it works on
+`file://`, unlike `BroadcastChannel`). When the deck flattens into a reading column or
+a print sheet (scroll and print), the per-slide background layer is hidden and the
+light-on-dark text class is cleared, so a dark slide stays readable instead of going
+white-on-white. Overview is the exception: it keeps each slide's background, shown per
+tile.
+
+## Embedding a deck
+
+`{{< embed deck.tmd >}}` (see [Slides, books & sites](../guide/using/formats.html)) is a
+built-in shortcode in `render/extension`. It emits an iframe to the referenced
+deck's built `.html` plus a fullscreen button; the iframe is the isolation boundary
+that keeps the deck's full-viewport CSS, global keyboard handler, and URL hash from
+fighting the host page. The build and preview discover embed targets
+(`embed_targets`) and render each referenced deck to its own self-contained page, so
+the iframe resolves without the deck also becoming a navigable site page.
+
+The iframe is not a convenience, it is the only honest way to host a deck inside a
+page. A deck is built to *own the viewport*: it scales a fixed 960×540 stage to fill
+the window, binds a document-level `keydown` handler for arrow-key navigation, reads
+and writes `location.hash` for deep links, and listens for `postMessage` from a
+speaker window. Drop that markup straight into a blog post and every one of those
+assumptions becomes a bug: the full-viewport stage would blow out the article's
+layout, the global key handler would swallow the reader's arrow keys mid-scroll, and
+the deck's hash writes would clobber the page's own fragment. The iframe gives the
+deck its own document, its own viewport, its own key handler, and its own hash, so it
+behaves exactly as it does standalone while the host page stays untouched. The
+embedded copy boots in `?qmd=embed` mode (passive: no key or scroll capture) unless
+the reader opens it fullscreen, and it follows the host page's `data-theme` rather
+than its own `localStorage`, so a dark article frames a dark deck. This is the same
+isolation the speaker view relies on: its current- and next-slide previews are
+`?qmd=embed` iframes of the very same deck page.
