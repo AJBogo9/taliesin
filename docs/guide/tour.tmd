@@ -1,7 +1,7 @@
 ---
 title: "qmd-fast"
 subtitle: "A 60-second tour"
-format: revealjs
+format: deck
 ---
 
 ## What it is

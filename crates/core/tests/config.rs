@@ -155,7 +155,7 @@ fn embed_inside_an_included_partial_is_discovered_as_a_deck() {
     );
     d.file(
         "slides.tmd",
-        "---\ntitle: Slides\nformat: revealjs\n---\n\n## One\n\n## Two\n",
+        "---\ntitle: Slides\nformat: deck\n---\n\n## One\n\n## Two\n",
     );
     let site = Site::discover(&d.0);
     assert!(

@@ -629,7 +629,7 @@ mod tests {
         let f = dir.join("deck.tmd");
         fs::write(
             &f,
-            "---\ntitle: T\nformat: revealjs\n---\n\n## Slide one\n\n#### A deeper heading\n",
+            "---\ntitle: T\nformat: deck\n---\n\n## Slide one\n\n#### A deeper heading\n",
         )
         .unwrap();
         let diags = collect_diagnostics(&f).expect("ok");

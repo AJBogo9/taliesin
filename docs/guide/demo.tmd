@@ -1,7 +1,7 @@
 ---
 title: "The qmd-fast deck engine"
 subtitle: "A tour of every feature, in one deck"
-format: revealjs
+format: deck
 ---
 
 ## One source, many views {auto-animate=true}

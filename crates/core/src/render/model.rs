@@ -115,7 +115,7 @@ pub enum DocFormat {
     #[default]
     Html,
     /// A slide deck, rendered by taliesin's OWN native engine (reveal.js was removed);
-    /// selected by `format: revealjs` / `*-revealjs`.
+    /// selected by `format: deck` / `*-deck`.
     Reveal,
 }
 

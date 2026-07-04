@@ -21,7 +21,7 @@ fn single_doc_build_warns_on_unresolved_embed() {
     fs::write(&doc, "---\ntitle: Post\n---\n\n{{< embed talk.tmd >}}\n").unwrap();
     fs::write(
         dir.join("talk.tmd"),
-        "---\ntitle: Talk\nformat: revealjs\n---\n\n## Slide one\n",
+        "---\ntitle: Talk\nformat: deck\n---\n\n## Slide one\n",
     )
     .unwrap();
 

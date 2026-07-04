@@ -34,7 +34,7 @@ pub(super) fn detect_title_block_hidden(front_matter: &str) -> bool {
     })
 }
 
-/// Whether a document's front matter selects a revealjs deck. Reads only the
+/// Whether a document's front matter selects a slide deck. Reads only the
 /// front matter (no full parse), so site discovery can cheaply flag a loose deck
 /// dropped into a website — which would otherwise be flattened into an article.
 pub fn is_reveal_doc(src: &str) -> bool {
@@ -43,8 +43,8 @@ pub fn is_reveal_doc(src: &str) -> bool {
 }
 
 /// Detect the output format from raw front matter. A deck declares a `format:`
-/// whose inline value or indented sub-keys name a deck variant (`deck`, `revealjs`,
-/// or a `<name>-deck` / `<name>-revealjs` form). Everything else is a standard page.
+/// whose inline value or indented sub-keys name a deck variant (`deck` or a
+/// `<name>-deck` form). Everything else is a standard page.
 pub(super) fn detect_format(front_matter: &str) -> DocFormat {
     let lines: Vec<&str> = front_matter.lines().collect();
     for (i, line) in lines.iter().enumerate() {
@@ -57,18 +57,17 @@ pub(super) fn detect_format(front_matter: &str) -> DocFormat {
         };
         let inline = rest.trim();
         if !inline.is_empty() {
-            // `format: revealjs` (or a list `[html, revealjs]`): match a format
-            // *name*, not any substring, so a theme/filename that merely contains
-            // "revealjs" (e.g. `theme: my-revealjs.css`) can't flip an HTML doc to
-            // a deck.
+            // `format: deck` (or a list `[html, deck]`): match a format *name*,
+            // not any substring, so a theme/filename that merely contains "deck"
+            // (e.g. `theme: my-deck.css`) can't flip an HTML doc to a deck.
             return if inline.split(['[', ']', ',', ' ']).any(is_reveal_format) {
                 DocFormat::Reveal
             } else {
                 DocFormat::Html
             };
         }
-        // Block form: the sub-keys are format *names* (`html:`, `revealjs:`,
-        // `deck:`, `<name>-revealjs:`). Match the key, never a value substring.
+        // Block form: the sub-keys are format *names* (`html:`, `deck:`,
+        // `<name>-deck:`). Match the key, never a value substring.
         for sub in &lines[i + 1..] {
             if sub.trim().is_empty() {
                 continue;
@@ -86,12 +85,11 @@ pub(super) fn detect_format(front_matter: &str) -> DocFormat {
     DocFormat::Html
 }
 
-/// Whether a `format:` name selects a slide deck. The native spelling is `deck`
-/// (or an extension variant `<ext>-deck`); `revealjs` / `<ext>-revealjs` is the
-/// deprecated-but-accepted Quarto spelling (the engine is taliesin's own either way).
+/// Whether a `format:` name selects a slide deck. The only spelling is `deck`
+/// (or an extension variant `<ext>-deck`); the engine is taliesin's own.
 fn is_reveal_format(name: &str) -> bool {
     let n = name.trim().trim_matches(['"', '\'']);
-    n == "deck" || n.ends_with("-deck") || n == "revealjs" || n.ends_with("-revealjs")
+    n == "deck" || n.ends_with("-deck")
 }
 
 /// The `bibliography:` front-matter value as a list of paths. Accepts a scalar

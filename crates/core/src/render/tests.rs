@@ -78,7 +78,7 @@ fn title_block_includes_subtitle_date_and_description() {
 #[test]
 fn reveal_deck_has_no_html_title_block() {
     // The deck builds its own title slide; no `qmd-title-block` block.
-    let doc = render_document("---\ntitle: T\nformat: revealjs\n---\n\n## Slide\n");
+    let doc = render_document("---\ntitle: T\nformat: deck\n---\n\n## Slide\n");
     assert!(!doc.blocks.iter().any(|b| b.id == "qmd-title-block"));
 }
 
@@ -1005,7 +1005,7 @@ fn front_matter_without_title_yields_no_blocks() {
 #[test]
 fn reveal_deck_injects_includes_and_theme() {
     let src = "---\n\
-            format: revealjs\n\
+            format: deck\n\
             include-in-header:\n  text: |\n    <meta name=\"deck\" content=\"1\">\n\
             include-after-body:\n  text: |\n    <script>window.__deck=1</script>\n\
             ---\n\n## Slide\n";
@@ -1137,37 +1137,33 @@ fn special_chars_in_inline_code_are_escaped_not_interpreted() {
 
 #[test]
 fn reveal_format_detected_from_front_matter() {
-    // Nested block form: `format:` with a `<name>-revealjs` subkey.
-    let deck =
-        render_document("---\nformat:\n  custom-revealjs:\n    slide-number: true\n---\n\n## A\n");
-    assert_eq!(deck.format, DocFormat::Reveal);
     // Inline form.
-    let inline = render_document("---\nformat: revealjs\n---\n\n## A\n");
+    let inline = render_document("---\nformat: deck\n---\n\n## A\n");
     assert_eq!(inline.format, DocFormat::Reveal);
-    // A normal post is Html, even if a nested non-format key mentions revealjs.
+    // Nested block form: `format:` with a `<name>-deck` subkey.
+    let ext =
+        render_document("---\nformat:\n  custom-deck:\n    slide-number: true\n---\n\n## A\n");
+    assert_eq!(ext.format, DocFormat::Reveal);
+    // A normal post is Html, even if a nested non-format key mentions deck.
     let post = render_document("---\ntitle: Post\nformat: html\n---\n\nHi.\n");
     assert_eq!(post.format, DocFormat::Html);
-
-    // Native spelling: `format: deck` selects a deck, inline and in block form,
-    // and as a `<name>-deck` variant (the `revealjs` spellings above remain accepted
-    // as the deprecated Quarto vocabulary).
-    let native_inline = render_document("---\nformat: deck\n---\n\n## A\n");
-    assert_eq!(native_inline.format, DocFormat::Reveal);
-    let native_block =
-        render_document("---\nformat:\n  deck:\n    slide-number: true\n---\n\n## A\n");
-    assert_eq!(native_block.format, DocFormat::Reveal);
-    let native_ext =
-        render_document("---\nformat:\n  custom-deck:\n    slide-number: true\n---\n\n## A\n");
-    assert_eq!(native_ext.format, DocFormat::Reveal);
     // A theme filename that merely contains "deck" must not flip an HTML doc.
     let not_a_deck = render_document("---\nformat: html\ntheme: my-deck.css\n---\n\nHi.\n");
     assert_eq!(not_a_deck.format, DocFormat::Html);
 }
 
 #[test]
+fn revealjs_format_is_no_longer_a_deck() {
+    // `format: revealjs` was the deprecated Quarto spelling; after shedding it, a
+    // doc with that format is a normal HTML page, not a deck.
+    let doc = render_document("---\nformat: revealjs\n---\n\n## A Slide\n");
+    assert_eq!(doc.format, DocFormat::Html);
+}
+
+#[test]
 fn deck_splits_into_title_slide_and_one_section_per_heading() {
     let doc = render_document(
-        "---\ntitle: Deck\nsubtitle: A subtitle\nformat: revealjs\n---\n\n## First\n\nHello.\n\n## Second\n\nWorld.\n",
+        "---\ntitle: Deck\nsubtitle: A subtitle\nformat: deck\n---\n\n## First\n\nHello.\n\n## Second\n\nWorld.\n",
     );
     let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
     // Title slide from front matter.
@@ -1204,7 +1200,7 @@ fn deck_splits_into_title_slide_and_one_section_per_heading() {
 
 #[test]
 fn thematic_break_starts_a_new_slide_and_is_not_emitted() {
-    let doc = render_document("---\nformat: revealjs\n---\n\nOne.\n\n---\n\nTwo.\n");
+    let doc = render_document("---\nformat: deck\n---\n\nOne.\n\n---\n\nTwo.\n");
     let slides = slides_html(None, None, &doc.blocks);
     assert!(
         !slides.contains("<hr"),
@@ -1218,7 +1214,7 @@ fn pause_marker_drops_and_fragments_following_blocks() {
     // Quarto `. . .` is a pause: the marker itself is dropped, and every block
     // after it (until end of slide) becomes a `.fragment` step.
     let doc = render_document(
-        "---\nformat: revealjs\n---\n\n## S\n\nVisible now.\n\n. . .\n\nAfter the pause.\n",
+        "---\nformat: deck\n---\n\n## S\n\nVisible now.\n\n. . .\n\nAfter the pause.\n",
     );
     let slides = slides_html(None, None, &doc.blocks);
     assert!(
@@ -1238,8 +1234,7 @@ fn pause_marker_drops_and_fragments_following_blocks() {
 
 #[test]
 fn h1_wraps_following_h2s_in_a_vertical_stack() {
-    let doc =
-        render_document("---\nformat: revealjs\n---\n\n# Part One\n\nIntro.\n\n## A\n\n## B\n");
+    let doc = render_document("---\nformat: deck\n---\n\n# Part One\n\nIntro.\n\n## A\n\n## B\n");
     let slides = slides_html(None, None, &doc.blocks);
     // Outer wrapper section, then the h1 lead slide, then the two h2 children.
     assert!(
@@ -1265,10 +1260,7 @@ fn h1_wraps_following_h2s_in_a_vertical_stack() {
 
 #[test]
 fn deck_page_carries_native_scaffolding() {
-    let page = render_html_page(
-        "---\ntitle: D\nformat: revealjs\n---\n\n## Slide\n",
-        "fallback",
-    );
+    let page = render_html_page("---\ntitle: D\nformat: deck\n---\n\n## Slide\n", "fallback");
     assert!(page.contains("class=\"tali-deck\""));
     assert!(page.contains("class=\"tali-slides\""));
     // The deck engine is bundled (no CDN); it exposes the window.TaliesinDeck API.
@@ -1283,7 +1275,7 @@ fn deck_page_carries_native_scaffolding() {
 #[test]
 fn code_line_numbers_wraps_lines_for_stepping() {
     let page = render_html_page(
-        "---\nformat: revealjs\n---\n\n## S\n\n```{.python code-line-numbers=\"1|2\"}\na = 1\nb = 2\n```\n",
+        "---\nformat: deck\n---\n\n## S\n\n```{.python code-line-numbers=\"1|2\"}\na = 1\nb = 2\n```\n",
         "fallback",
     );
     assert!(
@@ -1298,7 +1290,7 @@ fn code_line_numbers_wraps_lines_for_stepping() {
     );
     // a code block without the attribute is left unwrapped.
     let plain = render_html_page(
-        "---\nformat: revealjs\n---\n\n## S\n\n```python\na = 1\n```\n",
+        "---\nformat: deck\n---\n\n## S\n\n```python\na = 1\n```\n",
         "fb",
     );
     // (check the attribute, not bare "tali-hl-ln" — the inlined CSS mentions `.tali-hl-ln`.)
@@ -1311,7 +1303,7 @@ fn code_line_numbers_wraps_lines_for_stepping() {
 #[test]
 fn heading_background_attr_moves_to_section() {
     let page = render_html_page(
-        "---\nformat: revealjs\n---\n\n## Title {background-color=\"#123456\"}\n\nbody\n",
+        "---\nformat: deck\n---\n\n## Title {background-color=\"#123456\"}\n\nbody\n",
         "fb",
     );
     // the background hoists onto the <section> and the `{...}` is stripped.
@@ -1332,7 +1324,7 @@ fn heading_background_attr_moves_to_section() {
 #[test]
 fn heading_auto_animate_marks_the_section() {
     let page = render_html_page(
-        "---\nformat: revealjs\n---\n\n## Title {auto-animate=true}\n\nbody\n",
+        "---\nformat: deck\n---\n\n## Title {auto-animate=true}\n\nbody\n",
         "fb",
     );
     assert!(
@@ -1353,7 +1345,7 @@ fn heading_auto_animate_marks_the_section() {
 #[test]
 fn magic_move_div_wraps_code_lines() {
     let page = render_html_page(
-        "---\nformat: revealjs\n---\n\n## S\n\n::: {.magic-move}\n```js\na = 1\n```\n\n```js\na = 2\nb = 3\n```\n:::\n",
+        "---\nformat: deck\n---\n\n## S\n\n::: {.magic-move}\n```js\na = 1\n```\n\n```js\na = 2\nb = 3\n```\n:::\n",
         "fb",
     );
     assert!(
@@ -1373,7 +1365,7 @@ fn deck_dedups_repeated_slide_ids() {
     // Repeated headings (common with auto-animate's shared titles) must get
     // distinct section ids, else `#/hash` + getElementById only find the first.
     let page = render_html_page(
-        "---\nformat: revealjs\n---\n\n## Step\n\na\n\n## Step\n\nb\n",
+        "---\nformat: deck\n---\n\n## Step\n\na\n\n## Step\n\nb\n",
         "fb",
     );
     assert!(page.contains("id=\"step\""), "first slide id missing");
@@ -1402,7 +1394,7 @@ fn headings_get_deduped_anchor_ids() {
 fn reveal_headings_have_no_id_to_avoid_duplicating_section_ids() {
     // In a deck the slug lives on the wrapping <section>, so the heading must
     // not also carry it (that would be a duplicate id in the DOM).
-    let doc = render_document("---\nformat: revealjs\n---\n\n## A Slide\n");
+    let doc = render_document("---\nformat: deck\n---\n\n## A Slide\n");
     let h = doc
         .blocks
         .iter()
@@ -1750,7 +1742,7 @@ fn theme_dark_default_drives_data_theme_resolver() {
 fn deck_theme_is_custom_and_head_gating() {
     // A plain deck (built-in theme) is managed: the deck theme head is emitted
     // and the deck follows OS/host/front-matter.
-    let plain = render_document("---\nformat: revealjs\n---\n\n# A\n");
+    let plain = render_document("---\nformat: deck\n---\n\n# A\n");
     assert!(!plain.theme_is_custom, "a plain deck has no custom theme");
     assert!(
         deck_theme_head(&plain.theme_default, plain.theme_is_custom).contains("taliDeckApplyTheme"),
@@ -1759,12 +1751,12 @@ fn deck_theme_is_custom_and_head_gating() {
     // A user `include-in-header` is not a theme extension, so it must not flip
     // the deck out of built-in light/dark management.
     let with_header = render_document(
-        "---\nformat: revealjs\ninclude-in-header:\n  text: \"<meta name=x>\"\n---\n\n# A\n",
+        "---\nformat: deck\ninclude-in-header:\n  text: \"<meta name=x>\"\n---\n\n# A\n",
     );
     assert!(!with_header.theme_is_custom);
     // An explicit `theme: dark` forces dark and is still managed.
     assert_eq!(
-        render_document("---\nformat: revealjs\ntheme: dark\n---\n\n# A\n").theme_default,
+        render_document("---\nformat: deck\ntheme: dark\n---\n\n# A\n").theme_default,
         "dark"
     );
     // A custom theme owns the colours -> no theme-management script.

@@ -1,4 +1,4 @@
-//! A `format: revealjs` document dropped loose into a website (not referenced by
+//! A `format: deck` document dropped loose into a website (not referenced by
 //! `{{< embed >}}`) would be silently flattened into a chrome-wrapped article with
 //! no slides. Discovery must warn, so the silent failure becomes an actionable hint.
 
@@ -22,7 +22,7 @@ fn loose_deck_in_site_is_warned_not_silently_flattened() {
     fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nHi.\n").unwrap();
     fs::write(
         dir.join("talk.tmd"),
-        "---\ntitle: My Talk\nformat: revealjs\n---\n\n## Slide one\n\n## Slide two\n",
+        "---\ntitle: My Talk\nformat: deck\n---\n\n## Slide one\n\n## Slide two\n",
     )
     .unwrap();
 
@@ -50,7 +50,7 @@ fn embedded_deck_in_site_is_not_warned() {
     .unwrap();
     fs::write(
         dir.join("talk.tmd"),
-        "---\ntitle: My Talk\nformat: revealjs\n---\n\n## Slide one\n",
+        "---\ntitle: My Talk\nformat: deck\n---\n\n## Slide one\n",
     )
     .unwrap();
 

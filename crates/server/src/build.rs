@@ -1486,7 +1486,7 @@ mod build_diag_tests {
     /// happens before any execution, so no kernel is needed here.
     #[test]
     fn bare_refuses_a_slide_deck() {
-        let src = "---\nformat: revealjs\n---\n\n# Slide one\n\n## Slide two\n";
+        let src = "---\nformat: deck\n---\n\n# Slide one\n\n## Slide two\n";
         let res = build_page_executing(
             src,
             std::path::Path::new("."),
