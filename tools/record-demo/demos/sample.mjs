@@ -5,7 +5,7 @@
 // the doc is restored afterward, so editing it in a step is safe.
 export default {
   name: "sample",
-  doc: "demos/sample.qmd",
+  doc: "demos/sample.tmd",
   viewport: { width: 1000, height: 720 },
   theme: "dark",
   // MP4 keeps the whole demo; the GIF is just the live-edit beat (small + focused).

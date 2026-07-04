@@ -3,7 +3,7 @@
 // in place, with a change-flash. `node record.mjs demos/live-edit.mjs`.
 export default {
   name: "live-edit",
-  doc: "demos/live-edit.qmd",
+  doc: "demos/live-edit.tmd",
   viewport: { width: 1100, height: 720 },
   theme: "dark",
   // MP4 keeps the whole demo; the GIF is just the live-edit beat (small + focused).

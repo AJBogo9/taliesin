@@ -18,7 +18,7 @@ node record.mjs demos/sample.mjs  # → out/sample.mp4 + out/sample.gif
   content renders for real.
 - **Encoding** is ffmpeg: an H.264 **MP4** (small, crisp) and a palette-optimized
   **GIF**.
-- It's **non-destructive**: a demo that edits its `.qmd` (to show the live-update
+- It's **non-destructive**: a demo that edits its `.tmd` (to show the live-update
   beat) restores the file afterward.
 
 Requirements: Node 18+, `ffmpeg`, Google Chrome, and a built `qmd-fast` binary
@@ -32,7 +32,7 @@ A demo is a small ES module under `demos/` (see [`demos/sample.mjs`](demos/sampl
 ```js
 export default {
   name: "sample",                          // output basename
-  doc: "demos/sample.qmd",                 // .qmd or a site dir, relative to this folder
+  doc: "demos/sample.tmd",                 // .tmd or a site dir, relative to this folder
   viewport: { width: 1000, height: 720 },
   theme: "dark",                           // "dark" | "light"
   gif: { fps: 14, width: 760, clip: [13.5, 17.5] }, // omit to skip the GIF

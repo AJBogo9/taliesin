@@ -3,7 +3,7 @@
 // Needs a Python kernel with numpy + matplotlib (QMD_FAST_PYTHON).
 export default {
   name: "live-code",
-  doc: "demos/live-code.qmd",
+  doc: "demos/live-code.tmd",
   viewport: { width: 1100, height: 720 },
   theme: "dark",
   gif: { fps: 15, width: 800, clip: [4.5, 10.5] },

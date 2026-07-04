@@ -65,7 +65,7 @@ fn edit_above_preserves_a_single_sourcepos_stateful_block() {
 fn warm_edit_payload_is_far_smaller_than_full_render() {
     let doc = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../corpus/posts/em-algorithm/index.qmd"
+        "/../../corpus/posts/em-algorithm/index.tmd"
     );
     let src = std::fs::read_to_string(doc).expect("read em-algorithm corpus doc");
     let base = Path::new(doc).parent().unwrap();

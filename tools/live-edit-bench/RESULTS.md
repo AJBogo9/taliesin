@@ -13,7 +13,7 @@ payload roughly 83x smaller than the full page a reload would re-fetch, and the 
 so its live DOM state survives. None of these are things Quarto's cold-pass-plus-full-
 reload model can match.
 
-## live-edit benchmark: `corpus/posts/em-algorithm/index.qmd`
+## live-edit benchmark: `corpus/posts/em-algorithm/index.tmd`
 
 | metric | value |
 |---|---|

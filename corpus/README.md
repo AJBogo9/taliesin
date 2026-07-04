@@ -9,30 +9,30 @@ author's own projects; provenance is below.
 | Path | Category | Exercises | Source |
 |---|---|---|---|
 | `native-tmd.tmd` | Native source extension | authored in `.tmd` (Taliesin's native extension); pins that the walker/`check`/link-rewrite recognize `.tmd` and render it identically to `.qmd` | (purpose-built) |
-| `posts/born-machines.qmd` | Prose blog post | pure prose (no math/code) — the simplest Phase 1 target | `personal/blog` |
+| `posts/born-machines.tmd` | Prose blog post | pure prose (no math/code) — the simplest Phase 1 target | `personal/blog` |
 | `posts/em-algorithm/` | Math blog post | heavy KaTeX (~100 math spans), 6 code cells, `{js}` cells | `personal/tech-blog` |
 | `posts/pca-geometry/` | Live-demo blog post | `{js}` cells + Three.js + math + code | `personal/tech-blog` |
 | `posts/fourier-transform/` | Interactive blog post | `ojs_define` Python→`{js}` bridge, raw-HTML (`{=html}`) audio players, labelled equations (`@eq-`) | `personal/tech-blog` |
 | `posts/cite-coverage/` | Citation/bibliography fixes | `.bib` rendering edge cases: LaTeX accents → Unicode (Müller/Schölkopf/Erdős/Rényi), brace-protected corporate author, `@string` macro substitution, `@incollection` `booktitle`+`pages`, and a manual `# References` heading suppressing the auto one | (purpose-built) |
-| `deck.qmd` | Slide deck (`format: deck`) | slide structure on the native engine (headings→slides, fragments, speaker notes, code) | (purpose-built) |
+| `deck.tmd` | Slide deck (`format: deck`) | slide structure on the native engine (headings→slides, fragments, speaker notes, code) | (purpose-built) |
 | `bayesian-website/` | Single-page website | one page assembled from `subsections/` includes, cross-refs, bib + CSL, TOC | `personal/bayesian-fatality-analysis` |
-| `tech-blog/` | Multi-page website | `_site.yml` project config, many pages + posts, navbar/footer, prev/next, `.qmd`→`.html` cross-page links | `personal/tech-blog` |
+| `tech-blog/` | Multi-page website | `_site.yml` project config, many pages + posts, navbar/footer, prev/next, `.tmd`→`.html` cross-page links | `personal/tech-blog` |
 | `demo-book/` | Multi-chapter book | flat native `chapters:` (with a `part:` and `{ file:, text: }` label overrides), left chapter sidebar, chapter + section numbering, prev/next-chapter nav | (purpose-built for the book format) |
-| `narrate/walkthrough.qmd` | Narrated code walkthrough | `::: {.code-walkthrough}` sticky code panel + scroll-driven line-range focus (`.step lines=`) | (purpose-built) |
-| `layout/panels.qmd` | Tabsets + margin notes | `::: {.panel-tabset}` (headings → ARIA tabs) + `::: {.column-margin}`; `@fig-` cross-ref resolves through a tab | (purpose-built) |
-| `callouts/kinds.qmd` | Callout contract | all 5 callout kinds with bundled icons + `appearance=` (simple/minimal) + `icon="false"` | (purpose-built) |
-| `media/gallery.qmd` | Image lightbox / gallery | `layout-ncol` figure grid; click-to-zoom + ←/→ gallery navigation in the lightbox | (purpose-built) |
-| `reactive/graph.qmd` | `{js}` reactive graph | `//| viewof`/`//| name`/`//| input` chains; a slider re-runs only its transitive-downstream closure | (purpose-built) |
-| `reactive/inputs.qmd` | `{{< input >}}` controls | declarative reactive controls (slider/number/checkbox/text/select) feeding `{js}` cells through the graph (incl. a transitive chain) | (purpose-built) |
-| `reactive/js-error.qmd` | `{js}` cell error state | a throwing `{js}` cell surfaces the `.qmd-js-error` box (themed light + dark); pins the runtime-error state for browser verification | (purpose-built) |
-| `refs/theorems.qmd` | Theorem environments | all 8 kinds across the 3 amsthm styles, `title=`, a proof with auto-QED, per-kind continuous numbering, and `@thm-`/`@def-`/`@lem-` cross-refs resolving | (purpose-built) |
-| `refs/theorems-shared.qmd` | Shared theorem counters | `theorems: shared: [...]` makes theorem/lemma/corollary/proposition draw one sequence (Theorem 1, Lemma 2, Corollary 3) while `definition` counts separately; cross-refs resolve to the shared numbers | (purpose-built) |
-| `refs/theorems-unnumbered.qmd` | Conditional theorem numbering | `theorems: numbered: unless-unique` leaves a lone `definition` unnumbered while numbering the two recurring `theorem`s (1, 2) | (purpose-built) |
-| `refs/theorems-interactive.qmd` | Web-native theorem affordances | hover-preview of a `@thm-` ref (link-preview card), a collapsible `::: {.proof collapse="true"}` (native `<details>`), and a deep-link copy-anchor on the theorem box | (purpose-built) |
-| `explorable/scrolly.qmd` | Scrollytelling | `::: {.scrolly}` sticky stage + `.step` scenes; the active step drives a reactive value a `{js}` cell reads (`//| input:`) | (purpose-built) |
+| `narrate/walkthrough.tmd` | Narrated code walkthrough | `::: {.code-walkthrough}` sticky code panel + scroll-driven line-range focus (`.step lines=`) | (purpose-built) |
+| `layout/panels.tmd` | Tabsets + margin notes | `::: {.panel-tabset}` (headings → ARIA tabs) + `::: {.column-margin}`; `@fig-` cross-ref resolves through a tab | (purpose-built) |
+| `callouts/kinds.tmd` | Callout contract | all 5 callout kinds with bundled icons + `appearance=` (simple/minimal) + `icon="false"` | (purpose-built) |
+| `media/gallery.tmd` | Image lightbox / gallery | `layout-ncol` figure grid; click-to-zoom + ←/→ gallery navigation in the lightbox | (purpose-built) |
+| `reactive/graph.tmd` | `{js}` reactive graph | `//| viewof`/`//| name`/`//| input` chains; a slider re-runs only its transitive-downstream closure | (purpose-built) |
+| `reactive/inputs.tmd` | `{{< input >}}` controls | declarative reactive controls (slider/number/checkbox/text/select) feeding `{js}` cells through the graph (incl. a transitive chain) | (purpose-built) |
+| `reactive/js-error.tmd` | `{js}` cell error state | a throwing `{js}` cell surfaces the `.qmd-js-error` box (themed light + dark); pins the runtime-error state for browser verification | (purpose-built) |
+| `refs/theorems.tmd` | Theorem environments | all 8 kinds across the 3 amsthm styles, `title=`, a proof with auto-QED, per-kind continuous numbering, and `@thm-`/`@def-`/`@lem-` cross-refs resolving | (purpose-built) |
+| `refs/theorems-shared.tmd` | Shared theorem counters | `theorems: shared: [...]` makes theorem/lemma/corollary/proposition draw one sequence (Theorem 1, Lemma 2, Corollary 3) while `definition` counts separately; cross-refs resolve to the shared numbers | (purpose-built) |
+| `refs/theorems-unnumbered.tmd` | Conditional theorem numbering | `theorems: numbered: unless-unique` leaves a lone `definition` unnumbered while numbering the two recurring `theorem`s (1, 2) | (purpose-built) |
+| `refs/theorems-interactive.tmd` | Web-native theorem affordances | hover-preview of a `@thm-` ref (link-preview card), a collapsible `::: {.proof collapse="true"}` (native `<details>`), and a deep-link copy-anchor on the theorem box | (purpose-built) |
+| `explorable/scrolly.tmd` | Scrollytelling | `::: {.scrolly}` sticky stage + `.step` scenes; the active step drives a reactive value a `{js}` cell reads (`//| input:`) | (purpose-built) |
 | `reader/` | Reader experience | read-only reader enhancers: display prefs (theme/sepia/size/width/spacing), reading progress + resume, hover cross-ref cards, anchor copy-links, focus mode, and a read-state right-rail TOC | (purpose-built) |
-| `diagnostics/` | Validator coverage | docs that deliberately trip qmd-fast's schema validators (`typos.qmd`) + the opt-in prose linter (`prose.qmd`: doubled/weasel/banned, markdown-aware) + the `check`-superset static lints (`check-superset.qmd`: duplicate `{#id}`, broken in-page anchor, missing image, citation with no `bibliography:`) | (purpose-built) |
-| `bare-draft.qmd` | Bare build (`--bare`) | prose + inline math + a server-highlighted code block + an image + a `{js}` cell + a Mermaid block; pins the `build --bare` contract (zero `<script>`/zero CDN, CSS-only theme, math kept, `{js}` dropped, Mermaid as source) and the Phase-1 enhancer gating | (purpose-built) |
+| `diagnostics/` | Validator coverage | docs that deliberately trip qmd-fast's schema validators (`typos.tmd`) + the opt-in prose linter (`prose.tmd`: doubled/weasel/banned, markdown-aware) + the `check`-superset static lints (`check-superset.tmd`: duplicate `{#id}`, broken in-page anchor, missing image, citation with no `bibliography:`) | (purpose-built) |
+| `bare-draft.tmd` | Bare build (`--bare`) | prose + inline math + a server-highlighted code block + an image + a `{js}` cell + a Mermaid block; pins the `build --bare` contract (zero `<script>`/zero CDN, CSS-only theme, math kept, `{js}` dropped, Mermaid as source) and the Phase-1 enhancer gating | (purpose-built) |
 
 `tech-blog/` is the multi-page spec (the destination in `todo.md` §4). It is the
 author's real blog with the deploy caches stripped (`.venv`, `_freeze`, `_site`,
@@ -42,12 +42,12 @@ live with cross-page navigation and per-page hot reload. Its `listing:` blocks
 (blog index, projects index, homepage recent-posts) render post cards, and the
 homepage's `about:` block renders a profile header (see `todo.md` §4).
 
-`posts/pca-geometry/index.qmd` pulls in `_includes/three-scene.qmd` via
-`{{< include ../../_includes/three-scene.qmd >}}`; the `posts/` + `_includes/`
+`posts/pca-geometry/index.tmd` pulls in `_includes/three-scene.tmd` via
+`{{< include ../../_includes/three-scene.tmd >}}`; the `posts/` + `_includes/`
 layout is mirrored from the source project so that path resolves verbatim.
 
 `diagnostics/` holds docs that deliberately trip qmd-fast's schema validators
-(`typos.qmd`: a misspelled key in each surface, front-matter top-level + nested,
+(`typos.tmd`: a misspelled key in each surface, front-matter top-level + nested,
 callout kind, cell option). It is pinned by `crates/core/tests/nested_validation.rs`,
 which asserts the exact click-to-source warnings, and is exempted from the corpus
 "clean vocabulary" guards.
@@ -58,7 +58,7 @@ which asserts the exact click-to-source warnings, and is exempted from the corpu
 load-bearing invariants (each block has an id + valid sourcepos, ids unique,
 blocks in document order, includes resolved, decks split into slides, the book
 gets a TOC + numbered figures, and the `tech-blog/` site discovers its pages and
-renders them with chrome + `.qmd`→`.html` link rewriting). These are the
+renders them with chrome + `.tmd`→`.html` link rewriting). These are the
 project's regression tests, so the corpus must stay.
 
 Structural comparison against **Quarto** (rendering the same doc with both and
