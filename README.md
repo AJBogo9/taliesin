@@ -1,25 +1,23 @@
 # Taliesin
 
-> **Taliesin** is the new name for **qmd-fast**. The native source extension is
-> `.tmd`, but `.qmd` is still fully accepted, and the CLI is `taliesin` (with
-> `tali` and the legacy `qmd-fast` as aliases). Existing projects keep working
-> unchanged. (The repository, package history, and some deep links still carry
-> the `qmd-fast` name during the transition.)
+> **Taliesin** is the new name for **qmd-fast**. The native (and only) source
+> extension is `.tmd`; the CLI is `taliesin` (with `tali` and the legacy
+> `qmd-fast` as command aliases). (The repository and package history still
+> carry the `qmd-fast` name during the transition.)
 
-A single-purpose, performance-oriented tool for authoring HTML from `.tmd` / `.qmd`
-files: blog posts, slide decks, books, and **multi-page websites**. A
-focused replacement for Quarto for one author's workflow, built around three
-goals Quarto's architecture can't deliver:
+A single-purpose, performance-oriented tool for authoring HTML from `.tmd`
+files: blog posts, slide decks, books, and **multi-page websites**. Built for
+one author's workflow around three goals:
 
-1. **Click-to-source.** Alt-click (Option-click on Mac) a rendered element, jump to its `.qmd` source.
+1. **Click-to-source.** Alt-click (Option-click on Mac) a rendered element, jump to its `.tmd` source.
 2. **Block-level incremental updates.** Saving a change swaps only the affected
    block(s) in place, preserving scroll position and the runtime state of live
    components (Three.js, `{js}` cells).
 3. **No per-edit startup cost.** A long-running Rust server with a warm Jupyter kernel.
 
 Output is **HTML only**. The project's own manual is two sibling books authored in
-`.qmd`: the [User Guide](docs/guide/index.qmd) (how to use it) and the
-[Internals](docs/internals/index.qmd) book (the architecture, websocket protocol,
+`.tmd`: the [User Guide](docs/guide/index.tmd) (how to use it) and the
+[Internals](docs/internals/index.tmd) book (the architecture, websocket protocol,
 and block model).
 
 ## Architecture (at a glance)
@@ -75,7 +73,7 @@ language runs against its own warm kernel:
 **Quick start.** Scaffold a starter site and preview it:
 
 ```sh
-qmd-fast init my-site        # writes my-site/_site.yml + my-site/index.qmd
+qmd-fast init my-site        # writes my-site/_site.yml + my-site/index.tmd
 qmd-fast preview my-site     # live preview at http://localhost:4321
 ```
 
@@ -83,23 +81,23 @@ qmd-fast preview my-site     # live preview at http://localhost:4321
 
 ## Usage
 
-`qmd-fast preview` runs a long-lived dev server: it watches the `.qmd` (and its
+`qmd-fast preview` runs a long-lived dev server: it watches the `.tmd` (and its
 includes/bibliography), and on each save re-renders, **executes changed code cells
 against a warm Jupyter kernel** (re-running only the earliest changed cell and
 everything downstream), diffs against the previous block list, and pushes only the
 changed blocks over a websocket. Unchanged blocks are never touched, so scroll
 position and the runtime state of live blocks (Three.js, `{js}` cells) survive edits. Open
-the preview in a browser; Alt-clicking a block jumps to its `.qmd` source.
+the preview in a browser; Alt-clicking a block jumps to its `.tmd` source.
 
 Point it at a **single file** or a **directory** (a multi-page site project):
 
 ```sh
-cargo run -p taliesin-server -- preview corpus/posts/born-machines.qmd  # one doc
+cargo run -p taliesin-server -- preview corpus/posts/born-machines.tmd  # one doc
 cargo run -p taliesin-server -- preview corpus/tech-blog                # a whole site
 cargo run -p taliesin-server -- preview corpus/tech-blog --host         # + LAN URL & QR
 cargo run -p taliesin-server -- build   corpus/tech-blog                # static _site/
-cargo run -p taliesin-server -- render  corpus/posts/born-machines.qmd > out.html
-cargo run -p taliesin-server -- blocks  corpus/posts/born-machines.qmd
+cargo run -p taliesin-server -- render  corpus/posts/born-machines.tmd > out.html
+cargo run -p taliesin-server -- blocks  corpus/posts/born-machines.tmd
 ```
 
 `--host` exposes the preview on your LAN with a phone-scannable QR code, gated by a
@@ -110,7 +108,7 @@ Code execution needs a Python with `ipykernel`; point the server at it with the
 kernel is available. Outputs (stdout/stderr, results, images, HTML, errors)
 become their own blocks keyed to the cell, so they swap in place.
 
-The render pipeline underneath: the core parses `.qmd` with comrak (sourcepos),
+The render pipeline underneath: the core parses `.tmd` with comrak (sourcepos),
 splits the document into top-level blocks with content-hash ids, and emits HTML
 with `data-block-id` + `data-sourcepos` on every block.
 
@@ -136,7 +134,7 @@ with `data-block-id` + `data-sourcepos` on every block.
   (light/dark + custom), and a responsive reading layout (mobile TOC pull-up sheet,
   print stylesheet).
 - **Multi-page sites** (`preview`/`build` a directory): a `_site.yml` project with
-  a redesigned navbar/footer + book chapter prev/next, `.qmd`→`.html` link rewriting,
+  a redesigned navbar/footer + book chapter prev/next, `.tmd`→`.html` link rewriting,
   `listing:` post-card indexes, and `about:` profile pages. Live preview navigates
   between pages and hot-reloads the edited one.
 - **Live diagnostics** in the preview's dev panel: broken includes, missing kernels,
@@ -145,5 +143,5 @@ with `data-block-id` + `data-sourcepos` on every block.
 
 The native deck engine, mermaid, and the `{js}` cell enhancer are the only
 client-side pieces; everything else (parse, render, highlight, math) happens in Rust.
-See the [User Guide](docs/guide/index.qmd) and [Internals](docs/internals/index.qmd)
-books, authored in `.qmd` and built with qmd-fast itself.
+See the [User Guide](docs/guide/index.tmd) and [Internals](docs/internals/index.tmd)
+books, authored in `.tmd` and built with Taliesin itself.
