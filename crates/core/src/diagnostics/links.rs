@@ -48,7 +48,7 @@ fn link_target_exists(base: &Path, path: &str) -> bool {
         return true;
     }
     // `x.html` → its source (the built page is produced from it), tried in every
-    // accepted spelling (`x.tmd`, `x.qmd`, …).
+    // accepted spelling (`x.tmd`).
     if let Some(stem) = path.strip_suffix(".html")
         && crate::ext::ACCEPTED_SOURCE_EXTS
             .iter()
@@ -64,7 +64,7 @@ fn link_target_exists(base: &Path, path: &str) -> bool {
         || base.join(format!("{dir}/index.html")).is_file()
 }
 
-/// Manual relative links (`[text](other.qmd)`, `[text](sub/page.html#x)`) whose local
+/// Manual relative links (`[text](other.tmd)`, `[text](sub/page.html#x)`) whose local
 /// **target file** does not exist under the doc base dir — a broken cross-file jump that
 /// ships silently. External (`http(s)://`, `mailto:`, …) and absolute (`/…`) links are
 /// out of scope (external links are never fetched — `check` stays offline + deterministic);

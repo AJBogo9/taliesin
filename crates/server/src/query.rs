@@ -15,7 +15,7 @@ use std::process::ExitCode;
 
 pub(crate) fn cmd_render(path: Option<&String>) -> ExitCode {
     let Some(path) = path else {
-        eprintln!("usage: taliesin render <file.qmd>");
+        eprintln!("usage: taliesin render <file.tmd>");
         return ExitCode::FAILURE;
     };
     match std::fs::read_to_string(path) {
@@ -71,7 +71,7 @@ pub(crate) fn cmd_render(path: Option<&String>) -> ExitCode {
 
 pub(crate) fn cmd_blocks(path: Option<&String>) -> ExitCode {
     let Some(path) = path else {
-        eprintln!("usage: taliesin blocks <file.qmd>");
+        eprintln!("usage: taliesin blocks <file.tmd>");
         return ExitCode::FAILURE;
     };
     match std::fs::read_to_string(path) {

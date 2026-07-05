@@ -161,7 +161,7 @@ pub(super) fn join_rel_in_root(from_rel: &str, target: &str) -> Option<String> {
     Some(parts.join("/"))
 }
 
-/// `.html`→source-extension candidates on a url path (`x.html` → `x.tmd`, `x.qmd`, one per
+/// `.html`→source-extension candidates on a url path (`x.html` → `x.tmd`, one per
 /// [`crate::ext::ACCEPTED_SOURCE_EXTS`]), so the checker can test whether a link target is
 /// backed by a source file on disk, in any accepted spelling. A non-`.html` path yields no
 /// candidates (there is nothing to probe).

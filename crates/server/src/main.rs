@@ -1,9 +1,9 @@
 //! taliesin — dev server & CLI entry point.
 //!
-//!   - `taliesin preview <file.qmd> [port]` live preview server (aliases: dev, serve)
-//!   - `taliesin build  <file.qmd> [out]`   render a self-contained HTML file
-//!   - `taliesin render <file.qmd>`         one-shot full HTML page to stdout
-//!   - `taliesin blocks <file.qmd>`         list block ids + sourcepos (debugging)
+//!   - `taliesin preview <file.tmd> [port]` live preview server (aliases: dev, serve)
+//!   - `taliesin build  <file.tmd> [out]`   render a self-contained HTML file
+//!   - `taliesin render <file.tmd>`         one-shot full HTML page to stdout
+//!   - `taliesin blocks <file.tmd>`         list block ids + sourcepos (debugging)
 
 mod build;
 mod build_budget;
@@ -115,17 +115,17 @@ fn usage() {
         taliesin_core::VERSION,
         env!("QMD_FAST_GIT_SHA")
     );
-    println!("A fast .qmd -> HTML renderer and live preview server.");
+    println!("A fast .tmd -> HTML renderer and live preview server.");
     println!("Docs: https://github.com/AJBogo9/taliesin");
     println!();
     println!("USAGE:");
-    println!("  taliesin <command> <file.qmd | dir> [args]");
-    println!("  (a directory argument is a multi-page SITE project: an _site.yml + .qmd pages)");
+    println!("  taliesin <command> <file.tmd | dir> [args]");
+    println!("  (a directory argument is a multi-page SITE project: an _site.yml + .tmd pages)");
     println!();
     println!("COMMANDS:");
     println!("  init   [dir]               scaffold a starter site you can preview right away");
-    println!("                             (writes _site.yml + index.qmd; default: current dir)");
-    println!("  preview <file.qmd | dir> [port] [--host] [--open] [--no-exec]");
+    println!("                             (writes _site.yml + index.tmd; default: current dir)");
+    println!("  preview <file.tmd | dir> [port] [--host] [--open] [--no-exec]");
     println!("                             live preview server (aliases: dev, serve;");
     println!("                             a dir previews the whole SITE with nav + hot reload;");
     println!("                             default port 4321, auto-picks a free one;");
@@ -133,7 +133,7 @@ fn usage() {
     println!("                             to open on a phone; --open launches a browser;");
     println!("                             --no-exec previews untrusted docs as source,");
     println!("                             never running their code cells)");
-    println!("  build  <file.qmd | dir> [out.html] [--out <dir>] [--strict] [--bare]");
+    println!("  build  <file.tmd | dir> [out.html] [--out <dir>] [--strict] [--bare]");
     println!("                             render a self-contained HTML file (a dir builds the");
     println!("                             whole SITE to _site/); default <name>.html beside");
     println!("                             the source; --out <dir> writes a portable folder;");
@@ -141,9 +141,9 @@ fn usage() {
     println!(
         "                             warning; --bare emits zero-JS, CSS-only single-doc HTML"
     );
-    println!("  render <file.qmd>          render a full HTML page to stdout");
+    println!("  render <file.tmd>          render a full HTML page to stdout");
     println!("                             (static; does NOT execute code cells)");
-    println!("  blocks <file.qmd>          list block ids + sourcepos (debug)");
+    println!("  blocks <file.tmd>          list block ids + sourcepos (debug)");
     println!(
         "  schema [--out <dir>]       emit JSON Schemas for _site.yml + front matter (editor autocomplete)"
     );
@@ -167,7 +167,7 @@ fn usage() {
 fn subcommand_help(cmd: &str) -> Option<&'static str> {
     let text = match cmd {
         "preview" | "dev" | "serve" => {
-            "taliesin preview <file.qmd | dir> [port] [--host] [--open] [--no-exec]\n\
+            "taliesin preview <file.tmd | dir> [port] [--host] [--open] [--no-exec]\n\
              \n\
              Live preview server (aliases: dev, serve). A file previews one document; a\n\
              directory previews the whole SITE with cross-page nav + per-page hot reload.\n\
@@ -179,10 +179,10 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 --no-exec   render code cells as source, never executing them\n\
              \n\
              Example:\n\
-             \x20 taliesin preview index.qmd --open\n"
+             \x20 taliesin preview index.tmd --open\n"
         }
         "build" => {
-            "taliesin build <file.qmd | dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>]\n\
+            "taliesin build <file.tmd | dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>]\n\
              \n\
              Render a self-contained HTML file. A directory builds the whole SITE to\n\
              _site/. Default output is <name>.html beside the source.\n\
@@ -195,11 +195,11 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20              --jobs 1 forces sequential; --jobs 0 same as auto)\n\
              \n\
              Example:\n\
-             \x20 taliesin build post.qmd --strict\n\
+             \x20 taliesin build post.tmd --strict\n\
              \x20 taliesin build . --jobs 4\n"
         }
         "check" => {
-            "taliesin check <file.qmd | dir> [--format human|json]\n\
+            "taliesin check <file.tmd | dir> [--format human|json]\n\
              \n\
              Render in memory and list every located diagnostic; exits non-zero if any\n\
              are found (a CI / pre-publish gate). Does NOT execute code cells.\n\
@@ -212,14 +212,14 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin check . --format json | jq\n"
         }
         "render" => {
-            "taliesin render <file.qmd>\n\
+            "taliesin render <file.tmd>\n\
              \n\
              Render a full HTML page to stdout (one-shot). Static: it does NOT execute\n\
              code cells, so kernel cells emit as source with empty outputs. Use build or\n\
              preview to run them.\n\
              \n\
              Example:\n\
-             \x20 taliesin render post.qmd > post.html\n"
+             \x20 taliesin render post.tmd > post.html\n"
         }
         "schema" => {
             "taliesin schema [--out <dir>]\n\
@@ -232,19 +232,19 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin schema --out .schemas\n"
         }
         "blocks" => {
-            "taliesin blocks <file.qmd>\n\
+            "taliesin blocks <file.tmd>\n\
              \n\
              List the document's block ids + sourcepos + source file + a short preview\n\
              (a debugging aid for the block model). Does NOT execute code cells.\n\
              \n\
              Example:\n\
-             \x20 taliesin blocks post.qmd\n"
+             \x20 taliesin blocks post.tmd\n"
         }
         "init" => {
             "taliesin init [dir]\n\
              \n\
              Scaffold a minimal previewable site into dir (default the current\n\
-             directory): writes _site.yml + index.qmd, then prints the preview hint.\n\
+             directory): writes _site.yml + index.tmd, then prints the preview hint.\n\
              Refuses to overwrite existing files.\n\
              \n\
              Example:\n\

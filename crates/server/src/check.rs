@@ -89,7 +89,7 @@ fn collect_file_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
 fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
     let site = taliesin_core::Site::discover(root);
     if site.pages.is_empty() {
-        return Err(format!("no .qmd pages found under {}", root.display()));
+        return Err(format!("no .tmd pages found under {}", root.display()));
     }
     let mut out: Vec<Diagnostic> = site
         .warnings
@@ -228,7 +228,7 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
         }
     }
     let Some(path) = path else {
-        eprintln!("usage: taliesin check <file.qmd|dir> [--format human|json]");
+        eprintln!("usage: taliesin check <file.tmd|dir> [--format human|json]");
         return ExitCode::FAILURE;
     };
     if format != "human" && format != "json" {

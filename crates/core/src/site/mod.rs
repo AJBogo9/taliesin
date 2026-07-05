@@ -1178,9 +1178,8 @@ mod tests {
 
     #[test]
     fn tmd_pages_are_discovered_with_html_urls() {
-        // `.tmd` is the native source extension; the site walker must discover a
-        // `.tmd`-authored project exactly as it always has a `.qmd` one, and each
-        // page's built URL is still `.html`.
+        // `.tmd` is the native (and only) source extension; the site walker must discover
+        // every `.tmd` page in a project, and each page's built URL is still `.html`.
         let root = write_site(
             "tmd-native",
             &[

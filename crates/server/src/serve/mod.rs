@@ -913,8 +913,8 @@ fn relevant_event(ev: &notify::Event) -> bool {
 /// cache writes don't kick a redundant rebuild on every run.
 pub(crate) fn relevant_path(p: &Path) -> bool {
     const EXTS: &[&str] = &[
-        "tmd", "qmd", "md", "bib", "csl", "css", "scss", "yml", "yaml", "json", "js", "html",
-        "svg", "png", "jpg", "jpeg", "webp", "gif",
+        "tmd", "md", "bib", "csl", "css", "scss", "yml", "yaml", "json", "js", "html", "svg",
+        "png", "jpg", "jpeg", "webp", "gif",
     ];
     const SKIP_DIRS: &[&str] = &[
         "_site",
@@ -1125,13 +1125,11 @@ mod protocol_contract {
 
     #[test]
     fn relevant_path_watches_tmd_edits() {
-        // `.tmd` is the native source extension; a watcher blind to it would silently
-        // never rebuild on a `.tmd` edit — the core edit loop would be broken.
+        // `.tmd` is the native (and only) source extension; a watcher blind to it would
+        // silently never rebuild on a `.tmd` edit — the core edit loop would be broken.
         assert!(relevant_path(Path::new("/tmp/doc.tmd")));
-        assert!(
-            relevant_path(Path::new("/tmp/doc.qmd")),
-            "still dual-accept"
-        );
+        // `.qmd` is no longer a source extension: a `.qmd` edit must not trigger a rebuild.
+        assert!(!relevant_path(Path::new("/tmp/doc.qmd")));
         assert!(!relevant_path(Path::new("/tmp/doc.txt")));
     }
 

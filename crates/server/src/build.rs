@@ -107,7 +107,7 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
     // (the `--jobs` failure was prefixed `error: `; the missing-path one was the usage line).
     let jobs = jobs_result.map_err(|m| format!("error: {m}"))?;
     let path = positionals.first().copied().ok_or_else(|| {
-        "usage: taliesin build <file.qmd|dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>]"
+        "usage: taliesin build <file.tmd|dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>]"
             .to_string()
     })?;
     Ok(BuildArgs {
@@ -120,7 +120,7 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
     })
 }
 
-/// `build <file.qmd> [out.html]`: write a self-contained HTML page to a file
+/// `build <file.tmd> [out.html]`: write a self-contained HTML page to a file
 /// (default `<stem>.html` beside the source). With `--out <dir>` it instead
 /// writes `<dir>/index.html` and copies every referenced local asset alongside
 /// (paths preserved), so the directory is deployable as-is. `render` is stdout.
@@ -805,7 +805,7 @@ async fn build_site_async(
         log::warn(w);
     }
     if site.pages.is_empty() {
-        log::error(&format!("no .qmd pages found under {}", root.display()));
+        log::error(&format!("no .tmd pages found under {}", root.display()));
         return ExitCode::FAILURE;
     }
     // Build-only render-harvest: give cross-page `@fig-`/`@eq-`/`@thm-` refs their number
@@ -1049,16 +1049,16 @@ async fn build_site_async(
 
 /// Source-only file extensions that are build *inputs* / prose / stylesheet sources,
 /// never referenced by the rendered HTML, so they are not mirrored into the deploy:
-/// `.tmd`/`.qmd` (rendered separately), `.bib` (citations resolved server-side), `.Rproj`
+/// `.tmd` (rendered separately), `.bib` (citations resolved server-side), `.Rproj`
 /// (an editor project file), `.md` (prose/planning the renderer never serves), and `.scss`/
 /// `.sass` (stylesheet sources — output references the compiled `.css`). Keeping these
 /// out of `_site/` is publish hygiene: a stray `notes.md` or `theme.scss` in the source
 /// tree never leaks onto the live site. (To deploy a private *binary* asset selectively,
 /// the `_`/`.`-prefix convention still applies; these are excluded by kind.)
-const SKIP_EXT: &[&str] = &["tmd", "qmd", "bib", "Rproj", "md", "scss", "sass"];
+const SKIP_EXT: &[&str] = &["tmd", "bib", "Rproj", "md", "scss", "sass"];
 
 /// Copy every non-source file under `root` into `out`, mirroring the directory tree.
-/// Skips: source-only extensions ([`SKIP_EXT`]: `.tmd`/`.qmd`/`.bib`/`.Rproj`/`.md`/`.scss`/
+/// Skips: source-only extensions ([`SKIP_EXT`]: `.tmd`/`.bib`/`.Rproj`/`.md`/`.scss`/
 /// `.sass`), `_`-prefixed and dot entries (`_site.yml`, `_includes`, `_site`, `.RData`, …),
 /// build-tool cache/artifact dirs (`*_cache/`, `*_files/` — knitr/RMarkdown/Quarto
 /// residue), and the output dir itself.
