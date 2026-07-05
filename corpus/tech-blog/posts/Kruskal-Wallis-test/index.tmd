@@ -95,7 +95,7 @@ plt.show()
 
 ```{python}
 #| echo: false
-ojs_define(
+define(
     pain_groups=[pain_a.tolist(), pain_b.tolist(), pain_c.tolist()],
     pain_labels=labels,
 )

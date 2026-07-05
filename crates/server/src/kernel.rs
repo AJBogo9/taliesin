@@ -42,8 +42,7 @@ fn cell_timeout() -> Option<Duration> {
 /// Python `define(**kwargs)`, run once at kernel start. Serializes each
 /// keyword (with a pandas convenience for DataFrame/Series) and emits a
 /// `<script type="qmd-define">` HTML output the native `{js}` runtime consumes
-/// (the Python -> JS bridge). `define` is the native author API; `ojs_define`
-/// stays bound as the deprecated-but-accepted Quarto spelling of the same call.
+/// (the Python -> JS bridge). `define` is the native and only author API.
 const OJS_DEFINE_PREAMBLE: &str = r#"
 def define(**kwargs):
     import json
@@ -65,7 +64,6 @@ def define(**kwargs):
     v = dict(contents=list(dict(name=key, value=convert(value)) for (key, value) in kwargs.items()))
     display(HTML('<script type="qmd-define">' + json.dumps(v) + '</script>'), metadata=dict(qmd_define=True))
 globals()["define"] = define
-globals()["ojs_define"] = define
 "#;
 
 /// Make inline matplotlib figures follow the page theme **without tainting the

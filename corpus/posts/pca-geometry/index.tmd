@@ -112,7 +112,7 @@ the covariance matrix. The shape of the correlation stays unchanged because stan
 #| echo: false
 
 X = (X_raw - X_raw.mean(axis=0)) / X_raw.std(axis=0)
-ojs_define(std_pts = X.tolist())
+define(std_pts = X.tolist())
 ```
 
 ```{js}
@@ -164,7 +164,7 @@ is basically the same that was used to generate the synthetic data. You can see 
 Sigma = np.cov(X.T)
 
 _eigs_cov, _evecs_cov = np.linalg.eigh(Sigma)
-ojs_define(
+define(
     sigma_eigs=_eigs_cov.tolist(),
     sigma_evecs=_evecs_cov.T.tolist(),
 )
@@ -240,7 +240,7 @@ print(f"PC3: {np.round(eigenvectors[:, 2], 3)}")
 ```{python}
 #| echo: false
 # Pass everything to {js} for the 3-D visual
-ojs_define(
+define(
     pts=X.tolist(),
     pcs=eigenvectors.T.tolist(),  # pcs[0] = PC1 vector, etc.
     evr=explained_var.tolist(),

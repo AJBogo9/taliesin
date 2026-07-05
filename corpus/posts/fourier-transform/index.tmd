@@ -48,7 +48,7 @@ freqs = [3, 7, 12]
 amps = [1.0, 0.7, 0.4]
 x = sum(a * np.cos(2 * np.pi * f * n / N) for f, a in zip(freqs, amps))
 
-ojs_define(winding_N=N, winding_freqs=freqs, winding_amps=amps)
+define(winding_N=N, winding_freqs=freqs, winding_amps=amps)
 ```
 
 ```{python}

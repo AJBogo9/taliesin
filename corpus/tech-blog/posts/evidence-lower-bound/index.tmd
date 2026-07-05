@@ -180,7 +180,7 @@ for _ in range(120):
         "elbo":   round(elbo_gaussian(mu_q, log_sq), 4),
     })
 
-ojs_define(
+define(
     history   = history,
     mu_post   = mu_post,
     sig_post  = float(np.sqrt(sig2_post)),
