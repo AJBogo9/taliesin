@@ -9,8 +9,8 @@
 //! **How to use:** `main()` dispatches `build` to [`cmd_build`].
 //!
 //! **Depends on:** [`crate::exec`] + [`crate::freeze`] + [`crate::warm_pool`] +
-//! [`crate::build_budget`] (execution + the memory budget split), [`crate::check`] (the
-//! `_quarto.yml` breadcrumb), [`crate::log`], and [`taliesin_core`] for rendering.
+//! [`crate::build_budget`] (execution + the memory budget split), [`crate::log`], and
+//! [`taliesin_core`] for rendering.
 //!
 //! **Load-bearing:** the concurrent site build (`build_site_async`/`PageOutcome`) defers
 //! all logging and replays it in `site.pages` order, so a parallel build is byte-for-byte
@@ -784,21 +784,11 @@ async fn build_site_async(
     strict: bool,
     jobs: Option<usize>,
 ) -> ExitCode {
-    // A `_quarto.yml`-only directory gets the migration breadcrumb instead of the
-    // site walker's `no _site.yml at <root>` (which names a file the user never made).
-    let quarto_hint = check::quarto_migration_hint(root);
-    if let Some(hint) = &quarto_hint {
-        log::warn(hint);
-    }
     let mut site = taliesin_core::Site::discover(root);
     // A malformed `_site.yml` silently degrades the whole site to defaults (no nav, no
     // title, wrong output dir): a real `--strict` problem, unlike a benign missing config.
     let mut config_problems = 0usize;
     for w in &site.warnings {
-        // When the breadcrumb already fired, drop the redundant `no _site.yml` warning.
-        if quarto_hint.is_some() && w.starts_with("no _site.yml") {
-            continue;
-        }
         if taliesin_core::site::is_malformed_config_warning(w) {
             config_problems += 1;
         }

@@ -170,22 +170,6 @@ fn json_error(message: &str) -> String {
     serde_json::json!({ "error": message }).to_string()
 }
 
-/// A migration breadcrumb when `dir` is a Quarto project (`_quarto.yml` present) with
-/// no native `_site.yml`. Without it, the site walker reports `no _site.yml at <root>`
-/// — a message naming a file the user never created. Returns `None` for any directory
-/// that already has a `_site.yml`, lacks a `_quarto.yml`, or isn't a directory.
-/// Shared with the site build (`main::build_site`), which surfaces the same breadcrumb.
-pub(crate) fn quarto_migration_hint(dir: &Path) -> Option<String> {
-    if !dir.is_dir() || dir.join("_site.yml").exists() || !dir.join("_quarto.yml").exists() {
-        return None;
-    }
-    Some(
-        "found `_quarto.yml` — taliesin uses `_site.yml` (a flat native schema), not \
-         Quarto's `_quarto.yml`; run `taliesin init` for a starter, or see the docs"
-            .to_string(),
-    )
-}
-
 fn format_human(diags: &[Diagnostic]) -> String {
     let mut s = String::new();
     for d in diags {
@@ -238,23 +222,6 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
         return ExitCode::FAILURE;
     }
     let target = Path::new(path);
-    // A directory carrying a `_quarto.yml` but no `_site.yml` is a Quarto project, not
-    // a native one: surface a migration breadcrumb instead of the confusing
-    // `_site.yml: no _site.yml` diagnostic the site walker would otherwise emit.
-    if let Some(hint) = quarto_migration_hint(target) {
-        if format == "json" {
-            let diag = Diagnostic {
-                file: "_quarto.yml".to_string(),
-                line: None,
-                message: hint,
-            };
-            println!("{}", format_json(std::slice::from_ref(&diag)));
-        } else {
-            eprintln!("{path}: {hint}");
-            eprintln!("1 problem");
-        }
-        return ExitCode::FAILURE;
-    }
     // Guard the render: a panic in core rendering becomes a clean located error + non-zero
     // exit (routed through the same error path, so `--format json` stays valid) instead of
     // a raw abort that would crash a CI gate.
@@ -769,33 +736,26 @@ mod tests {
         );
     }
 
-    /// A directory with a `_quarto.yml` but no `_site.yml` gets a clear migration
-    /// breadcrumb (naming both files), not the confusing `no _site.yml` message.
+    /// The Quarto migration breadcrumb is shed: a directory carrying only a `_quarto.yml`
+    /// (no native `_site.yml`, no `.tmd` pages) falls through to the normal site-walker
+    /// diagnostic — a generic "no pages" message that never names Quarto.
     #[test]
-    fn quarto_hint_fires_only_without_site_yml() {
-        let dir = tmp("quarto-only");
+    fn quarto_only_dir_gets_generic_diagnostic_not_a_breadcrumb() {
+        // Neutral dir name: the diagnostic echoes the path, so a "quarto" in the dir name
+        // would be a false positive for the breadcrumb we are asserting is gone.
+        let dir = tmp("legacy-config-only");
         fs::write(dir.join("_quarto.yml"), "project:\n  type: website\n").unwrap();
 
-        let hint =
-            quarto_migration_hint(&dir).expect("breadcrumb fires for a _quarto.yml-only dir");
+        let err = collect_diagnostics(&dir).expect_err("a page-less dir is an error");
         assert!(
-            hint.contains("_quarto.yml"),
-            "names the Quarto file: {hint}"
+            !err.to_lowercase().contains("quarto"),
+            "no Quarto breadcrumb should remain: {err}"
         );
-        assert!(hint.contains("_site.yml"), "names the native file: {hint}");
-
-        // Once a native `_site.yml` exists, the project is native — no breadcrumb.
-        fs::write(dir.join("_site.yml"), "title: S\n").unwrap();
         assert!(
-            quarto_migration_hint(&dir).is_none(),
-            "no breadcrumb once _site.yml is present"
+            err.contains("no .tmd pages"),
+            "expected the generic no-pages diagnostic: {err}"
         );
-
-        // A plain directory (neither file) never triggers it.
-        let plain = tmp("plain");
-        assert!(quarto_migration_hint(&plain).is_none());
 
         let _ = fs::remove_dir_all(&dir);
-        let _ = fs::remove_dir_all(&plain);
     }
 }
