@@ -17,7 +17,7 @@
 //! identical to `--jobs 1`. Pinned by `tests/parallel_build_determinism.rs`. Do not
 //! restructure that ordering or the per-page output/freeze isolation.
 
-use crate::{build_budget, check, exec, freeze, log, warm_pool};
+use crate::{build_budget, exec, freeze, log, warm_pool};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 

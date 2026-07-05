@@ -7,7 +7,6 @@ chapters:
   - part: "Using qmd-fast"
     chapters:
       - using/getting-started.tmd
-      - using/migrating-from-quarto.tmd
       - using/preview.tmd
       - using/code.tmd
       - using/writing.tmd
