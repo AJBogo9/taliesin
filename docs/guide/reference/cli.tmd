@@ -29,7 +29,7 @@ catches these **publish-blocking** mistakes:
 |---|---|
 | Broken relative link | A `[text](other.tmd)` / `[text](page.html#x)` whose **local target file** is missing. In a site, links resolve against the page registry (`.tmd`→`.html`), so a cross-page anchor `page.html#frag` whose `frag` is no id on that page is flagged too. **External `http(s)://` links are never checked**: `check` stays offline and deterministic, and a `{{< embed >}}` deck or a cross-book / mounted link (one that climbs above the site root) is left alone. |
 | Missing local video | A `{{< video clip.mp4 >}}` (or a raw `<video src>` / `<video><source></video>`) whose local file is absent (the video sibling of the local-image check). `<audio>` sources are skipped (often streamed/generated). |
-| Dangling reactive input | A `{js}` cell's `//\| input: x` that no `{js}` cell (`//\| name`/`//\| viewof`) or `{{< input >}}` control defines, with a did-you-mean over the known names. Suppressed when the doc has a Python/R cell (a runtime `ojs_define` may publish the name). |
+| Dangling reactive input | A `{js}` cell's `//\| input: x` that no `{js}` cell (`//\| name`/`//\| viewof`) or `{{< input >}}` control defines, with a did-you-mean over the known names. Suppressed when the doc has a Python/R cell (a runtime `define` may publish the name). |
 | Reactive dependency cycle | A loop among `{js}` cells (`a` consumes `b`, `b` consumes `a`), statically mirroring the runtime graph so none would run. |
 | Heading-level skip | A heading that jumps two or more levels deeper than the one before it (an `h2` directly followed by an `h4`, skipping `h3`), which breaks the document outline for screen readers. Only a true *mid-document* skip is flagged (never "doesn't start at `h1`"), and slide decks are skipped (they are slide-structured). The static half of the live preview's a11y audit. |
 | Missing alt text | A hand-written / passthrough `<img>` with no `alt` attribute, so a screen reader can't describe it (a decorative image should set `alt=""`). Markdown `![…](…)` always emits an `alt`, so this catches raw `<img>` only. |
@@ -49,10 +49,7 @@ qmd-fast check . --format json > problems.json
 `--format json` stays valid JSON even when `check` itself can't run: an unreadable or
 missing path (or an empty site) is reported as a single `{"error": "…"}` object on
 **stdout** (with a non-zero exit), so `qmd-fast check x --format json | jq` never chokes
-on a stray human message. Human format keeps that error on stderr. Pointing `check` at a
-directory that has a `_quarto.yml` but no `_site.yml` reports a migration breadcrumb
-(qmd-fast uses the flat-native `_site.yml`, not Quarto's `_quarto.yml`) rather than a
-confusing `no _site.yml`; `build` logs the same breadcrumb.
+on a stray human message. Human format keeps that error on stderr.
 
 At a glance, here is everything `check` looks at, grouped by what it protects:
 

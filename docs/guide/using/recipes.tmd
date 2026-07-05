@@ -261,17 +261,17 @@ a plain multi-page site.
 
 ## 4. A talk (a standalone deck, embedded in notes)
 
-> A self-contained slide deck (`format: revealjs`), plus a notes page that embeds it
+> A self-contained slide deck (`format: deck`), plus a notes page that embeds it
 > with `{{< embed >}}`.
 
 ```text
 talk/
 ├── _site.yml
 ├── index.tmd            # the talk's companion notes page
-└── slides.tmd           # the deck itself (format: revealjs)
+└── slides.tmd           # the deck itself (format: deck)
 ```
 
-The deck is a normal document with `format: revealjs`. `##` starts a slide, `#`
+The deck is a normal document with `format: deck`. `##` starts a slide, `#`
 starts a section that nests the following slides as a vertical stack, and a title
 slide is generated from the metadata:
 
@@ -279,7 +279,7 @@ slide is generated from the metadata:
 ---
 title: "My talk"
 subtitle: "A live demo"
-format: revealjs
+format: deck
 ---
 
 ## First slide

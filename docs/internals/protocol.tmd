@@ -76,7 +76,7 @@ One block's HTML changed; replace exactly that element.
 
 The client finds the element by `data-block-id` equal to `target_id`, tears down
 any `{js}` cells inside the outgoing block (resolving their `invalidation`), then
-`replaceWith`s the new HTML and pulses it with `.tmd-flash`. This is also the op a
+`replaceWith`s the new HTML and pulses it with `.tali-flash`. This is also the op a
 code cell's **output block** takes when an upstream cell re-runs: its id is keyed
 to the cell, so the body differs while the id stays put.
 
@@ -192,7 +192,7 @@ isolation](server.tmd#panic-isolation).
 
 A blunt instrument: tell the client to do a full `location.reload()`. Sent when a
 block diff can't express the change, for example after a **kernel restart** (so
-`{js}` cells re-bind to freshly-defined `ojs_define` values) or, in a site, a
+`{js}` cells re-bind to freshly-defined `define` values) or, in a site, a
 `_site.yml` change that re-discovers the whole project.
 
 ```json
@@ -341,7 +341,7 @@ is a separate channel from the websocket: it is the `postMessage` protocol betwe
 - **Reverse (editor → preview).** The client listens for a `qmd-cursor {file, line}`
   `postMessage` and calls `highlightAtLine`, which picks the **smallest** block whose
   `data-sourcepos` range covers the line in the same file (else the nearest block
-  starting before it), outlines it with `.tmd-hl`, and scrolls it into view, or, in a
+  starting before it), outlines it with `.tali-hl`, and scrolls it into view, or, in a
   deck, jumps `QmdDeck` to the containing slide.
 
 The in-repo VS Code companion is the host that drives this; it is documented in

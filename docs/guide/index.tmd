@@ -36,15 +36,11 @@ deck: use the arrow keys, or press <kbd>f</kbd> for fullscreen).
 
 {{< embed tour.tmd title="qmd-fast: a 60-second tour" >}}
 
-## Coming from Quarto or Jupyter?
+## Coming from Jupyter?
 
-qmd-fast reads the same `.tmd` syntax you already know, but it makes a different
-trade: **do one thing, author HTML, and make the edit loop instant.**
+qmd-fast reads the Markdown/Pandoc `.tmd` syntax you already know, but it makes a
+particular trade: **do one thing, author HTML, and make the edit loop instant.**
 
-- vs **Quarto**: no PDF/Word/format matrix and no `_metadata.yml` cascade, but a
-  *live* block-incremental preview (Quarto re-renders the whole document), built-in
-  click-to-source, and a warm kernel that never cold-starts on save. The config is
-  a small subset of Quarto's, so your front matter mostly just works.
 - vs **Jupyter**: you write in plain text files (versionable, diffable) with real
   prose, math, citations, and cross-references (not notebook JSON) while still
   getting live, cached, in-place code execution.
@@ -89,8 +85,8 @@ flowchart LR
 ## Scope
 
 qmd-fast renders to **HTML only**: there is no PDF path and no format matrix. It
-is a focused tool for one author's writing workflow, not a general Quarto
-replacement. The "spec" is a small corpus of real documents: when those render
+is a focused tool for one author's writing workflow. The "spec" is a small corpus
+of real documents: when those render
 correctly, the tool is done. That focus is the point: it stays fast, small, and
 predictable.
 :::

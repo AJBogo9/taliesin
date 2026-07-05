@@ -180,8 +180,8 @@ preamble.
   build can find and copy it.
 - **It is written at display time, before any inline recolour.** The figure is saved
   print-clean (real black axes/text for LaTeX/print) the moment the plot is displayed,
-  *before* the light/dark inline recolouring that produces the `.tmd-fig-light` /
-  `.tmd-fig-dark` pair the page swaps on a theme change. So the on-disk file is a clean
+  *before* the light/dark inline recolouring that produces the `.tali-fig-light` /
+  `.tali-fig-dark` pair the page swaps on a theme change. So the on-disk file is a clean
   print artifact, not a theme-tinted screen image.
 - **It is folded into the cache key.** The export spec is appended to the cell's hashed
   code (`# qmd-fig-export: <spec>`), so adding or changing it **moves the cell's

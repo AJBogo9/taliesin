@@ -164,7 +164,7 @@ analysis over the rendered block model, plus the cross-page checks in the site l
 Each lint is conservative by design, so a green `check` is a no-false-positive promise.
 Two patterns recur: anything a static (no-execution) pass can't resolve is **skipped**
 rather than guessed at, so the internal-anchor and dangling-input checks bail out for any
-document with executable cells (a `{python}`/`{r}` cell can emit an id, or an `ojs_define`
+document with executable cells (a `{python}`/`{r}` cell can emit an id, or a `define`
 can publish a name, at runtime); and image-only asset checks skip `<audio>`/streamed
 media a static pass can't verify. A `.html` link whose `.tmd` source exists on disk is
 accepted (the site build will emit the page), so an intra-project link is never
@@ -173,6 +173,6 @@ false-flagged. External links are never fetched: `check` stays offline and deter
 A site `check` runs the same per-page lints over every discovered page, then adds the
 cross-page link + anchor existence check (`Site::validate_cross_page_links`), which a
 single-doc `check` can't do because only the page registry knows each `.tmd`'s real
-output URL. A directory that has a `_quarto.yml` but no `_site.yml` gets a migration
-breadcrumb instead of the confusing "no `_site.yml`" diagnostic. Using `check` in
+output URL. A directory that has a `_quarto.yml` but no `_site.yml` gets the generic
+"no `_site.yml`" diagnostic (no special migration breadcrumb). Using `check` in
 practice is covered in the guide's [CLI reference](../guide/reference/cli.html).

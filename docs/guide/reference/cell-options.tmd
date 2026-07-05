@@ -56,8 +56,8 @@ between them. A directive that appears *after* code is just an ordinary comment.
 
 ### Unknown keys are caught
 
-The option vocabulary is closed. A key qmd-fast does not recognize (a typo, or a
-Quarto option it does not implement) is reported as a **located warning** with a
+The option vocabulary is closed. A key qmd-fast does not recognize (a typo, or an
+option it does not implement) is reported as a **located warning** with a
 "did you mean" hint when a known key is within edit distance 2:
 
 ```text
@@ -88,7 +88,7 @@ An option marked `(none)` in the **Default** column does nothing unless you set 
 | `code-line-numbers` | `python`, `r` | `false` | Wraps each source line so a deck can step through / highlight `\|`-separated line ranges (e.g. `"1\|3-5"`); there is no line-number gutter |
 | `name` | `js` | (none) | Publish the cell's return value into the reactive scope under this name (a helper other `{js}` cells read) |
 | `viewof` | `js` | (none) | The cell returns a DOM input; its value is registered under this name for other cells to consume |
-| `input` | `js` | (none) | Comma-separated names; re-run this cell when any named input, `viewof`, or Python `ojs_define` value changes |
+| `input` | `js` | (none) | Comma-separated names; re-run this cell when any named input, `viewof`, or Python `define` value changes |
 
 Anything not in this list warns. `fig-cap` / `tbl-cap` / `lst-cap` each *imply* a
 number even without a `label`: the caption alone is enough to make a numbered
@@ -202,15 +202,15 @@ is nothing for `echo` to hide.
 - `//| name: NAME` publishes the cell's return value under `NAME` for other cells.
   Other cells read it with `qmd.get("NAME")`.
 - `//| input: A, B` re-runs the cell whenever input `A`, input `B`, or a matching
-  Python `ojs_define` value changes.
+  Python `define` value changes.
 
 The two readers are not interchangeable. `qmd.value("NAME")` reads an input value: a
-`viewof`, an `{{< input >}}` control, or an `ojs_define` value. `qmd.get("NAME")` reads
+`viewof`, an `{{< input >}}` control, or a `define` value. `qmd.get("NAME")` reads
 a value published by another cell's `//| name:`.
 
 A `//| input:` that names something no cell, `viewof`, or `{{< input >}}` control
 defines is flagged by `check` as a dangling reactive input, and a cycle among
 `{js}` cells (each consuming the other) is flagged too. The dangling-input check is
 suppressed when the document contains any Python or R cell, since a runtime
-`ojs_define` could define the name; the cycle check always runs. See
+`define` call could publish the name; the cycle check always runs. See
 [Executable content](../using/code.tmd) for the full reactive walkthrough.

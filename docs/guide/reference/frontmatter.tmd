@@ -18,8 +18,8 @@ title: "My post"
 ---
 ```
 
-qmd-fast validates this block against its **own** key set, not Quarto's. Any key it
-does not implement, whether a typo (`treme:`) or a Quarto term it never honored
+qmd-fast validates this block against its **own** key set. Any key it
+does not implement, whether a typo (`treme:`) or a term it never honored
 (`title-block-banner:`), is reported with a "did you mean …" hint (see
 [Closed vocabulary](#closed-vocabulary) below). Validation only **warns**: the
 document still renders, and each warning is located so you can click it straight to
@@ -47,7 +47,7 @@ or `{ file: … }` map, or a list of those.
 
 | Key | Type | Meaning |
 |---|---|---|
-| `format` | string | `html` (default), `deck`/`revealjs` (a slide deck), or a `<name>-deck` / `<name>-revealjs` variant. **Its sub-keys are not validated** |
+| `format` | string | `html` (default), `deck` (a slide deck), or a `<name>-deck` variant. **Its sub-keys are not validated** |
 | `theme` | string | `light`, `dark`, a `.css`/`.scss` file path, or an installed `_extensions/<name>/` theme bundle. Unspecified starts **dark** (in `--bare` output, unspecified follows the OS via `prefers-color-scheme`); only an explicit `light` (or `default`) starts light |
 | `css` | string \| list \| map | Extra stylesheet(s) inlined into the page: a path, a `{ text: … }` / `{ file: … }` map, or a list of those |
 | `page-layout` | string | `full` widens the content column (good for listing indexes); the default is the reading-width column |
@@ -246,16 +246,6 @@ Two deliberate exceptions:
   warns), but there is no CSL engine: references always render in the single built-in
   IEEE style.
 
-::: {.callout-note}
-## From Quarto
-
-Quarto-only keys now warn as unknown rather than being silently ignored. Common ones
-to drop or rename: `title-block-banner:` (no equivalent), `site-url:` (project-level
-`url:` in `_site.yml`), `format: html: <option>` (HTML is the only target, so most
-`format:` options are gone). When in doubt, run `qmd-fast check` and follow the
-located warnings.
-:::
-
 ## Editor autocomplete
 
 qmd-fast ships a JSON Schema for front matter so your editor's YAML language server
@@ -295,7 +285,7 @@ lang: en                                          # <html lang> (default en)
 categories: [machine-learning, training]          # listing tags + filter chips
 
 # --- Output / format / theme ---
-format: html                                      # html (default) or revealjs
+format: html                                      # html (default) or deck
 theme: dark                                        # light / dark / file / extension (unspecified starts dark)
 page-layout: full                                 # widen the column (default: reading width)
 css: extra.css                                     # inlined stylesheet(s)

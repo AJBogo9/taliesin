@@ -72,7 +72,7 @@ client-side reactive runtime. Empty (`Default`) for every kernel cell.
 struct JsOpts {
     name: Option<String>,   // //| name: x → publish the return value under "x" into the shared scope
     viewof: Option<String>, // //| viewof: x → the cell returns a DOM input registered as "x"
-    inputs: Vec<String>,    // //| input: a, b → re-run when input "a" or "b" (or an ojs_define value) changes
+    inputs: Vec<String>,    // //| input: a, b → re-run when input "a" or "b" (or a `define` value) changes
 }
 ```
 
@@ -133,7 +133,7 @@ scaffold (and which live client) is emitted.
 ```rust
 enum DocFormat {
     Html,   // default: a standard HTML page (blog post, book page)
-    Reveal, // a slide deck (format: revealjs / *-revealjs)
+    Reveal, // a slide deck (format: deck / *-deck)
 }
 ```
 

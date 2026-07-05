@@ -2,12 +2,12 @@
 title: "The deck engine"
 ---
 
-`format: revealjs` renders to a slide deck driven by qmd-fast's **own** engine, not
+`format: deck` renders to a slide deck driven by qmd-fast's **own** engine, not
 reveal.js. The engine is two bundled assets, `assets/css/deck.css` and
 `assets/js/deck.js`, emitted inline by `render/deck.rs`. Three decisions shape it:
 
-- **A native DOM contract.** The markup is `.tmd-deck > .tmd-slides > section`
-  (each slide a `.tmd-slide`, with nested `<section>` stacks). Per-slide visibility
+- **A native DOM contract.** The markup is `.tali-deck > .tali-slides > section`
+  (each slide a `.tali-slide`, with nested `<section>` stacks). Per-slide visibility
   is the camera transform itself, not state classes. The public JS surface is
   `window.QmdDeck` (`initialize` / `sync` / `slide` / `on` / `getSlides` /
   `getCurrentSlide` / `registerPlugin`, …), which the preview client and theme
@@ -20,7 +20,7 @@ reveal.js. The engine is two bundled assets, `assets/css/deck.css` and
 
 ## From document to slides
 
-Give `post.tmd` a `format: revealjs` line and the very same three blocks become a
+Give `post.tmd` a `format: deck` line and the very same three blocks become a
 one-slide deck: the `# Cooling coffee` heading opens the slide, with the math and
 the live plot riding along unchanged. The deck is built from the same block list as
 every other output, and `render/deck.rs` groups those blocks into slides:

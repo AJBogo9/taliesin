@@ -77,9 +77,9 @@ the same `kick` channel the dev-menu restart uses. It reacts only to
 path: the extension must be a known source/asset type, and no path component may be a
 generated or VCS directory. The two lists are explicit:
 
-- **extensions:** `qmd`, `md`, `bib`, `csl`, `css`, `scss`, `yml`, `yaml`, `json`,
+- **extensions:** `tmd`, `md`, `bib`, `csl`, `css`, `scss`, `yml`, `yaml`, `json`,
   `js`, `html`, `svg`, `png`, `jpg`, `jpeg`, `webp`, `gif`;
-- **skipped directories:** `_site`, `_book`, `_freeze`, `.git`, `.quarto`,
+- **skipped directories:** `_site`, `_book`, `_freeze`, `.git`,
   `node_modules`.
 
 Skipping `_freeze` matters: the executor writes its own cache there on every run, and

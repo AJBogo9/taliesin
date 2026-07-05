@@ -6,7 +6,7 @@ title: "Configuration reference"
 
 Two places hold configuration: a document's **YAML front matter** (the `---`
 block at the top), and a project's **`_site.yml`** (for a site or book). The
-project config uses a flat, native schema. A Quarto-shaped nested config (a
+project config uses a flat, native schema. A nested config (a
 `project:` / `website:` / `book:` / `format:` block) is no longer parsed: its
 unknown top-level keys warn, and its nested values are ignored. Flatten it (see
 the note at the end).
@@ -22,7 +22,7 @@ table below repeats the front-matter keys most often paired with project config.
 | Key | Meaning |
 |---|---|
 | `title`, `subtitle`, `author`, `date`, `description` | Metadata; `title` drives `<title>`, the title block, OpenGraph, and nav/listing labels |
-| `format` | `html` (default), `deck` / `revealjs`, or a `<name>-deck` / `<name>-revealjs` variant |
+| `format` | `html` (default), `deck`, or a `<name>-deck` variant |
 | `theme` | `light` (default) / `dark`, or a `.css` file |
 | `toc` | `true` adds a live table of contents (+ the Cmd-K search palette) |
 | `title-block-style` | `none` keeps the title metadata but hides the visible `<h1>` header |
@@ -171,16 +171,6 @@ as embedded YAML (for example the VS Code YAML extension). A plain YAML language
 server does not parse a `.tmd` file as YAML, so the front-matter modeline only
 takes effect with that support; `_site.yml` needs no such setup.
 
-::: {.callout-note}
-## Quarto migration
-
-The nested Quarto shape is no longer parsed, so flatten it: lift
-`website: title:` to `title:`, `format: html: toc:` to `toc:`,
-`website: navbar: left:` to `nav:`, `page-footer:` to `footer:`, and
-`project: output-dir:` to `output:`. Any leftover nested top-level key
-(`project:`, `website:`, `book:`) will warn as unknown.
-:::
-
 ### Page blocks (sites)
 
 Three front-matter blocks turn a page into something special: `listing:` (an
@@ -279,14 +269,14 @@ Reserved names, all skipped by page discovery:
 | `_extensions/` | reusable theme bundles: a `_extensions/<name>/theme.css` selected by name from `theme:` |
 | `_freeze/` | the persistent execution cache, keyed by content hash; gitignore it |
 | `_site/` / `_book/` | build output (`build <dir>` writes here; override with `output:`) |
-| anything `.`-prefixed | hidden files/dirs (`.git`, `.quarto`, …) are skipped too |
+| anything `.`-prefixed | hidden files/dirs (`.git`, …) are skipped too |
 
 A `404.tmd` is special-cased the other way: it builds to `404.html` at the site root
 (most static hosts serve it for unknown URLs) but stays out of the nav.
 
 ### How a deck gets built
 
-A slide deck is any doc with `format: revealjs`. How it ends up in your output
+A slide deck is any doc with `format: deck`. How it ends up in your output
 depends on *how the project refers to it*: there are three cases, and missing the
 distinction is the usual way a deck goes missing from a build:
 
@@ -296,7 +286,7 @@ distinction is the usual way a deck goes missing from a build:
   its own standalone slide file and shown inline as an isolating iframe; it is kept
   *out* of the nav and search (it isn't a page, it's an inclusion). This is how to put
   a deck inside a site or book. See [Formats](../using/formats.tmd).
-- **Loose (warns)**: a `format: revealjs` file sitting in a site directory that no
+- **Loose (warns)**: a `format: deck` file sitting in a site directory that no
   page embeds and that isn't a standalone target. It is neither chaptered nor embedded,
   so the build has no reason to emit it; qmd-fast warns and would otherwise flatten it
   into a chrome-wrapped article. **Fix:** embed it from a page, or build it standalone.

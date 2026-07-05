@@ -35,7 +35,7 @@ Two kinds of `.tmd` are discovered but deliberately kept out of the navigable pa
 `draft: true` page is excluded from a **website** entirely (no output, nav, listing, or
 prev/next entry; books do not consult `draft`), and a deck pulled in by
 `{{< embed >}}` is built and served but stays out of nav and search, since it is an
-inclusion, not a page. A loose `format: revealjs` file that no page embeds warns rather
+inclusion, not a page. A loose `format: deck` file that no page embeds warns rather
 than silently becoming a chrome-wrapped article.
 
 ### How `draft:` filtering works
@@ -75,7 +75,7 @@ embed iframe would otherwise 404). The surviving targets become deduplicated `De
 and `pages.retain(...)` then drops every page whose URL matches a `DeckRef`, so the deck
 leaves the navigable set while staying reachable as a standalone deck (the preview looks
 it up by output URL via `Site::deck`). What is left after that retain is a true page; a
-`format: revealjs` file *still* in the set is the loose-deck case above, and it warns.
+`format: deck` file *still* in the set is the loose-deck case above, and it warns.
 
 ## The config model
 

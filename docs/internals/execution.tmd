@@ -220,7 +220,7 @@ client connections. `start()`:
 4. reads one iopub message to confirm the SUB subscription is live (sidestepping
    the ZMQ slow-joiner problem before the first run), and
 5. runs each language's **startup preambles** once against the now-warm kernel: Python
-   installs the `ojs_define` Python-to-JS bridge and a matplotlib theme hook that
+   installs the `define` Python-to-JS bridge and a matplotlib theme hook that
    restyles inline figures to follow the page (lazily, the first time a cell uses
    matplotlib); R has none.
 

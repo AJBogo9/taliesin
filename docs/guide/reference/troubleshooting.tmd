@@ -96,7 +96,7 @@ those won't trigger a refresh.
 ## A deck looks unstyled
 
 A custom deck theme usually comes from a format extension
-(`format: <ext>-revealjs`). Confirm the extension loaded (no warning in the dev
+(`format: <ext>-deck`). Confirm the extension loaded (no warning in the dev
 menu) and that its `_extensions/<ext>/` directory sits beside the `.tmd`.
 
 ## `--host` preview is refused from my phone (or shows "needs its session link")

@@ -8,7 +8,7 @@ a whole website.
 
 ## Slide decks
 
-Set `format: revealjs` and the document becomes a slide deck driven by qmd-fast's
+Set `format: deck` and the document becomes a slide deck driven by qmd-fast's
 **own engine** (no reveal.js, no CDN, everything bundled offline). `##` starts a
 slide and `#` starts a section that nests the following slides as a vertical stack;
 a title slide is generated from the metadata. The block diff still applies *within
@@ -270,8 +270,7 @@ qmd-fast preview corpus/tech-blog     # live site on http://127.0.0.1:4321
 ```
 
 See the [configuration reference](../reference/configuration.tmd) for every key
-(and the note on migrating a Quarto-shaped config by flattening it to the native
-schema).
+(and the note on the native flat config schema).
 
 `build` writes one `.html` per page (mirroring the input tree) and copies the
 referenced assets, so the output folder deploys as-is. `preview` serves the same
@@ -291,8 +290,7 @@ qmd-fast build docs --out my-site/_site/docs   # the book, nested at /docs
 
 Config is **two levels, no cascade**: the root `_site.yml` sets project-wide
 defaults and a page's own front matter overrides them. There is deliberately no
-Quarto-style `_metadata.yml` directory merge, the single most confusing part of
-its model.
+`_metadata.yml` directory-merge cascade.
 
 Three front-matter blocks generate whole page sections so you do not hand-write the
 chrome: `hero:` (a landing header), `about:` (a profile header), and `listing:` (an

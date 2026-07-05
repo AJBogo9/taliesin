@@ -8,7 +8,7 @@ format: deck
 
 - A Rust dev server that renders `.tmd` to HTML, fast
 - Built for one author's blog posts, slides, and books
-- Not a general Quarto replacement: HTML only, corpus is the spec
+- HTML only: one focused output target; the corpus is the spec
 
 ## Three goals
 
@@ -53,7 +53,7 @@ The same block renders identically here and in a scrolling page.
 ## Live interactive content
 
 - HTML pages run native **`{js}` cells** client-side: `viewof` inputs, vendored
-  `Plot` + `d3`, and the `ojs_define` Python→JS bridge (no Observable runtime)
+  `Plot` + `d3`, and the `define` Python→JS bridge (no Observable runtime)
 - Open the [web manual](index.tmd) to drag a slider and watch a chart react
 - Decks run the same `{js}` cells; one block model drives both
 

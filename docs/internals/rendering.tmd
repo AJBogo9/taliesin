@@ -31,7 +31,7 @@ flowchart TB
    declared by the active format extension expand to their HTML templates. It is
    **line-preserving** (each tag opens and closes on one line, the template's
    newlines collapsed) so the source map from stage 1 stays valid.
-3. **Fenced-div scan + preprocess** (`render/divs.rs`). Quarto's `:::` divs aren't
+3. **Fenced-div scan + preprocess** (`render/divs.rs`). The `:::` fenced divs aren't
    CommonMark, so their spans are recorded first, then the marker lines are blanked
    *without changing the line count* (again preserving sourcepos). The inner
    content then parses as ordinary blocks.
@@ -184,7 +184,7 @@ algorithm. When an input fires, `scheduleFrom` re-runs exactly the cell's
 `n → squared → …` chain re-runs end to end), once each, in that topological order,
 rather than cascading listener fires. The initial run is a single document-order
 (producer-before-consumer) awaited pass; cells left over after Kahn's are in a cycle
-and show a diagnostic instead of running. A Python cell's `ojs_define(...)` bridges
+and show a diagnostic instead of running. A Python cell's `define(...)` bridges
 values across via a `<script type="qmd-define">` blob the enhancer ingests,
 re-running dependents when it lands after first paint.
 

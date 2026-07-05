@@ -1,6 +1,6 @@
 ---
 name: new-project
-description: Scaffold a new project page under projects/<slug>/ with correct Quarto frontmatter and this blog's project-page conventions. Use when the user wants to add a project, document something they built, or create a new entry under projects/.
+description: Scaffold a new project page under projects/<slug>/ with correct Taliesin frontmatter and this blog's project-page conventions. Use when the user wants to add a project, document something they built, or create a new entry under projects/.
 ---
 
 # Scaffold a new project page

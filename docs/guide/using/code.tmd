@@ -47,7 +47,7 @@ configurable timeout instead of wedging the kernel. That cap is
 `QMD_FAST_CELL_TIMEOUT` (default 120 seconds): a cell that runs longer is sent
 SIGINT so a runaway loop can't lock up the kernel, and set it to `0` to disable
 the cap entirely. The dev menu's **Restart kernel** action drops the kernel,
-re-runs every cell against a fresh one, and reloads so `ojs_define` values
+re-runs every cell against a fresh one, and reloads so `define` values
 re-bind.
 
 ### `echo`, `include`, and `cache`: three different switches
@@ -151,8 +151,8 @@ itself with `//| viewof: NAME` to publish a control, and a consuming cell lists
 The reactive surface is small and worth knowing exactly:
 
 - `qmd.value("NAME")` reads the live value of an input (a `//| viewof` cell or an
-  `{{< input >}}` control) or, failing that, an `ojs_define` value of that name.
-- `qmd.defines.NAME` reads a value published from Python by `ojs_define`.
+  `{{< input >}}` control) or, failing that, a `define` value of that name.
+- `qmd.defines.NAME` reads a value published from Python by `define`.
 - `//| input: A, B` takes a **comma-separated list** of names; the cell re-runs
   when any one of them (input *or* define) changes. There is also
   `//| name: NAME` to publish this cell's return value under `NAME` for other cells
@@ -189,9 +189,9 @@ return Plot.lineY(
 
 ### The Python → JS bridge
 
-`ojs_define()` in a Python cell hands values to `{js}` cells, so you can **compute
+`define()` in a Python cell hands values to `{js}` cells, so you can **compute
 in Python and render reactively in the browser**. Its signature is keyword-only,
-`ojs_define(name=value, ...)`: each keyword becomes a published name, and each
+`define(name=value, ...)`: each keyword becomes a published name, and each
 value is JSON-serialized into the page for the `{js}` runtime to pick up. A `{js}`
 cell then reads the value as `qmd.defines.NAME` (or `qmd.value("NAME")`, which
 falls back to defines when no live input owns that name). In live preview the
@@ -206,7 +206,7 @@ a reload. Guard against the value not having arrived yet with an early `return`.
 import math, random
 random.seed(7)
 signal = [math.sin(2 * math.pi * i / 40) + random.uniform(-0.3, 0.3) for i in range(120)]
-ojs_define(signal=signal)
+define(signal=signal)
 ```
 
 ```{js}

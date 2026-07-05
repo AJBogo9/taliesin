@@ -255,7 +255,7 @@ With the shape in mind, here is the file-by-file detail, one table per layer.
 | `render/divs.rs` | `:::` fenced-div preprocessing + grouping into callouts/columns. |
 | `render/figure.rs` | Standalone-image and captioned-cell `<figure>`s. |
 | `render/theme.rs` | Theming: light/dark, `.css`/`.scss`, extension themes, the pre-paint script. |
-| `render/deck.rs` | Slide-deck assembly on qmd-fast's own engine (reveal.js removed; native `.tmd-deck`/`.tmd-slides` + a `window.QmdDeck` API). |
+| `render/deck.rs` | Slide-deck assembly on qmd-fast's own engine (reveal.js removed; native `.tali-deck`/`.tali-slides` + a `window.QmdDeck` API). |
 | `render/extension/` | Format extensions (`_extensions/` themes/shortcodes) + shortcode expansion, in a single `mod.rs`. |
 | `diff.rs` | Block-level diff (LCS over block ids) → `BlockOp`s. |
 | `includes.rs` | `{{< include >}}` resolution + the per-file source map. |

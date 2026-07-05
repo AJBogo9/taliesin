@@ -145,8 +145,8 @@ follow-up email:
 
 ```{=html}
 <style>
-.tmd-deck section label { font: 500 .45em/1.4 system-ui; display: flex; align-items: center; gap: .7rem; margin: .3em 0; }
-.tmd-deck section input[type=range] { width: 22rem; }
+.tali-deck section label { font: 500 .45em/1.4 system-ui; display: flex; align-items: center; gap: .7rem; margin: .3em 0; }
+.tali-deck section input[type=range] { width: 22rem; }
 </style>
 ```
 

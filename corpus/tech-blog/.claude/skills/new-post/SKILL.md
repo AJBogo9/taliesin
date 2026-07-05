@@ -1,6 +1,6 @@
 ---
 name: new-post
-description: Scaffold a new blog post under posts/<slug>/ with correct Quarto frontmatter, a references.bib, and this blog's house conventions. Use when the user wants to start writing a new blog post, add an article, or create a new entry under posts/.
+description: Scaffold a new blog post under posts/<slug>/ with correct Taliesin frontmatter, a references.bib, and this blog's house conventions. Use when the user wants to start writing a new blog post, add an article, or create a new entry under posts/.
 ---
 
 # Scaffold a new blog post
