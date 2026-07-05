@@ -902,7 +902,7 @@ fn spawn_watcher(app: Arc<AppState>, mut signal_rx: mpsc::UnboundedReceiver<()>)
 
 /// Whether a file-watch event touches something a re-render actually depends on:
 /// a source/content/asset file, and not a build-output or VCS directory. Filters
-/// out the noise (editor swap files, `_site/`/`_book/` output, `.git`/`.quarto`)
+/// out the noise (editor swap files, `_site/`/`_book/` output, `.git`)
 /// that would otherwise trigger a wasteful 0-op rebuild on every unrelated save.
 fn relevant_event(ev: &notify::Event) -> bool {
     ev.paths.iter().any(|p| relevant_path(p))
@@ -916,14 +916,7 @@ pub(crate) fn relevant_path(p: &Path) -> bool {
         "tmd", "md", "bib", "csl", "css", "scss", "yml", "yaml", "json", "js", "html", "svg",
         "png", "jpg", "jpeg", "webp", "gif",
     ];
-    const SKIP_DIRS: &[&str] = &[
-        "_site",
-        "_book",
-        "_freeze",
-        ".git",
-        ".quarto",
-        "node_modules",
-    ];
+    const SKIP_DIRS: &[&str] = &["_site", "_book", "_freeze", ".git", "node_modules"];
     let ext_ok = p
         .extension()
         .and_then(|e| e.to_str())
