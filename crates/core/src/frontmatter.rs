@@ -120,6 +120,7 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
             ));
         }
     }
+    validate_format_value(map, block, &mut out);
     validate_nested(map, "execute", "execute key", EXECUTE_KEYS, block, &mut out);
     validate_nested(map, "about", "about key", ABOUT_KEYS, block, &mut out);
     validate_nested(map, "hero", "hero key", HERO_KEYS, block, &mut out);
@@ -225,6 +226,42 @@ fn validate_theorem_values(map: &serde_yaml::Mapping, block: &str, out: &mut Vec
         let line = nested_key_line(block, "theorems", "numbered");
         out.push(located(
             unknown_value_message("theorems numbered value", &value_label(v), THEOREM_NUMBERED),
+            line,
+        ));
+    }
+}
+
+/// `format: revealjs` / `*-revealjs` was the Quarto deck spelling; it is no longer
+/// accepted, so a doc naming it renders as a plain HTML page instead of a deck. Its
+/// edit distance to `deck` is too large for the generic did-you-mean, so name the
+/// migration explicitly. Reads the top-level `format` value in string, block-mapping
+/// (keyed by the spelling), and sequence forms.
+fn validate_format_value(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
+    let Some(fmt) = map.get("format") else {
+        return;
+    };
+    let named_revealjs = |s: &str| {
+        let s = s.trim().trim_matches(['"', '\'']);
+        s == "revealjs" || s.ends_with("-revealjs")
+    };
+    let hit = match fmt {
+        serde_yaml::Value::String(s) => named_revealjs(s).then(|| s.clone()),
+        serde_yaml::Value::Mapping(m) => m
+            .keys()
+            .filter_map(|k| k.as_str())
+            .find(|k| named_revealjs(k))
+            .map(str::to_string),
+        serde_yaml::Value::Sequence(seq) => seq
+            .iter()
+            .filter_map(|v| v.as_str())
+            .find(|s| named_revealjs(s))
+            .map(str::to_string),
+        _ => None,
+    };
+    if let Some(spelling) = hit {
+        let line = block_key_line(block, "format");
+        out.push(located(
+            format!("unknown format `{spelling}` (did you mean `deck`?)"),
             line,
         ));
     }
@@ -508,6 +545,72 @@ mod tests {
             "---\ntitle: X\nformat:\n  html:\n    toc: true\n    anything: 1\n---\n",
         );
         assert!(w.is_empty(), "got: {w:?}");
+    }
+
+    #[test]
+    fn revealjs_format_value_warns_with_did_you_mean() {
+        // `format: revealjs` was the dropped Quarto deck spelling. Its edit distance to
+        // `deck` is too large for the generic did-you-mean, so name the migration
+        // explicitly rather than silently rendering a plain HTML page.
+        let m = msgs("---\nformat: revealjs\ntitle: T\n---\n");
+        assert!(
+            m.iter()
+                .any(|w| w.contains("unknown format `revealjs`")
+                    && w.contains("did you mean `deck`")),
+            "expected a revealjs->deck did-you-mean, got {m:?}"
+        );
+    }
+
+    #[test]
+    fn revealjs_format_value_is_located() {
+        let w = validate_front_matter("---\ntitle: T\nformat: revealjs\n---\n");
+        let hit = w
+            .iter()
+            .find(|w| w.message.contains("unknown format `revealjs`"))
+            .expect("revealjs warning");
+        assert_eq!(hit.line, Some(3), "`format:` is on file line 3");
+    }
+
+    #[test]
+    fn revealjs_format_value_warns_in_block_and_sequence_forms() {
+        // Block form: `format:` mapping keyed by the dropped spelling.
+        let block = msgs("---\nformat:\n  revealjs:\n    incremental: true\n---\n");
+        assert!(
+            block
+                .iter()
+                .any(|w| w.contains("unknown format `revealjs`")),
+            "block-form revealjs warns: {block:?}"
+        );
+        // An extension variant `<name>-revealjs` is dropped too.
+        let variant = msgs("---\nformat: acme-revealjs\n---\n");
+        assert!(
+            variant
+                .iter()
+                .any(|w| w.contains("unknown format `acme-revealjs`") && w.contains("`deck`")),
+            "*-revealjs variant warns: {variant:?}"
+        );
+    }
+
+    #[test]
+    fn deck_format_value_is_not_flagged() {
+        assert!(
+            !msgs("---\nformat: deck\n---\n")
+                .iter()
+                .any(|w| w.contains("unknown format")),
+            "`format: deck` is the accepted spelling"
+        );
+        // Neither is a normal HTML page or a block-form html deck.
+        assert!(
+            !msgs("---\nformat: html\n---\n")
+                .iter()
+                .any(|w| w.contains("unknown format"))
+        );
+        assert!(
+            !msgs("---\nformat:\n  deck:\n    incremental: true\n---\n")
+                .iter()
+                .any(|w| w.contains("unknown format")),
+            "block-form deck is accepted"
+        );
     }
 
     #[test]
