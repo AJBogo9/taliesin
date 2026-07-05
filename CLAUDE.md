@@ -148,3 +148,9 @@ hook runs `rustfmt` on every edited `.rs` file, so the tree stays `cargo fmt`-cl
   included blocks also carry `data-source-file`. Source mapping, incremental
   re-render, and live-state preservation all key off this one block model, so
   preserve those invariants (`crates/core/tests/corpus.rs` enforces them).
+- Minimal config: perfect the default before adding a knob. Aim for a
+  near-perfect default experience so the user does not *need* to configure;
+  only explore configuration once the defaults are perfected, and prefer a
+  better default over a new option. Reader-local a11y preferences (theme, text
+  size, spacing) are exempt, they are personal, not document config. This is the
+  deciding lens for any new user-facing control.

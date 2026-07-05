@@ -4,10 +4,10 @@ toc: true
 ---
 
 This page is deliberately long. It exists to be scrolled, so the reading-progress bar at the
-top fills as you move down, the "minutes left" estimate counts toward zero, and your position
-is remembered: close the tab partway through and a *Resume reading* pill brings you back to
-the exact block you left, anchored to that block's content hash rather than a raw scroll
-offset, so it survives a re-render or a change of window size.
+top fills as you move down and your position is remembered: close the tab partway through and
+a *Resume reading* pill brings you back to the exact block you left, anchored to that block's
+content hash rather than a raw scroll offset, so it survives a re-render or a change of window
+size.
 
 ## On length
 

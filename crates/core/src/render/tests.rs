@@ -1471,19 +1471,19 @@ fn inline_image_in_a_sentence_stays_inline() {
 }
 
 #[test]
-fn assembled_page_ships_reader_preferences() {
+fn assembled_page_ships_theme_picker() {
     let page = render_html_page("# Title\n\nProse to read.\n", "doc");
-    // The reader-preferences enhancer ("Aa" control) ships on every built page via
-    // code_scripts(), so a reader can pick size / width / theme.
+    // The theme-picker enhancer (the Settings gear's Theme row) ships on every built page via
+    // code_scripts(), so a reader can choose light / dark / sepia.
     assert!(
         page.contains("taliInitReaderPrefs"),
-        "reader-preferences enhancer not shipped in the assembled page"
+        "theme-picker enhancer not shipped in the assembled page"
     );
-    // The pre-paint head script applies the reader's saved size/width before paint
-    // (no flash), so it must reference the reader-scale preference.
+    // The pre-paint head script applies the reader's saved theme before paint (no flash),
+    // so it must reference the theme preference key.
     assert!(
-        page.contains("qmd-reader-scale"),
-        "pre-paint reader-preference apply missing from the page head"
+        page.contains("qmd-theme"),
+        "pre-paint theme apply missing from the page head"
     );
 }
 
@@ -1573,30 +1573,6 @@ fn assembled_page_ships_focus_trap() {
     assert!(
         page.contains("taliFocusTrap"),
         "modal focus-trap utility not shipped in the assembled page"
-    );
-}
-
-#[test]
-fn assembled_page_ships_line_spacing() {
-    let page = render_html_page("# Title\n\nProse.\n", "doc");
-    // The reader line-spacing control drives prose line-height via this CSS var.
-    assert!(
-        page.contains("--tali-reader-leading"),
-        "reader line-spacing var not shipped in the assembled page"
-    );
-}
-
-#[test]
-fn assembled_page_ships_letter_word_spacing() {
-    let page = render_html_page("# Title\n\nProse.\n", "doc");
-    // The reader letter/word-spacing controls (WCAG 1.4.12) drive prose tracking via these vars.
-    assert!(
-        page.contains("--tali-reader-letter"),
-        "reader letter-spacing var not shipped in the assembled page"
-    );
-    assert!(
-        page.contains("--tali-reader-word"),
-        "reader word-spacing var not shipped in the assembled page"
     );
 }
 

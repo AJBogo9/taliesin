@@ -418,8 +418,9 @@
 
     panel.append(devRow("Status", statusEl), devRow("Words", wordCountEl), devRow("Source", srcHint), kernelBtn);
 
-    // Single-doc preview has no site navbar, so give the dev menu its own theme
-    // toggle (wired by the shared theme_head). Sites use the navbar's instead.
+    // The dev menu carries its own quick light/dark toggle (wired by the shared theme_head)
+    // so the author can flip theme during preview without opening the reader Settings gear.
+    // Guarded so we never add a second one.
     if (!document.querySelector("[data-qmd-theme-toggle]")) {
       const themeBtn = document.createElement("button");
       themeBtn.className = "tali-dev-ctl tali-dev-theme";

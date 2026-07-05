@@ -41,12 +41,14 @@
   .tali-nav-icon svg { display: block; }
   .tali-nav-active { color: var(--tali-fg); font-weight: 600; }
   .tali-nav-active:hover { background: transparent; }
-  /* real (shipped) light/dark toggle: a subtle icon, not a dev-style button */
-  .tali-theme-toggle { display: inline-flex; align-items: center; justify-content: center;
+  /* reader Settings gear docked in the navbar / book topbar: a subtle icon button (opens the
+     floating Theme / Focus / Keyboard popover; highlighted while that popover is open). */
+  .tali-nav-settings { display: inline-flex; align-items: center; justify-content: center;
     width: 2rem; height: 2rem; padding: 0; border: 0; border-radius: 7px; cursor: pointer;
     background: transparent; color: var(--tali-muted); transition: color .12s ease, background .12s ease; }
-  .tali-theme-toggle:hover { color: var(--tali-fg); background: var(--tali-code-bg); }
-  .tali-theme-toggle svg { display: block; }
+  .tali-nav-settings:hover,
+  .tali-nav-settings[aria-expanded="true"] { color: var(--tali-fg); background: var(--tali-code-bg); }
+  .tali-nav-settings svg { display: block; }
   /* visible search control (navbar + book sidebar) that opens the Cmd-K palette */
   .tali-search-btn { display: inline-flex; align-items: center; gap: .4rem;
     background: var(--tali-code-bg); color: var(--tali-muted);
@@ -261,5 +263,5 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
   .tali-nav-active, .tali-book-active, a[aria-current="page"] {
     forced-color-adjust: none; text-decoration: underline; text-underline-offset: 3px;
   }
-  .tali-search-btn, .tali-theme-toggle, .tali-nav-burger, .tali-book-drawer-btn { border: 1px solid CanvasText; }
+  .tali-search-btn, .tali-nav-settings, .tali-nav-burger, .tali-book-drawer-btn { border: 1px solid CanvasText; }
 }

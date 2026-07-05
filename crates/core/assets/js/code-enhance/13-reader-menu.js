@@ -1,54 +1,92 @@
-// Reader menu: one launcher ("Aa", bottom-right) opening a single menu that the reader
-// features mount their sections into (Reading, Display, Highlights) via
-// window.taliReaderMenu.addSection(title, node, onOpen). Consolidates what used to be three
-// separate floating controls. Reader-side, read-only. Skipped on decks. Built once.
+// Settings menu: a gear launcher opening a single popover that the reader features mount their
+// sections into (Theme, Focus, Keyboard shortcuts) via
+// window.taliReaderMenu.addSection(title, node, onOpen). On sites the gear is docked in the
+// navbar / book topbar (server-rendered, [data-tali-settings]); on a chrome-less single doc we
+// create a floating one. Click handling is delegated on document so a hot-reload that re-injects
+// the navbar keeps working without re-running this (guarded) initializer. Reader-side, read-only.
+// Skipped on decks. Built once. (Internal names keep the `taliReaderMenu` / `.tali-rmenu-*` spelling.)
 function taliInitReaderMenu() {
   if (window.taliReaderMenu) return;
   if (document.querySelector('.tali-deck')) return; // a slide deck has its own chrome
 
-  // A DISCLOSURE, not a dialog: the launcher's aria-expanded + aria-controls point at a labelled
-  // group, which is the correct ARIA shape for a light-dismiss popover that does NOT trap or move
-  // focus. (role="dialog"/aria-haspopup="dialog" would promise a modal with managed focus we
-  // deliberately don't provide — see the openMenu/closeMenu note below.)
   var panelId = 'tali-rmenu-panel';
-  var launcher = document.createElement('button');
-  launcher.type = 'button';
-  launcher.className = 'tali-rmenu-toggle';
-  launcher.textContent = 'Aa';
-  launcher.setAttribute('aria-label', 'Reader menu');
-  launcher.setAttribute('aria-controls', panelId);
-  launcher.setAttribute('aria-expanded', 'false');
+  // Same gear as chrome.rs SETTINGS_ICON (kept in sync); only used for the floating fallback.
+  var GEAR =
+    '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1' +
+    '-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 ' +
+    '1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 ' +
+    '.33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33' +
+    '-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 ' +
+    '2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l' +
+    '-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 ' +
+    '0-1.51 1z"/></svg>';
 
+  // No docked gear (single doc, no chrome) → create a floating one, tagged the same way so the
+  // delegated click handler treats both identically.
+  if (!document.querySelector('[data-tali-settings]')) {
+    var floatBtn = document.createElement('button');
+    floatBtn.type = 'button';
+    floatBtn.className = 'tali-rmenu-toggle';
+    floatBtn.setAttribute('data-tali-settings', '');
+    floatBtn.setAttribute('aria-label', 'Settings');
+    floatBtn.innerHTML = GEAR;
+    document.body.appendChild(floatBtn);
+  }
+
+  // A DISCLOSURE, not a dialog: the launcher's aria-expanded + aria-controls point at a labelled
+  // group, the correct ARIA shape for a light-dismiss popover that does NOT trap or move focus.
   var panel = document.createElement('div');
   panel.className = 'tali-rmenu-panel';
   panel.id = panelId;
   panel.setAttribute('role', 'group');
-  panel.setAttribute('aria-label', 'Reader settings');
+  panel.setAttribute('aria-label', 'Settings');
   panel.hidden = true;
-
-  document.body.appendChild(launcher);
   document.body.appendChild(panel);
 
-  // The reader menu is a light-dismiss POPOVER, not a modal (it doesn't cover/inert the page),
-  // so it deliberately does NOT use taliFocusTrap and is exposed as a disclosure (above): trapping
-  // /focus-restore would fight the jump buttons + outside-click dismissal. aria-expanded on the
-  // launcher + Esc-to-close (returning focus to the launcher) + click-away is the right shape.
+  function launchers() { return document.querySelectorAll('[data-tali-settings]'); }
+  function setExpanded(v) {
+    [].forEach.call(launchers(), function (b) {
+      b.setAttribute('aria-controls', panelId);
+      b.setAttribute('aria-expanded', v ? 'true' : 'false');
+    });
+  }
+
+  // Light-dismiss POPOVER, not a modal (it doesn't cover/inert the page): no taliFocusTrap, so
+  // trapping/focus-restore can't fight the outside-click dismissal. aria-expanded + Esc-to-close
+  // (returning focus to the launcher) + click-away is the right shape.
   var sections = [];
   function openMenu() {
-    panel.hidden = false; launcher.setAttribute('aria-expanded', 'true');
+    panel.hidden = false; setExpanded(true);
     sections.forEach(function (s) { if (s.onOpen) s.onOpen(); });
   }
-  function closeMenu() { panel.hidden = true; launcher.setAttribute('aria-expanded', 'false'); }
-  launcher.addEventListener('click', function (e) { e.stopPropagation(); if (panel.hidden) openMenu(); else closeMenu(); });
+  function closeMenu() { panel.hidden = true; setExpanded(false); }
+  function toggleMenu() { if (panel.hidden) openMenu(); else closeMenu(); }
+  setExpanded(false);
+
+  // One delegated click handler: a click on any launcher toggles; an outside click dismisses.
+  // Delegation (vs. a direct listener) survives a navbar re-injection on hot reload.
   document.addEventListener('click', function (e) {
-    if (!panel.hidden && !panel.contains(e.target) && e.target !== launcher) closeMenu();
+    var launch = e.target.closest && e.target.closest('[data-tali-settings]');
+    if (launch) { toggleMenu(); return; }
+    if (!panel.hidden && !panel.contains(e.target)) closeMenu();
   });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !panel.hidden) { closeMenu(); launcher.focus(); } });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !panel.hidden) {
+      closeMenu();
+      var l = document.querySelector('[data-tali-settings]');
+      if (l) l.focus();
+    }
+  });
 
   // Public API: each reader feature adds its own section and an optional refresh hook
-  // (called when the menu opens). Returns a handle to show/hide the section.
+  // (called when the menu opens). `open`/`toggle` let the `?` shortcut summon it.
+  // Returns a handle to show/hide the section.
   window.taliReaderMenu = {
+    open: openMenu,
     close: closeMenu,
+    toggle: toggleMenu,
     addSection: function (title, node, onOpen) {
       var wrap = document.createElement('section');
       wrap.className = 'tali-rmenu-section';
@@ -61,34 +99,4 @@ function taliInitReaderMenu() {
     }
   };
 
-  // WCAG 2.1.4 opt-out, surfaced in the menu so it's discoverable: a toggle that turns the
-  // single-key shortcuts (f / ? / / / arrows) on or off via the shared `qmd-keyshortcuts`
-  // localStorage flag that 03-focus-mode.js + 07-keyboard.js read (__qmdShortcutsOn).
-  (function () {
-    var row = document.createElement('div');
-    row.className = 'tali-reader-row';
-    var label = document.createElement('span');
-    label.textContent = 'Keyboard shortcuts';
-    var seg = document.createElement('div');
-    seg.className = 'tali-reader-seg';
-    var ksBtn = document.createElement('button');
-    ksBtn.type = 'button';
-    ksBtn.title = 'Single-key shortcuts: f focus, ? help, / search, ←/→ chapters';
-    function ksOn() { return typeof __qmdShortcutsOn === 'function' ? __qmdShortcutsOn() : true; }
-    function ksSync() {
-      var v = ksOn();
-      ksBtn.setAttribute('aria-pressed', v ? 'true' : 'false');
-      ksBtn.textContent = v ? 'On' : 'Off';
-    }
-    ksBtn.addEventListener('click', function () {
-      try { localStorage.setItem('qmd-keyshortcuts', ksOn() ? 'off' : 'on'); } catch (e) {}
-      ksSync();
-    });
-    ksSync();
-    seg.appendChild(ksBtn);
-    row.appendChild(label);
-    row.appendChild(seg);
-    window.taliReaderMenu.addSection('Keyboard', row, ksSync);
-  })();
 }
-

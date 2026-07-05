@@ -1,55 +1,25 @@
-// Keyboard reader: `?` opens a shortcuts cheatsheet, `/` opens search, left/right move
-// to the previous/next chapter (the book prev/next anchors). All guarded so they never
-// fire while typing or under another modal. Read-only, deck-skipped, idempotent.
+// Keyboard reader: `?` opens the Settings menu (which lists these shortcuts), `/` opens search,
+// left/right move to the previous/next chapter (the book prev/next anchors). The shortcut list
+// is mounted as a section of the Settings menu, so it is a visible cheatsheet, not a separate
+// dialog. All guarded so they never fire while typing or under a modal. Read-only, deck-skipped,
+// idempotent.
 function taliInitKeyboard() {
   if (window.__qmdKeyboard) return;
   if (document.querySelector('.tali-deck')) return;
   window.__qmdKeyboard = true;
 
-  var sheet = null;
-  var sheetRelease = null;
-  function buildSheet() {
-    var wrap = document.createElement('div');
-    wrap.className = 'tali-keys';
-    wrap.setAttribute('role', 'dialog');
-    wrap.setAttribute('aria-modal', 'true');
-    wrap.setAttribute('aria-label', 'Keyboard shortcuts');
-    wrap.hidden = true;
-    var card = document.createElement('div');
-    card.className = 'tali-keys-card';
-    card.innerHTML =
-      '<h2>Keyboard shortcuts</h2>' +
-      '<dl class="tali-keys-list">' +
-      '<div><dt><kbd>?</kbd></dt><dd>Show this help</dd></div>' +
+  // Mount the shortcut list into the Settings menu (built by taliInitReaderMenu, which runs
+  // first via the registry order). A static list of literal <kbd>s, no interpolation.
+  if (window.taliReaderMenu) {
+    var dl = document.createElement('dl');
+    dl.className = 'tali-keys-list';
+    dl.innerHTML =
+      '<div><dt><kbd>?</kbd></dt><dd>Open settings</dd></div>' +
       '<div><dt><kbd>/</kbd></dt><dd>Search</dd></div>' +
       '<div><dt><kbd>f</kbd></dt><dd>Focus mode</dd></div>' +
       '<div><dt><kbd>&larr;</kbd> <kbd>&rarr;</kbd></dt><dd>Previous / next chapter</dd></div>' +
-      '<div><dt><kbd>Esc</kbd></dt><dd>Close</dd></div>' +
-      '</dl>';
-    var close = document.createElement('button');
-    close.className = 'tali-keys-close';
-    close.type = 'button';
-    close.setAttribute('aria-label', 'Close');
-    close.textContent = '×';
-    card.appendChild(close);
-    wrap.appendChild(card);
-    document.body.appendChild(wrap);
-    close.addEventListener('click', closeSheet);
-    wrap.addEventListener('click', function (e) { if (e.target === wrap) closeSheet(); });
-    sheet = wrap;
-  }
-  function sheetOpen() { return !!sheet && !sheet.hidden; }
-  function openSheet() {
-    if (!sheet) buildSheet();
-    sheet.hidden = false;
-    if (window.taliFocusTrap) {
-      sheetRelease = window.taliFocusTrap(sheet, sheet.querySelector('.tali-keys-close'));
-    }
-  }
-  function closeSheet() {
-    if (!sheetOpen()) return;
-    sheet.hidden = true;
-    if (sheetRelease) { sheetRelease(); sheetRelease = null; }
+      '<div><dt><kbd>Esc</kbd></dt><dd>Close</dd></div>';
+    window.taliReaderMenu.addSection('Keyboard shortcuts', dl);
   }
 
   document.addEventListener('keydown', function (e) {
@@ -57,21 +27,14 @@ function taliInitKeyboard() {
     var typing =
       t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
     var modal = document.querySelector('[aria-modal="true"]');
-    // WCAG 2.1.4 opt-out: when single-key shortcuts are disabled, `?` / `/` / arrows do nothing.
-    // Esc-to-close the cheatsheet still works below (it's a universal dismiss, not a character
-    // shortcut, so a reader can never get stuck with the help sheet open).
-    var shortcuts = __qmdShortcutsOn();
-    // `?` (Shift+/) toggles help — allowed even when the cheatsheet itself is open.
-    if (shortcuts && e.key === '?' && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
-      if (modal && !sheetOpen()) return; // a different modal owns the keys
-      e.preventDefault();
-      if (sheetOpen()) closeSheet(); else openSheet();
+    // `?` (Shift+/) toggles the Settings menu (which shows this list).
+    if (e.key === '?' && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (modal) return; // a modal owns the keys
+      if (window.taliReaderMenu) { e.preventDefault(); window.taliReaderMenu.toggle(); }
       return;
     }
     if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
-    if (e.key === 'Escape' && sheetOpen()) { e.preventDefault(); closeSheet(); return; }
     if (modal) return;
-    if (!shortcuts) return; // opt-out: skip the remaining single-key shortcuts (/ and arrows)
     if (e.key === '/') {
       if (window.taliOpenSearch) { e.preventDefault(); window.taliOpenSearch(); }
       return;
@@ -84,4 +47,3 @@ function taliInitKeyboard() {
     }
   });
 }
-

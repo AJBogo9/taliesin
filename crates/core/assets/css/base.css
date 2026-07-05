@@ -29,10 +29,9 @@
     --tali-focus: 2px solid var(--tali-accent);
     --tali-focus-offset: 2px;
   }
-  /* Reader text-size: one root multiplier scales every rem/em (body + headings). */
-  html { scroll-behavior: smooth; font-size: calc(100% * var(--tali-reader-scale, 1)); }
+  html { scroll-behavior: smooth; }
 
-  /* Sepia: a warm, low-contrast reading theme (reader-selectable via the Aa panel). */
+  /* Sepia: a warm, low-contrast reading theme (reader-selectable via the Settings panel). */
   html[data-theme="sepia"] {
     /* --tali-muted darkened from #7a6a55 (4.44:1, below AA) to #6e5d46 (5.38:1) on the
        sepia bg, so muted prose/labels/captions clear WCAG-AA. */
@@ -43,18 +42,18 @@
     color-scheme: light;
   }
 
-  /* Reader menu: one "Aa" launcher (bottom-right) + the consolidated menu panel and its
-     sections (qmdInitReaderMenu; the prefs / progress / highlights enhancers add sections).
-     The segmented controls + highlight list further down are reused inside it. */
+  /* Settings menu: one gear launcher (top-right) + the popover panel and its sections
+     (taliInitReaderMenu; the theme / focus / keyboard enhancers add sections). The segmented
+     controls further down are reused inside it. */
   .tali-rmenu-toggle {
-    position: fixed; right: 1rem; bottom: 1rem; z-index: 2147481500;
+    position: fixed; right: 1rem; top: 1rem; z-index: 2147481500;
     width: 2.4rem; height: 2.4rem; border-radius: 50%;
     border: 1px solid var(--tali-border); background: var(--tali-bg); color: var(--tali-fg);
     box-shadow: 0 2px 12px var(--tali-edge-shadow); cursor: pointer;
-    font: 600 1rem/1 var(--tali-font-head); display: flex; align-items: center; justify-content: center; }
+    display: flex; align-items: center; justify-content: center; }
   .tali-rmenu-toggle:hover { border-color: var(--tali-accent); color: var(--tali-link); }
   .tali-rmenu-panel {
-    position: fixed; right: 1rem; bottom: 4rem; z-index: 2147481600;
+    position: fixed; right: 1rem; top: 4rem; z-index: 2147481600;
     width: min(18rem, 92vw); max-height: 70vh; overflow: auto; padding: .4rem 1rem 1rem;
     background: var(--tali-bg); color: var(--tali-fg);
     border: 1px solid var(--tali-border); border-radius: 12px;
@@ -65,7 +64,6 @@
   .tali-rmenu-section + .tali-rmenu-section { border-top: 1px solid var(--tali-border); }
   .tali-rmenu-section h2 { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em;
     color: var(--tali-muted); margin: 0 0 .6rem; }
-  .tali-rmenu-readout { font-size: .85rem; color: var(--tali-fg); }
   .tali-reader-row { display: flex; align-items: center; justify-content: space-between;
     gap: .5rem; margin: 0 0 .7rem; }
   .tali-reader-row > span { font-size: .82rem; color: var(--tali-muted); }
@@ -77,8 +75,6 @@
     font: inherit; font-size: .8rem; line-height: 1; }
   .tali-reader-seg button:first-child { border-left: 0; }
   .tali-reader-seg button[aria-pressed="true"] { background: var(--tali-accent-fill); color: var(--tali-on-accent); }
-  .tali-reader-reset { background: none; border: 0; color: var(--tali-link); cursor: pointer;
-    font: inherit; font-size: .8rem; padding: 0; }
   @media print { .tali-rmenu-toggle, .tali-rmenu-panel { display: none !important; } }
 
   /* Focus / reading mode (qmdInitFocusMode): hide site chrome and centre the prose into one
@@ -164,26 +160,16 @@
          overflow-wrap: break-word;
          font-feature-settings: "liga" 1, "calt" 1, "kern" 1;
          -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
-  /* Reader line-spacing (Display menu): prose blocks only, so headings (own optical
-     line-heights), pre/code (monospace), .katex, and tables are untouched. Default 1.7 = the
-     body line-height, so nothing changes until the reader opts in. */
-  /* Reader letter/word spacing (Display menu, WCAG 1.4.12 Text Spacing): same prose scope.
-     Default `normal` = no change until the reader opts in; `em` keeps each proportional to the
-     (reader-scaled) font size. */
+  /* Comfortable prose leading, scoped to prose blocks only so headings (own optical
+     line-heights), pre/code (monospace), .katex, and tables are untouched. */
   body p, body li, body dd, body blockquote, body figcaption {
-    line-height: var(--tali-reader-leading, 1.7);
-    letter-spacing: var(--tali-reader-letter, normal);
-    word-spacing: var(--tali-reader-word, normal); }
-  /* Keep monospace + math metrically exact: tracking INHERITS into inline descendants, so an
-     inline <code>/.katex inside a tracked <p> would distort without this direct reset (a rule on
-     the child beats the inherited value regardless of the ancestor's higher specificity). */
-  code, pre, kbd, samp, .katex { letter-spacing: normal; word-spacing: normal; }
-  /* Re-pin chrome that wraps prose in <li>/<p> with its own leading, so the reader vars above
-     never leak into navigation (TOC, sidebars, postnav, navbar — all <nav>), search results,
-     or margin notes. `inherit` restores each leading; `normal` resets the tracking. */
+    line-height: 1.7; }
+  /* Re-pin chrome that wraps prose in <li>/<p> with its own leading, so the prose leading above
+     never leaks into navigation (TOC, sidebars, postnav, navbar — all <nav>), search results,
+     or margin notes. `inherit` restores each element's own leading. */
   nav li, [role="listbox"] li,
   .sidenote p, .marginnote p, .column-margin p, .aside p {
-    line-height: inherit; letter-spacing: normal; word-spacing: normal; }
+    line-height: inherit; }
   /* Reading-typography polish. Global: text-wrap/orphans are no-ops on short chrome
      (nav/TOC), and global scope also covers no-TOC build pages (no <main> wrapper). */
   p, li { text-wrap: pretty; orphans: 2; widows: 2; }
@@ -211,22 +197,13 @@
   /* The skip link is pinned chrome with its own box; keep its offset tight. */
   .tali-skip:focus-visible { outline: var(--tali-focus); outline-offset: 2px; }
 
-  /* Keyboard shortcuts cheatsheet (qmdInitKeyboard). */
-  .tali-keys { position: fixed; inset: 0; z-index: 2147482000; display: flex;
-    align-items: center; justify-content: center; background: rgba(0, 0, 0, .45); }
-  .tali-keys[hidden] { display: none; }
-  .tali-keys-card { position: relative; background: var(--tali-bg); color: var(--tali-fg);
-    border: 1px solid var(--tali-border); border-radius: 12px; padding: 1.4rem 1.6rem;
-    max-width: 22rem; box-shadow: 0 10px 40px var(--tali-edge-shadow); }
-  .tali-keys-card h2 { margin: 0 0 .8rem; font-size: 1.1rem; }
+  /* Keyboard-shortcuts list (taliInitKeyboard), shown as a section inside the Settings panel. */
   .tali-keys-list { margin: 0; }
   .tali-keys-list > div { display: flex; gap: .8rem; align-items: baseline; margin: .35rem 0; }
-  .tali-keys-list dt { flex: 0 0 5rem; margin: 0; }
-  .tali-keys-list dd { margin: 0; color: var(--tali-muted); }
-  .tali-keys kbd { font: inherit; font-size: .8rem; background: var(--tali-code-bg);
+  .tali-keys-list dt { flex: 0 0 4.5rem; margin: 0; }
+  .tali-keys-list dd { margin: 0; color: var(--tali-muted); font-size: .82rem; }
+  .tali-keys-list kbd { font: inherit; font-size: .78rem; background: var(--tali-code-bg);
     border: 1px solid var(--tali-border); border-radius: 4px; padding: .05rem .35rem; }
-  .tali-keys-close { position: absolute; top: .5rem; right: .6rem; border: 0;
-    background: transparent; color: var(--tali-muted); cursor: pointer; font-size: 1.2rem; line-height: 1; }
 
   /* Cross-reference graph (graph.js): a focus-trapped modal with an interactive
      force-directed map of the project's pages + their cross-page links. */

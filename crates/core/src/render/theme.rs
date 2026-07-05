@@ -108,23 +108,7 @@ pub fn theme_head(default_mode: &str) -> String {
     // render time) re-render on a toggle.
     try {{ window.dispatchEvent(new CustomEvent("qmd:themechange", {{ detail: {{ mode: mode }} }})); }} catch(e) {{}}
   }}
-  // Reader display preferences (text size + reading width), reader-local, applied
-  // here in the pre-paint head so a returning reader never flashes the default size.
-  function applyReader(){{
-    var el = document.documentElement, s = null, w = null, l = null, lt = null, wd = null;
-    try {{ s = localStorage.getItem("qmd-reader-scale"); }} catch(e) {{}}
-    try {{ w = localStorage.getItem("qmd-reader-width"); }} catch(e) {{}}
-    try {{ l = localStorage.getItem("qmd-reader-leading"); }} catch(e) {{}}
-    try {{ lt = localStorage.getItem("qmd-reader-letter"); }} catch(e) {{}}
-    try {{ wd = localStorage.getItem("qmd-reader-word"); }} catch(e) {{}}
-    if (s) el.style.setProperty("--tali-reader-scale", s); else el.style.removeProperty("--tali-reader-scale");
-    if (w) el.style.setProperty("--tali-maxw", w); else el.style.removeProperty("--tali-maxw");
-    if (l) el.style.setProperty("--tali-reader-leading", l); else el.style.removeProperty("--tali-reader-leading");
-    if (lt) el.style.setProperty("--tali-reader-letter", lt); else el.style.removeProperty("--tali-reader-letter");
-    if (wd) el.style.setProperty("--tali-reader-word", wd); else el.style.removeProperty("--tali-reader-word");
-  }}
   apply();
-  applyReader();
   // Keep an unsaved "auto" page reactive to OS theme flips: re-apply only when the
   // mode is auto AND no saved choice exists, so a reader who explicitly toggled is
   // never overridden by the OS. (Older Safari exposes addListener instead of
@@ -139,19 +123,7 @@ pub fn theme_head(default_mode: &str) -> String {
   }} catch(e) {{}}
   window.taliSetTheme = function(p){{ try {{ localStorage.setItem("qmd-theme", p); }} catch(e) {{}} apply(); }};
   window.taliGetThemePref = function(){{ return pref(); }};
-  // key is "scale" | "width" | "leading" | "letter" | "word"; value null clears it. Mirrors taliSetTheme.
-  window.taliSetReaderPref = function(k, v){{
-    try {{ if (v === null) localStorage.removeItem("qmd-reader-" + k); else localStorage.setItem("qmd-reader-" + k, v); }} catch(e) {{}}
-    applyReader();
-    try {{ window.dispatchEvent(new CustomEvent("qmd:readerchange")); }} catch(e) {{}}
-  }};
-  window.taliGetReaderPref = function(k){{ try {{ return localStorage.getItem("qmd-reader-" + k); }} catch(e) {{ return null; }} }};
-  window.taliResetReader = function(){{
-    try {{ localStorage.removeItem("qmd-theme"); localStorage.removeItem("qmd-reader-scale"); localStorage.removeItem("qmd-reader-width"); localStorage.removeItem("qmd-reader-leading"); localStorage.removeItem("qmd-reader-letter"); localStorage.removeItem("qmd-reader-word"); }} catch(e) {{}}
-    apply(); applyReader();
-    try {{ window.dispatchEvent(new CustomEvent("qmd:readerchange")); }} catch(e) {{}}
-  }};
-  // Wire any `[data-qmd-theme-toggle]` button (the site navbar's, or the dev
+  // Wire any `[data-qmd-theme-toggle]` button (the dev
   // menu's on a single doc): toggle light <-> dark, icon reflects the current mode.
   // Shipped here (not in the preview client) so the toggle works in `build` too.
   var ICONS = {{ light: "{sun_icon}", dark: "{moon_icon}" }};

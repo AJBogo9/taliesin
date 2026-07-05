@@ -59,6 +59,21 @@ fn graph_button() -> String {
     )
 }
 
+/// A cog — the reader Settings gear glyph (Feather "settings"). Single-quoted attrs so it can
+/// also live verbatim in the floating-launcher copy in `code-enhance/13-reader-menu.js`.
+const SETTINGS_ICON: &str = "<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><circle cx='12' cy='12' r='3'/><path d='M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z'/></svg>";
+
+/// The reader Settings gear that docks in the navbar / book topbar. `taliInitReaderMenu`
+/// (code-enhance) wires it via `[data-tali-settings]` click delegation and mounts the
+/// Theme / Focus / Keyboard popover it opens; on a chrome-less single doc the same enhancer
+/// instead creates a floating copy. Server-rendered so the icon shows before JS runs.
+fn settings_button() -> String {
+    format!(
+        "<button class='tali-nav-settings' type='button' data-tali-settings \
+         aria-label='Settings' aria-expanded='false'>{SETTINGS_ICON}</button>"
+    )
+}
+
 impl Site {
     /// Whether the project has any cross-page reference edges (so a graph is worth
     /// offering). Gates the `[data-qmd-graph]` control + the inlined graph data.
@@ -104,18 +119,17 @@ impl Site {
         for it in &self.config.nav.right {
             s.push_str(&self.nav_link(it, current, &up));
         }
-        // A visible search control (opens the Cmd-K palette) + a real, shipped
-        // light/dark toggle (wired by theme_head; works in `build` too). Dev-only
-        // tools live in the floating dev menu, not the navbar.
+        // A visible search control (opens the Cmd-K palette); search + social links collapse
+        // into the burger menu on mobile. Dev-only tools live in the floating dev menu.
         s.push_str(&search_button(false));
         if self.has_reference_graph() {
             s.push_str(&graph_button());
         }
-        s.push_str(
-            "<button class=\"tali-theme-toggle\" type=\"button\" data-qmd-theme-toggle \
-             aria-label=\"Toggle theme\"></button>",
-        );
-        s.push_str("</div></nav></header>");
+        s.push_str("</div>");
+        // The reader Settings gear (theme / focus / shortcuts) sits OUTSIDE the collapsing
+        // links so it stays visible top-right at every width, beside the burger on mobile.
+        s.push_str(&settings_button());
+        s.push_str("</nav></header>");
         // Wire the burger button: toggle `aria-expanded` + a `.tali-nav-open` class
         // the CSS shows the menu on, and close on Escape / link click. Idempotent
         // (a `data-wired` guard) so re-running it (live hot-reload re-injects the
@@ -235,7 +249,7 @@ impl Site {
         };
         let up = "../".repeat(depth);
         let mut s = String::new();
-        // --- slim sticky topbar: Chapters launcher · brand · search · theme toggle ---
+        // --- slim sticky topbar: Chapters launcher · brand · search · Settings gear ---
         s.push_str(
             "<header class=\"tali-book-topbar\" data-qmd-src=\"_site.yml\">\
              <div class=\"tali-book-topbar-inner\">",
@@ -255,16 +269,13 @@ impl Site {
             ));
         }
         s.push_str("<span class=\"tali-nav-spacer\"></span>");
-        // A search button (opens the same Cmd-K palette) + the light/dark toggle. A book
-        // has no website navbar, so the toggle (wired by theme_head) lives here.
+        // A search button (opens the same Cmd-K palette) + the reader Settings gear (theme /
+        // focus / shortcuts). The gear replaces the old light/dark toggle that lived here.
         s.push_str(&search_button(false));
         if self.has_reference_graph() {
             s.push_str(&graph_button());
         }
-        s.push_str(
-            "<button class=\"tali-theme-toggle\" type=\"button\" data-qmd-theme-toggle \
-             aria-label=\"Toggle light/dark theme\"></button>",
-        );
+        s.push_str(&settings_button());
         s.push_str("</div></header>");
         // --- the chapter drawer: an off-canvas overlay summoned from the topbar ---
         s.push_str(

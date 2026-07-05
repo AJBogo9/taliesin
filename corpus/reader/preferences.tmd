@@ -2,19 +2,19 @@
 title: "Reading settings"
 ---
 
-This page is a reading surface. The **Aa** control (bottom-right of the built page) lets a
-reader pick a text size, a reading width, and a theme (light, dark, or sepia). The choice is
-stored in the reader's own browser and applied before the next page paints, so it never
-flashes and never touches the author's source.
+This page is a reading surface. The **Settings** gear (top-right of the built page) lets a
+reader pick a theme (light, dark, or sepia). The choice is stored in the reader's own browser
+and applied before the next page paints, so it never flashes and never touches the author's
+source.
 
-## Why reader controls
+## Why a reader theme
 
 A document is read far more often than it is written, on screens the author never saw: a
-phone in bright sun, a wide monitor at night, eyes that want larger type. One light/dark
-toggle cannot serve all of them. Reader settings move that last decision, *how the words
-look*, from the author to the reader, where it belongs.
+phone in bright sun, a wide monitor at night, a room lit only by the screen. Reader settings
+move that last decision, *how the page is lit*, from the author to the reader, where it
+belongs: a bright, a dark, or a warm sepia page, chosen per reader.
 
-The text below is here to look right at every size, width, and theme.
+The text below is here to look right in every theme.
 
 ## A paragraph of running prose
 
@@ -29,7 +29,7 @@ the chapter and closing the tab.
 
 ![A calm reading column.](../media/fit-a.png){#fig-reading}
 
-@fig-reading should keep its caption and numbering at every text size.
+@fig-reading should keep its caption and numbering in every theme.
 
 ## Some code and a little math
 
@@ -38,14 +38,14 @@ def comfortable(width_ch: int) -> bool:
     return 45 <= width_ch <= 75
 ```
 
-Inline math like $e^{i\pi} + 1 = 0$ and a display equation should both scale with the reader's
-chosen size:
+Inline math like $e^{i\pi} + 1 = 0$ and a display equation should both stay crisp in every
+theme:
 
 $$ \text{measure} \approx \frac{\text{line length}}{\text{character width}} $$
 
 ## A callout
 
 ::: {.callout-note}
-Reader preferences are reader-local and read-only. They never write back to the `.tmd`, add
-no output format, and ship offline, so they sit cleanly inside qmd-fast's invariants.
+The reader's theme choice is reader-local and read-only. It never writes back to the `.tmd`,
+adds no output format, and ships offline, so it sits cleanly inside qmd-fast's invariants.
 :::

@@ -1,8 +1,7 @@
-// Reading progress + resume: a thin top progress bar tied to scroll, a "N min left"
-// estimate (prose only, code/math excluded), and a block-id-anchored resume position
-// (reader-local, exact, survives reflow). Reader-side + read-only: derives from the live
-// DOM and the reader's own localStorage; never writes the author's source. Skipped on
-// decks. Idempotent (document-level, builds once).
+// Reading progress + resume: a thin ambient top progress bar tied to scroll, and a
+// block-id-anchored resume position (reader-local, exact, survives reflow). Reader-side +
+// read-only: derives from the live DOM and the reader's own localStorage; never writes the
+// author's source. Skipped on decks. Idempotent (document-level, builds once).
 function taliInitReadingProgress() {
   if (window.__qmdProgress) return;
   if (document.querySelector('.tali-deck')) return; // a slide deck has its own chrome
@@ -15,22 +14,6 @@ function taliInitReadingProgress() {
     });
   }
 
-  // Prose word count (code + math excluded), computed once / on block-set change.
-  var totalMin = 1, counted = -1;
-  function countWords() {
-    var blocks = contentBlocks();
-    if (blocks.length === counted) return;
-    counted = blocks.length;
-    var words = 0;
-    blocks.forEach(function (el) {
-      var clone = el.cloneNode(true);
-      [].slice.call(clone.querySelectorAll('pre, code, .katex')).forEach(function (n) { n.remove(); });
-      var m = (clone.textContent || '').match(/[^\s]+/g);
-      if (m) words += m.length;
-    });
-    totalMin = Math.max(1, Math.round(words / 200));
-  }
-
   var bar = document.createElement('div');
   bar.className = 'tali-readbar';
   bar.setAttribute('aria-hidden', 'true');
@@ -38,15 +21,6 @@ function taliInitReadingProgress() {
   fill.className = 'tali-readbar-fill';
   bar.appendChild(fill);
   document.body.appendChild(bar);
-
-  // The "N min left" readout lives in the reader menu's "Reading" section (registered at
-  // the end, once the word count is known); the bar itself stays ambient at the top.
-  var readout = document.createElement('div');
-  readout.className = 'tali-rmenu-readout';
-  function updateReadout() {
-    var f = frac(), left = Math.ceil(totalMin * (1 - f));
-    readout.textContent = (left > 0 ? '~' + left + ' min left' : 'Finished') + ' · ' + Math.round(f * 100) + '% read';
-  }
 
   function frac() {
     var h = document.documentElement;
@@ -121,12 +95,9 @@ function taliInitReadingProgress() {
     if (resumeEl) { if (resumeArmed) dismissResume(); else resumeArmed = true; }
   }
 
-  countWords();
   render();
-  if (window.taliReaderMenu) window.taliReaderMenu.addSection('Reading', readout, updateReadout);
   window.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('resize', schedule, { passive: true });
-  window.addEventListener('qmd:readerchange', schedule);
   maybeShowResume();
 }
 

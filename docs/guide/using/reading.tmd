@@ -3,8 +3,8 @@ title: "The reader experience"
 ---
 
 A qmd-fast page is not just rendered HTML, it is a reading surface. Every built
-page carries a suite of reader tools behind a single **Aa** control in the
-bottom-right corner. They need no author configuration: they appear on every
+page carries a small suite of reader tools behind a single **Settings** gear in the
+top-right corner. They need no author configuration: they appear on every
 article automatically (slide decks have their own chrome, so they are skipped).
 
 Two principles hold for everything on this page:
@@ -18,53 +18,41 @@ Two principles hold for everything on this page:
   `data-block-id`, your reading position anchors to block identity, not to fragile
   scroll offsets or fuzzy text. It survives a re-render and a change of window size.
 
-## The reader menu
+## The Settings menu
 
-The **Aa** button opens a light-dismiss popover (not a modal: it never covers or
-inerts the page). It hosts every reader tool as a labelled section: Display,
-Reading, Focus, and Keyboard. Close it with Esc, a click outside, or by activating
-a jump button inside.
+The **Settings** gear opens a light-dismiss popover (not a modal: it never covers or
+inerts the page). On a website it lives in the navbar; on a book, in the topbar; on a
+standalone page it floats in the top-right corner. It hosts three sections, Theme, Focus
+mode, and Keyboard shortcuts. Close it with Esc, a click outside, or the gear again.
 
-## Display preferences
+## Theme
 
-The **Display** section is a comfort suite. Each control is a segmented row, and
-every choice persists and is applied *before the page paints*, so a returning
-reader never sees a flash of the default:
+The **Theme** section is a single segmented control: Light, Dark, or Sepia. The choice
+persists in the reader's `localStorage` and is applied *before the page paints*, so a
+returning reader never sees a flash of the wrong theme.
 
-- **Theme**: Light, Dark, or Sepia.
-- **Text size**: small, normal, large, or x-large.
+The first two are the familiar pair. The third, **Sepia**, is a warm, low-contrast
+reading mode: a soft cream page (`#f4ecd8`) with a dark-brown ink (`#5b4636`) instead of
+black on white. The point is comfort for long, plain-prose reads, where full Light
+contrast can feel harsh, especially in dim light or on a bright panel. It is a true theme,
+not a tint: links, code backgrounds, borders, and the focus ring all shift to the sepia
+palette together, and it declares `color-scheme: light` so native form controls match.
 
-The first two themes are the familiar pair. The third, **Sepia**, is a warm,
-low-contrast reading mode: a soft cream page (`#f4ecd8`) with a dark-brown ink
-(`#5b4636`) instead of black on white. The point is comfort for long, plain-prose
-reads, where full Light contrast can feel harsh, especially in dim light or on a bright
-panel. It is a true theme, not a tint: links, code backgrounds, borders, and the focus
-ring all shift to the sepia palette together, and it declares `color-scheme: light` so
-native form controls match. Like every Display choice, the picked theme persists in the
-reader's `localStorage` and is applied before the page paints, so a returning reader
-opens straight into Sepia with no white flash.
-
-Sepia is **reader-menu only**. It is not a value you can set in a page's front-matter
+Sepia is **reader-choice only**. It is not a value you can set in a page's front-matter
 `theme:` (that field selects Light, Dark, or an extension bundle): it is a reading mode
-the reader chooses for themselves, the same way they choose a text size. An author who
+the reader picks for themselves, the same way they pick Light or Dark. An author who
 wants a warm default ships a custom theme through the usual extension or `css:` route.
-- **Width**: Narrow, Normal, or Wide reading measure.
-- **Line spacing**: Tight, Normal, or Relaxed.
-- **Letter spacing** and **Word spacing**: Normal, Wide, or Wider. The Wider steps
-  meet the WCAG 1.4.12 text-spacing minimums (0.12em letter, 0.16em word), and use
-  `em` units so they scale with the chosen text size.
 
-A **Reset to defaults** button clears all six preferences at once.
+There is deliberately no text-size, width, or spacing knob. qmd-fast tunes those defaults
+once, for every reader, rather than shipping a comfort panel of sliders: the browser
+already offers page zoom for the rare reader who needs larger type, and one well-set
+measure beats a pile of controls nobody opens.
 
 ## Reading progress and resume
 
-For long reads, the **Reading** section answers "how much is left?" and "where was
-I?":
+For long reads, an unobtrusive trio answers "where was I?", with no control to open:
 
 - A thin **progress bar** at the top of the page fills as you scroll.
-- A **minutes-left readout** estimates the remaining time from the prose word
-  count (code and equations are excluded) scaled by how far you have scrolled,
-  shown as `~N min left · X% read`.
 - A **Resume reading** pill appears when you reopen a page you left partway
   through. It scrolls you back to the exact block you stopped at, anchored to that
   block's content hash. It dismisses itself after a few seconds or on your next
@@ -92,10 +80,9 @@ insecure contexts (a `--host` LAN preview, `file://`) through a clipboard fallba
 
 Press **f** (or use the menu toggle) to enter focus mode: the navbar, footer, TOC,
 and sidebar disappear, and the prose centres into one calm column. The progress bar
-and the Aa button stay, so you keep your exit paths and your size and theme
-controls. Press **f** again or **Esc** to leave. Focus mode is momentary: it is not
-remembered across reloads, and the `f` key is ignored while you are typing in a
-field or a dialog is open.
+and the Settings gear stay, so you keep your exit paths and your theme control. Press
+**f** again or **Esc** to leave. Focus mode is momentary: it is not remembered across
+reloads, and the `f` key is ignored while you are typing in a field or a dialog is open.
 
 ## Keyboard and accessibility
 
@@ -105,14 +92,14 @@ emitted server-side, so they work even with JavaScript disabled. A handful of ke
 shortcuts speed up reading (each is ignored while you are typing in a field or a dialog
 is open):
 
-- `?` opens (and closes) a shortcuts cheatsheet.
+- `?` opens (and closes) the Settings menu, whose Keyboard shortcuts section lists these.
 - `/` opens the search palette.
 - `f` toggles focus mode.
 - `←` / `→` move to the previous / next chapter (in a book).
 - `Esc` closes the open menu, dialog, or palette.
 
 Keyboard focus is always visible: every interactive control (links, buttons, tabs,
-the reader-menu controls, and the deck controls) shares one consistent focus ring,
+the Settings controls, and the deck controls) shares one consistent focus ring,
 shown only for keyboard or assistive-technology focus and never on a mouse click. The
 ring is a single theme token, so it follows the active theme (including Sepia and the
 high-contrast modes below).
@@ -120,10 +107,10 @@ high-contrast modes below).
 **Landmarks and dialogs.** Each `<nav>` on a page carries a distinguishing accessible
 name (the table of contents announces as "Table of contents", separate from the
 navbar and the prev/next pager), so a screen reader's landmark list is navigable.
-Modal overlays (the search palette, the image viewer, the keyboard cheatsheet) move
-focus into themselves on open, trap Tab while open, and restore focus to whatever
-opened them on close; the **Aa** reader menu is a light-dismiss popover, so it does
-not trap focus but returns it to the **Aa** button when you press Esc.
+Modal overlays (the search palette and the image viewer) move focus into themselves on
+open, trap Tab while open, and restore focus to whatever opened them on close; the
+**Settings** menu is a light-dismiss popover, so it does not trap focus but returns it to
+the gear when you press Esc.
 
 **Slide decks** announce as you navigate. Each slide is a labelled group ("Slide 3 of
 12"), and a polite live region speaks the new position (and its title) on every move,

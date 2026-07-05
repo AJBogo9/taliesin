@@ -29,8 +29,8 @@ no `theme:` at all, resolves to "auto", which the pre-paint script settles to **
 A standalone page never follows the OS; the one exception is `--bare` output, a fragment
 that ships no pre-paint script and so falls back to the OS `prefers-color-scheme`.
 `theme: dark` is dark for the same reason. Either way
-the reader can still flip the page with the theme toggle (the site navbar's button, or
-the dev menu on a single doc), and the choice persists in their browser. A page with a
+the reader can still flip the page from the **Settings** gear (top-right of every page,
+or the dev menu on a single doc), and the choice persists in their browser. A page with a
 *custom* CSS theme that doesn't name a built-in mode is one of those "auto" cases, so it
 starts dark too.
 
@@ -39,9 +39,9 @@ starts dark too.
 
 There is a third built-in palette, **Sepia** (a warm, low-contrast reading
 surface), but you cannot select it with `theme: sepia` in the front matter. It is
-offered only in the reader's own Display menu (the **Aa** control), alongside Light
-and Dark. The toggle button itself flips between light and dark only; Sepia is a
-reader choice. See [The reader experience](reading.tmd) for the rest of that menu.
+offered only in the reader's own **Settings** gear (top-right), in the Theme section
+alongside Light and Dark. Sepia is a reader choice, not an author default. See
+[The reader experience](reading.tmd) for the rest of that menu.
 :::
 
 ## How the toggle works
@@ -243,13 +243,10 @@ Now links, the focus ring, and the progress bar are orange, the body sets in
 Charter, and both themes stay contrast-safe. Nothing else in the document needed
 touching, and the toggle still swaps light and dark instantly.
 
-## Reader display preferences are separate
+## The reader's theme is their own
 
 The variable values above are the *author's* theme. On top of them, each reader can
-tune their own comfort settings in the **Aa** menu: text size, reading width, and
-line/letter/word spacing. Those overrides set reader-scoped variables
-(`--qmd-reader-scale`, `--qmd-maxw`, `--qmd-reader-leading`, and the spacing
-variables) and **persist per reader** in their browser `localStorage`, never
-touching your source. They are applied before the page paints, so a returning
-reader keeps their preferred size with no flash. See
-[The reader experience](reading.tmd) for the full menu.
+pick their own theme, Light, Dark, or Sepia, from the **Settings** gear (top-right).
+That choice **persists per reader** in their browser `localStorage`, never touching your
+source, and is applied before the page paints, so a returning reader never sees a flash of
+the wrong theme. See [The reader experience](reading.tmd) for the rest of the Settings menu.
