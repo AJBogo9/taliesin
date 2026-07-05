@@ -57,6 +57,11 @@ Tiers, not a strict rank. **Tier 1 (the 7-cluster priority queue), the Taliesin 
   *Taliesin rename*
 - Parked on the author (need a repro / a viewport / a fork): focus-mode prev-arrow, code-blocks-refresh,
   `.qmd` format-on-save, FL-weather migrate. → their sections.
+- **Brainstorm triage (2026-07-05):** six design-calls filed in their sections. Remove the xref graph
+  tool (→ *Cross-page references*); book pager at chapter top + website "back to listing" link (→
+  *Reader experience* / *Site: silent omissions*); fold the book page-TOC into the chapter drawer,
+  decenter-fix vs fold (→ *Reader experience*); persist focus mode across chapters (→ *Reader
+  experience*); consolidate the preview dev-menu vs progress chip (→ *Preview / dev UI*).
 
 **Tier 3: hardening / lower (P3):**
 - Testing / CI residuals; CLI / docs polish; Security hardening; Companion `check`/prose-lint
@@ -79,6 +84,15 @@ the item below builds on is in place.
   `#` links; a cross-page xref target lives on another page. The render-harvest infra is now in place
   (extend it to collect an anchor→preview snippet, serve it like `search-index.js`, wire the hover
   card for `.tali-xref` cross-page links). Grouped with a shared cross-page content index.
+- [ ] **Remove the cross-reference graph tool?** (owner call, reversible; Tier 2). The force-directed
+  xref map (`graph.js` + `site/graph.rs` + the `[data-qmd-graph]` chrome control) shipped 2026-07-02
+  (`4ebef43`); the owner judges its interaction not good enough to keep. It is read-only nav, so no
+  invariant impact; it is NOT corpus-pinned (only unit tests: `site/mod.rs:1382-1420`, `site/graph.rs`,
+  `third_party.rs:15` OWN_JS) and has no docs/README reference, so removal is low-risk and
+  git-reversible. Decision: full removal (control + `graph.js` + the `site/graph.rs` data-scan module +
+  the `lib.rs:46` / `render/mod.rs:944,956` re-exports together, the default) vs. hide-the-control,
+  keep-the-data. On removal, edit the "shipped" framing at lines 50 + 76 above; re-adding later needs a
+  NEW corpus doc + test pin. Does NOT block F2a (that builds on render-harvest, not the graph).
 
 ### Discoverability & distribution
 The "Publishing & sharing" recipe is documented in `docs/guide/reference/cli.qmd` (send-a-zip, GitHub
@@ -106,7 +120,43 @@ directly (`code, pre, kbd, samp, .katex { letter-spacing: normal; word-spacing: 
   highlighting is server-side and present on first paint (`highlight.rs:49`→`emit.rs:65,82`); the only
   client enhancer is the copy button; no hydration step to miss. If it recurs, capture exact steps
   (viewport / kernel state / after a WS reconnect?) and reopen.
+- [ ] **Fold the book page-TOC into the chapter drawer?** (owner call, Tier 2; touches a research
+  keep). A book carries TWO nav surfaces: the summoned chapter drawer (`chrome.rs:232`) and a
+  persistent right-rail "on this page" `#TOC` (`site.css:174`, grid `201-204`). Two concerns, kept
+  separate: (a) a real layout wrinkle: a has-TOC chapter lays out as a 62.5rem grid (46rem text + 14rem
+  rail), so its text column shifts ~132px left vs a no-TOC 46rem-centred chapter (chapters jump
+  horizontally). **Default = fix in place** (reserve the 14rem gutter, or anchor a constant centre
+  axis), which preserves the NN/g "keep both" decision (see Decided-against). (b) A SEPARATE,
+  higher-bar owner preference: actually drop the right rail and nest the current chapter's sections in
+  the drawer (one nav surface). That reverses the keep and loses the always-visible scrollspy; the
+  "owner rarely uses the rail" claim is unverified, so confirm it first. Book-only (blog/website have
+  no drawer). Not a knob, a default.
+- [ ] **Persist focus (reading) mode across book chapters?** (owner call, Tier 2). Focus mode is
+  deliberately ephemeral (`03-focus-mode.js:11`) and resets on each chapter (books are full page
+  loads). Native OS-fullscreen CANNOT persist (a fresh user gesture is required per document load), so
+  that half is out of scope. Fixable half: persist a global focus flag in `localStorage`, re-apply
+  pre-paint (`theme.rs`), and decouple `.tali-focus` CSS from `requestFullscreen` (`setFocus`,
+  `03-focus-mode.js:48-51`) so the calm single column survives nav WITHOUT true fullscreen. Tradeoff
+  (why it is a decision, not a bug): that yields a half-state (chrome hidden but not fullscreen) at
+  odds with focus mode's fullscreen purpose, and a single `f` becomes a sticky global chrome-strip.
+  **Recommended default: keep ephemeral** (lean against persisting).
+- [ ] **Book pager at chapter TOP too?** (owner call, Tier 2). `book_nav_html` (`chrome.rs:322`)
+  renders prev/next only into `post_nav_html` at the bottom (`mod.rs:392`). The sticky topbar's
+  Chapters drawer is random-access, not a linear pager, so a top pager is not strictly duplicated; but
+  a second pager above the chapter title fights the reading-first calm-column keeps. **Recommended
+  default: bottom-only.** If pursued, reuse `book_nav_html` above `<main>`, condensed/muted, hidden on
+  the smallest viewports. Sibling of the website "back to listing" item.
 - Decided/known: the reader menu is intentionally an untrapped popover (not a modal).
+
+### Preview / dev UI
+- [ ] **Consolidate the preview dev-menu vs. the `#tali-progress` chip?** (design call, not a bug;
+  Tier 2). The build/exec chip (bottom-right, always-visible: warming / k-of-N / idle / error +
+  click-to-scroll to the active or erroring cell + favicon/title, `client.js:515-529`) is a separate
+  element from the bottom-left dev menu, whose toggle dot shows websocket CONNECTION status
+  (`serve/mod.rs:439,451`). These are two ORTHOGONAL always-on signals, on opposite corners, with no
+  collision. **Recommended default: keep separate.** The disfavored, owner-gated alternative is folding
+  build-phase into the dev-menu dot while keeping k/N + click-to-scroll reachable (NOT burying progress
+  in the default-collapsed panel, `client.js:369`). Requires a concrete clutter complaint first.
 
 ### Visual craft / theming (deep-audit P2)
 Residuals from the 2026-07-01 cluster (deferred, low):
@@ -116,6 +166,18 @@ Residuals from the 2026-07-01 cluster (deferred, low):
 - [ ] **Sepia callout/theorem HEADER tints** still color-mix from fixed cool colors, so a Note
   header reads slightly cool on the warm page (borders are fine). Low; revisit if sepia gets a
   polish pass.
+- [ ] **Theme design-quality pass (light / dark / sepia)** (subsumes the two residuals above). Use the
+  frontend-design skill to judge whether each theme serves its purpose and reads as one cohesive
+  system: palette cohesion, accent restraint (ties to "Reconsider the tech-blue accent" under
+  *Reading-first identity polish*, so accent is not decided twice), dark/sepia parity, code-highlight
+  harmony. WCAG-AA contrast is already tuned per theme with the math in-comment (`base.css:6-8,37-39`,
+  `dark.css:4-5`), so RE-VERIFY, do not redo; and any warm/"sunset" recolour must preserve sepia's
+  deliberate LOW-contrast reading purpose and its AA-tuned `--tali-muted` (5.38:1). Treat "templated"
+  diagnoses as judgment, not verified defects (re-check live). **Absorbs the "three named themes"
+  idea:** the light/dark/sepia trio already ships and is reader-selectable (`14-reader-prefs.js:11`),
+  so "full sun / setting sun / night" is only a naming/identity call (weigh vs the recognized "Sepia"
+  term), and the warm theme should stay reader-menu-only (a saved reader choice always overrides an
+  author `theme:` default, `theme.rs:84-88`, so a `theme: sepia` knob buys almost nothing).
 
 ### Deck engine (deep-audit P2)
 Deferred:
@@ -136,6 +198,13 @@ Deferred:
   is solidly unit-tested (`contents_dot_at_root_lists_siblings_and_warns_titleless`) but no `corpus/`
   doc uses `contents: .`, so the corpus arbiter doesn't see it. Deferred rather than distort the real
   tech-blog nav with a synthetic "list everything" page; add a small dedicated fixture if pinning is wanted.
+- [ ] **Bottom-of-post "back to listing" link (websites)?** (owner call, Tier 2). Website posts have no
+  bottom return link: `post_nav_html` is empty for non-book pages (`mod.rs:392`) even though
+  `mod.rs:385`'s own comment names a "back to listing link" that was never implemented (the navbar
+  already returns you). **Recommended default:** auto-derive the target from the single `listing:` page
+  whose `contents:` covers the post (prefix match, `collection()` `mod.rs:784-796`), render "← All
+  posts" only when exactly one listing covers it, with no config key. Ambiguous when multiple listings
+  cover a post.
 
 ### Citations / math / bib (deep-audit P2)
 Remaining low residuals from the 2026-07-01 cluster:
@@ -216,6 +285,22 @@ and re-check competitor layouts live before banking a default on "X does Y."
 - [ ] **`check` online-link mode (opt-in).** Broken plain/external `http(s)` links are intentionally
   NOT fetched (offline + deterministic by design). If ever wanted, gate a real fetch behind an explicit
   `--online` flag so the default `check` stays kernel-free and network-free.
+- [ ] **Companion: `editor.wordWrap` default for `[taliesin]`** (P3, feasibility-bounded). The ideal
+  "wrap prose, never wrap code" is impossible in VS Code: `editor.wordWrap` is document/scope-level,
+  not per-embedded-region (no per-fenced-region wrap API; `language-configuration.json` has no wrap
+  hook). Achievable: a `contributes.configurationDefaults` `"[taliesin]": { "editor.wordWrap": ... }`
+  (all-or-nothing, user-overridable). **Default: respect the user's global setting** (do nothing) until
+  prose overflow is a real complaint, then ship `"on"` (short code cells wrapping too is tolerable;
+  prose horizontal-scroll is not).
+- [ ] **Companion: grammar polish** (P3, low). The `.tmd` grammar already embeds
+  python/r/js/julia/mermaid/sql in braced cells (`tmd.tmLanguage.json:51-135`) and inherits full
+  markdown highlighting for bare fences, so this is polish, not a fix: (a) YAML-type the
+  `#|`/`//|`/`%%|` option VALUE (currently uniform `string.unquoted`, `:144`); (b) enumerate more langs
+  in `cell_generic` only if a real executable cell language ever needs it (near-moot today). The
+  scope-name question (`#|`/xref/cite bespoke vs standard) is already the note under *Taliesin rename*
+  (lines 284-285). Separately, a tiny legit add: recommend the python/r/etc language extensions via
+  `.vscode/extensions.json` so cell code highlights out of the box (`include: source.r` needs that
+  extension installed).
 
 ### Execution cache (exec/kernel Do-NOT-touch, careful)
 - [ ] **Kernel/forkserver resource leaks on build exit** (observed 2026-06-29). (a) warm-pool
