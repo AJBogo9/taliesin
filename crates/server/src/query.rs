@@ -18,6 +18,10 @@ pub(crate) fn cmd_render(path: Option<&String>) -> ExitCode {
         eprintln!("usage: taliesin render <file.tmd>");
         return ExitCode::FAILURE;
     };
+    if let Some(msg) = directory_rejection(path, "render renders a single .tmd file") {
+        log::error(&msg);
+        return ExitCode::FAILURE;
+    }
     match std::fs::read_to_string(path) {
         Ok(src) => {
             let p = Path::new(path);
@@ -74,6 +78,12 @@ pub(crate) fn cmd_blocks(path: Option<&String>) -> ExitCode {
         eprintln!("usage: taliesin blocks <file.tmd>");
         return ExitCode::FAILURE;
     };
+    if let Some(msg) =
+        directory_rejection(path, "blocks lists the block model of a single .tmd file")
+    {
+        log::error(&msg);
+        return ExitCode::FAILURE;
+    }
     match std::fs::read_to_string(path) {
         Ok(src) => {
             let p = Path::new(path);
@@ -169,6 +179,20 @@ pub(crate) fn cmd_vocab() -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// `render` and `blocks` each render a single `.tmd` file. Handed a directory (a project
+/// root), `read_to_string` would fail with a bare "Is a directory" OS error; instead build
+/// a clear diagnostic that points at the directory-aware subcommands. Returns the message,
+/// or `None` when `path` is not a directory (so the caller proceeds to read it). Split out
+/// so it's unit-testable without spawning the binary.
+fn directory_rejection(path: &str, lead: &str) -> Option<String> {
+    Path::new(path).is_dir().then(|| {
+        format!(
+            "{lead}, but {path} is a directory. For a multi-page project, \
+             use `taliesin build {path}` or `taliesin preview {path}`."
+        )
+    })
+}
+
 /// A short, single-line, tag-free preview of a block's HTML.
 fn preview(html: &str) -> String {
     let mut s = String::new();
@@ -186,4 +210,37 @@ fn preview(html: &str) -> String {
         }
     }
     s.trim().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // `CARGO_MANIFEST_DIR` is always a directory; its `Cargo.toml` is always a file. Using
+    // them keeps the test independent of the working directory `cargo test` runs from.
+    const A_DIRECTORY: &str = env!("CARGO_MANIFEST_DIR");
+    const A_FILE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml");
+
+    #[test]
+    fn a_directory_is_rejected_with_a_helpful_message() {
+        let msg = directory_rejection(A_DIRECTORY, "render renders a single .tmd file")
+            .expect("a directory must be rejected");
+        assert!(msg.contains("is a directory"), "message was: {msg}");
+        // The message must steer the user to the directory-aware subcommands.
+        assert!(msg.contains("taliesin build"), "message was: {msg}");
+        assert!(msg.contains("taliesin preview"), "message was: {msg}");
+        // ...and carry the caller's lead clause so render vs blocks reads correctly.
+        assert!(
+            msg.starts_with("render renders a single .tmd file"),
+            "message was: {msg}"
+        );
+    }
+
+    #[test]
+    fn a_regular_file_is_not_rejected() {
+        assert!(
+            directory_rejection(A_FILE, "blocks lists the block model of a single .tmd file")
+                .is_none()
+        );
+    }
 }

@@ -96,8 +96,8 @@ Each clears once you decide. Design calls carry a recommended default.
 - **Perf (low):** protocol-level op-message batching (one WS message per save, not one-per-op); lazy
   discover-time search index (`search.rs:30`); `updateWordCount` deep-clones `#tali-root` per op
   (`client.js`); visited pages never evicted from `app.pages` (`serve_site.rs`, unbounded growth).
-- **CLI / docs microcopy:** `build --out` with no value → hard error (`build.rs:73`); `render`/`blocks`
-  `is_dir()` clear message (`query.rs:21,66`); usage `[--jobs <N>]` (`main.rs:104`); reconcile repo-URL
+- **CLI / docs microcopy:** `build --out` with no value → hard error (`build.rs:73`); usage
+  `[--jobs <N>]` (`main.rs:104`); reconcile repo-URL
   placeholders; README `check` mentions; reconcile the no-kernel-build wording (`CLAUDE.md:122`,
   `getting-started`, `build.rs:232`).
 - **Bib / math edge cases:** dup-key `.bib` warning stays unlocated (external file; could point at the
