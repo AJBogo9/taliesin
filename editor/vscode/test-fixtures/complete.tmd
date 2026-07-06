@@ -1,0 +1,10 @@
+---
+title: Completion Fixture
+---
+
+```{python}
+#|
+x = 1
+```
+
+::: {.

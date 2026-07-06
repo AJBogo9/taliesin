@@ -6,6 +6,7 @@ const REPO_ROOT = path.resolve(__dirname, "../../../../../"); // out/e2e/suite -
 const SAMPLE_POST = path.join(REPO_ROOT, "corpus/posts/born-machines.tmd");
 const SAMPLE_TMD = path.join(REPO_ROOT, "corpus/native-tmd.tmd");
 const DIAG_FIXTURE = path.join(REPO_ROOT, "editor/vscode/test-fixtures/diag-typo.tmd");
+const COMPLETE_FIXTURE = path.join(REPO_ROOT, "editor/vscode/test-fixtures/complete.tmd");
 const QMD_FAST_BIN = path.join(REPO_ROOT, "target/debug/taliesin");
 
 suite("qmd-fast companion (integration)", () => {
@@ -72,6 +73,37 @@ suite("qmd-fast companion (integration)", () => {
     assert.equal(typo!.range.start.line, 2, "the `titel` typo is on line 3 (0-based line 2)");
     assert.equal(typo!.severity, vscode.DiagnosticSeverity.Warning);
   });
+
+  test("offers cell-option and div-class completions", async () => {
+    await vscode.workspace
+      .getConfiguration("qmdFast")
+      .update("path", QMD_FAST_BIN, vscode.ConfigurationTarget.Global);
+
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(COMPLETE_FIXTURE));
+    const text = doc.getText().split("\n");
+    const cellLine = text.findIndex((l) => l.startsWith("#|"));
+    const divLine = text.findIndex((l) => l.startsWith("::: {."));
+    assert.ok(cellLine >= 0 && divLine >= 0, "fixture must contain a #| line and a ::: {. line");
+
+    const cellPos = new vscode.Position(cellLine, 2); // right after `#|`
+    const cellList = (await vscode.commands.executeCommand(
+      "vscode.executeCompletionItemProvider",
+      doc.uri,
+      cellPos
+    )) as vscode.CompletionList;
+    const cellLabels = cellList.items.map((i) => labelText(i.label));
+    assert.ok(cellLabels.includes("echo"), `cell options should include echo: ${cellLabels}`);
+
+    const divPos = new vscode.Position(divLine, 6); // right after `::: {.`
+    const divList = (await vscode.commands.executeCommand(
+      "vscode.executeCompletionItemProvider",
+      doc.uri,
+      divPos
+    )) as vscode.CompletionList;
+    const divLabels = divList.items.map((i) => labelText(i.label));
+    assert.ok(divLabels.includes("callout-note"), `div classes should include callout-note: ${divLabels}`);
+    assert.ok(divLabels.includes("theorem"), `div classes should include theorem: ${divLabels}`);
+  });
 });
 
 function waitFor(pred: () => boolean, timeoutMs: number): Promise<boolean> {
@@ -84,4 +116,8 @@ function waitFor(pred: () => boolean, timeoutMs: number): Promise<boolean> {
     };
     tick();
   });
+}
+
+function labelText(label: string | vscode.CompletionItemLabel): string {
+  return typeof label === "string" ? label : label.label;
 }

@@ -61,6 +61,7 @@ opened on the qmd-fast repo:
    into a later slide's content — the deck jumps to that slide.
 5. Close the preview panel — the spawned `qmd-fast preview` process exits (no orphan).
 6. Open a `.tmd` with a front-matter typo (or any `taliesin check` finding): a yellow squiggle appears on the offending line, refreshing on save.
+7. Autocomplete fires inside front matter, after `#|` in a code cell, after `:::{.`, after `@`, and inside `[@ ]`, offering keys, cell options, callout/theorem/div classes, cross-reference prefixes, and citation keys from `taliesin vocab`.
 
 ## Known risk
 

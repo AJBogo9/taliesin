@@ -3,12 +3,14 @@ import { PreviewServer } from "./server";
 import { relayHtml } from "./webview";
 import { parseSourcepos, resolveSourceFile, relativeKey, isSourceFile } from "./paths";
 import { registerDiagnostics } from "./diagnostics";
+import { registerCompletions } from "./completions";
 
 export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("qmdFast.openPreview", () => openPreview(context))
   );
   registerDiagnostics(context);
+  registerCompletions(context);
 }
 
 async function openPreview(context: vscode.ExtensionContext) {
