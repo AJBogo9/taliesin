@@ -20,10 +20,7 @@ fn is_heading(html: &str) -> bool {
 /// ` id="` (space-prefixed) so the universal `data-block-id="` attribute — hyphen-prefixed
 /// — is NOT mistaken for a real id (which would make every heading a bare-title snippet).
 fn leading_tag_has_id(html: &str) -> bool {
-    match crate::render::tag_end(html) {
-        Some(gt) => html[..gt].contains(" id=\""),
-        None => html.contains(" id=\""),
-    }
+    leading_tag_contains(html, " id=\"")
 }
 
 /// Truncate to at most `SNIPPET_CAP` chars on a char boundary.
@@ -47,13 +44,13 @@ pub(super) fn extract_snippet(blocks: &[Block], anchor: &str) -> Option<String> 
         })?;
     let mut out = blocks[bi].html.clone();
     if is_heading(&blocks[bi].html) {
-        let mut added = 0;
-        for b in &blocks[bi + 1..] {
-            if added >= 2 || is_heading(&b.html) || leading_tag_has_id(&b.html) {
+        // Append up to 2 following blocks, stopping at the next heading or a block with
+        // its own id (mirrors the same-page card's "heading + up to 2 siblings").
+        for b in blocks[bi + 1..].iter().take(2) {
+            if is_heading(&b.html) || leading_tag_has_id(&b.html) {
                 break;
             }
             out.push_str(&b.html);
-            added += 1;
         }
     }
     Some(cap(out))
@@ -96,15 +93,7 @@ pub(super) fn rewrite_snippet_urls(html: &str, page_url: &str) -> String {
 
 /// Root-relative rebase of one attribute value; skips external/absolute/data/anchor.
 fn rebase_url(val: &str, page_url: &str) -> String {
-    if val.is_empty()
-        || val.starts_with('#')
-        || val.starts_with("//")
-        || val.contains("://")
-        || val.starts_with("data:")
-        || val.starts_with("mailto:")
-        || val.starts_with("tel:")
-        || val.starts_with("vscode:")
-    {
+    if val.is_empty() || is_external_or_special(val) {
         return val.to_string();
     }
     let (path, frag) = match val.split_once('#') {
@@ -184,6 +173,21 @@ mod tests {
     #[test]
     fn extract_returns_none_for_unknown_anchor() {
         assert!(extract_snippet(&[blk("<p>x</p>")], "fig-x").is_none());
+    }
+
+    #[test]
+    fn extract_caps_a_huge_snippet_at_the_limit() {
+        // A giant figure/table can't blow up the index: the snippet is char-capped.
+        let big = format!(
+            "<figure id=\"fig-x\">{}</figure>",
+            "x".repeat(SNIPPET_CAP * 2)
+        );
+        let s = extract_snippet(&[blk(&big)], "fig-x").unwrap();
+        assert!(
+            s.chars().count() <= SNIPPET_CAP,
+            "snippet not capped: {} chars",
+            s.chars().count()
+        );
     }
 
     #[test]

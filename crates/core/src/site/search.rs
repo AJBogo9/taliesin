@@ -190,6 +190,15 @@ mod tests {
     }
 
     #[test]
+    fn json_str_neutralizes_script_close_tag() {
+        // Both the search and hover indices inline JSON inside a `<script>`; a literal
+        // `</script>` in content must not break out. Every `<` is escaped to `<`.
+        let out = json_str("</script><script>alert(1)</script>");
+        assert!(!out.contains("</script"), "raw </script leaked: {out}");
+        assert!(out.contains("\\u003c/script"), "expected escaped <: {out}");
+    }
+
+    #[test]
     fn headings_with_pos_yields_spans_for_full_text_sections() {
         let html = "<h2 id=\"a\">Alpha</h2><p>body of a</p><h3 id=\"b\">Beta</h3><p>body of b</p>";
         let hs = headings_with_pos(html);

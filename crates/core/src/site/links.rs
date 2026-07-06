@@ -77,17 +77,24 @@ pub fn rewrite_qmd_links(html: &str) -> String {
     out
 }
 
-pub(super) fn rewrite_one_href(val: &str) -> String {
-    // Only touch in-site links (skip external/anchor/data); rewrite the `.tmd`
-    // path component, keeping prefix + fragment intact.
-    if val.starts_with('#')
+/// Whether a link value must be left untouched by the site rewriters: an in-page anchor
+/// (`#`), protocol-relative (`//`), absolute-scheme (`://`), or a non-http special scheme
+/// (`data:`/`mailto:`/`tel:`/`vscode:`). Shared by `rewrite_one_href` and `hover::rebase_url`
+/// so the two URL rewriters can't silently diverge when a new scheme is added.
+pub(super) fn is_external_or_special(val: &str) -> bool {
+    val.starts_with('#')
         || val.starts_with("//")
         || val.contains("://")
         || val.starts_with("data:")
         || val.starts_with("mailto:")
         || val.starts_with("tel:")
         || val.starts_with("vscode:")
-    {
+}
+
+pub(super) fn rewrite_one_href(val: &str) -> String {
+    // Only touch in-site links (skip external/anchor/data); rewrite the `.tmd`
+    // path component, keeping prefix + fragment intact.
+    if is_external_or_special(val) {
         return val.to_string();
     }
     // `.tmd`→`.html` on the path component, fragment preserved (a non-`.tmd` path
@@ -98,14 +105,19 @@ pub(super) fn rewrite_one_href(val: &str) -> String {
 /// Whether a block's *leading element tag* carries `id="x"` (so a `::: {#x}`
 /// placeholder matches, but a code sample or prose that merely contains the text
 /// `id="x"` in its body does not).
-pub(super) fn block_tag_has_id(html: &str, id: &str) -> bool {
-    let needle = format!("id=\"{id}\"");
-    // Quote-aware tag end, so a raw-HTML placeholder whose leading tag has a `>`
-    // inside an attribute value (e.g. `<div title="a > b" id="x">`) is handled.
+/// Whether `needle` appears within a block's *leading element tag*. Quote-aware tag end,
+/// so a raw-HTML placeholder whose leading tag has a `>` inside an attribute value (e.g.
+/// `<div title="a > b" id="x">`) is handled. Shared by `block_tag_has_id` (specific id) and
+/// `hover::leading_tag_has_id` (any ` id="`).
+pub(super) fn leading_tag_contains(html: &str, needle: &str) -> bool {
     match crate::render::tag_end(html) {
-        Some(gt) => html[..gt].contains(&needle),
-        None => html.contains(&needle),
+        Some(gt) => html[..gt].contains(needle),
+        None => html.contains(needle),
     }
+}
+
+pub(super) fn block_tag_has_id(html: &str, id: &str) -> bool {
+    leading_tag_contains(html, &format!("id=\"{id}\""))
 }
 
 /// Resolve `target` (a path relative to the file at `from_rel`) to a site-root-
