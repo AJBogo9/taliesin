@@ -27,7 +27,10 @@ batch** (2026-07-06, browser-verified): book column no longer jumps between chap
 pager re-centres; the SSR-vs-first-render race is healed with a render-generation marker
 (`TALIESIN_SSR_GEN`) so a client that server-rendered pre-exec re-mounts its cell outputs; deck speaker
 previews are scaled snapshot clones (no live embed iframes / re-execution); the "Resume reading" pill
-clears the dev menu in preview.
+clears the dev menu in preview. **F2a cross-page hover-preview** (2026-07-06): hovering a cross-page
+`.tali-xref` now previews its target from a served `hover-index.js` (anchor→rendered-block-HTML index
+built in `Site::discover` via `site/hover.rs`, asset URLs rebased root-relative + resolved client-side
+via `TALIESIN_SITE_ROOT`); `file://`-safe `<script>` load like search; same-page path untouched.
 
 **Working method:** branch per feature; brainstorm if there's a fork; spec under
 `docs/superpowers/specs/`; implement TDD; verify (cargo + browser via chrome-devtools, or the
@@ -61,10 +64,6 @@ Each clears once you decide. Design calls carry a recommended default.
 ## Priority queue
 
 ### Tier 1 — decided, build-ready (no blocker)
-- **F2a: hover preview for cross-page refs** (P3). `12-link-preview.js` only fires on same-page `#`
-  links. Extend the shipped render-harvest infra (`RenderedDoc.xref_numbers` +
-  `Site::harvest_xref_numbers()`) to collect an anchor→snippet index, serve it like `search-index.js`,
-  and wire the hover card for `.tali-xref` cross-page links.
 - **Nested theorem loses its number/xref** (optional; carved out of the shipped cross-page-number
   fix). `number_theorems` walks only top-level blocks, so a `::: {.theorem}` nested inside another
   fenced div gets no number and no ref target. Fix in `render/mod.rs` (recurse into nested blocks) or,
