@@ -432,7 +432,8 @@ html.tali-print .tali-slide-bg { display: none; } /* per-slide backgrounds aren'
 .tali-speaker .sp-stage { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; min-height: 0; }
 .tali-speaker .sp-pane { display: flex; flex-direction: column; min-height: 0; }
 .tali-speaker .sp-label { font-size: 11px; text-transform: uppercase; letter-spacing: .09em; color: #8b919c; margin-bottom: 6px; }
-.tali-speaker iframe { flex: 1; width: 100%; min-height: 0; border: 0; border-radius: 10px; background: #fff; }
+.tali-speaker .sp-frame-cur, .tali-speaker .sp-frame-next {
+  flex: 1; width: 100%; min-height: 0; border-radius: 10px; background: #fff; overflow: hidden; }
 .tali-speaker .sp-notes { background: #1b1e24; border-radius: 10px; padding: 12px 16px; max-height: 26vh; overflow: auto; }
 .tali-speaker .sp-notes-body { font-size: 19px; line-height: 1.5; }
 .tali-speaker .sp-notes-body :last-child { margin-bottom: 0; }

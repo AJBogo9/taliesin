@@ -292,27 +292,26 @@
     }
     return bg;
   }
-  function applyBackgrounds() {
-    allSlides().forEach(function (sec) {
-      var color = sec.getAttribute('data-background-color');
-      var gradient = sec.getAttribute('data-background-gradient');
-      var image = sec.getAttribute('data-background-image');
-      sec.classList.remove('tali-dark-bg');
-      var existing = sec.querySelector(':scope > .tali-slide-bg');
-      if (!color && !gradient && !image) { if (existing) existing.remove(); return; }
-      var bg = ensureSlideBg(sec);
-      bg.style.cssText = '';
-      if (color) bg.style.backgroundColor = color;
-      if (gradient) bg.style.backgroundImage = gradient;
-      if (image) {
-        bg.style.backgroundImage = 'url("' + image + '")';
-        bg.style.backgroundSize = sec.getAttribute('data-background-size') || 'cover';
-        bg.style.backgroundPosition = sec.getAttribute('data-background-position') || 'center';
-        bg.style.backgroundRepeat = sec.getAttribute('data-background-repeat') || 'no-repeat';
-      }
-      if (image || gradient || (color && isDarkColor(color))) sec.classList.add('tali-dark-bg');
-    });
+  function paintSlideBg(sec) {
+    var color = sec.getAttribute('data-background-color');
+    var gradient = sec.getAttribute('data-background-gradient');
+    var image = sec.getAttribute('data-background-image');
+    sec.classList.remove('tali-dark-bg');
+    var existing = sec.querySelector(':scope > .tali-slide-bg');
+    if (!color && !gradient && !image) { if (existing) existing.remove(); return; }
+    var bg = ensureSlideBg(sec);
+    bg.style.cssText = '';
+    if (color) bg.style.backgroundColor = color;
+    if (gradient) bg.style.backgroundImage = gradient;
+    if (image) {
+      bg.style.backgroundImage = 'url("' + image + '")';
+      bg.style.backgroundSize = sec.getAttribute('data-background-size') || 'cover';
+      bg.style.backgroundPosition = sec.getAttribute('data-background-position') || 'center';
+      bg.style.backgroundRepeat = sec.getAttribute('data-background-repeat') || 'no-repeat';
+    }
+    if (image || gradient || (color && isDarkColor(color))) sec.classList.add('tali-dark-bg');
   }
+  function applyBackgrounds() { allSlides().forEach(paintSlideBg); }
   // --- semantic zoom (level-of-detail) -----------------------------------
   // When the overview is zoomed out far enough that full slide content is an
   // illegible smudge, each tile collapses to a clean title card (shown by the
@@ -957,17 +956,50 @@
     if (h < T.length - 1) return { h: h + 1, v: 0 };
     return null;
   }
-  function postFrame(frame, h, v, frag) {
-    if (frame && frame.contentWindow) {
-      try { frame.contentWindow.postMessage({ qmd: 'deck', type: 'goto', h: h, v: v, frag: frag }, targetOrigin()); } catch (e) {}
-    }
+  // Render a static snapshot of one slide into a speaker preview pane: a self-contained
+  // mini-deck (a cloned <section> in its own .tali-slides box) that reuses the deck CSS,
+  // is font-fit to the design box, then scaled to fill the pane. Replaces the old pair of
+  // live `?qmd=embed` iframes: no second/third full document is loaded and re-run (each
+  // was executing every {js} cell in the whole deck once), and the clone carries THIS
+  // window's already-rendered {js}/KaTeX/SVG output, so the preview matches the audience
+  // view without re-executing anything.
+  function snapshotInto(pane, sourceSec) {
+    if (!pane) return;
+    pane.textContent = '';
+    if (!sourceSec) return;
+    var W = deck.config.width, H = deck.config.height;
+    var wrap = document.createElement('div');
+    wrap.className = 'tali-deck tali-ready';
+    wrap.style.cssText = 'position:relative;inset:auto;margin:0;width:100%;height:100%;overflow:hidden';
+    // Carry the deck's own page colours so a dark-themed deck's light text keeps its
+    // contrast (the pane's own background would otherwise show through transparent slides).
+    var bodyCs = getComputedStyle(document.body);
+    var bg = bodyCs.backgroundColor;
+    if (!bg || bg === 'rgba(0, 0, 0, 0)' || bg === 'transparent') bg = getComputedStyle(document.documentElement).backgroundColor;
+    if (bg) wrap.style.background = bg;
+    wrap.style.color = bodyCs.color;
+    var slides = document.createElement('div');
+    slides.className = 'tali-slides';
+    var clone = sourceSec.cloneNode(true);
+    clone.classList.remove('tali-stack', 'tali-overview-current');
+    clone.style.removeProperty('transform'); // drop the grid-cell placement; sit at inset:0
+    clone.removeAttribute('inert');
+    slides.appendChild(clone);
+    wrap.appendChild(slides);
+    pane.appendChild(wrap);
+    paintSlideBg(clone); // rev is never laid out in speaker mode, so paint the bg...
+    fitSlide(clone);     // ...and shrink the clone's font-size so its content fits the box
+    var pr = pane.getBoundingClientRect();
+    var scale = Math.min(pr.width / W, pr.height / H) || 1;
+    var tx = (pr.width - W * scale) / 2, ty = (pr.height - H * scale) / 2;
+    slides.style.transform = 'translate(' + tx.toFixed(1) + 'px,' + ty.toFixed(1) + 'px) scale(' + scale.toFixed(4) + ')';
   }
   function updateSpeakerUI() {
-    postFrame(deck.spCur, deck.h, deck.v, deck.frag);
-    var nx = nextIndex(deck.h, deck.v);
-    if (nx) { postFrame(deck.spNext, nx.h, nx.v, null); if (deck.spNextPane) deck.spNextPane.style.visibility = ''; }
-    else if (deck.spNextPane) deck.spNextPane.style.visibility = 'hidden';
     var c = currentSlide();
+    snapshotInto(deck.spCur, c);
+    var nx = nextIndex(deck.h, deck.v);
+    if (nx) { snapshotInto(deck.spNext, leafAt(nx.h, nx.v)); if (deck.spNextPane) deck.spNextPane.style.visibility = ''; }
+    else { if (deck.spNext) deck.spNext.textContent = ''; if (deck.spNextPane) deck.spNextPane.style.visibility = 'hidden'; }
     var notes = c && c.querySelector('.notes');
     if (deck.spNotesBody) deck.spNotesBody.innerHTML = notes ? notes.innerHTML : '<span class="sp-empty">No notes for this slide.</span>';
   }
@@ -985,8 +1017,8 @@
     root.innerHTML =
       '<div class="sp-top"><div class="sp-timer">0:00</div><button class="sp-reset">Reset</button><div class="sp-clock"></div></div>' +
       '<div class="sp-stage">' +
-        '<div class="sp-pane"><div class="sp-label">Current</div><iframe class="sp-frame-cur"></iframe></div>' +
-        '<div class="sp-pane sp-pane-next"><div class="sp-label">Next</div><iframe class="sp-frame-next"></iframe></div>' +
+        '<div class="sp-pane"><div class="sp-label">Current</div><div class="sp-frame-cur"></div></div>' +
+        '<div class="sp-pane sp-pane-next"><div class="sp-label">Next</div><div class="sp-frame-next"></div></div>' +
       '</div>' +
       '<div class="sp-notes"><div class="sp-label">Notes</div><div class="sp-notes-body"></div></div>';
     document.body.appendChild(root);
@@ -994,10 +1026,15 @@
     deck.spNext = root.querySelector('.sp-frame-next');
     deck.spNextPane = root.querySelector('.sp-pane-next');
     deck.spNotesBody = root.querySelector('.sp-notes-body');
-    var loaded = 0, ready = function () { if (++loaded >= 2) updateSpeakerUI(); };
-    deck.spCur.onload = ready; deck.spNext.onload = ready;
-    var embed = withQmd(deckBaseUrl(), 'embed');
-    deck.spCur.src = embed; deck.spNext.src = embed;
+    // Panes are snapshot-rendered from this window's own deck copy, so paint them now and
+    // again once late {js}/KaTeX output settles (window load) and whenever the pane resizes.
+    updateSpeakerUI();
+    window.addEventListener('load', updateSpeakerUI);
+    var spResizeRAF = null;
+    window.addEventListener('resize', function () {
+      if (spResizeRAF) return;
+      spResizeRAF = requestAnimationFrame(function () { spResizeRAF = null; updateSpeakerUI(); });
+    });
     document.addEventListener('keydown', onKey);
     window.addEventListener('message', onMessage);
     deck.spStart = Date.now();
