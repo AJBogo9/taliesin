@@ -142,6 +142,12 @@ pub struct Site {
     /// palette searches the whole project (`window.TALIESIN_SEARCH_INDEX`). Built once
     /// at discovery.
     pub search_index_json: String,
+    /// Inlinable JSON of every cross-reference anchor → the rendered HTML of the block
+    /// that defines it, so hovering a CROSS-PAGE `.tali-xref` previews its target
+    /// (`window.TALIESIN_HOVER_INDEX`). Built once at discovery; served as
+    /// `hover-index.js` and lazy-loaded by `12-link-preview.js`. Empty when the project
+    /// has no cross-reference targets.
+    pub hover_index_json: String,
     /// Decks referenced by `{{< embed >}}` shortcodes across the pages (deduped).
     /// These aren't pages/chapters; the build renders each to its own `.html` and
     /// the preview serves them live so the embedding iframes resolve.
@@ -152,6 +158,7 @@ mod book;
 mod chrome;
 pub use book::{Book, BookEntry};
 use book::{book_pages, build_book};
+mod hover;
 mod meta;
 mod search;
 mod xref;
@@ -285,6 +292,7 @@ impl Site {
             includes,
             warnings,
             search_index_json,
+            hover_index_json: String::new(),
             decks,
         };
         // Fill the cross-PAGE numbers the lightweight source-scan can't know — a figure /
@@ -294,6 +302,9 @@ impl Site {
         // of a bare label. A pure render pass with no kernel execution, run once per
         // discover so build, preview, and `check` resolve numbers identically.
         site.harvest_xref_numbers();
+        // Likewise once per discover: the cross-page hover-preview snippet index (its own
+        // scoped render pass; independent of the numbers above).
+        site.build_hover_index();
         site
     }
 
@@ -701,6 +712,63 @@ impl Site {
                 }
             }
         }
+    }
+
+    /// Discovery render-harvest: render each page that defines cross-reference targets
+    /// once (scoped to its chapter, like [`harvest_xref_numbers`](Self::harvest_xref_numbers))
+    /// and capture, per anchor, the rendered HTML of its defining block — the snippet the
+    /// cross-page hover-preview card shows. Relative asset URLs are rebased site-root-relative
+    /// so the snippet renders correctly on any viewing page. Runs inside `discover`, so the
+    /// index is always populated (build, preview, and after a preview structural rebuild) with
+    /// no extra call site. `hover::` does the per-anchor extraction + URL rebasing.
+    fn build_hover_index(&mut self) {
+        if self.xref_targets.is_empty() {
+            return;
+        }
+        // Anchors grouped by their defining page's url, so each page renders at most once.
+        let mut by_page: HashMap<&str, Vec<&str>> = HashMap::new();
+        for (anchor, t) in &self.xref_targets {
+            by_page
+                .entry(t.url.as_str())
+                .or_default()
+                .push(anchor.as_str());
+        }
+        let mut entries: Vec<(String, String)> = Vec::new();
+        for page in &self.pages {
+            let Some(anchors) = by_page.get(page.url.as_str()) else {
+                continue;
+            };
+            let Ok(src) = std::fs::read_to_string(&page.input) else {
+                continue;
+            };
+            let base = page.input.parent().unwrap_or(&self.root);
+            let doc =
+                render::render_document_with_includes_scoped(&src, base, self.chapter_for(page));
+            for anchor in anchors {
+                if let Some(snippet) = hover::extract_snippet(&doc.blocks, anchor) {
+                    let snippet = hover::rewrite_snippet_urls(&snippet, &page.url);
+                    entries.push((anchor.to_string(), snippet));
+                }
+            }
+        }
+        if entries.is_empty() {
+            return;
+        }
+        // Stable order so the index is deterministic across builds.
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        let mut out = String::from("{");
+        for (i, (anchor, snippet)) in entries.iter().enumerate() {
+            if i > 0 {
+                out.push(',');
+            }
+            out.push_str(&format!(
+                "\"{}\":\"{}\"",
+                search::json_str(anchor),
+                search::json_str(snippet)
+            ));
+        }
+        out.push('}');
+        self.hover_index_json = out;
     }
 
     /// This page's book chapter number, if it is a numbered chapter (None for a

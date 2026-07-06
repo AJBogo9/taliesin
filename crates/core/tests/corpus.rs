@@ -818,6 +818,33 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
 }
 
 #[test]
+fn demo_book_hover_index_has_cross_page_snippets() {
+    use taliesin_core::Site;
+    let site = Site::discover(&corpus_dir().join("demo-book"));
+    let idx = &site.hover_index_json;
+    // The theorem defined on methods.tmd is in the index with its rendered label…
+    assert!(
+        idx.contains("\"thm-kl\":\""),
+        "hover index missing thm-kl: {idx}"
+    );
+    assert!(
+        idx.contains("Theorem"),
+        "theorem snippet should carry its rendered label: {idx}"
+    );
+    // …as are the two section anchors referenced across chapters.
+    assert!(
+        idx.contains("\"sec-methods\":\""),
+        "missing sec-methods: {idx}"
+    );
+    assert!(idx.contains("\"sec-setup\":\""), "missing sec-setup: {idx}");
+    // `</script>` can't break the <script> wrapper the index is served inside.
+    assert!(
+        !idx.contains("</script"),
+        "raw </script must be neutralized"
+    );
+}
+
+#[test]
 fn book_chapter_scopes_theorem_numbers() {
     use taliesin_core::Site;
     let site = Site::discover(&corpus_dir().join("demo-book"));
