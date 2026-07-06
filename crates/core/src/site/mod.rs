@@ -789,7 +789,10 @@ impl Site {
         page.title.as_ref()?;
         let mut owner: Option<&Page> = None;
         for host in &self.pages {
-            if host.rel == page.rel {
+            // Skip the page itself, and any host with no `title:` — it can't render a
+            // sensible "← <title>" label, so it isn't a listing citizen (symmetry with
+            // the titleless-covered-page guard above).
+            if host.rel == page.rel || host.title.is_none() {
                 continue;
             }
             let covers = host.listings.iter().any(|spec| {
@@ -1307,6 +1310,30 @@ mod tests {
         assert!(
             !post.contains("<nav class=\"tali-postnav tali-listing-backnav\""),
             "a capped-only listing owns nothing → no backlink: {post}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_titleless_listing_host_is_not_an_owner() {
+        // A listing page with no `title:` can't render a sensible "← <title>" label, so
+        // it must not own posts — symmetry with the titleless-covered-page guard.
+        let root = write_site(
+            "backlink-titlelesshost",
+            &[
+                ("_site.yml", "title: Demo\n"),
+                (
+                    "feed.tmd",
+                    "---\nlisting:\n  contents: posts\n---\n\n# Feed\n",
+                ),
+                ("posts/one.tmd", "---\ntitle: One\n---\n\nOne.\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let (post, _) = render_page(&site, "posts/one.tmd");
+        assert!(
+            !post.contains("<nav class=\"tali-postnav tali-listing-backnav\""),
+            "a titleless listing host must not own the post: {post}"
         );
         let _ = std::fs::remove_dir_all(&root);
     }
