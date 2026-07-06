@@ -67,6 +67,12 @@ struct DocState {
     /// True while the last render failed, so the next success can re-mount fully
     /// (clearing the client's error overlay even when the diff is empty).
     errored: bool,
+    /// Monotonic body-render generation, bumped whenever `blocks` change. Stamped
+    /// into the SSR page (`window.TALIESIN_SSR_GEN`) and every `full_render`; the
+    /// client compares the two to tell a still-current SSR body (skip the re-mount)
+    /// from one made stale by a rebuild (e.g. the initial code-exec pass) that landed
+    /// between the HTTP render and the websocket connect. See [`protocol::full_render`].
+    generation: u64,
 }
 
 impl DocState {
@@ -288,7 +294,7 @@ fn render_doc(app: &AppState) -> Option<RenderedDoc> {
 // --- HTTP ---------------------------------------------------------------
 
 async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
-    let (format, toc, theme_css, theme_default, theme_is_custom, includes, body) = {
+    let (format, toc, theme_css, theme_default, theme_is_custom, includes, body, generation) = {
         let d = app.doc.lock();
         (
             d.format,
@@ -298,6 +304,7 @@ async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
             d.theme_is_custom,
             d.includes.clone(),
             d.body_html(),
+            d.generation,
         )
     };
     // Absolute doc + base-dir paths so the browser can build `vscode://file/…`
@@ -317,6 +324,7 @@ async fn index(State(app): State<Arc<AppState>>) -> Html<String> {
         base_dir: &base_dir.to_string_lossy(),
         includes: &includes,
         body: &body,
+        generation,
     };
     Html(index_html(&ctx))
 }
@@ -336,6 +344,10 @@ struct PageCtx<'a> {
     /// The rendered body, server-rendered into the page so content shows on the
     /// first paint (the websocket then only drives live updates).
     body: &'a str,
+    /// The render generation `body` was built at, stamped into
+    /// `window.TALIESIN_SSR_GEN` so the client can tell a still-current SSR body from
+    /// one a rebuild made stale before the websocket connected.
+    generation: u64,
 }
 
 /// The preview favicon (also satisfies the browser's implicit `/favicon.ico`
@@ -482,6 +494,12 @@ pub(crate) const STATUS_CSS: &str = "\
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } \
     .tali-cellerr:hover { border-color: #e5534b; } \
     @media (max-width: 60rem) { body.tali-toc-sheet #tali-controls.tali-dev { bottom: 2.4rem; } } \
+    /* The dev menu owns the bottom-left corner in preview; lift the reader \"Resume reading\" pill \
+       above it so the two never overlap (base.css anchors the pill at bottom:1rem, ~1rem below the \
+       dev button). Preview-only: a static build ships neither this rule nor the dev menu, so the \
+       pill stays at its natural bottom:1rem there. */ \
+    .tali-resume { bottom: 2.9rem; } \
+    @media (max-width: 60rem) { body.tali-toc-sheet .tali-resume { bottom: 4.7rem; } } \
     #tali-progress { position: fixed; bottom: 12px; right: 12px; z-index: 9999; \
       display: flex; align-items: center; gap: 6px; \
       font: 12px/1.4 ui-sans-serif, system-ui, sans-serif; padding: 5px 10px; border-radius: 6px; \
@@ -573,8 +591,10 @@ fn blog_index_html(ctx: &PageCtx) -> String {
         ctx.body
     );
     let extra_head = format!("<style>{STATUS_CSS}</style>\n");
-    let scripts_pre =
-        format!("<script>{doc_global} {toc_flag} window.TALIESIN_SSR = true;</script>");
+    let scripts_pre = format!(
+        "<script>{doc_global} {toc_flag} window.TALIESIN_SSR = true; window.TALIESIN_SSR_GEN = {};</script>",
+        ctx.generation
+    );
     // With a TOC, load the shared scrollspy (toc-spy.js) ahead of the client so
     // `window.taliInitTocSpy` is defined when client.js rebuilds the nav and calls it
     // after every edit — that drives the active-section highlight and the read-state
@@ -631,11 +651,12 @@ fn deck_index_html(ctx: &PageCtx) -> String {
     // the websocket client last.
     let tail = format!(
         "{deck_script}\n{code_scripts}\n\
-         <script>{doc_global} window.TALIESIN_FORMAT = \"deck\"; window.TALIESIN_SSR = true;</script>\n\
+         <script>{doc_global} window.TALIESIN_FORMAT = \"deck\"; window.TALIESIN_SSR = true; window.TALIESIN_SSR_GEN = {generation};</script>\n\
          {include_after_body}\n<script>\n{CLIENT_JS}\n</script>\n",
         deck_script = taliesin_core::deck_client_script(),
         code_scripts = taliesin_core::code_scripts(),
         include_after_body = ctx.includes.after_body,
+        generation = ctx.generation,
     );
     taliesin_core::assemble_deck_page(&taliesin_core::DeckParts {
         title: "taliesin",
@@ -761,7 +782,12 @@ fn is_slide_heading(html: &str) -> bool {
 // --- messages -----------------------------------------------------------
 
 fn full_render_json(d: &DocState) -> String {
-    protocol::full_render(d.title.as_deref(), &d.body_html(), &d.diagnostics)
+    protocol::full_render(
+        d.title.as_deref(),
+        &d.body_html(),
+        d.generation,
+        &d.diagnostics,
+    )
 }
 
 /// Non-fatal issues with the current document: includes that don't resolve, and
@@ -1024,6 +1050,13 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         d.theme_is_custom = doc.theme_is_custom;
         d.includes = doc.includes;
         d.warnings = doc.warnings;
+        // Bump the render generation only when the body actually changed (non-empty
+        // diff), so a no-op rebuild leaves a fresh SSR page's skip-the-remount check
+        // valid, while the initial exec pass (which splices in output blocks) bumps it
+        // and forces any client that server-rendered pre-exec to mount the outputs.
+        if !ops.is_empty() {
+            d.generation = d.generation.wrapping_add(1);
+        }
         d.blocks = blocks;
         d.diagnostics = diags;
         // Broadcast under the lock so connecting clients can't interleave.
@@ -1160,6 +1193,7 @@ mod protocol_contract {
             base_dir: "/tmp",
             includes: &includes,
             body: "<section><h2>S</h2></section>",
+            generation: 0,
         };
         let html = deck_index_html(&ctx);
         assert!(
@@ -1187,6 +1221,7 @@ mod protocol_contract {
                 base_dir: "/tmp",
                 includes: &includes,
                 body: "<h2 id=\"s\" data-block-id=\"b\">S</h2>",
+                generation: 0,
             };
             blog_index_html(&ctx)
         };
@@ -1225,6 +1260,7 @@ mod protocol_contract {
         let fr = parse(full_render_json(&DocState::default()));
         assert_eq!(fr["type"], "full_render");
         assert!(fr.get("body_html").is_some());
+        assert!(fr["gen"].is_u64(), "full_render must carry a numeric gen");
         assert!(fr["diagnostics"].is_array());
     }
 

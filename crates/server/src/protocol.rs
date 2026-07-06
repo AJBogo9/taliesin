@@ -71,10 +71,25 @@ fn diags_array(diags: &[Diagnostic]) -> Vec<serde_json::Value> {
 
 /// `full_render`: replace the whole document body + the diagnostics list in one
 /// message (the initial paint, and after a change too large to express as ops).
-pub fn full_render(title: Option<&str>, body_html: &str, diags: &[Diagnostic]) -> String {
+///
+/// `generation` (wire key `gen`) is a monotonic counter bumped whenever the
+/// rendered body changes. The server-rendered page stamps the generation its SSR
+/// body was built at into `window.TALIESIN_SSR_GEN`; the client compares it to the
+/// first `full_render`'s `gen` to decide whether the SSR content is already current
+/// (skip the re-mount) or stale because a rebuild landed between the HTTP render and
+/// the websocket connect (mount for real). Without this the client blindly skips the
+/// first `full_render`, so a doc whose initial code-exec pass finishes in that window
+/// loses its cell outputs until a manual reload.
+pub fn full_render(
+    title: Option<&str>,
+    body_html: &str,
+    generation: u64,
+    diags: &[Diagnostic],
+) -> String {
     serde_json::json!({
         "type": "full_render",
         "title": title,
+        "gen": generation,
         "body_html": body_html,
         "diagnostics": diags_array(diags),
     })

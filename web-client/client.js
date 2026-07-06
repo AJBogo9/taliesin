@@ -15,7 +15,7 @@
 // enforced here too.
 /**
  * @typedef {{ level: string, message: string, file?: ?string, line?: number, frame?: string }} Diagnostic
- * @typedef {{ type: "full_render", title: ?string, body_html: string, diagnostics: Diagnostic[] }} FullRenderMsg
+ * @typedef {{ type: "full_render", title: ?string, gen?: number, body_html: string, diagnostics: Diagnostic[] }} FullRenderMsg
  * @typedef {{ type: "diagnostics", messages: Diagnostic[] }} DiagnosticsMsg
  * @typedef {{ type: "update", target_id: string, html: string }} UpdateMsg
  * @typedef {{ type: "insert", after_id: ?string, html: string }} InsertMsg
@@ -870,30 +870,41 @@
   };
 
   // The server renders the initial body into the page (so content paints before
-  // the websocket connects). The first `full_render` after that is identical, so
-  // skip re-mounting it (avoids a flash + needless {js}/deck re-init); reconnects
-  // still re-mount normally.
+  // the websocket connects), stamping the render generation it used into
+  // `TALIESIN_SSR_GEN`. The first `full_render` is normally the same generation, so
+  // skip re-mounting it (avoids a flash + needless {js}/deck re-init). But if a
+  // rebuild landed between the HTTP render and this connect (classically the initial
+  // code-exec pass that fills in cell outputs), the socket's generation is newer and
+  // the SSR body is stale — mount for real. Reconnects (ssrPending already false)
+  // always re-mount.
   let ssrPending = window.TALIESIN_SSR === true;
+  const ssrGen = typeof window.TALIESIN_SSR_GEN === "number" ? window.TALIESIN_SSR_GEN : null;
 
   /** @param {ServerMessage} msg */
   const handle = (msg) => {
     switch (msg.type) {
-      case "full_render":
+      case "full_render": {
         renderOk(); // a fresh render arrived: any prior failure is resolved
         document.title = msg.title || "qmd-fast";
-        if (ssrPending) {
-          ssrPending = false; // content already server-rendered into #tali-root
-        } else {
-          // Wholesale re-mount (reconnect / structural change): tear down ALL prior
-          // `{js}` cells first (resolving every outstanding `invalidation`) so their
-          // WebGL contexts + RAF loops are released and the qmd-js runtime is rebuilt
-          // fresh, rather than re-pushing duplicate cells onto a never-reset registry.
+        // Skip the re-mount only when the server-rendered body is still current: this
+        // is the first message after SSR AND its generation matches what SSR painted.
+        // (A missing gen on either side falls back to the old skip-on-SSR behavior.)
+        const skipMount =
+          ssrPending && (msg.gen == null || ssrGen == null || msg.gen === ssrGen);
+        ssrPending = false;
+        if (!skipMount) {
+          // Wholesale re-mount (stale SSR / reconnect / structural change): tear down
+          // ALL prior `{js}` cells first (resolving every outstanding `invalidation`)
+          // so their WebGL contexts + RAF loops are released and the qmd-js runtime is
+          // rebuilt fresh, rather than re-pushing duplicate cells onto a never-reset
+          // registry.
           resetJs();
           keepScroll(() => { root.innerHTML = msg.body_html; });
         }
         scheduleAfterChange();
         setDiagnostics(msg.diagnostics);
         break;
+      }
       case "diagnostics":
         setDiagnostics(msg.messages);
         break;

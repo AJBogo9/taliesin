@@ -82,6 +82,12 @@ struct PageDoc {
     blocks: Vec<Block>,
     diagnostics: Vec<Diagnostic>,
     errored: bool,
+    /// Monotonic body-render generation, bumped whenever this page's `blocks`
+    /// change. Stamped into the page's SSR script (`window.TALIESIN_SSR_GEN`) and
+    /// every `full_render`, so the client can tell a still-current SSR body from one
+    /// the initial exec pass made stale before the websocket connected. Mirrors
+    /// `serve::DocState::generation`; see [`protocol::full_render`].
+    generation: u64,
 }
 
 impl PageDoc {
@@ -396,13 +402,14 @@ fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
         blocks,
         diagnostics,
         errored: false,
+        generation: 0, // first paint; the exec pass bumps it when it splices outputs
     }
 }
 
 /// Build the full live HTML for a page: theme + base + site CSS, the SSR body
 /// wrapped in the site chrome, and the preview client scoped to this page's ws.
 fn site_page_html(app: &SiteApp, page: &Page) -> String {
-    let (title, toc, theme_css, theme_default, body, page_includes) = {
+    let (title, toc, theme_css, theme_default, body, page_includes, generation) = {
         let pages = app.pages.lock();
         let ps = pages.get(&page.rel);
         match ps {
@@ -413,6 +420,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
                 ps.doc.theme_default.clone(),
                 ps.doc.body_html(),
                 ps.doc.includes.clone(),
+                ps.doc.generation,
             ),
             None => (
                 None,
@@ -421,6 +429,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
                 String::new(),
                 String::new(),
                 Default::default(),
+                0,
             ),
         }
     };
@@ -526,7 +535,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
     let body = format!("{layout}\n<div id=\"tali-controls\"></div>");
     let extra_head = format!("<style>{STATUS_CSS}</style>\n");
     let scripts_pre = format!(
-        "<script>{doc_global} {toc_flag} {search_cfg} window.TALIESIN_SSR = true; window.TALIESIN_WS_PATH = \"{ws_path}\";</script>"
+        "<script>{doc_global} {toc_flag} {search_cfg} window.TALIESIN_SSR = true; window.TALIESIN_SSR_GEN = {generation}; window.TALIESIN_WS_PATH = \"{ws_path}\";</script>"
     );
     // The cross-page TOC scrollspy + Cmd-K search, then the websocket client.
     let scripts_post = format!(
@@ -679,6 +688,7 @@ fn full_render_json(d: &PageDoc) -> String {
     protocol::full_render(
         d.title.as_deref(),
         &rewrite_qmd_links(&d.body_html()),
+        d.generation,
         &d.diagnostics,
     )
 }
@@ -814,6 +824,11 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
     ps.doc.theme_css = doc.theme_css;
     ps.doc.theme_default = doc.theme_default;
     ps.doc.includes = doc.includes;
+    // Bump the render generation only on a real body change (see serve::rebuild), so a
+    // client that server-rendered this page pre-exec re-mounts to pick up the outputs.
+    if !ops.is_empty() {
+        ps.doc.generation = ps.doc.generation.wrapping_add(1);
+    }
     ps.doc.blocks = blocks;
     ps.doc.diagnostics = diags;
     if recovered {
@@ -1111,6 +1126,7 @@ mod protocol_contract {
         assert_eq!(fr["type"], "full_render");
         assert!(fr.get("title").is_some()); // present (null allowed)
         assert!(fr.get("body_html").is_some());
+        assert!(fr["gen"].is_u64(), "full_render must carry a numeric gen");
         assert!(fr["diagnostics"].is_array());
 
         let dg = parse(protocol::diagnostics(&[Diagnostic::warn("x")]));

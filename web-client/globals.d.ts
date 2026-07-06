@@ -8,8 +8,11 @@ interface Window {
   TALIESIN_DOC?: { path: string; baseDir: string; root?: string };
   /** Live page has a table of contents (client rebuilds `#TOC`). */
   TALIESIN_TOC?: boolean;
-  /** The body was server-rendered, so skip the first re-mount. */
+  /** The body was server-rendered, so the first re-mount can normally be skipped. */
   TALIESIN_SSR?: boolean;
+  /** The render generation the SSR body was built at; compared to the first
+   *  `full_render`'s `gen` to detect an SSR body a rebuild made stale. */
+  TALIESIN_SSR_GEN?: number;
   /** Document format flag (`"deck"` switches the client into deck mode). */
   TALIESIN_FORMAT?: string;
   /** Per-page websocket path for the multi-page site server. */
