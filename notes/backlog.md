@@ -9,8 +9,8 @@ Output stays **HTML-only**. Roadmap: `BEYOND-QUARTO.md`.
 
 ## State (2026-07-06)
 
-Local `main` is AHEAD of `origin/main` (this session's reader/deck polish batch + this backlog
-update, unpushed — the author pushes), v0.2.0. All four formats render + deploy;
+Local `main` carries this session's reader/deck polish batch (the author syncs `main`↔`origin`
+between sessions, so origin may be a commit behind local at any moment), v0.2.0. All four formats render + deploy;
 the dev loop is strong (block-level incremental updates with DOM-state preservation, warm server +
 Jupyter kernel, `_freeze` cache, Alt-click + reverse cursor sync, located diagnostics, CSS hot-swap,
 Cmd-K search). The author pushes/syncs between sessions; agents commit + fast-forward-merge to local
