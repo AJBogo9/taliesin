@@ -9,7 +9,8 @@ Output stays **HTML-only**. Roadmap: `BEYOND-QUARTO.md`.
 
 ## State (2026-07-06)
 
-Local `main` @ `f45fc7f` (in sync with `origin/main`), v0.2.0. All four formats render + deploy;
+Local `main` is AHEAD of `origin/main` (this session's reader/deck polish batch + this backlog
+update, unpushed — the author pushes), v0.2.0. All four formats render + deploy;
 the dev loop is strong (block-level incremental updates with DOM-state preservation, warm server +
 Jupyter kernel, `_freeze` cache, Alt-click + reverse cursor sync, located diagnostics, CSS hot-swap,
 Cmd-K search). The author pushes/syncs between sessions; agents commit + fast-forward-merge to local
@@ -20,8 +21,13 @@ Waves 0-4, the reader cluster, `check`/prose-lint + `{input}`/scrolly, the `--ba
 reading-first redesign, deep-audit P1+P2, the Tier-1 priority queue, the **Taliesin rename** +
 **`.tmd` editor grammar** (F5-accepted), the **shed-Quarto clean break** (`.tmd`-only input,
 `deck`/`define()` the only spellings, no migration on-ramps, no user-facing Quarto), the
-**security-P3 batch**, and the **VS Code companion language features** (check-findings diagnostics +
-drift-proof completions; preview/cursor-sync F5-accepted 2026-07-06).
+**security-P3 batch**, the **VS Code companion language features** (check-findings diagnostics +
+drift-proof completions; preview/cursor-sync F5-accepted 2026-07-06), and the **reader/deck polish
+batch** (2026-07-06, browser-verified): book column no longer jumps between chapters + the focus-mode
+pager re-centres; the SSR-vs-first-render race is healed with a render-generation marker
+(`TALIESIN_SSR_GEN`) so a client that server-rendered pre-exec re-mounts its cell outputs; deck speaker
+previews are scaled snapshot clones (no live embed iframes / re-execution); the "Resume reading" pill
+clears the dev menu in preview.
 
 **Working method:** branch per feature; brainstorm if there's a fork; spec under
 `docs/superpowers/specs/`; implement TDD; verify (cargo + browser via chrome-devtools, or the
@@ -36,24 +42,21 @@ Each clears once you decide. Design calls carry a recommended default.
 
 - **Quarto design-decisions catalog (the big one).** Branch `quarto-decisions-catalog`, commit
   `535b4e1`: 165 decisions adversarially verified, awaiting your ruling on each ("beat every Quarto
-  design decision"). A dedicated triage session, not a quick call.
-- **Repro / info needed** (don't reproduce in code): focus-mode "prev arrow too far left" — which
-  view + viewport? Code blocks "need a refresh to appear" — exact steps (viewport / kernel state /
-  after a WS reconnect?).
-- **Persist focus mode across chapters?** *Recommended: keep ephemeral* — a sticky global chrome-strip
-  fights focus mode's fullscreen purpose (`03-focus-mode.js`).
-- **Consolidate the dev-menu vs. the `#tali-progress` chip?** *Recommended: keep separate* — two
-  orthogonal always-on signals, opposite corners, no collision. Needs a concrete clutter complaint first.
-- **Reading-first identity polish + theme design-quality pass** (design judgment; overlaps deferred
-  marketing — confirm direction before building). Hero-as-typeset not a marketing slab; drop bordered
-  feature-card grids; quieter near-monochrome accent (decided once, here); `--space-1..6` scale;
+  design decision"). A dedicated triage session, not a quick call. (When ready: fan the 165 into
+  batches, each with a recommended verdict + Quarto-vs-Taliesin evidence, so you rule, not derive.)
+- **Reading-first identity polish + theme design-quality pass** (design judgment; its OWN session;
+  overlaps deferred marketing — confirm direction before building). Hero-as-typeset not a marketing
+  slab; drop bordered feature-card grids; quieter near-monochrome accent; `--space-1..6` scale;
   light/dark/sepia cohesion (WCAG-AA already tuned — RE-verify, don't redo; preserve sepia's deliberate
-  low-contrast). The "templated" diagnosis is UNVERIFIED — re-check competitors live.
-- **Deck author calls:** speaker-preview iframes still run `{js}` live — skip for perf vs. snapshot-clone
-  the current state? Overview never hides the per-slide bg layer — hide it (needs an overview
-  dark-bg-text fallback) or leave?
-- **Cross-reference backlinks list?** With the graph tool being removed, a plain per-page "referenced
-  by" list is the lightweight replacement — still a separate design call.
+  low-contrast). The "templated" diagnosis is UNVERIFIED — start by pulling competitors up live +
+  screenshotting Taliesin at the 3 viewports, bring a before/after to approve before building.
+- **Cross-reference backlinks list — build the cheap tier, or skip?** *Recommended: build the
+  xref-anchor tier.* No reverse index exists today, but the cheap tier (fig/sec/tbl/eq/lst/thm anchors)
+  piggybacks the render-free scan already run at discovery (`scan_outgoing`/`collect_xref_refs`): retain
+  the anchor instead of discarding it at `graph.rs:136`, aggregate anchor→referring-pages, surface a
+  per-target "Referenced by" affordance. ~a few dozen lines, works in preview + build. Citations are the
+  expensive tier (needs a site-wide bibliography-merge decision first) — leave out. This is the
+  lightweight replacement for the graph tool's discovery value.
 
 ## Priority queue
 
@@ -62,10 +65,6 @@ Each clears once you decide. Design calls carry a recommended default.
   + `site/graph.rs` + the `lib.rs:46` / `render/mod.rs` re-exports together; fix the "shipped" framing
   in the cross-page-refs notes. Read-only nav, not corpus-pinned, git-reversible; re-adding later needs
   a new corpus doc + test pin.
-- **Book chapter horizontal jump — fix in place** (decided 2026-07-06). A has-TOC chapter lays out
-  62.5rem (46rem text + 14rem rail) vs a no-TOC 46rem-centred chapter, so the text column shifts ~132px
-  between chapters. Reserve the 14rem gutter (or anchor a constant centre axis); keep both nav surfaces
-  (NN/g). `site.css:174,201-204`.
 - **Website "back to listing" link** (decided 2026-07-06). Auto-derive "← All posts" only when exactly
   one `listing:` page's `contents:` covers the post (prefix match, `collection()` `mod.rs:784`); no
   config key; skip when zero/ambiguous. `post_nav_html` is empty for non-book pages today (`mod.rs:392`).
@@ -150,6 +149,14 @@ Each clears once you decide. Design calls carry a recommended default.
 the Chapters drawer already gives random access). Book page-TOC: **fix in place, keep both nav
 surfaces** — do NOT fold the rail into the chapter drawer (loses the always-visible scrollspy; the
 "rarely used" claim is unverified). Xref graph tool: **removed** (interaction not good enough).
+Focus mode stays **ephemeral** (no persistence across chapters): `requestFullscreen()` needs a user
+gesture, so persistence could only restore CSS chrome-hiding and would silently drop fullscreen on nav —
+a half-broken mode. Deck overview **keeps per-slide backgrounds** (documented recognizability
+"fingerprint", no contrast bug today; hiding is a taste-only change — revisit only if a real deck's
+overview clashes). Dev-menu + `#tali-progress` + reading-progress bar stay **three separate signals**
+(orthogonal: author diagnostics / build-exec status / reader scroll-position; different corners) — and
+`#tali-progress` is the exec chip, NOT a reading-progress chip (the ask's label was a misnomer); the
+only real issue was the resume-pill/dev-menu overlap, now a Tier-1 fix.
 
 **Reading-first defaults — research-validated keeps** (do NOT "fix"): serif body for long-form screen
 reading (don't switch to sans); ~70ch measure `--tali-maxw: 46rem` (don't narrow); right-rail scrollspy
