@@ -197,23 +197,25 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
 .tali-book-drawer-btn svg { display: block; }
 .tali-book-topbar .tali-nav-spacer { flex: 1 1 auto; }
 
-/* the centred reading column — the same measure as a blog post */
+/* The reading column reserves the content+TOC grid on EVERY chapter, TOC or not, so the text
+   column sits at the same place chapter-to-chapter. Otherwise a short TOC-less chapter centres
+   at 46rem while a TOC chapter's text sits left inside a 62.5rem box, and the column jumps ~132px
+   as you page between them. The right 14rem track simply goes empty when a chapter has no
+   "on this page" TOC. Below 60rem it collapses to one column (media query further down). */
 .tali-book-main { box-sizing: border-box; flex: 1 0 auto; width: 100%;
-  max-width: var(--tali-maxw); margin: 0 auto; padding: 2rem 1rem; }
-/* a chapter with an "on this page" TOC widens into the content+TOC grid, still centred */
-.tali-book-main.has-toc { max-width: 62.5rem; }
-.tali-book-inner.has-toc { display: grid; align-items: start; gap: 2.5rem;
+  max-width: 62.5rem; margin: 0 auto; padding: 2rem 1rem; }
+.tali-book-inner { display: grid; align-items: start; gap: 2.5rem;
   grid-template-columns: minmax(0, 46rem) 14rem; }
 .tali-book-inner > main { min-width: 0; }
+/* The post-nav is a sibling after the grid; constrain it to the 46rem text column (total minus
+   the 14rem rail + 2.5rem gap) so "next" doesn't spill past the TOC track and so it lines up
+   flush-left under the text, matching the column on both TOC and TOC-less chapters. */
 .tali-book-postnav { display: flex; align-items: center; gap: 1rem;
+  width: calc(100% - 14rem - 2.5rem);
   margin-top: 2.5rem; padding-top: 1.2rem; border-top: 1px solid var(--tali-border); }
 .tali-book-prev, .tali-book-next { color: var(--tali-muted); text-decoration: none; font-size: .95rem; }
 .tali-book-prev:hover, .tali-book-next:hover { color: var(--tali-link); }
 .tali-book-postnav .tali-nav-spacer { flex: 1 1 auto; }
-/* The book post-nav is a sibling AFTER the content+TOC grid, so it would otherwise span the
-   full width and push "next" past the TOC's right edge. Constrain it to the text column
-   (total minus the TOC column + grid gap; keep in sync with `.tali-book-inner.has-toc`). */
-.tali-book-inner.has-toc + .tali-book-postnav { width: calc(100% - 14rem - 2.5rem); }
 .tali-section-number { color: var(--tali-muted); font-weight: inherit; margin-right: .15em; }
 
 /* the chapter drawer: an off-canvas overlay summoned from the topbar (a focus-managed
@@ -246,10 +248,10 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
 .tali-chap-num { color: var(--tali-muted); margin-right: .25rem; }
 .tali-book-active .tali-chap-num { color: var(--tali-link); }
 @media (max-width: 60rem) {
-  /* single column: the on-this-page TOC stacks below the text, pager spans full width */
-  .tali-book-main.has-toc { max-width: var(--tali-maxw); }
-  .tali-book-inner.has-toc { grid-template-columns: minmax(0, 1fr); }
-  .tali-book-inner.has-toc + .tali-book-postnav { width: auto; }
+  /* single column: the on-this-page TOC (if any) stacks below the text, pager spans full width */
+  .tali-book-main { max-width: var(--tali-maxw); }
+  .tali-book-inner { grid-template-columns: minmax(0, 1fr); }
+  .tali-book-postnav { width: auto; }
 }
 
 /* High-contrast / forced-colors: the site chrome leans on subtle 1px borders + a tinted

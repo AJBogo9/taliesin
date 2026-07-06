@@ -88,6 +88,10 @@
   body.tali-focus.has-toc, body.tali-focus .tali-book-inner, body.tali-focus .tali-site-main { display: block; }
   body.tali-focus main, body.tali-focus .tali-book-inner, body.tali-focus .tali-site-main {
     max-width: var(--tali-maxw); margin-inline: auto; }
+  /* The book pager is a sibling of .tali-book-inner (not inside it), so the re-centre above
+     misses it; it otherwise keeps its normal-mode left-flush width and sits ~132px left of the
+     recentred column. Match it to the same centred 46rem measure. */
+  body.tali-focus .tali-book-postnav { width: auto; max-width: var(--tali-maxw); margin-inline: auto; }
 
   /* Reading progress (top bar + "min left") + block-id-anchored resume (qmdInitReadingProgress). */
   .tali-readbar { position: fixed; top: 0; left: 0; right: 0; height: 3px;
