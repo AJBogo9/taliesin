@@ -134,6 +134,15 @@ function taliInitLinkPreview() {
       tpl.innerHTML = snippet;
       resolveUrls(tpl.content);
       tpl.content.querySelectorAll('.tali-anchor, .tali-copy').forEach(function (n) { n.remove(); });
+      // The snippet carries the DEFINING page's block ids/sourcepos (and no data-source-file
+      // to redirect them). Left intact, an Alt-click inside this floating card would resolve
+      // click-to-source to the CURRENT page at the foreign block's line — a wrong jump. Strip
+      // the source-tracking attrs so the read-only preview is never a click-to-source target.
+      tpl.content.querySelectorAll('[data-block-id]').forEach(function (n) {
+        n.removeAttribute('data-block-id');
+        n.removeAttribute('data-sourcepos');
+        n.removeAttribute('data-source-file');
+      });
       if (!tpl.content.textContent.trim()) return;
       card.innerHTML = '';
       card.appendChild(tpl.content);
