@@ -160,6 +160,15 @@ pub(crate) fn cmd_schema(args: &[String]) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// Emit the bundled editor vocabulary JSON (front-matter keys, cell options, callout and
+/// theorem kinds, div classes, input types, cross-reference prefixes) so the VS Code
+/// companion's autocomplete can never drift from what the validator enforces. Prints the
+/// committed, bundled string (no runtime generation), like `cmd_schema`.
+pub(crate) fn cmd_vocab() -> ExitCode {
+    print!("{}", taliesin_core::vocab::VOCAB_JSON);
+    ExitCode::SUCCESS
+}
+
 /// A short, single-line, tag-free preview of a block's HTML.
 fn preview(html: &str) -> String {
     let mut s = String::new();

@@ -42,6 +42,7 @@ fn main() -> ExitCode {
         Some("build") => build::cmd_build(&args),
         Some("blocks") => query::cmd_blocks(args.get(2)),
         Some("schema") => query::cmd_schema(&args),
+        Some("vocab") => query::cmd_vocab(),
         Some("check") => check::cmd_check(&args),
         Some("init") => cli::cmd_init(args.get(2).map(String::as_str)),
         // `preview`/`dev` are vite-style aliases for the live server.
@@ -106,7 +107,8 @@ fn bridge_legacy_env() {
 
 /// Every subcommand name (aliases included), for the unknown-command did-you-mean.
 const COMMANDS: &[&str] = &[
-    "render", "build", "blocks", "schema", "check", "init", "serve", "preview", "dev", "help",
+    "render", "build", "blocks", "schema", "vocab", "check", "init", "serve", "preview", "dev",
+    "help",
 ];
 
 fn usage() {
@@ -146,6 +148,9 @@ fn usage() {
     println!("  blocks <file.tmd>          list block ids + sourcepos (debug)");
     println!(
         "  schema [--out <dir>]       emit JSON Schemas for _site.yml + front matter (editor autocomplete)"
+    );
+    println!(
+        "  vocab                      emit editor autocomplete vocabulary as JSON (companion)"
     );
     println!(
         "  check <file|dir> [--format human|json]  list located diagnostics; exits non-zero if any"
@@ -231,6 +236,17 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              Example:\n\
              \x20 taliesin schema --out .schemas\n"
         }
+        "vocab" => {
+            "taliesin vocab\n\
+             \n\
+             Emit taliesin's editor vocabulary (front-matter keys, cell options, callout\n\
+             and theorem kinds, div classes, cross-reference prefixes) as one JSON blob,\n\
+             for the VS Code companion's autocomplete. Generated from the validator's own\n\
+             lists, so it never drifts from what `check` enforces.\n\
+             \n\
+             Example:\n\
+             \x20 taliesin vocab | jq .cellOptions\n"
+        }
         "blocks" => {
             "taliesin blocks <file.tmd>\n\
              \n\
@@ -278,7 +294,7 @@ mod cli_microcopy_tests {
     #[test]
     fn subcommand_help_covers_documented_commands() {
         for cmd in [
-            "preview", "build", "check", "render", "schema", "blocks", "init",
+            "preview", "build", "check", "render", "schema", "vocab", "blocks", "init",
         ] {
             let help = subcommand_help(cmd).unwrap_or_else(|| panic!("help for `{cmd}`"));
             assert!(
