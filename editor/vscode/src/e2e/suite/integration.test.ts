@@ -5,6 +5,7 @@ import * as vscode from "vscode";
 const REPO_ROOT = path.resolve(__dirname, "../../../../../"); // out/e2e/suite -> editor/vscode -> editor -> repo
 const SAMPLE_QMD = path.join(REPO_ROOT, "corpus/posts/born-machines.qmd");
 const SAMPLE_TMD = path.join(REPO_ROOT, "corpus/native-tmd.tmd");
+const DIAG_FIXTURE = path.join(REPO_ROOT, "editor/vscode/test-fixtures/diag-typo.tmd");
 const QMD_FAST_BIN = path.join(REPO_ROOT, "target/debug/taliesin");
 
 suite("qmd-fast companion (integration)", () => {
@@ -51,6 +52,25 @@ suite("qmd-fast companion (integration)", () => {
       12000
     );
     assert.ok(hasWebviewTab, "Open Preview should open a webview panel");
+  });
+
+  test("surfaces `check` findings as diagnostics on the active .tmd", async () => {
+    await vscode.workspace
+      .getConfiguration("qmdFast")
+      .update("path", QMD_FAST_BIN, vscode.ConfigurationTarget.Global);
+
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(DIAG_FIXTURE));
+    await vscode.window.showTextDocument(doc);
+
+    // Diagnostics refresh asynchronously after open; poll until they land.
+    const ok = await waitFor(() => vscode.languages.getDiagnostics(doc.uri).length > 0, 12000);
+    assert.ok(ok, "check should produce at least one diagnostic for the typo fixture");
+
+    const diags = vscode.languages.getDiagnostics(doc.uri);
+    const typo = diags.find((d) => d.message.includes("titel"));
+    assert.ok(typo, `expected a diagnostic mentioning the typo'd key: ${JSON.stringify(diags.map((d) => d.message))}`);
+    assert.equal(typo!.range.start.line, 2, "the `titel` typo is on line 3 (0-based line 2)");
+    assert.equal(typo!.severity, vscode.DiagnosticSeverity.Warning);
   });
 });
 

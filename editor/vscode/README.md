@@ -60,6 +60,7 @@ opened on the qmd-fast repo:
 4. **Deck:** open `corpus/liquid-glass-slides/example.qmd`, Open Preview, move the cursor
    into a later slide's content — the deck jumps to that slide.
 5. Close the preview panel — the spawned `qmd-fast preview` process exits (no orphan).
+6. Open a `.tmd` with a front-matter typo (or any `taliesin check` finding): a yellow squiggle appears on the offending line, refreshing on save.
 
 ## Known risk
 
