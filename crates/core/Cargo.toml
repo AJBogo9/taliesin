@@ -11,11 +11,9 @@ repository.workspace = true
 comrak = "0.52.0"
 katex = "0.4.6"
 serde = { workspace = true }
+serde_json = { workspace = true }
 serde_yaml = { workspace = true }
 syntect = { workspace = true }
 # Already in the tree (transitively via comrak); used directly for NFC composition
 # of LaTeX accent macros in BibTeX fields (cite.rs). No new download.
 unicode-normalization = "0.1"
-
-[dev-dependencies]
-serde_json = "1"

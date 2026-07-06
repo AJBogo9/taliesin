@@ -270,4 +270,16 @@ mod tests {
         );
         assert_eq!(brace_id("::: {.theorem #thm-x}").as_deref(), Some("thm-x"));
     }
+
+    /// The bare-prefix list in `is_ref_anchor` must recognize every cross-reference prefix
+    /// that `cite::XREF_LABELS` defines, so the two parallel lists cannot drift apart.
+    #[test]
+    fn xref_anchor_recognizes_every_cite_prefix() {
+        for (prefix, _) in crate::cite::XREF_LABELS {
+            assert!(
+                super::is_ref_anchor(&format!("{prefix}-x")),
+                "cite prefix `{prefix}` is not a recognized ref anchor"
+            );
+        }
+    }
 }

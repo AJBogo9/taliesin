@@ -39,6 +39,7 @@ pub(crate) mod prose;
 pub mod render;
 pub mod schema;
 pub mod site;
+pub mod vocab;
 
 pub use diff::{BlockOp, diff_blocks};
 pub use frontmatter::closest;

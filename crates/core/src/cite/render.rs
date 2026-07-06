@@ -7,23 +7,31 @@ use super::{Bibliography, sourcepos_start_line};
 use crate::render::{Block, Warning, escape_attr as esc};
 use std::collections::HashMap;
 
+/// Cross-reference kind prefixes -> display label, in canonical order. The single source
+/// of truth for both `xref_label` (the lookup) and the editor `vocab` dump, so the two
+/// cannot drift. The parallel bare-prefix list in `site::xref::is_ref_anchor` is guarded
+/// against this one by a unit test there.
+pub(crate) const XREF_LABELS: &[(&str, &str)] = &[
+    ("fig", "Figure"),
+    ("tbl", "Table"),
+    ("sec", "Section"),
+    ("eq", "Equation"),
+    ("lst", "Listing"),
+    ("thm", "Theorem"),
+    ("lem", "Lemma"),
+    ("cor", "Corollary"),
+    ("prp", "Proposition"),
+    ("def", "Definition"),
+    ("exm", "Example"),
+    ("rem", "Remark"),
+];
+
 /// Cross-reference kind prefixes -> display label.
 fn xref_label(prefix: &str) -> Option<&'static str> {
-    match prefix {
-        "fig" => Some("Figure"),
-        "tbl" => Some("Table"),
-        "sec" => Some("Section"),
-        "eq" => Some("Equation"),
-        "lst" => Some("Listing"),
-        "thm" => Some("Theorem"),
-        "lem" => Some("Lemma"),
-        "cor" => Some("Corollary"),
-        "prp" => Some("Proposition"),
-        "def" => Some("Definition"),
-        "exm" => Some("Example"),
-        "rem" => Some("Remark"),
-        _ => None,
-    }
+    XREF_LABELS
+        .iter()
+        .find(|(p, _)| *p == prefix)
+        .map(|(_, l)| *l)
 }
 
 /// Resolve citations + cross-references across `blocks`, appending a References

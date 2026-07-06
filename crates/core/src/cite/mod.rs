@@ -32,6 +32,7 @@ mod validate;
 mod tests;
 
 pub use parse::{parse_bib, parse_bib_warned};
+pub(crate) use render::XREF_LABELS;
 pub use render::process;
 pub use validate::validate_xrefs;
 

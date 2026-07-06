@@ -69,6 +69,11 @@ mod divs;
 mod validate;
 pub(crate) use divs::parse_attrs;
 use divs::{group_divs, parse_pandoc_attrs, preprocess, scan_div_spans};
+
+// Re-exported for the editor vocabulary dump (crate::vocab), which sources completion
+// vocabulary from the SAME consts the validator enforces so the two cannot drift.
+pub(crate) use validate::{CALLOUT_KINDS, CELL_OPTION_KEYS, INPUT_TYPES, THEOREM_KINDS};
+
 mod emit;
 use emit::emit;
 // emit_children is re-exported so the sibling figure module reaches it via `super`.
