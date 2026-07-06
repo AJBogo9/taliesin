@@ -56,15 +56,11 @@ Each clears once you decide. Design calls carry a recommended default.
   the anchor instead of discarding it at `graph.rs:136`, aggregate anchor→referring-pages, surface a
   per-target "Referenced by" affordance. ~a few dozen lines, works in preview + build. Citations are the
   expensive tier (needs a site-wide bibliography-merge decision first) — leave out. This is the
-  lightweight replacement for the graph tool's discovery value.
+  lightweight replacement for the discovery value the (now-removed) xref graph tool provided.
 
 ## Priority queue
 
 ### Tier 1 — decided, build-ready (no blocker)
-- **Remove the xref graph tool entirely** (decided 2026-07-06). Delete the chrome control + `graph.js`
-  + `site/graph.rs` + the `lib.rs:46` / `render/mod.rs` re-exports together; fix the "shipped" framing
-  in the cross-page-refs notes. Read-only nav, not corpus-pinned, git-reversible; re-adding later needs
-  a new corpus doc + test pin.
 - **Website "back to listing" link** (decided 2026-07-06). Auto-derive "← All posts" only when exactly
   one `listing:` page's `contents:` covers the post (prefix match, `collection()` `mod.rs:784`); no
   config key; skip when zero/ambiguous. `post_nav_html` is empty for non-book pages today (`mod.rs:392`).

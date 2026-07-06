@@ -12,7 +12,6 @@ const OWN_JS: &[&str] = &[
     "walkthrough.js",
     "tabset.js",
     "scrolly.js",
-    "graph.js",
 ];
 
 fn third_party_md() -> String {

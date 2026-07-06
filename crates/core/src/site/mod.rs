@@ -142,9 +142,6 @@ pub struct Site {
     /// palette searches the whole project (`window.TALIESIN_SEARCH_INDEX`). Built once
     /// at discovery.
     pub search_index_json: String,
-    /// The project reference graph (pages + cross-page `@ref`/link edges) as JSON, for
-    /// the `graph.js` force-directed map. Built once at discovery from a source scan.
-    pub reference_graph_json: String,
     /// Decks referenced by `{{< embed >}}` shortcodes across the pages (deduped).
     /// These aren't pages/chapters; the build renders each to its own `.html` and
     /// the preview serves them live so the embedding iframes resolve.
@@ -155,12 +152,11 @@ mod book;
 mod chrome;
 pub use book::{Book, BookEntry};
 use book::{book_pages, build_book};
-mod graph;
 mod meta;
 mod search;
 mod xref;
 pub use xref::XrefTarget;
-use xref::{is_ref_anchor, rewrite_cross_refs, scan_xref_targets};
+use xref::{rewrite_cross_refs, scan_xref_targets};
 mod config;
 mod frontmatter;
 pub use config::*;
@@ -279,7 +275,6 @@ impl Site {
 
         let xref_targets = scan_xref_targets(&pages, &book, &mut warnings);
         let search_index_json = search::build_index_json(&pages);
-        let reference_graph_json = graph::reference_graph_json(&pages, &xref_targets);
 
         Site {
             root: root.to_path_buf(),
@@ -290,7 +285,6 @@ impl Site {
             includes,
             warnings,
             search_index_json,
-            reference_graph_json,
             decks,
         }
     }
@@ -351,34 +345,20 @@ impl Site {
         // this page's depth). Empty when there are no entries; injected only where
         // the search palette also rides along (TOC pages).
         // Per-page site head JS: the depth-relative site root + this page's URL (used by
-        // cross-page navigation — a Cmd-K result AND a reference-graph node click), plus
-        // the lazy search-index URL (when there's an index) and the reference-graph data
-        // (when there are cross-page edges). Empty only when there is neither.
+        // cross-page navigation — resolving a Cmd-K result to its page), plus the lazy
+        // search-index URL. Empty when the project has no search index.
         let has_search = !self.search_index_json.is_empty() && self.search_index_json != "[]";
-        let has_graph = !self.reference_graph_json.is_empty()
-            && self.reference_graph_json != "{\"nodes\":[],\"edges\":[]}";
-        let search_index = if !has_search && !has_graph {
+        let search_index = if !has_search {
             String::new()
         } else {
             // A script subresource (search-index.js) loads under file:// too, so Cmd-K
-            // works from disk with no dev server; the graph JSON is small, so it's inlined.
+            // works from disk with no dev server.
             let up = "../".repeat(depth);
-            let mut js = format!(
-                "window.TALIESIN_SITE_ROOT=\"{up}\";window.TALIESIN_PAGE_URL=\"{}\"",
+            format!(
+                "window.TALIESIN_SITE_ROOT=\"{up}\";window.TALIESIN_PAGE_URL=\"{}\";\
+                 window.TALIESIN_SEARCH_URL=\"{up}search-index.js\"",
                 page.url
-            );
-            if has_search {
-                js.push_str(&format!(
-                    ";window.TALIESIN_SEARCH_URL=\"{up}search-index.js\""
-                ));
-            }
-            if has_graph {
-                js.push_str(&format!(
-                    ";window.TALIESIN_REF_GRAPH={}",
-                    self.reference_graph_json
-                ));
-            }
-            js
+            )
         };
         SiteCtx {
             // A book replaces the top navbar with a slim topbar + off-canvas chapter
@@ -1360,63 +1340,5 @@ mod tests {
             "cross-page figure ref numbered after harvest: {after}"
         );
         let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn cross_page_links_produce_graph_data_and_control() {
-        let root = write_site(
-            "refgraph",
-            &[
-                ("_site.yml", "title: Site\n"),
-                (
-                    "index.tmd",
-                    "---\ntitle: Home\ntoc: true\n---\n\n## H\n\nSee [Alpha](a.tmd).\n\n## H2\n\nmore\n",
-                ),
-                (
-                    "a.tmd",
-                    "---\ntitle: Alpha\ntoc: true\n---\n\n## A\n\nBack [Home](index.tmd).\n\n## A2\n\nmore\n",
-                ),
-            ],
-        );
-        let site = Site::discover(&root);
-        assert!(
-            site.has_reference_graph(),
-            "cross-page links → a reference graph"
-        );
-        assert!(
-            site.reference_graph_json
-                .contains("\"s\":\"index.html\",\"t\":\"a.html\""),
-            "edge index->a present: {}",
-            site.reference_graph_json
-        );
-        let html = site.render_page("index.tmd").unwrap();
-        assert!(
-            html.contains("window.TALIESIN_REF_GRAPH="),
-            "graph data embedded on the page"
-        );
-        assert!(
-            html.contains("data-qmd-graph"),
-            "graph control rendered in the chrome"
-        );
-        let _ = std::fs::remove_dir_all(&root);
-
-        // A site with NO cross-page reference offers no graph (control gated off).
-        let bare = write_site(
-            "nograph",
-            &[
-                ("_site.yml", "title: Site\n"),
-                ("index.tmd", "---\ntitle: Home\n---\n\nJust prose.\n"),
-                ("a.tmd", "---\ntitle: Alpha\n---\n\nAlso prose.\n"),
-            ],
-        );
-        let s2 = Site::discover(&bare);
-        assert!(!s2.has_reference_graph(), "no cross-page refs → no graph");
-        assert!(
-            !s2.render_page("index.tmd")
-                .unwrap()
-                .contains("data-qmd-graph"),
-            "no graph control when there are no edges"
-        );
-        let _ = std::fs::remove_dir_all(&bare);
     }
 }

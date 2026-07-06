@@ -209,31 +209,6 @@
   .tali-keys-list kbd { font: inherit; font-size: .78rem; background: var(--tali-code-bg);
     border: 1px solid var(--tali-border); border-radius: 4px; padding: .05rem .35rem; }
 
-  /* Cross-reference graph (graph.js): a focus-trapped modal with an interactive
-     force-directed map of the project's pages + their cross-page links. */
-  .tali-graph-btn { display: inline-flex; align-items: center; justify-content: center;
-    width: 2rem; height: 2rem; padding: 0; border: 1px solid var(--tali-border);
-    border-radius: 7px; background: var(--tali-bg); color: var(--tali-muted); cursor: pointer; }
-  .tali-graph-btn:hover { color: var(--tali-fg); border-color: var(--tali-muted); }
-  .tali-graph-overlay { position: fixed; inset: 0; z-index: 2147482000; display: flex;
-    align-items: center; justify-content: center; background: rgba(0, 0, 0, .45); }
-  .tali-graph-panel { display: flex; flex-direction: column; background: var(--tali-bg);
-    color: var(--tali-fg); border: 1px solid var(--tali-border); border-radius: 12px;
-    box-shadow: 0 10px 40px var(--tali-edge-shadow); overflow: hidden; }
-  .tali-graph-head { display: flex; align-items: center; justify-content: space-between;
-    padding: .5rem .9rem; border-bottom: 1px solid var(--tali-border); font: var(--tali-font-head); }
-  .tali-graph-title { font-weight: 600; }
-  .tali-graph-close { border: 0; background: transparent; color: var(--tali-muted);
-    cursor: pointer; font-size: 1.1rem; line-height: 1; }
-  .tali-graph-close:hover { color: var(--tali-fg); }
-  .tali-graph-svg { display: block; flex: 1; }
-  .tali-graph-edge { stroke: var(--tali-border); stroke-width: 1.2; }
-  .tali-graph-node { cursor: pointer; }
-  .tali-graph-node circle { fill: var(--tali-muted); transition: fill .15s; }
-  .tali-graph-node:hover circle, .tali-graph-node:focus-visible circle { fill: var(--tali-link); }
-  .tali-graph-current circle { fill: var(--tali-accent-fill); }
-  .tali-graph-label { fill: var(--tali-fg); font: 12px var(--tali-font-head); pointer-events: none; }
-
   /* Tabular figures where columns/alignment matter (prose keeps proportional numerals). */
   pre, code, table, .katex { font-variant-numeric: tabular-nums; }
   a { color: var(--tali-link); }

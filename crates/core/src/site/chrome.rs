@@ -47,18 +47,6 @@ fn search_button(full: bool) -> String {
     )
 }
 
-/// Three connected nodes — the reference-graph control glyph.
-const GRAPH_ICON: &str = "<svg width='15' height='15' viewBox='0 0 16 16' fill='none' stroke='currentColor' stroke-width='1.4' aria-hidden='true'><path d='M4.6 4.4 11 4.4M4.4 5.4 7.2 10.2M11.4 5.4 8.6 10.2' stroke-linecap='round'/><circle cx='3.6' cy='3.8' r='1.7'/><circle cx='12.4' cy='3.8' r='1.7'/><circle cx='8' cy='11.6' r='1.7'/></svg>";
-
-/// A control that opens the cross-reference graph modal (`graph.js`, via `data-qmd-graph`
-/// click delegation). Rendered next to search on a project that HAS cross-page edges.
-fn graph_button() -> String {
-    format!(
-        "<button class='tali-graph-btn' type='button' data-qmd-graph \
-         aria-label='Reference graph'>{GRAPH_ICON}</button>"
-    )
-}
-
 /// A cog — the reader Settings gear glyph (Feather "settings"). Single-quoted attrs so it can
 /// also live verbatim in the floating-launcher copy in `code-enhance/13-reader-menu.js`.
 const SETTINGS_ICON: &str = "<svg width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><circle cx='12' cy='12' r='3'/><path d='M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z'/></svg>";
@@ -75,13 +63,6 @@ fn settings_button() -> String {
 }
 
 impl Site {
-    /// Whether the project has any cross-page reference edges (so a graph is worth
-    /// offering). Gates the `[data-qmd-graph]` control + the inlined graph data.
-    pub(super) fn has_reference_graph(&self) -> bool {
-        !self.reference_graph_json.is_empty()
-            && self.reference_graph_json != "{\"nodes\":[],\"edges\":[]}"
-    }
-
     /// The site navbar: a brand (site title → home) plus the configured left/right
     /// item groups. `depth` is the current page's path depth so links resolve
     /// relative to it (a post two levels deep prefixes `../../`).
@@ -122,9 +103,6 @@ impl Site {
         // A visible search control (opens the Cmd-K palette); search + social links collapse
         // into the burger menu on mobile. Dev-only tools live in the floating dev menu.
         s.push_str(&search_button(false));
-        if self.has_reference_graph() {
-            s.push_str(&graph_button());
-        }
         s.push_str("</div>");
         // The reader Settings gear (theme / focus / shortcuts) sits OUTSIDE the collapsing
         // links so it stays visible top-right at every width, beside the burger on mobile.
@@ -272,9 +250,6 @@ impl Site {
         // A search button (opens the same Cmd-K palette) + the reader Settings gear (theme /
         // focus / shortcuts). The gear replaces the old light/dark toggle that lived here.
         s.push_str(&search_button(false));
-        if self.has_reference_graph() {
-            s.push_str(&graph_button());
-        }
         s.push_str(&settings_button());
         s.push_str("</div></header>");
         // --- the chapter drawer: an off-canvas overlay summoned from the topbar ---
