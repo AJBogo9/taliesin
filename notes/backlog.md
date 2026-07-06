@@ -61,9 +61,6 @@ Each clears once you decide. Design calls carry a recommended default.
 ## Priority queue
 
 ### Tier 1 — decided, build-ready (no blocker)
-- **Website "back to listing" link** (decided 2026-07-06). Auto-derive "← All posts" only when exactly
-  one `listing:` page's `contents:` covers the post (prefix match, `collection()` `mod.rs:784`); no
-  config key; skip when zero/ambiguous. `post_nav_html` is empty for non-book pages today (`mod.rs:392`).
 - **F2a: hover preview for cross-page refs** (P3). `12-link-preview.js` only fires on same-page `#`
   links. Extend the shipped render-harvest infra (`RenderedDoc.xref_numbers` +
   `Site::harvest_xref_numbers()`) to collect an anchor→snippet index, serve it like `search-index.js`,
