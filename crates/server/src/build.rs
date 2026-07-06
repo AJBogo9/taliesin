@@ -784,7 +784,7 @@ async fn build_site_async(
     strict: bool,
     jobs: Option<usize>,
 ) -> ExitCode {
-    let mut site = taliesin_core::Site::discover(root);
+    let site = taliesin_core::Site::discover(root);
     // A malformed `_site.yml` silently degrades the whole site to defaults (no nav, no
     // title, wrong output dir): a real `--strict` problem, unlike a benign missing config.
     let mut config_problems = 0usize;
@@ -798,10 +798,8 @@ async fn build_site_async(
         log::error(&format!("no .tmd pages found under {}", root.display()));
         return ExitCode::FAILURE;
     }
-    // Build-only render-harvest: give cross-page `@fig-`/`@eq-`/`@thm-` refs their number
-    // (assigned only during render, so the source-scan couldn't). The live preview skips
-    // this extra render pass; there a cross-page fig/eq ref stays bare (the link resolves).
-    site.harvest_xref_numbers();
+    // Cross-page `@fig-`/`@eq-`/`@thm-` ref numbers are filled by `Site::discover`'s
+    // render-harvest (shared with the live preview), so no separate build-time pass here.
     let out = match out_override {
         Some(d) => PathBuf::from(d),
         None => root.join(site.output_dir()),

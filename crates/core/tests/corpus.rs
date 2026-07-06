@@ -800,11 +800,14 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
         !results.contains("data-qmd-xref=\"sec-methods\""),
         "resolved cross-ref still carries its marker"
     );
-    // A cross-PAGE theorem ref resolves to the defining chapter with a bare label
-    // (no number cross-page, consistent with figures/equations).
+    // A cross-PAGE theorem ref resolves to the defining chapter WITH its number: a
+    // theorem is a source-literal `:::` div, so `discover`'s render-harvest knows its
+    // number ("Theorem 2.1" — methods is chapter 2, `number-within: chapter`) in the
+    // live preview as well as the static build.
     assert!(
-        results.contains("<a href=\"methods.html#thm-kl\" class=\"tali-xref\">Theorem</a>"),
-        "cross-chapter theorem ref not resolved: {results}"
+        results
+            .contains("<a href=\"methods.html#thm-kl\" class=\"tali-xref\">Theorem&nbsp;2.1</a>"),
+        "cross-chapter theorem ref not numbered: {results}"
     );
     assert!(
         !results.contains("data-qmd-xref=\"thm-kl\""),

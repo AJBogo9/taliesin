@@ -8,6 +8,8 @@
 
 **Design decision — bare label cross-page, like figures.** The investigation confirmed cross-page non-heading anchors (figure/equation/table) ALL carry no number (`scan_page_anchors` stores `number=""` for non-headings); only headings get a number cross-page. So a cross-page `@fig-x` already shows "Figure" with no number. Theorems behave identically: a cross-page `@thm-x` resolves to a working link with a bare "Theorem" label, no number. This is CONSISTENT with the other xref families; propagating computed numbers cross-page is a separate general limitation (would need a render-harvest pass) and is explicitly out of scope here.
 
+> **SUPERSEDED (2026-07-06):** this "bare label cross-page / out of scope" decision was reversed. The render-harvest pass (`Site::harvest_xref_numbers`) now runs inside `Site::discover`, so cross-page `@thm-`/`@fig-`/`@eq-` refs render their number ("Theorem 2.1") in the live preview as well as the static build. See the `cross-page-theorem-refs` change.
+
 ## Global Constraints
 
 HTML-only; read-only-additive (two small fn changes in the cross-page scanner; no render/numbering change, no RenderedDoc change); block invariants untouched. `rustfmt`-clean; no em/en dashes. Same-page theorem refs (already working, with numbers) must stay unchanged.

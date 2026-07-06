@@ -276,7 +276,7 @@ impl Site {
         let xref_targets = scan_xref_targets(&pages, &book, &mut warnings);
         let search_index_json = search::build_index_json(&pages);
 
-        Site {
+        let mut site = Site {
             root: root.to_path_buf(),
             config,
             pages,
@@ -286,7 +286,15 @@ impl Site {
             warnings,
             search_index_json,
             decks,
-        }
+        };
+        // Fill the cross-PAGE numbers the lightweight source-scan can't know — a figure /
+        // equation / table / listing / theorem number is assigned only during render, so
+        // `scan_xref_targets` left it empty. Harvesting here (not only in `build`) means the
+        // live preview also renders "Theorem 1" / "Figure 2.3" for a cross-page ref instead
+        // of a bare label. A pure render pass with no kernel execution, run once per
+        // discover so build, preview, and `check` resolve numbers identically.
+        site.harvest_xref_numbers();
+        site
     }
 
     /// A deck referenced by an `{{< embed >}}`, looked up by its output URL (what a
@@ -660,14 +668,14 @@ impl Site {
         }
     }
 
-    /// Build-time render-harvest: render each page once (scoped to its chapter) and fill
-    /// in the CROSS-PAGE numbers the lightweight source-scan can't know — a figure /
-    /// equation / table / listing / theorem number is assigned only during render, so
+    /// Render-harvest: render each page once (scoped to its chapter) and fill in the
+    /// CROSS-PAGE numbers the lightweight source-scan can't know — a figure / equation /
+    /// table / listing / theorem number is assigned only during render, so
     /// `scan_xref_targets` left it empty. This enriches `xref_targets[anchor].number`
-    /// (for those non-heading anchors), so a `@fig-x` to another page renders
-    /// "Figure&nbsp;2.3" instead of a bare "Figure". A full extra render pass, so it is
-    /// **build-only**: the live preview skips it (a cross-page fig/eq ref stays bare
-    /// there — the link still resolves). Call once, after `discover`, before rendering.
+    /// (for those non-heading anchors), so a `@fig-x` / `@thm-x` to another page renders
+    /// "Figure&nbsp;2.3" / "Theorem&nbsp;1" instead of a bare "Figure" / "Theorem".
+    /// Called once by `discover`, so build AND the live preview resolve the same numbers.
+    /// A pure render pass (no kernel execution), amortised across the discover it rides on.
     pub fn harvest_xref_numbers(&mut self) {
         // Collect during the `&self.pages` pass, then apply — keeps the borrows disjoint.
         let mut updates: Vec<(String, String)> = Vec::new();
@@ -1302,7 +1310,7 @@ mod tests {
     }
 
     #[test]
-    fn harvest_numbers_cross_page_figure_refs() {
+    fn discover_numbers_cross_page_figure_refs() {
         let root = write_site(
             "xrefharvest",
             &[
@@ -1320,24 +1328,48 @@ mod tests {
                 ),
             ],
         );
-        // Without the harvest, the source-scan knows fig-plot's PAGE but not its NUMBER
-        // (figure numbers exist only after render), so the cross-page ref is a bare label.
-        let mut site = Site::discover(&root);
-        let before = site.render_page("a.tmd").unwrap();
+        // The source-scan knows fig-plot's PAGE but not its NUMBER (figure numbers exist
+        // only after render); `discover`'s harvest fills it, so the cross-page ref is
+        // numbered in the live preview too, not only in the static build.
+        let site = Site::discover(&root);
+        let html = site.render_page("a.tmd").unwrap();
         assert!(
-            before.contains("b.html#fig-plot"),
-            "cross-page link resolves: {before}"
+            html.contains("<a href=\"b.html#fig-plot\" class=\"tali-xref\">Figure&nbsp;1</a>"),
+            "cross-page figure ref numbered after discover: {html}"
         );
-        assert!(
-            !before.contains("Figure&nbsp;"),
-            "bare label before harvest: {before}"
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn discover_numbers_cross_page_theorem_refs() {
+        // A theorem is always a literal `::: {.theorem}` div in source, but its NUMBER is
+        // assigned only during render. A cross-page `@thm-` ref must therefore show the
+        // harvested number ("Theorem 1"), not a bare "Theorem" label — in the live
+        // preview (plain `discover`, no explicit `harvest_xref_numbers`), not only in the
+        // static build.
+        let root = write_site(
+            "xrefthm",
+            &[
+                (
+                    "_site.yml",
+                    "title: Book\nchapters:\n  - a.tmd\n  - b.tmd\n",
+                ),
+                (
+                    "a.tmd",
+                    "---\ntitle: Alpha\n---\n\nThe result rests on @thm-key.\n",
+                ),
+                (
+                    "b.tmd",
+                    "---\ntitle: Beta\n---\n\n::: {.theorem #thm-key}\nThe statement holds.\n:::\n",
+                ),
+            ],
         );
-        // After the build-time harvest, the rendered figure number is filled in.
-        site.harvest_xref_numbers();
-        let after = site.render_page("a.tmd").unwrap();
+        // `discover` alone (what the live preview uses) must number the cross-page ref.
+        let site = Site::discover(&root);
+        let html = site.render_page("a.tmd").unwrap();
         assert!(
-            after.contains("<a href=\"b.html#fig-plot\" class=\"tali-xref\">Figure&nbsp;1</a>"),
-            "cross-page figure ref numbered after harvest: {after}"
+            html.contains("<a href=\"b.html#thm-key\" class=\"tali-xref\">Theorem&nbsp;1</a>"),
+            "cross-page theorem ref numbered after discover: {html}"
         );
         let _ = std::fs::remove_dir_all(&root);
     }

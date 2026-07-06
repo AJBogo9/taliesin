@@ -68,10 +68,12 @@ Each clears once you decide. Design calls carry a recommended default.
   links. Extend the shipped render-harvest infra (`RenderedDoc.xref_numbers` +
   `Site::harvest_xref_numbers()`) to collect an anchor→snippet index, serve it like `search-index.js`,
   and wire the hover card for `.tali-xref` cross-page links.
-- **Cross-page theorem refs drop the number** ("Theorem 2.1" → bare "Theorem" across pages;
-  `site/xref.rs`). Same root gap as F2a — harvest numbers from the per-page rendered registry. A theorem
-  nested inside another fenced div also loses its number/xref (`number_theorems` walks only top-level
-  blocks); optional: warn when a `data-tali-theorem-kind` div is found nested.
+- **Nested theorem loses its number/xref** (optional; carved out of the shipped cross-page-number
+  fix). `number_theorems` walks only top-level blocks, so a `::: {.theorem}` nested inside another
+  fenced div gets no number and no ref target. Fix in `render/mod.rs` (recurse into nested blocks) or,
+  cheaper, warn when a `data-tali-theorem-kind` div is found nested. (The cross-page "Theorem 2.1"
+  number-drop itself is DONE — `Site::harvest_xref_numbers` now runs in `discover`, so preview + build
+  agree; carries fig/eq/tbl/lst cross-page numbers into preview too.)
 
 ### Tier 2 — hardening (P3)
 - **Execution-cache leaks** (exec/kernel Do-NOT-touch, careful): (a) ~30 orphaned

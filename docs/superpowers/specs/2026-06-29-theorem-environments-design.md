@@ -69,6 +69,11 @@ per-kind cross-ref prefixes, the post-pass numbering pattern, the callout aesthe
   (The brace_id/is_ref_anchor fix landed 2026-06-29 after the adversarial review caught
   the dead-link + false-broken-warning bug; pinned by the `@thm-kl` ref in
   `corpus/demo-book/results.qmd`.)
+  **SUPERSEDED (2026-07-06):** the "No NUMBER cross-page / out of scope" call was later
+  reversed. `Site::harvest_xref_numbers` (the render-harvest pass this section deferred) now
+  runs inside `Site::discover`, so build AND the live preview render "Theorem&nbsp;2.1" for a
+  cross-page `@thm-`/`@fig-`/`@eq-` ref. Pinned by the updated `book_discovers_chapters_…`
+  corpus assertion + `discover_numbers_cross_page_{theorem,figure}_refs`.
 - **Numbering pattern:** `apply_table_captions` (`crates/core/src/render/mod.rs`) is the
   model post-pass: it receives the assembled `Vec<Block>` + the xref registry + warnings,
   walks blocks in document order, assigns numbers, injects label HTML, and registers
