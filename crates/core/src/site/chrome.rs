@@ -349,6 +349,26 @@ impl Site {
              <span class=\"tali-nav-spacer\"></span>{right}</nav>"
         )
     }
+
+    /// Bottom-of-post "back to listing" link on a website page: returns to the single
+    /// listing page this page belongs to (e.g. "← Blog"), or empty when it belongs to
+    /// none or is ambiguously covered by several. Non-book pages only — books fill the
+    /// same slot with [`book_nav_html`](Self::book_nav_html).
+    pub(super) fn listing_backlink_html(&self, page: &Page, depth: usize) -> String {
+        let Some(owner) = self.listing_owner(page) else {
+            return String::new();
+        };
+        let up = "../".repeat(depth);
+        // The arrow is decorative (the `<nav>` label carries the direction), so it is
+        // hidden from the accessibility tree; a screen reader reads just the title.
+        format!(
+            "<nav class=\"tali-postnav tali-listing-backnav\" aria-label=\"Back to listing\">\
+             <a class=\"tali-back-link\" href=\"{up}{}\">\
+             <span class=\"tali-back-glyph\" aria-hidden=\"true\">\u{2190}</span> {}</a></nav>",
+            owner.url,
+            esc(owner.title.as_deref().unwrap_or_default())
+        )
+    }
 }
 
 /// The bundled social glyphs for the `icon:` shorthand (Bootstrap Icons, inline

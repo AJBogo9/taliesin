@@ -480,16 +480,18 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
         "RSS discovery <link> should be gone"
     );
 
-    // A post is a plain page: no "back to listing" button and no post-nav at all,
-    // but cross-page `.tmd` links are still rewritten to `.html`.
+    // A post now carries a single "back to listing" link to the listing that owns it
+    // (the Blog page; the home page's recent-posts preview is `max-items`-capped, so it
+    // does not count as an owner), and cross-page `.tmd` links are still rewritten to
+    // `.html`. See `tech_blog::post_pages_link_back_to_their_listing` for the full rule.
     let post = site
         .render_page("posts/evidence-lower-bound/index.tmd")
         .expect("post renders");
     assert!(
-        !post.contains("tali-back-link")
-            && !post.contains("Back to Blog")
-            && !post.contains("tali-postnav"),
-        "post should have no back-to-listing / post-nav"
+        post.contains("<nav class=\"tali-postnav tali-listing-backnav\"")
+            && post.contains("href=\"../../blog.html\"")
+            && post.contains("</span> Blog</a>"),
+        "post should link back to the Blog listing"
     );
     assert!(
         post.contains("../KL-divergence/index.html"),

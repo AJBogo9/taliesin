@@ -380,7 +380,7 @@ impl Site {
             post_nav_html: if book {
                 self.book_nav_html(page, depth)
             } else {
-                String::new()
+                self.listing_backlink_html(page, depth)
             },
             book_sidebar: book.then(|| self.sidebar_html(page, depth)),
             wide: page.page_layout.as_deref() == Some("full"),
@@ -761,6 +761,51 @@ impl Site {
         }
     }
 
+    /// The rel-path prefix a listing covers: `contents:` joined onto the hosting
+    /// page's directory. `contents: .` on a root page resolves to the empty dir,
+    /// which must match the whole project (an empty prefix), not `"/"` — which
+    /// matched nothing, so the listing silently came up empty. A named subdir keeps
+    /// its trailing slash so only that subtree matches. Shared by `collection()`
+    /// (which pages a listing renders) and `listing_owner()` (which listing a page
+    /// belongs to), so the two always agree on coverage.
+    fn listing_prefix(host: &Page, spec: &ListingSpec) -> String {
+        let dir = join_rel(&host.rel, spec.contents.trim_end_matches('/'));
+        if dir.is_empty() {
+            String::new()
+        } else {
+            format!("{dir}/")
+        }
+    }
+
+    /// The single listing page a `page` "belongs to" — the sole page whose
+    /// **un-capped** `listing:` covers it — or `None` when zero or two-plus do. A
+    /// `max-items`-capped listing is a *preview*, not the post's home, so it does not
+    /// confer ownership: otherwise a "recent posts" preview on the home page would
+    /// make every post read as ambiguous against its full listing page. Drives the
+    /// bottom-of-post "back to listing" link.
+    fn listing_owner(&self, page: &Page) -> Option<&Page> {
+        // A titleless page never renders as a card, so it belongs to no listing
+        // (mirrors `collection()` dropping it).
+        page.title.as_ref()?;
+        let mut owner: Option<&Page> = None;
+        for host in &self.pages {
+            if host.rel == page.rel {
+                continue;
+            }
+            let covers = host.listings.iter().any(|spec| {
+                spec.max_items.is_none() && page.rel.starts_with(&Self::listing_prefix(host, spec))
+            });
+            if !covers {
+                continue;
+            }
+            if owner.is_some() {
+                return None; // two-plus distinct owners → ambiguous, skip
+            }
+            owner = Some(host);
+        }
+        owner
+    }
+
     /// The pages a listing covers: those under its `contents:` directory (relative
     /// to the hosting page), newest-first (or oldest-first), capped by `max-items`.
     fn collection(
@@ -769,16 +814,7 @@ impl Site {
         spec: &ListingSpec,
         warnings: &mut Vec<Warning>,
     ) -> Vec<&Page> {
-        let dir = join_rel(&host.rel, spec.contents.trim_end_matches('/'));
-        // `contents: .` on a root page resolves to the empty dir; that must match the
-        // whole project (an empty prefix), not `"/"` — which matched nothing, so the
-        // listing silently came up empty. A named subdir keeps its trailing slash so
-        // only that subtree matches.
-        let prefix = if dir.is_empty() {
-            String::new()
-        } else {
-            format!("{dir}/")
-        };
+        let prefix = Self::listing_prefix(host, spec);
         let mut items: Vec<&Page> = Vec::new();
         for p in &self.pages {
             if p.rel == host.rel || !p.rel.starts_with(&prefix) {
@@ -1160,6 +1196,117 @@ mod tests {
                 .iter()
                 .any(|w| w.message.contains("b.tmd") && w.message.contains("no `title:`")),
             "titleless post warned: {warnings:?}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn backlink_points_to_sole_uncapped_listing() {
+        let root = write_site(
+            "backlink-sole",
+            &[
+                ("_site.yml", "title: Demo\n"),
+                (
+                    "blog.tmd",
+                    "---\ntitle: Blog\nlisting:\n  contents: posts\n---\n\n# Blog\n",
+                ),
+                ("posts/one.tmd", "---\ntitle: One\n---\n\nOne.\n"),
+                ("posts/two.tmd", "---\ntitle: Two\n---\n\nTwo.\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let (post, _) = render_page(&site, "posts/one.tmd");
+        assert!(
+            post.contains("<nav class=\"tali-postnav tali-listing-backnav\"")
+                && post.contains("href=\"../blog.html\"")
+                && post.contains("</span> Blog</a>"),
+            "sole un-capped listing should own the post: {post}"
+        );
+        // The listing page itself belongs to no listing → no backlink.
+        let (blog, _) = render_page(&site, "blog.tmd");
+        assert!(
+            !blog.contains("<nav class=\"tali-postnav tali-listing-backnav\""),
+            "the listing page should have no backlink"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn no_backlink_when_two_uncapped_listings_cover_the_post() {
+        let root = write_site(
+            "backlink-ambig",
+            &[
+                ("_site.yml", "title: Demo\n"),
+                (
+                    "blog.tmd",
+                    "---\ntitle: Blog\nlisting:\n  contents: posts\n---\n\n# Blog\n",
+                ),
+                (
+                    "archive.tmd",
+                    "---\ntitle: Archive\nlisting:\n  contents: posts\n---\n\n# Archive\n",
+                ),
+                ("posts/one.tmd", "---\ntitle: One\n---\n\nOne.\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let (post, _) = render_page(&site, "posts/one.tmd");
+        assert!(
+            !post.contains("<nav class=\"tali-postnav tali-listing-backnav\""),
+            "two un-capped owners are ambiguous → no backlink: {post}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn capped_preview_does_not_own_but_full_list_does() {
+        // A Home page previews the newest post (max-items: 1); a Blog page lists all.
+        // The capped preview must NOT count as an owner, so the post resolves uniquely
+        // to the full Blog listing rather than reading as ambiguous.
+        let root = write_site(
+            "backlink-capped",
+            &[
+                ("_site.yml", "title: Demo\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\nlisting:\n  contents: posts\n  max-items: 1\n---\n\n# Home\n",
+                ),
+                (
+                    "blog.tmd",
+                    "---\ntitle: Blog\nlisting:\n  contents: posts\n---\n\n# Blog\n",
+                ),
+                ("posts/one.tmd", "---\ntitle: One\n---\n\nOne.\n"),
+                ("posts/two.tmd", "---\ntitle: Two\n---\n\nTwo.\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let (post, _) = render_page(&site, "posts/one.tmd");
+        assert!(
+            post.contains("<nav class=\"tali-postnav tali-listing-backnav\"")
+                && post.contains("</span> Blog</a>"),
+            "capped preview should be excluded, leaving Blog as the sole owner: {post}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn no_backlink_when_only_a_capped_listing_covers_the_post() {
+        let root = write_site(
+            "backlink-cappedonly",
+            &[
+                ("_site.yml", "title: Demo\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\nlisting:\n  contents: posts\n  max-items: 1\n---\n\n# Home\n",
+                ),
+                ("posts/one.tmd", "---\ntitle: One\n---\n\nOne.\n"),
+                ("posts/two.tmd", "---\ntitle: Two\n---\n\nTwo.\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let (post, _) = render_page(&site, "posts/one.tmd");
+        assert!(
+            !post.contains("<nav class=\"tali-postnav tali-listing-backnav\""),
+            "a capped-only listing owns nothing → no backlink: {post}"
         );
         let _ = std::fs::remove_dir_all(&root);
     }

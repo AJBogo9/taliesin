@@ -85,9 +85,11 @@ A small block next to the existing `.tali-book-postnav` rules:
 
 `corpus/tech-blog/` already contains the scenario, so it is the pin. Add assertions:
 
-- `tests/tech_blog.rs`: a rendered post page contains `← Blog` linking to `blog.html`;
-  a project page contains `← Projects`; Home (`index`), `blog.tmd`, `projects.tmd`,
-  `cv.tmd`, `publications.tmd` render **no** `tali-listing-backnav`.
+- `tests/tech_blog.rs`: a rendered post page contains `← Blog` linking to `blog.html`.
+  Note the real corpus makes **projects ambiguous** — both `projects.tmd` and `cv.tmd`
+  (its "selected projects" section) list `contents: projects` un-capped — so a project
+  page renders **no** backlink (the ambiguity guard firing on real content). Home
+  (`index`), `blog.tmd`, `projects.tmd`, `cv.tmd`, `publications.tmd` also render none.
 - `site/mod.rs` unit tests: (a) unique un-capped owner → link; (b) two un-capped listings
   on same dir → `None`; (c) a capped preview + a full list → the full list owns;
   (d) capped-only (no full list) → `None`.

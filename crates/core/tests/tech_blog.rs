@@ -508,6 +508,63 @@ fn computed_output_crossrefs_resolve() {
     );
 }
 
+/// Every website post/project links back to the single un-capped listing that owns
+/// it ("← Blog" / "← Projects"), resolved relative to the post's depth. The Home
+/// page's `recent-posts` preview is `max-items`-capped, so it does NOT count as an
+/// owner — posts resolve uniquely to the full Blog listing rather than reading as
+/// ambiguous. Pages that belong to no listing (the listing pages themselves, the
+/// about/home page, standalone nav pages) show no backlink.
+#[test]
+fn post_pages_link_back_to_their_listing() {
+    let site = Site::discover(&corpus_dir().join("tech-blog"));
+
+    // A post (posts/<slug>/ = depth 2): owned only by blog.tmd → "← Blog".
+    let post = site
+        .render_page("posts/em-algorithm/index.tmd")
+        .expect("post renders");
+    assert!(
+        post.contains("<nav class=\"tali-postnav tali-listing-backnav\""),
+        "post: no back-to-listing link rendered"
+    );
+    assert!(
+        post.contains("href=\"../../blog.html\""),
+        "post: backlink not resolved to the Blog listing at the right depth"
+    );
+    assert!(
+        post.contains("</span> Blog</a>"),
+        "post: backlink label is not the owning listing page's title"
+    );
+
+    // A project belongs to NO single listing here: both projects.tmd AND cv.tmd (its
+    // "selected projects" section) list `contents: projects` un-capped, so the owner is
+    // genuinely ambiguous and the rule correctly skips the backlink. This pins the
+    // ambiguity guard against real corpus content, not just a synthetic fixture.
+    let project = site
+        .render_page("projects/iphone-premium-analysis/index.tmd")
+        .expect("project renders");
+    assert!(
+        !project.contains("<nav class=\"tali-postnav tali-listing-backnav\""),
+        "project: ambiguous owner (Projects page + CV both list projects) → no backlink"
+    );
+
+    // Pages that belong to no listing show no backlink.
+    for page in [
+        "index.tmd",
+        "blog.tmd",
+        "projects.tmd",
+        "cv.tmd",
+        "publications.tmd",
+    ] {
+        let html = site
+            .render_page(page)
+            .unwrap_or_else(|| panic!("{page} renders"));
+        assert!(
+            !html.contains("<nav class=\"tali-postnav tali-listing-backnav\""),
+            "{page}: should have no back-to-listing link"
+        );
+    }
+}
+
 /// Pull the block ids out of `id="qmd-js-<id>"` target divs.
 fn js_target_ids(html: &str) -> Vec<String> {
     html.match_indices("id=\"qmd-js-")
