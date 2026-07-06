@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Give the Taliesin VS Code companion two net-new language features — error squiggles from `taliesin check` and autocomplete from a drift-proof `taliesin vocab` dump — as in-process providers that shell out to the CLI.
+**Goal:** Give the Taliesin VS Code companion two net-new language features, error squiggles from `taliesin check` and autocomplete from a drift-proof `taliesin vocab` dump, as in-process providers that shell out to the CLI.
 
 **Architecture:** A new "language features" layer in `editor/vscode/src/`, registered in `activate()` beside the existing preview command. Pure logic (JSON parsing, range mapping, completion-context detection, buffer/`.bib` scanning) lives in no-`vscode`-import modules covered by `node:test`, mirroring `paths.ts`/`ports.ts`; the thin `vscode` wiring (a `DiagnosticCollection`, a `CompletionItemProvider`) is proven by one `@vscode/test-electron` e2e per feature. Phase 1 (diagnostics) needs **zero** Rust changes. Phase 2 adds a small `taliesin vocab` command whose JSON is generated from the validator's own consts and golden-file-locked, exactly like `schema.rs`.
 
@@ -13,7 +13,7 @@
 - **No em dashes or en dashes** in any prose, comment, or doc string. Use commas, colons, parentheses, or restructured sentences.
 - **Do-NOT-touch exec/kernel zone:** `check` and `vocab` execute no code and boot no kernel. Do not touch `crates/server/src/{exec,kernel,freeze}.rs`.
 - **Single-editing-surface invariant:** diagnostics are read-only; completions insert only on explicit user acceptance (ordinary editor behavior). Nothing here writes back to source from the preview.
-- **Not the rebrand:** keep the existing manifest ids verbatim — package name `qmd-fast-companion`, config key `qmdFast.path` (default `qmd-fast`), command id `qmdFast.openPreview`, extension id `qmd-fast.qmd-fast-companion`. New code follows those ids so it folds cleanly into the later rebrand.
+- **Not the rebrand:** keep the existing manifest ids verbatim: package name `qmd-fast-companion`, config key `qmdFast.path` (default `qmd-fast`), command id `qmdFast.openPreview`, extension id `qmd-fast.qmd-fast-companion`. New code follows those ids so it folds cleanly into the later rebrand.
 - **Language id:** register all features for the existing `taliesin` language id (`.tmd`).
 - **Drift-proof vocabulary:** completion vocabulary is generated from the Rust validator consts and golden-file-locked. Never hand-list vocabulary in TypeScript.
 - **`rustfmt` clean:** a `PostToolUse` hook runs `rustfmt` on edited `.rs` files; CI enforces `cargo fmt --check`.
@@ -21,7 +21,7 @@
 
 ---
 
-## Phase 1 — Diagnostics (error squiggles). Zero Rust changes.
+## Phase 1: Diagnostics (error squiggles). Zero Rust changes.
 
 ### Task 1: Pure `check` output parsing + range mapping (`src/check.ts`)
 
@@ -285,7 +285,7 @@ and add this test inside the `suite(...)` block (after the existing "Open Previe
 
 Run: `cargo build -p taliesin-server`
 Then: `cd editor/vscode && npm run test:e2e`
-Expected: the new test FAILS (`getDiagnostics` stays empty — the extension has no diagnostics code yet). The existing preview/language tests still pass.
+Expected: the new test FAILS (`getDiagnostics` stays empty, the extension has no diagnostics code yet). The existing preview/language tests still pass.
 
 Note: `npm run test:e2e` downloads a throwaway VS Code into `.vscode-test/` (gitignored) on first run; subsequent runs reuse it.
 
@@ -302,7 +302,7 @@ import { isSourceFile } from "./paths";
 
 // Run `taliesin check --format json <file>` and collect stdout. Never rejects: a spawn
 // failure resolves to { spawnError }, and a non-zero exit (expected when findings exist)
-// is ignored — we parse stdout regardless of exit code.
+// is ignored, we parse stdout regardless of exit code.
 function spawnCheck(binary: string, file: string): Promise<{ stdout: string; spawnError?: string }> {
   return new Promise((resolve) => {
     let stdout = "";
@@ -423,7 +423,7 @@ git commit -m "feat(companion): surface taliesin check findings as editor diagno
 
 ---
 
-## Phase 2 — `taliesin vocab` + completions.
+## Phase 2: `taliesin vocab` + completions.
 
 ### Task 3: `taliesin_core::vocab` module + golden-file lock
 
@@ -434,7 +434,7 @@ git commit -m "feat(companion): surface taliesin check findings as editor diagno
 - Modify: `crates/core/src/render/mod.rs` (re-export the validate consts `pub(crate)`)
 - Modify: `crates/core/src/cite/render.rs` (add `XREF_LABELS` const; back `xref_label` with it)
 - Modify: `crates/core/src/cite/mod.rs` (re-export `XREF_LABELS` `pub(crate)`)
-- Modify: `crates/core/src/site/xref.rs` (agreement unit test — bonus)
+- Modify: `crates/core/src/site/xref.rs` (agreement unit test, bonus)
 - Modify: `Cargo.toml` (add `serde_json` to `[workspace.dependencies]`)
 - Modify: `crates/core/Cargo.toml` (make `serde_json` a regular dependency)
 
@@ -467,7 +467,7 @@ and remove the now-redundant line from `[dev-dependencies]`:
 serde_json = "1"
 ```
 
-(Leave the server crate's own `serde_json` pin untouched — that is out of scope here.)
+(Leave the server crate's own `serde_json` pin untouched; that is out of scope here.)
 
 - [ ] **Step 2: Re-export the validate consts from `render`**
 
@@ -826,7 +826,7 @@ In `crates/core/src/site/xref.rs`, inside its existing `#[cfg(test)] mod tests` 
     }
 ```
 
-(If `xref.rs` has no `tests` module, add `#[cfg(test)] mod tests { use super::*; ... }` at the end of the file. Confirm the `is_ref_anchor` path — it is `pub(super)`, so `super::is_ref_anchor` resolves from an inner `tests` module.)
+(If `xref.rs` has no `tests` module, add `#[cfg(test)] mod tests { use super::*; ... }` at the end of the file. Confirm the `is_ref_anchor` path: it is `pub(super)`, so `super::is_ref_anchor` resolves from an inner `tests` module.)
 
 - [ ] **Step 9: Run the full core test suite + clippy**
 
