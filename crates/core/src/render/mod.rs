@@ -411,8 +411,10 @@ fn render_internal_impl(
                         }
                         deduped
                     }
-                    Some((clean, None)) => dedup_slug(clean, &mut heading_slugs),
-                    None => dedup_slug(&block_src, &mut heading_slugs),
+                    Some((clean, None)) => {
+                        dedup_slug(&strip_math_for_slug(clean), &mut heading_slugs)
+                    }
+                    None => dedup_slug(&strip_math_for_slug(&block_src), &mut heading_slugs),
                 };
                 format!(" id=\"{}\"", escape_attr(&id))
             }
@@ -1046,6 +1048,85 @@ fn slugify(s: &str) -> String {
     out
 }
 
+/// Remove `$…$` / `$$…$$` math spans from a heading's markdown text before slugging, so
+/// KaTeX/LaTeX (`$H_0$`) doesn't leak into the anchor id (`…-h-0`). Mirrors comrak's
+/// `math_dollars` rule closely enough for a slug: an opening `$` is not followed by
+/// whitespace and its matching closing `$` is not preceded by whitespace, `\$` is a
+/// literal dollar (not a delimiter), and a span never crosses a newline. So a real math
+/// span drops out while a lone/currency `$` (e.g. `$5 and $10`, which comrak also leaves
+/// as text) stays put.
+fn strip_math_for_slug(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        // A backslash escape (`\$`, `\\`, …) is literal: copy the pair, never a delimiter.
+        if chars[i] == '\\' {
+            out.push(chars[i]);
+            if let Some(&next) = chars.get(i + 1) {
+                out.push(next);
+                i += 2;
+            } else {
+                i += 1;
+            }
+            continue;
+        }
+        if chars[i] == '$' {
+            let display = chars.get(i + 1) == Some(&'$');
+            let open_len = if display { 2 } else { 1 };
+            let body = i + open_len;
+            // A span needs a body; inline `$…$` also forbids whitespace right after the
+            // opening `$` (display `$$…$$` allows it, matching comrak). If a valid close
+            // exists, drop the whole span; otherwise the `$` is literal (fall through).
+            let open_ok = body < chars.len() && (display || !chars[body].is_whitespace());
+            if open_ok && let Some(close) = math_close(&chars, body, display) {
+                i = close + open_len; // skip delimiters + body
+                continue;
+            }
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
+}
+
+/// Index of the matching closing `$` (inline) or first `$` of the closing `$$` (display)
+/// for a math span whose body starts at `start`; `None` if the opening `$` isn't a math
+/// delimiter after all. Mirrors comrak's inline scan: the close is the FIRST unescaped
+/// `$`, and if that `$` is preceded by whitespace or followed by an ASCII digit the span
+/// is abandoned (the opening `$` stays literal) rather than reaching for a later `$` —
+/// else a lone/currency `$` would greedily swallow the text up to some later real span.
+fn math_close(chars: &[char], start: usize, display: bool) -> Option<usize> {
+    let mut j = start;
+    while j < chars.len() {
+        match chars[j] {
+            '\n' => return None,
+            // `\` escapes the next char (`\$` is a literal dollar, never a delimiter).
+            '\\' => {
+                j += 2;
+                continue;
+            }
+            // Display close: the first `$$` (comrak is lenient about adjacency here).
+            '$' if display => {
+                if chars.get(j + 1) == Some(&'$') {
+                    return Some(j);
+                }
+            }
+            // Inline close: THIS first unescaped `$` is the only candidate. `j > start`
+            // (the caller guarantees `chars[start]` is neither whitespace nor `$`), so
+            // `j - 1` is in range.
+            '$' => {
+                let ok = !chars[j - 1].is_whitespace()
+                    && !chars.get(j + 1).is_some_and(|c| c.is_ascii_digit());
+                return ok.then_some(j);
+            }
+            _ => {}
+        }
+        j += 1;
+    }
+    None
+}
+
 /// A deduped heading anchor slug; a repeated slug gets a `-N` suffix (Quarto).
 /// `block_src` is the heading's markdown line; `slugify` ignores the leading
 /// `#`s and markup, yielding the visible-text slug.
@@ -1588,24 +1669,57 @@ pub(crate) fn tag_end(html: &str) -> Option<usize> {
 /// figure alt-text, deck slugs). Quote-aware, like [`tag_end`]: a `>` inside a quoted
 /// attribute value (e.g. KaTeX's `<span title="a>b">`) does NOT end the tag, so the
 /// visible text isn't truncated mid-attribute.
+///
+/// KaTeX-aware: with the default `htmlAndMathml` output, KaTeX renders inline math
+/// three times — the MathML semantic text, a raw-TeX `<annotation>`, and the visible
+/// `katex-html` glyphs. Emitting all three triples a heading's TOC label / slug and
+/// leaks LaTeX (`$H_0$` → `H0H_0H0`). So the whole `<math>…</math>` subtree is dropped,
+/// leaving only the visible `katex-html` glyphs (`H0`).
 fn strip_tags(html: &str) -> String {
     let mut out = String::new();
-    let mut in_tag = false;
-    let mut quote: Option<char> = None;
-    for ch in html.chars() {
-        if in_tag {
-            match quote {
-                Some(q) if ch == q => quote = None,
-                Some(_) => {}
-                None => match ch {
-                    '"' | '\'' => quote = Some(ch),
-                    '>' => in_tag = false,
-                    _ => {}
-                },
+    let mut skip_math = 0usize; // depth of `<math>` subtrees whose text is dropped
+    let mut chars = html.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '<' {
+            // Consume the tag body up to the closing `>` (quote-aware: a `>` inside a
+            // quoted attribute value does not end the tag).
+            let mut tag = String::new();
+            let mut quote: Option<char> = None;
+            for c in chars.by_ref() {
+                match quote {
+                    Some(q) => {
+                        if c == q {
+                            quote = None;
+                        }
+                        tag.push(c);
+                    }
+                    None => match c {
+                        '"' | '\'' => {
+                            quote = Some(c);
+                            tag.push(c);
+                        }
+                        '>' => break,
+                        _ => tag.push(c),
+                    },
+                }
             }
-        } else if ch == '<' {
-            in_tag = true;
-        } else {
+            // Enter/exit the KaTeX `<math>` MathML subtree (depth-tracked for safety).
+            let body = tag.trim_start();
+            let is_close = body.starts_with('/');
+            let name: String = body
+                .trim_start_matches('/')
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric())
+                .flat_map(|c| c.to_lowercase())
+                .collect();
+            if name == "math" {
+                if is_close {
+                    skip_math = skip_math.saturating_sub(1);
+                } else if !tag.trim_end().ends_with('/') {
+                    skip_math += 1;
+                }
+            }
+        } else if skip_math == 0 {
             out.push(ch);
         }
     }

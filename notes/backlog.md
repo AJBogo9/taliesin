@@ -100,8 +100,7 @@ Each clears once you decide. Design calls carry a recommended default.
   placeholders; README `check` mentions; reconcile the no-kernel-build wording (`CLAUDE.md:122`,
   `getting-started`, `build.rs:232`).
 - **Bib / math edge cases:** dup-key `.bib` warning stays unlocated (external file; could point at the
-  `bibliography:` line); math-in-heading TOC/slug garble (skip `<annotation>` in `strip_tags`);
-  `@inbook`/`@incollection` drop `booktitle`/pages; backslash-escaped quotes in a `title=`/`fig-cap=`
+  `bibliography:` line); `@inbook`/`@incollection` drop `booktitle`/pages; backslash-escaped quotes in a `title=`/`fig-cap=`
   value truncate + leak `\` (`render/divs.rs tokenize_attrs`); query-string asset refs aren't bundled.
 - **Audit long-tail** (`AUDITS.md`): a combined content+theme edit drops the hot-swap until reload
   (`serve.rs`); the initial synchronous render isn't panic-guarded; mounted sub-sites don't route

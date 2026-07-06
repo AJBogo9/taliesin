@@ -774,6 +774,67 @@ fn explicit_heading_id_is_applied_and_stripped() {
 }
 
 #[test]
+fn inline_math_heading_gets_a_clean_slug() {
+    // `$…$` must not leak LaTeX into the anchor id (was `…-h-0`, `the-12-n-n-1-…`).
+    // The math span contributes nothing to the slug; the surrounding text stands alone.
+    let cases = [
+        (
+            "## Expected rank mean under $H_0$\n",
+            "expected-rank-mean-under",
+        ),
+        ("## The $12/N(N+1)$ scaling factor\n", "the-scaling-factor"),
+        ("# Deriving the $H$ statistic\n", "deriving-the-statistic"),
+    ];
+    for (src, want) in cases {
+        let doc = render_document(src);
+        let h = &doc.blocks[0].html;
+        assert!(
+            h.contains(&format!("id=\"{want}\"")),
+            "want id={want:?}, got heading: {h}"
+        );
+    }
+    // A lone/currency `$` is NOT a math delimiter (comrak leaves it as text), so it must
+    // survive in the slug rather than being stripped as a math span.
+    let money = render_document("## Save $5 on every $10 spent\n");
+    assert!(
+        money.blocks[0]
+            .html
+            .contains("id=\"save-5-on-every-10-spent\""),
+        "currency wrongly stripped from slug: {}",
+        money.blocks[0].html
+    );
+}
+
+#[test]
+fn heading_slug_respects_comrak_math_boundaries() {
+    // The slug stripper must match comrak's `math_dollars` span detection exactly, or it
+    // silently deletes literal words from a (load-bearing) anchor id. comrak abandons an
+    // opening `$` when the next unescaped `$` is preceded by whitespace or followed by a
+    // digit — it does NOT reach for a later `$`. Each case is the id comrak's own parse
+    // yields (verified: `$n$` is the only math span in the first, none in the next two).
+    let cases = [
+        // Only `$n$` is math; `$5 or more` is literal → keep "5 or more".
+        ("## Costs $5 or more $n$ items\n", "costs-5-or-more-items"),
+        // Every close is digit-followed or space-preceded → whole line literal.
+        ("## Total: $5+$10 = $15\n", "total-5-10-15"),
+        // `$O(n)$` close is followed by `2` (digit) → not math → whole line literal.
+        ("## The $O(n)$2x speedup\n", "the-o-n-2x-speedup"),
+        // First `$` abandoned (space before the next `$`); only `$y$` is math.
+        ("## $x $y$\n", "x"),
+        // Display `$$…$$` may have whitespace after the opening `$$`.
+        ("## Cost $$ x $$ table\n", "cost-table"),
+    ];
+    for (src, want) in cases {
+        let doc = render_document(src);
+        let h = &doc.blocks[0].html;
+        assert!(
+            h.contains(&format!("id=\"{want}\"")),
+            "want id={want:?}, got heading: {h}"
+        );
+    }
+}
+
+#[test]
 fn duplicate_explicit_heading_ids_are_deduped() {
     // Two headings with the SAME explicit `{#dup}` must NOT emit duplicate element
     // ids (which would silently break in-page anchors + `@sec-` refs): the second
@@ -2443,6 +2504,34 @@ fn strip_tags_is_quote_aware() {
         "text tail"
     );
     assert_eq!(strip_tags("<p>plain <em>text</em></p>"), "plain text");
+}
+
+#[test]
+fn strip_tags_drops_katex_mathml_subtree() {
+    // Inline math in a heading must not leak KaTeX's `<math>` subtree — the semantic
+    // MathML text plus the raw-TeX `<annotation>` — into the visible text used for TOC
+    // labels, callout/tabset titles, figure alt-text and deck slugs. Only the visible
+    // `katex-html` glyphs should survive (so `$H_0$` reads once as `H0`, never the
+    // tripled `H0H_0H0` with leaked LaTeX).
+    let doc = render_document("## Expected rank mean under $H_0$\n");
+    let h = &doc.blocks[0].html;
+    assert!(
+        h.contains("<math"),
+        "sanity: KaTeX should emit a <math> subtree: {h}"
+    );
+    let text = strip_tags(h);
+    assert!(
+        !text.contains("H_0"),
+        "raw TeX leaked from the <annotation> into visible text: {text:?}"
+    );
+    assert!(
+        text.matches("H0").count() <= 1,
+        "inline math was duplicated (MathML semantic text + katex-html glyphs): {text:?}"
+    );
+    assert!(
+        text.starts_with("Expected rank mean under"),
+        "visible heading text was corrupted: {text:?}"
+    );
 }
 
 #[test]
