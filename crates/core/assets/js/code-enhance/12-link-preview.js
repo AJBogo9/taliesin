@@ -26,14 +26,25 @@ function taliInitLinkPreview() {
   card.setAttribute('role', 'tooltip');
   document.body.appendChild(card);
 
-  var showTimer = null, hideTimer = null, pinned = false, currentLink = null;
+  var showTimer = null, hideTimer = null, pinned = false, currentLink = null, lastHovered = null;
 
-  function eligible(a) {
+  // Same-page target: an in-page fragment link (the original behavior).
+  function eligibleSame(a) {
     if (!a) return false;
     var href = a.getAttribute('href') || '';
     if (href.charAt(0) !== '#' || href.length < 2) return false;
     return !a.closest('#TOC') && !a.closest('#tali-link-preview');
   }
+  // Cross-page target: a resolved cross-reference to another page — a `.tali-xref` whose
+  // href is `page.html#anchor` (not a bare `#frag`). Its target lives in a different
+  // document, so it's previewed from the served hover index, not the current DOM.
+  function eligibleCross(a) {
+    if (!a || !a.classList.contains('tali-xref')) return false;
+    var href = a.getAttribute('href') || '';
+    if (href.charAt(0) === '#' || href.indexOf('#') < 0) return false;
+    return !a.closest('#TOC') && !a.closest('#tali-link-preview');
+  }
+  function eligible(a) { return eligibleSame(a) || eligibleCross(a); }
   // Clone a node for the card, stripping interactive chrome that has no place in a
   // read-only preview: the heading/caption `#` permalink (taliInitAnchorLinks) and code
   // copy buttons. Without this the cloned `#` shows in the card (and in a heading's
@@ -69,6 +80,7 @@ function taliInitLinkPreview() {
     card.style.top = Math.max(8, top) + 'px';
   }
   function show(link) {
+    if (eligibleCross(link)) { showCross(link); return; }
     var id = decodeURIComponent((link.getAttribute('href') || '').slice(1));
     var target = id && document.getElementById(id);
     if (!target) return;
@@ -79,6 +91,56 @@ function taliInitLinkPreview() {
     currentLink = link;
     card.classList.add('open');
     place(link);
+  }
+  // Lazy-load the served hover index on the first cross-page hover (a <script> load, so it
+  // works under file:// like search-index.js), then run `cb` once it is present.
+  var hoverFetched = false;
+  function loadHoverThen(cb) {
+    if (window.TALIESIN_HOVER_INDEX || !window.TALIESIN_HOVER_URL || hoverFetched) { cb(); return; }
+    hoverFetched = true;
+    var s = document.createElement('script');
+    s.src = window.TALIESIN_HOVER_URL;
+    s.onload = cb;
+    s.onerror = cb;
+    document.head.appendChild(s);
+  }
+  // A snippet's asset/link URLs are stored site-root-relative; prefix them with
+  // TALIESIN_SITE_ROOT (this page's up-path to root) so they resolve from any depth.
+  function resolveUrls(frag) {
+    var root = window.TALIESIN_SITE_ROOT || '';
+    if (!root) return;
+    function relative(v) {
+      return v && v.charAt(0) !== '#' && v.charAt(0) !== '/' &&
+        v.indexOf('//') !== 0 && v.indexOf('://') < 0 &&
+        v.indexOf('data:') !== 0 && v.indexOf('mailto:') !== 0 && v.indexOf('tel:') !== 0;
+    }
+    frag.querySelectorAll('img[src]').forEach(function (n) {
+      var v = n.getAttribute('src'); if (relative(v)) n.setAttribute('src', root + v);
+    });
+    frag.querySelectorAll('a[href]').forEach(function (n) {
+      var v = n.getAttribute('href'); if (relative(v)) n.setAttribute('href', root + v);
+    });
+  }
+  function showCross(link) {
+    loadHoverThen(function () {
+      if (lastHovered !== link) return; // pointer moved away while the index loaded
+      var href = link.getAttribute('href') || '';
+      var anchor = decodeURIComponent(href.slice(href.indexOf('#') + 1));
+      var snippet = (window.TALIESIN_HOVER_INDEX || {})[anchor];
+      if (!snippet) return;
+      // Parse inertly in a <template> (its images don't load until adopted), rebase URLs,
+      // strip interactive chrome, then adopt the fragment into the card.
+      var tpl = document.createElement('template');
+      tpl.innerHTML = snippet;
+      resolveUrls(tpl.content);
+      tpl.content.querySelectorAll('.tali-anchor, .tali-copy').forEach(function (n) { n.remove(); });
+      if (!tpl.content.textContent.trim()) return;
+      card.innerHTML = '';
+      card.appendChild(tpl.content);
+      currentLink = link;
+      card.classList.add('open');
+      place(link);
+    });
   }
   function scheduleShow(link) {
     clearTimeout(hideTimer); clearTimeout(showTimer);
@@ -91,14 +153,15 @@ function taliInitLinkPreview() {
   function scheduleHide() { clearTimeout(hideTimer); hideTimer = setTimeout(hide, 160); }
 
   document.addEventListener('mouseover', function (e) {
-    var a = e.target.closest && e.target.closest("a[href^='#']");
-    if (eligible(a)) scheduleShow(a);
+    var a = e.target.closest && e.target.closest('a[href]');
+    if (a && eligible(a)) { lastHovered = a; scheduleShow(a); }
   });
   document.addEventListener('mouseout', function (e) {
-    var a = e.target.closest && e.target.closest("a[href^='#']");
+    var a = e.target.closest && e.target.closest('a[href]');
     if (a && eligible(a)) {
       var to = e.relatedTarget;
       if (to && to.closest && to.closest('#tali-link-preview')) return; // moving into the card
+      lastHovered = null;
       scheduleHide();
     }
   });
