@@ -164,6 +164,7 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
     let router = Router::new()
         .route("/favicon.ico", get(favicon))
         .route("/search-index.js", get(search_index_js))
+        .route("/hover-index.js", get(hover_index_js))
         .route("/ws", get(ws_handler))
         .fallback(page_or_asset)
         .with_state(app.clone());
@@ -241,6 +242,26 @@ async fn search_index_js(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
         .into_response()
 }
 
+/// The cross-page hover-preview snippet index as a `hover-index.js` script (assigns
+/// `window.TALIESIN_HOVER_INDEX`), lazy-loaded by `12-link-preview.js` on the first
+/// cross-page hover. Served as JS (not JSON) so a `<script>` load works under file://.
+async fn hover_index_js(State(app): State<Arc<SiteApp>>) -> impl IntoResponse {
+    let json = { app.site.lock().hover_index_json.clone() };
+    let json = if json.is_empty() {
+        "{}".to_string()
+    } else {
+        json
+    };
+    (
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/javascript; charset=utf-8",
+        )],
+        format!("window.TALIESIN_HOVER_INDEX={json};"),
+    )
+        .into_response()
+}
+
 /// Resolve a request to a page (rendered live) or a static asset under the root.
 async fn page_or_asset(
     State(app): State<Arc<SiteApp>>,
@@ -300,6 +321,13 @@ async fn page_or_asset(
                 let j = if j.is_empty() { "[]".to_string() } else { j };
                 let js_ct = "text/javascript; charset=utf-8";
                 let body = format!("window.TALIESIN_SEARCH_INDEX={j};");
+                return ([(axum::http::header::CONTENT_TYPE, js_ct)], body).into_response();
+            }
+            if lookup == "hover-index.js" {
+                let j = m.site.hover_index_json.clone();
+                let j = if j.is_empty() { "{}".to_string() } else { j };
+                let js_ct = "text/javascript; charset=utf-8";
+                let body = format!("window.TALIESIN_HOVER_INDEX={j};");
                 return ([(axum::http::header::CONTENT_TYPE, js_ct)], body).into_response();
             }
             if let Some(html) = m.site.render_page(lookup) {

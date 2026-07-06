@@ -845,6 +845,27 @@ fn demo_book_hover_index_has_cross_page_snippets() {
 }
 
 #[test]
+fn demo_book_pages_point_at_hover_index_without_inlining_it() {
+    use taliesin_core::Site;
+    let site = Site::discover(&corpus_dir().join("demo-book"));
+    // results.tmd has cross-page refs but no TOC — the hover pointer must still ship.
+    let results = site.render_page("results.tmd").expect("results renders");
+    assert!(
+        results.contains("window.TALIESIN_HOVER_URL="),
+        "every page needs the hover-index pointer: {results}"
+    );
+    assert!(
+        results.contains("window.TALIESIN_SITE_ROOT="),
+        "hover needs the site root to resolve rebased asset URLs"
+    );
+    // The (potentially large) index itself is lazy-loaded, never inlined into a page.
+    assert!(
+        !results.contains("window.TALIESIN_HOVER_INDEX="),
+        "the index must not be inlined into the page body"
+    );
+}
+
+#[test]
 fn book_chapter_scopes_theorem_numbers() {
     use taliesin_core::Site;
     let site = Site::discover(&corpus_dir().join("demo-book"));

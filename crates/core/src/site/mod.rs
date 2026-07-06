@@ -379,6 +379,18 @@ impl Site {
                 page.url
             )
         };
+        // Cross-page hover-preview: point every page at the lazy hover-index.js and set the
+        // site root so the client can resolve a snippet's rebased (root-relative) asset URLs.
+        // Injected into the always-emitted head (unlike search, which rides only TOC pages)
+        // because a cross-page ref can appear on any page. Idempotent with search's own
+        // TALIESIN_SITE_ROOT on TOC pages (same value).
+        if !self.hover_index_json.is_empty() {
+            let up = "../".repeat(depth);
+            includes.in_header.push_str(&format!(
+                "<script>window.TALIESIN_SITE_ROOT=\"{up}\";\
+                 window.TALIESIN_HOVER_URL=\"{up}hover-index.js\";</script>"
+            ));
+        }
         SiteCtx {
             // A book replaces the top navbar with a slim topbar + off-canvas chapter
             // drawer and uses chapter prev/next instead of the post "back to listing" link.

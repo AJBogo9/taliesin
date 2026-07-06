@@ -15,12 +15,14 @@ fn is_heading(html: &str) -> bool {
     t.len() >= 3 && t[0] == b'<' && t[1] == b'h' && (b'1'..=b'6').contains(&t[2])
 }
 
-/// Whether a block's leading element tag carries any `id="…"` (mirrors the client's
-/// `!n.id` stop condition when gathering a heading's following blocks).
+/// Whether a block's leading element tag carries a real `id="…"` attribute (mirrors the
+/// client's `!n.id` stop condition when gathering a heading's following blocks). Matches
+/// ` id="` (space-prefixed) so the universal `data-block-id="` attribute — hyphen-prefixed
+/// — is NOT mistaken for a real id (which would make every heading a bare-title snippet).
 fn leading_tag_has_id(html: &str) -> bool {
     match crate::render::tag_end(html) {
-        Some(gt) => html[..gt].contains("id=\""),
-        None => html.contains("id=\""),
+        Some(gt) => html[..gt].contains(" id=\""),
+        None => html.contains(" id=\""),
     }
 }
 
@@ -182,6 +184,23 @@ mod tests {
     #[test]
     fn extract_returns_none_for_unknown_anchor() {
         assert!(extract_snippet(&[blk("<p>x</p>")], "fig-x").is_none());
+    }
+
+    #[test]
+    fn extract_heading_appends_following_blocks_that_carry_only_data_block_id() {
+        // Regression: every real block carries `data-block-id="…"`; that must NOT read as a
+        // real id (only a space-prefixed ` id="` does), else a heading captures nothing.
+        let blocks = vec![
+            blk("<h1 id=\"sec-m\" data-block-id=\"b-1\">Methods</h1>"),
+            blk("<p data-block-id=\"b-2\" data-sourcepos=\"2:1-2:2\">intro one</p>"),
+            blk("<div class=\"tali-theorem\" id=\"thm-x\" data-block-id=\"b-3\">stop</div>"),
+        ];
+        let s = extract_snippet(&blocks, "sec-m").unwrap();
+        assert!(s.contains("Methods") && s.contains("intro one"), "got: {s}");
+        assert!(
+            !s.contains("stop"),
+            "stops at the block with a real id (the theorem): {s}"
+        );
     }
 
     #[test]
