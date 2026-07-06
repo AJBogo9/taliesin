@@ -3,7 +3,7 @@ import * as path from "node:path";
 import * as vscode from "vscode";
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../../"); // out/e2e/suite -> editor/vscode -> editor -> repo
-const SAMPLE_QMD = path.join(REPO_ROOT, "corpus/posts/born-machines.qmd");
+const SAMPLE_POST = path.join(REPO_ROOT, "corpus/posts/born-machines.tmd");
 const SAMPLE_TMD = path.join(REPO_ROOT, "corpus/native-tmd.tmd");
 const DIAG_FIXTURE = path.join(REPO_ROOT, "editor/vscode/test-fixtures/diag-typo.tmd");
 const QMD_FAST_BIN = path.join(REPO_ROOT, "target/debug/taliesin");
@@ -32,13 +32,13 @@ suite("qmd-fast companion (integration)", () => {
     assert.equal(doc.languageId, "taliesin", ".tmd resolves to the taliesin language");
   });
 
-  test("Open Preview creates a webview panel for the active .qmd", async () => {
+  test("Open Preview creates a webview panel for the active source document", async () => {
     // Point the extension at the locally-built binary (PATH may not have it in CI).
     await vscode.workspace
       .getConfiguration("qmdFast")
       .update("path", QMD_FAST_BIN, vscode.ConfigurationTarget.Global);
 
-    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(SAMPLE_QMD));
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(SAMPLE_POST));
     await vscode.window.showTextDocument(doc);
 
     await vscode.commands.executeCommand("qmdFast.openPreview");
