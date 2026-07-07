@@ -37,7 +37,7 @@ web-client/     browser preview client (vanilla JS), the only client
 toolchain (via [rustup](https://rustup.rs)) is all you need to build it:
 
 ```sh
-git clone https://github.com/anthropics/Taliesin && cd Taliesin
+git clone https://github.com/AJBogo9/taliesin && cd taliesin
 cargo build --release            # binary at target/release/taliesin
 cargo run -p taliesin-server -- --help   # or run it straight from the workspace
 ```

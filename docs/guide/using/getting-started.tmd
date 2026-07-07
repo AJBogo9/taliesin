@@ -199,7 +199,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install Taliesin
         # point at wherever Taliesin lives; add --tag vX.Y for reproducible builds
-        run: cargo install --git https://github.com/you/Taliesin --locked taliesin-server
+        run: cargo install --git https://github.com/AJBogo9/taliesin --locked taliesin-server
       - name: Build the site
         run: taliesin build .          # website -> _site/   (a book emits _book/)
       - uses: actions/upload-pages-artifact@v3

@@ -94,8 +94,9 @@ Each clears once you decide. Design calls carry a recommended default.
 - **Perf (low):** protocol-level op-message batching (one WS message per save, not one-per-op); lazy
   discover-time search index (`search.rs:30`); `updateWordCount` deep-clones `#tali-root` per op
   (`client.js`); visited pages never evicted from `app.pages` (`serve_site.rs`, unbounded growth).
-- **CLI / docs microcopy:** reconcile repo-URL placeholders; README `check` mentions; reconcile
-  the no-kernel-build wording (`CLAUDE.md:122`, `getting-started`, `build.rs:232`).
+- **CLI / docs microcopy:** reconcile the no-kernel-build wording across `CLAUDE.md`,
+  `getting-started`, and `build.rs` (each is substantively correct — a no-kernel build/preview
+  falls back to source non-fatally — but phrased differently; optional polish, no defect).
 - **Audit long-tail** (`AUDITS.md`): a combined content+theme edit drops the hot-swap until reload
   (`serve.rs`); the initial synchronous render isn't panic-guarded; mounted sub-sites don't route
   embedded decks (mount miss → bare 404); a tens-of-MB cell output blocks ZMQ receive before the cap
