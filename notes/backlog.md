@@ -59,7 +59,7 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
   (now-removed) xref graph tool provided.
 - Audit 2026-07-07 implementation queue also lives here — see
   **[the batched queue below](#audit-2026-07-07-implementation-queue-build-ready)** (Batch 5 remainder
-  + Batch 7 next; Batches 1-4, the high-value half of Batch 5, and Batch 6 landed 2026-07-07).
+  + Batch 8 next; Batches 1-4, the high-value half of Batch 5, Batch 6, and Batch 7 landed 2026-07-07).
 
 ### Decided 2026-07-07 — each needs its own dedicated session
 - **Quarto design-decisions catalog triage, reframed.** Branch `quarto-decisions-catalog`, commit
@@ -164,13 +164,6 @@ value / more invasive, each its own small change):
   (the `extract_field` fallback can't read a block sequence) — edge case (`fm_extract.rs:114`).
 - Low-tail siblings: non-`.bib` bibliography, unresolved fence language (needs a warnings channel threaded
   into the pure `highlight` fn — invasive), non-HTML `format:`.
-
-### Batch 7: Site / build correctness [small to medium]
-- Absolute `image:` URL mangled into a broken relative path, breaks og:image + listing card: guard with
-  `is_external_or_special` (`site/discovery.rs:26`).
-- `_site` build never sweeps stale files, so renamed/deleted pages persist across rebuilds (`build.rs`). *(recovered CLI cluster)*
-- Embed warnings never increment `problems`, so `--strict` + exit code under-count (`build.rs:330`). *(recovered CLI cluster)*
-- Deck front-matter title/subtitle edits never hot-update (title slide lives outside `doc.blocks`) (`deck.rs:206-225`).
 
 ### Batch 8: Dev-server / watcher / incremental robustness [mixed; one large] 
 - File watcher recursively watches the whole tree (incl. `node_modules`/`.git`); inotify exhaustion

@@ -1,10 +1,11 @@
 //! OpenGraph / Twitter-card / SEO `<meta>` tags for a site page, injected into the
 //! head via `SiteCtx` so a shared link renders a rich preview. Per-page title,
 //! description, canonical URL, and card image come from the page's front matter,
-//! falling back to the site config. The absolute-URL tags (og:url, og:image,
-//! canonical) are emitted only when a `url:` is configured.
+//! falling back to the site config. og:url and canonical need the site `url:` to be
+//! absolute; og:image does too for a site-root-relative image, but an already-absolute
+//! `image:` URL is emitted verbatim without one.
 
-use super::{Page, Site};
+use super::{Page, Site, is_external_or_special};
 use crate::escape_attr as esc;
 
 fn meta(attr: &str, key: &str, val: &str) -> String {
@@ -23,13 +24,21 @@ pub(super) fn social_head(site: &Site, page: &Page) -> String {
     let clean_url = page.url.strip_suffix("index.html").unwrap_or(&page.url);
     let page_url = base.map(|b| format!("{b}/{clean_url}"));
     // Card image, made absolute (social scrapers require absolute image URLs). Falls
-    // back to the site-wide default (`image:`, or `open-graph: image:`).
+    // back to the site-wide default (`image:`, or `open-graph: image:`). An
+    // already-absolute image URL (a CDN-hosted card) is used verbatim and works even
+    // without a configured `url:`; a site-root-relative image is joined onto `base`,
+    // which needs `url:` to exist.
     let image = page
         .card_image
         .as_deref()
         .or(cfg.card_image.as_deref())
-        .zip(base)
-        .map(|(img, b)| format!("{b}/{}", img.trim_start_matches('/')));
+        .and_then(|img| {
+            if is_external_or_special(img) {
+                Some(img.to_string())
+            } else {
+                base.map(|b| format!("{b}/{}", img.trim_start_matches('/')))
+            }
+        });
     let og_type = if page.date.is_some() {
         "article"
     } else {

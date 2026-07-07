@@ -1039,6 +1039,13 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
                 // slides (no <section> added or removed).
                 BlockOp::Update { .. } | BlockOp::SetMeta { .. } => false,
             });
+        // A deck's title slide is built from the front-matter title/subtitle (in
+        // `slides_html`), *outside* `doc.blocks`, so retitling produces no block op and
+        // the diff is empty. Force a full re-mount for a deck when either changes so the
+        // title slide actually updates; the deck's JS preserves the current slide +
+        // overview across the swap, exactly as it does for a structural change.
+        let deck_meta_changed = matches!(doc.format, DocFormat::Reveal)
+            && (d.title != doc.title || d.subtitle != doc.subtitle);
         let diags_changed = d.diagnostics != diags;
         let theme_changed = d.theme_css != doc.theme_css;
         d.title = doc.title;
@@ -1060,10 +1067,11 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         d.blocks = blocks;
         d.diagnostics = diags;
         // Broadcast under the lock so connecting clients can't interleave.
-        if recovered || deck_structural {
+        if recovered || deck_structural || deck_meta_changed {
             // Re-mount fully when recovering from an error (so every client clears its
-            // overlay) or a deck changed structurally. The deck preserves its current
-            // slide + overview across the swap (its JS state survives the DOM rebuild).
+            // overlay), a deck changed structurally, or a deck's title/subtitle changed
+            // (its title slide lives outside the block model). The deck preserves its
+            // current slide + overview across the swap (its JS state survives the rebuild).
             let _ = app.tx.send(full_render_json(&d));
         } else {
             for op in &ops {

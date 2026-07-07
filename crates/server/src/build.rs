@@ -344,14 +344,17 @@ fn build_page_executing(
         problems += doc.warnings.len();
         // `{{< embed >}}` only resolves in a SITE build, which also builds the
         // embedded target beside the page. A single-doc build ships the iframe but
-        // not its target, so the embed would 404 — warn instead of failing silently.
-        for target in taliesin_core::render::embed_targets(src) {
+        // not its target, so the embed would 404 — warn (and count it toward `--strict`,
+        // like the render/xref warnings) instead of failing silently or passing green.
+        let embeds = taliesin_core::render::embed_targets(src);
+        for target in &embeds {
             log::warn(&format!(
                 "{{{{< embed {target} >}}}} won't resolve in a single-doc build (its \
                  target isn't built); build the containing directory as a site, or \
                  inline the content instead."
             ));
         }
+        problems += embeds.len();
         // Broken cross-refs (a single doc has no site to resolve them across pages),
         // so a `build` doesn't ship a dangling `@fig-`/`@sec-` link silently.
         let xrefs = taliesin_core::cite::validate_xrefs(&doc.blocks);
@@ -853,7 +856,7 @@ async fn build_site_async(
     let freeze_dir = root.join("_freeze");
 
     // 1. Mirror non-source assets (images, etc.) preserving the tree.
-    let (assets, skipped_residue) = mirror_assets(root, &out);
+    let (asset_paths, skipped_residue) = mirror_assets(root, &out);
     if !skipped_residue.is_empty() {
         log::warn(&format!(
             "skipped {} build-cache dir(s) (not deployed): {}",
@@ -1045,10 +1048,35 @@ async fn build_site_async(
         String::new()
     };
 
+    // Sweep stale output: a page or asset removed/renamed in the source must not linger
+    // across rebuilds (the output tree is a mirror of what this build produced). Anything
+    // in `out` that this build didn't write — and isn't dot/underscore deploy metadata —
+    // is stale. Runs before the referenced-source pass so a no-longer-linked `.md`/`.scss`
+    // (a SKIP_EXT file `mirror_assets` never mirrors, so it's absent from `keep`) is swept
+    // too; the pass below then re-ships only the sources the current pages still link.
+    let mut keep: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
+    keep.extend(site.pages.iter().map(|p| PathBuf::from(&p.url)));
+    keep.extend(site.decks.iter().map(|d| PathBuf::from(&d.url)));
+    keep.extend(asset_paths.iter().cloned());
+    keep.insert(PathBuf::from("404.html"));
+    if !site.search_index_json.is_empty() && site.search_index_json != "[]" {
+        keep.insert(PathBuf::from("search-index.js"));
+    }
+    if !site.hover_index_json.is_empty() {
+        keep.insert(PathBuf::from("hover-index.js"));
+    }
+    let swept = sweep_stale(&out, &keep);
+    if swept > 0 {
+        log::info(&format!(
+            "swept {swept} stale file{} no longer produced",
+            if swept == 1 { "" } else { "s" }
+        ));
+    }
+
     // Second asset pass: ship source files (`.md`/`.scss`/…) that pages actually link to.
     // mirror_assets drops them by extension (publish hygiene), but a *referenced* source is
     // an intentional download — skipping it would leave a dead link on a green build.
-    let assets = assets + deploy_referenced_sources_for_site(root, &out);
+    let assets = asset_paths.len() + deploy_referenced_sources_for_site(root, &out);
 
     log::built(&format!(
         "{}  ·  {pages} page{}  ·  {assets} asset{}{search}{deck_note}{not_found}",
@@ -1076,15 +1104,16 @@ const SKIP_EXT: &[&str] = &["tmd", "bib", "Rproj", "md", "scss", "sass"];
 /// `.sass`), `_`-prefixed and dot entries (`_site.yml`, `_includes`, `_site`, `.RData`, …),
 /// build-tool cache/artifact dirs (`*_cache/`, `*_files/`, knitr/RMarkdown
 /// residue), and the output dir itself.
-/// Returns `(files copied, names of skipped cache dirs)` so the caller can report residue
-/// it dropped rather than silently omitting it.
-fn mirror_assets(root: &Path, out: &Path) -> (usize, Vec<String>) {
+/// Returns `(out-relative paths copied, names of skipped cache dirs)` so the caller can
+/// report residue it dropped rather than silently omitting it, and knows which output
+/// files this build owns (for the stale-file sweep).
+fn mirror_assets(root: &Path, out: &Path) -> (Vec<PathBuf>, Vec<String>) {
     fn walk(
         dir: &Path,
         root: &Path,
         out: &Path,
         seen: &mut std::collections::HashSet<PathBuf>,
-        copied: &mut usize,
+        copied: &mut Vec<PathBuf>,
         skipped: &mut Vec<String>,
     ) {
         // Break symlink cycles: descend into each directory at most once (keyed by
@@ -1124,12 +1153,12 @@ fn mirror_assets(root: &Path, out: &Path) -> (usize, Vec<String>) {
                     let _ = std::fs::create_dir_all(parent);
                 }
                 if std::fs::copy(&p, &dest).is_ok() {
-                    *copied += 1;
+                    copied.push(rel.to_path_buf());
                 }
             }
         }
     }
-    let mut copied = 0;
+    let mut copied = Vec::new();
     let mut skipped = Vec::new();
     walk(
         root,
@@ -1142,6 +1171,51 @@ fn mirror_assets(root: &Path, out: &Path) -> (usize, Vec<String>) {
     skipped.sort();
     skipped.dedup();
     (copied, skipped)
+}
+
+/// Delete files under `out` that this build did not produce, so a page or asset removed
+/// or renamed in the source doesn't linger in the deploy across rebuilds. `keep` holds
+/// every out-relative path the build wrote (pages, decks, mirrored assets, the index /
+/// 404 files). Dot- and underscore-prefixed entries are never descended into or deleted:
+/// the build never emits them, so anything there (`.git`, `.nojekyll`, `_headers`,
+/// `_redirects`) is deploy metadata the author placed deliberately, mirroring the same
+/// prefix rule [`mirror_assets`] uses to keep them *out* of the deploy. Symlinks are
+/// skipped whole (never followed): the build never emits one, so a symlink in `out` is an
+/// author's deliberate mount (e.g. a large shared media dir linked in) — following it
+/// would delete *through* the link into their content and risk a cycle. Directories left
+/// empty by the sweep are pruned. Returns the number of files swept.
+fn sweep_stale(out: &Path, keep: &std::collections::HashSet<PathBuf>) -> usize {
+    fn walk(dir: &Path, out: &Path, keep: &std::collections::HashSet<PathBuf>, swept: &mut usize) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let p = entry.path();
+            let name = p.file_name().and_then(|s| s.to_str()).unwrap_or("");
+            if name.starts_with('.') || name.starts_with('_') {
+                continue;
+            }
+            // `file_type()` does not follow the link, so a symlinked dir/file is left alone.
+            if entry.file_type().is_ok_and(|t| t.is_symlink()) {
+                continue;
+            }
+            if p.is_dir() {
+                walk(&p, out, keep, swept);
+                // Prune the directory if the sweep emptied it (its files were all stale).
+                if std::fs::read_dir(&p).is_ok_and(|mut e| e.next().is_none()) {
+                    let _ = std::fs::remove_dir(&p);
+                }
+            } else if let Ok(rel) = p.strip_prefix(out)
+                && !keep.contains(rel)
+                && std::fs::remove_file(&p).is_ok()
+            {
+                *swept += 1;
+            }
+        }
+    }
+    let mut swept = 0;
+    walk(out, out, keep, &mut swept);
+    swept
 }
 
 /// Unique local `src=`/`href=` values in `html` (skips external URLs, protocol-
@@ -1294,7 +1368,11 @@ mod mirror_tests {
         assert!(!out.join("report_files").exists(), "*_files dir is residue");
         assert!(!out.join("_freeze").exists(), "_-prefixed dir skipped");
         assert!(!out.join(".RData").exists(), "dotfile skipped");
-        assert_eq!(copied, 1, "only keep.png is a deployable asset");
+        assert_eq!(
+            copied,
+            vec![PathBuf::from("keep.png")],
+            "only keep.png is deployed"
+        );
         assert!(
             skipped.contains(&"index_cache".to_string())
                 && skipped.contains(&"report_files".to_string()),

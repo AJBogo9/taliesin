@@ -126,6 +126,44 @@ fn single_doc_malformed_front_matter_fails_strict() {
 }
 
 #[test]
+fn single_doc_embed_counts_toward_strict() {
+    // Batch 7: an unresolved `{{< embed >}}` in a single-doc build warns (its target
+    // isn't built beside the page), but the warning never counted toward `problems`, so
+    // `--strict` passed green despite shipping a dead iframe. It must now fail --strict.
+    let dir = tmp_dir("embedstrict");
+    let doc = dir.join("post.tmd");
+    fs::write(&doc, "---\ntitle: Post\n---\n\n{{< embed talk.tmd >}}\n").unwrap();
+
+    // Lenient: still builds (the warning is non-fatal), exit 0.
+    let lenient = taliesin()
+        .arg("build")
+        .arg(&doc)
+        .output()
+        .expect("lenient build");
+    assert!(
+        lenient.status.success(),
+        "an embed warning without --strict still builds"
+    );
+
+    let strict = taliesin()
+        .arg("build")
+        .arg(&doc)
+        .arg("--strict")
+        .output()
+        .expect("strict build");
+    let err = String::from_utf8_lossy(&strict.stderr);
+    let _ = fs::remove_dir_all(&dir);
+    assert!(
+        !strict.status.success(),
+        "an unresolved single-doc embed must fail --strict, stderr:\n{err}"
+    );
+    assert!(
+        err.contains("--strict") && err.contains("problem"),
+        "the strict failure names the problem count: {err}"
+    );
+}
+
+#[test]
 fn build_rejects_unknown_flag_with_suggestion() {
     let dir = tmp_dir("badflag");
     let doc = dir.join("post.tmd");

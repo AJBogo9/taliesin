@@ -23,7 +23,16 @@ pub(super) fn website_pages(root: &Path, warnings: &mut Vec<String>) -> Vec<Page
             }
             // `image` is relative to the page's own directory; store it
             // site-root-relative so a listing card on another page can link it.
-            let card_image = fm.image.map(|img| join_rel(&rel, &img));
+            // An absolute/external URL (og:image social card, CDN-hosted thumb) is
+            // left untouched — `join_rel` would otherwise fold its scheme into a
+            // broken relative path (`posts/https:/cdn.example.com/card.png`).
+            let card_image = fm.image.map(|img| {
+                if is_external_or_special(&img) {
+                    img
+                } else {
+                    join_rel(&rel, &img)
+                }
+            });
             Some(Page {
                 input,
                 rel,

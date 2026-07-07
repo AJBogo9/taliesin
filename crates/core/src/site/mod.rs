@@ -258,15 +258,21 @@ impl Site {
             }
         }
 
-        // A site-wide `image:` (the og/twitter social-card default) with no `url:`: the
-        // card image is absolute-URL-only, so it is silently dropped from og:image /
-        // twitter:image. One site-level nudge (per-page `image:` still works for listing
-        // cards, which don't need an absolute URL, so those are intentionally not flagged).
-        if config.url.is_none() && config.card_image.is_some() {
+        // A *relative* site-wide `image:` (the og/twitter social-card default) with no
+        // `url:`: it can't be made absolute without the site URL, so og:image /
+        // twitter:image are dropped for it. An absolute-URL `image:` needs no base and
+        // still works, so it isn't flagged; nor is a per-page `image:`, which drives
+        // listing cards that don't need an absolute URL.
+        if config.url.is_none()
+            && config
+                .card_image
+                .as_deref()
+                .is_some_and(|img| !is_external_or_special(img))
+        {
             warnings.push(
-                "`image:` is set in _site.yml but `url:` is not: the default social-card \
-                 image (og:image / twitter:image) is absolute-URL-only and is being \
-                 suppressed. Set `url:` to enable it."
+                "a relative `image:` is set in _site.yml but `url:` is not: the default \
+                 social-card image (og:image / twitter:image) needs an absolute URL and \
+                 is being suppressed. Set `url:`, or use an absolute image URL."
                     .to_string(),
             );
         }
@@ -1196,6 +1202,94 @@ mod tests {
             "draft excluded: {rels:?}"
         );
 
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn absolute_image_url_is_not_mangled_into_a_relative_path() {
+        // Batch 7: a page `image:` is the og:image / social-card source. When it's an
+        // absolute URL, `join_rel` used to fold its scheme into a broken relative path
+        // (`posts/https:/cdn.example.com/card.png`), breaking og:image + listing cards.
+        // An external URL must pass through untouched; a local image still resolves
+        // site-root-relative so a listing card on another page can link it.
+        use std::fs;
+        let root = std::env::temp_dir().join(format!("tali-absimg-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("posts")).unwrap();
+        fs::write(
+            root.join("posts").join("a.tmd"),
+            "---\ntitle: A\nimage: https://cdn.example.com/card.png\n---\n\nBody.\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("posts").join("b.tmd"),
+            "---\ntitle: B\nimage: thumb.webp\n---\n\nBody.\n",
+        )
+        .unwrap();
+
+        let pages = website_pages(&root, &mut Vec::new());
+        let img = |rel: &str| {
+            pages
+                .iter()
+                .find(|p| p.rel == rel)
+                .and_then(|p| p.card_image.clone())
+        };
+        assert_eq!(
+            img("posts/a.tmd").as_deref(),
+            Some("https://cdn.example.com/card.png"),
+            "an absolute image URL must pass through untouched"
+        );
+        assert_eq!(
+            img("posts/b.tmd").as_deref(),
+            Some("posts/thumb.webp"),
+            "a local image stays resolved site-root-relative"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn absolute_page_image_is_verbatim_og_image_relative_joins_site_url() {
+        // Batch 7: the discovery guard fixes listing cards, but the og:image builder in
+        // `meta.rs` also prepended the site `url:` — so an absolute image became a broken
+        // `{base}/https://…`. An absolute image must appear verbatim in og:/twitter:image
+        // (and needs no `url:`); a relative image is joined onto the site url.
+        use std::fs;
+        let root = std::env::temp_dir().join(format!("tali-ogimg-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("_site.yml"),
+            "title: Demo\nurl: https://example.com\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("abs.tmd"),
+            "---\ntitle: Abs\nimage: https://cdn.example.com/card.png\n---\n\nBody.\n",
+        )
+        .unwrap();
+        fs::write(
+            root.join("rel.tmd"),
+            "---\ntitle: Rel\nimage: thumb.webp\n---\n\nBody.\n",
+        )
+        .unwrap();
+
+        let site = Site::discover(&root);
+        let head = |rel: &str| {
+            let p = site.pages.iter().find(|p| p.rel == rel).expect("page");
+            meta::social_head(&site, p)
+        };
+        assert!(
+            head("abs.tmd")
+                .contains(r#"property="og:image" content="https://cdn.example.com/card.png""#),
+            "an absolute image passes through verbatim: {}",
+            head("abs.tmd")
+        );
+        assert!(
+            head("rel.tmd")
+                .contains(r#"property="og:image" content="https://example.com/thumb.webp""#),
+            "a relative image joins onto the site url: {}",
+            head("rel.tmd")
+        );
         let _ = fs::remove_dir_all(&root);
     }
 
