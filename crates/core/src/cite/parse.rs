@@ -28,13 +28,19 @@ pub fn parse_bib_warned(text: &str) -> (Bibliography, Vec<String>) {
         i += 1;
         let kind = take_while(&chars, &mut i, |c| c.is_alphanumeric()).to_ascii_lowercase();
         skip_ws(&chars, &mut i);
-        // `@string` / `@preamble` may use either `{...}` or `(...)` delimiters.
+        // Any entry (`@string`/`@preamble`/regular) may use either `{...}` or `(...)`
+        // delimiters; it closes at the MATCHING delimiter. A paren entry does NOT end
+        // at a `}`, so the close char must be tracked — otherwise the field loop runs
+        // past the `)` and swallows every following `@entry` (JabRef and older BibTeX
+        // both emit the paren form).
         if i >= chars.len() || !matches!(chars[i], '{' | '(') {
             continue;
         }
+        let open = chars[i];
+        let close = if open == '(' { ')' } else { '}' };
         i += 1; // past the opening delimiter
         if kind == "comment" || kind == "preamble" {
-            skip_entry(&chars, &mut i);
+            skip_entry(&chars, &mut i, open, close);
             continue;
         }
         if kind == "string" {
@@ -52,7 +58,7 @@ pub fn parse_bib_warned(text: &str) -> (Bibliography, Vec<String>) {
                     strings.insert(name, value);
                 }
             }
-            skip_entry(&chars, &mut i);
+            skip_entry(&chars, &mut i, open, close);
             continue;
         }
         // Read the entry key with the SAME predicate the in-prose reference scanner
@@ -68,7 +74,7 @@ pub fn parse_bib_warned(text: &str) -> (Bibliography, Vec<String>) {
         }
         loop {
             skip_ws(&chars, &mut i);
-            if i >= chars.len() || chars[i] == '}' {
+            if i >= chars.len() || chars[i] == close {
                 break;
             }
             let name = take_while(&chars, &mut i, |c| c != '=' && c != '}' && c != ',')
@@ -89,7 +95,7 @@ pub fn parse_bib_warned(text: &str) -> (Bibliography, Vec<String>) {
                 i += 1;
             }
         }
-        if i < chars.len() && chars[i] == '}' {
+        if i < chars.len() && chars[i] == close {
             i += 1;
         }
         if !key.is_empty() {
@@ -118,13 +124,17 @@ fn skip_ws(chars: &[char], i: &mut usize) {
     }
 }
 
-fn skip_entry(chars: &[char], i: &mut usize) {
+/// Skip to just past the matching close delimiter of an entry opened with `open`
+/// (`{` or `(`), counting nested pairs of the SAME delimiter so an inner group does
+/// not close the entry early.
+fn skip_entry(chars: &[char], i: &mut usize, open: char, close: char) {
     let mut depth = 1;
     while *i < chars.len() && depth > 0 {
-        match chars[*i] {
-            '{' => depth += 1,
-            '}' => depth -= 1,
-            _ => {}
+        let c = chars[*i];
+        if c == open {
+            depth += 1;
+        } else if c == close {
+            depth -= 1;
         }
         *i += 1;
     }

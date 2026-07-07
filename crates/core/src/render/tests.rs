@@ -351,6 +351,35 @@ fn panel_tabset_builds_aria_tabs_from_headings() {
 }
 
 #[test]
+fn tabset_label_does_not_double_escape_entities() {
+    // A tab label sourced via `strip_tags` is ALREADY HTML-safe text (`&` -> `&amp;`
+    // in the rendered heading); layering `html_escape` on top produced `&amp;amp;`.
+    let src = "::: {.panel-tabset}\n\n\
+        ## Q&A\n\nBody one.\n\n\
+        ## R\n\nBody two.\n\n\
+        :::\n";
+    let doc = render_document(src);
+    let h = &doc.blocks[0].html;
+    assert!(h.contains(">Q&amp;A</button>"), "label under-escaped: {h}");
+    assert!(!h.contains("&amp;amp;"), "label double-escaped: {h}");
+}
+
+#[test]
+fn toc_does_not_double_escape_entities() {
+    // TOC entry text also comes from `strip_tags` (already-escaped); it must not be
+    // html_escape'd again. A heading `Tips & tricks: x < y` renders its `&`/`<` as
+    // entities, which must survive as `&amp;`/`&lt;` (not `&amp;amp;`/`&amp;lt;`).
+    let doc = render_document("## Tips & tricks: x < y\n\nBody.\n");
+    let toc = toc_html(&doc.blocks);
+    assert!(
+        toc.contains("Tips &amp; tricks: x &lt; y"),
+        "TOC entry wrong: {toc}"
+    );
+    assert!(!toc.contains("&amp;amp;"), "TOC double-escaped `&`: {toc}");
+    assert!(!toc.contains("&amp;lt;"), "TOC double-escaped `<`: {toc}");
+}
+
+#[test]
 fn panel_tabset_without_headings_falls_back_and_warns() {
     let doc = render_document("::: {.panel-tabset}\n\nJust prose, no tabs.\n\n:::\n");
     let h = &doc.blocks[0].html;

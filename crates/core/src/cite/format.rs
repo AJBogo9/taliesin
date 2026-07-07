@@ -15,9 +15,16 @@ impl Bibliography {
         let f = &e.fields;
         let body = match e.kind.as_str() {
             "article" => fmt_article(f),
-            // A chapter in a book/collection: quoted chapter title + "in <booktitle>"
-            // + pages. Falls back to plain-book formatting when no `booktitle` is set.
-            "inbook" | "incollection" if f.contains_key("booktitle") => fmt_inbook(f),
+            // A chapter in a book/collection, or a paper in conference proceedings:
+            // quoted title + "in <booktitle>" + pages. `@inproceedings`/`@conference`
+            // are the commonest CS/ML type; without this they fell to `fmt_misc` and
+            // silently dropped `booktitle` + `pages`. Falls back to plain-book (chapter
+            // types) or misc (proceedings) formatting when no `booktitle` is set.
+            "inbook" | "incollection" | "inproceedings" | "conference"
+                if f.contains_key("booktitle") =>
+            {
+                fmt_inbook(f)
+            }
             "book" | "inbook" | "incollection" => fmt_book(f),
             _ => fmt_misc(f),
         };

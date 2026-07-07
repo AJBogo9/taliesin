@@ -1,6 +1,6 @@
 ---
 title: "Citation coverage"
-description: "A focused corpus document that exercises the .bib rendering fixes: LaTeX accents, corporate authors, @string macros, @incollection chapters, manual-References de-duplication, `\\url{}` unwrapping, quoted-brace authors, and special-character cite keys."
+description: "A focused corpus document that exercises the .bib rendering fixes: LaTeX accents, corporate authors, @string macros, @incollection/@inproceedings booktitle+pages, paren-delimited entries, manual-References de-duplication, `\\url{}` unwrapping, quoted-brace authors, and special-character cite keys."
 date: 2026-06-27
 categories:
   - meta
@@ -34,5 +34,12 @@ A quoted single-brace author `"{Ada Lovelace}"` [@lovelace1843notes] is an ordin
 
 A citation whose key carries a dot [@smith.2020a] must resolve rather than truncate at
 the `.` — the reference parser and the `.bib` parser share one key charset.
+
+The transformer paper [@vaswani2017attention] is an `@inproceedings` written with
+`(...)` delimiters: its `booktitle` (proceedings) and `pages` must render, and the
+paren delimiters must close the entry so the next entry is not cascade-dropped.
+
+That next entry [@lecun1998gradient] must still resolve — a regression in the
+paren-delimited close would swallow every following reference.
 
 # References

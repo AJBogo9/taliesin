@@ -440,3 +440,61 @@ fn cite_key_and_bib_key_charsets_agree() {
         blocks[0].html
     );
 }
+
+#[test]
+fn inproceedings_and_conference_render_booktitle_and_pages() {
+    // The commonest CS/ML citation type: a paper in conference proceedings. Its
+    // `booktitle` (the proceedings) + `pages` must render like a chapter, not be
+    // silently dropped by the misc/online fallback.
+    for kind in ["inproceedings", "conference"] {
+        let src = format!(
+            "@{kind}{{p,\n author = {{Vaswani, Ashish}},\n title = {{Attention Is All You Need}},\n booktitle = {{Advances in Neural Information Processing Systems}},\n pages = {{5998--6008}},\n year = {{2017}}\n}}\n"
+        );
+        let b = parse_bib(&src);
+        let f = b.format("p").unwrap();
+        assert!(
+            f.contains("\u{201c}Attention Is All You Need,\u{201d}"),
+            "{kind}: paper title not quoted: {f}"
+        );
+        assert!(
+            f.contains("in <em>Advances in Neural Information Processing Systems</em>"),
+            "{kind}: booktitle missing/not italic: {f}"
+        );
+        assert!(
+            f.contains("pp. 5998\u{2013}6008"),
+            "{kind}: pages dropped: {f}"
+        );
+        assert!(f.contains("2017"), "{kind}: year dropped: {f}");
+    }
+}
+
+#[test]
+fn parenthesis_delimited_entries_do_not_cascade_drop() {
+    // JabRef (and older BibTeX) also emit `@type(...)` with PAREN delimiters. The
+    // parser must close each entry at its matching `)`, or the field loop runs past
+    // it and swallows every following `@entry` — dropping the whole rest of the file.
+    let b = parse_bib(
+        "@article(first,\n author = {Ada Lovelace},\n title = {First},\n journal = {J},\n year = {2020}\n)\n\n@book(second,\n author = {Alan Turing},\n title = {Second},\n publisher = {Springer},\n year = {2021}\n)\n",
+    );
+    let first = b.format("first").expect("paren entry #1 dropped");
+    assert!(first.contains("A. Lovelace"), "got: {first}");
+    let second = b
+        .format("second")
+        .expect("paren entry #2 cascade-dropped after entry #1");
+    assert!(
+        second.contains("A. Turing") && second.contains("<em>Second</em>"),
+        "got: {second}"
+    );
+    // A paren-delimited entry followed by a brace-delimited one also stays intact.
+    let mixed = parse_bib(
+        "@misc(one, author = {A. One}, title = {One}, year = {2019})\n@misc{two, author = {B. Two}, title = {Two}, year = {2019}}\n",
+    );
+    assert!(
+        mixed.format("one").is_some(),
+        "paren-then-brace: #1 dropped"
+    );
+    assert!(
+        mixed.format("two").is_some(),
+        "paren-then-brace: #2 cascade-dropped"
+    );
+}

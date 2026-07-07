@@ -58,8 +58,8 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
   site-wide bibliography-merge decision first). Lightweight replacement for the discovery value the
   (now-removed) xref graph tool provided.
 - Audit 2026-07-07 implementation queue also lives here — see
-  **[the batched queue below](#audit-2026-07-07-implementation-queue-build-ready)** (Batch 6 next;
-  Batches 1-4 + the high-value half of Batch 5 landed 2026-07-07).
+  **[the batched queue below](#audit-2026-07-07-implementation-queue-build-ready)** (Batch 5 remainder
+  + Batch 7 next; Batches 1-4, the high-value half of Batch 5, and Batch 6 landed 2026-07-07).
 
 ### Decided 2026-07-07 — each needs its own dedicated session
 - **Quarto design-decisions catalog triage, reframed.** Branch `quarto-decisions-catalog`, commit
@@ -164,12 +164,6 @@ value / more invasive, each its own small change):
   (the `extract_field` fallback can't read a block sequence) — edge case (`fm_extract.rs:114`).
 - Low-tail siblings: non-`.bib` bibliography, unresolved fence language (needs a warnings channel threaded
   into the pure `highlight` fn — invasive), non-HTML `format:`.
-
-### Batch 6: Citations / BibTeX + output-escaping [small]
-- `@inproceedings`/`@conference` silently drop `booktitle` + `pages`, the commonest CS/ML type (`cite/format.rs:22`).
-- Parenthesis-delimited BibTeX entries cascade-drop every following reference (`cite/parse.rs:32`).
-- TOC entries + tabset labels double-escape `&`/`<`/`>` (`html_escape` over already-safe `strip_tags`)
-  (`render/mod.rs:1608`, `divs.rs:528`).
 
 ### Batch 7: Site / build correctness [small to medium]
 - Absolute `image:` URL mangled into a broken relative path, breaks og:image + listing card: guard with

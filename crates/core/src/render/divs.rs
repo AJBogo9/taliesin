@@ -549,9 +549,11 @@ fn build_container(
                     let sel = i == 0;
                     let (tab_id, panel_id) = (format!("{id}-t{i}"), format!("{id}-p{i}"));
                     tablist.push_str(&format!(
-                        "<button class=\"tabset-tab\" role=\"tab\" id=\"{tab_id}\" aria-controls=\"{panel_id}\" aria-selected=\"{sel}\" tabindex=\"{}\">{}</button>",
+                        // `label` is `strip_tags` output — already HTML-safe (the heading's
+                        // entities are intact), so it must NOT be `html_escape`'d again
+                        // (that turned `&amp;` into `&amp;amp;`).
+                        "<button class=\"tabset-tab\" role=\"tab\" id=\"{tab_id}\" aria-controls=\"{panel_id}\" aria-selected=\"{sel}\" tabindex=\"{}\">{label}</button>",
                         if sel { "0" } else { "-1" },
-                        html_escape(label),
                     ));
                     panels.push_str(&format!(
                         "<div class=\"tabset-panel\" role=\"tabpanel\" id=\"{panel_id}\" aria-labelledby=\"{tab_id}\"{}>{body}</div>",

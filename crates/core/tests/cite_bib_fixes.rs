@@ -191,4 +191,22 @@ fn cite_coverage_corpus_doc_renders_all_fixes() {
     // Fix 9: the front matter loads its bibliography via the INLINE-SEQUENCE form
     // (`bibliography: [references.bib]`); if the seq-parsing path regressed, the bib
     // would not load and every citation above would be a raw key, failing this test.
+
+    // Fix 10: a PAREN-delimited `@inproceedings` renders its booktitle (italic, "in …")
+    // + pages — the commonest CS/ML type, previously dropped by the misc fallback.
+    assert!(
+        refs.contains(
+            "[9] A. Vaswani and N. Shazeer, \u{201c}Attention Is All You Need,\u{201d} \
+             in <em>Advances in Neural Information Processing Systems</em>, 2017, \
+             pp. 5998\u{2013}6008."
+        ),
+        "@inproceedings booktitle/pages missing or paren entry misparsed: {refs}"
+    );
+
+    // Fix 11: the brace entry FOLLOWING the paren-delimited one still resolves — a
+    // regression in the paren close-delimiter would cascade-drop every entry past it.
+    assert!(
+        refs.contains("[10] Y. LeCun,"),
+        "entry after a paren-delimited one was cascade-dropped: {refs}"
+    );
 }

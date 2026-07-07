@@ -1638,9 +1638,11 @@ fn toc_html(blocks: &[Block]) -> String {
             }
         }
         out.push_str(&format!(
-            "<li><a href=\"#{}\">{}</a>",
+            // `text` is `strip_tags` output — already HTML-safe (entities intact from
+            // the rendered heading), so it must NOT be `html_escape`'d again (that
+            // turned `&amp;` into `&amp;amp;`). See `toc_html`'s `strip_tags` call above.
+            "<li><a href=\"#{}\">{text}</a>",
             escape_attr(id),
-            html_escape(text)
         ));
         open_li = true;
     }
