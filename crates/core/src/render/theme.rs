@@ -38,7 +38,7 @@ pub(super) fn resolve_theme(
             }
         }
         // An installed extension bundle: `_extensions/<name>/theme.css`. A bare
-        // name isn't warned (it may be a Quarto built-in theme taliesin doesn't
+        // name isn't warned (it may be a legacy built-in theme taliesin doesn't
         // ship, e.g. `darkly`, which harmlessly falls back to the default).
         ext => base_dir
             .and_then(|b| {
@@ -170,8 +170,8 @@ const THEME_ICON_MOON: &str = "<svg width='15' height='15' viewBox='0 0 24 24' f
 pub(super) fn detect_theme(front_matter: &str) -> Option<String> {
     front_matter.lines().find_map(|line| {
         let v = line.trim().strip_prefix("theme:")?.trim();
-        // Take the first name from a scalar or a `[a, b]` list (Quarto allows a
-        // list; the first entry is the base theme, the rest are SCSS layers).
+        // Take the first name from a scalar or a `[a, b]` list (the first
+        // entry is the base theme, the rest are SCSS layers).
         let v = v.trim_start_matches('[').split([',', ']']).next()?.trim();
         let v = v.trim_matches(['"', '\'']).trim();
         (!v.is_empty()).then(|| v.to_string())

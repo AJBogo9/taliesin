@@ -16,7 +16,7 @@ theme: dark            # a built-in (light | dark)
 
 `theme:` resolves in that order: built-in name → a `.css`/`.scss` path → an
 `_extensions/<name>/theme.css` bundle. A list (`theme: [dark, custom.scss]`,
-Quarto's form) uses the first entry as the base.
+the list form) uses the first entry as the base.
 
 ## Writing a theme
 

@@ -2,10 +2,10 @@
 
 **Scope: corpus-plus-roadmap.** "Done" = the docs under `corpus/` render correctly (the
 corpus is the regression net); each new capability ships pinned by a target corpus doc.
-Output stays **HTML-only**. Roadmap: `BEYOND-QUARTO.md`.
+Output stays **HTML-only**. Roadmap: `ROADMAP.md`.
 
 > Kept small (read often). **Only open tasks live here** — delete items once landed; don't
-> leave `[x]`. Completed work is in git + `BEYOND-QUARTO.md` / `DROP-QUARTO.md` / `AUDITS.md`.
+> leave `[x]`. Completed work is in git + `ROADMAP.md` / `native-rewrite.md` / `AUDITS.md`.
 
 ## State (2026-07-07)
 
@@ -16,11 +16,11 @@ Jupyter kernel, `_freeze` cache, Alt-click + reverse cursor sync, located diagno
 Cmd-K search). The author pushes/syncs between sessions; agents commit + fast-forward-merge to local
 main on request, never push.
 
-**Recently shipped** (detail in git + the history docs): the native rewrite, Beyond-Quarto
+**Recently shipped** (detail in git + the history docs): the native rewrite, the roadmap's
 Waves 0-4, the reader cluster, `check`/prose-lint + `{input}`/scrolly, the `--bare` build, the
 reading-first redesign, deep-audit P1+P2, the Tier-1 priority queue, the **Taliesin rename** +
-**`.tmd` editor grammar** (F5-accepted), the **shed-Quarto clean break** (`.tmd`-only input,
-`deck`/`define()` the only spellings, no migration on-ramps, no user-facing Quarto), the
+**`.tmd` editor grammar** (F5-accepted), the **legacy-format clean break** (`.tmd`-only input,
+`deck`/`define()` the only spellings, no migration on-ramps, no user-facing legacy branding), the
 **security-P3 batch**, the **VS Code companion language features** (check-findings diagnostics +
 drift-proof completions; preview/cursor-sync F5-accepted 2026-07-06), and the **reader/deck polish
 batch** (2026-07-06, browser-verified): book column no longer jumps between chapters + the focus-mode
@@ -124,7 +124,7 @@ Each clears once you decide. Design calls carry a recommended default.
   `animate`/play-tick + draggable-`point` `{{< input >}}` types. Then #64 `qmd.state` cross-re-run store,
   #65 richer `{js}` output helpers (KaTeX-typeset returns + mini table), #66 opt-in Pyodide `{python}`
   (~10 MB, no torch).
-- **Wave 5** (`BEYOND-QUARTO.md`): print-pdf track (paged render *of* the built HTML), docs-as-spec,
+- **Wave 5** (`ROADMAP.md`): print-pdf track (paged render *of* the built HTML), docs-as-spec,
   `{glsl}` cell language, SEO completeness (sitemap/robots/JSON-LD at publish with `url:`).
 - **Image optimization** (WebP/AVIF + `srcset` + lazy-load behind a content-hashed cache) — until posts
   get image-heavy.

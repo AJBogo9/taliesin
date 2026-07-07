@@ -3,7 +3,7 @@
 # separate book projects; `mounts:` serves them under /docs/guide and /docs/internals
 # in `preview` (the static `build` wires each with its own `build ... --out` step).
 title: "Taliesin"
-description: "A fast, single-purpose dev server that turns one .qmd file into a live blog post, slide deck, book, or website, with executable code and an edit loop that updates the instant you save."
+description: "A fast, single-purpose dev server that turns one .tmd file into a live blog post, slide deck, book, or website, with executable code and an edit loop that updates the instant you save."
 url: "https://taliesin.dev"
 favicon: favicon.svg
 image: assets/og-card.png   # default social card (og:image / twitter:image) for every page
@@ -16,9 +16,9 @@ mounts:
 
 nav:
   left:
-    - { text: "Features", href: features.qmd }
-    - { text: "Document types", href: formats.qmd }
-    - { text: "See it live", href: showcase.qmd }
+    - { text: "Features", href: features.tmd }
+    - { text: "Document types", href: formats.tmd }
+    - { text: "See it live", href: showcase.tmd }
     - { text: "Guide", href: "docs/guide/" }
     - { text: "Internals", href: "docs/internals/" }
   right:

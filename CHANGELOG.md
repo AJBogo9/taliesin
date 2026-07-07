@@ -86,7 +86,7 @@ publishable.**
 
 ## [0.1.0]
 
-Baseline: a fully native `.qmd` → HTML dev server (no Quarto compat shims, no
+Baseline: a fully native `.qmd` → HTML dev server (no legacy compat shims, no
 reveal.js, no Observable runtime). All four output shapes render and deploy:
 blog post, slide deck (Taliesin's own engine), book, and multi-page site, with a
 warm Jupyter kernel, block-level incremental updates with DOM-state

@@ -1,4 +1,4 @@
-// Quarto-style hover preview for internal links: hovering a citation, a cross
+// Hover preview for internal links: hovering a citation, a cross
 // reference, or a section link pops up a small card previewing its target (the
 // reference entry, the figure + caption, the equation, the section heading + its
 // first lines). Server-rendered, so the clone needs no re-running (math is already

@@ -637,7 +637,7 @@
   #TOC ul { list-style: none; margin: .2rem 0; padding-left: .9rem; }
   #TOC > ul { padding-left: 0; }
   /* Collapse subsection lists; the scrollspy expands only the active section's
-     branch (tali-toc-expanded on its <li> + ancestors), like Quarto's toc-expand,
+     branch (tali-toc-expanded on its <li> + ancestors), like a toc-expand behavior,
      so a long book/document shows top-level entries plus the current section. */
   #TOC ul ul { display: none; }
   #TOC li.tali-toc-expanded > ul { display: block; }

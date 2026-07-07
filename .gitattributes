@@ -1,5 +1,5 @@
 # Keep GitHub's language stats focused on the actual source code.
-# The corpus is test data (real .qmd fixtures + their images), and the KaTeX
+# The corpus is test data (real .tmd fixtures + their images), and the KaTeX
 # stylesheet/fonts are vendored, so exclude both from the language breakdown.
 corpus/** linguist-vendored
 crates/core/assets/** linguist-vendored

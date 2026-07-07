@@ -25,7 +25,7 @@ const DIMENSIONS = [
   },
   {
     key: 'scope-discipline',
-    prompt: 'Flag scope creep: anything pulling toward non-HTML output (LaTeX/Typst/Word/ePub/PDF-as-parallel-format), reintroduced Quarto/reveal.js/OJS shims or vocabulary, or Quarto-compat tolerance. HTML is the only target; the engine is native (window.QmdDeck).',
+    prompt: 'Flag scope creep: anything pulling toward non-HTML output (LaTeX/Typst/Word/ePub/PDF-as-parallel-format), reintroduced reveal.js/OJS/legacy shims or vocabulary, or legacy-compat tolerance. HTML is the only target; the engine is native (window.QmdDeck).',
   },
   {
     key: 'corpus-coverage',
@@ -69,7 +69,7 @@ const VERDICT_SCHEMA = {
 }
 
 const reviewPrompt = (d) =>
-  `You are reviewing ${target} in the taliesin repo (a Rust .qmd -> HTML-only dev ` +
+  `You are reviewing ${target} in the taliesin repo (a Rust .tmd -> HTML-only dev ` +
   `server). Focus ONLY on the "${d.key}" dimension.\n\n${d.prompt}\n\n` +
   `Read the diff and the changed files yourself before judging. Report concrete, ` +
   `file:line-anchored findings. Return an empty findings array if there is nothing ` +

@@ -1056,7 +1056,7 @@ const SKIP_EXT: &[&str] = &["tmd", "bib", "Rproj", "md", "scss", "sass"];
 /// Copy every non-source file under `root` into `out`, mirroring the directory tree.
 /// Skips: source-only extensions ([`SKIP_EXT`]: `.tmd`/`.bib`/`.Rproj`/`.md`/`.scss`/
 /// `.sass`), `_`-prefixed and dot entries (`_site.yml`, `_includes`, `_site`, `.RData`, …),
-/// build-tool cache/artifact dirs (`*_cache/`, `*_files/` — knitr/RMarkdown/Quarto
+/// build-tool cache/artifact dirs (`*_cache/`, `*_files/`, knitr/RMarkdown
 /// residue), and the output dir itself.
 /// Returns `(files copied, names of skipped cache dirs)` so the caller can report residue
 /// it dropped rather than silently omitting it.
@@ -1090,7 +1090,7 @@ fn mirror_assets(root: &Path, out: &Path) -> (usize, Vec<String>) {
                 if p.canonicalize().ok().as_deref() == Some(out) {
                     continue;
                 }
-                // Build-tool cache/artifact dirs (knitr/RMarkdown/Quarto) are residue, not
+                // Build-tool cache/artifact dirs (knitr/RMarkdown) are residue, not
                 // content — never drag them into the deployed output.
                 if name.ends_with("_cache") || name.ends_with("_files") {
                     skipped.push(name.to_string());

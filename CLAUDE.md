@@ -1,6 +1,6 @@
 # Taliesin
 
-A single-purpose Rust dev server that renders `.qmd` files to **HTML only** (blog
+A single-purpose Rust dev server that renders `.tmd` files to **HTML only** (blog
 posts, slide decks, books, multi-page sites) for one author's workflow, built around
 three load-bearing goals: click-to-source, block-level incremental updates, and no
 per-edit startup cost (warm server + Jupyter kernel). It is **not** a general document
@@ -11,13 +11,14 @@ track would render *from* the built HTML, never as a parallel format).
 render correctly: the corpus is the regression net and the arbiter of done. But the
 corpus now *leads* as well as records: each new capability ships pinned by a target
 corpus document added in the same change, so scope can grow deliberately toward "wider
-than Quarto in web-native capability" without ever outrunning the test net. **"Wider"
-means richer browser behavior in a live HTML view, not new output formats, and never at
-the cost of the load-bearing invariants or the Do-NOT-touch discipline.** The active
-roadmap is `notes/BEYOND-QUARTO.md` (successor to the completed `notes/DROP-QUARTO.md`); the prior
-"the corpus is the spec / not a general Quarto replacement" framing is superseded by it.
+than existing computational-document tools in web-native capability" without ever
+outrunning the test net. **"Wider" means richer browser behavior in a live HTML view,
+not new output formats, and never at the cost of the load-bearing invariants or the
+Do-NOT-touch discipline.** The active roadmap is `notes/ROADMAP.md` (successor to the
+completed `notes/native-rewrite.md`); the prior "the corpus is the spec / not a general
+document compiler" framing is superseded by it.
 
-**The `.qmd` file is the single editing surface; the browser is a read-only view.**
+**The `.tmd` file is the single editing surface; the browser is a read-only view.**
 Edits flow one way: you change the source in your editor, the preview re-renders.
 Click-to-source is the only bridge back, and it *navigates* (preview → editor
 cursor), it never *writes*. The preview must not mutate the source. A
@@ -42,7 +43,7 @@ crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model 
     divs.rs          `:::` fenced divs (callouts, columns, magic-move)
     figure.rs        numbered figures + captions
     extension/       format extensions (`_extensions/`) + shortcode expansion, incl. the
-                     built-in `{{< embed deck.qmd >}}` + `{{< video clip.mp4 dark= >}}`
+                     built-in `{{< embed deck.tmd >}}` + `{{< video clip.mp4 dark= >}}`
     theme.rs         `--qmd-*` CSS-variable themes (light/dark, extension themes)
     page.rs          full HTML-page assembly (PAGE_TEMPLATE shell, site-chrome wiring,
                      favicon): RenderedDoc → standalone page for build + in-process render
@@ -75,16 +76,16 @@ crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
 web-client/      browser preview client (vanilla JS, the only client): client.js mounts
                  blocks + applies ops (Alt-click opens source in the editor),
                  search.js (Cmd-K), toc-spy.js (scrollspy)
-docs/            project's own manual: TWO sibling book projects, authored in .qmd
+docs/            project's own manual: TWO sibling book projects, authored in .tmd
                  (dogfooding). docs/guide/ = User Guide (using/ + reference/ + demo/tour
                  decks); docs/internals/ = Internals book. docs/ itself is just a container
                  (no _site.yml). The site mounts each at /docs/guide + /docs/internals.
-corpus/          the real .qmd docs (the spec); cargo test renders them all
+corpus/          the real .tmd docs (the spec); cargo test renders them all
 ```
 
 ## Read before working
 
-- **docs/** is the project's own manual, authored in `.qmd` as TWO sibling book
+- **docs/** is the project's own manual, authored in `.tmd` as TWO sibling book
   projects (dogfooding):
   - **`docs/guide/`** = the User Guide (`using/` feature showcase + `reference/`):
     how to *use* Taliesin. Preview it: `taliesin preview docs/guide`.
@@ -100,14 +101,14 @@ corpus/          the real .qmd docs (the spec); cargo test renders them all
 ## Commands
 
 ```sh
-cargo run -p taliesin-server -- preview <file.qmd> [port]      # live preview (aliases: dev, serve)
-cargo run -p taliesin-server -- preview <file.qmd> --host      # + expose on LAN with a phone QR code
+cargo run -p taliesin-server -- preview <file.tmd> [port]      # live preview (aliases: dev, serve)
+cargo run -p taliesin-server -- preview <file.tmd> --host      # + expose on LAN with a phone QR code
 cargo run -p taliesin-server -- preview <dir>                  # live multi-page SITE preview (nav + per-page hot reload)
-cargo run -p taliesin-server -- build  <file.qmd> [out.html]   # self-contained HTML file (default <name>.html)
-cargo run -p taliesin-server -- build  <file.qmd> --out <dir>  # portable folder: <dir>/index.html + copied local assets
+cargo run -p taliesin-server -- build  <file.tmd> [out.html]   # self-contained HTML file (default <name>.html)
+cargo run -p taliesin-server -- build  <file.tmd> --out <dir>  # portable folder: <dir>/index.html + copied local assets
 cargo run -p taliesin-server -- build  <dir> [--out <dir>]     # multi-page SITE -> _site/ (one .html per page + assets)
-cargo run -p taliesin-server -- render <file.qmd> > out.html   # one-shot full page to stdout
-cargo run -p taliesin-server -- blocks <file.qmd>              # block ids + sourcepos (debug)
+cargo run -p taliesin-server -- render <file.tmd> > out.html   # one-shot full page to stdout
+cargo run -p taliesin-server -- blocks <file.tmd>              # block ids + sourcepos (debug)
 cargo test -p taliesin-core                                    # corpus invariants + unit tests
 cd web-client && npx -y -p typescript tsc -p jsconfig.json     # type-check client.js (// @ts-check, no build step)
 ```
@@ -131,11 +132,11 @@ hits and nothing to clear by hand. An unchanged doc replays from disk on the nex
 `build`/preview without booting the kernel; a warm preview still re-runs only the
 edited cell + downstream. Errors and `#| cache: false` cells are never persisted.
 `TALIESIN_NO_CACHE` ignores + skips writing the cache; "Restart kernel" forces a
-fresh re-run. (Kernel *variable* state is never cached — that's what makes Quarto's
-per-cell `cache` fragile — so a cold start can only skip work when the whole
+fresh re-run. (Kernel *variable* state is never cached, which is what makes a naive
+per-cell `cache` fragile, so a cold start can only skip work when the whole
 document is unchanged.) See `crates/server/src/freeze.rs`.
 
-For UI work, `/preview <file.qmd>` builds, serves on port 4388, and verifies it in
+For UI work, `/preview <file.tmd>` builds, serves on port 4388, and verifies it in
 the browser via the chrome-devtools MCP (screenshot + console). A `PostToolUse`
 hook runs `rustfmt` on every edited `.rs` file, so the tree stays `cargo fmt`-clean
 (CI enforces it).

@@ -25,7 +25,7 @@ pub(super) fn detect_toc(front_matter: &str) -> Option<bool> {
 }
 
 /// `title-block-style: none` suppresses the visible title-block header while
-/// keeping the `title` metadata (Quarto-compatible). Used by nav landing pages
+/// keeping the `title` metadata. Used by nav landing pages
 /// (Blog/Projects/Publications) where a big `<h1>` repeats the navbar.
 pub(super) fn detect_title_block_hidden(front_matter: &str) -> bool {
     front_matter.lines().any(|l| {

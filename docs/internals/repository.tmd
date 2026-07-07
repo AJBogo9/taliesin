@@ -22,7 +22,7 @@ Taliesin/
 ├─ site/              the marketing landing site, built by Taliesin itself
 ├─ samples/           one standalone document per HTML format, for isolated polish
 ├─ tools/             dev tooling: live-edit-bench (workspace member) + record-demo (npm)
-├─ notes/             roadmap & process notes (backlog, BEYOND-QUARTO, AUDITS, …)
+├─ notes/             roadmap & process notes (backlog, ROADMAP, AUDITS, …)
 ├─ README.md, LICENSE, CLAUDE.md, THIRD_PARTY.md   the root Markdown that stays
 ├─ Cargo.toml         workspace manifest (resolver 3, edition 2024)
 └─ deny.toml, .github/   license/advisory policy + CI
@@ -136,8 +136,8 @@ in `notes/` so the root stays uncluttered:
 | File | What it is |
 |---|---|
 | `notes/backlog.md` | The **canonical** to-do list (what is still to build). |
-| `notes/BEYOND-QUARTO.md` | The **active** roadmap: the corpus-plus-roadmap initiative. |
-| `notes/DROP-QUARTO.md` | The completed predecessor initiative (native engine, no Quarto compat). |
+| `notes/ROADMAP.md` | The **active** roadmap: the corpus-plus-roadmap initiative. |
+| `notes/native-rewrite.md` | The completed predecessor initiative (native engine, dropped the legacy compat layer). |
 | `notes/AUDITS.md` | Consolidated historical audit reports. |
 | `notes/FEATURE-IDEAS.md` | A research-backed pool of candidate features that feeds the backlog. |
 | `notes/FUNDING-RESEARCH.md`, `notes/STARTUP-PLAN.md` | Funding/commercial working notes. |
@@ -188,7 +188,7 @@ corpus must render and satisfy the invariants); the rest lock down one seam each
 |---|---|
 | `corpus.rs` | The corpus-wide invariants (ids, sourcepos, order, includes, decks, books, sites). |
 | `incremental.rs` / `transient.rs` | The incremental-update seam and per-keystroke re-render robustness. |
-| `tech_blog.rs` | Per-post feature coverage for replacing Quarto on the author's real blog. |
+| `tech_blog.rs` | Per-post feature coverage for the author's real blog. |
 | `config.rs` / `search.rs` / `extensions.rs` | The `_site.yml` schema, the search index, and `_extensions/` resolution. |
 | `nested_validation.rs`, `cell_option_validation.rs`, `callout_kind_validation.rs`, `located_warnings.rs` | The validators and their click-to-source warnings (see [Validation & schemas](validation.tmd)). |
 | `stale_docs.rs` | Guards that deleted-machinery phrases never return to the docs. |

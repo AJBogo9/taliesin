@@ -57,9 +57,3 @@ by Cargo at build time under their own licenses (predominantly MIT, Apache-2.0,
 and ISC). They are not redistributed in this repository. `deny.toml` pins the
 allowed license set; run `cargo deny check` to verify them (CI wiring is a
 deferred follow-up).
-
-## Note on Quarto
-
-Taliesin is an independent reimplementation of a subset of Quarto's `.qmd` ->
-HTML behavior, not a copy of Quarto's source. "Quarto" is a trademark of its
-owner; this project is not affiliated with or endorsed by it.

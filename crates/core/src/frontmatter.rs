@@ -1,8 +1,8 @@
 //! Front-matter schema validation.
 //!
 //! taliesin reads a leading YAML `---` block and validates it against its OWN
-//! recognized key set, defined independently of Quarto. A key taliesin does not
-//! implement, whether a typo like `treme:` or a Quarto term it does not honor, is
+//! recognized key set. A key taliesin does not
+//! implement, whether a typo like `treme:` or a legacy term it does not honor, is
 //! flagged by [`validate_front_matter`]: every unknown top-level key, plus every
 //! unknown immediate child of the nested `execute:` / `listing:` / `about:` /
 //! `hero:` blocks, each suggesting the closest known key. It only warns (located
@@ -12,7 +12,7 @@ use crate::render::Warning;
 
 /// Top-level front-matter keys taliesin recognizes: the closed set of keys it
 /// actually implements, plus every key the corpus/docs use. Intentionally tight
-/// (Phase 3 of the Quarto drop), so a key taliesin doesn't implement, or a typo,
+/// (the native flip), so a key taliesin doesn't implement, or a typo,
 /// now warns instead of being silently ignored. Top-level keys plus the immediate
 /// children of `execute:` / `listing:` / `about:` / `hero:` are linted; `format:`
 /// sub-keys are not (an extension owns them).
@@ -231,7 +231,7 @@ fn validate_theorem_values(map: &serde_yaml::Mapping, block: &str, out: &mut Vec
     }
 }
 
-/// `format: revealjs` / `*-revealjs` was the Quarto deck spelling; it is no longer
+/// `format: revealjs` / `*-revealjs` was the legacy deck spelling; it is no longer
 /// accepted, so a doc naming it renders as a plain HTML page instead of a deck. Its
 /// edit distance to `deck` is too large for the generic did-you-mean, so name the
 /// migration explicitly. Reads the top-level `format` value in string, block-mapping
@@ -549,7 +549,7 @@ mod tests {
 
     #[test]
     fn revealjs_format_value_warns_with_did_you_mean() {
-        // `format: revealjs` was the dropped Quarto deck spelling. Its edit distance to
+        // `format: revealjs` was the dropped legacy deck spelling. Its edit distance to
         // `deck` is too large for the generic did-you-mean, so name the migration
         // explicitly rather than silently rendering a plain HTML page.
         let m = msgs("---\nformat: revealjs\ntitle: T\n---\n");
@@ -626,7 +626,7 @@ mod tests {
     }
 
     #[test]
-    fn dropped_quarto_keys_now_warn() {
+    fn dropped_legacy_keys_now_warn() {
         let m = msgs("---\ntitle: X\ntitle-block-banner: false\nsite-url: https://x\n---\n");
         assert!(
             m.iter().any(|w| w.contains("`title-block-banner`")),

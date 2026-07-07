@@ -139,7 +139,7 @@ pub fn kernel(msg: &str) {
     line(Style::Kernel, msg);
 }
 
-/// Code-cell execution progress (Quarto-style), shown while the kernel runs.
+/// Code-cell execution progress, shown while the kernel runs.
 pub fn exec(done: usize, total: usize) {
     line(Style::Exec, &format!("cell {done}/{total}"));
 }

@@ -10,8 +10,8 @@ collapsible callout in a real post: the warm server re-renders and diffs in a fr
 of the cold-start time (lazy syntax-highlight and math init are amortized), it sends a
 payload roughly 83x smaller than the full page a reload would re-fetch, and the open
 `<details>` callout below the edit is patched in place (a `SetMeta`, never a re-render),
-so its live DOM state survives. None of these are things Quarto's cold-pass-plus-full-
-reload model can match.
+so its live DOM state survives. None of these are things a batch compiler's cold-pass-
+plus-full-reload model (Jupyter/nbconvert, R Markdown/knitr, Quarto, MyST) can match.
 
 ## live-edit benchmark: `corpus/posts/em-algorithm/index.tmd`
 

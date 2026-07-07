@@ -4,7 +4,7 @@ The Taliesin landing site, **built by Taliesin itself** with **nothing but Markd
 + YAML — no custom CSS**. It's the framework's own dogfood test: if this looks good
 on the defaults, the framework is doing its job.
 
-Pages: `index.qmd` (landing), `features.qmd`, `formats.qmd`, plus `demo.qmd` (the
+Pages: `index.tmd` (landing), `features.tmd`, `formats.tmd`, plus `demo.tmd` (the
 showcase deck, embedded via `{{< embed >}}` and kept out of nav). Config is
 `_site.yml` (native flat schema). There is intentionally no stylesheet.
 
@@ -19,7 +19,7 @@ showcase deck, embedded via `{{< embed >}}` and kept out of nav). Config is
 - **Card grids** — `::: {.feature-grid}` with `::: {.feature}` cards (fenced divs).
 - **Screencasts** — `{{< video light.mp4 dark=dark.mp4 caption="…" >}}` (built-in
   shortcode; the clip matching the page theme plays, swapping live on toggle).
-- **Live deck** — `{{< embed demo.qmd >}}` (built-in shortcode).
+- **Live deck** — `{{< embed demo.tmd >}}` (built-in shortcode).
 - **Buttons** — Pandoc attributes: `[Text](href){.btn .btn-primary .btn-lg}`.
 - **Closing CTA** — a `::: {.hero}` fenced div.
 
@@ -62,4 +62,4 @@ cp out/live-edit-light.mp4 out/live-edit-dark.mp4 \
    out/live-code-light.mp4 out/live-code-dark.mp4 ../../site/assets/
 ```
 
-`demo.qmd` is a copy of `docs/demo.qmd`; re-copy it if the showcase deck changes.
+`demo.tmd` is a copy of `docs/demo.tmd`; re-copy it if the showcase deck changes.

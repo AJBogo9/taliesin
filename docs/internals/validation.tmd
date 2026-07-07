@@ -24,8 +24,8 @@ a fix.
 
 ## The closed vocabularies
 
-Taliesin validates against its **own** closed sets of keys, defined independently of
-Quarto in `frontmatter.rs`, `render/validate.rs`, and `site/config/`. There are five
+Taliesin validates against its **own** closed sets of keys, defined independently
+in `frontmatter.rs`, `render/validate.rs`, and `site/config/`. There are five
 surfaces, each a list-membership check:
 
 | Surface | Checked against | Where |
@@ -91,14 +91,14 @@ controls whether it runs, though: an included partial can't turn the linter on o
 The warnings flow through the normal `doc.warnings` channel, so they appear in both the
 live preview's dev panel and `taliesin check`.
 
-## The clean break: no Quarto-tolerance tier
+## The clean break: no legacy-tolerance tier
 
-A key that is unknown because it is a *Quarto* term Taliesin does not implement is
+A key that is unknown because it is a legacy term Taliesin does not implement is
 reported exactly like a typo: as unknown. This is a deliberate stance, not an oversight.
 Taliesin is its own tool with its own closed vocabulary, so there is no silent
-"tolerate but ignore" tier for Quarto keys, the single most confusing failure mode of a
+"tolerate but ignore" tier for unknown keys, the single most confusing failure mode of a
 compatibility shim, where a setting appears to be accepted but quietly does nothing.
-The corpus was purged of Quarto-only keys to hold this line.
+The corpus was purged of legacy-only keys to hold this line.
 
 ## Schemas: the same vocabulary, one step earlier
 

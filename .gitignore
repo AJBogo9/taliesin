@@ -18,7 +18,7 @@ _freeze/
 
 # Single-file `taliesin build <file>` output (and the extension resources it copies)
 # that lands beside its source — the `_site/`/`_book/` rules above only cover the
-# directory build. These are regenerable artifacts, not source; the `.qmd` and the
+# directory build. These are regenerable artifacts, not source; the `.tmd` and the
 # tracked `_extensions/` copies are the sources of truth.
 corpus/liquid-glass-slides/example.html
 corpus/liquid-glass-slides/liquid-glass.js

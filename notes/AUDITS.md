@@ -6,7 +6,7 @@ findings behind it, kept for reference.
 
 -----------------------------------------------------------------------------
 
-# Corpus fidelity sweep vs Quarto (2026-06-25)
+# Corpus fidelity sweep vs a reference renderer (2026-06-25)
 
 Systematized output-fidelity check (backlog "highest-value #4"). The sibling
 `qmd-fast-testbed` gained `sweep_corpus.py`: render every real corpus single-doc
@@ -398,7 +398,7 @@ over-matches an emphasized `. . .` (`reveal.rs:377`). Figure `width=` injects ra
 
 In-browser audit (chrome-devtools) of all six public-facing surfaces, captured at
 desktop + mobile, light + dark, with console + theme checks. Lens: this is about
-*showing the project* and winning over **Quarto/Jupyter switchers**, not selling.
+*showing the project* and winning over **Jupyter and notebook-tool switchers**, not selling.
 
 ## Summary
 
@@ -440,7 +440,7 @@ six surfaces.
 - **Internals** = `docs/internals/` (how it's *built*; a public credibility piece,
   written as explanation).
 - **Website** = a demo machine: lead with motion above the fold, one crisp value
-  line on top, a vs-Quarto table (reuse the one already in the docs index), a real
+  line on top, a comparison table (reuse the one already in the docs index), a real
   install/quickstart on-ramp into the User Guide. Cap embedded slides at one hero
   deck per page.
 

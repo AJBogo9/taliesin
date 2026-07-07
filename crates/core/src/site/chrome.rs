@@ -178,7 +178,7 @@ impl Site {
                     None => (it.text.clone().unwrap_or_default(), String::new()),
                 };
                 match it.href.as_deref() {
-                    // A configured *local* `.xml` link (e.g. Quarto's `/blog.xml`)
+                    // A configured *local* `.xml` link (e.g. `/blog.xml`)
                     // is dropped: this build generates no RSS feed. An external
                     // `.xml` URL (http/protocol-relative) is left alone — it's some
                     // other resource, not this site's feed.

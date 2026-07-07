@@ -34,14 +34,14 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
             out.push_str("</code>");
         }
         NodeValue::CodeBlock(cb) if raw_block_format(&cb.info).as_deref() == Some("html") => {
-            // Pandoc/Quarto raw passthrough: ```{=html} ... ``` is raw *output*,
+            // Pandoc raw passthrough: ```{=html} ... ``` is raw *output*,
             // not a code listing, so its body is emitted verbatim (block data
             // attrs injected into the leading tag, like any other raw HTML block).
             emit_html_block(&cb.literal, attrs, out);
         }
         NodeValue::CodeBlock(cb) => {
             let lang = code_lang(&cb.info);
-            // Quarto cells (```{lang}) carry leading `#| key: val` option lines; drop them.
+            // code cells (```{lang}) carry leading `#| key: val` option lines; drop them.
             let is_cell = cb.info.trim_start().starts_with('{');
             let fold = is_cell.then(|| code_fold(&cb.literal)).flatten();
             let literal = if is_cell {

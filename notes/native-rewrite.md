@@ -1,17 +1,18 @@
-# Dropping Quarto backwards-compatibility — initiative backlog
+# Native rewrite: dropping the legacy compat layer
 
-> **COMPLETE (2026-06-24). Successor initiative: `BEYOND-QUARTO.md`.** DROP-QUARTO
-> removed every backwards-compat shim and closed every schema; Beyond Quarto cashes
-> those closures into capability and grows the tool deliberately past Quarto. The
+> **COMPLETE (2026-06-24). Successor initiative: `ROADMAP.md`.** The native rewrite
+> removed every backwards-compat shim and closed every schema; the roadmap cashes
+> those closures into capability and grows the tool deliberately. The
 > guardrails are unchanged (block-model invariants, single editing surface, HTML-only,
 > the Do-NOT-touch list). Scope evolves from "the corpus is the spec" to
 > corpus-plus-roadmap (every new feature pins a target corpus doc). This file is kept
-> as the historical record of the drop.
+> as the historical record of the compat-layer removal.
 
-> Dedicated backlog for de-Quarto-ing Taliesin into a fully native `.qmd` tool.
-> Created 2026-06-23 from a 49-agent verified audit (inventory per subsystem →
-> corpus reality-check → adversarial verification → synthesis). Companion to
-> `backlog.md` (open tasks, read-often) and `AUDITS.md` (audit records).
+> Dedicated backlog for removing the legacy-format backwards-compat layer, turning
+> Taliesin into a fully native `.tmd` tool. Created 2026-06-23 from a 49-agent
+> verified audit (inventory per subsystem → corpus reality-check → adversarial
+> verification → synthesis). Companion to `backlog.md` (open tasks, read-often) and
+> `AUDITS.md` (audit records).
 
 ## Framing (the operating assumption for this file)
 
@@ -31,11 +32,11 @@ But "infinite time" does **not** mean "do everything." Two things still gate wor
    replacement before the old path is deleted (deck engine, OJS), or they break
    the corpus. Sequencing matters even when time doesn't.
 
-**The single most important finding:** the feeling that "Quarto compat holds me
+**The single most important finding:** the feeling that "the compat layer holds me
 back" is ~70% misattributed. The big complex files (`cite.rs`, `divs.rs`,
 `includes.rs`, numbering) are **intrinsic** to Taliesin's own goals (click-to-source,
-exact sourcepos, incremental block swap), not Quarto mimicry. Dropping Quarto
-would not shrink them. The genuine constraint is small and specific: the deck
+exact sourcepos, incremental block swap), not compat mimicry. Removing the compat
+layer would not shrink them. The genuine constraint is small and specific: the deck
 engine wears reveal.js's vocabulary, and the OJS runtime is a 440 KB black box.
 
 Source migration is a non-issue: the corpus will be LLM-rewritten to any native
@@ -47,7 +48,7 @@ extension port**, not in the documents.
 ## North star: what "fully native" looks like
 
 When this initiative is done, Taliesin accepts **only** its own format and owes
-nothing to Quarto's spelling:
+nothing to the legacy format's spelling:
 
 - Config file is `_site.yml`, a **closed** native schema that *warns on any
   unknown key* (today it silently tolerates a 74-key Quarto superset).

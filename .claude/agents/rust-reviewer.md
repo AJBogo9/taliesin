@@ -23,13 +23,13 @@ smells that compile but mislead.
   included blocks also `data-source-file`. Source mapping, incremental re-render, and
   live-state preservation all key off this. `crates/core/tests/corpus.rs` enforces it.
 - **Reverse-sync sourcepos must stay total** (every block maps back to source).
-- **Single editing surface:** the `.qmd` file is the only editing surface; the browser
+- **Single editing surface:** the `.tmd` file is the only editing surface; the browser
   preview is read-only and must NEVER write back to source. Flag any new write path
   from preview → source (a drag-to-reorder feature was removed for exactly this).
 - **HTML-only scope:** HTML is the sole output target. Flag creep toward LaTeX/Typst/
   Word/ePub/PDF-as-parallel-format.
-- **No Quarto/reveal/OJS shims:** the engine is native (`window.QmdDeck`, not reveal).
-  Flag reintroduced reveal vocabulary, OJS runtime, or Quarto-compat tolerance.
+- **No reveal/OJS/legacy shims:** the engine is native (`window.QmdDeck`, not reveal).
+  Flag reintroduced reveal vocabulary, OJS runtime, or legacy-compat tolerance.
 - **Corpus-plus-roadmap:** a new capability should be pinned by a target corpus doc +
   test added in the same change. Flag features with no corpus/test anchor.
 

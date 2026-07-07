@@ -80,7 +80,7 @@ body { background: transparent; }
 /* `.tali-stretch`: let an image fill the slide's remaining vertical space. The
    slide turns into a flex column so the marked element grows into what's left after
    the heading and other content. Authored as a fenced div: `:::{.tali-stretch}`
-   wrapping an image. `.r-stretch` (the Quarto authoring class) stays accepted as a
+   wrapping an image. `.r-stretch` (a legacy authoring class) stays accepted as a
    deprecated alias, so every selector matches both spellings. */
 .tali-deck .tali-slides > section:has(> :is(.tali-stretch, .r-stretch)),
 .tali-deck .tali-slides > section > section:has(> :is(.tali-stretch, .r-stretch)) {

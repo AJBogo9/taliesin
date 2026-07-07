@@ -5,7 +5,7 @@ fn read(rel: &str) -> String {
     std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| panic!("read {rel}: {e}"))
 }
 
-/// These phrases describe machinery deleted in DROP-QUARTO and must not return.
+/// These phrases describe machinery deleted in the native rewrite and must not return.
 #[test]
 fn docs_do_not_claim_quarto_config_still_works() {
     let cfg = read("docs/guide/reference/configuration.tmd");

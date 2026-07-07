@@ -1,19 +1,22 @@
-# Beyond Quarto: successor initiative roadmap
+# Taliesin roadmap
 
-> The successor to `DROP-QUARTO.md` (complete 2026-06-24). DROP-QUARTO removed
-> every backwards-compat shim and closed every schema. **Beyond Quarto cashes
-> those closures into capability** and grows the tool deliberately past Quarto.
-> Created 2026-06-24 from a 9-agent design workflow (Quarto gap map → 5 pillar
+> The successor to `native-rewrite.md` (complete 2026-06-24), which removed
+> every backwards-compat shim and closed every schema. **This roadmap cashes
+> those closures into capability** and grows the tool deliberately on its own terms.
+> Created 2026-06-24 from a 9-agent design workflow (competitive gap map → 5 pillar
 > designs → 2 adversarial critiques [invariant-guardian + scope-skeptic] →
 > synthesis). Companion to `backlog.md` (active items, read-often) and
-> `DROP-QUARTO.md` / `AUDITS.md` (history).
+> `native-rewrite.md` / `AUDITS.md` (history).
 
 ## Thesis
 
-Taliesin goes past Quarto **not by matching its feature checklist, but by being a
+Taliesin competes **not by matching any one tool's feature checklist, but by being a
 different kind of tool: a warm, source-mapped, block-modeled live *process*, not a
-batch compiler.** Quarto renders an HTML artifact and stops; every edit is a cold
-full-document pass + page reload. Taliesin keeps a content-hash block model, a
+batch compiler.** The batch document compilers (Jupyter/nbconvert, R Markdown/knitr,
+Quarto, MyST) render an HTML artifact and stop; every edit is a cold full-document
+pass plus page reload. The cloud notebook and publishing platforms (Observable,
+Deepnote, Hex, Curvenote, Posit Connect) put that loop online behind an account and a
+network round-trip. Taliesin keeps a content-hash block model, a
 per-keystroke block diff, a warm server, a warm Jupyter kernel, and a cumulative-hash
 freeze cache alive between edits. That combination is the moat, state-preserving
 incremental update, click-to-source, zero per-edit startup cost, and no static-site
@@ -70,9 +73,9 @@ Tags: **value** {low/med/high/transformational} · **effort** {small/med/large/e
 
 ### Pillar I, Authoring intelligence (cash the closed schema)
 
-DROP-QUARTO closed every schema but enforces only the top level; push the existing
+The native rewrite closed every schema but enforces only the top level; push the existing
 `validate_keys`/`closest()` machinery all the way down, surfaced as click-to-source
-diagnostics, trustworthiness Quarto's open keyspace structurally cannot match.
+diagnostics, trustworthiness that an open, tolerant keyspace structurally cannot match.
 
 - [x] **`locate-render-warnings` (high / med / none). DONE @ `4c900fa`.** SUBSTRATE, build first.
   Enrich the render-warning channel from bare `String` to a located struct (message +
@@ -88,8 +91,8 @@ diagnostics, trustworthiness Quarto's open keyspace structurally cannot match.
   front-matter top-level, `frontmatter::validate_front_matter`). **Clean-break decision
   (author directive 2026-06-24): the "unknown vs recognized-but-not-honored" distinction
   was DROPPED in favor of a single closed vocabulary per surface; any key outside Taliesin's
-  own vocabulary (typo OR Quarto term) is flagged, and the corpus was purged of all
-  Quarto-only keys (a verified visible-HTML no-op).** Built on `locate-render-warnings` so
+  own vocabulary (typo OR legacy term) is flagged, and the corpus was purged of all
+  legacy-only keys (a verified visible-HTML no-op).** Built on `locate-render-warnings` so
   every diagnostic is click-to-source. Closed the now-moot backlog P2. **Pinned:
   `corpus/diagnostics/typos.qmd`** + `nested_validation.rs` asserting the exact warnings +
   a corpus-wide clean-vocabulary guard. *Invariant held: read-only; no block-model/diff
@@ -129,7 +132,7 @@ already waits for.
   showcase doc (running `{js}` animation, open `<details>`, playing video, heavy code
   block low on the page) + a scripted read-only `tools/record-demo` walkthrough editing
   a paragraph *above* them: only the edited block flashes, everything else survives.
-  Split-screen against the same edit in Quarto (full reload destroys all of it). Build
+  Split-screen against the same edit in a batch compiler (full reload destroys all of it). Build
   after the benchmark so it cites real numbers. *Invariant: edits in the editor pane;
   preview shown as the read-only view it is, demonstrates single-editing-surface.*
 - [x] **`reverse-sync-coverage-audit` (high / small / none). DONE (2026-06-24, branch
@@ -165,7 +168,7 @@ already waits for.
   `.qmd`-buffer text transforms, never preview gestures. *Invariant held: preview stays
   read-only; cursor sync highlights/scrolls, goto navigates; no write-back.*
 
-### Pillar III, New web-native capabilities (the genuinely-past-Quarto bets)
+### Pillar III, New web-native capabilities (the genuinely-novel bets)
 
 Invest where warm + source-mapped + block-modeled unlocks behavior a batch compiler
 cannot reach, while resisting the reactive-VM trap.
@@ -212,9 +215,9 @@ cannot reach, while resisting the reactive-VM trap.
   (license/size sign-off). *Invariant: same wrapper-carries-data-attrs contract;
   idempotent enhancer; never touches exec/freeze/kernel.*
 
-### Pillar IV, Breadth (wider than Quarto, web-native, corpus-pinned)
+### Pillar IV, Breadth (web-native breadth, corpus-pinned)
 
-Close the genuinely-web-native breadth gaps where Taliesin is narrower than Quarto,
+Close the genuinely-web-native breadth gaps where Taliesin is still narrow,
 each pinned by an added corpus document so breadth never outruns the regression net.
 
 - [x] **`panel-tabset-margin` (high / med / none). DONE (2026-06-24, branch
@@ -274,10 +277,10 @@ books as versioned spec, integrity debt paid.
 
 - [ ] **`prune-and-fix-stale-docs` (high / small / none).** LAND FIRST. Prune the
   suppress-only dead keys `title-block-banner` + `site-url` (zero consumers; let them
-  warn or keep with a justifying comment). Fix docs that still claim Quarto-shaped
-  config works (`docs/guide/reference/configuration.qmd:7,102-106`;
-  `docs/internals/sites.qmd:34-48`), contradicted by
-  `quarto_shaped_config_is_no_longer_parsed_and_warns`. Fix the stale `site/feed.rs` /
+  warn or keep with a justifying comment). Fix docs that still claim legacy-shaped
+  config works (`docs/guide/reference/configuration.tmd:7,102-106`;
+  `docs/internals/sites.tmd:34-48`), contradicted by
+  `legacy_shaped_config_is_no_longer_parsed_and_warns`. Fix the stale `site/feed.rs` /
   RSS reference in CLAUDE.md's file map (verify against the post-de-specialization
   reality). Foundation for the schema + spec items. *Invariant: docs + a const list; no
   protected machinery.*
@@ -319,10 +322,10 @@ Honors the invariant-guardian's hazard ordering (`prune → locate-render-warnin
 validation → jsonschema`) and the scope-skeptic's "land integrity debt first."
 
 - **Wave 0, Integrity & foundation** (quick, zero-risk): `prune-and-fix-stale-docs` →
-  `third-party-truth` (#5) → `version-stamp`. Cheap correctness debt from DROP-QUARTO;
+  `third-party-truth` (#5) → `version-stamp`. Cheap correctness debt from the native rewrite;
   a public repo with a wrong `THIRD_PARTY.md` and docs describing a deleted shim is a
   liability.
-- **Wave 1, Cash the schema** (cleanest direct payoff of DROP-QUARTO Phase 3):
+- **Wave 1, Cash the schema** (cleanest direct payoff of the native rewrite's Phase 3):
   `locate-render-warnings` (substrate) → `nested-schema-validation` epic (pinned by
   `corpus/diagnostics/typos.qmd`) → `jsonschema-for-config` (generated from the
   now-correct consts).
@@ -334,7 +337,7 @@ validation → jsonschema`) and the scope-skeptic's "land integrity debt first."
   `main`, each corpus-pinned, read-only-additive: `narrated-code-walkthrough` ·
   `panel-tabset-margin` · `callout-kind-contract` · `typography-craft-pass` (#6) ·
   `image-lightbox` · `js-reactive-graph`. Next: **Wave 4** (close the loop).
-- **Wave 4, Close the loop** (the deepest real past-Quarto move):
+- **Wave 4, Close the loop** (the deepest real capability move):
   `reverse-sync-coverage-audit` → `vscode-editor-companion` Phase 1 (coordinate with
   #1d). Phase 2 editor commands capped and deferred.
 - **Wave 5, Print/PDF track** (deferred, decided 2026-06-24): `print-pdf-track`
@@ -382,7 +385,7 @@ Wave 2 (benchmark + hero demo).
   light+dark. Spec: `docs/superpowers/specs/2026-06-29-theorem-environments-design.md`; Phase 1
   plan: `docs/superpowers/plans/2026-06-29-theorem-environments-phase1.md`. **Remaining (own
   plans):** Phase 2 (a `theorems:` config: `number-within` book scoping → "Theorem 2.3" +
-  shared counters [the differentiator bookdown HTML can't / Quarto struggles with] + reference
+  shared counters [a differentiator batch HTML compilers struggle with] + reference
   names), Phase 3 (web-native: hover-preview of refs, collapsible proofs, deep-link anchors),
   Phase 4 (rich deck support, all additive).
 
@@ -416,7 +419,7 @@ Wave 2 (benchmark + hero demo).
   logo, mobile/touch) only after it lands green. Footer/logo + mobile/touch stay separate
   demand-driven backlog items.
 - **DEFER, `cross-doc-live-embed`** (live source-mapped transclusion): genuine
-  past-Quarto idea, but large; needs a host→source registry in `serve_site.rs` that
+  novel web-native idea, but large; needs a host→source registry in `serve_site.rs` that
   compounds the known "visited pages never evicted" bug, and no corpus doc needs it.
   Revisit when a doc wants it; design the registry WITH eviction (fix the bug, don't
   worsen it); first cut = a single labeled block.
@@ -467,9 +470,9 @@ Wave 2 (benchmark + hero demo).
 
 ## Provenance
 
-Design workflow `beyond-quarto-roadmap` (9 agents: 1 Quarto-gap map, 5 pillar
+Design workflow `beyond-quarto-roadmap` (9 agents: 1 competitive-gap map, 5 pillar
 designers, 2 adversarial critics [invariant-guardian + scope-skeptic], 1 synthesis;
-~0.92 M tokens, 2026-06-24). Seeded by the post-DROP-QUARTO "what did dropping Quarto
-unlock?" research (5 agents, 2026-06-24). Net of 28 designed proposals: ~15 survive as
+~0.92 M tokens, 2026-06-24). Seeded by the post-native-rewrite "what did dropping the
+legacy compat layer unlock?" research (5 agents, 2026-06-24). Net of 28 designed proposals: ~15 survive as
 distinct work (several merged from duplicates), 3 cut, ~4 deferred, 1 parked; the four
 invariant-hazard items are off the critical path.

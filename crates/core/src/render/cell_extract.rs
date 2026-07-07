@@ -8,8 +8,8 @@ use super::JsOpts;
 
 /// If `line` is a leading cell-option directive, return the content after the pipe.
 /// Recognizes `#|` (most langs), `//|` (JS), `%%|` (mermaid), each tolerating optional
-/// whitespace between the comment marker and the pipe (`# |`, `// |`, `%% |`) — Quarto
-/// accepts the spaced form, so the corpus may use it (e.g. `posts/pca-geometry`).
+/// whitespace between the comment marker and the pipe (`# |`, `// |`, `%% |`); the
+/// spaced form is accepted, so the corpus may use it (e.g. `posts/pca-geometry`).
 /// Returns `None` for a plain comment or code line. This is the single primitive every
 /// option parser keys off (`cell_option`, `strip_cell_options`, `validate`).
 pub(crate) fn option_directive(line: &str) -> Option<&str> {
@@ -41,7 +41,7 @@ pub(super) fn cell_option<'a>(literal: &'a str, key: &str) -> Option<&'a str> {
 
 /// A boolean cell option (`#| echo: false`) that falls back to a document default
 /// (from `execute:`) when the cell doesn't set it. Only an explicit `false` turns
-/// it off, so Quarto's `echo: fenced` etc. still count as "shown".
+/// it off, so `echo: fenced` etc. still count as "shown".
 pub(super) fn cell_flag_or(literal: &str, key: &str, default: bool) -> bool {
     match cell_option(literal, key) {
         Some("false") => false,

@@ -175,7 +175,7 @@ pub fn deck_theme_head(theme_default: &str, custom_theme: bool) -> String {
 
 // --- deck slide model ---------------------------------------------------
 
-/// Quarto's default `slide-level`: headings at this level start a new slide;
+/// The default `slide-level`: headings at this level start a new slide;
 /// headings above it (h1) open a vertical stack of sub-slides.
 const SLIDE_LEVEL: u8 = 2;
 
@@ -347,7 +347,7 @@ fn render_section(s: &SlideBuf, out: &mut String) {
     }
     out.push_str(&bg_attrs);
     out.push_str(">\n");
-    // Quarto `. . .` pause markers: drop the marker block and turn every block
+    // `. . .` pause markers: drop the marker block and turn every block
     // after it (until the next pause or the end of the slide) into a `.fragment`,
     // so it shows on the next step via the existing fragment engine.
     let mut paused = false;
@@ -376,7 +376,7 @@ fn render_section(s: &SlideBuf, out: &mut String) {
     out.push_str("</section>\n");
 }
 
-/// A Quarto pause marker: a paragraph whose only text is `. . .`. It is dropped
+/// A pause marker: a paragraph whose only text is `. . .`. It is dropped
 /// from the slide and turns the following block(s) into fragments.
 fn is_pause(html: &str) -> bool {
     html.starts_with("<p") && strip_tags(html).trim() == ". . ."

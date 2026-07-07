@@ -551,7 +551,7 @@ fn math_in_option_string_caption_renders_katex() {
 
 #[test]
 fn spaced_option_directives_are_recognized() {
-    // Quarto tolerates whitespace between the comment marker and the pipe (`# |`,
+    // The parser tolerates whitespace between the comment marker and the pipe (`# |`,
     // `// |`, `%% |`); taliesin must too, or the spaced lines leak into the displayed
     // source AND their options (echo/label/...) are silently ignored.
     // Regression: corpus/posts/pca-geometry writes `# | label:` / `# | echo: false`.
@@ -1024,7 +1024,7 @@ fn html_block_attrs_injected_into_leading_tag() {
 
 #[test]
 fn raw_html_block_is_passed_through() {
-    // ```{=html}``` is Pandoc/Quarto raw-passthrough: its body is emitted
+    // ```{=html}``` is Pandoc raw-passthrough: its body is emitted
     // verbatim, not escaped as a code listing.
     let src =
         "```{=html}\n<audio controls><source src=\"x.wav\" type=\"audio/wav\"></audio>\n```\n";
@@ -1219,7 +1219,7 @@ fn reveal_format_detected_from_front_matter() {
 
 #[test]
 fn revealjs_format_is_no_longer_a_deck() {
-    // `format: revealjs` was the deprecated Quarto spelling; after shedding it, a
+    // `format: revealjs` was the deprecated legacy spelling; after shedding it, a
     // doc with that format is a normal HTML page, not a deck.
     let doc = render_document("---\nformat: revealjs\n---\n\n## A Slide\n");
     assert_eq!(doc.format, DocFormat::Html);
@@ -1276,7 +1276,7 @@ fn thematic_break_starts_a_new_slide_and_is_not_emitted() {
 
 #[test]
 fn pause_marker_drops_and_fragments_following_blocks() {
-    // Quarto `. . .` is a pause: the marker itself is dropped, and every block
+    // A `. . .` line is a pause: the marker itself is dropped, and every block
     // after it (until end of slide) becomes a `.fragment` step.
     let doc = render_document(
         "---\nformat: deck\n---\n\n## S\n\nVisible now.\n\n. . .\n\nAfter the pause.\n",
@@ -1722,7 +1722,7 @@ fn missing_bibliography_and_theme_files_warn() {
         "got: {:?}",
         doc.warnings
     );
-    // A bare theme name (a possible Quarto built-in) must NOT warn.
+    // A bare theme name (a possible built-in theme) must NOT warn.
     let ok = render_document_with_includes(
         "---\ntitle: X\ntheme: darkly\n---\n\ntext\n",
         std::path::Path::new("/taliesin-nonexistent-dir"),
@@ -1806,7 +1806,7 @@ fn deck_theme_is_custom_and_head_gating() {
 
 #[test]
 fn theme_list_takes_first_entry() {
-    // `theme: [dark, custom.scss]` (Quarto list form) selects the base.
+    // `theme: [dark, custom.scss]` (list form) selects the base.
     let d = render_document("---\ntheme: [dark, custom.scss]\n---\n\nx\n");
     assert_eq!(
         d.theme_default, "dark",
@@ -2012,7 +2012,7 @@ fn code_enhance_bundle_matches_fragments_in_order() {
 fn captioned_code_listing_is_a_figure_not_a_bare_div() {
     // A `<figcaption>` is only valid inside a `<figure>`; the numbered code listing must
     // wrap as `<figure class="tali-listing">` (valid HTML, and the same float semantics
-    // Quarto uses for `lst-`). The `.tali-listing` margin already zeroes the UA figure
+    // used for `lst-`). The `.tali-listing` margin already zeroes the UA figure
     // indent, so the element swap is style-neutral.
     let doc =
         render_document("```{python}\n#| label: lst-demo\n#| lst-cap: My listing\nx = 1\n```\n");

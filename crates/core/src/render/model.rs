@@ -2,7 +2,7 @@
 //! consumes (cells, blocks, the rendered doc, page includes). Split out of
 //! mod.rs so the data model is separate from the render pipeline + emission.
 
-/// An executable Quarto code cell (```` ```{lang} ````), exposed so the dev
+/// An executable code cell (```` ```{lang} ````), exposed so the dev
 /// server can run it against a kernel.
 #[derive(Debug, Clone)]
 pub struct Cell {

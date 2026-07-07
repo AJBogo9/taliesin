@@ -23,7 +23,7 @@ pub(super) fn social_head(site: &Site, page: &Page) -> String {
     let clean_url = page.url.strip_suffix("index.html").unwrap_or(&page.url);
     let page_url = base.map(|b| format!("{b}/{clean_url}"));
     // Card image, made absolute (social scrapers require absolute image URLs). Falls
-    // back to the site-wide default (`image:` / Quarto `open-graph: image:`).
+    // back to the site-wide default (`image:`, or `open-graph: image:`).
     let image = page
         .card_image
         .as_deref()

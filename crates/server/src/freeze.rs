@@ -21,7 +21,7 @@
 //! transient failure can't get baked in. `#| cache: false` cells are never stored
 //! either (the [`crate::exec`] planner decides that; this module just persists what
 //! it's told). Kernel *variable state* is deliberately not cached — that is what
-//! makes Quarto's per-cell `cache` fragile — so a cold start can only skip work
+//! makes the naive per-cell `cache` approach fragile, so a cold start can only skip work
 //! when the whole document is unchanged (see [`crate::exec`] for the replay rule).
 
 use std::collections::HashMap;

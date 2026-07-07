@@ -1,4 +1,4 @@
-//! Feature coverage for replacing Quarto when *iterating* on the author's
+//! Feature coverage for *iterating* on the author's
 //! tech-blog (https://andreasbogossian.com). Three corpus posts come straight
 //! from it: `em-algorithm`, `pca-geometry`, and `fourier-transform`.
 //!
@@ -8,8 +8,8 @@
 //! rendering), all asserted against the *real* blog documents. Synthetic-input
 //! unit tests for the same features live in the render module's `tests.rs`.
 //!
-//! History: this file used to also carry `#[ignore]`d tests marking known gaps
-//! vs Quarto; every one of those gaps has since been closed, so only the
+//! History: this file used to also carry `#[ignore]`d tests marking known
+//! feature gaps; every one of those gaps has since been closed, so only the
 //! locked-in surface remains.
 
 use std::fs;
@@ -28,7 +28,7 @@ fn render_post(rel: &str) -> String {
 }
 
 /// Shortcode / fenced-div / cell-option / attribute markers that must never
-/// reach the output: if any leak, the live preview shows Quarto source instead
+/// reach the output: if any leak, the live preview shows raw source instead
 /// of rendered content.
 fn assert_no_source_leaks(label: &str, html: &str) {
     for marker in [

@@ -314,7 +314,7 @@ fn website_renders_with_toc_anchored_headings_and_numbered_figures() {
 
     // The three labelled image figures render as numbered <figure>s, attrs not
     // leaked. They are Figures 4–6: three earlier `#| fig-cap:` code cells take
-    // numbers 1–3 (counted in document order, matching Quarto — even though those
+    // numbers 1-3 (counted in document order, even though those
     // R cells aren't executed here, so their output isn't shown).
     assert!(
         !page.contains("{#fig-"),

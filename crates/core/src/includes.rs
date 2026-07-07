@@ -1,4 +1,4 @@
-//! Resolve Quarto `{{< include path >}}` shortcodes into a single expanded
+//! Resolve `{{< include path >}}` shortcodes into a single expanded
 //! buffer, while keeping a line-level **source map** so every line of the
 //! result can be traced back to the file and line it came from. This is what
 //! lets click-to-source jump into the *included* file rather than the parent.

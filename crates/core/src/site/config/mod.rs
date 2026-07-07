@@ -35,7 +35,7 @@ pub struct SiteConfig {
     pub description: Option<String>,
     pub url: Option<String>,
     pub favicon: Option<String>,
-    /// Default social-card image (native `image:`, Quarto `open-graph: image:`),
+    /// Default social-card image (`image:`, also accepted as `open-graph: image:`),
     /// used for `og:image`/`twitter:image` when a page sets no `image:` of its own.
     pub card_image: Option<String>,
     pub toc: Option<bool>,

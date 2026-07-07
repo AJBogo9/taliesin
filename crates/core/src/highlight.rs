@@ -29,7 +29,7 @@ fn syntaxes() -> &'static SyntaxSet {
     SS.get_or_init(SyntaxSet::load_defaults_newlines)
 }
 
-/// Map a Quarto/markdown language token to a token syntect knows.
+/// Map a markdown language token to a token syntect knows.
 fn alias(lang: &str) -> &str {
     match lang {
         "ojs" | "js" => "javascript",

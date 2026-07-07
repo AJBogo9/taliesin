@@ -1,7 +1,7 @@
 # Taliesin: feature ideation & product audit
 
 > A research-backed pool of feature ideas and product critiques that **feeds**
-> `BEYOND-QUARTO.md` (the committed roadmap). This file is the upstream brainstorm;
+> `ROADMAP.md` (the committed roadmap). This file is the upstream brainstorm;
 > the roadmap is the downstream, sequenced, corpus-pinned plan. An idea here is not a
 > commitment. It graduates to the roadmap only when it earns a corpus pin doc.
 >
@@ -12,7 +12,7 @@
 > (5) typography, reading science & accessibility. Interactive/explorable and
 > presentation/output ground folded into the synthesis.
 >
-> Every idea below is filtered through the **unchanged guardrails** (see BEYOND-QUARTO.md):
+> Every idea below is filtered through the **unchanged guardrails** (see ROADMAP.md):
 > HTML-only output; the `.qmd` is the single editing surface and the preview is read-only;
 > lean core (power at the `qmdEnhancers` registry / build seams / diagnostics channel /
 > additive block metadata); offline / self-contained. Ideas that violate a guardrail are
@@ -45,7 +45,7 @@ Two structural facts make the reader-side the right bet, not just an available o
    compiler cannot reach either** (a live doc inspector, provenance dots, predictive
    co-edit, hover-cards across a whole site). So the same architecture pays off twice.
 
-The strategic re-framing: Taliesin is positioned as "a faster Quarto." Its *defensible*
+The strategic re-framing: Taliesin is positioned as a live, reactive dev-server for computational documents. Its *defensible*
 identity is **"a document you read better than a PDF and write faster than a notebook,
 that is also one offline HTML file."** The reader-experience cluster is what turns the
 existing moat into something a reader feels, not just a benchmark the author cites.
@@ -282,7 +282,7 @@ as *read-only* preview/build affordances, never as preview-pane edits.
 37. **Cell exec timeline** — a per-edit strip: each code cell as ran / replayed-from-freeze /
     cached / errored, with wall-time + a freeze-key tooltip, click → source. — makes the
     freeze cache + warm-kernel behavior legible (currently console-only); the headline
-    differentiator vs Quarto's cold replay, *made visible*. — **M** — dev-preview/diagnostics
+    differentiator vs the cold full-rebuild of batch compilers, *made visible*. — **M** — dev-preview/diagnostics
     — fits.
 38. **Pre-publish health panel ("Lighthouse for your doc")** — one panel rolling up #30 +
     heading-skips (extends the a11y audit) + payload + perf, each located. — brings the loved
@@ -320,7 +320,7 @@ as *read-only* preview/build affordances, never as preview-pane edits.
     file, and (cells) freeze-key + last run time. The DevTools "inspect element" for the
     block model; great for the internals dogfooding. — **S** — dev-preview — fits.
 
-### Category 5 — Interactivity & explorable documents (genuinely-past-Quarto)
+### Category 5 — Interactivity & explorable documents (genuinely-novel)
 
 46. **`::: {.scrolly}` sticky-figure scrollytelling** — ✅ SHIPPED 2026-06-26. A sticky visual
     stage (the non-`.step` inner blocks) beside a scrolling `.step` column carrying `state=`
@@ -358,7 +358,7 @@ as *read-only* preview/build affordances, never as preview-pane edits.
 *New (2026-07-01, dogfooding — building an interactive PML/Bayesian-ML study site on the shipped
 `{input}` (#47) + `{js}` graph): the reactive substrate ships; what math/ML explorables still need is
 a numerics story plus two controls. All stay HTML-only / offline and must **not** reintroduce a
-reactive VM (BEYOND-QUARTO's stated top design risk). Highest-leverage: #62 + #63.*
+reactive VM (ROADMAP's stated top design risk). Highest-leverage: #62 + #63.*
 
 62. **Bundled numerics/stats global for `{js}` cells** — ship a small curated numerics namespace as a
     drawing-global beside `Plot`/`d3`: distribution pdf/cdf (gaussian/gamma/beta/poisson/exp), summary
@@ -499,7 +499,7 @@ The tool is lean by design, so there is little to *remove*; the discipline is mo
 not *adding* wrong.
 
 - **Prune the suppress-only dead keys** `title-block-banner` + `site-url` (zero consumers) —
-  already flagged in BEYOND-QUARTO.md's `prune-and-fix-stale-docs`. Let them warn or keep with
+  already flagged in ROADMAP.md's `prune-and-fix-stale-docs`. Let them warn or keep with
   a justifying comment.
 - **Watch the deck engine's breadth.** It is the most complete subsystem (blackout, pen,
   minimap, speaker, scroll, print, overview…) and the visual-audit "top-tier wow," so it earns
@@ -509,7 +509,7 @@ not *adding* wrong.
 - **Guard the bundle.** The vendored-font track (#24), DuckDB (#50), and paged.js (#57) are
   where "wider too" can balloon the payload. Each must be strictly opt-in. Mermaid (#61) is the
   current offline leak.
-- **Resist the reactive-VM trap** (BEYOND-QUARTO.md's stated highest design risk): `{input}`
+- **Resist the reactive-VM trap** (ROADMAP.md's stated highest design risk): `{input}`
   (#47) and `{sql}` (#50) must stay declarative `//|`-edge consumers of the shipped ~80-line
   scheduler, never a regrown dataflow VM.
 
@@ -543,7 +543,7 @@ not *adding* wrong.
    conclusion: running chapter heads, real folios, auto index + list-of-figures with true page
    numbers, "see Figure 3 on p. 12," optical hyphenation/justification, gutter sidenotes. Because
    it renders *from* the built HTML it never violates HTML-only — yet it closes the one thing
-   people still drop to LaTeX for. "Wider than Quarto" extended to the page.
+   people still drop to LaTeX for. "Wider web-native capability" extended to the page.
 5. **The doc inspector (author-side moonshot).** A DevTools-class panel where the document *is*
    the inspectable object: a live tree of blocks with hashes, the cell dependency graph
    (`js-reactive-graph` + Python upstream/downstream) drawn as a DAG, the diff stream as an
@@ -586,6 +586,6 @@ invariants, then synthesized with the author's framing (think about the reader; 
 the tool *and* its output; go beyond traditional tools to reinvent writing/reading; size doesn't
 matter, only whether it strengthens the tool). One sixth agent (a duplicate reader-side run) hit a
 session limit and was re-run. Interactive/explorable and presentation/output ground folded into the
-synthesis. All ideas respect the BEYOND-QUARTO.md guardrails; ideas in tension are marked
+synthesis. All ideas respect the ROADMAP.md guardrails; ideas in tension are marked
 needs-care or CONFLICTS. This file feeds the roadmap; nothing here is committed until it earns a
 corpus pin.

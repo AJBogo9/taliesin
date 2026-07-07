@@ -108,9 +108,9 @@ fn unknown_native_key_is_warned_with_a_suggestion() {
 }
 
 #[test]
-fn quarto_shaped_config_is_no_longer_parsed_and_warns() {
+fn legacy_shaped_config_is_no_longer_parsed_and_warns() {
     // The compat shim is gone: the native flat schema is the only path. A
-    // Quarto-shaped config no longer translates — its nested values are not
+    // legacy nested config no longer translates; its nested values are not
     // lifted, and its now-unknown top-level keys warn.
     let d = site(
         "project:\n  type: website\nwebsite:\n  title: \"Old\"\n  navbar:\n    left:\n      - { text: Home, href: index.tmd }\n",

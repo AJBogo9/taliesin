@@ -15,7 +15,7 @@
 //!     nothing, so if every cell hits the disk cache we replay all outputs and never
 //!     boot the kernel; if anything changed we re-run from the first cell whose
 //!     state the kernel lacks. Kernel *variable* state is never cached (that's what
-//!     makes Quarto's per-cell `cache` fragile), so a cold start can only skip work
+//!     makes the naive per-cell `cache` approach fragile), so a cold start can only skip work
 //!     when the whole document is unchanged.
 //!
 //! Each output block's id is derived from its cell's id, so it swaps in place when

@@ -1,6 +1,6 @@
 //! Memory-aware build concurrency cap.
 //!
-//! `concurrency_cap` decides how many parallel quarto/kernel processes to allow,
+//! `concurrency_cap` decides how many parallel kernel processes to allow,
 //! respecting an explicit `--jobs` override and capping against available memory
 //! and CPU core count when running in auto mode.
 

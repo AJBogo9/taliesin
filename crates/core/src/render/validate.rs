@@ -4,10 +4,10 @@
 //! purely diagnostic: an unrecognized key still renders exactly as before, plus one
 //! located [`Warning`] (click-to-source in the dev panel).
 //!
-//! The vocabularies are taliesin's OWN, defined independently of Quarto. A key not in
-//! the relevant set, whether a typo or a Quarto term taliesin does not implement, is
+//! The vocabularies are taliesin's OWN. A key not in
+//! the relevant set, whether a typo or a legacy term taliesin does not implement, is
 //! reported as unknown (with the closest known key when within edit distance 2). This
-//! is deliberate: taliesin is its own tool, not a Quarto runtime.
+//! is deliberate: taliesin is its own tool, not a compatibility shim.
 
 use super::Warning;
 use crate::frontmatter::unknown_key_message;

@@ -1,7 +1,7 @@
 //! Multi-page website project model.
 //!
-//! A *site* is a directory with one explicit root config (`_site.yml`, kept for
-//! Quarto compatibility) plus a set of `.tmd` input pages. This module owns the
+//! A *site* is a directory with one explicit root config (`_site.yml`) plus a
+//! set of `.tmd` input pages. This module owns the
 //! project-level concerns that the single-page path never had:
 //!
 //!   - parsing the root config (navbar / footer / title) into a typed [`SiteConfig`],
@@ -322,7 +322,7 @@ impl Site {
     }
 
     /// The output directory `build` writes to (default `_site`, or `_book` for a
-    /// book, matching Quarto).
+    /// book).
     pub fn output_dir(&self) -> &str {
         self.config
             .output_dir
@@ -797,7 +797,7 @@ impl Site {
     }
 
     /// Number a book chapter's headings in place (chapter N, then N.1, N.1.1 …),
-    /// like Quarto's `number-sections`. A no-op for a website or an unnumbered
+    /// controlled by `number-sections`. A no-op for a website or an unnumbered
     /// preface. Called by both the static build and the live preview.
     pub fn number_chapter(&self, page: &Page, blocks: &mut [Block]) {
         if let Some(number) = self.chapter_for(page) {

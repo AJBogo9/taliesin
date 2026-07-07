@@ -27,7 +27,7 @@ pub(crate) fn parse_pandoc_attrs(s: &str) -> Option<(Vec<String>, Option<String>
     Some((classes, id))
 }
 
-/// Blank out Quarto fenced-div markers (`::: {...}` / `:::`) without changing
+/// Blank out fenced-div markers (`::: {...}` / `:::`) without changing
 /// the line count, so the inner content parses as ordinary blocks and every
 /// other block's sourcepos line numbers stay valid against the original source.
 pub(crate) fn preprocess(src: &str) -> String {
@@ -547,7 +547,7 @@ fn build_container(
     } else if let Some(kind) = attrs.theorem_kind() {
         let body = concat(&inner);
         if kind == "proof" {
-            // Unnumbered, not cross-referenceable (matches Quarto/bookdown). Auto-QED.
+            // Unnumbered, not cross-referenceable (matches common convention). Auto-QED.
             let head = attrs
                 .get("title")
                 .map(html_escape)

@@ -29,7 +29,7 @@ fn parse_options() -> Options<'static> {
     // `[^1]` references + `[^1]: …` definitions; comrak moves definitions to the
     // document end in reference order, which we gather into a footnotes section.
     options.extension.footnotes = true;
-    // Smart typography (curly quotes, en/em dashes) to match Quarto/pandoc output.
+    // Smart typography (curly quotes, en/em dashes) to match Pandoc output.
     options.parse.smart = true;
     // sourcepos is tracked on AST nodes during parsing; `render.sourcepos`
     // only affects comrak's own formatter, which we don't use.
@@ -182,7 +182,7 @@ fn render_internal_impl(
 ) -> RenderedDoc {
     let arena = Arena::new();
     let options = parse_options();
-    // Quarto fenced divs (`:::`) aren't CommonMark. Record their spans first,
+    // fenced divs (`:::`) aren't CommonMark. Record their spans first,
     // then strip the fence markers in a line-preserving pass so sourcepos line
     // numbers stay exact and the inner content parses as normal blocks. The
     // recorded spans are used afterwards to wrap blocks back up as callouts etc.
@@ -294,7 +294,7 @@ fn render_internal_impl(
                 NodeValue::Heading(h) => Some(h.level),
                 _ => None,
             };
-            // Executable Quarto cell: ```{lang} ... ``` (lang detected, options stripped).
+            // Executable code cell: ```{lang} ... ``` (lang detected, options stripped).
             let cell = match &data.value {
                 NodeValue::CodeBlock(cb) if cb.info.trim_start().starts_with('{') => {
                     code_lang(&cb.info).map(|lang| {
@@ -349,7 +349,7 @@ fn render_internal_impl(
                 _ => None,
             };
             // Validate this code cell's `#|` options against taliesin's vocabulary
-            // (a typo or a Quarto-only key becomes a located, click-to-source warning;
+            // (a typo or a legacy key becomes a located, click-to-source warning;
             // the cell still renders unchanged).
             if cell.is_some()
                 && let NodeValue::CodeBlock(cb) = &data.value
@@ -377,7 +377,7 @@ fn render_internal_impl(
         // A heading gets a stable, deduped anchor id (HTML docs only — reveal
         // decks put the slug on the wrapping `<section>` instead, so adding it
         // here too would duplicate the id in the DOM).
-        // A heading may carry a Pandoc/Quarto attribute (`## Title {#sec-x}`): use
+        // A heading may carry a Pandoc attribute (`## Title {#sec-x}`): use
         // an explicit `#id` as the anchor (else a slug of the cleaned text), and
         // strip the attribute from the rendered heading below.
         let h_attr = heading_level.and_then(|_| parse_heading_attr(&block_src));
@@ -428,7 +428,7 @@ fn render_internal_impl(
         let attrs =
             format!("{id_attr} data-block-id=\"{id}\" data-sourcepos=\"{sourcepos}\"{file_attr}");
         let mut html = String::new();
-        // Quarto/pandoc treat a bare `\begin{env}...\end{env}` block as display
+        // Pandoc treats a bare `\begin{env}...\end{env}` block as display
         // math even without `$$`; comrak doesn't, so detect and render it here.
         if let Some(env) = is_paragraph.then(|| bare_math_env(&block_src)).flatten() {
             html.push_str(&format!("<div{attrs} class=\"tali-math-block\">"));
@@ -578,7 +578,7 @@ fn render_internal_impl(
             // the `<a>`, dropping the literal `{...}` comrak left as text.
             html = apply_link_attrs(&html);
             // Drop a stray trailing `\` (a hard break at the end of a block): strict
-            // CommonMark leaves it literal, but Pandoc/Quarto drop it. Match Pandoc.
+            // CommonMark leaves it literal, but Pandoc drops it. Match Pandoc.
             html = strip_trailing_hardbreak(&html);
         }
         // A deck heading may set section-level attrs (`## T {background-image="..."}`,
@@ -1127,7 +1127,7 @@ fn math_close(chars: &[char], start: usize, display: bool) -> Option<usize> {
     None
 }
 
-/// A deduped heading anchor slug; a repeated slug gets a `-N` suffix (Quarto).
+/// A deduped heading anchor slug; a repeated slug gets a `-N` suffix.
 /// `block_src` is the heading's markdown line; `slugify` ignores the leading
 /// `#`s and markup, yielding the visible-text slug.
 fn dedup_slug(block_src: &str, counts: &mut HashMap<String, u32>) -> String {
@@ -1246,7 +1246,7 @@ fn strip_heading_attr(html: &str) -> String {
     html.to_string()
 }
 
-/// Apply a Pandoc/Quarto attribute block trailing a link — `<a ...>text</a>{.btn #id}`
+/// Apply a Pandoc attribute block trailing a link — `<a ...>text</a>{.btn #id}`
 /// — onto the `<a>` (merging classes + setting an id) and drop the literal `{...}`
 /// comrak leaves as text. The inline analogue of [`strip_heading_attr`]; only
 /// `.class`/`#id` blocks are consumed (anything else, e.g. `{x}`, is left as-is).
@@ -1276,7 +1276,7 @@ fn apply_link_attrs(html: &str) -> String {
 }
 
 /// Drop a literal backslash left right before a block-closing tag — a trailing
-/// `\` hard break that comrak keeps (CommonMark) but Pandoc/Quarto drop (e.g. a
+/// `\` hard break that comrak keeps (CommonMark) but Pandoc drops (e.g. a
 /// CV line ending `2025–2027 \`). Scoped to block closers so inline `\` is untouched.
 fn strip_trailing_hardbreak(html: &str) -> String {
     const TAGS: [&str; 11] = [
@@ -1298,7 +1298,7 @@ fn strip_trailing_hardbreak(html: &str) -> String {
             continue;
         };
         // A trailing hard-break backslash sits right before the block's closing tag
-        // (`text\</p>`): CommonMark keeps it literal, Pandoc/Quarto drop it. Anchored
+        // (`text\</p>`): CommonMark keeps it literal, Pandoc drops it. Anchored
         // to the block end, so raw-HTML content containing `\</p>` mid-block (not a
         // hardbreak) is left untouched — the previous global replace could corrupt it.
         let stripped = prefix
@@ -1776,7 +1776,7 @@ fn bare_math_env(block_src: &str) -> Option<&str> {
     (t.starts_with("\\begin{") && t.contains("\\end{") && t.ends_with('}')).then_some(t)
 }
 
-/// A Quarto-labelled display equation: `$$ ... $$ {#eq-x}`. Returns the LaTeX
+/// A labelled display equation: `$$ ... $$ {#eq-x}`. Returns the LaTeX
 /// body and the `eq-x` anchor. Only `#eq-`-prefixed labels qualify (other
 /// attribute blocks after `$$` are left to the normal math path).
 fn labelled_display_eq(block_src: &str) -> Option<(String, String)> {
@@ -1878,7 +1878,7 @@ pub fn escape_attr(s: &str) -> String {
 /// Multi-page site chrome: a sticky theme-aware navbar, a slim footer, and post
 /// prev/next nav. Only shipped when a page renders inside a site (see
 /// [`html_page_from_doc_in_site`]); all of it is driven by `--tali-*` vars so a
-/// theme extension restyles it for free. Deliberately leaner than Quarto's
+/// theme extension restyles it for free. Deliberately leaner than a full
 /// Bootstrap chrome (no banner, no search bar, no feed).
 const SITE_CSS: &str = include_str!("../../assets/css/site.css");
 

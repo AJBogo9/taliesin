@@ -130,7 +130,7 @@ build replays the plot from `_freeze/` without ever starting Python. Bump `tau` 
 12 and only that one cell's key misses, so only it re-runs; had there been cells
 *after* it, their keys would have moved too, and they would re-run as well.
 
-That cumulative key is what makes this safe where Quarto's per-cell `cache` is
+That cumulative key is what makes this safe where a naive per-cell `cache` would be
 fragile. It encodes *every byte of code the kernel ran to reach this output*, so:
 
 - **a stale hit is impossible by construction**: no mtime heuristics, nothing to

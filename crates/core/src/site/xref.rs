@@ -153,7 +153,7 @@ fn brace_blocks(line: &str) -> Vec<&str> {
     }
     blocks
 }
-/// Whether an id is a Quarto cross-reference anchor (`sec-`, `fig-`, …).
+/// Whether an id is a cross-reference anchor (`sec-`, `fig-`, …).
 pub(super) fn is_ref_anchor(id: &str) -> bool {
     [
         "sec-", "fig-", "tbl-", "eq-", "lst-", "thm-", "lem-", "cor-", "prp-", "def-", "exm-",
@@ -211,7 +211,7 @@ fn rewrite_one_xref(
         return link.to_string(); // same page or unknown → leave cite's label link
     };
     // A `@sec-` to a chapter (a whole-number section number, no dot) reads "Chapter
-    // N" like Quarto; a subsection keeps cite's "Section" label.
+    // N"; a subsection keeps cite's "Section" label.
     let label = if anchor.starts_with("sec-")
         && !target.number.is_empty()
         && !target.number.contains('.')
