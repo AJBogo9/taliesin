@@ -15,12 +15,12 @@ use super::DocFormat;
 /// the site default) from an unset toc (which inherits it).
 pub(super) fn detect_toc(front_matter: &str) -> Option<bool> {
     front_matter.lines().find_map(|l| {
-        let t = l.trim();
-        match t.strip_prefix("toc:").map(str::trim) {
-            Some("true") => Some(true),
-            Some("false") => Some(false),
-            _ => None,
-        }
+        // Coerce the YAML-1.1 boolean words too (`toc: yes`/`no`/`on`/`off`), which
+        // serde reads as strings — otherwise an explicit `toc: yes` silently no-ops
+        // and inherits the site default. See `crate::frontmatter::yaml_bool_word`.
+        l.trim()
+            .strip_prefix("toc:")
+            .and_then(crate::frontmatter::yaml_bool_word)
     })
 }
 
@@ -94,12 +94,21 @@ fn is_reveal_format(name: &str) -> bool {
 
 /// The `bibliography:` front-matter value as a list of paths. Accepts a scalar
 /// (`bibliography: refs.bib`, INCLUDING a quoted path with spaces), an inline seq
-/// (`[a.bib, b.bib]`), or a block seq (`- a.bib` / `- b.bib`). Parses the front matter
-/// as YAML for a faithful read; falls back to the lenient line-scanner + `,[]`-split
-/// (the prior behaviour, MINUS the space split that broke spaced paths) when the YAML
-/// won't parse, so a malformed-but-linted doc still resolves what it can.
+/// (`[a.bib, b.bib]`), or a block seq (`- a.bib` / `- b.bib`). Strips the `---` fences
+/// (which the real caller's comrak node carries) and parses as YAML for a faithful read;
+/// when the YAML won't parse it falls back to the lenient scanner — `,[]`-split for the
+/// scalar/inline form, plus a block-sequence read — so a malformed-but-linted doc still
+/// resolves what it can.
 pub(super) fn bibliography_paths(front_matter: &str) -> Vec<String> {
-    if let Ok(val) = serde_yaml::from_str::<serde_yaml::Value>(front_matter) {
+    // comrak's FrontMatter node includes the `---` fences, which serde_yaml reads as
+    // document markers and rejects — so the faithful parse below would ALWAYS fail on the
+    // real caller's input and silently fall through to the lenient scanner (which can't
+    // read a block sequence). Strip the fences first (a no-op on a fence-free string),
+    // matching `parse_theorem_config`.
+    let body = front_matter.trim();
+    let body = body.strip_prefix("---").unwrap_or(body);
+    let body = body.strip_suffix("---").unwrap_or(body);
+    if let Ok(val) = serde_yaml::from_str::<serde_yaml::Value>(body) {
         match val.get("bibliography") {
             Some(serde_yaml::Value::Sequence(seq)) => {
                 return seq
@@ -111,14 +120,52 @@ pub(super) fn bibliography_paths(front_matter: &str) -> Vec<String> {
             _ => {}
         }
     }
+    // Lenient fallback for a front matter that won't parse as YAML at all: the scalar /
+    // inline-seq form via `extract_field`, plus a block sequence (`- a.bib` lines) it
+    // can't reach — so a malformed-but-linted doc still resolves what it can.
     match extract_field(front_matter, "bibliography") {
         Some(raw) => raw
             .split([',', '[', ']'])
             .map(|t| t.trim().trim_matches(['"', '\'']).to_string())
             .filter(|t| !t.is_empty())
             .collect(),
-        None => Vec::new(),
+        None => block_seq_items(front_matter, "bibliography"),
     }
+}
+
+/// Read a top-level block-sequence value (`key:` on its own line, then indented `- item`
+/// lines) from raw front matter — the one shape [`extract_field`] can't reach. Used as
+/// the last-resort fallback when the YAML won't parse. Stops at the first dedent or
+/// non-sequence line.
+fn block_seq_items(front_matter: &str, key: &str) -> Vec<String> {
+    let prefix = format!("{key}:");
+    let mut lines = front_matter.lines();
+    // The block opens at a top-level `key:` with an empty inline value.
+    let opened = lines.by_ref().any(|l| {
+        !l.starts_with(char::is_whitespace)
+            && l.trim().strip_prefix(&prefix).map(str::trim) == Some("")
+    });
+    if !opened {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for l in lines {
+        let t = l.trim();
+        if t.is_empty() {
+            continue;
+        }
+        if !l.starts_with(char::is_whitespace) {
+            break; // dedent to a new top-level key ends the block
+        }
+        let Some(item) = t.strip_prefix('-') else {
+            break; // an indented non-item line is not part of the sequence
+        };
+        let v = item.trim().trim_matches(['"', '\'']).trim();
+        if !v.is_empty() {
+            out.push(v.to_string());
+        }
+    }
+    out
 }
 
 /// Extract a top-level `key:` value from raw front matter. Lightweight scan,

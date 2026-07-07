@@ -1794,8 +1794,39 @@ fn detect_toc_is_tristate_so_explicit_false_can_override_a_site_default() {
     assert_eq!(detect_toc("title: X\n"), None);
     assert_eq!(detect_toc("title: X\ntoc: true\n"), Some(true));
     assert_eq!(detect_toc("title: X\ntoc: false\n"), Some(false));
+    // The YAML-1.1 boolean words (which serde reads as strings) must coerce too, so
+    // `toc: yes` doesn't silently no-op into the inherited site default.
+    assert_eq!(detect_toc("toc: yes\n"), Some(true));
+    assert_eq!(detect_toc("toc: on\n"), Some(true));
+    assert_eq!(detect_toc("toc: no\n"), Some(false));
+    assert_eq!(detect_toc("toc: OFF\n"), Some(false));
     // `toc-depth:`/`toc-title:` are not the `toc:` key and must not match.
     assert_eq!(detect_toc("toc-depth: 2\ntoc-title: Contents\n"), None);
+}
+
+#[test]
+fn yaml_11_boolean_words_coerce_on_cell_and_execute_flags() {
+    // `#| echo: no` / `execute: {echo: off}` are STRINGS in YAML 1.2; without
+    // coercion they read as truthy and the cell echoes anyway (a silent no-op).
+    assert!(!cell_flag_or("#| echo: no\n1", "echo", true));
+    assert!(!cell_flag_or("#| echo: off\n1", "echo", true));
+    assert!(!cell_flag_or("#| echo: false\n1", "echo", true));
+    assert!(cell_flag_or("#| echo: yes\n1", "echo", false));
+    // A non-boolean value (`echo: fenced`) still counts as "shown".
+    assert!(cell_flag_or("#| echo: fenced\n1", "echo", false));
+    // Unset falls back to the document default.
+    assert!(cell_flag_or("1 + 1", "echo", true));
+    assert!(!cell_flag_or("1 + 1", "echo", false));
+
+    // Document-level `execute:` defaults, both flow and block form.
+    assert_eq!(
+        detect_execute_defaults("execute: {echo: no, cache: off}\n"),
+        (false, true, false)
+    );
+    assert_eq!(
+        detect_execute_defaults("execute:\n  echo: off\n  include: no\n"),
+        (false, false, true)
+    );
 }
 
 #[test]
@@ -2640,6 +2671,20 @@ fn bibliography_paths_accepts_scalar_seq_and_spaced_path() {
         s(&["a.bib", "b.bib"])
     );
     assert!(bibliography_paths("title: X").is_empty());
+
+    // The REAL caller passes the comrak FrontMatter node, which includes the `---`
+    // fences; without stripping them the serde parse fails and a block-sequence
+    // bibliography is silently dropped by the fence-less fallback.
+    assert_eq!(
+        bibliography_paths("---\ntitle: X\nbibliography:\n  - a.bib\n  - b.bib\n---"),
+        s(&["a.bib", "b.bib"])
+    );
+    // A block sequence in front matter that won't parse as YAML at all (unterminated
+    // quote below) still resolves via the block-sequence fallback.
+    assert_eq!(
+        bibliography_paths("bibliography:\n  - a.bib\n  - b.bib\nauthor: \"oops"),
+        s(&["a.bib", "b.bib"])
+    );
 }
 
 // --- accessibility regressions (Batch 3) ---

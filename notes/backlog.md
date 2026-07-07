@@ -20,8 +20,8 @@ rewrite + roadmap Waves 0-4, the reader cluster, `check`/prose-lint + `{input}`/
 build, the reading-first redesign, deep-audit P1/P2, the Taliesin rename, the `.tmd` editor grammar, the
 legacy-format clean break (`.tmd`-only input, `deck`/`define()` the only spellings), the security-P3
 batch, the VS Code companion language features, F2a cross-page hover-preview, nested-theorem numbering,
-the 2026-07-07 audit batches (1-4, the Batch 5 high-value half, 6, 7, and the Batch 8 robustness
-trio: watcher prune + live search index + reconnect state), and cross-reference backlinks (a quiet
+the 2026-07-07 audit batches (1-4, Batch 5 in full [high-value half + remainder], 6, 7, and the Batch 8
+robustness trio: watcher prune + live search index + reconnect state), and cross-reference backlinks (a quiet
 per-target "Referenced by" line — the reverse of forward xref; `site/backlinks.rs`).
 
 **Working method:** branch per feature; brainstorm if there's a fork; spec under
@@ -40,7 +40,7 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
 ### Tier 1 — decided, build-ready (no blocker)
 - Audit 2026-07-07 implementation queue also lives here — see
   **[the batched queue below](#audit-2026-07-07-implementation-queue-build-ready)**. Next up:
-  the Batch 5 remainder, the Batch 8 consolidation, and Batch 9.
+  the Batch 8 consolidation and Batch 9.
 
 ### Decided 2026-07-07 — each needs its own dedicated session
 - **Quarto design-decisions catalog triage, reframed.** Branch `quarto-decisions-catalog`, commit
@@ -135,9 +135,10 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
 ## Audit 2026-07-07 implementation queue (build-ready)
 
 The 2026-07-07 deep audit's build-ready fixes (decided, no blocker), grouped into
-**batches sized as one branch each, in recommended order**. Batches 1-7 + the Batch 8 robustness
-trio landed; only the sections below remain. Full per-item detail (repro + fix approach) and the ~80
-low-severity long tail live in [AUDITS.md](AUDITS.md) 2026-07-07. **CONFIRMED unless marked PLAUSIBLE.**
+**batches sized as one branch each, in recommended order**. Batches 1-7 (Batch 5 now in full) + the
+Batch 8 robustness trio landed; only the sections below remain. Full per-item detail (repro + fix
+approach) and the ~80 low-severity long tail live in [AUDITS.md](AUDITS.md) 2026-07-07. **CONFIRMED
+unless marked PLAUSIBLE.**
 
 > **How to work this:** one batch = one branch; brainstorm only if a fork appears; TDD;
 > verify (cargo + browser via chrome-devtools); fast-forward-merge to local main; then
@@ -146,18 +147,6 @@ low-severity long tail live in [AUDITS.md](AUDITS.md) 2026-07-07. **CONFIRMED un
 > rules first. Already-tracked items (op-batching, kernel `/tmp` + `in_flight` leaks,
 > boot-diagnostic clobber, `app.pages` LRU, lazy search index, `fitSlide`, R ANSI leak,
 > Mermaid SRI) stay in **Tier 2** above; the audit only sharpened their exact paths in AUDITS.md.
-
-### Batch 5 remainder: Silent-failure diagnostics channel [medium]
-The high-value half landed 2026-07-07 (`561ff24`: located `:::`-fence warning, curly-quote figure
-`width=` fix, fail-safe `draft:` coercion, single-doc `--strict` YAML). Still open (lower value / more
-invasive, each its own small change):
-- `toc: yes` / `execute: {echo: no}` YAML-1.1 booleans in the CELL-option + render-frontmatter paths
-  (a DIFFERENT code path from the site `draft:` one already fixed; `cell_extract.rs` uses `v != "false"`).
-- `_site.yml` nested nav/footer/mount typos degrade silently + top-level warnings ship unlocated (`config/mod.rs:206`).
-- Block-sequence `bibliography:` dropped ONLY when serde_yaml fails to parse the rest of the front matter
-  (the `extract_field` fallback can't read a block sequence) — edge case (`fm_extract.rs:114`).
-- Low-tail siblings: non-`.bib` bibliography, unresolved fence language (needs a warnings channel threaded
-  into the pure `highlight` fn — invasive), non-HTML `format:`.
 
 ### Batch 8 remainder: consolidate the duplicated diff-then-broadcast core [large: its own branch]
 The three robustness fixes (watcher prune, live search index, reconnect state) landed 2026-07-07
@@ -183,7 +172,9 @@ Read the exec/kernel zone rules first; these are diagnostics/docs/leak fixes, no
 ### Low-severity long tail (~80 items) → [AUDITS.md](AUDITS.md) 2026-07-07
 Pick up opportunistically alongside whichever batch touches the same file. Includes: include symlink-loop
 SIGABRT + lexical-only `safe_join` (`includes.rs`); diff-LIS unique-id `debug_assert!`; dead
-`ts`/`typescript`/`toml` highlight aliases; `percent_decode` slice-panic on a non-ASCII path;
+`ts`/`typescript`/`toml` highlight aliases; an unresolved fence language degrading to plain text
+silently (`highlight.rs:51` — deferred from Batch 5: needs a warnings channel threaded into the pure
+`highlight` fn, invasive); `percent_decode` slice-panic on a non-ASCII path;
 `click_block` terminal-escape injection; qmd-js initial pass paints in DOM order not topo order; many
 citation-render edge cases; and the architecture / waste / stale-but-working-docs tail — including the
 **stale-but-working `qmd-*` docs references that still have runtime aliases** (`qmd.*` cell API,

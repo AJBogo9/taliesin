@@ -158,6 +158,27 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
     out
 }
 
+/// Interpret a raw YAML scalar as a boolean, catching the YAML-1.1 words serde_yaml
+/// (which follows YAML 1.2) reads as plain STRINGS — `yes`/`no`/`on`/`off` — alongside
+/// canonical `true`/`false` (case-insensitive, tolerant of surrounding quotes). Returns
+/// `None` for any non-boolean value (e.g. `echo: fenced`), so a caller keeps its own
+/// meaning for that. The single source of the boolean vocabulary shared by the
+/// front-matter (`site::frontmatter::bool_field`), cell-option
+/// (`render::cell_extract`), toc (`render::fm_extract::detect_toc`), and `_site.yml`
+/// readers, so `toc: yes` / `#| echo: no` take effect instead of silently no-oping.
+pub(crate) fn yaml_bool_word(s: &str) -> Option<bool> {
+    match s
+        .trim()
+        .trim_matches(['"', '\''])
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "true" | "yes" | "on" => Some(true),
+        "false" | "no" | "off" => Some(false),
+        _ => None,
+    }
+}
+
 /// A `Warning` for `message`, located when `line` is `Some` (file `None` = the
 /// previewed doc, the client falls back to its path).
 fn located(message: String, line: Option<u32>) -> Warning {
@@ -231,39 +252,50 @@ fn validate_theorem_values(map: &serde_yaml::Mapping, block: &str, out: &mut Vec
     }
 }
 
-/// `format: revealjs` / `*-revealjs` was the legacy deck spelling; it is no longer
-/// accepted, so a doc naming it renders as a plain HTML page instead of a deck. Its
-/// edit distance to `deck` is too large for the generic did-you-mean, so name the
-/// migration explicitly. Reads the top-level `format` value in string, block-mapping
-/// (keyed by the spelling), and sequence forms.
+/// Common non-HTML output targets (Pandoc/Quarto) an author might carry over. Taliesin
+/// renders HTML only (the deck engine included), so any of these silently produces HTML
+/// instead of the requested format — worth a warning rather than a clean `check`.
+const NON_HTML_FORMATS: &[&str] = &[
+    "pdf", "typst", "docx", "latex", "beamer", "epub", "pptx", "odt", "rtf", "jats", "docbook",
+];
+
+/// Validate the top-level `format:` value (string, block-mapping keyed by the spelling,
+/// or sequence). Flags the dropped legacy deck spelling (`revealjs` / `*-revealjs`),
+/// whose edit distance to `deck` is too large for the generic did-you-mean, and any
+/// known non-HTML output target ([`NON_HTML_FORMATS`]) that Taliesin can't produce — both
+/// otherwise render a plain HTML page with no signal.
 fn validate_format_value(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
     let Some(fmt) = map.get("format") else {
         return;
     };
-    let named_revealjs = |s: &str| {
-        let s = s.trim().trim_matches(['"', '\'']);
-        s == "revealjs" || s.ends_with("-revealjs")
-    };
-    let hit = match fmt {
-        serde_yaml::Value::String(s) => named_revealjs(s).then(|| s.clone()),
+    // The declared format NAME(s): the scalar, the block-mapping keys (`html:`/`deck:`),
+    // or the sequence entries.
+    let names: Vec<String> = match fmt {
+        serde_yaml::Value::String(s) => vec![s.clone()],
         serde_yaml::Value::Mapping(m) => m
             .keys()
-            .filter_map(|k| k.as_str())
-            .find(|k| named_revealjs(k))
-            .map(str::to_string),
+            .filter_map(|k| k.as_str().map(str::to_string))
+            .collect(),
         serde_yaml::Value::Sequence(seq) => seq
             .iter()
-            .filter_map(|v| v.as_str())
-            .find(|s| named_revealjs(s))
-            .map(str::to_string),
-        _ => None,
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect(),
+        _ => Vec::new(),
     };
-    if let Some(spelling) = hit {
-        let line = block_key_line(block, "format");
-        out.push(located(
-            format!("unknown format `{spelling}` (did you mean `deck`?)"),
-            line,
-        ));
+    let line = block_key_line(block, "format");
+    for name in &names {
+        let n = name.trim().trim_matches(['"', '\'']);
+        if n == "revealjs" || n.ends_with("-revealjs") {
+            out.push(located(
+                format!("unknown format `{n}` (did you mean `deck`?)"),
+                line,
+            ));
+        } else if NON_HTML_FORMATS.contains(&n) {
+            out.push(located(
+                format!("format `{n}` is not supported (Taliesin renders HTML only)"),
+                line,
+            ));
+        }
     }
 }
 
@@ -595,6 +627,29 @@ mod tests {
                 .iter()
                 .any(|w| w.contains("unknown format `acme-revealjs`") && w.contains("`deck`")),
             "*-revealjs variant warns: {variant:?}"
+        );
+    }
+
+    #[test]
+    fn non_html_format_values_warn_html_only() {
+        // A carried-over non-HTML target (pdf/typst/docx/…) silently renders HTML; flag
+        // it, located at the `format:` line, so `check` doesn't certify it green.
+        for fmt in ["pdf", "typst", "docx", "latex", "beamer", "epub"] {
+            let w = validate_front_matter(&format!("---\ntitle: T\nformat: {fmt}\n---\n"));
+            let hit = w
+                .iter()
+                .find(|w| w.message.contains(&format!("format `{fmt}`")))
+                .unwrap_or_else(|| panic!("expected an HTML-only warning for `{fmt}`: {w:?}"));
+            assert!(hit.message.contains("HTML only"), "{}", hit.message);
+            assert_eq!(hit.line, Some(3), "`format:` is on file line 3");
+        }
+        // The block-mapping form (`format:\n  pdf:\n    …`) is caught too.
+        let block = msgs("---\nformat:\n  pdf:\n    toc: true\n---\n");
+        assert!(
+            block
+                .iter()
+                .any(|w| w.contains("format `pdf`") && w.contains("HTML only")),
+            "block-form non-HTML format warns: {block:?}"
         );
     }
 

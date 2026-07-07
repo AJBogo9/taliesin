@@ -112,6 +112,16 @@ pub(crate) const NATIVE_KEYS: &[&str] = &[
     "mounts",
 ];
 
+/// `nav:` section keys (the `{ left, right }` mapping form). A typo here silently drops
+/// the whole side, so it warns.
+const NAV_SECTION_KEYS: &[&str] = &["left", "right"];
+/// `footer:` section keys (the `{ left, center, right }` mapping form).
+const FOOTER_SECTION_KEYS: &[&str] = &["left", "center", "right"];
+/// The keys of a single nav/footer item (`{ text, href, icon }`).
+const NAV_ITEM_KEYS: &[&str] = &["text", "href", "icon"];
+/// The keys of a `mounts:` sequence entry (`{ at, path }`).
+const MOUNT_ITEM_KEYS: &[&str] = &["at", "path"];
+
 /// Stable prefix on the warning a malformed `_site.yml` pushes. A malformed config is a
 /// *real* error (the site silently degrades to defaults), distinct from a legitimately
 /// absent `_site.yml`. The site build matches this prefix to count a malformed config as a
@@ -201,19 +211,107 @@ fn mounts_from(v: Option<&serde_yaml::Value>) -> Vec<Mount> {
     }
 }
 
-/// Warn on unrecognized top-level keys (the native schema is a closed set), with a
-/// "did you mean" for near-misses.
+/// A ` (did you mean `x`?)` suffix for a near-miss key, else empty.
+fn did_you_mean(key: &str, candidates: &[&'static str]) -> String {
+    crate::frontmatter::closest(key, candidates)
+        .map(|s| format!(" (did you mean `{s}`?)"))
+        .unwrap_or_default()
+}
+
+/// Warn on unrecognized keys against the closed native schema — top-level, and the
+/// nested `nav:`/`footer:`/`mounts:` structures (a typo in one of those silently drops
+/// the whole section/item, so it warns with a "did you mean"). Every warning is prefixed
+/// `_site.yml` so it is file-located rather than an anonymous string.
 fn validate_keys(value: &serde_yaml::Value, warnings: &mut Vec<String>) {
     let Some(map) = value.as_mapping() else {
         return;
     };
-    for k in map.keys() {
+    let warn = |warnings: &mut Vec<String>, what: &str, key: &str, allowed: &[&'static str]| {
+        warnings.push(format!(
+            "_site.yml: unknown {what} `{key}`{}",
+            did_you_mean(key, allowed)
+        ));
+    };
+    for (k, v) in map {
         let Some(key) = k.as_str() else { continue };
         if !NATIVE_KEYS.contains(&key) {
-            let hint = crate::frontmatter::closest(key, NATIVE_KEYS)
-                .map(|s| format!(" (did you mean `{s}`?)"))
-                .unwrap_or_default();
-            warnings.push(format!("unknown config key `{key}`{hint}"));
+            warn(warnings, "config key", key, NATIVE_KEYS);
+            continue;
+        }
+        match key {
+            "nav" => validate_nav_like(v, NAV_SECTION_KEYS, "nav", warnings),
+            "footer" => validate_nav_like(v, FOOTER_SECTION_KEYS, "footer", warnings),
+            "mounts" => validate_mounts(v, warnings),
+            _ => {}
+        }
+    }
+}
+
+/// Validate a `nav:`/`footer:` value: a `{ left/right/center }` mapping (section keys
+/// checked, then each section's items), a bare list of items, or a string label
+/// (nothing to check).
+fn validate_nav_like(
+    v: &serde_yaml::Value,
+    section_keys: &[&'static str],
+    ctx: &str,
+    warnings: &mut Vec<String>,
+) {
+    match v {
+        serde_yaml::Value::Mapping(m) => {
+            for (k, section) in m {
+                let Some(key) = k.as_str() else { continue };
+                if section_keys.contains(&key) {
+                    validate_items(section, ctx, warnings);
+                } else {
+                    warnings.push(format!(
+                        "_site.yml: unknown {ctx} section `{key}`{}",
+                        did_you_mean(key, section_keys)
+                    ));
+                }
+            }
+        }
+        serde_yaml::Value::Sequence(_) => validate_items(v, ctx, warnings),
+        _ => {}
+    }
+}
+
+/// Validate one or a list of nav/footer items: each mapping's keys against
+/// [`NAV_ITEM_KEYS`] (a bare string item is a plain label, nothing to check).
+fn validate_items(v: &serde_yaml::Value, ctx: &str, warnings: &mut Vec<String>) {
+    let items: Vec<&serde_yaml::Value> = match v {
+        serde_yaml::Value::Sequence(seq) => seq.iter().collect(),
+        other => vec![other],
+    };
+    for item in items {
+        if let serde_yaml::Value::Mapping(m) = item {
+            for k in m.keys().filter_map(|k| k.as_str()) {
+                if !NAV_ITEM_KEYS.contains(&k) {
+                    warnings.push(format!(
+                        "_site.yml: unknown {ctx} item key `{k}`{}",
+                        did_you_mean(k, NAV_ITEM_KEYS)
+                    ));
+                }
+            }
+        }
+    }
+}
+
+/// Validate `mounts:` in its sequence form (`- { at, path }`); the mapping form
+/// (`{ prefix: path }`) has author-chosen keys, so it can't be checked.
+fn validate_mounts(v: &serde_yaml::Value, warnings: &mut Vec<String>) {
+    let serde_yaml::Value::Sequence(seq) = v else {
+        return;
+    };
+    for item in seq {
+        if let serde_yaml::Value::Mapping(m) = item {
+            for k in m.keys().filter_map(|k| k.as_str()) {
+                if !MOUNT_ITEM_KEYS.contains(&k) {
+                    warnings.push(format!(
+                        "_site.yml: unknown mount key `{k}`{}",
+                        did_you_mean(k, MOUNT_ITEM_KEYS)
+                    ));
+                }
+            }
         }
     }
 }
@@ -317,6 +415,80 @@ mod config_tests {
             "a missing file must not be reported as malformed: {warnings:?}"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn cfg_warnings(yml: &str) -> Vec<String> {
+        // A unique dir per call: several tests hit `cfg_warnings` and run in parallel,
+        // so a shared dir name would let one test's cleanup nuke another's `_site.yml`.
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static N: AtomicUsize = AtomicUsize::new(0);
+        let dir = tmp(&format!("warn-{}", N.fetch_add(1, Ordering::Relaxed)));
+        std::fs::write(dir.join("_site.yml"), yml).unwrap();
+        let mut warnings = Vec::new();
+        let _ = load_config(&dir, &mut warnings);
+        let _ = std::fs::remove_dir_all(&dir);
+        warnings
+    }
+
+    #[test]
+    fn unknown_top_level_key_is_located_at_site_yml() {
+        // The warning must name `_site.yml` (it was previously anonymous) and suggest
+        // the near-miss.
+        let w = cfg_warnings("titel: My Site\n");
+        assert!(
+            w.iter().any(|w| w.starts_with("_site.yml:")
+                && w.contains("`titel`")
+                && w.contains("`title`")),
+            "{w:?}"
+        );
+    }
+
+    #[test]
+    fn nested_nav_footer_mount_typos_warn_instead_of_silently_dropping() {
+        // A `nav:` section typo drops the whole side silently — must warn.
+        let w = cfg_warnings("nav:\n  lefft:\n    - text: Blog\n      href: blog.tmd\n");
+        assert!(
+            w.iter()
+                .any(|w| w.contains("nav section `lefft`") && w.contains("`left`")),
+            "nav section typo: {w:?}"
+        );
+
+        // A nav ITEM key typo drops the label/link silently.
+        let w = cfg_warnings("nav:\n  left:\n    - txt: Blog\n      href: blog.tmd\n");
+        assert!(
+            w.iter()
+                .any(|w| w.contains("nav item key `txt`") && w.contains("`text`")),
+            "nav item typo: {w:?}"
+        );
+
+        // A `footer:` center is valid; a bogus footer section warns.
+        let w = cfg_warnings("footer:\n  centre:\n    - text: hi\n");
+        assert!(
+            w.iter()
+                .any(|w| w.contains("footer section `centre`") && w.contains("`center`")),
+            "footer section typo: {w:?}"
+        );
+
+        // A `mounts:` sequence entry key typo drops the mount silently.
+        let w = cfg_warnings("mounts:\n  - att: /docs\n    path: ../docs\n");
+        assert!(
+            w.iter()
+                .any(|w| w.contains("mount key `att`") && w.contains("`at`")),
+            "mount key typo: {w:?}"
+        );
+    }
+
+    #[test]
+    fn valid_nested_nav_footer_mounts_have_no_warnings() {
+        // The real corpus shape: `{ left: [...], right: [...] }` with text/href items,
+        // a footer with left/center/right, and a mounts sequence — none may warn.
+        let w = cfg_warnings(concat!(
+            "title: Site\n",
+            "nav:\n  left:\n    - text: Blog\n      href: blog.tmd\n  right:\n    - icon: github\n      href: 'https://x'\n",
+            "footer:\n  left:\n    - text: © 2026\n  center:\n    - text: mid\n  right:\n    - text: end\n",
+            "mounts:\n  - at: /docs\n    path: ../docs\n",
+        ));
+        assert!(w.iter().all(|w| !w.contains("unknown")), "{w:?}");
     }
 
     #[test]

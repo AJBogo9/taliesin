@@ -44,8 +44,10 @@ pub(super) fn cell_option<'a>(literal: &'a str, key: &str) -> Option<&'a str> {
 /// it off, so `echo: fenced` etc. still count as "shown".
 pub(super) fn cell_flag_or(literal: &str, key: &str, default: bool) -> bool {
     match cell_option(literal, key) {
-        Some("false") => false,
-        Some(_) => true,
+        // A recognized false word (`false`/`no`/`off`) turns it off; any other value
+        // (`fenced`, `true`, …) counts as "on". Catches the YAML-1.1 words serde reads
+        // as strings, so `#| echo: no` suppresses instead of silently echoing.
+        Some(v) => crate::frontmatter::yaml_bool_word(v) != Some(false),
         None => default,
     }
 }
@@ -65,11 +67,14 @@ pub(super) fn detect_execute_defaults(front_matter: &str) -> (bool, bool, bool) 
     // Apply one `key: value` pair from an `execute:` mapping (shared by the block
     // and the inline flow form).
     fn apply_kv(k: &str, v: &str, echo: &mut bool, include: &mut bool, cache: &mut bool) {
-        let v = v.trim().trim_matches(['"', '\'']);
+        // Off only for a recognized false word (`false`/`no`/`off`); everything else
+        // stays on. Coerces the YAML-1.1 words so `execute: {echo: no}` takes effect.
+        let on =
+            crate::frontmatter::yaml_bool_word(v.trim().trim_matches(['"', '\''])) != Some(false);
         match k.trim() {
-            "echo" => *echo = v != "false",
-            "include" => *include = v != "false",
-            "cache" => *cache = v != "false",
+            "echo" => *echo = on,
+            "include" => *include = on,
+            "cache" => *cache = on,
             _ => {}
         }
     }

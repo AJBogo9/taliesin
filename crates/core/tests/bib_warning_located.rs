@@ -58,3 +58,28 @@ fn missing_bib_file_warning_points_at_the_bibliography_line() {
         "warning should point at `bibliography:` (line 3)"
     );
 }
+
+#[test]
+fn non_bib_bibliography_is_flagged_not_silently_ignored() {
+    let dir = tmp("nonbib");
+    // A CSL-YAML/JSON path (not `.bib`) is unsupported; it must warn (located at the
+    // `bibliography:` line) rather than silently resolving no citations.
+    let src = "---\ntitle: T\nbibliography: refs.yaml\n---\n\nSee [@x].\n";
+    let doc = render_document_with_includes(src, &dir);
+
+    let w = doc
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("only BibTeX"))
+        .expect("expected a non-.bib warning");
+    assert!(
+        w.message.contains("refs.yaml"),
+        "names the path: {}",
+        w.message
+    );
+    assert_eq!(
+        w.line,
+        Some(3),
+        "warning should point at `bibliography:` (line 3)"
+    );
+}

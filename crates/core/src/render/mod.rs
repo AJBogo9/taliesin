@@ -797,8 +797,12 @@ fn load_bibliography(
     for path in paths {
         let path = path.trim();
         // Only `.bib` is supported; a differently-suffixed path (a stray token or an
-        // unsupported CSL-JSON) is skipped rather than mis-read.
+        // unsupported CSL-JSON/YAML) is skipped rather than mis-read — but warn, since it
+        // would otherwise silently fail to resolve any of its citations.
         if !path.ends_with(".bib") {
+            warnings.push(locate(Warning::new(format!(
+                "bibliography `{path}` ignored: only BibTeX (`.bib`) is supported"
+            ))));
             continue;
         }
         match crate::includes::safe_join(base, path).and_then(|p| std::fs::read_to_string(&p).ok())

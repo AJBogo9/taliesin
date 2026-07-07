@@ -74,18 +74,13 @@ fn bool_field(
     if let Some(b) = v.as_bool() {
         return b;
     }
-    if let Some(s) = v.as_str() {
-        let canonical = match s.trim().to_ascii_lowercase().as_str() {
-            "yes" | "on" | "true" => Some(true),
-            "no" | "off" | "false" => Some(false),
-            _ => None,
-        };
-        if let Some(b) = canonical {
-            warnings.push(format!(
-                "{label}: `{key}: {s}` is a string in YAML 1.2, not a boolean \u{2014} use `{key}: {b}`"
-            ));
-            return b;
-        }
+    if let Some(s) = v.as_str()
+        && let Some(b) = crate::frontmatter::yaml_bool_word(s)
+    {
+        warnings.push(format!(
+            "{label}: `{key}: {s}` is a string in YAML 1.2, not a boolean \u{2014} use `{key}: {b}`"
+        ));
+        return b;
     }
     default
 }
