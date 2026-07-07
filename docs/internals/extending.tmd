@@ -184,7 +184,7 @@ preamble.
   `.tali-fig-dark` pair the page swaps on a theme change. So the on-disk file is a clean
   print artifact, not a theme-tinted screen image.
 - **It is folded into the cache key.** The export spec is appended to the cell's hashed
-  code (`# qmd-fig-export: <spec>`), so adding or changing it **moves the cell's
+  code (`# tali-fig-export: <spec>`), so adding or changing it **moves the cell's
   cumulative hash** and forces a re-run, which rewrites the file. A cell *without*
   `fig-export:` hashes exactly as before, so existing `_freeze/` entries stay valid. This
   is what guarantees the exported file is never stale relative to the cell that produced

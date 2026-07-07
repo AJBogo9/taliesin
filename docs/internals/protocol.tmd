@@ -56,11 +56,11 @@ as ops (recovering from a failed render, or a structural deck change).
 ```
 
 - `title` is the document title (or `null`); the client sets `document.title`.
-- `body_html` is the full inner HTML of `#qmd-root`.
+- `body_html` is the full inner HTML of `#tali-root`.
 - `diagnostics` is an array of issue objects (see [the shape below](#the-diagnostic-shape)).
 
 The client handles it specially on the **first** message. Because the server
-already server-rendered the body into `#qmd-root` for the first paint, the first
+already server-rendered the body into `#tali-root` for the first paint, the first
 `full_render` after connect is byte-identical, so the client **skips re-mounting
 it** (no flash, no needless deck or `{js}` re-init) and only wires up diagnostics.
 A *reconnect* re-mounts normally: it tears down all prior `{js}` cells first (so
@@ -89,7 +89,7 @@ A new block appeared; place it after a given block (or at the top).
 ```
 
 `after_id` is the id of the preceding block, or `null` to `prepend` at the start of
-`#qmd-root`. Because block ids are unique per document, the client first drops any
+`#tali-root`. Because block ids are unique per document, the client first drops any
 element already carrying the incoming id (tearing down its `{js}` cells) before
 inserting. The server emits **all `remove`s before any `insert`s**, so that defense
 is normally a no-op; it only matters if a reorder (which splits a moved block into a
@@ -168,7 +168,7 @@ Only the theme CSS changed. Rather than reload, the client hot-swaps the content
 of `<style id="qmd-theme">` in place (creating the element if absent).
 
 ```json
-{ "type": "style", "css": ":root { --qmd-accent: #4c8dff; … }" }
+{ "type": "style", "css": ":root { --tali-accent: #4c8dff; … }" }
 ```
 
 Because nothing in the body is rebuilt, scroll position, the current deck slide, and

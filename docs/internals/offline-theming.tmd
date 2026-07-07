@@ -39,7 +39,7 @@ The second half of the principle is that none of this output bakes in colours.
 Highlighting emits `syntect`'s **scope classes** (each prefixed `qhl-`) rather than
 inline colours, and a stylesheet maps those classes to a palette with a
 `[data-theme=dark]` override. The same idea runs through the whole page: the
-navbar, callouts, figures, and code all read `--qmd-*` CSS custom properties, and a
+navbar, callouts, figures, and code all read `--tali-*` CSS custom properties, and a
 *theme* is just a `:root` block that sets those variables (a built-in `light`/`dark`
 pair, a `.css`/`.scss` file, or an installed `_extensions/<name>/theme.css`, all
 resolved in `theme.rs`).

@@ -26,7 +26,7 @@ re-renders and re-runs the changed cell, the diff finds the single changed block
 and the websocket carries one `update` to the browser.
 
 On a websocket connect the server sends a `full_render` (and the page was already
-server-rendered into `#qmd-root` for the first paint). On each save it diffs and
+server-rendered into `#tali-root` for the first paint). On each save it diffs and
 broadcasts **only the ops** (`update`/`insert`/`remove`), or a fresh `full_render`
 when recovering from a previous failure, plus a `diagnostics` message when those
 change. The full message contract is in [the websocket protocol](protocol.tmd).

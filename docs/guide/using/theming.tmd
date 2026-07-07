@@ -3,7 +3,7 @@ title: "Theming"
 ---
 
 A theme in Taliesin is not a stylesheet you wrestle with, it is a small set of CSS
-custom properties (`--qmd-*`). The whole document, the navbar, footer, callouts,
+custom properties (`--tali-*`). The whole document, the navbar, footer, callouts,
 diagrams, figures, and syntax-highlighted code all read those variables, so
 retuning one value restyles everything at once, and the light/dark toggle is just
 a swap of the values: nothing re-renders.
@@ -24,15 +24,16 @@ theme: dark
 ---
 ```
 
-Only `theme: light` (or `theme: default`) starts light; everything else, including
-no `theme:` at all, resolves to "auto", which the pre-paint script settles to **dark**.
-A standalone page never follows the OS; the one exception is `--bare` output, a fragment
-that ships no pre-paint script and so falls back to the OS `prefers-color-scheme`.
-`theme: dark` is dark for the same reason. Either way
-the reader can still flip the page from the **Settings** gear (top-right of every page,
-or the dev menu on a single doc), and the choice persists in their browser. A page with a
-*custom* CSS theme that doesn't name a built-in mode is one of those "auto" cases, so it
-starts dark too.
+Only `theme: dark` forces dark and only `theme: light` (or `theme: default`) forces
+light; everything else, including no `theme:` at all, resolves to "auto", which the
+pre-paint script follows the OS `prefers-color-scheme` and falls back to **light**
+when the OS has no dark preference. Either way the reader can still flip the page
+from the **Settings** gear (top-right of every page, or the dev menu on a single
+doc), and the choice persists in their browser (checked first, ahead of both the
+front-matter mode and the OS preference). A page with a *custom* CSS theme that
+doesn't name a built-in mode is one of those "auto" cases too. `--bare` output (a
+fragment with no pre-paint script) follows the same OS-preference logic, just via a
+plain CSS `prefers-color-scheme` media query instead of the head script.
 
 ::: {.callout-note}
 ## Sepia is a reader mode, not a `theme:` value
@@ -48,7 +49,7 @@ alongside Light and Dark. Sepia is a reader choice, not an author default. See
 
 The toggle changes one attribute, `data-theme` on `<html>`, and CSS does the rest.
 The base palette lives in a `:root` block; `html[data-theme="dark"]` (and
-`html[data-theme="sepia"]`) supply override values for the same `--qmd-*` names.
+`html[data-theme="sepia"]`) supply override values for the same `--tali-*` names.
 A pre-paint `<head>` script reads the saved choice from `localStorage` before the
 first frame, so a returning reader never sees a flash of the wrong theme. Crucially,
 **syntax highlighting recolours with no re-highlight**: code is highlighted once,
@@ -72,25 +73,25 @@ subset of the colours; the layout and font variables it inherits.)
 
 | Variable | Light | Dark | Role |
 |:--|:--|:--|:--|
-| `--qmd-bg` | `#ffffff` | `#16181d` | Page background |
-| `--qmd-fg` | `#1a1a1a` | `#e6e6e6` | Body text |
-| `--qmd-muted` | `#555` | `#9aa0aa` | Secondary / metadata text |
-| `--qmd-accent` | `#4c8dff` | `#6ea8ff` | Accent (hover, focus ring, progress bar) |
-| `--qmd-accent-fill` | `#1f6feb` | `#2563eb` | Filled active/pressed surfaces |
-| `--qmd-on-accent` | `#ffffff` | `#ffffff` | Text on a filled accent surface |
-| `--qmd-link` | `#2563eb` | `#6ea8ff` | Links |
-| `--qmd-code-bg` | `#f5f5f5` | `#21242b` | Code-block / inline-code background |
-| `--qmd-border` | `#e3e3e3` | `#363a44` | Hairlines, card + control borders |
-| `--qmd-edge-shadow` | `rgba(0,0,0,.16)` | `rgba(255,255,255,.14)` | Floating-element shadow |
-| `--qmd-flash` | `rgba(76,141,255,.18)` | `rgba(110,168,255,.22)` | Live-edit pulse on a re-rendered block |
+| `--tali-bg` | `#ffffff` | `#16181d` | Page background |
+| `--tali-fg` | `#1a1a1a` | `#e6e6e6` | Body text |
+| `--tali-muted` | `#555` | `#9aa0aa` | Secondary / metadata text |
+| `--tali-accent` | `#4c8dff` | `#6ea8ff` | Accent (hover, focus ring, progress bar) |
+| `--tali-accent-fill` | `#1f6feb` | `#2563eb` | Filled active/pressed surfaces |
+| `--tali-on-accent` | `#ffffff` | `#ffffff` | Text on a filled accent surface |
+| `--tali-link` | `#2563eb` | `#6ea8ff` | Links |
+| `--tali-code-bg` | `#f5f5f5` | `#21242b` | Code-block / inline-code background |
+| `--tali-border` | `#e3e3e3` | `#363a44` | Hairlines, card + control borders |
+| `--tali-edge-shadow` | `rgba(0,0,0,.16)` | `rgba(255,255,255,.14)` | Floating-element shadow |
+| `--tali-flash` | `rgba(76,141,255,.18)` | `rgba(110,168,255,.22)` | Live-edit pulse on a re-rendered block |
 
 ::: {.callout-note}
 ## Why two accent variables
 
-The bare `--qmd-accent` fails WCAG-AA contrast with white text, so a filled surface
+The bare `--tali-accent` fails WCAG-AA contrast with white text, so a filled surface
 (a segmented control, a pressed button, the primary call-to-action) uses the darker
-`--qmd-accent-fill` for the fill and `--qmd-on-accent` for its text; both clear
-4.5:1 in each theme. If you override the accent, override `--qmd-accent-fill` to a
+`--tali-accent-fill` for the fill and `--tali-on-accent` for its text; both clear
+4.5:1 in each theme. If you override the accent, override `--tali-accent-fill` to a
 matching darker shade too.
 :::
 
@@ -102,28 +103,28 @@ from a single definition (no per-kind dark override needed).
 
 | Variable | Light value | Kind |
 |:--|:--|:--|
-| `--qmd-callout-note` | `#4c8dff` | note |
-| `--qmd-callout-tip` | `#2bb673` | tip |
-| `--qmd-callout-warning` | `#e0a800` | warning |
-| `--qmd-callout-important` | `#e0566b` | important |
-| `--qmd-callout-caution` | `#e8730c` | caution |
+| `--tali-callout-note` | `#4c8dff` | note |
+| `--tali-callout-tip` | `#2bb673` | tip |
+| `--tali-callout-warning` | `#e0a800` | warning |
+| `--tali-callout-important` | `#e0566b` | important |
+| `--tali-callout-caution` | `#e8730c` | caution |
 
 ### Fonts, layout, and focus
 
 | Variable | Default | Role |
 |:--|:--|:--|
-| `--qmd-font-body` | `1.0625rem/1.7 ui-serif, Georgia, …, serif` | Body font (size, leading, stack) |
-| `--qmd-font-head` | `ui-sans-serif, system-ui, sans-serif` | Heading + UI font |
-| `--qmd-font-mono` | `ui-monospace, SFMono-Regular, Menlo, monospace` | Code font |
-| `--qmd-maxw` | `46rem` | Reading-column max width |
-| `--qmd-scale` | `1.2` | Modular type-scale ratio for heading sizes (a minor third) |
-| `--qmd-focus` | `2px solid var(--qmd-accent)` | Keyboard-focus ring for every control |
-| `--qmd-focus-offset` | `2px` | Offset of that ring |
+| `--tali-font-body` | `1.0625rem/1.7 ui-serif, Georgia, …, serif` | Body font (size, leading, stack) |
+| `--tali-font-head` | `ui-sans-serif, system-ui, sans-serif` | Heading + UI font |
+| `--tali-font-mono` | `ui-monospace, SFMono-Regular, Menlo, monospace` | Code font |
+| `--tali-maxw` | `46rem` | Reading-column max width |
+| `--tali-scale` | `1.2` | Modular type-scale ratio for heading sizes (a minor third) |
+| `--tali-focus` | `2px solid var(--tali-accent)` | Keyboard-focus ring for every control |
+| `--tali-focus-offset` | `2px` | Offset of that ring |
 
 ::: {.callout-tip}
 ## One token, every control
 
-`--qmd-focus` is the single focus ring for links, buttons, tabs, the reader menu,
+`--tali-focus` is the single focus ring for links, buttons, tabs, the reader menu,
 and the deck controls, applied via `:focus-visible`. Retune it once and every
 interactive element follows.
 :::
@@ -150,7 +151,7 @@ variables:
 ---
 title: "My post"
 css:
-  text: ":root { --qmd-accent: #d6336c; --qmd-accent-fill: #a61e4d; }"
+  text: ":root { --tali-accent: #d6336c; --tali-accent-fill: #a61e4d; }"
 ---
 ```
 
@@ -178,14 +179,14 @@ theme: brand.css
 ```css
 /* brand.css (beside the .tmd) */
 :root {
-  --qmd-accent: #d6336c;
-  --qmd-accent-fill: #a61e4d;
-  --qmd-font-body: 1.0625rem/1.7 "Iowan Old Style", Georgia, serif;
-  --qmd-maxw: 50rem;
+  --tali-accent: #d6336c;
+  --tali-accent-fill: #a61e4d;
+  --tali-font-body: 1.0625rem/1.7 "Iowan Old Style", Georgia, serif;
+  --tali-maxw: 50rem;
 }
 html[data-theme="dark"] {
-  --qmd-accent: #f06595;
-  --qmd-accent-fill: #c2255c;
+  --tali-accent: #f06595;
+  --tali-accent-fill: #c2255c;
 }
 ```
 
@@ -222,13 +223,13 @@ two-line front-matter block and a small file. Drop `brand.css` beside your `.tmd
 ```css
 /* brand.css */
 :root {
-  --qmd-accent: #e8590c;            /* warm orange accent */
-  --qmd-accent-fill: #d9480f;       /* darker fill keeps white text AA-legible */
-  --qmd-font-body: 1.0625rem/1.7 "Charter", Georgia, serif;
+  --tali-accent: #e8590c;            /* warm orange accent */
+  --tali-accent-fill: #d9480f;       /* darker fill keeps white text AA-legible */
+  --tali-font-body: 1.0625rem/1.7 "Charter", Georgia, serif;
 }
 html[data-theme="dark"] {
-  --qmd-accent: #ff922b;
-  --qmd-accent-fill: #e8590c;
+  --tali-accent: #ff922b;
+  --tali-accent-fill: #e8590c;
 }
 ```
 

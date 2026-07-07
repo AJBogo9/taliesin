@@ -229,8 +229,8 @@ the printed LAN URL and QR (`?t=…`, then a `qmd_token` cookie); a fresh token 
 minted each server start, and loopback (`127.0.0.1`) is exempt. See
 [Reading on any screen](../using/preview.tmd) for the full behaviour.
 
-A `taliesin` launcher on `PATH` (`~/.local/bin/Taliesin`) rebuilds the release
-binary when the tool's sources change, then runs it, so `taliesin preview <file>`
+Put `target/release/taliesin` on your `PATH` (a symlink, or a small wrapper script
+that rebuilds it when the tool's sources change) so `taliesin preview <file>`
 works from anywhere.
 
 ## Environment

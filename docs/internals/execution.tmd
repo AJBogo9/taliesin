@@ -154,8 +154,8 @@ key/output pairs:
 {
   "version": 2,
   "entries": [
-    { "k": "9f1c…", "v": "<pre class=\"qmd-stream\">…</pre>" },
-    { "k": "a37e…", "v": "<img class=\"qmd-fig qmd-fig-light\" …>" }
+    { "k": "9f1c…", "v": "<pre class=\"tali-stream\">…</pre>" },
+    { "k": "a37e…", "v": "<img class=\"tali-fig tali-fig-light\" …>" }
   ]
 }
 ```
@@ -186,12 +186,12 @@ A few properties earn their place:
 The planner is deliberately stingy about what it hands the cache, so a bad result
 can never bake in:
 
-- **Error outputs** (anything carrying `class="qmd-error"`: an exception, a timeout,
+- **Error outputs** (anything carrying `class="tali-error"`: an exception, a timeout,
   or the mid-run "kernel died" marker), so a transient failure re-runs next time. The
   check matches the *class*, not a bare substring, so a cell that merely prints the
-  text "qmd-error" still caches.
+  text "tali-error" still caches.
 - **Truncated outputs** (a result clipped at the size cap, marked
-  `Taliesin: output truncated`), so a clipped result is never frozen as if complete.
+  `taliesin: output truncated`), so a clipped result is never frozen as if complete.
 - **`#| cache: false` cells**, which always re-execute by contract.
 - **The cached tail the kernel didn't actually run.** Only cells `[shared, run_end)`,
   the cells that genuinely executed this rebuild, are recorded as the kernel's "ran"
@@ -334,21 +334,21 @@ Each collected iopub message is normalised into one `Output` value, and
 %%| label: fig-msg-to-html
 %%| fig-cap: "Each iopub message kind maps to one Output, then to a self-contained HTML fragment."
 flowchart LR
-  stream["stream<br/>(stdout / stderr)"] --> pre["&lt;pre class=qmd-stream&gt;<br/>(+ qmd-stderr)"]
+  stream["stream<br/>(stdout / stderr)"] --> pre["&lt;pre class=tali-stream&gt;<br/>(+ tali-stderr)"]
   result["execute_result /<br/>display_data"] --> rich["richest MIME wins:<br/>html › png › svg › jpeg › plain"]
-  error["error"] --> err["&lt;pre class=qmd-error&gt;<br/>(ANSI-stripped traceback)"]
+  error["error"] --> err["&lt;pre class=tali-error&gt;<br/>(ANSI-stripped traceback)"]
 ```
 
 The mapping is small and explicit:
 
-- **`stream`** becomes a `<pre class="qmd-stream">` (with `qmd-stderr` added for the
+- **`stream`** becomes a `<pre class="tali-stream">` (with `tali-stderr` added for the
   stderr channel), HTML-escaped.
 - **`execute_result`** and **`display_data`** are both "rich" outputs; rendering picks
   the **richest representation the kernel offered**, preferring `text/html`, then
   `image/png` (wrapped as an inline `data:` `<img>`), then SVG, then JPEG, then
   `text/plain` (as a `<pre>`). The cell's `text/plain` fallback is only used when
   nothing richer exists.
-- **`error`** becomes a `<pre class="qmd-error">` holding the traceback with its ANSI
+- **`error`** becomes a `<pre class="tali-error">` holding the traceback with its ANSI
   colour codes stripped (IPython colourises tracebacks for a terminal). This is the
   one class the freeze cache refuses to store, so an error never sticks.
 
@@ -358,8 +358,8 @@ A plain inline matplotlib PNG would bake one foreground colour into the image, s
 would look wrong against the other theme. The Python startup preamble installs (lazily,
 the first time a cell touches matplotlib) a `text/html` figure formatter that renders
 each figure **twice**, once recoloured for the light theme and once for the dark, and
-emits them together as `<img class="qmd-fig qmd-fig-light">` + `<img class="qmd-fig
-qmd-fig-dark">`. The standalone `image/png` representation is suppressed so only the
+emits them together as `<img class="tali-fig tali-fig-light">` + `<img class="tali-fig
+tali-fig-dark">`. The standalone `image/png` representation is suppressed so only the
 dual-theme HTML survives. The page then swaps which image shows on a `data-theme`
 change, so a plot's axes and text always match the surrounding page with no
 re-execution, the same trick the theme-matched `{{< video >}}` uses. Only data colours

@@ -48,11 +48,11 @@ or `{ file: … }` map, or a list of those.
 | Key | Type | Meaning |
 |---|---|---|
 | `format` | string | `html` (default), `deck` (a slide deck), or a `<name>-deck` variant. **Its sub-keys are not validated** |
-| `theme` | string | `light`, `dark`, a `.css`/`.scss` file path, or an installed `_extensions/<name>/` theme bundle. Unspecified starts **dark** (in `--bare` output, unspecified follows the OS via `prefers-color-scheme`); only an explicit `light` (or `default`) starts light |
+| `theme` | string | `light`, `dark`, a `.css`/`.scss` file path, or an installed `_extensions/<name>/` theme bundle. Unspecified (or any custom theme) follows the OS via `prefers-color-scheme`, falling back to light; only an explicit `light` (or `default`)/`dark` forces that mode |
 | `css` | string \| list \| map | Extra stylesheet(s) inlined into the page: a path, a `{ text: … }` / `{ file: … }` map, or a list of those |
 | `page-layout` | string | `full` widens the content column (good for listing indexes); the default is the reading-width column |
 | `image` | string | The image on a `listing:` card; also the social-card / OpenGraph image (the `og:image`/`twitter:image` tags are emitted for **site/book builds only**, never for a single-file `build`/`render`) |
-| `image-alt` | string | Accepted (so it never warns) but **not rendered** at the page level. The only alt text Taliesin actually reads is the `about:` block's own `image-alt` sub-key (for an `about:` profile image). A `listing:` card's image is treated as decorative and emits an empty `alt`, since the card's title and description already label the link |
+| `image-alt` | string | Not rendered on the page itself, but used as the `alt` text on this page's `listing:` card image when one links to it. Leave it unset and the card's image falls back to an empty (decorative) `alt`, since the card's title and description already label the link. Separate from the `about:` block's own `image-alt` sub-key, which sets the `alt` on an `about:` profile image |
 | `draft` | bool | `true` excludes the page from a website build entirely (output, nav, and listings) |
 | `title-block-style` | string | `none` keeps the title metadata (still drives `<title>`, OpenGraph, nav) but hides the visible `<h1>` title block |
 
@@ -258,7 +258,7 @@ taliesin schema --out .tmd
 
 ```yaml
 ---
-# yaml-language-server: $schema=.tmd/qmd-frontmatter.schema.json
+# yaml-language-server: $schema=.tmd/tali-frontmatter.schema.json
 title: My post
 ---
 ```
@@ -286,13 +286,13 @@ categories: [machine-learning, training]          # listing tags + filter chips
 
 # --- Output / format / theme ---
 format: html                                      # html (default) or deck
-theme: dark                                        # light / dark / file / extension (unspecified starts dark)
+theme: dark                                        # light / dark / file / extension (unspecified follows the OS)
 page-layout: full                                 # widen the column (default: reading width)
 css: extra.css                                     # inlined stylesheet(s)
 
 # --- Social / images ---
 image: cover.png                                   # listing-card image; social card on site/book builds
-image-alt: "A loss curve trending down"           # recognized only; alt is read from the about: sub-key
+image-alt: "A loss curve trending down"           # alt text for this post's listing card image
 
 # --- Contents / citations ---
 toc: true                                          # live TOC + Cmd-K search

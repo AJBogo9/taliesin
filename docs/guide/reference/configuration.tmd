@@ -27,7 +27,7 @@ table below repeats the front-matter keys most often paired with project config.
 | `toc` | `true` adds a live table of contents (+ the Cmd-K search palette) |
 | `title-block-style` | `none` keeps the title metadata but hides the visible `<h1>` header |
 | `bibliography` | A `.bib` file enabling `[@key]` citations + an auto References section (rendered in a single built-in IEEE style) |
-| `page-layout` | `full` widens the content column (the full page width, good for listing indexes and wide tables/figures); omit it for the default centered reading width set by `--qmd-maxw` |
+| `page-layout` | `full` widens the content column (the full page width, good for listing indexes and wide tables/figures); omit it for the default centered reading width set by `--tali-maxw` |
 | `include-in-header` / `include-before-body` / `include-after-body` | Inject raw markup; each is a path, a `{ text: … }` / `{ file: … }` map, or a list of those |
 | `css` | Stylesheet(s) wrapped in `<style>` and inlined |
 | `lang` | BCP-47 language tag for `<html lang>` (default `en`) |
@@ -153,7 +153,7 @@ Then point the YAML language server at them with a modeline.
 For `_site.yml` (a plain YAML file, works out of the box), add at the very top:
 
 ```yaml
-# yaml-language-server: $schema=.tmd/qmd-site.schema.json
+# yaml-language-server: $schema=.tmd/tali-site.schema.json
 title: My site
 ```
 
@@ -161,7 +161,7 @@ For a document's front matter, put the modeline inside the `---` block:
 
 ```yaml
 ---
-# yaml-language-server: $schema=.tmd/qmd-frontmatter.schema.json
+# yaml-language-server: $schema=.tmd/tali-frontmatter.schema.json
 title: My post
 ---
 ```

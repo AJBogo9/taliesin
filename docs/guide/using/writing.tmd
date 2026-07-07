@@ -202,7 +202,7 @@ grammar doesn't cover (custom widgets, embeds, audio players):
 
 ```{=html}
 <div style="display:flex;gap:.6rem;align-items:center;padding:.7rem 1rem;border-radius:10px;
-            color:var(--qmd-fg);border:1px solid var(--qmd-border);
+            color:var(--tali-fg);border:1px solid var(--tali-border);
             background:linear-gradient(90deg,rgba(99,102,241,.16),rgba(236,72,153,.16));
             font:600 14px ui-sans-serif,system-ui">
   <span style="font-size:1.5rem">🔌</span>

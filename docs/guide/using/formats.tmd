@@ -374,10 +374,10 @@ The knobs:
 
 `theme:` selects the built-in `light` (default) or `dark`, a `.css`/`.scss` file,
 or an installed `_extensions/<name>/` bundle. A theme is just a `:root` block of
-CSS custom properties (`--qmd-*`); the navbar, footer, callouts, diagrams, and
+CSS custom properties (`--tali-*`); the navbar, footer, callouts, diagrams, and
 code all read those variables, so one small file restyles everything and the
 light/dark toggle just swaps the values: nothing re-renders. The full list of
-`--qmd-*` variables and how to author a theme is in [Theming](theming.tmd).
+`--tali-*` variables and how to author a theme is in [Theming](theming.tmd).
 
 The `{{< embed >}}` shortcode used above, and its sibling `{{< video >}}`, are
 documented in the [shortcodes reference](../reference/shortcodes.tmd).

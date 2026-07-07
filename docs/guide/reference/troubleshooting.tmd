@@ -116,8 +116,9 @@ at `http://127.0.0.1:<port>/`. It binds **loopback only**: it does **not** pass
 panel stays blank:
 
 - Make sure `taliesin` is on the path the extension uses. It runs whatever the
-  `qmdFast.path` setting points at (default `taliesin`); set it to an absolute path
-  if the editor's environment doesn't see your shell's `PATH`.
+  `qmdFast.path` setting points at (default `qmd-fast`, the pre-rename binary
+  name); set it to `taliesin` or an absolute path if your `PATH` doesn't have a
+  `qmd-fast`.
 - The extension waits up to a few seconds for the server to answer on its port. If
   you see *"taliesin preview did not answer"*, the binary failed to start: run the
   same `taliesin preview <file>` in a terminal to read the real error.

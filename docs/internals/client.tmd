@@ -28,9 +28,9 @@ like the preview.
 
 ## Mounting and applying ops
 
-`client.js` mounts into a single element, `#qmd-root`; without it the script is a
+`client.js` mounts into a single element, `#tali-root`; without it the script is a
 no-op. On connect the server sends a `full_render` (and the page body was *already*
-server-rendered into `#qmd-root` so content paints before the socket opens), and on
+server-rendered into `#tali-root` so content paints before the socket opens), and on
 each save it sends only the [diff ops](block-model.tmd). The full message contract
 is documented in [the block model](block-model.tmd); here is what the client does
 with each one.
@@ -135,7 +135,7 @@ no-ops when `qmd-js.js` is not loaded (a deck or a page with no `{js}` cells).
 
 Click-to-source runs in both directions off the same `data-sourcepos` attribute.
 The reverse direction, editor cursor to preview block, is `highlightAtLine(file,
-line)`. It walks every `[data-sourcepos]` element under `#qmd-root` and, filtering
+line)`. It walks every `[data-sourcepos]` element under `#tali-root` and, filtering
 to blocks whose `data-source-file` matches the cursor's file, parses each position
 with one regex:
 

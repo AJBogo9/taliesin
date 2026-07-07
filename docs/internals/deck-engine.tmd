@@ -50,7 +50,7 @@ vertical, fragment step), the mode, and the plugin/listener registries. The core
 loop is small:
 
 - **`layout`** scales the fixed 960×540 (16:9) stage to the viewport with a single
-  CSS transform (`--qmd-deck-scale`), so slides never reflow; `fitSlide` shrinks a
+  CSS transform (`--tali-deck-scale`), so slides never reflow; `fitSlide` shrinks a
   slide's own font if its content overflows (PowerPoint-style autofit).
 - **`apply`** updates the per-slide classes (fragment visibility, chrome,
   annotations), records the previous slide for auto-animate, and calls `setCamera`
@@ -72,7 +72,7 @@ order:
 
 `deck.frag` is how many steps have been taken; advancing dispatches to the matching
 handler. Magic-move and auto-animate animate with **FLIP** (measure First and Last
-rects, Invert with a transform, Play), scale-corrected by `--qmd-deck-scale` so the
+rects, Invert with a transform, Play), scale-corrected by `--tali-deck-scale` so the
 motion is right inside the scaled stage.
 
 The ordering is **document order, with the right granularity per device.** `fragsOf`
@@ -105,7 +105,7 @@ static markup, never re-rendering:
   holds two or more code blocks; `render/divs.rs` line-wraps each `<pre>` with the
   same `.qhl-ln` helper. On the step from block *k* to *k+1*, `morphMM` keys both
   blocks' lines by their trimmed **text**: a line present in both glides from its old
-  rect to its new one (FLIP, scale-corrected by `--qmd-deck-scale`), a line only in
+  rect to its new one (FLIP, scale-corrected by `--tali-deck-scale`), a line only in
   the new block fades in, and the old block fades out under it. So unchanged lines
   *move* rather than redraw, which is the whole point: the eye tracks the lines that
   stayed and reads only what changed.

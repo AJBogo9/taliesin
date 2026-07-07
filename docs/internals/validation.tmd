@@ -129,7 +129,7 @@ through.
 language server at them:
 
 ```yaml
-# yaml-language-server: $schema=.tmd/qmd-site.schema.json
+# yaml-language-server: $schema=.tmd/tali-site.schema.json
 title: My site
 ```
 

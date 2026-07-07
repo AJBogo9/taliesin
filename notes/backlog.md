@@ -58,8 +58,8 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
   site-wide bibliography-merge decision first). Lightweight replacement for the discovery value the
   (now-removed) xref graph tool provided.
 - Audit 2026-07-07 implementation queue also lives here — see
-  **[the batched queue below](#audit-2026-07-07-implementation-queue-build-ready)** (Batch 2 next;
-  Batch 1 landed 2026-07-07).
+  **[the batched queue below](#audit-2026-07-07-implementation-queue-build-ready)** (Batch 3 next;
+  Batches 1-2 landed 2026-07-07).
 
 ### Decided 2026-07-07 — each needs its own dedicated session
 - **Quarto design-decisions catalog triage, reframed.** Branch `quarto-decisions-catalog`, commit
@@ -151,20 +151,6 @@ Full per-item detail (repro + fix approach) and the ~80 low-severity long tail l
 > boot-diagnostic clobber, `app.pages` LRU, lazy search index, `fitSlide`, R ANSI leak,
 > Mermaid SRI) stay in **Tier 2** above; the audit only sharpened their exact paths in AUDITS.md.
 
-### Batch 2: Docs rename-drift sweep (high user-impact, mechanical, no code risk) [small]
-- Theme-default taught as "settles to dark, never follows OS", the exact inverse of the runtime:
-  rewrite to auto = follow-OS / light-fallback (`docs/guide/using/theming.tmd:27-35`). **HIGH.**
-- `--qmd-*` CSS vars documented but runtime uses `--tali-*` with no alias (every custom-theme recipe
-  no-ops): sweep `--qmd-` to `--tali-` (`theming.tmd:153`). **HIGH.**
-- Schema on-ramp references `qmd-*.schema.json`; tool emits `tali-*.schema.json`: fix filenames
-  (`frontmatter.tmd:261`). **HIGH.**
-- `#qmd-root` documented; runtime id is `#tali-root` (`protocol.tmd:59`).
-- Non-existent `~/.local/bin/Taliesin` launcher claim + wrong casing (`getting-started.tmd:16`).
-- Inverted `image-alt` guidance, code emits it, test-pinned (`frontmatter.tmd:55`).
-- Companion default documented `taliesin`; extension defaults to the dead `qmd-fast` binary
-  (`troubleshooting.tmd:118`).
-- Internals execution chapter documents `qmd-*` output classes the runtime never emits (`execution.tmd`).
-
 ### Batch 3: Accessibility [small quick-wins first, then structural]
 - Cmd-K palette selected row + match marks use raw `--tali-accent`, fail WCAG AA every theme:
   swap to the existing `var(--tali-accent-fill)`/`--tali-on-accent` (`web-client/search.js`). **HIGH, trivial.**
@@ -238,7 +224,15 @@ Pick up opportunistically alongside whichever batch touches the same file. Inclu
 SIGABRT + lexical-only `safe_join` (`includes.rs`); diff-LIS unique-id `debug_assert!`; dead
 `ts`/`typescript`/`toml` highlight aliases; `percent_decode` slice-panic on a non-ASCII path; `app.pages`
 unbounded growth; `click_block` terminal-escape injection; qmd-js initial pass paints in DOM order not topo
-order; many citation-render edge cases; and the architecture / waste / stale-but-working-docs tail.
+order; many citation-render edge cases; and the architecture / waste / stale-but-working-docs tail. The
+last now specifically includes the **stale-but-working `qmd-*` docs references that still have runtime
+aliases** (the `qmd.*` cell API, `qmd-input`/`qmd-embed`/`qmd-video`/`qmd-fnref`/`qmd-main` classes,
+`window.qmdEnhancers`/`QmdDeck`): Batch 2 swept only the *functionally-broken, no-alias* drift (CSS vars,
+schema filenames, `#tali-root`, output classes, theme-default, launcher, image-alt, companion default);
+renaming the aliased references is a separate verify-each-alias pass, not a mechanical sweep. The live
+identifiers `qmd-goto`/`qmd-cursor` (postMessage), `qmd_token` (cookie), `qmd-theme` (localStorage key +
+`<style id>`), `qmd:themechange` (event), `qmdFast.*` (VS Code config), `qhl-*` (highlight scope) are
+**correct as-is** — do not "rename" them.
 
 ### Owner-gated: do NOT build without your ruling
 - **Add (gate: adopt, but confirm):** shareable/deep-linkable `{{< input >}}` state via the URL fragment

@@ -338,7 +338,7 @@ function onFS() {
   camera.updateProjectionMatrix();
   const cs = getComputedStyle(document.documentElement);
   box.style.background = fs
-    ? (cs.getPropertyValue("--qmd-bg").trim() || getComputedStyle(document.body).backgroundColor)
+    ? (cs.getPropertyValue("--tali-bg").trim() || getComputedStyle(document.body).backgroundColor)
     : "";
   fsBtn.textContent = fs ? "✕ Exit fullscreen" : "⛶ Fullscreen";
 }

@@ -13,12 +13,11 @@ taliesin builds from source with a Rust toolchain. From the repo:
 cargo build --release
 ```
 
-The binary is `target/release/taliesin`. The repo also ships a `~/.local/bin/Taliesin`
-launcher that rebuilds the release binary whenever the tool's sources change and
-then runs it, so once it's on your `PATH` you can just say `taliesin preview …`
-from any directory. Every command below works either way: substitute
-`cargo run -p taliesin-server --` for `taliesin` if you prefer not to install the
-launcher.
+The binary is `target/release/taliesin`. Put it on your `PATH` (a symlink, or a
+small wrapper script that rebuilds on source changes before running it) so you
+can just say `taliesin preview …` from any directory. Every command below works
+either way: substitute `cargo run -p taliesin-server --` for `taliesin` if you'd
+rather not install it on `PATH`.
 
 ## Set up a kernel (for code execution)
 
