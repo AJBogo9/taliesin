@@ -20,8 +20,9 @@ rewrite + roadmap Waves 0-4, the reader cluster, `check`/prose-lint + `{input}`/
 build, the reading-first redesign, deep-audit P1/P2, the Taliesin rename, the `.tmd` editor grammar, the
 legacy-format clean break (`.tmd`-only input, `deck`/`define()` the only spellings), the security-P3
 batch, the VS Code companion language features, F2a cross-page hover-preview, nested-theorem numbering,
-and the 2026-07-07 audit batches (1-4, the Batch 5 high-value half, 6, 7, and the Batch 8 robustness
-trio: watcher prune + live search index + reconnect state).
+the 2026-07-07 audit batches (1-4, the Batch 5 high-value half, 6, 7, and the Batch 8 robustness
+trio: watcher prune + live search index + reconnect state), and cross-reference backlinks (a quiet
+per-target "Referenced by" line — the reverse of forward xref; `site/backlinks.rs`).
 
 **Working method:** branch per feature; brainstorm if there's a fork; spec under
 `docs/superpowers/specs/`; implement TDD; verify (cargo + browser via chrome-devtools, or the
@@ -37,13 +38,6 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
 ## Priority queue
 
 ### Tier 1 — decided, build-ready (no blocker)
-- **Cross-reference backlinks (xref-anchor tier).** Decided 2026-07-07: build it. No reverse index
-  exists today — `site/xref.rs` `scan_xref_targets` (the render-free discovery scan, called at
-  `site/mod.rs:303`) builds only the forward anchor→target map. The cheap tier (fig/sec/tbl/eq/lst/thm
-  anchors) piggybacks that scan: also record anchor→referring-pages, surface a per-target "Referenced
-  by" affordance. ~a few dozen lines, works in preview + build. Citations stay out (the expensive tier —
-  needs a site-wide bibliography-merge decision first). Lightweight replacement for the discovery value
-  the (now-removed) xref graph tool provided.
 - Audit 2026-07-07 implementation queue also lives here — see
   **[the batched queue below](#audit-2026-07-07-implementation-queue-build-ready)**. Next up:
   the Batch 5 remainder, the Batch 8 consolidation, and Batch 9.
