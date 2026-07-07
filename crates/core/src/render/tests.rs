@@ -2695,6 +2695,81 @@ fn cmd_k_palette_uses_aa_accent_tokens_not_raw_accent() {
 }
 
 #[test]
+fn same_page_sec_ref_uses_hierarchical_number_in_a_chapter() {
+    // Batch 4: inside a book chapter, a SAME-PAGE `@sec-` must show the same
+    // hierarchical number its target heading visibly shows (e.g. "2.2"), not the
+    // flat sequential `sec_count` ("1") that contradicts it.
+    use std::path::Path;
+    let src =
+        "See @sec-y.\n\n## First\n\n## Second {#sec-y}\n\n### Deep {#sec-z}\n\nAlso @sec-z.\n";
+    let doc = render_document_with_includes_scoped(src, Path::new("."), Some(2));
+    let body = doc.body_html();
+    // `## Second` is the 2nd h2 of chapter 2 -> 2.2; `### Deep` is its first h3 -> 2.2.1.
+    assert!(
+        body.contains("class=\"tali-xref\">Section&nbsp;2.2</a>"),
+        "same-page @sec-y should be 2.2, got: {body}"
+    );
+    assert!(
+        body.contains("class=\"tali-xref\">Section&nbsp;2.2.1</a>"),
+        "same-page @sec-z should be 2.2.1, got: {body}"
+    );
+}
+
+#[test]
+fn explicit_slide_heading_id_becomes_the_section_anchor() {
+    // Batch 4: an explicit `{#sec-x}` on a slide heading was dropped — the slide got a
+    // text-slug id instead, so `@sec-x` linked to a missing anchor. The explicit id
+    // must become the `<section>` id so the cross-reference resolves.
+    let doc =
+        render_document("---\nformat: deck\n---\n\nSee @sec-two.\n\n## One\n\n## Two {#sec-two}\n");
+    let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
+    assert!(
+        slides.contains("<section id=\"sec-two\""),
+        "the explicit {{#sec-two}} must be the slide's section id, got: {slides}"
+    );
+    assert!(
+        !slides.contains("<section id=\"two\""),
+        "the text-slug id must not win over the explicit anchor"
+    );
+}
+
+#[test]
+fn heading_consumed_as_callout_title_keeps_its_anchor_id() {
+    // Batch 4: a `{#sec-x}` heading used as a callout title had its id stripped with
+    // its tags, so `@sec-x` resolved to a number but linked to a missing anchor. The
+    // id must survive on the callout title element.
+    let doc = render_document(
+        "See @sec-note.\n\n::: {.callout-note}\n## Important {#sec-note}\n\nBody.\n:::\n",
+    );
+    let body = doc.body_html();
+    assert!(
+        body.contains("class=\"callout-title\" id=\"sec-note\"")
+            || body.contains("id=\"sec-note\" class=\"callout-title\""),
+        "callout title must keep the consumed heading's #id, got: {body}"
+    );
+    // And the ref resolves (it was registered) — not a dangling data-qmd-xref marker.
+    assert!(
+        body.contains("class=\"tali-xref\">Section&nbsp;1</a>"),
+        "the @sec-note ref should resolve to Section 1, got: {body}"
+    );
+}
+
+#[test]
+fn same_page_sec_ref_stays_flat_without_a_chapter() {
+    // A chapterless doc (single doc / website page) keeps the flat sequential
+    // numbering — it has no hierarchical chapter to scope to.
+    use std::path::Path;
+    let src = "See @sec-a and @sec-b.\n\n## One {#sec-a}\n\n## Two {#sec-b}\n";
+    let doc = render_document_with_includes_scoped(src, Path::new("."), None);
+    let body = doc.body_html();
+    assert!(
+        body.contains("class=\"tali-xref\">Section&nbsp;1</a>")
+            && body.contains("class=\"tali-xref\">Section&nbsp;2</a>"),
+        "chapterless @sec- refs stay flat 1,2, got: {body}"
+    );
+}
+
+#[test]
 fn deck_defines_light_bg_text_override() {
     // Batch 3d: a light per-slide background needs a `.tali-light-bg` rule forcing
     // DARK text, or the deck's default (light) text is invisible on it. Pin both the

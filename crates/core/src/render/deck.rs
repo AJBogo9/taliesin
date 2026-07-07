@@ -292,10 +292,15 @@ fn split_slides(blocks: &[Block]) -> Vec<SlideBuf> {
             && level <= SLIDE_LEVEL
         {
             slides.extend(cur.take());
+            // An explicit `{#id}` on the heading (carried as `data-slide-anchor`) is the
+            // slide's anchor; otherwise slug the heading text. Both dedup through the same
+            // map so a repeat can't collide.
+            let base_id =
+                extract_attr(&b.html, "data-slide-anchor").unwrap_or_else(|| strip_tags(&b.html));
             cur = Some(SlideBuf {
                 level,
                 from_rule: false,
-                id: Some(dedup_slug(&strip_tags(&b.html), &mut id_counts)),
+                id: Some(dedup_slug(&base_id, &mut id_counts)),
                 blocks: vec![b.html.clone()],
             });
             continue;
@@ -407,7 +412,10 @@ fn add_fragment_class(html: &str) -> String {
 /// — they sit in the opening tag — returning (attrs for the `<section>`, lead block
 /// with them removed).
 fn take_bg_attrs(html: &str) -> (String, String) {
-    if !html.contains("data-background") && !html.contains("data-auto-animate") {
+    if !html.contains("data-background")
+        && !html.contains("data-auto-animate")
+        && !html.contains("data-slide-anchor")
+    {
         return (String::new(), html.to_string());
     }
     let gt = tag_end(html).unwrap_or(html.len());
@@ -416,13 +424,20 @@ fn take_bg_attrs(html: &str) -> (String, String) {
     let mut rest = String::new();
     let mut i = 0;
     while i < head.len() {
-        if (head[i..].starts_with(" data-background")
+        // `data-slide-anchor` is consumed by the slide model as the section id — drop it
+        // from the heading (don't hoist it as a stray attr); background/auto-animate hoist
+        // onto the `<section>`.
+        let is_anchor = head[i..].starts_with(" data-slide-anchor");
+        if (is_anchor
+            || head[i..].starts_with(" data-background")
             || head[i..].starts_with(" data-auto-animate"))
             && let Some(eq) = head[i..].find("=\"")
             && let Some(qend) = head[i + eq + 2..].find('"')
         {
             let end = i + eq + 2 + qend + 1;
-            attrs.push_str(&head[i..end]);
+            if !is_anchor {
+                attrs.push_str(&head[i..end]);
+            }
             i = end;
             continue;
         }

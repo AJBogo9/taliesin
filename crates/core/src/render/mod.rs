@@ -240,6 +240,10 @@ fn render_internal_impl(
     let mut eq_count: usize = 0;
     let mut lst_count: usize = 0;
     let mut sec_count: usize = 0;
+    // Hierarchical section counters (h2..h6) for a book chapter, advanced over EVERY
+    // heading in document order so a `{#sec-x}` registers the same number the heading
+    // visibly shows via `number_chapter_headings` (they share `section_number`).
+    let mut sec_counters = [0u32; 5];
     let mut xref_registry: HashMap<String, String> = HashMap::new();
 
     for node in root.children() {
@@ -381,14 +385,26 @@ fn render_internal_impl(
         // an explicit `#id` as the anchor (else a slug of the cleaned text), and
         // strip the attribute from the rendered heading below.
         let h_attr = heading_level.and_then(|_| parse_heading_attr(&block_src));
-        // A heading labelled `{#sec-x}` is numbered so `@sec-x` resolves to "Section N"
-        // (sequential over labelled headings; full hierarchical numbering is a
-        // separate `number-sections` feature).
+        // Advance the hierarchical section counters over EVERY heading (in a book
+        // chapter), so a labelled `{#sec-x}` registers the same number its heading
+        // will visibly show — even when earlier, unlabelled headings sit between them.
+        // Outside a chapter there is no hierarchy: keep the flat sequential counter.
+        let hierarchical_number = heading_level.and_then(|level| {
+            chapter.map(|ch| crate::site::section_number(ch, level as usize, &mut sec_counters))
+        });
+        // A heading labelled `{#sec-x}` is numbered so `@sec-x` resolves to "Section N":
+        // the chapter-hierarchical number ("2.2") in a book, else a flat sequential one.
         if let Some((_, Some(id))) = &h_attr
             && id.starts_with("sec-")
         {
-            sec_count += 1;
-            register_xref(&mut xref_registry, &mut warnings, id, sec_count.to_string());
+            let number = match &hierarchical_number {
+                Some(n) => n.clone(),
+                None => {
+                    sec_count += 1;
+                    sec_count.to_string()
+                }
+            };
+            register_xref(&mut xref_registry, &mut warnings, id, number);
         }
         let id_attr = match heading_level {
             Some(_) if format == DocFormat::Html => {
@@ -1217,6 +1233,12 @@ fn heading_section_attrs(block_src: &str) -> String {
     }
     let attrs = divs::parse_attrs(&line[open + 1..line.len() - 1]);
     let mut out = String::new();
+    // An explicit `{#id}` on a slide heading becomes the `<section>` anchor (the slide
+    // model reads `data-slide-anchor`), so `@sec-x` into a deck resolves instead of the
+    // text-slug id winning and leaving a dead link.
+    if let Some(id) = &attrs.id {
+        out.push_str(&format!(" data-slide-anchor=\"{}\"", escape_attr(id)));
+    }
     for (k, v) in &attrs.kv {
         if k.starts_with("background") {
             out.push_str(&format!(" data-{}=\"{}\"", k, escape_attr(v)));

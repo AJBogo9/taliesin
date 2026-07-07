@@ -58,8 +58,8 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
   site-wide bibliography-merge decision first). Lightweight replacement for the discovery value the
   (now-removed) xref graph tool provided.
 - Audit 2026-07-07 implementation queue also lives here — see
-  **[the batched queue below](#audit-2026-07-07-implementation-queue-build-ready)** (Batch 4 next;
-  Batches 1-3 landed 2026-07-07).
+  **[the batched queue below](#audit-2026-07-07-implementation-queue-build-ready)** (Batch 5 next;
+  Batches 1-4 landed 2026-07-07).
 
 ### Decided 2026-07-07 — each needs its own dedicated session
 - **Quarto design-decisions catalog triage, reframed.** Branch `quarto-decisions-catalog`, commit
@@ -150,14 +150,6 @@ Full per-item detail (repro + fix approach) and the ~80 low-severity long tail l
 > rules first. Already-tracked items (op-batching, kernel `/tmp` + `in_flight` leaks,
 > boot-diagnostic clobber, `app.pages` LRU, lazy search index, `fitSlide`, R ANSI leak,
 > Mermaid SRI) stay in **Tier 2** above; the audit only sharpened their exact paths in AUDITS.md.
-
-### Batch 4: Cross-reference numbering (one helper fixes 3-4 bugs) [medium]
-- Register the hierarchical `section_number` when a chapter is present (`render/mod.rs:390`). Collapses:
-  same-page book `@sec-` shows a flat number contradicting its heading; cross-page `@sec-` on a non-book
-  site mislabeled "Chapter N" (`site/xref.rs:215`); hover card drops the number (`site/mod.rs:759`).
-- Heading consumed as a callout title drops its `#id` while its `@sec-` number was registered, so the
-  ref resolves to a missing anchor (`divs.rs:395`).
-- Explicit `{#sec-x}` on a slide heading dropped, dead `@sec-` link (`deck.rs`).
 
 ### Batch 5: Silent-failure diagnostics channel (the audit's largest theme; cohesive) [medium]
 Extend the existing located-warning channel (math/front-matter already use it) to:

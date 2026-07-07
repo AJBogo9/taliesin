@@ -847,6 +847,13 @@ fn demo_book_hover_index_has_cross_page_snippets() {
         "missing sec-methods: {idx}"
     );
     assert!(idx.contains("\"sec-setup\":\""), "missing sec-setup: {idx}");
+    // Batch 4 (Bug 3): a hovered section heading in a numbered chapter carries its
+    // section number (only a numbered `<section>` heading emits `tali-section-number`),
+    // so the hover card matches the page it previews instead of dropping the number.
+    assert!(
+        idx.contains("tali-section-number"),
+        "hover section snippets must carry their chapter section number: {idx}"
+    );
     // `</script>` can't break the <script> wrapper the index is served inside.
     assert!(
         !idx.contains("</script"),

@@ -711,7 +711,12 @@ impl Site {
             let doc =
                 render::render_document_with_includes_scoped(&src, base, self.chapter_for(page));
             for (anchor, number) in doc.xref_numbers {
-                if !number.is_empty() {
+                // `sec-` numbers are the source-scan's job (chapter-hierarchical, and
+                // correctly ABSENT on a non-book website). Harvesting the render's flat
+                // per-page section counter here would fill an empty website target with
+                // a bare "1", which `rewrite_one_xref` then mislabels "Chapter 1". Only
+                // fig/eq/tbl/lst/thm need this render-time enrichment.
+                if !number.is_empty() && !anchor.starts_with("sec-") {
                     updates.push((anchor, number));
                 }
             }
@@ -755,8 +760,12 @@ impl Site {
                 continue;
             };
             let base = page.input.parent().unwrap_or(&self.root);
-            let doc =
+            let mut doc =
                 render::render_document_with_includes_scoped(&src, base, self.chapter_for(page));
+            // Apply the book's chapter/section numbering so a hovered section heading
+            // shows its number ("2.1"), matching the page it previews (the scoped render
+            // alone doesn't prefix heading numbers — that's number_chapter_headings).
+            self.number_chapter(page, &mut doc.blocks);
             for anchor in anchors {
                 if let Some(snippet) = hover::extract_snippet(&doc.blocks, anchor) {
                     let snippet = hover::rewrite_snippet_urls(&snippet, &page.url);
@@ -1253,6 +1262,43 @@ mod tests {
         let src = std::fs::read_to_string(&page.input).unwrap();
         let doc = crate::render::render_document_with_includes(&src, &site.root);
         site.render_page_doc_warned(page, doc)
+    }
+
+    #[test]
+    fn website_cross_page_sec_ref_is_not_labelled_chapter() {
+        // Batch 4 (Bug 2): a non-book website has no chapters, so a cross-page `@sec-`
+        // must resolve to a bare "Section" link — never "Chapter&nbsp;1" (which happened
+        // when harvest_xref_numbers filled the empty website target with the render's
+        // flat per-page section counter, and rewrite read that whole number as a chapter).
+        let root = write_site(
+            "webxref",
+            &[
+                ("_site.yml", "title: Site\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\n---\n\n# Home\n\nSee @sec-topic elsewhere.\n",
+                ),
+                (
+                    "other.tmd",
+                    "---\ntitle: Other\n---\n\n# Other\n\n## A topic {#sec-topic}\n\nHi.\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        assert!(
+            !site.is_book(),
+            "a navbar-only site is a website, not a book"
+        );
+        let (html, _) = render_page(&site, "index.tmd");
+        assert!(
+            html.contains("other.html#sec-topic"),
+            "cross-page @sec-topic should link to the other page: {html}"
+        );
+        assert!(
+            !html.contains("Chapter&nbsp;1") && !html.contains(">Chapter"),
+            "a website @sec- must not be mislabelled a Chapter: {html}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

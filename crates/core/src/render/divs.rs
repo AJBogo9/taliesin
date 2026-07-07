@@ -389,10 +389,22 @@ fn build_container(
             warnings.push(w);
         }
         // Callout: use a `title="..."` attr, else a leading heading, else the kind.
+        // When the title comes from a heading that carried a cross-reference anchor
+        // (`{#sec-x}`), preserve that id on the title element — else the anchor is
+        // stripped with the tags while `@sec-x` still resolves to a number, leaving a
+        // dead link. `id` on the title makes `#sec-x` scroll to the callout. Only
+        // xref-prefixed ids are hoisted (a plain autoslug title stays id-less, as before).
+        let mut title_id_attr = String::new();
         let title = match attrs.get("title") {
             Some(t) => html_escape(t),
             None if inner.first().is_some_and(|b| is_heading(&b.html)) => {
-                strip_tags(&inner.remove(0).html)
+                let heading = inner.remove(0).html;
+                if let Some(hid) =
+                    extract_attr(&heading, "id").filter(|id| crate::cite::is_xref_anchor(id))
+                {
+                    title_id_attr = format!(" id=\"{}\"", escape_attr(&hid));
+                }
+                strip_tags(&heading)
             }
             None => capitalize(kind),
         };
@@ -415,11 +427,11 @@ fn build_container(
             Some(v) => {
                 let open = if v == "false" { " open" } else { "" };
                 format!(
-                    "<div class=\"callout callout-{kind} callout-collapse{appearance}\"{data}><details{open}><summary class=\"callout-title\">{icon}{title}</summary><div class=\"callout-body\">{body}</div></details></div>"
+                    "<div class=\"callout callout-{kind} callout-collapse{appearance}\"{data}><details{open}><summary class=\"callout-title\"{title_id_attr}>{icon}{title}</summary><div class=\"callout-body\">{body}</div></details></div>"
                 )
             }
             None => format!(
-                "<div class=\"callout callout-{kind}{appearance}\"{data}><div class=\"callout-title\">{icon}{title}</div><div class=\"callout-body\">{body}</div></div>"
+                "<div class=\"callout callout-{kind}{appearance}\"{data}><div class=\"callout-title\"{title_id_attr}>{icon}{title}</div><div class=\"callout-body\">{body}</div></div>"
             ),
         }
     } else if let Some(ncol) = attrs.get("layout-ncol").and_then(|n| n.parse::<u32>().ok()) {
