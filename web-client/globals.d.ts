@@ -13,6 +13,9 @@ interface Window {
   /** The render generation the SSR body was built at; compared to the first
    *  `full_render`'s `gen` to detect an SSR body a rebuild made stale. */
   TALIESIN_SSR_GEN?: number;
+  /** The server's per-process boot id; a mismatch on a reconnect (restarted server,
+   *  whose `gen` counter reset) forces a re-mount instead of a stale-body skip. */
+  TALIESIN_BOOT?: number;
   /** Document format flag (`"deck"` switches the client into deck mode). */
   TALIESIN_FORMAT?: string;
   /** Per-page websocket path for the multi-page site server. */

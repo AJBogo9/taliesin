@@ -90,10 +90,31 @@ pub fn full_render(
         "type": "full_render",
         "title": title,
         "gen": generation,
+        "boot": boot_id(),
         "body_html": body_html,
         "diagnostics": diags_array(diags),
     })
     .to_string()
+}
+
+/// A per-process boot id (nanoseconds at first call, mixed with the pid), stamped into
+/// the SSR page (`window.TALIESIN_BOOT`) and every `full_render`. The client uses it to
+/// tell a same-process reconnect (safe to skip the re-mount when the gen also matches)
+/// from a reconnect to a RESTARTED server: `generation` is process-local (`DocState`/
+/// `PageDoc` reset it to 0 on start), so after a `taliesin preview` restart the reset
+/// counter can re-hit a value a long-lived tab already mounted, and a bare gen match
+/// would wrongly suppress the re-mount and leave the preview showing stale source. A
+/// changed boot id always forces a fresh mount, so a restart can never show stale content.
+pub fn boot_id() -> u64 {
+    use std::sync::OnceLock;
+    static BOOT: OnceLock<u64> = OnceLock::new();
+    *BOOT.get_or_init(|| {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(0);
+        nanos ^ ((std::process::id() as u64) << 40)
+    })
 }
 
 /// Standalone diagnostics update: the document is unchanged, only the issue list
@@ -155,23 +176,29 @@ pub fn cell_state(
 /// A single incremental block op. `rewrite_html` is applied to the block HTML of
 /// `Update`/`Insert` before it goes over the wire: identity for the single-doc
 /// server, and `.tmd`→`.html` link rewriting for the site server.
-pub fn op(op: &BlockOp, rewrite_html: impl Fn(&str) -> String) -> String {
+///
+/// Every op carries `generation` (wire key `gen`): the render generation the document
+/// reaches AFTER this op's burst is applied (all ops in one rebuild share it). The
+/// client tracks it so a websocket reconnect on a byte-identical doc (gen unchanged)
+/// can skip the wholesale re-mount that would otherwise destroy live block state
+/// (WebGL/`{js}` widgets, playing video, open `<details>`). See [`full_render`].
+pub fn op(op: &BlockOp, generation: u64, rewrite_html: impl Fn(&str) -> String) -> String {
     match op {
         BlockOp::Update { target_id, html } => serde_json::json!({
-            "type": "update", "target_id": target_id, "html": rewrite_html(html)
+            "type": "update", "gen": generation, "target_id": target_id, "html": rewrite_html(html)
         }),
         BlockOp::Insert { after_id, html } => serde_json::json!({
-            "type": "insert", "after_id": after_id, "html": rewrite_html(html)
+            "type": "insert", "gen": generation, "after_id": after_id, "html": rewrite_html(html)
         }),
         BlockOp::Remove { target_id } => {
-            serde_json::json!({ "type": "remove", "target_id": target_id })
+            serde_json::json!({ "type": "remove", "gen": generation, "target_id": target_id })
         }
         BlockOp::SetMeta {
             target_id,
             sourcepos,
             source_file,
         } => serde_json::json!({
-            "type": "set_meta", "target_id": target_id,
+            "type": "set_meta", "gen": generation, "target_id": target_id,
             "sourcepos": sourcepos, "source_file": source_file
         }),
     }

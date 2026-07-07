@@ -139,9 +139,14 @@ pub struct Site {
     /// caller (build logs / preview diagnostics).
     pub warnings: Vec<String>,
     /// Inlinable JSON of every page's title + anchored headings, so the Cmd-K
-    /// palette searches the whole project (`window.TALIESIN_SEARCH_INDEX`). Built once
-    /// at discovery.
+    /// palette searches the whole project (`window.TALIESIN_SEARCH_INDEX`). Assembled
+    /// from `search_sections`; the dev server refreshes it per-edited-page via
+    /// [`Site::refresh_search_for_page`] so live-preview search doesn't go stale.
     pub search_index_json: String,
+    /// The per-page fragments `search_index_json` is assembled from — `(page rel, that
+    /// page's JSON entries)` in page order — kept so an edited page's entries can be
+    /// re-extracted without re-rendering the whole site.
+    search_sections: Vec<(String, String)>,
     /// Inlinable JSON of every cross-reference anchor → the rendered HTML of the block
     /// that defines it, so hovering a CROSS-PAGE `.tali-xref` previews its target
     /// (`window.TALIESIN_HOVER_INDEX`). Built once at discovery; served as
@@ -152,6 +157,14 @@ pub struct Site {
     /// These aren't pages/chapters; the build renders each to its own `.html` and
     /// the preview serves them live so the embedding iframes resolve.
     pub decks: Vec<DeckRef>,
+}
+
+/// Compute a page's Cmd-K search fragment (its JSON entries, or `None` when the page is
+/// excluded from search or unreadable) — renders the page's markdown once, no code
+/// execution. A free function so the dev server can render it OFF the site lock (and
+/// under a panic guard) before installing it via [`Site::install_search_fragment`].
+pub fn page_search_fragment(page: &Page) -> Option<String> {
+    search::page_fragment(page)
 }
 
 mod book;
@@ -288,7 +301,8 @@ impl Site {
         );
 
         let xref_targets = scan_xref_targets(&pages, &book, &mut warnings);
-        let search_index_json = search::build_index_json(&pages);
+        let search_sections = search::build_sections(&pages);
+        let search_index_json = search::assemble(&search_sections);
 
         let mut site = Site {
             root: root.to_path_buf(),
@@ -299,6 +313,7 @@ impl Site {
             includes,
             warnings,
             search_index_json,
+            search_sections,
             hover_index_json: String::new(),
             decks,
         };
@@ -351,6 +366,47 @@ impl Site {
         self.pages
             .iter()
             .find(|p| p.rel == needle || p.url == needle)
+    }
+
+    /// Re-extract the Cmd-K search entries for the given page (accepts its `rel` or
+    /// `url`, like [`Site::page`]) and reassemble the index, so a content edit in the
+    /// live preview doesn't leave stale headings/prose in search (the static build
+    /// always builds the index fresh). A no-op for an unknown page.
+    ///
+    /// This renders the page inline (holding whatever lock the caller holds). The dev
+    /// server's hot path renders OFF the site lock and under a panic guard via
+    /// [`page_search_fragment`] + [`Site::install_search_fragment`] instead; this
+    /// convenience wrapper is for callers (tests) where that doesn't matter.
+    pub fn refresh_search_for_page(&mut self, rel_or_url: &str) {
+        let Some((rel, fragment)) = self
+            .page(rel_or_url)
+            .map(|page| (page.rel.clone(), search::page_fragment(page)))
+        else {
+            return;
+        };
+        self.install_search_fragment(&rel, fragment);
+    }
+
+    /// Install a freshly-computed search fragment for page `rel` (from
+    /// [`page_search_fragment`]) and reassemble the index. Split from the render so the
+    /// dev server can render the fragment off the site lock. A no-op for an unknown page
+    /// that has no content to add.
+    pub fn install_search_fragment(&mut self, rel: &str, fragment: Option<String>) {
+        match self.search_sections.iter().position(|(r, _)| r == rel) {
+            // Already indexed: replace its fragment, or drop it if the page now yields none.
+            Some(pos) => match fragment {
+                Some(frag) => self.search_sections[pos].1 = frag,
+                None => {
+                    self.search_sections.remove(pos);
+                }
+            },
+            // Not previously indexed but now has content: recompute so page order holds.
+            None if fragment.is_some() => {
+                self.search_sections = search::build_sections(&self.pages);
+            }
+            None => return,
+        }
+        self.search_index_json = search::assemble(&self.search_sections);
     }
 
     /// Build the chrome (navbar, footer, post-nav) for a page, with links
@@ -1369,6 +1425,54 @@ mod tests {
 
         let _ = fs::remove_dir_all(&root);
         let _ = fs::remove_dir_all(&bare);
+    }
+
+    #[test]
+    fn refresh_search_reflects_a_page_edit() {
+        use std::fs;
+        // A content edit in the live preview must not leave Cmd-K search frozen at the
+        // page's load-time headings: after `refresh_search_for_page`, the index carries
+        // the new heading and drops the old one.
+        let root = write_site(
+            "search-refresh",
+            &[
+                ("_site.yml", "title: Demo\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\n---\n\n# Original Heading\n\nHi.\n",
+                ),
+            ],
+        );
+        let mut site = Site::discover(&root);
+        assert!(
+            site.search_index_json.contains("Original Heading"),
+            "the original heading is indexed at discovery: {}",
+            site.search_index_json
+        );
+
+        fs::write(
+            root.join("index.tmd"),
+            "---\ntitle: Home\n---\n\n# Brand New Heading\n\nHi.\n",
+        )
+        .unwrap();
+        // Resolve by url form too (exercises the rel-or-url lookup).
+        site.refresh_search_for_page("index.html");
+        assert!(
+            site.search_index_json.contains("Brand New Heading"),
+            "the edited heading is now indexed: {}",
+            site.search_index_json
+        );
+        assert!(
+            !site.search_index_json.contains("Original Heading"),
+            "the stale heading is gone: {}",
+            site.search_index_json
+        );
+        // An unknown page is a harmless no-op (doesn't panic or corrupt the index).
+        let before = site.search_index_json.clone();
+        site.refresh_search_for_page("does-not-exist");
+        assert_eq!(before, site.search_index_json);
+
+        let _ = fs::remove_dir_all(&root);
     }
 
     /// Write a throwaway site fixture (relative path → body) and return its root.

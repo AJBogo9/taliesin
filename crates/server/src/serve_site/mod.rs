@@ -562,8 +562,9 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
     // dev-menu mount. The websocket client drives everything after first paint.
     let body = format!("{layout}\n<div id=\"tali-controls\"></div>");
     let extra_head = format!("<style>{STATUS_CSS}</style>\n");
+    let boot = protocol::boot_id();
     let scripts_pre = format!(
-        "<script>{doc_global} {toc_flag} {search_cfg} window.TALIESIN_SSR = true; window.TALIESIN_SSR_GEN = {generation}; window.TALIESIN_WS_PATH = \"{ws_path}\";</script>"
+        "<script>{doc_global} {toc_flag} {search_cfg} window.TALIESIN_SSR = true; window.TALIESIN_SSR_GEN = {generation}; window.TALIESIN_BOOT = {boot}; window.TALIESIN_WS_PATH = \"{ws_path}\";</script>"
     );
     // The cross-page TOC scrollspy + Cmd-K search, then the websocket client.
     let scripts_post = format!(
@@ -722,8 +723,8 @@ fn full_render_json(d: &PageDoc) -> String {
 
 /// Like the single-doc server's `op_json`, but rewrites any author `.tmd` links
 /// in the block HTML to their `.html` targets before it goes over the wire.
-fn op_json(op: &BlockOp) -> String {
-    protocol::op(op, taliesin_core::site::rewrite_qmd_links)
+fn op_json(op: &BlockOp, generation: u64) -> String {
+    protocol::op(op, generation, taliesin_core::site::rewrite_qmd_links)
 }
 
 // --- build worker -------------------------------------------------------
@@ -862,7 +863,7 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
         let _ = ps.tx.send(full_render_json(&ps.doc));
     } else {
         for op in &ops {
-            let _ = ps.tx.send(op_json(op));
+            let _ = ps.tx.send(op_json(op, ps.doc.generation));
         }
     }
     // A theme/`.css` edit: hot-swap the theme style in place (no reload). Sent AFTER the
@@ -931,32 +932,15 @@ fn spawn_watcher(app: Arc<SiteApp>) {
     let root = app.root.clone();
 
     std::thread::spawn(move || {
+        // Pump events through a channel so this thread owns the watcher and can register
+        // watches for subdirectories created after startup — the recursive-watch model
+        // added an inotify descriptor per directory including `node_modules`/`.git`,
+        // which a large project uses to exhaust `max_user_watches` and kill hot reload.
+        let (ev_tx, ev_rx) = std::sync::mpsc::channel::<notify::Event>();
         let mut watcher =
             match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-                if let Ok(ev) = res
-                    && matches!(
-                        ev.kind,
-                        notify::EventKind::Modify(_)
-                            | notify::EventKind::Create(_)
-                            | notify::EventKind::Remove(_)
-                    )
-                {
-                    // A created/removed file may change the page set (vs. an in-place
-                    // edit, which only rebuilds the page).
-                    let structural = matches!(
-                        ev.kind,
-                        notify::EventKind::Create(_) | notify::EventKind::Remove(_)
-                    );
-                    for p in ev.paths {
-                        // Ignore generated/VCS noise (esp. the executor's own
-                        // `_freeze/` writes, which would otherwise rebuild every run).
-                        if crate::serve::relevant_path(&p) {
-                            let _ = sig_tx.send(Change {
-                                path: p,
-                                structural,
-                            });
-                        }
-                    }
+                if let Ok(ev) = res {
+                    let _ = ev_tx.send(ev);
                 }
             }) {
                 Ok(w) => w,
@@ -965,10 +949,60 @@ fn spawn_watcher(app: Arc<SiteApp>) {
                     return;
                 }
             };
-        if let Err(e) = watcher.watch(&root, notify::RecursiveMode::Recursive) {
-            crate::log::warn(&format!("cannot watch {}: {e}", root.display()));
+        // A non-recursive watch on every directory except the pruned generated/VCS trees.
+        for dir in crate::serve::watch_tree(&root) {
+            if let Err(e) = watcher.watch(&dir, notify::RecursiveMode::NonRecursive) {
+                crate::log::warn(&format!("cannot watch {}: {e}", dir.display()));
+            }
         }
-        std::thread::park();
+        for ev in ev_rx {
+            if !matches!(
+                ev.kind,
+                notify::EventKind::Modify(_)
+                    | notify::EventKind::Create(_)
+                    | notify::EventKind::Remove(_)
+            ) {
+                continue;
+            }
+            // A created/removed file may change the page set (vs. an in-place edit, which
+            // only rebuilds the page).
+            let structural = matches!(
+                ev.kind,
+                notify::EventKind::Create(_) | notify::EventKind::Remove(_)
+            );
+            for p in &ev.paths {
+                // A newly-created in-tree subdirectory needs its own non-recursive watch.
+                if matches!(ev.kind, notify::EventKind::Create(_)) {
+                    let is_dir = std::fs::symlink_metadata(p)
+                        .map(|m| m.is_dir())
+                        .unwrap_or(false);
+                    if is_dir && p.starts_with(&root) && !crate::serve::is_pruned_dir(p) {
+                        for d in crate::serve::watch_tree(p) {
+                            let _ = watcher.watch(&d, notify::RecursiveMode::NonRecursive);
+                        }
+                        // Files that already existed inside the new dir were created before
+                        // its watch existed, so their events were missed. Replay them as
+                        // structural changes (a new `.tmd` may add a page) — a `git checkout`
+                        // or a new-folder-with-pages otherwise wouldn't appear until an
+                        // unrelated save.
+                        for f in crate::serve::subtree_relevant_files(p) {
+                            let _ = sig_tx.send(Change {
+                                path: f,
+                                structural: true,
+                            });
+                        }
+                    }
+                }
+                // Ignore generated/VCS noise (esp. the executor's own `_freeze/` writes,
+                // which would otherwise rebuild every run).
+                if crate::serve::relevant_path(p) {
+                    let _ = sig_tx.send(Change {
+                        path: p.clone(),
+                        structural,
+                    });
+                }
+            }
+        }
     });
 
     tokio::spawn(async move {
@@ -1034,26 +1068,49 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
 
     // Rebuild only pages that are open (have live state) and depend on a change.
     let open: Vec<String> = app.pages.lock().keys().cloned().collect();
-    let site = app.site.lock();
-    for rel in open {
-        let Some(page) = site.page(&rel) else {
-            continue;
-        };
-        let mut deps: HashSet<PathBuf> = HashSet::new();
-        deps.insert(
-            page.input
-                .canonicalize()
-                .unwrap_or_else(|_| page.input.clone()),
-        );
-        if let Ok(src) = std::fs::read_to_string(&page.input) {
-            let base = page.input.parent().unwrap_or(Path::new("."));
-            for dep in taliesin_core::includes::dependencies(&src, base) {
-                deps.insert(dep.canonicalize().unwrap_or(dep));
-            }
+    let to_rebuild: Vec<String> = {
+        let site = app.site.lock();
+        open.into_iter()
+            .filter(|rel| {
+                let Some(page) = site.page(rel) else {
+                    return false;
+                };
+                let mut deps: HashSet<PathBuf> = HashSet::new();
+                deps.insert(
+                    page.input
+                        .canonicalize()
+                        .unwrap_or_else(|_| page.input.clone()),
+                );
+                if let Ok(src) = std::fs::read_to_string(&page.input) {
+                    let base = page.input.parent().unwrap_or(Path::new("."));
+                    for dep in taliesin_core::includes::dependencies(&src, base) {
+                        deps.insert(dep.canonicalize().unwrap_or(dep));
+                    }
+                }
+                deps.intersection(&changed_canon).next().is_some()
+            })
+            .collect()
+    };
+    // Refresh the cross-page Cmd-K index for each rebuilt page, so a re-fetch of
+    // `/search-index.js` (the client re-fetches on each palette open in preview) reflects
+    // the edit's new headings/prose instead of staying frozen at discovery. Per-page so a
+    // big book re-renders one page, not the whole site. The fragment is rendered OFF the
+    // site lock and under a panic guard: this runs on the unguarded dispatch task (unlike
+    // `build_page`, which has its own guard), and a full render under the lock would stall
+    // every other site-lock reader (page serving, `/search-index.js`) on each save.
+    for rel in &to_rebuild {
+        let page = { app.site.lock().page(rel).cloned() };
+        let Some(page) = page else { continue };
+        let computed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            taliesin_core::site::page_search_fragment(&page)
+        }));
+        // A render panic keeps the last-good fragment (don't wipe the page from search).
+        if let Ok(fragment) = computed {
+            app.site.lock().install_search_fragment(&page.rel, fragment);
         }
-        if deps.intersection(&changed_canon).next().is_some() {
-            let _ = app.build_tx.send(BuildMsg::Build(rel));
-        }
+    }
+    for rel in to_rebuild {
+        let _ = app.build_tx.send(BuildMsg::Build(rel));
     }
 }
 
@@ -1089,35 +1146,52 @@ mod protocol_contract {
 
     #[test]
     fn op_messages_match_client_contract() {
-        let up = parse(op_json(&BlockOp::Update {
-            target_id: "b1".into(),
-            html: "<p>x</p>".into(),
-        }));
+        let up = parse(op_json(
+            &BlockOp::Update {
+                target_id: "b1".into(),
+                html: "<p>x</p>".into(),
+            },
+            7,
+        ));
         assert_eq!(up["type"], "update");
         assert_eq!(up["target_id"], "b1");
         assert!(up.get("html").is_some());
+        // Every op carries the resulting render generation so the client can track it
+        // and skip a destructive re-mount on a byte-identical reconnect.
+        assert_eq!(up["gen"], 7);
 
-        let ins = parse(op_json(&BlockOp::Insert {
-            after_id: Some("b1".into()),
-            html: "<p>y</p>".into(),
-        }));
+        let ins = parse(op_json(
+            &BlockOp::Insert {
+                after_id: Some("b1".into()),
+                html: "<p>y</p>".into(),
+            },
+            7,
+        ));
         assert_eq!(ins["type"], "insert");
         assert!(ins.get("after_id").is_some());
         assert!(ins.get("html").is_some());
+        assert_eq!(ins["gen"], 7);
 
-        let rm = parse(op_json(&BlockOp::Remove {
-            target_id: "b2".into(),
-        }));
+        let rm = parse(op_json(
+            &BlockOp::Remove {
+                target_id: "b2".into(),
+            },
+            7,
+        ));
         assert_eq!(rm["type"], "remove");
         assert_eq!(rm["target_id"], "b2");
+        assert_eq!(rm["gen"], 7);
     }
 
     #[test]
     fn op_json_rewrites_qmd_links_in_block_html() {
-        let up = parse(op_json(&BlockOp::Update {
-            target_id: "b1".into(),
-            html: "<a href=\"blog.tmd\">b</a>".into(),
-        }));
+        let up = parse(op_json(
+            &BlockOp::Update {
+                target_id: "b1".into(),
+                html: "<a href=\"blog.tmd\">b</a>".into(),
+            },
+            1,
+        ));
         assert_eq!(up["html"], "<a href=\"blog.html\">b</a>");
     }
 
@@ -1132,7 +1206,7 @@ mod protocol_contract {
         let ops = diff_blocks(&v1.blocks, &v2.blocks);
         assert_eq!(ops.len(), 1, "one paragraph edit -> one op: {ops:?}");
 
-        let msg = parse(op_json(&ops[0]));
+        let msg = parse(op_json(&ops[0], 1));
         assert_eq!(msg["type"], "update");
         assert_eq!(
             msg["target_id"].as_str().unwrap(),
@@ -1154,6 +1228,10 @@ mod protocol_contract {
         assert!(fr.get("title").is_some()); // present (null allowed)
         assert!(fr.get("body_html").is_some());
         assert!(fr["gen"].is_u64(), "full_render must carry a numeric gen");
+        assert!(
+            fr["boot"].is_u64(),
+            "full_render must carry a numeric boot id"
+        );
         assert!(fr["diagnostics"].is_array());
 
         let dg = parse(protocol::diagnostics(&[Diagnostic::warn("x")]));

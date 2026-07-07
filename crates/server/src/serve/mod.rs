@@ -592,8 +592,9 @@ fn blog_index_html(ctx: &PageCtx) -> String {
     );
     let extra_head = format!("<style>{STATUS_CSS}</style>\n");
     let scripts_pre = format!(
-        "<script>{doc_global} {toc_flag} window.TALIESIN_SSR = true; window.TALIESIN_SSR_GEN = {};</script>",
-        ctx.generation
+        "<script>{doc_global} {toc_flag} window.TALIESIN_SSR = true; window.TALIESIN_SSR_GEN = {}; window.TALIESIN_BOOT = {};</script>",
+        ctx.generation,
+        protocol::boot_id()
     );
     // With a TOC, load the shared scrollspy (toc-spy.js) ahead of the client so
     // `window.taliInitTocSpy` is defined when client.js rebuilds the nav and calls it
@@ -651,12 +652,13 @@ fn deck_index_html(ctx: &PageCtx) -> String {
     // the websocket client last.
     let tail = format!(
         "{deck_script}\n{code_scripts}\n\
-         <script>{doc_global} window.TALIESIN_FORMAT = \"deck\"; window.TALIESIN_SSR = true; window.TALIESIN_SSR_GEN = {generation};</script>\n\
+         <script>{doc_global} window.TALIESIN_FORMAT = \"deck\"; window.TALIESIN_SSR = true; window.TALIESIN_SSR_GEN = {generation}; window.TALIESIN_BOOT = {boot};</script>\n\
          {include_after_body}\n<script>\n{CLIENT_JS}\n</script>\n",
         deck_script = taliesin_core::deck_client_script(),
         code_scripts = taliesin_core::code_scripts(),
         include_after_body = ctx.includes.after_body,
         generation = ctx.generation,
+        boot = protocol::boot_id(),
     );
     taliesin_core::assemble_deck_page(&taliesin_core::DeckParts {
         title: "taliesin",
@@ -841,8 +843,8 @@ pub(crate) fn code_frame(src: &str, line: u32) -> String {
     out
 }
 
-fn op_json(op: &BlockOp) -> String {
-    protocol::op(op, |html| html.to_string())
+fn op_json(op: &BlockOp, generation: u64) -> String {
+    protocol::op(op, generation, |html| html.to_string())
 }
 
 // --- file watching ------------------------------------------------------
@@ -850,21 +852,19 @@ fn op_json(op: &BlockOp) -> String {
 fn spawn_watcher(app: Arc<AppState>, mut signal_rx: mpsc::UnboundedReceiver<()>) {
     let signal_tx = app.kick.clone();
     let dirs = watch_dirs(&app);
+    let base = app.base_dir.clone();
 
-    // notify is synchronous; run it on its own thread and forward events.
+    // notify is synchronous; run it on its own thread. Events are pumped through a
+    // channel so this thread OWNS the watcher and can register new watches on the fly
+    // (a subdirectory created after startup) — the recursive-watch model registered an
+    // inotify descriptor for every directory including `node_modules`/`.git`, which a
+    // large project uses to exhaust `max_user_watches` and silently kill hot reload.
     std::thread::spawn(move || {
+        let (ev_tx, ev_rx) = std::sync::mpsc::channel::<notify::Event>();
         let mut watcher =
             match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
-                if let Ok(ev) = res
-                    && matches!(
-                        ev.kind,
-                        notify::EventKind::Modify(_)
-                            | notify::EventKind::Create(_)
-                            | notify::EventKind::Remove(_)
-                    )
-                    && relevant_event(&ev)
-                {
-                    let _ = signal_tx.send(());
+                if let Ok(ev) = res {
+                    let _ = ev_tx.send(ev);
                 }
             }) {
                 Ok(w) => w,
@@ -873,12 +873,48 @@ fn spawn_watcher(app: Arc<AppState>, mut signal_rx: mpsc::UnboundedReceiver<()>)
                     return;
                 }
             };
+        // Register a NON-recursive watch on each pruned directory; each reports
+        // create/modify/remove for its own direct children.
         for dir in &dirs {
-            if let Err(e) = watcher.watch(dir, notify::RecursiveMode::Recursive) {
+            if let Err(e) = watcher.watch(dir, notify::RecursiveMode::NonRecursive) {
                 crate::log::warn(&format!("cannot watch {}: {e}", dir.display()));
             }
         }
-        std::thread::park(); // keep the watcher alive
+        // Blocking on the channel keeps both the watcher and this thread alive.
+        for ev in ev_rx {
+            if !matches!(
+                ev.kind,
+                notify::EventKind::Modify(_)
+                    | notify::EventKind::Create(_)
+                    | notify::EventKind::Remove(_)
+            ) {
+                continue;
+            }
+            // A newly-created in-tree subdirectory (and any non-pruned dirs it arrived
+            // with) needs its own non-recursive watch, since the base-dir walk that
+            // seeded the watch set ran once at startup.
+            if matches!(ev.kind, notify::EventKind::Create(_)) {
+                for p in &ev.paths {
+                    let is_dir = std::fs::symlink_metadata(p)
+                        .map(|m| m.is_dir())
+                        .unwrap_or(false);
+                    if is_dir && p.starts_with(&base) && !is_pruned_dir(p) {
+                        for d in watch_tree(p) {
+                            let _ = watcher.watch(&d, notify::RecursiveMode::NonRecursive);
+                        }
+                        // Files that already existed inside the new dir were created before
+                        // its watch existed, so their events were missed — kick a rebuild if
+                        // any is relevant (a new in-tree include folder, a `git checkout`).
+                        if !subtree_relevant_files(p).is_empty() {
+                            let _ = signal_tx.send(());
+                        }
+                    }
+                }
+            }
+            if relevant_event(&ev) {
+                let _ = signal_tx.send(());
+            }
+        }
     });
 
     // Debounce bursts of save events, then re-render, execute, and broadcast a diff.
@@ -926,6 +962,12 @@ fn spawn_watcher(app: Arc<AppState>, mut signal_rx: mpsc::UnboundedReceiver<()>)
     });
 }
 
+/// Generated/VCS directory names pruned from both the watch set (so notify never
+/// registers an inotify descriptor inside them — a big `node_modules`/`.git` would
+/// otherwise blow past `max_user_watches`) and the event filter. `_freeze` is skipped
+/// so the executor's own cache writes don't kick a redundant rebuild on every run.
+const SKIP_DIRS: &[&str] = &["_site", "_book", "_freeze", ".git", "node_modules"];
+
 /// Whether a file-watch event touches something a re-render actually depends on:
 /// a source/content/asset file, and not a build-output or VCS directory. Filters
 /// out the noise (editor swap files, `_site/`/`_book/` output, `.git`)
@@ -935,14 +977,12 @@ fn relevant_event(ev: &notify::Event) -> bool {
 }
 
 /// Whether a changed path should trigger a rebuild: a known source/asset extension,
-/// not under a generated/VCS directory. `_freeze` is skipped so the executor's own
-/// cache writes don't kick a redundant rebuild on every run.
+/// not under a generated/VCS directory.
 pub(crate) fn relevant_path(p: &Path) -> bool {
     const EXTS: &[&str] = &[
         "tmd", "md", "bib", "csl", "css", "scss", "yml", "yaml", "json", "js", "html", "svg",
         "png", "jpg", "jpeg", "webp", "gif",
     ];
-    const SKIP_DIRS: &[&str] = &["_site", "_book", "_freeze", ".git", "node_modules"];
     let ext_ok = p
         .extension()
         .and_then(|e| e.to_str())
@@ -955,20 +995,78 @@ pub(crate) fn relevant_path(p: &Path) -> bool {
     ext_ok && !in_skip_dir
 }
 
-/// Directories to watch: the project base dir (recursively — the site server's model),
-/// which covers every in-tree include, including ones added after startup. An include that
+/// Whether a directory should be pruned from the watch set by its own name — a
+/// generated/VCS tree we never register an inotify watch inside.
+pub(crate) fn is_pruned_dir(dir: &Path) -> bool {
+    dir.file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| SKIP_DIRS.contains(&n))
+}
+
+/// Every directory under `base` (inclusive) that we register a non-recursive watch on,
+/// pruning generated/VCS subtrees (`node_modules`, `.git`, `_site`, `_book`, `_freeze`)
+/// whole. notify's `Recursive` mode walks the *entire* tree and adds one inotify watch
+/// descriptor per directory — a big `node_modules` alone can exhaust `max_user_watches`
+/// and silently kill hot reload — so we enumerate only the directories a rebuild can
+/// actually depend on and watch each non-recursively (which reports create/modify/remove
+/// for its direct children, the same coverage recursive mode builds internally).
+/// Symlinked directories are not followed, avoiding watch loops.
+pub(crate) fn watch_tree(base: &Path) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
+    let mut stack = vec![base.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        dirs.push(dir.clone());
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            // `file_type()` uses the readdir/lstat type, so a symlink reads as a symlink
+            // (not a dir) and is skipped — we descend only into real directories.
+            let is_real_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+            if is_real_dir && !is_pruned_dir(&path) {
+                stack.push(path);
+            }
+        }
+    }
+    dirs
+}
+
+/// The rebuild-relevant files directly inside a directory subtree (pruned like the watch
+/// set). Used to backfill the watcher when a NEW directory appears with files already
+/// inside it: those files were created before the directory's watch was registered, so
+/// their create events were missed (notify's recursive mode used to emit them
+/// automatically). The caller signals a rebuild if this is non-empty.
+pub(crate) fn subtree_relevant_files(root: &Path) -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for dir in watch_tree(root) {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if entry.file_type().map(|t| t.is_file()).unwrap_or(false) && relevant_path(&path) {
+                out.push(path);
+            }
+        }
+    }
+    out
+}
+
+/// Directories to watch (non-recursively, one inotify descriptor each): every directory
+/// under the project base dir except the pruned generated/VCS trees, so a large
+/// `node_modules`/`.git` can't exhaust the watch budget. A NEW in-tree subdirectory
+/// created after startup is picked up dynamically in [`spawn_watcher`]. An include that
 /// resolves OUTSIDE the base dir (a sibling file up the tree) can't be covered by the
-/// recursive base-dir watch and the watch set is fixed at startup, so we still register its
-/// dir (so an out-of-tree include present now keeps refreshing) but warn once that an
-/// out-of-tree sibling needs a manual reload — `relevant_path` still filters every event.
+/// base-dir walk and the watch set is fixed at startup, so we still register its dir
+/// (so an out-of-tree include present now keeps refreshing) but warn once that an
+/// out-of-tree sibling added later needs a manual reload — `relevant_path` still filters
+/// every event.
 fn watch_dirs(app: &AppState) -> Vec<PathBuf> {
-    let mut dirs: HashSet<PathBuf> = HashSet::new();
-    // Recursive watch of the base dir is the primary mechanism: it covers any in-tree
-    // include without enumerating each one, so a NEW in-tree include is picked up too.
-    dirs.insert(app.base_dir.clone());
+    let mut dirs: HashSet<PathBuf> = watch_tree(&app.base_dir).into_iter().collect();
     if let Ok(src) = std::fs::read_to_string(&app.path) {
         for dep in taliesin_core::includes::dependencies(&src, &app.base_dir) {
-            // In-tree includes are already covered by the recursive base-dir watch.
+            // In-tree includes are already covered by the base-dir walk.
             if dep.starts_with(&app.base_dir) {
                 continue;
             }
@@ -1057,11 +1155,15 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         d.theme_is_custom = doc.theme_is_custom;
         d.includes = doc.includes;
         d.warnings = doc.warnings;
-        // Bump the render generation only when the body actually changed (non-empty
-        // diff), so a no-op rebuild leaves a fresh SSR page's skip-the-remount check
-        // valid, while the initial exec pass (which splices in output blocks) bumps it
-        // and forces any client that server-rendered pre-exec to mount the outputs.
-        if !ops.is_empty() {
+        // Bump the render generation when the pushed content actually changed, so a
+        // no-op rebuild leaves a fresh SSR page's skip-the-remount check valid, while the
+        // initial exec pass (which splices in output blocks) bumps it and forces any
+        // client that server-rendered pre-exec to mount the outputs. A deck title/
+        // subtitle edit changes the title slide (built outside `d.blocks`, so the diff is
+        // empty) yet still needs a bump — otherwise its full_render carries an unchanged
+        // gen and the client's reconnect-skip (same gen ⇒ byte-identical) would wrongly
+        // suppress the re-mount that applies the new title slide.
+        if !ops.is_empty() || deck_meta_changed {
             d.generation = d.generation.wrapping_add(1);
         }
         d.blocks = blocks;
@@ -1075,7 +1177,7 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
             let _ = app.tx.send(full_render_json(&d));
         } else {
             for op in &ops {
-                let _ = app.tx.send(op_json(op));
+                let _ = app.tx.send(op_json(op, d.generation));
             }
         }
         // A theme/`.css` edit: hot-swap the theme `<style>` in place. Sent AFTER the
@@ -1168,6 +1270,39 @@ mod protocol_contract {
     }
 
     #[test]
+    fn watch_tree_prunes_generated_and_vcs_subtrees() {
+        // notify's Recursive mode adds an inotify watch descriptor for EVERY directory
+        // under the root; a big `node_modules` alone can exhaust `max_user_watches` and
+        // silently kill hot reload. `watch_tree` must enumerate only the directories a
+        // rebuild can depend on, pruning generated/VCS trees whole.
+        let root = std::env::temp_dir().join(format!("tali-watchtree-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for d in [
+            "sub",
+            "sub/deep",
+            "node_modules/pkg",
+            ".git/objects",
+            "_site/assets",
+            "_freeze",
+        ] {
+            std::fs::create_dir_all(root.join(d)).unwrap();
+        }
+        let dirs: HashSet<PathBuf> = watch_tree(&root).into_iter().collect();
+        assert!(dirs.contains(&root), "the base dir itself must be watched");
+        assert!(dirs.contains(&root.join("sub")));
+        assert!(dirs.contains(&root.join("sub/deep")));
+        // The pruned trees (and everything under them) must be absent.
+        assert!(!dirs.contains(&root.join("node_modules")));
+        assert!(!dirs.contains(&root.join("node_modules/pkg")));
+        assert!(!dirs.contains(&root.join(".git")));
+        assert!(!dirs.contains(&root.join(".git/objects")));
+        assert!(!dirs.contains(&root.join("_site")));
+        assert!(!dirs.contains(&root.join("_site/assets")));
+        assert!(!dirs.contains(&root.join("_freeze")));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn style_message_carries_css_for_hot_swap() {
         let m = parse(protocol::style(":root{--tali-accent:#f00}"));
         assert_eq!(m["type"], "style");
@@ -1245,30 +1380,50 @@ mod protocol_contract {
 
     #[test]
     fn ops_and_full_render_match_client_contract() {
-        let up = parse(op_json(&BlockOp::Update {
-            target_id: "b".into(),
-            html: "h".into(),
-        }));
+        let up = parse(op_json(
+            &BlockOp::Update {
+                target_id: "b".into(),
+                html: "h".into(),
+            },
+            3,
+        ));
         assert_eq!(up["type"], "update");
         assert_eq!(up["target_id"], "b");
         assert!(up.get("html").is_some());
+        // The resulting render generation rides on every op so the client can track it
+        // and skip the destructive re-mount on a byte-identical reconnect.
+        assert_eq!(up["gen"], 3);
 
-        let ins = parse(op_json(&BlockOp::Insert {
-            after_id: Some("b".into()),
-            html: "h".into(),
-        }));
+        let ins = parse(op_json(
+            &BlockOp::Insert {
+                after_id: Some("b".into()),
+                html: "h".into(),
+            },
+            3,
+        ));
         assert_eq!(ins["type"], "insert");
         assert!(ins.get("after_id").is_some());
+        assert_eq!(ins["gen"], 3);
 
-        let rm = parse(op_json(&BlockOp::Remove {
-            target_id: "b".into(),
-        }));
+        let rm = parse(op_json(
+            &BlockOp::Remove {
+                target_id: "b".into(),
+            },
+            3,
+        ));
         assert_eq!(rm["type"], "remove");
+        assert_eq!(rm["gen"], 3);
 
         let fr = parse(full_render_json(&DocState::default()));
         assert_eq!(fr["type"], "full_render");
         assert!(fr.get("body_html").is_some());
         assert!(fr["gen"].is_u64(), "full_render must carry a numeric gen");
+        // The per-process boot id lets the client force a re-mount on a reconnect to a
+        // restarted server (whose gen counter reset), not skip it and show stale source.
+        assert!(
+            fr["boot"].is_u64(),
+            "full_render must carry a numeric boot id"
+        );
         assert!(fr["diagnostics"].is_array());
     }
 

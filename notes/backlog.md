@@ -59,7 +59,9 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
   (now-removed) xref graph tool provided.
 - Audit 2026-07-07 implementation queue also lives here — see
   **[the batched queue below](#audit-2026-07-07-implementation-queue-build-ready)** (Batch 5 remainder
-  + Batch 8 next; Batches 1-4, the high-value half of Batch 5, Batch 6, and Batch 7 landed 2026-07-07).
+  + the Batch 8 consolidation + Batch 9 next; Batches 1-4, the high-value half of Batch 5, Batch 6,
+  Batch 7, and the Batch 8 robustness trio [watcher prune, live search index, reconnect state] landed
+  2026-07-07).
 
 ### Decided 2026-07-07 — each needs its own dedicated session
 - **Quarto design-decisions catalog triage, reframed.** Branch `quarto-decisions-catalog`, commit
@@ -116,8 +118,33 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
   preserve `data-sourcepos` line stability for click-to-source — brainstorm reflow-vs-risk before work.
 - **Dogfood: migrate the FL-weather book to Taliesin** — a real-world Quarto→Taliesin migration +
   portability stress test; pin a reduced version under `corpus/` if it renders clean.
-- **`check` online-link mode** (opt-in `--online`; default stays offline/deterministic). **Thin
-  `taliesin publish`** (push `_site/` to `gh-pages`; the documented manual recipe covers it today).
+- **`check` online-link mode** (opt-in `--online`; default stays offline/deterministic).
+- **`taliesin publish`: build, push HTML to a deploy branch, host auto-deploys.**
+  Researched 2026-07-07 for the private research-paper-draft workflow. Command shape:
+  `taliesin build <project> --out <tmp>`, then push the built `_site/` tree to a deploy branch
+  (e.g. `published` / `gh-pages`) via a git worktree (or `git subtree split`); the host watches that
+  branch and serves the committed HTML with no build step of its own. One-way (source, build, deploy
+  branch), never writes back to source (respects the single-editing-surface invariant); the
+  per-project target could live in `_site.yml`. **Brainstorm the forks first:** worktree vs
+  `git subtree`; one repo-per-paper vs one branch-per-paper; whether it also scripts the initial host
+  hookup. The documented manual recipe pushes `_site/` today; this only automates it.
+  **Hosting picked for password + private-repo + deploy-from-branch** (drafts must not be public):
+  - **Cloudflare Pages, recommended.** Free, private repo, deploys from a branch, unlimited
+    bandwidth. Password two ways: **Cloudflare Access** (email allowlist, one-time-PIN / SSO login,
+    free up to 50 users, viewers need no account: best for sharing a draft with a supervisor or
+    reviewers), or **Pages Functions** HTTP basic auth (one shared password in an env var). Fits the
+    deploy-from-branch model exactly.
+  - **AWS Amplify Hosting.** Built-in per-branch HTTP basic-auth toggle, private repo, cheap usage
+    tier. Clean if already on AWS.
+  - **Netlify.** Turnkey site password + RBAC, but gated behind Pro ($19 / member / mo).
+  - **Vercel, avoid here.** The free "Vercel Authentication" forces every viewer onto your Vercel
+    team account (bad for external readers); the shared-password "Password Protection" is a $150/mo
+    Pro add-on (or Enterprise).
+  - **Railway** (the author's first instinct). Works, but it is an app/container platform: you run an
+    nginx or Caddy container with basic auth (community `railway-nginx-basic-auth` template), a
+    metered server, a mismatch for serving static HTML. Confirmed possible, not the best fit.
+  - **GitHub Pages.** No native password (access control is Enterprise-only); private-repo Pages needs
+    paid GitHub. Skip.
 - **Interactive/explorable numerics** (`FEATURE-IDEAS.md` #62-66; none spec'd/pinned — promote with a
   corpus pin when one graduates; must NOT reintroduce a reactive VM). Highest-leverage: **#62** a
   bundled numerics/stats global for `{js}` (distributions, seeded PRNG, small dense linalg) + **#63**
@@ -165,13 +192,20 @@ value / more invasive, each its own small change):
 - Low-tail siblings: non-`.bib` bibliography, unresolved fence language (needs a warnings channel threaded
   into the pure `highlight` fn — invasive), non-HTML `format:`.
 
-### Batch 8: Dev-server / watcher / incremental robustness [mixed; one large] 
-- File watcher recursively watches the whole tree (incl. `node_modules`/`.git`); inotify exhaustion
-  silently kills hot reload (`serve/mod.rs:877`).
-- Site/book Cmd-K index freezes after a content edit in preview (single-doc search stays live) (`serve_site/mod.rs:1035`).
-- ws reconnect wholesale-remounts + destroys live block state on a byte-identical doc (any sleep/wifi blip) (`client.js`).
+### Batch 8 remainder: consolidate the duplicated diff-then-broadcast core [large: its own branch]
+The three robustness fixes landed 2026-07-07 (branch `batch-8`): the file watcher now walks + registers a
+NON-recursive watch per directory, pruning `node_modules`/`.git`/`_site`/`_book`/`_freeze` (so inotify can't
+be exhausted) and dynamically watches subdirectories created after startup (with a backfill scan so a
+`git checkout` of a new folder isn't missed); the site Cmd-K index refreshes per-edited-page
+(`Site::install_search_fragment`, rendered off the site lock + panic-guarded) and the client re-fetches
+`/search-index.js` (cache-busted) on every palette open in a live preview; and a ws reconnect no longer
+wholesale-remounts on a byte-identical doc (each op carries the resulting `gen`, the client tracks
+`mountedGen`, and a per-process `boot` id forces a re-mount across a dev-server restart so a reset gen
+can't show stale source). Still open:
 - Two dev servers duplicate the diff-then-broadcast contract (drift risk to the incremental invariant):
-  hoist into one shared helper (`serve/mod.rs:992`). **[large: schedule as its own branch.]**
+  hoist into one shared helper (`serve/mod.rs` rebuild ↔ `serve_site/mod.rs` build_page). The `gen`/`boot`
+  additions were made in the shared `protocol::op`/`full_render`, but the diff→bump-gen→broadcast loop is
+  still copy-pasted. **[large: schedule as its own branch.]**
 
 ### Batch 9: Freeze / kernel honesty + resource hygiene (Do-NOT-touch zone: careful) [small]
 Read the exec/kernel zone rules first; these are diagnostics/docs/leak fixes, not execution-semantics changes.

@@ -114,26 +114,49 @@
     return txt.replace(/\s+/g, " ").trim();
   }
 
-  // Lazy-load the cross-page index from `search-index.js` on first open (a site/book
-  // links to it via TALIESIN_SEARCH_URL instead of inlining it into every page), then
-  // run `cb`. A single doc (no URL) just runs `cb` against the DOM index.
-  var indexFetched = false;
+  // Load the cross-page index from `search-index.js` (a site/book links to it via
+  // TALIESIN_SEARCH_URL instead of inlining it into every page), then run `cb`. A
+  // single doc (no URL) just runs `cb` against the live DOM index.
+  //
+  // In a LIVE PREVIEW (a websocket is present) the server's index is refreshed as pages
+  // are edited, so re-fetch it on every open with a cache-busting query — otherwise the
+  // once-loaded `window.TALIESIN_SEARCH_INDEX` would freeze search at page-load state. A
+  // STATIC BUILD (file://, no ws) has immutable content, so load the index once.
+  var fetchSeq = 0;
+  var loading = false;
   function loadIndexThen(cb) {
-    if (window.TALIESIN_SEARCH_INDEX || !window.TALIESIN_SEARCH_URL || indexFetched) {
+    var livePreview = typeof window.TALIESIN_WS_PATH === "string" && !!window.TALIESIN_WS_PATH;
+    // Single doc: no cross-page index, search the DOM.
+    if (!window.TALIESIN_SEARCH_URL) {
       cb();
       return;
     }
-    indexFetched = true;
+    // Static build: the index can't change, so keep the first load.
+    if (window.TALIESIN_SEARCH_INDEX && !livePreview) {
+      cb();
+      return;
+    }
+    // A fetch is already in flight (rapid re-open): use whatever we have for now.
+    if (loading) {
+      cb();
+      return;
+    }
+    loading = true;
     // Load the index with a <script> element (it assigns window.TALIESIN_SEARCH_INDEX)
-    // rather than fetch(): a script subresource loads under file:// too, so Cmd-K
-    // works when the book is opened from disk with no dev server (fetch() of a local
-    // file is CORS-blocked). Still lazy: only injected on the first palette open.
+    // rather than fetch(): a script subresource loads under file:// too, so Cmd-K works
+    // when the book is opened from disk with no dev server (fetch() of a local file is
+    // CORS-blocked). The `?t=` cache-buster forces the preview re-fetch past any HTTP
+    // caching; a static build omits it (the URL must stay a plain file path).
     var s = document.createElement("script");
-    s.src = window.TALIESIN_SEARCH_URL;
+    s.src = window.TALIESIN_SEARCH_URL + (livePreview ? "?t=" + ++fetchSeq : "");
     s.onload = function () {
+      loading = false;
+      s.remove();
       cb();
     };
     s.onerror = function () {
+      loading = false;
+      s.remove();
       // Surface the failure instead of a silently-empty palette.
       window.TALIESIN_SEARCH_LOAD_FAILED = true;
       cb();

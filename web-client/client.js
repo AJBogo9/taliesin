@@ -15,12 +15,12 @@
 // enforced here too.
 /**
  * @typedef {{ level: string, message: string, file?: ?string, line?: number, frame?: string }} Diagnostic
- * @typedef {{ type: "full_render", title: ?string, gen?: number, body_html: string, diagnostics: Diagnostic[] }} FullRenderMsg
+ * @typedef {{ type: "full_render", title: ?string, gen?: number, boot?: number, body_html: string, diagnostics: Diagnostic[] }} FullRenderMsg
  * @typedef {{ type: "diagnostics", messages: Diagnostic[] }} DiagnosticsMsg
- * @typedef {{ type: "update", target_id: string, html: string }} UpdateMsg
- * @typedef {{ type: "insert", after_id: ?string, html: string }} InsertMsg
- * @typedef {{ type: "remove", target_id: string }} RemoveMsg
- * @typedef {{ type: "set_meta", target_id: string, sourcepos: string, source_file: ?string }} SetMetaMsg
+ * @typedef {{ type: "update", gen?: number, target_id: string, html: string }} UpdateMsg
+ * @typedef {{ type: "insert", gen?: number, after_id: ?string, html: string }} InsertMsg
+ * @typedef {{ type: "remove", gen?: number, target_id: string }} RemoveMsg
+ * @typedef {{ type: "set_meta", gen?: number, target_id: string, sourcepos: string, source_file: ?string }} SetMetaMsg
  * @typedef {{ type: "error", message: string }} ErrorMsg
  * @typedef {{ type: "reload" }} ReloadMsg
  * @typedef {{ type: "style", css: string }} StyleMsg
@@ -879,6 +879,19 @@
   // always re-mount.
   let ssrPending = window.TALIESIN_SSR === true;
   const ssrGen = typeof window.TALIESIN_SSR_GEN === "number" ? window.TALIESIN_SSR_GEN : null;
+  // The render generation the DOM currently reflects: seeded from the SSR generation,
+  // then advanced by every op (each carries the generation its burst reaches) and every
+  // full_render we mount. A websocket reconnect on a byte-identical doc sends a
+  // full_render whose gen equals this, letting us skip the wholesale re-mount that would
+  // otherwise destroy live block state (WebGL/{js} widgets, playing video, open
+  // <details>) on any sleep/wifi blip.
+  let mountedGen = ssrGen;
+  // The server's per-process boot id. `generation` resets to 0 when the dev server
+  // restarts, so a reconnect to a RESTARTED server can carry a reset gen that happens to
+  // match `mountedGen` — skipping the re-mount would then show stale source. The boot id
+  // differs across restarts, so a boot mismatch always forces a fresh mount.
+  const bootId = typeof window.TALIESIN_BOOT === "number" ? window.TALIESIN_BOOT : null;
+  let mountedBoot = bootId;
 
   /** @param {ServerMessage} msg */
   const handle = (msg) => {
@@ -886,12 +899,23 @@
       case "full_render": {
         renderOk(); // a fresh render arrived: any prior failure is resolved
         document.title = msg.title || "Taliesin";
-        // Skip the re-mount only when the server-rendered body is still current: this
-        // is the first message after SSR AND its generation matches what SSR painted.
-        // (A missing gen on either side falls back to the old skip-on-SSR behavior.)
+        // Skip the re-mount when the DOM already reflects this render:
+        //  - the first message after SSR whose gen matches what SSR painted, OR
+        //  - a reconnect delivering a gen we already have mounted (byte-identical doc).
+        // A missing gen on either side falls back to the old skip-only-on-SSR behavior.
+        // But a reconnect to a RESTARTED server (different boot id) must ALWAYS re-mount,
+        // even if its reset gen collides with ours — otherwise the preview could show
+        // stale source. Only a same-process message (matching boot, or boot unknown on
+        // either side for back-compat) is eligible to skip.
+        const genKnown = msg.gen != null;
+        const bootOk = msg.boot == null || mountedBoot == null || msg.boot === mountedBoot;
         const skipMount =
-          ssrPending && (msg.gen == null || ssrGen == null || msg.gen === ssrGen);
+          bootOk &&
+          ((ssrPending && (!genKnown || ssrGen == null || msg.gen === ssrGen)) ||
+            (!ssrPending && genKnown && mountedGen != null && msg.gen === mountedGen));
         ssrPending = false;
+        if (genKnown) mountedGen = /** @type {number} */ (msg.gen);
+        if (msg.boot != null) mountedBoot = msg.boot;
         if (!skipMount) {
           // Wholesale re-mount (stale SSR / reconnect / structural change): tear down
           // ALL prior `{js}` cells first (resolving every outstanding `invalidation`)
@@ -922,6 +946,7 @@
           teardownJs(el); // resolve invalidation + drop {js} cells in the outgoing block
           keepScroll(() => el.replaceWith(node));
           pulse(node, "tali-flash");
+          if (msg.gen != null) mountedGen = msg.gen; // the DOM now reflects this generation
         }
         scheduleAfterChange();
         break;
@@ -930,6 +955,7 @@
         renderOk();
         const node = fragment(msg.html);
         if (node) {
+          if (msg.gen != null) mountedGen = msg.gen; // the DOM now reflects this generation
           // Block ids are unique per document, so drop any element already
           // carrying this id before inserting. The server emits Removes before
           // Inserts, so this is normally a no-op; it defends against a stale
@@ -955,6 +981,7 @@
         if (el) {
           teardownJs(el); // resolve invalidation + drop {js} cells in the removed block
           keepScroll(() => el.remove());
+          if (msg.gen != null) mountedGen = msg.gen; // the DOM now reflects this generation
         }
         scheduleAfterChange();
         break;
@@ -970,6 +997,7 @@
           el.setAttribute("data-sourcepos", msg.sourcepos);
           if (msg.source_file) el.setAttribute("data-source-file", msg.source_file);
           else el.removeAttribute("data-source-file");
+          if (msg.gen != null) mountedGen = msg.gen; // the DOM now reflects this generation
         }
         break;
       }

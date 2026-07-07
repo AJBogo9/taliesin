@@ -10,63 +10,78 @@ use super::*;
 /// can't blow up the index; matches/snippets come from the section's start.
 const BODY_CAP: usize = 1500;
 
-/// Build the JSON index for `pages`: one `{u,p,i,l,t,b}` object per page title and
-/// per anchored heading — `u`rl, `p`age title, anchor `i`d, `l`evel, heading
-/// `t`ext, and the section `b`ody text. Renders each page's markdown once (no code
-/// execution) so the anchor ids match what the served pages emit.
-pub(super) fn build_index_json(pages: &[Page]) -> String {
-    let mut out = String::from("[");
-    let mut first = true;
-    for page in pages {
-        // The author's own 404 page (output URL `404.html`) is navigation chrome, not
-        // content: keep it out of the full-text index so a search never surfaces it.
-        if page.url == "404.html" {
-            continue;
-        }
-        let Ok(src) = std::fs::read_to_string(&page.input) else {
-            continue;
-        };
-        let base = page.input.parent().unwrap_or_else(|| Path::new("."));
-        let doc = render::render_document_with_includes(&src, base);
-        let page_title = page
-            .title
-            .clone()
-            .or(doc.title)
-            .unwrap_or_else(|| page.url.clone());
+/// The per-page search fragments (page `rel` → that page's JSON entries, no
+/// surrounding brackets), in page order — one `{u,p,i,l,t,b}` object per page title
+/// and per anchored heading (`u`rl, `p`age title, anchor `i`d, `l`evel, heading
+/// `t`ext, section `b`ody text). Kept separate from [`assemble`] so the dev server can
+/// refresh a single edited page's entries without re-rendering the whole site (see
+/// [`super::Site::refresh_search_for_page`]). Renders each page's markdown once (no
+/// code execution) so the anchor ids match what the served pages emit.
+pub(super) fn build_sections(pages: &[Page]) -> Vec<(String, String)> {
+    pages
+        .iter()
+        .filter_map(|p| page_fragment(p).map(|frag| (p.rel.clone(), frag)))
+        .collect()
+}
 
-        let mut push = |id: &str, level: u8, title: &str, body: &str| {
-            if !first {
-                out.push(',');
-            }
-            first = false;
-            out.push_str(&format!(
-                "{{\"u\":\"{}\",\"p\":\"{}\",\"i\":\"{}\",\"l\":{},\"t\":\"{}\",\"b\":\"{}\"}}",
-                json_str(&page.url),
-                json_str(&page_title),
-                json_str(id),
-                level,
-                json_str(title),
-                json_str(body),
-            ));
-        };
+/// Assemble the per-page fragments into the served `[…]` JSON array (dropping any
+/// empty fragment so the array stays well-formed).
+pub(super) fn assemble(sections: &[(String, String)]) -> String {
+    let body = sections
+        .iter()
+        .map(|(_, frag)| frag.as_str())
+        .filter(|frag| !frag.is_empty())
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("[{body}]")
+}
 
-        let body: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
-        let hs = headings_with_pos(&body);
-        // The page itself: jump to its top; body = the intro before the first heading.
-        let intro_end = hs.first().map(|h| h.3).unwrap_or(body.len());
-        push("", 0, &page_title, &section_text(&body[..intro_end]));
-        // Each anchored heading: body = text from its close to the next heading's open.
-        for (idx, (level, id, title, _open, close_end)) in hs.iter().enumerate() {
-            if title.is_empty() {
-                continue;
-            }
-            let sec_end = hs.get(idx + 1).map(|n| n.3).unwrap_or(body.len());
-            let sec_body = section_text(body.get(*close_end..sec_end).unwrap_or(""));
-            push(id, *level, title, &sec_body);
-        }
+/// The search-index entries for ONE page as a JSON-array **body** (comma-joined
+/// `{u,p,i,l,t,b}` objects, no surrounding brackets). `None` when the page is
+/// excluded from search (the author's 404 chrome page) or its source can't be read.
+pub(super) fn page_fragment(page: &Page) -> Option<String> {
+    // The author's own 404 page (output URL `404.html`) is navigation chrome, not
+    // content: keep it out of the full-text index so a search never surfaces it.
+    if page.url == "404.html" {
+        return None;
     }
-    out.push(']');
-    out
+    let src = std::fs::read_to_string(&page.input).ok()?;
+    let base = page.input.parent().unwrap_or_else(|| Path::new("."));
+    let doc = render::render_document_with_includes(&src, base);
+    let page_title = page
+        .title
+        .clone()
+        .or(doc.title)
+        .unwrap_or_else(|| page.url.clone());
+
+    let mut entries: Vec<String> = Vec::new();
+    let mut push = |id: &str, level: u8, title: &str, body: &str| {
+        entries.push(format!(
+            "{{\"u\":\"{}\",\"p\":\"{}\",\"i\":\"{}\",\"l\":{},\"t\":\"{}\",\"b\":\"{}\"}}",
+            json_str(&page.url),
+            json_str(&page_title),
+            json_str(id),
+            level,
+            json_str(title),
+            json_str(body),
+        ));
+    };
+
+    let body: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
+    let hs = headings_with_pos(&body);
+    // The page itself: jump to its top; body = the intro before the first heading.
+    let intro_end = hs.first().map(|h| h.3).unwrap_or(body.len());
+    push("", 0, &page_title, &section_text(&body[..intro_end]));
+    // Each anchored heading: body = text from its close to the next heading's open.
+    for (idx, (level, id, title, _open, close_end)) in hs.iter().enumerate() {
+        if title.is_empty() {
+            continue;
+        }
+        let sec_end = hs.get(idx + 1).map(|n| n.3).unwrap_or(body.len());
+        let sec_body = section_text(body.get(*close_end..sec_end).unwrap_or(""));
+        push(id, *level, title, &sec_body);
+    }
+    Some(entries.join(","))
 }
 
 /// Scan rendered HTML for `<h1..6 id="…">text</hN>`, returning, per anchored
