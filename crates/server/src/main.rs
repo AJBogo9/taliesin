@@ -103,13 +103,14 @@ fn usage() {
     println!("                             to open on a phone; --open launches a browser;");
     println!("                             --no-exec previews untrusted docs as source,");
     println!("                             never running their code cells)");
-    println!("  build  <file.tmd | dir> [out.html] [--out <dir>] [--strict] [--bare]");
+    println!("  build  <file.tmd | dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>]");
     println!("                             render a self-contained HTML file (a dir builds the");
     println!("                             whole SITE to _site/); default <name>.html beside");
     println!("                             the source; --out <dir> writes a portable folder;");
     println!("                             --strict exits non-zero on a cell error or located");
+    println!("                             warning; --bare emits zero-JS, CSS-only single-doc");
     println!(
-        "                             warning; --bare emits zero-JS, CSS-only single-doc HTML"
+        "                             HTML; --jobs <N> caps parallel page renders (site build)"
     );
     println!("  render <file.tmd>          render a full HTML page to stdout");
     println!("                             (static; does NOT execute code cells)");

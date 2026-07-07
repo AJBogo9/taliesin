@@ -167,9 +167,7 @@ pub(crate) fn parse_attrs(s: &str) -> DivAttrs {
         } else if let Some(i) = tok.strip_prefix('#') {
             attrs.id = Some(i.to_string());
         } else if let Some((k, v)) = tok.split_once('=') {
-            attrs
-                .kv
-                .push((k.to_string(), v.trim_matches(['"', '\'']).to_string()));
+            attrs.kv.push((k.to_string(), unquote_value(v)));
         } else if !tok.is_empty() {
             attrs.classes.push(tok.to_string());
         }
@@ -178,15 +176,27 @@ pub(crate) fn parse_attrs(s: &str) -> DivAttrs {
 }
 
 /// Split on whitespace, but keep quoted values (e.g. `title="a b"`) together.
+/// Inside a quote, a backslash escapes the next character, so `title="a \"b\""`
+/// stays one token instead of ending at the first inner quote.
 fn tokenize_attrs(s: &str) -> Vec<String> {
     let mut toks = Vec::new();
     let mut cur = String::new();
     let mut quote: Option<char> = None;
+    let mut escaped = false;
     for ch in s.chars() {
+        if escaped {
+            // Already inside a quote (escape state is only set there); keep the
+            // escaped char verbatim (unescaping happens in `unquote_value`).
+            cur.push(ch);
+            escaped = false;
+            continue;
+        }
         match quote {
             Some(q) => {
                 cur.push(ch);
-                if ch == q {
+                if ch == '\\' {
+                    escaped = true;
+                } else if ch == q {
                     quote = None;
                 }
             }
@@ -206,6 +216,30 @@ fn tokenize_attrs(s: &str) -> Vec<String> {
         toks.push(cur);
     }
     toks
+}
+
+/// Strip one matching outer quote pair from an attribute value and unescape the
+/// quote escapes `\"`/`\'` that the tokenizer preserved. Only quote escapes are
+/// consumed: any other backslash (a LaTeX macro in a `fig-cap`/`title`, e.g.
+/// `$\alpha$`) passes through untouched so math still renders.
+fn unquote_value(v: &str) -> String {
+    let inner = {
+        let mut ch = v.chars();
+        match (ch.next(), ch.next_back()) {
+            (Some(a @ ('"' | '\'')), Some(b)) if a == b && v.len() >= 2 => ch.as_str(),
+            _ => v,
+        }
+    };
+    let mut out = String::with_capacity(inner.len());
+    let mut chars = inner.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '\\' && matches!(chars.peek(), Some('"' | '\'')) {
+            out.push(chars.next().unwrap());
+        } else {
+            out.push(c);
+        }
+    }
+    out
 }
 
 /// Group flat top-level blocks back into fenced-div container blocks (callouts,
@@ -599,5 +633,42 @@ fn build_container(
         source_file: file,
         html,
         cell: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_attrs;
+
+    #[test]
+    fn escaped_quotes_inside_a_value_do_not_truncate_or_leak_backslash() {
+        // A `\"` inside a quoted value must NOT end the value early, and the
+        // backslash must not survive into the parsed text.
+        let a = parse_attrs(r#".callout-note title="She said \"hi\"""#);
+        assert_eq!(a.get("title"), Some("She said \"hi\""));
+        assert_eq!(a.classes, vec!["callout-note".to_string()]);
+    }
+
+    #[test]
+    fn escaped_single_quotes_unescape_inside_single_quoted_value() {
+        let a = parse_attrs(r#"title='it\'s here'"#);
+        assert_eq!(a.get("title"), Some("it's here"));
+    }
+
+    #[test]
+    fn latex_backslashes_in_a_caption_survive_unchanged() {
+        // Only `\"`/`\'` are escapes; a LaTeX macro's backslash passes through so
+        // math in a `fig-cap`/`title` still renders (e.g. `$\alpha$`).
+        let a = parse_attrs(r#"fig-cap="$\alpha$ and \beta""#);
+        assert_eq!(a.get("fig-cap"), Some(r"$\alpha$ and \beta"));
+    }
+
+    #[test]
+    fn plain_quoted_and_unquoted_values_are_unchanged() {
+        let a = parse_attrs(r#".x #anchor key="a b" bare=v"#);
+        assert_eq!(a.classes, vec!["x".to_string()]);
+        assert_eq!(a.id.as_deref(), Some("anchor"));
+        assert_eq!(a.get("key"), Some("a b"));
+        assert_eq!(a.get("bare"), Some("v"));
     }
 }
