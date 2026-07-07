@@ -9,32 +9,19 @@ Output stays **HTML-only**. Roadmap: `ROADMAP.md`.
 
 ## State (2026-07-07)
 
-Local `main` carries this session's reader/deck polish batch (the author syncs `main`↔`origin`
-between sessions, so origin may be a commit behind local at any moment), v0.2.0. All four formats render + deploy;
+Local `main` runs ahead of `origin` between sessions (the author syncs `main`↔`origin`), v0.2.0. All four formats render + deploy;
 the dev loop is strong (block-level incremental updates with DOM-state preservation, warm server +
 Jupyter kernel, `_freeze` cache, Alt-click + reverse cursor sync, located diagnostics, CSS hot-swap,
 Cmd-K search). The author pushes/syncs between sessions; agents commit + fast-forward-merge to local
 main on request, never push.
 
-**Recently shipped** (detail in git + the history docs): the native rewrite, the roadmap's
-Waves 0-4, the reader cluster, `check`/prose-lint + `{input}`/scrolly, the `--bare` build, the
-reading-first redesign, deep-audit P1+P2, the Tier-1 priority queue, the **Taliesin rename** +
-**`.tmd` editor grammar** (F5-accepted), the **legacy-format clean break** (`.tmd`-only input,
-`deck`/`define()` the only spellings, no migration on-ramps, no user-facing legacy branding), the
-**security-P3 batch**, the **VS Code companion language features** (check-findings diagnostics +
-drift-proof completions; preview/cursor-sync F5-accepted 2026-07-06), and the **reader/deck polish
-batch** (2026-07-06, browser-verified): book column no longer jumps between chapters + the focus-mode
-pager re-centres; the SSR-vs-first-render race is healed with a render-generation marker
-(`TALIESIN_SSR_GEN`) so a client that server-rendered pre-exec re-mounts its cell outputs; deck speaker
-previews are scaled snapshot clones (no live embed iframes / re-execution); the "Resume reading" pill
-clears the dev menu in preview. **F2a cross-page hover-preview** (2026-07-06): hovering a cross-page
-`.tali-xref` now previews its target from a served `hover-index.js` (anchor→rendered-block-HTML index
-built in `Site::discover` via `site/hover.rs`, asset URLs rebased root-relative + resolved client-side
-via `TALIESIN_SITE_ROOT`); `file://`-safe `<script>` load like search; same-page path untouched.
-**Nested-theorem numbering** (2026-07-07): `number_theorems` now scans each block's full HTML for every
-theorem div (via a `theorem_divs` helper), not just its opening tag, so a `::: {.theorem}` nested inside
-another fenced div (e.g. a `.column-margin` aside) is numbered in document order and resolves as a ref
-target; pinned by `corpus/refs/theorems.tmd` + a unit test, browser-verified.
+**Recently shipped** (detail in git + `ROADMAP.md` / `native-rewrite.md` / `AUDITS.md`): the native
+rewrite + roadmap Waves 0-4, the reader cluster, `check`/prose-lint + `{input}`/scrolly, the `--bare`
+build, the reading-first redesign, deep-audit P1/P2, the Taliesin rename, the `.tmd` editor grammar, the
+legacy-format clean break (`.tmd`-only input, `deck`/`define()` the only spellings), the security-P3
+batch, the VS Code companion language features, F2a cross-page hover-preview, nested-theorem numbering,
+and the 2026-07-07 audit batches (1-4, the Batch 5 high-value half, 6, 7, and the Batch 8 robustness
+trio: watcher prune + live search index + reconnect state).
 
 **Working method:** branch per feature; brainstorm if there's a fork; spec under
 `docs/superpowers/specs/`; implement TDD; verify (cargo + browser via chrome-devtools, or the
@@ -51,17 +38,15 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
 
 ### Tier 1 — decided, build-ready (no blocker)
 - **Cross-reference backlinks (xref-anchor tier).** Decided 2026-07-07: build it. No reverse index
-  exists today; the cheap tier (fig/sec/tbl/eq/lst/thm anchors) piggybacks the render-free scan already
-  run at discovery (`scan_outgoing`/`collect_xref_refs`): retain the anchor instead of discarding it at
-  `graph.rs:136`, aggregate anchor→referring-pages, surface a per-target "Referenced by" affordance.
-  ~a few dozen lines, works in preview + build. Citations stay out (the expensive tier — needs a
-  site-wide bibliography-merge decision first). Lightweight replacement for the discovery value the
-  (now-removed) xref graph tool provided.
+  exists today — `site/xref.rs` `scan_xref_targets` (the render-free discovery scan, called at
+  `site/mod.rs:303`) builds only the forward anchor→target map. The cheap tier (fig/sec/tbl/eq/lst/thm
+  anchors) piggybacks that scan: also record anchor→referring-pages, surface a per-target "Referenced
+  by" affordance. ~a few dozen lines, works in preview + build. Citations stay out (the expensive tier —
+  needs a site-wide bibliography-merge decision first). Lightweight replacement for the discovery value
+  the (now-removed) xref graph tool provided.
 - Audit 2026-07-07 implementation queue also lives here — see
-  **[the batched queue below](#audit-2026-07-07-implementation-queue-build-ready)** (Batch 5 remainder
-  + the Batch 8 consolidation + Batch 9 next; Batches 1-4, the high-value half of Batch 5, Batch 6,
-  Batch 7, and the Batch 8 robustness trio [watcher prune, live search index, reconnect state] landed
-  2026-07-07).
+  **[the batched queue below](#audit-2026-07-07-implementation-queue-build-ready)**. Next up:
+  the Batch 5 remainder, the Batch 8 consolidation, and Batch 9.
 
 ### Decided 2026-07-07 — each needs its own dedicated session
 - **Quarto design-decisions catalog triage, reframed.** Branch `quarto-decisions-catalog`, commit
@@ -80,12 +65,12 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
 ### Tier 2 — hardening (P3)
 - **Execution-cache leaks** (exec/kernel Do-NOT-touch, careful): (a) ~30 orphaned
   `multiprocessing.forkserver` daemons (~100 MB each) survive a completed `build` — kill the daemon on
-  teardown; (b) a failed `Kernel::start` leaks its `/tmp/qmd-kernel-<uuid>` dir (error paths drop the
+  teardown; (b) a failed `Kernel::start` leaks its `/tmp/tali-kernel-<uuid>` dir (error paths drop the
   `PathBuf` without cleanup); (c) warm-pool `in_flight` counter can leak if a refill task panics (no
   reachable panic site today; an RAII guard would harden). Reclaimed on reboot but unbounded under
   repeated failures. Also: a boot-failure diagnostic can overwrite a cache-hit cell's output
   (`exec.rs:491`, already flagged `error`; optional freeze-restore); R stream/stderr still leaks raw
-  ANSI into HTML (`kernel.rs:672`, do-not-touch).
+  ANSI into HTML (`kernel.rs:887-893` `Output::Stream` emits `esc(text)` with no `strip_ansi`, do-not-touch).
 - **Testing / CI:** insta snapshots on `body_html()` for reactive/explorable/bayesian docs through the
   exec path (`corpus.rs:99` is structural-only); `#[serial]` the kernel-load determinism tests + assert
   a dropped output is a hard named error (the known silent-drop flake); `deny.toml` multiple-versions
@@ -98,8 +83,8 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
   refactor first); mobile pinch/pan + touch gestures (hard to verify without a device); thread
   `footer:`/`logo:` through both deck-page builders (no corpus deck needs one yet).
 - **Perf (low):** protocol-level op-message batching (one WS message per save, not one-per-op); lazy
-  discover-time search index (`search.rs:30`); `updateWordCount` deep-clones `#tali-root` per op
-  (`client.js`); visited pages never evicted from `app.pages` (`serve_site.rs`, unbounded growth).
+  discover-time search index (`search::build_sections`, eagerly built at `site/mod.rs:304`); visited
+  pages never evicted from `app.pages` (`serve_site/mod.rs:42`, unbounded growth).
 - **CLI / docs microcopy:** reconcile the no-kernel-build wording across `CLAUDE.md`,
   `getting-started`, and `build.rs` (each is substantively correct — a no-kernel build/preview
   falls back to source non-fatally — but phrased differently; optional polish, no defect).
@@ -128,23 +113,13 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
   per-project target could live in `_site.yml`. **Brainstorm the forks first:** worktree vs
   `git subtree`; one repo-per-paper vs one branch-per-paper; whether it also scripts the initial host
   hookup. The documented manual recipe pushes `_site/` today; this only automates it.
-  **Hosting picked for password + private-repo + deploy-from-branch** (drafts must not be public):
-  - **Cloudflare Pages, recommended.** Free, private repo, deploys from a branch, unlimited
-    bandwidth. Password two ways: **Cloudflare Access** (email allowlist, one-time-PIN / SSO login,
-    free up to 50 users, viewers need no account: best for sharing a draft with a supervisor or
-    reviewers), or **Pages Functions** HTTP basic auth (one shared password in an env var). Fits the
-    deploy-from-branch model exactly.
-  - **AWS Amplify Hosting.** Built-in per-branch HTTP basic-auth toggle, private repo, cheap usage
-    tier. Clean if already on AWS.
-  - **Netlify.** Turnkey site password + RBAC, but gated behind Pro ($19 / member / mo).
-  - **Vercel, avoid here.** The free "Vercel Authentication" forces every viewer onto your Vercel
-    team account (bad for external readers); the shared-password "Password Protection" is a $150/mo
-    Pro add-on (or Enterprise).
-  - **Railway** (the author's first instinct). Works, but it is an app/container platform: you run an
-    nginx or Caddy container with basic auth (community `railway-nginx-basic-auth` template), a
-    metered server, a mismatch for serving static HTML. Confirmed possible, not the best fit.
-  - **GitHub Pages.** No native password (access control is Enterprise-only); private-repo Pages needs
-    paid GitHub. Skip.
+  **Hosting picked** (password + private-repo + deploy-from-branch, since drafts must not be public):
+  **Cloudflare Pages, recommended** — free, private repo, deploys from a branch, unlimited bandwidth;
+  password two ways: Cloudflare Access (email allowlist, one-time-PIN/SSO, free ≤50 users, viewers need
+  no account) or a Pages-Functions HTTP basic-auth env var. Rejected/second-choice: AWS Amplify (OK if
+  already on AWS); Netlify (password gated behind Pro $19/mo); Vercel (avoid — free auth forces viewers
+  onto your team, shared-password is a $150/mo add-on); Railway (app/container platform, a mismatch for
+  static HTML); GitHub Pages (no native password without Enterprise).
 - **Interactive/explorable numerics** (`FEATURE-IDEAS.md` #62-66; none spec'd/pinned — promote with a
   corpus pin when one graduates; must NOT reintroduce a reactive VM). Highest-leverage: **#62** a
   bundled numerics/stats global for `{js}` (distributions, seeded PRNG, small dense linalg) + **#63**
@@ -166,9 +141,9 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
 ## Audit 2026-07-07 implementation queue (build-ready)
 
 The 2026-07-07 deep audit's build-ready fixes (decided, no blocker), grouped into
-**batches sized as one branch each and listed in recommended order** (Batch 1 first).
-Full per-item detail (repro + fix approach) and the ~80 low-severity long tail live in
-[AUDITS.md](AUDITS.md) 2026-07-07. **CONFIRMED unless marked PLAUSIBLE.**
+**batches sized as one branch each, in recommended order**. Batches 1-7 + the Batch 8 robustness
+trio landed; only the sections below remain. Full per-item detail (repro + fix approach) and the ~80
+low-severity long tail live in [AUDITS.md](AUDITS.md) 2026-07-07. **CONFIRMED unless marked PLAUSIBLE.**
 
 > **How to work this:** one batch = one branch; brainstorm only if a fork appears; TDD;
 > verify (cargo + browser via chrome-devtools); fast-forward-merge to local main; then
@@ -179,13 +154,11 @@ Full per-item detail (repro + fix approach) and the ~80 low-severity long tail l
 > Mermaid SRI) stay in **Tier 2** above; the audit only sharpened their exact paths in AUDITS.md.
 
 ### Batch 5 remainder: Silent-failure diagnostics channel [medium]
-The high-value half landed 2026-07-07 (unterminated `:::` fence now warns located; quoted figure
-`width=`/`height=` smart-punctuation **fixed** — curly quotes stripped in `unquote_value`, was live at
-`bayesian-website/subsections/_data-modeling.tmd`; `draft: yes`/`on` now coerced fail-safe + warned;
-single-doc `build` now runs `yaml_error()` so malformed front-matter fails `--strict`). Still open (lower
-value / more invasive, each its own small change):
+The high-value half landed 2026-07-07 (`561ff24`: located `:::`-fence warning, curly-quote figure
+`width=` fix, fail-safe `draft:` coercion, single-doc `--strict` YAML). Still open (lower value / more
+invasive, each its own small change):
 - `toc: yes` / `execute: {echo: no}` YAML-1.1 booleans in the CELL-option + render-frontmatter paths
-  (a different code path from the site `draft:` one already fixed; `cell_extract.rs` uses `v != "false"`).
+  (a DIFFERENT code path from the site `draft:` one already fixed; `cell_extract.rs` uses `v != "false"`).
 - `_site.yml` nested nav/footer/mount typos degrade silently + top-level warnings ship unlocated (`config/mod.rs:206`).
 - Block-sequence `bibliography:` dropped ONLY when serde_yaml fails to parse the rest of the front matter
   (the `extract_field` fallback can't read a block sequence) — edge case (`fm_extract.rs:114`).
@@ -193,15 +166,8 @@ value / more invasive, each its own small change):
   into the pure `highlight` fn — invasive), non-HTML `format:`.
 
 ### Batch 8 remainder: consolidate the duplicated diff-then-broadcast core [large: its own branch]
-The three robustness fixes landed 2026-07-07 (branch `batch-8`): the file watcher now walks + registers a
-NON-recursive watch per directory, pruning `node_modules`/`.git`/`_site`/`_book`/`_freeze` (so inotify can't
-be exhausted) and dynamically watches subdirectories created after startup (with a backfill scan so a
-`git checkout` of a new folder isn't missed); the site Cmd-K index refreshes per-edited-page
-(`Site::install_search_fragment`, rendered off the site lock + panic-guarded) and the client re-fetches
-`/search-index.js` (cache-busted) on every palette open in a live preview; and a ws reconnect no longer
-wholesale-remounts on a byte-identical doc (each op carries the resulting `gen`, the client tracks
-`mountedGen`, and a per-process `boot` id forces a re-mount across a dev-server restart so a reset gen
-can't show stale source). Still open:
+The three robustness fixes (watcher prune, live search index, reconnect state) landed 2026-07-07
+(`41313f9`). Still open:
 - Two dev servers duplicate the diff-then-broadcast contract (drift risk to the incremental invariant):
   hoist into one shared helper (`serve/mod.rs` rebuild ↔ `serve_site/mod.rs` build_page). The `gen`/`boot`
   additions were made in the shared `protocol::op`/`full_render`, but the diff→bump-gen→broadcast loop is
@@ -216,24 +182,22 @@ Read the exec/kernel zone rules first; these are diagnostics/docs/leak fixes, no
 - `adopt_forked` leaks the `/tmp` dir + forked kernel on a handshake/bind timeout (`kernel.rs`).
 
 ### Cut (philosophy gate: adopt) [trivial]
-- `?qmd=embed` deck mode is dead unreachable code: drop the ternary branch + stale comments (`deck.js:1607`).
+- `?qmd=embed` deck mode is dead unreachable code: drop the ternary branch (`deck.js:1628`) + stale comments (`deck.js:929-983`).
   *(Gate KEPT two proposed cuts: `data-level` is a live test anchor; the two `.tali-input` CSS blocks style
   two different features, decide before merging.)*
 
 ### Low-severity long tail (~80 items) → [AUDITS.md](AUDITS.md) 2026-07-07
 Pick up opportunistically alongside whichever batch touches the same file. Includes: include symlink-loop
 SIGABRT + lexical-only `safe_join` (`includes.rs`); diff-LIS unique-id `debug_assert!`; dead
-`ts`/`typescript`/`toml` highlight aliases; `percent_decode` slice-panic on a non-ASCII path; `app.pages`
-unbounded growth; `click_block` terminal-escape injection; qmd-js initial pass paints in DOM order not topo
-order; many citation-render edge cases; and the architecture / waste / stale-but-working-docs tail. The
-last now specifically includes the **stale-but-working `qmd-*` docs references that still have runtime
-aliases** (the `qmd.*` cell API, `qmd-input`/`qmd-embed`/`qmd-video`/`qmd-fnref`/`qmd-main` classes,
-`window.qmdEnhancers`/`QmdDeck`): Batch 2 swept only the *functionally-broken, no-alias* drift (CSS vars,
-schema filenames, `#tali-root`, output classes, theme-default, launcher, image-alt, companion default);
-renaming the aliased references is a separate verify-each-alias pass, not a mechanical sweep. The live
-identifiers `qmd-goto`/`qmd-cursor` (postMessage), `qmd_token` (cookie), `qmd-theme` (localStorage key +
-`<style id>`), `qmd:themechange` (event), `qmdFast.*` (VS Code config), `qhl-*` (highlight scope) are
-**correct as-is** — do not "rename" them.
+`ts`/`typescript`/`toml` highlight aliases; `percent_decode` slice-panic on a non-ASCII path;
+`click_block` terminal-escape injection; qmd-js initial pass paints in DOM order not topo order; many
+citation-render edge cases; and the architecture / waste / stale-but-working-docs tail — including the
+**stale-but-working `qmd-*` docs references that still have runtime aliases** (`qmd.*` cell API,
+`qmd-input`/`qmd-embed`/`qmd-video`/`qmd-fnref`/`qmd-main` classes, `window.qmdEnhancers`/`QmdDeck`);
+renaming those is a separate verify-each-alias pass, not a mechanical sweep.
+**Do NOT "rename" these live identifiers — they are correct as-is:** `qmd-goto`/`qmd-cursor` (postMessage),
+`qmd_token` (cookie), `qmd-theme` (localStorage key + `<style id>`), `qmd:themechange` (event),
+`qmdFast.*` (VS Code config), `qhl-*` (highlight scope).
 
 ### Owner-gated: do NOT build without your ruling
 - **Add (gate: adopt, but confirm):** shareable/deep-linkable `{{< input >}}` state via the URL fragment
@@ -243,7 +207,9 @@ identifiers `qmd-goto`/`qmd-cursor` (postMessage), `qmd_token` (cookie), `qmd-th
   reader-facing reproducibility manifest; web-native List of Figures/Tables/Theorems; interactive data
   tables; "Cite this" export; code-line xrefs (`@lst-3:line`); theme-aware `dark=` figures.
 - **Verify + close:** the 390px hero overflow + theme/video desync (listed open under Tier-3 Marketing) are
-  reported already fixed (`box-sizing:border-box`; `data-theme`-driven). Re-verify at the 3 viewports, then close.
+  confirmed present in code (`site.css` `.tali-site-main { box-sizing:border-box }` guards the overflow;
+  `theme.rs` `syncThemeVideos()` on `qmd:themechange` swaps the clip). Just needs the 3-viewport browser
+  check, then close.
 
 ## Decided against / do-not-re-litigate
 
