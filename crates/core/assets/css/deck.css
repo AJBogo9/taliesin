@@ -370,6 +370,18 @@ body { background: transparent; }
 .tali-deck .tali-slides section.tali-dark-bg .subtitle { color: rgba(255, 255, 255, .8); }
 .tali-deck .tali-slides section.tali-dark-bg a { color: #c7d2fe; }
 .tali-deck .tali-slides section.tali-dark-bg li::marker { color: #c7d2fe; }
+/* Mirror for a LIGHT per-slide background: force dark text so it stays readable even
+   when the deck's own theme is dark (its default text is light, which would be
+   invisible on a light named/hex slide background). */
+.tali-deck .tali-slides section.tali-light-bg,
+.tali-deck .tali-slides section.tali-light-bg h1,
+.tali-deck .tali-slides section.tali-light-bg h2,
+.tali-deck .tali-slides section.tali-light-bg h3,
+.tali-deck .tali-slides section.tali-light-bg h4,
+.tali-deck .tali-slides section.tali-light-bg strong { color: #1a1a1a; }
+.tali-deck .tali-slides section.tali-light-bg .subtitle { color: rgba(0, 0, 0, .72); }
+.tali-deck .tali-slides section.tali-light-bg a { color: #1f4fd6; }
+.tali-deck .tali-slides section.tali-light-bg li::marker { color: #1f4fd6; }
 html.tali-print .tali-slide-bg { display: none; } /* per-slide backgrounds aren't in the PDF (v1) */
 
 /* Fragments / incremental steps: hidden but keeping layout space (visibility,
@@ -566,12 +578,18 @@ html.tali-scroll .tali-deck .tali-slides > section > section {
 /* The per-slide background layer + LOD title cards have no place in the reader. */
 html.tali-scroll .tali-slide-bg, html.tali-scroll .tali-lod, html.tali-scroll .tali-threads { display: none !important; }
 /* The per-slide background is hidden in the reader, so `.tali-dark-bg`'s light text
-   would go invisible on a light deck — fall back to the reading column's own colour. */
+   (and `.tali-light-bg`'s dark text) would go invisible against the reading column —
+   fall back to the reading column's own colour for both. */
 html.tali-scroll .tali-deck .tali-slides section.tali-dark-bg,
 html.tali-scroll .tali-deck .tali-slides section.tali-dark-bg strong,
 html.tali-scroll .tali-deck .tali-slides section.tali-dark-bg a,
 html.tali-scroll .tali-deck .tali-slides section.tali-dark-bg .subtitle,
-html.tali-scroll .tali-deck .tali-slides section.tali-dark-bg li::marker { color: inherit; }
+html.tali-scroll .tali-deck .tali-slides section.tali-dark-bg li::marker,
+html.tali-scroll .tali-deck .tali-slides section.tali-light-bg,
+html.tali-scroll .tali-deck .tali-slides section.tali-light-bg strong,
+html.tali-scroll .tali-deck .tali-slides section.tali-light-bg a,
+html.tali-scroll .tali-deck .tali-slides section.tali-light-bg .subtitle,
+html.tali-scroll .tali-deck .tali-slides section.tali-light-bg li::marker { color: inherit; }
 html.tali-scroll .tali-deck .tali-slides > section:first-child { border-top: 0; }
 html.tali-scroll .tali-deck .tali-slides > section.tali-scroll-stack { padding: 0; border-top: 0; }
 html.tali-scroll .tali-slide-number { display: none; }
@@ -757,7 +775,7 @@ html.tali-scroll .tali-progress, html.tali-scroll .tali-ctl-prev, html.tali-scro
 
 /* server-side syntax-highlight palette (syntect); keep in sync with base.css.
    Unmapped scopes inherit the default ink colour. */
-.tali-deck .tali-hl-comment { color: #6e7781; font-style: italic; }
+.tali-deck .tali-hl-comment { color: #646b74; font-style: italic; } /* AA on the #f6f8fa light-deck code bg */
 .tali-deck .tali-hl-string { color: #0a3069; }
 .tali-deck .tali-hl-keyword, .tali-deck .tali-hl-storage { color: #cf222e; }
 .tali-deck .tali-hl-constant, .tali-deck .tali-hl-support { color: #0550ae; }

@@ -335,7 +335,7 @@
   /* server-side syntax-highlight scope classes (syntect), light palette (GitHub-ish);
      the dark overrides live in DARK_CSS so the theme toggle restyles code with no
      re-highlight. Unmapped scopes inherit the default code colour. */
-  .tali-hl-comment { color: #6e7781; font-style: italic; }
+  .tali-hl-comment { color: #646b74; font-style: italic; } /* AA (4.9:1) on the #f5f5f5 code bg */
   .tali-hl-string { color: #0a3069; }
   .tali-hl-keyword, .tali-hl-storage { color: #cf222e; }
   .tali-hl-constant, .tali-hl-support { color: #0550ae; }
@@ -580,7 +580,7 @@
   /* Sepia code + diagnostics: the light syntax palette and near-white output/error
      boxes clash with the warm sepia page, so restyle them warm (parallels DARK_CSS).
      Sepia is a low-contrast reading theme, so these stay muted, not vivid. */
-  html[data-theme="sepia"] .tali-hl-comment { color: #8a7c62; }
+  html[data-theme="sepia"] .tali-hl-comment { color: #6c604b; } /* AA (4.8:1) on the sepia code bg */
   html[data-theme="sepia"] .tali-hl-string { color: #3f6a44; }
   html[data-theme="sepia"] .tali-hl-keyword, html[data-theme="sepia"] .tali-hl-storage { color: #9a3b28; }
   html[data-theme="sepia"] .tali-hl-constant, html[data-theme="sepia"] .tali-hl-support { color: #2f5f84; }

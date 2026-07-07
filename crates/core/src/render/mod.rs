@@ -1011,6 +1011,7 @@ const CODE_ENHANCE_JS: &str = concat!(
     include_str!("../../assets/js/code-enhance/13-reader-menu.js"),
     include_str!("../../assets/js/code-enhance/14-reader-prefs.js"),
     include_str!("../../assets/js/code-enhance/15-reading-progress.js"),
+    include_str!("../../assets/js/code-enhance/16-scroll-a11y.js"),
 );
 const MERMAID_JS: &str = include_str!("../../assets/js/mermaid.js");
 /// The vendored Mermaid library (pinned mermaid@11.4.1, ~2.5 MB; sets `globalThis.mermaid`).

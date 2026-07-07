@@ -76,7 +76,8 @@ function taliInitReadingProgress() {
     go.type = 'button'; go.className = 'tali-resume-go';
     go.textContent = 'Resume reading · ' + Math.round(f * 100) + '% →';
     go.addEventListener('click', function () {
-      target.scrollIntoView({ block: 'start', behavior: 'smooth' }); dismissResume();
+      var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      target.scrollIntoView({ block: 'start', behavior: reduce ? 'auto' : 'smooth' }); dismissResume();
     });
     var x = document.createElement('button');
     x.type = 'button'; x.className = 'tali-resume-x';

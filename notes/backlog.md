@@ -58,8 +58,8 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
   site-wide bibliography-merge decision first). Lightweight replacement for the discovery value the
   (now-removed) xref graph tool provided.
 - Audit 2026-07-07 implementation queue also lives here — see
-  **[the batched queue below](#audit-2026-07-07-implementation-queue-build-ready)** (Batch 3 next;
-  Batches 1-2 landed 2026-07-07).
+  **[the batched queue below](#audit-2026-07-07-implementation-queue-build-ready)** (Batch 4 next;
+  Batches 1-3 landed 2026-07-07).
 
 ### Decided 2026-07-07 — each needs its own dedicated session
 - **Quarto design-decisions catalog triage, reframed.** Branch `quarto-decisions-catalog`, commit
@@ -150,19 +150,6 @@ Full per-item detail (repro + fix approach) and the ~80 low-severity long tail l
 > rules first. Already-tracked items (op-batching, kernel `/tmp` + `in_flight` leaks,
 > boot-diagnostic clobber, `app.pages` LRU, lazy search index, `fitSlide`, R ANSI leak,
 > Mermaid SRI) stay in **Tier 2** above; the audit only sharpened their exact paths in AUDITS.md.
-
-### Batch 3: Accessibility [small quick-wins first, then structural]
-- Cmd-K palette selected row + match marks use raw `--tali-accent`, fail WCAG AA every theme:
-  swap to the existing `var(--tali-accent-fill)`/`--tali-on-accent` (`web-client/search.js`). **HIGH, trivial.**
-- Syntax comment token sub-AA in light/sepia/light-deck: darken per theme (`base.css:338`/`:583`, `deck.css:760`). [trivial]
-- `prefers-reduced-motion` bypassed by deck auto-animate/magic-move (`deck.js:389`) + JS smooth-scrolls
-  in the static build (`search.js:553`): one reduced-motion helper. [small]
-- Per-slide non-hex background assumed dark, invisible text on light backgrounds (`deck.js:337`). [small]
-- Overflowing `<pre>`/tables scroll but are not keyboard-scrollable, WCAG 2.1.1 (`base.css`). [small]
-- Lightbox makes `pre.mermaid` a `role=button` leaf hiding it from AT + forces decorative `alt=""`
-  into tab stops (`11-lightbox.js:178`). [small]
-- Chapter drawer / TOC sheet advertise `aria-haspopup="dialog"` with no real modal/trap (`site/chrome.rs`). [small]
-- Cmd-K combobox ARIA mis-wired: role/activedescendant split, unnamed listbox (`search.js:142`). [small]
 
 ### Batch 4: Cross-reference numbering (one helper fixes 3-4 bugs) [medium]
 - Register the hierarchical `section_number` when a chapter is present (`render/mod.rs:390`). Collapses:

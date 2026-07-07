@@ -743,6 +743,16 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
             && methods.contains("id=\"tali-book-drawer\""),
         "book topbar + chapter drawer chrome missing"
     );
+    // The drawer launcher promises `aria-haspopup="dialog"`, so the drawer panel must
+    // actually BE a dialog (role + accessible name); the focus trap / aria-modal are
+    // wired at runtime (BOOK_DRAWER_SCRIPT + taliFocusTrap). Batch 3g.
+    assert!(
+        methods.contains("aria-haspopup=\"dialog\"")
+            && methods.contains(
+                "class=\"tali-book-drawer-panel\" role=\"dialog\" aria-label=\"Chapters\""
+            ),
+        "the chapter drawer must be a real role=dialog to honour aria-haspopup=dialog"
+    );
     assert!(
         !methods.contains("class=\"tali-book\""),
         "the removed three-pane `.tali-book` flex wrapper must not return"

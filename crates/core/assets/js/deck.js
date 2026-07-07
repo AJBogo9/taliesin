@@ -297,6 +297,7 @@
     var gradient = sec.getAttribute('data-background-gradient');
     var image = sec.getAttribute('data-background-image');
     sec.classList.remove('tali-dark-bg');
+    sec.classList.remove('tali-light-bg');
     var existing = sec.querySelector(':scope > .tali-slide-bg');
     if (!color && !gradient && !image) { if (existing) existing.remove(); return; }
     var bg = ensureSlideBg(sec);
@@ -309,7 +310,11 @@
       bg.style.backgroundPosition = sec.getAttribute('data-background-position') || 'center';
       bg.style.backgroundRepeat = sec.getAttribute('data-background-repeat') || 'no-repeat';
     }
+    // Dark bg (or image/gradient, assumed dark) -> light text; a light solid colour
+    // -> dark text, so a light named/hex slide background stays readable whatever the
+    // deck's own theme is (its default text may be light).
     if (image || gradient || (color && isDarkColor(color))) sec.classList.add('tali-dark-bg');
+    else if (color) sec.classList.add('tali-light-bg');
   }
   function applyBackgrounds() { allSlides().forEach(paintSlideBg); }
   // --- semantic zoom (level-of-detail) -----------------------------------
@@ -335,11 +340,22 @@
     });
   }
   function isDarkColor(c) {
-    var m = c.replace(/\s/g, '').match(/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i);
-    if (!m) return true; // named/unknown colour -> assume dark (decorative)
-    var h = m[1];
-    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
-    var r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+    // Resolve ANY CSS colour (named like "white"/"lightblue", hex, rgb(), hsl()) to
+    // rgb via the browser, so a light named background is no longer mis-assumed dark
+    // (which flipped heading/body text to invisible white on a light slide). A
+    // sentinel detects a truly-unparseable value and preserves the old "assume dark"
+    // fallback for it.
+    var probe = document.createElement('span');
+    probe.style.color = 'rgb(1, 2, 3)'; // sentinel: survives an invalid assignment
+    probe.style.color = c;
+    probe.style.display = 'none';
+    document.body.appendChild(probe);
+    var resolved = getComputedStyle(probe).color;
+    probe.remove();
+    if (resolved === 'rgb(1, 2, 3)') return true; // unparseable colour -> assume dark
+    var m = resolved.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/i);
+    if (!m) return true;
+    var r = +m[1], g = +m[2], b = +m[3];
     return 0.299 * r + 0.587 * g + 0.114 * b < 140;
   }
 
@@ -375,6 +391,9 @@
     return snap;
   }
   function flipTo(snap, to) {
+    // reduced-motion: skip the FLIP tween — the target slide is already in its final
+    // layout, so returning early lands the same end state with no inline transition.
+    if (reducedMotion()) return;
     var scale = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tali-deck-scale')) || 1;
     snap.forEach(function (s) {
       var el = s.to, st = el.style;
@@ -477,7 +496,9 @@
     if (!pres.length) return;
     target = Math.max(0, Math.min(target, pres.length - 1));
     var prev = div.__mm;
-    if (deck.animSteps && prev != null && prev !== target) morphMM(div, pres, prev, target);
+    // reduced-motion: fall through to the instant show/hide (no line-glide/fade morph).
+    if (deck.animSteps && prev != null && prev !== target && !reducedMotion())
+      morphMM(div, pres, prev, target);
     else pres.forEach(function (p, i) { p.classList.toggle('tali-mm-active', i === target); });
     div.__mm = target;
   }

@@ -174,11 +174,24 @@ function taliDecorateLightbox(root) {
   var els = scope.querySelectorAll('figure img, img.lightbox, pre.mermaid, .tali-video video');
   [].forEach.call(els, function (el) {
     if (el.getAttribute('data-qmd-lb')) return; // idempotent: decorate once per element
+    var isMermaid = el.matches && el.matches('pre.mermaid');
+    // A decorative image (author set an explicit empty alt) stays out of the tab
+    // order — forcing it to a focusable "zoom" button contradicts the author's
+    // "ignore me" marking. An explicit `.lightbox` opt-in overrides that.
+    if (el.tagName === 'IMG' && el.getAttribute('alt') === '' && !el.classList.contains('lightbox')) {
+      return;
+    }
     el.setAttribute('data-qmd-lb', '1');
     el.setAttribute('tabindex', '0');
-    el.setAttribute('role', 'button');
+    // Don't collapse a mermaid diagram into a `role="button"` LEAF — that hides its
+    // SVG title/desc from assistive tech. `role="figure"` keeps the diagram content
+    // in the a11y tree while the element stays focusable + keyboard-zoomable.
+    el.setAttribute('role', isMermaid ? 'figure' : 'button');
     var alt = el.getAttribute && el.getAttribute('alt');
-    el.setAttribute('aria-label', alt ? alt : 'View image full size');
+    el.setAttribute(
+      'aria-label',
+      isMermaid ? 'Diagram — press Enter to zoom' : alt ? alt : 'View image full size'
+    );
     el.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
         e.preventDefault(); // stop Space from scrolling the page

@@ -2612,3 +2612,109 @@ fn bibliography_paths_accepts_scalar_seq_and_spaced_path() {
     );
     assert!(bibliography_paths("title: X").is_empty());
 }
+
+// --- accessibility regressions (Batch 3) ---
+
+/// WCAG relative luminance of an sRGB `#rrggbb` color.
+#[cfg(test)]
+fn wcag_luminance(hex: &str) -> f64 {
+    let h = hex.trim_start_matches('#');
+    let ch = |i: usize| u8::from_str_radix(&h[i..i + 2], 16).unwrap() as f64 / 255.0;
+    let lin = |c: f64| {
+        if c <= 0.03928 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * lin(ch(0)) + 0.7152 * lin(ch(2)) + 0.0722 * lin(ch(4))
+}
+
+#[cfg(test)]
+fn wcag_contrast(fg: &str, bg: &str) -> f64 {
+    let (a, b) = (wcag_luminance(fg), wcag_luminance(bg));
+    let (hi, lo) = if a > b { (a, b) } else { (b, a) };
+    (hi + 0.05) / (lo + 0.05)
+}
+
+/// Pull the first `#rrggbb` after `needle` in `css` (the color a rule sets).
+#[cfg(test)]
+fn color_after<'a>(css: &'a str, needle: &str) -> &'a str {
+    let i = css
+        .find(needle)
+        .unwrap_or_else(|| panic!("no `{needle}` in css"));
+    let rest = &css[i + needle.len()..];
+    let h = rest.find('#').expect("a hex color after the rule");
+    &rest[h..h + 7]
+}
+
+#[test]
+fn syntax_comment_token_meets_wcag_aa() {
+    // Batch 3b: the comment token was sub-AA (light 4.17, sepia 3.17) on its code
+    // background. Pin ≥ 4.5:1 against the actual code-block backgrounds so a future
+    // palette edit can't silently regress it.
+    let light = color_after(BASE_CSS, ".tali-hl-comment { color: ");
+    assert!(
+        wcag_contrast(light, "#f5f5f5") >= 4.5,
+        "light comment {light} vs #f5f5f5 = {:.2}",
+        wcag_contrast(light, "#f5f5f5")
+    );
+    let sepia = color_after(
+        BASE_CSS,
+        "html[data-theme=\"sepia\"] .tali-hl-comment { color: ",
+    );
+    assert!(
+        wcag_contrast(sepia, "#ece2c8") >= 4.5,
+        "sepia comment {sepia} vs #ece2c8 = {:.2}",
+        wcag_contrast(sepia, "#ece2c8")
+    );
+}
+
+#[test]
+fn cmd_k_palette_uses_aa_accent_tokens_not_raw_accent() {
+    // Batch 3a: the selected row + match marks used raw `--tali-accent`, failing AA
+    // in every theme. They must use the AA-tuned fill/on-accent (filled row) and
+    // link (marks) tokens instead.
+    assert!(
+        SEARCH_JS.contains(".tali-s-item[aria-selected=true]{background:var(--tali-accent-fill")
+            && SEARCH_JS.contains("color:var(--tali-on-accent"),
+        "selected row must use accent-fill bg + on-accent text"
+    );
+    assert!(
+        SEARCH_JS.contains(".tali-s-snip mark{background:transparent;color:var(--tali-link")
+            && SEARCH_JS
+                .contains(".tali-s-title mark{background:transparent;color:var(--tali-link"),
+        "match marks must use the AA-tuned --tali-link, not raw --tali-accent"
+    );
+    // The combobox role moved onto the input; the listbox is named (Batch 3h).
+    assert!(
+        SEARCH_JS.contains("role=\"combobox\" aria-expanded=\"true\"")
+            && SEARCH_JS.contains("role=\"listbox\" aria-label=\"Search results\""),
+        "combobox role on the input + a named listbox"
+    );
+}
+
+#[test]
+fn deck_defines_light_bg_text_override() {
+    // Batch 3d: a light per-slide background needs a `.tali-light-bg` rule forcing
+    // DARK text, or the deck's default (light) text is invisible on it. Pin both the
+    // dark-bg and light-bg overrides so the mirror can't be dropped.
+    let deck_css = include_str!("../../assets/css/deck.css");
+    assert!(
+        deck_css.contains(".tali-slides section.tali-dark-bg"),
+        "dark-bg text override missing"
+    );
+    assert!(
+        deck_css.contains(".tali-slides section.tali-light-bg"),
+        "light-bg text override missing (light named/hex slide backgrounds render invisible text)"
+    );
+    // The light-bg override forces near-black text.
+    let dark_text = color_after(
+        deck_css,
+        ".tali-slides section.tali-light-bg strong { color: ",
+    );
+    assert!(
+        wcag_contrast(dark_text, "#ffffff") >= 7.0,
+        "light-bg text {dark_text} must be dark enough to read on a light slide"
+    );
+}

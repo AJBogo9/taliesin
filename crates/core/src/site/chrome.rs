@@ -25,7 +25,7 @@ const NAV_TOGGLE_SCRIPT: &str = "<script>(function(){var b=document.getElementBy
 /// close it on Escape, on a backdrop / close-button click (`[data-qmd-drawer-close]`), or
 /// after a chapter link is followed (restoring focus to the opener). `data-drawer-wired`
 /// keeps it idempotent across hot-reload re-injects.
-const BOOK_DRAWER_SCRIPT: &str = "<script>(function(){var b=document.getElementById('tali-book-drawer-btn'),d=document.getElementById('tali-book-drawer');if(!b||!d||b.dataset.drawerWired)return;b.dataset.drawerWired='1';function set(o){d.hidden=!o;b.setAttribute('aria-expanded',o?'true':'false');if(o){var f=d.querySelector('.tali-book-chapter')||d.querySelector('a,button');if(f)f.focus();}else{b.focus();}}b.addEventListener('click',function(){set(d.hidden);});d.addEventListener('click',function(e){if(e.target.closest('[data-qmd-drawer-close]')||e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!d.hidden)set(false);});})();</script>";
+const BOOK_DRAWER_SCRIPT: &str = "<script>(function(){var b=document.getElementById('tali-book-drawer-btn'),d=document.getElementById('tali-book-drawer');if(!b||!d||b.dataset.drawerWired)return;b.dataset.drawerWired='1';var panel=d.querySelector('.tali-book-drawer-panel')||d,release=null;function set(o){d.hidden=!o;b.setAttribute('aria-expanded',o?'true':'false');if(o){var f=d.querySelector('.tali-book-chapter[aria-current]')||d.querySelector('.tali-book-chapter,a,button');if(window.taliFocusTrap){release=window.taliFocusTrap(panel,f);}else if(f){f.focus();}}else if(release){release();release=null;}else{b.focus();}}b.addEventListener('click',function(){set(d.hidden);});d.addEventListener('click',function(e){if(e.target.closest('[data-qmd-drawer-close]')||e.target.closest('a'))set(false);});document.addEventListener('keydown',function(e){if(e.key==='Escape'&&!d.hidden)set(false);});})();</script>";
 
 /// A search control that opens the Cmd-K palette. It carries `data-qmd-search`,
 /// which `web-client/search.js` wires (by click delegation) to open the same
@@ -256,7 +256,7 @@ impl Site {
         s.push_str(
             "<div class=\"tali-book-drawer\" id=\"tali-book-drawer\" hidden>\
              <div class=\"tali-book-drawer-backdrop\" data-qmd-drawer-close></div>\
-             <div class=\"tali-book-drawer-panel\">",
+             <div class=\"tali-book-drawer-panel\" role=\"dialog\" aria-label=\"Chapters\">",
         );
         // The `tali-book-sidebar` nav (kept for the chapter list + its aria-label) now lives
         // inside the drawer panel rather than a left rail.

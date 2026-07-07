@@ -10,6 +10,14 @@
   if (window.taliSearchInstalled) return;
   window.taliSearchInstalled = true;
 
+  // Honour prefers-reduced-motion for JS-initiated scrolls (the CSS
+  // scroll-behavior gate doesn't cover programmatic scrollIntoView/scrollTo).
+  function scrollBehavior() {
+    return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? "auto"
+      : "smooth";
+  }
+
   var CSS =
     "#tali-search{position:fixed;inset:0;z-index:10050;display:flex;justify-content:center;" +
     "align-items:flex-start;padding-top:12vh}" +
@@ -27,15 +35,15 @@
     "#tali-search .tali-s-item{display:flex;flex-direction:column;gap:.15rem;padding:.5rem .7rem;" +
     "border-radius:7px;cursor:pointer;scroll-margin:.4rem}" +
     "#tali-search .tali-s-head{display:flex;align-items:baseline;gap:.6rem}" +
-    "#tali-search .tali-s-item[aria-selected=true]{background:var(--tali-accent,#4c8dff);color:#fff}" +
+    "#tali-search .tali-s-item[aria-selected=true]{background:var(--tali-accent-fill,#1f6feb);color:var(--tali-on-accent,#fff)}" +
     "#tali-search .tali-s-item[aria-selected=true] .tali-s-sec{color:rgba(255,255,255,.8)}" +
     "#tali-search .tali-s-snip{font-size:.78rem;color:var(--tali-muted,#888);overflow:hidden;" +
     "text-overflow:ellipsis;white-space:nowrap}" +
-    "#tali-search .tali-s-snip mark{background:transparent;color:var(--tali-accent,#4c8dff);font-weight:700;padding:0}" +
+    "#tali-search .tali-s-snip mark{background:transparent;color:var(--tali-link,#2563eb);font-weight:700;padding:0}" +
     "#tali-search .tali-s-item[aria-selected=true] .tali-s-snip{color:rgba(255,255,255,.85)}" +
     "#tali-search .tali-s-item[aria-selected=true] .tali-s-snip mark{color:#fff}" +
     "#tali-search .tali-s-title{font-weight:600}" +
-    "#tali-search .tali-s-title mark{background:transparent;color:var(--tali-accent,#4c8dff);" +
+    "#tali-search .tali-s-title mark{background:transparent;color:var(--tali-link,#2563eb);" +
     "font-weight:800;padding:0}" +
     "#tali-search .tali-s-item[aria-selected=true] .tali-s-title mark{color:#fff;" +
     "text-decoration:underline}" +
@@ -141,11 +149,14 @@
     overlay.hidden = true;
     overlay.innerHTML =
       '<div class="tali-s-backdrop"></div>' +
-      '<div class="tali-s-box" role="combobox" aria-expanded="true" aria-haspopup="listbox">' +
+      '<div class="tali-s-box">' +
+      // ARIA 1.2 combobox: the input IS the combobox, owning aria-expanded /
+      // aria-controls / aria-activedescendant; the listbox is separately named.
       '<input class="tali-s-input" type="text" autocomplete="off" spellcheck="false" ' +
+      'role="combobox" aria-expanded="true" aria-haspopup="listbox" aria-autocomplete="list" ' +
       'placeholder="Search this document…" aria-label="Search this document" ' +
       'aria-controls="tali-s-results" />' +
-      '<ul class="tali-s-results" id="tali-s-results" role="listbox"></ul>' +
+      '<ul class="tali-s-results" id="tali-s-results" role="listbox" aria-label="Search results"></ul>' +
       '<div class="tali-s-hint"><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>' +
       "<span><kbd>↵</kbd> go to</span><span><kbd>esc</kbd> close</span></div>";
     document.body.appendChild(overlay);
@@ -269,6 +280,9 @@
         ? "Search index failed to load"
         : "No matches";
       list.appendChild(empty);
+      // No option is active: drop any stale reference so AT doesn't announce a
+      // removed row (the listbox is now empty).
+      input.removeAttribute("aria-activedescendant");
       return;
     }
     matches.forEach(function (m, i) { list.appendChild(itemEl(m, terms, i)); });
@@ -506,7 +520,7 @@
     var vh = window.innerHeight || document.documentElement.clientHeight;
     if (rect.bottom < 0 || rect.top > vh) {
       var host = range.startContainer.parentElement;
-      if (host) host.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (host) host.scrollIntoView({ behavior: scrollBehavior(), block: "center" });
     }
     clearFlash();
     var hl = flashHighlight();
@@ -544,13 +558,13 @@
       return;
     }
     if (!item.id) {
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0, behavior: scrollBehavior() });
       return;
     }
     var target = document.getElementById(item.id);
     if (!target) return;
     if (history.replaceState) history.replaceState(null, "", "#" + item.id);
-    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    target.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
     flashTermsIn(target, terms);
   }
 
