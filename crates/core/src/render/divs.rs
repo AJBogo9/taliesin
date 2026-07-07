@@ -129,7 +129,10 @@ pub(crate) struct DivSpan {
 
 /// Find all fenced-div spans (stack-based, so nesting is handled). Sorted so
 /// that for a shared opening line the outermost (latest close) comes first.
-pub(crate) fn scan_div_spans(src: &str) -> Vec<DivSpan> {
+/// Also returns the 1-based line of any `:::` open that was never closed — the
+/// orchestrator warns on those (an unterminated fence otherwise drops its wrapper
+/// silently and the content renders unfenced).
+pub(crate) fn scan_div_spans(src: &str) -> (Vec<DivSpan>, Vec<usize>) {
     let mut stack: Vec<(usize, String)> = Vec::new();
     let mut spans: Vec<DivSpan> = Vec::new();
     let mut in_code: Option<(char, usize)> = None;
@@ -154,7 +157,9 @@ pub(crate) fn scan_div_spans(src: &str) -> Vec<DivSpan> {
         }
     }
     spans.sort_by_key(|s| (s.open, std::cmp::Reverse(s.close)));
-    spans
+    let mut unclosed: Vec<usize> = stack.into_iter().map(|(open, _)| open).collect();
+    unclosed.sort_unstable();
+    (spans, unclosed)
 }
 
 /// Parse a fenced-div attribute string: `.class`, `#id`, and `key=val`
@@ -227,6 +232,15 @@ fn unquote_value(v: &str) -> String {
         let mut ch = v.chars();
         match (ch.next(), ch.next_back()) {
             (Some(a @ ('"' | '\'')), Some(b)) if a == b && v.len() >= 2 => ch.as_str(),
+            // Smart-punctuation curly quotes: comrak rewrites straight quotes in the
+            // rendered text, so a quoted figure `width="60%"` reaches the parser as
+            // `“60%”`. Strip the matching curly pair too, else the curly quotes leak
+            // into the CSS (`style="width:“60%”"`) and the value silently no-ops.
+            (Some('\u{201c}'), Some('\u{201d}')) | (Some('\u{2018}'), Some('\u{2019}'))
+                if v.chars().count() >= 2 =>
+            {
+                ch.as_str()
+            }
             _ => v,
         }
     };

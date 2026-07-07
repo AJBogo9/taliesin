@@ -2716,6 +2716,51 @@ fn same_page_sec_ref_uses_hierarchical_number_in_a_chapter() {
 }
 
 #[test]
+fn unterminated_fence_warns_located() {
+    // Batch 5: a `:::` open with no matching close silently dropped its wrapper. It
+    // must raise a click-to-source warning at the open line, and still render the
+    // content (unwrapped) rather than swallow it.
+    let doc = render_document("::: {.callout-note}\nBody with no close.\n");
+    assert!(
+        doc.warnings
+            .iter()
+            .any(|w| w.message.contains("unterminated") && w.line == Some(1)),
+        "unterminated fence should warn at line 1, got: {:?}",
+        doc.warnings
+    );
+    assert!(
+        doc.body_html().contains("Body with no close."),
+        "the content must still render, not be swallowed"
+    );
+    // A properly closed fence raises no such warning.
+    let ok = render_document("::: {.callout-note}\nBody.\n:::\n");
+    assert!(
+        !ok.warnings
+            .iter()
+            .any(|w| w.message.contains("unterminated")),
+        "a closed fence must not warn"
+    );
+}
+
+#[test]
+fn quoted_figure_width_survives_smart_punctuation() {
+    // Batch 5: comrak's smart-punctuation rewrites the straight quotes in a figure's
+    // `{width="60%"}` to curly quotes in the rendered text, and the attr parser only
+    // stripped straight quotes — leaving `style="width:“60%”"` (invalid CSS, silent
+    // no-op). The value must come out clean.
+    let doc = render_document("![Cap](x.png){#fig-q width=\"60%\" height=\"40%\"}\n");
+    let body = doc.body_html();
+    assert!(
+        body.contains("style=\"width:60%;height:40%\""),
+        "quoted width/height must render clean CSS, got: {body}"
+    );
+    assert!(
+        !body.contains('\u{201c}') && !body.contains('\u{201d}'),
+        "no curly quotes should leak into the style, got: {body}"
+    );
+}
+
+#[test]
 fn explicit_slide_heading_id_becomes_the_section_anchor() {
     // Batch 4: an explicit `{#sec-x}` on a slide heading was dropped — the slide got a
     // text-slug id instead, so `@sec-x` linked to a missing anchor. The explicit id

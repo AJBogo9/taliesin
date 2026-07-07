@@ -58,8 +58,8 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
   site-wide bibliography-merge decision first). Lightweight replacement for the discovery value the
   (now-removed) xref graph tool provided.
 - Audit 2026-07-07 implementation queue also lives here — see
-  **[the batched queue below](#audit-2026-07-07-implementation-queue-build-ready)** (Batch 5 next;
-  Batches 1-4 landed 2026-07-07).
+  **[the batched queue below](#audit-2026-07-07-implementation-queue-build-ready)** (Batch 6 next;
+  Batches 1-4 + the high-value half of Batch 5 landed 2026-07-07).
 
 ### Decided 2026-07-07 — each needs its own dedicated session
 - **Quarto design-decisions catalog triage, reframed.** Branch `quarto-decisions-catalog`, commit
@@ -151,18 +151,19 @@ Full per-item detail (repro + fix approach) and the ~80 low-severity long tail l
 > boot-diagnostic clobber, `app.pages` LRU, lazy search index, `fitSlide`, R ANSI leak,
 > Mermaid SRI) stay in **Tier 2** above; the audit only sharpened their exact paths in AUDITS.md.
 
-### Batch 5: Silent-failure diagnostics channel (the audit's largest theme; cohesive) [medium]
-Extend the existing located-warning channel (math/front-matter already use it) to:
-- Unterminated `:::` fence dropped, content unwrapped (`divs.rs:143`).
-- Quoted figure `width=`/`height=` corrupted by smart-punctuation, **live** at
-  `bayesian-website/subsections/_data-modeling.tmd:4` (`figure.rs:55`).
-- YAML-1.2 boolean coercion: `draft: yes` silently publishes the draft; `toc: yes`, `execute:{echo: no}`
-  mis-read (`site/frontmatter.rs:56`).
-- Single-doc `build` never runs `yaml_error()`, so malformed front-matter builds clean and passes `--strict`
-  (`frontmatter.rs:107`).
+### Batch 5 remainder: Silent-failure diagnostics channel [medium]
+The high-value half landed 2026-07-07 (unterminated `:::` fence now warns located; quoted figure
+`width=`/`height=` smart-punctuation **fixed** — curly quotes stripped in `unquote_value`, was live at
+`bayesian-website/subsections/_data-modeling.tmd`; `draft: yes`/`on` now coerced fail-safe + warned;
+single-doc `build` now runs `yaml_error()` so malformed front-matter fails `--strict`). Still open (lower
+value / more invasive, each its own small change):
+- `toc: yes` / `execute: {echo: no}` YAML-1.1 booleans in the CELL-option + render-frontmatter paths
+  (a different code path from the site `draft:` one already fixed; `cell_extract.rs` uses `v != "false"`).
 - `_site.yml` nested nav/footer/mount typos degrade silently + top-level warnings ship unlocated (`config/mod.rs:206`).
-- Block-sequence `bibliography:` silently dropped (`fm_extract.rs`).
-- (Also folds in low-tail siblings on the same channel: non-`.bib` bibliography, unresolved fence language, non-HTML `format:`.)
+- Block-sequence `bibliography:` dropped ONLY when serde_yaml fails to parse the rest of the front matter
+  (the `extract_field` fallback can't read a block sequence) — edge case (`fm_extract.rs:114`).
+- Low-tail siblings: non-`.bib` bibliography, unresolved fence language (needs a warnings channel threaded
+  into the pure `highlight` fn — invasive), non-HTML `format:`.
 
 ### Batch 6: Citations / BibTeX + output-escaping [small]
 - `@inproceedings`/`@conference` silently drop `booktitle` + `pages`, the commonest CS/ML type (`cite/format.rs:22`).

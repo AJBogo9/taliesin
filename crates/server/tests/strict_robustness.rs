@@ -92,6 +92,40 @@ fn missing_site_yml_does_not_fail_strict_build() {
 }
 
 #[test]
+fn single_doc_malformed_front_matter_fails_strict() {
+    // Batch 5: a single-doc `build` used to skip yaml_error(), so a typo'd `---` block
+    // built clean and passed --strict. It must now be a --strict problem.
+    let dir = tmp_dir("singleyaml");
+    let doc = dir.join("post.tmd");
+    // `bad: : x` is a YAML syntax error (a mapping value that is itself a bare colon).
+    fs::write(&doc, "---\ntitle: OK\nbad: : x\n---\n\nProse.\n").unwrap();
+
+    // Lenient: still builds (degraded), exit 0, but reports the error.
+    let lenient = taliesin()
+        .arg("build")
+        .arg(&doc)
+        .output()
+        .expect("lenient build");
+    assert!(
+        lenient.status.success(),
+        "a malformed front-matter without --strict still builds"
+    );
+
+    let strict = taliesin()
+        .arg("build")
+        .arg(&doc)
+        .arg("--strict")
+        .output()
+        .expect("strict build");
+    let err = String::from_utf8_lossy(&strict.stderr);
+    let _ = fs::remove_dir_all(&dir);
+    assert!(
+        !strict.status.success(),
+        "malformed single-doc front-matter must fail --strict, stderr:\n{err}"
+    );
+}
+
+#[test]
 fn build_rejects_unknown_flag_with_suggestion() {
     let dir = tmp_dir("badflag");
     let doc = dir.join("post.tmd");

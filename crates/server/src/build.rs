@@ -317,6 +317,13 @@ fn build_page_executing(
         // `problems` is what `--strict` fails on: located render warnings, broken
         // cross-refs, and crashed code cells — each already logged below.
         let mut problems = 0usize;
+        // Malformed front-matter YAML: the live servers + `check` report this, but a
+        // single-doc `build` used to skip it, so a typo'd `---` block built clean and
+        // even passed `--strict`. Surface it (located) and count it toward --strict.
+        if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(src) {
+            log::warn(&format!("{fallback} (line {line}): {message}"));
+            problems += 1;
+        }
         let mut doc = taliesin_core::render_document_with_includes(src, base);
         // `--bare` is prose-shaped, JS-free output: a slide deck (whose navigation is
         // JavaScript) can't be one. Refuse before doing any execution work.

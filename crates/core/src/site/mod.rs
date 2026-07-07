@@ -1200,6 +1200,40 @@ mod tests {
     }
 
     #[test]
+    fn draft_yes_is_treated_as_draft_and_warns() {
+        // Batch 5: `draft: yes` is a STRING in YAML 1.2 (not a bool), so it used to
+        // slip through as draft=false and silently publish. It must be caught: excluded
+        // like `draft: true` AND a warning to use canonical `true`.
+        use std::fs;
+        let root = std::env::temp_dir().join(format!("tali-draftyes-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("index.tmd"), "---\ntitle: Home\n---\n\nHome.\n").unwrap();
+        fs::write(
+            root.join("wip.tmd"),
+            "---\ntitle: WIP\ndraft: yes\n---\n\nStill cooking.\n",
+        )
+        .unwrap();
+
+        let mut warnings = Vec::new();
+        let rels: Vec<String> = website_pages(&root, &mut warnings)
+            .iter()
+            .map(|p| p.rel.clone())
+            .collect();
+        assert!(
+            !rels.contains(&"wip.tmd".to_string()),
+            "`draft: yes` must be excluded like `draft: true`: {rels:?}"
+        );
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("draft") && w.contains("YAML 1.2")),
+            "a `draft: yes` page must warn to use `true`: {warnings:?}"
+        );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn author_404_is_honored_and_excluded_from_search() {
         use std::fs;
         let root = std::env::temp_dir().join(format!("tali-404-{}", std::process::id()));

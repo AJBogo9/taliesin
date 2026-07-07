@@ -186,7 +186,7 @@ fn render_internal_impl(
     // then strip the fence markers in a line-preserving pass so sourcepos line
     // numbers stay exact and the inner content parses as normal blocks. The
     // recorded spans are used afterwards to wrap blocks back up as callouts etc.
-    let spans = scan_div_spans(src);
+    let (spans, unclosed_fences) = scan_div_spans(src);
     let processed = preprocess(src);
     let root = parse_document(&arena, &processed, &options);
 
@@ -221,6 +221,18 @@ fn render_internal_impl(
             let (file, mapped) = map_origin(origins, line);
             warnings.push(Warning::new(msg).at(file, mapped as u32));
         }
+    }
+    // An unterminated `:::` fence drops its wrapper silently (the callout/columns never
+    // form and the content renders unfenced) — surface it as a click-to-source warning.
+    for open in unclosed_fences {
+        let (file, mapped) = map_origin(origins, open);
+        warnings.push(
+            Warning::new(
+                "unterminated `:::` fenced div: add a closing `:::` \u{2014} the block is \
+                 rendered without its wrapper",
+            )
+            .at(file, mapped as u32),
+        );
     }
     // Document-level cell defaults from a front-matter `execute:` block; a cell's
     // own `#| echo`/`#| include`/`#| cache` overrides these.

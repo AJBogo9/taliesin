@@ -53,11 +53,41 @@ pub(crate) fn parse_front_matter(
         about: parse_about(val.get("about")),
         hero: parse_hero(val.get("hero")),
         page_layout: scalar(val.get("page-layout")),
-        draft: val
-            .get("draft")
-            .and_then(serde_yaml::Value::as_bool)
-            .unwrap_or(false),
+        draft: bool_field(&val, "draft", false, label, warnings),
     }
+}
+
+/// A boolean front-matter field that also catches the YAML-1.1 words serde_yaml
+/// (which follows YAML 1.2) reads as plain STRINGS — `yes`/`no`/`on`/`off`. Without
+/// this, `draft: yes` is a string, `as_bool()` is `None`, and the draft silently
+/// PUBLISHES. Coerce them fail-safe and warn to use canonical `true`/`false`.
+fn bool_field(
+    val: &serde_yaml::Value,
+    key: &str,
+    default: bool,
+    label: &str,
+    warnings: &mut Vec<String>,
+) -> bool {
+    let Some(v) = val.get(key) else {
+        return default;
+    };
+    if let Some(b) = v.as_bool() {
+        return b;
+    }
+    if let Some(s) = v.as_str() {
+        let canonical = match s.trim().to_ascii_lowercase().as_str() {
+            "yes" | "on" | "true" => Some(true),
+            "no" | "off" | "false" => Some(false),
+            _ => None,
+        };
+        if let Some(b) = canonical {
+            warnings.push(format!(
+                "{label}: `{key}: {s}` is a string in YAML 1.2, not a boolean \u{2014} use `{key}: {b}`"
+            ));
+            return b;
+        }
+    }
+    default
 }
 
 /// Parse an `about:` mapping into a profile spec (template + image + links).
