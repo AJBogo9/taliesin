@@ -162,6 +162,26 @@ pub(super) fn is_ref_anchor(id: &str) -> bool {
     .iter()
     .any(|p| id.starts_with(p))
 }
+/// Every cross-page-reference anchor in a block's HTML: the value of each
+/// `data-qmd-xref="…"` marker, in document order (with duplicates, if a block refers
+/// to the same anchor twice). `cite` emits this marker *only* for a reference whose
+/// target is not on the current page (`cite/render.rs`), so a marker is by
+/// construction a cross-page reference — the raw material for the reverse
+/// (anchor → referring pages) index.
+pub(super) fn xref_markers_in(html: &str) -> Vec<&str> {
+    let marker = "data-qmd-xref=\"";
+    let mut out = Vec::new();
+    let mut pos = 0;
+    while let Some(rel) = html[pos..].find(marker) {
+        let start = pos + rel + marker.len();
+        let Some(len) = html[start..].find('"') else {
+            break;
+        };
+        out.push(&html[start..start + len]);
+        pos = start + len;
+    }
+    out
+}
 /// Rewrite the `data-qmd-xref`-marked links in one block's HTML: a marker whose
 /// anchor is a known cross-page target becomes a link to that page (with its
 /// number); an unknown anchor is left as the bare-label link `cite` emitted.
@@ -269,6 +289,27 @@ mod tests {
             Some("sec-x")
         );
         assert_eq!(brace_id("::: {.theorem #thm-x}").as_deref(), Some("thm-x"));
+    }
+
+    #[test]
+    fn xref_markers_in_finds_every_cross_page_marker() {
+        // Two cross-page markers on the block, plus a same-page `tali-xref` link with
+        // no marker (must be ignored) and an ordinary link (ignored).
+        let html = concat!(
+            r##"See <a href="#fig-a" class="tali-xref" data-qmd-xref="fig-a">Figure</a> and "##,
+            r##"<a href="#thm-b" class="tali-xref" data-qmd-xref="thm-b">Theorem</a>; "##,
+            r##"local <a href="#sec-here" class="tali-xref">Section&nbsp;1</a> and "##,
+            r##"<a href="https://x">out</a>."##,
+        );
+        assert_eq!(xref_markers_in(html), vec!["fig-a", "thm-b"]);
+    }
+
+    #[test]
+    fn xref_markers_in_is_empty_without_markers() {
+        assert_eq!(
+            xref_markers_in(r##"<a href="#sec-x" class="tali-xref">Section</a>"##),
+            Vec::<&str>::new()
+        );
     }
 
     /// The bare-prefix list in `is_ref_anchor` must recognize every cross-reference prefix

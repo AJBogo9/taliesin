@@ -273,3 +273,15 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
   }
   .tali-search-btn, .tali-nav-settings, .tali-nav-burger, .tali-book-drawer-btn { border: 1px solid CanvasText; }
 }
+
+/* Cross-reference backlinks: the quiet "Referenced by" line injected after a target
+   (figure / section / theorem / …) that other pages cross-reference. Near-monochrome
+   scholarly apparatus, not chrome — small, muted, and tight to its target. */
+.tali-backrefs {
+  margin: .3rem 0 1.1rem; font: .8rem/1.5 var(--tali-font-head); color: var(--tali-muted); }
+.tali-backref {
+  color: var(--tali-muted); text-decoration: none; border-bottom: 1px solid var(--tali-border); }
+.tali-backref:hover { color: var(--tali-link); border-bottom-color: currentColor; }
+@media (forced-colors: active) {
+  .tali-backref { border-bottom: 1px solid LinkText; }
+}

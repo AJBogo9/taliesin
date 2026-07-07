@@ -77,7 +77,8 @@ for each anchor A where xref_targets[A].url == current_url and backlinks[A] non-
 The line:
 
 ```html
-<div class="tali-backrefs">↳ Referenced by
+<div class="tali-backrefs" data-block-id="qmd-backref-{anchor}">
+  <span aria-hidden="true">↳</span> Referenced by
   <a href="{up}{url}" class="tali-backref">{page title}</a> ·
   <a href="{up}{url2}" class="tali-backref">{title2}</a></div>
 ```
@@ -86,12 +87,19 @@ The line:
   (`page.title.as_deref().unwrap_or(&page.rel)`, the existing listing-card fallback
   — always the chapter title for a book).
 - **Link** = page-level (`{up}{page.url}`, no fragment).
-- **Injection point:** for a `<figure>` target the line goes *inside* the
-  `<figcaption>` (rides with the caption); for every other target (heading, theorem
-  div, equation, table, listing) it is appended to the end of the defining block's
-  HTML. Verify the heading case reads acceptably in the browser; if a line directly
-  under a heading is intrusive, that's the one placement to revisit (no design
-  change, just injection point).
+- **Injection = a separate synthetic block, not inner-HTML mutation.** The line is
+  spliced into the block stream as its *own* block right after the target's defining
+  block — a single-root `<div>` carrying its own `data-block-id`
+  (`qmd-backref-<anchor>`) and empty sourcepos, like the existing `qmd-footnotes` /
+  `qmd-title-block` synthetic blocks. This is required, not stylistic: the incremental
+  client mounts only a block's `firstElementChild` (`web-client/client.js`
+  `fragment()`), so a sibling `<div>` appended *inside* the target block would be
+  silently dropped on any live update, and a `<div>` can't legally nest inside a
+  heading's `<h*>`. As a separate block it also leaves the target block byte-identical
+  (its content-hash `data-block-id` is untouched) and is independently diffable /
+  removable. The line renders immediately after the target for every target type
+  (figure, heading, theorem, table, listing, equation) — uniform, no per-type
+  special-casing.
 
 ### 3. Styling
 
@@ -138,6 +146,9 @@ page render (build + serve_site):
 - Read-only view: the line is navigation only; the preview never writes source
   (single-editing-surface invariant untouched).
 - No exec/kernel contact (pure render/discover-time).
-- Block-model invariants (`data-block-id` / `data-sourcepos`) untouched — injection
-  edits a block's inner HTML string, not its identity, exactly like
-  `resolve_cross_refs`.
+- Block-model invariants preserved — the backref block is a *new* synthetic block
+  (own `data-block-id`, empty sourcepos, exempt from the sourcepos-totality invariant
+  like `qmd-footnotes`); the target blocks around it keep their content-hash ids
+  byte-for-byte, so the block diff stays stable and click-to-source is unaffected.
+  Self-referral is impossible by construction: `build_backlink_index` never lists a
+  page as a referrer of an anchor it defines.

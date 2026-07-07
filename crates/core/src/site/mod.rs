@@ -132,6 +132,12 @@ pub struct Site {
     /// Project-wide cross-reference targets (`sec-`/`fig-`/… anchor → page + number),
     /// so a `@sec-x` on one page resolves to its section on another (the book case).
     pub xref_targets: HashMap<String, XrefTarget>,
+    /// The reverse of `xref_targets`: each cross-referenced anchor → the urls of the
+    /// pages that reference it (deduped, in page order). Built during discovery from
+    /// the same all-pages render as `harvest_xref_numbers`; drives the quiet
+    /// "Referenced by" backlink line injected next to each target. Empty when nothing
+    /// cross-references anything.
+    pub backlinks: HashMap<String, Vec<String>>,
     /// Site-wide `format: html:` includes (header/body/css), resolved once at
     /// discovery relative to the site root and merged ahead of each page's own.
     pub includes: render::PageIncludes,
@@ -171,6 +177,7 @@ mod book;
 mod chrome;
 pub use book::{Book, BookEntry};
 use book::{book_pages, build_book};
+mod backlinks;
 mod hover;
 mod meta;
 mod search;
@@ -310,6 +317,7 @@ impl Site {
             pages,
             book,
             xref_targets,
+            backlinks: HashMap::new(),
             includes,
             warnings,
             search_index_json,
@@ -661,6 +669,9 @@ impl Site {
         self.resolve_cross_refs(blocks, &page.url);
         // Cross-refs that survived the site-wide resolution are genuinely broken.
         warnings.extend(crate::cite::validate_xrefs(blocks));
+        // Reverse side of cross-refs: a quiet "Referenced by" line after each target
+        // this page defines that other pages reference.
+        self.attach_backlinks(blocks, &page.url);
         self.expand_page(page, blocks, warnings);
     }
 
@@ -762,9 +773,18 @@ impl Site {
     /// "Figure&nbsp;2.3" / "Theorem&nbsp;1" instead of a bare "Figure" / "Theorem".
     /// Called once by `discover`, so build AND the live preview resolve the same numbers.
     /// A pure render pass (no kernel execution), amortised across the discover it rides on.
+    ///
+    /// The same all-pages render also builds the reverse index [`Site::backlinks`]
+    /// (anchor → referring pages) from each page's `data-qmd-xref` markers — cite emits
+    /// that marker only for a reference whose target is on another page, so a marker is
+    /// by construction a cross-page reference. Riding this existing render keeps it to
+    /// no extra traversal.
     pub fn harvest_xref_numbers(&mut self) {
         // Collect during the `&self.pages` pass, then apply — keeps the borrows disjoint.
         let mut updates: Vec<(String, String)> = Vec::new();
+        // (page url, that page's cross-page reference anchors) in site page order, so
+        // each target's referrer list comes out in document order.
+        let mut per_page: Vec<(String, Vec<String>)> = Vec::new();
         for page in &self.pages {
             let Ok(src) = std::fs::read_to_string(&page.input) else {
                 continue;
@@ -772,6 +792,17 @@ impl Site {
             let base = page.input.parent().unwrap_or(&self.root);
             let doc =
                 render::render_document_with_includes_scoped(&src, base, self.chapter_for(page));
+            let mut refs: Vec<String> = Vec::new();
+            for b in &doc.blocks {
+                if b.html.contains("data-qmd-xref=\"") {
+                    refs.extend(
+                        xref::xref_markers_in(&b.html)
+                            .into_iter()
+                            .map(str::to_string),
+                    );
+                }
+            }
+            per_page.push((page.url.clone(), refs));
             for (anchor, number) in doc.xref_numbers {
                 // `sec-` numbers are the source-scan's job (chapter-hierarchical, and
                 // correctly ABSENT on a non-book website). Harvesting the render's flat
@@ -792,6 +823,7 @@ impl Site {
                 }
             }
         }
+        self.backlinks = backlinks::build_backlink_index(&per_page, &self.xref_targets);
     }
 
     /// Discovery render-harvest: render each page that defines cross-reference targets
