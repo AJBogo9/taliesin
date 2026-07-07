@@ -234,12 +234,23 @@ fn strict_exit(code: ExitCode, strict_fail: bool, problems: usize) -> ExitCode {
 }
 
 /// Count the executed output blocks that are uncaught runtime errors (their HTML
+/// A block is a crashed *cell output* only when it is an actual executed-cell output
+/// wrapper (`<div class="tali-output" …>`, produced by the executor) that carries the
+/// `tali-error` marker. Keying on the wrapper as well as the marker avoids a false
+/// positive on ordinary prose that merely *documents* the class in an inline `<code>`
+/// span (HTML text content doesn't escape `"`, so `class="tali-error"` appears verbatim
+/// in the rendered paragraph — e.g. the internals book's execution chapter).
+fn is_cell_error_output(html: &str) -> bool {
+    html.trim_start().starts_with("<div class=\"tali-output\"")
+        && html.contains("class=\"tali-error\"")
+}
+
 /// carries the `tali-error` marker), logging a located warning per failing cell so a
 /// crashing cell isn't baked into the build silently. Returns the count.
 fn report_cell_errors(blocks: &[taliesin_core::Block], page_label: &str) -> usize {
     let mut n = 0;
     for b in blocks {
-        if b.html.contains("class=\"tali-error\"") {
+        if is_cell_error_output(&b.html) {
             n += 1;
             let where_ = b
                 .source_file
@@ -716,7 +727,7 @@ async fn build_one_page(
     // A crashed cell bakes its traceback into the page; collect a located line + count it
     // (same shape/order as the sequential `report_cell_errors`, but deferred).
     for b in &doc.blocks {
-        if b.html.contains("class=\"tali-error\"") {
+        if is_cell_error_output(&b.html) {
             problems += 1;
             let where_ = b
                 .source_file
@@ -1448,6 +1459,19 @@ mod build_diag_tests {
             output_block("<div class=\"tali-output\"><pre>printed tali-error here</pre></div>"),
         ];
         assert_eq!(report_cell_errors(&blocks, "page"), 1);
+    }
+
+    #[test]
+    fn report_cell_errors_ignores_prose_that_merely_documents_the_class() {
+        // Ordinary prose describing the tali-error class in an inline <code> span (e.g.
+        // the internals book's execution chapter) is not wrapped in the tali-output cell
+        // marker, so it must not be miscounted as a crashed cell: `class="tali-error"`
+        // appears unescaped in the block's HTML (HTML doesn't escape `"` in text content),
+        // but there is no real cell output here.
+        let blocks = vec![output_block(
+            "<p>anything carrying <code>class=\"tali-error\"</code>: an exception</p>",
+        )];
+        assert_eq!(report_cell_errors(&blocks, "page"), 0);
     }
 
     /// `render` must flag kernel-executed cells (python/r) — but not `{js}` cells,
