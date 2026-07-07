@@ -164,10 +164,11 @@ Read the exec/kernel zone rules first; these are diagnostics/docs/leak fixes, no
   a same-interpreter library upgrade is a real stale-hit path, no knob (`freeze.rs:11`).
 - `adopt_forked` leaks the `/tmp` dir + forked kernel on a handshake/bind timeout (`kernel.rs`).
 
-### Cut (philosophy gate: adopt) [trivial]
-- `?qmd=embed` deck mode is dead unreachable code: drop the ternary branch (`deck.js:1628`) + stale comments (`deck.js:929-983`).
-  *(Gate KEPT two proposed cuts: `data-level` is a live test anchor; the two `.tali-input` CSS blocks style
-  two different features, decide before merging.)*
+### Cut (philosophy gate: adopt) — cleared
+The `?qmd=embed` dead-mode removal landed (drop the orphaned ternary branch + stale comments;
+speaker previews became snapshot clones long ago, so nothing generated the URL). The gate KEPT two
+proposed cuts as **do-not-cut:** `data-level` is a live test anchor; the two `.tali-input` CSS blocks
+style two different features.
 
 ### Low-severity long tail (~80 items) → [AUDITS.md](AUDITS.md) 2026-07-07
 Pick up opportunistically alongside whichever batch touches the same file. Includes: include symlink-loop

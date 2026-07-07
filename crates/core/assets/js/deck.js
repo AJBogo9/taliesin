@@ -927,8 +927,8 @@
 
   // --- presenter mode + cross-window sync --------------------------------
   // `s` opens a speaker window (a popup at ?qmd=speaker). It shows the current +
-  // next slide as live previews (same-origin iframes at ?qmd=embed), the slide's
-  // speaker notes (`::: {.notes}`), and a timer + clock. Audience and speaker stay
+  // next slide as static snapshot previews (cloned `<section>`s, see snapshotInto), the
+  // slide's speaker notes (`::: {.notes}`), and a timer + clock. Audience and speaker stay
   // in sync via opener<->popup postMessage (works on file://); either can drive.
   function withQmd(url, val) { return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'qmd=' + val; }
   function deckBaseUrl() { return location.href.split('#')[0].split('?')[0]; }
@@ -942,8 +942,8 @@
   function sameOrigin(e) { return e.origin === location.origin || ((e.origin === '' || e.origin === 'null') && onFile); }
   function targetOrigin() { return (location.origin && location.origin !== 'null') ? location.origin : '*'; }
 
-  // Apply a position received from the other window (or, in an embed iframe, from
-  // the speaker). Never re-broadcasts, so there is no echo loop.
+  // Apply a position received from the other window (the speaker or audience).
+  // Never re-broadcasts, so there is no echo loop.
   function applyRemote(h, v, frag) {
     if (deck.blackout) toggleBlackout(false); // an external slide change lifts the curtain
     deck.h = h; deck.v = v;
@@ -979,9 +979,9 @@
   }
   // Render a static snapshot of one slide into a speaker preview pane: a self-contained
   // mini-deck (a cloned <section> in its own .tali-slides box) that reuses the deck CSS,
-  // is font-fit to the design box, then scaled to fill the pane. Replaces the old pair of
-  // live `?qmd=embed` iframes: no second/third full document is loaded and re-run (each
-  // was executing every {js} cell in the whole deck once), and the clone carries THIS
+  // is font-fit to the design box, then scaled to fill the pane. Replaces an earlier pair
+  // of live preview iframes: no second/third full document is loaded and re-run (each was
+  // executing every {js} cell in the whole deck once), and the clone carries THIS
   // window's already-rendered {js}/KaTeX/SVG output, so the preview matches the audience
   // view without re-executing anything.
   function snapshotInto(pane, sourceSec) {
@@ -1291,7 +1291,7 @@
     // Restore the linked fragment step; without one (a plain slide link) show them all.
     deck.frag = target != null ? Math.max(0, Math.min(target, fc)) : fc;
     apply(); updateNumber(); fire('slidechanged'); // apply pans the camera
-    broadcastState(); // keep a speaker/embed window in sync on hash (back/forward) nav
+    broadcastState(); // keep the speaker window in sync on hash (back/forward) nav
   }
 
   // --- slide number -------------------------------------------------------
@@ -1625,8 +1625,7 @@
     var rev = deckEl();
     if (!rev || !slidesEl()) return facade;
     var qmd = new URLSearchParams(location.search).get('qmd');
-    deck.mode = qmd === 'speaker' ? 'speaker' : qmd === 'embed' ? 'embed'
-      : qmd === 'print' ? 'print' : 'normal';
+    deck.mode = qmd === 'speaker' ? 'speaker' : qmd === 'print' ? 'print' : 'normal';
     var d = document.documentElement.style;
     d.setProperty('--tali-deck-w', deck.config.width + 'px');
     d.setProperty('--tali-deck-h', deck.config.height + 'px');
@@ -1657,9 +1656,7 @@
       if (resizeRAF) return;
       resizeRAF = requestAnimationFrame(function () { resizeRAF = null; layout(); });
     });
-    window.addEventListener('message', onMessage); // sync (audience) / goto (embed)
-    // An embed preview (in the speaker window's iframes) is passive: no input, no
-    // broadcasting; it only follows postMessage 'goto'.
+    window.addEventListener('message', onMessage); // speaker <-> audience position sync
     if (deck.mode === 'normal') {
       document.addEventListener('keydown', onKey);
       rev.addEventListener('touchstart', onTouchStart, { passive: true });
