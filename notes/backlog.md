@@ -45,32 +45,34 @@ exec/kernel zone + the single-editing-surface invariant. Review subagents use re
 
 ## Needs your input (the blockers)
 
-Each clears once you decide. Design calls carry a recommended default.
-
-- **Quarto design-decisions catalog (the big one).** Branch `quarto-decisions-catalog`, commit
-  `535b4e1`: 165 decisions adversarially verified, awaiting your ruling on each ("beat every Quarto
-  design decision"). A dedicated triage session, not a quick call. (When ready: fan the 165 into
-  batches, each with a recommended verdict + Quarto-vs-Taliesin evidence, so you rule, not derive.)
-- **Reading-first identity polish + theme design-quality pass** (design judgment; its OWN session;
-  overlaps deferred marketing — confirm direction before building). Hero-as-typeset not a marketing
-  slab; drop bordered feature-card grids; quieter near-monochrome accent; `--space-1..6` scale;
-  light/dark/sepia cohesion (WCAG-AA already tuned — RE-verify, don't redo; preserve sepia's deliberate
-  low-contrast). The "templated" diagnosis is UNVERIFIED — start by pulling competitors up live +
-  screenshotting Taliesin at the 3 viewports, bring a before/after to approve before building.
-- **Cross-reference backlinks list — build the cheap tier, or skip?** *Recommended: build the
-  xref-anchor tier.* No reverse index exists today, but the cheap tier (fig/sec/tbl/eq/lst/thm anchors)
-  piggybacks the render-free scan already run at discovery (`scan_outgoing`/`collect_xref_refs`): retain
-  the anchor instead of discarding it at `graph.rs:136`, aggregate anchor→referring-pages, surface a
-  per-target "Referenced by" affordance. ~a few dozen lines, works in preview + build. Citations are the
-  expensive tier (needs a site-wide bibliography-merge decision first) — leave out. This is the
-  lightweight replacement for the discovery value the (now-removed) xref graph tool provided.
+Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue below).
 
 ## Priority queue
 
 ### Tier 1 — decided, build-ready (no blocker)
-- Build-ready work now lives in the **[Audit 2026-07-07 implementation queue](#audit-2026-07-07-implementation-queue-build-ready)**
-  below (batched + ordered, Batch 1 first). Or promote a **Needs-your-input** blocker, or pull a
-  Tier-2 hardening item forward.
+- **Cross-reference backlinks (xref-anchor tier).** Decided 2026-07-07: build it. No reverse index
+  exists today; the cheap tier (fig/sec/tbl/eq/lst/thm anchors) piggybacks the render-free scan already
+  run at discovery (`scan_outgoing`/`collect_xref_refs`): retain the anchor instead of discarding it at
+  `graph.rs:136`, aggregate anchor→referring-pages, surface a per-target "Referenced by" affordance.
+  ~a few dozen lines, works in preview + build. Citations stay out (the expensive tier — needs a
+  site-wide bibliography-merge decision first). Lightweight replacement for the discovery value the
+  (now-removed) xref graph tool provided.
+- Audit 2026-07-07 implementation queue also lives here — see
+  **[the batched queue below](#audit-2026-07-07-implementation-queue-build-ready)** (Batch 1 first).
+
+### Decided 2026-07-07 — each needs its own dedicated session
+- **Quarto design-decisions catalog triage, reframed.** Branch `quarto-decisions-catalog`, commit
+  `535b4e1`: 165 decisions, adversarially verified. Rule on each by "is this the right design for
+  Taliesin", not "does it beat Quarto" — the same-day repositioning commit (`de3de37`) retired Quarto
+  as the defining reference, so drop that framing even though the fact-checked Quarto evidence is
+  still useful input. Fan the 165 into batches, each with a recommended verdict + evidence, so you
+  rule, not derive.
+- **Reading-first identity polish + theme design-quality pass** (design judgment; overlaps deferred
+  marketing — confirm direction before building). Start with the competitor scan + before/after
+  screenshots (3 viewports) — the "templated" diagnosis is still UNVERIFIED — before any rework. Then:
+  hero-as-typeset not a marketing slab; drop bordered feature-card grids; quieter near-monochrome
+  accent; `--space-1..6` scale; light/dark/sepia cohesion (WCAG-AA already tuned — RE-verify, don't
+  redo; preserve sepia's deliberate low-contrast).
 
 ### Tier 2 — hardening (P3)
 - **Execution-cache leaks** (exec/kernel Do-NOT-touch, careful): (a) ~30 orphaned
