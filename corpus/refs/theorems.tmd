@@ -14,6 +14,14 @@ By @def-group, the integers under addition form a group.
 For a finite group $G$ and a subgroup $H \le G$, the order $|H|$ divides $|G|$.
 :::
 
+A theorem nested in a margin aside is still numbered in document order (see @thm-index).
+
+::: {.column-margin}
+::: {.theorem #thm-index}
+The number of left cosets of $H$ is the index $[G : H] = |G| / |H|$.
+:::
+:::
+
 ::: {.lemma #lem-coset}
 Distinct left cosets of $H$ are disjoint and have equal size.
 :::

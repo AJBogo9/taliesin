@@ -7,7 +7,7 @@ Output stays **HTML-only**. Roadmap: `BEYOND-QUARTO.md`.
 > Kept small (read often). **Only open tasks live here** — delete items once landed; don't
 > leave `[x]`. Completed work is in git + `BEYOND-QUARTO.md` / `DROP-QUARTO.md` / `AUDITS.md`.
 
-## State (2026-07-06)
+## State (2026-07-07)
 
 Local `main` carries this session's reader/deck polish batch (the author syncs `main`↔`origin`
 between sessions, so origin may be a commit behind local at any moment), v0.2.0. All four formats render + deploy;
@@ -31,6 +31,10 @@ clears the dev menu in preview. **F2a cross-page hover-preview** (2026-07-06): h
 `.tali-xref` now previews its target from a served `hover-index.js` (anchor→rendered-block-HTML index
 built in `Site::discover` via `site/hover.rs`, asset URLs rebased root-relative + resolved client-side
 via `TALIESIN_SITE_ROOT`); `file://`-safe `<script>` load like search; same-page path untouched.
+**Nested-theorem numbering** (2026-07-07): `number_theorems` now scans each block's full HTML for every
+theorem div (via a `theorem_divs` helper), not just its opening tag, so a `::: {.theorem}` nested inside
+another fenced div (e.g. a `.column-margin` aside) is numbered in document order and resolves as a ref
+target; pinned by `corpus/refs/theorems.tmd` + a unit test, browser-verified.
 
 **Working method:** branch per feature; brainstorm if there's a fork; spec under
 `docs/superpowers/specs/`; implement TDD; verify (cargo + browser via chrome-devtools, or the
@@ -64,12 +68,8 @@ Each clears once you decide. Design calls carry a recommended default.
 ## Priority queue
 
 ### Tier 1 — decided, build-ready (no blocker)
-- **Nested theorem loses its number/xref** (optional; carved out of the shipped cross-page-number
-  fix). `number_theorems` walks only top-level blocks, so a `::: {.theorem}` nested inside another
-  fenced div gets no number and no ref target. Fix in `render/mod.rs` (recurse into nested blocks) or,
-  cheaper, warn when a `data-tali-theorem-kind` div is found nested. (The cross-page "Theorem 2.1"
-  number-drop itself is DONE — `Site::harvest_xref_numbers` now runs in `discover`, so preview + build
-  agree; carries fig/eq/tbl/lst cross-page numbers into preview too.)
+- *(empty — the last item, nested-theorem numbering, shipped 2026-07-07.)* Next build-ready work
+  comes from promoting a **Needs-your-input** blocker or pulling a Tier-2 hardening item forward.
 
 ### Tier 2 — hardening (P3)
 - **Execution-cache leaks** (exec/kernel Do-NOT-touch, careful): (a) ~30 orphaned

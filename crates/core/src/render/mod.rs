@@ -1362,6 +1362,34 @@ fn register_xref(
 /// inside another container is embedded in the parent block's HTML (same limitation as
 /// table captions). The container id is read from the OPENING tag only (via `tag_end`)
 /// so a child block's `id=` is never mistaken for the theorem anchor.
+/// Every theorem div inside `html`, in document order, as `(kind, id)`. Scans the
+/// whole string (not just the opening tag) so a `::: {.theorem}` nested inside another
+/// fenced div — which collapses into the parent's one block — is still found, numbered,
+/// and registered as a ref target. Each `data-qmd-theorem-kind` occurrence is paired
+/// with the `id` on its own opening `<div>`, bounded to that tag so a sibling div's id
+/// can't leak in.
+fn theorem_divs(html: &str) -> Vec<(String, Option<String>)> {
+    const NEEDLE: &str = "data-qmd-theorem-kind=\"";
+    let mut out = Vec::new();
+    let mut from = 0;
+    while let Some(rel) = html[from..].find(NEEDLE) {
+        let attr_pos = from + rel;
+        let kind_start = attr_pos + NEEDLE.len();
+        let Some(kind_end) = html[kind_start..].find('"').map(|i| kind_start + i) else {
+            break;
+        };
+        let kind = html[kind_start..kind_end].to_string();
+        // The theorem's own opening tag is the nearest `<div` before its kind attr.
+        let div_start = html[..attr_pos].rfind("<div").unwrap_or(attr_pos);
+        let open_tag = tag_end(&html[div_start..])
+            .map(|i| &html[div_start..div_start + i + 1])
+            .unwrap_or(&html[div_start..]);
+        out.push((kind, extract_attr(open_tag, "id")));
+        from = kind_end;
+    }
+    out
+}
+
 fn number_theorems(
     blocks: &mut [Block],
     xrefs: &mut HashMap<String, String>,
@@ -1376,8 +1404,7 @@ fn number_theorems(
     let mut totals: HashMap<String, u32> = HashMap::new();
     if config.numbered() == Numbered::UnlessUnique {
         for b in blocks.iter() {
-            let end = tag_end(&b.html).map(|i| i + 1).unwrap_or(b.html.len());
-            if let Some(kind) = extract_attr(&b.html[..end], "data-qmd-theorem-kind") {
+            for (kind, _) in theorem_divs(&b.html) {
                 *totals
                     .entry(config.counter_key(&kind).to_string())
                     .or_insert(0) += 1;
@@ -1385,62 +1412,61 @@ fn number_theorems(
         }
     }
     for b in blocks.iter_mut() {
-        let tag_end_idx = tag_end(&b.html).map(|i| i + 1).unwrap_or(b.html.len());
-        let open_tag = b.html[..tag_end_idx].to_string();
-        let Some(kind) = extract_attr(&open_tag, "data-qmd-theorem-kind") else {
-            continue;
-        };
-        // Shared-group kinds collapse to one counter key; the visible label stays
-        // per-kind (only the number is shared).
-        let key = config.counter_key(&kind).to_string();
-        let n = {
-            let c = counts.entry(key.clone()).or_insert(0);
-            *c += 1;
-            *c
-        };
-        // Whether to show a number: `numbered: false` never; `unless-unique` only when the
-        // kind occurs more than once; otherwise yes.
-        let show_number = match config.numbered() {
-            Numbered::Yes => true,
-            Numbered::No => false,
-            Numbered::UnlessUnique => totals.get(&key).copied().unwrap_or(0) > 1,
-        };
-        // `number-within: chapter` prepends the book chapter number ("Theorem 2.3").
-        // Outside a numbered chapter there is no chapter to scope to, so fall back to
-        // continuous numbering and warn once.
-        let display = if !show_number {
-            String::new()
-        } else if config.chapter_scoped() {
-            match chapter {
-                Some(c) => format!("{c}.{n}"),
-                None => {
-                    if !warned_no_chapter {
-                        warnings.push(Warning::new(
-                            "`theorems: number-within: chapter` has no effect outside a book chapter; using continuous theorem numbering".to_string(),
-                        ));
-                        warned_no_chapter = true;
+        // Collect every theorem in this block up front; the number slots are then filled
+        // left-to-right in the same order, so nested theorems interleave by document order.
+        for (kind, id) in theorem_divs(&b.html) {
+            // Shared-group kinds collapse to one counter key; the visible label stays
+            // per-kind (only the number is shared).
+            let key = config.counter_key(&kind).to_string();
+            let n = {
+                let c = counts.entry(key.clone()).or_insert(0);
+                *c += 1;
+                *c
+            };
+            // Whether to show a number: `numbered: false` never; `unless-unique` only when the
+            // kind occurs more than once; otherwise yes.
+            let show_number = match config.numbered() {
+                Numbered::Yes => true,
+                Numbered::No => false,
+                Numbered::UnlessUnique => totals.get(&key).copied().unwrap_or(0) > 1,
+            };
+            // `number-within: chapter` prepends the book chapter number ("Theorem 2.3").
+            // Outside a numbered chapter there is no chapter to scope to, so fall back to
+            // continuous numbering and warn once.
+            let display = if !show_number {
+                String::new()
+            } else if config.chapter_scoped() {
+                match chapter {
+                    Some(c) => format!("{c}.{n}"),
+                    None => {
+                        if !warned_no_chapter {
+                            warnings.push(Warning::new(
+                                "`theorems: number-within: chapter` has no effect outside a book chapter; using continuous theorem numbering".to_string(),
+                            ));
+                            warned_no_chapter = true;
+                        }
+                        n.to_string()
                     }
-                    n.to_string()
                 }
+            } else {
+                n.to_string()
+            };
+            // An unnumbered theorem leaves the slot empty (no &nbsp;) and is not a ref target.
+            let slot = if display.is_empty() {
+                String::new()
+            } else {
+                format!("&nbsp;{display}")
+            };
+            b.html = b.html.replacen(
+                "<span class=\"tali-theorem-number\"></span>",
+                &format!("<span class=\"tali-theorem-number\">{slot}</span>"),
+                1,
+            );
+            // Register the anchor even when unnumbered (`display` empty): an id'd theorem is a
+            // valid same-page ref target that resolves to a bare label, not a broken ref.
+            if let Some(id) = id {
+                register_xref(xrefs, warnings, &id, display);
             }
-        } else {
-            n.to_string()
-        };
-        // An unnumbered theorem leaves the slot empty (no &nbsp;) and is not a ref target.
-        let slot = if display.is_empty() {
-            String::new()
-        } else {
-            format!("&nbsp;{display}")
-        };
-        b.html = b.html.replacen(
-            "<span class=\"tali-theorem-number\"></span>",
-            &format!("<span class=\"tali-theorem-number\">{slot}</span>"),
-            1,
-        );
-        // Register the anchor even when unnumbered (`display` empty): an id'd theorem is a
-        // valid same-page ref target that resolves to a bare label, not a broken ref.
-        if let Some(id) = extract_attr(&open_tag, "id") {
-            register_xref(xrefs, warnings, &id, display);
         }
     }
 }

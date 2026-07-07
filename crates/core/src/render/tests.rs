@@ -2282,6 +2282,38 @@ fn theorem_crossref_resolves_with_label_and_number() {
 }
 
 #[test]
+fn nested_theorem_is_numbered_and_referenceable() {
+    // A `::: {.theorem}` nested inside another fenced div collapses into the parent
+    // block, so the number/xref post-pass must look inside blocks, not just at each
+    // block's opening tag. Document order here is A = 1, nested = 2, B = 3.
+    let doc = render_document(
+        "::: {.theorem #thm-a}\nA.\n:::\n\n::: {.column-margin}\n::: {.theorem #thm-nested}\nN.\n:::\n:::\n\n::: {.theorem #thm-b}\nB.\n:::\n\nSee @thm-a, @thm-nested, and @thm-b.\n",
+    );
+    let body = doc.body_html();
+    assert!(
+        body.contains("<a href=\"#thm-a\" class=\"tali-xref\">Theorem&nbsp;1</a>"),
+        "thm-a is 1: {body}"
+    );
+    assert!(
+        body.contains("<a href=\"#thm-nested\" class=\"tali-xref\">Theorem&nbsp;2</a>"),
+        "nested theorem is numbered 2 and resolves: {body}"
+    );
+    assert!(
+        body.contains("<a href=\"#thm-b\" class=\"tali-xref\">Theorem&nbsp;3</a>"),
+        "thm-b is 3: {body}"
+    );
+    // The nested theorem also gets its visible number filled in, not an empty slot.
+    assert!(
+        !body.contains("<span class=\"tali-theorem-number\"></span>"),
+        "no theorem left with an empty number slot: {body}"
+    );
+    assert!(
+        !body.contains("data-qmd-xref"),
+        "no ref left dangling: {body}"
+    );
+}
+
+#[test]
 fn proof_is_not_numbered() {
     let doc = render_document("::: {.proof}\nx.\n:::\n");
     assert!(
