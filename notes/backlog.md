@@ -58,7 +58,8 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
   site-wide bibliography-merge decision first). Lightweight replacement for the discovery value the
   (now-removed) xref graph tool provided.
 - Audit 2026-07-07 implementation queue also lives here — see
-  **[the batched queue below](#audit-2026-07-07-implementation-queue-build-ready)** (Batch 1 first).
+  **[the batched queue below](#audit-2026-07-07-implementation-queue-build-ready)** (Batch 2 next;
+  Batch 1 landed 2026-07-07).
 
 ### Decided 2026-07-07 — each needs its own dedicated session
 - **Quarto design-decisions catalog triage, reframed.** Branch `quarto-decisions-catalog`, commit
@@ -149,11 +150,6 @@ Full per-item detail (repro + fix approach) and the ~80 low-severity long tail l
 > rules first. Already-tracked items (op-batching, kernel `/tmp` + `in_flight` leaks,
 > boot-diagnostic clobber, `app.pages` LRU, lazy search index, `fitSlide`, R ANSI leak,
 > Mermaid SRI) stay in **Tier 2** above; the audit only sharpened their exact paths in AUDITS.md.
-
-### Batch 1: Offline-build breach for decks (HIGH, start here) [small]
-- Built decks fetch Mermaid from a CDN, breaking the offline contract for one of four formats:
-  thread `OutputMode` into `deck_page_from_doc` (`crates/core/src/render/deck.rs:94-108`); pin
-  with a corpus test asserting no `cdn.jsdelivr.net` in a built deck. *The one high-severity code bug.*
 
 ### Batch 2: Docs rename-drift sweep (high user-impact, mechanical, no code risk) [small]
 - Theme-default taught as "settles to dark, never follows OS", the exact inverse of the runtime:

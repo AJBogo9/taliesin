@@ -6,9 +6,11 @@ use super::*;
 
 pub(crate) fn page_from_doc(doc: &RenderedDoc, fallback_title: &str, mode: OutputMode) -> String {
     match doc.format {
-        // A deck assembles its own page (deck.js + native `.tali-deck`), unaffected by
-        // the enhancer-gating modes; `--bare` on a deck is refused at the CLI.
-        DocFormat::Reveal => deck::deck_page_from_doc(doc, fallback_title),
+        // A deck assembles its own page (deck.js + native `.tali-deck`); `mode` still
+        // gates the enhancer scripts (e.g. inlining Mermaid offline for Build) so a
+        // built deck keeps the same offline contract as an HTML page. `--bare` on a
+        // deck is refused at the CLI.
+        DocFormat::Reveal => deck::deck_page_from_doc(doc, fallback_title, mode),
         DocFormat::Html => html_page_from_doc(doc, fallback_title, mode),
     }
 }

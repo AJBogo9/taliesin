@@ -91,20 +91,26 @@ pub fn assemble_deck_page(p: &DeckParts) -> String {
     )
 }
 
-pub(super) fn deck_page_from_doc(doc: &RenderedDoc, fallback_title: &str) -> String {
+pub(super) fn deck_page_from_doc(
+    doc: &RenderedDoc,
+    fallback_title: &str,
+    mode: OutputMode,
+) -> String {
     let title = doc.title.as_deref().unwrap_or(fallback_title);
     let mut t = String::new();
     escape_html(title, &mut t);
     let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
     // The static deck self-initializes the engine on load and runs the enhancers
-    // once (no websocket client to drive them after a mount).
+    // once (no websocket client to drive them after a mount). `mode` gates the
+    // enhancers exactly like an HTML page (e.g. a Build with a Mermaid diagram
+    // inlines the vendored library instead of fetching it from a CDN).
     let tail = format!(
         "<script>{DECK_JS}</script>\n\
          <script>\n  TaliesinDeck.initialize({{ hash: true, slideNumber: 'c/t', center: false }});\n</script>\n\
          {code_scripts}\n\
          <script>document.addEventListener('DOMContentLoaded',function(){{window.taliEnhanceCode&&window.taliEnhanceCode(document.body);}});</script>\n\
          {after_body}",
-        code_scripts = code_scripts(),
+        code_scripts = code_scripts_for(&slides, mode),
         after_body = doc.includes.after_body,
     );
     assemble_deck_page(&DeckParts {

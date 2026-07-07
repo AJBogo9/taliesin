@@ -1218,6 +1218,30 @@ fn reveal_format_detected_from_front_matter() {
 }
 
 #[test]
+fn built_deck_with_mermaid_inlines_the_library_offline() {
+    // A built deck (OutputMode::Build) must not breach the offline-build contract:
+    // a Mermaid diagram should ship the vendored library inlined (globalThis.mermaid
+    // set), exactly like the HTML page path, so the browser never actually reaches
+    // the CDN fallback baked into the loader. deck_page_from_doc used to hardcode
+    // OutputMode::Preview regardless of the caller's mode, so a built deck never
+    // inlined the library and the CDN fetch was live.
+    let src = "---\nformat: deck\n---\n\n## A\n\n```mermaid\nflowchart LR\n  A --> B\n```\n";
+    let doc = render_document(src);
+    assert_eq!(doc.format, DocFormat::Reveal);
+    let build = render_doc_to_page(&doc, "t", OutputMode::Build);
+    assert!(
+        build.contains("__esbuild_esm_mermaid") && build.contains("globalThis.mermaid"),
+        "built deck must inline the vendored mermaid library"
+    );
+    // Preview keeps the lean lazy loader (dev-time network is fine).
+    let preview = render_doc_to_page(&doc, "t", OutputMode::Preview);
+    assert!(
+        !preview.contains("__esbuild_esm_mermaid"),
+        "preview deck should not inline the 2.5 MB mermaid library"
+    );
+}
+
+#[test]
 fn revealjs_format_is_no_longer_a_deck() {
     // `format: revealjs` was the deprecated legacy spelling; after shedding it, a
     // doc with that format is a normal HTML page, not a deck.
