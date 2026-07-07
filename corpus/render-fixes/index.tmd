@@ -24,7 +24,7 @@ intact (no literal `{{<` braces shipped).
 
 The diagram library is lazy-loaded; offline it now shows a visible
 `[data-mermaid-error]` banner instead of failing silently. Set
-`QMD_FAST_MERMAID_URL` to self-host it for a fully offline build.
+`TALIESIN_MERMAID_URL` to self-host it for a fully offline build.
 
 ```{mermaid}
 %%| label: fig-flow

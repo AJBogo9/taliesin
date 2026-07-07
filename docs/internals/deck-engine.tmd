@@ -2,7 +2,7 @@
 title: "The deck engine"
 ---
 
-`format: deck` renders to a slide deck driven by qmd-fast's **own** engine, not
+`format: deck` renders to a slide deck driven by Taliesin's **own** engine, not
 reveal.js. The engine is two bundled assets, `assets/css/deck.css` and
 `assets/js/deck.js`, emitted inline by `render/deck.rs`. Three decisions shape it:
 

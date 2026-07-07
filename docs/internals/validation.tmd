@@ -3,14 +3,14 @@ title: "Validation & schemas"
 ---
 
 Mistype `#| eccho: false` in `post.tmd`'s cell, or write `treme:` for `theme:` in its
-front matter, and qmd-fast does two things at once: it **renders the document anyway**,
+front matter, and Taliesin does two things at once: it **renders the document anyway**,
 and it drops a **located warning** in the dev panel that you can click straight to the
 offending line. That pairing, render-anyway plus a precise, jumpable diagnostic, is the
 whole design of the validation layer.
 
 ## The invariant: purely diagnostic, always located
 
-Every validator in qmd-fast obeys one rule: it is **purely diagnostic**. An
+Every validator in Taliesin obeys one rule: it is **purely diagnostic**. An
 unrecognized key, kind, or option never changes what renders; the block emits exactly
 as it would have, and the validator's only effect is to append a `Warning`. A typo
 costs you a note, not a broken page.
@@ -24,7 +24,7 @@ a fix.
 
 ## The closed vocabularies
 
-qmd-fast validates against its **own** closed sets of keys, defined independently of
+Taliesin validates against its **own** closed sets of keys, defined independently of
 Quarto in `frontmatter.rs`, `render/validate.rs`, and `site/config/`. There are five
 surfaces, each a list-membership check:
 
@@ -55,7 +55,7 @@ unknown _site.yml key `favicn` (did you mean `favicon`?)
 ```
 
 Distance 2 is the sweet spot: it catches the realistic slips (a swapped, dropped, or
-doubled letter) without guessing wildly at a key that is simply absent from qmd-fast's
+doubled letter) without guessing wildly at a key that is simply absent from Taliesin's
 vocabulary. When nothing is close enough, the message is just the bare "unknown" form,
 no misleading suggestion.
 
@@ -89,13 +89,13 @@ a hit inside an included partial is attributed back to that partial's file and l
 same source-map the block model uses. Only the **top-level** document's `prose-lint:` key
 controls whether it runs, though: an included partial can't turn the linter on or off.
 The warnings flow through the normal `doc.warnings` channel, so they appear in both the
-live preview's dev panel and `qmd-fast check`.
+live preview's dev panel and `taliesin check`.
 
 ## The clean break: no Quarto-tolerance tier
 
-A key that is unknown because it is a *Quarto* term qmd-fast does not implement is
+A key that is unknown because it is a *Quarto* term Taliesin does not implement is
 reported exactly like a typo: as unknown. This is a deliberate stance, not an oversight.
-qmd-fast is its own tool with its own closed vocabulary, so there is no silent
+Taliesin is its own tool with its own closed vocabulary, so there is no silent
 "tolerate but ignore" tier for Quarto keys, the single most confusing failure mode of a
 compatibility shim, where a setting appears to be accepted but quietly does nothing.
 The corpus was purged of Quarto-only keys to hold this line.
@@ -103,7 +103,7 @@ The corpus was purged of Quarto-only keys to hold this line.
 ## Schemas: the same vocabulary, one step earlier
 
 Validation at render time is the backstop. The **earlier** you learn a key is wrong, the
-better, so qmd-fast also ships JSON Schemas that let your editor's YAML language server
+better, so Taliesin also ships JSON Schemas that let your editor's YAML language server
 flag the same mistakes as you type, before you ever render.
 
 ```{mermaid}
@@ -111,21 +111,21 @@ flag the same mistakes as you type, before you ever render.
 flowchart LR
   consts["closed-set consts<br/>KNOWN_KEYS · EXECUTE/ABOUT/HERO · NATIVE_KEYS"]
   consts --> val["render-time validator<br/>(located warnings)"]
-  consts --> bless["bless test<br/>(QMD_FAST_BLESS=1)"]
+  consts --> bless["bless test<br/>(TALIESIN_BLESS=1)"]
   bless --> schema["bundled Draft-2020-12 schemas<br/>FRONTMATTER_SCHEMA · SITE_SCHEMA"]
-  schema --> cli["qmd-fast schema --out .tmd"]
+  schema --> cli["taliesin schema --out .tmd"]
   cli --> lsp["editor YAML language server"]
 ```
 
 The two schemas (`FRONTMATTER_SCHEMA`, `SITE_SCHEMA` in `schema.rs`) are committed as
 static strings, but they are **generated from the same closed-set consts** the validator
-uses, and **regenerated only** through a bless test (`QMD_FAST_BLESS=1 cargo test -p
-qmd-fast-core --lib schema`). They are never hand-edited, so they **cannot drift** from
+uses, and **regenerated only** through a bless test (`TALIESIN_BLESS=1 cargo test -p
+taliesin-core --lib schema`). They are never hand-edited, so they **cannot drift** from
 what the renderer enforces: the editor and the renderer always agree on the vocabulary.
 A second test asserts each schema's structural shape, so a malformed bless can't slip
 through.
 
-`qmd-fast schema [--out <dir>]` writes both files out, and a one-line modeline points the
+`taliesin schema [--out <dir>]` writes both files out, and a one-line modeline points the
 language server at them:
 
 ```yaml
@@ -133,15 +133,15 @@ language server at them:
 title: My site
 ```
 
-This is the in-scope on-ramp to editor autocomplete: there is **no qmd-fast language
+This is the in-scope on-ramp to editor autocomplete: there is **no Taliesin language
 server to build or install**, just two schema files and the YAML support the editor
 already has. The authoring side is covered in the [Configuration
 reference](../guide/reference/configuration.html); the config validator's role in a
 multi-page project is in [the multi-page subsystem](sites.tmd).
 
-## `qmd-fast check`: the static preflight superset
+## `taliesin check`: the static preflight superset
 
-`qmd-fast check <file|dir>` renders the document **in memory**, with **no code
+`taliesin check <file|dir>` renders the document **in memory**, with **no code
 execution**, lists every located diagnostic (greppable `path:line: message` lines, or
 `--format json` for a CI gate), and exits non-zero if any are found. It is a strict
 *superset* of what preview and build surface: it collects `doc.warnings` (every validator

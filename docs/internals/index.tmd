@@ -1,15 +1,15 @@
 ---
-title: "qmd-fast Internals"
+title: "Taliesin Internals"
 ---
 
-# How qmd-fast works {.unnumbered}
+# How Taliesin works {.unnumbered}
 
 You change one number in a `.tmd` file and hit save. The paragraph you touched
 re-renders in place, and nothing else moves: your scroll position holds, the 3D
 canvas two sections down keeps spinning, the Jupyter kernel stays warm. No flash,
 no reload, no cold start. **This book is how that works.**
 
-The companion [User Guide](../guide/) is about *using* qmd-fast; this one is about
+The companion [User Guide](../guide/) is about *using* Taliesin; this one is about
 *how it is built*, for contributors, for anyone extending it, and for the curious
 reader who would rather see the design decisions than take them on faith.
 
@@ -60,7 +60,7 @@ system, prose and a heading to render, math to typeset, code to highlight and to
 get diffed, cached, and pushed to the browser. When a chapter needs a concrete
 edit, we turn one knob: the cooling constant `tau`, from 10 to 12.
 
-And because this book is itself built with qmd-fast, that cell is not a screenshot.
+And because this book is itself built with Taliesin, that cell is not a screenshot.
 The curve below is drawn by running `post.tmd`'s code right here, as the page
 renders, the very pipeline the rest of the book describes:
 
@@ -93,7 +93,7 @@ The chapters build on each other, roughly from the outside in:
   themes render server-side and offline, so a light/dark toggle re-styles the page
   with nothing to re-render.
 - **[The deck engine](deck-engine.tmd)** is how the same block model becomes a slide
-  deck on qmd-fast's own engine.
+  deck on Taliesin's own engine.
 - **[The multi-page subsystem](sites.tmd)** is how a directory becomes a website or a
   book: discovery, chrome, listings, cross-page references, and search.
 - **[The block model](block-model.tmd)** is the load-bearing data structure, and the
@@ -104,7 +104,7 @@ The chapters build on each other, roughly from the outside in:
   websocket, and the multi-page site server.
 - **[Validation & schemas](validation.tmd)** is the closed-vocabulary validator, the
   located warnings it emits, and the drift-locked JSON Schemas behind editor autocomplete.
-- **[Extending qmd-fast](extending.tmd)** is the conventions for adding a feature, and
+- **[Extending Taliesin](extending.tmd)** is the conventions for adding a feature, and
   where extensions live outside the core.
 
 If you read only one chapter, read [Architecture](architecture.tmd). It frames

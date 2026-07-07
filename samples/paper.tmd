@@ -14,7 +14,7 @@ is governed almost entirely by a single scalar: the step size. We review the
 elementary convergence picture on a quadratic objective, show experimentally how
 the loss trajectory changes across four learning rates, and recover the classic
 stability threshold. The note doubles as a single-page exercise of every feature
-qmd-fast renders: numbered equations, cross-references, a live figure, a captioned
+taliesin renders: numbered equations, cross-references, a live figure, a captioned
 table, citations, callouts, footnotes, and a margin note.*
 
 ## Introduction {#sec-intro}

@@ -4,7 +4,7 @@ title: "Front-matter reference"
 
 Every `.tmd` document can open with a YAML **front-matter** block: a `---`
 fenced header that sets the document's metadata, output, and behaviour. This page
-is the full vocabulary, every top-level key qmd-fast reads, plus the nested blocks
+is the full vocabulary, every top-level key Taliesin reads, plus the nested blocks
 (`execute:`, `listing:`, `about:`, `hero:`, `prose-lint:`) and their children. For
 project-wide settings (a site's navbar, footer, chapter order) see the
 [Configuration reference](configuration.tmd); for per-cell `#|` options see the
@@ -18,7 +18,7 @@ title: "My post"
 ---
 ```
 
-qmd-fast validates this block against its **own** key set. Any key it
+Taliesin validates this block against its **own** key set. Any key it
 does not implement, whether a typo (`treme:`) or a term it never honored
 (`title-block-banner:`), is reported with a "did you mean …" hint (see
 [Closed vocabulary](#closed-vocabulary) below). Validation only **warns**: the
@@ -52,7 +52,7 @@ or `{ file: … }` map, or a list of those.
 | `css` | string \| list \| map | Extra stylesheet(s) inlined into the page: a path, a `{ text: … }` / `{ file: … }` map, or a list of those |
 | `page-layout` | string | `full` widens the content column (good for listing indexes); the default is the reading-width column |
 | `image` | string | The image on a `listing:` card; also the social-card / OpenGraph image (the `og:image`/`twitter:image` tags are emitted for **site/book builds only**, never for a single-file `build`/`render`) |
-| `image-alt` | string | Accepted (so it never warns) but **not rendered** at the page level. The only alt text qmd-fast actually reads is the `about:` block's own `image-alt` sub-key (for an `about:` profile image). A `listing:` card's image is treated as decorative and emits an empty `alt`, since the card's title and description already label the link |
+| `image-alt` | string | Accepted (so it never warns) but **not rendered** at the page level. The only alt text Taliesin actually reads is the `about:` block's own `image-alt` sub-key (for an `about:` profile image). A `listing:` card's image is treated as decorative and emits an empty `alt`, since the card's title and description already label the link |
 | `draft` | bool | `true` excludes the page from a website build entirely (output, nav, and listings) |
 | `title-block-style` | string | `none` keeps the title metadata (still drives `<title>`, OpenGraph, nav) but hides the visible `<h1>` title block |
 
@@ -195,7 +195,7 @@ label, a headline, a lead paragraph, and a row of call-to-action buttons.
 
 ```yaml
 ---
-title: "qmd-fast"
+title: "Taliesin"
 hero:
   eyebrow: "A dev server for .tmd"
   headline: "Render .tmd to HTML, fast."
@@ -231,7 +231,7 @@ without any custom banned list.
 
 ## Closed vocabulary and "did you mean" {#closed-vocabulary}
 
-qmd-fast's front-matter vocabulary is a **closed set**: the keys above are the only
+Taliesin's front-matter vocabulary is a **closed set**: the keys above are the only
 ones it reads. Anything else warns, with a "did you mean …" hint offered when an
 unknown key is within edit distance 2 of a known one, so `treme: dark` is caught and
 nudged toward `theme:`. The same closed-vocabulary check covers the immediate
@@ -240,7 +240,7 @@ children of `execute:`, `listing:`, `about:`, `hero:`, and `prose-lint:`.
 Two deliberate exceptions:
 
 - **`format:` sub-keys are not linted.** A format extension may add its own format
-  options, so qmd-fast leaves everything under `format:` alone rather than guess at a
+  options, so Taliesin leaves everything under `format:` alone rather than guess at a
   vocabulary it does not own.
 - **`csl:` is recognized but not honored.** It is in the known set (so it never
   warns), but there is no CSL engine: references always render in the single built-in
@@ -248,12 +248,12 @@ Two deliberate exceptions:
 
 ## Editor autocomplete
 
-qmd-fast ships a JSON Schema for front matter so your editor's YAML language server
+Taliesin ships a JSON Schema for front matter so your editor's YAML language server
 can autocomplete keys, show hovers, and flag unknown keys as you type. Drop the
 schemas into your project and point a modeline at the front-matter one:
 
 ```sh
-qmd-fast schema --out .tmd
+taliesin schema --out .tmd
 ```
 
 ```yaml
@@ -263,7 +263,7 @@ title: My post
 ---
 ```
 
-The schema describes the same key set qmd-fast validates against at render time, so
+The schema describes the same key set Taliesin validates against at render time, so
 the editor and the renderer always agree. Front-matter validation needs an editor
 that treats a `.tmd` file's `---` block as embedded YAML (for example the VS Code
 YAML extension); see [Configuration](configuration.tmd) for the full setup.

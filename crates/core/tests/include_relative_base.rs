@@ -1,6 +1,6 @@
 //! Regression test for the relative-path `{{< include >}}` silent-drop bug.
 //!
-//! When `qmd-fast build/render` is given a *relative* path
+//! When `taliesin build/render` is given a *relative* path
 //! (`corpus/posts/pca-geometry/index.tmd`), the document's base dir is the
 //! relative parent `corpus/posts/pca-geometry`. The include resolver's
 //! containment check used to walk the parents of that *relative* path, which hit

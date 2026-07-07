@@ -25,7 +25,7 @@ pub(super) struct ExecPool {
     freeze_dir: PathBuf,
     /// The one process-wide warm pool of pre-booted Python kernels, shared by every
     /// page executor so the first edit on a fresh page is near-instant instead of
-    /// paying a cold boot. `None` (the `Default`, and when `QMD_FAST_PYTHON` is unset
+    /// paying a cold boot. `None` (the `Default`, and when `TALIESIN_PYTHON` is unset
     /// / the forkserver can't boot) → every page cold-starts, exactly as before.
     warm_pool: Option<Arc<crate::warm_pool::WarmPool>>,
 }

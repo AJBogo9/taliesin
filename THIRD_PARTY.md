@@ -1,6 +1,6 @@
 # Third-party components
 
-qmd-fast itself is MIT licensed (see [LICENSE](LICENSE)). It builds on the
+Taliesin itself is MIT licensed (see [LICENSE](LICENSE)). It builds on the
 following third-party work.
 
 ## Vendored (redistributed with this project)
@@ -29,26 +29,26 @@ Bundled so the tool works fully offline.
   <https://github.com/primer/octicons/blob/main/LICENSE>.
 
 The other scripts under `crates/core/assets/js/` (`code-enhance.js`, `deck.js`,
-`mermaid.js`, `qmd-js.js`, `walkthrough.js`, `tabset.js`) are qmd-fast's own (MIT).
+`mermaid.js`, `qmd-js.js`, `walkthrough.js`, `tabset.js`) are Taliesin's own (MIT).
 
 ## Loaded at runtime from a CDN (live preview only)
 
-qmd-fast itself fetches nothing over the network in a **static build** — Mermaid is now
+Taliesin itself fetches nothing over the network in a **static build** — Mermaid is now
 vendored (above) and inlined into build pages that have a diagram, so a `--out` doc/book
 is fully offline. The one runtime fetch remaining is in the **live preview**:
 
 - **Mermaid loader.** In preview, `mermaid.js` lazy-loads the ~2.5 MB Mermaid library the
-  first time a diagram renders, from the pinned jsDelivr build (`QMD_FAST_MERMAID_URL`
+  first time a diagram renders, from the pinned jsDelivr build (`TALIESIN_MERMAID_URL`
   overrides the URL — e.g. to the vendored copy for offline dev). Inlining 2.5 MB on every
   save would bloat the preview payload, so preview keeps the lazy loader; the *build* path
   inlines it. When the library cannot load (offline or blocked), the diagram is replaced by
   a **visible** `[data-mermaid-error]` banner with the source kept below, never a silent blank.
 
 Note that **author content can introduce its own CDN dependencies** outside
-qmd-fast's control: a `{js}` cell may `import` from a CDN (e.g. the corpus
+Taliesin's control: a `{js}` cell may `import` from a CDN (e.g. the corpus
 `three-scene` demo imports `three` from esm.sh), and a project's `_site.yml` may add
 its own `<link rel="preconnect">` or `<script>`. Those are the author's choices, not
-shipped by qmd-fast; only the Mermaid loader above is emitted by the tool.
+shipped by Taliesin; only the Mermaid loader above is emitted by the tool.
 
 ## Build dependencies
 
@@ -60,6 +60,6 @@ deferred follow-up).
 
 ## Note on Quarto
 
-qmd-fast is an independent reimplementation of a subset of Quarto's `.qmd` ->
+Taliesin is an independent reimplementation of a subset of Quarto's `.qmd` ->
 HTML behavior, not a copy of Quarto's source. "Quarto" is a trademark of its
 owner; this project is not affiliated with or endorsed by it.

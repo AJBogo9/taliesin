@@ -54,7 +54,7 @@ that a cell's own `#|` options override.
 ## Project `_site.yml`
 
 A **directory** with a `_site.yml` is a site or book project. The schema is
-flat: qmd-fast is HTML-only, so there's no `format: html:` nesting, and the
+flat: Taliesin is HTML-only, so there's no `format: html:` nesting, and the
 project type is inferred (presence of `chapters:` ⇒ a book). There is no
 `_metadata.yml` cascade: the root config sets defaults, a page's own front matter
 overrides them.
@@ -103,7 +103,7 @@ also works inside a part's list). Without `text:`, the label is the chapter's fi
 | Key | Meaning |
 |---|---|
 | `title`, `author`, `description`, `url` | Project metadata (`title` is the navbar brand / book title) |
-| `favicon` | Tab icon (defaults to the qmd-fast mark) |
+| `favicon` | Tab icon (defaults to the Taliesin mark) |
 | `image` | Default social-card image for pages that don't set their own |
 | `output` | Build output directory |
 | `toc` | Default table of contents for article pages |
@@ -111,7 +111,7 @@ also works inside a part's list). Without `text:`, the label is the chapter's fi
 | `nav` | Navbar items: a list (left), or `{ left, right }` |
 | `footer` | Footer: a string, or `{ left, center, right }` of items |
 | `chapters` | Book chapter order (a file, `{ file, text }`, or `{ part, chapters }`); presence ⇒ a book |
-| `mounts` | Mount other qmd-fast projects under a URL prefix in **preview**: a map `{ docs: ../docs }` or a list of `{ at, path }`. The static build skips mounts and prints the per-mount build command |
+| `mounts` | Mount other Taliesin projects under a URL prefix in **preview**: a map `{ docs: ../docs }` or a list of `{ at, path }`. The static build skips mounts and prints the per-mount build command |
 
 **Icons.** A nav/footer item can be `{ icon: <name>, href: … }` instead of raw
 HTML; bundled glyphs: `github`, `linkedin`, `rss`, `x`, `mastodon`, `bluesky`,
@@ -131,21 +131,21 @@ nothing. Validation only **warns**: the document still renders, and every warnin
 closed-vocabulary check covers unknown cell `#|` options and unknown immediate children of
 `execute:` / `listing:` / `about:` / `hero:`; `format:` sub-keys are intentionally left
 unlinted, since a format extension may add its own. (The Internals book covers the design,
-and the drift-locked Draft 2020-12 schemas behind the `qmd-fast schema` command, in its
+and the drift-locked Draft 2020-12 schemas behind the `taliesin schema` command, in its
 *Validation & schemas* chapter.)
 
 ## Editor autocomplete (config schema)
 
-qmd-fast ships JSON Schemas for both config surfaces so your editor's YAML
+Taliesin ships JSON Schemas for both config surfaces so your editor's YAML
 language server can autocomplete keys, show hovers, and flag unknown keys as you
-type, before you render. There is no qmd-fast language server to install: the
-schemas describe the same key sets qmd-fast validates against at render time, so
+type, before you render. There is no Taliesin language server to install: the
+schemas describe the same key sets Taliesin validates against at render time, so
 the editor and the renderer always agree.
 
 Drop the schemas into your project:
 
 ```sh
-qmd-fast schema --out .tmd
+taliesin schema --out .tmd
 ```
 
 Then point the YAML language server at them with a modeline.
@@ -240,7 +240,7 @@ The page's `title:` supplies the displayed name.
 
 ## Project structure & reserved names
 
-A multi-page project is just a directory with a `_site.yml`. qmd-fast discovers the
+A multi-page project is just a directory with a `_site.yml`. Taliesin discovers the
 pages by walking that directory, with one rule: **anything whose name starts with
 `_` or `.` is not a page.** That single convention is what keeps config, partials,
 caches, and build output from turning into navigable pages.
@@ -280,7 +280,7 @@ A slide deck is any doc with `format: deck`. How it ends up in your output
 depends on *how the project refers to it*: there are three cases, and missing the
 distinction is the usual way a deck goes missing from a build:
 
-- **Standalone**: `qmd-fast preview deck.tmd` or `qmd-fast build deck.tmd`. The deck
+- **Standalone**: `taliesin preview deck.tmd` or `taliesin build deck.tmd`. The deck
   is the whole document; it renders as slides. Nothing else needed.
 - **Embedded**: `{{< embed deck.tmd >}}` from a page or chapter. The deck is built as
   its own standalone slide file and shown inline as an isolating iframe; it is kept
@@ -288,7 +288,7 @@ distinction is the usual way a deck goes missing from a build:
   a deck inside a site or book. See [Formats](../using/formats.tmd).
 - **Loose (warns)**: a `format: deck` file sitting in a site directory that no
   page embeds and that isn't a standalone target. It is neither chaptered nor embedded,
-  so the build has no reason to emit it; qmd-fast warns and would otherwise flatten it
+  so the build has no reason to emit it; Taliesin warns and would otherwise flatten it
   into a chrome-wrapped article. **Fix:** embed it from a page, or build it standalone.
 
 ## See also

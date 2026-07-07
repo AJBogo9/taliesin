@@ -37,7 +37,7 @@ use crate::kernel::{Kernel, KernelSpec, render_outputs};
 
 /// After a failed kernel start, wait at least this long before retrying — long
 /// enough that a genuinely missing/bad interpreter doesn't re-hang every save,
-/// short enough that fixing `QMD_FAST_PYTHON`/`QMD_FAST_R` self-heals within a few
+/// short enough that fixing `TALIESIN_PYTHON`/`TALIESIN_R` self-heals within a few
 /// saves.
 const KERNEL_RETRY_AFTER: Duration = Duration::from_secs(20);
 
@@ -160,7 +160,7 @@ pub struct Executor {
     /// hits and re-execute every cell against the fresh kernel (then re-persist),
     /// so "Restart kernel" actually re-runs rather than replaying stale outputs.
     force_next: bool,
-    /// `--no-exec` / `QMD_FAST_NO_EXEC`: never run code cells, render them as source.
+    /// `--no-exec` / `TALIESIN_NO_EXEC`: never run code cells, render them as source.
     /// The safe way to preview a document you don't trust (executing it would run
     /// its `{python}`/`{r}` cells against a live kernel).
     no_exec: bool,
@@ -214,10 +214,10 @@ impl Executor {
     }
 
     fn build(freeze: FreezeCache) -> Self {
-        let python = std::env::var_os("QMD_FAST_PYTHON")
+        let python = std::env::var_os("TALIESIN_PYTHON")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("python3"));
-        let r = std::env::var_os("QMD_FAST_R")
+        let r = std::env::var_os("TALIESIN_R")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("R"));
         Self {
@@ -226,7 +226,7 @@ impl Executor {
             langs: HashMap::new(),
             freeze,
             force_next: false,
-            no_exec: std::env::var_os("QMD_FAST_NO_EXEC").is_some(),
+            no_exec: std::env::var_os("TALIESIN_NO_EXEC").is_some(),
             work_dir: None,
             sink: None,
             page: None,
@@ -276,9 +276,9 @@ impl Executor {
                 return None;
             }
             let var = if *lang == "r" {
-                "QMD_FAST_R"
+                "TALIESIN_R"
             } else {
-                "QMD_FAST_PYTHON"
+                "TALIESIN_PYTHON"
             };
             Some(match &s.last_error {
                 Some(e) => format!(
@@ -295,7 +295,7 @@ impl Executor {
 
     /// Drop every language's kernel and clear the failure backoff, so the next run
     /// starts fresh kernels immediately. Backs the dev-menu "Restart kernel" action
-    /// and recovery after fixing `QMD_FAST_PYTHON`/`QMD_FAST_R`. (Dropping a kernel
+    /// and recovery after fixing `TALIESIN_PYTHON`/`TALIESIN_R`. (Dropping a kernel
     /// kills its child process.) Also forces the next run to re-execute every cell
     /// (ignoring disk-cache hits), so "Restart kernel" actually re-runs against the
     /// fresh kernel instead of replaying cached outputs.
@@ -1104,12 +1104,12 @@ mod tests {
         // running a 3-cell python doc must push `build-state` messages whose `ran`
         // climbs 1→2→3 (== total) under "executing", then a final "idle" with
         // ran == total. Gated on a live kernel (the same env/skip the other
-        // kernel-exercising tests use): without `QMD_FAST_PYTHON` it reports ok WITHOUT
+        // kernel-exercising tests use): without `TALIESIN_PYTHON` it reports ok WITHOUT
         // exercising a kernel — the serialization is covered unconditionally in
         // `protocol.rs`.
-        if std::env::var_os("QMD_FAST_PYTHON").is_none() {
+        if std::env::var_os("TALIESIN_PYTHON").is_none() {
             eprintln!(
-                "SKIPPED (no live kernel): set QMD_FAST_PYTHON to a python with ipykernel to \
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with ipykernel to \
                  exercise build-state progress; this run did not."
             );
             return;
@@ -1207,12 +1207,12 @@ mod tests {
         // The per-cell honest-state seam: each executed cell must emit its states in
         // the monotonic order queued → running → done (never `running` without a
         // prior `queued`), and a cell whose execution errors must end on `error`, not
-        // `done`. Kernel-gated like the other exec tests: without `QMD_FAST_PYTHON`
+        // `done`. Kernel-gated like the other exec tests: without `TALIESIN_PYTHON`
         // it reports ok without exercising a kernel — `cell_state` serialization is
         // covered unconditionally in `protocol.rs`.
-        if std::env::var_os("QMD_FAST_PYTHON").is_none() {
+        if std::env::var_os("TALIESIN_PYTHON").is_none() {
             eprintln!(
-                "SKIPPED (no live kernel): set QMD_FAST_PYTHON to a python with ipykernel to \
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with ipykernel to \
                  exercise cell-state progress; this run did not."
             );
             return;
@@ -1265,9 +1265,9 @@ mod tests {
         // cell emits exactly `done`, no running), and only the edited cell re-runs
         // (queued → running → done). This pins that emission tracks the `plan()` zones
         // — observation of what actually ran, not a blanket "everything ran".
-        if std::env::var_os("QMD_FAST_PYTHON").is_none() {
+        if std::env::var_os("TALIESIN_PYTHON").is_none() {
             eprintln!(
-                "SKIPPED (no live kernel): set QMD_FAST_PYTHON to a python with ipykernel to \
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with ipykernel to \
                  exercise cell-state warm reuse; this run did not."
             );
             return;
@@ -1361,9 +1361,9 @@ mod tests {
         // Brief Step 2: a fully-cached rebuild (warm executor, nothing changed →
         // to_run == 0) must settle on a single `idle` and never claim a cell ran:
         // zero `running`/`error` cell-states, zero `warming-kernel`/`executing`.
-        if std::env::var_os("QMD_FAST_PYTHON").is_none() {
+        if std::env::var_os("TALIESIN_PYTHON").is_none() {
             eprintln!(
-                "SKIPPED (no live kernel): set QMD_FAST_PYTHON to a python with ipykernel to \
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with ipykernel to \
                  exercise the all-cached rebuild; this run did not."
             );
             return;
@@ -1418,7 +1418,7 @@ mod tests {
         // interpreter at a path that can't start.
         let (sink, captured) = capturing_sink();
         let mut ex = Executor::new();
-        ex.python = PathBuf::from("/nonexistent/qmd-fast-no-such-python");
+        ex.python = PathBuf::from("/nonexistent/taliesin-no-such-python");
         ex.set_progress(sink, Some("ch1.tmd".into()));
         let doc = vec![
             python_cell_block_with("b-1", "a = 1"),
@@ -1464,7 +1464,7 @@ mod tests {
         // a page missing computed output with no hint why. (Root cause: a ZMQ
         // port-allocation race made kernels fail to boot under concurrent builds.)
         let mut ex = Executor::new();
-        ex.python = PathBuf::from("/nonexistent/qmd-fast-no-such-python");
+        ex.python = PathBuf::from("/nonexistent/taliesin-no-such-python");
         let doc = vec![python_cell_block_with("b-1", "print('hello')\n1 + 1")];
         let rt = tokio::runtime::Runtime::new().unwrap();
         let blocks = rt.block_on(async { ex.run(doc).await });
@@ -1490,10 +1490,10 @@ mod tests {
         // from the pool and runs a cell to a correct result, and — because a pooled
         // kernel is near-instant — never presents a `warming-kernel` build-state. The
         // cold path *does* emit `warming-kernel`; here it must be absent. Kernel-gated:
-        // the warm pool needs a real `QMD_FAST_PYTHON` with ipykernel.
-        let Some(py) = std::env::var_os("QMD_FAST_PYTHON").map(PathBuf::from) else {
+        // the warm pool needs a real `TALIESIN_PYTHON` with ipykernel.
+        let Some(py) = std::env::var_os("TALIESIN_PYTHON").map(PathBuf::from) else {
             eprintln!(
-                "SKIPPED (no live kernel): set QMD_FAST_PYTHON to a python with ipykernel to \
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with ipykernel to \
                  exercise the warm-pool exec path; this run did not."
             );
             return;
@@ -1557,7 +1557,7 @@ mod tests {
         // This is what keeps generated media (audio, `#| fig-export:` figures) beside
         // the source instead of cluttering the repo root. Skipped (not failed) when no
         // Python kernel is installed, so it stays green in a kernel-less CI.
-        let dir = std::env::temp_dir().join(format!("qmd-fast-cwd-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("taliesin-cwd-{}", std::process::id()));
         let _ = std::fs::create_dir_all(&dir);
         let mut blk = python_cell_block("b-cwd");
         if let Some(c) = blk.cell.as_mut() {

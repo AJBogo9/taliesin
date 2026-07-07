@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 /// The repository's `corpus/` directory (the spec documents), resolved relative
-/// to the `qmd-fast-core` crate the test belongs to.
+/// to the `taliesin-core` crate the test belongs to.
 pub fn corpus_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus")
 }

@@ -17,7 +17,7 @@ fn tmp_dir(name: &str) -> std::path::PathBuf {
     dir
 }
 
-fn qmd_fast() -> Command {
+fn taliesin() -> Command {
     Command::new(env!("CARGO_BIN_EXE_taliesin"))
 }
 
@@ -30,7 +30,7 @@ fn malformed_site_yml_fails_strict_build() {
     let out = dir.join("_site");
 
     // Without --strict the build still writes (degraded), exit 0.
-    let lenient = qmd_fast()
+    let lenient = taliesin()
         .arg("build")
         .arg(&dir)
         .arg("--out")
@@ -48,7 +48,7 @@ fn malformed_site_yml_fails_strict_build() {
     );
 
     // With --strict the same malformed config must fail the build (non-zero exit).
-    let strict = qmd_fast()
+    let strict = taliesin()
         .arg("build")
         .arg(&dir)
         .arg("--strict")
@@ -75,7 +75,7 @@ fn missing_site_yml_does_not_fail_strict_build() {
     let dir = tmp_dir("nofile");
     fs::write(dir.join("index.tmd"), "---\ntitle: Home\n---\n\nWelcome.\n").unwrap();
     let out = dir.join("_site");
-    let res = qmd_fast()
+    let res = taliesin()
         .arg("build")
         .arg(&dir)
         .arg("--strict")
@@ -96,7 +96,7 @@ fn build_rejects_unknown_flag_with_suggestion() {
     let dir = tmp_dir("badflag");
     let doc = dir.join("post.tmd");
     fs::write(&doc, "---\ntitle: Post\n---\n\nProse.\n").unwrap();
-    let res = qmd_fast()
+    let res = taliesin()
         .arg("build")
         .arg(&doc)
         .arg("--stict") // typo for --strict
@@ -121,7 +121,7 @@ fn build_rejects_value_less_out_flag() {
     fs::write(&doc, "---\ntitle: Post\n---\n\nProse.\n").unwrap();
     // `--out` at the end of args (no directory value): a hard error, not a silent
     // `<stem>.html` write.
-    let res = qmd_fast()
+    let res = taliesin()
         .arg("build")
         .arg(&doc)
         .arg("--out")
@@ -150,7 +150,7 @@ fn check_rejects_unknown_flag_with_suggestion() {
     let dir = tmp_dir("checkflag");
     let doc = dir.join("post.tmd");
     fs::write(&doc, "---\ntitle: Post\n---\n\nProse.\n").unwrap();
-    let res = qmd_fast()
+    let res = taliesin()
         .arg("check")
         .arg(&doc)
         .arg("--formt") // typo for --format
@@ -175,7 +175,7 @@ fn preview_rejects_unknown_flag_with_suggestion() {
     let doc = dir.join("post.tmd");
     fs::write(&doc, "---\ntitle: Post\n---\n\nProse.\n").unwrap();
     // A typo'd `--hots` (for --host) must fail fast, before the server binds a port.
-    let res = qmd_fast()
+    let res = taliesin()
         .arg("preview")
         .arg(&doc)
         .arg("--hots")

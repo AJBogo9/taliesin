@@ -2,7 +2,7 @@
 title: "The live preview loop"
 ---
 
-The reason qmd-fast exists is the edit loop: change the source, and the preview
+The reason Taliesin exists is the edit loop: change the source, and the preview
 reflects it *immediately*, without reloading the page, losing your scroll, or
 resetting any live content already on screen.
 
@@ -43,7 +43,7 @@ Click it to expand a panel with the preview-only tools:
 - **Status** and a live **word count / reading time** for the prose.
 - **Restart kernel**: drops the warm Jupyter kernel and re-runs every cell against
   a fresh one. Reach for it when the kernel wedges, or after you fix
-  `QMD_FAST_PYTHON` or install a missing package and want a clean replay.
+  `TALIESIN_PYTHON` or install a missing package and want a clean replay.
 - A reminder that **Alt-click (Option-click on Mac)** opens any block's source in
   your editor.
 - On a single-document preview, a **theme toggle** (light/dark). A site puts that

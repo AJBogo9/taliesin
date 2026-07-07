@@ -47,5 +47,5 @@ $$ \text{measure} \approx \frac{\text{line length}}{\text{character width}} $$
 
 ::: {.callout-note}
 The reader's theme choice is reader-local and read-only. It never writes back to the `.tmd`,
-adds no output format, and ships offline, so it sits cleanly inside qmd-fast's invariants.
+adds no output format, and ships offline, so it sits cleanly inside Taliesin's invariants.
 :::

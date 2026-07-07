@@ -1,10 +1,10 @@
-# qmd-fast marketing site: a website project, built by qmd-fast itself.
+# Taliesin marketing site: a website project, built by Taliesin itself.
 # Native flat schema (HTML-only; no `project:`/`format:` nesting). The docs are two
 # separate book projects; `mounts:` serves them under /docs/guide and /docs/internals
 # in `preview` (the static `build` wires each with its own `build ... --out` step).
-title: "qmd-fast"
+title: "Taliesin"
 description: "A fast, single-purpose dev server that turns one .qmd file into a live blog post, slide deck, book, or website, with executable code and an edit loop that updates the instant you save."
-url: "https://qmd-fast.dev"
+url: "https://taliesin.dev"
 favicon: favicon.svg
 image: assets/og-card.png   # default social card (og:image / twitter:image) for every page
 toc: false
@@ -22,12 +22,12 @@ nav:
     - { text: "Guide", href: "docs/guide/" }
     - { text: "Internals", href: "docs/internals/" }
   right:
-    - { icon: github, href: "https://github.com/AJBogo9/qmd-fast" }
+    - { icon: github, href: "https://github.com/AJBogo9/taliesin" }
 
 footer:
   left:
-    - { text: "Built with qmd-fast" }
+    - { text: "Built with Taliesin" }
   right:
     - { text: "Guide", href: "docs/guide/" }
     - { text: "Internals", href: "docs/internals/" }
-    - { icon: github, href: "https://github.com/AJBogo9/qmd-fast" }
+    - { icon: github, href: "https://github.com/AJBogo9/taliesin" }

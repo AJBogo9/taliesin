@@ -1,4 +1,4 @@
-# qmd-fast
+# Taliesin
 
 A single-purpose Rust dev server that renders `.qmd` files to **HTML only** (blog
 posts, slide decks, books, multi-page sites) for one author's workflow, built around
@@ -30,12 +30,12 @@ not a preview gesture.
 ## Where things are
 
 ```
-crates/core      qmd-fast-core lib: parser (comrak + sourcepos) → block model → render
+crates/core      taliesin-core lib: parser (comrak + sourcepos) → block model → render
   src/render/      block model + emission (a module dir):
     mod.rs           the render pipeline (parse → block model → HTML) + head/asset helpers
     model.rs         the block-model data types (Cell, Block, RenderedDoc, PageIncludes)
     tests.rs         render unit + corpus-invariant tests
-    deck.rs          slide decks on qmd-fast's OWN engine (reveal.js removed): bundles
+    deck.rs          slide decks on Taliesin's OWN engine (reveal.js removed): bundles
                      deck.css/deck.js, emits the native `.qmd-deck`/`.qmd-slides`
                      contract + a `window.QmdDeck` API (no reveal vocabulary)
     emit.rs          per-block HTML (server-side highlighting, code line-wrapping)
@@ -61,7 +61,7 @@ crates/core      qmd-fast-core lib: parser (comrak + sourcepos) → block model 
   assets/          bundled offline: css/ (base, dark, deck, site),
                    js/ (deck.js, code-enhance.js, mermaid.js, qmd-js.js + vendored
                    plot.umd.min.js/d3.min.js for `{js}` cells), katex/
-crates/server    qmd-fast-server, bin `qmd-fast`: CLI + websocket dev server
+crates/server    taliesin-server, bin `taliesin`: CLI + websocket dev server
   src/main.rs      render / blocks / build / serve subcommands (a dir = a site project)
   src/serve.rs     single-doc axum websocket + notify file watcher
   src/serve_site.rs multi-page site server (per-page state/executor, cross-page nav, hot reload)
@@ -87,10 +87,10 @@ corpus/          the real .qmd docs (the spec); cargo test renders them all
 - **docs/** is the project's own manual, authored in `.qmd` as TWO sibling book
   projects (dogfooding):
   - **`docs/guide/`** = the User Guide (`using/` feature showcase + `reference/`):
-    how to *use* qmd-fast. Preview it: `qmd-fast preview docs/guide`.
+    how to *use* Taliesin. Preview it: `taliesin preview docs/guide`.
   - **`docs/internals/`** = the Internals book: the architecture, the rendering
     pipeline, the deck engine, the block model, the execution model, the dev server,
-    and how to extend it. Preview it: `qmd-fast preview docs/internals`.
+    and how to extend it. Preview it: `taliesin preview docs/internals`.
   - `docs/` itself is just a container (no `_site.yml`); the books are siblings
     because the page-walker would otherwise swallow a nested book's pages. The
     marketing site mounts them at `/docs/guide` + `/docs/internals`. Cross-book links
@@ -112,15 +112,15 @@ cargo test -p taliesin-core                                    # corpus invarian
 cd web-client && npx -y -p typescript tsc -p jsconfig.json     # type-check client.js (// @ts-check, no build step)
 ```
 
-A `qmd-fast` launcher on `PATH` (`~/.local/bin/qmd-fast`) rebuilds the release
-binary when the tool's sources change, then runs it, so `qmd-fast preview <file>`
+A `taliesin` launcher on `PATH` (`~/.local/bin/Taliesin`) rebuilds the release
+binary when the tool's sources change, then runs it, so `taliesin preview <file>`
 works from anywhere.
 
 Executing code cells needs a matching Jupyter kernel: `{python}` cells need a
-Python with `ipykernel` (`QMD_FAST_PYTHON`, default `python3`); `{r}` cells need an
-R with `IRkernel` (`QMD_FAST_R`, default `R`). Each language runs against its own
+Python with `ipykernel` (`TALIESIN_PYTHON`, default `python3`); `{r}` cells need an
+R with `IRkernel` (`TALIESIN_R`, default `R`). Each language runs against its own
 warm kernel. Without a kernel, cells render as source and the preview shows a
-"kernel unavailable" diagnostic. A cell that runs longer than `QMD_FAST_CELL_TIMEOUT`
+"kernel unavailable" diagnostic. A cell that runs longer than `TALIESIN_CELL_TIMEOUT`
 seconds (default 120; `0` disables) is interrupted (SIGINT) so a runaway cell can't
 wedge the kernel; the warm kernel and prior cells survive.
 
@@ -130,7 +130,7 @@ to a cell or anything upstream busts it and everything downstream, with no stale
 hits and nothing to clear by hand. An unchanged doc replays from disk on the next
 `build`/preview without booting the kernel; a warm preview still re-runs only the
 edited cell + downstream. Errors and `#| cache: false` cells are never persisted.
-`QMD_FAST_NO_CACHE` ignores + skips writing the cache; "Restart kernel" forces a
+`TALIESIN_NO_CACHE` ignores + skips writing the cache; "Restart kernel" forces a
 fresh re-run. (Kernel *variable* state is never cached — that's what makes Quarto's
 per-cell `cache` fragile — so a cold start can only skip work when the whole
 document is unchanged.) See `crates/server/src/freeze.rs`.

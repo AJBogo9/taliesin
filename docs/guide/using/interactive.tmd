@@ -2,7 +2,7 @@
 title: "Interactive and explorable documents"
 ---
 
-qmd-fast runs `{js}` cells in the browser and wires them into a small reactive
+Taliesin runs `{js}` cells in the browser and wires them into a small reactive
 graph. On top of that graph sit two declarative conveniences, inputs and
 scroll-driven scenes, plus two scroll and tab layouts. Everything here is
 client-side and offline, built from the same block model as the rest of the page,
@@ -47,7 +47,7 @@ return qmd.value("n") ** 2;
 return document.createTextNode("n squared = " + qmd.get("squared"));
 ```
 
-When an input changes, qmd-fast re-runs exactly the cells downstream of it, once
+When an input changes, Taliesin re-runs exactly the cells downstream of it, once
 each, in dependency order, following `//| name` edges. This is one controlled pass,
 not a continuously-recomputing dataflow engine: cycles are detected and shown as an
 error rather than run. `Plot` and `d3` are available as globals for drawing; a cell

@@ -139,7 +139,7 @@ enum DocFormat {
 
 ::: {.callout-note}
 The enum variant is `Reveal` for historical reasons (the deck engine used to be
-reveal.js). The engine is now qmd-fast's own; reveal.js was removed. The variant
+reveal.js). The engine is now Taliesin's own; reveal.js was removed. The variant
 name is the only fossil left, the runtime exposes `window.QmdDeck`, not
 `window.Reveal`. See [the deck engine](deck-engine.tmd).
 :::
@@ -316,7 +316,7 @@ frame.
 
 | | `Warning` (core) | `Diagnostic` (server) |
 |---|---|---|
-| crate | `qmd-fast-core`, `render/model.rs` | `qmd-fast-server`, `protocol.rs` |
+| crate | `taliesin-core`, `render/model.rs` | `taliesin-server`, `protocol.rs` |
 | levels | warning only | `"warning"` / `"error"` |
 | code frame | no | yes (`frame`) |
 | produced by | the render pipeline | the server (held in each doc's state, includes the kernel state and front-matter linter) |

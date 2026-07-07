@@ -1,4 +1,4 @@
-//! `qmd-fast check` superset validators: each renders a real doc and asserts the
+//! `taliesin check` superset validators: each renders a real doc and asserts the
 //! static lint surfaces (or stays silent on) the right located warning.
 
 use std::path::Path;
@@ -178,7 +178,7 @@ fn corpus_check_superset_doc_trips_each_validator() {
     let doc = taliesin_core::render_document_with_includes(&src, &dir);
     // The duplicate `{#dup}` heading id is now resolved at render time (explicit ids go
     // through the same dedup as auto-slugs), so the diagnostic arrives on the render
-    // `warnings` channel (which `qmd-fast check` already aggregates) rather than from
+    // `warnings` channel (which `taliesin check` already aggregates) rather than from
     // the post-hoc DOM scan. Coverage is unchanged: the duplicate is still reported.
     assert!(
         doc.warnings

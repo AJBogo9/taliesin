@@ -12,7 +12,7 @@ fn main() {
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| "unknown".to_string());
-    println!("cargo:rustc-env=QMD_FAST_GIT_SHA={sha}");
+    println!("cargo:rustc-env=TALIESIN_GIT_SHA={sha}");
     // Re-run when the checked-out commit moves.
     println!("cargo:rerun-if-changed=../../.git/HEAD");
     println!("cargo:rerun-if-changed=../../.git/refs/heads");

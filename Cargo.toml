@@ -7,7 +7,7 @@ version = "0.2.0"
 edition = "2024"
 license = "MIT"
 authors = ["Andreas Bogossian <andreas.bogossian9@gmail.com>"]
-repository = "https://github.com/AJBogo9/qmd-fast"
+repository = "https://github.com/AJBogo9/taliesin"
 
 [workspace.dependencies]
 # Internal crates

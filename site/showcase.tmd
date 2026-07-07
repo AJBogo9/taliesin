@@ -1,11 +1,11 @@
 ---
 title: "See it live"
-description: "Interactive demos of qmd-fast, every one a real capability with its source beside it."
+description: "Interactive demos of Taliesin, every one a real capability with its source beside it."
 page-layout: full
 ---
 
 Everything below runs in your browser, right here on this page, which is itself a
-qmd-fast document. Each demo shows its **Result** and the real **Source** that
+Taliesin document. Each demo shows its **Result** and the real **Source** that
 produced it: open the Source tab and you are reading the exact `.tmd` cell. No
 screenshots, no video.
 
@@ -304,7 +304,7 @@ return Plot.lineY(ys, { stroke: "#4c8dff" }).plot({ height: 240 });
 ```
 
 ::: {.step lines="1"}
-The `//| input: harmonics` directive subscribes this cell to the `harmonics` control. qmd-fast re-runs the cell, and only this cell, whenever that value changes.
+The `//| input: harmonics` directive subscribes this cell to the `harmonics` control. Taliesin re-runs the cell, and only this cell, whenever that value changes.
 :::
 ::: {.step lines="2"}
 `qmd.value("harmonics")` reads the slider's current number out of the reactive scope.
@@ -339,9 +339,9 @@ return Plot.lineY(ys, { stroke: "#4c8dff" }).plot({ height: 240 });
 ````
 :::
 
-## It is all just qmd-fast
+## It is all just Taliesin
 
-Every demo on this page is plain text in one `.tmd` file, served by qmd-fast itself,
+Every demo on this page is plain text in one `.tmd` file, served by Taliesin itself,
 exactly like this whole site. Nothing here is a screenshot or a recording. See the
 full feature set on the [Features](features.tmd) page, or open the **Guide** in the
 nav to start writing your own.

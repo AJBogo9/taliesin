@@ -32,7 +32,7 @@ confidence-threshold = 0.9
 
 # `option-ext` (pulled in transitively by `dirs`, which `jupyter-zmq-client` uses) is
 # MPL-2.0 — weak, *file-level* copyleft: using it as an unmodified dependency imposes no
-# license obligation on qmd-fast's own code. Confined to a per-crate exception rather than
+# license obligation on Taliesin's own code. Confined to a per-crate exception rather than
 # allowing MPL-2.0 globally, so the project's license policy stays permissive-only and a
 # NEW MPL-2.0 dependency would still be flagged for review.
 [[licenses.exceptions]]

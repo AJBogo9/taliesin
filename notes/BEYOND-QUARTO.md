@@ -10,10 +10,10 @@
 
 ## Thesis
 
-qmd-fast goes past Quarto **not by matching its feature checklist, but by being a
+Taliesin goes past Quarto **not by matching its feature checklist, but by being a
 different kind of tool: a warm, source-mapped, block-modeled live *process*, not a
 batch compiler.** Quarto renders an HTML artifact and stops; every edit is a cold
-full-document pass + page reload. qmd-fast keeps a content-hash block model, a
+full-document pass + page reload. Taliesin keeps a content-hash block model, a
 per-keystroke block diff, a warm server, a warm Jupyter kernel, and a cumulative-hash
 freeze cache alive between edits. That combination is the moat, state-preserving
 incremental update, click-to-source, zero per-edit startup cost, and no static-site
@@ -87,7 +87,7 @@ diagnostics, trustworthiness Quarto's open keyspace structurally cannot match.
   nested config blocks (`execute:` / `listing:` / `about:` / `hero:` children +
   front-matter top-level, `frontmatter::validate_front_matter`). **Clean-break decision
   (author directive 2026-06-24): the "unknown vs recognized-but-not-honored" distinction
-  was DROPPED in favor of a single closed vocabulary per surface; any key outside qmd-fast's
+  was DROPPED in favor of a single closed vocabulary per surface; any key outside Taliesin's
   own vocabulary (typo OR Quarto term) is flagged, and the corpus was purged of all
   Quarto-only keys (a verified visible-HTML no-op).** Built on `locate-render-warnings` so
   every diagnostic is click-to-source. Closed the now-moot backlog P2. **Pinned:
@@ -99,7 +99,7 @@ diagnostics, trustworthiness Quarto's open keyspace structurally cannot match.
   (`KNOWN_KEYS` + nested sets in `frontmatter.rs`, `NATIVE_KEYS` in `site/config`) via a
   `#[cfg(test)]` generator in `crates/core/src/schema.rs`; committed + bundled
   `assets/schema/qmd-frontmatter.schema.json` + `qmd-site.schema.json`, drift-locked
-  by a golden-file test (`QMD_FAST_BLESS=1` regenerates). `qmd-fast schema [--out <dir>]`
+  by a golden-file test (`TALIESIN_BLESS=1` regenerates). `taliesin schema [--out <dir>]`
   emits them; `configuration.qmd` documents the `# yaml-language-server: $schema=` on-ramp
   (front-matter caveat noted). `serde_json` added as a core DEV-dependency only (no new
   runtime dep). *Invariant held: additive only, a schema file is documentation not an output
@@ -148,7 +148,7 @@ already waits for.
 - [~] **`vscode-editor-companion` Phase 1 (transformational / large / none). BUILT
   (2026-06-24, branch `feat/vscode-editor-companion`); pending author F5 acceptance.** New
   `editor/vscode/` TS extension (the missing producer for the half-built sync protocol):
-  `qmdFast.openPreview` spawns `qmd-fast preview` (localhost, no `--host` → #1d LAN token
+  `qmdFast.openPreview` spawns `taliesin preview` (localhost, no `--host` → #1d LAN token
   not needed yet), hosts it in a webview via `asExternalUri` + a relay doc that bridges the
   iframe's `qmd-goto`/`qmd-cursor` postMessages to VS Code webview messaging; forward
   `qmd-goto`→`revealRange`, reverse cursor→debounced `qmd-cursor`→`highlightAtLine` (incl.
@@ -214,7 +214,7 @@ cannot reach, while resisting the reactive-VM trap.
 
 ### Pillar IV, Breadth (wider than Quarto, web-native, corpus-pinned)
 
-Close the genuinely-web-native breadth gaps where qmd-fast is narrower than Quarto,
+Close the genuinely-web-native breadth gaps where Taliesin is narrower than Quarto,
 each pinned by an added corpus document so breadth never outruns the regression net.
 
 - [x] **`panel-tabset-margin` (high / med / none). DONE (2026-06-24, branch
@@ -269,7 +269,7 @@ each pinned by an added corpus document so breadth never outruns the regression 
 
 ### Pillar V, Identity, craft & OSS readiness
 
-Make qmd-fast feel finished and public-ready: honest supply chain, premium typography,
+Make Taliesin feel finished and public-ready: honest supply chain, premium typography,
 books as versioned spec, integrity debt paid.
 
 - [ ] **`prune-and-fix-stale-docs` (high / small / none).** LAND FIRST. Prune the
@@ -368,7 +368,7 @@ Wave 2 (benchmark + hero demo).
 - **CUT, `cold-start-prefix-warming`:** backlog already judged "not worth it until it
   bites"; touches Do-NOT-touch exec/freeze/kernel; a background warm racing a real edit
   risks a partial `ran` record that corrupts `plan()`. Revisit only if the Wave 2
-  benchmark proves the penalty hurts; then behind `QMD_FAST_WARM_PREFIX`, default off.
+  benchmark proves the penalty hurts; then behind `TALIESIN_WARM_PREFIX`, default off.
 - **CUT, `deck-structural-incremental-swap`:** optimizes the rarest edit (add/remove a
   slide heading) on a fallback that already works, at the highest risk in its pillar.
   The full-render fallback is the permanent answer.
@@ -422,7 +422,7 @@ Wave 2 (benchmark + hero demo).
   worsen it); first cut = a single labeled block.
 - **DEFER, image transcode / `srcset`** (split from `image-lightbox`): the backlog
   "Image optimization" item, demand-triggered.
-- **PARKED, the rename** (`qmd-fast` → "quoin"): deferred per the author; keep the
+- **PARKED, the rename** (`taliesin` → "quoin"): deferred per the author; keep the
   `.qmd` extension either way. Not an active pillar.
 
 ---

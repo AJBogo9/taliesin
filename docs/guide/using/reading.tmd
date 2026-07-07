@@ -2,7 +2,7 @@
 title: "The reader experience"
 ---
 
-A qmd-fast page is not just rendered HTML, it is a reading surface. Every built
+A Taliesin page is not just rendered HTML, it is a reading surface. Every built
 page carries a small suite of reader tools behind a single **Settings** gear in the
 top-right corner. They need no author configuration: they appear on every
 article automatically (slide decks have their own chrome, so they are skipped).
@@ -43,7 +43,7 @@ Sepia is **reader-choice only**. It is not a value you can set in a page's front
 the reader picks for themselves, the same way they pick Light or Dark. An author who
 wants a warm default ships a custom theme through the usual extension or `css:` route.
 
-There is deliberately no text-size, width, or spacing knob. qmd-fast tunes those defaults
+There is deliberately no text-size, width, or spacing knob. Taliesin tunes those defaults
 once, for every reader, rather than shipping a comfort panel of sliders: the browser
 already offers page zoom for the rare reader who needs larger type, and one well-set
 measure beats a pile of controls nobody opens.

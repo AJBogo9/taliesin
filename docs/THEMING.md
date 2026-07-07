@@ -1,4 +1,4 @@
-# Theming qmd-fast
+# Theming Taliesin
 
 A theme is just CSS that overrides a handful of custom properties. There are two
 built-in themes (`light`, the default, and `dark`); everything else is a file or
@@ -58,7 +58,7 @@ reference: copy it and change the values.
 ## Mermaid diagrams
 
 Mermaid bakes its colours into the SVG when it renders, so they can't be restyled
-with ordinary CSS. Instead, qmd-fast reads the diagram config from CSS variables
+with ordinary CSS. Instead, Taliesin reads the diagram config from CSS variables
 (re-rendering on a light/dark switch), so you can theme diagrams from your theme
 file with no JavaScript:
 
@@ -93,5 +93,5 @@ Set nothing and diagrams just follow the built-in light/dark themes. The zoom
 
 Drop it at `_extensions/<name>/theme.css` in your project and reference it with
 `theme: <name>`. Bundling that `_extensions/<name>/` in a git repo makes it
-installable by others (a `qmd-fast add <repo>` fetcher is planned; until then,
+installable by others (a `Taliesin add <repo>` fetcher is planned; until then,
 `git clone` into `_extensions/`).

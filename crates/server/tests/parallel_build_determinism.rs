@@ -6,7 +6,7 @@
 //! math but **no code cells**, so the comparison is kernel-free and fast while still
 //! exercising the whole concurrent scheduler (spawn N tasks, bound by a semaphore, write
 //! per-page files, aggregate in page order). A kernel-needing variant is gated on
-//! `QMD_FAST_PYTHON`, mirroring the rest of the suite.
+//! `TALIESIN_PYTHON`, mirroring the rest of the suite.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -48,7 +48,7 @@ fn copy_tree(src: &Path, dst: &Path) {
     }
 }
 
-/// Run `qmd-fast build <root> --jobs <jobs>` and return every rendered HTML file under
+/// Run `taliesin build <root> --jobs <jobs>` and return every rendered HTML file under
 /// `<root>/<out_subdir>`, keyed by its path relative to that output dir.
 fn build_and_collect(root: &Path, out_subdir: &str, jobs: &str) -> BTreeMap<String, Vec<u8>> {
     let status = Command::new(env!("CARGO_BIN_EXE_taliesin"))
@@ -269,15 +269,15 @@ fn write_kernel_site(root: &Path, n_pages: usize) {
 /// Kernel-backed determinism: a multi-page site *with real Python cells*, built
 /// sequentially and concurrently, must still match byte-for-byte — the per-page kernel +
 /// per-page `_freeze/<rel>.json` isolation is what makes concurrent kernels safe. Gated on
-/// `QMD_FAST_PYTHON` like the rest of the exec tests.
+/// `TALIESIN_PYTHON` like the rest of the exec tests.
 ///
 /// NB: deliberately avoids matplotlib. Its rasterized PNG bytes differ even between two
 /// *sequential* builds (a known nondeterministic-bytes source the brief calls out), so a
 /// figure corpus would flake regardless of the scheduler. Textual cell output is stable.
 #[test]
 fn sequential_and_concurrent_match_with_code_cells() {
-    if std::env::var_os("QMD_FAST_PYTHON").is_none() {
-        eprintln!("skipping: QMD_FAST_PYTHON not set (no kernel)");
+    if std::env::var_os("TALIESIN_PYTHON").is_none() {
+        eprintln!("skipping: TALIESIN_PYTHON not set (no kernel)");
         return;
     }
     let base = tmp_dir("cells");
@@ -311,8 +311,8 @@ fn sequential_and_concurrent_match_with_code_cells() {
 /// no new hazard; it is out of scope here and unchanged by this task.
 #[test]
 fn concurrent_pages_with_same_relative_export_do_not_clobber() {
-    if std::env::var_os("QMD_FAST_PYTHON").is_none() {
-        eprintln!("skipping: QMD_FAST_PYTHON not set (no kernel)");
+    if std::env::var_os("TALIESIN_PYTHON").is_none() {
+        eprintln!("skipping: TALIESIN_PYTHON not set (no kernel)");
         return;
     }
     let base = tmp_dir("figiso");

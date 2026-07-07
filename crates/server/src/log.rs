@@ -2,7 +2,7 @@
 //! lightly-coloured event lines. Everything goes to stderr so `render`'s HTML on
 //! stdout stays clean. Colour is auto-disabled when stderr is not a TTY or when
 //! `NO_COLOR` is set; the startup screen-clear is likewise gated on a TTY and can
-//! be turned off with `QMD_FAST_NO_CLEAR`.
+//! be turned off with `TALIESIN_NO_CLEAR`.
 
 use std::io::{IsTerminal, Write};
 use std::sync::OnceLock;
@@ -62,10 +62,10 @@ fn line(style: Style, msg: &str) {
 /// up into the scrollback buffer, then the cursor homes and clears downward — so
 /// earlier output stays recoverable by scrolling up. We never emit `CSI 3J`
 /// (which wipes scrollback). No-op when stderr isn't a TTY (so piped/redirected
-/// logs stay clean) or when `QMD_FAST_NO_CLEAR` is set.
+/// logs stay clean) or when `TALIESIN_NO_CLEAR` is set.
 pub fn clear_screen() {
     let mut err = std::io::stderr();
-    if !err.is_terminal() || std::env::var_os("QMD_FAST_NO_CLEAR").is_some() {
+    if !err.is_terminal() || std::env::var_os("TALIESIN_NO_CLEAR").is_some() {
         return;
     }
     // Push the visible lines into scrollback, then home + erase-to-end. Falling

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to qmd-fast are recorded here. This project follows a
+All notable changes to Taliesin are recorded here. This project follows a
 loose [semantic versioning](https://semver.org/) while pre-1.0: minor versions
 may carry new features and small behavior changes; the load-bearing invariants
 (content-hash block model, click-to-source, single editing surface, HTML-only
@@ -10,12 +10,12 @@ output) are kept stable.
 
 The release-hardening release. Two waves of correctness, accessibility, and
 authoring-trust work, each landed behind a full test + adversarial-review gate.
-The throughline: **a green `qmd-fast check` (and build) should mean
+The throughline: **a green `taliesin check` (and build) should mean
 publishable.**
 
 ### Added
 
-- **`qmd-fast check` is now a real pre-publish gate.** Static, kernel-free, and
+- **`taliesin check` is now a real pre-publish gate.** Static, kernel-free, and
   deterministic, it flags (each click-to-source): broken internal/relative
   links and cross-page anchors, missing local video files, dangling `//| input`
   names and reactive-graph cycles, and a built-in **accessibility audit**
@@ -23,7 +23,7 @@ publishable.**
   `<a>`/`<button>` with no accessible name. `--format json` stays valid JSON
   even on its own errors (an unreadable path emits `{"error": ...}` on stdout),
   so it pipes cleanly into `jq` and CI.
-- **Onboarding.** `qmd-fast init [dir]` scaffolds a minimal previewable site; a
+- **Onboarding.** `taliesin init [dir]` scaffolds a minimal previewable site; a
   README install/prerequisites section; per-subcommand `--help` (focused
   synopsis + flags + example for `preview`/`build`/`check`/`render`/`schema`/
   `blocks`/`init`); unknown-command did-you-mean; the top-level usage now
@@ -48,20 +48,20 @@ publishable.**
 
 - **Mermaid offline behavior.** A diagram whose library can't load now shows a
   visible `[data-mermaid-error]` banner (with the source below) instead of
-  failing silently; the library URL is configurable via `QMD_FAST_MERMAID_URL`
+  failing silently; the library URL is configurable via `TALIESIN_MERMAID_URL`
   for a fully self-hosted, offline build.
 - Site `build` now **honors an author's `404.qmd`** (it is no longer overwritten
   by the built-in template, and is kept out of the search index).
 - The build "kernel unavailable" hint names the right interpreter
-  (`QMD_FAST_R` for an R cell, not always `QMD_FAST_PYTHON`).
+  (`TALIESIN_R` for an R cell, not always `TALIESIN_PYTHON`).
 - `THIRD_PARTY.md` now gives an accurate offline/CDN inventory.
 
 ### Fixed
 
 - The cross-page link checker no longer false-flags intra-site links that carry
   a `?query` string.
-- `qmd-fast init` (current directory) prints a runnable preview hint
-  (`qmd-fast preview .`).
+- `taliesin init` (current directory) prints a runnable preview hint
+  (`taliesin preview .`).
 
 ### Internal
 
@@ -88,10 +88,10 @@ publishable.**
 
 Baseline: a fully native `.qmd` → HTML dev server (no Quarto compat shims, no
 reveal.js, no Observable runtime). All four output shapes render and deploy:
-blog post, slide deck (qmd-fast's own engine), book, and multi-page site, with a
+blog post, slide deck (Taliesin's own engine), book, and multi-page site, with a
 warm Jupyter kernel, block-level incremental updates with DOM-state
 preservation, a `_freeze` execution cache, click-to-source, reverse cursor sync,
 located diagnostics, and Cmd-K search.
 
-[0.2.0]: https://github.com/AJBogo9/qmd-fast/releases/tag/v0.2.0
-[0.1.0]: https://github.com/AJBogo9/qmd-fast/releases/tag/v0.1.0
+[0.2.0]: https://github.com/AJBogo9/taliesin/releases/tag/v0.2.0
+[0.1.0]: https://github.com/AJBogo9/taliesin/releases/tag/v0.1.0

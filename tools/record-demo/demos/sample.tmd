@@ -1,12 +1,12 @@
 ---
-title: "qmd-fast"
+title: "Taliesin"
 subtitle: "Plain text in, live HTML out"
 toc: true
 ---
 
 # Write in Markdown, get a live document
 
-`qmd-fast` renders `.tmd` to HTML with **instant, block-level updates** — save the
+`taliesin` renders `.tmd` to HTML with **instant, block-level updates** — save the
 file and only the block you changed re-renders, in place, with scroll and live
 state preserved.
 

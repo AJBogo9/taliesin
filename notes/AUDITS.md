@@ -1,4 +1,4 @@
-# qmd-fast audit records
+# Taliesin audit records
 
 Consolidated historical audit reports, newest first. The active backlog
 (open items only) lives in [backlog.md](backlog.md); these are the detailed
@@ -10,7 +10,7 @@ findings behind it, kept for reference.
 
 Systematized output-fidelity check (backlog "highest-value #4"). The sibling
 `qmd-fast-testbed` gained `sweep_corpus.py`: render every real corpus single-doc
-(the spec) in **both** qmd-fast and Quarto with execution disabled, reduce to the
+(the spec) in **both** Taliesin and Quarto with execution disabled, reduce to the
 block skeleton, structural-diff, and catalog. The full classification lives in
 `qmd-fast-testbed/CORPUS-FINDINGS.md`; the generated report is `corpus_sweep.md`.
 
@@ -19,14 +19,14 @@ the other 5 differ only in items below, all classified. A `run.py` normalization
 (code-token whitespace was inventing `np.polyfit` → `np . polyfit` noise) also lifted
 the existing conformance suite 16/27 → 18/27.
 
-**Deliberate (qmd-fast intentionally different):** native `{js}` cells render as live
+**Deliberate (Taliesin intentionally different):** native `{js}` cells render as live
 widgets not dumped OJS source; flat `div.qmd-layout` vs Quarto's
 `quarto-layout-panel/row/cell`; references in a semantic `section.qmd-references` vs
 `div.references`; display-math in `div.qmd-math` (KaTeX server-side, nothing dropped)
 vs Quarto's `<p>\[…\]</p>`; tabset's no-JS form (`h2` + stacked panels, upgraded to
 ARIA tabs by client JS).
 
-**qmd-fast does better:** resolves `@fig-`/`@sec-` cross-refs even without executing
+**Taliesin does better:** resolves `@fig-`/`@sec-` cross-refs even without executing
 the target cell (Quarto leaves `?@fig-…` under `--no-execute`).
 
 **Real bug-candidates (REPORTED, follow-ups — not yet fixed):**
@@ -36,17 +36,17 @@ the target cell (Quarto leaves `?@fig-…` under `--no-execute`).
   false`), and every option parser only matched `#|` (no space). So the spaced lines were
   neither stripped (→ leaked into source) nor parsed (→ `echo: false` ignored, source shown;
   `label: fig-data-3d` unregistered, throwing figure numbers off by one vs Quarto). Quarto
-  accepts the spaced form, so qmd-fast now does too: a single `option_directive()` primitive
+  accepts the spaced form, so Taliesin now does too: a single `option_directive()` primitive
   (`render/mod.rs`) tolerates optional whitespace between the comment marker and `|`, and
   `cell_option` / `strip_cell_options` / `validate::cell_option_keys` all key off it.
   Pinned by `render::tests::spaced_option_directives_are_recognized`.
-- **Captioned code listing is not a `<figure>`.** qmd-fast emits `div.qmd-listing` with a
+- **Captioned code listing is not a `<figure>`.** Taliesin emits `div.qmd-listing` with a
   `<figcaption>` (a `<figcaption>` outside `<figure>` is out of place); Quarto uses
   `<figure class="quarto-float-lst">`. Minor/semantic (`render/figure.rs`/`emit.rs`).
 
 -----------------------------------------------------------------------------
 
-# qmd-fast — round-2 adversarial audit (2026-06-21)
+# Taliesin — round-2 adversarial audit (2026-06-21)
 
 A second pass after the round-1 backlog (P0–P3) was fixed. Method: **empirical** (a
 battery of ~80 hostile/extreme documents actually run through `build`/`preview`, with
@@ -241,7 +241,7 @@ the cumulative-hash execution plan are sound under reorder/insert/delete/`cache:
 
 -----------------------------------------------------------------------------
 
-# qmd-fast — full audit backlog (2026-06-20)
+# Taliesin — full audit backlog (2026-06-20)
 
 A complete audit of the project: every Rust + JS/CSS source file deep-read and
 **adversarially verified** by a second reviewer, every feature exercised live in
@@ -313,7 +313,7 @@ the watcher no longer rebuilds on `_freeze/` writes). Details in git. The items 
 Build now prints render warnings **and broken cross-refs** to stderr (site + single
 doc), so a broken site no longer deploys silently. The site emits a Quarto-compatible
 `listings.json` (build + preview route) — tech-blog prev/next works again, with real
-titles (the corpus `post-nav.js` was updated to read qmd-fast's compact `search.json`).
+titles (the corpus `post-nav.js` was updated to read Taliesin's compact `search.json`).
 Canonical/`og:url` use the clean directory URL; `<html lang>` and `js_str` are escaped
 (`</script>`/newlines); a setext-heading `{#id}` is applied + stripped;
 `strip_trailing_hardbreak` is end-anchored (no longer corrupts raw-HTML content); the
@@ -372,7 +372,7 @@ Diagnostic with missing message renders `[object Object]` (`client.js:98`). Sear
 palette can flash stale results on rapid re-open (`search.js:104`). `rfc822` accepts
 Feb 30 (`feed.rs:101`). reduced-motion forces `iteration-count:1` globally; no `@page`
 print margins; `color-scheme:dark` not reset for print (`base.css`,`dark.css`).
-`QMD_FAST_OPEN=0` still enables it (`main.rs:51`). `qmd` skip is case-sensitive
+`TALIESIN_OPEN=0` still enables it (`main.rs:51`). `qmd` skip is case-sensitive
 (`main.rs:460`). Dead `qmd-dark-bg` removal in deck.js; menu arrows bypass scroll guard.
 Swapped `search_json`/`feed_xml` doc comments (`serve_site.rs:194`). `is_pause`
 over-matches an emphasized `. . .` (`reveal.rs:377`). Figure `width=` injects raw CSS
@@ -409,7 +409,7 @@ six surfaces.
 
 | Surface | Verdict | Notes |
 |---|---|---|
-| Slide deck (`corpus/liquid-glass-slides`) | Top-tier wow | Frosted-glass title slide + per-bullet glass panels; a third-party reveal theme renders on qmd-fast's own engine. Best single demo asset. |
+| Slide deck (`corpus/liquid-glass-slides`) | Top-tier wow | Frosted-glass title slide + per-bullet glass panels; a third-party reveal theme renders on Taliesin's own engine. Best single demo asset. |
 | Blog post (`corpus/posts/em-algorithm`) | Strong | 90 KaTeX spans, executed Python with dark-mode-aware matplotlib, collapsible code folds, callouts. |
 | Multi-page website (`corpus/tech-blog`) | Strong | Navbar, `about:` header, listing cards w/ thumbnails + tags, RSS, footer. Mobile wraps correctly. |
 | Docs book (`docs/`) | Strong | Numbered Mermaid figures, component tables, section numbering, sub-TOC. Internals reads as a credibility asset. |
@@ -459,11 +459,11 @@ Both confirmed: README.md:8 says "Double-click" while build.rs:86 has the silent
 
 ---
 
-# qmd-fast Deep Audit — Synthesis Report
+# Taliesin Deep Audit — Synthesis Report
 
 ## 1. Executive verdict
 
-qmd-fast is a genuinely well-engineered personal tool: the execution/freeze/kernel zone, the block-diff core (LIS reduction, Remove-before-Insert sort), the security path-resolution, and the CSS craft in dark mode are all above the bar for a solo project, and the load-bearing invariants survive most hostile reads. But it is not yet *polished*, and three themes recur across nearly every dimension. **First, "silent failure is the default" is a doctrine, not an accident** — listings, social cards, nav items, theme hot-swaps, misspelled CLI flags, broken `_site.yml`, and math render errors all degrade with no diagnostic, which is precisely the trust-eroding behavior a live-preview tool can least afford. **Second, accessibility is advertised but shallow** — a real focus trap and ARIA tabs coexist with a flagship lightbox that is mouse-only (WCAG 2.1.1 fail), an entire deck whose off-camera slides stay in the AT tree and tab order, and a static a11y gate (3 rules) that cannot see any of it, so a green check over-vouches. **Third, the JS behavior layer and the executed-code stack are untested in CI** — every kernel test no-ops when `QMD_FAST_PYTHON` is unset (which it is on CI), and client.js plus all of `assets/js/` has no standing type-check or browser test, so the two most behavior-rich subsystems can regress fully green. What separates this from genuinely polished is unglamorous follow-through: surface the silent failures, finish the a11y/sepia work that was started-but-abandoned, close the panic-guard asymmetry between `preview` and `build`/`check`, and fix the README's headline gesture (it says "double-click"; the code is Alt-click — the #1 feature fails on a new user's first attempt).
+Taliesin is a genuinely well-engineered personal tool: the execution/freeze/kernel zone, the block-diff core (LIS reduction, Remove-before-Insert sort), the security path-resolution, and the CSS craft in dark mode are all above the bar for a solo project, and the load-bearing invariants survive most hostile reads. But it is not yet *polished*, and three themes recur across nearly every dimension. **First, "silent failure is the default" is a doctrine, not an accident** — listings, social cards, nav items, theme hot-swaps, misspelled CLI flags, broken `_site.yml`, and math render errors all degrade with no diagnostic, which is precisely the trust-eroding behavior a live-preview tool can least afford. **Second, accessibility is advertised but shallow** — a real focus trap and ARIA tabs coexist with a flagship lightbox that is mouse-only (WCAG 2.1.1 fail), an entire deck whose off-camera slides stay in the AT tree and tab order, and a static a11y gate (3 rules) that cannot see any of it, so a green check over-vouches. **Third, the JS behavior layer and the executed-code stack are untested in CI** — every kernel test no-ops when `TALIESIN_PYTHON` is unset (which it is on CI), and client.js plus all of `assets/js/` has no standing type-check or browser test, so the two most behavior-rich subsystems can regress fully green. What separates this from genuinely polished is unglamorous follow-through: surface the silent failures, finish the a11y/sepia work that was started-but-abandoned, close the panic-guard asymmetry between `preview` and `build`/`check`, and fix the README's headline gesture (it says "double-click"; the code is Alt-click — the #1 feature fails on a new user's first attempt).
 
 ## 2. Top 10 highest-leverage fixes
 
@@ -630,7 +630,7 @@ qmd-fast is a genuinely well-engineered personal tool: the execution/freeze/kern
 
 ### Test gaps / CI
 
-- **All kernel/exec tests silently no-op in CI** — high — `exec.rs` (5 sites), `kernel.rs:1038`, `parallel_build_determinism.rs:279,314`, `ci.yml`. `QMD_FAST_PYTHON` unset → early-return = pass; CI never installs ipykernel. *Fix:* a separate `pip install ipykernel` + `QMD_FAST_PYTHON=… cargo test -p qmd-fast-server` job; optionally a `QMD_FAST_REQUIRE_KERNEL=1` that fails loudly.
+- **All kernel/exec tests silently no-op in CI** — high — `exec.rs` (5 sites), `kernel.rs:1038`, `parallel_build_determinism.rs:279,314`, `ci.yml`. `TALIESIN_PYTHON` unset → early-return = pass; CI never installs ipykernel. *Fix:* a separate `pip install ipykernel` + `TALIESIN_PYTHON=… cargo test -p taliesin-server` job; optionally a `TALIESIN_REQUIRE_KERNEL=1` that fails loudly.
 - **client.js has no automated tests and isn't type-checked in CI** — medium — `web-client/client.js`, `ci.yml`. *Fix:* wire `tsc -p jsconfig.json` into CI; optionally a jsdom/Playwright diff-op harness (seed from live-edit-bench).
 - **jsconfig type-checks only client.js; all `assets/js/` untyped/untested** — medium — `jsconfig.json`, `crates/core/assets/js/`. *Fix:* `@ts-check` + jsconfig covering search.js/toc-spy.js/`assets/js/*`; extract pure functions for `node:test` units.
 - **Corpus invariant test renders but never executes cells or asserts feature output** — medium — `corpus.rs:99`. Structural-only over 65 docs; reactive/theorem/explorable regressions render clean and pass. *Fix:* `insta` snapshots on `body_html()` for a few high-value docs run through the exec path under the new kernel job.
@@ -643,17 +643,17 @@ qmd-fast is a genuinely well-engineered personal tool: the execution/freeze/kern
 - **README says "double-click", code is Alt-click** — high — `README.md:8,23,86`, `web-client/README.md:6` (verified against `client.js:1044`). *Fix:* replace with "Alt-click (Option-click on Mac)"; add a grep doc-lint.
 - **`build`/`serve` silently ignore misspelled flags** — high — `build.rs:86`, `cli.rs:99-108` (verified: `s if s.starts_with("--") => {}`). Defeats the `--strict` CI gate. *Fix:* collect unknown `--` tokens, return Err with `closest()` did-you-mean; mirror in `cmd_serve`.
 - **`build --out` with no value silently builds to the default target** — low — `build.rs:73-78`. Asymmetric with `--jobs`'s clean error. *Fix:* Err when the value is absent/another flag.
-- **init scaffold injects a dead `github.com/anthropics/qmd-fast` URL** — low — `cli.rs:24`, `main.rs:87`, `README.md:38`; `getting-started.qmd:202` uses a *different* placeholder. *Fix:* one canonical URL (reconcile before any public release).
+- **init scaffold injects a dead `github.com/anthropics/Taliesin` URL** — low — `cli.rs:24`, `main.rs:87`, `README.md:38`; `getting-started.qmd:202` uses a *different* placeholder. *Fix:* one canonical URL (reconcile before any public release).
 - **`render`/`blocks` give a raw OS error on a directory while preview/build accept one** — low — `query.rs:21,66`. *Fix:* an `is_dir()` branch with a clear message.
 - **Top-level `usage()` omits `--jobs` that focused `build --help` documents** — low — `main.rs:104` vs `153`. *Fix:* add `[--jobs <N>]`; extend the microcopy test.
 - **Getting-started's first example leads with a `{mermaid}` cell that fails offline** — low — `getting-started.qmd:100-103`. *Fix:* drop the mermaid cell from the first example, or add an inline offline note.
-- **README Usage omits `check`/`schema`/`init`** — low — `README.md:78-97,136`. The CI publish-gate story isn't discoverable. *Fix:* add `qmd-fast check .` + tie the diagnostics bullet to `check`.
+- **README Usage omits `check`/`schema`/`init`** — low — `README.md:78-97,136`. The CI publish-gate story isn't discoverable. *Fix:* add `taliesin check .` + tie the diagnostics bullet to `check`.
 
 ## 4. Cross-cutting recommendations
 
 1. **Make silent failure loud by default.** The single highest-leverage systemic move: introduce a discovery/parse warnings channel that reaches `build`/`check` `problems` (and the `--strict` exit) and the preview diagnostics overlay, then route the long tail of "silently dropped" cases through it — empty listings, `listing:` without `contents:`, suppressed social cards, titleless posts, missing chapter files, mount/page collisions, broken `_site.yml`, math render errors, and unknown CLI flags. This is the theme that recurs in *every* dimension and is what most separates the tool from "trustworthy live preview".
 2. **Finish the a11y layer you advertised, then gate it.** Add `inert` to non-current deck slides, a keyboard path to the lightbox, a single-key-shortcut opt-out, and target-size minimums — then extend `a11y.rs` to `role=button` and wire the live `scanA11y` JS checks into a headless CI gate so the green check stops over-vouching.
-3. **Stand up CI for the two untested behavior layers.** One kernel job (`pip install ipykernel` + `QMD_FAST_PYTHON`) and one Node/`tsc` job (client.js + search.js + toc-spy.js + `assets/js/*`, plus the existing vscode tests) would convert the execution stack and the entire JS preview/enhancer layer from "fully-green-on-regression" to actually gated. Add a `QMD_FAST_REQUIRE_KERNEL=1` so an env regression can't silently re-skip.
+3. **Stand up CI for the two untested behavior layers.** One kernel job (`pip install ipykernel` + `TALIESIN_PYTHON`) and one Node/`tsc` job (client.js + search.js + toc-spy.js + `assets/js/*`, plus the existing vscode tests) would convert the execution stack and the entire JS preview/enhancer layer from "fully-green-on-regression" to actually gated. Add a `TALIESIN_REQUIRE_KERNEL=1` so an env regression can't silently re-skip.
 4. **Unify the renderer-hardening + theme-hot-swap + scroll seams behind shared helpers.** A shared render-guard helper closes the `preview` vs `build`/`check` panic asymmetry; moving `if theme_changed { send style }` outside the else fixes every hot-swap-drop variant; and one programmatic-scroll helper with an explicit instant-vs-smooth policy ends that drift. Each is a single seam fixing several findings.
 5. **Tokenize the sepia/chrome CSS so new themes inherit correctly.** Re-point the copy button, output/error boxes, and overlay shadows at `var(--qmd-*)`/`--qmd-edge-shadow`, add the sepia `.qhl-*` palette + AA-corrected `--qmd-muted`, and add the missing prose/`hr` rhythm rules. The pattern "hardcoded light hex → per-theme override that sepia never gets" recurs; tokens kill the whole class.
 6. **Coalesce per-op client work and the per-op WS fan-out.** Batch ops into one message and run `afterChange()`/scrollspy once per batch (rAF-coalesced). This single change removes the O(ops × doc) cliff, the forced-reflow scrollspy cost, and the title-clobber race in one move, on the keystroke-save hot path the project exists to optimize.
@@ -722,7 +722,7 @@ qmd-fast is a genuinely well-engineered personal tool: the execution/freeze/kern
 - [ ] emit.rs: write!/push_str instead of format!+push_str (emit.rs:16,274,330)
 
 ### Testing / CI (P1-P2)
-- [ ] CI job: pip install ipykernel + QMD_FAST_PYTHON cargo test -p qmd-fast-server; add QMD_FAST_REQUIRE_KERNEL=1
+- [ ] CI job: pip install ipykernel + TALIESIN_PYTHON cargo test -p taliesin-server; add TALIESIN_REQUIRE_KERNEL=1
 - [ ] CI: tsc -p jsconfig.json (extend include to search.js/toc-spy.js/assets/js/*); add @ts-check headers
 - [ ] insta snapshots on body_html() for reactive/explorable/bayesian docs through the exec path (corpus.rs:99)
 - [ ] CI job for editor/vscode tests (gated to editor/vscode/**)
@@ -735,7 +735,7 @@ qmd-fast is a genuinely well-engineered personal tool: the execution/freeze/kern
 - [ ] usage() build line: add [--jobs <N>] + test (main.rs:104)
 - [ ] Reconcile scaffold/usage/README/getting-started repo URL placeholders (cli.rs:24, main.rs:87, README.md:38)
 - [ ] Drop {mermaid} from the first getting-started example, or add an offline note (getting-started.qmd:100)
-- [ ] README Usage: add `qmd-fast check .`; tie the diagnostics bullet to check (README.md:90,136)
+- [ ] README Usage: add `taliesin check .`; tie the diagnostics bullet to check (README.md:90,136)
 
 ### Security hardening (P3, single-author model)
 - [ ] history.replaceState to scrub ?t= after mount (security.rs:150, client.js)

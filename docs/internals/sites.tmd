@@ -79,7 +79,7 @@ it up by output URL via `Site::deck`). What is left after that retain is a true 
 
 ## The config model
 
-The typed `SiteConfig` is qmd-fast's **native, flat** schema (title, nav, footer,
+The typed `SiteConfig` is Taliesin's **native, flat** schema (title, nav, footer,
 `mounts:`, ...). Config is deliberately **two levels with no cascade**: the root
 `_site.yml` sets project-wide defaults and a page's own front matter overrides
 them, full stop. There is no `_metadata.yml` directory merge, the single most
@@ -105,13 +105,13 @@ and surface the problem instead of crashing.
 
 ::: {.callout-note}
 The closed set is the *whole* contract for `_site.yml`: there is no second tier that
-tolerates Quarto keys. This is what lets `qmd-fast schema` generate a JSON Schema directly
+tolerates Quarto keys. This is what lets `taliesin schema` generate a JSON Schema directly
 from `NATIVE_KEYS`, the very same list `validate_keys` checks against, so the editor
 autocomplete and the runtime validator can never drift apart.
 :::
 
-qmd-fast generates a JSON Schema for `_site.yml` from `NATIVE_KEYS` (the same
-closed set the config validator uses), emitted by `qmd-fast schema`. See the
+Taliesin generates a JSON Schema for `_site.yml` from `NATIVE_KEYS` (the same
+closed set the config validator uses), emitted by `taliesin schema`. See the
 Configuration reference (`../guide/reference/configuration.html`) for the editor
 autocomplete on-ramp.
 
@@ -232,7 +232,7 @@ loop, preview it directly (`preview docs/internals`) rather than through the mou
 The static `build` does **not** auto-wire mounts: building the site emits each page and its
 own assets, but a `mounts:` sub-project is a separate project, so `build <site>` only
 *warns* (naming each mount and the exact command) rather than producing it. Build each mount
-yourself into the matching sub-path, e.g. `qmd-fast build docs/internals --out _site/docs/internals`,
+yourself into the matching sub-path, e.g. `taliesin build docs/internals --out _site/docs/internals`,
 so the deployed `/docs/internals/` links resolve. (Auto-building mounts is a planned
 follow-up.)
 

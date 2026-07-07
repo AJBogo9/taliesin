@@ -33,7 +33,7 @@
 //!
 //! ## Fallback (behaviour never worse than today)
 //!
-//! If the forkserver can't boot (no `QMD_FAST_PYTHON`, import error, non-Linux, an
+//! If the forkserver can't boot (no `TALIESIN_PYTHON`, import error, non-Linux, an
 //! R-only doc) the pool's daemon is simply absent and [`WarmPool::take`] returns
 //! `None`. The caller treats `None` as "cold start" and calls `Kernel::start`
 //! directly, exactly as today. Any failure on the warm path degrades to the cold
@@ -389,7 +389,7 @@ impl WarmPool {
 
 /// Build the one warm pool a **preview server** owns, sized within the same budget
 /// the parallel build respects. Returns `None` (so every page cold-starts, exactly
-/// as before) when `QMD_FAST_PYTHON` is unset: we don't speculatively boot a
+/// as before) when `TALIESIN_PYTHON` is unset: we don't speculatively boot a
 /// forkserver against a possibly-absent `python3`. When it *is* set, the pool boots
 /// the forkserver; if that fails the returned pool is inert and the caller still
 /// cold-starts (no regression).
@@ -406,7 +406,7 @@ pub async fn warm_pool_for_preview() -> Option<Arc<WarmPool>> {
 /// Build the one warm pool a **site build** owns, asking for `size` pre-warmed
 /// kernels (already reconciled against the build's memory budget by
 /// `budget_split`, so `warm_pool + build_kernels <= cap`). Returns `None` (every
-/// page cold-starts, exactly as before) when `size == 0` or `QMD_FAST_PYTHON` is
+/// page cold-starts, exactly as before) when `size == 0` or `TALIESIN_PYTHON` is
 /// unset. Dropped at the end of the build, killing the daemon + idle kernels.
 pub async fn warm_pool_for_build(size: usize) -> Option<Arc<WarmPool>> {
     if size == 0 {
@@ -415,13 +415,13 @@ pub async fn warm_pool_for_build(size: usize) -> Option<Arc<WarmPool>> {
     boot_pool(size).await
 }
 
-/// Resolve `QMD_FAST_PYTHON` and boot a warm pool of `want` kernels, or `None` when
+/// Resolve `TALIESIN_PYTHON` and boot a warm pool of `want` kernels, or `None` when
 /// the interpreter isn't configured (so we never speculatively boot a forkserver
 /// against a possibly-absent `python3`; the caller then cold-starts as before). A
 /// boot failure isn't `None` here — `WarmPool::new` already degrades to an inert pool
 /// that returns `None` from `take`, which the executor treats as a cold start.
 async fn boot_pool(want: usize) -> Option<Arc<WarmPool>> {
-    let python = PathBuf::from(std::env::var_os("QMD_FAST_PYTHON")?);
+    let python = PathBuf::from(std::env::var_os("TALIESIN_PYTHON")?);
     Some(Arc::new(WarmPool::new(&python, want).await))
 }
 
@@ -511,7 +511,7 @@ mod tests {
     use crate::kernel::render_outputs;
 
     fn python() -> Option<PathBuf> {
-        std::env::var_os("QMD_FAST_PYTHON").map(PathBuf::from)
+        std::env::var_os("TALIESIN_PYTHON").map(PathBuf::from)
     }
 
     /// The refill loop reserves slots one at a time until occupancy reaches `cap`,
@@ -584,12 +584,12 @@ mod tests {
 
     /// Take a kernel from the warm pool and prove it is a live, usable kernel by
     /// running a trivial cell (`1 + 1` -> 2). Kernel-gated: without
-    /// `QMD_FAST_PYTHON` it reports ok without exercising a kernel.
+    /// `TALIESIN_PYTHON` it reports ok without exercising a kernel.
     #[test]
     fn warm_pool_take_yields_a_live_kernel() {
         let Some(py) = python() else {
             eprintln!(
-                "SKIPPED (no live kernel): set QMD_FAST_PYTHON to a python with \
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with \
                  ipykernel to exercise the warm pool; this run did not."
             );
             return;
@@ -634,7 +634,7 @@ mod tests {
     #[test]
     fn warm_pool_falls_back_when_forkserver_init_fails() {
         let Some(py) = python() else {
-            eprintln!("SKIPPED (no live kernel): set QMD_FAST_PYTHON to test the fallback path.");
+            eprintln!("SKIPPED (no live kernel): set TALIESIN_PYTHON to test the fallback path.");
             return;
         };
         let rt = tokio::runtime::Runtime::new().unwrap();

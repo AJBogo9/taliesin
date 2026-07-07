@@ -180,7 +180,7 @@ link, and the definitions (which can span paragraphs) are gathered into a number
 footnotes section at the end of the page, in reference order, each with a backlink.[^demo]
 
 [^demo]: Like this one. Write `[^label]` where you want the marker, and `[^label]: …`
-    anywhere for the body; qmd-fast does the numbering and the return arrow.
+    anywhere for the body; Taliesin does the numbering and the return arrow.
 
 For an aside that belongs *beside* the text rather than at the bottom, a
 `::: {.sidenote}` (or `.marginnote`) block floats into the right margin on a wide

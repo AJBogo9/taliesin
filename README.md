@@ -1,9 +1,7 @@
 # Taliesin
 
-> **Taliesin** is the new name for **qmd-fast**. The native (and only) source
-> extension is `.tmd`; the CLI is `taliesin` (with `tali` and the legacy
-> `qmd-fast` as command aliases). (The repository and package history still
-> carry the `qmd-fast` name during the transition.)
+> The native (and only) source extension is `.tmd`; the CLI is `taliesin`
+> (with `tali` as a shorter alias).
 
 A single-purpose, performance-oriented tool for authoring HTML from `.tmd`
 files: blog posts, slide decks, books, and **multi-page websites**. Built for
@@ -35,16 +33,16 @@ web-client/     browser preview client (vanilla JS), the only client
 
 ## Install & prerequisites
 
-**Build from source.** qmd-fast is a Rust workspace (edition 2024); a recent stable
+**Build from source.** Taliesin is a Rust workspace (edition 2024); a recent stable
 toolchain (via [rustup](https://rustup.rs)) is all you need to build it:
 
 ```sh
-git clone https://github.com/anthropics/qmd-fast && cd qmd-fast
-cargo build --release            # binary at target/release/qmd-fast
+git clone https://github.com/anthropics/Taliesin && cd Taliesin
+cargo build --release            # binary at target/release/taliesin
 cargo run -p taliesin-server -- --help   # or run it straight from the workspace
 ```
 
-Put `target/release/qmd-fast` on your `PATH` to call `qmd-fast` from anywhere.
+Put `target/release/taliesin` on your `PATH` to call `taliesin` from anywhere.
 
 **Jupyter-kernel prerequisites (only for executing code cells).** Prose, math,
 highlighting, decks, and sites render with no kernel at all; a kernel is needed only
@@ -62,26 +60,26 @@ language runs against its own warm kernel:
 
 | Variable | Default | Effect |
 | --- | --- | --- |
-| `QMD_FAST_PYTHON` | `python3` | Interpreter used for `{python}` cells (point it at a venv). |
-| `QMD_FAST_R` | `R` | Interpreter used for `{r}` cells. |
-| `QMD_FAST_CELL_TIMEOUT` | `120` | Per-cell wall-clock seconds before a runaway cell is interrupted (SIGINT); `0` disables the limit. |
-| `QMD_FAST_NO_CACHE` | unset | Ignore and skip writing the `_freeze/` execution cache (always re-run cells). |
+| `TALIESIN_PYTHON` | `python3` | Interpreter used for `{python}` cells (point it at a venv). |
+| `TALIESIN_R` | `R` | Interpreter used for `{r}` cells. |
+| `TALIESIN_CELL_TIMEOUT` | `120` | Per-cell wall-clock seconds before a runaway cell is interrupted (SIGINT); `0` disables the limit. |
+| `TALIESIN_NO_CACHE` | unset | Ignore and skip writing the `_freeze/` execution cache (always re-run cells). |
 
-(See `qmd-fast --help` for the rest: `QMD_FAST_OPEN`, `QMD_FAST_HOST`,
-`QMD_FAST_NO_EXEC`, `QMD_FAST_NO_CLEAR`.)
+(See `Taliesin --help` for the rest: `TALIESIN_OPEN`, `TALIESIN_HOST`,
+`TALIESIN_NO_EXEC`, `TALIESIN_NO_CLEAR`.)
 
 **Quick start.** Scaffold a starter site and preview it:
 
 ```sh
-qmd-fast init my-site        # writes my-site/_site.yml + my-site/index.tmd
-qmd-fast preview my-site     # live preview at http://localhost:4321
+taliesin init my-site        # writes my-site/_site.yml + my-site/index.tmd
+taliesin preview my-site     # live preview at http://localhost:4321
 ```
 
 `init` refuses to overwrite existing files, so it is safe to run in a populated dir.
 
 ## Usage
 
-`qmd-fast preview` runs a long-lived dev server: it watches the `.tmd` (and its
+`taliesin preview` runs a long-lived dev server: it watches the `.tmd` (and its
 includes/bibliography), and on each save re-renders, **executes changed code cells
 against a warm Jupyter kernel** (re-running only the earliest changed cell and
 everything downstream), diffs against the previous block list, and pushes only the
@@ -104,7 +102,7 @@ cargo run -p taliesin-server -- blocks  corpus/posts/born-machines.tmd
 per-session access token baked into the printed URL (loopback access needs none).
 
 Code execution needs a Python with `ipykernel`; point the server at it with the
-`QMD_FAST_PYTHON` env var (defaults to `python3`). Cells render as source if no
+`TALIESIN_PYTHON` env var (defaults to `python3`). Cells render as source if no
 kernel is available. Outputs (stdout/stderr, results, images, HTML, errors)
 become their own blocks keyed to the cell, so they swap in place.
 

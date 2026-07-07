@@ -3,7 +3,7 @@ title: "Accessibility diagnostics demo"
 ---
 
 This page deliberately contains accessibility problems so both the preview's
-client-side a11y audit (the dev-menu panel) and the static `qmd-fast check` a11y gate
+client-side a11y audit (the dev-menu panel) and the static `taliesin check` a11y gate
 (`validate_a11y`) have something to flag. It lives in `corpus/diagnostics/`, which is
 exempt from the corpus clean-render guards. Each located finding (the ones tied to a
 block) jumps to its source line on click, like any other diagnostic.

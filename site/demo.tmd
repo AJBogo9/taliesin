@@ -1,5 +1,5 @@
 ---
-title: "The qmd-fast deck engine"
+title: "The Taliesin deck engine"
 subtitle: "A tour of every feature, in one deck"
 format: deck
 ---
@@ -100,4 +100,4 @@ Speaker notes live in a `::: {.notes}` block and only show in speaker view.
 
 ## That's the tour
 
-Built with qmd-fast. Edit the source and watch this slide update in place.
+Built with Taliesin. Edit the source and watch this slide update in place.

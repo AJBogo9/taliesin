@@ -25,7 +25,7 @@ You stop to think, to eat, to sleep, and you come back. A tool that forgets wher
 punishes the very act of returning, which is the act most worth encouraging. The browser's
 native scroll restoration is unreliable and coarse; it remembers a pixel offset that means
 nothing after the layout reflows on a different screen. Anchoring to a block's identity is
-exact, and it is the kind of thing qmd-fast can do that a plain web page cannot, because every
+exact, and it is the kind of thing Taliesin can do that a plain web page cannot, because every
 block already carries a stable, content-derived id.
 
 ## On estimates
@@ -56,7 +56,7 @@ and obvious the moment they are.
 
 The same logic that makes the live editor fast, a stable block model with content-hash ids,
 is what makes the reader's position durable. The architecture that was built for the author
-pays the reader too. That is the recurring shape of qmd-fast's best features: one structural
+pays the reader too. That is the recurring shape of Taliesin's best features: one structural
 idea, the identified block, cashed in two directions at once.
 
 ## On finishing

@@ -249,7 +249,7 @@ indistinguishable from core's. The notable ones:
   reactive graph; the [interactive cells chapter](../guide/using/interactive.tmd)
   covers the runtime.
 - **Mermaid** (`mermaid.js`): renders `{mermaid}` cells, lazy-loading the Mermaid
-  library (offline-overridable via `QMD_FAST_MERMAID_URL`).
+  library (offline-overridable via `TALIESIN_MERMAID_URL`).
 - The **reader menu** and its features (theme / text-size / spacing prefs, focus
   mode, reading progress), the **image lightbox**, **anchor permalinks**, the
   **link-preview card**, the **keyboard shortcuts** layer, the **skip link**, and
@@ -308,5 +308,5 @@ resume feature uses.
 - [The block model & protocol](block-model.tmd) defines the ops the client applies
   and the full websocket message contract.
 - [The dev server](server.tmd) is the producer on the other end of that socket.
-- [Extending qmd-fast](extending.tmd) covers the enhancer registry and the VS Code
+- [Extending Taliesin](extending.tmd) covers the enhancer registry and the VS Code
   companion from the authoring side.

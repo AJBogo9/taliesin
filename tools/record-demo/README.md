@@ -1,7 +1,7 @@
 # record-demo
 
-Record a qmd-fast **live preview** to an optimized **MP4 + GIF**, fully scripted —
-no manual screen capture or editing. It starts `qmd-fast preview`, drives a real
+Record a Taliesin **live preview** to an optimized **MP4 + GIF**, fully scripted —
+no manual screen capture or editing. It starts `taliesin preview`, drives a real
 Google Chrome through a demo you define (Playwright `recordVideo` → a smooth
 `.webm`), then ffmpeg-encodes the deliverables.
 
@@ -21,9 +21,9 @@ node record.mjs demos/sample.mjs  # → out/sample.mp4 + out/sample.gif
 - It's **non-destructive**: a demo that edits its `.tmd` (to show the live-update
   beat) restores the file afterward.
 
-Requirements: Node 18+, `ffmpeg`, Google Chrome, and a built `qmd-fast` binary
-(found automatically at `target/release|debug/qmd-fast`, or set `QMD_FAST=<path>`).
-Pass `QMD_FAST_PYTHON` / `QMD_FAST_R` through the env if the demo doc runs cells.
+Requirements: Node 18+, `ffmpeg`, Google Chrome, and a built `taliesin` binary
+(found automatically at `target/release|debug/Taliesin`, or set `TALIESIN=<path>`).
+Pass `TALIESIN_PYTHON` / `TALIESIN_R` through the env if the demo doc runs cells.
 
 ## Writing a demo
 

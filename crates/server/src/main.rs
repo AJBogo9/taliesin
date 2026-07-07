@@ -24,7 +24,6 @@ mod warm_pool;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
-    bridge_legacy_env();
     let args: Vec<String> = std::env::args().collect();
     // `taliesin <cmd> --help` (or `-h`): print that subcommand's focused help and
     // succeed, before the command's own arg parsing (which would otherwise treat
@@ -51,7 +50,7 @@ fn main() -> ExitCode {
             println!(
                 "taliesin {} ({})",
                 taliesin_core::VERSION,
-                env!("QMD_FAST_GIT_SHA")
+                env!("TALIESIN_GIT_SHA")
             );
             ExitCode::SUCCESS
         }
@@ -74,37 +73,6 @@ fn main() -> ExitCode {
     }
 }
 
-/// Accept the native `TALIESIN_*` spelling of every runtime env knob while keeping
-/// the historical `QMD_FAST_*` names working. For each knob, if the caller set the
-/// `TALIESIN_*` form and left the `QMD_FAST_*` form unset, copy it across so the rest
-/// of the code (which still reads the `QMD_FAST_*` names internally) picks it up.
-fn bridge_legacy_env() {
-    // Runtime knobs only. `QMD_FAST_GIT_SHA` is baked in at compile time (via `env!`),
-    // not read here, so it is intentionally absent.
-    const KNOBS: &[&str] = &[
-        "PYTHON",
-        "R",
-        "CELL_TIMEOUT",
-        "NO_CACHE",
-        "NO_EXEC",
-        "HOST",
-        "OPEN",
-        "MERMAID_URL",
-        "NO_CLEAR",
-    ];
-    for knob in KNOBS {
-        let new = format!("TALIESIN_{knob}");
-        let old = format!("QMD_FAST_{knob}");
-        if let Ok(val) = std::env::var(&new)
-            && std::env::var_os(&old).is_none()
-        {
-            // SAFETY: run once at the very top of `main`, before any thread or async
-            // runtime spawns, so there is no concurrent access to the environment.
-            unsafe { std::env::set_var(&old, val) };
-        }
-    }
-}
-
 /// Every subcommand name (aliases included), for the unknown-command did-you-mean.
 const COMMANDS: &[&str] = &[
     "render", "build", "blocks", "schema", "vocab", "check", "init", "serve", "preview", "dev",
@@ -115,7 +83,7 @@ fn usage() {
     println!(
         "taliesin {} ({})",
         taliesin_core::VERSION,
-        env!("QMD_FAST_GIT_SHA")
+        env!("TALIESIN_GIT_SHA")
     );
     println!("A fast .tmd -> HTML renderer and live preview server.");
     println!("Docs: https://github.com/AJBogo9/taliesin");
@@ -157,11 +125,11 @@ fn usage() {
     );
     println!("  help, --version            show this help / the version");
     println!();
-    println!("ENV: QMD_FAST_PYTHON (python kernel), QMD_FAST_R (r kernel),");
-    println!("     QMD_FAST_CELL_TIMEOUT (per-cell seconds; 0 disables),");
-    println!("     QMD_FAST_OPEN (=--open), QMD_FAST_HOST (=--host), QMD_FAST_NO_CLEAR,");
-    println!("     QMD_FAST_NO_CACHE (skip the _freeze/ execution cache),");
-    println!("     QMD_FAST_NO_EXEC (=--no-exec, never run code cells)");
+    println!("ENV: TALIESIN_PYTHON (python kernel), TALIESIN_R (r kernel),");
+    println!("     TALIESIN_CELL_TIMEOUT (per-cell seconds; 0 disables),");
+    println!("     TALIESIN_OPEN (=--open), TALIESIN_HOST (=--host), TALIESIN_NO_CLEAR,");
+    println!("     TALIESIN_NO_CACHE (skip the _freeze/ execution cache),");
+    println!("     TALIESIN_NO_EXEC (=--no-exec, never run code cells)");
 }
 
 /// Focused help for one subcommand (synopsis + its flags + a one-line example), or

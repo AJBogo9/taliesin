@@ -1,4 +1,4 @@
-//! Measure qmd-fast's live-edit moat through the real core seam
+//! Measure taliesin's live-edit moat through the real core seam
 //! (`render_document_with_includes` -> `diff_blocks`): cold render, a warm
 //! edit-above render+diff, the emitted `BlockOp` payload vs the full page HTML, and
 //! DOM preservation at the diff level (a `<details>` / cell block below the edit gets

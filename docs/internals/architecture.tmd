@@ -12,10 +12,10 @@ websocket protocol, and the browser preview is a thin client.**
 %%| fig-cap: "Thin clients talk to the server over a websocket; all rendering lives in the Rust core."
 flowchart LR
   BR["Browser preview<br/>(vanilla JS)"]
-  subgraph Server["qmd-fast server"]
+  subgraph Server["taliesin server"]
     direction TB
     WS["Websocket<br/>+ file watcher"]
-    subgraph Core["qmd-fast-core"]
+    subgraph Core["taliesin-core"]
       direction TB
       P["Parser<br/>comrak + sourcepos"] --> M["Block model<br/>+ diff"] --> R["Render<br/>html / deck / book"]
     end
@@ -36,7 +36,7 @@ flowchart LR
 | Web client | `web-client/` | Browser preview client (vanilla JS) |
 
 The protocol is open, so an embedded editor client is a new thin client, not a rewrite:
-the in-repo VS Code companion (covered in [extending qmd-fast](extending.tmd)) is exactly
+the in-repo VS Code companion (covered in [extending Taliesin](extending.tmd)) is exactly
 that.
 
 ## How a save flows
@@ -102,8 +102,8 @@ the post-execution one. This is why an edit to a code cell shows its *new plot*
 incrementally: the cell re-runs, its output block re-renders, and the diff swaps
 just that output element.
 
-The two crates split cleanly: **`qmd-fast-core` does all the thinking and touches
-no network** (it parses, models, and renders), while **`qmd-fast-server` is the
+The two crates split cleanly: **`taliesin-core` does all the thinking and touches
+no network** (it parses, models, and renders), while **`taliesin-server` is the
 long-running process** (CLI, websocket, file watcher, executor, kernel pool). The
 browser client is a thin layer that mounts blocks and applies the ops the server
 sends.
@@ -152,7 +152,7 @@ flowchart TB
     CL["client.js<br/>mount · apply ops · click-to-source"]
   end
 
-  subgraph server["crates/server · qmd-fast (binary)"]
+  subgraph server["crates/server · Taliesin (binary)"]
     direction TB
     MAIN["main.rs · CLI"]
     SRV["serve.rs<br/>single doc"]
@@ -169,7 +169,7 @@ flowchart TB
     EX --> KR
   end
 
-  subgraph core["crates/core · qmd-fast-core (library)"]
+  subgraph core["crates/core · taliesin-core (library)"]
     direction TB
     RN["render/<br/>parse → block model → HTML"]
     DF["diff.rs"]
@@ -244,7 +244,7 @@ classDiagram
 
 With the shape in mind, here is the file-by-file detail, one table per layer.
 
-`crates/core/src`, the library (`qmd-fast-core`):
+`crates/core/src`, the library (`taliesin-core`):
 
 | Path | Responsibility |
 |---|---|
@@ -255,7 +255,7 @@ With the shape in mind, here is the file-by-file detail, one table per layer.
 | `render/divs.rs` | `:::` fenced-div preprocessing + grouping into callouts/columns. |
 | `render/figure.rs` | Standalone-image and captioned-cell `<figure>`s. |
 | `render/theme.rs` | Theming: light/dark, `.css`/`.scss`, extension themes, the pre-paint script. |
-| `render/deck.rs` | Slide-deck assembly on qmd-fast's own engine (reveal.js removed; native `.tali-deck`/`.tali-slides` + a `window.QmdDeck` API). |
+| `render/deck.rs` | Slide-deck assembly on Taliesin's own engine (reveal.js removed; native `.tali-deck`/`.tali-slides` + a `window.QmdDeck` API). |
 | `render/extension/` | Format extensions (`_extensions/` themes/shortcodes) + shortcode expansion, in a single `mod.rs`. |
 | `diff.rs` | Block-level diff (LCS over block ids) → `BlockOp`s. |
 | `includes.rs` | `{{< include >}}` resolution + the per-file source map. |
@@ -264,9 +264,9 @@ With the shape in mind, here is the file-by-file detail, one table per layer.
 | `site/` | Multi-page projects: `config` (`_site.yml` model), `book`, `xref` (cross-page refs), `search` (cross-page index), and `mod` (discovery, chrome, page render). |
 | `frontmatter.rs` | Front-matter parsing + unknown-key linting (the `closest()` did-you-mean). |
 | `render/validate.rs` | Closed-vocabulary linting of cell `#|` options + callout kinds, each a located (click-to-source) `Warning`. |
-| `schema.rs` | Bundled Draft-2020-12 JSON Schemas for front matter + `_site.yml`, emitted by `qmd-fast schema`. |
+| `schema.rs` | Bundled Draft-2020-12 JSON Schemas for front matter + `_site.yml`, emitted by `taliesin schema`. |
 
-`crates/server/src`, the binary (`qmd-fast`):
+`crates/server/src`, the binary (`taliesin`):
 
 | Path | Responsibility |
 |---|---|
@@ -286,5 +286,5 @@ Cmd-K palette), `toc-spy.js` (the scrollspy). The core also ships JS *assets*
 both the live client and the static build inject.
 
 The next two chapters go deeper: [the rendering pipeline](rendering.tmd) (how a
-`.tmd` becomes blocks) and [extending qmd-fast](extending.tmd) (the conventions,
+`.tmd` becomes blocks) and [extending Taliesin](extending.tmd) (the conventions,
 how to add a feature, and the dev workflow).

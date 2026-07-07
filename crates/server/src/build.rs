@@ -347,7 +347,7 @@ fn build_page_executing(
                 .in_dir(base);
         doc.blocks = ex.run(std::mem::take(&mut doc.blocks)).await;
         // The executor's own diagnostic already names the failing language and the
-        // right env var (`QMD_FAST_R` for R, `QMD_FAST_PYTHON` otherwise) — use it
+        // right env var (`TALIESIN_R` for R, `TALIESIN_PYTHON` otherwise) — use it
         // verbatim instead of a hardcoded python-only hint.
         if let Some(d) = ex.diagnostic() {
             log::warn(&d);
@@ -879,7 +879,7 @@ async fn build_site_async(
     let mut problems = config_problems;
 
     // The one process-wide warm pool for this build. `None` (so every page cold-starts
-    // exactly as today) when `QMD_FAST_PYTHON` is unset or the forkserver can't boot;
+    // exactly as today) when `TALIESIN_PYTHON` is unset or the forkserver can't boot;
     // dropped at the end of this fn, killing the daemon + idle kernels.
     let warm_pool = warm_pool::warm_pool_for_build(split.warm_pool).await;
 
@@ -983,7 +983,7 @@ async fn build_site_async(
     if kernel_unavailable {
         log::warn(
             "kernel unavailable; code cells were emitted as source \
-             (set QMD_FAST_PYTHON to a python with ipykernel)",
+             (set TALIESIN_PYTHON to a python with ipykernel)",
         );
     }
     // Full-text search index, lazy-loaded by the Cmd-K palette (pages link to it via
@@ -1170,12 +1170,12 @@ mod mirror_tests {
         let argv = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<String>>();
 
         // file only: path, no [out.html] target, no portable-folder dir.
-        let a = argv(&["qmd-fast", "build", "doc.tmd"]);
+        let a = argv(&["taliesin", "build", "doc.tmd"]);
         let p = parse_build_args(&a).unwrap();
         assert_eq!((p.path, p.out_html, p.out_dir), ("doc.tmd", None, None));
 
         // second positional = the [out.html] single-file target.
-        let a = argv(&["qmd-fast", "build", "doc.tmd", "out.html"]);
+        let a = argv(&["taliesin", "build", "doc.tmd", "out.html"]);
         let p = parse_build_args(&a).unwrap();
         assert_eq!(
             (p.path, p.out_html, p.out_dir),
@@ -1183,7 +1183,7 @@ mod mirror_tests {
         );
 
         // --out <dir> is the portable-folder flag, distinct from the positional.
-        let a = argv(&["qmd-fast", "build", "doc.tmd", "--out", "site"]);
+        let a = argv(&["taliesin", "build", "doc.tmd", "--out", "site"]);
         let p = parse_build_args(&a).unwrap();
         assert_eq!(
             (p.path, p.out_html, p.out_dir),
@@ -1192,43 +1192,43 @@ mod mirror_tests {
 
         // --out never captures a following flag as its directory: a value-less --out is
         // now a HARD ERROR (rather than silently dropping the flag + writing <stem>.html).
-        let err = parse_build_args(&argv(&["qmd-fast", "build", "doc.tmd", "--out", "--bare"]))
+        let err = parse_build_args(&argv(&["taliesin", "build", "doc.tmd", "--out", "--bare"]))
             .expect_err("value-less --out errors");
         assert!(err.contains("--out") && err.contains("requires"), "{err}");
         // --out at the very end (no following token) is the same hard error.
-        let err = parse_build_args(&argv(&["qmd-fast", "build", "doc.tmd", "--out"]))
+        let err = parse_build_args(&argv(&["taliesin", "build", "doc.tmd", "--out"]))
             .expect_err("trailing --out errors");
         assert!(err.contains("--out"), "{err}");
         // --dir is the alias and errors the same way.
-        assert!(parse_build_args(&argv(&["qmd-fast", "build", "doc.tmd", "--dir"])).is_err());
+        assert!(parse_build_args(&argv(&["taliesin", "build", "doc.tmd", "--dir"])).is_err());
 
         // flags may appear anywhere; both positionals still bind in order.
-        let a = argv(&["qmd-fast", "build", "--bare", "doc.tmd", "out.html"]);
+        let a = argv(&["taliesin", "build", "--bare", "doc.tmd", "out.html"]);
         let p = parse_build_args(&a).unwrap();
         assert!(p.bare);
         assert_eq!((p.path, p.out_html), ("doc.tmd", Some("out.html")));
 
         // a missing path is a usage error.
-        assert!(parse_build_args(&argv(&["qmd-fast", "build"])).is_err());
-        assert!(parse_build_args(&argv(&["qmd-fast", "build", "--strict"])).is_err());
+        assert!(parse_build_args(&argv(&["taliesin", "build"])).is_err());
+        assert!(parse_build_args(&argv(&["taliesin", "build", "--strict"])).is_err());
     }
 
     #[test]
     fn build_unknown_flag_errors_with_did_you_mean() {
         let argv = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<String>>();
         // A typo'd flag is a hard error (not silently dropped) and suggests the real one.
-        let err = parse_build_args(&argv(&["qmd-fast", "build", "doc.tmd", "--stict"]))
+        let err = parse_build_args(&argv(&["taliesin", "build", "doc.tmd", "--stict"]))
             .expect_err("--stict must error");
         assert!(err.contains("--stict"), "names the bad flag: {err}");
         assert!(err.contains("--strict"), "suggests the near match: {err}");
         // A flag with no near match still errors (no wild guess).
-        let err = parse_build_args(&argv(&["qmd-fast", "build", "doc.tmd", "--frobnicate"]))
+        let err = parse_build_args(&argv(&["taliesin", "build", "doc.tmd", "--frobnicate"]))
             .expect_err("unknown flag must error");
         assert!(err.contains("--frobnicate"), "{err}");
         assert!(!err.contains("did you mean"), "no wild guess: {err}");
         // The real flags still parse (no regression).
-        assert!(parse_build_args(&argv(&["qmd-fast", "build", "doc.tmd", "--strict"])).is_ok());
-        assert!(parse_build_args(&argv(&["qmd-fast", "build", "doc.tmd", "--bare"])).is_ok());
+        assert!(parse_build_args(&argv(&["taliesin", "build", "doc.tmd", "--strict"])).is_ok());
+        assert!(parse_build_args(&argv(&["taliesin", "build", "doc.tmd", "--bare"])).is_ok());
     }
 
     fn tmp(name: &str) -> PathBuf {

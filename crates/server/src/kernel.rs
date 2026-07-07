@@ -26,12 +26,12 @@ use tokio::process::{Child, Command};
 use tokio::time::{Instant, timeout};
 
 /// Wall-clock cap on a single cell execution, after which the kernel is sent
-/// SIGINT (`QMD_FAST_CELL_TIMEOUT` seconds, default 120; `0` disables the cap and
+/// SIGINT (`TALIESIN_CELL_TIMEOUT` seconds, default 120; `0` disables the cap and
 /// falls back to a per-output silent-hang backstop). Read once.
 fn cell_timeout() -> Option<Duration> {
     static T: OnceLock<Option<Duration>> = OnceLock::new();
     *T.get_or_init(|| {
-        let secs = std::env::var("QMD_FAST_CELL_TIMEOUT")
+        let secs = std::env::var("TALIESIN_CELL_TIMEOUT")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
             .unwrap_or(120);
@@ -1060,22 +1060,22 @@ mod tests {
         assert!(tb.contains("a &lt; b"), "traceback not escaped: {tb}");
     }
 
-    // Runs only when QMD_FAST_PYTHON points at a python with ipykernel; without
+    // Runs only when TALIESIN_PYTHON points at a python with ipykernel; without
     // one it reports ok WITHOUT exercising a real kernel (the pure-logic tests
     // above carry the unconditional coverage).
     #[test]
     fn kernel_executes_state_errors_and_interrupts_runaway_cell() {
-        let Some(py) = std::env::var_os("QMD_FAST_PYTHON") else {
-            // QMD_FAST_REQUIRE_KERNEL=1 (set by the CI kernel job) turns the usual skip into
-            // a HARD FAIL, so an env regression that unsets QMD_FAST_PYTHON can't silently
+        let Some(py) = std::env::var_os("TALIESIN_PYTHON") else {
+            // TALIESIN_REQUIRE_KERNEL=1 (set by the CI kernel job) turns the usual skip into
+            // a HARD FAIL, so an env regression that unsets TALIESIN_PYTHON can't silently
             // re-green the whole exec stack — this test is the canary.
             assert!(
-                std::env::var_os("QMD_FAST_REQUIRE_KERNEL").is_none(),
-                "QMD_FAST_REQUIRE_KERNEL is set but QMD_FAST_PYTHON is unset: the live-kernel \
-                 tests would silently skip. Point QMD_FAST_PYTHON at a python with ipykernel."
+                std::env::var_os("TALIESIN_REQUIRE_KERNEL").is_none(),
+                "TALIESIN_REQUIRE_KERNEL is set but TALIESIN_PYTHON is unset: the live-kernel \
+                 tests would silently skip. Point TALIESIN_PYTHON at a python with ipykernel."
             );
             eprintln!(
-                "SKIPPED (no live kernel): set QMD_FAST_PYTHON to a python with ipykernel to \
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with ipykernel to \
                  actually exercise kernel.rs; this run did not."
             );
             return;
@@ -1083,7 +1083,7 @@ mod tests {
         // Short per-cell cap so the runaway case below trips fast. Set before the
         // first execute(), since `cell_timeout()` reads the env once.
         // Safety: single-threaded test, before any threads observe the env.
-        unsafe { std::env::set_var("QMD_FAST_CELL_TIMEOUT", "3") };
+        unsafe { std::env::set_var("TALIESIN_CELL_TIMEOUT", "3") };
         let py = PathBuf::from(py);
         let rt = tokio::runtime::Runtime::new().unwrap();
         rt.block_on(async move {

@@ -10,12 +10,12 @@ common ones.
 
 ## Code cells show as source / "kernel unavailable"
 
-There is no Jupyter kernel. Set `QMD_FAST_PYTHON` to a Python that has
-`ipykernel` (and `QMD_FAST_R` for R with `IRkernel`):
+There is no Jupyter kernel. Set `TALIESIN_PYTHON` to a Python that has
+`ipykernel` (and `TALIESIN_R` for R with `IRkernel`):
 
 ```sh
 pip install ipykernel
-export QMD_FAST_PYTHON="$(which python3)"
+export TALIESIN_PYTHON="$(which python3)"
 ```
 
 The diagnostics note usually quotes the kernel's own error (e.g. *"No module
@@ -24,7 +24,7 @@ re-runs automatically, no restart needed.
 
 ## A cell hangs / runs forever
 
-A cell that exceeds `QMD_FAST_CELL_TIMEOUT` seconds (default 120) is interrupted
+A cell that exceeds `TALIESIN_CELL_TIMEOUT` seconds (default 120) is interrupted
 (SIGINT → `KeyboardInterrupt`); the warm kernel and prior cells survive. Lower it
 for tighter feedback, or set `0` to disable the cap. The dev menu's **Restart
 kernel** drops and respawns the kernel if it's truly wedged.
@@ -32,7 +32,7 @@ kernel** drops and respawns the kernel if it's truly wedged.
 ## A cell ran, but I think the kernel crashed
 
 If a kernel process dies mid-session (a segfault in a native library, an
-out-of-memory kill), qmd-fast self-heals rather than hanging. The cell that was
+out-of-memory kill), Taliesin self-heals rather than hanging. The cell that was
 running when the kernel died gets a *"kernel exited before this cell ran; it will
 re-run on the next save"* placeholder, and the **next** run notices the dead
 process, drops it, respawns a fresh kernel, and re-runs every cell from the top
@@ -40,8 +40,8 @@ process, drops it, respawns a fresh kernel, and re-runs every cell from the top
 touch **Restart kernel** for this: a crash recovers on its own with the next save.
 
 A failed *start* (a missing or misconfigured interpreter, not a mid-run crash) is
-different: qmd-fast backs off for about 20 seconds before retrying, so a genuinely
-broken `QMD_FAST_PYTHON`/`QMD_FAST_R` doesn't re-hang every save. During the
+different: Taliesin backs off for about 20 seconds before retrying, so a genuinely
+broken `TALIESIN_PYTHON`/`TALIESIN_R` doesn't re-hang every save. During the
 backoff the cells render as source with the "kernel unavailable" diagnostic. Fix
 the interpreter and the next save within a few tries recovers on its own; or hit
 **Restart kernel** to clear the backoff and try immediately.
@@ -57,13 +57,13 @@ hits to clear by hand. Two escape hatches exist if you suspect the cache anyway:
 - The dev menu's **Restart kernel** forces the next run to ignore disk-cache hits
   and re-execute every cell against a fresh kernel (then re-persist), so it doubles
   as a "re-run everything from scratch" button.
-- `QMD_FAST_NO_CACHE` ignores the cache entirely and never writes it, so every run
+- `TALIESIN_NO_CACHE` ignores the cache entirely and never writes it, so every run
   re-executes. Reach for it when comparing timings, when a cell has a hidden
   non-determinism you're debugging (a clock, a random seed, an external fetch), or
   to confirm a result reproduces from cold rather than from a replayed output:
 
   ```sh
-  QMD_FAST_NO_CACHE=1 qmd-fast build report.tmd
+  TALIESIN_NO_CACHE=1 taliesin build report.tmd
   ```
 
   Note the cache is already correct by construction (errors and `#| cache: false`
@@ -79,7 +79,7 @@ math, and executed figures render offline regardless.
 ## "Port already in use"
 
 `preview` automatically tries the next few ports and logs the substitution. Pass
-an explicit port if you want a specific one: `qmd-fast preview file.tmd 5000`.
+an explicit port if you want a specific one: `taliesin preview file.tmd 5000`.
 
 ## A broken `{{< include >}}` or extension
 
@@ -110,17 +110,17 @@ from the same machine (`127.0.0.1`) never needs the token.
 
 ## The VS Code companion preview won't connect
 
-The companion spawns a plain `qmd-fast preview <file> <port>` and points its webview
+The companion spawns a plain `taliesin preview <file> <port>` and points its webview
 at `http://127.0.0.1:<port>/`. It binds **loopback only**: it does **not** pass
 `--host`, so there is no LAN token to fumble and no firewall hop to clear. If the
 panel stays blank:
 
-- Make sure `qmd-fast` is on the path the extension uses. It runs whatever the
-  `qmdFast.path` setting points at (default `qmd-fast`); set it to an absolute path
+- Make sure `taliesin` is on the path the extension uses. It runs whatever the
+  `qmdFast.path` setting points at (default `taliesin`); set it to an absolute path
   if the editor's environment doesn't see your shell's `PATH`.
 - The extension waits up to a few seconds for the server to answer on its port. If
-  you see *"qmd-fast preview did not answer"*, the binary failed to start: run the
-  same `qmd-fast preview <file>` in a terminal to read the real error.
+  you see *"taliesin preview did not answer"*, the binary failed to start: run the
+  same `taliesin preview <file>` in a terminal to read the real error.
 - Because it's a loopback URL, do **not** add `--host` or a token: that's for phones
   on your LAN, not for the local webview.
 
@@ -132,14 +132,14 @@ that, `_freeze/` does the heavy lifting. Things that keep it fast:
 - **Let the freeze cache warm up.** The first run populates `_freeze/<page>.json`;
   every later `build`/`preview` of an unchanged page replays its outputs from disk
   and never boots a kernel. Don't delete `_freeze/` between builds (it's safe to
-  commit if you want CI to skip execution), and don't set `QMD_FAST_NO_CACHE`, which
+  commit if you want CI to skip execution), and don't set `TALIESIN_NO_CACHE`, which
   defeats exactly this.
 - **Use `--no-exec` for a structure-only pass.** When you're iterating on layout,
   navigation, or prose and don't need fresh cell outputs, render the code cells as
   source and skip the kernel entirely:
 
   ```sh
-  qmd-fast preview ./site --no-exec
+  taliesin preview ./site --no-exec
   ```
 
   The pages render in full (chrome, links, math, figures already in the cache stay

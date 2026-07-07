@@ -1,7 +1,7 @@
 export const meta = {
   name: 'audit-qmd',
-  description: 'Multi-dimension review of qmd-fast changes with per-finding adversarial verification',
-  whenToUse: 'Auditing a qmd-fast change set: fans reviewers across correctness + load-bearing invariants + scope-discipline + corpus coverage + simplicity, then refutes each finding before reporting. Pass a target description as args, or omit to review the current branch diff.',
+  description: 'Multi-dimension review of taliesin changes with per-finding adversarial verification',
+  whenToUse: 'Auditing a taliesin change set: fans reviewers across correctness + load-bearing invariants + scope-discipline + corpus coverage + simplicity, then refutes each finding before reporting. Pass a target description as args, or omit to review the current branch diff.',
   phases: [
     { title: 'Review' },
     { title: 'Verify' },
@@ -69,7 +69,7 @@ const VERDICT_SCHEMA = {
 }
 
 const reviewPrompt = (d) =>
-  `You are reviewing ${target} in the qmd-fast repo (a Rust .qmd -> HTML-only dev ` +
+  `You are reviewing ${target} in the taliesin repo (a Rust .qmd -> HTML-only dev ` +
   `server). Focus ONLY on the "${d.key}" dimension.\n\n${d.prompt}\n\n` +
   `Read the diff and the changed files yourself before judging. Report concrete, ` +
   `file:line-anchored findings. Return an empty findings array if there is nothing ` +
@@ -83,7 +83,7 @@ const results = await pipeline(
   (review, d) =>
     parallel(((review && review.findings) || []).map((f) => () =>
       agent(
-        `Adversarially verify this qmd-fast review finding. Try to REFUTE it. Read the ` +
+        `Adversarially verify this taliesin review finding. Try to REFUTE it. Read the ` +
           `actual code at ${f.file}:${f.line || '?'} before deciding. Default to ` +
           `isReal=false if you cannot confirm it from the code itself.\n\n` +
           `Finding (${d.key}, ${f.severity}): ${f.title}\n${f.detail}`,

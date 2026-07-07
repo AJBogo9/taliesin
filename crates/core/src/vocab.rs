@@ -6,7 +6,7 @@
 //! sourced from the SAME consts the validator and `check` use, so completions can never
 //! drift from what `check` enforces. Human descriptions are additive doc text authored
 //! here (the consts carry none). Golden-file-locked like `schema.rs`: regenerate ONLY via
-//! `QMD_FAST_BLESS=1 cargo test -p taliesin-core --lib vocab`, never hand-edit.
+//! `TALIESIN_BLESS=1 cargo test -p taliesin-core --lib vocab`, never hand-edit.
 
 use serde_json::{Value, json};
 
@@ -254,12 +254,12 @@ pub fn to_pretty_json() -> String {
 mod tests {
     use super::*;
 
-    /// Assert the generated JSON equals the committed file, OR (under `QMD_FAST_BLESS=1`)
+    /// Assert the generated JSON equals the committed file, OR (under `TALIESIN_BLESS=1`)
     /// rewrite the committed file from the generator. Mirrors `schema.rs`.
     #[test]
     fn vocab_matches_committed() {
         let generated = to_pretty_json();
-        if std::env::var("QMD_FAST_BLESS").is_ok() {
+        if std::env::var("TALIESIN_BLESS").is_ok() {
             let path = format!(
                 "{}/assets/vocab/tali-vocab.json",
                 env!("CARGO_MANIFEST_DIR")
@@ -269,7 +269,7 @@ mod tests {
         } else {
             assert_eq!(
                 generated, VOCAB_JSON,
-                "vocab drift; regenerate with `QMD_FAST_BLESS=1 cargo test -p taliesin-core --lib vocab`"
+                "vocab drift; regenerate with `TALIESIN_BLESS=1 cargo test -p taliesin-core --lib vocab`"
             );
         }
     }

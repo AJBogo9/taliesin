@@ -8,7 +8,7 @@
 > corpus-plus-roadmap (every new feature pins a target corpus doc). This file is kept
 > as the historical record of the drop.
 
-> Dedicated backlog for de-Quarto-ing qmd-fast into a fully native `.qmd` tool.
+> Dedicated backlog for de-Quarto-ing Taliesin into a fully native `.qmd` tool.
 > Created 2026-06-23 from a 49-agent verified audit (inventory per subsystem →
 > corpus reality-check → adversarial verification → synthesis). Companion to
 > `backlog.md` (open tasks, read-often) and `AUDITS.md` (audit records).
@@ -33,7 +33,7 @@ But "infinite time" does **not** mean "do everything." Two things still gate wor
 
 **The single most important finding:** the feeling that "Quarto compat holds me
 back" is ~70% misattributed. The big complex files (`cite.rs`, `divs.rs`,
-`includes.rs`, numbering) are **intrinsic** to qmd-fast's own goals (click-to-source,
+`includes.rs`, numbering) are **intrinsic** to Taliesin's own goals (click-to-source,
 exact sourcepos, incremental block swap), not Quarto mimicry. Dropping Quarto
 would not shrink them. The genuine constraint is small and specific: the deck
 engine wears reveal.js's vocabulary, and the OJS runtime is a 440 KB black box.
@@ -46,7 +46,7 @@ extension port**, not in the documents.
 
 ## North star: what "fully native" looks like
 
-When this initiative is done, qmd-fast accepts **only** its own format and owes
+When this initiative is done, Taliesin accepts **only** its own format and owes
 nothing to Quarto's spelling:
 
 - Config file is `_site.yml`, a **closed** native schema that *warns on any
@@ -120,14 +120,14 @@ build). One divergence from the original wording is recorded below.
   (unchanged).
 - **Follow-up (out of Phase-3 scope, noted for later).** The corpus author stylesheets
   (`corpus/tech-blog/custom.css`, `theme.scss`) still carry dead Quarto-targeting
-  selectors (`.quarto-grid-item`, `#quarto-margin-sidebar`, `--bs-*`, ...) that qmd-fast
+  selectors (`.quarto-grid-item`, `#quarto-margin-sidebar`, `--bs-*`, ...) that Taliesin
   never emits: a corpus-cleanup pass, not a core change.
 
 ## Phase 4 — De-reveal the deck engine (DONE, 2026-06-23)
 
 The engine was already 100% own code (reveal.js gone) but wore reveal's vocabulary
 so unmodified reveal *theme extensions* could load. **Scope change:** the author
-decided liquid-glass does NOT need to keep working against qmd-fast as-is (it will be
+decided liquid-glass does NOT need to keep working against Taliesin as-is (it will be
 ported to the finished contract later), which removed the entire reason for the
 compat layer. So this was a clean full de-reveal, not a lockstep port.
 
@@ -233,7 +233,7 @@ invariants. The audit's adversarial pass specifically reclassified these out of 
   dead `csl:` field) is honest tax — drop just that. You can change citation house-style
   **today** without touching compat.
 - **`[@key]` parse-lowering.** `transform_html`/`rewrite_text` are *shared* with
-  cross-references (`@fig-`/`@sec-`, used 25× vs 17 cites) — qmd-fast's own feature.
+  cross-references (`@fig-`/`@sec-`, used 25× vs 17 cites) — Taliesin's own feature.
   The HTML walk stays for xrefs; only ~40 LOC is citation-only.
 - **`{{< include >}}` source-map pass** (`includes.rs`). Your own `{{< embed >}}`/
   `{{< video >}}` use the identical `{{< >}}` delimiter, so fence-tracking + parsing

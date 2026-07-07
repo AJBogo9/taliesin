@@ -52,7 +52,7 @@ fn assert_no_source_leaks(label: &str, html: &str) {
 // ---------------------------------------------------------------------------
 
 /// The three blog posts in the corpus all render to substantial, leak-free HTML.
-/// This is the load-bearing guarantee for using qmd-fast as the edit-preview
+/// This is the load-bearing guarantee for using taliesin as the edit-preview
 /// loop while writing a post.
 #[test]
 fn tech_blog_posts_render_leak_free() {

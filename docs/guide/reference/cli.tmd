@@ -42,13 +42,13 @@ and deterministic, so runtime cell errors stay in `preview`/`build`). Output is
 drops straight into CI or a pre-commit hook:
 
 ```sh
-qmd-fast check .                          # fails (exit 1) if any page has a diagnostic
-qmd-fast check . --format json > problems.json
+taliesin check .                          # fails (exit 1) if any page has a diagnostic
+taliesin check . --format json > problems.json
 ```
 
 `--format json` stays valid JSON even when `check` itself can't run: an unreadable or
 missing path (or an empty site) is reported as a single `{"error": "…"}` object on
-**stdout** (with a non-zero exit), so `qmd-fast check x --format json | jq` never chokes
+**stdout** (with a non-zero exit), so `taliesin check x --format json | jq` never chokes
 on a stray human message. Human format keeps that error on stderr.
 
 At a glance, here is everything `check` looks at, grouped by what it protects:
@@ -72,7 +72,7 @@ non-fatal build into a hard failure: the page is still written, but `build` exit
 non-zero if **any located warning** fired or **any code cell errored** at runtime.
 Because `build` does run cells, `--strict` adds the one thing `check` structurally
 can't see (a cell that *throws*) on top of the located diagnostics, which makes
-`qmd-fast check . && qmd-fast build . --strict` a thorough two-stage CI gate: `check`
+`taliesin check . && taliesin build . --strict` a thorough two-stage CI gate: `check`
 fails fast and kernel-free on structure, then a strict `build` proves every cell
 actually runs.
 
@@ -80,12 +80,12 @@ actually runs.
 in parentheses:
 
 ```text
-qmd-fast 0.2.0 (cdf0a13)
+Taliesin 0.2.0 (cdf0a13)
 ```
 
 `--help` / `-h` (or no arguments) prints the
 top-level usage. Putting `--help` / `-h` **after** a subcommand
-(`qmd-fast build --help`, `qmd-fast check -h`, …) prints a focused page for just that
+(`taliesin build --help`, `taliesin check -h`, …) prints a focused page for just that
 command: its synopsis, its flags, and a one-line example. If
 the default port (or one you pass) is already in use, `preview` auto-picks the next free
 port and logs the chosen URL.
@@ -115,7 +115,7 @@ single document: it ships **no** `<script>` at all and themes purely with CSS (a
 Server-rendered math still works; `{js}` cells, Mermaid rendering, and the
 copy/lightbox/reader controls are dropped (each warned, never silently). A slide deck or
 a `<dir>` site is refused (their navigation needs JavaScript). A `build` skips code
-execution only through the `QMD_FAST_NO_EXEC=1` environment variable, not a `--no-exec`
+execution only through the `TALIESIN_NO_EXEC=1` environment variable, not a `--no-exec`
 flag.
 
 A `--bare` page is still **responsive**: the viewport meta tag and every CSS media
@@ -137,7 +137,7 @@ focus mode, the mobile pull-up table of contents), and any `{js}` cells (the
 a build (it belongs to the live preview), so a reader never gets a dead outline.
 
 The **one** external dependency is **Mermaid diagrams**, which load the Mermaid runtime
-from a CDN by default. For a truly offline book, point `QMD_FAST_MERMAID_URL` at a local
+from a CDN by default. For a truly offline book, point `TALIESIN_MERMAID_URL` at a local
 copy of `mermaid.min.js` (copied into the folder) before building, or use `--bare` /
 server-rendered figures on pages that don't need live diagrams. (Everything else is
 already local.)
@@ -156,7 +156,7 @@ files publishes it. Pick whichever fits how you already work:
   branch) and enable Pages in the repo settings:
 
   ```sh
-  qmd-fast build mybook --out _site       # build the static site/book
+  taliesin build mybook --out _site       # build the static site/book
   cd _site
   git init -q && git add -A && git commit -qm "publish"
   git push -f git@github.com:you/mybook.git HEAD:gh-pages   # a throwaway history is fine
@@ -171,12 +171,12 @@ files publishes it. Pick whichever fits how you already work:
 
 **Set `url:` in `_site.yml` before publishing to a real domain.** The absolute-URL
 `<meta>` tags (Open Graph / Twitter card image, canonical link) are only emitted when a
-`url:` is configured — `qmd-fast check` warns if you set a social `image:` without one.
-Run `qmd-fast check <dir>` first: a green check means no broken links, missing anchors, or
+`url:` is configured — `taliesin check` warns if you set a social `image:` without one.
+Run `taliesin check <dir>` first: a green check means no broken links, missing anchors, or
 other publish-blocking mistakes ship to your readers.
 
-qmd-fast has no built-in `publish` command yet — because the output is an ordinary static
-folder, the host's own workflow (above) already covers it. A thin `qmd-fast publish` that
+Taliesin has no built-in `publish` command yet — because the output is an ordinary static
+folder, the host's own workflow (above) already covers it. A thin `Taliesin publish` that
 pushes `_site/` to a rendered-HTML branch is on the roadmap; until then the three-line
 `gh-pages` recipe is the whole story.
 
@@ -189,8 +189,8 @@ piping, diffing, and debugging.
 non-interactive twin of a single-file `build`, so you can redirect or pipe it:
 
 ```sh
-qmd-fast render post.tmd > post.html
-qmd-fast render post.tmd | grep -c data-block-id   # count emitted blocks
+taliesin render post.tmd > post.html
+taliesin render post.tmd | grep -c data-block-id   # count emitted blocks
 ```
 
 Unlike `build` and `preview`, `render` **never starts a kernel**: `{python}` and
@@ -229,23 +229,23 @@ the printed LAN URL and QR (`?t=…`, then a `qmd_token` cookie); a fresh token 
 minted each server start, and loopback (`127.0.0.1`) is exempt. See
 [Reading on any screen](../using/preview.tmd) for the full behaviour.
 
-A `qmd-fast` launcher on `PATH` (`~/.local/bin/qmd-fast`) rebuilds the release
-binary when the tool's sources change, then runs it, so `qmd-fast preview <file>`
+A `taliesin` launcher on `PATH` (`~/.local/bin/Taliesin`) rebuilds the release
+binary when the tool's sources change, then runs it, so `taliesin preview <file>`
 works from anywhere.
 
 ## Environment
 
 | Variable | Purpose |
 |---|---|
-| `QMD_FAST_PYTHON` | Python with `ipykernel` for `{python}` cells (default `python3`) |
-| `QMD_FAST_R` | R with `IRkernel` for `{r}` cells (default `R`) |
-| `QMD_FAST_CELL_TIMEOUT` | Per-cell wall-clock cap in seconds before interrupt (default 120; `0` disables the cap, but a per-output silent-hang backstop still applies) |
-| `QMD_FAST_HOST` | Same as `--host` (expose on the LAN) |
-| `QMD_FAST_OPEN` | Same as `--open` (launch a browser) |
-| `QMD_FAST_NO_EXEC` | Same as `--no-exec` (never execute code cells) |
-| `QMD_FAST_NO_CACHE` | Ignore and skip writing the `_freeze/` execution cache |
-| `QMD_FAST_NO_CLEAR` | Don't clear the terminal on each render (keep scrollback) |
-| `QMD_FAST_MERMAID_URL` | Override the Mermaid library URL (self-host next to your site for a fully offline build; on load failure a visible `[data-mermaid-error]` banner shows the diagram source) |
+| `TALIESIN_PYTHON` | Python with `ipykernel` for `{python}` cells (default `python3`) |
+| `TALIESIN_R` | R with `IRkernel` for `{r}` cells (default `R`) |
+| `TALIESIN_CELL_TIMEOUT` | Per-cell wall-clock cap in seconds before interrupt (default 120; `0` disables the cap, but a per-output silent-hang backstop still applies) |
+| `TALIESIN_HOST` | Same as `--host` (expose on the LAN) |
+| `TALIESIN_OPEN` | Same as `--open` (launch a browser) |
+| `TALIESIN_NO_EXEC` | Same as `--no-exec` (never execute code cells) |
+| `TALIESIN_NO_CACHE` | Ignore and skip writing the `_freeze/` execution cache |
+| `TALIESIN_NO_CLEAR` | Don't clear the terminal on each render (keep scrollback) |
+| `TALIESIN_MERMAID_URL` | Override the Mermaid library URL (self-host next to your site for a fully offline build; on load failure a visible `[data-mermaid-error]` banner shows the diagram source) |
 
 Without a kernel, cells render as highlighted source and the preview shows a
 "kernel unavailable" diagnostic rather than failing.

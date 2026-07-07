@@ -1,6 +1,6 @@
 use std::process::Command;
 
-/// `qmd-fast schema --out <dir>` writes both schema files, each a closed Draft-2020-12 schema.
+/// `taliesin schema --out <dir>` writes both schema files, each a closed Draft-2020-12 schema.
 #[test]
 fn schema_subcommand_writes_both_files() {
     let dir = std::env::temp_dir().join(format!("tali-schema-cli-{}", std::process::id()));
@@ -8,7 +8,7 @@ fn schema_subcommand_writes_both_files() {
     let status = Command::new(env!("CARGO_BIN_EXE_taliesin"))
         .args(["schema", "--out", dir.to_str().unwrap()])
         .status()
-        .expect("run qmd-fast schema");
+        .expect("run taliesin schema");
     assert!(status.success(), "schema --out should succeed");
     for name in ["tali-frontmatter.schema.json", "tali-site.schema.json"] {
         let body = std::fs::read_to_string(dir.join(name)).expect("schema file written");
@@ -24,13 +24,13 @@ fn schema_subcommand_writes_both_files() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// `qmd-fast schema` with no args prints both schemas to stdout.
+/// `taliesin schema` with no args prints both schemas to stdout.
 #[test]
 fn schema_subcommand_prints_to_stdout() {
     let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
         .arg("schema")
         .output()
-        .expect("run qmd-fast schema");
+        .expect("run taliesin schema");
     assert!(out.status.success());
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(

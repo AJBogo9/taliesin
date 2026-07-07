@@ -40,7 +40,7 @@ fn line_range(sourcepos: &str) -> (usize, usize) {
 
 #[test]
 fn every_corpus_doc_has_clean_front_matter() {
-    // qmd-fast's front-matter validator must not warn on any real document: a warning
+    // taliesin's front-matter validator must not warn on any real document: a warning
     // here means the allowlist is missing a key the corpus legitimately uses.
     // corpus/diagnostics/ is exempt (it deliberately holds typo'd keys).
     let mut files = Vec::new();
@@ -65,7 +65,7 @@ fn every_corpus_doc_has_clean_front_matter() {
 
 #[test]
 fn every_corpus_doc_emits_no_unknown_key_warnings() {
-    // qmd-fast has its own closed vocabulary: every real corpus doc must use only
+    // taliesin has its own closed vocabulary: every real corpus doc must use only
     // recognized cell options, callout kinds, and config keys, so the validators stay
     // silent. corpus/diagnostics/ is exempt (its exact warnings are pinned in
     // crates/core/tests/nested_validation.rs).

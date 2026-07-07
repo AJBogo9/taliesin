@@ -236,7 +236,7 @@ re-runs every cell, and broadcasts a `reload`.
 a fallback (a missing `source_file` logs as `(primary)`, a missing `sourcepos` as
 `?`); an unknown `type` or unparseable frame is silently ignored. There is no
 schema check and no per-connection auth on these messages. That is **intentional**
-under the [trust model](block-model.tmd#trust-model): qmd-fast serves one author's
+under the [trust model](block-model.tmd#trust-model): taliesin serves one author's
 own documents, and the only state these messages reach is the author's local
 render or kernel (worst case, a LAN peer triggers a kernel restart). A
 multi-tenant or hosted deployment would have to add authorization here.
@@ -345,7 +345,7 @@ is a separate channel from the websocket: it is the `postMessage` protocol betwe
   deck, jumps `QmdDeck` to the containing slide.
 
 The in-repo VS Code companion is the host that drives this; it is documented in
-[extending qmd-fast](extending.tmd). Because the surface is just two `postMessage`
+[extending Taliesin](extending.tmd). Because the surface is just two `postMessage`
 shapes, any editor can host the preview and add cursor sync without forking the
 client.
 

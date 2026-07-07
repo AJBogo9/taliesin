@@ -3,7 +3,7 @@ title: "Code execution & the kernel"
 ---
 
 Our `post.tmd` has a single `{python}` cell. This chapter is what happens when it
-runs, and, more to the point, the lengths qmd-fast goes to so that it usually
+runs, and, more to the point, the lengths Taliesin goes to so that it usually
 *doesn't have to*.
 
 Executing `{python}` / `{r}` cells is the most involved subsystem and lives
@@ -20,17 +20,17 @@ output caches that let it skip work, one in memory and one on disk:
 
 ```rust
 struct Executor {
-    python: PathBuf,            // QMD_FAST_PYTHON (default python3)
-    r: PathBuf,                 // QMD_FAST_R (default R)
+    python: PathBuf,            // TALIESIN_PYTHON (default python3)
+    r: PathBuf,                 // TALIESIN_R (default R)
     langs: HashMap<&'static str, LangState>,  // "python" / "r" → warm kernel + ran-list
     freeze: FreezeCache,        // persistent _freeze/ output cache (on disk)
-    no_exec: bool,              // QMD_FAST_NO_EXEC / --no-exec: render cells as source
+    no_exec: bool,              // TALIESIN_NO_EXEC / --no-exec: render cells as source
     force_next: bool,           // "Restart kernel" forces a full re-run next rebuild
 }
 ```
 
 `run(blocks)` is the entry point each rebuild calls. Its very first check is the
-`no_exec` flag: with `QMD_FAST_NO_EXEC` (or `--no-exec`) set, it returns the blocks
+`no_exec` flag: with `TALIESIN_NO_EXEC` (or `--no-exec`) set, it returns the blocks
 untouched, so every code cell previews as highlighted source with no kernel started and
 no "kernel unavailable" notice. That makes `--no-exec` the safe way to open a document
 you don't trust, and a `--host` preview without it logs a warning (exposing an executing
@@ -97,7 +97,7 @@ python::/path/to/python3::Python 3.11.9
 
 built by `interp_id`: the language, the resolved interpreter path, and the first
 line of `<program> --version`, run once and memoised. Because the seed flows into
-*every* key, swapping the interpreter (a Python upgrade, a different `QMD_FAST_PYTHON`)
+*every* key, swapping the interpreter (a Python upgrade, a different `TALIESIN_PYTHON`)
 shifts the whole chain at once, so the old interpreter's cached outputs are never
 served by a new one. Worked through for two cells `x = 1` then `print(x)`:
 
@@ -191,14 +191,14 @@ can never bake in:
   check matches the *class*, not a bare substring, so a cell that merely prints the
   text "qmd-error" still caches.
 - **Truncated outputs** (a result clipped at the size cap, marked
-  `qmd-fast: output truncated`), so a clipped result is never frozen as if complete.
+  `Taliesin: output truncated`), so a clipped result is never frozen as if complete.
 - **`#| cache: false` cells**, which always re-execute by contract.
 - **The cached tail the kernel didn't actually run.** Only cells `[shared, run_end)`,
   the cells that genuinely executed this rebuild, are recorded as the kernel's "ran"
   state; the disk-restored tail is left out, because the live kernel never produced
   it and recording it would falsely claim warm state the kernel doesn't hold.
 
-`QMD_FAST_NO_CACHE` disables the cache outright (every lookup misses, nothing is
+`TALIESIN_NO_CACHE` disables the cache outright (every lookup misses, nothing is
 written), and "Restart kernel" forces a fresh run rather than a replay.
 
 ## The warm kernel (`kernel.rs`)
@@ -228,7 +228,7 @@ client connections. `start()`:
 messages parented by that request, namely `stream` (stdout/stderr), `execute_result`,
 `display_data`, and `error`, until the kernel returns to `idle`.
 
-A **total wall-clock cap** (`QMD_FAST_CELL_TIMEOUT`, default 120s) guards a runaway
+A **total wall-clock cap** (`TALIESIN_CELL_TIMEOUT`, default 120s) guards a runaway
 cell. Crucially it is a cap on the whole cell, **not** on the gap between messages,
 which is what lets it catch a *streaming* runaway (a `while True: print(...)` that
 keeps the channel busy would defeat any per-message idle timeout). On hit, `execute`
@@ -271,17 +271,17 @@ flowchart LR
 The one subtlety (handled in the helper) is that a forked child must start ipykernel
 **in-process** (`IPKernelApp.instance().initialize(...)`), never by `exec`ing a fresh
 `python -m ipykernel_launcher`: an `exec` would replace the process image and throw
-away every preloaded module. qmd-fast then connects to the forked kernel over ZMQ
+away every preloaded module. Taliesin then connects to the forked kernel over ZMQ
 with the **same handshake** `Kernel::start` uses (`Kernel::adopt_forked`), so the rest
 of the executor never has to care whether a kernel was forked or cold-started.
 
 **The fallback is the whole safety story.** If the forkserver can't boot, no
-`QMD_FAST_PYTHON`, an import error, a non-Linux host, an R-only document, the pool's
+`TALIESIN_PYTHON`, an import error, a non-Linux host, an R-only document, the pool's
 daemon is simply absent, `WarmPool::take` returns `None`, and the caller cold-starts a
 kernel exactly as before. Any failure on the warm path degrades to the cold path; it
 is never a hard error, so behaviour is **never worse than the single-kernel design**.
 The pool is also **Python-only**: R cells always cold-start (there is no R forkserver
-preload), which is why `QMD_FAST_PYTHON` is the precondition for a warm first edit.
+preload), which is why `TALIESIN_PYTHON` is the precondition for a warm first edit.
 
 ### One RAM budget for warm + parallel build
 
@@ -408,7 +408,7 @@ condition rather than a latch:
   will never reply; the next rebuild detects the dead kernel, respawns it, and
   re-runs from the top.
 - **Failed to start** → back off for `KERNEL_RETRY_AFTER` (20s) before retrying,
-  so a bad `QMD_FAST_PYTHON` doesn't re-hang every save, but *fixing* it
+  so a bad `TALIESIN_PYTHON` doesn't re-hang every save, but *fixing* it
   self-heals within a few saves.
 - The interpreter's own start error (`last_error`) is surfaced as a diagnostic, so
   "kernel unavailable" tells you *why*.

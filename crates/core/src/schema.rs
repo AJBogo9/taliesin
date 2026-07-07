@@ -4,7 +4,7 @@
 //! generated from the SAME closed-set consts the validator uses (`frontmatter::KNOWN_KEYS`
 //! plus the nested `EXECUTE`/`LISTING`/`ABOUT`/`HERO` sets, and `site::NATIVE_KEYS`), so the
 //! schema cannot drift from what the validator enforces. They are regenerated ONLY via the
-//! bless path in this module's tests (`QMD_FAST_BLESS=1 cargo test -p taliesin-core --lib
+//! bless path in this module's tests (`TALIESIN_BLESS=1 cargo test -p taliesin-core --lib
 //! schema`), never hand-edited. The `taliesin schema` CLI emits these strings so an editor's
 //! YAML language server can validate config: the in-scope single-editing-surface on-ramp,
 //! with no taliesin language server to build.
@@ -173,18 +173,18 @@ mod tests {
     use super::{FRONTMATTER_SCHEMA, SITE_SCHEMA};
     use serde_json::Value;
 
-    /// Assert the generated schema equals the committed file, OR (under `QMD_FAST_BLESS=1`)
+    /// Assert the generated schema equals the committed file, OR (under `TALIESIN_BLESS=1`)
     /// rewrite the committed file from the generator. `rel_path` is relative to the core
     /// crate root (`CARGO_MANIFEST_DIR`).
     fn bless_or_assert(generated: String, committed: &str, rel_path: &str) {
-        if std::env::var("QMD_FAST_BLESS").is_ok() {
+        if std::env::var("TALIESIN_BLESS").is_ok() {
             let path = format!("{}/{}", env!("CARGO_MANIFEST_DIR"), rel_path);
             std::fs::write(&path, &generated).unwrap_or_else(|e| panic!("write {path}: {e}"));
             eprintln!("blessed {rel_path}");
         } else {
             assert_eq!(
                 generated, committed,
-                "schema drift in {rel_path}; regenerate with `QMD_FAST_BLESS=1 cargo test -p taliesin-core --lib schema`"
+                "schema drift in {rel_path}; regenerate with `TALIESIN_BLESS=1 cargo test -p taliesin-core --lib schema`"
             );
         }
     }

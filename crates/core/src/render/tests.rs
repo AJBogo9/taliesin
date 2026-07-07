@@ -1706,7 +1706,7 @@ fn missing_bibliography_and_theme_files_warn() {
     // `warnings` (the core's non-fatal error channel), not silently dropped.
     let doc = render_document_with_includes(
         "---\ntitle: X\nbibliography: nope.bib\ntheme: gone.css\n---\n\nSee [@k].\n",
-        std::path::Path::new("/qmd-fast-nonexistent-dir"),
+        std::path::Path::new("/taliesin-nonexistent-dir"),
     );
     assert!(
         doc.warnings
@@ -1725,7 +1725,7 @@ fn missing_bibliography_and_theme_files_warn() {
     // A bare theme name (a possible Quarto built-in) must NOT warn.
     let ok = render_document_with_includes(
         "---\ntitle: X\ntheme: darkly\n---\n\ntext\n",
-        std::path::Path::new("/qmd-fast-nonexistent-dir"),
+        std::path::Path::new("/taliesin-nonexistent-dir"),
     );
     assert!(
         ok.warnings.is_empty(),

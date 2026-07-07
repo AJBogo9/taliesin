@@ -1,6 +1,6 @@
 use std::path::Path;
 
-/// qmd-fast's OWN (MIT) bundled scripts. Everything else in `assets/js/` is a
+/// taliesin's OWN (MIT) bundled scripts. Everything else in `assets/js/` is a
 /// vendored third party that MUST be attributed by filename in THIRD_PARTY.md.
 /// Adding a new vendored lib without documenting it fails `vendored_js_is_attributed`.
 // (code-enhance.js is now authored as per-feature fragments under the
@@ -33,7 +33,7 @@ fn vendored_js_is_attributed() {
         assert!(
             doc.contains(&name),
             "vendored asset `{name}` is not attributed in THIRD_PARTY.md \
-             (document it, or add it to OWN_JS if it is qmd-fast's own)"
+             (document it, or add it to OWN_JS if it is taliesin's own)"
         );
     }
 }

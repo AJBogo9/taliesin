@@ -7,17 +7,17 @@ a kernel for code, write your first document, and put it online.
 
 ## Install
 
-qmd-fast builds from source with a Rust toolchain. From the repo:
+taliesin builds from source with a Rust toolchain. From the repo:
 
 ```sh
 cargo build --release
 ```
 
-The binary is `target/release/qmd-fast`. The repo also ships a `~/.local/bin/qmd-fast`
+The binary is `target/release/taliesin`. The repo also ships a `~/.local/bin/Taliesin`
 launcher that rebuilds the release binary whenever the tool's sources change and
-then runs it, so once it's on your `PATH` you can just say `qmd-fast preview …`
+then runs it, so once it's on your `PATH` you can just say `taliesin preview …`
 from any directory. Every command below works either way: substitute
-`cargo run -p taliesin-server --` for `qmd-fast` if you prefer not to install the
+`cargo run -p taliesin-server --` for `taliesin` if you prefer not to install the
 launcher.
 
 ## Set up a kernel (for code execution)
@@ -29,14 +29,14 @@ Python setup:
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
 pip install ipykernel numpy matplotlib   # + whatever your cells import
-export QMD_FAST_PYTHON="$(pwd)/.venv/bin/python"
+export TALIESIN_PYTHON="$(pwd)/.venv/bin/python"
 ```
 
 For R cells, run `install.packages("IRkernel")` (then `IRkernel::installspec()`)
-in your R and point `QMD_FAST_R` at that R binary:
+in your R and point `TALIESIN_R` at that R binary:
 
 ```sh
-export QMD_FAST_R="$(which R)"          # or a full path, e.g. /usr/local/bin/R
+export TALIESIN_R="$(which R)"          # or a full path, e.g. /usr/local/bin/R
 ```
 
 `{python}` and `{r}` cells each run against their own warm kernel, so a document
@@ -52,20 +52,20 @@ the defaults work, and the only ones most projects ever set are the kernel paths
 
 | Variable | Default | What it does |
 |---|---|---|
-| `QMD_FAST_PYTHON` | `python3` | Python binary (with `ipykernel`) used for `{python}` cells |
-| `QMD_FAST_R` | `R` | R binary (with `IRkernel`) used for `{r}` cells |
-| `QMD_FAST_CELL_TIMEOUT` | `120` | Per-cell wall-clock seconds before a runaway cell is interrupted (SIGINT); `0` disables the cap |
-| `QMD_FAST_NO_CACHE` | unset | When set, skip the `_freeze/` execution cache (no reads, no writes) for this run |
-| `QMD_FAST_NO_EXEC` | unset | When set, never run code cells (render them as source); same as `--no-exec` |
-| `QMD_FAST_OPEN` | unset | When set, open the preview in a browser on start; same as `--open` |
-| `QMD_FAST_HOST` | unset | When set, expose the preview on the LAN; same as `--host` |
-| `QMD_FAST_NO_CLEAR` | unset | When set, keep the dev-server console from clearing the screen between renders |
-| `QMD_FAST_MERMAID_URL` | jsDelivr CDN | Override the Mermaid library URL (a relative path next to the site, or an absolute one) to self-host diagrams offline |
+| `TALIESIN_PYTHON` | `python3` | Python binary (with `ipykernel`) used for `{python}` cells |
+| `TALIESIN_R` | `R` | R binary (with `IRkernel`) used for `{r}` cells |
+| `TALIESIN_CELL_TIMEOUT` | `120` | Per-cell wall-clock seconds before a runaway cell is interrupted (SIGINT); `0` disables the cap |
+| `TALIESIN_NO_CACHE` | unset | When set, skip the `_freeze/` execution cache (no reads, no writes) for this run |
+| `TALIESIN_NO_EXEC` | unset | When set, never run code cells (render them as source); same as `--no-exec` |
+| `TALIESIN_OPEN` | unset | When set, open the preview in a browser on start; same as `--open` |
+| `TALIESIN_HOST` | unset | When set, expose the preview on the LAN; same as `--host` |
+| `TALIESIN_NO_CLEAR` | unset | When set, keep the dev-server console from clearing the screen between renders |
+| `TALIESIN_MERMAID_URL` | jsDelivr CDN | Override the Mermaid library URL (a relative path next to the site, or an absolute one) to self-host diagrams offline |
 
-`QMD_FAST_*` flags that have a `--flag` equivalent (`--open`, `--host`, `--no-exec`)
+`TALIESIN_*` flags that have a `--flag` equivalent (`--open`, `--host`, `--no-exec`)
 are read on the same run; the flag and the variable mean the same thing, so use
 whichever fits (the variable is handy in CI). The kernel paths and
-`QMD_FAST_CELL_TIMEOUT` come up most; the rest are situational.
+`TALIESIN_CELL_TIMEOUT` come up most; the rest are situational.
 
 ## Scaffold a project (the fast path)
 
@@ -74,8 +74,8 @@ The quickest way to a previewable project is `init`, which writes a minimal
 default):
 
 ```sh
-qmd-fast init my-site        # writes my-site/_site.yml + my-site/index.tmd
-qmd-fast preview my-site     # live, immediately
+taliesin init my-site        # writes my-site/_site.yml + my-site/index.tmd
+taliesin preview my-site     # live, immediately
 ```
 
 `init` refuses to overwrite: if either file already exists it stops without
@@ -89,7 +89,7 @@ Create `hello.tmd`:
 
 ````markdown
 ---
-title: "Hello, qmd-fast"
+title: "Hello, Taliesin"
 toc: true
 ---
 
@@ -113,7 +113,7 @@ np.random.default_rng(0).normal(size=5).round(2)
 Preview it live:
 
 ```sh
-qmd-fast preview hello.tmd
+taliesin preview hello.tmd
 ```
 
 Open `http://127.0.0.1:4321`. Edit the file and watch only the changed block
@@ -126,21 +126,21 @@ When you're happy, `build` produces output (executing code cells against the
 kernel, so the HTML carries the computed figures):
 
 ```sh
-qmd-fast build hello.tmd                 # -> hello.html (one self-contained file)
-qmd-fast build hello.tmd --out dist      # -> dist/index.html + copied local assets
+taliesin build hello.tmd                 # -> hello.html (one self-contained file)
+taliesin build hello.tmd --out dist      # -> dist/index.html + copied local assets
 ```
 
 Point `build`/`preview` at a **directory** instead and you get a whole
 multi-page site or book (see [Slides, books & sites](formats.tmd)):
 
 ```sh
-qmd-fast build blog/                     # -> blog/_site/   (one .html per page)
-qmd-fast build docs/                     # -> docs/_book/   (a book, if _site.yml says so)
+taliesin build blog/                     # -> blog/_site/   (one .html per page)
+taliesin build docs/                     # -> docs/_book/   (a book, if _site.yml says so)
 ```
 
 ### Where the build goes
 
-| You build | qmd-fast writes |
+| You build | Taliesin writes |
 |---|---|
 | `build doc.tmd` | `doc.html` next to the source: one self-contained file |
 | `build doc.tmd page.html` | `page.html` (your chosen path) instead of `<stem>.html` |
@@ -165,7 +165,7 @@ The build output is **plain static HTML + assets** with no server runtime, so it
 deploys anywhere that serves files.
 
 - **GitHub Pages.** Build into `docs/` (or push `_site/`) on your default branch
-  and enable Pages, or use an action that runs `qmd-fast build` and uploads the
+  and enable Pages, or use an action that runs `taliesin build` and uploads the
   output directory as the Pages artifact.
 - **Netlify / Vercel / Cloudflare Pages.** Set the build command to
   `cargo run -p taliesin-server -- build <dir>` and the publish directory to the
@@ -197,11 +197,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: Install qmd-fast
-        # point at wherever qmd-fast lives; add --tag vX.Y for reproducible builds
-        run: cargo install --git https://github.com/you/qmd-fast --locked qmd-fast-server
+      - name: Install Taliesin
+        # point at wherever Taliesin lives; add --tag vX.Y for reproducible builds
+        run: cargo install --git https://github.com/you/Taliesin --locked taliesin-server
       - name: Build the site
-        run: qmd-fast build .          # website -> _site/   (a book emits _book/)
+        run: taliesin build .          # website -> _site/   (a book emits _book/)
       - uses: actions/upload-pages-artifact@v3
         with: { path: _site }
 
@@ -218,7 +218,7 @@ jobs:
 
 `build` **executes code cells**, so if your pages run `{python}` / `{r}`, add a
 step to install that interpreter plus `ipykernel` / `IRkernel` and set
-`QMD_FAST_PYTHON` / `QMD_FAST_R`, otherwise those cells render as source in CI.
+`TALIESIN_PYTHON` / `TALIESIN_R`, otherwise those cells render as source in CI.
 
 ::: {.callout-note}
 The interactive `{js}`/Three.js demos need to be served over `http(s)` (not opened

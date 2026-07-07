@@ -18,9 +18,9 @@ np.arange(5).sum()
 On save, **only cells whose source changed (plus downstream cells) re-execute**,
 and the kernel never cold-starts. Both `{python}` and `{r}` cells run, each
 against its own warm kernel: point the server at a Python with `ipykernel` via
-`QMD_FAST_PYTHON` and (for R) an R with `IRkernel` via `QMD_FAST_R`. A cell in any
+`TALIESIN_PYTHON` and (for R) an R with `IRkernel` via `TALIESIN_R`. A cell in any
 other language, or with no kernel available, renders as highlighted source rather
-than failing. With `QMD_FAST_PYTHON` set, qmd-fast also pre-warms a small pool of
+than failing. With `TALIESIN_PYTHON` set, Taliesin also pre-warms a small pool of
 Python kernels at startup (forked from one preloaded interpreter), so even the
 *first* edit of a session is near-instant instead of paying the `import` cost;
 without it, Python and R cells just cold-start on demand as before.
@@ -33,7 +33,7 @@ Code execution needs a Jupyter kernel. A one-time Python setup:
 ```sh
 python3 -m venv .venv && . .venv/bin/activate
 pip install ipykernel numpy matplotlib   # + whatever your cells import
-export QMD_FAST_PYTHON="$(pwd)/.venv/bin/python"
+export TALIESIN_PYTHON="$(pwd)/.venv/bin/python"
 ```
 
 Now `preview`/`build` run `{python}` cells against that interpreter. No kernel is
@@ -44,7 +44,7 @@ fine too: cells just render as highlighted source, and the preview shows a quiet
 The kernel is resilient: if it crashes mid-session the server detects the dead
 process and respawns it on the next run, and a runaway cell is interrupted at a
 configurable timeout instead of wedging the kernel. That cap is
-`QMD_FAST_CELL_TIMEOUT` (default 120 seconds): a cell that runs longer is sent
+`TALIESIN_CELL_TIMEOUT` (default 120 seconds): a cell that runs longer is sent
 SIGINT so a runaway loop can't lock up the kernel, and set it to `0` to disable
 the cap entirely. The dev menu's **Restart kernel** action drops the kernel,
 re-runs every cell against a fresh one, and reloads so `define` values
@@ -117,7 +117,7 @@ grey axes that read on light **and** dark), but that theming never touches globa
 `rcParams`, so a plain `fig.savefig("x.pdf")` in a cell already writes a clean,
 print-ready figure (black on white).
 
-To export without the boilerplate, add `#| fig-export:` and qmd-fast writes the
+To export without the boilerplate, add `#| fig-export:` and Taliesin writes the
 cell's figure to disk with print styling the moment it renders. Give it one path,
 or a comma-separated list to emit several formats at once:
 
@@ -134,7 +134,7 @@ plt.show()
 
 Use a vector format (`.pdf`/`.svg`) for line art so it stays sharp at any size;
 `.png` is written at a print DPI for raster content (spectrograms, heatmaps). Paths
-are relative to where you run qmd-fast (normally the document's directory), and
+are relative to where you run Taliesin (normally the document's directory), and
 parent folders are created as needed. Then in LaTeX:
 `\includegraphics[width=\columnwidth]{figures/loss.pdf}`. Changing the
 `fig-export` path re-runs the cell so the file is rewritten.

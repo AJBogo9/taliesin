@@ -10,11 +10,11 @@ listing:
 
 # Typo coverage
 
-This document deliberately uses misspelled keys to pin qmd-fast's schema validators.
+This document deliberately uses misspelled keys to pin Taliesin's schema validators.
 Each unknown key below produces one click-to-source warning; rendering is unaffected.
 
 ::: {.callout-importnat}
-This callout names a kind qmd-fast does not define.
+This callout names a kind Taliesin does not define.
 :::
 
 ```{python}

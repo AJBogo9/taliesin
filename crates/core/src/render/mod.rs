@@ -859,16 +859,16 @@ const BASE_CSS: &str = include_str!("../../assets/css/base.css");
 // ~2.5 MB, content-gated to pages that actually have a `pre.mermaid`), so a `--out` doc /
 // book renders diagrams with zero network. The live Preview instead keeps the lazy loader
 // pointed at the CDN default below (inlining 2.5 MB on every save would bloat the payload,
-// and dev-time network is fine); `QMD_FAST_MERMAID_URL` overrides that Preview/loader URL
+// and dev-time network is fine); `TALIESIN_MERMAID_URL` overrides that Preview/loader URL
 // (e.g. to a self-hosted copy) and is also the loader's never-reached Build fallback if the
 // inlined global somehow isn't present. Either way a load failure is *visible* (a
 // `[data-mermaid-error]` banner), never a silent blank.
 const MERMAID_DEFAULT: &str = "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js";
 
 /// The URL the lazy mermaid loader fetches the diagram library from: the
-/// `QMD_FAST_MERMAID_URL` override when set (and non-empty), else the pinned CDN default.
+/// `TALIESIN_MERMAID_URL` override when set (and non-empty), else the pinned CDN default.
 fn mermaid_url() -> String {
-    match std::env::var("QMD_FAST_MERMAID_URL") {
+    match std::env::var("TALIESIN_MERMAID_URL") {
         Ok(u) if !u.trim().is_empty() => u,
         _ => MERMAID_DEFAULT.to_string(),
     }

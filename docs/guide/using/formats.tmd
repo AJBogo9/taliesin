@@ -8,7 +8,7 @@ a whole website.
 
 ## Slide decks
 
-Set `format: deck` and the document becomes a slide deck driven by qmd-fast's
+Set `format: deck` and the document becomes a slide deck driven by Taliesin's
 **own engine** (no reveal.js, no CDN, everything bundled offline). `##` starts a
 slide and `#` starts a section that nests the following slides as a vertical stack;
 a title slide is generated from the metadata. The block diff still applies *within
@@ -17,8 +17,8 @@ position, and Alt-clicking (Option-clicking on Mac) a block jumps to its source,
 exactly like a page.
 
 ```sh
-qmd-fast preview docs/guide/demo.tmd   # live, click-to-source, hot reload
-qmd-fast build   docs/guide/demo.tmd   # one self-contained .html
+taliesin preview docs/guide/demo.tmd   # live, click-to-source, hot reload
+taliesin build   docs/guide/demo.tmd   # one self-contained .html
 ```
 
 The engine ships the things you actually present with, and the demo deck embedded
@@ -221,7 +221,7 @@ interactive iframe with a fullscreen button, so an article can lead with a swipe
 summary or a site can showcase a live demo. The referenced deck is built and served
 automatically alongside the page. Here is this manual's own feature deck:
 
-{{< embed ../demo.tmd title="The qmd-fast deck engine" >}}
+{{< embed ../demo.tmd title="The Taliesin deck engine" >}}
 
 ## Books and a live table of contents
 
@@ -232,7 +232,7 @@ collapses into a pull-up sheet.
 
 A **multi-chapter book** is a directory whose `_site.yml` lists `chapters:`:
 their presence makes it a book (no `type:` needed), optionally grouped into
-`part:`s. qmd-fast numbers the chapters, builds the left sidebar, wires prev/next
+`part:`s. Taliesin numbers the chapters, builds the left sidebar, wires prev/next
 navigation, and resolves cross-references across chapters. *These very docs are
 such a book*: look at the sidebar and press <kbd>Cmd/Ctrl-K</kbd> to search.
 
@@ -247,7 +247,7 @@ chapters:
 
 ## Multi-page websites
 
-Point either command at a **directory** and qmd-fast treats it as a website
+Point either command at a **directory** and Taliesin treats it as a website
 project. The directory needs one root config, `_site.yml`, which names the site
 title, the navbar, and the footer; every `.tmd` under it (skipping `_`-prefixed
 partials) becomes a page.
@@ -265,8 +265,8 @@ footer:
 ```
 
 ```sh
-qmd-fast build   corpus/tech-blog     # static site -> _site/ (deployable)
-qmd-fast preview corpus/tech-blog     # live site on http://127.0.0.1:4321
+taliesin build   corpus/tech-blog     # static site -> _site/ (deployable)
+taliesin preview corpus/tech-blog     # live site on http://127.0.0.1:4321
 ```
 
 See the [configuration reference](../reference/configuration.tmd) for every key
@@ -283,8 +283,8 @@ To ship a website and a separate docs **book** as one deploy, build the book int
 subfolder of the site's output with `--out`, then link to it from the navbar:
 
 ```sh
-qmd-fast build my-site                 # -> my-site/_site/
-qmd-fast build docs --out my-site/_site/docs   # the book, nested at /docs
+taliesin build my-site                 # -> my-site/_site/
+taliesin build docs --out my-site/_site/docs   # the book, nested at /docs
 # navbar:  - { text: Docs, href: docs/index.html }
 ```
 

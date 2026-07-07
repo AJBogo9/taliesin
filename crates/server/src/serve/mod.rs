@@ -198,7 +198,7 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
     if let Some(net) = &network {
         print_qr(net);
     }
-    if expose && std::env::var_os("QMD_FAST_NO_EXEC").is_none() {
+    if expose && std::env::var_os("TALIESIN_NO_EXEC").is_none() {
         crate::log::warn(
             "code cells run on this machine; only serve documents you trust over --host \
              (pass --no-exec to preview as source)",

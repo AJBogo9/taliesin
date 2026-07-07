@@ -1,7 +1,7 @@
 ---
 title: "Decisions in the Room"
 subtitle: "How a live deck closes the deal and reclaims a quarter of every analyst's week"
-author: "qmd-fast"
+author: "Taliesin"
 format: deck
 ---
 
@@ -239,7 +239,7 @@ The deck that computes itself doesn't just look better. It **gives a quarter of
 every analyst's week back**, and it ends the meeting with a decision instead of a
 follow-up.
 
-[Built with qmd-fast]{.fragment}
+[Built with Taliesin]{.fragment}
 
 # Appendix: going deeper {.unnumbered}
 

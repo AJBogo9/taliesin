@@ -109,14 +109,14 @@ pub(crate) fn cmd_serve(args: &[String]) -> ExitCode {
         }
     }
     let flag = |name: &str| args.iter().any(|a| a == name);
-    let open = flag("--open") || std::env::var_os("QMD_FAST_OPEN").is_some();
-    let expose = flag("--host") || std::env::var_os("QMD_FAST_HOST").is_some();
-    // `--no-exec` is sugar for `QMD_FAST_NO_EXEC=1`, which `exec::Executor` reads:
+    let open = flag("--open") || std::env::var_os("TALIESIN_OPEN").is_some();
+    let expose = flag("--host") || std::env::var_os("TALIESIN_HOST").is_some();
+    // `--no-exec` is sugar for `TALIESIN_NO_EXEC=1`, which `exec::Executor` reads:
     // preview a document you don't trust without running its code cells.
     if flag("--no-exec") {
         // SAFETY: set once at CLI startup, before the tokio runtime / kernel
         // threads spawn, so no other thread is touching the environment.
-        unsafe { std::env::set_var("QMD_FAST_NO_EXEC", "1") };
+        unsafe { std::env::set_var("TALIESIN_NO_EXEC", "1") };
     }
     let Some(path) = positionals.first() else {
         eprintln!("usage: taliesin preview <file.tmd|dir> [port] [--host] [--open] [--no-exec]");

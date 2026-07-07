@@ -1,5 +1,5 @@
 ---
-title: "qmd-fast"
+title: "Taliesin"
 description: "A fast, single-purpose dev server that turns one .tmd file into a live blog post, slide deck, book, or website, with executable code and an edit loop that updates the instant you save."
 page-layout: full
 hero:
@@ -11,7 +11,7 @@ hero:
     - { text: "Explore the features", href: "features.tmd" }
 ---
 
-qmd-fast is built around one idea: writing technical content should feel as
+Taliesin is built around one idea: writing technical content should feel as
 immediate as editing code. You save the file, and only the block you changed
 re-renders. Your scroll position, your live canvas, and your warm kernel all stay
 exactly as they were. No cold start, no full-page flash, no waiting.
@@ -70,7 +70,7 @@ This scene is live WebGL, authored in the one `{js}` cell above. Drag to orbit i
 See more, with the source beside each, on [the showcase](showcase.tmd).
 
 ```sh
-qmd-fast preview post.tmd   # live at http://127.0.0.1:4321 (edit, and watch one block update)
+taliesin preview post.tmd   # live at http://127.0.0.1:4321 (edit, and watch one block update)
 ```
 
 {{< video assets/live-edit-light.mp4 dark=assets/live-edit-dark.mp4 caption="Save the file, and only the block you touched re-renders in place, with scroll and live state preserved." >}}
@@ -101,7 +101,7 @@ code that actually runs on the slide.
 ::: {.feature}
 ### Multi-chapter books
 A sidebar, numbered chapters, cross-chapter references, and full-text search. These
-very docs are a qmd-fast book.
+very docs are a Taliesin book.
 
 [Read the docs book →](docs/guide/)
 :::
@@ -109,7 +109,7 @@ very docs are a qmd-fast book.
 ::: {.feature}
 ### Multi-page websites
 Navbar, footer, listings, RSS, OpenGraph, and Cmd-K search. This whole site is a
-qmd-fast website.
+Taliesin website.
 
 [How this site is built →](formats.tmd#websites)
 :::
@@ -120,7 +120,7 @@ qmd-fast website.
 This is the running deck engine, not a screenshot. Click it and arrow through it,
 press <kbd>F</kbd> for fullscreen, or open it in its own tab.
 
-{{< embed demo.tmd title="The qmd-fast deck engine" >}}
+{{< embed demo.tmd title="The Taliesin deck engine" >}}
 
 ## Edit the code. The output re-runs in place.
 
@@ -134,7 +134,7 @@ moves, and the kernel never cold-starts.
 
 There is nothing here a screenshot could fake: **this landing page, its
 [documentation book](docs/guide/), and the slide deck above are all built and served by
-qmd-fast**, from plain `.tmd` files in one repository. If it reads well here, the
+Taliesin**, from plain `.tmd` files in one repository. If it reads well here, the
 framework is doing its job.
 
 ::: {.hero}

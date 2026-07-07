@@ -1,14 +1,14 @@
 ---
-title: "qmd-fast"
+title: "Taliesin"
 ---
 
-# Why qmd-fast {.unnumbered}
+# Why Taliesin {.unnumbered}
 
 **A fast, single-purpose dev server that turns `.tmd` files into live HTML (blog
 posts, slide decks, books, and whole websites) with executable code blocks
 and an editing loop that updates the instant you save.**
 
-qmd-fast is built around one idea: writing technical content should feel as
+Taliesin is built around one idea: writing technical content should feel as
 immediate as editing code. You save the file, and only the block you changed
 re-renders: your scroll position, your live 3D canvas, your warm kernel all stay
 exactly as they were. No cold start, no full-page flash, no waiting.
@@ -25,20 +25,20 @@ exactly as they were. No cold start, no full-page flash, no waiting.
   edits show up immediately, and only the cells whose code actually changed
   re-run.
 
-This guide is itself a multi-page **book** built with qmd-fast: sidebar, search
+This guide is itself a multi-page **book** built with Taliesin: sidebar, search
 (press <kbd>Cmd/Ctrl-K</kbd>), live diagrams, and executed code cells included. A
 companion book, [Internals](../internals/), covers how it works inside.
 
 ## The 60-second tour {.unnumbered}
 
-The fastest way in: a short slide deck, embedded right here (it is itself a qmd-fast
+The fastest way in: a short slide deck, embedded right here (it is itself a Taliesin
 deck: use the arrow keys, or press <kbd>f</kbd> for fullscreen).
 
-{{< embed tour.tmd title="qmd-fast: a 60-second tour" >}}
+{{< embed tour.tmd title="Taliesin: a 60-second tour" >}}
 
 ## Coming from Jupyter?
 
-qmd-fast reads the Markdown/Pandoc `.tmd` syntax you already know, but it makes a
+Taliesin reads the Markdown/Pandoc `.tmd` syntax you already know, but it makes a
 particular trade: **do one thing, author HTML, and make the edit loop instant.**
 
 - vs **Jupyter**: you write in plain text files (versionable, diffable) with real
@@ -49,8 +49,8 @@ It is intentionally small: one author's HTML workflow, kept fast.
 
 ## Get running in 30 seconds
 
-qmd-fast builds from source with a Rust toolchain (`cargo build --release`); a
-`qmd-fast` launcher on your `PATH` then keeps the binary fresh and runs it from
+taliesin builds from source with a Rust toolchain (`cargo build --release`); a
+`taliesin` launcher on your `PATH` then keeps the binary fresh and runs it from
 anywhere. To execute code cells you also point it at a Jupyter kernel: see
 [Executable content](using/code.tmd#code-cells).
 
@@ -84,7 +84,7 @@ flowchart LR
 ::: {.callout-note}
 ## Scope
 
-qmd-fast renders to **HTML only**: there is no PDF path and no format matrix. It
+taliesin renders to **HTML only**: there is no PDF path and no format matrix. It
 is a focused tool for one author's writing workflow. The "spec" is a small corpus
 of real documents: when those render
 correctly, the tool is done. That focus is the point: it stays fast, small, and

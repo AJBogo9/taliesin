@@ -2,7 +2,7 @@
 title: "The block model & protocol"
 ---
 
-Everything in qmd-fast keys off one idea: the document is a list of **blocks**,
+Everything in Taliesin keys off one idea: the document is a list of **blocks**,
 each of which knows its identity and its origin. Our `post.tmd` is three of them,
 the `# Cooling coffee` heading, the paragraph, and the Python cell, plus a fourth
 the cell *produces*: the plot, a derived block keyed to the cell.
@@ -118,7 +118,7 @@ flowchart TD
 Calling this "an LCS" is a lie of omission. The textbook LCS is an `O(m·n)`
 dynamic-programming table, and on a save it would be reallocated on **every
 keystroke**: tens of megabytes once a document reaches a few thousand blocks.
-qmd-fast never builds it.
+Taliesin never builds it.
 
 The shortcut is that block ids are **unique** within a document. A common
 subsequence is then just a set of shared ids in the same relative order, so the
@@ -252,8 +252,8 @@ Click-to-source (goal #1) rides entirely on the two source attributes:
 
 ## Trust model
 
-qmd-fast renders **one author's own `.tmd` files**, so the source is *trusted*:
+taliesin renders **one author's own `.tmd` files**, so the source is *trusted*:
 raw HTML in the body, `{=html}` blocks, `include-*` markup, and footer icon SVGs
 are passed through **unescaped** by design, and code cells are executed. None of
-this is a vulnerability under the intended use, but it does mean qmd-fast must
+this is a vulnerability under the intended use, but it does mean Taliesin must
 not be pointed at a `.tmd` from an untrusted source.

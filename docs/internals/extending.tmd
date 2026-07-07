@@ -1,8 +1,8 @@
 ---
-title: "Extending qmd-fast"
+title: "Extending Taliesin"
 ---
 
-This chapter is for working *on* qmd-fast: the conventions, where new code goes,
+This chapter is for working *on* Taliesin: the conventions, where new code goes,
 the extension points, and the dev loop.
 
 ## The guiding principle: a lean core
@@ -98,7 +98,7 @@ wired into the same mount cycle the built-ins use.
 
 The websocket protocol is open (see [the block model](block-model.tmd)), so an editor
 that hosts the preview is just another thin client, not a fork. One such client already
-ships in-repo, at `editor/vscode/`: the **qmd-fast Companion**. It is the concrete
+ships in-repo, at `editor/vscode/`: the **Taliesin Companion**. It is the concrete
 *producer* for the reverse-sync side of the protocol that `web-client/client.js` already
 *consumes*, so the two halves meet.
 
@@ -106,11 +106,11 @@ It lives **outside the cargo workspace** with its own npm/esbuild toolchain (`cd
 editor/vscode && npm install && npm run build`, then **F5** to launch an Extension
 Development Host). A single command, `qmdFast.openPreview` (command palette or the
 editor-title button on a `.tmd`), and one setting, `qmdFast.path` (the binary, when
-`qmd-fast` is not on `PATH`), are its whole surface.
+`taliesin` is not on `PATH`), are its whole surface.
 
 The host architecture is deliberately thin:
 
-- it spawns `qmd-fast preview` on a free **localhost** port (no `--host`, so the LAN
+- it spawns `taliesin preview` on a free **localhost** port (no `--host`, so the LAN
   token never enters the picture) and embeds that URL in a webview via
   `vscode.env.asExternalUri`;
 - a small **relay** HTML document inside the webview bridges the preview iframe's
@@ -212,8 +212,8 @@ A pure refactor must not change the output. The standard check is to build the
 corpus before and after and `diff` the results:
 
 ```sh
-qmd-fast build corpus/tech-blog --out /tmp/before/site   # on the old tree
-qmd-fast build corpus/tech-blog --out /tmp/after/site    # on the new tree
+taliesin build corpus/tech-blog --out /tmp/before/site   # on the old tree
+taliesin build corpus/tech-blog --out /tmp/after/site    # on the new tree
 diff -rq /tmp/before /tmp/after                          # must be empty
 ```
 

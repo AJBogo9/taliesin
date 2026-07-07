@@ -2,7 +2,7 @@
 title: "Link, video & reactive-input diagnostics"
 ---
 
-This document deliberately trips the static `qmd-fast check` rules for broken relative
+This document deliberately trips the static `taliesin check` rules for broken relative
 links, missing local video, and dangling/cyclic `{js}` reactive inputs. It lives in
 `corpus/diagnostics/`, which is exempt from the corpus clean-render guards. Each located
 finding jumps to its source line on click, like any other diagnostic.

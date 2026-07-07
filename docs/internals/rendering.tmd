@@ -40,7 +40,7 @@ flowchart TB
    follows run on a worker thread with a **256 MB stack** (`render_internal` spawns a
    scoped thread, `stack_size(256 * 1024 * 1024)`). The reason is concrete: deeply
    nested Markdown (blockquotes, lists) drives deep recursion in both comrak's parser
-   and qmd-fast's block emission, and on the default ~8 MB thread stack that recursion
+   and Taliesin's block emission, and on the default ~8 MB thread stack that recursion
    overflows at around 3000 levels. A stack overflow is not a catchable panic, it
    **aborts the whole process**: one pathological document would crash a `build` or take
    down the live preview server outright. The big stack absorbs any realistic nesting;
@@ -84,7 +84,7 @@ on them** (`crates/core/tests/corpus.rs` enforces it):
 `make_id` (`render/mod.rs`) computes the id from the block's **raw Markdown source**,
 trimmed of surrounding whitespace, not from its rendered HTML. It hashes that text with
 **64-bit FNV-1a** (`fnv1a`, the same small deterministic algorithm `freeze.rs` uses for
-the execution cache, stable across runs and qmd-fast versions), then formats the id as
+the execution cache, stable across runs and Taliesin versions), then formats the id as
 `b-` followed by the **first 12 hex digits** of the 16-digit hash (e.g. `b-3af19c0e21d4`).
 
 Two blocks with identical source text therefore hash to the same base id. To keep

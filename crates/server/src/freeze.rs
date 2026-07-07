@@ -110,11 +110,11 @@ impl FreezeCache {
     }
 
     /// Load (or start fresh for) the cache file at `path`. Honours
-    /// `QMD_FAST_NO_CACHE`: when set, returns a disabled cache so a run neither
+    /// `TALIESIN_NO_CACHE`: when set, returns a disabled cache so a run neither
     /// reads nor writes `_freeze/`. A missing/corrupt/version-mismatched file is
     /// not an error — it just starts empty and the next save rewrites it.
     pub fn for_page(path: PathBuf) -> Self {
-        if std::env::var_os("QMD_FAST_NO_CACHE").is_some() {
+        if std::env::var_os("TALIESIN_NO_CACHE").is_some() {
             return Self::disabled();
         }
         let (entries, order) = std::fs::read(&path)

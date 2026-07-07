@@ -11,15 +11,15 @@ carries its own spec, its own manual, its own marketing site, and its own toolin
 all in one tree.
 
 ```
-qmd-fast/
+Taliesin/
 ├─ crates/            the engine, a Cargo workspace
-│  ├─ core/           qmd-fast-core: parse → block model → render   (see Architecture)
-│  └─ server/         qmd-fast (binary): CLI, dev server, Jupyter kernel
+│  ├─ core/           taliesin-core: parse → block model → render   (see Architecture)
+│  └─ server/         Taliesin (binary): CLI, dev server, Jupyter kernel
 ├─ web-client/        browser preview client (vanilla JS, no build step)
 ├─ editor/vscode/     VS Code companion: hosts the preview + bidirectional source sync
 ├─ corpus/            the real .tmd docs that ARE the spec (cargo test renders them all)
 ├─ docs/              this manual, two sibling .tmd books: guide/ + internals/
-├─ site/              the marketing landing site, built by qmd-fast itself
+├─ site/              the marketing landing site, built by Taliesin itself
 ├─ samples/           one standalone document per HTML format, for isolated polish
 ├─ tools/             dev tooling: live-edit-bench (workspace member) + record-demo (npm)
 ├─ notes/             roadmap & process notes (backlog, BEYOND-QUARTO, AUDITS, …)
@@ -35,10 +35,10 @@ The Rust side is a three-member **Cargo workspace** (`Cargo.toml`): `crates/core
 `edition = "2024"`, and centralizes shared dependency versions under
 `[workspace.dependencies]`, so versions never drift between crates.
 
-- **`crates/core`** is `qmd-fast-core`, the library that does all the thinking and
+- **`crates/core`** is `taliesin-core`, the library that does all the thinking and
   touches no network: it parses a `.tmd` (comrak + sourcepos), builds the block
   model, and renders each block to HTML.
-- **`crates/server`** is the `qmd-fast` binary: the CLI, the websocket dev server,
+- **`crates/server`** is the `taliesin` binary: the CLI, the websocket dev server,
   the file watcher, and the warm Jupyter kernel pool. It is the only long-running
   process.
 
@@ -86,17 +86,17 @@ The project documents itself in `.tmd`, dogfooding the tool. `docs/` is **just a
 container** (it has no `_site.yml`); the manual is two *sibling* book projects so
 the page-walker does not swallow a nested book's pages:
 
-- **`docs/guide/`** is the User Guide: how to *use* qmd-fast (`using/` feature
+- **`docs/guide/`** is the User Guide: how to *use* Taliesin (`using/` feature
   showcase + `reference/`).
 - **`docs/internals/`** is this book: how it is *built*.
 
 The marketing site mounts each at `/docs/guide` and `/docs/internals`; cross-book
 links are written as relative `.html`. Preview either directly with
-`qmd-fast preview docs/guide` or `qmd-fast preview docs/internals`.
+`taliesin preview docs/guide` or `taliesin preview docs/internals`.
 
 ## The showcase: `site/` and `samples/`
 
-- **`site/`** is the marketing landing site, **built by qmd-fast itself** from
+- **`site/`** is the marketing landing site, **built by Taliesin itself** from
   nothing but Markdown + YAML with no custom stylesheet, the framework's own
   dogfood test of its defaults.
 - **`samples/`** is one comprehensive, standalone-previewable document per HTML
@@ -160,22 +160,22 @@ downloaded VS Code used by the companion's headless tests).
 
 ## Environment variables
 
-The runtime knobs all share a `QMD_FAST_` prefix and mirror a CLI flag where one
+The runtime knobs all share a `TALIESIN_` prefix and mirror a CLI flag where one
 exists:
 
 | Variable | Effect |
 |---|---|
-| `QMD_FAST_PYTHON` / `QMD_FAST_R` | The interpreter for `{python}` / `{r}` cells (defaults: `python3`, `R`). |
-| `QMD_FAST_CELL_TIMEOUT` | Per-cell timeout in seconds (default `120`; `0` disables). |
-| `QMD_FAST_NO_CACHE` | Ignore and skip the `_freeze/` execution cache. |
-| `QMD_FAST_NO_EXEC` (`--no-exec`) | Render code cells as source instead of running them; `--host` turns this on automatically. |
-| `QMD_FAST_HOST` (`--host`) | Expose the preview on the LAN behind a per-session token. |
-| `QMD_FAST_OPEN` (`--open`) | Open the browser when the preview starts. |
-| `QMD_FAST_NO_CLEAR` | Keep the dev-server banner from clearing the terminal. |
+| `TALIESIN_PYTHON` / `TALIESIN_R` | The interpreter for `{python}` / `{r}` cells (defaults: `python3`, `R`). |
+| `TALIESIN_CELL_TIMEOUT` | Per-cell timeout in seconds (default `120`; `0` disables). |
+| `TALIESIN_NO_CACHE` | Ignore and skip the `_freeze/` execution cache. |
+| `TALIESIN_NO_EXEC` (`--no-exec`) | Render code cells as source instead of running them; `--host` turns this on automatically. |
+| `TALIESIN_HOST` (`--host`) | Expose the preview on the LAN behind a per-session token. |
+| `TALIESIN_OPEN` (`--open`) | Open the browser when the preview starts. |
+| `TALIESIN_NO_CLEAR` | Keep the dev-server banner from clearing the terminal. |
 
-A few more are for build and test time rather than authoring: `QMD_FAST_GIT_SHA`
-(set by the server build script for the colophon), `QMD_FAST_BIN` (points the VS
-Code end-to-end tests at the built binary), and `QMD_FAST_BLESS` (regenerates the
+A few more are for build and test time rather than authoring: `TALIESIN_GIT_SHA`
+(set by the server build script for the colophon), `TALIESIN_BIN` (points the VS
+Code end-to-end tests at the built binary), and `TALIESIN_BLESS` (regenerates the
 committed JSON Schemas when `schema.rs` detects drift).
 
 ## Where the tests live
@@ -192,8 +192,8 @@ corpus must render and satisfy the invariants); the rest lock down one seam each
 | `config.rs` / `search.rs` / `extensions.rs` | The `_site.yml` schema, the search index, and `_extensions/` resolution. |
 | `nested_validation.rs`, `cell_option_validation.rs`, `callout_kind_validation.rs`, `located_warnings.rs` | The validators and their click-to-source warnings (see [Validation & schemas](validation.tmd)). |
 | `stale_docs.rs` | Guards that deleted-machinery phrases never return to the docs. |
-| `crates/server/tests/` | The CLI surface: `--version`, `qmd-fast schema`, the dead-`{{< embed >}}` warning. |
+| `crates/server/tests/` | The CLI surface: `--version`, `taliesin schema`, the dead-`{{< embed >}}` warning. |
 
 With the lay of the land in hand, [Architecture](architecture.tmd) goes from here
-into the engine's internals, and [Extending qmd-fast](extending.tmd) covers the
+into the engine's internals, and [Extending Taliesin](extending.tmd) covers the
 conventions and the day-to-day dev loop.

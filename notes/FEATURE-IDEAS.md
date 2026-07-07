@@ -1,4 +1,4 @@
-# qmd-fast: feature ideation & product audit
+# Taliesin: feature ideation & product audit
 
 > A research-backed pool of feature ideas and product critiques that **feeds**
 > `BEYOND-QUARTO.md` (the committed roadmap). This file is the upstream brainstorm;
@@ -6,7 +6,7 @@
 > commitment. It graduates to the roadmap only when it earns a corpus pin doc.
 >
 > **Session 1: 2026-06-25.** Method: deep research across five tool lineages (5 parallel
-> research agents), each grounded in qmd-fast's actual capabilities + invariants, then
+> research agents), each grounded in Taliesin's actual capabilities + invariants, then
 > synthesized. Lineages: (1) web-native doc/notebook tools, (2) dev servers & live-reload,
 > (3) word processors & PKM/wiki, (4) PDF viewers / e-readers / read-later apps,
 > (5) typography, reading science & accessibility. Interactive/explorable and
@@ -22,7 +22,7 @@
 
 ## The headline finding (read this first)
 
-**qmd-fast's roadmap is overwhelmingly author-side and dev-loop-side; the READER's
+**Taliesin's roadmap is overwhelmingly author-side and dev-loop-side; the READER's
 experience of the built output is the biggest under-invested, highest-leverage, most
 on-brand opportunity.** Validation, live-edit, the editor companion, the schema, the
 benchmark, the craft passes, all aimed at the person writing. Yet the artifact is *read*
@@ -32,7 +32,7 @@ lightbox. That is thinner than a 2010 e-reader.
 
 Two structural facts make the reader-side the right bet, not just an available one:
 
-1. **qmd-fast holds a unique substrate no static-site generator has: a stable
+1. **Taliesin holds a unique substrate no static-site generator has: a stable
    content-hash `data-block-id` on every block, a total `data-sourcepos`, and a full
    site-wide numbering / cross-ref / search model.** Every reader feature that other
    tools fake with brittle fuzzy-text anchoring (Hypothesis, Readwise) becomes *exact and
@@ -45,7 +45,7 @@ Two structural facts make the reader-side the right bet, not just an available o
    compiler cannot reach either** (a live doc inspector, provenance dots, predictive
    co-edit, hover-cards across a whole site). So the same architecture pays off twice.
 
-The strategic re-framing: qmd-fast is positioned as "a faster Quarto." Its *defensible*
+The strategic re-framing: Taliesin is positioned as "a faster Quarto." Its *defensible*
 identity is **"a document you read better than a PDF and write faster than a notebook,
 that is also one offline HTML file."** The reader-experience cluster is what turns the
 existing moat into something a reader feels, not just a benchmark the author cites.
@@ -94,7 +94,7 @@ sometimes offline, sometimes with assistive tech (screen reader on a math-heavy 
   math is invisible to screen readers (KaTeX emits visual spans only); no read-aloud.
 
 ### Persona C, the Deck Audience (secondary)
-Someone watching a presentation built as a qmd-fast deck, wanting to follow on their phone,
+Someone watching a presentation built as a Taliesin deck, wanting to follow on their phone,
 get the slides afterward, and (if hearing-impaired) read along.
 
 - **Needs/pain:** follow-along on a personal device; captions/speaker-notes after the talk;
@@ -228,7 +228,7 @@ as *read-only* preview/build affordances, never as preview-pane edits.
 26. **Structure panel / outline** — a read-only preview sidebar: heading tree with nesting,
     per-section word count, a badge for "has unresolved xref / has TODO"; click a node →
     scroll preview (+ move the editor cursor via the companion's cursor-sync). — the missing
-    "shape of the whole doc," the #1 word-processor/PKM staple qmd-fast lacks. — **L** —
+    "shape of the whole doc," the #1 word-processor/PKM staple Taliesin lacks. — **L** —
     reader/editor — fits. Pin: `corpus/layout/structure.qmd`.
 27. **"Referenced by" backlinks** — under each `{#sec-}`/`{#fig-}`/`{#eq-}` anchor, emit a
     read-only "Referenced by: §2.1, Fig 3" from the existing project xref scan (it already
@@ -261,7 +261,7 @@ as *read-only* preview/build affordances, never as preview-pane edits.
     preview-diff the author accepts. — the project-wide rename plain find/replace can't do
     safely. — **M** — editor-command — fits. *(roadmap: companion Phase 2.)*
 33. **Companion: outline tree + snippets + focus/typewriter mode** — a `DocumentSymbol`
-    outline (jump to heading), shipped snippets for qmd-fast constructs (callout, figure,
+    outline (jump to heading), shipped snippets for Taliesin constructs (callout, figure,
     tabset, include, cite), and an iA-Writer focus mode (dim non-current lines, center the
     caret). — editor-side authoring muscle-memory. — **S** each — editor-command — fits.
 34. **Word-count & reading-time HUD with goals** — promote the counts into the built page
@@ -288,7 +288,7 @@ as *read-only* preview/build affordances, never as preview-pane edits.
     heading-skips (extends the a11y audit) + payload + perf, each located. — brings the loved
     coverage/Lighthouse/link-check trio into the live loop where it's actually run. — **M/L**
     (ship link/asset existence first) — diagnostics — fits.
-39. **`qmd-fast check <file|dir>`** — ✅ SHIPPED 2026-06-26 (v1). A static, kernel-free CLI
+39. **`taliesin check <file|dir>`** — ✅ SHIPPED 2026-06-26 (v1). A static, kernel-free CLI
     gate that renders in memory and emits every located diagnostic from the warning channel
     (schema/front-matter/`_site.yml`/cell-option/container validation with did-you-mean, broken
     `@xref`, unknown shortcodes, missing bibliography, opt-in prose-lint) as `path:line: message`
@@ -405,7 +405,7 @@ the single most delightful low-risk upgrade to *reading*.
 51. **Hover cross-reference cards** — hovering `@fig-`/`@sec-`/`@eq-`/`@tbl-`/`[@cite]` (and
     footnotes) pops a card rendering the *target block's* HTML (figure thumbnail, equation,
     bib entry, section + first lines), keyed by `data-block-id`. — eliminates
-    jump-and-lose-place, the single most-loved MyST feature; reuses data qmd-fast already
+    jump-and-lose-place, the single most-loved MyST feature; reuses data Taliesin already
     computes. — **M** — reader — fits.
 52. **Cross-page hover references (site/book-wide)** — extend #51 across pages from a
     site-wide label→block index built at render. — MyST's cross-project transclusion-on-hover,
@@ -413,7 +413,7 @@ the single most delightful low-risk upgrade to *reading*.
     reader — needs-care (watch build cost; reuse `xref.rs`).
 53. **Anchor-on-hover + copy-deep-link for every heading/figure/equation/callout** —
     hovering reveals a `#`; click copies a canonical deep link (anchor or `#:~:text=`). —
-    Docusaurus/Stripe table-stakes qmd-fast lacks; pairs with hover-cards. — **S** — reader/
+    Docusaurus/Stripe table-stakes Taliesin lacks; pairs with hover-cards. — **S** — reader/
     CSS — fits.
 54. **Definition popovers / glossary** — `[term]{.gloss}` or a `glossary:` block; uses show a
     hover card with the definition; "go to definition" in Cmd-K. — readers of dense prose stop
@@ -424,7 +424,7 @@ the single most delightful low-risk upgrade to *reading*.
 56. **"Edit in editor" on the served site** — hovering any block on a *served* site shows a
     subtle pencil; click opens the source at that line via the `qmd-goto` bridge (works under
     the companion; degrades to copy-path). — turns Docusaurus's one-way "Edit this page" into
-    qmd-fast's two-way click-to-source as a first-class affordance. — **S** — reader/build —
+    Taliesin's two-way click-to-source as a first-class affordance. — **S** — reader/build —
     fits (navigates, never writes).
 
 ### Category 7 — Print/paged track substance, and output-as-product
@@ -515,19 +515,19 @@ not *adding* wrong.
 
 ## Moonshots (reinvent writing & reading)
 
-1. **"My Copy" — a durable, portable reader layer over any qmd-fast doc.** Because every block
-   carries a content-hash id, qmd-fast can ship what Hypothesis/Readwise only approximate with
+1. **"My Copy" — a durable, portable reader layer over any Taliesin doc.** Because every block
+   carries a content-hash id, Taliesin can ship what Hypothesis/Readwise only approximate with
    brittle anchoring: a first-class, block-anchored personal layer (highlights, notes,
    bookmarks, reading position, fold state, per-section read-state) that is *exact*, survives
    re-renders, gracefully marks only changed blocks as "moved," and exports/imports as one
    portable file with **zero backend**. The doc stays read-only and authoritative; the reader
-   *owns a reading of it* that travels by file, not server. Reframes a qmd-fast book from "a web
+   *owns a reading of it* that travels by file, not server. Reframes a Taliesin book from "a web
    page you read" into "a document you own a reading of" — inside HTML-only, single-surface, and
    no-collab the whole way.
 2. **The transcluding hypertext document.** Combine hover cross-reference cards (#51),
    cross-page transclusion (#52), provenance dots (#48), and definition popovers (#54) into a
    reading mode where *every* labeled object (figure, theorem, citation, term, executed output,
-   even a block in another chapter) is a live, previewable, source-mapped node. qmd-fast already
+   even a block in another chapter) is a live, previewable, source-mapped node. Taliesin already
    holds the labeled block model + numbering + resolved refs + freeze provenance for the whole
    site, so the document stops being a linear page and becomes a navigable knowledge graph you
    explore without leaving your place. MyST's hover dream + Distill's interactivity +
@@ -538,7 +538,7 @@ not *adding* wrong.
    block it pauses and line-steps (reusing the `.qhl-ln` contract from the walkthrough + deck);
    equations announce "Equation 3" and linger; figures announce their caption. A technical
    document becomes something between an audiobook and a screencast, generated entirely
-   client-side from structure qmd-fast already emits, fully offline.
+   client-side from structure Taliesin already emits, fully offline.
 4. **A genuinely typeset book from the same HTML.** Push the paged track (#57) to its
    conclusion: running chapter heads, real folios, auto index + list-of-figures with true page
    numbers, "see Figure 3 on p. 12," optical hyphenation/justification, gutter sidenotes. Because
@@ -581,7 +581,7 @@ thesis.
 
 Session 2026-06-25. Five parallel deep-research agents (web-native doc/notebook tools; dev
 servers & live-reload; word processors & PKM/wiki; PDF viewers / e-readers / read-later;
-typography, reading science & accessibility), each grounded in qmd-fast's capabilities +
+typography, reading science & accessibility), each grounded in Taliesin's capabilities +
 invariants, then synthesized with the author's framing (think about the reader; pain points with
 the tool *and* its output; go beyond traditional tools to reinvent writing/reading; size doesn't
 matter, only whether it strengthens the tool). One sixth agent (a duplicate reader-side run) hit a

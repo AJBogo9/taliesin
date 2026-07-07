@@ -4,7 +4,7 @@ title: "Shortcode reference"
 
 *Reference: [CLI](cli.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · Shortcodes · [Troubleshooting](troubleshooting.tmd)*
 
-A shortcode is a `{{< name args >}}` tag in the body of a document. qmd-fast
+A shortcode is a `{{< name args >}}` tag in the body of a document. Taliesin
 expands the built-in shortcodes (and any an extension declares) in a single pass
 **before** the Markdown is parsed, so the result is just HTML or Markdown by the
 time comrak sees it. Two rules keep that pass from surprising you:
@@ -16,7 +16,7 @@ time comrak sees it. Two rules keep that pass from surprising you:
 - **Unknown is loud, not silent.** A `{{< … >}}` whose name no built-in and no
   active extension declares is left in the page verbatim **and** reported as a
   located diagnostic, so a typo shows up in the dev menu, the
-  build log, and `qmd-fast check` rather than shipping as literal text. The one
+  build log, and `taliesin check` rather than shipping as literal text. The one
   exception is `{{< include >}}`, which an earlier pass resolves and reports on its
   own (see below), so it is never double-warned.
 
@@ -129,7 +129,7 @@ HTML. It renders as a `<figure class="qmd-video">`.
 | `caption="…"` | no | (none) | A `<figcaption>` under the clip (quote it if it has spaces). |
 
 A `{{< video >}}` (and any raw `<video src>`) whose local file is missing is flagged
-by `qmd-fast check` as a broken local asset, so a renamed clip does not slip
+by `taliesin check` as a broken local asset, so a renamed clip does not slip
 through.
 
 ## `{{< input >}}`: a reactive control

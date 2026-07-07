@@ -1,6 +1,6 @@
 # Corpus
 
-Real documents that serve as the specification for `qmd-fast`. "Done" means
+Real documents that serve as the specification for `taliesin`. "Done" means
 these render correctly (judged by inspection). Each doc was copied from the
 author's own projects; provenance is below.
 
@@ -31,7 +31,7 @@ author's own projects; provenance is below.
 | `refs/theorems-interactive.tmd` | Web-native theorem affordances | hover-preview of a `@thm-` ref (link-preview card), a collapsible `::: {.proof collapse="true"}` (native `<details>`), and a deep-link copy-anchor on the theorem box | (purpose-built) |
 | `explorable/scrolly.tmd` | Scrollytelling | `::: {.scrolly}` sticky stage + `.step` scenes; the active step drives a reactive value a `{js}` cell reads (`//| input:`) | (purpose-built) |
 | `reader/` | Reader experience | read-only reader enhancers: display prefs (theme/sepia/size/width/spacing), reading progress + resume, hover cross-ref cards, anchor copy-links, focus mode, and a read-state right-rail TOC | (purpose-built) |
-| `diagnostics/` | Validator coverage | docs that deliberately trip qmd-fast's schema validators (`typos.tmd`) + the opt-in prose linter (`prose.tmd`: doubled/weasel/banned, markdown-aware) + the `check`-superset static lints (`check-superset.tmd`: duplicate `{#id}`, broken in-page anchor, missing image, citation with no `bibliography:`) | (purpose-built) |
+| `diagnostics/` | Validator coverage | docs that deliberately trip Taliesin's schema validators (`typos.tmd`) + the opt-in prose linter (`prose.tmd`: doubled/weasel/banned, markdown-aware) + the `check`-superset static lints (`check-superset.tmd`: duplicate `{#id}`, broken in-page anchor, missing image, citation with no `bibliography:`) | (purpose-built) |
 | `bare-draft.tmd` | Bare build (`--bare`) | prose + inline math + a server-highlighted code block + an image + a `{js}` cell + a Mermaid block; pins the `build --bare` contract (zero `<script>`/zero CDN, CSS-only theme, math kept, `{js}` dropped, Mermaid as source) and the Phase-1 enhancer gating | (purpose-built) |
 
 `tech-blog/` is the multi-page spec (the destination in `todo.md` §4). It is the
@@ -46,7 +46,7 @@ homepage's `about:` block renders a profile header (see `todo.md` §4).
 `{{< include ../../_includes/three-scene.tmd >}}`; the `posts/` + `_includes/`
 layout is mirrored from the source project so that path resolves verbatim.
 
-`diagnostics/` holds docs that deliberately trip qmd-fast's schema validators
+`diagnostics/` holds docs that deliberately trip Taliesin's schema validators
 (`typos.tmd`: a misspelled key in each surface, front-matter top-level + nested,
 callout kind, cell option). It is pinned by `crates/core/tests/nested_validation.rs`,
 which asserts the exact click-to-source warnings, and is exempted from the corpus
@@ -64,7 +64,7 @@ project's regression tests, so the corpus must stay.
 Structural comparison against **Quarto** (rendering the same doc with both and
 diffing) lives in the separate `qmd-fast-testbed` repo, not here.
 
-`crates/core/tests/tech_blog.rs` tracks progress toward using qmd-fast as the
+`crates/core/tests/tech_blog.rs` tracks progress toward using Taliesin as the
 edit-preview loop for the author's tech-blog: passing tests lock in the per-post
 features (math, callouts, citations, raw-`{=html}` passthrough, numbered/labelled
 equations + `@eq-` refs, collapsible callouts, `code-fold`, and live `{js}`

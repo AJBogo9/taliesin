@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-// Record a qmd-fast *live preview* demo to an optimized GIF + MP4.
+// Record a taliesin *live preview* demo to an optimized GIF + MP4.
 //
 //   node record.mjs [demos/<spec>.mjs]      (default: demos/sample.mjs)
 //
-// It starts `qmd-fast preview <doc>`, drives a real Chrome through the demo's
+// It starts `taliesin preview <doc>`, drives a real Chrome through the demo's
 // steps (Playwright `recordVideo` → a smooth webm), then ffmpeg-encodes an MP4
 // (H.264) and a palette-optimized GIF. Uses the system Google Chrome via
 // playwright-core's `channel: 'chrome'`, so there is no browser download.
 //
-// Env: QMD_FAST=<binary> (default ./target/release|debug/qmd-fast, else `qmd-fast`).
+// Env: TALIESIN=<binary> (default ./target/release|debug/taliesin, else `taliesin`).
 // A demo that edits its doc is restored afterward, so recording is non-destructive.
 
 import { chromium } from "playwright-core";
@@ -34,11 +34,11 @@ const url = `http://127.0.0.1:${port}/${spec.path || ""}`;
 const docPath = resolve(here, spec.doc);
 
 function qmdFastBinary() {
-  if (process.env.QMD_FAST) return process.env.QMD_FAST;
-  for (const p of ["target/release/qmd-fast", "target/debug/qmd-fast"]) {
+  if (process.env.TALIESIN) return process.env.TALIESIN;
+  for (const p of ["target/release/taliesin", "target/debug/taliesin"]) {
     if (existsSync(join(repoRoot, p))) return join(repoRoot, p);
   }
-  return "qmd-fast";
+  return "taliesin";
 }
 
 async function waitForServer(u, ms = 25000) {
@@ -98,7 +98,7 @@ try {
     colorScheme: spec.theme === "light" ? "light" : "dark",
     recordVideo: { dir: outDir, size: viewport },
   });
-  // qmd-fast pages ignore the OS preference (they default to dark), so drive the
+  // taliesin pages ignore the OS preference (they default to dark), so drive the
   // theme explicitly via the saved choice the theme script reads on first paint.
   await ctx.addInitScript((t) => {
     try { localStorage.setItem("qmd-theme", t); } catch (e) {}

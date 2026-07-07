@@ -217,7 +217,7 @@ handbook/
 ```
 
 The presence of `chapters:` in `_site.yml` is what makes the project a book: no
-`type:` key needed. qmd-fast numbers the chapters, builds the left sidebar, wires
+`type:` key needed. Taliesin numbers the chapters, builds the left sidebar, wires
 prev/next navigation, and resolves cross-references across chapters. A chapter entry
 is a bare filename, a `{ part:, chapters: }` group header, or a `{ file:, text: }`
 mapping whose `text:` overrides the sidebar label:
@@ -319,10 +319,10 @@ nav:
 ```
 
 ::: {.callout-important}
-`{{< embed >}}` only builds its target during a **site** build (`qmd-fast build
-<dir>`). A single-doc build (`qmd-fast build index.tmd`) does *not* build the embedded
+`{{< embed >}}` only builds its target during a **site** build (`taliesin build
+<dir>`). A single-doc build (`taliesin build index.tmd`) does *not* build the embedded
 deck and will warn. To present the deck on its own instead, point the command
-straight at it: `qmd-fast preview slides.tmd` or `qmd-fast build slides.tmd`. See
+straight at it: `taliesin preview slides.tmd` or `taliesin build slides.tmd`. See
 [Slides, books & sites](formats.tmd) for the deck engine's features (speaker view,
 fragments, PDF export).
 :::
@@ -340,7 +340,7 @@ post/
 ```
 
 This is the simplest project of all: a lone document. Preview it with
-`qmd-fast preview article.tmd` and build it with `qmd-fast build article.tmd` (which
+`taliesin preview article.tmd` and build it with `taliesin build article.tmd` (which
 produces one self-contained `.html`). The front matter pulls in the bibliography and
 sets the metadata:
 

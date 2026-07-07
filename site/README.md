@@ -1,6 +1,6 @@
 # Marketing site
 
-The qmd-fast landing site, **built by qmd-fast itself** with **nothing but Markdown
+The Taliesin landing site, **built by Taliesin itself** with **nothing but Markdown
 + YAML — no custom CSS**. It's the framework's own dogfood test: if this looks good
 on the defaults, the framework is doing its job.
 
@@ -9,13 +9,13 @@ showcase deck, embedded via `{{< embed >}}` and kept out of nav). Config is
 `_site.yml` (native flat schema). There is intentionally no stylesheet.
 
 > Placeholders to update before going live: `url:` and the GitHub links in
-> `_site.yml` (currently `https://qmd-fast.dev` and `github.com/AJBogo9/qmd-fast`).
+> `_site.yml` (currently `https://taliesin.dev` and `github.com/AJBogo9/taliesin`).
 
 ## How it's authored (all framework features)
 
 - **Hero** — the `hero:` front-matter block (`eyebrow` / `headline` / `lead` /
   `actions`) renders the top of each page. No HTML.
-- **Sections** — plain `##` headings + prose, the way any qmd-fast doc reads.
+- **Sections** — plain `##` headings + prose, the way any Taliesin doc reads.
 - **Card grids** — `::: {.feature-grid}` with `::: {.feature}` cards (fenced divs).
 - **Screencasts** — `{{< video light.mp4 dark=dark.mp4 caption="…" >}}` (built-in
   shortcode; the clip matching the page theme plays, swapping live on toggle).
@@ -23,12 +23,12 @@ showcase deck, embedded via `{{< embed >}}` and kept out of nav). Config is
 - **Buttons** — Pandoc attributes: `[Text](href){.btn .btn-primary .btn-lg}`.
 - **Closing CTA** — a `::: {.hero}` fenced div.
 
-The theme (serif body, sans headings, light/dark toggle) is the qmd-fast default.
+The theme (serif body, sans headings, light/dark toggle) is the Taliesin default.
 
 ## Preview
 
 ```sh
-qmd-fast preview site
+taliesin preview site
 ```
 
 The `Guide` and `Internals` nav links resolve live: `_site.yml`'s `mounts:` serves
@@ -38,9 +38,9 @@ request, so content edits show on refresh).
 ## Build (single-tree: site at root, two docs books under /docs)
 
 ```sh
-qmd-fast build site            --out _site
-qmd-fast build docs/guide      --out _site/docs/guide
-qmd-fast build docs/internals  --out _site/docs/internals
+taliesin build site            --out _site
+taliesin build docs/guide      --out _site/docs/guide
+taliesin build docs/internals  --out _site/docs/internals
 ```
 
 Deploy `_site/` to any static host with directory indexing.
@@ -55,7 +55,7 @@ and suffixes the output, so one spec records both variants:
 cd tools/record-demo
 for clip in live-edit live-code; do
   for theme in light dark; do
-    QMD_FAST_PYTHON=<py-with-numpy+matplotlib> node record.mjs demos/$clip.mjs $theme
+    TALIESIN_PYTHON=<py-with-numpy+matplotlib> node record.mjs demos/$clip.mjs $theme
   done
 done
 cp out/live-edit-light.mp4 out/live-edit-dark.mp4 \

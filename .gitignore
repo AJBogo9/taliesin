@@ -8,7 +8,7 @@ node_modules/
 dist/
 out/
 
-# Built multi-page sites (qmd-fast build <dir> default output)
+# Built multi-page sites (taliesin build <dir> default output)
 _site/
 _book/
 
@@ -16,7 +16,7 @@ _book/
 # hash); regenerated on demand, like the build output above.
 _freeze/
 
-# Single-file `qmd-fast build <file>` output (and the extension resources it copies)
+# Single-file `taliesin build <file>` output (and the extension resources it copies)
 # that lands beside its source — the `_site/`/`_book/` rules above only cover the
 # directory build. These are regenerable artifacts, not source; the `.qmd` and the
 # tracked `_extensions/` copies are the sources of truth.

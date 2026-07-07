@@ -87,7 +87,7 @@ Each clears once you decide. Design calls carry a recommended default.
   error backlog — its own pass; client.js is already gated).
 - **Security:** injected Mermaid `<script>` SRI + `crossorigin` — deferred (only the live Preview
   lazy-loads mermaid from the CDN; a static build inlines the vendored copy). Needs a hash pinned to the
-  CDN build, and both `integrity` + `crossorigin` would break a non-CORS `QMD_FAST_MERMAID_URL` override.
+  CDN build, and both `integrity` + `crossorigin` would break a non-CORS `TALIESIN_MERMAID_URL` override.
 - **Deck engine (P2, deferred):** drop `fitSlide` from the resize path (needs a lazy fit-on-show
   refactor first); mobile pinch/pan + touch gestures (hard to verify without a device); thread
   `footer:`/`logo:` through both deck-page builders (no corpus deck needs one yet).
@@ -107,7 +107,7 @@ Each clears once you decide. Design calls carry a recommended default.
   fires (`kernel.rs`).
 
 ### Tier 3 — deferred / demand-driven
-- **Companion:** manifest rebrand (`qmd-fast-companion` → Taliesin identity + `qmdFast.*` ids); Phase 2
+- **Companion:** manifest rebrand (`Taliesin-companion` → Taliesin identity + `qmdFast.*` ids); Phase 2
   editor commands (`.tmd`-buffer text transforms only, never preview gestures); `editor.wordWrap`
   default for `[taliesin]` (respect the global setting until prose overflow is a real complaint, then
   ship `"on"`); grammar polish (YAML-type the `#|`/`//|`/`%%|` option value; recommend the cell-language

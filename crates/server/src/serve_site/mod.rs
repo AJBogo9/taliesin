@@ -193,7 +193,7 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
     if let Some(net) = &network {
         print_qr(net);
     }
-    if expose && std::env::var_os("QMD_FAST_NO_EXEC").is_none() {
+    if expose && std::env::var_os("TALIESIN_NO_EXEC").is_none() {
         crate::log::warn(
             "code cells run on this machine; only serve documents you trust over --host \
              (pass --no-exec to preview as source)",
@@ -733,7 +733,7 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
         // Boot one process-wide warm pool of Python kernels so the first edit on any
         // page is near-instant. Owned by this builder task: it lives for the server's
         // lifetime and is dropped when the build channel closes (server shutdown),
-        // which kills the forkserver daemon + idle kernels. If `QMD_FAST_PYTHON` is
+        // which kills the forkserver daemon + idle kernels. If `TALIESIN_PYTHON` is
         // unset or the forkserver can't boot, `WarmPool::new` returns an inert pool
         // and every page cold-starts — no regression.
         let warm_pool = crate::warm_pool::warm_pool_for_preview().await;

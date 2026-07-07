@@ -1,4 +1,4 @@
-# qmd-fast web preview client
+# Taliesin web preview client
 
 The browser preview client, and the only client. A vanilla-JS module that speaks
 the server's websocket protocol: applies `block_update` / `block_insert` /

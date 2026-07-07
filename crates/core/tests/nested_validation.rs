@@ -1,4 +1,4 @@
-//! Pins qmd-fast's schema validators to corpus/diagnostics/typos.tmd: rendering it
+//! Pins taliesin's schema validators to corpus/diagnostics/typos.tmd: rendering it
 //! must produce exactly the expected click-to-source "unknown key" warnings, one per
 //! deliberately-misspelled key (front-matter top-level + nested, callout kind, cell
 //! option). This is the corpus pin for the nested-schema-validation epic.

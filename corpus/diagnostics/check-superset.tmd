@@ -2,7 +2,7 @@
 title: "check-superset diagnostics"
 ---
 
-This document deliberately trips every static `qmd-fast check` superset validator. It
+This document deliberately trips every static `taliesin check` superset validator. It
 lives in `corpus/diagnostics/`, which is exempt from the corpus clean-render guards.
 
 ## Heading {#dup}

@@ -2,7 +2,7 @@
 title: "Theming"
 ---
 
-A theme in qmd-fast is not a stylesheet you wrestle with, it is a small set of CSS
+A theme in Taliesin is not a stylesheet you wrestle with, it is a small set of CSS
 custom properties (`--qmd-*`). The whole document, the navbar, footer, callouts,
 diagrams, figures, and syntax-highlighted code all read those variables, so
 retuning one value restyles everything at once, and the light/dark toggle is just
@@ -61,7 +61,7 @@ all **fully offline**, the colours baked into the page, no CDN and no client re-
 a diagram cannot be recoloured by CSS alone: it listens for the theme toggle (the
 `qmd:themechange` event) and re-runs from its stashed source under the new theme. And
 the Mermaid library itself is fetched from a CDN by default, so diagrams are offline
-only when `QMD_FAST_MERMAID_URL` points at a local copy.
+only when `TALIESIN_MERMAID_URL` points at a local copy.
 
 ## The variable reference
 

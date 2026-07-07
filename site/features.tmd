@@ -1,11 +1,11 @@
 ---
 title: "Features"
-description: "The live edit loop, everything technical writing needs, live interactive graphics, and offline-first publishing: every feature of the qmd-fast dev server."
+description: "The live edit loop, everything technical writing needs, live interactive graphics, and offline-first publishing: every feature of the taliesin dev server."
 page-layout: full
 hero:
   eyebrow: "Everything the dev server does"
   headline: "Built for the edit loop"
-  lead: "qmd-fast does one thing (author HTML from .tmd) and makes the loop from keystroke to rendered page instant. Here is what that buys you."
+  lead: "Taliesin does one thing (author HTML from .tmd) and makes the loop from keystroke to rendered page instant. Here is what that buys you."
   actions:
     - { text: "See the document types", href: "formats.tmd", primary: true }
     - { text: "Read the docs", href: "docs/guide/" }

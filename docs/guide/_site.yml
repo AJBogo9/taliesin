@@ -1,10 +1,10 @@
-title: "qmd-fast User Guide"
+title: "Taliesin User Guide"
 author: "Andreas Bogossian"
 toc: true
 
 chapters:
   - index.tmd
-  - part: "Using qmd-fast"
+  - part: "Using Taliesin"
     chapters:
       - using/getting-started.tmd
       - using/preview.tmd

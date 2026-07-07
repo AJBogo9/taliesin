@@ -29,7 +29,7 @@ mod tests {
         // outputs; this guards the primitive itself.) Determinism + input-sensitivity
         // round out the contract the block-id == cache-key identity relies on.
         assert_eq!(fnv1a(""), 0xcbf2_9ce4_8422_2325);
-        assert_eq!(fnv1a("qmd-fast"), fnv1a("qmd-fast"));
+        assert_eq!(fnv1a("taliesin"), fnv1a("taliesin"));
         assert_ne!(fnv1a("a"), fnv1a("b"));
     }
 }

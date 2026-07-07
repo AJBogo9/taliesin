@@ -30,14 +30,14 @@ state while you edit the prose around them.
 
 ## Slide decks {#slide-decks}
 
-`format: revealjs` turns the same headings into a deck, on qmd-fast's own engine,
+`format: revealjs` turns the same headings into a deck, on Taliesin's own engine,
 with no reveal.js dependency: fragments and incremental lists, a presenter view
 with notes and a timer, one-slide-per-page PDF export, per-slide backgrounds,
 auto-animate, magic-move code, and step-through line highlighting. And because the
 exec pipeline is format-agnostic, a `{python}` cell **runs on the slide** and
 re-runs as you edit it.
 
-{{< embed demo.tmd title="The qmd-fast deck engine" >}}
+{{< embed demo.tmd title="The Taliesin deck engine" >}}
 
 The deck above is live: click it, arrow through it, press <kbd>F</kbd> for fullscreen.
 
@@ -48,19 +48,19 @@ references. References like `@fig-` and `@sec-` resolve and number across chapte
 Cmd-K palette searches the whole book, and each chapter is still a normal `.tmd` you
 can preview on its own.
 
-[Read the docs (a qmd-fast book)](docs/guide/){.btn .btn-primary}
+[Read the docs (a Taliesin book)](docs/guide/){.btn .btn-primary}
 
 ## Multi-page websites {#websites}
 
-Point qmd-fast at a directory with a `_site.yml` and you get a whole site: a themed
+Point Taliesin at a directory with a `_site.yml` and you get a whole site: a themed
 navbar and footer, post listings and an `about:` profile header, an RSS feed,
 OpenGraph and Twitter-card metadata, light/dark with a toggle, and Cmd-K search,
 built to a static `_site/` you can host anywhere. Intra-site `.tmd` links are
 rewritten to `.html` automatically.
 
 This site is the example. The page you are reading, its navbar and footer, and the
-dark/light toggle are all a qmd-fast website, and the [docs](docs/guide/) it links to are
-a qmd-fast book, deployed in the same tree under `/docs`.
+dark/light toggle are all a Taliesin website, and the [docs](docs/guide/) it links to are
+a Taliesin book, deployed in the same tree under `/docs`.
 
 ::: {.hero}
 ## Try it on your own writing

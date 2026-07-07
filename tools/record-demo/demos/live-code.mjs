@@ -1,6 +1,6 @@
 // "The part you can't screenshot": edit a {python} cell, the figure re-runs in
 // place against the warm kernel. `node record.mjs demos/live-code.mjs`.
-// Needs a Python kernel with numpy + matplotlib (QMD_FAST_PYTHON).
+// Needs a Python kernel with numpy + matplotlib (TALIESIN_PYTHON).
 export default {
   name: "live-code",
   doc: "demos/live-code.tmd",

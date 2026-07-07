@@ -1,5 +1,5 @@
 // @ts-check
-// qmd-fast preview client.
+// Taliesin preview client.
 //
 // Connects to the dev server's websocket and applies a `full_render` followed
 // by incremental `update`/`insert`/`remove` block ops. Unchanged blocks are
@@ -395,7 +395,7 @@
       (inWebview ? " in the editor" : " in your editor");
 
     // Restart the warm Jupyter kernel: drops the (possibly dead/wedged) kernel and
-    // re-runs every cell against a fresh one. Recovers after fixing QMD_FAST_PYTHON.
+    // re-runs every cell against a fresh one. Recovers after fixing TALIESIN_PYTHON.
     const kernelBtn = document.createElement("button");
     kernelBtn.id = "tali-kernel-ctl";
     kernelBtn.className = "tali-dev-ctl";
@@ -484,7 +484,7 @@
   var warmStartMs = /** @type {number|null} */ (null); // set at first warming-kernel of a build
   var warmTimer = 0; // interval id ticking the warm-up elapsed label
   var buildErrored = false; // latched on `error`; cleared only when a fresh build starts
-  var baseTitle = document.title || "qmd-fast"; // save original title for restore
+  var baseTitle = document.title || "Taliesin"; // save original title for restore
 
   // Canvas-drawn favicon: a coloured dot superimposed on the base favicon SVG.
   // Swapped in while busy/error; the link[rel=icon] href is restored on idle.
@@ -885,7 +885,7 @@
     switch (msg.type) {
       case "full_render": {
         renderOk(); // a fresh render arrived: any prior failure is resolved
-        document.title = msg.title || "qmd-fast";
+        document.title = msg.title || "Taliesin";
         // Skip the re-mount only when the server-rendered body is still current: this
         // is the first message after SSR AND its generation matches what SSR painted.
         // (A missing gen on either side falls back to the old skip-on-SSR behavior.)
