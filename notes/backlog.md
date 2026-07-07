@@ -68,8 +68,9 @@ Each clears once you decide. Design calls carry a recommended default.
 ## Priority queue
 
 ### Tier 1 — decided, build-ready (no blocker)
-- *(empty — the last item, nested-theorem numbering, shipped 2026-07-07.)* Next build-ready work
-  comes from promoting a **Needs-your-input** blocker or pulling a Tier-2 hardening item forward.
+- Build-ready work now lives in the **[Audit 2026-07-07 implementation queue](#audit-2026-07-07-implementation-queue-build-ready)**
+  below (batched + ordered, Batch 1 first). Or promote a **Needs-your-input** blocker, or pull a
+  Tier-2 hardening item forward.
 
 ### Tier 2 — hardening (P3)
 - **Execution-cache leaks** (exec/kernel Do-NOT-touch, careful): (a) ~30 orphaned
@@ -131,6 +132,125 @@ Each clears once you decide. Design calls carry a recommended default.
 - **`serde_yaml` fallback watch-item:** if 0.9 ever breaks against a future serde/edition, swap to
   `serde_yaml_ng` (v0.10), gated on a test that `Error::location().line()` still works. Fix the stale
   `Cargo.toml` comment (it names the unsound `serde_yml`) when touched.
+
+## Audit 2026-07-07 implementation queue (build-ready)
+
+The 2026-07-07 deep audit's build-ready fixes (decided, no blocker), grouped into
+**batches sized as one branch each and listed in recommended order** (Batch 1 first).
+Full per-item detail (repro + fix approach) and the ~80 low-severity long tail live in
+[AUDITS.md](AUDITS.md) 2026-07-07. **CONFIRMED unless marked PLAUSIBLE.**
+
+> **How to work this:** one batch = one branch; brainstorm only if a fork appears; TDD;
+> verify (cargo + browser via chrome-devtools); fast-forward-merge to local main; then
+> delete the landed batch from here. **Do-NOT-touch:** exec/kernel execution semantics +
+> the single-editing-surface invariant. Batch 9 enters the kernel zone: read the zone
+> rules first. Already-tracked items (op-batching, kernel `/tmp` + `in_flight` leaks,
+> boot-diagnostic clobber, `app.pages` LRU, lazy search index, `fitSlide`, R ANSI leak,
+> Mermaid SRI) stay in **Tier 2** above; the audit only sharpened their exact paths in AUDITS.md.
+
+### Batch 1: Offline-build breach for decks (HIGH, start here) [small]
+- Built decks fetch Mermaid from a CDN, breaking the offline contract for one of four formats:
+  thread `OutputMode` into `deck_page_from_doc` (`crates/core/src/render/deck.rs:94-108`); pin
+  with a corpus test asserting no `cdn.jsdelivr.net` in a built deck. *The one high-severity code bug.*
+
+### Batch 2: Docs rename-drift sweep (high user-impact, mechanical, no code risk) [small]
+- Theme-default taught as "settles to dark, never follows OS", the exact inverse of the runtime:
+  rewrite to auto = follow-OS / light-fallback (`docs/guide/using/theming.tmd:27-35`). **HIGH.**
+- `--qmd-*` CSS vars documented but runtime uses `--tali-*` with no alias (every custom-theme recipe
+  no-ops): sweep `--qmd-` to `--tali-` (`theming.tmd:153`). **HIGH.**
+- Schema on-ramp references `qmd-*.schema.json`; tool emits `tali-*.schema.json`: fix filenames
+  (`frontmatter.tmd:261`). **HIGH.**
+- `#qmd-root` documented; runtime id is `#tali-root` (`protocol.tmd:59`).
+- Non-existent `~/.local/bin/Taliesin` launcher claim + wrong casing (`getting-started.tmd:16`).
+- Inverted `image-alt` guidance, code emits it, test-pinned (`frontmatter.tmd:55`).
+- Companion default documented `taliesin`; extension defaults to the dead `qmd-fast` binary
+  (`troubleshooting.tmd:118`).
+- Internals execution chapter documents `qmd-*` output classes the runtime never emits (`execution.tmd`).
+
+### Batch 3: Accessibility [small quick-wins first, then structural]
+- Cmd-K palette selected row + match marks use raw `--tali-accent`, fail WCAG AA every theme:
+  swap to the existing `var(--tali-accent-fill)`/`--tali-on-accent` (`web-client/search.js`). **HIGH, trivial.**
+- Syntax comment token sub-AA in light/sepia/light-deck: darken per theme (`base.css:338`/`:583`, `deck.css:760`). [trivial]
+- `prefers-reduced-motion` bypassed by deck auto-animate/magic-move (`deck.js:389`) + JS smooth-scrolls
+  in the static build (`search.js:553`): one reduced-motion helper. [small]
+- Per-slide non-hex background assumed dark, invisible text on light backgrounds (`deck.js:337`). [small]
+- Overflowing `<pre>`/tables scroll but are not keyboard-scrollable, WCAG 2.1.1 (`base.css`). [small]
+- Lightbox makes `pre.mermaid` a `role=button` leaf hiding it from AT + forces decorative `alt=""`
+  into tab stops (`11-lightbox.js:178`). [small]
+- Chapter drawer / TOC sheet advertise `aria-haspopup="dialog"` with no real modal/trap (`site/chrome.rs`). [small]
+- Cmd-K combobox ARIA mis-wired: role/activedescendant split, unnamed listbox (`search.js:142`). [small]
+
+### Batch 4: Cross-reference numbering (one helper fixes 3-4 bugs) [medium]
+- Register the hierarchical `section_number` when a chapter is present (`render/mod.rs:390`). Collapses:
+  same-page book `@sec-` shows a flat number contradicting its heading; cross-page `@sec-` on a non-book
+  site mislabeled "Chapter N" (`site/xref.rs:215`); hover card drops the number (`site/mod.rs:759`).
+- Heading consumed as a callout title drops its `#id` while its `@sec-` number was registered, so the
+  ref resolves to a missing anchor (`divs.rs:395`).
+- Explicit `{#sec-x}` on a slide heading dropped, dead `@sec-` link (`deck.rs`).
+
+### Batch 5: Silent-failure diagnostics channel (the audit's largest theme; cohesive) [medium]
+Extend the existing located-warning channel (math/front-matter already use it) to:
+- Unterminated `:::` fence dropped, content unwrapped (`divs.rs:143`).
+- Quoted figure `width=`/`height=` corrupted by smart-punctuation, **live** at
+  `bayesian-website/subsections/_data-modeling.tmd:4` (`figure.rs:55`).
+- YAML-1.2 boolean coercion: `draft: yes` silently publishes the draft; `toc: yes`, `execute:{echo: no}`
+  mis-read (`site/frontmatter.rs:56`).
+- Single-doc `build` never runs `yaml_error()`, so malformed front-matter builds clean and passes `--strict`
+  (`frontmatter.rs:107`).
+- `_site.yml` nested nav/footer/mount typos degrade silently + top-level warnings ship unlocated (`config/mod.rs:206`).
+- Block-sequence `bibliography:` silently dropped (`fm_extract.rs`).
+- (Also folds in low-tail siblings on the same channel: non-`.bib` bibliography, unresolved fence language, non-HTML `format:`.)
+
+### Batch 6: Citations / BibTeX + output-escaping [small]
+- `@inproceedings`/`@conference` silently drop `booktitle` + `pages`, the commonest CS/ML type (`cite/format.rs:22`).
+- Parenthesis-delimited BibTeX entries cascade-drop every following reference (`cite/parse.rs:32`).
+- TOC entries + tabset labels double-escape `&`/`<`/`>` (`html_escape` over already-safe `strip_tags`)
+  (`render/mod.rs:1608`, `divs.rs:528`).
+
+### Batch 7: Site / build correctness [small to medium]
+- Absolute `image:` URL mangled into a broken relative path, breaks og:image + listing card: guard with
+  `is_external_or_special` (`site/discovery.rs:26`).
+- `_site` build never sweeps stale files, so renamed/deleted pages persist across rebuilds (`build.rs`). *(recovered CLI cluster)*
+- Embed warnings never increment `problems`, so `--strict` + exit code under-count (`build.rs:330`). *(recovered CLI cluster)*
+- Deck front-matter title/subtitle edits never hot-update (title slide lives outside `doc.blocks`) (`deck.rs:206-225`).
+
+### Batch 8: Dev-server / watcher / incremental robustness [mixed; one large] 
+- File watcher recursively watches the whole tree (incl. `node_modules`/`.git`); inotify exhaustion
+  silently kills hot reload (`serve/mod.rs:877`).
+- Site/book Cmd-K index freezes after a content edit in preview (single-doc search stays live) (`serve_site/mod.rs:1035`).
+- ws reconnect wholesale-remounts + destroys live block state on a byte-identical doc (any sleep/wifi blip) (`client.js`).
+- Two dev servers duplicate the diff-then-broadcast contract (drift risk to the incremental invariant):
+  hoist into one shared helper (`serve/mod.rs:992`). **[large: schedule as its own branch.]**
+
+### Batch 9: Freeze / kernel honesty + resource hygiene (Do-NOT-touch zone: careful) [small]
+Read the exec/kernel zone rules first; these are diagnostics/docs/leak fixes, not execution-semantics changes.
+- Mid-run kernel death poisons the warm-prefix `ran`, wedging the preview into replaying KERNEL_DIED
+  placeholders (`exec.rs:610`).
+- Freeze key has no package fingerprint; scope the "stale hit impossible / nothing to clear" doc wording,
+  a same-interpreter library upgrade is a real stale-hit path, no knob (`freeze.rs:11`).
+- `adopt_forked` leaks the `/tmp` dir + forked kernel on a handshake/bind timeout (`kernel.rs`).
+
+### Cut (philosophy gate: adopt) [trivial]
+- `?qmd=embed` deck mode is dead unreachable code: drop the ternary branch + stale comments (`deck.js:1607`).
+  *(Gate KEPT two proposed cuts: `data-level` is a live test anchor; the two `.tali-input` CSS blocks style
+  two different features, decide before merging.)*
+
+### Low-severity long tail (~80 items) → [AUDITS.md](AUDITS.md) 2026-07-07
+Pick up opportunistically alongside whichever batch touches the same file. Includes: include symlink-loop
+SIGABRT + lexical-only `safe_join` (`includes.rs`); diff-LIS unique-id `debug_assert!`; dead
+`ts`/`typescript`/`toml` highlight aliases; `percent_decode` slice-panic on a non-ASCII path; `app.pages`
+unbounded growth; `click_block` terminal-escape injection; qmd-js initial pass paints in DOM order not topo
+order; many citation-render edge cases; and the architecture / waste / stale-but-working-docs tail.
+
+### Owner-gated: do NOT build without your ruling
+- **Add (gate: adopt, but confirm):** shareable/deep-linkable `{{< input >}}` state via the URL fragment
+  (reader-local, hydrate from `data-qmd-input`, no Rust/model change) (`qmd-js.js`); reader text-size +
+  line-spacing controls (a11y-exempt per CLAUDE.md; substrate exists) (`14-reader-prefs.js`).
+- **Add (deferred, need a scope/default ruling):** cross-revision block-diff "what changed" view;
+  reader-facing reproducibility manifest; web-native List of Figures/Tables/Theorems; interactive data
+  tables; "Cite this" export; code-line xrefs (`@lst-3:line`); theme-aware `dark=` figures.
+- **Verify + close:** the 390px hero overflow + theme/video desync (listed open under Tier-3 Marketing) are
+  reported already fixed (`box-sizing:border-box`; `data-theme`-driven). Re-verify at the 3 viewports, then close.
 
 ## Decided against / do-not-re-litigate
 
