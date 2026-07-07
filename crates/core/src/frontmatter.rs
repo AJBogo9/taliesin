@@ -286,6 +286,13 @@ fn unknown_value_message(what: &str, value: &str, candidates: &[&'static str]) -
     }
 }
 
+/// The 1-based source line of the front matter's top-level `bibliography:` key, if
+/// present on its own line. Lets `.bib` diagnostics (a missing file, a duplicate
+/// key) point at the declaration instead of rendering as an unlocated warning.
+pub(crate) fn bibliography_line(src: &str) -> Option<u32> {
+    block_key_line(front_matter_block(src)?, "bibliography")
+}
+
 /// The 1-based SOURCE-FILE line of a top-level front-matter key (best-effort). The
 /// block starts on the file line after the opening `---`, so block line index `i` is
 /// file line `i + 2`. `None` if the key is not on its own line (e.g. a flow mapping).

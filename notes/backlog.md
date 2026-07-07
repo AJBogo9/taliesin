@@ -96,8 +96,6 @@ Each clears once you decide. Design calls carry a recommended default.
   (`client.js`); visited pages never evicted from `app.pages` (`serve_site.rs`, unbounded growth).
 - **CLI / docs microcopy:** reconcile repo-URL placeholders; README `check` mentions; reconcile
   the no-kernel-build wording (`CLAUDE.md:122`, `getting-started`, `build.rs:232`).
-- **Bib / math edge cases:** dup-key `.bib` warning stays unlocated (external file; could point at the
-  `bibliography:` line); query-string asset refs aren't bundled.
 - **Audit long-tail** (`AUDITS.md`): a combined content+theme edit drops the hot-swap until reload
   (`serve.rs`); the initial synchronous render isn't panic-guarded; mounted sub-sites don't route
   embedded decks (mount miss → bare 404); a tens-of-MB cell output blocks ZMQ receive before the cap

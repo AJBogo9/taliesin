@@ -615,7 +615,8 @@ fn render_internal_impl(
         &theorem_config,
         chapter,
     );
-    let bib = load_bibliography(&bib_paths, base_dir, &mut warnings);
+    let bib_line = crate::frontmatter::bibliography_line(src);
+    let bib = load_bibliography(&bib_paths, base_dir, bib_line, &mut warnings);
     warnings.extend(crate::cite::process(&mut blocks, &bib, &xref_registry));
     // Gather the footnote definitions (collected above, in comrak's reference order)
     // into one footnotes section, appended after any References.
@@ -751,10 +752,18 @@ const DARK_CSS: &str = include_str!("../../assets/css/dark.css");
 fn load_bibliography(
     paths: &[String],
     base_dir: Option<&Path>,
+    bib_line: Option<u32>,
     warnings: &mut Vec<Warning>,
 ) -> crate::cite::Bibliography {
     let Some(base) = base_dir else {
         return crate::cite::Bibliography::default();
+    };
+    // Point every `.bib` diagnostic at the front-matter `bibliography:` line (the
+    // .bib is an external file with no in-doc position of its own), so it is
+    // click-to-source rather than an unlocated warning.
+    let locate = |w: Warning| match bib_line {
+        Some(l) => w.at(None, l),
+        None => w,
     };
     let mut text = String::new();
     for path in paths {
@@ -773,11 +782,13 @@ fn load_bibliography(
             // An explicitly named `.bib` that can't be read (or escapes the project
             // root) is a typo worth flagging: citations would otherwise just
             // silently fail to resolve.
-            None => warnings.push(Warning::new(format!("bibliography file not found: {path}"))),
+            None => warnings.push(locate(Warning::new(format!(
+                "bibliography file not found: {path}"
+            )))),
         }
     }
     let (bib, bib_warnings) = crate::cite::parse_bib_warned(&text);
-    warnings.extend(bib_warnings.into_iter().map(Warning::new));
+    warnings.extend(bib_warnings.into_iter().map(|m| locate(Warning::new(m))));
     bib
 }
 
