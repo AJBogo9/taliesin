@@ -33,7 +33,7 @@ async function mapPool(items, concurrency, fn) {
   return results;
 }
 
-async function captureCell(browser, cell, serverUrl, artifactsRoot) {
+async function captureCell(browser, cell, serverUrl, artifactsRoot, scale = 1) {
   const { page: pageRec, viewport, theme } = cell;
   const dir = path.join(
     artifactsRoot,
@@ -64,7 +64,7 @@ async function captureCell(browser, cell, serverUrl, artifactsRoot) {
     await tab.setViewport({
       width: viewport.width,
       height: viewport.height,
-      deviceScaleFactor: 1,
+      deviceScaleFactor: scale,
     });
     const url = serverUrl + pageRec.route;
     try {
@@ -165,11 +165,11 @@ const CRASH_RE = /Target closed|Session closed|crashed|detached/i;
 // Retry a cell once if the renderer tab crashed. Under concurrency, large/tall
 // pages can crash a tab; a fresh tab (by which time sibling tabs have freed
 // resources) almost always succeeds.
-async function captureCellWithRetry(browser, cell, serverUrl, artifactsRoot) {
-  const rec = await captureCell(browser, cell, serverUrl, artifactsRoot);
+async function captureCellWithRetry(browser, cell, serverUrl, artifactsRoot, scale) {
+  const rec = await captureCell(browser, cell, serverUrl, artifactsRoot, scale);
   if (rec.cellError && CRASH_RE.test(rec.cellError)) {
     await new Promise((r) => setTimeout(r, 500));
-    const retry = await captureCell(browser, cell, serverUrl, artifactsRoot);
+    const retry = await captureCell(browser, cell, serverUrl, artifactsRoot, scale);
     retry.retried = true;
     return retry;
   }
@@ -185,6 +185,7 @@ export async function captureUnit({
   themes,
   artifactsRoot,
   jobs = 3,
+  scale = 1,
 }) {
   const cells = [];
   for (const page of pages) {
@@ -195,6 +196,6 @@ export async function captureUnit({
     }
   }
   return mapPool(cells, jobs, (cell) =>
-    captureCellWithRetry(browser, cell, serverUrl, artifactsRoot),
+    captureCellWithRetry(browser, cell, serverUrl, artifactsRoot, scale),
   );
 }

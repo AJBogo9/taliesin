@@ -34,6 +34,7 @@ function parseArgs(argv) {
     out: path.join(__dirname, '.work'),
     bin: null,
     jobs: 3,
+    scale: 1,
     build: true,
     noCache: false,
   };
@@ -46,6 +47,7 @@ function parseArgs(argv) {
     else if (a === '--out') args.out = path.resolve(val());
     else if (a === '--bin') args.bin = val();
     else if (a === '--jobs') args.jobs = parseInt(val(), 10) || 4;
+    else if (a === '--scale') args.scale = parseFloat(val()) || 1;
     else if (a === '--no-build') args.build = false;
     else if (a === '--no-cache') args.noCache = true;
     else if (a === '--help' || a === '-h') {
@@ -149,6 +151,7 @@ async function main() {
           themes,
           artifactsRoot,
           jobs: args.jobs,
+          scale: args.scale,
         });
         allRecords.push(...records);
         const errs = records.reduce((n, r) => n + r.errorCount, 0);
@@ -181,6 +184,7 @@ async function main() {
     bin,
     viewports: viewports.map((v) => v.name),
     themes,
+    scale: args.scale,
     unitCount: units.length,
     pageCount: new Set(allRecords.map((r) => `${r.unit}${r.route}`)).size,
     cellCount: allRecords.length,

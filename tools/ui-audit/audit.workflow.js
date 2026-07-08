@@ -25,6 +25,41 @@ export const meta = {
 const A = typeof args === 'string' ? JSON.parse(args) : args || {};
 const artifactsRoot = A.artifactsRoot;
 
+// Cost controls (balanced defaults):
+//   A.model      : model for analysis/verify/report agents (default 'sonnet',
+//                  keeps the run off the scarce weekly-Opus budget).
+//   A.fullMatrix : if true, vision-analyze ALL 6 cells per page; default false
+//                  = analyze one representative cell + any flagged cell only.
+const MODEL = A.model || 'sonnet';
+const FULL_MATRIX = A.fullMatrix === true;
+
+// A cell is "flagged" (worth a dedicated look) if any cheap signal fired.
+const isFlagged = (c) =>
+  c.horizontalOverflow ||
+  (c.pastRightCount || 0) > 0 ||
+  (c.brokenImageCount || 0) > 0 ||
+  (c.errorCount || 0) > 0 ||
+  (c.failedRequests || 0) > 0 ||
+  c.cellError ||
+  c.navError;
+
+// Balanced cell selection for a page: one base theme (light) across ALL
+// viewports, so responsive/layout bugs are reliably covered without relying on
+// the agent to go exploring, plus any flagged cell (which pulls in the other
+// theme when a cheap signal fired there). Clean pages cost 3 vision reads
+// instead of 6; FULL_MATRIX keeps all cells.
+function selectCells(cells) {
+  if (FULL_MATRIX) return cells;
+  const themes = [...new Set(cells.map((c) => c.theme))];
+  const baseTheme = themes.includes('light') ? 'light' : themes[0];
+  const chosen = new Map();
+  for (const c of cells)
+    if (c.theme === baseTheme) chosen.set(`${c.viewport}/${c.theme}`, c);
+  for (const c of cells)
+    if (isFlagged(c)) chosen.set(`${c.viewport}/${c.theme}`, c);
+  return [...chosen.values()];
+}
+
 const LOOSE_MANIFEST_SCHEMA = {
   type: 'object',
   properties: {
@@ -45,13 +80,13 @@ let probeResults = A.probeResults ?? null;
 if (!manifest && A.manifestPath) {
   manifest = await agent(
     `Read the JSON file at ${A.manifestPath} and return its parsed contents. It has a top-level "pages" array (each item has fields unit, route, sourceFile, format, viewport, theme, screenshot, meta, errorCount, failedRequests, horizontalOverflow) and a "buildFailures" array. Return the data verbatim; do NOT summarize, sample, or drop any page.`,
-    { label: 'bootstrap:manifest', phase: 'Analyze', schema: LOOSE_MANIFEST_SCHEMA, agentType: 'general-purpose' },
+    { label: 'bootstrap:manifest', phase: 'Analyze', schema: LOOSE_MANIFEST_SCHEMA, agentType: 'general-purpose', model: MODEL },
   );
 }
 if (!probeResults && A.probeResultsPath) {
   probeResults = await agent(
     `Read the JSON file at ${A.probeResultsPath} if it exists and return it parsed (has a "results" array). If it does not exist, return {"results": []}.`,
-    { label: 'bootstrap:probe', phase: 'Analyze', schema: LOOSE_PROBE_SCHEMA, agentType: 'general-purpose' },
+    { label: 'bootstrap:probe', phase: 'Analyze', schema: LOOSE_PROBE_SCHEMA, agentType: 'general-purpose', model: MODEL },
   );
 }
 
@@ -60,6 +95,22 @@ if (!manifest || !Array.isArray(manifest.pages)) {
 }
 if (!manifest.pages.length) {
   return { error: 'manifest has zero pages; run capture-run.mjs first.' };
+}
+
+// Batching: run the workflow on a subset of units from a single capture so the
+// cost can be paced across sessions/days. A.onlyUnits = ['tech-blog', ...]
+// (matches the manifest's `unit` slug). A.onlyUnits is a substring match.
+if (Array.isArray(A.onlyUnits) && A.onlyUnits.length) {
+  const before = manifest.pages.length;
+  manifest.pages = manifest.pages.filter((p) =>
+    A.onlyUnits.some((u) => p.unit === u || p.unit.includes(u)),
+  );
+  log(
+    `Batch filter onlyUnits=${JSON.stringify(A.onlyUnits)}: ${manifest.pages.length}/${before} cells`,
+  );
+  if (!manifest.pages.length) {
+    return { error: `onlyUnits matched no cells: ${JSON.stringify(A.onlyUnits)}` };
+  }
 }
 
 // ---- schemas ----------------------------------------------------------------
@@ -147,6 +198,10 @@ for (const r of manifest.pages) {
     errorCount: r.errorCount,
     failedRequests: r.failedRequests,
     horizontalOverflow: r.horizontalOverflow,
+    pastRightCount: r.pastRightCount || 0,
+    brokenImageCount: r.brokenImageCount || 0,
+    cellError: r.cellError || null,
+    navError: r.navError || null,
   });
 }
 const pageGroups = [...groups.values()];
@@ -156,7 +211,11 @@ log(`Analyzing ${pageGroups.length} pages (${manifest.pages.length} cells)`);
 phase('Analyze');
 const perPage = await parallel(
   pageGroups.map((g) => () => {
-    const cellList = g.cells
+    const cells = selectCells(g.cells);
+    const subsetNote = FULL_MATRIX
+      ? ''
+      : `\n(Showing one theme across all viewports + any flagged cells: ${cells.length} of ${g.cells.length}. COMPARE the viewports against each other for responsive breakage. Omitted cells are the other theme on a page with no cheap-signal issue.)`;
+    const cellList = cells
       .map(
         (c) =>
           `- ${c.viewport}/${c.theme}: screenshot=${c.screenshot} meta=${c.meta}` +
@@ -183,13 +242,14 @@ Report only concrete VISUAL defects a reader would see:
 - broken tables / figures / callouts / code blocks / math
 Tie every finding to a specific viewport/theme cell and set bugClass to "visual". Ignore subjective taste, minor spacing, or intentional design. If the page looks fine, return findings: [].
 
-Cells:
+Cells:${subsetNote}
 ${cellList}`;
     return agent(prompt, {
       label: `analyze:${g.unit}${g.route}`,
       phase: 'Analyze',
       schema: ANALYZE_SCHEMA,
       agentType: 'general-purpose',
+      model: MODEL,
     }).then((res) => ({ group: g, findings: res?.findings ?? [] }));
   }),
 );
@@ -255,7 +315,7 @@ if (visualFindings.length) {
   const indexed = visualFindings.map((f, i) => ({ i, ...f }));
   const res = await agent(
     `These are ${visualFindings.length} visual UI findings from a Taliesin audit, each with an index "i". Many are the SAME underlying bug repeated across pages (shared CSS/component). Cluster them by ROOT CAUSE. For each cluster: a clear title, bugClass "visual", the WORST severity among its members, the suspected root cause / component / selector, and instanceIndexes = the list of member "i" values. Do not drop any finding; every index must appear in exactly one cluster.\n\nFindings:\n${JSON.stringify(indexed, null, 1)}`,
-    { label: 'dedup:visual', phase: 'Dedup', schema: CLUSTER_SCHEMA, agentType: 'general-purpose' },
+    { label: 'dedup:visual', phase: 'Dedup', schema: CLUSTER_SCHEMA, agentType: 'general-purpose', model: MODEL },
   );
   visualClusters = (res?.clusters ?? []).map((c) => ({
     ...c,
@@ -301,6 +361,7 @@ Return "confirmed" ONLY if it is a genuine defect a reader would see; "refuted" 
       phase: 'Verify',
       schema: VERDICT_SCHEMA,
       agentType: 'general-purpose',
+      model: MODEL,
     }).then((v) => ({ cluster: c, verdict: v }));
   }),
 );
@@ -354,7 +415,7 @@ Be factual and skimmable. Return the raw markdown body ONLY: no preamble, no sig
 
 Data:
 ${JSON.stringify(reportData, null, 1)}`,
-  { label: 'report', phase: 'Report', agentType: 'general-purpose' },
+  { label: 'report', phase: 'Report', agentType: 'general-purpose', model: MODEL },
 );
 
 return {
