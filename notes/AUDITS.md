@@ -56,9 +56,10 @@ Landed, by theme (batch → the "Findings by theme" section it clears):
   overflow, the theme/video desync, and the heading `{#id}` dedup gap.
 
 Notable **still-open** low-tail items the sweep did *not* touch (so they don't read as
-done): `block_tag_has_id` substring match, `app.pages` unbounded ws-key growth, `json_str`
-U+2028/2029, the deck `. . .`/`"Title Slide"` collisions, several CLI/build appendix items,
-and the stale-but-working `qmd-*` alias docs. See backlog Tier-2/Tier-3 for the tracked set.
+done): `app.pages` unbounded ws-key growth, the deck `. . .`/`"Title Slide"` collisions,
+several CLI/build appendix items, and the stale-but-working `qmd-*` alias docs. See backlog
+Tier-2/Tier-3 for the tracked set. (`block_tag_has_id` substring match [`cbb4ee3`] and
+`json_str` U+2028/2029 [`595c6fe`] have since landed.)
 
 ## Executive verdict
 
