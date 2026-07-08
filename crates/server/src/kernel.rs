@@ -601,11 +601,23 @@ impl Kernel {
         daemon: std::sync::Arc<crate::warm_pool::ForkserverDaemon>,
         spec: &KernelSpec,
     ) -> io::Result<Kernel> {
+        // Until ownership passes to a live `Kernel`, the forked PID + its /tmp
+        // connection dir have no owner: if the handshake below fails (a dead fork, or
+        // ports that never bind), an early `?` return would leak both. Guard them,
+        // then disarm once the connection succeeds and the `Kernel` takes over.
+        let guard = ForkedCleanup {
+            pid,
+            conn_dir: Some(conn_dir),
+        };
         // The forked kernel binds its ZMQ ports a beat after the daemon reports its
         // PID; wait for them to listen so the ZMQ connect succeeds immediately
         // rather than burning the client's 30s connect timeout.
         wait_until_reachable(&info, Instant::now() + Duration::from_secs(15)).await?;
         let (iopub, shell) = connect_handshake(&info).await?;
+        // From here to the `Kernel` construction inside `finish` must stay infallible:
+        // once disarmed, the pid + dir are only re-homed when the `Kernel` struct owns
+        // them, so a `?` inserted in this window would leak both. Keep it fallible-free.
+        let conn_dir = guard.disarm();
         let proc = KernelProc::Forked {
             pid,
             _daemon: daemon,
@@ -855,6 +867,40 @@ impl Kernel {
                 libc::kill(pid as libc::pid_t, libc::SIGINT);
             }
         }
+    }
+}
+
+/// Cleanup guard for [`Kernel::adopt_forked`]: until the forked kernel's ownership
+/// passes to a live [`Kernel`] (whose own `Drop` then owns teardown), the PID + its
+/// `/tmp` connection dir have no owner. If the ZMQ handshake fails (a dead fork, or
+/// ports that never bind), an early return would leak both. This guard mirrors the
+/// `Kernel` `Drop` below (SIGKILL the PID + remove the dir) and is `disarm`ed on the
+/// success path so the live kernel keeps its process and dir.
+struct ForkedCleanup {
+    pid: u32,
+    conn_dir: Option<PathBuf>,
+}
+
+impl ForkedCleanup {
+    /// Hand the connection dir back to the caller (to pass to `Kernel::finish`) and
+    /// defuse the guard, so the now-live kernel keeps its process + dir.
+    fn disarm(mut self) -> PathBuf {
+        self.conn_dir.take().expect("conn_dir present until disarm")
+    }
+}
+
+impl Drop for ForkedCleanup {
+    fn drop(&mut self) {
+        let Some(dir) = self.conn_dir.take() else {
+            return; // disarmed: the live Kernel owns teardown now
+        };
+        // Not our direct child (the forkserver reaps it), so signal by PID —
+        // identical to the `Kernel` Drop's SIGKILL teardown of a forked kernel.
+        #[cfg(unix)]
+        unsafe {
+            libc::kill(self.pid as libc::pid_t, libc::SIGKILL);
+        }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
 
@@ -1158,5 +1204,79 @@ mod tests {
                 t.elapsed()
             );
         });
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn forked_cleanup_armed_kills_pid_and_removes_conn_dir() {
+        // The leak `adopt_forked` closes: when the handshake fails, the forked PID +
+        // its /tmp connection dir have no owner. The armed guard's Drop must SIGKILL
+        // the PID and remove the dir. A real child process stands in for the fork.
+        let dir = std::env::temp_dir().join(format!("tali-forkclean-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("spawn a stand-in child process");
+        let pid = child.id();
+        {
+            let _guard = ForkedCleanup {
+                pid,
+                conn_dir: Some(dir.clone()),
+            };
+        } // armed drop: must kill + remove
+
+        assert!(
+            !dir.exists(),
+            "armed guard must remove the /tmp connection dir"
+        );
+        // The child must have exited (SIGKILL). `try_wait` also reaps the zombie so
+        // `kill(pid, 0)` isn't fooled by a still-in-table corpse.
+        let mut exited = false;
+        for _ in 0..100 {
+            match child.try_wait() {
+                Ok(Some(_)) => {
+                    exited = true;
+                    break;
+                }
+                Ok(None) => std::thread::sleep(Duration::from_millis(20)),
+                Err(_) => break,
+            }
+        }
+        assert!(exited, "armed guard must SIGKILL the forked PID");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn forked_cleanup_disarm_preserves_pid_and_conn_dir() {
+        // On the success path the guard is disarmed: it returns the dir for the live
+        // Kernel to own, and must NOT kill the process or delete the dir.
+        let dir = std::env::temp_dir().join(format!("tali-forkclean-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut child = std::process::Command::new("sleep")
+            .arg("30")
+            .spawn()
+            .expect("spawn a stand-in child process");
+        let pid = child.id();
+
+        let guard = ForkedCleanup {
+            pid,
+            conn_dir: Some(dir.clone()),
+        };
+        let returned = guard.disarm();
+
+        assert_eq!(
+            returned, dir,
+            "disarm returns the dir for the Kernel to own"
+        );
+        assert!(dir.exists(), "disarm must NOT remove the connection dir");
+        assert!(
+            matches!(child.try_wait(), Ok(None)),
+            "disarm must NOT kill the forked PID"
+        );
+
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

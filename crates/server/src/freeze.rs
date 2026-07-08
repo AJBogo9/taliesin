@@ -9,9 +9,18 @@
 //! cell's code)`, computed left-to-right over the same-language cells in document
 //! order (see [`cumulative_hashes`]). The key therefore encodes *every byte of
 //! code the kernel ran to reach this cell's output*. Editing a cell — or anything
-//! upstream of it, or swapping the interpreter — changes its key and the key of
-//! everything downstream, so a stale hit is impossible by construction. There are
-//! no mtime heuristics and nothing to clear by hand: the content *is* the key.
+//! upstream of it, or swapping the interpreter (its `--version` seeds the chain) —
+//! changes its key and the key of everything downstream, so a stale hit is
+//! impossible *for the axes the key can see*: cell code, its upstream, and the
+//! interpreter's own version. There are no mtime heuristics: the content *is* the key.
+//!
+//! The one axis the key does **not** capture is the interpreter's *installed
+//! packages*. Upgrading a library in place (`pip install --upgrade …` / `install.packages()`
+//! — same interpreter, same `--version`) leaves every key unchanged, so a cell that now
+//! produces a different output can still restore the pre-upgrade one. This is the lone
+//! by-design stale-hit path; there is deliberately no package-fingerprint knob. Force a
+//! fresh run when a library upgrade matters: the dev-menu "Restart kernel"
+//! (re-executes and rewrites the cache) or `TALIESIN_NO_CACHE` (bypasses it entirely).
 //!
 //! ## What is (and isn't) stored
 //!

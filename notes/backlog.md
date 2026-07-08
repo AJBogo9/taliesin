@@ -20,9 +20,10 @@ rewrite + roadmap Waves 0-4, the reader cluster, `check`/prose-lint + `{input}`/
 build, the reading-first redesign, deep-audit P1/P2, the Taliesin rename, the `.tmd` editor grammar, the
 legacy-format clean break (`.tmd`-only input, `deck`/`define()` the only spellings), the security-P3
 batch, the VS Code companion language features, F2a cross-page hover-preview, nested-theorem numbering,
-the 2026-07-07 audit batches (1-4, Batch 5 in full [high-value half + remainder], 6, 7, and the Batch 8
-robustness trio: watcher prune + live search index + reconnect state), and cross-reference backlinks (a quiet
-per-target "Referenced by" line — the reverse of forward xref; `site/backlinks.rs`).
+the 2026-07-07 audit batches (1-4, Batch 5 in full [high-value half + remainder], 6, 7, the Batch 8
+robustness trio: watcher prune + live search index + reconnect state, and Batch 9: the freeze/kernel
+honesty + resource-hygiene trio), and cross-reference backlinks (a quiet per-target "Referenced by"
+line — the reverse of forward xref; `site/backlinks.rs`).
 
 **Working method:** branch per feature; brainstorm if there's a fork; spec under
 `docs/superpowers/specs/`; implement TDD; verify (cargo + browser via chrome-devtools, or the
@@ -40,7 +41,7 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
 ### Tier 1 — decided, build-ready (no blocker)
 - Audit 2026-07-07 implementation queue also lives here — see
   **[the batched queue below](#audit-2026-07-07-implementation-queue-build-ready)**. Next up:
-  the Batch 8 consolidation and Batch 9.
+  the Batch 8 consolidation (the last item in that queue).
 
 ### Decided 2026-07-07 — each needs its own dedicated session
 - **Quarto design-decisions catalog triage, reframed.** Branch `quarto-decisions-catalog`, commit
@@ -136,17 +137,17 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
 
 The 2026-07-07 deep audit's build-ready fixes (decided, no blocker), grouped into
 **batches sized as one branch each, in recommended order**. Batches 1-7 (Batch 5 now in full) + the
-Batch 8 robustness trio landed; only the sections below remain. Full per-item detail (repro + fix
-approach) and the ~80 low-severity long tail live in [AUDITS.md](AUDITS.md) 2026-07-07. **CONFIRMED
-unless marked PLAUSIBLE.**
+Batch 8 robustness trio + Batch 9 (freeze/kernel honesty) landed; only the Batch 8 consolidation
+below remains. Full per-item detail (repro + fix approach) and the ~80 low-severity long tail live in
+[AUDITS.md](AUDITS.md) 2026-07-07. **CONFIRMED unless marked PLAUSIBLE.**
 
 > **How to work this:** one batch = one branch; brainstorm only if a fork appears; TDD;
 > verify (cargo + browser via chrome-devtools); fast-forward-merge to local main; then
 > delete the landed batch from here. **Do-NOT-touch:** exec/kernel execution semantics +
-> the single-editing-surface invariant. Batch 9 enters the kernel zone: read the zone
-> rules first. Already-tracked items (op-batching, kernel `/tmp` + `in_flight` leaks,
-> boot-diagnostic clobber, `app.pages` LRU, lazy search index, `fitSlide`, R ANSI leak,
-> Mermaid SRI) stay in **Tier 2** above; the audit only sharpened their exact paths in AUDITS.md.
+> the single-editing-surface invariant. Already-tracked items (op-batching, kernel `/tmp`
+> [`Kernel::start`] + `in_flight` leaks, boot-diagnostic clobber, `app.pages` LRU, lazy search
+> index, `fitSlide`, R ANSI leak, Mermaid SRI) stay in **Tier 2** above; the audit only sharpened
+> their exact paths in AUDITS.md.
 
 ### Batch 8 remainder: consolidate the duplicated diff-then-broadcast core [large: its own branch]
 The three robustness fixes (watcher prune, live search index, reconnect state) landed 2026-07-07
@@ -155,14 +156,6 @@ The three robustness fixes (watcher prune, live search index, reconnect state) l
   hoist into one shared helper (`serve/mod.rs` rebuild ↔ `serve_site/mod.rs` build_page). The `gen`/`boot`
   additions were made in the shared `protocol::op`/`full_render`, but the diff→bump-gen→broadcast loop is
   still copy-pasted. **[large: schedule as its own branch.]**
-
-### Batch 9: Freeze / kernel honesty + resource hygiene (Do-NOT-touch zone: careful) [small]
-Read the exec/kernel zone rules first; these are diagnostics/docs/leak fixes, not execution-semantics changes.
-- Mid-run kernel death poisons the warm-prefix `ran`, wedging the preview into replaying KERNEL_DIED
-  placeholders (`exec.rs:610`).
-- Freeze key has no package fingerprint; scope the "stale hit impossible / nothing to clear" doc wording,
-  a same-interpreter library upgrade is a real stale-hit path, no knob (`freeze.rs:11`).
-- `adopt_forked` leaks the `/tmp` dir + forked kernel on a handshake/bind timeout (`kernel.rs`).
 
 ### Cut (philosophy gate: adopt) — cleared
 The `?qmd=embed` dead-mode removal landed (drop the orphaned ternary branch + stale comments;

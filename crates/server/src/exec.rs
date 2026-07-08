@@ -608,12 +608,24 @@ impl Executor {
         // them part of the warm prefix, so when the kernel later self-heals they'd
         // be skipped instead of re-run — leaving stale/missing output.
         if has_kernel && let Some(state) = self.langs.get_mut(lang) {
-            state.ran = (0..run_end)
-                .map(|i| Ran {
-                    hash: hashes[i].clone(),
-                    output: outputs[i].clone(),
-                })
-                .collect();
+            // A kernel that DIED mid-run (an early cell crashed it) now holds
+            // nothing: the executed prefix plus the trailing KERNEL_DIED
+            // placeholders must NOT be recorded as warm. Otherwise a later
+            // code-unchanged rebuild sees a full hash match (to_run == 0), never
+            // calls `ensure_kernel` to reap the corpse + respawn, and serves those
+            // KERNEL_DIED placeholders forever. Dropping the prefix makes the next
+            // rebuild start cold from cell 0 and self-heal on a fresh kernel.
+            let kernel_alive = state.kernel.as_mut().is_some_and(Kernel::is_alive);
+            state.ran = if kernel_alive {
+                (0..run_end)
+                    .map(|i| Ran {
+                        hash: hashes[i].clone(),
+                        output: outputs[i].clone(),
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
         }
 
         // The build for this language settled: report `idle` with the full count.
@@ -1318,6 +1330,75 @@ mod tests {
             cell_states(&msgs, "b-3"),
             vec!["queued", "running", "done"],
             "the edited last cell must re-run queued→running→done",
+        );
+    }
+
+    #[test]
+    fn mid_run_kernel_death_self_heals_on_the_next_rebuild() {
+        // A kernel that dies MID-RUN must not wedge the preview. The cell after the
+        // crash gets a KERNEL_DIED placeholder; recording that placeholder into the
+        // warm-prefix `ran` would make the next *code-unchanged* rebuild see a full
+        // hash match (to_run == 0), so `ensure_kernel` is never called to reap the
+        // dead kernel and respawn — serving KERNEL_DIED forever. After the fix the
+        // warm prefix is dropped on a mid-run death, so the next rebuild cold-starts
+        // a fresh kernel and the post-crash cell heals.
+        if std::env::var_os("TALIESIN_PYTHON").is_none() {
+            eprintln!(
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to a python with ipykernel to \
+                 exercise mid-run kernel-death recovery; this run did not."
+            );
+            return;
+        }
+
+        // A cell that SIGKILLs its kernel the FIRST time it runs, then (once the
+        // fresh kernel starts against the now-existing on-disk flag) skips the crash
+        // on every later run — a transient mid-run death with byte-identical code
+        // across rebuilds. The flag file survives the restart, so the crash fires
+        // exactly once. (Linux temp path: no quotes/backslashes to escape.)
+        let flag = std::env::temp_dir().join(format!("tali-heal-{}", uuid::Uuid::new_v4()));
+        let crash = format!(
+            "import os, signal\n\
+             if not os.path.exists('{f}'):\n\
+             \u{20}   open('{f}', 'w').close()\n\
+             \u{20}   os.kill(os.getpid(), signal.SIGKILL)\n",
+            f = flag.to_string_lossy(),
+        );
+        let blocks = vec![
+            python_cell_block_with("crash", &crash),
+            python_cell_block_with("after", "print('HEALED-MARKER')"),
+        ];
+
+        let mut ex = Executor::new();
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            // Run 1: `crash` kills the kernel; `after` gets a KERNEL_DIED placeholder.
+            let _ = ex.run(blocks.clone()).await;
+        });
+        if ex.diagnostic().is_some() {
+            // TALIESIN_PYTHON is set but the kernel never booted — a boot failure
+            // leaves `failed_at` set (a mid-run crash does not), so this skips only
+            // the genuinely-no-kernel case, never the intentional crash below.
+            let _ = std::fs::remove_file(&flag);
+            eprintln!("SKIPPED (kernel did not boot): cannot exercise mid-run death.");
+            return;
+        }
+
+        // Run 2: identical code. The kernel must respawn and `after` must re-run.
+        let out = rt.block_on(async { ex.run(blocks.clone()).await });
+        let _ = std::fs::remove_file(&flag);
+
+        let after = out
+            .iter()
+            .find(|b| b.id == "after-out")
+            .map(|b| b.html.as_str())
+            .unwrap_or("<missing after-out block>");
+        assert!(
+            !after.contains("kernel exited before this cell ran"),
+            "post-crash cell stayed wedged on KERNEL_DIED after a rebuild: {after}"
+        );
+        assert!(
+            after.contains("HEALED-MARKER"),
+            "post-crash cell did not re-run on the respawned kernel: {after}"
         );
     }
 
