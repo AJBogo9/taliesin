@@ -181,6 +181,10 @@ pub(super) fn json_str(s: &str) -> String {
             '\r' => {}
             '\t' => out.push_str("\\t"),
             '<' => out.push_str("\\u003c"), // neutralize a stray </script>
+            // U+2028/U+2029 are valid raw in JSON but are line terminators in a pre-ES2019
+            // JS string literal; the index is inlined as JS, not `JSON.parse`d, so escape them.
+            '\u{2028}' => out.push_str("\\u2028"),
+            '\u{2029}' => out.push_str("\\u2029"),
             c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
             c => out.push(c),
         }
@@ -211,6 +215,17 @@ mod tests {
         let out = json_str("</script><script>alert(1)</script>");
         assert!(!out.contains("</script"), "raw </script leaked: {out}");
         assert!(out.contains("\\u003c/script"), "expected escaped <: {out}");
+    }
+
+    #[test]
+    fn json_str_escapes_line_and_paragraph_separators() {
+        // The index is emitted as a JS literal (`window.TALIESIN_SEARCH_INDEX=[…]`), not
+        // `JSON.parse`d, so U+2028/U+2029 in prose (valid raw in JSON but a line terminator
+        // in a pre-ES2019 JS string literal) must be escaped or the whole index script fails
+        // to parse. Both survive as their `\uXXXX` escape, and no raw separator leaks.
+        let out = json_str("a\u{2028}b\u{2029}c");
+        assert_eq!(out, "a\\u2028b\\u2029c");
+        assert!(!out.contains('\u{2028}') && !out.contains('\u{2029}'));
     }
 
     #[test]
