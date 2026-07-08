@@ -14,6 +14,7 @@ mod freeze;
 mod kernel;
 mod log;
 mod protocol;
+mod publish;
 mod query;
 mod serve;
 mod serve_site;
