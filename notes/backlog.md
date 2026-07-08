@@ -135,22 +135,12 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
 - **Dogfood: migrate the FL-weather book to Taliesin** — a real-world Quarto→Taliesin migration +
   portability stress test; pin a reduced version under `corpus/` if it renders clean.
 - **`check` online-link mode** (opt-in `--online`; default stays offline/deterministic).
-- **`taliesin publish`: build, push HTML to a deploy branch, host auto-deploys.**
-  Researched 2026-07-07 for the private research-paper-draft workflow. Command shape:
-  `taliesin build <project> --out <tmp>`, then push the built `_site/` tree to a deploy branch
-  (e.g. `published` / `gh-pages`) via a git worktree (or `git subtree split`); the host watches that
-  branch and serves the committed HTML with no build step of its own. One-way (source, build, deploy
-  branch), never writes back to source (respects the single-editing-surface invariant); the
-  per-project target could live in `_site.yml`. **Brainstorm the forks first:** worktree vs
-  `git subtree`; one repo-per-paper vs one branch-per-paper; whether it also scripts the initial host
-  hookup. The documented manual recipe pushes `_site/` today; this only automates it.
-  **Hosting picked** (password + private-repo + deploy-from-branch, since drafts must not be public):
-  **Cloudflare Pages, recommended** — free, private repo, deploys from a branch, unlimited bandwidth;
-  password two ways: Cloudflare Access (email allowlist, one-time-PIN/SSO, free ≤50 users, viewers need
-  no account) or a Pages-Functions HTTP basic-auth env var. Rejected/second-choice: AWS Amplify (OK if
-  already on AWS); Netlify (password gated behind Pro $19/mo); Vercel (avoid — free auth forces viewers
-  onto your team, shared-password is a $150/mo add-on); Railway (app/container platform, a mismatch for
-  static HTML); GitHub Pages (no native password without Enterprise).
+- **`taliesin publish`: SHIPPED 2026-07-08.** Build + shared-passcode gate
+  (`functions/_middleware.js`) + `wrangler pages deploy` to Cloudflare Pages; project name
+  defaults to a dir-name slug, override via `publish:` in `_site.yml` or `--project-name`. Passcode is a
+  Cloudflare secret (never in git); one-way flow. Spec/plan under `docs/superpowers/`.
+  Follow-ups (not built): optional `--init` wrapper for the one-time `wrangler` setup;
+  email-allowlist (Cloudflare Access) mode.
 - **Interactive/explorable numerics** (`FEATURE-IDEAS.md` #62-66; none spec'd/pinned — promote with a
   corpus pin when one graduates; must NOT reintroduce a reactive VM). Highest-leverage: **#62** a
   bundled numerics/stats global for `{js}` (distributions, seeded PRNG, small dense linalg) + **#63**
