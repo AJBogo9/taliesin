@@ -417,6 +417,10 @@ pub(crate) fn content_type(path: &Path) -> &'static str {
 }
 
 /// Minimal percent-decoding for request paths (so `%20` etc. in filenames work).
+///
+/// Decodes on the byte level: slicing `s` by byte offsets (`&s[i+1..i+3]`) panics when a
+/// `%` is immediately followed by a raw multi-byte UTF-8 char (a crafted `GET /%€`), so the
+/// two hex digits are read straight from the byte buffer instead.
 pub(crate) fn percent_decode(s: &str) -> String {
     let b = s.as_bytes();
     let mut out = Vec::with_capacity(b.len());
@@ -424,9 +428,10 @@ pub(crate) fn percent_decode(s: &str) -> String {
     while i < b.len() {
         if b[i] == b'%'
             && i + 2 < b.len()
-            && let Ok(byte) = u8::from_str_radix(&s[i + 1..i + 3], 16)
+            && let Some(hi) = hex_val(b[i + 1])
+            && let Some(lo) = hex_val(b[i + 2])
         {
-            out.push(byte);
+            out.push(hi << 4 | lo);
             i += 3;
             continue;
         }
@@ -434,6 +439,16 @@ pub(crate) fn percent_decode(s: &str) -> String {
         i += 1;
     }
     String::from_utf8_lossy(&out).into_owned()
+}
+
+/// A single ASCII hex digit (`0-9`/`a-f`/`A-F`) as its 0-15 value, else `None`.
+fn hex_val(b: u8) -> Option<u8> {
+    match b {
+        b'0'..=b'9' => Some(b - b'0'),
+        b'a'..=b'f' => Some(b - b'a' + 10),
+        b'A'..=b'F' => Some(b - b'A' + 10),
+        _ => None,
+    }
 }
 
 fn index_html(ctx: &PageCtx) -> String {
@@ -1439,5 +1454,33 @@ mod protocol_contract {
             .await;
         let payload = outcome.expect_err("the panic must be caught, not propagated");
         assert_eq!(panic_msg(&*payload), "render boom");
+    }
+}
+
+#[cfg(test)]
+mod percent_decode_tests {
+    use super::percent_decode;
+
+    #[test]
+    fn decodes_ascii_and_multibyte_escapes() {
+        assert_eq!(percent_decode("%20"), " ");
+        assert_eq!(percent_decode("a%2Fb"), "a/b");
+        // A percent-encoded multi-byte char round-trips.
+        assert_eq!(percent_decode("caf%C3%A9"), "café");
+    }
+
+    #[test]
+    fn does_not_panic_on_percent_before_raw_multibyte_char() {
+        // A `%` immediately followed by a *raw* (un-encoded) multi-byte UTF-8 char used
+        // to slice `&s[i+1..i+3]` across a char boundary and panic — a crafted request
+        // path like `GET /%€` would crash the handler. Decoding must operate on bytes
+        // so it can't split a char: the un-decodable `%` is left literal.
+        assert_eq!(percent_decode("%€"), "%€");
+        assert_eq!(percent_decode("a%€b"), "a%€b");
+        // A trailing `%` with fewer than two following bytes must not decode or panic.
+        assert_eq!(percent_decode("%9"), "%9");
+        assert_eq!(percent_decode("done%"), "done%");
+        // A `%` followed by a non-hex ASCII pair is left literal (not mis-parsed).
+        assert_eq!(percent_decode("%zz"), "%zz");
     }
 }
