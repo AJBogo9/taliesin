@@ -71,8 +71,13 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
 - **Testing / CI:** insta snapshots on `body_html()` for reactive/explorable/bayesian docs through the
   exec path (`corpus.rs:99` is structural-only); `#[serial]` the kernel-load determinism tests + assert
   a dropped output is a hard named error (the known silent-drop flake); `deny.toml` multiple-versions
-  policy; extend `tsc`/`@ts-check` to `search.js`/`toc-spy.js`/`assets/js/*` (surfaces a pre-existing
-  error backlog — its own pass; client.js is already gated).
+  policy. **`tsc`/`@ts-check` — web-client tier DONE:** `search.js` + `toc-spy.js` + `toc-sheet.js`
+  (the last already carried `@ts-check` but was never in the `include`) are now `@ts-check`'d, fixed
+  (159 errors → 0), and wired into `web-client/jsconfig.json` + the CI `typecheck` job alongside the
+  already-gated `client.js`. **Remaining: `assets/js/*` — its own (large) pass** (~800+ errors:
+  `deck.js` alone ~400, plus `qmd-js.js`/`scrolly.js`/`tabset.js`/`walkthrough.js`/`mermaid.js` + the
+  16 `code-enhance/` fragments; exclude the vendored `*.min.js`). Needs its own ambient globals + a
+  config that compiles the concatenated `code-enhance/` fragments as one shared script scope.
 - **Security:** injected Mermaid `<script>` SRI + `crossorigin` — deferred (only the live Preview
   lazy-loads mermaid from the CDN; a static build inlines the vendored copy). Needs a hash pinned to the
   CDN build, and both `integrity` + `crossorigin` would break a non-CORS `TALIESIN_MERMAID_URL` override.

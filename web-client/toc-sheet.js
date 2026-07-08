@@ -15,10 +15,12 @@
   var byId = function (id) { return document.getElementById(id); };
 
   function init() {
-    var toc = byId("TOC");
-    var handle = byId("tali-toc-handle");
-    var backdrop = byId("tali-toc-backdrop");
-    var cur = byId("tali-toc-cur");
+    // `const` (never reassigned) so the early-return null guard below keeps narrowing
+    // them to non-null inside the nested pointer/touch/keyboard callbacks too.
+    const toc = byId("TOC");
+    const handle = byId("tali-toc-handle");
+    const backdrop = byId("tali-toc-backdrop");
+    const cur = byId("tali-toc-cur");
     // Nothing to wire without the sheet chrome (e.g. a page with no TOC).
     if (!toc || !handle || !backdrop) return;
     // Opt the body into the sheet ONLY now that JS is running (progressive enhancement):
@@ -52,6 +54,8 @@
     };
 
     // Drag the handle up (the sheet follows) or tap it to open.
+    /** @typedef {{ y: number, t: number, moved: number, h: number }} HandleDrag */
+    /** @type {HandleDrag | null} */
     var d = null;
     handle.addEventListener("pointerdown", function (e) {
       d = { y: e.clientY, t: Date.now(), moved: 0, h: toc.offsetHeight || Math.round(innerHeight * 0.6) };
@@ -86,6 +90,8 @@
     // Drag the open sheet DOWN to dismiss, but only when its list is scrolled to the
     // top (otherwise a downward swipe just scrolls the list). Touch events, not
     // pointer: native scroll won't deliver pointermove, so we take over with preventDefault.
+    /** @typedef {{ y: number, t0: number, atTop: boolean, active: boolean, dy: number, h: number }} SheetDrag */
+    /** @type {SheetDrag | null} */
     var sd = null;
     toc.addEventListener("touchstart", function (e) {
       if (!document.body.classList.contains("tali-toc-open")) { sd = null; return; }

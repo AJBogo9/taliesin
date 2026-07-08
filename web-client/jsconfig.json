@@ -10,5 +10,5 @@
     "types": [],
     "skipLibCheck": true
   },
-  "include": ["client.js", "globals.d.ts"]
+  "include": ["client.js", "search.js", "toc-spy.js", "toc-sheet.js", "globals.d.ts"]
 }

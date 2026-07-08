@@ -52,8 +52,9 @@ jobs:
           TALIESIN_REQUIRE_KERNEL: "1"
         run: cargo test -p taliesin-server
 
-  # Type-check the preview client. client.js carries `// @ts-check` and has silently
-  # regressed to multiple tsc errors before a release; this gate keeps it honest.
+  # Type-check the preview client JS (client.js + the sibling shipped scripts:
+  # search.js, toc-spy.js, toc-sheet.js). They carry `// @ts-check` and have silently
+  # regressed to tsc errors before a release; this gate keeps them honest.
   typecheck:
     runs-on: ubuntu-latest
     steps:
@@ -61,7 +62,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Type-check client.js
+      - name: Type-check the client JS
         run: cd web-client && npx -y -p typescript tsc -p jsconfig.json
 
   # The VS Code companion: build the extension, type-check its TS, and run the OFFLINE

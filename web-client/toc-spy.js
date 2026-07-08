@@ -1,19 +1,25 @@
+// @ts-check
 // Canonical TOC scrollspy: highlights the entry whose section currently sits
 // just below the sticky navbar. Shared by two callers so the behaviour matches:
 //   - the static build inlines this and lets it auto-init on load;
 //   - the live preview rebuilds `#TOC` on every edit, then calls
 //     window.taliInitTocSpy() to re-collect against the fresh links.
-// Inlined as one <script>; not part of the type-checked client.js bundle.
+// Inlined as one <script>; not concatenated into the client.js bundle, but
+// type-checked separately (web-client/jsconfig.json).
 (function () {
+  /** @typedef {{ link: Element, heading: HTMLElement }} TocEntry */
   var raf = 0;
-  var entries = []; // [{ link, heading }] in document order
+  /** @type {TocEntry[]} in document order */
+  var entries = [];
+  /** @type {TocEntry | null} */
   var active = null;
   var installed = false;
   // Read-state: sections the reader has scrolled through, decorated in the TOC.
   // Reader-side + read-only: the set lives in the reader's OWN localStorage, keyed by
   // path and anchored to each heading's stable `data-block-id` (the same anchor that
   // reading-progress + resume use), so it survives reflow and never touches source.
-  var read = {}; // read[headingBlockId] = 1 once that section is scrolled through
+  /** @type {Record<string, number>} read[headingBlockId] = 1 once scrolled through */
+  var read = {};
   var readHigh = 0; // forward-only high-water index of scrolled-through entries
   var READ_KEY = "qmd-read:" + location.pathname;
 
@@ -32,6 +38,7 @@
   }
   // Decorate a TOC link as read (idempotent): the class drives the ✓ + fade, and a
   // visually-hidden label announces "read" to a screen reader.
+  /** @param {Element} link */
   function markRead(link) {
     if (!link || link.classList.contains("tali-toc-read")) return;
     link.classList.add("tali-toc-read");
@@ -78,6 +85,7 @@
     // Within one viewport of the bottom the last heading can never reach the
     // line, so pin the final entry — otherwise the last section never lights up.
     var atBottom = window.innerHeight + window.scrollY >= doc.scrollHeight - 2;
+    /** @type {TocEntry | null} */
     var cur = null;
     if (atBottom) {
       cur = entries[entries.length - 1];
@@ -116,8 +124,11 @@
     });
     // Collapse: expand only the active entry's branch (its <li> and ancestors), so
     // a long TOC shows top-level entries plus the current section's subsections.
+    /** @type {Element[]} */
     var open = [];
-    for (var node = cur && cur.link.parentNode; node && node.id !== "TOC"; node = node.parentNode) {
+    // Walk element ancestors (the TOC links only ever nest inside element <li>/<ul>,
+    // so `parentElement` is equivalent to `parentNode` here and types cleanly).
+    for (var node = cur && cur.link.parentElement; node && node.id !== "TOC"; node = node.parentElement) {
       if (node.tagName === "LI") open.push(node);
     }
     Array.prototype.forEach.call(toc.getElementsByTagName("li"), function (li) {
@@ -127,7 +138,7 @@
     if (chip && cur) {
       // Strip the hover `#` permalink the anchor-links enhancer appends to a heading,
       // so the chip reads "Section title", not "Section title#".
-      var h = cur.heading.cloneNode(true);
+      var h = /** @type {HTMLElement} */ (cur.heading.cloneNode(true));
       var anchors = h.querySelectorAll(".tali-anchor");
       for (var ai = 0; ai < anchors.length; ai++) anchors[ai].remove();
       chip.textContent = (h.textContent || "").trim();

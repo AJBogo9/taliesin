@@ -43,4 +43,35 @@ interface Window {
   taliInitTocSpy?: () => void;
   /** Per-scroll hook the shared scrollspy calls (preview flashes the mobile label). */
   taliTocScrollHook?: () => void;
+
+  // --- Cmd-K search palette (search.js) ---
+  /** Install-once guard so the palette wires its global listeners a single time. */
+  taliSearchInstalled?: boolean;
+  /** Inlined / lazy-loaded cross-page search index (site + book): raw serialized
+   *  entries (i=anchor id, t=title, l=level [0 = a whole-page entry], b=body text,
+   *  u=page url, p=page label). A single doc builds its index from the live DOM instead. */
+  TALIESIN_SEARCH_INDEX?: Array<{
+    i: string;
+    t: string;
+    l: number;
+    b?: string;
+    u?: string;
+    p?: string;
+  }>;
+  /** URL of the lazy-loaded cross-page index script (a site/book links to it rather
+   *  than inlining the full-text index into every page). */
+  TALIESIN_SEARCH_URL?: string;
+  /** Set by the index loader's onerror so the palette shows a load-failure row
+   *  instead of a silently-empty result list. */
+  TALIESIN_SEARCH_LOAD_FAILED?: boolean;
+  /** This page's own url, so a search hit on the current page scrolls in place
+   *  rather than triggering a same-page navigation. */
+  TALIESIN_PAGE_URL?: string;
+  /** Site root prefix for cross-page search navigation when served under a mount. */
+  TALIESIN_SITE_ROOT?: string;
+  /** Focus-trap helper (code-enhance/04-focus-trap.js): traps focus inside
+   *  `container`, focuses `initial`, and returns a release function. */
+  taliFocusTrap?: (container: Element, initial?: Element | null) => () => void;
+  /** Programmatic Cmd-K opener (search.js), for the keyboard reader's `/` shortcut. */
+  taliOpenSearch?: () => void;
 }

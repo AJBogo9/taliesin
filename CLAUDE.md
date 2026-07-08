@@ -110,7 +110,7 @@ cargo run -p taliesin-server -- build  <dir> [--out <dir>]     # multi-page SITE
 cargo run -p taliesin-server -- render <file.tmd> > out.html   # one-shot full page to stdout
 cargo run -p taliesin-server -- blocks <file.tmd>              # block ids + sourcepos (debug)
 cargo test -p taliesin-core                                    # corpus invariants + unit tests
-cd web-client && npx -y -p typescript tsc -p jsconfig.json     # type-check client.js (// @ts-check, no build step)
+cd web-client && npx -y -p typescript tsc -p jsconfig.json     # type-check the client JS (client.js + search/toc-spy/toc-sheet; // @ts-check, no build step)
 ```
 
 A `taliesin` launcher on `PATH` (`~/.local/bin/Taliesin`) rebuilds the release

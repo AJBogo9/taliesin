@@ -1,3 +1,4 @@
+// @ts-check
 // Client-side command palette (Cmd/Ctrl-K): full-text search to jump around a
 // long document — the book, a paper, any page with a table of contents. Matches
 // both headings and the body text of each section, and shows a snippet around the
@@ -5,7 +6,7 @@
 // loads the cross-page index (search-index.js) on first open via window.TALIESIN_SEARCH_URL,
 // so the full-text index never bloats every page. Self-contained: injects its own
 // themed overlay CSS and rides along as one <script> beside the TOC scrollspy. Not
-// part of the type-checked client.js bundle.
+// concatenated into the client.js bundle; type-checked separately (web-client/jsconfig.json).
 (function () {
   if (window.taliSearchInstalled) return;
   window.taliSearchInstalled = true;
@@ -62,15 +63,27 @@
     document.head.appendChild(s);
   }
 
-  var overlay, input, list;
-  var searchRelease = null; // active focus-trap release while the palette is open
+  /** A built, match-ready index entry (memoized lowercase fields for the matcher). */
+  /** @typedef {{ id: string, title: string, level: number, body: string, url?: string, page?: string, tLow: string, bLow: string }} SearchItem */
+
+  // Lazily created in ensureUi() and always assigned before any use below, so they're
+  // typed non-null; ensureUi() self-guards re-entry via `if (overlay) return`.
+  /** @type {HTMLElement} */ var overlay;
+  /** @type {HTMLInputElement} */ var input;
+  /** @type {HTMLElement} */ var list;
+  /** @type {(() => void) | null} active focus-trap release while the palette is open */
+  var searchRelease = null;
+  /** @type {SearchItem[]} */
   var index = [];
+  /** @type {SearchItem[]} */
   var matches = [];
   var sel = 0;
-  var lastTerms = []; // the current query's terms, for the search-hit flash
+  /** @type {string[]} the current query's terms, for the search-hit flash */
+  var lastTerms = [];
 
   // Build the index: every anchored heading, plus the lowercased text of the
   // blocks that follow it until the next heading (so body keywords match too).
+  /** @returns {SearchItem[]} */
   function buildIndex() {
     // Site/book: search the whole project from the inlined cross-page index
     // (every page's title + anchored headings). A result carries its page url so
@@ -86,6 +99,7 @@
     // Single doc: build from the current DOM (so it reflects live edits).
     var main = document.querySelector("main") || document.body;
     var heads = main.querySelectorAll("h1[id],h2[id],h3[id],h4[id]");
+    /** @type {SearchItem[]} */
     var out = [];
     for (var i = 0; i < heads.length; i++) {
       var h = heads[i];
@@ -104,6 +118,7 @@
     return out;
   }
 
+  /** @param {Element} h @param {Element | undefined} next */
   function sectionText(h, next) {
     var txt = "";
     var node = h.nextElementSibling;
@@ -124,6 +139,7 @@
   // STATIC BUILD (file://, no ws) has immutable content, so load the index once.
   var fetchSeq = 0;
   var loading = false;
+  /** @param {() => void} cb */
   function loadIndexThen(cb) {
     var livePreview = typeof window.TALIESIN_WS_PATH === "string" && !!window.TALIESIN_WS_PATH;
     // Single doc: no cross-page index, search the DOM.
@@ -183,9 +199,10 @@
       '<div class="tali-s-hint"><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>' +
       "<span><kbd>↵</kbd> go to</span><span><kbd>esc</kbd> close</span></div>";
     document.body.appendChild(overlay);
-    input = overlay.querySelector(".tali-s-input");
-    list = overlay.querySelector(".tali-s-results");
-    overlay.querySelector(".tali-s-backdrop").addEventListener("click", close);
+    // These three nodes are in the innerHTML just set, so the casts are sound.
+    input = /** @type {HTMLInputElement} */ (overlay.querySelector(".tali-s-input"));
+    list = /** @type {HTMLElement} */ (overlay.querySelector(".tali-s-results"));
+    overlay.querySelector(".tali-s-backdrop")?.addEventListener("click", close);
     input.addEventListener("input", function () {
       render(input.value);
     });
@@ -228,6 +245,7 @@
 
   // Bounded edit-distance-1: true iff `a` is within one substitution / insertion / deletion of
   // `b` (Levenshtein <= 1). O(len), no matrix. Transpositions count as 2 (out of scope for v1).
+  /** @param {string} a @param {string} b */
   function within1(a, b) {
     var la = a.length, lb = b.length;
     if (Math.abs(la - lb) > 1) return false;
@@ -244,6 +262,7 @@
   }
 
   // Does any whitespace-delimited word of `fieldLow` typo-match `term` (edit distance <= 1)?
+  /** @param {string} term @param {string} fieldLow */
   function fuzzyWord(term, fieldLow) {
     var words = fieldLow.split(/\s+/);
     for (var k = 0; k < words.length; k++) {
@@ -257,6 +276,7 @@
   // field-boosted score (0 rejects). Title outranks body; bonuses reward all-title hits, a
   // title-leading match, and an exact contiguous phrase. Single-term degenerates to the old
   // prefix > contains > body ordering.
+  /** @param {SearchItem} item @param {string[]} terms */
   function score(item, terms) {
     var t = item.tLow, b = item.bLow, total = 0, allTitle = true, leadPrefix = false;
     for (var k = 0; k < terms.length; k++) {
@@ -277,6 +297,7 @@
     return total;
   }
 
+  /** @param {string} query */
   function render(query) {
     var q = query.trim().toLowerCase();
     var terms = q ? q.split(/\s+/).filter(Boolean) : [];
@@ -312,6 +333,7 @@
     markSel();
   }
 
+  /** @param {SearchItem} item @param {string[]} terms @param {number} i */
   function itemEl(item, terms, i) {
     var li = document.createElement("li");
     li.className = "tali-s-item";
@@ -354,8 +376,11 @@
 
   // Every [start,end) span where a term occurs in `text` (case-insensitive substring, all
   // occurrences). Fuzzy-only terms (no substring) yield no span — honest, never the wrong run.
+  /** @param {string} text @param {string[]} terms @returns {number[][]} */
   function termRanges(text, terms) {
-    var low = text.toLowerCase(), ranges = [];
+    var low = text.toLowerCase();
+    /** @type {number[][]} */
+    var ranges = [];
     // If lowercasing changed the length (rare Unicode), low-derived offsets no longer align
     // with the original-case slice; skip marking rather than mis-place a <mark>.
     if (low.length !== text.length) return ranges;
@@ -373,6 +398,7 @@
   // Emit `sourceText` into `el` as alternating text nodes / <mark>s over the given ranges
   // (sorted + merged so overlapping/adjacent terms become one continuous mark). DOM-built,
   // never innerHTML; the original-case source is sliced for display.
+  /** @param {HTMLElement} el @param {string} sourceText @param {number[][]} ranges */
   function emitRanges(el, sourceText, ranges) {
     if (!ranges.length) { el.appendChild(document.createTextNode(sourceText)); return; }
     ranges.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1]; });
@@ -396,8 +422,11 @@
 
   // A one-line body excerpt: the ~140-char window covering the most distinct terms, each term
   // occurrence inside it marked. Falls back to the head of the body when no term is present.
+  /** @param {HTMLElement} el @param {string} body @param {string[]} terms */
   function snippet(el, body, terms) {
-    var low = body.toLowerCase(), WINDOW = 140, offs = [];
+    var low = body.toLowerCase(), WINDOW = 140;
+    /** @type {number[]} */
+    var offs = [];
     // Length-preserving lowercase only (see termRanges); otherwise fall back to an unmarked head.
     if (low.length === body.length) {
       for (var k = 0; k < terms.length; k++) {
@@ -428,6 +457,7 @@
   }
 
   // Render `title` with every term occurrence wrapped in <mark>.
+  /** @param {HTMLElement} el @param {string} title @param {string[]} terms */
   function highlight(el, title, terms) {
     emitRanges(el, title, termRanges(title, terms));
   }
@@ -443,6 +473,7 @@
     });
   }
 
+  /** @param {KeyboardEvent} e */
   function onKey(e) {
     if (e.key === "ArrowDown") {
       e.preventDefault();
@@ -469,6 +500,7 @@
   // CSS Custom Highlight API (zero DOM mutation → honours read-only preview), with a
   // transient <mark> fallback for engines without it. Registered once, lazily.
   var FLASH_KEY = "tali-search-flash";
+  /** @type {Highlight | null} */
   var flashHl = null;
   // Create + register the highlight LAZILY on first use (not at module load — the Custom
   // Highlight API guard can read falsy during early script evaluation on some engines),
@@ -487,7 +519,9 @@
     }
     return flashHl;
   }
-  var flashTimer = 0, flashMark = null;
+  var flashTimer = 0;
+  /** @type {HTMLElement | null} */
+  var flashMark = null;
   function clearFlash() {
     clearTimeout(flashTimer);
     document.documentElement.classList.remove("tali-search-flashing");
@@ -504,15 +538,17 @@
   }
   // The first substring occurrence of any `terms` entry within `[start, next heading)`,
   // as a Range — or null (fuzzy-/title-only matches have no substring occurrence here).
+  /** @param {Element | null} startEl @param {string[]} terms @returns {Range | null} */
   function firstTermRange(startEl, terms) {
     var low = terms.filter(Boolean).map(function (t) { return t.toLowerCase(); });
     if (!low.length || !startEl) return null;
+    /** @type {Element | null} */
     var el = startEl;
     while (el) {
       var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
       var tn;
       while ((tn = walker.nextNode())) {
-        var text = tn.nodeValue, tl = text.toLowerCase();
+        var text = tn.nodeValue || "", tl = text.toLowerCase();
         if (tl.length !== text.length) continue; // offset-safety, as in termRanges
         var best = -1, bestLen = 0;
         for (var k = 0; k < low.length; k++) {
@@ -534,6 +570,7 @@
   }
   // Flash the first occurrence of `terms` in the section headed by `headingEl`. Scrolls
   // to it only if off-screen (the heading is already in view). No-op on decks / no match.
+  /** @param {Element | null} headingEl @param {string[]} terms */
   function flashTermsIn(headingEl, terms) {
     if (document.querySelector(".tali-deck")) return; // decks have their own chrome
     if (!headingEl || !terms || !terms.length) return;
@@ -564,6 +601,7 @@
     flashTimer = setTimeout(clearFlash, 1600);
   }
 
+  /** @param {SearchItem} item */
   function go(item) {
     close();
     var terms = lastTerms.slice();
@@ -598,11 +636,13 @@
     try { raw = sessionStorage.getItem(FLASH_KEY); } catch (e) { return; }
     if (!raw) return;
     try { sessionStorage.removeItem(FLASH_KEY); } catch (e) {}
+    /** @type {string[]} */
     var terms;
     try { terms = JSON.parse(raw); } catch (e) { return; }
     if (!Array.isArray(terms) || !terms.length) return;
     var id = decodeURIComponent((location.hash || "").replace(/^#/, ""));
-    var target = id && document.getElementById(id);
+    // `const` so the `if (!target) return` null-narrowing survives into the setTimeout closure.
+    const target = id && document.getElementById(id);
     if (!target) return;
     // Let the browser settle on the anchor first, then flash.
     setTimeout(function () { flashTermsIn(target, terms); }, 60);
@@ -623,7 +663,7 @@
   // `data-qmd-search`; clicking it opens the same palette as Cmd-K. Delegated, so
   // it works no matter when the control entered the DOM.
   document.addEventListener("click", function (e) {
-    if (e.target && e.target.closest && e.target.closest("[data-qmd-search]")) {
+    if (e.target instanceof Element && e.target.closest("[data-qmd-search]")) {
       e.preventDefault();
       isOpen() ? close() : open();
     }
