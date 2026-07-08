@@ -175,10 +175,45 @@ files publishes it. Pick whichever fits how you already work:
 Run `taliesin check <dir>` first: a green check means no broken links, missing anchors, or
 other publish-blocking mistakes ship to your readers.
 
-Taliesin has no built-in `publish` command yet — because the output is an ordinary static
-folder, the host's own workflow (above) already covers it. A thin `Taliesin publish` that
-pushes `_site/` to a rendered-HTML branch is on the roadmap; until then the three-line
-`gh-pages` recipe is the whole story.
+### `taliesin publish`: one command to a passcode-gated URL
+
+For a private draft you want a supervisor or co-author to read at a stable URL,
+`taliesin publish <dir>` builds the site or book, gates it behind a shared passcode,
+and deploys it to [Cloudflare Pages](https://pages.cloudflare.com/) (free, works with a
+private repo). The passcode is stored as a Cloudflare secret, never in your repo, and the
+flow is one-way: publish never writes back to your source.
+
+One-time setup per project (needs [Wrangler](https://developers.cloudflare.com/workers/wrangler/),
+Cloudflare's CLI, and a Cloudflare API token with the Pages:Edit permission):
+
+```sh
+export CLOUDFLARE_API_TOKEN=...      # also CLOUDFLARE_ACCOUNT_ID
+wrangler pages project create my-book --production-branch production
+wrangler pages secret put PASSWORD --project-name my-book   # type the passcode once
+```
+
+Then, every time you want to update the live copy:
+
+```sh
+taliesin publish .                   # build, gate, deploy; prints https://my-book.pages.dev
+taliesin publish . --dry-run         # build + gate + print the deploy command, no deploy
+```
+
+The Cloudflare project name defaults to a slug of the directory name; override it with
+`--project-name` or a `publish:` block in `_site.yml`:
+
+```yaml
+publish:
+  provider: cloudflare
+  project: my-book
+```
+
+Your readers open the URL, type the passcode once in the browser's password prompt (no
+account needed), and see the current build. A shared passcode keeps casual strangers out;
+it is forwardable and is not per-person access control, which is the right level for a
+work-in-progress draft to a supervisor. Note that a book using live Mermaid diagrams
+still loads Mermaid from a CDN at view time (everything else is offline); this is harmless
+behind the gate.
 
 ## Inspecting a document: `render` and `blocks`
 
