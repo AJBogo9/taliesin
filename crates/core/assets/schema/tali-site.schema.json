@@ -80,6 +80,7 @@
     "mounts": {},
     "nav": {},
     "output": {},
+    "publish": {},
     "title": {},
     "toc": {
       "type": "boolean"

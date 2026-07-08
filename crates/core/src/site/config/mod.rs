@@ -52,6 +52,8 @@ pub struct SiteConfig {
     /// can link to e.g. a separate docs `book` at `/docs`. In `preview` they're
     /// served live; the static `build` recipe wires them with a second `build`.
     pub mounts: Vec<Mount>,
+    /// `publish:` deploy target for `taliesin publish` (absent unless configured).
+    pub publish: Option<PublishConfig>,
 }
 
 /// One `mounts:` entry: serve the project at `path` (relative to the site root)
@@ -60,6 +62,17 @@ pub struct SiteConfig {
 pub struct Mount {
     pub at: String,
     pub path: String,
+}
+
+/// `publish:` says where `taliesin publish` deploys this project. Optional; when
+/// absent, publish falls back to a slug of the project directory name. The passcode is
+/// never stored here (it lives only as a Cloudflare Pages secret).
+#[derive(Debug, Clone, Default)]
+pub struct PublishConfig {
+    /// Deploy provider. Only `cloudflare` is recognized today.
+    pub provider: Option<String>,
+    /// Cloudflare Pages project name (overrides the dir-name slug default).
+    pub project: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -110,6 +123,7 @@ pub(crate) const NATIVE_KEYS: &[&str] = &[
     "footer",
     "chapters",
     "mounts",
+    "publish",
 ];
 
 /// `nav:` section keys (the `{ left, right }` mapping form). A typo here silently drops
@@ -121,6 +135,8 @@ const FOOTER_SECTION_KEYS: &[&str] = &["left", "center", "right"];
 const NAV_ITEM_KEYS: &[&str] = &["text", "href", "icon"];
 /// The keys of a `mounts:` sequence entry (`{ at, path }`).
 const MOUNT_ITEM_KEYS: &[&str] = &["at", "path"];
+/// The keys of the `publish:` block (`{ provider, project }`).
+pub(crate) const PUBLISH_KEYS: &[&str] = &["provider", "project"];
 
 /// Stable prefix on the warning a malformed `_site.yml` pushes. A malformed config is a
 /// *real* error (the site silently degrades to defaults), distinct from a legitimately
@@ -183,6 +199,7 @@ fn parse_native(value: &serde_yaml::Value, warnings: &mut Vec<String>) -> SiteCo
         footer: footer_from(value.get("footer")),
         chapters,
         mounts: mounts_from(value.get("mounts")),
+        publish: publish_from(value.get("publish")),
     }
 }
 
@@ -242,6 +259,7 @@ fn validate_keys(value: &serde_yaml::Value, warnings: &mut Vec<String>) {
             "nav" => validate_nav_like(v, NAV_SECTION_KEYS, "nav", warnings),
             "footer" => validate_nav_like(v, FOOTER_SECTION_KEYS, "footer", warnings),
             "mounts" => validate_mounts(v, warnings),
+            "publish" => validate_publish(v, warnings),
             _ => {}
         }
     }
@@ -314,6 +332,35 @@ fn validate_mounts(v: &serde_yaml::Value, warnings: &mut Vec<String>) {
             }
         }
     }
+}
+
+/// Validate the `publish:` mapping's keys against [`PUBLISH_KEYS`]. A typo silently
+/// drops a setting (publish would fall back to a default), so it warns.
+fn validate_publish(v: &serde_yaml::Value, warnings: &mut Vec<String>) {
+    let serde_yaml::Value::Mapping(m) = v else {
+        return;
+    };
+    for k in m.keys().filter_map(|k| k.as_str()) {
+        if !PUBLISH_KEYS.contains(&k) {
+            warnings.push(format!(
+                "_site.yml: unknown publish key `{k}`{}",
+                did_you_mean(k, PUBLISH_KEYS)
+            ));
+        }
+    }
+}
+
+/// Parse the `publish:` mapping into [`PublishConfig`] (a non-mapping value yields None).
+fn publish_from(v: Option<&serde_yaml::Value>) -> Option<PublishConfig> {
+    let pv = v?;
+    if !pv.is_mapping() {
+        return None;
+    }
+    let s = |k: &str| pv.get(k).and_then(|x| x.as_str()).map(str::to_string);
+    Some(PublishConfig {
+        provider: s("provider"),
+        project: s("project"),
+    })
 }
 
 /// `nav:` is a list of items (the left side) or `{ left: […], right: […] }`.
@@ -502,6 +549,47 @@ mod config_tests {
             !warnings.iter().any(|w| is_malformed_config_warning(w)),
             "a valid config is not malformed: {warnings:?}"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn publish_block_parses_provider_and_project() {
+        let dir = tmp("publish-ok");
+        std::fs::write(
+            dir.join("_site.yml"),
+            "title: Book\npublish:\n  provider: cloudflare\n  project: my-book\n",
+        )
+        .unwrap();
+        let mut warnings = Vec::new();
+        let cfg = load_config(&dir, &mut warnings);
+        let publish = cfg.publish.expect("publish block parsed");
+        assert_eq!(publish.provider.as_deref(), Some("cloudflare"));
+        assert_eq!(publish.project.as_deref(), Some("my-book"));
+        assert!(
+            !warnings.iter().any(|w| w.contains("unknown")),
+            "a valid publish block must not warn: {warnings:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unknown_publish_key_warns_with_did_you_mean() {
+        // A typo in a publish key silently drops the setting, so it must warn.
+        let w = cfg_warnings("publish:\n  provder: cloudflare\n");
+        assert!(
+            w.iter()
+                .any(|w| w.contains("publish key `provder`") && w.contains("`provider`")),
+            "publish key typo: {w:?}"
+        );
+    }
+
+    #[test]
+    fn absent_publish_block_is_none() {
+        let dir = tmp("publish-absent");
+        std::fs::write(dir.join("_site.yml"), "title: Book\n").unwrap();
+        let mut warnings = Vec::new();
+        let cfg = load_config(&dir, &mut warnings);
+        assert!(cfg.publish.is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
