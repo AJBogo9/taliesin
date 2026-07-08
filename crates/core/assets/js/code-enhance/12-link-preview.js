@@ -52,6 +52,19 @@ function taliInitLinkPreview() {
   function cleanClone(node) {
     return taliCloneStripped(node);
   }
+  // A preview card is a read-only view appended OUTSIDE #tali-root. Any block cloned into
+  // it (same-page target) or parsed from the served snippet (cross-page target) still
+  // carries the DEFINING block's source-tracking attrs. Left in place they (a) duplicate a
+  // `data-block-id`, breaking the block model's in-DOM uniqueness invariant, and (b) make
+  // the card a live Alt-click click-to-source target — a read-only preview must never be
+  // one. Strip all three attrs from everything under `scope` so both paths share one rule.
+  function stripSourceAttrs(scope) {
+    [].forEach.call(scope.querySelectorAll('[data-block-id], [data-sourcepos], [data-source-file]'), function (n) {
+      n.removeAttribute('data-block-id');
+      n.removeAttribute('data-sourcepos');
+      n.removeAttribute('data-source-file');
+    });
+  }
   // Build the preview body for a target element. A heading shows itself plus the
   // following block(s) up to the next heading; anything else is cloned whole.
   function buildPreview(target) {
@@ -88,6 +101,7 @@ function taliInitLinkPreview() {
     if (!body || !body.textContent.trim()) return;
     card.innerHTML = '';
     card.appendChild(body);
+    stripSourceAttrs(card); // read-only preview: never a click-to-source target, never a duplicate block id
     currentLink = link;
     card.classList.add('open');
     place(link);
@@ -134,15 +148,11 @@ function taliInitLinkPreview() {
       tpl.innerHTML = snippet;
       resolveUrls(tpl.content);
       tpl.content.querySelectorAll('.tali-anchor, .tali-copy').forEach(function (n) { n.remove(); });
-      // The snippet carries the DEFINING page's block ids/sourcepos (and no data-source-file
-      // to redirect them). Left intact, an Alt-click inside this floating card would resolve
-      // click-to-source to the CURRENT page at the foreign block's line — a wrong jump. Strip
-      // the source-tracking attrs so the read-only preview is never a click-to-source target.
-      tpl.content.querySelectorAll('[data-block-id]').forEach(function (n) {
-        n.removeAttribute('data-block-id');
-        n.removeAttribute('data-sourcepos');
-        n.removeAttribute('data-source-file');
-      });
+      // The snippet carries the DEFINING page's block ids/sourcepos. Left intact, an Alt-click
+      // inside this floating card would resolve click-to-source to the CURRENT page at the
+      // foreign block's line — a wrong jump. `stripSourceAttrs` neutralizes it (same rule the
+      // same-page path applies).
+      stripSourceAttrs(tpl.content);
       if (!tpl.content.textContent.trim()) return;
       card.innerHTML = '';
       card.appendChild(tpl.content);
