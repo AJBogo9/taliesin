@@ -1168,27 +1168,28 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         }
         d.blocks = blocks;
         d.diagnostics = diags;
+        // Re-mount fully when recovering from an error (so every client clears its
+        // overlay), a deck changed structurally, or a deck's title/subtitle changed (its
+        // title slide lives outside the block model). The deck preserves its current
+        // slide + overview across the swap (its JS state survives the rebuild). The
+        // broadcast sequencing (body, then theme, then diagnostics — theme/diags after
+        // the body even on a re-mount) is the shared contract in `protocol::Broadcast`.
+        let generation = d.generation;
+        let messages = protocol::Broadcast {
+            ops: &ops,
+            remount: recovered || deck_structural || deck_meta_changed,
+            theme_changed,
+            diags_changed,
+        }
+        .messages(
+            || full_render_json(&d),
+            |op| op_json(op, generation),
+            || protocol::style(&d.theme_css),
+            || protocol::diagnostics(&d.diagnostics),
+        );
         // Broadcast under the lock so connecting clients can't interleave.
-        if recovered || deck_structural || deck_meta_changed {
-            // Re-mount fully when recovering from an error (so every client clears its
-            // overlay), a deck changed structurally, or a deck's title/subtitle changed
-            // (its title slide lives outside the block model). The deck preserves its
-            // current slide + overview across the swap (its JS state survives the rebuild).
-            let _ = app.tx.send(full_render_json(&d));
-        } else {
-            for op in &ops {
-                let _ = app.tx.send(op_json(op, d.generation));
-            }
-        }
-        // A theme/`.css` edit: hot-swap the theme `<style>` in place. Sent AFTER the
-        // if/else (not only on the incremental path), so a save that both changes the
-        // theme and triggers a full re-mount (error recovery, a deck restructure) still
-        // applies the new theme — the re-mounted HTML carries the old `<style>` body.
-        if theme_changed {
-            let _ = app.tx.send(protocol::style(&d.theme_css));
-        }
-        if diags_changed {
-            let _ = app.tx.send(protocol::diagnostics(&d.diagnostics));
+        for m in messages {
+            let _ = app.tx.send(m);
         }
         ops.len()
     };

@@ -22,8 +22,10 @@ legacy-format clean break (`.tmd`-only input, `deck`/`define()` the only spellin
 batch, the VS Code companion language features, F2a cross-page hover-preview, nested-theorem numbering,
 the 2026-07-07 audit batches (1-4, Batch 5 in full [high-value half + remainder], 6, 7, the Batch 8
 robustness trio: watcher prune + live search index + reconnect state, and Batch 9: the freeze/kernel
-honesty + resource-hygiene trio), and cross-reference backlinks (a quiet per-target "Referenced by"
-line — the reverse of forward xref; `site/backlinks.rs`).
+honesty + resource-hygiene trio), cross-reference backlinks (a quiet per-target "Referenced by"
+line — the reverse of forward xref; `site/backlinks.rs`), and the Batch 8 consolidation (the
+duplicated diff-then-broadcast tail hoisted into the shared `protocol::Broadcast` helper, so the
+single-doc and site dev servers can't drift on the block-level incremental invariant).
 
 **Working method:** branch per feature; brainstorm if there's a fork; spec under
 `docs/superpowers/specs/`; implement TDD; verify (cargo + browser via chrome-devtools, or the
@@ -39,9 +41,9 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
 ## Priority queue
 
 ### Tier 1 — decided, build-ready (no blocker)
-- Audit 2026-07-07 implementation queue also lives here — see
-  **[the batched queue below](#audit-2026-07-07-implementation-queue-build-ready)**. Next up:
-  the Batch 8 consolidation (the last item in that queue).
+- Empty — the 2026-07-07 audit implementation queue is fully landed (Batches 1-9 + the Batch 8
+  consolidation). Next build-ready work = promote a "Decided 2026-07-07" dedicated-session item, or
+  pull a Tier-2 hardening item forward.
 
 ### Decided 2026-07-07 — each needs its own dedicated session
 - **Quarto design-decisions catalog triage, reframed.** Branch `quarto-decisions-catalog`, commit
@@ -135,27 +137,14 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
 
 ## Audit 2026-07-07 implementation queue (build-ready)
 
-The 2026-07-07 deep audit's build-ready fixes (decided, no blocker), grouped into
-**batches sized as one branch each, in recommended order**. Batches 1-7 (Batch 5 now in full) + the
-Batch 8 robustness trio + Batch 9 (freeze/kernel honesty) landed; only the Batch 8 consolidation
-below remains. Full per-item detail (repro + fix approach) and the ~80 low-severity long tail live in
-[AUDITS.md](AUDITS.md) 2026-07-07. **CONFIRMED unless marked PLAUSIBLE.**
-
-> **How to work this:** one batch = one branch; brainstorm only if a fork appears; TDD;
-> verify (cargo + browser via chrome-devtools); fast-forward-merge to local main; then
-> delete the landed batch from here. **Do-NOT-touch:** exec/kernel execution semantics +
-> the single-editing-surface invariant. Already-tracked items (op-batching, kernel `/tmp`
-> [`Kernel::start`] + `in_flight` leaks, boot-diagnostic clobber, `app.pages` LRU, lazy search
-> index, `fitSlide`, R ANSI leak, Mermaid SRI) stay in **Tier 2** above; the audit only sharpened
-> their exact paths in AUDITS.md.
-
-### Batch 8 remainder: consolidate the duplicated diff-then-broadcast core [large: its own branch]
-The three robustness fixes (watcher prune, live search index, reconnect state) landed 2026-07-07
-(`41313f9`). Still open:
-- Two dev servers duplicate the diff-then-broadcast contract (drift risk to the incremental invariant):
-  hoist into one shared helper (`serve/mod.rs` rebuild ↔ `serve_site/mod.rs` build_page). The `gen`/`boot`
-  additions were made in the shared `protocol::op`/`full_render`, but the diff→bump-gen→broadcast loop is
-  still copy-pasted. **[large: schedule as its own branch.]**
+The 2026-07-07 deep audit's build-ready fixes (decided, no blocker) were worked in
+**batches sized as one branch each**. Batches 1-9 all landed, including the Batch 8 consolidation
+(the duplicated diff-then-broadcast tail hoisted into the shared `protocol::Broadcast` helper so the
+two dev servers can't drift on the incremental invariant). Full per-item detail (repro + fix approach)
+and the ~80 low-severity long tail live in [AUDITS.md](AUDITS.md) 2026-07-07. **CONFIRMED unless
+marked PLAUSIBLE.** Already-tracked items (op-batching, kernel `/tmp` [`Kernel::start`] + `in_flight`
+leaks, boot-diagnostic clobber, `app.pages` LRU, lazy search index, `fitSlide`, R ANSI leak, Mermaid
+SRI) stay in **Tier 2** above; the audit only sharpened their exact paths in AUDITS.md.
 
 ### Cut (philosophy gate: adopt) — cleared
 The `?qmd=embed` dead-mode removal landed (drop the orphaned ternary branch + stale comments;

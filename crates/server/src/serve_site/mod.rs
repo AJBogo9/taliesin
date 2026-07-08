@@ -859,22 +859,24 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
     }
     ps.doc.blocks = blocks;
     ps.doc.diagnostics = diags;
-    if recovered {
-        let _ = ps.tx.send(full_render_json(&ps.doc));
-    } else {
-        for op in &ops {
-            let _ = ps.tx.send(op_json(op, ps.doc.generation));
-        }
+    // Broadcast sequencing (body, then theme, then diagnostics — theme/diags after the
+    // body even on a recovery re-mount) is the shared contract in `protocol::Broadcast`.
+    // A site page never restructures a deck, so `recovered` is the only remount trigger.
+    let generation = ps.doc.generation;
+    let messages = protocol::Broadcast {
+        ops: &ops,
+        remount: recovered,
+        theme_changed,
+        diags_changed,
     }
-    // A theme/`.css` edit: hot-swap the theme style in place (no reload). Sent AFTER the
-    // if/else (not only on the incremental path), so a save that both changes the theme
-    // and triggers a full re-mount (error recovery) still applies the new theme — the
-    // re-mounted HTML carries the old `<style>` body.
-    if theme_changed {
-        let _ = ps.tx.send(protocol::style(&ps.doc.theme_css));
-    }
-    if diags_changed {
-        let _ = ps.tx.send(protocol::diagnostics(&ps.doc.diagnostics));
+    .messages(
+        || full_render_json(&ps.doc),
+        |op| op_json(op, generation),
+        || protocol::style(&ps.doc.theme_css),
+        || protocol::diagnostics(&ps.doc.diagnostics),
+    );
+    for m in messages {
+        let _ = ps.tx.send(m);
     }
     if !ops.is_empty() {
         crate::log::update(ops.len());

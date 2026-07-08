@@ -205,8 +205,146 @@ pub fn op(op: &BlockOp, generation: u64, rewrite_html: impl Fn(&str) -> String) 
     .to_string()
 }
 
+/// One rebuild's diff outcome: the block ops plus which whole-message updates the
+/// rebuild also needs. Both dev servers build one of these and turn it into the
+/// ordered broadcast burst via [`Broadcast::messages`], so the single-doc
+/// [`crate::serve`] and multi-page [`crate::serve_site`] servers can't drift on the
+/// block-level incremental invariant. The remount trigger and the gen-bump stay
+/// caller-side: only the single-doc server folds deck restructure/title flags into
+/// `remount`, and the bump must land before the lazy `full_render` reads it.
+pub struct Broadcast<'a> {
+    /// The block ops from `diff_blocks`, applied one message each on the incremental path.
+    pub ops: &'a [BlockOp],
+    /// Send a whole `full_render` (a re-mount) instead of the ops: error recovery, or a
+    /// deck restructure/title change whose slides can't be expressed as flat block ops.
+    pub remount: bool,
+    /// The theme CSS changed — hot-swap the `<style>` after the body.
+    pub theme_changed: bool,
+    /// The diagnostics list changed — push it after the body.
+    pub diags_changed: bool,
+}
+
+impl Broadcast<'_> {
+    /// The ordered burst both dev servers push after a rebuild diff. The two servers
+    /// MUST sequence these identically or the incremental invariant drifts between the
+    /// previews, so the ordering lives here once:
+    ///
+    ///   1. body — one `full_render` when `remount`, otherwise one `op` per block op,
+    ///      in diff order;
+    ///   2. then `style` if `theme_changed`;
+    ///   3. then `diagnostics` if `diags_changed`.
+    ///
+    /// The theme/diagnostics messages ride *after* the body — including on the `remount`
+    /// path — so a save that both re-mounts and changes the theme still applies the new
+    /// theme: the re-mounted HTML carries the stale `<style>` body, and a `diagnostics`
+    /// update would be lost under a fresh `full_render` otherwise. This after-the-body
+    /// ordering is the load-bearing contract that was previously copy-pasted in both
+    /// servers.
+    ///
+    /// The message builders are closures because each server reads its own just-updated
+    /// state and the `op`/`full_render` bodies differ by link-rewrite (identity for the
+    /// single doc, `.tmd`→`.html` for the site). `full_render` stays lazy so the hot
+    /// incremental path never serializes the whole body just to discard it.
+    pub fn messages(
+        &self,
+        full_render: impl FnOnce() -> String,
+        op: impl Fn(&BlockOp) -> String,
+        style: impl FnOnce() -> String,
+        diagnostics: impl FnOnce() -> String,
+    ) -> Vec<String> {
+        let mut msgs = Vec::new();
+        if self.remount {
+            msgs.push(full_render());
+        } else {
+            msgs.extend(self.ops.iter().map(op));
+        }
+        if self.theme_changed {
+            msgs.push(style());
+        }
+        if self.diags_changed {
+            msgs.push(diagnostics());
+        }
+        msgs
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use taliesin_core::BlockOp;
+
+    fn label(op: &BlockOp) -> String {
+        match op {
+            BlockOp::Update { target_id, .. } => format!("OP:update:{target_id}"),
+            BlockOp::Remove { target_id } => format!("OP:remove:{target_id}"),
+            _ => "OP:other".into(),
+        }
+    }
+
+    fn messages(b: super::Broadcast) -> Vec<String> {
+        b.messages(|| "FULL".into(), label, || "STYLE".into(), || "DIAG".into())
+    }
+
+    #[test]
+    fn broadcast_incremental_is_one_op_per_block_in_order() {
+        let ops = vec![
+            BlockOp::Update {
+                target_id: "a".into(),
+                html: "<p>a</p>".into(),
+            },
+            BlockOp::Remove {
+                target_id: "b".into(),
+            },
+        ];
+        let msgs = messages(super::Broadcast {
+            ops: &ops,
+            remount: false,
+            theme_changed: false,
+            diags_changed: false,
+        });
+        assert_eq!(msgs, vec!["OP:update:a", "OP:remove:b"]);
+    }
+
+    #[test]
+    fn broadcast_remount_replaces_ops_and_keeps_theme_after_body() {
+        // The load-bearing case: a full re-mount that also changed the theme and the
+        // diagnostics. `full_render` replaces the ops, and `style`/`diagnostics` still
+        // ride AFTER it (the re-mounted HTML carries the stale <style>).
+        let ops = vec![BlockOp::Remove {
+            target_id: "a".into(),
+        }];
+        let msgs = messages(super::Broadcast {
+            ops: &ops,
+            remount: true,
+            theme_changed: true,
+            diags_changed: true,
+        });
+        assert_eq!(msgs, vec!["FULL", "STYLE", "DIAG"]);
+    }
+
+    #[test]
+    fn broadcast_diagnostics_only_change_sends_just_diagnostics() {
+        // A rebuild that produced no block ops and no theme change but a new diagnostic
+        // (e.g. the kernel came back) sends only the diagnostics message.
+        let msgs = messages(super::Broadcast {
+            ops: &[],
+            remount: false,
+            theme_changed: false,
+            diags_changed: true,
+        });
+        assert_eq!(msgs, vec!["DIAG"]);
+    }
+
+    #[test]
+    fn broadcast_no_change_sends_nothing() {
+        let msgs = messages(super::Broadcast {
+            ops: &[],
+            remount: false,
+            theme_changed: false,
+            diags_changed: false,
+        });
+        assert!(msgs.is_empty());
+    }
+
     #[test]
     fn build_state_serializes_phase_and_counts() {
         let s = super::build_state(Some("ch1.tmd"), "executing", 3, 8, "python");
