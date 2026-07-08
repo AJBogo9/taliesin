@@ -101,7 +101,44 @@ impl DocState {
 /// Entry point for `taliesin serve <file> [port] [--open]`.
 pub fn run(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(serve(path, port, open, expose))
+    let result = rt.block_on(serve(path, port, open, expose));
+    // `serve` returns on a shutdown signal (see `shutdown_signal`); force the runtime
+    // down so the spawned watcher task that owns the kernel is dropped promptly,
+    // running its teardown (`Kernel`/`ForkserverDaemon` Drop = process/group SIGKILL).
+    // Bounded so a wedged background task can't hang exit; the kills are synchronous,
+    // so they still run even as the runtime is torn down.
+    rt.shutdown_timeout(std::time::Duration::from_secs(5));
+    result
+}
+
+/// Resolve when the process is asked to shut down: Ctrl-C (SIGINT) or SIGTERM. The
+/// two dev servers race their `axum::serve` against this so `serve` **returns** on a
+/// signal (rather than the process being hard-killed with kernels still live),
+/// letting `run` tear the runtime down and drop the watcher/builder tasks that own
+/// the kernels + warm pool — which runs their teardown Drops. We race (rather than
+/// `axum`'s `with_graceful_shutdown`) because the preview holds a persistent
+/// websocket that never closes on its own, so graceful shutdown would hang. Without
+/// this, a Ctrl-C'd preview leaks the whole kernel/forkserver subtree.
+pub(crate) async fn shutdown_signal() {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+    #[cfg(unix)]
+    let terminate = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut sig) => {
+                sig.recv().await;
+            }
+            // Can't install the SIGTERM handler: fall back to Ctrl-C only.
+            Err(_) => std::future::pending::<()>().await,
+        }
+    };
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+    tokio::select! {
+        _ = ctrl_c => {}
+        _ = terminate => {}
+    }
 }
 
 async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::Result<()> {
@@ -209,12 +246,19 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
     }
     // `into_make_service_with_connect_info` surfaces the peer address to the LAN guard
     // (loopback detection); harmless when no guard is installed.
-    axum::serve(
+    let server = axum::serve(
         listener,
         router.into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .await
-    .map_err(std::io::Error::other)
+    );
+    // Race the server against a shutdown signal so Ctrl-C/SIGTERM returns cleanly and
+    // the runtime teardown in `run` can reap the kernel (see `shutdown_signal`).
+    tokio::select! {
+        r = server => r.map_err(std::io::Error::other),
+        _ = shutdown_signal() => {
+            crate::log::info("shutting down (reaping kernel)");
+            Ok(())
+        }
+    }
 }
 
 /// Bind `port`, falling back to the next few ports if it's in use (so a second

@@ -104,7 +104,13 @@ impl PageDoc {
 /// Entry point for `taliesin preview <dir>` when the path is a site project.
 pub fn run(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::Result<()> {
     let rt = tokio::runtime::Runtime::new()?;
-    rt.block_on(serve(root, port, open, expose))
+    let result = rt.block_on(serve(root, port, open, expose));
+    // `serve` returns on a shutdown signal (see `crate::serve::shutdown_signal`);
+    // force the runtime down so the builder task that owns the warm pool + kernels is
+    // dropped promptly, running its teardown (the forkserver group-kill + kernel
+    // SIGKILLs). Bounded so a wedged task can't hang exit; the kills are synchronous.
+    rt.shutdown_timeout(std::time::Duration::from_secs(5));
+    result
 }
 
 async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::Result<()> {
@@ -204,12 +210,20 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
     }
     // `into_make_service_with_connect_info` surfaces the peer address to the LAN guard
     // (loopback detection); harmless when no guard is installed.
-    axum::serve(
+    let server = axum::serve(
         listener,
         router.into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .await
-    .map_err(std::io::Error::other)
+    );
+    // Race the server against a shutdown signal so Ctrl-C/SIGTERM returns cleanly and
+    // the runtime teardown in `run` can reap the warm pool + kernels (see
+    // `crate::serve::shutdown_signal`).
+    tokio::select! {
+        r = server => r.map_err(std::io::Error::other),
+        _ = crate::serve::shutdown_signal() => {
+            crate::log::info("shutting down (reaping kernels)");
+            Ok(())
+        }
+    }
 }
 
 // --- HTTP ---------------------------------------------------------------

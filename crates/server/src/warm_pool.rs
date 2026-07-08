@@ -46,7 +46,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 use tokio::sync::Mutex;
-use tokio::time::{Duration, timeout};
+use tokio::time::{Duration, Instant, timeout};
 
 use crate::kernel::{Kernel, KernelSpec, prepare_connection};
 
@@ -95,6 +95,15 @@ def _child_entry(conn_file):
     # NOT exec a new interpreter — that would replace the image and lose every
     # preloaded module. Start ipykernel in-process instead.
     try:
+        # Detach fd 1 from the daemon's control pipe BEFORE ipykernel starts: it
+        # prints a startup NOTE ("Ctrl-C will not work") to stdout, which would
+        # otherwise interleave with the parent's "SPAWNED <pid>" line and corrupt the
+        # fork protocol taliesin reads on the daemon stdout. The kernel talks over ZMQ,
+        # never this stdout, so /dev/null is safe (ipykernel re-captures fd 1 into its
+        # own IOPub pipe during init anyway).
+        _null = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(_null, 1)
+        os.close(_null)
         from ipykernel.kernelapp import IPKernelApp
         app = IPKernelApp.instance()
         app.initialize(["-f", conn_file])
@@ -310,19 +319,47 @@ impl ForkserverDaemon {
         let req = format!("{}\n", conn_file.display());
         io.stdin.write_all(req.as_bytes()).await?;
         io.stdin.flush().await?;
-        let mut line = String::new();
-        let n = timeout(FORK_TIMEOUT, io.stdout.read_line(&mut line))
-            .await
-            .map_err(|_| std::io::Error::other("forkserver: fork request timed out"))??;
-        if n == 0 {
-            return Err(std::io::Error::other("forkserver: closed during fork"));
+        // Read until the fork reply. `_child_entry` detaches the kernel's stdout from
+        // this pipe, so the reply is normally clean; but skip any stray non-protocol
+        // line as belt-and-suspenders — a lone banner that slipped onto the pipe must
+        // not fail an otherwise-good fork. One overall deadline bounds the whole read,
+        // so a silent daemon still times out rather than looping forever.
+        let deadline = Instant::now() + FORK_TIMEOUT;
+        let mut warned_stray = false;
+        loop {
+            let budget = deadline.saturating_duration_since(Instant::now());
+            if budget.is_zero() {
+                return Err(std::io::Error::other("forkserver: fork request timed out"));
+            }
+            let mut line = String::new();
+            let n = timeout(budget, io.stdout.read_line(&mut line))
+                .await
+                .map_err(|_| std::io::Error::other("forkserver: fork request timed out"))??;
+            if n == 0 {
+                return Err(std::io::Error::other("forkserver: closed during fork"));
+            }
+            let line = line.trim();
+            if let Some(pid) = line
+                .strip_prefix("SPAWNED ")
+                .and_then(|p| p.parse::<u32>().ok())
+            {
+                return Ok(pid);
+            }
+            if line == "ERROR" {
+                return Err(std::io::Error::other(
+                    "forkserver: fork failed (daemon reported ERROR)",
+                ));
+            }
+            if !line.is_empty() && !warned_stray {
+                // A stray whole line before the reply (rare now that the child detaches
+                // its stdout). Warn once — not per line — so a flood can't spam the log;
+                // keep reading up to the deadline regardless.
+                warned_stray = true;
+                crate::log::warn(&format!(
+                    "forkserver: ignoring unexpected pipe line(s), first: {line:?}"
+                ));
+            }
         }
-        let line = line.trim();
-        let pid = line
-            .strip_prefix("SPAWNED ")
-            .and_then(|p| p.parse::<u32>().ok())
-            .ok_or_else(|| std::io::Error::other(format!("forkserver: bad fork reply {line:?}")))?;
-        Ok(pid)
     }
 }
 
