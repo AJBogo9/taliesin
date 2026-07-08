@@ -224,13 +224,18 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
 /// (a write/create error) is returned unchanged.
 fn strict_exit(code: ExitCode, strict_fail: bool, problems: usize) -> ExitCode {
     if strict_fail {
-        log::error(&format!(
-            "--strict: {problems} problem{} (cell error or located warning); failing the build",
-            if problems == 1 { "" } else { "s" }
-        ));
+        warn_strict(problems);
         return ExitCode::FAILURE;
     }
     code
+}
+
+/// Log the `--strict` failure summary (shared by the single-doc and site build paths).
+fn warn_strict(problems: usize) {
+    log::error(&format!(
+        "--strict: {problems} problem{} (cell error or located warning); failing the build",
+        if problems == 1 { "" } else { "s" }
+    ));
 }
 
 /// Count the executed output blocks that are uncaught runtime errors (their HTML
@@ -777,14 +782,17 @@ async fn build_one_page(
     }
 }
 
-fn build_site(
+/// Run a directory (site/book) build to disk, returning whether it succeeded. Shared by
+/// `cmd_build`'s directory branch and `publish` (which needs the success signal, not just
+/// an opaque `ExitCode`, plus the freedom to keep working with the output dir afterward).
+pub(crate) fn run_site_build(
     root: &Path,
     out_override: Option<&str>,
     strict: bool,
     jobs: Option<usize>,
-) -> ExitCode {
-    // Executing code cells needs the async kernel, so the whole site build runs on
-    // a tokio runtime (mirrors the preview server's setup). A multi-thread runtime so
+) -> bool {
+    // Executing code cells needs the async kernel, so the whole site build runs on a
+    // tokio runtime (mirrors the preview server's setup). A multi-thread runtime so
     // concurrent page builds (each its own kernel) actually overlap on the CPU.
     let rt = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -793,10 +801,23 @@ fn build_site(
         Ok(rt) => rt,
         Err(e) => {
             log::error(&format!("cannot start runtime: {e}"));
-            return ExitCode::FAILURE;
+            return false;
         }
     };
     rt.block_on(build_site_async(root, out_override, strict, jobs))
+}
+
+fn build_site(
+    root: &Path,
+    out_override: Option<&str>,
+    strict: bool,
+    jobs: Option<usize>,
+) -> ExitCode {
+    if run_site_build(root, out_override, strict, jobs) {
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
+    }
 }
 
 async fn build_site_async(
@@ -804,7 +825,7 @@ async fn build_site_async(
     out_override: Option<&str>,
     strict: bool,
     jobs: Option<usize>,
-) -> ExitCode {
+) -> bool {
     let site = taliesin_core::Site::discover(root);
     // A malformed `_site.yml` silently degrades the whole site to defaults (no nav, no
     // title, wrong output dir): a real `--strict` problem, unlike a benign missing config.
@@ -817,7 +838,7 @@ async fn build_site_async(
     }
     if site.pages.is_empty() {
         log::error(&format!("no .tmd pages found under {}", root.display()));
-        return ExitCode::FAILURE;
+        return false;
     }
     // Cross-page `@fig-`/`@eq-`/`@thm-` ref numbers are filled by `Site::discover`'s
     // render-harvest (shared with the live preview), so no separate build-time pass here.
@@ -827,7 +848,7 @@ async fn build_site_async(
     };
     if let Err(e) = std::fs::create_dir_all(&out) {
         log::error(&format!("cannot create {}: {e}", out.display()));
-        return ExitCode::FAILURE;
+        return false;
     }
     let out = out.canonicalize().unwrap_or(out);
 
@@ -841,7 +862,7 @@ async fn build_site_async(
              (it would overwrite/truncate your source files). Use a different `output-dir:` or `--out <dir>`.",
             out.display()
         ));
-        return ExitCode::FAILURE;
+        return false;
     }
 
     // `mounts:` are served live in `preview` but the static build doesn't wire them, so
@@ -1086,7 +1107,11 @@ async fn build_site_async(
     ));
     // In `--strict` mode a problem (crashed cell / located warning / broken ref)
     // fails the build after writing it, so CI catches a broken site.
-    strict_exit(ExitCode::SUCCESS, strict && problems > 0, problems)
+    let strict_fail = strict && problems > 0;
+    if strict_fail {
+        warn_strict(problems);
+    }
+    !strict_fail
 }
 
 /// Source-only file extensions that are build *inputs* / prose / stylesheet sources,
