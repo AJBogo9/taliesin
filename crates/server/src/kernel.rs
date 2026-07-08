@@ -548,6 +548,15 @@ impl Kernel {
     /// than wherever the server was launched. `None` inherits the server's cwd.
     pub async fn start(spec: &KernelSpec, cwd: Option<&Path>) -> io::Result<Kernel> {
         let (info, conn_dir, conn_file) = prepare_connection(spec.kernel_name).await?;
+        // The 0700 `/tmp/tali-kernel-<uuid>` dir has no owner until the handshake
+        // succeeds and the live `Kernel` (whose `Drop` removes it) takes over: any
+        // early `?`/`return` below would drop the `PathBuf` and leak the dir. Guard
+        // it, then disarm once the kernel is built. (`kill_on_drop` below is the
+        // process half: a `child` dropped on the connect-fail path is SIGKILL'd
+        // rather than left running against its now-orphaned ports.)
+        let dir_guard = ConnDirGuard {
+            conn_dir: Some(conn_dir),
+        };
 
         // Capture stderr so a startup failure (e.g. the interpreter lacks the
         // ipykernel/IRkernel module) can be reported instead of swallowed.
@@ -555,7 +564,8 @@ impl Kernel {
         cmd.args((spec.argv)(&conn_file))
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::piped());
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true);
         // Run cells in the document's directory so their relative file writes land
         // beside the source (the connection file is an absolute path, so this
         // doesn't disturb the ZMQ handshake).
@@ -581,6 +591,8 @@ impl Kernel {
             }
         };
 
+        // Handshake succeeded: hand the dir to the `Kernel`, which now owns teardown.
+        let conn_dir = dir_guard.disarm();
         Kernel::finish(KernelProc::Owned(child), conn_dir, iopub, shell, spec).await
     }
 
@@ -866,6 +878,32 @@ impl Kernel {
             unsafe {
                 libc::kill(pid as libc::pid_t, libc::SIGINT);
             }
+        }
+    }
+}
+
+/// Cleanup guard for [`Kernel::start`]: the 0700 `/tmp/tali-kernel-<uuid>` connection
+/// dir created by [`prepare_connection`] has no owner until the ZMQ handshake succeeds
+/// and the live [`Kernel`] (whose `Drop` removes it) takes over. An early return on any
+/// startup failure would otherwise drop the `PathBuf` and leak the dir. This guard
+/// removes it on drop and is `disarm`ed on the success path. The kernel *process* is
+/// handled separately (`kill_on_drop` on the spawn command); the sibling
+/// [`ForkedCleanup`] guards the fork path, which additionally SIGKILLs a non-child pid.
+struct ConnDirGuard {
+    conn_dir: Option<PathBuf>,
+}
+
+impl ConnDirGuard {
+    /// Hand the connection dir to the now-live kernel and defuse the guard.
+    fn disarm(mut self) -> PathBuf {
+        self.conn_dir.take().expect("conn_dir present until disarm")
+    }
+}
+
+impl Drop for ConnDirGuard {
+    fn drop(&mut self) {
+        if let Some(dir) = self.conn_dir.take() {
+            let _ = std::fs::remove_dir_all(&dir);
         }
     }
 }
@@ -1278,5 +1316,38 @@ mod tests {
         let _ = child.kill();
         let _ = child.wait();
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn conn_dir_guard_armed_removes_dir_and_disarm_keeps_it() {
+        // The leak `Kernel::start` closes: a startup failure before the live Kernel
+        // takes ownership must remove the 0700 /tmp connection dir on the guard's
+        // drop. Pure filesystem logic, so this runs in CI without a kernel.
+        let armed = std::env::temp_dir().join(format!("tali-conndir-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&armed).unwrap();
+        {
+            let _guard = ConnDirGuard {
+                conn_dir: Some(armed.clone()),
+            };
+        } // armed drop: must remove the dir
+        assert!(
+            !armed.exists(),
+            "an armed ConnDirGuard must remove the connection dir on drop"
+        );
+
+        // Success path: `disarm` hands the dir to the live Kernel and must NOT remove
+        // it, so the kernel keeps ownership (its own Drop cleans up later).
+        let kept = std::env::temp_dir().join(format!("tali-conndir-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&kept).unwrap();
+        let guard = ConnDirGuard {
+            conn_dir: Some(kept.clone()),
+        };
+        let returned = guard.disarm();
+        assert_eq!(
+            returned, kept,
+            "disarm returns the dir for the Kernel to own"
+        );
+        assert!(kept.exists(), "disarm must NOT remove the connection dir");
+        let _ = std::fs::remove_dir_all(&kept);
     }
 }

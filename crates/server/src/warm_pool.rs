@@ -146,14 +146,52 @@ pub struct ForkserverDaemon {
     /// re-imports the target's `__main__` by name to locate the fork entry point,
     /// which fails for a `-c` string module.
     helper_dir: PathBuf,
+    /// The helper's pid, captured at boot (when `child.id()` is reliably `Some`).
+    /// Because the helper leads its own process group (`process_group(0)`), this is
+    /// also the pgid of the whole forkserver subtree — the target for the teardown
+    /// group-kill. Stored rather than re-read from `_child.id()` at `Drop` time so
+    /// teardown never depends on the child handle still being unreaped.
+    helper_pid: Option<u32>,
 }
 
 impl Drop for ForkserverDaemon {
     fn drop(&mut self) {
-        // `kill_on_drop` handles the process; clean up the helper script dir.
+        // Tear down the whole forkserver subtree, not just the helper. Killing only
+        // `_child` (via `kill_on_drop`) leaves the multiprocessing *forkserver server*
+        // the helper booted — and every kernel that server forked — orphaned: they are
+        // NOT taliesin's direct children (systemd reaps them), the server ignores
+        // SIGINT, and each is ~100 MB. The helper leads its own process group
+        // (`process_group(0)` in `boot`) and the server + kernels inherit it, so one
+        // group SIGKILL reclaims the whole subtree. Safe here because the daemon only
+        // drops once its last `Arc` is gone, i.e. after every handed-out `Kernel`
+        // (which already SIGKILLs its own pid on drop) has been released.
+        if let Some(pid) = self.helper_pid {
+            kill_process_group(pid);
+        }
+        // `kill_on_drop` still SIGKILLs + reaps the helper itself; clean up its dir.
         let _ = std::fs::remove_dir_all(&self.helper_dir);
     }
 }
+
+/// SIGKILL every process in the group led by `helper_pid`. The warm-pool helper is
+/// spawned into its OWN process group (`process_group(0)`, so its pgid equals its
+/// pid), which the forkserver server it boots — and every kernel that server forks —
+/// inherit. Signalling the negated pid targets that whole group at once; SIGKILL is
+/// uncatchable, so the forkserver's SIGINT mask can't dodge it, and a group that has
+/// already exited returns `ESRCH`, which we ignore. No-op off Unix (no forkserver
+/// there — the warm pool is inert and this is never reached).
+#[cfg(unix)]
+fn kill_process_group(helper_pid: u32) {
+    // Safety: a negative argument signals the process group `helper_pid`; because the
+    // helper leads its own group the target is exactly the forkserver subtree we
+    // created, never an unrelated process. Errors (e.g. `ESRCH`) are ignored.
+    unsafe {
+        libc::kill(-(helper_pid as libc::pid_t), libc::SIGKILL);
+    }
+}
+
+#[cfg(not(unix))]
+fn kill_process_group(_helper_pid: u32) {}
 
 struct DaemonIo {
     stdin: ChildStdin,
@@ -185,21 +223,30 @@ impl ForkserverDaemon {
         std::fs::write(&helper_path, FORKSERVER_HELPER)?;
 
         let preload_json = serde_json::to_string(PRELOAD_CANDIDATES).unwrap();
-        let mut child = Command::new(python)
-            .arg(&helper_path)
+        let mut cmd = Command::new(python);
+        cmd.arg(&helper_path)
             .arg(preload_json)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|e| {
-                let _ = std::fs::remove_dir_all(&helper_dir);
-                std::io::Error::other(format!(
-                    "cannot launch warm-pool forkserver `{}`: {e}",
-                    python.display()
-                ))
-            })?;
+            .kill_on_drop(true);
+        // Put the helper (and the forkserver server + kernels it spawns, which inherit
+        // its group) into a fresh process group, so teardown can SIGKILL the whole
+        // subtree by group without ever touching taliesin's own group. See
+        // `kill_process_group` + `Drop for ForkserverDaemon`.
+        #[cfg(unix)]
+        cmd.process_group(0);
+        let mut child = cmd.spawn().map_err(|e| {
+            let _ = std::fs::remove_dir_all(&helper_dir);
+            std::io::Error::other(format!(
+                "cannot launch warm-pool forkserver `{}`: {e}",
+                python.display()
+            ))
+        })?;
+        // Capture the pid now, while `child.id()` is reliably `Some` (the child was
+        // just spawned and hasn't been reaped). With `process_group(0)` this is the
+        // pgid of the whole subtree; teardown uses it instead of re-reading the handle.
+        let helper_pid = child.id();
         let stdin = child
             .stdin
             .take()
@@ -232,6 +279,13 @@ impl ForkserverDaemon {
         let preloaded = match ready {
             Ok(p) => p,
             Err(e) => {
+                // The forkserver server may already have booted (a mid-boot READY
+                // timeout), so tear down the whole subtree — not just the helper —
+                // before bailing, mirroring the `Drop` teardown (`kill_process_group`
+                // is a no-op off Unix, so no `cfg` gate is needed here).
+                if let Some(pid) = helper_pid {
+                    kill_process_group(pid);
+                }
                 let _ = std::fs::remove_dir_all(&helper_dir);
                 return Err(e);
             }
@@ -245,6 +299,7 @@ impl ForkserverDaemon {
             }),
             preloaded,
             helper_dir,
+            helper_pid,
         })
     }
 
@@ -292,7 +347,38 @@ struct PoolInner {
     /// into `ready`. The total pool size is `ready.len() + *in_flight`; both
     /// terms are counted separately so that a successful fork decrements
     /// `in_flight` when it pushes into `ready`, keeping the invariant exact.
-    in_flight: Mutex<usize>,
+    ///
+    /// A `std::sync::Mutex` (not tokio's), so [`SlotReservation`]'s `Drop` can
+    /// release a slot without an `await` — the reservation is held across
+    /// `warm_one`, and a sync `Drop` guarantees the slot is returned even if that
+    /// fork panics. It is only ever locked for a non-blocking counter tweak (never
+    /// across an `await`), so it can't stall the runtime.
+    in_flight: std::sync::Mutex<usize>,
+}
+
+/// RAII reservation of one in-flight fork slot. Held for the lifetime of a single
+/// `warm_one` fork; its `Drop` decrements `in_flight` whether the fork succeeded (the
+/// kernel has by then been pushed into `ready`, so occupancy is unchanged), failed,
+/// or **panicked** mid-`await`. Without it a panic between reserving and releasing a
+/// slot would leak occupancy permanently and wedge the refill loop below `cap`; there
+/// is no reachable panic site today, so this is defence-in-depth on the
+/// `ready + in_flight <= cap` accounting.
+struct SlotReservation {
+    inner: Arc<PoolInner>,
+}
+
+impl Drop for SlotReservation {
+    fn drop(&mut self) {
+        // `unwrap_or_else(into_inner)` rather than `unwrap`: a poisoned lock (some
+        // other holder panicked) must not turn a slot-release into a second panic —
+        // that would abort during unwind. `saturating_sub` floors at 0.
+        let mut n = self
+            .inner
+            .in_flight
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        *n = n.saturating_sub(1);
+    }
 }
 
 impl WarmPool {
@@ -332,7 +418,7 @@ impl WarmPool {
             python: python.to_path_buf(),
             cap,
             ready: Mutex::new(VecDeque::new()),
-            in_flight: Mutex::new(0),
+            in_flight: std::sync::Mutex::new(0),
         });
         if inner.daemon.is_some() {
             PoolInner::refill(Arc::clone(&inner));
@@ -384,6 +470,13 @@ impl WarmPool {
     #[cfg(test)]
     pub(crate) async fn ready_len(&self) -> usize {
         self.inner.ready.lock().await.len()
+    }
+
+    /// The forkserver helper's pid == the process-group id of the whole subtree
+    /// (`process_group(0)`). Test-only, for the teardown regression test.
+    #[cfg(test)]
+    fn helper_pid(&self) -> Option<u32> {
+        self.inner.daemon.as_ref().and_then(|d| d.helper_pid)
     }
 }
 
@@ -457,29 +550,36 @@ impl PoolInner {
             loop {
                 // Reserve a slot up to `cap`, counting ready + in-flight kernels.
                 // `try_reserve_slot` is the pure, unit-tested arithmetic guarding
-                // the `ready + in_flight <= cap` invariant.
-                {
+                // the `ready + in_flight <= cap` invariant. Holding the `ready`
+                // (tokio) lock across the `in_flight` (std) tweak serialises the
+                // whole decide-then-increment against other reservers *and* against
+                // a concurrent `SlotReservation` drop (both take `in_flight`), so no
+                // update is lost. Lock order is always `ready` → `in_flight`.
+                let reservation = {
                     let ready = inner.ready.lock().await;
-                    let mut n = inner.in_flight.lock().await;
+                    let mut n = inner.in_flight.lock().unwrap_or_else(|e| e.into_inner());
                     match try_reserve_slot(ready.len(), *n, inner.cap) {
                         Some(next) => *n = next,
                         None => return,
                     }
-                }
+                    SlotReservation {
+                        inner: Arc::clone(&inner),
+                    }
+                };
                 match Self::warm_one(&inner.python, &daemon).await {
                     Ok(kernel) => {
-                        let mut ready = inner.ready.lock().await;
-                        ready.push_back(kernel);
-                        // Kernel is now in `ready`; release the in-flight slot so
-                        // `ready.len() + *in_flight` stays accurate.
-                        let mut n = inner.in_flight.lock().await;
-                        *n = n.saturating_sub(1);
+                        // Push into `ready` *before* releasing the slot: for the
+                        // brief overlap the kernel counts in both terms (harmless
+                        // over-count), never in neither (which would let a racing
+                        // reserver overshoot `cap`).
+                        inner.ready.lock().await.push_back(kernel);
+                        drop(reservation);
                     }
                     Err(e) => {
-                        // Give the slot back and stop refilling for now; the next
-                        // `take` falls back to a cold start.
-                        let mut n = inner.in_flight.lock().await;
-                        *n = n.saturating_sub(1);
+                        // `reservation` drops here, returning the slot; stop
+                        // refilling for now (the next `take` falls back to a cold
+                        // start).
+                        drop(reservation);
                         crate::log::warn(&format!(
                             "warm-pool: pre-warm failed ({e}); kernel will cold-start on demand"
                         ));
@@ -661,5 +761,153 @@ mod tests {
                 "fallback kernel did not return 2: {html}"
             );
         });
+    }
+
+    /// A `SlotReservation` returns its in-flight slot on drop — including when the
+    /// fork it guards panics mid-`await`. Pins the accounting-leak hardening: a leaked
+    /// slot would wedge the refill loop permanently below `cap`. Deterministic, no
+    /// live kernel.
+    #[test]
+    fn slot_reservation_releases_in_flight_on_drop_and_on_panic() {
+        let inner = Arc::new(PoolInner {
+            daemon: None,
+            python: PathBuf::from("python3"),
+            cap: POOL_CAP,
+            ready: Mutex::new(VecDeque::new()),
+            in_flight: std::sync::Mutex::new(1),
+        });
+        let read = |i: &PoolInner| *i.in_flight.lock().unwrap();
+
+        // A normal drop releases exactly one slot.
+        {
+            let _r = SlotReservation {
+                inner: Arc::clone(&inner),
+            };
+            assert_eq!(
+                read(&inner),
+                1,
+                "slot still counted while the guard is held"
+            );
+        }
+        assert_eq!(read(&inner), 0, "drop must release the slot");
+
+        // A panic while the reservation is held still releases it (the whole point).
+        *inner.in_flight.lock().unwrap() = 1;
+        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _r = SlotReservation {
+                inner: Arc::clone(&inner),
+            };
+            panic!("fork blew up mid-await");
+        }));
+        assert!(caught.is_err(), "the panic should propagate");
+        assert_eq!(read(&inner), 0, "a panic must not leak the in-flight slot");
+
+        // Release floors at zero and never underflows.
+        {
+            let _r = SlotReservation {
+                inner: Arc::clone(&inner),
+            };
+        }
+        assert_eq!(read(&inner), 0, "release saturates at zero");
+    }
+
+    /// Dropping the pool tears down the ENTIRE forkserver subtree — the server the
+    /// helper booted and the kernels it forked — not just the helper. Regression
+    /// guard for the orphaned-forkserver leak (~100 MB each): without the
+    /// process-group teardown the server survived its helper's death and reparented
+    /// to init. Kernel-gated + Linux-only (reads `/proc`).
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn dropping_pool_reaps_the_whole_forkserver_group() {
+        let Some(py) = python() else {
+            eprintln!("SKIPPED (no live kernel): set TALIESIN_PYTHON to test forkserver teardown.");
+            return;
+        };
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let pool = WarmPool::new(&py, POOL_CAP).await;
+            // `is_warm` means the READY handshake completed, i.e. the forkserver
+            // server booted — so the helper + server are already in the group.
+            assert!(pool.is_warm(), "forkserver should boot with a real python");
+            // Best-effort: also pull a forked kernel into the group, to prove kernels
+            // are reaped too. The pre-warm fork can be flaky for reasons unrelated to
+            // teardown (ipykernel's stdout NOTE racing the SPAWNED protocol), so this
+            // is not required — the helper + server subtree is exercised regardless.
+            let mut taken = None;
+            for _ in 0..50 {
+                if let Some(k) = pool.take().await {
+                    taken = Some(k);
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            let pgid = pool.helper_pid().expect("a warm pool has a helper pid");
+
+            // The isolated group is populated before teardown: the helper leads it
+            // (pgid == its pid) and the server (+ any kernel) inherit it.
+            let before = live_group_members(pgid);
+            assert!(
+                before.len() >= 2,
+                "expected at least the helper + forkserver server in the group, saw {before:?}"
+            );
+
+            // Drop everything pinning the daemon `Arc`: the handed-out kernel (if any),
+            // then the pool. The last `Arc` drop runs `Drop for ForkserverDaemon`,
+            // which SIGKILLs the whole group.
+            drop(taken);
+            drop(pool);
+
+            // Poll until no live (non-zombie) member of the group remains. The helper is
+            // our child (reaped by tokio's kill_on_drop reaper); the server + kernels
+            // are systemd's, reaped by the OS on death. Budget generously (> FORK_TIMEOUT):
+            // the `take` above triggers a background refill that pins the daemon `Arc`
+            // while it forks, deferring the group-kill until that fork returns.
+            let mut cleared = false;
+            for _ in 0..150 {
+                if live_group_members(pgid).is_empty() {
+                    cleared = true;
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(200)).await;
+            }
+            assert!(
+                cleared,
+                "the whole forkserver group must be reaped on pool drop; survivors: {:?}",
+                live_group_members(pgid)
+            );
+        });
+    }
+
+    /// PIDs in process group `pgid` that are alive and not zombies, read from `/proc`.
+    /// Backs the forkserver-teardown test: it proves the whole subtree is gone.
+    #[cfg(target_os = "linux")]
+    fn live_group_members(pgid: u32) -> Vec<u32> {
+        let mut out = Vec::new();
+        let Ok(entries) = std::fs::read_dir("/proc") else {
+            return out;
+        };
+        for e in entries.flatten() {
+            let name = e.file_name();
+            let Some(name) = name.to_str() else { continue };
+            let Ok(pid) = name.parse::<u32>() else {
+                continue;
+            };
+            let Ok(stat) = std::fs::read_to_string(format!("/proc/{pid}/stat")) else {
+                continue;
+            };
+            // `pid (comm) state ppid pgrp ...` — `comm` can contain spaces/parens, so
+            // parse from the LAST ')': the fields after it are state, ppid, pgrp, ...
+            let Some(rest) = stat.rsplit_once(')').map(|(_, r)| r.trim_start()) else {
+                continue;
+            };
+            let mut fields = rest.split_whitespace();
+            let state = fields.next().unwrap_or("");
+            // skip ppid, take pgrp
+            let pgrp = fields.nth(1).and_then(|s| s.parse::<u32>().ok());
+            if pgrp == Some(pgid) && state != "Z" {
+                out.push(pid);
+            }
+        }
+        out
     }
 }

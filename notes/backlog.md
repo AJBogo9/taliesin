@@ -65,14 +65,28 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
   redo; preserve sepia's deliberate low-contrast).
 
 ### Tier 2 — hardening (P3)
-- **Execution-cache leaks** (exec/kernel Do-NOT-touch, careful): (a) ~30 orphaned
-  `multiprocessing.forkserver` daemons (~100 MB each) survive a completed `build` — kill the daemon on
-  teardown; (b) a failed `Kernel::start` leaks its `/tmp/tali-kernel-<uuid>` dir (error paths drop the
-  `PathBuf` without cleanup); (c) warm-pool `in_flight` counter can leak if a refill task panics (no
-  reachable panic site today; an RAII guard would harden). Reclaimed on reboot but unbounded under
-  repeated failures. Also: a boot-failure diagnostic can overwrite a cache-hit cell's output
-  (`exec.rs:491`, already flagged `error`; optional freeze-restore); R stream/stderr still leaks raw
-  ANSI into HTML (`kernel.rs:887-893` `Output::Stream` emits `esc(text)` with no `strip_ansi`, do-not-touch).
+- **Execution-cache leaks — forkserver/dir/slot trio LANDED (2026-07-08); remainder + 2 new follow-ups
+  open** (exec/kernel Do-NOT-touch, careful). Shipped, corpus/kernel-gated tests + end-to-end build
+  verified (forkserver subtree reaped in ~1s, no new orphan; the regression test fails without the fix;
+  rust-reviewer clean): (a) orphaned `multiprocessing.forkserver` subtrees surviving a completed `build`
+  — the helper boots a forkserver *server* grandchild (which forks the kernels) that `kill_on_drop`
+  never reached and that *ignores SIGINT*; now the helper is spawned into its own process group
+  (`process_group(0)`, pgid captured at boot) and `Drop`/boot-error SIGKILLs the whole group
+  (`warm_pool.rs`); (b) `Kernel::start` no longer leaks its `/tmp/tali-kernel-<uuid>` dir or the spawned
+  child on error paths (`ConnDirGuard` RAII + `kill_on_drop`, `kernel.rs`); (c) warm-pool `in_flight`
+  slot hardened with a `SlotReservation` RAII guard (`in_flight` moved to a `std::sync::Mutex` so the sync
+  `Drop` releases the slot even on a refill panic). **STILL OPEN (unchanged):** a boot-failure diagnostic
+  can overwrite a cache-hit cell's output (`exec.rs:491`, already flagged `error`; optional freeze-restore);
+  R stream/stderr still leaks raw ANSI into HTML (`kernel.rs` `Output::Stream` emits `esc(text)` with no
+  `strip_ansi`, do-not-touch). **NEW follow-ups found while fixing the trio:** (1) **no graceful-shutdown
+  handler** — there is no `tokio::signal::ctrl_c` anywhere in the server, so a hard Ctrl-C of a
+  long-running site `preview` skips `Drop` and still leaks the forkserver tree (the likely source of the
+  pre-existing accumulation; `build` + graceful exit are now clean). Proper fix = a `ctrl_c` → graceful
+  teardown in the serve entrypoints (touches the serve loop; own item). Note this also affects the
+  pre-existing `helper_dir` cleanup, so it's not a regression. (2) **warm-pool fork protocol is fragile**
+  (pre-existing, unrelated to leaks) — ipykernel prints a "Ctrl-C will not work" NOTE to *stdout* that
+  races the daemon's `SPAWNED <pid>` line, intermittently desyncing the handshake so pre-warm falls back
+  to cold start. The helper's kernel stdout should be kept off the `SPAWNED` protocol channel.
 - **Testing / CI:** insta snapshots on `body_html()` for reactive/explorable/bayesian docs through the
   exec path (`corpus.rs:99` is structural-only); `#[serial]` the kernel-load determinism tests + assert
   a dropped output is a hard named error (the known silent-drop flake); `deny.toml` multiple-versions
