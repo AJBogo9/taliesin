@@ -122,7 +122,10 @@ pub(super) fn leading_tag_contains(html: &str, needle: &str) -> bool {
 }
 
 pub(super) fn block_tag_has_id(html: &str, id: &str) -> bool {
-    leading_tag_contains(html, &format!("id=\"{id}\""))
+    // Leading space so a real `id="x"` attribute matches but the `id="x"` *suffix* of
+    // `data-block-id="x"` does not (attributes are space-separated); mirrors
+    // `hover::leading_tag_has_id`.
+    leading_tag_contains(html, &format!(" id=\"{id}\""))
 }
 
 /// Resolve `target` (a path relative to the file at `from_rel`) to a site-root-
@@ -375,6 +378,33 @@ mod tests {
             links,
             vec![("report.tmd", None), ("dash.html", Some("sec"))]
         );
+    }
+
+    #[test]
+    fn block_tag_has_id_requires_a_real_id_attribute_not_a_data_block_id_suffix() {
+        // A listing target `::: {#intro}` is found by scanning each block's leading tag for
+        // the author id. `data-block-id="…"` ends in `id="…"`, so a bare `id="X"` needle
+        // substring-matched it — a block whose content-hash id happened to equal the listing
+        // id would falsely bind. A real `id` attribute is always space-separated, so match on
+        // the word boundary (mirrors `hover::leading_tag_has_id`).
+        assert!(block_tag_has_id(
+            r#"<div id="intro" class="x">c</div>"#,
+            "intro"
+        ));
+        assert!(block_tag_has_id(
+            r#"<figure data-block-id="b-abc" data-sourcepos="1:1-2:3" id="intro">c</figure>"#,
+            "intro"
+        ));
+        // The false positive: the searched id equals a block's data-block-id value.
+        assert!(!block_tag_has_id(
+            r#"<div data-block-id="intro" data-sourcepos="1:1-1:2">c</div>"#,
+            "intro"
+        ));
+        // Body text that merely contains `id="intro"` outside the leading tag never matches.
+        assert!(!block_tag_has_id(
+            r#"<p>a code sample: <code>id="intro"</code></p>"#,
+            "intro"
+        ));
     }
 
     #[test]
