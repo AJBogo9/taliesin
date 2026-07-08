@@ -48,8 +48,13 @@ pub(super) fn qmd_href(href: &str) -> String {
 }
 
 /// Whether a navbar `href` points at `page` (so the item renders active).
+///
+/// A nav href may carry a `#fragment` or `?query` (an in-page anchor, a cache-bust);
+/// the active page is decided by the path alone, so both are stripped before matching
+/// (otherwise `qmd_to_html` can't map the `.tmd` and the highlight is silently lost).
 pub(super) fn href_matches_page(href: &str, page: &Page) -> bool {
     let h = href.trim_start_matches('/');
+    let h = h.split(['#', '?']).next().unwrap_or(h);
     let target = qmd_to_html(h);
     target == page.url || h == page.rel
 }
@@ -370,5 +375,43 @@ mod tests {
             links,
             vec![("report.tmd", None), ("dash.html", Some("sec"))]
         );
+    }
+
+    #[test]
+    fn active_nav_href_matches_page_ignoring_fragment_and_query() {
+        // `href_matches_page` only reads `rel`/`url`; a minimal fixture is enough.
+        fn page_fixture(rel: &str, url: &str) -> Page {
+            Page {
+                input: std::path::PathBuf::from(rel),
+                rel: rel.to_string(),
+                url: url.to_string(),
+                title: None,
+                date: None,
+                description: None,
+                authors: Vec::new(),
+                card_image: None,
+                card_image_alt: None,
+                categories: Vec::new(),
+                listings: Vec::new(),
+                about: None,
+                hero: None,
+                page_layout: None,
+            }
+        }
+        let blog = page_fixture("blog.tmd", "blog.html");
+        // Plain hrefs still match (regression guard).
+        assert!(href_matches_page("blog.tmd", &blog));
+        assert!(href_matches_page("/blog.tmd", &blog));
+        assert!(href_matches_page("blog.html", &blog));
+        // A `#fragment` on the nav href must not lose the active highlight — the active
+        // page is decided by the path alone (a fragment is a within-page location).
+        assert!(href_matches_page("blog.tmd#recent", &blog));
+        assert!(href_matches_page("blog.html#recent", &blog));
+        // A `?query` (cache-bust / signed link) likewise.
+        assert!(href_matches_page("blog.html?v=2", &blog));
+        assert!(href_matches_page("blog.tmd?utm=x#recent", &blog));
+        // A different page must NOT match, fragment or no.
+        assert!(!href_matches_page("about.tmd", &blog));
+        assert!(!href_matches_page("about.tmd#recent", &blog));
     }
 }
