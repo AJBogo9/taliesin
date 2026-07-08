@@ -85,14 +85,18 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
   child now detaches its stdout from the daemon control pipe (`os.dup2(devnull, 1)` in `_child_entry`
   before ipykernel starts), so ipykernel's startup NOTE can't corrupt the `SPAWNED <pid>` handshake;
   `fork_kernel` also skips stray non-protocol lines defensively. Verified: no more "bad fork reply" /
-  cold-fallback across repeated runs + a full build. **STILL OPEN (unchanged, smaller):** a boot-failure
-  diagnostic can overwrite a cache-hit cell's output (`exec.rs:491`, already flagged `error`; optional
-  freeze-restore); R stream/stderr still leaks raw ANSI into HTML (`kernel.rs` `Output::Stream` emits
-  `esc(text)` with no `strip_ansi`, do-not-touch); and a pre-existing `fork_kernel` cross-call edge
-  (rust-reviewer, low) — if a fork times out but its request was queued, the daemon's later `SPAWNED
-  <pid>` is read by the *next* `fork_kernel`, mis-pairing pids (liveness/SIGINT/teardown then target the
-  wrong pid; the ZMQ-connected kernel is still correct). Now rare since #2 removed the main
-  timeout trigger; the proper fix is to poison the daemon on any fork timeout so later `take`s cold-start.
+  cold-fallback across repeated runs + a full build. (3) **boot-diagnostic cache-hit clobber FIXED** —
+  on a kernel boot failure, a run-range cell that's a valid freeze hit (in the range only because a
+  DOWNSTREAM cell must run) now RESTORES its cached output instead of being overwritten by the "kernel
+  unavailable" diagnostic (`exec.rs` `!has_kernel` branch; the `error` cell-state stays as an honest
+  "didn't run fresh" signal). Deterministic regression test (bogus interpreter forces the boot failure,
+  freeze pre-seeded; fails without the fix); rust-reviewer: ship. **STILL OPEN (do-not-touch / pre-existing):**
+  R stream/stderr still leaks raw ANSI into HTML (`kernel.rs` `Output::Stream` emits `esc(text)` with no
+  `strip_ansi`, do-not-touch); and a pre-existing `fork_kernel` cross-call edge (rust-reviewer, low) — if
+  a fork times out but its request was queued, the daemon's later `SPAWNED <pid>` is read by the *next*
+  `fork_kernel`, mis-pairing pids (liveness/SIGINT/teardown then target the wrong pid; the ZMQ-connected
+  kernel is still correct). Now rare since #2 removed the main timeout trigger; the proper fix is to
+  poison the daemon on any fork timeout so later `take`s cold-start.
 - **Testing / CI:** insta snapshots on `body_html()` for reactive/explorable/bayesian docs through the
   exec path (`corpus.rs:99` is structural-only); `#[serial]` the kernel-load determinism tests + assert
   a dropped output is a hard named error (the known silent-drop flake); `deny.toml` multiple-versions

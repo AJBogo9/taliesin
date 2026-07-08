@@ -492,17 +492,28 @@ impl Executor {
                 if !has_kernel {
                     // The kernel could not boot (a port-allocation race under
                     // concurrent starts, a backoff after a failed start, or no
-                    // interpreter): this cell was meant to run but can't. Splice a
-                    // VISIBLE diagnostic where its output would go — a build has no
-                    // websocket, so the `error` cell_state/build_state emitted above
-                    // never reaches the HTML; without this the output div would simply
-                    // be absent (the silent drop). The cell still renders as source
-                    // above this block. (`tali-error` => styled as an error AND treated
-                    // as uncacheable, so it is never persisted to the freeze cache.)
-                    outputs.push(kernel_unavailable_html(
-                        lang,
-                        self.langs.get(lang).and_then(|s| s.last_error.as_deref()),
-                    ));
+                    // interpreter): this cell was meant to run but can't. If its output
+                    // is still validly cached (it's in the run range only because a
+                    // DOWNSTREAM cell must run), restore that cache instead of clobbering
+                    // it — a transient boot failure then keeps outputs we already have on
+                    // disk. Otherwise splice a VISIBLE diagnostic where its output would
+                    // go: a build has no websocket, so the `error` cell_state/build_state
+                    // emitted above never reaches the HTML, and without this the output
+                    // div would simply be absent (the silent drop). The cell still renders
+                    // as source above this block either way, and its `error` cell-state
+                    // still honestly signals it did not run fresh. (`tali-error` => styled
+                    // as an error AND uncacheable, so the diagnostic is never persisted.)
+                    let cached = if !force && cell.cache {
+                        self.freeze.get(&hashes[i]).map(str::to_string)
+                    } else {
+                        None
+                    };
+                    outputs.push(cached.unwrap_or_else(|| {
+                        kernel_unavailable_html(
+                            lang,
+                            self.langs.get(lang).and_then(|s| s.last_error.as_deref()),
+                        )
+                    }));
                 } else if !self.kernel_alive(lang) {
                     // The kernel was up when this run started but has since exited (an
                     // earlier cell crashed it). Don't run the rest: each `execute`
@@ -1108,6 +1119,60 @@ mod tests {
             c.code = code.to_string();
         }
         b
+    }
+
+    #[tokio::test]
+    async fn boot_failure_restores_a_cached_run_range_cell_instead_of_clobbering_it() {
+        // Regression: on a kernel BOOT failure, a run-range cell whose output is still
+        // validly cached (it's in the range only because a DOWNSTREAM cell must run)
+        // must RESTORE that cache, not be overwritten by the "kernel unavailable"
+        // diagnostic. Deterministic + no live kernel: a bogus interpreter forces the
+        // boot to fail regardless of TALIESIN_PYTHON, and the freeze is pre-seeded with
+        // the matching cumulative hash.
+        //
+        // Precondition: the freeze cache must be live (this test seeds it). Under
+        // `TALIESIN_NO_CACHE` the seeded `put` is a no-op so the restore can't happen —
+        // skip rather than fail spuriously.
+        if std::env::var_os("TALIESIN_NO_CACHE").is_some() {
+            eprintln!("SKIPPED: TALIESIN_NO_CACHE disables the freeze cache this test seeds.");
+            return;
+        }
+        let dir = std::env::temp_dir().join(format!("tali-bootclobber-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut ex = Executor::with_freeze(dir.join("page.json"));
+        // A bogus interpreter makes `Kernel::start` fail deterministically (a permanent
+        // "cannot launch" error, no retry), so `has_kernel` is false -> boot-failed path.
+        let bogus = PathBuf::from("/nonexistent/tali-no-python-for-clobber-test");
+        ex.python = bogus.clone();
+
+        // Seed the freeze so cell A (index 0) is KNOWN but B (index 1) is not, so `plan`
+        // puts BOTH in the run range (run_end runs past the last unknown) with A a freeze
+        // hit inside it. The interp seed must match what the executor computes for
+        // `bogus` (interp_id is memoized per program, so this is the same value).
+        let interp = interp_id("python", &bogus);
+        let hashes = freeze::cumulative_hashes(&interp, &["a = 1", "b = 2"]);
+        ex.freeze
+            .put(hashes[0].clone(), "<pre>CACHED_A_OUTPUT</pre>".to_string());
+
+        let blocks = vec![
+            python_cell_block_with("a", "a = 1"),
+            python_cell_block_with("b", "b = 2"),
+        ];
+        let out = ex.run(blocks).await;
+        let html: String = out.iter().map(|b| b.html.as_str()).collect();
+
+        assert!(
+            html.contains("CACHED_A_OUTPUT"),
+            "a boot failure must RESTORE cell A's still-valid cached output, not clobber \
+             it with the diagnostic: {html}"
+        );
+        // Cell B has no valid cache -> it still shows the honest kernel-unavailable
+        // diagnostic (proving the restore is scoped to genuinely-cached cells).
+        assert!(
+            html.contains("kernel unavailable"),
+            "cell B (no valid cache) should still show the kernel-unavailable diagnostic: {html}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
