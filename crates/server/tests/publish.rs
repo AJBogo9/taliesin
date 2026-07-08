@@ -46,8 +46,14 @@ fn dry_run_builds_gates_and_prints_the_wrangler_command() {
 
 #[test]
 fn real_publish_without_token_fails_fast() {
+    // Point --out at a scratch dir so this test's blast radius never depends on the very
+    // ordering it checks: if the token fail-fast ever regressed to run after the build,
+    // the build would write here (a temp dir), not into the tracked corpus directory.
+    let out = std::env::temp_dir().join(format!("tali-pub-notoken-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&out);
     let res = Command::new(bin())
-        .args(["publish", "corpus/demo-book"])
+        .args(["publish", "corpus/demo-book", "--out"])
+        .arg(&out)
         .current_dir(env!("CARGO_MANIFEST_DIR").to_string() + "/../..")
         .env_remove("CLOUDFLARE_API_TOKEN")
         .output()
@@ -58,6 +64,12 @@ fn real_publish_without_token_fails_fast() {
         stderr.contains("CLOUDFLARE_API_TOKEN"),
         "stderr should name the missing token: {stderr}"
     );
+    // The fail-fast happens before any build, so nothing should have been written.
+    assert!(
+        !out.exists(),
+        "token fail-fast must happen before the build (no output dir)"
+    );
+    let _ = std::fs::remove_dir_all(&out);
 }
 
 // Silence dead_code on the helper if only one test uses it in some configs.

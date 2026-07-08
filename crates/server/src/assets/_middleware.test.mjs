@@ -37,3 +37,18 @@ test("correct passcode calls next() and serves content", async () => {
   assert.equal(res.status, 200);
   assert.equal(await res.text(), "SECRET");
 });
+
+test("a passcode containing colons is compared in full", async () => {
+  // Only the first ":" splits user from pass, so a colon in the passcode must survive.
+  const res = await onRequest(
+    ctx({ password: "pa:ss:word", auth: basic("anyuser", "pa:ss:word") }),
+  );
+  assert.equal(res.status, 200);
+});
+
+test("malformed base64 credentials return 401, no crash", async () => {
+  const res = await onRequest(
+    ctx({ password: "hunter2", auth: "Basic !!!not-base64!!!" }),
+  );
+  assert.equal(res.status, 401);
+});

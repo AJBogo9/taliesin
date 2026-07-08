@@ -235,10 +235,10 @@ fn did_you_mean(key: &str, candidates: &[&'static str]) -> String {
         .unwrap_or_default()
 }
 
-/// Warn on unrecognized keys against the closed native schema — top-level, and the
-/// nested `nav:`/`footer:`/`mounts:` structures (a typo in one of those silently drops
-/// the whole section/item, so it warns with a "did you mean"). Every warning is prefixed
-/// `_site.yml` so it is file-located rather than an anonymous string.
+/// Warn on unrecognized keys against the closed native schema: top-level, and the
+/// nested `nav:`/`footer:`/`mounts:`/`publish:` structures (a typo in one of those
+/// silently drops the whole section/item, so it warns with a "did you mean"). Every
+/// warning is prefixed `_site.yml` so it is file-located rather than an anonymous string.
 fn validate_keys(value: &serde_yaml::Value, warnings: &mut Vec<String>) {
     let Some(map) = value.as_mapping() else {
         return;

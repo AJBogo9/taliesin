@@ -33,7 +33,9 @@ export async function onRequest(context) {
   });
 }
 
-// Length-independent constant-time string compare (both encoded to bytes first).
+// Content-constant-time string compare (both encoded to bytes first). The compare
+// does not short-circuit on a byte mismatch; the loop length can still reveal the
+// expected passcode's length, which is an acceptable leak for a shared draft gate.
 function timingSafeEqual(a, b) {
   const enc = new TextEncoder();
   const ab = enc.encode(a);

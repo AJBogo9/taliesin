@@ -64,6 +64,12 @@ jobs:
           node-version: "20"
       - name: Type-check the client JS
         run: cd web-client && npx -y -p typescript tsc -p jsconfig.json
+      # The publish passcode gate (functions/_middleware.js) is security-critical and its
+      # only functional test is this dependency-free node:test file. Run it here (Node is
+      # already set up) so an auth-logic regression (e.g. a broken fail-closed default)
+      # can never ship green.
+      - name: Test the publish passcode gate
+        run: node --test crates/server/src/assets/_middleware.test.mjs
 
   # The VS Code companion: build the extension, type-check its TS, and run the OFFLINE
   # TextMate grammar tokenization gate (loads the .tmd grammar + the bundled MIT

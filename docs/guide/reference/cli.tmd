@@ -12,6 +12,7 @@ title: "CLI reference"
 | `build <file.tmd> --out <dir>` | Write `<dir>/index.html` + copied assets (a portable folder) |
 | `build <file.tmd> --bare` | Write a **bare** page: zero `<script>`, zero CDN, CSS-only theme (drafts / archives / print input) |
 | `build <dir> [--out <dir>]` | Build a **multi-page site/book** to `_site/` / `_book/` |
+| `publish <dir> [--project-name <name>] [--dry-run]` | Build a site/book + deploy it to Cloudflare Pages behind a shared passcode (Wrangler direct upload) |
 | `render <file.tmd>` | Render a one-shot full HTML page to stdout |
 | `blocks <file.tmd>` | List block ids and sourcepos (for debugging) |
 | `schema [--out <dir>]` | Emit the bundled JSON Schemas for `_site.yml` + front matter (editor autocomplete) |
