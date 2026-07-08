@@ -28,6 +28,19 @@ on Mac) any block to open its exact source line in your editor** (including acro
 add reverse cursor sync (highlighting the block under your cursor) without forking
 anything. The in-repo **VS Code companion** (`editor/vscode/`) is exactly that host.
 
+::: {.callout-tip}
+## Reuse the editor tab instead of opening a new one
+
+The `vscode://` deep link routes through VS Code's normal "open in the active editor
+group" logic, so by default a second Alt-click can land the same file in a *new* tab
+rather than moving the cursor in the tab you already have open. VS Code offers no URL
+flag to change this, but one editor setting fixes it: add
+`"workbench.editor.revealIfOpen": true` to your `settings.json` and repeated
+Alt-clicks reveal the existing tab and jump the cursor instead of duplicating it. (The
+VS Code companion opens through the editor API and reuses the tab without this
+setting.)
+:::
+
 ## The dev menu
 
 Every live preview carries a small **dev menu**: a `</>` button tucked in the
