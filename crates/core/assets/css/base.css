@@ -787,5 +787,9 @@
 .tali-input input[type="range"] { flex: 0 1 16rem; accent-color: var(--tali-accent); }
 .tali-input input[type="checkbox"], .tali-input input[type="radio"] { accent-color: var(--tali-accent); }
 .tali-input select { color: var(--tali-fg); background: var(--tali-bg); border: 1px solid var(--tali-border); border-radius: 4px; padding: 0.1em 0.3em; }
-.tali-js-error { color: #b00020; background: #fff0f0; border: 1px solid #f3c0c0; padding: .5em .7em; border-radius: 6px; overflow: auto; font-size: .85em; }
+.tali-js-error { color: #b00020; background: #fff0f0; border: 1px solid #f3c0c0; padding: .5em .7em; border-radius: 6px; overflow: auto; font-size: .85em;
+  /* it's a <pre>, so long stack-trace lines (esp. URLs) would otherwise clip at
+     the box edge with no wrap and no scroll-shadow (the background shorthand
+     above drops the generic pre rule's shadow). Wrap them so nothing is lost. */
+  white-space: pre-wrap; overflow-wrap: anywhere; }
 html[data-theme="sepia"] .tali-js-error { color: #7a2e22; background: #f0dcc8; border-color: #d8b89a; }
