@@ -21,7 +21,7 @@ mod generate {
         ABOUT_KEYS, EXECUTE_KEYS, HERO_KEYS, KNOWN_KEYS, LISTING_KEYS, PROSE_LINT_KEYS,
         THEOREM_KEYS,
     };
-    use crate::site::NATIVE_KEYS;
+    use crate::site::{NATIVE_KEYS, PUBLISH_KEYS};
     use serde_json::{Map, Value, json};
 
     /// A `properties` object: every key in `keys` maps to `{}` (any value), then `overrides`
@@ -150,12 +150,27 @@ mod generate {
                 ]
             }
         });
+        // publish: a closed { provider, project } block. `provider` is an enum (only
+        // cloudflare today); `project` is the Cloudflare Pages project name.
+        let publish = closed_object(
+            PUBLISH_KEYS,
+            &[
+                (
+                    "provider",
+                    json!({ "type": "string", "enum": ["cloudflare"] }),
+                ),
+                ("project", json!({ "type": "string" })),
+            ],
+        );
         json!({
             "$schema": "https://json-schema.org/draft/2020-12/schema",
             "title": "Taliesin _site.yml",
             "type": "object",
             "additionalProperties": false,
-            "properties": properties(NATIVE_KEYS, &[("toc", boolean()), ("chapters", chapters)]),
+            "properties": properties(
+                NATIVE_KEYS,
+                &[("toc", boolean()), ("chapters", chapters), ("publish", publish)],
+            ),
         })
     }
 

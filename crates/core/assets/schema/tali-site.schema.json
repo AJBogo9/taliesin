@@ -80,7 +80,21 @@
     "mounts": {},
     "nav": {},
     "output": {},
-    "publish": {},
+    "publish": {
+      "additionalProperties": false,
+      "properties": {
+        "project": {
+          "type": "string"
+        },
+        "provider": {
+          "enum": [
+            "cloudflare"
+          ],
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "title": {},
     "toc": {
       "type": "boolean"
