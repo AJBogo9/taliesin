@@ -24,6 +24,41 @@ recovered in the appendix below. Read-only audit, no code changed.
 detail reference behind it: verdict, top-leverage fixes, findings by theme, cut/keep/add,
 and the low-severity long tail.
 
+## Status — mostly landed (updated 2026-07-08)
+
+**This is the original 2026-07-07 snapshot, not a live checklist.** The batched queue and
+the top-leverage fixes have since shipped, so most findings below are already fixed —
+**verify against current code before acting on any of them** (this bit an earlier grind:
+the `image:`-URL bug, the theming/`#qmd-root`/schema doc-drift, and the deck `{#sec-x}`
+anchor all read as open here but are fixed). Remaining open work is tracked in
+[backlog.md](backlog.md) (Tier-2/Tier-3), not here.
+
+Landed, by theme (batch → the "Findings by theme" section it clears):
+
+- Batch 2 (`0b466c4`) → **Documentation drift (rename)**, the functionally-broken cluster.
+- Batch 3 (`2369d80`) → **Accessibility** (Cmd-K contrast/ARIA, reduced-motion, slide bg,
+  keyboard scroll, dialog).
+- Batch 4 (`1132df3`) → **Cross-reference / section numbering** + consumed-anchor.
+- Batch 5 (`561ff24` + `a6cf810`) → **Silent failure** (unclosed fence, figure `width=`,
+  `draft: yes`, single-doc-build YAML, `_site.yml` typos).
+- Batch 6 (`92dc677`) → **BibTeX layer** + the TOC/tabset double-escape.
+- Batch 7 (`19022b7`) → `image:` URL, multi-page stale-file sweep, embed `--strict`,
+  **deck title-slide hot-update**.
+- Batch 8 (`41313f9`) → watcher prune, live site search index, reconnect state-preserve.
+- Batch 9 (`1eb3238`) → **freeze cache + kernel** honesty + resource hygiene (partial;
+  the remaining exec leaks stay in backlog Tier-2).
+- Also: top-leverage #1 offline deck build (`478cdc1`), the `?qmd=embed` CUT (`679b76b`),
+  the diff-then-broadcast consolidation (`e09744a`), and the 2026-07-08 hardening fixes
+  (byte-safe `percent_decode`; active-nav highlight on `#fragment`/`?query`).
+- Confirmed already-fixed by the audit's own "What held up" and now closed: the 390px hero
+  overflow, the theme/video desync, and the heading `{#id}` dedup gap.
+
+Notable **still-open** low-tail items the sweep did *not* touch (so they don't read as
+done): the same-page link-preview source-attr strip (top-leverage #7), `block_tag_has_id`
+substring match, `app.pages` unbounded ws-key growth, `json_str` U+2028/2029, the deck
+`. . .`/`"Title Slide"` collisions, several CLI/build appendix items, and the
+stale-but-working `qmd-*` alias docs. See backlog Tier-2/Tier-3 for the tracked set.
+
 ## Executive verdict
 
 Taliesin came through a 134-finding, 24-surface deep audit with no critical defects and a single high-severity code bug. The load-bearing invariants the whole design rests on, unique block ids, total sourcepos, block-level incremental diffing, the freeze cache's no-stale-hit promise, and the read-only single-editing-surface, all held up under direct adversarial attack (see "What held up" below). The findings are not decay; they are under-enforcement and over-claiming.

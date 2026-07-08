@@ -7,7 +7,7 @@ Output stays **HTML-only**. Roadmap: `ROADMAP.md`.
 > Kept small (read often). **Only open tasks live here** — delete items once landed; don't
 > leave `[x]`. Completed work is in git + `ROADMAP.md` / `native-rewrite.md` / `AUDITS.md`.
 
-## State (2026-07-07)
+## State (2026-07-08)
 
 Local `main` runs ahead of `origin` between sessions (the author syncs `main`↔`origin`), v0.2.0. All four formats render + deploy;
 the dev loop is strong (block-level incremental updates with DOM-state preservation, warm server +
@@ -25,7 +25,9 @@ robustness trio: watcher prune + live search index + reconnect state, and Batch 
 honesty + resource-hygiene trio), cross-reference backlinks (a quiet per-target "Referenced by"
 line — the reverse of forward xref; `site/backlinks.rs`), and the Batch 8 consolidation (the
 duplicated diff-then-broadcast tail hoisted into the shared `protocol::Broadcast` helper, so the
-single-doc and site dev servers can't drift on the block-level incremental invariant).
+single-doc and site dev servers can't drift on the block-level incremental invariant), and the
+2026-07-08 hardening pair (byte-safe `percent_decode` so a crafted `/%<raw-utf8>` request can't panic
+the handler; the active-nav highlight surviving a `#fragment`/`?query` nav href).
 
 **Working method:** branch per feature; brainstorm if there's a fork; spec under
 `docs/superpowers/specs/`; implement TDD; verify (cargo + browser via chrome-devtools, or the
@@ -133,9 +135,9 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
 - **Image optimization** (WebP/AVIF + `srcset` + lazy-load behind a content-hashed cache) — until posts
   get image-heavy.
 - **Marketing site** (deferred, feature-first; rolls into a demo-machine rebuild): `live-edit-hero-demo`
-  clip; swap `site/_site.yml` placeholders; demo-led hero rebuild folding in the open visual bugs (390px
-  prose overflow on `page-layout: full` + `hero:`, theme/video desync, leftover em dashes); mobile embed
-  refine; deploy (Cloudflare / GitHub Pages).
+  clip; swap `site/_site.yml` placeholders; demo-led hero rebuild (during which: a 3-viewport spot-check
+  of the already-code-fixed 390px hero overflow + theme/video desync — see "Decided against" — plus any
+  leftover em dashes); mobile embed refine; deploy (Cloudflare / GitHub Pages).
 - **`serde_yaml` fallback watch-item:** if 0.9 ever breaks against a future serde/edition, swap to
   `serde_yaml_ng` (v0.10), gated on a test that `Error::location().line()` still works. Fix the stale
   `Cargo.toml` comment (it names the unsound `serde_yml`) when touched.
@@ -179,12 +181,14 @@ renaming those is a separate verify-each-alias pass, not a mechanical sweep.
 - **Add (deferred, need a scope/default ruling):** cross-revision block-diff "what changed" view;
   reader-facing reproducibility manifest; web-native List of Figures/Tables/Theorems; interactive data
   tables; "Cite this" export; code-line xrefs (`@lst-3:line`); theme-aware `dark=` figures.
-- **Verify + close:** the 390px hero overflow + theme/video desync (listed open under Tier-3 Marketing) are
-  confirmed present in code (`site.css` `.tali-site-main { box-sizing:border-box }` guards the overflow;
-  `theme.rs` `syncThemeVideos()` on `qmd:themechange` swaps the clip). Just needs the 3-viewport browser
-  check, then close.
 
 ## Decided against / do-not-re-litigate
+
+**Already fixed in code — do NOT re-open as "bugs":** the 390px `page-layout: full` + `hero:` prose
+overflow (`site.css` `.tali-site-main { box-sizing: border-box }`) and the theme/video desync
+(`theme.rs` `syncThemeVideos()` on `qmd:themechange`) are both guarded in the current tree (the
+2026-07-07 audit's "What held up" confirmed the same). The only residue is a 3-viewport spot-check,
+folded into the deferred Marketing demo rebuild — not open defects.
 
 **This session (2026-07-06):** book pager stays **bottom-only** (a top pager fights the calm column;
 the Chapters drawer already gives random access). Book page-TOC: **fix in place, keep both nav
