@@ -162,7 +162,7 @@ Pick up opportunistically alongside whichever batch touches the same file. Inclu
 SIGABRT + lexical-only `safe_join` (`includes.rs`); diff-LIS unique-id `debug_assert!`; dead
 `ts`/`typescript`/`toml` highlight aliases; an unresolved fence language degrading to plain text
 silently (`highlight.rs:51` — deferred from Batch 5: needs a warnings channel threaded into the pure
-`highlight` fn, invasive); `percent_decode` slice-panic on a non-ASCII path;
+`highlight` fn, invasive);
 `click_block` terminal-escape injection; qmd-js initial pass paints in DOM order not topo order; many
 citation-render edge cases; and the architecture / waste / stale-but-working-docs tail — including the
 **stale-but-working `qmd-*` docs references that still have runtime aliases** (`qmd.*` cell API,
