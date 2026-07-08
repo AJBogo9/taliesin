@@ -27,7 +27,10 @@ line — the reverse of forward xref; `site/backlinks.rs`), and the Batch 8 cons
 duplicated diff-then-broadcast tail hoisted into the shared `protocol::Broadcast` helper, so the
 single-doc and site dev servers can't drift on the block-level incremental invariant), and the
 2026-07-08 hardening pair (byte-safe `percent_decode` so a crafted `/%<raw-utf8>` request can't panic
-the handler; the active-nav highlight surviving a `#fragment`/`?query` nav href).
+the handler; the active-nav highlight surviving a `#fragment`/`?query` nav href), and the audit
+top-leverage #7 fix (the same-page hover link-preview card now strips the cloned block's
+`data-block-id`/`data-sourcepos`/`data-source-file` via a shared `stripSourceAttrs` that also covers
+the cross-page card, so the read-only preview is never a duplicate-block-id or a click-to-source target).
 
 **Working method:** branch per feature; brainstorm if there's a fork; spec under
 `docs/superpowers/specs/`; implement TDD; verify (cargo + browser via chrome-devtools, or the

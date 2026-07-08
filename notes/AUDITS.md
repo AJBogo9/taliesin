@@ -48,16 +48,17 @@ Landed, by theme (batch → the "Findings by theme" section it clears):
 - Batch 9 (`1eb3238`) → **freeze cache + kernel** honesty + resource hygiene (partial;
   the remaining exec leaks stay in backlog Tier-2).
 - Also: top-leverage #1 offline deck build (`478cdc1`), the `?qmd=embed` CUT (`679b76b`),
-  the diff-then-broadcast consolidation (`e09744a`), and the 2026-07-08 hardening fixes
-  (byte-safe `percent_decode`; active-nav highlight on `#fragment`/`?query`).
+  the diff-then-broadcast consolidation (`e09744a`), the 2026-07-08 hardening fixes
+  (byte-safe `percent_decode`; active-nav highlight on `#fragment`/`?query`), and
+  top-leverage #7 (`e488abb`, the same-page link-preview source-attr strip — a shared
+  `stripSourceAttrs` now neutralizes both the same-page and cross-page cards).
 - Confirmed already-fixed by the audit's own "What held up" and now closed: the 390px hero
   overflow, the theme/video desync, and the heading `{#id}` dedup gap.
 
 Notable **still-open** low-tail items the sweep did *not* touch (so they don't read as
-done): the same-page link-preview source-attr strip (top-leverage #7), `block_tag_has_id`
-substring match, `app.pages` unbounded ws-key growth, `json_str` U+2028/2029, the deck
-`. . .`/`"Title Slide"` collisions, several CLI/build appendix items, and the
-stale-but-working `qmd-*` alias docs. See backlog Tier-2/Tier-3 for the tracked set.
+done): `block_tag_has_id` substring match, `app.pages` unbounded ws-key growth, `json_str`
+U+2028/2029, the deck `. . .`/`"Title Slide"` collisions, several CLI/build appendix items,
+and the stale-but-working `qmd-*` alias docs. See backlog Tier-2/Tier-3 for the tracked set.
 
 ## Executive verdict
 
