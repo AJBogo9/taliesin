@@ -242,6 +242,8 @@ Report only concrete VISUAL defects a reader would see:
 - broken tables / figures / callouts / code blocks / math
 Tie every finding to a specific viewport/theme cell and set bugClass to "visual". Ignore subjective taste, minor spacing, or intentional design. If the page looks fine, return findings: [].
 
+CAPTURE CAVEAT: these are FULL-PAGE screenshots. A position:fixed / sticky element (a floating corner button, nav bar, cookie banner) is painted at the DOCUMENT bottom in full-page capture, NOT at its real viewport position. So an apparent overlap between such a fixed corner/edge control and the last content on the page is almost always a capture artifact, not a real bug. Do not report it unless the collision is clearly between normal in-flow elements.
+
 Cells:${subsetNote}
 ${cellList}`;
     return agent(prompt, {
