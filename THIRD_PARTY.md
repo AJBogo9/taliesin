@@ -55,5 +55,15 @@ shipped by Taliesin; only the Mermaid loader above is emitted by the tool.
 The Rust crates in `Cargo.lock` (comrak, axum, tokio, syntect, etc.) are fetched
 by Cargo at build time under their own licenses (predominantly MIT, Apache-2.0,
 and ISC). They are not redistributed in this repository. `deny.toml` pins the
-allowed license set; run `cargo deny check` to verify them (CI wiring is a
-deferred follow-up).
+allowed license set, and CI enforces it (the `deny` job runs `cargo deny check`).
+
+One build dependency embeds third-party *data* into the compiled binary rather
+than only linking code:
+
+- **two-face** (MIT OR Apache-2.0). Supplies the syntax definitions syntect's
+  bundled set omits — TypeScript and TOML, both of which the docs use — as a
+  ~900 KB compiled dump linked into the binary. The definitions are curated by
+  the [`bat`](https://github.com/sharkdp/bat) project and each retains its own
+  upstream license; `cargo deny` checks the crate's license, not theirs. The full
+  per-syntax attribution listing ships with the crate and is reachable at runtime
+  via `two_face::acknowledgement::listing()`.
