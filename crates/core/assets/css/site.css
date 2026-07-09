@@ -147,8 +147,9 @@
     padding: .25rem .7rem; transition: background .12s ease, color .12s ease, border-color .12s ease; }
   .tali-cat-chip:hover { color: var(--tali-fg); border-color: var(--tali-muted); }
   .tali-cat-chip.tali-cat-active { background: var(--tali-accent-fill); border-color: var(--tali-accent-fill); color: var(--tali-on-accent); }
-  .tali-cat-count { font-size: .82em; opacity: .65; font-variant-numeric: tabular-nums; }
-  .tali-cat-chip.tali-cat-active .tali-cat-count { opacity: .85; }
+  /* `opacity: .65` composited the count to 2.56-3.34:1. It is already distinguished from the
+     label by size; the muted token carries it at full strength (5.38-7.46:1). */
+  .tali-cat-count { font-size: .82em; font-variant-numeric: tabular-nums; }
 
   /* about: a centered profile header (jolla), replacing the title block */
   .tali-about { display: flex; flex-direction: column; align-items: center; text-align: center;

@@ -126,8 +126,8 @@ the cell has a sane value before any scroll. Omit `name=` for pure-CSS scenes.
 ## Narrated code walkthroughs: `::: {.code-walkthrough}`
 
 A `.code-walkthrough` pins one code block as a sticky panel and scrolls `.step`
-prose beside it. Each step's `lines=` focuses a line range in the panel and dims the
-rest, so the reader's eye tracks the narration through the code.
+prose beside it. Each step's `lines=` focuses a line range in the panel, washing it in
+the accent, so the reader's eye tracks the narration through the code.
 
 ```markdown
 ::: {.code-walkthrough}

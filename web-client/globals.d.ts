@@ -27,9 +27,12 @@ interface Window {
    *  subtree and reset the whole runtime on a full re-mount, to avoid leaking
    *  WebGL contexts / RAF loops across edits + reconnects. */
   taliJs?: { teardown?: (n: Element) => void; reset?: () => void };
-  /** Theme API from the head script (`theme_head`). */
-  taliSetTheme?: (mode: string) => void;
-  taliGetThemePref?: () => string;
+  /** Theme API from the head script (`theme_head`). The reader's *choice* may be
+   *  `"auto"`; the resolved *mode* that paints never is. Passing `"auto"` (or any
+   *  unrecognized value) to `taliSetTheme` clears the saved choice. */
+  taliSetTheme?: (choice: 'auto' | 'light' | 'dark' | 'sepia') => void;
+  taliGetThemePref?: () => 'light' | 'dark' | 'sepia';
+  taliGetThemeChoice?: () => 'auto' | 'light' | 'dark' | 'sepia';
   /** Wires every `[data-qmd-theme-toggle]` button (defined in theme_head). */
   taliWireThemeToggles?: () => void;
   /** Runs all registered enhancers over `root` (the registry runner, code-enhance.js). */

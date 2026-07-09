@@ -529,7 +529,7 @@
     });
   }
   // Highlight the lines named by `spec` ("3-5", "1,4", "all", "") in a code block,
-  // dimming the rest. "all"/empty clears the dim.
+  // washing them in the accent (the rest keep their contrast). "all"/empty clears the focus.
   function highlightLines(pre, spec) {
     var lines = pre.querySelectorAll('.tali-hl-ln');
     spec = (spec || '').trim();

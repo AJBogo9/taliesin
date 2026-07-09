@@ -4,7 +4,7 @@
 // `.step[data-cw-lines]` per narration step) beside a sticky code panel
 // (`.cw-stage > .cw-code > pre`). As the reader scrolls, the step nearest the
 // viewport centre becomes active and its `data-cw-lines` spec focuses the matching
-// lines in the panel — dimming the rest. Read-only / scroll-only: it never writes
+// lines in the panel by washing them in the accent. Read-only / scroll-only: it never writes
 // source. Reuses the deck's `.tali-hl-ln` / `.tali-hl-ln-hl` / `.tali-hl-lines-active` class
 // contract (styled in base.css), but does NOT depend on deck.js (not loaded on
 // pages), so the tiny line-spec parse lives here.
@@ -25,7 +25,9 @@
     return on;
   }
 
-  // Focus the lines named by `spec` in `pre`, dimming the rest. ""/"all" clears it.
+  // Focus the lines named by `spec` in `pre`. The focused range is marked positively (accent
+  // wash + inset rail); the rest keep their contrast, since no opacity dim can stay above 4.5:1
+  // on syntax-coloured code. ""/"all" clears it.
   function focusLines(pre, spec) {
     if (!pre) return;
     var lines = pre.querySelectorAll('.tali-hl-ln');

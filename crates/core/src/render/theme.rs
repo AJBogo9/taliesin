@@ -61,8 +61,14 @@ pub(super) fn theme_default_mode(theme: Option<&str>) -> &'static str {
 }
 /// Inline `<head>` script (runs before paint, so no flash): set
 /// `<html data-theme>` from the saved choice, else the front-matter default,
-/// else the OS `prefers-color-scheme`. Also defines `taliSetTheme`/`taliGetThemePref`
-/// for the preview toggle and keeps `auto` in sync with OS changes.
+/// else the OS `prefers-color-scheme`. Also defines
+/// `taliSetTheme`/`taliGetThemePref`/`taliGetThemeChoice` for the preview toggle
+/// and the Settings picker, and keeps `auto` in sync with OS changes.
+///
+/// Two values, deliberately distinct: the **choice** is what the reader picked
+/// (`auto`/`light`/`dark`/`sepia`), the **mode** is what actually paints
+/// (`light`/`dark`/`sepia`, never `auto`). A picker has to render the choice, or
+/// its `auto` option can never read as selected; everything else wants the mode.
 pub fn theme_head(default_mode: &str) -> String {
     format!(
         r#"<script>
@@ -81,17 +87,17 @@ pub fn theme_head(default_mode: &str) -> String {
     }} catch(e) {{}}
     return "light";
   }}
-  function pref(){{
+  // The reader's stored CHOICE. Absent or unrecognized reads as "auto", so clearing
+  // the key is what returns a page to following the OS.
+  function choice(){{
     var v = null;
     try {{ v = localStorage.getItem("qmd-theme"); }} catch(e) {{}}
-    return (v === "light" || v === "dark" || v === "sepia") ? v : DEFAULT();
+    return (v === "light" || v === "dark" || v === "sepia") ? v : "auto";
   }}
-  // Whether the active mode is currently coming from a saved choice (so an OS flip
-  // must not override a reader who explicitly toggled).
-  function hasSaved(){{
-    var v = null;
-    try {{ v = localStorage.getItem("qmd-theme"); }} catch(e) {{}}
-    return v === "light" || v === "dark" || v === "sepia";
+  // The MODE that actually paints: never "auto".
+  function pref(){{
+    var c = choice();
+    return c === "auto" ? DEFAULT() : c;
   }}
   var BG = {{ dark: '#16181d', sepia: '#f4ecd8', light: '#ffffff' }};
   function apply(){{
@@ -105,24 +111,49 @@ pub fn theme_head(default_mode: &str) -> String {
     el.style.colorScheme = mode === "dark" ? "dark" : "light";
     el.style.background = BG[mode] || '#ffffff';
     // Let theme-dependent renderers (e.g. mermaid, whose SVG colours are baked at
-    // render time) re-render on a toggle.
-    try {{ window.dispatchEvent(new CustomEvent("qmd:themechange", {{ detail: {{ mode: mode }} }})); }} catch(e) {{}}
+    // render time) re-render on a toggle, and let the Settings picker re-sync its
+    // pressed state: which tracks the choice, not the mode.
+    try {{ window.dispatchEvent(new CustomEvent("qmd:themechange", {{ detail: {{ mode: mode, choice: choice() }} }})); }} catch(e) {{}}
   }}
   apply();
-  // Keep an unsaved "auto" page reactive to OS theme flips: re-apply only when the
-  // mode is auto AND no saved choice exists, so a reader who explicitly toggled is
-  // never overridden by the OS. (Older Safari exposes addListener instead of
-  // addEventListener; guard for it the way the rest of the code guards matchMedia.)
+  // Keep an "auto" page reactive to OS theme flips: re-apply only while the choice
+  // is auto, so a reader who explicitly picked a theme is never overridden by the
+  // OS. (Older Safari exposes addListener instead of addEventListener; guard for it
+  // the way the rest of the code guards matchMedia.)
   try {{
     if (MODE !== "light" && MODE !== "dark" && window.matchMedia) {{
       var osDark = window.matchMedia('(prefers-color-scheme: dark)');
-      var onOsChange = function(){{ if (!hasSaved()) apply(); }};
+      var onOsChange = function(){{ if (choice() === "auto") apply(); }};
       if (osDark.addEventListener) osDark.addEventListener('change', onOsChange);
       else if (osDark.addListener) osDark.addListener(onOsChange);
     }}
   }} catch(e) {{}}
-  window.taliSetTheme = function(p){{ try {{ localStorage.setItem("qmd-theme", p); }} catch(e) {{}} apply(); }};
+  // Picking "auto" REMOVES the key rather than storing "auto": a reader who never
+  // touched the picker and one who explicitly chose auto are the same state, and the
+  // OS listener above keys off exactly that.
+  window.taliSetTheme = function(p){{
+    try {{
+      if (p === "light" || p === "dark" || p === "sepia") localStorage.setItem("qmd-theme", p);
+      else localStorage.removeItem("qmd-theme");
+    }} catch(e) {{}}
+    apply();
+  }};
   window.taliGetThemePref = function(){{ return pref(); }};
+  window.taliGetThemeChoice = function(){{ return choice(); }};
+  // Paper is white. dark.css recolours the syntax scopes and the diagnostic boxes with
+  // untokenised literals (a dark-mode string is #a5d6ff: 1.6:1 on paper), so the print
+  // stylesheet's token reset cannot reach them. Drop the whole document to the light theme
+  // for the duration of the print job and restore afterwards, the way deck.js already does
+  // for PDF export. `apply()` restores colour-scheme, canvas, and mermaid in one call.
+  try {{
+    window.addEventListener("beforeprint", function(){{
+      var el = document.documentElement;
+      el.setAttribute("data-theme", "light");
+      el.style.colorScheme = "light";
+      el.style.background = BG.light;
+    }});
+    window.addEventListener("afterprint", apply);
+  }} catch(e) {{}}
   // Wire any `[data-qmd-theme-toggle]` button (the dev
   // menu's on a single doc): toggle light <-> dark, icon reflects the current mode.
   // Shipped here (not in the preview client) so the toggle works in `build` too.

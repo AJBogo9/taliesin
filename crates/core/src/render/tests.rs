@@ -1602,6 +1602,46 @@ fn assembled_page_ships_theme_picker() {
 }
 
 #[test]
+fn theme_head_separates_the_reader_choice_from_the_resolved_mode() {
+    // A reader who once toggled could never return to following the OS: the only saved
+    // values were light/dark/sepia, and nothing cleared the key. The head script must
+    // therefore expose the RAW choice (which can be "auto") alongside the resolved mode
+    // (which never is), and selecting "auto" must CLEAR the key so `hasSaved()` goes false
+    // and the `prefers-color-scheme` listener resumes driving the page.
+    let head = theme_head("auto");
+    assert!(
+        head.contains("taliGetThemeChoice"),
+        "head script must expose the raw reader choice, not just the resolved mode"
+    );
+    assert!(
+        head.contains("removeItem"),
+        "choosing `auto` must clear qmd-theme, not store an unrecognized value"
+    );
+    // The change event has to carry the choice too, or the picker cannot re-sync
+    // its pressed state after an OS flip.
+    assert!(
+        head.contains("choice: choice()"),
+        "qmd:themechange must report the choice alongside the mode"
+    );
+}
+
+#[test]
+fn reader_theme_picker_offers_auto_and_syncs_on_the_choice() {
+    // The picker's segmented control marks the pressed option by comparing each option's
+    // value against the current one. Comparing against the RESOLVED mode means an "Auto"
+    // button can never read as pressed (the mode is always light/dark/sepia), so it must
+    // compare against the stored choice.
+    assert!(
+        CODE_ENHANCE_JS.contains("['auto', 'Auto'"),
+        "the Theme row must offer an Auto (follow the OS) option"
+    );
+    assert!(
+        CODE_ENHANCE_JS.contains("taliGetThemeChoice"),
+        "the Theme row must sync its pressed state against the stored choice, not the resolved mode"
+    );
+}
+
+#[test]
 fn assembled_page_ships_reading_progress() {
     let page = render_html_page("# Title\n\nProse to read at length.\n", "doc");
     // The reading-progress enhancer (progress bar + min-left + resume) ships on every
@@ -2720,6 +2760,258 @@ fn color_after<'a>(css: &'a str, needle: &str) -> &'a str {
     let rest = &css[i + needle.len()..];
     let h = rest.find('#').expect("a hex color after the rule");
     &rest[h..h + 7]
+}
+
+/// The UI-boundary token must clear the WCAG 1.4.11 3:1 floor against BOTH surfaces a control
+/// can sit on: the page background and the code background (a `kbd` and the copy button sit on
+/// code-bg). The hairline `--tali-border` stays decorative and is deliberately not checked.
+#[test]
+fn border_strong_clears_the_ui_boundary_floor_on_both_surfaces() {
+    // `:root` defines it first in base.css; the sepia block redefines it further down, so slice
+    // from the sepia selector before reading that one.
+    let sepia_block = &BASE_CSS[BASE_CSS
+        .find("html[data-theme=\"sepia\"] {")
+        .expect("sepia block")..];
+    for (theme, css, bg, code_bg) in [
+        ("light", BASE_CSS, "#ffffff", "#f5f5f5"),
+        ("dark", DARK_CSS, "#16181d", "#21242b"),
+        ("sepia", sepia_block, "#f4ecd8", "#ece2c8"),
+    ] {
+        let c = color_after(css, "--tali-border-strong:");
+        let (a, b) = (wcag_contrast(c, bg), wcag_contrast(c, code_bg));
+        assert!(
+            a >= 3.0 && b >= 3.0,
+            "{theme} --tali-border-strong {c}: {a:.2} on {bg}, {b:.2} on {code_bg} (need 3.0 on both)"
+        );
+    }
+}
+
+/// Citations and cross-references must not signal "link" with colour alone: against body text the
+/// link tone is 1.93:1 in dark (the default theme) and 1.51:1 in sepia. WCAG 1.4.1.
+#[test]
+fn xref_links_carry_a_non_colour_affordance() {
+    let i = BASE_CSS.find(".tali-xref {").expect("the .tali-xref rule");
+    let rule = &BASE_CSS[i..i + 160];
+    assert!(
+        rule.contains("text-decoration: underline"),
+        "xref/citation links must be underlined, not colour-only: {rule}"
+    );
+}
+
+/// `opacity` on text composites it toward the page and silently defeats every contrast assertion
+/// written against the authored colour. These four rendered below 4.5:1; none may reintroduce it.
+#[test]
+fn de_emphasised_text_never_uses_an_opacity_multiplier() {
+    for (label, selector) in [
+        ("scrolly step", ".scrolly-steps .step {"),
+        ("walkthrough step", ".cw-steps .step {"),
+        ("read TOC entry", "#TOC a.tali-toc-read {"),
+    ] {
+        let i = BASE_CSS
+            .find(selector)
+            .unwrap_or_else(|| panic!("{selector}"));
+        let rule = &BASE_CSS[i..i + BASE_CSS[i..].find('}').expect("closing brace")];
+        assert!(
+            !rule.contains("opacity:"),
+            "{label} dims with opacity; recede with --tali-muted instead: {rule}"
+        );
+    }
+    // Code lines carry syntax colours, so no alpha exists that dims visibly AND keeps the comment
+    // token at 4.5:1 (it needs >= .94). Both the page walkthrough and the deck must mark the
+    // FOCUSED range instead of dimming the rest.
+    assert!(
+        !BASE_CSS.contains("pre.tali-hl-lines-active .tali-hl-ln { opacity"),
+        "the walkthrough must not dim non-focused code lines"
+    );
+    assert!(
+        !super::deck::DECK_CSS.contains("pre.tali-hl-lines-active .tali-hl-ln { opacity"),
+        "the deck must not dim non-focused code lines"
+    );
+}
+
+/// The search-hit `<mark>` shipped one 50%-alpha yellow for every theme; on the dark page it
+/// composited to #887219, leaving body text at 3.77:1 on top of the highlight.
+#[test]
+fn dark_search_mark_keeps_body_text_readable() {
+    let c = color_after(
+        BASE_CSS,
+        "html[data-theme=\"dark\"] mark.tali-search-mark { background-color: ",
+    );
+    let r = wcag_contrast("#e6e6e6", c);
+    assert!(r >= 4.5, "dark search mark {c}: body text at {r:.2}");
+}
+
+/// Sepia never overrode `--tali-flash`, so the live-edit pulse painted the `:root` blue onto warm
+/// paper. Pin that every theme defines its own.
+#[test]
+fn every_theme_defines_its_own_flash_tint() {
+    let sepia = BASE_CSS
+        .find("html[data-theme=\"sepia\"] {")
+        .expect("sepia block");
+    let block = &BASE_CSS[sepia..sepia + BASE_CSS[sepia..].find('}').expect("closing brace")];
+    assert!(
+        block.contains("--tali-flash:"),
+        "sepia must define --tali-flash, not inherit the :root blue"
+    );
+    assert!(
+        DARK_CSS.contains("--tali-flash:"),
+        "dark must define it too"
+    );
+}
+
+/// Deck link text sat at 4.32:1 on the deck's white background, below AA. The deck now shares
+/// the page's accent, which is dark enough to serve as link text unaided.
+#[test]
+fn deck_link_text_meets_wcag_aa() {
+    let c = color_after(super::deck::DECK_CSS, "--deck-accent:");
+    let r = wcag_contrast(c, "#ffffff");
+    assert!(r >= 4.5, "light deck accent {c} as link on white = {r:.2}");
+}
+
+/// The brand rests on ONE owned accent hue. These are the vendor defaults it replaced: three
+/// blues (a stock light blue, GitHub Primer's, Tailwind's blue-600), the deck's fourth blue,
+/// Material's error red, and the old maximally-saturated callout set. Shipping any of them again
+/// is the single loudest "this was assembled from framework defaults" tell, so ban the literals.
+#[test]
+fn no_vendor_default_colours_remain_in_any_bundled_stylesheet() {
+    const BANNED: &[(&str, &str)] = &[
+        ("#4c8dff", "the old stock light blue"),
+        ("#1f6feb", "GitHub Primer's blue"),
+        ("#2563eb", "Tailwind blue-600"),
+        ("#4c6ef5", "the deck's fourth blue"),
+        ("#b00020", "Material Design's error red"),
+        ("#2bb673", "the old callout tip green"),
+        ("#e0a800", "the old callout warning amber"),
+        ("#e0566b", "the old callout important red"),
+        ("#e8730c", "the old callout caution orange"),
+    ];
+    for (sheet, css) in [
+        ("base.css", BASE_CSS),
+        ("dark.css", DARK_CSS),
+        ("deck.css", super::deck::DECK_CSS),
+        ("site.css", SITE_CSS),
+    ] {
+        let lower = css.to_ascii_lowercase();
+        for (hex, what) in BANNED {
+            assert!(
+                !lower.contains(hex),
+                "{sheet} still ships {hex} ({what}); route it through the accent/callout tokens"
+            );
+        }
+    }
+}
+
+/// Composite `color-mix(in srgb, C pct%, transparent)` over `bg`: what a callout title bar
+/// actually renders as.
+#[cfg(test)]
+fn mix_over(fg: &str, pct: f64, bg: &str) -> String {
+    let ch = |h: &str, i: usize| u8::from_str_radix(&h[i..i + 2], 16).unwrap() as f64;
+    let a = pct / 100.0;
+    let (f, b) = (fg.trim_start_matches('#'), bg.trim_start_matches('#'));
+    let c = |i: usize| (ch(f, i) * a + ch(b, i) * (1.0 - a)).round() as u8;
+    format!("#{:02x}{:02x}{:02x}", c(0), c(2), c(4))
+}
+
+/// The callout family is the reader's semantic vocabulary. Every kind's border must clear the 3:1
+/// graphical floor against the page, and body text must stay AA on its title tint: in all three
+/// themes. (The ICON's own contrast is not a WCAG requirement here: each callout also renders a
+/// distinct icon shape and a text title, which puts the icon outside 1.4.11's "required to
+/// understand" scope. It is held to 3:1 anyway as a quality bar, but only the two floors below
+/// are compliance.)
+#[test]
+fn callout_family_meets_its_contrast_floors_in_every_theme() {
+    let sepia = &BASE_CSS[BASE_CSS
+        .find("html[data-theme=\"sepia\"] {")
+        .expect("sepia block")..];
+    for (theme, css, bg, fg) in [
+        ("light", BASE_CSS, "#ffffff", "#1a1a1a"),
+        ("dark", DARK_CSS, "#16181d", "#e6e6e6"),
+        ("sepia", sepia, "#f4ecd8", "#5b4636"),
+    ] {
+        for kind in ["note", "tip", "warning", "important", "caution"] {
+            let c = color_after(css, &format!("--tali-callout-{kind}:"));
+            let border = wcag_contrast(c, bg);
+            assert!(
+                border >= 3.0,
+                "{theme} callout-{kind} border {c}: {border:.2} on {bg} (need 3.0)"
+            );
+            let pct = if kind == "warning" { 13.0 } else { 12.0 };
+            let tint = mix_over(c, pct, bg);
+            let body = wcag_contrast(fg, &tint);
+            assert!(
+                body >= 4.5,
+                "{theme} callout-{kind}: body text {body:.2} on its title tint {tint} (need 4.5)"
+            );
+        }
+    }
+}
+
+/// Theorem boxes recur densely inside a proof, so they must stay quieter than a callout while
+/// still clearing the 3:1 graphical floor for their left border.
+#[test]
+fn theorem_accents_clear_the_graphical_floor_in_every_theme() {
+    let sepia = &BASE_CSS[BASE_CSS
+        .find("html[data-theme=\"sepia\"] {")
+        .expect("sepia block")..];
+    for (theme, css, bg) in [
+        ("light", BASE_CSS, "#ffffff"),
+        ("dark", DARK_CSS, "#16181d"),
+        ("sepia", sepia, "#f4ecd8"),
+    ] {
+        for kind in ["plain", "definition", "remark"] {
+            let c = color_after(css, &format!("--tali-thm-{kind}:"));
+            let r = wcag_contrast(c, bg);
+            assert!(
+                r >= 3.0,
+                "{theme} thm-{kind} {c}: {r:.2} on {bg} (need 3.0)"
+            );
+        }
+    }
+}
+
+#[test]
+fn print_and_high_contrast_blocks_outrank_every_theme_block() {
+    // `dark.css` is inlined AFTER `base.css` (see page.rs), so a print/contrast override
+    // written as `html[data-theme="dark"]` ties that theme block on specificity (0,1,1) and
+    // LOSES on source order: printing from dark mode put #e6e6e6 ink on white paper.
+    // `html[data-theme="sepia"]` (0,1,1) likewise outranks a bare `:root` (0,1,0), so sepia
+    // printed brown and never got the `prefers-contrast: more` boost. A doubled `:root:root`
+    // is (0,2,0), which outranks every `html[data-theme=…]` block regardless of order.
+    let print_block = &BASE_CSS[BASE_CSS
+        .rfind("@media print")
+        .expect("the palette-forcing print block")..];
+    assert!(
+        print_block.contains(":root:root"),
+        "the print block must outrank the theme blocks, not tie with them"
+    );
+    assert!(
+        !print_block.contains("html[data-theme=\"dark\"], :root"),
+        "the old tie-on-specificity selector is still present in the print block"
+    );
+    let contrast_block = &BASE_CSS[BASE_CSS
+        .find("prefers-contrast: more")
+        .expect("the prefers-contrast block")..];
+    assert!(
+        contrast_block.contains(":root:root"),
+        "prefers-contrast: more must reach dark + sepia, not only light"
+    );
+}
+
+#[test]
+fn printing_forces_the_light_theme_even_from_dark() {
+    // The CSS override above only resets the *tokens*. `dark.css` also recolours the syntax
+    // scopes (`.tali-hl-string` -> #a5d6ff, 1.6:1 on white paper) and the diagnostic boxes,
+    // none of which are tokenised. Swapping `data-theme` to light for the duration of the
+    // print job neutralises all of them at once: the same trick deck.js already uses.
+    let head = theme_head("auto");
+    assert!(
+        head.contains("beforeprint"),
+        "the page must drop to the light theme while printing"
+    );
+    assert!(
+        head.contains("afterprint"),
+        "the page must restore the reader's theme after printing"
+    );
 }
 
 #[test]

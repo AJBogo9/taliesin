@@ -149,7 +149,7 @@ body { background: transparent; }
 }
 .tali-deck.overview .tali-slides > section.tali-overview-current,
 .tali-deck.overview .tali-slides > section > section.tali-overview-current {
-  outline: 3px solid var(--deck-accent, #4c8dff);
+  outline: 3px solid var(--deck-accent);
   box-shadow: 0 16px 46px rgba(0, 0, 0, .6);
 }
 /* Storyline threads: a horizontal connector along each multi-slide topic row, drawn
@@ -166,7 +166,7 @@ body { background: transparent; }
   height: var(--tali-thread, 16px);
   margin-top: calc(var(--tali-thread, 16px) / -2);
   transform-origin: 0 0;
-  background: var(--deck-accent, #4c8dff);
+  background: var(--deck-accent);
   opacity: .42;
   border-radius: 999px;
 }
@@ -272,13 +272,13 @@ body { background: transparent; }
 .tali-minimap.tali-minimap-on { opacity: 1; pointer-events: auto; }
 .tali-minimap-inner { position: relative; cursor: pointer; }
 .tali-mini-tile { position: absolute; background: rgba(165, 175, 195, .26); border-radius: 2px; }
-.tali-mini-tile.tali-mini-cur { background: var(--deck-accent, #4c8dff); }
+.tali-mini-tile.tali-mini-cur { background: var(--deck-accent); }
 .tali-mini-tile.tali-mini-dim { opacity: .22; } /* under an active filter */
-.tali-mini-tile.tali-mini-hit { background: var(--deck-accent, #4c8dff); }
+.tali-mini-tile.tali-mini-hit { background: var(--deck-accent); }
 .tali-mini-view {
   position: absolute;
-  border: 1.5px solid var(--deck-accent, #4c8dff);
-  background: rgba(76, 141, 255, .14);
+  border: 1.5px solid var(--deck-accent);
+  background: color-mix(in srgb, var(--deck-accent) 14%, transparent);
   border-radius: 3px;
   pointer-events: none;
 }
@@ -305,10 +305,10 @@ body { background: transparent; }
   display: none;
 }
 .tali-deck.overview .tali-ov-search { display: block; }
-.tali-ov-search:focus { border-color: var(--deck-accent, #4c8dff); }
+.tali-ov-search:focus { border-color: var(--deck-accent); }
 .tali-ov-search::placeholder { color: rgba(150, 160, 180, .7); }
 .tali-deck.overview .tali-slides section.tali-ov-dim { opacity: .2; }
-.tali-deck.overview .tali-slides section.tali-ov-hit { outline: 3px solid var(--deck-accent, #4c8dff); }
+.tali-deck.overview .tali-slides section.tali-ov-hit { outline: 3px solid var(--deck-accent); }
 
 /* Magic-move: the code blocks in a `::: {.magic-move}` are stacked in one grid
    cell (so the container sizes to the tallest); deck.js shows the active block and,
@@ -337,16 +337,18 @@ body { background: transparent; }
 .tali-deck .tali-slides .callout-body { padding: 0.1em 0.75em 0.4em; }
 .tali-deck .tali-slides .callout-body > :first-child { margin-top: 0.35em; }
 .tali-deck .tali-slides .callout-collapse > details > summary.callout-title { cursor: pointer; list-style: none; }
-.tali-deck .tali-slides .callout-note { border-left-color: #4c8dff; }
-.tali-deck .tali-slides .callout-note > .callout-title, .tali-deck .tali-slides .callout-note summary.callout-title { background: rgba(76, 141, 255, .16); }
-.tali-deck .tali-slides .callout-tip { border-left-color: #2bb673; }
-.tali-deck .tali-slides .callout-tip > .callout-title, .tali-deck .tali-slides .callout-tip summary.callout-title { background: rgba(43, 182, 115, .16); }
-.tali-deck .tali-slides .callout-warning { border-left-color: #e0a800; }
-.tali-deck .tali-slides .callout-warning > .callout-title, .tali-deck .tali-slides .callout-warning summary.callout-title { background: rgba(224, 168, 0, .18); }
-.tali-deck .tali-slides .callout-important { border-left-color: #e0566b; }
-.tali-deck .tali-slides .callout-important > .callout-title, .tali-deck .tali-slides .callout-important summary.callout-title { background: rgba(224, 86, 107, .16); }
-.tali-deck .tali-slides .callout-caution { border-left-color: #e8730c; }
-.tali-deck .tali-slides .callout-caution > .callout-title, .tali-deck .tali-slides .callout-caution summary.callout-title { background: rgba(232, 115, 12, .16); }
+/* Bound to the tokens above, with the tint derived by color-mix exactly as base.css does, so a
+   light deck and a dark deck follow from one definition and no hue is written twice. */
+.tali-deck .tali-slides .callout-note { border-left-color: var(--tali-callout-note); }
+.tali-deck .tali-slides .callout-note > .callout-title, .tali-deck .tali-slides .callout-note summary.callout-title { background: color-mix(in srgb, var(--tali-callout-note) 16%, transparent); }
+.tali-deck .tali-slides .callout-tip { border-left-color: var(--tali-callout-tip); }
+.tali-deck .tali-slides .callout-tip > .callout-title, .tali-deck .tali-slides .callout-tip summary.callout-title { background: color-mix(in srgb, var(--tali-callout-tip) 16%, transparent); }
+.tali-deck .tali-slides .callout-warning { border-left-color: var(--tali-callout-warning); }
+.tali-deck .tali-slides .callout-warning > .callout-title, .tali-deck .tali-slides .callout-warning summary.callout-title { background: color-mix(in srgb, var(--tali-callout-warning) 18%, transparent); }
+.tali-deck .tali-slides .callout-important { border-left-color: var(--tali-callout-important); }
+.tali-deck .tali-slides .callout-important > .callout-title, .tali-deck .tali-slides .callout-important summary.callout-title { background: color-mix(in srgb, var(--tali-callout-important) 16%, transparent); }
+.tali-deck .tali-slides .callout-caution { border-left-color: var(--tali-callout-caution); }
+.tali-deck .tali-slides .callout-caution > .callout-title, .tali-deck .tali-slides .callout-caution summary.callout-title { background: color-mix(in srgb, var(--tali-callout-caution) 16%, transparent); }
 
 /* Per-slide backgrounds: a layer behind each slide's own content, filling the slide
    box, so it travels with the slide as the camera pans and shows per-tile in
@@ -368,8 +370,8 @@ body { background: transparent; }
 .tali-deck .tali-slides section.tali-dark-bg h4,
 .tali-deck .tali-slides section.tali-dark-bg strong { color: #fff; }
 .tali-deck .tali-slides section.tali-dark-bg .subtitle { color: rgba(255, 255, 255, .8); }
-.tali-deck .tali-slides section.tali-dark-bg a { color: #c7d2fe; }
-.tali-deck .tali-slides section.tali-dark-bg li::marker { color: #c7d2fe; }
+.tali-deck .tali-slides section.tali-dark-bg a { color: #9aa8dc; }
+.tali-deck .tali-slides section.tali-dark-bg li::marker { color: #9aa8dc; }
 /* Mirror for a LIGHT per-slide background: force dark text so it stays readable even
    when the deck's own theme is dark (its default text is light, which would be
    invisible on a light named/hex slide background). */
@@ -380,8 +382,8 @@ body { background: transparent; }
 .tali-deck .tali-slides section.tali-light-bg h4,
 .tali-deck .tali-slides section.tali-light-bg strong { color: #1a1a1a; }
 .tali-deck .tali-slides section.tali-light-bg .subtitle { color: rgba(0, 0, 0, .72); }
-.tali-deck .tali-slides section.tali-light-bg a { color: #1f4fd6; }
-.tali-deck .tali-slides section.tali-light-bg li::marker { color: #1f4fd6; }
+.tali-deck .tali-slides section.tali-light-bg a { color: #3a4673; }
+.tali-deck .tali-slides section.tali-light-bg li::marker { color: #3a4673; }
 html.tali-print .tali-slide-bg { display: none; } /* per-slide backgrounds aren't in the PDF (v1) */
 
 /* Fragments / incremental steps: hidden but keeping layout space (visibility,
@@ -408,14 +410,16 @@ html.tali-print .tali-slide-bg { display: none; } /* per-slide backgrounds aren'
    highlight + dim span the full code width; the copy button reads innerText, which
    still reconstructs the breaks. deck.js toggles .tali-hl-lines-active / .tali-hl-ln-hl. */
 .tali-deck pre .tali-hl-ln { display: block; } /* wrapped lines (code-line-numbers + magic-move) stack */
-.tali-deck pre.tali-hl-lines-active .tali-hl-ln { opacity: .3; }
+/* The focused range is marked positively (accent wash + inset rail) and the other lines keep
+   their contrast. An `opacity` dim cannot work here: it composites the SYNTAX TOKENS, not the
+   ink, and the comment token needs alpha >= .94 to stay at 4.5:1: i.e. no visible dim exists
+   that is also legible. The wash carries the step on its own. */
 .tali-deck pre.tali-hl-lines-active .tali-hl-ln-hl {
-  opacity: 1;
-  background: color-mix(in srgb, var(--deck-accent, #4c6ef5) 13%, transparent);
-  box-shadow: inset .18em 0 0 var(--deck-accent, #4c6ef5);
+  background: color-mix(in srgb, var(--deck-accent) 13%, transparent);
+  box-shadow: inset .18em 0 0 var(--deck-accent);
 }
 @media (prefers-reduced-motion: no-preference) {
-  .tali-deck pre[data-code-lines] .tali-hl-ln { transition: opacity .3s ease; }
+  .tali-deck pre[data-code-lines] .tali-hl-ln { transition: background .3s ease, box-shadow .3s ease; }
 }
 
 /* Presenter (speaker) window: a dark control surface with live current + next
@@ -626,7 +630,7 @@ html.tali-deck-dark.tali-scroll, html.tali-deck-dark.tali-scroll body { backgrou
    reads on both light and dark decks; arrows + menu auto-hide on idle. */
 .tali-progress { position: fixed; left: 0; right: 0; bottom: 0; height: 3px; z-index: 60;
   background: rgba(127, 127, 127, .18); pointer-events: none; }
-.tali-progress-fill { height: 100%; width: 0; background: var(--deck-accent, #4c6ef5); transition: width .25s ease; }
+.tali-progress-fill { height: 100%; width: 0; background: var(--deck-accent); transition: width .25s ease; }
 
 .tali-controls { position: fixed; right: 14px; bottom: 14px; z-index: 61; display: flex; gap: 6px;
   transition: opacity .25s ease; }
@@ -664,7 +668,7 @@ html.tali-scroll .tali-blackout-overlay { display: none !important; }
 .tali-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px;
   border: 0; border-radius: 8px; cursor: pointer; text-align: left; background: transparent; color: #e6e8ec; font: inherit; }
 .tali-menu-item:hover { background: rgba(255, 255, 255, .08); }
-.tali-menu-item.tali-on { background: color-mix(in srgb, var(--deck-accent, #4c6ef5) 32%, transparent); }
+.tali-menu-item.tali-on { background: color-mix(in srgb, var(--deck-accent) 32%, transparent); }
 .tali-menu-ico { display: inline-flex; color: #aeb4bf; }
 .tali-menu-ico svg { width: 17px; height: 17px; }
 .tali-menu-item.tali-on .tali-menu-ico { color: #fff; }
@@ -674,9 +678,10 @@ html.tali-scroll .tali-blackout-overlay { display: none !important; }
 .tali-menu-slide { display: flex; align-items: baseline; gap: 8px; width: 100%; padding: 6px 10px;
   border: 0; border-radius: 7px; cursor: pointer; text-align: left; background: transparent; color: #c7ccd6; font: inherit; }
 .tali-menu-slide:hover { background: rgba(255, 255, 255, .08); color: #fff; }
-.tali-menu-slide.tali-on .tali-menu-slide-n { color: var(--deck-accent, #6ea8ff); }
+.tali-menu-slide.tali-on .tali-menu-slide-n { color: var(--deck-accent); }
 .tali-menu-slide.tali-on .tali-menu-slide-t { color: #fff; }
-.tali-menu-slide-n { flex: 0 0 1.5em; color: #6b7079; font-variant-numeric: tabular-nums; font-size: 12px; }
+/* #6b7079 was 3.35:1 on the menu surface; #8b919c (the menu's other muted tone) is 5.27:1. */
+.tali-menu-slide-n { flex: 0 0 1.5em; color: #8b919c; font-variant-numeric: tabular-nums; font-size: 12px; }
 .tali-menu-slide-t { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tali-menu-keys { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 10px; padding: 2px 6px 4px; }
 .tali-key { display: flex; align-items: center; gap: 7px; color: #aeb4bf; font-size: 12px; }
@@ -698,11 +703,18 @@ html.tali-scroll .tali-progress, html.tali-scroll .tali-ctl-prev, html.tali-scro
    =========================================================================== */
 
 .tali-deck {
-  --deck-ink: #1b1c22;
-  --deck-muted: #6b6e7b;
-  --deck-accent: #4c6ef5;
-  --deck-rule: #e6e7ea;
-  --deck-code-bg: #f6f8fa;
+  /* The deck shares the page's ink, muted, surfaces and accent: it used to carry its own near-
+     miss of each (a fourth blue, GitHub's code grey, a bluish muted), so an embedded deck showed
+     two blues on one page. The accent is dark enough to serve as link text unaided (8.74:1). */
+  --deck-ink: #1a1a1a;
+  --deck-muted: #555555;
+  --deck-accent: #3a4673;
+  --deck-rule: #e3e3e3;
+  --deck-code-bg: #f5f5f5;
+  /* A deck page inlines deck.css ONLY, so the callout tokens have to be redeclared here rather
+     than inherited from base.css's :root. Values track the page's light family exactly. */
+  --tali-callout-note: #6a7aa9; --tali-callout-tip: #288f70; --tali-callout-warning: #a2781b;
+  --tali-callout-important: #bd505c; --tali-callout-caution: #8d4315;
   --deck-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --deck-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-family: var(--deck-font);
@@ -778,12 +790,12 @@ html.tali-scroll .tali-progress, html.tali-scroll .tali-ctl-prev, html.tali-scro
   font: 600 .5em var(--deck-font); color: var(--deck-muted);
   background: #fff; border: 1px solid var(--deck-rule); border-radius: 5px; cursor: pointer;
 }
-.tali-deck .tali-copy.tali-copied { color: #2bb673; border-color: #2bb673; }
+.tali-deck .tali-copy.tali-copied { color: var(--tali-callout-tip); border-color: var(--tali-callout-tip); }
 .tali-deck pre.mermaid { background: transparent; border: 0; padding: 0; text-align: center; }
 
 /* server-side syntax-highlight palette (syntect); keep in sync with base.css.
    Unmapped scopes inherit the default ink colour. */
-.tali-deck .tali-hl-comment { color: #646b74; font-style: italic; } /* AA on the #f6f8fa light-deck code bg */
+.tali-deck .tali-hl-comment { color: #646b74; font-style: italic; } /* 4.94:1 on the light-deck code bg */
 .tali-deck .tali-hl-string { color: #0a3069; }
 .tali-deck .tali-hl-keyword, .tali-deck .tali-hl-storage { color: #cf222e; }
 .tali-deck .tali-hl-constant, .tali-deck .tali-hl-support { color: #0550ae; }
@@ -812,9 +824,11 @@ html.tali-scroll .tali-progress, html.tali-scroll .tali-ctl-prev, html.tali-scro
 html.tali-deck-dark .tali-deck {
   --deck-ink: #e6e6e6;
   --deck-muted: #9aa0aa;
-  --deck-accent: #6ea8ff;
+  --deck-accent: #9aa8dc;
   --deck-rule: #363a44;
   --deck-code-bg: #21242b;
+  --tali-callout-note: #92a3d4; --tali-callout-tip: #65bf9f; --tali-callout-warning: #d4aa5a;
+  --tali-callout-important: #dc747d; --tali-callout-caution: #be6f45;
 }
 html.tali-deck-dark .tali-deck .tali-hl-comment { color: #8b949e; }
 html.tali-deck-dark .tali-deck .tali-hl-string { color: #a5d6ff; }
@@ -848,7 +862,7 @@ html.tali-alt [data-block-id] { cursor: pointer; }
    uses the deck accent). Mouse clicks don't show it (:focus-visible). */
 .tali-ctl:focus-visible, .tali-menu-item:focus-visible, .tali-menu-slide:focus-visible,
 .tali-ov-search:focus-visible {
-  outline: 2px solid var(--deck-accent, #4c8dff); outline-offset: 2px; border-radius: 6px;
+  outline: 2px solid var(--deck-accent); outline-offset: 2px; border-radius: 6px;
 }
 
 /* High-contrast / forced-colors (Windows High Contrast): keep the focus ring, control

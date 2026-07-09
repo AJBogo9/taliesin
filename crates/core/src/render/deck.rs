@@ -9,7 +9,7 @@ use super::*;
 /// taliesin's own deck engine, bundled (no CDN): `deck.css` is the layout + theme
 /// and `deck.js` the navigation/scaling engine (`window.TaliesinDeck`). Inlined into
 /// both the one-shot page and the live client, like KaTeX/mermaid.
-const DECK_CSS: &str = include_str!("../../assets/css/deck.css");
+pub(super) const DECK_CSS: &str = include_str!("../../assets/css/deck.css");
 const DECK_JS: &str = include_str!("../../assets/js/deck.js");
 
 /// The pieces a caller supplies to [`assemble_deck_page`]; the deck analogue of

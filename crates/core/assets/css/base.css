@@ -1,19 +1,36 @@
 
   :root {
-    --tali-bg: #ffffff; --tali-fg: #1a1a1a; --tali-muted: #555; --tali-accent: #4c8dff;
-    /* Filled active/pressed/selected surfaces (segmented controls, pressed buttons,
-       active chips, primary CTAs): --tali-accent itself fails WCAG-AA with white text
-       (3.20:1 light / 2.41:1 dark), so use the darker --tali-accent-fill for the fill
-       and --tali-on-accent for its text. Both clear 4.5:1 per theme (overridden in dark.css). */
-    --tali-accent-fill: #1f6feb; --tali-on-accent: #ffffff;
-    --tali-link: #2563eb; --tali-code-bg: #f5f5f5; --tali-border: #e3e3e3;
-    --tali-edge-shadow: rgba(0, 0, 0, .16); --tali-flash: rgba(76, 141, 255, .18);
-    /* Per-kind callout accents: the border + icon take these; the title-bar tint is
-       derived via color-mix, so light + dark work from one definition. */
-    --tali-callout-note: #4c8dff; --tali-callout-tip: #2bb673; --tali-callout-warning: #e0a800;
-    --tali-callout-important: #e0566b; --tali-callout-caution: #e8730c;
-    /* Theorem-environment accents, keyed by amsthm style; tints derived via color-mix. */
-    --tali-thm-plain: #6b5ea8; --tali-thm-definition: #2a7a5e; --tali-thm-remark: #7a7f87;
+    /* The accent is ONE owned hue across light/dark/sepia and the deck: OKLCH H 271, chroma
+       .077: roughly a third the chroma of a brand blue, and darker. It reads as ink rather
+       than as a button, which is the point: iron-gall ink is what Taliesin's Book survives in.
+       Its three lightnesses are the only accent values in the product. Previously this was
+       three unrelated vendor blues (a stock light blue, GitHub Primer's, and Tailwind's
+       blue-600) plus a fourth in the deck. The exact hexes are banned by a test. */
+    --tali-bg: #ffffff; --tali-fg: #1a1a1a; --tali-muted: #555; --tali-accent: #3a4673;
+    /* Light + sepia are dark enough that the accent doubles as its own fill (white on it is
+       9.12:1); only dark needs a separate, darker fill. */
+    --tali-accent-fill: #3a4673; --tali-on-accent: #ffffff;
+    --tali-link: #3a4673; --tali-code-bg: #f5f5f5; --tali-border: #e3e3e3;
+    /* `--tali-border` is a 1.28:1 hairline: fine for a decorative separator, but it is also
+       the ONLY visual boundary of real controls (segmented control, copy button, kbd, outline
+       buttons), where WCAG 1.4.11 requires 3:1 to identify the component. `--tali-border-strong`
+       is that boundary, and it clears 3:1 against BOTH the page and the code surface (a kbd
+       and the copy button sit on code-bg). Separators keep the hairline. */
+    --tali-border-strong: #8a8a8a;
+    --tali-edge-shadow: rgba(0, 0, 0, .16); --tali-flash: rgba(58, 70, 115, .14);
+    /* Per-kind callout accents: the border + icon take these; the title-bar tint is derived
+       via color-mix. One tuned categorical family sharing a chroma envelope (C .075-.141),
+       not five maximally-saturated picks: the old set collapsed under deuteranopia (tip vs
+       important, dE 8.4: indistinguishable). Every theme now defines its own; `note` is the
+       accent hue, so the informational callout and the brand ink are one colour.
+       Residual: tip vs important sit at dE 9.1 under protanopia, which the distinct icon
+       shape and the text title ("Tip" / "Important") carry: hue is never the sole cue. */
+    --tali-callout-note: #6a7aa9; --tali-callout-tip: #288f70; --tali-callout-warning: #a2781b;
+    --tali-callout-important: #bd505c; --tali-callout-caution: #8d4315;
+    /* Theorem accents: the same vocabulary at lower chroma (plain -> the accent indigo,
+       definition -> tip's teal, remark -> a neutral). Theorem boxes recur densely inside a
+       proof, so they must stay quieter than a callout. */
+    --tali-thm-plain: #4f5a80; --tali-thm-definition: #2f7a63; --tali-thm-remark: #7a7f87;
     color-scheme: light;
     --tali-font-body: 1.125rem/1.7 ui-serif, Georgia, "Times New Roman", serif;
     --tali-font-head: ui-sans-serif, system-ui, sans-serif;
@@ -35,10 +52,22 @@
   html[data-theme="sepia"] {
     /* --tali-muted darkened from #7a6a55 (4.44:1, below AA) to #6e5d46 (5.38:1) on the
        sepia bg, so muted prose/labels/captions clear WCAG-AA. */
-    --tali-bg: #f4ecd8; --tali-fg: #5b4636; --tali-muted: #6e5d46; --tali-accent: #9a6a3a;
-    --tali-accent-fill: #8a5a2b; --tali-on-accent: #ffffff;
-    --tali-link: #8a5a2b; --tali-code-bg: #ece2c8; --tali-border: #ddd0b0;
+    --tali-bg: #f4ecd8; --tali-fg: #5b4636; --tali-muted: #6e5d46; --tali-accent: #384165;
+    --tali-accent-fill: #384165; --tali-on-accent: #ffffff;
+    --tali-link: #384165; --tali-code-bg: #ece2c8; --tali-border: #ddd0b0;
+    --tali-border-strong: #877764; /* 3.68:1 on paper, 3.35:1 on the code surface */
     --tali-edge-shadow: rgba(91, 70, 54, .14);
+    /* `--tali-flash` was never overridden here, so the live-edit pulse and a targeted footnote
+       painted the :root blue onto warm paper. It is the ONE place the accent is not the source:
+       the accent's chroma is so low that a 14% indigo wash over beige composites to chroma .018
+       and reads as a grey shadow rather than a highlight, where a warm wash keeps chroma .037.
+       A transient "this block changed" pulse is a signal, not a brand surface. */
+    --tali-flash: rgba(154, 106, 58, .18);
+    /* Sepia needs its own semantic set: the light family leaves `tip`'s icon at 2.99:1 on the
+       warm title tint, and the vivid light hues clash with the paper outright. */
+    --tali-callout-note: #4f5c86; --tali-callout-tip: #1f7359; --tali-callout-warning: #856115;
+    --tali-callout-important: #9e3f4b; --tali-callout-caution: #763610;
+    --tali-thm-plain: #454e70; --tali-thm-definition: #2a6553; --tali-thm-remark: #71685c;
     color-scheme: light;
   }
 
@@ -48,13 +77,19 @@
   .tali-rmenu-toggle {
     position: fixed; right: 1rem; top: 1rem; z-index: 2147481500;
     width: 2.4rem; height: 2.4rem; border-radius: 50%;
-    border: 1px solid var(--tali-border); background: var(--tali-bg); color: var(--tali-fg);
+    border: 1px solid var(--tali-border-strong); background: var(--tali-bg); color: var(--tali-fg);
     box-shadow: 0 2px 12px var(--tali-edge-shadow); cursor: pointer;
     display: flex; align-items: center; justify-content: center; }
   .tali-rmenu-toggle:hover { border-color: var(--tali-accent); color: var(--tali-link); }
+  /* border-box, and a cap that subtracts the same `right: 1rem` inset from both sides:
+     under content-box the 2rem of padding and 2px of border sat OUTSIDE the
+     `min(18rem, 92vw)` width, so the panel's box ran off the left edge of the screen, 
+     18px at a 320px viewport, 72px once a reader doubles the text size (WCAG 1.4.4
+     content loss). The inset is rem-based, so a vw-only cap could never account for it. */
   .tali-rmenu-panel {
     position: fixed; right: 1rem; top: 4rem; z-index: 2147481600;
-    width: min(18rem, 92vw); max-height: 70vh; overflow: auto; padding: .4rem 1rem 1rem;
+    box-sizing: border-box; width: min(18rem, calc(100vw - 2rem));
+    max-height: 70vh; overflow: auto; padding: .4rem 1rem 1rem;
     background: var(--tali-bg); color: var(--tali-fg);
     border: 1px solid var(--tali-border); border-radius: 12px;
     box-shadow: 0 8px 34px var(--tali-edge-shadow); font: var(--tali-font-head); }
@@ -67,11 +102,13 @@
   .tali-reader-row { display: flex; align-items: center; justify-content: space-between;
     gap: .5rem; margin: 0 0 .7rem; }
   .tali-reader-row > span { font-size: .82rem; color: var(--tali-muted); }
-  .tali-reader-seg { display: inline-flex; border: 1px solid var(--tali-border);
+  .tali-reader-seg { display: inline-flex; border: 1px solid var(--tali-border-strong);
     border-radius: 7px; overflow: hidden; }
+  /* WCAG 2.5.8 (Target Size, Minimum): .28rem of padding on a .8rem/1 label makes a
+     21.8px-tall button. The vertical padding brings every segment to >= 24px. */
   .tali-reader-seg button {
-    border: 0; border-left: 1px solid var(--tali-border); background: transparent;
-    color: var(--tali-fg); cursor: pointer; padding: .28rem .55rem;
+    border: 0; border-left: 1px solid var(--tali-border-strong); background: transparent;
+    color: var(--tali-fg); cursor: pointer; padding: .4rem .55rem; min-height: 24px;
     font: inherit; font-size: .8rem; line-height: 1; }
   .tali-reader-seg button:first-child { border-left: 0; }
   .tali-reader-seg button[aria-pressed="true"] { background: var(--tali-accent-fill); color: var(--tali-on-accent); }
@@ -100,12 +137,12 @@
     transition: width .08s linear; }
   .tali-resume { position: fixed; left: 1rem; bottom: 1rem; z-index: 2147481500;
     display: flex; align-items: stretch; background: var(--tali-bg);
-    border: 1px solid var(--tali-border); border-radius: 10px; overflow: hidden;
+    border: 1px solid var(--tali-border-strong); border-radius: 10px; overflow: hidden;
     box-shadow: 0 4px 20px var(--tali-edge-shadow); font: var(--tali-font-head); }
   .tali-resume-go { border: 0; background: transparent; color: var(--tali-link); cursor: pointer;
     font: inherit; font-size: .82rem; padding: .5rem .8rem; }
   .tali-resume-go:hover { background: var(--tali-code-bg); }
-  .tali-resume-x { border: 0; border-left: 1px solid var(--tali-border); background: transparent;
+  .tali-resume-x { border: 0; border-left: 1px solid var(--tali-border-strong); background: transparent;
     color: var(--tali-muted); cursor: pointer; font: inherit; font-size: 1rem; line-height: 1;
     padding: 0 .6rem; }
   .tali-resume-x:hover { color: var(--tali-fg); }
@@ -126,19 +163,28 @@
   mark.tali-search-mark { color: inherit; border-radius: 2px; background-color: rgba(250, 204, 21, .5);
     animation: tali-search-mark-fade 1.5s ease-out forwards; }
   @keyframes tali-search-mark-fade { 0%, 45% { background-color: rgba(250, 204, 21, .5); } 100% { background-color: transparent; } }
+  /* The same 50%-alpha yellow composites to #887219 on the dark page, leaving body text at
+     3.77:1 ON the highlight. Opaque, darker amber restores 5.72:1. (`color: inherit`, so only
+     the surface moves.) */
+  html[data-theme="dark"] mark.tali-search-mark { background-color: #6e5414; }
+  @keyframes tali-search-mark-fade-dark { 0%, 45% { background-color: #6e5414; } 100% { background-color: transparent; } }
+  html[data-theme="dark"] mark.tali-search-mark { animation-name: tali-search-mark-fade-dark; }
   html.tali-search-flashing { animation: tali-search-flash 1.5s ease-out forwards; }
   @keyframes tali-search-flash {
     0%, 45% { --tali-search-flash: rgba(250, 204, 21, .55); }
     100% { --tali-search-flash: transparent; }
   }
+  /* A search hit is amber in every theme (the one universal "found it" colour, and not a brand
+     surface). Alphas are capped so body text stays >= 4.5:1 ON the highlight: dark was a vendor
+     blue, and sepia's .45 rendered 4.36:1. */
   html[data-theme="dark"].tali-search-flashing { animation-name: tali-search-flash-dark; }
   @keyframes tali-search-flash-dark {
-    0%, 45% { --tali-search-flash: rgba(96, 165, 250, .5); }
+    0%, 45% { --tali-search-flash: rgba(250, 204, 21, .36); } /* body 5.55:1 */
     100% { --tali-search-flash: transparent; }
   }
   html[data-theme="sepia"].tali-search-flashing { animation-name: tali-search-flash-sepia; }
   @keyframes tali-search-flash-sepia {
-    0%, 45% { --tali-search-flash: rgba(154, 106, 58, .45); }
+    0%, 45% { --tali-search-flash: rgba(154, 106, 58, .34); } /* body 5.01:1 */
     100% { --tali-search-flash: transparent; }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -207,7 +253,7 @@
   .tali-keys-list dt { flex: 0 0 4.5rem; margin: 0; }
   .tali-keys-list dd { margin: 0; color: var(--tali-muted); font-size: .82rem; }
   .tali-keys-list kbd { font: inherit; font-size: .78rem; background: var(--tali-code-bg);
-    border: 1px solid var(--tali-border); border-radius: 4px; padding: .05rem .35rem; }
+    border: 1px solid var(--tali-border-strong); border-radius: 4px; padding: .05rem .35rem; }
 
   /* Tabular figures where columns/alignment matter (prose keeps proportional numerals). */
   pre, code, table, .katex { font-variant-numeric: tabular-nums; }
@@ -217,7 +263,7 @@
     padding: .4rem .95rem; border-radius: 7px; border: 1px solid var(--tali-accent);
     color: var(--tali-link); transition: background .12s ease, color .12s ease; }
   a.btn:hover { background: var(--tali-accent-fill); color: var(--tali-on-accent); }
-  a.btn-outline-secondary { border-color: var(--tali-border); color: var(--tali-muted); }
+  a.btn-outline-secondary { border-color: var(--tali-border-strong); color: var(--tali-muted); }
   a.btn-outline-secondary:hover { background: var(--tali-fg); color: var(--tali-bg); border-color: var(--tali-fg); }
   a.btn-sm { font-size: .8rem; padding: .25rem .7rem; }
   /* Embedded slide deck (`{{< embed deck.qmd >}}`): a 16:9 iframe that isolates the
@@ -237,7 +283,7 @@
   .tali-embed-stage:hover .tali-embed-expand, .tali-embed-expand:focus-visible { opacity: 1; }
   .tali-embed-bar { display: flex; gap: .5rem; justify-content: flex-end; margin-top: .55rem; }
   .tali-embed-btn { font: 500 .82rem var(--tali-font-head); cursor: pointer; line-height: 1;
-    padding: .4rem .85rem; border-radius: 7px; border: 1px solid var(--tali-border);
+    padding: .4rem .85rem; border-radius: 7px; border: 1px solid var(--tali-border-strong);
     background: transparent; color: var(--tali-muted); text-decoration: none;
     transition: border-color .12s ease, color .12s ease; }
   .tali-embed-btn:hover { border-color: var(--tali-accent); color: var(--tali-link); }
@@ -357,7 +403,7 @@
   .tali-copy { position: absolute; top: .45rem; right: .45rem;
               display: inline-flex; align-items: center; justify-content: center;
               padding: .28rem; line-height: 0; color: var(--tali-muted);
-              background: var(--tali-bg); border: 1px solid var(--tali-border); border-radius: 5px;
+              background: var(--tali-bg); border: 1px solid var(--tali-border-strong); border-radius: 5px;
               cursor: pointer;
               opacity: 0; transition: opacity .12s ease, color .12s ease, border-color .12s ease; }
   .tali-copy svg { display: block; width: 14px; height: 14px; }
@@ -481,21 +527,27 @@
     padding: .5rem 0 .7rem; box-shadow: 0 6px 14px var(--tali-edge-shadow); }
   .cw-code { max-height: 52vh; overflow: auto; }
   .cw-code pre { margin: 0; }
+  /* Recede an inactive step with `--tali-muted`, not `opacity`. An opacity multiplier composites
+     the text toward the page and silently drops it below AA (.62 rendered 3.03:1 in sepia); the
+     muted token is contrast-checked in every theme. The active step takes full `--tali-fg` plus
+     the accent rail, so emphasis still tracks the scroll. */
   .cw-steps .step { min-height: 48vh; display: flex; flex-direction: column; justify-content: center;
-    padding: 1.3rem 0 1.3rem 1rem; border-left: 2px solid transparent; opacity: .62; }
-  .cw-steps .step.cw-step-active { opacity: 1; border-left-color: var(--tali-accent); }
+    padding: 1.3rem 0 1.3rem 1rem; border-left: 2px solid transparent; color: var(--tali-muted); }
+  .cw-steps .step.cw-step-active { color: var(--tali-fg); border-left-color: var(--tali-accent); }
   .cw-steps .step > :first-child { margin-top: 0; }
   .cw-steps .step > :last-child { margin-bottom: 0; }
   /* Reuse the deck's line-focus contract (block lines, dim the rest, accent the
      focused range), scoped to the page-side walkthrough so it never touches decks. */
   .code-walkthrough pre .tali-hl-ln { display: block; }
-  .code-walkthrough pre.tali-hl-lines-active .tali-hl-ln { opacity: .32; }
-  .code-walkthrough pre.tali-hl-lines-active .tali-hl-ln-hl { opacity: 1;
+  /* The focused range is marked POSITIVELY (accent wash + inset rail); every other line keeps its
+     full syntax contrast. Dimming them to `opacity: .32` rendered code at 1.68-2.58:1, a WCAG
+     1.4.3 failure on text, and the wash already carries the focus on its own. */
+  .code-walkthrough pre.tali-hl-lines-active .tali-hl-ln-hl {
     background: color-mix(in srgb, var(--tali-accent) 14%, transparent);
     box-shadow: inset .18em 0 0 var(--tali-accent); }
   @media (prefers-reduced-motion: no-preference) {
-    .code-walkthrough .cw-steps .step { transition: opacity .25s ease, border-color .25s ease; }
-    .code-walkthrough pre .tali-hl-ln { transition: opacity .25s ease, background .25s ease; }
+    .code-walkthrough .cw-steps .step { transition: color .25s ease, border-color .25s ease; }
+    .code-walkthrough pre .tali-hl-ln { transition: background .25s ease, box-shadow .25s ease; }
   }
   @media (max-width: 60rem) {
     /* Same code-on-top shape; just a shorter code strip + roomier step dwell on phones. */
@@ -508,17 +560,19 @@
   .tali-scrolly { display: grid; grid-template-columns: 1fr minmax(18rem, .9fr);
     gap: clamp(1rem, 4vw, 3rem); align-items: start; margin: 1.5rem 0; }
   .tali-scrolly .scrolly-steps, .tali-scrolly .scrolly-stage { min-width: 0; }
+  /* Same as the walkthrough: recede with `--tali-muted`, emphasise with `--tali-fg` + the rail.
+     `opacity: .4` rendered inactive prose at 1.94-3.28:1. */
   .scrolly-steps .step { min-height: 60vh; display: flex; flex-direction: column;
-    justify-content: center; opacity: .4; border-left: 3px solid transparent;
+    justify-content: center; color: var(--tali-muted); border-left: 3px solid transparent;
     padding: .4rem 0 .4rem 1rem; }
-  .scrolly-steps .step.scrolly-step-active { opacity: 1; border-left-color: var(--tali-accent); }
+  .scrolly-steps .step.scrolly-step-active { color: var(--tali-fg); border-left-color: var(--tali-accent); }
   .scrolly-steps .step > :first-child { margin-top: 0; }
   .scrolly-steps .step > :last-child { margin-bottom: 0; }
   .scrolly-stage { position: sticky; top: 0; align-self: start; height: 100vh;
     display: flex; flex-direction: column; justify-content: center; overflow: auto; }
   .tali-scrolly-input { display: none; }
   @media (prefers-reduced-motion: no-preference) {
-    .scrolly-steps .step { transition: opacity .25s ease, border-color .25s ease; }
+    .scrolly-steps .step { transition: color .25s ease, border-color .25s ease; }
   }
   @media (max-width: 73rem) {
     /* single column: lift the stage to a sticky strip on top, prose flows beneath */
@@ -546,7 +600,12 @@
   @media (prefers-reduced-motion: no-preference) {
     .tabset-tab { transition: color .15s ease, border-color .15s ease; }
   }
-  .tali-xref { text-decoration: none; }
+  /* Citations and cross-references were the only links on the page with no underline, so colour
+     alone said "clickable". Against BODY text (the 1.4.1 comparison) the link tone is 1.93:1 in
+     dark (the default theme) and 1.51:1 in sepia. An underline discharges 1.4.1 in every theme
+     and also serves colour-blind readers. */
+  .tali-xref { text-decoration: underline; text-underline-offset: .12em;
+    text-decoration-thickness: from-font; }
   .tali-references .csl-entry { margin: .4rem 0; padding-left: 2.2rem; text-indent: -2.2rem; }
   /* Footnotes: `[^1]` superscript refs + the gathered footnote section at page end. */
   .tali-fnref { font-size: .75em; line-height: 0; white-space: nowrap; }
@@ -577,7 +636,9 @@
       padding-left: .9rem; border-left: 2px solid var(--tali-accent); }
   }
   .tali-output { margin: 0 0 1rem; }
-  .tali-output > pre { background: #fbfbfb; border-left: 3px solid #e3e3e3; }
+  /* Code input and its output were two near-identical untokenised greys (#f5f5f5 / #fbfbfb).
+     One surface token; sepia + dark no longer need a manual patch. */
+  .tali-output > pre { background: var(--tali-code-bg); border-left: 3px solid var(--tali-border); }
   .tali-output img { display: block; max-width: 100%; }
   /* Theme-matched matplotlib figures: the kernel emits a light (near-black) and a
      dark (near-white) variant of each plot; show the one matching the active theme
@@ -587,8 +648,8 @@
   img.tali-fig-dark { display: none; }
   html[data-theme="dark"] img.tali-fig-light { display: none; }
   html[data-theme="dark"] img.tali-fig-dark { display: block; }
-  .tali-stderr { border-left-color: #e0a800 !important; background: #fdf6e3 !important; }
-  .tali-error { border-left-color: #e0566b !important; background: #fdecef !important; color: #862033; }
+  .tali-stderr { border-left-color: var(--tali-callout-warning) !important; background: #fdf6e3 !important; }
+  .tali-error { border-left-color: var(--tali-callout-important) !important; background: #fdecef !important; color: #862033; }
   /* Sepia code + diagnostics: the light syntax palette and near-white output/error
      boxes clash with the warm sepia page, so restyle them warm (parallels DARK_CSS).
      Sepia is a low-contrast reading theme, so these stay muted, not vivid. */
@@ -598,9 +659,8 @@
   html[data-theme="sepia"] .tali-hl-constant, html[data-theme="sepia"] .tali-hl-support { color: #2f5f84; }
   html[data-theme="sepia"] .tali-hl-entity { color: #7d4a86; }
   html[data-theme="sepia"] .tali-hl-variable { color: #9a4a1a; }
-  html[data-theme="sepia"] .tali-output > pre { background: #ece2c8; border-left-color: var(--tali-border); }
-  html[data-theme="sepia"] .tali-stderr { border-left-color: #b8860b !important; background: #efe4c0 !important; color: #5b4636; }
-  html[data-theme="sepia"] .tali-error { border-left-color: #b0452f !important; background: #f0dcc8 !important; color: #7a2e22; }
+  html[data-theme="sepia"] .tali-stderr { background: #efe4c0 !important; color: #5b4636; }
+  html[data-theme="sepia"] .tali-error { background: #f0dcc8 !important; color: #7a2e22; }
   [data-block-id] { scroll-margin-top: 1rem; }
   [data-block-id].tali-hl { outline: 2px solid var(--tali-accent); outline-offset: 3px; border-radius: 3px; }
   /* live-edit feedback: a block that just (re)rendered pulses an accent tint, so
@@ -677,10 +737,12 @@
   /* Read-state: a section the reader has scrolled through gets a trailing ✓ and recedes
      a touch. Distinct from .tali-toc-active (the current section). Reader-side: toc-spy.js
      stores the read set in the reader's own localStorage; the source is never touched. */
-  #TOC a.tali-toc-read { opacity: .62; }
+  /* The trailing check mark is the read cue. `opacity: .62` also faded the LABEL to 2.55-3.37:1,
+     so a finished section became the hardest entry in the TOC to read. */
+  #TOC a.tali-toc-read { color: var(--tali-muted); }
   #TOC a.tali-toc-read::after { content: "\2713"; margin-left: .45ch; color: var(--tali-link);
     font-size: .82em; opacity: .85; }
-  #TOC a.tali-toc-read.tali-toc-active { opacity: 1; } /* current + finished: full strength */
+  #TOC a.tali-toc-read.tali-toc-active { color: var(--tali-fg); } /* current + finished: full strength */
   /* mobile pull-up-sheet chrome: hidden on desktop, revealed in the sheet media query */
   #tali-toc-handle, #tali-toc-backdrop { display: none; }
   @media (max-width: 60rem) {
@@ -718,11 +780,14 @@
     body.tali-toc-sheet #tali-toc-handle { display: flex; flex-direction: column; align-items: center;
       position: fixed; left: 50%; transform: translateX(-50%); z-index: 9997;
       bottom: calc(.45rem + env(safe-area-inset-bottom, 0px)); padding: .4rem 1.3rem .5rem; gap: .3rem;
+      min-height: 24px; box-sizing: border-box;
       border: 0; border-radius: 13px; background: color-mix(in srgb, var(--tali-bg) 72%, transparent);
       -webkit-backdrop-filter: blur(7px); backdrop-filter: blur(7px); box-shadow: 0 1px 7px var(--tali-edge-shadow);
       cursor: grab; touch-action: none; -webkit-user-select: none; user-select: none; }
     body.tali-toc-sheet.tali-toc-open #tali-toc-handle { display: none; }
-    #tali-toc-handle .tali-toc-grip { width: 42px; height: 5px; border-radius: 3px; background: var(--tali-muted); opacity: .6; }
+    /* the grip is the only affordance that opens the contents sheet: it must clear the 3:1
+       non-text floor (`opacity: .6` put it at 2.46-2.85:1) and its handle a 24px target. */
+    #tali-toc-handle .tali-toc-grip { width: 42px; height: 5px; border-radius: 3px; background: var(--tali-muted); }
     /* current-section chip: hidden at rest, flashes in while scrolling, then fades */
     #tali-toc-cur { position: absolute; bottom: calc(100% + .35rem); left: 50%;
       transform: translateX(-50%) translateY(5px); max-width: 72vw; white-space: nowrap;
@@ -771,16 +836,24 @@
     .tali-reader-seg button[aria-pressed="true"],
     .tali-nav-active, a[aria-current="page"] { forced-color-adjust: none; }
   }
-  /* `prefers-contrast: more`: nudge the muted/border tones toward full contrast. */
+  /* `prefers-contrast: more`: nudge the muted/border tones toward full contrast.
+     `:root:root` (0,2,0), not `:root` (0,1,0) or `html[data-theme="dark"]` (0,1,1): dark.css
+     is inlined AFTER base.css, so an equal-specificity selector loses on source order and
+     neither dark nor sepia ever got the boost. Doubling the pseudo-class outranks every
+     `html[data-theme=…]` block no matter where it is inlined. */
   @media (prefers-contrast: more) {
-    :root, html[data-theme="dark"] { --tali-muted: var(--tali-fg); --tali-border: var(--tali-fg); }
+    :root:root { --tali-muted: var(--tali-fg); --tali-border: var(--tali-fg); }
   }
 
   /* print: drop the live chrome, force a light palette, flow content full width
      with the contents list lifted to the top, and avoid clipping/awkward breaks.
      Placed last so it outranks the width-query rules that also match on paper. */
   @media print {
-    html[data-theme="dark"], :root {
+    /* `:root:root` (0,2,0) so this outranks `html[data-theme="dark"]` / `="sepia"` (0,1,1)
+       whichever order the theme sheets are inlined in. The head script additionally swaps
+       `data-theme` to light for the print job, which also neutralises dark.css's untokenised
+       syntax + diagnostic-box colours; this block is the no-JS fallback. */
+    :root:root {
       --tali-bg: #fff; --tali-fg: #111; --tali-muted: #555; --tali-border: #ccc;
       --tali-code-bg: #f5f5f5; --tali-link: #0645ad; --tali-accent: #0645ad;
     }
@@ -813,10 +886,13 @@
 }
 .tali-input input[type="range"] { flex: 0 1 16rem; accent-color: var(--tali-accent); }
 .tali-input input[type="checkbox"], .tali-input input[type="radio"] { accent-color: var(--tali-accent); }
-.tali-input select { color: var(--tali-fg); background: var(--tali-bg); border: 1px solid var(--tali-border); border-radius: 4px; padding: 0.1em 0.3em; }
-.tali-js-error { color: #b00020; background: #fff0f0; border: 1px solid #f3c0c0; padding: .5em .7em; border-radius: 6px; overflow: auto; font-size: .85em;
+.tali-input select { color: var(--tali-fg); background: var(--tali-bg); border: 1px solid var(--tali-border-strong); border-radius: 4px; padding: 0.1em 0.3em; }
+/* The kernel error box and the `{js}` error box are the same meaning, so they are the same red.
+   This used to be Material Design's error red on its own pink: a second vendor red for one idea. */
+.tali-js-error { color: #862033; background: #fdecef; border: 1px solid color-mix(in srgb, var(--tali-callout-important) 45%, transparent); padding: .5em .7em; border-radius: 6px; overflow: auto; font-size: .85em;
   /* it's a <pre>, so long stack-trace lines (esp. URLs) would otherwise clip at
      the box edge with no wrap and no scroll-shadow (the background shorthand
      above drops the generic pre rule's shadow). Wrap them so nothing is lost. */
   white-space: pre-wrap; overflow-wrap: anywhere; }
 html[data-theme="sepia"] .tali-js-error { color: #7a2e22; background: #f0dcc8; border-color: #d8b89a; }
+

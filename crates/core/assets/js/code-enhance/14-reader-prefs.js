@@ -1,6 +1,6 @@
-// Reader theme picker (light / dark / sepia), mounted as a row in the Settings menu. The
+// Reader theme picker (auto / light / dark / sepia), mounted as a row in the Settings menu. The
 // choice lives in the reader's own localStorage and is applied before paint by the pre-paint
-// head script (taliSetTheme / taliGetThemePref in theme.rs), so this enhancer is only the UI.
+// head script (taliSetTheme / taliGetThemeChoice in theme.rs), so this enhancer is only the UI.
 // Read-only. Skipped on decks.
 function taliInitReaderPrefs() {
   if (window.__qmdReaderPrefs) return;
@@ -8,10 +8,15 @@ function taliInitReaderPrefs() {
   if (document.querySelector('.tali-deck')) return; // a slide deck has its own chrome
   window.__qmdReaderPrefs = true;
 
-  var THEMES = [['light', 'Light'], ['dark', 'Dark'], ['sepia', 'Sepia']];
-  function curTheme() { return (window.taliGetThemePref && window.taliGetThemePref()) || 'light'; }
+  var THEMES = [
+    ['auto', 'Auto', 'Follow your system light/dark setting'],
+    ['light', 'Light'], ['dark', 'Dark'], ['sepia', 'Sepia', 'Warm, low-contrast reading'],
+  ];
+  // Compare against the stored CHOICE, not the resolved mode: the mode is never "auto",
+  // so syncing on it would leave the Auto button permanently unpressed.
+  function curTheme() { return (window.taliGetThemeChoice && window.taliGetThemeChoice()) || 'auto'; }
 
-  // One segmented control row: `title` labels it, each option is [value, label].
+  // One segmented control row: `title` labels it, each option is [value, label, hint?].
   function seg(title, options, getCur, onPick) {
     var row = document.createElement('div');
     row.className = 'tali-reader-row';
@@ -26,6 +31,7 @@ function taliInitReaderPrefs() {
       var b = document.createElement('button');
       b.type = 'button';
       b.textContent = opt[1];
+      if (opt[2]) b.title = opt[2];
       b.addEventListener('click', function () { onPick(opt[0]); });
       group.appendChild(b);
       buttons.push(b);
