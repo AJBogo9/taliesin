@@ -899,3 +899,85 @@ fn book_chapter_scopes_theorem_numbers() {
         "its in-page cross-ref agrees: {methods}"
     );
 }
+
+/// Authored source extensions that must stay in lockstep between twinned corpus
+/// documents. Generated media is excluded on purpose: `fourier-transform`'s own
+/// `{python}` cell writes `chord.wav`/`tone_*.wav` at render time, so those bytes
+/// are an output, not an authored invariant. The gitignored `_freeze/` cache is
+/// likewise skipped.
+const TWINNED_SOURCE_EXTS: [&str; 4] = ["tmd", "bib", "js", "css"];
+
+fn is_twinned_source(p: &Path) -> bool {
+    p.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| TWINNED_SOURCE_EXTS.contains(&e))
+}
+
+/// Every authored file that exists under both `a_root` and `b_root` at the same
+/// relative path, discovered rather than hardcoded so a renamed or newly-shared
+/// document is picked up automatically.
+fn shared_sources(a_root: &Path, b_root: &Path, rel: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(a_root.join(rel)) else {
+        return;
+    };
+    for entry in entries {
+        let p = entry.unwrap().path();
+        let name = p.file_name().unwrap().to_owned();
+        let child = rel.join(&name);
+        if p.is_dir() {
+            if name == "_freeze" {
+                continue;
+            }
+            shared_sources(a_root, b_root, &child, out);
+        } else if is_twinned_source(&p) && b_root.join(&child).is_file() {
+            out.push(child);
+        }
+    }
+}
+
+/// `corpus/posts/<slug>/` and `corpus/tech-blog/posts/<slug>/` hold byte-identical
+/// copies of three posts (plus a shared `_includes/three-scene.tmd`), and both
+/// copies are live documents in the regression net. Nothing stopped a content fix
+/// from landing in one copy and rotting the other — `fa200e5`'s own message notes
+/// that "every fix lands twice". This pins that.
+#[test]
+fn twinned_corpus_sources_stay_byte_identical() {
+    let corpus = corpus_dir();
+    let roots = [
+        (corpus.join("posts"), corpus.join("tech-blog/posts")),
+        (corpus.join("_includes"), corpus.join("tech-blog/_includes")),
+    ];
+
+    let mut pairs: Vec<(PathBuf, PathBuf)> = Vec::new();
+    for (a_root, b_root) in &roots {
+        let mut rels = Vec::new();
+        shared_sources(a_root, b_root, Path::new(""), &mut rels);
+        pairs.extend(rels.into_iter().map(|r| (a_root.join(&r), b_root.join(&r))));
+    }
+    pairs.sort();
+
+    // A rename must not silently make this test vacuous.
+    assert!(
+        pairs.len() >= 8,
+        "expected at least the 3 twinned posts' sources + the shared include, found {}: {pairs:#?}",
+        pairs.len()
+    );
+
+    let drifted: Vec<String> = pairs
+        .iter()
+        .filter(|(a, b)| fs::read(a).unwrap() != fs::read(b).unwrap())
+        .map(|(a, b)| {
+            format!(
+                "  {} != {}",
+                a.strip_prefix(&corpus).unwrap().display(),
+                b.strip_prefix(&corpus).unwrap().display()
+            )
+        })
+        .collect();
+
+    assert!(
+        drifted.is_empty(),
+        "twinned corpus sources have drifted; a fix landed in one copy only:\n{}",
+        drifted.join("\n")
+    );
+}
