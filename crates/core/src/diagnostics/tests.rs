@@ -430,3 +430,73 @@ fn validate_math_flags_only_unparseable_katex_located() {
         msgs(&validate_math(&ok.blocks))
     );
 }
+
+#[test]
+fn code_language_typo_is_flagged_with_a_location() {
+    let doc = render_document("intro\n\n```pyton\nx = 1\n```\n");
+    let ws = validate_code_languages(&doc.blocks);
+    assert_eq!(ws.len(), 1, "{:?}", msgs(&ws));
+    assert!(
+        ws[0].message.contains("unknown code language `pyton`"),
+        "{}",
+        ws[0].message
+    );
+    assert_eq!(
+        ws[0].line,
+        Some(3),
+        "points at the fence, not the doc start"
+    );
+}
+
+#[test]
+fn real_languages_and_aliases_do_not_warn() {
+    let doc = render_document(
+        "```python\nx = 1\n```\n\n```rs\nlet x = 1;\n```\n\n\
+         ```ts\nconst x: number = 1;\n```\n\n```toml\n[a]\nb = 1\n```\n",
+    );
+    assert!(
+        validate_code_languages(&doc.blocks).is_empty(),
+        "{:?}",
+        msgs(&validate_code_languages(&doc.blocks))
+    );
+}
+
+#[test]
+fn intentionally_plain_fences_do_not_warn() {
+    let doc = render_document("```text\nnot code\n```\n\n```console\n$ ls\n```\n");
+    assert!(
+        validate_code_languages(&doc.blocks).is_empty(),
+        "{:?}",
+        msgs(&validate_code_languages(&doc.blocks))
+    );
+}
+
+#[test]
+fn an_unlabelled_fence_does_not_warn() {
+    let doc = render_document("```\nplain\n```\n");
+    assert!(validate_code_languages(&doc.blocks).is_empty());
+}
+
+/// A code block whose *content* mentions the marker must not be mistaken for a
+/// fence label: block text is HTML-escaped before it is embedded.
+#[test]
+fn the_marker_inside_code_content_is_not_a_fence_label() {
+    let doc = render_document("```html\n<code class=\"language-pyton\">x</code>\n```\n");
+    assert!(
+        validate_code_languages(&doc.blocks).is_empty(),
+        "{:?}",
+        msgs(&validate_code_languages(&doc.blocks))
+    );
+}
+
+/// `{mermaid}` cells emit a bare `<pre class="mermaid">` with no `<code>`, so they
+/// never carry a `language-` class and must not be flagged.
+#[test]
+fn mermaid_cells_do_not_warn() {
+    let doc = render_document("```{mermaid}\ngraph TD;\n  A-->B;\n```\n");
+    assert!(
+        validate_code_languages(&doc.blocks).is_empty(),
+        "{:?}",
+        msgs(&validate_code_languages(&doc.blocks))
+    );
+}
