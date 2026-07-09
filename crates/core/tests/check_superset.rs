@@ -210,6 +210,13 @@ fn corpus_check_superset_doc_trips_each_validator() {
             .any(|w| w.message.contains("math failed to render")),
         "unparseable inline math (server-side KaTeX render diagnostic): {math:?}"
     );
+    let langs = diagnostics::validate_code_languages(&doc.blocks);
+    assert!(
+        langs
+            .iter()
+            .any(|w| w.message.contains("unknown code language `pyton`")),
+        "typo'd fence language: {langs:?}"
+    );
 }
 
 #[test]

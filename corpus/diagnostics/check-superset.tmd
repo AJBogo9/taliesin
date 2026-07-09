@@ -19,3 +19,10 @@ A [broken in-page jump](#no-such-anchor) that lands nowhere, and a missing image
 Cited [@ghost2020] with no `bibliography:` declared, so the reference renders as a raw key.
 
 Broken inline math $\frac{$ that KaTeX cannot parse (server-side math-render diagnostic).
+
+A fenced block whose language token is a typo. It renders, just unhighlighted, so only
+`validate_code_languages` can tell you the highlighting isn't broken — the label is.
+
+```pyton
+x = 1
+```

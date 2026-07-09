@@ -1,0 +1,67 @@
+---
+title: "Server-side syntax highlighting"
+---
+
+Code is highlighted in Rust at render time (syntect → `tali-hl-` scope classes,
+coloured by CSS), so a built page carries no highlighter and the light/dark toggle
+restyles code without re-highlighting. This document pins the language coverage.
+
+## Languages syntect bundles
+
+```rust
+pub fn highlight(code: &str, lang: Option<&str>) -> String {
+    let ss = syntaxes();
+    match lang.map(alias).and_then(|t| ss.find_syntax_by_token(t)) {
+        Some(syntax) => classed(code, syntax, ss),
+        None => html_escape(code), // an unknown language degrades to plain text
+    }
+}
+```
+
+```python
+def entropy(p):
+    """Shannon entropy in bits."""
+    return -sum(x * log2(x) for x in p if x > 0)
+```
+
+## Languages the bundled set omits
+
+Neither of these resolves in syntect's default syntax set, so both rendered as
+unstyled plain text until the `bat`-curated extras were loaded. The docs use them,
+so they are pinned here.
+
+```ts
+// A TypeScript fence: `ts` aliases to `typescript`.
+export function mount(deck: HTMLElement, opts: DeckOptions = {}): void {
+    const slides = deck.querySelectorAll<HTMLElement>(".tali-slide");
+    slides.forEach((s, i) => s.setAttribute("data-index", String(i)));
+}
+```
+
+```toml
+[workspace.dependencies]
+syntect = { version = "5", default-features = false, features = ["default-fancy"] }
+two-face = { version = "0.4", default-features = false }
+```
+
+## Fences that stay plain on purpose
+
+`text` and `console` resolve to no syntax deliberately: a transcript or a chunk of
+sample output is not code, so it must render unhighlighted *without* `taliesin check`
+reporting it as an unknown language.
+
+```text
+the quick brown fox
+jumps over the lazy dog
+```
+
+```console
+$ taliesin build docs/guide
+  built  _site/index.html
+```
+
+An unlabelled fence is likewise plain, and likewise silent.
+
+```
+no language token at all
+```
