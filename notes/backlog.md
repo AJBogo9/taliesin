@@ -74,15 +74,149 @@ exec/kernel zone + the single-editing-surface invariant. Review subagents use re
 
 ## Needs your input (the blockers)
 
-Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue below).
+Nothing blocks Tier 1: the three prior blockers were ruled on 2026-07-07 (see Priority queue below),
+and every Tier-1 batch from the 2026-07-09 polish audit is build-ready as written.
+
+Four **new rulings owed**, none blocking (all filed under "Owner-gated" below): draft-aware preview
+(flips a default), reading time in the built page (reverses a decision a corpus test pins),
+`publish --public` (relaxes a fail-closed gate), and the built-site shared asset bundle (changes the
+shape of the build output).
 
 ## Priority queue
 
 ### Tier 1 — decided, build-ready (no blocker)
-Empty. The UI-audit content batch (#9/#11/#13/#14, plus the `pca-geometry` twin of #13 that a
-collateral sweep turned up) and the never-settling-pages investigation both landed 2026-07-09.
-The three pages were never a runaway loop: it was a false negative in the harness's `settle()`
-predicate. Detail + evidence in `2026-07-09-ui-audit-findings.md` (triage header and §7).
+
+**Polish / productivity audit, 2026-07-09.** Six read-only agents (CLI, authoring surface,
+live preview, build+publish, editor bridge, ideation); every root cause re-derived from
+source by hand, and three agent diagnoses **refuted** on measurement (recorded under
+"Decided against"). Full evidence, reproductions and fix sketches:
+[2026-07-09-polish-audit-findings.md](2026-07-09-polish-audit-findings.md). Grouped as one
+branch per batch, ordered by payoff ÷ effort. **Theme: the machinery exists, it is just not
+wired into the loops the author uses.**
+
+**Batch A: turn the VS Code companion on (S, highest payoff in the audit).** It has been
+inert since the rename, so its diagnostics + completions have never once run.
+`editor/vscode/package.json:83` defaults `qmdFast.path` to `"qmd-fast"`, a binary that no
+longer exists (`which qmd-fast` fails; PATH has `taliesin` + a `tali` symlink), no user
+setting overrides it, and every subsystem fails silently (`completions.ts:52,73`,
+`diagnostics.ts:31`, `server.ts:13`). `README.md:44` already contradicts the default. The
+committed `.vsix` also predates both features: it ships only
+`out/{extension,server,ports,paths,webview}.js`, and there is no `vscode:prepublish`
+(`package.json:89-94`), so `vsce package` silently repackages a stale `out/`. Fix: default
+to `"taliesin"`, add `vscode:prepublish`, rebuild (or stop committing) the `.vsix`, and
+finish the `qmdFast.*` -> `taliesin.*` namespace rename. **This supersedes the Tier-3
+"manifest rebrand" line, which filed the rename as cosmetic. It is not cosmetic: it is why
+nothing works.**
+
+**Batch B: the confidence gap (M). The change that most makes the tool feel mature.**
+`check.rs:51-61` chains ten static validators; grep confirms **none** is called from
+`build.rs`, `serve/mod.rs`, or `serve_site/mod.rs`. Reproduced: a post with a missing image
+gives `check` exit 1 and `build --strict` exit **0**, shipping the broken `<img>`. On a
+9-defect fixture, `check` caught 9 and `build` caught 5 (missed: in-page anchor, missing
+image, cross-page link, broken anchor). `publish` inherits it via `run_site_build`
+(`publish.rs:188`). The trap is that `--strict` catches *some* located warnings, so a green
+strict build reads as "safe to ship". Fix: hoist `collect_diagnostics` into a shared entry
+point, call it from `build --strict`, `publish`, and `compute_diagnostics` in both dev
+servers; debounce the filesystem-touching lints in the live loop. Three sub-items ride
+along:
+- **(B1, S)** An `error`-level *diagnostic* never reddens the status dot: broken YAML leaves
+  `devDotState:"live"` with only an amber badge on a collapsed corner button, because
+  `setStatus("error")` (`client.js:1005,1043`) fires only on a transport-level `error`
+  message, never on diagnostic severity. Severity is already in the payload.
+- **(B2, M)** A `.bib` edit does not rebuild the page in a **site** preview (single-doc is
+  fine). `serve_site/mod.rs:1087-1109` filters by `page.input ∪ includes::dependencies(src)`,
+  and `includes.rs:155` tracks only `{{< include >}}`; `bibliography:`/`csl:`/`css:` never
+  enter the dep set, so the watched `.bib` event matches no page. *Do-NOT-touch adjacent
+  (cite/includes): read their config, do not alter their logic.*
+- **(B3, S)** One broken include emits **two** diagnostics (the dep-existence check at
+  `serve_site/mod.rs:913-921` + the render pass's located `IncludeWarning`). Keep the located
+  one. Pairs with B1, which makes the badge load-bearing.
+
+**Batch C: stop leaking preview-only metadata into published output (S).** Both reproduce on
+a real `build corpus/tech-blog`.
+- **(C1)** The author's home directory ships in published HTML:
+  `data-source-file="/home/bogo/Documents/personal/taliesin/corpus/tech-blog/_includes/three-scene.tmd"`
+  in `posts/pca-geometry/index.html`. Root cause `includes.rs:240` `label_for()`: `strip_prefix`
+  is against the *primary document's own dir*, so an include reached via `../` into a sibling
+  dir falls through to `Err(_) => target.to_string_lossy()`. It is also the only source of
+  cross-machine build nondeterminism. Fix: label relative to the project root
+  (`containment_root`, same file).
+- **(C2)** Twelve `.tmd` **source files are published** into `_site/`. `build.rs:423`
+  `local_refs()` does a plain substring search for `src="`, which also matches
+  `data-qmd-src="` (the click-to-source attr on listing cards, `site/mod.rs:1120`), so
+  `deploy_referenced_sources` ships each post's source, because `.tmd` is in `SKIP_EXT` and
+  that function exists to deploy referenced `SKIP_EXT` files. Its own doc comment states the
+  real intent ("a linked `.md` download, a `.scss` offered for inspection"). Fix: match on an
+  attribute boundary, not a bare substring. `_site.yml` is safe only by luck (`yml` is not in
+  `SKIP_EXT`). Regression test: a listing card must not deploy its `.tmd`; an explicit
+  `[source](index.tmd)` link still must.
+
+**Batch D: CLI papercuts (S each, one branch).**
+- `preview <missing file>` prints `ready`/`watch` and serves a **blank page**;
+  `serve/mod.rs:331` `read_to_string(&app.path).ok()?` makes a missing file an empty doc.
+  Every other command exits 1. The create-it-later workflow **does** work (verified), so keep
+  it and add one `log::warn`.
+- `preview <dir>` with 0 pages binds a port, 404s `/`, and boots the kernel pool, while
+  `check <same dir>` exits 1 with "no `.tmd` pages found". The two front doors disagree.
+- No `--port <N>` (positional-only, `cli.rs:98,127`); `--port 4400` errors with
+  `did you mean --host?`, pointing at the wrong flag.
+- `log::info` reuses the green `built` tag (`log.rs:173`), so Ctrl-C prints
+  `built shutting down (reaping kernel)` and a build *start* prints `built building with…`.
+  Give `info` its own tag; route the shutdown lines through `log::kernel`. (Distinct from the
+  prose "CLI/docs microcopy" item closed 2026-07-09.)
+- `check` on a folder with no `_site.yml` counts an advisory as "1 problem" and exits 1.
+- `taliesin help build` prints top-level usage (`main.rs:60` matches `help` before the
+  after-subcommand intercept at `:33`).
+- Build summary has no elapsed time (`build.rs:212,1102`) while `ready` prints `75ms`;
+  `--version` has no `-dirty`; `TALIESIN_MERMAID_URL` (`render/mod.rs:914`) is missing from
+  `usage()`'s `ENV:` block; cold multi-page builds stream unlabeled `cell k/n`
+  (`exec.rs:539`) from concurrent pages.
+
+**Batch E: authoring defaults (S each).**
+- A typo'd category silently forks the listing filter: `statistics` / `Statistics` /
+  `statstics` on one post render three separate chips. No validation of category values
+  exists. Add a `check` warning via `closest()` over the site's category vocabulary (same
+  machinery as config keys).
+- `<title>` falls back to the file stem, never the leading H1: a front-matter-less doc
+  starting `# My Great Post` renders `<title>notitle</title>` (`page.rs:247` +
+  `build.rs:169`). 9 in-tree `.tmd` files have an H1 and no front matter. A better default,
+  not a knob.
+
+**Batch F: writing-productivity features (each corpus-pinned, in scope, no ruling needed).**
+- **Did-you-mean for `@fig-` / `[@cite]` (S, med-high).** Renaming a label is the commonest
+  way an author silently breaks their own doc. `cite/validate.rs:28` emits
+  `broken cross-reference: @fig-reslts` with no suggestion, while `closest()`
+  (`frontmatter.rs:414`) already serves CLI commands and front-matter keys. The candidate set
+  (registered anchors; parsed bib keys) is in hand at warn time. Keep the edit-distance-2
+  ceiling; suggest only within the page's namespace. *Pin: near-miss `@fig-` + `[@key]` in
+  `corpus/diagnostics/`.*
+- **`taliesin new <post|page|deck> <slug>` (S/M, high).** The blank-page tax. Already worked
+  around **outside** the tool: `corpus/tech-blog/.claude/skills/new-post/SKILL.md` is a
+  hand-built scaffolder, and it is stale (still emits `.qmd`, still says `quarto preview`).
+  Emit keys from the same `KNOWN_KEYS`/schema consts the validator enforces, so the scaffold
+  is correct by construction; reuse `init`'s refuse-before-overwrite guard (`cli.rs:58`).
+  *Pin: `corpus/scaffold/post/`, asserted to render and pass `check` clean.*
+- **`taliesin symbols <file> --format json` (M, med-high).** Completion misses every figure
+  labeled via `#| label: fig-scree`, because `complete.ts:86-90` regex-harvests only `{#id}`.
+  Corpus count: **34 cell-labeled `fig-`/`tbl-`/`lst-` targets vs 43 brace-anchored ids, so
+  ~44% of cross-ref targets are invisible to autocomplete.** Emit the resolved xref registry
+  (`render/mod.rs:1392` `register_xref`) + real bib keys (`cite/parse.rs`) from Rust, riding
+  the `query.rs` dispatch beside `blocks`/`vocab`. Same no-drift discipline `vocab.rs:1-9`
+  exists for. Widening the JS regex instead reimplements Rust knowledge in JS and still misses
+  auto-numbers and cross-page anchors.
+- **`.tmd` snippets in the companion (S, med).** No `contributes.snippets` today. Volume: 184
+  code cells, 520 fenced-div openers, 108 front-matter blocks, 64 callouts, 57 `#| label:`
+  lines. Reuse `vocab.rs` descriptions so they cannot drift. Ships naturally with Batch A.
+- **TODO / FIXME surfacing (S, med).** `prose.rs::lint` already returns markdown-aware,
+  code/math-skipping located `(line, message)` pairs. A `TODO|FIXME|XXX` scan as info-level
+  located diagnostics makes a draft's loose ends visible without leaving the editor. Never
+  writes back to source.
+
+**Historical (landed, kept only as a pointer):** the UI-audit content batch (#9/#11/#13/#14,
+plus the `pca-geometry` twin of #13) and the never-settling-pages investigation both landed
+2026-07-09. The three pages were never a runaway loop: it was a false negative in the
+harness's `settle()` predicate. Detail + evidence in `2026-07-09-ui-audit-findings.md`
+(triage header and §7).
 
 **One carry-over, not an open task:**
 - The `showcase` 3D canvas is absent from a no-scroll full-page capture at 390px, because its
@@ -108,6 +242,58 @@ of the authored sources, verified to fail on injected drift.)*
 - `docs/internals/validation.tmd`'s check-superset table omits `validate_math`, which `check.rs`
   has run for a while. One missing row.
 
+**Theme colour-system follow-ups, 2026-07-09.** The colour audit itself LANDED (one owned
+iron-gall accent at OKLCH H271; nine vendor hexes now banned by
+`no_vendor_default_colours_remain_in_any_bundled_stylesheet`; `--tali-border-strong` for control
+boundaries; opacity-dimmed text replaced by `--tali-muted`; xref underlines; print/prefers-contrast
+specificity; Auto theme option). Evidence: WCAG + APCA + OKLCH + Vienot-CVD harness, every new test
+mutation-checked. These are the findings that survived adversarial verification but were NOT built:
+
+- **Bare `f` forces native fullscreen with no opt-out** (`03-focus-mode.js:80`, medium). An
+  unmodified single-key shortcut both toggles focus mode and calls `requestFullscreen()`. WCAG
+  2.1.4 wants a way to turn single-key shortcuts off. Fix: keep `requestFullscreen` on an explicit
+  menu action, not on the `f` accelerator, and add a reader toggle to disable single-key shortcuts.
+- **Settings popover never takes focus when opened** (`13-reader-menu.js:60`, medium). `openMenu()`
+  unhides a panel appended at body-end and does not focus it; Esc already restores focus to the
+  launcher (`:79`), so the asymmetry is the bug. On sites/books a keyboard reader must Tab the whole
+  page to reach the theme controls. Fix: focus the panel's first control on open.
+- **Category-filter chips expose state only visually** (`10-category-filter.js:27`, medium). A bare
+  `classList.toggle('tali-cat-active')`, no `aria-pressed`, and the filtered result is never
+  announced. Fix: mirror the class with `aria-pressed`, render it on the server's initial "All"
+  chip, and write "Showing 4 of 12 posts" into a visually-hidden `aria-live="polite"` node.
+- **Embedded deck ignores a sepia host** (`render/deck.rs:164`, medium). `hostTheme()` accepts only
+  light/dark, so an `{{< embed deck.tmd >}}` in a sepia page falls back to the OS and can drop a
+  dark panel into cream paper. Minimal fix: map `sepia -> light` so the deck at least matches the
+  host's lightness.
+- **Link preview is hover-only** (`12-link-preview.js:174`, low). `mouseover`/`mouseout` are the only
+  triggers; grep finds zero `focusin` anywhere in `assets/js/`. Keyboard readers never get the
+  citation/xref preview. Fix: bind `focusin`/`focusout` too, and set `aria-describedby` while open.
+- **`forced-color-adjust: none` hides the current nav item** (`site.css:293` + `base.css:780`, low).
+  It pins `.tali-nav-active` / `a[aria-current="page"]` to an author foreground with no author
+  background, so under a High-Contrast OS theme of the opposite polarity the "you are here" marker
+  becomes invisible. Only the reader-seg pressed button (which pins a matching bg+fg pair) needs the
+  opt-out. Reachable only via a forced or reader-chosen theme opposite the HC polarity, hence low.
+- **Deck slide-number chip is not restyled per-slide** (`deck.css:455`, low). The dark restyle is
+  scoped to whole-deck `html.tali-deck-dark`, so on a `.tali-dark-bg` slide the chip reads ~2.8-3.0:1.
+- **Table cells still use the 1.28:1 hairline** (`base.css:436`). `--tali-border-strong` was applied
+  to controls only; whether a data table's grid is "required to understand the content" (WCAG 1.4.11)
+  is a judgment call, and border-strong on every cell visibly heavies every table. Owner ruling.
+- **Settings panel does not reflow at 200% text.** The content-loss half is fixed (the panel used to
+  hang 72px off the left edge; it is now `box-sizing: border-box` with a `calc(100vw - 2rem)` cap),
+  but at 200% text the seg buttons and the keyboard-shortcut list still overflow into a horizontal
+  scroll. Needs a real reflow (stack the rows), not a token change.
+- **Callout `tip` vs `important` collapse under protanopia** (dE 9.1; deutan worst pair is 17.7).
+  Darkening `tip` to `#1b603b` (light) / `#124429` (sepia) lifts every dichromat pair >= 11, at the
+  cost of the family's uniform weight. Owner kept the uniform family: the distinct icon shape and the
+  text title already carry the meaning, so hue is never the sole cue. One-line change if wanted.
+- **Deck has no sepia palette** (`deck.css`, owner call). A sepia reader gets a stark white/black
+  deck. Either document decks as deliberately light/dark-only, or add the palette and teach the deck
+  reader/scroll path to adopt it. (The reader menu already skips decks, so nothing is broken today.)
+- **No owned typeface** (`base.css:18`, brand). Typography is 100% system stack, which the research
+  named as the biggest non-colour "assembled from defaults" tell. Bundling ONE distinctive-but-
+  readable face offline (the way the KaTeX fonts already ship) is a better default, not a knob. Avoid
+  the display-serif cliche.
+
 ### Decided 2026-07-07 — each needs its own dedicated session
 - **Quarto design-decisions catalog triage, reframed.** Branch `quarto-decisions-catalog`, commit
   `535b4e1`: 165 decisions, adversarially verified. Rule on each by "is this the right design for
@@ -115,12 +301,12 @@ of the authored sources, verified to fail on injected drift.)*
   as the defining reference, so drop that framing even though the fact-checked Quarto evidence is
   still useful input. Fan the 165 into batches, each with a recommended verdict + evidence, so you
   rule, not derive.
-- **Reading-first identity polish + theme design-quality pass** (design judgment; overlaps deferred
-  marketing — confirm direction before building). Start with the competitor scan + before/after
-  screenshots (3 viewports) — the "templated" diagnosis is still UNVERIFIED — before any rework. Then:
-  hero-as-typeset not a marketing slab; drop bordered feature-card grids; quieter near-monochrome
-  accent; `--space-1..6` scale; light/dark/sepia cohesion (WCAG-AA already tuned — RE-verify, don't
-  redo; preserve sepia's deliberate low-contrast).
+- **Reading-first identity polish** (design judgment; overlaps deferred marketing: confirm direction
+  before building). The **theme/colour half LANDED 2026-07-09**: the "templated" diagnosis was
+  confirmed (four vendor blues, GitHub's syntax palette verbatim, Material's error red) and fixed, 
+  one owned near-monochrome accent, light/dark/sepia cohesion, sepia's low-contrast preserved. What
+  remains is layout + type: hero-as-typeset not a marketing slab; drop bordered feature-card grids;
+  a `--space-1..6` scale; and the owned typeface (see the colour-system follow-ups in Tier 1).
 
 ### Tier 2 — hardening (P3)
 - **Execution-cache leaks — forkserver/dir/slot trio + both follow-ups LANDED (2026-07-08); small
@@ -155,6 +341,20 @@ of the authored sources, verified to fail on injected drift.)*
   `fork_kernel`, mis-pairing pids (liveness/SIGINT/teardown then target the wrong pid; the ZMQ-connected
   kernel is still correct). Now rare since #2 removed the main timeout trigger; the proper fix is to
   poison the daemon on any fork timeout so later `take`s cold-start.
+  **NEW (polish audit 2026-07-09), the ungraceful-death path (S/M, exec/kernel Do-NOT-touch):**
+  the 2026-07-08 reaping fix **holds** (a controlled snapshot -> build -> snapshot experiment, run
+  twice, once with `TALIESIN_NO_CACHE=1` forcing real cell execution, produced **zero** new
+  survivors; see the refutation under "Decided against"). What is missing is any defense against
+  SIGKILL / a closed terminal / a crash, which no `Drop` can catch. Measured on this machine right
+  now: **2 orphaned forkserver subtrees** (one alive since 08:39, reparented to `systemd --user`,
+  so its `taliesin` parent is gone) and **21 leftover `/tmp/tali-*` dirs, 16 with no live process,
+  77 MB on disk**. Confirmed absent: `PR_SET_PDEATHSIG` on the warm-pool helper (grep for
+  `PDEATHSIG|prctl` in `crates/server/src/` is empty; the helper already gets its own process
+  group, so the signal is cheap to add), and any startup sweep of stale `/tmp/tali-warmpool-*` /
+  `/tmp/tali-kernel-*` dirs whose owner pid is dead. Independently: `build.rs:926` warms the pool
+  before knowing whether any page needs a kernel, and does so **even under `TALIESIN_NO_EXEC=1`**
+  (neither `build.rs` nor `warm_pool.rs` consults it). That is a hygiene item, **not** a perf item:
+  measured 0.25 s vs 0.27 s on a prose-only site, so the boot is off the critical path.
 - **Testing / CI:** the trio here is now **one item, not three.** (a) `deny.toml` multiple-versions:
   **already done** at `1b02564` (`[bans] multiple-versions = "warn"`, lines 42-43) and CI already runs
   `cargo deny check` (`ci.yml:114`); `warn` is the correct terminal state, do NOT escalate to `deny`.
@@ -210,11 +410,16 @@ of the authored sources, verified to fail on injected drift.)*
   pre-2026-07-07 archive entries that had been re-copied forward.)*
 
 ### Tier 3 — deferred / demand-driven
-- **Companion:** manifest rebrand (`Taliesin-companion` → Taliesin identity + `qmdFast.*` ids); Phase 2
+- **Companion:** the manifest rebrand moved to **Tier-1 Batch A** (it is not cosmetic: the stale
+  `qmd-fast` default is why diagnostics + completions have never run). Still Tier 3: Phase 2
   editor commands (`.tmd`-buffer text transforms only, never preview gestures); `editor.wordWrap`
   default for `[taliesin]` (respect the global setting until prose overflow is a real complaint, then
   ship `"on"`); grammar polish (YAML-type the `#|`/`//|`/`%%|` option value; recommend the cell-language
-  extensions via `.vscode/extensions.json`).
+  extensions via `.vscode/extensions.json`); **marketplace packaging hygiene** (`.vscodeignore` does not
+  exclude `.vscode-test/` (**1.8 GB**), `test-fixtures/`, `scripts/`, `out/test/`, `out/e2e/`; no
+  top-level `icon`/`repository`/`license`/`keywords`; `"private": true` blocks publish). Diagnostics
+  are save-triggered and whole-line (`diagnostics.ts:66-68` listens on open+save, not change; `check
+  --format json` carries no column), which is fine for this workflow and subsumed by the LSP direction below.
 - **`.tmd` format-on-save** (open question): a source pretty-printer writing the editor buffer must
   preserve `data-sourcepos` line stability for click-to-source — brainstorm reflow-vs-risk before work.
 - **Dogfood: migrate the FL-weather book to Taliesin** — a real-world Quarto→Taliesin migration +
@@ -225,7 +430,11 @@ of the authored sources, verified to fail on injected drift.)*
   defaults to a dir-name slug, override via `publish:` in `_site.yml` or `--project-name`. Passcode is a
   Cloudflare secret (never in git); one-way flow. Spec/plan under `docs/superpowers/`.
   Follow-ups (not built): optional `--init` wrapper for the one-time `wrangler` setup;
-  email-allowlist (Cloudflare Access) mode.
+  email-allowlist (Cloudflare Access) mode; **`--public` / `publish.gate: false`** (polish audit
+  2026-07-09): `cmd_publish` unconditionally calls `inject_gate` (`publish.rs:194`) and
+  `_middleware.js:9` fails closed (503 when `PASSWORD` is unset), so a **public** blog cannot use
+  `publish` at all. That is why the real blog still deploys via a side-channel `deploy` skill instead
+  of the command built for it. Owner-gated below (it relaxes a fail-closed security default).
 - **Interactive/explorable numerics** (`FEATURE-IDEAS.md` #62-66; none spec'd/pinned — promote with a
   corpus pin when one graduates; must NOT reintroduce a reactive VM). Highest-leverage: **#62** a
   bundled numerics/stats global for `{js}` (distributions, seeded PRNG, small dense linalg) + **#63**
@@ -234,6 +443,52 @@ of the authored sources, verified to fail on injected drift.)*
   (~10 MB, no torch).
 - **Wave 5** (`ROADMAP.md`): print-pdf track (paged render *of* the built HTML), docs-as-spec,
   `{glsl}` cell language, SEO completeness (sitemap/robots/JSON-LD at publish with `url:`).
+  **Fold `llms.txt` + `llms-full.txt` into the SEO-completeness item** (polish audit 2026-07-09):
+  the old deploy ritual generated it (`corpus/tech-blog/.claude/skills/deploy/SKILL.md:24` runs
+  `generate_llms_full.py`) and the migration silently dropped the capability. The block model already
+  separates clean prose from code and math (`client.js:50` proves the extraction path), so it would be
+  more accurate than the Python scraper it replaces. A plain-text sidecar is the same category as
+  `sitemap.xml`, not a new output format. *Pin: a `tech_blog.rs` assertion that `llms.txt` lists the
+  discovered pages and `llms-full.txt` excludes drafts.* Verified absent: no `llms` hit anywhere in
+  `crates/`.
+- **Site-level shared bibliography + bib hygiene** (M, med-high; polish audit 2026-07-09).
+  `bibliography:` is per-document only (`cite/mod.rs:42`), so a growing blog retypes keys per post and
+  nothing reports an unused or duplicate entry. Allow `bibliography:` in `_site.yml`, merged under each
+  page's own; add two **read-only** diagnostics over the parsed registry ("entry never cited",
+  "duplicate key"). Explicitly does **not** touch the BibTeX parser/CSL formatter (Do-NOT-touch): it
+  only reads parsed entries and counts citations. Keep "unused entry" info-level or `check`-only, since
+  a working bib runs ahead of the prose. *Pin: a small site with a site-level bib, one entry cited from
+  two pages, one uncited.*
+- **Author structure panel** (M/L, high; polish audit 2026-07-09). A read-only preview sidebar: the
+  heading tree with per-section word count (the dev panel already counts, `client.js:50-58`) and a badge
+  per node for unresolved xref / TODO / over-goal length. Click to scroll; under the companion, move the
+  editor cursor via the existing cursor sync. This is the *revision* view, not the reader TOC. Scope it
+  as an annotation layer on the dev panel, not a new component, or it grows to L. *Pin:
+  `corpus/layout/structure.tmd` (name already reserved by `FEATURE-IDEAS.md` #26).*
+- **Session revision digest** (M, med; polish audit 2026-07-09). Surface the `BlockOp` stream the client
+  already receives: a session word delta (`+340 / -180`) plus a feed of the last N ops, each
+  click-to-source. Cashes the diff moat; no batch compiler has a diff to show. Honest caveat: the pin is
+  behavioral (a `tools/live-edit-bench` assertion), not a corpus doc.
+- **Block-level transclusion** `{{< include file.tmd#sec-id >}}` (M, med; polish audit 2026-07-09).
+  Reuse a section across a series without copy-paste drift. Must ride **on top of** the `includes.rs`
+  source-map pass (resolve the fragment to a block range, hand the existing machinery a sub-slice),
+  never rewrite it. Hard merge gate: the source map must not perturb. Defer until a real series needs it.
+- **LSP for the language intelligence, browser stays the view** (L; the audit's architecture call).
+  Everything an LSP needs is already in Rust (`check`, `vocab`, `register_xref`, the bib parser,
+  `closest()`), it is write-once for Neovim/Helix/Zed/VS Code, and it removes the drift that causes the
+  `#| label:` completion gap (JS regexes reimplementing Rust knowledge). An LSP cannot render the
+  preview and does not need to: the preview is already editor-agnostic (any browser; the sync surface is
+  two `postMessage` shapes specced in `docs/internals/protocol.tmd:325-350`). The only thing binding it
+  to VS Code is the hardcoded `vscode://` open scheme. Do **not** rebuild the preview as an LSP; do not
+  invest further in the webview beyond Tier-1 Batch A.
+- **Built-site shared asset bundle** (L, high, reader-facing; polish audit 2026-07-09). Measured on the
+  built `corpus/tech-blog`: largest post **1.72 MB**; on `KL-divergence` (712 KB) the inlined `<style>`
+  is 64% of the page, of which **339 KB is base64 KaTeX woff2 (48% of the page)**, and only 21% is
+  content. **Seven pages carry that identical font block.** Inlining is correct for `build file.tmd`
+  (portable, `file://`); for `build <dir>` a returning reader re-downloads ~97% of every page. Extract to
+  content-hashed `app.<hash>.css` / `app.<hash>.js` / `katex.<hash>.css`, linked once, minify while
+  there (this subsumes the "no cache-busting" and "unminified CSS/JS" findings). Distinct from the
+  existing "Image optimization" item. Owner-gated below (it changes the shape of the build output).
 - **Image optimization** (WebP/AVIF + `srcset` + lazy-load behind a content-hashed cache) — until posts
   get image-heavy.
 - **Marketing site** (deferred, feature-first; rolls into a demo-machine rebuild): `live-edit-hero-demo`
@@ -301,7 +556,45 @@ cap would be harmless defense-in-depth, not a defect fix. Do not re-scope either
   reader-facing reproducibility manifest; web-native List of Figures/Tables/Theorems; interactive data
   tables; "Cite this" export; code-line xrefs (`@lst-3:line`); theme-aware `dark=` figures.
 
+**From the polish audit, 2026-07-09** (evidence in `2026-07-09-polish-audit-findings.md`):
+- **Draft-aware preview (flips an established default).** `draft: true` currently hides a page from
+  the site *preview* as well as the build (`site/discovery.rs:19-23`), so a half-written post cannot be
+  seen among its own listings, nav and cross-refs until it is un-drafted, which is exactly when the
+  author wants to see it. Proposed better default: **preview includes drafts** (quiet DRAFT badge, count
+  in the dev menu), **build/publish exclude them** and print `2 drafts not published: …`. The gate: it
+  flips a default and widens a discovery code path (draft-specific bugs would surface in more places).
+  Related, and cheap either way: `book_pages` (`book.rs:172`) never reads `fm.draft`, so a book chapter
+  cannot be a draft at all.
+- **Reading time in the built page (reverses a deliberate decision).** Word count + reading time are
+  computed but trapped in the author-facing dev panel (`client.js:50-58`), and `corpus.rs:530-533`
+  **pins their absence** from the built page on purpose. Promoting them is a reader-facing flip of that
+  ruling, not a bug fix. (An author-facing `goal: 1500w` over/under diagnostic would be a new knob, and
+  needs its own justification.)
+- **`taliesin publish --public`** (relaxes the fail-closed passcode gate). See the `publish` item above.
+- **Built-site shared asset bundle** (changes the shape of the build output). See Tier 3.
+
 ## Decided against / do-not-re-litigate
+
+**REFUTED by measurement (polish audit, 2026-07-09): do NOT re-scope these.** Three plausible
+diagnoses died on measurement; two of them were confidently asserted by audit agents. Recorded because
+the symptom-vs-cause trap has bitten this project before.
+- **"`build` leaks forkserver subtrees."** FALSE. Controlled experiment (snapshot pids -> build ->
+  wait 3 s -> snapshot), run twice, once with `TALIESIN_NO_CACHE=1` forcing real cell execution:
+  **zero** new survivors both times. The 2026-07-08 process-group reaping fix holds on the graceful
+  path. The real gap is the *ungraceful* path (no `PDEATHSIG`, no stale-dir sweep), filed in Tier 2.
+- **"The warm pool boots Python on prose-only builds, costing latency."** The boot is real (and happens
+  even under `TALIESIN_NO_EXEC=1`), but the **latency claim is false**: prose-only site, 3 runs each,
+  0.25 s default vs 0.27 s with `TALIESIN_NO_EXEC=1`. The boot is off the critical path. It is a
+  resource-hygiene item, not a perf item. Do not file it under "Perf".
+- **"Dev attributes bloat published pages."** FALSE: `data-block-id` + `data-sourcepos` +
+  `data-source-file` + `data-qmd-src` total **2104 bytes on a 712 KB page = 0.29%**. Tier-1 Batch C is a
+  correctness problem (an absolute path leaks; `.tmd` sources get published), **not** a weight problem.
+  Do not propose stripping them for size.
+- **`CLAUDE.md`'s stale-asset warning is at best imprecise.** Cargo tracks `assets/css/base.css` in
+  dep-info (`target/debug/taliesin.d`), and a marker appended to it **did** appear in the freshly built
+  binary. The documented claim (rebuilding only the *site* re-emits the old bundled CSS) is trivially
+  true; any stronger claim that `cargo build` silently embeds stale assets was not reproducible for
+  `assets/css/`. Re-verify for `assets/js/` before repeating the workaround.
 
 **Already fixed in code — do NOT re-open as "bugs":** the 390px `page-layout: full` + `hero:` prose
 overflow (`site.css` `.tali-site-main { box-sizing: border-box }`) and the theme/video desync
