@@ -9,7 +9,13 @@
     --tali-nav-h: 3.25rem; }
   /* the sticky navbar would otherwise cover the top of the sticky TOC and the top
      of any heading a TOC link jumps to — offset both by the navbar height + a gap */
-  body.tali-site #TOC { top: calc(var(--tali-nav-h) + 1rem); }
+  /* Desktop only. Below the sheet breakpoint (mirrors base.css `@media (max-width: 60rem)`)
+     `#TOC` becomes the fixed bottom sheet, anchored by `inset: auto 0 0 0`. A `top` here has
+     the same specificity and lands later in source order, so it would win and break the
+     sheet's `translateY(100%)` bottom anchor, leaving it poking over the content. */
+  @media (min-width: 60.001rem) {
+    body.tali-site #TOC { top: calc(var(--tali-nav-h) + 1rem); }
+  }
   body.tali-site [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) + 1rem); }
 
   /* sticky theme-aware navbar (spans full width as a flex child; inner centres) */
@@ -81,6 +87,15 @@
      with no dead space pooling to the right of the TOC. */
   .tali-site-main.has-toc { max-width: 62.5rem; display: grid; align-items: start;
     gap: 2.5rem; grid-template-columns: minmax(0, 46rem) 14rem; }
+  /* At the sheet breakpoint `#TOC` turns `position: fixed` and leaves the grid flow, so the
+     14rem track would stand empty and auto-placement would drop the next sibling (the
+     back-to-listing nav) into that vacant top-right cell. Collapse to the single reading
+     column, matching `.tali-book-inner` further down (which already collapses at 60rem). */
+  @media (max-width: 60rem) {
+    .tali-site-main.has-toc { grid-template-columns: minmax(0, 1fr); }
+    /* narrow back to the reading measure, unless `page-layout: full` widened the page */
+    .tali-site-main.has-toc:not(.tali-wide) { max-width: var(--tali-maxw); }
+  }
 
   /* slim footer pinned to the bottom of the flex column (icons = author raw HTML) */
   .tali-site-footer { flex-shrink: 0; border-top: 1px solid var(--tali-border); }
@@ -167,7 +182,6 @@
     .tali-nav-links.tali-nav-open { display: flex; }
     .tali-nav-spacer { display: none; }
     .tali-nav-link { padding: .7rem 1.15rem; border-radius: 0; }
-    .tali-site-main.has-toc { grid-template-columns: minmax(0, 1fr); }
   }
 
 /* --- book format: ONE centred reading column; the chapter list is a summoned drawer ---
@@ -177,8 +191,12 @@
    width-gated right rail (`has-toc`) the same way a website page widens for it. */
 body.tali-book-body { max-width: none; margin: 0; padding: 0; --tali-nav-h: 3rem;
   min-height: 100vh; display: flex; flex-direction: column; }
-/* the sticky topbar would cover the top of the sticky TOC / a jumped-to heading */
-body.tali-book-body #TOC { top: calc(var(--tali-nav-h) + 1rem); }
+/* the sticky topbar would cover the top of the sticky TOC / a jumped-to heading.
+   Desktop only, for the same reason as the website rule above: below the sheet
+   breakpoint `#TOC` is the fixed bottom sheet and must keep its `top: auto`. */
+@media (min-width: 60.001rem) {
+  body.tali-book-body #TOC { top: calc(var(--tali-nav-h) + 1rem); }
+}
 body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) + 1rem); }
 
 /* slim sticky topbar (a book's only chrome bar — NOT the website .tali-site-nav). The inner
@@ -194,7 +212,11 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
   color: var(--tali-fg); cursor: pointer; padding: .35rem .6rem; font: inherit; font-size: .9rem;
   transition: border-color .12s ease, color .12s ease; }
 .tali-book-drawer-btn:hover { border-color: var(--tali-accent); }
-.tali-book-drawer-btn svg { display: block; }
+/* `flex: none`, or else: once the topbar row outgrows a narrow viewport it puts all of its
+   shrink pressure on the one item with no min-content floor, the icon (base.css's
+   `svg { max-width: 100% }` lets it squash). The "Chapters" label can't shrink past its
+   word, so the hamburger alone collapsed to a ~4px dot. */
+.tali-book-drawer-btn svg { display: block; flex: none; }
 .tali-book-topbar .tali-nav-spacer { flex: 1 1 auto; }
 
 /* The reading column reserves the content+TOC grid on EVERY chapter, TOC or not, so the text

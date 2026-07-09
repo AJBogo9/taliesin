@@ -309,6 +309,12 @@
   h6 { font-size: .9rem; line-height: 1.35; margin: 1.2rem 0 .4rem; color: var(--tali-muted); }
   .tali-title-block { margin: 0 0 2rem; padding-bottom: 1rem; border-bottom: 1px solid var(--tali-border); }
   .tali-title-block .title { margin: 0 0 .3rem; font-size: 2.1rem; line-height: 1.15; }
+  /* Clear the floating settings gear. It is `position: fixed` in the top-right (2.4rem wide,
+     1rem inset) so it reserves no space and paints opaquely over whatever is beneath it, and
+     a title line running the full measure collides with it on a narrow viewport. The gear
+     only floats on a chrome-less single doc; sites and books dock it in their nav bar, hence
+     the `:has()` scope. Browsers without `:has()` simply skip the rule. */
+  body:has(> .tali-rmenu-toggle) .tali-title-block .title { padding-right: 3.4rem; }
   .tali-title-block .subtitle { margin: .2rem 0; font-size: 1.15rem; color: var(--tali-muted); font-weight: 400; }
   .tali-title-block .description { margin: .4rem 0; color: var(--tali-fg); }
   .tali-title-block .tali-title-meta { margin-top: .6rem; display: flex; flex-wrap: wrap; gap: .25rem 1rem;
@@ -382,6 +388,12 @@
           background-size: 38px 100%, 38px 100%, 13px 100%, 13px 100%;
           background-attachment: local, local, scroll, scroll; }
   th, td { border: 1px solid var(--tali-border); padding: .35rem .6rem; }
+  /* Inline code in a cell keeps its tokens whole. `overflow-wrap: anywhere` (above) folds
+     every character into min-content sizing, so under auto table-layout a narrow column
+     collapses and splits an identifier like TALIESIN_PYTHON mid-word. The table is already
+     its own scroll box, so let it scroll rather than shred the token. (A `<pre>` in a cell
+     already sets `white-space: pre`, so this is a no-op for code blocks.) */
+  th code, td code { overflow-wrap: normal; }
   table caption { caption-side: top; font-size: .9em; color: var(--tali-muted); padding-bottom: .4rem; text-align: left; }
   thead th { border-bottom: 2px solid var(--tali-border); }
   .callout { border: 1px solid var(--tali-border); border-left-width: 4px; border-radius: 5px;
@@ -621,9 +633,24 @@
   .tali-eqn .tali-eqn-body { min-width: 0; }
   .tali-eqn .tali-eqn-body .katex-display { margin: 0; }
   .tali-eqn .tali-eqn-number { color: var(--tali-muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  /* KaTeX makes `.katex-display > .katex` a full-width block, so its own overflow never grew
+     the scroll area: the `overflow-x: auto` below had nothing to scroll and a wide equation
+     was simply clipped and unreachable. `width: max-content` gives it its intrinsic width (so
+     the box scrolls) while `margin: 0 auto` keeps a narrow equation centred, as before. */
+  .katex-display > .katex { width: max-content; margin: 0 auto; }
   /* a display equation wider than the column scrolls horizontally inside its own
-     box instead of overflowing the page (the #1 mobile breakage for math docs) */
-  .katex-display { overflow-x: auto; overflow-y: hidden; padding: .3rem 0; }
+     box instead of overflowing the page (the #1 mobile breakage for math docs).
+     The layered background is the same scroll shadow wide <pre> and <table> carry: without
+     it a clipped equation reads as missing content rather than as something to scroll. */
+  .katex-display { overflow-x: auto; overflow-y: hidden; padding: .3rem 0;
+    background:
+      linear-gradient(to right, var(--tali-bg) 30%, transparent) left center,
+      linear-gradient(to left, var(--tali-bg) 30%, transparent) right center,
+      radial-gradient(farthest-side at left, var(--tali-edge-shadow), transparent) left center,
+      radial-gradient(farthest-side at right, var(--tali-edge-shadow), transparent) right center;
+    background-repeat: no-repeat;
+    background-size: 38px 100%, 38px 100%, 13px 100%, 13px 100%;
+    background-attachment: local, local, scroll, scroll; }
   /* Align inline math to the serif body x-height (KaTeX defaults to 1.21em, which reads
      oversized); keep display math at its standalone presence. */
   .katex { font-size: 1.06em; }
@@ -769,7 +796,7 @@
     #TOC::before { display: none !important; }
     pre { white-space: pre-wrap !important; overflow: visible !important; }
     table { display: table !important; overflow: visible !important; background: none !important; }
-    .katex-display { overflow: visible !important; }
+    .katex-display { overflow: visible !important; background: none !important; }
     pre, figure, table, blockquote, .callout, .tali-eqn { break-inside: avoid; }
     h2, h3, h4 { break-after: avoid; }
   }
