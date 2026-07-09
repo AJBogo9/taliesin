@@ -23,7 +23,7 @@ use syntect::util::LinesWithEndings;
 const CLASS_STYLE: ClassStyle = ClassStyle::SpacedPrefixed { prefix: "tali-hl-" };
 
 /// The syntax set, loaded once: syntect's defaults plus the `bat`-curated extras.
-/// The extras are why `typescript` and `toml` highlight at all — syntect's bundled
+/// The extras are why `typescript` and `toml` highlight at all: syntect's bundled
 /// set carries neither, so both rendered as plain text before. `_newlines` is the
 /// variant the line-based `ClassedHTMLGenerator` expects.
 fn syntaxes() -> &'static SyntaxSet {
@@ -51,7 +51,7 @@ const INTENTIONALLY_PLAIN: [&str; 6] = ["text", "txt", "plain", "console", "outp
 
 /// Whether a fenced block's language token resolves to a syntax, or is a token we
 /// render plainly on purpose. `false` means the fence silently degrades to escaped
-/// text — nearly always a typo (`pyton`) or a language we carry no syntax for.
+/// text, nearly always a typo (`pyton`) or a language we carry no syntax for.
 ///
 /// A pure query: it cannot change what [`highlight`] emits.
 pub fn known_language(lang: &str) -> bool {

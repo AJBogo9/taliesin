@@ -938,7 +938,7 @@ fn shared_sources(a_root: &Path, b_root: &Path, rel: &Path, out: &mut Vec<PathBu
 /// `corpus/posts/<slug>/` and `corpus/tech-blog/posts/<slug>/` hold byte-identical
 /// copies of three posts (plus a shared `_includes/three-scene.tmd`), and both
 /// copies are live documents in the regression net. Nothing stopped a content fix
-/// from landing in one copy and rotting the other — `fa200e5`'s own message notes
+/// from landing in one copy and rotting the other; `fa200e5`'s own message notes
 /// that "every fix lands twice". This pins that.
 #[test]
 fn twinned_corpus_sources_stay_byte_identical() {

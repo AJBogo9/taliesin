@@ -195,8 +195,8 @@ mod tests {
         assert_eq!(escape_control("(primary)  ?"), "(primary)  ?");
         // Non-ASCII is not a control char and must survive verbatim.
         assert_eq!(
-            escape_control("posts/héllo–ü.tmd  1:1"),
-            "posts/héllo–ü.tmd  1:1"
+            escape_control("posts/héllo-ü.tmd  1:1"),
+            "posts/héllo-ü.tmd  1:1"
         );
     }
 

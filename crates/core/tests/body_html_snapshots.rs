@@ -1,13 +1,13 @@
 //! Byte-exact `body_html()` snapshots for the hermetic `{js}` documents.
 //!
-//! `corpus.rs`'s `every_corpus_doc_renders_with_invariants` is *structural* only —
-//! non-empty blocks, unique ids, ordered sourcepos — so a real regression in emitted
+//! `corpus.rs`'s `every_corpus_doc_renders_with_invariants` is *structural* only
+//! (non-empty blocks, unique ids, ordered sourcepos), so a real regression in emitted
 //! HTML (a broken scrolly wrapper, a dropped reactive cell shell) renders a
 //! structurally valid document and passes. These snapshots pin the bytes.
 //!
 //! Scope is deliberately `{js}`: `exec.rs` maps only `python`/`r` to a kernel, so
 //! these documents' cells never execute during a core render and the snapshots stay
-//! hermetic — no Jupyter kernel, no CI kernel job. An `{r}`/`{python}` snapshot would
+//! hermetic: no Jupyter kernel, no CI kernel job. An `{r}`/`{python}` snapshot would
 //! either need a kernel or would silently pin the "kernel unavailable" fallback.
 //!
 //! Snapshots are plain files under `tests/snapshots/`. Rewrite them after an
@@ -17,7 +17,7 @@
 //! UPDATE_SNAPSHOTS=1 cargo test -p taliesin-core --test body_html_snapshots
 //! ```
 //!
-//! then read the diff before committing — an unreviewed snapshot update pins the bug.
+//! then read the diff before committing, since an unreviewed snapshot update pins the bug.
 
 mod common;
 use common::corpus_dir;

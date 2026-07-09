@@ -30,7 +30,7 @@ re-run.
 A fence whose language token isn't recognised still renders, just unhighlighted.
 That is easy to mistake for broken highlighting, so `taliesin check` reports it:
 ` ```pyton ` gets a located "unknown code language" warning. When a block is meant
-to be plain — a terminal transcript, sample output — label it `text` or `console`
+to be plain (a terminal transcript, sample output), label it `text` or `console`
 and it stays plain without a warning.
 
 ```rust

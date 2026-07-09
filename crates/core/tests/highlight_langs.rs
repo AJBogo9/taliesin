@@ -1,6 +1,6 @@
 //! The highlighting pin doc: every language it labels either emits `tali-hl-` scope
 //! classes or stays plain **on purpose**, and `taliesin check` stays silent on all of
-//! them. `ts` and `toml` are the load-bearing cases — syntect's bundled syntax set
+//! them. `ts` and `toml` are the load-bearing cases: syntect's bundled syntax set
 //! carries neither, so both silently degraded to escaped plain text before the
 //! `bat`-curated extras were loaded.
 
@@ -48,7 +48,7 @@ fn typescript_and_toml_highlight() {
     for lang in ["ts", "toml"] {
         assert!(
             scope_spans(&html, lang) > 0,
-            "`{lang}` degraded to plain text — the extra syntaxes are not loaded"
+            "`{lang}` degraded to plain text; the extra syntaxes are not loaded"
         );
     }
 }

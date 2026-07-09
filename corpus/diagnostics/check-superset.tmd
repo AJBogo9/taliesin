@@ -21,7 +21,7 @@ Cited [@ghost2020] with no `bibliography:` declared, so the reference renders as
 Broken inline math $\frac{$ that KaTeX cannot parse (server-side math-render diagnostic).
 
 A fenced block whose language token is a typo. It renders, just unhighlighted, so only
-`validate_code_languages` can tell you the highlighting isn't broken — the label is.
+`validate_code_languages` can tell you the highlighting isn't broken: the label is.
 
 ```pyton
 x = 1

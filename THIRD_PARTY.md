@@ -61,7 +61,7 @@ One build dependency embeds third-party *data* into the compiled binary rather
 than only linking code:
 
 - **two-face** (MIT OR Apache-2.0). Supplies the syntax definitions syntect's
-  bundled set omits — TypeScript and TOML, both of which the docs use — as a
+  bundled set omits (TypeScript and TOML, both of which the docs use) as a
   ~900 KB compiled dump linked into the binary. The definitions are curated by
   the [`bat`](https://github.com/sharkdp/bat) project and each retains its own
   upstream license; `cargo deny` checks the crate's license, not theirs. The full

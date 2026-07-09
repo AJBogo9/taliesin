@@ -188,7 +188,7 @@ fn lcs_pairs(a: &[&str], b: &[&str]) -> Vec<(usize, usize)> {
         pos_in_b.insert(id, j);
     }
     // The reduction above is only sound while ids are unique. A duplicate would be
-    // absorbed silently — `pos_in_b` keeps just the last position — and the diff
+    // absorbed silently (`pos_in_b` keeps just the last position) and the diff
     // would emit ops against the wrong element. Both lists are checked because a
     // duplicate in `a` instead yields two pairs sharing a `new_idx`, of which the
     // strictly-increasing LIS can only ever keep one.
