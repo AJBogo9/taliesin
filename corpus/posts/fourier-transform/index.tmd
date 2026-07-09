@@ -94,7 +94,7 @@ _wf.write('chord.wav', fs, (_chord_audio * 32767).astype(np.int16))
     <audio controls style="height:32px;"><source src="tone_high.wav" type="audio/wav"></audio>
   </div>
   <div style="display:flex;align-items:center;gap:1rem;margin-top:0.4rem;">
-    <span style="width:120px;color:white;font-size:0.9rem;font-weight:bold;">The chord</span>
+    <span style="width:120px;color:#8b5cf6;font-size:0.9rem;font-weight:bold;">The chord</span>
     <audio controls style="height:32px;"><source src="chord.wav" type="audio/wav"></audio>
   </div>
 </div>
@@ -117,7 +117,7 @@ for i, (f, a, c, lbl) in enumerate(zip(freqs, amps, colors, labels)):
     axes[i].set_title(lbl)
     axes[i].set_ylim(-1.2, 1.2)
 
-axes[3].plot(n, x, color="white", linewidth=1.2)
+axes[3].plot(n, x, color="#8b5cf6", linewidth=1.2)
 axes[3].set_xlabel("Sample n")
 axes[3].set_ylabel("Amplitude")
 axes[3].set_title("Sum of all three notes (what you actually hear)")
@@ -416,6 +416,8 @@ const compAlpha = comp_freqs.map(f => {
 
 const svg = d3.create("svg")
   .attr("width", layout.W).attr("height", layout.totalH)
+  .attr("viewBox", `0 0 ${layout.W} ${layout.totalH}`)
+  .style("max-width", "100%").style("height", "auto")
   .style("background", "#111827").style("border-radius", "8px");
 
 drawSignalPanel(svg, { x: signalX, components, compColors, compAlpha, wind_f, isMatch, N });

@@ -336,12 +336,12 @@ ax1.set_ylim(0, 105)
 ax2.plot(
     range(1, 4),
     cumulative_var * 100,
-    color="white",
+    color="#8b5cf6",
     marker="o",
     linewidth=2,
     markersize=6,
     linestyle="--",
-    alpha=0.7,
+    alpha=0.9,
 )
 ax2.set_ylabel("Cumulative variance (%)")
 ax2.set_ylim(0, 105)

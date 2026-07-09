@@ -193,7 +193,7 @@ flowchart TB
   SRV --> DF
   SITE --> SM
   SITE --> DF
-  EX -.->|output blocks<br/>(data flow, not a call)| DF
+  EX -.->|"output blocks<br/>(data flow, not a call)"| DF
 ```
 
 The data those modules pass around is small (@fig-data-model): a `RenderedDoc` is

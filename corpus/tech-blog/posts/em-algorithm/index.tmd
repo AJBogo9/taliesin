@@ -324,7 +324,7 @@ const curve1 = makeCurve(xs, snap.mu[1], snap.sigma[1], snap.pi[1], "Component 2
 // Rug data: one entry per observed score, tagged with r0 and true label
 const resp = makeResp(X_data, snap.r, true_labels);
 
-return Plot.plot({
+const fig = Plot.plot({
   width: 700,
   height: 360,
   marginLeft: 50,
@@ -367,7 +367,21 @@ return Plot.plot({
       }
     ),
   ],
-})
+});
+
+// The rug is Plot.tickX with no y channel, so each tick spans the full frame height
+// and crosses the μ/σ labels, which are filled with the same per-component colours.
+// Knock a page-coloured halo out from behind the glyphs: paint-order puts the stroke
+// down first, so `fill` (the colour encoding) is untouched. Plot writes `stroke` as a
+// presentation attribute, where var() cannot resolve, hence the inline style, which
+// also keeps the halo correct across a live light/dark/sepia theme flip.
+for (const t of fig.querySelectorAll('g[aria-label="text"] text')) {
+  t.style.paintOrder = "stroke";
+  t.style.stroke = "var(--tali-bg)";
+  t.style.strokeWidth = "3px";
+  t.style.strokeLinejoin = "round";
+}
+return fig;
 ```
 
 ```{js}
