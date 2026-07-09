@@ -46,6 +46,20 @@ not a runaway loop but a `settle()` false negative, since a `//| name:` value ce
 DOM; `qmd-js.js` now stamps `data-qmd-done` when a cell's `run()` resolves and the harness gates on that
 (the tempting `data-qmd-ran` is stamped *before* cells run, so it would have caused premature capture).
 
+Finally, the **2026-07-09 Tier-2 grind** (branch `backlog-grind-2026-07-09`): `log::escape_control` so a
+crafted `source_file` on the unauthenticated preview websocket cannot write OSC/CSI/CR into the author's
+terminal; `twinned_corpus_sources_stay_byte_identical`, which discovers the duplicated post pairs by
+walking both roots and fails on injected drift; `debug_assert!`s pinning the block-id uniqueness that
+`lcs_pairs`' LCS-to-LIS reduction silently assumes; **TypeScript and TOML now actually highlight**
+(syntect's bundled set carries neither, so 30 code blocks in the project's own docs rendered as plain
+text; fixed by loading `two_face::syntax::extra_newlines()`, with a test pinning all 17 established
+tokens to the syntax they resolved to before); `validate_code_languages`, which warns on a fence whose
+language resolves to nothing (the backlog's "needs an invasive warnings channel" excuse was false: the
+located-diagnostics channel already existed and `highlight()` is untouched); `corpus/highlight.tmd` +
+zero-dep `body_html()` snapshots for the four hermetic `{js}` docs. Six of the ten Tier-2 items scoped
+for this batch turned out to be stale or misdiagnosed; the evidence is recorded inline below rather
+than re-derivable only by re-reading the code.
+
 **Working method:** branch per feature; brainstorm if there's a fork; spec under
 `docs/superpowers/specs/`; implement TDD; verify (cargo + browser via chrome-devtools, or the
 extension harnesses); fast-forward merge locally; delete the item here. **Do-NOT-touch:** the
@@ -65,17 +79,29 @@ collateral sweep turned up) and the never-settling-pages investigation both land
 The three pages were never a runaway loop: it was a false negative in the harness's `settle()`
 predicate. Detail + evidence in `2026-07-09-ui-audit-findings.md` (triage header and §7).
 
-**Two carry-overs, neither an open task:**
+**One carry-over, not an open task:**
 - The `showcase` 3D canvas is absent from a no-scroll full-page capture at 390px, because its
   `IntersectionObserver` never fires while the host is below the fold. A reader who scrolls
   gets it. To make the harness capture it, emulate `prefers-reduced-motion: reduce` in
   `browser.mjs` `forceTheme`; `build()` then runs synchronously. Cheap, and a UI audit arguably
   *wants* the reduced-motion rendering. The cost is that it would then never see the animated
   one. Not decided.
-- `corpus/posts/<slug>/index.tmd` and `corpus/tech-blog/posts/<slug>/index.tmd` are **byte-identical
-  duplicates** for `fourier-transform`, `pca-geometry` and `em-algorithm` (two live corpus
-  documents each, both in the regression net). A content fix must land in both or the net keeps a
-  broken copy. Nothing enforces this today; a test asserting the pairs stay identical would.
+
+*(The twinned-corpus-posts carry-over LANDED 2026-07-09: `twinned_corpus_sources_stay_byte_identical`
+in `crates/core/tests/corpus.rs` discovers the pairs by walking both roots and asserts byte-identity
+of the authored sources, verified to fail on injected drift.)*
+
+**New, small, surfaced 2026-07-09 while grinding Tier 2:**
+- The twinned post dirs disagree on what is **git-tracked**: `tech-blog/posts/fourier-transform/`
+  tracks `thumbnail.png` (unreferenced; `image:` names the `.webp`) and the four generated `.wav`
+  files, while `posts/fourier-transform/` tracks neither. The `.wav`s are written at render time by
+  the post's own `{python}` cell, so tracking them is the anomaly. Harmless, but decide one way.
+- `Cargo.toml:27-29` claims syntect uses a "pure-Rust regex, no oniguruma C dependency". False:
+  `comrak` pulls `syntect` with default features, so `onig` is in the tree (it already was at
+  `1b02564`, before `two-face`) and feature unification means the C backend wins at runtime. Either
+  fix the comment or make comrak's syntect dep `default-features = false`. Not measured either way.
+- `docs/internals/validation.tmd`'s check-superset table omits `validate_math`, which `check.rs`
+  has run for a while. One missing row.
 
 ### Decided 2026-07-07 — each needs its own dedicated session
 - **Quarto design-decisions catalog triage, reframed.** Branch `quarto-decisions-catalog`, commit
@@ -124,32 +150,59 @@ predicate. Detail + evidence in `2026-07-09-ui-audit-findings.md` (triage header
   `fork_kernel`, mis-pairing pids (liveness/SIGINT/teardown then target the wrong pid; the ZMQ-connected
   kernel is still correct). Now rare since #2 removed the main timeout trigger; the proper fix is to
   poison the daemon on any fork timeout so later `take`s cold-start.
-- **Testing / CI:** insta snapshots on `body_html()` for reactive/explorable/bayesian docs through the
-  exec path (`corpus.rs:99` is structural-only); `#[serial]` the kernel-load determinism tests + assert
-  a dropped output is a hard named error (the known silent-drop flake); `deny.toml` multiple-versions
-  policy. **`tsc`/`@ts-check` — web-client tier DONE:** `search.js` + `toc-spy.js` + `toc-sheet.js`
+- **Testing / CI:** the trio here is now **one item, not three.** (a) `deny.toml` multiple-versions:
+  **already done** at `1b02564` (`[bans] multiple-versions = "warn"`, lines 42-43) and CI already runs
+  `cargo deny check` (`ci.yml:114`); `warn` is the correct terminal state, do NOT escalate to `deny`.
+  (b) `#[serial]` + the silent-drop flake: **closed.** The silent drop was fixed at source
+  (`kernel.rs:393 start_error_is_transient` + its named-error unit test); only one test spawns a kernel
+  and it is the same test that mutates `TALIESIN_CELL_TIMEOUT`, so the race is theoretical and
+  `serial_test` would buy nothing. (c) `body_html()` snapshots: **LANDED 2026-07-09** for the four
+  hermetic `{js}` docs (`crates/core/tests/body_html_snapshots.rs`, zero-dep, `UPDATE_SNAPSHOTS=1` to
+  rewrite). Deliberately not `insta`: it would be the workspace's first dev-dependency and it pulls
+  `similar`, already rejected below. The `{r}` bayesian doc stays unsnapshotted, since without an
+  IRkernel in CI it would only pin the "kernel unavailable" fallback.
+  **`tsc`/`@ts-check` — web-client tier DONE:** `search.js` + `toc-spy.js` + `toc-sheet.js`
   (the last already carried `@ts-check` but was never in the `include`) are now `@ts-check`'d, fixed
   (159 errors → 0), and wired into `web-client/jsconfig.json` + the CI `typecheck` job alongside the
   already-gated `client.js`. **Remaining: `assets/js/*` — its own (large) pass** (~800+ errors:
   `deck.js` alone ~400, plus `qmd-js.js`/`scrolly.js`/`tabset.js`/`walkthrough.js`/`mermaid.js` + the
   16 `code-enhance/` fragments; exclude the vendored `*.min.js`). Needs its own ambient globals + a
   config that compiles the concatenated `code-enhance/` fragments as one shared script scope.
+  *(Measured 2026-07-09, not estimated: a throwaway strict jsconfig over `crates/core/assets/js`
+  yields **812 errors**, `deck.js` alone 402. The shared-scope claim is confirmed: compiling the
+  fragments in isolation adds 12 `TS2304`s that vanish when concatenated. Needs its own session.)*
 - **Security:** injected Mermaid `<script>` SRI + `crossorigin` — deferred (only the live Preview
   lazy-loads mermaid from the CDN; a static build inlines the vendored copy). Needs a hash pinned to the
   CDN build, and both `integrity` + `crossorigin` would break a non-CORS `TALIESIN_MERMAID_URL` override.
 - **Deck engine (P2, deferred):** drop `fitSlide` from the resize path (needs a lazy fit-on-show
   refactor first); mobile pinch/pan + touch gestures (hard to verify without a device); thread
   `footer:`/`logo:` through both deck-page builders (no corpus deck needs one yet).
-- **Perf (low):** protocol-level op-message batching (one WS message per save, not one-per-op); lazy
-  discover-time search index (`search::build_sections`, eagerly built at `site/mod.rs:304`); visited
-  pages never evicted from `app.pages` (`serve_site/mod.rs:42`, unbounded growth).
-- **CLI / docs microcopy:** reconcile the no-kernel-build wording across `CLAUDE.md`,
-  `getting-started`, and `build.rs` (each is substantively correct — a no-kernel build/preview
-  falls back to source non-fatally — but phrased differently; optional polish, no defect).
-- **Audit long-tail** (`AUDITS.md`): a combined content+theme edit drops the hot-swap until reload
-  (`serve.rs`); the initial synchronous render isn't panic-guarded; mounted sub-sites don't route
-  embedded decks (mount miss → bare 404); a tens-of-MB cell output blocks ZMQ receive before the cap
-  fires (`kernel.rs`).
+- **Perf (low):** protocol-level op-message batching (one WS message per save, not one-per-op). Still
+  open, still low: the realistic worst case is an edit near the top of a long doc, where every
+  downstream block emits a `SetMeta` for its shifted sourcepos (`diff.rs` `anchor_op`), so one frame
+  per block. The client and server ship together, so there is no wire-compat constraint.
+  *(The other two "perf" items were **refuted** on 2026-07-09 and are deleted, not deferred:*
+  *(1) "visited pages never evicted from `app.pages`, unbounded growth" was a misdiagnosis. `app.pages`
+  holds only lightweight `PageState` (rendered block HTML + a broadcast channel), keyed by real page
+  rels, so it is bounded by the site's finite page count. The heavy resource, the warm kernels, lives
+  in `ExecPool`, which is **already** an LRU capped at `MAX_WARM_PAGES = 6` with eviction tests.*
+  *(2) "lazy discover-time search index": measured at 15.6-27.1 ms one-time per site (a micro-bench over
+  the three real sites), against a 0.38-0.64 s warm build. It buys nothing on the build path, is
+  invisible in preview, and would regress the Batch-8 live-search refresh by turning the first
+  post-startup edit into a full rebuild. The backlog's `site/mod.rs:304` was drift; the call is at 311.)*
+- **CLI / docs microcopy:** **closed 2026-07-09, no defect.** All seven prose sites plus the two code
+  strings were re-read against `exec.rs`'s `!has_kernel` branch, including the probe that mattered
+  (does the freeze-hit-restores-cache fix make any doc statement false?). None does: the prose
+  describes the first-run case, which stays true, and the code strings' extra actionable detail
+  (which env var to set) is worth keeping distinct from the prose. Purely stylistic; not worth a pass.
+- **Audit long-tail** (`AUDITS.md`): a tens-of-MB cell output blocks ZMQ receive before the cap fires
+  (`kernel.rs`, exec/kernel Do-NOT-touch).
+  *(The three server-side clauses that used to sit here were verified **already fixed** on 2026-07-09
+  and deleted: the combined content+theme edit does hot-swap (`protocol.rs:255-267` pushes ops and
+  style independently, pinned by a test at 307-322); the initial synchronous render **is** panic-guarded
+  (`serve/mod.rs:164-188` `catch_unwind`, mechanism test at 1490); and mounted sub-sites **do** route
+  embedded decks (`serve_site/mod.rs:353-370` falls back to `Site::deck`). They were verbatim
+  pre-2026-07-07 archive entries that had been re-copied forward.)*
 
 ### Tier 3 — deferred / demand-driven
 - **Companion:** manifest rebrand (`Taliesin-companion` → Taliesin identity + `qmdFast.*` ids); Phase 2
@@ -204,12 +257,8 @@ proposed cuts as **do-not-cut:** `data-level` is a live test anchor; the two `.t
 style two different features.
 
 ### Low-severity long tail (~80 items) → [AUDITS.md](AUDITS.md) 2026-07-07
-Pick up opportunistically alongside whichever batch touches the same file. Includes: include symlink-loop
-SIGABRT + lexical-only `safe_join` (`includes.rs`); diff-LIS unique-id `debug_assert!`; dead
-`ts`/`typescript`/`toml` highlight aliases; an unresolved fence language degrading to plain text
-silently (`highlight.rs:51` — deferred from Batch 5: needs a warnings channel threaded into the pure
-`highlight` fn, invasive);
-`click_block` terminal-escape injection; qmd-js initial pass paints in DOM order not topo order; many
+Pick up opportunistically alongside whichever batch touches the same file. Includes:
+qmd-js initial pass paints in DOM order not topo order; many
 citation-render edge cases; and the architecture / waste / stale-but-working-docs tail — including the
 **stale-but-working `qmd-*` docs references that still have runtime aliases** (`qmd.*` cell API,
 `qmd-input`/`qmd-embed`/`qmd-video`/`qmd-fnref`/`qmd-main` classes, `window.qmdEnhancers`/`QmdDeck`);
@@ -217,6 +266,17 @@ renaming those is a separate verify-each-alias pass, not a mechanical sweep.
 **Do NOT "rename" these live identifiers — they are correct as-is:** `qmd-goto`/`qmd-cursor` (postMessage),
 `qmd_token` (cookie), `qmd-theme` (localStorage key + `<style id>`), `qmd:themechange` (event),
 `qmdFast.*` (VS Code config), `qhl-*` (highlight scope).
+
+**Four long-tail entries were closed on 2026-07-09** and removed from the list above. Three shipped
+(`diff.rs` LIS uniqueness `debug_assert!`s; the dead `ts`/`typescript`/`toml` aliases, resolved by
+actually *adding* the syntaxes rather than deleting the aliases; the silent unresolved-fence
+degradation, now `validate_code_languages`; and `click_block` terminal-escape injection, now
+`log::escape_control`). One was **refuted**: the "include symlink-loop SIGABRT" does not exist. Linux
+caps symlink traversal per path resolution at `MAXSYMLINKS = 40`, so `open()` returns `ELOOP` at depth
+41 and the existing `Err(_) => drop_with_warning` at `includes.rs:148` already handles it (reproduced:
+deepest successful read at 40 components, failure at 41). Its co-listed "lexical-only `safe_join`" is
+likewise a non-issue: includes are author-local and never attacker-controlled. A `MAX_INCLUDE_DEPTH`
+cap would be harmless defense-in-depth, not a defect fix. Do not re-scope either.
 
 ### Owner-gated: do NOT build without your ruling
 - **Scroll-vs-shrink for embedded media (UI-audit #7 + #12), CONFIRMED but a design choice, not a defect.**
