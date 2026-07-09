@@ -129,9 +129,34 @@ pub fn update(n: usize) {
     );
 }
 
+/// Escape every C0/C1 control character as a visible `\xNN`.
+///
+/// Click-to-source locations arrive over the preview websocket, which accepts
+/// control messages without auth (see `serve::handle_client_msg`), so they are
+/// the one log payload this server does not author itself. Printed raw, an OSC
+/// (`\x1b]0;…`) would retitle the author's terminal and a `\r` or `\n` would
+/// overwrite the log line or forge a new one. Escaping rather than dropping
+/// keeps the tampering visible.
+fn escape_control(s: &str) -> String {
+    if !s.chars().any(char::is_control) {
+        return s.to_string();
+    }
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        // `char::is_control` is the Unicode Cc category: U+0000..=U+001F,
+        // U+007F..=U+009F. All fit in two hex digits.
+        if c.is_control() {
+            out.push_str(&format!("\\x{:02x}", c as u32));
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
 /// A click-to-source request (a location the preview asked the editor to open).
 pub fn source(loc: &str) {
-    line(Style::Source, loc);
+    line(Style::Source, &escape_control(loc));
 }
 
 /// Kernel lifecycle / status.
@@ -155,4 +180,47 @@ pub fn warn(msg: &str) {
 
 pub fn error(msg: &str) {
     line(Style::Error, msg);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ordinary_locations_are_untouched() {
+        assert_eq!(
+            escape_control("posts/intro.tmd  12:3"),
+            "posts/intro.tmd  12:3"
+        );
+        assert_eq!(escape_control("(primary)  ?"), "(primary)  ?");
+        // Non-ASCII is not a control char and must survive verbatim.
+        assert_eq!(
+            escape_control("posts/héllo–ü.tmd  1:1"),
+            "posts/héllo–ü.tmd  1:1"
+        );
+    }
+
+    #[test]
+    fn control_bytes_from_the_browser_are_escaped() {
+        // An OSC title-set, a CSI erase-line, and a bare CR: the three shapes a
+        // crafted `source_file` would use to forge or overwrite terminal output.
+        let hostile = "\x1b]0;pwned\x07\x1b[2K\rgit push --force\n";
+        let safe = escape_control(hostile);
+        assert!(
+            !safe.chars().any(char::is_control),
+            "control chars survived: {safe:?}"
+        );
+        assert!(safe.contains("\\x1b"), "ESC not escaped visibly: {safe:?}");
+        assert!(safe.contains("\\x0d"), "CR not escaped visibly: {safe:?}");
+        // The payload text is kept, just defanged, so the author still sees it.
+        assert!(safe.contains("git push --force"));
+    }
+
+    #[test]
+    fn c1_controls_are_escaped_too() {
+        // U+009D is a one-byte OSC introducer on terminals that decode C1.
+        let safe = escape_control("a\u{9d}0;x\u{9c}b");
+        assert!(!safe.chars().any(char::is_control), "{safe:?}");
+        assert_eq!(safe, "a\\x9d0;x\\x9cb");
+    }
 }
