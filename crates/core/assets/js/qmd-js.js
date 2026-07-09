@@ -156,6 +156,13 @@
         pre.className = "tali-js-error";
         pre.textContent = String((e && e.stack) || e);
         container.replaceChildren(pre);
+      } finally {
+        // A finished run, whether or not it painted. `data-qmd-ran` is stamped at
+        // registration (before the cell body runs), and a cell may legitimately emit
+        // no DOM (a `//| name:` value publisher, an `//| input:` effect), so neither
+        // that attribute nor "the output div has children" says the cell is done.
+        // This one does, which is what a screenshot harness has to wait on.
+        script.setAttribute("data-qmd-done", "1");
       }
     }
 

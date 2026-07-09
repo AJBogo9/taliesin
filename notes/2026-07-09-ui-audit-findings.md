@@ -33,9 +33,52 @@ audit output. Read these corrections first:**
 
 **Re-classified, NOT fixed:** #7 + #12 are **design choices** that contradict the stated
 intent at `base.css:365-367`, not defects (owner ruling pending; see `backlog.md`).
-#9, #11, #13, #14 are **content fixes** in `.tmd` sources, not engine defects (Tier 1).
-**#13 needs re-diagnosis:** its page was also serving stale cached figures (#2), so the
-screenshot the audit judged may not reflect current source.
+
+**FIXED 2026-07-09 (content batch):** all four of #9, #11, #13 and #14 were content fixes in
+`.tmd` sources, not engine defects. Each was re-diagnosed against current source (not the
+audit's screenshots) and browser-verified with the pre-fix state re-injected as a
+counterfactual:
+
+- **#9** confirmed by parsing both label forms with the page's own bundled mermaid
+  (11.4.1): the unquoted `(` is lexed as the shape-open token `PS` and throws
+  `Parse error on line 2`; the quoted form parses and still renders `<br/>` as a real line
+  break (`htmlLabels` is on, since `taliMermaidConfig` never overrides it).
+- **#13** confirmed *mechanically*, so the stale-`_freeze` confound (#2) is irrelevant:
+  `kernel.rs` `_qmd_recolour` recolours only `Text`, spines, ticklines and gridlines, makes
+  axes backgrounds transparent, and leaves **data artists untouched** ("Data colours are
+  untouched", `kernel.rs:126-142`). An explicit `color="white"` on a `Line2D` therefore
+  survives into the light variant. Measured in the built PNG: 1236 opaque pure-white pixels
+  in the bottom panel, composited onto `--tali-bg: #ffffff` at **contrast 1.00:1**. The
+  "Sum of all three notes (what you actually hear)" panel therefore rendered *completely empty*
+  on the light theme. Fixed with `#8b5cf6` (4.23:1 light / 4.19:1 dark / 3.60:1 sepia; the
+  theoretical optimum for a colour that must clear 3:1 on both grounds is L≈0.2022, and
+  `#8b5cf6` measures L=0.198). The HTML legend swatch (`color:white`, "The chord") had the
+  same bug and was changed to match.
+- **#14** confirmed: `base.css:374` (`canvas, svg, video, iframe { max-width: 100% }`) clamps
+  the box only. With `width=520 height=630` and no `viewBox`, user units stay 1:1 px, so the
+  drawing is clipped rather than scaled. (`base.css:368` already pairs `max-width` with
+  `height:auto` for mermaid, the correct pattern.) Verified at 390/900/1440: aspect ratio
+  preserved, no parent or document overflow.
+- **#11** confirmed and **worse than triaged**, not merely "plausible". `Plot.tickX` given no
+  `y` channel spans the **full frame height**, so the "rug" is really full-height rules that
+  cross the μ/σ labels, which are filled with the same per-component colours. Dark is
+  genuinely illegible. Fixed with a `var(--tali-bg)` halo (`paint-order: stroke`), which
+  leaves `fill`, the colour encoding, untouched, and stays correct across a live theme flip.
+
+**NEW, found by a collateral sweep (not in the original audit): `pca-geometry` had the exact
+same bug as #13.** `ax2.plot(cumulative_var * 100, color="white", …)` made the scree plot's
+cumulative-variance line invisible on light, leaving a labelled right-hand axis
+("Cumulative variance (%)") measuring a series that was never drawn. The audit missed it
+because pca-geometry was one of the three pages serving stale `_freeze` output (#2); fixing
+the cache is what exposed it. Fixed with the same `#8b5cf6`, plus `alpha` 0.7 → 0.9 (at 0.7
+even violet only reaches 2.64:1, below the 3:1 non-text threshold).
+
+Cleared by the same sweep, **deliberately not changed** (each composited onto the real light
+background and inspected): `Kruskal-Wallis` `axvline(color="white")` + `hist(edgecolor=…)`,
+`em-algorithm` `hist(edgecolor="white")`, `Kruskal-Wallis` `Plot.dot(stroke:"white")`. The
+median dashes still read where they cross a coloured bar, and white bar-edges act as
+separators on white. `pca-geometry`'s three remaining `color="white"` sites are `Text`
+artists, which the engine recolours. `KL-divergence`'s white pixels are a legend frame.
 
 ---
 
@@ -218,3 +261,37 @@ that never idles, or a runaway animation loop) is a real reader-facing risk wort
 investigating directly. Re-capture these three in isolation (`node capture-run.mjs --only
 'a-star' --only 'showcase' --only 'reactive__graph'`, single browser, no `--parallel`)
 and, if they still never settle, treat the non-settling as the bug.
+
+### RESOLVED 2026-07-09: the non-settling was the *harness*, not the pages
+
+The hypothesis above is **refuted**. Driven in isolation, all three pages screenshot fine
+(503 KB / 331 KB / 77 KB in 58-264 ms). None of them has a runaway loop:
+
+| Page | Reality |
+|---|---|
+| `reactive__graph` | Zero loop primitives. Fully idle after its cells run. |
+| `a-star` | Its `setTimeout(animTick)` chain is user-gated (`btnAnimate.onclick`), idle on load, torn down on `invalidation`. |
+| `showcase` | A deliberate `requestAnimationFrame` WebGL orbit, gated on `IntersectionObserver` + `prefers-reduced-motion` and disposed via `invalidation`. |
+
+The real cause was a **false negative in the harness's `settle()` predicate**. `jsOk`
+required every `.tali-js-cell` to have a `.tali-js-out` with `childElementCount > 0`, but
+`qmd-js.js` only fills that div `if (node instanceof Node)`. A `//| name:` value publisher
+returns a Number, and an `//| input:` effect returns `undefined`, so those cells stay empty
+forever and `jsOk` can never become true. Each of the three pages has exactly one such
+cell, and each had *already run* (its `<script>` was stamped). So `settle()` always burned
+its full 6 s timeout, then screenshotted anyway. The 15 missing shots were collateral of the
+`--parallel` tab-leak deadlock, not of any per-page wedge.
+
+The obvious fix, gate `jsOk` on `data-qmd-ran`, is **wrong**: that attribute is stamped at
+*registration*, before `runSequentially` executes any cell body, so it would trade a false
+negative for premature capture. `qmd-js.js` now stamps `data-qmd-done` in a `finally` when a
+cell's `run()` resolves, and `jsOk` gates on that (falling back to the old child-count rule
+for pages built by an older binary, and for cyclic cells, which are never run but do paint a
+diagnostic). All three pages now report `settled: true` in 66-213 ms instead of timing out.
+
+Re-captured and audited at 390/900/1440 × light/dark: **no reader-facing bugs**, no console
+errors, no horizontal overflow. One capture artifact worth knowing: `showcase`'s 3D canvas is
+absent from a no-scroll full-page shot at 390px, because its `IntersectionObserver` never
+fires when the host is below the fold. A reader who scrolls does get it (verified: 358×460),
+and emulating `prefers-reduced-motion: reduce` builds it synchronously, the cheapest way to
+make the harness capture it.

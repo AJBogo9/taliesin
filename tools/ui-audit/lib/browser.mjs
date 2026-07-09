@@ -120,6 +120,14 @@ export async function settle(page, { timeout = 6000 } = {}) {
         );
         const jsOk = [...document.querySelectorAll('.tali-js-cell')].every(
           (c) => {
+            // A `{js}` cell can finish having painted nothing (a `//| name:` value
+            // publisher returns a Number; an `//| input:` effect returns undefined),
+            // so child-count alone reports those cells as never-settled forever.
+            // `data-qmd-done` is stamped when the cell's run() resolves.
+            const s = c.querySelector('script[type="application/qmd-js"]');
+            if (s && s.hasAttribute('data-qmd-done')) return true;
+            // Fallback for pages built by a binary predating that signal, and for
+            // cells excluded from the run (a dependency cycle paints a diagnostic).
             const o = c.querySelector('.tali-js-out');
             return !o || o.childElementCount > 0;
           },

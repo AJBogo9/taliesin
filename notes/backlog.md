@@ -36,7 +36,15 @@ and the **2026-07-09 UI-audit engine batch** (findings #1/#3/#4/#5/#6/#8/#10 fro
 re-injected as a counterfactual; plus finding #2, the stale-`_freeze` figure bug, fixed at its real root:
 `FORMAT_VERSION` had never been bumped since it was introduced, so the `qmd-fig-*` → `tali-fig-*` rename
 [`8bb0a65`] silently orphaned every cached figure. Bumping it to 3 makes the loader discard all pre-v3
-entries and self-heal on the next build, so no cache file had to be deleted by hand).
+entries and self-heal on the next build, so no cache file had to be deleted by hand), and the
+**2026-07-09 UI-audit content batch** (findings #9/#11/#13/#14, each re-diagnosed from source rather than
+from the audit's screenshots and browser-verified with the pre-fix state re-injected as a counterfactual;
+plus `pca-geometry`'s previously-unknown twin of #13, which the stale `_freeze` had been masking: its
+scree plot's cumulative-variance line was invisible on light, at contrast 1.00:1, leaving a labelled right
+axis measuring a series that was never drawn). The same batch resolved the never-settling-pages question:
+not a runaway loop but a `settle()` false negative, since a `//| name:` value cell legitimately paints no
+DOM; `qmd-js.js` now stamps `data-qmd-done` when a cell's `run()` resolves and the harness gates on that
+(the tempting `data-qmd-ran` is stamped *before* cells run, so it would have caused premature capture).
 
 **Working method:** branch per feature; brainstorm if there's a fork; spec under
 `docs/superpowers/specs/`; implement TDD; verify (cargo + browser via chrome-devtools, or the
@@ -52,29 +60,22 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
 ## Priority queue
 
 ### Tier 1 — decided, build-ready (no blocker)
-- **UI-audit content fixes (4 one-liners in `.tmd` sources, not engine defects).** Triaged + source-
-  verified 2026-07-09; the engine half of that audit already landed. Each is a single-line edit:
-  - **#9** `docs/internals/architecture.tmd:196`: an unquoted mermaid pipe-label edge has a literal
-    `(` right after `<br/>`, which mermaid's lexer rejects (Figure 4 renders as the error bomb). Quote
-    the label. The engine passes mermaid through verbatim by design; this is a content typo.
-  - **#14** `corpus/tech-blog/posts/fourier-transform/index.tmd:417-418`: the `{js}` cell's `d3.create("svg")`
-    sets width/height but no `viewBox`, so `svg { max-width: 100% }` clamps the box without rescaling the
-    absolute-pixel coordinates and the winding plot renders off-centre + clipped at mobile. Add a `viewBox`.
-  - **#13** `corpus/tech-blog/posts/fourier-transform/index.tmd:120`: `axes[3].plot(..., color="white")` is
-    invisible in the light variant (the dual-theme preamble deliberately never recolours `Line2D` artists).
-    Pick a mid-tone with contrast on both grounds. **CAVEAT: re-diagnose before editing.** That page was
-    ALSO serving a stale `_freeze` entry (finding #2, fixed 2026-07-09), so the screenshot the audit judged
-    may have been of orphaned cached output. Rebuild first, then look.
-  - **#11** `corpus/posts/em-algorithm/index.tmd:336-368`: `Plot.text()` annotation labels sit at each
-    component's own mean, filled with that component's rug-tick colour, so they fuse with the dense tick
-    band (worst in dark). Triage rates this PLAUSIBLE + arguably a deliberate colour encoding; if you want
-    it changed the minimal fix is a halo/offset, not a re-colour.
-- **Re-capture the 3 never-settling pages** (`tech-blog /posts/a-star/`, `site /showcase.html`,
-  `reactive__graph /index.html`). 15 of 534 cells have no screenshot because the renderer never reached a
-  settled state inside the 60s watchdog, so they were never audited. Run them in isolation
-  (`node capture-run.mjs --only 'a-star' --only 'showcase' --only 'reactive__graph'`, single browser, no
-  `--parallel`); **if they still never settle, the non-settling IS the bug** (a runaway `{js}`/canvas loop
-  that never idles is a real reader-facing risk). See `2026-07-09-ui-audit-findings.md` §7.
+Empty. The UI-audit content batch (#9/#11/#13/#14, plus the `pca-geometry` twin of #13 that a
+collateral sweep turned up) and the never-settling-pages investigation both landed 2026-07-09.
+The three pages were never a runaway loop: it was a false negative in the harness's `settle()`
+predicate. Detail + evidence in `2026-07-09-ui-audit-findings.md` (triage header and §7).
+
+**Two carry-overs, neither an open task:**
+- The `showcase` 3D canvas is absent from a no-scroll full-page capture at 390px, because its
+  `IntersectionObserver` never fires while the host is below the fold. A reader who scrolls
+  gets it. To make the harness capture it, emulate `prefers-reduced-motion: reduce` in
+  `browser.mjs` `forceTheme`; `build()` then runs synchronously. Cheap, and a UI audit arguably
+  *wants* the reduced-motion rendering. The cost is that it would then never see the animated
+  one. Not decided.
+- `corpus/posts/<slug>/index.tmd` and `corpus/tech-blog/posts/<slug>/index.tmd` are **byte-identical
+  duplicates** for `fourier-transform`, `pca-geometry` and `em-algorithm` (two live corpus
+  documents each, both in the regression net). A content fix must land in both or the net keeps a
+  broken copy. Nothing enforces this today; a test asserting the pairs stay identical would.
 
 ### Decided 2026-07-07 — each needs its own dedicated session
 - **Quarto design-decisions catalog triage, reframed.** Branch `quarto-decisions-catalog`, commit
