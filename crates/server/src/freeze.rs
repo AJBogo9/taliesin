@@ -43,7 +43,10 @@ use serde::{Deserialize, Serialize};
 /// cumulative key wouldn't move on its own). A mismatch makes the loader treat the
 /// file as empty (and the next save rewrites it fresh). v2: the Python bridge
 /// emits `<script type="qmd-define">` (was `ojs-define`) for native `{js}` cells.
-const FORMAT_VERSION: u32 = 2;
+/// v3: a dual-theme figure emits `tali-fig-light` / `tali-fig-dark` (was `qmd-fig-*`);
+/// entries cached before that rename still hold the old classes, which no current CSS
+/// rule hides, so both variants would render stacked.
+const FORMAT_VERSION: u32 = 3;
 
 /// Per-page entry cap. Entries beyond the live set are kept (so toggling an edit
 /// back and forth restores instantly instead of re-running) up to this bound, then
