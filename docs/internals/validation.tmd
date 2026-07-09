@@ -159,6 +159,7 @@ analysis over the rendered block model, plus the cross-page checks in the site l
 | Local links | `validate_local_links` | a relative `[text](other.tmd)` link whose target file (or its `.tmd` source) is missing |
 | Reactive graph | `validate_js_reactive_graph` | a `{js}` cell's `//\| input:` naming nothing defined, or a dependency cycle |
 | Accessibility | `validate_a11y` | a heading-level skip, an `<a>`/`<button>` with no accessible name, an `<img>` with no `alt` |
+| Code languages | `validate_code_languages` | a fence whose language resolves to no syntax, so it silently renders unhighlighted (a typo like ` ```pyton `). Tokens that are plain on purpose — `text`, `txt`, `plain`, `console`, `output`, `none` — never warn |
 | Citations | `citations_without_bibliography` | references present but no `bibliography:` declared |
 
 Each lint is conservative by design, so a green `check` is a no-false-positive promise.
