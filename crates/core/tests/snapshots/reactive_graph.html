@@ -1,0 +1,33 @@
+<header class="tali-title-block" data-block-id="qmd-title-block"><h1 class="title">Reactive cells: a dependency graph</h1></header>
+<p data-block-id="b-8929cc4e88d2" data-sourcepos="5:1-8:52"><code>{js}</code> cells form a dependency graph through <code>//| viewof</code> (a named input control),
+<code>//| name</code> (a value a cell publishes), and <code>//| input</code> (what a cell consumes). Moving a
+slider re-runs only the cells downstream of it, in dependency order, including cells that
+depend on it <em>transitively</em> through a derived value.</p>
+<div data-block-id="b-cac16907122a" data-sourcepos="10:1-18:3" class="cell tali-js-cell"><div class="tali-js-out" id="qmd-js-b-cac16907122a"></div><script type="application/qmd-js" data-target="qmd-js-b-cac16907122a" data-viewof="n">const input = document.createElement("input");
+input.type = "range"; input.min = "1"; input.max = "12"; input.step = "1"; input.value = "3";
+const wrap = document.createElement("label");
+wrap.style.cssText = "display:flex;gap:.6rem;align-items:center";
+wrap.append("n", input);
+return wrap;
+</script></div>
+<p data-block-id="b-9e9e2f18baed" data-sourcepos="20:1-20:81">The next cell publishes a derived value, <code>squared</code>, that consumes the slider <code>n</code>:</p>
+<div data-block-id="b-051c8211e167" data-sourcepos="22:1-26:3" class="cell tali-js-cell"><div class="tali-js-out" id="qmd-js-b-051c8211e167"></div><script type="application/qmd-js" data-target="qmd-js-b-051c8211e167" data-name="squared" data-inputs="n">return qmd.value("n") ** 2;
+</script></div>
+<p data-block-id="b-13718617ae5d" data-sourcepos="28:1-29:83">This cell consumes <code>squared</code> — a derived <code>//| name</code>, not the slider itself — so it stays
+in sync only because the change propagates transitively (<code>n → squared → here</code>):</p>
+<div data-block-id="b-3f36944bec0b" data-sourcepos="31:1-36:3" class="cell tali-js-cell"><div class="tali-js-out" id="qmd-js-b-3f36944bec0b"></div><script type="application/qmd-js" data-target="qmd-js-b-3f36944bec0b" data-inputs="squared">const p = document.createElement("p");
+p.textContent = "n squared = " + qmd.get("squared");
+return p;
+</script></div>
+<p data-block-id="b-0cb2b8f11d0e" data-sourcepos="38:1-38:75">A second, independent slider drives its own cell, untouched when <code>n</code> moves:</p>
+<div data-block-id="b-2901c159c1a9" data-sourcepos="40:1-48:3" class="cell tali-js-cell"><div class="tali-js-out" id="qmd-js-b-2901c159c1a9"></div><script type="application/qmd-js" data-target="qmd-js-b-2901c159c1a9" data-viewof="m">const input = document.createElement("input");
+input.type = "range"; input.min = "1"; input.max = "12"; input.step = "1"; input.value = "5";
+const wrap = document.createElement("label");
+wrap.style.cssText = "display:flex;gap:.6rem;align-items:center";
+wrap.append("m", input);
+return wrap;
+</script></div>
+<div data-block-id="b-ced68072a5ab" data-sourcepos="50:1-55:3" class="cell tali-js-cell"><div class="tali-js-out" id="qmd-js-b-ced68072a5ab"></div><script type="application/qmd-js" data-target="qmd-js-b-ced68072a5ab" data-inputs="m">const p = document.createElement("p");
+p.textContent = "m doubled = " + (qmd.value("m") * 2);
+return p;
+</script></div>

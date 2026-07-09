@@ -1,0 +1,41 @@
+<header class="tali-title-block" data-block-id="qmd-title-block"><h1 class="title">Reactive inputs</h1></header>
+<p data-block-id="b-5fa1d21cb969" data-sourcepos="5:1-6:88"><code>{{&lt; input &gt;}}</code> emits a labeled control whose value is a reactive node. A <code>{js}</code> cell that
+lists the name in <code>//| input:</code> re-runs when the control changes, including transitively.</p>
+<div class="tali-input" data-block-id="b-baf0a62a9d1d" data-sourcepos="8:1-8:250"><label class="tali-input-label" for="qin-8">k</label><input id="qin-8" class="tali-input-control" data-qmd-input="k" type="range" min="1" max="10" step="1" value="3"><output class="tali-input-out" data-qmd-out>3</output></div>
+
+<div data-block-id="b-7835c62a2fb5" data-sourcepos="10:1-14:3" class="cell tali-js-cell"><div class="tali-js-out" id="qmd-js-b-7835c62a2fb5"></div><script type="application/qmd-js" data-target="qmd-js-b-7835c62a2fb5" data-name="doubled" data-inputs="k">return qmd.value("k") * 2;
+</script></div>
+<div data-block-id="b-6e161c4d87ea" data-sourcepos="16:1-21:3" class="cell tali-js-cell"><div class="tali-js-out" id="qmd-js-b-6e161c4d87ea"></div><script type="application/qmd-js" data-target="qmd-js-b-6e161c4d87ea" data-inputs="doubled">const p = document.createElement("p");
+p.textContent = "k doubled (transitively) = " + qmd.get("doubled");
+return p;
+</script></div>
+<p data-block-id="b-3941f083fd9f" data-sourcepos="23:1-23:78">A number, a checkbox, a text box, and a dropdown, each driving their own cell:</p>
+<div class="tali-input" data-block-id="b-46d7476af388" data-sourcepos="25:1-25:201"><label class="tali-input-label" for="qin-25">n</label><input id="qin-25" class="tali-input-control" data-qmd-input="n" type="number" min="0" max="100" step="5" value="20"></div>
+
+<div data-block-id="b-e3e617600a1f" data-sourcepos="27:1-32:3" class="cell tali-js-cell"><div class="tali-js-out" id="qmd-js-b-e3e617600a1f"></div><script type="application/qmd-js" data-target="qmd-js-b-e3e617600a1f" data-inputs="n">const p = document.createElement("p");
+p.textContent = "n = " + qmd.value("n");
+return p;
+</script></div>
+<div class="tali-input" data-block-id="b-5a4ed9a0130a" data-sourcepos="34:1-34:180"><label class="tali-input-label" for="qin-34">enabled</label><input id="qin-34" class="tali-input-control" data-qmd-input="on" type="checkbox" checked></div>
+
+<div data-block-id="b-1ccf03f8b853" data-sourcepos="36:1-41:3" class="cell tali-js-cell"><div class="tali-js-out" id="qmd-js-b-1ccf03f8b853"></div><script type="application/qmd-js" data-target="qmd-js-b-1ccf03f8b853" data-inputs="on">const p = document.createElement("p");
+p.textContent = qmd.value("on") ? "enabled" : "disabled";
+return p;
+</script></div>
+<div class="tali-input" data-block-id="b-d207779b23d0" data-sourcepos="43:1-43:179"><label class="tali-input-label" for="qin-43">query</label><input id="qin-43" class="tali-input-control" data-qmd-input="q" type="text" value="hello"></div>
+
+<div data-block-id="b-66a7c11eadac" data-sourcepos="45:1-50:3" class="cell tali-js-cell"><div class="tali-js-out" id="qmd-js-b-66a7c11eadac"></div><script type="application/qmd-js" data-target="qmd-js-b-66a7c11eadac" data-inputs="q">const p = document.createElement("p");
+p.textContent = "query: " + qmd.value("q");
+return p;
+</script></div>
+<div class="tali-input" data-block-id="b-f2b89c262553" data-sourcepos="52:1-52:239"><label class="tali-input-label" for="qin-52">channel</label><select id="qin-52" class="tali-input-control" data-qmd-input="c"><option>alpha</option><option selected>beta</option><option>gamma</option></select></div>
+
+<div data-block-id="b-ec56c8d5cfc6" data-sourcepos="54:1-59:3" class="cell tali-js-cell"><div class="tali-js-out" id="qmd-js-b-ec56c8d5cfc6"></div><script type="application/qmd-js" data-target="qmd-js-b-ec56c8d5cfc6" data-inputs="c">const p = document.createElement("p");
+p.textContent = "channel: " + qmd.value("c");
+return p;
+</script></div>
+<p data-block-id="b-4f513ba9f7ec" data-sourcepos="61:1-61:40">One cell reading several inputs at once:</p>
+<div data-block-id="b-a0e8559c7d7d" data-sourcepos="63:1-68:3" class="cell tali-js-cell"><div class="tali-js-out" id="qmd-js-b-a0e8559c7d7d"></div><script type="application/qmd-js" data-target="qmd-js-b-a0e8559c7d7d" data-inputs="k,n,on">const p = document.createElement("p");
+p.textContent = `k=${qmd.value("k")} n=${qmd.value("n")} on=${qmd.value("on")}`;
+return p;
+</script></div>
