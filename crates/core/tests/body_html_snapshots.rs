@@ -72,14 +72,28 @@ fn assert_snapshot(name: &str, rel: &str) {
         )
     });
 
-    if let Some((line, got, want)) = first_divergence(&actual, &expected) {
-        panic!(
-            "`{rel}` body_html drifted from its snapshot at line {line}\n\
-             \x20 actual:   {got}\n\
-             \x20 snapshot: {want}\n\n\
-             If the change is intentional, rerun with UPDATE_SNAPSHOTS=1 and review the diff."
-        );
+    // Compare the full bytes. `first_divergence` only *locates* a mismatch: it walks
+    // `lines()`, which drops line terminators, so it cannot see a trailing-newline or
+    // CRLF difference on its own.
+    if actual == expected {
+        return;
     }
+    let where_ = match first_divergence(&actual, &expected) {
+        Some((line, got, want)) => format!(
+            "at line {line}\n\x20 actual:   {got}\n\x20 snapshot: {want}",
+            got = got,
+            want = want
+        ),
+        None => format!(
+            "only in trailing whitespace ({} bytes vs {})",
+            actual.len(),
+            expected.len()
+        ),
+    };
+    panic!(
+        "`{rel}` body_html drifted from its snapshot {where_}\n\n\
+         If the change is intentional, rerun with UPDATE_SNAPSHOTS=1 and review the diff."
+    );
 }
 
 #[test]

@@ -15,23 +15,43 @@
 
 use std::sync::OnceLock;
 use syntect::html::{ClassStyle, ClassedHTMLGenerator};
-use syntect::parsing::SyntaxSet;
+use syntect::parsing::{SyntaxReference, SyntaxSet};
 use syntect::util::LinesWithEndings;
 
 /// Prefix on every emitted scope class, so they can't collide with page CSS and
 /// are easy to target (`.tali-hl-keyword`, `.tali-hl-string`, …).
 const CLASS_STYLE: ClassStyle = ClassStyle::SpacedPrefixed { prefix: "tali-hl-" };
 
-/// The syntax set, loaded once: syntect's defaults plus the `bat`-curated extras.
-/// The extras are why `typescript` and `toml` highlight at all: syntect's bundled
-/// set carries neither, so both rendered as plain text before. `_newlines` is the
-/// variant the line-based `ClassedHTMLGenerator` expects.
-fn syntaxes() -> &'static SyntaxSet {
+/// syntect's bundled syntaxes. `_newlines` is the variant the line-based
+/// `ClassedHTMLGenerator` expects.
+fn bundled() -> &'static SyntaxSet {
+    static SS: OnceLock<SyntaxSet> = OnceLock::new();
+    SS.get_or_init(SyntaxSet::load_defaults_newlines)
+}
+
+/// The `bat`-curated extras, consulted **only** when [`bundled`] has no syntax for
+/// a token. This is not a superset of syntect's defaults: it is a separate curated
+/// set whose definitions for shared languages (Rust, Python, JavaScript, JSON,
+/// HTML, YAML) emit *different* scope spans. Preferring it wholesale would silently
+/// re-highlight every existing code block in every document, so the bundled set
+/// always wins and the extras supply only what it lacks: TypeScript and TOML.
+///
+/// Loaded lazily, so a document that uses neither never pays to deserialize it.
+fn extras() -> &'static SyntaxSet {
     static SS: OnceLock<SyntaxSet> = OnceLock::new();
     SS.get_or_init(two_face::syntax::extra_newlines)
 }
 
-/// Map a markdown language token to a token the syntax set knows.
+/// Resolve a token to its syntax **and the set that owns it** (the generator must be
+/// given the owning set, since a `SyntaxReference` indexes into it).
+fn resolve(token: &str) -> Option<(&'static SyntaxReference, &'static SyntaxSet)> {
+    if let Some(s) = bundled().find_syntax_by_token(token) {
+        return Some((s, bundled()));
+    }
+    extras().find_syntax_by_token(token).map(|s| (s, extras()))
+}
+
+/// Map a markdown language token to a token the syntax sets know.
 fn alias(lang: &str) -> &str {
     match lang {
         "ojs" | "js" => "javascript",
@@ -55,7 +75,7 @@ const INTENTIONALLY_PLAIN: [&str; 6] = ["text", "txt", "plain", "console", "outp
 ///
 /// A pure query: it cannot change what [`highlight`] emits.
 pub fn known_language(lang: &str) -> bool {
-    INTENTIONALLY_PLAIN.contains(&lang) || syntaxes().find_syntax_by_token(alias(lang)).is_some()
+    INTENTIONALLY_PLAIN.contains(&lang) || resolve(alias(lang)).is_some()
 }
 
 /// Highlight a fenced code block's `code` for `lang`, returning the inner HTML for
@@ -63,8 +83,7 @@ pub fn known_language(lang: &str) -> bool {
 /// scope spans. An unknown/missing language (or any highlighter error) falls back
 /// to plain escaped text, so output is always valid and never panics.
 pub fn highlight(code: &str, lang: Option<&str>) -> String {
-    let ss = syntaxes();
-    let Some(syntax) = lang.map(alias).and_then(|t| ss.find_syntax_by_token(t)) else {
+    let Some((syntax, ss)) = lang.map(alias).and_then(resolve) else {
         return crate::render::html_escape(code);
     };
     let mut hl = ClassedHTMLGenerator::new_with_class_style(syntax, ss, CLASS_STYLE);
@@ -118,34 +137,59 @@ mod tests {
         assert!(toml.contains("tali-hl-"), "toml not highlighted: {toml}");
     }
 
-    /// Swapping the syntax set must not silently re-resolve a language the corpus
-    /// already renders: that would drift every affected document's HTML.
+    /// Adding the extras must not re-highlight a language syntect already knew.
+    ///
+    /// Comparing `SyntaxReference::name` is **not** enough: the extras carry their own
+    /// "Rust"/"Python"/… definitions under identical names but different contexts, so a
+    /// name check passes while the emitted bytes drift. Assert instead that every
+    /// established token resolves *into the bundled set itself*.
     #[test]
-    fn established_languages_resolve_to_the_same_syntax() {
-        let ss = syntaxes();
-        for (token, expected) in [
-            ("rust", "Rust"),
-            ("rs", "Rust"),
-            ("bash", "Bourne Again Shell (bash)"),
-            ("sh", "Bourne Again Shell (bash)"),
-            ("zsh", "Bourne Again Shell (bash)"),
-            ("yaml", "YAML"),
-            ("yml", "YAML"),
-            ("js", "JavaScript"),
-            ("ojs", "JavaScript"),
-            ("markdown", "Markdown"),
-            ("python", "Python"),
-            ("py", "Python"),
-            ("json", "JSON"),
-            ("css", "CSS"),
-            ("html", "HTML"),
-            ("r", "R"),
-            ("bibtex", "BibTeX"),
+    fn established_languages_still_come_from_the_bundled_set() {
+        for token in [
+            "rust", "rs", "bash", "sh", "zsh", "yaml", "yml", "js", "ojs", "markdown", "python",
+            "py", "json", "css", "html", "r", "bibtex", "diff", "sql", "c",
         ] {
-            let got = ss
-                .find_syntax_by_token(alias(token))
-                .map(|s| s.name.as_str());
-            assert_eq!(got, Some(expected), "`{token}` re-resolved");
+            let (_, set) = resolve(alias(token)).unwrap_or_else(|| panic!("`{token}` unresolved"));
+            assert!(
+                std::ptr::eq(set, bundled()),
+                "`{token}` now resolves into the extras set; its highlighting would drift"
+            );
+        }
+    }
+
+    /// The bytes, not just the provenance: highlighting must match what the bundled
+    /// set alone produces. These six are the languages whose extras definition differs.
+    #[test]
+    fn established_languages_emit_unchanged_bytes() {
+        let ss = bundled();
+        for (token, code) in [
+            ("rust", "pub fn f(x: u32) -> u32 { x + 1 } // c\n"),
+            ("python", "def f(x):\n    return 'a' # c\n"),
+            ("js", "const a = 1; // c\n"),
+            ("json", "{\"a\": 1}\n"),
+            ("html", "<p class=\"x\">hi</p>\n"),
+            ("yaml", "a: 1 # c\n"),
+        ] {
+            let syntax = ss.find_syntax_by_token(alias(token)).unwrap();
+            let mut hl = ClassedHTMLGenerator::new_with_class_style(syntax, ss, CLASS_STYLE);
+            for line in LinesWithEndings::from(code) {
+                hl.parse_html_for_line_which_includes_newline(line).unwrap();
+            }
+            assert_eq!(
+                highlight(code, Some(token)),
+                hl.finalize(),
+                "`{token}` highlighting drifted from the bundled set"
+            );
+        }
+    }
+
+    /// The extras are the only place TypeScript and TOML can come from.
+    #[test]
+    fn typescript_and_toml_come_from_the_extras() {
+        for token in ["ts", "typescript", "toml"] {
+            assert!(bundled().find_syntax_by_token(alias(token)).is_none());
+            let (_, set) = resolve(alias(token)).expect("resolves via extras");
+            assert!(std::ptr::eq(set, extras()));
         }
     }
 

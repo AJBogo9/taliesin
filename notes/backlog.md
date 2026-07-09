@@ -52,8 +52,13 @@ terminal; `twinned_corpus_sources_stay_byte_identical`, which discovers the dupl
 walking both roots and fails on injected drift; `debug_assert!`s pinning the block-id uniqueness that
 `lcs_pairs`' LCS-to-LIS reduction silently assumes; **TypeScript and TOML now actually highlight**
 (syntect's bundled set carries neither, so 30 code blocks in the project's own docs rendered as plain
-text; fixed by loading `two_face::syntax::extra_newlines()`, with a test pinning all 17 established
-tokens to the syntax they resolved to before); `validate_code_languages`, which warns on a fence whose
+text; the `two-face` extras supply them, but the **bundled set is consulted first** and the extras only
+fill gaps: `two_face::syntax::extra_newlines()` is *not* a superset, it is bat's own curated set whose
+Rust/Python/JS/JSON/HTML/YAML definitions emit different scope spans, so preferring it wholesale would
+silently re-highlight every code block in every document. Caught in review; the first attempt did
+exactly that, guarded by a test that compared `SyntaxReference::name`, which is identical for the
+drifting languages. The guard now asserts provenance by pointer plus byte-equality against the bundled
+set, and fails if the preference order is flipped); `validate_code_languages`, which warns on a fence whose
 language resolves to nothing (the backlog's "needs an invasive warnings channel" excuse was false: the
 located-diagnostics channel already existed and `highlight()` is untouched); `corpus/highlight.tmd` +
 zero-dep `body_html()` snapshots for the four hermetic `{js}` docs. Six of the ten Tier-2 items scoped

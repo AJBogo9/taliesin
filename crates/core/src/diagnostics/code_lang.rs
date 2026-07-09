@@ -16,6 +16,13 @@ use crate::render::{Block, Warning};
 /// emit a bare `<pre class="mermaid">` with no `<code>` element. The literal
 /// `class="language-` cannot appear in code *content*, because a block's text is
 /// HTML-escaped (`class=&quot;language-`) before it is embedded.
+///
+/// **Known limitation.** Raw-HTML passthrough (an `HtmlBlock`, or a `{=html}` block)
+/// is emitted verbatim, so an author who hand-writes `<code class="language-xyz">`
+/// with a token no syntax matches is warned about a block this renderer never
+/// highlighted in the first place. Nothing in the block model distinguishes emitted
+/// code from passthrough HTML, and no corpus or docs page hits it, so the scan is
+/// left simple rather than made structural. If it ever bites, that is the fix.
 fn fence_languages(html: &str) -> Vec<&str> {
     const ATTR: &str = "class=\"language-";
     let mut out = Vec::new();
