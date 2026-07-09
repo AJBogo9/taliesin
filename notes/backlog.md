@@ -7,13 +7,13 @@ Output stays **HTML-only**. Roadmap: `ROADMAP.md`.
 > Kept small (read often). **Only open tasks live here** — delete items once landed; don't
 > leave `[x]`. Completed work is in git + `ROADMAP.md` / `native-rewrite.md` / `AUDITS.md`.
 
-## State (2026-07-08)
+## State (2026-07-09)
 
-Local `main` runs ahead of `origin` between sessions (the author syncs `main`↔`origin`), v0.2.0. All four formats render + deploy;
+v0.2.0. All four formats render + deploy;
 the dev loop is strong (block-level incremental updates with DOM-state preservation, warm server +
 Jupyter kernel, `_freeze` cache, Alt-click + reverse cursor sync, located diagnostics, CSS hot-swap,
-Cmd-K search). The author pushes/syncs between sessions; agents commit + fast-forward-merge to local
-main on request, never push.
+Cmd-K search). Agents commit + fast-forward-merge to local main on request, and push to `origin/main`
+when the author explicitly asks.
 
 **Recently shipped** (detail in git + `ROADMAP.md` / `native-rewrite.md` / `AUDITS.md`): the native
 rewrite + roadmap Waves 0-4, the reader cluster, `check`/prose-lint + `{input}`/scrolly, the `--bare`
@@ -30,7 +30,13 @@ single-doc and site dev servers can't drift on the block-level incremental invar
 the handler; the active-nav highlight surviving a `#fragment`/`?query` nav href), and the audit
 top-leverage #7 fix (the same-page hover link-preview card now strips the cloned block's
 `data-block-id`/`data-sourcepos`/`data-source-file` via a shared `stripSourceAttrs` that also covers
-the cross-page card, so the read-only preview is never a duplicate-block-id or a click-to-source target).
+the cross-page card, so the read-only preview is never a duplicate-block-id or a click-to-source target),
+and the **2026-07-09 UI-audit engine batch** (findings #1/#3/#4/#5/#6/#8/#10 from
+`2026-07-09-ui-audit-findings.md`, all CSS, each re-measured in-browser at 390/900/1440 with the old rule
+re-injected as a counterfactual; plus finding #2, the stale-`_freeze` figure bug, fixed at its real root:
+`FORMAT_VERSION` had never been bumped since it was introduced, so the `qmd-fig-*` → `tali-fig-*` rename
+[`8bb0a65`] silently orphaned every cached figure. Bumping it to 3 makes the loader discard all pre-v3
+entries and self-heal on the next build, so no cache file had to be deleted by hand).
 
 **Working method:** branch per feature; brainstorm if there's a fork; spec under
 `docs/superpowers/specs/`; implement TDD; verify (cargo + browser via chrome-devtools, or the
@@ -46,9 +52,29 @@ Empty — the three prior blockers were ruled on 2026-07-07 (see Priority queue 
 ## Priority queue
 
 ### Tier 1 — decided, build-ready (no blocker)
-- Empty — the 2026-07-07 audit implementation queue is fully landed (Batches 1-9 + the Batch 8
-  consolidation). Next build-ready work = promote a "Decided 2026-07-07" dedicated-session item, or
-  pull a Tier-2 hardening item forward.
+- **UI-audit content fixes (4 one-liners in `.tmd` sources, not engine defects).** Triaged + source-
+  verified 2026-07-09; the engine half of that audit already landed. Each is a single-line edit:
+  - **#9** `docs/internals/architecture.tmd:196`: an unquoted mermaid pipe-label edge has a literal
+    `(` right after `<br/>`, which mermaid's lexer rejects (Figure 4 renders as the error bomb). Quote
+    the label. The engine passes mermaid through verbatim by design; this is a content typo.
+  - **#14** `corpus/tech-blog/posts/fourier-transform/index.tmd:417-418`: the `{js}` cell's `d3.create("svg")`
+    sets width/height but no `viewBox`, so `svg { max-width: 100% }` clamps the box without rescaling the
+    absolute-pixel coordinates and the winding plot renders off-centre + clipped at mobile. Add a `viewBox`.
+  - **#13** `corpus/tech-blog/posts/fourier-transform/index.tmd:120`: `axes[3].plot(..., color="white")` is
+    invisible in the light variant (the dual-theme preamble deliberately never recolours `Line2D` artists).
+    Pick a mid-tone with contrast on both grounds. **CAVEAT: re-diagnose before editing.** That page was
+    ALSO serving a stale `_freeze` entry (finding #2, fixed 2026-07-09), so the screenshot the audit judged
+    may have been of orphaned cached output. Rebuild first, then look.
+  - **#11** `corpus/posts/em-algorithm/index.tmd:336-368`: `Plot.text()` annotation labels sit at each
+    component's own mean, filled with that component's rug-tick colour, so they fuse with the dense tick
+    band (worst in dark). Triage rates this PLAUSIBLE + arguably a deliberate colour encoding; if you want
+    it changed the minimal fix is a halo/offset, not a re-colour.
+- **Re-capture the 3 never-settling pages** (`tech-blog /posts/a-star/`, `site /showcase.html`,
+  `reactive__graph /index.html`). 15 of 534 cells have no screenshot because the renderer never reached a
+  settled state inside the 60s watchdog, so they were never audited. Run them in isolation
+  (`node capture-run.mjs --only 'a-star' --only 'showcase' --only 'reactive__graph'`, single browser, no
+  `--parallel`); **if they still never settle, the non-settling IS the bug** (a runaway `{js}`/canvas loop
+  that never idles is a real reader-facing risk). See `2026-07-09-ui-audit-findings.md` §7.
 
 ### Decided 2026-07-07 — each needs its own dedicated session
 - **Quarto design-decisions catalog triage, reframed.** Branch `quarto-decisions-catalog`, commit
@@ -192,6 +218,16 @@ renaming those is a separate verify-each-alias pass, not a mechanical sweep.
 `qmdFast.*` (VS Code config), `qhl-*` (highlight scope).
 
 ### Owner-gated: do NOT build without your ruling
+- **Scroll-vs-shrink for embedded media (UI-audit #7 + #12), CONFIRMED but a design choice, not a defect.**
+  `base.css:365-367` states the intent outright: embedded media (`canvas, svg, video, iframe`) is "clamped
+  to the page width so a fixed-size canvas can't force a horizontal scroll on mobile". The scroll-not-shrink
+  treatment (`overflow-x: auto` + scroll shadow) is deliberately reserved for *text* content: `pre`, `table`,
+  and now `.katex-display`. The consequence is that a wide **mermaid diagram** (#7) shrinks its `foreignObject`
+  labels to ~5.8px at 390px, and the **features.html demo video** (#12) downscales baked-in desktop text ~3x.
+  The ruling you owe: *is a mermaid diagram text-you-must-read (→ table treatment) or embedded media (→ keep
+  the clamp)?* Flipping #7 costs `pre.mermaid { overflow-x: auto }` + `pre.mermaid svg { max-width: none }`
+  and trades illegible-shrink for the mobile h-scroll the rule exists to prevent. #12 has no engine fix at
+  all (re-record the clip, or ship a mobile source); it is also already deferred under the marketing item.
 - **Add (gate: adopt, but confirm):** shareable/deep-linkable `{{< input >}}` state via the URL fragment
   (reader-local, hydrate from `data-qmd-input`, no Rust/model change) (`qmd-js.js`); reader text-size +
   line-spacing controls (a11y-exempt per CLAUDE.md; substrate exists) (`14-reader-prefs.js`).

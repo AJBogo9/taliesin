@@ -117,6 +117,12 @@ A `taliesin` launcher on `PATH` (`~/.local/bin/Taliesin`) rebuilds the release
 binary when the tool's sources change, then runs it, so `taliesin preview <file>`
 works from anywhere.
 
+**Editing `assets/css/*` or `assets/js/*` needs a `cargo build` before the change
+shows up.** They are `include_str!`-compiled into the binary, so rebuilding only the
+site (`taliesin build <dir>`) re-emits the *old* bundled CSS/JS and you will measure a
+stale page. Rebuild the binary first, then the site. (A live `preview` hot-swaps CSS,
+so this bites the build-and-inspect loop, not the dev loop.)
+
 Executing code cells needs a matching Jupyter kernel: `{python}` cells need a
 Python with `ipykernel` (`TALIESIN_PYTHON`, default `python3`); `{r}` cells need an
 R with `IRkernel` (`TALIESIN_R`, default `R`). Each language runs against its own

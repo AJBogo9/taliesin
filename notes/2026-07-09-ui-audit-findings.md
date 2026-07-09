@@ -1,17 +1,41 @@
 # UI-audit findings (2026-07-09)
 
 Raw output from the `tools/ui-audit` harness over the full corpus (89 pages / 534
-cells, 6-cell matrix at scale 0.5). **Un-triaged:** every finding below was
-adversarially verified live by the audit workflow (many independently reproduced),
-but none has been hand-investigated or fixed yet, unlike the curated + fixed
-[2026-07-08 findings](2026-07-08-ui-audit-findings.md). Pipeline: capture
-(Puppeteer, free) -> probe (free) -> analyze / dedup / verify / report workflow
-(148 agents, Sonnet, ~9M tokens). The full `--parallel` capture deadlocked near the
-end and the manifest was salvaged from on-disk metas, so 15 cells on 3 heavy pages
-are unaudited (section 7).
+cells, 6-cell matrix at scale 0.5). Pipeline: capture (Puppeteer, free) -> probe
+(free) -> analyze / dedup / verify / report workflow (148 agents, Sonnet, ~9M
+tokens). The full `--parallel` capture deadlocked near the end and the manifest was
+salvaged from on-disk metas, so 15 cells on 3 heavy pages are unaudited (section 7).
 
-Highest-value item: **finding 2** (a stale `_freeze` cache emitting pre-rename
-`qmd-fig-*` classes) is a real shipping bug, not just a corpus-render nit.
+## Triage status (2026-07-09, hand-verified against source + browser)
+
+**FIXED + browser-verified:** #1, #3, #4, #5, #6, #8, #10 (the engine/CSS half) and
+**#2** (the stale-`_freeze` figure bug). Commits `d70da77` + `d0b1ffa`.
+
+**Two diagnoses below are WRONG as written; the text is kept verbatim as the raw
+audit output. Read these corrections first:**
+
+- **#2's stated root cause ("the freeze cache key has no dependency on renderer /
+  output-format version") is false.** `freeze.rs` already carries a `FORMAT_VERSION`
+  whose doc comment says to bump it exactly when "the *bundled output format* of a
+  cached cell changes". It had simply never been bumped since introduction: the
+  rename commit `8bb0a65` edited `freeze.rs` without touching the constant. The fix
+  was a one-line bump to 3, which discards every pre-v3 entry and self-heals on the
+  next build. The blast radius was also 3 live pages (KL-divergence,
+  fourier-transform, pca-geometry), not 1, and two of them mixed both class
+  generations inside a single cached page.
+- **#8's stated root cause ("has `overflow-x: auto` but never got the edge-shadow
+  affordance") understates it.** `.katex-display` never scrolled at all (`scrollLeft`
+  pinned to 0), because KaTeX makes the inner `.katex` a full-width block whose
+  overflow never grows the scroll area. The equation was clipped and *unreachable*,
+  not merely un-signposted; a scroll shadow alone would have been inert.
+- Minor: **#5's suggested selector** (`td :not(pre) > code`) cannot match `<td><code>`
+  (it requires an intermediate element) and is a silent no-op. Shipped as `th code, td code`.
+
+**Re-classified, NOT fixed:** #7 + #12 are **design choices** that contradict the stated
+intent at `base.css:365-367`, not defects (owner ruling pending; see `backlog.md`).
+#9, #11, #13, #14 are **content fixes** in `.tmd` sources, not engine defects (Tier 1).
+**#13 needs re-diagnosis:** its page was also serving stale cached figures (#2), so the
+screenshot the audit judged may not reflect current source.
 
 ---
 
