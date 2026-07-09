@@ -187,6 +187,21 @@ fn lcs_pairs(a: &[&str], b: &[&str]) -> Vec<(usize, usize)> {
     for (j, &id) in b.iter().enumerate() {
         pos_in_b.insert(id, j);
     }
+    // The reduction above is only sound while ids are unique. A duplicate would be
+    // absorbed silently — `pos_in_b` keeps just the last position — and the diff
+    // would emit ops against the wrong element. Both lists are checked because a
+    // duplicate in `a` instead yields two pairs sharing a `new_idx`, of which the
+    // strictly-increasing LIS can only ever keep one.
+    debug_assert_eq!(
+        pos_in_b.len(),
+        b.len(),
+        "duplicate block id in the new list; the LCS→LIS reduction assumes ids are unique"
+    );
+    debug_assert_eq!(
+        a.iter().collect::<std::collections::HashSet<_>>().len(),
+        a.len(),
+        "duplicate block id in the old list; the LCS→LIS reduction assumes ids are unique"
+    );
     // The shared ids as `(old_idx, new_idx)` in old-list order; the LCS is the
     // longest strictly-increasing-by-`new_idx` subsequence of this.
     let seq: Vec<(usize, usize)> = a
@@ -245,6 +260,21 @@ mod tests {
 
     fn ids(blocks: &[&str]) -> Vec<Block> {
         blocks.iter().map(|s| block(s)).collect()
+    }
+
+    #[test]
+    #[should_panic(expected = "duplicate block id in the new list")]
+    fn duplicate_new_id_trips_the_lis_uniqueness_assert() {
+        // `pos_in_b` keeps only the last position of a repeated id, which silently
+        // invalidates the LCS→LIS reduction. Catch it in debug/test builds instead
+        // of emitting a corrupt op stream.
+        lcs_pairs(&["a", "b"], &["a", "b", "a"]);
+    }
+
+    #[test]
+    #[should_panic(expected = "duplicate block id in the old list")]
+    fn duplicate_old_id_trips_the_lis_uniqueness_assert() {
+        lcs_pairs(&["a", "b", "a"], &["a", "b"]);
     }
 
     #[test]
