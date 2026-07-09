@@ -73,9 +73,47 @@ const LOOSE_PROBE_SCHEMA = {
   properties: { results: { type: 'array', items: { type: 'object' } } },
   required: ['results'],
 };
+const PARTS_INDEX_SCHEMA = {
+  type: 'object',
+  properties: {
+    parts: { type: 'array', items: { type: 'object' } },
+    buildFailures: { type: 'array', items: { type: 'object' } },
+  },
+  required: ['parts'],
+};
 
 let manifest = A.manifest ?? null;
 let probeResults = A.probeResults ?? null;
+
+// Preferred bootstrap for a full-corpus manifest: split-manifest.mjs shards
+// manifest.json into per-unit part files under <artifacts>/parts. A workflow
+// script has NO filesystem access, so it must read the manifest through an
+// agent, but a full-corpus manifest is ~66K tokens -- past the 64K agent-output
+// ceiling -- so ONE reader agent cannot echo it (fails "response exceeded the
+// output token maximum"). Instead read the tiny _index.json, then fan out one
+// small reader per unit part (the heaviest unit is ~13K tokens, 5x under the
+// cap) and concatenate. This is also far faster than one giant serial read.
+if (!manifest && A.manifestPartsDir) {
+  const idx = await agent(
+    `Read the JSON file at ${A.manifestPartsDir}/_index.json and return it parsed. It has a "parts" array (each item {unit, file, cells}) and a "buildFailures" array. Return it verbatim.`,
+    { label: 'bootstrap:index', phase: 'Analyze', schema: PARTS_INDEX_SCHEMA, agentType: 'general-purpose', model: MODEL },
+  );
+  const partList = idx?.parts ?? [];
+  log(`Bootstrap: reading ${partList.length} manifest parts in parallel`);
+  const partResults = await parallel(
+    partList.map((pt) => () =>
+      agent(
+        `Read the JSON file at ${A.manifestPartsDir}/${pt.file} and return its contents as {"pages": <the array>}. The file is a JSON array of exactly ${pt.cells} page records (fields: unit, route, sourceFile, format, viewport, theme, screenshot, meta, errorCount, failedRequests, horizontalOverflow, pastRightCount, brokenImageCount, cellError, navError, consoleErrors, networkFailures). Return every record VERBATIM; do NOT summarize, reformat, sample, or drop any. The returned pages array MUST have exactly ${pt.cells} items.`,
+        { label: `bootstrap:${pt.unit}`.slice(0, 60), phase: 'Analyze', schema: LOOSE_MANIFEST_SCHEMA, agentType: 'general-purpose', model: MODEL },
+      ).then((r) => r?.pages ?? []),
+    ),
+  );
+  manifest = {
+    pages: partResults.filter(Boolean).flat(),
+    buildFailures: idx?.buildFailures ?? [],
+  };
+  log(`Bootstrap: assembled ${manifest.pages.length} cells from ${partList.length} parts`);
+}
 
 if (!manifest && A.manifestPath) {
   manifest = await agent(

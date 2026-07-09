@@ -99,6 +99,22 @@ export function discoverStandalones(repoRoot) {
   return out.sort();
 }
 
+// Rough page-count estimate, used to load-balance shards (LPT) so the heavy
+// multi-page books/sites spread across shard processes instead of two colliding
+// on one. Exact counts need a build; counting the non-hidden .tmd sources under
+// a site (~= its pages) and 1 for a standalone is enough for balancing.
+export function estimatePages(unit, repoRoot) {
+  if (unit.type === 'standalone') return 1;
+  const root = path.join(repoRoot, unit.source);
+  let n = 0;
+  for (const abs of walk(root)) {
+    if (!abs.endsWith('.tmd')) continue;
+    if (hasHiddenSegment(path.relative(repoRoot, abs))) continue;
+    n++;
+  }
+  return Math.max(1, n);
+}
+
 // Build a stable slug from a source rel-path, e.g.
 //   corpus/posts/em-algorithm/index.tmd -> posts__em-algorithm__index
 function standaloneSlug(relTmd) {

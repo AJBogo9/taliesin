@@ -49,11 +49,24 @@ node capture-run.mjs --only 'corpus/deck.tmd' --only 'demo-book'
 #                        for half-resolution shots: ~4x fewer image pixels, so
 #                        the workflow spends far fewer vision tokens, still
 #                        plenty legible for layout bugs.
-#   --jobs N             concurrent tabs (default 3; raise cautiously: large
-#                        pages can crash a tab under high concurrency, though a
-#                        crashed cell auto-retries once and a dead browser
-#                        relaunches)
-#   --no-build           reuse an existing .work/build (skip rebuilding)
+#   --jobs N             concurrent tabs per process (default = cores-4, clamped
+#                        to 4..10). Capture is wait-bound, so more tabs help;
+#                        a crashed tab auto-retries once, a dead browser
+#                        relaunches, and a wedged tab is force-closed after 60s.
+#   --parallel N         fan the run across N browser PROCESSES (each its own
+#                        Chrome), units split by size-balanced LPT so the heavy
+#                        multi-page books land on different shards. Breaks the
+#                        single-browser CDP ceiling: one process tops out around
+#                        5 cells/s no matter the --jobs, but N processes scale
+#                        with the (otherwise idle) CPU. Auto-merges the shards.
+#   --shard i/N          run only shard i of N by hand (advanced; --parallel
+#                        does this for you). Share one --out across the N procs,
+#                        then `--merge` to combine their manifest.shard-*.json.
+#   --merge              merge manifest.shard-*.json in <out>/artifacts into
+#                        manifest.json (run after hand-launched --shard procs).
+#   --max-open N         cap how many built units are served ahead of capture
+#                        (backpressure; default 6).
+#   --no-build           reuse an existing build dir (skip rebuilding)
 #   --no-cache           set TALIESIN_NO_CACHE=1 (force fresh cell execution)
 #   --bin <path>         taliesin binary
 #   --out <dir>          work dir (default ./.work)
@@ -67,11 +80,22 @@ Output:
 - `.work/artifacts/manifest.json`: one record per cell (paths + triage counts +
   the actual console/network errors).
 
-The full surface is ~214 source docs building to roughly 150-200 pages, times 6
-matrix cells (~1,000+ screenshots). Expect a long, unattended run; it is safe to
-leave in the background. Executed code-cell output requires a Jupyter kernel
-(`TALIESIN_PYTHON` / `TALIESIN_R`); without one, cells degrade to source and the
-build still succeeds.
+The full surface is 35 units (6 site projects + 29 standalone corpus docs)
+building to ~89 pages, times 6 matrix cells (~530 screenshots). With
+`--parallel 3 --scale 0.5` on an 8-core/16-thread box this is roughly a
+one-minute capture (plus builds); the pipeline overlaps builds with capture and
+the whole thing is safe to leave in the background. Executed code-cell output
+requires a Jupyter kernel (`TALIESIN_PYTHON` / `TALIESIN_R`); without one, cells
+degrade to source and the build still succeeds.
+
+**Speed.** Capture is wait-bound (per-cell settle + screenshot), not
+compute-bound: a single browser leaves most of the CPU idle and tops out around
+5 cells/s regardless of `--jobs`. `--parallel N` runs N browser processes over
+that idle CPU and scales past the single-browser ceiling; `--parallel 3` splits
+this corpus into a balanced 30/30/30 pages across shards (each of the three big
+books on its own browser). Reliability came along for free: builds are async and
+pipelined, a wedged tab is force-closed after 60s (no more whole-run hangs), and
+a crashed browser relaunches mid-run.
 
 ## Probe (interactive features)
 
@@ -88,11 +112,29 @@ feature's expected DOM/JS outcome (click-to-source needs the live preview's
 ## Analyze / verify / report (the Workflow)
 
 `audit.workflow.js` is a Claude Code Workflow. Run it via the **Workflow tool**
-(ask Claude to run the audit workflow), not with `node`. Args:
+(ask Claude to run the audit workflow), not with `node`.
+
+A workflow script has **no filesystem access**, so it reads the manifest through
+an agent. A full-corpus manifest (~530 cells) is ~66K tokens, past the 64K
+agent-output ceiling, so a single reader agent cannot echo it back. Before a
+**full** audit, shard the manifest first:
+
+```sh
+node split-manifest.mjs   # writes .work/artifacts/parts/<unit>.json + _index.json
+```
+
+then pass `manifestPartsDir` (below): the workflow reads the tiny index and fans
+out one small reader per unit in parallel. `manifestPath` (single reader) is fine
+only for a **small** `onlyUnits` slice that fits under the cap.
+
+Args:
 
 ```js
 args = {
   artifactsRoot:    "<abs>/tools/ui-audit/.work/artifacts",
+  // full run (preferred): shard first with split-manifest.mjs, then:
+  manifestPartsDir: "<abs>/tools/ui-audit/.work/artifacts/parts",
+  // OR, for a small onlyUnits slice only, a single-agent read of the whole file:
   manifestPath:     "<abs>/tools/ui-audit/.work/artifacts/manifest.json",
   probeResultsPath: "<abs>/tools/ui-audit/.work/probe-results.json", // optional
   // cost controls (balanced defaults):
@@ -131,11 +173,15 @@ limits, capture once (free), then run the workflow in batches with `onlyUnits`
 ```sh
 cargo build -p taliesin-server --release          # fresh binary
 cd tools/ui-audit && npm install
-node capture-run.mjs --scale 0.5                   # ~1,000+ half-res shots (free, background)
+node capture-run.mjs --scale 0.5 --parallel 3      # ~530 half-res shots, ~1 min (free, background)
+# if capture deadlocked before writing manifest.json, salvage it from the metas:
+#   node rebuild-manifest.mjs --scale 0.5
+node split-manifest.mjs                            # shard manifest -> parts/ (needed for a full audit)
 node probe-run.mjs                                 # interactive features (free)
-# then, in a Claude session, batch by unit to pace token spend, e.g.:
+# then, in a Claude session, run the whole surface in one workflow (manifestPartsDir),
+# or batch by unit to pace token spend, e.g.:
+#   "run the ui-audit workflow over manifestPartsDir"
 #   "run the ui-audit workflow, onlyUnits ['tech-blog']"
-#   "run the ui-audit workflow, onlyUnits ['docs-guide']"
 #   ... one batch per site project, plus one for the standalone corpus docs.
 ```
 

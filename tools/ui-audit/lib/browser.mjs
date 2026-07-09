@@ -90,8 +90,10 @@ export function attachCollectors(page) {
 
 // Wait until the page has visually settled: SSR math/highlighting need no wait,
 // but web fonts, images, mermaid, {js} cells, and deck layout do. On timeout we
-// screenshot anyway rather than hang the whole run.
-export async function settle(page, { timeout = 8000 } = {}) {
+// screenshot anyway rather than hang the whole run. The ceiling only bites when
+// something never signals ready (an erroring {js} cell, a deck that never
+// becomes ready); real content settles well under it.
+export async function settle(page, { timeout = 6000 } = {}) {
   try {
     await page.waitForFunction(() => document.readyState === 'complete', {
       timeout,

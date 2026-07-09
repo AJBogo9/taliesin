@@ -18,21 +18,6 @@ function routeSlug(route) {
   );
 }
 
-// Bounded-concurrency map.
-async function mapPool(items, concurrency, fn) {
-  const results = new Array(items.length);
-  let next = 0;
-  async function worker() {
-    while (next < items.length) {
-      const i = next++;
-      results[i] = await fn(items[i], i);
-    }
-  }
-  const n = Math.max(1, Math.min(concurrency, items.length));
-  await Promise.all(Array.from({ length: n }, worker));
-  return results;
-}
-
 async function captureCell(browser, cell, serverUrl, artifactsRoot, scale = 1) {
   const { page: pageRec, viewport, theme } = cell;
   const dir = path.join(
@@ -52,6 +37,7 @@ async function captureCell(browser, cell, serverUrl, artifactsRoot, scale = 1) {
   );
 
   let tab = null;
+  let watchdog = null;
   let collectors = { consoleMsgs: [], network: [] };
   let settled = false;
   let flags = null;
@@ -59,6 +45,14 @@ async function captureCell(browser, cell, serverUrl, artifactsRoot, scale = 1) {
   let cellError = null;
   try {
     tab = await browser.newPage();
+    // Hard wall-clock watchdog: if any op (goto/settle/domFlags/screenshot)
+    // wedges on an unresponsive renderer, force-close the tab so its promise
+    // rejects instead of hanging this worker forever. The rejection reads as
+    // "Target closed" -> CRASH_RE -> one retry on a fresh tab. This is the
+    // safety net the old sequential loop lacked (a wedged tab hung the whole run).
+    watchdog = setTimeout(() => {
+      if (tab) tab.close().catch(() => {});
+    }, 60000);
     collectors = attachCollectors(tab);
     await forceTheme(tab, theme);
     await tab.setViewport({
@@ -68,7 +62,12 @@ async function captureCell(browser, cell, serverUrl, artifactsRoot, scale = 1) {
     });
     const url = serverUrl + pageRec.route;
     try {
-      await tab.goto(url, { waitUntil: 'networkidle0', timeout: 30000 });
+      // `domcontentloaded` (not `networkidle0`): the built pages are static and
+      // locally served, so waiting for 500ms of zero network activity mostly
+      // just burns the 30s ceiling on any page with a lingering socket. settle()
+      // below is the real readiness gate (fonts, images, mermaid, {js} output,
+      // deck-ready), so DOM-ready + settle covers the same ground far faster.
+      await tab.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
     } catch (e) {
       navError = String(e?.message || e);
     }
@@ -102,6 +101,7 @@ async function captureCell(browser, cell, serverUrl, artifactsRoot, scale = 1) {
     // newPage()).
     cellError = (cellError ? cellError + ' | ' : '') + String(e?.message || e);
   } finally {
+    if (watchdog) clearTimeout(watchdog);
     if (tab) await tab.close().catch(() => {});
   }
 
@@ -161,41 +161,60 @@ async function captureCell(browser, cell, serverUrl, artifactsRoot, scale = 1) {
 }
 
 const CRASH_RE = /Target closed|Session closed|crashed|detached/i;
+const HARD_MS = 90000;
 
-// Retry a cell once if the renderer tab crashed. Under concurrency, large/tall
-// pages can crash a tab; a fresh tab (by which time sibling tabs have freed
-// resources) almost always succeeds.
-async function captureCellWithRetry(browser, cell, serverUrl, artifactsRoot, scale) {
-  const rec = await captureCell(browser, cell, serverUrl, artifactsRoot, scale);
-  if (rec.cellError && CRASH_RE.test(rec.cellError)) {
+// Synthetic record for a cell we had to abandon (mirrors captureCell's shape so
+// the manifest + orchestrator stay uniform). No screenshot: it never rendered.
+function abandonedRecord(cell, why) {
+  const p = cell.page;
+  return {
+    unit: p.unit, route: p.route, sourceFile: p.sourceFile, format: p.format,
+    viewport: cell.viewport.name, theme: cell.theme,
+    settled: false, navError: null, cellError: why, hardTimeout: true,
+    screenshot: null, meta: null, title: '',
+    errorCount: 0, warnCount: 0, failedRequests: 0,
+    horizontalOverflow: false, pastRightCount: 0, brokenImageCount: 0,
+    consoleErrors: [], networkFailures: [],
+  };
+}
+
+// captureCell catches everything and never rejects, so its only failure mode is
+// HANGING: on a wedged renderer even tab.close() (a CDP call) can block, so the
+// 60s in-cell watchdog can't rescue it. This hard wall-clock race is the real
+// backstop -- if a cell hasn't returned in 90s we abandon it and free the worker
+// so the pool never deadlocks (the orphaned captureCell + its tab leak until the
+// browser is torn down at the end, which is fine). Without this, one wedged tab
+// stalls the whole run (workers pile up in ep_poll waiting on dead CDP sockets).
+function withHardTimeout(promise, ms, onTimeout) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const t = setTimeout(() => {
+      if (!settled) { settled = true; resolve(onTimeout()); }
+    }, ms);
+    const finish = (v) => { if (!settled) { settled = true; clearTimeout(t); resolve(v); } };
+    promise.then(finish, (e) => finish(onTimeout(String(e?.message || e))));
+  });
+}
+
+// Retry a cell once if the renderer tab CRASHED (fast, fresh tab usually wins).
+// A hard-timeout is NOT retried: a wedged page just wedges again and burns
+// another 90s. `getBrowser` relaunches a dead browser so a crash that killed the
+// whole browser is recovered before the retry.
+export async function captureCellWithRetry(getBrowser, cell, serverUrl, artifactsRoot, scale) {
+  const attempt = async () => {
+    const browser = await getBrowser();
+    return withHardTimeout(
+      captureCell(browser, cell, serverUrl, artifactsRoot, scale),
+      HARD_MS,
+      (extra) => abandonedRecord(cell, `hard-timeout: capture exceeded 90s${extra ? ' | ' + extra : ''}`),
+    );
+  };
+  const rec = await attempt();
+  if (rec.cellError && CRASH_RE.test(rec.cellError) && !rec.hardTimeout) {
     await new Promise((r) => setTimeout(r, 500));
-    const retry = await captureCell(browser, cell, serverUrl, artifactsRoot, scale);
+    const retry = await attempt();
     retry.retried = true;
     return retry;
   }
   return rec;
-}
-
-export async function captureUnit({
-  browser,
-  unit,
-  pages,
-  serverUrl,
-  viewports,
-  themes,
-  artifactsRoot,
-  jobs = 3,
-  scale = 1,
-}) {
-  const cells = [];
-  for (const page of pages) {
-    for (const viewport of viewports) {
-      for (const theme of themes) {
-        cells.push({ page, viewport, theme });
-      }
-    }
-  }
-  return mapPool(cells, jobs, (cell) =>
-    captureCellWithRetry(browser, cell, serverUrl, artifactsRoot, scale),
-  );
 }

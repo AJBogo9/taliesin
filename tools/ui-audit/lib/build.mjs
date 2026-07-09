@@ -3,7 +3,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { EMBED_DECK_SOURCES } from './units.mjs';
 
 function* walkFiles(dir) {
@@ -22,7 +22,14 @@ function* walkFiles(dir) {
 
 // Run `taliesin build <source> --out <buildRoot>/<slug>`. Works for both a site
 // directory and a single .tmd (the latter writes <outDir>/index.html). Returns
-// { outDir, ok, log }.
+// a Promise<{ outDir, ok, status, log }>.
+//
+// Async (child_process.spawn, not spawnSync) on purpose: the pipeline builds the
+// NEXT unit while the browser pool is still screenshotting the PREVIOUS one, and
+// a blocking spawnSync would freeze the event loop and stall every capture tab
+// for the whole build. Builds stay one-at-a-time (the producer awaits each), so
+// there is still only ever a single `taliesin build` / Jupyter kernel running;
+// only build<->capture overlap, never build<->build.
 export function buildUnit(unit, { bin, buildRoot, repoRoot, noCache = false }) {
   const outDir = path.join(buildRoot, unit.slug);
   fs.rmSync(outDir, { recursive: true, force: true });
@@ -31,16 +38,27 @@ export function buildUnit(unit, { bin, buildRoot, repoRoot, noCache = false }) {
   const env = { ...process.env };
   if (noCache) env.TALIESIN_NO_CACHE = '1';
 
-  const res = spawnSync(bin, ['build', unit.source, '--out', outDir], {
-    cwd: repoRoot,
-    env,
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
+  return new Promise((resolve) => {
+    let log = '';
+    let child;
+    try {
+      child = spawn(bin, ['build', unit.source, '--out', outDir], {
+        cwd: repoRoot,
+        env,
+      });
+    } catch (e) {
+      resolve({ outDir, ok: false, status: 'spawn-error', log: String(e?.message || e) });
+      return;
+    }
+    child.stdout.on('data', (d) => (log += d));
+    child.stderr.on('data', (d) => (log += d));
+    child.on('error', (e) => {
+      resolve({ outDir, ok: false, status: 'spawn-error', log: log + '\n' + String(e?.message || e) });
+    });
+    child.on('close', (status) => {
+      resolve({ outDir, ok: status === 0, status, log });
+    });
   });
-
-  const log = [res.stdout, res.stderr].filter(Boolean).join('\n');
-  const ok = res.status === 0;
-  return { outDir, ok, status: res.status, log };
 }
 
 // Given a built unit output dir, list every HTML page and resolve its source.
