@@ -1007,3 +1007,40 @@ fn twinned_corpus_sources_stay_byte_identical() {
         drifted.join("\n")
     );
 }
+
+/// `<title>` precedence, pinned on the real book. `_site.yml` gives `methods.tmd` the
+/// chapter label "Methodology" while the file's own heading is `# Methods`; the authored
+/// override must win. A chapter with no override and no front-matter title falls back to
+/// its leading H1, which beats the empty string the site path used to emit (and which let
+/// `og:title` quietly borrow the site's own name).
+#[test]
+fn a_site_page_prefers_its_authored_title_then_its_leading_h1() {
+    use taliesin_core::Site;
+    let root = corpus_dir().join("demo-book");
+    let site = Site::discover(&root);
+
+    let title_of = |rel: &str| -> String {
+        let page = site
+            .pages
+            .iter()
+            .find(|p| p.rel == rel)
+            .unwrap_or_else(|| panic!("no page {rel}"));
+        let src = fs::read_to_string(&page.input).unwrap();
+        let base = page.input.parent().unwrap();
+        let doc =
+            taliesin_core::render_document_with_includes_scoped(&src, base, site.chapter_for(page));
+        let (html, _) = site.render_page_doc_warned(page, doc);
+        html.split("<title>")
+            .nth(1)
+            .and_then(|s| s.split("</title>").next())
+            .unwrap_or("")
+            .to_string()
+    };
+
+    // An `_site.yml` `text:` override beats the file's own `# Methods` heading.
+    assert_eq!(title_of("methods.tmd"), "Methodology");
+    assert_eq!(title_of("summary.tmd"), "Wrap-up");
+    // No override, no front matter: the leading H1, never the empty string.
+    assert_eq!(title_of("results.tmd"), "Results");
+    assert!(!title_of("results.tmd").is_empty());
+}

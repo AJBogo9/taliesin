@@ -238,13 +238,44 @@ pub fn html_page_from_doc_in_site(
     html_page_inner(doc, fallback_title, Some(site), OutputMode::Build)
 }
 
+/// Resolve the `<title>` text, in order of how deliberately the author chose it:
+///
+/// 1. the document's own front-matter `title:`;
+/// 2. in a site, the page's authored title (an `_site.yml` `chapters:` `text:` override
+///    deliberately differs from the chapter's heading: "Methodology" vs `# Methods`);
+/// 3. the document's leading `# H1`, which is what the author called the page;
+/// 4. the caller's last resort, which standalone is only the file stem.
+///
+/// Steps 2 and 3 swap on `in_site`, and that is the whole subtlety: standalone the
+/// fallback is a filename, so any heading beats it; in a site the fallback is an authored
+/// title, so it beats the heading. Before step 3 existed, a front-matter-less document
+/// rendered `<title>the-file-stem</title>` standalone and `<title></title>` in a site,
+/// where `og:title` then quietly borrowed the site's own name.
+fn resolve_title(doc: &RenderedDoc, fallback_title: &str, in_site: bool) -> String {
+    let fallback = (!fallback_title.is_empty()).then_some(fallback_title);
+    let h1 = leading_h1_text(&doc.blocks);
+    let ranked = if in_site {
+        [fallback, h1.as_deref()]
+    } else {
+        [h1.as_deref(), fallback]
+    };
+    doc.title
+        .as_deref()
+        .into_iter()
+        .chain(ranked.into_iter().flatten())
+        .next()
+        .unwrap_or("")
+        .to_string()
+}
+
 fn html_page_inner(
     doc: &RenderedDoc,
     fallback_title: &str,
     site: Option<&SiteCtx>,
     mode: OutputMode,
 ) -> String {
-    let title = doc.title.as_deref().unwrap_or(fallback_title);
+    let resolved = resolve_title(doc, fallback_title, site.is_some());
+    let title = resolved.as_str();
     let mut t = String::new();
     escape_html(title, &mut t);
     let body = doc.body_html();

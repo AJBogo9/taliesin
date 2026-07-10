@@ -95,6 +95,10 @@ use theme::{detect_theme, resolve_theme, theme_default_mode, theme_style};
 /// step only (no code execution, no page chrome). The dev server diffs these
 /// block lists for incremental updates; the CLI wraps the result in a page.
 ///
+/// `title` is the front-matter `title:` only. A leading `# H1` titles the *page* (see
+/// [`render_doc_to_page`]) but is not folded in here, so a site can still prefer an
+/// authored `_site.yml` chapter title over the heading text.
+///
 /// ```
 /// let doc = taliesin_core::render_document("# Title\n\nHello *world*.\n");
 /// assert_eq!(doc.title, None); // no front-matter title
@@ -1802,6 +1806,55 @@ fn strip_tags(html: &str) -> String {
         }
     }
     out.trim().to_string()
+}
+
+/// The plain text of a document's leading `# H1`, when that H1 is the document's *first*
+/// block. A later or deeper heading is a section, not the document's name, so only the
+/// first block qualifies.
+///
+/// The returned text is decoded, not HTML: `<title>` escapes its input, so a heading
+/// carrying `&amp;` would otherwise ship as `&amp;amp;`.
+fn leading_h1_text(blocks: &[Block]) -> Option<String> {
+    let first = blocks.first()?;
+    (block_heading_level(&first.html)? == 1)
+        .then(|| unescape_html(&strip_tags(&first.html)))
+        .filter(|t| !t.is_empty())
+}
+
+/// Reverse [`escape_html`]: decode the entities the renderer itself emits (`&amp;`,
+/// `&lt;`, `&gt;`, `&quot;`, `&#39;`). Not a general HTML entity decoder — it exists so
+/// text lifted back out of emitted HTML can be re-escaped exactly once.
+fn unescape_html(s: &str) -> String {
+    if !s.contains('&') {
+        return s.to_string();
+    }
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(i) = rest.find('&') {
+        out.push_str(&rest[..i]);
+        let tail = &rest[i..];
+        let decoded = [
+            ("&amp;", '&'),
+            ("&lt;", '<'),
+            ("&gt;", '>'),
+            ("&quot;", '"'),
+            ("&#39;", '\''),
+        ]
+        .into_iter()
+        .find(|(ent, _)| tail.starts_with(ent));
+        match decoded {
+            Some((ent, ch)) => {
+                out.push(ch);
+                rest = &tail[ent.len()..];
+            }
+            None => {
+                out.push('&');
+                rest = &tail[1..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Escape a string for HTML *text* content (`&`, `<`, `>`). For attribute values

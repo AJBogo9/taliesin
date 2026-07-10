@@ -178,6 +178,7 @@ mod chrome;
 pub use book::{Book, BookEntry};
 use book::{book_pages, build_book};
 mod backlinks;
+mod categories;
 mod hover;
 mod meta;
 mod search;

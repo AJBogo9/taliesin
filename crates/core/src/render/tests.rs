@@ -3204,3 +3204,71 @@ fn deck_defines_light_bg_text_override() {
         "light-bg text {dark_text} must be dark enough to read on a light slide"
     );
 }
+
+/// A front-matter-less document starting with an `# H1` used to render `<title>` as the
+/// file stem (standalone) or as nothing at all (site path, where `og:title` then quietly
+/// borrowed the site's own name). The leading H1 is what the author called the page:
+/// promote it. A better default, not a new knob.
+#[test]
+fn a_leading_h1_titles_a_standalone_page_instead_of_the_file_stem() {
+    let doc = super::render_document("# My Great Post\n\nBody.\n");
+    // `RenderedDoc::title` still means "the front-matter title", so a site can prefer its
+    // own authored page title over the heading.
+    assert_eq!(doc.title, None);
+    let html = super::render_doc_to_page(&doc, "the-file-stem", crate::OutputMode::Build);
+    assert!(
+        html.contains("<title>My Great Post</title>"),
+        "the leading h1 must beat the file stem"
+    );
+}
+
+#[test]
+fn front_matter_title_always_wins_over_a_leading_h1() {
+    let doc = super::render_document("---\ntitle: Real Title\n---\n\n# Something Else\n\nBody.\n");
+    let html = super::render_doc_to_page(&doc, "stem", crate::OutputMode::Build);
+    assert!(
+        html.contains("<title>Real Title</title>"),
+        "front matter wins"
+    );
+}
+
+#[test]
+fn only_a_leading_h1_is_promoted_never_a_later_or_deeper_heading() {
+    let page = |src: &str| {
+        super::render_doc_to_page(
+            &super::render_document(src),
+            "stem",
+            crate::OutputMode::Build,
+        )
+    };
+    // An h2 first: a section, not the document's name.
+    assert!(page("## A section\n\n# A late h1\n").contains("<title>stem</title>"));
+    // Prose before the first h1: the h1 is not the document's name either.
+    assert!(page("An intro paragraph.\n\n# Not the title\n").contains("<title>stem</title>"));
+    // No headings at all.
+    assert!(page("Just prose.\n").contains("<title>stem</title>"));
+}
+
+#[test]
+fn a_promoted_h1_title_is_plain_text_not_html() {
+    // The block's html carries an anchor id, inline markup and entities. `<title>` escapes
+    // its input, so the promoted value must be decoded plain text or `&` ships as `&amp;amp;`.
+    let doc = super::render_document("# `code` & *emphasis* <br> end\n");
+    let html = super::render_doc_to_page(&doc, "stem", crate::OutputMode::Build);
+    assert!(
+        html.contains("<title>code &amp; emphasis  end</title>"),
+        "expected decoded-then-escaped title, got: {:?}",
+        html.split("<title>")
+            .nth(1)
+            .and_then(|s| s.split("</title>").next())
+    );
+}
+
+#[test]
+fn leading_h1_text_reads_only_a_first_level_one_heading() {
+    let h1 = |src: &str| super::leading_h1_text(&super::render_document(src).blocks);
+    assert_eq!(h1("# Hello\n").as_deref(), Some("Hello"));
+    assert_eq!(h1("## Hello\n"), None);
+    assert_eq!(h1("Prose\n\n# Hello\n"), None);
+    assert_eq!(h1(""), None);
+}
