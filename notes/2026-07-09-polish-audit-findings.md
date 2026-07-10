@@ -1,5 +1,18 @@
 # Polish / productivity audit findings (2026-07-09)
 
+> **STATUS (2026-07-10): sections 1, 2 (incl. 2a/2b/2c), 3, 7 and 8 have LANDED** as backlog
+> Tier-1 batches A-E (`b2c4a5a`, `48b5d38`, `b5001a6`, `aa7f3c5`, `2bd8194`, `41c164f`,
+> `7c75322`). Do not re-scope them from this file. **Four of this document's own claims were
+> wrong** and are corrected in `backlog.md` under "Decided against": §3a's proposed fix (a
+> project-root include label breaks click-to-source), §8's `<title>notitle</title>` (fabricated;
+> the real fallbacks are the file stem standalone and `<title></title>` in a site), §7's
+> `--version -dirty` (refuted by measurement: 0.85 s on every warm build), and §1's README claim,
+> which a refuter wrongly "killed" by grepping the wrong README.
+>
+> **Still open:** §4 (asset weight, owner-gated), §5 (refutations, keep), §6 (ungraceful-death
+> resource hygiene, Tier 2), §9 (the feature proposals = Tier-1 Batch F), plus two stragglers now
+> filed in the backlog: shell completions (§7) and the verbatim date (§8).
+
 Scope: not a bug hunt. The question was "what stops the tool feeling mature, and what
 would let the author squeeze more productivity out of a writing session". Method: 6
 read-only agents (CLI/DX, authoring surface, live preview, build+publish, editor bridge,

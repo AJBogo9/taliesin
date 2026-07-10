@@ -168,6 +168,17 @@ harness's `settle()` predicate. Detail + evidence in `2026-07-09-ui-audit-findin
 in `crates/core/tests/corpus.rs` discovers the pairs by walking both roots and asserts byte-identity
 of the authored sources, verified to fail on injected drift.)*
 
+**Never filed from the 2026-07-09 audit (found missing on 2026-07-10 while reconciling):**
+- **Shell completions** (M, med; audit §7). No completions, and no seam: the CLI is hand-rolled,
+  no clap. 12 stable command names; a static bash/zsh/fish script is ~120 lines. Precedent exists
+  (`schema`/`vocab` already feed *editor* autocomplete). If built, gate the command list against
+  `main.rs::COMMANDS` so it cannot drift, the same way `env_help_lists_every_runtime_env_var` now
+  gates the ENV block.
+- **The date renders verbatim** (S, low, taste; audit §8). `render/mod.rs` emits `2026-04-14`, not
+  "14 April 2026". Pure taste, no defect. (The audit's third §8 item, a *forgotten* `alt` on
+  `![](x.png)` getting no nudge, it deliberately did not file: alt-less is the a11y convention for
+  decorative. Leave it.)
+
 **New, small, surfaced 2026-07-10 while building the Tier-1 batches:**
 - **`og:title` and the listing card still read `Page::title`, so they disagree with `<title>`.**
   The H1-promotion fix is scoped to `<title>` (per the audit's own caution about silently
