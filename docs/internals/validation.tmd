@@ -59,6 +59,32 @@ doubled letter) without guessing wildly at a key that is simply absent from Tali
 vocabulary. When nothing is close enough, the message is just the bare "unknown" form,
 no misleading suggestion.
 
+### Suggesting a name Taliesin does not own
+
+Keys come from a **closed** vocabulary, so `closest()` takes a `&[&'static str]`. A
+broken reference is the opposite case: the candidates are names *the author* invented,
+read at run time, so `cite::nearest()` matches over owned strings instead. Renaming a
+label is the commonest way an author silently breaks their own document, so both halves
+of the reference syntax suggest a target:
+
+```text
+broken cross-reference: @fig-reslts (did you mean `@fig-results`?)
+broken citation: @bishop2006patern (did you mean `@bishop2006pattern`?)
+```
+
+The two halves reach the candidates differently. A citation is warned by `cite::render`,
+where the parsed bibliography is already in hand. A cross-reference is warned later, by
+`cite::validate_xrefs`, which runs after a site has had its chance to resolve the anchor
+on another page; by then the render-time anchor registry is gone, so the vocabulary is
+read back off the rendered HTML (each target still carries its `id="fig-results"`).
+
+Two guards keep the suggestions honest. A suggestion must share the broken reference's
+**kind prefix**, because a `@fig-` that resolved to a section would render the label
+"Figure" over a link to prose. And matching runs on the *stem* after that prefix, subject
+to the same five-character floor `site::categories` uses: below it, a distance-2 edit
+rewrites most of the name, and `@fig-a` would cheerfully "suggest" `@fig-b`. Suggestions
+are scoped to the page's own anchors, which is also all that is left to suggest from.
+
 ## The prose linter (opt-in)
 
 The vocabulary checks above are always on; the prose linter (`prose.rs`) is the one

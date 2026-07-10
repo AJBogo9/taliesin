@@ -150,6 +150,115 @@ fn validate_xrefs_flags_only_unresolved_markers() {
     assert!(validate_xrefs(&ok).is_empty());
 }
 
+/// One block carrying `html`, at line 1. The did-you-mean tests only care about HTML.
+fn block(html: &str) -> Block {
+    Block {
+        id: "x".into(),
+        sourcepos: "1:1-1:1".into(),
+        source_file: None,
+        html: html.into(),
+        cell: None,
+    }
+}
+
+#[test]
+fn broken_citation_suggests_the_nearest_bib_key() {
+    // `bishop2006patern` is one deletion away from the bib's `bishop2006pattern`.
+    let mut blocks = vec![block("<p>see [@bishop2006patern].</p>")];
+    let w = process(&mut blocks, &bib(), &HashMap::new());
+    assert_eq!(w.len(), 1, "got: {w:?}");
+    assert!(
+        w[0].message
+            .contains("(did you mean `@bishop2006pattern`?)"),
+        "got: {}",
+        w[0].message
+    );
+}
+
+#[test]
+fn a_citation_with_no_near_key_keeps_the_plain_message() {
+    let mut blocks = vec![block("<p>see [@nosuchkey].</p>")];
+    let w = process(&mut blocks, &bib(), &HashMap::new());
+    assert_eq!(w.len(), 1, "got: {w:?}");
+    assert!(
+        w[0].message.contains("(not in the bibliography)")
+            && !w[0].message.contains("did you mean"),
+        "got: {}",
+        w[0].message
+    );
+}
+
+#[test]
+fn broken_xref_suggests_the_nearest_anchor_of_the_same_kind() {
+    let blocks = vec![
+        block("<figure id=\"fig-results\"><img src=\"x.png\"></figure>"),
+        block("<h2 id=\"sec-summary\">Summary</h2>"),
+        block("<p>see <a href=\"#fig-reslts\" data-qmd-xref=\"fig-reslts\">Figure</a></p>"),
+    ];
+    let w = validate_xrefs(&blocks);
+    assert_eq!(w.len(), 1, "got: {w:?}");
+    assert!(
+        w[0].message.contains("(did you mean `@fig-results`?)"),
+        "got: {}",
+        w[0].message
+    );
+}
+
+#[test]
+fn a_broken_xref_never_suggests_an_anchor_of_a_different_kind() {
+    // `sec-results` is one edit from `fig-reslts`'s stem, but a Figure is not a Section.
+    let blocks = vec![
+        block("<h2 id=\"sec-results\">Results</h2>"),
+        block("<p>see <a href=\"#fig-reslts\" data-qmd-xref=\"fig-reslts\">Figure</a></p>"),
+    ];
+    let w = validate_xrefs(&blocks);
+    assert_eq!(w.len(), 1, "got: {w:?}");
+    assert!(
+        !w[0].message.contains("did you mean"),
+        "got: {}",
+        w[0].message
+    );
+}
+
+#[test]
+fn short_or_distant_anchor_names_get_no_suggestion() {
+    // Short stems: a distance-2 edit rewrites most of the name, so `fig-c` must not
+    // "suggest" `fig-a`. Distant stems: `zzzzzzz` is nobody's typo of `appendix`.
+    let blocks = vec![
+        block("<figure id=\"fig-a\"></figure>"),
+        block("<figure id=\"fig-appendix\"></figure>"),
+        block("<p><a data-qmd-xref=\"fig-c\">F</a><a data-qmd-xref=\"fig-zzzzzzz\">F</a></p>"),
+    ];
+    let w = validate_xrefs(&blocks);
+    assert_eq!(w.len(), 2, "got: {w:?}");
+    for warning in &w {
+        assert!(
+            !warning.message.contains("did you mean"),
+            "got: {}",
+            warning.message
+        );
+    }
+}
+
+#[test]
+fn the_anchor_scan_never_harvests_a_data_block_id() {
+    // `data-block-id="…"` ends in `id="`, so an unanchored substring scan would treat a
+    // block's content hash as a cross-reference anchor. The values here are synthetic:
+    // the trap is spelled to WIN the tie against the real anchor (`reslts2` sorts before
+    // `results` at equal edit distance), so a regression cannot pass this by accident.
+    let blocks = vec![
+        block("<figure data-block-id=\"fig-reslts2\" id=\"fig-results\"></figure>"),
+        block("<p><a data-qmd-xref=\"fig-reslts\">Figure</a></p>"),
+    ];
+    let w = validate_xrefs(&blocks);
+    assert_eq!(w.len(), 1, "got: {w:?}");
+    assert!(
+        w[0].message.contains("(did you mean `@fig-results`?)"),
+        "got: {}",
+        w[0].message
+    );
+}
+
 #[test]
 fn crossref_becomes_labelled_link() {
     let b = Bibliography::default();

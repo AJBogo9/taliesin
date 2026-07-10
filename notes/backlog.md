@@ -116,16 +116,6 @@ audit called Batch B ("the change that most makes the tool feel mature") is done
 `check`, `build --strict` and `publish`.
 
 **Batch F: writing-productivity features (each corpus-pinned, in scope, no ruling needed).**
-- **Did-you-mean for `@fig-` / `[@cite]` (S, med-high).** Renaming a label is the commonest
-  way an author silently breaks their own doc. `cite/validate.rs` emits
-  `broken cross-reference: @fig-reslts` with no suggestion. The candidate set (registered
-  anchors; parsed bib keys) is in hand at warn time. *Note (learned building Batch E's
-  category rule): `closest()` takes `&[&'static str]`, so a dynamic vocabulary of owned
-  `String`s cannot use it: call `frontmatter::levenshtein` directly, which is `pub(crate)`
-  and therefore only reachable from inside `taliesin-core`. `site/categories.rs::suspicious`
-  is the worked precedent, including the short-tag false-positive guard.* Keep the
-  edit-distance-2 ceiling; suggest only within the page's namespace. *Pin: near-miss `@fig-`
-  + `[@key]` in `corpus/diagnostics/`.*
 - **`taliesin new <post|page|deck> <slug>` (S/M, high).** The blank-page tax. Already worked
   around **outside** the tool: `corpus/tech-blog/.claude/skills/new-post/SKILL.md` is a
   hand-built scaffolder, and it is stale (still emits `.qmd`, still says `quarto preview`).
@@ -567,6 +557,18 @@ against source or by measurement before the code was written. Do NOT re-scope th
   build** (0.11 s -> 0.96 s, n=3), and the `taliesin` launcher rebuilds on every invocation,
   so every `taliesin preview` would pay it. Refused: a cosmetic marker is not worth the dev
   loop.
+- **Batch F's did-you-mean premise was half false** (corrected while building it, LANDED).
+  "The candidate set (registered anchors; parsed bib keys) is in hand at warn time" holds
+  for citations only. The two warnings are emitted at *different* sites: a broken citation
+  warns in `cite/render.rs`, where the `Bibliography` is a parameter; a broken cross-reference
+  warns in `cite/validate.rs::validate_xrefs(blocks)`, whose **only** input is the blocks, the
+  render-time anchor registry having been dropped by then. The shipped fix reads the anchor
+  vocabulary back off the rendered HTML (each target still carries ` id="fig-x"`), so no
+  signature changed and the four `validate_xrefs` callers were untouched. Two guards, both
+  mutation-checked: a suggestion must share the broken ref's **kind prefix** (a `@fig-` must
+  never resolve to a section), and matching runs on the **stem** after that prefix, so the
+  shared `fig-` cannot pad a short name past the five-char floor. The ` id="` scan is
+  space-anchored because `data-block-id="` also ends in `id="`.
 - **The audit's C1 fix was wrong.** It proposed labelling an include relative to the *project
   root* (`containment_root`). That would have broken click-to-source for **every** include:
   both consumers resolve `data-source-file` against the *primary document's own directory*

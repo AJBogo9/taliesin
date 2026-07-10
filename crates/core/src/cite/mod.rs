@@ -59,6 +59,42 @@ impl Bibliography {
     pub fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
+
+    /// Every parsed entry key, for the broken-citation did-you-mean.
+    pub(crate) fn keys(&self) -> impl Iterator<Item = &str> {
+        self.entries.keys().map(String::as_str)
+    }
+}
+
+/// Largest edit distance at which a name is a plausible typo rather than a different
+/// name. Matches the front-matter did-you-mean ceiling (`frontmatter::closest`).
+const MAX_TYPO_DISTANCE: usize = 2;
+
+/// Shortest name worth fuzzy-matching. Below this a distance-2 edit rewrites most of
+/// the name, so `fig-a` would "suggest" `fig-b`. Same value, and same reason, as
+/// `site::categories::MIN_FUZZY_LEN`.
+const MIN_FUZZY_LEN: usize = 5;
+
+/// The candidate nearest to `name` within [`MAX_TYPO_DISTANCE`], or `None` when the
+/// name is short, every candidate is short, or none is near enough.
+///
+/// `frontmatter::closest` cannot serve here: it takes `&[&'static str]`, and both
+/// vocabularies (bib keys, a page's anchors) are owned `String`s read at run time.
+/// Ties break lexicographically so the suggestion is deterministic — the bib keys
+/// arrive from a `HashMap`, whose iteration order is not.
+pub(crate) fn nearest<'a>(
+    name: &str,
+    candidates: impl Iterator<Item = &'a str>,
+) -> Option<&'a str> {
+    if name.chars().count() < MIN_FUZZY_LEN {
+        return None;
+    }
+    candidates
+        .filter(|c| c.chars().count() >= MIN_FUZZY_LEN)
+        .map(|c| (crate::frontmatter::levenshtein(name, c), c))
+        .filter(|&(d, _)| d > 0 && d <= MAX_TYPO_DISTANCE)
+        .min_by_key(|&(d, c)| (d, c))
+        .map(|(_, c)| c)
 }
 
 /// Characters allowed in a citation key, the single source of truth shared by the

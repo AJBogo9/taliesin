@@ -1,0 +1,27 @@
+---
+title: "Near-miss references"
+bibliography: refs.bib
+---
+
+This document deliberately misspells a cross-reference and a citation key, so the
+did-you-mean suggestions stay pinned. It lives in `corpus/diagnostics/`, which is
+exempt from the corpus clean-render guards.
+
+## Results {#sec-results}
+
+![A fitted curve](../media/fit-a.png){#fig-results}
+
+## Summary {#sec-summary}
+
+A reference that resolves is left alone, and never warns: see @fig-results.
+
+A near-miss figure reference suggests the anchor the author meant: see @fig-reslts.
+
+A near-miss section reference does too: see @sec-summry.
+
+A reference no anchor is near keeps the plain message: see @fig-nonexistent.
+
+A near-miss citation suggests the entry the author meant [@bishop2006patern].
+
+A citation key nothing in the bibliography resembles keeps the plain message
+[@nosuchkey].

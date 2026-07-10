@@ -102,8 +102,13 @@ pub fn process(
                 // is set up; the missing-file case is its own warning).
                 if !bib.is_empty() {
                     let (file, line) = key_loc.get(key).cloned().unwrap_or((None, None));
-                    let w =
-                        Warning::new(format!("broken citation: @{key} (not in the bibliography)"));
+                    // A near-miss key is the commonest way an author breaks a citation:
+                    // point at the entry they meant instead of only naming the one they
+                    // typed. The bibliography is in scope here, so no plumbing is needed.
+                    let w = Warning::new(match super::nearest(key, bib.keys()) {
+                        Some(near) => format!("broken citation: @{key} (did you mean `@{near}`?)"),
+                        None => format!("broken citation: @{key} (not in the bibliography)"),
+                    });
                     warnings.push(match line {
                         Some(l) => w.at(file, l),
                         None => w,
