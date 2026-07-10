@@ -47,6 +47,7 @@ fn main() -> ExitCode {
         Some("symbols") => query::cmd_symbols(&args),
         Some("check") => check::cmd_check(&args),
         Some("init") => cli::cmd_init(args.get(2).map(String::as_str)),
+        Some("new") => cli::cmd_new(&args),
         // `preview`/`dev` are vite-style aliases for the live server.
         Some("serve" | "preview" | "dev") => cli::cmd_serve(&args),
         Some("--version" | "-V") => {
@@ -85,8 +86,8 @@ fn main() -> ExitCode {
 
 /// Every subcommand name (aliases included), for the unknown-command did-you-mean.
 const COMMANDS: &[&str] = &[
-    "render", "build", "blocks", "schema", "vocab", "symbols", "check", "init", "serve", "preview",
-    "dev", "publish", "help",
+    "render", "build", "blocks", "schema", "vocab", "symbols", "check", "init", "new", "serve",
+    "preview", "dev", "publish", "help",
 ];
 
 /// The `ENV:` block of `usage()`. A const so `env_help_lists_every_runtime_env_var` can
@@ -117,6 +118,8 @@ fn usage() {
     println!("COMMANDS:");
     println!("  init   [dir]               scaffold a starter site you can preview right away");
     println!("                             (writes _site.yml + index.tmd; default: current dir)");
+    println!("  new <post|page|deck> <slug> [--dir <root>]");
+    println!("                             scaffold one document, correct on its first save");
     println!("  preview <file.tmd | dir> [port] [--host] [--open] [--no-exec]");
     println!("                             live preview server (aliases: dev, serve;");
     println!("                             a dir previews the whole SITE with nav + hot reload;");
@@ -238,6 +241,20 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \n\
              Example:\n\
              \x20 taliesin vocab | jq .cellOptions\n"
+        }
+        "new" => {
+            "taliesin new <post|page|deck> <slug> [--dir <root>]\n\
+             \n\
+             Scaffold one document that is correct on its first save: it renders, and\n\
+             `taliesin check` passes on it with no diagnostics. A post lands in\n\
+             posts/<slug>/index.tmd and is dated today; a page and a deck land in\n\
+             <slug>.tmd. Refuses to overwrite an existing file.\n\
+             \n\
+             Flags:\n\
+             \x20 --dir <root>   scaffold under <root> instead of the current directory\n\
+             \n\
+             Example:\n\
+             \x20 taliesin new post my-first-post\n"
         }
         "symbols" => {
             "taliesin symbols <file.tmd> [--format human|json]\n\

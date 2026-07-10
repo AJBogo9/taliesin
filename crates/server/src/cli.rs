@@ -82,6 +82,235 @@ fn scaffold_init(dir: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(written)
 }
 
+/// What `taliesin new` can scaffold. Each maps to one file and one front-matter shape.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(crate) enum NewKind {
+    Post,
+    Page,
+    Deck,
+}
+
+/// The kind names, for the unknown-kind did-you-mean.
+const NEW_KINDS: &[&str] = &["post", "page", "deck"];
+
+impl NewKind {
+    fn parse(raw: &str) -> Result<Self, String> {
+        match raw {
+            "post" => Ok(Self::Post),
+            "page" => Ok(Self::Page),
+            "deck" => Ok(Self::Deck),
+            other => Err(match taliesin_core::closest(other, NEW_KINDS) {
+                Some(k) => format!("unknown kind `{other}` (did you mean `{k}`?)"),
+                None => format!("unknown kind `{other}` (expected post, page, or deck)"),
+            }),
+        }
+    }
+}
+
+/// A slug names a file inside the project, so it may not climb out of it or reach into a
+/// subdirectory. Kept to the characters a URL wants anyway, which is what a page's path
+/// becomes.
+fn validate_slug(slug: &str) -> Result<(), String> {
+    if slug.is_empty() {
+        return Err("the slug is empty (try `taliesin new post my-first-post`)".to_string());
+    }
+    if !slug
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
+        return Err(format!(
+            "invalid slug `{slug}`: use lowercase letters, digits and hyphens \
+             (it becomes the page's URL)"
+        ));
+    }
+    Ok(())
+}
+
+/// `my-first-post` -> `My First Post`, the title an author would have typed anyway.
+fn title_from_slug(slug: &str) -> String {
+    slug.split('-')
+        .filter(|w| !w.is_empty())
+        .map(|w| {
+            let mut cs = w.chars();
+            match cs.next() {
+                Some(c) => c.to_ascii_uppercase().to_string() + cs.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Today's date as `YYYY-MM-DD`, **UTC**. Taliesin has no date dependency and does not
+/// want one for this (see the backlog's library-outsourcing ruling), so the civil date is
+/// derived from the Unix day number directly. Near midnight this can name yesterday or
+/// tomorrow in the author's local zone; the date is front matter they can edit.
+fn today_utc() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let (y, m, d) = civil_from_days(secs.div_euclid(86_400));
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+/// Days since 1970-01-01 -> `(year, month, day)`. Howard Hinnant's `civil_from_days`,
+/// exact for every date this program can see. Unit-tested against known days.
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097); // [0, 146096]
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365; // [0, 399]
+    let y = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100); // [0, 365]
+    let mp = (5 * doy + 2) / 153; // [0, 11]
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32; // [1, 31]
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32; // [1, 12]
+    (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
+/// The files a `taliesin new <kind> <slug>` writes, as `(project-relative path, contents)`.
+///
+/// Pure, so the corpus pin can compare the bytes exactly (`corpus/scaffold/`) and the CLI
+/// can stay a thin wrapper. Every front-matter key here is one the validator knows; a
+/// `check`-clean scaffold is asserted by `crates/server/tests/new_cli.rs`, and the emitted
+/// documents are rendered and linted by the corpus regression net like any other document.
+pub(crate) fn new_files(kind: NewKind, slug: &str, today: &str) -> Vec<(PathBuf, String)> {
+    let title = title_from_slug(slug);
+    let (path, body) = match kind {
+        NewKind::Post => (
+            PathBuf::from("posts").join(slug).join("index.tmd"),
+            format!(
+                "---\n\
+                 title: \"{title}\"\n\
+                 date: {today}\n\
+                 description: \"One sentence: what a reader will understand by the end.\"\n\
+                 categories: [writing]\n\
+                 ---\n\
+                 \n\
+                 Open with the question this post answers.\n\
+                 \n\
+                 ## The first idea\n\
+                 \n\
+                 Save the file and the preview re-renders only the block you changed.\n"
+            ),
+        ),
+        NewKind::Page => (
+            PathBuf::from(format!("{slug}.tmd")),
+            format!(
+                "---\n\
+                 title: \"{title}\"\n\
+                 ---\n\
+                 \n\
+                 Save the file and the preview re-renders only the block you changed.\n"
+            ),
+        ),
+        NewKind::Deck => (
+            PathBuf::from(format!("{slug}.tmd")),
+            format!(
+                "---\n\
+                 title: \"{title}\"\n\
+                 subtitle: \"A subtitle\"\n\
+                 format: deck\n\
+                 ---\n\
+                 \n\
+                 ## The first slide\n\
+                 \n\
+                 - A point worth making\n\
+                 - Another one\n\
+                 \n\
+                 ## The second slide\n\
+                 \n\
+                 Each `##` heading starts a new slide.\n"
+            ),
+        ),
+    };
+    vec![(path, body)]
+}
+
+/// `taliesin new <post|page|deck> <slug> [--dir <root>]`: scaffold one document, correct
+/// on its first save. Refuses to overwrite, exactly as `init` does.
+pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
+    let mut positional: Vec<&str> = Vec::new();
+    let mut root = ".".to_string();
+    let mut it = args[2..].iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--dir" | "--out" => {
+                if let Some(v) = it.next() {
+                    root = v.clone();
+                }
+            }
+            s if s.starts_with("--") => {
+                log::error(&serve::unknown_flag_error(s, NEW_FLAGS));
+                return ExitCode::FAILURE;
+            }
+            s => positional.push(s),
+        }
+    }
+    let (Some(kind), Some(slug)) = (positional.first(), positional.get(1)) else {
+        eprintln!("usage: taliesin new <post|page|deck> <slug> [--dir <root>]");
+        return ExitCode::FAILURE;
+    };
+    let kind = match NewKind::parse(kind) {
+        Ok(k) => k,
+        Err(e) => {
+            log::error(&e);
+            return ExitCode::FAILURE;
+        }
+    };
+    if let Err(e) = validate_slug(slug) {
+        log::error(&e);
+        return ExitCode::FAILURE;
+    }
+    let root = Path::new(&root);
+    match write_new(root, kind, slug) {
+        Ok(written) => {
+            for f in &written {
+                log::built(&f.display().to_string());
+            }
+            println!("Preview it:\n  taliesin preview {}", written[0].display());
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            log::error(&e);
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Every long flag `new` accepts (drives the unknown-flag did-you-mean).
+const NEW_FLAGS: &[&str] = &["--dir"];
+
+/// Write the scaffold under `root`, refusing to overwrite any existing target before
+/// writing any of them (so a partial scaffold never lands on the author's work).
+fn write_new(root: &Path, kind: NewKind, slug: &str) -> Result<Vec<PathBuf>, String> {
+    let files = new_files(kind, slug, &today_utc());
+    for (rel, _) in &files {
+        let path = root.join(rel);
+        if path.exists() {
+            return Err(format!(
+                "{} already exists; refusing to overwrite",
+                path.display()
+            ));
+        }
+    }
+    let mut written = Vec::new();
+    for (rel, contents) in &files {
+        let path = root.join(rel);
+        if let Some(parent) = path.parent()
+            && let Err(e) = std::fs::create_dir_all(parent)
+        {
+            return Err(format!("cannot create {}: {e}", parent.display()));
+        }
+        if let Err(e) = std::fs::write(&path, contents) {
+            return Err(format!("cannot write {}: {e}", path.display()));
+        }
+        written.push(path);
+    }
+    Ok(written)
+}
+
 /// Parse the optional `[port]` positional: absent -> the 4321 default; a present but
 /// unparseable value is an error (not a silent fall-back to the default). Pure/unit-tested.
 fn parse_port(raw: Option<&str>) -> Result<u16, String> {
@@ -290,5 +519,79 @@ mod tests {
         assert!(err.contains("already exists"), "overwrite refused: {err}");
 
         let _ = fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod new_tests {
+    use super::*;
+
+    #[test]
+    fn civil_from_days_matches_known_dates() {
+        assert_eq!(civil_from_days(0), (1970, 1, 1)); // the epoch
+        assert_eq!(civil_from_days(-1), (1969, 12, 31)); // before it
+        assert_eq!(civil_from_days(59), (1970, 3, 1)); // 1970 is not a leap year
+        assert_eq!(civil_from_days(11_016), (2000, 2, 29)); // 2000 is (a 400-year leap)
+        assert_eq!(civil_from_days(20_581), (2026, 5, 8)); // a real post's date
+        assert_eq!(civil_from_days(20_644), (2026, 7, 10));
+    }
+
+    #[test]
+    fn today_is_a_well_formed_iso_date() {
+        let t = today_utc();
+        assert_eq!(t.len(), 10, "got {t}");
+        let (y, rest) = t.split_at(4);
+        assert!(y.parse::<u32>().unwrap() >= 2024, "got {t}");
+        assert!(rest.starts_with('-') && rest[3..4] == *"-", "got {t}");
+    }
+
+    #[test]
+    fn a_slug_becomes_the_title_an_author_would_have_typed() {
+        assert_eq!(title_from_slug("my-first-post"), "My First Post");
+        assert_eq!(title_from_slug("about"), "About");
+        assert_eq!(title_from_slug("pca-2d"), "Pca 2d");
+    }
+
+    #[test]
+    fn a_slug_may_not_escape_the_project_or_carry_a_path() {
+        assert!(validate_slug("my-first-post").is_ok());
+        for bad in ["", "../evil", "a/b", "Upper", "has space", "dot.tmd"] {
+            assert!(validate_slug(bad).is_err(), "`{bad}` must be rejected");
+        }
+    }
+
+    #[test]
+    fn an_unknown_kind_suggests_the_nearest() {
+        assert!(NewKind::parse("post").is_ok());
+        let e = NewKind::parse("pots").unwrap_err();
+        assert!(e.contains("did you mean `post`?"), "got: {e}");
+        let e = NewKind::parse("zzzzzz").unwrap_err();
+        assert!(e.contains("expected post, page, or deck"), "got: {e}");
+    }
+
+    /// The scaffold's bytes are pinned by `corpus/scaffold/`, which the corpus regression
+    /// net renders and lints like any other document. If `new` ever emits a front-matter
+    /// key the validator rejects, `cargo test -p taliesin-core` fails; if it emits
+    /// something else entirely, this fails.
+    #[test]
+    fn every_scaffold_matches_its_corpus_pin() {
+        let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/scaffold");
+        for kind in [NewKind::Post, NewKind::Page, NewKind::Deck] {
+            let slug = match kind {
+                NewKind::Post => "my-first-post",
+                NewKind::Page => "about",
+                NewKind::Deck => "my-talk",
+            };
+            for (rel, contents) in new_files(kind, slug, "2026-07-10") {
+                let pinned = std::fs::read_to_string(corpus.join(&rel))
+                    .unwrap_or_else(|e| panic!("corpus pin for {kind:?} at {rel:?}: {e}"));
+                assert_eq!(
+                    contents,
+                    pinned,
+                    "`taliesin new {slug}` drifted from corpus/scaffold/{}",
+                    rel.display()
+                );
+            }
+        }
     }
 }

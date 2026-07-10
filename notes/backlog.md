@@ -115,17 +115,10 @@ audit called Batch B ("the change that most makes the tool feel mature") is done
 `check`'s superset now has one definition, `check::page_static_diagnostics`, shared by
 `check`, `build --strict` and `publish`.
 
-**Batch F: writing-productivity features (each corpus-pinned, in scope, no ruling needed).**
-- **`taliesin new <post|page|deck> <slug>` (S/M, high).** The blank-page tax. Already worked
-  around **outside** the tool: `corpus/tech-blog/.claude/skills/new-post/SKILL.md` is a
-  hand-built scaffolder, and it is stale (still emits `.qmd`, still says `quarto preview`).
-  Emit keys from the same `KNOWN_KEYS`/schema consts the validator enforces, so the scaffold
-  is correct by construction; reuse `init`'s refuse-before-overwrite guard (`cli.rs:58`).
-  *Pin: `corpus/scaffold/post/`, asserted to render and pass `check` clean.*
-- **TODO / FIXME surfacing (S, med).** `prose.rs::lint` already returns markdown-aware,
-  code/math-skipping located `(line, message)` pairs. A `TODO|FIXME|XXX` scan as info-level
-  located diagnostics makes a draft's loose ends visible without leaving the editor. Never
-  writes back to source.
+**Batch F is done except TODO surfacing**, which turned out NOT to be build-ready as filed
+and is now owner-gated (below). Landed 2026-07-10: did-you-mean on broken refs (`c687fcc`),
+`taliesin symbols` + the completion fix (`1213bb2`), `.tmd` snippets (`d7c950c`), and
+`taliesin new` (this batch). Corrections that changed the work are under "Decided against".
 
 **Historical (landed, kept only as a pointer):** the UI-audit content batch (#9/#11/#13/#14,
 plus the `pca-geometry` twin of #13) and the never-settling-pages investigation both landed
@@ -186,6 +179,13 @@ of the authored sources, verified to fail on injected drift.)*
   fix the comment or make comrak's syntect dep `default-features = false`. Not measured either way.
 - `docs/internals/validation.tmd`'s check-superset table omits `validate_math`, which `check.rs`
   has run for a while. One missing row.
+- `corpus/README.md:16` still describes the fourier-transform post as using an `ojs_define`
+  Python->`{js}` bridge. The authoring spelling has been `define(...)` since the legacy-format
+  clean break; `ojs_define` survives only in internal comments (`kernel.rs:258,655`). One line.
+  (Found while retiring the stale `new-post` skill, which `taliesin new` now replaces.)
+- `corpus/tech-blog/.claude/skills/new-project/SKILL.md` is still stale the same way the
+  `new-post` skill was (`.qmd`, `quarto`). `taliesin new` has no `project` kind, so it was left
+  alone rather than half-migrated.
 
 **Theme colour-system follow-ups, 2026-07-09.** The colour audit itself LANDED (one owned
 iron-gall accent at OKLCH H271; nine vendor hexes now banned by
@@ -524,6 +524,30 @@ cap would be harmless defense-in-depth, not a defect fix. Do not re-scope either
 - **Add (deferred, need a scope/default ruling):** cross-revision block-diff "what changed" view;
   reader-facing reproducibility manifest; web-native List of Figures/Tables/Theorems; interactive data
   tables; "Cite this" export; code-line xrefs (`@lst-3:line`); theme-aware `dark=` figures.
+
+**From Batch F, 2026-07-10** (analysis done; the ruling decides the blast radius):
+- **TODO / FIXME surfacing needs a severity concept that does not exist** (was filed as
+  "S, med, no ruling needed"; it is neither). `prose.rs::lint` really does return
+  markdown-aware, code/math-skipping located `(line, message)` pairs, so the *scan* is small.
+  The trap is "info-level": **there is no severity anywhere.** `render::Warning` has only
+  `{message, file, line}`; `check::Diagnostic` the same; `protocol::Diagnostic` knows only
+  `warning|error`. And the warning channel is a **hard gate**: `cmd_check` exits non-zero if
+  *any* diagnostic exists (no filter), `build --strict` does `problems += doc.warnings.len()`,
+  and `publish --strict` inherits the same superset. So a TODO warning that reaches
+  `doc.warnings` or `page_static_diagnostics` fails `check` on every draft and blocks publish,
+  which contradicts the item's own constraint. Two designs, both real:
+  - **A (S, safe):** preview-only. A `todo_scan` in `prose.rs` injected at
+    `serve/mod.rs::compute_diagnostics` through a new `protocol::Diagnostic::info` + a
+    `.tali-diag-info` rule. It cannot reach the shared gate, by construction. TODOs appear in
+    the browser preview, not as VS Code squiggles.
+  - **B (L):** a real `level` threaded through `render::Warning` (public type) + `check::Diagnostic`
+    + `format_json` + the `cmd_check` exit gate + **both** `build --strict` tallies + the
+    hardcoded `DiagnosticSeverity.Warning` in `diagnostics.ts:59`. Miss any one of those and
+    drafts start failing `--strict`. This re-plumbs the very gate Batch B just unified into one
+    definition, so it deserves its own session.
+  Note the scan must **not** reuse `prose::strip_inline`: it deliberately blanks code, and a
+  TODO usually lives in a code comment. Pin any fixture inside `corpus/diagnostics/` (exempt
+  from the clean-render guards). *Owner ruled 2026-07-10: skip for now; keep this analysis.*
 
 **From the polish audit, 2026-07-09** (evidence in `2026-07-09-polish-audit-findings.md`):
 - **Draft-aware preview (flips an established default).** `draft: true` currently hides a page from

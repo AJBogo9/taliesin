@@ -18,6 +18,8 @@ title: "CLI reference"
 | `schema [--out <dir>]` | Emit the bundled JSON Schemas for `_site.yml` + front matter (editor autocomplete) |
 | `check <file.tmd\|dir> [--format human\|json]` | List every located diagnostic and exit non-zero if any (a CI / pre-publish gate) |
 | `init [dir]` | Scaffold a minimal previewable site (`_site.yml` + `index.tmd`) in `dir` (default `.`); refuses to overwrite |
+| `new <post\|page\|deck> <slug>` | Scaffold one document, correct on its first save; refuses to overwrite |
+| `symbols <file.tmd> [--format human\|json]` | List the document's cross-reference targets (what you can write after `@`) |
 
 `check` renders the document or site in memory and reports everything that flows
 through the diagnostics channel: unknown front-matter / `_site.yml` / cell-option /
@@ -215,6 +217,24 @@ it is forwardable and is not per-person access control, which is the right level
 work-in-progress draft to a supervisor. Note that a book using live Mermaid diagrams
 still loads Mermaid from a CDN at view time (everything else is offline); this is harmless
 behind the gate.
+
+## Starting from something: `init` and `new`
+
+`init` scaffolds a whole site (`_site.yml` + `index.tmd`). `new` scaffolds a single
+document inside one:
+
+```sh
+taliesin new post my-first-post   # posts/my-first-post/index.tmd, dated today
+taliesin new page about           # about.tmd
+taliesin new deck my-talk         # my-talk.tmd, with `format: deck`
+```
+
+The scaffold is correct on its first save: it renders, and `taliesin check` passes on it
+with no diagnostics. That is not a promise, it is a test. What each `new` writes is pinned
+byte-for-byte by `corpus/scaffold/`, which the corpus regression net renders and lints like
+any other document, so a front-matter key the validator would reject cannot survive in the
+scaffold. A slug must be lowercase letters, digits and hyphens (it becomes the page's URL),
+and like `init`, `new` refuses to overwrite an existing file.
 
 ## Inspecting a document: `render`, `blocks`, and `symbols`
 
