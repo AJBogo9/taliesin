@@ -220,6 +220,17 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     }
 }
 
+/// `path:line: message` for a located warning, falling back to `path: message` for one the
+/// renderer could not place. `fallback` names the document when the warning came from it
+/// rather than from an `{{< include >}}`d file.
+fn locate(w: &taliesin_core::render::Warning, fallback: &str) -> String {
+    let file = w.file.as_deref().unwrap_or(fallback);
+    match w.line {
+        Some(l) => format!("{file}:{l}: {}", w.message),
+        None => format!("{file}: {}", w.message),
+    }
+}
+
 /// A `  ·  412ms` / `  ·  1.34s` suffix for a build summary. `preview` has always printed
 /// how long startup took; a build printed nothing, so a cold kernel boot or a slow page was
 /// invisible without wrapping the command in `time`.
@@ -339,7 +350,7 @@ fn build_page_executing(
         // single-doc `build` used to skip it, so a typo'd `---` block built clean and
         // even passed `--strict`. Surface it (located) and count it toward --strict.
         if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(src) {
-            log::warn(&format!("{fallback} (line {line}): {message}"));
+            log::warn(&format!("{fallback}:{line}: {message}"));
             problems += 1;
         }
         let mut doc = taliesin_core::render_document_with_includes(src, base);
@@ -357,7 +368,8 @@ fn build_page_executing(
         // unresolved `{{< include … >}}` directives — the path-resolution channel)
         // are logged here so a `build` never ships a silently dropped include.
         for w in &doc.warnings {
-            log::warn(&w.message);
+            // Located, as `check` reports them: a `--strict` failure should name the line.
+            log::warn(&locate(w, fallback));
         }
         problems += doc.warnings.len();
         // `{{< embed >}}` only resolves in a SITE build, which also builds the
@@ -377,9 +389,25 @@ fn build_page_executing(
         // so a `build` doesn't ship a dangling `@fig-`/`@sec-` link silently.
         let xrefs = taliesin_core::cite::validate_xrefs(&doc.blocks);
         for w in &xrefs {
-            log::warn(&w.message);
+            log::warn(&locate(w, fallback));
         }
         problems += xrefs.len();
+        // The rest of the check-superset. These ran only in `check`, so a `--strict` build
+        // exited 0 while shipping a missing image, a broken anchor or a dangling link —
+        // and a green `--strict` reasonably reads as "safe to ship". Run *before* the code
+        // cells execute, exactly as `check` does, so a figure a cell generates is never
+        // linted as if the author had written it.
+        let statics = crate::check::page_static_diagnostics(
+            src,
+            &doc.blocks,
+            base,
+            doc.format,
+            crate::check::Scope::Standalone,
+        );
+        for w in &statics {
+            log::warn(&locate(w, fallback));
+        }
+        problems += statics.len();
         // Persistent execution cache keyed off the doc's stem, beside the source.
         let mut ex =
             exec::Executor::with_freeze(freeze::page_path(&base.join("_freeze"), fallback))
@@ -744,6 +772,28 @@ async fn build_one_page(
     let base = page.input.parent().unwrap_or(root);
     let mut doc =
         taliesin_core::render_document_with_includes_scoped(&src, base, site.chapter_for(page));
+    let mut problems = 0usize;
+    // Malformed front-matter YAML: the lenient line-parser silently mis-extracts fields, so
+    // the page builds with the wrong title/format. `check` reports it; the site build did not.
+    if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(&src) {
+        problems += 1;
+        warnings.push(format!("{}:{line}: {message}", page.rel));
+    }
+    // The check-superset, over the page's blocks *before* its cells execute (as `check`
+    // does). `Scope::InSite` omits the single-doc link rule: an intra-site `[x](other.tmd)`
+    // rewrites to `other.html`, so only `validate_cross_page_links` can judge it, and that
+    // runs once for the whole project after every page is built.
+    let statics = crate::check::page_static_diagnostics(
+        &src,
+        &doc.blocks,
+        base,
+        doc.format,
+        crate::check::Scope::InSite,
+    );
+    problems += statics.len();
+    for w in &statics {
+        warnings.push(locate(w, &page.rel));
+    }
     let mut exec =
         exec::Executor::with_freeze(freeze::page_path(freeze_dir, &page.rel)).in_dir(base);
     // No progress sink (a build has no client), but name the page: a cold site build runs
@@ -755,7 +805,6 @@ async fn build_one_page(
     exec.set_warm_pool(warm_pool);
     doc.blocks = exec.run(std::mem::take(&mut doc.blocks)).await;
     let kernel_unavailable = exec.diagnostic().is_some();
-    let mut problems = 0usize;
     // A crashed cell bakes its traceback into the page; collect a located line + count it
     // (same shape/order as the sequential `report_cell_errors`, but deferred).
     for b in &doc.blocks {
@@ -777,7 +826,9 @@ async fn build_one_page(
     // silently (these previously only showed in the preview dev menu).
     let (html, render_warnings) = site.render_page_doc_warned(page, doc);
     for w in &render_warnings {
-        warnings.push(format!("{}: {}", page.rel, w.message));
+        // Located, the way `check` reports them. These carry a file + line and were being
+        // flattened to `page.rel: message`, so a `--strict` failure named no line to fix.
+        warnings.push(locate(w, &page.rel));
     }
     problems += render_warnings.len();
     let dest = out.join(&page.url);
@@ -1113,6 +1164,18 @@ async fn build_site_async(
             "swept {swept} stale file{} no longer produced",
             if swept == 1 { "" } else { "s" }
         ));
+    }
+
+    // The site-wide half of the check-superset: rules only the whole page registry can
+    // judge. A broken cross-page link and a typo'd category are exactly the defects a
+    // `--strict` build used to deploy with exit 0.
+    for (rel, w) in site.validate_cross_page_links() {
+        problems += 1;
+        log::warn(&locate(&w, &rel));
+    }
+    for (rel, w) in site.validate_categories() {
+        problems += 1;
+        log::warn(&locate(&w, &rel));
     }
 
     // Second asset pass: ship source files (`.md`/`.scss`/…) that pages actually link to.

@@ -41,24 +41,63 @@ fn collect_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
     }
 }
 
+/// Whether the document being validated is a page of a multi-page site, which changes
+/// exactly one rule (see [`page_static_diagnostics`]).
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum Scope {
+    Standalone,
+    InSite,
+}
+
+/// Every **static** validator, over one already-rendered document: the "check-superset".
+/// No code execution, no filesystem writes; the local-asset/media/link rules do stat the
+/// filesystem.
+///
+/// This is the single definition of the superset, so `check`, `build --strict` and
+/// `publish` cannot drift on what counts as a defect. It deliberately excludes the two
+/// checks the callers already run themselves (`cite::validate_xrefs`, and the front-matter
+/// YAML parse), so nothing is counted twice.
+///
+/// Run it on the document **before** its code cells execute, as `check` does: a matplotlib
+/// figure spliced in by a cell is generated output, and linting it for alt text would
+/// report a defect the author cannot fix in the source.
+///
+/// [`Scope::InSite`] omits `validate_local_links`. An intra-site `[x](other.tmd)` link
+/// rewrites to `other.html`, and only the site's page registry knows the real URLs, so on
+/// a site page that rule reports every internal link as broken. `Site::validate_cross_page_links`
+/// is its site-aware counterpart, run once over the whole project.
+pub(crate) fn page_static_diagnostics(
+    src: &str,
+    blocks: &[taliesin_core::Block],
+    base: &Path,
+    format: taliesin_core::DocFormat,
+    scope: Scope,
+) -> Vec<taliesin_core::render::Warning> {
+    use taliesin_core::diagnostics as dx;
+    let mut out = Vec::new();
+    out.extend(dx::validate_duplicate_heading_ids(blocks));
+    out.extend(dx::validate_internal_anchors(blocks));
+    out.extend(dx::validate_local_assets(blocks, base));
+    out.extend(dx::validate_local_media(blocks, base));
+    if scope == Scope::Standalone {
+        out.extend(dx::validate_local_links(blocks, base));
+    }
+    out.extend(dx::validate_js_reactive_graph(blocks));
+    out.extend(dx::validate_a11y(blocks, format));
+    out.extend(dx::validate_math(blocks));
+    out.extend(dx::validate_code_languages(blocks));
+    out.extend(dx::citations_without_bibliography(src, blocks));
+    out
+}
+
 fn collect_file_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
     let src = std::fs::read_to_string(path)
         .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
     let base = path.parent().unwrap_or_else(|| Path::new("."));
     let doc = taliesin_core::render_document_with_includes(&src, base);
     let path_str = path.display().to_string();
-    use taliesin_core::diagnostics as dx;
     let xref = taliesin_core::cite::validate_xrefs(&doc.blocks);
-    let dups = dx::validate_duplicate_heading_ids(&doc.blocks);
-    let anchors = dx::validate_internal_anchors(&doc.blocks);
-    let assets = dx::validate_local_assets(&doc.blocks, base);
-    let media = dx::validate_local_media(&doc.blocks, base);
-    let links = dx::validate_local_links(&doc.blocks, base);
-    let reactive = dx::validate_js_reactive_graph(&doc.blocks);
-    let a11y = dx::validate_a11y(&doc.blocks, doc.format);
-    let math = dx::validate_math(&doc.blocks);
-    let langs = dx::validate_code_languages(&doc.blocks);
-    let cites = dx::citations_without_bibliography(&src, &doc.blocks);
+    let statics = page_static_diagnostics(&src, &doc.blocks, base, doc.format, Scope::Standalone);
     let mut out: Vec<Diagnostic> = Vec::new();
     // Malformed YAML front matter: the lenient line-parser silently mis-extracts
     // fields, so surface the parse error here too (the live servers already do).
@@ -73,16 +112,7 @@ fn collect_file_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
         doc.warnings
             .iter()
             .chain(xref.iter())
-            .chain(dups.iter())
-            .chain(anchors.iter())
-            .chain(assets.iter())
-            .chain(media.iter())
-            .chain(links.iter())
-            .chain(reactive.iter())
-            .chain(a11y.iter())
-            .chain(math.iter())
-            .chain(langs.iter())
-            .chain(cites.iter())
+            .chain(statics.iter())
             .map(|w| diag_from(w, &path_str)),
     );
     Ok(out)
@@ -129,27 +159,7 @@ fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
             taliesin_core::render_document_with_includes_scoped(&src, base, site.chapter_for(page));
         // Static lints over the page's blocks (xrefs are added by render_page_doc_warned
         // below); run before `doc` is consumed.
-        use taliesin_core::diagnostics as dx;
-        let dups = dx::validate_duplicate_heading_ids(&doc.blocks);
-        let anchors = dx::validate_internal_anchors(&doc.blocks);
-        let assets = dx::validate_local_assets(&doc.blocks, base);
-        let media = dx::validate_local_media(&doc.blocks, base);
-        let reactive = dx::validate_js_reactive_graph(&doc.blocks);
-        let a11y = dx::validate_a11y(&doc.blocks, doc.format);
-        let math = dx::validate_math(&doc.blocks);
-        let langs = dx::validate_code_languages(&doc.blocks);
-        let cites = dx::citations_without_bibliography(&src, &doc.blocks);
-        for w in dups
-            .iter()
-            .chain(anchors.iter())
-            .chain(assets.iter())
-            .chain(media.iter())
-            .chain(reactive.iter())
-            .chain(a11y.iter())
-            .chain(math.iter())
-            .chain(langs.iter())
-            .chain(cites.iter())
-        {
+        for w in &page_static_diagnostics(&src, &doc.blocks, base, doc.format, Scope::InSite) {
             out.push(diag_from(w, &page.rel));
         }
         let (_html, warnings) = site.render_page_doc_warned(page, doc);
