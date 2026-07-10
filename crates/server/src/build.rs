@@ -1247,15 +1247,25 @@ fn sweep_stale(out: &Path, keep: &std::collections::HashSet<PathBuf>) -> usize {
 /// relative refs, data URIs, in-page anchors, and other schemes).
 fn local_refs(html: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
+    let bytes = html.as_bytes();
     for attr in ["src=\"", "href=\""] {
         let mut i = 0;
         while let Some(pos) = html[i..].find(attr) {
-            let start = i + pos + attr.len();
+            let at = i + pos; // first byte of the attribute name
+            let start = at + attr.len();
             let Some(len) = html[start..].find('"') else {
                 break;
             };
             let val = &html[start..start + len];
             i = start + len;
+            // The match must *begin* an attribute name, not end one: `data-qmd-src="…"`
+            // (the click-to-source attribute on listing cards) contains `src="`, and
+            // harvesting it published every post's `.tmd` source into `_site/`. Only a
+            // tag opener or whitespace can precede an attribute name; a multi-byte lead
+            // byte is neither, so the byte test is safe.
+            if at > 0 && bytes[at - 1] != b'<' && !bytes[at - 1].is_ascii_whitespace() {
+                continue;
+            }
             if is_local_ref(val) && !out.iter().any(|v| v == val) {
                 out.push(val.to_string());
             }
@@ -1280,6 +1290,63 @@ fn is_local_ref(v: &str) -> bool {
 mod mirror_tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn local_refs_matches_whole_attributes_not_substrings() {
+        // `data-qmd-src="…"` (the click-to-source attribute on listing cards) *contains*
+        // the substring `src="`, so a bare search harvested each post's `.tmd` and
+        // `deploy_referenced_sources` published the sources into `_site/`.
+        let refs = local_refs(
+            r#"<a class="card" data-qmd-src="posts/a/index.tmd" href="posts/a/index.html">
+                 <img src="posts/a/thumb.png" alt="">
+               </a>
+               <div data-qmd-src="_site.yml"></div>
+               <p>A <a href="notes.md">note</a> you may download.</p>
+               <img
+                 src="wrapped.png">"#,
+        );
+        assert!(refs.contains(&"posts/a/index.html".to_string()), "{refs:?}");
+        assert!(refs.contains(&"posts/a/thumb.png".to_string()), "{refs:?}");
+        assert!(refs.contains(&"notes.md".to_string()), "{refs:?}");
+        // A newline between the tag name and the attribute is still an attribute start.
+        assert!(refs.contains(&"wrapped.png".to_string()), "{refs:?}");
+        // The dev-only attributes are not references to deploy.
+        assert!(!refs.contains(&"posts/a/index.tmd".to_string()), "{refs:?}");
+        assert!(!refs.contains(&"_site.yml".to_string()), "{refs:?}");
+    }
+
+    #[test]
+    fn deploy_referenced_sources_ships_a_linked_source_but_not_a_card_target() {
+        // The function exists to ship a *linked* source (a `.md` download, a `.scss`
+        // offered for inspection). A listing card's `data-qmd-src` is not a link.
+        let dir = tmp_dir("deploy-refs");
+        let out = dir.join("out");
+        fs::create_dir_all(&out).unwrap();
+        fs::write(dir.join("index.tmd"), "x").unwrap();
+        fs::write(dir.join("notes.md"), "y").unwrap();
+
+        let html = r#"<a data-qmd-src="index.tmd" href="index.html">card</a>
+                      <a href="notes.md">the source</a>"#;
+        let copied = deploy_referenced_sources(html, &dir, &out);
+
+        assert!(
+            out.join("notes.md").is_file(),
+            "an explicitly linked source ships"
+        );
+        assert!(
+            !out.join("index.tmd").exists(),
+            "a listing card must not publish the post's source"
+        );
+        assert_eq!(copied, 1);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    fn tmp_dir(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("tali-build-{}-{name}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
 
     #[test]
     fn build_args_distinguish_outhtml_positional_from_out_dir_flag() {

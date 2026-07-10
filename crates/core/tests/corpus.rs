@@ -126,6 +126,16 @@ fn every_corpus_doc_renders_with_invariants() {
             assert!(!b.html.is_empty(), "{label}: empty html for block {}", b.id);
             assert!(ids.insert(&b.id), "{label}: duplicate block id {}", b.id);
 
+            // `data-source-file` is relative to the primary document's directory, on
+            // every machine. An absolute label ships the author's home directory into
+            // published HTML and makes the build machine-dependent.
+            if let Some(sf) = b.source_file.as_deref() {
+                assert!(
+                    !Path::new(sf).is_absolute(),
+                    "{label}: absolute source_file {sf:?}"
+                );
+            }
+
             // Generated blocks (e.g. the References section) carry no sourcepos.
             if b.sourcepos.is_empty() {
                 continue;
@@ -174,6 +184,22 @@ fn includes_are_resolved_with_origin_files() {
     assert!(
         !from_include.is_empty(),
         "expected blocks sourced from the included three-scene.tmd"
+    );
+
+    // Every include label is relative to the primary document's directory. An absolute
+    // label would ship the author's home directory into published HTML, make two machines
+    // produce different bytes, and break the click-to-source round trip (the companion
+    // resolves the label against the doc's dir, and generates the reverse-sync key the
+    // same way). `three-scene.tmd` is reached through `../../`, the case that regressed.
+    let labels: Vec<&str> = from_include
+        .iter()
+        .filter_map(|b| b.source_file.as_deref())
+        .collect();
+    assert!(
+        labels
+            .iter()
+            .all(|f| *f == "../../_includes/three-scene.tmd"),
+        "include label must be primary-doc-relative, got {labels:?}"
     );
 
     // the single-page report pulls in subsections; every subsection contributes blocks

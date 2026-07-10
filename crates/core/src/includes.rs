@@ -233,16 +233,43 @@ fn parse_include(line: &str) -> Option<&str> {
     (!path.is_empty()).then_some(path)
 }
 
-/// A nice label for an included file: relative to the primary document's
-/// directory when it lives underneath it, otherwise the normalized path.
-/// `target` is absolute (it comes from [`safe_join`]), so `primary_base` is
-/// absolutized to the same coordinate system before stripping.
+/// A label for an included file, **always relative to the primary document's
+/// directory**, climbing with `..` when the include lives outside it. `target` is
+/// absolute (it comes from [`safe_join`]), so `primary_base` is absolutized to the
+/// same coordinate system first.
+///
+/// The relative form is not cosmetic: it is the contract `data-source-file` carries.
+/// The editor companion resolves a label with `path.resolve(dirname(doc), label)` and
+/// generates the reverse-sync key with `path.relative(dirname(doc), file)`, so a label
+/// that is not primary-doc-relative breaks click-to-source both ways. Emitting the
+/// absolute path also leaked the author's home directory into published HTML and made
+/// builds differ between machines.
 fn label_for(target: &Path, primary_base: &Path) -> String {
     let primary = absolutize(primary_base);
-    match target.strip_prefix(&primary) {
-        Ok(rel) => rel.to_string_lossy().into_owned(),
-        Err(_) => target.to_string_lossy().into_owned(),
+    relative_from(&primary, target).unwrap_or_else(|| target.to_string_lossy().into_owned())
+}
+
+/// The lexical path from directory `base` to `target`, climbing with `..` as needed and
+/// joined with `/` (the separator the source-map protocol uses). Both must be absolute
+/// and normalized. `None` when they sit on different filesystem roots (distinct Windows
+/// drive/UNC prefixes), where no relative path exists.
+fn relative_from(base: &Path, target: &Path) -> Option<String> {
+    let b: Vec<Component> = base.components().collect();
+    let t: Vec<Component> = target.components().collect();
+    if b.first() != t.first() {
+        return None;
     }
+    let shared = b.iter().zip(&t).take_while(|(x, y)| x == y).count();
+    let mut parts = vec![".."; b.len() - shared]
+        .into_iter()
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    parts.extend(
+        t[shared..]
+            .iter()
+            .map(|c| c.as_os_str().to_string_lossy().into_owned()),
+    );
+    (!parts.is_empty()).then(|| parts.join("/"))
 }
 
 /// Resolve `rel` against `base_dir`, refusing path-traversal escapes. An absolute
@@ -357,6 +384,42 @@ mod tests {
         assert_eq!(w.line, 2, "warning is located on the directive line");
         assert_eq!(w.file, None, "directive lives in the primary document");
         assert!(w.target.contains("etc/passwd"));
+    }
+
+    #[test]
+    fn label_for_a_sibling_include_is_relative_to_the_primary_doc() {
+        // `data-source-file` is *defined* as "relative to the primary document's
+        // directory": the companion resolves it with `path.resolve(dirname(doc), label)`
+        // and produces the reverse-sync key with `path.relative(dirname(doc), file)`.
+        // An include reached via `../` used to fall through to the absolute path, which
+        // leaked the author's home directory into published HTML, made builds
+        // machine-dependent, and broke reverse sync (no `..` form to match).
+        let primary = Path::new("/proj/posts/pca");
+        let target = Path::new("/proj/_includes/three-scene.tmd");
+        assert_eq!(
+            label_for(target, primary),
+            "../../_includes/three-scene.tmd"
+        );
+
+        // Underneath the primary dir: unchanged, no `./` prefix.
+        assert_eq!(
+            label_for(Path::new("/proj/posts/pca/_bits/x.tmd"), primary),
+            "_bits/x.tmd"
+        );
+
+        // The label must round-trip: joining it to the primary dir returns the target.
+        for t in [
+            "/proj/_includes/three-scene.tmd",
+            "/proj/posts/pca/_bits/x.tmd",
+            "/other/tree/y.tmd",
+        ] {
+            let label = label_for(Path::new(t), primary);
+            assert!(
+                !label.starts_with('/'),
+                "label must not be absolute: {label}"
+            );
+            assert_eq!(normalize(&primary.join(&label)), Path::new(t));
+        }
     }
 
     #[test]
