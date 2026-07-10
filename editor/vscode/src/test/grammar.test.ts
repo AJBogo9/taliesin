@@ -216,10 +216,39 @@ test("Phase 2: deck pause `. . .` is scoped", async () => {
 
 test("Phase 2 (injection): inline $…$ and display $$…$$ math get a math scope", async () => {
   const inl = await tokenizeTmd("Euler: $e^{i\\pi}+1=0$ is nice\n");
-  assert.ok(hasScope(inl, "e^", "meta.embedded.math.tmd") || hasScope(inl, "e^", "markup.math.inline.tmd"), "inline $…$ math scoped");
+  assert.ok(hasScope(inl, "e", "markup.math.inline.tmd"), "inline $…$ math region scoped");
   const dis = await tokenizeTmd("$$\\int_0^1 x\\,dx$$ {#eq-area}\n");
   assert.ok(hasScope(dis, "int", "markup.math.display.tmd"), "display $$…$$ math scoped");
   assert.ok(hasScope(dis, "eq-area", "entity.name.label.tmd"), "the {#eq-…} label is scoped");
+});
+
+test("Phase 2 (injection): math-body inner tokens are highlighted natively (no external LaTeX grammar)", async () => {
+  // Multi-line so the `% note` comment stays on an interior line (a `%` runs to EOL, so it must
+  // not share a line with the closing `$$` or `\end{…}`). Empirically the form that tokenizes
+  // cleanly: `$$\begin{aligned}` opens, comment on the middle line, `\end{aligned}$$` closes.
+  const src =
+    "$$\\begin{aligned}\n" +
+    "\\int_0^1 x^2 \\,dx &= \\frac{1}{3} % note\n" +
+    "\\end{aligned}$$\n";
+  const toks = await tokenizeTmd(src);
+
+  // Commands.
+  assert.ok(hasScope(toks, "\\int", "keyword.control.tmd.math"), "\\int is a math command");
+  assert.ok(hasScope(toks, "\\frac", "keyword.control.tmd.math"), "\\frac is a math command");
+  // Environments.
+  assert.ok(hasScope(toks, "\\begin", "keyword.control.tmd.math.environment"), "\\begin is an environment keyword");
+  assert.ok(hasScope(toks, "\\end", "keyword.control.tmd.math.environment"), "\\end is an environment keyword");
+  assert.ok(hasScope(toks, "aligned", "support.class.tmd.math.environment"), "the environment name is scoped");
+  // Operators.
+  assert.ok(hasScope(toks, "^", "keyword.operator.tmd.math"), "^ is a math operator");
+  assert.ok(hasScope(toks, "_", "keyword.operator.tmd.math"), "_ is a math operator");
+  assert.ok(hasScope(toks, "&", "keyword.operator.tmd.math.align"), "& is an alignment operator");
+  // Escape, comment, number.
+  assert.ok(hasScope(toks, "\\,", "constant.character.escape.tmd.math"), "\\, is an escaped symbol");
+  assert.ok(hasScope(toks, "% note", "comment.line.percentage.tmd.math"), "% note is a comment");
+  assert.ok(hasScope(toks, "3", "constant.numeric.tmd.math"), "a digit is numeric");
+  // The region scope still coexists with the new inner scopes.
+  assert.ok(hasScope(toks, "\\int", "meta.embedded.math.tmd"), "region contentName preserved under inner scopes");
 });
 
 test("Phase 2 (injection): {{< shortcode >}} name is scoped", async () => {

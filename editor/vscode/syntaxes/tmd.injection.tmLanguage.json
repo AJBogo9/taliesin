@@ -22,7 +22,8 @@
         "2": { "name": "entity.name.label.tmd" }
       },
       "name": "markup.math.display.tmd",
-      "contentName": "meta.embedded.math.tmd"
+      "contentName": "meta.embedded.math.tmd",
+      "patterns": [{ "include": "#math_body" }]
     },
     "math_inline": {
       "comment": "$ … $ inline. Guarded so `$5` currency / a `$` adjacent to a word is not opened. The body is scoped meta.embedded.math.tmd → mapped to latex by embeddedLanguages (VS Code embeds a LaTeX grammar IF one is installed; NO hard `include: text.tex`, which VS Code does not bundle and which silently disables the rule when unresolved).",
@@ -31,7 +32,29 @@
       "beginCaptures": { "1": { "name": "punctuation.definition.math.begin.tmd" } },
       "endCaptures": { "1": { "name": "punctuation.definition.math.end.tmd" } },
       "name": "markup.math.inline.tmd",
-      "contentName": "meta.embedded.math.tmd"
+      "contentName": "meta.embedded.math.tmd",
+      "patterns": [{ "include": "#math_body" }]
+    },
+    "math_body": {
+      "comment": "Self-contained math-mode LaTeX highlighting for $…$ / $$…$$ bodies. No external grammar: VS Code bundles no TeX grammar, so we own a thin set tuned to math mode. Order matters (vscode-textmate takes the leftmost match, ties broken by list order): comment first; \\begin{}/\\end{} before the generic command rule so the environment name is captured; the escaped-symbol rule (matching at the backslash) protects \\% from being read as a comment.",
+      "patterns": [
+        { "match": "(?<!\\\\)%.*$", "name": "comment.line.percentage.tmd.math" },
+        {
+          "match": "(\\\\(?:begin|end))(\\{)([^}]*)(\\})",
+          "captures": {
+            "1": { "name": "keyword.control.tmd.math.environment" },
+            "2": { "name": "punctuation.definition.tmd.math" },
+            "3": { "name": "support.class.tmd.math.environment" },
+            "4": { "name": "punctuation.definition.tmd.math" }
+          }
+        },
+        { "match": "\\\\[A-Za-z]+", "name": "keyword.control.tmd.math" },
+        { "match": "\\\\[^A-Za-z]", "name": "constant.character.escape.tmd.math" },
+        { "match": "[_^]", "name": "keyword.operator.tmd.math" },
+        { "match": "&", "name": "keyword.operator.tmd.math.align" },
+        { "match": "[{}]", "name": "punctuation.definition.tmd.math.group" },
+        { "match": "[0-9]+(?:\\.[0-9]+)?", "name": "constant.numeric.tmd.math" }
+      ]
     },
     "shortcode": {
       "comment": "{{< name args >}} single-line shortcode (extension/mod.rs).",
