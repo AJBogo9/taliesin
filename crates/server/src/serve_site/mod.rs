@@ -853,7 +853,7 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
         site.finish_blocks(&page, &mut blocks, &mut warnings);
         site.page_toc(&page, doc.toc_explicit, &blocks)
     };
-    let mut diags = page_diagnostics(&page.input, &base, exec);
+    let mut diags = page_diagnostics(&page.input, exec);
     for w in &warnings {
         let mut d = Diagnostic::warn(&w.message);
         if let Some(line) = w.line {
@@ -907,8 +907,13 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
     }
 }
 
-/// Per-page diagnostics: unresolved includes + kernel availability.
-fn page_diagnostics(input: &Path, base: &Path, exec: &crate::exec::Executor) -> Vec<Diagnostic> {
+/// Per-page diagnostics: a framed front-matter parse error + kernel availability.
+///
+/// A missing `{{< include >}}` is deliberately *not* checked here. The render pass already
+/// emits a located `IncludeWarning` on the directive's own line, which reaches this same
+/// channel through `doc.warnings`; checking again produced two diagnostics for one defect,
+/// and the extra one had no line to click.
+fn page_diagnostics(input: &Path, exec: &crate::exec::Executor) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     if let Ok(src) = std::fs::read_to_string(input) {
         // Broken front matter: a located, framed error (same as the single-doc server).
@@ -919,15 +924,6 @@ fn page_diagnostics(input: &Path, base: &Path, exec: &crate::exec::Executor) -> 
                     .at(None, line)
                     .with_frame(crate::serve::code_frame(&src, line)),
             );
-        }
-        for dep in taliesin_core::includes::dependencies(&src, base) {
-            if !dep.exists() {
-                let shown = dep.strip_prefix(base).unwrap_or(&dep);
-                diags.push(Diagnostic::warn(format!(
-                    "include not found: {}",
-                    shown.display()
-                )));
-            }
         }
     }
     if let Some(message) = exec.diagnostic() {

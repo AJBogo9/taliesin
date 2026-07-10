@@ -34,6 +34,13 @@
   let statusEl = /** @type {HTMLElement|null} */ (null);
   let wordCountEl = /** @type {HTMLElement|null} */ (null);
   let ws = /** @type {WebSocket|undefined} */ (undefined);
+  // Two independent things redden the status dot, and each must clear only itself: a
+  // transport-level `error` message (unreadable file, renderer panic), and an error-level
+  // *diagnostic* (broken front-matter YAML). Without `transportError`, a successful render
+  // would clear the dot while an error diagnostic still stands; without `diagHasError`,
+  // `renderOk` would un-redden the dot that the diagnostics just lit.
+  let transportError = false;
+  let diagHasError = false;
 
   const setStatus = (/** @type {string} */ s) => {
     const state =
@@ -119,6 +126,12 @@
       }
       diagEl.appendChild(row);
     }
+    // An `error`-level diagnostic means the page you are looking at is not what your
+    // source says (broken YAML leaves the document rendered from mis-parsed fields), so
+    // the dot must be red, not a green "live" beside an amber badge on a collapsed button.
+    diagHasError = list.some((it) => it.level === "error");
+    if (diagHasError) setStatus("error");
+    else if (!transportError && statusEl && statusEl.textContent === "error") setStatus("live");
     refreshAlert();
   };
 
@@ -308,10 +321,17 @@
     errorEl.classList.add("tali-show");
   };
   const hideError = () => errorEl.classList.remove("tali-show");
-  // A successful render arrived: drop the overlay and clear the "error" status.
+  // Two independent things can redden the status dot, and each must clear only itself:
+  // a transport-level `error` message (unreadable file, renderer panic), and an
+  // error-level *diagnostic* (broken front-matter YAML). Without `transportError`, a
+  // successful render would clear the dot while an error diagnostic still stands, and
+  // without `diagHasError`, `renderOk` would un-redden the dot the diagnostics just lit.
+  // A successful render arrived: drop the overlay and clear the "error" status, unless a
+  // diagnostic is still reporting one.
   const renderOk = () => {
     hideError();
-    if (statusEl && statusEl.textContent === "error") setStatus("live");
+    transportError = false;
+    if (statusEl && statusEl.textContent === "error" && !diagHasError) setStatus("live");
   };
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && errorEl.classList.contains("tali-show")) hideError();
@@ -1002,6 +1022,7 @@
         break;
       }
       case "error":
+        transportError = true;
         setStatus("error");
         showError(msg.message);
         break;

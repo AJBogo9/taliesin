@@ -857,9 +857,14 @@ fn full_render_json(d: &DocState) -> String {
     )
 }
 
-/// Non-fatal issues with the current document: includes that don't resolve, and
-/// the kernel state. Surfaced in the preview so the author sees them without
-/// watching the terminal.
+/// Non-fatal issues with the current document: a framed front-matter parse error, and the
+/// kernel state. Surfaced in the preview so the author sees them without watching the
+/// terminal.
+///
+/// A missing `{{< include >}}` is deliberately *not* checked here. The render pass already
+/// emits a located `IncludeWarning` on the directive's own line, which reaches this same
+/// channel through `doc.warnings`; checking again produced two diagnostics for one defect,
+/// and the extra one had no line to click.
 fn compute_diagnostics(app: &AppState, executor: &crate::exec::Executor) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     if let Ok(src) = std::fs::read_to_string(&app.path) {
@@ -872,15 +877,6 @@ fn compute_diagnostics(app: &AppState, executor: &crate::exec::Executor) -> Vec<
                     .at(None, line)
                     .with_frame(code_frame(&src, line)),
             );
-        }
-        for dep in taliesin_core::includes::dependencies(&src, &app.base_dir) {
-            if !dep.exists() {
-                let shown = dep.strip_prefix(&app.base_dir).unwrap_or(&dep);
-                diags.push(Diagnostic::warn(format!(
-                    "include not found: {}",
-                    shown.display()
-                )));
-            }
         }
     }
     if let Some(message) = executor.diagnostic() {
