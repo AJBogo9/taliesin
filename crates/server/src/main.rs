@@ -56,6 +56,13 @@ fn main() -> ExitCode {
             );
             ExitCode::SUCCESS
         }
+        // `taliesin help <cmd>` is the same request as `taliesin <cmd> --help`, which the
+        // intercept above already serves. Without this arm the `help` verb matched first
+        // and printed top-level usage, silently ignoring the subcommand.
+        Some("help") if args.get(2).and_then(|c| subcommand_help(c)).is_some() => {
+            print!("{}", subcommand_help(&args[2]).unwrap());
+            ExitCode::SUCCESS
+        }
         // No command, or an explicit help request: print usage and succeed.
         Some("--help" | "-h" | "help") | None => {
             usage();
@@ -80,6 +87,18 @@ const COMMANDS: &[&str] = &[
     "render", "build", "blocks", "schema", "vocab", "check", "init", "serve", "preview", "dev",
     "publish", "help",
 ];
+
+/// The `ENV:` block of `usage()`. A const so `env_help_lists_every_runtime_env_var` can
+/// diff it against the variables the code actually reads: `TALIESIN_MERMAID_URL` shipped
+/// user-facing but undocumented because nothing tied the two together.
+const ENV_HELP: &str = "\
+ENV: TALIESIN_PYTHON (python kernel), TALIESIN_R (r kernel),
+     TALIESIN_CELL_TIMEOUT (per-cell seconds; 0 disables),
+     TALIESIN_OPEN (=--open), TALIESIN_HOST (=--host), TALIESIN_NO_CLEAR,
+     TALIESIN_NO_CACHE (skip the _freeze/ execution cache),
+     TALIESIN_NO_EXEC (=--no-exec, never run code cells),
+     TALIESIN_MERMAID_URL (override the url the live preview lazy-loads mermaid from)
+";
 
 fn usage() {
     println!(
@@ -132,11 +151,7 @@ fn usage() {
     );
     println!("  help, --version            show this help / the version");
     println!();
-    println!("ENV: TALIESIN_PYTHON (python kernel), TALIESIN_R (r kernel),");
-    println!("     TALIESIN_CELL_TIMEOUT (per-cell seconds; 0 disables),");
-    println!("     TALIESIN_OPEN (=--open), TALIESIN_HOST (=--host), TALIESIN_NO_CLEAR,");
-    println!("     TALIESIN_NO_CACHE (skip the _freeze/ execution cache),");
-    println!("     TALIESIN_NO_EXEC (=--no-exec, never run code cells)");
+    print!("{ENV_HELP}");
 }
 
 /// Focused help for one subcommand (synopsis + its flags + a one-line example), or
@@ -286,6 +301,91 @@ mod dispatch_tests {
 #[cfg(test)]
 mod cli_microcopy_tests {
     use super::*;
+
+    /// Every `TALIESIN_*` variable the code reads at runtime is documented in the `ENV:`
+    /// block, and every documented one is really read. `TALIESIN_MERMAID_URL` was
+    /// user-facing but absent from `usage()`; nothing connected the two.
+    #[test]
+    fn env_help_lists_every_runtime_env_var() {
+        // Not runtime knobs, so not the CLI's business to document: `TALIESIN_GIT_SHA` is
+        // stamped by `build.rs` and read with `env!`; `TALIESIN_BLESS` (snapshot blessing)
+        // and `TALIESIN_REQUIRE_KERNEL` (the CI kernel job) are read only under
+        // `#[cfg(test)]`. Everything else a user can set must appear in the ENV block.
+        const NOT_RUNTIME_KNOBS: &[&str] = &[
+            "TALIESIN_GIT_SHA",
+            "TALIESIN_BLESS",
+            "TALIESIN_REQUIRE_KERNEL",
+        ];
+
+        fn walk(dir: &std::path::Path, out: &mut std::collections::BTreeSet<String>) {
+            for e in std::fs::read_dir(dir).unwrap().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    walk(&p, out);
+                } else if p.extension().and_then(|s| s.to_str()) == Some("rs") {
+                    let src = std::fs::read_to_string(&p).unwrap();
+                    // Only real lookups, never prose: `var("…")`, `var_os("…")`,
+                    // `set_var("…", …)`. Stop at the identifier boundary, since some
+                    // literals open with the name and continue into a message.
+                    for call in ["var(\"", "var_os(\"", "set_var(\""] {
+                        for (i, _) in src.match_indices(call) {
+                            let rest = &src[i + call.len()..];
+                            if !rest.starts_with("TALIESIN_") {
+                                continue;
+                            }
+                            out.insert(
+                                rest.chars()
+                                    .take_while(|c| {
+                                        c.is_ascii_uppercase() || c.is_ascii_digit() || *c == '_'
+                                    })
+                                    .collect(),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap();
+        let mut read = std::collections::BTreeSet::new();
+        walk(&root.join("server/src"), &mut read);
+        walk(&root.join("core/src"), &mut read);
+        read.retain(|v| !NOT_RUNTIME_KNOBS.contains(&v.as_str()));
+
+        for v in &read {
+            assert!(
+                ENV_HELP.contains(v.as_str()),
+                "`{v}` is read at runtime but missing from usage()'s ENV block"
+            );
+        }
+        for (i, _) in ENV_HELP.match_indices("TALIESIN_") {
+            let name: String = ENV_HELP[i..]
+                .chars()
+                .take_while(|c| c.is_ascii_uppercase() || *c == '_')
+                .collect();
+            assert!(
+                read.contains(&name),
+                "usage() documents `{name}`, which nothing reads"
+            );
+        }
+    }
+
+    /// `taliesin help <cmd>` is the same request as `taliesin <cmd> --help`. It used to
+    /// print top-level usage, because the `help` verb matched before the subcommand was
+    /// looked at.
+    #[test]
+    fn help_verb_with_a_subcommand_resolves_to_that_subcommands_help() {
+        for cmd in ["build", "preview", "check"] {
+            assert!(
+                subcommand_help(cmd).is_some(),
+                "`help {cmd}` needs a focused page to resolve to"
+            );
+        }
+        // A bare `help`, or `help <unknown>`, still falls back to top-level usage.
+        assert!(subcommand_help("frobnicate").is_none());
+    }
+
     /// Each covered subcommand has a focused help that names itself and shows an
     /// example; an unknown command has none.
     #[test]

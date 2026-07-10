@@ -175,7 +175,13 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
             d.warnings = doc.warnings;
             d.blocks = doc.blocks;
         }
-        Ok(None) => {}
+        // The file isn't there (yet). Serving a blank page in silence looked like a broken
+        // renderer; every other command exits 1 on a missing path. Creating the file later
+        // *does* work — the watcher picks it up — so say so rather than refuse.
+        Ok(None) => crate::log::warn(&format!(
+            "cannot read {} — serving an empty page; it will render as soon as the file exists",
+            app.path.display()
+        )),
         Err(payload) => {
             let msg = panic_msg(&*payload);
             crate::log::error(&format!(
@@ -255,7 +261,7 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
     tokio::select! {
         r = server => r.map_err(std::io::Error::other),
         _ = shutdown_signal() => {
-            crate::log::info("shutting down (reaping kernel)");
+            crate::log::kernel("shutting down (reaping kernel)");
             Ok(())
         }
     }

@@ -146,13 +146,19 @@ pub(crate) const PUBLISH_KEYS: &[&str] = &["provider", "project"];
 /// off it (see `crates/server/src/build.rs` + `serve_site/mod.rs`).
 pub const MALFORMED_CONFIG_PREFIX: &str = "_site.yml is not valid YAML";
 
+/// Stable prefix on the advisory a *missing* `_site.yml` pushes. A bare directory of `.tmd`
+/// pages is a legitimate project, so this is a note rather than a defect: `build` already
+/// declines to count it toward `--strict`, and `check` must not fail on it either. Keep it
+/// stable (see `crates/server/src/check.rs`).
+pub const MISSING_CONFIG_PREFIX: &str = "no _site.yml at";
+
 /// Load + parse `_site.yml` at `root` into the native flat schema.
 pub(in crate::site) fn load_config(root: &Path, warnings: &mut Vec<String>) -> SiteConfig {
     let path = root.join("_site.yml");
     let Ok(text) = std::fs::read_to_string(&path) else {
         // A missing `_site.yml` is legitimate (a bare directory of `.tmd` pages), not an
         // error — distinct from the malformed case below, which downstream counts.
-        warnings.push(format!("no _site.yml at {}", root.display()));
+        warnings.push(format!("{MISSING_CONFIG_PREFIX} {}", root.display()));
         return SiteConfig::default();
     };
     let value: serde_yaml::Value = match serde_yaml::from_str(&text) {
@@ -165,6 +171,12 @@ pub(in crate::site) fn load_config(root: &Path, warnings: &mut Vec<String>) -> S
         }
     };
     parse_native(&value, warnings)
+}
+
+/// Whether a discovery warning is the benign "this directory has no `_site.yml`" advisory,
+/// as opposed to a real defect. `check` uses it to keep an advisory out of its problem tally.
+pub fn is_missing_config_warning(warning: &str) -> bool {
+    warning.starts_with(MISSING_CONFIG_PREFIX)
 }
 
 /// Whether a discovery warning is the malformed-`_site.yml` marker (a real error, not the

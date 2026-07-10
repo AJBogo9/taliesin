@@ -93,9 +93,13 @@ fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
     if site.pages.is_empty() {
         return Err(format!("no .tmd pages found under {}", root.display()));
     }
+    // A bare directory of `.tmd` pages is a legitimate project, so a missing `_site.yml` is
+    // an advisory, not a defect: reporting it made `check` print "1 problem" and exit 1 on
+    // a perfectly good tree, while `build` had always declined to count it.
     let mut out: Vec<Diagnostic> = site
         .warnings
         .iter()
+        .filter(|m| !taliesin_core::site::is_missing_config_warning(m))
         .map(|m| Diagnostic {
             file: "_site.yml".to_string(),
             line: None,
@@ -668,6 +672,32 @@ mod tests {
         let f = dir.join("ok.tmd");
         fs::write(&f, "---\ntitle: T\n---\n\nJust clean prose.\n").unwrap();
         assert!(collect_diagnostics(&f).expect("ok").is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_directory_without_site_yml_is_advisory_not_a_problem() {
+        // `check` counted the benign "no _site.yml" note as a problem and exited 1 on a
+        // clean bare directory of pages, disagreeing with `build`, which never counted it.
+        let dir = tmp("check-nositeyml");
+        fs::write(
+            dir.join("index.tmd"),
+            "---\ntitle: Home\n---\n\nClean prose.\n",
+        )
+        .unwrap();
+        let diags = collect_diagnostics(&dir).expect("a bare page directory is a site");
+        assert!(
+            diags.is_empty(),
+            "a missing _site.yml is an advisory, not a problem: {diags:?}"
+        );
+
+        // A *malformed* `_site.yml` is still a real problem, and still counted.
+        fs::write(dir.join("_site.yml"), "title: \"unterminated\n").unwrap();
+        let diags = collect_diagnostics(&dir).expect("still discoverable");
+        assert!(
+            diags.iter().any(|d| d.message.contains("not valid YAML")),
+            "malformed config must still be reported: {diags:?}"
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 

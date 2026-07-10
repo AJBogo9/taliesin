@@ -125,6 +125,7 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
 /// writes `<dir>/index.html` and copies every referenced local asset alongside
 /// (paths preserved), so the directory is deployable as-is. `render` is stdout.
 pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
+    let started = std::time::Instant::now();
     // Positionals: <file> [out.html]. Flags: `--out <dir>` (alias `--dir`),
     // `--strict` (a cell error / broken-ref warning fails the build).
     let BuildArgs {
@@ -196,7 +197,7 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     let strict_fail = strict && problems > 0;
 
     if let Some(dir) = out_dir {
-        let code = build_dir(&html, base, Path::new(dir));
+        let code = build_dir(&html, base, Path::new(dir), started);
         return strict_exit(code, strict_fail, problems);
     }
     let out: PathBuf = out_html
@@ -209,13 +210,25 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
             // page too, so `build doc.tmd out.html` into another directory doesn't
             // leave them dangling. A no-op for an in-place build.
             copy_local_assets(&html, base, dest);
-            log::built(&out.display().to_string());
+            log::built(&format!("{}{}", out.display(), elapsed_note(started)));
             strict_exit(ExitCode::SUCCESS, strict_fail, problems)
         }
         Err(e) => {
             log::error(&format!("cannot write {}: {e}", out.display()));
             ExitCode::FAILURE
         }
+    }
+}
+
+/// A `  ·  412ms` / `  ·  1.34s` suffix for a build summary. `preview` has always printed
+/// how long startup took; a build printed nothing, so a cold kernel boot or a slow page was
+/// invisible without wrapping the command in `time`.
+fn elapsed_note(started: std::time::Instant) -> String {
+    let d = started.elapsed();
+    if d.as_secs() >= 1 {
+        format!("  ·  {:.2}s", d.as_secs_f64())
+    } else {
+        format!("  ·  {}ms", d.as_millis())
     }
 }
 
@@ -394,7 +407,7 @@ fn build_page_executing(
 /// Write `<dir>/index.html` and copy each referenced local asset (an `src=`/
 /// `href=` value pointing to an existing file under `base`) to the same relative
 /// path under `dir`, leaving the HTML's paths untouched so the folder is portable.
-fn build_dir(html: &str, base: &Path, dir: &Path) -> ExitCode {
+fn build_dir(html: &str, base: &Path, dir: &Path, started: std::time::Instant) -> ExitCode {
     if let Err(e) = std::fs::create_dir_all(dir) {
         log::error(&format!("cannot create {}: {e}", dir.display()));
         return ExitCode::FAILURE;
@@ -406,9 +419,10 @@ fn build_dir(html: &str, base: &Path, dir: &Path) -> ExitCode {
         return ExitCode::FAILURE;
     }
     log::built(&format!(
-        "{}  ·  {copied} asset{}",
+        "{}  ·  {copied} asset{}{}",
         index.display(),
-        if copied == 1 { "" } else { "s" }
+        if copied == 1 { "" } else { "s" },
+        elapsed_note(started)
     ));
     ExitCode::SUCCESS
 }
@@ -732,6 +746,9 @@ async fn build_one_page(
         taliesin_core::render_document_with_includes_scoped(&src, base, site.chapter_for(page));
     let mut exec =
         exec::Executor::with_freeze(freeze::page_path(freeze_dir, &page.rel)).in_dir(base);
+    // No progress sink (a build has no client), but name the page: a cold site build runs
+    // pages concurrently, so bare interleaved `cell 2/4` lines belong to nobody.
+    exec.set_progress(None, Some(page.rel.clone()));
     // Draw this page's Python kernel from the shared warm pool (when one booted) so a
     // page with code cells starts near-instantly instead of cold-booting. `None`
     // (unset interpreter / inert pool) cold-starts exactly as before.
@@ -826,6 +843,9 @@ async fn build_site_async(
     strict: bool,
     jobs: Option<usize>,
 ) -> bool {
+    // Timed here rather than in `cmd_build`, so `publish` (which reaches the site build
+    // through `run_site_build`) reports its build time too.
+    let started = std::time::Instant::now();
     let site = taliesin_core::Site::discover(root);
     // A malformed `_site.yml` silently degrades the whole site to defaults (no nav, no
     // title, wrong output dir): a real `--strict` problem, unlike a benign missing config.
@@ -1002,6 +1022,7 @@ async fn build_site_async(
         let mut doc = taliesin_core::render_document_with_includes(&src, base);
         let mut ex =
             exec::Executor::with_freeze(freeze::page_path(&freeze_dir, &deck.url)).in_dir(base);
+        ex.set_progress(None, Some(deck.url.clone()));
         doc.blocks = ex.run(std::mem::take(&mut doc.blocks)).await;
         kernel_unavailable |= ex.diagnostic().is_some();
         problems += report_cell_errors(&doc.blocks, &deck.url);
@@ -1100,10 +1121,11 @@ async fn build_site_async(
     let assets = asset_paths.len() + deploy_referenced_sources_for_site(root, &out);
 
     log::built(&format!(
-        "{}  ·  {pages} page{}  ·  {assets} asset{}{search}{deck_note}{not_found}",
+        "{}  ·  {pages} page{}  ·  {assets} asset{}{search}{deck_note}{not_found}{}",
         out.display(),
         if pages == 1 { "" } else { "s" },
         if assets == 1 { "" } else { "s" },
+        elapsed_note(started),
     ));
     // In `--strict` mode a problem (crashed cell / located warning / broken ref)
     // fails the build after writing it, so CI catches a broken site.
@@ -1290,6 +1312,20 @@ fn is_local_ref(v: &str) -> bool {
 mod mirror_tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn elapsed_note_switches_from_ms_to_seconds() {
+        use std::time::{Duration, Instant};
+        let ms = elapsed_note(Instant::now());
+        assert!(ms.ends_with("ms"), "sub-second builds report ms: {ms}");
+        let slow = elapsed_note(Instant::now() - Duration::from_millis(1340));
+        assert!(
+            slow.contains("1.34s"),
+            "second-scale builds report s: {slow}"
+        );
+        // The summary joins on the same separator the rest of the line uses.
+        assert!(ms.starts_with("  ·  "), "{ms}");
+    }
 
     #[test]
     fn local_refs_matches_whole_attributes_not_substrings() {

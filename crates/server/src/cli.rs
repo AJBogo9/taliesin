@@ -95,47 +95,92 @@ fn parse_port(raw: Option<&str>) -> Result<u16, String> {
 
 /// Every long flag `preview`/`serve`/`dev` accepts (drives the unknown-flag did-you-mean).
 /// `--help`/`-h` are intercepted by `main()` before this parser runs, so they aren't here.
-const SERVE_FLAGS: &[&str] = &["--open", "--host", "--no-exec"];
+const SERVE_FLAGS: &[&str] = &["--open", "--host", "--no-exec", "--port"];
 
-pub(crate) fn cmd_serve(args: &[String]) -> ExitCode {
-    // Positionals are <file.tmd> [port]; flags (--open, --host) may appear anywhere.
-    let positionals: Vec<&String> = args[2..].iter().filter(|a| !a.starts_with("--")).collect();
-    // An unrecognized `--flag` is a hard error with a did-you-mean (not silently filtered
-    // out of the positionals — a typo'd `--hots` would otherwise preview without exposing).
-    for a in &args[2..] {
-        if a.starts_with("--") && !SERVE_FLAGS.contains(&a.as_str()) {
-            log::error(&serve::unknown_flag_error(a, SERVE_FLAGS));
-            return ExitCode::FAILURE;
+/// What `preview`/`serve`/`dev` parsed out of argv, before any environment or IO.
+#[derive(Debug, PartialEq)]
+pub(crate) struct ServeArgs<'a> {
+    pub path: &'a str,
+    pub port: u16,
+    pub open: bool,
+    pub expose: bool,
+    pub no_exec: bool,
+}
+
+/// Parse `preview <file.tmd|dir> [port] [--port <N>] [--host] [--open] [--no-exec]`.
+///
+/// The port may be the second positional (the original spelling) or `--port <N>` /
+/// `--port=<N>`. Without the flag, `--port 4400` tripped the unknown-flag did-you-mean and
+/// suggested `--host`, which is two edits away and does something else entirely.
+/// Pure + unit-tested: no environment reads, no filesystem.
+pub(crate) fn parse_serve_args(args: &[String]) -> Result<ServeArgs<'_>, String> {
+    let mut positionals: Vec<&str> = Vec::new();
+    let mut flag_port: Option<&str> = None;
+    let (mut open, mut expose, mut no_exec) = (false, false, false);
+
+    let mut it = args[2..].iter().peekable();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--open" => open = true,
+            "--host" => expose = true,
+            "--no-exec" => no_exec = true,
+            "--port" => {
+                flag_port = Some(
+                    it.next()
+                        .map(String::as_str)
+                        .ok_or_else(|| "--port needs a value (e.g. --port 4400)".to_string())?,
+                );
+            }
+            s if s.starts_with("--port=") => flag_port = Some(&s["--port=".len()..]),
+            // An unrecognized `--flag` is a hard error with a did-you-mean (never silently
+            // dropped: a typo'd `--hots` would otherwise preview without exposing).
+            s if s.starts_with("--") => return Err(serve::unknown_flag_error(s, SERVE_FLAGS)),
+            s => positionals.push(s),
         }
     }
-    let flag = |name: &str| args.iter().any(|a| a == name);
-    let open = flag("--open") || std::env::var_os("TALIESIN_OPEN").is_some();
-    let expose = flag("--host") || std::env::var_os("TALIESIN_HOST").is_some();
-    // `--no-exec` is sugar for `TALIESIN_NO_EXEC=1`, which `exec::Executor` reads:
-    // preview a document you don't trust without running its code cells.
-    if flag("--no-exec") {
-        // SAFETY: set once at CLI startup, before the tokio runtime / kernel
-        // threads spawn, so no other thread is touching the environment.
-        unsafe { std::env::set_var("TALIESIN_NO_EXEC", "1") };
-    }
-    let Some(path) = positionals.first() else {
-        eprintln!("usage: taliesin preview <file.tmd|dir> [port] [--host] [--open] [--no-exec]");
-        return ExitCode::FAILURE;
-    };
-    // The optional second positional is the port; a present-but-unparseable value
-    // is an error rather than a silent fall-back to the default.
-    let port: u16 = match parse_port(positionals.get(1).map(|s| s.as_str())) {
-        Ok(n) => n,
+
+    let path = *positionals.first().ok_or_else(|| {
+        "usage: taliesin preview <file.tmd|dir> [port] [--port <N>] [--host] [--open] [--no-exec]"
+            .to_string()
+    })?;
+    // `--port` wins over the positional when both are given (the explicit flag is the
+    // more deliberate spelling); a present-but-unparseable value is always an error.
+    let port = parse_port(flag_port.or_else(|| positionals.get(1).copied()))?;
+    Ok(ServeArgs {
+        path,
+        port,
+        open,
+        expose,
+        no_exec,
+    })
+}
+
+pub(crate) fn cmd_serve(args: &[String]) -> ExitCode {
+    let parsed = match parse_serve_args(args) {
+        Ok(p) => p,
+        Err(msg) if msg.starts_with("usage:") => {
+            eprintln!("{msg}");
+            return ExitCode::FAILURE;
+        }
         Err(msg) => {
             log::error(&msg);
             return ExitCode::FAILURE;
         }
     };
+    let open = parsed.open || std::env::var_os("TALIESIN_OPEN").is_some();
+    let expose = parsed.expose || std::env::var_os("TALIESIN_HOST").is_some();
+    // `--no-exec` is sugar for `TALIESIN_NO_EXEC=1`, which `exec::Executor` reads:
+    // preview a document you don't trust without running its code cells.
+    if parsed.no_exec {
+        // SAFETY: set once at CLI startup, before the tokio runtime / kernel
+        // threads spawn, so no other thread is touching the environment.
+        unsafe { std::env::set_var("TALIESIN_NO_EXEC", "1") };
+    }
     // A directory is a multi-page site project; a single `.tmd` is one document.
-    let result = if Path::new(path.as_str()).is_dir() {
-        serve_site::run(PathBuf::from(path), port, open, expose)
+    let result = if Path::new(parsed.path).is_dir() {
+        serve_site::run(PathBuf::from(parsed.path), parsed.port, open, expose)
     } else {
-        serve::run(PathBuf::from(path), port, open, expose)
+        serve::run(PathBuf::from(parsed.path), parsed.port, open, expose)
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -160,6 +205,57 @@ mod tests {
         assert_eq!(parse_port(Some("0")).unwrap(), 0);
         assert!(parse_port(Some("not-a-port")).is_err());
         assert!(parse_port(Some("70000")).is_err());
+    }
+
+    fn argv(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn serve_accepts_port_as_a_flag_or_a_positional() {
+        // The original spelling: the second positional.
+        let a = argv(&["taliesin", "preview", "doc.tmd", "4400"]);
+        assert_eq!(parse_serve_args(&a).unwrap().port, 4400);
+
+        // `--port 4400` used to error with "unknown flag `--port` (did you mean `--host`?)".
+        let a = argv(&["taliesin", "preview", "doc.tmd", "--port", "4400"]);
+        assert_eq!(parse_serve_args(&a).unwrap().port, 4400);
+
+        // `--port=4400` too, and the flag may precede the path.
+        let a = argv(&["taliesin", "preview", "--port=4400", "doc.tmd"]);
+        let p = parse_serve_args(&a).unwrap();
+        assert_eq!((p.port, p.path), (4400, "doc.tmd"));
+
+        // Default when neither is given.
+        let a = argv(&["taliesin", "preview", "doc.tmd"]);
+        assert_eq!(parse_serve_args(&a).unwrap().port, 4321);
+
+        // The explicit flag wins over the positional.
+        let a = argv(&["taliesin", "preview", "doc.tmd", "1111", "--port", "2222"]);
+        assert_eq!(parse_serve_args(&a).unwrap().port, 2222);
+    }
+
+    #[test]
+    fn serve_flag_errors_stay_loud() {
+        // A bad port value is an error, never a silent fall-back to the default.
+        let a = argv(&["taliesin", "preview", "doc.tmd", "--port", "not-a-port"]);
+        assert!(parse_serve_args(&a).unwrap_err().contains("invalid port"));
+
+        // `--port` with nothing after it names the fix.
+        let a = argv(&["taliesin", "preview", "doc.tmd", "--port"]);
+        assert!(parse_serve_args(&a).unwrap_err().contains("needs a value"));
+
+        // An unknown flag still gets a did-you-mean, and `--prot` now resolves to
+        // `--port` rather than to the unrelated `--host`.
+        let a = argv(&["taliesin", "preview", "doc.tmd", "--prot", "4400"]);
+        let err = parse_serve_args(&a).unwrap_err();
+        assert!(err.contains("--prot"), "{err}");
+        assert!(err.contains("--port"), "{err}");
+
+        // Flags are not swallowed as positionals.
+        let a = argv(&["taliesin", "preview", "doc.tmd", "--host", "--open"]);
+        let p = parse_serve_args(&a).unwrap();
+        assert!(p.expose && p.open && p.port == 4321);
     }
 
     fn tmp(name: &str) -> PathBuf {

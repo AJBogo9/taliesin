@@ -17,6 +17,7 @@ enum Style {
     Source,
     Kernel,
     Exec,
+    Info,
     Warn,
     Error,
 }
@@ -33,6 +34,7 @@ impl Style {
             Style::Source => ("source", "\x1b[34m"),   // blue
             Style::Kernel => ("kernel", "\x1b[35m"),   // magenta
             Style::Exec => ("exec", "\x1b[35m"),       // magenta (kernel work)
+            Style::Info => ("info", "\x1b[90m"),       // grey (a note, not an outcome)
             Style::Warn => ("warn", "\x1b[33m"),       // yellow
             Style::Error => ("error", "\x1b[31m"),     // red
         }
@@ -164,14 +166,22 @@ pub fn kernel(msg: &str) {
     line(Style::Kernel, msg);
 }
 
-/// Code-cell execution progress, shown while the kernel runs.
-pub fn exec(done: usize, total: usize) {
-    line(Style::Exec, &format!("cell {done}/{total}"));
+/// Code-cell execution progress, shown while the kernel runs. `page` names the document
+/// the cell belongs to: a cold multi-page build runs pages concurrently, so an unlabelled
+/// `cell 2/5` cannot be attributed to any of them.
+pub fn exec(page: Option<&str>, done: usize, total: usize) {
+    match page {
+        Some(p) => line(Style::Exec, &format!("{p}  cell {done}/{total}")),
+        None => line(Style::Exec, &format!("cell {done}/{total}")),
+    }
 }
 
-/// General informational message (used for startup notes like the build concurrency cap).
+/// General informational message: a note about what is about to happen or is winding
+/// down. It gets its own tag — reusing the green `built` tag made a build *start* print
+/// `built building with…` and Ctrl-C print `built shutting down…`, both reading as
+/// completed builds.
 pub fn info(msg: &str) {
-    line(Style::Built, msg);
+    line(Style::Info, msg);
 }
 
 pub fn warn(msg: &str) {

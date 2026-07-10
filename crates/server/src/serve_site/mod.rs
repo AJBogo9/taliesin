@@ -150,6 +150,16 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
             })
         })
         .collect();
+    // A project with nothing to serve: `check <dir>` already exits 1 here, while `preview`
+    // used to bind a port, 404 `/`, and boot the kernel pool for nothing. The two front
+    // doors must agree. A page-less root that only `mounts:` sub-projects is legitimate —
+    // it is how a docs container is previewed — so it is not empty.
+    if page_count == 0 && mounts.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            format!("no .tmd pages found under {}", root.display()),
+        ));
+    }
     let (build_tx, build_rx) = mpsc::unbounded_channel();
     let app = Arc::new(SiteApp {
         root: root.clone(),
@@ -220,7 +230,7 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
     tokio::select! {
         r = server => r.map_err(std::io::Error::other),
         _ = crate::serve::shutdown_signal() => {
-            crate::log::info("shutting down (reaping kernels)");
+            crate::log::kernel("shutting down (reaping kernels)");
             Ok(())
         }
     }

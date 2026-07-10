@@ -237,10 +237,11 @@ impl Executor {
     /// Stream this executor's per-build progress (`build-state` messages) through
     /// `sink`, tagged with the page rel-path `page` (the site server's page key;
     /// `None` for the single-doc server). The server sets this once after creating the
-    /// executor; the `build` path leaves it unset (no client). Emission never changes
-    /// what executes or caches, so freeze determinism is preserved regardless of the
-    /// sink. A `&mut self` setter (not a consuming builder) so it can be applied to a
-    /// pooled `&mut Executor`.
+    /// executor. The site `build` path passes a `None` sink (there is no client) but still
+    /// sets `page`, so its concurrent per-page `cell k/n` lines can be attributed.
+    /// Emission never changes what executes or caches, so freeze determinism is preserved
+    /// regardless of the sink. A `&mut self` setter (not a consuming builder) so it can be
+    /// applied to a pooled `&mut Executor`.
     pub fn set_progress(&mut self, sink: ProgressSink, page: Option<String>) {
         self.sink = sink;
         self.page = page;
@@ -536,7 +537,7 @@ impl Executor {
                     // no-ops and a "cell k/n" line would be misleading.
                     if has_kernel {
                         ran_count += 1;
-                        crate::log::exec(ran_count, to_run);
+                        crate::log::exec(page.as_deref(), ran_count, to_run);
                         emit(
                             &sink,
                             crate::protocol::build_state(
