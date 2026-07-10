@@ -46,6 +46,15 @@ not a runaway loop but a `settle()` false negative, since a `//| name:` value ce
 DOM; `qmd-js.js` now stamps `data-qmd-done` when a cell's `run()` resolves and the harness gates on that
 (the tempting `data-qmd-ran` is stamped *before* cells run, so it would have caused premature capture).
 
+**2026-07-10 (later): Batch F landed too, so Tier 1 is empty.** Four items: a near-miss `@fig-`
+or `[@cite]` now names the target you meant (`c687fcc`); `taliesin symbols` emits the resolved
+xref registry and the companion's `@`-completion finally sees cell-labelled figures, merging the
+CLI's answer with a live buffer scan (`1213bb2`); twelve `.tmd` snippets, gated against the Rust
+vocabulary by five mutation-checked tests (`d7c950c`); and `taliesin new <post|page|deck> <slug>`,
+whose output is pinned byte-for-byte by `corpus/scaffold/` and proven `check`-clean (`094c45c`).
+Three new cross-surface drift gates landed with them, and **two of those gates could not fail on
+their first draft** (see "Decided against"). The fifth Batch-F item, TODO surfacing, is owner-gated.
+
 **2026-07-10: the polish audit's Tier-1 batches A-E all landed.** The VS Code companion runs
 for the first time since the rename (its default binary was `qmd-fast`); the published site no
 longer carries the author's home directory or twelve `.tmd` sources; nine CLI papercuts;
@@ -85,16 +94,21 @@ exec/kernel zone + the single-editing-surface invariant. Review subagents use re
 
 ## Needs your input (the blockers)
 
-Nothing blocks Tier 1. Batches A-E of the 2026-07-09 polish audit **landed 2026-07-10**; the
-only Tier-1 work left is **Batch F** (writing-productivity features), all of which is decided
-and build-ready.
+**Tier 1 is empty.** The 2026-07-09 polish audit's Batches A-E landed 2026-07-10, and Batch F
+landed the same day (four of its five items; the fifth, TODO surfacing, was found not to be
+build-ready as filed and is now owner-gated below, with the analysis kept).
 
-Five **rulings owed**, none blocking (all filed under "Owner-gated" below): draft-aware preview
+Six **rulings owed**, none blocking (all filed under "Owner-gated" below): draft-aware preview
 (flips a default), reading time in the built page (reverses a decision a corpus test pins),
 `publish --public` (relaxes a fail-closed gate), the built-site shared asset bundle (changes the
-shape of the build output), and now **whether plain `publish` should be strict by default**
+shape of the build output), **whether plain `publish` should be strict by default**
 (`publish --strict` already inherits the full check-superset; making it the default is a
-fail-closed change, so it was not assumed).
+fail-closed change, so it was not assumed), and **TODO/FIXME surfacing** (design A preview-only
+vs design B a real severity level through the shared check/build/publish gate).
+
+With Tier 1 clear, the next queue is **Tier 2 hardening** (the kernel-flake / ungraceful-death
+pair, the `assets/js` `tsc` pass) and the two **2026-07-07 items that each need a dedicated
+session** (the 165-decision catalog triage; the reading-first layout + typeface half).
 
 ## Priority queue
 
