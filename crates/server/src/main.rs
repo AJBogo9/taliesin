@@ -44,6 +44,7 @@ fn main() -> ExitCode {
         Some("blocks") => query::cmd_blocks(args.get(2)),
         Some("schema") => query::cmd_schema(&args),
         Some("vocab") => query::cmd_vocab(),
+        Some("symbols") => query::cmd_symbols(&args),
         Some("check") => check::cmd_check(&args),
         Some("init") => cli::cmd_init(args.get(2).map(String::as_str)),
         // `preview`/`dev` are vite-style aliases for the live server.
@@ -84,8 +85,8 @@ fn main() -> ExitCode {
 
 /// Every subcommand name (aliases included), for the unknown-command did-you-mean.
 const COMMANDS: &[&str] = &[
-    "render", "build", "blocks", "schema", "vocab", "check", "init", "serve", "preview", "dev",
-    "publish", "help",
+    "render", "build", "blocks", "schema", "vocab", "symbols", "check", "init", "serve", "preview",
+    "dev", "publish", "help",
 ];
 
 /// The `ENV:` block of `usage()`. A const so `env_help_lists_every_runtime_env_var` can
@@ -146,6 +147,7 @@ fn usage() {
     println!(
         "  vocab                      emit editor autocomplete vocabulary as JSON (companion)"
     );
+    println!("  symbols <file.tmd> [--format human|json]  list the doc's cross-reference targets");
     println!(
         "  check <file|dir> [--format human|json]  list located diagnostics; exits non-zero if any"
     );
@@ -236,6 +238,21 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \n\
              Example:\n\
              \x20 taliesin vocab | jq .cellOptions\n"
+        }
+        "symbols" => {
+            "taliesin symbols <file.tmd> [--format human|json]\n\
+             \n\
+             List the document's cross-reference targets: every anchor you can name after\n\
+             `@`, whether it was written as a brace anchor (`{#sec-why}`) or as a cell\n\
+             label (`#| label: fig-scree`), with the number Taliesin resolved for it.\n\
+             Static: renders in memory and never runs a code cell, so an editor can call\n\
+             it while you type.\n\
+             \n\
+             Flags:\n\
+             \x20 --format human|json   json feeds the companion's @-completion\n\
+             \n\
+             Example:\n\
+             \x20 taliesin symbols post.tmd --format json | jq '.[].id'\n"
         }
         "blocks" => {
             "taliesin blocks <file.tmd>\n\
@@ -386,13 +403,98 @@ mod cli_microcopy_tests {
         assert!(subcommand_help("frobnicate").is_none());
     }
 
+    /// The source of `main()`'s dispatch `match`, sliced out of this very file. Panics
+    /// rather than returning an empty region, so a rename of either marker fails loudly
+    /// instead of turning the gate below into a vacuous pass.
+    fn dispatch_region(src: &str) -> &str {
+        const START: &str = "match args.get(1).map(String::as_str) {";
+        const END: &str = "/// Every subcommand name";
+        let s = src.find(START).expect("main() dispatches on args.get(1)");
+        let e = src[s..]
+            .find(END)
+            .expect("the COMMANDS const follows main()")
+            + s;
+        &src[s..e]
+    }
+
+    /// Every command name a dispatch region matches on, from the string literals inside
+    /// each `Some(…)` pattern.
+    ///
+    /// Deliberately NOT line-based. rustfmt wraps a long or-pattern onto its own lines,
+    /// which splits `Some(` from its `=>`, and a line-based scan then silently collects
+    /// nothing: a gate that cannot fail is worse than no gate. Reading `Some(` up to the
+    /// `)` that closes it survives any wrapping, and stopping at that `)` keeps a string
+    /// inside a match guard from being mistaken for a command.
+    fn commands_in_dispatch(region: &str) -> std::collections::BTreeSet<String> {
+        let mut out = std::collections::BTreeSet::new();
+        let mut rest = region;
+        while let Some(i) = rest.find("Some(") {
+            rest = &rest[i + "Some(".len()..];
+            let Some(end) = rest.find(')') else { break };
+            // Flags (`--version`, `-h`) are not commands and are never suggested, so they
+            // are not in `COMMANDS`. A binding pattern (`Some(other)`) has no literal.
+            for lit in rest[..end].split('"').skip(1).step_by(2) {
+                if !lit.starts_with('-') {
+                    out.insert(lit.to_string());
+                }
+            }
+            rest = &rest[end..];
+        }
+        out
+    }
+
+    #[test]
+    fn the_dispatch_scan_survives_rustfmt_wrapping_and_guards() {
+        let set = |names: &[&str]| -> std::collections::BTreeSet<String> {
+            names.iter().map(|s| s.to_string()).collect()
+        };
+        // A long or-pattern, wrapped: `Some(` and `=>` land on different lines.
+        assert_eq!(
+            commands_in_dispatch("Some(\n    \"alpha\" | \"beta\",\n) => cmd(),"),
+            set(&["alpha", "beta"])
+        );
+        // A long guard, wrapped off the pattern's line.
+        assert_eq!(
+            commands_in_dispatch("Some(\"gamma\")\n    if x.is_some() =>\n{ }"),
+            set(&["gamma"])
+        );
+        // A string *inside* a guard is not a command.
+        assert_eq!(
+            commands_in_dispatch("Some(\"help\") if a.map(|s| s == \"delta\").is_some() => u(),"),
+            set(&["help"])
+        );
+        // Flags and binding patterns contribute nothing.
+        assert!(commands_in_dispatch("Some(\"--version\" | \"-V\") => v(),").is_empty());
+        assert!(commands_in_dispatch("Some(other) => fail(other),").is_empty());
+    }
+
+    /// Every name `main()` dispatches on is in `COMMANDS`, and vice versa. `COMMANDS` is
+    /// what the unknown-command did-you-mean searches, so a subcommand missing from it is
+    /// invisible: `taliesin symbol` would suggest nothing instead of `symbols`. Nothing
+    /// tied the two together, exactly as nothing tied `usage()`'s `ENV:` block to the
+    /// variables the code reads (see `env_help_lists_every_runtime_env_var`).
+    #[test]
+    fn every_dispatched_command_is_listed_in_commands() {
+        let dispatched = commands_in_dispatch(dispatch_region(include_str!("main.rs")));
+        let listed: std::collections::BTreeSet<String> =
+            COMMANDS.iter().map(|c| c.to_string()).collect();
+        assert_eq!(
+            dispatched, listed,
+            "the dispatch and COMMANDS disagree (left: dispatched, right: COMMANDS)"
+        );
+    }
+
+    /// Names in `COMMANDS` that are an alias of another command, or not a command at all.
+    /// `subcommand_help_covers_documented_commands` skips them: `dev`/`serve` resolve to
+    /// `preview`'s help, and `help` is the help system rather than an entry in it.
+    const ALIASES_AND_META: &[&str] = &["dev", "serve", "help"];
+
     /// Each covered subcommand has a focused help that names itself and shows an
     /// example; an unknown command has none.
     #[test]
     fn subcommand_help_covers_documented_commands() {
-        for cmd in [
-            "preview", "build", "check", "render", "schema", "vocab", "blocks", "init", "publish",
-        ] {
+        // Driven by COMMANDS, so a new subcommand cannot ship without focused help.
+        for cmd in COMMANDS.iter().filter(|c| !ALIASES_AND_META.contains(c)) {
             let help = subcommand_help(cmd).unwrap_or_else(|| panic!("help for `{cmd}`"));
             assert!(
                 help.contains(cmd),

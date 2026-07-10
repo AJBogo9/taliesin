@@ -131,3 +131,43 @@ test("no `qmd-fast` branding survives in the manifest or the extension source", 
     "stale qmd-fast branding in package.json"
   );
 });
+
+/** The subcommand names `main()` will accept, from `const COMMANDS` in the server crate. */
+function cargoCommands(): string[] {
+  const src = fs.readFileSync(path.join(REPO_ROOT, "crates/server/src/main.rs"), "utf8");
+  const m = /const COMMANDS: &\[&str\] = &\[([\s\S]*?)\];/.exec(src);
+  assert.ok(m, "crates/server/src/main.rs declares a COMMANDS const");
+  return [...m![1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+}
+
+test("every taliesin subcommand the extension spawns is a real command", () => {
+  // The companion talks to the CLI by spawning it with a bare subcommand string. Rename or
+  // remove a command in Rust and the extension keeps spawning the old name, failing exactly
+  // as silently as the `qmd-fast` default did: `fetchSymbols`/`fetchVocab` swallow the error
+  // and simply return no completions. Nothing else ties the two sides together.
+  const commands = cargoCommands();
+  const spawned = new Set<string>();
+  let parsed = 0;
+  for (const src of sources) {
+    for (const m of src.matchAll(/spawn\(\s*[^,]+,\s*\[\s*"([^"]+)"/g)) {
+      spawned.add(m[1]);
+      parsed++;
+    }
+  }
+  // A `spawn(` this pattern fails to parse would be skipped in silence, and the gate would
+  // pass while the extension shelled out to a command that no longer exists. (The first
+  // draft matched only a bare identifier, `spawn(\s*\w+\s*,`, so `spawn(binaryPath(), …)`
+  // would have slipped through.) Every call site must be accounted for.
+  const callSites = [...allSource.matchAll(/spawn\(/g)].length;
+  assert.equal(
+    parsed,
+    callSites,
+    `parsed ${parsed} of ${callSites} spawn(…) call sites; the scan missed one, so this gate cannot be trusted`
+  );
+  for (const cmd of spawned) {
+    assert.ok(
+      commands.includes(cmd),
+      `the extension spawns \`taliesin ${cmd}\`, which is not in main.rs's COMMANDS (${commands.join(", ")})`
+    );
+  }
+});

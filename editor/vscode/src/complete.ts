@@ -80,6 +80,60 @@ export function detectContext(linePrefix: string, docPrefix: string): Completion
   return { kind: "none" };
 }
 
+// One cross-reference target, as `taliesin symbols --format json` emits it.
+export interface XrefSymbol {
+  id: string;
+  kind: string;
+  number: string;
+}
+
+// Parse `taliesin symbols --format json`. Never throws: a missing binary, an old binary
+// with no `symbols` command, or a `{"error": …}` envelope all degrade to "no symbols",
+// and the caller falls back to the buffer scan rather than dropping completions.
+export function parseSymbolsJson(stdout: string): XrefSymbol[] {
+  const text = stdout.trim();
+  if (text === "") return [];
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((s): s is XrefSymbol => !!s && typeof (s as XrefSymbol).id === "string")
+    .map((s) => ({
+      id: s.id,
+      kind: typeof s.kind === "string" ? s.kind : "",
+      number: typeof s.number === "string" ? s.number : "",
+    }));
+}
+
+// Union the two views of a document's cross-reference targets, sorted and deduplicated.
+//
+// Neither view is sufficient alone. `taliesin symbols` reads the file on DISK and knows
+// the whole registry, including the cell labels (`#| label: fig-scree`) that no regex can
+// see and the numbers Taliesin resolved. `harvestAnchorIds` reads the LIVE buffer, so it
+// alone sees an anchor the author typed a moment ago and has not saved. Merging keeps a
+// just-typed anchor completable without giving up the cell-labeled ones.
+//
+// `labels` maps a kind prefix to its rendered label (`fig` -> `Figure`), from `vocab`.
+export function mergeXrefTargets(
+  bufferIds: string[],
+  symbols: XrefSymbol[],
+  labels: Record<string, string>
+): { id: string; detail: string }[] {
+  const detail = new Map<string, string>();
+  for (const id of bufferIds) detail.set(id, "cross-reference target");
+  for (const s of symbols) {
+    const label = labels[s.kind];
+    // An unknown kind means this binary knows a prefix the vocabulary does not; say
+    // nothing rather than render "undefined 1".
+    detail.set(s.id, label && s.number ? `${label} ${s.number}` : "cross-reference target");
+  }
+  return [...detail.keys()].sort().map((id) => ({ id, detail: detail.get(id)! }));
+}
+
 // Harvest `{#id}` anchors (heading ids + figure/table/etc. labels) from the buffer, for
 // @xref completion. Suggestion-only; the provider filters by the typed prefix.
 export function harvestAnchorIds(docText: string): string[] {

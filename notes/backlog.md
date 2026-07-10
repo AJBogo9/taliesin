@@ -122,14 +122,6 @@ audit called Batch B ("the change that most makes the tool feel mature") is done
   Emit keys from the same `KNOWN_KEYS`/schema consts the validator enforces, so the scaffold
   is correct by construction; reuse `init`'s refuse-before-overwrite guard (`cli.rs:58`).
   *Pin: `corpus/scaffold/post/`, asserted to render and pass `check` clean.*
-- **`taliesin symbols <file> --format json` (M, med-high).** Completion misses every figure
-  labeled via `#| label: fig-scree`, because `complete.ts:86-90` regex-harvests only `{#id}`.
-  Corpus count: **34 cell-labeled `fig-`/`tbl-`/`lst-` targets vs 43 brace-anchored ids, so
-  ~44% of cross-ref targets are invisible to autocomplete.** Emit the resolved xref registry
-  (`render/mod.rs:1392` `register_xref`) + real bib keys (`cite/parse.rs`) from Rust, riding
-  the `query.rs` dispatch beside `blocks`/`vocab`. Same no-drift discipline `vocab.rs:1-9`
-  exists for. Widening the JS regex instead reimplements Rust knowledge in JS and still misses
-  auto-numbers and cross-page anchors.
 - **`.tmd` snippets in the companion (S, med).** No `contributes.snippets` today. Volume: 184
   code cells, 520 fenced-div openers, 108 front-matter blocks, 64 callouts, 57 `#| label:`
   lines. Reuse `vocab.rs` descriptions so they cannot drift. Batch A landed without these;
@@ -309,6 +301,18 @@ mutation-checked. These are the findings that survived adversarial verification 
   orphaned pool is not merely a hygiene cost: it perturbs a later test run on the same machine.
   That makes `PR_SET_PDEATHSIG` + a startup sweep of stale `/tmp/tali-*` dirs whose owner pid is
   dead worth more than "S/M, hygiene" suggested.
+  **Refined 2026-07-10 (while building Batch F's `symbols`): the flake is LOAD-sensitive, not
+  orphan-sensitive, and it is not one test.** Measured with no orphaned pool alive (only 157
+  stale `/tmp/tali-*` dirs, no live forkserver): `exec::tests::pooled_kernel_serves_cells_without_a_long_warming_state`
+  **and** `kernel::tests::kernel_executes_state_errors_and_interrupts_runaway_cell` both fail.
+  Rates: **2/3** full-suite runs failed while a review subagent ran `cargo test` concurrently in
+  the same checkout; **1/4** with nothing else running; **0/6** running only the bin unittests
+  (`--bin taliesin`, where both tests live); **0/4** on the untouched parent commit. So a
+  preceding `kill -9` is *sufficient but not necessary*: concurrent CPU load reproduces it, and
+  both tests spawn a real kernel and assert on timing. The Batch-F diff cannot be the cause (it
+  touches no `exec.rs`/`kernel.rs`/`warm_pool.rs`, and its new `tests/symbols_cli.rs` binary runs
+  *after* the bin unittests). Fixing this likely means making the two assertions wait on a state
+  signal rather than a duration, not just reaping orphans.
 
   **NEW (polish audit 2026-07-09), the ungraceful-death path (S/M, exec/kernel Do-NOT-touch):**
   the 2026-07-08 reaping fix **holds** (a controlled snapshot -> build -> snapshot experiment, run
@@ -569,6 +573,28 @@ against source or by measurement before the code was written. Do NOT re-scope th
   never resolve to a section), and matching runs on the **stem** after that prefix, so the
   shared `fig-` cannot pad a short name past the five-char floor. The ` id="` scan is
   space-anchored because `data-block-id="` also ends in `id="`.
+- **Batch F's `symbols` counts were wrong, and its bib half was unnecessary** (LANDED).
+  The filed "34 cell-labeled vs 43 brace-anchored, ~44% invisible" understated the gap and
+  measured the wrong thing. Real counts over `corpus/` + `docs/`: **44** cell-labeled
+  `fig-`/`tbl-`/`lst-` targets, 43 brace anchors, of which only **24** carry an xref kind
+  prefix at all. Sharper still: **11 of the 18 docs that use cell labels have no brace xref
+  anchor whatsoever**, so `@`-completion offered them *nothing* (`corpus/posts/pca-geometry`
+  has 7 targets, all cell-labeled). The **bib-key half was dropped**: `complete.ts`'s
+  `harvestBibKeys` + `frontmatterBibPaths` already work, so emitting keys from Rust would
+  have added a public `Bibliography::keys()` for zero live bug. Shipped the xref half only.
+  Two facts that shaped the design: a **parse-only render already registers cell labels**
+  (verified: a `#| label: fig-scree` python cell resolves with `TALIESIN_PYTHON=/nonexistent`
+  in 0.19 s), so `symbols` needs no kernel and `RenderedDoc::xref_numbers` alone is the
+  complete inventory (no three-source union); and `symbols` reads **disk** while the editor
+  buffer may be dirty, so `completions.ts` **merges** the CLI's symbols with the live regex
+  scan rather than replacing it. Also landed: three drift gates
+  (`every_dispatched_command_is_listed_in_commands`, `subcommand_help_covers_documented_commands`
+  now driven by `COMMANDS`, and a cross-language `manifest.test.ts` gate that every subcommand
+  the extension spawns is in `main.rs::COMMANDS`). **The first draft of two of those gates could
+  not fail** (the Rust one was line-based, so a rustfmt-wrapped `Some(\n "a" | "b",\n) =>` arm
+  collected nothing; the TS one matched `spawn(\s*\w+\s*,`, so `spawn(binaryPath(), …)` was
+  skipped in silence). Both are now mutation-checked against exactly those shapes. **Gate the
+  gate**: a drift test that cannot fail is worse than none.
 - **The audit's C1 fix was wrong.** It proposed labelling an include relative to the *project
   root* (`containment_root`). That would have broken click-to-source for **every** include:
   both consumers resolve `data-source-file` against the *primary document's own directory*

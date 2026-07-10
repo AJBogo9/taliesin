@@ -7,6 +7,9 @@ import {
   harvestAnchorIds,
   harvestBibKeys,
   frontmatterBibPaths,
+  parseSymbolsJson,
+  mergeXrefTargets,
+  XrefSymbol,
 } from "./complete";
 
 interface Named {
@@ -40,6 +43,21 @@ function fetchVocab(binary: string): Promise<Vocab> {
   });
 }
 
+// Spawn `taliesin symbols <file> --format json` for the document's cross-reference
+// targets. Resolves to `[]` on any failure (no binary, an older binary without the
+// command, a render panic), so @-completion degrades to the buffer scan instead of
+// vanishing. `symbols` is parse-only and never starts a kernel, which is what makes it
+// safe to run from a completion request.
+function fetchSymbols(binary: string, file: string): Promise<XrefSymbol[]> {
+  return new Promise((resolve) => {
+    let stdout = "";
+    const child = spawn(binary, ["symbols", file, "--format", "json"]);
+    child.on("error", () => resolve([]));
+    child.stdout?.on("data", (b) => (stdout += b.toString()));
+    child.on("close", (code) => resolve(code === 0 ? parseSymbolsJson(stdout) : []));
+  });
+}
+
 function item(label: string, detail: string, kind: vscode.CompletionItemKind): vscode.CompletionItem {
   const ci = new vscode.CompletionItem(label, kind);
   if (detail) ci.detail = detail;
@@ -52,10 +70,28 @@ export function registerCompletions(context: vscode.ExtensionContext): void {
     vscode.workspace.getConfiguration("taliesin").get<string>("path", "taliesin");
   const vocab = () => (cached ??= fetchVocab(binaryPath()));
 
+  // `symbols` reads the file on disk, so its answer can only change when the file is
+  // written. Cache per document and drop the entry on save (and on a binary change).
+  const symbolCache = new Map<string, Promise<XrefSymbol[]>>();
+  const symbols = (doc: vscode.TextDocument): Promise<XrefSymbol[]> => {
+    if (doc.isUntitled) return Promise.resolve([]); // never saved: nothing on disk to read
+    const key = doc.uri.fsPath;
+    let hit = symbolCache.get(key);
+    if (!hit) {
+      hit = fetchSymbols(binaryPath(), key);
+      symbolCache.set(key, hit);
+    }
+    return hit;
+  };
+
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration("taliesin.path")) cached = undefined; // re-fetch next request
-    })
+      if (e.affectsConfiguration("taliesin.path")) {
+        cached = undefined; // re-fetch next request
+        symbolCache.clear();
+      }
+    }),
+    vscode.workspace.onDidSaveTextDocument((doc) => symbolCache.delete(doc.uri.fsPath))
   );
 
   const provider: vscode.CompletionItemProvider = {
@@ -94,9 +130,13 @@ export function registerCompletions(context: vscode.ExtensionContext): void {
           const prefixes = v.xrefPrefixes.map((p) =>
             item(`${p.prefix}-`, p.label, K.Reference)
           );
-          const ids = harvestAnchorIds(document.getText())
-            .filter((id) => ctx.typed === "" || id.startsWith(ctx.typed))
-            .map((id) => item(id, "cross-reference target", K.Reference));
+          // The buffer scan sees `{#id}` anchors, including ones typed but not yet saved.
+          // `symbols` sees the resolved registry, including the `#| label:` cell figures
+          // and tables a regex cannot find. An author needs both.
+          const labels = Object.fromEntries(v.xrefPrefixes.map((p) => [p.prefix, p.label]));
+          const ids = mergeXrefTargets(harvestAnchorIds(document.getText()), await symbols(document), labels)
+            .filter((t) => ctx.typed === "" || t.id.startsWith(ctx.typed))
+            .map((t) => item(t.id, t.detail, K.Reference));
           return [...prefixes, ...ids];
         }
         case "cite": {

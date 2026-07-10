@@ -216,9 +216,9 @@ work-in-progress draft to a supervisor. Note that a book using live Mermaid diag
 still loads Mermaid from a CDN at view time (everything else is offline); this is harmless
 behind the gate.
 
-## Inspecting a document: `render` and `blocks`
+## Inspecting a document: `render`, `blocks`, and `symbols`
 
-Two commands print to a terminal instead of starting a server, which is handy for
+Three commands print to a terminal instead of starting a server, which is handy for
 piping, diffing, and debugging.
 
 `render` writes one complete, self-contained HTML page to **stdout**. It is the
@@ -259,6 +259,29 @@ a1b2c3d4e5f6a7b8  1:1-1:14        (primary)               Hello
 This is the same `data-block-id` + `data-sourcepos` that drive click-to-source and
 incremental updates, so `blocks` is the way to confirm a block carries the source map
 you expect (and which file it came from) without opening the browser dev tools.
+
+`symbols` lists every cross-reference target the document defines: the anchors you can
+write after `@`, each with the number Taliesin resolved for it.
+
+```text
+$ taliesin symbols post.tmd
+fig-scree                     fig    1
+sec-why                       sec    1
+tbl-summary                   tbl    1
+```
+
+The point is that it sees **both** ways an anchor can be written: the brace form
+(`## Why it works {#sec-why}`) and the cell form (`#| label: fig-scree`). A regex over
+the source can only find the first, which is why the VS Code companion asks the binary
+instead of guessing: `--format json` is what feeds its `@`-completion.
+
+```sh
+taliesin symbols post.tmd --format json | jq '.[].id'
+```
+
+Like `render` and `blocks`, it renders in memory and **never starts a kernel**, so an
+editor can call it while you type. A cell's `label:` is registered when the block model
+is built, long before the cell would run.
 
 `--host` binds `0.0.0.0`, so it gates non-loopback access behind a token baked into
 the printed LAN URL and QR (`?t=…`, then a `qmd_token` cookie); a fresh token is

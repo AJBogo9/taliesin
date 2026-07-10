@@ -5,6 +5,8 @@ import {
   harvestAnchorIds,
   harvestBibKeys,
   frontmatterBibPaths,
+  parseSymbolsJson,
+  mergeXrefTargets,
 } from "../complete";
 
 const FM_OPEN = "---\ntitle: T\n";
@@ -83,4 +85,46 @@ test("frontmatterBibPaths reads a scalar and a list bibliography field", () => {
   assert.deepEqual(frontmatterBibPaths("---\nbibliography: refs.bib\n---\n"), ["refs.bib"]);
   const listed = frontmatterBibPaths("---\nbibliography:\n  - a.bib\n  - b.bib\n---\n");
   assert.deepEqual(listed.sort(), ["a.bib", "b.bib"]);
+});
+
+// --- `taliesin symbols` -> @-completion targets -------------------------------------
+
+test("parseSymbolsJson reads the CLI's array, and never throws on junk", () => {
+  const good = '[{"id":"fig-scree","kind":"fig","number":"1"}]';
+  assert.deepEqual(parseSymbolsJson(good), [{ id: "fig-scree", kind: "fig", number: "1" }]);
+  assert.deepEqual(parseSymbolsJson(""), []);
+  assert.deepEqual(parseSymbolsJson("not json"), []);
+  assert.deepEqual(parseSymbolsJson('{"error":"boom"}'), []);
+  // A malformed member is dropped, not fatal.
+  assert.deepEqual(parseSymbolsJson('[{"kind":"fig"},{"id":"sec-a","kind":"sec","number":"2"}]'), [
+    { id: "sec-a", kind: "sec", number: "2" },
+  ]);
+});
+
+test("mergeXrefTargets unions the buffer's anchors with the CLI's symbols", () => {
+  const labels = { fig: "Figure", sec: "Section" };
+  // `fig-scree` is a cell label: only the CLI knows it. `sec-draft` was just typed and
+  // is not yet on disk: only the buffer knows it. The author must see both.
+  const merged = mergeXrefTargets(
+    ["sec-why", "sec-draft"],
+    [
+      { id: "fig-scree", kind: "fig", number: "1" },
+      { id: "sec-why", kind: "sec", number: "2" },
+    ],
+    labels
+  );
+  assert.deepEqual(
+    merged.map((m) => m.id),
+    ["fig-scree", "sec-draft", "sec-why"],
+    "sorted, deduplicated union"
+  );
+  // A symbol the CLI numbered carries its resolved label; a buffer-only id does not.
+  assert.equal(merged.find((m) => m.id === "fig-scree")!.detail, "Figure 1");
+  assert.equal(merged.find((m) => m.id === "sec-why")!.detail, "Section 2");
+  assert.equal(merged.find((m) => m.id === "sec-draft")!.detail, "cross-reference target");
+});
+
+test("mergeXrefTargets falls back to the kind prefix when the label is unknown", () => {
+  const merged = mergeXrefTargets([], [{ id: "xyz-a", kind: "xyz", number: "1" }], {});
+  assert.equal(merged[0].detail, "cross-reference target");
 });

@@ -1,13 +1,15 @@
-//! Read-only query subcommands: `render`, `blocks`, `schema`.
+//! Read-only query subcommands: `render`, `blocks`, `schema`, `vocab`, `symbols`.
 //!
 //! **What:** one-shot, side-effect-light commands — `render` dumps a full HTML page to
-//! stdout (static, no kernel), `blocks` lists the block model (a debugging aid), and
-//! `schema` emits the bundled JSON Schemas for editor autocomplete.
+//! stdout (static, no kernel), `blocks` lists the block model (a debugging aid), `schema`
+//! emits the bundled JSON Schemas for editor autocomplete, `vocab` emits the bundled
+//! editor vocabulary, and `symbols` lists a document's cross-reference targets.
 //!
-//! **How to use:** `main()` dispatches `render`/`blocks`/`schema` to the `cmd_*` fns here.
+//! **How to use:** `main()` dispatches each to the `cmd_*` fns here.
 //!
 //! **Depends on:** [`taliesin_core`] for rendering + the bundled schemas, and
-//! [`crate::log`] for the no-execution warning. No code execution, no kernel.
+//! [`crate::log`] for the no-execution warning. No code execution, no kernel — `symbols`
+//! in particular is called from an editor's completion request and must never start one.
 
 use crate::log;
 use std::path::Path;
@@ -176,6 +178,119 @@ pub(crate) fn cmd_schema(args: &[String]) -> ExitCode {
 /// committed, bundled string (no runtime generation), like `cmd_schema`.
 pub(crate) fn cmd_vocab() -> ExitCode {
     print!("{}", taliesin_core::vocab::VOCAB_JSON);
+    ExitCode::SUCCESS
+}
+
+/// One cross-reference target a document defines: the anchor an author writes after `@`.
+#[derive(Debug, serde::Serialize)]
+struct Symbol {
+    id: String,
+    /// The kind prefix (`fig`, `sec`, `tbl`, `thm`, …), which decides the rendered label.
+    kind: String,
+    /// The number the registry resolved, e.g. `3` or `2.1` inside a numbered chapter.
+    number: String,
+}
+
+/// Every cross-reference target in a rendered document, sorted by id.
+///
+/// `RenderedDoc::xref_numbers` is the registry `render` builds while numbering figures,
+/// tables, sections and theorems, so it already holds *both* shapes an anchor can take:
+/// the brace form (`{#sec-why}`) and the cell form (`#| label: fig-scree`). Reading it
+/// back is what stops the editor from reimplementing Taliesin's numbering in a regex.
+fn collect_symbols(doc: &taliesin_core::RenderedDoc) -> Vec<Symbol> {
+    let mut out: Vec<Symbol> = doc
+        .xref_numbers
+        .iter()
+        .map(|(id, number)| Symbol {
+            id: id.clone(),
+            kind: id.split_once('-').map_or("", |(k, _)| k).to_string(),
+            number: number.clone(),
+        })
+        .collect();
+    // `xref_numbers` is a `HashMap`: sort so two runs of `symbols` diff to nothing.
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    out
+}
+
+/// Every long flag `symbols` accepts (drives the unknown-flag did-you-mean).
+const SYMBOLS_FLAGS: &[&str] = &["--format"];
+
+/// `taliesin symbols <file.tmd> [--format human|json]`: list the document's
+/// cross-reference targets, for an editor's `@`-completion.
+///
+/// **Parse-only, like `render` and `blocks`.** An editor calls this on a keystroke, so it
+/// must never start a kernel. It doesn't need to: a cell's `label:` is registered while
+/// the block model is built, long before the cell would run, so a `#| label: fig-scree`
+/// figure resolves here with no Python in sight.
+pub(crate) fn cmd_symbols(args: &[String]) -> ExitCode {
+    let mut path: Option<&str> = None;
+    let mut format = "human";
+    let mut it = args[2..].iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--format" => {
+                if let Some(v) = it.next() {
+                    format = v;
+                }
+            }
+            s if s.starts_with("--") => {
+                log::error(&crate::serve::unknown_flag_error(s, SYMBOLS_FLAGS));
+                return ExitCode::FAILURE;
+            }
+            s => {
+                if path.is_none() {
+                    path = Some(s);
+                }
+            }
+        }
+    }
+    let Some(path) = path else {
+        eprintln!("usage: taliesin symbols <file.tmd> [--format human|json]");
+        return ExitCode::FAILURE;
+    };
+    if format != "human" && format != "json" {
+        log::error(&format!(
+            "unknown --format `{format}` (expected human or json)"
+        ));
+        return ExitCode::FAILURE;
+    }
+    if let Some(msg) = directory_rejection(
+        path,
+        "symbols lists the cross-reference targets of a single .tmd file",
+    ) {
+        log::error(&msg);
+        return ExitCode::FAILURE;
+    }
+    let src = match std::fs::read_to_string(path) {
+        Ok(src) => src,
+        Err(e) => {
+            log::error(&format!("cannot read {path}: {e}"));
+            return ExitCode::FAILURE;
+        }
+    };
+    let base = Path::new(path).parent().unwrap_or_else(|| Path::new("."));
+    // Guard the render so a panic becomes a clean error + non-zero exit, never a raw
+    // abort inside the editor's completion request.
+    let doc =
+        match crate::serve::guarded(|| taliesin_core::render_document_with_includes(&src, base)) {
+            Ok(doc) => doc,
+            Err(panic) => {
+                log::error(&format!("render panicked on {path}: {panic}"));
+                return ExitCode::FAILURE;
+            }
+        };
+    let symbols = collect_symbols(&doc);
+    if format == "json" {
+        // JSON to stdout only, so it pipes cleanly.
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&symbols).unwrap_or_else(|_| "[]".to_string())
+        );
+    } else {
+        for s in &symbols {
+            println!("{:<28}  {:<5}  {}", s.id, s.kind, s.number);
+        }
+    }
     ExitCode::SUCCESS
 }
 
