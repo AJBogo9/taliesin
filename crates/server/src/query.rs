@@ -197,10 +197,17 @@ struct Symbol {
 /// tables, sections and theorems, so it already holds *both* shapes an anchor can take:
 /// the brace form (`{#sec-why}`) and the cell form (`#| label: fig-scree`). Reading it
 /// back is what stops the editor from reimplementing Taliesin's numbering in a regex.
+///
+/// The registry is a superset of what `@` can name, though: a `::: {.theorem #pythagoras}`
+/// is numbered and displayed, yet `cite` only links an anchor whose prefix names a
+/// cross-reference kind, so `@pythagoras` stays literal text. `symbols` answers "what can I
+/// write after `@`", so those are filtered with `cite`'s own predicate rather than a prefix
+/// list copied out here.
 fn collect_symbols(doc: &taliesin_core::RenderedDoc) -> Vec<Symbol> {
     let mut out: Vec<Symbol> = doc
         .xref_numbers
         .iter()
+        .filter(|(id, _)| taliesin_core::cite::is_xref_anchor(id))
         .map(|(id, number)| Symbol {
             id: id.clone(),
             kind: id.split_once('-').map_or("", |(k, _)| k).to_string(),

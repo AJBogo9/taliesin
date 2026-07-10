@@ -124,3 +124,45 @@ fn a_missing_path_prints_usage() {
     assert!(!ok);
     assert!(err.contains("usage: taliesin symbols"), "got: {err}");
 }
+
+/// `symbols` answers "what can I write after `@`", so it must not offer an anchor that
+/// `@` can never resolve. A `.theorem` div registers whatever id it is given, but
+/// `cite` only links an anchor whose prefix names a cross-reference kind, so a
+/// `::: {.theorem #pythagoras}` is numbered and displayed yet is unreferenceable:
+/// `@pythagoras` stays literal text.
+#[test]
+fn an_anchor_that_cannot_be_referenced_is_not_a_symbol() {
+    let dir = std::env::temp_dir().join(format!("tali-symbols-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let doc = dir.join("thm.tmd");
+    std::fs::write(
+        &doc,
+        "---\ntitle: t\n---\n\n\
+         ::: {.theorem #pythagoras title=\"Pythagoras\"}\nText.\n:::\n\n\
+         ::: {.theorem #thm-good title=\"Good\"}\nText.\n:::\n",
+    )
+    .unwrap();
+
+    let (ok, stdout, stderr) = symbols(&["symbols", doc.to_str().unwrap(), "--format", "json"]);
+    assert!(ok, "stderr: {stderr}");
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let ids: Vec<&str> = parsed
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|s| s["id"].as_str().unwrap())
+        .collect();
+    assert!(
+        ids.contains(&"thm-good"),
+        "a referenceable theorem is a symbol: {ids:?}"
+    );
+    assert!(
+        !ids.contains(&"pythagoras"),
+        "`@pythagoras` never resolves, so it must not be offered: {ids:?}"
+    );
+    // Every symbol therefore carries a real kind prefix; none is blank.
+    for s in parsed.as_array().unwrap() {
+        assert_ne!(s["kind"], "", "a symbol with no kind: {s}");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -37,7 +37,7 @@ fn xref_label(prefix: &str) -> Option<&'static str> {
 /// Whether `id` is a cross-reference anchor (`sec-…`, `fig-…`, …) that `@ref`
 /// resolves — its prefix before the first `-` is a known xref kind. Shares
 /// [`XREF_LABELS`] so it can't drift from the label lookup.
-pub(crate) fn is_xref_anchor(id: &str) -> bool {
+pub fn is_xref_anchor(id: &str) -> bool {
     id.split_once('-')
         .is_some_and(|(prefix, _)| xref_label(prefix).is_some())
 }

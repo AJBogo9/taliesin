@@ -193,6 +193,35 @@ of the authored sources, verified to fail on injected drift.)*
   fix the comment or make comrak's syntect dep `default-features = false`. Not measured either way.
 - `docs/internals/validation.tmd`'s check-superset table omits `validate_math`, which `check.rs`
   has run for a while. One missing row.
+
+**Found 2026-07-10 while closing out Batch F (each reproduced, none in a stale-entry sense):**
+- **A `.theorem`/`.lemma`/... div whose id lacks the kind prefix is silently unreferenceable,
+  and nothing says so** (S, med; a new `check` rule). `::: {.theorem #pythagoras}` is numbered
+  and displayed as "Theorem 1", but `cite::is_xref_anchor("pythagoras")` is false (no `-`), so
+  `@pythagoras` renders as **literal text** and `check` reports "no problems found". Every corpus
+  theorem happens to use `#thm-`/`#lem-`/`#def-`, so nothing caught it. The div's id is
+  registered into `xref_numbers` unfiltered, unlike the `sec-`/`fig-`/`tbl-` paths which gate on
+  the prefix. Two candidate fixes, and they are not the same: (a) warn at registration ("theorem
+  id `pythagoras` cannot be referenced; use `thm-pythagoras`"), which is the author-facing one;
+  or (b) warn on a bare `@word` that matches a registered non-prefixed id. Prefer (a). *Pin:
+  `corpus/diagnostics/`.* (Discovered because `taliesin symbols` was over-reporting it; the
+  over-report itself is FIXED, see below.)
+- **`symbols` over-reported unreferenceable anchors** (FIXED same day, `taliesin-core` now
+  exports `cite::is_xref_anchor`). `collect_symbols` read `xref_numbers` wholesale, so it offered
+  `pythagoras` as an `@`-completion target with a blank `kind`. It now filters with `cite`'s own
+  predicate rather than copying the prefix list into `taliesin-server`. Regression test:
+  `symbols_cli::an_anchor_that_cannot_be_referenced_is_not_a_symbol`.
+- **`taliesin init` writes an em dash into the user's first file** (XS, taste, but it is a house
+  rule). `cli.rs::INIT_INDEX_TMD` line 27: "Add more `.tmd` pages beside this one — each becomes
+  its own page." The blog's own skill says "No em dashes or en dashes anywhere", and 35 were
+  removed from the marketing copy; the scaffold the tool hands a new author still ships one.
+  Verified by running `init` and grepping the emitted `index.tmd`.
+- **The companion's `symbolCache` only invalidates on save** (`completions.ts`, low; rust-reviewer).
+  An out-of-band change to the open file (`git checkout`, an external formatter) fires
+  `onDidChangeTextDocument`, not `onDidSaveTextDocument`, so cell-labelled targets and their
+  numbers lag until the next save. Bounded and graceful: the `xref` case still unions with the
+  live buffer scan, so brace anchors track immediately, and nothing writes source. A rename also
+  leaves a dead map entry. Left as-is deliberately.
 - `corpus/README.md:16` still describes the fourier-transform post as using an `ojs_define`
   Python->`{js}` bridge. The authoring spelling has been `define(...)` since the legacy-format
   clean break; `ojs_define` survives only in internal comments (`kernel.rs:258,655`). One line.
