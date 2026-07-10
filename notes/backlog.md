@@ -309,6 +309,17 @@ mutation-checked. These are the findings that survived adversarial verification 
   `fork_kernel`, mis-pairing pids (liveness/SIGINT/teardown then target the wrong pid; the ZMQ-connected
   kernel is still correct). Now rare since #2 removed the main timeout trigger; the proper fix is to
   poison the daemon on any fork timeout so later `take`s cold-start.
+  **REPRODUCED LIVE 2026-07-10, with a new symptom:** `kill -9` on a `preview` server (used to
+  tear down browser-verification fixtures) orphaned its warm-pool forkserver subtree every time:
+  8 processes reparented to `systemd --user`, holding **451 MB** (the pool preloads
+  `numpy, matplotlib, torch`), plus 123 `/tmp/tali-*` dirs. Reaped by hand. **The new symptom is a
+  flaky test:** `exec::tests::pooled_kernel_serves_cells_without_a_long_warming_state` failed twice
+  today, both times in a full-suite run started seconds after such a `kill -9`, and never otherwise
+  (0/12 in isolation, 0/6 under deliberate CPU load, and it passes on pre-change code). So the
+  orphaned pool is not merely a hygiene cost: it perturbs a later test run on the same machine.
+  That makes `PR_SET_PDEATHSIG` + a startup sweep of stale `/tmp/tali-*` dirs whose owner pid is
+  dead worth more than "S/M, hygiene" suggested.
+
   **NEW (polish audit 2026-07-09), the ungraceful-death path (S/M, exec/kernel Do-NOT-touch):**
   the 2026-07-08 reaping fix **holds** (a controlled snapshot -> build -> snapshot experiment, run
   twice, once with `TALIESIN_NO_CACHE=1` forcing real cell execution, produced **zero** new
