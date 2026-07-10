@@ -7,7 +7,7 @@ import { registerCompletions } from "./completions";
 
 export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
-    vscode.commands.registerCommand("qmdFast.openPreview", () => openPreview(context))
+    vscode.commands.registerCommand("taliesin.openPreview", () => openPreview(context))
   );
   registerDiagnostics(context);
   registerCompletions(context);
@@ -16,16 +16,16 @@ export function activate(context: vscode.ExtensionContext) {
 async function openPreview(context: vscode.ExtensionContext) {
   const editor = vscode.window.activeTextEditor;
   if (!editor || !isSourceFile(editor.document.fileName)) {
-    vscode.window.showWarningMessage("qmd-fast: open a .tmd (or .qmd) file first.");
+    vscode.window.showWarningMessage("Taliesin: open a .tmd file first.");
     return;
   }
   const docPath = editor.document.fileName;
-  const binary = vscode.workspace.getConfiguration("qmdFast").get<string>("path", "qmd-fast");
+  const binary = vscode.workspace.getConfiguration("taliesin").get<string>("path", "taliesin");
 
   let server: PreviewServer;
   try {
     server = await vscode.window.withProgress(
-      { location: vscode.ProgressLocation.Notification, title: "Starting qmd-fast preview…" },
+      { location: vscode.ProgressLocation.Notification, title: "Starting Taliesin preview…" },
       () => PreviewServer.start(binary, docPath)
     );
   } catch (e) {
@@ -34,7 +34,7 @@ async function openPreview(context: vscode.ExtensionContext) {
   }
 
   const panel = vscode.window.createWebviewPanel(
-    "qmdFastPreview",
+    "taliesinPreview",
     `Preview: ${docPath.split("/").pop()}`,
     vscode.ViewColumn.Beside,
     { enableScripts: true, retainContextWhenHidden: true }

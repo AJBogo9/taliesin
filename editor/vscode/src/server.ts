@@ -20,7 +20,7 @@ export class PreviewServer {
       )
     );
     const ready = waitForHttp(port, 8000).then((ok) => {
-      if (!ok) throw new Error(`qmd-fast preview did not answer on ${port} within 8s`);
+      if (!ok) throw new Error(`taliesin preview did not answer on ${port} within 8s`);
       return new PreviewServer(port, child);
     });
     return Promise.race([ready, spawnError]);

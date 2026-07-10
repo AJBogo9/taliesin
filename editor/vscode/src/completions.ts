@@ -49,12 +49,12 @@ function item(label: string, detail: string, kind: vscode.CompletionItemKind): v
 export function registerCompletions(context: vscode.ExtensionContext): void {
   let cached: Promise<Vocab> | undefined;
   const binaryPath = () =>
-    vscode.workspace.getConfiguration("qmdFast").get<string>("path", "qmd-fast");
+    vscode.workspace.getConfiguration("taliesin").get<string>("path", "taliesin");
   const vocab = () => (cached ??= fetchVocab(binaryPath()));
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration("qmdFast.path")) cached = undefined; // re-fetch next request
+      if (e.affectsConfiguration("taliesin.path")) cached = undefined; // re-fetch next request
     })
   );
 

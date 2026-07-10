@@ -1,10 +1,9 @@
 import * as path from "node:path";
 
-// The accepted source extensions, mirroring crates/core/src/ext.rs ACCEPTED_SOURCE_EXTS
-// (native `.tmd` first, `.qmd` deprecated-but-accepted). NOT importable from Rust — keep in sync.
-// Note: the editor LANGUAGE/grammar owns `.tmd` only (package.json contributes.languages); the
-// PREVIEW accepts `.qmd` too because the renderer still does, so existing `.qmd` files aren't stranded.
-export const ACCEPTED_SOURCE_EXTS = [".tmd", ".qmd"];
+// The accepted source extensions, mirroring crates/core/src/ext.rs ACCEPTED_SOURCE_EXTS.
+// NOT importable from Rust, so `src/test/paths.test.ts` reads ext.rs and asserts the two agree:
+// this list once carried a `.qmd` the renderer had already stopped accepting.
+export const ACCEPTED_SOURCE_EXTS = [".tmd"];
 
 export function isSourceFile(fileName: string): boolean {
   return ACCEPTED_SOURCE_EXTS.some((ext) => fileName.endsWith(ext));

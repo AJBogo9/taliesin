@@ -7,13 +7,13 @@ const SAMPLE_POST = path.join(REPO_ROOT, "corpus/posts/born-machines.tmd");
 const SAMPLE_TMD = path.join(REPO_ROOT, "corpus/native-tmd.tmd");
 const DIAG_FIXTURE = path.join(REPO_ROOT, "editor/vscode/test-fixtures/diag-typo.tmd");
 const COMPLETE_FIXTURE = path.join(REPO_ROOT, "editor/vscode/test-fixtures/complete.tmd");
-const QMD_FAST_BIN = path.join(REPO_ROOT, "target/debug/taliesin");
+const TALIESIN_BIN = path.join(REPO_ROOT, "target/debug/taliesin");
 
-suite("qmd-fast companion (integration)", () => {
+suite("Taliesin companion (integration)", () => {
   suiteSetup(async () => {
     // The extension activates lazily (on its command); activate it explicitly so the
     // command-registration assertion doesn't race activation regardless of test order.
-    const ext = vscode.extensions.getExtension("qmd-fast.qmd-fast-companion");
+    const ext = vscode.extensions.getExtension("taliesin.taliesin-companion");
     assert.ok(ext, "extension should be discoverable by id");
     await ext!.activate();
   });
@@ -21,8 +21,8 @@ suite("qmd-fast companion (integration)", () => {
   test("registers the openPreview command", async () => {
     const cmds = await vscode.commands.getCommands(true);
     assert.ok(
-      cmds.includes("qmdFast.openPreview"),
-      "qmdFast.openPreview should be registered after activation"
+      cmds.includes("taliesin.openPreview"),
+      "taliesin.openPreview should be registered after activation"
     );
   });
 
@@ -36,13 +36,13 @@ suite("qmd-fast companion (integration)", () => {
   test("Open Preview creates a webview panel for the active source document", async () => {
     // Point the extension at the locally-built binary (PATH may not have it in CI).
     await vscode.workspace
-      .getConfiguration("qmdFast")
-      .update("path", QMD_FAST_BIN, vscode.ConfigurationTarget.Global);
+      .getConfiguration("taliesin")
+      .update("path", TALIESIN_BIN, vscode.ConfigurationTarget.Global);
 
     const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(SAMPLE_POST));
     await vscode.window.showTextDocument(doc);
 
-    await vscode.commands.executeCommand("qmdFast.openPreview");
+    await vscode.commands.executeCommand("taliesin.openPreview");
 
     // Wait for the webview tab to appear (the panel spawns the server first).
     const hasWebviewTab = await waitFor(
@@ -57,8 +57,8 @@ suite("qmd-fast companion (integration)", () => {
 
   test("surfaces `check` findings as diagnostics on the active .tmd", async () => {
     await vscode.workspace
-      .getConfiguration("qmdFast")
-      .update("path", QMD_FAST_BIN, vscode.ConfigurationTarget.Global);
+      .getConfiguration("taliesin")
+      .update("path", TALIESIN_BIN, vscode.ConfigurationTarget.Global);
 
     const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(DIAG_FIXTURE));
     await vscode.window.showTextDocument(doc);
@@ -76,8 +76,8 @@ suite("qmd-fast companion (integration)", () => {
 
   test("offers cell-option and div-class completions", async () => {
     await vscode.workspace
-      .getConfiguration("qmdFast")
-      .update("path", QMD_FAST_BIN, vscode.ConfigurationTarget.Global);
+      .getConfiguration("taliesin")
+      .update("path", TALIESIN_BIN, vscode.ConfigurationTarget.Global);
 
     const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(COMPLETE_FIXTURE));
     const text = doc.getText().split("\n");

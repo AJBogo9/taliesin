@@ -1,12 +1,12 @@
-# qmd-fast Companion (Phase 1)
+# Taliesin Companion (Phase 1)
 
-Hosts the qmd-fast live preview in a VS Code webview with **bidirectional source sync**.
+Hosts the Taliesin live preview in a VS Code webview with **bidirectional source sync**.
 It is the missing *producer* for the source-sync protocol the preview client
 (`web-client/client.js`) already consumes:
 
 - **Forward (preview → editor):** Alt-click a block in the preview → the editor jumps to
   that block's source line (`qmd-goto`).
-- **Reverse (editor → preview):** move the cursor in the `.qmd` → the matching block
+- **Reverse (editor → preview):** move the cursor in the `.tmd` → the matching block
   highlights and scrolls into view in the preview, and the deck jumps to the right slide
   (`qmd-cursor` → `highlightAtLine`).
 
@@ -26,11 +26,11 @@ front matter is handled by the inherited markdown grammar. Inline deltas live in
 **injection grammar** scoped to `text.tmd.markdown` (so they fire mid-paragraph but never leak
 into plain `.md` files).
 
-`.tmd` **only** is claimed — `.qmd` is deliberately left to Quarto's extension (or plaintext), so
-there's no association conflict. A user who wants their legacy `.qmd` files highlighted by
-Taliesin can opt in with `"files.associations": { "*.qmd": "taliesin" }`. (The preview command
-still works on `.qmd` files — the renderer accepts them — they just don't get the `taliesin`
-language.)
+`.tmd` **only** is claimed, mirroring `crates/core/src/ext.rs` (a `paths.test.ts` gate asserts the
+two lists agree). A stray `.qmd` is left to Quarto's extension (or plaintext); there is no
+association conflict. The companion offers Open Preview on `.tmd` alone — the legacy-format clean
+break made `.tmd` the only input Taliesin discovers, so a `.qmd` is not a source document here even
+though `taliesin build` will still render one you hand it by path.
 
 No Quarto grammar is copied: the base is the MIT `markdown-basics` grammar; Quarto's own VS Code
 grammar is **AGPL-3.0** and is not used.
@@ -38,10 +38,10 @@ grammar is **AGPL-3.0** and is not used.
 ## Develop / run
 
 1. `cd editor/vscode && npm install && npm run build`
-2. Open the **`editor/vscode`** folder in VS Code and press **F5** ("Run qmd-fast
+2. Open the **`editor/vscode`** folder in VS Code and press **F5** ("Run Taliesin
    Companion"). A second *Extension Development Host* window opens with the extension
    loaded. (Run `npm run build` again after any source change, then reload the host.)
-3. Ensure the `taliesin` binary is on `PATH` (the launcher), or set the `qmdFast.path` setting
+3. Ensure the `taliesin` binary is on `PATH` (the launcher), or set the `taliesin.path` setting
    to the binary (e.g. `target/release/taliesin`). To exercise the grammar, open any `.tmd`
    file (e.g. `corpus/native-tmd.tmd`) — the status bar should read **Taliesin**.
 
@@ -49,17 +49,17 @@ grammar is **AGPL-3.0** and is not used.
 
 A VS Code extension runs in the Extension Development Host, which can't be driven
 headlessly — so this checklist is run by hand. In the Extension Development Host window,
-opened on the qmd-fast repo:
+opened on the Taliesin repo:
 
-1. Open `corpus/posts/em-algorithm/index.qmd`. Run **qmd-fast: Open Preview** (command
+1. Open `corpus/posts/em-algorithm/index.tmd`. Run **Taliesin: Open Preview** (command
    palette, or the editor-title button). The preview opens beside the editor and renders.
 2. **Reverse sync:** move the cursor onto a heading / paragraph — the matching block in the
-   preview gains the `.qmd-hl` outline and scrolls into view.
+   preview gains the `.tali-hl` outline and scrolls into view.
 3. **Forward sync:** Alt-click a block in the preview — the editor cursor jumps to that
    block's source line.
-4. **Deck:** open `corpus/liquid-glass-slides/example.qmd`, Open Preview, move the cursor
+4. **Deck:** open `corpus/deck.tmd`, Open Preview, move the cursor
    into a later slide's content — the deck jumps to that slide.
-5. Close the preview panel — the spawned `qmd-fast preview` process exits (no orphan).
+5. Close the preview panel — the spawned `taliesin preview` process exits (no orphan).
 6. Open a `.tmd` with a front-matter typo (or any `taliesin check` finding): a yellow squiggle appears on the offending line, refreshing on save.
 7. Autocomplete fires inside front matter, after `#|` in a code cell, after `:::{.`, after `@`, and inside `[@ ]`, offering keys, cell options, callout/theorem/div classes, cross-reference prefixes, and citation keys from `taliesin vocab`.
 
@@ -74,13 +74,16 @@ forward sync still works there via the `vscode://file…` deep links the client 
 
 Phase 1 = host + cursor loop, localhost only (no `--host`, so backlog #1d's LAN token isn't
 needed yet). Phase 2 (editor commands like insert-block / reorder-slide, strictly as
-`.qmd`-buffer text transforms) is deferred. See
+`.tmd`-buffer text transforms) is deferred. See
 `docs/superpowers/specs/2026-06-24-vscode-editor-companion-design.md`.
 
 ## Automated verification (three layers)
 
 1. **Unit + grammar (`npm test`)** — `node:test` for `ports.ts` (free-port pick, HTTP wait),
-   `paths.ts` (sourcepos parse, source-file mapping, `isSourceFile`), and **`grammar.test.ts`**:
+   `paths.ts` (sourcepos parse, source-file mapping, `isSourceFile`), **`manifest.test.ts`** (the
+   no-drift gate: the default binary path must be the name cargo builds, and every config key,
+   command id and menu `when` clause the source uses must be one the manifest declares), and
+   **`grammar.test.ts`**:
    an offline `vscode-textmate` + `vscode-oniguruma` tokenization gate that loads the `.tmd`
    grammar + injection and asserts token scopes for every delta (cells embed their language,
    `#|` options are directives, `{=html}` is not a cell, math/div/shortcode/xref/cite scopes,

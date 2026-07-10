@@ -29,7 +29,7 @@ export function registerDiagnostics(context: vscode.ExtensionContext): void {
   let warnedMissingBinary = false;
 
   const binaryPath = () =>
-    vscode.workspace.getConfiguration("qmdFast").get<string>("path", "qmd-fast");
+    vscode.workspace.getConfiguration("taliesin").get<string>("path", "taliesin");
 
   async function refresh(doc: vscode.TextDocument): Promise<void> {
     if (doc.languageId !== "taliesin" || !isSourceFile(doc.fileName)) return;
@@ -45,8 +45,8 @@ export function registerDiagnostics(context: vscode.ExtensionContext): void {
       if (!warnedMissingBinary) {
         warnedMissingBinary = true; // one toast, never per-keystroke
         vscode.window.showWarningMessage(
-          `qmd-fast: could not run \`${binaryPath()}\` for diagnostics (${result.spawnError}). ` +
-            `Set "qmdFast.path" to the taliesin/qmd-fast binary.`
+          `Taliesin: could not run \`${binaryPath()}\` for diagnostics (${result.spawnError}). ` +
+            `Set "taliesin.path" to the taliesin binary.`
         );
       }
       return;
@@ -68,7 +68,7 @@ export function registerDiagnostics(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidSaveTextDocument((doc) => refresh(doc)),
     vscode.workspace.onDidCloseTextDocument((doc) => collection.delete(doc.uri)),
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (!e.affectsConfiguration("qmdFast.path")) return;
+      if (!e.affectsConfiguration("taliesin.path")) return;
       warnedMissingBinary = false;
       for (const doc of vscode.workspace.textDocuments) refresh(doc);
     })

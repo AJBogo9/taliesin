@@ -1,9 +1,9 @@
 {
-  "name": "qmd-fast-companion",
-  "displayName": "qmd-fast Companion",
-  "description": "Live preview + bidirectional source sync for qmd-fast .qmd documents.",
+  "name": "taliesin-companion",
+  "displayName": "Taliesin Companion",
+  "description": "Live preview + bidirectional source sync for Taliesin .tmd documents.",
   "version": "0.1.0",
-  "publisher": "qmd-fast",
+  "publisher": "taliesin",
   "private": true,
   "engines": {
     "vscode": "^1.85.0",
@@ -61,35 +61,36 @@
     ],
     "commands": [
       {
-        "command": "qmdFast.openPreview",
-        "title": "qmd-fast: Open Preview",
-        "category": "qmd-fast"
+        "command": "taliesin.openPreview",
+        "title": "Taliesin: Open Preview",
+        "category": "Taliesin"
       }
     ],
     "menus": {
       "editor/title": [
         {
-          "command": "qmdFast.openPreview",
-          "when": "resourceExtname == .tmd || resourceExtname == .qmd",
+          "command": "taliesin.openPreview",
+          "when": "resourceExtname == .tmd",
           "group": "navigation"
         }
       ]
     },
     "configuration": {
-      "title": "qmd-fast",
+      "title": "Taliesin",
       "properties": {
-        "qmdFast.path": {
+        "taliesin.path": {
           "type": "string",
-          "default": "qmd-fast",
-          "description": "Path to the qmd-fast executable (default: the qmd-fast launcher on PATH)."
+          "default": "taliesin",
+          "description": "Path to the taliesin executable (default: the taliesin launcher on PATH)."
         }
       }
     }
   },
   "scripts": {
+    "vscode:prepublish": "npm run build",
     "build": "esbuild src/extension.ts --bundle --outfile=out/extension.js --external:vscode --format=cjs --platform=node",
     "compile-tests": "tsc -p . --outDir out",
-    "test": "npm run compile-tests && node --test out/test",
+    "test": "npm run compile-tests && node --test out/test/*.test.js",
     "test:e2e": "npm run compile-tests && node out/e2e/runTest.js"
   },
   "devDependencies": {
