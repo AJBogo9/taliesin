@@ -249,6 +249,12 @@ test("Phase 2 (injection): math-body inner tokens are highlighted natively (no e
   assert.ok(hasScope(toks, "3", "constant.numeric.tmd.math"), "a digit is numeric");
   // The region scope still coexists with the new inner scopes.
   assert.ok(hasScope(toks, "\\int", "meta.embedded.math.tmd"), "region contentName preserved under inner scopes");
+
+  // \% is the load-bearing guard: the escaped-symbol rule must beat the comment rule so
+  // a literal percent sign in math is an escape, not the start of a % comment.
+  const esc = await tokenizeTmd("$a \\% b$\n");
+  assert.ok(hasScope(esc, "\\%", "constant.character.escape.tmd.math"), "\\% is an escaped symbol");
+  assert.ok(!hasScope(esc, "\\%", "comment.line"), "\\% is NOT a comment");
 });
 
 test("Phase 2 (injection): {{< shortcode >}} name is scoped", async () => {
