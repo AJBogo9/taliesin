@@ -1108,6 +1108,12 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
                     for dep in taliesin_core::includes::dependencies(&src, base) {
                         deps.insert(dep.canonicalize().unwrap_or(dep));
                     }
+                    // A page also depends on the resources its front matter names. Without
+                    // these, a `.bib`/`.csl`/`.css` edit was a watched event that matched no
+                    // page, so the preview kept rendering the stale citation.
+                    for dep in taliesin_core::includes::resource_dependencies(&src, base) {
+                        deps.insert(dep.canonicalize().unwrap_or(dep));
+                    }
                 }
                 deps.intersection(&changed_canon).next().is_some()
             })

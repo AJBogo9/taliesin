@@ -159,6 +159,64 @@ pub fn dependencies(src: &str, base_dir: &Path) -> Vec<PathBuf> {
     out
 }
 
+/// Every local file a document's **front matter** points at as a resource:
+/// `bibliography:`, `csl:`, `css:`, and the three `include-*-body`/`-in-header` keys.
+/// Absolute + normalized, resolved with the same containment rule as `{{< include >}}`.
+///
+/// Read-only, and deliberately separate from [`dependencies`], which tracks only
+/// `{{< include >}}`. The site dev server watches both: it filtered its rebuild set by
+/// `{{< include >}}` alone, so a `.bib` edit matched no page and the preview kept showing
+/// the stale citation (the single-doc server rebuilds on any relevant event, so it was
+/// never affected). Nothing here reads or parses the referenced files.
+pub fn resource_dependencies(src: &str, base_dir: &Path) -> Vec<PathBuf> {
+    let Some(fm) = crate::frontmatter::front_matter_block(src) else {
+        return Vec::new();
+    };
+    let Ok(v) = serde_yaml::from_str::<serde_yaml::Value>(fm) else {
+        return Vec::new(); // malformed front matter is reported elsewhere
+    };
+    let mut out = Vec::new();
+    for key in [
+        "bibliography",
+        "csl",
+        "css",
+        "include-in-header",
+        "include-before-body",
+        "include-after-body",
+    ] {
+        collect_resource_paths(v.get(key), base_dir, &mut out);
+    }
+    out
+}
+
+/// Walk a front-matter value that may be a path, a `{ file: … }` map, or a sequence of
+/// either, pushing each safely-resolvable path. Mirrors the shapes `doc_includes` and
+/// `bibliography_paths` accept; a `{ text: … }` inline block names no file.
+fn collect_resource_paths(v: Option<&serde_yaml::Value>, base_dir: &Path, out: &mut Vec<PathBuf>) {
+    use serde_yaml::Value;
+    let mut push = |s: &str| {
+        if let Some(p) = safe_join(base_dir, s.trim())
+            && !out.contains(&p)
+        {
+            out.push(p);
+        }
+    };
+    match v {
+        Some(Value::String(s)) => push(s),
+        Some(Value::Mapping(_)) => {
+            if let Some(Value::String(f)) = v.and_then(|v| v.get("file")) {
+                push(f);
+            }
+        }
+        Some(Value::Sequence(seq)) => {
+            for item in seq {
+                collect_resource_paths(Some(item), base_dir, out);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn collect_deps(src: &str, base_dir: &Path, stack: &mut Vec<PathBuf>, out: &mut Vec<PathBuf>) {
     let mut in_code: Option<(char, usize)> = None;
     for line in src.lines() {
@@ -384,6 +442,52 @@ mod tests {
         assert_eq!(w.line, 2, "warning is located on the directive line");
         assert_eq!(w.file, None, "directive lives in the primary document");
         assert!(w.target.contains("etc/passwd"));
+    }
+
+    #[test]
+    fn resource_dependencies_finds_bibliography_csl_and_css() {
+        let root = std::env::temp_dir().join(format!("tali-resdeps-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join(".git"), b"").unwrap(); // project-root marker for safe_join
+
+        let src = "---\ntitle: T\nbibliography:\n  - refs.bib\n  - more.bib\ncsl: ieee.csl\n\
+                   css: custom.css\ninclude-in-header: head.html\n---\n\nBody.\n";
+        let deps = resource_dependencies(src, &root);
+        let names: Vec<String> = deps
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "refs.bib",
+                "more.bib",
+                "ieee.csl",
+                "custom.css",
+                "head.html"
+            ],
+            "every front-matter resource, in key order"
+        );
+        assert!(deps.iter().all(|p| p.is_absolute()), "absolute: {deps:?}");
+
+        // A scalar `bibliography:` and a `{ file: … }` map are the other accepted shapes.
+        let one = resource_dependencies("---\nbibliography: refs.bib\n---\n", &root);
+        assert_eq!(one.len(), 1);
+        let mapped = resource_dependencies("---\ncss:\n  file: a.css\n---\n", &root);
+        assert_eq!(mapped.len(), 1);
+        // An inline `{ text: … }` block names no file.
+        assert!(resource_dependencies("---\ncss:\n  text: 'p{}'\n---\n", &root).is_empty());
+
+        // No front matter, malformed front matter, and an escaping path yield nothing.
+        assert!(resource_dependencies("# Just prose\n", &root).is_empty());
+        assert!(resource_dependencies("---\nbib: \"unterminated\n---\n", &root).is_empty());
+        assert!(
+            resource_dependencies("---\nbibliography: /etc/passwd\n---\n", &root).is_empty(),
+            "an absolute path escapes the project root"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
