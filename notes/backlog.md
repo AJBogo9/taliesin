@@ -7,7 +7,7 @@ Output stays **HTML-only**. Roadmap: `ROADMAP.md`.
 > Kept small (read often). **Only open tasks live here** — delete items once landed; don't
 > leave `[x]`. Completed work is in git + `ROADMAP.md` / `native-rewrite.md` / `AUDITS.md`.
 
-## State (2026-07-09)
+## State (2026-07-10)
 
 v0.2.0. All four formats render + deploy;
 the dev loop is strong (block-level incremental updates with DOM-state preservation, warm server +
@@ -46,6 +46,17 @@ not a runaway loop but a `settle()` false negative, since a `//| name:` value ce
 DOM; `qmd-js.js` now stamps `data-qmd-done` when a cell's `run()` resolves and the harness gates on that
 (the tempting `data-qmd-ran` is stamped *before* cells run, so it would have caused premature capture).
 
+**2026-07-10: the polish audit's Tier-1 batches A-E all landed.** The VS Code companion runs
+for the first time since the rename (its default binary was `qmd-fast`); the published site no
+longer carries the author's home directory or twelve `.tmd` sources; nine CLI papercuts;
+`<title>` falls back to the leading H1; a typo'd category is caught by `check`; and `check`'s
+ten static validators now run in `build --strict` and `publish` (they ran nowhere else, so
+`--strict` shipped a broken `<img>` with exit 0). Three drift gates were added where the bug
+was *invisible* rather than merely unfixed: `editor/vscode/src/test/manifest.test.ts` (the
+companion's default binary must be the `[[bin]]` name cargo builds), `paths.test.ts` (its
+source-extension list must equal `ext.rs`'s), and `main.rs::env_help_lists_every_runtime_env_var`
+(every `TALIESIN_*` the code reads must be in `usage()`; it found two more on first run).
+
 Finally, the **2026-07-09 Tier-2 grind** (branch `backlog-grind-2026-07-09`): `log::escape_control` so a
 crafted `source_file` on the unauthenticated preview websocket cannot write OSC/CSI/CR into the author's
 terminal; `twinned_corpus_sources_stay_byte_identical`, which discovers the duplicated post pairs by
@@ -74,13 +85,16 @@ exec/kernel zone + the single-editing-surface invariant. Review subagents use re
 
 ## Needs your input (the blockers)
 
-Nothing blocks Tier 1: the three prior blockers were ruled on 2026-07-07 (see Priority queue below),
-and every Tier-1 batch from the 2026-07-09 polish audit is build-ready as written.
+Nothing blocks Tier 1. Batches A-E of the 2026-07-09 polish audit **landed 2026-07-10**; the
+only Tier-1 work left is **Batch F** (writing-productivity features), all of which is decided
+and build-ready.
 
-Four **new rulings owed**, none blocking (all filed under "Owner-gated" below): draft-aware preview
+Five **rulings owed**, none blocking (all filed under "Owner-gated" below): draft-aware preview
 (flips a default), reading time in the built page (reverses a decision a corpus test pins),
-`publish --public` (relaxes a fail-closed gate), and the built-site shared asset bundle (changes the
-shape of the build output).
+`publish --public` (relaxes a fail-closed gate), the built-site shared asset bundle (changes the
+shape of the build output), and now **whether plain `publish` should be strict by default**
+(`publish --strict` already inherits the full check-superset; making it the default is a
+fail-closed change, so it was not assumed).
 
 ## Priority queue
 
@@ -90,106 +104,28 @@ shape of the build output).
 live preview, build+publish, editor bridge, ideation); every root cause re-derived from
 source by hand, and three agent diagnoses **refuted** on measurement (recorded under
 "Decided against"). Full evidence, reproductions and fix sketches:
-[2026-07-09-polish-audit-findings.md](2026-07-09-polish-audit-findings.md). Grouped as one
-branch per batch, ordered by payoff ÷ effort. **Theme: the machinery exists, it is just not
-wired into the loops the author uses.**
+[2026-07-09-polish-audit-findings.md](2026-07-09-polish-audit-findings.md).
 
-**Batch A: turn the VS Code companion on (S, highest payoff in the audit).** It has been
-inert since the rename, so its diagnostics + completions have never once run.
-`editor/vscode/package.json:83` defaults `qmdFast.path` to `"qmd-fast"`, a binary that no
-longer exists (`which qmd-fast` fails; PATH has `taliesin` + a `tali` symlink), no user
-setting overrides it, and every subsystem fails silently (`completions.ts:52,73`,
-`diagnostics.ts:31`, `server.ts:13`). `README.md:44` already contradicts the default. The
-committed `.vsix` also predates both features: it ships only
-`out/{extension,server,ports,paths,webview}.js`, and there is no `vscode:prepublish`
-(`package.json:89-94`), so `vsce package` silently repackages a stale `out/`. Fix: default
-to `"taliesin"`, add `vscode:prepublish`, rebuild (or stop committing) the `.vsix`, and
-finish the `qmdFast.*` -> `taliesin.*` namespace rename. **This supersedes the Tier-3
-"manifest rebrand" line, which filed the rename as cosmetic. It is not cosmetic: it is why
-nothing works.**
-
-**Batch B: the confidence gap (M). The change that most makes the tool feel mature.**
-`check.rs:51-61` chains ten static validators; grep confirms **none** is called from
-`build.rs`, `serve/mod.rs`, or `serve_site/mod.rs`. Reproduced: a post with a missing image
-gives `check` exit 1 and `build --strict` exit **0**, shipping the broken `<img>`. On a
-9-defect fixture, `check` caught 9 and `build` caught 5 (missed: in-page anchor, missing
-image, cross-page link, broken anchor). `publish` inherits it via `run_site_build`
-(`publish.rs:188`). The trap is that `--strict` catches *some* located warnings, so a green
-strict build reads as "safe to ship". Fix: hoist `collect_diagnostics` into a shared entry
-point, call it from `build --strict`, `publish`, and `compute_diagnostics` in both dev
-servers; debounce the filesystem-touching lints in the live loop. Three sub-items ride
-along:
-- **(B1, S)** An `error`-level *diagnostic* never reddens the status dot: broken YAML leaves
-  `devDotState:"live"` with only an amber badge on a collapsed corner button, because
-  `setStatus("error")` (`client.js:1005,1043`) fires only on a transport-level `error`
-  message, never on diagnostic severity. Severity is already in the payload.
-- **(B2, M)** A `.bib` edit does not rebuild the page in a **site** preview (single-doc is
-  fine). `serve_site/mod.rs:1087-1109` filters by `page.input ∪ includes::dependencies(src)`,
-  and `includes.rs:155` tracks only `{{< include >}}`; `bibliography:`/`csl:`/`css:` never
-  enter the dep set, so the watched `.bib` event matches no page. *Do-NOT-touch adjacent
-  (cite/includes): read their config, do not alter their logic.*
-- **(B3, S)** One broken include emits **two** diagnostics (the dep-existence check at
-  `serve_site/mod.rs:913-921` + the render pass's located `IncludeWarning`). Keep the located
-  one. Pairs with B1, which makes the badge load-bearing.
-
-**Batch C: stop leaking preview-only metadata into published output (S).** Both reproduce on
-a real `build corpus/tech-blog`.
-- **(C1)** The author's home directory ships in published HTML:
-  `data-source-file="/home/bogo/Documents/personal/taliesin/corpus/tech-blog/_includes/three-scene.tmd"`
-  in `posts/pca-geometry/index.html`. Root cause `includes.rs:240` `label_for()`: `strip_prefix`
-  is against the *primary document's own dir*, so an include reached via `../` into a sibling
-  dir falls through to `Err(_) => target.to_string_lossy()`. It is also the only source of
-  cross-machine build nondeterminism. Fix: label relative to the project root
-  (`containment_root`, same file).
-- **(C2)** Twelve `.tmd` **source files are published** into `_site/`. `build.rs:423`
-  `local_refs()` does a plain substring search for `src="`, which also matches
-  `data-qmd-src="` (the click-to-source attr on listing cards, `site/mod.rs:1120`), so
-  `deploy_referenced_sources` ships each post's source, because `.tmd` is in `SKIP_EXT` and
-  that function exists to deploy referenced `SKIP_EXT` files. Its own doc comment states the
-  real intent ("a linked `.md` download, a `.scss` offered for inspection"). Fix: match on an
-  attribute boundary, not a bare substring. `_site.yml` is safe only by luck (`yml` is not in
-  `SKIP_EXT`). Regression test: a listing card must not deploy its `.tmd`; an explicit
-  `[source](index.tmd)` link still must.
-
-**Batch D: CLI papercuts (S each, one branch).**
-- `preview <missing file>` prints `ready`/`watch` and serves a **blank page**;
-  `serve/mod.rs:331` `read_to_string(&app.path).ok()?` makes a missing file an empty doc.
-  Every other command exits 1. The create-it-later workflow **does** work (verified), so keep
-  it and add one `log::warn`.
-- `preview <dir>` with 0 pages binds a port, 404s `/`, and boots the kernel pool, while
-  `check <same dir>` exits 1 with "no `.tmd` pages found". The two front doors disagree.
-- No `--port <N>` (positional-only, `cli.rs:98,127`); `--port 4400` errors with
-  `did you mean --host?`, pointing at the wrong flag.
-- `log::info` reuses the green `built` tag (`log.rs:173`), so Ctrl-C prints
-  `built shutting down (reaping kernel)` and a build *start* prints `built building with…`.
-  Give `info` its own tag; route the shutdown lines through `log::kernel`. (Distinct from the
-  prose "CLI/docs microcopy" item closed 2026-07-09.)
-- `check` on a folder with no `_site.yml` counts an advisory as "1 problem" and exits 1.
-- `taliesin help build` prints top-level usage (`main.rs:60` matches `help` before the
-  after-subcommand intercept at `:33`).
-- Build summary has no elapsed time (`build.rs:212,1102`) while `ready` prints `75ms`;
-  `--version` has no `-dirty`; `TALIESIN_MERMAID_URL` (`render/mod.rs:914`) is missing from
-  `usage()`'s `ENV:` block; cold multi-page builds stream unlabeled `cell k/n`
-  (`exec.rs:539`) from concurrent pages.
-
-**Batch E: authoring defaults (S each).**
-- A typo'd category silently forks the listing filter: `statistics` / `Statistics` /
-  `statstics` on one post render three separate chips. No validation of category values
-  exists. Add a `check` warning via `closest()` over the site's category vocabulary (same
-  machinery as config keys).
-- `<title>` falls back to the file stem, never the leading H1: a front-matter-less doc
-  starting `# My Great Post` renders `<title>notitle</title>` (`page.rs:247` +
-  `build.rs:169`). 9 in-tree `.tmd` files have an H1 and no front matter. A better default,
-  not a knob.
+**Batches A-E all LANDED 2026-07-10** (one branch each, ff-merged to local main; commits
+`b2c4a5a` companion, `48b5d38` output leaks, `b5001a6` CLI papercuts, `aa7f3c5` authoring
+defaults, `2bd8194` + `41c164f` + `7c75322` the confidence gap). Every claim was
+re-derived from current source and adversarially refuted before any code was written; the
+corrections that changed the work are recorded under "Decided against" below. What the
+audit called Batch B ("the change that most makes the tool feel mature") is done in full:
+`check`'s superset now has one definition, `check::page_static_diagnostics`, shared by
+`check`, `build --strict` and `publish`.
 
 **Batch F: writing-productivity features (each corpus-pinned, in scope, no ruling needed).**
 - **Did-you-mean for `@fig-` / `[@cite]` (S, med-high).** Renaming a label is the commonest
-  way an author silently breaks their own doc. `cite/validate.rs:28` emits
-  `broken cross-reference: @fig-reslts` with no suggestion, while `closest()`
-  (`frontmatter.rs:414`) already serves CLI commands and front-matter keys. The candidate set
-  (registered anchors; parsed bib keys) is in hand at warn time. Keep the edit-distance-2
-  ceiling; suggest only within the page's namespace. *Pin: near-miss `@fig-` + `[@key]` in
-  `corpus/diagnostics/`.*
+  way an author silently breaks their own doc. `cite/validate.rs` emits
+  `broken cross-reference: @fig-reslts` with no suggestion. The candidate set (registered
+  anchors; parsed bib keys) is in hand at warn time. *Note (learned building Batch E's
+  category rule): `closest()` takes `&[&'static str]`, so a dynamic vocabulary of owned
+  `String`s cannot use it: call `frontmatter::levenshtein` directly, which is `pub(crate)`
+  and therefore only reachable from inside `taliesin-core`. `site/categories.rs::suspicious`
+  is the worked precedent, including the short-tag false-positive guard.* Keep the
+  edit-distance-2 ceiling; suggest only within the page's namespace. *Pin: near-miss `@fig-`
+  + `[@key]` in `corpus/diagnostics/`.*
 - **`taliesin new <post|page|deck> <slug>` (S/M, high).** The blank-page tax. Already worked
   around **outside** the tool: `corpus/tech-blog/.claude/skills/new-post/SKILL.md` is a
   hand-built scaffolder, and it is stale (still emits `.qmd`, still says `quarto preview`).
@@ -206,7 +142,9 @@ a real `build corpus/tech-blog`.
   auto-numbers and cross-page anchors.
 - **`.tmd` snippets in the companion (S, med).** No `contributes.snippets` today. Volume: 184
   code cells, 520 fenced-div openers, 108 front-matter blocks, 64 callouts, 57 `#| label:`
-  lines. Reuse `vocab.rs` descriptions so they cannot drift. Ships naturally with Batch A.
+  lines. Reuse `vocab.rs` descriptions so they cannot drift. Batch A landed without these;
+  the companion now actually runs, so they are worth more than before. `manifest.test.ts`
+  is the place to gate any new `contributes.*` against what the source uses.
 - **TODO / FIXME surfacing (S, med).** `prose.rs::lint` already returns markdown-aware,
   code/math-skipping located `(line, message)` pairs. A `TODO|FIXME|XXX` scan as info-level
   located diagnostics makes a draft's loose ends visible without leaving the editor. Never
@@ -229,6 +167,25 @@ harness's `settle()` predicate. Detail + evidence in `2026-07-09-ui-audit-findin
 *(The twinned-corpus-posts carry-over LANDED 2026-07-09: `twinned_corpus_sources_stay_byte_identical`
 in `crates/core/tests/corpus.rs` discovers the pairs by walking both roots and asserts byte-identity
 of the authored sources, verified to fail on injected drift.)*
+
+**New, small, surfaced 2026-07-10 while building the Tier-1 batches:**
+- **`og:title` and the listing card still read `Page::title`, so they disagree with `<title>`.**
+  The H1-promotion fix is scoped to `<title>` (per the audit's own caution about silently
+  retitling a listing). The consequence: a *website* page with no front-matter title and a
+  leading `# H1` now renders a correct `<title>` but an `og:title` borrowed from the site name,
+  and a listing card labelled by its rel-path. Book chapters are unaffected (`book.rs` already
+  falls back to the H1). The coherent fix is to give `site/discovery.rs`'s `website_pages` the
+  same H1 fallback `book.rs::push_chapter` has, so `<title>`, `og:title`, cards, nav and search
+  all agree. Small, but it widens blast radius to four consumers and no corpus page exercises it
+  (add a fixture first).
+- **`publish` without `--strict` still deploys a site `check` would reject.** `publish --strict`
+  now inherits the full superset (verified: it refuses a site with a missing image). Whether
+  plain `publish` should be strict-by-default is a ruling, not a bug: it would be a fail-closed
+  default change. Filed here rather than assumed.
+- **`corpus/tech-blog/.claude/skills/new-post/SKILL.md` is still stale** (emits `.qmd`, says
+  `quarto preview`). Unchanged by this batch; it is the workaround `taliesin new` (Batch F)
+  would retire. Left alone deliberately: fixing the skill would remove the evidence for the
+  feature.
 
 **New, small, surfaced 2026-07-09 while grinding Tier 2:**
 - The twinned post dirs disagree on what is **git-tracked**: `tech-blog/posts/fourier-transform/`
@@ -410,8 +367,9 @@ mutation-checked. These are the findings that survived adversarial verification 
   pre-2026-07-07 archive entries that had been re-copied forward.)*
 
 ### Tier 3 — deferred / demand-driven
-- **Companion:** the manifest rebrand moved to **Tier-1 Batch A** (it is not cosmetic: the stale
-  `qmd-fast` default is why diagnostics + completions have never run). Still Tier 3: Phase 2
+- **Companion:** the manifest rebrand **LANDED 2026-07-10** (Tier-1 Batch A): the extension
+  defaults to `taliesin`, the `qmdFast.*` namespace is gone, `vscode:prepublish` is wired, and
+  `manifest.test.ts` gates the default binary against cargo's `[[bin]]` name. Still Tier 3: Phase 2
   editor commands (`.tmd`-buffer text transforms only, never preview gestures); `editor.wordWrap`
   default for `[taliesin]` (respect the global setting until prose overflow is a real complaint, then
   ship `"on"`); grammar polish (YAML-type the `#|`/`//|`/`%%|` option value; recommend the cell-language
@@ -574,6 +532,43 @@ cap would be harmless defense-in-depth, not a defect fix. Do not re-scope either
 - **Built-site shared asset bundle** (changes the shape of the build output). See Tier 3.
 
 ## Decided against / do-not-re-litigate
+
+**REFUTED / CORRECTED while building the Tier-1 batches, 2026-07-10.** Each was verified
+against source or by measurement before the code was written. Do NOT re-scope them.
+
+- **`--version -dirty` (audit item, Batch D): NOT worth building.** `crates/server/build.rs`
+  declares `cargo:rerun-if-changed`, so cargo runs it exactly **once** and never again when
+  the working tree becomes dirty. Proved with a side-effect log: 1 run across a dirtied
+  `log.rs` and a dirtied `crates/core/src/lib.rs`. A `-dirty` marker computed there is
+  therefore stale, i.e. worse than absent. The `rerun-if-changed=<nonexistent path>` escape
+  does force a rerun every build and *is* correct, but it costs **0.85 s on every warm
+  build** (0.11 s -> 0.96 s, n=3), and the `taliesin` launcher rebuilds on every invocation,
+  so every `taliesin preview` would pay it. Refused: a cosmetic marker is not worth the dev
+  loop.
+- **The audit's C1 fix was wrong.** It proposed labelling an include relative to the *project
+  root* (`containment_root`). That would have broken click-to-source for **every** include:
+  both consumers resolve `data-source-file` against the *primary document's own directory*
+  (`resolveSourceFile` = `path.resolve(dirname(doc), label)`; the reverse-sync key is
+  `path.relative(dirname(doc), file)`). The shipped fix computes a true primary-doc-relative
+  path, which also silently repaired reverse sync into `../../_includes/three-scene.tmd`.
+- **The audit's E2 symptom was fabricated.** `<title>notitle</title>` appears nowhere;
+  `grep -rn notitle crates/ web-client/` is empty. The real behaviours were worse and
+  *different per path*: standalone emitted the **file stem**, a site page emitted
+  **`<title></title>`** and `og:title` then borrowed the site's own name.
+- **And the obvious E2 fix regressed the corpus.** Promoting the leading H1 into
+  `RenderedDoc::title` retitled `demo-book/methods.html` from "Methodology" (an authored
+  `_site.yml` `chapters: text:` override) to "Methods" (the file's H1). Title precedence is
+  now: front-matter `title:` > a site's authored page title > the leading H1 > the file stem,
+  with the middle two swapping on `in_site` (standalone, the fallback is only a filename).
+- **Adversarial verification is not infallible.** A refuter "killed" audit item A3 (stale
+  `qmd-fast` branding in the companion README) by grepping the **root** `README.md` instead of
+  `editor/vscode/README.md`. The claim was true, and worse than filed: that README also
+  asserted the preview "still works on `.qmd` files, the renderer accepts them", which the
+  legacy-format clean break had made false. Check *which file* a refutation actually read.
+- **A4 was overstated.** The stale `taliesin-companion.vsix` is **not committed**: `.gitignore`
+  lists `*.vsix` and `git ls-files` does not track it. It is an untracked local build artifact,
+  so "stop committing it" was a no-op. It is still a trap if installed by hand: rebuild or
+  delete it. (`vscode:prepublish` now prevents `vsce package` from shipping a stale `out/`.)
 
 **REFUTED by measurement (polish audit, 2026-07-09): do NOT re-scope these.** Three plausible
 diagnoses died on measurement; two of them were confidently asserted by audit agents. Recorded because
