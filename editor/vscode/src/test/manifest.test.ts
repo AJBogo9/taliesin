@@ -171,3 +171,113 @@ test("every taliesin subcommand the extension spawns is a real command", () => {
     );
   }
 });
+
+// --- .tmd snippets stay in step with the Rust vocabulary ------------------------------
+//
+// Snippets insert source text the author then edits, so they never touch the preview and
+// cannot violate the single-editing-surface rule. The failure mode is quieter: a snippet
+// that offers `.callout-hint` or `#| fig-alt:` after that name was removed from Rust keeps
+// inserting text `check` will reject. The vocabulary is Rust-authoritative
+// (crates/core/assets/vocab/tali-vocab.json, itself golden-locked by vocab.rs), so every
+// name a snippet body mentions is checked against it here.
+
+interface VocabNamed { name: string }
+const vocab = JSON.parse(
+  fs.readFileSync(path.join(REPO_ROOT, "crates/core/assets/vocab/tali-vocab.json"), "utf8")
+);
+const names = (list: VocabNamed[]) => list.map((n) => n.name);
+
+const snippetContributions: { language: string; path: string }[] = manifest.contributes?.snippets ?? [];
+
+/** Every snippet body in every contributed file, as one string per snippet. */
+function snippetBodies(): { name: string; body: string }[] {
+  const out: { name: string; body: string }[] = [];
+  for (const c of snippetContributions) {
+    const file = JSON.parse(fs.readFileSync(path.join(EXT_ROOT, c.path), "utf8"));
+    for (const [name, snip] of Object.entries<any>(file)) {
+      out.push({ name, body: Array.isArray(snip.body) ? snip.body.join("\n") : String(snip.body) });
+    }
+  }
+  return out;
+}
+
+test("contributes.snippets binds a real snippet file to a declared language", () => {
+  assert.ok(snippetContributions.length > 0, "the manifest contributes at least one snippet file");
+  const languages = new Set((manifest.contributes?.languages ?? []).map((l: any) => l.id));
+  for (const c of snippetContributions) {
+    assert.ok(languages.has(c.language), `snippets bind to a declared language, got "${c.language}"`);
+    const p = path.join(EXT_ROOT, c.path);
+    assert.ok(fs.existsSync(p), `snippet file exists: ${c.path}`);
+    const file = JSON.parse(fs.readFileSync(p, "utf8")); // throws on malformed JSON
+    assert.ok(Object.keys(file).length > 0, `${c.path} defines at least one snippet`);
+    for (const [name, snip] of Object.entries<any>(file)) {
+      assert.ok(typeof snip.prefix === "string" && snip.prefix, `${name} has a prefix`);
+      assert.ok(snip.body, `${name} has a body`);
+    }
+  }
+});
+
+test("the .vscodeignore does not exclude the snippets from the package", () => {
+  const ignore = fs.readFileSync(path.join(EXT_ROOT, ".vscodeignore"), "utf8");
+  for (const c of snippetContributions) {
+    const dir = c.path.replace(/^\.\//, "").split("/")[0];
+    assert.ok(
+      !ignore.split("\n").some((l) => l.trim() === `${dir}/` || l.trim() === dir),
+      `.vscodeignore must not exclude ${dir}/, or the shipped extension has no snippets`
+    );
+  }
+});
+
+test("every callout kind, div class and theorem a snippet inserts is in the vocabulary", () => {
+  const callouts = new Set(names(vocab.calloutKinds));
+  const divs = new Set([...names(vocab.divClasses), ...names(vocab.theoremKinds)]);
+  for (const { name, body } of snippetBodies()) {
+    for (const m of body.matchAll(/:::+\s*\{\.([\w-]+)/g)) {
+      const cls = m[1];
+      // `.callout-${1|note,tip|}` names its kind with a choice placeholder, not a literal;
+      // the reverse-parity test below checks those against the vocabulary's exact order.
+      if (body.slice(m.index + m[0].length).startsWith("${")) continue;
+      if (cls.startsWith("callout-")) {
+        assert.ok(callouts.has(cls.slice("callout-".length)), `${name}: unknown callout \`${cls}\``);
+      } else {
+        assert.ok(divs.has(cls), `${name}: unknown div class \`${cls}\``);
+      }
+    }
+    // A `${1|a,b|}` choice in a callout opener must offer only real kinds.
+    for (const m of body.matchAll(/:::+\s*\{\.callout-\$\{\d+\|([^|]+)\|\}/g)) {
+      for (const kind of m[1].split(",")) {
+        assert.ok(callouts.has(kind), `${name}: choice offers unknown callout \`${kind}\``);
+      }
+    }
+  }
+});
+
+test("every cell option a snippet inserts is in the vocabulary", () => {
+  const options = new Set(names(vocab.cellOptions));
+  for (const { name, body } of snippetBodies()) {
+    for (const m of body.matchAll(/^\s*(?:#\||\/\/\||%%\|)\s*([\w-]+):/gm)) {
+      assert.ok(options.has(m[1]), `${name}: unknown cell option \`#| ${m[1]}:\``);
+    }
+  }
+});
+
+test("every cross-reference prefix a snippet inserts is in the vocabulary", () => {
+  const prefixes = new Set(vocab.xrefPrefixes.map((p: { prefix: string }) => p.prefix));
+  for (const { name, body } of snippetBodies()) {
+    for (const m of body.matchAll(/[#@](fig|tbl|sec|eq|lst|thm|lem|cor|prp|def|exm|rem|[a-z]{2,4})-/g)) {
+      assert.ok(prefixes.has(m[1]), `${name}: unknown xref prefix \`${m[1]}-\``);
+    }
+  }
+});
+
+test("the callout snippet offers exactly the vocabulary's kinds, in order", () => {
+  // The forcing function: add or remove a callout kind in Rust and this fails until the
+  // snippet is updated. Without it the snippet rots silently.
+  const expected = `\${1|${names(vocab.calloutKinds).join(",")}|}`;
+  const found = snippetBodies().filter((s) => s.body.includes("callout-"));
+  assert.ok(found.length > 0, "a callout snippet exists");
+  assert.ok(
+    found.some((s) => s.body.includes(expected)),
+    `a callout snippet must offer the vocabulary's kinds in order: ${expected}`
+  );
+});

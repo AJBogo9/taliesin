@@ -53,10 +53,18 @@
       {
         "scopeName": "text.tmd.markdown.injection",
         "path": "./syntaxes/tmd.injection.tmLanguage.json",
-        "injectTo": ["text.tmd.markdown"],
+        "injectTo": [
+          "text.tmd.markdown"
+        ],
         "embeddedLanguages": {
           "meta.embedded.math.tmd": "latex"
         }
+      }
+    ],
+    "snippets": [
+      {
+        "language": "taliesin",
+        "path": "./snippets/tmd.json"
       }
     ],
     "commands": [

@@ -1,0 +1,100 @@
+{
+  "Front matter": {
+    "prefix": "fm",
+    "description": "A document's YAML front-matter block.",
+    "body": [
+      "---",
+      "title: \"${1:Title}\"",
+      "date: ${2:$CURRENT_YEAR-$CURRENT_MONTH-$CURRENT_DATE}",
+      "categories: [${3:writing}]",
+      "---",
+      "",
+      "$0"
+    ]
+  },
+  "Python cell": {
+    "prefix": "cell",
+    "description": "An executed {python} cell.",
+    "body": ["```{python}", "$0", "```"]
+  },
+  "Python figure cell": {
+    "prefix": "figcell",
+    "description": "A {python} cell whose output is a numbered, cross-referenceable figure.",
+    "body": [
+      "```{python}",
+      "#| label: fig-${1:name}",
+      "#| fig-cap: ${2:Caption}",
+      "$0",
+      "```"
+    ]
+  },
+  "JavaScript cell": {
+    "prefix": "jscell",
+    "description": "A reactive {js} cell, run in the browser.",
+    "body": ["```{js}", "//| name: ${1:value}", "$0", "```"]
+  },
+  "Folded code cell": {
+    "prefix": "foldcell",
+    "description": "A {python} cell whose source starts collapsed.",
+    "body": [
+      "```{python}",
+      "#| code-fold: true",
+      "#| code-summary: ${1:Show the code}",
+      "$0",
+      "```"
+    ]
+  },
+  "Callout": {
+    "prefix": "callout",
+    "description": "A callout block (note, tip, warning, important, caution).",
+    "body": ["::: {.callout-${1|note,tip,warning,important,caution|}}", "$0", ":::"]
+  },
+  "Figure": {
+    "prefix": "fig",
+    "description": "A numbered figure you can reference with @fig-name.",
+    "body": ["![${1:Caption}](${2:image.png}){#fig-${3:name}}", "", "$0"]
+  },
+  "Tabset": {
+    "prefix": "tabset",
+    "description": "A tabbed panel; each `##` heading becomes a tab.",
+    "body": [
+      "::: {.panel-tabset}",
+      "",
+      "## ${1:First}",
+      "",
+      "$0",
+      "",
+      "## ${2:Second}",
+      "",
+      ":::"
+    ]
+  },
+  "Theorem": {
+    "prefix": "thm",
+    "description": "A numbered theorem environment.",
+    "body": [
+      "::: {.theorem #thm-${1:name} title=\"${2:Title}\"}",
+      "$0",
+      ":::"
+    ]
+  },
+  "Include": {
+    "prefix": "include",
+    "description": "Splice another .tmd file in at this point.",
+    "body": ["{{< include ${1:_includes/section.tmd} >}}", "", "$0"]
+  },
+  "Video": {
+    "prefix": "video",
+    "description": "Embed a local or remote video.",
+    "body": ["{{< video ${1:clip.mp4} >}}", "", "$0"]
+  },
+  "Reactive input": {
+    "prefix": "input",
+    "description": "A reader-facing control whose value {js} cells can read.",
+    "body": [
+      "{{< input ${1|slider,range,number,checkbox,text,select|} name=${2:x} min=${3:0} max=${4:10} value=${5:5} >}}",
+      "",
+      "$0"
+    ]
+  }
+}

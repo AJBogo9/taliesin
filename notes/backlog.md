@@ -122,11 +122,6 @@ audit called Batch B ("the change that most makes the tool feel mature") is done
   Emit keys from the same `KNOWN_KEYS`/schema consts the validator enforces, so the scaffold
   is correct by construction; reuse `init`'s refuse-before-overwrite guard (`cli.rs:58`).
   *Pin: `corpus/scaffold/post/`, asserted to render and pass `check` clean.*
-- **`.tmd` snippets in the companion (S, med).** No `contributes.snippets` today. Volume: 184
-  code cells, 520 fenced-div openers, 108 front-matter blocks, 64 callouts, 57 `#| label:`
-  lines. Reuse `vocab.rs` descriptions so they cannot drift. Batch A landed without these;
-  the companion now actually runs, so they are worth more than before. `manifest.test.ts`
-  is the place to gate any new `contributes.*` against what the source uses.
 - **TODO / FIXME surfacing (S, med).** `prose.rs::lint` already returns markdown-aware,
   code/math-skipping located `(line, message)` pairs. A `TODO|FIXME|XXX` scan as info-level
   located diagnostics makes a draft's loose ends visible without leaving the editor. Never
@@ -595,6 +590,18 @@ against source or by measurement before the code was written. Do NOT re-scope th
   collected nothing; the TS one matched `spawn(\s*\w+\s*,`, so `spawn(binaryPath(), …)` was
   skipped in silence). Both are now mutation-checked against exactly those shapes. **Gate the
   gate**: a drift test that cannot fail is worse than none.
+- **Batch F's snippet volume numbers were inflated ~5x** (LANDED, harmless). Filed as "520
+  fenced-div openers"; the real count over `corpus/` + `docs/` is **107 openers** (the 520
+  counted every `:::` line, and a div's closer is a bare `:::`). Likewise 176 code cells (not
+  184) and 57 callouts (not 64). "108 front-matter blocks" was the `.tmd` file count. The
+  feature was still worth it; the justification was just softer than filed. Twelve snippets
+  ship (`fm`, `cell`, `figcell`, `jscell`, `foldcell`, `callout`, `fig`, `tabset`, `thm`,
+  `include`, `video`, `input`), each verified end to end by expanding its body and running
+  `taliesin check` on it: **12/12 clean.** Drift is held by four mutation-checked gates in
+  `manifest.test.ts`, the load-bearing one being reverse parity (the callout snippet's choice
+  list must equal `vocab.calloutKinds` exactly, in order, so adding a kind in Rust fails the
+  build until the snippet follows). A fifth asserts `.vscodeignore` cannot exclude `snippets/`,
+  since an excluded dir would ship an extension with no snippets and no test would notice.
 - **The audit's C1 fix was wrong.** It proposed labelling an include relative to the *project
   root* (`containment_root`). That would have broken click-to-source for **every** include:
   both consumers resolve `data-source-file` against the *primary document's own directory*

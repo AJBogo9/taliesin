@@ -35,6 +35,23 @@ though `taliesin build` will still render one you hand it by path.
 No Quarto grammar is copied: the base is the MIT `markdown-basics` grammar; Quarto's own VS Code
 grammar is **AGPL-3.0** and is not used.
 
+## Completions and snippets
+
+Everything the editor offers is **Rust-authoritative**, so it cannot drift from what `check`
+enforces. Front-matter keys, cell options, callout kinds, div classes and theorem kinds come
+from `taliesin vocab`. Cross-reference targets come from `taliesin symbols`, which reads the
+resolved xref registry: that is how `@`-completion finds a figure labelled from a cell
+(`#| label: fig-scree`), which no regex over the source can see. Since `symbols` reads the file
+on disk, the results are merged with a live scan of the buffer, so an anchor you typed a moment
+ago is completable before you save. Citation keys are read from the front matter's
+`bibliography:`.
+
+`contributes.snippets` ships a small set of `.tmd` snippets (`fm`, `cell`, `figcell`, `jscell`,
+`foldcell`, `callout`, `fig`, `tabset`, `thm`, `include`, `video`, `input`). Their bodies are
+gated against the same vocabulary by `src/test/manifest.test.ts`: a snippet that offers a callout
+kind or cell option Taliesin no longer knows fails the build, and the callout snippet's choice
+list must equal `vocab.calloutKinds` exactly, in order.
+
 ## Develop / run
 
 1. `cd editor/vscode && npm install && npm run build`
