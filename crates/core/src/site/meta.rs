@@ -7,6 +7,7 @@
 
 use super::{Page, Site, is_external_or_special};
 use crate::escape_attr as esc;
+use serde_json::{Value, json};
 
 fn meta(attr: &str, key: &str, val: &str) -> String {
     format!("\n<meta {attr}=\"{key}\" content=\"{}\">", esc(val))
@@ -109,4 +110,160 @@ pub(super) fn social_head(site: &Site, page: &Page) -> String {
         }
     }
     h
+}
+
+/// schema.org JSON-LD for `page`, url-gated: a post (`date:` present) → `BlogPosting`;
+/// the root index page → a `WebSite` + `Person` `@graph`. Empty string otherwise (no
+/// `url:`, or a non-post inner page). Injected into the head beside `social_head`, so
+/// it also appears in the live preview. All string values are JSON-escaped by
+/// `serde_json`; `</` is additionally escaped so a description can't break the script.
+pub(super) fn jsonld_head(site: &Site, page: &Page) -> String {
+    let Some(base) = site.canonical_base() else {
+        return String::new();
+    };
+    let author = site
+        .config
+        .author
+        .as_ref()
+        .and_then(|a| a.as_str())
+        .or(site.config.title.as_deref())
+        .unwrap_or("");
+    let data: Option<Value> = if page.date.is_some() {
+        let url = site.abs_page_url(page).unwrap_or_default();
+        let mut bp = json!({
+            "@context": "https://schema.org",
+            "@type": "BlogPosting",
+            "headline": page.title.as_deref().unwrap_or(""),
+            "datePublished": page.date.as_deref().unwrap_or(""),
+            "dateModified": page.date.as_deref().unwrap_or(""),
+            "mainEntityOfPage": &url,
+            "url": &url,
+        });
+        if !author.is_empty() {
+            bp["author"] = json!({ "@type": "Person", "name": author });
+        }
+        if let Some(d) = page.description.as_deref() {
+            bp["description"] = json!(d);
+        }
+        if let Some(img) = page.card_image.as_deref() {
+            let abs = if is_external_or_special(img) {
+                img.to_string()
+            } else {
+                format!("{base}/{}", img.trim_start_matches('/'))
+            };
+            bp["image"] = json!(abs);
+        }
+        Some(bp)
+    } else if page.url == "index.html" {
+        let website = json!({
+            "@type": "WebSite",
+            "name": site.config.title.as_deref().unwrap_or(""),
+            "url": base,
+            "description": site.config.description.as_deref().unwrap_or(""),
+        });
+        let mut person = json!({
+            "@type": "Person",
+            "name": author,
+            "url": base,
+        });
+        let same_as = footer_social_links(site);
+        if !same_as.is_empty() {
+            person["sameAs"] = json!(same_as);
+        }
+        Some(json!({ "@context": "https://schema.org", "@graph": [website, person] }))
+    } else {
+        None
+    };
+    match data {
+        Some(v) => format!(
+            "\n<script type=\"application/ld+json\">{}</script>",
+            v.to_string().replace("</", "<\\/")
+        ),
+        None => String::new(),
+    }
+}
+
+/// Absolute social URLs from footer items that carry an `icon:` (the Person `sameAs`).
+fn footer_social_links(site: &Site) -> Vec<String> {
+    let Some(f) = site.config.footer.as_ref() else {
+        return Vec::new();
+    };
+    f.left
+        .iter()
+        .chain(&f.center)
+        .chain(&f.right)
+        .filter(|it| it.icon.is_some())
+        .filter_map(|it| it.href.clone())
+        .filter(|h| h.starts_with("http"))
+        .collect()
+}
+
+#[cfg(test)]
+mod jsonld_tests {
+    use crate::site::{Site, tests::write_site};
+
+    #[test]
+    fn post_emits_blogposting() {
+        let root = write_site(
+            "jsonldpost",
+            &[
+                ("_site.yml", "title: Blog\nurl: https://ex.com\n"),
+                (
+                    "posts/a/index.tmd",
+                    "---\ntitle: My Post\ndate: 2026-05-15\ndescription: About things.\n---\n\nx\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("posts/a/index.tmd").unwrap();
+        assert!(
+            html.contains(r#""@type":"BlogPosting""#),
+            "BlogPosting present"
+        );
+        assert!(html.contains(r#""headline":"My Post""#));
+        assert!(html.contains(r#""datePublished":"2026-05-15""#));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn home_emits_website_and_person() {
+        let root = write_site(
+            "jsonldhome",
+            &[
+                (
+                    "_site.yml",
+                    "title: Andreas Bogossian\nurl: https://ex.com\nfooter:\n  right:\n    - { icon: github, href: https://github.com/x }\n",
+                ),
+                ("index.tmd", "---\ntitle: Andreas Bogossian\n---\n\nHi.\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("index.tmd").unwrap();
+        assert!(html.contains(r#""@type":"WebSite""#), "WebSite present");
+        assert!(html.contains(r#""@type":"Person""#), "Person present");
+        assert!(
+            html.contains(r#""name":"Andreas Bogossian""#),
+            "person name = title fallback"
+        );
+        assert!(html.contains("https://github.com/x"), "sameAs from footer");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn no_jsonld_without_url() {
+        let root = write_site(
+            "jsonldnourl",
+            &[
+                ("_site.yml", "title: B\n"),
+                ("index.tmd", "---\ntitle: H\n---\n\nx\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("index.tmd").unwrap();
+        assert!(
+            !html.contains("application/ld+json"),
+            "no JSON-LD without url:"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

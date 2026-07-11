@@ -446,6 +446,7 @@ impl Site {
         // rich preview. Injected via the head include (no render/mod.rs change).
         let mut includes = self.includes.clone();
         includes.in_header.push_str(&meta::social_head(self, page));
+        includes.in_header.push_str(&meta::jsonld_head(self, page));
         // The cross-page search index (+ how to resolve a result's page URL from
         // this page's depth). Empty when there are no entries; injected only where
         // the search palette also rides along (TOC pages).
