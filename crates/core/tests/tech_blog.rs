@@ -583,3 +583,99 @@ fn js_target_ids(html: &str) -> Vec<String> {
         })
         .collect()
 }
+
+/// The real blog has `url:` set, so `build` emits the discoverability sidecars. Pins
+/// each artifact against the actual corpus (the regression net) — matching emitted
+/// strings, never inlined-CSS/JS substrings ("gate the gate").
+#[test]
+fn seo_and_llm_artifacts_are_generated_for_the_blog() {
+    let site = Site::discover(&corpus_dir().join("tech-blog"));
+    let base = "https://andreasbogossian.com";
+
+    // Atom feeds: one per distinct uncapped dated listing (blog + projects); the CV's
+    // re-listed projects tail is deduped, and the homepage teaser is capped → no feed.
+    let feeds = site.atom_feeds();
+    let paths: Vec<&str> = feeds.iter().map(|(p, _)| p.as_str()).collect();
+    assert!(paths.contains(&"blog.xml"), "blog feed: {paths:?}");
+    assert!(paths.contains(&"projects.xml"), "projects feed: {paths:?}");
+    assert!(
+        !paths.contains(&"cv.xml"),
+        "no duplicate CV feed: {paths:?}"
+    );
+    assert!(
+        !paths.iter().any(|p| p.starts_with("index")),
+        "no feed for the capped homepage teaser: {paths:?}"
+    );
+    let (_, blog_xml) = feeds.iter().find(|(p, _)| p == "blog.xml").unwrap();
+    assert!(
+        blog_xml.contains(r#"<feed xmlns="http://www.w3.org/2005/Atom">"#),
+        "atom root"
+    );
+    assert!(
+        blog_xml.contains(&format!(r#"href="{base}/posts/"#)),
+        "absolute post links"
+    );
+    assert!(
+        blog_xml.matches("<entry>").count() >= 5,
+        "an entry per post, got {}",
+        blog_xml.matches("<entry>").count()
+    );
+
+    // sitemap + robots.
+    let sitemap = site.sitemap().expect("sitemap");
+    assert!(
+        sitemap.contains(&format!("<loc>{base}/</loc>")),
+        "home in sitemap"
+    );
+    assert!(
+        sitemap.contains(&format!("<loc>{base}/posts/em-algorithm/</loc>")),
+        "a post in sitemap"
+    );
+    assert!(
+        !sitemap.contains("404"),
+        "the 404 page is not in the sitemap"
+    );
+    let robots = site.robots().expect("robots");
+    assert!(
+        robots.contains(&format!("Sitemap: {base}/sitemap.xml")),
+        "robots names sitemap"
+    );
+
+    // llms.txt: identity from the home hero + linked posts.
+    let llms = site.llms_txt().expect("llms.txt");
+    assert!(llms.starts_with("# Andreas Bogossian"), "identity H1");
+    assert!(
+        llms.contains(&format!("]({base}/posts/")),
+        "posts linked absolutely"
+    );
+    assert!(!llms.contains("404"), "the 404 page is not in llms.txt");
+    // llms-full.txt: real prose, identity header.
+    let full = site.llms_full_txt().expect("llms-full.txt");
+    assert!(full.contains("Andreas Bogossian"), "identity header");
+    assert!(
+        full.len() > 2000,
+        "carries real page prose, got {} bytes",
+        full.len()
+    );
+
+    // JSON-LD in the rendered pages.
+    let post = site
+        .render_page("posts/em-algorithm/index.tmd")
+        .expect("post renders");
+    assert!(
+        post.contains(r#""@type":"BlogPosting""#),
+        "BlogPosting on a post"
+    );
+    let home = site.render_page("index.tmd").expect("home renders");
+    assert!(
+        home.contains(r#""@type":"WebSite""#) && home.contains(r#""@type":"Person""#),
+        "WebSite+Person on home"
+    );
+
+    // Footer feed link honored (url: is set).
+    let blog = site.render_page("blog.tmd").expect("blog renders");
+    assert!(
+        blog.contains("href=\"blog.xml\""),
+        "footer feed link honored"
+    );
+}

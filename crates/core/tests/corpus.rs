@@ -493,17 +493,17 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
         !blog.contains("href=\"blog.tmd\""),
         "raw .tmd nav link leaked"
     );
-    // Blog-specific features were removed: no RSS feed is generated, so there is
-    // no discovery <link>, no rss+xml, no feed.xml anywhere, and the footer's
-    // local `.xml` item is dropped (there is no feed to point it at).
-    assert!(!blog.contains("feed.xml"), "feed.xml link should be gone");
+    // The blog sets `url:`, so the build now generates an Atom feed (`blog.xml`) and the
+    // footer's local `.xml` item is honored (feed.rs + chrome.rs). There is still no
+    // legacy `feed.xml` path and no RSS-specific discovery <link> (Taliesin emits Atom).
+    assert!(!blog.contains("feed.xml"), "no legacy feed.xml path");
     assert!(
-        !blog.contains("blog.xml"),
-        "local .xml footer link should be dropped"
+        blog.contains("href=\"blog.xml\""),
+        "footer feed link honored now that a feed is generated"
     );
     assert!(
         !blog.contains("application/rss+xml"),
-        "RSS discovery <link> should be gone"
+        "no RSS discovery <link> (Taliesin emits Atom)"
     );
 
     // A post now carries a single "back to listing" link to the listing that owns it
