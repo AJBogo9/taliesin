@@ -40,6 +40,32 @@ fn native_flat_config_parses_nav_footer_and_icon() {
     );
 }
 
+/// A site's `head:` and `body-end:` (from `_site.yml`) are injected into every page: head
+/// inside <head>, body-end after the content. The tech-blog dropped its own head:/body-end:
+/// (Quarto nav-prefetch residue), so this synthetic site is the injection mechanism's net.
+#[test]
+fn site_head_and_body_end_are_injected() {
+    let d = TempProj::new();
+    d.file(
+        "_site.yml",
+        "title: T\n\
+         head:\n  text: '<meta name=\"probe-head\" content=\"1\">'\n\
+         body-end:\n  text: '<span id=\"probe-body-end\"></span>'\n",
+    );
+    d.file("index.tmd", "---\ntitle: Home\n---\n\n# Hi\n");
+    let site = Site::discover(&d.0);
+    let html = site.render_page("index.tmd").expect("renders");
+    let head = &html[..html.find("</head>").expect("has </head>")];
+    assert!(
+        head.contains("probe-head"),
+        "head: must be injected inside <head>"
+    );
+    assert!(
+        html.contains("probe-body-end"),
+        "body-end: must be injected after the content"
+    );
+}
+
 #[test]
 fn scholarly_citation_meta_for_authored_dated_posts_only() {
     let d = TempProj::new();

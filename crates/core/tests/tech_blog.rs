@@ -355,60 +355,44 @@ fn home_page_renders_marginalia_hero() {
     );
 }
 
-/// The site's native `head` / `body-end` / `css` (from `_site.yml`) are injected
-/// into every page, and a page's own front-matter `include-in-header` is injected on
-/// top of the site's. Without this the blog's speculationrules hint, prefetch script,
-/// and custom stylesheet silently vanish. The three dead CDN preconnects were removed
-/// (offline-first: the blog opens zero external connections), so no external
-/// `rel=preconnect` must survive the injection.
+/// The de-Quarto sweep stays swept and the site-level `css:` is still inlined. The blog
+/// dropped its Quarto nav-prefetch stack (CDN preconnects, a speculationrules prerender hint,
+/// the third-party instant.page module), all redundant with Taliesin's native hover-preview,
+/// so none may reappear; offline-first means zero external connections. The site `description:`
+/// is the single source of truth (exactly one `<meta description>`). The site
+/// head:/body-end:/css: INJECTION mechanism itself is covered synthetically in `config.rs`
+/// (this blog no longer declares head:/body-end:).
 #[test]
-fn site_and_page_includes_are_injected() {
+fn blog_nav_prefetch_stack_stays_dropped_and_css_is_injected() {
     let site = Site::discover(&corpus_dir().join("tech-blog"));
 
-    // A regular post gets the site-wide includes (it declares none of its own).
     let post = site
         .render_page("posts/em-algorithm/index.tmd")
         .expect("post renders");
-    // include-in-header (text:) — the speculationrules prefetch hint. The three dead
-    // CDN preconnects were deleted (offline-first), so none must remain injected.
-    assert!(
-        post.contains("<script type=\"speculationrules\">"),
-        "site include-in-header speculationrules missing"
-    );
     assert!(
         !post.contains("rel=\"preconnect\""),
-        "dead CDN preconnects must not be reintroduced (offline-first)"
+        "no CDN preconnect may survive (offline-first)"
     );
-    // include-after-body (text:) — the prefetch script.
     assert!(
-        post.contains("src=\"/instantpage.js\""),
-        "site include-after-body script missing"
+        !post.contains("speculationrules"),
+        "the speculationrules prerender hint was dropped"
     );
-    // css: custom.css — inlined, so a known selector from the file is present.
     assert!(
-        post.contains(".back-to-top"),
-        "site css (custom.css) not inlined"
+        !post.contains("instantpage"),
+        "the third-party instant.page module was dropped"
     );
-    // Header injection lands inside <head>, body injection after </body>'s content.
-    let head = &post[..post.find("</head>").expect("has </head>")];
+    // css: custom.css is still inlined (now just the @view-transition rule).
     assert!(
-        head.contains("speculationrules"),
-        "include-in-header must be inside <head>"
+        post.contains("@view-transition"),
+        "site css: (custom.css) should still be inlined"
     );
 
-    // The homepage adds its OWN include-in-header (the LCP image preload) on top of
-    // the site's. The formerly hand-injected duplicate `<meta description>` was removed,
-    // so the site-level `description:` is the single source of truth: the homepage must
-    // carry exactly one meta description, not two competing ones.
+    // The site-level `description:` is the single source of truth for the meta description.
     let home = site.render_page("index.tmd").expect("home renders");
     assert_eq!(
         home.matches("name=\"description\"").count(),
         1,
-        "homepage must carry exactly one <meta description> (the hand-injected duplicate was removed)"
-    );
-    assert!(
-        home.contains("<script type=\"speculationrules\">"),
-        "site include should still apply alongside the page's own"
+        "homepage must carry exactly one <meta description>"
     );
 }
 
