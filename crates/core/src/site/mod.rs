@@ -117,8 +117,8 @@ pub struct ListingSpec {
     pub id: Option<String>,
     /// The directory whose pages are listed (relative to the hosting page).
     pub contents: String,
-    /// `type: grid` → card grid; `type: list` → stacked rows WITH the `image:`
-    /// thumbnail beside the text; otherwise (`default`) a stacked text list.
+    /// `type: grid` → card-grid layout; `list` and `default` are both a stacked
+    /// list and differ only in `with_image` (below).
     pub grid: bool,
     /// Whether cards show their `image:` thumbnail: `grid` and `list`, not plain
     /// `default`. Lets a reading-first `list` keep the figure thumbnails while a

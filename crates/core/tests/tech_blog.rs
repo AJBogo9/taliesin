@@ -275,11 +275,15 @@ fn equation_crossref_resolves_to_number() {
 fn listing_frontmatter_emits_post_cards() {
     let site = Site::discover(&corpus_dir().join("tech-blog"));
 
-    // The blog index lists every post as a card, newest-first.
+    // The blog index lists every post as a card, newest-first. It uses the reading-first
+    // `type: list` layout (stacked rows → class `tali-listing-default`), NOT the grid.
+    // Match the emitted class ATTRIBUTE: the inlined site.css names every class as a bare
+    // rule selector, so a `contains("tali-listing-grid")` would pass vacuously off the CSS.
     let blog = site.render_page("blog.tmd").expect("blog renders");
     assert!(
-        blog.contains("tali-listing-grid"),
-        "blog: no listing grid produced"
+        blog.contains("class=\"tali-listing tali-listing-default\"")
+            && !blog.contains("class=\"tali-listing tali-listing-grid\""),
+        "blog: reading-first list layout not emitted"
     );
     let card_count = blog.matches("class=\"tali-card\"").count();
     assert!(
