@@ -679,3 +679,29 @@ fn seo_and_llm_artifacts_are_generated_for_the_blog() {
         "footer feed link honored"
     );
 }
+
+use taliesin_core::site::{card_rel_path, card_spec};
+
+/// The blog home ships a generated OG card (never the removed static `og-image.webp`),
+/// and its og:image URL is exactly the card path the build writes.
+#[test]
+fn home_og_image_is_the_generated_card() {
+    let site = Site::discover(&corpus_dir().join("tech-blog"));
+    let home = site
+        .pages
+        .iter()
+        .find(|p| p.url == "index.html")
+        .expect("home page");
+    let rel = card_rel_path(&card_spec(&site, home)); // "og/<hex>.png"
+    let html = site.render_page("index.tmd").unwrap();
+    assert!(
+        html.contains(&format!(
+            r#"property="og:image" content="https://andreasbogossian.com/{rel}""#
+        )),
+        "home og:image points at the generated card ({rel})"
+    );
+    assert!(
+        !html.contains("og-image.webp"),
+        "stale static card is not referenced"
+    );
+}

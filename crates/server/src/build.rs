@@ -1139,6 +1139,7 @@ async fn build_site_async(
     // are mandatory for feeds/sitemap/JSON-LD). All auto-derived from the site's own
     // content; the author writes nothing SEO-specific.
     let mut seo_written: Vec<PathBuf> = Vec::new();
+    let mut card_paths: Vec<PathBuf> = Vec::new();
     if site.config.url.is_some() {
         let mut emit = |rel: &str, body: String| {
             let dest = out.join(rel);
@@ -1165,6 +1166,29 @@ async fn build_site_async(
         if let Some(x) = site.llms_full_txt() {
             emit("llms-full.txt", x);
         }
+
+        // OG social cards: one branded 1200x630 PNG per content page (og:image points
+        // at /og/<hash>.png). Identical specs dedupe by hash. A failed encode/write is a
+        // warning, never a build abort — the page still ships, its og:image just 404s.
+        let mut seen_cards: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for page in &site.pages {
+            if page.url == "404.html" {
+                continue;
+            }
+            let spec = taliesin_core::site::card_spec(&site, page);
+            let rel = taliesin_core::site::card_rel_path(&spec);
+            if !seen_cards.insert(rel.clone()) {
+                continue;
+            }
+            let dest = out.join(&rel);
+            if let Some(parent) = dest.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            match std::fs::write(&dest, taliesin_core::site::render_card(&spec)) {
+                Ok(()) => card_paths.push(PathBuf::from(&rel)),
+                Err(e) => log::warn(&format!("cannot write {rel}: {e}")),
+            }
+        }
     }
     let seo_note = if seo_written.is_empty() {
         String::new()
@@ -1187,6 +1211,7 @@ async fn build_site_async(
     keep.extend(site.pages.iter().map(|p| PathBuf::from(&p.url)));
     keep.extend(site.decks.iter().map(|d| PathBuf::from(&d.url)));
     keep.extend(asset_paths.iter().cloned());
+    keep.extend(card_paths.iter().cloned());
     keep.insert(PathBuf::from("404.html"));
     if !site.search_index_json.is_empty() && site.search_index_json != "[]" {
         keep.insert(PathBuf::from("search-index.js"));
