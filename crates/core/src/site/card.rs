@@ -73,6 +73,40 @@ impl Canvas {
         }
     }
 
+    #[allow(dead_code)] // wired up from Task 4 onward (bell-curve mark)
+    /// Stroke a polyline with round-ish AA: coverage falls off within half a pixel
+    /// of the `width`-thick centerline. Used for the bell-curve mark.
+    fn stroke_polyline(&mut self, pts: &[(f32, f32)], width: f32, color: [u8; 3]) {
+        if pts.len() < 2 {
+            return;
+        }
+        let hw = width / 2.0;
+        let (mut minx, mut miny, mut maxx, mut maxy) = (f32::MAX, f32::MAX, f32::MIN, f32::MIN);
+        for &(x, y) in pts {
+            minx = minx.min(x);
+            miny = miny.min(y);
+            maxx = maxx.max(x);
+            maxy = maxy.max(y);
+        }
+        let x0 = (minx - hw - 1.0) as i32;
+        let y0 = (miny - hw - 1.0) as i32;
+        let x1 = (maxx + hw + 1.0) as i32;
+        let y1 = (maxy + hw + 1.0) as i32;
+        for py in y0..=y1 {
+            for px in x0..=x1 {
+                let p = (px as f32 + 0.5, py as f32 + 0.5);
+                let mut d = f32::MAX;
+                for w in pts.windows(2) {
+                    d = d.min(dist_pt_seg(p, w[0], w[1]));
+                }
+                let cov = (hw + 0.5 - d).clamp(0.0, 1.0);
+                if cov > 0.0 {
+                    self.blend(px, py, color, cov);
+                }
+            }
+        }
+    }
+
     fn into_png(self) -> Vec<u8> {
         let mut out = Vec::new();
         {
@@ -92,6 +126,21 @@ pub fn render_card(spec: &CardSpec) -> Vec<u8> {
     let _ = spec; // used from Task 4 onward
     let canvas = Canvas::new(CARD_W, CARD_H, BG);
     canvas.into_png()
+}
+
+fn dist_pt_seg(p: (f32, f32), a: (f32, f32), b: (f32, f32)) -> f32 {
+    let (px, py) = p;
+    let (ax, ay) = a;
+    let (bx, by) = b;
+    let (dx, dy) = (bx - ax, by - ay);
+    let len2 = dx * dx + dy * dy;
+    let t = if len2 <= 0.0 {
+        0.0
+    } else {
+        (((px - ax) * dx + (py - ay) * dy) / len2).clamp(0.0, 1.0)
+    };
+    let (cx, cy) = (ax + t * dx, ay + t * dy);
+    ((px - cx).powi(2) + (py - cy).powi(2)).sqrt()
 }
 
 #[cfg(test)]
@@ -126,5 +175,16 @@ mod tests {
     #[test]
     fn render_card_is_deterministic() {
         assert_eq!(render_card(&sample()), render_card(&sample()));
+    }
+
+    #[test]
+    fn stroke_marks_the_line_and_spares_far_pixels() {
+        let mut c = Canvas::new(40, 40, BG);
+        c.stroke_polyline(&[(2.0, 20.0), (38.0, 20.0)], 3.0, FG);
+        // A pixel on the line is lightened away from bg; a far corner stays bg.
+        let on = ((20u32 * 40 + 20) * 4) as usize;
+        let far = ((2u32 * 40 + 2) * 4) as usize;
+        assert!(c.px[on] > BG[0], "on-line pixel drawn");
+        assert_eq!(c.px[far], BG[0], "far pixel untouched");
     }
 }
