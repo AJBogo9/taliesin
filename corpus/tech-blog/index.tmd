@@ -4,13 +4,8 @@ hero:
   eyebrow: "ML · STATISTICS · ALGORITHMS"
   headline: "Machine learning, worked out from first principles"
   lead: "Notes on concepts I'm working to understand, mostly statistics and the math underneath the models, built up from running code."
-  image: profile.webp
-  image-alt: "Andreas Bogossian"
 page-layout: article
 toc: false
-include-in-header:
-  text: |
-    <link rel="preload" as="image" href="profile.webp" fetchpriority="high">
 listing:
   id: recent-posts
   contents: posts

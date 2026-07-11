@@ -316,15 +316,15 @@ fn listing_frontmatter_emits_post_cards() {
     assert_eq!(recent, 2, "home: max-items: 2 not honoured (got {recent})");
 }
 
-/// The homepage renders the Marginalia hero (native `hero:` with a portrait), not the
-/// old Quarto `about: jolla` profile block. Site-level, exercised on the real blog.
+/// The homepage renders the Marginalia hero (native text-only `hero:`), not the old
+/// Quarto `about: jolla` profile block. Site-level, exercised on the real blog.
 #[test]
 fn home_page_renders_marginalia_hero() {
     let site = Site::discover(&corpus_dir().join("tech-blog"));
     let home = site.render_page("index.tmd").expect("home renders");
     assert!(
-        home.contains("class=\"hero hero-has-media\""),
-        "homepage: Marginalia media hero missing"
+        home.contains("<header class=\"hero\""),
+        "homepage: Marginalia hero header missing"
     );
     assert!(
         home.contains("ML · STATISTICS · ALGORITHMS"),
@@ -338,9 +338,10 @@ fn home_page_renders_marginalia_hero() {
         home.contains("Notes on concepts I'm working to understand"),
         "homepage: trimmed lead missing"
     );
+    // The photo was removed (let the content speak): the hero is text-only, no portrait.
     assert!(
-        home.contains("<img class=\"hero-media\" src=\"profile.webp\""),
-        "homepage: portrait missing"
+        !home.contains("<img class=\"hero-media\""),
+        "homepage: hero should be photoless"
     );
     // The hero replaces the default title block, and no Quarto about: markup remains.
     // Markup-specific: the `.tali-about*` class names also live in the inlined site.css.
@@ -400,10 +401,6 @@ fn site_and_page_includes_are_injected() {
     // so the site-level `description:` is the single source of truth: the homepage must
     // carry exactly one meta description, not two competing ones.
     let home = site.render_page("index.tmd").expect("home renders");
-    assert!(
-        home.contains("rel=\"preload\" as=\"image\" href=\"profile.webp\""),
-        "page-level include-in-header (LCP image preload) missing"
-    );
     assert_eq!(
         home.matches("name=\"description\"").count(),
         1,
