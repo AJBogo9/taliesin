@@ -26,7 +26,7 @@
       "patterns": [{ "include": "#math_body" }]
     },
     "math_inline": {
-      "comment": "$ … $ inline. Guarded so `$5` currency / a `$` adjacent to a word is not opened. The body is scoped meta.embedded.math.tmd → mapped to latex by embeddedLanguages (VS Code embeds a LaTeX grammar IF one is installed; NO hard `include: text.tex`, which VS Code does not bundle and which silently disables the rule when unresolved).",
+      "comment": "$ … $ inline. Guarded so `$5` currency / a `$` adjacent to a word is not opened. The body is scoped meta.embedded.math.tmd and colorized natively by the #math_body inner patterns (self-contained: no external LaTeX extension needed). The embeddedLanguages map (meta.embedded.math.tmd → latex) is kept only for language-service niceties (e.g. bracket matching) when a LaTeX extension happens to be installed; it does not drive colorization.",
       "begin": "(?<![\\w$])(\\$)(?=[^\\s$][^$]*\\$)",
       "end": "(\\$)|$",
       "beginCaptures": { "1": { "name": "punctuation.definition.math.begin.tmd" } },
