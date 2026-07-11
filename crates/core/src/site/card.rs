@@ -3,6 +3,8 @@
 //! renders byte-identical output. Text uses the bundled Newsreader variable font's
 //! default (Regular) instance; hierarchy is size + color.
 
+use ab_glyph::{Font, FontRef, PxScale, ScaleFont, point};
+
 pub const CARD_W: u32 = 1200;
 pub const CARD_H: u32 = 630;
 /// Bumped when the template changes, to cache-bust every card URL.
@@ -120,6 +122,108 @@ impl Canvas {
     }
 }
 
+/// The bundled Newsreader font (default = Regular instance). Cheap to construct
+/// (borrows the static bytes); constructed per render, which stays deterministic.
+#[allow(dead_code)] // wired up from Task 4 onward
+fn font() -> FontRef<'static> {
+    FontRef::try_from_slice(FONT_BYTES).expect("bundled Newsreader is a valid TTF")
+}
+
+/// Advance width of `text` at `px`, adding `tracking` extra px after each glyph.
+fn text_width(f: &FontRef, text: &str, px: f32, tracking: f32) -> f32 {
+    let scaled = f.as_scaled(PxScale::from(px));
+    text.chars()
+        .map(|ch| scaled.h_advance(f.glyph_id(ch)) + tracking)
+        .sum()
+}
+
+/// Greedy word-wrap so each line's width is <= `max_w` (a single over-long word
+/// still occupies its own line rather than being dropped).
+fn wrap(f: &FontRef, text: &str, px: f32, max_w: f32) -> Vec<String> {
+    let mut lines = Vec::new();
+    let mut cur = String::new();
+    for word in text.split_whitespace() {
+        let trial = if cur.is_empty() {
+            word.to_string()
+        } else {
+            format!("{cur} {word}")
+        };
+        if cur.is_empty() || text_width(f, &trial, px, 0.0) <= max_w {
+            cur = trial;
+        } else {
+            lines.push(std::mem::take(&mut cur));
+            cur = word.to_string();
+        }
+    }
+    if !cur.is_empty() {
+        lines.push(cur);
+    }
+    lines
+}
+
+/// Truncate a single line to `max_w` with a trailing ellipsis when it overflows.
+#[allow(dead_code)] // wired up from Task 4 onward
+fn truncate_line(f: &FontRef, text: &str, px: f32, max_w: f32) -> String {
+    if text_width(f, text, px, 0.0) <= max_w {
+        return text.to_string();
+    }
+    let mut s = String::new();
+    for ch in text.chars() {
+        if text_width(f, &format!("{s}{ch}\u{2026}"), px, 0.0) > max_w {
+            break;
+        }
+        s.push(ch);
+    }
+    format!("{s}\u{2026}")
+}
+
+/// Wrap, then clamp to `max_lines`, ellipsizing the last kept line if content was cut.
+#[allow(dead_code)] // wired up from Task 4 onward
+fn wrap_clamp(f: &FontRef, text: &str, px: f32, max_w: f32, max_lines: usize) -> Vec<String> {
+    let mut lines = wrap(f, text, px, max_w);
+    if lines.len() > max_lines {
+        lines.truncate(max_lines);
+        let last = lines.pop().unwrap();
+        lines.push(truncate_line(f, &format!("{last} \u{2026}"), px, max_w));
+    }
+    lines
+}
+
+impl Canvas {
+    #[allow(dead_code)] // wired up from Task 4 onward
+    #[allow(clippy::too_many_arguments)] // matches the brief's spec verbatim
+    /// Draw `text` with its baseline at (`x`, `baseline`), `tracking` px between glyphs.
+    fn draw_text(
+        &mut self,
+        f: &FontRef,
+        text: &str,
+        x: f32,
+        baseline: f32,
+        px: f32,
+        color: [u8; 3],
+        tracking: f32,
+    ) {
+        let scaled = f.as_scaled(PxScale::from(px));
+        let mut pen = x;
+        for ch in text.chars() {
+            let gid = f.glyph_id(ch);
+            let glyph = gid.with_scale_and_position(PxScale::from(px), point(pen, baseline));
+            if let Some(outline) = f.outline_glyph(glyph) {
+                let bb = outline.px_bounds();
+                outline.draw(|gx, gy, cov| {
+                    self.blend(
+                        bb.min.x as i32 + gx as i32,
+                        bb.min.y as i32 + gy as i32,
+                        color,
+                        cov,
+                    );
+                });
+            }
+            pen += scaled.h_advance(gid) + tracking;
+        }
+    }
+}
+
 /// Render `spec` onto a 1200x630 dark card and return the encoded PNG bytes.
 /// Task 1 fills only the background; Task 4 composes the full card.
 pub fn render_card(spec: &CardSpec) -> Vec<u8> {
@@ -186,5 +290,34 @@ mod tests {
         let far = ((2u32 * 40 + 2) * 4) as usize;
         assert!(c.px[on] > BG[0], "on-line pixel drawn");
         assert_eq!(c.px[far], BG[0], "far pixel untouched");
+    }
+
+    #[test]
+    fn text_width_is_zero_empty_and_grows_with_length() {
+        let f = font();
+        assert_eq!(text_width(&f, "", 40.0, 0.0), 0.0);
+        assert!(text_width(&f, "wwww", 40.0, 0.0) > text_width(&f, "w", 40.0, 0.0));
+    }
+
+    #[test]
+    fn wrap_keeps_every_line_within_max_width() {
+        let f = font();
+        let text = "the expectation maximization algorithm derived from first principles";
+        let max = 300.0;
+        let lines = wrap(&f, text, 40.0, max);
+        assert!(lines.len() > 1, "long text wraps to multiple lines");
+        for line in &lines {
+            assert!(text_width(&f, line, 40.0, 0.0) <= max, "line {line:?} fits");
+        }
+    }
+
+    #[test]
+    fn draw_text_marks_at_least_one_pixel() {
+        let mut c = Canvas::new(200, 80, BG);
+        c.draw_text(&font(), "Ag", 10.0, 55.0, 48.0, FG, 0.0);
+        assert!(
+            c.px.chunks(4).any(|p| p[0] != BG[0]),
+            "some glyph pixels drawn"
+        );
     }
 }
