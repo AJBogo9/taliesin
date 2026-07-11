@@ -45,13 +45,6 @@ below:
 Small carry-overs and one-liners surfaced while landing the 2026-07-09/07-10 batches. Full
 evidence in [2026-07-09-polish-audit-findings.md](2026-07-09-polish-audit-findings.md).
 
-- **A `.theorem`/`.lemma`/... div whose id lacks the kind prefix is silently unreferenceable, and
-  nothing says so** (S, med; a new `check` rule). `::: {.theorem #pythagoras}` is numbered and
-  displayed as "Theorem 1", but `cite::is_xref_anchor("pythagoras")` is false (no `-`), so
-  `@pythagoras` renders as **literal text** and `check` reports "no problems found". The div's id
-  is registered into `xref_numbers` unfiltered, unlike the `sec-`/`fig-`/`tbl-` paths which gate
-  on the prefix. Prefer fix (a): warn at registration ("theorem id `pythagoras` cannot be
-  referenced; use `thm-pythagoras`"). *Pin: `corpus/diagnostics/`.*
 - **`og:title` and the listing card still read `Page::title`, so they disagree with `<title>`.**
   A *website* page with no front-matter title and a leading `# H1` now renders a correct `<title>`
   but an `og:title` borrowed from the site name, and a listing card labelled by its rel-path.

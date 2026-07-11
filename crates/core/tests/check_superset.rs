@@ -217,6 +217,15 @@ fn corpus_check_superset_doc_trips_each_validator() {
             .any(|w| w.message.contains("unknown code language `pyton`")),
         "typo'd fence language: {langs:?}"
     );
+    // A theorem id without a cross-reference kind prefix is numbered but unreferenceable;
+    // the render-time warning (aggregated by `taliesin check`) must flag it.
+    assert!(
+        doc.warnings
+            .iter()
+            .any(|w| w.message.contains("pythagoras") && w.message.contains("cross-referenced")),
+        "unreferenceable theorem id (render-time warning): {:?}",
+        doc.warnings.iter().map(|w| &w.message).collect::<Vec<_>>()
+    );
 }
 
 #[test]

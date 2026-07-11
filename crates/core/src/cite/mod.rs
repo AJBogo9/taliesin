@@ -38,6 +38,7 @@ pub(crate) use render::XREF_LABELS;
 /// after `@`, instead of reimplementing the prefix list outside `taliesin-core`.
 pub use render::is_xref_anchor;
 pub use render::process;
+pub(crate) use render::xref_prefix_for_label;
 pub use validate::validate_xrefs;
 
 /// A parsed BibTeX database.

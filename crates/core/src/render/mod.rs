@@ -1518,8 +1518,23 @@ fn number_theorems(
             );
             // Register the anchor even when unnumbered (`display` empty): an id'd theorem is a
             // valid same-page ref target that resolves to a bare label, not a broken ref.
+            // But only if the id carries a cross-reference kind prefix. A theorem gets its
+            // number from the `.theorem` class alone, so `#pythagoras` is numbered yet
+            // `@pythagoras` never resolves (`parse_xref` bails when the prefix names no xref
+            // kind) — the div's own id path, unlike figures/tables, never gated on the prefix,
+            // so this was silently unreferenceable and `check` said nothing. Warn instead, and
+            // suggest the kind's prefix (theorem -> `thm-`, lemma -> `lem-`, …).
             if let Some(id) = id {
-                register_xref(xrefs, warnings, &id, display);
+                if crate::cite::is_xref_anchor(&id) {
+                    register_xref(xrefs, warnings, &id, display);
+                } else {
+                    let hint = crate::cite::xref_prefix_for_label(divs::theorem_meta(&kind).0)
+                        .map(|p| format!("; use `{p}-{id}`"))
+                        .unwrap_or_default();
+                    warnings.push(Warning::new(format!(
+                        "theorem id \u{201c}{id}\u{201d} cannot be cross-referenced (`@{id}` won't resolve){hint}"
+                    )));
+                }
             }
         }
     }

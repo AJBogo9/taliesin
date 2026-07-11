@@ -365,7 +365,7 @@ fn callout_icon(kind: &str) -> &'static str {
 
 /// (display name, amsthm style suffix) for a NUMBERED theorem kind. `proof` is handled
 /// separately (unnumbered) and never reaches here; an unknown kind never enters the arm.
-fn theorem_meta(kind: &str) -> (&'static str, &'static str) {
+pub(crate) fn theorem_meta(kind: &str) -> (&'static str, &'static str) {
     match kind {
         "theorem" => ("Theorem", "plain"),
         "lemma" => ("Lemma", "plain"),

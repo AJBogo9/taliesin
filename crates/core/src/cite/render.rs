@@ -34,6 +34,16 @@ fn xref_label(prefix: &str) -> Option<&'static str> {
         .map(|(_, l)| *l)
 }
 
+/// The cross-reference prefix whose label is `label` (the inverse of [`xref_label`]),
+/// e.g. "Theorem" -> "thm". Shares [`XREF_LABELS`] so a theorem kind's suggested
+/// prefix can't drift from the label lookup. `None` for a label with no xref kind.
+pub(crate) fn xref_prefix_for_label(label: &str) -> Option<&'static str> {
+    XREF_LABELS
+        .iter()
+        .find(|(_, l)| *l == label)
+        .map(|(p, _)| *p)
+}
+
 /// Whether `id` is a cross-reference anchor (`sec-…`, `fig-…`, …) that `@ref`
 /// resolves — its prefix before the first `-` is a known xref kind. Shares
 /// [`XREF_LABELS`] so it can't drift from the label lookup.

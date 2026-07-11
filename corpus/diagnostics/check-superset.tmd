@@ -26,3 +26,11 @@ A fenced block whose language token is a typo. It renders, just unhighlighted, s
 ```pyton
 x = 1
 ```
+
+A theorem whose id lacks a cross-reference kind prefix. It is numbered ("Theorem 1")
+from its `.theorem` class, but `@pythagoras` can never resolve, so the id is silently
+unreferenceable unless the author writes `#thm-pythagoras`.
+
+::: {.theorem #pythagoras}
+The square of the hypotenuse equals the sum of the squares of the other two sides.
+:::
