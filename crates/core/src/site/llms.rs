@@ -106,18 +106,16 @@ impl Site {
             if page.url == "index.html" {
                 continue; // the home page IS the identity header
             }
-            let Some(spec) = page
-                .listings
-                .iter()
-                .find(|sp| sp.max_items.is_none() && !seen_contents.contains(&sp.contents))
-            else {
+            let Some(spec) = page.listings.iter().find(|sp| {
+                sp.max_items.is_none() && !seen_contents.contains(&Self::listing_prefix(page, sp))
+            }) else {
                 continue;
             };
             let items = self.collection(page, spec, &mut sink);
             if items.is_empty() {
                 continue;
             }
-            seen_contents.insert(spec.contents.clone());
+            seen_contents.insert(Self::listing_prefix(page, spec));
             section_hosts.insert(page.rel.clone());
             let heading = label.or(page.title.as_deref()).unwrap_or("Posts");
             s.push_str(&format!("\n## {heading}\n"));
@@ -231,14 +229,15 @@ pub(crate) fn text_content(html: &str) -> String {
             _ => {}
         }
     }
+    // Decode `&amp;` LAST so a literal, double-encoded `&amp;lt;` isn't turned into `<`.
     let decoded = no_tags
         .replace("&nbsp;", " ")
-        .replace("&amp;", "&")
         .replace("&lt;", "<")
         .replace("&gt;", ">")
         .replace("&quot;", "\"")
         .replace("&#39;", "'")
-        .replace("&#8217;", "\u{2019}");
+        .replace("&#8217;", "\u{2019}")
+        .replace("&amp;", "&");
     decoded.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
@@ -332,6 +331,8 @@ mod tests {
             "Two & three < four"
         );
         assert_eq!(text_content("<h2>A&nbsp;B</h2>"), "A B");
+        // A literal, double-encoded `&lt;` must decode once, not collapse to `<`.
+        assert_eq!(text_content("<p>&amp;lt;</p>"), "&lt;");
     }
 
     #[test]

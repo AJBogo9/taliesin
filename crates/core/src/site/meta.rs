@@ -145,7 +145,11 @@ pub(super) fn jsonld_head(site: &Site, page: &Page) -> String {
         if let Some(d) = page.description.as_deref() {
             bp["description"] = json!(d);
         }
-        if let Some(img) = page.card_image.as_deref() {
+        if let Some(img) = page
+            .card_image
+            .as_deref()
+            .or(site.config.card_image.as_deref())
+        {
             let abs = if is_external_or_special(img) {
                 img.to_string()
             } else {

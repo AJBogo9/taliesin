@@ -1140,9 +1140,15 @@ async fn build_site_async(
     // content; the author writes nothing SEO-specific.
     let mut seo_written: Vec<PathBuf> = Vec::new();
     if site.config.url.is_some() {
-        let mut emit = |rel: &str, body: String| match std::fs::write(out.join(rel), body) {
-            Ok(()) => seo_written.push(PathBuf::from(rel)),
-            Err(e) => log::warn(&format!("cannot write {rel}: {e}")),
+        let mut emit = |rel: &str, body: String| {
+            let dest = out.join(rel);
+            if let Some(parent) = dest.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            match std::fs::write(&dest, body) {
+                Ok(()) => seo_written.push(PathBuf::from(rel)),
+                Err(e) => log::warn(&format!("cannot write {rel}: {e}")),
+            }
         };
         for (path, xml) in site.atom_feeds() {
             emit(&path, xml);

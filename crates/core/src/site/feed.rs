@@ -8,9 +8,14 @@ use crate::escape_attr as esc;
 use std::collections::HashSet;
 
 impl Site {
-    /// The canonical origin (`config.url` with any trailing slash trimmed).
+    /// The canonical origin (`config.url` with any trailing slash trimmed). A blank
+    /// `url:` is treated as unset (it would yield relative artifact URLs).
     pub(crate) fn canonical_base(&self) -> Option<&str> {
-        self.config.url.as_deref().map(|u| u.trim_end_matches('/'))
+        self.config
+            .url
+            .as_deref()
+            .map(|u| u.trim_end_matches('/'))
+            .filter(|u| !u.is_empty())
     }
 
     /// A page's absolute clean (directory) URL, e.g. `https://site/posts/x/`.
@@ -32,16 +37,16 @@ impl Site {
         };
         let mut out = Vec::new();
         let mut sink = Vec::new(); // collection warnings are surfaced during page render
-        // Dedupe by listing contents in nav order, so a collection re-listed elsewhere
-        // (e.g. the CV's projects tail) does not spawn a second, mislabelled feed.
-        let mut seen_contents: HashSet<String> = HashSet::new();
+        // Dedupe by the RESOLVED listing prefix (not the raw `contents:` string) in nav
+        // order, so a collection re-listed elsewhere (e.g. the CV's projects tail) does
+        // not spawn a second feed, while two listings in different directories that share
+        // a `contents:` value (distinct collections) each still get one.
+        let mut seen: HashSet<String> = HashSet::new();
         for &(page, _) in &self.nav_ordered() {
-            let Some(spec) = page
-                .listings
-                .iter()
-                .find(|sp| sp.max_items.is_none() && !seen_contents.contains(&sp.contents))
-            else {
-                continue; // capped teaser, or its contents already fed → no feed
+            let Some(spec) = page.listings.iter().find(|sp| {
+                sp.max_items.is_none() && !seen.contains(&Self::listing_prefix(page, sp))
+            }) else {
+                continue; // capped teaser, or its collection already fed → no feed
             };
             let dated: Vec<&Page> = self
                 .collection(page, spec, &mut sink)
@@ -51,7 +56,7 @@ impl Site {
             if dated.is_empty() {
                 continue;
             }
-            seen_contents.insert(spec.contents.clone());
+            seen.insert(Self::listing_prefix(page, spec));
             let path = page.url.replace(".html", ".xml");
             out.push((path.clone(), self.build_atom(page, &dated, &path, base)));
         }
@@ -66,13 +71,16 @@ impl Site {
             .as_deref()
             .or(self.config.title.as_deref())
             .unwrap_or("Feed"));
+        // RFC 4287 requires an author at feed or entry level; fall back to the site
+        // origin so the feed always carries a non-empty one.
         let author = self
             .config
             .author
             .as_ref()
             .and_then(|a| a.as_str())
             .or(self.config.title.as_deref())
-            .unwrap_or("");
+            .filter(|a| !a.is_empty())
+            .unwrap_or(base);
         // Feed `updated` = newest entry's date (items are already date-sorted desc, but
         // take the max defensively).
         let updated = items
