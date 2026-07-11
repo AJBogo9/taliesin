@@ -286,6 +286,12 @@ pub fn card_rel_path(spec: &CardSpec) -> String {
 
 /// The page's card URL (`/og/<hash>.png`), or `None` when `_site.yml` has no `url:`.
 pub(crate) fn card_url(site: &Site, page: &Page) -> Option<String> {
+    // The 404 page is not scraped content and the build's card-emit loop skips it
+    // (`build.rs`, `page.url == "404.html"`), so its og:image/twitter:image tags must not
+    // reference a card that is never written. Keep this exclusion in sync with that skip.
+    if page.url == "404.html" {
+        return None;
+    }
     site.config.url.as_ref()?;
     Some(format!("/{}", card_rel_path(&card_spec(site, page))))
 }

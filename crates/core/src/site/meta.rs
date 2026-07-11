@@ -274,6 +274,33 @@ mod jsonld_tests {
     }
 
     #[test]
+    fn error_page_emits_no_card_image() {
+        // Finding A: the build skips the 404 card, so social_head must not point og:image at a
+        // card file that is never written.
+        let root = write_site(
+            "card404",
+            &[
+                ("_site.yml", "title: Blog\nurl: https://ex.com\n"),
+                ("index.tmd", "---\ntitle: H\n---\n\nx\n"),
+                ("404.tmd", "---\ntitle: Not found\n---\n\nnope\n"),
+            ],
+        );
+        let site = crate::site::Site::discover(&root);
+        // Sanity: the 404 page is discovered with url "404.html" (matches the build skip + the gate).
+        assert!(
+            site.pages.iter().any(|p| p.url == "404.html"),
+            "404 page discovered"
+        );
+        let html = site.render_page("404.tmd").unwrap();
+        assert!(!html.contains("og:image"), "404 emits no og:image");
+        assert!(
+            !html.contains("twitter:image"),
+            "404 emits no twitter:image"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn no_jsonld_without_url() {
         let root = write_site(
             "jsonldnourl",
