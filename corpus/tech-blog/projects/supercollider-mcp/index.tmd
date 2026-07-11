@@ -66,28 +66,6 @@ The LLM treats `sc_play` and `sc_log` as a pair: play, immediately read the log 
 
 Songs are built over many iterations where one iteration is one conversation turn. The model writes code, renders it, reads the analysis back, and then proposes the last changes. Then the composer can listen to the song and decide what direction should be taken next. The resulting workflow is less "AI-generated music" and more "AI-assisted composition" with very fast iteration cycles. Summarizing, the model handles the code synthesis and the musical direction comes from prompting.
 
-## Demos
-
-### Synthesis showcase: choir
-
-```{=html}
-<audio controls style="width:100%; margin: 1rem 0;">
-  <source src="choir_demo_v3.mp3" type="audio/mpeg">
-</audio>
-```
-
-- A sustained chord voiced
-
-### Full track: Voltage
-
-```{=html}
-<audio controls style="width:100%; margin: 1rem 0;">
-  <source src="voltage.mp3" type="audio/mpeg">
-</audio>
-```
-
-- Generative acid techno
-
 ## Summary
 
 Give a model a synthesis engine, a feedback loop, and ears, and code generation turns into music composition.
