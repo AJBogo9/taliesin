@@ -8,7 +8,6 @@ page-layout: article
 toc: false
 include-in-header:
   text: |
-    <meta name="description" content="MSc student in Machine Learning, Data Science and AI at Aalto University. I write about ML, statistics, and algorithms.">
     <link rel="preload" as="image" href="profile.webp" fetchpriority="high">
 listing:
   id: recent-posts
@@ -18,7 +17,7 @@ listing:
   type: grid
 ---
 
-MSc student in ML, Data Science and AI at Aalto University. I write about machine learning, statistics, and algorithms.
+I write about concepts I'm working to understand, mostly machine learning, statistics, and the math underneath them, worked out from first principles and running code.
 
 ## Recent Posts
 

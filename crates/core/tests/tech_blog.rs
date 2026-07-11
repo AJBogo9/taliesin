@@ -382,11 +382,19 @@ fn site_and_page_includes_are_injected() {
         "include-in-header must be inside <head>"
     );
 
-    // The homepage adds its OWN include-in-header on top of the site's.
+    // The homepage adds its OWN include-in-header (the LCP image preload) on top of
+    // the site's. The formerly hand-injected duplicate `<meta description>` was removed,
+    // so the site-level `description:` is the single source of truth: the homepage must
+    // carry exactly one meta description, not two competing ones.
     let home = site.render_page("index.tmd").expect("home renders");
     assert!(
-        home.contains("name=\"description\" content=\"MSc student"),
-        "page-level include-in-header (meta description) missing"
+        home.contains("rel=\"preload\" as=\"image\" href=\"profile.webp\""),
+        "page-level include-in-header (LCP image preload) missing"
+    );
+    assert_eq!(
+        home.matches("name=\"description\"").count(),
+        1,
+        "homepage must carry exactly one <meta description> (the hand-injected duplicate was removed)"
     );
     assert!(
         home.contains("<script type=\"speculationrules\">"),

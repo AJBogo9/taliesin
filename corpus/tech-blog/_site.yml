@@ -1,7 +1,7 @@
 # Taliesin tech-blog: a website project. Flat native schema (HTML-only; no
 # project:/website:/format: nesting). Migrated from the Quarto-shaped config.
 title: Andreas Bogossian
-description: Notes on challenging technical things
+description: Machine learning and statistics, worked out from first principles
 url: https://andreasbogossian.com
 favicon: bell-curve.svg
 image: og-image.webp
