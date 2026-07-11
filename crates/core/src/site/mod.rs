@@ -185,9 +185,11 @@ pub fn page_search_fragment(page: &Page) -> Option<String> {
 }
 
 mod book;
+mod card;
 mod chrome;
 pub use book::{Book, BookEntry};
 use book::{book_pages, build_book};
+pub use card::{CARD_DESIGN_VERSION, CARD_EXT, CARD_H, CARD_W, CardSpec, render_card};
 mod backlinks;
 mod categories;
 mod feed;

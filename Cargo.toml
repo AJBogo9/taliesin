@@ -45,3 +45,8 @@ parking_lot = "0.12"
 # (the `interrupt_mode: signal` path) without killing the warm kernel. Already in
 # the tree transitively (via tokio), so this is a near-free direct dependency.
 libc = "0.2"
+
+# OG social-card rendering (crates/core/src/site/card.rs). Both pure-Rust, no C:
+# ab_glyph rasterizes glyphs from the bundled Newsreader TTF; png encodes the RGBA card.
+ab_glyph = "0.2"
+png = "0.17"
