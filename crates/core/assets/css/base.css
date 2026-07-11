@@ -315,6 +315,21 @@
   .hero-actions { display: flex; flex-wrap: wrap; gap: .6rem; justify-content: center; margin-top: 1.5rem; }
   .hero a.btn { margin: .35rem .3rem 0; }
   .hero-actions a.btn { margin: 0; }
+  /* Marginalia: a hero with a portrait (the blog homepage). Scoped to .hero-has-media
+     so the imageless marketing hero is untouched: left-aligned, two columns, with a
+     short ink hairline under the eyebrow in place of a flat full-width rule. */
+  .hero-has-media { text-align: left; display: grid; grid-template-columns: 1fr auto;
+    gap: 2rem; align-items: center; }
+  .hero-has-media .hero-lead { max-width: none; margin-left: 0; margin-right: 0; }
+  .hero-has-media .hero-actions { justify-content: flex-start; }
+  .hero-has-media .hero-eyebrow::after { content: ""; display: block; width: 2.5rem;
+    height: 2px; background: var(--tali-accent); margin-top: .55rem; }
+  .hero-media { width: 140px; height: 140px; border-radius: 50%; object-fit: cover;
+    border: 1px solid var(--tali-border-strong); }
+  @media (max-width: 640px) {
+    .hero-has-media { grid-template-columns: 1fr; }
+    .hero-media { width: 108px; height: 108px; }
+  }
   .feature-grid { display: grid; gap: 1.1rem; margin: 2.2rem 0;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
   .feature { padding: 1.3rem 1.4rem; border: 1px solid var(--tali-border);

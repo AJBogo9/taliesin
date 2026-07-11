@@ -91,6 +91,12 @@ pub struct HeroSpec {
     pub lead: Option<String>,
     /// Call-to-action buttons (`actions:` — a list of `{text, href, primary}`).
     pub actions: Vec<HeroAction>,
+    /// Optional portrait beside the hero (`image:`), page-relative; when present the
+    /// hero renders a two-column media layout (the blog homepage). Imageless heroes
+    /// (the marketing site) are unaffected.
+    pub image: Option<String>,
+    /// Alt text for `image:` (`image-alt:`).
+    pub image_alt: Option<String>,
 }
 
 /// One `hero:` call-to-action button.
@@ -1166,12 +1172,25 @@ impl Site {
                 .collect();
             format!("<div class=\"hero-actions\">{items}</div>")
         };
-        format!(
-            "<header class=\"hero\" data-block-id=\"qmd-title-block\" data-qmd-src=\"{src}\">\
-             {eyebrow}<h1>{headline}</h1>{lead}{actions}</header>",
-            src = esc(&page.rel),
-            headline = esc(&headline),
-        )
+        let src = esc(&page.rel);
+        let headline = esc(&headline);
+        let inner = format!("{eyebrow}<h1>{headline}</h1>{lead}{actions}");
+        // Imageless hero (the marketing site): byte-identical to before the portrait
+        // slot existed. With an image (the blog homepage): a two-column media layout.
+        match hero.image.as_deref() {
+            None => format!(
+                "<header class=\"hero\" data-block-id=\"qmd-title-block\" data-qmd-src=\"{src}\">{inner}</header>"
+            ),
+            Some(image) => {
+                let image = esc(image);
+                let alt = esc(hero.image_alt.as_deref().unwrap_or(""));
+                format!(
+                    "<header class=\"hero hero-has-media\" data-block-id=\"qmd-title-block\" data-qmd-src=\"{src}\">\
+                     <div class=\"hero-body\">{inner}</div>\
+                     <img class=\"hero-media\" src=\"{image}\" alt=\"{alt}\"></header>"
+                )
+            }
+        }
     }
 
     // --- about ------------------------------------------------------------

@@ -100,7 +100,7 @@ fn nested_key_descriptions() -> &'static [(&'static str, &'static str)] {
         ("categories", "Show a category filter."),
         // about:
         ("template", "About-page template."),
-        ("image", "About-page image path."),
+        ("image", "Image path (about or hero)."),
         ("links", "Social and contact links."),
         // hero:
         ("eyebrow", "Small label above the headline."),

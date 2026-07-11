@@ -316,28 +316,41 @@ fn listing_frontmatter_emits_post_cards() {
     assert_eq!(recent, 2, "home: max-items: 2 not honoured (got {recent})");
 }
 
-/// An `about:` page (the homepage uses `template: jolla`) renders a profile block
-/// from the front matter. Site-level, so exercised through `Site` on the real blog.
+/// The homepage renders the Marginalia hero (native `hero:` with a portrait), not the
+/// old Quarto `about: jolla` profile block. Site-level, exercised on the real blog.
 #[test]
-fn about_page_renders_profile_block() {
+fn home_page_renders_marginalia_hero() {
     let site = Site::discover(&corpus_dir().join("tech-blog"));
     let home = site.render_page("index.tmd").expect("home renders");
     assert!(
-        home.contains("tali-about-jolla"),
-        "about: produced no jolla profile block"
+        home.contains("class=\"hero hero-has-media\""),
+        "homepage: Marginalia media hero missing"
     );
     assert!(
-        home.contains("tali-about-img") && home.contains("src=\"profile.webp\""),
-        "about: profile image missing"
+        home.contains("ML · STATISTICS · ALGORITHMS"),
+        "homepage: mono eyebrow missing"
     );
     assert!(
-        home.contains("<h1 class=\"tali-about-name\">Andreas Bogossian</h1>"),
-        "about: name (page title) missing"
+        home.contains("<h1>Machine learning, worked out from first principles</h1>"),
+        "homepage: POV headline missing"
     );
-    // The profile replaces the default title block (no duplicate header).
+    assert!(
+        home.contains("Notes on concepts I'm working to understand"),
+        "homepage: trimmed lead missing"
+    );
+    assert!(
+        home.contains("<img class=\"hero-media\" src=\"profile.webp\""),
+        "homepage: portrait missing"
+    );
+    // The hero replaces the default title block, and no Quarto about: markup remains.
+    // Markup-specific: the `.tali-about*` class names also live in the inlined site.css.
+    assert!(
+        !home.contains("class=\"tali-about"),
+        "homepage: about: header markup should be gone"
+    );
     assert!(
         !home.contains("class=\"tali-title-block\""),
-        "about: default title block should be replaced"
+        "homepage: hero should replace the default title block"
     );
 }
 

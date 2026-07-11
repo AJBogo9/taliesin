@@ -1,7 +1,9 @@
 ---
 title: "Andreas Bogossian"
-about:
-  template: jolla
+hero:
+  eyebrow: "ML · STATISTICS · ALGORITHMS"
+  headline: "Machine learning, worked out from first principles"
+  lead: "Notes on concepts I'm working to understand, mostly statistics and the math underneath the models, built up from running code."
   image: profile.webp
   image-alt: "Andreas Bogossian"
 page-layout: article
@@ -17,11 +19,9 @@ listing:
   type: grid
 ---
 
-I write about concepts I'm working to understand, mostly machine learning, statistics, and the math underneath them, worked out from first principles and running code.
-
 ## Recent Posts
 
 ::: {#recent-posts}
 :::
 
-[View all posts →](blog.tmd){.btn .btn-outline-primary}
+[View all posts →](blog.tmd){.btn}

@@ -135,6 +135,8 @@ pub(crate) fn parse_hero(v: Option<&serde_yaml::Value>) -> Option<HeroSpec> {
         headline: scalar(map.get("headline")),
         lead: scalar(map.get("lead")),
         actions,
+        image: scalar(map.get("image")),
+        image_alt: scalar(map.get("image-alt")),
     })
 }
 
@@ -210,4 +212,30 @@ pub(crate) fn parse_listing_spec(v: &serde_yaml::Value) -> Option<ListingSpec> {
             .and_then(|c| c.as_bool())
             .unwrap_or(false),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_hero_reads_image_and_alt() {
+        let v: serde_yaml::Value = serde_yaml::from_str(
+            "hero:\n  headline: H\n  image: profile.webp\n  image-alt: A face\n",
+        )
+        .unwrap();
+        let h = parse_hero(v.get("hero")).expect("hero parses");
+        assert_eq!(h.image.as_deref(), Some("profile.webp"), "image: parsed");
+        assert_eq!(h.image_alt.as_deref(), Some("A face"), "image-alt: parsed");
+    }
+
+    #[test]
+    fn parse_hero_without_image_keys_is_none() {
+        let v: serde_yaml::Value = serde_yaml::from_str("hero:\n  headline: H\n").unwrap();
+        let h = parse_hero(v.get("hero")).expect("hero parses");
+        assert!(
+            h.image.is_none() && h.image_alt.is_none(),
+            "no image keys -> None"
+        );
+    }
 }

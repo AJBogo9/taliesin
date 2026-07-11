@@ -235,7 +235,7 @@
           "name": "template"
         },
         {
-          "description": "About-page image path.",
+          "description": "Image path (about or hero).",
           "name": "image"
         },
         {
@@ -277,6 +277,14 @@
         {
           "description": "Call-to-action buttons.",
           "name": "actions"
+        },
+        {
+          "description": "Image path (about or hero).",
+          "name": "image"
+        },
+        {
+          "description": "Alt text for the image.",
+          "name": "image-alt"
         }
       ],
       "listing": [

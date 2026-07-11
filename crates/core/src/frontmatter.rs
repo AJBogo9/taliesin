@@ -71,7 +71,14 @@ pub(crate) const LISTING_KEYS: &[&str] =
 pub(crate) const ABOUT_KEYS: &[&str] = &["template", "image", "image-alt", "links"];
 
 /// `hero:` sub-keys taliesin honors (see `site::frontmatter::parse_hero`).
-pub(crate) const HERO_KEYS: &[&str] = &["eyebrow", "headline", "lead", "actions"];
+pub(crate) const HERO_KEYS: &[&str] = &[
+    "eyebrow",
+    "headline",
+    "lead",
+    "actions",
+    "image",
+    "image-alt",
+];
 
 /// `prose-lint:` sub-keys taliesin honors (the mapping form; see `crate::prose::config`).
 pub(crate) const PROSE_LINT_KEYS: &[&str] = &["banned"];

@@ -42,6 +42,8 @@
         "actions": {},
         "eyebrow": {},
         "headline": {},
+        "image": {},
+        "image-alt": {},
         "lead": {}
       },
       "type": "object"
