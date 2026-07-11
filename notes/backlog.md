@@ -45,10 +45,6 @@ below:
 Small carry-overs and one-liners surfaced while landing the 2026-07-09/07-10 batches. Full
 evidence in [2026-07-09-polish-audit-findings.md](2026-07-09-polish-audit-findings.md).
 
-- **`taliesin init` writes an em dash into the user's first file** (XS, taste, house rule).
-  `cli.rs::INIT_INDEX_TMD` line 27: "Add more `.tmd` pages beside this one — each becomes its own
-  page." The blog's own skill says "No em dashes or en dashes anywhere". Verified by running
-  `init` and grepping the emitted `index.tmd`.
 - **A `.theorem`/`.lemma`/... div whose id lacks the kind prefix is silently unreferenceable, and
   nothing says so** (S, med; a new `check` rule). `::: {.theorem #pythagoras}` is numbered and
   displayed as "Theorem 1", but `cite::is_xref_anchor("pythagoras")` is false (no `-`), so
@@ -72,15 +68,6 @@ evidence in [2026-07-09-polish-audit-findings.md](2026-07-09-polish-audit-findin
   is the a11y convention for decorative.)
 
 Stale-doc one-liners (each reproduced; harmless but true):
-- `Cargo.toml:27-29` claims syntect uses a "pure-Rust regex, no oniguruma C dependency". False:
-  `comrak` pulls `syntect` with default features, so `onig` is in the tree and feature unification
-  means the C backend wins at runtime. Either fix the comment or make comrak's syntect dep
-  `default-features = false`.
-- `docs/internals/validation.tmd`'s check-superset table omits `validate_math`, which `check.rs`
-  has run for a while. One missing row.
-- `corpus/README.md:16` still describes the fourier-transform post as using an `ojs_define`
-  Python->`{js}` bridge. The authoring spelling has been `define(...)` since the legacy-format
-  clean break. One line.
 - `corpus/tech-blog/.claude/skills/new-post/SKILL.md` + `.../new-project/SKILL.md` are still stale
   (emit `.qmd`, say `quarto preview`). The `new-post` one is the workaround `taliesin new` retires;
   left alone deliberately so as not to remove the feature's evidence. `taliesin new` has no

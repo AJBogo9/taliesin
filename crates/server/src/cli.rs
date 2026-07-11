@@ -24,7 +24,7 @@ const INIT_INDEX_TMD: &str = "---\ntitle: Hello, Taliesin\n---\n\n\
     Welcome to your new [Taliesin](https://github.com/AJBogo9/taliesin) site.\n\n\
     Edit `index.tmd` and the preview reloads as you save.\n\n\
     ## Next steps\n\n\
-    - Add more `.tmd` pages beside this one — each becomes its own page.\n\
+    - Add more `.tmd` pages beside this one: each becomes its own page.\n\
     - Configure navigation and the title in `_site.yml`.\n\
     - Drop in a `{python}` or `{r}` code cell to run live output.\n";
 
