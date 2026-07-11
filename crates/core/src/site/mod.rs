@@ -190,9 +190,12 @@ pub use book::{Book, BookEntry};
 use book::{book_pages, build_book};
 mod backlinks;
 mod categories;
+mod feed;
 mod hover;
+mod llms;
 mod meta;
 mod search;
+mod seo;
 mod xref;
 pub use xref::XrefTarget;
 use xref::{rewrite_cross_refs, scan_xref_targets};
@@ -1280,7 +1283,7 @@ fn set_title_block(blocks: &mut Vec<Block>, html: String) {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
@@ -1533,7 +1536,7 @@ mod tests {
     }
 
     /// Write a throwaway site fixture (relative path → body) and return its root.
-    fn write_site(tag: &str, files: &[(&str, &str)]) -> std::path::PathBuf {
+    pub(crate) fn write_site(tag: &str, files: &[(&str, &str)]) -> std::path::PathBuf {
         use std::fs;
         let root = std::env::temp_dir().join(format!("tali-omit-{tag}-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
