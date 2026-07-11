@@ -38,6 +38,112 @@ below:
 - **TODO / FIXME surfacing** — design A (preview-only info) vs design B (a real severity level
   through the shared check/build/publish gate). *Owner ruled 2026-07-10: skip for now; analysis kept below.*
 
+## Website de-Quarto + default-hardening (2026-07-11 audit)
+
+A full multi-perspective design+build audit of the **personal blog** (`corpus/tech-blog/`, the
+priority — the author's forward-facing brand) and the **marketing site** (`site/`). The blog was
+copied wholesale from Quarto and never re-evaluated; goal is to re-derive every decision, make it
+his own / more native-Taliesin, and promote recurring fixes into Taliesin **defaults**. **99 verified
+findings** (1 P0, 25 P1, 41 P2, 18 P3, 14 keep; 49 Quarto-inherited; 33 framework-default; both sites
+score Lighthouse 100, so this is about identity/structure, not bugs).
+
+**Full grindable list (all 99, with evidence + fix + stable IDs):**
+[2026-07-11-website-design-audit.md](2026-07-11-website-design-audit.md). Rendered report:
+`claude.ai/code/artifact/bb4b030a-7724-49c8-98f5-95d7e5b1d5e4`.
+
+**Done so far (2026-07-11, 6 sessions).** The blog is now native Taliesin: de-Quarto'd, an owned
+"Marginalia" identity (native `hero:` homepage, deployed ink accent), Lighthouse a11y 100. Closed the
+P0 and the identity / de-Quarto / a11y / accent / tap-target / RSS-sitemap-JSON-LD clusters, switched
+the blog to a reading-first `type: list`, shipped the **auto SEO + LLM discoverability artifacts**
+(Atom feeds + sitemap + robots + JSON-LD + `llms.txt`/`llms-full.txt`, all `url:`-gated), and (S6)
+**auto OG-card generation** (the ✓ DONE record below).
+
+**⚠ GIT STATE — READ BEFORE MERGING (2026-07-11; tangled by two parallel sessions):**
+- `origin/main` @ `f80bda1` — Sessions 1-5 (de-Quarto → SEO/LLM artifacts). What's pushed.
+- **local `main` @ `047d4b9`** — S6 **OG-card generation**: a clean fast-forward, 14 commits over
+  `f80bda1` (`49bf6fe` spec … `047d4b9`). **UNPUSHED — push to ship S6.**
+- **branch `og-card-generation` @ `318f22f`** — a SEPARATE concurrent session's **link-preview a11y**
+  work (drop hover-preview on section-heading links: `hover.rs`, `12-link-preview.js`, `mod.rs`,
+  `corpus.rs`). Branched off `2e6bd36` (shares S6's first 4 commits). **Not on main yet.** ⚠ It also edits
+  `crates/core/src/site/mod.rs`, which S6 also changed → **expect a `mod.rs` conflict** on merge.
+- **⚠ UNCOMMITTED / AT RISK:** this whole "Website de-Quarto" backlog section (incl. my S6 edits) AND
+  `notes/2026-07-11-website-design-audit.md` (the 99-finding detail file) are **working-tree only, never
+  committed to any branch**. `git checkout -f`/`git clean` would LOSE them. Commit them (they belong on `main`).
+
+**MERGE-EVERYTHING-TO-MAIN runbook** (do once the concurrent link-preview session is settled, so the shared
+working tree is free): (1) `git push origin main` — ships S6. (2) On a `main` checkout (the uncommitted notes
+follow the switch), `git add notes/backlog.md notes/2026-07-11-website-design-audit.md` + commit them. (3)
+`git merge og-card-generation` into main; resolve the `mod.rs` conflict (S6 added `mod card;` + the `card::`
+re-exports and REMOVED the obsolete site-`image:`→og:image warning; the other branch changed the `links`
+import + hover wiring — keep both sides). (4) `cargo test -p taliesin-core` + `cargo clippy … -D warnings`
+green, then push. Per-item S1-6 detail: git history + the auto-loaded memory `website-design-audit`.
+
+**Open — pick from here (each is scoped to start a fresh session cold):**
+
+**✓ DONE (2026-07-11, Session 6) — Social preview / OpenGraph card quality.** Shipped on **local `main`
+@ `047d4b9`** (unpushed; see GIT STATE above). At build (url-gated) auto-generate a branded **1200×630 PNG**
+card per content page → drives `og:image` / `twitter:image` / JSON-LD `image`; per-page `image:` stays the
+listing/in-page thumbnail. New module `crates/core/src/site/card.rs` (hand-composited raster: dark `--tali-*`,
+small-caps eyebrow [home = `hero.eyebrow` / post = first category|date], Newsreader headline, muted lead,
+hairline rule, procedural Gaussian bell-curve mark + wordmark + domain, block vertically centered).
+**Deviated from the SVG/resvg/WebP plan** → minimal-dep **`ab_glyph` + `png`** (zero-C), bundled **Newsreader
+OFL variable font, Regular-only** (`assets/fonts/`; hierarchy via size+color). Deterministic `/og/<fnv1a-hash>.png`
+(URL == build-written file == preview-served bytes); build emit in `build.rs` aux zone (dedup + stale-sweep
+`keep`); preview lazy-serve `GET /og/{name}` in `serve_site`; `meta.rs` + `jsonld_head` point at `card_url`;
+404 excluded. Deleted stale `og-image.webp` + its `_site.yml image:` line; retired the now-false site-`image:`
+warning + doc lines; THIRD_PARTY += Newsreader/ab_glyph(Apache-2.0)/png; `deny.toml` ignores the ttf-parser
+unmaintained advisory. Home card carries the NEW tagline; visually verified. Spec+plan
+`docs/superpowers/{specs,plans}/2026-07-11-og-card-generation*`; corpus pin `tech_blog::home_og_image_is_the_generated_card`.
+Followups NOT done: `og-card:` opt-out toggle (deferred, YAGNI); promoting Newsreader to the BODY typeface;
+a build-level test that the on-disk card file backing each `og:image` exists.
+
+*Solo-safe, build-ready now (no ruling needed):*
+- **★ NEXT UP — Feed autodiscovery** (S): add `<link rel="alternate" type="application/atom+xml" href="<feed>">`
+  to the head (`meta.rs`, beside the OG tags) when `url:` is set, so browsers/readers auto-detect the Atom
+  feed shipped in Session 5. Small follow-up.
+- **`#duplicate-generic-titles`** (S): give the built `<title>` a ` · <site name>` suffix (home + CV
+  currently share an identical bare `<title>`). Framework default; touches every page title → add a
+  corpus assertion.
+- **from-quarto value-lint** (M): a `check` warning when a page carries a Quarto-only frontmatter VALUE
+  Taliesin silently ignores (`template: jolla`, `page-layout: article`). Warning channel is a hard gate,
+  so it must NOT fire on the (now de-Quarto'd, clean) corpus — mutation-check the gate.
+
+*Build-ready but deserves its own spec (bigger blast radius):*
+- **`#multiple-h1-per-post` (heading demotion)** (M): every post emits 7+ sibling `<h1>`s (title-block
+  h1 + every `#` section) — a real Quarto-migration regression flattening the outline for screen readers
+  + SEO. Fix: when a page emits a title-block `<h1 class=title>`, demote body markdown headings one level
+  (Pandoc/Quarto behaviour). Blast radius: TOC collection, deck slide-breaks (`deck.rs` heading levels),
+  xrefs, the marketing landing — brainstorm + spec + broad corpus verification first.
+- **`#posts-are-navigational-deadends`** (M): posts dead-end (only "← Blog"). Add prev/next (+ optional
+  related) to the post chrome. Framework feature; needs a spec + a corpus pin.
+
+*Needs YOUR ruling (reshapes the build output):*
+- **`#site-build-inlines-shared-assets` + `#katex-full-fontset-inlined-per-page`**: in `build <dir>`,
+  externalize the ~95 KB framework CSS + ~347 KB KaTeX fonts to content-hashed shared files (cached
+  across pages) instead of inlining per page. Biggest repeat-visit perf win, but changes the build-output
+  shape — gated on your OK.
+
+*Needs YOUR design/content input:*
+- **`#text-face-is-system-dependent-not-owned`** (L, design): bundle one owned webfont offline (woff2,
+  the way the KaTeX fonts already ship) so the blog's voice is owned, not a system serif. You pick the
+  face (avoid the display-serif cliche). The biggest remaining "assembled from defaults" tell.
+- **`#category-taxonomy-too-granular`** (S, content): 11 categories over 7 posts (most count 1).
+  Consolidating to ~5 broad topics is your taxonomy call. (A deliberate portrait could also return to
+  the hero as a small element — the `hero: image:` slot is still shipped.)
+
+*Deferred (folds into the marketing rebuild):*
+- **`#autoplay-video-no-pause`** (pause/reduced-motion half): marketing autoplay videos need a pause
+  affordance (WCAG 2.2.2) + reduced-motion respect. Marketing-only today; a look tradeoff (always-on
+  `controls` vs a custom pause button), so it rides with the deferred marketing demo rebuild.
+- **`#code-figure-empty-alt`**: a build-time warning for a caption-less + alt-less generated plot. Blocked
+  on the missing "info severity" concept (the warning channel is a hard gate) — same parking lot as the
+  TODO/FIXME item. tech-blog has ~45 caption-less figures, so a gating lint would break `check` today.
+
+Direction "Marginalia" (iron-gall = manuscript ink) is being built out; 14 explicit **KEEPs**
+(serif/sans pairing, offline bundling, meta.rs OG head, live-figure thumbnails) live in the detail file;
+protect them. All fixes stay invariant-safe (no CDN, no preview write-back, no new output format,
+`--tali-*` tokens only).
+
 ## Priority queue
 
 ### Tier 1 — small, build-ready (no blocker)
