@@ -1,8 +1,9 @@
 //! Cross-page hover-preview snippet index: anchor → the rendered HTML of the block
-//! that defines it (figure / theorem / table / equation / listing / section), with
-//! relative asset URLs rebased site-root-relative. Built once at discovery, served as
-//! `hover-index.js` and lazy-loaded by `12-link-preview.js` when a reader hovers a
-//! cross-page `.tali-xref`. `use super::*` reaches Block + the link helpers.
+//! that defines it (figure / theorem / table / equation / listing), with relative asset
+//! URLs rebased site-root-relative. Built once at discovery, served as `hover-index.js`
+//! and lazy-loaded by `12-link-preview.js` when a reader hovers a cross-page `.tali-xref`.
+//! Section headings are deliberately excluded (they get no hover preview), so a heading
+//! anchor is never indexed. `use super::*` reaches Block + the link helpers.
 
 use super::*;
 
@@ -15,14 +16,6 @@ fn is_heading(html: &str) -> bool {
     t.len() >= 3 && t[0] == b'<' && t[1] == b'h' && (b'1'..=b'6').contains(&t[2])
 }
 
-/// Whether a block's leading element tag carries a real `id="…"` attribute (mirrors the
-/// client's `!n.id` stop condition when gathering a heading's following blocks). Matches
-/// ` id="` (space-prefixed) so the universal `data-block-id="` attribute — hyphen-prefixed
-/// — is NOT mistaken for a real id (which would make every heading a bare-title snippet).
-fn leading_tag_has_id(html: &str) -> bool {
-    leading_tag_contains(html, " id=\"")
-}
-
 /// Truncate to at most `SNIPPET_CAP` chars on a char boundary.
 fn cap(mut s: String) -> String {
     if let Some((i, _)) = s.char_indices().nth(SNIPPET_CAP) {
@@ -31,9 +24,9 @@ fn cap(mut s: String) -> String {
     s
 }
 
-/// The rendered HTML for `anchor`'s defining block. A heading anchor also appends up
-/// to two following blocks (stopping at the next heading or a block with its own id),
-/// matching the same-page card's "heading + up to 2 siblings" behavior.
+/// The rendered HTML for `anchor`'s defining block — a figure, theorem, table, equation,
+/// or listing. Section headings get no hover preview, so a heading anchor returns `None`
+/// and never enters the index.
 pub(super) fn extract_snippet(blocks: &[Block], anchor: &str) -> Option<String> {
     let bi = blocks
         .iter()
@@ -42,18 +35,10 @@ pub(super) fn extract_snippet(blocks: &[Block], anchor: &str) -> Option<String> 
             let needle = format!("id=\"{anchor}\"");
             blocks.iter().position(|b| b.html.contains(&needle))
         })?;
-    let mut out = blocks[bi].html.clone();
     if is_heading(&blocks[bi].html) {
-        // Append up to 2 following blocks, stopping at the next heading or a block with
-        // its own id (mirrors the same-page card's "heading + up to 2 siblings").
-        for b in blocks[bi + 1..].iter().take(2) {
-            if is_heading(&b.html) || leading_tag_has_id(&b.html) {
-                break;
-            }
-            out.push_str(&b.html);
-        }
+        return None;
     }
-    Some(cap(out))
+    Some(cap(blocks[bi].html.clone()))
 }
 
 /// Rebase relative `src=`/`href=` values in a snippet to site-root-relative, so the
@@ -146,28 +131,17 @@ mod tests {
     }
 
     #[test]
-    fn extract_heading_takes_following_blocks_until_next_heading_or_id() {
+    fn extract_returns_none_for_a_heading_anchor() {
+        // Section headings get no hover preview: a heading anchor is never indexed, even
+        // when it carries the universal `data-block-id` (which must not read as a real id).
         let blocks = vec![
-            blk("<h2 id=\"sec-m\">Methods</h2>"),
+            blk("<h2 id=\"sec-m\" data-block-id=\"b-1\">Methods</h2>"),
             blk("<p>intro one</p>"),
-            blk("<p>intro two</p>"),
-            blk("<h2 id=\"sec-n\">Next</h2>"),
         ];
-        let s = extract_snippet(&blocks, "sec-m").unwrap();
-        assert!(s.contains("Methods") && s.contains("intro one") && s.contains("intro two"));
-        assert!(!s.contains("Next"), "stops at the next heading");
-    }
-
-    #[test]
-    fn extract_heading_caps_at_two_following_blocks() {
-        let blocks = vec![
-            blk("<h2 id=\"sec-m\">Methods</h2>"),
-            blk("<p>one</p>"),
-            blk("<p>two</p>"),
-            blk("<p>three</p>"),
-        ];
-        let s = extract_snippet(&blocks, "sec-m").unwrap();
-        assert!(s.contains("one") && s.contains("two") && !s.contains("three"));
+        assert!(
+            extract_snippet(&blocks, "sec-m").is_none(),
+            "a section heading must not be previewed"
+        );
     }
 
     #[test]
@@ -187,23 +161,6 @@ mod tests {
             s.chars().count() <= SNIPPET_CAP,
             "snippet not capped: {} chars",
             s.chars().count()
-        );
-    }
-
-    #[test]
-    fn extract_heading_appends_following_blocks_that_carry_only_data_block_id() {
-        // Regression: every real block carries `data-block-id="…"`; that must NOT read as a
-        // real id (only a space-prefixed ` id="` does), else a heading captures nothing.
-        let blocks = vec![
-            blk("<h1 id=\"sec-m\" data-block-id=\"b-1\">Methods</h1>"),
-            blk("<p data-block-id=\"b-2\" data-sourcepos=\"2:1-2:2\">intro one</p>"),
-            blk("<div class=\"tali-theorem\" id=\"thm-x\" data-block-id=\"b-3\">stop</div>"),
-        ];
-        let s = extract_snippet(&blocks, "sec-m").unwrap();
-        assert!(s.contains("Methods") && s.contains("intro one"), "got: {s}");
-        assert!(
-            !s.contains("stop"),
-            "stops at the block with a real id (the theorem): {s}"
         );
     }
 
