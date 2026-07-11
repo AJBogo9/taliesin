@@ -189,9 +189,6 @@ mod card;
 mod chrome;
 pub use book::{Book, BookEntry};
 use book::{book_pages, build_book};
-#[allow(unused_imports)] // meta.rs calls `card::card_url` via the submodule directly,
-// not via this crate-root re-export; kept for API symmetry with card_spec/card_rel_path.
-pub(crate) use card::card_url;
 pub use card::{
     CARD_DESIGN_VERSION, CARD_EXT, CARD_H, CARD_W, CardSpec, card_rel_path, card_spec, render_card,
 };
@@ -298,25 +295,6 @@ impl Site {
                     ));
                 }
             }
-        }
-
-        // A *relative* site-wide `image:` (the og/twitter social-card default) with no
-        // `url:`: it can't be made absolute without the site URL, so og:image /
-        // twitter:image are dropped for it. An absolute-URL `image:` needs no base and
-        // still works, so it isn't flagged; nor is a per-page `image:`, which drives
-        // listing cards that don't need an absolute URL.
-        if config.url.is_none()
-            && config
-                .card_image
-                .as_deref()
-                .is_some_and(|img| !is_external_or_special(img))
-        {
-            warnings.push(
-                "a relative `image:` is set in _site.yml but `url:` is not: the default \
-                 social-card image (og:image / twitter:image) needs an absolute URL and \
-                 is being suppressed. Set `url:`, or use an absolute image URL."
-                    .to_string(),
-            );
         }
 
         // Resolve the site-wide head/body/css includes once, relative to the site
@@ -1874,26 +1852,6 @@ pub(crate) mod tests {
             site.warnings
                 .iter()
                 .any(|w| w.contains("mount") && w.contains("collides")),
-            "{:?}",
-            site.warnings
-        );
-        let _ = std::fs::remove_dir_all(&root);
-    }
-
-    #[test]
-    fn site_image_without_url_warns() {
-        let root = write_site(
-            "imgnourl",
-            &[
-                ("_site.yml", "title: Demo\nimage: card.png\n"),
-                ("index.tmd", "---\ntitle: Home\n---\n\nHi.\n"),
-            ],
-        );
-        let site = Site::discover(&root);
-        assert!(
-            site.warnings
-                .iter()
-                .any(|w| w.contains("image") && w.contains("url")),
             "{:?}",
             site.warnings
         );

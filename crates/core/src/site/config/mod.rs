@@ -35,8 +35,12 @@ pub struct SiteConfig {
     pub description: Option<String>,
     pub url: Option<String>,
     pub favicon: Option<String>,
-    /// Default social-card image (`image:`, also accepted as `open-graph: image:`),
-    /// used for `og:image`/`twitter:image` when a page sets no `image:` of its own.
+    /// Site-level `image:` (also accepted as `open-graph: image:`). This used to be
+    /// the default `og:image`/`twitter:image` when a page set no `image:` of its
+    /// own; that role is now filled entirely by the auto-generated per-page social
+    /// card (`card::card_url`), so this field has no `og:image`/`twitter:image`
+    /// consequence anymore — it is still parsed from `_site.yml` but not read for
+    /// meta tags. Removing the field outright is a separate change.
     pub card_image: Option<String>,
     pub toc: Option<bool>,
     pub css: Option<serde_yaml::Value>,

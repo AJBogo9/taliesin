@@ -4,7 +4,6 @@ title: Andreas Bogossian
 description: Machine learning and statistics, worked out from first principles
 url: https://andreasbogossian.com
 favicon: bell-curve.svg
-image: og-image.webp
 output: _site
 toc: true
 css: custom.css

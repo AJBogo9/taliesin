@@ -27,6 +27,13 @@ Bundled so the tool works fully offline.
   `code-enhance.js` and the callout-kind icons in `crates/core/src/render/divs.rs`.
   No Octicons package is bundled; only individual path data. License:
   <https://github.com/primer/octicons/blob/main/LICENSE>.
+- **Newsreader** (SIL Open Font License 1.1, Copyright 2020 The Newsreader
+  Project Authors). The variable serif bundled at
+  `crates/core/assets/fonts/Newsreader[opsz,wght].ttf`, rasterized at build time
+  for the headline/byline/footer text on the auto-generated social-card image
+  (`crates/core/src/site/card.rs`). Full license text ships alongside it in
+  `crates/core/assets/fonts/OFL.txt`. License:
+  <https://github.com/productiontype/Newsreader>.
 
 The other scripts under `crates/core/assets/js/` (`code-enhance.js`, `deck.js`,
 `mermaid.js`, `qmd-js.js`, `walkthrough.js`, `tabset.js`) are Taliesin's own (MIT).
@@ -67,3 +74,13 @@ than only linking code:
   upstream license; `cargo deny` checks the crate's license, not theirs. The full
   per-syntax attribution listing ships with the crate and is reachable at runtime
   via `two_face::acknowledgement::listing()`.
+
+Two further build dependencies power the auto-generated social-card raster
+pipeline (`crates/core/src/site/card.rs`), called out individually because they
+replace what would otherwise be an external image tool; both are pure Rust with
+no C toolchain or system library requirement, which is why they were picked:
+
+- **ab_glyph** (Apache-2.0). Rasterizes glyphs from the bundled Newsreader font
+  above into the card's headline/byline/footer text.
+- **png** (MIT OR Apache-2.0). Encodes the rendered 1200×630 RGBA card buffer
+  to the PNG served at `/og/<hash>.png`.
