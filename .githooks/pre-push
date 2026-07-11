@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Pre-push gate. Runs the fast, environment-independent CI checks LOCALLY before a push
+# reaches origin, so a break is caught here instead of after it has landed on main. This
+# is the "turn the smoke alarm into a gate" half; the heavier CI jobs stay in GitHub
+# Actions on purpose, because they do things this hook can't:
+#   - live-kernel tests   (need a clean python env; also timing-sensitive)
+#   - JS typecheck + VS Code grammar  (need node)
+#   - weekly cargo audit / cargo deny advisory scan  (no local equivalent — the main
+#                                                      reason to keep CI at all)
+#
+# Only gates a push that includes main; WIP-branch pushes skip for speed (matching CI,
+# which reserves the heavy gate for main + PRs). Bypass once with:  git push --no-verify
+set -euo pipefail
+
+# pre-push receives "<local ref> <local sha> <remote ref> <remote sha>" lines on stdin.
+# Run the gate only when main is among the refs being pushed.
+pushing_main=0
+while read -r _local_ref _local_sha remote_ref _remote_sha; do
+    if [ "$remote_ref" = "refs/heads/main" ]; then
+        pushing_main=1
+    fi
+done
+if [ "$pushing_main" -eq 0 ]; then
+    exit 0
+fi
+
+cd "$(git rev-parse --show-toplevel)"
+
+echo "pre-push: gating main (fmt, clippy, test). Bypass with --no-verify."
+echo "  [1/3] cargo fmt --check"
+cargo fmt --all -- --check
+echo "  [2/3] cargo clippy --workspace --all-targets -- -D warnings"
+cargo clippy --workspace --all-targets -- -D warnings
+echo "  [3/3] cargo test --workspace"
+cargo test --workspace
+echo "pre-push: all checks passed."
