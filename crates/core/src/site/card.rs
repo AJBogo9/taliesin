@@ -285,7 +285,6 @@ pub fn card_rel_path(spec: &CardSpec) -> String {
 }
 
 /// The page's card URL (`/og/<hash>.png`), or `None` when `_site.yml` has no `url:`.
-#[allow(dead_code)] // wired into og:image/twitter:image/JSON-LD by Task 5
 pub(crate) fn card_url(site: &Site, page: &Page) -> Option<String> {
     site.config.url.as_ref()?;
     Some(format!("/{}", card_rel_path(&card_spec(site, page))))

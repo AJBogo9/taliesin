@@ -1,11 +1,13 @@
 //! OpenGraph / Twitter-card / SEO `<meta>` tags for a site page, injected into the
 //! head via `SiteCtx` so a shared link renders a rich preview. Per-page title,
-//! description, canonical URL, and card image come from the page's front matter,
-//! falling back to the site config. og:url and canonical need the site `url:` to be
-//! absolute; og:image does too for a site-root-relative image, but an already-absolute
-//! `image:` URL is emitted verbatim without one.
+//! description, and canonical URL come from the page's front matter, falling back to
+//! the site config. The social-card image is always the build-generated card
+//! (`card::card_url`), never the page's own `image:` (that stays the in-page/listing
+//! thumbnail). og:url, canonical, and og:image all need the site `url:` to be absolute,
+//! so they're all `None` without it.
 
-use super::{Page, Site, is_external_or_special};
+use super::card;
+use super::{Page, Site};
 use crate::escape_attr as esc;
 use serde_json::{Value, json};
 
@@ -24,22 +26,10 @@ pub(super) fn social_head(site: &Site, page: &Page) -> String {
     // its directory (`/posts/x/`), not `/posts/x/index.html`.
     let clean_url = page.url.strip_suffix("index.html").unwrap_or(&page.url);
     let page_url = base.map(|b| format!("{b}/{clean_url}"));
-    // Card image, made absolute (social scrapers require absolute image URLs). Falls
-    // back to the site-wide default (`image:`, or `open-graph: image:`). An
-    // already-absolute image URL (a CDN-hosted card) is used verbatim and works even
-    // without a configured `url:`; a site-root-relative image is joined onto `base`,
-    // which needs `url:` to exist.
-    let image = page
-        .card_image
-        .as_deref()
-        .or(cfg.card_image.as_deref())
-        .and_then(|img| {
-            if is_external_or_special(img) {
-                Some(img.to_string())
-            } else {
-                base.map(|b| format!("{b}/{}", img.trim_start_matches('/')))
-            }
-        });
+    // Card image: the build-generated, branded OG card (absolute). Url-gated exactly
+    // like the sidecars — `card_url` is Some only when `url:` is set, and `base` is Some
+    // in the same case. The page's own `image:` stays the in-page/listing thumbnail.
+    let image = card::card_url(site, page).and_then(|rel| base.map(|b| format!("{b}{rel}")));
     let og_type = if page.date.is_some() {
         "article"
     } else {
@@ -145,17 +135,8 @@ pub(super) fn jsonld_head(site: &Site, page: &Page) -> String {
         if let Some(d) = page.description.as_deref() {
             bp["description"] = json!(d);
         }
-        if let Some(img) = page
-            .card_image
-            .as_deref()
-            .or(site.config.card_image.as_deref())
-        {
-            let abs = if is_external_or_special(img) {
-                img.to_string()
-            } else {
-                format!("{base}/{}", img.trim_start_matches('/'))
-            };
-            bp["image"] = json!(abs);
+        if let Some(rel) = card::card_url(site, page) {
+            bp["image"] = json!(format!("{base}{rel}"));
         }
         Some(bp)
     } else if page.url == "index.html" {
@@ -250,6 +231,45 @@ mod jsonld_tests {
             "person name = title fallback"
         );
         assert!(html.contains("https://github.com/x"), "sameAs from footer");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn social_image_is_the_generated_card_not_the_page_image() {
+        let root = write_site(
+            "cardsocial",
+            &[
+                ("_site.yml", "title: Blog\nurl: https://ex.com\n"),
+                (
+                    "posts/a/index.tmd",
+                    "---\ntitle: My Post\ndate: 2026-05-15\ndescription: About.\nimage: fig.webp\n---\n\nx\n",
+                ),
+            ],
+        );
+        let site = crate::site::Site::discover(&root);
+        let post = site
+            .pages
+            .iter()
+            .find(|p| p.url.contains("posts/a"))
+            .unwrap();
+        let rel = crate::site::card_rel_path(&crate::site::card_spec(&site, post));
+        let html = site.render_page("posts/a/index.tmd").unwrap();
+        assert!(
+            html.contains(&format!(
+                r#"property="og:image" content="https://ex.com/{rel}""#
+            )),
+            "og:image = card"
+        );
+        assert!(
+            html.contains(&format!(
+                r#"name="twitter:image" content="https://ex.com/{rel}""#
+            )),
+            "twitter:image = card"
+        );
+        assert!(
+            !html.contains("fig.webp"),
+            "the page image: is not the social card"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 

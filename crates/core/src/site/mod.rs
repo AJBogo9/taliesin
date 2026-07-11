@@ -189,7 +189,8 @@ mod card;
 mod chrome;
 pub use book::{Book, BookEntry};
 use book::{book_pages, build_book};
-#[allow(unused_imports)] // wired into og:image/twitter:image/JSON-LD by Task 5
+#[allow(unused_imports)] // meta.rs calls `card::card_url` via the submodule directly,
+// not via this crate-root re-export; kept for API symmetry with card_spec/card_rel_path.
 pub(crate) use card::card_url;
 pub use card::{
     CARD_DESIGN_VERSION, CARD_EXT, CARD_H, CARD_W, CardSpec, card_rel_path, card_spec, render_card,
@@ -1371,11 +1372,13 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn absolute_page_image_is_verbatim_og_image_relative_joins_site_url() {
-        // Batch 7: the discovery guard fixes listing cards, but the og:image builder in
-        // `meta.rs` also prepended the site `url:` — so an absolute image became a broken
-        // `{base}/https://…`. An absolute image must appear verbatim in og:/twitter:image
-        // (and needs no `url:`); a relative image is joined onto the site url.
+    fn page_image_absolute_or_relative_never_leaks_into_og_image() {
+        // Batch 7 fixed a bug where a page `image:` broke og:image (an absolute URL got
+        // mangled into `{base}/https://…`, a relative one needed `url:`). The og-card
+        // generator (Task 5) replaced the image source entirely: og:image/twitter:image
+        // now always point at the build-generated card, and the page's own `image:`
+        // (absolute or relative) never reaches those tags — it stays the in-page/listing
+        // thumbnail only. This test now guards that boundary instead.
         use std::fs;
         let root = std::env::temp_dir().join(format!("tali-ogimg-{}", std::process::id()));
         let _ = fs::remove_dir_all(&root);
@@ -1399,19 +1402,32 @@ pub(crate) mod tests {
         let site = Site::discover(&root);
         let head = |rel: &str| {
             let p = site.pages.iter().find(|p| p.rel == rel).expect("page");
-            meta::social_head(&site, p)
+            (
+                meta::social_head(&site, p),
+                card_rel_path(&card_spec(&site, p)),
+            )
         };
+        let (abs_head, abs_card) = head("abs.tmd");
         assert!(
-            head("abs.tmd")
-                .contains(r#"property="og:image" content="https://cdn.example.com/card.png""#),
-            "an absolute image passes through verbatim: {}",
-            head("abs.tmd")
+            abs_head.contains(&format!(
+                r#"property="og:image" content="https://example.com/{abs_card}""#
+            )),
+            "og:image is the generated card: {abs_head}"
         );
         assert!(
-            head("rel.tmd")
-                .contains(r#"property="og:image" content="https://example.com/thumb.webp""#),
-            "a relative image joins onto the site url: {}",
-            head("rel.tmd")
+            !abs_head.contains("cdn.example.com"),
+            "the page's absolute image: does not leak into og:image: {abs_head}"
+        );
+        let (rel_head, rel_card) = head("rel.tmd");
+        assert!(
+            rel_head.contains(&format!(
+                r#"property="og:image" content="https://example.com/{rel_card}""#
+            )),
+            "og:image is the generated card: {rel_head}"
+        );
+        assert!(
+            !rel_head.contains("thumb.webp"),
+            "the page's relative image: does not leak into og:image: {rel_head}"
         );
         let _ = fs::remove_dir_all(&root);
     }
