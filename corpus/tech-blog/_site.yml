@@ -9,13 +9,7 @@ output: _site
 toc: true
 css: custom.css
 head:
-  text: '<link rel="preconnect" href="https://cdn.jsdelivr.net">
-
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-
-    <script type="speculationrules">
+  text: '<script type="speculationrules">
 
     {"prerender":[{"where":{"href_matches":"/*"},"eagerness":"moderate"}]}
 

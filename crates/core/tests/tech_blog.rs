@@ -343,8 +343,10 @@ fn about_page_renders_profile_block() {
 
 /// The site's native `head` / `body-end` / `css` (from `_site.yml`) are injected
 /// into every page, and a page's own front-matter `include-in-header` is injected on
-/// top of the site's. Without this the blog's preconnect hints, prefetch script, and
-/// custom stylesheet silently vanish.
+/// top of the site's. Without this the blog's speculationrules hint, prefetch script,
+/// and custom stylesheet silently vanish. The three dead CDN preconnects were removed
+/// (offline-first: the blog opens zero external connections), so no external
+/// `rel=preconnect` must survive the injection.
 #[test]
 fn site_and_page_includes_are_injected() {
     let site = Site::discover(&corpus_dir().join("tech-blog"));
@@ -353,14 +355,15 @@ fn site_and_page_includes_are_injected() {
     let post = site
         .render_page("posts/em-algorithm/index.tmd")
         .expect("post renders");
-    // include-in-header (text:) — preconnect + speculationrules.
-    assert!(
-        post.contains("rel=\"preconnect\" href=\"https://cdn.jsdelivr.net\""),
-        "site include-in-header preconnect missing"
-    );
+    // include-in-header (text:) — the speculationrules prefetch hint. The three dead
+    // CDN preconnects were deleted (offline-first), so none must remain injected.
     assert!(
         post.contains("<script type=\"speculationrules\">"),
         "site include-in-header speculationrules missing"
+    );
+    assert!(
+        !post.contains("rel=\"preconnect\""),
+        "dead CDN preconnects must not be reintroduced (offline-first)"
     );
     // include-after-body (text:) — the prefetch script.
     assert!(
@@ -386,7 +389,7 @@ fn site_and_page_includes_are_injected() {
         "page-level include-in-header (meta description) missing"
     );
     assert!(
-        home.contains("rel=\"preconnect\" href=\"https://cdn.jsdelivr.net\""),
+        home.contains("<script type=\"speculationrules\">"),
         "site include should still apply alongside the page's own"
     );
 }
