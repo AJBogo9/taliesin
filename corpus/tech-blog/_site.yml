@@ -26,3 +26,4 @@ footer:
   right:
   - { icon: linkedin, href: https://www.linkedin.com/in/andreas-bogossian/ }
   - { icon: github, href: https://github.com/AJBogo9 }
+  - { icon: rss, href: blog.xml }

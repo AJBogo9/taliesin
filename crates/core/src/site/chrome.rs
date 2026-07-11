@@ -170,6 +170,9 @@ impl Site {
             return String::new();
         };
         let up = "../".repeat(depth);
+        // With `url:` set, the build generates the feed (`blog.xml` etc.), so a local
+        // `.xml` footer link is honest and kept; without it, no feed exists so it is dropped.
+        let url_set = self.config.url.is_some();
         let group = |items: &[NavItem]| -> String {
             let mut g = String::new();
             for it in items {
@@ -183,12 +186,14 @@ impl Site {
                     None => (it.text.clone().unwrap_or_default(), String::new()),
                 };
                 match it.href.as_deref() {
-                    // A configured *local* `.xml` link (e.g. `/blog.xml`)
-                    // is dropped: this build generates no RSS feed. An external
-                    // `.xml` URL (http/protocol-relative) is left alone — it's some
-                    // other resource, not this site's feed.
+                    // A configured *local* `.xml` link (e.g. `/blog.xml`) is dropped ONLY
+                    // when no feed is generated — i.e. `url:` is unset. With `url:` set the
+                    // build emits the feed, so the link is honest and kept. An external
+                    // `.xml` URL (http/protocol-relative) is left alone — it's some other
+                    // resource, not this site's feed.
                     Some(h)
                         if h.ends_with(".xml")
+                            && !url_set
                             && !(h.starts_with("http://")
                                 || h.starts_with("https://")
                                 || h.starts_with("//")) =>
@@ -413,6 +418,49 @@ fn social_icon(name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::site::{Site, tests::write_site};
+
+    #[test]
+    fn footer_honors_local_xml_feed_link_when_url_set() {
+        let root = write_site(
+            "footerfeed",
+            &[
+                (
+                    "_site.yml",
+                    "title: Blog\nurl: https://ex.com\nfooter:\n  right:\n    - { icon: rss, href: blog.xml }\n",
+                ),
+                ("index.tmd", "---\ntitle: Home\n---\n\nx\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("index.tmd").unwrap();
+        assert!(
+            html.contains("href=\"blog.xml\""),
+            "feed link honored with url: {html}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn footer_still_drops_local_xml_without_url() {
+        let root = write_site(
+            "footerfeednourl",
+            &[
+                (
+                    "_site.yml",
+                    "title: Blog\nfooter:\n  right:\n    - { icon: rss, href: blog.xml }\n",
+                ),
+                ("index.tmd", "---\ntitle: Home\n---\n\nx\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("index.tmd").unwrap();
+        assert!(
+            !html.contains("blog.xml"),
+            "no feed generated → link dropped: {html}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
 
     #[test]
     fn search_button_hides_the_shortcut_hint_from_its_name() {
