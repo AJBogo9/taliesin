@@ -104,7 +104,7 @@ also works inside a part's list). Without `text:`, the label is the chapter's fi
 |---|---|
 | `title`, `author`, `description`, `url` | Project metadata (`title` is the navbar brand / book title) |
 | `favicon` | Tab icon (defaults to the Taliesin mark) |
-| `image` | Default social-card image for pages that don't set their own |
+| `image` | Deprecated; the social-card image is now auto-generated per page |
 | `output` | Build output directory |
 | `toc` | Default table of contents for article pages |
 | `css`, `head`, `body-start`, `body-end` | Site-wide asset injection (a path, `{ text: … }` / `{ file: … }`, or a list) |

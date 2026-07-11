@@ -215,11 +215,12 @@ from search, without search needing any special case for either.
 ## Social & SEO metadata
 
 Each page emits OpenGraph, Twitter-card, and `canonical` tags (`meta.rs`), taken from the
-page's own front matter (`title`, `description`, `image`) and falling back to the
-`_site.yml` config. `og:type` is `article` when the page carries a `date:`, and `website`
-otherwise. The absolute-URL tags (`og:url`, `og:image`, `canonical`) are emitted **only
-when a `url:` is configured**, since social scrapers need absolute URLs; without a `url:`
-the page still carries its relative title/description metadata.
+page's own front matter (`title`, `description`) and falling back to the `_site.yml` config.
+The social-card image (`og:image`, `twitter:image`) is auto-generated per page. `og:type`
+is `article` when the page carries a `date:`, and `website` otherwise. The absolute-URL tags
+(`og:url`, `og:image`, `canonical`) are emitted **only when a `url:` is configured**, since
+social scrapers need absolute URLs; without a `url:` the page still carries its relative
+title/description metadata.
 
 ## Mounts
 
