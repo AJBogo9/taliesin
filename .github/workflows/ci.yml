@@ -44,12 +44,21 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install ipykernel
-        run: python -m pip install --upgrade pip ipykernel
+      # numpy is one of the warm-pool's forkserver preload candidates (`numpy`,
+      # `matplotlib`, `torch`, each preloaded only if importable); the pool test asserts a
+      # forked kernel inherits the preloaded `numpy` via copy-on-write, so it must be present.
+      - name: Install ipykernel + numpy
+        run: python -m pip install --upgrade pip ipykernel numpy
       - name: Test with a live kernel
         env:
           TALIESIN_PYTHON: python
           TALIESIN_REQUIRE_KERNEL: "1"
+          # `cell_timeout()` caches TALIESIN_CELL_TIMEOUT on its first read (process-global
+          # OnceLock). The runaway-interrupt test needs a short cap, but under parallel test
+          # execution another kernel test can read the default (120s) first, so the runaway
+          # cell then runs the full 120s and the test fails. Pinning the cap job-wide makes
+          # the first read deterministic; every other kernel cell here finishes in well under 3s.
+          TALIESIN_CELL_TIMEOUT: "3"
         run: cargo test -p taliesin-server
 
   # Type-check the preview client JS (client.js + the sibling shipped scripts:

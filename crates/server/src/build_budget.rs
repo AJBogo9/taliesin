@@ -18,10 +18,11 @@ pub(crate) fn concurrency_cap_with(
 ) -> usize {
     match jobs {
         Some(0) | None => {
-            let mem_slots = if per_kernel_mb == 0 {
-                cores
-            } else {
-                (free_mb / per_kernel_mb) as usize
+            // `per_kernel_mb == 0` means memory isn't the limiter (checked_div returns
+            // None on a zero divisor), so fall back to the core count.
+            let mem_slots = match free_mb.checked_div(per_kernel_mb) {
+                Some(slots) => slots as usize,
+                None => cores,
             };
             cores.min(mem_slots.max(1))
         }

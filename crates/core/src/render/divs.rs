@@ -18,10 +18,9 @@ pub(crate) fn parse_pandoc_attrs(s: &str) -> Option<(Vec<String>, Option<String>
     for tok in s.split_whitespace() {
         if let Some(c) = tok.strip_prefix('.').filter(|c| !c.is_empty()) {
             classes.push(c.to_string());
-        } else if let Some(i) = tok.strip_prefix('#').filter(|i| !i.is_empty()) {
-            id = Some(i.to_string());
         } else {
-            return None;
+            let i = tok.strip_prefix('#').filter(|i| !i.is_empty())?;
+            id = Some(i.to_string());
         }
     }
     Some((classes, id))
