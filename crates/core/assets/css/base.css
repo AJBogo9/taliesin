@@ -201,8 +201,10 @@
   .tali-input-out { font-variant-numeric: tabular-nums; min-width: 2.5em;
     color: var(--tali-muted); }
 
-  /* Screen-reader-only utility (used by anchor-links / focus-mode / toc-spy live regions). */
-  .tali-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  /* Screen-reader-only utility (used by anchor-links / focus-mode / toc-spy live regions).
+     `.sr-only` is aliased so a site that hand-writes the conventional class (e.g. a footer
+     `<span class='sr-only'>` label) hides it without needing a per-site custom.css. */
+  .tali-sr-only, .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
   body { max-width: var(--tali-maxw); margin: 2rem auto; padding: 0 1rem;

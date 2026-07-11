@@ -2762,6 +2762,17 @@ fn color_after<'a>(css: &'a str, needle: &str) -> &'a str {
     &rest[h..h + 7]
 }
 
+/// `.sr-only` is aliased to `.tali-sr-only` in base.css so a site that hand-writes the conventional
+/// screen-reader class (e.g. a footer icon label) hides it with no per-site custom.css. Guards the
+/// tech-blog landmine: without the alias, deleting custom.css un-hides the footer social labels.
+#[test]
+fn base_css_aliases_the_conventional_sr_only_class() {
+    assert!(
+        BASE_CSS.contains(".sr-only"),
+        "base.css must alias `.sr-only`, not only define `.tali-sr-only`"
+    );
+}
+
 /// The UI-boundary token must clear the WCAG 1.4.11 3:1 floor against BOTH surfaces a control
 /// can sit on: the page background and the code background (a `kbd` and the copy button sit on
 /// code-bg). The hairline `--tali-border` stays decorative and is deliberately not checked.
