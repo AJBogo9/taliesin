@@ -32,18 +32,23 @@ const BOOK_DRAWER_SCRIPT: &str = "<script>(function(){var b=document.getElementB
 /// palette the keyboard shortcut does. Rendered in the navbar (websites) and the
 /// book sidebar; `full` widens it with a label for the sidebar.
 fn search_button(full: bool) -> String {
-    let (cls, label) = if full {
+    // The kbd is a shortcut hint, not part of the label: aria-hidden keeps it out of the
+    // accessible name (WCAG 2.5.3 Label-in-Name). The icon-only button names itself with
+    // aria-label; the `full` variant has a visible "Search the book" label, so an aria-label
+    // would only mismatch it and the visible text is the accessible name instead.
+    let (cls, label, aria) = if full {
         (
             "tali-search-btn tali-search-full",
             "<span class='tali-search-label'>Search the book</span>",
+            "",
         )
     } else {
-        ("tali-search-btn", "")
+        ("tali-search-btn", "", " aria-label='Search'")
     };
     format!(
-        "<button class='{cls}' type='button' data-qmd-search aria-label='Search' \
+        "<button class='{cls}' type='button' data-qmd-search{aria} \
          aria-keyshortcuts='Control+K Meta+K'>{SEARCH_ICON}{label}\
-         <kbd class='tali-search-kbd'>\u{2318}K</kbd></button>"
+         <kbd class='tali-search-kbd' aria-hidden='true'>\u{2318}K</kbd></button>"
     )
 }
 
@@ -403,4 +408,40 @@ fn social_icon(name: &str) -> Option<String> {
     Some(format!(
         "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\" fill=\"currentColor\" viewBox=\"0 0 16 16\" aria-hidden=\"true\">{paths}</svg>"
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn search_button_hides_the_shortcut_hint_from_its_name() {
+        // WCAG 2.5.3: the visible ⌘K kbd must not pollute the button's accessible name.
+        let b = search_button(false);
+        assert!(
+            b.contains("<kbd class='tali-search-kbd' aria-hidden='true'>"),
+            "the shortcut hint kbd must be aria-hidden: {b}"
+        );
+        // The icon-only button still names itself.
+        assert!(
+            b.contains("aria-label='Search'"),
+            "icon-only button keeps its label: {b}"
+        );
+    }
+
+    #[test]
+    fn full_search_button_name_matches_its_visible_label() {
+        // The sidebar variant shows a "Search the book" label, so a fixed aria-label='Search'
+        // would violate Label-in-Name; the visible text is the accessible name instead.
+        let b = search_button(true);
+        assert!(b.contains("Search the book"), "visible label present: {b}");
+        assert!(
+            !b.contains("aria-label='Search'"),
+            "no aria-label that mismatches the visible label: {b}"
+        );
+        assert!(
+            b.contains("aria-hidden='true'"),
+            "kbd stays hidden in the full variant too: {b}"
+        );
+    }
 }

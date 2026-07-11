@@ -171,7 +171,10 @@ function taliInitLightbox() {
 function taliDecorateLightbox(root) {
   taliInitLightbox(); // ensure the document-level machinery + window.__qmdLightboxOpen exist
   var scope = root || document;
-  var els = scope.querySelectorAll('figure img, img.lightbox, pre.mermaid, .tali-video video');
+  // Images + mermaid diagrams only. A `<video>` keeps its native media semantics: stamping
+  // role="button"/aria-label onto it mislabels it in the a11y tree, and the clip already
+  // autoplays inline. Mouse click-to-zoom on a video still works via the click delegation above.
+  var els = scope.querySelectorAll('figure img, img.lightbox, pre.mermaid');
   [].forEach.call(els, function (el) {
     if (el.getAttribute('data-qmd-lb')) return; // idempotent: decorate once per element
     var isMermaid = el.matches && el.matches('pre.mermaid');
