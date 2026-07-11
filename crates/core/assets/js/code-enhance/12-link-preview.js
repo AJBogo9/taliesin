@@ -1,9 +1,9 @@
-// Hover preview for internal links: hovering a citation, a cross
-// reference, or a section link pops up a small card previewing its target (the
-// reference entry, the figure + caption, the equation, the section heading + its
-// first lines). Server-rendered, so the clone needs no re-running (math is already
-// KaTeX HTML). Set up once via event delegation, so it survives block swaps;
-// table-of-contents links are skipped (navigational, not worth a popup).
+// Hover preview for internal links: hovering a citation or a cross
+// reference pops up a small card previewing its target (the reference entry, the
+// figure + caption, the equation, the table). Server-rendered, so the clone needs no
+// re-running (math is already KaTeX HTML). Set up once via event delegation, so it
+// survives block swaps. Section-heading links get NO preview (they carry no useful
+// extra context beyond their title); table-of-contents links are skipped too.
 function taliInitLinkPreview() {
   if (window.__qmdLinkPreview) return;
   window.__qmdLinkPreview = true;
@@ -65,24 +65,6 @@ function taliInitLinkPreview() {
       n.removeAttribute('data-source-file');
     });
   }
-  // Build the preview body for a target element. A heading shows itself plus the
-  // following block(s) up to the next heading; anything else is cloned whole.
-  function buildPreview(target) {
-    if (/^H[1-6]$/.test(target.tagName)) {
-      var frag = document.createElement('div');
-      var head = document.createElement('div');
-      head.className = 'tali-lp-head';
-      head.textContent = cleanClone(target).textContent;
-      frag.appendChild(head);
-      var n = target.nextElementSibling, added = 0;
-      while (n && added < 2 && !/^H[1-6]$/.test(n.tagName) && !n.id) {
-        frag.appendChild(cleanClone(n));
-        added++; n = n.nextElementSibling;
-      }
-      return frag;
-    }
-    return cleanClone(target);
-  }
   function place(link) {
     var r = link.getBoundingClientRect();
     var cw = card.offsetWidth, ch = card.offsetHeight;
@@ -97,7 +79,10 @@ function taliInitLinkPreview() {
     var id = decodeURIComponent((link.getAttribute('href') || '').slice(1));
     var target = id && document.getElementById(id);
     if (!target) return;
-    var body = buildPreview(target);
+    // Section-heading links get no preview: a heading's title is already visible in the
+    // link, so a card adds nothing but noise while reading.
+    if (/^H[1-6]$/.test(target.tagName)) return;
+    var body = cleanClone(target);
     if (!body || !body.textContent.trim()) return;
     card.innerHTML = '';
     card.appendChild(body);

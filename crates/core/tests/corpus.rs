@@ -854,7 +854,7 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
 }
 
 #[test]
-fn demo_book_hover_index_has_cross_page_snippets() {
+fn demo_book_hover_index_indexes_definitions_but_not_sections() {
     use taliesin_core::Site;
     let site = Site::discover(&corpus_dir().join("demo-book"));
     let idx = &site.hover_index_json;
@@ -867,18 +867,16 @@ fn demo_book_hover_index_has_cross_page_snippets() {
         idx.contains("Theorem"),
         "theorem snippet should carry its rendered label: {idx}"
     );
-    // …as are the two section anchors referenced across chapters.
+    // …but section headings are deliberately NOT hover-previewed (only definitional
+    // blocks — figures, theorems, tables, equations, listings — are), so a section
+    // anchor never enters the index even when referenced across chapters.
     assert!(
-        idx.contains("\"sec-methods\":\""),
-        "missing sec-methods: {idx}"
+        !idx.contains("\"sec-methods\":\""),
+        "section headings must not be hover-previewed: {idx}"
     );
-    assert!(idx.contains("\"sec-setup\":\""), "missing sec-setup: {idx}");
-    // Batch 4 (Bug 3): a hovered section heading in a numbered chapter carries its
-    // section number (only a numbered `<section>` heading emits `tali-section-number`),
-    // so the hover card matches the page it previews instead of dropping the number.
     assert!(
-        idx.contains("tali-section-number"),
-        "hover section snippets must carry their chapter section number: {idx}"
+        !idx.contains("\"sec-setup\":\""),
+        "section headings must not be hover-previewed: {idx}"
     );
     // `</script>` can't break the <script> wrapper the index is served inside.
     assert!(

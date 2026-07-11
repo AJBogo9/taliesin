@@ -219,8 +219,8 @@ mod links;
 pub use links::rewrite_qmd_links;
 use links::{
     block_tag_has_id, collect_html_ids, href_matches_page, html_to_qmd, is_external_or_special,
-    join_rel, join_rel_in_root, leading_tag_contains, manual_local_links, qmd_to_html,
-    resolve_href, sourcepos_start_line,
+    join_rel, join_rel_in_root, manual_local_links, qmd_to_html, resolve_href,
+    sourcepos_start_line,
 };
 
 impl Site {
