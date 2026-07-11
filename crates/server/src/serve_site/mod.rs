@@ -13,7 +13,7 @@
 
 use axum::Router;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{Query, State};
+use axum::extract::{Path as AxumPath, Query, State};
 use axum::response::{Html, IntoResponse};
 use axum::routing::get;
 use futures_util::{SinkExt, StreamExt};
@@ -182,6 +182,7 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         .route("/search-index.js", get(search_index_js))
         .route("/hover-index.js", get(hover_index_js))
         .route("/ws", get(ws_handler))
+        .route("/og/{name}", get(og_card))
         .fallback(page_or_asset)
         .with_state(app.clone());
     let router = with_lan_guard(router, token.clone());
@@ -243,6 +244,27 @@ async fn favicon() -> impl IntoResponse {
         [(axum::http::header::CONTENT_TYPE, "image/svg+xml")],
         FAVICON,
     )
+}
+
+/// Serve a preview OG card: find the page whose card hash matches `name` and render it
+/// on demand (so the shared og:image tag is never a dead link during preview).
+async fn og_card(
+    State(app): State<Arc<SiteApp>>,
+    AxumPath(name): AxumPath<String>,
+) -> impl IntoResponse {
+    let want = format!("og/{name}");
+    let bytes = {
+        let site = app.site.lock();
+        site.pages.iter().find_map(|page| {
+            let spec = taliesin_core::site::card_spec(&site, page);
+            (taliesin_core::site::card_rel_path(&spec) == want)
+                .then(|| taliesin_core::site::render_card(&spec))
+        })
+    };
+    match bytes {
+        Some(b) => ([(axum::http::header::CONTENT_TYPE, "image/png")], b).into_response(),
+        None => axum::http::StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 /// The full-text search index as a `search-index.js` script (assigns
