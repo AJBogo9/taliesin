@@ -180,10 +180,13 @@ fn truncate_line(f: &FontRef, text: &str, px: f32, max_w: f32) -> String {
 /// Wrap, then clamp to `max_lines`, ellipsizing the last kept line if content was cut.
 #[allow(dead_code)] // wired up from Task 4 onward
 fn wrap_clamp(f: &FontRef, text: &str, px: f32, max_w: f32, max_lines: usize) -> Vec<String> {
+    if max_lines == 0 {
+        return Vec::new();
+    }
     let mut lines = wrap(f, text, px, max_w);
     if lines.len() > max_lines {
         lines.truncate(max_lines);
-        let last = lines.pop().unwrap();
+        let last = lines.pop().unwrap(); // safe: max_lines >= 1, so >=1 line remains
         lines.push(truncate_line(f, &format!("{last} \u{2026}"), px, max_w));
     }
     lines
@@ -309,6 +312,50 @@ mod tests {
         for line in &lines {
             assert!(text_width(&f, line, 40.0, 0.0) <= max, "line {line:?} fits");
         }
+    }
+
+    #[test]
+    fn truncate_line_adds_ellipsis_only_when_overflowing() {
+        let f = font();
+        assert_eq!(truncate_line(&f, "hi", 40.0, 1000.0), "hi");
+        let t = truncate_line(&f, "a very long line of words here", 40.0, 120.0);
+        assert!(t.ends_with('\u{2026}'), "overflow gets an ellipsis: {t:?}");
+        assert!(
+            text_width(&f, &t, 40.0, 0.0) <= 120.0,
+            "truncated line fits"
+        );
+    }
+
+    #[test]
+    fn wrap_clamp_limits_lines_ellipsizes_on_cut_and_survives_zero() {
+        let f = font();
+        let text = "the expectation maximization algorithm derived from first principles at length";
+        let two = wrap_clamp(&f, text, 40.0, 200.0, 2);
+        assert!(two.len() <= 2, "clamped to <=2 lines");
+        assert!(
+            two.last().unwrap().ends_with('\u{2026}'),
+            "last line ellipsized when content cut"
+        );
+        assert_eq!(
+            wrap_clamp(&f, "two words", 40.0, 1000.0, 2),
+            vec!["two words".to_string()]
+        );
+        assert!(
+            wrap_clamp(&f, "hello", 40.0, 300.0, 0).is_empty(),
+            "max_lines==0 -> empty, no panic"
+        );
+    }
+
+    #[test]
+    fn wrap_keeps_an_overlong_word_on_its_own_line() {
+        let f = font();
+        let lines = wrap(&f, "supercalifragilisticexpialidocious", 40.0, 50.0);
+        assert_eq!(
+            lines.len(),
+            1,
+            "an over-long single word is one line, not dropped"
+        );
+        assert!(lines[0].contains("supercalifragilistic"));
     }
 
     #[test]
