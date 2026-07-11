@@ -20,6 +20,7 @@ title: "CLI reference"
 | `init [dir]` | Scaffold a minimal previewable site (`_site.yml` + `index.tmd`) in `dir` (default `.`); refuses to overwrite |
 | `new <post\|page\|deck> <slug>` | Scaffold one document, correct on its first save; refuses to overwrite |
 | `symbols <file.tmd> [--format human\|json]` | List the document's cross-reference targets (what you can write after `@`) |
+| `completions <bash\|zsh\|fish>` | Print a shell completion script to stdout (command names + file arguments) |
 
 `check` renders the document or site in memory and reports everything that flows
 through the diagnostics channel: unknown front-matter / `_site.yml` / cell-option /
@@ -311,6 +312,23 @@ minted each server start, and loopback (`127.0.0.1`) is exempt. See
 Put `target/release/taliesin` on your `PATH` (a symlink, or a small wrapper script
 that rebuilds it when the tool's sources change) so `taliesin preview <file>`
 works from anywhere.
+
+## Shell completions
+
+`taliesin completions <bash|zsh|fish>` prints a completion script to stdout: it
+completes the subcommand as the first word (and the shell name after `completions`),
+then falls back to file completion for the document argument. The command list is
+generated from the CLI itself, so it can never drift from the commands the tool
+actually has (a test pins the two together).
+
+```sh
+# bash
+taliesin completions bash > ~/.local/share/bash-completion/completions/taliesin
+# zsh (into a directory on your $fpath, then run compinit)
+taliesin completions zsh > "${fpath[1]}/_taliesin"
+# fish
+taliesin completions fish > ~/.config/fish/completions/taliesin.fish
+```
 
 ## Environment
 

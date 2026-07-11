@@ -50,6 +50,7 @@ fn main() -> ExitCode {
         Some("new") => cli::cmd_new(&args),
         // `preview`/`dev` are vite-style aliases for the live server.
         Some("serve" | "preview" | "dev") => cli::cmd_serve(&args),
+        Some("completions") => cli::cmd_completions(&args),
         Some("--version" | "-V") => {
             println!(
                 "taliesin {} ({})",
@@ -86,8 +87,21 @@ fn main() -> ExitCode {
 
 /// Every subcommand name (aliases included), for the unknown-command did-you-mean.
 const COMMANDS: &[&str] = &[
-    "render", "build", "blocks", "schema", "vocab", "symbols", "check", "init", "new", "serve",
-    "preview", "dev", "publish", "help",
+    "render",
+    "build",
+    "blocks",
+    "schema",
+    "vocab",
+    "symbols",
+    "check",
+    "init",
+    "new",
+    "serve",
+    "preview",
+    "dev",
+    "publish",
+    "help",
+    "completions",
 ];
 
 /// The `ENV:` block of `usage()`. A const so `env_help_lists_every_runtime_env_var` can
@@ -153,6 +167,9 @@ fn usage() {
     println!("  symbols <file.tmd> [--format human|json]  list the doc's cross-reference targets");
     println!(
         "  check <file|dir> [--format human|json]  list located diagnostics; exits non-zero if any"
+    );
+    println!(
+        "  completions <bash|zsh|fish>  print a shell completion script to stdout (install hint in --help)"
     );
     println!("  help, --version            show this help / the version");
     println!();
@@ -311,6 +328,20 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \n\
              Example:\n\
              \x20 taliesin publish . --dry-run\n"
+        }
+        "completions" => {
+            "taliesin completions <bash|zsh|fish>\n\
+             \n\
+             Print a shell completion script to stdout (command names + file arguments).\n\
+             The offered commands are generated from the CLI itself, so they never drift.\n\
+             \n\
+             Install:\n\
+             \x20 bash  taliesin completions bash > ~/.local/share/bash-completion/completions/taliesin\n\
+             \x20 zsh   taliesin completions zsh  > \"${fpath[1]}/_taliesin\"   # then: compinit\n\
+             \x20 fish  taliesin completions fish > ~/.config/fish/completions/taliesin.fish\n\
+             \n\
+             Example:\n\
+             \x20 taliesin completions bash\n"
         }
         _ => return None,
     };

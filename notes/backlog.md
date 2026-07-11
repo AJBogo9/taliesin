@@ -52,10 +52,6 @@ evidence in [2026-07-09-polish-audit-findings.md](2026-07-09-polish-audit-findin
   `site/discovery.rs`'s `website_pages` the same H1 fallback `book.rs::push_chapter` has, so
   `<title>`, `og:title`, cards, nav and search all agree. Widens blast radius to four consumers;
   no corpus page exercises it (add a fixture first).
-- **Shell completions** (M, med; audit §7). No completions and no seam: the CLI is hand-rolled, no
-  clap. 12 stable command names; a static bash/zsh/fish script is ~120 lines. If built, gate the
-  command list against `main.rs::COMMANDS` so it cannot drift, the way
-  `env_help_lists_every_runtime_env_var` gates the ENV block.
 - **The date renders verbatim** (S, low, taste; audit §8). `render/mod.rs` emits `2026-04-14`, not
   "14 April 2026". Pure taste, no defect. (Alt-less `![](x.png)` deliberately not filed: alt-less
   is the a11y convention for decorative.)
