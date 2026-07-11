@@ -27,6 +27,17 @@ they cannot be correct. So: set `url:`, get the whole discoverability set; leave
 unset and the build is byte-for-byte as today. No new config knob (a better default,
 not an option). This matches the audit's "auto when `url:` is set."
 
+**Design principle — zero dedicated SEO effort.** The author never writes or maintains
+an SEO/LLM file. Every artifact is *derived from content written for humans*: the site
+`title:`/`description:`, the home page's `hero:` (eyebrow/headline/lead), and each
+post's `description:` (which already doubles as its card text). The single input is
+`url:`, set once. Someone can therefore "just focus on writing" and the whole
+discoverability surface — feed, sitemap, structured data, and the LLM files that answer
+"who is this person and what do they do?" — regenerates from their pages on every build,
+always in sync with what they actually wrote. Any field that is absent degrades
+gracefully to the next-best authored source (see the fallbacks below), so a site is
+never left with a thin or empty artifact.
+
 **Non-goals (YAGNI):** BreadcrumbList JSON-LD (not selected); per-format RSS 2.0
 (Atom only); full-content feeds (summary + link only); an `image/*` sitemap
 extension; a discovery `<link>` for `llms.txt` (rely on the well-known path); AI
@@ -94,9 +105,11 @@ wrapped in `<script type="application/ld+json">`:
   `description`, `mainEntityOfPage` (absolute page URL), `url`.
 - **The root `index` page** (depth 0, `index.html`) → a two-node `@graph`:
   - `WebSite`: `name` (site title), `url` (site url), `description`.
-  - `Person`: `name` (`config.author`), `url` (site url), `sameAs` = the footer
-    social links (LinkedIn / GitHub / …), so search + assistants tie the site to the
-    real person. If no footer links, `sameAs` is omitted.
+  - `Person`: `name` (`config.author`, falling back to the site `title:` — which is
+    the author's name on a personal site, so no `author:` key is required), `url`
+    (site url), `sameAs` = the footer social links (LinkedIn / GitHub / …), so search
+    + assistants tie the site to the real person. If no footer links, `sameAs` is
+    omitted.
 
 Emitted only when `url:` is set (absolute URLs required). JSON string values are
 JSON-escaped (not HTML-escaped) inside the script.
@@ -110,9 +123,9 @@ answer "who is this person and what do they do?":
 ```
 # <site title>            (e.g. "Andreas Bogossian")
 
-> <site description>      (e.g. "Machine learning and statistics, worked out from first principles")
+> <identity tagline>      (e.g. "Machine learning, worked out from first principles")
 
-<About paragraph: the home page's hero lead / first prose block, if any>
+<About paragraph: the home page's hero headline + lead>
 
 ## Posts
 - [<title>](<absolute url>): <description>
@@ -127,10 +140,20 @@ answer "who is this person and what do they do?":
 - [Publications](<absolute url>): …
 ```
 
-Sections are built from the discovered listings (each dated listing → a section
-named after its page title) plus remaining top-level nav pages under "Pages". Links
-are absolute; descriptions come from each page's front-matter `description` (or the
-nav label). Draft pages are excluded.
+**Identity is auto-derived from the profile (home) page — nothing SEO-specific to
+write.** The header composes, each part with a fallback so it is never empty:
+- **H1** = site `title:` (which, for a personal site, is the author's name).
+- **blockquote tagline** = site `description:`; if unset, the home hero `eyebrow:`;
+  if that is unset, the hero `headline:`.
+- **About paragraph** = the home page's `hero:` `headline` + `lead` (the author's own
+  human-facing positioning). If the home has no hero, its first prose block(s). If
+  neither, omit the About paragraph (header still carries H1 + tagline).
+
+Sections are built from the discovered listings (each dated listing → a section named
+after its page title) plus remaining top-level nav pages under "Pages". Links are
+absolute; descriptions come from each page's front-matter `description` (or the nav
+label). Draft pages are excluded. The whole file regenerates on every build, so it
+never drifts from the site's real content.
 
 ### 6. llms-full.txt (the full clean content)
 
