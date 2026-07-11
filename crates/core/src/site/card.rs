@@ -5,6 +5,9 @@
 
 use ab_glyph::{Font, FontRef, PxScale, ScaleFont, point};
 
+use super::{Page, Site};
+use crate::hash::fnv1a;
+
 pub const CARD_W: u32 = 1200;
 pub const CARD_H: u32 = 630;
 /// Bumped when the template changes, to cache-bust every card URL.
@@ -12,19 +15,12 @@ pub const CARD_DESIGN_VERSION: u32 = 1;
 /// Encoded card format extension (see the plan's Global Constraints).
 pub const CARD_EXT: &str = "png";
 
-// Task 1 bundles the font and palette but only Task 4 draws text/borders with them;
-// silence dead_code until then rather than trimming what later tasks need verbatim.
-#[allow(dead_code)]
 const FONT_BYTES: &[u8] = include_bytes!("../../assets/fonts/Newsreader[opsz,wght].ttf");
 
 const BG: [u8; 3] = [22, 24, 29];
-#[allow(dead_code)]
 const FG: [u8; 3] = [230, 230, 230];
-#[allow(dead_code)]
 const MUTED: [u8; 3] = [154, 160, 170];
-#[allow(dead_code)]
 const ACCENT: [u8; 3] = [154, 168, 220];
-#[allow(dead_code)]
 const BORDER: [u8; 3] = [54, 58, 68];
 
 /// The text + branding a card renders. Derived per page by `card_spec` (Task 4).
@@ -52,7 +48,6 @@ impl Canvas {
         Canvas { w, h, px }
     }
 
-    #[allow(dead_code)] // wired up from Task 4 onward (fill_rect + glyph drawing)
     fn blend(&mut self, x: i32, y: i32, color: [u8; 3], cov: f32) {
         if x < 0 || y < 0 || x >= self.w as i32 || y >= self.h as i32 {
             return;
@@ -66,7 +61,6 @@ impl Canvas {
         }
     }
 
-    #[allow(dead_code)] // wired up from Task 4 onward
     fn fill_rect(&mut self, x0: i32, y0: i32, x1: i32, y1: i32, color: [u8; 3]) {
         for y in y0.max(0)..y1.min(self.h as i32) {
             for x in x0.max(0)..x1.min(self.w as i32) {
@@ -75,7 +69,6 @@ impl Canvas {
         }
     }
 
-    #[allow(dead_code)] // wired up from Task 4 onward (bell-curve mark)
     /// Stroke a polyline with round-ish AA: coverage falls off within half a pixel
     /// of the `width`-thick centerline. Used for the bell-curve mark.
     fn stroke_polyline(&mut self, pts: &[(f32, f32)], width: f32, color: [u8; 3]) {
@@ -124,7 +117,6 @@ impl Canvas {
 
 /// The bundled Newsreader font (default = Regular instance). Cheap to construct
 /// (borrows the static bytes); constructed per render, which stays deterministic.
-#[allow(dead_code)] // wired up from Task 4 onward
 fn font() -> FontRef<'static> {
     FontRef::try_from_slice(FONT_BYTES).expect("bundled Newsreader is a valid TTF")
 }
@@ -162,7 +154,6 @@ fn wrap(f: &FontRef, text: &str, px: f32, max_w: f32) -> Vec<String> {
 }
 
 /// Truncate a single line to `max_w` with a trailing ellipsis when it overflows.
-#[allow(dead_code)] // wired up from Task 4 onward
 fn truncate_line(f: &FontRef, text: &str, px: f32, max_w: f32) -> String {
     if text_width(f, text, px, 0.0) <= max_w {
         return text.to_string();
@@ -178,7 +169,6 @@ fn truncate_line(f: &FontRef, text: &str, px: f32, max_w: f32) -> String {
 }
 
 /// Wrap, then clamp to `max_lines`, ellipsizing the last kept line if content was cut.
-#[allow(dead_code)] // wired up from Task 4 onward
 fn wrap_clamp(f: &FontRef, text: &str, px: f32, max_w: f32, max_lines: usize) -> Vec<String> {
     if max_lines == 0 {
         return Vec::new();
@@ -193,7 +183,6 @@ fn wrap_clamp(f: &FontRef, text: &str, px: f32, max_w: f32, max_lines: usize) ->
 }
 
 impl Canvas {
-    #[allow(dead_code)] // wired up from Task 4 onward
     #[allow(clippy::too_many_arguments)] // matches the brief's spec verbatim
     /// Draw `text` with its baseline at (`x`, `baseline`), `tracking` px between glyphs.
     fn draw_text(
@@ -227,12 +216,161 @@ impl Canvas {
     }
 }
 
+/// Host portion of `url:` (`https://ex.com/blog/` -> `ex.com`).
+fn host_of(url: &str) -> String {
+    let after_scheme = url.split("://").nth(1).unwrap_or(url);
+    after_scheme
+        .split('/')
+        .next()
+        .unwrap_or(after_scheme)
+        .trim_end_matches('/')
+        .to_string()
+}
+
+/// Derive a page's card text: home (has a `hero:`) uses the hero; a post (`date:`)
+/// uses its title + first category (else date); any page falls back to the site title.
+pub fn card_spec(site: &Site, page: &Page) -> CardSpec {
+    let site_title = site.config.title.clone().unwrap_or_default();
+    let domain = site.config.url.as_deref().map(host_of);
+    if let Some(hero) = page.hero.as_ref() {
+        return CardSpec {
+            eyebrow: hero.eyebrow.clone(),
+            headline: hero
+                .headline
+                .clone()
+                .or_else(|| page.title.clone())
+                .unwrap_or_else(|| site_title.clone()),
+            lead: hero
+                .lead
+                .clone()
+                .or_else(|| site.config.description.clone()),
+            footer_wordmark: site_title,
+            domain,
+        };
+    }
+    let eyebrow = if page.date.is_some() {
+        page.categories
+            .first()
+            .cloned()
+            .or_else(|| page.date.clone())
+    } else {
+        None
+    };
+    CardSpec {
+        eyebrow,
+        headline: page.title.clone().unwrap_or_else(|| site_title.clone()),
+        lead: page.description.clone(),
+        footer_wordmark: site_title,
+        domain,
+    }
+}
+
+/// Deterministic content key: design version + every spec field + a font tag.
+fn spec_key(spec: &CardSpec) -> String {
+    format!(
+        "v{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}newsreader",
+        CARD_DESIGN_VERSION,
+        spec.eyebrow.as_deref().unwrap_or(""),
+        spec.headline,
+        spec.lead.as_deref().unwrap_or(""),
+        spec.footer_wordmark,
+        spec.domain.as_deref().unwrap_or(""),
+    )
+}
+
+/// Site-root-relative card file path, e.g. `og/1a2b3c4d5e6f7a8b.png`. Same hash the
+/// build writes and `card_url` serves, so the URL and the file always agree.
+pub fn card_rel_path(spec: &CardSpec) -> String {
+    format!("og/{:016x}.{}", fnv1a(&spec_key(spec)), CARD_EXT)
+}
+
+/// The page's card URL (`/og/<hash>.png`), or `None` when `_site.yml` has no `url:`.
+#[allow(dead_code)] // wired into og:image/twitter:image/JSON-LD by Task 5
+pub(crate) fn card_url(site: &Site, page: &Page) -> Option<String> {
+    site.config.url.as_ref()?;
+    Some(format!("/{}", card_rel_path(&card_spec(site, page))))
+}
+
 /// Render `spec` onto a 1200x630 dark card and return the encoded PNG bytes.
-/// Task 1 fills only the background; Task 4 composes the full card.
 pub fn render_card(spec: &CardSpec) -> Vec<u8> {
-    let _ = spec; // used from Task 4 onward
-    let canvas = Canvas::new(CARD_W, CARD_H, BG);
-    canvas.into_png()
+    let f = font();
+    let mut c = Canvas::new(CARD_W, CARD_H, BG);
+    let pad = 72.0_f32;
+    let max_w = CARD_W as f32 - pad * 2.0;
+
+    // Eyebrow: small caps, letter-spaced, muted.
+    if let Some(eb) = spec.eyebrow.as_deref().filter(|s| !s.is_empty()) {
+        c.draw_text(&f, &eb.to_uppercase(), pad, 150.0, 28.0, MUTED, 3.0);
+    }
+
+    // Headline: large fg serif, up to 3 lines, one shrink step if it overflows.
+    let mut size = 76.0_f32;
+    let mut lines = wrap(&f, &spec.headline, size, max_w);
+    if lines.len() > 3 {
+        size = 60.0;
+        lines = wrap(&f, &spec.headline, size, max_w);
+    }
+    lines.truncate(3);
+    let line_h = size * 1.18;
+    let mut y = 214.0 + size;
+    for line in &lines {
+        c.draw_text(&f, line, pad, y, size, FG, 0.0);
+        y += line_h;
+    }
+
+    // Lead: muted, up to 2 lines, ellipsized.
+    if let Some(lead) = spec.lead.as_deref().filter(|s| !s.is_empty()) {
+        let lp = 34.0_f32;
+        let mut ly = y + 24.0;
+        for line in wrap_clamp(&f, lead, lp, max_w, 2) {
+            c.draw_text(&f, &line, pad, ly, lp, MUTED, 0.0);
+            ly += lp * 1.3;
+        }
+    }
+
+    // Footer: hairline rule, bell-curve mark + wordmark (left), domain (right).
+    c.fill_rect(pad as i32, 540, (CARD_W as f32 - pad) as i32, 542, BORDER);
+    let foot = 588.0_f32;
+    // Bell-curve mark (gaussian), ~52px wide, sitting on a short baseline.
+    let mark_x = pad;
+    let mark_w = 52.0;
+    let mark_h = 26.0;
+    let n = 48;
+    let curve: Vec<(f32, f32)> = (0..=n)
+        .map(|i| {
+            let t = i as f32 / n as f32;
+            let u = (t - 0.5) * 6.0;
+            (
+                mark_x + t * mark_w,
+                (foot - 6.0) - (-(u * u) / 2.0).exp() * mark_h,
+            )
+        })
+        .collect();
+    c.stroke_polyline(&curve, 4.0, ACCENT);
+    c.stroke_polyline(
+        &[(mark_x, foot - 6.0), (mark_x + mark_w, foot - 6.0)],
+        3.0,
+        ACCENT,
+    );
+    // Wordmark after the mark.
+    if !spec.footer_wordmark.is_empty() {
+        c.draw_text(
+            &f,
+            &spec.footer_wordmark,
+            mark_x + mark_w + 22.0,
+            foot,
+            30.0,
+            FG,
+            0.0,
+        );
+    }
+    // Domain, right-aligned.
+    if let Some(dom) = spec.domain.as_deref().filter(|s| !s.is_empty()) {
+        let w = text_width(&f, dom, 28.0, 0.0);
+        c.draw_text(&f, dom, CARD_W as f32 - pad - w, foot, 28.0, MUTED, 0.0);
+    }
+
+    c.into_png()
 }
 
 fn dist_pt_seg(p: (f32, f32), a: (f32, f32), b: (f32, f32)) -> f32 {
@@ -253,6 +391,7 @@ fn dist_pt_seg(p: (f32, f32), a: (f32, f32), b: (f32, f32)) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::site::{Site, tests::write_site};
 
     fn sample() -> CardSpec {
         CardSpec {
@@ -366,5 +505,111 @@ mod tests {
             c.px.chunks(4).any(|p| p[0] != BG[0]),
             "some glyph pixels drawn"
         );
+    }
+
+    #[test]
+    fn card_spec_home_uses_the_hero() {
+        let root = write_site(
+            "cardhome",
+            &[
+                (
+                    "_site.yml",
+                    "title: Andreas Bogossian\nurl: https://ex.com\n",
+                ),
+                (
+                    "index.tmd",
+                    "---\nhero:\n  eyebrow: Writing\n  headline: First principles\n  lead: Machine learning, worked out.\n---\n\nHi.\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let home = site.pages.iter().find(|p| p.url == "index.html").unwrap();
+        let spec = card_spec(&site, home);
+        assert_eq!(spec.eyebrow.as_deref(), Some("Writing"));
+        assert_eq!(spec.headline, "First principles");
+        assert_eq!(spec.lead.as_deref(), Some("Machine learning, worked out."));
+        assert_eq!(spec.domain.as_deref(), Some("ex.com"));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn card_spec_post_uses_title_and_first_category() {
+        let root = write_site(
+            "cardpost",
+            &[
+                ("_site.yml", "title: Blog\nurl: https://ex.com\n"),
+                (
+                    "posts/a/index.tmd",
+                    "---\ntitle: The EM algorithm\ndate: 2026-05-15\ndescription: A derivation.\ncategories: [Statistics, ML]\n---\n\nx\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let post = site
+            .pages
+            .iter()
+            .find(|p| p.url.contains("posts/a"))
+            .unwrap();
+        let spec = card_spec(&site, post);
+        assert_eq!(spec.headline, "The EM algorithm");
+        assert_eq!(spec.eyebrow.as_deref(), Some("Statistics"));
+        assert_eq!(spec.lead.as_deref(), Some("A derivation."));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn card_url_gated_on_site_url_and_names_a_png() {
+        let with = write_site(
+            "cardurly",
+            &[
+                ("_site.yml", "title: B\nurl: https://ex.com\n"),
+                ("index.tmd", "---\ntitle: H\n---\n\nx\n"),
+            ],
+        );
+        let site = Site::discover(&with);
+        let home = site.pages.iter().find(|p| p.url == "index.html").unwrap();
+        let url = card_url(&site, home).expect("url set -> Some");
+        assert!(
+            url.starts_with("/og/") && url.ends_with(".png"),
+            "got {url}"
+        );
+        assert_eq!(format!("/{}", card_rel_path(&card_spec(&site, home))), url);
+        let _ = std::fs::remove_dir_all(&with);
+
+        let without = write_site(
+            "cardnourl",
+            &[
+                ("_site.yml", "title: B\n"),
+                ("index.tmd", "---\ntitle: H\n---\n\nx\n"),
+            ],
+        );
+        let site2 = Site::discover(&without);
+        let home2 = site2.pages.iter().find(|p| p.url == "index.html").unwrap();
+        assert!(card_url(&site2, home2).is_none(), "no url -> None");
+        let _ = std::fs::remove_dir_all(&without);
+    }
+
+    #[test]
+    fn render_card_survives_empty_and_overlong_text() {
+        let long = "word ".repeat(80);
+        for spec in [
+            CardSpec {
+                eyebrow: None,
+                headline: String::new(),
+                lead: None,
+                footer_wordmark: String::new(),
+                domain: None,
+            },
+            CardSpec {
+                eyebrow: Some(long.clone()),
+                headline: long.clone(),
+                lead: Some(long),
+                footer_wordmark: "W".into(),
+                domain: Some("x.com".into()),
+            },
+        ] {
+            let png = render_card(&spec);
+            assert_eq!(png_dims(&png), (CARD_W, CARD_H));
+        }
     }
 }

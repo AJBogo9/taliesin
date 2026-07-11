@@ -189,7 +189,11 @@ mod card;
 mod chrome;
 pub use book::{Book, BookEntry};
 use book::{book_pages, build_book};
-pub use card::{CARD_DESIGN_VERSION, CARD_EXT, CARD_H, CARD_W, CardSpec, render_card};
+#[allow(unused_imports)] // wired into og:image/twitter:image/JSON-LD by Task 5
+pub(crate) use card::card_url;
+pub use card::{
+    CARD_DESIGN_VERSION, CARD_EXT, CARD_H, CARD_W, CardSpec, card_rel_path, card_spec, render_card,
+};
 mod backlinks;
 mod categories;
 mod feed;
