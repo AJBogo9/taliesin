@@ -187,7 +187,7 @@ A `listing:` block fills the page with one card per document found under
 ```yaml
 listing:
   contents: posts          # directory to crawl (relative to this page); required
-  type: grid               # grid | (default) stacked list
+  type: grid               # grid (cards) | list (rows + thumbnail) | default (text rows)
   sort: "date desc"        # date desc (default, newest first) | date asc (oldest first)
   max-items: 10            # cap the number of cards (omit for all)
   categories: true         # render a category filter row above the cards
@@ -197,7 +197,7 @@ listing:
 | Key | Meaning |
 |---|---|
 | `contents` | Directory to crawl, relative to the index page. Every `.tmd` under it with a `title:` becomes a card. Required |
-| `type` | `grid` lays the cards out as a grid (card images show only in `grid`); the default stacked `list` shows date, title, and description |
+| `type` | `grid` tiles the cards with their images; `list` is a reading-first stacked layout that keeps each card's image as a thumbnail beside the text; `default` (the fallback) is the same stacked layout without images, for a formal text list. Both `grid` and `list` show the `image:` thumbnail; `default` does not |
 | `sort` | `"date desc"` (the default) is newest-first; `"date asc"` is oldest-first. The sort key is each page's front-matter `date:` (ISO strings sort chronologically), with the file path as the tiebreak. Any value that isn't `asc` is treated as descending |
 | `max-items` | Cap the number of cards shown; omit it to list every match |
 | `categories` | `true` renders a filter row above the cards: one chip per category found across the listing (with a count), plus an "All" chip that clears the filter. Clicking a chip (or a card's category badge) filters the cards in the browser |
@@ -212,7 +212,7 @@ matter. To put a page into a listing's category filter, set `categories:` on
 title: "A post about rust"
 date: 2026-06-20
 categories: [rust, performance]   # these become the card's badges + filter chips
-image: cover.png                  # shown on the card in a `type: grid` listing
+image: cover.png                  # card thumbnail in a `type: grid` or `type: list` listing
 ---
 ```
 

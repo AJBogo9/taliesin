@@ -301,7 +301,7 @@
           "name": "sort"
         },
         {
-          "description": "Listing layout (`default`, `grid`, `table`).",
+          "description": "Listing layout (`default` text rows, `grid` cards, `list` rows with thumbnails).",
           "name": "type"
         },
         {

@@ -4,9 +4,8 @@ title-block-style: none
 listing:
   contents: posts
   sort: "date desc"
-  type: grid
+  type: list
   categories: true
-page-layout: full
 ---
 
 I write about concepts I'm working to understand, mostly machine learning, statistics, and algorithms.

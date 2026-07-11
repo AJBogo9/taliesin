@@ -95,7 +95,10 @@ fn nested_key_descriptions() -> &'static [(&'static str, &'static str)] {
         ("contents", "Glob(s) of pages to include."),
         ("id", "Listing element id."),
         ("sort", "Sort field and order."),
-        ("type", "Listing layout (`default`, `grid`, `table`)."),
+        (
+            "type",
+            "Listing layout (`default` text rows, `grid` cards, `list` rows with thumbnails).",
+        ),
         ("max-items", "Maximum entries shown."),
         ("categories", "Show a category filter."),
         // about:

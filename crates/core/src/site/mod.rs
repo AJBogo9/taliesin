@@ -117,8 +117,13 @@ pub struct ListingSpec {
     pub id: Option<String>,
     /// The directory whose pages are listed (relative to the hosting page).
     pub contents: String,
-    /// `type: grid` → card grid; otherwise a stacked default list.
+    /// `type: grid` → card grid; `type: list` → stacked rows WITH the `image:`
+    /// thumbnail beside the text; otherwise (`default`) a stacked text list.
     pub grid: bool,
+    /// Whether cards show their `image:` thumbnail: `grid` and `list`, not plain
+    /// `default`. Lets a reading-first `list` keep the figure thumbnails while a
+    /// formal text listing (e.g. a CV's projects) stays image-free.
+    pub with_image: bool,
     /// Newest-first when true (`sort: "date desc"`, the default).
     pub sort_desc: bool,
     /// `max-items:` cap, if any.
@@ -1044,7 +1049,7 @@ impl Site {
         let items = self.collection(host, spec, warnings);
         let cards: String = items
             .iter()
-            .map(|p| self.card_html(p, &up, spec.grid))
+            .map(|p| self.card_html(p, &up, spec.with_image))
             .collect();
         let grid = format!("<div class=\"tali-listing tali-listing-{layout}\">{cards}</div>");
 
@@ -1080,9 +1085,9 @@ impl Site {
         )
     }
 
-    fn card_html(&self, p: &Page, up: &str, grid: bool) -> String {
+    fn card_html(&self, p: &Page, up: &str, with_image: bool) -> String {
         let href = format!("{up}{}", p.url);
-        let img = match (grid, &p.card_image) {
+        let img = match (with_image, &p.card_image) {
             (true, Some(src)) => format!(
                 "<img class=\"tali-card-img\" src=\"{up}{}\" alt=\"{}\" loading=\"lazy\">",
                 esc(src),
@@ -1890,6 +1895,54 @@ mod tests {
         assert!(
             html.contains("alt=\"A nice pic\""),
             "card alt emitted: {html}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn list_layout_shows_thumbnail_but_default_stays_text_only() {
+        // `type: list` is a stacked (non-grid) layout that KEEPS the `image:` thumbnail
+        // (reading-first feed); plain `type: default` is the same stacked layout WITHOUT
+        // the thumbnail (a formal text list, e.g. a CV's projects). Both must differ only
+        // in the image, and neither is the `grid` tile layout.
+        let root = write_site(
+            "listvsdefault",
+            &[
+                ("_site.yml", "title: Demo\n"),
+                (
+                    "feed.tmd",
+                    "---\ntitle: Feed\nlisting:\n  contents: posts\n  type: list\n---\n\n# Feed\n",
+                ),
+                (
+                    "plain.tmd",
+                    "---\ntitle: Plain\nlisting:\n  contents: posts\n  type: default\n---\n\n# Plain\n",
+                ),
+                (
+                    "posts/p.tmd",
+                    "---\ntitle: Post\nimage: pic.png\nimage-alt: A nice pic\n---\n\nBody.\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let (feed, _) = render_page(&site, "feed.tmd");
+        let (plain, _) = render_page(&site, "plain.tmd");
+        // Match the emitted class ATTRIBUTE, not the inlined CSS rule names (the full
+        // page bundles site.css, which mentions every class).
+        // list: stacked layout, thumbnail present.
+        assert!(
+            feed.contains("class=\"tali-listing tali-listing-default\"")
+                && !feed.contains("class=\"tali-listing tali-listing-grid\""),
+            "list is a stacked (non-grid) layout: {feed}"
+        );
+        assert!(
+            feed.contains("class=\"tali-card-img\"") && feed.contains("alt=\"A nice pic\""),
+            "list keeps the thumbnail: {feed}"
+        );
+        // default: same stacked layout, NO thumbnail.
+        assert!(
+            plain.contains("class=\"tali-listing tali-listing-default\"")
+                && !plain.contains("class=\"tali-card-img\""),
+            "default stays text-only: {plain}"
         );
         let _ = std::fs::remove_dir_all(&root);
     }

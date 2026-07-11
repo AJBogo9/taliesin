@@ -201,10 +201,12 @@ pub(crate) fn parse_listing_spec(v: &serde_yaml::Value) -> Option<ListingSpec> {
         .get("max-items")
         .and_then(serde_yaml::Value::as_u64)
         .map(|n| n as usize);
+    let ty = scalar(v.get("type"));
     Some(ListingSpec {
         id: scalar(v.get("id")),
         contents,
-        grid: scalar(v.get("type")).as_deref() == Some("grid"),
+        grid: ty.as_deref() == Some("grid"),
+        with_image: matches!(ty.as_deref(), Some("grid") | Some("list")),
         sort_desc,
         max_items,
         categories: v
