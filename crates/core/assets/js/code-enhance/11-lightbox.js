@@ -154,11 +154,11 @@ function taliInitLightbox() {
     }
   });
 
-  // Expose the open helpers so the keyboard decoration (which runs per-mount through the
-  // enhancer registry) can drive the lightbox by element type without re-delegating clicks.
+  // Keyboard entry point for the decorated types (images + mermaid), driven by the per-mount
+  // decoration below. A `{{< video >}}` is intentionally absent: it is not keyboard-decorated
+  // (it keeps native media semantics), and its mouse click-zoom goes through the delegation above.
   window.__qmdLightboxOpen = function (el) {
     if (el.matches && el.matches('figure img, img.lightbox')) openImg(el);
-    else if (el.matches && el.matches('.tali-video video')) openVideo(el);
     else if (el.matches && el.matches('pre.mermaid')) { if (el.querySelector('svg')) openMermaid(el); }
   };
 }
