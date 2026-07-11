@@ -297,33 +297,71 @@ pub fn render_card(spec: &CardSpec) -> Vec<u8> {
     let pad = 72.0_f32;
     let max_w = CARD_W as f32 - pad * 2.0;
 
-    // Eyebrow: small caps, letter-spaced, muted.
-    if let Some(eb) = spec.eyebrow.as_deref().filter(|s| !s.is_empty()) {
-        c.draw_text(&f, &eb.to_uppercase(), pad, 150.0, 28.0, MUTED, 3.0);
-    }
+    // Vertical layout: measure the eyebrow + headline + lead block and center it in the
+    // region between the top margin and the footer rule (y=540), so a tall 2-line
+    // headline + 2-line lead never collides with the rule and a sparse card stays
+    // balanced. Baselines are approximated as 0.76*size below each line's top; the
+    // clearance to the rule stays >40px in the worst case, so the approximation is safe.
+    const REGION_TOP: f32 = 96.0;
+    const RULE_Y: f32 = 540.0;
+    const EYE_SIZE: f32 = 28.0;
+    const LEAD_SIZE: f32 = 34.0;
+    const EYE_GAP: f32 = 26.0; // eyebrow box -> headline
+    const HEAD_GAP: f32 = 30.0; // headline -> lead
+
+    let eyebrow = spec
+        .eyebrow
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_uppercase());
 
     // Headline: large fg serif, up to 3 lines, one shrink step if it overflows.
-    let mut size = 76.0_f32;
-    let mut lines = wrap(&f, &spec.headline, size, max_w);
-    if lines.len() > 3 {
-        size = 60.0;
-        lines = wrap(&f, &spec.headline, size, max_w);
+    let mut hsize = 76.0_f32;
+    let mut hlines = wrap(&f, &spec.headline, hsize, max_w);
+    if hlines.len() > 3 {
+        hsize = 60.0;
+        hlines = wrap(&f, &spec.headline, hsize, max_w);
     }
-    lines.truncate(3);
-    let line_h = size * 1.18;
-    let mut y = 214.0 + size;
-    for line in &lines {
-        c.draw_text(&f, line, pad, y, size, FG, 0.0);
-        y += line_h;
-    }
+    hlines.truncate(3);
+    let head_lh = hsize * 1.16;
 
     // Lead: muted, up to 2 lines, ellipsized.
-    if let Some(lead) = spec.lead.as_deref().filter(|s| !s.is_empty()) {
-        let lp = 34.0_f32;
-        let mut ly = y + 24.0;
-        for line in wrap_clamp(&f, lead, lp, max_w, 2) {
-            c.draw_text(&f, &line, pad, ly, lp, MUTED, 0.0);
-            ly += lp * 1.3;
+    let lead_lines: Vec<String> = spec
+        .lead
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .map(|lead| wrap_clamp(&f, lead, LEAD_SIZE, max_w, 2))
+        .unwrap_or_default();
+    let lead_lh = LEAD_SIZE * 1.32;
+
+    let eye_h = if eyebrow.is_some() {
+        EYE_SIZE + EYE_GAP
+    } else {
+        0.0
+    };
+    let lead_h = if lead_lines.is_empty() {
+        0.0
+    } else {
+        HEAD_GAP + lead_lines.len() as f32 * lead_lh
+    };
+    let block_h = eye_h + hlines.len() as f32 * head_lh + lead_h;
+
+    // `y` tracks the TOP of the current line box; baseline = y + 0.76*size.
+    let mut y = (REGION_TOP + ((RULE_Y - REGION_TOP) - block_h) / 2.0).max(REGION_TOP);
+
+    if let Some(eb) = &eyebrow {
+        c.draw_text(&f, eb, pad, y + EYE_SIZE * 0.76, EYE_SIZE, MUTED, 3.0);
+        y += EYE_SIZE + EYE_GAP;
+    }
+    for line in &hlines {
+        c.draw_text(&f, line, pad, y + hsize * 0.76, hsize, FG, 0.0);
+        y += head_lh;
+    }
+    if !lead_lines.is_empty() {
+        y += HEAD_GAP;
+        for line in &lead_lines {
+            c.draw_text(&f, line, pad, y + LEAD_SIZE * 0.76, LEAD_SIZE, MUTED, 0.0);
+            y += lead_lh;
         }
     }
 
