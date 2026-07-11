@@ -1135,6 +1135,36 @@ async fn build_site_async(
             Err(e) => log::warn(&format!("cannot write 404.html: {e}")),
         }
     }
+    // SEO + discoverability sidecars: emitted only when `url:` is set (absolute URLs
+    // are mandatory for feeds/sitemap/JSON-LD). All auto-derived from the site's own
+    // content; the author writes nothing SEO-specific.
+    let mut seo_written: Vec<PathBuf> = Vec::new();
+    if site.config.url.is_some() {
+        let mut emit = |rel: &str, body: String| match std::fs::write(out.join(rel), body) {
+            Ok(()) => seo_written.push(PathBuf::from(rel)),
+            Err(e) => log::warn(&format!("cannot write {rel}: {e}")),
+        };
+        for (path, xml) in site.atom_feeds() {
+            emit(&path, xml);
+        }
+        if let Some(x) = site.sitemap() {
+            emit("sitemap.xml", x);
+        }
+        if let Some(x) = site.robots() {
+            emit("robots.txt", x);
+        }
+        if let Some(x) = site.llms_txt() {
+            emit("llms.txt", x);
+        }
+        if let Some(x) = site.llms_full_txt() {
+            emit("llms-full.txt", x);
+        }
+    }
+    let seo_note = if seo_written.is_empty() {
+        String::new()
+    } else {
+        format!("  ·  {} SEO file(s)", seo_written.len())
+    };
     let deck_note = if decks > 0 {
         format!("  ·  {decks} deck{}", if decks == 1 { "" } else { "s" })
     } else {
@@ -1158,6 +1188,7 @@ async fn build_site_async(
     if !site.hover_index_json.is_empty() {
         keep.insert(PathBuf::from("hover-index.js"));
     }
+    keep.extend(seo_written.iter().cloned());
     let swept = sweep_stale(&out, &keep);
     if swept > 0 {
         log::info(&format!(
@@ -1184,7 +1215,7 @@ async fn build_site_async(
     let assets = asset_paths.len() + deploy_referenced_sources_for_site(root, &out);
 
     log::built(&format!(
-        "{}  ·  {pages} page{}  ·  {assets} asset{}{search}{deck_note}{not_found}{}",
+        "{}  ·  {pages} page{}  ·  {assets} asset{}{search}{deck_note}{not_found}{seo_note}{}",
         out.display(),
         if pages == 1 { "" } else { "s" },
         if assets == 1 { "" } else { "s" },

@@ -5,6 +5,7 @@
 
 use super::{Page, Site};
 use crate::escape_attr as esc;
+use std::collections::HashSet;
 
 impl Site {
     /// The canonical origin (`config.url` with any trailing slash trimmed).
@@ -31,22 +32,28 @@ impl Site {
         };
         let mut out = Vec::new();
         let mut sink = Vec::new(); // collection warnings are surfaced during page render
-        for page in &self.pages {
-            for spec in &page.listings {
-                if spec.max_items.is_some() {
-                    continue; // capped teaser → not a feed source
-                }
-                let dated: Vec<&Page> = self
-                    .collection(page, spec, &mut sink)
-                    .into_iter()
-                    .filter(|p| p.date.is_some())
-                    .collect();
-                if dated.is_empty() {
-                    continue;
-                }
-                let path = page.url.replace(".html", ".xml");
-                out.push((path.clone(), self.build_atom(page, &dated, &path, base)));
+        // Dedupe by listing contents in nav order, so a collection re-listed elsewhere
+        // (e.g. the CV's projects tail) does not spawn a second, mislabelled feed.
+        let mut seen_contents: HashSet<String> = HashSet::new();
+        for &(page, _) in &self.nav_ordered() {
+            let Some(spec) = page
+                .listings
+                .iter()
+                .find(|sp| sp.max_items.is_none() && !seen_contents.contains(&sp.contents))
+            else {
+                continue; // capped teaser, or its contents already fed → no feed
+            };
+            let dated: Vec<&Page> = self
+                .collection(page, spec, &mut sink)
+                .into_iter()
+                .filter(|p| p.date.is_some())
+                .collect();
+            if dated.is_empty() {
+                continue;
             }
+            seen_contents.insert(spec.contents.clone());
+            let path = page.url.replace(".html", ".xml");
+            out.push((path.clone(), self.build_atom(page, &dated, &path, base)));
         }
         out
     }

@@ -22,8 +22,10 @@ impl Site {
     }
 
     /// Pages in nav order (with their nav label), then any remaining discovered
-    /// pages (label `None`). External nav links are skipped.
-    fn nav_ordered(&self) -> Vec<(&Page, Option<&str>)> {
+    /// pages (label `None`). External nav links are skipped. Shared with `feed.rs`
+    /// so feeds and the llms map deduplicate listings in the same (author-intended)
+    /// order.
+    pub(crate) fn nav_ordered(&self) -> Vec<(&Page, Option<&str>)> {
         let mut out: Vec<(&Page, Option<&str>)> = Vec::new();
         for item in self.config.nav.left.iter().chain(&self.config.nav.right) {
             let Some(href) = item.href.as_deref() else {
@@ -40,6 +42,9 @@ impl Site {
             }
         }
         for p in &self.pages {
+            if p.url == "404.html" {
+                continue; // the error page is not site content
+            }
             if !out.iter().any(|(q, _)| q.rel == p.rel) {
                 out.push((p, None));
             }

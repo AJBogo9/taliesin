@@ -13,6 +13,9 @@ impl Site {
         let mut s = String::from("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
         s.push_str("<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");
         for p in &self.pages {
+            if p.url == "404.html" {
+                continue; // never sitemap the error page
+            }
             let Some(loc) = self.abs_page_url(p) else {
                 continue;
             };
