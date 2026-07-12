@@ -176,9 +176,6 @@ pub(crate) fn cmd_publish(args: &[String]) -> ExitCode {
             .and_then(|p| p.gate)
             .unwrap_or(true)
     };
-    if !gated {
-        log::warn("publishing WITHOUT a passcode gate: this site will be PUBLIC");
-    }
     if let Some(publish) = &site.config.publish
         && let Some(provider) = &publish.provider
         && provider != "cloudflare"
@@ -216,6 +213,12 @@ pub(crate) fn cmd_publish(args: &[String]) -> ExitCode {
         return ExitCode::FAILURE;
     }
     let out = out.canonicalize().unwrap_or(out);
+
+    // Warn only once the build succeeded and we are actually about to deploy, so an
+    // aborted run (strict failure, bad provider) does not print a false PUBLIC alarm.
+    if !gated {
+        log::warn("publishing WITHOUT a passcode gate: this site will be PUBLIC");
+    }
 
     // Inject the passcode gate into the freshly built tree (unless deploying public).
     if gated && let Err(e) = inject_gate(&out) {
