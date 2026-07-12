@@ -483,6 +483,9 @@ impl Site {
             includes,
             favicon,
             search_index,
+            // The `<title>` suffix names the site on inner tabs; the root index stays bare.
+            site_name: self.config.title.clone().unwrap_or_default(),
+            is_home: page.url == "index.html",
         }
     }
 

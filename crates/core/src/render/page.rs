@@ -48,6 +48,28 @@ pub struct SiteCtx {
     /// for the whole-project Cmd-K search; empty for a single doc. Injected next to
     /// the search script on TOC pages.
     pub search_index: String,
+    /// The site's own name (`_site.yml` `title:`), for the `<title>` suffix; `""` if
+    /// unset. Every inner page's `<title>` becomes "{page} · {site}" so a browser tab /
+    /// search result names both — see [`title_with_site_suffix`].
+    pub site_name: String,
+    /// This page is the site's root index (`index.html`); its `<title>` stays the bare
+    /// site name (no " · {site}" suffix).
+    pub is_home: bool,
+}
+
+/// Apply the site-name `<title>` suffix policy: an inner page becomes "{title} · {site}"
+/// so each browser tab / search result names both the page and the site. The home (root
+/// index) and any page already titled exactly the site name stay bare — never "Name ·
+/// Name", never a suffix on an empty title or a standalone (no-site) doc. `title` is the
+/// already-resolved page `<title>`; the returned string is still unescaped. Shared by the
+/// static build (`html_page_inner`) and the live site preview so both tabs agree.
+pub fn title_with_site_suffix(title: &str, site_name: &str, is_home: bool) -> String {
+    let name = site_name.trim();
+    if name.is_empty() || is_home || title.is_empty() || title == name {
+        title.to_string()
+    } else {
+        format!("{title} · {name}")
+    }
 }
 
 /// The pieces a caller supplies to [`assemble_html_page`]. Everything that
@@ -275,6 +297,12 @@ fn html_page_inner(
     mode: OutputMode,
 ) -> String {
     let resolved = resolve_title(doc, fallback_title, site.is_some());
+    // In a site, name the site on every inner tab ("{page} · {site}"); the home + any
+    // page already titled the site name stay bare (see `title_with_site_suffix`).
+    let resolved = match site {
+        Some(s) => title_with_site_suffix(&resolved, &s.site_name, s.is_home),
+        None => resolved,
+    };
     let title = resolved.as_str();
     let mut t = String::new();
     escape_html(title, &mut t);

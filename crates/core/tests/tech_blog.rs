@@ -693,6 +693,35 @@ fn seo_and_llm_artifacts_are_generated_for_the_blog() {
     }
 }
 
+/// Every inner page's `<title>` names both the page and the site (" · <site>") so a
+/// browser tab / search result is unambiguous; the home (root index) and any page whose
+/// own title is already exactly the site name (the CV) stay bare — the collapse rule.
+#[test]
+fn page_titles_carry_the_site_name_suffix() {
+    let site = Site::discover(&corpus_dir().join("tech-blog"));
+    let site_name = "Andreas Bogossian";
+    let title_of = |rel: &str| -> String {
+        let html = site.render_page(rel).expect("renders");
+        let start = html.find("<title>").expect("has <title>") + "<title>".len();
+        let end = start + html[start..].find("</title>").expect("has </title>");
+        html[start..end].to_string()
+    };
+    // Home + CV (titled exactly the site name) stay bare — no suffix, no "Name · Name".
+    assert_eq!(title_of("index.tmd"), site_name, "home bare");
+    assert_eq!(
+        title_of("cv.tmd"),
+        site_name,
+        "CV title == site name collapses to bare"
+    );
+    // Distinct inner pages name page + site.
+    assert_eq!(title_of("blog.tmd"), format!("Blog · {site_name}"));
+    let post = title_of("posts/em-algorithm/index.tmd");
+    assert!(
+        post.ends_with(&format!(" · {site_name}")) && post != site_name,
+        "a post names page + site: {post:?}"
+    );
+}
+
 use taliesin_core::site::{card_rel_path, card_spec};
 
 /// The blog home ships a generated OG card (never the removed static `og-image.webp`),

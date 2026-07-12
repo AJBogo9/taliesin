@@ -1035,10 +1035,12 @@ fn a_site_page_prefers_its_authored_title_then_its_leading_h1() {
             .to_string()
     };
 
-    // An `_site.yml` `text:` override beats the file's own `# Methods` heading.
-    assert_eq!(title_of("methods.tmd"), "Methodology");
-    assert_eq!(title_of("summary.tmd"), "Wrap-up");
+    // An `_site.yml` `text:` override beats the file's own `# Methods` heading; every
+    // chapter tab also carries the " · <site>" site-name suffix (the book title here).
+    let book = " · A Short Demo Book";
+    assert_eq!(title_of("methods.tmd"), format!("Methodology{book}"));
+    assert_eq!(title_of("summary.tmd"), format!("Wrap-up{book}"));
     // No override, no front matter: the leading H1, never the empty string.
-    assert_eq!(title_of("results.tmd"), "Results");
+    assert_eq!(title_of("results.tmd"), format!("Results{book}"));
     assert!(!title_of("results.tmd").is_empty());
 }

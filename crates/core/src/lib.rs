@@ -48,7 +48,7 @@ pub use render::{
     assemble_deck_page, assemble_html_page, code_scripts, deck_client_script, escape_attr,
     favicon_link, html_escape, render_doc_to_page, render_document, render_document_with_includes,
     render_document_with_includes_scoped, render_html_page, render_html_page_with_includes,
-    slides_html,
+    slides_html, title_with_site_suffix,
 };
 pub use site::{Page, Site};
 

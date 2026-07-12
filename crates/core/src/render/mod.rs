@@ -87,7 +87,7 @@ mod page;
 use page::page_from_doc;
 pub use page::{
     PageParts, SiteCtx, assemble_html_page, favicon_link, html_page_from_doc_in_site,
-    render_doc_to_page,
+    render_doc_to_page, title_with_site_suffix,
 };
 use theme::{detect_theme, resolve_theme, theme_default_mode, theme_style};
 

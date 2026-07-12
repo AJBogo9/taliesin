@@ -37,9 +37,6 @@ head, live-figure thumbnails) live in the detail file — protect them. Every fi
 
 ### A. Blog identity + de-Quarto (build-ready; quick wins first)
 
-2. **`#duplicate-generic-titles` — title suffix** (S). Built `<title>` gets a ` · <site name>`
-   suffix (home + CV currently share an identical bare `<title>`). Touches every page title → add a
-   corpus assertion.
 3. **Reading time on posts** (S) *[ruled: show]*. Promote the already-computed reading time from the
    dev panel to a subtle reader-page estimate under the title. Reverses the `corpus.rs:530-533` pin —
    update it.

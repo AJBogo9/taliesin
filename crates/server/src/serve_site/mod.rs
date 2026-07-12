@@ -554,7 +554,11 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
     };
     // Body links (author `.tmd` references) -> `.html`; chrome links already are.
     let body = taliesin_core::site::rewrite_qmd_links(&body);
+    // Same `<title>` suffix policy as the static build ("{page} · {site}" on inner tabs,
+    // bare on the home / a page titled the site name) so the preview tab matches the build.
     let title_txt = title.unwrap_or_else(|| page.title.clone().unwrap_or_default());
+    let title_txt =
+        taliesin_core::title_with_site_suffix(&title_txt, &chrome.site_name, chrome.is_home);
     // The site's configured favicon (depth-relative); else the dev server's own.
     let favicon = if chrome.favicon.is_empty() {
         "<link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.ico\" />".to_string()
