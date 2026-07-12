@@ -2,8 +2,8 @@
 //! first save: it renders, and `taliesin check` passes on it with no diagnostics.
 //!
 //! The blank-page tax was previously paid *outside* the tool, by a hand-written scaffolder
-//! skill under `corpus/tech-blog/.claude/skills/new-post/`, which rotted: it still emits
-//! `.qmd` and still says `quarto preview`. A scaffolder that lives outside the binary
+//! skill under `corpus/tech-blog/.claude/skills/new-post/` (since retired), which had rotted:
+//! it emitted `.qmd` and said `quarto preview`. A scaffolder that lives outside the binary
 //! cannot be checked against the binary's own vocabulary.
 //!
 //! What each `new` writes is pinned byte-for-byte by `corpus/scaffold/`, which the corpus
