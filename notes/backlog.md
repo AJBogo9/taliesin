@@ -41,13 +41,10 @@ head, live-figure thumbnails) live in the detail file — protect them. Every fi
    DRAFT badge + dev-menu count); build/publish exclude them and print "N drafts not published: …".
    Also make book chapters draftable (`book.rs:172` `book_pages` never reads `fm.draft`). Flips
    `site/discovery.rs:19-23` + widens a discovery path — brief brainstorm first.
-9. **Category taxonomy → ~5** (S, content) *[ruled: consolidate]*. 11 categories over 7 posts. I'll
-   read the posts and draft a ~5-bucket mapping for approval before applying.
-
 *(Dropped 2026-07-12: #12 chronological post prev/next. For a 7-post topic-diverse blog the
 ordering is meaningless and over-promises; the reading-first listing is the right hub, and
 sequential nav already exists via books. A category-driven "related posts" strip could revisit
-this, but only after #9 makes categories meaningful.)*
+this, but only after a richer corpus makes "related" meaningful.)*
 
 ### B. Publish / build hardening (rulings unblocked)
 
