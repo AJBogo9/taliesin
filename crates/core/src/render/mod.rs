@@ -667,6 +667,13 @@ fn render_internal_impl(
     // A visible title block (HTML only; reveal builds its own title slide). It is
     // a generated block (no sourcepos), so it rides the block model + diff like
     // the References section.
+    // Reading-time estimate, shown only for a dated post (the same gate as og:type=article).
+    // Prose words / 200 wpm, rounded to whole minutes (min 1), matching the client's live
+    // count; `src` is include-expanded, so an included file's prose is included.
+    let read_time = date.as_deref().filter(|d| !d.is_empty()).map(|_| {
+        let mins = ((crate::prose::word_count(src) + 100) / 200).max(1);
+        format!("{mins} min read")
+    });
     if format == DocFormat::Html
         && !hide_title_block
         && let Some(tb) = title_block_html(
@@ -675,6 +682,7 @@ fn render_internal_impl(
             author.as_deref(),
             date.as_deref(),
             description.as_deref(),
+            read_time.as_deref(),
         )
     {
         blocks.insert(
@@ -776,6 +784,7 @@ fn title_block_html(
     author: Option<&str>,
     date: Option<&str>,
     description: Option<&str>,
+    read_time: Option<&str>,
 ) -> Option<String> {
     let title = title?;
     let mut h = String::from(
@@ -797,7 +806,15 @@ fn title_block_html(
     let date_span = date
         .filter(|s| !s.is_empty())
         .map(|s| format!("<span>{}</span>", html_escape(&humanize_date(s))));
-    let meta: Vec<String> = [author_span, date_span].into_iter().flatten().collect();
+    // A subtle reading-time estimate ("N min read"), only when the caller supplies one
+    // (a dated post). Rides the same muted meta line as author · date.
+    let read_span = read_time
+        .filter(|s| !s.is_empty())
+        .map(|s| format!("<span class=\"tali-read-time\">{}</span>", html_escape(s)));
+    let meta: Vec<String> = [author_span, date_span, read_span]
+        .into_iter()
+        .flatten()
+        .collect();
     if !meta.is_empty() {
         h.push_str(&format!(
             "<div class=\"tali-title-meta\">{}</div>",

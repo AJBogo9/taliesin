@@ -357,6 +357,32 @@ fn dates_are_humanized_in_the_title_block_and_cards() {
     );
 }
 
+/// Reading time shows on posts (a dated title block) but not on undated pages (the CV,
+/// listing indexes) — the gate is the same `date:` that marks an article.
+#[test]
+fn reading_time_shows_on_posts_not_on_undated_pages() {
+    let site = Site::discover(&corpus_dir().join("tech-blog"));
+    let post = site
+        .render_page("posts/em-algorithm/index.tmd")
+        .expect("post");
+    assert!(
+        post.contains("class=\"tali-read-time\"") && post.contains(" min read"),
+        "a post shows a reading-time estimate"
+    );
+    // The CV has no `date:` → no reading time.
+    let cv = site.render_page("cv.tmd").expect("cv");
+    assert!(
+        !cv.contains("tali-read-time"),
+        "an undated page shows no reading time"
+    );
+    // A listing index (blog) has no `date:` either.
+    let blog = site.render_page("blog.tmd").expect("blog");
+    assert!(
+        !blog.contains("tali-read-time"),
+        "a listing index shows no reading time"
+    );
+}
+
 /// The homepage renders the Marginalia hero (native text-only `hero:`), not the old
 /// Quarto `about: jolla` profile block. Site-level, exercised on the real blog.
 #[test]

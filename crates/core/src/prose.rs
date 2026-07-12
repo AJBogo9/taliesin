@@ -55,10 +55,31 @@ pub(crate) fn config(front_matter: &str) -> Option<ProseLint> {
 pub(crate) fn lint(src: &str, cfg: &ProseLint) -> Vec<(usize, String)> {
     let banned: Vec<String> = cfg.banned.iter().map(|b| b.to_lowercase()).collect();
     let mut out = Vec::new();
+    for_each_prose_line(src, |line_no, text| {
+        scan_line(text, line_no, &banned, &mut out)
+    });
+    out
+}
+
+/// Count prose words in markdown `src` — the reading-time measure. Reuses the exact
+/// prose-selection of [`lint`] (front matter, fenced code, `:::` fences, and inline
+/// code/math/links/HTML all excluded), matching the client's live count that drops
+/// `<pre>`/`.katex` from the DOM. `src` is expected include-expanded (so an included
+/// file's prose counts). Rounding to whole minutes lives at the call site.
+pub(crate) fn word_count(src: &str) -> usize {
+    let mut n = 0;
+    for_each_prose_line(src, |_, text| n += words(text).len());
+    n
+}
+
+/// Walk `src`'s prose lines — skipping front matter, fenced code blocks, and `:::` div
+/// fences — invoking `f(1-based line, stripped)` with the [`strip_inline`]'d prose text of
+/// each remaining line. The single source of "what counts as prose", shared by [`lint`]
+/// and [`word_count`] so they can never disagree.
+fn for_each_prose_line(src: &str, mut f: impl FnMut(usize, &str)) {
     let mut in_front = false;
     let mut fence: Option<char> = None; // inside a ``` or ~~~ code block
     for (i, raw) in src.lines().enumerate() {
-        let line_no = i + 1;
         let t = raw.trim_start();
         // Front matter: a leading `---` (line 1 only) opens; the next `---`/`...` closes.
         if i == 0 && t == "---" {
@@ -91,9 +112,8 @@ pub(crate) fn lint(src: &str, cfg: &ProseLint) -> Vec<(usize, String)> {
             continue;
         }
         let text = strip_inline(raw);
-        scan_line(&text, line_no, &banned, &mut out);
+        f(i + 1, &text);
     }
-    out
 }
 
 /// Blank out inline code, math, link/image targets, autolinks, and HTML tags (replaced with

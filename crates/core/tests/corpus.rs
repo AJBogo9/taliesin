@@ -553,10 +553,11 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
         "canonical link missing"
     );
 
-    // No reading-time decoration: a post's title block is like any page's.
+    // Reading-time estimate: a post's title block carries a subtle "N min read", rendered
+    // server-side so it lives in the static HTML (no JS, SEO-visible).
     assert!(
-        !post.contains("class=\"tali-read-time\"") && !post.contains("min read"),
-        "reading-time decoration should be gone"
+        post.contains("class=\"tali-read-time\"") && post.contains(" min read"),
+        "post should show a reading-time estimate"
     );
 
     // No per-tag archive pages, and a post no longer carries a category strip

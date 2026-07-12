@@ -37,9 +37,6 @@ head, live-figure thumbnails) live in the detail file — protect them. Every fi
 
 ### A. Blog identity + de-Quarto (build-ready; quick wins first)
 
-3. **Reading time on posts** (S) *[ruled: show]*. Promote the already-computed reading time from the
-   dev panel to a subtle reader-page estimate under the title. Reverses the `corpus.rs:530-533` pin —
-   update it.
 4. **Mermaid scroll-not-shrink on mobile** (S) *[ruled: treat as text]*. `pre.mermaid { overflow-x:
    auto }` + `pre.mermaid svg { max-width: none }` (`base.css`), so labels stay legible and the
    diagram scrolls on narrow screens instead of clamping to ~5.8px. (#12 marketing video has no
