@@ -1,497 +1,291 @@
 # Taliesin backlog
 
-**Scope: corpus-plus-roadmap.** "Done" = the docs under `corpus/` render correctly (the
-corpus is the regression net); each new capability ships pinned by a target corpus doc.
-Output stays **HTML-only**. Roadmap: `ROADMAP.md`.
+**Scope: corpus-plus-roadmap.** "Done" = the docs under `corpus/` render correctly (the corpus is
+the regression net); each new capability ships pinned by a target corpus doc. Output stays
+**HTML-only**. Roadmap: `ROADMAP.md`.
 
-> Kept small (read often). **Only open tasks live here** — delete items once landed; don't
-> leave `[x]`. Completed work is in git + `ROADMAP.md` / `native-rewrite.md` / `AUDITS.md`.
+> Kept small (read often). **Only open tasks live here** — delete items once landed; don't leave
+> `[x]`. Completed work is in git + `ROADMAP.md` / `native-rewrite.md` / `AUDITS.md`.
 
-## State (2026-07-11)
+## State (2026-07-12)
 
-v0.2.0. All four formats render + deploy; the dev loop is strong (block-level incremental
-updates with DOM-state preservation, warm server + Jupyter kernel, `_freeze` cache, Alt-click +
-reverse cursor sync, located diagnostics, CSS hot-swap, Cmd-K search). **Tier 1 is empty** — the
-2026-07-09 polish audit's Batches A-F all landed 2026-07-10 (detail in git + `ROADMAP.md` /
-`AUDITS.md`). What remains open is below: a handful of small carry-overs, the theme/a11y
-follow-ups, Tier 2 hardening, the Tier 3 demand-driven queue, and the owner-gated rulings.
+v0.2.0. All four formats render + deploy; the dev loop is strong (block-level incremental updates
+with DOM-state preservation, warm server + Jupyter kernel, `_freeze` cache, Alt-click + reverse
+cursor sync, located diagnostics, CSS hot-swap, Cmd-K search). `origin/main == local main ==
+3b80bb7` (S6 OG-cards + link-preview a11y merged + pushed; nothing unpushed). **Tier 1 is empty.**
 
-Agents commit + fast-forward-merge to local main on request, and push to `origin/main` only when
-the author explicitly asks.
+**2026-07-12 — every owner-gated blocker is now ruled** (see the `[ruled]` tags in the grind queue);
+the backlog is slimmed (the feature-idea wishlist moved to `FEATURE-IDEAS.md`, resolved rulings
+folded in, the stale merge runbook removed). **Goal: grind the blog-identity + publish-hardening +
+a11y queue to done, then run a slides audit.**
 
 **Working method:** branch per feature; brainstorm if there's a fork; spec under
 `docs/superpowers/specs/`; implement TDD; verify (cargo + browser via chrome-devtools, or the
-extension harnesses); fast-forward merge locally; delete the item here. **Do-NOT-touch:** the
+extension harnesses); fast-forward merge locally; delete the item here. Agents commit + ff-merge to
+local `main` on request; push to `origin/main` only when the author asks. **Do-NOT-touch:** the
 exec/kernel zone + the single-editing-surface invariant. Review subagents use read-only git.
 **Author policy (feature-first):** finish framework features before marketing-site work.
 
-## Needs your ruling (the blockers)
+## Now — the grind queue (priority order)
 
-None block Tier 1 (which is empty). Six rulings owed, each filed in full under "Owner-gated"
-below:
-- **Draft-aware preview** (flips a default: `draft: true` currently also hides from *preview*).
-- **Reading time in the built page** (reverses a decision a corpus test pins).
-- **`taliesin publish --public`** (relaxes the fail-closed passcode gate).
-- **Built-site shared asset bundle** (changes the shape of the build output).
-- **Plain `publish` strict by default** (`publish --strict` already inherits the full check
-  superset; making it the default is a fail-closed change, so it was not assumed).
-- **TODO / FIXME surfacing** — design A (preview-only info) vs design B (a real severity level
-  through the shared check/build/publish gate). *Owner ruled 2026-07-10: skip for now; analysis kept below.*
+The 2026-07-11 website audit (99 findings; detail:
+[2026-07-11-website-design-audit.md](2026-07-11-website-design-audit.md)) makes the **personal blog**
+(`corpus/tech-blog/`) the priority — it's the forward-facing brand. Direction **"Marginalia"**
+(iron-gall manuscript ink). 14 explicit **KEEPs** (serif/sans pairing, offline bundling, `meta.rs` OG
+head, live-figure thumbnails) live in the detail file — protect them. Every fix stays invariant-safe
+(no CDN, no preview write-back, no new output format, `--tali-*` tokens only).
 
-## Website de-Quarto + default-hardening (2026-07-11 audit)
+### A. Blog identity + de-Quarto (build-ready; quick wins first)
 
-A full multi-perspective design+build audit of the **personal blog** (`corpus/tech-blog/`, the
-priority — the author's forward-facing brand) and the **marketing site** (`site/`). The blog was
-copied wholesale from Quarto and never re-evaluated; goal is to re-derive every decision, make it
-his own / more native-Taliesin, and promote recurring fixes into Taliesin **defaults**. **99 verified
-findings** (1 P0, 25 P1, 41 P2, 18 P3, 14 keep; 49 Quarto-inherited; 33 framework-default; both sites
-score Lighthouse 100, so this is about identity/structure, not bugs).
+1. **Feed autodiscovery** (S). `<link rel="alternate" type="application/atom+xml" href="<feed>">` in
+   the head (`meta.rs`, beside the OG tags) when `url:` is set, so readers auto-detect the Atom feed
+   shipped in Session 5.
+2. **`#duplicate-generic-titles` — title suffix** (S). Built `<title>` gets a ` · <site name>`
+   suffix (home + CV currently share an identical bare `<title>`). Touches every page title → add a
+   corpus assertion.
+3. **Reading time on posts** (S) *[ruled: show]*. Promote the already-computed reading time from the
+   dev panel to a subtle reader-page estimate under the title. Reverses the `corpus.rs:530-533` pin —
+   update it.
+4. **Mermaid scroll-not-shrink on mobile** (S) *[ruled: treat as text]*. `pre.mermaid { overflow-x:
+   auto }` + `pre.mermaid svg { max-width: none }` (`base.css`), so labels stay legible and the
+   diagram scrolls on narrow screens instead of clamping to ~5.8px. (#12 marketing video has no
+   engine fix — stays with the marketing rebuild.)
+5. **URL-fragment `{{< input >}}` state** (S) *[ruled: adopt]*. Shareable/deep-linkable control state
+   via the URL fragment, hydrate from `data-qmd-input`; reader-local, pure JS in `qmd-js.js`.
+6. **Humanize post dates** (S, taste). `render/mod.rs` emits `2026-04-14`; show "14 April 2026".
+7. **Draft-aware preview** (M) *[ruled: preview shows, build hides]*. Preview includes drafts (quiet
+   DRAFT badge + dev-menu count); build/publish exclude them and print "N drafts not published: …".
+   Also make book chapters draftable (`book.rs:172` `book_pages` never reads `fm.draft`). Flips
+   `site/discovery.rs:19-23` + widens a discovery path — brief brainstorm first.
+8. **from-quarto value-lint** (M). A `check` warning when a page carries a Quarto-only frontmatter
+   *value* Taliesin silently ignores (`template: jolla`, `page-layout: article`). The warning channel
+   is a hard gate → it must NOT fire on the (clean) corpus; mutation-check the gate.
+9. **Category taxonomy → ~5** (S, content) *[ruled: consolidate]*. 11 categories over 7 posts. I'll
+   read the posts and draft a ~5-bucket mapping for approval before applying.
+10. **`og:title` / listing-card H1 fallback** (M). A website page with no front-matter title + a
+    leading `# H1` renders a correct `<title>` but an `og:title` from the site name and a rel-path
+    listing label. Give `site/discovery.rs` `website_pages` the H1 fallback `book.rs::push_chapter`
+    already has, so `<title>`, `og:title`, cards, nav, search agree. No corpus page exercises it — add
+    a fixture first.
+11. **`#multiple-h1-per-post` — heading demotion** (M, own spec). Every post emits 7+ sibling `<h1>`s
+    (title-block h1 + every `#` section) — a real Quarto-migration a11y/SEO regression. When a page
+    emits a title-block `<h1 class=title>`, demote body markdown headings one level. Blast radius:
+    TOC, deck slide-breaks (`deck.rs`), xrefs, marketing landing — brainstorm + spec + broad corpus
+    verify.
+12. **`#posts-are-navigational-deadends`** (M, own spec). Posts dead-end at "← Blog"; add prev/next
+    (+ optional related) to the post chrome. Needs a corpus pin.
+13. **Owned body typeface** (M, design) *[ruled: promote Newsreader to body]*. Newsreader (OFL) is
+    already bundled Regular-only for OG cards; add its real bold + italic + bold-italic faces and make
+    it the body face (never synthesize weights). Biggest remaining "assembled from defaults" tell;
+    subsumes the colour-system "No owned typeface" owner-call.
+14. **Theme-aware `dark=` for images** (S). Extend the shipped `{{< video dark= >}}` theme-swap to
+    static images/figures (a dark screenshot/diagram variant).
 
-**Full grindable list (all 99, with evidence + fix + stable IDs):**
-[2026-07-11-website-design-audit.md](2026-07-11-website-design-audit.md). Rendered report:
-`claude.ai/code/artifact/bb4b030a-7724-49c8-98f5-95d7e5b1d5e4`.
+### B. Publish / build hardening (rulings unblocked)
 
-**Done so far (2026-07-11, 6 sessions).** The blog is now native Taliesin: de-Quarto'd, an owned
-"Marginalia" identity (native `hero:` homepage, deployed ink accent), Lighthouse a11y 100. Closed the
-P0 and the identity / de-Quarto / a11y / accent / tap-target / RSS-sitemap-JSON-LD clusters, switched
-the blog to a reading-first `type: list`, shipped the **auto SEO + LLM discoverability artifacts**
-(Atom feeds + sitemap + robots + JSON-LD + `llms.txt`/`llms-full.txt`, all `url:`-gated), and (S6)
-**auto OG-card generation** (the ✓ DONE record below).
+15. **`publish --public`** (M) *[ruled: add opt-in]*. Add `--public` / `publish.gate: false` so a
+    public blog can deploy via the real `publish` command; keep the passcode gate the default
+    (`publish.rs:194` `inject_gate`, `_middleware.js:9`). Retires the side-channel `deploy` skill.
+16. **Plain `publish` strict by default** (S) *[ruled: strict + `--no-strict`]*. Make plain `publish`
+    inherit the full strict check (already what `--strict` does); add a `--no-strict` escape for quick
+    deploys.
+17. **Built-site shared asset bundle** (L, reader-facing) *[ruled: externalize for `build <dir>`]*.
+    Extract the ~95 KB framework CSS + ~347 KB base64 KaTeX fonts (identical on every page; 64% of a
+    712 KB post) to content-hashed `app.<hash>.css` / `app.<hash>.js` / `katex.<hash>.css`, linked
+    once + minified. Keep single-file `build file.tmd` fully inlined (portable, `file://`). Biggest
+    repeat-visit perf win.
 
-**⚠ GIT STATE — READ BEFORE MERGING (2026-07-11; tangled by two parallel sessions):**
-- `origin/main` @ `f80bda1` — Sessions 1-5 (de-Quarto → SEO/LLM artifacts). What's pushed.
-- **local `main` @ `047d4b9`** — S6 **OG-card generation**: a clean fast-forward, 14 commits over
-  `f80bda1` (`49bf6fe` spec … `047d4b9`). **UNPUSHED — push to ship S6.**
-- **branch `og-card-generation` @ `318f22f`** — a SEPARATE concurrent session's **link-preview a11y**
-  work (drop hover-preview on section-heading links: `hover.rs`, `12-link-preview.js`, `mod.rs`,
-  `corpus.rs`). Branched off `2e6bd36` (shares S6's first 4 commits). **Not on main yet.** ⚠ It also edits
-  `crates/core/src/site/mod.rs`, which S6 also changed → **expect a `mod.rs` conflict** on merge.
-- **⚠ UNCOMMITTED / AT RISK:** this whole "Website de-Quarto" backlog section (incl. my S6 edits) AND
-  `notes/2026-07-11-website-design-audit.md` (the 99-finding detail file) are **working-tree only, never
-  committed to any branch**. `git checkout -f`/`git clean` would LOSE them. Commit them (they belong on `main`).
+### C. Theme colour-system a11y follow-ups (2026-07-09 audit; verified, unbuilt)
 
-**MERGE-EVERYTHING-TO-MAIN runbook** (do once the concurrent link-preview session is settled, so the shared
-working tree is free): (1) `git push origin main` — ships S6. (2) On a `main` checkout (the uncommitted notes
-follow the switch), `git add notes/backlog.md notes/2026-07-11-website-design-audit.md` + commit them. (3)
-`git merge og-card-generation` into main; resolve the `mod.rs` conflict (S6 added `mod card;` + the `card::`
-re-exports and REMOVED the obsolete site-`image:`→og:image warning; the other branch changed the `links`
-import + hover wiring — keep both sides). (4) `cargo test -p taliesin-core` + `cargo clippy … -D warnings`
-green, then push. Per-item S1-6 detail: git history + the auto-loaded memory `website-design-audit`.
+Real a11y bugs (WCAG/APCA/OKLCH/CVD harness evidence), each survived adversarial verification:
 
-**Open — pick from here (each is scoped to start a fresh session cold):**
+- **Bare `f` forces fullscreen with no opt-out** (`03-focus-mode.js:80`, med). Keep
+  `requestFullscreen` on an explicit menu action; add a reader toggle to disable single-key shortcuts
+  (WCAG 2.1.4).
+- **Settings popover never takes focus on open** (`13-reader-menu.js:60`, med). Focus its first
+  control on open (Esc already restores focus to the launcher — the asymmetry is the bug).
+- **Category-filter chips expose state only visually** (`10-category-filter.js:27`, med). Mirror the
+  active class with `aria-pressed`, render it on the server's initial "All" chip, announce "Showing 4
+  of 12 posts" via a visually-hidden `aria-live=polite` node.
+- **Embedded deck ignores a sepia host** (`render/deck.rs:164`, med). `hostTheme()` accepts only
+  light/dark; map `sepia → light` so an `{{< embed deck.tmd >}}` matches the host lightness.
+- **Citation/xref link preview is hover-only** (`12-link-preview.js:159-163`, low). Only
+  `mouseover`/`mouseout`; no `focusin`. Bind `focusin`/`focusout` too, set `aria-describedby` while
+  open. (The recent heading-link a11y merge is a separate change; this one is still open.)
+- **`forced-color-adjust: none` hides the current nav item** (`site.css:293` + `base.css:780`, low).
+  Pins fg with no bg; under an opposite-polarity High-Contrast OS theme the "you are here" marker
+  vanishes. Only the reader-seg pressed button (pins a bg+fg pair) needs the opt-out.
+- **Deck slide-number chip not restyled per-slide** (`deck.css:455`, low). Dark restyle scoped to
+  whole-deck `html.tali-deck-dark`; on a `.tali-dark-bg` slide the chip reads ~2.8-3.0:1.
+- **Settings panel doesn't reflow at 200% text.** Content-loss half is fixed; at 200% the seg buttons
+  + shortcut list still h-scroll. Needs a real reflow (stack the rows), not a token change.
 
-**✓ DONE (2026-07-11, Session 6) — Social preview / OpenGraph card quality.** Shipped on **local `main`
-@ `047d4b9`** (unpushed; see GIT STATE above). At build (url-gated) auto-generate a branded **1200×630 PNG**
-card per content page → drives `og:image` / `twitter:image` / JSON-LD `image`; per-page `image:` stays the
-listing/in-page thumbnail. New module `crates/core/src/site/card.rs` (hand-composited raster: dark `--tali-*`,
-small-caps eyebrow [home = `hero.eyebrow` / post = first category|date], Newsreader headline, muted lead,
-hairline rule, procedural Gaussian bell-curve mark + wordmark + domain, block vertically centered).
-**Deviated from the SVG/resvg/WebP plan** → minimal-dep **`ab_glyph` + `png`** (zero-C), bundled **Newsreader
-OFL variable font, Regular-only** (`assets/fonts/`; hierarchy via size+color). Deterministic `/og/<fnv1a-hash>.png`
-(URL == build-written file == preview-served bytes); build emit in `build.rs` aux zone (dedup + stale-sweep
-`keep`); preview lazy-serve `GET /og/{name}` in `serve_site`; `meta.rs` + `jsonld_head` point at `card_url`;
-404 excluded. Deleted stale `og-image.webp` + its `_site.yml image:` line; retired the now-false site-`image:`
-warning + doc lines; THIRD_PARTY += Newsreader/ab_glyph(Apache-2.0)/png; `deny.toml` ignores the ttf-parser
-unmaintained advisory. Home card carries the NEW tagline; visually verified. Spec+plan
-`docs/superpowers/{specs,plans}/2026-07-11-og-card-generation*`; corpus pin `tech_blog::home_og_image_is_the_generated_card`.
-Followups NOT done: `og-card:` opt-out toggle (deferred, YAGNI); promoting Newsreader to the BODY typeface;
-a build-level test that the on-disk card file backing each `og:image` exists.
+Owner-calls kept as-is (one-line changes if ever wanted): table cells use the 1.28:1 hairline
+(`base.css:436` — border-strong on every cell heavies every table); callout `tip`/`important`
+collapse under protanopia (icon + title already carry meaning, hue never the sole cue); deck has no
+sepia palette (document decks as light/dark-only, or add + teach the reader/scroll path).
 
-*Solo-safe, build-ready now (no ruling needed):*
-- **★ NEXT UP — Feed autodiscovery** (S): add `<link rel="alternate" type="application/atom+xml" href="<feed>">`
-  to the head (`meta.rs`, beside the OG tags) when `url:` is set, so browsers/readers auto-detect the Atom
-  feed shipped in Session 5. Small follow-up.
-- **`#duplicate-generic-titles`** (S): give the built `<title>` a ` · <site name>` suffix (home + CV
-  currently share an identical bare `<title>`). Framework default; touches every page title → add a
-  corpus assertion.
-- **from-quarto value-lint** (M): a `check` warning when a page carries a Quarto-only frontmatter VALUE
-  Taliesin silently ignores (`template: jolla`, `page-layout: article`). Warning channel is a hard gate,
-  so it must NOT fire on the (now de-Quarto'd, clean) corpus — mutation-check the gate.
+### D. Reading-first identity polish (design; layout half)
 
-*Build-ready but deserves its own spec (bigger blast radius):*
-- **`#multiple-h1-per-post` (heading demotion)** (M): every post emits 7+ sibling `<h1>`s (title-block
-  h1 + every `#` section) — a real Quarto-migration regression flattening the outline for screen readers
-  + SEO. Fix: when a page emits a title-block `<h1 class=title>`, demote body markdown headings one level
-  (Pandoc/Quarto behaviour). Blast radius: TOC collection, deck slide-breaks (`deck.rs` heading levels),
-  xrefs, the marketing landing — brainstorm + spec + broad corpus verification first.
-- **`#posts-are-navigational-deadends`** (M): posts dead-end (only "← Blog"). Add prev/next (+ optional
-  related) to the post chrome. Framework feature; needs a spec + a corpus pin.
+The theme/colour half landed 2026-07-09; type → item 13. Remaining is **layout**: hero-as-typeset
+(not a marketing slab), drop bordered feature-card grids, a `--space-1..6` scale. Confirm direction
+before building (overlaps the deferred marketing rebuild).
 
-*Needs YOUR ruling (reshapes the build output):*
-- **`#site-build-inlines-shared-assets` + `#katex-full-fontset-inlined-per-page`**: in `build <dir>`,
-  externalize the ~95 KB framework CSS + ~347 KB KaTeX fonts to content-hashed shared files (cached
-  across pages) instead of inlining per page. Biggest repeat-visit perf win, but changes the build-output
-  shape — gated on your OK.
+### E. Quarto design-decisions catalog triage (own session)
 
-*Needs YOUR design/content input:*
-- **`#text-face-is-system-dependent-not-owned`** (L, design): bundle one owned webfont offline (woff2,
-  the way the KaTeX fonts already ship) so the blog's voice is owned, not a system serif. You pick the
-  face (avoid the display-serif cliche). The biggest remaining "assembled from defaults" tell.
-- **`#category-taxonomy-too-granular`** (S, content): 11 categories over 7 posts (most count 1).
-  Consolidating to ~5 broad topics is your taxonomy call. (A deliberate portrait could also return to
-  the hero as a small element — the `hero: image:` slot is still shipped.)
+Branch `quarto-decisions-catalog` @ `535b4e1`: 165 adversarially-verified decisions. Rule each by "is
+this the right design for Taliesin" (the 2026-07-07 repositioning retired Quarto as the reference).
+Fan into batches, each with a recommended verdict + evidence.
 
-*Deferred (folds into the marketing rebuild):*
-- **`#autoplay-video-no-pause`** (pause/reduced-motion half): marketing autoplay videos need a pause
-  affordance (WCAG 2.2.2) + reduced-motion respect. Marketing-only today; a look tradeoff (always-on
-  `controls` vs a custom pause button), so it rides with the deferred marketing demo rebuild.
-- **`#code-figure-empty-alt`**: a build-time warning for a caption-less + alt-less generated plot. Blocked
-  on the missing "info severity" concept (the warning channel is a hard gate) — same parking lot as the
-  TODO/FIXME item. tech-blog has ~45 caption-less figures, so a gating lint would break `check` today.
+## Tier 2 — hardening (P3)
 
-Direction "Marginalia" (iron-gall = manuscript ink) is being built out; 14 explicit **KEEPs**
-(serif/sans pairing, offline bundling, meta.rs OG head, live-figure thumbnails) live in the detail file;
-protect them. All fixes stay invariant-safe (no CDN, no preview write-back, no new output format,
-`--tali-*` tokens only).
-
-## Priority queue
-
-### Tier 1 — small, build-ready (no blocker)
-
-Small carry-overs and one-liners surfaced while landing the 2026-07-09/07-10 batches. Full
-evidence in [2026-07-09-polish-audit-findings.md](2026-07-09-polish-audit-findings.md).
-
-- **`og:title` and the listing card still read `Page::title`, so they disagree with `<title>`.**
-  A *website* page with no front-matter title and a leading `# H1` now renders a correct `<title>`
-  but an `og:title` borrowed from the site name, and a listing card labelled by its rel-path.
-  Book chapters are unaffected (`book.rs` already falls back to the H1). Coherent fix: give
-  `site/discovery.rs`'s `website_pages` the same H1 fallback `book.rs::push_chapter` has, so
-  `<title>`, `og:title`, cards, nav and search all agree. Widens blast radius to four consumers;
-  no corpus page exercises it (add a fixture first).
-- **The date renders verbatim** (S, low, taste; audit §8). `render/mod.rs` emits `2026-04-14`, not
-  "14 April 2026". Pure taste, no defect. (Alt-less `![](x.png)` deliberately not filed: alt-less
-  is the a11y convention for decorative.)
-
-Stale-doc one-liners (each reproduced; harmless but true):
-- `corpus/tech-blog/.claude/skills/new-post/SKILL.md` + `.../new-project/SKILL.md` are still stale
-  (emit `.qmd`, say `quarto preview`). The `new-post` one is the workaround `taliesin new` retires;
-  left alone deliberately so as not to remove the feature's evidence. `taliesin new` has no
-  `project` kind, so `new-project` was left rather than half-migrated. Decide whether to retire both.
-- The twinned post dirs disagree on what is **git-tracked**: `tech-blog/posts/fourier-transform/`
-  tracks `thumbnail.png` (unreferenced; `image:` names the `.webp`) and four generated `.wav`
-  files, while `posts/fourier-transform/` tracks neither. The `.wav`s are written at render time by
-  the post's own `{python}` cell, so tracking them is the anomaly. Harmless, but decide one way.
-- The companion's `symbolCache` only invalidates on save (`completions.ts`, low). An out-of-band
-  change (`git checkout`, an external formatter) fires `onDidChangeTextDocument`, not
-  `onDidSaveTextDocument`, so cell-labelled targets lag until the next save. Bounded and graceful
-  (the `xref` case unions with the live buffer scan). Left as-is deliberately; noted so it isn't
-  re-discovered.
-
-**One carry-over, not an open task:** the `showcase` 3D canvas is absent from a no-scroll
-full-page capture at 390px, because its `IntersectionObserver` never fires while the host is below
-the fold. A reader who scrolls gets it. To make the harness capture it, emulate
-`prefers-reduced-motion: reduce` in `browser.mjs` `forceTheme`; `build()` then runs synchronously
-— but it would then never see the animated one. Not decided.
-
-### Theme colour-system follow-ups (2026-07-09 colour audit)
-
-The colour audit itself landed (one owned iron-gall accent at OKLCH H271; nine vendor hexes banned
-by a test; `--tali-border-strong`; opacity-dimmed text → `--tali-muted`; xref underlines;
-print/prefers-contrast specificity; Auto theme). These findings **survived adversarial
-verification but were NOT built** (WCAG + APCA + OKLCH + Vienot-CVD harness evidence):
-
-- **Bare `f` forces native fullscreen with no opt-out** (`03-focus-mode.js:80`, medium). An
-  unmodified single key both toggles focus mode and calls `requestFullscreen()`. WCAG 2.1.4 wants
-  a way to turn single-key shortcuts off. Fix: keep `requestFullscreen` on an explicit menu action,
-  add a reader toggle to disable single-key shortcuts.
-- **Settings popover never takes focus when opened** (`13-reader-menu.js:60`, medium). `openMenu()`
-  unhides a body-end panel and does not focus it; Esc already restores focus to the launcher
-  (`:79`), so the asymmetry is the bug. Fix: focus the panel's first control on open.
-- **Category-filter chips expose state only visually** (`10-category-filter.js:27`, medium). A bare
-  `classList.toggle('tali-cat-active')`, no `aria-pressed`, and the filtered result is never
-  announced. Fix: mirror the class with `aria-pressed`, render it on the server's initial "All"
-  chip, and write "Showing 4 of 12 posts" into a visually-hidden `aria-live="polite"` node.
-- **Embedded deck ignores a sepia host** (`render/deck.rs:164`, medium). `hostTheme()` accepts only
-  light/dark, so an `{{< embed deck.tmd >}}` in a sepia page can drop a dark panel into cream
-  paper. Minimal fix: map `sepia -> light` so the deck matches the host's lightness.
-- **Link preview is hover-only** (`12-link-preview.js:174`, low). `mouseover`/`mouseout` are the
-  only triggers; grep finds zero `focusin` in `assets/js/`. Keyboard readers never get the
-  citation/xref preview. Fix: bind `focusin`/`focusout` too, set `aria-describedby` while open.
-- **`forced-color-adjust: none` hides the current nav item** (`site.css:293` + `base.css:780`,
-  low). Pins `.tali-nav-active` / `a[aria-current="page"]` to an author foreground with no author
-  background, so under a High-Contrast OS theme of the opposite polarity the "you are here" marker
-  vanishes. Only the reader-seg pressed button (which pins a matching bg+fg pair) needs the opt-out.
-- **Deck slide-number chip is not restyled per-slide** (`deck.css:455`, low). The dark restyle is
-  scoped to whole-deck `html.tali-deck-dark`, so on a `.tali-dark-bg` slide the chip reads ~2.8-3.0:1.
-- **Settings panel does not reflow at 200% text.** The content-loss half is fixed (`box-sizing:
-  border-box` + `calc(100vw - 2rem)` cap), but at 200% text the seg buttons and shortcut list still
-  overflow into a horizontal scroll. Needs a real reflow (stack the rows), not a token change.
-
-Owner calls (kept as-is deliberately, one-line changes if ever wanted):
-- **Table cells still use the 1.28:1 hairline** (`base.css:436`). `--tali-border-strong` applied to
-  controls only; whether a data table's grid is "required to understand the content" (WCAG 1.4.11)
-  is a judgment call, and border-strong on every cell visibly heavies every table.
-- **Callout `tip` vs `important` collapse under protanopia** (dE 9.1; deutan worst pair 17.7).
-  Darkening `tip` lifts every dichromat pair ≥ 11 at the cost of the family's uniform weight. Owner
-  kept the uniform family: the icon shape + text title already carry the meaning, hue is never the
-  sole cue.
-- **Deck has no sepia palette** (`deck.css`). A sepia reader gets a stark white/black deck. Either
-  document decks as deliberately light/dark-only, or add the palette and teach the deck reader/
-  scroll path to adopt it. (The reader menu already skips decks, so nothing is broken today.)
-- **No owned typeface** (`base.css:18`, brand). Typography is 100% system stack, named as the
-  biggest non-colour "assembled from defaults" tell. Bundling ONE distinctive-but-readable face
-  offline (as the KaTeX fonts already ship) is a better default, not a knob. Avoid the
-  display-serif cliche. (Overlaps the reading-first layout+type session below.)
-
-### Decided 2026-07-07 — each needs its own dedicated session
-- **Quarto design-decisions catalog triage, reframed.** Branch `quarto-decisions-catalog`, commit
-  `535b4e1`: 165 decisions, adversarially verified. Rule on each by "is this the right design for
-  Taliesin", not "does it beat Quarto" — the same-day repositioning commit (`de3de37`) retired
-  Quarto as the defining reference. Fan the 165 into batches, each with a recommended verdict +
-  evidence, so you rule, not derive.
-- **Reading-first identity polish** (design judgment; overlaps deferred marketing: confirm
-  direction before building). The theme/colour half landed 2026-07-09. What remains is layout +
-  type: hero-as-typeset not a marketing slab; drop bordered feature-card grids; a `--space-1..6`
-  scale; and the owned typeface (see the colour-system follow-ups above).
-
-### Tier 2 — hardening (P3)
-- **Execution-cache leaks — remainder open** (exec/kernel Do-NOT-touch, careful). The
-  forkserver/dir/slot trio + the graceful-shutdown + fork-protocol follow-ups all landed 2026-07-08.
-  **Still open:**
-  - **Ungraceful-death path (S/M):** no defense against SIGKILL / a closed terminal / a crash, which
-    no `Drop` can catch. Confirmed absent: `PR_SET_PDEATHSIG` on the warm-pool helper (grep for
-    `PDEATHSIG|prctl` in `crates/server/src/` is empty; the helper already has its own process
-    group, so the signal is cheap to add), and any startup sweep of stale `/tmp/tali-warmpool-*` /
-    `/tmp/tali-kernel-*` dirs whose owner pid is dead. Measured live 2026-07-10: a `kill -9` on a
-    `preview` orphaned 8 processes (451 MB — the pool preloads `numpy, matplotlib, torch`) + 123
-    `/tmp/tali-*` dirs.
-  - **Flaky timing tests (LOAD-sensitive, not orphan-sensitive).**
-    `exec::tests::pooled_kernel_serves_cells_without_a_long_warming_state` **and**
-    `kernel::tests::kernel_executes_state_errors_and_interrupts_runaway_cell` both fail under CPU
-    load (measured: 2/3 full-suite runs with a concurrent `cargo test`; 1/4 with nothing else;
-    0/6 running only the bin unittests; 0/4 on the untouched parent commit). Both spawn a real kernel
-    and assert on **timing**. The fix likely means making the two assertions wait on a **state
-    signal** rather than a duration, not just reaping orphans.
-  - `build.rs:926` warms the pool before knowing whether any page needs a kernel, and does so **even
-    under `TALIESIN_NO_EXEC=1`** (neither `build.rs` nor `warm_pool.rs` consults it). Hygiene item,
-    **not** perf: measured 0.25 s vs 0.27 s on a prose-only site, so the boot is off the critical path.
-  - Pre-existing `fork_kernel` cross-call edge (low): if a fork times out but its request was queued,
-    the daemon's later `SPAWNED <pid>` is read by the *next* `fork_kernel`, mis-pairing pids. Rare now
-    that the fork-protocol fix removed the main timeout trigger; proper fix is to poison the daemon on
-    any fork timeout so later `take`s cold-start.
-  - R stream/stderr still leaks raw ANSI into HTML (`kernel.rs` `Output::Stream` emits `esc(text)`
-    with no `strip_ansi`, do-not-touch).
-- **Testing / CI — `assets/js/*` `tsc`/`@ts-check` pass** (its own large session). The web-client
-  tier is done (`client.js` + `search.js` + `toc-spy.js` + `toc-sheet.js`, `@ts-check`'d and in the
-  CI `typecheck` job). Remaining is `crates/core/assets/js`: measured **812 errors** on a throwaway
-  strict jsconfig (`deck.js` alone 402), plus `qmd-js.js`/`scrolly.js`/`tabset.js`/`walkthrough.js`/
-  `mermaid.js` + the 16 `code-enhance/` fragments (exclude the vendored `*.min.js`). Needs its own
-  ambient globals + a config that compiles the concatenated `code-enhance/` fragments as one shared
-  script scope (confirmed: compiling fragments in isolation adds 12 `TS2304`s that vanish when
-  concatenated).
-- **Security:** injected Mermaid `<script>` SRI + `crossorigin` — deferred (only the live Preview
-  lazy-loads mermaid from the CDN; a static build inlines the vendored copy). Needs a hash pinned to
-  the CDN build; both `integrity` + `crossorigin` would break a non-CORS `TALIESIN_MERMAID_URL`
-  override.
-- **Deck engine (P2, deferred):** drop `fitSlide` from the resize path (needs a lazy fit-on-show
-  refactor first); mobile pinch/pan + touch gestures (hard to verify without a device); thread
+- **Execution-cache leaks — remainder** (exec/kernel Do-NOT-touch, careful):
+  - **Ungraceful-death path (S/M):** no defense vs SIGKILL / closed terminal / crash. Absent:
+    `PR_SET_PDEATHSIG` on the warm-pool helper (it has its own process group, so cheap), and a
+    startup sweep of stale `/tmp/tali-warmpool-*` / `/tmp/tali-kernel-*` dirs whose owner pid is dead.
+    (Measured: `kill -9` on a preview orphaned 8 procs / 451 MB + 123 `/tmp/tali-*` dirs.)
+  - **Flaky timing tests** (LOAD-sensitive):
+    `exec::tests::pooled_kernel_serves_cells_without_a_long_warming_state` +
+    `kernel::tests::kernel_executes_state_errors_and_interrupts_runaway_cell` fail under CPU load;
+    both assert on **timing**. Fix: wait on a **state signal**, not a duration.
+  - `build.rs:926` warms the pool before knowing any page needs a kernel, even under
+    `TALIESIN_NO_EXEC=1`. Hygiene, not perf (0.25 s vs 0.27 s on a prose-only site).
+  - `fork_kernel` cross-call edge (low): a timed-out-but-queued fork mis-pairs the next `SPAWNED
+    <pid>`; poison the daemon on any fork timeout so later `take`s cold-start.
+  - R stream/stderr leaks raw ANSI into HTML (`kernel.rs` `Output::Stream` emits `esc(text)` with no
+    `strip_ansi`, do-not-touch).
+- **Interpreter selection is silent + has no project-local override (DX; S+M).** Resolved once at
+  `exec.rs:217` (`TALIESIN_PYTHON` else `python3`; `TALIESIN_R` else `R`). Two gaps bit a real user
+  (2026-07-11: a global `TALIESIN_PYTHON` in `~/.zshrc` errored a whole book's ~35 cells):
+  - **No "which python?" signal (S, highest-leverage).** A dep-less interpreter is indistinguishable
+    from a code error. Log `executing cells with <abs path>` at build start, and/or a `taliesin
+    check` reporting interpreter + `ipykernel` presence (like `quarto check`). Lives in the
+    build/serve entry, not the Do-NOT-touch core.
+  - **No project-local declaration (M).** Add a `python:` / `r:` field in `_site.yml` (parsed in
+    `schema.rs`/`frontmatter.rs`, threaded into `Executor::build`), and/or auto-detect a sibling
+    `.venv/bin/python` when the env var is unset. Env var stays the override; the field wins for
+    reproducibility. (Downstream `invertible-speech-disentanglement` BUG-002.)
+- **`assets/js/*` `tsc`/`@ts-check` pass** (own large session). The web-client tier is done + in CI;
+  remaining is `crates/core/assets/js` (measured 812 errors on a throwaway strict jsconfig; `deck.js`
+  402). Needs ambient globals + a config compiling the concatenated `code-enhance/` fragments as one
+  shared scope (isolated compile adds 12 spurious `TS2304`s).
+- **Mermaid `<script>` SRI + `crossorigin`** — deferred (only live Preview lazy-loads from the CDN; a
+  build inlines the vendored copy). Needs a hash pinned to the CDN build; `integrity`+`crossorigin`
+  would break a non-CORS `TALIESIN_MERMAID_URL` override.
+- **Deck engine (P2):** drop `fitSlide` from the resize path (needs a lazy fit-on-show refactor
+  first); mobile pinch/pan + touch gestures (hard to verify without a device); thread
   `footer:`/`logo:` through both deck-page builders (no corpus deck needs one yet).
-- **Perf (low):** protocol-level op-message batching (one WS message per save, not one-per-op). The
-  realistic worst case is an edit near the top of a long doc, where every downstream block emits a
-  `SetMeta` for its shifted sourcepos (`diff.rs` `anchor_op`). Client and server ship together, so
-  no wire-compat constraint.
-- **Audit long-tail** (`AUDITS.md`): a tens-of-MB cell output blocks ZMQ receive before the cap
-  fires (`kernel.rs`, exec/kernel Do-NOT-touch).
+- **Perf (low):** protocol-level op-message batching (one WS message per save, not per-op). Worst
+  case: an edit near the top of a long doc where every downstream block emits a `SetMeta` (`diff.rs`
+  `anchor_op`). Client + server ship together, no wire-compat constraint.
+- **Audit long-tail** (`AUDITS.md`): a tens-of-MB cell output blocks ZMQ receive before the cap fires
+  (`kernel.rs`, Do-NOT-touch).
 
-### Tier 3 — deferred / demand-driven
+## Tier 3 — deferred / demand-driven
+
 - **Companion (Phase 2):** editor commands (`.tmd`-buffer text transforms only, never preview
-  gestures); `editor.wordWrap` default for `[taliesin]` (respect the global setting until prose
-  overflow is a real complaint, then ship `"on"`); grammar polish (YAML-type the `#|`/`//|`/`%%|`
-  option value; recommend the cell-language extensions via `.vscode/extensions.json`); **marketplace
-  packaging hygiene** (`.vscodeignore` does not exclude `.vscode-test/` (**1.8 GB**),
-  `test-fixtures/`, `scripts/`, `out/test/`, `out/e2e/`; no top-level
-  `icon`/`repository`/`license`/`keywords`; `"private": true` blocks publish). Diagnostics are
-  save-triggered and whole-line (`diagnostics.ts:66-68`), fine for this workflow and subsumed by the
-  LSP direction below.
-- **`.tmd` format-on-save** (open question): a source pretty-printer writing the editor buffer must
-  preserve `data-sourcepos` line stability for click-to-source — brainstorm reflow-vs-risk first.
-- **Dogfood: migrate the FL-weather book to Taliesin** — a real-world Quarto→Taliesin migration +
+  gestures); `editor.wordWrap` default for `[taliesin]`; grammar polish (YAML-type `#|`/`//|`/`%%|`
+  values; recommend cell-language extensions via `.vscode/extensions.json`); **marketplace packaging
+  hygiene** (`.vscodeignore` misses `.vscode-test/` (1.8 GB), `test-fixtures/`, `scripts/`,
+  `out/test/`, `out/e2e/`; no top-level `icon`/`repository`/`license`/`keywords`; `"private": true`
+  blocks publish). `symbolCache` only invalidates on save (`completions.ts`, low) — an out-of-band
+  change lags until the next save; bounded + graceful, noted so it isn't re-discovered.
+- **`.tmd` format-on-save** (open question): a source pretty-printer must preserve `data-sourcepos`
+  line stability for click-to-source — brainstorm reflow-vs-risk first.
+- **Dogfood: migrate the FL-weather book to Taliesin** — a real Quarto→Taliesin migration +
   portability stress test; pin a reduced version under `corpus/` if it renders clean.
 - **`check` online-link mode** (opt-in `--online`; default stays offline/deterministic).
-- **`taliesin publish` follow-ups** (command shipped 2026-07-08: build + shared-passcode gate +
-  `wrangler pages deploy`): optional `--init` wrapper for the one-time `wrangler` setup;
-  email-allowlist (Cloudflare Access) mode; **`--public` / `publish.gate: false`** (owner-gated
-  below — relaxes a fail-closed default).
-- **Interactive/explorable numerics** (`FEATURE-IDEAS.md` #62-66; none spec'd/pinned — promote with
-  a corpus pin when one graduates; must NOT reintroduce a reactive VM). Highest-leverage: **#62** a
-  bundled numerics/stats global for `{js}` (distributions, seeded PRNG, small dense linalg) + **#63**
-  `animate`/play-tick + draggable-`point` `{{< input >}}` types. Then #64 `qmd.state` cross-re-run
-  store, #65 richer `{js}` output helpers, #66 opt-in Pyodide `{python}` (~10 MB, no torch).
+- **`taliesin publish` follow-ups:** optional `--init` wrapper for the one-time `wrangler` setup;
+  email-allowlist (Cloudflare Access) mode.
+- **Interactive/explorable numerics** (`FEATURE-IDEAS.md` #62-66; none pinned — promote with a corpus
+  pin when one graduates; must NOT reintroduce a reactive VM). Highest-leverage: **#62** a bundled
+  numerics/stats global for `{js}` + **#63** `animate`/play-tick + draggable-`point` `{{< input >}}`.
 - **Wave 5** (`ROADMAP.md`): print-pdf track (paged render *of* the built HTML), docs-as-spec,
-  `{glsl}` cell language, SEO completeness (sitemap/robots/JSON-LD at publish with `url:`). **Fold
-  `llms.txt` + `llms-full.txt` into the SEO item:** the old deploy ritual generated it and the
-  migration silently dropped the capability. The block model already separates clean prose from code
-  and math (`client.js:50`), so it would be more accurate than the Python scraper it replaced. A
-  plain-text sidecar is the same category as `sitemap.xml`, not a new output format. *Pin: a
-  `tech_blog.rs` assertion that `llms.txt` lists the discovered pages and `llms-full.txt` excludes
-  drafts.* Verified absent: no `llms` hit anywhere in `crates/`.
-- **Site-level shared bibliography + bib hygiene** (M, med-high). `bibliography:` is per-document
-  only (`cite/mod.rs:42`), so a growing blog retypes keys per post and nothing reports an unused or
-  duplicate entry. Allow `bibliography:` in `_site.yml`, merged under each page's own; add two
-  **read-only** diagnostics over the parsed registry ("entry never cited", "duplicate key"). Does
-  **not** touch the BibTeX parser/CSL formatter (Do-NOT-touch): only reads parsed entries and counts
-  citations. Keep "unused entry" info-level or `check`-only. *Pin: a small site with a site-level
-  bib, one entry cited from two pages, one uncited.*
-- **Author structure panel** (M/L, high). A read-only preview sidebar: the heading tree with
-  per-section word count (the dev panel already counts, `client.js:50-58`) and a badge per node for
-  unresolved xref / TODO / over-goal length. Click to scroll; under the companion, move the editor
-  cursor via the existing cursor sync. This is the *revision* view, not the reader TOC. Scope it as
-  an annotation layer on the dev panel, not a new component. *Pin: `corpus/layout/structure.tmd`.*
-- **Session revision digest** (M, med). Surface the `BlockOp` stream the client already receives: a
-  session word delta (`+340 / -180`) plus a feed of the last N ops, each click-to-source. Cashes the
-  diff moat; no batch compiler has a diff to show. Honest caveat: the pin is behavioral (a
-  `tools/live-edit-bench` assertion), not a corpus doc.
-- **Block-level transclusion** `{{< include file.tmd#sec-id >}}` (M, med). Reuse a section across a
-  series without copy-paste drift. Must ride **on top of** the `includes.rs` source-map pass
-  (resolve the fragment to a block range, hand the existing machinery a sub-slice), never rewrite
-  it. Hard merge gate: the source map must not perturb. Defer until a real series needs it.
-- **LSP for the language intelligence, browser stays the view** (L). Everything an LSP needs is
-  already in Rust (`check`, `vocab`, `register_xref`, the bib parser, `closest()`), it is write-once
-  for Neovim/Helix/Zed/VS Code, and it removes the drift that causes the `#| label:` completion gap.
-  An LSP cannot render the preview and does not need to: the preview is already editor-agnostic
-  (the sync surface is two `postMessage` shapes in `docs/internals/protocol.tmd:325-350`). The only
-  thing binding it to VS Code is the hardcoded `vscode://` open scheme. Do **not** rebuild the
-  preview as an LSP; do not invest further in the webview beyond what shipped.
-- **Built-site shared asset bundle** (L, high, reader-facing; owner-gated below). Measured on the
-  built `corpus/tech-blog`: largest post 1.72 MB; on `KL-divergence` (712 KB) the inlined `<style>`
-  is 64% of the page, of which **339 KB is base64 KaTeX woff2**, and **seven pages carry that
-  identical font block.** Inlining is correct for `build file.tmd` (portable, `file://`); for `build
-  <dir>` a returning reader re-downloads ~97% of every page. Extract to content-hashed
-  `app.<hash>.css` / `app.<hash>.js` / `katex.<hash>.css`, linked once, minify while there.
+  `{glsl}` cell language, SEO completeness. **Fold `llms.txt`/`llms-full.txt`** in (the block model
+  separates clean prose from code/math at `client.js:50`, so it'd be more accurate than the old
+  scraper). *Pin: a `tech_blog.rs` assertion that `llms.txt` lists discovered pages + `llms-full.txt`
+  excludes drafts.*
+- **Site-level shared bibliography + hygiene** (M). `bibliography:` is per-document only
+  (`cite/mod.rs:42`). Allow it in `_site.yml`, merged under each page's; add two read-only diagnostics
+  ("entry never cited", "duplicate key") over the parsed registry (does NOT touch the BibTeX/CSL
+  Do-NOT-touch core). *Pin: a small site, one entry cited from two pages, one uncited.*
+- **Author structure panel** (M/L). A read-only preview sidebar: the heading tree with per-section
+  word count (`client.js:50-58` already counts) + a badge per node for unresolved xref / TODO /
+  over-goal length. Click to scroll; move the editor cursor via cursor sync under the companion. An
+  annotation layer on the dev panel, not a new component. *Pin: `corpus/layout/structure.tmd`.*
+- **Session revision digest** (M). Surface the `BlockOp` stream the client already receives: a
+  session word delta + a feed of the last N ops, each click-to-source. (Also the home for the cut
+  "cross-revision what-changed" idea if it's ever revived.) Behavioral pin (a `tools/live-edit-bench`
+  assertion), not a corpus doc.
+- **Block-level transclusion** `{{< include file.tmd#sec-id >}}` (M). Reuse a section across a series.
+  Must ride **on top of** the `includes.rs` source-map pass (resolve fragment → block range, hand a
+  sub-slice), never rewrite it. Hard gate: the source map must not perturb. Defer until a series needs
+  it.
+- **LSP for the language intelligence** (L). Everything an LSP needs is already in Rust (`check`,
+  `vocab`, `register_xref`, bib parser, `closest()`); write-once for Neovim/Helix/Zed/VS Code, removes
+  the `#| label:` completion drift. The preview stays the view (editor-agnostic; two `postMessage`
+  shapes in `docs/internals/protocol.tmd:325-350`). Do NOT rebuild the preview as an LSP.
 - **Image optimization** (WebP/AVIF + `srcset` + lazy-load behind a content-hashed cache) — until
   posts get image-heavy.
 - **Marketing site** (deferred, feature-first; rolls into a demo-machine rebuild):
-  `live-edit-hero-demo` clip; swap `site/_site.yml` placeholders; demo-led hero rebuild (during
-  which: a 3-viewport spot-check of the already-code-fixed 390px hero overflow + theme/video desync,
-  plus any leftover em dashes); mobile embed refine; deploy (Cloudflare / GitHub Pages).
-- **`serde_yaml` fallback watch-item:** if 0.9 ever breaks against a future serde/edition, swap to
-  `serde_yaml_ng` (v0.10), gated on a test that `Error::location().line()` still works. Fix the
-  stale `Cargo.toml` comment (it names the unsound `serde_yml`) when touched.
-
-## Owner-gated: do NOT build without your ruling
-
-- **Draft-aware preview (flips an established default).** `draft: true` currently hides a page from
-  the site *preview* as well as the build (`site/discovery.rs:19-23`), so a half-written post cannot
-  be seen among its own listings, nav and cross-refs until it is un-drafted — exactly when the author
-  wants to see it. Proposed better default: **preview includes drafts** (quiet DRAFT badge, count in
-  the dev menu), **build/publish exclude them** and print `2 drafts not published: …`. The gate: it
-  flips a default and widens a discovery code path. Related, cheap either way: `book_pages`
-  (`book.rs:172`) never reads `fm.draft`, so a book chapter cannot be a draft at all.
-- **Reading time in the built page (reverses a deliberate decision).** Word count + reading time are
-  computed but trapped in the author-facing dev panel (`client.js:50-58`), and `corpus.rs:530-533`
-  **pins their absence** from the built page on purpose. Promoting them is a reader-facing flip of
-  that ruling, not a bug fix.
-- **`taliesin publish --public`** (relaxes the fail-closed passcode gate). `cmd_publish`
-  unconditionally calls `inject_gate` (`publish.rs:194`) and `_middleware.js:9` fails closed (503
-  when `PASSWORD` is unset), so a **public** blog cannot use `publish` at all — which is why the real
-  blog still deploys via a side-channel `deploy` skill instead of the command built for it.
-- **Plain `publish` strict by default.** `publish --strict` now inherits the full check superset
-  (verified: it refuses a site with a missing image). Whether plain `publish` should be strict is a
-  fail-closed default change, filed rather than assumed. Same shape: `publish` without `--strict`
-  still deploys a site `check` would reject.
-- **Built-site shared asset bundle** (changes the shape of the build output). See Tier 3.
-- **Scroll-vs-shrink for embedded media (UI-audit #7 + #12), CONFIRMED but a design choice, not a
-  defect.** `base.css:365-367` states the intent: embedded media (`canvas, svg, video, iframe`) is
-  clamped to the page width so a fixed-size canvas can't force a horizontal scroll on mobile. The
-  scroll-not-shrink treatment (`overflow-x: auto` + scroll shadow) is deliberately reserved for
-  *text* (`pre`, `table`, `.katex-display`). Consequence: a wide **mermaid diagram** (#7) shrinks its
-  `foreignObject` labels to ~5.8px at 390px; the **features.html demo video** (#12) downscales
-  baked-in desktop text ~3x. The ruling: *is a mermaid diagram text-you-must-read (→ table
-  treatment) or embedded media (→ keep the clamp)?* Flipping #7 costs `pre.mermaid { overflow-x:
-  auto }` + `pre.mermaid svg { max-width: none }` and trades illegible-shrink for the mobile h-scroll
-  the rule exists to prevent. #12 has no engine fix (re-record the clip, or ship a mobile source);
-  also already deferred under the marketing item.
-- **Add (gate: adopt, but confirm):** shareable/deep-linkable `{{< input >}}` state via the URL
-  fragment (reader-local, hydrate from `data-qmd-input`, no Rust/model change) (`qmd-js.js`); reader
-  text-size + line-spacing controls (a11y-exempt per CLAUDE.md; substrate exists)
-  (`14-reader-prefs.js`).
-- **Add (deferred, need a scope/default ruling):** cross-revision block-diff "what changed" view;
-  reader-facing reproducibility manifest; web-native List of Figures/Tables/Theorems; interactive
-  data tables; "Cite this" export; code-line xrefs (`@lst-3:line`); theme-aware `dark=` figures.
-- **TODO / FIXME surfacing needs a severity concept that does not exist.** `prose.rs::lint` returns
-  markdown-aware, code/math-skipping located `(line, message)` pairs, so the *scan* is small. The
-  trap: **there is no severity anywhere.** `render::Warning`, `check::Diagnostic` and
-  `protocol::Diagnostic` know only `warning|error`, and the warning channel is a **hard gate**
-  (`cmd_check` exits non-zero on any diagnostic; `build --strict` and `publish --strict` inherit it).
-  So a TODO warning that reaches the shared gate fails `check` on every draft. Two designs:
-  - **A (S, safe):** preview-only. A `todo_scan` injected at `serve/mod.rs::compute_diagnostics`
-    through a new `protocol::Diagnostic::info` + a `.tali-diag-info` rule; cannot reach the shared
-    gate by construction. TODOs appear in the browser preview, not as VS Code squiggles.
-  - **B (L):** a real `level` threaded through `render::Warning` + `check::Diagnostic` +
-    `format_json` + the `cmd_check` exit gate + **both** `build --strict` tallies + the hardcoded
-    `DiagnosticSeverity.Warning` in `diagnostics.ts:59`. Re-plumbs the very gate Batch B just
-    unified; its own session.
-  The scan must **not** reuse `prose::strip_inline` (it blanks code, and a TODO usually lives in a
-  code comment). Pin any fixture inside `corpus/diagnostics/`. *Owner ruled 2026-07-10: skip for now;
-  analysis kept.*
+  `live-edit-hero-demo` clip; swap `site/_site.yml` placeholders; demo-led hero rebuild (with a
+  3-viewport spot-check of the already-fixed 390px hero overflow + theme/video desync, plus any
+  leftover em dashes); **#12 demo video needs a pause affordance (WCAG 2.2.2) + reduced-motion
+  respect** and its baked-in desktop text downscales ~3x on mobile (re-record or ship a mobile
+  source); mobile embed refine; deploy.
+- **`serde_yaml` fallback watch-item:** if 0.9 breaks against a future serde/edition, swap to
+  `serde_yaml_ng` (v0.10), gated on a test that `Error::location().line()` still works. Fix the stale
+  `Cargo.toml` comment (names the unsound `serde_yml`) when touched.
 
 ## Decided against / do-not-re-litigate
 
-**Refuted by measurement — do NOT re-scope:**
-- **"`build` leaks forkserver subtrees."** FALSE. Snapshot→build→wait→snapshot, run twice, once with
-  `TALIESIN_NO_CACHE=1` forcing real execution: zero new survivors. The 2026-07-08 process-group
-  reaping fix holds on the graceful path. The real gap is the *ungraceful* path (Tier 2).
-- **"The warm pool boots Python on prose-only builds, costing latency."** The boot is real (even
-  under `TALIESIN_NO_EXEC=1`) but the latency claim is false: 0.25 s vs 0.27 s. Resource-hygiene, not
-  perf.
-- **"Dev attributes bloat published pages."** FALSE: `data-block-id` + `data-sourcepos` +
-  `data-source-file` + `data-qmd-src` total 2104 bytes on a 712 KB page = 0.29%. Do not propose
-  stripping them for size.
-- **`--version -dirty` marker: NOT worth building.** `build.rs` declares `cargo:rerun-if-changed`, so
-  cargo runs it once and never again when the tree becomes dirty (proved with a side-effect log). A
-  marker computed there is stale, i.e. worse than absent. The `rerun-if-changed=<nonexistent>` escape
-  forces a rerun every build but costs 0.85 s per warm build, and the launcher rebuilds every
-  invocation. Refused.
-- **`CLAUDE.md`'s stale-asset warning is imprecise for CSS.** Cargo tracks `assets/css/base.css` in
-  dep-info; a marker appended to it did appear in the freshly built binary. Any claim that `cargo
-  build` silently embeds stale `assets/css/` was not reproducible. Re-verify for `assets/js/` before
-  repeating the touch-render workaround.
-- **Already fixed in code — do NOT re-open as bugs:** the 390px `page-layout: full` + `hero:` prose
-  overflow (`site.css` `.tali-site-main { box-sizing: border-box }`) and the theme/video desync
-  (`theme.rs` `syncThemeVideos()` on `qmd:themechange`). Only residue is a 3-viewport spot-check,
-  folded into the deferred Marketing rebuild.
-- **Include symlink-loop SIGABRT does not exist.** Linux caps symlink traversal at `MAXSYMLINKS = 40`
-  (`ELOOP` at depth 41), and `includes.rs:148` already `drop_with_warning`s on `Err(_)`. Its
-  co-listed "lexical-only `safe_join`" is likewise a non-issue: includes are author-local, never
-  attacker-controlled. A `MAX_INCLUDE_DEPTH` cap would be harmless defense-in-depth, not a defect.
-- **Perf refutations:** `app.pages` is bounded by the site's finite page count (holds only
-  lightweight `PageState`); the heavy resource (warm kernels) is already an LRU capped at
-  `MAX_WARM_PAGES = 6`. A "lazy discover-time search index" buys nothing (15.6-27.1 ms one-time vs a
-  0.38-0.64 s warm build) and would regress the Batch-8 live-search refresh.
+**2026-07-12 rulings (don't re-open):** the feature-idea wishlist (cross-revision diff, repro
+manifest, List-of-Figures/Tables/Theorems, interactive tables, "Cite this", line-level code xrefs,
+image `dark=`) → **cut to `FEATURE-IDEAS.md`** (revive only when a corpus doc needs one). Reader
+text-size/line-spacing controls → **declined for now** (a11y-exempt substrate exists in
+`14-reader-prefs.js`; revisit if requested). Twinned `fourier-transform` post dirs git-tracking
+anomaly → **left as-is**. Stale `new-post`/`new-project` scaffolder skills → **retired** (done this
+session; the `deploy` skill stays).
 
-**Gate the gate:** a drift test that cannot fail is worse than none. Two of the three Batch-F drift
-gates could not fail on their first draft (a line-based Rust gate missed a rustfmt-wrapped match arm;
-a TS gate's `spawn(\s*\w+\s*,` regex skipped `spawn(binaryPath(), …)`). Any new drift gate must be
-mutation-checked against exactly the shape it guards.
+**TODO / FIXME surfacing — owner ruled skip (2026-07-10).** No `level` concept exists
+(`render::Warning` / `check::Diagnostic` / `protocol::Diagnostic` know only warning|error, and the
+warning channel is a hard gate), so a TODO warning would fail `check` on every draft. If ever
+revived: design A (preview-only `Diagnostic::info` at `serve/mod.rs::compute_diagnostics`, cannot
+reach the gate) beats design B (re-plumb a real `level` through the whole gate). The scan must NOT
+reuse `prose::strip_inline` (blanks code, where TODOs live); pin any fixture in `corpus/diagnostics/`.
 
-**Library outsourcing — decided against** (each adversarially verified vs the invariants):
-hayagriva/biblatex (heavy deps, only IEEE used); schemars (reopens schema↔validator drift);
-jsonschema (loses source-line diagnostics); morphdom/idiomorph (reverse the 83x live-edit payload
-win); similar/dissimilar (give up the block-id→LIS reduction); clap; owo-colors; slug (transliterates
-non-ASCII → breaks anchors); html-escape (breaks the anti-double-escape contract); lightningcss/
-palette (CSS uses native `color-mix`); IntersectionObserver/scrollspy libs; deck micro-helpers (force
-an offline bundle onto every deck). The reader menu is intentionally an untrapped popover. Also: keep
-`two_face` extras filling gaps only — the bundled syntect set is consulted first and must win, because
-`two_face::syntax::extra_newlines()` is bat's own curated set (different scope spans), NOT a superset.
+**Refuted by measurement — do NOT re-scope:** `build` does not leak forkserver subtrees (graceful
+path reaped 2026-07-08; the gap is the *ungraceful* path, Tier 2); the warm pool booting Python on
+prose-only builds is hygiene, not latency (0.25 vs 0.27 s); dev attributes are 0.29% of page bytes
+(don't strip); a `--version -dirty` marker computed in `build.rs` is stale-by-construction (refused);
+the `assets/css` stale-embed claim did not reproduce (re-verify for `assets/js` before the
+touch-render workaround); the 390px `hero:` overflow + theme/video desync are already fixed in code;
+include symlink-loop SIGABRT does not exist (Linux caps at `MAXSYMLINKS=40`; includes are
+author-local).
+
+**Gate the gate:** a drift test that cannot fail is worse than none. Two of three Batch-F drift gates
+couldn't fail on first draft. Any new drift gate must be mutation-checked against exactly the shape it
+guards.
+
+**Library outsourcing — decided against** (each verified vs the invariants): hayagriva/biblatex,
+schemars, jsonschema, morphdom/idiomorph, similar/dissimilar, clap, owo-colors, slug, html-escape,
+lightningcss/palette, IntersectionObserver/scrollspy libs, deck micro-helpers. Keep `two_face` extras
+filling gaps only (the bundled syntect set is consulted first and must win — `extra_newlines()` is
+bat's own curated set, different scope spans, NOT a superset).
 
 **Reading-first defaults — research-validated keeps** (do NOT "fix"): serif body for long-form screen
-reading (don't switch to sans); ~70ch measure `--tali-maxw: 46rem` (don't narrow); right-rail
-scrollspy + width-gated sidenotes (keep both); scroll (not pagination) book reading; system-font-only
-(if a serif webfont is ever bundled, ship REAL bold/italic faces, never synthesized). *Caveat:* the
-competitor framing (Stripe/Linear/Mintlify/Docusaurus/GitBook) is unverified judgment, not evidence.
+reading; ~70ch measure `--tali-maxw: 46rem`; right-rail scrollspy + width-gated sidenotes; scroll
+(not pagination) book reading; if a serif webfont is bundled, ship REAL bold/italic faces (see item
+13), never synthesized. *Caveat:* the competitor framing (Stripe/Linear/Mintlify/…) is unverified
+judgment.
 
-**2026-07-06 session decisions:** book pager stays **bottom-only** (a top pager fights the calm
-column; the Chapters drawer gives random access). Book page-TOC: **fix in place, keep both nav
-surfaces** — do NOT fold the rail into the chapter drawer (loses the always-visible scrollspy). Xref
-graph tool: **removed** (interaction not good enough). Focus mode stays **ephemeral** (no persistence
-across chapters): `requestFullscreen()` needs a user gesture, so persistence could only restore CSS
-chrome-hiding and would silently drop fullscreen on nav. Deck overview **keeps per-slide backgrounds**
-(documented recognizability "fingerprint", no contrast bug today). Dev-menu + `#tali-progress` +
-reading-progress bar stay **three separate signals** (author diagnostics / build-exec status / reader
-scroll-position); `#tali-progress` is the exec chip, NOT a reading-progress chip.
+**2026-07-06 decisions:** book pager stays bottom-only; book page-TOC fix-in-place, keep both nav
+surfaces; xref graph tool removed; focus mode stays ephemeral; deck overview keeps per-slide
+backgrounds; dev-menu + `#tali-progress` + reading-progress bar stay three separate signals
+(`#tali-progress` is the exec chip, not a reading chip).
 
 ## Product / distribution
 
 Resolved (2026-06-20): ship as **open source + personal tool**, no company for now (optionality kept:
 sole copyright + trademarkable name; `STARTUP-PLAN.md`). Open-source the repo + publish the site when
-ready; the GitHub/install CTAs become real then. The security token gate is shipped.
+ready; the security token gate is shipped.

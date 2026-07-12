@@ -577,6 +577,27 @@ thesis.
 
 ---
 
+## Parked from the backlog (2026-07-12)
+
+Cut from `backlog.md` during a slim-down (owner ruled: these are super-polish, not priority;
+revive any one here when a corpus doc needs it). Status verified against the code at cut time:
+
+- **Cross-revision block-diff "what changed" view** — compare two saved revisions, show
+  block-level changes. Not built; overlaps the "session revision digest" idea (also unbuilt);
+  both trade on the diff moat.
+- **Reader reproducibility manifest** — a reader-facing "how this was computed" panel
+  (interpreter, versions, cell hashes). Not built.
+- **Web-native List of Figures / Tables / Theorems** — an aggregated index page. Not built,
+  but the numbering + anchor primitives already exist (`@fig-`, `@tbl-`, `@thm-`, `@lnx`).
+- **Interactive data tables** (client-side sort/filter) — not built; adds reader JS surface.
+- **"Cite this" export** — copy-BibTeX / formatted-citation affordance on posts. Not built.
+- **Line-level code xrefs** (`@lst-3:line`) — whole-listing xrefs already ship
+  (`label: lnx` → `@lnx`); only per-line granularity is missing.
+- **Theme-aware `dark=` for static images** — `{{< video dark= >}}` already swaps a dark clip
+  by theme; extending the same `dark=` to images/figures is the unbuilt part.
+
+---
+
 ## Provenance
 
 Session 2026-06-25. Five parallel deep-research agents (web-native doc/notebook tools; dev
