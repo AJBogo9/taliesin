@@ -45,10 +45,6 @@ head, live-figure thumbnails) live in the detail file — protect them. Every fi
    read the posts and draft a ~5-bucket mapping for approval before applying.
 12. **`#posts-are-navigational-deadends`** (M, own spec). Posts dead-end at "← Blog"; add prev/next
     (+ optional related) to the post chrome. Needs a corpus pin.
-13. **Owned body typeface** (M, design) *[ruled: promote Newsreader to body]*. Newsreader (OFL) is
-    already bundled Regular-only for OG cards; add its real bold + italic + bold-italic faces and make
-    it the body face (never synthesize weights). Biggest remaining "assembled from defaults" tell;
-    subsumes the colour-system "No owned typeface" owner-call.
 
 ### B. Publish / build hardening (rulings unblocked)
 
