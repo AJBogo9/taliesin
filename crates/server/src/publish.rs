@@ -43,9 +43,6 @@ struct PublishArgs<'a> {
     out_dir: Option<&'a str>,
     strict: bool,
     dry_run: bool,
-    // Consumed by cmd_publish's gate/decision logic (Task 3); parsed here so the flag
-    // is accepted and unit-testable ahead of that wiring.
-    #[allow(dead_code)]
     public: bool,
 }
 
@@ -138,7 +135,7 @@ pub(crate) fn cmd_publish(args: &[String]) -> ExitCode {
         out_dir,
         strict,
         dry_run,
-        public: _,
+        public,
     } = match parse_publish_args(args) {
         Ok(p) => p,
         Err(msg) => {
@@ -168,6 +165,20 @@ pub(crate) fn cmd_publish(args: &[String]) -> ExitCode {
 
     // Discover the site once to resolve the project name + the output dir.
     let site = taliesin_core::Site::discover(root);
+
+    // Precedence: --public wins, else publish.gate: in _site.yml, else gated (safe default).
+    let gated = if public {
+        false
+    } else {
+        site.config
+            .publish
+            .as_ref()
+            .and_then(|p| p.gate)
+            .unwrap_or(true)
+    };
+    if !gated {
+        log::warn("publishing WITHOUT a passcode gate: this site will be PUBLIC");
+    }
     if let Some(publish) = &site.config.publish
         && let Some(provider) = &publish.provider
         && provider != "cloudflare"
@@ -206,8 +217,8 @@ pub(crate) fn cmd_publish(args: &[String]) -> ExitCode {
     }
     let out = out.canonicalize().unwrap_or(out);
 
-    // Inject the passcode gate into the freshly built tree.
-    if let Err(e) = inject_gate(&out) {
+    // Inject the passcode gate into the freshly built tree (unless deploying public).
+    if gated && let Err(e) = inject_gate(&out) {
         log::error(&format!(
             "cannot write the passcode gate to {}: {e}",
             out.join("functions/_middleware.js").display()
@@ -219,7 +230,11 @@ pub(crate) fn cmd_publish(args: &[String]) -> ExitCode {
         "wrangler pages deploy . --project-name {project} --branch {PRODUCTION_BRANCH} --commit-dirty=true"
     );
     if dry_run {
-        log::info(&format!("built + gated {} (not deployed)", out.display()));
+        let gate_note = if gated { "gated" } else { "PUBLIC (no gate)" };
+        log::info(&format!(
+            "built + {gate_note} {} (not deployed)",
+            out.display()
+        ));
         println!("would run (cwd {}): {cmd}", out.display());
         return ExitCode::SUCCESS;
     }

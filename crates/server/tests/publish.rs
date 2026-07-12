@@ -72,6 +72,73 @@ fn real_publish_without_token_fails_fast() {
     let _ = std::fs::remove_dir_all(&out);
 }
 
+#[test]
+fn public_flag_skips_the_gate_and_warns() {
+    let out = std::env::temp_dir().join(format!("tali-pub-public-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&out);
+    let res = Command::new(bin())
+        .args(["publish", "corpus/demo-book", "--out"])
+        .arg(&out)
+        .args(["--public", "--dry-run"])
+        .current_dir(env!("CARGO_MANIFEST_DIR").to_string() + "/../..")
+        .output()
+        .expect("run publish --public --dry-run");
+    assert!(
+        res.status.success(),
+        "public dry-run should succeed: {}",
+        String::from_utf8_lossy(&res.stderr)
+    );
+    // No passcode gate injected.
+    assert!(
+        !out.join("functions").join("_middleware.js").exists(),
+        "--public must not inject the gate"
+    );
+    // A loud PUBLIC warning was printed.
+    let stderr = String::from_utf8_lossy(&res.stderr);
+    assert!(
+        stderr.contains("PUBLIC"),
+        "must warn that the site is public: {stderr}"
+    );
+    // The site still built.
+    assert!(out.join("index.html").exists(), "site built to out");
+    let _ = std::fs::remove_dir_all(&out);
+}
+
+#[test]
+fn gate_false_config_skips_the_gate() {
+    // A throwaway one-page site with publish.gate: false.
+    let root = std::env::temp_dir().join(format!("tali-pub-gatecfg-{}", std::process::id()));
+    let out = std::env::temp_dir().join(format!("tali-pub-gatecfg-out-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&out);
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(
+        root.join("_site.yml"),
+        "title: Pub\npublish:\n  gate: false\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("index.tmd"), "---\ntitle: Home\n---\n\nHi.\n").unwrap();
+    let res = Command::new(bin())
+        .args(["publish"])
+        .arg(&root)
+        .arg("--out")
+        .arg(&out)
+        .arg("--dry-run")
+        .output()
+        .expect("run publish --dry-run");
+    assert!(
+        res.status.success(),
+        "dry-run should succeed: {}",
+        String::from_utf8_lossy(&res.stderr)
+    );
+    assert!(
+        !out.join("functions").join("_middleware.js").exists(),
+        "publish.gate: false must not inject the gate"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&out);
+}
+
 // Silence dead_code on the helper if only one test uses it in some configs.
 #[allow(dead_code)]
 fn _root() -> &'static Path {
