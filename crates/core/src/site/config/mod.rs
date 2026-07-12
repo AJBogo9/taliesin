@@ -58,6 +58,11 @@ pub struct SiteConfig {
     pub mounts: Vec<Mount>,
     /// `publish:` deploy target for `taliesin publish` (absent unless configured).
     pub publish: Option<PublishConfig>,
+    /// Project-pinned Python interpreter (`python:` in `_site.yml`), highest
+    /// precedence in interpreter resolution. `None` falls back to `.venv`/env/default.
+    pub python: Option<String>,
+    /// Project-pinned R interpreter (`r:` in `_site.yml`). `None` falls back to env/`R`.
+    pub r: Option<String>,
 }
 
 /// One `mounts:` entry: serve the project at `path` (relative to the site root)
@@ -128,6 +133,8 @@ pub(crate) const NATIVE_KEYS: &[&str] = &[
     "chapters",
     "mounts",
     "publish",
+    "python",
+    "r",
 ];
 
 /// `nav:` section keys (the `{ left, right }` mapping form). A typo here silently drops
@@ -216,6 +223,8 @@ fn parse_native(value: &serde_yaml::Value, warnings: &mut Vec<String>) -> SiteCo
         chapters,
         mounts: mounts_from(value.get("mounts")),
         publish: publish_from(value.get("publish")),
+        python: str_of("python"),
+        r: str_of("r"),
     }
 }
 
@@ -443,6 +452,28 @@ mod config_tests {
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn parses_python_and_r_interpreter_pins() {
+        let mut w = Vec::new();
+        let v: serde_yaml::Value =
+            serde_yaml::from_str("title: X\npython: .venv/bin/python\nr: /usr/bin/R\n").unwrap();
+        let cfg = parse_native(&v, &mut w);
+        assert_eq!(cfg.python.as_deref(), Some(".venv/bin/python"));
+        assert_eq!(cfg.r.as_deref(), Some("/usr/bin/R"));
+        assert!(w.is_empty(), "valid keys warn about nothing: {w:?}");
+    }
+
+    #[test]
+    fn a_typod_interpreter_key_warns_via_native_keys() {
+        let mut w = Vec::new();
+        let v: serde_yaml::Value = serde_yaml::from_str("pyton: .venv/bin/python\n").unwrap();
+        let _ = parse_native(&v, &mut w);
+        assert!(
+            w.iter().any(|m| m.contains("pyton")),
+            "an unknown config key must warn (did-you-mean python): {w:?}"
+        );
     }
 
     #[test]
