@@ -95,6 +95,8 @@
       },
       "type": "object"
     },
+    "python": {},
+    "r": {},
     "title": {},
     "toc": {
       "type": "boolean"
