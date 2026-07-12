@@ -43,8 +43,11 @@ head, live-figure thumbnails) live in the detail file — protect them. Every fi
    `site/discovery.rs:19-23` + widens a discovery path — brief brainstorm first.
 9. **Category taxonomy → ~5** (S, content) *[ruled: consolidate]*. 11 categories over 7 posts. I'll
    read the posts and draft a ~5-bucket mapping for approval before applying.
-12. **`#posts-are-navigational-deadends`** (M, own spec). Posts dead-end at "← Blog"; add prev/next
-    (+ optional related) to the post chrome. Needs a corpus pin.
+
+*(Dropped 2026-07-12: #12 chronological post prev/next. For a 7-post topic-diverse blog the
+ordering is meaningless and over-promises; the reading-first listing is the right hub, and
+sequential nav already exists via books. A category-driven "related posts" strip could revisit
+this, but only after #9 makes categories meaningful.)*
 
 ### B. Publish / build hardening (rulings unblocked)
 
