@@ -124,6 +124,79 @@ fn resolve_r_env(field: Option<&str>, _project_dir: &Path, env: Option<&OsStr>) 
     }
 }
 
+/// A read-only introspection of a resolved interpreter: does it run, what version,
+/// and is its Jupyter kernel package importable. Never executes the user's document.
+#[derive(Debug, Clone)]
+pub struct Probe {
+    /// The interpreter binary spawned and returned a version (it exists + runs).
+    pub runs: bool,
+    /// The `--version` string, trimmed, when `runs`.
+    pub version: Option<String>,
+    /// `ipykernel` (Python) / `IRkernel` (R) imported cleanly.
+    pub kernel_pkg_ok: bool,
+    /// The captured failure (spawn error, or the interpreter's stderr on a failed
+    /// import), for the human/JSON report. `None` when everything succeeded.
+    pub error: Option<String>,
+}
+
+/// Probe a resolved interpreter: `<bin> --version`, then an import of its Jupyter
+/// kernel package. Tolerates a missing binary / import error (never panics, never
+/// blocks `check`'s exit code).
+pub fn probe(resolved: &Resolved, lang: Lang) -> Probe {
+    use std::process::Command;
+    let bin = &resolved.path;
+
+    // 1. Version / runnability. A spawn failure (binary absent) is captured, not fatal.
+    let (runs, version, mut error) = match Command::new(bin).arg("--version").output() {
+        Ok(out) => {
+            // Python prints version on stdout (3.4+) or stderr (older); R on stdout.
+            let mut v = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if v.is_empty() {
+                v = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            }
+            let v = v.lines().next().unwrap_or("").trim().to_string();
+            (true, (!v.is_empty()).then_some(v), None)
+        }
+        Err(e) => (
+            false,
+            None,
+            Some(format!("cannot run {}: {e}", bin.display())),
+        ),
+    };
+
+    // 2. Kernel-package import (only if the binary runs). Environment introspection
+    //    only: importing ipykernel/IRkernel does not run the document.
+    let mut kernel_pkg_ok = false;
+    if runs {
+        let import = match lang {
+            Lang::Python => Command::new(bin).args(["-c", "import ipykernel"]).output(),
+            // `--vanilla` keeps startup deterministic; `-e` runs the import statement.
+            Lang::R => Command::new(bin)
+                .args(["--vanilla", "--slave", "-e", "library(IRkernel)"])
+                .output(),
+        };
+        match import {
+            Ok(out) if out.status.success() => kernel_pkg_ok = true,
+            Ok(out) => {
+                let msg = String::from_utf8_lossy(&out.stderr).trim().to_string();
+                error = Some(if msg.is_empty() {
+                    "kernel package import failed".to_string()
+                } else {
+                    msg.lines().last().unwrap_or(&msg).to_string()
+                });
+            }
+            Err(e) => error = Some(format!("cannot run {}: {e}", bin.display())),
+        }
+    }
+
+    Probe {
+        runs,
+        version,
+        kernel_pkg_ok,
+        error,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -195,5 +268,41 @@ mod tests {
         assert_eq!(Provenance::Env.label(Lang::R), "TALIESIN_R");
         assert_eq!(Provenance::Default.label(Lang::Python), "python3");
         assert_eq!(Provenance::Default.label(Lang::R), "R");
+    }
+
+    #[test]
+    fn probe_of_a_missing_binary_reports_not_runnable_without_panicking() {
+        let r = Resolved {
+            path: std::path::PathBuf::from("/nonexistent/tali/python-xyz"),
+            provenance: Provenance::Field,
+        };
+        let p = probe(&r, Lang::Python);
+        assert!(!p.runs, "a missing binary must not report as runnable");
+        assert!(!p.kernel_pkg_ok);
+        assert!(
+            p.error.is_some(),
+            "a spawn failure is captured, not swallowed"
+        );
+    }
+
+    #[test]
+    fn probe_reports_ipykernel_against_a_real_python() {
+        // Kernel-gated: without TALIESIN_PYTHON this asserts nothing (no live interp).
+        let Some(py) = std::env::var_os("TALIESIN_PYTHON") else {
+            eprintln!("SKIPPED (no live interpreter): set TALIESIN_PYTHON to probe ipykernel");
+            return;
+        };
+        let r = Resolved {
+            path: py.into(),
+            provenance: Provenance::Env,
+        };
+        let p = probe(&r, Lang::Python);
+        assert!(p.runs, "a real python should run --version");
+        assert!(p.version.is_some(), "version string captured");
+        // kernel_pkg_ok reflects reality; we only assert that when false an error is
+        // captured (the section is informational, so availability is not asserted).
+        if !p.kernel_pkg_ok {
+            assert!(p.error.is_some());
+        }
     }
 }
