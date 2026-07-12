@@ -12,7 +12,7 @@ title: "CLI reference"
 | `build <file.tmd> --out <dir>` | Write `<dir>/index.html` + copied assets (a portable folder) |
 | `build <file.tmd> --bare` | Write a **bare** page: zero `<script>`, zero CDN, CSS-only theme (drafts / archives / print input) |
 | `build <dir> [--out <dir>]` | Build a **multi-page site/book** to `_site/` / `_book/` |
-| `publish <dir> [--project-name <name>] [--dry-run]` | Build a site/book + deploy it to Cloudflare Pages behind a shared passcode (Wrangler direct upload) |
+| `publish <dir> [--project-name <name>] [--public] [--no-strict] [--dry-run]` | Build a site/book + deploy it to Cloudflare Pages behind a shared passcode by default (`--public` opts out); strict by default (`--no-strict` opts out); Wrangler direct upload |
 | `render <file.tmd>` | Render a one-shot full HTML page to stdout |
 | `blocks <file.tmd>` | List block ids and sourcepos (for debugging) |
 | `schema [--out <dir>]` | Emit the bundled JSON Schemas for `_site.yml` + front matter (editor autocomplete) |
@@ -189,10 +189,12 @@ other publish-blocking mistakes ship to your readers.
 ### `taliesin publish`: one command to a passcode-gated URL
 
 For a private draft you want a supervisor or co-author to read at a stable URL,
-`taliesin publish <dir>` builds the site or book, gates it behind a shared passcode,
-and deploys it to [Cloudflare Pages](https://pages.cloudflare.com/) (free, works with a
-private repo). The passcode is stored as a Cloudflare secret, never in your repo, and the
-flow is one-way: publish never writes back to your source.
+`taliesin publish <dir>` builds the site or book, gates it behind a shared passcode by
+default, and deploys it to [Cloudflare Pages](https://pages.cloudflare.com/) (free, works
+with a private repo). The passcode is stored as a Cloudflare secret, never in your repo,
+and the flow is one-way: publish never writes back to your source. The build is also
+strict by default, so a broken cross-reference or a failed code cell fails the deploy
+instead of shipping; pass `--no-strict` to deploy anyway.
 
 One-time setup per project (needs [Wrangler](https://developers.cloudflare.com/workers/wrangler/),
 Cloudflare's CLI, and a Cloudflare API token with the Pages:Edit permission):
@@ -208,6 +210,7 @@ Then, every time you want to update the live copy:
 ```sh
 taliesin publish .                   # build, gate, deploy; prints https://my-book.pages.dev
 taliesin publish . --dry-run         # build + gate + print the deploy command, no deploy
+taliesin publish . --public          # build + deploy WITHOUT the passcode gate (public URL)
 ```
 
 The Cloudflare project name defaults to a slug of the directory name; override it with
@@ -218,6 +221,10 @@ publish:
   provider: cloudflare
   project: my-book
 ```
+
+Add `gate: false` to that block (or pass `--public` on the command line) to deploy a
+public, un-gated site instead; either way `publish` prints a loud warning so a public
+deploy is never silent.
 
 Your readers open the URL, type the passcode once in the browser's password prompt (no
 account needed), and see the current build. A shared passcode keeps casual strangers out;
