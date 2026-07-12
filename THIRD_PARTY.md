@@ -28,11 +28,16 @@ Bundled so the tool works fully offline.
   No Octicons package is bundled; only individual path data. License:
   <https://github.com/primer/octicons/blob/main/LICENSE>.
 - **Newsreader** (SIL Open Font License 1.1, Copyright 2020 The Newsreader
-  Project Authors). The variable serif bundled at
-  `crates/core/assets/fonts/Newsreader[opsz,wght].ttf`, rasterized at build time
+  Project Authors). Used two ways. (1) The variable serif TTF at
+  `crates/core/assets/fonts/Newsreader[opsz,wght].ttf` is rasterized at build time
   for the headline/byline/footer text on the auto-generated social-card image
-  (`crates/core/src/site/card.rs`). Full license text ships alongside it in
-  `crates/core/assets/fonts/OFL.txt`. License:
+  (`crates/core/src/site/card.rs`). (2) The **body typeface** for rendered pages:
+  the two variable woff2 faces
+  `crates/core/assets/fonts/newsreader-latin-wght-{normal,italic}.woff2` (roman +
+  italic, Latin subset, from `@fontsource-variable/newsreader@5.2.10`) are inlined
+  as `data:` URIs into every page's CSS at build time (`build.rs`), so pages need no
+  network for text. Full license text ships alongside them in
+  `crates/core/assets/fonts/OFL.txt` (and `newsreader-OFL-fontsource.txt`). License:
   <https://github.com/productiontype/Newsreader>.
 
 The other scripts under `crates/core/assets/js/` (`code-enhance.js`, `deck.js`,

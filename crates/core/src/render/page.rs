@@ -178,7 +178,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
 <title>{title}</title>
 {favicon}
 {theme_init}
-<style>{base}{dark}{site}{bare_theme}</style>{katex}
+<style>{fonts}{base}{dark}{site}{bare_theme}</style>{katex}
 {js_head}
 {theme_css}
 {include_in_header}
@@ -197,6 +197,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
         title = p.title,
         favicon = p.favicon,
         theme_init = theme_init,
+        fonts = FONTS_CSS,
         base = BASE_CSS,
         dark = dark,
         site = site_css,

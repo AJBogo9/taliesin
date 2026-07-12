@@ -32,7 +32,7 @@
        proof, so they must stay quieter than a callout. */
     --tali-thm-plain: #4f5a80; --tali-thm-definition: #2f7a63; --tali-thm-remark: #7a7f87;
     color-scheme: light;
-    --tali-font-body: 1.125rem/1.7 ui-serif, Georgia, "Times New Roman", serif;
+    --tali-font-body: 1.125rem/1.7 "Newsreader", ui-serif, Georgia, "Times New Roman", serif;
     --tali-font-head: ui-sans-serif, system-ui, sans-serif;
     --tali-font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
     --tali-maxw: 46rem;

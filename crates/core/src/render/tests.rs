@@ -3449,3 +3449,35 @@ fn a_demoted_post_still_lists_all_its_sections_in_the_toc() {
         "all three demoted sections listed"
     );
 }
+
+#[test]
+fn body_uses_the_inlined_newsreader_face() {
+    let doc = render_document("Body prose.\n");
+    let page = super::render_doc_to_page(&doc, "stem", crate::OutputMode::Build);
+    // Two real @font-face rules for the owned body face, family "Newsreader".
+    assert!(page.contains("@font-face"), "no @font-face in page head");
+    assert!(
+        page.contains("\"Newsreader\""),
+        "Newsreader @font-face family missing"
+    );
+    // A true italic face (not synthesized) alongside the normal one.
+    assert!(
+        page.contains("font-style: italic"),
+        "italic Newsreader face missing"
+    );
+    // Inlined as a data URI (offline, self-contained), never a bare url(fonts/…) that
+    // would 404 since there is no served font path.
+    assert!(
+        page.contains("url(data:font/woff2;base64,"),
+        "font not inlined as a data URI"
+    );
+    assert!(
+        !page.contains("url(fonts/newsreader"),
+        "a bare font url leaked into the page (would 404)"
+    );
+    // The body typeface variable actually names the face (system serif kept as fallback).
+    assert!(
+        page.contains("\"Newsreader\", ui-serif"),
+        "--tali-font-body not pointed at Newsreader"
+    );
+}

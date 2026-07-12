@@ -569,7 +569,7 @@ html.tali-scroll .tali-deck .tali-slides {
 html.tali-scroll .tali-deck .tali-slides p,
 html.tali-scroll .tali-deck .tali-slides li,
 html.tali-scroll .tali-deck .tali-slides blockquote {
-  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  font-family: "Newsreader", ui-serif, Georgia, "Times New Roman", serif;
   line-height: 1.7;
 }
 html.tali-scroll .tali-deck .tali-slides > section,

@@ -955,6 +955,11 @@ pub fn render_html_page_with_includes(src: &str, base_dir: &Path, fallback_title
 /// Self-contained KaTeX stylesheet (fonts inlined as data URIs at build time).
 const KATEX_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/katex-inlined.css"));
 
+/// The owned body typeface: Newsreader `@font-face` rules with the two variable woff2
+/// faces (roman + italic) inlined as data URIs at build time (see `build.rs`). Emitted
+/// ahead of the base stylesheet so `--tali-font-body` resolves to the loaded face.
+pub(crate) const FONTS_CSS: &str = include_str!(concat!(env!("OUT_DIR"), "/fonts-inlined.css"));
+
 /// Base document styling (typography, tables, callouts, references, block
 /// highlight). Emitted by the page builders in `page.rs`/`deck.rs`; KaTeX rides
 /// along when the page has (or, in a live preview, may gain) math.
