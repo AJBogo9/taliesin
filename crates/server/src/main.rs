@@ -11,6 +11,7 @@ mod check;
 mod cli;
 mod exec;
 mod freeze;
+mod interpreter;
 mod kernel;
 mod log;
 mod protocol;
