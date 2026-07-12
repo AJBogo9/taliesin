@@ -528,9 +528,11 @@ mod tests {
 
     #[test]
     fn collect_diagnostics_surfaces_a11y_rules() {
-        // One doc tripping each new static a11y rule: a raw `<img>` with no alt, an h2->h4
-        // heading skip, and an empty (icon-only) link. `check` must surface them all, located,
-        // while leaving an `alt`-bearing image and a single-level heading step alone.
+        // One doc tripping each new static a11y rule: a raw `<img>` with no alt, an authored
+        // `##`->`####` heading skip, and an empty (icon-only) link. `check` must surface them
+        // all, located, while leaving an `alt`-bearing image and a single-level heading step
+        // alone. The doc has a title block, so heading demotion (#11) renders `##`/`####` as
+        // h3/h5: the skip is preserved (difference-invariant) and reported at the shipped levels.
         let dir = tmp("check-a11y");
         let f = dir.join("doc.tmd");
         fs::write(
@@ -547,7 +549,7 @@ mod tests {
         let has = |needle: &str| diags.iter().any(|d| d.message.contains(needle));
         assert!(has("image is missing alt text"), "raw img: {diags:?}");
         assert!(
-            has("heading level skips from h2 to h4"),
+            has("heading level skips from h3 to h5"),
             "heading skip: {diags:?}"
         );
         assert!(has("link has no accessible name"), "empty link: {diags:?}");
@@ -589,7 +591,7 @@ mod tests {
         let has = |needle: &str| diags.iter().any(|d| d.message.contains(needle));
         assert!(has("image is missing alt text"), "raw img: {diags:?}");
         assert!(
-            has("heading level skips from h2 to h4"),
+            has("heading level skips from h3 to h5"),
             "heading skip: {diags:?}"
         );
         assert!(has("link has no accessible name"), "empty link: {diags:?}");
