@@ -26,7 +26,14 @@ const MIDDLEWARE_JS: &str = include_str!("assets/_middleware.js");
 const PRODUCTION_BRANCH: &str = "production";
 
 /// Long flags `publish` accepts (drives the unknown-flag did-you-mean).
-const PUBLISH_FLAGS: &[&str] = &["--project-name", "--out", "--strict", "--dry-run"];
+const PUBLISH_FLAGS: &[&str] = &[
+    "--project-name",
+    "--out",
+    "--strict",
+    "--no-strict",
+    "--public",
+    "--dry-run",
+];
 
 /// Parsed `publish` argv (pure; no I/O), so the positional/flag rules are unit-testable.
 #[derive(Debug)]
@@ -36,6 +43,10 @@ struct PublishArgs<'a> {
     out_dir: Option<&'a str>,
     strict: bool,
     dry_run: bool,
+    // Consumed by cmd_publish's gate/decision logic (Task 3); parsed here so the flag
+    // is accepted and unit-testable ahead of that wiring.
+    #[allow(dead_code)]
+    public: bool,
 }
 
 /// Parse `publish` argv (`args[2..]`). The first positional is the project dir.
@@ -43,8 +54,9 @@ fn parse_publish_args(args: &[String]) -> Result<PublishArgs<'_>, String> {
     let mut positionals: Vec<&str> = Vec::new();
     let mut project_name: Option<&str> = None;
     let mut out_dir: Option<&str> = None;
-    let mut strict = false;
+    let mut strict = true; // publish is strict by default; --no-strict opts out
     let mut dry_run = false;
+    let mut public = false;
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -66,6 +78,8 @@ fn parse_publish_args(args: &[String]) -> Result<PublishArgs<'_>, String> {
                 }
             },
             "--strict" => strict = true,
+            "--no-strict" => strict = false,
+            "--public" => public = true,
             "--dry-run" => dry_run = true,
             s if s.starts_with("--") => {
                 return Err(format!(
@@ -77,7 +91,7 @@ fn parse_publish_args(args: &[String]) -> Result<PublishArgs<'_>, String> {
         }
     }
     let path = positionals.first().copied().ok_or_else(|| {
-        "usage: taliesin publish <dir> [--project-name <name>] [--out <dir>] [--strict] [--dry-run]"
+        "usage: taliesin publish <dir> [--project-name <name>] [--out <dir>] [--public] [--no-strict] [--dry-run]"
             .to_string()
     })?;
     Ok(PublishArgs {
@@ -86,6 +100,7 @@ fn parse_publish_args(args: &[String]) -> Result<PublishArgs<'_>, String> {
         out_dir,
         strict,
         dry_run,
+        public,
     })
 }
 
@@ -123,6 +138,7 @@ pub(crate) fn cmd_publish(args: &[String]) -> ExitCode {
         out_dir,
         strict,
         dry_run,
+        public: _,
     } = match parse_publish_args(args) {
         Ok(p) => p,
         Err(msg) => {
@@ -294,5 +310,37 @@ mod tests {
     #[test]
     fn project_name_flag_requires_a_value() {
         assert!(parse_publish_args(&argv(&["book", "--project-name"])).is_err());
+    }
+
+    #[test]
+    fn strict_is_the_default() {
+        let a = argv(&["book"]);
+        let p = parse_publish_args(&a).expect("parse");
+        assert!(p.strict, "publish must be strict by default");
+        assert!(!p.public);
+    }
+
+    #[test]
+    fn no_strict_opts_out_and_public_opts_in() {
+        let a = argv(&["book", "--no-strict", "--public"]);
+        let p = parse_publish_args(&a).expect("parse");
+        assert!(!p.strict);
+        assert!(p.public);
+    }
+
+    #[test]
+    fn strict_flags_are_last_wins() {
+        let av = argv(&["book", "--no-strict", "--strict"]);
+        let a = parse_publish_args(&av).expect("parse");
+        assert!(a.strict, "--strict after --no-strict wins");
+        let bv = argv(&["book", "--strict", "--no-strict"]);
+        let b = parse_publish_args(&bv).expect("parse");
+        assert!(!b.strict, "--no-strict after --strict wins");
+    }
+
+    #[test]
+    fn public_typo_still_did_you_means() {
+        let err = parse_publish_args(&argv(&["book", "--publik"])).unwrap_err();
+        assert!(err.contains("--publik"), "{err}");
     }
 }
