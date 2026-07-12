@@ -83,6 +83,7 @@
     "publish": {
       "additionalProperties": false,
       "properties": {
+        "gate": {},
         "project": {
           "type": "string"
         },
