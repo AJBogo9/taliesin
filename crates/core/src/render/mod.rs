@@ -1135,6 +1135,56 @@ const TABSET_JS: &str = include_str!("../../assets/js/tabset.js");
 /// no-ops without a `.scrolly`, rides in [`code_scripts`].
 const SCROLLY_JS: &str = include_str!("../../assets/js/scrolly.js");
 
+/// The raw framework CSS a non-bare site page inlines in its main `<style>` (fonts +
+/// base + dark + site chrome). Exposed so the multi-page build can externalize it into
+/// one content-hashed `_assets/app.<hash>.css` instead of inlining a copy per page.
+pub fn shared_site_css() -> String {
+    format!("{FONTS_CSS}{BASE_CSS}{DARK_CSS}{SITE_CSS}")
+}
+
+/// The KaTeX stylesheet (base64 fonts inlined), for the externalized `katex.<hash>.css`.
+pub fn katex_css_bytes() -> &'static str {
+    KATEX_CSS
+}
+
+/// All of Taliesin's OWN page JS, concatenated for the always-on `app.<hash>.js`. Each
+/// piece is separated by a bare `;` on its own line so concatenation is ASI-safe. The
+/// big vendored libs (mermaid, d3, Plot) are deliberately excluded (their own files).
+pub fn core_enhance_js() -> String {
+    [
+        CODE_ENHANCE_JS,
+        TALIESIN_JS,
+        WALKTHROUGH_JS,
+        TABSET_JS,
+        SCROLLY_JS,
+        TOC_SPY_JS,
+        TOC_SHEET_JS,
+        SEARCH_JS,
+    ]
+    .join("\n;\n")
+}
+
+/// The vendored mermaid library plus its loader (CDN placeholder already resolved), for
+/// the conditional `mermaid.<hash>.js`. Ships only on pages that have a diagram, so the
+/// loader's never-reached CDN fallback stays off prose pages.
+pub fn mermaid_bundle_js() -> String {
+    format!(
+        "{MERMAID_MIN_JS}\n;\n{}",
+        MERMAID_JS.replace("{{MERMAID}}", &mermaid_url())
+    )
+}
+
+/// The vendored d3 + Observable Plot globals for the conditional `jslibs.<hash>.js`
+/// (ships only on pages with `{js}` cells).
+pub fn js_cell_libs_js() -> String {
+    format!("{D3_JS}\n;\n{PLOT_JS}")
+}
+
+/// True if a rendered body contains a mermaid diagram (gates the mermaid file link).
+pub fn has_mermaid(body: &str) -> bool {
+    body.contains("class=\"mermaid\"")
+}
+
 /// Heading level (1–6) for a block whose root element is `<hN ...>`/`<hN>`.
 pub(crate) fn block_heading_level(html: &str) -> Option<u8> {
     let b = html.as_bytes();

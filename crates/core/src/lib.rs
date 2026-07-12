@@ -45,10 +45,11 @@ pub use diff::{BlockOp, diff_blocks};
 pub use frontmatter::closest;
 pub use render::{
     Block, DeckParts, DocFormat, OutputMode, PageParts, RenderedDoc, SEARCH_JS, TOC_SPY_JS,
-    assemble_deck_page, assemble_html_page, code_scripts, deck_client_script, escape_attr,
-    favicon_link, html_escape, render_doc_to_page, render_document, render_document_with_includes,
+    assemble_deck_page, assemble_html_page, code_scripts, core_enhance_js, deck_client_script,
+    escape_attr, favicon_link, has_mermaid, html_escape, js_cell_libs_js, katex_css_bytes,
+    mermaid_bundle_js, render_doc_to_page, render_document, render_document_with_includes,
     render_document_with_includes_scoped, render_html_page, render_html_page_with_includes,
-    slides_html, title_with_site_suffix,
+    shared_site_css, slides_html, title_with_site_suffix,
 };
 pub use site::{Page, Site};
 

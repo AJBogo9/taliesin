@@ -3481,3 +3481,58 @@ fn body_uses_the_inlined_newsreader_face() {
         "--tali-font-body not pointed at Newsreader"
     );
 }
+
+// Marker literals below are each confirmed present via grep before use (see the Task 1
+// report): base.css -> ".tali-reader-seg", dark.css -> the dark-theme mermaid override
+// selector, site.css -> ".tali-book-topbar" (site-only chrome), the code-enhance bundle
+// -> "function taliCopyText" (defined in 01-registry.js), search.js -> "function
+// buildIndex", mermaid.min.js -> the esbuild wrapper var, d3.min.js -> its source-map
+// comment header, plot.umd.min.js -> its own header comment.
+
+#[test]
+fn shared_site_css_bundles_the_framework_sheets() {
+    let css = shared_site_css();
+    assert!(css.contains(".tali-reader-seg"), "base.css missing");
+    assert!(
+        css.contains("html[data-theme=\"dark\"] pre.mermaid"),
+        "dark.css missing"
+    );
+    assert!(css.contains(".tali-book-topbar"), "site.css missing");
+}
+
+#[test]
+fn core_enhance_js_has_our_scripts_not_the_big_libs() {
+    let js = core_enhance_js();
+    assert!(js.contains("function taliCopyText"), "code-enhance missing");
+    assert!(js.contains("function buildIndex"), "search.js missing");
+    // The big vendored libs must NOT be in the always-on core bundle.
+    assert!(
+        !js.contains("__esbuild_esm_mermaid"),
+        "mermaid lib leaked into core"
+    );
+    assert!(!js.contains("d3js.org"), "d3 leaked into core");
+}
+
+#[test]
+fn mermaid_and_jslibs_bundles_carry_their_libs() {
+    assert!(
+        mermaid_bundle_js().contains("__esbuild_esm_mermaid"),
+        "mermaid lib missing"
+    );
+    // The loader's CDN placeholder must be resolved, never left raw.
+    assert!(
+        !mermaid_bundle_js().contains("{{MERMAID}}"),
+        "loader placeholder unresolved"
+    );
+    let libs = js_cell_libs_js();
+    assert!(
+        libs.contains("d3js.org") && libs.contains("@observablehq/plot"),
+        "d3/plot missing"
+    );
+}
+
+#[test]
+fn has_mermaid_detects_the_diagram_marker() {
+    assert!(has_mermaid("<pre class=\"mermaid\">graph TD</pre>"));
+    assert!(!has_mermaid("<p>no diagrams here</p>"));
+}
