@@ -1,7 +1,7 @@
 # Interpreter selection DX — design
 
 **Date:** 2026-07-12
-**Status:** approved (brainstorm), pending implementation plan
+**Status:** approved (brainstorm); implementation plan written (`docs/superpowers/plans/2026-07-12-interpreter-selection-dx.md`), pending implementation
 **Backlog item:** Tier 2 hardening — "Interpreter selection is silent + has no project-local override (DX; S+M)" (`notes/ROADMAP.md` / AUDITS)
 **Related:** the warm-pool (`crates/server/src/warm_pool.rs`) and executor (`crates/server/src/exec.rs`) interpreter resolution; the `check` subcommand (`crates/server/src/check.rs`)
 
