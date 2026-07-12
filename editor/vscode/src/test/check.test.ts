@@ -2,12 +2,41 @@ import { test } from "node:test";
 import assert from "node:assert";
 import { parseCheckJson, toDiagnostics } from "../check";
 
-test("parseCheckJson reads the diagnostics array", () => {
+test("parseCheckJson reads the diagnostics array (legacy bare-array shape)", () => {
   const out = parseCheckJson('[{"file":"a.tmd","line":3,"message":"unknown key `titel`"}]');
   assert.deepEqual(out, {
     kind: "diags",
     diags: [{ file: "a.tmd", line: 3, message: "unknown key `titel`" }],
   });
+});
+
+test("parseCheckJson reads .diagnostics from the { diagnostics, environment } object", () => {
+  const out = parseCheckJson(
+    JSON.stringify({
+      diagnostics: [{ file: "a.tmd", line: 3, message: "unknown key `titel`" }],
+      environment: [
+        {
+          lang: "python",
+          path: "/x/.venv/bin/python",
+          provenance: ".venv",
+          runs: true,
+          kernel_pkg: "ipykernel",
+          kernel_pkg_ok: true,
+          version: "Python 3.12.1",
+        },
+      ],
+    })
+  );
+  // The informational `environment` block is ignored: only diagnostics drive squiggles.
+  assert.deepEqual(out, {
+    kind: "diags",
+    diags: [{ file: "a.tmd", line: 3, message: "unknown key `titel`" }],
+  });
+});
+
+test("parseCheckJson reads an empty .diagnostics array in the object shape", () => {
+  const out = parseCheckJson(JSON.stringify({ diagnostics: [], environment: [] }));
+  assert.deepEqual(out, { kind: "diags", diags: [] });
 });
 
 test("parseCheckJson tolerates a null line", () => {

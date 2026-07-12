@@ -1,8 +1,12 @@
 // Pure parsing + range mapping for `taliesin check --format json` output.
 // No `vscode` import, so it stays in the fast `node:test` loop (mirrors paths.ts/ports.ts).
-// The CLI emits either an array of {file, line, message} or a {"error": "..."} envelope
-// (crates/server/src/check.rs). Non-zero exit is expected when findings exist, so callers
-// parse stdout regardless of exit code.
+// The CLI emits one of three shapes (crates/server/src/check.rs):
+//   - the current `{ "diagnostics": [...], "environment": [...] }` object,
+//   - a legacy bare `[{file, line, message}, ...]` array (older binaries), or
+//   - a `{ "error": "..." }` failure envelope.
+// We read `.diagnostics` from the object and ignore the informational `environment` block;
+// the bare array is still accepted so an older `taliesin` on PATH keeps surfacing squiggles.
+// Non-zero exit is expected when findings exist, so callers parse stdout regardless of exit code.
 
 export interface CheckDiag {
   file: string;
@@ -25,8 +29,19 @@ export function parseCheckJson(stdout: string): CheckOutput {
   } catch {
     return { kind: "error", error: `check produced unparseable output: ${text.slice(0, 200)}` };
   }
-  if (Array.isArray(value)) {
-    const diags = value
+  // The `{ error }` failure envelope wins first: it is an object, but never carries
+  // diagnostics, so check it before we look for a `.diagnostics` array.
+  if (value && typeof value === "object" && !Array.isArray(value) && typeof (value as any).error === "string") {
+    return { kind: "error", error: (value as any).error };
+  }
+  // Accept both the current `{ diagnostics: [...] }` object and the legacy bare array.
+  const rawDiags: any[] | null = Array.isArray(value)
+    ? value
+    : value && typeof value === "object" && Array.isArray((value as any).diagnostics)
+      ? (value as any).diagnostics
+      : null;
+  if (rawDiags) {
+    const diags = rawDiags
       .filter((d): d is CheckDiag => !!d && typeof (d as any).message === "string")
       .map((d) => ({
         file: typeof d.file === "string" ? d.file : "",
@@ -34,9 +49,6 @@ export function parseCheckJson(stdout: string): CheckOutput {
         message: d.message,
       }));
     return { kind: "diags", diags };
-  }
-  if (value && typeof value === "object" && typeof (value as any).error === "string") {
-    return { kind: "error", error: (value as any).error };
   }
   return { kind: "error", error: `check produced unexpected output: ${text.slice(0, 200)}` };
 }

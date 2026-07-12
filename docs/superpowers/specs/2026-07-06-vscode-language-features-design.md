@@ -15,6 +15,8 @@ The two asks map to real, backend-ready work:
   `[{file, line, message}]` today (`crates/server/src/check.rs:18-23,161-163,218-247`). No
   new rendering or validation engine is needed; this is *wiring* the existing checker into a
   VS Code `DiagnosticCollection`.
+  (Update, 2026-07-12: the shape later changed to `{ diagnostics: [...], environment: [...] }`;
+  the parser reads `.diagnostics` and still accepts the legacy bare array. See `src/check.ts`.)
 - **Auto suggestion** → the valid vocabulary already exists as validator consts in
   `crates/core` (front-matter `KNOWN_KEYS`, `CELL_OPTION_KEYS`, `CALLOUT_KINDS`,
   `THEOREM_KINDS`, `INPUT_TYPES`, the `xref_label` prefix map). Completions are *wiring* that
