@@ -412,6 +412,12 @@ fn build_page_executing(
         let mut ex =
             exec::Executor::with_freeze(freeze::page_path(&base.join("_freeze"), fallback))
                 .in_dir(base);
+        // Single-file build: no _site.yml, so resolve from the doc's own dir
+        // (.venv / env / default), the same set_interpreters path the site build uses.
+        ex.set_interpreters(
+            crate::interpreter::resolve_python(None, base),
+            crate::interpreter::resolve_r(None, base),
+        );
         doc.blocks = ex.run(std::mem::take(&mut doc.blocks)).await;
         // The executor's own diagnostic already names the failing language and the
         // right env var (`TALIESIN_R` for R, `TALIESIN_PYTHON` otherwise) — use it
@@ -803,6 +809,12 @@ async fn build_one_page(
     // page with code cells starts near-instantly instead of cold-booting. `None`
     // (unset interpreter / inert pool) cold-starts exactly as before.
     exec.set_warm_pool(warm_pool);
+    // Resolve this project's interpreters (from _site.yml python:/r:, a .venv, env, or
+    // default) against the site root, matching the warm pool the orchestrator booted.
+    exec.set_interpreters(
+        crate::interpreter::resolve_python(site.config.python.as_deref(), root),
+        crate::interpreter::resolve_r(site.config.r.as_deref(), root),
+    );
     doc.blocks = exec.run(std::mem::take(&mut doc.blocks)).await;
     let kernel_unavailable = exec.diagnostic().is_some();
     // A crashed cell bakes its traceback into the page; collect a located line + count it
@@ -994,7 +1006,11 @@ async fn build_site_async(
     // The one process-wide warm pool for this build. `None` (so every page cold-starts
     // exactly as today) when `TALIESIN_PYTHON` is unset or the forkserver can't boot;
     // dropped at the end of this fn, killing the daemon + idle kernels.
-    let warm_pool = warm_pool::warm_pool_for_build(split.warm_pool).await;
+    // Resolve the project's Python interpreter (from _site.yml python:, a .venv, env, or
+    // default) against the site root; the warm pool boots only for a concrete choice
+    // (not the bare python3 default), and each page/deck executor resolves the same way.
+    let interp_python = crate::interpreter::resolve_python(site.config.python.as_deref(), root);
+    let warm_pool = warm_pool::warm_pool_for_build(split.warm_pool, &interp_python).await;
 
     // Build into a slot per page (indexed by page order) so results aggregate
     // deterministically regardless of completion order. A `Semaphore` of size
@@ -1073,6 +1089,10 @@ async fn build_site_async(
         let mut doc = taliesin_core::render_document_with_includes(&src, base);
         let mut ex =
             exec::Executor::with_freeze(freeze::page_path(&freeze_dir, &deck.url)).in_dir(base);
+        ex.set_interpreters(
+            crate::interpreter::resolve_python(site.config.python.as_deref(), root),
+            crate::interpreter::resolve_r(site.config.r.as_deref(), root),
+        );
         ex.set_progress(None, Some(deck.url.clone()));
         doc.blocks = ex.run(std::mem::take(&mut doc.blocks)).await;
         kernel_unavailable |= ex.diagnostic().is_some();

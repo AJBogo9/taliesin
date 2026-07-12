@@ -787,8 +787,18 @@ fn spawn_builder(app: Arc<SiteApp>, mut build_rx: mpsc::UnboundedReceiver<BuildM
         // which kills the forkserver daemon + idle kernels. If `TALIESIN_PYTHON` is
         // unset or the forkserver can't boot, `WarmPool::new` returns an inert pool
         // and every page cold-starts — no regression.
-        let warm_pool = crate::warm_pool::warm_pool_for_preview().await;
-        let mut pool = ExecPool::new(app.root.join("_freeze"), warm_pool);
+        // Resolve the project's interpreters once (from _site.yml python:/r:, a project
+        // .venv, env, or default) against the site root, so every page executor and the
+        // warm pool agree on which interpreter runs. Read the config under the site lock.
+        let (py, r) = {
+            let site = app.site.lock();
+            (
+                crate::interpreter::resolve_python(site.config.python.as_deref(), &app.root),
+                crate::interpreter::resolve_r(site.config.r.as_deref(), &app.root),
+            )
+        };
+        let warm_pool = crate::warm_pool::warm_pool_for_preview(&py).await;
+        let mut pool = ExecPool::new(app.root.join("_freeze"), warm_pool, py, r);
         while let Some(msg) = build_rx.recv().await {
             match msg {
                 BuildMsg::Build(rel) => build_page_guarded(&app, &rel, &mut pool).await,

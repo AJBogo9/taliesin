@@ -517,42 +517,54 @@ impl WarmPool {
     }
 }
 
-/// Build the one warm pool a **preview server** owns, sized within the same budget
-/// the parallel build respects. Returns `None` (so every page cold-starts, exactly
-/// as before) when `TALIESIN_PYTHON` is unset: we don't speculatively boot a
-/// forkserver against a possibly-absent `python3`. When it *is* set, the pool boots
-/// the forkserver; if that fails the returned pool is inert and the caller still
-/// cold-starts (no regression).
+/// Whether the warm pool should boot for an interpreter of this provenance. A
+/// concretely-chosen interpreter (a `_site.yml` field, a project `.venv`, or
+/// `TALIESIN_PYTHON`) is worth pre-warming; the bare `python3` default is not (we
+/// never speculatively boot a forkserver against a possibly-absent `python3`). Pure,
+/// unit-tested without a live kernel (mirrors [`try_reserve_slot`]'s pure-core style).
+fn should_warm(prov: crate::interpreter::Provenance) -> bool {
+    !matches!(prov, crate::interpreter::Provenance::Default)
+}
+
+/// Build the one warm pool a **preview server** owns, warming the resolved `python`.
+/// Returns `None` (so every page cold-starts, exactly as before) when the interpreter
+/// is the bare `python3` default; otherwise boots the forkserver. If that boot fails
+/// the returned pool is inert and the caller still cold-starts (no regression).
 ///
 /// The preview builder runs pages serially (one build kernel at a time), so the
 /// resident set during a build is `warm_pool + 1`; we ask for the budget-split warm
 /// size against the same memory cap the build uses, then let `WarmPool::new` clamp it
 /// to [`POOL_CAP`]. Wrapped in an `Arc` so it's shared by every page executor.
-pub async fn warm_pool_for_preview() -> Option<Arc<WarmPool>> {
+pub async fn warm_pool_for_preview(python: &crate::interpreter::Resolved) -> Option<Arc<WarmPool>> {
     let want = crate::build_budget::preview_warm_pool_size();
-    boot_pool(want).await
+    boot_pool(want, python).await
 }
 
-/// Build the one warm pool a **site build** owns, asking for `size` pre-warmed
-/// kernels (already reconciled against the build's memory budget by
-/// `budget_split`, so `warm_pool + build_kernels <= cap`). Returns `None` (every
-/// page cold-starts, exactly as before) when `size == 0` or `TALIESIN_PYTHON` is
-/// unset. Dropped at the end of the build, killing the daemon + idle kernels.
-pub async fn warm_pool_for_build(size: usize) -> Option<Arc<WarmPool>> {
+/// Build the one warm pool a **site build** owns, asking for `size` pre-warmed kernels
+/// of the resolved `python` (already reconciled against the build's memory budget by
+/// `budget_split`, so `warm_pool + build_kernels <= cap`). Returns `None` (every page
+/// cold-starts, exactly as before) when `size == 0` or the interpreter is the bare
+/// `python3` default. Dropped at the end of the build, killing the daemon + idle kernels.
+pub async fn warm_pool_for_build(
+    size: usize,
+    python: &crate::interpreter::Resolved,
+) -> Option<Arc<WarmPool>> {
     if size == 0 {
         return None;
     }
-    boot_pool(size).await
+    boot_pool(size, python).await
 }
 
-/// Resolve `TALIESIN_PYTHON` and boot a warm pool of `want` kernels, or `None` when
-/// the interpreter isn't configured (so we never speculatively boot a forkserver
-/// against a possibly-absent `python3`; the caller then cold-starts as before). A
-/// boot failure isn't `None` here — `WarmPool::new` already degrades to an inert pool
-/// that returns `None` from `take`, which the executor treats as a cold start.
-async fn boot_pool(want: usize) -> Option<Arc<WarmPool>> {
-    let python = PathBuf::from(std::env::var_os("TALIESIN_PYTHON")?);
-    Some(Arc::new(WarmPool::new(&python, want).await))
+/// Boot a warm pool of `want` kernels of the resolved `python`, or `None` when the
+/// interpreter wasn't concretely chosen (the bare default), so we never speculatively
+/// boot a forkserver against a possibly-absent `python3`; the caller then cold-starts
+/// as before. A boot *failure* isn't `None` here: `WarmPool::new` degrades to an inert
+/// pool that returns `None` from `take`, which the executor treats as a cold start.
+async fn boot_pool(want: usize, python: &crate::interpreter::Resolved) -> Option<Arc<WarmPool>> {
+    if !should_warm(python.provenance) {
+        return None;
+    }
+    Some(Arc::new(WarmPool::new(&python.path, want).await))
 }
 
 /// Decide whether the refill loop may reserve one more fork slot, given the
@@ -717,6 +729,22 @@ mod tests {
     #[test]
     fn zero_cap_reserves_nothing() {
         assert!(try_reserve_slot(0, 0, 0).is_none());
+    }
+
+    /// The pool boots for a concretely-chosen interpreter (field/.venv/env) and stays
+    /// inert on the bare `python3` default, preserving "don't speculatively boot a
+    /// possibly-absent python3" while now warming a project's `.venv`/pin. Pure gate,
+    /// no live kernel.
+    #[test]
+    fn should_warm_only_for_a_concrete_interpreter() {
+        use crate::interpreter::Provenance;
+        assert!(should_warm(Provenance::Field));
+        assert!(should_warm(Provenance::Venv));
+        assert!(should_warm(Provenance::Env));
+        assert!(
+            !should_warm(Provenance::Default),
+            "bare python3 must stay inert"
+        );
     }
 
     /// Take a kernel from the warm pool and prove it is a live, usable kernel by

@@ -989,6 +989,13 @@ fn spawn_watcher(app: Arc<AppState>, mut signal_rx: mpsc::UnboundedReceiver<()>)
             .unwrap_or("document");
         let freeze_path = crate::freeze::page_path(&app.base_dir.join("_freeze"), stem);
         let mut executor = crate::exec::Executor::with_freeze(freeze_path).in_dir(&app.base_dir);
+        // Resolve this document's interpreters from its own directory (no _site.yml here,
+        // so a `.venv` beside the doc / env / default), so a project-local venv beats a
+        // stray global TALIESIN_PYTHON and the first kernel start logs which one ran.
+        executor.set_interpreters(
+            crate::interpreter::resolve_python(None, &app.base_dir),
+            crate::interpreter::resolve_r(None, &app.base_dir),
+        );
         // Stream code-cell execution progress (`build-state`) onto the session
         // broadcast, so the previewing client can show "warming kernel" / "cell k/N".
         // Single-doc => no page key. Cloning the `Sender` is cheap; each progress
