@@ -33,11 +33,16 @@ pub(super) fn website_pages(root: &Path, warnings: &mut Vec<String>) -> Vec<Page
                     join_rel(&rel, &img)
                 }
             });
+            // A page with no front-matter `title:` takes its leading `# H1` (as a book
+            // chapter does), so <title>, og:title, listing cards, nav, and search — all of
+            // which read `Page.title` — agree instead of falling back to the site name /
+            // rel-path. Front matter still wins when present.
+            let title = fm.title.or_else(|| chapter_heading(&input).0);
             Some(Page {
                 input,
                 rel,
                 url,
-                title: fm.title,
+                title,
                 date: fm.date,
                 description: fm.description,
                 authors: fm.authors,

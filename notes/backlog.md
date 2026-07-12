@@ -46,11 +46,6 @@ head, live-figure thumbnails) live in the detail file — protect them. Every fi
    is a hard gate → it must NOT fire on the (clean) corpus; mutation-check the gate.
 9. **Category taxonomy → ~5** (S, content) *[ruled: consolidate]*. 11 categories over 7 posts. I'll
    read the posts and draft a ~5-bucket mapping for approval before applying.
-10. **`og:title` / listing-card H1 fallback** (M). A website page with no front-matter title + a
-    leading `# H1` renders a correct `<title>` but an `og:title` from the site name and a rel-path
-    listing label. Give `site/discovery.rs` `website_pages` the H1 fallback `book.rs::push_chapter`
-    already has, so `<title>`, `og:title`, cards, nav, search agree. No corpus page exercises it — add
-    a fixture first.
 11. **`#multiple-h1-per-post` — heading demotion** (M, own spec). Every post emits 7+ sibling `<h1>`s
     (title-block h1 + every `#` section) — a real Quarto-migration a11y/SEO regression. When a page
     emits a title-block `<h1 class=title>`, demote body markdown headings one level. Blast radius:

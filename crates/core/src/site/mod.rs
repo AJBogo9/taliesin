@@ -188,7 +188,7 @@ mod book;
 mod card;
 mod chrome;
 pub use book::{Book, BookEntry};
-use book::{book_pages, build_book};
+use book::{book_pages, build_book, chapter_heading};
 pub use card::{
     CARD_DESIGN_VERSION, CARD_EXT, CARD_H, CARD_W, CardSpec, card_rel_path, card_spec, render_card,
 };
@@ -1282,6 +1282,48 @@ pub(crate) mod tests {
     use super::*;
 
     #[test]
+    fn a_titleless_website_page_falls_back_to_its_leading_h1() {
+        // A website page with no front-matter `title:` but a leading `# H1` takes the H1
+        // as its title (as a book chapter already does), so <title>, og:title, listing
+        // cards, nav, and search — all of which read `Page.title` — agree.
+        let root = write_site(
+            "h1title",
+            &[
+                ("_site.yml", "title: My Site\nurl: https://ex.com\n"),
+                (
+                    "about.tmd",
+                    "---\ndescription: About me.\n---\n\n# About the author\n\nHi.\n",
+                ),
+                // Front matter still wins when a `title:` is present (H1 differs).
+                (
+                    "explicit.tmd",
+                    "---\ntitle: Explicit\n---\n\n# A different heading\n\nx\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let title_of = |rel: &str| {
+            site.pages
+                .iter()
+                .find(|p| p.rel == rel)
+                .and_then(|p| p.title.clone())
+        };
+        assert_eq!(title_of("about.tmd").as_deref(), Some("About the author"));
+        assert_eq!(title_of("explicit.tmd").as_deref(), Some("Explicit"));
+        // og:title now uses the H1 (not the site name), and the <title> agrees with it.
+        let html = site.render_page("about.tmd").unwrap();
+        assert!(
+            html.contains(r#"property="og:title" content="About the author""#),
+            "og:title should be the H1, not the site name"
+        );
+        assert!(
+            html.contains("<title>About the author · My Site</title>"),
+            "the <title> and og:title agree"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn website_pages_excludes_drafts() {
         use std::fs;
         let root = std::env::temp_dir().join(format!("tali-draft-{}", std::process::id()));
@@ -1746,14 +1788,15 @@ pub(crate) mod tests {
     #[test]
     fn a_titleless_listing_host_is_not_an_owner() {
         // A listing page with no `title:` can't render a sensible "← <title>" label, so
-        // it must not own posts — symmetry with the titleless-covered-page guard.
+        // it must not own posts — symmetry with the titleless-covered-page guard. The host
+        // has neither a `title:` nor a leading `# H1` (which would now supply the title).
         let root = write_site(
             "backlink-titlelesshost",
             &[
                 ("_site.yml", "title: Demo\n"),
                 (
                     "feed.tmd",
-                    "---\nlisting:\n  contents: posts\n---\n\n# Feed\n",
+                    "---\nlisting:\n  contents: posts\n---\n\nA feed with no heading.\n",
                 ),
                 ("posts/one.tmd", "---\ntitle: One\n---\n\nOne.\n"),
             ],

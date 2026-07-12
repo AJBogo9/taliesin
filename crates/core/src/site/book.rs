@@ -131,9 +131,10 @@ fn push_chapter(
         rel,
     });
 }
-/// A chapter's title (its first `# H1` text, attributes stripped) and whether
-/// that heading is unnumbered (`{.unnumbered}` / `{-}`).
-fn chapter_heading(input: &Path) -> (Option<String>, bool) {
+/// A page's leading `# H1` text (attributes stripped) and whether that heading is
+/// unnumbered (`{.unnumbered}` / `{-}`). Used for a book chapter's title fallback and,
+/// via the `.0`, for a titleless website page's title ([`discovery::website_pages`]).
+pub(super) fn chapter_heading(input: &Path) -> (Option<String>, bool) {
     let Ok(src) = std::fs::read_to_string(input) else {
         return (None, false);
     };
