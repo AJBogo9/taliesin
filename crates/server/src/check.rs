@@ -189,6 +189,9 @@ struct EnvEntry {
     lang: &'static str,
     path: String,
     provenance: String,
+    /// The interpreter binary spawned + returned a version (it exists and runs). When
+    /// `false`, the binary itself is absent/broken and `kernel_pkg_ok` is moot.
+    runs: bool,
     /// `ipykernel` (python) / `IRkernel` (r).
     kernel_pkg: &'static str,
     kernel_pkg_ok: bool,
@@ -228,6 +231,7 @@ fn env_entry(lang: &'static str, resolved: &crate::interpreter::Resolved) -> Env
         lang,
         path: resolved.path.display().to_string(),
         provenance: resolved.provenance.label(lang_enum).to_string(),
+        runs: p.runs,
         kernel_pkg: if lang == "r" { "IRkernel" } else { "ipykernel" },
         kernel_pkg_ok: p.kernel_pkg_ok,
         version: p.version,
@@ -407,7 +411,11 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
         if !environment.is_empty() {
             eprintln!("\nEnvironment:");
             for e in &environment {
-                let pkg = if e.kernel_pkg_ok {
+                let pkg = if !e.runs {
+                    // The interpreter binary itself is absent/broken, so the kernel
+                    // package is moot; name that instead of a misleading "pkg MISSING".
+                    "interpreter not found or failed to run".to_string()
+                } else if e.kernel_pkg_ok {
                     match &e.version {
                         Some(v) => format!("{} present ({v})", e.kernel_pkg),
                         None => format!("{} present", e.kernel_pkg),
