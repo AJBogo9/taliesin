@@ -37,9 +37,6 @@ head, live-figure thumbnails) live in the detail file — protect them. Every fi
 
 ### A. Blog identity + de-Quarto (build-ready; quick wins first)
 
-1. **Feed autodiscovery** (S). `<link rel="alternate" type="application/atom+xml" href="<feed>">` in
-   the head (`meta.rs`, beside the OG tags) when `url:` is set, so readers auto-detect the Atom feed
-   shipped in Session 5.
 2. **`#duplicate-generic-titles` — title suffix** (S). Built `<title>` gets a ` · <site name>`
    suffix (home + CV currently share an identical bare `<title>`). Touches every page title → add a
    corpus assertion.

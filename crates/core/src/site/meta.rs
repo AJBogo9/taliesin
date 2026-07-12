@@ -102,6 +102,29 @@ pub(super) fn social_head(site: &Site, page: &Page) -> String {
     h
 }
 
+/// `<link rel="alternate" type="application/atom+xml">` autodiscovery tags so a browser
+/// or feed reader detects the site's Atom feed(s). One per feed the build writes (see
+/// `Site::feed_index`); the href is absolute (feeds only exist when `url:` is set, so a
+/// canonical base is always available here). Site-global — the same on every page — which
+/// is why it takes no `page`. Empty when no feed is generated (no `url:`, or no dated
+/// listing). Distinct from the human-facing footer feed link (which is relative).
+pub(super) fn feed_head(site: &Site) -> String {
+    let feeds = site.feed_index();
+    if feeds.is_empty() {
+        return String::new();
+    }
+    let base = site.canonical_base().unwrap_or("");
+    let mut h = String::new();
+    for (path, title) in feeds {
+        h.push_str(&format!(
+            "\n<link rel=\"alternate\" type=\"application/atom+xml\" title=\"{}\" href=\"{}\">",
+            esc(&title),
+            esc(&format!("{base}/{path}")),
+        ));
+    }
+    h
+}
+
 /// schema.org JSON-LD for `page`, url-gated: a post (`date:` present) → `BlogPosting`;
 /// the root index page → a `WebSite` + `Person` `@graph`. Empty string otherwise (no
 /// `url:`, or a non-post inner page). Injected into the head beside `social_head`, so

@@ -27,20 +27,20 @@ impl Site {
         Some(format!("{base}/{clean}"))
     }
 
-    /// One Atom feed per **uncapped, dated** listing (`(relative_path, xml)`).
-    /// Path = the listing page's url with `.html` → `.xml` (`blog.html` → `blog.xml`).
-    /// A capped listing (a homepage teaser) and an undated listing get no feed.
-    /// Empty without `url:`.
-    pub fn atom_feeds(&self) -> Vec<(String, String)> {
-        let Some(base) = self.canonical_base() else {
+    /// The feed-bearing listings in nav order — each `(host page, relative feed path,
+    /// dated items newest-first)`. A listing earns a feed only if it is **uncapped** and
+    /// has at least one **dated** item; a collection re-listed elsewhere is deduped by
+    /// its RESOLVED prefix (not the raw `contents:` string), so the CV's re-listed
+    /// projects tail does not spawn a second feed while two same-`contents:` listings in
+    /// different directories each still get one. Shared by `atom_feeds` (builds XML) and
+    /// `feed_index` (head autodiscovery) so a page never advertises a feed the build
+    /// won't write. Empty without `url:`.
+    fn feed_hosts(&self) -> Vec<(&Page, String, Vec<&Page>)> {
+        if self.canonical_base().is_none() {
             return Vec::new();
-        };
+        }
         let mut out = Vec::new();
         let mut sink = Vec::new(); // collection warnings are surfaced during page render
-        // Dedupe by the RESOLVED listing prefix (not the raw `contents:` string) in nav
-        // order, so a collection re-listed elsewhere (e.g. the CV's projects tail) does
-        // not spawn a second feed, while two listings in different directories that share
-        // a `contents:` value (distinct collections) each still get one.
         let mut seen: HashSet<String> = HashSet::new();
         for &(page, _) in &self.nav_ordered() {
             let Some(spec) = page.listings.iter().find(|sp| {
@@ -58,9 +58,45 @@ impl Site {
             }
             seen.insert(Self::listing_prefix(page, spec));
             let path = page.url.replace(".html", ".xml");
-            out.push((path.clone(), self.build_atom(page, &dated, &path, base)));
+            out.push((page, path, dated));
         }
         out
+    }
+
+    /// One Atom feed per **uncapped, dated** listing (`(relative_path, xml)`).
+    /// Path = the listing page's url with `.html` → `.xml` (`blog.html` → `blog.xml`).
+    /// A capped listing (a homepage teaser) and an undated listing get no feed.
+    /// Empty without `url:`.
+    pub fn atom_feeds(&self) -> Vec<(String, String)> {
+        let Some(base) = self.canonical_base() else {
+            return Vec::new();
+        };
+        self.feed_hosts()
+            .into_iter()
+            .map(|(host, path, dated)| {
+                let xml = self.build_atom(host, &dated, &path, base);
+                (path, xml)
+            })
+            .collect()
+    }
+
+    /// `(relative feed path, feed title)` for each feed the build writes, for
+    /// `<link rel="alternate">` head autodiscovery. Same gating as `atom_feeds`, so
+    /// every advertised feed exists on disk. Title = the listing host's own title
+    /// (its `<title>` in the feed), falling back to the site title. Empty without `url:`.
+    pub(crate) fn feed_index(&self) -> Vec<(String, String)> {
+        self.feed_hosts()
+            .into_iter()
+            .map(|(host, path, _)| {
+                let title = host
+                    .title
+                    .as_deref()
+                    .or(self.config.title.as_deref())
+                    .unwrap_or("Feed")
+                    .to_string();
+                (path, title)
+            })
+            .collect()
     }
 
     /// Build the Atom XML for one listing's dated items (already newest-first).
@@ -244,6 +280,59 @@ mod tests {
         );
         let site = Site::discover(&root);
         assert!(site.atom_feeds().is_empty(), "no url: → no feeds");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn feed_index_lists_each_written_feed_with_its_title() {
+        let root = write_site(
+            "feedindex",
+            &[
+                ("_site.yml", "title: Blog\nurl: https://ex.com/\n"),
+                (
+                    "blog.tmd",
+                    "---\ntitle: Writing\nlisting:\n  contents: posts\n  type: list\n---\n\n# Blog\n",
+                ),
+                (
+                    "home.tmd",
+                    "---\ntitle: Home\nlisting:\n  contents: posts\n  max-items: 2\n---\n\n# Home\n",
+                ),
+                (
+                    "posts/a/index.tmd",
+                    "---\ntitle: First Post\ndate: 2026-05-15\n---\n\nBody.\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let index = site.feed_index();
+        // The uncapped listing earns a feed carrying its own title (not the nav label);
+        // the capped teaser does not — the index mirrors `atom_feeds` exactly.
+        assert!(
+            index.iter().any(|(p, t)| p == "blog.xml" && t == "Writing"),
+            "blog feed in index: {index:?}"
+        );
+        assert!(
+            !index.iter().any(|(p, _)| p.starts_with("home")),
+            "capped teaser has no feed: {index:?}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn no_feed_index_without_url() {
+        let root = write_site(
+            "feedindexnourl",
+            &[
+                ("_site.yml", "title: Blog\n"),
+                (
+                    "blog.tmd",
+                    "---\ntitle: Blog\nlisting:\n  contents: posts\n---\n\n# Blog\n",
+                ),
+                ("posts/a.tmd", "---\ntitle: P\ndate: 2026-01-01\n---\n\nx\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        assert!(site.feed_index().is_empty(), "no url: → no feed index");
         let _ = std::fs::remove_dir_all(&root);
     }
 }

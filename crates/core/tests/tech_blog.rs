@@ -678,6 +678,19 @@ fn seo_and_llm_artifacts_are_generated_for_the_blog() {
         blog.contains("href=\"blog.xml\""),
         "footer feed link honored"
     );
+
+    // Feed autodiscovery: every rendered page advertises the site's Atom feed(s) in its
+    // <head> so a browser/reader detects them — distinct from the human-only footer link
+    // (relative `blog.xml`); autodiscovery is absolute, gated on `url:` like the feeds.
+    let autodiscover = format!(
+        r#"<link rel="alternate" type="application/atom+xml" title="Blog" href="{base}/blog.xml">"#
+    );
+    for (label, page) in [("blog", &blog), ("post", &post), ("home", &home)] {
+        assert!(
+            page.contains(&autodiscover),
+            "{label} advertises the blog feed in <head>"
+        );
+    }
 }
 
 use taliesin_core::site::{card_rel_path, card_spec};
