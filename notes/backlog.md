@@ -43,11 +43,6 @@ head, live-figure thumbnails) live in the detail file — protect them. Every fi
    `site/discovery.rs:19-23` + widens a discovery path — brief brainstorm first.
 9. **Category taxonomy → ~5** (S, content) *[ruled: consolidate]*. 11 categories over 7 posts. I'll
    read the posts and draft a ~5-bucket mapping for approval before applying.
-11. **`#multiple-h1-per-post` — heading demotion** (M, own spec). Every post emits 7+ sibling `<h1>`s
-    (title-block h1 + every `#` section) — a real Quarto-migration a11y/SEO regression. When a page
-    emits a title-block `<h1 class=title>`, demote body markdown headings one level. Blast radius:
-    TOC, deck slide-breaks (`deck.rs`), xrefs, marketing landing — brainstorm + spec + broad corpus
-    verify.
 12. **`#posts-are-navigational-deadends`** (M, own spec). Posts dead-end at "← Blog"; add prev/next
     (+ optional related) to the post chrome. Needs a corpus pin.
 13. **Owned body typeface** (M, design) *[ruled: promote Newsreader to body]*. Newsreader (OFL) is
