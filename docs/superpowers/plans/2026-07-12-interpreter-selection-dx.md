@@ -20,9 +20,9 @@
 - **rustfmt-clean.** A `PostToolUse` hook runs `rustfmt` on every edited `.rs`; CI enforces it.
 - **Env reads must be injectable for tests.** Resolution reads `std::env::var_os` only in the thin public wrapper; the testable core takes the env value as a parameter (Rust 2024 makes `set_var` unsafe and tests run multi-threaded, so never set process env in a test). This mirrors `warm_pool::try_reserve_slot`'s pure-core-plus-thin-wrapper style.
 
-## Open decision to confirm before Task 8 (JSON shape)
+## Decision (JSON shape) — RULED 2026-07-12: object form (per spec)
 
-`check --format json` currently prints a **top-level JSON array** of diagnostics. It is consumed by the VS Code companion (`src/diagnostics.ts` spawns `taliesin check --format json <file>` and parses the array) and pinned by the test `format_json_emits_file_line_message_array` (`check.rs`). The spec's "`--format json` gains an `environment` array alongside `diagnostics`" requires restructuring the top level into an object `{ "diagnostics": [...], "environment": [...] }`, which is a **breaking change** to that external consumer. Task 8 implements the object form per the approved spec, but **the executor MUST surface this to the author for a ruling before shipping Task 8** (options: (A) object form + coordinated companion update, (B) keep the array top-level and expose `environment` only in human output, (C) add an opt-in `--env` flag whose JSON is the object). Do not silently break the companion.
+`check --format json` currently prints a **top-level JSON array** of diagnostics, consumed by the VS Code companion (`src/diagnostics.ts` parses the array) and pinned by the test `format_json_emits_file_line_message_array` (`check.rs`). **Author ruling: restructure to the spec's object form `{ "diagnostics": [...], "environment": [...] }`.** Task 8 implements it, updates the pinned test to the object shape, and this is a **breaking change to the companion** that must be updated in lockstep (tracked separately in the companion repo, `src/diagnostics.ts`). No longer a blocker.
 
 ## File Structure
 
