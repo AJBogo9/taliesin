@@ -41,9 +41,6 @@ head, live-figure thumbnails) live in the detail file — protect them. Every fi
    DRAFT badge + dev-menu count); build/publish exclude them and print "N drafts not published: …".
    Also make book chapters draftable (`book.rs:172` `book_pages` never reads `fm.draft`). Flips
    `site/discovery.rs:19-23` + widens a discovery path — brief brainstorm first.
-8. **from-quarto value-lint** (M). A `check` warning when a page carries a Quarto-only frontmatter
-   *value* Taliesin silently ignores (`template: jolla`, `page-layout: article`). The warning channel
-   is a hard gate → it must NOT fire on the (clean) corpus; mutation-check the gate.
 9. **Category taxonomy → ~5** (S, content) *[ruled: consolidate]*. 11 categories over 7 posts. I'll
    read the posts and draft a ~5-bucket mapping for approval before applying.
 11. **`#multiple-h1-per-post` — heading demotion** (M, own spec). Every post emits 7+ sibling `<h1>`s

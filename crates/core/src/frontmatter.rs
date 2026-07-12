@@ -128,6 +128,7 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
         }
     }
     validate_format_value(map, block, &mut out);
+    validate_page_layout_value(map, block, &mut out);
     validate_nested(map, "execute", "execute key", EXECUTE_KEYS, block, &mut out);
     validate_nested(map, "about", "about key", ABOUT_KEYS, block, &mut out);
     validate_nested(map, "hero", "hero key", HERO_KEYS, block, &mut out);
@@ -304,6 +305,27 @@ fn validate_format_value(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<W
             ));
         }
     }
+}
+
+/// `page-layout:` only honors `full` (widen the reading column); every other value —
+/// Quarto's `article` (its default), `custom`, … — is silently ignored. Warn on those so
+/// a migration leftover surfaces instead of the author wondering why the layout never
+/// changed. A hard gate, so the corpus carries only `full` (or omits the key).
+fn validate_page_layout_value(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
+    let Some(val) = map.get("page-layout").and_then(|v| v.as_str()) else {
+        return;
+    };
+    let val = val.trim().trim_matches(['"', '\'']);
+    if val.is_empty() || val == "full" {
+        return;
+    }
+    out.push(located(
+        format!(
+            "`page-layout: {val}` is ignored — Taliesin uses the reading-width column by \
+             default and only `full` widens it (a Quarto leftover?)"
+        ),
+        block_key_line(block, "page-layout"),
+    ));
 }
 
 /// A YAML scalar rendered for a diagnostic message (best-effort).
@@ -679,6 +701,30 @@ mod tests {
                 .iter()
                 .any(|w| w.contains("unknown format")),
             "block-form deck is accepted"
+        );
+    }
+
+    #[test]
+    fn quarto_page_layout_value_warns_but_full_does_not() {
+        // A recognized key carrying a Quarto-only value Taliesin silently ignores warns, so
+        // a migration leftover surfaces instead of mystifying the author when nothing changes.
+        let m = msgs("---\ntitle: X\npage-layout: article\n---\n");
+        assert!(
+            m.iter()
+                .any(|w| w.contains("`page-layout: article`") && w.contains("ignored")),
+            "page-layout: article must warn: {m:?}"
+        );
+        // The one honored value (and an absent key) stay silent.
+        assert!(
+            !msgs("---\ntitle: X\npage-layout: full\n---\n")
+                .iter()
+                .any(|w| w.contains("page-layout")),
+            "page-layout: full is honored"
+        );
+        assert!(
+            !msgs("---\ntitle: X\n---\n")
+                .iter()
+                .any(|w| w.contains("page-layout"))
         );
     }
 

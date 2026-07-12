@@ -4,7 +4,6 @@ hero:
   eyebrow: "ML · STATISTICS · ALGORITHMS"
   headline: "Machine learning, worked out from first principles"
   lead: "Notes on concepts I'm working to understand, mostly statistics and the math underneath the models, built up from running code."
-page-layout: article
 toc: false
 listing:
   id: recent-posts
