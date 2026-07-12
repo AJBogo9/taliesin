@@ -37,10 +37,6 @@ head, live-figure thumbnails) live in the detail file — protect them. Every fi
 
 ### A. Blog identity + de-Quarto (build-ready; quick wins first)
 
-4. **Mermaid scroll-not-shrink on mobile** (S) *[ruled: treat as text]*. `pre.mermaid { overflow-x:
-   auto }` + `pre.mermaid svg { max-width: none }` (`base.css`), so labels stay legible and the
-   diagram scrolls on narrow screens instead of clamping to ~5.8px. (#12 marketing video has no
-   engine fix — stays with the marketing rebuild.)
 5. **URL-fragment `{{< input >}}` state** (S) *[ruled: adopt]*. Shareable/deep-linkable control state
    via the URL fragment, hydrate from `data-qmd-input`; reader-local, pure JS in `qmd-js.js`.
 7. **Draft-aware preview** (M) *[ruled: preview shows, build hides]*. Preview includes drafts (quiet

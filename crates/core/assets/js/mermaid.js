@@ -29,6 +29,16 @@ function taliMermaidConfig() {
   var vars = {};
   for (var key in map) { var v = get(map[key]); if (v) vars[key] = v; }
   if (Object.keys(vars).length) cfg.themeVariables = vars;
+  // Render at natural width, not shrunk to the reading column: mermaid's `useMaxWidth`
+  // default emits `width="100%"` (an inline attribute a stylesheet can't beat), so a wide
+  // diagram scales its labels down to a few px on a narrow screen. Turning it off per
+  // diagram type makes each SVG its intrinsic size, so a wide one scrolls inside its <pre>
+  // (base.css `pre.mermaid { overflow-x: auto }`) — the "treat as text" behavior — while a
+  // small one keeps its size, centred. Every current mermaid diagram type is listed.
+  var TYPES = ['flowchart', 'sequence', 'class', 'state', 'er', 'journey', 'gantt', 'pie',
+    'requirement', 'gitGraph', 'c4', 'mindmap', 'timeline', 'sankey', 'quadrantChart',
+    'xyChart', 'block', 'packet', 'architecture', 'kanban'];
+  TYPES.forEach(function (t) { cfg[t] = { useMaxWidth: false }; });
   return cfg;
 }
 function taliRunMermaid(nodes) {

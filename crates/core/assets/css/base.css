@@ -432,8 +432,11 @@
   pre:hover .tali-copy, .tali-copy:focus-visible { opacity: 1; }
   .tali-copy:hover { color: var(--tali-fg); border-color: var(--tali-muted); }
   .tali-copy.tali-copied { color: var(--tali-callout-tip); border-color: var(--tali-callout-tip); }
-  pre.mermaid { background: transparent; padding: .5rem 0; text-align: center; overflow: visible; }
-  pre.mermaid svg { max-width: 100%; height: auto; }
+  /* A wide diagram scrolls inside its own box (like a wide table / code block) rather than
+     clamping to the reading column and shrinking labels to a few px on a narrow screen. A
+     diagram narrower than the column keeps its natural size, centred. */
+  pre.mermaid { background: transparent; padding: .5rem 0; text-align: center; overflow-x: auto; }
+  pre.mermaid svg { max-width: none; height: auto; }
   blockquote { border-left: 3px solid var(--tali-border); margin: 0 0 1rem; padding-left: 1rem; color: var(--tali-muted); }
   img { max-width: 100%; }
   /* embedded media ({js}/Three.js canvases, SVG figures, video, embeds) is clamped
