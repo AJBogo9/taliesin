@@ -1660,28 +1660,37 @@ fn parse_table_caption(p_html: &str) -> Option<(String, Option<String>)> {
 
 /// Build a `<nav id="TOC">` from the document's heading blocks (levels 1–3),
 /// linking to their anchor ids. Empty when the doc has no anchored headings.
-/// How many entries the table of contents would list: headings at level <= 3 that carry
-/// an `id` (exactly the set [`toc_html`] renders). The site auto-gates the "on this page"
-/// TOC on this count — a short / sequential page reads as one column; only long, chunkable
-/// pages earn the sidebar TOC (NN/g). Kept in lockstep with `toc_html`'s filter below.
-pub(crate) fn toc_entry_count(blocks: &[Block]) -> usize {
-    blocks
+/// The headings the on-page TOC shows: those carrying an anchor `id`, within two levels
+/// of the shallowest heading present (`level - base <= 2`). `toc_entry_count` and
+/// `toc_html` share this so their filters cannot drift, and so a title-demoted page
+/// (whose sections start at `<h2>`) still surfaces three levels instead of two.
+fn toc_items(blocks: &[Block]) -> Vec<(u8, String, String)> {
+    let all: Vec<(u8, String, String)> = blocks
         .iter()
-        .filter(|b| {
-            block_heading_level(&b.html).is_some_and(|l| l <= 3)
-                && extract_attr(&b.html, "id").is_some()
+        .filter_map(|b| {
+            Some((
+                block_heading_level(&b.html)?,
+                extract_attr(&b.html, "id")?,
+                strip_tags(&b.html),
+            ))
         })
-        .count()
+        .collect();
+    let Some(base) = all.iter().map(|(l, _, _)| *l).min() else {
+        return Vec::new();
+    };
+    // `base` is the minimum, so `*l >= base` always: the subtraction never underflows.
+    all.into_iter().filter(|(l, _, _)| *l - base <= 2).collect()
+}
+
+/// How many entries the table of contents would list (exactly the set [`toc_html`]
+/// renders). The site auto-gates the "on this page" TOC on this count — a short /
+/// sequential page reads as one column; only long, chunkable pages earn the sidebar
+/// TOC (NN/g).
+pub(crate) fn toc_entry_count(blocks: &[Block]) -> usize {
+    toc_items(blocks).len()
 }
 fn toc_html(blocks: &[Block]) -> String {
-    let mut items: Vec<(u8, String, String)> = Vec::new();
-    for b in blocks {
-        if let (Some(level), Some(id)) = (block_heading_level(&b.html), extract_attr(&b.html, "id"))
-            && level <= 3
-        {
-            items.push((level, id, strip_tags(&b.html)));
-        }
-    }
+    let items = toc_items(blocks);
     if items.is_empty() {
         return String::new();
     }

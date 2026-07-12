@@ -3329,3 +3329,23 @@ fn leading_h1_text_reads_only_a_first_level_one_heading() {
     assert_eq!(h1("Prose\n\n# Hello\n"), None);
     assert_eq!(h1(""), None);
 }
+
+#[test]
+fn toc_filter_is_relative_to_the_shallowest_heading() {
+    // A titleless document whose sections start at <h2> (shallowest level = 2): the TOC
+    // shows three levels (h2/h3/h4) and drops h5. This is the relative window, not the
+    // old absolute `level <= 3` (which would have stopped at h3 and shown only two).
+    let doc = render_document("## A\n\n### B\n\n#### C\n\n##### D\n");
+    assert_eq!(
+        toc_entry_count(&doc.blocks),
+        3,
+        "h2/h3/h4 shown, h5 dropped"
+    );
+    // A conventional document (shallowest level = 1) is unchanged: h1/h2/h3 shown, h4 dropped.
+    let doc = render_document("# A\n\n## B\n\n### C\n\n#### D\n");
+    assert_eq!(
+        toc_entry_count(&doc.blocks),
+        3,
+        "h1/h2/h3 shown, h4 dropped"
+    );
+}
