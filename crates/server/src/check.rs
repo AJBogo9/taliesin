@@ -181,8 +181,128 @@ fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
     Ok(out)
 }
 
-fn format_json(diags: &[Diagnostic]) -> String {
-    serde_json::to_string_pretty(diags).unwrap_or_else(|_| "[]".to_string())
+/// One line of the informational Environment section: the interpreter `check`
+/// resolved for a language the document runs, and whether its Jupyter kernel package
+/// is importable. Serialized into `--format json` and printed after the diagnostics.
+#[derive(serde::Serialize)]
+struct EnvEntry {
+    lang: &'static str,
+    path: String,
+    provenance: String,
+    /// `ipykernel` (python) / `IRkernel` (r).
+    kernel_pkg: &'static str,
+    kernel_pkg_ok: bool,
+    version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+/// Which executable languages (`python`/`r`) a document actually uses, in first-seen
+/// order. Scans the rendered block model's cells (so `{{< include >}}`d cells count),
+/// stopping once both are seen.
+fn used_languages(blocks: &[taliesin_core::Block]) -> Vec<&'static str> {
+    let mut seen = Vec::new();
+    for b in blocks {
+        if let Some(c) = &b.cell
+            && let Some(lang) = crate::exec::kernel_lang(&c.lang)
+            && !seen.contains(&lang)
+        {
+            seen.push(lang);
+            if seen.len() == 2 {
+                break;
+            }
+        }
+    }
+    seen
+}
+
+/// Build one `EnvEntry` for `lang` given the resolved interpreter (probes it).
+fn env_entry(lang: &'static str, resolved: &crate::interpreter::Resolved) -> EnvEntry {
+    let lang_enum = if lang == "r" {
+        crate::interpreter::Lang::R
+    } else {
+        crate::interpreter::Lang::Python
+    };
+    let p = crate::interpreter::probe(resolved, lang_enum);
+    EnvEntry {
+        lang,
+        path: resolved.path.display().to_string(),
+        provenance: resolved.provenance.label(lang_enum).to_string(),
+        kernel_pkg: if lang == "r" { "IRkernel" } else { "ipykernel" },
+        kernel_pkg_ok: p.kernel_pkg_ok,
+        version: p.version,
+        error: p.error,
+    }
+}
+
+/// The informational Environment section for a file or site: for each executable
+/// language the target uses, the resolved interpreter + kernel-package probe. Never
+/// affects `check`'s exit code. Field pins come from `_site.yml` for a site; a single
+/// file has none. Empty when the target has no python/r cells.
+fn collect_environment(path: &Path) -> Vec<EnvEntry> {
+    if path.is_dir() {
+        let site = taliesin_core::Site::discover(path);
+        // Union of languages across pages, plus the project-level field pins + root.
+        let mut langs: Vec<&'static str> = Vec::new();
+        for page in &site.pages {
+            let Ok(src) = std::fs::read_to_string(&page.input) else {
+                continue;
+            };
+            let base = page.input.parent().unwrap_or(path);
+            let doc = taliesin_core::render_document_with_includes_scoped(
+                &src,
+                base,
+                site.chapter_for(page),
+            );
+            for l in used_languages(&doc.blocks) {
+                if !langs.contains(&l) {
+                    langs.push(l);
+                }
+            }
+            if langs.len() == 2 {
+                break;
+            }
+        }
+        langs
+            .into_iter()
+            .map(|lang| {
+                let resolved = if lang == "r" {
+                    crate::interpreter::resolve_r(site.config.r.as_deref(), path)
+                } else {
+                    crate::interpreter::resolve_python(site.config.python.as_deref(), path)
+                };
+                env_entry(lang, &resolved)
+            })
+            .collect()
+    } else {
+        let Ok(src) = std::fs::read_to_string(path) else {
+            return Vec::new();
+        };
+        let base = path.parent().unwrap_or_else(|| Path::new("."));
+        let doc = taliesin_core::render_document_with_includes(&src, base);
+        used_languages(&doc.blocks)
+            .into_iter()
+            .map(|lang| {
+                let resolved = if lang == "r" {
+                    crate::interpreter::resolve_r(None, base)
+                } else {
+                    crate::interpreter::resolve_python(None, base)
+                };
+                env_entry(lang, &resolved)
+            })
+            .collect()
+    }
+}
+
+/// Serialize `check --format json` as `{ "diagnostics": [...], "environment": [...] }`.
+/// The Environment array is informational (it never changes the exit code); a consumer
+/// that only wants problems reads `.diagnostics`.
+fn format_json(diags: &[Diagnostic], environment: &[EnvEntry]) -> String {
+    let payload = serde_json::json!({
+        "diagnostics": diags,
+        "environment": environment,
+    });
+    serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_string())
 }
 
 /// Serialize a `check --format json` failure (an unreadable path, an empty site) as a
@@ -265,9 +385,13 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    // Informational only: which interpreter each used language resolves to + whether
+    // its Jupyter kernel package is importable. This never contributes to the exit code
+    // (a CI box without Python must not fail static linting).
+    let environment = collect_environment(target);
     if format == "json" {
         // JSON to stdout only, so it pipes cleanly.
-        println!("{}", format_json(&diags));
+        println!("{}", format_json(&diags, &environment));
     } else {
         // Greppable `path:line: message` lines to stderr (linter-style), then a summary.
         eprint!("{}", format_human(&diags));
@@ -279,6 +403,20 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
                 diags.len(),
                 if diags.len() == 1 { "" } else { "s" }
             );
+        }
+        if !environment.is_empty() {
+            eprintln!("\nEnvironment:");
+            for e in &environment {
+                let pkg = if e.kernel_pkg_ok {
+                    match &e.version {
+                        Some(v) => format!("{} present ({v})", e.kernel_pkg),
+                        None => format!("{} present", e.kernel_pkg),
+                    }
+                } else {
+                    format!("{} MISSING", e.kernel_pkg)
+                };
+                eprintln!("  {}: {} ({}), {}", e.lang, e.path, e.provenance, pkg);
+            }
         }
     }
     if diags.is_empty() {
@@ -794,7 +932,10 @@ mod tests {
     }
 
     #[test]
-    fn format_json_emits_file_line_message_array() {
+    fn format_json_emits_diagnostics_and_environment_object() {
+        // The JSON top level is `{ diagnostics: [...], environment: [...] }` (ruled
+        // 2026-07-12): diagnostics keep their file/line/message shape under a named key,
+        // and the informational environment probe rides alongside.
         let diags = vec![
             Diagnostic {
                 file: "a.tmd".into(),
@@ -807,12 +948,44 @@ mod tests {
                 message: "needs a \"name\"".into(),
             },
         ];
-        let json = format_json(&diags);
+        let json = format_json(&diags, &[]);
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid json");
-        assert_eq!(parsed[0]["file"], "a.tmd");
-        assert_eq!(parsed[0]["line"], 3);
-        assert_eq!(parsed[1]["line"], serde_json::Value::Null);
-        assert_eq!(parsed[1]["message"], "needs a \"name\"");
+        assert_eq!(parsed["diagnostics"][0]["file"], "a.tmd");
+        assert_eq!(parsed["diagnostics"][0]["line"], 3);
+        assert_eq!(parsed["diagnostics"][1]["line"], serde_json::Value::Null);
+        assert_eq!(parsed["diagnostics"][1]["message"], "needs a \"name\"");
+        assert!(
+            parsed["environment"].is_array(),
+            "environment rides alongside diagnostics as an array"
+        );
+    }
+
+    #[test]
+    fn environment_is_empty_for_a_doc_with_no_code_cells() {
+        let dir = tmp("env-nocells");
+        let f = dir.join("x.tmd");
+        std::fs::write(&f, "# Title\n\nJust prose, no cells.\n").unwrap();
+        assert!(
+            collect_environment(&f).is_empty(),
+            "a doc with no python/r cells reports no Environment entries"
+        );
+    }
+
+    #[test]
+    fn environment_lists_python_for_a_python_cell_doc() {
+        let dir = tmp("env-pycell");
+        let f = dir.join("x.tmd");
+        std::fs::write(&f, "# T\n\n```{python}\nprint(1)\n```\n").unwrap();
+        let env = collect_environment(&f);
+        assert_eq!(
+            env.len(),
+            1,
+            "one entry for the single python language used"
+        );
+        assert_eq!(env[0].lang, "python");
+        // Path + provenance are populated; kernel_pkg_ok reflects the box (may be false
+        // in CI). The section is informational, so we assert shape, not availability.
+        assert!(!env[0].path.is_empty());
     }
 
     #[test]
