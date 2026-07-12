@@ -152,8 +152,10 @@ fn cite_coverage_corpus_doc_renders_all_fixes() {
         !refs.contains("<h2>References</h2>"),
         "auto References heading should be suppressed: {refs}"
     );
+    // The manual `# References` is body content on a titled page, so heading demotion
+    // (#11) renders it as <h2> (one <h1> per page) — the same level as the auto heading.
     assert!(
-        html.contains("<h1 id=\"references\""),
+        html.contains("<h2 id=\"references\""),
         "manual References heading missing: {html}"
     );
     let heading_count = html.matches(">References<").count();

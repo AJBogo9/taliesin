@@ -332,9 +332,11 @@ fn website_renders_with_toc_anchored_headings_and_numbered_figures() {
         page.contains("<a href=\"#introduction\">Introduction</a>"),
         "TOC entry missing"
     );
-    // Headings carry matching anchor ids.
+    // Headings carry matching anchor ids. This titled page has a `<h1 class="title">`
+    // title block, so heading demotion (#11) renders its body `# Introduction` as <h2>
+    // (one <h1> per page); the anchor id is text-derived and unchanged.
     assert!(
-        page.contains("<h1 id=\"introduction\""),
+        page.contains("<h2 id=\"introduction\""),
         "heading anchor missing"
     );
 
@@ -1044,4 +1046,25 @@ fn a_site_page_prefers_its_authored_title_then_its_leading_h1() {
     // No override, no front matter: the leading H1, never the empty string.
     assert_eq!(title_of("results.tmd"), format!("Results{book}"));
     assert!(!title_of("results.tmd").is_empty());
+}
+
+#[test]
+fn every_titled_post_emits_exactly_one_h1() {
+    // Heading demotion (#11): a post renders its title as the sole <h1>; its body `#`
+    // sections demote to <h2>+ so the page keeps a single-<h1> document outline (a11y/SEO).
+    let posts_dir = corpus_dir().join("tech-blog/posts");
+    let mut posts = Vec::new();
+    collect_qmd(&posts_dir, &mut posts);
+    assert!(
+        !posts.is_empty(),
+        "expected posts under {}",
+        posts_dir.display()
+    );
+    for f in &posts {
+        let src = fs::read_to_string(f).unwrap();
+        let doc = taliesin_core::render_document_with_includes(&src, f.parent().unwrap());
+        let n = doc.body_html().matches("<h1").count();
+        let label = f.strip_prefix(corpus_dir()).unwrap_or(f).display();
+        assert_eq!(n, 1, "{label} should emit exactly one <h1>, found {n}");
+    }
 }
