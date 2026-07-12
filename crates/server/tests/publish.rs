@@ -139,6 +139,65 @@ fn gate_false_config_skips_the_gate() {
     let _ = std::fs::remove_dir_all(&out);
 }
 
+/// Write a throwaway one-page site whose only page links a page that does not exist,
+/// so the strict check has a real problem to fail on. Returns the site root.
+fn broken_site(tag: &str) -> std::path::PathBuf {
+    let root = std::env::temp_dir().join(format!("tali-pub-{tag}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    std::fs::write(root.join("_site.yml"), "title: Broken\n").unwrap();
+    std::fs::write(
+        root.join("index.tmd"),
+        "---\ntitle: Home\n---\n\nSee [the missing page](nonexistent.tmd).\n",
+    )
+    .unwrap();
+    root
+}
+
+#[test]
+fn strict_by_default_fails_a_broken_site() {
+    let root = broken_site("strict");
+    let out = std::env::temp_dir().join(format!("tali-pub-strict-out-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&out);
+    let res = Command::new(bin())
+        .args(["publish"])
+        .arg(&root)
+        .arg("--out")
+        .arg(&out)
+        .arg("--dry-run")
+        .output()
+        .expect("run publish --dry-run");
+    assert!(
+        !res.status.success(),
+        "a broken cross-ref must fail the strict-by-default deploy: {}",
+        String::from_utf8_lossy(&res.stdout)
+    );
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&out);
+}
+
+#[test]
+fn no_strict_lets_a_broken_site_through() {
+    let root = broken_site("nostrict");
+    let out = std::env::temp_dir().join(format!("tali-pub-nostrict-out-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&out);
+    let res = Command::new(bin())
+        .args(["publish"])
+        .arg(&root)
+        .arg("--out")
+        .arg(&out)
+        .args(["--no-strict", "--dry-run"])
+        .output()
+        .expect("run publish --no-strict --dry-run");
+    assert!(
+        res.status.success(),
+        "--no-strict must let the broken site build + (dry) deploy: {}",
+        String::from_utf8_lossy(&res.stderr)
+    );
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&out);
+}
+
 // Silence dead_code on the helper if only one test uses it in some configs.
 #[allow(dead_code)]
 fn _root() -> &'static Path {
