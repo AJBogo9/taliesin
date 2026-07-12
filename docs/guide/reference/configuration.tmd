@@ -112,6 +112,24 @@ also works inside a part's list). Without `text:`, the label is the chapter's fi
 | `footer` | Footer: a string, or `{ left, center, right }` of items |
 | `chapters` | Book chapter order (a file, `{ file, text }`, or `{ part, chapters }`); presence ⇒ a book |
 | `mounts` | Mount other Taliesin projects under a URL prefix in **preview**: a map `{ docs: ../docs }` or a list of `{ at, path }`. The static build skips mounts and prints the per-mount build command |
+| `python`, `r` | Pin the interpreter this project runs code cells against (see *Interpreter selection* below). A path or command name; the highest-precedence source, so a committed project is reproducible regardless of the ambient shell |
+
+**Interpreter selection.** A `{python}` cell needs a Python with `ipykernel`, an
+`{r}` cell an R with `IRkernel`. Taliesin picks each interpreter by the first source
+that exists, so a project can pin its own without fighting your global shell:
+
+1. the `_site.yml` `python:` / `r:` field;
+2. a project-local `.venv` (`<project>/.venv/bin/python`, then `.venv/bin/python3`); Python only, no R convention;
+3. the `TALIESIN_PYTHON` / `TALIESIN_R` environment variable;
+4. the bare `python3` / `R` on your `PATH`.
+
+Because a project `.venv` (or a `python:` pin) beats a global `TALIESIN_PYTHON`, a
+committed project reproduces the same interpreter on any machine. The chosen
+interpreter and where it came from are logged the first time each language's kernel
+starts (`python -> /proj/.venv/bin/python  (from .venv)`), and `taliesin check` prints
+an **Environment** section listing it plus whether its Jupyter kernel package is
+importable. A single `.tmd` with no `_site.yml` uses the same order minus the field
+(`.venv` beside the file, then env, then default).
 
 **Icons.** A nav/footer item can be `{ icon: <name>, href: … }` instead of raw
 HTML; bundled glyphs: `github`, `linkedin`, `rss`, `x`, `mastodon`, `bluesky`,

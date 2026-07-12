@@ -41,9 +41,9 @@ catches these **publish-blocking** mistakes:
 
 It does **not** execute code cells (it is fast, kernel-free,
 and deterministic, so runtime cell errors stay in `preview`/`build`). Output is
-`path:line: message` by default, or a `[{file, line, message}]` array with
-`--format json`. It exits `0` when clean and `1` when any diagnostic is found, so it
-drops straight into CI or a pre-commit hook:
+`path:line: message` by default, or a `{ "diagnostics": [{file, line, message}],
+"environment": [...] }` object with `--format json`. It exits `0` when clean and `1`
+when any diagnostic is found, so it drops straight into CI or a pre-commit hook:
 
 ```sh
 taliesin check .                          # fails (exit 1) if any page has a diagnostic
@@ -54,6 +54,13 @@ taliesin check . --format json > problems.json
 missing path (or an empty site) is reported as a single `{"error": "…"}` object on
 **stdout** (with a non-zero exit), so `taliesin check x --format json | jq` never chokes
 on a stray human message. Human format keeps that error on stderr.
+
+When the target runs code cells, `check` also prints an **Environment** section (a
+human block after the summary, and the `environment` array in JSON): for each language
+used, the resolved interpreter, where it came from, and whether its Jupyter kernel
+package (`ipykernel` / `IRkernel`) is importable. This is **informational only**: a box
+without Python won't fail `check`, so the static gate stays portable. See the
+[configuration reference](configuration.html) for how the interpreter is chosen.
 
 At a glance, here is everything `check` looks at, grouped by what it protects:
 
