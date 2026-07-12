@@ -38,6 +38,45 @@
     return undefined;
   }
 
+  // --- shareable control state in the URL fragment --------------------------
+  // `{{< input >}}` controls persist their values to the URL fragment as
+  // `name=value&...`, so a link captures the current view and reopening it (or a
+  // live-swap) restores every control + its downstream cells. A plain anchor
+  // fragment (`#heading`, no `=`) is left untouched, so heading / footnote / xref
+  // links still work; the first control change then replaces it with state.
+  function parseInputFragment() {
+    var out = {};
+    var h = (location.hash || "").replace(/^#/, "");
+    if (h.indexOf("=") < 0) return out; // a plain anchor, not control state
+    h.split("&").forEach(function (kv) {
+      var i = kv.indexOf("=");
+      if (i < 0) return;
+      try {
+        out[decodeURIComponent(kv.slice(0, i))] = decodeURIComponent(kv.slice(i + 1));
+      } catch (e) {}
+    });
+    return out;
+  }
+  function applyInputValue(el, val) {
+    if (!el) return;
+    if (el.type === "checkbox") el.checked = val === "true" || val === "1" || val === "on";
+    else el.value = val;
+  }
+  function syncInputFragment() {
+    var parts = [];
+    document.querySelectorAll("[data-qmd-input]").forEach(function (el) {
+      var n = el.getAttribute("data-qmd-input");
+      if (n) parts.push(encodeURIComponent(n) + "=" + encodeURIComponent(String(readValue(el))));
+    });
+    var hash = parts.join("&");
+    // replaceState: change the URL without scrolling or spamming history on every tick.
+    try {
+      history.replaceState(null, "", "#" + hash);
+    } catch (e) {
+      location.hash = hash;
+    }
+  }
+
   function registerInput(r, name, el) {
     if (!el) return;
     r.inputs[name] = el;
@@ -313,13 +352,19 @@
     // Reuses the same registerInput path as `//| viewof` cells; the change event fires the
     // existing scheduleFrom (transitive-downstream re-run). Live-swap re-registers via the
     // :not(...) guard. A sibling [data-qmd-out] (the slider readout) tracks the value.
+    var frag = parseInputFragment();
     (root || document)
       .querySelectorAll("[data-qmd-input]:not([data-qmd-input-bound])")
       .forEach(function (el) {
         el.setAttribute("data-qmd-input-bound", "1");
         var name = el.getAttribute("data-qmd-input");
         if (!name) return;
+        // Hydrate from the URL fragment BEFORE cells run, so a shared link restores the
+        // control (and its downstream cells) on first paint.
+        if (Object.prototype.hasOwnProperty.call(frag, name)) applyInputValue(el, frag[name]);
         registerInput(r, name, el);
+        // Persist to the fragment on every change (shareable/deep-linkable state).
+        el.addEventListener("input", syncInputFragment);
         var out = el.parentNode && el.parentNode.querySelector("[data-qmd-out]");
         if (out) {
           var upd = function () { out.textContent = readValue(el); };

@@ -5,6 +5,9 @@ title: "Reactive inputs"
 `{{< input >}}` emits a labeled control whose value is a reactive node. A `{js}` cell that
 lists the name in `//| input:` re-runs when the control changes, including transitively.
 
+Every control's value is also captured in the page URL, so a link restores the exact view
+(and its downstream cells): change a control and copy the address to share that state.
+
 {{< input name="k" type="slider" min="1" max="10" step="1" value="3" label="k" >}}
 
 ```{js}
