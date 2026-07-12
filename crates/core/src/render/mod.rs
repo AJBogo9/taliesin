@@ -613,6 +613,18 @@ fn render_internal_impl(
             // CommonMark leaves it literal, but Pandoc drops it. Match Pandoc.
             html = strip_trailing_hardbreak(&html);
         }
+        // One <h1> per page: when this render emits a visible title block, demote every
+        // body heading one level so sections nest beneath the title. The gate mirrors the
+        // title-block insertion condition exactly (Html, not hidden, titled). Decks
+        // (Reveal) and books (untitled, numbered chapters) never satisfy it, so their
+        // slide-break and section-numbering machinery is never entered.
+        if let Some(level) = heading_level
+            && format == DocFormat::Html
+            && !hide_title_block
+            && title.is_some()
+        {
+            html = demote_heading_html(&html, level);
+        }
         // A deck heading may set section-level attrs (`## T {background-image="..."}`,
         // `{auto-animate=true}`): emit them as data-* on the heading so the slide model
         // can hoist them onto the wrapping `<section>`.
@@ -1761,6 +1773,22 @@ fn make_id(block_src: &str, counts: &mut HashMap<String, u32>) -> String {
     let hex = format!("{:016x}", crate::hash::fnv1a(block_src.trim()));
     let base = format!("b-{}", &hex[..12]);
     dedup_with_suffix(base, counts)
+}
+
+/// Demote a heading block's visible tag one level (`<hN>` -> `<h{N+1}>`, clamped at
+/// `<h6>`), leaving its attributes, `id`, `data-block-id`, `data-sourcepos` and text
+/// untouched. Used when a page renders a title-block `<h1 class="title">` so its body
+/// sections nest beneath the single page title: one `<h1>` per page (a11y + SEO).
+fn demote_heading_html(html: &str, level: u8) -> String {
+    let to = (level + 1).min(6);
+    if to == level {
+        return html.to_string();
+    }
+    // `html` is `<hN...>...</hN>`: rewrite only the opening tag name (at index 0) and the
+    // lone closing tag. Heading text has its `<`/`>` escaped to entities, so the literal
+    // `</hN>` appears exactly once (the real closing tag).
+    html.replacen(&format!("<h{level}"), &format!("<h{to}"), 1)
+        .replacen(&format!("</h{level}>"), &format!("</h{to}>"), 1)
 }
 
 // --- helpers -------------------------------------------------------------

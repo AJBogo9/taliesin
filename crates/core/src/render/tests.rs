@@ -3349,3 +3349,103 @@ fn toc_filter_is_relative_to_the_shallowest_heading() {
         "h1/h2/h3 shown, h4 dropped"
     );
 }
+
+#[test]
+fn title_block_demotes_body_headings_to_a_single_h1() {
+    let doc = render_document("---\ntitle: \"Post\"\n---\n\n# Theory\n\n## Model\n\n### Detail\n");
+    // The only <h1> is the title block; body sections each shift down one level.
+    let body = doc
+        .blocks
+        .iter()
+        .map(|b| b.html.as_str())
+        .collect::<String>();
+    assert_eq!(
+        body.matches("<h1").count(),
+        1,
+        "exactly one h1 (the title):\n{body}"
+    );
+    assert!(doc.blocks[0].html.contains("<h1 class=\"title\">Post</h1>"));
+    assert!(
+        doc.blocks[1].html.starts_with("<h2 "),
+        "# Theory -> h2, got: {}",
+        doc.blocks[1].html
+    );
+    assert!(
+        doc.blocks[2].html.starts_with("<h3 "),
+        "## Model -> h3, got: {}",
+        doc.blocks[2].html
+    );
+    assert!(
+        doc.blocks[3].html.starts_with("<h4 "),
+        "### Detail -> h4, got: {}",
+        doc.blocks[3].html
+    );
+}
+
+#[test]
+fn demotion_preserves_anchor_id_and_source_keyed_block_id() {
+    let titled = render_document("---\ntitle: T\n---\n\n# Methods\n");
+    let demoted = &titled.blocks[1]; // the body heading, demoted h1 -> h2
+    assert!(demoted.html.starts_with("<h2 "), "got: {}", demoted.html);
+    // The anchor slug is text-derived, so it survives demotion (#anchors + @sec- refs hold).
+    assert!(
+        demoted.html.contains("id=\"methods\""),
+        "anchor id unchanged: {}",
+        demoted.html
+    );
+    // block-id hashes the SOURCE line, not the emitted tag: same source `# Methods` -> same id.
+    let undemoted = render_document("# Methods\n"); // no title block, so <h1> stays
+    assert_eq!(
+        demoted.id, undemoted.blocks[0].id,
+        "block-id keys off source, not the tag"
+    );
+}
+
+#[test]
+fn heading_demotion_clamps_at_h6() {
+    let doc = render_document("---\ntitle: T\n---\n\n###### Deep\n");
+    // A body <h6> has nowhere lower to go; it stays <h6> (never <h7>).
+    assert!(
+        doc.blocks[1].html.starts_with("<h6 "),
+        "got: {}",
+        doc.blocks[1].html
+    );
+}
+
+#[test]
+fn hidden_title_block_leaves_body_headings_alone() {
+    // `title-block-style: none` emits no title block, so the trigger is absent: a body
+    // `# Section` stays <h1> (the author's own heading hierarchy is untouched).
+    let doc = render_document("---\ntitle: T\ntitle-block-style: none\n---\n\n# Section\n");
+    assert!(
+        doc.blocks[0].html.starts_with("<h1 "),
+        "got: {}",
+        doc.blocks[0].html
+    );
+}
+
+#[test]
+fn deck_headings_are_not_demoted() {
+    // A deck (Reveal) builds its own title slide and uses h1/h2 as slide breaks; demotion
+    // must never touch it. `## Slide` stays <h2> (the slide-open level), `### Point` <h3>.
+    let doc = render_document("---\ntitle: T\nformat: deck\n---\n\n## Slide\n\n### Point\n");
+    let joined = doc
+        .blocks
+        .iter()
+        .map(|b| b.html.as_str())
+        .collect::<String>();
+    assert!(joined.contains("<h2 "), "slide heading stays h2:\n{joined}");
+    assert!(joined.contains("<h3 "), "sub-heading stays h3:\n{joined}");
+}
+
+#[test]
+fn a_demoted_post_still_lists_all_its_sections_in_the_toc() {
+    // After demotion the sections are h2/h3/h4; the relative TOC filter surfaces all three
+    // (the title block starts with <header>, not <hN>, so it is not counted as a heading).
+    let doc = render_document("---\ntitle: T\n---\n\n# A\n\n## B\n\n### C\n");
+    assert_eq!(
+        toc_entry_count(&doc.blocks),
+        3,
+        "all three demoted sections listed"
+    );
+}
