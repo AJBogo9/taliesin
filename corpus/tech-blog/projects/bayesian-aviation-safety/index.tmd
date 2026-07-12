@@ -5,8 +5,8 @@ description: "A hierarchical Bayesian study of fatality rates across aircraft ma
 image: "thumbnail.png"
 categories:
   - R
-  - bayesian
-  - statistics
+  - Bayesian
+  - Statistics
 ---
 
 [GitHub](https://github.com/AJBogo9/bayesian-fatality-analysis){.btn .btn-outline-secondary .btn-sm}

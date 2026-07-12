@@ -4,8 +4,8 @@ date: "2025-01-30"
 description: "Regression models on 1,359 smartphones to test whether Apple devices are priced above their hardware-justified value. They are."
 image: "thumbnail.png"
 categories:
-  - python
-  - machine learning
+  - Python
+  - Machine Learning
 ---
 
 [GitHub](https://github.com/AJBogo9/phone-price-prediction){.btn .btn-outline-secondary .btn-sm}

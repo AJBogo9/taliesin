@@ -4,9 +4,9 @@ date: "2025-12-05"
 description: "A production Telegram bot running guild-based fitness competitions across Aalto societies, with a Kubernetes-deployed backend and an analytics dashboard."
 image: "thumbnail.png"
 categories:
-  - python
-  - kubernetes
-  - backend
+  - Python
+  - Kubernetes
+  - Backend
 ---
 
 [GitHub](https://github.com/AJBogo9/activity-challenge-bot){.btn .btn-outline-secondary .btn-sm}

@@ -4,9 +4,9 @@ date: "2026-06-10"
 description: "An MCP server that gives an LLM a synthesis engine, a feedback loop, and ears."
 image: "thumbnail.png"
 categories:
-  - python
+  - Python
   - MCP
-  - music
+  - Music
 ---
 
 [GitHub](https://github.com/AJBogo9/supercollider-mcp){.btn .btn-outline-secondary .btn-sm}
