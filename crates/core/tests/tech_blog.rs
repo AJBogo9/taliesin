@@ -320,6 +320,43 @@ fn listing_frontmatter_emits_post_cards() {
     assert_eq!(recent, 2, "home: max-items: 2 not honoured (got {recent})");
 }
 
+/// Post dates render humanized ("14 April 2026"), never the raw ISO string, in both the
+/// post title block and the listing cards. The machine-readable ISO stays where machines
+/// read it (JSON-LD `datePublished`, `citation_*`, the feed) — so the check is scoped to
+/// the visible regions, not the whole page.
+#[test]
+fn dates_are_humanized_in_the_title_block_and_cards() {
+    let site = Site::discover(&corpus_dir().join("tech-blog"));
+    // Post title block (em-algorithm, dated 2026-04-14).
+    let post = site
+        .render_page("posts/em-algorithm/index.tmd")
+        .expect("post");
+    let meta = post
+        .split("class=\"tali-title-meta\">") // the element, not the CSS selector
+        .nth(1)
+        .and_then(|s| s.split("</div>").next())
+        .expect("title meta div");
+    assert!(
+        meta.contains("14 April 2026"),
+        "humanized post date: {meta}"
+    );
+    assert!(
+        !meta.contains("2026-04-14"),
+        "raw ISO leaked into meta: {meta}"
+    );
+    // Listing cards (fourier 2026-05-15, em 2026-04-14).
+    let blog = site.render_page("blog.tmd").expect("blog");
+    assert!(
+        blog.contains(">15 May 2026<"),
+        "fourier card date humanized"
+    );
+    assert!(blog.contains(">14 April 2026<"), "em card date humanized");
+    assert!(
+        !blog.contains("tali-card-date\">2026-"),
+        "raw ISO leaked into a card date"
+    );
+}
+
 /// The homepage renders the Marginalia hero (native text-only `hero:`), not the old
 /// Quarto `about: jolla` profile block. Site-level, exercised on the real blog.
 #[test]

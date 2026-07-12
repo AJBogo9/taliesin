@@ -734,6 +734,39 @@ fn social_meta_head(title: Option<&str>, description: Option<&str>) -> String {
     h
 }
 
+/// Humanize an ISO `YYYY-MM-DD` date for display ("2026-04-14" → "14 April 2026"),
+/// day un-padded. Any value that isn't a valid plain `YYYY-MM-DD` (a free-form date the
+/// author wrote, or one carrying a time) is returned unchanged, so nothing an author
+/// typed is ever mangled. Shared by the post title block and the listing cards; the
+/// machine-readable ISO form is emitted separately (JSON-LD, `citation_*`, the feed).
+pub(crate) fn humanize_date(date: &str) -> String {
+    const MONTHS: [&str; 12] = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ];
+    if let [y, m, day] = date.trim().split('-').collect::<Vec<_>>()[..]
+        && y.len() == 4
+        && y.bytes().all(|c| c.is_ascii_digit())
+        && let Ok(month) = m.parse::<usize>()
+        && let Ok(day) = day.parse::<u32>()
+        && (1..=12).contains(&month)
+        && (1..=31).contains(&day)
+    {
+        return format!("{day} {} {y}", MONTHS[month - 1]);
+    }
+    date.to_string()
+}
+
 /// Build the visible title-block header from front-matter metadata (title +
 /// optional subtitle/description and an author · date meta line). Returns `None`
 /// without a title. Carries `data-block-id` so it lives in the block model.
@@ -756,12 +789,15 @@ fn title_block_html(
     if let Some(d) = description.filter(|s| !s.is_empty()) {
         h.push_str(&format!("<p class=\"description\">{}</p>", html_escape(d)));
     }
-    let meta: Vec<String> = [author, date]
-        .into_iter()
-        .flatten()
+    let author_span = author
         .filter(|s| !s.is_empty())
-        .map(|s| format!("<span>{}</span>", html_escape(s)))
-        .collect();
+        .map(|s| format!("<span>{}</span>", html_escape(s)));
+    // The date is humanized for display ("2026-04-14" → "14 April 2026"); a value the
+    // author wrote that isn't a plain ISO date is shown verbatim (never mangled).
+    let date_span = date
+        .filter(|s| !s.is_empty())
+        .map(|s| format!("<span>{}</span>", html_escape(&humanize_date(s))));
+    let meta: Vec<String> = [author_span, date_span].into_iter().flatten().collect();
     if !meta.is_empty() {
         h.push_str(&format!(
             "<div class=\"tali-title-meta\">{}</div>",

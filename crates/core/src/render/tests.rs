@@ -4,6 +4,18 @@
 use super::*;
 
 #[test]
+fn humanize_date_formats_iso_and_passes_through_everything_else() {
+    assert_eq!(humanize_date("2026-04-14"), "14 April 2026"); // day un-padded
+    assert_eq!(humanize_date("2026-05-01"), "1 May 2026");
+    assert_eq!(humanize_date("2026-12-31"), "31 December 2026");
+    // Non-ISO values are shown verbatim, never mangled.
+    assert_eq!(humanize_date("Spring 2026"), "Spring 2026");
+    assert_eq!(humanize_date("2026-13-01"), "2026-13-01"); // bad month
+    assert_eq!(humanize_date("2026-04-14T09:00"), "2026-04-14T09:00"); // carries a time
+    assert_eq!(humanize_date("26-4-14"), "26-4-14"); // not a 4-digit year
+}
+
+#[test]
 fn heading_and_paragraph_become_blocks() {
     let doc = render_document("# Title\n\nHello *world*.\n");
     assert_eq!(doc.blocks.len(), 2);
@@ -70,7 +82,7 @@ fn title_block_includes_subtitle_date_and_description() {
     assert!(h.contains("<p class=\"subtitle\">S</p>"), "got: {h}");
     assert!(h.contains("<p class=\"description\">D</p>"), "got: {h}");
     assert!(
-        h.contains("<span>A</span>") && h.contains("<span>2026-05-15</span>"),
+        h.contains("<span>A</span>") && h.contains("<span>15 May 2026</span>"),
         "got: {h}"
     );
 }

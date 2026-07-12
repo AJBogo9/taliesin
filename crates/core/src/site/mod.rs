@@ -1091,7 +1091,12 @@ impl Site {
         let date = p
             .date
             .as_deref()
-            .map(|d| format!("<div class=\"tali-card-date\">{}</div>", esc(d)))
+            .map(|d| {
+                format!(
+                    "<div class=\"tali-card-date\">{}</div>",
+                    esc(&crate::render::humanize_date(d))
+                )
+            })
             .unwrap_or_default();
         let title = esc(p.title.as_deref().unwrap_or(&p.rel));
         let desc = p

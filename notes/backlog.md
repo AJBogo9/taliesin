@@ -46,7 +46,6 @@ head, live-figure thumbnails) live in the detail file — protect them. Every fi
    engine fix — stays with the marketing rebuild.)
 5. **URL-fragment `{{< input >}}` state** (S) *[ruled: adopt]*. Shareable/deep-linkable control state
    via the URL fragment, hydrate from `data-qmd-input`; reader-local, pure JS in `qmd-js.js`.
-6. **Humanize post dates** (S, taste). `render/mod.rs` emits `2026-04-14`; show "14 April 2026".
 7. **Draft-aware preview** (M) *[ruled: preview shows, build hides]*. Preview includes drafts (quiet
    DRAFT badge + dev-menu count); build/publish exclude them and print "N drafts not published: …".
    Also make book chapters draftable (`book.rs:172` `book_pages` never reads `fm.draft`). Flips
