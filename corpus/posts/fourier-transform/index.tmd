@@ -5,7 +5,7 @@ date: 2026-05-15
 image: "thumbnail.webp"
 image-alt: "Circular Fourier series visualisation showing harmonic frequency components traced as an orbital path"
 categories:
-  - signal processing
+  - Mathematics
 bibliography: references.bib
 ---
 

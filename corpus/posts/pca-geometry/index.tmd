@@ -5,8 +5,8 @@ date: 2026-05-08
 image: "thumbnail.webp"
 image-alt: "3D scatter plot of NBA player measurements with three principal component vectors, PC1 capturing 80% of variance"
 categories:
-  - linear algebra
-  - machine learning
+  - Machine Learning
+  - Mathematics
 bibliography: references.bib
 ---
 

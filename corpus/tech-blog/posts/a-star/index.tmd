@@ -6,8 +6,8 @@ image: "astar.webp"
 image-alt: "Animated visualisation of the A* pathfinding algorithm navigating a grid"
 bibliography: references.bib
 categories:
-  - algorithms
-  - graph theory
+  - Algorithms
+  - Mathematics
 ---
 
 How does Google Maps find the *best* route in under a second, across millions of roads? Stripping this question into its basic elements, the question becomes, how to find the shortest path in a graph from the start position to the end position. If one was to approach this problem by trying every single path, the number of paths grow as $\mathcal{O}(b^d)$, where $b$ is the branching factor (average number of branches from each node) and $d$ is the depth. The brute force method scales extremely poorly so another solution must be used.

@@ -6,8 +6,8 @@ image-alt: "Two overlapping probability distributions P and Q on a dark backgrou
 bibliography: references.bib
 description: "How to measure the difference between two probability distributions, and why it sits at the heart of modern LLM alignment."
 categories:
-  - information theory
-  - probabilistic ML
+  - Statistics
+  - Mathematics
 ---
 
 When you fine-tune a large language model, how do you measure whether its output distribution is actually moving closer to the desired distribution? This question is a central to modern alignment techniques like RLHF [@ziegler2019; @ouyang2022].

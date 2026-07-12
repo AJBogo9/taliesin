@@ -6,8 +6,7 @@ bibliography: references.bib
 image: thumbnail.webp
 image-alt: "Diagram showing the relationship between the ELBO and the log-evidence in variational inference"
 categories:
-  - variational inference
-  - probabilistic ML
+  - Machine Learning
 ---
 
 

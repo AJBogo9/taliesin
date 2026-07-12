@@ -5,8 +5,7 @@ date: 2026-04-26
 image: "thumbnail.webp"
 image-alt: "Illustration of rank-based comparison of groups using the Kruskal-Wallis test"
 categories:
-  - statistics
-  - hypothesis testing
+  - Statistics
 bibliography: references.bib
 ---
 

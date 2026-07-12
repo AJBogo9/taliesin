@@ -568,7 +568,7 @@ fn tech_blog_site_discovers_renders_chrome_and_rewrites_links() {
         .render_page("posts/fourier-transform/index.tmd")
         .expect("fourier post renders");
     assert!(
-        !fourier.contains("tali-post-cats") && !fourier.contains("categories/signal-processing/"),
+        !fourier.contains("tali-post-cats") && !fourier.contains("categories/mathematics/"),
         "post should not carry a category archive strip"
     );
 }

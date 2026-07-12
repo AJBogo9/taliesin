@@ -5,9 +5,7 @@ date: 2026-04-14
 image: "thumbnail.webp"
 image-alt: "Visualisation of the EM-algorithm fitting two Gaussian distributions to unlabelled data"
 categories:
-  - probabilistic ML
-  - algorithms
-  - variational inference
+  - Machine Learning
 bibliography: references.bib
 ---
 
