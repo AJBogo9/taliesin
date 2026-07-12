@@ -708,6 +708,12 @@
   .tali-src-hover { outline: 2px dashed var(--tali-accent); outline-offset: 3px; border-radius: 3px; }
   figure.tali-figure { margin: 1.5rem 0; }
   figure.tali-figure img { max-width: 100%; height: auto; }
+  /* A `dark=` figure ships a light + dark <img> pair; show the one matching the theme
+     (mirrors the `{{< video dark= >}}` swap). Figure images render inline (centred by
+     `text-align`), so the shown variant reverts to inline, not block. */
+  figure.tali-figure img.tali-img-dark { display: none; }
+  html[data-theme="dark"] figure.tali-figure img.tali-img-light { display: none; }
+  html[data-theme="dark"] figure.tali-figure img.tali-img-dark { display: inline; }
   figure.tali-figure figcaption { font-size: .9em; color: var(--tali-muted); margin-top: .5rem; }
   .tali-listing { margin: 1.5rem 0; }
   .tali-listing-caption { font-size: .9em; color: var(--tali-muted); margin-bottom: .35rem; }

@@ -1563,6 +1563,40 @@ fn standalone_image_becomes_a_numbered_figure() {
 }
 
 #[test]
+fn figure_with_dark_attr_emits_a_theme_swapped_image_pair() {
+    // A `dark=` source ships a light + dark <img> pair (like `{{< video dark= >}}`); CSS
+    // shows the one matching html[data-theme]. Both variants carry the shared alt + dims.
+    let doc =
+        render_document("![A model fit.](fit-b.png){#fig-fit dark=\"fit-c.png\" width=60%}\n");
+    let h = &doc.blocks[0].html;
+    assert!(
+        h.contains("<img class=\"tali-img-light\" src=\"fit-b.png\""),
+        "light variant: {h}"
+    );
+    assert!(
+        h.contains("<img class=\"tali-img-dark\" src=\"fit-c.png\""),
+        "dark variant: {h}"
+    );
+    assert_eq!(
+        h.matches("alt=\"A model fit.\"").count(),
+        2,
+        "alt on both: {h}"
+    );
+    assert_eq!(
+        h.matches("style=\"width:60%\"").count(),
+        2,
+        "width on both: {h}"
+    );
+    // No `dark=` → a single <img>, unchanged (no variant classes).
+    let plain = render_document("![Plain.](p.png){#fig-p}\n");
+    assert!(
+        !plain.blocks[0].html.contains("tali-img-"),
+        "no variant class without dark=: {}",
+        plain.blocks[0].html
+    );
+}
+
+#[test]
 fn figure_honors_both_width_and_height() {
     // `height=` must land in the inline style alongside `width=` (it was silently
     // dropped before), each escaped like width.

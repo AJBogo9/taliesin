@@ -1,0 +1,13 @@
+---
+title: "A theme-aware figure"
+---
+
+A figure can ship a `dark=` variant that swaps with the page theme, so a screenshot or a
+diagram whose colours are baked in stays legible in both light and dark. Toggle the theme
+and the image below swaps; there is still just one figure, one caption, one gallery entry.
+
+![A model fit, light and dark.](fit-b.png){#fig-themed dark="fit-c.png"}
+
+A plain figure with no `dark=` is unchanged:
+
+![The same fit, single variant.](fit-a.png){#fig-plain}

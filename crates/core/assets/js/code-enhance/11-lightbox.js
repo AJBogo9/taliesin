@@ -78,7 +78,11 @@ function taliInitLightbox() {
   }
   // Open the clicked image, building the page's gallery so ←/→ can step between images.
   function openImg(srcImg) {
-    gallery = [].slice.call(document.querySelectorAll('figure img, img.lightbox'));
+    // Only visible images join the gallery: a `dark=` figure has two <img>s but one is
+    // theme-hidden (display:none → no offsetParent), so it must not become a phantom
+    // ←/→ step or inflate the (n / N) counter. The clicked image is always kept.
+    gallery = [].slice.call(document.querySelectorAll('figure img, img.lightbox'))
+      .filter(function (im) { return im === srcImg || im.offsetParent !== null; });
     var i = gallery.indexOf(srcImg);
     if (i < 0) { gallery = [srcImg]; i = 0; }
     showImageAt(i);

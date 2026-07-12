@@ -62,8 +62,6 @@ head, live-figure thumbnails) live in the detail file — protect them. Every fi
     already bundled Regular-only for OG cards; add its real bold + italic + bold-italic faces and make
     it the body face (never synthesize weights). Biggest remaining "assembled from defaults" tell;
     subsumes the colour-system "No owned typeface" owner-call.
-14. **Theme-aware `dark=` for images** (S). Extend the shipped `{{< video dark= >}}` theme-swap to
-    static images/figures (a dark screenshot/diagram variant).
 
 ### B. Publish / build hardening (rulings unblocked)
 

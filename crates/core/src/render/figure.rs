@@ -93,13 +93,32 @@ pub(super) fn emit_figure(fig: &FigureParts, block_attrs: &str, num: usize) -> S
     };
     // `alt` is the caption HTML with tags stripped: it already carries valid
     // entities, so only quote-escape it (escape_attr would double-escape `&`).
-    let alt = strip_tags(&fig.caption);
+    let alt = escape_attr_from_html(&strip_tags(&fig.caption));
+    let img = |src: &str, class: &str| {
+        let cls = if class.is_empty() {
+            String::new()
+        } else {
+            format!(" class=\"{class}\"")
+        };
+        format!(
+            "<img{cls} src=\"{}\" alt=\"{alt}\"{style} />",
+            escape_attr(src)
+        )
+    };
+    // With `dark=`, ship a light + dark <img> pair (like `{{< video dark= >}}`); CSS shows
+    // the one matching `html[data-theme]`. Without it, a single unclassed <img> as before.
+    let imgs = match fig.attrs.get("dark") {
+        Some(dark) => format!(
+            "{}{}",
+            img(&fig.url, "tali-img-light"),
+            img(dark, "tali-img-dark")
+        ),
+        None => img(&fig.url, ""),
+    };
     format!(
         "<figure{block_attrs}{id_attr} class=\"tali-figure{align_class}\">\
-         <img src=\"{}\" alt=\"{}\"{style} />\
+         {imgs}\
          <figcaption>Figure&nbsp;{num}: {}</figcaption></figure>",
-        escape_attr(&fig.url),
-        escape_attr_from_html(&alt),
         fig.caption,
     )
 }
