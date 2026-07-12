@@ -218,6 +218,23 @@ pub struct RenderedDoc {
     pub blocks: Vec<Block>,
 }
 
+/// How a page's framework CSS/JS is delivered. `Inline` bakes every blob into the page
+/// (the portable single-file build, `--bare`, and live preview). `External` links to
+/// content-hashed shared files under `_assets/` (the multi-page `build <dir>` path).
+pub enum AssetMode<'a> {
+    Inline,
+    External(ExternalAssets<'a>),
+}
+
+/// Depth-adjusted hrefs for the shared `_assets/` files, supplied per page by the build.
+pub struct ExternalAssets<'a> {
+    pub app_css: &'a str,
+    pub katex_css: &'a str,
+    pub app_js: &'a str,
+    pub mermaid_js: &'a str,
+    pub jslibs_js: &'a str,
+}
+
 /// Ready-to-inject markup from the `include-in-header` / `include-before-body` /
 /// `include-after-body` / `css` front-matter (and site `format: html:`) keys.
 /// Each string is already resolved (inline `text:` or a referenced file's

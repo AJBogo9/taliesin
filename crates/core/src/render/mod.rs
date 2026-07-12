@@ -14,8 +14,8 @@ use std::path::Path;
 mod model;
 pub(crate) use model::CellRole;
 pub use model::{
-    Block, Cell, CellFigure, CellTable, DocFormat, JsOpts, OutputMode, PageIncludes, RenderedDoc,
-    Warning,
+    AssetMode, Block, Cell, CellFigure, CellTable, DocFormat, ExternalAssets, JsOpts, OutputMode,
+    PageIncludes, RenderedDoc, Warning,
 };
 
 fn parse_options() -> Options<'static> {

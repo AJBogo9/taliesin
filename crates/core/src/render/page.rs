@@ -115,6 +115,8 @@ pub struct PageParts<'a> {
     /// or the live websocket client).
     pub scripts_post: &'a str,
     pub include_after_body: &'a str,
+    /// How framework CSS/JS is delivered (inline blobs, or links to `_assets/`).
+    pub assets: AssetMode<'a>,
 }
 
 /// Assemble a complete HTML page from its parts: the single source of truth for
@@ -124,39 +126,16 @@ pub struct PageParts<'a> {
 /// reordering happens once instead of in three hand-rolled templates.
 pub fn assemble_html_page(p: &PageParts) -> String {
     let bare = p.mode == OutputMode::Bare;
-    let katex = if p.ship_katex {
-        format!("\n<style>{KATEX_CSS}</style>")
-    } else {
-        String::new()
-    };
-    let site_css = if p.with_site_css { SITE_CSS } else { "" };
-    // Bare output carries no `[data-theme]` script, so the JS-keyed dark layer never
-    // matches: drop it from the main sheet and append CSS-only theming instead.
-    let dark = if bare { "" } else { DARK_CSS };
-    let bare_theme = if bare {
-        bare_theme_css(p.theme_default)
-    } else {
-        String::new()
-    };
     // The pre-paint theme bootstrap is JS; bare output is script-free.
     let theme_init = if bare {
         String::new()
     } else {
         theme_head(p.theme_default)
     };
-    // Native `{js}` cells need the vendored d3 + Plot libs in <head>; the enhancer
-    // itself rides in code_scripts(). Gated on the rendered body (no PageParts flag).
-    // Bare drops `{js}` entirely (its script blocks are stripped from the body too).
-    let js_head_html = if !bare && has_js_cells(p.body) {
-        js_cell_head()
-    } else {
-        String::new()
-    };
     // Bare's guarantee is zero `<script>`: suppress every script source — the passed-in
     // pre/post scripts, the enhancer bundle, and (above) the theme bootstrap + js head.
     let scripts_pre = if bare { "" } else { p.scripts_pre };
     let scripts_post = if bare { "" } else { p.scripts_post };
-    let code_scripts = code_scripts_for(p.body, p.mode);
     // Skip-to-content link: the first focusable thing in the body, so a keyboard /
     // screen-reader user can jump past the chrome to the reading region. Emitted
     // server-side (works with JS off) whenever the body carries the focusable
@@ -168,6 +147,61 @@ pub fn assemble_html_page(p: &PageParts) -> String {
     } else {
         ""
     };
+    // The head CSS block + framework script tags differ by asset mode; the body frame,
+    // skip link, theme bootstrap, and passed-in pre/post scripts are identical.
+    let (style_block, katex_block, js_head_html, framework_scripts) = match &p.assets {
+        AssetMode::Inline => {
+            let site_css = if p.with_site_css { SITE_CSS } else { "" };
+            // Bare output carries no `[data-theme]` script, so the JS-keyed dark layer
+            // never matches: drop it from the main sheet and append CSS-only theming
+            // instead.
+            let dark = if bare { "" } else { DARK_CSS };
+            let bare_theme = if bare {
+                bare_theme_css(p.theme_default)
+            } else {
+                String::new()
+            };
+            let style_block =
+                format!("<style>{FONTS_CSS}{BASE_CSS}{dark}{site_css}{bare_theme}</style>");
+            let katex_block = if p.ship_katex {
+                format!("\n<style>{KATEX_CSS}</style>")
+            } else {
+                String::new()
+            };
+            // Native `{js}` cells need the vendored d3 + Plot libs in <head>; the
+            // enhancer itself rides in code_scripts(). Gated on the rendered body (no
+            // PageParts flag). Bare drops `{js}` entirely (its script blocks are
+            // stripped from the body too).
+            let js_head_html = if !bare && has_js_cells(p.body) {
+                js_cell_head()
+            } else {
+                String::new()
+            };
+            let framework_scripts = code_scripts_for(p.body, p.mode);
+            (style_block, katex_block, js_head_html, framework_scripts)
+        }
+        AssetMode::External(a) => {
+            let style_block = format!("<link rel=\"stylesheet\" href=\"{}\">", a.app_css);
+            let katex_block = if p.ship_katex {
+                format!("\n<link rel=\"stylesheet\" href=\"{}\">", a.katex_css)
+            } else {
+                String::new()
+            };
+            let js_head_html = if !bare && has_js_cells(p.body) {
+                format!("<script src=\"{}\" defer></script>", a.jslibs_js)
+            } else {
+                String::new()
+            };
+            let mermaid = if has_mermaid(p.body) {
+                format!("\n<script src=\"{}\" defer></script>", a.mermaid_js)
+            } else {
+                String::new()
+            };
+            let framework_scripts =
+                format!("<script src=\"{}\" defer></script>{mermaid}", a.app_js);
+            (style_block, katex_block, js_head_html, framework_scripts)
+        }
+    };
     format!(
         r#"<!DOCTYPE html>
 <html lang="{lang}">
@@ -178,7 +212,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
 <title>{title}</title>
 {favicon}
 {theme_init}
-<style>{fonts}{base}{dark}{site}{bare_theme}</style>{katex}
+{style_block}{katex_block}
 {js_head}
 {theme_css}
 {include_in_header}
@@ -197,11 +231,8 @@ pub fn assemble_html_page(p: &PageParts) -> String {
         title = p.title,
         favicon = p.favicon,
         theme_init = theme_init,
-        fonts = FONTS_CSS,
-        base = BASE_CSS,
-        dark = dark,
-        site = site_css,
-        bare_theme = bare_theme,
+        style_block = style_block,
+        katex_block = katex_block,
         js_head = js_head_html,
         theme_css = theme_style(p.theme_css),
         include_in_header = p.include_in_header,
@@ -210,7 +241,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
         include_before_body = p.include_before_body,
         body = p.body,
         scripts_pre = scripts_pre,
-        code_scripts = code_scripts,
+        code_scripts = framework_scripts,
         scripts_post = scripts_post,
         include_after_body = p.include_after_body,
     )
@@ -466,6 +497,7 @@ fn html_page_inner(
         scripts_pre: "",
         scripts_post: &format!("{STATIC_ENHANCE}\n{toc_script}"),
         include_after_body: &includes.after_body,
+        assets: AssetMode::Inline,
     })
 }
 
@@ -525,4 +557,103 @@ fn strip_qmd_js_scripts(body: &str) -> String {
     }
     out.push_str(rest);
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Same base.css marker literal Task 1 confirmed present (see render/tests.rs).
+    const MARKER_BASE: &str = ".tali-reader-seg";
+
+    #[test]
+    fn external_assets_link_instead_of_inlining() {
+        let ext = ExternalAssets {
+            app_css: "_assets/app.aaaa.css",
+            katex_css: "_assets/katex.bbbb.css",
+            app_js: "_assets/app.cccc.js",
+            mermaid_js: "_assets/mermaid.dddd.js",
+            jslibs_js: "_assets/jslibs.eeee.js",
+        };
+        let body = "<main id=\"tali-main\"><span class=\"katex\">x</span>\
+                    <pre class=\"mermaid\">g</pre>\
+                    <script type=\"application/qmd-js\">1</script></main>";
+        let html = assemble_html_page(&PageParts {
+            mode: OutputMode::Build,
+            title: "T",
+            lang: "en",
+            favicon: "",
+            theme_default: "dark",
+            theme_css: "",
+            with_site_css: true,
+            ship_katex: true,
+            extra_head: "",
+            body_class: "",
+            include_in_header: "",
+            include_before_body: "",
+            body,
+            scripts_pre: "",
+            scripts_post: "",
+            include_after_body: "",
+            assets: AssetMode::External(ext),
+        });
+        // Links, not inlined framework CSS.
+        assert!(html.contains("<link rel=\"stylesheet\" href=\"_assets/app.aaaa.css\">"));
+        assert!(html.contains("href=\"_assets/katex.bbbb.css\""));
+        assert!(
+            !html.contains(MARKER_BASE),
+            "framework CSS must not be inlined in External mode"
+        );
+        // Scripts as deferred external refs.
+        assert!(html.contains("<script src=\"_assets/app.cccc.js\" defer></script>"));
+        assert!(html.contains("src=\"_assets/mermaid.dddd.js\" defer"));
+        assert!(html.contains("src=\"_assets/jslibs.eeee.js\" defer"));
+    }
+
+    #[test]
+    fn external_omits_conditional_links_when_absent() {
+        let ext = ExternalAssets {
+            app_css: "a.css",
+            katex_css: "k.css",
+            app_js: "a.js",
+            mermaid_js: "m.js",
+            jslibs_js: "j.js",
+        };
+        let html = assemble_html_page(&PageParts {
+            mode: OutputMode::Build,
+            title: "T",
+            lang: "en",
+            favicon: "",
+            theme_default: "dark",
+            theme_css: "",
+            with_site_css: true,
+            ship_katex: false,
+            extra_head: "",
+            body_class: "",
+            include_in_header: "",
+            include_before_body: "",
+            body: "<main id=\"tali-main\"><p>prose only</p></main>",
+            scripts_pre: "",
+            scripts_post: "",
+            include_after_body: "",
+            assets: AssetMode::External(ext),
+        });
+        assert!(html.contains("href=\"a.css\""), "app.css always linked");
+        assert!(html.contains("src=\"a.js\" defer"), "app.js always linked");
+        // Note: a bare `"k.css"` substring check would false-positive on the unrelated
+        // theme-bootstrap script's own comment mentioning "dark.css" (which contains
+        // "k.css"), so this checks the actual href attribute.
+        assert!(
+            !html.contains("href=\"k.css\""),
+            "no katex link on a math-free page"
+        );
+        assert!(
+            !html.contains("m.js"),
+            "no mermaid link on a diagram-free page"
+        );
+        assert!(
+            !html.contains("j.js"),
+            "no jslibs link on a {{js}}-free page"
+        );
+    }
 }
