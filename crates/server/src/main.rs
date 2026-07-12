@@ -152,10 +152,12 @@ fn usage() {
     println!(
         "                             HTML; --jobs <N> caps parallel page renders (site build)"
     );
-    println!("  publish <dir> [--project-name <name>] [--out <dir>] [--strict] [--dry-run]");
+    println!(
+        "  publish <dir> [--project-name <name>] [--out <dir>] [--public] [--no-strict] [--dry-run]"
+    );
     println!("                             build a site/book + deploy it to Cloudflare Pages");
-    println!("                             behind a shared passcode (Wrangler direct upload);");
-    println!("                             --dry-run builds + gates + prints the deploy command");
+    println!("                             behind a shared passcode (strict by default);");
+    println!("                             --public deploys un-gated; --dry-run skips the deploy");
     println!("  render <file.tmd>          render a full HTML page to stdout");
     println!("                             (static; does NOT execute code cells)");
     println!("  blocks <file.tmd>          list block ids + sourcepos (debug)");
@@ -309,18 +311,20 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin init my-site\n"
         }
         "publish" => {
-            "taliesin publish <dir> [--project-name <name>] [--out <dir>] [--strict] [--dry-run]\n\
+            "taliesin publish <dir> [--project-name <name>] [--out <dir>] [--public] [--no-strict] [--dry-run]\n\
              \n\
              Build a site or book and deploy it to Cloudflare Pages (Wrangler direct\n\
-             upload) behind a shared passcode. One-way: it never writes to your source.\n\
-             The passcode lives only as a Cloudflare secret, never in your repo.\n\
+             upload). Strict by default (a cell error or broken ref fails the deploy) and\n\
+             gated behind a shared passcode by default. One-way: it never writes to your\n\
+             source. The passcode lives only as a Cloudflare secret, never in your repo.\n\
              \n\
              Flags:\n\
              \x20 --project-name <name>  Cloudflare Pages project (default: the dir-name slug)\n\
              \x20 --out <dir>            build output dir (default: the project's _site/_book)\n\
-             \x20 --strict               fail before deploying if the build has warnings\n\
-             \x20 --dry-run              build + inject the gate, print the deploy command,\n\
-             \x20                        do not deploy\n\
+             \x20 --public               deploy a public, un-gated site (default: passcode-gated;\n\
+             \x20                        also settable as publish.gate: false in _site.yml)\n\
+             \x20 --no-strict            deploy even if the build has warnings (default: strict)\n\
+             \x20 --dry-run              build + gate, print the deploy command, do not deploy\n\
              \n\
              One-time setup (per repo):\n\
              \x20 export CLOUDFLARE_API_TOKEN=...   (also CLOUDFLARE_ACCOUNT_ID)\n\
