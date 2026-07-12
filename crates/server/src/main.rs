@@ -14,6 +14,7 @@ mod freeze;
 mod interpreter;
 mod kernel;
 mod log;
+mod minify;
 mod protocol;
 mod publish;
 mod query;
