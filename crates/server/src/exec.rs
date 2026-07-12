@@ -33,6 +33,7 @@ use taliesin_core::{
 };
 
 use crate::freeze::{self, FreezeCache};
+use crate::interpreter::{Lang, Provenance, Resolved};
 use crate::kernel::{Kernel, KernelSpec, render_outputs};
 
 /// After a failed kernel start, wait at least this long before retrying — long
@@ -91,7 +92,7 @@ fn now_ms() -> u64 {
 
 /// Cell languages taliesin can execute, mapped to a stable kernel key. Anything
 /// else renders as highlighted source.
-fn kernel_lang(lang: &str) -> Option<&'static str> {
+pub(crate) fn kernel_lang(lang: &str) -> Option<&'static str> {
     match lang {
         "python" => Some("python"),
         "r" => Some("r"),
@@ -145,11 +146,20 @@ struct LangState {
     /// the warm-prefix reuse: a cell whose key still matches keeps its output and
     /// isn't re-run, because the kernel still holds its state.
     ran: Vec<Ran>,
+    /// Whether this executor has already logged which interpreter this language runs
+    /// (the "which python?" signal). Reset by `restart_kernel` (which clears `langs`),
+    /// so a manual restart re-announces.
+    announced: bool,
 }
 
 pub struct Executor {
     python: PathBuf,
     r: PathBuf,
+    /// Where `python`/`r` were chosen from, for the "which interpreter?" log line at
+    /// first kernel start. Defaults to env/`Default` in `build`; overwritten (with the
+    /// resolved paths) by [`Executor::set_interpreters`] at each build/serve entry.
+    python_prov: Provenance,
+    r_prov: Provenance,
     /// One warm kernel per executed language ("python", "r"), created lazily.
     langs: HashMap<&'static str, LangState>,
     /// Disk-backed output cache for this document (the L2 behind the per-language
@@ -214,15 +224,19 @@ impl Executor {
     }
 
     fn build(freeze: FreezeCache) -> Self {
-        let python = std::env::var_os("TALIESIN_PYTHON")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("python3"));
-        let r = std::env::var_os("TALIESIN_R")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from("R"));
+        let (python, python_prov) = match std::env::var_os("TALIESIN_PYTHON") {
+            Some(p) => (PathBuf::from(p), Provenance::Env),
+            None => (PathBuf::from("python3"), Provenance::Default),
+        };
+        let (r, r_prov) = match std::env::var_os("TALIESIN_R") {
+            Some(p) => (PathBuf::from(p), Provenance::Env),
+            None => (PathBuf::from("R"), Provenance::Default),
+        };
         Self {
             python,
             r,
+            python_prov,
+            r_prov,
             langs: HashMap::new(),
             freeze,
             force_next: false,
@@ -258,6 +272,18 @@ impl Executor {
         self.pool = pool;
     }
 
+    /// Override the interpreters this executor runs (and the pool warms), with their
+    /// provenance for the "which python?" log line. Called once by each build/serve
+    /// entry point after resolving `_site.yml`/`.venv`/env. A `&mut self` setter (not a
+    /// consuming builder) so a pooled `&mut Executor` can be pointed at the resolved
+    /// interpreters. Executors that never call this keep the env/default from `build`.
+    pub fn set_interpreters(&mut self, python: Resolved, r: Resolved) {
+        self.python = python.path;
+        self.python_prov = python.provenance;
+        self.r = r.path;
+        self.r_prov = r.provenance;
+    }
+
     /// The launch spec + interpreter path (for logging) for a language.
     fn spec(&self, lang: &str) -> Option<(KernelSpec, PathBuf)> {
         match lang {
@@ -276,19 +302,19 @@ impl Executor {
             if s.kernel.is_some() || s.failed_at.is_none() {
                 return None;
             }
-            let var = if *lang == "r" {
-                "TALIESIN_R"
+            let (var, path) = if *lang == "r" {
+                ("TALIESIN_R", self.r.display().to_string())
             } else {
-                "TALIESIN_PYTHON"
+                ("TALIESIN_PYTHON", self.python.display().to_string())
             };
             Some(match &s.last_error {
                 Some(e) => format!(
-                    "{lang} kernel unavailable — {e}. Code cells render as source; \
-                     fix the interpreter ({var}) and click Restart kernel."
+                    "{lang} kernel unavailable ({path}): {e}. Code cells render as source; \
+                     fix the interpreter ({var} or _site.yml {lang}:) and click Restart kernel."
                 ),
                 None => format!(
-                    "{lang} kernel unavailable; code cells render as source \
-                     (set {var} to an interpreter with the Jupyter kernel, then Restart kernel)."
+                    "{lang} kernel unavailable ({path}); code cells render as source \
+                     (set {var} or _site.yml {lang}: to an interpreter with the Jupyter kernel, then Restart kernel)."
                 ),
             })
         })
@@ -682,6 +708,13 @@ impl Executor {
             return;
         };
         let work_dir = self.work_dir.clone();
+        // Owned before the mutable borrow of `state` below, so the announce can name the
+        // resolved interpreter + its provenance without a second borrow of `self`.
+        let (prov, lang_enum) = if lang == "r" {
+            (self.r_prov, Lang::R)
+        } else {
+            (self.python_prov, Lang::Python)
+        };
         {
             let state = self.langs.entry(lang).or_default();
             if let Some(k) = state.kernel.as_mut() {
@@ -696,6 +729,17 @@ impl Executor {
                 && at.elapsed() < KERNEL_RETRY_AFTER
             {
                 return; // still backing off; cells render as source (no signal)
+            }
+            // Committed to a boot (warm-pool or cold): announce which interpreter runs
+            // this language, once per executor. Only languages the document actually
+            // runs reach here, so an R-free doc never claims an R interpreter.
+            if !state.announced {
+                crate::log::kernel(&format!(
+                    "{lang} -> {}  (from {})",
+                    program.display(),
+                    prov.label(lang_enum)
+                ));
+                state.announced = true;
             }
         }
 
@@ -1120,6 +1164,36 @@ mod tests {
             c.code = code.to_string();
         }
         b
+    }
+
+    #[tokio::test]
+    async fn diagnostic_names_the_resolved_interpreter() {
+        // `set_interpreters` overrides the env/default python, and a bogus resolved path
+        // surfaces in the diagnostic verbatim, so a failure names the exact interpreter
+        // (the 2026-07-11 "which python?" gap). A bogus path fails `Kernel::start`
+        // deterministically, so this needs no live kernel.
+        use crate::interpreter::{Provenance, Resolved};
+        let mut ex = Executor::new();
+        ex.set_interpreters(
+            Resolved {
+                path: PathBuf::from("/nonexistent/tali/py-abc"),
+                provenance: Provenance::Field,
+            },
+            Resolved {
+                path: PathBuf::from("R"),
+                provenance: Provenance::Default,
+            },
+        );
+        let _ = ex
+            .run(vec![python_cell_block_with("py1", "print(1)")])
+            .await;
+        let diag = ex
+            .diagnostic()
+            .expect("a bogus interpreter yields a diagnostic");
+        assert!(
+            diag.contains("/nonexistent/tali/py-abc"),
+            "diagnostic must name the resolved interpreter path: {diag}"
+        );
     }
 
     #[tokio::test]
