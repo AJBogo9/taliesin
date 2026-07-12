@@ -1,7 +1,7 @@
 # Interpreter selection DX — design
 
 **Date:** 2026-07-12
-**Status:** approved (brainstorm); implementation plan written (`docs/superpowers/plans/2026-07-12-interpreter-selection-dx.md`), pending implementation
+**Status:** implemented (2026-07-12) on `feat/interpreter-selection-dx`, per `docs/superpowers/plans/2026-07-12-interpreter-selection-dx.md`. `check --format json` shape ruled to the object form (breaks the VS Code companion's `src/diagnostics.ts`; needs a lockstep update).
 **Backlog item:** Tier 2 hardening — "Interpreter selection is silent + has no project-local override (DX; S+M)" (`notes/ROADMAP.md` / AUDITS)
 **Related:** the warm-pool (`crates/server/src/warm_pool.rs`) and executor (`crates/server/src/exec.rs`) interpreter resolution; the `check` subcommand (`crates/server/src/check.rs`)
 
