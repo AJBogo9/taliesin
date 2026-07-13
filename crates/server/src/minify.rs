@@ -7,16 +7,6 @@
 //! PRESERVES every statement newline (ASI-safe) and never mangles tokens. It runs only on
 //! Taliesin's own hand-written JS (vendored `*.min.js` bypass it entirely).
 
-// `not(test)`-gated: this module's own unit tests call these fns, so under
-// `--all-targets` the test-target build always uses them (dead_code never fires
-// there) while the plain bin build does not (Task 5 has not wired them in yet).
-// Gating on `not(test)` keeps the expectation meaningful (and self-clearing once
-// Task 5 adds a real, non-test caller) without it being permanently unfulfilled
-// in the test-target build.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "wired up by the shared-asset-bundle build step")
-)]
 pub fn minify_css(src: &str) -> String {
     let chars: Vec<char> = src.chars().collect();
     let n = chars.len();
@@ -131,11 +121,6 @@ fn trim_trailing_ws(out: &mut String, line_start: usize) {
     }
 }
 
-// `not(test)`-gated for the same reason as `minify_css` above.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "wired up by the shared-asset-bundle build step")
-)]
 pub fn minify_js(src: &str) -> String {
     let chars: Vec<char> = src.chars().collect();
     let n = chars.len();

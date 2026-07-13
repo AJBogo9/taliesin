@@ -764,6 +764,7 @@ async fn build_one_page(
     out: &Path,
     root: &Path,
     warm_pool: Option<std::sync::Arc<warm_pool::WarmPool>>,
+    bundle: &AssetBundle,
 ) -> PageOutcome {
     let mut warnings = Vec::new();
     let Ok(src) = std::fs::read_to_string(&page.input) else {
@@ -835,8 +836,22 @@ async fn build_one_page(
         }
     }
     // Surface render warnings *and* broken cross-refs so a broken site doesn't deploy
-    // silently (these previously only showed in the preview dev menu).
-    let (html, render_warnings) = site.render_page_doc_warned(page, doc);
+    // silently (these previously only showed in the preview dev menu). Every page links
+    // the shared `_assets/` bundle instead of inlining its own copy of the framework
+    // CSS/JS; hrefs are depth-adjusted so a nested page's `../` prefix count matches.
+    let app_css = asset_href(&page.url, &bundle.app_css);
+    let katex_css = asset_href(&page.url, &bundle.katex_css);
+    let app_js = asset_href(&page.url, &bundle.app_js);
+    let mermaid_js = asset_href(&page.url, &bundle.mermaid_js);
+    let jslibs_js = asset_href(&page.url, &bundle.jslibs_js);
+    let ext = taliesin_core::ExternalAssets {
+        app_css: &app_css,
+        katex_css: &katex_css,
+        app_js: &app_js,
+        mermaid_js: &mermaid_js,
+        jslibs_js: &jslibs_js,
+    };
+    let (html, render_warnings) = site.render_page_doc_external(page, doc, ext);
     for w in &render_warnings {
         // Located, the way `check` reports them. These carry a file + line and were being
         // flattened to `page.rel: message`, so a `--strict` failure named no line to fix.
@@ -860,6 +875,62 @@ async fn build_one_page(
         kernel_unavailable,
         written,
     }
+}
+
+/// The resolved shared-asset filenames (content-hashed), computed once per site build.
+struct AssetBundle {
+    app_css: String,
+    katex_css: String,
+    app_js: String,
+    mermaid_js: String,
+    jslibs_js: String,
+}
+
+/// Minify + content-hash each shared blob, write it once under `<out>/_assets/`, and
+/// return the (root-relative) filenames. Clears any stale `_assets/` first so old hashes
+/// do not accumulate across rebuilds.
+fn write_asset_bundle(out: &Path) -> std::io::Result<AssetBundle> {
+    use taliesin_core::hash::fnv1a;
+    let dir = out.join("_assets");
+    let _ = std::fs::remove_dir_all(&dir); // own the lifecycle; clear stale hashes
+    std::fs::create_dir_all(&dir)?;
+    let named = |stem: &str, ext: &str, bytes: &str| -> std::io::Result<String> {
+        let name = format!("{stem}.{:x}.{ext}", fnv1a(bytes));
+        std::fs::write(dir.join(&name), bytes)?;
+        Ok(format!("_assets/{name}"))
+    };
+    let app_css = named(
+        "app",
+        "css",
+        &crate::minify::minify_css(&taliesin_core::shared_site_css()),
+    )?;
+    let katex_css = named(
+        "katex",
+        "css",
+        &crate::minify::minify_css(taliesin_core::katex_css_bytes()),
+    )?;
+    let app_js = named(
+        "app",
+        "js",
+        &crate::minify::minify_js(&taliesin_core::core_enhance_js()),
+    )?;
+    // Vendored libs are already minified: hash + write as-is (do not re-minify).
+    let mermaid_js = named("mermaid", "js", &taliesin_core::mermaid_bundle_js())?;
+    let jslibs_js = named("jslibs", "js", &taliesin_core::js_cell_libs_js())?;
+    Ok(AssetBundle {
+        app_css,
+        katex_css,
+        app_js,
+        mermaid_js,
+        jslibs_js,
+    })
+}
+
+/// Rebase a root-relative `_assets/...` href for a page at `page_url` (e.g. `sub/p.html`
+/// gets `../_assets/...`; a root page keeps `_assets/...`).
+fn asset_href(page_url: &str, root_rel: &str) -> String {
+    let depth = page_url.matches('/').count();
+    format!("{}{root_rel}", "../".repeat(depth))
 }
 
 /// Run a directory (site/book) build to disk, returning whether it succeeded. Shared by
@@ -969,6 +1040,17 @@ async fn build_site_async(
         ));
     }
 
+    // The shared framework CSS/JS, written once as content-hashed files under `_assets/`
+    // (dedups what would otherwise be a copy inlined into every page); every page below
+    // links to it instead of shipping its own inline blob.
+    let bundle = match write_asset_bundle(&out) {
+        Ok(b) => b,
+        Err(e) => {
+            log::error(&format!("cannot write {}/_assets: {e}", out.display()));
+            return false;
+        }
+    };
+
     // 2. Render each page with chrome + rewritten links. Code cells run against a
     //    fresh kernel per page (clean state per document; pages with no cells never
     //    boot one), so the static `_site/` carries real computed outputs.
@@ -1021,6 +1103,7 @@ async fn build_site_async(
     let out = std::sync::Arc::new(out);
     let freeze_dir = std::sync::Arc::new(freeze_dir);
     let root_arc = std::sync::Arc::new(root.to_path_buf());
+    let bundle = std::sync::Arc::new(bundle);
     let sem = std::sync::Arc::new(tokio::sync::Semaphore::new(build_cap));
     let mut set: tokio::task::JoinSet<(usize, PageOutcome)> = tokio::task::JoinSet::new();
     for (idx, _page) in site.pages.iter().enumerate() {
@@ -1028,6 +1111,7 @@ async fn build_site_async(
         let out = out.clone();
         let freeze_dir = freeze_dir.clone();
         let root_arc = root_arc.clone();
+        let bundle = bundle.clone();
         let sem = sem.clone();
         let warm_pool = warm_pool.clone();
         set.spawn(async move {
@@ -1036,8 +1120,16 @@ async fn build_site_async(
             // shared data structure, so nothing is locked across the build's `.await`.
             let _permit = sem.acquire().await.expect("build semaphore not closed");
             let page = &site.pages[idx];
-            let outcome =
-                build_one_page(&site, page, &freeze_dir, &out, &root_arc, warm_pool).await;
+            let outcome = build_one_page(
+                &site,
+                page,
+                &freeze_dir,
+                &out,
+                &root_arc,
+                warm_pool,
+                &bundle,
+            )
+            .await;
             (idx, outcome)
         });
     }
