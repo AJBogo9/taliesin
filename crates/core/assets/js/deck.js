@@ -1537,7 +1537,10 @@
     if (deck.feedIO) { deck.feedIO.disconnect(); deck.feedIO = null; }
     if (deck.feedRatios) deck.feedRatios.clear();
     deck.frag = fragCount();                      // land fully-shown on the current slide
-    apply(); layout(); updateNumber(); focusCurrent();
+    // Frame instantly (applyClasses + layout's setCamera(false)), not apply()'s animated
+    // setCamera(true): the feed cleared the camera transform, so an animated re-frame would
+    // zoom in from the unframed identity state (the same first-paint flash as init).
+    applyClasses(); layout(); updateNumber(); focusCurrent();
   }
   // A rotation may cross the portrait/landscape line: re-route only in auto mode (an
   // explicit ?qmd=feed / ?qmd=present, or an embed, is a fixed choice).
@@ -1772,7 +1775,12 @@
       enterFeed();            // sets deck.feed + the CSS layout/observer (replaces apply/layout)
       scrollToCurrent(false); // honour a deep-linked slide
     } else {
-      apply(); layout(); updateNumber();
+      // Frame the first slide INSTANTLY: applyClasses() does the fragment/chrome/inert
+      // setup (apply() minus the camera), and layout()'s own setCamera(false) places the
+      // camera with no transition. Calling apply() here instead would arm an animated
+      // setCamera(true) whose transition layout()'s forced reflows then commit — so the
+      // deck would visibly zoom in from the unframed identity transform on every open.
+      applyClasses(); layout(); updateNumber();
     }
     rev.classList.add('tali-ready'); // show the deck now the first slide is placed
     // Coalesce a burst of resize events (a drag-resize / rotate fires many) into ONE
