@@ -8,7 +8,7 @@
   var deck = {
     config: {
       width: 960, height: 540, margin: 0.04, // 16:9 default
-      center: false, hash: true, history: false, slideNumber: false,
+      center: false, hash: true, slideNumber: false,
     },
     h: 0, v: 0, frag: 0,
     ready: false,
@@ -126,24 +126,6 @@
         top.style.transform = 'translate(' + (L.col0 * W) + 'px,' + (L.row * H) + 'px)' + gut;
       }
     });
-    drawThreads(rows, W, H, s);
-  }
-  // A horizontal connector thread per multi-slide row (topic), drawn behind the tiles
-  // in `.tali-slides` world coords so it pans/zooms with the camera and reads as a line
-  // joining the cards through the gutters. Rebuilt each layout; shown only in overview.
-  function drawThreads(rows, W, H, s) {
-    if (!s) return;
-    var tl = s.querySelector(':scope > .tali-threads');
-    if (!tl) { tl = document.createElement('div'); tl.className = 'tali-threads'; tl.setAttribute('aria-hidden', 'true'); s.insertBefore(tl, s.firstChild); }
-    tl.innerHTML = '';
-    rows.forEach(function (rowArr, r) {
-      if (rowArr.length < 2) return;
-      var d = document.createElement('div');
-      d.className = 'tali-thread-line';
-      d.style.transform = 'translate(' + (W / 2) + 'px,' + (r * H + H / 2) + 'px)';
-      d.style.width = ((rowArr.length - 1) * W) + 'px';
-      tl.appendChild(d);
-    });
   }
   // The camera target for the current state: the cell that fills the 16:9 stage
   // (normal), or the free map camera (overview).
@@ -163,74 +145,22 @@
   // target lands centred). mode: 'css' = CSS transition, anything else = instant.
   function applyCam(cx, cy, scale, mode) {
     var s = slidesEl(), rev = deckEl(); if (!s || !rev) return;
-    var W = deck.config.width;
     var sw = rev.clientWidth || window.innerWidth, sh = rev.clientHeight || window.innerHeight;
-    s.style.setProperty('--tali-thread', (3.5 / scale).toFixed(1) + 'px'); // constant ~3.5px on-screen thread
-    rev.classList.toggle('tali-lod-far', !!deck.overview && scale * W < 200); // semantic zoom threshold
     var tx = sw / 2 - scale * cx, ty = sh / 2 - scale * cy;
     s.classList.toggle('tali-cam-anim', mode === 'css');
     s.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
     document.documentElement.style.setProperty('--tali-deck-scale', String(scale));
     deck.cam = { cx: cx, cy: cy, scale: scale };
-    updateMinimapView();
-  }
-  // van Wijk & Nuij (2003) optimal smooth zoom-and-pan: a path in [cx, cy, w] (w =
-  // world width on screen) that minimises perceived velocity. Ported from
-  // d3.interpolateZoom (dependency-free). Used for big moves (overview, long jumps).
-  function interpolateZoom(p0, p1) {
-    var rho = Math.SQRT2, rho2 = 2, rho4 = 4, eps = 1e-12;
-    var ux0 = p0[0], uy0 = p0[1], w0 = p0[2], ux1 = p1[0], uy1 = p1[1], w1 = p1[2];
-    var dx = ux1 - ux0, dy = uy1 - uy0, d2 = dx * dx + dy * dy, i, S;
-    if (d2 < eps) {
-      S = Math.log(w1 / w0) / rho;
-      i = function (t) { return [ux0 + t * dx, uy0 + t * dy, w0 * Math.exp(rho * t * S)]; };
-    } else {
-      var d1 = Math.sqrt(d2);
-      var b0 = (w1 * w1 - w0 * w0 + rho4 * d2) / (2 * w0 * rho2 * d1);
-      var b1 = (w1 * w1 - w0 * w0 - rho4 * d2) / (2 * w1 * rho2 * d1);
-      var r0 = Math.log(Math.sqrt(b0 * b0 + 1) - b0);
-      var r1 = Math.log(Math.sqrt(b1 * b1 + 1) - b1);
-      S = (r1 - r0) / rho;
-      i = function (t) {
-        var s = t * S, coshr0 = Math.cosh(r0);
-        var u = w0 / (rho2 * d1) * (coshr0 * Math.tanh(rho * s + r0) - Math.sinh(r0));
-        return [ux0 + u * dx, uy0 + u * dy, w0 * coshr0 / Math.cosh(rho * s + r0)];
-      };
-    }
-    i.duration = S * 1000;
-    return i;
   }
   function reducedMotion() {
     return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   }
-  // A "big" move (worth the smooth fly) is a real zoom change or a long pan.
-  function bigChange(a, b) {
-    var zr = Math.max(a.scale / b.scale, b.scale / a.scale);
-    if (zr > 1.4) return true;
-    var rev = deckEl(), sw = rev.clientWidth || window.innerWidth;
-    return Math.hypot((b.cx - a.cx) * b.scale, (b.cy - a.cy) * b.scale) > 2.2 * sw;
-  }
-  function flyTo(t) {
-    if (deck.flyRAF) { cancelAnimationFrame(deck.flyRAF); deck.flyRAF = null; }
-    var rev = deckEl(), sw = rev.clientWidth || window.innerWidth, from = deck.cam;
-    var iz = interpolateZoom([from.cx, from.cy, sw / from.scale], [t.cx, t.cy, sw / t.scale]);
-    var dur = Math.max(320, Math.min(iz.duration * 0.85, 820)), start = performance.now();
-    (function frame(now) {
-      var k = dur > 0 ? Math.min(1, (now - start) / dur) : 1;
-      var p = iz(k);
-      applyCam(p[0], p[1], sw / p[2], 'instant');
-      deck.flyRAF = k < 1 ? requestAnimationFrame(frame) : null;
-    })(start);
-  }
-  // setCamera: snap (animate falsy), CSS-tween a small move, or van Wijk-Nuij-fly a
-  // big one (overview enter/exit, long jumps), respecting reduced-motion.
+  // setCamera: snap (animate falsy) or CSS-tween (animate truthy) to the camera target.
+  // A pan IS the transition, so every move — a step, a long jump, overview enter/exit —
+  // rides the single CSS transform transition on `.tali-cam-anim`; reduced-motion snaps.
   function setCamera(animate) {
     var t = cameraTarget();
-    if (animate && deck.cam && !reducedMotion() && bigChange(deck.cam, t)) flyTo(t);
-    else {
-      if (deck.flyRAF) { cancelAnimationFrame(deck.flyRAF); deck.flyRAF = null; }
-      applyCam(t.cx, t.cy, t.scale, animate ? 'css' : 'instant');
-    }
+    applyCam(t.cx, t.cy, t.scale, (animate && !reducedMotion()) ? 'css' : 'instant');
   }
   // Snap the camera to a SPECIFIC cell (h,v) instead of the live deck.h/v. Used by an
   // auto-animate settle so a flushed morph frames its own captured target, not wherever
@@ -241,16 +171,12 @@
     var sw = rev.clientWidth || window.innerWidth, sh = rev.clientHeight || window.innerHeight;
     var scale = Math.min(sw / W, sh / H);
     var p = posOf(h, v);
-    if (deck.flyRAF) { cancelAnimationFrame(deck.flyRAF); deck.flyRAF = null; }
     applyCam(p.col * W + W / 2, p.row * H + H / 2, scale > 0 ? scale : 1, 'instant');
   }
   function layout() {
     if (!slidesEl()) return;
     positionGrid();
     applyBackgrounds();
-    buildLodCards(); // semantic-zoom title cards (shown when zoomed far out)
-    buildMinimap(); // overview+detail minimap (shown when zoomed beyond fit)
-    buildOverviewSearch(); // the overview filter box
     allSlides().forEach(fitSlide); // all slides are laid out now, not just the current one
     if (deck.overview) fitOverview(); // viewport changed: re-fit the map
     setCamera(false);
@@ -260,8 +186,8 @@
   // assistive tech + the tab order that means every non-visible slide is still reachable.
   // `inert` removes a leaf from the AT tree AND tab order (and blocks its clicks) in one
   // attribute, so a screen-reader/keyboard user only meets the current slide in step mode.
-  // The single source of truth: in overview / scroll(reader) / print every slide is meant
-  // to be readable, so inert is cleared from all of them; otherwise only the current leaf
+  // The single source of truth: in overview and the feed every slide is meant to be
+  // readable, so inert is cleared from all of them; otherwise only the current leaf
   // is non-inert. Called from applyClasses (commit + init), the mode enter/exit hooks, and
   // setOverview, so any path that changes "what's visible" re-derives inert consistently.
   function syncInert() {
@@ -274,13 +200,12 @@
   }
 
   // --- the non-camera part of a slide change -----------------------------
-  // Fragment visibility, chrome, and the annotation redraw. Split out so
+  // Fragment visibility and chrome. Split out so
   // auto-animate can update these without moving the camera. Per-slide visibility
   // is the camera transform itself: every slide is laid out into its grid cell and
   // the camera frames the current one (no per-slide show/hide class needed).
   function applyClasses() {
     applyFragments();
-    if (deck.draw) redrawAnnotations(); // restore the new slide's annotations
     updateChrome(); // progress bar / menu state follow the current slide
     syncInert(); // keep off-camera slides out of the AT tree + tab order (step mode)
     deck.lastSlide = currentSlide(); // remember for the next auto-animate transition
@@ -328,28 +253,6 @@
     else if (color) sec.classList.add('tali-light-bg');
   }
   function applyBackgrounds() { allSlides().forEach(paintSlideBg); }
-  // --- semantic zoom (level-of-detail) -----------------------------------
-  // When the overview is zoomed out far enough that full slide content is an
-  // illegible smudge, each tile collapses to a clean title card (shown by the
-  // `.tali-lod-far` class that setCamera toggles on tile on-screen size). The real
-  // content stays in the DOM, just faded, so live state is never lost. Cards are
-  // built once and their title/number refreshed on each layout.
-  function buildLodCards() {
-    allSlides().forEach(function (sec, i) {
-      var card = sec.querySelector(':scope > .tali-lod');
-      if (!card) {
-        card = document.createElement('div');
-        card.className = 'tali-lod';
-        card.setAttribute('aria-hidden', 'true'); // decorative overview title card; the real heading stays in the AT tree
-        card.innerHTML = '<div class="tali-lod-title"></div><div class="tali-lod-num"></div>';
-        sec.appendChild(card);
-      }
-      var h = sec.querySelector('h1, h2, h3, h4, h5, h6');
-      var title = h ? h.textContent.trim() : (sec.textContent || '').trim().split('\n')[0].slice(0, 80);
-      card.firstChild.textContent = title;
-      card.lastChild.textContent = String(i + 1);
-    });
-  }
   function isDarkColor(c) {
     // Resolve ANY CSS colour (named like "white"/"lightblue", hex, rgb(), hsl()) to
     // rgb via the browser, so a light named background is no longer mis-assumed dark
@@ -444,8 +347,8 @@
     from.style.opacity = '0';                    // hide the old slide; the morph carries the motion
     applyClasses();                              // update state, but DON'T move the camera
     flipTo(snap, to);
-    // One cancellable settle does all cleanup (mirrors the deck.flyRAF guard on the camera
-    // fly). A new autoAnimateTo flushes it via the guard above.
+    // One cancellable settle does all cleanup: a new autoAnimateTo flushes it via the
+    // generation guard above so a rapid re-nav can't strip transforms mid-transition.
     var settle = deck.aaSettle = function () {
       if (deck.aaTimer) { clearTimeout(deck.aaTimer); deck.aaTimer = null; }
       deck.aaSettle = null;
@@ -714,7 +617,6 @@
   function markCurrentTile() {
     var cur = currentSlide();
     allSlides().forEach(function (s) { s.classList.toggle('tali-overview-current', s === cur); });
-    markMinimapCurrent();
   }
   function fitOverview() {
     var rev = deckEl(); if (!rev) return;
@@ -814,9 +716,8 @@
     deck.overview = on;
     rev.classList.toggle('overview', on);
     if (on && deck.blackout) toggleBlackout(false); // can't navigate a map you can't see
-    if (on && deck.draw && deck.draw.on) { deck.draw.on = false; rev.classList.remove('tali-drawing'); }
     if (on) { fitOverview(); markCurrentTile(); }
-    else { deck.ov = null; clearFilter(); allSlides().forEach(function (s) { s.classList.remove('tali-overview-current'); }); }
+    else { deck.ov = null; allSlides().forEach(function (s) { s.classList.remove('tali-overview-current'); }); }
     syncInert(); // overview: every tile is browsable, so clear inert; exiting re-inerts off-camera
     positionGrid(); // add (or remove) the per-tile gutter shrink
     setCamera(true); // zoom out to the map, or back into the current cell
@@ -846,130 +747,11 @@
     setOverview(false);
   }
 
-  // --- minimap (overview+detail) -----------------------------------------
-  // When the map is zoomed beyond fit, a corner minimap shows the whole deck as a
-  // schematic of tiles plus a rectangle for the current view; click/drag it to fly
-  // the camera. (Cockburn/Karlson/Bederson: pan+zoom WITH an overview is the most
-  // efficient navigation technique.) Rebuilt on layout; the view rect tracks setCamera.
-  function buildMinimap() {
-    var rev = deckEl(); if (!rev) return;
-    var mm = rev.querySelector(':scope > .tali-minimap'), inner;
-    if (!mm) {
-      mm = document.createElement('div');
-      mm.className = 'tali-minimap';
-      mm.setAttribute('aria-hidden', 'true'); // decorative overview map; navigation is keyboard-driven
-      mm.innerHTML = '<div class="tali-minimap-inner"><div class="tali-mini-view"></div></div>';
-      rev.appendChild(mm);
-      inner = mm.firstChild;
-      var dragging = false;
-      var fly = function (e) {
-        if (!deck.ov || !deck.mini) return;
-        var r = inner.getBoundingClientRect();
-        deck.ov.cx = (e.clientX - r.left) / deck.mini.scale;
-        deck.ov.cy = (e.clientY - r.top) / deck.mini.scale;
-        clampOv(); setCamera(false);
-      };
-      inner.addEventListener('pointerdown', function (e) { dragging = true; fly(e); e.preventDefault(); e.stopPropagation(); });
-      window.addEventListener('pointermove', function (e) { if (dragging) fly(e); });
-      window.addEventListener('pointerup', function () { dragging = false; });
-    }
-    inner = mm.firstChild;
-    var W = deck.config.width, H = deck.config.height;
-    var rows = gridRows(), gd = gridDims(), gw = gd.cols * W, gh = gd.rows * H;
-    var ms = Math.min(232 / gw, 150 / gh);
-    deck.mini = { scale: ms };
-    inner.style.width = (gw * ms) + 'px';
-    inner.style.height = (gh * ms) + 'px';
-    var view = inner.querySelector('.tali-mini-view');
-    Array.prototype.slice.call(inner.querySelectorAll('.tali-mini-tile')).forEach(function (t) { t.remove(); });
-    rows.forEach(function (rowArr, r) {
-      rowArr.forEach(function (cell, c) {
-        var t = document.createElement('div');
-        t.className = 'tali-mini-tile';
-        t.style.cssText = 'left:' + (c * W * ms) + 'px;top:' + (r * H * ms) + 'px;width:' + (W * ms - 2) + 'px;height:' + (H * ms - 2) + 'px';
-        t.dataset.h = cell.h; t.dataset.v = cell.v;
-        inner.insertBefore(t, view);
-      });
-    });
-    markMinimapCurrent();
-  }
-  function markMinimapCurrent() {
-    var rev = deckEl(); if (!rev) return;
-    var mm = rev.querySelector(':scope > .tali-minimap'); if (!mm) return;
-    Array.prototype.forEach.call(mm.querySelectorAll('.tali-mini-tile'), function (t) {
-      t.classList.toggle('tali-mini-cur', +t.dataset.h === deck.h && +t.dataset.v === deck.v);
-    });
-  }
-  // Position the "current view" rectangle; show the minimap only when zoomed beyond fit
-  // (otherwise the whole deck is already on screen and it would be redundant).
-  function updateMinimapView() {
-    var rev = deckEl(); if (!rev) return;
-    var mm = rev.querySelector(':scope > .tali-minimap'); if (!mm || !deck.mini) return;
-    var show = deck.overview && deck.ov && deck.ov.scale > deck.ov.fit * 1.12;
-    mm.classList.toggle('tali-minimap-on', show);
-    if (!show) return;
-    var st = ovStage(), ms = deck.mini.scale;
-    var vw = st.sw / deck.ov.scale, vh = st.sh / deck.ov.scale;
-    var view = mm.querySelector('.tali-mini-view');
-    view.style.cssText = 'left:' + ((deck.ov.cx - vw / 2) * ms) + 'px;top:' + ((deck.ov.cy - vh / 2) * ms) + 'px;width:' + (vw * ms) + 'px;height:' + (vh * ms) + 'px';
-  }
-
-  // --- overview filter (Shneiderman's "filter" leg) ----------------------
-  // Press `/` in the overview to filter slides by title: non-matches dim, matches get
-  // an accent ring, Enter jumps to the first match. Type -> locate -> dive in.
-  function buildOverviewSearch() {
-    var rev = deckEl(); if (!rev || rev.querySelector(':scope > .tali-ov-search')) return;
-    var box = document.createElement('input');
-    box.className = 'tali-ov-search';
-    box.type = 'text';
-    box.setAttribute('placeholder', 'Filter slides…  ( / focus · ↵ jump )');
-    box.addEventListener('input', function () { filterTiles(box.value); });
-    box.addEventListener('keydown', function (e) {
-      e.stopPropagation(); // typing must not drive the deck
-      if (e.key === 'Enter') jumpToFirstMatch();
-      else if (e.key === 'Escape') { box.value = ''; filterTiles(''); box.blur(); }
-    });
-    rev.appendChild(box);
-  }
+  // Map a grid cell (h,v) back to its leaf <section>. Used by the speaker view's
+  // next-slide preview.
   function leafAt(h, v) {
     var top = tops()[h];
     return top ? (isStack(top) ? vertsOf(top)[v] : top) : null;
-  }
-  function filterTiles(q) {
-    q = (q || '').trim().toLowerCase();
-    deck.ovQuery = q;
-    var rev = deckEl();
-    allSlides().forEach(function (sec) {
-      var h = sec.querySelector('h1, h2, h3, h4, h5, h6');
-      var title = (h ? h.textContent : sec.textContent || '').toLowerCase();
-      var hit = !!q && title.indexOf(q) >= 0;
-      sec.classList.toggle('tali-ov-dim', !!q && !hit);
-      sec.classList.toggle('tali-ov-hit', hit);
-    });
-    if (rev) rev.classList.toggle('tali-ov-filtering', !!q); // dims the threads via CSS
-    var mm = rev && rev.querySelector(':scope > .tali-minimap'); // mirror onto the minimap
-    if (mm) Array.prototype.forEach.call(mm.querySelectorAll('.tali-mini-tile'), function (t) {
-      var leaf = leafAt(+t.dataset.h, +t.dataset.v);
-      t.classList.toggle('tali-mini-dim', !!leaf && leaf.classList.contains('tali-ov-dim'));
-      t.classList.toggle('tali-mini-hit', !!leaf && leaf.classList.contains('tali-ov-hit'));
-    });
-  }
-  function clearFilter() {
-    var rev = deckEl(); if (!rev) return;
-    var box = rev.querySelector(':scope > .tali-ov-search');
-    if (box) box.value = '';
-    filterTiles('');
-  }
-  function jumpToFirstMatch() {
-    var T = tops();
-    for (var h = 0; h < T.length; h++) {
-      var leaves = vertsOf(T[h]);
-      for (var v = 0; v < leaves.length; v++) {
-        if (leaves[v].classList.contains('tali-ov-hit')) {
-          deck.h = h; deck.v = v; markCurrentTile(); ensureCurrentTileVisible(true); return;
-        }
-      }
-    }
   }
 
   // --- presenter mode + cross-window sync --------------------------------
@@ -1120,101 +902,7 @@
     if (window.opener) { try { window.opener.postMessage({ qmd: 'deck', type: 'hello' }, targetOrigin()); } catch (e) {} }
   }
 
-  // --- PDF export (print) ------------------------------------------------
-  // --- drawing / annotations ---------------------------------------------
-  // `d` toggles a pen: a canvas inside `.tali-slides` (so it scales with the deck) that
-  // captures pointer strokes over the current slide. Strokes are kept per slide and
-  // redrawn on navigation. A small toolbar offers colours, an eraser and clear.
-  function ensureDraw() {
-    if (deck.draw) return deck.draw;
-    var canvas = document.createElement('canvas');
-    canvas.className = 'tali-draw';
-    canvas.width = deck.config.width;
-    canvas.height = deck.config.height;
-    slidesEl().appendChild(canvas);
-    var bar = document.createElement('div');
-    bar.className = 'tali-draw-bar';
-    bar.innerHTML =
-      '<button class="tali-draw-color" data-c="#ef4444" style="background:#ef4444"></button>' +
-      '<button class="tali-draw-color" data-c="#3b82f6" style="background:#3b82f6"></button>' +
-      '<button class="tali-draw-color" data-c="#22c55e" style="background:#22c55e"></button>' +
-      '<button class="tali-draw-erase" title="Erase">erase</button>' +
-      '<button class="tali-draw-clear" title="Clear slide">clear</button>' +
-      '<button class="tali-draw-done" title="Done (d)">done</button>';
-    deckEl().appendChild(bar);
-    var d = deck.draw = {
-      canvas: canvas, ctx: canvas.getContext('2d'), bar: bar,
-      color: '#ef4444', erase: false, on: false, strokes: {}, drawing: false, stroke: null,
-    };
-    bar.querySelectorAll('.tali-draw-color').forEach(function (b) {
-      b.addEventListener('click', function () { d.color = b.getAttribute('data-c'); d.erase = false; updateDrawBar(); });
-    });
-    bar.querySelector('.tali-draw-erase').addEventListener('click', function () { d.erase = !d.erase; updateDrawBar(); });
-    bar.querySelector('.tali-draw-clear').addEventListener('click', clearSlideDrawing);
-    bar.querySelector('.tali-draw-done').addEventListener('click', function () { toggleDraw(false); });
-    canvas.addEventListener('pointerdown', drawStart);
-    canvas.addEventListener('pointermove', drawMove);
-    window.addEventListener('pointerup', function () { if (deck.draw) deck.draw.drawing = false; });
-    return d;
-  }
-  function updateDrawBar() {
-    var d = deck.draw; if (!d) return;
-    d.bar.querySelectorAll('.tali-draw-color').forEach(function (b) {
-      b.classList.toggle('sel', !d.erase && b.getAttribute('data-c') === d.color);
-    });
-    d.bar.querySelector('.tali-draw-erase').classList.toggle('sel', d.erase);
-  }
-  function toggleDraw(force) {
-    if (deck.mode !== 'normal' || deck.overview) return;
-    var d = ensureDraw();
-    d.on = (force == null) ? !d.on : force;
-    deckEl().classList.toggle('tali-drawing', d.on);
-    if (d.on) { redrawAnnotations(); updateDrawBar(); }
-  }
-  function drawKey() { var c = currentSlide(); return c ? (c.id || 'i' + deck.h + '-' + deck.v) : ''; }
-  function drawPoint(e) {
-    var d = deck.draw, r = d.canvas.getBoundingClientRect();
-    return { x: (e.clientX - r.left) / r.width * d.canvas.width, y: (e.clientY - r.top) / r.height * d.canvas.height };
-  }
-  function drawStroke(ctx, s) {
-    ctx.save();
-    ctx.globalCompositeOperation = s.erase ? 'destination-out' : 'source-over';
-    ctx.strokeStyle = s.color; ctx.lineWidth = s.w; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.beginPath();
-    s.pts.forEach(function (p, i) { i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); });
-    ctx.stroke();
-    ctx.restore();
-  }
-  function drawStart(e) {
-    var d = deck.draw; if (!d.on) return;
-    e.preventDefault();
-    d.drawing = true;
-    d.stroke = { color: d.color, erase: d.erase, w: d.erase ? 30 : 4, pts: [drawPoint(e)] };
-    (d.strokes[drawKey()] || (d.strokes[drawKey()] = [])).push(d.stroke);
-  }
-  function drawMove(e) {
-    var d = deck.draw; if (!d.on || !d.drawing) return;
-    var p = drawPoint(e), prev = d.stroke.pts[d.stroke.pts.length - 1];
-    d.stroke.pts.push(p);
-    var ctx = d.ctx;
-    ctx.save();
-    ctx.globalCompositeOperation = d.stroke.erase ? 'destination-out' : 'source-over';
-    ctx.strokeStyle = d.stroke.color; ctx.lineWidth = d.stroke.w; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.beginPath(); ctx.moveTo(prev.x, prev.y); ctx.lineTo(p.x, p.y); ctx.stroke();
-    ctx.restore();
-  }
-  function redrawAnnotations() {
-    var d = deck.draw; if (!d) return;
-    d.ctx.clearRect(0, 0, d.canvas.width, d.canvas.height);
-    (d.strokes[drawKey()] || []).forEach(function (s) { drawStroke(d.ctx, s); });
-  }
-  function clearSlideDrawing() {
-    var d = deck.draw; if (!d) return;
-    d.strokes[drawKey()] = [];
-    redrawAnnotations();
-  }
-
-  // --- URL hash (replaceState by default: no history pollution) ----------
+  // --- URL hash (replaceState: no history pollution) ---------------------
   function writeHash() {
     if (!deck.config.hash) return;
     var c = currentSlide();
@@ -1233,8 +921,7 @@
     var frag = parts.join('/');
     var url = '#/' + frag;
     if (url === location.hash) return;
-    if (deck.config.history) location.hash = '/' + frag;
-    else history.replaceState(null, '', url);
+    history.replaceState(null, '', url); // deep-link without polluting back/forward history
   }
   function readHash() {
     var raw = location.hash.replace(/^#\/?/, '');
@@ -1281,8 +968,8 @@
     clampIndices();
     if (deck.feed) {
       // In the feed a hash change (back/forward, a shared link) scrolls to the slide;
-      // native scroll then settles the observer. replaceState (the default) fires no
-      // hashchange, so this only runs on a genuine external navigation.
+      // native scroll then settles the observer. Our own writeHash uses replaceState (no
+      // hashchange), so this only runs on a genuine external navigation.
       if (deck.h === ph && deck.v === pv) return;
       deck.frag = fragCount();
       scrollToCurrent(true); updateNumber();
@@ -1290,8 +977,8 @@
       return;
     }
     var target = deck.pendingFrag;
-    // Our own writeHash echo (history mode fires hashchange): nothing actually moved.
-    // `target == null` is only an echo when fragments were at 0 (writeHash omits the frag
+    // A same-position hashchange (back/forward landing where we already are): nothing moved.
+    // `target == null` is only that when fragments were at 0 (writeHash omits the frag
     // segment only then); a genuine re-nav to the current slide with fragments partly
     // shown (pf > 0) must fall through to re-apply (deck.frag = fc below).
     if (deck.h === ph && deck.v === pv && ((target == null && pf === 0) || target === pf)) return;
@@ -1363,7 +1050,6 @@
         case 'ArrowDown': moveHighlight(0, 1); break;
         case 'ArrowUp': moveHighlight(0, -1); break;
         case '0': fitOverview(); setCamera(true); break; // re-fit the whole map
-        case '/': { var b = deckEl().querySelector(':scope > .tali-ov-search'); if (b) b.focus(); break; } // filter
         default: handled = false;
       }
       if (handled) e.preventDefault();
@@ -1395,7 +1081,6 @@
       }
       case 'Escape': case 'o': if (deck.mode === 'normal') setOverview(true); break;
       case 's': openSpeaker(); break;
-      case 'd': toggleDraw(); break;
       case 'f': toggleFullscreen(); break;
       case 'b': case '.': toggleBlackout(true); break;
       case 'm': case '?': toggleMenu(); break;
@@ -1412,8 +1097,6 @@
     deck.blackout = !!on;
     if (rev) rev.classList.toggle('tali-blackout', deck.blackout);
     if (deck.blackout) {
-      // Blackout means eyes on the speaker — drop drawing too (mirrors setOverview).
-      if (deck.draw && deck.draw.on) { deck.draw.on = false; if (rev) rev.classList.remove('tali-drawing'); }
       if (!deck.blackoutEl) {
         deck.blackoutEl = document.createElement('div');
         deck.blackoutEl.className = 'tali-blackout-overlay';
@@ -1516,11 +1199,10 @@
     tops().forEach(function (top) { top.style.transform = ''; });
     allSlides().forEach(function (sec) { sec.style.transform = ''; sec.style.removeProperty('font-size'); });
     if (deck.overview) setOverview(false);       // the feed is its own browse surface
-    // Presenter states from a prior stepped session don't belong over the feed (a rotation
-    // can enter the feed with them active): the pen canvas would eat scroll, and the
-    // blackout can't be dismissed since onKey early-returns in the feed. Mirror setOverview.
+    // A prior stepped session's blackout doesn't belong over the feed (a rotation can
+    // enter the feed with it active) and can't be dismissed since onKey early-returns in
+    // the feed. Mirror setOverview and lift it.
     if (deck.blackout) toggleBlackout(false);
-    if (deck.draw && deck.draw.on) { deck.draw.on = false; rev.classList.remove('tali-drawing'); }
     applyBackgrounds();
     revealAllForFeed();
     syncInert();                                 // deck.feed shows all → clear inert
@@ -1565,16 +1247,14 @@
   function registerPlugin(p) { if (p) { deck.plugins.push(p); if (deck.ready) initPlugin(p); } }
 
   // --- on-screen chrome: control menu, progress bar, nav arrows -----------
-  // The deck's features (overview, annotate, speaker, PDF, reader, dark mode)
-  // were keyboard-only and so undiscoverable; this surfaces them in a corner
-  // menu plus a progress bar + prev/next arrows. Built once in
-  // normal mode; auto-hides on idle. Fixed to the viewport (not the scaled
-  // .tali-slides), so it doesn't ride the deck transform.
+  // The deck's actions (overview, speaker, fullscreen, dark mode) were keyboard-only
+  // and so undiscoverable; this surfaces them in a corner menu plus a progress bar +
+  // prev/next arrows. Built once in normal mode; auto-hides on idle. Fixed to the
+  // viewport (not the scaled .tali-slides), so it doesn't ride the deck transform.
   function svg(p) { return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>'; }
   var IC = {
     menu: svg('<path d="M4 7h16M4 12h16M4 17h16"/>'),
     grid: svg('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>'),
-    pen: svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
     speak: svg('<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>'),
     fs: svg('<path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/>'),
     moon: svg('<path d="M21 12.8A8 8 0 1 1 11.2 3a6 6 0 0 0 9.8 9.8z"/>'),
@@ -1589,7 +1269,7 @@
   var KEYS_HTML =
     key('← →', 'Navigate') + key('↑ ↓', 'Vertical slides') + key('Space', 'Next') +
     key('O', 'Overview') + key('F', 'Fullscreen') + key('S', 'Speaker view') +
-    key('D', 'Annotate') + key('B', 'Black screen') +
+    key('B', 'Black screen') +
     key('?', 'This menu') + key('Esc', 'Close');
 
   function buildChrome() {
@@ -1630,7 +1310,6 @@
       '<div class="tali-menu-head">Tools</div><div class="tali-menu-tools">' +
         tool('present', IC.present, 'Present') + // feed-only (CSS-hidden in stepped mode)
         tool('overview', IC.grid, 'Overview', 'O') +
-        tool('draw', IC.pen, 'Annotate', 'D') +
         tool('speaker', IC.speak, 'Speaker view', 'S') +
         tool('fullscreen', IC.fs, 'Fullscreen', 'F') +
       '</div>' + themeRow +
@@ -1665,7 +1344,6 @@
       var b = deck.menu.querySelector('[data-action="' + action + '"]');
       if (b) b.classList.toggle('tali-on', !!on);
     };
-    set('draw', deck.draw && deck.draw.on);
     set('overview', deck.overview);
     var st = deck.menu.querySelector('.tali-theme-state');
     if (st) st.textContent = document.documentElement.classList.contains('tali-deck-dark') ? 'On' : 'Off';
@@ -1682,7 +1360,6 @@
     // so a later resize's maybeReroute() can't auto-snap the user back into the feed.
     if (a === 'present') { deck.autoRoute = false; exitFeed(); }
     else if (a === 'overview') { if (deck.feed) { deck.autoRoute = false; exitFeed(); } setOverview(true); }
-    else if (a === 'draw') toggleDraw(true);
     else if (a === 'speaker') openSpeaker();
     else if (a === 'fullscreen') toggleFullscreen();
   }

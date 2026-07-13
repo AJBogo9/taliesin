@@ -52,8 +52,8 @@ loop is small:
 - **`layout`** scales the fixed 960×540 (16:9) stage to the viewport with a single
   CSS transform (`--tali-deck-scale`), so slides never reflow; `fitSlide` shrinks a
   slide's own font if its content overflows (PowerPoint-style autofit).
-- **`apply`** updates the per-slide classes (fragment visibility, chrome,
-  annotations), records the previous slide for auto-animate, and calls `setCamera`
+- **`apply`** updates the per-slide classes (fragment visibility, chrome),
+  records the previous slide for auto-animate, and calls `setCamera`
   to pan and zoom the stage to the current slide. Visibility *is* that camera
   transform, not a per-slide `display` toggle (the contract from the top of this
   chapter).

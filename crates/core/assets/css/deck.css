@@ -152,25 +152,6 @@ body { background: transparent; }
   outline: 3px solid var(--deck-accent);
   box-shadow: 0 16px 46px rgba(0, 0, 0, .6);
 }
-/* Storyline threads: a horizontal connector along each multi-slide topic row, drawn
-   as `.tali-thread-line` divs (deck.js drawThreads) in `.tali-slides` world coords so they
-   pan/zoom with the camera and read as a line joining a topic's cards through the
-   gutters. Shown only in overview. */
-.tali-threads { position: absolute; left: 0; top: 0; pointer-events: none; }
-.tali-thread-line { display: none; }
-.tali-deck.overview .tali-thread-line {
-  display: block;
-  position: absolute;
-  left: 0;
-  top: 0;
-  height: var(--tali-thread, 16px);
-  margin-top: calc(var(--tali-thread, 16px) / -2);
-  transform-origin: 0 0;
-  background: var(--deck-accent);
-  opacity: .42;
-  border-radius: 999px;
-}
-.tali-deck.overview.tali-ov-filtering .tali-thread-line { opacity: .1; } /* recede under a filter */
 .tali-deck.overview .tali-slides > section:not(.tali-stack):hover,
 .tali-deck.overview .tali-slides > section > section:hover {
   outline-color: rgba(160, 170, 190, .55);
@@ -203,112 +184,6 @@ body { background: transparent; }
 }
 @keyframes tali-ov-hint { 0%, 64% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .tali-deck.overview::after { animation: none; opacity: .85; } }
-
-/* Semantic zoom (level-of-detail): when the camera is zoomed out far enough that a
-   tile's real content is an illegible smudge, each tile collapses to a clean title
-   card (built by deck.js buildLodCards). The real content stays in the DOM, only
-   faded, so live state and the auto-animate/FLIP machinery are never disturbed.
-   `.tali-lod-far` is toggled by setCamera on the tile's on-screen size. */
-.tali-lod {
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 44px 56px;
-  box-sizing: border-box;
-  color: inherit;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity .18s ease;
-}
-.tali-lod-title {
-  font-size: 84px;
-  font-weight: 700;
-  line-height: 1.08;
-  display: -webkit-box;
-  -webkit-line-clamp: 4;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.tali-lod-num {
-  position: absolute;
-  top: 24px;
-  right: 34px;
-  font-size: 38px;
-  font-weight: 600;
-  opacity: .5;
-}
-.tali-deck.tali-lod-far .tali-slides section > .tali-lod { opacity: 1; }
-/* Fade the real content out (but keep the bg layer, the title card, and any nested
-   sub-slide sections, which carry their own cards). */
-.tali-deck.tali-lod-far .tali-slides section > :not(.tali-slide-bg):not(.tali-lod):not(section) {
-  opacity: 0;
-  transition: opacity .18s ease;
-}
-@media (prefers-reduced-motion: reduce) {
-  .tali-lod,
-  .tali-deck.tali-lod-far .tali-slides section > :not(.tali-slide-bg):not(.tali-lod):not(section) { transition: none; }
-}
-
-/* Minimap (overview+detail): a schematic of the whole deck in the corner, with a
-   rectangle for the current view; appears only when the map is zoomed beyond fit. */
-.tali-minimap {
-  position: absolute;
-  right: 16px;
-  bottom: 16px;
-  padding: 7px;
-  background: rgba(18, 20, 26, .72);
-  border-radius: 10px;
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
-  box-shadow: 0 8px 30px rgba(0, 0, 0, .42);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity .2s ease;
-  z-index: 40;
-}
-.tali-minimap.tali-minimap-on { opacity: 1; pointer-events: auto; }
-.tali-minimap-inner { position: relative; cursor: pointer; }
-.tali-mini-tile { position: absolute; background: rgba(165, 175, 195, .26); border-radius: 2px; }
-.tali-mini-tile.tali-mini-cur { background: var(--deck-accent); }
-.tali-mini-tile.tali-mini-dim { opacity: .22; } /* under an active filter */
-.tali-mini-tile.tali-mini-hit { background: var(--deck-accent); }
-.tali-mini-view {
-  position: absolute;
-  border: 1.5px solid var(--deck-accent);
-  background: color-mix(in srgb, var(--deck-accent) 14%, transparent);
-  border-radius: 3px;
-  pointer-events: none;
-}
-@media (prefers-reduced-motion: reduce) { .tali-minimap { transition: none; } }
-
-/* Overview filter: a box (press `/`) that dims non-matching tiles and rings matches. */
-.tali-ov-search {
-  position: absolute;
-  top: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 320px;
-  max-width: 62vw;
-  padding: 9px 16px;
-  border: 1px solid rgba(140, 150, 170, .3);
-  border-radius: 999px;
-  background: rgba(20, 22, 28, .72);
-  -webkit-backdrop-filter: blur(8px);
-  backdrop-filter: blur(8px);
-  color: var(--tali-deck-fg, #e8eaf0);
-  font: 500 15px/1 system-ui, sans-serif;
-  outline: none;
-  z-index: 41;
-  display: none;
-}
-.tali-deck.overview .tali-ov-search { display: block; }
-.tali-ov-search:focus { border-color: var(--deck-accent); }
-.tali-ov-search::placeholder { color: rgba(150, 160, 180, .7); }
-.tali-deck.overview .tali-slides section.tali-ov-dim { opacity: .2; }
-.tali-deck.overview .tali-slides section.tali-ov-hit { outline: 3px solid var(--deck-accent); }
 
 /* Magic-move: the code blocks in a `::: {.magic-move}` are stacked in one grid
    cell (so the container sizes to the tallest); deck.js shows the active block and,
@@ -474,47 +349,6 @@ body { background: transparent; }
   pointer-events: none;
 }
 
-/* Drawing / annotations: a canvas inside .tali-slides (so it scales with the deck)
-   captures pointer strokes while the pen is on (`d`); the toolbar floats bottom-left. */
-.tali-deck .tali-draw {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 40;
-  pointer-events: none;
-  touch-action: none;
-}
-.tali-deck.tali-drawing .tali-draw { pointer-events: auto; cursor: crosshair; }
-.tali-deck .tali-draw-bar {
-  position: fixed;
-  left: 14px;
-  bottom: 14px;
-  z-index: 50;
-  display: none;
-  gap: 6px;
-  padding: 6px;
-  background: rgba(20, 22, 27, .92);
-  border-radius: 10px;
-  align-items: center;
-}
-.tali-deck.tali-drawing .tali-draw-bar { display: flex; }
-.tali-deck .tali-draw-bar button {
-  height: 28px;
-  min-width: 28px;
-  padding: 0 8px;
-  border: 2px solid transparent;
-  border-radius: 6px;
-  cursor: pointer;
-  color: #e6e8ec;
-  background: #2a2e36;
-  font: 600 12px ui-sans-serif, system-ui, sans-serif;
-}
-.tali-deck .tali-draw-bar .tali-draw-color { width: 28px; padding: 0; }
-.tali-deck .tali-draw-bar button.sel { border-color: #fff; }
-/* annotations are a live-presenting feature: hidden in overview. */
-.tali-deck.overview .tali-draw, .tali-deck.overview .tali-draw-bar { display: none !important; }
-
 /* No PDF-export mode — a deck opens as a deck. But a stray browser Cmd/Ctrl+P
    should still print the CURRENT slide legibly instead of the raw transformed
    stage: reset the camera transform, show only the on-camera slide (off-camera
@@ -524,7 +358,7 @@ body { background: transparent; }
 @media print {
   @page { size: 960px 540px; margin: 0; }
   .tali-progress, .tali-controls, .tali-menu, .tali-menu-backdrop,
-  .tali-slide-number, .tali-draw, .tali-draw-bar, .tali-blackout-overlay { display: none !important; }
+  .tali-slide-number, .tali-blackout-overlay { display: none !important; }
   .tali-deck { position: static !important; }
   .tali-deck .tali-slides {
     position: static !important; transform: none !important; left: auto !important; top: auto !important;
@@ -631,7 +465,6 @@ html.tali-feed .magic-move > pre:last-of-type { opacity: 1 !important; }
 html.tali-feed .tali-ctl-prev, html.tali-feed .tali-ctl-next { display: none; }
 /* Present (feed -> stepped) shows only in the feed; presenter-only tools are dropped. */
 html:not(.tali-feed) .tali-menu-item[data-action="present"] { display: none; }
-html.tali-feed .tali-menu-item[data-action="draw"],
 html.tali-feed .tali-menu-item[data-action="speaker"] { display: none; }
 
 /* === Dark theme backgrounds (palette/colours defined at the top of this file) =====
@@ -651,8 +484,8 @@ html.tali-deck-dark .tali-deck .tali-slide-number { background: rgba(255, 255, 2
 
 /* === On-screen chrome: progress bar, nav arrows, control menu =============
    A control surface built by deck.js in normal mode, surfacing the
-   keyboard-only features (overview / annotate / speaker / fullscreen /
-   dark mode) + a jump-to-slide list + a shortcut sheet. Fixed to the
+   keyboard-only actions (overview / speaker / fullscreen / dark mode)
+   + a jump-to-slide list + a shortcut sheet. Fixed to the
    viewport (outside the scaled .tali-slides). A consistent dark glass surface that
    reads on both light and dark decks; arrows + menu auto-hide on idle. */
 .tali-progress { position: fixed; left: 0; right: 0; bottom: 0; height: 3px; z-index: 60;
@@ -883,19 +716,16 @@ html.tali-alt [data-block-id] { cursor: pointer; }
 /* One consistent keyboard-focus ring across the deck's interactive controls, mirroring
    the page-side `--tali-focus` token (deck chrome lives on its own dark surface, so it
    uses the deck accent). Mouse clicks don't show it (:focus-visible). */
-.tali-ctl:focus-visible, .tali-menu-item:focus-visible, .tali-menu-slide:focus-visible,
-.tali-ov-search:focus-visible {
+.tali-ctl:focus-visible, .tali-menu-item:focus-visible, .tali-menu-slide:focus-visible {
   outline: 2px solid var(--deck-accent); outline-offset: 2px; border-radius: 6px;
 }
 
 /* High-contrast / forced-colors (Windows High Contrast): keep the focus ring, control
    borders, and the progress fill visible by mapping them to system colors. */
 @media (forced-colors: active) {
-  .tali-ctl:focus-visible, .tali-menu-item:focus-visible, .tali-menu-slide:focus-visible,
-  .tali-ov-search:focus-visible { outline-color: Highlight; }
-  .tali-ctl, .tali-menu, .tali-ov-search { border: 1px solid CanvasText; }
+  .tali-ctl:focus-visible, .tali-menu-item:focus-visible, .tali-menu-slide:focus-visible { outline-color: Highlight; }
+  .tali-ctl, .tali-menu { border: 1px solid CanvasText; }
   .tali-progress-fill { background: Highlight; forced-color-adjust: none; }
-  .tali-deck.overview .tali-slides section.tali-ov-hit { outline-color: Highlight; }
 }
 @media (prefers-contrast: more) {
   .tali-ctl { border: 1px solid currentColor; }

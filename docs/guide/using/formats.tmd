@@ -167,7 +167,7 @@ heading.
 :::
 ```
 
-### Present and annotate
+### Present
 
 These are all keyboard / menu actions on a running deck (every one is also in the
 corner control menu, opened with <kbd>m</kbd> or <kbd>?</kbd>, so nothing is
@@ -178,10 +178,9 @@ keyboard-only):
 | <kbd>→</kbd> / <kbd>Space</kbd> | Next step or slide |
 | <kbd>←</kbd> | Previous |
 | <kbd>↑</kbd> / <kbd>↓</kbd> | Jump to the topic above / below (vertical stacks) |
-| <kbd>o</kbd> / <kbd>Esc</kbd> | Overview: a zoomable map of every slide (press <kbd>/</kbd> to filter by title) |
+| <kbd>o</kbd> / <kbd>Esc</kbd> | Overview: a zoomable map of every slide |
 | <kbd>s</kbd> | Speaker view (see below) |
 | <kbd>f</kbd> | Fullscreen |
-| <kbd>d</kbd> | Drawing mode: a pen to annotate the current slide (colours, eraser, clear) |
 | <kbd>b</kbd> / <kbd>.</kbd> | Black the screen mid-talk; any of <kbd>b</kbd>/<kbd>.</kbd>/<kbd>Esc</kbd> restores it |
 
 **Speaker view** (<kbd>s</kbd>) opens a second window showing the current and next

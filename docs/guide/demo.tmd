@@ -91,7 +91,6 @@ own thread without cluttering the main flow.
 - <kbd>S</kbd> opens **speaker view** (current + next slide, notes, timer)
 - <kbd>O</kbd> opens the **overview**: a zoomable map of every slide
 - <kbd>B</kbd> **blacks the screen** to pull the room back to you
-- <kbd>D</kbd> toggles a **pen** to annotate live
 :::
 
 ::: {.notes}
