@@ -1433,6 +1433,45 @@ fn deck_opens_as_a_deck_without_reader_or_pdf_export() {
 }
 
 #[test]
+fn deck_title_slide_id_does_not_collide_with_a_slide_titled_title_slide() {
+    // B2-10: the front-matter title slide hardcodes id="title-slide"; a content slide
+    // literally titled "Title Slide" slugs to the same id -> two #title-slide in the DOM
+    // (getElementById/#hash target the wrong section). The injected id must be reserved
+    // in the dedup map so the colliding heading becomes title-slide-1.
+    let doc = render_document("---\ntitle: Deck\nformat: deck\n---\n\n## Title Slide\n\nHi.\n");
+    let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
+    assert_eq!(
+        slides.matches("id=\"title-slide\"").count(),
+        1,
+        "duplicate #title-slide: {slides}"
+    );
+    assert!(
+        slides.contains("id=\"title-slide-1\""),
+        "colliding heading should dedup to title-slide-1: {slides}"
+    );
+}
+
+#[test]
+fn deck_explicit_slide_id_is_kept_verbatim_not_slugified() {
+    // B2-11: an author `{#id}` on a slide heading becomes the <section> anchor VERBATIM
+    // so `@sec-…`/`#hash` resolve; only the heading-text fallback is slugged. Today the
+    // deck path slugs both, so `## Two {#sec-My_Two}` emits id="sec-my-two" while the
+    // xref href stays "#sec-My_Two" -> dead link.
+    let doc = render_document(
+        "---\nformat: deck\n---\n\n## Intro\n\nSee @sec-My_Two.\n\n## Two {#sec-My_Two}\n\nBody.\n",
+    );
+    let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
+    assert!(
+        slides.contains("<section id=\"sec-My_Two\""),
+        "explicit slide id was slugified instead of kept verbatim: {slides}"
+    );
+    assert!(
+        slides.contains("href=\"#sec-My_Two\""),
+        "xref href drifted from the section id: {slides}"
+    );
+}
+
+#[test]
 fn code_line_numbers_wraps_lines_for_stepping() {
     let page = render_html_page(
         "---\nformat: deck\n---\n\n## S\n\n```{.python code-line-numbers=\"1|2\"}\na = 1\nb = 2\n```\n",

@@ -224,16 +224,18 @@ pub fn slides_html(title: Option<&str>, subtitle: Option<&str>, blocks: &[Block]
         }
         out.push_str("</section>\n");
     }
-    for top in group_slides(blocks) {
+    for top in group_slides(blocks, title.is_some()) {
         render_top(&top, &mut out);
     }
     out
 }
 
 /// Split blocks into flat slides at slide-level headings and `---` breaks,
-/// then nest h2 slides under any preceding h1 as a vertical stack.
-fn group_slides(blocks: &[Block]) -> Vec<Top> {
-    let flat = split_slides(blocks);
+/// then nest h2 slides under any preceding h1 as a vertical stack. `has_title`
+/// reserves the injected `id="title-slide"` so a slide literally titled "Title
+/// Slide" can't collide with the front-matter title slide.
+fn group_slides(blocks: &[Block], has_title: bool) -> Vec<Top> {
+    let flat = split_slides(blocks, has_title);
     let mut tops: Vec<Top> = Vec::new();
     let mut i = 0;
     while i < flat.len() {
@@ -270,13 +272,18 @@ fn group_slides(blocks: &[Block]) -> Vec<Top> {
 /// at a `---` break (whose `<hr>` is dropped). Deeper headings and other blocks
 /// accrete onto the current slide. Empty slides (e.g. back-to-back breaks) are
 /// dropped.
-fn split_slides(blocks: &[Block]) -> Vec<SlideBuf> {
+fn split_slides(blocks: &[Block], has_title: bool) -> Vec<SlideBuf> {
     let mut slides: Vec<SlideBuf> = Vec::new();
     let mut cur: Option<SlideBuf> = None;
     // Dedup section ids across the deck (`## X` twice -> `x`, `x-1`), so repeated
     // headings — common with auto-animate, where a title is shared — don't collide
     // in the DOM (hash + getElementById would otherwise only ever find the first).
     let mut id_counts: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    // The front-matter title slide occupies id="title-slide"; reserve it so a slide
+    // literally titled "Title Slide" dedups to "title-slide-1" instead of a dup id.
+    if has_title {
+        id_counts.insert("title-slide".to_string(), 1);
+    }
     for b in blocks {
         if is_slide_break(&b.html) {
             slides.extend(cur.take());
@@ -292,15 +299,17 @@ fn split_slides(blocks: &[Block]) -> Vec<SlideBuf> {
             && level <= SLIDE_LEVEL
         {
             slides.extend(cur.take());
-            // An explicit `{#id}` on the heading (carried as `data-slide-anchor`) is the
-            // slide's anchor; otherwise slug the heading text. Both dedup through the same
-            // map so a repeat can't collide.
-            let base_id =
-                extract_attr(&b.html, "data-slide-anchor").unwrap_or_else(|| strip_tags(&b.html));
+            // An explicit `{#id}` (carried verbatim in `data-slide-anchor`) stays exactly
+            // so `@sec-x` / `#hash` resolve to this section; only a heading-text fallback is
+            // slugged. Both dedup through the same map so a repeat can't collide.
+            let id = match extract_attr(&b.html, "data-slide-anchor") {
+                Some(anchor) => dedup_with_suffix(anchor, &mut id_counts),
+                None => dedup_slug(&strip_tags(&b.html), &mut id_counts),
+            };
             cur = Some(SlideBuf {
                 level,
                 from_rule: false,
-                id: Some(dedup_slug(&base_id, &mut id_counts)),
+                id: Some(id),
                 blocks: vec![b.html.clone()],
             });
             continue;
