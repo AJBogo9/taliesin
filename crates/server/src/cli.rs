@@ -1,7 +1,8 @@
 //! Front-door subcommands: `init` (scaffold a starter site) and `serve`/`preview`/`dev`
 //! (launch the live preview server).
 //!
-//! **What:** `init` writes a minimal previewable site (`_site.yml` + `index.tmd`);
+//! **What:** `init` writes a minimal previewable site (`_site.yml` + `index.tmd` +
+//! `AGENTS.md`, the agent onramp);
 //! `serve` parses the preview flags (`--open`/`--host`/`--no-exec`/port) and dispatches
 //! to the single-doc or multi-page server.
 //!
@@ -29,7 +30,8 @@ const INIT_INDEX_TMD: &str = "---\ntitle: Hello, Taliesin\n---\n\n\
     - Drop in a `{python}` or `{r}` code cell to run live output.\n";
 
 /// `taliesin init [dir]`: scaffold a minimal previewable site into `dir` (default the
-/// current directory). Writes `_site.yml` + `index.tmd`, then prints the preview hint.
+/// current directory). Writes `_site.yml` + `index.tmd` + `AGENTS.md` (the agent onramp),
+/// then prints the preview hint.
 pub(crate) fn cmd_init(dir: Option<&str>) -> ExitCode {
     let dir = Path::new(dir.unwrap_or("."));
     match scaffold_init(dir) {
@@ -52,14 +54,20 @@ pub(crate) fn cmd_init(dir: Option<&str>) -> ExitCode {
     }
 }
 
-/// Write the starter files (`_site.yml`, `index.tmd`) into `dir`, creating it if
+/// Write the starter files (`_site.yml`, `index.tmd`, `AGENTS.md`) into `dir`, creating it if
 /// needed. Refuses to overwrite an existing file (so re-running `init` never clobbers
 /// the user's work) and returns the paths written, or a human-readable error.
 fn scaffold_init(dir: &Path) -> Result<Vec<PathBuf>, String> {
     if let Err(e) = std::fs::create_dir_all(dir) {
         return Err(format!("cannot create {}: {e}", dir.display()));
     }
-    let files = [("_site.yml", INIT_SITE_YML), ("index.tmd", INIT_INDEX_TMD)];
+    let files = [
+        ("_site.yml", INIT_SITE_YML),
+        ("index.tmd", INIT_INDEX_TMD),
+        // The agent onramp (edit `.tmd`/`check --format json`/dialect). Generated from the
+        // validator vocabulary and golden-locked in core, so it cannot drift from `check`.
+        ("AGENTS.md", taliesin_core::agents::AGENTS_MD),
+    ];
     // Refuse to overwrite *any* target before writing *any*, so a partial scaffold
     // never lands on top of an existing project.
     for (name, _) in files {
@@ -582,9 +590,14 @@ mod tests {
 
         let site_yml = dir.join("_site.yml");
         let index = dir.join("index.tmd");
+        let agents = dir.join("AGENTS.md");
         assert!(site_yml.exists(), "_site.yml written");
         assert!(index.exists(), "index.tmd written");
-        assert_eq!(written, vec![site_yml.clone(), index.clone()]);
+        assert!(agents.exists(), "AGENTS.md written");
+        assert_eq!(
+            written,
+            vec![site_yml.clone(), index.clone(), agents.clone()]
+        );
 
         // The scaffold is a real, parseable site whose one page previews.
         let cfg = fs::read_to_string(&site_yml).unwrap();

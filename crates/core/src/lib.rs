@@ -26,6 +26,7 @@
 //! ([`escape_attr`] / [`html_escape`]); the list above is the deliberate
 //! exception.
 
+pub mod agents;
 pub mod cite;
 pub mod diagnostics;
 pub mod diff;
