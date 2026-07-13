@@ -17,7 +17,8 @@ cursor sync, located diagnostics, CSS hot-swap, Cmd-K search). `origin/main == l
 **2026-07-12 — every owner-gated blocker is now ruled** (see the `[ruled]` tags in the grind queue);
 the backlog is slimmed (the feature-idea wishlist moved to `FEATURE-IDEAS.md`, resolved rulings
 folded in, the stale merge runbook removed). **Goal: grind the blog-identity + publish-hardening +
-a11y queue to done, then run a slides audit.**
+a11y queue to done, then the slides audit (DONE 2026-07-12 → section F below +
+[2026-07-12-deck-audit.md](2026-07-12-deck-audit.md)).**
 
 **Working method:** branch per feature; brainstorm if there's a fork; spec under
 `docs/superpowers/specs/`; implement TDD; verify (cargo + browser via chrome-devtools, or the
@@ -102,6 +103,34 @@ Branch `quarto-decisions-catalog` @ `535b4e1`: 165 adversarially-verified decisi
 this the right design for Taliesin" (the 2026-07-07 repositioning retired Quarto as the reference).
 Fan into batches, each with a recommended verdict + evidence.
 
+### F. Deck rework (2026-07-12 slides audit → [2026-07-12-deck-audit.md](2026-07-12-deck-audit.md))
+
+**Start in [2026-07-12-deck-audit.md](2026-07-12-deck-audit.md)** — the wide slide-deck audit: 43
+confirmed bugs + a keep/cut/fix/add feature verdict + a mobile-feed spec + a grind order. Owner-decided
+shape change this session (REMOVE, don't fix the old behavior): a deck opens **as a deck** (desktop =
+stepped slides; phone/portrait = a new TikTok-style scroll-snap **slide feed**, keyed on aspect not
+width); **delete reader/scroll mode**; **delete print/PDF** (the critical dark-deck-blank-PDF bug is
+resolved by removal); trim the overview flourishes (minimap/LOD/threads/filter/pen/van-Wijk zoom). The
+file's grind order: (1) pin kept features in `corpus/deck.tmd` first (net); (2) flip the front door +
+delete reader/PDF (kills whole bug families); (3) crashes/correctness (`. . .`-before-plain-code wedges
+nav; readHash anchor/digit misroute → slide 0; live `---`/`. . .` not structural; "Title Slide" id
+collision); (4) build the mobile feed; (5) trim flourishes; (6) theming/a11y/perf; (7) share-link +
+live-input deep-link + wake-lock adds.
+
+### G. AI-native authoring (2026-07-12 audit → [2026-07-12-ai-native-backlog.md](2026-07-12-ai-native-backlog.md))
+
+Make a developer authoring with an LLM (Claude Code / Codex) the first-class customer without demoting
+the manual writer. Primitives already exist (`check --format json`, `vocab`/`schema`/`symbols`, the block
+model); the gaps are the **protocol**, the **closed loop**, and the diagnostic **grain**. Ideas + framing:
+[FEATURE-IDEAS.md](FEATURE-IDEAS.md) Session 2. **Every code anchor in the detail file was opened +
+adversarially verified** (5 confirmed / 5 anchor-corrected, 0 unbuildable). Priority vs A–F is owner's
+call; the three below are the recommended first bets (they compose the whole browser-free loop). Start in
+the detail file — each carries verified anchors, the pin, the first step, and the rulings still needed.
+
+1. **Generated `AGENTS.md` onramp** (S–M) *[ruling: `new` too?/default-on?/pin-home]*. `core/agents.rs::agents_md()` (dialect section generated from `vocab()` so it can't drift), golden-locked, written by `cmd_init`. No new subcommand — rides `cli.rs:58` scaffold. Pin: `agents_md_matches_committed` + `agents_md_cli.rs`.
+2. **`taliesin read <page>` — text projection of the built page** (M) *[ruling: `read` vs `render --format text`; parse-only?]*. New block-model emitter (`render/text.rs` + `RenderedDoc::body_text()` beside `model.rs:253`) projecting resolved xref numbers / alt / callouts / TeX to plain text, so an agent reads what it rendered with no browser. A VIEW, not an output format. Pin: `tests/text_projection.rs` snapshot over `corpus/reader/hovercards.tmd`.
+3. **Agent-grade diagnostics** (M) *[ruling: code scheme/severity]*. Promote every `check --format json` diagnostic to `{code, severity, file, line, column?, message, suggestion}` (structured "did you mean"); `--format human` stays byte-identical. Additive to `Warning` (`model.rs:146`) + `Diagnostic` (`check.rs:19`). Pin: `tests/check_cli.rs` over `corpus/diagnostics/typos.tmd`. (Grounding rated this Tier-2/foundational; kept in the trio because it completes the loop.)
+
 ## Tier 2 — hardening (P3)
 
 - **Execution-cache leaks — remainder** (exec/kernel Do-NOT-touch, careful):
@@ -145,6 +174,13 @@ Fan into batches, each with a recommended verdict + evidence.
   `anchor_op`). Client + server ship together, no wire-compat constraint.
 - **Audit long-tail** (`AUDITS.md`): a tens-of-MB cell output blocks ZMQ receive before the cap fires
   (`kernel.rs`, Do-NOT-touch).
+
+- **AI-native authoring — packaging + guardrails** (detail: [2026-07-12-ai-native-backlog.md](2026-07-12-ai-native-backlog.md); anchors verified). Tier-2 slice of the §G initiative:
+  - **`taliesin map --format json`** (M) — one-call project outline (pages/nav/drafts/xref-graph/mounts) for agent planning; mirror `cmd_symbols` (`query.rs:232`), reuse `Site::discover`. Pin: `tests/map_cli.rs` over `corpus/demo-book`.
+  - **Correct-by-construction scaffolds + `--json` on `new`/`init`** (S–M) — a citation-wired `paper` kind (`bibliography:` + `[@key]` + shipped `references.bib`) and machine-readable create output; seam `cli.rs:178` `new_files()`. Pin: byte-pin `corpus/scaffold/posts/my-paper/` via `cli.rs:658`.
+  - **Sharpen `check` as the LLM-mistake catcher** (L, sliced) — default-on placeholder-alt nudge (do first; `a11y.rs:284` + `helpers::tag_attr`), opt-in numeric-claim-without-citation hint (`prose.rs:55`), opt-in `check --online` DOI check (the sole sanctioned egress; needs a small additive read-only accessor on `cite::Bibliography`). Pin: `corpus/diagnostics/llm-mistakes.tmd`.
+  - **`build`/`publish` structured errors (`--format json`)** (M) — retain the already-computed `page_static_diagnostics` as structured `Diagnostic`s (reuse `check.rs` shape) instead of logging+dropping; coupled edit across `build.rs` + `publish.rs` (`run_site_build:868`). Pin: `tests/structured_build_errors.rs`.
+  - **Taliesin Claude Code skill/plugin** (S–M, soft dep §G#1) — a distributable `taliesin` skill (loop + dialect crib + source-not-preview rule) driving the CLI, pinned against the live binary (`tests/skill_freshness.rs`) so it can't rot like the retired external scaffolder.
 
 ## Tier 3 — deferred / demand-driven
 
@@ -201,6 +237,10 @@ Fan into batches, each with a recommended verdict + evidence.
 - **`serde_yaml` fallback watch-item:** if 0.9 breaks against a future serde/edition, swap to
   `serde_yaml_ng` (v0.10), gated on a test that `Error::location().line()` still works. Fix the stale
   `Cargo.toml` comment (names the unsound `serde_yml`) when touched.
+
+- **AI-native authoring — demand-driven** (detail: [2026-07-12-ai-native-backlog.md](2026-07-12-ai-native-backlog.md)). Tier-3 slice of the §G initiative:
+  - **`taliesin-mcp` MCP server** (M–L, soft deps §G#2 + Tier-2 `map`) — a local offline stdio JSON-RPC server wrapping check/symbols/vocab/map/read/build as MCP tools. **Read/validate/build ONLY** — no write/edit tool (the single-editing-surface pin: `tools/list` must expose none). Recommended seam: a `taliesin mcp` subcommand over `crates/server/src/mcp.rs` reusing the existing collect fns (hand-rolled JSON-RPC, zero new deps). Pin: `tests/mcp_stdio.rs`.
+  - **Published-artifact AI-legibility** (M–L, dep §G#2) — per-page text/JSON sidecars (reuse the text projection; `page_prose` fallback), schema.org `ScholarlyArticle` JSON-LD (upgrade `meta.rs:133`), per-page cited-refs BibTeX/CSL export (surface `cite::process`'s `order` vec). Overlaps the parked "Cite this" export. **BLOCKING ruling:** the ScholarlyArticle trigger — no corpus post sets `author:`, so "dated+authored" fires on none; pick an author-free trigger before writing the `tech_blog.rs` pin.
 
 ## Decided against / do-not-re-litigate
 

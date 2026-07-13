@@ -4,6 +4,12 @@ The current deep audit + its active detail. The build-ready queue lives in
 [backlog.md](backlog.md); older audit rounds (pre-2026-07-07) are archived in
 [AUDITS-archive.md](AUDITS-archive.md).
 
+**Subsystem audits (own detail files):** the **slide-deck** feature was deep-audited 2026-07-12 →
+[2026-07-12-deck-audit.md](2026-07-12-deck-audit.md) (43 bugs + a keep/cut/fix/add feature verdict +
+a mobile-feed spec + a grind order). Also queued as **section F** in [backlog.md](backlog.md). Note:
+the deck mode-model is being reshaped (delete reader + PDF; add a mobile slide-feed) — read the file
+before touching deck code so you remove rather than "fix" the outgoing behavior.
+
 -----------------------------------------------------------------------------
 
 # Taliesin: full multi-surface deep audit (2026-07-07)

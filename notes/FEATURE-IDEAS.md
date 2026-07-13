@@ -610,3 +610,173 @@ session limit and was re-run. Interactive/explorable and presentation/output gro
 synthesis. All ideas respect the ROADMAP.md guardrails; ideas in tension are marked
 needs-care or CONFLICTS. This file feeds the roadmap; nothing here is committed until it earns a
 corpus pin.
+
+---
+
+## Session 2: 2026-07-12 — AI-native authoring (the "developer writing with Claude Code" persona)
+
+> Method: single-session owner-directed **audit + brainstorm** (not a multi-agent research run),
+> grounded in a read of Taliesin's actual machine-facing surfaces (`check`/`vocab`/`schema`/
+> `symbols`/`new`/`init`/`blocks`, the `data-block-id`/`data-sourcepos` block model, `llms.rs`/
+> `seo.rs`/`feed.rs`) against the ROADMAP guardrails. Prompted by the owner's goal: make Taliesin
+> an **AI-native** writing + publishing framework whose *first-class customer is a developer
+> authoring with an LLM (Claude Code / Codex)* — without demoting the manual writer. Same rules
+> as Session 1: HTML-only; the `.tmd` is the single editing surface and the preview is read-only;
+> offline/self-contained; power at the seams. Feeds the roadmap; nothing committed until it earns
+> a pin (here, usually a **CLI/JSON snapshot test**, occasionally a corpus doc).
+
+### The headline finding (read this first)
+
+**Taliesin is already one of the most AI-legible publishing tools in existence — but every
+AI-legible primitive it has was built for the VS Code companion or for CI, and none is *framed*,
+*discoverable*, or *packaged* for a coding agent.** The raw material is excellent; the gaps are the
+**protocol** (how an agent learns the loop), the **closed loop** (how an agent *reads what it
+rendered* without a browser), and the **grain** (diagnostics an agent can match on and auto-fix).
+
+Three strategic facts drive this session:
+
+1. **The authoring moat is also an *agent* moat.** The content-hash block model, total
+   `data-sourcepos`, deterministic freeze cache, and static kernel-free `check` are exactly what a
+   coding agent needs — deterministic, addressable, verifiable, browser-free. A batch compiler
+   cannot give an agent this.
+2. **The linter is the antidote to how LLMs fail.** LLMs hallucinate citations, forget alt text,
+   invent cross-reference labels, and write dead links. `taliesin check` *already* catches every
+   one (xrefs, `citations_without_bibliography`, duplicate ids, a11y/alt, dead links, reactive
+   graph). This is an unclaimed positioning gift: *"Taliesin catches the exact mistakes a language
+   model makes."*
+3. **The dialect is one LLMs already know.** Keeping Pandoc/Quarto syntax (`:::`, `#|`, `{{< >}}`,
+   `[@key]`, `@fig-`) keeps the model inside its training distribution. The corollary is a
+   recurring tax: *every place Taliesin "beats a Quarto decision," the model's priors are now
+   wrong* — which is exactly why the onramp surfaces below matter.
+
+### Current-state scorecard
+
+| Surface | Exists? | AI-ready? | Gap |
+|---|---|---|---|
+| `check --format json` → `{diagnostics, environment}` | yes | mostly | no stable error **code**, no **severity**, no structured **suggestion/fix** — "did you mean X" is buried in prose |
+| `vocab` / `schema` / `symbols --json` | yes | yes | framed "for the companion," not discoverable by an agent |
+| `new` / `init` scaffolds | yes | partial | one doc / bare site; no `AGENTS.md`, no `--json`, thin templates |
+| `data-block-id` + `data-sourcepos` | yes | yes | internal; not surfaced as an agent-readable map |
+| `llms.txt` / `llms-full.txt` / `seo` / `feed` | yes | yes | reader-side (other people's LLMs); solid |
+| **agent onramp doc / protocol** | no | — | no `AGENTS.md`, no skill, no "here's the loop" |
+| **text projection of the built page** | no | — | an agent can't cheaply *read what it rendered* |
+| **MCP server** | no | — | agent must shell out + parse |
+| **project map (`map --json`)** | no | — | no one-shot outline for planning a multi-page edit |
+
+The pattern: **the inputs an agent needs are excellent; the agent has no way to discover them and
+no cheap way to see its output.**
+
+### "Where it lives" — new values for this session
+
+These ideas mostly live on surfaces Session 1's taxonomy didn't name. Extend it with:
+**cli** (a subcommand / flag), **agent-surface** (a protocol doc / MCP server / skill an agent
+consumes), **scaffold** (`new`/`init` output).
+
+### Cluster 1 — Close the loop + the onramp (Tier 1, recommended first)
+
+Format as Session 1: **Name** — what — value {low/med/high/transformational} — **size** {S/M/L} —
+**where it lives** — **fit** {fits/needs-care/CONFLICTS}.
+
+1. **Generated `AGENTS.md` (the agent onramp)** — `init`/`new` write an `AGENTS.md` into the
+   project (and the repo ships one) that teaches any agent the whole protocol in one file: the
+   `.tmd` dialect and its divergences from Quarto, the `check --format json` gate, `symbols`/
+   `vocab`/`map` for discovery, **"edit the `.tmd`, never the preview,"** and the build/publish
+   commands — value **transformational** — size **S–M** — *scaffold / agent-surface* — **fits**.
+   *The cheapest, highest-leverage move: turns every existing primitive into a discoverable
+   protocol.* Pin: a test that `taliesin new` output contains a valid `AGENTS.md` whose dialect
+   section is generated from `vocab` (so it cannot drift).
+2. **`taliesin read <page>` — a text projection of the *built* page** (a.k.a. `render --format
+   text`) — a deterministic, screen-reader-like text rendering: resolved xref numbers, figure
+   captions + alt text, callout kinds, code with its language, math as TeX/alt, listings — so an
+   agent (or a blind author) can **read what it produced** and diff it, with no browser and no HTML
+   noise. Just another block-model emitter — value **transformational** — size **M** — *cli /
+   build* — **fits**. *Closes the see-what-you-made loop that today only a human-with-browser gets.*
+   Pin: a `corpus/…` doc whose text projection is snapshot-tested to list every heading/figure/xref
+   number.
+3. **Agent-grade diagnostics** — promote each diagnostic from `{file, line, message}` to
+   `{code, severity, file, line, column, message, suggestion}`: stable codes (`TAL-XREF-UNDEF`,
+   `TAL-A11Y-ALT`) an agent can match on, and today's "did you mean X" moved from prose into a
+   structured `suggestion`/`replacement`. `--format human` unchanged — value **high** — size **M**
+   — *diagnostics / cli* — **fits** (additive to `Warning`/`Diagnostic`). Pin: a `check --format
+   json` snapshot asserting codes + suggestions on a doc with a typo'd key and a bad xref.
+
+> **1 + 2 + 3 compose the full AI-native loop:** *scaffold → the agent knows the protocol (1) →
+> edit `.tmd` → `check --json` with codes + fixes (3) → `read` the result (2) → repeat* — browser-
+> free, entirely on machinery that already exists.
+
+### Cluster 2 — Packaging & distribution (Tier 2)
+
+4. **A Taliesin Claude Code skill/plugin** — ship a `taliesin` skill (and/or plugin) so *any*
+   Claude Code user gets the authoring + verify loop, the dialect crib, and the "source not
+   preview" rule without a per-repo `AGENTS.md`. In-repo `AGENTS.md` (3) and in-agent skill
+   reinforce each other — value **high** — size **M** — *agent-surface* — **fits**.
+5. **`taliesin map --format json`** — one call returns the project outline: pages, titles, nav
+   order, drafts, the xref graph, assets, mounts — so an agent can plan a multi-page edit without
+   walking the tree. Builds on the site registry + `symbols` — value **high** — size **M** — *cli*
+   — **fits**. Pin: a JSON snapshot over the docs book.
+6. **MCP server (`taliesin-mcp`)** — wrap `check` / `symbols` / `vocab` / `map` / `read` / `build`
+   as MCP tools + resources for hosts that prefer MCP over shelling out. **Keep it read/validate/
+   build only** — the write path stays the `.tmd` the agent edits directly; there is never an
+   "edit the preview" tool. Local stdio, offline — value **high** — size **M–L** — *agent-surface*
+   — **needs-care** (guardrail: no write-back tool; no phone-home).
+7. **Correct-by-construction scaffolds + `--json` on `new`/`init`** — richer check-clean templates
+   (research-report, paper-with-citations, book) with `[@key]` + `references.bib` pre-wired, and
+   machine-readable output so an agent knows exactly what it created and where — value **med** —
+   size **S–M** — *scaffold / cli* — **fits**.
+
+### Cluster 3 — The linter as LLM-guardrails (positioning + features)
+
+8. **Position + sharpen `check` as the LLM-mistake catcher** — the linter already catches the four
+   things LLMs get wrong (hallucinated citations, missing alt text, invented xref labels, dead
+   links). Cash it two ways: **(i) positioning** — make this the marketing + docs spine ("Taliesin
+   catches the exact mistakes a language model makes"); **(ii) features** — an optional citation-
+   existence/DOI sanity check (opt-in, the one sanctioned network call, off by default), an "alt
+   text is empty / looks auto-generated" nudge, and optionally a "numeric/quoted claim with no
+   nearby citation" *soft* hint — value **high** (positioning) / **med** (features) — size **S–M**
+   — *diagnostics* — **fits** / **needs-care** (the DOI check is the offline exception; the
+   claim-without-citation hint has false-positive risk, keep it a soft nudge).
+
+### Cluster 4 — Published-artifact AI-legibility (reader-side LLMs)
+
+9. **Strengthen published-artifact AI-legibility** — `llms.txt`/`llms-full.txt` already ship; add
+   per-page machine-readable content (a clean `.txt`/JSON sibling per page — reuses idea 2's text
+   projection), schema.org `ScholarlyArticle`/`Dataset` structured data for research posts, and a
+   machine-readable BibTeX/CSL export of a page's own references — value **med** — size **M** —
+   *build* — **fits**. *Reader-side, not author-side; lower priority per the owner's focus, but
+   on-brand for "publish research."* Overlaps the parked **"Cite this" export**.
+10. **`build`/`publish` structured errors (`--format json`)** — a failing build in an agent/CI
+    context should be parseable, not a human log; mirror `check`'s `{diagnostics}` shape on the
+    build path — value **med** — size **S** — *cli* — **fits**.
+
+### Guardrail notes specific to AI-native
+
+- **Single editing surface holds and *helps*.** The agent edits the `.tmd`; MCP/CLI never edits the
+  rendered view. A CLI autofix that rewrites `.tmd` *source* is fine — the read-only rule governs
+  the *preview*, not the source file.
+- **Offline holds.** No render/diagnostic feature phones home. The DOI check (8) is opt-in, off by
+  default — the single sanctioned exception.
+- **HTML-only holds.** The `text` projection (2) is an agent/diagnostic *view*, not a reader output
+  format — name it so it never reads as a new compiler target.
+- **The Quarto-divergence tax is real and recurring.** Every improvement over Quarto is a place the
+  model's priors silently break; `AGENTS.md` (1) + `vocab` + the skill (4) are the mitigation and
+  must enumerate the divergences. Budget for it.
+
+### Recommended first bets
+
+**1 + 2 + 3** — the `AGENTS.md` generator, the text projection, and agent-grade diagnostics. They
+compose the complete AI-native authoring loop with no browser, built entirely on the existing block
+model. **Idea 1 alone** is a near-free, order-of-magnitude improvement in how well any agent drives
+Taliesin today.
+
+### Provenance
+
+Session 2026-07-12. Single-session owner-directed audit + brainstorm (via the `brainstorming`
+skill), grounded in a direct read of the machine-facing CLI surfaces and the block model rather
+than parallel research agents. Owner selected all four clusters as in-scope and asked for the pool
+to be persisted here (the Session 1 → roadmap workflow). Respects the ROADMAP.md guardrails; ideas
+in tension are marked needs-care. Nothing here is committed until it earns a pin.
+
+**Graduated 2026-07-12:** all 10 ideas were grounded into code-anchored, adversarially-verified backlog
+entries (a 20-agent workflow: per-idea research + anchor verification) and queued in `backlog.md` §G
+(Tier-1 trio) + Tier 2/3. Detail file with every verified anchor + pin + first step + open ruling:
+[2026-07-12-ai-native-backlog.md](2026-07-12-ai-native-backlog.md).
