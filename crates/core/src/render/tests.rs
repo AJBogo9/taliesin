@@ -1433,6 +1433,28 @@ fn deck_opens_as_a_deck_without_reader_or_pdf_export() {
 }
 
 #[test]
+fn paused_plain_code_block_is_a_fragment_without_line_steps() {
+    // B0-1: a `. . .` pause before a PLAIN code block (no code-line-numbers) stamps the
+    // `<pre>` with class="fragment" but leaves it WITHOUT data-code-lines — the shape the
+    // deck engine must tolerate (fragsOf used to run `null.split('|')` here and wedge nav).
+    let doc = render_document(
+        "---\nformat: deck\n---\n\n## S\n\nIntro.\n\n. . .\n\n```python\ndef f():\n    return 1\n```\n",
+    );
+    let slides = slides_html(None, None, &doc.blocks);
+    // Find the paused <pre>'s opening tag.
+    let pre = slides
+        .split("<pre")
+        .find(|seg| seg.starts_with(' ') && seg[..seg.find('>').unwrap_or(0)].contains("fragment"))
+        .expect("the paused plain code block should render a <pre class=\"fragment\">");
+    let open = &pre[..pre.find('>').unwrap()];
+    assert!(open.contains("class=\"fragment\""), "got: {open}");
+    assert!(
+        !open.contains("data-code-lines"),
+        "a plain code block must carry no line-step spec: {open}"
+    );
+}
+
+#[test]
 fn deck_title_slide_id_does_not_collide_with_a_slide_titled_title_slide() {
     // B2-10: the front-matter title slide hardcodes id="title-slide"; a content slide
     // literally titled "Title Slide" slugs to the same id -> two #title-slide in the DOM

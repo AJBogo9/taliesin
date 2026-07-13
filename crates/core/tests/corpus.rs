@@ -237,12 +237,12 @@ fn reveal_deck_detects_format_and_splits_into_slides() {
     assert!(slides.contains("<h1 class=\"title\">A Plain Deck</h1>"));
     assert!(slides.contains("<p class=\"subtitle\">Slides on the native engine</p>"));
     // One slide per `##` heading. The corpus deck is the deck-engine regression net
-    // (see `corpus_deck_pins_every_kept_rich_feature`), so it carries thirteen level-2
+    // (see `corpus_deck_pins_every_kept_rich_feature`), so it carries fourteen level-2
     // slides plus one level-1 vertical-stack lead. `data-level` is the count anchor.
     let content_slides = slides.matches("data-level=\"2\"").count();
     assert_eq!(
-        content_slides, 13,
-        "expected 13 content slides, got {content_slides}"
+        content_slides, 14,
+        "expected 14 content slides, got {content_slides}"
     );
     // Slide ids are slugged from the heading text.
     assert!(slides.contains("id=\"what-decks-are\""), "got: {slides}");
@@ -294,6 +294,12 @@ fn corpus_deck_pins_every_kept_rich_feature() {
     assert!(
         slides.contains("<div class=\"magic-move\""),
         "deck corpus must exercise magic-move"
+    );
+    // A `. . .` pause before a plain code block stamps it `.fragment` with no line-step
+    // spec (B0-1): the deck engine must tolerate that shape (it used to wedge nav).
+    assert!(
+        slides.contains(">First the idea."),
+        "deck corpus must exercise a `. . .` pause before a plain code block"
     );
     // Auto-animate: two consecutive slides morph matched elements.
     assert!(

@@ -445,6 +445,10 @@
     var steps = [];
     slide.querySelectorAll(FRAG_SEL + ', pre[data-code-lines], .magic-move').forEach(function (node) {
       if (node.classList.contains('magic-move')) {
+        // A magic-move that also follows a `. . .` pause carries `.fragment`; give it a
+        // reveal step first (else it stays visibility:hidden for the whole talk), then
+        // its per-block morph steps.
+        if (node.classList.contains('fragment')) steps.push({ frag: node });
         var n = node.querySelectorAll(':scope > pre').length;
         for (var k = 1; k < n; k++) steps.push({ mm: node }); // one step per block-to-block morph
       } else if (node.tagName === 'PRE') {
@@ -455,7 +459,12 @@
         // give it a fragment step first (else it stays visibility:hidden for the
         // whole talk), then its per-segment line-highlight steps.
         if (node.classList.contains('fragment')) steps.push({ frag: node });
-        var segs = node.getAttribute('data-code-lines').split('|');
+        // A plain code block paused into `.fragment` matched FRAG_SEL, not
+        // `pre[data-code-lines]`, so it has no line-step spec — its `.fragment` reveal
+        // step above is the whole story. Guard the split or `null.split` wedges nav.
+        var codeLines = node.getAttribute('data-code-lines');
+        if (codeLines == null) return;
+        var segs = codeLines.split('|');
         for (var i = 1; i < segs.length; i++) steps.push({ code: node, seg: segs[i] });
       } else {
         steps.push({ frag: node });
@@ -537,15 +546,18 @@
       lines.forEach(function (l) { l.classList.remove('tali-hl-ln-hl'); });
       return;
     }
-    var on = parseLineSpec(spec);
+    var on = parseLineSpec(spec, lines.length);
     pre.classList.add('tali-hl-lines-active');
     lines.forEach(function (l, i) { l.classList.toggle('tali-hl-ln-hl', on.has(i + 1)); });
   }
-  function parseLineSpec(spec) {
+  // Clamp a range's upper bound to the rendered line count: highlightLines only ever
+  // queries on.has(i+1) for i in [0, lines-1], so a line beyond the code could never
+  // match — but an unbounded typo range (`10-100000000`) would OOM-freeze the tab.
+  function parseLineSpec(spec, max) {
     var on = new Set();
     spec.split(',').forEach(function (part) {
       var m = part.trim().match(/^(\d+)\s*-\s*(\d+)$/);
-      if (m) { for (var n = +m[1]; n <= +m[2]; n++) on.add(n); }
+      if (m) { for (var n = +m[1], hi = Math.min(+m[2], max); n <= hi; n++) on.add(n); }
       else if (/^\d+$/.test(part.trim())) on.add(+part.trim());
     });
     return on;
@@ -591,17 +603,22 @@
     }
   }
   // --- navigation ---------------------------------------------------------
-  function commit() {
-    clampIndices();
-    if (deck.mode === 'speaker') { updateSpeakerUI(); fire('slidechanged'); broadcastState(); return; }
-    // Auto-animate between two consecutive opted-in slides morphs the matched
-    // elements in place (autoAnimateTo) rather than panning between their cells.
+  // Render the move to the current cell: morph matched elements between two consecutive
+  // opted-in auto-animate slides (autoAnimateTo), else pan the camera. Shared by commit()
+  // and the remote/hash paths so a speaker-driven or deep-link move also morphs, not only
+  // a forward key press.
+  function renderMove() {
     var to = currentSlide(), from = deck.lastSlide;
     if (from && to && from !== to && isAutoAnimate(from) && isAutoAnimate(to)) {
       autoAnimateTo(from, to);
     } else {
       apply(); // pan/zoom the camera to the current cell
     }
+  }
+  function commit() {
+    clampIndices();
+    if (deck.mode === 'speaker') { updateSpeakerUI(); fire('slidechanged'); broadcastState(); return; }
+    renderMove();
     updateNumber(); writeHash(); focusCurrent();
     fire('slidechanged');
     broadcastState();
@@ -949,7 +966,7 @@
     clampIndices();
     deck.frag = (frag == null) ? fragCount() : frag;
     if (deck.mode === 'speaker') updateSpeakerUI();
-    else { apply(); updateNumber(); writeHash(); }
+    else { renderMove(); updateNumber(); writeHash(); }
     fire('slidechanged');
   }
   function broadcastState() {
@@ -1186,16 +1203,24 @@
     if (!raw) return false;
     var parts = raw.split('/');
     var fragPart;
-    if (parts[0] && isNaN(parseInt(parts[0], 10))) {
-      var el = document.getElementById(parts[0]);
-      if (!el) return false;
-      var ix = indexOf(el);
+    // An id wins over an index regardless of shape: a digit-leading slug (`3-ways`) or a
+    // purely-numeric heading (`## 2024` -> id `2024`) is a real element id, NOT a slide
+    // number. Climb from the target to its containing leaf slide; an anchor with no slide
+    // (a footnote / `@fig-`/`@sec-` xref / off-deck target) is left alone (return false)
+    // so the browser does its normal in-page jump instead of snapping the deck to slide 0.
+    var el = document.getElementById(parts[0]);
+    if (el) {
+      var slide = el.closest && el.closest('.tali-slides section');
+      if (!slide) return false;
+      var ix = indexOf(slide);
       deck.h = ix.h; deck.v = ix.v;
       fragPart = parts[1]; // named slide: the fragment index follows the id
-    } else {
+    } else if (/^\d+$/.test(parts[0])) {
       deck.h = parseInt(parts[0], 10) || 0;
       deck.v = parseInt(parts[1], 10) || 0;
       fragPart = parts[2];
+    } else {
+      return false; // an unknown non-numeric target: not ours to handle
     }
     var f = parseInt(fragPart, 10);
     deck.pendingFrag = isNaN(f) ? null : f; // consumed by onHashChange / init
@@ -1218,12 +1243,15 @@
     clampIndices();
     var target = deck.pendingFrag;
     // Our own writeHash echo (history mode fires hashchange): nothing actually moved.
-    if (deck.h === ph && deck.v === pv && (target == null || target === pf)) return;
+    // `target == null` is only an echo when fragments were at 0 (writeHash omits the frag
+    // segment only then); a genuine re-nav to the current slide with fragments partly
+    // shown (pf > 0) must fall through to re-apply (deck.frag = fc below).
+    if (deck.h === ph && deck.v === pv && ((target == null && pf === 0) || target === pf)) return;
     if (deck.blackout) toggleBlackout(false); // an external slide change lifts the curtain
     var fc = fragCount();
     // Restore the linked fragment step; without one (a plain slide link) show them all.
     deck.frag = target != null ? Math.max(0, Math.min(target, fc)) : fc;
-    apply(); updateNumber(); fire('slidechanged'); // apply pans the camera
+    renderMove(); updateNumber(); fire('slidechanged'); // morph or pan to the linked slide
     broadcastState(); // keep the speaker window in sync on hash (back/forward) nav
   }
 
@@ -1310,9 +1338,10 @@
       case 'ArrowUp': up(); break;
       case 'Home': moveTo(0, 0, false); break;
       case 'End': {
-        // The very last slide: the last vertical of the last stack, not v=0.
+        // The very last slide: the last vertical of the last stack, not v=0. Guard the
+        // empty deck (lh === -1, lt undefined) so isStack(undefined).children can't throw.
         var lh = tops().length - 1, lt = tops()[lh];
-        moveTo(lh, isStack(lt) ? vertsOf(lt).length - 1 : 0, true);
+        if (lt) moveTo(lh, isStack(lt) ? vertsOf(lt).length - 1 : 0, true);
         break;
       }
       case 'Escape': case 'o': if (deck.mode === 'normal') setOverview(true); break;

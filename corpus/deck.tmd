@@ -49,6 +49,17 @@ for x in values:
     total += x
 ```
 
+## Pausing before code
+
+First the idea.
+
+. . .
+
+```python
+def double(x):
+    return x * 2
+```
+
 ## Refactor, live
 
 ::: {.magic-move}
