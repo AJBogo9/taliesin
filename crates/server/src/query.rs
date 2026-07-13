@@ -75,6 +75,64 @@ pub(crate) fn cmd_render(path: Option<&String>) -> ExitCode {
     }
 }
 
+/// `taliesin read <file.tmd>`: a plain-text projection of the rendered document, for an
+/// agent (or a blind author) reading what it made without a browser. Parse-only and
+/// static like `render`/`symbols`: it never starts a kernel, so `{python}`/`{r}` cells
+/// project as their source with no executed output (warned, like `render`). A VIEW, not an
+/// output format.
+pub(crate) fn cmd_read(path: Option<&String>) -> ExitCode {
+    let Some(path) = path else {
+        eprintln!("usage: taliesin read <file.tmd>");
+        return ExitCode::FAILURE;
+    };
+    if let Some(msg) = directory_rejection(path, "read projects a single .tmd file") {
+        log::error(&msg);
+        return ExitCode::FAILURE;
+    }
+    match std::fs::read_to_string(path) {
+        Ok(src) => {
+            let p = Path::new(path);
+            let base = p.parent().unwrap_or_else(|| Path::new("."));
+            let text = crate::serve::guarded(|| {
+                let doc = taliesin_core::render_document_with_includes(&src, base);
+                // Parse-only, like `render`: kernel cells (python/r) project as source with
+                // no output. Warn so an empty output isn't mistaken for a projection bug.
+                let kernel_cells = doc
+                    .blocks
+                    .iter()
+                    .filter(|b| {
+                        b.cell
+                            .as_ref()
+                            .is_some_and(|c| matches!(c.lang.as_str(), "python" | "r"))
+                    })
+                    .count();
+                if kernel_cells > 0 {
+                    log::warn(&format!(
+                        "read does not execute code cells ({kernel_cells} kernel cell{} projected \
+                         as source; outputs will be absent). Use `build` or `preview` to run them.",
+                        if kernel_cells == 1 { "" } else { "s" }
+                    ));
+                }
+                doc.body_text()
+            });
+            match text {
+                Ok(text) => {
+                    print!("{text}");
+                    ExitCode::SUCCESS
+                }
+                Err(panic) => {
+                    log::error(&format!("read panicked on {path}: {panic}"));
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        Err(e) => {
+            log::error(&format!("cannot read {path}: {e}"));
+            ExitCode::FAILURE
+        }
+    }
+}
+
 pub(crate) fn cmd_blocks(path: Option<&String>) -> ExitCode {
     let Some(path) = path else {
         eprintln!("usage: taliesin blocks <file.tmd>");

@@ -1,0 +1,25 @@
+---
+title: Text projection
+---
+
+## Overview {#sec-overview}
+
+A paragraph that points at @fig-scree, so the projection must show the resolved
+figure number rather than the raw `@`-reference.
+
+::: {.callout-note}
+## Heads up
+
+Callouts carry a kind, and the text projection labels them by it.
+:::
+
+![A scree plot of the eigenvalues.](scree.png){#fig-scree}
+
+The relation is exact:
+
+$$E = mc^2$$
+
+```{python}
+x = 1
+print(x)
+```

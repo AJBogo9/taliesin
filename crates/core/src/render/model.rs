@@ -258,6 +258,14 @@ impl RenderedDoc {
         }
         s
     }
+
+    /// A deterministic, screen-reader-like plain-text projection of the document (the
+    /// `taliesin read` view): headings, resolved "Figure N"/xref numbers, callout kinds,
+    /// fenced code, display math as raw TeX. A VIEW, not an output format. See
+    /// [`super::text`].
+    pub fn body_text(&self) -> String {
+        super::text::project(&self.blocks)
+    }
 }
 
 #[cfg(test)]

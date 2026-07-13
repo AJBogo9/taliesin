@@ -1,0 +1,21 @@
+Text projection
+
+### Overview
+
+A paragraph that points at Figure 1, so the projection must show the resolved
+figure number rather than the raw @-reference.
+
+[note] Heads up
+Callouts carry a kind, and the text projection labels them by it.
+
+Figure 1: A scree plot of the eigenvalues.
+[image: A scree plot of the eigenvalues.]
+
+The relation is exact:
+
+$$ E = mc^2 $$
+
+```python
+x = 1
+print(x)
+```

@@ -80,6 +80,9 @@ use emit::emit;
 pub(crate) use emit::emit_children;
 mod figure;
 use figure::{emit_figure, emit_mermaid_figure, figure_parts};
+// Text projection (`taliesin read`): a plain-text VIEW of the block model, not an output
+// format. Crate-internal; reached via `RenderedDoc::body_text()`.
+mod text;
 mod theme;
 // Used only by the page builders; kept crate-internal, not part of the public API.
 pub(crate) use theme::theme_head;

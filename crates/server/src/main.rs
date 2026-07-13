@@ -40,6 +40,7 @@ fn main() -> ExitCode {
     }
     match args.get(1).map(String::as_str) {
         Some("render") => query::cmd_render(args.get(2)),
+        Some("read") => query::cmd_read(args.get(2)),
         Some("build") => build::cmd_build(&args),
         Some("publish") => publish::cmd_publish(&args),
         Some("blocks") => query::cmd_blocks(args.get(2)),
@@ -89,6 +90,7 @@ fn main() -> ExitCode {
 /// Every subcommand name (aliases included), for the unknown-command did-you-mean.
 const COMMANDS: &[&str] = &[
     "render",
+    "read",
     "build",
     "blocks",
     "schema",
@@ -158,6 +160,8 @@ fn usage() {
     println!("                             --dry-run builds + gates + prints the deploy command");
     println!("  render <file.tmd>          render a full HTML page to stdout");
     println!("                             (static; does NOT execute code cells)");
+    println!("  read   <file.tmd>          project the document to plain text (agent-readable;");
+    println!("                             static, does NOT execute code cells)");
     println!("  blocks <file.tmd>          list block ids + sourcepos (debug)");
     println!(
         "  schema [--out <dir>]       emit JSON Schemas for _site.yml + front matter (editor autocomplete)"
@@ -238,6 +242,17 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \n\
              Example:\n\
              \x20 taliesin render post.tmd > post.html\n"
+        }
+        "read" => {
+            "taliesin read <file.tmd>\n\
+             \n\
+             Project the rendered document to structured plain text (headings, resolved\n\
+             \"Figure N\"/cross-reference numbers, callouts, fenced code, math as raw TeX),\n\
+             so an agent can read what it made with no browser and no HTML. A VIEW, not an\n\
+             output format. Static: like render it does NOT execute code cells.\n\
+             \n\
+             Example:\n\
+             \x20 taliesin read post.tmd\n"
         }
         "schema" => {
             "taliesin schema [--out <dir>]\n\

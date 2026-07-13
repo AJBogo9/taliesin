@@ -88,6 +88,12 @@ pub fn agents_md() -> String {
          machine-readable gate an agent drives instead of opening a browser:\n\n",
     );
     s.push_str("```sh\ntaliesin check index.tmd --format json\n```\n\n");
+    s.push_str(
+        "To *read what you made* without a browser, `taliesin read <file>` projects the \
+         rendered document to plain text (headings, resolved \"Figure N\"/cross-reference \
+         numbers, callouts, fenced code, math as TeX) — the agent's substitute for looking \
+         at the preview.\n\n",
+    );
 
     // Pillar 3 — discovery surfaces.
     s.push_str("## Discover the surface\n\n");

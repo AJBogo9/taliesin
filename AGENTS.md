@@ -14,6 +14,8 @@ After editing, validate with `taliesin check <file-or-dir> --format json`. It pr
 taliesin check index.tmd --format json
 ```
 
+To *read what you made* without a browser, `taliesin read <file>` projects the rendered document to plain text (headings, resolved "Figure N"/cross-reference numbers, callouts, fenced code, math as TeX) — the agent's substitute for looking at the preview.
+
 ## Discover the surface
 
 Three read-only commands describe what Taliesin accepts, so an agent never has to guess:
