@@ -36,6 +36,49 @@ of bug (the reader-contrast and dark-PDF families) before you ever fix them.
 
 ---
 
+## Status — grind-order progress (updated 2026-07-13)
+
+The per-item checklists in Parts A/B/C below are the **original audit findings**, left
+as-is as the spec. This block is the **live tracker** against the Part D grind order.
+
+1. **A4 / C-ADD-1 — corpus + browser net** · ✅ **done** (`47ce4b8`). `corpus/deck.tmd`
+   expanded to pin fragments · incremental · pauses · code-line-numbers · magic-move ·
+   auto-animate · per-slide-bg · `.notes` · vertical stack · `.tali-stretch`; guarded by
+   `loose_deck.rs` + `deck_offline_build.rs`.
+2. **A1 + A2 — flip the front door; delete reader/scroll + print/PDF** · ✅ **done**
+   (`a0110ae`). A deck opens as a deck; reader/scroll + PDF export gone; a minimal
+   `@media print` fallback kept (resolves B4-CRIT by removal).
+3. **B0 crashes + B1/B2/B3 correctness** · ⏳ **mostly done**. Landed: B0-1/2/3, B1-4/5/7/8,
+   B2-9/10/11/12, B3-13/14/16 (`c0a9036`, `87c6008`, `dd7c1bf`, `86c63f6`, `30d3f4c`).
+   **Still open: B1-6** (speaker previews don't reflect fragment/canvas state), **B3-15**
+   (front-matter title/subtitle don't hot-update), **B3-17** (open speaker window goes stale
+   on a live edit — `sync()` never calls `updateSpeakerUI`), **B3-18** (a structural edit
+   re-mounts the whole deck — deferred).
+4. **A3 — mobile slide-feed** · ✅ **done** (`f97c01f`, first-frame `f8c2898`); pinch-zoom
+   unblocked (**B5-1**). **C-ADD-4 (speaker notes as feed narration) NOT done** — the feed
+   doesn't surface `::: {.notes}` yet.
+5. **C-CUT-2..6 + C-SIMP-1..2 — trim the overview flourishes** · ✅ **done this session**:
+   storyline threads · minimap · LOD cards · drawing pen · overview filter box cut; van
+   Wijk smooth-zoom + hash `history` knob simplified; `leafAt` kept for the speaker view.
+   −526/+33 lines; corpus + 3-viewport browser smoke green; adversarial review clean. Docs
+   (`formats.tmd` · `deck-engine.tmd` · `demo.tmd`) purged of the cut features.
+6. **B4 theming + B5 a11y + B6 perf** · ⬜ **pending**. B4-19 chip-contrast · B4-20 dark-bg
+   code · B4-21 custom-theme embed mis-detect · B4-22 sepia-host embed · B4-23 missing-bg
+   scrim · B4-24 `isDarkColor` perf · B5-25 aria-haspopup · B5-26 fragment-announce · B5-27
+   menu-focus-return · B5-28 overview-announce · B5-29 blackout-announce · B6-30 layout
+   re-fit perf · B6-31 overview touch double-fire · B6-32 flat-deck overview wrap.
+7. **C-ADD-2/3/5 — share-link + QR · live-input deep-link · wake-lock** · ⬜ **pending**.
+
+**B7 docs drift** · partial — the flourish + pen/annotate mentions are cleaned (this session)
+and reader/PDF went with A1/A2; the naming-drift items (`QmdDeck`→`TaliesinDeck`,
+`.r-stretch`→`.tali-stretch`, `qhl-`→`tali-hl-`, the `?qmd=embed` passive-mode doc, the
+`data-level` note) are not yet audited.
+
+**Next up:** the Step-3 correctness leftovers (B1-6, B3-15, B3-17), then Step 6
+(theming / a11y / perf), unless the owner reprioritises.
+
+---
+
 ## Part A — The redesign (do first; it removes bugs and reshapes the rest)
 
 ### A1 — Flip the front door + delete reader/scroll mode  ·  **high**

@@ -117,6 +117,12 @@ nav; readHash anchor/digit misroute → slide 0; live `---`/`. . .` not structur
 collision); (4) build the mobile feed; (5) trim flourishes; (6) theming/a11y/perf; (7) share-link +
 live-input deep-link + wake-lock adds.
 
+**Progress (2026-07-13):** steps 1-4 landed and **step 5 (trim flourishes) done this session**;
+see the audit file's top-of-doc **Status** block for the live grind-order tracker. Remaining:
+the step-3 correctness leftovers (B1-6 speaker-preview state, B3-15 front-matter hot-update,
+B3-17 speaker-window stale, B3-18 whole-deck remount), C-ADD-4 (feed notes narration), then
+steps 6 (B4/B5/B6) + 7 (C-ADD-2/3/5).
+
 ### G. AI-native authoring (2026-07-12 audit → [2026-07-12-ai-native-backlog.md](2026-07-12-ai-native-backlog.md))
 
 Make a developer authoring with an LLM (Claude Code / Codex) the first-class customer without demoting
