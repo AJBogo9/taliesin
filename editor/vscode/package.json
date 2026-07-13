@@ -5,6 +5,11 @@
   "version": "0.1.0",
   "publisher": "taliesin",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AJBogo9/taliesin.git",
+    "directory": "editor/vscode"
+  },
   "engines": {
     "vscode": "^1.85.0",
     "node": ">=18"
