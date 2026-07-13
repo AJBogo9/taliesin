@@ -839,14 +839,6 @@ fn handle_client_msg(text: &str, app: &AppState) {
     }
 }
 
-/// Whether a rendered block is a slide-starting heading (`<h1>`/`<h2>`), i.e. a deck
-/// section boundary. Used to tell a slide-level change (add/remove a slide)
-/// from a within-slide content edit.
-fn is_slide_heading(html: &str) -> bool {
-    let h = html.trim_start();
-    h.starts_with("<h1") || h.starts_with("<h2")
-}
-
 /// A `. . .` pause paragraph (mirrors `deck.rs`'s `is_pause`): a `<p>` whose only text
 /// content is the three-dot marker. Inserting/removing one regroups the following blocks
 /// into `.fragment` steps, so it restructures a deck the same way a heading does.
