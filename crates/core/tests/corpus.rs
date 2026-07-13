@@ -236,11 +236,13 @@ fn reveal_deck_detects_format_and_splits_into_slides() {
     assert!(slides.contains("id=\"title-slide\""), "missing title slide");
     assert!(slides.contains("<h1 class=\"title\">A Plain Deck</h1>"));
     assert!(slides.contains("<p class=\"subtitle\">Slides on the native engine</p>"));
-    // One slide per `##` heading (the corpus deck has four).
+    // One slide per `##` heading. The corpus deck is the deck-engine regression net
+    // (see `corpus_deck_pins_every_kept_rich_feature`), so it carries thirteen level-2
+    // slides plus one level-1 vertical-stack lead. `data-level` is the count anchor.
     let content_slides = slides.matches("data-level=\"2\"").count();
     assert_eq!(
-        content_slides, 4,
-        "expected 4 content slides, got {content_slides}"
+        content_slides, 13,
+        "expected 13 content slides, got {content_slides}"
     );
     // Slide ids are slugged from the heading text.
     assert!(slides.contains("id=\"what-decks-are\""), "got: {slides}");
@@ -252,6 +254,77 @@ fn reveal_deck_detects_format_and_splits_into_slides() {
     assert!(
         !slides.contains("{{<"),
         "shortcodes must not leak into slide output"
+    );
+}
+
+/// The corpus deck is the regression net for the deck engine: it must exercise every
+/// *kept* rich feature so a later refactor (or a deletion elsewhere in the engine)
+/// that silently breaks one is caught by `cargo test`. This pins each feature's
+/// server-side render signature. Runtime behavior (does overview/magic-move actually
+/// animate) is covered by the browser smoke, not here.
+#[test]
+fn corpus_deck_pins_every_kept_rich_feature() {
+    use taliesin_core::{render_document_with_includes, slides_html};
+    let dir = corpus_dir();
+    let src = fs::read_to_string(dir.join("deck.tmd")).unwrap();
+    let doc = render_document_with_includes(&src, &dir);
+    let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
+
+    // `. . .` pause turns following blocks into fragment steps.
+    assert!(
+        slides.contains("class=\"fragment\""),
+        "deck corpus must exercise `. . .` pause fragments"
+    );
+    // `::: {{.incremental}}` reveals list items one at a time. (Generic divs carry
+    // their block id/sourcepos, so match the class attribute, not the `>`.)
+    assert!(
+        slides.contains("<div class=\"incremental\""),
+        "deck corpus must exercise an .incremental list"
+    );
+    // Code line-stepping: `code-line-numbers` carries a spec + wraps each line.
+    assert!(
+        slides.contains("data-code-lines=\""),
+        "deck corpus must exercise code line-stepping"
+    );
+    assert!(
+        slides.contains("class=\"tali-hl-ln\""),
+        "code line-stepping must wrap each source line for the deck engine"
+    );
+    // Magic-move: consecutive code blocks glide between steps.
+    assert!(
+        slides.contains("<div class=\"magic-move\""),
+        "deck corpus must exercise magic-move"
+    );
+    // Auto-animate: two consecutive slides morph matched elements.
+    assert!(
+        slides.matches("data-auto-animate=\"\"").count() >= 2,
+        "deck corpus must exercise an auto-animate pair (two data-auto-animate sections)"
+    );
+    // Per-slide background (drives the runtime dark/light contrast flip).
+    assert!(
+        slides.contains("data-background-color=\""),
+        "deck corpus must exercise a per-slide background"
+    );
+    // `.tali-stretch`: an image fills the slide's leftover vertical space.
+    assert!(
+        slides.contains("<div class=\"tali-stretch\""),
+        "deck corpus must exercise .tali-stretch"
+    );
+    // Speaker notes ride along, hidden from the audience view.
+    assert!(
+        slides.contains("<div class=\"notes\""),
+        "deck corpus must exercise speaker notes"
+    );
+    // A vertical stack: an h1 lead slide wrapping its h2 children.
+    assert!(
+        slides.contains("data-level=\"1\""),
+        "deck corpus must exercise a vertical stack (h1 lead + h2 children)"
+    );
+    // An explicit `{{#id}}` on a slide heading becomes the <section> anchor (so an
+    // `@sec-` cross-ref or `#hash` into the deck resolves).
+    assert!(
+        slides.contains("id=\"sec-second-point\""),
+        "deck corpus must exercise an explicit slide anchor"
     );
 }
 

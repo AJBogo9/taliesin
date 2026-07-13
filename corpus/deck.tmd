@@ -12,12 +12,24 @@ heading. No reveal.js, no extension required.
 - one point
 - another point
 
+. . .
+
+Press the arrow keys (or swipe) to step through.
+
 ## Fragments
 
 A bullet list can reveal one item at a time.
 
 ::: {.fragment}
 And a whole block can be revealed as an aside.
+:::
+
+## Reveal one point at a time
+
+::: {.incremental}
+- first, this
+- then this
+- finally this
 :::
 
 ## Code on a slide
@@ -27,6 +39,52 @@ def double(x):
     return x * 2
 ```
 
+## Stepping through code
+
+Highlight one line, then the next, as you talk.
+
+```{.python code-line-numbers="1|2-3"}
+total = 0
+for x in values:
+    total += x
+```
+
+## Refactor, live
+
+::: {.magic-move}
+```python
+def area(r):
+    return 3.14 * r * r
+```
+
+```python
+import math
+
+def area(r):
+    return math.pi * r ** 2
+```
+:::
+
+## One idea, refined {auto-animate=true}
+
+The same `.tmd` renders as a page, a book, a website, or this deck.
+
+## One idea, refined {auto-animate=true}
+
+The same `.tmd` renders as a page, a book, a website, or this deck, and the
+heading glides into place.
+
+## A slide with its own backdrop {background-color="#0b3d2e"}
+
+The engine flips the text to a light ink over a dark per-slide background, so
+the contrast holds without any per-slide styling.
+
+## A chart that fills the slide
+
+::: {.tali-stretch}
+![A fitted curve](media/fit-a.png)
+:::
+
 ## Speaker notes
 
 The audience sees the slide; only the presenter sees the notes.
@@ -34,3 +92,16 @@ The audience sees the slide; only the presenter sees the notes.
 ::: {.notes}
 This is a speaker note, hidden from the audience view.
 :::
+
+# A deeper topic
+
+Press down (not right) to descend into a vertical stack of related slides.
+
+## First sub-point
+
+One facet of the topic.
+
+## Second sub-point {#sec-second-point}
+
+Another facet, with an explicit anchor so `@sec-second-point` resolves into the
+deck.
