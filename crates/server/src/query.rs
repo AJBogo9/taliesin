@@ -277,6 +277,225 @@ fn collect_symbols(doc: &taliesin_core::RenderedDoc) -> Vec<Symbol> {
     out
 }
 
+/// The whole-project outline `taliesin map` emits: what pages exist, in what order, how
+/// they're navigated, and how they cross-reference each other — everything an agent needs
+/// to orient in a project in one read-only call. Built from `Site::discover` (no kernel).
+#[derive(Debug, serde::Serialize)]
+struct ProjectMap {
+    title: Option<String>,
+    is_book: bool,
+    output_dir: String,
+    /// The site's canonical `url:` (for absolute links / sitemaps), when configured.
+    url: Option<String>,
+    /// Pages in nav / chapter order (drafts are excluded, exactly as a build excludes them).
+    pages: Vec<PageEntry>,
+    nav: NavMap,
+    mounts: Vec<MountEntry>,
+    /// The cross-reference graph: each anchor → where it's defined + which pages cite it.
+    /// A `BTreeMap` so two runs of `map` diff to nothing.
+    xref_targets: std::collections::BTreeMap<String, XrefEntry>,
+    /// `{{< embed >}}`-referenced decks (built + served, but not pages/nav entries).
+    decks: Vec<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct PageEntry {
+    rel: String,
+    url: String,
+    title: Option<String>,
+    date: Option<String>,
+    description: Option<String>,
+    categories: Vec<String>,
+    page_layout: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct NavItemEntry {
+    text: Option<String>,
+    href: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct NavMap {
+    left: Vec<NavItemEntry>,
+    right: Vec<NavItemEntry>,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct MountEntry {
+    at: String,
+    path: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+struct XrefEntry {
+    url: String,
+    number: String,
+    /// Urls of the pages that reference this anchor (the reverse edges), in page order.
+    backlinks: Vec<String>,
+}
+
+fn build_project_map(site: &taliesin_core::Site) -> ProjectMap {
+    let nav_items = |items: &[taliesin_core::site::NavItem]| {
+        items
+            .iter()
+            .map(|n| NavItemEntry {
+                text: n.text.clone(),
+                href: n.href.clone(),
+            })
+            .collect()
+    };
+    let mut xref_targets = std::collections::BTreeMap::new();
+    for (anchor, target) in &site.xref_targets {
+        xref_targets.insert(
+            anchor.clone(),
+            XrefEntry {
+                url: target.url.clone(),
+                number: target.number.clone(),
+                backlinks: site.backlinks.get(anchor).cloned().unwrap_or_default(),
+            },
+        );
+    }
+    ProjectMap {
+        title: site.config.title.clone(),
+        is_book: site.is_book(),
+        output_dir: site.output_dir().to_string(),
+        url: site.config.url.clone(),
+        pages: site
+            .pages
+            .iter()
+            .map(|p| PageEntry {
+                rel: p.rel.clone(),
+                url: p.url.clone(),
+                title: p.title.clone(),
+                date: p.date.clone(),
+                description: p.description.clone(),
+                categories: p.categories.clone(),
+                page_layout: p.page_layout.clone(),
+            })
+            .collect(),
+        nav: NavMap {
+            left: nav_items(&site.config.nav.left),
+            right: nav_items(&site.config.nav.right),
+        },
+        mounts: site
+            .config
+            .mounts
+            .iter()
+            .map(|m| MountEntry {
+                at: m.at.clone(),
+                path: m.path.clone(),
+            })
+            .collect(),
+        xref_targets,
+        decks: site.decks.iter().map(|d| d.url.clone()).collect(),
+    }
+}
+
+/// A compact human rendering of the project map (the JSON is the agent-facing form).
+fn map_human(m: &ProjectMap) -> String {
+    let mut s = String::new();
+    let kind = if m.is_book { "book" } else { "site" };
+    s.push_str(&format!(
+        "{} ({kind}) → {}\n",
+        m.title.as_deref().unwrap_or("(untitled)"),
+        m.output_dir
+    ));
+    s.push_str(&format!("\n{} page(s):\n", m.pages.len()));
+    for p in &m.pages {
+        s.push_str(&format!(
+            "  {:<32}  {}\n",
+            p.url,
+            p.title.as_deref().unwrap_or("")
+        ));
+    }
+    let nav: Vec<&str> = m
+        .nav
+        .left
+        .iter()
+        .chain(m.nav.right.iter())
+        .filter_map(|n| n.text.as_deref())
+        .collect();
+    if !nav.is_empty() {
+        s.push_str(&format!("\nnav: {}\n", nav.join(" · ")));
+    }
+    if !m.mounts.is_empty() {
+        s.push_str("\nmounts:\n");
+        for mt in &m.mounts {
+            s.push_str(&format!("  /{}/ → {}\n", mt.at, mt.path));
+        }
+    }
+    s.push_str(&format!(
+        "\n{} cross-reference target(s)\n",
+        m.xref_targets.len()
+    ));
+    s
+}
+
+/// Every long flag `map` accepts (drives the unknown-flag did-you-mean).
+const MAP_FLAGS: &[&str] = &["--format"];
+
+/// `taliesin map <dir> [--format human|json]`: the whole-project outline in one read-only
+/// call (pages in order, nav, mounts, the cross-reference graph, embedded decks). Reuses
+/// `Site::discover` — no kernel, no code execution. `map`'s customer is usually an agent
+/// orienting in a project; `--format json` is the machine form.
+pub(crate) fn cmd_map(args: &[String]) -> ExitCode {
+    let mut path: Option<&str> = None;
+    let mut format = "human";
+    let mut it = args[2..].iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--format" => {
+                if let Some(v) = it.next() {
+                    format = v;
+                }
+            }
+            s if s.starts_with("--") => {
+                log::error(&crate::serve::unknown_flag_error(s, MAP_FLAGS));
+                return ExitCode::FAILURE;
+            }
+            s => {
+                if path.is_none() {
+                    path = Some(s);
+                }
+            }
+        }
+    }
+    let Some(path) = path else {
+        eprintln!("usage: taliesin map <dir> [--format human|json]");
+        return ExitCode::FAILURE;
+    };
+    if format != "human" && format != "json" {
+        log::error(&format!(
+            "unknown --format `{format}` (expected human or json)"
+        ));
+        return ExitCode::FAILURE;
+    }
+    let target = Path::new(path);
+    if !target.is_dir() {
+        log::error(&format!(
+            "map describes a project directory (an _site.yml + .tmd pages); `{path}` is not a \
+             directory. Use `symbols` or `read` for a single file."
+        ));
+        return ExitCode::FAILURE;
+    }
+    let site = taliesin_core::Site::discover(target);
+    if site.pages.is_empty() {
+        log::error(&format!("no .tmd pages found under {path}"));
+        return ExitCode::FAILURE;
+    }
+    let map = build_project_map(&site);
+    if format == "json" {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&map).unwrap_or_else(|_| "{}".to_string())
+        );
+    } else {
+        print!("{}", map_human(&map));
+    }
+    ExitCode::SUCCESS
+}
+
 /// Every long flag `symbols` accepts (drives the unknown-flag did-you-mean).
 const SYMBOLS_FLAGS: &[&str] = &["--format"];
 

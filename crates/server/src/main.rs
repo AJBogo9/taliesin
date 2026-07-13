@@ -47,6 +47,7 @@ fn main() -> ExitCode {
         Some("schema") => query::cmd_schema(&args),
         Some("vocab") => query::cmd_vocab(),
         Some("symbols") => query::cmd_symbols(&args),
+        Some("map") => query::cmd_map(&args),
         Some("check") => check::cmd_check(&args),
         Some("init") => cli::cmd_init(args.get(2).map(String::as_str)),
         Some("new") => cli::cmd_new(&args),
@@ -97,6 +98,7 @@ const COMMANDS: &[&str] = &[
     "vocab",
     "symbols",
     "check",
+    "map",
     "init",
     "new",
     "serve",
@@ -170,6 +172,7 @@ fn usage() {
         "  vocab                      emit editor autocomplete vocabulary as JSON (companion)"
     );
     println!("  symbols <file.tmd> [--format human|json]  list the doc's cross-reference targets");
+    println!("  map   <dir> [--format human|json]  whole-project outline: pages, nav, xref graph");
     println!(
         "  check <file|dir> [--format human|json]  list located diagnostics; exits non-zero if any"
     );
@@ -243,6 +246,17 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \n\
              Example:\n\
              \x20 taliesin render post.tmd > post.html\n"
+        }
+        "map" => {
+            "taliesin map <dir> [--format human|json]\n\
+             \n\
+             The whole-project outline in one read-only call: the page list in nav /\n\
+             chapter order (rel, url, title, date, categories, layout), nav + mounts, the\n\
+             cross-reference graph (each anchor → where it's defined + its backlinks), and\n\
+             embedded decks. Reuses site discovery; no kernel, no code execution.\n\
+             \n\
+             Example:\n\
+             \x20 taliesin map . --format json | jq '.pages[].url'\n"
         }
         "read" => {
             "taliesin read <file.tmd>\n\
