@@ -315,6 +315,39 @@ fn report_cell_errors(blocks: &[taliesin_core::Block], page_label: &str) -> usiz
     n
 }
 
+/// Build `path` (a file or a site dir) to its default output and return the structured
+/// `{diagnostics:[…]}` JSON (the `build` MCP tool's output), reusing the same build path as
+/// `taliesin build … --format json`. A directory builds to `_site/`; a file writes
+/// `<stem>.html` beside the source.
+pub(crate) fn build_json(path: &Path) -> String {
+    if path.is_dir() {
+        let outcome = run_site_build(path, None, false, None);
+        return crate::check::diagnostics_json(&outcome.diagnostics);
+    }
+    let src = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) => return crate::check::json_error(&format!("cannot read {}: {e}", path.display())),
+    };
+    let base = path.parent().unwrap_or_else(|| Path::new("."));
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("document");
+    match crate::serve::guarded(|| {
+        build_page_executing(&src, base, stem, taliesin_core::OutputMode::Build)
+    }) {
+        Ok(Ok(BuildResult::Page {
+            html, diagnostics, ..
+        })) => {
+            let _ = std::fs::write(base.join(format!("{stem}.html")), &html);
+            crate::check::diagnostics_json(&diagnostics)
+        }
+        Ok(Ok(BuildResult::Refused(msg))) => crate::check::json_error(&msg),
+        Ok(Err(e)) => crate::check::json_error(&format!("cannot start runtime: {e}")),
+        Err(p) => crate::check::json_error(&format!("build panicked on {}: {p}", path.display())),
+    }
+}
+
 /// The located "cell error" message for a crashed cell output — one string shape shared by
 /// the single-doc and site build paths (and their structured-diagnostic mirror).
 fn cell_error_message(page_label: &str, b: &taliesin_core::Block) -> String {

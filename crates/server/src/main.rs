@@ -14,6 +14,7 @@ mod freeze;
 mod interpreter;
 mod kernel;
 mod log;
+mod mcp;
 mod protocol;
 mod publish;
 mod query;
@@ -49,6 +50,7 @@ fn main() -> ExitCode {
         Some("symbols") => query::cmd_symbols(&args),
         Some("map") => query::cmd_map(&args),
         Some("check") => check::cmd_check(&args),
+        Some("mcp") => mcp::cmd_mcp(&args),
         Some("init") => cli::cmd_init(&args),
         Some("new") => cli::cmd_new(&args),
         // `preview`/`dev` are vite-style aliases for the live server.
@@ -99,6 +101,7 @@ const COMMANDS: &[&str] = &[
     "symbols",
     "check",
     "map",
+    "mcp",
     "init",
     "new",
     "serve",
@@ -178,6 +181,9 @@ fn usage() {
     println!("  symbols <file.tmd> [--format human|json]  list the doc's cross-reference targets");
     println!("  map   <dir> [--format human|json]  whole-project outline: pages, nav, xref graph");
     println!(
+        "  mcp                        stdio MCP server (check/read/symbols/map/vocab/build tools)"
+    );
+    println!(
         "  check <file|dir> [--format human|json]  list located diagnostics; exits non-zero if any"
     );
     println!(
@@ -251,6 +257,18 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \n\
              Example:\n\
              \x20 taliesin render post.tmd > post.html\n"
+        }
+        "mcp" => {
+            "taliesin mcp\n\
+             \n\
+             Run a local, offline stdio MCP (Model Context Protocol) server so an MCP host\n\
+             drives Taliesin's read/validate/build loop without shelling out. Exposes six\n\
+             tools — check, read, symbols, map, vocab, build — and NO write/edit/preview\n\
+             tool: the .tmd stays your direct edit surface. JSON-RPC on stdout, logs on\n\
+             stderr.\n\
+             \n\
+             Example (in an MCP host's config):\n\
+             \x20 { \"command\": \"taliesin\", \"args\": [\"mcp\"] }\n"
         }
         "map" => {
             "taliesin map <dir> [--format human|json]\n\

@@ -344,8 +344,21 @@ fn format_json(diags: &[Diagnostic], environment: &[EnvEntry]) -> String {
 /// single `{"error": "<message>"}` object, so the JSON stream a caller pipes to `jq`
 /// stays valid even when `check` couldn't run. The message is JSON-escaped (quotes,
 /// newlines), never raw-concatenated.
-fn json_error(message: &str) -> String {
+pub(crate) fn json_error(message: &str) -> String {
     serde_json::json!({ "error": message }).to_string()
+}
+
+/// Produce `check`'s `--format json` payload for `target` (a file or a site dir): the exact
+/// `{diagnostics, environment}` object (or a `{"error": …}` envelope on failure), so the MCP
+/// `check` tool and the CLI can't drift. Mirrors `cmd_check`'s json branch.
+pub(crate) fn check_json(target: &Path) -> String {
+    let collected = crate::serve::guarded(|| collect_diagnostics(target))
+        .map_err(|panic| format!("render panicked on {}: {panic}", target.display()))
+        .and_then(|r| r);
+    match collected {
+        Ok(diags) => format_json(&diags, &collect_environment(target)),
+        Err(e) => json_error(&e),
+    }
 }
 
 fn format_human(diags: &[Diagnostic]) -> String {

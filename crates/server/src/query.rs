@@ -239,6 +239,51 @@ pub(crate) fn cmd_vocab() -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// The cross-reference-target JSON for a single `.tmd` file (the `symbols` tool's output),
+/// reusing `collect_symbols`. Parse-only, no kernel.
+pub(crate) fn symbols_json(path: &str) -> Result<String, String> {
+    if Path::new(path).is_dir() {
+        return Err(format!(
+            "symbols expects a single .tmd file, not a directory: {path}"
+        ));
+    }
+    let src = std::fs::read_to_string(path).map_err(|e| format!("cannot read {path}: {e}"))?;
+    let base = Path::new(path).parent().unwrap_or_else(|| Path::new("."));
+    let doc = crate::serve::guarded(|| taliesin_core::render_document_with_includes(&src, base))
+        .map_err(|p| format!("render panicked on {path}: {p}"))?;
+    Ok(serde_json::to_string_pretty(&collect_symbols(&doc)).unwrap_or_else(|_| "[]".to_string()))
+}
+
+/// The whole-project outline JSON for a directory (the `map` tool's output), reusing
+/// `Site::discover` + `build_project_map`. No kernel.
+pub(crate) fn map_json(path: &str) -> Result<String, String> {
+    if !Path::new(path).is_dir() {
+        return Err(format!("map expects a project directory: {path}"));
+    }
+    let site = taliesin_core::Site::discover(Path::new(path));
+    if site.pages.is_empty() {
+        return Err(format!("no .tmd pages found under {path}"));
+    }
+    Ok(
+        serde_json::to_string_pretty(&build_project_map(&site))
+            .unwrap_or_else(|_| "{}".to_string()),
+    )
+}
+
+/// The plain-text projection of a single `.tmd` file (the `read` tool's output), reusing
+/// `RenderedDoc::body_text`. Parse-only, no kernel.
+pub(crate) fn read_text(path: &str) -> Result<String, String> {
+    if Path::new(path).is_dir() {
+        return Err(format!(
+            "read projects a single .tmd file, not a directory: {path}"
+        ));
+    }
+    let src = std::fs::read_to_string(path).map_err(|e| format!("cannot read {path}: {e}"))?;
+    let base = Path::new(path).parent().unwrap_or_else(|| Path::new("."));
+    crate::serve::guarded(|| taliesin_core::render_document_with_includes(&src, base).body_text())
+        .map_err(|p| format!("read panicked on {path}: {p}"))
+}
+
 /// One cross-reference target a document defines: the anchor an author writes after `@`.
 #[derive(Debug, serde::Serialize)]
 struct Symbol {
