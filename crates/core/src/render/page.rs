@@ -273,7 +273,7 @@ const TOC_SHEET_MARKUP: &str = "<div id=\"tali-toc-backdrop\"></div>\n\
      <span id=\"tali-toc-cur\"></span><span class=\"tali-toc-grip\"></span></button>\n";
 
 fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str, mode: OutputMode) -> String {
-    html_page_inner(doc, fallback_title, None, mode)
+    html_page_inner(doc, fallback_title, None, mode, AssetMode::Inline)
 }
 
 /// Like `html_page_from_doc`, but wraps the page body in the site chrome
@@ -289,7 +289,30 @@ pub fn html_page_from_doc_in_site(
     fallback_title: &str,
     site: &SiteCtx,
 ) -> String {
-    html_page_inner(doc, fallback_title, Some(site), OutputMode::Build)
+    html_page_inner(
+        doc,
+        fallback_title,
+        Some(site),
+        OutputMode::Build,
+        AssetMode::Inline,
+    )
+}
+
+/// Like [`html_page_from_doc_in_site`] but links the shared `_assets/` files instead of
+/// inlining the framework CSS/JS. Used by the multi-page `build <dir>` path.
+pub fn html_page_from_doc_in_site_external(
+    doc: &RenderedDoc,
+    fallback_title: &str,
+    site: &SiteCtx,
+    assets: ExternalAssets,
+) -> String {
+    html_page_inner(
+        doc,
+        fallback_title,
+        Some(site),
+        OutputMode::Build,
+        AssetMode::External(assets),
+    )
 }
 
 /// Resolve the `<title>` text, in order of how deliberately the author chose it:
@@ -327,6 +350,7 @@ fn html_page_inner(
     fallback_title: &str,
     site: Option<&SiteCtx>,
     mode: OutputMode,
+    assets: AssetMode,
 ) -> String {
     let resolved = resolve_title(doc, fallback_title, site.is_some());
     // In a site, name the site on every inner tab ("{page} · {site}"); the home + any
@@ -368,12 +392,16 @@ fn html_page_inner(
     let toc_script = if toc.is_empty() {
         String::new()
     } else {
-        match site
+        let index = site
             .map(|s| s.search_index.as_str())
             .filter(|s| !s.is_empty())
-        {
-            Some(idx) => format!("<script>{idx}</script>\n{}", toc_scripts()),
-            None => toc_scripts(),
+            .map(|idx| format!("<script>{idx}</script>\n"))
+            .unwrap_or_default();
+        match &assets {
+            // Inline: ship the per-page index (if any) followed by the shared toc/search JS.
+            AssetMode::Inline => format!("{index}{}", toc_scripts()),
+            // External: the shared toc/search JS is in app.js; keep only the per-page index.
+            AssetMode::External(_) => index,
         }
     };
     // The reading region is always a focusable `<main id="tali-main">`, emitted
@@ -497,7 +525,7 @@ fn html_page_inner(
         scripts_pre: "",
         scripts_post: &format!("{STATIC_ENHANCE}\n{toc_script}"),
         include_after_body: &includes.after_body,
-        assets: AssetMode::Inline,
+        assets,
     })
 }
 

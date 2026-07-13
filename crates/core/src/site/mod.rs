@@ -529,6 +529,23 @@ impl Site {
         (rewrite_qmd_links(&html), warnings)
     }
 
+    /// Render a page linking the shared `_assets/` bundle (the multi-page build path).
+    /// Identical to [`Self::render_page_doc_warned`] except for the asset delivery.
+    pub fn render_page_doc_external(
+        &self,
+        page: &Page,
+        mut doc: render::RenderedDoc,
+        assets: render::ExternalAssets,
+    ) -> (String, Vec<Warning>) {
+        doc.toc = self.page_toc(page, doc.toc_explicit, &doc.blocks);
+        let mut warnings = std::mem::take(&mut doc.warnings);
+        self.finish_blocks(page, &mut doc.blocks, &mut warnings);
+        let ctx = self.page_chrome(page);
+        let fallback = page.title.as_deref().unwrap_or("");
+        let html = render::html_page_from_doc_in_site_external(&doc, fallback, &ctx, assets);
+        (rewrite_qmd_links(&html), warnings)
+    }
+
     /// Static `check` cross-page link validation: for every page, resolve each manual
     /// relative `<a href>` against the project's **page registry** (the set of built
     /// `.html` urls) and the target page's id set, flagging (a) a link whose target page
@@ -1606,6 +1623,52 @@ pub(crate) mod tests {
         let src = std::fs::read_to_string(&page.input).unwrap();
         let doc = crate::render::render_document_with_includes(&src, &site.root);
         site.render_page_doc_warned(page, doc)
+    }
+
+    #[test]
+    fn external_site_render_keeps_search_index_inline_drops_shared_toc_js() {
+        // A literal from web-client/toc-spy.js: stable + unique enough that its
+        // presence proves the shared scrollspy code got re-inlined.
+        const MARKER_TOC_SPY: &str = "taliInitTocSpy";
+        let root = write_site(
+            "ext-toc",
+            &[
+                ("_site.yml", "title: Demo\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\ntoc: true\n---\n\n# Home\n\n## Alpha\n\nHi.\n\n\
+                     ## Beta\n\nBye.\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let page = site.pages.iter().find(|p| p.rel == "index.tmd").unwrap();
+        let src = std::fs::read_to_string(&page.input).unwrap();
+        let doc = crate::render::render_document_with_includes(&src, &site.root);
+        let ext = render::ExternalAssets {
+            app_css: "_assets/app.a.css",
+            katex_css: "_assets/katex.b.css",
+            app_js: "_assets/app.c.js",
+            mermaid_js: "_assets/mermaid.d.js",
+            jslibs_js: "_assets/jslibs.e.js",
+        };
+        let (html, _w) = site.render_page_doc_external(page, doc, ext);
+        // app.js is linked (carries the toc/search code now).
+        assert!(
+            html.contains("src=\"_assets/app.c.js\" defer"),
+            "app.js should be linked: {html}"
+        );
+        // The shared toc-spy code is NOT inlined again (it now lives in app.js).
+        assert!(
+            !html.contains(MARKER_TOC_SPY),
+            "toc-spy code must not be re-inlined: {html}"
+        );
+        // The per-page search index (inline bootstrap) is still present.
+        assert!(
+            html.contains("TALIESIN_SEARCH_URL"),
+            "the per-page search index bootstrap should stay inline: {html}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
