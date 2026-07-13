@@ -869,23 +869,27 @@ fn is_slide_structural(html: &str) -> bool {
 }
 
 /// Whether a live-edit block op restructures a deck's slides (so it must fully re-mount
-/// rather than apply incrementally). An Insert/Remove of a slide boundary
-/// (heading / `---` / `. . .`) adds, removes, or splits a slide; an Update that turns a
-/// block into (or out of) a slide heading re-slugs its `<section>` id — which lives on
-/// the wrapper, not the swapped-in `<h2>` — so `#hash`/`@ref` to the new title would
-/// otherwise resolve against the stale slug. `old_blocks` resolves a Remove/Update
-/// target to its pre-edit html (looked up before `d.blocks` is replaced).
+/// rather than apply incrementally). An Insert/Remove/Update that touches a slide
+/// boundary (heading / `---` / `. . .`) adds, removes, splits, or merges a slide — the
+/// flat block-swap can't restructure the server-built `<section>`s, and the projection
+/// diff has no notion of slide grouping. A heading Update also re-slugs its `<section>`
+/// id (which lives on the wrapper, not the swapped-in `<h2>`), so `#hash`/`@ref` to the
+/// new title would otherwise resolve against the stale slug. In particular a plain
+/// paragraph edited IN PLACE into a `---` or `. . .` (or back) is an Update, not an
+/// Insert/Remove, so the Update arm must use the full `is_slide_structural` too — else
+/// the live view silently diverges from a full render. `old_blocks` resolves a
+/// Remove/Update target to its pre-edit html (looked up before `d.blocks` is replaced).
 fn deck_op_is_structural(op: &BlockOp, old_blocks: &[Block]) -> bool {
+    let old_html_is = |target_id: &String, pred: fn(&str) -> bool| {
+        old_blocks
+            .iter()
+            .any(|b| &b.id == target_id && pred(&b.html))
+    };
     match op {
         BlockOp::Insert { html, .. } => is_slide_structural(html),
-        BlockOp::Remove { target_id } => old_blocks
-            .iter()
-            .any(|b| &b.id == target_id && is_slide_structural(&b.html)),
+        BlockOp::Remove { target_id } => old_html_is(target_id, is_slide_structural),
         BlockOp::Update { target_id, html } => {
-            is_slide_heading(html)
-                || old_blocks
-                    .iter()
-                    .any(|b| &b.id == target_id && is_slide_heading(&b.html))
+            is_slide_structural(html) || old_html_is(target_id, is_slide_structural)
         }
         BlockOp::SetMeta { .. } => false,
     }
@@ -1429,6 +1433,31 @@ mod protocol_contract {
             },
             &old_p,
         ));
+        // Editing a paragraph IN PLACE into a `---` or `. . .` (or back) splits/merges a
+        // slide — an Update, not an Insert/Remove — so it must also re-mount, or the live
+        // view diverges from a full render (the projection diff can't restructure sections).
+        assert!(deck_op_is_structural(
+            &BlockOp::Update {
+                target_id: "p1".into(),
+                html: "<hr data-block-id=\"h\" />".into(),
+            },
+            &old_p,
+        )); // para -> ---
+        assert!(deck_op_is_structural(
+            &BlockOp::Update {
+                target_id: "p1".into(),
+                html: "<p data-block-id=\"h\">. . .</p>".into(),
+            },
+            &old_p,
+        )); // para -> pause
+        let old_hr = vec![blk("hr1", "<hr data-block-id=\"hr1\" />")];
+        assert!(deck_op_is_structural(
+            &BlockOp::Update {
+                target_id: "hr1".into(),
+                html: "<p data-block-id=\"x\">now text</p>".into(),
+            },
+            &old_hr,
+        )); // --- -> para (merge)
         // Removing a slide heading restructures; removing a paragraph doesn't.
         assert!(deck_op_is_structural(
             &BlockOp::Remove {

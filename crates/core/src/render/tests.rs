@@ -1494,6 +1494,23 @@ fn deck_explicit_slide_id_is_kept_verbatim_not_slugified() {
 }
 
 #[test]
+fn deck_explicit_slide_id_with_special_chars_is_escaped_once() {
+    // The explicit {#id} rides in as an HTML-attr-escaped data-slide-anchor; split_slides
+    // must unescape before storing so render_section escapes exactly once — otherwise an
+    // id with & < > double-escapes (id="a&amp;amp;b") and its @ref/#hash goes dead.
+    let doc = render_document("---\ntitle: D\nformat: deck\n---\n\n## Two {#a&b}\n\nBody.\n");
+    let slides = slides_html(doc.title.as_deref(), doc.subtitle.as_deref(), &doc.blocks);
+    assert!(
+        slides.contains("id=\"a&amp;b\""),
+        "explicit id should be escaped exactly once: {slides}"
+    );
+    assert!(
+        !slides.contains("a&amp;amp;b"),
+        "explicit id double-escaped: {slides}"
+    );
+}
+
+#[test]
 fn editing_a_post_pause_block_keeps_its_fragment_in_the_update() {
     use crate::{BlockOp, diff_blocks};
     // B3-14: a within-slide edit of a post-`. . .` block must ship slide-transformed html,

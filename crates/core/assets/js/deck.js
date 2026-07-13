@@ -232,6 +232,18 @@
       applyCam(t.cx, t.cy, t.scale, animate ? 'css' : 'instant');
     }
   }
+  // Snap the camera to a SPECIFIC cell (h,v) instead of the live deck.h/v. Used by an
+  // auto-animate settle so a flushed morph frames its own captured target, not wherever
+  // navigation has since advanced to (fixes the 3+-chained-morph camera misframe).
+  function setCameraToCell(h, v) {
+    var rev = deckEl();
+    var W = deck.config.width, H = deck.config.height;
+    var sw = rev.clientWidth || window.innerWidth, sh = rev.clientHeight || window.innerHeight;
+    var scale = Math.min(sw / W, sh / H);
+    var p = posOf(h, v);
+    if (deck.flyRAF) { cancelAnimationFrame(deck.flyRAF); deck.flyRAF = null; }
+    applyCam(p.col * W + W / 2, p.row * H + H / 2, scale > 0 ? scale : 1, 'instant');
+  }
   function layout() {
     if (!slidesEl()) return;
     positionGrid();
@@ -416,6 +428,9 @@
   // place; then snap `to` and the camera to `to`'s real cell together — a net-zero
   // screen move, so the reposition is invisible.
   function autoAnimateTo(from, to) {
+    // `to`'s own cell — captured now (deck.h/v were set to `to` by moveTo before
+    // renderMove), so the settle frames THIS morph's target even after nav advances past it.
+    var th = deck.h, tv = deck.v;
     // Flush any in-flight morph to its committed end state FIRST, so `from` (= the
     // previous `to`) is back at its real cell before we read it below, and its matched
     // elements' inline styles are cleared before a re-animation. Fixes the rapid-nav race
@@ -441,7 +456,7 @@
       to.classList.remove('tali-aa');
       from.style.opacity = '';
       to.style.transform = toTransform;          // restore `to`'s real cell ...
-      setCamera(false);                          // ... and move the camera to it (net screen move = 0)
+      setCameraToCell(th, tv);                   // ... and frame IT (its captured cell, not live deck.h/v)
     };
     deck.aaTimer = setTimeout(settle, 520);
   }
@@ -622,7 +637,10 @@
   // a forward key press.
   function renderMove() {
     var to = currentSlide(), from = deck.lastSlide;
-    if (from && to && from !== to && isAutoAnimate(from) && isAutoAnimate(to)) {
+    // Never morph while the overview is open: onHashChange/applyRemote can now reach here
+    // in overview (commit() never could), and autoAnimateTo would blink/displace a visible
+    // map tile. In overview just pan (apply() is a no-op on the camera while overview owns it).
+    if (!deck.overview && from && to && from !== to && isAutoAnimate(from) && isAutoAnimate(to)) {
       autoAnimateTo(from, to);
     } else {
       apply(); // pan/zoom the camera to the current cell

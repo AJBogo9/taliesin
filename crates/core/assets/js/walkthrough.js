@@ -15,11 +15,14 @@
 // scroll and the fresh container re-initialises on the next enhancer run.
 (function () {
   // Parse a line spec ("3-5", "1,4", "all", "") into a Set of 1-based line numbers.
-  function parseLineSpec(spec) {
+  // Clamp a range's upper bound to the rendered line count: focusLines only queries
+  // on.has(i+1) for i in [0, lines-1], so a line past the code could never match — but
+  // an unbounded typo range (a-99999999) would OOM-freeze the tab. Mirrors deck.js.
+  function parseLineSpec(spec, max) {
     var on = new Set();
     (spec || '').split(',').forEach(function (part) {
       var m = part.trim().match(/^(\d+)\s*-\s*(\d+)$/);
-      if (m) { for (var n = +m[1]; n <= +m[2]; n++) on.add(n); }
+      if (m) { for (var n = +m[1], hi = Math.min(+m[2], max); n <= hi; n++) on.add(n); }
       else if (/^\d+$/.test(part.trim())) on.add(+part.trim());
     });
     return on;
@@ -37,7 +40,7 @@
       lines.forEach(function (l) { l.classList.remove('tali-hl-ln-hl'); });
       return;
     }
-    var on = parseLineSpec(spec);
+    var on = parseLineSpec(spec, lines.length);
     pre.classList.add('tali-hl-lines-active');
     lines.forEach(function (l, i) { l.classList.toggle('tali-hl-ln-hl', on.has(i + 1)); });
   }

@@ -338,7 +338,10 @@ fn split_slides(blocks: &[Block], has_title: bool) -> Vec<SlideBuf> {
             // so `@sec-x` / `#hash` resolve to this section; only a heading-text fallback is
             // slugged. Both dedup through the same map so a repeat can't collide.
             let id = match extract_attr(&b.html, "data-slide-anchor") {
-                Some(anchor) => dedup_with_suffix(anchor, &mut id_counts),
+                // `data-slide-anchor` is HTML-attr-escaped; unescape so render_section
+                // re-escapes exactly once (else an id with & < > " double-escapes and its
+                // `@ref`/`#hash` no longer resolves). The text-slug branch is already raw.
+                Some(anchor) => dedup_with_suffix(unescape_html(&anchor), &mut id_counts),
                 None => dedup_slug(&strip_tags(&b.html), &mut id_counts),
             };
             cur = Some(SlideBuf {
