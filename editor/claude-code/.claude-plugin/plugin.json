@@ -1,0 +1,8 @@
+{
+  "name": "taliesin",
+  "version": "0.1.0",
+  "description": "Teaches a Claude Code agent to author Taliesin .tmd documents: the edit -> check --format json -> fix -> build loop, the Markdown dialect, and the edit-source-never-the-preview rule.",
+  "author": {
+    "name": "Andreas Bogossian"
+  }
+}
