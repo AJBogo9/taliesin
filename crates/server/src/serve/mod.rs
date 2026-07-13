@@ -694,6 +694,7 @@ fn blog_index_html(ctx: &PageCtx) -> String {
         scripts_pre: &scripts_pre,
         scripts_post: &scripts_post,
         include_after_body: &ctx.includes.after_body,
+        assets: taliesin_core::AssetMode::Inline,
     })
 }
 

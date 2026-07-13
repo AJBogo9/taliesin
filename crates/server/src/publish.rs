@@ -30,6 +30,8 @@ const PUBLISH_FLAGS: &[&str] = &[
     "--project-name",
     "--out",
     "--strict",
+    "--no-strict",
+    "--public",
     "--dry-run",
     "--format",
 ];
@@ -42,6 +44,7 @@ struct PublishArgs<'a> {
     out_dir: Option<&'a str>,
     strict: bool,
     dry_run: bool,
+    public: bool,
     /// `--format json` emits the build's structured diagnostics to stdout. Default `human`.
     format: &'a str,
 }
@@ -51,8 +54,9 @@ fn parse_publish_args(args: &[String]) -> Result<PublishArgs<'_>, String> {
     let mut positionals: Vec<&str> = Vec::new();
     let mut project_name: Option<&str> = None;
     let mut out_dir: Option<&str> = None;
-    let mut strict = false;
+    let mut strict = true; // publish is strict by default; --no-strict opts out
     let mut dry_run = false;
+    let mut public = false;
     let mut format: &str = "human";
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
@@ -84,6 +88,8 @@ fn parse_publish_args(args: &[String]) -> Result<PublishArgs<'_>, String> {
                 }
             },
             "--strict" => strict = true,
+            "--no-strict" => strict = false,
+            "--public" => public = true,
             "--dry-run" => dry_run = true,
             s if s.starts_with("--") => {
                 return Err(format!(
@@ -95,7 +101,7 @@ fn parse_publish_args(args: &[String]) -> Result<PublishArgs<'_>, String> {
         }
     }
     let path = positionals.first().copied().ok_or_else(|| {
-        "usage: taliesin publish <dir> [--project-name <name>] [--out <dir>] [--strict] [--dry-run]"
+        "usage: taliesin publish <dir> [--project-name <name>] [--out <dir>] [--public] [--no-strict] [--dry-run]"
             .to_string()
     })?;
     Ok(PublishArgs {
@@ -104,6 +110,7 @@ fn parse_publish_args(args: &[String]) -> Result<PublishArgs<'_>, String> {
         out_dir,
         strict,
         dry_run,
+        public,
         format,
     })
 }
@@ -142,6 +149,7 @@ pub(crate) fn cmd_publish(args: &[String]) -> ExitCode {
         out_dir,
         strict,
         dry_run,
+        public,
         format,
     } = match parse_publish_args(args) {
         Ok(p) => p,
@@ -172,6 +180,17 @@ pub(crate) fn cmd_publish(args: &[String]) -> ExitCode {
 
     // Discover the site once to resolve the project name + the output dir.
     let site = taliesin_core::Site::discover(root);
+
+    // Precedence: --public wins, else publish.gate: in _site.yml, else gated (safe default).
+    let gated = if public {
+        false
+    } else {
+        site.config
+            .publish
+            .as_ref()
+            .and_then(|p| p.gate)
+            .unwrap_or(true)
+    };
     if let Some(publish) = &site.config.publish
         && let Some(provider) = &publish.provider
         && provider != "cloudflare"
@@ -216,8 +235,14 @@ pub(crate) fn cmd_publish(args: &[String]) -> ExitCode {
     }
     let out = out.canonicalize().unwrap_or(out);
 
-    // Inject the passcode gate into the freshly built tree.
-    if let Err(e) = inject_gate(&out) {
+    // Warn only once the build succeeded and we are actually about to deploy, so an
+    // aborted run (strict failure, bad provider) does not print a false PUBLIC alarm.
+    if !gated {
+        log::warn("publishing WITHOUT a passcode gate: this site will be PUBLIC");
+    }
+
+    // Inject the passcode gate into the freshly built tree (unless deploying public).
+    if gated && let Err(e) = inject_gate(&out) {
         log::error(&format!(
             "cannot write the passcode gate to {}: {e}",
             out.join("functions/_middleware.js").display()
@@ -229,7 +254,11 @@ pub(crate) fn cmd_publish(args: &[String]) -> ExitCode {
         "wrangler pages deploy . --project-name {project} --branch {PRODUCTION_BRANCH} --commit-dirty=true"
     );
     if dry_run {
-        log::info(&format!("built + gated {} (not deployed)", out.display()));
+        let gate_note = if gated { "gated" } else { "PUBLIC (no gate)" };
+        log::info(&format!(
+            "built + {gate_note} {} (not deployed)",
+            out.display()
+        ));
         // In `--format json` the diagnostics were already printed to stdout; keep the
         // "would run" line on stderr so the JSON stream stays pure.
         if json {
@@ -326,5 +355,37 @@ mod tests {
     #[test]
     fn project_name_flag_requires_a_value() {
         assert!(parse_publish_args(&argv(&["book", "--project-name"])).is_err());
+    }
+
+    #[test]
+    fn strict_is_the_default() {
+        let a = argv(&["book"]);
+        let p = parse_publish_args(&a).expect("parse");
+        assert!(p.strict, "publish must be strict by default");
+        assert!(!p.public);
+    }
+
+    #[test]
+    fn no_strict_opts_out_and_public_opts_in() {
+        let a = argv(&["book", "--no-strict", "--public"]);
+        let p = parse_publish_args(&a).expect("parse");
+        assert!(!p.strict);
+        assert!(p.public);
+    }
+
+    #[test]
+    fn strict_flags_are_last_wins() {
+        let av = argv(&["book", "--no-strict", "--strict"]);
+        let a = parse_publish_args(&av).expect("parse");
+        assert!(a.strict, "--strict after --no-strict wins");
+        let bv = argv(&["book", "--strict", "--no-strict"]);
+        let b = parse_publish_args(&bv).expect("parse");
+        assert!(!b.strict, "--no-strict after --strict wins");
+    }
+
+    #[test]
+    fn public_typo_still_did_you_means() {
+        let err = parse_publish_args(&argv(&["book", "--publik"])).unwrap_err();
+        assert!(err.contains("--publik"), "{err}");
     }
 }

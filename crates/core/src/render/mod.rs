@@ -14,8 +14,8 @@ use std::path::Path;
 mod model;
 pub(crate) use model::CellRole;
 pub use model::{
-    Block, Cell, CellFigure, CellTable, DocFormat, JsOpts, OutputMode, PageIncludes, RenderedDoc,
-    Warning,
+    AssetMode, Block, Cell, CellFigure, CellTable, DocFormat, ExternalAssets, JsOpts, OutputMode,
+    PageIncludes, RenderedDoc, Warning,
 };
 
 fn parse_options() -> Options<'static> {
@@ -90,7 +90,7 @@ mod page;
 use page::page_from_doc;
 pub use page::{
     PageParts, SiteCtx, assemble_html_page, favicon_link, html_page_from_doc_in_site,
-    render_doc_to_page, title_with_site_suffix,
+    html_page_from_doc_in_site_external, render_doc_to_page, title_with_site_suffix,
 };
 use theme::{detect_theme, resolve_theme, theme_default_mode, theme_style};
 
@@ -1122,6 +1122,14 @@ const CODE_ENHANCE_JS: &str = concat!(
     include_str!("../../assets/js/code-enhance/15-reading-progress.js"),
     include_str!("../../assets/js/code-enhance/16-scroll-a11y.js"),
 );
+/// The enhancer registry (`window.taliEnhancers` + `taliEnhanceCode`) on its own, so the
+/// External build path can emit it INLINE at parse (before any `include-after-body`
+/// extension script that calls `taliEnhancers.register`), while the shared app.js stays
+/// deferred. This double-includes `01-registry.js` at compile time (once here, once inside
+/// `CODE_ENHANCE_JS`'s `concat!` above); keep BOTH copies, since dropping it from
+/// `CODE_ENHANCE_JS` would drift the Inline path's byte output. The IIFE is idempotent
+/// (`if (window.taliEnhancers) return;`), so app.js's bundled copy no-ops on its later run.
+const REGISTRY_JS: &str = include_str!("../../assets/js/code-enhance/01-registry.js");
 const MERMAID_JS: &str = include_str!("../../assets/js/mermaid.js");
 /// The vendored Mermaid library (pinned mermaid@11.4.1, ~2.5 MB; sets `globalThis.mermaid`).
 /// Inlined into a static Build page that has a diagram so it renders with no CDN; the
@@ -1137,6 +1145,61 @@ const TABSET_JS: &str = include_str!("../../assets/js/tabset.js");
 /// Scroll-driven sticky-stage scenes for `::: {.scrolly}`. Registers through `taliEnhancers`,
 /// no-ops without a `.scrolly`, rides in [`code_scripts`].
 const SCROLLY_JS: &str = include_str!("../../assets/js/scrolly.js");
+
+/// The raw framework CSS a non-bare site page inlines in its main `<style>` (fonts +
+/// base + dark + site chrome). Exposed so the multi-page build can externalize it into
+/// one content-hashed `_assets/app.<hash>.css` instead of inlining a copy per page.
+pub fn shared_site_css() -> String {
+    format!("{FONTS_CSS}{BASE_CSS}{DARK_CSS}{SITE_CSS}")
+}
+
+/// The KaTeX stylesheet (base64 fonts inlined), for the externalized `katex.<hash>.css`.
+pub fn katex_css() -> &'static str {
+    KATEX_CSS
+}
+
+/// All of Taliesin's OWN page JS, concatenated for the always-on `app.<hash>.js`. Each
+/// piece is separated by a bare `;` on its own line so concatenation is ASI-safe. The
+/// big vendored libs (mermaid, d3, Plot) are deliberately excluded (their own files), and
+/// so is the `{js}`-cell runtime (`TALIESIN_JS`): it runs each cell via `new
+/// AsyncFunction(..., src)`, whose dynamic `import()` resolves the specifier relative to
+/// the SCRIPT that called the constructor. Folded into the shared `/_assets/app.js`, a
+/// cell's `import("./helper.js")` would wrongly resolve against `/_assets/` (a 404), so the
+/// External page keeps that runtime INLINE instead (see `assemble_html_page`), anchoring
+/// the resolution base to the page itself.
+pub fn core_enhance_js() -> String {
+    [
+        CODE_ENHANCE_JS,
+        WALKTHROUGH_JS,
+        TABSET_JS,
+        SCROLLY_JS,
+        TOC_SPY_JS,
+        TOC_SHEET_JS,
+        SEARCH_JS,
+    ]
+    .join("\n;\n")
+}
+
+/// The vendored mermaid library plus its loader (CDN placeholder already resolved), for
+/// the conditional `mermaid.<hash>.js`. Ships only on pages that have a diagram, so the
+/// loader's never-reached CDN fallback stays off prose pages.
+pub fn mermaid_bundle_js() -> String {
+    format!(
+        "{MERMAID_MIN_JS}\n;\n{}",
+        MERMAID_JS.replace("{{MERMAID}}", &mermaid_url())
+    )
+}
+
+/// The vendored d3 + Observable Plot globals for the conditional `jslibs.<hash>.js`
+/// (ships only on pages with `{js}` cells).
+pub fn js_cell_libs_js() -> String {
+    format!("{D3_JS}\n;\n{PLOT_JS}")
+}
+
+/// True if a rendered body contains a mermaid diagram (gates the mermaid file link).
+pub fn has_mermaid(body: &str) -> bool {
+    body.contains("class=\"mermaid\"")
+}
 
 /// Heading level (1–6) for a block whose root element is `<hN ...>`/`<hN>`.
 pub(crate) fn block_heading_level(html: &str) -> Option<u8> {

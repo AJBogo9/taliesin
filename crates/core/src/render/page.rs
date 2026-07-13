@@ -115,6 +115,8 @@ pub struct PageParts<'a> {
     /// or the live websocket client).
     pub scripts_post: &'a str,
     pub include_after_body: &'a str,
+    /// How framework CSS/JS is delivered (inline blobs, or links to `_assets/`).
+    pub assets: AssetMode<'a>,
 }
 
 /// Assemble a complete HTML page from its parts: the single source of truth for
@@ -124,39 +126,16 @@ pub struct PageParts<'a> {
 /// reordering happens once instead of in three hand-rolled templates.
 pub fn assemble_html_page(p: &PageParts) -> String {
     let bare = p.mode == OutputMode::Bare;
-    let katex = if p.ship_katex {
-        format!("\n<style>{KATEX_CSS}</style>")
-    } else {
-        String::new()
-    };
-    let site_css = if p.with_site_css { SITE_CSS } else { "" };
-    // Bare output carries no `[data-theme]` script, so the JS-keyed dark layer never
-    // matches: drop it from the main sheet and append CSS-only theming instead.
-    let dark = if bare { "" } else { DARK_CSS };
-    let bare_theme = if bare {
-        bare_theme_css(p.theme_default)
-    } else {
-        String::new()
-    };
     // The pre-paint theme bootstrap is JS; bare output is script-free.
     let theme_init = if bare {
         String::new()
     } else {
         theme_head(p.theme_default)
     };
-    // Native `{js}` cells need the vendored d3 + Plot libs in <head>; the enhancer
-    // itself rides in code_scripts(). Gated on the rendered body (no PageParts flag).
-    // Bare drops `{js}` entirely (its script blocks are stripped from the body too).
-    let js_head_html = if !bare && has_js_cells(p.body) {
-        js_cell_head()
-    } else {
-        String::new()
-    };
     // Bare's guarantee is zero `<script>`: suppress every script source — the passed-in
     // pre/post scripts, the enhancer bundle, and (above) the theme bootstrap + js head.
     let scripts_pre = if bare { "" } else { p.scripts_pre };
     let scripts_post = if bare { "" } else { p.scripts_post };
-    let code_scripts = code_scripts_for(p.body, p.mode);
     // Skip-to-content link: the first focusable thing in the body, so a keyboard /
     // screen-reader user can jump past the chrome to the reading region. Emitted
     // server-side (works with JS off) whenever the body carries the focusable
@@ -168,6 +147,93 @@ pub fn assemble_html_page(p: &PageParts) -> String {
     } else {
         ""
     };
+    // The head CSS block + framework script tags differ by asset mode; the body frame,
+    // skip link, theme bootstrap, and passed-in pre/post scripts are identical.
+    let (style_block, katex_block, js_head_html, framework_scripts) = match &p.assets {
+        AssetMode::Inline => {
+            let site_css = if p.with_site_css { SITE_CSS } else { "" };
+            // Bare output carries no `[data-theme]` script, so the JS-keyed dark layer
+            // never matches: drop it from the main sheet and append CSS-only theming
+            // instead.
+            let dark = if bare { "" } else { DARK_CSS };
+            let bare_theme = if bare {
+                bare_theme_css(p.theme_default)
+            } else {
+                String::new()
+            };
+            let style_block =
+                format!("<style>{FONTS_CSS}{BASE_CSS}{dark}{site_css}{bare_theme}</style>");
+            let katex_block = if p.ship_katex {
+                format!("\n<style>{KATEX_CSS}</style>")
+            } else {
+                String::new()
+            };
+            // Native `{js}` cells need the vendored d3 + Plot libs in <head>; the
+            // enhancer itself rides in code_scripts(). Gated on the rendered body (no
+            // PageParts flag). Bare drops `{js}` entirely (its script blocks are
+            // stripped from the body too).
+            let js_head_html = if !bare && has_js_cells(p.body) {
+                js_cell_head()
+            } else {
+                String::new()
+            };
+            let framework_scripts = code_scripts_for(p.body, p.mode);
+            (style_block, katex_block, js_head_html, framework_scripts)
+        }
+        AssetMode::External(a) => {
+            let style_block = format!("<link rel=\"stylesheet\" href=\"{}\">", a.app_css);
+            let katex_block = if p.ship_katex {
+                format!("\n<link rel=\"stylesheet\" href=\"{}\">", a.katex_css)
+            } else {
+                String::new()
+            };
+            let js_head_html = if !bare && has_js_cells(p.body) {
+                format!("<script src=\"{}\" defer></script>", a.jslibs_js)
+            } else {
+                String::new()
+            };
+            let mermaid = if has_mermaid(p.body) {
+                format!("\n<script src=\"{}\" defer></script>", a.mermaid_js)
+            } else {
+                String::new()
+            };
+            // The `{js}`-cell runtime stays INLINE even in External mode, exactly as on the
+            // inline path. It runs each cell via `new AsyncFunction(..., src)`, and a dynamic
+            // `import()` in that body resolves relative to the SCRIPT that ran the constructor:
+            // inlined here it anchors to the page, so a cell's `import("./helper.js")` resolves
+            // page-relative; folded into the shared `/_assets/app.js` it would wrongly resolve
+            // against `/_assets/` (a 404). That page-relative anchoring is the ONLY reason it is
+            // inline: it registers with `window.taliEnhancers` directly at parse (the registry is
+            // emitted inline just below, ahead of the deferred app.js, so it already exists by the
+            // time this runs), and the deferred jslibs (d3/Plot) have executed by the
+            // DOMContentLoaded mount, so the cells still see `window.d3` / `Plot`.
+            let qmd_js_inline = if !bare && has_js_cells(p.body) {
+                format!("\n<script>{TALIESIN_JS}</script>")
+            } else {
+                String::new()
+            };
+            // Emit the enhancer registry INLINE at parse, ahead of the deferred app.js and any
+            // `include-after-body` extension script. Why this shape (keep this reasoning):
+            //   * `01-registry.js` defines `window.taliEnhancers` / `taliEnhanceCode`. #17 folded
+            //     it into the DEFERRED app.js, so a documented `include-after-body` extension that
+            //     calls `window.taliEnhancers.register(fn)` (docs/internals/extending.tmd) ran
+            //     INLINE at parse BEFORE app.js defined the registry, throwing silently. Emitting
+            //     the registry inline here (the same code-scripts position the pre-#17 inline
+            //     bundle ran from) restores parse-time availability of `taliEnhancers` for
+            //     `scripts_post` (STATIC_ENHANCE) and every `include-after-body` script.
+            //   * app.js stays deferred (non-blocking): when it runs after parse, its own bundled
+            //     `01-registry` copy hits `if (window.taliEnhancers) return;` and no-ops, while
+            //     its feature scripts (02-16) register into the already-created list.
+            //   * On DOMContentLoaded, STATIC_ENHANCE calls `taliEnhanceCode` = registry.run,
+            //     running every registered enhancer (core + qmd-js + any extension); the deferred
+            //     jslibs (d3/Plot) have executed by then, so `{js}` cells still run correctly.
+            let framework_scripts = format!(
+                "<script>{REGISTRY_JS}</script>\n<script src=\"{}\" defer></script>{qmd_js_inline}{mermaid}",
+                a.app_js
+            );
+            (style_block, katex_block, js_head_html, framework_scripts)
+        }
+    };
     format!(
         r#"<!DOCTYPE html>
 <html lang="{lang}">
@@ -178,7 +244,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
 <title>{title}</title>
 {favicon}
 {theme_init}
-<style>{fonts}{base}{dark}{site}{bare_theme}</style>{katex}
+{style_block}{katex_block}
 {js_head}
 {theme_css}
 {include_in_header}
@@ -197,11 +263,8 @@ pub fn assemble_html_page(p: &PageParts) -> String {
         title = p.title,
         favicon = p.favicon,
         theme_init = theme_init,
-        fonts = FONTS_CSS,
-        base = BASE_CSS,
-        dark = dark,
-        site = site_css,
-        bare_theme = bare_theme,
+        style_block = style_block,
+        katex_block = katex_block,
         js_head = js_head_html,
         theme_css = theme_style(p.theme_css),
         include_in_header = p.include_in_header,
@@ -210,7 +273,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
         include_before_body = p.include_before_body,
         body = p.body,
         scripts_pre = scripts_pre,
-        code_scripts = code_scripts,
+        code_scripts = framework_scripts,
         scripts_post = scripts_post,
         include_after_body = p.include_after_body,
     )
@@ -242,7 +305,7 @@ const TOC_SHEET_MARKUP: &str = "<div id=\"tali-toc-backdrop\"></div>\n\
      <span id=\"tali-toc-cur\"></span><span class=\"tali-toc-grip\"></span></button>\n";
 
 fn html_page_from_doc(doc: &RenderedDoc, fallback_title: &str, mode: OutputMode) -> String {
-    html_page_inner(doc, fallback_title, None, mode)
+    html_page_inner(doc, fallback_title, None, mode, AssetMode::Inline)
 }
 
 /// Like `html_page_from_doc`, but wraps the page body in the site chrome
@@ -258,7 +321,30 @@ pub fn html_page_from_doc_in_site(
     fallback_title: &str,
     site: &SiteCtx,
 ) -> String {
-    html_page_inner(doc, fallback_title, Some(site), OutputMode::Build)
+    html_page_inner(
+        doc,
+        fallback_title,
+        Some(site),
+        OutputMode::Build,
+        AssetMode::Inline,
+    )
+}
+
+/// Like [`html_page_from_doc_in_site`] but links the shared `_assets/` files instead of
+/// inlining the framework CSS/JS. Used by the multi-page `build <dir>` path.
+pub fn html_page_from_doc_in_site_external(
+    doc: &RenderedDoc,
+    fallback_title: &str,
+    site: &SiteCtx,
+    assets: ExternalAssets,
+) -> String {
+    html_page_inner(
+        doc,
+        fallback_title,
+        Some(site),
+        OutputMode::Build,
+        AssetMode::External(assets),
+    )
 }
 
 /// Resolve the `<title>` text, in order of how deliberately the author chose it:
@@ -296,6 +382,7 @@ fn html_page_inner(
     fallback_title: &str,
     site: Option<&SiteCtx>,
     mode: OutputMode,
+    assets: AssetMode,
 ) -> String {
     let resolved = resolve_title(doc, fallback_title, site.is_some());
     // In a site, name the site on every inner tab ("{page} · {site}"); the home + any
@@ -337,12 +424,16 @@ fn html_page_inner(
     let toc_script = if toc.is_empty() {
         String::new()
     } else {
-        match site
+        let index = site
             .map(|s| s.search_index.as_str())
             .filter(|s| !s.is_empty())
-        {
-            Some(idx) => format!("<script>{idx}</script>\n{}", toc_scripts()),
-            None => toc_scripts(),
+            .map(|idx| format!("<script>{idx}</script>\n"))
+            .unwrap_or_default();
+        match &assets {
+            // Inline: ship the per-page index (if any) followed by the shared toc/search JS.
+            AssetMode::Inline => format!("{index}{}", toc_scripts()),
+            // External: the shared toc/search JS is in app.js; keep only the per-page index.
+            AssetMode::External(_) => index,
         }
     };
     // The reading region is always a focusable `<main id="tali-main">`, emitted
@@ -466,6 +557,7 @@ fn html_page_inner(
         scripts_pre: "",
         scripts_post: &format!("{STATIC_ENHANCE}\n{toc_script}"),
         include_after_body: &includes.after_body,
+        assets,
     })
 }
 
@@ -525,4 +617,172 @@ fn strip_qmd_js_scripts(body: &str) -> String {
     }
     out.push_str(rest);
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Same base.css marker literal Task 1 confirmed present (see render/tests.rs).
+    const MARKER_BASE: &str = ".tali-reader-seg";
+    // A literal unique to qmd-js.js (the `{js}`-cell runtime); its presence in the page
+    // proves the runtime shipped INLINE (in External mode all other framework JS is a
+    // `<script src=...>` link, so raw runtime text in the page == an inline `<script>`).
+    const MARKER_QMDJS: &str = "qmd-js cell error:";
+
+    #[test]
+    fn external_inlines_js_cell_runtime_page_relative() {
+        let assemble = |body: &str| {
+            let ext = ExternalAssets {
+                app_css: "_assets/app.aaaa.css",
+                katex_css: "_assets/katex.bbbb.css",
+                app_js: "_assets/app.cccc.js",
+                mermaid_js: "_assets/mermaid.dddd.js",
+                jslibs_js: "_assets/jslibs.eeee.js",
+            };
+            assemble_html_page(&PageParts {
+                mode: OutputMode::Build,
+                title: "T",
+                lang: "en",
+                favicon: "",
+                theme_default: "dark",
+                theme_css: "",
+                with_site_css: true,
+                ship_katex: false,
+                extra_head: "",
+                body_class: "",
+                include_in_header: "",
+                include_before_body: "",
+                body,
+                scripts_pre: "",
+                scripts_post: "",
+                include_after_body: "",
+                assets: AssetMode::External(ext),
+            })
+        };
+        // A page WITH a `{js}` cell: the runtime ships inline so `new AsyncFunction`'s
+        // `import()` anchors to the page (not `/_assets/`), yet app.js + jslibs stay external.
+        let js_html = assemble(
+            "<main id=\"tali-main\"><script type=\"application/qmd-js\">1</script></main>",
+        );
+        assert!(
+            js_html.contains(MARKER_QMDJS),
+            "{{js}}-cell runtime must be inlined on a {{js}} page in External mode"
+        );
+        // The inline runtime is a bare `<script>` (no `src`, no `defer`): the whole
+        // `<script>{TALIESIN_JS}</script>` block is present verbatim.
+        assert!(
+            js_html.contains(&format!("<script>{TALIESIN_JS}</script>")),
+            "the runtime must be a bare inline <script>, not src/defer"
+        );
+        // The external, deferred app.js (the enhancers) is STILL linked alongside it.
+        assert!(
+            js_html.contains("<script src=\"_assets/app.cccc.js\" defer></script>"),
+            "external app.js must still be linked"
+        );
+        // The heavy d3/Plot libs stay externalized + deferred (they do no relative import()).
+        assert!(js_html.contains("src=\"_assets/jslibs.eeee.js\" defer"));
+
+        // A page WITHOUT `{js}` cells does NOT inline the runtime (but still links app.js).
+        let prose_html = assemble("<main id=\"tali-main\"><p>prose only</p></main>");
+        assert!(
+            !prose_html.contains(MARKER_QMDJS),
+            "no {{js}}-cell runtime on a {{js}}-free page"
+        );
+        assert!(
+            prose_html.contains("<script src=\"_assets/app.cccc.js\" defer></script>"),
+            "app.js is always linked"
+        );
+    }
+
+    #[test]
+    fn external_assets_link_instead_of_inlining() {
+        let ext = ExternalAssets {
+            app_css: "_assets/app.aaaa.css",
+            katex_css: "_assets/katex.bbbb.css",
+            app_js: "_assets/app.cccc.js",
+            mermaid_js: "_assets/mermaid.dddd.js",
+            jslibs_js: "_assets/jslibs.eeee.js",
+        };
+        let body = "<main id=\"tali-main\"><span class=\"katex\">x</span>\
+                    <pre class=\"mermaid\">g</pre>\
+                    <script type=\"application/qmd-js\">1</script></main>";
+        let html = assemble_html_page(&PageParts {
+            mode: OutputMode::Build,
+            title: "T",
+            lang: "en",
+            favicon: "",
+            theme_default: "dark",
+            theme_css: "",
+            with_site_css: true,
+            ship_katex: true,
+            extra_head: "",
+            body_class: "",
+            include_in_header: "",
+            include_before_body: "",
+            body,
+            scripts_pre: "",
+            scripts_post: "",
+            include_after_body: "",
+            assets: AssetMode::External(ext),
+        });
+        // Links, not inlined framework CSS.
+        assert!(html.contains("<link rel=\"stylesheet\" href=\"_assets/app.aaaa.css\">"));
+        assert!(html.contains("href=\"_assets/katex.bbbb.css\""));
+        assert!(
+            !html.contains(MARKER_BASE),
+            "framework CSS must not be inlined in External mode"
+        );
+        // Scripts as deferred external refs.
+        assert!(html.contains("<script src=\"_assets/app.cccc.js\" defer></script>"));
+        assert!(html.contains("src=\"_assets/mermaid.dddd.js\" defer"));
+        assert!(html.contains("src=\"_assets/jslibs.eeee.js\" defer"));
+    }
+
+    #[test]
+    fn external_omits_conditional_links_when_absent() {
+        let ext = ExternalAssets {
+            app_css: "a.css",
+            katex_css: "k.css",
+            app_js: "a.js",
+            mermaid_js: "m.js",
+            jslibs_js: "j.js",
+        };
+        let html = assemble_html_page(&PageParts {
+            mode: OutputMode::Build,
+            title: "T",
+            lang: "en",
+            favicon: "",
+            theme_default: "dark",
+            theme_css: "",
+            with_site_css: true,
+            ship_katex: false,
+            extra_head: "",
+            body_class: "",
+            include_in_header: "",
+            include_before_body: "",
+            body: "<main id=\"tali-main\"><p>prose only</p></main>",
+            scripts_pre: "",
+            scripts_post: "",
+            include_after_body: "",
+            assets: AssetMode::External(ext),
+        });
+        assert!(html.contains("href=\"a.css\""), "app.css always linked");
+        assert!(html.contains("src=\"a.js\" defer"), "app.js always linked");
+        // Note: a bare `"k.css"` substring check would false-positive on the unrelated
+        // theme-bootstrap script's own comment mentioning "dark.css" (which contains
+        // "k.css"), so this checks the actual href attribute.
+        assert!(
+            !html.contains("href=\"k.css\""),
+            "no katex link on a math-free page"
+        );
+        assert!(
+            !html.contains("m.js"),
+            "no mermaid link on a diagram-free page"
+        );
+        assert!(
+            !html.contains("j.js"),
+            "no jslibs link on a {{js}}-free page"
+        );
+    }
 }

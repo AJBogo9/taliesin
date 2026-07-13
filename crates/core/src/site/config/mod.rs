@@ -82,6 +82,8 @@ pub struct PublishConfig {
     pub provider: Option<String>,
     /// Cloudflare Pages project name (overrides the dir-name slug default).
     pub project: Option<String>,
+    /// Passcode gate. Absent or `true` = gated (the safe default); `false` = public.
+    pub gate: Option<bool>,
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -146,8 +148,8 @@ const FOOTER_SECTION_KEYS: &[&str] = &["left", "center", "right"];
 const NAV_ITEM_KEYS: &[&str] = &["text", "href", "icon"];
 /// The keys of a `mounts:` sequence entry (`{ at, path }`).
 const MOUNT_ITEM_KEYS: &[&str] = &["at", "path"];
-/// The keys of the `publish:` block (`{ provider, project }`).
-pub(crate) const PUBLISH_KEYS: &[&str] = &["provider", "project"];
+/// The keys of the `publish:` block (`{ provider, project, gate }`).
+pub(crate) const PUBLISH_KEYS: &[&str] = &["provider", "project", "gate"];
 
 /// Stable prefix on the warning a malformed `_site.yml` pushes. A malformed config is a
 /// *real* error (the site silently degrades to defaults), distinct from a legitimately
@@ -385,6 +387,7 @@ fn publish_from(v: Option<&serde_yaml::Value>) -> Option<PublishConfig> {
     Some(PublishConfig {
         provider: s("provider"),
         project: s("project"),
+        gate: pv.get("gate").and_then(|x| x.as_bool()),
     })
 }
 
@@ -627,6 +630,35 @@ mod config_tests {
             w.iter()
                 .any(|w| w.contains("publish key `provder`") && w.contains("`provider`")),
             "publish key typo: {w:?}"
+        );
+    }
+
+    #[test]
+    fn publish_gate_false_parses() {
+        let dir = tmp("publish-gate");
+        std::fs::write(
+            dir.join("_site.yml"),
+            "title: Book\npublish:\n  provider: cloudflare\n  gate: false\n",
+        )
+        .unwrap();
+        let mut warnings = Vec::new();
+        let cfg = load_config(&dir, &mut warnings);
+        let publish = cfg.publish.expect("publish block parsed");
+        assert_eq!(publish.gate, Some(false));
+        assert!(
+            !warnings.iter().any(|w| w.contains("unknown")),
+            "a valid gate must not warn: {warnings:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn unknown_gate_typo_warns() {
+        let w = cfg_warnings("publish:\n  gat: false\n");
+        assert!(
+            w.iter()
+                .any(|w| w.contains("publish key `gat`") && w.contains("`gate`")),
+            "gate typo did-you-mean: {w:?}"
         );
     }
 

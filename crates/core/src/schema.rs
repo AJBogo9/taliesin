@@ -150,8 +150,9 @@ mod generate {
                 ]
             }
         });
-        // publish: a closed { provider, project } block. `provider` is an enum (only
-        // cloudflare today); `project` is the Cloudflare Pages project name.
+        // publish: a closed { provider, project, gate } block. `provider` is an enum (only
+        // cloudflare today); `project` is the Cloudflare Pages project name; `gate` is the
+        // passcode-gate toggle (false = deploy public).
         let publish = closed_object(
             PUBLISH_KEYS,
             &[
@@ -160,6 +161,7 @@ mod generate {
                     json!({ "type": "string", "enum": ["cloudflare"] }),
                 ),
                 ("project", json!({ "type": "string" })),
+                ("gate", boolean()),
             ],
         );
         json!({
