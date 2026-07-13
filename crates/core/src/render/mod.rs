@@ -1149,11 +1149,16 @@ pub fn katex_css_bytes() -> &'static str {
 
 /// All of Taliesin's OWN page JS, concatenated for the always-on `app.<hash>.js`. Each
 /// piece is separated by a bare `;` on its own line so concatenation is ASI-safe. The
-/// big vendored libs (mermaid, d3, Plot) are deliberately excluded (their own files).
+/// big vendored libs (mermaid, d3, Plot) are deliberately excluded (their own files), and
+/// so is the `{js}`-cell runtime (`TALIESIN_JS`): it runs each cell via `new
+/// AsyncFunction(..., src)`, whose dynamic `import()` resolves the specifier relative to
+/// the SCRIPT that called the constructor. Folded into the shared `/_assets/app.js`, a
+/// cell's `import("./helper.js")` would wrongly resolve against `/_assets/` (a 404), so the
+/// External page keeps that runtime INLINE instead (see `assemble_html_page`), anchoring
+/// the resolution base to the page itself.
 pub fn core_enhance_js() -> String {
     [
         CODE_ENHANCE_JS,
-        TALIESIN_JS,
         WALKTHROUGH_JS,
         TABSET_JS,
         SCROLLY_JS,

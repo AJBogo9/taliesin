@@ -197,8 +197,24 @@ pub fn assemble_html_page(p: &PageParts) -> String {
             } else {
                 String::new()
             };
-            let framework_scripts =
-                format!("<script src=\"{}\" defer></script>{mermaid}", a.app_js);
+            // The `{js}`-cell runtime stays INLINE even in External mode, exactly as on the
+            // inline path. It runs each cell via `new AsyncFunction(..., src)`, and a dynamic
+            // `import()` in that body resolves relative to the SCRIPT that ran the constructor:
+            // inlined here it anchors to the page, so a cell's `import("./helper.js")` resolves
+            // page-relative; folded into the shared `/_assets/app.js` it would wrongly resolve
+            // against `/_assets/` (a 404). Not `defer`: it runs at parse and takes its own
+            // DOMContentLoaded fallback (the enhancer registry in the deferred app.js is not yet
+            // defined then), by which point the deferred jslibs (d3/Plot) have executed, so the
+            // cells still see `window.d3` / `Plot`.
+            let qmd_js_inline = if !bare && has_js_cells(p.body) {
+                format!("\n<script>{TALIESIN_JS}</script>")
+            } else {
+                String::new()
+            };
+            let framework_scripts = format!(
+                "<script src=\"{}\" defer></script>{qmd_js_inline}{mermaid}",
+                a.app_js
+            );
             (style_block, katex_block, js_head_html, framework_scripts)
         }
     };
@@ -593,6 +609,75 @@ mod tests {
 
     // Same base.css marker literal Task 1 confirmed present (see render/tests.rs).
     const MARKER_BASE: &str = ".tali-reader-seg";
+    // A literal unique to qmd-js.js (the `{js}`-cell runtime); its presence in the page
+    // proves the runtime shipped INLINE (in External mode all other framework JS is a
+    // `<script src=...>` link, so raw runtime text in the page == an inline `<script>`).
+    const MARKER_QMDJS: &str = "qmd-js cell error:";
+
+    #[test]
+    fn external_inlines_js_cell_runtime_page_relative() {
+        let assemble = |body: &str| {
+            let ext = ExternalAssets {
+                app_css: "_assets/app.aaaa.css",
+                katex_css: "_assets/katex.bbbb.css",
+                app_js: "_assets/app.cccc.js",
+                mermaid_js: "_assets/mermaid.dddd.js",
+                jslibs_js: "_assets/jslibs.eeee.js",
+            };
+            assemble_html_page(&PageParts {
+                mode: OutputMode::Build,
+                title: "T",
+                lang: "en",
+                favicon: "",
+                theme_default: "dark",
+                theme_css: "",
+                with_site_css: true,
+                ship_katex: false,
+                extra_head: "",
+                body_class: "",
+                include_in_header: "",
+                include_before_body: "",
+                body,
+                scripts_pre: "",
+                scripts_post: "",
+                include_after_body: "",
+                assets: AssetMode::External(ext),
+            })
+        };
+        // A page WITH a `{js}` cell: the runtime ships inline so `new AsyncFunction`'s
+        // `import()` anchors to the page (not `/_assets/`), yet app.js + jslibs stay external.
+        let js_html = assemble(
+            "<main id=\"tali-main\"><script type=\"application/qmd-js\">1</script></main>",
+        );
+        assert!(
+            js_html.contains(MARKER_QMDJS),
+            "{{js}}-cell runtime must be inlined on a {{js}} page in External mode"
+        );
+        // The inline runtime is a bare `<script>` (no `src`, no `defer`): the whole
+        // `<script>{TALIESIN_JS}</script>` block is present verbatim.
+        assert!(
+            js_html.contains(&format!("<script>{TALIESIN_JS}</script>")),
+            "the runtime must be a bare inline <script>, not src/defer"
+        );
+        // The external, deferred app.js (the enhancers) is STILL linked alongside it.
+        assert!(
+            js_html.contains("<script src=\"_assets/app.cccc.js\" defer></script>"),
+            "external app.js must still be linked"
+        );
+        // The heavy d3/Plot libs stay externalized + deferred (they do no relative import()).
+        assert!(js_html.contains("src=\"_assets/jslibs.eeee.js\" defer"));
+
+        // A page WITHOUT `{js}` cells does NOT inline the runtime (but still links app.js).
+        let prose_html = assemble("<main id=\"tali-main\"><p>prose only</p></main>");
+        assert!(
+            !prose_html.contains(MARKER_QMDJS),
+            "no {{js}}-cell runtime on a {{js}}-free page"
+        );
+        assert!(
+            prose_html.contains("<script src=\"_assets/app.cccc.js\" defer></script>"),
+            "app.js is always linked"
+        );
+    }
 
     #[test]
     fn external_assets_link_instead_of_inlining() {

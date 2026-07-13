@@ -3511,6 +3511,15 @@ fn core_enhance_js_has_our_scripts_not_the_big_libs() {
         "mermaid lib leaked into core"
     );
     assert!(!js.contains("d3js.org"), "d3 leaked into core");
+    // The `{js}`-cell runtime must NOT be bundled into app.js either: it runs cells via
+    // `new AsyncFunction`, whose `import()` resolves against the calling script, so folding
+    // it into the shared `/_assets/app.js` would break a cell's page-relative
+    // `import("./helper.js")`. It stays inline on the page instead (page.rs `qmd_js_inline`).
+    // `"qmd-js cell error:"` is a literal unique to qmd-js.js.
+    assert!(
+        !js.contains("qmd-js cell error:"),
+        "the {{js}}-cell runtime must stay inline, not in the shared app.js"
+    );
 }
 
 #[test]
