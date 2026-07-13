@@ -288,7 +288,14 @@ pub(crate) fn cmd_publish(args: &[String]) -> ExitCode {
         .status();
     match status {
         Ok(s) if s.success() => {
-            println!("published: https://{project}.pages.dev");
+            // In `--format json` the diagnostics own stdout; keep the human "published" line
+            // on stderr so a `publish … --format json | jq` stream stays pure JSON.
+            let published = format!("published: https://{project}.pages.dev");
+            if json {
+                log::info(&published);
+            } else {
+                println!("{published}");
+            }
             ExitCode::SUCCESS
         }
         Ok(s) => {
