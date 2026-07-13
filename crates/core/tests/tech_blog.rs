@@ -721,13 +721,19 @@ fn seo_and_llm_artifacts_are_generated_for_the_blog() {
         full.len()
     );
 
-    // JSON-LD in the rendered pages.
+    // JSON-LD in the rendered pages. `em-algorithm` declares a `bibliography:`, so it is a
+    // cited/scholarly document and upgrades from `BlogPosting` to `ScholarlyArticle`
+    // (author-free — no `author:` is set on any tech-blog post).
     let post = site
         .render_page("posts/em-algorithm/index.tmd")
         .expect("post renders");
     assert!(
-        post.contains(r#""@type":"BlogPosting""#),
-        "BlogPosting on a post"
+        post.contains(r#""@type":"ScholarlyArticle""#),
+        "a bibliography-bearing post is a ScholarlyArticle"
+    );
+    assert!(
+        !post.contains(r#""@type":"BlogPosting""#),
+        "the scholarly post must not also carry BlogPosting"
     );
     let home = site.render_page("index.tmd").expect("home renders");
     assert!(

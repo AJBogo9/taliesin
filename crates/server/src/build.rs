@@ -348,6 +348,51 @@ pub(crate) fn build_json(path: &Path) -> String {
     }
 }
 
+/// The citation keys a page actually cites, scanned from its source: every `@key` inside a
+/// `[ … ]` span (the Pandoc bracketed-citation form), deduped in first-seen order. Bracketed
+/// only, so a narrative `@fig-x` cross-reference or a `@decorator` in a code cell is never
+/// mistaken for a citation; a key that is itself a cross-reference anchor is excluded too.
+fn cited_keys(src: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let bytes = src.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'['
+            && let Some(rel_close) = src[i + 1..].find(']')
+        {
+            let span = &src[i + 1..i + 1 + rel_close];
+            let sb = span.as_bytes();
+            let mut j = 0;
+            while j < sb.len() {
+                if sb[j] == b'@' {
+                    let start = j + 1;
+                    let mut k = start;
+                    while k < sb.len()
+                        && (sb[k].is_ascii_alphanumeric()
+                            || matches!(sb[k], b'_' | b':' | b'.' | b'-' | b'/'))
+                    {
+                        k += 1;
+                    }
+                    let key = span[start..k].trim_end_matches(['.', ':', '-']);
+                    if !key.is_empty()
+                        && !taliesin_core::cite::is_xref_anchor(key)
+                        && !out.iter().any(|k| k == key)
+                    {
+                        out.push(key.to_string());
+                    }
+                    j = k;
+                } else {
+                    j += 1;
+                }
+            }
+            i += 1 + rel_close + 1;
+            continue;
+        }
+        i += 1;
+    }
+    out
+}
+
 /// The located "cell error" message for a crashed cell output — one string shape shared by
 /// the single-doc and site build paths (and their structured-diagnostic mirror).
 fn cell_error_message(page_label: &str, b: &taliesin_core::Block) -> String {
@@ -1381,6 +1426,30 @@ async fn build_site_async(
         }
         if let Some(x) = site.llms_full_txt() {
             emit("llms-full.txt", x);
+        }
+
+        // Per-page cited-references sidecar (reader-side AI/crawler legibility): the citation
+        // keys a page actually cites, as `<page>.citations.json`, so a machine can read a
+        // page's references without parsing its prose. Written via `emit` so the stale-sweep
+        // keeps it; skips pages that cite nothing.
+        for page in &site.pages {
+            if page.url == "404.html" {
+                continue;
+            }
+            let Ok(src) = std::fs::read_to_string(&page.input) else {
+                continue;
+            };
+            let keys = cited_keys(&src);
+            if keys.is_empty() {
+                continue;
+            }
+            if let Some(stem) = page.url.strip_suffix(".html") {
+                let body = serde_json::json!({ "page": page.url, "cited": keys });
+                emit(
+                    &format!("{stem}.citations.json"),
+                    serde_json::to_string_pretty(&body).unwrap_or_default(),
+                );
+            }
         }
 
         // OG social cards: one branded 1200x630 PNG per content page (og:image points

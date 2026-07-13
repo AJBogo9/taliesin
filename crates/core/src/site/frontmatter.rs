@@ -21,6 +21,10 @@ pub(crate) struct FrontInfo {
     pub(crate) page_layout: Option<String>,
     /// `draft: true` — excluded from a website build (output, nav, listings).
     pub(crate) draft: bool,
+    /// Whether the page declares a `bibliography:`, i.e. it is a cited/scholarly document.
+    /// Drives the `ScholarlyArticle` vs `BlogPosting` JSON-LD choice (author-free, so a
+    /// research post with no `author:` still upgrades).
+    pub(crate) has_bibliography: bool,
 }
 
 /// Parse a page's `---` front-matter block (YAML) into the fields discovery
@@ -54,6 +58,7 @@ pub(crate) fn parse_front_matter(
         hero: parse_hero(val.get("hero")),
         page_layout: scalar(val.get("page-layout")),
         draft: bool_field(&val, "draft", false, label, warnings),
+        has_bibliography: val.get("bibliography").is_some(),
     }
 }
 

@@ -64,6 +64,9 @@ pub struct Page {
     pub hero: Option<HeroSpec>,
     /// `page-layout:` (`full` widens the content column; default reading width).
     pub page_layout: Option<String>,
+    /// Whether the page declares a `bibliography:` (a cited/scholarly document). Drives the
+    /// `ScholarlyArticle` vs `BlogPosting` JSON-LD choice.
+    pub has_bibliography: bool,
 }
 
 /// An `about:` front-matter block: a profile header (image + name + links). The

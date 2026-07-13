@@ -426,6 +426,7 @@ mod tests {
                 about: None,
                 hero: None,
                 page_layout: None,
+                has_bibliography: false,
             }
         }
         let blog = page_fixture("blog.tmd", "blog.html");

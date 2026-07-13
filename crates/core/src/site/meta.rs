@@ -143,9 +143,17 @@ pub(super) fn jsonld_head(site: &Site, page: &Page) -> String {
         .unwrap_or("");
     let data: Option<Value> = if page.date.is_some() {
         let url = site.abs_page_url(page).unwrap_or_default();
+        // A dated post that declares a `bibliography:` is a cited/scholarly document, so it
+        // gets `ScholarlyArticle` (richer for research crawlers + LLMs) rather than a plain
+        // `BlogPosting`. Author-free, so a research post with no `author:` still upgrades.
+        let kind = if page.has_bibliography {
+            "ScholarlyArticle"
+        } else {
+            "BlogPosting"
+        };
         let mut bp = json!({
             "@context": "https://schema.org",
-            "@type": "BlogPosting",
+            "@type": kind,
             "headline": page.title.as_deref().unwrap_or(""),
             "datePublished": page.date.as_deref().unwrap_or(""),
             "dateModified": page.date.as_deref().unwrap_or(""),
@@ -230,6 +238,37 @@ mod jsonld_tests {
         );
         assert!(html.contains(r#""headline":"My Post""#));
         assert!(html.contains(r#""datePublished":"2026-05-15""#));
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A dated post that declares a `bibliography:` is scholarly, so it upgrades to
+    /// `ScholarlyArticle` (author-free — no `author:` needed).
+    #[test]
+    fn cited_post_emits_scholarly_article() {
+        let root = write_site(
+            "jsonldsci",
+            &[
+                ("_site.yml", "title: Blog\nurl: https://ex.com\n"),
+                (
+                    "references.bib",
+                    "@book{k,\n title={T},\n author={A},\n year={2020}\n}\n",
+                ),
+                (
+                    "posts/p/index.tmd",
+                    "---\ntitle: A Study\ndate: 2026-04-14\nbibliography: references.bib\n---\n\nSee [@k].\n\n# References\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("posts/p/index.tmd").unwrap();
+        assert!(
+            html.contains(r#""@type":"ScholarlyArticle""#),
+            "a bibliography-bearing dated post is a ScholarlyArticle, not a BlogPosting"
+        );
+        assert!(
+            !html.contains(r#""@type":"BlogPosting""#),
+            "it must not also carry BlogPosting"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 
