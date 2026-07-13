@@ -1472,6 +1472,51 @@ fn deck_explicit_slide_id_is_kept_verbatim_not_slugified() {
 }
 
 #[test]
+fn editing_a_post_pause_block_keeps_its_fragment_in_the_update() {
+    use crate::{BlockOp, diff_blocks};
+    // B3-14: a within-slide edit of a post-`. . .` block must ship slide-transformed html,
+    // or the `.fragment` class is stripped and the block becomes permanently visible. The
+    // live deck diff runs on `deck_slide_blocks` (the projection), not the raw block list.
+    let before =
+        render_document("---\nformat: deck\n---\n\n## S\n\nIntro.\n\n. . .\n\nAfter the pause.\n");
+    let after = render_document(
+        "---\nformat: deck\n---\n\n## S\n\nIntro.\n\n. . .\n\nAfter the pause, edited.\n",
+    );
+
+    // The RAW diff strips the fragment — this is the bug the projection fixes.
+    let raw = diff_blocks(&before.blocks, &after.blocks);
+    let raw_update = raw
+        .iter()
+        .find_map(|op| match op {
+            BlockOp::Update { html, .. } => Some(html.clone()),
+            _ => None,
+        })
+        .expect("editing the post-pause block yields an Update");
+    assert!(
+        !raw_update.contains("class=\"fragment\""),
+        "raw update already had .fragment, test premise stale: {raw_update}"
+    );
+
+    // The slide-transformed projection keeps it.
+    let ops = diff_blocks(
+        &deck_slide_blocks(&before.blocks),
+        &deck_slide_blocks(&after.blocks),
+    );
+    let update = ops
+        .iter()
+        .find_map(|op| match op {
+            BlockOp::Update { html, .. } => Some(html.clone()),
+            _ => None,
+        })
+        .expect("projection diff yields an Update for the edited post-pause block");
+    assert!(
+        update.contains("class=\"fragment\""),
+        "projection Update must carry .fragment so the block stays a step: {update}"
+    );
+    assert!(update.contains("After the pause, edited."), "got: {update}");
+}
+
+#[test]
 fn code_line_numbers_wraps_lines_for_stepping() {
     let page = render_html_page(
         "---\nformat: deck\n---\n\n## S\n\n```{.python code-line-numbers=\"1|2\"}\na = 1\nb = 2\n```\n",

@@ -847,6 +847,50 @@ fn is_slide_heading(html: &str) -> bool {
     h.starts_with("<h1") || h.starts_with("<h2")
 }
 
+/// A `. . .` pause paragraph (mirrors `deck.rs`'s `is_pause`): a `<p>` whose only text
+/// content is the three-dot marker. Inserting/removing one regroups the following blocks
+/// into `.fragment` steps, so it restructures a deck the same way a heading does.
+fn is_pause_paragraph(html: &str) -> bool {
+    let h = html.trim_end();
+    h.starts_with("<p")
+        && h.ends_with("</p>")
+        && h.find('>')
+            .is_some_and(|open| h[open + 1..h.len() - "</p>".len()].trim() == ". . .")
+}
+
+/// Whether inserting or removing a rendered block restructures a deck's slides: a
+/// slide-starting heading (`<h1>`/`<h2>`, a `<section>` boundary), a `---` thematic
+/// break (`<hr .../>`, which splits one slide into two), or a `. . .` pause paragraph.
+/// All three are consumed by the slide model in `deck.rs` and never emitted as content,
+/// so the flat block-swap can't apply them — the deck must fully re-mount.
+fn is_slide_structural(html: &str) -> bool {
+    let h = html.trim_start();
+    h.starts_with("<h1") || h.starts_with("<h2") || h.starts_with("<hr") || is_pause_paragraph(h)
+}
+
+/// Whether a live-edit block op restructures a deck's slides (so it must fully re-mount
+/// rather than apply incrementally). An Insert/Remove of a slide boundary
+/// (heading / `---` / `. . .`) adds, removes, or splits a slide; an Update that turns a
+/// block into (or out of) a slide heading re-slugs its `<section>` id — which lives on
+/// the wrapper, not the swapped-in `<h2>` — so `#hash`/`@ref` to the new title would
+/// otherwise resolve against the stale slug. `old_blocks` resolves a Remove/Update
+/// target to its pre-edit html (looked up before `d.blocks` is replaced).
+fn deck_op_is_structural(op: &BlockOp, old_blocks: &[Block]) -> bool {
+    match op {
+        BlockOp::Insert { html, .. } => is_slide_structural(html),
+        BlockOp::Remove { target_id } => old_blocks
+            .iter()
+            .any(|b| &b.id == target_id && is_slide_structural(&b.html)),
+        BlockOp::Update { target_id, html } => {
+            is_slide_heading(html)
+                || old_blocks
+                    .iter()
+                    .any(|b| &b.id == target_id && is_slide_heading(&b.html))
+        }
+        BlockOp::SetMeta { .. } => false,
+    }
+}
+
 // --- messages -----------------------------------------------------------
 
 fn full_render_json(d: &DocState) -> String {
@@ -1189,23 +1233,31 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
     let ops = {
         let mut d = app.doc.lock();
         let recovered = std::mem::take(&mut d.errored);
-        let ops = taliesin_core::diff_blocks(&d.blocks, &blocks);
-        // A deck re-mounts fully only when an insert/remove touches a slide HEADING
-        // (add / remove a slide in the source): its `<section>`-grouped slides can't
-        // be restructured by flat block ops. Content edits within a slide (inserting a
-        // paragraph, re-titling, editing text) stay incremental. Computed before
-        // `d.blocks` is replaced, so a Remove can look up the old block's html.
+        // Detect a slide-restructuring edit on the RAW block diff: a `---`/`. . .` insert
+        // is dropped from the slide-transformed projection below, so the projection can't
+        // see it. A deck re-mounts fully when an insert/remove touches a slide boundary
+        // (heading / `---` / `. . .`) or an update retitles a slide heading — its
+        // `<section>`-grouped slides can't be restructured by flat block ops. Other
+        // within-slide edits stay incremental. Computed before `d.blocks` is replaced, so
+        // a Remove/Update can look up the old block's html.
+        let raw_ops = taliesin_core::diff_blocks(&d.blocks, &blocks);
         let deck_structural = matches!(doc.format, DocFormat::Reveal)
-            && ops.iter().any(|op| match op {
-                BlockOp::Insert { html, .. } => is_slide_heading(html),
-                BlockOp::Remove { target_id } => d
-                    .blocks
-                    .iter()
-                    .any(|b| &b.id == target_id && is_slide_heading(&b.html)),
-                // A content edit or a pure position-metadata shift never restructures
-                // slides (no <section> added or removed).
-                BlockOp::Update { .. } | BlockOp::SetMeta { .. } => false,
-            });
+            && raw_ops
+                .iter()
+                .any(|op| deck_op_is_structural(op, &d.blocks));
+        // The ops the client applies incrementally: for a deck, diff the slide-transformed
+        // projection (pause markers dropped, post-pause blocks carry `.fragment`) so a
+        // within-slide text edit of a post-pause block ships the transformed html rather
+        // than raw html that would strip its `.fragment`. A structural change re-mounts
+        // (full_render), so these ops are unused in that case.
+        let ops = if matches!(doc.format, DocFormat::Reveal) {
+            taliesin_core::diff_blocks(
+                &taliesin_core::deck_slide_blocks(&d.blocks),
+                &taliesin_core::deck_slide_blocks(&blocks),
+            )
+        } else {
+            raw_ops
+        };
         // A deck's title slide is built from the front-matter title/subtitle (in
         // `slides_html`), *outside* `doc.blocks`, so retitling produces no block op and
         // the diff is empty. Force a full re-mount for a deck when either changes so the
@@ -1232,7 +1284,11 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         // empty) yet still needs a bump — otherwise its full_render carries an unchanged
         // gen and the client's reconnect-skip (same gen ⇒ byte-identical) would wrongly
         // suppress the re-mount that applies the new title slide.
-        if !ops.is_empty() || deck_meta_changed {
+        // `deck_structural` is checked too: a `---`/`. . .` insert re-mounts but produces
+        // an empty slide-transformed `ops` (the marker/break is dropped from the
+        // projection), so without this the gen wouldn't bump and the re-mount's full_render
+        // would be suppressed as a same-gen no-op.
+        if !ops.is_empty() || deck_meta_changed || deck_structural {
             d.generation = d.generation.wrapping_add(1);
         }
         d.blocks = blocks;
@@ -1328,6 +1384,65 @@ mod protocol_contract {
     //! in serve_site.rs. This guards serve.rs's own `*_json` against drift.
     use super::*;
     use crate::testutil::parse;
+
+    #[test]
+    fn deck_structural_predicate_covers_heading_hr_pause_and_retitle() {
+        // B3-13/B3-16: a deck re-mounts fully when an edit restructures its <section>s.
+        // A slide boundary is not only a heading: a `---` (rendered `<hr .../>`) splits a
+        // slide, and a `. . .` pause paragraph regroups the following blocks into fragments.
+        assert!(is_slide_structural("<h2 data-block-id=\"a\">S</h2>"));
+        assert!(is_slide_structural("<hr data-block-id=\"b\" />"));
+        assert!(is_slide_structural("<p data-block-id=\"c\">. . .</p>"));
+        assert!(!is_slide_structural("<p data-block-id=\"d\">Body.</p>"));
+
+        let blk = |id: &str, html: &str| Block {
+            id: id.into(),
+            sourcepos: "1:1-1:3".into(),
+            source_file: None,
+            html: html.into(),
+            cell: None,
+        };
+        let old = vec![blk("h_old", "<h2 data-block-id=\"h_old\">Old Title</h2>")];
+        let ins = |html: &str| BlockOp::Insert {
+            after_id: None,
+            html: html.into(),
+        };
+        // Inserting a `---` / `. . .` / heading restructures; a plain paragraph doesn't.
+        assert!(deck_op_is_structural(&ins("<hr />"), &old));
+        assert!(deck_op_is_structural(&ins("<p>. . .</p>"), &old));
+        assert!(!deck_op_is_structural(&ins("<p>plain</p>"), &old));
+        // Retitling a slide (Update of a heading block) re-slugs its <section> id, whose
+        // anchor lives on the wrapper not the swapped-in <h2> — so it must re-mount.
+        assert!(deck_op_is_structural(
+            &BlockOp::Update {
+                target_id: "h_old".into(),
+                html: "<h2 data-block-id=\"h_new\">New Title</h2>".into(),
+            },
+            &old,
+        ));
+        // A within-slide content edit (Update of a paragraph) stays incremental.
+        let old_p = vec![blk("p1", "<p data-block-id=\"p1\">Old.</p>")];
+        assert!(!deck_op_is_structural(
+            &BlockOp::Update {
+                target_id: "p1".into(),
+                html: "<p data-block-id=\"p2\">New.</p>".into(),
+            },
+            &old_p,
+        ));
+        // Removing a slide heading restructures; removing a paragraph doesn't.
+        assert!(deck_op_is_structural(
+            &BlockOp::Remove {
+                target_id: "h_old".into()
+            },
+            &old
+        ));
+        assert!(!deck_op_is_structural(
+            &BlockOp::Remove {
+                target_id: "p1".into()
+            },
+            &old_p
+        ));
+    }
 
     #[test]
     fn relevant_path_watches_tmd_edits() {

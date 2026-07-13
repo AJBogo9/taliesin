@@ -47,7 +47,7 @@ pub use frontmatter::closest;
 pub use render::{
     AssetMode, Block, DeckParts, DocFormat, ExternalAssets, OutputMode, PageParts, RenderedDoc,
     SEARCH_JS, TOC_SPY_JS, assemble_deck_page, assemble_html_page, code_scripts, core_enhance_js,
-    deck_client_script, escape_attr, favicon_link, has_mermaid, html_escape,
+    deck_client_script, deck_slide_blocks, escape_attr, favicon_link, has_mermaid, html_escape,
     html_page_from_doc_in_site_external, js_cell_libs_js, katex_css, mermaid_bundle_js,
     render_doc_to_page, render_document, render_document_with_includes,
     render_document_with_includes_scoped, render_html_page, render_html_page_with_includes,

@@ -57,7 +57,7 @@ mod cell_numbered;
 pub(crate) use cell_numbered::numbered_caption;
 use cell_numbered::{emit_code_listing, emit_js_cell, emit_js_figure};
 mod deck;
-pub use deck::{DeckParts, assemble_deck_page, deck_client_script, slides_html};
+pub use deck::{DeckParts, assemble_deck_page, deck_client_script, deck_slide_blocks, slides_html};
 // `deck_theme_head` is used inside `deck.rs` (the deck builder) and by the unit
 // tests; it's not part of the public API, so it's only pulled into scope here for
 // the tests rather than re-exported.

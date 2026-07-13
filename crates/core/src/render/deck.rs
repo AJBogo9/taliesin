@@ -230,6 +230,41 @@ pub fn slides_html(title: Option<&str>, subtitle: Option<&str>, blocks: &[Block]
     out
 }
 
+/// Project a raw block list through the same per-slide transform the deck DOM sees:
+/// drop `. . .` pause markers and `---` breaks (they're consumed by the slide model,
+/// never emitted as DOM blocks), and give every block after a pause (within its slide)
+/// the `.fragment` class. The live-deck block diff runs on this projection so an
+/// incremental Update ships the slide-transformed html — a raw Update would strip a
+/// post-pause block's `.fragment`, making it permanently visible. Ids and sourcepos are
+/// preserved, so the diff still anchors on unchanged blocks. (Bg-attr hoisting is left
+/// out: it only affects a slide's lead heading, and a heading edit re-mounts, so it
+/// never reaches the client as an incremental Update.)
+pub fn deck_slide_blocks(blocks: &[Block]) -> Vec<Block> {
+    let mut out = Vec::with_capacity(blocks.len());
+    let mut paused = false;
+    for b in blocks {
+        // A `---` break or a slide-level heading starts a new slide (pause resets).
+        if is_slide_break(&b.html) || block_heading_level(&b.html).is_some_and(|l| l <= SLIDE_LEVEL)
+        {
+            paused = false;
+        }
+        if is_slide_break(&b.html) {
+            continue; // the `<hr>` delimiter is not a DOM block
+        }
+        if is_pause(&b.html) {
+            paused = true;
+            continue; // the pause marker is dropped from the DOM
+        }
+        let html = if paused {
+            add_fragment_class(&b.html)
+        } else {
+            b.html.clone()
+        };
+        out.push(Block { html, ..b.clone() });
+    }
+    out
+}
+
 /// Split blocks into flat slides at slide-level headings and `---` breaks,
 /// then nest h2 slides under any preceding h1 as a vertical stack. `has_title`
 /// reserves the injected `id="title-slide"` so a slide literally titled "Title
