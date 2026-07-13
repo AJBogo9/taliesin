@@ -20,7 +20,7 @@ use std::process::ExitCode;
 /// fields, so its output is byte-identical to before. (Keys serialize alphabetically:
 /// `format_json` routes through `serde_json::json!`, whose object is key-sorted.)
 #[derive(Debug, Clone, serde::Serialize)]
-struct Diagnostic {
+pub(crate) struct Diagnostic {
     code: &'static str,
     severity: &'static str,
     file: String,
@@ -32,14 +32,15 @@ struct Diagnostic {
 
 /// A structured, applicable fix lifted from an inline "did you mean `X`?" hint.
 #[derive(Debug, Clone, serde::Serialize)]
-struct Suggestion {
+pub(crate) struct Suggestion {
     replacement: String,
 }
 
 impl Diagnostic {
     /// Build a diagnostic, classifying its `code`/`severity` and lifting any inline
-    /// "did you mean" hint into a structured `suggestion` from the message.
-    fn new(file: String, line: Option<u32>, message: String) -> Self {
+    /// "did you mean" hint into a structured `suggestion` from the message. Shared with the
+    /// `build`/`publish` structured-error path.
+    pub(crate) fn new(file: String, line: Option<u32>, message: String) -> Self {
         use taliesin_core::diagnostics::codes;
         let (code, severity) = codes::classify(&message);
         let suggestion =
@@ -55,12 +56,21 @@ impl Diagnostic {
     }
 }
 
-fn diag_from(w: &taliesin_core::render::Warning, fallback_file: &str) -> Diagnostic {
+pub(crate) fn diag_from(w: &taliesin_core::render::Warning, fallback_file: &str) -> Diagnostic {
     Diagnostic::new(
         w.file.clone().unwrap_or_else(|| fallback_file.to_string()),
         w.line,
         w.message.clone(),
     )
+}
+
+/// Serialize just the diagnostics as `{ "diagnostics": [...] }` — the shape `build`/`publish`
+/// emit under `--format json` (no `environment`; a build already runs kernels, and the
+/// agent consuming a failing build wants the problems, not the interpreter probe). Reuses
+/// the exact per-diagnostic shape as `check`, so the two channels can't drift.
+pub(crate) fn diagnostics_json(diags: &[Diagnostic]) -> String {
+    let payload = serde_json::json!({ "diagnostics": diags });
+    serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{\"diagnostics\":[]}".to_string())
 }
 
 /// Render `path` (a file or a site directory) in memory and return every located

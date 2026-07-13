@@ -147,7 +147,9 @@ fn usage() {
     println!("                             to open on a phone; --open launches a browser;");
     println!("                             --no-exec previews untrusted docs as source,");
     println!("                             never running their code cells)");
-    println!("  build  <file.tmd | dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>]");
+    println!(
+        "  build  <file.tmd | dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>] [--format json]"
+    );
     println!("                             render a self-contained HTML file (a dir builds the");
     println!("                             whole SITE to _site/); default <name>.html beside");
     println!("                             the source; --out <dir> writes a portable folder;");
@@ -156,7 +158,9 @@ fn usage() {
     println!(
         "                             HTML; --jobs <N> caps parallel page renders (site build)"
     );
-    println!("  publish <dir> [--project-name <name>] [--out <dir>] [--strict] [--dry-run]");
+    println!(
+        "  publish <dir> [--project-name <name>] [--out <dir>] [--strict] [--dry-run] [--format json]"
+    );
     println!("                             build a site/book + deploy it to Cloudflare Pages");
     println!("                             behind a shared passcode (Wrangler direct upload);");
     println!("                             --dry-run builds + gates + prints the deploy command");
@@ -207,7 +211,7 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin preview index.tmd --open\n"
         }
         "build" => {
-            "taliesin build <file.tmd | dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>]\n\
+            "taliesin build <file.tmd | dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>] [--format json]\n\
              \n\
              Render a self-contained HTML file. A directory builds the whole SITE to\n\
              _site/. Default output is <name>.html beside the source.\n\
@@ -218,6 +222,7 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 --bare       single-doc only: zero-<script>, CSS-only-theme HTML\n\
              \x20 --jobs <N>   max parallel pages (default: auto, memory- and core-capped;\n\
              \x20              --jobs 1 forces sequential; --jobs 0 same as auto)\n\
+             \x20 --format json  emit {diagnostics:[…]} to stdout (agent/CI) instead of only the log\n\
              \n\
              Example:\n\
              \x20 taliesin build post.tmd --strict\n\
@@ -341,7 +346,7 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin init my-site\n"
         }
         "publish" => {
-            "taliesin publish <dir> [--project-name <name>] [--out <dir>] [--strict] [--dry-run]\n\
+            "taliesin publish <dir> [--project-name <name>] [--out <dir>] [--strict] [--dry-run] [--format json]\n\
              \n\
              Build a site or book and deploy it to Cloudflare Pages (Wrangler direct\n\
              upload) behind a shared passcode. One-way: it never writes to your source.\n\
@@ -353,6 +358,7 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 --strict               fail before deploying if the build has warnings\n\
              \x20 --dry-run              build + inject the gate, print the deploy command,\n\
              \x20                        do not deploy\n\
+             \x20 --format json         emit {diagnostics:[…]} from the build to stdout (agent/CI)\n\
              \n\
              One-time setup (per repo):\n\
              \x20 export CLOUDFLARE_API_TOKEN=...   (also CLOUDFLARE_ACCOUNT_ID)\n\

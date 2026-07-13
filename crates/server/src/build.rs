@@ -55,11 +55,14 @@ struct BuildArgs<'a> {
     strict: bool,
     bare: bool,
     jobs: Option<usize>,
+    /// `--format json` emits the build's static-lint diagnostics as `{diagnostics:[...]}`
+    /// to stdout (for an agent/CI) instead of only the human log. Default `"human"`.
+    format: &'a str,
 }
 
 /// Every long flag `build` accepts (drives the unknown-flag did-you-mean). `-j` is the
 /// only short alias; it's not in this set (suggestions are between long flags).
-const BUILD_FLAGS: &[&str] = &["--out", "--dir", "--jobs", "--strict", "--bare"];
+const BUILD_FLAGS: &[&str] = &["--out", "--dir", "--jobs", "--strict", "--bare", "--format"];
 
 /// Parse `build` argv (`args[2..]`; `args[0..2]` are the binary + "build"). Flags may
 /// appear anywhere; the first positional is the source, the optional second is `[out.html]`.
@@ -71,9 +74,20 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
     let mut strict = false;
     let mut bare = false;
     let mut jobs_result: Result<Option<usize>, String> = Ok(None);
+    let mut format: &str = "human";
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
         match a.as_str() {
+            // `--format human|json`: mirror `check`'s flag exactly (value validated below).
+            "--format" => match it.next().map(|s| s.as_str()) {
+                Some(v) if v == "human" || v == "json" => format = v,
+                other => {
+                    return Err(format!(
+                        "error: --format expects human or json (got {})",
+                        other.unwrap_or("nothing")
+                    ));
+                }
+            },
             // `--out <dir>` needs a real value. A missing one (end of args, or a flag
             // follows) is a hard error rather than silently leaving out_dir None and
             // writing `<stem>.html` to an unexpected place.
@@ -117,6 +131,7 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
         strict,
         bare,
         jobs,
+        format,
     })
 }
 
@@ -135,6 +150,7 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
         strict,
         bare,
         jobs,
+        format,
     } = match parse_build_args(args) {
         Ok(p) => p,
         Err(msg) => {
@@ -142,6 +158,7 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    let json = format == "json";
     // A directory is a multi-page site project (`_site.yml` + `.tmd` pages);
     // a single `.tmd` keeps the original self-contained-page behaviour.
     if Path::new(path).is_dir() {
@@ -152,7 +169,7 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
             );
             return ExitCode::FAILURE;
         }
-        return build_site(Path::new(path), out_dir, strict, jobs);
+        return build_site(Path::new(path), out_dir, strict, jobs, json);
     }
     let mode = if bare {
         taliesin_core::OutputMode::Bare
@@ -174,8 +191,12 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     // `block_on` propagates a panic from the directly-awaited future, so the catch here
     // sees it. Outer `Result` = panic; inner = runtime-start I/O failure.
     let executed = crate::serve::guarded(|| build_page_executing(&src, base, stem, mode));
-    let (html, problems) = match executed {
-        Ok(Ok(BuildResult::Page { html, problems })) => (html, problems),
+    let (html, problems, diagnostics) = match executed {
+        Ok(Ok(BuildResult::Page {
+            html,
+            problems,
+            diagnostics,
+        })) => (html, problems, diagnostics),
         // `--bare` refused (e.g. a slide deck): the message is already user-facing.
         Ok(Ok(BuildResult::Refused(msg))) => {
             log::error(&msg);
@@ -195,6 +216,13 @@ pub(crate) fn cmd_build(args: &[String]) -> ExitCode {
     // or any located warning fails the build instead of shipping a broken page with
     // exit 0. Without `--strict` the warnings were already logged; we still write.
     let strict_fail = strict && problems > 0;
+
+    // Structured diagnostics to stdout (the human log stays on stderr, so the JSON stream
+    // pipes cleanly). The page is still written — `--format json` only changes the
+    // *reporting* channel, not what a build produces.
+    if json {
+        println!("{}", crate::check::diagnostics_json(&diagnostics));
+    }
 
     if let Some(dir) = out_dir {
         let code = build_dir(&html, base, Path::new(dir), started);
@@ -281,19 +309,44 @@ fn report_cell_errors(blocks: &[taliesin_core::Block], page_label: &str) -> usiz
     for b in blocks {
         if is_cell_error_output(&b.html) {
             n += 1;
-            let where_ = b
-                .source_file
-                .as_deref()
-                .map(|f| format!("{f} "))
-                .unwrap_or_default();
-            log::warn(&format!(
-                "cell error in {page_label} ({where_}@ {}): code cell raised an uncaught \
-                 exception; its traceback is baked into the output",
-                b.sourcepos
-            ));
+            log::warn(&cell_error_message(page_label, b));
         }
     }
     n
+}
+
+/// The located "cell error" message for a crashed cell output — one string shape shared by
+/// the single-doc and site build paths (and their structured-diagnostic mirror).
+fn cell_error_message(page_label: &str, b: &taliesin_core::Block) -> String {
+    let where_ = b
+        .source_file
+        .as_deref()
+        .map(|f| format!("{f} "))
+        .unwrap_or_default();
+    format!(
+        "cell error in {page_label} ({where_}@ {}): code cell raised an uncaught \
+         exception; its traceback is baked into the output",
+        b.sourcepos
+    )
+}
+
+/// Structured "cell error" diagnostics (build-only additions over `check`'s superset), in
+/// block order, for `--format json`.
+fn cell_error_diagnostics(
+    blocks: &[taliesin_core::Block],
+    page_label: &str,
+) -> Vec<crate::check::Diagnostic> {
+    blocks
+        .iter()
+        .filter(|b| is_cell_error_output(&b.html))
+        .map(|b| {
+            crate::check::Diagnostic::new(
+                page_label.to_string(),
+                None,
+                cell_error_message(page_label, b),
+            )
+        })
+        .collect()
 }
 
 /// Render a single document to a self-contained HTML page, executing its code
@@ -303,7 +356,13 @@ fn report_cell_errors(blocks: &[taliesin_core::Block], page_label: &str) -> usiz
 /// Result of building a single page: the rendered HTML (+ its `--strict` problem
 /// count), or a `--bare` refusal whose message is user-facing.
 enum BuildResult {
-    Page { html: String, problems: usize },
+    Page {
+        html: String,
+        problems: usize,
+        /// The located diagnostics, structured, for `--format json`. Same set the human
+        /// log emits, in the same order.
+        diagnostics: Vec<crate::check::Diagnostic>,
+    },
     Refused(String),
 }
 
@@ -346,11 +405,19 @@ fn build_page_executing(
         // `problems` is what `--strict` fails on: located render warnings, broken
         // cross-refs, and crashed code cells — each already logged below.
         let mut problems = 0usize;
+        // The same diagnostics, structured, for `--format json` — collected in the exact
+        // order they are logged so the two channels agree.
+        let mut diagnostics: Vec<crate::check::Diagnostic> = Vec::new();
         // Malformed front-matter YAML: the live servers + `check` report this, but a
         // single-doc `build` used to skip it, so a typo'd `---` block built clean and
         // even passed `--strict`. Surface it (located) and count it toward --strict.
         if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(src) {
             log::warn(&format!("{fallback}:{line}: {message}"));
+            diagnostics.push(crate::check::Diagnostic::new(
+                fallback.to_string(),
+                Some(line),
+                message,
+            ));
             problems += 1;
         }
         let mut doc = taliesin_core::render_document_with_includes(src, base);
@@ -370,6 +437,7 @@ fn build_page_executing(
         for w in &doc.warnings {
             // Located, as `check` reports them: a `--strict` failure should name the line.
             log::warn(&locate(w, fallback));
+            diagnostics.push(crate::check::diag_from(w, fallback));
         }
         problems += doc.warnings.len();
         // `{{< embed >}}` only resolves in a SITE build, which also builds the
@@ -378,10 +446,16 @@ fn build_page_executing(
         // like the render/xref warnings) instead of failing silently or passing green.
         let embeds = taliesin_core::render::embed_targets(src);
         for target in &embeds {
-            log::warn(&format!(
+            let msg = format!(
                 "{{{{< embed {target} >}}}} won't resolve in a single-doc build (its \
                  target isn't built); build the containing directory as a site, or \
                  inline the content instead."
+            );
+            log::warn(&msg);
+            diagnostics.push(crate::check::Diagnostic::new(
+                fallback.to_string(),
+                None,
+                msg,
             ));
         }
         problems += embeds.len();
@@ -390,6 +464,7 @@ fn build_page_executing(
         let xrefs = taliesin_core::cite::validate_xrefs(&doc.blocks);
         for w in &xrefs {
             log::warn(&locate(w, fallback));
+            diagnostics.push(crate::check::diag_from(w, fallback));
         }
         problems += xrefs.len();
         // The rest of the check-superset. These ran only in `check`, so a `--strict` build
@@ -406,6 +481,7 @@ fn build_page_executing(
         );
         for w in &statics {
             log::warn(&locate(w, fallback));
+            diagnostics.push(crate::check::diag_from(w, fallback));
         }
         problems += statics.len();
         // Persistent execution cache keyed off the doc's stem, beside the source.
@@ -428,12 +504,14 @@ fn build_page_executing(
         // A crashed cell bakes its traceback into the page (exit 0 + silent stderr
         // before this); log it located and count it toward `--strict`.
         problems += report_cell_errors(&doc.blocks, fallback);
+        diagnostics.extend(cell_error_diagnostics(&doc.blocks, fallback));
         if mode == taliesin_core::OutputMode::Bare {
             warn_bare_exclusions(&doc);
         }
         BuildResult::Page {
             html: taliesin_core::render_doc_to_page(&doc, fallback, mode),
             problems,
+            diagnostics,
         }
     }))
 }
@@ -747,6 +825,8 @@ struct PageOutcome {
     /// Warn lines, in the exact order the sequential build emitted them (cell errors
     /// first, then render/cross-ref warnings), replayed by the caller in page order.
     warnings: Vec<String>,
+    /// The same findings, structured, for `--format json` — in the same order as `warnings`.
+    diagnostics: Vec<crate::check::Diagnostic>,
     problems: usize,
     kernel_unavailable: bool,
     written: bool,
@@ -766,10 +846,18 @@ async fn build_one_page(
     warm_pool: Option<std::sync::Arc<warm_pool::WarmPool>>,
 ) -> PageOutcome {
     let mut warnings = Vec::new();
+    let mut diagnostics: Vec<crate::check::Diagnostic> = Vec::new();
     let Ok(src) = std::fs::read_to_string(&page.input) else {
-        warnings.push(format!("cannot read {}", page.input.display()));
+        let msg = format!("cannot read {}", page.input.display());
+        diagnostics.push(crate::check::Diagnostic::new(
+            page.rel.clone(),
+            None,
+            msg.clone(),
+        ));
+        warnings.push(msg);
         return PageOutcome {
             warnings,
+            diagnostics,
             problems: 0,
             kernel_unavailable: false,
             written: false,
@@ -784,6 +872,11 @@ async fn build_one_page(
     if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(&src) {
         problems += 1;
         warnings.push(format!("{}:{line}: {message}", page.rel));
+        diagnostics.push(crate::check::Diagnostic::new(
+            page.rel.clone(),
+            Some(line),
+            message,
+        ));
     }
     // The check-superset, over the page's blocks *before* its cells execute (as `check`
     // does). `Scope::InSite` omits the single-doc link rule: an intra-site `[x](other.tmd)`
@@ -799,6 +892,7 @@ async fn build_one_page(
     problems += statics.len();
     for w in &statics {
         warnings.push(locate(w, &page.rel));
+        diagnostics.push(crate::check::diag_from(w, &page.rel));
     }
     let mut exec =
         exec::Executor::with_freeze(freeze::page_path(freeze_dir, &page.rel)).in_dir(base);
@@ -822,16 +916,13 @@ async fn build_one_page(
     for b in &doc.blocks {
         if is_cell_error_output(&b.html) {
             problems += 1;
-            let where_ = b
-                .source_file
-                .as_deref()
-                .map(|f| format!("{f} "))
-                .unwrap_or_default();
-            warnings.push(format!(
-                "cell error in {} ({where_}@ {}): code cell raised an uncaught \
-                 exception; its traceback is baked into the output",
-                page.rel, b.sourcepos
+            let msg = cell_error_message(&page.rel, b);
+            diagnostics.push(crate::check::Diagnostic::new(
+                page.rel.clone(),
+                None,
+                msg.clone(),
             ));
+            warnings.push(msg);
         }
     }
     // Surface render warnings *and* broken cross-refs so a broken site doesn't deploy
@@ -841,6 +932,7 @@ async fn build_one_page(
         // Located, the way `check` reports them. These carry a file + line and were being
         // flattened to `page.rel: message`, so a `--strict` failure named no line to fix.
         warnings.push(locate(w, &page.rel));
+        diagnostics.push(crate::check::diag_from(w, &page.rel));
     }
     problems += render_warnings.len();
     let dest = out.join(&page.url);
@@ -850,27 +942,43 @@ async fn build_one_page(
     let written = match std::fs::write(&dest, html) {
         Ok(()) => true,
         Err(e) => {
-            warnings.push(format!("cannot write {}: {e}", dest.display()));
+            let msg = format!("cannot write {}: {e}", dest.display());
+            diagnostics.push(crate::check::Diagnostic::new(
+                page.rel.clone(),
+                None,
+                msg.clone(),
+            ));
+            warnings.push(msg);
             false
         }
     };
     PageOutcome {
         warnings,
+        diagnostics,
         problems,
         kernel_unavailable,
         written,
     }
 }
 
-/// Run a directory (site/book) build to disk, returning whether it succeeded. Shared by
-/// `cmd_build`'s directory branch and `publish` (which needs the success signal, not just
-/// an opaque `ExitCode`, plus the freedom to keep working with the output dir afterward).
+/// The result of a directory (site/book) build: whether it succeeded, and the structured
+/// diagnostics it produced (for `--format json` on `build`/`publish`), in deterministic
+/// page order.
+pub(crate) struct SiteBuildOutcome {
+    pub ok: bool,
+    pub diagnostics: Vec<crate::check::Diagnostic>,
+}
+
+/// Run a directory (site/book) build to disk, returning whether it succeeded + its
+/// structured diagnostics. Shared by `cmd_build`'s directory branch and `publish` (which
+/// needs the success signal, not just an opaque `ExitCode`, plus the freedom to keep
+/// working with the output dir afterward).
 pub(crate) fn run_site_build(
     root: &Path,
     out_override: Option<&str>,
     strict: bool,
     jobs: Option<usize>,
-) -> bool {
+) -> SiteBuildOutcome {
     // Executing code cells needs the async kernel, so the whole site build runs on a
     // tokio runtime (mirrors the preview server's setup). A multi-thread runtime so
     // concurrent page builds (each its own kernel) actually overlap on the CPU.
@@ -880,8 +988,16 @@ pub(crate) fn run_site_build(
     {
         Ok(rt) => rt,
         Err(e) => {
-            log::error(&format!("cannot start runtime: {e}"));
-            return false;
+            let msg = format!("cannot start runtime: {e}");
+            log::error(&msg);
+            return SiteBuildOutcome {
+                ok: false,
+                diagnostics: vec![crate::check::Diagnostic::new(
+                    root.display().to_string(),
+                    None,
+                    msg,
+                )],
+            };
         }
     };
     rt.block_on(build_site_async(root, out_override, strict, jobs))
@@ -892,8 +1008,13 @@ fn build_site(
     out_override: Option<&str>,
     strict: bool,
     jobs: Option<usize>,
+    json: bool,
 ) -> ExitCode {
-    if run_site_build(root, out_override, strict, jobs) {
+    let outcome = run_site_build(root, out_override, strict, jobs);
+    if json {
+        println!("{}", crate::check::diagnostics_json(&outcome.diagnostics));
+    }
+    if outcome.ok {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
@@ -905,23 +1026,40 @@ async fn build_site_async(
     out_override: Option<&str>,
     strict: bool,
     jobs: Option<usize>,
-) -> bool {
+) -> SiteBuildOutcome {
     // Timed here rather than in `cmd_build`, so `publish` (which reaches the site build
     // through `run_site_build`) reports its build time too.
     let started = std::time::Instant::now();
     let site = taliesin_core::Site::discover(root);
+    // Structured diagnostics accumulated in deterministic order (config → pages → site-wide),
+    // for `--format json`. Mirrors the human log the build already emits.
+    let mut diagnostics: Vec<crate::check::Diagnostic> = Vec::new();
     // A malformed `_site.yml` silently degrades the whole site to defaults (no nav, no
     // title, wrong output dir): a real `--strict` problem, unlike a benign missing config.
     let mut config_problems = 0usize;
     for w in &site.warnings {
         if taliesin_core::site::is_malformed_config_warning(w) {
             config_problems += 1;
+            diagnostics.push(crate::check::Diagnostic::new(
+                "_site.yml".to_string(),
+                None,
+                w.clone(),
+            ));
         }
         log::warn(w);
     }
     if site.pages.is_empty() {
-        log::error(&format!("no .tmd pages found under {}", root.display()));
-        return false;
+        let msg = format!("no .tmd pages found under {}", root.display());
+        log::error(&msg);
+        diagnostics.push(crate::check::Diagnostic::new(
+            root.display().to_string(),
+            None,
+            msg,
+        ));
+        return SiteBuildOutcome {
+            ok: false,
+            diagnostics,
+        };
     }
     // Cross-page `@fig-`/`@eq-`/`@thm-` ref numbers are filled by `Site::discover`'s
     // render-harvest (shared with the live preview), so no separate build-time pass here.
@@ -930,8 +1068,17 @@ async fn build_site_async(
         None => root.join(site.output_dir()),
     };
     if let Err(e) = std::fs::create_dir_all(&out) {
-        log::error(&format!("cannot create {}: {e}", out.display()));
-        return false;
+        let msg = format!("cannot create {}: {e}", out.display());
+        log::error(&msg);
+        diagnostics.push(crate::check::Diagnostic::new(
+            root.display().to_string(),
+            None,
+            msg,
+        ));
+        return SiteBuildOutcome {
+            ok: false,
+            diagnostics,
+        };
     }
     let out = out.canonicalize().unwrap_or(out);
 
@@ -940,12 +1087,21 @@ async fn build_site_async(
     // first — silently zeroing the user's own assets. (Triggered by `output-dir: .`
     // or `--out <root>`.)
     if root.canonicalize().is_ok_and(|r| r == out) {
-        log::error(&format!(
+        let msg = format!(
             "output directory is the source directory ({}); refusing to build in place \
              (it would overwrite/truncate your source files). Use a different `output-dir:` or `--out <dir>`.",
             out.display()
+        );
+        log::error(&msg);
+        diagnostics.push(crate::check::Diagnostic::new(
+            root.display().to_string(),
+            None,
+            msg,
         ));
-        return false;
+        return SiteBuildOutcome {
+            ok: false,
+            diagnostics,
+        };
     }
 
     // `mounts:` are served live in `preview` but the static build doesn't wire them, so
@@ -1051,7 +1207,13 @@ async fn build_site_async(
             // a panicked page can't ship a green build with a silently dropped page.
             Err(e) => {
                 problems += 1;
-                log::error(&format!("page build task failed: {e}"));
+                let msg = format!("page build task failed: {e}");
+                log::error(&msg);
+                diagnostics.push(crate::check::Diagnostic::new(
+                    root.display().to_string(),
+                    None,
+                    msg,
+                ));
             }
         }
     }
@@ -1062,6 +1224,7 @@ async fn build_site_async(
         for w in &outcome.warnings {
             log::warn(w);
         }
+        diagnostics.extend(outcome.diagnostics);
         problems += outcome.problems;
         kernel_unavailable |= outcome.kernel_unavailable;
         if outcome.written {
@@ -1254,10 +1417,12 @@ async fn build_site_async(
     for (rel, w) in site.validate_cross_page_links() {
         problems += 1;
         log::warn(&locate(&w, &rel));
+        diagnostics.push(crate::check::diag_from(&w, &rel));
     }
     for (rel, w) in site.validate_categories() {
         problems += 1;
         log::warn(&locate(&w, &rel));
+        diagnostics.push(crate::check::diag_from(&w, &rel));
     }
 
     // Second asset pass: ship source files (`.md`/`.scss`/…) that pages actually link to.
@@ -1278,7 +1443,10 @@ async fn build_site_async(
     if strict_fail {
         warn_strict(problems);
     }
-    !strict_fail
+    SiteBuildOutcome {
+        ok: !strict_fail,
+        diagnostics,
+    }
 }
 
 /// Source-only file extensions that are build *inputs* / prose / stylesheet sources,

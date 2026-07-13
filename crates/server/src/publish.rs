@@ -26,7 +26,13 @@ const MIDDLEWARE_JS: &str = include_str!("assets/_middleware.js");
 const PRODUCTION_BRANCH: &str = "production";
 
 /// Long flags `publish` accepts (drives the unknown-flag did-you-mean).
-const PUBLISH_FLAGS: &[&str] = &["--project-name", "--out", "--strict", "--dry-run"];
+const PUBLISH_FLAGS: &[&str] = &[
+    "--project-name",
+    "--out",
+    "--strict",
+    "--dry-run",
+    "--format",
+];
 
 /// Parsed `publish` argv (pure; no I/O), so the positional/flag rules are unit-testable.
 #[derive(Debug)]
@@ -36,6 +42,8 @@ struct PublishArgs<'a> {
     out_dir: Option<&'a str>,
     strict: bool,
     dry_run: bool,
+    /// `--format json` emits the build's structured diagnostics to stdout. Default `human`.
+    format: &'a str,
 }
 
 /// Parse `publish` argv (`args[2..]`). The first positional is the project dir.
@@ -45,9 +53,19 @@ fn parse_publish_args(args: &[String]) -> Result<PublishArgs<'_>, String> {
     let mut out_dir: Option<&str> = None;
     let mut strict = false;
     let mut dry_run = false;
+    let mut format: &str = "human";
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
         match a.as_str() {
+            "--format" => match it.next().map(|s| s.as_str()) {
+                Some(v) if v == "human" || v == "json" => format = v,
+                other => {
+                    return Err(format!(
+                        "error: --format expects human or json (got {})",
+                        other.unwrap_or("nothing")
+                    ));
+                }
+            },
             "--project-name" => match it.next().map(|s| s.as_str()) {
                 Some(v) if !v.starts_with("--") => project_name = Some(v),
                 _ => {
@@ -86,6 +104,7 @@ fn parse_publish_args(args: &[String]) -> Result<PublishArgs<'_>, String> {
         out_dir,
         strict,
         dry_run,
+        format,
     })
 }
 
@@ -123,6 +142,7 @@ pub(crate) fn cmd_publish(args: &[String]) -> ExitCode {
         out_dir,
         strict,
         dry_run,
+        format,
     } = match parse_publish_args(args) {
         Ok(p) => p,
         Err(msg) => {
@@ -185,7 +205,13 @@ pub(crate) fn cmd_publish(args: &[String]) -> ExitCode {
         .unwrap_or_else(|| root.join(site.output_dir()));
 
     // Build (reuses the full site build, including its own discover + strict handling).
-    if !crate::build::run_site_build(root, out.to_str(), strict, None) {
+    let json = format == "json";
+    let outcome = crate::build::run_site_build(root, out.to_str(), strict, None);
+    if json {
+        // Structured diagnostics to stdout (human log stays on stderr).
+        println!("{}", crate::check::diagnostics_json(&outcome.diagnostics));
+    }
+    if !outcome.ok {
         return ExitCode::FAILURE;
     }
     let out = out.canonicalize().unwrap_or(out);
@@ -204,7 +230,13 @@ pub(crate) fn cmd_publish(args: &[String]) -> ExitCode {
     );
     if dry_run {
         log::info(&format!("built + gated {} (not deployed)", out.display()));
-        println!("would run (cwd {}): {cmd}", out.display());
+        // In `--format json` the diagnostics were already printed to stdout; keep the
+        // "would run" line on stderr so the JSON stream stays pure.
+        if json {
+            log::info(&format!("would run (cwd {}): {cmd}", out.display()));
+        } else {
+            println!("would run (cwd {}): {cmd}", out.display());
+        }
         return ExitCode::SUCCESS;
     }
 
