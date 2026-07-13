@@ -48,6 +48,7 @@ fn every_scaffold_passes_check_with_no_diagnostics() {
         ("post", "my-first-post", "posts/my-first-post/index.tmd"),
         ("page", "about", "about.tmd"),
         ("deck", "my-talk", "my-talk.tmd"),
+        ("paper", "my-paper", "posts/my-paper/index.tmd"),
     ] {
         let dir = tmp(kind);
         let (ok, stdout, stderr) = run(&["new", kind, slug, "--dir", dir.to_str().unwrap()]);
@@ -70,6 +71,57 @@ fn every_scaffold_passes_check_with_no_diagnostics() {
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
+}
+
+/// A `paper` scaffolds a citation-wired doc AND the `.bib` its `[@key]` resolves against,
+/// so a research paper is check-clean on the first save (not just a blank page).
+#[test]
+fn a_paper_ships_its_bibliography_so_citations_resolve() {
+    let dir = tmp("paper");
+    let (ok, _, stderr) = run(&["new", "paper", "my-paper", "--dir", dir.to_str().unwrap()]);
+    assert!(ok, "stderr: {stderr}");
+    let index = dir.join("posts/my-paper/index.tmd");
+    let bib = dir.join("posts/my-paper/references.bib");
+    assert!(index.exists() && bib.exists(), "paper writes both files");
+    let src = std::fs::read_to_string(&index).unwrap();
+    assert!(
+        src.contains("bibliography: [references.bib]"),
+        "declares its bib"
+    );
+    assert!(src.contains("[@knuth1984literate]"), "cites a real key");
+    let (clean, diagnostics) = check_is_clean(&index);
+    assert!(clean, "a fresh paper must check clean, got:\n{diagnostics}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// `--json` prints a machine receipt (`{kind, slug, created, preview}`) and nothing else on
+/// stdout, so an agent knows exactly what it made and where.
+#[test]
+fn new_json_reports_what_it_made() {
+    let dir = tmp("json");
+    let (ok, stdout, stderr) = run(&[
+        "new",
+        "paper",
+        "my-paper",
+        "--dir",
+        dir.to_str().unwrap(),
+        "--json",
+    ]);
+    assert!(ok, "stderr: {stderr}");
+    let parsed: serde_json::Value =
+        serde_json::from_str(stdout.trim()).expect("stdout is pure JSON");
+    assert_eq!(parsed["kind"], "paper");
+    assert_eq!(parsed["slug"], "my-paper");
+    let created = parsed["created"].as_array().expect("created array");
+    assert_eq!(created.len(), 2, "paper creates index.tmd + references.bib");
+    assert!(
+        parsed["preview"]
+            .as_str()
+            .unwrap()
+            .contains("taliesin preview"),
+        "preview command present: {stdout}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// A post's date is today's, not a placeholder the author must remember to change.

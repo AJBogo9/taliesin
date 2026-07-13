@@ -1,0 +1,16 @@
+---
+title: "My Paper"
+date: 2026-07-10
+description: "One sentence: the claim this paper makes."
+categories: [research]
+bibliography: [references.bib]
+---
+
+State your claim in the first paragraph, then support it. Cite prior work with
+`[@key]` syntax, which resolves against `references.bib` — for example the
+literate-programming idea [@knuth1984literate].
+
+Add sections with `##`, figures with `![caption](path){#fig-x}`, and refer to
+them with `@fig-x`. The reference list renders under the heading below.
+
+# References

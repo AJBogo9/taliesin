@@ -49,7 +49,7 @@ fn main() -> ExitCode {
         Some("symbols") => query::cmd_symbols(&args),
         Some("map") => query::cmd_map(&args),
         Some("check") => check::cmd_check(&args),
-        Some("init") => cli::cmd_init(args.get(2).map(String::as_str)),
+        Some("init") => cli::cmd_init(&args),
         Some("new") => cli::cmd_new(&args),
         // `preview`/`dev` are vite-style aliases for the live server.
         Some("serve" | "preview" | "dev") => cli::cmd_serve(&args),
@@ -137,7 +137,7 @@ fn usage() {
     println!("COMMANDS:");
     println!("  init   [dir]               scaffold a starter site you can preview right away");
     println!("                             (writes _site.yml + index.tmd; default: current dir)");
-    println!("  new <post|page|deck> <slug> [--dir <root>]");
+    println!("  new <post|page|deck|paper> <slug> [--dir <root>] [--json]");
     println!("                             scaffold one document, correct on its first save");
     println!("  preview <file.tmd | dir> [port] [--host] [--open] [--no-exec]");
     println!("                             live preview server (aliases: dev, serve;");
@@ -291,18 +291,20 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin vocab | jq .cellOptions\n"
         }
         "new" => {
-            "taliesin new <post|page|deck> <slug> [--dir <root>]\n\
+            "taliesin new <post|page|deck|paper> <slug> [--dir <root>] [--json]\n\
              \n\
              Scaffold one document that is correct on its first save: it renders, and\n\
              `taliesin check` passes on it with no diagnostics. A post lands in\n\
              posts/<slug>/index.tmd and is dated today; a page and a deck land in\n\
-             <slug>.tmd. Refuses to overwrite an existing file.\n\
+             <slug>.tmd; a paper lands in posts/<slug>/ with a ready-to-cite\n\
+             references.bib beside it. Refuses to overwrite an existing file.\n\
              \n\
              Flags:\n\
              \x20 --dir <root>   scaffold under <root> instead of the current directory\n\
+             \x20 --json         print a {kind, slug, created, preview} receipt (agent-friendly)\n\
              \n\
              Example:\n\
-             \x20 taliesin new post my-first-post\n"
+             \x20 taliesin new paper my-analysis --json\n"
         }
         "symbols" => {
             "taliesin symbols <file.tmd> [--format human|json]\n\

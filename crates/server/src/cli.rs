@@ -29,22 +29,51 @@ const INIT_INDEX_TMD: &str = "---\ntitle: Hello, Taliesin\n---\n\n\
     - Configure navigation and the title in `_site.yml`.\n\
     - Drop in a `{python}` or `{r}` code cell to run live output.\n";
 
-/// `taliesin init [dir]`: scaffold a minimal previewable site into `dir` (default the
-/// current directory). Writes `_site.yml` + `index.tmd` + `AGENTS.md` (the agent onramp),
-/// then prints the preview hint.
-pub(crate) fn cmd_init(dir: Option<&str>) -> ExitCode {
-    let dir = Path::new(dir.unwrap_or("."));
+/// Every long flag `init` accepts (drives the unknown-flag did-you-mean).
+const INIT_FLAGS: &[&str] = &["--json"];
+
+/// `taliesin init [dir] [--json]`: scaffold a minimal previewable site into `dir` (default
+/// the current directory). Writes `_site.yml` + `index.tmd` + `AGENTS.md` (the agent
+/// onramp), then prints the preview hint (or, with `--json`, a `{created, preview}` receipt).
+pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
+    let mut dir_arg: Option<&str> = None;
+    let mut json = false;
+    for a in &args[2..] {
+        match a.as_str() {
+            "--json" => json = true,
+            s if s.starts_with("--") => {
+                log::error(&serve::unknown_flag_error(s, INIT_FLAGS));
+                return ExitCode::FAILURE;
+            }
+            s if dir_arg.is_none() => dir_arg = Some(s),
+            _ => {}
+        }
+    }
+    let dir = Path::new(dir_arg.unwrap_or("."));
+    let where_ = if dir == Path::new(".") {
+        ".".to_string()
+    } else {
+        dir.display().to_string()
+    };
     match scaffold_init(dir) {
         Ok(written) => {
-            for f in &written {
-                log::built(&f.display().to_string());
-            }
-            let where_ = if dir == Path::new(".") {
-                ".".to_string()
+            if json {
+                let created: Vec<String> =
+                    written.iter().map(|p| p.display().to_string()).collect();
+                let payload = serde_json::json!({
+                    "created": created,
+                    "preview": format!("taliesin preview {where_}"),
+                });
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_string())
+                );
             } else {
-                dir.display().to_string()
-            };
-            println!("Scaffolded a Taliesin site. Preview it:\n  taliesin preview {where_}");
+                for f in &written {
+                    log::built(&f.display().to_string());
+                }
+                println!("Scaffolded a Taliesin site. Preview it:\n  taliesin preview {where_}");
+            }
             ExitCode::SUCCESS
         }
         Err(e) => {
@@ -90,16 +119,18 @@ fn scaffold_init(dir: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(written)
 }
 
-/// What `taliesin new` can scaffold. Each maps to one file and one front-matter shape.
+/// What `taliesin new` can scaffold. Each maps to a front-matter shape; most write one
+/// file, `Paper` writes two (its `index.tmd` + a matching `references.bib`).
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub(crate) enum NewKind {
     Post,
     Page,
     Deck,
+    Paper,
 }
 
 /// The kind names, for the unknown-kind did-you-mean.
-const NEW_KINDS: &[&str] = &["post", "page", "deck"];
+const NEW_KINDS: &[&str] = &["post", "page", "deck", "paper"];
 
 impl NewKind {
     fn parse(raw: &str) -> Result<Self, String> {
@@ -107,10 +138,21 @@ impl NewKind {
             "post" => Ok(Self::Post),
             "page" => Ok(Self::Page),
             "deck" => Ok(Self::Deck),
+            "paper" => Ok(Self::Paper),
             other => Err(match taliesin_core::closest(other, NEW_KINDS) {
                 Some(k) => format!("unknown kind `{other}` (did you mean `{k}`?)"),
-                None => format!("unknown kind `{other}` (expected post, page, or deck)"),
+                None => format!("unknown kind `{other}` (expected post, page, deck, or paper)"),
             }),
+        }
+    }
+
+    /// The canonical kind name (for `--json` output).
+    fn name(self) -> &'static str {
+        match self {
+            Self::Post => "post",
+            Self::Page => "page",
+            Self::Deck => "deck",
+            Self::Paper => "paper",
         }
     }
 }
@@ -185,6 +227,46 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
 /// documents are rendered and linted by the corpus regression net like any other document.
 pub(crate) fn new_files(kind: NewKind, slug: &str, today: &str) -> Vec<(PathBuf, String)> {
     let title = title_from_slug(slug);
+    // A research paper scaffolds TWO files: a citation-wired doc plus the `.bib` its one
+    // `[@key]` resolves against, so `check` is clean on the first save (a declared-but-
+    // missing bibliography, or a citation with no bibliography, would both warn).
+    if kind == NewKind::Paper {
+        let index = format!(
+            "---\n\
+             title: \"{title}\"\n\
+             date: {today}\n\
+             description: \"One sentence: the claim this paper makes.\"\n\
+             categories: [research]\n\
+             bibliography: [references.bib]\n\
+             ---\n\
+             \n\
+             State your claim in the first paragraph, then support it. Cite prior work with\n\
+             `[@key]` syntax, which resolves against `references.bib` — for example the\n\
+             literate-programming idea [@knuth1984literate].\n\
+             \n\
+             Add sections with `##`, figures with `![caption](path){{#fig-x}}`, and refer to\n\
+             them with `@fig-x`. The reference list renders under the heading below.\n\
+             \n\
+             # References\n"
+        );
+        let bib = "@article{knuth1984literate,\n\
+             \x20 author  = {Knuth, Donald E.},\n\
+             \x20 title   = {Literate Programming},\n\
+             \x20 journal = {The Computer Journal},\n\
+             \x20 volume  = {27},\n\
+             \x20 number  = {2},\n\
+             \x20 pages   = {97--111},\n\
+             \x20 year    = {1984}\n\
+             }\n"
+        .to_string();
+        return vec![
+            (PathBuf::from("posts").join(slug).join("index.tmd"), index),
+            (
+                PathBuf::from("posts").join(slug).join("references.bib"),
+                bib,
+            ),
+        ];
+    }
     let (path, body) = match kind {
         NewKind::Post => (
             PathBuf::from("posts").join(slug).join("index.tmd"),
@@ -232,6 +314,8 @@ pub(crate) fn new_files(kind: NewKind, slug: &str, today: &str) -> Vec<(PathBuf,
                  Each `##` heading starts a new slide.\n"
             ),
         ),
+        // Paper is handled by the early return above (it writes two files).
+        NewKind::Paper => unreachable!("Paper scaffold is built before this match"),
     };
     vec![(path, body)]
 }
@@ -241,6 +325,7 @@ pub(crate) fn new_files(kind: NewKind, slug: &str, today: &str) -> Vec<(PathBuf,
 pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
     let mut positional: Vec<&str> = Vec::new();
     let mut root = ".".to_string();
+    let mut json = false;
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -249,6 +334,9 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
                     root = v.clone();
                 }
             }
+            // `--json` prints `{kind, slug, created, preview}` (pure JSON to stdout), so an
+            // agent knows exactly what it made and where. Suppresses the human hints.
+            "--json" => json = true,
             s if s.starts_with("--") => {
                 log::error(&serve::unknown_flag_error(s, NEW_FLAGS));
                 return ExitCode::FAILURE;
@@ -257,7 +345,7 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
         }
     }
     let (Some(kind), Some(slug)) = (positional.first(), positional.get(1)) else {
-        eprintln!("usage: taliesin new <post|page|deck> <slug> [--dir <root>]");
+        eprintln!("usage: taliesin new <post|page|deck|paper> <slug> [--dir <root>] [--json]");
         return ExitCode::FAILURE;
     };
     let kind = match NewKind::parse(kind) {
@@ -274,10 +362,14 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
     let root = Path::new(&root);
     match write_new(root, kind, slug) {
         Ok(written) => {
-            for f in &written {
-                log::built(&f.display().to_string());
+            if json {
+                println!("{}", new_json(kind.name(), slug, &written));
+            } else {
+                for f in &written {
+                    log::built(&f.display().to_string());
+                }
+                println!("Preview it:\n  taliesin preview {}", written[0].display());
             }
-            println!("Preview it:\n  taliesin preview {}", written[0].display());
             ExitCode::SUCCESS
         }
         Err(e) => {
@@ -287,8 +379,25 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
     }
 }
 
+/// The `--json` receipt for a scaffold: `{kind?, slug?, created:[...], preview}` as pretty
+/// JSON. `kind`/`slug` are `None` for `init` (which scaffolds a whole site, not a document).
+fn new_json(kind: &str, slug: &str, written: &[PathBuf]) -> String {
+    let created: Vec<String> = written.iter().map(|p| p.display().to_string()).collect();
+    let preview = written
+        .first()
+        .map(|p| format!("taliesin preview {}", p.display()))
+        .unwrap_or_default();
+    let payload = serde_json::json!({
+        "kind": kind,
+        "slug": slug,
+        "created": created,
+        "preview": preview,
+    });
+    serde_json::to_string_pretty(&payload).unwrap_or_else(|_| "{}".to_string())
+}
+
 /// Every long flag `new` accepts (drives the unknown-flag did-you-mean).
-const NEW_FLAGS: &[&str] = &["--dir"];
+const NEW_FLAGS: &[&str] = &["--dir", "--json"];
 
 /// Write the scaffold under `root`, refusing to overwrite any existing target before
 /// writing any of them (so a partial scaffold never lands on the author's work).
@@ -660,7 +769,10 @@ mod new_tests {
         let e = NewKind::parse("pots").unwrap_err();
         assert!(e.contains("did you mean `post`?"), "got: {e}");
         let e = NewKind::parse("zzzzzz").unwrap_err();
-        assert!(e.contains("expected post, page, or deck"), "got: {e}");
+        assert!(
+            e.contains("expected post, page, deck, or paper"),
+            "got: {e}"
+        );
     }
 
     /// The scaffold's bytes are pinned by `corpus/scaffold/`, which the corpus regression
@@ -670,11 +782,12 @@ mod new_tests {
     #[test]
     fn every_scaffold_matches_its_corpus_pin() {
         let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus/scaffold");
-        for kind in [NewKind::Post, NewKind::Page, NewKind::Deck] {
+        for kind in [NewKind::Post, NewKind::Page, NewKind::Deck, NewKind::Paper] {
             let slug = match kind {
                 NewKind::Post => "my-first-post",
                 NewKind::Page => "about",
                 NewKind::Deck => "my-talk",
+                NewKind::Paper => "my-paper",
             };
             for (rel, contents) in new_files(kind, slug, "2026-07-10") {
                 let pinned = std::fs::read_to_string(corpus.join(&rel))
