@@ -265,7 +265,7 @@
   // is non-inert. Called from applyClasses (commit + init), the mode enter/exit hooks, and
   // setOverview, so any path that changes "what's visible" re-derives inert consistently.
   function syncInert() {
-    var showAll = deck.overview;
+    var showAll = deck.overview || deck.feed; // the feed shows every slide, like overview
     var cur = showAll ? null : currentSlide();
     allSlides().forEach(function (s) {
       if (showAll || s === cur) s.removeAttribute('inert');
@@ -615,7 +615,7 @@
   // re-run on resize. Cleared in overview. The base BASE px is the deck font-size.
   var BASE = 40;
   function fitSlide(sec) {
-    if (!sec || deck.overview) return;
+    if (!sec || deck.overview || deck.feed) return; // the feed sizes by CSS font-size, not fit
     sec.style.removeProperty('font-size'); // measure at natural size
     // Iterate to convergence: a single pass under-shrinks when a slide holds a
     // fixed-size element (a chart image doesn't scale with font-size), leaving the
@@ -997,6 +997,7 @@
     clampIndices();
     deck.frag = (frag == null) ? fragCount() : frag;
     if (deck.mode === 'speaker') updateSpeakerUI();
+    else if (deck.feed) { deck.frag = fragCount(); scrollToCurrent(true); updateNumber(); } // native scroll, not the camera
     else { renderMove(); updateNumber(); writeHash(); }
     fire('slidechanged');
   }
@@ -1221,8 +1222,14 @@
     // link restores the exact fragment. A numeric slide includes its `v` when a frag
     // follows (keeping the frag slot unambiguous); a named slide takes `/<frag>`.
     var parts = c && c.id ? [c.id] : [deck.h];
-    if (!(c && c.id) && (deck.v || deck.frag > 0)) parts.push(deck.v);
-    if (deck.frag > 0) parts.push(deck.frag);
+    if (deck.feed) {
+      // In the feed every slide is fully shown, so the position is just the slide (no
+      // fragment step): keeps the deep-link clean (`#/code-on-a-slide`) and round-trips.
+      if (!(c && c.id) && deck.v) parts.push(deck.v);
+    } else {
+      if (!(c && c.id) && (deck.v || deck.frag > 0)) parts.push(deck.v);
+      if (deck.frag > 0) parts.push(deck.frag);
+    }
     var frag = parts.join('/');
     var url = '#/' + frag;
     if (url === location.hash) return;
@@ -1272,6 +1279,16 @@
     var ph = deck.h, pv = deck.v, pf = deck.frag;
     if (!readHash()) return;
     clampIndices();
+    if (deck.feed) {
+      // In the feed a hash change (back/forward, a shared link) scrolls to the slide;
+      // native scroll then settles the observer. replaceState (the default) fires no
+      // hashchange, so this only runs on a genuine external navigation.
+      if (deck.h === ph && deck.v === pv) return;
+      deck.frag = fragCount();
+      scrollToCurrent(true); updateNumber();
+      broadcastState();
+      return;
+    }
     var target = deck.pendingFrag;
     // Our own writeHash echo (history mode fires hashchange): nothing actually moved.
     // `target == null` is only an echo when fragments were at 0 (writeHash omits the frag
@@ -1327,6 +1344,7 @@
 
   // --- keyboard + touch ---------------------------------------------------
   function onKey(e) {
+    if (deck.feed) return; // native scroll owns the axis in the feed (no deck key-nav)
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
     var t = /** @type {any} */ (e.target);
     if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
@@ -1409,10 +1427,12 @@
   }
   var touch = { x: null, y: null, t: 0 };
   function onTouchStart(e) {
+    if (deck.feed) return; // native scroll owns the axis in the feed
     if (e.touches.length !== 1) { touch.x = null; return; }
     touch.x = e.touches[0].clientX; touch.y = e.touches[0].clientY; touch.t = Date.now();
   }
   function onTouchEnd(e) {
+    if (deck.feed) return; // native scroll owns the axis in the feed
     if (touch.x == null) return;
     var c = e.changedTouches[0];
     var dx = c.clientX - touch.x, dy = c.clientY - touch.y, dt = Date.now() - touch.t;
@@ -1420,6 +1440,112 @@
     if (dt > 600 || Math.max(Math.abs(dx), Math.abs(dy)) < 50) return;
     if (Math.abs(dx) > Math.abs(dy)) { dx < 0 ? right() : left(); }
     else { dy < 0 ? down() : up(); }
+  }
+
+  // --- mobile slide-feed (A3) --------------------------------------------
+  // On a phone / portrait screen a deck opens as a vertical scroll-feed of full-
+  // viewport slides. It reuses the identical slide DOM (no wrapper, no clone), so
+  // block-ids, click-to-source and live {js} state survive; `html.tali-feed` swaps the
+  // camera model for CSS font-size scaling + native scroll-snap. Native scroll owns the
+  // vertical axis, so the deck's key/touch nav is disabled here; the counter + a
+  // deep-link hash are driven from an IntersectionObserver on the centred slide.
+  function isPortrait() {
+    try { return window.matchMedia('(orientation: portrait)').matches; }
+    catch (e) { return window.innerHeight >= window.innerWidth; }
+  }
+  // Reveal every fragment / incremental item, clear code line-focus, and rest each
+  // magic-move on its final block — so a scrolled slide reads complete. (The CSS
+  // `!important` overrides cover visibility; this also clears any JS-set focus state.)
+  function revealAllForFeed() {
+    var s = slidesEl(); if (!s) return;
+    s.querySelectorAll(FRAG_SEL).forEach(function (el) { el.classList.add('tali-frag-visible'); });
+    s.querySelectorAll('pre[data-code-lines]').forEach(function (pre) { highlightLines(pre, 'all'); });
+    s.querySelectorAll('.magic-move').forEach(function (div) {
+      var pres = mmBlocks(div);
+      if (pres.length) { deck.animSteps = false; setOrMorphMM(div, pres.length - 1); }
+    });
+  }
+  function feedLeaf(sec) {
+    // The observed target maps to a leaf index via indexOf (handles stack children).
+    return indexOf(sec);
+  }
+  function onFeedIntersect(entries) {
+    if (!deck.feed || !deck.feedRatios) return;
+    entries.forEach(function (e) { deck.feedRatios.set(e.target, e.isIntersecting ? e.intersectionRatio : 0); });
+    var best = null, bestR = -1;
+    deck.feedRatios.forEach(function (r, sec) { if (r > bestR) { bestR = r; best = sec; } });
+    if (!best || bestR <= 0) return;
+    var ix = feedLeaf(best);
+    if (ix.h === deck.h && ix.v === deck.v) return;
+    deck.h = ix.h; deck.v = ix.v; deck.frag = fragCount();
+    updateNumber(); updateChrome();
+    scheduleFeedHash();
+    broadcastState(); // keep an open speaker window in sync as the feed scrolls
+    fire('slidechanged');
+  }
+  function scheduleFeedHash() {
+    if (deck.feedHashRAF) return;
+    deck.feedHashRAF = requestAnimationFrame(function () { deck.feedHashRAF = null; writeHash(); });
+  }
+  function setupFeedObserver() {
+    if (deck.feedIO) deck.feedIO.disconnect();
+    var scroller = slidesEl(); if (!scroller || typeof IntersectionObserver === 'undefined') return;
+    deck.feedRatios = new Map();
+    deck.feedIO = new IntersectionObserver(onFeedIntersect, {
+      root: scroller, threshold: [0, 0.25, 0.5, 0.6, 0.75, 1],
+    });
+    allSlides().forEach(function (s) { deck.feedIO.observe(s); });
+  }
+  function scrollToSlide(sec, smooth) {
+    if (!sec) return;
+    try { sec.scrollIntoView({ block: 'start', behavior: smooth ? 'smooth' : 'auto' }); }
+    catch (e) { sec.scrollIntoView(); }
+  }
+  function scrollToCurrent(smooth) { scrollToSlide(currentSlide(), smooth); }
+  // Enter the feed: swap to the CSS font-size layout, drop the camera's inline
+  // transforms + fit sizes, reveal everything, and start the observer. Idempotent, so a
+  // portrait rotation can call it. Native scroll + the always-attached key/touch guards
+  // (which early-return on deck.feed) mean no listener juggling is needed.
+  function enterFeed() {
+    if (deck.feed) return;
+    deck.feed = true;
+    var rev = deckEl(), s = slidesEl();
+    document.documentElement.classList.add('tali-feed');
+    if (deck.aaSettle) deck.aaSettle();          // flush any in-flight auto-animate morph
+    if (s) s.style.transform = '';               // CSS also forces none; clear the inline value
+    tops().forEach(function (top) { top.style.transform = ''; });
+    allSlides().forEach(function (sec) { sec.style.transform = ''; sec.style.removeProperty('font-size'); });
+    if (deck.overview) setOverview(false);       // the feed is its own browse surface
+    // Presenter states from a prior stepped session don't belong over the feed (a rotation
+    // can enter the feed with them active): the pen canvas would eat scroll, and the
+    // blackout can't be dismissed since onKey early-returns in the feed. Mirror setOverview.
+    if (deck.blackout) toggleBlackout(false);
+    if (deck.draw && deck.draw.on) { deck.draw.on = false; rev.classList.remove('tali-drawing'); }
+    applyBackgrounds();
+    revealAllForFeed();
+    syncInert();                                 // deck.feed shows all → clear inert
+    setupFeedObserver();
+    updateNumber(); updateChrome();
+    if (rev) rev.classList.add('tali-ready');
+  }
+  // Leave the feed for the stepped stage (the Present escape hatch, or a rotation to
+  // landscape). Re-derives the resting stepped view on the current slide.
+  function exitFeed() {
+    if (!deck.feed) return;
+    deck.feed = false;
+    document.documentElement.classList.remove('tali-feed');
+    if (deck.feedIO) { deck.feedIO.disconnect(); deck.feedIO = null; }
+    if (deck.feedRatios) deck.feedRatios.clear();
+    deck.frag = fragCount();                      // land fully-shown on the current slide
+    apply(); layout(); updateNumber(); focusCurrent();
+  }
+  // A rotation may cross the portrait/landscape line: re-route only in auto mode (an
+  // explicit ?qmd=feed / ?qmd=present, or an embed, is a fixed choice).
+  function maybeReroute() {
+    if (!deck.autoRoute) return;
+    var wantFeed = isPortrait();
+    if (wantFeed && !deck.feed) { enterFeed(); scrollToCurrent(false); }
+    else if (!wantFeed && deck.feed) exitFeed();
   }
 
   // --- events + plugins (deck API) -----------------------------------
@@ -1449,6 +1575,7 @@
     speak: svg('<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>'),
     fs: svg('<path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/>'),
     moon: svg('<path d="M21 12.8A8 8 0 1 1 11.2 3a6 6 0 0 0 9.8 9.8z"/>'),
+    present: svg('<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M10 8l5 3-5 3z"/><path d="M8 21h8"/>'),
   };
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function tool(action, ico, label, hint) {
@@ -1498,6 +1625,7 @@
     menu.innerHTML =
       '<div class="tali-menu-head">Slides</div><div class="tali-menu-slides"></div>' +
       '<div class="tali-menu-head">Tools</div><div class="tali-menu-tools">' +
+        tool('present', IC.present, 'Present') + // feed-only (CSS-hidden in stepped mode)
         tool('overview', IC.grid, 'Overview', 'O') +
         tool('draw', IC.pen, 'Annotate', 'D') +
         tool('speaker', IC.speak, 'Speaker view', 'S') +
@@ -1547,7 +1675,10 @@
     var a = item.getAttribute('data-action');
     if (a === 'theme') { toggleThemeMode(); return; } // stay open; reflects state
     toggleMenu(false);
-    if (a === 'overview') setOverview(true);
+    // Present / Overview from the feed are a MANUAL mode choice: pin it (like ?qmd=present)
+    // so a later resize's maybeReroute() can't auto-snap the user back into the feed.
+    if (a === 'present') { deck.autoRoute = false; exitFeed(); }
+    else if (a === 'overview') { if (deck.feed) { deck.autoRoute = false; exitFeed(); } setOverview(true); }
     else if (a === 'draw') toggleDraw(true);
     else if (a === 'speaker') openSpeaker();
     else if (a === 'fullscreen') toggleFullscreen();
@@ -1574,6 +1705,10 @@
     if (!el) return;
     var ix = indexOf(el);
     toggleMenu(false);
+    if (deck.feed) {
+      deck.h = ix.h; deck.v = ix.v; clampIndices(); deck.frag = fragCount();
+      scrollToCurrent(true); updateNumber(); return;
+    }
     if (deck.overview) setOverview(false);
     moveTo(ix.h, ix.v, true);
   }
@@ -1617,11 +1752,28 @@
     // The speaker window doesn't render the deck itself; it builds the control UI.
     if (deck.mode === 'speaker') { initSpeaker(); deck.ready = true; return facade; }
 
+    // A3: route the front door by aspect. A phone / portrait screen opens the vertical
+    // slide-feed; landscape opens stepped slides. `?qmd=feed` / `?qmd=present` are transient
+    // escape hatches that force one mode (no config knob); an embedded deck never feeds.
+    // `taliDeckEmbedded` is unset for a custom-themed deck (its head script is skipped), so
+    // fall back to the frame check.
+    var embedded = (typeof window.taliDeckEmbedded !== 'undefined')
+      ? window.taliDeckEmbedded : (window.self !== window.top);
+    deck.autoRoute = !embedded && qmd !== 'feed' && qmd !== 'present';
+    // Whether to OPEN in the feed. Don't set deck.feed here: enterFeed() owns that flag
+    // and early-returns when it's already set, so pre-setting it would no-op the enter.
+    var wantFeed = !embedded && (qmd === 'feed' || (deck.autoRoute && isPortrait()));
+
     if (!readHash()) { deck.h = 0; deck.v = 0; }
     clampIndices();
     // Restore a deep-linked fragment step (#/h/v/frag) once the slide is known.
     if (deck.pendingFrag != null) deck.frag = Math.max(0, Math.min(deck.pendingFrag, fragCount()));
-    apply(); layout(); updateNumber();
+    if (wantFeed) {
+      enterFeed();            // sets deck.feed + the CSS layout/observer (replaces apply/layout)
+      scrollToCurrent(false); // honour a deep-linked slide
+    } else {
+      apply(); layout(); updateNumber();
+    }
     rev.classList.add('tali-ready'); // show the deck now the first slide is placed
     // Coalesce a burst of resize events (a drag-resize / rotate fires many) into ONE
     // layout per animation frame — layout re-fits every slide (fitSlide measures each),
@@ -1629,7 +1781,12 @@
     var resizeRAF = null;
     window.addEventListener('resize', function () {
       if (resizeRAF) return;
-      resizeRAF = requestAnimationFrame(function () { resizeRAF = null; layout(); });
+      resizeRAF = requestAnimationFrame(function () {
+        resizeRAF = null;
+        maybeReroute();                     // a rotation may cross portrait/landscape (auto mode)
+        if (deck.feed) setupFeedObserver(); // feed sizes by CSS; just refresh the IO targets
+        else layout();
+      });
     });
     window.addEventListener('message', onMessage); // speaker <-> audience position sync
     if (deck.mode === 'normal') {
@@ -1656,11 +1813,10 @@
             .observe(window.top.document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
         } catch (e) {}
       }
-      // A deck opens AS a deck (stepped slides), whether standalone or embedded.
-      // Reader/scroll mode and PDF-export mode were removed: the mobile slide-feed
-      // (?qmd=feed / portrait) is the phone reading surface, wired separately; the
-      // ?qmd=present escape hatch stays reserved to force stepped over that. Nothing
-      // to switch here — apply()/layout() above already placed the first slide.
+      // A deck opens AS a deck: stepped slides on landscape/desktop, the mobile
+      // slide-feed on a phone/portrait screen (routed by aspect above; ?qmd=feed /
+      // ?qmd=present force one). Reader/scroll mode and PDF-export mode were removed.
+      // enterFeed()/apply()+layout() above already placed the first view.
     }
     deck.ready = true;
     deck.plugins.forEach(initPlugin);
@@ -1672,7 +1828,19 @@
   // edit never resets the deck to slide 0 or destroys live block state.
   function sync() {
     if (!deck.ready) return;
-    clampIndices(); apply(); layout(); updateNumber();
+    clampIndices();
+    if (deck.feed) { syncFeedLayout(); updateNumber(); return; }
+    apply(); layout(); updateNumber();
+  }
+  // A live edit in the feed: a re-split may have added / removed / retitled slides, so
+  // re-reveal fragments, repaint backgrounds, and re-observe the new leaf set — WITHOUT
+  // touching the camera (there is none) or re-running fitSlide, so live {js} widgets keep
+  // their identity (the same DOM nodes are reused by the block-swap).
+  function syncFeedLayout() {
+    applyBackgrounds();
+    revealAllForFeed();
+    syncInert();
+    setupFeedObserver();
   }
 
   var facade = {
@@ -1680,7 +1848,15 @@
     configure: function (o) { if (o) for (var k in o) deck.config[k] = o[k]; },
     sync: sync,
     layout: layout,
-    slide: function (h, v) { moveTo(h || 0, v || 0, true); },
+    slide: function (h, v) {
+      // In the feed, "go to slide" scrolls (keeps click-to-source-from-editor working);
+      // native snap settles the observer, which then updates the counter + hash.
+      if (deck.feed) {
+        deck.h = h || 0; deck.v = v || 0; clampIndices(); deck.frag = fragCount();
+        scrollToCurrent(true); updateNumber(); return;
+      }
+      moveTo(h || 0, v || 0, true);
+    },
     next: next, prev: prev, left: left, right: right, up: up, down: down,
     getIndices: function () { return { h: deck.h, v: deck.v, f: deck.frag }; },
     getCurrentSlide: currentSlide,

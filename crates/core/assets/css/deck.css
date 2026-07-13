@@ -540,6 +540,100 @@ body { background: transparent; }
   .tali-deck .tali-slides > section:has(> section) { height: auto !important; }
 }
 
+/* === Mobile slide-feed (A3) ==============================================
+   On a phone / portrait screen a deck opens as a vertical scroll-feed of
+   full-viewport slides (Reels/TikTok snap-scroll) instead of the letterboxed
+   stepped stage that wastes most of a portrait screen. The SAME slide DOM is
+   reused — no wrapper, no clone — so block-ids, click-to-source and live `{js}`
+   state survive. deck.js gates this with `html.tali-feed`, reveals every fragment,
+   and drives the counter + a deep-link hash from an IntersectionObserver; native
+   scroll owns the axis (the deck's own key/touch nav is disabled in the feed).
+   Layout is by FONT-SIZE, not the camera transform: all deck content is em-sized
+   off the 40px design base, so `font-size: calc(100vw/960*40px)` reproduces the
+   960-wide stage at any width with zero DOM change. */
+html.tali-feed .tali-deck {
+  position: fixed;
+  inset: 0;
+  width: auto;
+  height: auto;
+  margin: 0;
+  overflow: visible;
+  touch-action: pan-y pinch-zoom; /* native vertical scroll + pinch-zoom (viewport unlocked) */
+}
+/* The slides container becomes the scroll viewport (it was the camera). */
+html.tali-feed .tali-deck .tali-slides {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  transform: none !important; /* kill the inline camera transform deck.js sets in stepped mode */
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-snap-type: y mandatory;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y pinch-zoom;
+}
+/* A vertical-stack wrapper is just a flow container in the feed — its children are the
+   pages, it is not a snap page itself. Detected STRUCTURALLY (`:has(> section)`), not by
+   the runtime `.tali-stack` class: that class is added by the camera's positionGrid(),
+   which the feed never calls, so the wrapper would otherwise be mis-styled as a page and
+   its children (still stepped `position:absolute`) would overlap inside it. */
+html.tali-feed .tali-slides > section:has(> section) {
+  position: static;
+  transform: none !important;
+  display: block;
+  width: 100vw;
+  min-height: 0;
+  height: auto;
+  padding: 0;
+  overflow: visible;
+}
+/* Every leaf slide (a flat top section, or a stack's child) is a full-viewport snap page,
+   em-sized to reproduce the 960 stage. `position:relative` (not static) so its own
+   `.tali-slide-bg` absolute layer still resolves to the slide, not the scroller. A dense
+   slide grows into a TALLER card (height:auto) rather than shrinking to micro-type —
+   honest authoring feedback to split the slide; deck.js does not run fitSlide in the feed. */
+html.tali-feed .tali-slides > section:not(:has(> section)),
+html.tali-feed .tali-slides > section > section {
+  position: relative;
+  inset: auto;
+  transform: none !important;
+  width: 100vw;
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: auto;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  /* Reproduce the 960-wide, 40px-base stage: `100vw/960` is a length, times the unitless
+     40 base = a length (a length × a length would be invalid and drop the rule). */
+  font-size: calc(100vw / 960 * 40);
+  box-sizing: border-box;
+}
+/* Code floors at a legible size (the deck's .5em would be ~8px on a phone) and takes
+   its own horizontal scroll instead of forcing the whole page wide. */
+html.tali-feed .tali-deck pre { font-size: max(0.5em, 11px); overflow-x: auto; }
+/* Constrain media to the slide width. Font-size only scales EM-sized (text) content; a
+   raster image keeps its intrinsic pixel width and, on a phone-width slide, would overflow
+   and be clipped by the slide's `overflow:hidden`. The camera transform used to scale it in
+   stepped mode; the feed has none. `max-width` only (not height) so `.tali-stretch`'s own
+   fill sizing is untouched and aspect ratio is preserved for attribute-less images. */
+html.tali-feed .tali-slides :is(img, svg, canvas, video) { max-width: 100%; }
+/* All fragments final in the feed: every step is shown at rest (mirrors the overview
+   overrides), so a scrolled / after-the-talk slide reads complete. */
+html.tali-feed .fragment,
+html.tali-feed .incremental > ul > li,
+html.tali-feed .incremental > ol > li { opacity: 1 !important; visibility: visible !important; }
+html.tali-feed .magic-move > pre { opacity: 0 !important; }
+html.tali-feed .magic-move > pre:last-of-type { opacity: 1 !important; }
+/* Feed chrome is minimal: keep the progress bar + counter chip, drop the prev/next
+   arrows (native scroll replaces them); the menu button stays. */
+html.tali-feed .tali-ctl-prev, html.tali-feed .tali-ctl-next { display: none; }
+/* Present (feed -> stepped) shows only in the feed; presenter-only tools are dropped. */
+html:not(.tali-feed) .tali-menu-item[data-action="present"] { display: none; }
+html.tali-feed .tali-menu-item[data-action="draw"],
+html.tali-feed .tali-menu-item[data-action="speaker"] { display: none; }
+
 /* === Dark theme backgrounds (palette/colours defined at the top of this file) =====
    The slides and body are transparent, so the deck background is the html canvas
    (which lets the per-slide `.tali-slide-bg` layer paint above it). Overview tiles and

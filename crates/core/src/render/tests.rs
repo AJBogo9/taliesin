@@ -1403,6 +1403,29 @@ fn deck_page_carries_native_scaffolding() {
 }
 
 #[test]
+fn deck_viewport_allows_pinch_zoom() {
+    // B5-1 (WCAG 1.4.4/1.4.10, pairs with the A3 mobile feed): a deck is a reading
+    // surface — especially the phone feed — so its viewport must not lock the scale.
+    // Keep width=device-width + initial-scale; drop maximum-scale / user-scalable so
+    // pinch-zoom works.
+    let page = render_html_page("---\nformat: deck\n---\n\n## Slide\n", "fallback");
+    let vp = page
+        .split("name=\"viewport\"")
+        .nth(1)
+        .and_then(|s| s.split("/>").next())
+        .expect("deck page must carry a viewport meta");
+    assert!(vp.contains("width=device-width"), "viewport: {vp}");
+    assert!(
+        !vp.contains("user-scalable=no"),
+        "deck must allow pinch-zoom (no user-scalable=no): {vp}"
+    );
+    assert!(
+        !vp.contains("maximum-scale"),
+        "deck must not cap zoom (no maximum-scale): {vp}"
+    );
+}
+
+#[test]
 fn deck_opens_as_a_deck_without_reader_or_pdf_export() {
     // The deck redesign (A1/A2) removed reader/scroll mode and PDF-export mode: a
     // deck opens AS a deck (stepped), and a stray Cmd/Ctrl+P is handled by a minimal
@@ -1429,6 +1452,37 @@ fn deck_opens_as_a_deck_without_reader_or_pdf_export() {
     assert!(
         page.contains("@media print"),
         "deck must keep a minimal @media print fallback"
+    );
+}
+
+#[test]
+fn deck_bundles_the_mobile_feed() {
+    // A3: on a phone / portrait screen a deck opens as a vertical scroll-feed of full-
+    // viewport slides (routed by aspect, with `?qmd=feed` / `?qmd=present` escape hatches).
+    // Pin the machinery at the bundle level so it can't silently regress; the runtime
+    // front-door behavior is covered by the ui-audit deck browser smoke.
+    let page = render_html_page("---\nformat: deck\n---\n\n## A\n\n## B\n", "fallback");
+    // CSS: the feed layout (a scroll-snap container gated on html.tali-feed).
+    assert!(
+        page.contains(".tali-feed"),
+        "deck must bundle the mobile-feed CSS"
+    );
+    assert!(
+        page.contains("scroll-snap-type: y mandatory"),
+        "feed must use CSS scroll-snap"
+    );
+    // JS: the feed entry path + aspect routing.
+    assert!(
+        page.contains("function enterFeed"),
+        "deck.js must bundle the feed entry path"
+    );
+    assert!(
+        page.contains("function isPortrait"),
+        "deck.js must route the front door by aspect"
+    );
+    assert!(
+        page.contains("qmd === 'feed'"),
+        "deck.js must honour the ?qmd=feed escape hatch"
     );
 }
 
