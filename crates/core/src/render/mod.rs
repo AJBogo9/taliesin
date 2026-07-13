@@ -1119,6 +1119,14 @@ const CODE_ENHANCE_JS: &str = concat!(
     include_str!("../../assets/js/code-enhance/15-reading-progress.js"),
     include_str!("../../assets/js/code-enhance/16-scroll-a11y.js"),
 );
+/// The enhancer registry (`window.taliEnhancers` + `taliEnhanceCode`) on its own, so the
+/// External build path can emit it INLINE at parse (before any `include-after-body`
+/// extension script that calls `taliEnhancers.register`), while the shared app.js stays
+/// deferred. This double-includes `01-registry.js` at compile time (once here, once inside
+/// `CODE_ENHANCE_JS`'s `concat!` above); keep BOTH copies, since dropping it from
+/// `CODE_ENHANCE_JS` would drift the Inline path's byte output. The IIFE is idempotent
+/// (`if (window.taliEnhancers) return;`), so app.js's bundled copy no-ops on its later run.
+const REGISTRY_JS: &str = include_str!("../../assets/js/code-enhance/01-registry.js");
 const MERMAID_JS: &str = include_str!("../../assets/js/mermaid.js");
 /// The vendored Mermaid library (pinned mermaid@11.4.1, ~2.5 MB; sets `globalThis.mermaid`).
 /// Inlined into a static Build page that has a diagram so it renders with no CDN; the
@@ -1143,7 +1151,7 @@ pub fn shared_site_css() -> String {
 }
 
 /// The KaTeX stylesheet (base64 fonts inlined), for the externalized `katex.<hash>.css`.
-pub fn katex_css_bytes() -> &'static str {
+pub fn katex_css() -> &'static str {
     KATEX_CSS
 }
 

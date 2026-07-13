@@ -231,6 +231,11 @@ pub fn minify_js(src: &str) -> String {
                     // Replace the whole comment (even multi-line) with a single space so
                     // adjacent tokens never fuse (`return/*x*/5` -> `return 5`). Skip the
                     // space when it would only add leading/duplicate whitespace.
+                    // GUARD: collapsing a MULTI-LINE `/* ... */` to one space also drops the
+                    // newline(s) it spanned, which could change meaning where a newline was
+                    // ASI-significant (e.g. a `return` on its own line before the comment). This
+                    // is currently unreachable because no JS fed to `core_enhance_js()` has a
+                    // multi-line block comment; a guard note so that stays a deliberate choice.
                     let need_space = match out.as_bytes().last() {
                         None => false,
                         Some(&b) => b != b' ' && b != b'\t' && b != b'\n',

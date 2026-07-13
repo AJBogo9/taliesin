@@ -907,7 +907,7 @@ fn write_asset_bundle(out: &Path) -> std::io::Result<AssetBundle> {
     let katex_css = named(
         "katex",
         "css",
-        &crate::minify::minify_css(taliesin_core::katex_css_bytes()),
+        &crate::minify::minify_css(taliesin_core::katex_css()),
     )?;
     let app_js = named(
         "app",

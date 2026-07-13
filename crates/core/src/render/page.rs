@@ -202,17 +202,33 @@ pub fn assemble_html_page(p: &PageParts) -> String {
             // `import()` in that body resolves relative to the SCRIPT that ran the constructor:
             // inlined here it anchors to the page, so a cell's `import("./helper.js")` resolves
             // page-relative; folded into the shared `/_assets/app.js` it would wrongly resolve
-            // against `/_assets/` (a 404). Not `defer`: it runs at parse and takes its own
-            // DOMContentLoaded fallback (the enhancer registry in the deferred app.js is not yet
-            // defined then), by which point the deferred jslibs (d3/Plot) have executed, so the
-            // cells still see `window.d3` / `Plot`.
+            // against `/_assets/` (a 404). That page-relative anchoring is the ONLY reason it is
+            // inline: it registers with `window.taliEnhancers` directly at parse (the registry is
+            // emitted inline just below, ahead of the deferred app.js, so it already exists by the
+            // time this runs), and the deferred jslibs (d3/Plot) have executed by the
+            // DOMContentLoaded mount, so the cells still see `window.d3` / `Plot`.
             let qmd_js_inline = if !bare && has_js_cells(p.body) {
                 format!("\n<script>{TALIESIN_JS}</script>")
             } else {
                 String::new()
             };
+            // Emit the enhancer registry INLINE at parse, ahead of the deferred app.js and any
+            // `include-after-body` extension script. Why this shape (keep this reasoning):
+            //   * `01-registry.js` defines `window.taliEnhancers` / `taliEnhanceCode`. #17 folded
+            //     it into the DEFERRED app.js, so a documented `include-after-body` extension that
+            //     calls `window.taliEnhancers.register(fn)` (docs/internals/extending.tmd) ran
+            //     INLINE at parse BEFORE app.js defined the registry, throwing silently. Emitting
+            //     the registry inline here (the same code-scripts position the pre-#17 inline
+            //     bundle ran from) restores parse-time availability of `taliEnhancers` for
+            //     `scripts_post` (STATIC_ENHANCE) and every `include-after-body` script.
+            //   * app.js stays deferred (non-blocking): when it runs after parse, its own bundled
+            //     `01-registry` copy hits `if (window.taliEnhancers) return;` and no-ops, while
+            //     its feature scripts (02-16) register into the already-created list.
+            //   * On DOMContentLoaded, STATIC_ENHANCE calls `taliEnhanceCode` = registry.run,
+            //     running every registered enhancer (core + qmd-js + any extension); the deferred
+            //     jslibs (d3/Plot) have executed by then, so `{js}` cells still run correctly.
             let framework_scripts = format!(
-                "<script src=\"{}\" defer></script>{qmd_js_inline}{mermaid}",
+                "<script>{REGISTRY_JS}</script>\n<script src=\"{}\" defer></script>{qmd_js_inline}{mermaid}",
                 a.app_js
             );
             (style_block, katex_block, js_head_html, framework_scripts)

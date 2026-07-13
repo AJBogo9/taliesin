@@ -182,5 +182,116 @@ fn tech_blog_shares_one_hashed_css_across_pages() {
         "a prose-only page must not link katex"
     );
 
+    // The `{js}`-cell runtime must ship INLINE on `em-algorithm` (it has real
+    // `await import("./em-helpers.js")` cells): the runtime's own `AsyncFunction` literal
+    // appears verbatim in the page, proving it was NOT folded into the deferred, shared
+    // `_assets/app.<hash>.js`. If it were, `new AsyncFunction(..., src)`'s dynamic `import()`
+    // would resolve `./em-helpers.js` against `/_assets/` (a 404) instead of the page. This
+    // pins the js-import fix so a future asset-bundle refactor cannot silently regress it.
+    assert!(
+        post.contains("new AsyncFunction("),
+        "the {{js}}-cell runtime must be inlined verbatim (AsyncFunction token) on an import() page"
+    );
+    // The heavy d3/Plot libs ARE externalized (`_assets/jslibs.<hash>.js`), but the runtime
+    // itself is never delivered via an `_assets/` link (no runtime asset file exists) —
+    // folding it into a shared bundle is exactly the regression this guards against.
+    assert!(
+        post.contains("_assets/jslibs."),
+        "a {{js}} page still links the shared jslibs bundle"
+    );
+    assert!(
+        !post.contains("_assets/qmd-js") && !post.contains("_assets/qmdjs"),
+        "the {{js}}-cell runtime must not be externalized into an _assets/ file"
+    );
+
+    let _ = std::fs::remove_dir_all(&out);
+}
+
+/// Regression pin for the #17 blocker: in an External (`build <dir>`) page, a documented
+/// `include-after-body` extension that calls `window.taliEnhancers.register(...)` runs INLINE at
+/// parse. #17 folded the registry into the DEFERRED `_assets/app.<hash>.js`, so that hook fired
+/// before the registry was defined and threw `Cannot read properties of undefined`. The fix emits
+/// the registry inline at parse (ahead of the deferred app.js), so the hook resolves. This asserts
+/// the registry DEFINITION ships inline (a `<script>` WITHOUT `src=`) and BEFORE the
+/// `include-after-body` script position.
+#[test]
+fn external_inlines_enhancer_registry_before_include_after_body() {
+    let root = std::env::temp_dir().join(format!("tali-ab-reg-src-{}", std::process::id()));
+    let out = std::env::temp_dir().join(format!("tali-ab-reg-out-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let _ = std::fs::remove_dir_all(&out);
+    std::fs::create_dir_all(root.join("sub")).unwrap();
+    std::fs::write(root.join("_site.yml"), "title: AB\n").unwrap();
+    // The home page carries an `include-after-body` extension script (inline `text:` form, so no
+    // separate file to ship) that registers an enhancer through the public hook taught in
+    // docs/internals/extending.tmd. `TALI-PIN-HOOK` is a unique marker to locate its position.
+    std::fs::write(
+        root.join("index.tmd"),
+        "---\ntitle: Home\ninclude-after-body:\n  text: |\n    \
+         <script>window.taliEnhancers.register(function(root){/* TALI-PIN-HOOK */});</script>\n---\n\nHi.\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("sub/page.tmd"),
+        "---\ntitle: Sub\n---\n\nHello.\n",
+    )
+    .unwrap();
+    let ok = Command::new(bin())
+        .args(["build"])
+        .arg(&root)
+        .arg("--out")
+        .arg(&out)
+        .output()
+        .expect("build");
+    assert!(
+        ok.status.success(),
+        "{}",
+        String::from_utf8_lossy(&ok.stderr)
+    );
+
+    let index = std::fs::read_to_string(out.join("index.html")).unwrap();
+
+    // The extension hook was injected (proves the include-after-body wiring reached the page).
+    let hook_pos = index
+        .find("TALI-PIN-HOOK")
+        .expect("include-after-body extension script must be present on the page");
+
+    // The registry DEFINITION (`window.taliEnhancers = {`) is a literal unique to the registry
+    // source (the hook only *calls* `.register`), and app.js is an external file whose body is
+    // NOT in the page, so its presence in the HTML proves the registry shipped INLINE.
+    let reg_pos = index
+        .find("window.taliEnhancers = {")
+        .expect("the enhancer registry must be emitted INLINE (not only in the deferred app.js)");
+    // The idempotency guard verbatim from 01-registry.js: only ever inline (never in the page
+    // via the external app.js link), a second confirmation the registry source is inlined.
+    assert!(
+        index.contains("if (window.taliEnhancers) return;"),
+        "the inline registry must carry its idempotency guard verbatim"
+    );
+
+    // The registry must be DEFINED before the `include-after-body` hook runs, so the hook's
+    // `window.taliEnhancers.register(...)` resolves at parse instead of throwing.
+    assert!(
+        reg_pos < hook_pos,
+        "the registry must be defined (inline) BEFORE the include-after-body extension script"
+    );
+
+    // The registry is inline, but app.js is STILL deferred + external (the fix keeps the bundle
+    // deferred; only the tiny registry is duplicated inline). Its bundled registry copy no-ops.
+    let assets = std::fs::read_dir(out.join("_assets"))
+        .expect("_assets dir")
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect::<Vec<_>>();
+    let app_js = assets
+        .iter()
+        .find(|n| n.starts_with("app.") && n.ends_with(".js"))
+        .unwrap_or_else(|| panic!("no app.<hash>.js in {assets:?}"));
+    assert!(
+        index.contains(&format!("<script src=\"_assets/{app_js}\" defer></script>")),
+        "app.js must stay deferred + external alongside the inline registry"
+    );
+
+    let _ = std::fs::remove_dir_all(&root);
     let _ = std::fs::remove_dir_all(&out);
 }
