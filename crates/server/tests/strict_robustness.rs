@@ -283,7 +283,7 @@ fn strict_build_fails_on_everything_check_fails_on() {
     fs::write(
         dir.join("index.tmd"),
         "---\ntitle: Home\n---\n\n## A {#dup}\n\n## B {#dup}\n\n\
-         See [anchor](#nope) and ![img](missing.png).\n\
+         See [anchor](#nope) and ![a missing chart](missing.png).\n\
          A [cross-page](ghost.tmd) link and a [bad anchor](about.tmd#nope).\n",
     )
     .unwrap();

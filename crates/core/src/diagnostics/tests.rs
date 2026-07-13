@@ -297,6 +297,31 @@ fn a11y_flags_raw_img_without_alt() {
 }
 
 #[test]
+fn a11y_flags_placeholder_alt_but_not_descriptive() {
+    // A non-empty but useless alt (a bare medium word, or an echo of the filename) is
+    // flagged; a descriptive alt and alt="" (decorative) are clean. The common LLM tell.
+    let doc = render_document(
+        "![image](photo.png)\n\n\
+         <img src=\"scree.png\" alt=\"scree.png\">\n\n\
+         ![A scree plot of the eigenvalues](scree.png)\n\n\
+         <img src=\"deco.png\" alt=\"\">\n",
+    );
+    let ws = validate_a11y(&doc.blocks, DocFormat::Html);
+    let m = msgs(&ws);
+    assert_eq!(
+        m.iter()
+            .filter(|s| s.contains("looks like a placeholder"))
+            .count(),
+        2,
+        "medium-word + filename-echo alts flagged, descriptive + decorative clean: {m:?}"
+    );
+    assert!(
+        !m.iter().any(|s| s.contains("scree plot")),
+        "a descriptive alt is never accused: {m:?}"
+    );
+}
+
+#[test]
 fn a11y_flags_link_with_no_accessible_name() {
     // An icon-only / empty link is flagged; a normal text link, an aria-labelled link,
     // and a link wrapping an alt-bearing image are clean.

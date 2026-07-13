@@ -301,9 +301,63 @@ pub fn validate_a11y(blocks: &[Block], format: DocFormat) -> Vec<Warning> {
                     Some(l) => w.at(b.source_file.clone(), l),
                     None => w,
                 });
+            } else if is_img && let Some(msg) = placeholder_alt_message(tag) {
+                // A non-empty but useless alt (`alt="image"`, a filename echo): it passes the
+                // missing-alt check yet tells a screen-reader user nothing. A common LLM tell.
+                let w = Warning::new(msg);
+                out.push(match line {
+                    Some(l) => w.at(b.source_file.clone(), l),
+                    None => w,
+                });
             }
         }
     }
 
     out
+}
+
+/// Words that name an image's *medium* rather than its content — useless as alt text.
+const PLACEHOLDER_ALT_WORDS: &[&str] = &[
+    "image",
+    "photo",
+    "photograph",
+    "picture",
+    "pic",
+    "figure",
+    "screenshot",
+    "graphic",
+    "graphics",
+    "img",
+];
+
+/// A warning when a non-empty `alt` looks like a placeholder — a bare medium word
+/// (`alt="image"`) or an echo of the image filename (`alt="scree.png"` for
+/// `src="scree.png"`) — else `None`. `alt=""` (decorative) is exempt. Kept deliberately
+/// narrow (exact word match + filename echo) so a descriptive alt is never accused.
+fn placeholder_alt_message(tag: &str) -> Option<String> {
+    let raw = tag_attr(tag, "alt=\"")?;
+    let alt = raw
+        .trim()
+        .trim_end_matches(['.', ':', ','])
+        .to_ascii_lowercase();
+    if alt.is_empty() {
+        return None; // alt="" is the sanctioned decorative marker.
+    }
+    let is_placeholder = PLACEHOLDER_ALT_WORDS.contains(&alt.as_str())
+        || tag_attr(tag, "src=\"").is_some_and(|src| {
+            let file = src
+                .rsplit(['/', '\\'])
+                .next()
+                .unwrap_or(src)
+                .to_ascii_lowercase();
+            let stem = file.rsplit_once('.').map_or(file.as_str(), |(s, _)| s);
+            alt == file || alt == stem
+        });
+    is_placeholder.then(|| {
+        format!(
+            "alt text `{}` looks like a placeholder (describe the image's content, or use \
+             alt=\"\" if it is decorative)",
+            raw.trim()
+        )
+    })
 }

@@ -576,6 +576,7 @@ mod tests {
             "heading level skips",
             "has no accessible name",
             "image is missing alt text",
+            "looks like a placeholder",
         ];
         fn walk(dir: &Path, skip: &[&str], out: &mut Vec<std::path::PathBuf>) {
             for e in fs::read_dir(dir).unwrap() {
@@ -757,6 +758,10 @@ mod tests {
         let diags = collect_diagnostics(&doc).expect("pin doc checks");
         let has = |needle: &str| diags.iter().any(|d| d.message.contains(needle));
         assert!(has("image is missing alt text"), "raw img: {diags:?}");
+        assert!(
+            has("looks like a placeholder"),
+            "placeholder alt (alt=\"image\"): {diags:?}"
+        );
         assert!(
             has("heading level skips from h3 to h5"),
             "heading skip: {diags:?}"

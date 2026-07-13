@@ -54,6 +54,7 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("heading level skips", "TAL-A11Y-HEADING", WARNING),
     ("has no accessible name", "TAL-A11Y-NAME", WARNING),
     ("missing alt text", "TAL-A11Y-ALT", WARNING),
+    ("looks like a placeholder", "TAL-A11Y-ALT", WARNING),
     // Citations, math, code, categories.
     ("citations are present", "TAL-CITE-BIB", WARNING),
     ("bibliography", "TAL-CITE-BIB", WARNING),

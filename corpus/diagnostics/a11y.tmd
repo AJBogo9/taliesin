@@ -15,6 +15,12 @@ block) jumps to its source line on click, like any other diagnostic.
 The raw `<img>` above has no `alt` attribute, so a screen reader can't describe it
 (a decorative image should use `alt=""`).
 
+![image](logo.png)
+
+The image just above has a non-empty but useless `alt="image"` — it names the medium,
+not the content, so it passes the missing-alt check yet still tells a screen-reader user
+nothing.
+
 #### A subsection that skips a heading level
 
 This heading is an `h4` directly under the `h2` above, skipping `h3`.
