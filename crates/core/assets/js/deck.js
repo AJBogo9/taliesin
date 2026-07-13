@@ -407,18 +407,21 @@
       st.transition = 'transform .5s cubic-bezier(.2,.8,.2,1), font-size .5s cubic-bezier(.2,.8,.2,1)';
       st.transform = 'translate(0,0)';
       if (animFont) st.fontSize = s.tf;
-      setTimeout(function () {
-        st.transition = ''; st.transform = ''; st.transformOrigin = '';
-        if (animFont) st.fontSize = '';
-      }, 520);
     });
-    setTimeout(function () { to.classList.remove('tali-aa'); }, 520);
+    // Cleanup (clearing inline styles + `.tali-aa`) is owned by autoAnimateTo's single
+    // cancellable settle, so a rapid re-nav can flush it instead of racing naked timers.
   }
   // Auto-animate in the camera model: instead of panning between the two cells, hold
   // the camera and overlay `to` on `from`'s cell so the matched elements morph in
   // place; then snap `to` and the camera to `to`'s real cell together — a net-zero
   // screen move, so the reposition is invisible.
   function autoAnimateTo(from, to) {
+    // Flush any in-flight morph to its committed end state FIRST, so `from` (= the
+    // previous `to`) is back at its real cell before we read it below, and its matched
+    // elements' inline styles are cleared before a re-animation. Fixes the rapid-nav race
+    // where a naked 520ms timer fired mid-next-transition (elements snapped / camera
+    // jittered / a 3rd slide overlapped onto the 1st's cell).
+    if (deck.aaSettle) deck.aaSettle();
     var toTransform = to.style.transform;       // to's real grid cell
     to.style.transform = from.style.transform;  // overlap `to` onto `from`'s cell
     to.classList.add('tali-aa');
@@ -426,11 +429,21 @@
     from.style.opacity = '0';                    // hide the old slide; the morph carries the motion
     applyClasses();                              // update state, but DON'T move the camera
     flipTo(snap, to);
-    setTimeout(function () {
+    // One cancellable settle does all cleanup (mirrors the deck.flyRAF guard on the camera
+    // fly). A new autoAnimateTo flushes it via the guard above.
+    var settle = deck.aaSettle = function () {
+      if (deck.aaTimer) { clearTimeout(deck.aaTimer); deck.aaTimer = null; }
+      deck.aaSettle = null;
+      snap.forEach(function (s) {
+        var st = s.to.style;
+        st.transition = ''; st.transform = ''; st.transformOrigin = ''; st.fontSize = '';
+      });
+      to.classList.remove('tali-aa');
       from.style.opacity = '';
       to.style.transform = toTransform;          // restore `to`'s real cell ...
       setCamera(false);                          // ... and move the camera to it (net screen move = 0)
-    }, 520);
+    };
+    deck.aaTimer = setTimeout(settle, 520);
   }
   // --- fragments (incremental steps) -----------------------------------
   // A fragment is any `.fragment` element or a list item inside `.incremental`,

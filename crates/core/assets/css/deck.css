@@ -321,6 +321,12 @@ body { background: transparent; }
   transition: opacity .4s ease;
 }
 .tali-deck .magic-move > pre.tali-mm-active { opacity: 1; }
+/* Overview shows every magic-move at its final block (like fragments show complete),
+   even on slides never made current — otherwise their stacked pres all stay opacity:0
+   and the tile is blank. The first rule also hides the current slide's `.tali-mm-active`
+   non-last block, or it would overlap the forced-visible last block in the shared cell. */
+.tali-deck.overview .magic-move > pre { opacity: 0 !important; }
+.tali-deck.overview .magic-move > pre:last-of-type { opacity: 1 !important; }
 
 /* Callouts on slides. The deck doesn't load base.css, so style them here with
    translucent fills (so they read on a light OR dark deck): an accent left border per

@@ -3374,6 +3374,22 @@ fn same_page_sec_ref_stays_flat_without_a_chapter() {
 }
 
 #[test]
+fn deck_overview_reveals_magic_move_final_block() {
+    // B1-5: a magic-move on a slide never made current stays opacity:0 (a blank tile) in
+    // overview unless overview forces its final block visible AND hides the current slide's
+    // active non-last block (which would otherwise overlap it in the shared grid cell).
+    let deck_css = include_str!("../../assets/css/deck.css");
+    assert!(
+        deck_css.contains(".tali-deck.overview .magic-move > pre:last-of-type"),
+        "overview magic-move final-block override missing (unvisited slides render blank)"
+    );
+    assert!(
+        deck_css.contains(".tali-deck.overview .magic-move > pre {"),
+        "overview must also hide non-last magic-move blocks or the current slide overlaps two pres"
+    );
+}
+
+#[test]
 fn deck_defines_light_bg_text_override() {
     // Batch 3d: a light per-slide background needs a `.tali-light-bg` rule forcing
     // DARK text, or the deck's default (light) text is invisible on it. Pin both the
