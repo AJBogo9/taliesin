@@ -20,6 +20,7 @@ mod anchors;
 mod assets;
 mod bibliography;
 mod code_lang;
+pub mod codes;
 mod headings;
 mod helpers;
 mod links;

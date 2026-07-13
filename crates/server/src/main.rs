@@ -228,7 +228,8 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \n\
              Flags:\n\
              \x20 --format human  path:line: message lines to stderr (default)\n\
-             \x20 --format json   a [{file,line,message}] array to stdout (pipes to jq)\n\
+             \x20 --format json   {diagnostics:[{code,severity,file,line,message,suggestion?}],\n\
+             \x20                    environment:[...]} object to stdout (pipes to jq)\n\
              \n\
              Example:\n\
              \x20 taliesin check . --format json | jq\n"

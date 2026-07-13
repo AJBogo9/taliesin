@@ -21,3 +21,7 @@ This callout names a kind Taliesin does not define.
 #| labl: fig-demo
 print("hello from a cell whose option key is misspelled")
 ```
+
+![The results.](results.png){#fig-results}
+
+A misspelled cross-reference: see @fig-reslts, which should suggest the real label.

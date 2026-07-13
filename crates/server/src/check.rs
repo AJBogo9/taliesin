@@ -14,20 +14,53 @@ use crate::log;
 use std::path::Path;
 use std::process::ExitCode;
 
-/// One located diagnostic from the render warning channel, ready to print or serialize.
+/// One located diagnostic, ready to print or serialize. Under `--format json` it is
+/// agent-grade: a stable `code`, a `severity`, and (for a "did you mean" typo) a
+/// structured `suggestion` (`{ replacement }`). `--format human` ignores those extra
+/// fields, so its output is byte-identical to before. (Keys serialize alphabetically:
+/// `format_json` routes through `serde_json::json!`, whose object is key-sorted.)
 #[derive(Debug, Clone, serde::Serialize)]
 struct Diagnostic {
+    code: &'static str,
+    severity: &'static str,
     file: String,
     line: Option<u32>,
     message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    suggestion: Option<Suggestion>,
+}
+
+/// A structured, applicable fix lifted from an inline "did you mean `X`?" hint.
+#[derive(Debug, Clone, serde::Serialize)]
+struct Suggestion {
+    replacement: String,
+}
+
+impl Diagnostic {
+    /// Build a diagnostic, classifying its `code`/`severity` and lifting any inline
+    /// "did you mean" hint into a structured `suggestion` from the message.
+    fn new(file: String, line: Option<u32>, message: String) -> Self {
+        use taliesin_core::diagnostics::codes;
+        let (code, severity) = codes::classify(&message);
+        let suggestion =
+            codes::extract_suggestion(&message).map(|replacement| Suggestion { replacement });
+        Diagnostic {
+            code,
+            severity,
+            file,
+            line,
+            message,
+            suggestion,
+        }
+    }
 }
 
 fn diag_from(w: &taliesin_core::render::Warning, fallback_file: &str) -> Diagnostic {
-    Diagnostic {
-        file: w.file.clone().unwrap_or_else(|| fallback_file.to_string()),
-        line: w.line,
-        message: w.message.clone(),
-    }
+    Diagnostic::new(
+        w.file.clone().unwrap_or_else(|| fallback_file.to_string()),
+        w.line,
+        w.message.clone(),
+    )
 }
 
 /// Render `path` (a file or a site directory) in memory and return every located
@@ -102,11 +135,7 @@ fn collect_file_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
     // Malformed YAML front matter: the lenient line-parser silently mis-extracts
     // fields, so surface the parse error here too (the live servers already do).
     if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(&src) {
-        out.push(Diagnostic {
-            file: path_str.clone(),
-            line: Some(line),
-            message,
-        });
+        out.push(Diagnostic::new(path_str.clone(), Some(line), message));
     }
     out.extend(
         doc.warnings
@@ -130,27 +159,19 @@ fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
         .warnings
         .iter()
         .filter(|m| !taliesin_core::site::is_missing_config_warning(m))
-        .map(|m| Diagnostic {
-            file: "_site.yml".to_string(),
-            line: None,
-            message: m.clone(),
-        })
+        .map(|m| Diagnostic::new("_site.yml".to_string(), None, m.clone()))
         .collect();
     for page in &site.pages {
         let Ok(src) = std::fs::read_to_string(&page.input) else {
-            out.push(Diagnostic {
-                file: page.rel.clone(),
-                line: None,
-                message: format!("cannot read {}", page.input.display()),
-            });
+            out.push(Diagnostic::new(
+                page.rel.clone(),
+                None,
+                format!("cannot read {}", page.input.display()),
+            ));
             continue;
         };
         if let Some((message, line)) = taliesin_core::frontmatter::yaml_error(&src) {
-            out.push(Diagnostic {
-                file: page.rel.clone(),
-                line: Some(line),
-                message,
-            });
+            out.push(Diagnostic::new(page.rel.clone(), Some(line), message));
         }
         let base = page.input.parent().unwrap_or(root);
         // Scope a numbered book chapter's theorems to its chapter ("Theorem 2.3"), matching
@@ -945,21 +966,27 @@ mod tests {
         // 2026-07-12): diagnostics keep their file/line/message shape under a named key,
         // and the informational environment probe rides alongside.
         let diags = vec![
-            Diagnostic {
-                file: "a.tmd".into(),
-                line: Some(3),
-                message: "weasel word `very`".into(),
-            },
-            Diagnostic {
-                file: "b.tmd".into(),
-                line: None,
-                message: "needs a \"name\"".into(),
-            },
+            Diagnostic::new("a.tmd".into(), Some(3), "weasel word `very`".into()),
+            Diagnostic::new("b.tmd".into(), None, "needs a \"name\"".into()),
         ];
         let json = format_json(&diags, &[]);
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid json");
         assert_eq!(parsed["diagnostics"][0]["file"], "a.tmd");
         assert_eq!(parsed["diagnostics"][0]["line"], 3);
+        // Agent-grade fields ride alongside the file/line/message.
+        assert!(
+            parsed["diagnostics"][0]["code"]
+                .as_str()
+                .is_some_and(|c| c.starts_with("TAL-")),
+            "each diagnostic carries a stable code: {json}"
+        );
+        assert!(
+            matches!(
+                parsed["diagnostics"][0]["severity"].as_str(),
+                Some("error" | "warning")
+            ),
+            "each diagnostic carries a severity: {json}"
+        );
         assert_eq!(parsed["diagnostics"][1]["line"], serde_json::Value::Null);
         assert_eq!(parsed["diagnostics"][1]["message"], "needs a \"name\"");
         assert!(
@@ -999,16 +1026,8 @@ mod tests {
     #[test]
     fn format_human_lists_located_lines() {
         let diags = vec![
-            Diagnostic {
-                file: "a.tmd".into(),
-                line: Some(3),
-                message: "m1".into(),
-            },
-            Diagnostic {
-                file: "b.tmd".into(),
-                line: None,
-                message: "m2".into(),
-            },
+            Diagnostic::new("a.tmd".into(), Some(3), "m1".into()),
+            Diagnostic::new("b.tmd".into(), None, "m2".into()),
         ];
         let text = format_human(&diags);
         assert!(text.contains("a.tmd:3: m1"), "located line: {text}");
