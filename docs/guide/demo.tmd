@@ -85,12 +85,12 @@ Press <kbd>↓</kbd> to go deeper, <kbd>→</kbd> to move on.
 A heading under a section becomes a vertical sub-slide, so a topic can have its
 own thread without cluttering the main flow.
 
-## Presenter, print, reader, draw
+## Presenter tools
 
 ::: {.incremental}
 - <kbd>S</kbd> opens **speaker view** (current + next slide, notes, timer)
-- <kbd>Ctrl/Cmd-P</kbd> prints to a clean **one-slide-per-page PDF**
-- On a phone the deck flattens to a scrollable **reader**
+- <kbd>O</kbd> opens the **overview**: a zoomable map of every slide
+- <kbd>B</kbd> **blacks the screen** to pull the room back to you
 - <kbd>D</kbd> toggles a **pen** to annotate live
 :::
 

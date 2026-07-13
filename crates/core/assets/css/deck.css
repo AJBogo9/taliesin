@@ -384,7 +384,6 @@ body { background: transparent; }
 .tali-deck .tali-slides section.tali-light-bg .subtitle { color: rgba(0, 0, 0, .72); }
 .tali-deck .tali-slides section.tali-light-bg a { color: #3a4673; }
 .tali-deck .tali-slides section.tali-light-bg li::marker { color: #3a4673; }
-html.tali-print .tali-slide-bg { display: none; } /* per-slide backgrounds aren't in the PDF (v1) */
 
 /* Fragments / incremental steps: hidden but keeping layout space (visibility,
    not display) so the slide doesn't reflow and shrink-to-fit sizes for the final
@@ -507,110 +506,39 @@ html.tali-print .tali-slide-bg { display: none; } /* per-slide backgrounds aren'
 }
 .tali-deck .tali-draw-bar .tali-draw-color { width: 28px; padding: 0; }
 .tali-deck .tali-draw-bar button.sel { border-color: #fff; }
-/* annotations are a live-presenting feature: hidden in reader, print and overview. */
-html.tali-scroll .tali-draw, html.tali-scroll .tali-draw-bar,
-html.tali-print .tali-draw, html.tali-print .tali-draw-bar,
+/* annotations are a live-presenting feature: hidden in overview. */
 .tali-deck.overview .tali-draw, .tali-deck.overview .tali-draw-bar { display: none !important; }
 
-/* PDF export: deck.js adds `tali-print` to <html> on Cmd/Ctrl+P (and for the
-   ?qmd=print preview), flattening the deck to one fixed-size slide per page —
-   no transform, every slide shown, fragments expanded. `@page` makes each
-   printed page the deck's aspect so "Save as PDF" produces a clean handout. */
-html.tali-print, html.tali-print body {
-  width: 960px; height: auto; margin: 0; overflow: visible; background: #fff;
-}
-html.tali-print .tali-deck {
-  position: static; width: 960px; height: auto; overflow: visible;
-}
-html.tali-print .tali-deck .tali-slides {
-  position: static; transform: none !important; left: auto; top: auto;
-  width: 960px; height: auto;
-}
-html.tali-print .tali-deck .tali-slides > section,
-html.tali-print .tali-deck .tali-slides > section > section {
-  position: relative !important;
-  display: block !important;
-  width: 960px; height: 540px; box-sizing: border-box;
-  overflow: hidden;
-  break-after: page;
-  background: #fff;
-}
-html.tali-print .tali-deck .tali-slides > section.center {
-  display: flex !important; flex-direction: column; justify-content: center; /* keep title slides centered */
-}
-html.tali-print .tali-deck .tali-slides > section.tali-print-stack {
-  height: auto; break-after: auto; padding: 0; /* a stack wrapper isn't itself a page */
-}
-html.tali-print .tali-slide-number { display: none; }
+/* No PDF-export mode — a deck opens as a deck. But a stray browser Cmd/Ctrl+P
+   should still print the CURRENT slide legibly instead of the raw transformed
+   stage: reset the camera transform, show only the on-camera slide (off-camera
+   leaves carry [inert]), and hide the chrome. Colours are kept as-is so a dark
+   deck prints as a dark (legible) handout rather than inverting to invisible ink
+   on white (the old flatten-to-PDF mode's bug). */
 @media print {
   @page { size: 960px 540px; margin: 0; }
+  .tali-progress, .tali-controls, .tali-menu, .tali-menu-backdrop,
+  .tali-slide-number, .tali-draw, .tali-draw-bar, .tali-blackout-overlay { display: none !important; }
+  .tali-deck { position: static !important; }
+  .tali-deck .tali-slides {
+    position: static !important; transform: none !important; left: auto !important; top: auto !important;
+    width: 960px !important; height: 540px !important;
+  }
+  .tali-deck .tali-slides section { position: static !important; transform: none !important; }
+  .tali-deck .tali-slides section[inert] { display: none !important; }
+  .tali-deck .tali-slides > section:not([inert]),
+  .tali-deck .tali-slides > section > section:not([inert]) {
+    width: 960px !important; height: 540px !important; box-sizing: border-box; overflow: hidden;
+  }
+  /* a vertical-stack wrapper isn't itself a page — let its visible child own the height */
+  .tali-deck .tali-slides > section:has(> section) { height: auto !important; }
 }
-
-/* Scroll / reader mode: deck.js adds `tali-scroll` to <html> on a narrow/portrait
-   screen (or ?qmd=scroll). The deck flattens to a vertically-scrollable document —
-   every slide a full-width section in a centered reading column, at a responsive
-   font size (no fixed-aspect scaling) so it reads well on a phone. */
-html.tali-scroll, html.tali-scroll body {
-  width: auto; height: auto; overflow: auto; margin: 0; background: #fff;
-}
-html.tali-scroll .tali-deck {
-  position: static; width: auto; height: auto; overflow: visible;
-  font-size: clamp(15px, 4.2vw, 21px);
-}
-html.tali-scroll .tali-deck .tali-slides {
-  position: static; transform: none !important; left: auto; top: auto;
-  width: auto; height: auto; max-width: 46rem; margin: 0 auto; padding: 0 1rem 3rem;
-}
-/* In reader mode the running text reads like prose, so set it in the project
-   reading serif (the same stack as base.css `--tali-font-body`; a standalone deck
-   page bundles only deck.css, so base.css's custom property isn't defined here —
-   the family is written out literally). Headings/title stay on the deck sans for
-   contrast; only the body copy (paragraphs, lists, blockquotes) becomes serif. */
-html.tali-scroll .tali-deck .tali-slides p,
-html.tali-scroll .tali-deck .tali-slides li,
-html.tali-scroll .tali-deck .tali-slides blockquote {
-  font-family: "Newsreader", ui-serif, Georgia, "Times New Roman", serif;
-  line-height: 1.7;
-}
-html.tali-scroll .tali-deck .tali-slides > section,
-html.tali-scroll .tali-deck .tali-slides > section > section {
-  position: relative !important; display: block !important;
-  transform: none !important; /* drop the grid-cell transform so sections stack in flow */
-  width: auto; height: auto; min-height: 0; box-sizing: border-box;
-  padding: 1.6rem 0; border-top: 1px solid var(--deck-rule, #e6e7ea); overflow: visible;
-}
-/* The per-slide background layer + LOD title cards have no place in the reader. */
-html.tali-scroll .tali-slide-bg, html.tali-scroll .tali-lod, html.tali-scroll .tali-threads { display: none !important; }
-/* The per-slide background is hidden in the reader, so `.tali-dark-bg`'s light text
-   (and `.tali-light-bg`'s dark text) would go invisible against the reading column —
-   fall back to the reading column's own colour for both. */
-html.tali-scroll .tali-deck .tali-slides section.tali-dark-bg,
-html.tali-scroll .tali-deck .tali-slides section.tali-dark-bg h1,
-html.tali-scroll .tali-deck .tali-slides section.tali-dark-bg h2,
-html.tali-scroll .tali-deck .tali-slides section.tali-dark-bg h3,
-html.tali-scroll .tali-deck .tali-slides section.tali-dark-bg h4,
-html.tali-scroll .tali-deck .tali-slides section.tali-dark-bg strong,
-html.tali-scroll .tali-deck .tali-slides section.tali-dark-bg a,
-html.tali-scroll .tali-deck .tali-slides section.tali-dark-bg .subtitle,
-html.tali-scroll .tali-deck .tali-slides section.tali-dark-bg li::marker,
-html.tali-scroll .tali-deck .tali-slides section.tali-light-bg,
-html.tali-scroll .tali-deck .tali-slides section.tali-light-bg h1,
-html.tali-scroll .tali-deck .tali-slides section.tali-light-bg h2,
-html.tali-scroll .tali-deck .tali-slides section.tali-light-bg h3,
-html.tali-scroll .tali-deck .tali-slides section.tali-light-bg h4,
-html.tali-scroll .tali-deck .tali-slides section.tali-light-bg strong,
-html.tali-scroll .tali-deck .tali-slides section.tali-light-bg a,
-html.tali-scroll .tali-deck .tali-slides section.tali-light-bg .subtitle,
-html.tali-scroll .tali-deck .tali-slides section.tali-light-bg li::marker { color: inherit; }
-html.tali-scroll .tali-deck .tali-slides > section:first-child { border-top: 0; }
-html.tali-scroll .tali-deck .tali-slides > section.tali-scroll-stack { padding: 0; border-top: 0; }
-html.tali-scroll .tali-slide-number { display: none; }
 
 /* === Dark theme backgrounds (palette/colours defined at the top of this file) =====
    The slides and body are transparent, so the deck background is the html canvas
-   (which lets the per-slide `.tali-slide-bg` layer paint above it). Overview tiles, the
-   slide-number chip, and reader mode each carry their own hardcoded light surface,
-   so override those too. PDF print stays light (deck.js removes tali-deck-dark). */
+   (which lets the per-slide `.tali-slide-bg` layer paint above it). Overview tiles and
+   the slide-number chip each carry their own hardcoded light surface, so override
+   those too. */
 html.tali-deck-dark { background: #16181d; }
 html.tali-deck-dark .tali-deck.overview .tali-slides > section:not(.tali-stack),
 html.tali-deck-dark .tali-deck.overview .tali-slides > section > section { background: #20242b; }
@@ -620,12 +548,11 @@ html.tali-deck-dark .tali-deck.overview .tali-slides > section > section { backg
   .tali-deck .tali-slides.tali-cam-anim > section > section { transition: none !important; }
 }
 html.tali-deck-dark .tali-deck .tali-slide-number { background: rgba(255, 255, 255, .12); color: rgba(255, 255, 255, .62); }
-html.tali-deck-dark.tali-scroll, html.tali-deck-dark.tali-scroll body { background: #16181d; }
 
 /* === On-screen chrome: progress bar, nav arrows, control menu =============
    A control surface built by deck.js in normal mode, surfacing the
-   keyboard-only features (overview / annotate / speaker / fullscreen / PDF /
-   reader / dark mode) + a jump-to-slide list + a shortcut sheet. Fixed to the
+   keyboard-only features (overview / annotate / speaker / fullscreen /
+   dark mode) + a jump-to-slide list + a shortcut sheet. Fixed to the
    viewport (outside the scaled .tali-slides). A consistent dark glass surface that
    reads on both light and dark decks; arrows + menu auto-hide on idle. */
 .tali-progress { position: fixed; left: 0; right: 0; bottom: 0; height: 3px; z-index: 60;
@@ -644,15 +571,13 @@ html.tali-deck-dark.tali-scroll, html.tali-deck-dark.tali-scroll body { backgrou
 
 /* Black-screen / pause (B or .): a full-viewport blackout to pull the room's
    attention back to the speaker. A body-level element (see deck.js toggleBlackout),
-   above ALL chrome including the preview dev menu (z-9999); hidden in print/reader,
-   and lifted on overview / external navigation in deck.js. */
+   above ALL chrome including the preview dev menu (z-9999); hidden in print
+   (@media print) and lifted on overview / external navigation in deck.js. */
 /* Cursor shows while the pointer is active (so the presenter can find it to
    click-dismiss the blackout) and hides only once idle — the mousemove -> showChrome
    handler clears `tali-idle`, so moving the mouse un-hides the cursor. */
 .tali-blackout-overlay { position: fixed; inset: 0; background: #000; z-index: 100000; cursor: default; }
 html.tali-idle .tali-blackout-overlay { cursor: none; }
-html.tali-print .tali-blackout-overlay,
-html.tali-scroll .tali-blackout-overlay { display: none !important; }
 
 .tali-menu-backdrop { position: fixed; inset: 0; z-index: 70; background: transparent; }
 .tali-menu[hidden], .tali-menu-backdrop[hidden] { display: none; }
@@ -688,10 +613,8 @@ html.tali-scroll .tali-blackout-overlay { display: none !important; }
 .tali-key kbd { font: 600 11px ui-monospace, SFMono-Regular, Menlo, monospace; color: #e6e8ec;
   background: #2a2e36; border: 1px solid #3a3f49; border-radius: 5px; padding: 1px 5px; white-space: nowrap; }
 
-/* live-presenting chrome only: gone in print + overview; reader keeps just the menu button */
-html.tali-print .tali-progress, html.tali-print .tali-controls, html.tali-print .tali-menu, html.tali-print .tali-menu-backdrop,
+/* live-presenting chrome only: hidden in overview (print is handled by @media print). */
 .tali-deck.overview .tali-progress, .tali-deck.overview .tali-controls { display: none !important; }
-html.tali-scroll .tali-progress, html.tali-scroll .tali-ctl-prev, html.tali-scroll .tali-ctl-next { display: none; }
 
 /* ===========================================================================
    Deck theme: the typographic + content styling for slides. Clean, modern, fully
@@ -819,8 +742,8 @@ html.tali-scroll .tali-progress, html.tali-scroll .tali-ctl-prev, html.tali-scro
    from `theme: dark/light`, the embedding page's theme (a same-origin host), or
    the OS preference for a standalone deck. Only the built-in theme participates:
    a custom/extension theme owns its colours, so the head script emits nothing for
-   it. Palette mirrors the page dark theme (dark.css). PDF export
-   forces light: deck.js drops the class while printing. */
+   it. Palette mirrors the page dark theme (dark.css). A dark deck prints as-is
+   (the @media print fallback keeps colours legible). */
 html.tali-deck-dark .tali-deck {
   --deck-ink: #e6e6e6;
   --deck-muted: #9aa0aa;

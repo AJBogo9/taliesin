@@ -28,8 +28,8 @@ async function safe(feature, assertion, fn) {
   }
 }
 
-// 1. Deck navigation. Page must be loaded with ?qmd=present (scroll/reader mode
-// no-ops the keys). ArrowRight should advance the active leaf slide.
+// 1. Deck navigation. A deck opens stepped by default now; ?qmd=present just pins
+// that (over a future portrait slide-feed). ArrowRight should advance the active leaf.
 export async function probeDeck(page) {
   const F = 'deck-nav';
   return safe(F, 'ArrowRight advances the active slide', async () => {

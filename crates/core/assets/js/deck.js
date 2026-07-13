@@ -253,8 +253,7 @@
   // is non-inert. Called from applyClasses (commit + init), the mode enter/exit hooks, and
   // setOverview, so any path that changes "what's visible" re-derives inert consistently.
   function syncInert() {
-    var showAll = deck.overview || deck.scroll ||
-      document.documentElement.classList.contains('tali-print');
+    var showAll = deck.overview;
     var cur = showAll ? null : currentSlide();
     allSlides().forEach(function (s) {
       if (showAll || s === cur) s.removeAttribute('inert');
@@ -1073,72 +1072,6 @@
   }
 
   // --- PDF export (print) ------------------------------------------------
-  // On `beforeprint` (Cmd/Ctrl+P) the deck flattens to one slide per page: every
-  // slide shown, transforms dropped, all fragments shown, code un-dimmed.
-  // `@page` makes each page the deck's aspect, so the browser's "Save as PDF"
-  // yields a clean handout. `?qmd=print` enters the same layout on screen.
-  function enterPrint() {
-    var rev = deckEl(); if (!rev) return;
-    document.documentElement.classList.add('tali-print');
-    rev.classList.remove('tali-dark-bg'); // bg layer is hidden in print; keep text readable on the page
-    tops().forEach(function (top) {
-      top.style.removeProperty('display'); top.removeAttribute('aria-hidden');
-      if (isStack(top)) {
-        top.classList.add('tali-print-stack');
-        vertsOf(top).forEach(function (s) { s.style.removeProperty('display'); s.removeAttribute('aria-hidden'); });
-      }
-    });
-    rev.querySelectorAll(FRAG_SEL).forEach(function (e) { e.classList.add('tali-frag-visible'); });
-    rev.querySelectorAll('pre[data-code-lines]').forEach(function (p) { highlightLines(p, 'all'); });
-    rev.querySelectorAll('.magic-move').forEach(function (div) { // show the final block
-      var pres = mmBlocks(div);
-      pres.forEach(function (p, i) { p.classList.toggle('tali-mm-active', i === pres.length - 1); });
-    });
-    allSlides().forEach(fitSlide); // size every slide to its page (not just visited ones)
-    syncInert(); // print shows every slide: clear inert so all pages are readable
-  }
-  function exitPrint() {
-    document.documentElement.classList.remove('tali-print');
-    tops().forEach(function (t) { t.classList.remove('tali-print-stack'); });
-    apply(); // -> applyClasses -> syncInert re-inerts the off-camera slides
-  }
-
-  // --- scroll / reader mode ----------------------------------------------
-  // On a narrow/portrait screen (or ?qmd=scroll) the fixed-aspect deck would
-  // letterbox badly, so it flattens to a vertically-scrollable, readable document:
-  // every slide stacked full-width at a responsive size, all fragments shown.
-  function enterScroll() {
-    var rev = deckEl();
-    if (!rev || deck.scroll) return;
-    deck.scroll = true;
-    document.documentElement.classList.add('tali-scroll');
-    rev.classList.remove('tali-dark-bg'); // backgrounds are hidden in reader; keep text readable
-    tops().forEach(function (top) {
-      top.style.removeProperty('display');
-      top.style.removeProperty('font-size');
-      top.removeAttribute('aria-hidden');
-      if (isStack(top)) {
-        top.classList.add('tali-scroll-stack');
-        vertsOf(top).forEach(function (s) { s.style.removeProperty('display'); s.style.removeProperty('font-size'); });
-      }
-    });
-    rev.querySelectorAll(FRAG_SEL).forEach(function (e) { e.classList.add('tali-frag-visible'); });
-    rev.querySelectorAll('pre[data-code-lines]').forEach(function (p) { highlightLines(p, 'all'); });
-    rev.querySelectorAll('.magic-move').forEach(function (div) {
-      var pres = mmBlocks(div);
-      pres.forEach(function (p, i) { p.classList.toggle('tali-mm-active', i === pres.length - 1); });
-    });
-    syncInert(); // reader mode stacks every slide for reading: clear inert from all of them
-  }
-  function exitScroll() {
-    if (!deck.scroll) return;
-    deck.scroll = false;
-    document.documentElement.classList.remove('tali-scroll');
-    tops().forEach(function (t) { t.classList.remove('tali-scroll-stack'); });
-    apply(); // -> applyClasses -> syncInert re-inerts the off-camera slides
-    layout();
-  }
-
   // --- drawing / annotations ---------------------------------------------
   // `d` toggles a pen: a canvas inside `.tali-slides` (so it scales with the deck) that
   // captures pointer strokes over the current slide. Strokes are kept per slide and
@@ -1183,7 +1116,7 @@
     d.bar.querySelector('.tali-draw-erase').classList.toggle('sel', d.erase);
   }
   function toggleDraw(force) {
-    if (deck.mode !== 'normal' || deck.scroll || deck.overview) return;
+    if (deck.mode !== 'normal' || deck.overview) return;
     var d = ensureDraw();
     d.on = (force == null) ? !d.on : force;
     deckEl().classList.toggle('tali-drawing', d.on);
@@ -1336,7 +1269,6 @@
   // --- keyboard + touch ---------------------------------------------------
   function onKey(e) {
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
-    if (deck.scroll) return; // reader mode: let the browser scroll normally
     var t = /** @type {any} */ (e.target);
     if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
     var handled = true;
@@ -1417,7 +1349,7 @@
   }
   var touch = { x: null, y: null, t: 0 };
   function onTouchStart(e) {
-    if (deck.scroll || e.touches.length !== 1) { touch.x = null; return; } // reader mode scrolls
+    if (e.touches.length !== 1) { touch.x = null; return; }
     touch.x = e.touches[0].clientX; touch.y = e.touches[0].clientY; touch.t = Date.now();
   }
   function onTouchEnd(e) {
@@ -1456,8 +1388,6 @@
     pen: svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
     speak: svg('<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>'),
     fs: svg('<path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/>'),
-    pdf: svg('<path d="M14 3v5h5"/><path d="M5 3h9l5 5v13H5z"/>'),
-    reader: svg('<path d="M4 5h16M4 10h16M4 15h10"/>'),
     moon: svg('<path d="M21 12.8A8 8 0 1 1 11.2 3a6 6 0 0 0 9.8 9.8z"/>'),
   };
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
@@ -1469,7 +1399,7 @@
   var KEYS_HTML =
     key('← →', 'Navigate') + key('↑ ↓', 'Vertical slides') + key('Space', 'Next') +
     key('O', 'Overview') + key('F', 'Fullscreen') + key('S', 'Speaker view') +
-    key('D', 'Annotate') + key('B', 'Black screen') + key('⌘/Ctrl P', 'Export PDF') +
+    key('D', 'Annotate') + key('B', 'Black screen') +
     key('?', 'This menu') + key('Esc', 'Close');
 
   function buildChrome() {
@@ -1509,11 +1439,9 @@
       '<div class="tali-menu-head">Slides</div><div class="tali-menu-slides"></div>' +
       '<div class="tali-menu-head">Tools</div><div class="tali-menu-tools">' +
         tool('overview', IC.grid, 'Overview', 'O') +
-        tool('reader', IC.reader, 'Reader mode', '') +
         tool('draw', IC.pen, 'Annotate', 'D') +
         tool('speaker', IC.speak, 'Speaker view', 'S') +
         tool('fullscreen', IC.fs, 'Fullscreen', 'F') +
-        tool('print', IC.pdf, 'Export PDF', '⌘P') +
       '</div>' + themeRow +
       '<div class="tali-menu-head">Keyboard</div><div class="tali-menu-keys">' + KEYS_HTML + '</div>';
     document.body.appendChild(menu);
@@ -1546,7 +1474,6 @@
       var b = deck.menu.querySelector('[data-action="' + action + '"]');
       if (b) b.classList.toggle('tali-on', !!on);
     };
-    set('reader', deck.scroll);
     set('draw', deck.draw && deck.draw.on);
     set('overview', deck.overview);
     var st = deck.menu.querySelector('.tali-theme-state');
@@ -1561,11 +1488,9 @@
     if (a === 'theme') { toggleThemeMode(); return; } // stay open; reflects state
     toggleMenu(false);
     if (a === 'overview') setOverview(true);
-    else if (a === 'reader') toggleScroll();
     else if (a === 'draw') toggleDraw(true);
     else if (a === 'speaker') openSpeaker();
     else if (a === 'fullscreen') toggleFullscreen();
-    else if (a === 'print') window.print();
   }
   function toggleMenu(force) {
     if (!deck.menu) return;
@@ -1592,7 +1517,6 @@
     if (deck.overview) setOverview(false);
     moveTo(ix.h, ix.v, true);
   }
-  function toggleScroll() { deck.scroll ? exitScroll() : enterScroll(); updateChrome(); }
   function toggleFullscreen() {
     try {
       if (document.fullscreenElement) document.exitFullscreen();
@@ -1625,22 +1549,13 @@
     var rev = deckEl();
     if (!rev || !slidesEl()) return facade;
     var qmd = new URLSearchParams(location.search).get('qmd');
-    deck.mode = qmd === 'speaker' ? 'speaker' : qmd === 'print' ? 'print' : 'normal';
+    deck.mode = qmd === 'speaker' ? 'speaker' : 'normal';
     var d = document.documentElement.style;
     d.setProperty('--tali-deck-w', deck.config.width + 'px');
     d.setProperty('--tali-deck-h', deck.config.height + 'px');
 
     // The speaker window doesn't render the deck itself; it builds the control UI.
     if (deck.mode === 'speaker') { initSpeaker(); deck.ready = true; return facade; }
-
-    // Print preview: lay every slide out as a page on screen (same layout Cmd/Ctrl+P uses).
-    if (deck.mode === 'print') {
-      clampIndices();
-      rev.classList.add('tali-ready');
-      enterPrint();
-      deck.ready = true;
-      return facade;
-    }
 
     if (!readHash()) { deck.h = 0; deck.v = 0; }
     clampIndices();
@@ -1681,28 +1596,11 @@
             .observe(window.top.document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
         } catch (e) {}
       }
-      window.addEventListener('beforeprint', enterPrint); // Cmd/Ctrl+P -> one slide per page
-      window.addEventListener('afterprint', exitPrint);
-      // Scroll/reader mode vs. step (presentation) mode.
-      //   - A deck opened directly as its own page (standalone, NOT embedded in a
-      //     host page) defaults to scroll/reader view: that's how a reader meets it
-      //     on their own. The stepped deck is the *presenting* surface; reach it with
-      //     the ?qmd=present (or ?qmd=slides) opt-in.
-      //   - An embedded deck ({{< embed deck.qmd >}}, detected via the iframe flag
-      //     window.taliDeckEmbedded) is NOT "opened as a link": it keeps the old
-      //     contract — step mode unless ?qmd=scroll or a narrow viewport.
-      //   - ?qmd=scroll always forces scroll; a narrow/portrait screen always uses
-      //     scroll (the fixed-aspect deck letterboxes badly there).
-      //   Re-evaluated on resize/rotate via the media-query change listener.
-      var narrow = window.matchMedia('(max-width: 600px)');
-      var present = (qmd === 'present' || qmd === 'slides'); // step-mode opt-in
-      var standalone = !window.taliDeckEmbedded;              // a directly-opened deck page
-      var syncScroll = function () {
-        var scroll = qmd === 'scroll' || narrow.matches || (standalone && !present);
-        scroll ? enterScroll() : exitScroll();
-      };
-      if (narrow.addEventListener) narrow.addEventListener('change', syncScroll);
-      syncScroll();
+      // A deck opens AS a deck (stepped slides), whether standalone or embedded.
+      // Reader/scroll mode and PDF-export mode were removed: the mobile slide-feed
+      // (?qmd=feed / portrait) is the phone reading surface, wired separately; the
+      // ?qmd=present escape hatch stays reserved to force stepped over that. Nothing
+      // to switch here — apply()/layout() above already placed the first slide.
     }
     deck.ready = true;
     deck.plugins.forEach(initPlugin);

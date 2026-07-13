@@ -129,19 +129,17 @@ One engine, several presentations, selected by a `?qmd=` query param or a class:
 
 | Mode | Trigger | What it does |
 |------|---------|--------------|
-| normal | `?qmd=present` / `?qmd=slides`, or embedded | the interactive (stepped) deck — the presenting surface |
+| normal | **default** — a deck opens as a deck, standalone or embedded | the interactive (stepped) deck — the presenting surface |
 | speaker | `S` → popup at `?qmd=speaker` | current + next slide previews, notes, timer |
 | embed | `?qmd=embed` | passive preview (no key/scroll capture); used by speaker previews and `{{< embed >}}` |
 | overview | `Esc` / `O` | zoomed grid of all slides |
-| print | `Ctrl/Cmd-P` / `?qmd=print` | flattened, one slide per page |
-| scroll | **standalone open (default)**, narrow screen, or `?qmd=scroll` | a single scrollable reading column |
 
-Speaker view and the audience window stay in sync over `postMessage` (it works on
-`file://`, unlike `BroadcastChannel`). When the deck flattens into a reading column or
-a print sheet (scroll and print), the per-slide background layer is hidden and the
-light-on-dark text class is cleared, so a dark slide stays readable instead of going
-white-on-white. Overview is the exception: it keeps each slide's background, shown per
-tile.
+A deck opens **as a deck** — there is no reader/scroll mode and no PDF-export mode.
+The shareable artifact is the live HTML deck; a stray `Ctrl/Cmd-P` falls back to a
+minimal `@media print` that shows the current slide legibly (colours kept as-is, so a
+dark deck prints dark rather than inverting to invisible ink). Speaker view and the
+audience window stay in sync over `postMessage` (it works on `file://`, unlike
+`BroadcastChannel`). Overview keeps each slide's background, shown per tile.
 
 ## Embedding a deck
 

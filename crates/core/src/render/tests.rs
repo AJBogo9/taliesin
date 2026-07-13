@@ -1403,6 +1403,36 @@ fn deck_page_carries_native_scaffolding() {
 }
 
 #[test]
+fn deck_opens_as_a_deck_without_reader_or_pdf_export() {
+    // The deck redesign (A1/A2) removed reader/scroll mode and PDF-export mode: a
+    // deck opens AS a deck (stepped), and a stray Cmd/Ctrl+P is handled by a minimal
+    // `@media print` fallback rather than a bespoke flatten-to-PDF `tali-print` mode.
+    // Pin at the bundle level so the machinery can't creep back in; the runtime
+    // front-door behavior is covered by the ui-audit deck smoke.
+    let page = render_html_page("---\nformat: deck\n---\n\n## A\n\n## B\n", "fallback");
+    for gone in [
+        "enterScroll",
+        "exitScroll",
+        "enterPrint",
+        "exitPrint",
+        "tali-scroll-stack",
+        "tali-print-stack",
+        "Reader mode",
+        "Export PDF",
+    ] {
+        assert!(
+            !page.contains(gone),
+            "deck still bundles removed reader/PDF machinery: {gone}"
+        );
+    }
+    // A minimal print fallback survives so a stray Cmd/Ctrl+P stays legible.
+    assert!(
+        page.contains("@media print"),
+        "deck must keep a minimal @media print fallback"
+    );
+}
+
+#[test]
 fn code_line_numbers_wraps_lines_for_stepping() {
     let page = render_html_page(
         "---\nformat: deck\n---\n\n## S\n\n```{.python code-line-numbers=\"1|2\"}\na = 1\nb = 2\n```\n",
