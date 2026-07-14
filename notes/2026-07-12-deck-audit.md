@@ -50,10 +50,12 @@ as-is as the spec. This block is the **live tracker** against the Part D grind o
    `@media print` fallback kept (resolves B4-CRIT by removal).
 3. **B0 crashes + B1/B2/B3 correctness** · ⏳ **mostly done**. Landed: B0-1/2/3, B1-4/5/7/8,
    B2-9/10/11/12, B3-13/14/16 (`c0a9036`, `87c6008`, `dd7c1bf`, `86c63f6`, `30d3f4c`).
-   **Still open: B1-6** (speaker previews don't reflect fragment/canvas state), **B3-15**
-   (front-matter title/subtitle don't hot-update), **B3-17** (open speaker window goes stale
-   on a live edit — `sync()` never calls `updateSpeakerUI`), **B3-18** (a structural edit
-   re-mounts the whole deck — deferred).
+   **B3-17** (open speaker window went stale on a live edit — `sync()` never called
+   `updateSpeakerUI`) · ✅ **done** (`3e69d6f`); `sync()` now mirrors
+   commit()/applyRemote()'s speaker-mode early-return (browser-verified: a note edit +
+   `sync()` repaints the Notes pane). **Still open: B1-6** (speaker previews don't reflect
+   fragment/canvas state), **B3-15** (front-matter title/subtitle don't hot-update),
+   **B3-18** (a structural edit re-mounts the whole deck — deferred).
 4. **A3 — mobile slide-feed** · ✅ **done** (`f97c01f`, first-frame `f8c2898`); pinch-zoom
    unblocked (**B5-1**). **C-ADD-4 (speaker notes as feed narration) NOT done** — the feed
    doesn't surface `::: {.notes}` yet.
@@ -62,9 +64,12 @@ as-is as the spec. This block is the **live tracker** against the Part D grind o
    Wijk smooth-zoom + hash `history` knob simplified; `leafAt` kept for the speaker view.
    −526/+33 lines; corpus + 3-viewport browser smoke green; adversarial review clean. Docs
    (`formats.tmd` · `deck-engine.tmd` · `demo.tmd`) purged of the cut features.
-6. **B4 theming + B5 a11y + B6 perf** · ⬜ **pending**. B4-19 chip-contrast · B4-20 dark-bg
-   code · B4-21 custom-theme embed mis-detect · B4-22 sepia-host embed · B4-23 missing-bg
-   scrim · B4-24 `isDarkColor` perf · B5-25 aria-haspopup · B5-26 fragment-announce · B5-27
+6. **B4 theming + B5 a11y + B6 perf** · ⏳ **started** (`3e69d6f`): ✅ **B4-24** (`isDarkColor`
+   memoised by colour string — was a forced style/layout flush per colour-bg slide every
+   `layout()`) · ✅ **B5-25** (the control menu is a light-dismiss popover, not an ARIA menu:
+   launcher now `aria-haspopup="dialog"`, panel `role="dialog"` + aria-label). **Pending:**
+   B4-19 chip-contrast · B4-20 dark-bg code · B4-21 custom-theme embed mis-detect · B4-22
+   sepia-host embed · B4-23 missing-bg scrim · B5-26 fragment-announce · B5-27
    menu-focus-return · B5-28 overview-announce · B5-29 blackout-announce · B6-30 layout
    re-fit perf · B6-31 overview touch double-fire · B6-32 flat-deck overview wrap.
 7. **C-ADD-2/3/5 — share-link + QR · live-input deep-link · wake-lock** · ⬜ **pending**.
@@ -74,8 +79,8 @@ and reader/PDF went with A1/A2; the naming-drift items (`QmdDeck`→`TaliesinDec
 `.r-stretch`→`.tali-stretch`, `qhl-`→`tali-hl-`, the `?qmd=embed` passive-mode doc, the
 `data-level` note) are not yet audited.
 
-**Next up:** the Step-3 correctness leftovers (B1-6, B3-15, B3-17), then Step 6
-(theming / a11y / perf), unless the owner reprioritises.
+**Next up:** the Step-3 correctness leftovers (B1-6, B3-15), then the rest of Step 6
+(B4-19/20 contrast, the B5 announce/focus a11y set, B6 perf), unless the owner reprioritises.
 
 ---
 
