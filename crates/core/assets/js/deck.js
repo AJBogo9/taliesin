@@ -253,12 +253,15 @@
     else if (color) sec.classList.add('tali-light-bg');
   }
   function applyBackgrounds() { allSlides().forEach(paintSlideBg); }
+  var darkColorCache = Object.create(null);
   function isDarkColor(c) {
     // Resolve ANY CSS colour (named like "white"/"lightblue", hex, rgb(), hsl()) to
     // rgb via the browser, so a light named background is no longer mis-assumed dark
     // (which flipped heading/body text to invisible white on a light slide). A
     // sentinel detects a truly-unparseable value and preserves the old "assume dark"
-    // fallback for it.
+    // fallback for it. Memoised by colour string: applyBackgrounds() runs every layout()
+    // and each probe forces a sync style/layout flush, so cache the (deterministic) verdict.
+    if (c in darkColorCache) return darkColorCache[c];
     var probe = document.createElement('span');
     probe.style.color = 'rgb(1, 2, 3)'; // sentinel: survives an invalid assignment
     probe.style.color = c;
@@ -266,11 +269,11 @@
     document.body.appendChild(probe);
     var resolved = getComputedStyle(probe).color;
     probe.remove();
-    if (resolved === 'rgb(1, 2, 3)') return true; // unparseable colour -> assume dark
-    var m = resolved.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/i);
-    if (!m) return true;
-    var r = +m[1], g = +m[2], b = +m[3];
-    return 0.299 * r + 0.587 * g + 0.114 * b < 140;
+    var dark;
+    var m = resolved === 'rgb(1, 2, 3)' ? null : resolved.match(/rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/i);
+    if (!m) dark = true; // unparseable colour -> assume dark
+    else dark = 0.299 * +m[1] + 0.587 * +m[2] + 0.114 * +m[3] < 140;
+    return (darkColorCache[c] = dark);
   }
 
   // --- auto-animate -------------------------------------------------------
@@ -1284,7 +1287,7 @@
     ctl.innerHTML =
       '<button class="tali-ctl tali-ctl-prev" aria-label="Previous slide" title="Previous (←)">‹</button>' +
       '<button class="tali-ctl tali-ctl-next" aria-label="Next slide" title="Next (→)">›</button>' +
-      '<button class="tali-ctl tali-ctl-menu" aria-label="Menu" title="Menu (m)" aria-haspopup="menu" aria-expanded="false">' + IC.menu + '</button>';
+      '<button class="tali-ctl tali-ctl-menu" aria-label="Menu" title="Menu (m)" aria-haspopup="dialog" aria-expanded="false">' + IC.menu + '</button>';
     rev.appendChild(ctl);
     ctl.querySelector('.tali-ctl-prev').addEventListener('click', function () { prev(); });
     ctl.querySelector('.tali-ctl-next').addEventListener('click', function () { next(); });
@@ -1300,6 +1303,11 @@
   function buildMenu() {
     var menu = document.createElement('div');
     menu.className = 'tali-menu';
+    // A light-dismiss popover (Esc + click-away, non-modal): a non-modal dialog, not an
+    // ARIA menu — the items are plain buttons, not menuitems. role="dialog" matches the
+    // launcher's aria-haspopup="dialog" so the popup's type isn't misannounced.
+    menu.setAttribute('role', 'dialog');
+    menu.setAttribute('aria-label', 'Slide navigation and view options');
     menu.setAttribute('hidden', '');
     var themeRow = (window.taliDeckThemeManaged && !window.taliDeckEmbedded)
       ? '<div class="tali-menu-head">Theme</div><div class="tali-menu-tools">' +
@@ -1514,6 +1522,11 @@
   function sync() {
     if (!deck.ready) return;
     clampIndices();
+    // A speaker window is its own ws-connected deck instance: a live block patch runs
+    // sync() here too. Its stage is display:none (the panes are DOM-clone snapshots), so
+    // repaint the panes from the re-split DOM — like commit()/applyRemote() already do —
+    // instead of moving a camera that isn't shown.
+    if (deck.mode === 'speaker') { updateSpeakerUI(); return; }
     if (deck.feed) { syncFeedLayout(); updateNumber(); return; }
     apply(); layout(); updateNumber();
   }
