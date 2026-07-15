@@ -125,16 +125,35 @@ as-is as the spec. This block is the **live tracker** against the Part D grind o
    (`fitting`) with a `pendingRefit` defer for two-stage embeds.
 7. **C-ADD-2/3/5 — share-link + QR · live-input deep-link · wake-lock** · ⬜ **pending**.
 
-**B7 docs drift** · partial — the flourish + pen/annotate mentions are cleaned (this session)
-and reader/PDF went with A1/A2; the naming-drift items (`QmdDeck`→`TaliesinDeck`,
-`.r-stretch`→`.tali-stretch`, `qhl-`→`tali-hl-`, the `?qmd=embed` passive-mode doc, the
-`data-level` note) are not yet audited.
+**B7 docs drift** · ✅ **done** (`53bab78`) — the naming-drift + false-claim sweep landed:
+`QmdDeck`→`TaliesinDeck` (alias noted once), `qhl-`→`tali-hl-` (line-step + syntect scope
+classes), dropped the nonexistent `?qmd=embed` passive mode (+ added the real `feed` mode),
+rewrote the Embedding/speaker-preview docs to reality (embedded deck runs the normal engine in
+its iframe; speaker previews are DOM-clone snapshots, not iframes), removed "PDF export" as a
+deck feature, and commented `data-level` as the corpus count anchor. `.r-stretch` was already
+clean. Both books `taliesin check` clean. (The flourish/pen/annotate + reader/PDF mentions were
+already cleaned earlier this audit.)
 
-**Next up:** Step 7 (C-ADD share-link/QR + live-input deep-link + wake lock) and the B7
-naming-drift docs sweep, unless the owner reprioritises. (Steps 1-6 are now done: the redesign,
-all correctness batches B1-B4, a11y B5, and perf/robustness B6 all landed; B1-6 shipped and
-B3-15 was found already-fixed + hardened. Only B3-18 — re-mount only the edited section — stays
-deliberately deferred.)
+---
+
+## ▶ START HERE for the next session
+
+**Everything in Parts A-D is done except one deliberately-deferred item.** The only remaining
+audit work:
+
+1. **Step 7 — C-ADD new features** (additive, not bug fixes; each is its own small feature):
+   - **C-ADD-2** share-link + **offline** QR code (a "share this deck" affordance).
+   - **C-ADD-3** live-input deep-link (encode `{{< input >}}` state into the URL hash).
+   - **C-ADD-5** wake-lock (hold the screen awake while presenting).
+   - (**C-ADD-4** speaker notes as feed narration is also still open — the mobile feed doesn't
+     surface `::: {.notes}` yet.)
+2. **B3-18** (deferred) — a structural deck edit re-mounts the *whole* deck, nuking every
+   `{js}`/WebGL widget's state; re-mount only the edited `<section>` subtree. Bigger blast
+   radius (touches the client's re-mount path); left deferred on purpose.
+
+Everything else (the redesign in Part A; all correctness batches B1-B4; a11y B5; perf/robustness
+B6; B7 docs; and the B1-6 / B3-15 Step-3 leftovers) has **landed and is verified** — see the
+per-item ✅ notes below and in the grind-order status block above.
 
 ---
 
@@ -381,7 +400,12 @@ no clone) so block-ids, click-to-source, and live `{js}` state survive. Distille
 
 ### B7 — Docs drift (all in `docs/`)
 
-- [ ] `?qmd=embed` "passive" mode is documented (`deck-engine.tmd:134,166`) but never
+> ✅ **ALL DONE `53bab78`** — the boxes below are kept for the record. Verified against the
+> runtime source (not the audit's line numbers): `qhl-`/`QmdDeck`/`?qmd=embed`/speaker-iframe/
+> "PDF export" claims were all stale and are now corrected; `.r-stretch` was already clean;
+> `data-level` is commented at its emit site as the corpus count anchor. Both books check clean.
+
+- [x] `?qmd=embed` "passive" mode is documented (`deck-engine.tmd:134,166`) but never
   implemented (runtime reads only speaker/print/normal; `embed_html` emits no `?qmd`). Rewrite.
 - [ ] Speaker previews are described as `?qmd=embed` iframes (`:170`); they are DOM-clone
   snapshots. Rewrite.
