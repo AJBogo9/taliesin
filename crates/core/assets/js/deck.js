@@ -71,18 +71,33 @@
   // laid out ACROSS), and a run of consecutive top-level slides is one row. So a
   // topic reads left-to-right and the next topic is the row beneath it: the main
   // storyline is the top row, with any branch/appendix as a row hanging below.
+  // A run of >6 top-level slides is one over-wide strip of specks in the overview
+  // (a flat all-`##` deck is the worst case). In OVERVIEW ONLY, reflow such a run into
+  // a near-square block of `ceil(sqrt(n))` columns so tiles are big and up/down work.
+  // Present mode keeps the run as one row so the storyline pans straight left-to-right.
+  // Only top-level runs wrap: positionGrid lays a stack's sub-slides straight across
+  // from their wrapper regardless, so wrapping a stack row would desync the grid.
+  var OVERVIEW_ROW_MAX = 6; // a run longer than this reflows; up to 6 stays a readable line
+  function pushRun(rows, run) {
+    if (deck.overview && run.length > OVERVIEW_ROW_MAX) {
+      var cols = Math.ceil(Math.sqrt(run.length));
+      for (var i = 0; i < run.length; i += cols) rows.push(run.slice(i, i + cols));
+    } else {
+      rows.push(run);
+    }
+  }
   function gridRows() {
     var T = tops(), rows = [], run = null;
     for (var h = 0; h < T.length; h++) {
       if (isStack(T[h])) {
-        if (run) { rows.push(run); run = null; }
+        if (run) { pushRun(rows, run); run = null; }
         rows.push(vertsOf(T[h]).map(function (sec, v) { return { h: h, v: v }; }));
       } else {
         if (!run) run = [];
         run.push({ h: h, v: 0 });
       }
     }
-    if (run) rows.push(run);
+    if (run) pushRun(rows, run);
     return rows.length ? rows : [[{ h: 0, v: 0 }]];
   }
   // The visual (row, col) of a leaf, plus the row grid it came from.
@@ -735,6 +750,11 @@
     if (on) { fitOverview(); markCurrentTile(); }
     else { deck.ov = null; allSlides().forEach(function (s) { s.classList.remove('tali-overview-current'); }); }
     syncInert(); // overview: every tile is browsable, so clear inert; exiting re-inerts off-camera
+    // Arm the transition BEFORE re-placing tiles so the reflow (wrapped-grid <-> strip,
+    // plus the gutter shrink) rides the same tween as the camera zoom instead of
+    // teleporting when .tali-cam-anim happens to be off (initial frame / post-resize).
+    var sl = slidesEl();
+    if (sl && !reducedMotion()) sl.classList.add('tali-cam-anim');
     positionGrid(); // add (or remove) the per-tile gutter shrink
     setCamera(true); // zoom out to the map, or back into the current cell
   }
