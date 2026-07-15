@@ -159,7 +159,7 @@ body { background: transparent; }
 }
 /* The overview is a draggable map: grab cursor on the canvas (tiles keep pointer),
    grabbing while panning. */
-.tali-deck.overview { cursor: grab; }
+.tali-deck.overview { cursor: grab; touch-action: none; } /* JS owns pan + pinch-zoom on touch here */
 .tali-deck.overview.tali-ov-panning,
 .tali-deck.overview.tali-ov-panning .tali-slides > section { cursor: grabbing; }
 /* A hint on how to drive the map, shown in screen space (not the scaled .tali-slides) and

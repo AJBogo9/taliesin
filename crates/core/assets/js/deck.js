@@ -652,6 +652,20 @@
     deck.ov.cx = Math.max(-W, Math.min(deck.ov.cx, gw + W));
     deck.ov.cy = Math.max(-H, Math.min(deck.ov.cy, gh + H));
   }
+  // Zoom the overview to scale `ns`, keeping the stage-point (px,py) fixed under the
+  // anchor (px/py are relative to the deck element's top-left). Shared by wheel zoom
+  // and touch pinch so both anchor the zoom identically.
+  function zoomOverviewTo(px, py, ns) {
+    var st = ovStage(), scale = deck.ov.scale;
+    var tx = st.sw / 2 - scale * deck.ov.cx, ty = st.sh / 2 - scale * deck.ov.cy;
+    var wx = (px - tx) / scale, wy = (py - ty) / scale;    // world point under the anchor
+    ns = Math.max(deck.ov.fit, Math.min(ns, st.maxScale));
+    deck.ov.scale = ns;
+    deck.ov.cx = (st.sw / 2 - (px - ns * wx)) / ns;         // keep that point fixed
+    deck.ov.cy = (st.sh / 2 - (py - ns * wy)) / ns;
+    clampOv();
+    setCamera(false);
+  }
   function onOverviewWheel(e) {
     if (!deck.overview) return;
     if (!deck.ov) fitOverview();
@@ -668,23 +682,15 @@
       setCamera(false);
       return;
     }
-    var st = ovStage(), rev = deckEl(), r = rev.getBoundingClientRect();
+    var rev = deckEl(), r = rev.getBoundingClientRect();
     var px = e.clientX - r.left, py = e.clientY - r.top;   // cursor in stage coords
-    var scale = deck.ov.scale;
-    var tx = st.sw / 2 - scale * deck.ov.cx, ty = st.sh / 2 - scale * deck.ov.cy;
-    var wx = (px - tx) / scale, wy = (py - ty) / scale;    // world point under the cursor
-    var ns = scale * Math.exp(-e.deltaY * 0.0015);          // smooth, proportional zoom
-    ns = Math.max(deck.ov.fit, Math.min(ns, st.maxScale));
-    deck.ov.scale = ns;
-    deck.ov.cx = (st.sw / 2 - (px - ns * wx)) / ns;         // keep that point under the cursor
-    deck.ov.cy = (st.sh / 2 - (py - ns * wy)) / ns;
-    clampOv();
-    setCamera(false);
+    zoomOverviewTo(px, py, deck.ov.scale * Math.exp(-e.deltaY * 0.0015)); // smooth, proportional
   }
   var ovDrag = null;
-  // Pressing anywhere on the overview pans the map.
+  // Mouse / pen drag pans the overview map. Touch is owned entirely by the touch
+  // handlers (pan + pinch) so a swipe can never both pan here AND fire nav (B6-31).
   function onOverviewPointerDown(e) {
-    if (!deck.overview || !deck.ov || e.button !== 0) return;
+    if (!deck.overview || !deck.ov || e.button !== 0 || e.pointerType === 'touch') return;
     ovDrag = { x: e.clientX, y: e.clientY, cx: deck.ov.cx, cy: deck.ov.cy, moved: false };
   }
   function onOverviewPointerMove(e) {
@@ -1138,13 +1144,62 @@
     if (deck.blackout !== was) announce(deck.blackout ? 'Screen blanked' : 'Resumed');
   }
   var touch = { x: null, y: null, t: 0 };
+  var ovTouch = null; // overview touch-gesture state: 1-finger pan or 2-finger pinch
+  function touchDist(a, b) { return Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); }
+  // Seat (or re-seat, when a finger is added/lifted mid-gesture) an overview touch
+  // gesture: two fingers pinch-zoom, one finger pans. Carries `moved` across finger
+  // changes so a pinch that decays to a one-finger drag still swallows the tap.
+  function startOverviewTouch(e) {
+    if (!deck.ov) fitOverview();
+    var rect = deckEl().getBoundingClientRect(), moved = ovTouch ? ovTouch.moved : false;
+    if (e.touches.length >= 2) {
+      ovTouch = { mode: 'pinch', dist: touchDist(e.touches[0], e.touches[1]) || 1, scale: deck.ov.scale, rect: rect, moved: moved };
+    } else {
+      var t = e.touches[0];
+      ovTouch = { mode: 'pan', x: t.clientX, y: t.clientY, cx: deck.ov.cx, cy: deck.ov.cy, rect: rect, moved: moved };
+    }
+  }
   function onTouchStart(e) {
     if (deck.feed) return; // native scroll owns the axis in the feed
+    if (deck.overview) {
+      // A moved touch fires no click to consume `ovDragged` (unlike a mouse drag), so
+      // drop any stale flag as a fresh gesture begins, before a possible tile-pick tap.
+      if (!ovTouch) deck.ovDragged = false;
+      startOverviewTouch(e); return; // overview owns touch: pan/pinch, never nav
+    }
     if (e.touches.length !== 1) { touch.x = null; return; }
     touch.x = e.touches[0].clientX; touch.y = e.touches[0].clientY; touch.t = Date.now();
   }
+  // In overview, one finger pans the map and two fingers pinch-zoom toward the
+  // centroid (reusing the wheel's zoom math). preventDefault keeps the browser off
+  // the gesture (deck.overview sets touch-action:none, so this is cancelable).
+  function onTouchMove(e) {
+    if (!deck.overview || !ovTouch) return;
+    e.preventDefault();
+    if (ovTouch.mode === 'pinch' && e.touches.length >= 2) {
+      var a = e.touches[0], b = e.touches[1], d = touchDist(a, b);
+      var px = (a.clientX + b.clientX) / 2 - ovTouch.rect.left; // pinch centroid, stage coords
+      var py = (a.clientY + b.clientY) / 2 - ovTouch.rect.top;
+      ovTouch.moved = true;
+      zoomOverviewTo(px, py, ovTouch.scale * (d / ovTouch.dist));
+    } else if (ovTouch.mode === 'pan' && e.touches.length === 1) {
+      var t = e.touches[0], dx = t.clientX - ovTouch.x, dy = t.clientY - ovTouch.y;
+      if (!ovTouch.moved && dx * dx + dy * dy < 25) return; // 5px before it counts as a drag
+      ovTouch.moved = true;
+      deck.ov.cx = ovTouch.cx - dx / deck.ov.scale;
+      deck.ov.cy = ovTouch.cy - dy / deck.ov.scale;
+      clampOv();
+      setCamera(false);
+    }
+  }
   function onTouchEnd(e) {
     if (deck.feed) return; // native scroll owns the axis in the feed
+    if (deck.overview) {
+      if (ovTouch && ovTouch.moved) deck.ovDragged = true; // a pan/pinch: swallow the click that follows
+      if (e.touches && e.touches.length >= 1) startOverviewTouch(e); // re-seat from the remaining finger(s)
+      else ovTouch = null;
+      return; // a still tap falls through to onSlidesClick, which picks the tile
+    }
     if (touch.x == null) return;
     var c = e.changedTouches[0];
     var dx = c.clientX - touch.x, dy = c.clientY - touch.y, dt = Date.now() - touch.t;
@@ -1153,6 +1208,10 @@
     if (Math.abs(dx) > Math.abs(dy)) { dx < 0 ? right() : left(); }
     else { dy < 0 ? down() : up(); }
   }
+  // An OS interruption (system-UI edge swipe, incoming call, palm rejection) fires
+  // touchcancel, not touchend — hard-reset the gesture so a stranded `moved` flag
+  // can't swallow the next tile-pick tap. No click follows a cancel, so drop ovDragged too.
+  function onTouchCancel() { ovTouch = null; deck.ovDragged = false; }
 
   // --- mobile slide-feed (A3) --------------------------------------------
   // On a phone / portrait screen a deck opens as a vertical scroll-feed of full-
@@ -1516,7 +1575,9 @@
     if (deck.mode === 'normal') {
       document.addEventListener('keydown', onKey);
       rev.addEventListener('touchstart', onTouchStart, { passive: true });
+      rev.addEventListener('touchmove', onTouchMove, { passive: false }); // overview: own pan/pinch
       rev.addEventListener('touchend', onTouchEnd, { passive: true });
+      rev.addEventListener('touchcancel', onTouchCancel, { passive: true }); // OS interruption: reset gesture
       slidesEl().addEventListener('click', onSlidesClick);
       rev.addEventListener('wheel', onOverviewWheel, { passive: false }); // overview: zoom the map
       rev.addEventListener('pointerdown', onOverviewPointerDown);         // overview: drag to pan
