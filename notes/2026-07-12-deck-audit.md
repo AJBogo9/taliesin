@@ -60,8 +60,15 @@ as-is as the spec. This block is the **live tracker** against the Part D grind o
    canvas bitmaps `cloneNode` drops, `snapshotInto` takes a `fragUpto`, and `updateSpeakerUI`
    renders Current at `deck.frag` / Next at `deck.frag+1` (or the next slide at base once
    fully revealed). Live-verified in a speaker window across fragment/code/magic-move/canvas
-   slides + adversarial review clean. **Still open: B3-15** (front-matter title/subtitle
-   don't hot-update), **B3-18** (a structural edit re-mounts the whole deck — deferred).
+   slides + adversarial review clean. ✅ **B3-15 was ALREADY FIXED** (single-doc preview) in
+   `19022b7`/`41313f9` (2026-07-07), *before* this audit was written — a rotted backlog entry
+   ([[backlog-entries-rot]]). Re-verified live: editing `title:`/`subtitle:` in a previewed
+   deck re-mounts the title slide + updates `document.title` with no manual reload (the
+   `deck_meta_changed` gate). Hardened with a testable helper + regression test (`f85644b`)
+   since the fix had none. (serve_site renders deck-*pages* as plain block concatenation — no
+   title slide there — and `{{< embed >}}` decks use a separate on-request render path, so
+   there is no reachable site-preview variant.) **Still open: B3-18** (a structural edit
+   re-mounts the whole deck — deferred).
 4. **A3 — mobile slide-feed** · ✅ **done** (`f97c01f`, first-frame `f8c2898`); pinch-zoom
    unblocked (**B5-1**). **C-ADD-4 (speaker notes as feed narration) NOT done** — the feed
    doesn't surface `::: {.notes}` yet.
@@ -123,10 +130,11 @@ and reader/PDF went with A1/A2; the naming-drift items (`QmdDeck`→`TaliesinDec
 `.r-stretch`→`.tali-stretch`, `qhl-`→`tali-hl-`, the `?qmd=embed` passive-mode doc, the
 `data-level` note) are not yet audited.
 
-**Next up:** the Step-3 correctness leftovers (B1-6 speaker fragment/canvas, B3-15 front-matter
-hot-update), then Step 7 (C-ADD share-link/QR + live-input deep-link + wake lock) and the B7
-naming-drift docs sweep, unless the owner reprioritises. (Step 6 is now fully done: B4 + B5 +
-B6 all landed.)
+**Next up:** Step 7 (C-ADD share-link/QR + live-input deep-link + wake lock) and the B7
+naming-drift docs sweep, unless the owner reprioritises. (Steps 1-6 are now done: the redesign,
+all correctness batches B1-B4, a11y B5, and perf/robustness B6 all landed; B1-6 shipped and
+B3-15 was found already-fixed + hardened. Only B3-18 — re-mount only the edited section — stays
+deliberately deferred.)
 
 ---
 
@@ -277,9 +285,13 @@ no clone) so block-ids, click-to-source, and live `{js}` state survive. Distille
   visible)** (medium) — `deck.rs:381`. The Update op carries raw block html, not the
   slide-transformed html, so the re-run `add_fragment_class` is lost. Fix: re-run the
   per-slide transform for a within-slide edit before emitting the Update.
-- [ ] **Front-matter title/subtitle edits don't hot-update** (medium) — the title slide is a
-  raw string outside `doc.blocks`, so the edit produces an empty diff. Fix: map it to a block
-  or treat title/subtitle change as a re-mount.
+- [x] **Front-matter title/subtitle edits don't hot-update** (medium) — **ALREADY FIXED**
+  `19022b7`/`41313f9` (2026-07-07, predating this audit — rotted entry). The single-doc
+  preview forces a full re-mount when a deck's front-matter title/subtitle changes
+  (`deck_meta_changed` in `serve/mod.rs`), since the title slide is built outside `doc.blocks`.
+  Re-verified live (edit → title slide + `document.title` update, no reload) and hardened with
+  a regression test (`f85644b`). Not reachable in a site preview (deck-pages render as plain
+  block concatenation; `{{< embed >}}` decks render on-request, not via the block diff).
 - [ ] **Retitling a slide leaves its `<section id>` anchor stale** (medium) — `deck.rs:348`.
   The `<h2>` updates in place but the section keeps the old slug, breaking `#hash`/`@ref` to
   the new title (and the annotation `drawKey`). Fix: treat heading-text edits as structural.
