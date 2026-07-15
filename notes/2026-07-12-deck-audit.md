@@ -53,9 +53,15 @@ as-is as the spec. This block is the **live tracker** against the Part D grind o
    **B3-17** (open speaker window went stale on a live edit — `sync()` never called
    `updateSpeakerUI`) · ✅ **done** (`3e69d6f`); `sync()` now mirrors
    commit()/applyRemote()'s speaker-mode early-return (browser-verified: a note edit +
-   `sync()` repaints the Notes pane). **Still open: B1-6** (speaker previews don't reflect
-   fragment/canvas state), **B3-15** (front-matter title/subtitle don't hot-update),
-   **B3-18** (a structural edit re-mounts the whole deck — deferred).
+   `sync()` repaints the Notes pane). ✅ **B1-6 done** (`0d850e7`) — speaker previews now
+   reflect fragment/code/magic-move + canvas state and the Next pane shows the next STEP:
+   `revealStepsInClone` replays the first n steps statically onto the snapshot clone
+   (reusing `fragsOf`/`highlightLines`/`setOrMorphMM`, morph off), `copyCanvases` blits
+   canvas bitmaps `cloneNode` drops, `snapshotInto` takes a `fragUpto`, and `updateSpeakerUI`
+   renders Current at `deck.frag` / Next at `deck.frag+1` (or the next slide at base once
+   fully revealed). Live-verified in a speaker window across fragment/code/magic-move/canvas
+   slides + adversarial review clean. **Still open: B3-15** (front-matter title/subtitle
+   don't hot-update), **B3-18** (a structural edit re-mounts the whole deck — deferred).
 4. **A3 — mobile slide-feed** · ✅ **done** (`f97c01f`, first-frame `f8c2898`); pinch-zoom
    unblocked (**B5-1**). **C-ADD-4 (speaker notes as feed narration) NOT done** — the feed
    doesn't surface `::: {.notes}` yet.
@@ -214,13 +220,16 @@ no clone) so block-ids, click-to-source, and live `{js}` state survive. Distille
 - [ ] **Overview shows blank magic-move blocks for unvisited slides** (medium) —
   `deck.css:407`. Magic-move `<pre>`s start `opacity:0` until stepped; overview never steps
   them. Fix: `.tali-deck.overview .magic-move > pre:last-of-type { opacity:1 }`.
-- [ ] **Speaker previews don't reflect fragment/code state + blank magic-move + blank
-  `<canvas>`** (medium) — `deck.js:1018, 987-1017`. `cloneNode` copies base fragment state
-  (all hidden) and skips canvas bitmaps, so Current shows nothing revealed and any `{js}`/
-  canvas viz previews blank; Next only ever previews the next *slide*, never the next *step*.
-  Fix: reveal fragments to `deck.frag` (Current) / `deck.frag+1` (Next) before snapshot; copy
-  canvases via `drawImage`/`toDataURL`. (Live-confirmed speaker view otherwise works: math +
-  tables + per-slide bg render correctly.)
+- [x] **Speaker previews don't reflect fragment/code state + blank magic-move + blank
+  `<canvas>`** (medium) — **DONE `0d850e7` (B1-6)**. `revealStepsInClone(clone, n)` replays
+  the first n fragment/code/magic-move steps statically onto the snapshot clone (base reset +
+  per-step apply, mirroring `applyFragments` with morph off); `copyCanvases` blits each source
+  canvas's bitmap onto its clone (`cloneNode` drops the drawing buffer). `snapshotInto` takes a
+  `fragUpto`, and `updateSpeakerUI` renders Current at `deck.frag` and Next at `deck.frag+1`
+  within the slide (or the next slide at base once fully revealed) — so Next previews the next
+  *step*, not just the next *slide*. Verified in a live speaker window: Current/Next revealed
+  counts track the step (0→1→2→3 / 1→2→3→0); code-step highlight lines track (1→2); magic-move
+  active block tracks (0→1); an injected drawn canvas copies pixel-exact.
 - [ ] **Auto-animate morph skipped on cross-window (speaker-driven) or hash nav** (medium) —
   `deck.js:953`. `applyRemote`/`onHashChange` call `apply()` (plain pan), bypassing the
   `autoAnimateTo` branch that only `commit()` has. Fix: factor that branch into a helper both
