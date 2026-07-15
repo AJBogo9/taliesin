@@ -887,6 +887,21 @@ fn deck_op_is_structural(op: &BlockOp, old_blocks: &[Block]) -> bool {
     }
 }
 
+/// Whether a deck's front-matter title/subtitle changed between two renders. The deck
+/// title slide is built from them by `slides_html`, OUTSIDE `doc.blocks`, so retitling
+/// produces an empty block diff (nothing for the incremental swap to apply) and must force
+/// a full re-mount (B3-15). Only a deck has a front-matter title slide — a regular HTML
+/// page carries its title as an ordinary block, which the diff already handles.
+fn deck_meta_changed(
+    format: DocFormat,
+    old_title: &Option<String>,
+    old_subtitle: &Option<String>,
+    new_title: &Option<String>,
+    new_subtitle: &Option<String>,
+) -> bool {
+    matches!(format, DocFormat::Reveal) && (old_title != new_title || old_subtitle != new_subtitle)
+}
+
 // --- messages -----------------------------------------------------------
 
 fn full_render_json(d: &DocState) -> String {
@@ -1259,8 +1274,8 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         // the diff is empty. Force a full re-mount for a deck when either changes so the
         // title slide actually updates; the deck's JS preserves the current slide +
         // overview across the swap, exactly as it does for a structural change.
-        let deck_meta_changed = matches!(doc.format, DocFormat::Reveal)
-            && (d.title != doc.title || d.subtitle != doc.subtitle);
+        let deck_meta_changed =
+            deck_meta_changed(doc.format, &d.title, &d.subtitle, &doc.title, &doc.subtitle);
         let diags_changed = d.diagnostics != diags;
         let theme_changed = d.theme_css != doc.theme_css;
         d.title = doc.title;
@@ -1462,6 +1477,54 @@ mod protocol_contract {
                 target_id: "p1".into()
             },
             &old_p
+        ));
+    }
+
+    #[test]
+    fn deck_meta_changed_forces_remount_only_for_a_decks_title_or_subtitle() {
+        // B3-15: a deck's title slide is built from the front-matter title/subtitle, OUTSIDE
+        // doc.blocks, so a retitle yields an empty block diff and must force a full re-mount.
+        let s = |x: &str| Some(x.to_string());
+        // A deck whose title changed re-mounts...
+        assert!(deck_meta_changed(
+            DocFormat::Reveal,
+            &s("Old"),
+            &s("Sub"),
+            &s("New"),
+            &s("Sub")
+        ));
+        // ...and whose SUBTITLE changed (title unchanged) re-mounts too (an easy term to drop).
+        assert!(deck_meta_changed(
+            DocFormat::Reveal,
+            &s("T"),
+            &s("Old sub"),
+            &s("T"),
+            &s("New sub")
+        ));
+        // Adding or clearing a title (None <-> Some) counts as a change.
+        assert!(deck_meta_changed(
+            DocFormat::Reveal,
+            &None,
+            &None,
+            &s("Added"),
+            &None
+        ));
+        // No change -> no forced re-mount (the block diff alone drives the update).
+        assert!(!deck_meta_changed(
+            DocFormat::Reveal,
+            &s("T"),
+            &s("Sub"),
+            &s("T"),
+            &s("Sub")
+        ));
+        // A regular HTML page carries its title as an ordinary block, so a title edit there
+        // must NOT force a deck-style re-mount — the format gate is load-bearing.
+        assert!(!deck_meta_changed(
+            DocFormat::Html,
+            &s("Old"),
+            &None,
+            &s("New"),
+            &None
         ));
     }
 
