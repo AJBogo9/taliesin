@@ -2179,6 +2179,14 @@ fn deck_theme_is_custom_and_head_gating() {
     );
     // A custom theme owns the colours -> no theme-management script.
     assert!(deck_theme_head("auto", true).is_empty());
+    // B4-22: an embedded deck follows the host page's data-theme. A `sepia` host is a
+    // light reading surface, so hostTheme() must map it to 'light' (not fall through to
+    // the OS, which could turn the deck dark inside a cream page).
+    let head = deck_theme_head("auto", false);
+    assert!(
+        head.contains("t==='sepia' ? 'light'"),
+        "hostTheme() should map a sepia host to a light deck"
+    );
 }
 
 #[test]
@@ -3482,6 +3490,16 @@ fn deck_defines_light_bg_text_override() {
     assert!(
         wcag_contrast(dark_text, "#ffffff") >= 7.0,
         "light-bg text {dark_text} must be dark enough to read on a light slide"
+    );
+    // B4-20: a contrast-flipped slide forces its own text light/dark, but a code panel
+    // keeps its themed `--deck-code-bg`, so `pre`/`code` ink must be re-pinned to
+    // `--deck-ink` or untokenized code goes invisible on the panel. Pin the rule so a
+    // future refactor can't silently drop it.
+    assert!(
+        deck_css.contains("section.tali-dark-bg pre")
+            && deck_css.contains("section.tali-light-bg code")
+            && deck_css.contains("{ color: var(--deck-ink); }"),
+        "the contrast-flip code-ink override (B4-20) is missing"
     );
 }
 

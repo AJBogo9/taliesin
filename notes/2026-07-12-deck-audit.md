@@ -64,14 +64,27 @@ as-is as the spec. This block is the **live tracker** against the Part D grind o
    Wijk smooth-zoom + hash `history` knob simplified; `leafAt` kept for the speaker view.
    −526/+33 lines; corpus + 3-viewport browser smoke green; adversarial review clean. Docs
    (`formats.tmd` · `deck-engine.tmd` · `demo.tmd`) purged of the cut features.
-6. **B4 theming + B5 a11y + B6 perf** · ⏳ **started** (`3e69d6f`): ✅ **B4-24** (`isDarkColor`
-   memoised by colour string — was a forced style/layout flush per colour-bg slide every
-   `layout()`) · ✅ **B5-25** (the control menu is a light-dismiss popover, not an ARIA menu:
-   launcher now `aria-haspopup="dialog"`, panel `role="dialog"` + aria-label). **Pending:**
-   B4-19 chip-contrast · B4-20 dark-bg code · B4-21 custom-theme embed mis-detect · B4-22
-   sepia-host embed · B4-23 missing-bg scrim · B5-26 fragment-announce · B5-27
-   menu-focus-return · B5-28 overview-announce · B5-29 blackout-announce · B6-30 layout
-   re-fit perf · B6-31 overview touch double-fire · B6-32 flat-deck overview wrap.
+6. **B4 theming + B5 a11y + B6 perf** · ⏳ **the whole B4 theming/contrast set is now done.**
+   Prior: ✅ **B4-24** (`isDarkColor` memoised by colour string — was a forced style/layout
+   flush per colour-bg slide every `layout()`) · ✅ **B5-25** (the control menu is a
+   light-dismiss popover, not an ARIA menu). This session (browser-verified across both
+   deck themes at landscape + portrait-feed): ✅ **B4-19** chip-contrast (the slide-number
+   chip is now the same opaque dark-glass as the controls in BOTH themes — a translucent
+   chip went invisible over a light per-slide bg in a dark deck; the dark-theme chip
+   override is gone) · ✅ **B4-20** dark-bg/light-bg code (pin `pre`/`code` ink to
+   `--deck-ink` on a contrast-flipped slide so untokenized code stops inheriting the
+   section's forced white/dark onto its own themed panel; `.tali-hl-*` spans keep their
+   own colour) · ✅ **B4-22** sepia-host embed (`hostTheme()` maps a host `data-theme=sepia`
+   → light; unit-tested) · ✅ **B4-23** missing-bg scrim (a `#1a1a1a` scrim under an image
+   bg, only when the author set no explicit colour, so a 404'd image keeps assumed-white
+   text legible). ✅ **B4-21** custom-theme embed mis-detect — **verified already closed**
+   (no code change): `deck.js:1448` already falls back to `window.self !== window.top` when
+   `taliDeckEmbedded` is unset, so a custom-themed embed detects embedding correctly for
+   feed-routing; the direct `taliDeckEmbedded` reads at `:1312`/`:1503` are *correctly*
+   false for a custom theme (no built-in theme toggle / no host light-dark follow). **Pending:**
+   B5-26 fragment-announce · B5-27 menu-focus-return · B5-28 overview-announce · B5-29
+   blackout-announce · B6-30 layout re-fit perf · B6-31 overview touch double-fire · B6-32
+   flat-deck overview wrap.
 7. **C-ADD-2/3/5 — share-link + QR · live-input deep-link · wake-lock** · ⬜ **pending**.
 
 **B7 docs drift** · partial — the flourish + pen/annotate mentions are cleaned (this session)
@@ -79,8 +92,8 @@ and reader/PDF went with A1/A2; the naming-drift items (`QmdDeck`→`TaliesinDec
 `.r-stretch`→`.tali-stretch`, `qhl-`→`tali-hl-`, the `?qmd=embed` passive-mode doc, the
 `data-level` note) are not yet audited.
 
-**Next up:** the Step-3 correctness leftovers (B1-6, B3-15), then the rest of Step 6
-(B4-19/20 contrast, the B5 announce/focus a11y set, B6 perf), unless the owner reprioritises.
+**Next up:** the Step-3 correctness leftovers (B1-6, B3-15), then the rest of Step 6 (the B5
+announce/focus a11y set B5-26..29, B6 perf/robustness B6-30..32), unless the owner reprioritises.
 
 ---
 

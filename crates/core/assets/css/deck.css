@@ -265,6 +265,16 @@ body { background: transparent; }
 .tali-deck .tali-slides section.tali-light-bg .subtitle { color: rgba(0, 0, 0, .72); }
 .tali-deck .tali-slides section.tali-light-bg a { color: #3a4673; }
 .tali-deck .tali-slides section.tali-light-bg li::marker { color: #3a4673; }
+/* A contrast-flipped slide forces its own text light (dark-bg) or dark (light-bg),
+   but a code panel/chip keeps its themed `--deck-code-bg` surface, so its ink must
+   stay the paired `--deck-ink` or untokenized code + inline code go invisible on the
+   panel (white ink on a light code chip, or dark ink on a dark one). Tokenized spans
+   set their own `.tali-hl-*` colour and are unaffected (they target the span, not this
+   ancestor). */
+.tali-deck .tali-slides section.tali-dark-bg pre,
+.tali-deck .tali-slides section.tali-dark-bg code,
+.tali-deck .tali-slides section.tali-light-bg pre,
+.tali-deck .tali-slides section.tali-light-bg code { color: var(--deck-ink); }
 
 /* Fragments / incremental steps: hidden but keeping layout space (visibility,
    not display) so the slide doesn't reflow and shrink-to-fit sizes for the final
@@ -335,16 +345,21 @@ body { background: transparent; }
 .tali-speaker .sp-notes-body :last-child { margin-bottom: 0; }
 .tali-speaker .sp-empty { color: #6b7079; font-style: italic; }
 
-/* slideNumber: 'c/t' chip (top-right, clear of the bottom control chrome). */
+/* slideNumber: 'c/t' chip (top-right, clear of the bottom control chrome). The
+   same opaque dark-glass surface as the controls (.tali-ctl), so it stays legible
+   over ANY per-slide background in either deck theme: a translucent-light chip went
+   invisible over a light per-slide bg in a dark deck (white ink on near-white). */
 .tali-deck .tali-slide-number {
   position: absolute;
   right: 12px;
   top: 10px;
   z-index: 30;
   font: 600 16px ui-sans-serif, system-ui, sans-serif;
-  color: rgba(0, 0, 0, .5);
+  color: #e6e8ec;
   padding: 2px 8px;
-  background: rgba(255, 255, 255, .55);
+  background: rgba(20, 22, 27, .78);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
   border-radius: 6px;
   pointer-events: none;
 }
@@ -469,9 +484,9 @@ html.tali-feed .tali-menu-item[data-action="speaker"] { display: none; }
 
 /* === Dark theme backgrounds (palette/colours defined at the top of this file) =====
    The slides and body are transparent, so the deck background is the html canvas
-   (which lets the per-slide `.tali-slide-bg` layer paint above it). Overview tiles and
-   the slide-number chip each carry their own hardcoded light surface, so override
-   those too. */
+   (which lets the per-slide `.tali-slide-bg` layer paint above it). Overview tiles
+   carry their own hardcoded light surface, so override those too. (The slide-number
+   chip is now the same dark-glass in both themes, so it needs no dark override.) */
 html.tali-deck-dark { background: #16181d; }
 html.tali-deck-dark .tali-deck.overview .tali-slides > section:not(.tali-stack),
 html.tali-deck-dark .tali-deck.overview .tali-slides > section > section { background: #20242b; }
@@ -480,7 +495,6 @@ html.tali-deck-dark .tali-deck.overview .tali-slides > section > section { backg
   .tali-deck .tali-slides.tali-cam-anim > section,
   .tali-deck .tali-slides.tali-cam-anim > section > section { transition: none !important; }
 }
-html.tali-deck-dark .tali-deck .tali-slide-number { background: rgba(255, 255, 255, .12); color: rgba(255, 255, 255, .62); }
 
 /* === On-screen chrome: progress bar, nav arrows, control menu =============
    A control surface built by deck.js in normal mode, surfacing the

@@ -241,6 +241,11 @@
     if (color) bg.style.backgroundColor = color;
     if (gradient) bg.style.backgroundImage = gradient;
     if (image) {
+      // An image slide assumes a dark background (text is flipped white below). Paint a
+      // neutral dark scrim UNDER the image so a failed/missing/typo'd image URL leaves a
+      // dark backdrop for that white text instead of the bare (possibly light) deck canvas.
+      // Honour an explicit background-color as the fallback if the author set one.
+      if (!color) bg.style.backgroundColor = '#1a1a1a';
       bg.style.backgroundImage = 'url("' + image + '")';
       bg.style.backgroundSize = sec.getAttribute('data-background-size') || 'cover';
       bg.style.backgroundPosition = sec.getAttribute('data-background-position') || 'center';
