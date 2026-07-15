@@ -140,8 +140,9 @@ enum DocFormat {
 ::: {.callout-note}
 The enum variant is `Reveal` for historical reasons (the deck engine used to be
 reveal.js). The engine is now Taliesin's own; reveal.js was removed. The variant
-name is the only fossil left, the runtime exposes `window.QmdDeck`, not
-`window.Reveal`. See [the deck engine](deck-engine.tmd).
+name is the only fossil left, the runtime exposes `window.TaliesinDeck` (with
+`window.QmdDeck` kept as a back-compat alias), not `window.Reveal`. See
+[the deck engine](deck-engine.tmd).
 :::
 
 ### `OutputMode`

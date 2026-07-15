@@ -9,9 +9,9 @@ reveal.js. The engine is two bundled assets, `assets/css/deck.css` and
 - **A native DOM contract.** The markup is `.tali-deck > .tali-slides > section`
   (each slide a `.tali-slide`, with nested `<section>` stacks). Per-slide visibility
   is the camera transform itself, not state classes. The public JS surface is
-  `window.QmdDeck` (`initialize` / `sync` / `slide` / `on` / `getSlides` /
+  `window.TaliesinDeck` (`initialize` / `sync` / `slide` / `on` / `getSlides` /
   `getCurrentSlide` / `registerPlugin`, …), which the preview client and theme
-  extensions bind to.
+  extensions bind to (`window.QmdDeck` stays as a back-compat alias).
 - **Bundle everything offline.** `deck.css` / `deck.js` (and KaTeX, the `{js}`
   enhancer, highlight CSS) are `include_str!`'d into the page. No CDN, no network.
 - **Reuse the block model.** Every slide's blocks still carry `data-block-id` +
@@ -93,17 +93,17 @@ static markup, never re-rendering:
 
 - **`code-line-numbers` stepping.** A `#| code-line-numbers: "1|2-3|all"` cell option
   (or a `code-line-numbers="…"` fenced attribute) makes the emitter wrap every code
-  line in a `.qhl-ln` span and bake the spec onto the `<pre>` as
+  line in a `.tali-hl-ln` span and bake the spec onto the `<pre>` as
   `data-code-lines="1|2-3|all"` (`render/emit.rs`). At runtime each step calls
   `highlightLines(pre, seg)`: `parseLineSpec` reads a segment (`"2-3"`, `"1,4"`,
-  `"all"`, or empty), adds `qhl-lines-active` to dim the block, and toggles
-  `qhl-ln-hl` on the named lines. `all` or empty clears the dim. Stepping is pure
+  `"all"`, or empty), adds `tali-hl-lines-active` to dim the block, and toggles
+  `tali-hl-ln-hl` on the named lines. `all` or empty clears the dim. Stepping is pure
   class-toggling over the already-highlighted DOM, so it costs nothing and survives
   the block diff.
 
 - **`magic-move` (FLIP between consecutive code blocks).** A `::: {.magic-move}` div
   holds two or more code blocks; `render/divs.rs` line-wraps each `<pre>` with the
-  same `.qhl-ln` helper. On the step from block *k* to *k+1*, `morphMM` keys both
+  same `.tali-hl-ln` helper. On the step from block *k* to *k+1*, `morphMM` keys both
   blocks' lines by their trimmed **text**: a line present in both glides from its old
   rect to its new one (FLIP, scale-corrected by `--tali-deck-scale`), a line only in
   the new block fades in, and the old block fades out under it. So unchanged lines
@@ -125,16 +125,21 @@ static markup, never re-rendering:
 
 ### Modes
 
-One engine, several presentations, selected by a `?qmd=` query param or a class:
+One engine, several presentations, selected by a `?qmd=` query param, a class, or the
+viewport shape:
 
 | Mode | Trigger | What it does |
 |------|---------|--------------|
 | normal | **default** — a deck opens as a deck, standalone or embedded | the interactive (stepped) deck — the presenting surface |
 | speaker | `S` → popup at `?qmd=speaker` | current + next slide previews, notes, timer |
-| embed | `?qmd=embed` | passive preview (no key/scroll capture); used by speaker previews and `{{< embed >}}` |
+| feed | `?qmd=feed`, or **auto on a portrait / phone screen** | a vertical scroll-feed of full-screen slides (native scroll-snap), for reading a deck on a phone |
 | overview | `Esc` / `O` | zoomed grid of all slides |
 
-A deck opens **as a deck** — there is no reader/scroll mode and no PDF-export mode.
+There is no `?qmd=embed` mode: an embedded deck runs the *normal* interactive engine
+inside its iframe (the iframe is the isolation boundary — see below), it is just
+detected as framed (`window.self !== window.top`) so it follows the host's `data-theme`
+and never auto-routes to the feed. A deck opens **as a deck** — there is no reader/scroll
+mode and no PDF-export mode.
 The shareable artifact is the live HTML deck; a stray `Ctrl/Cmd-P` falls back to a
 minimal `@media print` that shows the current slide legibly (colours kept as-is, so a
 dark deck prints dark rather than inverting to invisible ink). Speaker view and the
@@ -161,8 +166,13 @@ layout, the global key handler would swallow the reader's arrow keys mid-scroll,
 the deck's hash writes would clobber the page's own fragment. The iframe gives the
 deck its own document, its own viewport, its own key handler, and its own hash, so it
 behaves exactly as it does standalone while the host page stays untouched. The
-embedded copy boots in `?qmd=embed` mode (passive: no key or scroll capture) unless
-the reader opens it fullscreen, and it follows the host page's `data-theme` rather
-than its own `localStorage`, so a dark article frames a dark deck. This is the same
-isolation the speaker view relies on: its current- and next-slide previews are
-`?qmd=embed` iframes of the very same deck page.
+embedded copy runs the *normal* interactive engine inside that iframe; it is just
+detected as framed (`window.self !== window.top`), so it follows the host page's
+`data-theme` rather than its own `localStorage` (a dark article frames a dark deck)
+and never auto-routes to the phone feed.
+
+The speaker view takes a different tack for its previews. Rather than a second live
+deck, its current- and next-slide panes are static **DOM-clone snapshots** of the
+slide `<section>`s (`snapshotInto`): the clone is scaled into the pane, its fragments
+and code-steps are replayed to the right step, and any `<canvas>` bitmap is copied
+across — so no second copy of the deck re-runs its `{js}`.

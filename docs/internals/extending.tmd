@@ -117,7 +117,7 @@ The host architecture is deliberately thin:
   `postMessage` protocol to and from the extension host. Forward sync (`qmd-goto`) calls
   `revealRange` to move the editor cursor; reverse sync turns a cursor move into a
   debounced `qmd-cursor`, which the client resolves with `highlightAtLine` (and, in a
-  deck, jumps `QmdDeck` to the containing slide).
+  deck, jumps `TaliesinDeck` to the containing slide).
 
 The companion **never writes back to the source**: it only navigates and highlights,
 holding the line that the `.tmd` file is the single editing surface and the preview is a

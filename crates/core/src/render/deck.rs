@@ -400,6 +400,10 @@ fn render_section(s: &SlideBuf, out: &mut String) {
     // so block ids stay byte-stable. The "Slide N of M" aria-label is applied at runtime
     // by deck.js, where the flat slide order across vertical stacks is known.
     out.push_str(" class=\"tali-slide\" role=\"group\" aria-roledescription=\"slide\"");
+    // `data-level` is the slide's nesting depth (1 = a vertical-stack lead, 2 = a leaf
+    // content slide). No runtime JS reads it; it exists as the corpus test's stable
+    // slide-count anchor (`crates/core/tests/corpus.rs` counts `data-level="2"`), so keep
+    // emitting it even though it looks inert here.
     if s.level != 0 {
         out.push_str(&format!(" data-level=\"{}\"", s.level));
     }

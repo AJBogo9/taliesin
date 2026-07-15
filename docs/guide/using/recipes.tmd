@@ -324,7 +324,7 @@ nav:
 deck and will warn. To present the deck on its own instead, point the command
 straight at it: `taliesin preview slides.tmd` or `taliesin build slides.tmd`. See
 [Slides, books & sites](formats.tmd) for the deck engine's features (speaker view,
-fragments, PDF export).
+fragments, overview, and the phone reading feed).
 :::
 
 ## 5. A single long-form technical post

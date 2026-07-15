@@ -41,7 +41,7 @@ the client *skips* the destructive part of mounting it (a `window.QMD_SSR` flag,
 consumed once): no `resetJs()` teardown of `{js}` cells and no `root.innerHTML`
 replacement, so there is no flash. It does *not* skip the `afterChange()` pass that
 runs after every render, so the deck is still initialized (the first `syncDeck`
-calls `QmdDeck.initialize`) and the code enhancers still run over the SSR'd DOM. A
+calls `TaliesinDeck.initialize`) and the code enhancers still run over the SSR'd DOM. A
 reconnect, by contrast, re-mounts normally, and a dropped socket retries on a
 one-second loop (`onclose` → `setTimeout(connect, 1000)`).
 
@@ -158,7 +158,7 @@ then the view follows the cursor:
   (`getBoundingClientRect` outside the viewport), with `block: "center"`;
 - in a **deck**, scrolling makes no sense, so the client finds the
   `.tali-slides > section` containing the block and jumps the deck to it with
-  `window.QmdDeck.slide(i)`.
+  `window.TaliesinDeck.slide(i)`.
 
 This is the same smallest-containing-block model the [deck engine](deck-engine.tmd)
 and the source map were built around, run backwards.

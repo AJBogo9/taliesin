@@ -36,7 +36,7 @@ The payoff is the same in both cases, and it is why they are built this way:
 ## Theme-agnostic output
 
 The second half of the principle is that none of this output bakes in colours.
-Highlighting emits `syntect`'s **scope classes** (each prefixed `qhl-`) rather than
+Highlighting emits `syntect`'s **scope classes** (each prefixed `tali-hl-`) rather than
 inline colours, and a stylesheet maps those classes to a palette with a
 `[data-theme=dark]` override. The same idea runs through the whole page: the
 navbar, callouts, figures, and code all read `--tali-*` CSS custom properties, and a

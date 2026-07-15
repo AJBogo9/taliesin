@@ -342,7 +342,7 @@ is a separate channel from the websocket: it is the `postMessage` protocol betwe
   `postMessage` and calls `highlightAtLine`, which picks the **smallest** block whose
   `data-sourcepos` range covers the line in the same file (else the nearest block
   starting before it), outlines it with `.tali-hl`, and scrolls it into view, or, in a
-  deck, jumps `QmdDeck` to the containing slide.
+  deck, jumps `TaliesinDeck` to the containing slide.
 
 The in-repo VS Code companion is the host that drives this; it is documented in
 [extending Taliesin](extending.tmd). Because the surface is just two `postMessage`

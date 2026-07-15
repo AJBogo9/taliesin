@@ -228,7 +228,7 @@ DOM mutation, and the diff above is what keeps that set small.
 Reverse sync runs the same model backwards: `highlightAtLine(file, line)` picks the
 **smallest** block whose `data-sourcepos` covers the line (else the nearest block
 starting before it), outlines it with `.tali-hl`, and scrolls it into view, or, in a
-deck, jumps `QmdDeck` to the containing slide.
+deck, jumps `TaliesinDeck` to the containing slide.
 
 ## Click-to-source & editor sync
 
