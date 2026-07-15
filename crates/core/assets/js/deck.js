@@ -897,14 +897,53 @@
     if (h < T.length - 1) return { h: h + 1, v: 0 };
     return null;
   }
+  // Reveal the first `n` fragment/code/magic-move steps STATICALLY on a detached snapshot
+  // clone (no morph), so a speaker preview shows the slide as it looks at that step. In
+  // speaker mode the live sections never run applyFragments (the deck is display:none), so
+  // a raw clone sits at base state (nothing revealed) — this replays the steps onto it.
+  function revealStepsInClone(clone, n) {
+    var steps = fragsOf(clone);
+    if (n > steps.length) n = steps.length;
+    clone.querySelectorAll('pre[data-code-lines]').forEach(function (pre) {
+      highlightLines(pre, pre.getAttribute('data-code-lines').split('|')[0]); // base: segment 0
+    });
+    clone.querySelectorAll(FRAG_SEL).forEach(function (el) { el.classList.remove('tali-frag-visible'); });
+    var mmCount = new Map();
+    clone.querySelectorAll('.magic-move').forEach(function (d) { mmCount.set(d, 0); });
+    for (var i = 0; i < n; i++) {
+      var s = steps[i];
+      if (s.frag) s.frag.classList.add('tali-frag-visible');
+      else if (s.code) highlightLines(s.code, s.seg);
+      else if (s.mm) mmCount.set(s.mm, (mmCount.get(s.mm) || 0) + 1);
+    }
+    var prevAnim = deck.animSteps; deck.animSteps = false; // snapshot is static: no line-glide morph
+    mmCount.forEach(function (idx, div) { setOrMorphMM(div, idx); });
+    deck.animSteps = prevAnim;
+  }
+  // cloneNode(true) copies a <canvas> element but NOT its drawn bitmap (that lives in the
+  // drawing buffer, not the DOM), so a {js}/canvas viz previews blank. Blit each source
+  // canvas's pixels onto its clone. (A WebGL canvas without preserveDrawingBuffer copies
+  // blank — same as before, no regression; a tainted canvas throws and is left blank.)
+  function copyCanvases(sourceSec, clone) {
+    var src = sourceSec.querySelectorAll('canvas'), dst = clone.querySelectorAll('canvas');
+    for (var i = 0; i < src.length && i < dst.length; i++) {
+      try {
+        var s = src[i], d = dst[i];
+        if (!s.width || !s.height) continue;
+        d.width = s.width; d.height = s.height;
+        d.getContext('2d').drawImage(s, 0, 0);
+      } catch (e) {}
+    }
+  }
   // Render a static snapshot of one slide into a speaker preview pane: a self-contained
   // mini-deck (a cloned <section> in its own .tali-slides box) that reuses the deck CSS,
   // is font-fit to the design box, then scaled to fill the pane. Replaces an earlier pair
   // of live preview iframes: no second/third full document is loaded and re-run (each was
   // executing every {js} cell in the whole deck once), and the clone carries THIS
   // window's already-rendered {js}/KaTeX/SVG output, so the preview matches the audience
-  // view without re-executing anything.
-  function snapshotInto(pane, sourceSec) {
+  // view without re-executing anything. `fragUpto` reveals steps to that count (the
+  // current step for the Current pane, one further for the Next pane).
+  function snapshotInto(pane, sourceSec, fragUpto) {
     if (!pane) return;
     pane.textContent = '';
     if (!sourceSec) return;
@@ -929,6 +968,8 @@
     wrap.appendChild(slides);
     pane.appendChild(wrap);
     paintSlideBg(clone); // rev is never laid out in speaker mode, so paint the bg...
+    revealStepsInClone(clone, fragUpto || 0); // ...reveal fragments/code-steps to the step...
+    copyCanvases(sourceSec, clone);           // ...blit any canvas bitmaps cloneNode dropped...
     fitSlide(clone);     // ...and shrink the clone's font-size so its content fits the box
     var pr = pane.getBoundingClientRect();
     var scale = Math.min(pr.width / W, pr.height / H) || 1;
@@ -937,9 +978,14 @@
   }
   function updateSpeakerUI() {
     var c = currentSlide();
-    snapshotInto(deck.spCur, c);
-    var nx = nextIndex(deck.h, deck.v);
-    if (nx) { snapshotInto(deck.spNext, leafAt(nx.h, nx.v)); if (deck.spNextPane) deck.spNextPane.style.visibility = ''; }
+    snapshotInto(deck.spCur, c, deck.frag); // Current: revealed to the current step
+    // Next previews the next STEP, not just the next slide: if this slide has more
+    // fragments to reveal, that's this slide one step further; otherwise the next slide
+    // at its base state (what you land on when you advance off this one).
+    var fc = fragsOf(c).length, nextSrc = null, nextFrag = 0;
+    if (deck.frag < fc) { nextSrc = c; nextFrag = deck.frag + 1; }
+    else { var nx = nextIndex(deck.h, deck.v); if (nx) nextSrc = leafAt(nx.h, nx.v); }
+    if (nextSrc) { snapshotInto(deck.spNext, nextSrc, nextFrag); if (deck.spNextPane) deck.spNextPane.style.visibility = ''; }
     else { if (deck.spNext) deck.spNext.textContent = ''; if (deck.spNextPane) deck.spNextPane.style.visibility = 'hidden'; }
     var notes = c && c.querySelector('.notes');
     if (deck.spNotesBody) deck.spNotesBody.innerHTML = notes ? notes.innerHTML : '<span class="sp-empty">No notes for this slide.</span>';
