@@ -91,8 +91,25 @@ as-is as the spec. This block is the **live tracker** against the Part D grind o
    **B5-28** overview-announce (`moveHighlight` speaks "Slide N of M: title" on each
    keyboard highlight move) · ✅ **B5-29** blackout-announce ("Screen blanked"/"Resumed",
    guarded by a `was`-state check so the many defensive `toggleBlackout(false)` calls don't
-   spuriously announce). **Pending:** B6-30 layout re-fit perf · B6-31 overview touch
-   double-fire · B6-32 flat-deck overview wrap.
+   spuriously announce). **The whole B6 perf/robustness group is now done too**
+   (browser-verified on corpus + a flat 17-`##` deck via synthetic touch + real viewport
+   resize; each adversarially reviewed clean): ✅ **B6-31** overview touch (HIGH — a
+   one-finger swipe both panned *and* fired nav, exiting overview onto an unchosen slide):
+   pointer drag-to-pan is now mouse/pen only (`pointerType==='touch'` bails), the touch
+   handlers own all overview touch — one finger pans, two fingers pinch-zoom to the centroid
+   via a shared `zoomOverviewTo()` factored out of the wheel path; `touch-action:none` on
+   `.overview` makes it cancelable and `touchcancel` hard-resets so an interrupted pan can't
+   strand the tile-pick tap · ✅ **B6-32** flat-deck overview wrap (a run of >6 top-level
+   slides was a 1×N speck-strip with up/down inert): `gridRows` reflows such a run into a
+   near-square `ceil(√n)`-col block **in overview only** (present mode keeps the straight
+   left-to-right storyline; only top-level runs wrap, stacks stay their own row), and the
+   camera transition is armed before the re-place so the strip↔grid reflow tweens instead of
+   teleporting · ✅ **B6-30** resize perf (the resize handler re-fit every slide — O(N)
+   reflows per frame): a slide lays out at a fixed 960×540 cell scaled by the camera, so
+   fit/positions are viewport-independent; resize now runs a lightweight `relayoutViewport()`
+   (fitOverview if overview + setCamera) and a `ResizeObserver` re-fits the current slide when
+   late in-slide content (a {js} chart / `<img>`) overflows the initial measure, loop-guarded
+   (`fitting`) with a `pendingRefit` defer for two-stage embeds.
 7. **C-ADD-2/3/5 — share-link + QR · live-input deep-link · wake-lock** · ⬜ **pending**.
 
 **B7 docs drift** · partial — the flourish + pen/annotate mentions are cleaned (this session)
@@ -101,9 +118,9 @@ and reader/PDF went with A1/A2; the naming-drift items (`QmdDeck`→`TaliesinDec
 `data-level` note) are not yet audited.
 
 **Next up:** the Step-3 correctness leftovers (B1-6 speaker fragment/canvas, B3-15 front-matter
-hot-update), then the rest of Step 6 (B6 perf/robustness B6-30..32 — B6-31 overview touch
-double-fire is the HIGH one), then Step 7 (C-ADD share-link/QR + live-input deep-link + wake
-lock), unless the owner reprioritises.
+hot-update), then Step 7 (C-ADD share-link/QR + live-input deep-link + wake lock) and the B7
+naming-drift docs sweep, unless the owner reprioritises. (Step 6 is now fully done: B4 + B5 +
+B6 all landed.)
 
 ---
 
@@ -314,21 +331,32 @@ no clone) so block-ids, click-to-source, and live `{js}` state survive. Distille
 
 ### B6 — Performance / robustness
 
-- [ ] **Every `layout()` re-fits all slides + rebuilds the minimap** (medium) — `deck.js:242`.
-  O(N) forced reflows per resize frame and per live-edit; janks a 100-200 slide deck. Fix:
-  skip per-slide re-fit on a pure viewport change; rebuild minimap tiles only on slide-count
-  change (and the minimap is being cut anyway, C-CUT-3). Pairs with the autofit-staleness fix
-  (attach a rAF-debounced `ResizeObserver` to the current slide so late `{js}`/`<img>`/KaTeX
-  content re-fits — `fitSlide` only measuring at layout/resize is its own medium defect).
-- [ ] **Overview touch double-fires** (high) — `deck.js:1419-1431`. A one-finger swipe in
-  overview pans the map (pointer handlers) *and* fires `right()/left()/down()/up()` (touch
-  handlers) → you exit overview onto a slide you never chose; also there's no pinch-zoom on
-  touch. Fix: early-return `onTouchStart/End` when `deck.overview`; add two-finger
-  pinch-zoom-to-centroid reusing `onOverviewWheel`'s math.
-- [ ] **Overview of a flat (all-`##`) deck is one thin row of specks** (medium) — `deck.js:74-100`.
-  Live-confirmed: 17 slides → a 1×17 strip of ~85px tiles in a band with huge empty space;
-  up/down inert. Fix: reflow a long single-topic run into a wrapped near-square grid for the
-  overview map only (preserve the straight-line present-mode pan).
+- [x] **Every `layout()` re-fits all slides** (medium) — **DONE `72658de` (B6-30)**. (The
+  minimap half is moot — cut in C-CUT-3.) A slide lays out at a fixed 960×540 design cell
+  scaled by the camera, so `fitSlide` + `positionGrid` are viewport-independent; resize now
+  runs a lightweight `relayoutViewport()` (fitOverview if overview + setCamera) instead of the
+  O(N) `layout()`. The autofit-staleness half shipped WITH it: a `ResizeObserver` on the
+  current slide's direct children + descendant media re-fits it when late `{js}`/`<img>`
+  content overflows the initial measure, `fitting`-guarded against the font-size feedback loop
+  with a `pendingRefit` defer for two-stage embeds (Plot axes-then-data). Browser-verified:
+  an off-screen slide's sentinel font-size survives a resize (O(1) proven); a real 800×600
+  resize reframes the camera; single- + two-stage content growth both re-fit and converge.
+- [x] **Overview touch double-fires** (high) — **DONE `711a762` (B6-31)**. Pointer drag-to-pan
+  is now mouse/pen only (`pointerType==='touch'` bails); the touch handlers own all overview
+  touch — one finger pans, two fingers pinch-zoom to the centroid via a shared
+  `zoomOverviewTo()` factored out of `onOverviewWheel`. `touch-action:none` on `.overview`
+  makes the gesture cancelable; `touchcancel` hard-resets so an interrupted pan can't strand
+  the `ovDragged` flag and swallow the next tile-pick tap. Synthetic-touch verified:
+  swipe pans without firing nav; pinch = 2× centroid zoom; still-tap picks a tile;
+  pan-then-tap isn't swallowed; normal-mode swipe nav unaffected.
+- [x] **Overview of a flat (all-`##`) deck is one thin row of specks** (medium) — **DONE
+  `3c2b2f0` (B6-32)**. In OVERVIEW ONLY, `gridRows` reflows a run of >6 top-level slides into
+  a near-square `ceil(√n)`-col block (present mode keeps the run as one row so the storyline
+  pans straight left-to-right; only top-level runs wrap — a stack stays its own row, since
+  `positionGrid` lays sub-slides straight across regardless). The camera transition is armed
+  before the re-place so the strip↔grid reflow tweens with the zoom instead of teleporting.
+  Verified: a flat 18-slide deck → a centred 5×4 grid with up/down nav between wrapped rows;
+  corpus mixed deck wraps its 13-run to 4×4 and keeps the stack row intact.
 
 ### B7 — Docs drift (all in `docs/`)
 
