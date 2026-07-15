@@ -81,10 +81,18 @@ as-is as the spec. This block is the **live tracker** against the Part D grind o
    (no code change): `deck.js:1448` already falls back to `window.self !== window.top` when
    `taliDeckEmbedded` is unset, so a custom-themed embed detects embedding correctly for
    feed-routing; the direct `taliDeckEmbedded` reads at `:1312`/`:1503` are *correctly*
-   false for a custom theme (no built-in theme toggle / no host light-dark follow). **Pending:**
-   B5-26 fragment-announce · B5-27 menu-focus-return · B5-28 overview-announce · B5-29
-   blackout-announce · B6-30 layout re-fit perf · B6-31 overview touch double-fire · B6-32
-   flat-deck overview wrap.
+   false for a custom theme (no built-in theme toggle / no host light-dark follow).
+   **The B5 announce/focus a11y set is also done** (browser-verified via the live region +
+   activeElement on the corpus deck): a shared `liveRegion()`/`announce()`/`slideDesc()`
+   helper was factored out of `updateSlideLabels`, then · ✅ **B5-26** fragment-announce
+   (`fragChanged` speaks "Step k of n" — confirmed "Step 0 of 1"/"Step 1 of 1" on a
+   hide/reveal) · ✅ **B5-27** menu-focus-return (`toggleMenu` close returns focus to the
+   launcher if focus was inside the popover — confirmed `activeElement === menuBtn`) · ✅
+   **B5-28** overview-announce (`moveHighlight` speaks "Slide N of M: title" on each
+   keyboard highlight move) · ✅ **B5-29** blackout-announce ("Screen blanked"/"Resumed",
+   guarded by a `was`-state check so the many defensive `toggleBlackout(false)` calls don't
+   spuriously announce). **Pending:** B6-30 layout re-fit perf · B6-31 overview touch
+   double-fire · B6-32 flat-deck overview wrap.
 7. **C-ADD-2/3/5 — share-link + QR · live-input deep-link · wake-lock** · ⬜ **pending**.
 
 **B7 docs drift** · partial — the flourish + pen/annotate mentions are cleaned (this session)
@@ -92,8 +100,10 @@ and reader/PDF went with A1/A2; the naming-drift items (`QmdDeck`→`TaliesinDec
 `.r-stretch`→`.tali-stretch`, `qhl-`→`tali-hl-`, the `?qmd=embed` passive-mode doc, the
 `data-level` note) are not yet audited.
 
-**Next up:** the Step-3 correctness leftovers (B1-6, B3-15), then the rest of Step 6 (the B5
-announce/focus a11y set B5-26..29, B6 perf/robustness B6-30..32), unless the owner reprioritises.
+**Next up:** the Step-3 correctness leftovers (B1-6 speaker fragment/canvas, B3-15 front-matter
+hot-update), then the rest of Step 6 (B6 perf/robustness B6-30..32 — B6-31 overview touch
+double-fire is the HIGH one), then Step 7 (C-ADD share-link/QR + live-input deep-link + wake
+lock), unless the owner reprioritises.
 
 ---
 

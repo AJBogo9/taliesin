@@ -507,7 +507,9 @@
   function fragChanged() {
     deck.animSteps = true; // an in-slide step: let magic-move morph (vs. set on slide entry)
     if (deck.mode === 'speaker') updateSpeakerUI();
-    else applyFragments();
+    // Announce the step through the live region so a screen-reader user hears that a
+    // reveal happened + where they are within the slide (WCAG 4.1.3).
+    else { applyFragments(); announce('Step ' + deck.frag + ' of ' + fragCount()); }
     deck.animSteps = false;
     writeHash(); // reflect the in-slide step in the URL so a fragment is deep-linkable
     broadcastState();
@@ -740,6 +742,7 @@
     deck.h = cell.h; deck.v = cell.v;
     markCurrentTile();
     ensureCurrentTileVisible(true);
+    announce(slideDesc(currentSlide())); // overview highlight moves are keyboard-only; voice them
   }
   function onSlidesClick(e) {
     if (!deck.overview) return;
@@ -1015,13 +1018,12 @@
   // vertical stacks), and announce the current slide through a polite live region so a
   // screen-reader user hears the position change on every navigation. Re-run on every
   // slide change + after a live edit re-splits the deck, so the count stays right.
-  function updateSlideLabels() {
+  // The deck's polite live region (created lazily on the deck root) + a helper to speak a
+  // short message through it, so slide changes, fragment steps, overview jumps, and
+  // blackout are all announced to a screen reader through the one channel.
+  function liveRegion() {
     var rev = deckEl();
-    if (!rev) return;
-    var all = allSlides(), cur = currentSlide(), idx = all.indexOf(cur);
-    for (var i = 0; i < all.length; i++) {
-      all[i].setAttribute('aria-label', 'Slide ' + (i + 1) + ' of ' + all.length);
-    }
+    if (!rev) return null;
     var live = rev.querySelector('.tali-deck-live');
     if (!live) {
       live = document.createElement('div');
@@ -1030,11 +1032,26 @@
       live.setAttribute('aria-atomic', 'true');
       rev.appendChild(live);
     }
-    if (idx >= 0) {
-      var hd = cur && cur.querySelector('h1,h2,h3');
-      var title = hd ? hd.textContent.trim() : '';
-      live.textContent = 'Slide ' + (idx + 1) + ' of ' + all.length + (title ? ': ' + title : '');
+    return live;
+  }
+  function announce(msg) { var live = liveRegion(); if (live) live.textContent = msg; }
+  // "Slide N of M: title" for a leaf section (empty string if it isn't a known leaf).
+  function slideDesc(sec) {
+    var all = allSlides(), idx = all.indexOf(sec);
+    if (idx < 0) return '';
+    var hd = sec && sec.querySelector('h1,h2,h3');
+    var title = hd ? hd.textContent.trim() : '';
+    return 'Slide ' + (idx + 1) + ' of ' + all.length + (title ? ': ' + title : '');
+  }
+  function updateSlideLabels() {
+    var rev = deckEl();
+    if (!rev) return;
+    var all = allSlides(), cur = currentSlide();
+    for (var i = 0; i < all.length; i++) {
+      all[i].setAttribute('aria-label', 'Slide ' + (i + 1) + ' of ' + all.length);
     }
+    var desc = slideDesc(cur);
+    if (desc) announce(desc);
   }
 
   // --- keyboard + touch ---------------------------------------------------
@@ -1102,6 +1119,7 @@
   // are gated in onKey; a tap dismisses it where there's no Esc/B (touch).
   function toggleBlackout(on) {
     var rev = deckEl();
+    var was = deck.blackout;
     deck.blackout = !!on;
     if (rev) rev.classList.toggle('tali-blackout', deck.blackout);
     if (deck.blackout) {
@@ -1115,6 +1133,9 @@
     } else if (deck.blackoutEl) {
       deck.blackoutEl.style.display = 'none';
     }
+    // Announce only a real state change (many nav paths call toggleBlackout(false)
+    // defensively to lift a curtain that may already be down) (WCAG 4.1.3).
+    if (deck.blackout !== was) announce(deck.blackout ? 'Screen blanked' : 'Resumed');
   }
   var touch = { x: null, y: null, t: 0 };
   function onTouchStart(e) {
@@ -1390,7 +1411,12 @@
       deck.menu.removeAttribute('hidden'); deck.menuBackdrop.removeAttribute('hidden');
       showChrome();
     } else {
+      // If focus was inside the popover when it closed, return it to the launcher so a
+      // keyboard user isn't dropped to <body> (WCAG 2.4.3). A navigation triggered from
+      // the menu (jumpToIndex) re-focuses the target slide afterward, which wins.
+      var focusInMenu = deck.menu.contains(document.activeElement);
       deck.menu.setAttribute('hidden', ''); deck.menuBackdrop.setAttribute('hidden', '');
+      if (focusInMenu && deck.menuBtn) deck.menuBtn.focus();
     }
   }
   function jumpToIndex(i) {
