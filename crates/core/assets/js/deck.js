@@ -196,6 +196,16 @@
     if (deck.overview) fitOverview(); // viewport changed: re-fit the map
     setCamera(false);
   }
+  // A pure viewport change (resize / rotate). Grid positions and per-slide font-fit are
+  // in FIXED design units (sections are a 960x540 cell scaled by the camera), so they
+  // don't change with the viewport — only the overview map fit and the camera scale do.
+  // Re-fitting every slide here (the old layout() call) forced O(N) reflows per resize
+  // frame and janked a 100-200 slide deck; late in-slide content re-fits via fitRO instead.
+  function relayoutViewport() {
+    if (!slidesEl()) return;
+    if (deck.overview) fitOverview();
+    setCamera(false);
+  }
 
   // Off-camera slides stay in the DOM (the camera just frames the current cell), but for
   // assistive tech + the tab order that means every non-visible slide is still reachable.
@@ -223,6 +233,7 @@
     applyFragments();
     updateChrome(); // progress bar / menu state follow the current slide
     syncInert(); // keep off-camera slides out of the AT tree + tab order (step mode)
+    observeCurrentMedia(); // re-target the late-content re-fit observer onto the new current slide
     deck.lastSlide = currentSlide(); // remember for the next auto-animate transition
   }
   function apply() {
@@ -557,6 +568,48 @@
       size = Math.max(12, size * f * 0.95);
       sec.style.fontSize = size.toFixed(2) + 'px';
     }
+  }
+  // Late-content re-fit. fitSlide measures once at layout, but a slide's {js} chart,
+  // <img>, KaTeX, or async widget can render taller AFTER that and overflow the fitted
+  // box. A ResizeObserver on the CURRENT slide's embedded media re-fits it when their
+  // size lands (re-targeted per slide change from applyClasses). `fitting` guards the
+  // loop: fitSlide's own font-size change can nudge an em-sized embed, whose resize
+  // would otherwise re-enter — we ignore fires until the frame after our fit settles.
+  var fitRO = null, fitRORAF = null, fitting = false, pendingRefit = false;
+  function refitCurrent() {
+    // A real content resize arriving while our own fit is settling is swallowed by the
+    // loop guard (the observer marks it "seen" during the suppressed broadcast), so
+    // remember it and honour it once fitting clears — else a two-stage embed (axes, then
+    // data) strands the slide fit to the first stage. Converges: fitSlide is idempotent on
+    // stable content, so the deferred pass makes no net change and fires nothing further.
+    if (fitting) { pendingRefit = true; return; }
+    if (fitRORAF) return;
+    fitRORAF = requestAnimationFrame(function () {
+      fitRORAF = null;
+      var cur = currentSlide();
+      if (!cur || deck.overview || deck.feed) return; // fitSlide no-ops in those modes anyway
+      fitting = true;
+      pendingRefit = false;
+      fitSlide(cur);
+      requestAnimationFrame(function () { // clear after this frame's RO dispatch
+        fitting = false;
+        if (pendingRefit) { pendingRefit = false; refitCurrent(); } // a growth landed mid-fit
+      });
+    });
+  }
+  function observeCurrentMedia() {
+    if (deck.mode !== 'normal' || typeof ResizeObserver === 'undefined') return;
+    if (!fitRO) fitRO = new ResizeObserver(refitCurrent);
+    fitRO.disconnect();
+    var cur = currentSlide();
+    if (!cur) return;
+    // Direct children catch a content container growing (a late {js} output appended into
+    // an auto-height box); descendant media catch a nested <img>/chart loading inside a
+    // fixed box. The `fitting` guard absorbs the text reflow our own font-fit provokes.
+    var seen = new Set();
+    function obs(el) { if (el && !seen.has(el)) { seen.add(el); fitRO.observe(el); } }
+    for (var i = 0; i < cur.children.length; i++) obs(cur.children[i]);
+    cur.querySelectorAll('img, canvas, svg, video, iframe').forEach(obs);
   }
   // --- navigation ---------------------------------------------------------
   // Render the move to the current cell: morph matched elements between two consecutive
@@ -1588,7 +1641,7 @@
         resizeRAF = null;
         maybeReroute();                     // a rotation may cross portrait/landscape (auto mode)
         if (deck.feed) setupFeedObserver(); // feed sizes by CSS; just refresh the IO targets
-        else layout();
+        else relayoutViewport();            // viewport-only: no per-slide re-fit (fixed design units)
       });
     });
     window.addEventListener('message', onMessage); // speaker <-> audience position sync
