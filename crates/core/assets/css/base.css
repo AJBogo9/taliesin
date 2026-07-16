@@ -99,10 +99,15 @@
   .tali-rmenu-section + .tali-rmenu-section { border-top: 1px solid var(--tali-border); }
   .tali-rmenu-section h2 { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em;
     color: var(--tali-muted); margin: 0 0 .6rem; }
-  .tali-reader-row { display: flex; align-items: center; justify-content: space-between;
-    gap: .5rem; margin: 0 0 .7rem; }
+  /* flex-wrap, not a breakpoint: at 200% text a doubled label + a 4-button Theme seg cannot
+     share one line, and the panel's `overflow: auto` would turn that into a horizontal scroll
+     (WCAG 1.4.4 / 1.4.10). Wrapping keys off real available space, so it needs no tuned
+     threshold and handles page zoom and text-only zoom the same way. `space-between` is
+     unaffected when everything fits: flex lines distribute independently. */
+  .tali-reader-row { display: flex; flex-wrap: wrap; align-items: center;
+    justify-content: space-between; gap: .5rem; margin: 0 0 .7rem; }
   .tali-reader-row > span { font-size: .82rem; color: var(--tali-muted); }
-  .tali-reader-seg { display: inline-flex; border: 1px solid var(--tali-border-strong);
+  .tali-reader-seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--tali-border-strong);
     border-radius: 7px; overflow: hidden; }
   /* WCAG 2.5.8 (Target Size, Minimum): .28rem of padding on a .8rem/1 label makes a
      21.8px-tall button. The vertical padding brings every segment to >= 24px. */
@@ -251,7 +256,7 @@
 
   /* Keyboard-shortcuts list (taliInitKeyboard), shown as a section inside the Settings panel. */
   .tali-keys-list { margin: 0; }
-  .tali-keys-list > div { display: flex; gap: .8rem; align-items: baseline; margin: .35rem 0; }
+  .tali-keys-list > div { display: flex; flex-wrap: wrap; gap: .8rem; align-items: baseline; margin: .35rem 0; }
   .tali-keys-list dt { flex: 0 0 4.5rem; margin: 0; }
   .tali-keys-list dd { margin: 0; color: var(--tali-muted); font-size: .82rem; }
   .tali-keys-list kbd { font: inherit; font-size: .78rem; background: var(--tali-code-bg);
