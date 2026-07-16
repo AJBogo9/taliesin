@@ -95,12 +95,18 @@ pub fn process(
         return Vec::new();
     }
     // If the author already wrote a `# References` / `# Bibliography` heading, render
-    // the reference list under it instead of emitting a second "References" heading.
-    let has_manual_heading = blocks.iter().any(|b| is_manual_references_heading(&b.html));
+    // the reference list under it instead of emitting a second "References" heading,
+    // and, since that heading is where they asked for the list, put the list THERE
+    // rather than at the end of the document (see the insert below). The FIRST such
+    // heading wins: a second one is a duplicate the author can see and fix, and
+    // silently preferring a later one would be no more principled.
+    let manual_heading = blocks
+        .iter()
+        .position(|b| is_manual_references_heading(&b.html));
     let mut warnings: Vec<Warning> = Vec::new();
     let mut list =
         String::from("<section class=\"tali-references\" data-block-id=\"qmd-references\">");
-    if !has_manual_heading {
+    if manual_heading.is_none() {
         list.push_str("<h2>References</h2>");
     }
     for (idx, key) in order.iter().enumerate() {
@@ -135,13 +141,23 @@ pub fn process(
         ));
     }
     list.push_str("</section>");
-    blocks.push(Block {
+    let block = Block {
         id: "qmd-references".to_string(),
         sourcepos: String::new(),
         source_file: None,
         html: list,
         cell: None,
-    });
+    };
+    // Land the list under the author's own `# References` heading when they wrote one.
+    // Appending unconditionally was right by luck while every document ended with that
+    // heading, and wrong the moment one kept going: an appendix after `# References`
+    // pushed the list past it, orphaning the heading and filing the references under
+    // the appendix. With no manual heading there is nothing to anchor to, so the
+    // implicit "at the end, under an auto <h2>" placement stands unchanged.
+    match manual_heading {
+        Some(i) => blocks.insert(i + 1, block),
+        None => blocks.push(block),
+    }
     warnings
 }
 

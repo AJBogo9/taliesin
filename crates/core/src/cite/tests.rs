@@ -482,6 +482,68 @@ fn no_manual_heading_keeps_auto_references_heading() {
 }
 
 #[test]
+fn the_reference_list_lands_under_its_manual_heading_not_after_a_later_appendix() {
+    // D69: the list used to be `push`ed unconditionally at the very END of the block
+    // list. That was right by luck for the common shape (`# References` is the last
+    // heading, as all three corpus documents have it), and wrong for a document that
+    // keeps writing afterwards: the refs sailed past the appendix and landed under the
+    // WRONG heading, orphaning the `# References` the author wrote. The heading is the
+    // author's placement instruction, so honor it: insert directly after that block.
+    let b = bib();
+    let mut blocks = vec![
+        Block {
+            id: "p".into(),
+            sourcepos: "1:1-1:1".into(),
+            source_file: None,
+            html: "<p>see [@bishop2006pattern].</p>".into(),
+            cell: None,
+        },
+        Block {
+            id: "refs-h".into(),
+            sourcepos: "3:1-3:12".into(),
+            source_file: None,
+            html: "<h1 id=\"references\">References</h1>".into(),
+            cell: None,
+        },
+        Block {
+            id: "appx-h".into(),
+            sourcepos: "5:1-5:10".into(),
+            source_file: None,
+            html: "<h1 id=\"appendix\">Appendix</h1>".into(),
+            cell: None,
+        },
+        Block {
+            id: "appx-p".into(),
+            sourcepos: "7:1-7:20".into(),
+            source_file: None,
+            html: "<p>Derivation details.</p>".into(),
+            cell: None,
+        },
+    ];
+    process(&mut blocks, &b, &HashMap::new());
+
+    let idx = |id: &str| {
+        blocks
+            .iter()
+            .position(|b| b.id == id)
+            .unwrap_or_else(|| panic!("block {id} vanished, blocks: {blocks:?}"))
+    };
+    // Directly after its heading, and strictly before the appendix that follows.
+    assert_eq!(
+        idx("qmd-references"),
+        idx("refs-h") + 1,
+        "the reference list must sit directly under `# References`, blocks: {blocks:?}"
+    );
+    assert!(
+        idx("qmd-references") < idx("appx-h"),
+        "the reference list must not be orphaned past a later appendix, blocks: {blocks:?}"
+    );
+    // The appendix keeps its own order, and nothing else moved.
+    assert!(idx("appx-h") < idx("appx-p"));
+    assert_eq!(idx("p"), 0);
+}
+
+#[test]
 fn url_macro_unwraps_and_keeps_underscores_without_mangling_words() {
     // \url{...} resolves to its argument with underscores intact (not read as \_),
     // via the generic unknown-macro path (the old naive `replace("\\url","")` both
