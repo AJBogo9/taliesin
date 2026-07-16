@@ -208,8 +208,14 @@ pub(super) fn jsonld_head(site: &Site, page: &Page) -> String {
     };
     match data {
         Some(v) => format!(
+            // Escape EVERY `<`, not just `</`: `<!--<script>` drives the HTML tokenizer
+            // into script-data-double-escaped state, where the emitted `</script>` stops
+            // closing the element, so the payload swallows the rest of the document and
+            // the page renders blank. JSON structural syntax contains no `<`, so every
+            // `<` here is inside a string value and `<` round-trips it exactly.
+            // (`search.rs::json_str` neutralizes `<` the same way, per-char as it builds.)
             "\n<script type=\"application/ld+json\">{}</script>",
-            v.to_string().replace("</", "<\\/")
+            v.to_string().replace('<', "\\u003c")
         ),
         None => String::new(),
     }
@@ -392,6 +398,39 @@ mod jsonld_tests {
         assert!(
             !html.contains("application/ld+json"),
             "no JSON-LD without url:"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn jsonld_neutralizes_every_angle_bracket_not_just_closing_script() {
+        // `</` alone is not enough: `<!--<script>` drives the HTML tokenizer into
+        // script-data-double-escaped state, where the emitted `</script>` no longer
+        // closes the element. The ld+json then swallows the rest of the document and
+        // the page renders blank, with the build reporting success.
+        let root = write_site(
+            "jsonldescape",
+            &[
+                (
+                    "_site.yml",
+                    "title: B\nurl: https://ex.com\ndescription: \"before <!--<script> after\"\n",
+                ),
+                ("index.tmd", "---\ntitle: H\n---\n\nx\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let html = site.render_page("index.tmd").unwrap();
+        let start = html.find("application/ld+json").expect("ld+json present");
+        let block = &html[start..];
+        let end = block.find("</script>").expect("ld+json script closes");
+        let payload = &block[..end];
+        assert!(
+            !payload.contains('<'),
+            "no raw `<` may survive into the ld+json payload: {payload}"
+        );
+        assert!(
+            payload.contains("\\u003c"),
+            "the `<` must be escaped, not dropped: {payload}"
         );
         let _ = std::fs::remove_dir_all(&root);
     }
