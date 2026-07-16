@@ -11,15 +11,17 @@ the regression net); each new capability ships pinned by a target corpus doc. Ou
 
 v0.2.0. All four formats render + deploy; the dev loop is strong (block-level incremental updates
 with DOM-state preservation, warm server + Jupyter kernel, `_freeze` cache, Alt-click + reverse
-cursor sync, located diagnostics, CSS hot-swap, Cmd-K search). `origin/main == a4a96bc`; local
-main is ahead by the section-C a11y batch, pending the author's push. **Tier 1 is empty.**
+cursor sync, located diagnostics, CSS hot-swap, Cmd-K search). `origin/main == main == 53d9c03`
+(the author pushed the section-C a11y batch). **Tier 1 is empty.**
 
-**Sections A, B, C and F are now closed.** A (blog identity) finished with #7 draft-aware preview
+**Sections A, B, C, F and G are now closed.** A (blog identity) finished with #7 draft-aware preview
 (2026-07-16). B (publish hardening) was **backlog rot** — all three items were already shipped by
 the author; entries deleted with evidence (see the note in section A). C (theme/a11y follow-ups)
 finished 2026-07-16: six items built, two more were rot (see the note in section C). F (the deck
-audit) is fully landed except the deliberately-deferred B3-18. **→ The next open work is D (needs a
-direction ruling), E (own session), and G (priority vs D/E is the owner's call).**
+audit) is fully landed except the deliberately-deferred B3-18. G (AI-native authoring) was **backlog
+rot**: 8 of its 10 items plus two slices of a third shipped 2026-07-13, and the owner declined the
+three ruling-gated leftovers on 2026-07-16. **→ The only open work is D (needs a direction ruling)
+and E (own session).**
 
 **Before picking any item: grep its named symbol/flag in source first.** The author pushes work
 mid-session, so an entry can go stale with no signal in this file (that is exactly how section B
@@ -119,17 +121,24 @@ path; bigger blast radius). Nothing else in section F is open.
 
 ### G. AI-native authoring (2026-07-12 audit → [2026-07-12-ai-native-backlog.md](2026-07-12-ai-native-backlog.md))
 
-Make a developer authoring with an LLM (Claude Code / Codex) the first-class customer without demoting
-the manual writer. Primitives already exist (`check --format json`, `vocab`/`schema`/`symbols`, the block
-model); the gaps are the **protocol**, the **closed loop**, and the diagnostic **grain**. Ideas + framing:
-[FEATURE-IDEAS.md](FEATURE-IDEAS.md) Session 2. **Every code anchor in the detail file was opened +
-adversarially verified** (5 confirmed / 5 anchor-corrected, 0 unbuildable). Priority vs A–F is owner's
-call; the three below are the recommended first bets (they compose the whole browser-free loop). Start in
-the detail file — each carries verified anchors, the pin, the first step, and the rulings still needed.
+*(Section G is closed as a grind chunk, 2026-07-16. It was **backlog rot**: the whole browser-free
+loop (the three items this entry called "the recommended first bets") shipped 2026-07-13, along
+with 5 more. Verified against source + all 30 named pins run green before deleting the entries. See
+[[backlog-entries-rot]].*
 
-1. **Generated `AGENTS.md` onramp** (S–M) *[ruling: `new` too?/default-on?/pin-home]*. `core/agents.rs::agents_md()` (dialect section generated from `vocab()` so it can't drift), golden-locked, written by `cmd_init`. No new subcommand — rides `cli.rs:58` scaffold. Pin: `agents_md_matches_committed` + `agents_md_cli.rs`.
-2. **`taliesin read <page>` — text projection of the built page** (M) *[ruling: `read` vs `render --format text`; parse-only?]*. New block-model emitter (`render/text.rs` + `RenderedDoc::body_text()` beside `model.rs:253`) projecting resolved xref numbers / alt / callouts / TeX to plain text, so an agent reads what it rendered with no browser. A VIEW, not an output format. Pin: `tests/text_projection.rs` snapshot over `corpus/reader/hovercards.tmd`.
-3. **Agent-grade diagnostics** (M) *[ruling: code scheme/severity]*. Promote every `check --format json` diagnostic to `{code, severity, file, line, column?, message, suggestion}` (structured "did you mean"); `--format human` stays byte-identical. Additive to `Warning` (`model.rs:146`) + `Diagnostic` (`check.rs:19`). Pin: `tests/check_cli.rs` over `corpus/diagnostics/typos.tmd`. (Grounding rated this Tier-2/foundational; kept in the trio because it completes the loop.)
+*Shipped (item → anchor → pin): #1 AGENTS.md onramp → `core/agents.rs:42` → `agents_md_cli.rs`;
+#2 `taliesin read` → `render/text.rs` + `model.rs:283 body_text()` → `text_projection.rs` +
+`read_cli.rs`; #3 agent-grade diagnostics → `server/check.rs:23` (`{code, severity, file, line,
+message, suggestion?}`) + `core/diagnostics/codes.rs` → `check_cli.rs`; #4 Claude Code skill →
+`editor/claude-code/skills/taliesin/SKILL.md` → `skill_freshness.rs`; #5 `map` → `map_cli.rs`;
+#6 `taliesin-mcp` → `server/mcp.rs` → `mcp_stdio.rs`; #7 scaffolds + `paper` kind → `new_cli.rs`;
+#10 structured build/publish errors → `structured_build_errors.rs`. Plus **#8(b)** placeholder-alt
+(`a11y.rs:337`) and **#9(B)** ScholarlyArticle (`meta.rs:150`, author-free trigger) + **#9(C)**
+per-page cited-refs sidecar (`build.rs:355,1560`) → `citations_sidecar.rs`.)*
+
+*The three ruling-gated leftovers (#8a `check --online`, #8c numeric-claim hint, #9A per-page text
+sidecar) were ruled **decline** by the owner on 2026-07-16; reasoning is recorded under "Decided
+against". **Nothing in section G is open.***
 
 ## Tier 2 — hardening (P3)
 
@@ -238,9 +247,6 @@ the detail file — each carries verified anchors, the pin, the first step, and 
   `serde_yaml_ng` (v0.10), gated on a test that `Error::location().line()` still works. Fix the stale
   `Cargo.toml` comment (names the unsound `serde_yml`) when touched.
 
-- **AI-native authoring — demand-driven** (detail: [2026-07-12-ai-native-backlog.md](2026-07-12-ai-native-backlog.md)). Tier-3 slice of the §G initiative:
-  - **`taliesin-mcp` MCP server** (M–L, soft deps §G#2 + Tier-2 `map`) — a local offline stdio JSON-RPC server wrapping check/symbols/vocab/map/read/build as MCP tools. **Read/validate/build ONLY** — no write/edit tool (the single-editing-surface pin: `tools/list` must expose none). Recommended seam: a `taliesin mcp` subcommand over `crates/server/src/mcp.rs` reusing the existing collect fns (hand-rolled JSON-RPC, zero new deps). Pin: `tests/mcp_stdio.rs`.
-  - **Published-artifact AI-legibility** (M–L, dep §G#2) — per-page text/JSON sidecars (reuse the text projection; `page_prose` fallback), schema.org `ScholarlyArticle` JSON-LD (upgrade `meta.rs:133`), per-page cited-refs BibTeX/CSL export (surface `cite::process`'s `order` vec). Overlaps the parked "Cite this" export. **BLOCKING ruling:** the ScholarlyArticle trigger — no corpus post sets `author:`, so "dated+authored" fires on none; pick an author-free trigger before writing the `tech_blog.rs` pin.
 
 ## Decided against / do-not-re-litigate
 
@@ -271,6 +277,20 @@ author-local).
 **Gate the gate:** a drift test that cannot fail is worse than none. Two of three Batch-F drift gates
 couldn't fail on first draft. Any new drift gate must be mutation-checked against exactly the shape it
 guards.
+
+**AI-native leftovers, owner ruled decline 2026-07-16 (don't re-open).** The other 8.5 of §G's 10
+items shipped 2026-07-13; these three were the ruling-gated remainder, declined on the evidence:
+- **`check --online` citation resolution** (§G#8a) → **declined.** It is the only proposed network
+  egress in the tool: the workspace carries no HTTP client dep and `CHECK_FLAGS` is `["--format"]`
+  only, so this buys a link-rot check at the cost of the offline invariant. Revive only if a real
+  workflow demands it, and then check-only, off by default, never reachable from `build`/`publish`
+  (`build.rs` shares `page_static_diagnostics`, so a network call there would make builds phone home).
+- **Numeric/quoted-claim-without-citation hint** (§G#8c) → **declined.** Its own spec rates it
+  FP-prone and recommends default-off. A linter that cries wolf gets switched off, taking the good
+  rules with it.
+- **Per-page text/JSON sidecar** (§G#9A) → **declined as redundant.** It was specified to reuse §G#2's
+  projection; #2 shipped as `taliesin read`, and site-level `llms.txt`/`llms-full.txt` already ship.
+  Revive only when a named consumer asks for a per-page file.
 
 **Library outsourcing — decided against** (each verified vs the invariants): hayagriva/biblatex,
 schemars, jsonschema, morphdom/idiomorph, similar/dissimilar, clap, owo-colors, slug, html-escape,
