@@ -22,10 +22,22 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      # The hand-rolled JS minifier's equivalence guard shells out to Node to compare
+      # acorn token streams (Node's OWN bundled acorn — no network, no dependency).
+      # `node --check` cannot see that bug class: a nested-template or regex-context slip
+      # rewrites a token's VALUE with the count unchanged, so the output parses clean and
+      # is silently wrong. TALIESIN_REQUIRE_NODE=1 makes a missing Node a HARD FAIL rather
+      # than a skip, mirroring TALIESIN_REQUIRE_KERNEL below, so this can never quietly
+      # regress to zero coverage.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
       # The corpus is the spec: these gates encode the project's contract.
       - name: Format check
         run: cargo fmt --all -- --check
       - name: Test
+        env:
+          TALIESIN_REQUIRE_NODE: "1"
         run: cargo test --workspace
       - name: Clippy
         run: cargo clippy --workspace --all-targets -- -D warnings

@@ -407,6 +407,103 @@ mod tests {
         assert_eq!(minify_js(""), "");
     }
 
+    /// Assert `minify_js` changed nothing but comments and whitespace, by comparing the
+    /// acorn token streams of both sides. Returns the checker's stderr on mismatch.
+    ///
+    /// Skips when Node is unavailable — but `TALIESIN_REQUIRE_NODE=1` (set by CI) turns
+    /// that skip into a HARD FAIL, so this guard can never silently regress to zero
+    /// coverage the way the kernel tests could before `TALIESIN_REQUIRE_KERNEL`.
+    fn assert_js_token_identical(src: &str, label: &str) {
+        let require = std::env::var_os("TALIESIN_REQUIRE_NODE").is_some();
+        let probe = std::process::Command::new("node").arg("--version").output();
+        let have_node = matches!(&probe, Ok(o) if o.status.success());
+        if !have_node {
+            assert!(
+                !require,
+                "TALIESIN_REQUIRE_NODE=1 but `node` is unavailable: the JS-equivalence \
+                 guard cannot run, and skipping it is how this coverage silently dies"
+            );
+            eprintln!(
+                "skipping {label}: node unavailable (set TALIESIN_REQUIRE_NODE=1 to enforce)"
+            );
+            return;
+        }
+
+        let (code, stderr) = run_equiv_check(src, &minify_js(src), label);
+        // exit 2 = the checker itself could not run (acorn moved). Never treat that as a
+        // pass: it means the guard is blind, which is the whole failure mode being guarded.
+        assert_ne!(
+            code,
+            Some(2),
+            "JS-equivalence checker could not run:\n{stderr}"
+        );
+        assert_eq!(code, Some(0), "minify_js changed {label}:\n{stderr}");
+    }
+
+    /// Run the checker over an explicit (original, minified) pair. Split out from
+    /// `assert_js_token_identical` so the guard's own teeth can be pinned: a checker
+    /// that silently degraded to a no-op would make every caller pass vacuously.
+    fn run_equiv_check(orig_src: &str, min_src: &str, label: &str) -> (Option<i32>, String) {
+        let dir =
+            std::env::temp_dir().join(format!("tali-minify-equiv-{}-{label}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let orig = dir.join("a.orig.js");
+        let min = dir.join("a.min.js");
+        let script = dir.join("minify_equiv.cjs");
+        std::fs::write(&orig, orig_src).expect("write original");
+        std::fs::write(&min, min_src).expect("write minified");
+        std::fs::write(&script, include_str!("minify_equiv.cjs")).expect("write checker");
+
+        let out = std::process::Command::new("node")
+            .arg("--expose-internals")
+            .arg(&script)
+            .arg(&orig)
+            .arg(&min)
+            .output()
+            .expect("run node");
+        let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+        let code = out.status.code();
+        let _ = std::fs::remove_dir_all(&dir);
+        (code, stderr)
+    }
+
+    #[test]
+    fn js_minify_is_token_identical_on_the_real_shipping_bundle() {
+        // `node --check` is NOT evidence here: a nested-template or regex-context slip
+        // rewrites a token's VALUE with the token COUNT unchanged, so the output parses
+        // clean and is silently wrong. Proven against real mermaid. This covers the whole
+        // concatenation core_enhance_js() ships — including search.js, the most
+        // regex-heavy source, which the delimiter-balance test never reached.
+        assert_js_token_identical(&taliesin_core::core_enhance_js(), "core_enhance_js");
+    }
+
+    #[test]
+    fn the_equivalence_guard_actually_catches_a_silent_token_rewrite() {
+        // Without this, the guard above could pass vacuously forever. Feeds the checker
+        // the exact bug class it exists for: a nested-template rewrite (the real mermaid
+        // defect) where the token COUNT is unchanged, so `node --check` passes and only a
+        // token-VALUE comparison can see it.
+        if std::process::Command::new("node")
+            .arg("--version")
+            .output()
+            .is_err()
+        {
+            return; // node availability is enforced by the sibling guard
+        }
+        let orig = "const s = `a:\n\t${xs.join(`\\n\\n`)}`;\n";
+        let corrupted = "const s = `a:\n\t${xs.join(`\\n`)}`;\n";
+        let (code, stderr) = run_equiv_check(orig, corrupted, "teeth");
+        assert_eq!(code, Some(1), "the checker must REJECT this: {stderr}");
+        assert!(
+            stderr.contains("token") && stderr.contains("changed"),
+            "and must say which token changed: {stderr}"
+        );
+        // Sanity: it must still ACCEPT an honest minification, or it rejects everything
+        // and the guard above is meaningless in the other direction.
+        let (ok, err) = run_equiv_check(orig, &minify_js(orig), "teeth-ok");
+        assert_eq!(ok, Some(0), "and must ACCEPT a faithful minify: {err}");
+    }
+
     #[test]
     fn css_comment_between_value_tokens_keeps_them_apart() {
         // Dropping a comment must not FUSE two tokens. Browser-verified: `margin:0 auto`
