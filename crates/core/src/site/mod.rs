@@ -462,6 +462,15 @@ impl Site {
         // Per-page OpenGraph / Twitter-card / SEO meta, so a shared link renders a
         // rich preview. Injected via the head include (no render/mod.rs change).
         let mut includes = self.includes.clone();
+        // A draft page (only reachable in preview — a built page is never `draft`) gets a
+        // quiet top-of-body banner so the author knows it won't publish. Read-only view
+        // affordance; no source write-back.
+        if page.draft {
+            includes.before_body.insert_str(
+                0,
+                "<div class=\"tali-draft-banner\" role=\"status\">Draft: not published</div>",
+            );
+        }
         includes.in_header.push_str(&meta::social_head(self, page));
         includes.in_header.push_str(&meta::jsonld_head(self, page));
         includes.in_header.push_str(&meta::feed_head(self));
@@ -1170,6 +1179,13 @@ impl Site {
                 .collect();
             format!("<div class=\"tali-card-cats\">{badges}</div>")
         };
+        // A draft card is badged so it reads as unpublished in a listing (preview only —
+        // a built listing never contains a draft, so this is inert in `build`).
+        let draft_badge = if p.draft {
+            "<span class=\"tali-draft-badge\">Draft</span>"
+        } else {
+            ""
+        };
         // No delimited `data-categories` list: the client filter reads each card's
         // own `.tali-cat[data-cat]` badges (exact names), so a category name
         // containing a comma still matches.
@@ -1177,7 +1193,7 @@ impl Site {
         // (it's site-root-relative; resolved client-side, inert in the static build).
         format!(
             "<a class=\"tali-card\" href=\"{href}\" data-qmd-src=\"{src}\">{img}\
-             <div class=\"tali-card-body\">{date}<h3 class=\"tali-card-title\">{title}</h3>{desc}{cats}</div></a>",
+             <div class=\"tali-card-body\">{draft_badge}{date}<h3 class=\"tali-card-title\">{title}</h3>{desc}{cats}</div></a>",
             src = esc(&p.rel)
         )
     }
@@ -1494,6 +1510,30 @@ pub(crate) mod tests {
         );
         assert!(preview.pages.iter().any(|p| p.rel == "wip.tmd" && p.draft));
 
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn listing_card_shows_draft_badge_only_for_drafts() {
+        let root = write_site(
+            "cardbadge",
+            &[
+                ("_site.yml", "title: T\n"),
+                ("live.tmd", "---\ntitle: Live\n---\nx\n"),
+                ("wip.tmd", "---\ntitle: WIP\ndraft: true\n---\nx\n"),
+            ],
+        );
+        let site = Site::discover_with(&root, DraftMode::Include);
+        let live = site.pages.iter().find(|p| p.rel == "live.tmd").unwrap();
+        let wip = site.pages.iter().find(|p| p.rel == "wip.tmd").unwrap();
+        assert!(
+            site.card_html(wip, "", false).contains("tali-draft-badge"),
+            "a draft card carries the badge"
+        );
+        assert!(
+            !site.card_html(live, "", false).contains("tali-draft-badge"),
+            "a published card has no badge"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 

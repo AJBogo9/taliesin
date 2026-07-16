@@ -325,3 +325,29 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
 @media (forced-colors: active) {
   .tali-backref { border-bottom: 1px solid LinkText; }
 }
+
+/* Draft indicators (preview only — a built page/listing never contains a draft).
+   The badge marks a draft's listing card + book-drawer entry; the banner tops a draft
+   page. Muted, not alarming: a draft is a normal state, just not published. */
+.tali-draft-badge {
+  display: inline-block;
+  font-size: .7rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--tali-bg);
+  background: var(--tali-muted);
+  border-radius: 4px;
+  padding: .05rem .35rem;
+  margin-right: .4rem;
+  vertical-align: middle;
+}
+.tali-draft-banner {
+  text-align: center;
+  font-size: .8rem;
+  font-weight: 600;
+  letter-spacing: .03em;
+  color: var(--tali-bg);
+  background: var(--tali-muted);
+  padding: .3rem .6rem;
+}
