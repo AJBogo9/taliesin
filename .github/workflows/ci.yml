@@ -73,6 +73,32 @@ jobs:
           TALIESIN_CELL_TIMEOUT: "3"
         run: cargo test -p taliesin-server
 
+  # The R twin of the `kernel` job above. `{r}` cells and TALIESIN_R are advertised as
+  # first-class in the README, but nothing exercised the R path: no setup-r, no
+  # TALIESIN_R-gated test, no assertion on KernelSpec::r()'s argv — while Python had a
+  # canary built specifically so its coverage could never silently reach zero. The guard
+  # existed for the language we look at. TALIESIN_REQUIRE_R=1 makes a missing R a HARD
+  # FAIL rather than a skip, for the same reason.
+  kernel-r:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "release"
+      # The package alone is what matters: Taliesin launches the kernel directly, so
+      # `IRkernel::installspec()` is a no-op here (a documented drift the 07-07 audit
+      # already caught in the User Guide) and would additionally need Jupyter present.
+      - name: Install IRkernel
+        run: Rscript -e 'install.packages("IRkernel", repos = "https://cloud.r-project.org")'
+      - name: Test with a live R kernel
+        env:
+          TALIESIN_R: R
+          TALIESIN_REQUIRE_R: "1"
+        run: cargo test -p taliesin-server --test r_kernel
+
   # Type-check the preview client JS (client.js + the sibling shipped scripts:
   # search.js, toc-spy.js, toc-sheet.js). They carry `// @ts-check` and have silently
   # regressed to tsc errors before a release; this gate keeps them honest.
