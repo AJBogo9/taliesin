@@ -6,7 +6,6 @@ title: "Taliesin"
 description: "A fast, single-purpose dev server that turns one .tmd file into a live blog post, slide deck, book, or website, with executable code and an edit loop that updates the instant you save."
 url: "https://taliesin.dev"
 favicon: favicon.svg
-image: assets/og-card.png   # default social card (og:image / twitter:image) for every page
 toc: false
 
 # Serve the two sibling docs books so the nav links resolve live in `preview`.

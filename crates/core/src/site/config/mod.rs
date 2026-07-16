@@ -39,13 +39,6 @@ pub struct SiteConfig {
     pub description: Option<String>,
     pub url: Option<String>,
     pub favicon: Option<String>,
-    /// Site-level `image:` (also accepted as `open-graph: image:`). This used to be
-    /// the default `og:image`/`twitter:image` when a page set no `image:` of its
-    /// own; that role is now filled entirely by the auto-generated per-page social
-    /// card (`card::card_url`), so this field has no `og:image`/`twitter:image`
-    /// consequence anymore — it is still parsed from `_site.yml` but not read for
-    /// meta tags. Removing the field outright is a separate change.
-    pub card_image: Option<String>,
     pub toc: Option<bool>,
     pub css: Option<serde_yaml::Value>,
     /// `head` → include-in-header; `body-start`/`body-end` → before/after body.
@@ -127,7 +120,13 @@ pub(crate) const NATIVE_KEYS: &[&str] = &[
     "description",
     "url",
     "favicon",
-    "image",
+    // No site-level `image:`. It used to seed `og:image`/`twitter:image` for pages that
+    // set none of their own; the auto-generated per-page social card took that over
+    // entirely (`card::card_url`), leaving the key parsed, honored-looking, and inert.
+    // Dropping it from the set is what makes it *say* so: a stale `image:` in a
+    // `_site.yml` now draws the unknown-key diagnostic instead of silently doing nothing.
+    // A page's own front-matter `image:` is unaffected and still live (its listing/in-page
+    // thumbnail); this set is `_site.yml` keys only.
     "output",
     "toc",
     "css",
@@ -218,7 +217,6 @@ fn parse_native(value: &serde_yaml::Value, warnings: &mut Vec<String>) -> SiteCo
         description: str_of("description"),
         url: str_of("url"),
         favicon: str_of("favicon"),
-        card_image: str_of("image"),
         toc: value.get("toc").and_then(|v| v.as_bool()),
         css: value.get("css").cloned(),
         head: value.get("head").cloned(),
@@ -470,6 +468,29 @@ mod config_tests {
         assert_eq!(cfg.python.as_deref(), Some(".venv/bin/python"));
         assert_eq!(cfg.r.as_deref(), Some("/usr/bin/R"));
         assert!(w.is_empty(), "valid keys warn about nothing: {w:?}");
+    }
+
+    #[test]
+    fn a_site_level_image_is_not_a_config_key_and_says_so() {
+        // D34's subtraction (owner ruling 2026-07-17). Site-level `image:` used to seed
+        // og:image/twitter:image for pages that set none; the auto-generated per-page card
+        // took that over entirely, and the key was left parsed into a field with ZERO
+        // readers whose own doc comment conceded it did nothing. The marketing site's own
+        // `_site.yml` still carried `image: assets/og-card.png` with the trailing comment
+        // "default social card (og:image / twitter:image) for every page" -- a line that
+        // claimed a job it had already lost.
+        //
+        // Deleting the field alone would have been the worse half of the fix: the key
+        // would stay in NATIVE_KEYS, still parse clean, and still read as honored. That is
+        // exactly the shape D37 and the `csl:` precedent call the bug. So the key leaves
+        // the set too, which is what makes the silence audible.
+        let mut w = Vec::new();
+        let v: serde_yaml::Value = serde_yaml::from_str("image: assets/og-card.png\n").unwrap();
+        let _ = parse_native(&v, &mut w);
+        assert!(
+            w.iter().any(|m| m.contains("image")),
+            "a site-level `image:` must be diagnosed, not silently ignored: {w:?}"
+        );
     }
 
     #[test]
