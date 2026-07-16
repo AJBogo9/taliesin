@@ -36,7 +36,11 @@ function taliInitReaderMenu() {
   }
 
   // A DISCLOSURE, not a dialog: the launcher's aria-expanded + aria-controls point at a labelled
-  // group, the correct ARIA shape for a light-dismiss popover that does NOT trap or move focus.
+  // group, the correct ARIA shape for a light-dismiss popover. It does not TRAP focus (see below)
+  // but it does MOVE focus in on open: the disclosure "leave focus where it is" rule assumes the
+  // panel follows its trigger in DOM order so you can Tab straight into it. This panel is appended
+  // to <body> while the gear lives in the navbar, so without the move, opening the menu from the
+  // keyboard strands you a whole page away from what you just opened. Esc restores focus (below).
   var panel = document.createElement('div');
   panel.className = 'tali-rmenu-panel';
   panel.id = panelId;
@@ -54,12 +58,19 @@ function taliInitReaderMenu() {
   }
 
   // Light-dismiss POPOVER, not a modal (it doesn't cover/inert the page): no taliFocusTrap, so
-  // trapping/focus-restore can't fight the outside-click dismissal. aria-expanded + Esc-to-close
+  // trapping/focus-restore can't fight the outside-click dismissal — and aria-modal would suppress
+  // the reader shortcuts, which treat [aria-modal="true"] as "a modal owns the keys". Moving focus
+  // once on open is not trapping and does not fight dismissal. aria-expanded + Esc-to-close
   // (returning focus to the launcher) + click-away is the right shape.
   var sections = [];
   function openMenu() {
     panel.hidden = false; setExpanded(true);
     sections.forEach(function (s) { if (s.onOpen) s.onOpen(); });
+    // Focus AFTER unhiding and AFTER the onOpen hooks: taliFocusables filters on
+    // offsetWidth/Height, so a still-hidden panel yields nothing, and a hook may have just
+    // shown or hidden its own controls (07-keyboard's shortcut list does exactly that).
+    var first = taliFocusables(panel)[0];
+    if (first) { try { first.focus(); } catch (e) {} }
   }
   function closeMenu() { panel.hidden = true; setExpanded(false); }
   function toggleMenu() { if (panel.hidden) openMenu(); else closeMenu(); }
