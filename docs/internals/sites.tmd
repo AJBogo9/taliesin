@@ -176,20 +176,42 @@ Two related rewrites stitch the pages together:
   sections), then rewrites `data-qmd-xref`-marked links to point at the right page.
   So a `@fig-` in one chapter resolves, with its number, to its figure in another.
 
-The cross-page resolution is a deliberate **two pass** design, because a `@fig-`
+The cross-page resolution is a deliberate **three pass** design, because a `@fig-`
 reference can point at a label defined on a page that has not been rendered yet:
 
 1. **Scan all pages first.** `scan_xref_targets` walks every page's *source* (a
-   lightweight pass, no render, no execution) and records each cross-referenceable anchor
-   into a `HashMap<label, XrefTarget>`. The recognized prefixes are `sec-`, `fig-`,
-   `tbl-`, `eq-`, `lst-`, `thm-`, and `def-`. Each `XrefTarget` stores the anchor's page
-   URL and, for a numbered book section, its section number. Includes are resolved during
-   this scan exactly as the render pipeline resolves them, so section counters advance
-   over included headings and the numbers match the rendered page. **First definition
-   wins** project-wide; if a *different* page redefines the same label, it warns once
-   (a within-page duplicate is caught separately by the per-page render).
+   lightweight pass, no render, no execution) and records the anchors it can see from the
+   source alone into a `HashMap<label, XrefTarget>`. The recognized prefixes are `sec-`,
+   `fig-`, `tbl-`, `eq-`, `lst-`, `thm-`, `lem-`, `cor-`, `prp-`, `def-`, `exm-`, and
+   `rem-` (`is_ref_anchor` is the list; `cite::XREF_LABELS` is pinned against it so the
+   two cannot drift). Each `XrefTarget` stores the anchor's page URL and, for a numbered
+   book section, its section number. Includes are resolved during this scan exactly as the
+   render pipeline resolves them, so section counters advance over included headings and
+   the numbers match the rendered page. **First definition wins** project-wide; if a
+   *different* page redefines the same label, it warns once (a within-page duplicate is
+   caught separately by the per-page render).
 
-2. **Rewrite during page render.** When a page is rendered, `cite::process` has already
+   What this pass **cannot** see: it reads `{#fig-x}` brace ids and skips fenced code, so
+   a float labelled by a *cell directive* (`#| label: fig-x`, `%%| label: fig-x`) is
+   invisible to it twice over — the label lives inside a fence, and it is not a brace id.
+   Numbers are invisible too: a figure/equation/table/listing/theorem number is assigned
+   only during render, so the scan leaves it empty.
+
+2. **Render-harvest.** `Site::harvest_xref_numbers` renders every page once (scoped to its
+   chapter, no code execution) and reads the renderer's own registry, `doc.xref_numbers`.
+   This fills in the numbers pass 1 left empty — so a cross-page `@fig-`/`@thm-` reads
+   "Figure&nbsp;2.3" / "Theorem&nbsp;1" rather than a bare label — and **inserts** the
+   anchors pass 1 could not see at all, which is how a cell-labelled float becomes a
+   cross-page target. Reusing the render's registry (rather than teaching the scan to
+   parse cell options) keeps one source of truth for *which fences are cells*, so the two
+   cannot drift; the same reason `brace_id` parses with the renderer's own `parse_attrs`.
+   The registry is looser than the scan in one way, so the harvest re-applies
+   `is_ref_anchor`: a Markdown-table caption registers any id, and a `{#my-table}` that no
+   `@`-reference can reach must not be advertised as a target. This pass also builds the
+   reverse index (`backlinks`) from the same render, and runs once from `discover`, so
+   `build`, `preview`, and `check` all resolve identically.
+
+3. **Rewrite during page render.** When a page is rendered, `cite::process` has already
    turned each `@sec-` reference into a bare-label link that carries a `data-qmd-xref`
    marker naming the anchor:
 

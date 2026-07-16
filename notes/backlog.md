@@ -58,9 +58,10 @@ none of it is a grind chunk. In recommended order:
    cleanest build: a diagnostic, not a knob, following the `69c228b` precedent. **D34** and **D70**
    are OWNER-RULING, not builds. **D72/D69** need Do-NOT-touch citation-zone sign-off.
 2. **The live defects** (§E, "Live defects"; count them, do not trust a number written here). Small
-   and independent. #2 (cross-page `@fig-` to a cell-labelled figure) is the biggest of them: a
-   2026-07-10 measurement put ~44% of xref targets in exactly that shape. #1 (References click-to-source
-   lands on line 1) is logged-not-fixed by owner ruling and needs a *design* answer first, not code.
+   and independent. The biggest one (cross-page `@fig-` to a cell-labelled figure) **landed
+   2026-07-16** — see the "Landed" note below before assuming any of these is untouched. #1
+   (References click-to-source lands on line 1) is logged-not-fixed by owner ruling and needs a
+   *design* answer first, not code.
 3. **B3-18** (§F), the last deck-audit item, deliberately deferred: a structural deck edit re-mounts
    the whole deck and nukes `{js}`/WebGL widget state.
 
@@ -206,6 +207,26 @@ detail pointer):
   post** (0 of 8 tech-blog posts set `author:`).
 
 ***Landed 2026-07-16 (deleted from the list above, recorded here so they are not re-scoped):***
+- ***Cross-page `@fig-` to a CELL-labelled figure** (was live defect #2, the largest one). Shipped.
+  The entry's cause was right but pointed at the wrong layer: teaching `scan_page_anchors` to parse
+  fences would have duplicated the renderer's "which fences are cells" rule in a second parser.
+  `Site::harvest_xref_numbers` **already renders every page and already iterates the renderer's own
+  registry** (`doc.xref_numbers`), which contains cell labels — it was simply `get_mut` enrich-only,
+  so it looked straight at `fig-x` and dropped it. Fix = insert-if-absent there, one source of truth,
+  no new parser. This also fixed **backlinks** and **`taliesin map --format json`** for cell figures
+  for free (both key off `xref_targets`). Scale was understated: the corpus has **26 cell-labelled
+  `fig-` anchors vs 17 brace ids**, so the broken shape was the majority of the test net's figures.
+  Pinned in `corpus/demo-book` (results.tmd defines `fig-stages` with a `{mermaid}` cell; summary.tmd
+  refs it cross-chapter → "Figure 3.1"); verified in a real browser (click → `results.html#fig-stages`,
+  target in viewport, no console errors) and on a non-book website (flat "Figure 1").
+  **Two review catches worth remembering:** (a) the insert path had to re-apply `is_ref_anchor` —
+  the render registry is LOOSER than the scan (the table-caption path registers *any* id), so
+  `: cap {#my-table}` leaked into `map`'s xref_targets as a phantom resolvable target. Measured on
+  both sides: `main` → `{}`, first-cut branch → `{"my-table": …}`. (b) A mixed-form duplicate took
+  the *loser's* number ("Figure 2" on a link to a page where it reads "Figure 1"); the enrich arm now
+  only accepts a number from the page the url points at. `docs/internals/sites.tmd` corrected: the
+  xref design is **three** passes (scan → render-harvest → rewrite), not two, and its prefix list was
+  missing 5 of the 12 real ones.*
 - ***D49 chapter-scoped float numbering.** Shipped: figures/tables/equations/listings scope to the
   chapter in a numbered book ("Figure 2.1"), flat everywhere else. The number is built ONCE by the
   renderer that knows the chapter and carried as a `String` (`render::float_number`), mirroring the
@@ -249,22 +270,28 @@ detail pointer):
    click-to-source land (the `.bib` entry in another file? the `[@key]` citation site? nowhere)?
    Related, deliberately left: clicking the footnote section's own chrome (the `<hr>`/padding) still
    resolves to line 1; closing that needs `locatable()` to require a *usable* sourcepos, a client change.
-2. **A cross-PAGE `@fig-` ref to a CELL-labelled figure never resolves** (found while landing D49,
-   2026-07-16; pre-existing and independent of scoping). A `%%| label:` / `#| label:` figure
-   (mermaid/js/python) referenced from *another page* renders a bare "Figure" with the
-   `data-qmd-xref` broken-marker and a **wrong same-page `href`**. Cause: `scan_page_anchors`
-   (`site/xref.rs:77`) skips fenced code (`:92-98`) and harvests only `{#fig-x}` brace ids (`:108`),
-   so a cell label never becomes a cross-page target. **Same-page refs work**, which is why nothing
-   caught it. Note the scale: a 2026-07-10 measurement found **~44% of xref targets are `#| label:`
-   cell figures**. D49's corpus pin deliberately uses image figures to sidestep this.
-3. **Duplicate-label warnings are unlocated** (`render/mod.rs:1538`, `site/xref.rs:56` emit no
-   file/line), half-reproducing the exact Quarto flaw D53 critiques.
-4. **`{.python code-line-numbers=...}` is routed to the executable path** though it is authored as
+2. **Duplicate-label warnings are unlocated** (`render/mod.rs:1538`, `site/xref.rs:56` emit no
+   file/line), half-reproducing the exact Quarto flaw D53 critiques. *(The harvest's own duplicate
+   warning, added 2026-07-16, is unlocated for the same reason and would be fixed by the same work.)*
+3. **`{.python code-line-numbers=...}` is routed to the executable path** though it is authored as
    display-only in `corpus/deck.tmd:46` and two docs pages; `code_lang` splits naively. Invisible to
    the kernel-free corpus. *Unverified against a live kernel.*
-5. **The xref registry goes stale on a warm content edit** (`serve_site/mod.rs:1148-1199` refreshes
+4. **The xref registry goes stale on a warm content edit** (`serve_site/mod.rs:1148-1199` refreshes
    only the Cmd-K search fragment).
-6. **`lang: fr` promises French, delivers English** cross-ref labels (`render/page.rs:239`).
+5. **`lang: fr` promises French, delivers English** cross-ref labels (`render/page.rs:239`).
+6. **A labelled `include: false` python/R cell registers an anchor that never exists** (found by the
+   adversarial review of the cell-label fix, 2026-07-16). `register_xref` runs *before* the lang
+   match (`render/mod.rs:~523`), so `#| label: fig-x` + `#| include: false` registers `fig-x` with a
+   number, while `exec.rs:379` (`!cell.include → continue`) drops the output block, so no `id="fig-x"`
+   is ever emitted. `@fig-x` then renders a confident numbered link to a fragment that exists nowhere.
+   **Pre-existing on the same page** (main has the identical dead link for a same-page `@fig-x`); the
+   cell-label fix **widened it to cross-page** and, in doing so, silenced the "broken cross-reference"
+   warning that used to fire there — the one diagnostic that flagged it. Only affects python/R:
+   mermaid/`{js}` emit their figure at render time, so their anchor is real regardless of `include`.
+   The fix is lang-dependent (do not register when the figure is known to never materialize, or warn
+   that a labelled `include: false` cell is unreferenceable, mirroring the theorem-prefix warning at
+   `render/mod.rs:1699`) and belongs in the render/exec seam, so it wants its own change.
+   *Source-verified; **unverified against a live kernel** (this sandbox has no `ipykernel`).*
 
 *Landed 2026-07-16 and deleted from this list: the **deck key sheet** (it advertised "↑ ↓ Vertical
 slides" while `up()`/`down()` call `moveTopic`; the pin now reads the binding and the sheet together

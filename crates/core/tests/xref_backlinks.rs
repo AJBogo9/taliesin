@@ -57,12 +57,36 @@ fn same_page_reference_is_not_a_backlink() {
 #[test]
 fn a_page_that_defines_no_referenced_targets_has_no_backrefs() {
     let site = Site::discover(&corpus_dir().join("demo-book"));
-    let results = site.render_page("results.tmd").expect("results renders");
+    // `summary.tmd`, not `results.tmd`: results now DEFINES `fig-stages` (a cell-labelled
+    // figure that summary refers to), so it legitimately carries a backref block. Summary
+    // only *refers* to targets, defining none — which is the property this pins, and the
+    // property results.tmd used to have. Referring is not defining: a referrer gets no
+    // backref block of its own.
+    let summary = site.render_page("summary.tmd").expect("summary renders");
     // Check for the backref BLOCK (its `qmd-backref-` block id), not the class name
     // `tali-backrefs` — the latter also appears in the inlined `.tali-backrefs` CSS
     // rule in every page's <head>, so it is not a reliable "no backref line" signal.
     assert!(
-        !results.contains("qmd-backref-"),
-        "results.tmd defines no referenced-to anchors, so it shows no backref block"
+        !summary.contains("qmd-backref-"),
+        "summary.tmd defines no referenced-to anchors, so it shows no backref block"
+    );
+}
+
+#[test]
+fn a_cell_labelled_figure_is_backlinked_like_a_brace_id_one() {
+    // The reverse index keys off `xref_targets`, so a cell-labelled float only earns a
+    // "Referenced by" line once the render-harvest inserts it. Pins that the two anchor
+    // forms are equivalent all the way through to backlinks, not just forward refs.
+    let site = Site::discover(&corpus_dir().join("demo-book"));
+    let results = site.render_page("results.tmd").expect("results renders");
+    assert!(
+        results.contains(r#"data-block-id="qmd-backref-fig-stages""#),
+        "the cell-labelled fig-stages should show a backref block for summary.tmd"
+    );
+    // Labelled "Wrap-up", not "Summary": `_site.yml` gives summary.tmd a `text:` override,
+    // and the backref honours the book's chapter label.
+    assert!(
+        results.contains(r#"<a href="summary.html" class="tali-backref">Wrap-up</a>"#),
+        "fig-stages' backref should link to summary.html labelled by its chapter override"
     );
 }

@@ -852,11 +852,18 @@ impl Site {
     }
 
     /// Render-harvest: render each page once (scoped to its chapter) and fill in the
-    /// CROSS-PAGE numbers the lightweight source-scan can't know — a figure / equation /
+    /// CROSS-PAGE facts the lightweight source-scan can't know — a figure / equation /
     /// table / listing / theorem number is assigned only during render, so
     /// `scan_xref_targets` left it empty. This enriches `xref_targets[anchor].number`
     /// (for those non-heading anchors), so a `@fig-x` / `@thm-x` to another page renders
     /// "Figure&nbsp;2.3" / "Theorem&nbsp;1" instead of a bare "Figure" / "Theorem".
+    ///
+    /// It also *inserts* an anchor the scan cannot see at all: a float labelled by a
+    /// cell directive (`#| label: fig-x`, `%%| label:`) is inside a fence the scan skips
+    /// and is not a brace id, so the render is the only thing that knows it exists.
+    /// Reusing the render's own registry — rather than teaching the scan to parse cell
+    /// options — keeps one source of truth, so the two cannot drift on which fences
+    /// count as cells (the same reason `xref::brace_id` reuses `parse_attrs`).
     /// Called once by `discover`, so build AND the live preview resolve the same numbers.
     /// A pure render pass (no kernel execution), amortised across the discover it rides on.
     ///
@@ -867,7 +874,9 @@ impl Site {
     /// no extra traversal.
     pub fn harvest_xref_numbers(&mut self) {
         // Collect during the `&self.pages` pass, then apply — keeps the borrows disjoint.
-        let mut updates: Vec<(String, String)> = Vec::new();
+        // (anchor, number, defining page url) — the url is needed because an anchor the
+        // source-scan cannot see is *inserted* here, not just enriched.
+        let mut updates: Vec<(String, String, String)> = Vec::new();
         // (page url, that page's cross-page reference anchors) in site page order, so
         // each target's referrer list comes out in document order.
         let mut per_page: Vec<(String, Vec<String>)> = Vec::new();
@@ -890,22 +899,73 @@ impl Site {
             }
             per_page.push((page.url.clone(), refs));
             for (anchor, number) in doc.xref_numbers {
+                // These three conditions gate an INSERT, not just an enrich, so each has
+                // to hold on its own rather than lean on the entry already existing:
+                //
                 // `sec-` numbers are the source-scan's job (chapter-hierarchical, and
                 // correctly ABSENT on a non-book website). Harvesting the render's flat
                 // per-page section counter here would fill an empty website target with
                 // a bare "1", which `rewrite_one_xref` then mislabels "Chapter 1". Only
                 // fig/eq/tbl/lst/thm need this render-time enrichment.
-                if !number.is_empty() && !anchor.starts_with("sec-") {
-                    updates.push((anchor, number));
+                //
+                // `is_ref_anchor` keeps parity with the scan (`xref.rs`), because the
+                // render registry is LOOSER: the table-caption path registers any id, so
+                // `: cap {#my-table}` arrives here. `@my-table` can never resolve (cite
+                // rejects an unknown prefix), so admitting it would advertise a phantom
+                // target in `taliesin map --format json` and build it a hover card.
+                //
+                // An empty number means the render assigned none (an unnumbered theorem),
+                // and its `::: {.theorem #thm-x}` opener is scan-visible anyway.
+                if !number.is_empty() && !anchor.starts_with("sec-") && xref::is_ref_anchor(&anchor)
+                {
+                    updates.push((anchor, number, page.url.clone()));
                 }
             }
         }
-        for (anchor, number) in updates {
-            if let Some(t) = self.xref_targets.get_mut(&anchor) {
-                // Only fill a gap the source-scan left (fig/eq/tbl/lst/thm); a book
-                // heading's section number is already authoritative from the scan.
-                if t.number.is_empty() {
-                    t.number = number;
+        // Whether a label defined on two pages is already reported. The source-scan warns
+        // for the anchors IT can see, so the check below covers only the ones it can't (a
+        // cell label), and re-checking the list keeps a scan-warned duplicate from being
+        // announced twice — and a third definition from announcing a fourth time.
+        // Matching the curly-quoted anchor makes it exact, so `fig-a` never matches a
+        // warning about `fig-abc`.
+        let dup_reported = |warnings: &[String], anchor: &str| {
+            let quoted = format!("\u{201c}{anchor}\u{201d}");
+            warnings
+                .iter()
+                .any(|w| w.contains("duplicate cross-reference label") && w.contains(&quoted))
+        };
+        for (anchor, number, url) in updates {
+            match self.xref_targets.entry(anchor) {
+                std::collections::hash_map::Entry::Occupied(mut e) => {
+                    // A definition on a page other than the one the target points at is a
+                    // duplicate. Report it (unless it already is), and take nothing from
+                    // it: its number belongs to a page this link does not go to, and
+                    // harvesting it would render "Figure 2" on a link to a page where the
+                    // figure reads "Figure 1" — contradicting the warning's own "using …".
+                    if e.get().url != url {
+                        if !dup_reported(&self.warnings, e.key()) {
+                            self.warnings.push(format!(
+                                "duplicate cross-reference label \u{201c}{}\u{201d} defined on multiple pages (using {})",
+                                e.key(),
+                                e.get().url
+                            ));
+                        }
+                        continue;
+                    }
+                    // Only fill a gap the source-scan left (fig/eq/tbl/lst/thm); a book
+                    // heading's section number is already authoritative from the scan.
+                    if e.get().number.is_empty() {
+                        e.get_mut().number = number;
+                    }
+                }
+                // An anchor the source-scan structurally cannot see: a float labelled by
+                // a CELL directive (`#| label: fig-x`) lives inside a fence, which the
+                // scan skips, and is not a `{#fig-x}` brace id either. Only the render
+                // knows it, so this is its one chance to become a cross-page target —
+                // enriching alone silently dropped it and `@fig-x` from another page
+                // stayed a bare "Figure" pointing at a dead same-page anchor.
+                std::collections::hash_map::Entry::Vacant(e) => {
+                    e.insert(XrefTarget { url, number });
                 }
             }
         }
