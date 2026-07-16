@@ -52,7 +52,7 @@ mod cell_extract;
 pub(crate) use cell_extract::option_directive;
 use cell_extract::{
     cell_flag_or, cell_option, code_fold, code_lang, detect_execute_defaults, hidden_cell,
-    parse_js_opts, slice_lines, strip_cell_options,
+    is_executable_fence, parse_js_opts, slice_lines, strip_cell_options,
 };
 mod cell_numbered;
 pub(crate) use cell_numbered::numbered_caption;
@@ -342,9 +342,11 @@ fn render_internal_impl(
                 _ => None,
             };
             // Executable code cell: ```{lang} ... ``` (lang detected, options stripped).
+            // A LEADING DOT (```{.python}) is the documented display-only form, so it is
+            // NOT a cell — see `is_executable_fence`.
             let cell = match &data.value {
-                NodeValue::CodeBlock(cb) if cb.info.trim_start().starts_with('{') => {
-                    code_lang(&cb.info).map(|lang| {
+                NodeValue::CodeBlock(cb) if is_executable_fence(&cb.info) => code_lang(&cb.info)
+                    .map(|lang| {
                         let js = parse_js_opts(&cb.literal, &lang);
                         Cell {
                             lang,
@@ -357,8 +359,7 @@ fn render_internal_impl(
                             fig_export: cell_option(&cb.literal, "fig-export").map(str::to_string),
                             js,
                         }
-                    })
-                }
+                    }),
                 _ => None,
             };
             // A code cell labelled/captioned as a figure (`label: fig-x` / `fig-cap`)

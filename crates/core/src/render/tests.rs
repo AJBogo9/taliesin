@@ -692,6 +692,42 @@ fn cell_option_lines_are_dropped() {
 }
 
 #[test]
+/// A LEADING DOT means display-only: `{.python}` is "the deck's display form for a
+/// non-executing block" (docs/guide/using/formats.tmd). Only bare `{python}` executes.
+/// The cell gate used to test `starts_with('{')` alone, and `code_lang` strips the dot,
+/// so `{.python code-line-numbers="1|2-3"}` became an executable cell — it warmed a
+/// kernel and spliced an output block under an illustrative snippet. `corpus/deck.tmd`
+/// authors exactly that shape over an undefined `values`, so a live kernel baked a real
+/// NameError traceback into a slide. Invisible to the kernel-free corpus tests, which
+/// only assert the static highlight markup.
+#[test]
+fn a_leading_dot_fence_is_display_only_and_never_executes() {
+    let doc = render_document("```{.python code-line-numbers=\"1|2-3\"}\ntotal = 0\n```\n");
+    let b = &doc.blocks[0];
+    assert!(
+        b.cell.is_none(),
+        "a `{{.python}}` fence is display-only and must not become an executable cell"
+    );
+    // It must still render AS python: the dot only suppresses execution, not highlighting.
+    assert!(
+        b.html.contains("qhl-") || b.html.contains("language-python"),
+        "the dot form must still be syntax-highlighted as python: {}",
+        b.html
+    );
+    assert!(
+        b.html.contains("data-code-lines"),
+        "and must keep its code-line-numbers stepping: {}",
+        b.html
+    );
+    // The bare form is unaffected: it is the executable one.
+    let exec = render_document("```{python}\ntotal = 0\n```\n");
+    assert!(
+        exec.blocks[0].cell.is_some(),
+        "a bare `{{python}}` fence is still an executable cell"
+    );
+}
+
+#[test]
 fn echo_and_include_false_hide_source_but_keep_the_cell() {
     // echo:false hides the source; the cell stays (so the executor still runs
     // it) and its output (added by the executor) is unaffected.

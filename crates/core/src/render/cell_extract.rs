@@ -167,6 +167,23 @@ pub(super) fn slice_lines(lines: &[&str], start: usize, end: usize) -> String {
 /// Language for a fenced block: `{python}`/`{.python}`/`{js}` -> "python"/"js",
 /// plain ` ```rust ` -> "rust". Pandoc raw-output attributes (`{=html}`,
 /// `{=latex}`, ...) are not languages and return `None`.
+/// Whether a fence info string marks an EXECUTABLE cell: ```` ```{python} ````, but not
+/// ```` ```{.python code-line-numbers="1|2-3"} ````, whose leading dot is the documented
+/// display-only form ("the deck's display form for a non-executing block",
+/// `docs/guide/using/formats.tmd`), nor a plain ```` ```python ```` fence.
+///
+/// Kept beside [`code_lang`] because the two must agree on fence syntax while answering
+/// different questions: `code_lang` deliberately strips the dot (the display path still
+/// highlights `{.python}` AS python, and the text projection still needs its language),
+/// so it cannot itself be the executable/display gate. Testing only `starts_with('{')`
+/// and leaning on `code_lang` is what let a display-only snippet warm a kernel and take
+/// an output block.
+pub(super) fn is_executable_fence(info: &str) -> bool {
+    info.trim_start()
+        .strip_prefix('{')
+        .is_some_and(|inner| !inner.trim_start().starts_with('.'))
+}
+
 pub(super) fn code_lang(info: &str) -> Option<String> {
     let info = info.trim();
     if info.is_empty() {
