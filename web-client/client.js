@@ -1107,11 +1107,41 @@
     sourcepos: el.dataset.sourcepos || null,
   });
 
+  // A sourcepos this client can actually navigate to: `L:C…` naming a real, 1-based
+  // line. An EMPTY one is not a missing value to paper over, it is a GATHERED block
+  // (the References section, the footnotes section) saying "my content comes from
+  // lines scattered all over the document, so no single range is honest". `0:…` is
+  // rejected for the same reason: editors are 1-based, so line 0 is not a place.
+  const usableSourcepos = (/** @type {HTMLElement} */ el) =>
+    /^[1-9]\d*:\d+/.test(el.dataset.sourcepos || "");
+
   // The nearest locatable ancestor: a `data-qmd-src` element (cards, about block,
-  // navbar/footer → an explicit source file) or a `data-block-id` block (the
-  // page's own prose/headings/code). Whichever is closer wins.
-  const locatable = (/** @type {Element} */ t) =>
-    /** @type {HTMLElement|null} */ (t.closest("[data-qmd-src], [data-block-id]"));
+  // navbar/footer → an explicit source file) or a `data-block-id` block that carries
+  // a USABLE sourcepos (the page's own prose/headings/code). Whichever is closer wins.
+  //
+  // Requiring the sourcepos is load-bearing, not defensive. `openSource()` defaults an
+  // unparseable one to line 1, so a gathered block did not fail visibly, it jumped the
+  // editor to the top of the file and looked deliberate: Alt-clicking any entry in the
+  // References list, or the footnotes section's own <hr>/padding, landed on line 1.
+  // Landing NOWHERE is the honest answer, because nothing truthful exists to point at.
+  // A reference's real position is its `.bib` entry, not anywhere in the `.tmd`; and
+  // pointing at the `[@key]` citation site instead would dress a guess up as
+  // navigation, since one key is usually cited in several places.
+  //
+  // The walk continues PAST an unusable block to any usable ancestor, so a nested unit
+  // that does know its own line still wins: a footnote <li> carries its definition's
+  // sourcepos and stays click-to-source-able inside a section that is not. This only
+  // ever makes FEWER things resolve; it adds no path back to the source.
+  const locatable = (/** @type {Element} */ t) => {
+    const sel = "[data-qmd-src], [data-block-id]";
+    /** @type {Element|null} */
+    let el = t.closest(sel);
+    while (el instanceof HTMLElement) {
+      if (el.hasAttribute("data-qmd-src") || usableSourcepos(el)) return el;
+      el = el.parentElement ? el.parentElement.closest(sel) : null;
+    }
+    return null;
+  };
 
   // Jump the editor to a source file:line directly (file relative to the doc's base
   // dir, or null = the previewed doc itself). Used by located diagnostics; webview

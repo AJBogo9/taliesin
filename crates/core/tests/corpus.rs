@@ -561,6 +561,69 @@ fn footnote_lis_are_locatable() {
 }
 
 #[test]
+fn gathered_sections_stay_unlocatable() {
+    // The other half of the contract `footnote_lis_are_locatable` pins, and the reason
+    // that test can trust its `<li>`s. client.js `locatable()` resolves an Alt-click to
+    // `closest("[data-qmd-src], [data-block-id]")` but SKIPS a block whose sourcepos is
+    // not usable (`^[1-9]\d*:\d+`), walking on to a usable ancestor or resolving to
+    // nothing at all. That guard is the only thing standing between a gathered section
+    // and `openSource()`'s line-1 default, which is silently the wrong line rather than
+    // a no-op.
+    //
+    // So these sections must keep claiming NOTHING. A well-meaning "every block should
+    // have a sourcepos" change that stamped `1:1-1:1` on them would satisfy the guard,
+    // sail past the block-level checks above, and quietly restore the line-1 landing on
+    // every reference and on the footnote section's own chrome. Pin the emptiness.
+    //
+    // They must also carry no `data-qmd-src`: that attribute is the OTHER way to be
+    // locatable (an explicit file, for site chrome), and neither section has one.
+    let mut files = Vec::new();
+    collect_qmd(&corpus_dir(), &mut files);
+    let mut seen = 0;
+    let mut offenders = Vec::new();
+    for f in &files {
+        let src = fs::read_to_string(f).unwrap();
+        let doc = taliesin_core::render_document_with_includes(&src, f.parent().unwrap());
+        let label = f.strip_prefix(corpus_dir()).unwrap_or(f).display();
+        // The block model's own view: the generated sections carry an empty sourcepos.
+        for b in &doc.blocks {
+            if b.id != "qmd-references" && b.id != "qmd-footnotes" {
+                continue;
+            }
+            seen += 1;
+            if !b.sourcepos.is_empty() {
+                offenders.push(format!(
+                    "{label}: block {} claims sourcepos {:?}; a gathered section has no \
+                     honest range, and a non-empty one makes client.js jump to it",
+                    b.id, b.sourcepos
+                ));
+            }
+        }
+        // The emitted HTML, which is what the client actually reads.
+        let html = doc.body_html();
+        for id in ["qmd-references", "qmd-footnotes"] {
+            let needle = format!("data-block-id=\"{id}\"");
+            let Some(i) = html.find(&needle) else {
+                continue;
+            };
+            let start = html[..i].rfind('<').unwrap_or(0);
+            let tag = &html[start..start + html[start..].find('>').unwrap_or(0)];
+            if tag.contains("data-sourcepos=\"") || tag.contains("data-qmd-src=") {
+                offenders.push(format!("{label}: {tag}>"));
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "a gathered section became locatable again; Alt-clicking a reference or the \
+         footnote section's <hr> would land on line 1:\n{}",
+        offenders.join("\n")
+    );
+    // Guard against a vacuous pass if the corpus loses its citations + footnotes.
+    assert!(seen > 0, "no gathered section in the corpus to check");
+}
+
+#[test]
 fn ids_and_sourcepos_present_on_visible_blocks() {
     // Every visible block element should carry both data attributes. (Raw HTML
     // comment blocks legitimately carry neither — they are emitted verbatim.)

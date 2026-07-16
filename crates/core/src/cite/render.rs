@@ -141,6 +141,12 @@ pub fn process(
         ));
     }
     list.push_str("</section>");
+    // A GATHERED block: it lists entries cited from lines scattered all over the
+    // document, so it has no single honest source range. The empty sourcepos is that
+    // claim, and client.js `locatable()` reads it as "not click-to-source" rather than
+    // guessing. Do NOT fill it in to make the list clickable: an entry's real position
+    // is its `.bib` record, not the `.tmd`, and the `[@key]` citation site is one of
+    // several, so any value here would be a guess wearing navigation's clothes.
     let block = Block {
         id: "qmd-references".to_string(),
         sourcepos: String::new(),
