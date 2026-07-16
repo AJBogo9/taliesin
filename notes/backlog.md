@@ -38,28 +38,18 @@ head, live-figure thumbnails) live in the detail file — protect them. Every fi
 
 ### A. Blog identity + de-Quarto (build-ready; quick wins first)
 
-7. **Draft-aware preview** (M) *[ruled: preview shows, build hides]*. Preview includes drafts (quiet
-   DRAFT badge + dev-menu count); build/publish exclude them and print "N drafts not published: …".
-   Also make book chapters draftable (`book.rs:172` `book_pages` never reads `fm.draft`). Flips
-   `site/discovery.rs:19-23` + widens a discovery path — brief brainstorm first.
-*(Dropped 2026-07-12: #12 chronological post prev/next. For a 7-post topic-diverse blog the
+*(Section A is empty: #7 draft-aware preview LANDED 2026-07-16 — preview shows drafts inline
+(listing badge + page banner + dev-menu count/list), build/publish exclude them and report
+"N drafts not published: …", book chapters are draftable. Spec:
+[2026-07-16-draft-aware-preview-design.md](../docs/superpowers/specs/2026-07-16-draft-aware-preview-design.md).
+Dropped 2026-07-12: #12 chronological post prev/next — for a 7-post topic-diverse blog the
 ordering is meaningless and over-promises; the reading-first listing is the right hub, and
 sequential nav already exists via books. A category-driven "related posts" strip could revisit
 this, but only after a richer corpus makes "related" meaningful.)*
 
-### B. Publish / build hardening (rulings unblocked)
-
-15. **`publish --public`** (M) *[ruled: add opt-in]*. Add `--public` / `publish.gate: false` so a
-    public blog can deploy via the real `publish` command; keep the passcode gate the default
-    (`publish.rs:194` `inject_gate`, `_middleware.js:9`). Retires the side-channel `deploy` skill.
-16. **Plain `publish` strict by default** (S) *[ruled: strict + `--no-strict`]*. Make plain `publish`
-    inherit the full strict check (already what `--strict` does); add a `--no-strict` escape for quick
-    deploys.
-17. **Built-site shared asset bundle** (L, reader-facing) *[ruled: externalize for `build <dir>`]*.
-    Extract the ~95 KB framework CSS + ~347 KB base64 KaTeX fonts (identical on every page; 64% of a
-    712 KB post) to content-hashed `app.<hash>.css` / `app.<hash>.js` / `katex.<hash>.css`, linked
-    once + minified. Keep single-file `build file.tmd` fully inlined (portable, `file://`). Biggest
-    repeat-visit perf win.
+*(Section B, publish/build hardening — `publish --public`, strict-by-default + `--no-strict`,
+built-site shared asset bundle — was already SHIPPED by the author; the entries were backlog
+rot, verified against source + removed 2026-07-16. See [[backlog-entries-rot]].)*
 
 ### C. Theme colour-system a11y follow-ups (2026-07-09 audit; verified, unbuilt)
 
