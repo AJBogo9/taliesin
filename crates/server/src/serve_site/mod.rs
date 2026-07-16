@@ -1277,6 +1277,47 @@ mod protocol_contract {
     }
 
     #[test]
+    fn set_meta_message_matches_client_contract() {
+        // `set_meta` is the click-to-source mechanism and the most-emitted op by far:
+        // live-edit-bench measures a real edit as 55 ops, 54 of them set_meta. It was
+        // the one op with no shape test, so renaming a key here compiled, passed the
+        // whole suite AND `tsc`, and silently degraded Alt-click to "opens at line 1"
+        // for every line-shifted block. The client reads exactly these keys
+        // (client.js `case "set_meta"`); they are the two halves of one contract.
+        let sm = parse(op_json(
+            &BlockOp::SetMeta {
+                target_id: "b3".into(),
+                sourcepos: "12:1-14:9".into(),
+                source_file: Some("inc/part.tmd".into()),
+            },
+            7,
+        ));
+        assert_eq!(sm["type"], "set_meta");
+        assert_eq!(sm["target_id"], "b3");
+        assert_eq!(sm["gen"], 7);
+        // The client feeds `sourcepos` straight to `data-sourcepos`, and `openSource`
+        // parses it with /^(\d+):(\d+)/ — a rename lands the editor on line 1 instead.
+        assert_eq!(sm["sourcepos"], "12:1-14:9");
+        // `source_file` attributes an included block to its real file; a rename makes
+        // click-to-source open the WRONG file.
+        assert_eq!(sm["source_file"], "inc/part.tmd");
+
+        // A non-included block must emit source_file as JSON null (the client's
+        // `if (msg.source_file)` is falsy for it and removes the attribute), not omit
+        // the key and not emit the string "null".
+        let plain = parse(op_json(
+            &BlockOp::SetMeta {
+                target_id: "b4".into(),
+                sourcepos: "3:1-3:5".into(),
+                source_file: None,
+            },
+            8,
+        ));
+        assert!(plain.get("source_file").is_some(), "key present");
+        assert!(plain["source_file"].is_null(), "and is JSON null");
+    }
+
+    #[test]
     fn op_json_rewrites_qmd_links_in_block_html() {
         let up = parse(op_json(
             &BlockOp::Update {
