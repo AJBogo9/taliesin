@@ -13,20 +13,25 @@ v0.2.0. All four formats render + deploy; the dev loop is strong (block-level in
 with DOM-state preservation, warm server + Jupyter kernel, `_freeze` cache, Alt-click + reverse
 cursor sync, located diagnostics, CSS hot-swap, Cmd-K search). **Tier 1 is empty.**
 
-**Sections A, B, C, F and G are now closed.** A (blog identity) finished with #7 draft-aware preview
+**EVERY section (A through G) is now closed.** A (blog identity) finished with #7 draft-aware preview
 (2026-07-16). B (publish hardening) was **backlog rot** — all three items were already shipped by
 the author; entries deleted with evidence (see the note in section A). C (theme/a11y follow-ups)
-finished 2026-07-16: six items built, two more were rot (see the note in section C). F (the deck
-audit) is fully landed except the deliberately-deferred B3-18. G (AI-native authoring) was **backlog
-rot**: 8 of its 10 items plus two slices of a third shipped 2026-07-13, and the owner declined the
-three ruling-gated leftovers on 2026-07-16. E (catalog triage) closed 2026-07-16 after wave 1
-measured the catalog at 35% stale; the owner ruled **triage on demand** instead of sweeping the
-remaining 131, leaving a short list of verified, ruling-ready items (§E) rather than 165 unverified
-ones. **→ See "Next session: start here" below.**
+finished 2026-07-16: six items built, two more were rot (see the note in section C). **D (reading-first
+identity) closed 2026-07-16 and was also rot**: two of its three "re-verified" layout targets
+dissolved on inspection, and the direction ruling it was blocked on turned out to be a question about
+a fork that does not exist (see §D). F (the deck audit) is fully landed except the deliberately-deferred
+B3-18. G (AI-native authoring) was **backlog rot**: 8 of its 10 items plus two slices of a third
+shipped 2026-07-13, and the owner declined the three ruling-gated leftovers on 2026-07-16. E (catalog
+triage) closed 2026-07-16 after wave 1 measured the catalog at 35% stale; the owner ruled **triage on
+demand** instead of sweeping the remaining 131. **What remains is a flat list of items, not sections:
+§E's ruling-ready leftovers + 5 live defects.** → See "Next session: start here" below.
 
-**Before picking any item: grep its named symbol/flag in source first.** The author pushes work
-mid-session, so an entry can go stale with no signal in this file (that is exactly how section B
-rotted). Trust an item's described *symptom*, never its cause or line number.
+**Before picking any item: grep its named symbol/flag in source first, and prefer measuring the
+running product over reading this file.** The author pushes work mid-session, so an entry can go
+stale with no signal here (that is how B, D and G all rotted). Trust an item's described *symptom*,
+never its cause or line number. **An entry marked "verified against source" is not enough**: §D's
+layout targets carried exactly that label and were quoting a real CSS line that a rule ten lines
+below already overrode. A browser measurement dissolved two of them in minutes.
 
 **Working method:** branch per feature; brainstorm if there's a fork; spec under
 `docs/superpowers/specs/`; implement TDD; verify (cargo + browser via chrome-devtools, or the
@@ -40,30 +45,36 @@ exec/kernel zone + the single-editing-surface invariant. Review subagents use re
 **Git.** Do not trust a SHA written here; any commit that records one falsifies it. **Check, do not
 read:** `git log --oneline origin/main..main` for what is unpushed (the author pushes, not the
 agent), and `git reflog show origin/main` before believing ANY "not pushed" claim, including one in
-a session handoff. The author pushes mid-session with no signal in this file, and a handoff has
-already been wrong about this twice. As of 2026-07-16 the tree was clean with core (29 binaries) +
-server (20) green and `fmt` + `clippy -D warnings` clean; re-run them, do not assume.
+a session handoff. The author pushes mid-session with no signal in this file, and a handoff has now
+been wrong about this **three** times: on 2026-07-16 a handoff said "+6 unpushed" and the author had
+already pushed all six, then pushed **twice more mid-session** while work was in flight. Re-run the
+checks too, do not assume: `cargo test -p taliesin-core` + `-p taliesin-server`, `cargo fmt --check`,
+`cargo clippy --all-targets -- -D warnings`.
 
-**Every section is closed except D.** Three things to pick up, in the order recommended:
+**There are no open sections left.** A through G are all closed. What remains is a flat list, and
+none of it is a grind chunk. In recommended order:
 
-1. **D. Reading-first identity polish** (§D). The only open *section*, and **blocked on one ruling**,
-   so it cannot start cold. Its three layout targets were re-verified 2026-07-16 and are real; the
-   ruling is only about SCOPE, because `.hero`/`.feature-grid` are shared by the blog (priority) and
-   the deferred marketing site, so reshaping them cannot be scoped to the blog by CSS alone. §D
-   states the three options. Brainstorm before speccing. *(Its old "type → item 13" pointer was rot;
-   the owned Newsreader body face shipped ~2026-07-12.)*
-2. **The catalog-derived items** (§E). Verified against source 2026-07-16 and ruling-ready, no sweep
-   needed. Best first build: **D49 chapter-scoped float numbering** (a real defect, a better default
-   rather than a knob, corpus-pinnable in `demo-book`). The citation trio (D67/D69/D72) is blocked:
-   it enters `crates/core/src/cite/`, a Do-NOT-touch zone, and needs explicit sign-off.
-3. **The 7 live defects** (§E, "Live defects"). Small, independent, none needs a ruling. Cheapest
-   real win: **the deck key sheet** (`deck.js:1680` advertises "↑ ↓ Vertical slides"; ↑↓ jump
-   topics). Roughly a one-line fix to a string every presenter reads.
+1. **The §E leftovers.** Each is verified and ruling-ready. **D37** (lint `format:` sub-keys) is the
+   cleanest build: a diagnostic, not a knob, following the `69c228b` precedent. **D34** and **D70**
+   are OWNER-RULING, not builds. **D72/D69** need Do-NOT-touch citation-zone sign-off.
+2. **The 5 live defects** (§E, "Live defects"). Small and independent. #1 (References click-to-source
+   lands on line 1) is logged-not-fixed by owner ruling and needs a *design* answer first, not code.
+3. **B3-18** (§F), the last deck-audit item, deliberately deferred: a structural deck edit re-mounts
+   the whole deck and nukes `{js}`/WebGL widget state.
 
-**Decided this session, do not re-litigate:** §G's three leftovers (`check --online`, the
-numeric-claim hint, the per-page text sidecar) are **declined** (see "Decided against"). §E is
-**triage on demand**, not a sweep. The catalog's summary and status field are **not trustworthy**;
-read the triage doc's "three layers" section before opening it.
+**Method note that paid off twice on 2026-07-16, use it:** when an entry names a file:line, open the
+*running product* before the file. §D's layout targets were labelled "re-verified against source" and
+still dissolved under a browser measurement, because the quoted CSS line was real but overridden ten
+lines below. Grep traps are live here too: a bare word matches prose (`feature` matched the English
+word), `grep | head` reports **head's** exit code (so `|| echo "absent"` never fires and `$?` lies),
+and zsh needs `--include='*.tmd'` quoted. See [[grep-verification-traps]].
+
+**Decided this session (2026-07-16), do not re-litigate:** §G's three leftovers (`check --online`,
+the numeric-claim hint, the per-page text sidecar) are **declined** (see "Decided against"). §E is
+**triage on demand**, not a sweep. **§D is closed as rot** and its "direction ruling" is void: the
+fork was false (see §D). The **References** click-to-source bug is **logged, not fixed**, pending a
+design answer. The **`--space-1..6` scale is dropped** (pure refactor, no payoff). The catalog's
+summary and status field are **not trustworthy**; read the triage doc's "three layers" section first.
 
 ## Now — the grind queue (priority order)
 
@@ -116,36 +127,38 @@ Owner-calls kept as-is (one-line changes if ever wanted): table cells use the 1.
 collapse under protanopia (icon + title already carry meaning, hue never the sole cue); deck has no
 sepia palette (document decks as light/dark-only, or add + teach the reader/scroll path).
 
-### D. Reading-first identity polish (layout half only; BLOCKED on a direction ruling)
+### D. Reading-first identity polish (CLOSED 2026-07-16)
 
-Direction **"Marginalia"** (iron-gall manuscript ink). The **theme/colour** half landed 2026-07-09.
-The **type** half also landed (~2026-07-12): the entry's old "type → item 13" pointer was **rot**
-(no `#13` exists anywhere; §A's numbering died when §A closed). Owned body face is shipped and wired:
-`base.css:35` `--tali-font-body: 1.125rem/1.7 "Newsreader"` applied at `:216`, both variable faces
-bundled at `font-weight: 200 800` (real bold, no faux) and inlined as `data:` URIs at build time, so
-the offline invariant holds. Spec:
-[2026-07-12-newsreader-body-face-design.md](../docs/superpowers/specs/2026-07-12-newsreader-body-face-design.md).
+*(Section D is closed. It was **backlog rot**, and the "direction ruling" it had been blocked on
+turned out to be a question about a fork that does not exist. Direction **"Marginalia"** (iron-gall
+manuscript ink) is fully landed: theme/colour 2026-07-09, type ~2026-07-12, layout already shipped.)*
 
-**Remaining: layout only. All three targets re-verified against source 2026-07-16** (unlike most of
-this file, these are NOT rot):
-1. **Hero as typeset, not a marketing slab.** `base.css:315` is `.hero { text-align: center;
-   padding: 3.2rem 1rem 2.4rem; }` with a `clamp(2rem, 6vw, 3.2rem)` display size (`:316`).
-2. **Drop bordered feature-card grids.** They exist: `base.css:345` `.feature-grid { display: grid; }`
-   + `:347` `.feature { padding: 1.3rem 1.4rem; border: 1px solid var(--tali-border); }`.
-   *(The entry used to call these "feature-card"; the real selectors are `.feature-grid` / `.feature`.)*
-3. **A `--space-1..6` scale.** Genuinely absent: no `--tali-space` / `--space-` token exists in any
-   bundled CSS. Spacing is per-rule literals today.
+*The **type** pointer was rot first (the old "type → item 13" named a `#13` that exists nowhere;
+§A's numbering died when §A closed). The owned Newsreader body face is wired at `base.css:35`,
+applied at `:216`, both variable faces bundled at `font-weight: 200 800` and inlined as `data:` URIs.*
 
-**[ruling needed] The fork, stated precisely.** `base.css:312` calls `.hero`/`.feature-grid`
-**"Marketing primitives"**, and they are authored by **both** `corpus/tech-blog/index.tmd` (the blog,
-the audit's stated priority) **and** `site/index.tmd`/`features.tmd`/`formats.tmd` (the marketing
-site, which is **deferred** under the feature-first policy). They share one stylesheet, so reshaping
-them cannot be scoped to the blog by CSS alone. Pick one: **(a)** reshape the shared primitives now
-and accept that the deferred marketing site inherits the new look mid-flight; **(b)** give the blog
-its own reading-first hero/section treatment and leave the marketing primitives untouched until the
-rebuild (two looks in one stylesheet for a while); or **(c)** hold D entirely until the marketing
-rebuild is undeferred. This overlap is the whole reason the entry has always said "confirm direction
-before building". Brainstorm before speccing.
+*Then the three "re-verified, NOT rot" layout targets were re-checked on 2026-07-16, **in a browser
+rather than by reading the file**, and two of the three dissolved:*
+
+1. ***"Hero as typeset, not a marketing slab" was ALREADY SHIPPED.** The entry quoted `base.css`'s
+   `.hero { text-align: center }` as proof, but that is the **full-width landing** branch; the
+   override ~10 lines below (`.tali-site-main:not(.tali-wide) .hero`) is what a reading-measure page
+   gets, and its own comment calls it "an editorial masthead ... e.g. a personal homepage". Measured
+   live on the blog index: `text-align: left`, lead `max-width: none`, and the iron-gall eyebrow
+   hairline rendering at 40x2px in `rgb(56,65,101)`. This is the "trust the symptom, never the line
+   number" trap in its purest form: the quoted line was real, and irrelevant.*
+2. ***"Drop bordered feature-card grids" is MARKETING-ONLY.** The blog never authors them. Exact-match
+   grep: `.feature-grid`/`.feature` appear in `site/features.tmd` + `site/index.tmd` only, **zero**
+   hits in `corpus/tech-blog/`. So reshaping them is deferred marketing work, not blog work.*
+3. ***The `--space-1..6` scale is genuinely absent** (verified, grep exit 1), but with 1 and 2 gone it
+   is a pure refactor: no visible change, regression risk across `base.css`. Owner ruled **drop it**;
+   if spacing ever actually hurts, it returns as a real item.*
+
+***The fork was false twice over*** *(and this is the reusable lesson): (a) `page-layout: full` →
+`.tali-wide` **already partitions** the deferred marketing site from the blog, and `base.css` already
+exploits that partition for `.hero`, so "cannot be scoped to the blog by CSS alone" was simply wrong;
+(b) the blog does not author the contested component at all. **Do not re-open D**: the identity work
+is done, and the only thing left in those primitives belongs to the marketing rebuild.*
 
 ### E. Catalog-derived work (the SWEEP is closed; the items below are OPEN)
 
@@ -171,20 +184,11 @@ detail pointer):
   counters, so two chapters each get a "Figure 1" and a cross-chapter `@fig-x` cannot disambiguate.
   Only theorems are chapter-scoped. Auto-scoping in a numbered book is a better default, not a knob.
   *Sub-fork:* it would put an auto-scoped "Figure 2.3" beside an opt-in "Theorem 5" in one book.
-- **D72/D67/D69 citations** (ADOPT, but **all three edit `crates/core/src/cite/`, a Do-NOT-touch zone,
-  and need explicit sign-off**). D72: support bare `@key` at all? (The *diagnostic* shipped 2026-07-16,
-  `8a45d59`, so the failure is now caught; the engine question is separate.) D67: `csl:` is advertised
-  on four surfaces (allowlist, editor completion, schema, include resolver) while doing nothing;
-  ship the "recognized but unsupported" warning (put it in `diagnostics/`, not `cite/`) and drop the
-  `vocab.rs:75` completion in the same change. **Do not just delete it from the allowlist:** `css` vs
-  `csl` is edit distance 1, so the did-you-mean would suggest `css`. D69: the reference list is
-  `push`ed at the end, so an appendix after `# References` orphans the heading.
-- **D74 footnote reverse-sync** (ADOPT, outside Do-NOT-touch). The gathered `qmd-footnotes` block is
-  pushed with `sourcepos: String::new()`, so no end-note `<li>` carries `data-sourcepos`: a hole in a
-  load-bearing invariant. `client.js` already resolves via `.closest(...)`, so no client change.
-- **D107 deck fragment effects** (`.fade-out`, `.highlight`; ADOPT, scoped hard). The only live
-  capability gap in slides, never adjudicated by the deck audit. Decline the `incremental:` global
-  knob and `data-fragment-index`.
+- **D72/D69 citations** (ADOPT, but **both edit `crates/core/src/cite/`, a Do-NOT-touch zone, and
+  need explicit sign-off**). D72: support bare `@key` at all? (The *diagnostic* shipped 2026-07-16,
+  `8a45d59`, so the failure is now caught; the engine question is separate.) D69: the reference list
+  is `push`ed at the end, so an appendix after `# References` orphans the heading.
+  *(D67 LANDED 2026-07-16, never needed the zone. See the note below.)*
 - **D37 lint `format:` sub-keys** (ADOPT). The honored `format: deck:` key set is empty, so
   whitelisting `transition` would validate no-ops as supported. This adds a **diagnostic, not a knob**,
   following the from-quarto value-lint precedent (`69c228b`).
@@ -196,11 +200,40 @@ detail pointer):
   (`.citations.json` + ScholarlyArticle JSON-LD). A card would render **author-free for every current
   post** (0 of 8 tech-blog posts set `author:`).
 
+***Landed 2026-07-16 (deleted from the list above, recorded here so they are not re-scoped):***
+- ***D67 `csl:` recognized-but-unsupported.** Shipped, and it **never needed the citation zone**. It
+  was **five** surfaces, not four: `AGENTS.md` also taught the key (both it and the vocab JSON are
+  *derived* from `vocab::vocab()`, so one filter fixed both). Proved inert by rendering
+  `corpus/bayesian-website` with and without the key: byte-identical (980300 bytes). The `css`
+  did-you-mean hazard is now **mechanically pinned** (`csl_stays_recognized_because_dropping_it_would_mis_suggest_css`
+  builds `KNOWN_KEYS` without `csl` and asserts the suggestion becomes `css`), so a future cleanup
+  cannot re-introduce it. The rule finally lives in `frontmatter::validate_unsupported_keys`, on the
+  **render path**, not in `diagnostics/` as this entry originally instructed: `diagnostics/` is
+  check-only (it appears once in the whole server crate), so the first cut left the **preview**
+  silent, which is the surface the author actually reads. Orphaned `ieee.csl` (17KB) deleted with it.*
+- ***D74 footnote reverse-sync.** Shipped, and the symptom was **worse** than this entry said: the
+  section hardcodes `data-block-id="qmd-footnotes"`, so `closest()` DID resolve, to a block with no
+  sourcepos, leaving `openSource()` on its `line = "1"` default. Every footnote silently jumped to
+  **line 1**; it was never a no-op. Fixed per-`<li>` (nested positions, the pattern `:::` divs already
+  use); the block-level empty sourcepos is **deliberately kept** (a block-level range would break
+  `corpus.rs:151`'s monotonic-source-order assert and make reverse-sync swallow the document). **No
+  exemption existed to remove:** the checks skip on `sourcepos.is_empty()` *generically*, which is
+  exactly how the hole hid.*
+- ***D107 deck fragment effects.** Shipped as `::: {.fragment .fade-out}` / `{.fragment .highlight}`
+  (a second class on the existing fenced div, so no new authoring form). **CSS-only** (`deck.css`), no
+  Rust/JS: the effects reuse the `.tali-frag-visible` marker deck.js already toggles. Declines held
+  (no `incremental:` knob, no `data-fragment-index`).*
+
 **Live defects wave 1 found that the catalog never knew about** (small, independent of §E):
-1. **The deck key sheet lies to every presenter:** `deck.js:1680` advertises "↑ ↓ Vertical slides",
-   but `up()`/`down()` call `moveTopic` (`deck.js:664`), so ↑↓ jump topics and vertical slides step
-   ←→. It survived the whole 43-bug deck audit because B7's drift sweep cleaned the `.tmd` docs and
-   never read the in-product string.
+1. **The References section repeats the footnote bug** (found while fixing D74, 2026-07-16).
+   `cite/render.rs:102` hardcodes `data-block-id="qmd-references"` with an empty sourcepos, so
+   Alt-clicking any reference silently lands on **line 1** (same mechanism as D74). **In the
+   Do-NOT-touch citation zone**, and unlike footnotes there is **no clean per-`<li>` fix**: a CSL
+   entry's real position is in the `.bib` file, not the `.tmd`. *Owner ruled 2026-07-16: log it, do
+   not fix it yet.* **It needs a design answer before code:** where should a reference's
+   click-to-source land (the `.bib` entry in another file? the `[@key]` citation site? nowhere)?
+   Related, deliberately left: clicking the footnote section's own chrome (the `<hr>`/padding) still
+   resolves to line 1; closing that needs `locatable()` to require a *usable* sourcepos, a client change.
 2. **Duplicate-label warnings are unlocated** (`render/mod.rs:1538`, `site/xref.rs:56` emit no
    file/line), half-reproducing the exact Quarto flaw D53 critiques.
 3. **`{.python code-line-numbers=...}` is routed to the executable path** though it is authored as
@@ -208,10 +241,18 @@ detail pointer):
    the kernel-free corpus. *Unverified against a live kernel.*
 4. **The xref registry goes stale on a warm content edit** (`serve_site/mod.rs:1148-1199` refreshes
    only the Cmd-K search fragment).
-5. **`author: [A, B]` silently falls back to `title:`** (both consumers `.as_str()` an
-   `Option<serde_yaml::Value>`); nothing pins `config.author`.
-6. **`lang: fr` promises French, delivers English** cross-ref labels (`render/page.rs:239`).
-7. **`site/mod.rs:989` documents a `number-sections` key that does not exist.**
+5. **`lang: fr` promises French, delivers English** cross-ref labels (`render/page.rs:239`).
+
+*Landed 2026-07-16 and deleted from this list: the **deck key sheet** (it advertised "↑ ↓ Vertical
+slides" while `up()`/`down()` call `moveTopic`; the pin now reads the binding and the sheet together
+so they cannot drift apart again); **`author: [A, B]`** (a YAML sequence read via `.as_str()` gave
+`None`, so both consumers fell through `.or(config.title)` and a multi-author site published its own
+**title** as the author in the Atom feed and JSON-LD; `SiteConfig.authors` now reuses the same
+`frontmatter::string_list` a page's `author:` always used, and the deliberate RFC-4287 title fallback
+is pinned to fire only when there is genuinely no author); and the phantom **`number-sections`** doc
+comment (the key existed nowhere in the source but the comment claiming it; numbering is really
+decided by `chapter_for`). Note the 2026-06-29 theorem spec still reasons about "the `number-sections`
+feature" as though it shipped: it is a dated record, left as written.*
 
 ### F. Deck rework (2026-07-12 slides audit → [2026-07-12-deck-audit.md](2026-07-12-deck-audit.md))
 
