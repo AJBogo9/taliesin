@@ -1,8 +1,23 @@
-//! Memory-aware build concurrency cap.
+//! Build concurrency planning: how many pages to render at once, and how many kernels
+//! to keep pre-warmed alongside them.
 //!
-//! `concurrency_cap` decides how many parallel kernel processes to allow,
-//! respecting an explicit `--jobs` override and capping against available memory
-//! and CPU core count when running in auto mode.
+//! [`build_plan`] is the entry point, and the split it makes turns on **who chose the
+//! number**:
+//!
+//! - **Explicit `--jobs N`** is the user's stated *page* concurrency (the CLI says "max
+//!   parallel pages", in those words, and that is the only wording a user reads). It is
+//!   honored exactly, and the warm pool is **additive** on top of it. Memory is not
+//!   consulted, consistent with [`concurrency_cap_with`]'s own `Some(n)` arm, which has
+//!   never looked at `free_mb`: an explicit `--jobs 8` already outruns what RAM can hold,
+//!   so docking 2 slots off it for the pool was a token gesture that bought no safety and
+//!   cost the flag its meaning.
+//! - **Auto** (`None` / `Some(0)`) is ours to spend, so the memory budget is real: the
+//!   cap comes from [`concurrency_cap`] (memory- and core-aware) and [`budget_split`]
+//!   shares it, keeping `warm_pool + build_kernels <= cap`.
+//!
+//! Note a page render is often not a kernel at all — a prose page boots none — which is
+//! why "the resident-kernel budget" was never a coherent meaning for `--jobs`, and how
+//! the M1 defect hid for so long.
 
 /// Pure inner function for testing.
 ///
@@ -78,10 +93,51 @@ pub(crate) fn concurrency_cap(jobs: Option<usize>, per_kernel_mb: u64) -> usize 
 /// parallel build. Always reconciled against the live `cap` by [`budget_split`].
 pub(crate) const WARM_POOL_TARGET: usize = 2;
 
-/// How the resident-kernel budget (`cap`, from [`concurrency_cap`]) splits between
-/// the eager warm pool and the concurrent build. Both kinds of kernel are real
-/// resident interpreters costing ~`per_kernel_mb` each, so they must share **one**
-/// budget: `warm_pool + build_kernels <= cap`. This pure helper makes that split.
+/// A build's concurrency plan: how many pages to render at once, plus how many kernels
+/// to pre-warm beside them. Produced by [`build_plan`]; the two fields share one memory
+/// budget in auto mode and are independent under an explicit `--jobs` (see the module
+/// header).
+///
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BudgetSplit {
+    /// Kernels to keep pre-warmed in the [`crate::warm_pool::WarmPool`].
+    pub warm_pool: usize,
+    /// Pages the build may render at once (the semaphore cap). Named for kernels
+    /// because in auto mode it is charged as one: the memory budget must assume the
+    /// worst case where every concurrent page boots one.
+    pub build_kernels: usize,
+    /// Whether `warm_pool` was funded out of the same budget as `build_kernels` (auto
+    /// mode). Decides who owns pool slots that never boot — see [`Self::build_cap`].
+    pub shares_budget: bool,
+}
+
+impl BudgetSplit {
+    /// The build semaphore size, once the caller knows how many pool kernels **actually**
+    /// booted (`warmed`; see `is_warm()` — a pool that declined or failed to boot holds no
+    /// kernels and costs no RAM).
+    ///
+    /// This is M1's rule, scoped to where it applies. In **auto** mode the pool's slots
+    /// came out of the build's own budget, so slots that never booted return to it: that
+    /// is what makes a default build on a bare `python3` use the whole memory cap instead
+    /// of silently forfeiting 2. Under an **explicit** `--jobs` there is nothing to
+    /// return: the pool was additive and never held a build slot, so the user's N stands
+    /// whether the pool booted or not.
+    pub fn build_cap(self, warmed: usize) -> usize {
+        if self.shares_budget {
+            self.build_kernels + self.warm_pool.saturating_sub(warmed)
+        } else {
+            self.build_kernels
+        }
+    }
+}
+
+/// Split an **auto-mode** resident-kernel `cap` (from [`concurrency_cap`]) between the
+/// eager warm pool and the concurrent build. Here the two genuinely share one budget:
+/// both are real resident interpreters costing ~`per_kernel_mb` each and *we* picked the
+/// number against free RAM, so `warm_pool + build_kernels <= cap` must hold.
+///
+/// Not for an explicit `--jobs` — that number is the user's page count, not a kernel
+/// budget to divide, and [`build_plan`] gives it the additive treatment instead.
 ///
 /// Policy (conservative, build-first):
 ///   - `build_kernels` is never below 1, so a tiny budget still builds (it just
@@ -93,21 +149,12 @@ pub(crate) const WARM_POOL_TARGET: usize = 2;
 ///   - With `cap == 0` (shouldn't happen — callers `.max(1)`) both are 0.
 ///
 /// The invariant `warm_pool + build_kernels <= cap` holds for every `cap`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct BudgetSplit {
-    /// Kernels to keep pre-warmed in the [`crate::warm_pool::WarmPool`].
-    pub warm_pool: usize,
-    /// Kernels the concurrent build may run at once (the semaphore cap).
-    pub build_kernels: usize,
-}
-
-/// Split a resident-kernel `cap` into a warm-pool size + a build-concurrency size
-/// that together fit the budget. See [`BudgetSplit`] for the policy.
 pub(crate) fn budget_split(cap: usize) -> BudgetSplit {
     if cap == 0 {
         return BudgetSplit {
             warm_pool: 0,
             build_kernels: 0,
+            shares_budget: true,
         };
     }
     // Build is guaranteed at least one slot; the warm pool may take up to
@@ -117,7 +164,49 @@ pub(crate) fn budget_split(cap: usize) -> BudgetSplit {
     BudgetSplit {
         warm_pool,
         build_kernels,
+        shares_budget: true,
     }
+}
+
+/// Pure inner function for testing (mirrors [`concurrency_cap_with`]'s style: the same
+/// arithmetic with `cores`/`free_mb` injected instead of probed).
+pub(crate) fn build_plan_with(
+    jobs: Option<usize>,
+    per_kernel_mb: u64,
+    cores: usize,
+    free_mb: u64,
+) -> BudgetSplit {
+    match jobs {
+        // Explicit: N is the page count the user asked for, honored exactly. The pool is
+        // additive — it is not funded out of the user's number.
+        //
+        // The pool stays at the full WARM_POOL_TARGET even for `--jobs 1`. It is tempting
+        // to scale it down to `n`, but `budget_split`'s "cap 1 → no warm pool" rule exists
+        // only because warm and build SHARE a budget there; under an explicit --jobs they
+        // do not, so that rationale does not carry. The precedent is `preview_warm_pool_size`:
+        // a preview builds pages strictly serially and still gets a 2-kernel pool, for the
+        // reason WARM_POOL_TARGET's own doc gives — the page being worked on, plus one ahead.
+        Some(n) if n >= 1 => BudgetSplit {
+            warm_pool: WARM_POOL_TARGET,
+            build_kernels: n,
+            shares_budget: false,
+        },
+        // Auto (`None` / `Some(0)`): the cap is ours to spend, so the memory budget is
+        // real and the shared-budget split applies unchanged.
+        _ => budget_split(concurrency_cap_with(None, per_kernel_mb, cores, free_mb).max(1)),
+    }
+}
+
+/// Public API: plan a site build's concurrency from the `--jobs` flag.
+///
+/// `jobs` mirrors the `--jobs` CLI flag (`None` / `Some(0)` = auto). See the module
+/// header for why explicit and auto are planned differently.
+pub(crate) fn build_plan(jobs: Option<usize>, per_kernel_mb: u64) -> BudgetSplit {
+    let cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+    let free_mb = probe_free_mb().unwrap_or(FALLBACK_FREE_MB);
+    build_plan_with(jobs, per_kernel_mb, cores, free_mb)
 }
 
 /// How many kernels the **preview** server should pre-warm, reconciled with the same
@@ -133,7 +222,109 @@ pub(crate) fn preview_warm_pool_size() -> usize {
 
 #[cfg(test)]
 mod tests {
-    use super::{WARM_POOL_TARGET, budget_split, concurrency_cap_with};
+    use super::{WARM_POOL_TARGET, budget_split, build_plan_with, concurrency_cap_with};
+
+    // --- build_plan: explicit `--jobs N` means N parallel PAGES (owner ruling 2026-07-17).
+    //
+    // These pin the arithmetic; they cannot pin the composition that actually broke (the
+    // build docking N before knowing whether a pool boots), which is why the real gate for
+    // this ruling is `tests/build_jobs.rs`. See that file's module doc.
+
+    #[test]
+    fn explicit_jobs_is_the_page_count_and_the_pool_is_additive() {
+        // --jobs 3 = 3 pages. The pool does NOT come out of the user's number.
+        let p = build_plan_with(Some(3), 150, 16, 32_000);
+        assert_eq!(p.build_kernels, 3);
+        assert_eq!(p.warm_pool, WARM_POOL_TARGET);
+        assert!(!p.shares_budget);
+    }
+
+    #[test]
+    fn explicit_jobs_one_is_sequential_but_still_pre_warms() {
+        // `budget_split`'s "cap 1 -> no warm pool" is a SHARED-budget rule; under an
+        // explicit --jobs the two don't share, so the rationale doesn't carry. Precedent:
+        // a serially-building preview still gets a full pool (`preview_warm_pool_size`).
+        let p = build_plan_with(Some(1), 150, 16, 32_000);
+        assert_eq!(p.build_kernels, 1);
+        assert_eq!(p.warm_pool, WARM_POOL_TARGET);
+    }
+
+    #[test]
+    fn explicit_jobs_ignores_memory_pressure() {
+        // Consistent with `concurrency_cap_with`'s Some(n) arm, which has never consulted
+        // free_mb: the user's stated concurrency is honored, RAM or no RAM. (Memory is
+        // only ours to reason about in auto mode.)
+        let starved = build_plan_with(Some(8), 150, 16, 10);
+        assert_eq!(starved.build_kernels, 8);
+    }
+
+    #[test]
+    fn auto_is_unaffected_and_still_shares_one_budget() {
+        // cores 16, free 32000/150 = 213 -> cap 16 -> 2 warm + 14 build, summing to 16.
+        let p = build_plan_with(None, 150, 16, 32_000);
+        assert_eq!(p.warm_pool, 2);
+        assert_eq!(p.build_kernels, 14);
+        assert!(p.shares_budget);
+        assert_eq!(p.warm_pool + p.build_kernels, 16);
+    }
+
+    #[test]
+    fn auto_matches_the_old_composed_behavior_across_the_range() {
+        // The ruling must not move auto mode at all: it stays exactly
+        // `budget_split(concurrency_cap(None, ..).max(1))`.
+        for cores in 1..=16 {
+            for free_mb in [10u64, 300, 1_000, 32_000] {
+                let expect = budget_split(concurrency_cap_with(None, 150, cores, free_mb).max(1));
+                assert_eq!(
+                    build_plan_with(None, 150, cores, free_mb),
+                    expect,
+                    "auto drifted at cores={cores} free_mb={free_mb}"
+                );
+                // `Some(0)` is auto too.
+                assert_eq!(build_plan_with(Some(0), 150, cores, free_mb), expect);
+            }
+        }
+    }
+
+    // --- build_cap: who owns pool slots that never booted (M1's rule, scoped).
+
+    #[test]
+    fn auto_returns_unbooted_pool_slots_to_the_build() {
+        // M1: on a bare `python3` no pool boots, so the default build must use the whole
+        // memory cap (16 here), not silently forfeit the 2 it reserved.
+        let p = build_plan_with(None, 150, 16, 32_000);
+        assert_eq!(p.build_cap(0), 16);
+        // A pool that did boot keeps its slots: 14 build + 2 warm <= 16.
+        assert_eq!(p.build_cap(2), 14);
+    }
+
+    #[test]
+    fn explicit_jobs_holds_at_n_whether_or_not_the_pool_boots() {
+        // Nothing to hand back: the pool was never funded from the user's N.
+        let p = build_plan_with(Some(3), 150, 16, 32_000);
+        assert_eq!(p.build_cap(0), 3);
+        assert_eq!(p.build_cap(2), 3);
+    }
+
+    #[test]
+    fn auto_never_exceeds_its_budget_however_the_pool_lands() {
+        // The auto-mode invariant, across the range and across every possible pool
+        // outcome: resident kernels (build + warmed) never exceed the memory cap.
+        for cores in 1..=16 {
+            for free_mb in [10u64, 300, 1_000, 32_000] {
+                let cap = concurrency_cap_with(None, 150, cores, free_mb).max(1);
+                let p = build_plan_with(None, 150, cores, free_mb);
+                for warmed in 0..=p.warm_pool {
+                    assert!(
+                        p.build_cap(warmed) + warmed <= cap,
+                        "auto overspends at cores={cores} free_mb={free_mb} warmed={warmed}: \
+                         {} + {warmed} > {cap}",
+                        p.build_cap(warmed)
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn explicit_jobs_one_is_sequential() {

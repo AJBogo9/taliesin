@@ -1334,38 +1334,40 @@ async fn build_site_async(
     //    sequential one. `--jobs 1` (today's default) takes the in-order serial path.
     //    Cross-page ordering edges (a page that must build after another) are deferred to
     //    Task 9; here every dirty page is treated as independent.
-    // One memory/core budget covers *all* resident kernels: the eager warm pool plus
-    // the kernels the concurrent build runs at once. `budget_split` reserves a small
-    // warm pool (build-first: never below 1 build kernel) so the two never together
-    // exceed the cap. The build semaphore is sized to `build_kernels`; the warm pool
-    // pre-warms `warm_pool` so each page build can draw a hot kernel instead of paying
-    // a cold boot. Determinism is untouched: a pooled kernel runs the same ipykernel
-    // with the same preambles as a cold one, so it produces identical bytes — the pool
-    // only changes *when* a kernel is ready, never *what* it computes.
-    // Resolve the interpreter BEFORE splitting the budget. The split docks slots for the
-    // warm pool, and whether a pool can exist at all depends on this resolution — so
-    // splitting first meant docking for a pool that (in the default configuration, where
-    // `should_warm(Provenance::Default)` is false) never boots. Those slots bought
-    // nothing and `--jobs 3` built ONE page at a time.
+    // Plan the build's concurrency: how many pages at once, and how many kernels to
+    // pre-warm beside them. `build_plan` keys off who chose the number — an explicit
+    // `--jobs N` is the user's PAGE count and is honored exactly (the warm pool is
+    // additive on top); auto mode splits one memory-aware budget between the two
+    // (`warm_pool + build_kernels <= cap`). The build semaphore is sized to
+    // `build_kernels`; the warm pool pre-warms `warm_pool` so each page build can draw a
+    // hot kernel instead of paying a cold boot. Determinism is untouched: a pooled kernel
+    // runs the same ipykernel with the same preambles as a cold one, so it produces
+    // identical bytes — the pool only changes *when* a kernel is ready, never *what* it
+    // computes.
+    //
+    // Resolve the interpreter BEFORE consulting the plan's warm size: whether a pool can
+    // exist at all depends on this resolution, and the log line below must not claim to
+    // pre-warm a pool that never boots (M1).
     let interp_python = crate::interpreter::resolve_python(site.config.python.as_deref(), root);
-    let cap = build_budget::concurrency_cap(jobs, build_budget::PER_KERNEL_MB).max(1);
+    let plan = build_budget::build_plan(jobs, build_budget::PER_KERNEL_MB);
 
     // The one process-wide warm pool for this build. `None` (so every page cold-starts
     // exactly as today) when `TALIESIN_PYTHON` is unset or the forkserver can't boot;
     // dropped at the end of this fn, killing the daemon + idle kernels. The pool boots
     // only for a concrete interpreter choice (not the bare python3 default), and each
     // page/deck executor resolves the same way.
-    let want_warm = build_budget::budget_split(cap).warm_pool;
-    let warm_pool = warm_pool::warm_pool_for_build(want_warm, &interp_python).await;
+    let warm_pool = warm_pool::warm_pool_for_build(plan.warm_pool, &interp_python).await;
 
-    // Charge the budget for the kernels that ACTUALLY exist. A pool that declined to boot
-    // (bare `python3`) or failed to (`is_warm()` false) holds no kernels, so it costs no
-    // RAM and must cost no build slots either.
+    // Count only the kernels that ACTUALLY exist. A pool that declined to boot (bare
+    // `python3`) or failed to (`is_warm()` false) holds no kernels, so it costs no RAM,
+    // must not be announced as a purchase, and must not cost build slots (M1).
+    // `build_cap` applies that last rule where it means something: auto mode hands the
+    // unbooted slots back to the build; under an explicit --jobs the pool never held any.
     let warmed = match &warm_pool {
-        Some(p) if p.is_warm() => want_warm,
+        Some(p) if p.is_warm() => plan.warm_pool,
         _ => 0,
     };
-    let build_cap = cap.saturating_sub(warmed).max(1);
+    let build_cap = plan.build_cap(warmed).max(1);
     log::info(&if warmed > 0 {
         format!("building with up to {build_cap} parallel page(s); pre-warming {warmed} kernel(s)")
     } else {
