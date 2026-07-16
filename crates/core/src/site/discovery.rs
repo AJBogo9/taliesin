@@ -54,6 +54,7 @@ pub(super) fn website_pages(root: &Path, warnings: &mut Vec<String>) -> Vec<Page
                 hero: fm.hero,
                 page_layout: fm.page_layout,
                 has_bibliography: fm.has_bibliography,
+                draft: fm.draft,
             })
         })
         .collect();

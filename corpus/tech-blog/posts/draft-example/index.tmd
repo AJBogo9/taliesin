@@ -1,0 +1,13 @@
+---
+title: "A Draft Post (unpublished)"
+date: "2026-07-16"
+description: "This post is a draft: it shows in preview with a DRAFT badge but never ships in a build."
+categories:
+  - Drafts
+---
+
+This post exists to pin **draft-aware preview**. In `preview` it appears in the blog
+listing with a quiet `DRAFT` badge and in the dev-menu draft list; a `build` excludes it
+entirely and reports it as "not published".
+
+Nothing here needs to render richly; the point is the page's *membership*.

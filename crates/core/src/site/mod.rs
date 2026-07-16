@@ -31,6 +31,14 @@ pub struct DeckRef {
     pub url: String,
 }
 
+/// Whether discovery keeps `draft: true` pages (`Include`, the preview view) or drops
+/// them from the page set (`Exclude`, the published view: build/publish/check/map).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DraftMode {
+    Exclude,
+    Include,
+}
+
 /// A single input page and where it lands in the built site.
 #[derive(Debug, Clone)]
 pub struct Page {
@@ -67,6 +75,10 @@ pub struct Page {
     /// Whether the page declares a `bibliography:` (a cited/scholarly document). Drives the
     /// `ScholarlyArticle` vs `BlogPosting` JSON-LD choice.
     pub has_bibliography: bool,
+    /// `draft: true` in front matter. `false` for every published page; `true` only for a
+    /// draft surfaced in `DraftMode::Include` (preview). Drives the DRAFT badge/banner; a
+    /// built page is always `false`, so those affordances are inert in a build.
+    pub draft: bool,
 }
 
 /// An `about:` front-matter block: a profile header (image + name + links). The
@@ -177,6 +189,9 @@ pub struct Site {
     /// These aren't pages/chapters; the build renders each to its own `.html` and
     /// the preview serves them live so the embedding iframes resolve.
     pub decks: Vec<DeckRef>,
+    /// Rel paths of `draft: true` pages dropped in `DraftMode::Exclude` (empty in
+    /// `Include`). Drives the build's "N drafts not published" report.
+    pub excluded_drafts: Vec<String>,
 }
 
 /// Compute a page's Cmd-K search fragment (its JSON entries, or `None` when the page is
@@ -327,6 +342,7 @@ impl Site {
             search_sections,
             hover_index_json: String::new(),
             decks,
+            excluded_drafts: Vec::new(),
         };
         // Fill the cross-PAGE numbers the lightweight source-scan can't know — a figure /
         // equation / table / listing / theorem number is assigned only during render, so
