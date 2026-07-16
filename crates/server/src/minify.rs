@@ -7,6 +7,25 @@
 //! PRESERVES every statement newline (ASI-safe) and never mangles tokens. It runs only on
 //! Taliesin's own hand-written JS (vendored `*.min.js` bypass it entirely).
 
+/// Would `prev` and `next` tokenize as ONE token if written adjacent? Used to decide
+/// whether dropping a CSS comment between them needs a space to preserve tokenization.
+fn css_tokens_would_merge(prev: char, next: char) -> bool {
+    // CSS ident continuation: letters, digits, `-`, `_`, and anything non-ASCII.
+    let ident = |c: char| c.is_alphanumeric() || c == '-' || c == '_' || (c as u32) >= 0x80;
+    // `0` + `auto`, `50` + `px`, `a` + `b`
+    if ident(prev) && ident(next) {
+        return true;
+    }
+    // a number absorbing a fractional part: `0` + `.5`, or `.` + `5`
+    if prev.is_ascii_digit() && next == '.' {
+        return true;
+    }
+    if prev == '.' && next.is_ascii_digit() {
+        return true;
+    }
+    false
+}
+
 pub fn minify_css(src: &str) -> String {
     let chars: Vec<char> = src.chars().collect();
     let n = chars.len();
@@ -55,13 +74,29 @@ pub fn minify_css(src: &str) -> String {
             last_was_space = false;
             continue;
         }
-        // block comment: drop it entirely
+        // block comment: drop it entirely, but never let its removal FUSE the tokens it
+        // separated. Browser-verified: `margin:0/* x */auto` computes the same as
+        // `margin:0 auto` (marginLeft 910px), while the fused `margin:0auto` is invalid
+        // and silently drops to 0px. Fusion also runs the other way: `50/**/px` is an
+        // invalid <number><ident> width originally, and fusing it to `50px` would
+        // silently make a broken declaration work.
+        //
+        // A space is only correct where the tokens would actually merge. `.a/* c */.b`
+        // must stay `.a.b` (a compound selector; browser-verified that it matches an
+        // element with both classes and NOT a descendant), because `.` cannot continue
+        // the `a` ident, so no merge happens and a space would change the meaning.
         if chars[i..].starts_with(&['/', '*']) {
             let mut j = i + 2;
             while j + 1 < n && !(chars[j] == '*' && chars[j + 1] == '/') {
                 j += 1;
             }
             i = if j + 1 < n { j + 2 } else { n };
+            if let (Some(prev), Some(&next)) = (out.chars().last(), chars.get(i))
+                && css_tokens_would_merge(prev, next)
+            {
+                out.push(' ');
+                last_was_space = true;
+            }
             continue;
         }
         if c.is_ascii_whitespace() {
@@ -370,6 +405,32 @@ mod tests {
     #[test]
     fn js_empty_input_is_empty_output() {
         assert_eq!(minify_js(""), "");
+    }
+
+    #[test]
+    fn css_comment_between_value_tokens_keeps_them_apart() {
+        // Dropping a comment must not FUSE two tokens. Browser-verified: `margin:0 auto`
+        // and `margin:0/* reset */auto` both compute marginLeft 910px (centred), while
+        // `margin:0auto` computes 0px — the declaration is invalid and silently dropped.
+        // So emitting `0auto` here silently un-centres the element.
+        let out = minify_css(".x{margin:0/* reset */auto}");
+        assert!(!out.contains("/*"), "comment stripped: {out}");
+        assert!(
+            out.contains("0 auto"),
+            "value tokens stay separate tokens: {out}"
+        );
+        // The mirror case: `50/**/px` is <number><ident> = an invalid width originally,
+        // so it must STAY invalid. Fusing it to `50px` would silently make a broken
+        // declaration work, which is just as much a behaviour change.
+        let out = minify_css(".x{width:50/* c */px}");
+        assert!(out.contains("50 px"), "no accidental token fusion: {out}");
+        // A number can absorb a following `.5`: fusing here turns two values
+        // (0 vertical, .5em horizontal) into one (.5em on all four sides).
+        let out = minify_css(".x{margin:0/* c */.5em}");
+        assert!(
+            out.contains("0 .5em"),
+            "a number must not absorb `.5`: {out}"
+        );
     }
 
     #[test]
