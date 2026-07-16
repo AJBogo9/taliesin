@@ -2943,6 +2943,38 @@ fn theorems_scope_to_the_book_chapter_without_any_config() {
     );
 }
 
+/// A `shared:` group inside a numbered chapter: the two features compose, so the group
+/// draws ONE chapter-scoped sequence (Theorem 2.1, Lemma 2.2) rather than restarting per
+/// kind or dropping the chapter. `numbered: unless-unique` still suppresses a lone kind's
+/// number, since that decision is made before the number is built.
+#[test]
+fn a_shared_group_draws_one_chapter_scoped_sequence() {
+    let doc = render_document_with_includes_scoped(
+        "---\ntheorems:\n  shared: [theorem, lemma]\n  numbered: unless-unique\n---\n\n::: {.theorem}\nA.\n:::\n\n::: {.lemma}\nB.\n:::\n\n::: {.definition}\nOnly one.\n:::\n",
+        std::path::Path::new("."),
+        Some(2),
+    );
+    let body = doc.body_html();
+    assert!(
+        body.contains(
+            "<span class=\"tali-theorem-label\">Theorem<span class=\"tali-theorem-number\">&nbsp;2.1</span></span>"
+        ),
+        "the shared group opens at 2.1 in chapter 2: {body}"
+    );
+    assert!(
+        body.contains(
+            "<span class=\"tali-theorem-label\">Lemma<span class=\"tali-theorem-number\">&nbsp;2.2</span></span>"
+        ),
+        "the lemma continues the SAME chapter-scoped sequence: {body}"
+    );
+    assert!(
+        body.contains(
+            "<span class=\"tali-theorem-label\">Definition<span class=\"tali-theorem-number\"></span></span>"
+        ),
+        "a lone kind stays unnumbered under unless-unique, chapter or not: {body}"
+    );
+}
+
 /// Outside a numbered chapter (a standalone doc, a non-book page) there is no chapter to
 /// scope to, so numbering stays flat — the `None` half of the same rule floats follow.
 #[test]

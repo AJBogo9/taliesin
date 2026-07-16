@@ -17,10 +17,12 @@ const BODY_CAP: usize = 1500;
 /// refresh a single edited page's entries without re-rendering the whole site (see
 /// [`super::Site::refresh_search_for_page`]). Renders each page's markdown once (no
 /// code execution) so the anchor ids match what the served pages emit.
-pub(super) fn build_sections(pages: &[Page]) -> Vec<(String, String)> {
+pub(super) fn build_sections(pages: &[Page], book: &Option<Book>) -> Vec<(String, String)> {
     pages
         .iter()
-        .filter_map(|p| page_fragment(p).map(|frag| (p.rel.clone(), frag)))
+        .filter_map(|p| {
+            page_fragment(p, super::book::chapter_of(book, p)).map(|frag| (p.rel.clone(), frag))
+        })
         .collect()
 }
 
@@ -39,7 +41,12 @@ pub(super) fn assemble(sections: &[(String, String)]) -> String {
 /// The search-index entries for ONE page as a JSON-array **body** (comma-joined
 /// `{u,p,i,l,t,b}` objects, no surrounding brackets). `None` when the page is
 /// excluded from search (the author's 404 chrome page) or its source can't be read.
-pub(super) fn page_fragment(page: &Page) -> Option<String> {
+///
+/// `chapter` is the page's book chapter number (`Site::chapter_for`), so the indexed text
+/// carries the numbers the rendered page shows ("Theorem 2.1", not "Theorem 1"). Rendering
+/// unscoped here made every snippet in a book contradict its own target and hid a search
+/// for the number the reader can actually see.
+pub(super) fn page_fragment(page: &Page, chapter: Option<u32>) -> Option<String> {
     // The author's own 404 page (output URL `404.html`) is navigation chrome, not
     // content: keep it out of the full-text index so a search never surfaces it.
     if page.url == "404.html" {
@@ -47,7 +54,7 @@ pub(super) fn page_fragment(page: &Page) -> Option<String> {
     }
     let src = std::fs::read_to_string(&page.input).ok()?;
     let base = page.input.parent().unwrap_or_else(|| Path::new("."));
-    let doc = render::render_document_with_includes(&src, base);
+    let doc = render::render_document_with_includes_scoped(&src, base, chapter);
     let page_title = page
         .title
         .clone()

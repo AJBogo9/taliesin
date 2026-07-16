@@ -198,8 +198,10 @@ pub struct Site {
 /// excluded from search or unreadable) — renders the page's markdown once, no code
 /// execution. A free function so the dev server can render it OFF the site lock (and
 /// under a panic guard) before installing it via [`Site::install_search_fragment`].
-pub fn page_search_fragment(page: &Page) -> Option<String> {
-    search::page_fragment(page)
+/// `chapter` is the page's book chapter (`Site::chapter_for`), read under the site lock by
+/// the caller before it releases it, so the indexed text carries the numbers the page shows.
+pub fn page_search_fragment(page: &Page, chapter: Option<u32>) -> Option<String> {
+    search::page_fragment(page, chapter)
 }
 
 mod book;
@@ -362,7 +364,7 @@ impl Site {
         );
 
         let xref_targets = scan_xref_targets(&pages, &book, &mut warnings);
-        let search_sections = search::build_sections(&pages);
+        let search_sections = search::build_sections(&pages, &book);
         let search_index_json = search::assemble(&search_sections);
 
         let mut site = Site {
@@ -383,7 +385,7 @@ impl Site {
         // Fill the cross-PAGE numbers the lightweight source-scan can't know — a figure /
         // equation / table / listing / theorem number is assigned only during render, so
         // `scan_xref_targets` left it empty. Harvesting here (not only in `build`) means the
-        // live preview also renders "Theorem 1" / "Figure 2.3" for a cross-page ref instead
+        // live preview also renders "Theorem 2.1" / "Figure 2.3" for a cross-page ref instead
         // of a bare label. A pure render pass with no kernel execution, run once per
         // discover so build, preview, and `check` resolve numbers identically.
         site.harvest_xref_numbers();
@@ -441,10 +443,12 @@ impl Site {
     /// [`page_search_fragment`] + [`Site::install_search_fragment`] instead; this
     /// convenience wrapper is for callers (tests) where that doesn't matter.
     pub fn refresh_search_for_page(&mut self, rel_or_url: &str) {
-        let Some((rel, fragment)) = self
-            .page(rel_or_url)
-            .map(|page| (page.rel.clone(), search::page_fragment(page)))
-        else {
+        let Some((rel, fragment)) = self.page(rel_or_url).map(|page| {
+            (
+                page.rel.clone(),
+                search::page_fragment(page, self.chapter_for(page)),
+            )
+        }) else {
             return;
         };
         self.install_search_fragment(&rel, fragment);
@@ -465,7 +469,7 @@ impl Site {
             },
             // Not previously indexed but now has content: recompute so page order holds.
             None if fragment.is_some() => {
-                self.search_sections = search::build_sections(&self.pages);
+                self.search_sections = search::build_sections(&self.pages, &self.book);
             }
             None => return,
         }
@@ -856,7 +860,7 @@ impl Site {
     /// table / listing / theorem number is assigned only during render, so
     /// `scan_xref_targets` left it empty. This enriches `xref_targets[anchor].number`
     /// (for those non-heading anchors), so a `@fig-x` / `@thm-x` to another page renders
-    /// "Figure&nbsp;2.3" / "Theorem&nbsp;1" instead of a bare "Figure" / "Theorem".
+    /// "Figure&nbsp;2.3" / "Theorem&nbsp;2.1" instead of a bare "Figure" / "Theorem".
     ///
     /// It also *inserts* an anchor the scan cannot see at all: a float labelled by a
     /// cell directive (`#| label: fig-x`, `%%| label:`) is inside a fence the scan skips
@@ -1037,12 +1041,7 @@ impl Site {
     /// website page or an unnumbered preface). Drives heading section numbering, float
     /// numbering, and theorem numbering alike, so all three stay in lockstep.
     pub fn chapter_for(&self, page: &Page) -> Option<u32> {
-        self.book.as_ref().and_then(|b| {
-            b.entries
-                .iter()
-                .find(|e| e.rel == page.rel)
-                .and_then(|e| e.number)
-        })
+        book::chapter_of(&self.book, page)
     }
 
     /// Number a book chapter's headings in place (chapter N, then N.1, N.1.1 …).

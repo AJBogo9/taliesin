@@ -544,11 +544,14 @@ mod tests {
     /// nothing).
     #[test]
     fn theorems_number_within_is_gone_and_says_so() {
-        let m = msgs("---\ntheorems:\n  number-within: chapter\n---\n");
-        assert!(
-            m.iter().any(|w| w.contains("number-within")),
-            "a leftover number-within must warn, not pass silently: {m:?}"
-        );
+        // Asserted against `validate_front_matter` directly, not `msgs`: `msgs` drops
+        // `w.line`, and the LINE is the migration story — a located warning is what lets
+        // the dev panel jump an author to the dead key. This is also the only pin on
+        // `nested_key_line` (the sibling test pins `block_key_line`, the top-level one).
+        let w = validate_front_matter("---\ntheorems:\n  number-within: chapter\n---\n\nbody\n");
+        assert_eq!(w.len(), 1, "got: {w:?}");
+        assert_eq!(w[0].message, "unknown theorems key `number-within`");
+        assert_eq!(w[0].line, Some(3), "`number-within` is on file line 3");
     }
 
     #[test]

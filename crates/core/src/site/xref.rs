@@ -37,12 +37,7 @@ pub(super) fn scan_xref_targets(
             .parent()
             .unwrap_or_else(|| std::path::Path::new("."));
         let (src, _) = crate::includes::resolve(&raw, base);
-        let chapter = book.as_ref().and_then(|b| {
-            b.entries
-                .iter()
-                .find(|e| e.rel == page.rel)
-                .and_then(|e| e.number)
-        });
+        let chapter = super::book::chapter_of(book, page);
         for (anchor, number) in scan_page_anchors(&src, chapter) {
             match map.entry(anchor) {
                 std::collections::hash_map::Entry::Occupied(e) => {

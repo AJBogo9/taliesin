@@ -200,7 +200,7 @@ reference can point at a label defined on a page that has not been rendered yet:
 2. **Render-harvest.** `Site::harvest_xref_numbers` renders every page once (scoped to its
    chapter, no code execution) and reads the renderer's own registry, `doc.xref_numbers`.
    This fills in the numbers pass 1 left empty — so a cross-page `@fig-`/`@thm-` reads
-   "Figure&nbsp;2.3" / "Theorem&nbsp;1" rather than a bare label — and **inserts** the
+   "Figure&nbsp;2.3" / "Theorem&nbsp;2.1" rather than a bare label — and **inserts** the
    anchors pass 1 could not see at all, which is how a cell-labelled float becomes a
    cross-page target. Reusing the render's registry (rather than teaching the scan to
    parse cell options) keeps one source of truth for *which fences are cells*, so the two

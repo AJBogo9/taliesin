@@ -4,6 +4,20 @@
 
 use super::*;
 
+/// A page's book chapter number, if it is a numbered chapter (`None` for a website page,
+/// the `index` preface, or an unnumbered entry). The one lookup behind every number a
+/// reader sees: `Site::chapter_for` delegates here, and the two passes that run before a
+/// `Site` exists (`scan_xref_targets`, `search::build_sections`) call it directly, so the
+/// registry, the search index, and the rendered page cannot disagree about a chapter.
+pub(super) fn chapter_of(book: &Option<Book>, page: &Page) -> Option<u32> {
+    book.as_ref().and_then(|b| {
+        b.entries
+            .iter()
+            .find(|e| e.rel == page.rel)
+            .and_then(|e| e.number)
+    })
+}
+
 /// The resolved book navigation: the sidebar order (parts + chapters) plus the
 /// chapter title/number/url for each chapter page. Present only for a book.
 #[derive(Debug, Clone, Default)]

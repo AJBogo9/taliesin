@@ -42,6 +42,37 @@ fn cross_page_search_wires_a_script_loadable_index_not_a_raw_fetch() {
     );
 }
 
+/// The index must carry the SAME numbers as the page it links to. Every other site path
+/// renders scoped to the page's chapter; `build_sections` rendered unscoped, so a book's
+/// index said "Theorem 1" / "Figure 1" while the page said "2.1" — a snippet contradicting
+/// its own target.
+///
+/// Note what this does NOT claim: the indexed text keeps the raw `&nbsp;` entity, so a
+/// reader typing "Theorem 2.1" still will not match it. That is a separate, pre-existing
+/// defect in the index's text extraction (filed); this pins agreement with the page.
+#[test]
+fn a_books_index_carries_the_chapter_scoped_numbers_its_pages_show() {
+    use common::corpus_dir;
+    let site = Site::discover(&corpus_dir().join("demo-book"));
+    let idx = &site.search_index_json;
+    // methods.tmd is chapter 2, so its first theorem and figure are 2.1 — the numbers
+    // `corpus.rs` asserts on the rendered page.
+    assert!(
+        idx.contains("Theorem &nbsp;2.1"),
+        "the index should carry the chapter-scoped theorem number: {}",
+        &idx[..idx.len().min(400)]
+    );
+    assert!(
+        idx.contains("Figure&nbsp;2.1"),
+        "…and the chapter-scoped figure number: {}",
+        &idx[..idx.len().min(400)]
+    );
+    assert!(
+        !idx.contains("Theorem &nbsp;1 ") && !idx.contains("Figure&nbsp;1:"),
+        "no flat number should survive in a book's index: {idx}"
+    );
+}
+
 #[test]
 fn index_captures_page_title_heading_and_section_body_prose() {
     let d = TempProj::new();

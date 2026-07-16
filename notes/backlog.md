@@ -286,7 +286,15 @@ detail pointer):
 4. **The xref registry goes stale on a warm content edit** (`serve_site/mod.rs:1148-1199` refreshes
    only the Cmd-K search fragment).
 5. **`lang: fr` promises French, delivers English** cross-ref labels (`render/page.rs:239`).
-6. **Theorem environments are undocumented in the User Guide** (surfaced 2026-07-16 while deleting
+6. **The Cmd-K index stores raw `&nbsp;` entities in its "plain text"** (found 2026-07-16 while
+   fixing the index's chapter scoping; pre-existing and independent of it). The indexed body reads
+   `Theorem &nbsp;2.1` / `Figure&nbsp;2.1`, so a reader typing the number they can SEE ("Theorem
+   2.1") matches nothing — the text extraction never decodes entities. Scoping the index (`3a0d5e5`)
+   made the numbers agree with the page but cannot make them findable. Same pass: a cross-page
+   `@fig-` inside an indexed snippet renders as a bare "Figure" (search renders a page alone, so the
+   site-level xref rewrite never runs over it), e.g. methods' "refines the chapter overview from
+   Figure into the steps". Both live in `site/search.rs`'s text extraction.
+7. **Theorem environments are undocumented in the User Guide** (surfaced 2026-07-16 while deleting
    `number-within`, not caused by it). They shipped 2026-06-29 (8 kinds, `shared:`/`numbered:`,
    hover-preview, collapsible proofs, cross-page refs) and the **corpus exercises them in 6 docs**
    (`corpus/refs/theorems*.tmd`, `demo-book/methods.tmd`, `diagnostics/check-superset.tmd`), but
@@ -294,7 +302,7 @@ detail pointer):
    as an xref prefix). So a shipped, corpus-pinned feature is unusable from the docs alone, which is
    the docs' stated purpose. Small: one `using/` page, and the numbering rule to teach is now simply
    "a numbered book chapter scopes it; nothing to configure".
-7. **A labelled `include: false` python/R cell registers an anchor that never exists** (found by the
+8. **A labelled `include: false` python/R cell registers an anchor that never exists** (found by the
    adversarial review of the cell-label fix, 2026-07-16). `register_xref` runs *before* the lang
    match (`render/mod.rs:~523`), so `#| label: fig-x` + `#| include: false` registers `fig-x` with a
    number, while `exec.rs:379` (`!cell.include → continue`) drops the output block, so no `id="fig-x"`

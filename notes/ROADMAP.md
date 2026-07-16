@@ -394,7 +394,13 @@ Wave 2 (benchmark + hero demo).
   (`shared` counters, `number-within: chapter` book scoping via the new
   `render_document_with_includes_scoped` + `Site::chapter_for`, `numbered: false|unless-unique`;
   parsed in `fm_extract.rs::TheoremConfig`, validated via `frontmatter.rs::THEOREM_KEYS`,
-  schema'd); Phase 3 (hover-preview free via `12-link-preview.js`, collapsible proofs
+  schema'd);
+  **↳ SUPERSEDED 2026-07-16: `number-within` is GONE.** A theorem in a numbered book chapter
+  scopes automatically ("Theorem 2.1"), via the same `render::float_number` every float uses —
+  the opt-in let a book render "Figure 2.1" beside "Theorem 1". The key is deleted, not
+  deprecated (once scoping is automatic it did nothing, and a recognized-but-inert key is the
+  `csl:` bug class); a leftover now warns `unknown theorems key` with its line. `shared:` and
+  `numbered:` are unchanged. See `be3464a`. Phase 3 (hover-preview free via `12-link-preview.js`, collapsible proofs
   `::: {.proof collapse="true"}`, deep-link anchors via `02-anchor-links.js`); and the
   2026-06-29 adversarial-review fixes (the `check` gate now scopes book chapters; unnumbered
   theorem refs resolve to a bare label; **cross-PAGE `@thm-` refs in books resolve** via

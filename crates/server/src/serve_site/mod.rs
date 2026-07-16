@@ -1184,10 +1184,18 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
     // `build_page`, which has its own guard), and a full render under the lock would stall
     // every other site-lock reader (page serving, `/search-index.js`) on each save.
     for rel in &to_rebuild {
-        let page = { app.site.lock().page(rel).cloned() };
-        let Some(page) = page else { continue };
+        // Read the chapter under the same brief lock as the page clone: the RENDER stays
+        // off-lock (the point of this split), and the index gets the same numbers the page
+        // shows ("Theorem 2.1", not "Theorem 1").
+        let found = {
+            let site = app.site.lock();
+            site.page(rel).map(|p| (p.clone(), site.chapter_for(p)))
+        };
+        let Some((page, chapter)) = found else {
+            continue;
+        };
         let computed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            taliesin_core::site::page_search_fragment(&page)
+            taliesin_core::site::page_search_fragment(&page, chapter)
         }));
         // A render panic keeps the last-good fragment (don't wipe the page from search).
         if let Ok(fragment) = computed {
