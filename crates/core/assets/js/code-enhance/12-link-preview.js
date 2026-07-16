@@ -33,6 +33,10 @@ function taliInitLinkPreview() {
     if (!a) return false;
     var href = a.getAttribute('href') || '';
     if (href.charAt(0) !== '#' || href.length < 2) return false;
+    // The skip link is an in-page fragment link, but previewing it means previewing the whole
+    // page root, which is never useful. It only matters on the focus path: the link is
+    // offscreen until focused, so a pointer can't reach it, but it IS the first Tab stop.
+    if (a.classList.contains('tali-skip')) return false;
     return !a.closest('#TOC') && !a.closest('#tali-link-preview');
   }
   // Cross-page target: a resolved cross-reference to another page — a `.tali-xref` whose
@@ -87,7 +91,9 @@ function taliInitLinkPreview() {
     card.innerHTML = '';
     card.appendChild(body);
     stripSourceAttrs(card); // read-only preview: never a click-to-source target, never a duplicate block id
+    clearDescribed(); // a previously-previewed link may still point at the card
     currentLink = link;
+    link.setAttribute('aria-describedby', 'tali-link-preview');
     card.classList.add('open');
     place(link);
   }
