@@ -19,7 +19,10 @@ pub(crate) struct FrontInfo {
     pub(crate) about: Option<AboutSpec>,
     pub(crate) hero: Option<HeroSpec>,
     pub(crate) page_layout: Option<String>,
-    /// `draft: true` — excluded from a website build (output, nav, listings).
+    /// `draft: true`: held out of the published view (`DraftMode::Exclude` — build,
+    /// publish, check, map): no output, nav, listing or book-chapter entry, and the build
+    /// reports it as "not published". The live preview (`DraftMode::Include`) keeps it,
+    /// badged. Ignored on an `{{< embed >}}` target (it ships with the page embedding it).
     pub(crate) draft: bool,
     /// Whether the page declares a `bibliography:`, i.e. it is a cited/scholarly document.
     /// Drives the `ScholarlyArticle` vs `BlogPosting` JSON-LD choice (author-free, so a

@@ -278,6 +278,29 @@ impl Site {
         let decks = discover_decks(root, &pages, &mut warnings);
         pages.retain(|p| !decks.iter().any(|d| d.url == p.url));
 
+        // An `{{< embed >}}` target is a COMPONENT of the page that embeds it, not an
+        // independently published page: `discover_decks` resolves it straight off the
+        // filesystem, so a published page's deck ships whatever its own front matter says
+        // (it must, or that page's iframe 404s). `draft:` therefore cannot hold it back —
+        // so never count it as "not published" (it IS published), and say so, since the
+        // author probably meant to draft the embedding page.
+        for d in &decks {
+            let rel = d
+                .input
+                .strip_prefix(root)
+                .unwrap_or(&d.input)
+                .to_string_lossy()
+                .replace('\\', "/");
+            if parse_front_matter(&d.input, &rel, &mut Vec::new()).draft {
+                warnings.push(format!(
+                    "{rel}: `draft: true` is ignored on an embedded deck: it ships with \
+                     the published page that embeds it. Mark the embedding page `draft:` \
+                     instead."
+                ));
+            }
+        }
+        excluded_drafts.retain(|rel| !decks.iter().any(|d| d.url == qmd_to_html(rel)));
+
         // A loose deck: a `format: revealjs` page that survived the embed retain
         // above, so it isn't referenced by `{{< embed >}}` anywhere. It would be
         // flattened into a chrome-wrapped article (no slides, no deck JS) with no
@@ -1510,6 +1533,93 @@ pub(crate) mod tests {
         );
         assert!(preview.pages.iter().any(|p| p.rel == "wip.tmd" && p.draft));
 
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn a_part_whose_chapters_are_all_drafts_drops_its_header() {
+        // Drafting a whole part is a natural authoring state ("Part III is still WIP").
+        // The published drawer must not keep an orphan heading over nothing.
+        let root = write_site(
+            "ghostpart",
+            &[
+                (
+                    "_site.yml",
+                    "title: B\nchapters:\n  - index.tmd\n  - part: Ghost\n    chapters:\n      - wipa.tmd\n      - wipb.tmd\n  - part: Real\n    chapters:\n      - live.tmd\n",
+                ),
+                ("index.tmd", "# Preface\n"),
+                ("wipa.tmd", "---\ndraft: true\n---\n# WIP A\n"),
+                ("wipb.tmd", "---\ndraft: true\n---\n# WIP B\n"),
+                ("live.tmd", "# Live\n"),
+            ],
+        );
+
+        let published = Site::discover(&root);
+        let parts: Vec<String> = published
+            .book
+            .as_ref()
+            .unwrap()
+            .entries
+            .iter()
+            .filter_map(|e| e.part.clone())
+            .collect();
+        assert_eq!(
+            parts,
+            vec!["Real".to_string()],
+            "the all-draft part header is dropped; a part with a live chapter stays"
+        );
+
+        // In preview both parts stand (neither is empty there).
+        let preview = Site::discover_with(&root, DraftMode::Include);
+        let pparts: Vec<String> = preview
+            .book
+            .as_ref()
+            .unwrap()
+            .entries
+            .iter()
+            .filter_map(|e| e.part.clone())
+            .collect();
+        assert_eq!(pparts, vec!["Ghost".to_string(), "Real".to_string()]);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn draft_on_an_embedded_deck_is_not_reported_as_unpublished() {
+        // An `{{< embed >}}` target ships with the published page that embeds it (it must,
+        // or the iframe 404s), so `draft:` on it is ignored. The build must NOT then claim
+        // it was "not published" — that combination shipped the deck AND lied about it.
+        let root = write_site(
+            "draftdeck",
+            &[
+                ("_site.yml", "title: T\n"),
+                (
+                    "index.tmd",
+                    "---\ntitle: Home\n---\n\n{{< embed talk.tmd >}}\n",
+                ),
+                (
+                    "talk.tmd",
+                    "---\ntitle: Talk\nformat: revealjs\ndraft: true\n---\n\n## Slide\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        assert!(
+            site.decks.iter().any(|d| d.url == "talk.html"),
+            "the embedded deck is still built (the embedding page needs it)"
+        );
+        assert!(
+            site.excluded_drafts.is_empty(),
+            "a deck that IS published must never be reported as not published: {:?}",
+            site.excluded_drafts
+        );
+        assert!(
+            site.warnings
+                .iter()
+                .any(|w| w.contains("talk.tmd") && w.contains("ignored on an embedded deck")),
+            "the author is told `draft:` is ignored there: {:?}",
+            site.warnings
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 

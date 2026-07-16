@@ -33,7 +33,8 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     "theme",
     "css",
     "page-layout",
-    // Drafts: `draft: true` excludes a page from a website build (output, nav, listings).
+    // Drafts: `draft: true` holds a page (or book chapter) out of the published build
+    // (output, nav, listings); the live preview still shows it, badged.
     "draft",
     // Title block: `title-block-style: none` is honored (suppresses the visible
     // header); see `render::detect_title_block_hidden`.

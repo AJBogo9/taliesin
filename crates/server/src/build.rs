@@ -1118,10 +1118,6 @@ fn asset_href(page_url: &str, root_rel: &str) -> String {
     format!("{}{root_rel}", "../".repeat(depth))
 }
 
-/// Run a directory (site/book) build to disk, returning whether it succeeded + its
-/// structured diagnostics. Shared by `cmd_build`'s directory branch and `publish` (which
-/// needs the success signal, not just an opaque `ExitCode`, plus the freedom to keep
-/// working with the output dir afterward).
 /// The "N drafts not published" build report line, or `None` when nothing was held back.
 /// Singular/plural aware; names the rel paths so the author sees exactly what was excluded.
 pub(crate) fn draft_report_line(excluded: &[String]) -> Option<String> {
@@ -1133,6 +1129,10 @@ pub(crate) fn draft_report_line(excluded: &[String]) -> Option<String> {
     Some(format!("{n} {noun} not published: {}", excluded.join(", ")))
 }
 
+/// Run a directory (site/book) build to disk, returning whether it succeeded + its
+/// structured diagnostics. Shared by `cmd_build`'s directory branch and `publish` (which
+/// needs the success signal, not just an opaque `ExitCode`, plus the freedom to keep
+/// working with the output dir afterward).
 pub(crate) fn run_site_build(
     root: &Path,
     out_override: Option<&str>,
@@ -1214,7 +1214,19 @@ async fn build_site_async(
         log::info(&line);
     }
     if site.pages.is_empty() {
-        let msg = format!("no .tmd pages found under {}", root.display());
+        // "no pages found" would be a lie when there ARE pages and every one is a draft —
+        // and `--format json` shows only this diagnostic, so an agent would go hunting for
+        // files that exist. Name the real cause instead.
+        let msg = if site.excluded_drafts.is_empty() {
+            format!("no .tmd pages found under {}", root.display())
+        } else {
+            format!(
+                "no publishable .tmd pages under {}: all {} are drafts ({})",
+                root.display(),
+                site.excluded_drafts.len(),
+                site.excluded_drafts.join(", ")
+            )
+        };
         log::error(&msg);
         diagnostics.push(crate::check::Diagnostic::new(
             root.display().to_string(),

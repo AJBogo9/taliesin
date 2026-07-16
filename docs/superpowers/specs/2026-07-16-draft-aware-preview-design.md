@@ -105,6 +105,30 @@ drafts never affect the publish gate or the agent tooling — consistent with bu
 **Draft-aware `map`** (surfacing drafts to an agent) is the separate Tier-2 AI-native
 backlog item and is not built here.
 
+## Rulings taken during implementation (from adversarial review)
+
+- **`draft:` on an `{{< embed >}}` target is ignored, and said so.** An embed target is a
+  *component* of the page that embeds it, not an independently published page:
+  `discover_decks` resolves it straight off the filesystem, so a published page's deck must
+  ship or that page's iframe 404s. Honoring `draft:` there would break a published page;
+  the previous behaviour was worse than either option (it shipped the deck **and** reported
+  it as "not published"). Resolution: the deck still ships, it is pruned from
+  `excluded_drafts` (never reported as unpublished), and a warning tells the author to mark
+  the *embedding* page `draft:` instead. Pinned by
+  `draft_on_an_embedded_deck_is_not_reported_as_unpublished`.
+- **A part whose chapters are all drafts drops its header.** Drafting a whole part is a
+  natural authoring state; the published drawer must not keep an orphan heading over
+  nothing. (Newly reachable: pre-change a chapter could not be dropped at all.) Pinned by
+  `a_part_whose_chapters_are_all_drafts_drops_its_header`.
+- **An all-drafts site names the real cause.** "no .tmd pages found" is false when the
+  pages exist and are all drafts, and `--format json` surfaces only that diagnostic, so an
+  agent would hunt for files that exist. The empty-pages error now reads "no publishable
+  .tmd pages under X: all N are drafts (…)" in both the human log and the JSON contract.
+- **Mounted sub-project drafts are preview-visible but not counted.** A `mounts:` project is
+  discovered with `Include`, so a mounted draft renders with its banner/drawer badge; but
+  mounted pages render via `m.site.render_page` and carry no dev menu, and the dev-menu
+  count reads only the parent `app.site`. Consistent (nothing lies), and left as-is.
+
 ## Invariants held
 
 - **HTML-only**, no new output format. No CDN. No preview write-back (drafts are read like
@@ -114,8 +138,14 @@ backlog item and is not built here.
 - **Do-NOT-touch** machinery untouched: `:::` scanner, `cite.rs`, `includes.rs`,
   numbering scanners, exec/freeze/kernel. Discovery mode only gates which pages enter the
   existing pipeline.
-- **Minimal blast radius:** the published path (`discover`) is byte-identical to today;
-  drafts are strictly additive on the preview path.
+- **Minimal blast radius, stated precisely:** for **websites**, the published path
+  (`discover`) is behaviourally identical to today (the Exclude branch is the same
+  `fm.draft → None`; `excluded_drafts` is a pure side-channel). For **books** it is *not*:
+  pre-change, `draft:` on a chapter was silently **ignored** and the chapter shipped; now
+  it is dropped and the book renumbers. That is the intended new capability (the backlog's
+  "make book chapters draftable"), but it is a real published-path behaviour change and is
+  called out here rather than filed under "zero blast radius". Everything else (preview
+  badges, dev menu, the report) is strictly additive.
 
 ## The pin (corpus)
 

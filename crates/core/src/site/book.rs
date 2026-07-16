@@ -60,6 +60,7 @@ pub(super) fn build_book(
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string();
+            let header_idx = entries.len();
             entries.push(BookEntry {
                 part: Some(part),
                 ..Default::default()
@@ -68,6 +69,12 @@ pub(super) fn build_book(
                 for c in seq {
                     push_chapter_entry(root, c, &mut entries, &mut num, mode, excluded);
                 }
+            }
+            // Every chapter in this part was a draft and got dropped: drop the now-empty
+            // part header too, rather than leaving an orphan heading over nothing in the
+            // drawer. (Drafting a whole part is a natural authoring state.)
+            if entries.len() == header_idx + 1 {
+                entries.pop();
             }
         }
     }
