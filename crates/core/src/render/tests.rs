@@ -2219,6 +2219,67 @@ fn footnotes_emit_ref_and_gathered_section() {
 }
 
 #[test]
+fn footnote_li_is_the_locatable_unit_for_click_to_source() {
+    // A gathered footnotes section collects notes from MANY, non-contiguous source
+    // lines, so no single block-level sourcepos can point at "the" note. The locatable
+    // unit is therefore each `<li>`: it carries its own definition's `data-sourcepos`
+    // plus a `data-block-id`, because client.js `locatable()` resolves an Alt-click via
+    // `closest("[data-qmd-src], [data-block-id]")` — a `data-sourcepos` alone would be
+    // walked past, landing on the section (and, with no sourcepos there, on line 1).
+    // Definitions sit on lines 7 and 11, scattered between prose rather than bunched
+    // at the end, so a first-note-wins block sourcepos could not serve both.
+    let src = "---\ntitle: T\n---\n\nFirst claim.[^a]\n\n[^a]: Note A.\n\nSecond claim.[^b]\n\n[^b]: Note B.\n";
+    let doc = render_document(src);
+    let fns = doc
+        .blocks
+        .iter()
+        .find(|b| b.id == "qmd-footnotes")
+        .expect("gathered footnotes block");
+
+    // Each note resolves to the line its OWN definition sits on (7 and 11), not to
+    // the first note's line and not to line 1.
+    assert!(
+        fns.html
+            .contains("<li id=\"fn-a\" data-block-id=\"fn-a\" data-sourcepos=\"7:1-7:13\""),
+        "note A must carry its own block-id + sourcepos: {}",
+        fns.html
+    );
+    assert!(
+        fns.html
+            .contains("<li id=\"fn-b\" data-block-id=\"fn-b\" data-sourcepos=\"11:1-11:13\""),
+        "note B must carry its own block-id + sourcepos: {}",
+        fns.html
+    );
+}
+
+#[test]
+fn gathered_footnotes_block_keeps_an_empty_block_level_sourcepos() {
+    // The section is a GATHERED container: comrak moves every definition to the
+    // document end, so the block sits last while its content comes from wherever the
+    // author wrote it. A block-level sourcepos would be doubly wrong:
+    //   1. it would break the monotonic source-order invariant that tests/corpus.rs
+    //      asserts ("blocks out of order"), since a note defined mid-document would
+    //      give the last block an earlier line than the block before it; and
+    //   2. a span from the first to the last note would swallow blank lines across
+    //      the whole document, so reverse cursor-sync (`highlightAtLine` picks the
+    //      SMALLEST covering range) would yank the cursor to the endnotes.
+    // The real positions live on the `<li>`s instead; see the test above.
+    let doc = render_document("Claim.[^a]\n\n[^a]: Note A.\n");
+    let fns = doc
+        .blocks
+        .iter()
+        .find(|b| b.id == "qmd-footnotes")
+        .expect("gathered footnotes block");
+    assert!(
+        fns.sourcepos.is_empty(),
+        "gathered block must not claim one source range, got {:?}",
+        fns.sourcepos
+    );
+    // It still carries data-block-id: the diff addresses it by id (client.js `blockEl`).
+    assert!(fns.html.contains("data-block-id=\"qmd-footnotes\""));
+}
+
+#[test]
 fn sidenote_div_renders_with_class() {
     // `::: {.sidenote}` is a margin note (styled via base.css float); it just needs
     // to emit a `.sidenote` block carrying the usual data-block-id (click-to-source).

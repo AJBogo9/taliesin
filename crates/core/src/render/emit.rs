@@ -138,12 +138,27 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
 /// A footnote definition as an `<li>` for the gathered footnotes `<ol>` (the render
 /// loop collects these so they don't render in place; the `<ol>` auto-numbers them
 /// in comrak's reference order). Carries a backlink to the first reference.
-pub(crate) fn footnote_def_li<'a>(node: &'a AstNode<'a>, name: &str) -> String {
+///
+/// The `<li>` is the locatable unit, not the gathered section around it: the section
+/// collects notes from many scattered lines, so only the individual definition has a
+/// real source range. It therefore carries its own `data-sourcepos` (+ `data-source-file`
+/// when the definition came from an `{{< include >}}`d file) AND a `data-block-id` —
+/// client.js `locatable()` resolves an Alt-click with
+/// `closest("[data-qmd-src], [data-block-id]")`, so a `data-sourcepos` alone would be
+/// walked straight past. The id is namespaced `fn-…`, which cannot collide with a
+/// content-hashed block id (`make_id` emits `b-…`).
+pub(crate) fn footnote_def_li<'a>(
+    node: &'a AstNode<'a>,
+    name: &str,
+    sourcepos: &str,
+    source_file: Option<&str>,
+) -> String {
     let mut inner = String::new();
     emit_children(node, &mut inner);
     let n = escape_attr(name);
+    let file_attr = source_file_attr(source_file);
     format!(
-        "<li id=\"fn-{n}\" class=\"tali-fn\">{inner}<a class=\"tali-fn-back\" href=\"#fnref-{n}-1\" aria-label=\"Back to content\">\u{21a9}\u{fe0e}</a></li>"
+        "<li id=\"fn-{n}\" data-block-id=\"fn-{n}\" data-sourcepos=\"{sourcepos}\"{file_attr} class=\"tali-fn\">{inner}<a class=\"tali-fn-back\" href=\"#fnref-{n}-1\" aria-label=\"Back to content\">\u{21a9}\u{fe0e}</a></li>"
     )
 }
 

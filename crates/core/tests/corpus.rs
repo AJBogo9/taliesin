@@ -465,9 +465,11 @@ fn reverse_sync_sourcepos_is_total() {
     // `[data-sourcepos]` element and matches the strict regex `^(\d+):\d+-(\d+):\d+$`;
     // a non-matching sourcepos is silently skipped (the block becomes cursor-invisible).
     // So EVERY non-empty `data-sourcepos` in the emitted HTML must match that exact
-    // format. Empty sourcepos (generated References/footnotes blocks) is exempt — those
-    // blocks carry neither `data-block-id` nor `data-sourcepos`, so forward + reverse
-    // sync agree they are not locatable.
+    // format. A GATHERED block (References, the footnotes section) is exempt at block
+    // level: it collects content from many scattered lines, so it has no one honest
+    // range and carries an empty sourcepos. Its locatable units are nested instead —
+    // a footnote `<li>` carries its own definition's `data-sourcepos`, and is scanned
+    // by the loop below like any other element.
     let re = |s: &str| -> bool {
         // crude ^(\d+):\d+-(\d+):\d+$ check without the regex crate
         let (a, b) = match s.split_once('-') {
@@ -514,6 +516,48 @@ fn reverse_sync_sourcepos_is_total() {
         offenders.len(),
         offenders.join("\n")
     );
+}
+
+#[test]
+fn footnote_lis_are_locatable() {
+    // The gathered footnotes section carries no block-level sourcepos (it collects
+    // notes from scattered lines), so the per-`<li>` attributes are the ONLY thing
+    // making a footnote click-to-source-able. The block-level checks above skip the
+    // section on its empty sourcepos, which is exactly how this hole went unnoticed:
+    // pin the nested units directly.
+    //
+    // `data-block-id` is load-bearing and not decorative here: client.js `locatable()`
+    // matches `closest("[data-qmd-src], [data-block-id]")`, so without it an Alt-click
+    // walks past the note up to the section, which has no sourcepos, and `openSource`
+    // falls back to line 1 of the document — silently the wrong line, not a no-op.
+    let mut files = Vec::new();
+    collect_qmd(&corpus_dir(), &mut files);
+    let mut seen = 0;
+    let mut offenders = Vec::new();
+    for f in &files {
+        let src = fs::read_to_string(f).unwrap();
+        let doc = taliesin_core::render_document_with_includes(&src, f.parent().unwrap());
+        let html = doc.body_html();
+        for (i, _) in html.match_indices("<li ") {
+            let tag = &html[i..i + html[i..].find('>').unwrap_or(0)];
+            if !tag.contains("class=\"tali-fn\"") {
+                continue;
+            }
+            seen += 1;
+            if !tag.contains("data-block-id=\"") || !tag.contains("data-sourcepos=\"") {
+                let label = f.strip_prefix(corpus_dir()).unwrap_or(f).display();
+                offenders.push(format!("{label}: {tag}>"));
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "footnote <li> missing data-block-id/data-sourcepos (Alt-click would land on \
+         line 1):\n{}",
+        offenders.join("\n")
+    );
+    // Guard against the assert above passing vacuously if footnotes leave the corpus.
+    assert!(seen > 0, "no footnote <li> in the corpus to check");
 }
 
 #[test]

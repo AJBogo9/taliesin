@@ -269,12 +269,35 @@ fn render_internal_impl(
     for node in root.children() {
         // Footnote definitions are gathered into a section at the end (comrak has
         // already moved them here, in reference order) — not rendered in place.
-        let fn_name = match &node.data.borrow().value {
-            NodeValue::FootnoteDefinition(fd) => Some(fd.name.clone()),
-            _ => None,
+        let fn_def = {
+            let data = node.data.borrow();
+            match &data.value {
+                // Keep the definition's OWN source range: comrak has moved the node to
+                // the document end, but its sourcepos still points at where the author
+                // wrote it, which is the line click-to-source must land on.
+                NodeValue::FootnoteDefinition(fd) => {
+                    let sp = data.sourcepos;
+                    let (file, start_line) = map_origin(origins, sp.start.line);
+                    let (_, end_line) = map_origin(origins, sp.end.line);
+                    Some((
+                        fd.name.clone(),
+                        format!(
+                            "{}:{}-{}:{}",
+                            start_line, sp.start.column, end_line, sp.end.column
+                        ),
+                        file,
+                    ))
+                }
+                _ => None,
+            }
         };
-        if let Some(name) = fn_name {
-            footnote_items.push(emit::footnote_def_li(node, &name));
+        if let Some((name, sourcepos, file)) = fn_def {
+            footnote_items.push(emit::footnote_def_li(
+                node,
+                &name,
+                &sourcepos,
+                file.as_deref(),
+            ));
             continue;
         }
         let (
