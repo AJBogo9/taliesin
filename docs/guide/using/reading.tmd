@@ -98,6 +98,17 @@ is open):
 - `←` / `→` move to the previous / next chapter (in a book).
 - `Esc` closes the open menu, dialog, or palette.
 
+The three single-character shortcuts (`?`, `/`, `f`) can be switched off: the **Shortcuts**
+control sits directly above that list in the Settings menu. A bare letter key is easy to fire
+by accident, especially with speech input, so WCAG 2.1.4 requires a way to turn character-key
+shortcuts off, and this is it. Switching them off hides the list (the keys are dead, so
+advertising them would be a lie) and leaves the Settings gear as your way back in. `Esc` and
+the arrow keys are not character keys, so they always stay live. The choice persists per
+reader, in their own `localStorage`.
+
+This is not a contradiction of the no-comfort-panel stance above: a text-size slider is a
+preference, whereas a shortcut you cannot turn off is a barrier.
+
 Keyboard focus is always visible: every interactive control (links, buttons, tabs,
 the Settings controls, and the deck controls) shares one consistent focus ring,
 shown only for keyboard or assistive-technology focus and never on a mouse click. The
@@ -108,9 +119,12 @@ high-contrast modes below).
 name (the table of contents announces as "Table of contents", separate from the
 navbar and the prev/next pager), so a screen reader's landmark list is navigable.
 Modal overlays (the search palette and the image viewer) move focus into themselves on
-open, trap Tab while open, and restore focus to whatever opened them on close; the
-**Settings** menu is a light-dismiss popover, so it does not trap focus but returns it to
-the gear when you press Esc.
+open, trap Tab while open, and restore focus to whatever opened them on close. The
+**Settings** menu is a light-dismiss popover: it moves focus to its first control on open and
+returns it to the gear when you press Esc, but it never traps Tab, so you can always leave it
+by tabbing or by clicking away. (It moves focus because the panel is not adjacent to its gear
+in the page's source order, so without the move a keyboard reader would be stranded far from
+the menu they just opened.)
 
 **Slide decks** announce as you navigate. Each slide is a labelled group ("Slide 3 of
 12"), and a polite live region speaks the new position (and its title) on every move,

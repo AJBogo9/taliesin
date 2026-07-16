@@ -11,14 +11,15 @@ the regression net); each new capability ships pinned by a target corpus doc. Ou
 
 v0.2.0. All four formats render + deploy; the dev loop is strong (block-level incremental updates
 with DOM-state preservation, warm server + Jupyter kernel, `_freeze` cache, Alt-click + reverse
-cursor sync, located diagnostics, CSS hot-swap, Cmd-K search). `origin/main == local main ==
-a4a96bc` (draft-aware preview merged + pushed; nothing unpushed). **Tier 1 is empty.**
+cursor sync, located diagnostics, CSS hot-swap, Cmd-K search). `origin/main == a4a96bc`; local
+main is ahead by the section-C a11y batch, pending the author's push. **Tier 1 is empty.**
 
-**Sections A, B and F are now closed.** A (blog identity) finished with #7 draft-aware preview
+**Sections A, B, C and F are now closed.** A (blog identity) finished with #7 draft-aware preview
 (2026-07-16). B (publish hardening) was **backlog rot** — all three items were already shipped by
-the author; entries deleted with evidence (see the note in section A). F (the deck audit) is fully
-landed except the deliberately-deferred B3-18. **→ The next open work is section C (theme/a11y
-follow-ups), then D, then E.**
+the author; entries deleted with evidence (see the note in section A). C (theme/a11y follow-ups)
+finished 2026-07-16: six items built, two more were rot (see the note in section C). F (the deck
+audit) is fully landed except the deliberately-deferred B3-18. **→ The next open work is D (needs a
+direction ruling), E (own session), and G (priority vs D/E is the owner's call).**
 
 **Before picking any item: grep its named symbol/flag in source first.** The author pushes work
 mid-session, so an entry can go stale with no signal in this file (that is exactly how section B
@@ -55,30 +56,27 @@ this, but only after a richer corpus makes "related" meaningful.)*
 built-site shared asset bundle — was already SHIPPED by the author; the entries were backlog
 rot, verified against source + removed 2026-07-16. See [[backlog-entries-rot]].)*
 
-### C. Theme colour-system a11y follow-ups (2026-07-09 audit; verified, unbuilt)
+### C. Theme colour-system a11y follow-ups (2026-07-09 audit; CLOSED 2026-07-16)
 
-Real a11y bugs (WCAG/APCA/OKLCH/CVD harness evidence), each survived adversarial verification:
+*(Section C is closed, 2026-07-16. Six items built: the single-key-shortcut reader toggle
+(WCAG 2.1.4, gating `f`/`?`/`/`, not just `f` — the audit under-scoped it), settings-popover
+focus-on-open, category chips' `aria-pressed` + live count, keyboard-reachable link previews,
+the forced-colors nav marker, and settings-panel reflow at 200%. Spec:
+[2026-07-16-section-c-a11y-batch-design.md](../docs/superpowers/specs/2026-07-16-section-c-a11y-batch-design.md);
+plan: [2026-07-16-section-c-a11y-batch.md](../docs/superpowers/plans/2026-07-16-section-c-a11y-batch.md).
+Two items were NOT built: both had rotted, closed by §F's deck theming/a11y step, verified
+against source before deletion. "Embedded deck ignores a sepia host" was already fixed at its
+own named anchor (`render/deck.rs:164` reads `(t==='sepia' ? 'light' : null)`, the recommended
+fix verbatim). "Deck slide-number chip not restyled per-slide" was fixed by removing the
+premise: the chip is now one dark-glass surface in both themes (`deck.css:352-361`), so the
+`html.tali-deck-dark`-scoped restyle the bug described no longer exists. See
+[[backlog-entries-rot]].*
 
-- **Bare `f` forces fullscreen with no opt-out** (`03-focus-mode.js:80`, med). Keep
-  `requestFullscreen` on an explicit menu action; add a reader toggle to disable single-key shortcuts
-  (WCAG 2.1.4).
-- **Settings popover never takes focus on open** (`13-reader-menu.js:60`, med). Focus its first
-  control on open (Esc already restores focus to the launcher — the asymmetry is the bug).
-- **Category-filter chips expose state only visually** (`10-category-filter.js:27`, med). Mirror the
-  active class with `aria-pressed`, render it on the server's initial "All" chip, announce "Showing 4
-  of 12 posts" via a visually-hidden `aria-live=polite` node.
-- **Embedded deck ignores a sepia host** (`render/deck.rs:164`, med). `hostTheme()` accepts only
-  light/dark; map `sepia → light` so an `{{< embed deck.tmd >}}` matches the host lightness.
-- **Citation/xref link preview is hover-only** (`12-link-preview.js:159-163`, low). Only
-  `mouseover`/`mouseout`; no `focusin`. Bind `focusin`/`focusout` too, set `aria-describedby` while
-  open. (The recent heading-link a11y merge is a separate change; this one is still open.)
-- **`forced-color-adjust: none` hides the current nav item** (`site.css:293` + `base.css:780`, low).
-  Pins fg with no bg; under an opposite-polarity High-Contrast OS theme the "you are here" marker
-  vanishes. Only the reader-seg pressed button (pins a bg+fg pair) needs the opt-out.
-- **Deck slide-number chip not restyled per-slide** (`deck.css:455`, low). Dark restyle scoped to
-  whole-deck `html.tali-deck-dark`; on a `.tali-dark-bg` slide the chip reads ~2.8-3.0:1.
-- **Settings panel doesn't reflow at 200% text.** Content-loss half is fixed; at 200% the seg buttons
-  + shortcut list still h-scroll. Needs a real reflow (stack the rows), not a token change.
+*Known + accepted (not a bug to re-file): at 200% the 4-button Theme seg wraps, and the first
+button of the wrapped line keeps its 1px `border-left`, doubling against the container's own
+border. Measured, judged cosmetic (same colour, contiguous, invisible unmeasured). The fix
+(gap-dividers + `flex:1 0 auto`) was prototyped in-browser and REJECTED: it stretches the
+wrapped button to full width, a bigger visual change than the hairline it removes.)*
 
 Owner-calls kept as-is (one-line changes if ever wanted): table cells use the 1.28:1 hairline
 (`base.css:436` — border-strong on every cell heavies every table); callout `tip`/`important`
