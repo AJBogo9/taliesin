@@ -141,7 +141,9 @@ function taliInitLinkPreview() {
       if (!tpl.content.textContent.trim()) return;
       card.innerHTML = '';
       card.appendChild(tpl.content);
+      clearDescribed(); // a previously-previewed link may still point at the card
       currentLink = link;
+      link.setAttribute('aria-describedby', 'tali-link-preview');
       card.classList.add('open');
       place(link);
     });
@@ -150,10 +152,15 @@ function taliInitLinkPreview() {
     clearTimeout(hideTimer); clearTimeout(showTimer);
     showTimer = setTimeout(function () { show(link); }, 140);
   }
+  // The open card describes its link, so a screen reader announces the preview instead of
+  // silently painting it. Cleared on every dismissal path and before a different link opens.
+  function clearDescribed() {
+    if (currentLink) currentLink.removeAttribute('aria-describedby');
+  }
   // A pinned card survives mouse-leave / page scroll; only Esc or a click outside
   // releases it (`forceHide`). `hide` is the soft dismiss used by hover/scroll.
-  function hide() { clearTimeout(showTimer); if (pinned) return; card.classList.remove('open'); currentLink = null; }
-  function forceHide() { pinned = false; card.classList.remove('pinned'); clearTimeout(showTimer); card.classList.remove('open'); currentLink = null; }
+  function hide() { clearTimeout(showTimer); if (pinned) return; clearDescribed(); card.classList.remove('open'); currentLink = null; }
+  function forceHide() { pinned = false; card.classList.remove('pinned'); clearTimeout(showTimer); clearDescribed(); card.classList.remove('open'); currentLink = null; }
   function scheduleHide() { clearTimeout(hideTimer); hideTimer = setTimeout(hide, 160); }
 
   document.addEventListener('mouseover', function (e) {
@@ -168,6 +175,16 @@ function taliInitLinkPreview() {
       lastHovered = null;
       scheduleHide();
     }
+  });
+  // Keyboard parity with hover: a focused citation/xref link surfaces the same card. Without
+  // this the preview is mouse-only. Same eligibility + same delays as the mouse path.
+  document.addEventListener('focusin', function (e) {
+    var a = e.target.closest && e.target.closest('a[href]');
+    if (a && eligible(a)) { lastHovered = a; scheduleShow(a); }
+  });
+  document.addEventListener('focusout', function (e) {
+    var a = e.target.closest && e.target.closest('a[href]');
+    if (a && eligible(a)) { lastHovered = null; scheduleHide(); }
   });
   card.addEventListener('mouseenter', function () { clearTimeout(hideTimer); });
   card.addEventListener('mouseleave', scheduleHide);
