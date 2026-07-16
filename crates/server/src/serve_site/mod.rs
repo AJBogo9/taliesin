@@ -615,8 +615,26 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
     let body = format!("{layout}\n<div id=\"tali-controls\"></div>");
     let extra_head = format!("<style>{STATUS_CSS}</style>\n");
     let boot = protocol::boot_id();
+    // Draft pages (preview only) power the dev-menu "Drafts" row. Root-absolute urls so a
+    // link resolves from any page depth. A build ships neither this global nor the dev menu.
+    let drafts_global = {
+        let site = app.site.lock();
+        let items: Vec<String> = site
+            .pages
+            .iter()
+            .filter(|p| p.draft)
+            .map(|p| {
+                format!(
+                    "{{\"url\":\"/{}\",\"title\":\"{}\"}}",
+                    js_str(&p.url),
+                    js_str(p.title.as_deref().unwrap_or(&p.rel)),
+                )
+            })
+            .collect();
+        format!("window.TALIESIN_DRAFTS=[{}];", items.join(","))
+    };
     let scripts_pre = format!(
-        "<script>{doc_global} {toc_flag} {search_cfg} window.TALIESIN_SSR = true; window.TALIESIN_SSR_GEN = {generation}; window.TALIESIN_BOOT = {boot}; window.TALIESIN_WS_PATH = \"{ws_path}\";</script>"
+        "<script>{doc_global} {toc_flag} {search_cfg} {drafts_global} window.TALIESIN_SSR = true; window.TALIESIN_SSR_GEN = {generation}; window.TALIESIN_BOOT = {boot}; window.TALIESIN_WS_PATH = \"{ws_path}\";</script>"
     );
     // The cross-page TOC scrollspy + Cmd-K search, then the websocket client.
     let scripts_post = format!(

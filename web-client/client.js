@@ -438,6 +438,23 @@
 
     panel.append(devRow("Status", statusEl), devRow("Words", wordCountEl), devRow("Source", srcHint), kernelBtn);
 
+    // Draft pages (preview only): a count that expands to click-to-open links. The server
+    // sets window.TALIESIN_DRAFTS on site previews; absent/empty on single-doc + builds.
+    const drafts = window.TALIESIN_DRAFTS || [];
+    if (drafts.length) {
+      const draftCount = document.createElement("span");
+      draftCount.textContent = String(drafts.length);
+      const draftList = document.createElement("div");
+      draftList.className = "tali-dev-drafts";
+      drafts.forEach((d) => {
+        const a = document.createElement("a");
+        a.href = d.url;
+        a.textContent = d.title;
+        draftList.appendChild(a);
+      });
+      panel.append(devRow("Drafts", draftCount), draftList);
+    }
+
     // The dev menu carries its own quick light/dark toggle (wired by the shared theme_head)
     // so the author can flip theme during preview without opening the reader Settings gear.
     // Guarded so we never add a second one.

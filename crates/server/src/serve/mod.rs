@@ -537,6 +537,9 @@ pub(crate) const STATUS_CSS: &str = "\
     .tali-dev-row { display: flex; justify-content: space-between; gap: 1rem; color: var(--tali-muted, #888); } \
     .tali-dev-row .tali-dev-label { font-weight: 600; } \
     #tali-wordcount { font-variant-numeric: tabular-nums; } \
+    .tali-dev-drafts { display: flex; flex-direction: column; gap: .2rem; margin-top: -.2rem; } \
+    .tali-dev-drafts a { color: var(--tali-accent, #4c8dff); text-decoration: none; font-size: 12px; } \
+    .tali-dev-drafts a:hover { text-decoration: underline; } \
     .tali-dev-ctl { display: inline-flex; align-items: center; gap: .4rem; text-align: left; cursor: pointer; \
       background: var(--tali-code-bg, #f5f5f5); color: var(--tali-fg, #111); \
       border: 1px solid var(--tali-border, #e0e0e0); border-radius: 6px; padding: .3rem .55rem; } \

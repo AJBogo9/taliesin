@@ -20,6 +20,10 @@ interface Window {
   TALIESIN_FORMAT?: string;
   /** Per-page websocket path for the multi-page site server. */
   TALIESIN_WS_PATH?: string;
+  /** Draft pages in the previewed project (preview only; the build ships neither this
+   *  nor the dev menu). Powers the dev-menu "Drafts" count + click-to-open list.
+   *  Root-absolute urls so a link resolves from any page depth. */
+  TALIESIN_DRAFTS?: Array<{ url: string; title: string }>;
 
   /** Deck engine API (deck mode only), defined by deck.js; typed loosely. */
   TaliesinDeck?: any;
