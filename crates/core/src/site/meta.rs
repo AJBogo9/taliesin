@@ -134,13 +134,29 @@ pub(super) fn jsonld_head(site: &Site, page: &Page) -> String {
     let Some(base) = site.canonical_base() else {
         return String::new();
     };
-    let author = site
-        .config
-        .author
-        .as_ref()
-        .and_then(|a| a.as_str())
-        .or(site.config.title.as_deref())
-        .unwrap_or("");
+    // An authorless site falls back to its title (an organisation-style byline). A declared
+    // `author:` is used as written: reading a sequence as a scalar used to yield nothing, so
+    // a multi-author site published its own title as the author.
+    let authors: Vec<&str> = if site.config.authors.is_empty() {
+        site.config.title.as_deref().into_iter().collect()
+    } else {
+        site.config.authors.iter().map(String::as_str).collect()
+    };
+    // schema.org takes a lone Person or an array, so a single-author site is unchanged.
+    let author_value = |authors: &[&str]| -> Option<Value> {
+        match authors {
+            [] => None,
+            [one] => Some(json!({ "@type": "Person", "name": one })),
+            many => Some(Value::Array(
+                many.iter()
+                    .map(|n| json!({ "@type": "Person", "name": n }))
+                    .collect(),
+            )),
+        }
+    };
+    // The homepage's identity Person carries the site's singular `url` + `sameAs` socials,
+    // so it names the primary (first) author rather than the whole list.
+    let author = authors.first().copied().unwrap_or("");
     let data: Option<Value> = if page.date.is_some() {
         let url = site.abs_page_url(page).unwrap_or_default();
         // A dated post that declares a `bibliography:` is a cited/scholarly document, so it
@@ -160,8 +176,8 @@ pub(super) fn jsonld_head(site: &Site, page: &Page) -> String {
             "mainEntityOfPage": &url,
             "url": &url,
         });
-        if !author.is_empty() {
-            bp["author"] = json!({ "@type": "Person", "name": author });
+        if let Some(a) = author_value(&authors) {
+            bp["author"] = a;
         }
         if let Some(d) = page.description.as_deref() {
             bp["description"] = json!(d);

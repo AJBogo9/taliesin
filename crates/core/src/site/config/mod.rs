@@ -31,7 +31,11 @@ pub struct SiteConfig {
     /// `build` output dir (default `_site`, or `_book` for a book).
     pub output_dir: Option<String>,
     pub title: Option<String>,
-    pub author: Option<serde_yaml::Value>,
+    /// `author:` as a scalar (`author: Ada`) or a sequence (`author: [Ada, Alan]`),
+    /// normalized the same way a page's `author:` is (`frontmatter::string_list`). Held
+    /// as a list, not a raw scalar, because reading a sequence as a scalar silently
+    /// yielded nothing and published the site *title* as the author instead.
+    pub authors: Vec<String>,
     pub description: Option<String>,
     pub url: Option<String>,
     pub favicon: Option<String>,
@@ -210,7 +214,7 @@ fn parse_native(value: &serde_yaml::Value, warnings: &mut Vec<String>) -> SiteCo
         is_book: !chapters.is_empty(),
         output_dir: str_of("output"),
         title: str_of("title"),
-        author: value.get("author").cloned(),
+        authors: crate::site::frontmatter::string_list(value.get("author")),
         description: str_of("description"),
         url: str_of("url"),
         favicon: str_of("favicon"),

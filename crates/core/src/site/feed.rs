@@ -107,16 +107,21 @@ impl Site {
             .as_deref()
             .or(self.config.title.as_deref())
             .unwrap_or("Feed"));
-        // RFC 4287 requires an author at feed or entry level; fall back to the site
-        // origin so the feed always carries a non-empty one.
-        let author = self
-            .config
-            .author
-            .as_ref()
-            .and_then(|a| a.as_str())
-            .or(self.config.title.as_deref())
-            .filter(|a| !a.is_empty())
-            .unwrap_or(base);
+        // RFC 4287 requires an author at feed or entry level; fall back to the site title
+        // and then the origin so the feed always carries a non-empty one. The fallback is
+        // for an authorless site only: a declared `author:` (scalar or list) is published
+        // as written, one atom:author element each.
+        let authors: Vec<&str> = if self.config.authors.is_empty() {
+            vec![
+                self.config
+                    .title
+                    .as_deref()
+                    .filter(|a| !a.is_empty())
+                    .unwrap_or(base),
+            ]
+        } else {
+            self.config.authors.iter().map(String::as_str).collect()
+        };
         // Feed `updated` = newest entry's date (items are already date-sorted desc, but
         // take the max defensively).
         let updated = items
@@ -138,7 +143,7 @@ impl Site {
             esc(&self.abs_page_url(host).unwrap_or_default())
         ));
         s.push_str(&format!("  <updated>{updated}</updated>\n"));
-        if !author.is_empty() {
+        for author in authors.iter().filter(|a| !a.is_empty()) {
             s.push_str(&format!(
                 "  <author><name>{}</name></author>\n",
                 esc(author)
@@ -202,6 +207,82 @@ pub(crate) fn rfc3339(date: &str) -> Option<String> {
 mod tests {
     use super::*;
     use crate::site::tests::write_site;
+
+    /// `author: [A, B]` is a YAML sequence, so reading it as a scalar yields nothing and
+    /// the feed used to fall through to the site title: a two-author blog published
+    /// "Blog" as its author. The title fallback itself is deliberate (RFC 4287 wants a
+    /// non-empty author), so this pins that it fires only when there is genuinely no
+    /// author, never because the author was written as a list.
+    #[test]
+    fn atom_author_honors_a_multi_author_site_instead_of_the_title() {
+        let root = write_site(
+            "feedauthors",
+            &[
+                (
+                    "_site.yml",
+                    "title: Blog\nurl: https://ex.com/\nauthor: [Ada Lovelace, Alan Turing]\n",
+                ),
+                (
+                    "blog.tmd",
+                    "---\ntitle: Blog\nlisting:\n  contents: posts\n  type: list\n---\n\n# Blog\n",
+                ),
+                (
+                    "posts/a/index.tmd",
+                    "---\ntitle: First Post\ndate: 2026-05-15\n---\n\nBody.\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let feeds = site.atom_feeds();
+        let (_, xml) = feeds.iter().find(|(p, _)| p == "blog.xml").unwrap();
+        assert!(
+            xml.contains("<name>Ada Lovelace</name>"),
+            "the first author is published: {xml}"
+        );
+        assert!(
+            xml.contains("<name>Alan Turing</name>"),
+            "RFC 4287 allows one atom:author per author; the second is published: {xml}"
+        );
+        assert!(
+            !xml.contains("<name>Blog</name>"),
+            "the site title must never be published as the author when authors exist: {xml}"
+        );
+    }
+
+    /// A single scalar `author:` keeps working, and the deliberate title fallback still
+    /// fires when no author is declared at all.
+    #[test]
+    fn atom_author_keeps_the_scalar_form_and_the_authorless_title_fallback() {
+        let files: [(&str, &str); 3] = [
+            ("_site.yml", "title: Blog\nurl: https://ex.com/\n"),
+            (
+                "blog.tmd",
+                "---\ntitle: Blog\nlisting:\n  contents: posts\n  type: list\n---\n\n# Blog\n",
+            ),
+            (
+                "posts/a/index.tmd",
+                "---\ntitle: First Post\ndate: 2026-05-15\n---\n\nBody.\n",
+            ),
+        ];
+
+        let mut scalar = files;
+        scalar[0].1 = "title: Blog\nurl: https://ex.com/\nauthor: Ada Lovelace\n";
+        let site = Site::discover(&write_site("feedauthor-scalar", &scalar));
+        let feeds = site.atom_feeds();
+        let (_, xml) = feeds.iter().find(|(p, _)| p == "blog.xml").unwrap();
+        assert!(
+            xml.contains("<name>Ada Lovelace</name>"),
+            "a scalar author still works: {xml}"
+        );
+
+        let site = Site::discover(&write_site("feedauthor-none", &files));
+        let feeds = site.atom_feeds();
+        let (_, xml) = feeds.iter().find(|(p, _)| p == "blog.xml").unwrap();
+        assert!(
+            xml.contains("<name>Blog</name>"),
+            "with no author at all, the documented title fallback still fires: {xml}"
+        );
+    }
 
     #[test]
     fn rfc3339_normalizes_a_date_only_string() {
