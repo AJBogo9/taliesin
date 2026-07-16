@@ -268,6 +268,12 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              tool: the .tmd stays your direct edit surface. JSON-RPC on stdout, logs on\n\
              stderr.\n\
              \n\
+             NOT a sandbox, so do not allowlist it as one. That edit-surface guarantee is\n\
+             about the .tmd, not containment: there is no project root, so every tool reads\n\
+             any path you hand it (including outside the project), and build writes HTML\n\
+             beside that path and executes the document's code cells. Contain it with the\n\
+             host's own sandbox and working directory.\n\
+             \n\
              Example (in an MCP host's config):\n\
              \x20 { \"command\": \"taliesin\", \"args\": [\"mcp\"] }\n"
         }

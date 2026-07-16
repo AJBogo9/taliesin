@@ -2,11 +2,30 @@
 //! read/validate/build surfaces as tools, so an MCP host drives the loop without shelling
 //! out per call.
 //!
-//! **Read/validate/build ONLY.** There is deliberately no write/edit/preview tool: the
+//! **No tool writes `.tmd` source.** There is deliberately no write/edit/preview tool: the
 //! `.tmd` stays the agent's direct edit surface (the single-editing-surface guardrail,
 //! pinned by the `tools/list` assertion in `mcp_stdio.rs`). Each tool WRAPS an existing
 //! collection fn (`check::check_json`, `query::symbols_json`/`map_json`/`read_text`,
 //! `build::build_json`, `vocab::VOCAB_JSON`) — no re-implementation, no shell-out to itself.
+//!
+//! **This is not a sandbox, and a host must not allowlist it as one.** The guardrail above
+//! is about the *editing surface*; it is not containment. This module used to say
+//! "read/validate/build ONLY", which reads as a stronger promise than the source makes, so
+//! two things are stated plainly here instead:
+//!
+//!  - **There is no project root and no path containment.** A `path` argument reaches the
+//!    wrapped fn exactly as given: no canonicalization, no confinement. Any tool therefore
+//!    reads any file this process can read (verified: `read {"path": "/etc/passwd"}`
+//!    returns it, as does a `../`-climbing relative path). [`cmd_mcp`] discards its args,
+//!    so no root exists even in principle.
+//!  - **`build` is not side-effect-free.** It writes HTML beside whatever path it is handed
+//!    and executes the document's code cells, which launches an interpreter.
+//!
+//! Documented rather than implemented (owner ruling 2026-07-17): a root here would withhold
+//! nothing real, since a host that can run this binary already has the filesystem access it
+//! would pretend to withhold. The boundary that counts is the host's process sandbox and
+//! working directory. The point of writing it down is that a host operator reads the
+//! guarantee we actually make instead of inferring a bigger one from the tool names.
 //!
 //! Transport is hand-rolled newline-delimited JSON-RPC 2.0 over stdin/stdout (zero new
 //! deps, offline-guaranteed). All logging goes to stderr, so stdout is a clean JSON-RPC
