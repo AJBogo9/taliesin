@@ -1,4 +1,4 @@
-# Section C a11y batch — design
+# Section C a11y batch: design
 
 **Date:** 2026-07-16
 **Backlog:** §C theme colour-system a11y follow-ups (`notes/backlog.md`), from the
@@ -13,10 +13,10 @@ The backlog warns that entries rot with no signal (§B rotted entirely). Every �
 re-checked against source before this design. **Two are already fixed** and must be deleted
 from the backlog, not built:
 
-- *"Embedded deck ignores a sepia host"* — **fixed at the named anchor.**
+- *"Embedded deck ignores a sepia host"*: **fixed at the named anchor.**
   [`render/deck.rs:164`](../../../crates/core/src/render/deck.rs#L164) already reads
   `(t==='sepia' ? 'light' : null)`, which is the audit's recommended fix verbatim.
-- *"Deck slide-number chip not restyled per-slide"* — **fixed by removing the premise.**
+- *"Deck slide-number chip not restyled per-slide"*: **fixed by removing the premise.**
   The chip is now one opaque dark-glass surface in both themes
   ([`deck.css:352-361`](../../../crates/core/assets/css/deck.css#L352-L361)); the comment at
   [`deck.css:525-526`](../../../crates/core/assets/css/deck.css#L525-L526) records that it
@@ -51,7 +51,7 @@ survives intact: `f` keeps doing focus mode **and** fullscreen, and a reader who
 settings sees no change at all. This is why the owner rejected decoupling fullscreen from
 the `f` key: it would have made one feature behave two different ways depending on trigger.
 
-- **`taliShortcutsOn()`** — a new shared accessor in
+- **`taliShortcutsOn()`**, a new shared accessor in
   [`01-registry.js`](../../../crates/core/assets/js/code-enhance/01-registry.js), beside the
   existing cross-fragment helpers (`taliCopyText`, `taliAnchorUrl`, `taliCloneStripped`).
   Defaults to **on**, and returns `true` on any storage throw (a blocked-storage reader must
@@ -146,9 +146,9 @@ dismissal.
 
 **Symptom.** Under Windows High Contrast, two rules pin a foreground with no background on
 the active nav item, so an opposite-polarity OS theme can paint it invisible:
-- [`base.css:868`](../../../crates/core/assets/css/base.css#L868) —
+- [`base.css:868`](../../../crates/core/assets/css/base.css#L868):
   `.tali-reader-seg button[aria-pressed="true"], .tali-nav-active, a[aria-current="page"] { forced-color-adjust: none; }`
-- [`site.css:312`](../../../crates/core/assets/css/site.css#L312) — same opt-out on
+- [`site.css:312`](../../../crates/core/assets/css/site.css#L312): same opt-out on
   `.tali-nav-active, .tali-book-active, a[aria-current="page"]`.
 
 (The audit cited `base.css:780` / `site.css:293`; the line numbers drifted, the rules are

@@ -59,7 +59,7 @@ rot, verified against source + removed 2026-07-16. See [[backlog-entries-rot]].)
 ### C. Theme colour-system a11y follow-ups (2026-07-09 audit; CLOSED 2026-07-16)
 
 *(Section C is closed, 2026-07-16. Six items built: the single-key-shortcut reader toggle
-(WCAG 2.1.4, gating `f`/`?`/`/`, not just `f` — the audit under-scoped it), settings-popover
+(WCAG 2.1.4, gating `f`/`?`/`/`, not just `f`, which the audit under-scoped), settings-popover
 focus-on-open, category chips' `aria-pressed` + live count, keyboard-reachable link previews,
 the forced-colors nav marker, and settings-panel reflow at 200%. Spec:
 [2026-07-16-section-c-a11y-batch-design.md](../docs/superpowers/specs/2026-07-16-section-c-a11y-batch-design.md);

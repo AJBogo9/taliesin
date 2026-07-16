@@ -1,4 +1,4 @@
-# Section C a11y batch — implementation plan
+# Section C a11y batch: implementation plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -164,7 +164,7 @@ Backlog item: *"Settings popover never takes focus on open"* (med). Owner-decide
 - Modify: `crates/core/assets/js/code-enhance/13-reader-menu.js:38-39, 56-63` (comment + `openMenu`)
 
 **Interfaces:**
-- Produces: `taliFocusables(container) -> Element[]` — visible focusable descendants in DOM order. Task 2 is the only definer; Task 3 does not use it.
+- Produces: `taliFocusables(container) -> Element[]`: visible focusable descendants in DOM order. Task 2 is the only definer; Task 3 does not use it.
 
 - [ ] **Step 1: Extract the focusable-element helper**
 
@@ -222,7 +222,7 @@ and replace the `:56-58` comment with:
 
 ```js
   // Light-dismiss POPOVER, not a modal (it doesn't cover/inert the page): no taliFocusTrap, so
-  // trapping/focus-restore can't fight the outside-click dismissal — and aria-modal would suppress
+  // trapping/focus-restore can't fight the outside-click dismissal, and aria-modal would suppress
   // the reader shortcuts, which treat [aria-modal="true"] as "a modal owns the keys". Moving focus
   // once on open is not trapping and does not fight dismissal. aria-expanded + Esc-to-close
   // (returning focus to the launcher) + click-away is the right shape.
@@ -490,7 +490,7 @@ The rule pins a foreground with no background on the nav item, so an opposite-po
 
 ```css
     /* Only the pressed seg button opts out: it pins a bg+fg PAIR, so forced colors would
-       otherwise drop the pressed state entirely. The nav markers must NOT opt out — they pin a
+       otherwise drop the pressed state entirely. The nav markers must NOT opt out: they pin a
        fg with no bg, which under an opposite-polarity theme paints "you are here" invisible.
        Their marker survives without it (site.css underlines the active item). */
     .tali-reader-seg button[aria-pressed="true"] { forced-color-adjust: none; }

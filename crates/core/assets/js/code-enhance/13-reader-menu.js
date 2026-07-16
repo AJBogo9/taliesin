@@ -58,7 +58,7 @@ function taliInitReaderMenu() {
   }
 
   // Light-dismiss POPOVER, not a modal (it doesn't cover/inert the page): no taliFocusTrap, so
-  // trapping/focus-restore can't fight the outside-click dismissal — and aria-modal would suppress
+  // trapping/focus-restore can't fight the outside-click dismissal, and aria-modal would suppress
   // the reader shortcuts, which treat [aria-modal="true"] as "a modal owns the keys". Moving focus
   // once on open is not trapping and does not fight dismissal. aria-expanded + Esc-to-close
   // (returning focus to the launcher) + click-away is the right shape.
