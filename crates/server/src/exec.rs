@@ -404,10 +404,10 @@ impl Executor {
         // The interpreter identity seeds the cumulative hash chain (a different
         // interpreter/version can't serve another's outputs). Computed up front so
         // even a full cold replay — which never boots the kernel — can key the cache.
-        let interp = self
-            .spec(lang)
-            .map(|(_, program)| interp_id(lang, &program))
-            .unwrap_or_else(|| lang.to_string());
+        let interp = match self.spec(lang) {
+            Some((_, program)) => interp_id(lang, &program).await,
+            None => lang.to_string(),
+        };
         // Fold `#| fig-export:` into the hashed code so adding/changing it moves the
         // cell's key and forces a re-run (which rewrites the exported file); a cell
         // without it hashes exactly as before, so existing caches stay valid.
@@ -963,40 +963,96 @@ fn is_uncacheable(output: &str) -> bool {
     output.contains("class=\"tali-error\"") || output.contains("taliesin: output truncated")
 }
 
+/// How long `<program> --version` may take before the probe gives up. This sits
+/// upstream of `ensure_kernel`, so it is the *first* thing a rebuild waits on and no
+/// other timeout can rescue it: an unbounded probe wedges the pipeline forever (a
+/// stuck NFS mount, a python blocking on import, a hung conda shim), recoverable only
+/// by killing the process. A version probe is a fork+exec+print, not work: it is
+/// milliseconds warm and a second or two for a cold conda shim on a slow disk. Ten
+/// seconds is far past any healthy interpreter yet short enough that a wedged one
+/// degrades to "no version in the id" instead of hanging the build. Deliberately not
+/// configurable: a knob here would only ever be turned because something else is
+/// broken.
+const INTERP_PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// A stable identity for a language's interpreter, used to seed the cumulative
 /// hash chain so a different interpreter (or an upgraded one) can't serve outputs
-/// it didn't compute. Runs `<program> --version` once and memoizes the result per
-/// `(lang, program)` for the process; if that fails (e.g. the interpreter isn't
-/// installed), falls back to the program path so the id is still stable.
-fn interp_id(lang: &str, program: &Path) -> String {
+/// it didn't compute. Runs `<program> --version` once and memoizes the *answer* per
+/// `(lang, program)` for the process; if the interpreter can't be asked (not
+/// installed, or the probe times out), falls back to the program path so the id is
+/// still stable.
+async fn interp_id(lang: &str, program: &Path) -> String {
+    probe_interp_id(lang, program, INTERP_PROBE_TIMEOUT).await
+}
+
+/// [`interp_id`] with an injectable bound, so the timeout path is testable in
+/// milliseconds instead of [`INTERP_PROBE_TIMEOUT`].
+///
+/// Two properties are load-bearing here, because this id seeds the freeze cache's
+/// cumulative hash chain:
+///
+///   - **Only an answer is memoized.** A probe that *failed to ask* (spawn error,
+///     timeout) is not cached, so a transient failure is retried on the next rebuild
+///     rather than poisoning every freeze key for the process lifetime. A program
+///     that runs and prints nothing *has* answered ("no version"), and that is cached:
+///     it is a stable fact about that program, not a transient failure, and caching it
+///     is what keeps the probe to one fork per process.
+///   - **A successful probe's string is byte-identical to before.** Anything else
+///     silently changes cache identity and invalidates every existing `_freeze/`.
+async fn probe_interp_id(lang: &str, program: &Path, bound: Duration) -> String {
     static CACHE: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
     let key = format!("{lang}\u{0}{}", program.display());
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     if let Some(id) = cache.lock().get(&key) {
         return id.clone();
     }
-    let version = std::process::Command::new(program)
-        .arg("--version")
-        .output()
-        .ok()
-        .map(|o| {
-            // Python prints to stdout, some tools to stderr; take whichever is set.
-            let bytes = if o.stdout.is_empty() {
-                o.stderr
-            } else {
-                o.stdout
-            };
-            String::from_utf8_lossy(&bytes)
-                .lines()
-                .next()
-                .unwrap_or("")
-                .trim()
-                .to_string()
-        })
-        .unwrap_or_default();
+    // The lock is NOT held across the await below: two rebuilds racing the same cold
+    // interpreter may both probe, but they compute the same id, so the duplicate fork
+    // is the whole cost. Holding it would serialize every language behind one probe.
+    let answer = probe_version(program, bound).await;
+    let version = answer.clone().unwrap_or_default();
     let id = format!("{lang}::{}::{version}", program.display());
-    cache.lock().insert(key, id.clone());
+    if answer.is_some() {
+        cache.lock().insert(key, id.clone());
+    }
     id
+}
+
+/// Run `<program> --version` under `bound` and return its reported version line.
+/// `None` means *we could not ask* (spawn failed, or it hung past `bound`), as
+/// opposed to `Some("")`, which means it ran and reported nothing.
+async fn probe_version(program: &Path, bound: Duration) -> Option<String> {
+    // Async, not `std::process`: this runs on a tokio worker, so a blocking wait here
+    // stalls the runtime as well as the build. `kill_on_drop` means the timeout below
+    // actually reaps the hung child instead of leaking it for the process lifetime.
+    // stdin is /dev/null to match `Command::output`'s contract (and so an interpreter
+    // that drops to a REPL sees EOF rather than waiting on the parent's terminal).
+    let child = tokio::process::Command::new(program)
+        .arg("--version")
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .ok()?;
+    let out = tokio::time::timeout(bound, child.wait_with_output())
+        .await
+        .ok()?
+        .ok()?;
+    // Python prints to stdout, some tools to stderr; take whichever is set.
+    let bytes = if out.stdout.is_empty() {
+        out.stderr
+    } else {
+        out.stdout
+    };
+    Some(
+        String::from_utf8_lossy(&bytes)
+            .lines()
+            .next()
+            .unwrap_or("")
+            .trim()
+            .to_string(),
+    )
 }
 
 /// A visible "this cell could not run" diagnostic, spliced where a boot-failed (or
@@ -1166,6 +1222,131 @@ mod tests {
         b
     }
 
+    /// A throwaway executable script at `path`, `chmod +x`. Used to stand in for an
+    /// interpreter whose `--version` probe hangs or is briefly unavailable.
+    #[cfg(unix)]
+    fn write_exe(path: &Path, body: &str) {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::write(path, body).unwrap();
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_successful_probe_pins_the_freeze_key_format() {
+        // The id this returns seeds every freeze key, so its exact bytes are a
+        // compatibility surface: change them and every user's `_freeze/` silently
+        // misses. Pins the four shapes the extraction has always handled, so a future
+        // refactor of the probe cannot quietly move the format.
+        let dir = std::env::temp_dir().join(format!("tali-interp-fmt-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // Version on stdout: the ordinary python case.
+        let out = dir.join("on-stdout");
+        write_exe(&out, "#!/bin/sh\necho 'Python 3.12.3'\n");
+        assert_eq!(
+            probe_interp_id("python", &out, Duration::from_secs(10)).await,
+            format!("python::{}::Python 3.12.3", out.display())
+        );
+
+        // Version on stderr only (how `python -V` used to report): stdout is empty, so
+        // the probe falls back to stderr rather than recording an empty version.
+        let err = dir.join("on-stderr");
+        write_exe(&err, "#!/bin/sh\necho 'Python 2.7.18' >&2\n");
+        assert_eq!(
+            probe_interp_id("python", &err, Duration::from_secs(10)).await,
+            format!("python::{}::Python 2.7.18", err.display())
+        );
+
+        // Chatty multi-line output with padding: first line only, trimmed (R's banner).
+        let multi = dir.join("multi-line");
+        write_exe(
+            &multi,
+            "#!/bin/sh\nprintf '  R version 4.3.1 (2023-06-16) \\nCopyright (C)\\n'\n",
+        );
+        assert_eq!(
+            probe_interp_id("r", &multi, Duration::from_secs(10)).await,
+            format!("r::{}::R version 4.3.1 (2023-06-16)", multi.display())
+        );
+
+        // Non-zero exit that still prints a version: the interpreter ANSWERED, so its
+        // version must reach the id. Gating the probe on exit status instead of on
+        // "did it run" would silently rewrite this key.
+        let nz = dir.join("nonzero-exit");
+        write_exe(&nz, "#!/bin/sh\necho 'Python 3.1.2'\nexit 3\n");
+        assert_eq!(
+            probe_interp_id("python", &nz, Duration::from_secs(10)).await,
+            format!("python::{}::Python 3.1.2", nz.display())
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_failed_interp_probe_is_not_memoized_for_the_process_lifetime() {
+        // Regression (M2): `interp_id` seeds the freeze cache's cumulative hash chain.
+        // It used to memoize `unwrap_or_default()` (an EMPTY version) whenever the
+        // probe merely FAILED TO ASK (the binary wasn't there yet), poisoning every
+        // freeze key for the rest of the process. A transient failure must be
+        // retryable: once the interpreter answers, its real version must reach the id.
+        let dir = std::env::temp_dir().join(format!("tali-interp-retry-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let prog = dir.join("py-appears-late");
+
+        // Probe 1: the binary does not exist yet -> spawn fails. This is "we failed to
+        // ask", not an answer, so it must not be cached.
+        let missing = interp_id("python", &prog).await;
+        assert_eq!(
+            missing,
+            format!("python::{}::", prog.display()),
+            "a failed probe keeps the established fallback id (program path, empty version)"
+        );
+
+        // The interpreter shows up (a slow NFS mount, a shim finishing an install).
+        write_exe(&prog, "#!/bin/sh\necho 'Python 9.9.9'\n");
+
+        let found = interp_id("python", &prog).await;
+        assert_eq!(
+            found,
+            format!("python::{}::Python 9.9.9", prog.display()),
+            "the earlier FAILURE must not be memoized: a later successful probe has to \
+             report the real version, or the freeze key stays poisoned for the process"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_hanging_interp_probe_gives_up_instead_of_wedging_the_build() {
+        // Regression (M2): the probe was a blocking `Command::output()` with NO timeout,
+        // called from this async fn BEFORE `ensure_kernel`, so it sat upstream of every
+        // timeout in the codebase (`TALIESIN_CELL_TIMEOUT` included). A wedged interpreter
+        // (stuck NFS, a python blocking on import, a hung conda shim) wedged the whole
+        // rebuild pipeline forever, recoverable only by restarting the process.
+        //
+        // The bound is injected so the test is fast and deterministic; the production
+        // bound is `INTERP_PROBE_TIMEOUT`.
+        let dir = std::env::temp_dir().join(format!("tali-interp-hang-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let prog = dir.join("py-that-hangs");
+        write_exe(&prog, "#!/bin/sh\nsleep 300\n");
+
+        let started = Instant::now();
+        let id = probe_interp_id("python", &prog, Duration::from_millis(200)).await;
+        let elapsed = started.elapsed();
+
+        assert!(
+            elapsed < Duration::from_secs(10),
+            "a hanging interpreter must not wedge the build; probe took {elapsed:?}"
+        );
+        assert_eq!(
+            id,
+            format!("python::{}::", prog.display()),
+            "giving up falls back to the same id a failed probe has always produced"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[tokio::test]
     async fn diagnostic_names_the_resolved_interpreter() {
         // `set_interpreters` overrides the env/default python, and a bogus resolved path
@@ -1223,8 +1404,10 @@ mod tests {
         // Seed the freeze so cell A (index 0) is KNOWN but B (index 1) is not, so `plan`
         // puts BOTH in the run range (run_end runs past the last unknown) with A a freeze
         // hit inside it. The interp seed must match what the executor computes for
-        // `bogus` (interp_id is memoized per program, so this is the same value).
-        let interp = interp_id("python", &bogus);
+        // `bogus`: the probe can't run a nonexistent program, so both calls take the
+        // fallback and produce the same value (it is NOT memoized -- see
+        // `a_failed_interp_probe_is_not_memoized_for_the_process_lifetime`).
+        let interp = interp_id("python", &bogus).await;
         let hashes = freeze::cumulative_hashes(&interp, &["a = 1", "b = 2"]);
         ex.freeze
             .put(hashes[0].clone(), "<pre>CACHED_A_OUTPUT</pre>".to_string());
