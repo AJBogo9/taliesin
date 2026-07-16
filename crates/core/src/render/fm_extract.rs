@@ -8,18 +8,23 @@
 
 use super::DocFormat;
 
-/// The front-matter `toc:` setting (typically under `format: html:`) as a
-/// tri-state: `Some(true)`/`Some(false)` when the page sets it, `None` when
-/// absent. A lightweight scan, matching the corpus book's usage. Returning
-/// `Option` lets a site distinguish an explicit `toc: false` (which overrides
-/// the site default) from an unset toc (which inherits it).
+/// The **top-level** front-matter `toc:` setting as a tri-state: `Some(true)`/
+/// `Some(false)` when the page sets it, `None` when absent. Returning `Option` lets a
+/// site distinguish an explicit `toc: false` (which overrides the site default) from an
+/// unset toc (which inherits it).
+///
+/// Indented lines are skipped, like [`extract_field`] and [`detect_format`]: an indented
+/// `toc:` belongs to whatever block encloses it, and no block owns a `toc`. This scan
+/// used to trim every line first — a Quarto-era accommodation for `format: html: toc:` —
+/// so a `toc:` under ANY block (`hero:`, `listing:`, `execute:`) silently set the
+/// document's TOC. Top-level is also the only form the guide teaches and the vocab
+/// documents.
 pub(super) fn detect_toc(front_matter: &str) -> Option<bool> {
-    front_matter.lines().find_map(|l| {
+    top_level_lines(front_matter).find_map(|l| {
         // Coerce the YAML-1.1 boolean words too (`toc: yes`/`no`/`on`/`off`), which
         // serde reads as strings — otherwise an explicit `toc: yes` silently no-ops
         // and inherits the site default. See `crate::frontmatter::yaml_bool_word`.
-        l.trim()
-            .strip_prefix("toc:")
+        l.strip_prefix("toc:")
             .and_then(crate::frontmatter::yaml_bool_word)
     })
 }
@@ -27,11 +32,19 @@ pub(super) fn detect_toc(front_matter: &str) -> Option<bool> {
 /// `title-block-style: none` suppresses the visible title-block header while
 /// keeping the `title` metadata. Used by nav landing pages
 /// (Blog/Projects/Publications) where a big `<h1>` repeats the navbar.
+/// Top-level only, for the same reason as [`detect_toc`].
 pub(super) fn detect_title_block_hidden(front_matter: &str) -> bool {
-    front_matter.lines().any(|l| {
-        let t = l.trim();
-        t.strip_prefix("title-block-style:").map(str::trim) == Some("none")
-    })
+    top_level_lines(front_matter)
+        .any(|l| l.strip_prefix("title-block-style:").map(str::trim) == Some("none"))
+}
+
+/// The un-indented (top-level) front-matter lines, trimmed. The shared primitive behind
+/// every top-level key scan, so they cannot drift on what "top-level" means.
+fn top_level_lines(front_matter: &str) -> impl Iterator<Item = &str> {
+    front_matter
+        .lines()
+        .filter(|l| !l.starts_with(char::is_whitespace))
+        .map(str::trim)
 }
 
 /// Whether a document's front matter selects a slide deck. Reads only the

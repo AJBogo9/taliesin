@@ -12,9 +12,7 @@ categories:
   - expressivity
   - maximum likelihood
   - complex-valued neural networks
-format:
-  html:
-    toc: true
+toc: true
 ---
 
 <!-- HOOK

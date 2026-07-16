@@ -140,6 +140,7 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
         }
     }
     validate_format_value(map, block, &mut out);
+    validate_format_subkeys(map, block, &mut out);
     validate_unsupported_keys(map, block, &mut out);
     validate_page_layout_value(map, block, &mut out);
     validate_nested(map, "execute", "execute key", EXECUTE_KEYS, block, &mut out);
@@ -271,6 +272,43 @@ const NON_HTML_FORMATS: &[&str] = &[
 /// whose edit distance to `deck` is too large for the generic did-you-mean, and any
 /// known non-HTML output target ([`NON_HTML_FORMATS`]) that Taliesin can't produce — both
 /// otherwise render a plain HTML page with no signal.
+/// `format:` sub-keys (`format:\n  deck:\n    transition: fade`) are read by NOTHING, so
+/// they must warn instead of certifying as supported on a green check — the `csl:` rule.
+/// `format:` takes a NAME (`html`/`deck`), which is all the guide teaches.
+///
+/// This used to be deliberately un-linted "because an extension owns them", but no such
+/// mechanism exists: `_extensions/` is a theme-CSS lookup (`render/theme.rs`), `DocFormat`
+/// has two built-in variants, and `deck.rs` hardcodes its engine init reading no sub-key.
+/// The one shape that *appeared* to work — `format: html: toc:` — did so only because
+/// `detect_toc` trimmed before matching, which also let a `toc:` under `hero:` set the
+/// document's TOC; that scan is now top-level-only, so every sub-key is uniformly inert
+/// and this warning is true rather than a lie.
+fn validate_format_subkeys(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
+    // `format: deck` (a bare name) is a String, not a Mapping: nothing to lint.
+    let Some(serde_yaml::Value::Mapping(fmt)) = map.get("format") else {
+        return;
+    };
+    for opts in fmt.values() {
+        // `format:\n  deck:` with no options parses as Null, not an empty Mapping.
+        let serde_yaml::Value::Mapping(opts) = opts else {
+            continue;
+        };
+        for key in opts.keys().filter_map(|k| k.as_str()) {
+            // A sub-key that names a real top-level key is the likely mistake (the Quarto
+            // shape), so point at where it belongs rather than only rejecting it.
+            // Worded to stay distinct from `validate_format_value`'s "unknown format
+            // `revealjs`", which is about the format NAME — an "unknown format sub-key"
+            // phrasing reads as (and substring-matches) that different diagnostic.
+            let msg = if KNOWN_KEYS.contains(&key) {
+                format!("`format:` sub-key `{key}` is ignored (did you mean a top-level `{key}:`?)")
+            } else {
+                format!("`format:` sub-key `{key}` is ignored (nothing reads `format:` sub-keys)")
+            };
+            out.push(located(msg, nested_key_line(block, "format", key)));
+        }
+    }
+}
+
 fn validate_format_value(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
     let Some(fmt) = map.get("format") else {
         return;
@@ -640,14 +678,43 @@ mod tests {
         assert!(w.is_empty(), "got: {w:?}");
     }
 
+    /// `format:` sub-keys are read by NOTHING, so they must warn rather than certify as
+    /// supported — the `csl:` rule (a key that reads as honored and does nothing is the
+    /// bug). This REPLACES `format_subkeys_are_not_linted`, whose stated rationale ("an
+    /// extension owns them") was false: `_extensions/` is only a theme-CSS mechanism
+    /// (`render/theme.rs`), `DocFormat` has exactly two built-in variants, and the deck
+    /// engine hardcodes its init, reading no sub-key at all.
     #[test]
-    fn format_subkeys_are_not_linted() {
-        // `format:` sub-keys (a deck's `revealjs:`/`deck:` options) are format config,
-        // not top-level keys, so they must not warn.
-        let w = validate_front_matter(
-            "---\ntitle: X\nformat:\n  html:\n    toc: true\n    anything: 1\n---\n",
+    fn format_subkeys_warn_because_nothing_reads_them() {
+        let w =
+            validate_front_matter("---\ntitle: X\nformat:\n  deck:\n    transition: fade\n---\n");
+        assert_eq!(w.len(), 1, "got: {w:?}");
+        assert_eq!(
+            w[0].message,
+            "`format:` sub-key `transition` is ignored (nothing reads `format:` sub-keys)"
         );
-        assert!(w.is_empty(), "got: {w:?}");
+        assert_eq!(w[0].line, Some(5), "located on the sub-key's own line");
+    }
+
+    /// A sub-key that names a real TOP-LEVEL key is the likely mistake (the Quarto shape),
+    /// so say where it belongs instead of just rejecting it.
+    #[test]
+    fn a_format_subkey_that_is_a_top_level_key_says_where_it_belongs() {
+        let w = validate_front_matter("---\ntitle: X\nformat:\n  html:\n    toc: true\n---\n");
+        assert_eq!(w.len(), 1, "got: {w:?}");
+        assert_eq!(
+            w[0].message,
+            "`format:` sub-key `toc` is ignored (did you mean a top-level `toc:`?)"
+        );
+    }
+
+    #[test]
+    fn a_bare_format_name_never_warns() {
+        // `format: deck` / `format: html` (the documented form) has no sub-keys at all.
+        assert!(validate_front_matter("---\ntitle: X\nformat: deck\n---\n").is_empty());
+        assert!(validate_front_matter("---\ntitle: X\nformat: html\n---\n").is_empty());
+        // An empty format block is not a sub-key either.
+        assert!(validate_front_matter("---\ntitle: X\nformat:\n  deck:\n---\n").is_empty());
     }
 
     #[test]

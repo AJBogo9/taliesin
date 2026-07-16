@@ -1985,8 +1985,11 @@ fn assembled_page_ships_focus_trap() {
 
 #[test]
 fn toc_page_lists_headings_with_anchor_links() {
+    // Top-level `toc:` — the form the guide teaches. (This fixture used the Quarto
+    // `format: html: toc:` shape, which only worked because `detect_toc` trimmed before
+    // matching; that scan is top-level-only now, so the nested form no longer applies.)
     let page = render_html_page(
-        "---\ntitle: Doc\nformat:\n  html:\n    toc: true\n---\n\n# A\n\ntext\n\n## B\n",
+        "---\ntitle: Doc\ntoc: true\n---\n\n# A\n\ntext\n\n## B\n",
         "fb",
     );
     assert!(page.contains("id=\"TOC\""), "missing TOC nav");
@@ -2024,7 +2027,7 @@ fn toc_page_ships_read_state_marker() {
     // sections a reader has scrolled through (`.tali-toc-read`) and persists them in the
     // reader's OWN localStorage (`qmd-read:<path>`). Reader-side, read-only.
     let toc_page = render_html_page(
-        "---\ntitle: Doc\nformat:\n  html:\n    toc: true\n---\n\n# A\n\ntext\n\n## B\n\nmore\n",
+        "---\ntitle: Doc\ntoc: true\n---\n\n# A\n\ntext\n\n## B\n\nmore\n",
         "fb",
     );
     assert!(
@@ -2095,6 +2098,42 @@ fn detect_toc_is_tristate_so_explicit_false_can_override_a_site_default() {
     assert_eq!(detect_toc("toc: OFF\n"), Some(false));
     // `toc-depth:`/`toc-title:` are not the `toc:` key and must not match.
     assert_eq!(detect_toc("toc-depth: 2\ntoc-title: Contents\n"), None);
+}
+
+/// `toc:` is a TOP-LEVEL key. An indented `toc:` is some other block's sub-key and must
+/// not reach through — this scan used to trim every line before matching, so a `toc:`
+/// nested under ANY block set the document's TOC: `hero:`/`listing:`/`execute:` alike,
+/// none of which own a `toc`. `extract_field`/`detect_format` already skip indented
+/// lines ("top-level keys only"); this brings the tristate scan in line with them.
+#[test]
+fn detect_toc_reads_only_a_top_level_key() {
+    assert_eq!(
+        detect_toc("title: X\nhero:\n  headline: Hi\n  toc: true\n"),
+        None,
+        "a `toc:` nested under `hero:` is not the document's toc"
+    );
+    assert_eq!(
+        detect_toc("title: X\nformat:\n  html:\n    toc: true\n"),
+        None,
+        "a `toc:` nested under `format:` is not the document's toc (`format:` sub-keys are inert)"
+    );
+    // The top-level key still wins from anywhere in the block, including after a nested one.
+    assert_eq!(
+        detect_toc("format:\n  html:\n    toc: false\ntoc: true\n"),
+        Some(true),
+        "the top-level key is the only one read"
+    );
+}
+
+/// Same rule for `title-block-style:`: the other scan that trimmed before matching, so a
+/// nested `title-block-style: none` silently suppressed the title block.
+#[test]
+fn detect_title_block_hidden_reads_only_a_top_level_key() {
+    assert!(detect_title_block_hidden("title-block-style: none\n"));
+    assert!(
+        !detect_title_block_hidden("format:\n  html:\n    title-block-style: none\n"),
+        "a nested title-block-style is a sub-key, not the document's"
+    );
 }
 
 #[test]
