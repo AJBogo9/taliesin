@@ -261,7 +261,7 @@ impl Site {
         // A book takes its page set + order from the explicit `chapters:` list;
         // a website discovers every `.tmd` and orders by path.
         let (mut pages, book) = if config.is_book {
-            let book = build_book(root, &config);
+            let book = build_book(root, &config, drafts, &mut excluded_drafts);
             let pages = book_pages(root, &book, &mut warnings);
             (pages, Some(book))
         } else {
@@ -1451,6 +1451,48 @@ pub(crate) mod tests {
             preview.excluded_drafts.is_empty(),
             "Include excludes nothing"
         );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn book_drafts_excluded_renumber_contiguously_include_numbers_in_context() {
+        let root = write_site(
+            "bookdraft",
+            &[
+                (
+                    "_site.yml",
+                    "title: B\nchapters:\n  - one.tmd\n  - wip.tmd\n  - two.tmd\n",
+                ),
+                ("one.tmd", "# One\n"),
+                ("wip.tmd", "---\ndraft: true\n---\n# WIP\n"),
+                ("two.tmd", "# Two\n"),
+            ],
+        );
+
+        let published = Site::discover(&root);
+        assert!(!published.pages.iter().any(|p| p.rel == "wip.tmd"));
+        assert_eq!(published.excluded_drafts, vec!["wip.tmd".to_string()]);
+        let book = published.book.as_ref().unwrap();
+        // Chapters renumber contiguously: One=1, Two=2 (no gap where WIP was).
+        let nums: Vec<u32> = book.chapters().iter().filter_map(|c| c.number).collect();
+        assert_eq!(nums, vec![1, 2]);
+        assert!(!book.chapters().iter().any(|c| c.rel == "wip.tmd"));
+
+        let preview = Site::discover_with(&root, DraftMode::Include);
+        let pbook = preview.book.as_ref().unwrap();
+        let pchapters = pbook.chapters();
+        let wip = pchapters
+            .iter()
+            .find(|c| c.rel == "wip.tmd")
+            .expect("draft chapter present in preview");
+        assert!(wip.draft);
+        assert_eq!(
+            wip.number,
+            Some(2),
+            "numbered in context (One=1, WIP=2, Two=3)"
+        );
+        assert!(preview.pages.iter().any(|p| p.rel == "wip.tmd" && p.draft));
 
         let _ = std::fs::remove_dir_all(&root);
     }

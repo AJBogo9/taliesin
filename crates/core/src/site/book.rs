@@ -21,6 +21,9 @@ pub struct BookEntry {
     pub title: String,
     pub rel: String,
     pub url: String,
+    /// `draft: true` front matter on the chapter file. Only ever `true` in
+    /// `DraftMode::Include` (a draft chapter is dropped entirely in `Exclude`).
+    pub draft: bool,
 }
 impl Book {
     /// The chapters in reading order (part headers dropped), for prev/next.
@@ -38,11 +41,16 @@ impl Book {
 /// (`- intro.tmd`), a `{ file:, text: }` chapter with a label override, or a
 /// `{ part:, chapters: }` group whose inner list takes the same string-or-`{file,text}`
 /// chapter shapes.
-pub(super) fn build_book(root: &Path, config: &SiteConfig) -> Book {
+pub(super) fn build_book(
+    root: &Path,
+    config: &SiteConfig,
+    mode: DraftMode,
+    excluded: &mut Vec<String>,
+) -> Book {
     let mut entries = Vec::new();
     let mut num = 0u32;
     for ch in &config.chapters {
-        if push_chapter_entry(root, ch, &mut entries, &mut num) {
+        if push_chapter_entry(root, ch, &mut entries, &mut num, mode, excluded) {
             continue;
         }
         // Not a chapter ⇒ a `{ part:, chapters: }` group header + its inner chapters.
@@ -58,7 +66,7 @@ pub(super) fn build_book(root: &Path, config: &SiteConfig) -> Book {
             });
             if let Some(seq) = map.get("chapters").and_then(|v| v.as_sequence()) {
                 for c in seq {
-                    push_chapter_entry(root, c, &mut entries, &mut num);
+                    push_chapter_entry(root, c, &mut entries, &mut num, mode, excluded);
                 }
             }
         }
@@ -77,16 +85,18 @@ fn push_chapter_entry(
     value: &serde_yaml::Value,
     entries: &mut Vec<BookEntry>,
     num: &mut u32,
+    mode: DraftMode,
+    excluded: &mut Vec<String>,
 ) -> bool {
     if let Some(file) = value.as_str() {
-        push_chapter(root, file, None, entries, num);
+        push_chapter(root, file, None, entries, num, mode, excluded);
         return true;
     }
     if let Some(map) = value.as_mapping()
         && let Some(file) = map.get("file").and_then(|v| v.as_str())
     {
         let label = map.get("text").and_then(|v| v.as_str());
-        push_chapter(root, file, label, entries, num);
+        push_chapter(root, file, label, entries, num, mode, excluded);
         return true;
     }
     false
@@ -101,16 +111,27 @@ fn push_chapter(
     label: Option<&str>,
     entries: &mut Vec<BookEntry>,
     num: &mut u32,
+    mode: DraftMode,
+    excluded: &mut Vec<String>,
 ) {
     let input = root.join(file);
     let rel = file.to_string();
     let (h1, unnumbered) = chapter_heading(&input);
+    // Parse once: needed for the draft gate and (below) the title fallback. Throwaway
+    // warnings: `book_pages` re-parses this file with the real sink, so a
+    // listing-without-contents warning here would just duplicate it.
+    let fm = parse_front_matter(&input, file, &mut Vec::new());
+    // A draft chapter is dropped in the published view (recorded so the build can report
+    // it) — no entry, no number bump, so the book renumbers as if it weren't listed. In
+    // the preview view it stays, tagged, and is numbered in context.
+    if fm.draft && mode == DraftMode::Exclude {
+        excluded.push(rel);
+        return;
+    }
     let title = label
         .map(str::to_string)
         .or(h1)
-        // Throwaway warnings: `book_pages` re-parses this file with the real sink, so a
-        // listing-without-contents warning here would just duplicate it.
-        .or_else(|| parse_front_matter(&input, file, &mut Vec::new()).title)
+        .or(fm.title)
         .unwrap_or_else(|| {
             crate::ext::strip_source_ext(&rel)
                 .unwrap_or(&rel)
@@ -129,6 +150,7 @@ fn push_chapter(
         title,
         url: qmd_to_html(&rel),
         rel,
+        draft: fm.draft,
     });
 }
 /// A page's leading `# H1` text (attributes stripped) and whether that heading is
@@ -192,7 +214,7 @@ pub(super) fn book_pages(root: &Path, book: &Book, warnings: &mut Vec<String>) -
                 hero: fm.hero,
                 page_layout: fm.page_layout,
                 has_bibliography: fm.has_bibliography,
-                draft: false,
+                draft: c.draft,
             }
         })
         .collect()

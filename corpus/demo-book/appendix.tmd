@@ -1,0 +1,8 @@
+---
+draft: true
+---
+
+# Appendix: Draft Notes
+
+A draft chapter. In `preview` it appears last in the chapter drawer (marked draft) and is
+numbered in context; a `build` drops it, so the other chapters keep contiguous numbers.

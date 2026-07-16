@@ -302,8 +302,15 @@ impl Site {
                 .number
                 .map(|n| format!("<span class=\"tali-chap-num\">{n}</span> "))
                 .unwrap_or_default();
+            // A draft chapter (preview only — a built book never contains one) is marked
+            // in the drawer so it reads as unpublished.
+            let draft_tag = if e.draft {
+                " <span class=\"tali-draft-badge\">draft</span>"
+            } else {
+                ""
+            };
             s.push_str(&format!(
-                "<li><a class=\"{cls}\" href=\"{up}{}\"{aria}>{num}{}</a></li>",
+                "<li><a class=\"{cls}\" href=\"{up}{}\"{aria}>{num}{}{draft_tag}</a></li>",
                 e.url,
                 esc(&e.title)
             ));

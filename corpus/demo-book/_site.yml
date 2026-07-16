@@ -12,3 +12,4 @@ chapters:            # presence makes this a book — no project: type: needed
       - results.tmd
   - file: summary.tmd       # a top-level chapter can use the override form too
     text: "Wrap-up"
+  - appendix.tmd            # draft: true — shows in preview only (draft-aware pin)
