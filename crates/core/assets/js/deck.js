@@ -1190,6 +1190,12 @@
 
   // --- keyboard + touch ---------------------------------------------------
   function onKey(e) {
+    // The share panel is a light-dismiss dialog over any mode (incl. the feed): Escape
+    // closes it, every other key is swallowed so the deck behind doesn't act on it.
+    if (deck.share && !deck.share.hasAttribute('hidden')) {
+      if (e.key === 'Escape') { closeShare(); e.preventDefault(); }
+      return;
+    }
     if (deck.feed) return; // native scroll owns the axis in the feed (no deck key-nav)
     if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
     var t = /** @type {any} */ (e.target);
@@ -1462,6 +1468,193 @@
   }
   function registerPlugin(p) { if (p) { deck.plugins.push(p); if (deck.ready) initPlugin(p); } }
 
+  // --- offline QR encoder (C-ADD-2) ---------------------------------------
+  // A self-contained, dependency-free QR encoder (byte mode, ECC level L, versions
+  // 1..10) so "point a phone at the screen" works with no CDN, on file://. Verified
+  // bit-for-bit against a reference encoder and by decoding the output; longer than a
+  // v10-L URL throws and the caller falls back to the copy-link. Spec tables are
+  // ISO/IEC 18004; the mask penalty (7.8.3) is scored before format/version placement.
+  var qrEncode = (function () {
+    var EC_L = [7, 10, 15, 20, 26, 18, 20, 24, 30, 18];
+    var GROUPS_L = [[[1, 19]], [[1, 34]], [[1, 55]], [[1, 80]], [[1, 108]], [[2, 68]], [[2, 78]], [[2, 97]], [[2, 116]], [[2, 68], [2, 69]]];
+    var DATACAP_L = [19, 34, 55, 80, 108, 136, 156, 194, 232, 274];
+    var ALIGN = [[], [6, 18], [6, 22], [6, 26], [6, 30], [6, 34], [6, 22, 38], [6, 24, 42], [6, 26, 46], [6, 28, 50]];
+    var FORMAT_L = [30660, 29427, 32170, 30877, 26159, 25368, 27713, 26998]; // level L, masks 0..7
+    var VERSION_INFO = { 7: 31892, 8: 34236, 9: 39577, 10: 42195 };
+    var REMAINDER = [0, 7, 7, 7, 7, 7, 0, 0, 0, 0]; // remainder bits, v1..10
+    var EXP = new Array(512), LOG = new Array(256);
+    (function () { var x = 1; for (var i = 0; i < 255; i++) { EXP[i] = x; LOG[x] = i; x <<= 1; if (x & 0x100) x ^= 0x11d; } for (var j = 255; j < 512; j++) EXP[j] = EXP[j - 255]; })();
+    function gmul(a, b) { return (a === 0 || b === 0) ? 0 : EXP[LOG[a] + LOG[b]]; }
+    function rsGen(n) { // generator poly, high-degree-first, excluding the leading 1
+      var g = [1];
+      for (var i = 0; i < n; i++) { var ng = new Array(g.length + 1).fill(0); for (var j = 0; j < g.length; j++) { ng[j + 1] ^= g[j]; ng[j] ^= gmul(g[j], EXP[i]); } g = ng; }
+      var out = []; for (var k = g.length - 2; k >= 0; k--) out.push(g[k]); return out;
+    }
+    function rsEnc(data, n) {
+      var gen = rsGen(n), res = data.slice(); for (var z = 0; z < n; z++) res.push(0);
+      for (var k = 0; k < data.length; k++) { var coef = res[k]; if (coef !== 0) for (var m = 0; m < n; m++) res[k + m + 1] ^= gmul(coef, gen[m]); }
+      return res.slice(data.length);
+    }
+    function utf8(str) {
+      var b = [];
+      for (var i = 0; i < str.length; i++) {
+        var c = str.charCodeAt(i);
+        if (c < 0x80) b.push(c);
+        else if (c < 0x800) b.push(0xc0 | (c >> 6), 0x80 | (c & 0x3f));
+        else if (c >= 0xd800 && c <= 0xdbff) { var c2 = str.charCodeAt(++i), cp = 0x10000 + ((c & 0x3ff) << 10) + (c2 & 0x3ff); b.push(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3f), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f)); }
+        else b.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f));
+      }
+      return b;
+    }
+    function encode(text) {
+      var bytes = utf8(text), ver = 0, ccBits = 8;
+      for (var v = 1; v <= 10; v++) { ccBits = v < 10 ? 8 : 16; if (4 + ccBits + 8 * bytes.length <= DATACAP_L[v - 1] * 8) { ver = v; break; } }
+      if (!ver) throw new Error('QR: data too long');
+      var bits = [];
+      function put(val, len) { for (var i = len - 1; i >= 0; i--) bits.push((val >> i) & 1); }
+      put(0x4, 4); put(bytes.length, ccBits);
+      for (var i = 0; i < bytes.length; i++) put(bytes[i], 8);
+      var cap = DATACAP_L[ver - 1] * 8;
+      for (var t = 0; t < 4 && bits.length < cap; t++) bits.push(0);
+      var padBits = 8 - (bits.length % 8); for (var pb = 0; pb < padBits; pb++) bits.push(0);
+      var data = [];
+      for (var k = 0; k < bits.length; k += 8) { var by = 0; for (var mm = 0; mm < 8; mm++) by = (by << 1) | bits[k + mm]; data.push(by); }
+      var padcw = [0xec, 0x11], pi = 0; while (data.length < DATACAP_L[ver - 1]) data.push(padcw[pi++ % 2]);
+      var ec = EC_L[ver - 1], blocks = [], eccs = [], off = 0;
+      GROUPS_L[ver - 1].forEach(function (grp) { for (var b = 0; b < grp[0]; b++) { var blk = data.slice(off, off + grp[1]); off += grp[1]; blocks.push(blk); eccs.push(rsEnc(blk, ec)); } });
+      var maxData = 0; blocks.forEach(function (b) { if (b.length > maxData) maxData = b.length; });
+      var out = [];
+      for (var c = 0; c < maxData; c++) blocks.forEach(function (b) { if (c < b.length) out.push(b[c]); });
+      for (var e = 0; e < ec; e++) eccs.forEach(function (b) { out.push(b[e]); });
+      var seq = [];
+      out.forEach(function (by) { for (var i2 = 7; i2 >= 0; i2--) seq.push((by >> i2) & 1); });
+      for (var r = 0; r < REMAINDER[ver - 1]; r++) seq.push(0);
+      return buildMatrix(ver, seq);
+    }
+    function buildMatrix(ver, seq) {
+      var size = ver * 4 + 17, mods = [], fn = [];
+      for (var i = 0; i < size; i++) { mods.push(new Array(size).fill(false)); fn.push(new Array(size).fill(false)); }
+      function set(r, c, v) { mods[r][c] = v; fn[r][c] = true; }
+      function finder(r, c) {
+        for (var dr = -1; dr <= 7; dr++) for (var dc = -1; dc <= 7; dc++) {
+          var rr = r + dr, cc = c + dc; if (rr < 0 || rr >= size || cc < 0 || cc >= size) continue;
+          var inring = (dr >= 0 && dr <= 6 && (dc === 0 || dc === 6)) || (dc >= 0 && dc <= 6 && (dr === 0 || dr === 6));
+          set(rr, cc, inring || (dr >= 2 && dr <= 4 && dc >= 2 && dc <= 4));
+        }
+      }
+      finder(0, 0); finder(0, size - 7); finder(size - 7, 0);
+      for (var t = 8; t < size - 8; t++) { set(6, t, t % 2 === 0); set(t, 6, t % 2 === 0); }
+      var ap = ALIGN[ver - 1];
+      if (ap.length) {
+        var mn = ap[0], mx = ap[ap.length - 1];
+        for (var ai = 0; ai < ap.length; ai++) for (var aj = 0; aj < ap.length; aj++) {
+          var r = ap[ai], c = ap[aj];
+          if ((r === mn && c === mn) || (r === mn && c === mx) || (r === mx && c === mn)) continue;
+          for (var dr2 = -2; dr2 <= 2; dr2++) for (var dc2 = -2; dc2 <= 2; dc2++) set(r + dr2, c + dc2, Math.max(Math.abs(dr2), Math.abs(dc2)) !== 1);
+        }
+      }
+      reserveFormat(fn, size);
+      if (ver >= 7) reserveVersion(fn, size);
+      var idx = 0, upward = true;
+      for (var col = size - 1; col > 0; col -= 2) {
+        if (col === 6) col--;
+        for (var row2 = 0; row2 < size; row2++) {
+          var rr2 = upward ? size - 1 - row2 : row2;
+          for (var dc3 = 0; dc3 < 2; dc3++) { var cc2 = col - dc3; if (fn[rr2][cc2]) continue; mods[rr2][cc2] = idx < seq.length ? seq[idx] === 1 : false; idx++; }
+        }
+        upward = !upward;
+      }
+      var bestMask = 0, bestPen = Infinity, bestMods = null;
+      for (var mask = 0; mask < 8; mask++) { var m = applyMask(mods, fn, size, mask), pen = penalty(m, size); if (pen < bestPen) { bestPen = pen; bestMask = mask; bestMods = m; } }
+      placeFormat(bestMods, size, FORMAT_L[bestMask]);
+      if (ver >= 7) placeVersion(bestMods, size, VERSION_INFO[ver]);
+      return { size: size, mods: bestMods };
+    }
+    function reserveFormat(fn, size) {
+      for (var i = 0; i <= 8; i++) if (i !== 6) { fn[8][i] = true; fn[i][8] = true; }
+      for (var j = 0; j < 8; j++) { fn[8][size - 1 - j] = true; fn[size - 1 - j][8] = true; }
+    }
+    function reserveVersion(fn, size) { for (var i = 0; i < 6; i++) for (var j = 0; j < 3; j++) { fn[i][size - 11 + j] = true; fn[size - 11 + j][i] = true; } }
+    function applyMask(src, fn, size, mask) {
+      var m = [];
+      for (var r = 0; r < size; r++) {
+        m.push(src[r].slice());
+        for (var c = 0; c < size; c++) {
+          if (fn[r][c]) continue;
+          var f = false;
+          switch (mask) {
+            case 0: f = (r + c) % 2 === 0; break; case 1: f = r % 2 === 0; break;
+            case 2: f = c % 3 === 0; break; case 3: f = (r + c) % 3 === 0; break;
+            case 4: f = (Math.floor(r / 2) + Math.floor(c / 3)) % 2 === 0; break;
+            case 5: f = ((r * c) % 2 + (r * c) % 3) === 0; break;
+            case 6: f = (((r * c) % 2 + (r * c) % 3) % 2) === 0; break;
+            case 7: f = (((r + c) % 2 + (r * c) % 3) % 2) === 0; break;
+          }
+          if (f) m[r][c] = !m[r][c];
+        }
+      }
+      return m;
+    }
+    function placeFormat(m, size, bits) {
+      function bit(i) { return ((bits >> i) & 1) === 1; }
+      for (var c = 0; c <= 5; c++) m[8][c] = bit(14 - c);
+      m[8][7] = bit(8); m[8][8] = bit(7); m[7][8] = bit(6);
+      for (var r = 0; r <= 5; r++) m[r][8] = bit(r);
+      for (var i = 0; i <= 7; i++) m[8][size - 1 - i] = bit(i);
+      for (var j = 0; j <= 6; j++) m[size - 1 - j][8] = bit(14 - j);
+      m[size - 8][8] = true;
+    }
+    function placeVersion(m, size, bits) {
+      for (var i = 0; i < 18; i++) { var b = ((bits >> i) & 1) === 1, r = Math.floor(i / 3), c = i % 3; m[r][size - 11 + c] = b; m[size - 11 + c][r] = b; }
+    }
+    function findPat(seq, pat, from) {
+      for (var i = from; i <= seq.length - pat.length; i++) { var ok = true; for (var j = 0; j < pat.length; j++) if (!!seq[i + j] !== pat[j]) { ok = false; break; } if (ok) return i; }
+      return -1;
+    }
+    function n3Line(seq, size) {
+      var pat = [true, false, true, true, true, false, true], count = 0, idx = findPat(seq, pat, 0);
+      while (idx !== -1) {
+        var offset = idx + 7, beforeDark = false, afterDark = false, k;
+        for (k = Math.max(idx - 4, 0); k < idx; k++) if (seq[k]) { beforeDark = true; break; }
+        for (k = offset; k < Math.min(offset + 4, size); k++) if (seq[k]) { afterDark = true; break; }
+        if (idx === 0 || idx === size - 7 || !beforeDark || !afterDark) count += 40; else offset = idx + 4;
+        idx = findPat(seq, pat, offset);
+      }
+      return count;
+    }
+    function penalty(m, size) {
+      var n1 = 0, n2 = 0, n3 = 0, dark = 0, r, c;
+      for (r = 0; r < size; r++) {
+        var rowRun = 1, colRun = 1, col = new Array(size);
+        for (c = 0; c < size; c++) {
+          col[c] = m[c][r]; dark += m[r][c] ? 1 : 0;
+          if (c > 0) {
+            if (m[r][c] === m[r][c - 1]) rowRun++; else { if (rowRun >= 5) n1 += rowRun - 2; rowRun = 1; }
+            if (m[c][r] === m[c - 1][r]) colRun++; else { if (colRun >= 5) n1 += colRun - 2; colRun = 1; }
+          }
+          if (r > 0 && c > 0 && m[r][c] === m[r][c - 1] && m[r][c] === m[r - 1][c] && m[r][c] === m[r - 1][c - 1]) n2 += 3;
+        }
+        if (rowRun >= 5) n1 += rowRun - 2;
+        if (colRun >= 5) n1 += colRun - 2;
+        n3 += n3Line(m[r], size); n3 += n3Line(col, size);
+      }
+      var pct = dark * 100 / (size * size);
+      return n1 + n2 + n3 + 10 * Math.floor(Math.abs(pct - 50) / 5);
+    }
+    return encode;
+  })();
+  // Render an encoded QR to a self-contained, theme-independent SVG string (always
+  // black-on-white with a 4-module quiet zone, whatever the deck theme — scanners need
+  // that contrast). Returns null if the text won't fit a v10-L symbol.
+  function qrSvg(text) {
+    var q; try { q = qrEncode(text); } catch (e) { return null; }
+    var n = q.size, qz = 4, dim = n + qz * 2, d = '';
+    for (var r = 0; r < n; r++) for (var c = 0; c < n; c++) if (q.mods[r][c]) d += 'M' + (c + qz) + ' ' + (r + qz) + 'h1v1h-1z';
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + dim + ' ' + dim +
+      '" shape-rendering="crispEdges" role="img" aria-label="QR code linking to this view">' +
+      '<rect width="' + dim + '" height="' + dim + '" fill="#fff"/><path d="' + d + '" fill="#000"/></svg>';
+  }
+
   // --- on-screen chrome: control menu, progress bar, nav arrows -----------
   // The deck's actions (overview, speaker, fullscreen, dark mode) were keyboard-only
   // and so undiscoverable; this surfaces them in a corner menu plus a progress bar +
@@ -1475,6 +1668,7 @@
     fs: svg('<path d="M8 3H5a2 2 0 0 0-2 2v3M16 3h3a2 2 0 0 1 2 2v3M8 21H5a2 2 0 0 1-2-2v-3M16 21h3a2 2 0 0 0 2-2v-3"/>'),
     moon: svg('<path d="M21 12.8A8 8 0 1 1 11.2 3a6 6 0 0 0 9.8 9.8z"/>'),
     present: svg('<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M10 8l5 3-5 3z"/><path d="M8 21h8"/>'),
+    share: svg('<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h3v3M20 14v6M14 20h3"/>'),
   };
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function tool(action, ico, label, hint) {
@@ -1531,6 +1725,7 @@
       '<div class="tali-menu-head">Tools</div><div class="tali-menu-tools">' +
         tool('present', IC.present, 'Present') + // feed-only (CSS-hidden in stepped mode)
         tool('overview', IC.grid, 'Overview', 'O') +
+        tool('share', IC.share, 'Share this view') +
         tool('speaker', IC.speak, 'Speaker view', 'S') +
         tool('fullscreen', IC.fs, 'Fullscreen', 'F') +
       '</div>' + themeRow +
@@ -1581,6 +1776,7 @@
     // so a later resize's maybeReroute() can't auto-snap the user back into the feed.
     if (a === 'present') { deck.autoRoute = false; exitFeed(); }
     else if (a === 'overview') { if (deck.feed) { deck.autoRoute = false; exitFeed(); } setOverview(true); }
+    else if (a === 'share') openShare();
     else if (a === 'speaker') openSpeaker();
     else if (a === 'fullscreen') toggleFullscreen();
   }
@@ -1648,6 +1844,66 @@
     if (document.fullscreenElement && document.visibilityState === 'visible') acquireWakeLock();
     else releaseWakeLock();
   }
+  // --- Share this view (C-ADD-2): a copy-link + an offline QR of the CURRENT url ---
+  // location.href already deep-links the exact slide + fragment + live control state
+  // (C-ADD-3), so a QR/copy of it reopens the whole view. Built lazily; refreshed on open.
+  function buildShare() {
+    if (deck.share) return;
+    var wrap = document.createElement('div');
+    wrap.className = 'tali-share';
+    wrap.setAttribute('role', 'dialog');
+    wrap.setAttribute('aria-label', 'Share this view');
+    wrap.setAttribute('hidden', '');
+    wrap.innerHTML =
+      '<div class="tali-share-card">' +
+        '<button class="tali-share-close" aria-label="Close">' + svg('<path d="M6 6l12 12M18 6L6 18"/>') + '</button>' +
+        '<div class="tali-share-head">Point a phone here</div>' +
+        '<div class="tali-share-qr"></div>' +
+        '<div class="tali-share-note" hidden>This link is too long for a QR code — copy it instead.</div>' +
+        '<div class="tali-share-row"><input class="tali-share-url" name="tali-share-url" type="text" readonly aria-label="Link to this view">' +
+        '<button class="tali-share-copy">Copy</button></div>' +
+      '</div>';
+    document.body.appendChild(wrap);
+    var backdrop = document.createElement('div');
+    backdrop.className = 'tali-share-backdrop';
+    backdrop.setAttribute('hidden', '');
+    document.body.appendChild(backdrop);
+    backdrop.addEventListener('click', function () { closeShare(); });
+    wrap.querySelector('.tali-share-close').addEventListener('click', function () { closeShare(); });
+    wrap.querySelector('.tali-share-copy').addEventListener('click', copyShare);
+    wrap.querySelector('.tali-share-url').addEventListener('focus', function () { this.select(); });
+    deck.share = wrap; deck.shareBackdrop = backdrop;
+  }
+  function openShare() {
+    buildShare();
+    var url = location.href;
+    var input = deck.share.querySelector('.tali-share-url');
+    input.value = url;
+    var svgStr = qrSvg(url);
+    deck.share.querySelector('.tali-share-qr').innerHTML = svgStr || '';
+    deck.share.querySelector('.tali-share-qr').hidden = !svgStr;      // too-long URL: no QR
+    deck.share.querySelector('.tali-share-note').hidden = !!svgStr;
+    var copyBtn = deck.share.querySelector('.tali-share-copy');
+    copyBtn.textContent = 'Copy';
+    deck.share.removeAttribute('hidden'); deck.shareBackdrop.removeAttribute('hidden');
+    showChrome();
+    copyBtn.focus();
+  }
+  function closeShare() {
+    if (!deck.share || deck.share.hasAttribute('hidden')) return;
+    var focusInside = deck.share.contains(document.activeElement);
+    deck.share.setAttribute('hidden', ''); deck.shareBackdrop.setAttribute('hidden', '');
+    if (focusInside && deck.menuBtn) deck.menuBtn.focus(); // WCAG 2.4.3: don't drop to <body>
+  }
+  function copyShare() {
+    var input = deck.share.querySelector('.tali-share-url');
+    var btn = deck.share.querySelector('.tali-share-copy');
+    var done = function () { btn.textContent = 'Copied'; };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(input.value).then(done, function () { legacyCopy(input); done(); });
+    } else { legacyCopy(input); done(); }
+  }
+  function legacyCopy(input) { input.focus(); input.select(); try { document.execCommand('copy'); } catch (e) {} }
   function toggleThemeMode() {
     if (!window.taliDeckSetTheme) return;
     var dark = document.documentElement.classList.contains('tali-deck-dark');

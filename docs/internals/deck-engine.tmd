@@ -142,7 +142,12 @@ and never auto-routes to the feed. A deck opens **as a deck** — there is no re
 mode and no PDF-export mode.
 The shareable artifact is the live HTML deck; a stray `Ctrl/Cmd-P` falls back to a
 minimal `@media print` that shows the current slide legibly (colours kept as-is, so a
-dark deck prints dark rather than inverting to invisible ink). Speaker view and the
+dark deck prints dark rather than inverting to invisible ink). The **Share** menu tool
+surfaces that artifact: it encodes `location.href` (which deep-links slide + step + live
+`{{< input >}}` state) into an offline QR + copy-link. The QR encoder is a self-contained
+~180 lines in `deck.js` (byte mode, ECC level L, versions 1–10; no CDN, works on
+`file://`) — not a vendored library, so nothing to attribute. **Present-mode fullscreen**
+also takes a `navigator.wakeLock` so the display can't dim mid-talk. Speaker view and the
 audience window stay in sync over `postMessage` (it works on `file://`, unlike
 `BroadcastChannel`). Overview keeps each slide's background, shown per tile.
 

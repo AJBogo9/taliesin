@@ -373,6 +373,7 @@ body { background: transparent; }
 @media print {
   @page { size: 960px 540px; margin: 0; }
   .tali-progress, .tali-controls, .tali-menu, .tali-menu-backdrop,
+  .tali-share, .tali-share-backdrop,
   .tali-slide-number, .tali-blackout-overlay { display: none !important; }
   .tali-deck { position: static !important; }
   .tali-deck .tali-slides {
@@ -595,6 +596,37 @@ html.tali-idle .tali-blackout-overlay { cursor: none; }
 
 /* live-presenting chrome only: hidden in overview (print is handled by @media print). */
 .tali-deck.overview .tali-progress, .tali-deck.overview .tali-controls { display: none !important; }
+
+/* Share panel (C-ADD-2): a centered light-dismiss dialog with an offline QR of the
+   CURRENT url + a copy-link field, so the room can scan straight to this exact slide +
+   fragment + control state. The card is the same dark glass as the menu (theme-
+   independent); the QR sits on its own white tile because scanners need black-on-white
+   contrast regardless of the deck theme. */
+.tali-share-backdrop { position: fixed; inset: 0; z-index: 72; background: rgba(0, 0, 0, .55); }
+.tali-share { position: fixed; inset: 0; z-index: 73; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.tali-share[hidden], .tali-share-backdrop[hidden] { display: none; }
+.tali-share-card { position: relative; box-sizing: border-box; width: min(320px, 90vw);
+  background: rgba(20, 22, 27, .98); color: #e6e8ec; border: 1px solid #2c313b; border-radius: 16px;
+  padding: 20px; box-shadow: 0 24px 64px rgba(0, 0, 0, .6);
+  font: 14px/1.35 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; text-align: center;
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); }
+.tali-share-close { position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; display: inline-flex;
+  align-items: center; justify-content: center; border: 0; border-radius: 8px; background: transparent; color: #aeb4bf; cursor: pointer; }
+.tali-share-close:hover { background: rgba(255, 255, 255, .08); color: #fff; }
+.tali-share-close svg { width: 18px; height: 18px; }
+.tali-share-head { font-weight: 600; margin: 2px 0 14px; }
+.tali-share-qr { background: #fff; border-radius: 10px; padding: 12px; margin: 0 auto 14px; width: min(224px, 66vw); }
+.tali-share-qr[hidden] { display: none; }
+.tali-share-qr svg { display: block; width: 100%; height: auto; }
+.tali-share-note { color: #c7ccd6; font-size: 13px; margin: 4px 0 14px; }
+.tali-share-note[hidden] { display: none; }
+.tali-share-row { display: flex; gap: 6px; }
+.tali-share-url { flex: 1; min-width: 0; box-sizing: border-box; padding: 8px 10px; border-radius: 8px;
+  border: 1px solid #2c313b; background: rgba(255, 255, 255, .05); color: #e6e8ec;
+  font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+.tali-share-copy { flex: 0 0 auto; padding: 8px 14px; border: 0; border-radius: 8px; cursor: pointer;
+  background: #4b57b0; color: #fff; font: inherit; font-weight: 600; }
+.tali-share-copy:hover { filter: brightness(1.1); }
 
 /* ===========================================================================
    Deck theme: the typographic + content styling for slides. Clean, modern, fully

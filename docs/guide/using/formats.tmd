@@ -183,6 +183,13 @@ keyboard-only):
 | <kbd>f</kbd> | Fullscreen |
 | <kbd>b</kbd> / <kbd>.</kbd> | Black the screen mid-talk; any of <kbd>b</kbd>/<kbd>.</kbd>/<kbd>Esc</kbd> restores it |
 
+**Share this view** (in the control menu) shows an offline QR code and a copy-link for
+the *current* address, which deep-links the exact slide, step, and any live control
+state. Point the room's phones at the screen to send everyone to precisely where you
+are; the QR is generated on the page, so it works from a built `file://` deck with no
+network. Presenting fullscreen also holds a screen wake lock so the display won't dim
+mid-sentence.
+
 **Speaker view** (<kbd>s</kbd>) opens a second window showing the current and next
 slide as live previews, the current slide's speaker notes, and a running timer plus a
 clock. Write notes in a `::: {.notes}` block on the slide:
