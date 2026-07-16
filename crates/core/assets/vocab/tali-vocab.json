@@ -200,10 +200,6 @@
         "name": "bibliography"
       },
       {
-        "description": "Citation Style Language file.",
-        "name": "csl"
-      },
-      {
         "description": "Document-level code-cell execution defaults.",
         "name": "execute"
       },

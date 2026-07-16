@@ -1,5 +1,6 @@
 //! Bibliography-vs-citation mismatches: citations with no `bibliography:` declared,
-//! and the inverse blind spot, a bare `@key` that never became a citation.
+//! the inverse blind spot (a bare `@key` that never became a citation), and the
+//! recognized-but-inert `csl:` key.
 
 use super::helpers::start_line;
 use crate::render::{Block, Warning};
@@ -23,6 +24,50 @@ pub fn citations_without_bibliography(src: &str, blocks: &[Block]) -> Vec<Warnin
     vec![Warning::new(
         "citations are present but no `bibliography:` is declared, so every reference renders as a raw key",
     )]
+}
+
+/// `csl:` is recognized but not honored, so setting it is a no-op the author cannot see.
+///
+/// Nothing reads the value. Reference formatting is hardcoded IEEE-numeric (`cite::render`
+/// emits `[n]`; `cite::author` implements the shipped `ieee.csl`'s own `et-al-min=7`), and
+/// the `.csl` file's content is never parsed. The key was nonetheless advertised on four
+/// surfaces: the front-matter allowlist, the editor completion, the JSON schema, and the
+/// include resolver (which dutifully RESOLVES and watches the `.csl` file it will never
+/// read). So the tool did not merely ignore `csl:`, it recommended it, and an author who
+/// wrote `csl: apa.csl` got a clean `check` and IEEE output with no signal at all.
+///
+/// **Why a diagnostic rather than dropping the key:** `css` is edit distance 1 from `csl`,
+/// so removing it from `KNOWN_KEYS` would make the unknown-key lint answer with "did you
+/// mean `css`?", i.e. advise renaming a citation-style key to a stylesheet key. Recognized
+/// + warned is the honest shape; see `frontmatter::UNSUPPORTED_KEYS`.
+///
+/// Located at the `csl:` line, since that is where the fix (deleting it) belongs. Carries
+/// no "did you mean" hint on purpose: there is no replacement, and
+/// `codes::extract_suggestion` would lift one into a structured fix an agent would apply.
+pub fn csl_recognized_but_unsupported(src: &str) -> Vec<Warning> {
+    let Some(block) = crate::frontmatter::front_matter_block(src) else {
+        return Vec::new();
+    };
+    // A real YAML parse, so a `csl` mentioned in prose or nested under another key can't
+    // trip it (the allowlist lint decides membership the same way).
+    let Ok(value) = serde_yaml::from_str::<serde_yaml::Value>(block) else {
+        return Vec::new(); // the parse error is reported by `frontmatter::yaml_error`
+    };
+    let Some(map) = value.as_mapping() else {
+        return Vec::new();
+    };
+    if map.get("csl").is_none() {
+        return Vec::new();
+    }
+    let w = Warning::new(
+        "`csl:` is recognized but not supported, so it has no effect: references always \
+         render in the built-in IEEE style (remove the key, or the citations will not \
+         match the style you asked for)",
+    );
+    vec![match crate::frontmatter::block_key_line(block, "csl") {
+        Some(line) => w.at(None, line),
+        None => w,
+    }]
 }
 
 /// A bare `@key` that names a real bibliography entry but shipped as literal prose.

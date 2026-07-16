@@ -33,6 +33,14 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("unknown theorems key", "TAL-FM-KEY", WARNING),
     ("unknown prose-lint key", "TAL-FM-KEY", WARNING),
     ("unknown format", "TAL-FM-FORMAT", WARNING),
+    // A recognized key taliesin reads and then ignores (`csl:`). Must precede the
+    // citation needles below: the message names `bibliography`-adjacent concepts and
+    // would otherwise classify as TAL-CITE-BIB.
+    (
+        "is recognized but not supported",
+        "TAL-FM-UNSUPPORTED",
+        WARNING,
+    ),
     // Body constructs.
     ("unknown callout kind", "TAL-CALLOUT-KIND", WARNING),
     ("unknown cell option", "TAL-CELL-OPTION", WARNING),
@@ -112,6 +120,26 @@ mod tests {
     fn more_specific_needle_wins() {
         assert_eq!(classify("broken link anchor `#x`").0, "TAL-LINK-ANCHOR");
         assert_eq!(classify("broken link: `x.tmd`").0, "TAL-LINK");
+    }
+
+    #[test]
+    fn unsupported_key_outranks_the_generic_citation_needles() {
+        // The `csl:` message names citation concepts, so it would classify as TAL-CITE-BIB
+        // if its needle were ordered after them. It is a front-matter defect (delete the
+        // key), not a bibliography one, so pin both the code and the ordering.
+        let csl = crate::diagnostics::csl_recognized_but_unsupported(
+            "---\ntitle: T\ncsl: apa.csl\n---\n\nBody.\n",
+        );
+        assert_eq!(csl.len(), 1, "the csl warning: {csl:?}");
+        assert_eq!(
+            classify(&csl[0].message),
+            ("TAL-FM-UNSUPPORTED", WARNING),
+            "csl classifies as an unsupported front-matter key: {}",
+            csl[0].message
+        );
+        // No replacement exists, so no structured suggestion may be lifted: an agent must
+        // not be handed a fix to apply.
+        assert_eq!(extract_suggestion(&csl[0].message), None);
     }
 
     #[test]

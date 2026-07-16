@@ -31,7 +31,7 @@ table below repeats the front-matter keys most often paired with project config.
 | `include-in-header` / `include-before-body` / `include-after-body` | Inject raw markup; each is a path, a `{ text: … }` / `{ file: … }` map, or a list of those |
 | `css` | Stylesheet(s) wrapped in `<style>` and inlined |
 | `lang` | BCP-47 language tag for `<html lang>` (default `en`) |
-| `csl` | Recognized so it never warns, but **not currently honored**: references always render in the built-in IEEE style, so setting `csl` has no effect |
+| `csl` | **Recognized, but not supported: `check` warns and the key does nothing.** References always render in the built-in IEEE style. It stays recognized only so it is never mistaken for a typo'd `css:`; delete it |
 | `categories`, `image`, `image-alt` | `categories`/`image` feed `listing:` cards + social meta; `image-alt` sets the alt text on an `about:` profile image (listing-card images emit an empty `alt`) |
 | `draft` | `true` keeps the page (or book chapter) out of a `build`/`publish` (output, nav, listings); `preview` still shows it, badged |
 | `prose-lint` | Opt-in prose linter: `true` enables the built-in rules (doubled words, weasel words), or `{ banned: [term, …] }` adds custom banned terms. Emits located, click-to-source warnings (code/math/links skipped); off by default |

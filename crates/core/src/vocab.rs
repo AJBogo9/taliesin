@@ -72,7 +72,6 @@ fn frontmatter_key_descriptions() -> &'static [(&'static str, &'static str)] {
         ),
         ("toc", "Show a table of contents."),
         ("bibliography", "Path(s) to `.bib` file(s) for citations."),
-        ("csl", "Citation Style Language file."),
         ("execute", "Document-level code-cell execution defaults."),
         ("listing", "Auto-generated listing of child pages."),
         ("about", "About-page block configuration."),
@@ -219,14 +218,24 @@ fn xref_prefixes() -> Value {
 pub fn vocab() -> Value {
     use crate::frontmatter::{
         ABOUT_KEYS, EXECUTE_KEYS, HERO_KEYS, KNOWN_KEYS, LISTING_KEYS, PROSE_LINT_KEYS,
-        THEOREM_KEYS,
+        THEOREM_KEYS, UNSUPPORTED_KEYS,
     };
     use crate::render::{CALLOUT_KINDS, CELL_OPTION_KEYS, INPUT_TYPES, THEOREM_KINDS};
+
+    // A key taliesin recognizes but ignores (`csl:`) must not be OFFERED: completing it
+    // is the tool recommending a no-op. It stays in KNOWN_KEYS so the did-you-mean can't
+    // mis-suggest `css` (see `frontmatter::UNSUPPORTED_KEYS`), and
+    // `diagnostics::csl_recognized_but_unsupported` warns if an author writes it anyway.
+    let offered: Vec<&str> = KNOWN_KEYS
+        .iter()
+        .copied()
+        .filter(|k| !UNSUPPORTED_KEYS.contains(k))
+        .collect();
 
     let nested_desc = nested_key_descriptions();
     json!({
         "frontmatter": {
-            "keys": named(KNOWN_KEYS, frontmatter_key_descriptions()),
+            "keys": named(&offered, frontmatter_key_descriptions()),
             "nested": {
                 "execute": named(EXECUTE_KEYS, nested_desc),
                 "listing": named(LISTING_KEYS, nested_desc),

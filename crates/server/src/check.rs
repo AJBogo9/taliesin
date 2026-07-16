@@ -131,6 +131,7 @@ pub(crate) fn page_static_diagnostics(
     out.extend(dx::validate_code_languages(blocks));
     out.extend(dx::citations_without_bibliography(src, blocks));
     out.extend(dx::bare_citation_key_not_rendered(src, blocks, base));
+    out.extend(dx::csl_recognized_but_unsupported(src));
     out
 }
 
@@ -602,6 +603,7 @@ mod tests {
             "image is missing alt text",
             "looks like a placeholder",
             "is not a citation",
+            "is recognized but not supported",
         ];
         fn walk(dir: &Path, skip: &[&str], out: &mut Vec<std::path::PathBuf>) {
             for e in fs::read_dir(dir).unwrap() {

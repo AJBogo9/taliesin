@@ -358,7 +358,8 @@ bibliography: references.bib
 
 `bibliography:` enables `[@key]` citations and appends an auto-generated References
 section. (References always render in a single built-in IEEE style; a `csl:` key is
-accepted but not currently honored.) Inline and display math use `$…$` and `$$…$$`,
+recognized but not supported, so `check` warns on it.) Inline and display math use
+`$…$` and `$$…$$`,
 rendered server-side, so the HTML carries the math with no client-side library:
 
 ```markdown

@@ -73,7 +73,7 @@ Each of these injects trusted, verbatim markup. The value can be a path, a
 |---|---|---|
 | `toc` | bool | `true` adds a live table of contents (and enables the Cmd-K search palette) |
 | `bibliography` | string \| list | A `.bib` file (or list of them) enabling `[@key]` citations and an auto-generated References section |
-| `csl` | string | **Recognized so it never warns, but not currently honored**: references always render in the built-in IEEE style, so setting `csl` has no effect |
+| `csl` | string | **Recognized, but not supported: `check` warns and the key does nothing.** References always render in the built-in IEEE style. It stays recognized only so a `csl:` key is never mistaken for a typo'd `css:`; delete it |
 
 ### Code execution
 
@@ -242,9 +242,12 @@ Two deliberate exceptions:
 - **`format:` sub-keys are not linted.** A format extension may add its own format
   options, so Taliesin leaves everything under `format:` alone rather than guess at a
   vocabulary it does not own.
-- **`csl:` is recognized but not honored.** It is in the known set (so it never
-  warns), but there is no CSL engine: references always render in the single built-in
-  IEEE style.
+- **`csl:` is recognized but not supported.** There is no CSL engine: references always
+  render in the single built-in IEEE style. `check` warns on the key (it is not offered
+  as a completion either), so the no-op is visible rather than silent. It stays in the
+  known set on purpose: `css` is one edit away from `csl`, so dropping it would make the
+  did-you-mean answer a citation-style key with "did you mean `css`?", which is worse
+  advice than none.
 
 ## Editor autocomplete
 
@@ -297,7 +300,6 @@ image-alt: "A loss curve trending down"           # alt text for this post's lis
 # --- Contents / citations ---
 toc: true                                          # live TOC + Cmd-K search
 bibliography: refs.bib                              # enables [@key] + References
-csl: ieee.csl                                       # recognized but NOT honored (IEEE only)
 
 # --- Raw-HTML includes (trusted, verbatim) ---
 include-in-header: analytics.html                  # injected into <head>

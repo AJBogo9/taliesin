@@ -45,7 +45,7 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     "include-after-body",
     // Table of contents
     "toc",
-    // Citations
+    // Citations. `csl` is recognized but NOT honored; see UNSUPPORTED_KEYS.
     "bibliography",
     "csl",
     // Execution
@@ -59,6 +59,20 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     // Theorem environments (per-document numbering config; see render::TheoremConfig).
     "theorems",
 ];
+
+/// Keys taliesin RECOGNIZES but does not honor: it reads them, then ignores them.
+///
+/// They stay in [`KNOWN_KEYS`] on purpose, and the reason is not politeness. `csl` is edit
+/// distance 1 from `css`, so dropping it would make the did-you-mean machinery answer a
+/// `csl:` key with "did you mean `css`?" — confidently telling the author to rename their
+/// citation-style key to a stylesheet key. That is worse than the silence it replaces, so
+/// the key is recognized and a dedicated diagnostic says the honest thing instead
+/// (`diagnostics::csl_recognized_but_unsupported`).
+///
+/// Also the exclusion list for the editor vocabulary (`vocab::vocab`): an unsupported key
+/// must never be OFFERED as a completion. Recognizing what an author already wrote and
+/// suggesting they write it are different acts.
+pub(crate) const UNSUPPORTED_KEYS: &[&str] = &["csl"];
 
 /// `execute:` sub-keys taliesin honors (document-level cell defaults; see
 /// `render::detect_execute_defaults`).
@@ -358,7 +372,10 @@ pub(crate) fn bibliography_line(src: &str) -> Option<u32> {
 /// The 1-based SOURCE-FILE line of a top-level front-matter key (best-effort). The
 /// block starts on the file line after the opening `---`, so block line index `i` is
 /// file line `i + 2`. `None` if the key is not on its own line (e.g. a flow mapping).
-fn block_key_line(block: &str, key: &str) -> Option<u32> {
+///
+/// `pub(crate)` so a `diagnostics` validator can locate a front-matter key on the same
+/// click-to-source channel, rather than keeping a second copy of this offset rule.
+pub(crate) fn block_key_line(block: &str, key: &str) -> Option<u32> {
     block.lines().enumerate().find_map(|(i, line)| {
         let t = line.trim_start();
         (line.len() == t.len() && key_matches(t, key)).then_some(i as u32 + 2)
@@ -726,6 +743,40 @@ mod tests {
             !msgs("---\ntitle: X\n---\n")
                 .iter()
                 .any(|w| w.contains("page-layout"))
+        );
+    }
+
+    #[test]
+    fn csl_stays_recognized_because_dropping_it_would_mis_suggest_css() {
+        // `csl:` is inert (nothing reads the value; references always render in the
+        // built-in IEEE style), so the tempting cleanup is to drop it from KNOWN_KEYS and
+        // let the unknown-key lint speak. That is a TRAP, and this pins why: `css` is edit
+        // distance 1 from `csl`, so the did-you-mean would confidently tell the author to
+        // rename their citation-style key to a STYLESHEET key. Wrong advice is worse than
+        // the silence it replaces. `csl` therefore stays recognized, and
+        // `diagnostics::csl_recognized_but_unsupported` is what speaks.
+        assert_eq!(
+            levenshtein("csl", "css"),
+            1,
+            "the hazard is edit distance 1"
+        );
+        let without_csl: Vec<&'static str> =
+            KNOWN_KEYS.iter().copied().filter(|k| *k != "csl").collect();
+        assert_eq!(
+            closest("csl", &without_csl),
+            Some("css"),
+            "dropping `csl` from KNOWN_KEYS makes the did-you-mean suggest `css`"
+        );
+        // As shipped: recognized, so the unknown-key lint stays silent on it.
+        assert!(
+            KNOWN_KEYS.contains(&"csl"),
+            "`csl` must stay in the allowlist"
+        );
+        assert!(
+            !msgs("---\ntitle: X\ncsl: ieee.csl\n---\n")
+                .iter()
+                .any(|w| w.contains("unknown front-matter key")),
+            "`csl` must never be reported as an unknown key"
         );
     }
 
