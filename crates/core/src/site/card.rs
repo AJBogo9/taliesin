@@ -296,6 +296,40 @@ pub(crate) fn card_url(site: &Site, page: &Page) -> Option<String> {
     Some(format!("/{}", card_rel_path(&card_spec(site, page))))
 }
 
+/// Characters in `spec`'s text that the bundled font has no glyph for, first-seen order,
+/// deduped. Each renders as a `.notdef` tofu box with a non-zero advance, so the card
+/// lays out and encodes "successfully" while reading as garbage to every crawler that
+/// sees it. Nobody looks at a social card, so this cannot be caught by eye.
+///
+/// The font is Latin/Latin-ext/Vietnamese (658 glyphs), which makes the realistic
+/// casualties Greek/Cyrillic/CJK/emoji and, for a maths-heavy author, `∑ ∫ ∞`.
+pub fn uncovered_glyphs(spec: &CardSpec) -> Vec<char> {
+    let f = font();
+    let mut out: Vec<char> = Vec::new();
+    let fields = [
+        Some(spec.headline.clone()),
+        // Checked as DRAWN: `render_card` uppercases the eyebrow, and only the eyebrow.
+        // Uppercasing the rest would cry wolf over a char that is covered in the form it
+        // actually renders in.
+        spec.eyebrow.as_deref().map(str::to_uppercase),
+        spec.lead.clone(),
+        Some(spec.footer_wordmark.clone()),
+        spec.domain.clone(),
+    ];
+    for text in fields.iter().flatten() {
+        for ch in text.chars() {
+            // Whitespace has no outline by design and is never .notdef-substituted.
+            if ch.is_whitespace() || out.contains(&ch) {
+                continue;
+            }
+            if f.glyph_id(ch).0 == 0 {
+                out.push(ch);
+            }
+        }
+    }
+    out
+}
+
 /// Lay the headline out: up to 3 lines at 76px, with one shrink step to 60px if it
 /// overflows. Returns the lines and the chosen size.
 ///
@@ -640,6 +674,35 @@ mod tests {
         let home2 = site2.pages.iter().find(|p| p.url == "index.html").unwrap();
         assert!(card_url(&site2, home2).is_none(), "no url -> None");
         let _ = std::fs::remove_dir_all(&without);
+    }
+
+    #[test]
+    fn uncovered_glyphs_reports_what_the_font_cannot_draw() {
+        // The bundled Newsreader is Latin/Latin-ext/Vietnamese only. A char it lacks is
+        // drawn as .notdef — a tofu box with a NON-ZERO advance, so layout "succeeds" and
+        // nothing errors. Verified by rendering: a title of "Deriving ∑ log p(x) and the
+        // ∫ bound" produces a card reading "Deriving ▯ log p(x) and the ▯ bound", with the
+        // build reporting success. Math symbols are the realistic trigger for this author.
+        let spec = |headline: &str| CardSpec {
+            eyebrow: None,
+            headline: headline.into(),
+            lead: None,
+            footer_wordmark: "W".into(),
+            domain: None,
+        };
+        assert_eq!(
+            uncovered_glyphs(&spec("Deriving ∑ log p(x) and the ∫ bound")),
+            vec!['∑', '∫']
+        );
+        // Latin, punctuation and the ellipsis we now emit ourselves must all be covered,
+        // or the diagnostic cries wolf on every card.
+        assert!(uncovered_glyphs(&spec("The EM-algorithm: a “deep” dive… (2026)")).is_empty());
+        // Every text field is checked, not just the headline.
+        let mut s = spec("Fine");
+        s.lead = Some("Приветствие".into());
+        assert!(!uncovered_glyphs(&s).is_empty(), "the lead is checked too");
+        // Each missing char is reported ONCE, in first-seen order.
+        assert_eq!(uncovered_glyphs(&spec("∑ ∑ ∫ ∑")), vec!['∑', '∫']);
     }
 
     #[test]

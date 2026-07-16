@@ -211,6 +211,7 @@ pub use book::{Book, BookEntry};
 use book::{book_pages, build_book, chapter_heading};
 pub use card::{
     CARD_DESIGN_VERSION, CARD_EXT, CARD_H, CARD_W, CardSpec, card_rel_path, card_spec, render_card,
+    uncovered_glyphs,
 };
 mod backlinks;
 mod categories;

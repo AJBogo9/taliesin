@@ -1598,6 +1598,19 @@ async fn build_site_async(
             if let Some(parent) = dest.parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
+            // The bundled card font is Latin-only, and a missing glyph draws as a tofu box
+            // with a real advance — the card lays out and encodes "successfully" while
+            // reading as garbage. Nobody ever looks at a social card, so say so here or it
+            // is never caught. A diagnostic, not a knob: the author rephrases the title.
+            let missing = taliesin_core::site::uncovered_glyphs(&spec);
+            if !missing.is_empty() {
+                let chars: Vec<String> = missing.iter().map(|c| format!("`{c}`")).collect();
+                log::warn(&format!(
+                    "{}: social card font has no glyph for {} (they render as blank boxes)",
+                    page.input.display(),
+                    chars.join(" ")
+                ));
+            }
             match std::fs::write(&dest, taliesin_core::site::render_card(&spec)) {
                 Ok(()) => card_paths.push(PathBuf::from(&rel)),
                 Err(e) => log::warn(&format!("cannot write {rel}: {e}")),

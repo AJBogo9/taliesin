@@ -440,6 +440,10 @@ mod cli_microcopy_tests {
             "TALIESIN_GIT_SHA",
             "TALIESIN_BLESS",
             "TALIESIN_REQUIRE_KERNEL",
+            // Like TALIESIN_REQUIRE_KERNEL: a CI-only gate that turns a "tool missing, so
+            // skip" into a hard failure (here, Node for the JS-equivalence guard). Not a
+            // knob a user of the binary ever sets.
+            "TALIESIN_REQUIRE_NODE",
         ];
 
         fn walk(dir: &std::path::Path, out: &mut std::collections::BTreeSet<String>) {
