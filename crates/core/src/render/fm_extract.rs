@@ -99,7 +99,7 @@ fn is_reveal_format(name: &str) -> bool {
 /// when the YAML won't parse it falls back to the lenient scanner — `,[]`-split for the
 /// scalar/inline form, plus a block-sequence read — so a malformed-but-linted doc still
 /// resolves what it can.
-pub(super) fn bibliography_paths(front_matter: &str) -> Vec<String> {
+pub(crate) fn bibliography_paths(front_matter: &str) -> Vec<String> {
     // comrak's FrontMatter node includes the `---` fences, which serde_yaml reads as
     // document markers and rejects — so the faithful parse below would ALWAYS fail on the
     // real caller's input and silently fall through to the lenient scanner (which can't

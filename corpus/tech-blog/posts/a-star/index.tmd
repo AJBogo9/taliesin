@@ -29,7 +29,7 @@ where
 
 After A\* computes the score of each frontier node, the algorithm will always expand the node with the lowest $f(n)$. Minimizing both the cost of getting to the current node $g(n)$ and the estimate of arriving at the goal $h(n)$ makes the algorithm seek the shortest path from start point to the end point.
 
-For a more thorough study of A\*, please refer to @russell2022artificial.
+For a more thorough study of A\*, please refer to [@russell2022artificial].
 
 ## Implementation
 

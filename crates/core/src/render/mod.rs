@@ -42,10 +42,11 @@ mod doc_includes;
 pub use doc_includes::includes_from_parts;
 use doc_includes::resolve_doc_includes;
 mod fm_extract;
+pub(crate) use fm_extract::bibliography_paths;
 pub use fm_extract::is_reveal_doc;
 use fm_extract::{
-    Numbered, TheoremConfig, bibliography_paths, detect_format, detect_title_block_hidden,
-    detect_toc, extract_field, parse_theorem_config,
+    Numbered, TheoremConfig, detect_format, detect_title_block_hidden, detect_toc, extract_field,
+    parse_theorem_config,
 };
 mod cell_extract;
 pub(crate) use cell_extract::option_directive;

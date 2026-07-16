@@ -525,3 +525,76 @@ fn mermaid_cells_do_not_warn() {
         msgs(&validate_code_languages(&doc.blocks))
     );
 }
+
+// --- bare `@key` that silently fails to become a citation -------------------
+// Regression net for the a-star bug: `corpus/tech-blog/posts/a-star` declared a
+// bibliography, wrote a bare `@russell2022artificial` whose key IS in that .bib,
+// and shipped the raw key as prose under an empty References heading, with
+// `check` reporting "no problems found".
+
+const BIB: &str = "@book{russell2022artificial,\n  title = {AIMA},\n  author = {Russell, S.},\n  year = {2022}\n}\n\n@article{smith2020,\n  title = {T},\n  author = {Smith, A.},\n  year = {2020}\n}\n";
+
+fn bare_cite_warnings(dir: &Tmp, body: &str) -> Vec<Warning> {
+    std::fs::write(dir.0.join("refs.bib"), BIB).unwrap();
+    let src = format!("---\ntitle: T\nbibliography: refs.bib\n---\n\n{body}");
+    let doc = render_document_with_includes(&src, &dir.0);
+    bare_citation_key_not_rendered(&src, &doc.blocks, &dir.0)
+}
+
+#[test]
+fn bare_key_matching_the_bibliography_is_flagged() {
+    let dir = Tmp::new("bare-cite");
+    let ws = bare_cite_warnings(&dir, "Please refer to @russell2022artificial.\n");
+    let m = msgs(&ws);
+    assert_eq!(m.len(), 1, "the dangling bare key: {m:?}");
+    assert!(
+        m[0].contains("@russell2022artificial"),
+        "names the key: {m:?}"
+    );
+    assert!(
+        m[0].contains("[@russell2022artificial]"),
+        "suggests the bracketed form (did-you-mean): {m:?}"
+    );
+    assert!(
+        ws[0].line.is_some(),
+        "must be located for click-to-source: {:?}",
+        ws[0]
+    );
+}
+
+#[test]
+fn bracketed_citation_is_clean() {
+    let dir = Tmp::new("bare-cite-ok");
+    let ws = bare_cite_warnings(&dir, "As shown [@russell2022artificial].\n");
+    assert!(ws.is_empty(), "a real citation must not trip this: {ws:?}");
+}
+
+#[test]
+fn bare_at_word_outside_the_bibliography_is_clean() {
+    // The greedy-match hazard: `is_cite_key_char` admits `/ . : +`, so an unguarded
+    // scan eats `@media`, `@types/node` and e-mail. Membership gating is what
+    // makes this rule safe, so pin it.
+    let dir = Tmp::new("bare-cite-noise");
+    let ws = bare_cite_warnings(
+        &dir,
+        "Use @media queries, install @types/node, mail bob@russell2022artificial.com \
+         or ping @russell2022artificialXYZ today.\n",
+    );
+    assert!(ws.is_empty(), "must not fire on non-bib `@word`s: {ws:?}");
+}
+
+#[test]
+fn bare_key_in_a_code_block_is_clean() {
+    let dir = Tmp::new("bare-cite-code");
+    let ws = bare_cite_warnings(&dir, "```\n@russell2022artificial\n```\n");
+    assert!(ws.is_empty(), "code is not prose: {ws:?}");
+}
+
+#[test]
+fn no_bibliography_declared_means_no_scan() {
+    let dir = Tmp::new("bare-cite-nobib");
+    let src = "---\ntitle: T\n---\n\nPlease refer to @russell2022artificial.\n";
+    let doc = render_document_with_includes(src, &dir.0);
+    let ws = bare_citation_key_not_rendered(src, &doc.blocks, &dir.0);
+    assert!(ws.is_empty(), "no bibliography, nothing to match: {ws:?}");
+}
