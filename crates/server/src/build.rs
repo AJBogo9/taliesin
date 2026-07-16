@@ -1342,28 +1342,43 @@ async fn build_site_async(
     // a cold boot. Determinism is untouched: a pooled kernel runs the same ipykernel
     // with the same preambles as a cold one, so it produces identical bytes — the pool
     // only changes *when* a kernel is ready, never *what* it computes.
+    // Resolve the interpreter BEFORE splitting the budget. The split docks slots for the
+    // warm pool, and whether a pool can exist at all depends on this resolution — so
+    // splitting first meant docking for a pool that (in the default configuration, where
+    // `should_warm(Provenance::Default)` is false) never boots. Those slots bought
+    // nothing and `--jobs 3` built ONE page at a time.
+    let interp_python = crate::interpreter::resolve_python(site.config.python.as_deref(), root);
     let cap = build_budget::concurrency_cap(jobs, build_budget::PER_KERNEL_MB).max(1);
-    let split = build_budget::budget_split(cap);
-    let build_cap = split.build_kernels.max(1);
-    log::info(&format!(
-        "building with up to {} parallel page(s); pre-warming {} kernel(s)",
-        build_cap, split.warm_pool
-    ));
+
+    // The one process-wide warm pool for this build. `None` (so every page cold-starts
+    // exactly as today) when `TALIESIN_PYTHON` is unset or the forkserver can't boot;
+    // dropped at the end of this fn, killing the daemon + idle kernels. The pool boots
+    // only for a concrete interpreter choice (not the bare python3 default), and each
+    // page/deck executor resolves the same way.
+    let want_warm = build_budget::budget_split(cap).warm_pool;
+    let warm_pool = warm_pool::warm_pool_for_build(want_warm, &interp_python).await;
+
+    // Charge the budget for the kernels that ACTUALLY exist. A pool that declined to boot
+    // (bare `python3`) or failed to (`is_warm()` false) holds no kernels, so it costs no
+    // RAM and must cost no build slots either.
+    let warmed = match &warm_pool {
+        Some(p) if p.is_warm() => want_warm,
+        _ => 0,
+    };
+    let build_cap = cap.saturating_sub(warmed).max(1);
+    log::info(&if warmed > 0 {
+        format!("building with up to {build_cap} parallel page(s); pre-warming {warmed} kernel(s)")
+    } else {
+        // Say nothing about pre-warming rather than "pre-warming 0 kernel(s)": the point
+        // of the line is what the build is doing, and it is not pre-warming anything.
+        format!("building with up to {build_cap} parallel page(s)")
+    });
     let mut pages = 0usize;
     let mut kernel_unavailable = false;
     // `--strict` problem tally across the whole site: a malformed `_site.yml`, per-page
     // located warnings, broken cross-refs, crashed cells, and page-task panics (each
     // already logged where it occurs).
     let mut problems = config_problems;
-
-    // The one process-wide warm pool for this build. `None` (so every page cold-starts
-    // exactly as today) when `TALIESIN_PYTHON` is unset or the forkserver can't boot;
-    // dropped at the end of this fn, killing the daemon + idle kernels.
-    // Resolve the project's Python interpreter (from _site.yml python:, a .venv, env, or
-    // default) against the site root; the warm pool boots only for a concrete choice
-    // (not the bare python3 default), and each page/deck executor resolves the same way.
-    let interp_python = crate::interpreter::resolve_python(site.config.python.as_deref(), root);
-    let warm_pool = warm_pool::warm_pool_for_build(split.warm_pool, &interp_python).await;
 
     // Build into a slot per page (indexed by page order) so results aggregate
     // deterministically regardless of completion order. A `Semaphore` of size
