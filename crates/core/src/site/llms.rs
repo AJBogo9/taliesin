@@ -223,7 +223,14 @@ pub(crate) fn text_content(html: &str) -> String {
     let mut depth = 0u32;
     for ch in html.chars() {
         match ch {
-            '<' => depth += 1,
+            // A space at every tag so text from adjacent blocks/inlines stays
+            // word-separated (the trailing whitespace-collapse tidies the runs).
+            // Without it a title block emits "KL DivergenceHow to measure...
+            // alignment.17 March 20263 min read".
+            '<' => {
+                depth += 1;
+                no_tags.push(' ');
+            }
             '>' => depth = depth.saturating_sub(1),
             c if depth == 0 => no_tags.push(c),
             _ => {}
@@ -333,6 +340,27 @@ mod tests {
         assert_eq!(text_content("<h2>A&nbsp;B</h2>"), "A B");
         // A literal, double-encoded `&lt;` must decode once, not collapse to `<`.
         assert_eq!(text_content("<p>&amp;lt;</p>"), "&lt;");
+    }
+
+    #[test]
+    fn text_content_separates_adjacent_blocks() {
+        // Stripping a tag must leave a word boundary behind: without one, every
+        // post in the real `llms-full.txt` fused its title into its description
+        // and its date into its reading time ("...alignment.17 March 20263 min read").
+        assert_eq!(
+            text_content("<h3>KL Divergence</h3><p>How to measure it.</p>"),
+            "KL Divergence How to measure it."
+        );
+        assert_eq!(
+            text_content("<span>17 March 2026</span><span>3 min read</span>"),
+            "17 March 2026 3 min read"
+        );
+        // Accepted trade-off (same call `search.rs::section_text` makes): the date +
+        // reading-time fusion above is two *inline* `<span>`s, so a block-level-only
+        // rule would still emit "20263 min read". Separating at every tag fixes that
+        // and costs mid-word inline emphasis, which degrades to readable words rather
+        // than to a fake number.
+        assert_eq!(text_content("<p>re<em>st</em>art</p>"), "re st art");
     }
 
     #[test]
