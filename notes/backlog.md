@@ -83,6 +83,25 @@ scoped prune leaves the unscoped half looking freshly reviewed.** When you prune
 whole list or say which slice you pruned. Corrections applied below; the sweep's verdicts are in
 [2026-07-17-backlog-truth-sweep.md](2026-07-17-backlog-truth-sweep.md).
 
+**Second ruling round, 2026-07-17 (do not re-litigate):**
+- **Exec/kernel sign-off GRANTED for M2 and the M3+M4+M5 bundle.** **M6a (`MAX_WARM_PAGES`) was
+  NOT granted: the zone stays frozen there.** Do not tune that constant or touch `exec_pool.rs`
+  eviction without a new ruling. M6b (the `/proc` probe) never needed sign-off and is free.
+- **Citation sign-off GRANTED for D69 only** (the appendix-after-`# References` orphan). **D72
+  (bare `@key`) DECLINED for now**: the diagnostic already ships, so nothing renders wrong silently,
+  which makes it a feature question, not a defect.
+- **A reference's click-to-source lands NOWHERE** (live defect #1). `locatable()` must require a
+  *usable* sourcepos, so the References section is simply not click-to-source instead of silently
+  landing every click on line 1. A CSL entry's real position is in the `.bib`, not the `.tmd`, so
+  there is nothing truthful to point at, and pointing at the `[@key]` site would dress a guess up as
+  navigation. The same one change also closes the footnote-chrome bug (clicking the `<hr>`/padding
+  resolved to line 1). **This adds no new bridge back to source** (single-editing-surface).
+- **D34: SUBTRACT.** Delete the dead `SiteConfig.card_image` (zero readers; its own doc comment
+  concedes it); **defer** the `bibliography`/`csl`/`execute`/`theme` project defaults until a corpus
+  doc actually hurts. "Perfect the default before adding a knob."
+- **D70 "Cite this" card: still unruled**, and low priority — it would render author-free for all 8
+  tech-blog posts (0 set `author:`), and its machine-readable half already ships.
+
 **The three rulings landed 2026-07-17 (do not re-litigate):**
 1. **`--jobs N` means N parallel PAGES.** The CLI was right; the code was the bug. Warm pool is now
    ADDITIVE under an explicit `--jobs`; auto mode is untouched (`f141cac`). Measured on the running
