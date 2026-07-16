@@ -1056,11 +1056,20 @@
     }
     var frag = parts.join('/');
     var url = '#/' + frag;
+    // Preserve any `{{< input >}}` state suffix (C-ADD-3): inside a deck qmd-js.js writes
+    // control state as a `?k=v&...` suffix after this position prefix. The deck owns the
+    // prefix, qmd-js owns the suffix, and each rewrite carries the other's segment through
+    // untouched — so navigating a slide never drops a shared control value and vice-versa.
+    var q = location.hash.split('?')[1];
+    if (q) url += '?' + q;
     if (url === location.hash) return;
     history.replaceState(null, '', url); // deep-link without polluting back/forward history
   }
   function readHash() {
-    var raw = location.hash.replace(/^#\/?/, '');
+    // Drop the `{{< input >}}` state suffix (C-ADD-3) before parsing the deck position;
+    // qmd-js.js reads that suffix. `?` can't appear in a position (ids are slugs, indices
+    // digits) or an encoded control value, so the split is unambiguous.
+    var raw = location.hash.replace(/^#\/?/, '').split('?')[0];
     if (!raw) return false;
     var parts = raw.split('/');
     var fragPart;

@@ -104,6 +104,21 @@ The audience sees the slide; only the presenter sees the notes.
 This is a speaker note, hidden from the audience view.
 :::
 
+## Ask "what if?" live
+
+Change the control and the slide recomputes. The value rides the deep-link, so a
+shared address reopens the exact slide *and* this control's state.
+
+{{< input name="rate" type="slider" min="0" max="20" step="1" value="8" label="rate %" >}}
+
+```{js}
+//| input: rate
+const p = document.createElement("p");
+const r = qmd.value("rate");
+p.textContent = "at " + r + "% growth, 100 becomes " + (100 * (1 + r / 100)).toFixed(1);
+return p;
+```
+
 # A deeper topic
 
 Press down (not right) to descend into a vertical stack of related slides.

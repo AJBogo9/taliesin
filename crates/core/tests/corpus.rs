@@ -237,12 +237,12 @@ fn reveal_deck_detects_format_and_splits_into_slides() {
     assert!(slides.contains("<h1 class=\"title\">A Plain Deck</h1>"));
     assert!(slides.contains("<p class=\"subtitle\">Slides on the native engine</p>"));
     // One slide per `##` heading. The corpus deck is the deck-engine regression net
-    // (see `corpus_deck_pins_every_kept_rich_feature`), so it carries fourteen level-2
+    // (see `corpus_deck_pins_every_kept_rich_feature`), so it carries fifteen level-2
     // slides plus one level-1 vertical-stack lead. `data-level` is the count anchor.
     let content_slides = slides.matches("data-level=\"2\"").count();
     assert_eq!(
-        content_slides, 14,
-        "expected 14 content slides, got {content_slides}"
+        content_slides, 15,
+        "expected 15 content slides, got {content_slides}"
     );
     // Slide ids are slugged from the heading text.
     assert!(slides.contains("id=\"what-decks-are\""), "got: {slides}");
@@ -320,6 +320,12 @@ fn corpus_deck_pins_every_kept_rich_feature() {
     assert!(
         slides.contains("<div class=\"notes\""),
         "deck corpus must exercise speaker notes"
+    );
+    // A reactive `{{< input >}}` control + a `{js}` cell that consumes it: the deck's
+    // live "what if?" surface, whose state rides the deep-link (C-ADD-3).
+    assert!(
+        slides.contains("data-qmd-input=\"rate\""),
+        "deck corpus must exercise a reactive {{< input >}} control"
     );
     // A vertical stack: an h1 lead slide wrapping its h2 children.
     assert!(

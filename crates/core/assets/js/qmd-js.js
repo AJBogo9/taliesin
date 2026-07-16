@@ -44,11 +44,19 @@
   // live-swap) restores every control + its downstream cells. A plain anchor
   // fragment (`#heading`, no `=`) is left untouched, so heading / footnote / xref
   // links still work; the first control change then replaces it with state.
+  // Inside a slide deck the fragment is shared: deck.js owns a `/slide/v/frag` position
+  // PREFIX and this input state is a `?k=v&...` SUFFIX after it (C-ADD-3). On a normal
+  // page the whole fragment is the bare `k=v&...` query. This reconciliation stops the
+  // two hash writers (deck nav + control change) from clobbering each other's segment.
+  function inDeck() {
+    return !!document.querySelector(".tali-deck .tali-slides");
+  }
   function parseInputFragment() {
     var out = {};
     var h = (location.hash || "").replace(/^#/, "");
-    if (h.indexOf("=") < 0) return out; // a plain anchor, not control state
-    h.split("&").forEach(function (kv) {
+    var q = inDeck() ? h.split("?")[1] || "" : h;
+    if (q.indexOf("=") < 0) return out; // a plain anchor / bare deck position, not control state
+    q.split("&").forEach(function (kv) {
       var i = kv.indexOf("=");
       if (i < 0) return;
       try {
@@ -68,12 +76,20 @@
       var n = el.getAttribute("data-qmd-input");
       if (n) parts.push(encodeURIComponent(n) + "=" + encodeURIComponent(String(readValue(el))));
     });
-    var hash = parts.join("&");
+    var q = parts.join("&");
+    var url;
+    if (inDeck()) {
+      // Preserve deck.js's position prefix; write control state as the `?`-suffix (C-ADD-3).
+      var pos = (location.hash || "").replace(/^#/, "").split("?")[0];
+      url = "#" + pos + (q ? "?" + q : "");
+    } else {
+      url = "#" + q;
+    }
     // replaceState: change the URL without scrolling or spamming history on every tick.
     try {
-      history.replaceState(null, "", "#" + hash);
+      history.replaceState(null, "", url);
     } catch (e) {
-      location.hash = hash;
+      location.hash = url.replace(/^#/, "");
     }
   }
 

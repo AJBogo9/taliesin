@@ -213,7 +213,10 @@ current slide legibly.
 
 **Live code and `{js}`** work in a deck exactly as on a page: `{python}` / `{r}` cells
 execute against the warm kernel and native `{js}` cells stay interactive, right on the
-slide. See [Executable content](code.tmd) and [Interactive documents](interactive.tmd).
+slide. A `{{< input >}}` control on a slide even rides the deep-link: nudge a slider to
+answer a "what if?" from the room, and the address bar captures the exact slide *and*
+that control's value, so the link you share reopens the whole live view. See
+[Executable content](code.tmd) and [Interactive documents](interactive.tmd).
 
 ### Embedding a deck in a page
 
