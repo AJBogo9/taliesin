@@ -56,9 +56,19 @@ commit is local" while it was pushed, before he pushed four more in-flight commi
 checks too, do not assume: `cargo test -p taliesin-core` + `-p taliesin-server`, `cargo fmt --check`,
 `cargo clippy --all-targets -- -D warnings`. *(It happened a sixth time on 2026-07-16: the author
 pushed `2368e4a` mid-session while an agent was mid-task. The count was checked, not reported.)*
-**Two new gates**, or the suite quietly under-tests itself: `TALIESIN_REQUIRE_NODE=1 cargo test
---workspace` (the JS-equivalence guard skips without Node) and `TALIESIN_R=R TALIESIN_REQUIRE_R=1
-cargo test -p taliesin-server --test r_kernel` (R needs an interpreter + IRkernel). CI sets both.
+*(A **seventh** time on 2026-07-17: the author pushed `50e0e71` mid-session while an agent was
+mid-task, so three of that session's own commits were already on `origin/main` before it finished.
+Checked, not assumed — which is the only reason the handoff below is right.)*
+
+**THREE gates now, or the suite quietly under-tests itself:** `TALIESIN_REQUIRE_NODE=1 cargo test
+--workspace` (the JS-equivalence guard skips without Node), `TALIESIN_R=R TALIESIN_REQUIRE_R=1
+cargo test -p taliesin-server --test r_kernel` (R needs an interpreter + IRkernel), and **new
+2026-07-17** `TALIESIN_PYTHON=~/.local/share/qmd-venv/bin/python TALIESIN_REQUIRE_KERNEL=1` (the
+pool-booted `--jobs` path; a missing interpreter is a HARD FAIL, not a skip). CI sets all three.
+**A plain `cargo test` silently skips all of them.** Note `cargo test` **aborts the remaining test
+binaries at the first failure**, so a flake (see Tier 2's two load-sensitive timing tests, which
+fire when something else is using the CPU) hides every later binary's result: re-run before reading
+a total.
 
 **What is left is a flat list; none of it is a grind chunk.** All **three owner rulings are
 CLOSED** (2026-07-17, below); the rest is small defects, two sign-off-gated citation items, and one
