@@ -2,6 +2,7 @@
 title: "A Draft Post (unpublished)"
 date: "2026-07-16"
 description: "This post is a draft: it shows in preview with a DRAFT badge but never ships in a build."
+draft: true
 categories:
   - Drafts
 ---

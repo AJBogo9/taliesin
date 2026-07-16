@@ -331,6 +331,9 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
    page. Muted, not alarming: a draft is a normal state, just not published. */
 .tali-draft-badge {
   display: inline-block;
+  /* `.tali-card-body` is a flex column, which would stretch the badge full-width; keep
+     it a compact pill at the start of the card / drawer row. Inert outside a flex row. */
+  align-self: flex-start;
   font-size: .7rem;
   font-weight: 700;
   letter-spacing: .04em;

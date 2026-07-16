@@ -816,3 +816,33 @@ fn home_og_image_is_the_generated_card() {
         "stale static card is not referenced"
     );
 }
+
+/// Draft-aware preview (§A#7): a `draft: true` post is absent from the published view
+/// (`Site::discover`) and recorded in `excluded_drafts`, but present + tagged in the
+/// preview view (`discover_with(Include)`). Pinned by `posts/draft-example/`.
+#[test]
+fn tech_blog_draft_is_preview_only() {
+    let root = corpus_dir().join("tech-blog");
+
+    let published = Site::discover(&root);
+    assert!(
+        !published.pages.iter().any(|p| p.rel.contains("draft-example")),
+        "the draft post must be absent from the published set"
+    );
+    assert!(
+        published
+            .excluded_drafts
+            .iter()
+            .any(|d| d.contains("draft-example")),
+        "the draft is recorded in excluded_drafts: {:?}",
+        published.excluded_drafts
+    );
+
+    let preview = Site::discover_with(&root, taliesin_core::DraftMode::Include);
+    let d = preview
+        .pages
+        .iter()
+        .find(|p| p.rel.contains("draft-example"))
+        .expect("draft present in the preview view");
+    assert!(d.draft, "the previewed draft page is tagged");
+}
