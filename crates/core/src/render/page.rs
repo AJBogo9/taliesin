@@ -377,6 +377,31 @@ fn resolve_title(doc: &RenderedDoc, fallback_title: &str, in_site: bool) -> Stri
         .to_string()
 }
 
+/// The display-ready `<title>` for a page in a site: [`resolve_title`]'s ranking, then the
+/// site-name suffix ([`title_with_site_suffix`]). The whole title policy behind one call,
+/// because it has three consumers that MUST agree — the static build (`html_page_inner`),
+/// the live preview's server-rendered `<title>`, and the `full_render` websocket message,
+/// which the client assigns straight to `document.title`.
+///
+/// They didn't agree. The websocket sent the doc's raw front-matter title, so on arrival it
+/// overwrote a correct server-rendered tab with a worse one: `/blog.html` lost its " ·
+/// {site}" suffix, and a titleless chapter (no front-matter `title:`, only an `# H1`) went
+/// all the way down to the client's own "Taliesin" default. Composing the two halves per
+/// caller is what let a caller compose only one of them, so don't: call this.
+///
+/// Takes `site_name`/`is_home` rather than a [`SiteCtx`] so a caller that only wants a
+/// title needn't build the whole page chrome to get one; [`Site::page_title`] is the
+/// entry point for those.
+pub(crate) fn site_page_title(
+    doc: &RenderedDoc,
+    fallback_title: &str,
+    site_name: &str,
+    is_home: bool,
+) -> String {
+    let resolved = resolve_title(doc, fallback_title, true);
+    title_with_site_suffix(&resolved, site_name, is_home)
+}
+
 fn html_page_inner(
     doc: &RenderedDoc,
     fallback_title: &str,
@@ -384,12 +409,11 @@ fn html_page_inner(
     mode: OutputMode,
     assets: AssetMode,
 ) -> String {
-    let resolved = resolve_title(doc, fallback_title, site.is_some());
     // In a site, name the site on every inner tab ("{page} · {site}"); the home + any
     // page already titled the site name stay bare (see `title_with_site_suffix`).
     let resolved = match site {
-        Some(s) => title_with_site_suffix(&resolved, &s.site_name, s.is_home),
-        None => resolved,
+        Some(s) => site_page_title(doc, fallback_title, &s.site_name, s.is_home),
+        None => resolve_title(doc, fallback_title, false),
     };
     let title = resolved.as_str();
     let mut t = String::new();

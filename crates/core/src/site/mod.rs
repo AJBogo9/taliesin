@@ -477,6 +477,32 @@ impl Site {
         self.search_index_json = search::assemble(&self.search_sections);
     }
 
+    /// This page is the site's root index: its `<title>` stays the bare site name (no
+    /// " · {site}" suffix). One definition, so [`page_chrome`](Self::page_chrome)'s
+    /// `SiteCtx` and [`page_title`](Self::page_title) cannot disagree about which page
+    /// is home.
+    fn is_home(&self, page: &Page) -> bool {
+        page.url == "index.html"
+    }
+
+    /// The display-ready `<title>` for one of this site's pages: the doc's own title, else
+    /// this page's authored title, else its leading `# H1`, plus the site-name suffix.
+    ///
+    /// Exists so the live preview can resolve a tab title on every rebuild WITHOUT building
+    /// the page chrome: `page_chrome` renders the navbar, footer, an O(chapters) book
+    /// sidebar, the social/JSON-LD meta and a `PageIncludes` clone, and the preview would
+    /// throw all of it away to read two scalars — under the site lock, which page serving
+    /// and `/search-index.js` also wait on. Resolves identically to the static build
+    /// (`render_page_doc_warned`), which reaches the same helper through `SiteCtx`.
+    pub fn page_title(&self, page: &Page, doc: &render::RenderedDoc) -> String {
+        render::site_page_title(
+            doc,
+            page.title.as_deref().unwrap_or(""),
+            self.config.title.as_deref().unwrap_or(""),
+            self.is_home(page),
+        )
+    }
+
     /// Build the chrome (navbar, footer, post-nav) for a page, with links
     /// resolved relative to that page's depth. Shared by the static build and the
     /// live preview so both render identical navigation.
@@ -554,7 +580,7 @@ impl Site {
             search_index,
             // The `<title>` suffix names the site on inner tabs; the root index stays bare.
             site_name: self.config.title.clone().unwrap_or_default(),
-            is_home: page.url == "index.html",
+            is_home: self.is_home(page),
         }
     }
 

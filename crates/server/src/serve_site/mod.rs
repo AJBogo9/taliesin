@@ -73,7 +73,19 @@ struct PageState {
 /// The live block state of one page (mirrors `serve::DocState`, per page).
 #[derive(Default)]
 struct PageDoc {
-    title: Option<String>,
+    /// The display-ready `<title>`: this page's resolved title (front matter, else its
+    /// leading `# H1`) plus the site-name suffix, via `Site::page_title`. Empty before this
+    /// page's first render, and for a page that resolves to no title at all (no corpus
+    /// document does; the suffix is never applied to an empty title).
+    ///
+    /// Resolved HERE, by the producer, because it has two consumers that must not be able
+    /// to disagree: the server-rendered `<title>` and every `full_render`, which the client
+    /// assigns straight to `document.title`. This field used to hold the *raw* front-matter
+    /// title and let each consumer finish the job; only one of them did, so the websocket
+    /// clobbered a correct tab with a worse one on arrival. There is deliberately no raw
+    /// title beside this: nothing in the live server wants one, and a second, subtly
+    /// different title in reach is how the first one drifted.
+    tab_title: String,
     toc: bool,
     theme_css: String,
     theme_default: String,
@@ -451,14 +463,17 @@ fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
         };
     };
     let base = page.input.parent().unwrap_or(Path::new("."));
-    let doc =
+    let mut doc =
         taliesin_core::render_document_with_includes_scoped(&src, base, site.chapter_for(page));
-    let mut blocks = doc.blocks;
-    let toc = site.page_toc(page, doc.toc_explicit, &blocks);
+    let toc = site.page_toc(page, doc.toc_explicit, &doc.blocks);
     // One shared finishing step (numbering, cross-refs + broken-ref warnings,
     // listing/about expansion, post decoration) so preview matches the build.
-    let mut warnings = doc.warnings;
-    site.finish_blocks(page, &mut blocks, &mut warnings);
+    let mut warnings = std::mem::take(&mut doc.warnings);
+    site.finish_blocks(page, &mut doc.blocks, &mut warnings);
+    // Resolved off the *finished* doc, exactly as the static build resolves it
+    // (`Site::render_page_doc_warned`), so the first paint, every `full_render`, and
+    // `_site/` cannot name one tab three ways.
+    let tab_title = site.page_title(page, &doc);
     let diagnostics = warnings
         .iter()
         .map(|w| {
@@ -470,12 +485,12 @@ fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
         })
         .collect();
     PageDoc {
-        title: doc.title,
+        tab_title,
         toc,
         theme_css: doc.theme_css,
         theme_default: doc.theme_default,
         includes: doc.includes,
-        blocks,
+        blocks: doc.blocks,
         diagnostics,
         errored: false,
         generation: 0, // first paint; the exec pass bumps it when it splices outputs
@@ -485,12 +500,17 @@ fn render_markdown_only(site: &taliesin_core::Site, page: &Page) -> PageDoc {
 /// Build the full live HTML for a page: theme + base + site CSS, the SSR body
 /// wrapped in the site chrome, and the preview client scoped to this page's ws.
 fn site_page_html(app: &SiteApp, page: &Page) -> String {
-    let (title, toc, theme_css, theme_default, body, page_includes, generation) = {
+    // `tab_title` is the string the producer already resolved (`Site::page_title`) — the
+    // very one the websocket re-asserts on connect, so the two cannot disagree. It is
+    // deliberately NOT re-derived here if empty: that means the page has no live state at
+    // all (the arm below has no body and no theme either), and re-composing half the title
+    // policy at a second call site is the exact shape of the bug this replaced.
+    let (tab_title, toc, theme_css, theme_default, body, page_includes, generation) = {
         let pages = app.pages.lock();
         let ps = pages.get(&page.rel);
         match ps {
             Some(ps) => (
-                ps.doc.title.clone(),
+                ps.doc.tab_title.clone(),
                 ps.doc.toc,
                 ps.doc.theme_css.clone(),
                 ps.doc.theme_default.clone(),
@@ -499,7 +519,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
                 ps.doc.generation,
             ),
             None => (
-                None,
+                String::new(),
                 false,
                 String::new(),
                 String::new(),
@@ -556,11 +576,6 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
     };
     // Body links (author `.tmd` references) -> `.html`; chrome links already are.
     let body = taliesin_core::site::rewrite_qmd_links(&body);
-    // Same `<title>` suffix policy as the static build ("{page} · {site}" on inner tabs,
-    // bare on the home / a page titled the site name) so the preview tab matches the build.
-    let title_txt = title.unwrap_or_else(|| page.title.clone().unwrap_or_default());
-    let title_txt =
-        taliesin_core::title_with_site_suffix(&title_txt, &chrome.site_name, chrome.is_home);
     // The site's configured favicon (depth-relative); else the dev server's own.
     let favicon = if chrome.favicon.is_empty() {
         "<link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.ico\" />".to_string()
@@ -645,7 +660,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
     taliesin_core::assemble_html_page(&taliesin_core::PageParts {
         // Live preview always ships everything (a doc can gain any construct on an edit).
         mode: taliesin_core::OutputMode::Preview,
-        title: &title_txt,
+        title: &tab_title,
         // Preview chrome defaults to English; the built `_site/` honours each
         // page's front-matter `lang:` via the core page builder.
         lang: "en",
@@ -785,7 +800,10 @@ fn handle_client_msg(text: &str) {
 fn full_render_json(d: &PageDoc) -> String {
     use taliesin_core::site::rewrite_qmd_links;
     protocol::full_render(
-        d.title.as_deref(),
+        // The display-ready tab title, NOT the raw front-matter one: the client assigns
+        // this straight to `document.title`, over the `<title>` we server-rendered. Null
+        // (not "") for a page with no render yet, so the client keeps its own default.
+        (!d.tab_title.is_empty()).then_some(d.tab_title.as_str()),
         &rewrite_qmd_links(&d.body_html()),
         d.generation,
         &d.diagnostics,
@@ -884,7 +902,7 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
     };
     let base = page.input.parent().unwrap_or(Path::new(".")).to_path_buf();
     let chapter = app.site.lock().chapter_for(&page);
-    let doc = taliesin_core::render_document_with_includes_scoped(&src, &base, chapter);
+    let mut doc = taliesin_core::render_document_with_includes_scoped(&src, &base, chapter);
 
     let exec = pool.get(rel, &base);
     // Stream this page's code-cell execution progress (`build-state`) onto its own
@@ -900,15 +918,20 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
         });
         exec.set_progress(sink, Some(rel.to_string()));
     }
-    let mut blocks = exec.run(doc.blocks).await;
+    doc.blocks = exec.run(std::mem::take(&mut doc.blocks)).await;
     // Finish the executed blocks exactly as the build does (numbering, cross-refs +
     // broken-ref warnings, listing/about expansion, post decoration). Queries the
     // whole site, so it needs the site lock.
     let mut warnings = doc.warnings.clone();
-    let toc = {
+    let (toc, tab_title) = {
         let site = app.site.lock();
-        site.finish_blocks(&page, &mut blocks, &mut warnings);
-        site.page_toc(&page, doc.toc_explicit, &blocks)
+        site.finish_blocks(&page, &mut doc.blocks, &mut warnings);
+        (
+            site.page_toc(&page, doc.toc_explicit, &doc.blocks),
+            // Re-resolved every build: an edit can add, change, or remove the front-matter
+            // title or the leading `# H1` that names the tab.
+            site.page_title(&page, &doc),
+        )
     };
     let mut diags = page_diagnostics(&page.input, exec);
     for w in &warnings {
@@ -925,10 +948,10 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
         tx: broadcast::channel(256).0,
     });
     let recovered = std::mem::take(&mut ps.doc.errored);
-    let ops = diff_blocks(&ps.doc.blocks, &blocks);
+    let ops = diff_blocks(&ps.doc.blocks, &doc.blocks);
     let diags_changed = ps.doc.diagnostics != diags;
     let theme_changed = ps.doc.theme_css != doc.theme_css;
-    ps.doc.title = doc.title;
+    ps.doc.tab_title = tab_title;
     ps.doc.toc = toc;
     ps.doc.theme_css = doc.theme_css;
     ps.doc.theme_default = doc.theme_default;
@@ -938,7 +961,7 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
     if !ops.is_empty() {
         ps.doc.generation = ps.doc.generation.wrapping_add(1);
     }
-    ps.doc.blocks = blocks;
+    ps.doc.blocks = doc.blocks;
     ps.doc.diagnostics = diags;
     // Broadcast sequencing (body, then theme, then diagnostics — theme/diags after the
     // body even on a recovery re-mount) is the shared contract in `protocol::Broadcast`.
@@ -1353,6 +1376,50 @@ mod protocol_contract {
             "qmd link not rewritten: {html}"
         );
         assert!(!html.contains("other.tmd"), "raw .tmd link leaked: {html}");
+    }
+
+    #[test]
+    fn full_render_title_is_the_display_ready_tab_title() {
+        // The client assigns `full_render`'s title straight to `document.title`
+        // (client.js `case "full_render"`), ABOVE its skipMount guard — so this field is
+        // not "the doc's title", it is "what the tab must read", and whatever we put here
+        // overwrites the `<title>` the server already rendered. It used to carry the raw
+        // front-matter title, which quietly downgraded the tab two ways. Nobody caught it
+        // by eye because a page with code cells self-heals (the exec pass's
+        // `build-state: idle` restores baseTitle); the quiet prose chapters do not.
+        let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus");
+
+        // 1. An inner page with a front-matter `title:` keeps the " · {site}" suffix that
+        //    the server-rendered `<title>` applied. Without it /blog.html's tab dropped
+        //    back to a bare "Blog" the moment the websocket connected.
+        let site = Site::discover(&corpus.join("tech-blog"));
+        let page = site
+            .page("blog.tmd")
+            .expect("corpus/tech-blog/blog.tmd")
+            .clone();
+        let fr = parse(full_render_json(&render_markdown_only(&site, &page)));
+        assert_eq!(fr["title"], "Blog · Andreas Bogossian");
+
+        // 2. A titleless page takes its leading `# H1` — the same fallback `Page.title`
+        //    already resolves. The wire used to carry the front-matter title verbatim, so
+        //    this was null and the client's `msg.title || "Taliesin"` literally tabbed the
+        //    tool's name over the chapter's: 5 of corpus/demo-book's 6 chapters.
+        let site = Site::discover(&corpus.join("demo-book"));
+        let page = site
+            .page("intro.tmd")
+            .expect("corpus/demo-book/intro.tmd")
+            .clone();
+        let fr = parse(full_render_json(&render_markdown_only(&site, &page)));
+        assert_eq!(fr["title"], "Introduction · A Short Demo Book");
+
+        // 3. The home page stays bare (no "Name · Name"), i.e. the suffix policy is
+        //    applied by `title_with_site_suffix`, not re-decided here.
+        let page = site
+            .page("index.tmd")
+            .expect("corpus/demo-book/index.tmd")
+            .clone();
+        let fr = parse(full_render_json(&render_markdown_only(&site, &page)));
+        assert_eq!(fr["title"], "Preface");
     }
 
     #[test]

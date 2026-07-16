@@ -935,6 +935,10 @@
     switch (msg.type) {
       case "full_render": {
         renderOk(); // a fresh render arrived: any prior failure is resolved
+        // `title` arrives display-ready — the server resolves the H1 fallback and the
+        // " · {site}" suffix (`site_page_title`), because this assignment lands on top of
+        // the `<title>` it server-rendered and must not disagree with it. Don't reshape it
+        // here; a null means the page has no render yet, not that policy is ours to apply.
         document.title = msg.title || "Taliesin";
         // Skip the re-mount when the DOM already reflects this render:
         //  - the first message after SSR whose gen matches what SSR painted, OR
