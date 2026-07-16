@@ -85,3 +85,26 @@ function taliCleanCaptionText(node) {
   return (taliCloneStripped(node).textContent || '').trim();
 }
 
+// Reader preference: are the single-key shortcuts (`f`, `?`, `/`) live? WCAG 2.1.4 (Character
+// Key Shortcuts) requires a way to turn character-key shortcuts off; this is that mechanism, and
+// it is why `f` can keep entering fullscreen directly. Default ON, so a reader who never opens
+// Settings sees no change. Esc + the arrow keys are not character keys and are never gated.
+// A blocked or throwing localStorage must not silently cost a reader their shortcuts, so every
+// failure path returns true.
+//
+// Key: `tali-shortcuts`. This deliberately does NOT match its only two siblings, `qmd-theme`
+// (render/theme.rs) and `qmd-deck-theme`, which still carry the retired `qmd-` prefix. Those are
+// frozen: a storage key has no aliasing mechanism, so renaming one would silently reset every
+// existing reader's saved choice. A brand-new key carries no such burden and uses the owned
+// prefix. The mismatch is intentional; do not "fix" it.
+function taliShortcutsOn() {
+  try { return localStorage.getItem('tali-shortcuts') !== 'off'; } catch (e) { return true; }
+}
+// Absent === on (the default), mirroring how theme.rs stores its non-default choices only.
+function taliSetShortcuts(on) {
+  try {
+    if (on) localStorage.removeItem('tali-shortcuts');
+    else localStorage.setItem('tali-shortcuts', 'off');
+  } catch (e) {}
+}
+

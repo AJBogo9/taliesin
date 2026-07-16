@@ -19,7 +19,35 @@ function taliInitKeyboard() {
       '<div><dt><kbd>f</kbd></dt><dd>Focus mode</dd></div>' +
       '<div><dt><kbd>&larr;</kbd> <kbd>&rarr;</kbd></dt><dd>Previous / next chapter</dd></div>' +
       '<div><dt><kbd>Esc</kbd></dt><dd>Close</dd></div>';
-    window.taliReaderMenu.addSection('Keyboard shortcuts', dl);
+
+    // WCAG 2.1.4's turn-off mechanism, sitting directly above the list it governs. Same shape as
+    // the Focus mode row (03-focus-mode.js): a one-button `.tali-reader-seg` reading On/Off with
+    // aria-pressed. It is a sibling of the list, never inside it, so switching shortcuts OFF can
+    // never hide the control that switches them back ON.
+    var row = document.createElement('div');
+    row.className = 'tali-reader-row';
+    var label = document.createElement('span');
+    label.textContent = 'Shortcuts';
+    var seg = document.createElement('div');
+    seg.className = 'tali-reader-seg';
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.title = 'Single-key shortcuts (f, ?, /)';
+    var syncKeys = function () {
+      var on = taliShortcutsOn();
+      btn.textContent = on ? 'On' : 'Off';
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      dl.hidden = !on; // don't advertise dead keys
+    };
+    btn.addEventListener('click', function () { taliSetShortcuts(!taliShortcutsOn()); syncKeys(); });
+    seg.appendChild(btn);
+    row.appendChild(label);
+    row.appendChild(seg);
+
+    var box = document.createElement('div');
+    box.appendChild(row);
+    box.appendChild(dl);
+    window.taliReaderMenu.addSection('Keyboard shortcuts', box, syncKeys);
   }
 
   document.addEventListener('keydown', function (e) {
@@ -30,12 +58,14 @@ function taliInitKeyboard() {
     // `?` (Shift+/) toggles the Settings menu (which shows this list).
     if (e.key === '?' && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) {
       if (modal) return; // a modal owns the keys
+      if (!taliShortcutsOn()) return;
       if (window.taliReaderMenu) { e.preventDefault(); window.taliReaderMenu.toggle(); }
       return;
     }
     if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
     if (modal) return;
     if (e.key === '/') {
+      if (!taliShortcutsOn()) return;
       if (window.taliOpenSearch) { e.preventDefault(); window.taliOpenSearch(); }
       return;
     }

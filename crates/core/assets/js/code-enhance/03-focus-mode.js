@@ -78,6 +78,7 @@ function taliInitFocusMode() {
     var modal = document.querySelector('[aria-modal="true"]');
     // `f` toggles focus mode; Esc exits (a universal dismiss).
     if (e.key === 'f' && !e.metaKey && !e.ctrlKey && !e.altKey && !modal) {
+      if (!taliShortcutsOn()) return;
       e.preventDefault();
       setFocus(!on());
     } else if (e.key === 'Escape' && on() && !modal) {
