@@ -11,8 +11,7 @@ the regression net); each new capability ships pinned by a target corpus doc. Ou
 
 v0.2.0. All four formats render + deploy; the dev loop is strong (block-level incremental updates
 with DOM-state preservation, warm server + Jupyter kernel, `_freeze` cache, Alt-click + reverse
-cursor sync, located diagnostics, CSS hot-swap, Cmd-K search). `origin/main == main == 53d9c03`
-(the author pushed the section-C a11y batch). **Tier 1 is empty.**
+cursor sync, located diagnostics, CSS hot-swap, Cmd-K search). **Tier 1 is empty.**
 
 **Sections A, B, C, F and G are now closed.** A (blog identity) finished with #7 draft-aware preview
 (2026-07-16). B (publish hardening) was **backlog rot** — all three items were already shipped by
@@ -22,8 +21,8 @@ audit) is fully landed except the deliberately-deferred B3-18. G (AI-native auth
 rot**: 8 of its 10 items plus two slices of a third shipped 2026-07-13, and the owner declined the
 three ruling-gated leftovers on 2026-07-16. E (catalog triage) closed 2026-07-16 after wave 1
 measured the catalog at 35% stale; the owner ruled **triage on demand** instead of sweeping the
-remaining 131. **→ The only open section is D (needs a direction ruling); E left a short list of
-verified, ruling-ready items (see §E).**
+remaining 131, leaving a short list of verified, ruling-ready items (§E) rather than 165 unverified
+ones. **→ See "Next session: start here" below.**
 
 **Before picking any item: grep its named symbol/flag in source first.** The author pushes work
 mid-session, so an entry can go stale with no signal in this file (that is exactly how section B
@@ -35,6 +34,35 @@ extension harnesses); fast-forward merge locally; delete the item here. Agents c
 local `main` on request; push to `origin/main` only when the author asks. **Do-NOT-touch:** the
 exec/kernel zone + the single-editing-surface invariant. Review subagents use read-only git.
 **Author policy (feature-first):** finish framework features before marketing-site work.
+
+## Next session: start here
+
+**Git (2026-07-16):** `origin/main == 53d9c03`; local `main` is **4 ahead, unpushed** (the author
+pushes): `ab90d57` §G rot, `db0f4ad` §E wave-1 triage, `8a45d59` bare-`@key` diagnostic, `ecf8ac4`
+§E close. Tree clean; core (29 binaries) + server (20) green, `fmt` + `clippy -D warnings` clean.
+**Run `git reflog show origin/main` before believing this line or any "unpushed" claim: the author
+pushes mid-session and this goes stale with no signal (it already did, twice).**
+
+**Every section is closed except D.** Three things to pick up, in the order recommended:
+
+1. **D. Reading-first identity polish** (§D). The only open *section*, and **blocked on one ruling**,
+   so it cannot start cold. Its three layout targets were re-verified 2026-07-16 and are real; the
+   ruling is only about SCOPE, because `.hero`/`.feature-grid` are shared by the blog (priority) and
+   the deferred marketing site, so reshaping them cannot be scoped to the blog by CSS alone. §D
+   states the three options. Brainstorm before speccing. *(Its old "type → item 13" pointer was rot;
+   the owned Newsreader body face shipped ~2026-07-12.)*
+2. **The catalog-derived items** (§E). Verified against source 2026-07-16 and ruling-ready, no sweep
+   needed. Best first build: **D49 chapter-scoped float numbering** (a real defect, a better default
+   rather than a knob, corpus-pinnable in `demo-book`). The citation trio (D67/D69/D72) is blocked:
+   it enters `crates/core/src/cite/`, a Do-NOT-touch zone, and needs explicit sign-off.
+3. **The 7 live defects** (§E, "Live defects"). Small, independent, none needs a ruling. Cheapest
+   real win: **the deck key sheet** (`deck.js:1680` advertises "↑ ↓ Vertical slides"; ↑↓ jump
+   topics). Roughly a one-line fix to a string every presenter reads.
+
+**Decided this session, do not re-litigate:** §G's three leftovers (`check --online`, the
+numeric-claim hint, the per-page text sidecar) are **declined** (see "Decided against"). §E is
+**triage on demand**, not a sweep. The catalog's summary and status field are **not trustworthy**;
+read the triage doc's "three layers" section before opening it.
 
 ## Now — the grind queue (priority order)
 
@@ -87,13 +115,38 @@ Owner-calls kept as-is (one-line changes if ever wanted): table cells use the 1.
 collapse under protanopia (icon + title already carry meaning, hue never the sole cue); deck has no
 sepia palette (document decks as light/dark-only, or add + teach the reader/scroll path).
 
-### D. Reading-first identity polish (design; layout half)
+### D. Reading-first identity polish (layout half only; BLOCKED on a direction ruling)
 
-The theme/colour half landed 2026-07-09; type → item 13. Remaining is **layout**: hero-as-typeset
-(not a marketing slab), drop bordered feature-card grids, a `--space-1..6` scale. Confirm direction
-before building (overlaps the deferred marketing rebuild).
+Direction **"Marginalia"** (iron-gall manuscript ink). The **theme/colour** half landed 2026-07-09.
+The **type** half also landed (~2026-07-12): the entry's old "type → item 13" pointer was **rot**
+(no `#13` exists anywhere; §A's numbering died when §A closed). Owned body face is shipped and wired:
+`base.css:35` `--tali-font-body: 1.125rem/1.7 "Newsreader"` applied at `:216`, both variable faces
+bundled at `font-weight: 200 800` (real bold, no faux) and inlined as `data:` URIs at build time, so
+the offline invariant holds. Spec:
+[2026-07-12-newsreader-body-face-design.md](../docs/superpowers/specs/2026-07-12-newsreader-body-face-design.md).
 
-### E. Quarto design-decisions catalog triage (CLOSED 2026-07-16: triage on demand)
+**Remaining: layout only. All three targets re-verified against source 2026-07-16** (unlike most of
+this file, these are NOT rot):
+1. **Hero as typeset, not a marketing slab.** `base.css:315` is `.hero { text-align: center;
+   padding: 3.2rem 1rem 2.4rem; }` with a `clamp(2rem, 6vw, 3.2rem)` display size (`:316`).
+2. **Drop bordered feature-card grids.** They exist: `base.css:345` `.feature-grid { display: grid; }`
+   + `:347` `.feature { padding: 1.3rem 1.4rem; border: 1px solid var(--tali-border); }`.
+   *(The entry used to call these "feature-card"; the real selectors are `.feature-grid` / `.feature`.)*
+3. **A `--space-1..6` scale.** Genuinely absent: no `--tali-space` / `--space-` token exists in any
+   bundled CSS. Spacing is per-rule literals today.
+
+**[ruling needed] The fork, stated precisely.** `base.css:312` calls `.hero`/`.feature-grid`
+**"Marketing primitives"**, and they are authored by **both** `corpus/tech-blog/index.tmd` (the blog,
+the audit's stated priority) **and** `site/index.tmd`/`features.tmd`/`formats.tmd` (the marketing
+site, which is **deferred** under the feature-first policy). They share one stylesheet, so reshaping
+them cannot be scoped to the blog by CSS alone. Pick one: **(a)** reshape the shared primitives now
+and accept that the deferred marketing site inherits the new look mid-flight; **(b)** give the blog
+its own reading-first hero/section treatment and leave the marketing primitives untouched until the
+rebuild (two looks in one stylesheet for a while); or **(c)** hold D entirely until the marketing
+rebuild is undeferred. This overlap is the whole reason the entry has always said "confirm direction
+before building". Brainstorm before speccing.
+
+### E. Catalog-derived work (the SWEEP is closed; the items below are OPEN)
 
 **Owner ruling 2026-07-16: stop the sweep, triage an area on demand.** Wave 1 triaged the 4
 highest-leverage areas (34/165: crossref, citations, slides, config) and measured the base:
