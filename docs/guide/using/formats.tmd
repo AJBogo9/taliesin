@@ -185,8 +185,7 @@ keyboard-only):
 
 **Speaker view** (<kbd>s</kbd>) opens a second window showing the current and next
 slide as live previews, the current slide's speaker notes, and a running timer plus a
-clock. Write notes in a `::: {.notes}` block on the slide and they appear only in the
-speaker window:
+clock. Write notes in a `::: {.notes}` block on the slide:
 
 ```markdown
 ## A slide with notes
@@ -198,12 +197,18 @@ Only you see this, in speaker view. Remember to slow down here.
 :::
 ```
 
-The two windows stay in sync over the local connection (it even works from a built
-`file://` deck), and either window can drive the navigation.
+The notes are hidden from the audience in stepped and overview view. They surface in
+two reader-facing places: the speaker window, and, on a phone, as narration under each
+slide in the feed (below) so a followed or after-the-talk deck reads without the spoken
+track. The two speaker windows stay in sync over the local connection (it even works
+from a built `file://` deck), and either window can drive the navigation.
 
-A deck **opens as a deck**: stepped slides, whether you open it as a link or embed it
-in a page. The shareable artifact is the live HTML deck itself, so there is no PDF
-export and no separate reading mode; a stray <kbd>Ctrl/Cmd-P</kbd> still prints the
+A deck **opens as a deck**. On a wide/landscape screen that is stepped slides; on a
+phone or portrait screen it opens as a vertical **slide-feed** you scroll through (each
+slide a full screen, snap-scrolled), which reads far better on a phone than a
+letterboxed stepped stage. Either way, whether you open the link or embed it in a page,
+you get the deck. The shareable artifact is the live HTML deck itself, so there is no
+PDF export and no separate reading mode; a stray <kbd>Ctrl/Cmd-P</kbd> still prints the
 current slide legibly.
 
 **Live code and `{js}`** work in a deck exactly as on a page: `{python}` / `{r}` cells

@@ -132,7 +132,7 @@ viewport shape:
 |------|---------|--------------|
 | normal | **default** — a deck opens as a deck, standalone or embedded | the interactive (stepped) deck — the presenting surface |
 | speaker | `S` → popup at `?qmd=speaker` | current + next slide previews, notes, timer |
-| feed | `?qmd=feed`, or **auto on a portrait / phone screen** | a vertical scroll-feed of full-screen slides (native scroll-snap), for reading a deck on a phone |
+| feed | `?qmd=feed`, or **auto on a portrait / phone screen** | a vertical scroll-feed of full-screen slides (native scroll-snap), for reading a deck on a phone; each slide's `::: {.notes}` surface as reader narration under it (feed-only, CSS-gated on `html.tali-feed`) |
 | overview | `Esc` / `O` | zoomed grid of all slides |
 
 There is no `?qmd=embed` mode: an embedded deck runs the *normal* interactive engine
