@@ -37,11 +37,12 @@ exec/kernel zone + the single-editing-surface invariant. Review subagents use re
 
 ## Next session: start here
 
-**Git (2026-07-16):** `origin/main == 53d9c03`; local `main` is **4 ahead, unpushed** (the author
-pushes): `ab90d57` §G rot, `db0f4ad` §E wave-1 triage, `8a45d59` bare-`@key` diagnostic, `ecf8ac4`
-§E close. Tree clean; core (29 binaries) + server (20) green, `fmt` + `clippy -D warnings` clean.
-**Run `git reflog show origin/main` before believing this line or any "unpushed" claim: the author
-pushes mid-session and this goes stale with no signal (it already did, twice).**
+**Git.** Do not trust a SHA written here; any commit that records one falsifies it. **Check, do not
+read:** `git log --oneline origin/main..main` for what is unpushed (the author pushes, not the
+agent), and `git reflog show origin/main` before believing ANY "not pushed" claim, including one in
+a session handoff. The author pushes mid-session with no signal in this file, and a handoff has
+already been wrong about this twice. As of 2026-07-16 the tree was clean with core (29 binaries) +
+server (20) green and `fmt` + `clippy -D warnings` clean; re-run them, do not assume.
 
 **Every section is closed except D.** Three things to pick up, in the order recommended:
 
