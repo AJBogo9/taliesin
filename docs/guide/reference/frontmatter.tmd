@@ -27,7 +27,7 @@ the offending line in the live preview.
 
 ## Every top-level key
 
-The keys group into seven concerns. Types: a *string* is plain text; a *bool* is
+The keys group into eight concerns. Types: a *string* is plain text; a *bool* is
 `true`/`false`; a *list* is a YAML sequence; an *include* is a path, a `{ text: … }`
 or `{ file: … }` map, or a list of those.
 
@@ -97,6 +97,12 @@ in their own sections below.
 | Key | Type | Meaning |
 |---|---|---|
 | `prose-lint` | bool \| map | Opt-in prose linter. `true` enables the built-in rules; a `{ banned: [...] }` map adds custom banned terms. See [`prose-lint:`](#prose-lint-the-prose-linter) |
+
+### Theorem environments
+
+| Key | Type | Meaning |
+|---|---|---|
+| `theorems` | map | Numbering for theorem environments: `shared:` (a list of kinds drawing on one counter) and `numbered:` (`true` / `false` / `unless-unique`). Numbering *scope* is deliberately not a key: an environment scopes to its numbered book chapter automatically. See [Theorems and proofs](../using/theorems.tmd) |
 
 ## `execute:` (document-wide cell defaults) {#execute-document-wide-cell-defaults}
 
