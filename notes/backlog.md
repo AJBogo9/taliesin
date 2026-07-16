@@ -20,8 +20,10 @@ the author; entries deleted with evidence (see the note in section A). C (theme/
 finished 2026-07-16: six items built, two more were rot (see the note in section C). F (the deck
 audit) is fully landed except the deliberately-deferred B3-18. G (AI-native authoring) was **backlog
 rot**: 8 of its 10 items plus two slices of a third shipped 2026-07-13, and the owner declined the
-three ruling-gated leftovers on 2026-07-16. **→ The only open work is D (needs a direction ruling)
-and E (own session).**
+three ruling-gated leftovers on 2026-07-16. E (catalog triage) closed 2026-07-16 after wave 1
+measured the catalog at 35% stale; the owner ruled **triage on demand** instead of sweeping the
+remaining 131. **→ The only open section is D (needs a direction ruling); E left a short list of
+verified, ruling-ready items (see §E).**
 
 **Before picking any item: grep its named symbol/flag in source first.** The author pushes work
 mid-session, so an entry can go stale with no signal in this file (that is exactly how section B
@@ -91,11 +93,71 @@ The theme/colour half landed 2026-07-09; type → item 13. Remaining is **layout
 (not a marketing slab), drop bordered feature-card grids, a `--space-1..6` scale. Confirm direction
 before building (overlaps the deferred marketing rebuild).
 
-### E. Quarto design-decisions catalog triage (own session)
+### E. Quarto design-decisions catalog triage (CLOSED 2026-07-16: triage on demand)
 
-Branch `quarto-decisions-catalog` @ `535b4e1`: 165 adversarially-verified decisions. Rule each by "is
-this the right design for Taliesin" (the 2026-07-07 repositioning retired Quarto as the reference).
-Fan into batches, each with a recommended verdict + evidence.
+**Owner ruling 2026-07-16: stop the sweep, triage an area on demand.** Wave 1 triaged the 4
+highest-leverage areas (34/165: crossref, citations, slides, config) and measured the base:
+**12 of 34 (35%) outright stale or superseded, 20 of 34 (59%) contain at least one false statement
+about today's source.** Triaging the remaining 131 against that base is not worth a session, and the
+staleness only grows as more ships. **Consult an area's entries when you next work that area**, using
+the trust caveats in the triage doc. Full results, per-entry verdicts, and the caveats:
+[2026-07-16-quarto-catalog-triage.md](2026-07-16-quarto-catalog-triage.md).
+
+**Before consulting the catalog, read the triage doc's "three layers" section.** In short: the
+entries are the asset and were well-grounded on 2026-07-03; the **heading status is degenerate**
+(162/165 skeptic verdicts are `revise`, so 94 read "Proposed (revised)" regardless of conclusion);
+and the **executive summary is misleading** (it describes a per-entry tag scheme that does not exist,
+miscounts, and its "rule on these first" list mixes open questions with already-shipped work).
+A skeptic verdict is evidence, never a ruling: D135's skeptic insisted on dropping Atom feeds as "a
+documented non-goal" and Atom shipped anyway, with autodiscovery.
+
+**Wave 1's live output, still open** (each verified against source; the catalog D-number is the
+detail pointer):
+- **D49 chapter-scoped float numbering** (ADOPT, high). Figures/tables/equations are flat per-page
+  counters, so two chapters each get a "Figure 1" and a cross-chapter `@fig-x` cannot disambiguate.
+  Only theorems are chapter-scoped. Auto-scoping in a numbered book is a better default, not a knob.
+  *Sub-fork:* it would put an auto-scoped "Figure 2.3" beside an opt-in "Theorem 5" in one book.
+- **D72/D67/D69 citations** (ADOPT, but **all three edit `crates/core/src/cite/`, a Do-NOT-touch zone,
+  and need explicit sign-off**). D72: support bare `@key` at all? (The *diagnostic* shipped 2026-07-16,
+  `8a45d59`, so the failure is now caught; the engine question is separate.) D67: `csl:` is advertised
+  on four surfaces (allowlist, editor completion, schema, include resolver) while doing nothing;
+  ship the "recognized but unsupported" warning (put it in `diagnostics/`, not `cite/`) and drop the
+  `vocab.rs:75` completion in the same change. **Do not just delete it from the allowlist:** `css` vs
+  `csl` is edit distance 1, so the did-you-mean would suggest `css`. D69: the reference list is
+  `push`ed at the end, so an appendix after `# References` orphans the heading.
+- **D74 footnote reverse-sync** (ADOPT, outside Do-NOT-touch). The gathered `qmd-footnotes` block is
+  pushed with `sourcepos: String::new()`, so no end-note `<li>` carries `data-sourcepos`: a hole in a
+  load-bearing invariant. `client.js` already resolves via `.closest(...)`, so no client change.
+- **D107 deck fragment effects** (`.fade-out`, `.highlight`; ADOPT, scoped hard). The only live
+  capability gap in slides, never adjudicated by the deck audit. Decline the `incremental:` global
+  knob and `data-fragment-index`.
+- **D37 lint `format:` sub-keys** (ADOPT). The honored `format: deck:` key set is empty, so
+  whitelisting `transition` would validate no-ops as supported. This adds a **diagnostic, not a knob**,
+  following the from-quarto value-lint precedent (`69c228b`).
+- **D34 project defaults** (OWNER-RULING). `bibliography`/`csl`/`execute`/`theme` are absent from the
+  19-key `NATIVE_KEYS`, but no corpus doc repeats them across pages, so it fails minimal-config today.
+  Recommendation: **subtract before adding**, delete the dead `image:`/`SiteConfig.card_image` field
+  (zero readers; its own doc comment concedes it) and defer the defaults until a corpus doc hurts.
+- **D70 "Cite this" card** (OWNER-RULING). Its machine-readable half already shipped
+  (`.citations.json` + ScholarlyArticle JSON-LD). A card would render **author-free for every current
+  post** (0 of 8 tech-blog posts set `author:`).
+
+**Live defects wave 1 found that the catalog never knew about** (small, independent of §E):
+1. **The deck key sheet lies to every presenter:** `deck.js:1680` advertises "↑ ↓ Vertical slides",
+   but `up()`/`down()` call `moveTopic` (`deck.js:664`), so ↑↓ jump topics and vertical slides step
+   ←→. It survived the whole 43-bug deck audit because B7's drift sweep cleaned the `.tmd` docs and
+   never read the in-product string.
+2. **Duplicate-label warnings are unlocated** (`render/mod.rs:1538`, `site/xref.rs:56` emit no
+   file/line), half-reproducing the exact Quarto flaw D53 critiques.
+3. **`{.python code-line-numbers=...}` is routed to the executable path** though it is authored as
+   display-only in `corpus/deck.tmd:46` and two docs pages; `code_lang` splits naively. Invisible to
+   the kernel-free corpus. *Unverified against a live kernel.*
+4. **The xref registry goes stale on a warm content edit** (`serve_site/mod.rs:1148-1199` refreshes
+   only the Cmd-K search fragment).
+5. **`author: [A, B]` silently falls back to `title:`** (both consumers `.as_str()` an
+   `Option<serde_yaml::Value>`); nothing pins `config.author`.
+6. **`lang: fr` promises French, delivers English** cross-ref labels (`render/page.rs:239`).
+7. **`site/mod.rs:989` documents a `number-sections` key that does not exist.**
 
 ### F. Deck rework (2026-07-12 slides audit → [2026-07-12-deck-audit.md](2026-07-12-deck-audit.md))
 
