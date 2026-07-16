@@ -237,12 +237,12 @@ fn reveal_deck_detects_format_and_splits_into_slides() {
     assert!(slides.contains("<h1 class=\"title\">A Plain Deck</h1>"));
     assert!(slides.contains("<p class=\"subtitle\">Slides on the native engine</p>"));
     // One slide per `##` heading. The corpus deck is the deck-engine regression net
-    // (see `corpus_deck_pins_every_kept_rich_feature`), so it carries fifteen level-2
+    // (see `corpus_deck_pins_every_kept_rich_feature`), so it carries sixteen level-2
     // slides plus one level-1 vertical-stack lead. `data-level` is the count anchor.
     let content_slides = slides.matches("data-level=\"2\"").count();
     assert_eq!(
-        content_slides, 15,
-        "expected 15 content slides, got {content_slides}"
+        content_slides, 16,
+        "expected 16 content slides, got {content_slides}"
     );
     // Slide ids are slugged from the heading text.
     assert!(slides.contains("id=\"what-decks-are\""), "got: {slides}");
@@ -280,6 +280,18 @@ fn corpus_deck_pins_every_kept_rich_feature() {
     assert!(
         slides.contains("<div class=\"incremental\""),
         "deck corpus must exercise an .incremental list"
+    );
+    // Fragment EFFECTS: an effect class rides alongside `.fragment` on the SAME div, so a
+    // step reveals a CHANGE to a visible block instead of revealing the block. `.fade-out`
+    // steps the block away; `.highlight` marks it. Both are CSS over the existing step
+    // engine, so the class pair is the whole server-side signature.
+    assert!(
+        slides.contains("<div class=\"fragment fade-out\""),
+        "deck corpus must exercise the .fade-out fragment effect"
+    );
+    assert!(
+        slides.contains("<div class=\"fragment highlight\""),
+        "deck corpus must exercise the .highlight fragment effect"
     );
     // Code line-stepping: `code-line-numbers` carries a spec + wraps each line.
     assert!(

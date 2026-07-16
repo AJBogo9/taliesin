@@ -3469,6 +3469,65 @@ fn deck_overview_reveals_magic_move_final_block() {
 }
 
 #[test]
+fn deck_fragment_effect_class_rides_alongside_the_fragment_class() {
+    // D107: an effect is authored as a second class on the SAME fenced div
+    // (`::: {.fragment .fade-out}`), matching the existing `::: {.fragment}` pattern. The
+    // generic class-div path joins the classes, so the block still matches deck.js's
+    // FRAG_SEL (`.fragment`) and still earns a step: the effect is CSS on top, not a new
+    // authoring form and not a new step kind.
+    let doc = render_document(
+        "---\nformat: deck\n---\n\n## S\n\n::: {.fragment .fade-out}\nGone on the next press.\n:::\n\n::: {.fragment .highlight}\nMarked on the next press.\n:::\n",
+    );
+    let slides = slides_html(None, None, &doc.blocks);
+    assert!(
+        slides.contains("<div class=\"fragment fade-out\""),
+        "`.fade-out` must survive alongside `fragment`: {slides}"
+    );
+    assert!(
+        slides.contains("<div class=\"fragment highlight\""),
+        "`.highlight` must survive alongside `fragment`: {slides}"
+    );
+}
+
+#[test]
+fn deck_fragment_effects_start_visible_and_step_into_their_effect() {
+    // D107: a plain fragment is hidden until its step. An EFFECT fragment inverts that: it
+    // starts VISIBLE and its step changes it, so it must override the base hidden rule or
+    // it reads as a plain fragment (invisible until stepped) and the effect is lost.
+    let deck_css = include_str!("../../assets/css/deck.css");
+    assert!(
+        deck_css.contains(".tali-deck .fragment.fade-out,")
+            && deck_css.contains(".tali-deck .fragment.highlight {"),
+        "effect fragments must override the base hidden state or they never show before their step"
+    );
+    assert!(
+        deck_css.contains(".tali-deck .fragment.fade-out.tali-frag-visible {"),
+        "`.fade-out` must leave on its step"
+    );
+    assert!(
+        deck_css.contains(".tali-deck .fragment.highlight.tali-frag-visible {"),
+        "`.highlight` must mark the block on its step"
+    );
+}
+
+#[test]
+fn deck_faded_out_fragment_returns_in_overview_and_feed() {
+    // A stepped `.fade-out` still carries `.tali-frag-visible`, and its hide rule outranks
+    // overview's and the feed's "show every fragment" overrides on specificity, so without
+    // an explicit exception the block VANISHES from the overview grid and the mobile feed,
+    // neither of which steps, and the content is unreachable there. Pin both exceptions.
+    let deck_css = include_str!("../../assets/css/deck.css");
+    assert!(
+        deck_css.contains(".tali-deck.overview .fragment.fade-out.tali-frag-visible"),
+        "overview must show a faded-out fragment (it shows every slide complete)"
+    );
+    assert!(
+        deck_css.contains("html.tali-feed .fragment.fade-out.tali-frag-visible"),
+        "the mobile feed must show a faded-out fragment (it never steps)"
+    );
+}
+
+#[test]
 fn deck_defines_light_bg_text_override() {
     // Batch 3d: a light per-slide background needs a `.tali-light-bg` rule forcing
     // DARK text, or the deck's default (light) text is invisible on it. Pin both the

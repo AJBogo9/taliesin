@@ -24,6 +24,18 @@ A bullet list can reveal one item at a time.
 And a whole block can be revealed as an aside.
 :::
 
+## Fragment effects
+
+A fragment can also start *visible* and change on its step.
+
+::: {.fragment .fade-out}
+This line is here now, and steps away when you press on.
+:::
+
+::: {.fragment .highlight}
+This one stays, and is marked when you get to it.
+:::
+
 ## Reveal one point at a time
 
 ::: {.incremental}

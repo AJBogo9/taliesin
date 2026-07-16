@@ -296,6 +296,55 @@ body { background: transparent; }
 .tali-deck.overview .incremental > ul > li,
 .tali-deck.overview .incremental > ol > li { opacity: 1 !important; visibility: visible !important; }
 
+/* Fragment EFFECTS (`::: {.fragment .fade-out}` / `{.fragment .highlight}`). A plain
+   fragment is hidden until its step; an effect fragment is the inverse: it starts VISIBLE
+   and its step CHANGES it. Both reuse the same `.tali-frag-visible` marker deck.js already
+   toggles per step, so the step engine, the step count and the deep-link hash stay unaware
+   that effects exist. */
+.tali-deck .fragment.fade-out,
+.tali-deck .fragment.highlight {
+  opacity: 1;
+  visibility: visible;
+}
+/* `.fade-out`: the block leaves on its step, keeping its layout space (visibility, not
+   display, like the base rule) so the slide doesn't reflow or re-fit. `visibility` is held
+   until the opacity fade finishes: flipping it with the opacity would snap the block away
+   instantly and the fade would never be seen. Under reduced motion there is no transition,
+   so both apply at once (a correct instant hide). */
+.tali-deck .fragment.fade-out.tali-frag-visible {
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tali-deck .fragment.fade-out.tali-frag-visible { transition: opacity .25s ease, visibility 0s linear .25s; }
+}
+/* `.highlight`: the block is marked on its step with the same accent wash the code
+   line-stepper uses, NOT a colour swap: the wash sits BEHIND the text, so the ink keeps its
+   own contrast on a light or dark deck and the mark isn't carried by colour alone. The
+   line-stepper's inset rail is deliberately not reused: a left accent rail on a prose block
+   is this file's CALLOUT idiom (see `.callout-*` above) and would read as the wrong thing.
+   Padding/radius sit on the BASE state, not the stepped one, or taking the step would
+   reflow the slide mid-talk. */
+.tali-deck .fragment.highlight {
+  padding: .1em .3em;
+  border-radius: .12em;
+}
+.tali-deck .fragment.highlight.tali-frag-visible {
+  background: color-mix(in srgb, var(--deck-accent) 13%, transparent);
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tali-deck .fragment.highlight { transition: background .3s ease; }
+}
+/* Overview and the mobile feed show every slide complete and never step, so a stepped
+   `.fade-out` (which still carries `.tali-frag-visible`) has to come BACK in both: its hide
+   rule outranks their generic "show every fragment" overrides on specificity, so without
+   this exception the block would simply vanish wherever it can't be stepped back. */
+.tali-deck.overview .fragment.fade-out.tali-frag-visible,
+html.tali-feed .fragment.fade-out.tali-frag-visible {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
 /* Code line highlighting / stepping (code-line-numbers). Lines are block so the
    highlight + dim span the full code width; the copy button reads innerText, which
    still reconstructs the breaks. deck.js toggles .tali-hl-lines-active / .tali-hl-ln-hl. */
