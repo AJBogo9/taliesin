@@ -1615,6 +1615,30 @@
       else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
     } catch (e) {}
   }
+  // Screen Wake Lock (C-ADD-5): hold the display awake while PRESENTING so it doesn't
+  // dim mid-sentence. Fullscreen is the "presenting now" signal — a deck read casually
+  // in a tab (or scrolled on a phone feed) should NOT block the screensaver; going
+  // fullscreen to project is the intent. No config knob; auto-follows fullscreen.
+  function acquireWakeLock() {
+    if (!navigator.wakeLock || deck.wakeLock) return;
+    navigator.wakeLock.request('screen').then(function (s) {
+      deck.wakeLock = s;
+      // The OS auto-releases the sentinel when the tab is hidden; drop our ref so
+      // syncWakeLock() re-requests on the next visibility/fullscreen change.
+      s.addEventListener('release', function () { if (deck.wakeLock === s) deck.wakeLock = null; });
+    }).catch(function () {}); // denied / unsupported (e.g. no user gesture, low battery)
+  }
+  function releaseWakeLock() {
+    if (!deck.wakeLock) return;
+    try { deck.wakeLock.release(); } catch (e) {}
+    deck.wakeLock = null;
+  }
+  // Hold the lock while fullscreen + visible; release otherwise. Re-runs on
+  // fullscreenchange (project/exit) and visibilitychange (a hidden tab drops it).
+  function syncWakeLock() {
+    if (document.fullscreenElement && document.visibilityState === 'visible') acquireWakeLock();
+    else releaseWakeLock();
+  }
   function toggleThemeMode() {
     if (!window.taliDeckSetTheme) return;
     var dark = document.documentElement.classList.contains('tali-deck-dark');
@@ -1703,11 +1727,16 @@
       window.addEventListener('pointermove', onOverviewPointerMove);
       window.addEventListener('pointerup', onOverviewPointerUp);
       window.addEventListener('hashchange', onHashChange);
+      // C-ADD-5: keep the screen awake while presenting (fullscreen). A hidden tab
+      // auto-drops the OS lock, so re-sync on visibility too.
+      document.addEventListener('fullscreenchange', syncWakeLock);
+      document.addEventListener('visibilitychange', syncWakeLock);
       // If the presentation window goes away, close its speaker popup + drop the ref so
       // a stale `deck.speakerWin` isn't messaged after this window is gone.
       window.addEventListener('pagehide', function () {
         if (deck.speakerWin && !deck.speakerWin.closed) { try { deck.speakerWin.close(); } catch (e) {} }
         deck.speakerWin = null;
+        releaseWakeLock();
       });
       buildChrome(); // the control menu + progress bar + nav arrows
       // Embedded in a same-origin page: follow the host's light/dark toggle live.
