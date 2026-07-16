@@ -135,6 +135,70 @@ payoff). Theorem numbering was ruled **auto-scope + delete `number-within`** and
    that a labelled `include: false` cell is unreferenceable, mirroring the theorem-prefix warning at
    `render/mod.rs:1699`) and belongs in the render/exec seam, so it wants its own change.
    *Source-verified; **unverified against a live kernel** (this sandbox has no `ipykernel`).*
+9. **The websocket clobbers the SSR `<title>`** (measured, 2026-07-16 machine-facing audit; detail:
+   [2026-07-16-machine-facing-audit.md](2026-07-16-machine-facing-audit.md)). `client.js:938` sets
+   `document.title = msg.title || "Taliesin"` *before* the `skipMount` guard, from a `full_render`
+   carrying the raw front-matter title (`serve_site/mod.rs:785-793`), while SSR applied
+   `title_with_site_suffix` (`:561-563`). `/blog.html` -> `Blog` (suffix lost); a titleless chapter
+   -> the tab literally reads **"Taliesin"** (5 of 6 `corpus/demo-book` chapters), because
+   `PageDoc.title` is front-matter-only with no H1 fallback (unlike `discovery.rs:48`).
+   **Has a design fork, needs a ruling:** fix the producer (suffix + H1-fallback into `full_render`),
+   the consumer (don't set title when skipping the mount), or `PageDoc.title` itself. Note it
+   *self-heals* on pages with code cells (the exec pass's `build-state: idle` restores `baseTitle`
+   from `client.js:525`), which is why no eye ever caught it: the pages an author stares at repair
+   themselves; the quiet prose chapters don't.
+10. **A front-matter `title:`-only edit broadcasts nothing** (measured, same audit). The title lives
+   in chrome, outside `doc.blocks`, so the diff is empty and `Broadcast::messages` returns `vec![]`
+   (`serve_site/mod.rs:947-952`). The server *does* rebuild; the live tab never hears. **The deck
+   path already fixes exactly this** (`serve/mod.rs:1280`, `deck_meta_changed` folded into
+   `remount`), gated on `DocFormat::Reveal`, so HTML pages keep the hole.
+11. **A restarted server leaves tabs on stale `client.js` under a green "live" pill** (same audit).
+   No protocol version; `boot_id` detects the restart and only forces a re-mount; `CLIENT_JS` is
+   `include_str!`-compiled. The `reload()` lever already exists (`protocol.rs:128`, wired at
+   `client.js:1059`) and is unused. Same trap CLAUDE.md warns about for assets, except the server
+   *knows* it restarted.
+12. **MCP `read` has no containment** (executed, same audit). `mcp.rs:154` -> `query.rs:275-285`: no
+   root, no canonicalization; `cmd_mcp(_args: &[String])` (`:69`) discards its args, so no root
+   exists even in principle. Verified over real stdio JSON-RPC: `/etc/passwd` and
+   `../../../../../../etc/hostname` both returned. Severity is threat-model-dependent (an agent with
+   filesystem access gains nothing), but the module documents a containment it does not implement,
+   and its "no write tool" claim is also false at the filesystem level (`build` writes HTML beside
+   any path and launches an interpreter). **Fork: what is the root** (cwd? a `--root` flag? the
+   discovered project?).
+13. **`seo.rs` emits machine-invalid output with no diagnostic** (executed, same audit).
+   `<lastmod>` is verbatim (`date: "May 15, 2026"` ships as-is; W3C Datetime needs zero-padded
+   `YYYY-MM-DD`, and `feed.rs` *does* enforce RFC-3339); `<loc>` is entity-escaped but never
+   URL-escaped (`posts/two words/` -> a raw space, and the same URL goes into `llms.txt` where it
+   isn't a CommonMark link); a scheme-less `url: ex.com` builds clean and emits `<loc>ex.com/</loc>`
+   + `Sitemap: ex.com/sitemap.xml`. `check` reports "no problems found", exit 0, in all three cases.
+   11/11 lastmods valid today: latent traps, not live breaks. Wants a **diagnostic, not a knob**
+   (the `69c228b` value-lint + D37 precedent).
+14. **`card.rs` text handling has no coverage checks** (rendered, same audit). The bundled Newsreader
+   has 658 glyphs (Latin/Latin-ext/Vietnamese), so Greek/Cyrillic/CJK/emoji **and math symbols
+   (∑ ∫ ∞)** draw as `.notdef` boxes with a non-zero advance, so layout "succeeds" silently — a real
+   trigger for this author's subject matter. The headline `truncate(3)`s with no ellipsis (the *lead*
+   ellipsizes correctly in the same file); eyebrow/wordmark/domain get no wrap/truncate/width check
+   at all; an over-long single word clips mid-glyph past the pad edge. 0/153 live fields today.
+15. **Two minifier latents + the bypass is unenforced** (proven, same audit). A regex literal after
+   `=>`/`)`/`]` is read as division (`minify.rs:102-110`); if its body holds a quote it flips quote
+   parity for the rest of the file and can truncate a later string literal, **killing all of
+   `app.js`** (trigger `s => /['"]/.test(x)` is an ordinary escaping idiom). Nested template literals
+   are rewritten (`:252-283`, no `${}` depth) — proven on real mermaid, **token count identical**.
+   The vendored-lib bypass (`build.rs:1102-1104`) is a *comment* with no test. Shipping bundles are
+   token- and AST-identical today, so all latent. **The cheap guard: assert token-stream + AST
+   equality over `core_enhance_js()` using Node's *bundled* acorn** (offline, no new dep); it catches
+   all three, which `node --check` structurally cannot (proven).
+16. **`set_meta` has zero wire-shape coverage** (same audit). It is the click-to-source mechanism (a
+   load-bearing goal) and **54 of the 55 ops** in a real edit (`live-edit-bench/RESULTS.md:23`).
+   Renaming the `"sourcepos"` literal at `protocol.rs:202` compiles, passes all 178 tests, passes
+   `tsc`, and silently degrades Alt-click to "opens at line 1" for every line-shifted block, plus
+   wrong-file attribution for included blocks, plus dead reverse-sync. `// @ts-check` validates
+   `client.js` against its own typedef, which knows nothing of the Rust side.
+17. **R has zero live CI coverage** (same audit). `ci.yml` installs only Python; no `setup-r`, no
+   `TALIESIN_R`-gated test, no assertion on `KernelSpec::r()`'s argv. The Python job sets
+   `TALIESIN_REQUIRE_KERNEL=1` and its canary **hard-fails** if the interpreter goes missing — a
+   guard built precisely to stop coverage silently regressing to zero. README advertises `{r}` cells
+   and `TALIESIN_R` as first-class. The guard exists for the language the author looks at.
 
 ### 3. Needs an owner ruling (not builds)
 
@@ -147,6 +211,30 @@ payoff). Theorem numbering was ruled **auto-scope + delete `number-within`** and
   post** (0 of 8 tech-blog posts set `author:`).
 
 ### 4. Needs Do-NOT-touch sign-off (citation zone)
+
+- **M1-M6 machine-facing audit, exec/kernel half** (**needs sign-off**; detail + evidence:
+  [2026-07-16-machine-facing-audit.md](2026-07-16-machine-facing-audit.md)). All in the exec/kernel
+  zone, so audited read-only and left unfixed. Ranked:
+  - **M1 `--jobs N` silently collapses build concurrency** (measured; fires on EVERY build in the
+    default config). `build.rs:1345-1351` docks 2 slots to the warm pool *before* `:1366` learns
+    whether one boots; with no `TALIESIN_PYTHON`/`.venv` none does. `--jobs 3` builds **1** page.
+    The CLI documents "max parallel pages". Its unit test certifies the defect. **Cheapest real win
+    on this list.**
+  - **M2 `interp_id` wedges the rebuild pipeline forever** (reproduced). `exec.rs:971`: blocking
+    `Command::output()` with no timeout, called from `:409` *before* `ensure_kernel` at `:466`, so
+    every timeout you built sits downstream of it. `TALIESIN_CELL_TIMEOUT` never fires. Only a
+    process restart recovers. Same function memoizes an **empty** version on a transient failure,
+    poisoning the freeze key for the process lifetime.
+  - **M3 warm-pool refill goes permanently dark after one fork hiccup** + **M4 `fork_kernel` PID
+    desync** + **M5 `warm_one` `/tmp` leak**. **One trigger (a failed fork); MUST be fixed as ONE
+    change** — the natural fix to M3 arms M4, which today cannot fire only because M3 kills the task
+    that would trigger it. The Python daemon already has a retry protocol the Rust client refuses to
+    use (`warm_pool.rs:128-138` vs `:348`), and the cold path already retries this exact failure
+    (`exec.rs:790-804`) while `warm_one` has zero retries.
+  - **M6 `MAX_WARM_PAGES = 6` is outside the budget built to bound it**; RAM probe fails **open** in
+    a container (host-wide `/proc/meminfo` while `available_parallelism` honours cgroup CPU quota).
+  *(Two entries that named the citation zone — D49, D67 — turned out not to need it. Check before
+  assuming these do; but M1-M6 were all read-only-audited precisely because they do.)*
 
 - **D72/D69 citations** (ADOPT, but **both edit `crates/core/src/cite/`, and need explicit
   sign-off**). D72: support bare `@key` at all? (The *diagnostic* shipped 2026-07-16, `8a45d59`, so
