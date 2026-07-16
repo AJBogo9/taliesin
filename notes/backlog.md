@@ -78,7 +78,8 @@ detail + evidence in [2026-07-16-machine-facing-audit.md](2026-07-16-machine-fac
 Landed the same day: the `llms.rs` separator (production was garbled), the `meta.rs` `<` escape (a
 `<!--<script>` description blanked the whole page), the `minify.rs` CSS token fusion, the `set_meta`
 wire test, an acorn token-equivalence guard, live R CI, the card headline ellipsis, and the card
-glyph diagnostic. **Two lessons that generalize:** the correct helper already existed next door and
+glyph diagnostic — plus **M1**, the `--jobs` collapse (`--jobs N` now builds exactly N pages;
+measured 2/3 -> 1 before, 2/3 -> 2/3 after). **Two lessons that generalize:** the correct helper already existed next door and
 was reimplemented weaker where nothing looks (3x — `search.rs` vs `llms.rs`/`meta.rs`, and
 `minify.rs`'s own JS branch vs its CSS branch), and **the tests certify the defects** (the `--jobs`
 unit test blesses the collapse; the refill test re-implements the loop with no error arm; the card
@@ -210,6 +211,17 @@ payoff). Theorem numbering was ruled **auto-scope + delete `number-within`** and
 
 ### 3. Needs an owner ruling (not builds)
 
+- **What does `--jobs N` bound: pages, or total resident kernels?** (OWNER-RULING; surfaced while
+  fixing M1, 2026-07-16, and deliberately left open.) The two live docs disagree, and they only
+  disagree when a warm pool boots: `main.rs:163` says `--jobs <N>` "caps parallel page renders"
+  (N = pages), while `build_budget.rs:1-5,81-85` calls `cap` "the resident-kernel budget" with
+  `warm_pool + build_kernels <= cap` (N = total kernels, so `--jobs 3` = 2 warm + **1** page).
+  M1's fix is correct under **both** readings (it only stopped charging for kernels that do not
+  exist), so this was left untouched — but with a pool booted, `--jobs 3` still renders one page at
+  a time, which the CLI's own wording promises it won't. Ruling needed on which doc is the bug; if
+  N means pages, `budget_split` must stop taking from an *explicit* `--jobs` (auto mode is
+  unaffected, since there the cap is ours to spend).
+
 - **D34 project defaults** (OWNER-RULING). `bibliography`/`csl`/`execute`/`theme` are absent from the
   19-key `NATIVE_KEYS`, but no corpus doc repeats them across pages, so it fails minimal-config today.
   Recommendation: **subtract before adding**, delete the dead `image:`/`SiteConfig.card_image` field
@@ -220,14 +232,15 @@ payoff). Theorem numbering was ruled **auto-scope + delete `number-within`** and
 
 ### 4. Needs Do-NOT-touch sign-off (citation zone)
 
-- **M1-M6 machine-facing audit, exec/kernel half** (**needs sign-off**; detail + evidence:
-  [2026-07-16-machine-facing-audit.md](2026-07-16-machine-facing-audit.md)). All in the exec/kernel
-  zone, so audited read-only and left unfixed. Ranked:
-  - **M1 `--jobs N` silently collapses build concurrency** (measured; fires on EVERY build in the
-    default config). `build.rs:1345-1351` docks 2 slots to the warm pool *before* `:1366` learns
-    whether one boots; with no `TALIESIN_PYTHON`/`.venv` none does. `--jobs 3` builds **1** page.
-    The CLI documents "max parallel pages". Its unit test certifies the defect. **Cheapest real win
-    on this list.**
+- **M2-M6 machine-facing audit, exec/kernel half** (**needs sign-off**; detail + evidence:
+  [2026-07-16-machine-facing-audit.md](2026-07-16-machine-facing-audit.md)). Audited read-only and
+  left unfixed. **M1 LANDED 2026-07-16** (`--jobs` no longer docks for a pool that never boots):
+  on inspection it touched only concurrency arithmetic in `build.rs`/`build_budget.rs` — no
+  execution semantics, no kernel lifecycle, no freeze keying — so it was **not** in the zone after
+  all. That is the third time an entry named this zone and did not need it (after D49 and D67):
+  **check the actual blast radius before assuming M2-M6 need sign-off too.** M2 (`exec.rs`) and
+  M3-M5 (`warm_pool.rs` fork protocol) plainly do; **M6 is worth re-checking** — it is a constant
+  and a `/proc` probe, and may be as free-standing as M1 was. Ranked:
   - **M2 `interp_id` wedges the rebuild pipeline forever** (reproduced). `exec.rs:971`: blocking
     `Command::output()` with no timeout, called from `:409` *before* `ensure_kernel` at `:466`, so
     every timeout you built sits downstream of it. `TALIESIN_CELL_TIMEOUT` never fires. Only a

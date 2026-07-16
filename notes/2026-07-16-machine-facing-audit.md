@@ -75,7 +75,16 @@ Three themes, and the third is the real one:
 
 ### Live now (firing in the current tree)
 
-- **`--jobs N` silently collapses build concurrency** (CONFIRMED, measured). `build.rs:1345-1351`
+- **`--jobs N` silently collapses build concurrency** (CONFIRMED, measured). **FIXED 2026-07-16**
+  (`755059d`): resolve the interpreter and boot the pool *before* charging the budget, and charge
+  only for kernels that actually exist (`is_warm()`, not `is_some()`, so an attempted-but-failed
+  pool is not charged either). `--jobs N` now yields exactly N. **It turned out not to be in the
+  Do-NOT-touch zone**: pure concurrency arithmetic, no execution semantics, no kernel lifecycle, no
+  freeze keying. **Left open, needs a ruling:** with a pool booted, `--jobs 3` still renders 1 page
+  + 2 warm, because `main.rs:163` ("parallel page renders") and `build_budget.rs:81-85` ("the
+  resident-kernel budget", `warm+build <= cap`) disagree about what N counts. The fix is correct
+  under both readings, which is why it landed without one. Original evidence follows.
+  `build.rs:1345-1351`
   hands 2 slots to `budget_split`'s warm pool *before* `warm_pool_for_build` (`:1366`) learns
   whether a pool boots; with no `TALIESIN_PYTHON`/`.venv` (the default) `should_warm` is false and
   zero kernels are pre-warmed, so the slots buy nothing. Measured on 16 cores / 21 GB free:
