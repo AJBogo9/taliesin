@@ -32,22 +32,45 @@ input pages: every `.tmd` becomes a page, **skipping `_`-prefixed directories**
 project through the same `discover` + `render_page`.
 
 Two kinds of `.tmd` are discovered but deliberately kept out of the navigable page set: a
-`draft: true` page is excluded from a **website** entirely (no output, nav, listing, or
-prev/next entry; books do not consult `draft`), and a deck pulled in by
-`{{< embed >}}` is built and served but stays out of nav and search, since it is an
-inclusion, not a page. A loose `format: deck` file that no page embeds warns rather
-than silently becoming a chrome-wrapped article.
+`draft: true` page is held out of the **published** view (no output, nav, listing, or
+prev/next entry), and a deck pulled in by `{{< embed >}}` is built and served but stays
+out of nav and search, since it is an inclusion, not a page. A loose `format: deck` file
+that no page embeds warns rather than silently becoming a chrome-wrapped article.
 
-### How `draft:` filtering works
+### How `draft:` filtering works {#sec-draft-filtering}
 
-The exclusion is structural, not cosmetic: `website_pages` reads each candidate's front
-matter and, on `draft: true`, returns `None` *before* the file ever becomes a `Page`. The
-draft therefore never enters `self.pages`, the one list every downstream feature reads
-from. Because listings, prev/next navigation, the navbar, the search index, and the
-xref registry all derive from `self.pages`, a draft drops out of every one of them at
-once, and `build` emits no file for it. (Books are different: a book's page set comes from
-the explicit `chapters:` list, so it never walks the directory and never consults
-`draft:`; to hold a chapter back from a book, leave it out of `chapters:`.)
+`draft:` is resolved by a **discovery mode**, so the same project yields two different
+page sets:
+
+| Mode | Used by | `draft: true` pages |
+|---|---|---|
+| `DraftMode::Exclude` | `build`, `publish`, `check`, `map` (plain `Site::discover`) | dropped from `self.pages`, recorded in `Site::excluded_drafts` |
+| `DraftMode::Include` | `preview` (`Site::discover_with`) | kept, tagged `Page.draft`, badged in the view |
+
+The exclusion is structural, not cosmetic: in `Exclude`, `website_pages` returns `None`
+*before* the file ever becomes a `Page`, so the draft never enters `self.pages` — the one
+list every downstream feature reads from. Because listings, prev/next navigation, the
+navbar, the search index, and the xref registry all derive from `self.pages`, a draft
+drops out of every one of them at once, and `build` emits no file for it. In `Include` the
+draft *is* a `Page`, so it flows through that same machinery and appears in listings and
+nav in context, carrying `draft: true` so the view can badge it.
+
+Making `Exclude` the zero-argument default (`Site::discover`) is deliberate: the worst
+failure is a draft leaking into a build, so every consumer is safe unless it explicitly
+opts into `Include`. Only the preview does.
+
+**Books consult `draft:` too.** A book's page set comes from the explicit `chapters:`
+list, so the gate lives in `build_book`: an `Exclude` draft chapter is skipped without
+bumping the chapter counter, so the book renumbers as if it were never listed and the
+drawer never links a page that wasn't built; a part whose chapters are *all* drafts drops
+its now-empty header. In `Include` the chapter stays, numbered in context and marked in
+the drawer. (Leaving a file out of `chapters:` still works as before.)
+
+**`draft:` is ignored on an `{{< embed >}}` target.** An embed target is a *component* of
+the page that embeds it, not an independently published page: `discover_decks` resolves it
+straight off the filesystem, so a published page's deck must ship or that page's iframe
+404s. Such a deck is therefore never counted in `excluded_drafts` (it *is* published), and
+discovery warns that the flag was ignored, pointing at the embedding page instead.
 
 ### How embedded decks are discovered {#sec-deck-discovery}
 
@@ -207,9 +230,11 @@ locally as you type. A static `build` ships the same `search.json` beside the pa
 search works on a deployed, server-less site identically to the live preview.
 
 ::: {.callout-note}
-The index is built from `self.pages`, so the two exclusions compound automatically: a
-`draft:` page and an embedded deck are both absent from `self.pages`, and therefore absent
-from search, without search needing any special case for either.
+The index is built from `self.pages`, so the two exclusions compound automatically: in a
+published build a `draft:` page and an embedded deck are both absent from `self.pages`,
+and therefore absent from search, without search needing any special case for either. (In
+`preview` a draft *is* in `self.pages`, so it is searchable while you work on it — the
+same mechanism, read through the other discovery mode. See @sec-draft-filtering.)
 :::
 
 ## Social & SEO metadata

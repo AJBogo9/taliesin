@@ -33,7 +33,7 @@ table below repeats the front-matter keys most often paired with project config.
 | `lang` | BCP-47 language tag for `<html lang>` (default `en`) |
 | `csl` | Recognized so it never warns, but **not currently honored**: references always render in the built-in IEEE style, so setting `csl` has no effect |
 | `categories`, `image`, `image-alt` | `categories`/`image` feed `listing:` cards + social meta; `image-alt` sets the alt text on an `about:` profile image (listing-card images emit an empty `alt`) |
-| `draft` | `true` excludes the page from a website build (output, nav, and listings) |
+| `draft` | `true` keeps the page (or book chapter) out of a `build`/`publish` (output, nav, listings); `preview` still shows it, badged |
 | `prose-lint` | Opt-in prose linter: `true` enables the built-in rules (doubled words, weasel words), or `{ banned: [term, …] }` adds custom banned terms. Emits located, click-to-source warnings (code/math/links skipped); off by default |
 
 ### Code-cell options

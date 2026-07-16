@@ -53,7 +53,7 @@ or `{ file: … }` map, or a list of those.
 | `page-layout` | string | `full` widens the content column (good for listing indexes); the default is the reading-width column |
 | `image` | string | The image on a `listing:` card; the social-card image is now auto-generated per page |
 | `image-alt` | string | Not rendered on the page itself, but used as the `alt` text on this page's `listing:` card image when one links to it. Leave it unset and the card's image falls back to an empty (decorative) `alt`, since the card's title and description already label the link. Separate from the `about:` block's own `image-alt` sub-key, which sets the `alt` on an `about:` profile image |
-| `draft` | bool | `true` excludes the page from a website build entirely (output, nav, and listings) |
+| `draft` | bool | `true` keeps the page (or book chapter) out of a `build`/`publish` entirely (no output, nav, listing, or prev/next), and the build reports it as "not published". `preview` still shows it, badged, so you can work on it in context. Ignored on an `{{< embed >}}` target |
 | `title-block-style` | string | `none` keeps the title metadata (still drives `<title>`, OpenGraph, nav) but hides the visible `<h1>` title block |
 
 ### Raw-HTML includes
@@ -312,6 +312,6 @@ prose-lint:
   banned: [utilize, leverage]                       # flag these in prose
 
 # --- Drafts ---
-draft: false                                        # true would exclude from a build
+draft: false                                        # true: preview shows it, build excludes it
 ---
 ```

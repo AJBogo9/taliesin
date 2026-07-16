@@ -7,18 +7,22 @@ the regression net); each new capability ships pinned by a target corpus doc. Ou
 > Kept small (read often). **Only open tasks live here** — delete items once landed; don't leave
 > `[x]`. Completed work is in git + `ROADMAP.md` / `native-rewrite.md` / `AUDITS.md`.
 
-## State (2026-07-12)
+## State (2026-07-16)
 
 v0.2.0. All four formats render + deploy; the dev loop is strong (block-level incremental updates
 with DOM-state preservation, warm server + Jupyter kernel, `_freeze` cache, Alt-click + reverse
 cursor sync, located diagnostics, CSS hot-swap, Cmd-K search). `origin/main == local main ==
-3b80bb7` (S6 OG-cards + link-preview a11y merged + pushed; nothing unpushed). **Tier 1 is empty.**
+a4a96bc` (draft-aware preview merged + pushed; nothing unpushed). **Tier 1 is empty.**
 
-**2026-07-12 — every owner-gated blocker is now ruled** (see the `[ruled]` tags in the grind queue);
-the backlog is slimmed (the feature-idea wishlist moved to `FEATURE-IDEAS.md`, resolved rulings
-folded in, the stale merge runbook removed). **Goal: grind the blog-identity + publish-hardening +
-a11y queue to done, then the slides audit (DONE 2026-07-12 → section F below +
-[2026-07-12-deck-audit.md](2026-07-12-deck-audit.md)).**
+**Sections A, B and F are now closed.** A (blog identity) finished with #7 draft-aware preview
+(2026-07-16). B (publish hardening) was **backlog rot** — all three items were already shipped by
+the author; entries deleted with evidence (see the note in section A). F (the deck audit) is fully
+landed except the deliberately-deferred B3-18. **→ The next open work is section C (theme/a11y
+follow-ups), then D, then E.**
+
+**Before picking any item: grep its named symbol/flag in source first.** The author pushes work
+mid-session, so an entry can go stale with no signal in this file (that is exactly how section B
+rotted). Trust an item's described *symptom*, never its cause or line number.
 
 **Working method:** branch per feature; brainstorm if there's a fork; spec under
 `docs/superpowers/specs/`; implement TDD; verify (cargo + browser via chrome-devtools, or the
@@ -107,11 +111,13 @@ nav; readHash anchor/digit misroute → slide 0; live `---`/`. . .` not structur
 collision); (4) build the mobile feed; (5) trim flourishes; (6) theming/a11y/perf; (7) share-link +
 live-input deep-link + wake-lock adds.
 
-**Progress (2026-07-13):** steps 1-4 landed and **step 5 (trim flourishes) done this session**;
-see the audit file's top-of-doc **Status** block for the live grind-order tracker. Remaining:
-the step-3 correctness leftovers (B1-6 speaker-preview state, B3-15 front-matter hot-update,
-B3-17 speaker-window stale, B3-18 whole-deck remount), C-ADD-4 (feed notes narration), then
-steps 6 (B4/B5/B6) + 7 (C-ADD-2/3/5).
+**Progress (2026-07-16): the ENTIRE audit is landed except one deliberately-deferred item.**
+Steps 1-7 all done (front door + feed + correctness + flourish trim + theming/a11y/perf + docs
++ the C-ADD share-link/QR, live-input deep-link, feed notes-narration, wake-lock adds). See the
+audit file's top-of-doc **Status** block for the per-item tracker. **Only remaining: B3-18** — a
+structural deck edit re-mounts the *whole* deck, nuking every `{js}`/WebGL widget's state;
+re-mount only the edited `<section>` subtree. Deferred on purpose (touches the client's re-mount
+path; bigger blast radius). Nothing else in section F is open.
 
 ### G. AI-native authoring (2026-07-12 audit → [2026-07-12-ai-native-backlog.md](2026-07-12-ai-native-backlog.md))
 
