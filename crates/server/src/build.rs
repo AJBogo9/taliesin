@@ -1122,6 +1122,17 @@ fn asset_href(page_url: &str, root_rel: &str) -> String {
 /// structured diagnostics. Shared by `cmd_build`'s directory branch and `publish` (which
 /// needs the success signal, not just an opaque `ExitCode`, plus the freedom to keep
 /// working with the output dir afterward).
+/// The "N drafts not published" build report line, or `None` when nothing was held back.
+/// Singular/plural aware; names the rel paths so the author sees exactly what was excluded.
+pub(crate) fn draft_report_line(excluded: &[String]) -> Option<String> {
+    if excluded.is_empty() {
+        return None;
+    }
+    let n = excluded.len();
+    let noun = if n == 1 { "draft" } else { "drafts" };
+    Some(format!("{n} {noun} not published: {}", excluded.join(", ")))
+}
+
 pub(crate) fn run_site_build(
     root: &Path,
     out_override: Option<&str>,
@@ -1196,6 +1207,11 @@ async fn build_site_async(
             ));
         }
         log::warn(w);
+    }
+    // Drafts (`draft: true`) are excluded from the build; report what was held back so a
+    // forgotten `draft:` flag is visible rather than a silently missing page.
+    if let Some(line) = draft_report_line(&site.excluded_drafts) {
+        log::info(&line);
     }
     if site.pages.is_empty() {
         let msg = format!("no .tmd pages found under {}", root.display());
@@ -1828,6 +1844,19 @@ fn is_local_ref(v: &str) -> bool {
 mod mirror_tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn draft_report_line_counts_and_names() {
+        assert_eq!(draft_report_line(&[]), None);
+        assert_eq!(
+            draft_report_line(&["only.tmd".into()]),
+            Some("1 draft not published: only.tmd".to_string())
+        );
+        assert_eq!(
+            draft_report_line(&["a.tmd".into(), "posts/b/index.tmd".into()]),
+            Some("2 drafts not published: a.tmd, posts/b/index.tmd".to_string())
+        );
+    }
 
     #[test]
     fn elapsed_note_switches_from_ms_to_seconds() {
