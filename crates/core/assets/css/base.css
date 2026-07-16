@@ -864,8 +864,11 @@
       border: 1px solid CanvasText;
     }
     .tabset-tab[aria-selected="true"] { border-bottom-color: Highlight; }
-    .tali-reader-seg button[aria-pressed="true"],
-    .tali-nav-active, a[aria-current="page"] { forced-color-adjust: none; }
+    /* Only the pressed seg button opts out: it pins a bg+fg PAIR, so forced colors would
+       otherwise drop the pressed state entirely. The nav markers must NOT opt out — they pin a
+       fg with no bg, which under an opposite-polarity theme paints "you are here" invisible.
+       Their marker survives without it (site.css underlines the active item). */
+    .tali-reader-seg button[aria-pressed="true"] { forced-color-adjust: none; }
   }
   /* `prefers-contrast: more`: nudge the muted/border tones toward full contrast.
      `:root:root` (0,2,0), not `:root` (0,1,0) or `html[data-theme="dark"]` (0,1,1): dark.css

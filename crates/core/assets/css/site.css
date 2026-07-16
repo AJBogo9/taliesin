@@ -309,7 +309,7 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
   .tali-site-footer { border-top: 1px solid CanvasText; }
   .tali-book-drawer-panel { border-right: 1px solid CanvasText; }
   .tali-nav-active, .tali-book-active, a[aria-current="page"] {
-    forced-color-adjust: none; text-decoration: underline; text-underline-offset: 3px;
+    text-decoration: underline; text-underline-offset: 3px;
   }
   .tali-search-btn, .tali-nav-settings, .tali-nav-burger, .tali-book-drawer-btn { border: 1px solid CanvasText; }
 }
