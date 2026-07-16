@@ -296,6 +296,22 @@ pub(crate) fn card_url(site: &Site, page: &Page) -> Option<String> {
     Some(format!("/{}", card_rel_path(&card_spec(site, page))))
 }
 
+/// Lay the headline out: up to 3 lines at 76px, with one shrink step to 60px if it
+/// overflows. Returns the lines and the chosen size.
+///
+/// Split out of `render_card` so the overflow behaviour is assertable at all: the render
+/// path's only output is a PNG, and nothing decodes one, so `render_card`'s own
+/// overlong-text test can (and did) pass while the headline was silently cut.
+fn headline_layout(f: &FontRef, headline: &str, max_w: f32) -> (Vec<String>, f32) {
+    let mut hsize = 76.0_f32;
+    if wrap(f, headline, hsize, max_w).len() > 3 {
+        hsize = 60.0;
+    }
+    // `wrap_clamp`, not `truncate`: a bare truncate leaves a complete-looking but wrong
+    // headline with no signal, and the lead beside it already ellipsizes this way.
+    (wrap_clamp(f, headline, hsize, max_w, 3), hsize)
+}
+
 /// Render `spec` onto a 1200x630 dark card and return the encoded PNG bytes.
 pub fn render_card(spec: &CardSpec) -> Vec<u8> {
     let f = font();
@@ -322,13 +338,7 @@ pub fn render_card(spec: &CardSpec) -> Vec<u8> {
         .map(|s| s.to_uppercase());
 
     // Headline: large fg serif, up to 3 lines, one shrink step if it overflows.
-    let mut hsize = 76.0_f32;
-    let mut hlines = wrap(&f, &spec.headline, hsize, max_w);
-    if hlines.len() > 3 {
-        hsize = 60.0;
-        hlines = wrap(&f, &spec.headline, hsize, max_w);
-    }
-    hlines.truncate(3);
+    let (hlines, hsize) = headline_layout(&f, &spec.headline, max_w);
     let head_lh = hsize * 1.16;
 
     // Lead: muted, up to 2 lines, ellipsized.
@@ -630,6 +640,28 @@ mod tests {
         let home2 = site2.pages.iter().find(|p| p.url == "index.html").unwrap();
         assert!(card_url(&site2, home2).is_none(), "no url -> None");
         let _ = std::fs::remove_dir_all(&without);
+    }
+
+    #[test]
+    fn an_overlong_headline_is_ellipsized_not_silently_cut() {
+        let f = font();
+        let max_w = CARD_W as f32 - 72.0 * 2.0;
+        // A headline too long even at the 60px shrink step. Cutting it without an
+        // ellipsis yields a COMPLETE-LOOKING but wrong headline on the social card, with
+        // no signal to anyone: the card is only ever read by crawlers. The `lead` already
+        // ellipsizes correctly via wrap_clamp in this same file.
+        let long = "Deriving the Kruskal-Wallis test carefully from first principles \
+                    with many additional qualifying words that simply keep going and going";
+        let (lines, size) = headline_layout(&f, long, max_w);
+        assert!(lines.len() <= 3, "clamped to 3 lines: {lines:?}");
+        assert_eq!(size, 60.0, "and took the shrink step first");
+        assert!(
+            lines.last().expect("a line").ends_with('\u{2026}'),
+            "the cut must be visible: {lines:?}"
+        );
+        // A headline that FITS must not gain a spurious ellipsis.
+        let (short, _) = headline_layout(&f, "A Short Title", max_w);
+        assert_eq!(short, vec!["A Short Title".to_string()]);
     }
 
     #[test]
