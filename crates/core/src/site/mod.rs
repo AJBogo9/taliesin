@@ -985,9 +985,11 @@ impl Site {
         })
     }
 
-    /// Number a book chapter's headings in place (chapter N, then N.1, N.1.1 …),
-    /// controlled by `number-sections`. A no-op for a website or an unnumbered
-    /// preface. Called by both the static build and the live preview.
+    /// Number a book chapter's headings in place (chapter N, then N.1, N.1.1 …).
+    /// There is no key to turn this on: a chapter is numbered iff `chapter_for` gives
+    /// it a number, i.e. it is a `chapters:` entry that is not the `index` preface and
+    /// whose H1 carries no `.unnumbered`/`{-}` (see `book.rs`). A no-op for a website
+    /// or an unnumbered preface. Called by both the static build and the live preview.
     pub fn number_chapter(&self, page: &Page, blocks: &mut [Block]) {
         if let Some(number) = self.chapter_for(page) {
             number_chapter_headings(blocks, number);
