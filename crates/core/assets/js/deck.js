@@ -1677,7 +1677,7 @@
   }
   function key(k, d) { return '<div class="tali-key"><kbd>' + k + '</kbd><span>' + d + '</span></div>'; }
   var KEYS_HTML =
-    key('← →', 'Navigate') + key('↑ ↓', 'Vertical slides') + key('Space', 'Next') +
+    key('← →', 'Navigate') + key('↑ ↓', 'Jump topic') + key('Space', 'Next') +
     key('O', 'Overview') + key('F', 'Fullscreen') + key('S', 'Speaker view') +
     key('B', 'Black screen') +
     key('?', 'This menu') + key('Esc', 'Close');
