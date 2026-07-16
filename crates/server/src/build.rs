@@ -1331,7 +1331,8 @@ async fn build_site_async(
     //    Determinism is preserved: scheduling only changes *when* a page builds, never
     //    *what* it produces, and per-page outcomes (file bytes + log lines) are replayed
     //    in `site.pages` order so a `--jobs N` build is byte- and log-identical to the
-    //    sequential one. `--jobs 1` (today's default) takes the in-order serial path.
+    //    sequential one. `--jobs 1` takes the in-order serial path (it is not the default;
+    //    the default is auto, which sizes the cap against free RAM and the core count).
     //    Cross-page ordering edges (a page that must build after another) are deferred to
     //    Task 9; here every dirty page is treated as independent.
     // Plan the build's concurrency: how many pages at once, and how many kernels to
