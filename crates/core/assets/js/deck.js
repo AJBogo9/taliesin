@@ -1825,13 +1825,21 @@
   // in a tab (or scrolled on a phone feed) should NOT block the screensaver; going
   // fullscreen to project is the intent. No config knob; auto-follows fullscreen.
   function acquireWakeLock() {
-    if (!navigator.wakeLock || deck.wakeLock) return;
+    // Guard on `wakeLockPending` too, not just the resolved sentinel: request() is async,
+    // so two syncWakeLock() calls landing inside the request window (fullscreenchange +
+    // visibilitychange near-simultaneously) would each request one and orphan a sentinel
+    // that then keeps the screen awake after exit. The flag closes that window.
+    if (!navigator.wakeLock || deck.wakeLock || deck.wakeLockPending) return;
+    deck.wakeLockPending = true;
     navigator.wakeLock.request('screen').then(function (s) {
+      deck.wakeLockPending = false;
+      // If we exited fullscreen while the request was in flight, don't keep the lock.
+      if (!document.fullscreenElement || document.visibilityState !== 'visible') { try { s.release(); } catch (e) {} return; }
       deck.wakeLock = s;
       // The OS auto-releases the sentinel when the tab is hidden; drop our ref so
       // syncWakeLock() re-requests on the next visibility/fullscreen change.
       s.addEventListener('release', function () { if (deck.wakeLock === s) deck.wakeLock = null; });
-    }).catch(function () {}); // denied / unsupported (e.g. no user gesture, low battery)
+    }).catch(function () { deck.wakeLockPending = false; }); // denied / unsupported
   }
   function releaseWakeLock() {
     if (!deck.wakeLock) return;
@@ -1886,12 +1894,17 @@
     var copyBtn = deck.share.querySelector('.tali-share-copy');
     copyBtn.textContent = 'Copy';
     deck.share.removeAttribute('hidden'); deck.shareBackdrop.removeAttribute('hidden');
+    // The opaque backdrop makes this a real modal: mark the deck behind inert so Tab and a
+    // screen reader can't reach the slides underneath while it's open (the panel lives
+    // outside the deck, on <body>, so it stays reachable).
+    var rev = deckEl(); if (rev) rev.inert = true;
     showChrome();
     copyBtn.focus();
   }
   function closeShare() {
     if (!deck.share || deck.share.hasAttribute('hidden')) return;
     var focusInside = deck.share.contains(document.activeElement);
+    var rev = deckEl(); if (rev) rev.inert = false;
     deck.share.setAttribute('hidden', ''); deck.shareBackdrop.setAttribute('hidden', '');
     if (focusInside && deck.menuBtn) deck.menuBtn.focus(); // WCAG 2.4.3: don't drop to <body>
   }

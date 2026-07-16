@@ -70,8 +70,11 @@ as-is as the spec. This block is the **live tracker** against the Part D grind o
    there is no reachable site-preview variant.) **Still open: B3-18** (a structural edit
    re-mounts the whole deck — deferred).
 4. **A3 — mobile slide-feed** · ✅ **done** (`f97c01f`, first-frame `f8c2898`); pinch-zoom
-   unblocked (**B5-1**). **C-ADD-4 (speaker notes as feed narration) NOT done** — the feed
-   doesn't surface `::: {.notes}` yet.
+   unblocked (**B5-1**). **C-ADD-4 (speaker notes as feed narration)** · ✅ **done**
+   (`b174a3c`, 2026-07-16): the in-place `.notes` DOM flips from `display:none` to a muted
+   themed narration card, feed-only (CSS-gated on `html.tali-feed`; still presenter-only in
+   stepped/overview, and an embedded deck never feeds). `section > .notes` (0,4,x) outranks
+   the per-slide `.tali-dark-bg`/`.tali-light-bg` flip so the card's ink stays legible.
 5. **C-CUT-2..6 + C-SIMP-1..2 — trim the overview flourishes** · ✅ **done this session**:
    storyline threads · minimap · LOD cards · drawing pen · overview filter box cut; van
    Wijk smooth-zoom + hash `history` knob simplified; `leafAt` kept for the speaker view.
@@ -123,7 +126,21 @@ as-is as the spec. This block is the **live tracker** against the Part D grind o
    (fitOverview if overview + setCamera) and a `ResizeObserver` re-fits the current slide when
    late in-slide content (a {js} chart / `<img>`) overflows the initial measure, loop-guarded
    (`fitting`) with a `pendingRefit` defer for two-stage embeds.
-7. **C-ADD-2/3/5 — share-link + QR · live-input deep-link · wake-lock** · ⬜ **pending**.
+7. **C-ADD-2/3/5 — share-link + QR · live-input deep-link · wake-lock** · ✅ **done**
+   (2026-07-16). **C-ADD-5** (`a8eeb08`) screen wake lock, fullscreen-gated (the "presenting"
+   signal; casual/feed viewing doesn't hold it), re-synced on visibility. **C-ADD-3**
+   (`3bb6438`) reconciled the two clobbering hash writers: inside a deck the fragment is
+   `<pos>?<k=v&…>` — deck.js owns the `/slide/v/frag` prefix, qmd-js owns the `?`-query
+   suffix, each preserves the other's segment; a non-deck page keeps the bare `#k=v`. Pinned
+   by a new reactive-input corpus slide (count 14→15). Browser-verified end-to-end: slider→15
+   ⇒ `#/ask-what-if-live?rate=15`, nav preserves it, a fresh load of the shared link restores
+   slide + slider + downstream `{js}` cell; non-deck page unchanged. **C-ADD-2** (`f6d2239`)
+   "Share this view" menu tool: an OWN ~180-line offline QR encoder (byte mode, ECC L, v1–10,
+   ISO 18004; no CDN, works on `file://`, not vendored) + a copy-link, in a light-dismiss
+   dialog. Encoder proven bit-for-bit vs a reference encoder (segno) across 152/153 random
+   inputs (v1–10; the 1 diff is a benign mask-tie) and by opencv-decoding output; the QR read
+   back from a SCREENSHOT of the live panel decoded to the exact URL incl. live `rate=` state.
+   **Only B3-18 (deferred) remains of the whole audit.**
 
 **B7 docs drift** · ✅ **done** (`53bab78`) — the naming-drift + false-claim sweep landed:
 `QmdDeck`→`TaliesinDeck` (alias noted once), `qhl-`→`tali-hl-` (line-step + syntect scope
@@ -138,22 +155,20 @@ already cleaned earlier this audit.)
 
 ## ▶ START HERE for the next session
 
-**Everything in Parts A-D is done except one deliberately-deferred item.** The only remaining
-audit work:
+**The entire audit (Parts A–D + Step 7) is now done except one deliberately-deferred item.**
+Step 7 landed 2026-07-16 (C-ADD-2 share-link+QR `f6d2239`, C-ADD-3 live-input deep-link
+`3bb6438`, C-ADD-4 feed notes-narration `b174a3c`, C-ADD-5 wake-lock `a8eeb08` — see the
+grind-order status block above for details + verification). The only remaining audit work:
 
-1. **Step 7 — C-ADD new features** (additive, not bug fixes; each is its own small feature):
-   - **C-ADD-2** share-link + **offline** QR code (a "share this deck" affordance).
-   - **C-ADD-3** live-input deep-link (encode `{{< input >}}` state into the URL hash).
-   - **C-ADD-5** wake-lock (hold the screen awake while presenting).
-   - (**C-ADD-4** speaker notes as feed narration is also still open — the mobile feed doesn't
-     surface `::: {.notes}` yet.)
-2. **B3-18** (deferred) — a structural deck edit re-mounts the *whole* deck, nuking every
+1. **B3-18** (deferred) — a structural deck edit re-mounts the *whole* deck, nuking every
    `{js}`/WebGL widget's state; re-mount only the edited `<section>` subtree. Bigger blast
-   radius (touches the client's re-mount path); left deferred on purpose.
+   radius (touches the client's re-mount path); left deferred on purpose. This is the ONLY
+   open item; everything else in this audit is landed + verified.
 
 Everything else (the redesign in Part A; all correctness batches B1-B4; a11y B5; perf/robustness
-B6; B7 docs; and the B1-6 / B3-15 Step-3 leftovers) has **landed and is verified** — see the
-per-item ✅ notes below and in the grind-order status block above.
+B6; B7 docs; the B1-6 / B3-15 Step-3 leftovers; and all of Step 7's C-ADD features) has
+**landed and is verified** — see the per-item ✅ notes below and in the grind-order status
+block above.
 
 ---
 

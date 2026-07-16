@@ -491,7 +491,8 @@ html.tali-feed .tali-menu-item[data-action="speaker"] { display: none; }
    `.notes` DOM (no clone — block-ids + click-to-source survive), styled as a muted
    themed card set off from the slide content. `section > .notes` (0,4,x) also outranks
    the per-slide `.tali-dark-bg`/`.tali-light-bg` contrast-flip rules below so the card's
-   own ink can't be forced to white-on-light / dark-on-dark inside its themed panel. */
+   text, headings, links, and list markers keep their themed ink inside its panel rather
+   than the section's forced white/dark (which would go invisible on the card surface). */
 html.tali-feed .tali-deck .tali-slides section > .notes {
   display: block;
   margin: 1.4em -1em -0.6em;        /* bleed to the slide edges (cancel the 0.6em/1em padding) */
@@ -514,6 +515,8 @@ html.tali-feed .tali-deck .tali-slides section > .notes::before {
 html.tali-feed .tali-deck .tali-slides section > .notes,
 html.tali-feed .tali-deck .tali-slides section > .notes :is(p, li) { color: var(--deck-muted); }
 html.tali-feed .tali-deck .tali-slides section > .notes :is(strong, h1, h2, h3, h4, h5, h6) { color: var(--deck-ink); }
+html.tali-feed .tali-deck .tali-slides section > .notes a { color: var(--deck-accent); }
+html.tali-feed .tali-deck .tali-slides section > .notes li::marker { color: var(--deck-accent); }
 html.tali-feed .tali-deck .tali-slides section > .notes :last-child { margin-bottom: 0; }
 
 /* === Dark theme backgrounds (palette/colours defined at the top of this file) =====
