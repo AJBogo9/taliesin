@@ -54,11 +54,27 @@ been wrong about this **five** times: on 2026-07-16 one said "+6 unpushed" (all 
 pushed), he then pushed twice more mid-session, and later that day a handoff said "the last backlog
 commit is local" while it was pushed, before he pushed four more in-flight commits. Re-run the
 checks too, do not assume: `cargo test -p taliesin-core` + `-p taliesin-server`, `cargo fmt --check`,
-`cargo clippy --all-targets -- -D warnings`.
+`cargo clippy --all-targets -- -D warnings`. *(It happened a sixth time on 2026-07-16: the author
+pushed `2368e4a` mid-session while an agent was mid-task. The count was checked, not reported.)*
+**Two new gates**, or the suite quietly under-tests itself: `TALIESIN_REQUIRE_NODE=1 cargo test
+--workspace` (the JS-equivalence guard skips without Node) and `TALIESIN_R=R TALIESIN_REQUIRE_R=1
+cargo test -p taliesin-server --test r_kernel` (R needs an interpreter + IRkernel). CI sets both.
 
 **What is left is a flat list; none of it is a grind chunk.** One item is build-ready with no
-ruling (**D37**); the rest is small defects, two owner rulings, two sign-off-gated citation items,
-and one deliberate deferral. Everything else is Tier 2/3 (demand-driven).
+ruling (**D37**); the rest is small defects, **three** owner rulings, two sign-off-gated citation
+items, and one deliberate deferral. Everything else is Tier 2/3 (demand-driven).
+
+**Pick up here (2026-07-16 machine-facing audit; everything below is evidenced in
+[its note](2026-07-16-machine-facing-audit.md), not inherited):**
+1. **The three rulings block the most value.** The `--jobs` semantics (pages vs kernels), where the
+   title-clobber fix belongs, and what MCP's root should be. Each is a design call, not a build.
+2. **Re-check the blast radius before assuming M2-M6 need zone sign-off.** M1 carried the label and
+   did not need it; that is now three-for-three with D49 and D67. **M6 is the likely next false
+   positive.** M2 (`exec.rs`) and M3-M5 (fork protocol) genuinely do need it.
+3. **M3+M4+M5 are ONE change, not three.** They share one trigger (a failed fork) and the natural
+   fix to M3 arms M4, which today cannot fire only because M3 kills the task that would trigger it.
+4. **Do not re-verify M4/M5/M6 from the note alone** — unlike M1/M2/M3 they were confirmed by source
+   reading only, never executed.
 
 **Method note that paid off three times on 2026-07-16, use it:** when an entry names a file:line,
 open the *running product* before the file. §D's layout targets were labelled "re-verified against
