@@ -118,12 +118,6 @@
     "theorems": {
       "additionalProperties": false,
       "properties": {
-        "number-within": {
-          "enum": [
-            "chapter"
-          ],
-          "type": "string"
-        },
         "numbered": {
           "oneOf": [
             {

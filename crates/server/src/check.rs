@@ -188,8 +188,9 @@ fn collect_site_diagnostics(root: &Path) -> Result<Vec<Diagnostic>, String> {
             out.push(Diagnostic::new(page.rel.clone(), Some(line), message));
         }
         let base = page.input.parent().unwrap_or(root);
-        // Scope a numbered book chapter's theorems to its chapter ("Theorem 2.3"), matching
-        // the build + live-preview paths; otherwise `number-within: chapter` would warn here.
+        // Scope a numbered book chapter's floats + theorems to its chapter ("Theorem 2.3"),
+        // matching the build + live-preview paths, so `check` reports the same numbers a
+        // reader sees.
         let doc =
             taliesin_core::render_document_with_includes_scoped(&src, base, site.chapter_for(page));
         // Static lints over the page's blocks (xrefs are added by render_page_doc_warned

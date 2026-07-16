@@ -183,13 +183,6 @@ documented non-goal" and Atom shipped anyway, with autodiscovery.
 
 **Wave 1's live output, still open** (each verified against source; the catalog D-number is the
 detail pointer):
-- **[ruling] Theorem/float numbering now visibly disagree** (surfaced by D49 landing, 2026-07-16).
-  Floats auto-scope ("Figure 2.3") while theorems keep their **opt-in** `theorems: number-within:
-  chapter`, so a book that does not set it shows "Figure 2.3" beside "Theorem 5".
-  (`corpus/demo-book/methods.tmd` sets it, so it agrees there.) Auto-scoping is arguably the better
-  default for theorems too, but flipping it **reverses shipped behavior and breaks `corpus.rs:1001`
-  + `render/tests.rs:2781`**, so it needs its own ruling. Options: flip theorems to auto (consistent,
-  breaks 2 pins), keep as-is (inconsistent), or drop `number-within:` entirely (a knob removed).
 - **D72/D69 citations** (ADOPT, but **both edit `crates/core/src/cite/`, a Do-NOT-touch zone, and
   need explicit sign-off**). D72: support bare `@key` at all? (The *diagnostic* shipped 2026-07-16,
   `8a45d59`, so the failure is now caught; the engine question is separate.) D69: the reference list
@@ -207,6 +200,20 @@ detail pointer):
   post** (0 of 8 tech-blog posts set `author:`).
 
 ***Landed 2026-07-16 (deleted from the list above, recorded here so they are not re-scoped):***
+- ***Theorem/float numbering agreement** (was the `[ruling]` entry). Owner ruled **flip theorems to
+  auto-scope**, then ruled **delete `number-within:` with it** — because once theorems scope
+  automatically the key does exactly nothing, and a recognized-but-inert key is the very bug D67
+  (`csl:`) just shipped a diagnostic for. Theorems now call `float_number`, the same helper floats
+  use, so a chapter cannot show "Figure 2.3" beside "Theorem 5"; measured before (Figure 2.1 beside
+  Theorem 1) and after (both 2.1) on a real build. **The entry's "breaks 2 pins" was itself stale**:
+  the named lines pointed at unrelated tests, and the corpus pins that assert "Theorem 2.1" **passed
+  unchanged**, because `methods.tmd` is chapter 2 and now scopes without config. The one real pin was
+  `site/mod.rs`'s cross-page theorem test, whose sibling *figure* test already asserted "Figure 2.1"
+  for the identical book — its own comment ("a flat Figure 1 would collide with chapter 1's own first
+  figure") is the argument for the flip, written before the flip. Removal swept 12 sites incl. the
+  drift-locked schema + vocab JSON (regenerated with `TALIESIN_BLESS=1`, diff = the key only) and
+  `methods.tmd`'s whole front matter. Migration is loud, not silent: a leftover `number-within:` now
+  warns `unknown theorems key` **with a line number**.
 - ***Cross-page `@fig-` to a CELL-labelled figure** (was live defect #2, the largest one). Shipped.
   The entry's cause was right but pointed at the wrong layer: teaching `scan_page_anchors` to parse
   fences would have duplicated the renderer's "which fences are cells" rule in a second parser.

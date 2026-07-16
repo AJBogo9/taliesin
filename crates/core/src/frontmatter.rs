@@ -98,15 +98,12 @@ pub(crate) const HERO_KEYS: &[&str] = &[
 /// `prose-lint:` sub-keys taliesin honors (the mapping form; see `crate::prose::config`).
 pub(crate) const PROSE_LINT_KEYS: &[&str] = &["banned"];
 
-/// `theorems:` sub-keys taliesin honors: `shared` (shared counters), `number-within`
-/// (chapter scoping), `numbered` (whether/when to number). The VALUES of the latter two
-/// are checked by [`validate_theorem_values`] so an unrecognized value warns rather than
-/// being silently ignored.
-pub(crate) const THEOREM_KEYS: &[&str] = &["shared", "number-within", "numbered"];
-
-/// Values `theorems.number-within` honors (see `render::fm_extract::parse_theorem_config`);
-/// any other value is silently ignored by the parser, so it warns instead.
-const THEOREM_NUMBER_WITHIN: &[&str] = &["chapter"];
+/// `theorems:` sub-keys taliesin honors: `shared` (shared counters), `numbered`
+/// (whether/when to number). The VALUES of `numbered` are checked by
+/// [`validate_theorem_values`] so an unrecognized value warns rather than being silently
+/// ignored. Numbering *scope* is deliberately not a key: a theorem scopes to its numbered
+/// book chapter automatically, as every float does.
+pub(crate) const THEOREM_KEYS: &[&str] = &["shared", "numbered"];
 
 /// String values `theorems.numbered` honors besides a YAML bool; also the did-you-mean
 /// suggestion candidates.
@@ -243,27 +240,13 @@ fn validate_child_keys(
 }
 
 /// Value-level checks for `theorems:`. The parser silently ignores an unrecognized
-/// `number-within`/`numbered` value (rendering the OPPOSITE of intent — e.g.
-/// `numbered: never` stays numbered), so flag it with a did-you-mean rather than
-/// certifying it on a green check. Mirrors the accepted set in
-/// `render::fm_extract::parse_theorem_config`.
+/// `numbered` value (rendering the OPPOSITE of intent — e.g. `numbered: never` stays
+/// numbered), so flag it with a did-you-mean rather than certifying it on a green check.
+/// Mirrors the accepted set in `render::fm_extract::parse_theorem_config`.
 fn validate_theorem_values(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
     let Some(serde_yaml::Value::Mapping(thm)) = map.get("theorems") else {
         return;
     };
-    if let Some(v) = thm.get("number-within")
-        && v.as_str() != Some("chapter")
-    {
-        let line = nested_key_line(block, "theorems", "number-within");
-        out.push(located(
-            unknown_value_message(
-                "theorems number-within value",
-                &value_label(v),
-                THEOREM_NUMBER_WITHIN,
-            ),
-            line,
-        ));
-    }
     // `numbered` honors a YAML bool (true/false) or the string `unless-unique`.
     if let Some(v) = thm.get("numbered")
         && !(matches!(v, serde_yaml::Value::Bool(_)) || v.as_str() == Some("unless-unique"))
@@ -554,25 +537,25 @@ mod tests {
         assert!(msgs("---\ntheorems:\n  numbered: unless-unique\n---\n").is_empty());
     }
 
+    /// `number-within` was removed when theorem numbers started scoping to a book chapter
+    /// automatically. A doc that still carries it must be TOLD, not silently ignored: it
+    /// is now an unknown `theorems:` key, which is the whole point of validating sub-keys
+    /// (the same hazard `csl:` was fixed for — a key that reads as honored and does
+    /// nothing).
     #[test]
-    fn theorems_number_within_is_recognized() {
+    fn theorems_number_within_is_gone_and_says_so() {
+        let m = msgs("---\ntheorems:\n  number-within: chapter\n---\n");
         assert!(
-            msgs("---\ntheorems:\n  number-within: chapter\n---\n").is_empty(),
-            "number-within is a recognized theorems key"
+            m.iter().any(|w| w.contains("number-within")),
+            "a leftover number-within must warn, not pass silently: {m:?}"
         );
     }
 
     #[test]
-    fn theorems_flags_unrecognized_number_within_and_numbered_values() {
+    fn theorems_flags_an_unrecognized_numbered_value() {
         // A value the parser silently ignores (renders the OPPOSITE of intent) must warn,
-        // not pass a green check — `number-within` honors only `chapter`, `numbered` only
-        // a bool or `unless-unique`.
-        let m = msgs("---\ntheorems:\n  number-within: section\n  numbered: never\n---\n");
-        assert!(
-            m.iter()
-                .any(|w| w.contains("number-within") && w.contains("section")),
-            "bad number-within value warns: {m:?}"
-        );
+        // not pass a green check — `numbered` honors only a bool or `unless-unique`.
+        let m = msgs("---\ntheorems:\n  numbered: never\n---\n");
         assert!(
             m.iter()
                 .any(|w| w.contains("numbered") && w.contains("never")),
@@ -581,11 +564,11 @@ mod tests {
     }
 
     #[test]
-    fn theorems_accepts_every_valid_number_within_and_numbered_value() {
+    fn theorems_accepts_every_valid_numbered_value() {
         assert!(
-            msgs("---\ntheorems:\n  number-within: chapter\n  numbered: unless-unique\n---\n")
+            msgs("---\ntheorems:\n  shared: [theorem, lemma]\n  numbered: unless-unique\n---\n")
                 .is_empty(),
-            "chapter + unless-unique are valid"
+            "shared + unless-unique are valid"
         );
         assert!(
             msgs("---\ntheorems:\n  numbered: false\n---\n").is_empty(),

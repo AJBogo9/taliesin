@@ -984,7 +984,7 @@ fn book_discovers_chapters_with_parts_numbering_and_chrome() {
     );
     // A cross-PAGE theorem ref resolves to the defining chapter WITH its number: a
     // theorem is a source-literal `:::` div, so `discover`'s render-harvest knows its
-    // number ("Theorem 2.1" — methods is chapter 2, `number-within: chapter`) in the
+    // number ("Theorem 2.1" — methods is chapter 2, which scopes it, no config) in the
     // live preview as well as the static build.
     assert!(
         results
@@ -1054,7 +1054,7 @@ fn demo_book_pages_point_at_hover_index_without_inlining_it() {
 fn book_chapter_scopes_theorem_numbers() {
     use taliesin_core::Site;
     let site = Site::discover(&corpus_dir().join("demo-book"));
-    // methods.tmd is chapter 2, with `theorems: number-within: chapter`.
+    // methods.tmd is chapter 2, so its theorems scope to it with no config at all.
     let methods = site.render_page("methods.tmd").expect("methods renders");
     assert!(
         methods.contains(

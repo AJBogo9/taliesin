@@ -113,7 +113,6 @@ fn nested_key_descriptions() -> &'static [(&'static str, &'static str)] {
         ("banned", "Words and phrases to flag."),
         // theorems:
         ("shared", "Kinds that share one counter."),
-        ("number-within", "Reset numbering within `chapter`."),
         (
             "numbered",
             "Whether or when to number (`true`, `false`, `unless-unique`).",

@@ -321,10 +321,6 @@
           "name": "shared"
         },
         {
-          "description": "Reset numbering within `chapter`.",
-          "name": "number-within"
-        },
-        {
           "description": "Whether or when to number (`true`, `false`, `unless-unique`).",
           "name": "numbered"
         }

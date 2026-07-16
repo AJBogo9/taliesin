@@ -88,10 +88,6 @@ mod generate {
                     json!({ "type": "array", "items": { "type": "string" } }),
                 ),
                 (
-                    "number-within",
-                    json!({ "type": "string", "enum": ["chapter"] }),
-                ),
-                (
                     "numbered",
                     json!({ "oneOf": [{ "type": "boolean" }, { "type": "string", "enum": ["unless-unique"] }] }),
                 ),

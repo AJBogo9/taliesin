@@ -2826,8 +2826,8 @@ fn shared_counter_numbers_across_kinds() {
 
 /// Floats (figures/tables/equations/listings) scope their numbers to a numbered book
 /// chapter automatically: "Figure 2.1" is chapter 2's first figure, so a cross-chapter
-/// `@fig-` ref is unambiguous. Unlike theorems (opt-in via `number-within:`), this is
-/// the default, so there is no knob to set.
+/// `@fig-` ref is unambiguous. There is no knob to set, and theorems follow the same
+/// rule via the same helper.
 #[test]
 fn book_chapter_scopes_figure_numbers() {
     let doc = render_document_with_includes_scoped(
@@ -2913,24 +2913,14 @@ fn floats_stay_flat_outside_a_book_chapter() {
     );
 }
 
+/// A theorem in a numbered book chapter scopes to that chapter with NO configuration,
+/// the same rule floats follow (`float_number`). Before, this needed an opt-in
+/// `theorems: number-within: chapter`, so a book that didn't set it showed "Theorem 5"
+/// beside "Figure 2.3" — measured, and the reason the opt-in was dropped.
 #[test]
-fn theorem_config_parses_number_within_chapter() {
-    let cfg = parse_theorem_config("theorems:\n  number-within: chapter\n");
-    assert!(
-        cfg.chapter_scoped(),
-        "number-within: chapter sets chapter scoping"
-    );
-    let none = parse_theorem_config("theorems:\n  shared: [theorem]\n");
-    assert!(
-        !none.chapter_scoped(),
-        "absent number-within is not chapter-scoped"
-    );
-}
-
-#[test]
-fn number_within_chapter_scopes_to_book_chapter() {
+fn theorems_scope_to_the_book_chapter_without_any_config() {
     let doc = render_document_with_includes_scoped(
-        "---\ntheorems:\n  number-within: chapter\n---\n\n::: {.theorem #thm-a}\nA.\n:::\n\nSee @thm-a.\n\n::: {.theorem #thm-b}\nB.\n:::\n",
+        "::: {.theorem #thm-a}\nA.\n:::\n\nSee @thm-a.\n\n::: {.theorem #thm-b}\nB.\n:::\n",
         std::path::Path::new("."),
         Some(2),
     );
@@ -2953,24 +2943,23 @@ fn number_within_chapter_scopes_to_book_chapter() {
     );
 }
 
+/// Outside a numbered chapter (a standalone doc, a non-book page) there is no chapter to
+/// scope to, so numbering stays flat — the `None` half of the same rule floats follow.
 #[test]
-fn number_within_chapter_falls_back_and_warns_without_a_chapter() {
-    let doc = render_document(
-        "---\ntheorems:\n  number-within: chapter\n---\n\n::: {.theorem}\nA.\n:::\n",
-    );
+fn theorems_stay_flat_without_a_chapter() {
+    let doc = render_document("::: {.theorem}\nA.\n:::\n\n::: {.theorem}\nB.\n:::\n");
+    let body = doc.body_html();
     assert!(
-        doc.body_html().contains(
+        body.contains(
             "<span class=\"tali-theorem-label\">Theorem<span class=\"tali-theorem-number\">&nbsp;1</span></span>"
         ),
-        "no chapter context falls back to continuous numbering: {}",
-        doc.body_html()
+        "no chapter context numbers continuously: {body}"
     );
     assert!(
-        doc.warnings
-            .iter()
-            .any(|w| w.message.contains("number-within")),
-        "a warning explains the no-op outside a book: {:?}",
-        doc.warnings
+        body.contains(
+            "<span class=\"tali-theorem-label\">Theorem<span class=\"tali-theorem-number\">&nbsp;2</span></span>"
+        ),
+        "and keeps counting: {body}"
     );
 }
 

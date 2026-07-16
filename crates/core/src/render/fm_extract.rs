@@ -187,15 +187,6 @@ pub(super) fn extract_field(front_matter: &str, key: &str) -> Option<String> {
     None
 }
 
-/// `theorems: number-within:` scope. Only `Chapter` is honored this increment (book
-/// chapter pages render "Theorem 2.3"); other values degrade to `None`.
-#[derive(Default, PartialEq, Eq, Clone, Copy)]
-pub(crate) enum NumberWithin {
-    #[default]
-    None,
-    Chapter,
-}
-
 /// `theorems: numbered:` mode. `UnlessUnique` numbers a kind only when it appears more
 /// than once (a lone Theorem shows just "Theorem").
 #[derive(Default, PartialEq, Eq, Clone, Copy)]
@@ -206,15 +197,14 @@ pub(crate) enum Numbered {
     UnlessUnique,
 }
 
-/// Parsed `theorems:` front-matter config (`shared` counters + `number-within` scope +
-/// `numbered` mode).
+/// Parsed `theorems:` front-matter config (`shared` counters + `numbered` mode).
+/// Numbering *scope* is not configurable: a theorem in a numbered book chapter scopes to
+/// it ("Theorem 2.3") and is flat everywhere else, the same rule every float follows.
 #[derive(Default)]
 pub(crate) struct TheoremConfig {
     /// Kinds that share a single counter, in declaration order. Empty = the default
     /// (each kind counts independently).
     shared: Vec<String>,
-    /// Numbering scope. `Chapter` prepends the book chapter number ("Theorem 2.3").
-    number_within: NumberWithin,
     /// Whether/when a number is shown.
     numbered: Numbered,
 }
@@ -229,11 +219,6 @@ impl TheoremConfig {
         } else {
             kind
         }
-    }
-
-    /// Whether theorem numbers are chapter-scoped (`number-within: chapter`).
-    pub(crate) fn chapter_scoped(&self) -> bool {
-        self.number_within == NumberWithin::Chapter
     }
 
     /// The `numbered:` mode (whether/when to show a number).
@@ -265,14 +250,6 @@ pub(crate) fn parse_theorem_config(front_matter: &str) -> TheoremConfig {
             .iter()
             .filter_map(|v| v.as_str().map(str::to_string))
             .collect();
-    }
-    if value
-        .get("theorems")
-        .and_then(|t| t.get("number-within"))
-        .and_then(|v| v.as_str())
-        == Some("chapter")
-    {
-        config.number_within = NumberWithin::Chapter;
     }
     match value.get("theorems").and_then(|t| t.get("numbered")) {
         Some(serde_yaml::Value::Bool(false)) => config.numbered = Numbered::No,

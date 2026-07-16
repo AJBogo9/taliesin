@@ -120,9 +120,9 @@ pub fn render_document_with_includes(src: &str, base_dir: &Path) -> RenderedDoc 
     render_document_with_includes_scoped(src, base_dir, None)
 }
 
-/// Like [`render_document_with_includes`] but with an optional book chapter number, so
-/// `theorems: number-within: chapter` can render "Theorem 2.3". Only the site book path
-/// passes `Some(n)`; everything else is `None` (continuous numbering).
+/// Like [`render_document_with_includes`] but with an optional book chapter number, so a
+/// numbered chapter renders "Figure 2.3" / "Theorem 2.3". Only the site book path passes
+/// `Some(n)`; everything else is `None` (continuous numbering).
 pub fn render_document_with_includes_scoped(
     src: &str,
     base_dir: &Path,
@@ -1544,9 +1544,9 @@ fn inject_attrs_into_last_tag(out: &mut String, tag: &str, classes: &[String], i
 /// counter and scope it to the chapter, so two chapters no longer both open with a
 /// "Figure 1" and a cross-chapter `@fig-` ref is unambiguous.
 ///
-/// Unlike theorems (which opt in via `theorems: number-within:`) this is the DEFAULT
-/// and has no knob: outside a numbered chapter there is simply no chapter to scope to,
-/// so numbering stays flat — the same rule `section_number` already follows.
+/// There is no knob: outside a numbered chapter there is simply no chapter to scope to,
+/// so numbering stays flat — the same rule `section_number` already follows. Theorems
+/// call this too, so a chapter cannot show "Figure 2.3" beside "Theorem 5".
 fn float_number(chapter: Option<u32>, n: usize) -> String {
     match chapter {
         Some(ch) => format!("{ch}.{n}"),
@@ -1617,7 +1617,6 @@ fn number_theorems(
     chapter: Option<u32>,
 ) {
     let mut counts: HashMap<String, u32> = HashMap::new();
-    let mut warned_no_chapter = false;
     // For `numbered: unless-unique`, a kind is numbered only if it occurs more than once;
     // pre-count occurrences per counter-key.
     let mut totals: HashMap<String, u32> = HashMap::new();
@@ -1649,26 +1648,14 @@ fn number_theorems(
                 Numbered::No => false,
                 Numbered::UnlessUnique => totals.get(&key).copied().unwrap_or(0) > 1,
             };
-            // `number-within: chapter` prepends the book chapter number ("Theorem 2.3").
-            // Outside a numbered chapter there is no chapter to scope to, so fall back to
-            // continuous numbering and warn once.
+            // A numbered book chapter scopes the number ("Theorem 2.3"); anywhere else it
+            // is flat ("Theorem 3"). Same rule, same helper, as every float — so a chapter
+            // cannot show "Figure 2.3" beside "Theorem 5". There is no opt-in: scoping is
+            // a property of being in a numbered chapter, which the renderer already knows.
             let display = if !show_number {
                 String::new()
-            } else if config.chapter_scoped() {
-                match chapter {
-                    Some(c) => format!("{c}.{n}"),
-                    None => {
-                        if !warned_no_chapter {
-                            warnings.push(Warning::new(
-                                "`theorems: number-within: chapter` has no effect outside a book chapter; using continuous theorem numbering".to_string(),
-                            ));
-                            warned_no_chapter = true;
-                        }
-                        n.to_string()
-                    }
-                }
             } else {
-                n.to_string()
+                float_number(chapter, n as usize)
             };
             // An unnumbered theorem leaves the slot empty (no &nbsp;) and is not a ref target.
             let slot = if display.is_empty() {
