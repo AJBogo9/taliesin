@@ -13,25 +13,21 @@ v0.2.0. All four formats render + deploy; the dev loop is strong (block-level in
 with DOM-state preservation, warm server + Jupyter kernel, `_freeze` cache, Alt-click + reverse
 cursor sync, located diagnostics, CSS hot-swap, Cmd-K search). **Tier 1 is empty.**
 
-**EVERY section (A through G) is now closed.** A (blog identity) finished with #7 draft-aware preview
-(2026-07-16). B (publish hardening) was **backlog rot** — all three items were already shipped by
-the author; entries deleted with evidence (see the note in section A). C (theme/a11y follow-ups)
-finished 2026-07-16: six items built, two more were rot (see the note in section C). **D (reading-first
-identity) closed 2026-07-16 and was also rot**: two of its three "re-verified" layout targets
-dissolved on inspection, and the direction ruling it was blocked on turned out to be a question about
-a fork that does not exist (see §D). F (the deck audit) is fully landed except the deliberately-deferred
-B3-18. G (AI-native authoring) was **backlog rot**: 8 of its 10 items plus two slices of a third
-shipped 2026-07-13, and the owner declined the three ruling-gated leftovers on 2026-07-16. E (catalog
-triage) closed 2026-07-16 after wave 1 measured the catalog at 35% stale; the owner ruled **triage on
-demand** instead of sweeping the remaining 131. **What remains is a flat list of items, not sections:
-§E's ruling-ready leftovers + the live defects.** → See "Next session: start here" below.
+**The old A-G sections are gone.** Every one closed, so on 2026-07-16 the lettering was dissolved
+and the survivors flattened into the priority list below — the letters had stopped carrying
+meaning, and four of the seven sections existed only to say "closed". The closure records (incl.
+the rot evidence for B, D and G) moved **verbatim** to [AUDITS.md](AUDITS.md); they were kept
+rather than deleted because those three were re-scoped by later sessions precisely when the
+reasoning lived only in git. **Do not re-open them; do not re-scope from them.**
 
 **Before picking any item: grep its named symbol/flag in source first, and prefer measuring the
 running product over reading this file.** The author pushes work mid-session, so an entry can go
 stale with no signal here (that is how B, D and G all rotted). Trust an item's described *symptom*,
 never its cause or line number. **An entry marked "verified against source" is not enough**: §D's
 layout targets carried exactly that label and were quoting a real CSS line that a rule ten lines
-below already overrode. A browser measurement dissolved two of them in minutes.
+below already overrode. A browser measurement dissolved two of them in minutes. **An entry's stated
+*cost* rots too**: the theorem ruling's "breaks 2 pins" named two unrelated tests, and the pins it
+feared passed untouched. Price a change by making it and reading the failures.
 
 **Working method:** branch per feature; brainstorm if there's a fork; spec under
 `docs/superpowers/specs/`; implement TDD; verify (cargo + browser via chrome-devtools, or the
@@ -40,234 +36,58 @@ local `main` on request; push to `origin/main` only when the author asks. **Do-N
 exec/kernel zone + the single-editing-surface invariant. Review subagents use read-only git.
 **Author policy (feature-first):** finish framework features before marketing-site work.
 
+**Standing constraints on any change** (from the 2026-07-11 website audit, 99 findings; detail:
+[2026-07-11-website-design-audit.md](2026-07-11-website-design-audit.md)): the **personal blog**
+(`corpus/tech-blog/`) is the forward-facing brand, direction **"Marginalia"** (iron-gall manuscript
+ink), and its 14 explicit **KEEPs** (serif/sans pairing, offline bundling, `meta.rs` OG head,
+live-figure thumbnails) live in that detail file — protect them. Every fix stays invariant-safe: no
+CDN, no preview write-back, no new output format, `--tali-*` tokens only.
+
 ## Next session: start here
 
-**Git.** Do not trust a SHA written here; any commit that records one falsifies it. **Check, do not
+**Git.** Do not trust a SHA written here; any commit that records one falsifies it — and on
+2026-07-16 an agent wrote a SHA into this file that **did not exist at all**. **Check, do not
 read:** `git log --oneline origin/main..main` for what is unpushed (the author pushes, not the
 agent), and `git reflog show origin/main` before believing ANY "not pushed" claim, including one in
 a session handoff. The author pushes mid-session with no signal in this file, and a handoff has now
-been wrong about this **three** times: on 2026-07-16 a handoff said "+6 unpushed" and the author had
-already pushed all six, then pushed **twice more mid-session** while work was in flight. Re-run the
+been wrong about this **five** times: on 2026-07-16 one said "+6 unpushed" (all six were already
+pushed), he then pushed twice more mid-session, and later that day a handoff said "the last backlog
+commit is local" while it was pushed, before he pushed four more in-flight commits. Re-run the
 checks too, do not assume: `cargo test -p taliesin-core` + `-p taliesin-server`, `cargo fmt --check`,
 `cargo clippy --all-targets -- -D warnings`.
 
-**There are no open sections left.** A through G are all closed. What remains is a flat list, and
-none of it is a grind chunk. In recommended order:
+**What is left is a flat list; none of it is a grind chunk.** One item is build-ready with no
+ruling (**D37**); the rest is small defects, two owner rulings, two sign-off-gated citation items,
+and one deliberate deferral. Everything else is Tier 2/3 (demand-driven).
 
-1. **The §E leftovers.** Each is verified and ruling-ready. **D37** (lint `format:` sub-keys) is the
-   cleanest build: a diagnostic, not a knob, following the `69c228b` precedent. **D34** and **D70**
-   are OWNER-RULING, not builds. **D72/D69** need Do-NOT-touch citation-zone sign-off.
-2. **The live defects** (§E, "Live defects"; count them, do not trust a number written here). Small
-   and independent. The biggest one (cross-page `@fig-` to a cell-labelled figure) **landed
-   2026-07-16** — see the "Landed" note below before assuming any of these is untouched. #1
-   (References click-to-source lands on line 1) is logged-not-fixed by owner ruling and needs a
-   *design* answer first, not code.
-3. **B3-18** (§F), the last deck-audit item, deliberately deferred: a structural deck edit re-mounts
-   the whole deck and nukes `{js}`/WebGL widget state.
+**Method note that paid off three times on 2026-07-16, use it:** when an entry names a file:line,
+open the *running product* before the file. §D's layout targets were labelled "re-verified against
+source" and still dissolved under a browser measurement, because the quoted CSS line was real but
+overridden ten lines below. A true cause can also name the wrong *layer*: the cell-label xref entry
+correctly blamed `scan_page_anchors`, but the fix belonged in `harvest_xref_numbers`, which already
+had the data — **ask "who already knows this?" before "where does the entry point?"**. Grep traps
+are live here too: a bare word matches prose (`feature` matched the English word), `grep | head`
+reports **head's** exit code (so `|| echo "absent"` never fires and `$?` lies), and zsh needs
+`--include='*.tmd'` quoted. See [[grep-verification-traps]].
 
-**Method note that paid off twice on 2026-07-16, use it:** when an entry names a file:line, open the
-*running product* before the file. §D's layout targets were labelled "re-verified against source" and
-still dissolved under a browser measurement, because the quoted CSS line was real but overridden ten
-lines below. Grep traps are live here too: a bare word matches prose (`feature` matched the English
-word), `grep | head` reports **head's** exit code (so `|| echo "absent"` never fires and `$?` lies),
-and zsh needs `--include='*.tmd'` quoted. See [[grep-verification-traps]].
+**Decided 2026-07-16, do not re-litigate:** §G's three leftovers (`check --online`, the
+numeric-claim hint, the per-page text sidecar) are **declined** (see "Decided against"). Catalog
+work is **triage on demand**, not a sweep. The **References** click-to-source bug is **logged, not
+fixed**, pending a design answer. The **`--space-1..6` scale is dropped** (pure refactor, no
+payoff). Theorem numbering was ruled **auto-scope + delete `number-within`** and has landed.
 
-**Decided this session (2026-07-16), do not re-litigate:** §G's three leftovers (`check --online`,
-the numeric-claim hint, the per-page text sidecar) are **declined** (see "Decided against"). §E is
-**triage on demand**, not a sweep. **§D is closed as rot** and its "direction ruling" is void: the
-fork was false (see §D). The **References** click-to-source bug is **logged, not fixed**, pending a
-design answer. The **`--space-1..6` scale is dropped** (pure refactor, no payoff). The catalog's
-summary and status field are **not trustworthy**; read the triage doc's "three layers" section first.
+## Open work (flat, priority order)
 
-## Now — the grind queue (priority order)
+### 1. Build-ready now (no ruling needed)
 
-The 2026-07-11 website audit (99 findings; detail:
-[2026-07-11-website-design-audit.md](2026-07-11-website-design-audit.md)) makes the **personal blog**
-(`corpus/tech-blog/`) the priority — it's the forward-facing brand. Direction **"Marginalia"**
-(iron-gall manuscript ink). 14 explicit **KEEPs** (serif/sans pairing, offline bundling, `meta.rs` OG
-head, live-figure thumbnails) live in the detail file — protect them. Every fix stays invariant-safe
-(no CDN, no preview write-back, no new output format, `--tali-*` tokens only).
+- **D37 — lint `format:` sub-keys** (ADOPT; catalog D-number is the detail pointer). The honored
+  `format: deck:` key set is empty, so whitelisting `transition` would validate no-ops as supported.
+  This adds a **diagnostic, not a knob**, following the from-quarto value-lint precedent (`69c228b`)
+  and the `csl:` precedent (a key that reads as honored and does nothing is the bug). Cleanest build
+  on the list.
 
-### A. Blog identity + de-Quarto (build-ready; quick wins first)
+### 2. Live defects (small, independent; count them, don't trust a number written here)
 
-*(Section A is empty: #7 draft-aware preview LANDED 2026-07-16 — preview shows drafts inline
-(listing badge + page banner + dev-menu count/list), build/publish exclude them and report
-"N drafts not published: …", book chapters are draftable. Spec:
-[2026-07-16-draft-aware-preview-design.md](../docs/superpowers/specs/2026-07-16-draft-aware-preview-design.md).
-Dropped 2026-07-12: #12 chronological post prev/next — for a 7-post topic-diverse blog the
-ordering is meaningless and over-promises; the reading-first listing is the right hub, and
-sequential nav already exists via books. A category-driven "related posts" strip could revisit
-this, but only after a richer corpus makes "related" meaningful.)*
-
-*(Section B, publish/build hardening — `publish --public`, strict-by-default + `--no-strict`,
-built-site shared asset bundle — was already SHIPPED by the author; the entries were backlog
-rot, verified against source + removed 2026-07-16. See [[backlog-entries-rot]].)*
-
-### C. Theme colour-system a11y follow-ups (2026-07-09 audit; CLOSED 2026-07-16)
-
-*(Section C is closed, 2026-07-16. Six items built: the single-key-shortcut reader toggle
-(WCAG 2.1.4, gating `f`/`?`/`/`, not just `f`, which the audit under-scoped), settings-popover
-focus-on-open, category chips' `aria-pressed` + live count, keyboard-reachable link previews,
-the forced-colors nav marker, and settings-panel reflow at 200%. Spec:
-[2026-07-16-section-c-a11y-batch-design.md](../docs/superpowers/specs/2026-07-16-section-c-a11y-batch-design.md);
-plan: [2026-07-16-section-c-a11y-batch.md](../docs/superpowers/plans/2026-07-16-section-c-a11y-batch.md).
-Two items were NOT built: both had rotted, closed by §F's deck theming/a11y step, verified
-against source before deletion. "Embedded deck ignores a sepia host" was already fixed at its
-own named anchor (`render/deck.rs:164` reads `(t==='sepia' ? 'light' : null)`, the recommended
-fix verbatim). "Deck slide-number chip not restyled per-slide" was fixed by removing the
-premise: the chip is now one dark-glass surface in both themes (`deck.css:352-361`), so the
-`html.tali-deck-dark`-scoped restyle the bug described no longer exists. See
-[[backlog-entries-rot]].*
-
-*Known + accepted (not a bug to re-file): at 200% the 4-button Theme seg wraps, and the first
-button of the wrapped line keeps its 1px `border-left`, doubling against the container's own
-border. Measured, judged cosmetic (same colour, contiguous, invisible unmeasured). The fix
-(gap-dividers + `flex:1 0 auto`) was prototyped in-browser and REJECTED: it stretches the
-wrapped button to full width, a bigger visual change than the hairline it removes.)*
-
-Owner-calls kept as-is (one-line changes if ever wanted): table cells use the 1.28:1 hairline
-(`base.css:436` — border-strong on every cell heavies every table); callout `tip`/`important`
-collapse under protanopia (icon + title already carry meaning, hue never the sole cue); deck has no
-sepia palette (document decks as light/dark-only, or add + teach the reader/scroll path).
-
-### D. Reading-first identity polish (CLOSED 2026-07-16)
-
-*(Section D is closed. It was **backlog rot**, and the "direction ruling" it had been blocked on
-turned out to be a question about a fork that does not exist. Direction **"Marginalia"** (iron-gall
-manuscript ink) is fully landed: theme/colour 2026-07-09, type ~2026-07-12, layout already shipped.)*
-
-*The **type** pointer was rot first (the old "type → item 13" named a `#13` that exists nowhere;
-§A's numbering died when §A closed). The owned Newsreader body face is wired at `base.css:35`,
-applied at `:216`, both variable faces bundled at `font-weight: 200 800` and inlined as `data:` URIs.*
-
-*Then the three "re-verified, NOT rot" layout targets were re-checked on 2026-07-16, **in a browser
-rather than by reading the file**, and two of the three dissolved:*
-
-1. ***"Hero as typeset, not a marketing slab" was ALREADY SHIPPED.** The entry quoted `base.css`'s
-   `.hero { text-align: center }` as proof, but that is the **full-width landing** branch; the
-   override ~10 lines below (`.tali-site-main:not(.tali-wide) .hero`) is what a reading-measure page
-   gets, and its own comment calls it "an editorial masthead ... e.g. a personal homepage". Measured
-   live on the blog index: `text-align: left`, lead `max-width: none`, and the iron-gall eyebrow
-   hairline rendering at 40x2px in `rgb(56,65,101)`. This is the "trust the symptom, never the line
-   number" trap in its purest form: the quoted line was real, and irrelevant.*
-2. ***"Drop bordered feature-card grids" is MARKETING-ONLY.** The blog never authors them. Exact-match
-   grep: `.feature-grid`/`.feature` appear in `site/features.tmd` + `site/index.tmd` only, **zero**
-   hits in `corpus/tech-blog/`. So reshaping them is deferred marketing work, not blog work.*
-3. ***The `--space-1..6` scale is genuinely absent** (verified, grep exit 1), but with 1 and 2 gone it
-   is a pure refactor: no visible change, regression risk across `base.css`. Owner ruled **drop it**;
-   if spacing ever actually hurts, it returns as a real item.*
-
-***The fork was false twice over*** *(and this is the reusable lesson): (a) `page-layout: full` →
-`.tali-wide` **already partitions** the deferred marketing site from the blog, and `base.css` already
-exploits that partition for `.hero`, so "cannot be scoped to the blog by CSS alone" was simply wrong;
-(b) the blog does not author the contested component at all. **Do not re-open D**: the identity work
-is done, and the only thing left in those primitives belongs to the marketing rebuild.*
-
-### E. Catalog-derived work (the SWEEP is closed; the items below are OPEN)
-
-**Owner ruling 2026-07-16: stop the sweep, triage an area on demand.** Wave 1 triaged the 4
-highest-leverage areas (34/165: crossref, citations, slides, config) and measured the base:
-**12 of 34 (35%) outright stale or superseded, 20 of 34 (59%) contain at least one false statement
-about today's source.** Triaging the remaining 131 against that base is not worth a session, and the
-staleness only grows as more ships. **Consult an area's entries when you next work that area**, using
-the trust caveats in the triage doc. Full results, per-entry verdicts, and the caveats:
-[2026-07-16-quarto-catalog-triage.md](2026-07-16-quarto-catalog-triage.md).
-
-**Before consulting the catalog, read the triage doc's "three layers" section.** In short: the
-entries are the asset and were well-grounded on 2026-07-03; the **heading status is degenerate**
-(162/165 skeptic verdicts are `revise`, so 94 read "Proposed (revised)" regardless of conclusion);
-and the **executive summary is misleading** (it describes a per-entry tag scheme that does not exist,
-miscounts, and its "rule on these first" list mixes open questions with already-shipped work).
-A skeptic verdict is evidence, never a ruling: D135's skeptic insisted on dropping Atom feeds as "a
-documented non-goal" and Atom shipped anyway, with autodiscovery.
-
-**Wave 1's live output, still open** (each verified against source; the catalog D-number is the
-detail pointer):
-- **D72/D69 citations** (ADOPT, but **both edit `crates/core/src/cite/`, a Do-NOT-touch zone, and
-  need explicit sign-off**). D72: support bare `@key` at all? (The *diagnostic* shipped 2026-07-16,
-  `8a45d59`, so the failure is now caught; the engine question is separate.) D69: the reference list
-  is `push`ed at the end, so an appendix after `# References` orphans the heading.
-  *(D67 LANDED 2026-07-16, never needed the zone. See the note below.)*
-- **D37 lint `format:` sub-keys** (ADOPT). The honored `format: deck:` key set is empty, so
-  whitelisting `transition` would validate no-ops as supported. This adds a **diagnostic, not a knob**,
-  following the from-quarto value-lint precedent (`69c228b`).
-- **D34 project defaults** (OWNER-RULING). `bibliography`/`csl`/`execute`/`theme` are absent from the
-  19-key `NATIVE_KEYS`, but no corpus doc repeats them across pages, so it fails minimal-config today.
-  Recommendation: **subtract before adding**, delete the dead `image:`/`SiteConfig.card_image` field
-  (zero readers; its own doc comment concedes it) and defer the defaults until a corpus doc hurts.
-- **D70 "Cite this" card** (OWNER-RULING). Its machine-readable half already shipped
-  (`.citations.json` + ScholarlyArticle JSON-LD). A card would render **author-free for every current
-  post** (0 of 8 tech-blog posts set `author:`).
-
-***Landed 2026-07-16 (deleted from the list above, recorded here so they are not re-scoped):***
-- ***Theorem/float numbering agreement** (was the `[ruling]` entry). Owner ruled **flip theorems to
-  auto-scope**, then ruled **delete `number-within:` with it** — because once theorems scope
-  automatically the key does exactly nothing, and a recognized-but-inert key is the very bug D67
-  (`csl:`) just shipped a diagnostic for. Theorems now call `float_number`, the same helper floats
-  use, so a chapter cannot show "Figure 2.3" beside "Theorem 5"; measured before (Figure 2.1 beside
-  Theorem 1) and after (both 2.1) on a real build. **The entry's "breaks 2 pins" was itself stale**:
-  the named lines pointed at unrelated tests, and the corpus pins that assert "Theorem 2.1" **passed
-  unchanged**, because `methods.tmd` is chapter 2 and now scopes without config. The one real pin was
-  `site/mod.rs`'s cross-page theorem test, whose sibling *figure* test already asserted "Figure 2.1"
-  for the identical book — its own comment ("a flat Figure 1 would collide with chapter 1's own first
-  figure") is the argument for the flip, written before the flip. Removal swept 12 sites incl. the
-  drift-locked schema + vocab JSON (regenerated with `TALIESIN_BLESS=1`, diff = the key only) and
-  `methods.tmd`'s whole front matter. Migration is loud, not silent: a leftover `number-within:` now
-  warns `unknown theorems key` **with a line number**.
-- ***Cross-page `@fig-` to a CELL-labelled figure** (was live defect #2, the largest one). Shipped.
-  The entry's cause was right but pointed at the wrong layer: teaching `scan_page_anchors` to parse
-  fences would have duplicated the renderer's "which fences are cells" rule in a second parser.
-  `Site::harvest_xref_numbers` **already renders every page and already iterates the renderer's own
-  registry** (`doc.xref_numbers`), which contains cell labels — it was simply `get_mut` enrich-only,
-  so it looked straight at `fig-x` and dropped it. Fix = insert-if-absent there, one source of truth,
-  no new parser. This also fixed **backlinks** and **`taliesin map --format json`** for cell figures
-  for free (both key off `xref_targets`). Scale was understated: the corpus has **26 cell-labelled
-  `fig-` anchors vs 17 brace ids**, so the broken shape was the majority of the test net's figures.
-  Pinned in `corpus/demo-book` (results.tmd defines `fig-stages` with a `{mermaid}` cell; summary.tmd
-  refs it cross-chapter → "Figure 3.1"); verified in a real browser (click → `results.html#fig-stages`,
-  target in viewport, no console errors) and on a non-book website (flat "Figure 1").
-  **Two review catches worth remembering:** (a) the insert path had to re-apply `is_ref_anchor` —
-  the render registry is LOOSER than the scan (the table-caption path registers *any* id), so
-  `: cap {#my-table}` leaked into `map`'s xref_targets as a phantom resolvable target. Measured on
-  both sides: `main` → `{}`, first-cut branch → `{"my-table": …}`. (b) A mixed-form duplicate took
-  the *loser's* number ("Figure 2" on a link to a page where it reads "Figure 1"); the enrich arm now
-  only accepts a number from the page the url points at. `docs/internals/sites.tmd` corrected: the
-  xref design is **three** passes (scan → render-harvest → rewrite), not two, and its prefix list was
-  missing 5 of the 12 real ones.*
-- ***D49 chapter-scoped float numbering.** Shipped: figures/tables/equations/listings scope to the
-  chapter in a numbered book ("Figure 2.1"), flat everywhere else. The number is built ONCE by the
-  renderer that knows the chapter and carried as a `String` (`render::float_number`), mirroring the
-  `section_number`/theorem precedent, so the executor prints it verbatim. **It never needed the
-  citation zone** (`register_xref` already took a `String`, since theorems push "2.1" through it).
-  Blocked instead on the **exec zone**, for 3 integer literals in exec.rs's own `#[cfg(test)]`
-  module; owner approved that narrow edit and nothing else. Verified in a real build: intro
-  "Figure 1.1", methods "Figure 2.1", cross-chapter ref → `intro.html#fig-structure` "Figure 1.1",
-  standalone post still flat. `demo-book` had **zero** numbered floats, so intro + methods gained one
-  labelled figure each (+2 small authored SVGs) to pin it.*
-- ***D67 `csl:` recognized-but-unsupported.** Shipped, and it **never needed the citation zone**. It
-  was **five** surfaces, not four: `AGENTS.md` also taught the key (both it and the vocab JSON are
-  *derived* from `vocab::vocab()`, so one filter fixed both). Proved inert by rendering
-  `corpus/bayesian-website` with and without the key: byte-identical (980300 bytes). The `css`
-  did-you-mean hazard is now **mechanically pinned** (`csl_stays_recognized_because_dropping_it_would_mis_suggest_css`
-  builds `KNOWN_KEYS` without `csl` and asserts the suggestion becomes `css`), so a future cleanup
-  cannot re-introduce it. The rule finally lives in `frontmatter::validate_unsupported_keys`, on the
-  **render path**, not in `diagnostics/` as this entry originally instructed: `diagnostics/` is
-  check-only (it appears once in the whole server crate), so the first cut left the **preview**
-  silent, which is the surface the author actually reads. Orphaned `ieee.csl` (17KB) deleted with it.*
-- ***D74 footnote reverse-sync.** Shipped, and the symptom was **worse** than this entry said: the
-  section hardcodes `data-block-id="qmd-footnotes"`, so `closest()` DID resolve, to a block with no
-  sourcepos, leaving `openSource()` on its `line = "1"` default. Every footnote silently jumped to
-  **line 1**; it was never a no-op. Fixed per-`<li>` (nested positions, the pattern `:::` divs already
-  use); the block-level empty sourcepos is **deliberately kept** (a block-level range would break
-  `corpus.rs:151`'s monotonic-source-order assert and make reverse-sync swallow the document). **No
-  exemption existed to remove:** the checks skip on `sourcepos.is_empty()` *generically*, which is
-  exactly how the hole hid.*
-- ***D107 deck fragment effects.** Shipped as `::: {.fragment .fade-out}` / `{.fragment .highlight}`
-  (a second class on the existing fenced div, so no new authoring form). **CSS-only** (`deck.css`), no
-  Rust/JS: the effects reuse the `.tali-frag-visible` marker deck.js already toggles. Declines held
-  (no `incremental:` knob, no `data-fragment-index`).*
-
-**Live defects wave 1 found that the catalog never knew about** (small, independent of §E):
 1. **The References section repeats the footnote bug** (found while fixing D74, 2026-07-16).
    `cite/render.rs:102` hardcodes `data-block-id="qmd-references"` with an empty sourcepos, so
    Alt-clicking any reference silently lands on **line 1** (same mechanism as D74). **In the
@@ -289,11 +109,11 @@ detail pointer):
 6. **The Cmd-K index stores raw `&nbsp;` entities in its "plain text"** (found 2026-07-16 while
    fixing the index's chapter scoping; pre-existing and independent of it). The indexed body reads
    `Theorem &nbsp;2.1` / `Figure&nbsp;2.1`, so a reader typing the number they can SEE ("Theorem
-   2.1") matches nothing — the text extraction never decodes entities. Scoping the index (`3a0d5e5`)
-   made the numbers agree with the page but cannot make them findable. Same pass: a cross-page
-   `@fig-` inside an indexed snippet renders as a bare "Figure" (search renders a page alone, so the
-   site-level xref rewrite never runs over it), e.g. methods' "refines the chapter overview from
-   Figure into the steps". Both live in `site/search.rs`'s text extraction.
+   2.1") matches nothing — the text extraction never decodes entities. Scoping the index made the
+   numbers agree with the page but cannot make them findable. Same pass: a cross-page `@fig-` inside
+   an indexed snippet renders as a bare "Figure" (search renders a page alone, so the site-level
+   xref rewrite never runs over it), e.g. methods' "refines the chapter overview from Figure into
+   the steps". Both live in `site/search.rs`'s text extraction.
 7. **Theorem environments are undocumented in the User Guide** (surfaced 2026-07-16 while deleting
    `number-within`, not caused by it). They shipped 2026-06-29 (8 kinds, `shared:`/`numbered:`,
    hover-preview, collapsible proofs, cross-page refs) and the **corpus exercises them in 6 docs**
@@ -316,59 +136,45 @@ detail pointer):
    `render/mod.rs:1699`) and belongs in the render/exec seam, so it wants its own change.
    *Source-verified; **unverified against a live kernel** (this sandbox has no `ipykernel`).*
 
-*Landed 2026-07-16 and deleted from this list: the **deck key sheet** (it advertised "↑ ↓ Vertical
-slides" while `up()`/`down()` call `moveTopic`; the pin now reads the binding and the sheet together
-so they cannot drift apart again); **`author: [A, B]`** (a YAML sequence read via `.as_str()` gave
-`None`, so both consumers fell through `.or(config.title)` and a multi-author site published its own
-**title** as the author in the Atom feed and JSON-LD; `SiteConfig.authors` now reuses the same
-`frontmatter::string_list` a page's `author:` always used, and the deliberate RFC-4287 title fallback
-is pinned to fire only when there is genuinely no author); and the phantom **`number-sections`** doc
-comment (the key existed nowhere in the source but the comment claiming it; numbering is really
-decided by `chapter_for`). Note the 2026-06-29 theorem spec still reasons about "the `number-sections`
-feature" as though it shipped: it is a dated record, left as written.*
+### 3. Needs an owner ruling (not builds)
 
-### F. Deck rework (2026-07-12 slides audit → [2026-07-12-deck-audit.md](2026-07-12-deck-audit.md))
+- **D34 project defaults** (OWNER-RULING). `bibliography`/`csl`/`execute`/`theme` are absent from the
+  19-key `NATIVE_KEYS`, but no corpus doc repeats them across pages, so it fails minimal-config today.
+  Recommendation: **subtract before adding**, delete the dead `image:`/`SiteConfig.card_image` field
+  (zero readers; its own doc comment concedes it) and defer the defaults until a corpus doc hurts.
+- **D70 "Cite this" card** (OWNER-RULING). Its machine-readable half already shipped
+  (`.citations.json` + ScholarlyArticle JSON-LD). A card would render **author-free for every current
+  post** (0 of 8 tech-blog posts set `author:`).
 
-**Start in [2026-07-12-deck-audit.md](2026-07-12-deck-audit.md)** — the wide slide-deck audit: 43
-confirmed bugs + a keep/cut/fix/add feature verdict + a mobile-feed spec + a grind order. Owner-decided
-shape change this session (REMOVE, don't fix the old behavior): a deck opens **as a deck** (desktop =
-stepped slides; phone/portrait = a new TikTok-style scroll-snap **slide feed**, keyed on aspect not
-width); **delete reader/scroll mode**; **delete print/PDF** (the critical dark-deck-blank-PDF bug is
-resolved by removal); trim the overview flourishes (minimap/LOD/threads/filter/pen/van-Wijk zoom). The
-file's grind order: (1) pin kept features in `corpus/deck.tmd` first (net); (2) flip the front door +
-delete reader/PDF (kills whole bug families); (3) crashes/correctness (`. . .`-before-plain-code wedges
-nav; readHash anchor/digit misroute → slide 0; live `---`/`. . .` not structural; "Title Slide" id
-collision); (4) build the mobile feed; (5) trim flourishes; (6) theming/a11y/perf; (7) share-link +
-live-input deep-link + wake-lock adds.
+### 4. Needs Do-NOT-touch sign-off (citation zone)
 
-**Progress (2026-07-16): the ENTIRE audit is landed except one deliberately-deferred item.**
-Steps 1-7 all done (front door + feed + correctness + flourish trim + theming/a11y/perf + docs
-+ the C-ADD share-link/QR, live-input deep-link, feed notes-narration, wake-lock adds). See the
-audit file's top-of-doc **Status** block for the per-item tracker. **Only remaining: B3-18** — a
-structural deck edit re-mounts the *whole* deck, nuking every `{js}`/WebGL widget's state;
-re-mount only the edited `<section>` subtree. Deferred on purpose (touches the client's re-mount
-path; bigger blast radius). Nothing else in section F is open.
+- **D72/D69 citations** (ADOPT, but **both edit `crates/core/src/cite/`, and need explicit
+  sign-off**). D72: support bare `@key` at all? (The *diagnostic* shipped 2026-07-16, `8a45d59`, so
+  the failure is now caught; the engine question is separate.) D69: the reference list is `push`ed at
+  the end, so an appendix after `# References` orphans the heading. *(Two entries that named this
+  zone — D49 and D67 — turned out not to need it at all. Check before assuming a third does.)*
 
-### G. AI-native authoring (2026-07-12 audit → [2026-07-12-ai-native-backlog.md](2026-07-12-ai-native-backlog.md))
+### 5. Deliberately deferred
 
-*(Section G is closed as a grind chunk, 2026-07-16. It was **backlog rot**: the whole browser-free
-loop (the three items this entry called "the recommended first bets") shipped 2026-07-13, along
-with 5 more. Verified against source + all 30 named pins run green before deleting the entries. See
-[[backlog-entries-rot]].*
+- **B3-18** (the last deck-audit item; detail:
+  [2026-07-12-deck-audit.md](2026-07-12-deck-audit.md)): a structural deck edit re-mounts the *whole*
+  deck, nuking every `{js}`/WebGL widget's state; re-mount only the edited `<section>` subtree.
+  Deferred on purpose (touches the client's re-mount path; bigger blast radius). Everything else in
+  that audit has landed — see [AUDITS.md](AUDITS.md).
 
-*Shipped (item → anchor → pin): #1 AGENTS.md onramp → `core/agents.rs:42` → `agents_md_cli.rs`;
-#2 `taliesin read` → `render/text.rs` + `model.rs:283 body_text()` → `text_projection.rs` +
-`read_cli.rs`; #3 agent-grade diagnostics → `server/check.rs:23` (`{code, severity, file, line,
-message, suggestion?}`) + `core/diagnostics/codes.rs` → `check_cli.rs`; #4 Claude Code skill →
-`editor/claude-code/skills/taliesin/SKILL.md` → `skill_freshness.rs`; #5 `map` → `map_cli.rs`;
-#6 `taliesin-mcp` → `server/mcp.rs` → `mcp_stdio.rs`; #7 scaffolds + `paper` kind → `new_cli.rs`;
-#10 structured build/publish errors → `structured_build_errors.rs`. Plus **#8(b)** placeholder-alt
-(`a11y.rs:337`) and **#9(B)** ScholarlyArticle (`meta.rs:150`, author-free trigger) + **#9(C)**
-per-page cited-refs sidecar (`build.rs:355,1560`) → `citations_sidecar.rs`.)*
+### Consulting the Quarto catalog (policy, not a task)
 
-*The three ruling-gated leftovers (#8a `check --online`, #8c numeric-claim hint, #9A per-page text
-sidecar) were ruled **decline** by the owner on 2026-07-16; reasoning is recorded under "Decided
-against". **Nothing in section G is open.***
+**Owner ruling 2026-07-16: no sweep. Triage an area on demand, when you next work that area.** Wave
+1 measured the base: **12 of 34 (35%) outright stale or superseded, 20 of 34 (59%) carry at least
+one false statement about today's source**.
+**Before consulting it, read the triage doc's "three layers" section** —
+[2026-07-16-quarto-catalog-triage.md](2026-07-16-quarto-catalog-triage.md).
+In short: the entries are the asset and were well-grounded on 2026-07-03; the **heading status is
+degenerate** (162/165 skeptic verdicts are `revise`, so 94 read "Proposed (revised)" regardless of
+conclusion); and the **executive summary is misleading** (it describes a per-entry tag scheme that
+does not exist, miscounts, and its "rule on these first" list mixes open questions with
+already-shipped work). A skeptic verdict is evidence, never a ruling: D135's skeptic insisted on
+dropping Atom feeds as "a documented non-goal" and Atom shipped anyway, with autodiscovery.
 
 ## Tier 2 — hardening (P3)
 

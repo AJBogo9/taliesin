@@ -220,3 +220,228 @@ These seven were confirmed by the adversarial verifier but missed the final synt
 -----------------------------------------------------------------------------
 
 **Older audit rounds (2026-06-19 through 2026-06-30) are archived in [AUDITS-archive.md](AUDITS-archive.md).**
+
+-----------------------------------------------------------------------------
+
+# Closed backlog sections + landed records (moved here 2026-07-16)
+
+**Not a task list. Nothing here is open.** This is the rot evidence for work that is
+finished, moved out of [backlog.md](backlog.md) so that file can obey its own rule ("only
+open tasks live here"). It is kept **verbatim rather than deleted** on purpose: three
+sections (B, D, G) were re-scoped by later sessions precisely because the "why this is
+closed" reasoning lived only in git. If an entry here looks open, it is not — it is a
+record of why it is dead. Open work is in [backlog.md](backlog.md).
+
+The lettered sections A-G were dissolved on 2026-07-16 when only E and F still had
+anything open; the letters no longer mean anything, and the surviving open items are a
+flat priority list in backlog.md.
+
+## A. Blog identity + de-Quarto — CLOSED 2026-07-16
+
+*(Section A is empty: #7 draft-aware preview LANDED 2026-07-16 — preview shows drafts inline
+(listing badge + page banner + dev-menu count/list), build/publish exclude them and report
+"N drafts not published: …", book chapters are draftable. Spec:
+[2026-07-16-draft-aware-preview-design.md](../docs/superpowers/specs/2026-07-16-draft-aware-preview-design.md).
+Dropped 2026-07-12: #12 chronological post prev/next — for a 7-post topic-diverse blog the
+ordering is meaningless and over-promises; the reading-first listing is the right hub, and
+sequential nav already exists via books. A category-driven "related posts" strip could revisit
+this, but only after a richer corpus makes "related" meaningful.)*
+
+## B. Publish / build hardening — CLOSED 2026-07-16 (was rot)
+
+*(Section B, publish/build hardening — `publish --public`, strict-by-default + `--no-strict`,
+built-site shared asset bundle — was already SHIPPED by the author; the entries were backlog
+rot, verified against source + removed 2026-07-16. See [[backlog-entries-rot]].)*
+
+## C. Theme colour-system a11y follow-ups (2026-07-09 audit) — CLOSED 2026-07-16
+
+*(Section C is closed, 2026-07-16. Six items built: the single-key-shortcut reader toggle
+(WCAG 2.1.4, gating `f`/`?`/`/`, not just `f`, which the audit under-scoped), settings-popover
+focus-on-open, category chips' `aria-pressed` + live count, keyboard-reachable link previews,
+the forced-colors nav marker, and settings-panel reflow at 200%. Spec:
+[2026-07-16-section-c-a11y-batch-design.md](../docs/superpowers/specs/2026-07-16-section-c-a11y-batch-design.md);
+plan: [2026-07-16-section-c-a11y-batch.md](../docs/superpowers/plans/2026-07-16-section-c-a11y-batch.md).
+Two items were NOT built: both had rotted, closed by §F's deck theming/a11y step, verified
+against source before deletion. "Embedded deck ignores a sepia host" was already fixed at its
+own named anchor (`render/deck.rs:164` reads `(t==='sepia' ? 'light' : null)`, the recommended
+fix verbatim). "Deck slide-number chip not restyled per-slide" was fixed by removing the
+premise: the chip is now one dark-glass surface in both themes (`deck.css:352-361`), so the
+`html.tali-deck-dark`-scoped restyle the bug described no longer exists. See
+[[backlog-entries-rot]].*
+
+*Known + accepted (not a bug to re-file): at 200% the 4-button Theme seg wraps, and the first
+button of the wrapped line keeps its 1px `border-left`, doubling against the container's own
+border. Measured, judged cosmetic (same colour, contiguous, invisible unmeasured). The fix
+(gap-dividers + `flex:1 0 auto`) was prototyped in-browser and REJECTED: it stretches the
+wrapped button to full width, a bigger visual change than the hairline it removes.)*
+
+Owner-calls kept as-is (one-line changes if ever wanted): table cells use the 1.28:1 hairline
+(`base.css:436` — border-strong on every cell heavies every table); callout `tip`/`important`
+collapse under protanopia (icon + title already carry meaning, hue never the sole cue); deck has no
+sepia palette (document decks as light/dark-only, or add + teach the reader/scroll path).
+
+## D. Reading-first identity polish — CLOSED 2026-07-16 (was rot)
+
+*(Section D is closed. It was **backlog rot**, and the "direction ruling" it had been blocked on
+turned out to be a question about a fork that does not exist. Direction **"Marginalia"** (iron-gall
+manuscript ink) is fully landed: theme/colour 2026-07-09, type ~2026-07-12, layout already shipped.)*
+
+*The **type** pointer was rot first (the old "type → item 13" named a `#13` that exists nowhere;
+§A's numbering died when §A closed). The owned Newsreader body face is wired at `base.css:35`,
+applied at `:216`, both variable faces bundled at `font-weight: 200 800` and inlined as `data:` URIs.*
+
+*Then the three "re-verified, NOT rot" layout targets were re-checked on 2026-07-16, **in a browser
+rather than by reading the file**, and two of the three dissolved:*
+
+1. ***"Hero as typeset, not a marketing slab" was ALREADY SHIPPED.** The entry quoted `base.css`'s
+   `.hero { text-align: center }` as proof, but that is the **full-width landing** branch; the
+   override ~10 lines below (`.tali-site-main:not(.tali-wide) .hero`) is what a reading-measure page
+   gets, and its own comment calls it "an editorial masthead ... e.g. a personal homepage". Measured
+   live on the blog index: `text-align: left`, lead `max-width: none`, and the iron-gall eyebrow
+   hairline rendering at 40x2px in `rgb(56,65,101)`. This is the "trust the symptom, never the line
+   number" trap in its purest form: the quoted line was real, and irrelevant.*
+2. ***"Drop bordered feature-card grids" is MARKETING-ONLY.** The blog never authors them. Exact-match
+   grep: `.feature-grid`/`.feature` appear in `site/features.tmd` + `site/index.tmd` only, **zero**
+   hits in `corpus/tech-blog/`. So reshaping them is deferred marketing work, not blog work.*
+3. ***The `--space-1..6` scale is genuinely absent** (verified, grep exit 1), but with 1 and 2 gone it
+   is a pure refactor: no visible change, regression risk across `base.css`. Owner ruled **drop it**;
+   if spacing ever actually hurts, it returns as a real item.*
+
+***The fork was false twice over*** *(and this is the reusable lesson): (a) `page-layout: full` →
+`.tali-wide` **already partitions** the deferred marketing site from the blog, and `base.css` already
+exploits that partition for `.hero`, so "cannot be scoped to the blog by CSS alone" was simply wrong;
+(b) the blog does not author the contested component at all. **Do not re-open D**: the identity work
+is done, and the only thing left in those primitives belongs to the marketing rebuild.*
+
+## E. Catalog-derived work — the SWEEP is closed (2026-07-16); some items stayed open
+
+**Owner ruling 2026-07-16: stop the sweep, triage an area on demand.** Wave 1 triaged the 4
+highest-leverage areas (34/165: crossref, citations, slides, config) and measured the base:
+**12 of 34 (35%) outright stale or superseded, 20 of 34 (59%) contain at least one false statement
+about today's source.** Triaging the remaining 131 against that base is not worth a session, and the
+staleness only grows as more ships. Full results, per-entry verdicts, and the caveats:
+[2026-07-16-quarto-catalog-triage.md](2026-07-16-quarto-catalog-triage.md). *(The trust caveats and
+the surviving open items moved to [backlog.md](backlog.md); this is the closure record.)*
+
+### Landed 2026-07-16 (recorded so they are not re-scoped)
+
+- ***Cmd-K index chapter scoping.** `build_sections` was the last site path rendering unscoped, so a
+  book's search index said "Theorem 1" / "Figure 1" while the page said "2.1". D49's tail (scoped
+  floats never reached `search.rs`), which the theorem flip widened to theorems. The chapter lookup
+  existed twice (`Site::chapter_for` + an inline copy in `scan_xref_targets`) and search needed a
+  third, so it is now one `book::chapter_of` all three call. The dev server's off-lock split is
+  preserved: it reads the chapter under the same brief lock as the page clone, render stays off-lock.
+  Two pre-existing defects it surfaced were filed, not fixed (raw `&nbsp;` in the index text; a
+  cross-page `@fig-` in a snippet renders a bare "Figure").*
+- ***Theorem/float numbering agreement** (was the `[ruling]` entry). Owner ruled **flip theorems to
+  auto-scope**, then ruled **delete `number-within:` with it** — because once theorems scope
+  automatically the key does exactly nothing, and a recognized-but-inert key is the very bug D67
+  (`csl:`) just shipped a diagnostic for. Theorems now call `float_number`, the same helper floats
+  use, so a chapter cannot show "Figure 2.3" beside "Theorem 5"; measured before (Figure 2.1 beside
+  Theorem 1) and after (both 2.1) on a real build. **The entry's "breaks 2 pins" was itself stale**:
+  the named lines pointed at unrelated tests, and the corpus pins that assert "Theorem 2.1" **passed
+  unchanged**, because `methods.tmd` is chapter 2 and now scopes without config. The one real pin was
+  `site/mod.rs`'s cross-page theorem test, whose sibling *figure* test already asserted "Figure 2.1"
+  for the identical book — its own comment ("a flat Figure 1 would collide with chapter 1's own first
+  figure") is the argument for the flip, written before the flip. Removal swept 12 sites incl. the
+  drift-locked schema + vocab JSON (regenerated with `TALIESIN_BLESS=1`, diff = the key only) and
+  `methods.tmd`'s whole front matter. Migration is loud, not silent: a leftover `number-within:` now
+  warns `unknown theorems key` **with a line number**.*
+- ***Cross-page `@fig-` to a CELL-labelled figure** (was live defect #2, the largest one). Shipped.
+  The entry's cause was right but pointed at the wrong layer: teaching `scan_page_anchors` to parse
+  fences would have duplicated the renderer's "which fences are cells" rule in a second parser.
+  `Site::harvest_xref_numbers` **already renders every page and already iterates the renderer's own
+  registry** (`doc.xref_numbers`), which contains cell labels — it was simply `get_mut` enrich-only,
+  so it looked straight at `fig-x` and dropped it. Fix = insert-if-absent there, one source of truth,
+  no new parser. This also fixed **backlinks** and **`taliesin map --format json`** for cell figures
+  for free (both key off `xref_targets`). Scale was understated: the corpus has **26 cell-labelled
+  `fig-` anchors vs 17 brace ids**, so the broken shape was the majority of the test net's figures.
+  Pinned in `corpus/demo-book` (results.tmd defines `fig-stages` with a `{mermaid}` cell; summary.tmd
+  refs it cross-chapter → "Figure 3.1"); verified in a real browser (click → `results.html#fig-stages`,
+  target in viewport, no console errors) and on a non-book website (flat "Figure 1").
+  **Two review catches worth remembering:** (a) the insert path had to re-apply `is_ref_anchor` —
+  the render registry is LOOSER than the scan (the table-caption path registers *any* id), so
+  `: cap {#my-table}` leaked into `map`'s xref_targets as a phantom resolvable target. Measured on
+  both sides: `main` → `{}`, first-cut branch → `{"my-table": …}`. (b) A mixed-form duplicate took
+  the *loser's* number ("Figure 2" on a link to a page where it reads "Figure 1"); the enrich arm now
+  only accepts a number from the page the url points at. `docs/internals/sites.tmd` corrected: the
+  xref design is **three** passes (scan → render-harvest → rewrite), not two, and its prefix list was
+  missing 5 of the 12 real ones.*
+- ***D49 chapter-scoped float numbering.** Shipped: figures/tables/equations/listings scope to the
+  chapter in a numbered book ("Figure 2.1"), flat everywhere else. The number is built ONCE by the
+  renderer that knows the chapter and carried as a `String` (`render::float_number`), mirroring the
+  `section_number`/theorem precedent, so the executor prints it verbatim. **It never needed the
+  citation zone** (`register_xref` already took a `String`, since theorems push "2.1" through it).
+  Blocked instead on the **exec zone**, for 3 integer literals in exec.rs's own `#[cfg(test)]`
+  module; owner approved that narrow edit and nothing else. Verified in a real build: intro
+  "Figure 1.1", methods "Figure 2.1", cross-chapter ref → `intro.html#fig-structure` "Figure 1.1",
+  standalone post still flat. `demo-book` had **zero** numbered floats, so intro + methods gained one
+  labelled figure each (+2 small authored SVGs) to pin it.*
+- ***D67 `csl:` recognized-but-unsupported.** Shipped, and it **never needed the citation zone**. It
+  was **five** surfaces, not four: `AGENTS.md` also taught the key (both it and the vocab JSON are
+  *derived* from `vocab::vocab()`, so one filter fixed both). Proved inert by rendering
+  `corpus/bayesian-website` with and without the key: byte-identical (980300 bytes). The `css`
+  did-you-mean hazard is now **mechanically pinned** (`csl_stays_recognized_because_dropping_it_would_mis_suggest_css`
+  builds `KNOWN_KEYS` without `csl` and asserts the suggestion becomes `css`), so a future cleanup
+  cannot re-introduce it. The rule finally lives in `frontmatter::validate_unsupported_keys`, on the
+  **render path**, not in `diagnostics/` as this entry originally instructed: `diagnostics/` is
+  check-only (it appears once in the whole server crate), so the first cut left the **preview**
+  silent, which is the surface the author actually reads. Orphaned `ieee.csl` (17KB) deleted with it.*
+- ***D74 footnote reverse-sync.** Shipped, and the symptom was **worse** than this entry said: the
+  section hardcodes `data-block-id="qmd-footnotes"`, so `closest()` DID resolve, to a block with no
+  sourcepos, leaving `openSource()` on its `line = "1"` default. Every footnote silently jumped to
+  **line 1**; it was never a no-op. Fixed per-`<li>` (nested positions, the pattern `:::` divs already
+  use); the block-level empty sourcepos is **deliberately kept** (a block-level range would break
+  `corpus.rs:151`'s monotonic-source-order assert and make reverse-sync swallow the document). **No
+  exemption existed to remove:** the checks skip on `sourcepos.is_empty()` *generically*, which is
+  exactly how the hole hid.*
+- ***D107 deck fragment effects.** Shipped as `::: {.fragment .fade-out}` / `{.fragment .highlight}`
+  (a second class on the existing fenced div, so no new authoring form). **CSS-only** (`deck.css`), no
+  Rust/JS: the effects reuse the `.tali-frag-visible` marker deck.js already toggles. Declines held
+  (no `incremental:` knob, no `data-fragment-index`).*
+- *Also landed 2026-07-16: the **deck key sheet** (it advertised "↑ ↓ Vertical slides" while
+  `up()`/`down()` call `moveTopic`; the pin now reads the binding and the sheet together so they
+  cannot drift apart again); **`author: [A, B]`** (a YAML sequence read via `.as_str()` gave `None`,
+  so both consumers fell through `.or(config.title)` and a multi-author site published its own
+  **title** as the author in the Atom feed and JSON-LD; `SiteConfig.authors` now reuses the same
+  `frontmatter::string_list` a page's `author:` always used, and the deliberate RFC-4287 title
+  fallback is pinned to fire only when there is genuinely no author); and the phantom
+  **`number-sections`** doc comment (the key existed nowhere in the source but the comment claiming
+  it; numbering is really decided by `chapter_for`). Note the 2026-06-29 theorem spec still reasons
+  about "the `number-sections` feature" as though it shipped: it is a dated record, left as written.*
+
+## F. Deck rework (2026-07-12 slides audit) — LANDED except B3-18
+
+**Detail: [2026-07-12-deck-audit.md](2026-07-12-deck-audit.md)** (43 confirmed bugs + a
+keep/cut/fix/add feature verdict + a mobile-feed spec + a grind order). Owner-decided shape change
+(REMOVE, don't fix the old behavior): a deck opens **as a deck** (desktop = stepped slides;
+phone/portrait = a TikTok-style scroll-snap **slide feed**, keyed on aspect not width); **delete
+reader/scroll mode**; **delete print/PDF** (the critical dark-deck-blank-PDF bug is resolved by
+removal); trim the overview flourishes (minimap/LOD/threads/filter/pen/van-Wijk zoom).
+
+**Progress (2026-07-16): the ENTIRE audit is landed except one deliberately-deferred item.**
+Steps 1-7 all done (front door + feed + correctness + flourish trim + theming/a11y/perf + docs
++ the C-ADD share-link/QR, live-input deep-link, feed notes-narration, wake-lock adds). See the
+audit file's top-of-doc **Status** block for the per-item tracker. **B3-18 remains open and is
+tracked in [backlog.md](backlog.md).**
+
+## G. AI-native authoring (2026-07-12 audit) — CLOSED 2026-07-16 (was rot)
+
+*(Section G is closed as a grind chunk, 2026-07-16. It was **backlog rot**: the whole browser-free
+loop (the three items this entry called "the recommended first bets") shipped 2026-07-13, along
+with 5 more. Verified against source + all 30 named pins run green before deleting the entries. See
+[[backlog-entries-rot]].*
+
+*Shipped (item → anchor → pin): #1 AGENTS.md onramp → `core/agents.rs:42` → `agents_md_cli.rs`;
+#2 `taliesin read` → `render/text.rs` + `model.rs:283 body_text()` → `text_projection.rs` +
+`read_cli.rs`; #3 agent-grade diagnostics → `server/check.rs:23` (`{code, severity, file, line,
+message, suggestion?}`) + `core/diagnostics/codes.rs` → `check_cli.rs`; #4 Claude Code skill →
+`editor/claude-code/skills/taliesin/SKILL.md` → `skill_freshness.rs`; #5 `map` → `map_cli.rs`;
+#6 `taliesin-mcp` → `server/mcp.rs` → `mcp_stdio.rs`; #7 scaffolds + `paper` kind → `new_cli.rs`;
+#10 structured build/publish errors → `structured_build_errors.rs`. Plus **#8(b)** placeholder-alt
+(`a11y.rs:337`) and **#9(B)** ScholarlyArticle (`meta.rs:150`, author-free trigger) + **#9(C)**
+per-page cited-refs sidecar (`build.rs:355,1560`) → `citations_sidecar.rs`.)*
+
+*The three ruling-gated leftovers (#8a `check --online`, #8c numeric-claim hint, #9A per-page text
+sidecar) were ruled **decline** by the owner on 2026-07-16; reasoning is recorded under "Decided
+against" in [backlog.md](backlog.md). **Nothing in section G is open.***
