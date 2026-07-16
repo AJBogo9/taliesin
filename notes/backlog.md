@@ -60,17 +60,42 @@ pushed `2368e4a` mid-session while an agent was mid-task. The count was checked,
 --workspace` (the JS-equivalence guard skips without Node) and `TALIESIN_R=R TALIESIN_REQUIRE_R=1
 cargo test -p taliesin-server --test r_kernel` (R needs an interpreter + IRkernel). CI sets both.
 
-**What is left is a flat list; none of it is a grind chunk.** One item is build-ready with no
-ruling (**D37**); the rest is small defects, **three** owner rulings, two sign-off-gated citation
-items, and one deliberate deferral. Everything else is Tier 2/3 (demand-driven).
+**What is left is a flat list; none of it is a grind chunk.** All **three owner rulings are
+CLOSED** (2026-07-17, below); the rest is small defects, two sign-off-gated citation items, and one
+deliberate deferral. Everything else is Tier 2/3 (demand-driven).
 
-**Pick up here (2026-07-16 machine-facing audit; everything below is evidenced in
-[its note](2026-07-16-machine-facing-audit.md), not inherited):**
-1. **The three rulings block the most value.** The `--jobs` semantics (pages vs kernels), where the
-   title-clobber fix belongs, and what MCP's root should be. Each is a design call, not a build.
-2. **Re-check the blast radius before assuming M2-M6 need zone sign-off.** M1 carried the label and
-   did not need it; that is now three-for-three with D49 and D67. **M6 is the likely next false
-   positive.** M2 (`exec.rs`) and M3-M5 (fork protocol) genuinely do need it.
+**This file was measured against source on 2026-07-17 and was wrong in six places.** A sweep
+re-derived every open item from today's code. **The rot was not the author pushing mid-session:
+`2368e4a` ("prune the machine-facing items that landed") pruned only the *machine-facing* items, so
+entries from other sources were never re-checked** — and the start-here block was then refreshed
+90 minutes *after* two of them had landed, still advertising one as the next thing to build. **A
+scoped prune leaves the unscoped half looking freshly reviewed.** When you prune, either prune the
+whole list or say which slice you pruned. Corrections applied below; the sweep's verdicts are in
+[2026-07-17-backlog-truth-sweep.md](2026-07-17-backlog-truth-sweep.md).
+
+**The three rulings landed 2026-07-17 (do not re-litigate):**
+1. **`--jobs N` means N parallel PAGES.** The CLI was right; the code was the bug. Warm pool is now
+   ADDITIVE under an explicit `--jobs`; auto mode is untouched (`f141cac`). Measured on the running
+   product: `--jobs 3` + pool → 3 pages (was 1); auto + pool → 14 + 2 warm (unchanged).
+2. **The `<title>` clobber is fixed at the PRODUCER** (`full_render` carries the display-ready
+   title). Consumer/`PageDoc.title` alternatives were rejected: each closes only one of the two
+   symptoms.
+3. **MCP gets no root; the false claim goes instead** (`d0819fc`). A root would withhold nothing
+   real (a host that can run the binary already has the filesystem). The module + `taliesin help
+   mcp` now say plainly: not a sandbox, no containment, and `build` writes HTML and runs cells.
+
+**Pick up here:**
+1. **Section 1 is EMPTY. D37 already landed** (`515fbd7`, `frontmatter.rs:286-308`
+   `validate_format_subkeys`, which even emits `located(...)`). It was this file's headline
+   "cleanest build on the list" for ~90 minutes after it was already built.
+2. **Blast-radius labels are wrong more often than right: 3.5 of 4 so far** (D49, D67, M1, and M1's
+   other half all named the zone and none needed it — `f141cac` touched no `warm_pool.rs`/`kernel.rs`/
+   `exec.rs`/`freeze.rs`). **But M6 is not one item, and the label travels with the SUMMARY, not the
+   code**: its `/proc`-probe half is free-standing (no sign-off), while `MAX_WARM_PAGES` is
+   eviction — `exec_pool.rs:87` drops the executor, *killing its kernel children* and destroying that
+   page's variable state, and `exec_pool.rs:3` says the eviction order must stay deterministic
+   because the build relies on it. **That half needs sign-off.** The one-line summary ("a constant and
+   a `/proc` probe") bundled a probe with a kernel-lifecycle policy. M2 + M3-M5 genuinely need it.
 3. **M3+M4+M5 are ONE change, not three.** They share one trigger (a failed fork) and the natural
    fix to M3 arms M4, which today cannot fire only because M3 kills the task that would trigger it.
 4. **Do not re-verify M4/M5/M6 from the note alone** — unlike M1/M2/M3 they were confirmed by source
@@ -112,13 +137,13 @@ payoff). Theorem numbering was ruled **auto-scope + delete `number-within`** and
 
 ### 1. Build-ready now (no ruling needed)
 
-- **D37 — lint `format:` sub-keys** (ADOPT; catalog D-number is the detail pointer). The honored
-  `format: deck:` key set is empty, so whitelisting `transition` would validate no-ops as supported.
-  This adds a **diagnostic, not a knob**, following the from-quarto value-lint precedent (`69c228b`)
-  and the `csl:` precedent (a key that reads as honored and does nothing is the bug). Cleanest build
-  on the list.
+**Empty.** D37 (lint `format:` sub-keys) was the only entry and had already landed (`515fbd7`) when
+this section still called it "the cleanest build on the list". Do not re-add it.
 
 ### 2. Live defects (small, independent; count them, don't trust a number written here)
+
+*Re-derived from source 2026-07-17. Line numbers below are corrected; several had drifted, and one
+entry (`lang: fr`) was pointing at correct code.*
 
 1. **The References section repeats the footnote bug** (found while fixing D74, 2026-07-16).
    `cite/render.rs:102` hardcodes `data-block-id="qmd-references"` with an empty sourcepos, so
@@ -129,15 +154,28 @@ payoff). Theorem numbering was ruled **auto-scope + delete `number-within`** and
    click-to-source land (the `.bib` entry in another file? the `[@key]` citation site? nowhere)?
    Related, deliberately left: clicking the footnote section's own chrome (the `<hr>`/padding) still
    resolves to line 1; closing that needs `locatable()` to require a *usable* sourcepos, a client change.
-2. **Duplicate-label warnings are unlocated** (`render/mod.rs:1538`, `site/xref.rs:56` emit no
-   file/line), half-reproducing the exact Quarto flaw D53 critiques. *(The harvest's own duplicate
-   warning, added 2026-07-16, is unlocated for the same reason and would be fixed by the same work.)*
-3. **`{.python code-line-numbers=...}` is routed to the executable path** though it is authored as
-   display-only in `corpus/deck.tmd:46` and two docs pages; `code_lang` splits naively. Invisible to
-   the kernel-free corpus. *Unverified against a live kernel.*
-4. **The xref registry goes stale on a warm content edit** (`serve_site/mod.rs:1148-1199` refreshes
-   only the Cmd-K search fragment).
-5. **`lang: fr` promises French, delivers English** cross-ref labels (`render/page.rs:239`).
+2. **Duplicate-label warnings are unlocated** (`render/mod.rs:1568-1571`, `site/xref.rs:50-56` emit
+   no file/line), half-reproducing the exact Quarto flaw D53 critiques. *(The harvest's own duplicate
+   warning, added 2026-07-16, is unlocated for the same reason: `site/mod.rs:953`.)* **Price it
+   before promising it (2026-07-17): this reads as one small fix and is TWO, with very different
+   costs.** `render/mod.rs:1568` is on the `Vec<Warning>` channel, which already has `.at(file,
+   line)` (`render/model.rs:166`) — cheap. But `site/xref.rs:23` and `site/mod.rs:172` are
+   `Vec<String>`: **no location field exists in that channel at all**, so half of this item is a
+   channel type change. (Line numbers here had drifted by 30 and 6; the symptom held.)
+3. ~~`{.python code-line-numbers=...}` routed to the executable path~~ — **LANDED** (`371b060`;
+   `render/cell_extract.rs:181` `is_executable_fence`, gated at `render/mod.rs:348`). Listed as open
+   here for ~90 minutes after it was fixed.
+4. **The xref registry goes stale on a warm content edit** (`serve_site/mod.rs:1186-1204` refreshes
+   only the Cmd-K search fragment). Confirmed: `harvest_xref_numbers` has exactly one caller,
+   `site/mod.rs:392`, inside `discover` — and `xref` appears nowhere in `crates/server/src/serve_site/`.
+5. **Cross-reference labels are English-only** (re-filed 2026-07-17; **was "`lang: fr` promises
+   French, delivers English (`render/page.rs:239`)", and both halves were wrong**). `page.rs:239` is
+   *correct code*: `<html lang="{lang}">` fed by `doc.lang`, doing exactly its job. The true site is
+   `cite/render.rs:15-21`, a hardcoded English const table — and `lang` appears **zero** times in
+   that whole file, so there is no localization seam to fix. Nor is the "promise" real: the docs and
+   `vocab.rs` only ever promise `lang:` sets `<html lang>`, which it does. **So this is an absent
+   i18n FEATURE with a scope question, not a small live defect** (no corpus doc demands it). A
+   textbook wrong-*layer* pointer: the entry named a real symptom and a file that is not the cause.
 6. **The Cmd-K index stores raw `&nbsp;` entities in its "plain text"** (found 2026-07-16 while
    fixing the index's chapter scoping; pre-existing and independent of it). The indexed body reads
    `Theorem &nbsp;2.1` / `Figure&nbsp;2.1`, so a reader typing the number they can SEE ("Theorem
@@ -166,37 +204,45 @@ payoff). Theorem numbering was ruled **auto-scope + delete `number-within`** and
    The fix is lang-dependent (do not register when the figure is known to never materialize, or warn
    that a labelled `include: false` cell is unreferenceable, mirroring the theorem-prefix warning at
    `render/mod.rs:1699`) and belongs in the render/exec seam, so it wants its own change.
-   *Source-verified; **unverified against a live kernel** (this sandbox has no `ipykernel`).*
-9. **The websocket clobbers the SSR `<title>`** (measured, 2026-07-16 machine-facing audit; detail:
-   [2026-07-16-machine-facing-audit.md](2026-07-16-machine-facing-audit.md)). `client.js:938` sets
-   `document.title = msg.title || "Taliesin"` *before* the `skipMount` guard, from a `full_render`
-   carrying the raw front-matter title (`serve_site/mod.rs:785-793`), while SSR applied
-   `title_with_site_suffix` (`:561-563`). `/blog.html` -> `Blog` (suffix lost); a titleless chapter
-   -> the tab literally reads **"Taliesin"** (5 of 6 `corpus/demo-book` chapters), because
-   `PageDoc.title` is front-matter-only with no H1 fallback (unlike `discovery.rs:48`).
-   **Has a design fork, needs a ruling:** fix the producer (suffix + H1-fallback into `full_render`),
-   the consumer (don't set title when skipping the mount), or `PageDoc.title` itself. Note it
-   *self-heals* on pages with code cells (the exec pass's `build-state: idle` restores `baseTitle`
-   from `client.js:525`), which is why no eye ever caught it: the pages an author stares at repair
-   themselves; the quiet prose chapters don't.
+   Re-confirmed 2026-07-17 at `render/mod.rs:525` (`register_xref` precedes the `match lang` at
+   `:527`); note the `CellRole::Listing` arm next door **gets this right** (gate `:572` precedes
+   register `:578`), so the correct shape already exists in the same function.
+   ***"This sandbox has no `ipykernel`" is FALSE*** (2026-07-17): `~/.local/share/qmd-venv/bin/python`
+   has it, and the warm forkserver boots (`preloaded: numpy, matplotlib`). Set `TALIESIN_PYTHON` to
+   it. This item is verifiable NOW, and so was the false premise blocking it.
+9. ~~The websocket clobbers the SSR `<title>`~~ — **RULED + CLOSED 2026-07-17** (`9ec3bae`). Owner
+   ruled **producer**: `full_render` now carries the display-ready title. Consumer / `PageDoc.title`
+   were rejected: each closes only one of the two symptoms. `PageDoc.title` (raw) became
+   `tab_title` (resolved), which SSR and `full_render_json` both read, so the divergence is now
+   structurally impossible rather than merely fixed; the whole policy is one core fn
+   (`render/page.rs` `site_page_title` = `resolve_title` + `title_with_site_suffix`, both of which
+   already existed — the SSR path had been hand-rolling the composition beside them). **Measured in
+   a real browser, not just on the wire:** `/ws?page=intro.tmd` now sends `Introduction · A Short
+   Demo Book`, which is both symptoms at once (H1 fallback + suffix; it was the literal "Taliesin").
+   *Left open, reported not fixed:* the **single-doc** server (`serve/mod.rs:910`) also ships raw
+   `d.title`, but it is **not the same hole** (no site, no suffix to lose, and its SSR paints a
+   literal `"taliesin"` by design at `:682`, so the wire title is an improvement there). Making a
+   single-doc preview tab read the doc title is a design call about preview chrome.
 10. **A front-matter `title:`-only edit broadcasts nothing** (measured, same audit). The title lives
    in chrome, outside `doc.blocks`, so the diff is empty and `Broadcast::messages` returns `vec![]`
    (`serve_site/mod.rs:947-952`). The server *does* rebuild; the live tab never hears. **The deck
    path already fixes exactly this** (`serve/mod.rs:1280`, `deck_meta_changed` folded into
    `remount`), gated on `DocFormat::Reveal`, so HTML pages keep the hole.
 11. **A restarted server leaves tabs on stale `client.js` under a green "live" pill** (same audit).
-   No protocol version; `boot_id` detects the restart and only forces a re-mount; `CLIENT_JS` is
-   `include_str!`-compiled. The `reload()` lever already exists (`protocol.rs:128`, wired at
-   `client.js:1059`) and is unused. Same trap CLAUDE.md warns about for assets, except the server
-   *knows* it restarted.
-12. **MCP `read` has no containment** (executed, same audit). `mcp.rs:154` -> `query.rs:275-285`: no
-   root, no canonicalization; `cmd_mcp(_args: &[String])` (`:69`) discards its args, so no root
-   exists even in principle. Verified over real stdio JSON-RPC: `/etc/passwd` and
-   `../../../../../../etc/hostname` both returned. Severity is threat-model-dependent (an agent with
-   filesystem access gains nothing), but the module documents a containment it does not implement,
-   and its "no write tool" claim is also false at the filesystem level (`build` writes HTML beside
-   any path and launches an interpreter). **Fork: what is the root** (cwd? a `--root` flag? the
-   discovered project?).
+   No protocol version; `boot_id` detects the restart (`client.js:943-955`) and only forces a
+   re-mount; `CLIENT_JS` is `include_str!`-compiled. Same trap CLAUDE.md warns about for assets,
+   except the server *knows* it restarted. **Correction (2026-07-17): this entry said the `reload()`
+   lever "is unused" — false.** It has three live senders (`serve_site/mod.rs:835`, `:1216`,
+   `serve/mod.rs:1086`) plus a protocol test. It is unwired *to the boot-mismatch path* only, so the
+   fix is narrower than the entry implies: wire that one path to the existing lever. Someone
+   trusting "unused" would go hunting a dead function that is not dead.
+12. ~~MCP `read` has no containment~~ — **RULED + CLOSED 2026-07-17** (`d0819fc`). Owner ruled: no
+   root; drop the false claim instead. A root would withhold nothing real, since a host that can run
+   the binary already has the filesystem. `mcp.rs` and `taliesin help mcp` now state plainly that it
+   is not a sandbox, that no containment exists, and that `build` writes HTML and executes cells.
+   The behavior is unchanged and deliberate: **do not "fix" it by adding a root** without reversing
+   the ruling. (Re-verified by execution before the docs were written, rather than trusted from the
+   audit note: `/etc/hostname` and a `../`-climbing path both still return.)
 13. **`seo.rs` emits machine-invalid output with no diagnostic** (executed, same audit).
    `<lastmod>` is verbatim (`date: "May 15, 2026"` ships as-is; W3C Datetime needs zero-padded
    `YYYY-MM-DD`, and `feed.rs` *does* enforce RFC-3339); `<loc>` is entity-escaped but never
@@ -227,16 +273,7 @@ payoff). Theorem numbering was ruled **auto-scope + delete `number-within`** and
 
 ### 3. Needs an owner ruling (not builds)
 
-- **What does `--jobs N` bound: pages, or total resident kernels?** (OWNER-RULING; surfaced while
-  fixing M1, 2026-07-16, and deliberately left open.) The two live docs disagree, and they only
-  disagree when a warm pool boots: `main.rs:163` says `--jobs <N>` "caps parallel page renders"
-  (N = pages), while `build_budget.rs:1-5,81-85` calls `cap` "the resident-kernel budget" with
-  `warm_pool + build_kernels <= cap` (N = total kernels, so `--jobs 3` = 2 warm + **1** page).
-  M1's fix is correct under **both** readings (it only stopped charging for kernels that do not
-  exist), so this was left untouched — but with a pool booted, `--jobs 3` still renders one page at
-  a time, which the CLI's own wording promises it won't. Ruling needed on which doc is the bug; if
-  N means pages, `budget_split` must stop taking from an *explicit* `--jobs` (auto mode is
-  unaffected, since there the cap is ours to spend).
+*(The `--jobs` semantics ruling is CLOSED — N = pages, landed `f141cac`. See the start-here block.)*
 
 - **D34 project defaults** (OWNER-RULING). `bibliography`/`csl`/`execute`/`theme` are absent from the
   19-key `NATIVE_KEYS`, but no corpus doc repeats them across pages, so it fails minimal-config today.
@@ -268,8 +305,17 @@ payoff). Theorem numbering was ruled **auto-scope + delete `number-within`** and
     that would trigger it. The Python daemon already has a retry protocol the Rust client refuses to
     use (`warm_pool.rs:128-138` vs `:348`), and the cold path already retries this exact failure
     (`exec.rs:790-804`) while `warm_one` has zero retries.
-  - **M6 `MAX_WARM_PAGES = 6` is outside the budget built to bound it**; RAM probe fails **open** in
-    a container (host-wide `/proc/meminfo` while `available_parallelism` honours cgroup CPU quota).
+  - **M6 is TWO items, and they land on opposite sides of the line** (split 2026-07-17; it was
+    filed as one because the summary said "a constant and a `/proc` probe"):
+    - **M6a `MAX_WARM_PAGES = 6` sits outside the budget built to bound it** (`serve_site/exec_pool.rs:14`
+      — a file the entry never named). **NEEDS SIGN-OFF, despite looking like a constant.** Eviction
+      at `:87` drops the executor, which *kills its kernel child processes* (`:17`), destroying that
+      page's kernel variable state and forcing a cold replay; `:3` states the eviction order must
+      stay deterministic because the build relies on it. That is kernel lifecycle.
+    - **M6b the RAM probe fails OPEN in a container** (`build_budget.rs:36-46`: host-wide
+      `/proc/meminfo` while `available_parallelism` honours cgroup CPU quota). **FREE-STANDING, no
+      sign-off**: a file read returning `Option<u64>`, exactly M1's shape. Only affects auto mode
+      (an explicit `--jobs` never consults memory). `probe_free_mb` has zero tests.
   *(Two entries that named the citation zone — D49, D67 — turned out not to need it. Check before
   assuming these do; but M1-M6 were all read-only-audited precisely because they do.)*
 
