@@ -70,6 +70,21 @@ are live here too: a bare word matches prose (`feature` matched the English word
 reports **head's** exit code (so `|| echo "absent"` never fires and `$?` lies), and zsh needs
 `--include='*.tmd'` quoted. See [[grep-verification-traps]].
 
+**Machine-facing audit (2026-07-16), the lens worth reusing:** every prior round was **eye-driven**
+(browser screenshots, "does it render right"), so it covered what an eye lands on and missed what
+none does. Auditing the surfaces with **no viewer** (output read by browsers, crawlers, agents and
+the preview client) found ~35 findings in a codebase that had already survived 134-finding scrutiny:
+detail + evidence in [2026-07-16-machine-facing-audit.md](2026-07-16-machine-facing-audit.md).
+Landed the same day: the `llms.rs` separator (production was garbled), the `meta.rs` `<` escape (a
+`<!--<script>` description blanked the whole page), the `minify.rs` CSS token fusion, the `set_meta`
+wire test, an acorn token-equivalence guard, live R CI, the card headline ellipsis, and the card
+glyph diagnostic. **Two lessons that generalize:** the correct helper already existed next door and
+was reimplemented weaker where nothing looks (3x — `search.rs` vs `llms.rs`/`meta.rs`, and
+`minify.rs`'s own JS branch vs its CSS branch), and **the tests certify the defects** (the `--jobs`
+unit test blesses the collapse; the refill test re-implements the loop with no error arm; the card
+overflow test asserts dimensions only and passes *while* truncating). When a test can only exercise
+the case that works, that is the finding.
+
 **Decided 2026-07-16, do not re-litigate:** §G's three leftovers (`check --online`, the
 numeric-claim hint, the per-page text sidecar) are **declined** (see "Decided against"). Catalog
 work is **triage on demand**, not a sweep. The **References** click-to-source bug is **logged, not
@@ -173,32 +188,25 @@ payoff). Theorem numbering was ruled **auto-scope + delete `number-within`** and
    + `Sitemap: ex.com/sitemap.xml`. `check` reports "no problems found", exit 0, in all three cases.
    11/11 lastmods valid today: latent traps, not live breaks. Wants a **diagnostic, not a knob**
    (the `69c228b` value-lint + D37 precedent).
-14. **`card.rs` text handling has no coverage checks** (rendered, same audit). The bundled Newsreader
-   has 658 glyphs (Latin/Latin-ext/Vietnamese), so Greek/Cyrillic/CJK/emoji **and math symbols
-   (∑ ∫ ∞)** draw as `.notdef` boxes with a non-zero advance, so layout "succeeds" silently — a real
-   trigger for this author's subject matter. The headline `truncate(3)`s with no ellipsis (the *lead*
-   ellipsizes correctly in the same file); eyebrow/wordmark/domain get no wrap/truncate/width check
-   at all; an over-long single word clips mid-glyph past the pad edge. 0/153 live fields today.
-15. **Two minifier latents + the bypass is unenforced** (proven, same audit). A regex literal after
-   `=>`/`)`/`]` is read as division (`minify.rs:102-110`); if its body holds a quote it flips quote
-   parity for the rest of the file and can truncate a later string literal, **killing all of
-   `app.js`** (trigger `s => /['"]/.test(x)` is an ordinary escaping idiom). Nested template literals
-   are rewritten (`:252-283`, no `${}` depth) — proven on real mermaid, **token count identical**.
-   The vendored-lib bypass (`build.rs:1102-1104`) is a *comment* with no test. Shipping bundles are
-   token- and AST-identical today, so all latent. **The cheap guard: assert token-stream + AST
-   equality over `core_enhance_js()` using Node's *bundled* acorn** (offline, no new dep); it catches
-   all three, which `node --check` structurally cannot (proven).
-16. **`set_meta` has zero wire-shape coverage** (same audit). It is the click-to-source mechanism (a
-   load-bearing goal) and **54 of the 55 ops** in a real edit (`live-edit-bench/RESULTS.md:23`).
-   Renaming the `"sourcepos"` literal at `protocol.rs:202` compiles, passes all 178 tests, passes
-   `tsc`, and silently degrades Alt-click to "opens at line 1" for every line-shifted block, plus
-   wrong-file attribution for included blocks, plus dead reverse-sync. `// @ts-check` validates
-   `client.js` against its own typedef, which knows nothing of the Rust side.
-17. **R has zero live CI coverage** (same audit). `ci.yml` installs only Python; no `setup-r`, no
-   `TALIESIN_R`-gated test, no assertion on `KernelSpec::r()`'s argv. The Python job sets
-   `TALIESIN_REQUIRE_KERNEL=1` and its canary **hard-fails** if the interpreter goes missing — a
-   guard built precisely to stop coverage silently regressing to zero. README advertises `{r}` cells
-   and `TALIESIN_R` as first-class. The guard exists for the language the author looks at.
+14. **`card.rs` overflow, the fields nobody clamped** (rendered, same audit; the headline ellipsis +
+   the glyph-coverage diagnostic LANDED 2026-07-16, this is the remainder). Eyebrow, wordmark and
+   domain get no wrap/truncate/width check at all (`card.rs:358-361`, `:399-409`, `:411-414`): a long
+   site title overlaps the wordmark into the right-aligned domain ("Learnindgsbogossian.com"), and a
+   long domain drives x negative and clips left. Separately, an over-long single *word* clips
+   mid-glyph past the pad edge (`:134-154`: `wrap`'s `cur.is_empty()` guard accepts any first word,
+   and the shrink only fires above 3 lines, which one long word never reaches) —
+   `NullPointerExceptionHandlerFactory` clips at x=1199 against a 1128 pad edge, and the test
+   `wrap_keeps_an_overlong_word_on_its_own_line` **asserts** this without checking fit. 0/153 live
+   fields today.
+15. **Two minifier latents remain** (proven, same audit; the acorn token-equivalence guard LANDED
+   2026-07-16, so they can no longer ship *silently* — but the minifier is still wrong for these
+   inputs). A regex literal after `=>`/`)`/`]` is read as division (`minify.rs:102-110`); if its body
+   holds a quote it flips quote parity for the rest of the file and can truncate a later string
+   literal, **killing all of `app.js`** (trigger `s => /['"]/.test(x)` is an ordinary escaping
+   idiom). Nested template literals are rewritten (`:252-283`, no `${}` depth) — proven on real
+   mermaid, **token count identical**. The guard covers `core_enhance_js()` only, so the
+   **vendored-lib bypass is still unenforced** (`build.rs:1102-1104` is a *comment* with no test):
+   routing `mermaid_bundle_js()` through `minify_js` would corrupt it outside the guard's reach.
 
 ### 3. Needs an owner ruling (not builds)
 
