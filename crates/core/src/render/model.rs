@@ -55,7 +55,10 @@ pub struct CellFigure {
     /// `#fig-…` anchor (when labelled), so `@fig-x` cross-references resolve.
     pub anchor: Option<String>,
     pub caption: Option<String>,
-    pub number: usize,
+    /// The number as displayed: chapter-scoped ("2.3") in a numbered book chapter, else
+    /// a flat count ("3"). Rendered verbatim, so the scoping decision stays with the
+    /// renderer that knows the chapter.
+    pub number: String,
 }
 
 /// Metadata for captioning/numbering a code cell's executed `<table>` output.
@@ -65,8 +68,9 @@ pub struct CellTable {
     pub anchor: Option<String>,
     pub caption: Option<String>,
     /// Assigned in document order (alongside Markdown tables) so the "Table N" the
-    /// caption shows matches what `@tbl-x` resolves to.
-    pub number: u32,
+    /// caption shows matches what `@tbl-x` resolves to. Chapter-scoped ("2.3") in a
+    /// numbered book chapter, else a flat count ("3"); rendered verbatim.
+    pub number: String,
 }
 
 /// A code cell's cross-reference role from its `label`/`*-cap` options.

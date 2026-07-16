@@ -1935,7 +1935,7 @@ mod tests {
         let fig = CellFigure {
             anchor: Some("fig-cov".into()),
             caption: Some("Cov & vars".into()),
-            number: 2,
+            number: "2".into(),
         };
         let html = figure_wrap(&fig, "<img src=\"c.png\">");
         assert!(
@@ -1957,7 +1957,7 @@ mod tests {
         let fig = CellFigure {
             anchor: None,
             caption: None,
-            number: 1,
+            number: "1".into(),
         };
         let html = figure_wrap(&fig, "out");
         assert!(
@@ -1977,7 +1977,7 @@ mod tests {
         c.figure = Some(CellFigure {
             anchor: Some("fig-x".into()),
             caption: Some("Cap".into()),
-            number: 3,
+            number: "3".into(),
         });
         let b = output_block(&c, "<img>");
         // the figure nests inside the tali-output wrapper, anchored for @fig-x.

@@ -2824,6 +2824,95 @@ fn shared_counter_numbers_across_kinds() {
     );
 }
 
+/// Floats (figures/tables/equations/listings) scope their numbers to a numbered book
+/// chapter automatically: "Figure 2.1" is chapter 2's first figure, so a cross-chapter
+/// `@fig-` ref is unambiguous. Unlike theorems (opt-in via `number-within:`), this is
+/// the default, so there is no knob to set.
+#[test]
+fn book_chapter_scopes_figure_numbers() {
+    let doc = render_document_with_includes_scoped(
+        "![A fit.](fit.png){#fig-fit}\n\n![A second.](b.png){#fig-two}\n\nSee @fig-fit.\n",
+        std::path::Path::new("."),
+        Some(2),
+    );
+    let body = doc.body_html();
+    assert!(
+        body.contains("<figcaption>Figure&nbsp;2.1: A fit.</figcaption>"),
+        "the first figure in chapter 2 numbers as 2.1: {body}"
+    );
+    assert!(
+        body.contains("<figcaption>Figure&nbsp;2.2: A second.</figcaption>"),
+        "the second as 2.2: {body}"
+    );
+    assert!(
+        body.contains("<a href=\"#fig-fit\" class=\"tali-xref\">Figure&nbsp;2.1</a>"),
+        "the in-page ref agrees with the chapter-scoped number: {body}"
+    );
+}
+
+/// The other three float kinds scope to the chapter too, each off its own counter: a
+/// chapter's first equation/listing/table reads "2.1", never a flat "1".
+#[test]
+fn book_chapter_scopes_equation_listing_and_table_numbers() {
+    let doc = render_document_with_includes_scoped(
+        "$$ x = 1 $$ {#eq-one}\n\n\
+         ```{python}\n#| label: lst-demo\n#| lst-cap: My listing\nx = 1\n```\n\n\
+         | a | b |\n|---|---|\n| 1 | 2 |\n\n: My caption {#tbl-data}\n\n\
+         See @eq-one, @lst-demo and @tbl-data.\n",
+        std::path::Path::new("."),
+        Some(2),
+    );
+    let body = doc.body_html();
+    assert!(
+        body.contains("<span class=\"tali-eqn-number\">(2.1)</span>"),
+        "the chapter's first equation numbers as (2.1): {body}"
+    );
+    assert!(
+        body.contains("Listing&nbsp;2.1: My listing"),
+        "the chapter's first listing numbers as 2.1: {body}"
+    );
+    assert!(
+        body.contains("<caption>Table&nbsp;2.1: My caption</caption>"),
+        "the chapter's first table numbers as 2.1: {body}"
+    );
+    for (anchor, label) in [
+        ("eq-one", "Equation&nbsp;2.1"),
+        ("lst-demo", "Listing&nbsp;2.1"),
+        ("tbl-data", "Table&nbsp;2.1"),
+    ] {
+        assert!(
+            body.contains(&format!(
+                "<a href=\"#{anchor}\" class=\"tali-xref\">{label}</a>"
+            )),
+            "the @{anchor} ref agrees with the chapter-scoped number: {body}"
+        );
+    }
+}
+
+/// Outside a numbered book chapter (a blog post, a standalone page) there is no chapter
+/// to scope to, so floats keep flat numbering: "Figure 1" never becomes "Figure .1".
+#[test]
+fn floats_stay_flat_outside_a_book_chapter() {
+    let doc = render_document_with_includes_scoped(
+        "![A fit.](fit.png){#fig-fit}\n\n$$ x = 1 $$ {#eq-one}\n\nSee @fig-fit and @eq-one.\n",
+        std::path::Path::new("."),
+        None,
+    );
+    let body = doc.body_html();
+    assert!(
+        body.contains("<figcaption>Figure&nbsp;1: A fit.</figcaption>"),
+        "no chapter context keeps flat figure numbering: {body}"
+    );
+    assert!(
+        body.contains("<span class=\"tali-eqn-number\">(1)</span>"),
+        "no chapter context keeps flat equation numbering: {body}"
+    );
+    assert!(
+        body.contains("<a href=\"#fig-fit\" class=\"tali-xref\">Figure&nbsp;1</a>"),
+        "the flat ref agrees: {body}"
+    );
+}
+
 #[test]
 fn theorem_config_parses_number_within_chapter() {
     let cfg = parse_theorem_config("theorems:\n  number-within: chapter\n");

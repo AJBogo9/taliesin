@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 60" width="420" height="60" role="img" aria-label="Introduction leads to Methods, which leads to Results.">
+  <g fill="none" stroke="#888" stroke-width="1.5">
+    <rect x="1" y="14" width="112" height="32" rx="6"/>
+    <rect x="154" y="14" width="112" height="32" rx="6"/>
+    <rect x="307" y="14" width="112" height="32" rx="6"/>
+    <path d="M113 30h41M266 30h41"/>
+    <path d="M147 25l7 5-7 5M300 25l7 5-7 5"/>
+  </g>
+  <g fill="#888" font-family="serif" font-size="14" text-anchor="middle">
+    <text x="57" y="35">Introduction</text>
+    <text x="210" y="35">Methods</text>
+    <text x="363" y="35">Results</text>
+  </g>
+</svg>

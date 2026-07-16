@@ -1068,6 +1068,51 @@ fn book_chapter_scopes_theorem_numbers() {
     );
 }
 
+/// A numbered book scopes float numbers to the chapter, so two chapters no longer both
+/// open with a "Figure 1" and a cross-chapter `@fig-` ref is unambiguous. intro.tmd is
+/// chapter 1 and methods.tmd is chapter 2; each carries one labelled figure, and methods
+/// references BOTH — its own (2.1) and the intro's (1.1) — so one page pins the
+/// disambiguation this exists for. Unlike theorems, floats scope with no front matter
+/// asking for it.
+#[test]
+fn book_chapter_scopes_float_numbers_across_chapters() {
+    use taliesin_core::Site;
+    let site = Site::discover(&corpus_dir().join("demo-book"));
+
+    let intro = site.render_page("intro.tmd").expect("intro renders");
+    assert!(
+        intro.contains("<figcaption>Figure&nbsp;1.1: How this book"),
+        "chapter 1's first figure numbers as 1.1: {intro}"
+    );
+    assert!(
+        intro.contains("<a href=\"#fig-structure\" class=\"tali-xref\">Figure&nbsp;1.1</a>"),
+        "the intro's own ref to it agrees: {intro}"
+    );
+
+    let methods = site.render_page("methods.tmd").expect("methods renders");
+    // Chapter 2's first figure is 2.1, NOT the flat "Figure 2" a shared per-page counter
+    // would have produced.
+    assert!(
+        methods.contains("<figcaption>Figure&nbsp;2.1: The three estimation stages.</figcaption>"),
+        "chapter 2's first figure numbers as 2.1: {methods}"
+    );
+    assert!(
+        methods.contains("<a href=\"#fig-pipeline\" class=\"tali-xref\">Figure&nbsp;2.1</a>"),
+        "its same-chapter ref agrees: {methods}"
+    );
+    // The cross-chapter ref keeps the DEFINING chapter's number and links to its page.
+    assert!(
+        methods.contains(
+            "<a href=\"intro.html#fig-structure\" class=\"tali-xref\">Figure&nbsp;1.1</a>"
+        ),
+        "the cross-chapter ref resolves to the intro's chapter-scoped number: {methods}"
+    );
+    assert!(
+        !methods.contains("data-qmd-xref=\"fig-structure\""),
+        "resolved cross-chapter figure ref still carries its broken marker: {methods}"
+    );
+}
+
 /// Authored source extensions that must stay in lockstep between twinned corpus
 /// documents. Generated media is excluded on purpose: `fourier-transform`'s own
 /// `{python}` cell writes `chord.wav`/`tone_*.wav` at render time, so those bytes

@@ -1,7 +1,10 @@
 # Introduction
 
 Books group related material into ordered chapters. The methods we use are
-introduced in the next part.
+introduced in the next part, and @fig-structure sketches how the parts follow
+one another.
+
+![How this book's chapters build on one another.](structure.svg){#fig-structure}
 
 ## Background
 

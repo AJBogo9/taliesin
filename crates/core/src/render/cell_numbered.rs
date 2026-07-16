@@ -34,7 +34,7 @@ fn caption_inline_html(caption: &str) -> String {
 /// A numbered figure/listing caption: `"<Label>&nbsp;<num>"`, with `": <caption>"`
 /// appended (rendered as inline markdown) when a non-empty caption is given. Shared
 /// by the figure, listing, mermaid, and `{js}`-figure emitters.
-pub(crate) fn numbered_caption(label: &str, num: usize, caption: Option<&str>) -> String {
+pub(crate) fn numbered_caption(label: &str, num: &str, caption: Option<&str>) -> String {
     match caption.map(str::trim).filter(|c| !c.is_empty()) {
         Some(c) => format!("{label}&nbsp;{num}: {}", caption_inline_html(c)),
         None => format!("{label}&nbsp;{num}"),
@@ -79,7 +79,7 @@ pub(super) fn emit_js_figure(
     anchor: Option<&str>,
     caption: Option<&str>,
     block_attrs: &str,
-    num: usize,
+    num: &str,
 ) -> String {
     let default = JsOpts::default();
     let cell = emit_js_cell(src, block_id, js.unwrap_or(&default), "");
@@ -100,7 +100,7 @@ pub(super) fn emit_code_listing(
     caption: Option<&str>,
     fold: Option<&(bool, String)>,
     block_attrs: &str,
-    num: usize,
+    num: &str,
 ) -> String {
     let id_attr = id_attr(anchor);
     let class = if lang.is_empty() {

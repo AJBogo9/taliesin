@@ -17,4 +17,7 @@ By @thm-kl, the objective is bounded below.
 
 ## Setup {#sec-setup}
 
-The setup for the experiments.
+The setup for the experiments runs the stages in @fig-pipeline, which refines the
+chapter overview from @fig-structure into the steps we actually estimate.
+
+![The three estimation stages.](pipeline.svg){#fig-pipeline}

@@ -500,26 +500,18 @@ fn render_internal_impl(
             // `$$ ... $$ {#eq-x}` -> a numbered display equation; register the
             // `#eq-` id so `@eq-x` cross-references resolve to "Equation N".
             eq_count += 1;
-            register_xref(
-                &mut xref_registry,
-                &mut warnings,
-                &anchor,
-                eq_count.to_string(),
-            );
-            html.push_str(&emit_equation(&latex, &anchor, &attrs, eq_count));
+            let eq_num = float_number(chapter, eq_count);
+            register_xref(&mut xref_registry, &mut warnings, &anchor, eq_num.clone());
+            html.push_str(&emit_equation(&latex, &anchor, &attrs, &eq_num));
         } else if let Some(fig) = is_paragraph.then(|| figure_parts(node)).flatten() {
             // Standalone image -> a numbered `<figure>`; register `#fig-` ids so
             // `@fig-x` cross-references resolve to the number.
             fig_count += 1;
+            let fig_num = float_number(chapter, fig_count);
             if let Some(fid) = fig.attrs.id.as_deref().filter(|i| i.starts_with("fig-")) {
-                register_xref(
-                    &mut xref_registry,
-                    &mut warnings,
-                    fid,
-                    fig_count.to_string(),
-                );
+                register_xref(&mut xref_registry, &mut warnings, fid, fig_num.clone());
             }
-            html.push_str(&emit_figure(&fig, &attrs, fig_count));
+            html.push_str(&emit_figure(&fig, &attrs, &fig_num));
         } else if let Some(role) = &cell_role {
             // A labelled/captioned code cell -> a numbered, anchored figure/listing.
             let lang = cell.as_ref().map(|c| c.lang.clone()).unwrap_or_default();
@@ -527,8 +519,9 @@ fn render_internal_impl(
             match role {
                 CellRole::Figure { anchor, caption } => {
                     fig_count += 1;
+                    let fig_num = float_number(chapter, fig_count);
                     if let Some(a) = anchor {
-                        register_xref(&mut xref_registry, &mut warnings, a, fig_count.to_string());
+                        register_xref(&mut xref_registry, &mut warnings, a, fig_num.clone());
                     }
                     match lang.as_str() {
                         // Client-rendered outputs are known now, so wrap them here.
@@ -537,7 +530,7 @@ fn render_internal_impl(
                             anchor.as_deref(),
                             caption.as_deref(),
                             &attrs,
-                            fig_count,
+                            &fig_num,
                         )),
                         "js" => html.push_str(&emit_js_figure(
                             &code,
@@ -546,7 +539,7 @@ fn render_internal_impl(
                             anchor.as_deref(),
                             caption.as_deref(),
                             &attrs,
-                            fig_count,
+                            &fig_num,
                         )),
                         // Python/R: the source renders now; tag the cell so the
                         // executor wraps the (later) output in the numbered figure.
@@ -555,7 +548,7 @@ fn render_internal_impl(
                                 c.figure = Some(CellFigure {
                                     anchor: anchor.clone(),
                                     caption: caption.clone(),
-                                    number: fig_count,
+                                    number: fig_num.clone(),
                                 });
                             }
                             // `echo: false` hides the code but keeps the figure
@@ -579,13 +572,9 @@ fn render_internal_impl(
                         html.push_str(&hidden_cell(&attrs));
                     } else {
                         lst_count += 1;
+                        let lst_num = float_number(chapter, lst_count);
                         if let Some(a) = anchor {
-                            register_xref(
-                                &mut xref_registry,
-                                &mut warnings,
-                                a,
-                                lst_count.to_string(),
-                            );
+                            register_xref(&mut xref_registry, &mut warnings, a, lst_num.clone());
                         }
                         html.push_str(&emit_code_listing(
                             &code,
@@ -594,7 +583,7 @@ fn render_internal_impl(
                             caption.as_deref(),
                             fold.as_ref(),
                             &attrs,
-                            lst_count,
+                            &lst_num,
                         ));
                     }
                 }
@@ -608,7 +597,8 @@ fn render_internal_impl(
                         c.table = Some(CellTable {
                             anchor: anchor.clone(),
                             caption: caption.clone(),
-                            number: 0,
+                            // Filled in document order by `apply_table_captions`.
+                            number: String::new(),
                         });
                     }
                     if cell.as_ref().is_some_and(|c| !c.echo || !c.include) {
@@ -676,7 +666,7 @@ fn render_internal_impl(
     let mut blocks = group_divs(flat, &spans, origins, &mut id_counts, &mut warnings);
     // Pandoc table captions (`: caption {#tbl-x}` after a table) are numbered and
     // folded into the table's `<caption>`; registers `tbl-x` for `@tbl-` refs.
-    apply_table_captions(&mut blocks, &mut xref_registry, &mut warnings);
+    apply_table_captions(&mut blocks, &mut xref_registry, &mut warnings, chapter);
     // Theorem environments: number per-kind in document order + register #thm-/#lem-/…
     // anchors. Must run before cite::process resolves @thm-/@lem-/… references.
     number_theorems(
@@ -1549,6 +1539,21 @@ fn inject_attrs_into_last_tag(out: &mut String, tag: &str, classes: &[String], i
 /// Fold Pandoc table captions into their tables. A `: caption {#tbl-x}` paragraph
 /// directly after a table becomes the table's numbered `<caption>` ("Table N"),
 /// the table gains the `#tbl-x` id, and `tbl-x` is registered so `@tbl-x` resolves.
+/// A float's displayed number: chapter-scoped ("2.3") inside a numbered book chapter,
+/// else the flat count ("3"). Figures/tables/equations/listings each keep their own
+/// counter and scope it to the chapter, so two chapters no longer both open with a
+/// "Figure 1" and a cross-chapter `@fig-` ref is unambiguous.
+///
+/// Unlike theorems (which opt in via `theorems: number-within:`) this is the DEFAULT
+/// and has no knob: outside a numbered chapter there is simply no chapter to scope to,
+/// so numbering stays flat — the same rule `section_number` already follows.
+fn float_number(chapter: Option<u32>, n: usize) -> String {
+    match chapter {
+        Some(ch) => format!("{ch}.{n}"),
+        None => n.to_string(),
+    }
+}
+
 /// Register a cross-reference anchor → number, keeping the **first** definition and
 /// warning on a duplicate label. Otherwise a repeated `{#fig-x}`/`{#sec-x}` silently
 /// took the *last* number while the `#fig-x` anchor pointed at the *first* element —
@@ -1704,8 +1709,9 @@ fn apply_table_captions(
     blocks: &mut Vec<Block>,
     xrefs: &mut HashMap<String, String>,
     warnings: &mut Vec<Warning>,
+    chapter: Option<u32>,
 ) {
-    let mut tbl_count = 0u32;
+    let mut tbl_count = 0usize;
     let mut i = 0;
     while i < blocks.len() {
         // A code cell whose executed output is a numbered table (`#| label: tbl-x`):
@@ -1714,9 +1720,10 @@ fn apply_table_captions(
         // caption/id into the output using `cell.table.number`.
         if let Some(t) = blocks[i].cell.as_mut().and_then(|c| c.table.as_mut()) {
             tbl_count += 1;
-            t.number = tbl_count;
+            let num = float_number(chapter, tbl_count);
+            t.number = num.clone();
             if let Some(a) = &t.anchor {
-                register_xref(xrefs, warnings, a, tbl_count.to_string());
+                register_xref(xrefs, warnings, a, num);
             }
             i += 1;
             continue;
@@ -1727,8 +1734,9 @@ fn apply_table_captions(
             && let Some((caption_html, id)) = parse_table_caption(&blocks[i + 1].html)
         {
             tbl_count += 1;
+            let tbl_num = float_number(chapter, tbl_count);
             if let Some(id) = &id {
-                register_xref(xrefs, warnings, id, tbl_count.to_string());
+                register_xref(xrefs, warnings, id, tbl_num.clone());
             }
             let sep = if caption_html.is_empty() { "" } else { ": " };
             let id_attr = id_attr(id.as_deref());
@@ -1737,7 +1745,7 @@ fn apply_table_captions(
             let gt = table.find('>').unwrap_or(0) + 1;
             let open = table[..gt].replacen("<table", &format!("<table{id_attr}"), 1);
             blocks[i].html = format!(
-                "{open}<caption>Table&nbsp;{tbl_count}{sep}{caption_html}</caption>{}",
+                "{open}<caption>Table&nbsp;{tbl_num}{sep}{caption_html}</caption>{}",
                 &table[gt..],
             );
             blocks.remove(i + 1); // the caption paragraph is now folded in
@@ -2101,7 +2109,7 @@ fn labelled_display_eq(block_src: &str) -> Option<(String, String)> {
 
 /// Render a numbered display equation: the KaTeX body plus a right-aligned
 /// `(N)` number, carrying the `#eq-` id so `@eq-x` cross-refs link to it.
-fn emit_equation(latex: &str, anchor: &str, block_attrs: &str, num: usize) -> String {
+fn emit_equation(latex: &str, anchor: &str, block_attrs: &str, num: &str) -> String {
     format!(
         "<div id=\"{anchor}\"{block_attrs} class=\"tali-eqn\">\
          <span class=\"tali-eqn-body\">{}</span>\

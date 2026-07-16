@@ -67,7 +67,7 @@ pub(super) fn figure_parts<'a>(node: &'a AstNode<'a>) -> Option<FigureParts> {
 
 /// Render a recognized figure as a numbered `<figure>` carrying the block data
 /// attributes, honoring `width=`, `height=`, and `fig-align=`.
-pub(super) fn emit_figure(fig: &FigureParts, block_attrs: &str, num: usize) -> String {
+pub(super) fn emit_figure(fig: &FigureParts, block_attrs: &str, num: &str) -> String {
     let id_attr = id_attr(fig.attrs.id.as_deref());
     let align_class = match fig.attrs.get("fig-align") {
         Some("left") => " tali-figure-left",
@@ -131,7 +131,7 @@ pub(super) fn emit_mermaid_figure(
     anchor: Option<&str>,
     caption: Option<&str>,
     block_attrs: &str,
-    num: usize,
+    num: &str,
 ) -> String {
     let id_attr = id_attr(anchor);
     let mut diagram = String::new();

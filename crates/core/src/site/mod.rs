@@ -2348,10 +2348,13 @@ pub(crate) mod tests {
         // The source-scan knows fig-plot's PAGE but not its NUMBER (figure numbers exist
         // only after render); `discover`'s harvest fills it, so the cross-page ref is
         // numbered in the live preview too, not only in the static build.
+        // b.tmd is chapter 2, so its first figure is "2.1": the harvest must carry the
+        // chapter-scoped number across pages, which is the whole point of scoping (a flat
+        // "Figure 1" here would collide with chapter 1's own first figure).
         let site = Site::discover(&root);
         let html = site.render_page("a.tmd").unwrap();
         assert!(
-            html.contains("<a href=\"b.html#fig-plot\" class=\"tali-xref\">Figure&nbsp;1</a>"),
+            html.contains("<a href=\"b.html#fig-plot\" class=\"tali-xref\">Figure&nbsp;2.1</a>"),
             "cross-page figure ref numbered after discover: {html}"
         );
         let _ = std::fs::remove_dir_all(&root);
