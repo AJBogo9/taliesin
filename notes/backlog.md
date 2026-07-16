@@ -24,7 +24,7 @@ B3-18. G (AI-native authoring) was **backlog rot**: 8 of its 10 items plus two s
 shipped 2026-07-13, and the owner declined the three ruling-gated leftovers on 2026-07-16. E (catalog
 triage) closed 2026-07-16 after wave 1 measured the catalog at 35% stale; the owner ruled **triage on
 demand** instead of sweeping the remaining 131. **What remains is a flat list of items, not sections:
-§E's ruling-ready leftovers + 5 live defects.** → See "Next session: start here" below.
+§E's ruling-ready leftovers + the live defects.** → See "Next session: start here" below.
 
 **Before picking any item: grep its named symbol/flag in source first, and prefer measuring the
 running product over reading this file.** The author pushes work mid-session, so an entry can go
@@ -57,7 +57,9 @@ none of it is a grind chunk. In recommended order:
 1. **The §E leftovers.** Each is verified and ruling-ready. **D37** (lint `format:` sub-keys) is the
    cleanest build: a diagnostic, not a knob, following the `69c228b` precedent. **D34** and **D70**
    are OWNER-RULING, not builds. **D72/D69** need Do-NOT-touch citation-zone sign-off.
-2. **The 5 live defects** (§E, "Live defects"). Small and independent. #1 (References click-to-source
+2. **The live defects** (§E, "Live defects"; count them, do not trust a number written here). Small
+   and independent. #2 (cross-page `@fig-` to a cell-labelled figure) is the biggest of them: a
+   2026-07-10 measurement put ~44% of xref targets in exactly that shape. #1 (References click-to-source
    lands on line 1) is logged-not-fixed by owner ruling and needs a *design* answer first, not code.
 3. **B3-18** (§F), the last deck-audit item, deliberately deferred: a structural deck edit re-mounts
    the whole deck and nukes `{js}`/WebGL widget state.
@@ -180,10 +182,13 @@ documented non-goal" and Atom shipped anyway, with autodiscovery.
 
 **Wave 1's live output, still open** (each verified against source; the catalog D-number is the
 detail pointer):
-- **D49 chapter-scoped float numbering** (ADOPT, high). Figures/tables/equations are flat per-page
-  counters, so two chapters each get a "Figure 1" and a cross-chapter `@fig-x` cannot disambiguate.
-  Only theorems are chapter-scoped. Auto-scoping in a numbered book is a better default, not a knob.
-  *Sub-fork:* it would put an auto-scoped "Figure 2.3" beside an opt-in "Theorem 5" in one book.
+- **[ruling] Theorem/float numbering now visibly disagree** (surfaced by D49 landing, 2026-07-16).
+  Floats auto-scope ("Figure 2.3") while theorems keep their **opt-in** `theorems: number-within:
+  chapter`, so a book that does not set it shows "Figure 2.3" beside "Theorem 5".
+  (`corpus/demo-book/methods.tmd` sets it, so it agrees there.) Auto-scoping is arguably the better
+  default for theorems too, but flipping it **reverses shipped behavior and breaks `corpus.rs:1001`
+  + `render/tests.rs:2781`**, so it needs its own ruling. Options: flip theorems to auto (consistent,
+  breaks 2 pins), keep as-is (inconsistent), or drop `number-within:` entirely (a knob removed).
 - **D72/D69 citations** (ADOPT, but **both edit `crates/core/src/cite/`, a Do-NOT-touch zone, and
   need explicit sign-off**). D72: support bare `@key` at all? (The *diagnostic* shipped 2026-07-16,
   `8a45d59`, so the failure is now caught; the engine question is separate.) D69: the reference list
@@ -201,6 +206,16 @@ detail pointer):
   post** (0 of 8 tech-blog posts set `author:`).
 
 ***Landed 2026-07-16 (deleted from the list above, recorded here so they are not re-scoped):***
+- ***D49 chapter-scoped float numbering.** Shipped: figures/tables/equations/listings scope to the
+  chapter in a numbered book ("Figure 2.1"), flat everywhere else. The number is built ONCE by the
+  renderer that knows the chapter and carried as a `String` (`render::float_number`), mirroring the
+  `section_number`/theorem precedent, so the executor prints it verbatim. **It never needed the
+  citation zone** (`register_xref` already took a `String`, since theorems push "2.1" through it).
+  Blocked instead on the **exec zone**, for 3 integer literals in exec.rs's own `#[cfg(test)]`
+  module; owner approved that narrow edit and nothing else. Verified in a real build: intro
+  "Figure 1.1", methods "Figure 2.1", cross-chapter ref → `intro.html#fig-structure` "Figure 1.1",
+  standalone post still flat. `demo-book` had **zero** numbered floats, so intro + methods gained one
+  labelled figure each (+2 small authored SVGs) to pin it.*
 - ***D67 `csl:` recognized-but-unsupported.** Shipped, and it **never needed the citation zone**. It
   was **five** surfaces, not four: `AGENTS.md` also taught the key (both it and the vocab JSON are
   *derived* from `vocab::vocab()`, so one filter fixed both). Proved inert by rendering
@@ -234,14 +249,22 @@ detail pointer):
    click-to-source land (the `.bib` entry in another file? the `[@key]` citation site? nowhere)?
    Related, deliberately left: clicking the footnote section's own chrome (the `<hr>`/padding) still
    resolves to line 1; closing that needs `locatable()` to require a *usable* sourcepos, a client change.
-2. **Duplicate-label warnings are unlocated** (`render/mod.rs:1538`, `site/xref.rs:56` emit no
+2. **A cross-PAGE `@fig-` ref to a CELL-labelled figure never resolves** (found while landing D49,
+   2026-07-16; pre-existing and independent of scoping). A `%%| label:` / `#| label:` figure
+   (mermaid/js/python) referenced from *another page* renders a bare "Figure" with the
+   `data-qmd-xref` broken-marker and a **wrong same-page `href`**. Cause: `scan_page_anchors`
+   (`site/xref.rs:77`) skips fenced code (`:92-98`) and harvests only `{#fig-x}` brace ids (`:108`),
+   so a cell label never becomes a cross-page target. **Same-page refs work**, which is why nothing
+   caught it. Note the scale: a 2026-07-10 measurement found **~44% of xref targets are `#| label:`
+   cell figures**. D49's corpus pin deliberately uses image figures to sidestep this.
+3. **Duplicate-label warnings are unlocated** (`render/mod.rs:1538`, `site/xref.rs:56` emit no
    file/line), half-reproducing the exact Quarto flaw D53 critiques.
-3. **`{.python code-line-numbers=...}` is routed to the executable path** though it is authored as
+4. **`{.python code-line-numbers=...}` is routed to the executable path** though it is authored as
    display-only in `corpus/deck.tmd:46` and two docs pages; `code_lang` splits naively. Invisible to
    the kernel-free corpus. *Unverified against a live kernel.*
-4. **The xref registry goes stale on a warm content edit** (`serve_site/mod.rs:1148-1199` refreshes
+5. **The xref registry goes stale on a warm content edit** (`serve_site/mod.rs:1148-1199` refreshes
    only the Cmd-K search fragment).
-5. **`lang: fr` promises French, delivers English** cross-ref labels (`render/page.rs:239`).
+6. **`lang: fr` promises French, delivers English** cross-ref labels (`render/page.rs:239`).
 
 *Landed 2026-07-16 and deleted from this list: the **deck key sheet** (it advertised "↑ ↓ Vertical
 slides" while `up()`/`down()` call `moveTopic`; the pin now reads the binding and the sheet together
