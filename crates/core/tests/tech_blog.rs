@@ -826,7 +826,10 @@ fn tech_blog_draft_is_preview_only() {
 
     let published = Site::discover(&root);
     assert!(
-        !published.pages.iter().any(|p| p.rel.contains("draft-example")),
+        !published
+            .pages
+            .iter()
+            .any(|p| p.rel.contains("draft-example")),
         "the draft post must be absent from the published set"
     );
     assert!(
