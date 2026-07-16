@@ -691,7 +691,6 @@ fn cell_option_lines_are_dropped() {
     );
 }
 
-#[test]
 /// A LEADING DOT means display-only: `{.python}` is "the deck's display form for a
 /// non-executing block" (docs/guide/using/formats.tmd). Only bare `{python}` executes.
 /// The cell gate used to test `starts_with('{')` alone, and `code_lang` strips the dot,
