@@ -286,7 +286,15 @@ detail pointer):
 4. **The xref registry goes stale on a warm content edit** (`serve_site/mod.rs:1148-1199` refreshes
    only the Cmd-K search fragment).
 5. **`lang: fr` promises French, delivers English** cross-ref labels (`render/page.rs:239`).
-6. **A labelled `include: false` python/R cell registers an anchor that never exists** (found by the
+6. **Theorem environments are undocumented in the User Guide** (surfaced 2026-07-16 while deleting
+   `number-within`, not caused by it). They shipped 2026-06-29 (8 kinds, `shared:`/`numbered:`,
+   hover-preview, collapsible proofs, cross-page refs) and the **corpus exercises them in 6 docs**
+   (`corpus/refs/theorems*.tmd`, `demo-book/methods.tmd`, `diagnostics/check-superset.tmd`), but
+   `grep -rli theorem --include='*.tmd' docs/` matches **only** `docs/internals/sites.tmd` (and only
+   as an xref prefix). So a shipped, corpus-pinned feature is unusable from the docs alone, which is
+   the docs' stated purpose. Small: one `using/` page, and the numbering rule to teach is now simply
+   "a numbered book chapter scopes it; nothing to configure".
+7. **A labelled `include: false` python/R cell registers an anchor that never exists** (found by the
    adversarial review of the cell-label fix, 2026-07-16). `register_xref` runs *before* the lang
    match (`render/mod.rs:~523`), so `#| label: fig-x` + `#| include: false` registers `fig-x` with a
    number, while `exec.rs:379` (`!cell.include → continue`) drops the output block, so no `id="fig-x"`
