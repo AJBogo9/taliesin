@@ -1142,12 +1142,17 @@ impl Site {
         if counts.is_empty() {
             return grid;
         }
+        // `aria-pressed` mirrors the visual `tali-cat-active` state for assistive tech.
+        // Emitted server-side so the initial paint is correct before the client enhancer
+        // runs; 10-category-filter.js keeps it in sync on every toggle.
         let mut chips = String::from(
-            "<button class=\"tali-cat-chip tali-cat-active\" type=\"button\" data-cat=\"\">All</button>",
+            "<button class=\"tali-cat-chip tali-cat-active\" type=\"button\" \
+             aria-pressed=\"true\" data-cat=\"\">All</button>",
         );
         for (cat, n) in &counts {
             chips.push_str(&format!(
-                "<button class=\"tali-cat-chip\" type=\"button\" data-cat=\"{c}\">{label}\
+                "<button class=\"tali-cat-chip\" type=\"button\" aria-pressed=\"false\" \
+                 data-cat=\"{c}\">{label}\
                  <span class=\"tali-cat-count\">{n}</span></button>",
                 c = esc(cat),
                 label = esc(cat),
