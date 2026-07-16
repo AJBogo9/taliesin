@@ -131,7 +131,9 @@ pub(crate) fn page_static_diagnostics(
     out.extend(dx::validate_code_languages(blocks));
     out.extend(dx::citations_without_bibliography(src, blocks));
     out.extend(dx::bare_citation_key_not_rendered(src, blocks, base));
-    out.extend(dx::csl_recognized_but_unsupported(src));
+    // No `csl:` rule here: it lives on the render path (`frontmatter::validate_front_matter`),
+    // so it reaches the preview too and arrives with the rendered doc's warnings. Calling it
+    // here as well would report it twice.
     out
 }
 

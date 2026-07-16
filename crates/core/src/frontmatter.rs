@@ -143,6 +143,7 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
         }
     }
     validate_format_value(map, block, &mut out);
+    validate_unsupported_keys(map, block, &mut out);
     validate_page_layout_value(map, block, &mut out);
     validate_nested(map, "execute", "execute key", EXECUTE_KEYS, block, &mut out);
     validate_nested(map, "about", "about key", ABOUT_KEYS, block, &mut out);
@@ -326,6 +327,36 @@ fn validate_format_value(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<W
 /// Quarto's `article` (its default), `custom`, … — is silently ignored. Warn on those so
 /// a migration leftover surfaces instead of the author wondering why the layout never
 /// changed. A hard gate, so the corpus carries only `full` (or omits the key).
+/// Warn on a key taliesin RECOGNIZES but does not honor (see [`UNSUPPORTED_KEYS`]).
+///
+/// Nothing reads `csl:`. Reference formatting is hardcoded IEEE-numeric and the `.csl`
+/// file's content is never parsed, yet the key was advertised on five surfaces, so an
+/// author who wrote `csl: apa.csl` got a clean check, IEEE output, and no signal at all.
+///
+/// This lives here rather than in `diagnostics` on purpose: `diagnostics` is check-only
+/// (nothing under `serve/` calls it), and the author reads the preview. Sitting on the
+/// render path means preview and `check` say the same thing, like the `page-layout` lint
+/// right below. The message wording is load-bearing: `codes::classify` keys the
+/// `TAL-FM-UNSUPPORTED` code off "is recognized but not supported".
+///
+/// Carries no "did you mean" hint on purpose: there is no replacement, and
+/// `codes::extract_suggestion` would lift one into a structured fix an agent would apply.
+fn validate_unsupported_keys(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
+    for key in UNSUPPORTED_KEYS {
+        if map.get(key).is_none() {
+            continue;
+        }
+        out.push(located(
+            format!(
+                "`{key}:` is recognized but not supported, so it has no effect: references \
+                 always render in the built-in IEEE style (remove the key, or the citations \
+                 will not match the style you asked for)"
+            ),
+            block_key_line(block, key),
+        ));
+    }
+}
+
 fn validate_page_layout_value(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
     let Some(val) = map.get("page-layout").and_then(|v| v.as_str()) else {
         return;
@@ -743,6 +774,65 @@ mod tests {
             !msgs("---\ntitle: X\n---\n")
                 .iter()
                 .any(|w| w.contains("page-layout"))
+        );
+    }
+
+    /// The point of warning on `csl:` is that a no-op key should not be silent, and the
+    /// author reads the *preview*, not a `check` run. So the rule has to live on the
+    /// render path (`validate_front_matter`) like the `page-layout` lint, not only in the
+    /// check-only `diagnostics` module, which nothing under `serve/` calls.
+    #[test]
+    fn csl_warns_on_the_render_path_so_the_preview_is_not_silent() {
+        let src = "---\ntitle: T\nbibliography: refs.bib\ncsl: apa.csl\n---\n\nBody.\n";
+        let ws = validate_front_matter(src);
+        let w = ws
+            .iter()
+            .find(|w| w.message.contains("is recognized but not supported"))
+            .unwrap_or_else(|| panic!("the render path warns on `csl:`: {ws:?}"));
+        assert_eq!(
+            w.line,
+            Some(4),
+            "located at the `csl:` line, where the fix (deleting it) belongs: {w:?}"
+        );
+    }
+
+    /// What the warning must actually say. It names the key, says what happens instead
+    /// (IEEE), and offers no "did you mean": there is no replacement, and
+    /// `codes::extract_suggestion` would lift one into a structured fix an agent applies.
+    #[test]
+    fn the_csl_warning_names_the_key_and_offers_no_phantom_fix() {
+        let src = "---\ntitle: T\nbibliography: refs.bib\ncsl: apa.csl\n---\n\nBody.\n";
+        let ws: Vec<_> = validate_front_matter(src)
+            .into_iter()
+            .filter(|w| w.message.contains("is recognized but not supported"))
+            .collect();
+        assert_eq!(ws.len(), 1, "exactly one warning for the inert key: {ws:?}");
+        let m = &ws[0].message;
+        assert!(m.contains("csl"), "names the key: {m}");
+        assert!(m.contains("IEEE"), "says what happens instead: {m}");
+        assert!(!m.contains("did you mean"), "not a typo, so no fix: {m}");
+    }
+
+    #[test]
+    fn a_front_matter_without_csl_stays_clean() {
+        let unsupported = |src: &str| {
+            validate_front_matter(src)
+                .into_iter()
+                .any(|w| w.message.contains("is recognized but not supported"))
+        };
+        assert!(
+            !unsupported("---\ntitle: T\nbibliography: refs.bib\n---\n\nBody.\n"),
+            "no `csl:`, no warning"
+        );
+        // `css` is edit distance 1 from `csl` and is a real supported key: the lint keys
+        // off the parsed mapping, not a substring, so it must not be mistaken for it.
+        assert!(
+            !unsupported("---\ntitle: T\ncss: extra.css\n---\n\nBody.\n"),
+            "`css` is not `csl`"
+        );
+        assert!(
+            !unsupported("# No front matter\n"),
+            "no front matter, nothing to validate"
         );
     }
 

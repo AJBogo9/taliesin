@@ -599,42 +599,6 @@ fn no_bibliography_declared_means_no_scan() {
     assert!(ws.is_empty(), "no bibliography, nothing to match: {ws:?}");
 }
 
-// ---------------------------------------------------------------------------
-// `csl:` is recognized but unsupported: the key was advertised on four surfaces
-// (allowlist, editor completion, schema, include resolver) while doing nothing,
-// so `csl: apa.csl` got total silence.
-
-#[test]
-fn csl_key_is_flagged_as_recognized_but_unsupported() {
-    let src = "---\ntitle: T\nbibliography: refs.bib\ncsl: apa.csl\n---\n\nBody.\n";
-    let ws = csl_recognized_but_unsupported(src);
-    let m = msgs(&ws);
-    assert_eq!(m.len(), 1, "the inert csl key: {m:?}");
-    assert!(m[0].contains("csl"), "names the key: {m:?}");
-    assert!(
-        m[0].contains("IEEE"),
-        "says what actually happens instead: {m:?}"
-    );
-    // Located at the `csl:` line (4th line of the file) for click-to-source.
-    assert_eq!(ws[0].line, Some(4), "located at the csl line: {:?}", ws[0]);
-    // There is no replacement to apply, so it must not masquerade as a typo fix:
-    // `codes::extract_suggestion` would lift any "did you mean `X`" into a
-    // structured suggestion an agent would then wrongly apply.
-    assert!(
-        !m[0].contains("did you mean"),
-        "not a typo, so no suggestion: {m:?}"
-    );
-}
-
-#[test]
-fn a_document_without_csl_is_clean() {
-    let src = "---\ntitle: T\nbibliography: refs.bib\ncss: extra.css\n---\n\nBody.\n";
-    assert!(
-        csl_recognized_but_unsupported(src).is_empty(),
-        "no csl key -> no warning (and `css` must not be mistaken for it)"
-    );
-    assert!(
-        csl_recognized_but_unsupported("# No front matter\n").is_empty(),
-        "no front matter -> nothing to validate"
-    );
-}
+// The `csl:` recognized-but-unsupported tests moved to `frontmatter::tests` with the rule
+// itself, which now runs on the render path so the preview is not silent. This module is
+// check-only, so testing it here would have pinned the wrong surface.

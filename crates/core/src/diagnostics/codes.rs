@@ -127,9 +127,14 @@ mod tests {
         // The `csl:` message names citation concepts, so it would classify as TAL-CITE-BIB
         // if its needle were ordered after them. It is a front-matter defect (delete the
         // key), not a bibliography one, so pin both the code and the ordering.
-        let csl = crate::diagnostics::csl_recognized_but_unsupported(
+        // Produced by the real rule at its real home (the render path), so this keeps
+        // pinning the shipped message rather than a copy that could drift from it.
+        let csl: Vec<_> = crate::frontmatter::validate_front_matter(
             "---\ntitle: T\ncsl: apa.csl\n---\n\nBody.\n",
-        );
+        )
+        .into_iter()
+        .filter(|w| w.message.contains("is recognized but not supported"))
+        .collect();
         assert_eq!(csl.len(), 1, "the csl warning: {csl:?}");
         assert_eq!(
             classify(&csl[0].message),
