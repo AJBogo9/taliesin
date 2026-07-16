@@ -242,10 +242,20 @@ use links::{
 };
 
 impl Site {
-    /// Discover the site rooted at `root`: parse `_site.yml`, enumerate input
-    /// `.tmd` pages, and compute their output URLs + ordering.
+    /// Discover the site rooted at `root` (published view): parse `_site.yml`, enumerate
+    /// input `.tmd` pages, and compute their output URLs + ordering. `draft: true` pages
+    /// are excluded and recorded in [`Site::excluded_drafts`]. Used by build/publish/
+    /// check/map/query.
     pub fn discover(root: &Path) -> Site {
+        Self::discover_with(root, DraftMode::Exclude)
+    }
+
+    /// Like [`discover`](Self::discover) but with an explicit [`DraftMode`]: `Include`
+    /// keeps `draft: true` pages in the page set (tagged `Page.draft`) so the live
+    /// **preview** shows them in nav/listings/prev-next; `Exclude` is the published view.
+    pub fn discover_with(root: &Path, drafts: DraftMode) -> Site {
         let mut warnings = Vec::new();
+        let mut excluded_drafts = Vec::new();
         let config = load_config(root, &mut warnings);
 
         // A book takes its page set + order from the explicit `chapters:` list;
@@ -255,7 +265,10 @@ impl Site {
             let pages = book_pages(root, &book, &mut warnings);
             (pages, Some(book))
         } else {
-            (website_pages(root, &mut warnings), None)
+            (
+                website_pages(root, drafts, &mut warnings, &mut excluded_drafts),
+                None,
+            )
         };
 
         // Decks referenced by `{{< embed >}}`. A website discovers *every* `.tmd` as a
@@ -342,7 +355,7 @@ impl Site {
             search_sections,
             hover_index_json: String::new(),
             decks,
-            excluded_drafts: Vec::new(),
+            excluded_drafts,
         };
         // Fill the cross-PAGE numbers the lightweight source-scan can't know — a figure /
         // equation / table / listing / theorem number is assigned only during render, so
@@ -1377,10 +1390,13 @@ pub(crate) mod tests {
         )
         .unwrap();
 
-        let rels: Vec<String> = website_pages(&root, &mut Vec::new())
-            .iter()
-            .map(|p| p.rel.clone())
-            .collect();
+        // Exclude (the published view): the draft is dropped AND recorded.
+        let mut excluded = Vec::new();
+        let rels: Vec<String> =
+            website_pages(&root, DraftMode::Exclude, &mut Vec::new(), &mut excluded)
+                .iter()
+                .map(|p| p.rel.clone())
+                .collect();
         assert!(rels.contains(&"index.tmd".to_string()), "kept: {rels:?}");
         assert!(
             rels.contains(&"published.tmd".to_string()),
@@ -1390,8 +1406,53 @@ pub(crate) mod tests {
             !rels.contains(&"wip.tmd".to_string()),
             "draft excluded: {rels:?}"
         );
+        assert_eq!(excluded, vec!["wip.tmd".to_string()], "draft recorded");
+
+        // Include (the preview view): the draft is kept, tagged, and nothing is recorded.
+        let mut excluded2 = Vec::new();
+        let pages = website_pages(&root, DraftMode::Include, &mut Vec::new(), &mut excluded2);
+        let wip = pages
+            .iter()
+            .find(|p| p.rel == "wip.tmd")
+            .expect("draft kept in Include");
+        assert!(wip.draft, "the draft page is tagged in Include");
+        assert!(excluded2.is_empty(), "Include records no exclusions");
 
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn discover_is_published_view_discover_with_include_is_preview_view() {
+        let root = write_site(
+            "draftmode",
+            &[
+                ("_site.yml", "title: T\n"),
+                ("live.tmd", "---\ntitle: Live\n---\nbody\n"),
+                ("wip.tmd", "---\ntitle: WIP\ndraft: true\n---\nbody\n"),
+            ],
+        );
+
+        let published = Site::discover(&root); // == discover_with(Exclude)
+        assert!(published.pages.iter().any(|p| p.rel == "live.tmd"));
+        assert!(
+            !published.pages.iter().any(|p| p.rel == "wip.tmd"),
+            "draft absent from the published set"
+        );
+        assert_eq!(published.excluded_drafts, vec!["wip.tmd".to_string()]);
+
+        let preview = Site::discover_with(&root, DraftMode::Include);
+        let wip = preview
+            .pages
+            .iter()
+            .find(|p| p.rel == "wip.tmd")
+            .expect("draft present in preview");
+        assert!(wip.draft, "the draft page is tagged");
+        assert!(
+            preview.excluded_drafts.is_empty(),
+            "Include excludes nothing"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]
@@ -1416,7 +1477,7 @@ pub(crate) mod tests {
         )
         .unwrap();
 
-        let pages = website_pages(&root, &mut Vec::new());
+        let pages = website_pages(&root, DraftMode::Exclude, &mut Vec::new(), &mut Vec::new());
         let img = |rel: &str| {
             pages
                 .iter()
@@ -1514,10 +1575,11 @@ pub(crate) mod tests {
         .unwrap();
 
         let mut warnings = Vec::new();
-        let rels: Vec<String> = website_pages(&root, &mut warnings)
-            .iter()
-            .map(|p| p.rel.clone())
-            .collect();
+        let rels: Vec<String> =
+            website_pages(&root, DraftMode::Exclude, &mut warnings, &mut Vec::new())
+                .iter()
+                .map(|p| p.rel.clone())
+                .collect();
         assert!(
             !rels.contains(&"wip.tmd".to_string()),
             "`draft: yes` must be excluded like `draft: true`: {rels:?}"

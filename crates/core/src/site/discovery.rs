@@ -6,7 +6,12 @@ use super::*;
 
 /// A website's pages: every `.tmd` under `root` (path-ordered), each mapped to a
 /// [`Page`] from its front matter.
-pub(super) fn website_pages(root: &Path, warnings: &mut Vec<String>) -> Vec<Page> {
+pub(super) fn website_pages(
+    root: &Path,
+    mode: DraftMode,
+    warnings: &mut Vec<String>,
+    excluded: &mut Vec<String>,
+) -> Vec<Page> {
     let mut inputs = Vec::new();
     collect_pages(root, &mut inputs);
     inputs.sort();
@@ -16,9 +21,12 @@ pub(super) fn website_pages(root: &Path, warnings: &mut Vec<String>) -> Vec<Page
             let rel = rel_str(root, &input);
             let url = qmd_to_html(&rel);
             let fm = parse_front_matter(&input, &rel, warnings);
-            // `draft: true` excludes the page from the build entirely — and, because
-            // listings + prev/next nav derive from `self.pages`, from those too.
-            if fm.draft {
+            // `draft: true`: dropped from the published set (Exclude) — recorded so the
+            // build can report it — or kept and tagged for the preview view (Include).
+            // (Listings + prev/next nav derive from `self.pages`, so an Include draft
+            // naturally appears in them, badged.)
+            if fm.draft && mode == DraftMode::Exclude {
+                excluded.push(rel);
                 return None;
             }
             // `image` is relative to the page's own directory; store it

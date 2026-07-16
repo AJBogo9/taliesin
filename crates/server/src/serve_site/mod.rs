@@ -116,7 +116,9 @@ pub fn run(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::Resul
 async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::Result<()> {
     let start = std::time::Instant::now();
     let root = root.canonicalize().unwrap_or(root);
-    let site = Site::discover(&root);
+    // Preview shows drafts inline (nav/listings/prev-next, badged); build/publish exclude
+    // them. See `docs/superpowers/specs/2026-07-16-draft-aware-preview-design.md`.
+    let site = Site::discover_with(&root, taliesin_core::DraftMode::Include);
     for w in &site.warnings {
         crate::log::warn(w);
     }
@@ -142,7 +144,7 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
                 &mroot.display().to_string(),
                 &format!("mounted at /{}/", m.at),
             );
-            let msite = Site::discover(&mroot);
+            let msite = Site::discover_with(&mroot, taliesin_core::DraftMode::Include);
             Some(MountedSite {
                 at: m.at,
                 root: mroot,
@@ -1093,7 +1095,7 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
         .iter()
         .any(|p| p.file_name().and_then(|n| n.to_str()) == Some("_site.yml"));
     if config_changed {
-        let new = Site::discover(&app.root);
+        let new = Site::discover_with(&app.root, taliesin_core::DraftMode::Include);
         // A mid-edit save can leave `_site.yml` transiently malformed; re-discovering then
         // would replace the live site with the degraded default (losing nav/title/output).
         // Keep the last-good `Site` instead, and surface the parse error, so the preview
@@ -1116,7 +1118,7 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
     // one) reload open tabs so nav + listings refresh. Otherwise fall through to the
     // normal per-page rebuild against the refreshed site.
     if structural {
-        let new = Site::discover(&app.root);
+        let new = Site::discover_with(&app.root, taliesin_core::DraftMode::Include);
         let set_changed = page_rels(&new) != page_rels(&app.site.lock());
         *app.site.lock() = new;
         if set_changed {
