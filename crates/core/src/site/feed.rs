@@ -182,25 +182,21 @@ impl Site {
     }
 }
 
-/// An ISO date (`2026-05-15`) → RFC-3339 (`2026-05-15T00:00:00Z`). A value that
-/// already carries a time is returned unchanged; anything that is not `YYYY-MM-DD`
-/// (nor `…T…`) yields `None`.
+/// A `date:` value → RFC-3339 (`2026-05-15` → `2026-05-15T00:00:00Z`), zero-padding an
+/// un-padded date. A value that already carries a time keeps it, but its date half is
+/// validated like any other; anything that is not a real calendar date yields `None`
+/// (Atom would rather have no entry date than an unparseable one).
+///
+/// The date half is [`crate::frontmatter::calendar_date`]'s call. The time half is passed
+/// through un-validated, as it always was: `T09:30:00Z` and `T09:30:00+03:00` are both
+/// RFC-3339 and no corpus doc writes either, so parsing offsets would be cost with no
+/// evidence behind it. `calendar_date` is what stops `Thursday` — the old `T` fast-path
+/// returned any string containing a capital T before reaching a single check.
 pub(crate) fn rfc3339(date: &str) -> Option<String> {
     let d = date.trim();
-    if d.contains('T') {
-        return Some(d.to_string());
-    }
-    let parts: Vec<&str> = d.split('-').collect();
-    if parts.len() == 3
-        && parts[0].len() == 4
-        && parts
-            .iter()
-            .all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit()))
-    {
-        Some(format!("{d}T00:00:00Z"))
-    } else {
-        None
-    }
+    let (y, m, day) = crate::frontmatter::calendar_date(d)?;
+    let time = d.split_once('T').map_or("00:00:00Z", |(_, t)| t);
+    Some(format!("{y:04}-{m:02}-{day:02}T{time}"))
 }
 
 #[cfg(test)]
@@ -295,6 +291,52 @@ mod tests {
             Some("2026-05-15T09:30:00Z")
         );
         assert_eq!(rfc3339("not-a-date"), None);
+    }
+
+    /// `rfc3339` is the only gate on the feed's `<updated>`/`<published>`, so whatever it
+    /// returns ships as a timestamp. It used to ask only "three `-`-separated all-digit
+    /// parts, 4-char year", which accepts an impossible `2026-99-99` — and its `T`
+    /// fast-path returned the string *before any check at all*, so any word carrying a
+    /// capital T passed: `date: Thursday` published `<updated>Thursday</updated>`. The
+    /// feed was the live victim of this, not the sitemap.
+    #[test]
+    fn rfc3339_rejects_shapes_that_only_look_like_dates() {
+        for bad in [
+            "2026-99-99",   // no such month or day
+            "2026-00-00",   // month/day are 1-based
+            "2026-02-30",   // no such day IN THAT MONTH
+            "Thursday",     // the `T` fast-path checked nothing
+            "T",            //
+            "May 15, 2026", // a human date
+            "26-05-15",     // a 2-digit year is ambiguous
+            "2026-05",      // not a day at all
+        ] {
+            assert_eq!(rfc3339(bad), None, "{bad:?} is not a date");
+        }
+        // An un-padded date is normalized, not rejected: it names one unambiguous day, and
+        // the page already prints it ("15 May 2026" via `humanize_date`), so dropping it
+        // from the feed alone would publish a post whose date the feed denies.
+        assert_eq!(
+            rfc3339("2026-5-15").as_deref(),
+            Some("2026-05-15T00:00:00Z")
+        );
+        // The `…T…` passthrough survives, but only behind a real date half, which is
+        // itself normalized. The time half stays un-validated, as it always was.
+        assert_eq!(
+            rfc3339("2026-05-15T09:30:00+03:00").as_deref(),
+            Some("2026-05-15T09:30:00+03:00")
+        );
+        assert_eq!(
+            rfc3339("2026-5-15T09:30:00Z").as_deref(),
+            Some("2026-05-15T09:30:00Z"),
+            "a `T` does not excuse the date half"
+        );
+        assert_eq!(rfc3339("2026-13-01T09:30:00Z"), None);
+        // A leap day is a real date.
+        assert_eq!(
+            rfc3339("2024-02-29").as_deref(),
+            Some("2024-02-29T00:00:00Z")
+        );
     }
 
     #[test]

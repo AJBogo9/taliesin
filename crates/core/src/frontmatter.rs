@@ -143,6 +143,7 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
     validate_format_subkeys(map, block, &mut out);
     validate_unsupported_keys(map, block, &mut out);
     validate_page_layout_value(map, block, &mut out);
+    validate_date_value(map, block, &mut out);
     validate_nested(map, "execute", "execute key", EXECUTE_KEYS, block, &mut out);
     validate_nested(map, "about", "about key", ABOUT_KEYS, block, &mut out);
     validate_nested(map, "hero", "hero key", HERO_KEYS, block, &mut out);
@@ -199,6 +200,74 @@ pub(crate) fn yaml_bool_word(s: &str) -> Option<bool> {
         "false" | "no" | "off" => Some(false),
         _ => None,
     }
+}
+
+/// A `date:` value → the calendar date it names, as `(year, month, day)`. Accepts an
+/// un-padded month/day (`2026-5-15`) and ignores any time half (`2026-05-15T09:30:00Z`),
+/// since both name one unambiguous day; rejects anything that is not a real date, so
+/// `2026-02-30` and `2026-99-99` are `None` rather than plausible-looking output.
+///
+/// The single source of "is this a date", shared by the three readers of `date:` that
+/// each used to answer it themselves at a different strictness: `render::humanize_date`
+/// (prints it for people), `site::feed::rfc3339` (stamps the Atom feed) and
+/// `site::seo`'s `<lastmod>` (stamps the sitemap). The two machine-facing ones were the
+/// loose pair — the sitemap did not check at all, and the feed accepted an un-padded
+/// `2026-5-15` and, via a `T` fast-path that returned before any check, the bare word
+/// `Thursday`. Callers keep their own FORMATTING (and their own answer for `None`);
+/// only the question is shared.
+pub(crate) fn calendar_date(date: &str) -> Option<(u32, u32, u32)> {
+    // A time half names the same day; `humanize_date` keeps its own `T` rule (it prints
+    // a timestamped date verbatim rather than silently dropping the time).
+    let d = date.trim();
+    let d = d.split_once('T').map_or(d, |(day, _)| day);
+    let [y, m, day] = d.split('-').collect::<Vec<_>>()[..] else {
+        return None;
+    };
+    let num = |s: &str, width: usize| -> Option<u32> {
+        (!s.is_empty() && s.len() <= width && s.bytes().all(|b| b.is_ascii_digit()))
+            .then(|| s.parse().ok())
+            .flatten()
+    };
+    // A 2-digit year is ambiguous, never a date we will stamp into a machine file.
+    let year = num(y, 4).filter(|_| y.len() == 4)?;
+    let month = num(m, 2).filter(|m| (1..=12).contains(m))?;
+    let day = num(day, 2).filter(|d| (1..=days_in_month(year, month)).contains(d))?;
+    Some((year, month, day))
+}
+
+/// Days in `month` of `year`, Gregorian (so `2026-02-30` is not a date but `2024-02-29`
+/// is). `month` is 1-based and already range-checked by [`calendar_date`], its only caller.
+fn days_in_month(year: u32, month: u32) -> u32 {
+    match month {
+        2 if year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400)) => {
+            29
+        }
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    }
+}
+
+/// `date:` is the one front-matter value read by MACHINES (the sitemap's `<lastmod>`, the
+/// Atom feed's `<updated>`), so a value they cannot parse silently vanishes from both while
+/// the page still displays it — a green `check` certifying a half-published post. Free text
+/// (`date: Spring 2026`) stays legal for display, which is why this reports what is lost
+/// rather than calling the value wrong.
+fn validate_date_value(map: &serde_yaml::Mapping, block: &str, out: &mut Vec<Warning>) {
+    let Some(val) = map.get("date").and_then(|v| v.as_str()) else {
+        return;
+    };
+    let val = val.trim().trim_matches(['"', '\'']);
+    if val.is_empty() || calendar_date(val).is_some() {
+        return;
+    }
+    out.push(located(
+        format!(
+            "`date: {val}` isn't a machine-readable date, so it is left out of the sitemap \
+             and the Atom feed (the page still shows it) — write `YYYY-MM-DD` to publish it"
+        ),
+        block_key_line(block, "date"),
+    ));
 }
 
 /// A `Warning` for `message`, located when `line` is `Some` (file `None` = the
@@ -828,6 +897,49 @@ mod tests {
                 .iter()
                 .any(|w| w.contains("page-layout"))
         );
+    }
+
+    /// A `date:` we cannot parse is dropped from `<lastmod>`/`<updated>` rather than
+    /// shipped invalid — but dropping it silently is the same "green check, wrong output"
+    /// failure one layer down, so the value lints like `page-layout` does. `date:` is the
+    /// one front-matter key whose value is read by *machines* (sitemap, Atom), which is
+    /// why it earns a value rule when other free-text keys don't.
+    #[test]
+    fn an_unparseable_date_warns_but_a_real_one_does_not() {
+        for bad in ["May 15, 2026", "Spring 2026", "2026-99-99", "Thursday"] {
+            let m = msgs(&format!("---\ntitle: X\ndate: \"{bad}\"\n---\n"));
+            assert!(
+                m.iter().any(|w| w.contains("date") && w.contains(bad)),
+                "date: {bad} must warn: {m:?}"
+            );
+        }
+        // An un-padded date is normalized everywhere it is read, so it publishes fine and
+        // warning about it would be noise: the rule reports what is LOST, not what is odd.
+        for good in ["2026-05-15", "2026-05-15T09:30:00Z", "2026-5-15"] {
+            let m = msgs(&format!("---\ntitle: X\ndate: \"{good}\"\n---\n"));
+            assert!(
+                !m.iter().any(|w| w.contains("date")),
+                "date: {good} is valid: {m:?}"
+            );
+        }
+        // Absent stays silent: `date:` is optional.
+        assert!(
+            !msgs("---\ntitle: X\n---\n")
+                .iter()
+                .any(|w| w.contains("date"))
+        );
+    }
+
+    /// The diagnostic must carry a line, like every other front-matter rule — an unlocated
+    /// warning is the exact Quarto flaw D53 critiques.
+    #[test]
+    fn the_date_warning_is_located() {
+        let ws = validate_front_matter("---\ntitle: X\nsubtitle: S\ndate: Thursday\n---\n");
+        let w = ws
+            .iter()
+            .find(|w| w.message.contains("date"))
+            .expect("date warning");
+        assert_eq!(w.line, Some(4), "date: is on line 4: {w:?}");
     }
 
     /// The point of warning on `csl:` is that a no-op key should not be silent, and the

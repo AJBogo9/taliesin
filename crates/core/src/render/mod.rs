@@ -797,15 +797,13 @@ pub(crate) fn humanize_date(date: &str) -> String {
         "November",
         "December",
     ];
-    if let [y, m, day] = date.trim().split('-').collect::<Vec<_>>()[..]
-        && y.len() == 4
-        && y.bytes().all(|c| c.is_ascii_digit())
-        && let Ok(month) = m.parse::<usize>()
-        && let Ok(day) = day.parse::<u32>()
-        && (1..=12).contains(&month)
-        && (1..=31).contains(&day)
+    // A date carrying a time prints verbatim: humanizing it would silently drop the time
+    // the author wrote. That `T` rule is this function's own — `calendar_date` answers only
+    // "which day is this", which the feed and sitemap ask of the same value.
+    if !date.contains('T')
+        && let Some((y, month, day)) = crate::frontmatter::calendar_date(date)
     {
-        return format!("{day} {} {y}", MONTHS[month - 1]);
+        return format!("{day} {} {y}", MONTHS[month as usize - 1]);
     }
     date.to_string()
 }
