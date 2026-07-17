@@ -140,13 +140,17 @@ a fix, grep this file for the thing you just built.
    real (a host that can run the binary already has the filesystem). The module + `taliesin help
    mcp` now say plainly: not a sandbox, no containment, and `build` writes HTML and runs cells.
 
-**Pick up here (2026-07-17, latest session — the §2 sitting: #8's `<lastmod>`, #2+#4, #9, #10):**
-1. **§2 is down to FOUR un-struck items: #1, #3, #5, and #8's other two thirds.** *Recount, do not
-   read this line* — `awk '/^### 2\./,/^### 3\./' notes/backlog.md | grep -cE '^[0-9]+\. '` still
-   says ten; six are struck. (An agent wrote "SEVEN" here on 2026-07-17, under a header telling it
-   not to, by forgetting #2.) **None of the four is mechanical**, so the "one small change" seam is
-   genuinely mined out: #1 is two channels; #3 is a design question in a defect's clothes; #5 wants
-   an anchor-registration *rule*; #8's `<loc>` halves are two fixes plus a diagnostic.
+**Pick up here (2026-07-17, latest session — landed §2 #5, the hidden-cell phantom anchor):**
+1. **§2 is down to THREE un-struck items: #1, #3, and #8's other two thirds.** *Recount, do not read
+   this line* — `awk '/^### 2\./,/^### 3\./' notes/backlog.md | grep -cE '^[0-9]+\. '` still says ten;
+   SEVEN are now struck. **None of the three is mechanical**: #1 is two channels (one needs a
+   `Vec<String>` → located type change); #3 is a design question in a defect's clothes (English-only
+   xref labels, an absent i18n feature no corpus doc demands); #8's `<loc>` halves are two fixes plus
+   a diagnostic. **#5 held its shape but not its size: it read as "one lang-dependent gate" and was
+   the figure arm + the table arm + a burned-number bug + three review findings — 7 real changes.**
+   The recurring finding is unchanged: an entry's summary counts *symptoms*, and symptoms do not map
+   1:1 to changes. Two NEW Tier-2 items were spun off it (the `{bash}`/`{sql}` lang-axis twin and the
+   empty-output trigger) — see the "Execution-cache leaks" bullet's siblings under Tier 2.
 2. **Four entries were priced this session; three were wrong, and #9 was the only one that held.**
    #8's "close to free" third cost the most on the list (the helper it told me to call was itself
    broken). #2's implied incremental-invalidation design collapsed into "re-run the two passes"
@@ -314,24 +318,27 @@ unit test while the live server still served the bug.*
    *Grep trap that hid this twice: the entry's own quoted example spans a line break in both
    `methods.tmd:15-16` and the emitted HTML, so a single-line `grep` for the phrase returns
    nothing and the entry reads like rot. Flatten newlines before believing it.*
-5. **A labelled `include: false` python/R cell registers an anchor that never exists** (found by the
-   adversarial review of the cell-label fix, 2026-07-16). `register_xref` runs *before* the lang
-   match (`render/mod.rs:~523`), so `#| label: fig-x` + `#| include: false` registers `fig-x` with a
-   number, while `exec.rs:379` (`!cell.include → continue`) drops the output block, so no `id="fig-x"`
-   is ever emitted. `@fig-x` then renders a confident numbered link to a fragment that exists nowhere.
-   **Pre-existing on the same page** (main has the identical dead link for a same-page `@fig-x`); the
-   cell-label fix **widened it to cross-page** and, in doing so, silenced the "broken cross-reference"
-   warning that used to fire there — the one diagnostic that flagged it. Only affects python/R:
-   mermaid/`{js}` emit their figure at render time, so their anchor is real regardless of `include`.
-   The fix is lang-dependent (do not register when the figure is known to never materialize, or warn
-   that a labelled `include: false` cell is unreferenceable, mirroring the theorem-prefix warning at
-   `render/mod.rs:1699`) and belongs in the render/exec seam, so it wants its own change.
-   Re-confirmed 2026-07-17 at `render/mod.rs:525` (`register_xref` precedes the `match lang` at
-   `:527`); note the `CellRole::Listing` arm next door **gets this right** (gate `:572` precedes
-   register `:578`), so the correct shape already exists in the same function.
-   ***"This sandbox has no `ipykernel`" is FALSE*** (2026-07-17): `~/.local/share/qmd-venv/bin/python`
-   has it, and the warm forkserver boots (`preloaded: numpy, matplotlib`). Set `TALIESIN_PYTHON` to
-   it. This item is verifiable NOW, and so was the false premise blocking it.
+5. ~~**A labelled `include: false` python/R cell registers an anchor that never exists**~~ **LANDED
+   2026-07-17** (`ce153ff` render fix + `13ff03c` review fixes). The figure/table arms now gate the
+   counter AND the registration on "will this materialize?", the rule `CellRole::Listing` already
+   used; the cell still runs (the block is emitted hidden, not `continue`d, so downstream cells keep
+   their kernel state — the fix's biggest risk, refuted by a real kernel showing `DOWNSTREAM_SEES`
+   intact). **The entry filed one symptom; the seam held THREE, and the count is the lesson.**
+   (1) `CellRole::Table` had the identical phantom by a *different* route (`apply_table_captions`
+   registers off `cell.table`, the intent) — the entry named only Figure. (2) The reader-visible
+   half nobody filed: `fig_count += 1` ran before the include check, so a hidden figure **burned a
+   number** — the repro's only visible figure came out "Figure 2" with no Figure 1, a defect that
+   needs no `@ref` at all to bite. (3) `include: false` is not the only trigger: `exec.rs` also drops
+   *empty* output, so a labelled cell that prints nothing phantoms too — NOT knowable at render time,
+   filed to Tier 2 rather than widened in. **The adversarial review then found three more, all real,
+   all mine:** the new warning let the author's own label pick its diagnostic code
+   (`fig-math-model` → TAL-MATH; the pre-existing theorem warning hijacked identically — fixed for
+   both, `TAL-XREF-UNREF`); the `js` half of the lang exemption was unpinned (deleting `| "js"`
+   passed the ENTIRE core suite — the previous commit's "pinned" claim rested on a mutation that only
+   removed both names); and `from_executor` was a lie — the executable set is python|r ONLY
+   (`exec::kernel_lang`), so `{bash}`/`{sql}` figures phantom for *any* `include`, which is the same
+   bug on the LANG axis and is **still open** (needs `kernel_lang` shared into core; filed Tier 2).
+   14 tests, every one mutation-checked; all five real projects build byte-identical to pristine main.
 6. ~~**A front-matter `title:`-only edit broadcasts nothing**~~ **LANDED 2026-07-17** (`2bd8385`).
    A `title` message now rides after the body, mirroring `theme_changed → style()`; both servers
    send it (the single-doc path had the same hole for any non-deck doc). **Two things the entry got
@@ -541,6 +548,24 @@ already-shipped work). A skeptic verdict is evidence, never a ruling: D135's ske
 dropping Atom feeds as "a documented non-goal" and Atom shipped anyway, with autodiscovery.
 
 ## Tier 2 — hardening (P3)
+
+- **Phantom xref anchors — the two triggers §2 #5 left open** (found by the adversarial review of
+  the #5 fix, 2026-07-17; both reproduced on the running product, both pre-existing, neither shipping
+  in any corpus doc):
+  - **Non-executed, non-render-emitted langs (`{bash}`, `{sql}`, `{julia}`, …).** #5 gated on
+    `include`, but a lang that is neither `exec::kernel_lang` (python|r) nor emitted at render time
+    (mermaid|js) has NO figure/table for *any* value of `include`, so `label: fig-x` on one still
+    registers a phantom and burns a number (verified: `{bash}` + `label: fig-shell` → `id="fig-shell"`
+    count 0 under a confident "Figure 1"). Same bug as #5 on the LANG axis. The clean fix needs the
+    executable-lang set shared into `taliesin-core` (it lives in `crates/server/src/exec.rs`
+    `kernel_lang`, which core can't see); the invariant is `emitted_at_render_time(lang) ||
+    (executes(lang) && include)`. A `render/mod.rs` comment at the `emitted_at_render_time` predicate
+    marks the seam.
+  - **Empty output also phantoms.** `exec.rs` drops output on `inner.trim().is_empty() || !cell.include`,
+    so a labelled cell that runs but prints nothing registers an anchor no element carries (verified:
+    `label: fig-silent` on a `x = 1+1` cell → dead `@fig-silent`). NOT knowable at render time (it is
+    a post-execution fact in the server crate), so unlike #5 it can't be fixed in the render pass;
+    wants an exec-side decline-or-warn once the output is known empty.
 
 - **Execution-cache leaks — remainder** (exec/kernel Do-NOT-touch, careful):
   - **Ungraceful-death path (S/M):** no defense vs SIGKILL / closed terminal / crash. Absent:
