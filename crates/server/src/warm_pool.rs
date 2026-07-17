@@ -64,6 +64,11 @@ const DAEMON_READY_TIMEOUT: Duration = Duration::from_secs(30);
 /// so we give up on this kernel and let the caller fall back.
 const FORK_TIMEOUT: Duration = Duration::from_secs(20);
 
+/// How many times a single pre-warm retries a recoverable fork failure before giving
+/// up and letting the caller cold-start. Mirrors `START_ATTEMPTS` on the cold path in
+/// `exec.rs`, which retries `Kernel::start` for the same transient reasons.
+const FORK_ATTEMPTS: usize = 4;
+
 /// The libraries the forkserver tries to preload. Each is included **only if
 /// importable** in the target interpreter (the helper filters with
 /// `importlib.util.find_spec`), so a missing `torch` simply isn't preloaded rather
@@ -71,9 +76,11 @@ const FORK_TIMEOUT: Duration = Duration::from_secs(20);
 const PRELOAD_CANDIDATES: &[&str] = &["numpy", "matplotlib", "torch"];
 
 /// The embedded forkserver daemon. Boots a `multiprocessing` forkserver, preloads
-/// the importable heavy libs, prints `READY <json-list>`, then for each connection
-/// file path on stdin forks a child that runs `IPKernelApp` **in-process** and
-/// prints `SPAWNED <pid>`. See the module docs for the warmth/exec rationale.
+/// the importable heavy libs, prints `READY <json-list>`, then for each `<id>
+/// <connection-file>` request on stdin forks a child that runs `IPKernelApp`
+/// **in-process** and prints `SPAWNED <id> <pid>`. See the module docs for the
+/// warmth/exec rationale, and [`ForkserverDaemon::fork_kernel_within`] for why every
+/// reply echoes the request's id.
 const FORKSERVER_HELPER: &str = r#"
 import sys, os, json, importlib.util, multiprocessing as mp
 
@@ -126,16 +133,27 @@ def main():
         os._exit(2)
     sys.stdout.write("READY " + json.dumps(preload) + "\n"); sys.stdout.flush()
     for line in sys.stdin:
-        conn = line.strip()
+        line = line.strip()
+        if not line:
+            continue
+        # A request is "<id> <connection-file>". The id is echoed back in the reply so
+        # a client that gave up on an earlier request (its deadline passed) can tell
+        # that request's late reply from its own, instead of adopting a kernel that
+        # belongs to nobody. Split once: the id never contains a space, the path may.
+        rid, _, conn = line.partition(" ")
         if not conn:
+            sys.stdout.write("ERROR %s\n" % (rid,)); sys.stdout.flush()
             continue
         try:
             p = ctx.Process(target=_child_entry, args=(conn,))
             p.start()
-            sys.stdout.write("SPAWNED %d\n" % (p.pid,)); sys.stdout.flush()
+            sys.stdout.write("SPAWNED %s %d\n" % (rid, p.pid)); sys.stdout.flush()
         except Exception as e:
+            # Report the failure and KEEP SERVING: a fork that fails is this request's
+            # problem, not the daemon's, so the next request is still answerable. The
+            # Rust client retries on the strength of exactly this promise.
             sys.stderr.write("tali-warm: fork failed: %r\n" % (e,)); sys.stderr.flush()
-            sys.stdout.write("ERROR\n"); sys.stdout.flush()
+            sys.stdout.write("ERROR %s\n" % (rid,)); sys.stdout.flush()
 
 if __name__ == "__main__":
     main()
@@ -205,7 +223,87 @@ fn kill_process_group(_helper_pid: u32) {}
 struct DaemonIo {
     stdin: ChildStdin,
     stdout: BufReader<ChildStdout>,
+    /// The correlation id for the next fork request. Monotonic and never reused, so an
+    /// abandoned request's id can never collide with a live one. Lives beside the pipes
+    /// (under the same mutex) because allocating an id and writing the request it names
+    /// must be one atomic step.
+    next_id: u64,
 }
+
+/// One line of the daemon's fork protocol, parsed. Split out from the read loop so the
+/// wire format is pinned by a unit test with no daemon and no kernel in sight.
+#[derive(Debug, PartialEq, Eq)]
+enum ForkReply {
+    /// `SPAWNED <id> <pid>`: the request `id` produced a kernel at `pid`.
+    Spawned { id: u64, pid: u32 },
+    /// `ERROR <id>`: the request `id` could not be forked. The daemon is still alive
+    /// and still serving, so this is per-request, not terminal.
+    Error { id: u64 },
+    /// Anything else: a stray line that is not part of the protocol.
+    Stray,
+}
+
+/// Parse one reply line from the daemon. Unknown shapes are [`ForkReply::Stray`] rather
+/// than an error: a lone banner that slipped onto the pipe must not fail a good fork.
+fn parse_fork_reply(line: &str) -> ForkReply {
+    if let Some(rest) = line.strip_prefix("SPAWNED ") {
+        let mut parts = rest.split_whitespace();
+        if let (Some(id), Some(pid), None) = (parts.next(), parts.next(), parts.next())
+            && let (Ok(id), Ok(pid)) = (id.parse::<u64>(), pid.parse::<u32>())
+        {
+            return ForkReply::Spawned { id, pid };
+        }
+        return ForkReply::Stray;
+    }
+    if let Some(rest) = line.strip_prefix("ERROR ")
+        && let Ok(id) = rest.trim().parse::<u64>()
+    {
+        return ForkReply::Error { id };
+    }
+    ForkReply::Stray
+}
+
+/// Whether a failed pre-warm is worth another attempt against the same daemon.
+///
+/// The daemon answers a fork it could not perform with `ERROR <id>` and then goes
+/// straight back to reading stdin: it is telling us this request failed but the *next*
+/// one can still be served. That promise is what makes a retry meaningful, and it is
+/// the promise the client used to throw away by treating `ERROR` as terminal. A
+/// timed-out request is likewise retryable now that replies carry ids (before, a retry
+/// was the very thing that mis-paired the next pid).
+///
+/// The exceptions are the failures where the daemon itself is gone: retrying a closed
+/// pipe just burns the caller's time to reach the same cold start. Everything else
+/// defers to [`crate::kernel::start_error_is_transient`], which already classifies the
+/// port-race and missing-interpreter failures the cold path retries, since
+/// `prepare_connection` + `adopt_forked` here are the same steps failing the same ways.
+fn fork_error_is_retryable(msg: &str) -> bool {
+    let m = msg.to_ascii_lowercase();
+    if m.contains("closed during fork") || m.contains("broken pipe") {
+        return false;
+    }
+    crate::kernel::start_error_is_transient(msg)
+}
+
+/// SIGKILL a single forked kernel PID that no [`Kernel`] owns. Used to reclaim the
+/// kernel behind a late `SPAWNED` reply: the request that asked for it has already
+/// given up, so nothing will ever connect to it, and it would sit on ~100 MB and five
+/// bound ports until the whole pool is dropped. Not our direct child (the forkserver
+/// reaps it), so we signal by pid — the same primitive `ForkedCleanup`'s `Drop` uses
+/// for the same orphan-a-fork hazard one step later in the handshake. A pid that has
+/// already exited returns `ESRCH`, which we ignore. No-op off Unix (no forkserver
+/// there, so this is never reached).
+#[cfg(unix)]
+fn kill_forked_pid(pid: u32) {
+    // Safety: `pid` was reported by our own daemon as a kernel it forked moments ago,
+    // and every kernel it forks is in our process group. Errors are ignored.
+    unsafe {
+        libc::kill(pid as libc::pid_t, libc::SIGKILL);
+    }
+}
+
+#[cfg(not(unix))]
+fn kill_forked_pid(_pid: u32) {}
 
 impl ForkserverDaemon {
     /// Boot the daemon with `python`, preloading the importable heavy libs. Errors
@@ -305,6 +403,7 @@ impl ForkserverDaemon {
             io: Mutex::new(DaemonIo {
                 stdin,
                 stdout: reader,
+                next_id: 1,
             }),
             preloaded,
             helper_dir,
@@ -315,49 +414,85 @@ impl ForkserverDaemon {
     /// Ask the daemon to fork a kernel bound to `conn_file`; returns the kernel's
     /// PID. Serialised across callers by the io mutex.
     async fn fork_kernel(&self, conn_file: &std::path::Path) -> std::io::Result<u32> {
+        self.fork_kernel_within(conn_file, FORK_TIMEOUT).await
+    }
+
+    /// [`Self::fork_kernel`] with an explicit deadline, so a test can drive the
+    /// timeout path in milliseconds instead of waiting out [`FORK_TIMEOUT`].
+    ///
+    /// # Why every request carries an id
+    ///
+    /// The reply is read off a shared pipe, and the mutex is only held for the
+    /// duration of *this* call. When a request times out we return `Err` and drop the
+    /// mutex, but the daemon does not know that: it is single-threaded, so it finishes
+    /// the fork at its own pace and writes the reply regardless. That reply then sits
+    /// in the pipe with the next caller's read in front of it. With a bare `SPAWNED
+    /// <pid>` there was nothing to tell the two apart, so the next fork returned the
+    /// *previous* request's pid: a kernel bound to a connection file it had never seen,
+    /// whose ports it could not reach and whose PID it would later SIGKILL out from
+    /// under nobody. Echoing the request id makes a late reply self-identifying: we
+    /// skip it, reclaim the orphaned kernel behind it, and keep waiting for our own.
+    async fn fork_kernel_within(
+        &self,
+        conn_file: &std::path::Path,
+        budget: Duration,
+    ) -> std::io::Result<u32> {
         let mut io = self.io.lock().await;
-        let req = format!("{}\n", conn_file.display());
+        let id = io.next_id;
+        io.next_id += 1;
+        let req = format!("{id} {}\n", conn_file.display());
         io.stdin.write_all(req.as_bytes()).await?;
         io.stdin.flush().await?;
-        // Read until the fork reply. `_child_entry` detaches the kernel's stdout from
-        // this pipe, so the reply is normally clean; but skip any stray non-protocol
-        // line as belt-and-suspenders — a lone banner that slipped onto the pipe must
-        // not fail an otherwise-good fork. One overall deadline bounds the whole read,
-        // so a silent daemon still times out rather than looping forever.
-        let deadline = Instant::now() + FORK_TIMEOUT;
+        // Read until *our* reply. `_child_entry` detaches the kernel's stdout from this
+        // pipe, so the reply is normally clean; but skip any stray non-protocol line as
+        // belt-and-suspenders — a lone banner that slipped onto the pipe must not fail
+        // an otherwise-good fork. One overall deadline bounds the whole read, so a
+        // silent daemon still times out rather than looping forever.
+        let deadline = Instant::now() + budget;
         let mut warned_stray = false;
         loop {
-            let budget = deadline.saturating_duration_since(Instant::now());
-            if budget.is_zero() {
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
                 return Err(std::io::Error::other("forkserver: fork request timed out"));
             }
             let mut line = String::new();
-            let n = timeout(budget, io.stdout.read_line(&mut line))
+            let n = timeout(left, io.stdout.read_line(&mut line))
                 .await
                 .map_err(|_| std::io::Error::other("forkserver: fork request timed out"))??;
             if n == 0 {
                 return Err(std::io::Error::other("forkserver: closed during fork"));
             }
             let line = line.trim();
-            if let Some(pid) = line
-                .strip_prefix("SPAWNED ")
-                .and_then(|p| p.parse::<u32>().ok())
-            {
-                return Ok(pid);
-            }
-            if line == "ERROR" {
-                return Err(std::io::Error::other(
-                    "forkserver: fork failed (daemon reported ERROR)",
-                ));
-            }
-            if !line.is_empty() && !warned_stray {
-                // A stray whole line before the reply (rare now that the child detaches
-                // its stdout). Warn once — not per line — so a flood can't spam the log;
-                // keep reading up to the deadline regardless.
-                warned_stray = true;
-                crate::log::warn(&format!(
-                    "forkserver: ignoring unexpected pipe line(s), first: {line:?}"
-                ));
+            match parse_fork_reply(line) {
+                ForkReply::Spawned { id: rid, pid } if rid == id => return Ok(pid),
+                ForkReply::Error { id: rid } if rid == id => {
+                    return Err(std::io::Error::other(
+                        "forkserver: fork failed (daemon reported ERROR)",
+                    ));
+                }
+                // A reply to a request we already gave up on. The daemon answers in
+                // order, so this can only be an *older* request whose deadline passed.
+                // Its kernel is real and running but unreachable — the caller took the
+                // cold path and its connection dir is already gone — so reclaim it here
+                // rather than let it hold RAM + ports until the pool drops.
+                ForkReply::Spawned { id: rid, pid } => {
+                    crate::log::warn(&format!(
+                        "forkserver: reclaiming kernel {pid} from abandoned fork request {rid}"
+                    ));
+                    kill_forked_pid(pid);
+                }
+                ForkReply::Error { .. } => {}
+                ForkReply::Stray => {
+                    if !line.is_empty() && !warned_stray {
+                        // A stray whole line before the reply (rare now that the child
+                        // detaches its stdout). Warn once — not per line — so a flood
+                        // can't spam the log; keep reading up to the deadline regardless.
+                        warned_stray = true;
+                        crate::log::warn(&format!(
+                            "forkserver: ignoring unexpected pipe line(s), first: {line:?}"
+                        ));
+                    }
+                }
             }
         }
     }
@@ -464,8 +599,8 @@ impl WarmPool {
     }
 
     /// Claim a ready warm kernel, or `None` to signal "fall back to a cold
-    /// `Kernel::start`". Taking one triggers a background refill so the pool
-    /// re-warms toward `cap` without blocking the caller.
+    /// `Kernel::start`". Every take triggers a background refill so the pool re-warms
+    /// toward `cap` without blocking the caller.
     pub async fn take(&self) -> Option<Kernel> {
         // Inert pool (no forkserver): signal the caller to cold-start.
         self.inner.daemon.as_ref()?;
@@ -473,15 +608,19 @@ impl WarmPool {
             let mut ready = self.inner.ready.lock().await;
             ready.pop_front()
         };
-        if kernel.is_some() {
-            // Trigger a background refill toward `cap`.  Do NOT touch
-            // `in_flight`: a kernel sitting in `ready` already had its
-            // in_flight slot released by the refill fork that produced it.
-            // Decrementing here would under-count occupancy and let the next
-            // refill spawn an extra fork, transiently pushing resident kernels
-            // to cap+1 and overshooting the RAM budget.
-            PoolInner::refill(Arc::clone(&self.inner));
-        }
+        // Refill on a MISS too, not just a hit. A miss is precisely the state that
+        // needs re-warming: the queue is empty, so if the last refill pass died on a
+        // fork failure there is nothing left to restart it, and gating the trigger on
+        // a hit made "empty" a state the pool could never leave. Every later take
+        // missed, every later take skipped the refill, and the pool advertised warmth
+        // while silently cold-starting forever. The trigger is cheap when it is
+        // pointless: a pool already at `cap` reserves no slot and the task exits at
+        // once. Do NOT touch `in_flight` here: a kernel sitting in `ready` already had
+        // its in_flight slot released by the refill fork that produced it.
+        // Decrementing here would under-count occupancy and let the next refill spawn
+        // an extra fork, transiently pushing resident kernels to cap+1 and
+        // overshooting the RAM budget.
+        PoolInner::refill(Arc::clone(&self.inner));
         kernel
     }
 
@@ -625,9 +764,12 @@ impl PoolInner {
                         drop(reservation);
                     }
                     Err(e) => {
-                        // `reservation` drops here, returning the slot; stop
-                        // refilling for now (the next `take` falls back to a cold
-                        // start).
+                        // `reservation` drops here, returning the slot. End this refill
+                        // *pass* rather than spinning on a daemon that just failed
+                        // `FORK_ATTEMPTS` times: the next `take` re-arms the refill (see
+                        // `WarmPool::take`), so stopping here costs one cold start, not
+                        // the pool. Looping instead would hot-spin against a broken
+                        // daemon with nothing to pace it.
                         drop(reservation);
                         crate::log::warn(&format!(
                             "warm-pool: pre-warm failed ({e}); kernel will cold-start on demand"
@@ -639,18 +781,59 @@ impl PoolInner {
         });
     }
 
-    /// Fork one warm kernel and complete its ZMQ handshake + preambles. The
-    /// connection file is created by taliesin (same locked-down 0600/0700 path as
-    /// `Kernel::start`), the daemon forks an in-process ipykernel bound to it, and
-    /// `Kernel::adopt_forked` connects.
+    /// Fork one warm kernel, retrying a recoverable failure before giving up.
+    ///
+    /// The cold path already does this: `ensure_kernel` re-rolls `Kernel::start` up to
+    /// four times because a lost `peek_ports` race is a coin flip, not a verdict. The
+    /// warm path forks against the *same* `prepare_connection` ports and the same
+    /// `adopt_forked` handshake, so it loses the same coin flips — and it had zero
+    /// retries, spending each one straight out of the pool. Mirror the cold path's
+    /// shape (attempt-scaled backoff, bail at once on a permanent failure so an honest
+    /// error is not delayed) so a recoverable hiccup costs a retry rather than the
+    /// pool's warmth.
     async fn warm_one(
         python: &std::path::Path,
         daemon: &Arc<ForkserverDaemon>,
     ) -> std::io::Result<Kernel> {
         let spec = KernelSpec::python(python);
+        let mut attempt = 1;
+        loop {
+            let err = match Self::warm_one_attempt(&spec, daemon).await {
+                Ok(kernel) => return Ok(kernel),
+                Err(e) => e,
+            };
+            if attempt >= FORK_ATTEMPTS || !fork_error_is_retryable(&err.to_string()) {
+                return Err(err);
+            }
+            crate::log::warn(&format!(
+                "warm-pool: pre-warm hit a recoverable failure ({err}); \
+                 retrying ({attempt}/{FORK_ATTEMPTS})"
+            ));
+            tokio::time::sleep(Duration::from_millis(40 * attempt as u64)).await;
+            attempt += 1;
+        }
+    }
+
+    /// One fork attempt: create the connection, ask the daemon to fork an in-process
+    /// ipykernel bound to it, and complete the ZMQ handshake + preambles. The
+    /// connection file is created by taliesin (same locked-down 0600/0700 path as
+    /// `Kernel::start`), and `Kernel::adopt_forked` connects.
+    async fn warm_one_attempt(
+        spec: &KernelSpec,
+        daemon: &Arc<ForkserverDaemon>,
+    ) -> std::io::Result<Kernel> {
         let (info, conn_dir, conn_file) = prepare_connection(spec.kernel_name()).await?;
+        // Between `prepare_connection` and `adopt_forked` the 0700 dir — holding a 0600
+        // `connection.json` with the kernel's HMAC key — has no owner: `Kernel::start`
+        // guards this window with `ConnDirGuard` and `adopt_forked` guards the next one
+        // with `ForkedCleanup`, but the fork *between* them was left unguarded, so every
+        // failed fork orphaned a dir and its key for the life of the machine. Same
+        // hazard, same guard: arm it over the fork, and disarm the instant `adopt_forked`
+        // takes over (it arms `ForkedCleanup` before its first fallible step).
+        let dir_guard = crate::kernel::ConnDirGuard::arm(conn_dir);
         let pid = daemon.fork_kernel(&conn_file).await?;
-        Kernel::adopt_forked(pid, info, conn_dir, Arc::clone(daemon), &spec).await
+        let conn_dir = dir_guard.disarm();
+        Kernel::adopt_forked(pid, info, conn_dir, Arc::clone(daemon), spec).await
     }
 }
 
@@ -661,6 +844,341 @@ mod tests {
 
     fn python() -> Option<PathBuf> {
         std::env::var_os("TALIESIN_PYTHON").map(PathBuf::from)
+    }
+
+    /// A stand-in forkserver daemon: an executable script that speaks the fork
+    /// protocol on stdin/stdout, so a test can drive the failure modes a real daemon
+    /// only produces under rare load (an `ERROR` reply, a reply that outruns the
+    /// client's deadline). `ForkserverDaemon::boot` runs it as the "python" program and
+    /// passes it the real helper path + preload JSON, which the stand-in ignores.
+    struct FakeDaemon {
+        dir: PathBuf,
+        script: PathBuf,
+    }
+
+    impl Drop for FakeDaemon {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    fn fake_daemon(py: &std::path::Path, body: &str) -> FakeDaemon {
+        let dir = std::env::temp_dir().join(format!("tali-faked-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let script = dir.join("fake_forkserver.py");
+        std::fs::write(&script, format!("#!{}\n{body}", py.display())).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        FakeDaemon { dir, script }
+    }
+
+    /// A failed fork must not leak the `/tmp/tali-kernel-<uuid>` dir it created. The
+    /// dir is 0700 and holds a 0600 `connection.json` carrying the kernel's HMAC key,
+    /// and nothing ever swept it: `prepare_connection` created it, the fork failed, the
+    /// `?` returned, and the dir outlived the process. Measured before the fix: one
+    /// orphaned dir + key per failed fork. Drives the failure with a stand-in daemon
+    /// that always answers `ERROR` and records the exact paths it was asked to fork, so
+    /// the assertion names those dirs rather than globbing `/tmp` (which would race
+    /// every other test in this binary).
+    #[test]
+    fn failed_fork_does_not_leak_its_connection_dir() {
+        let Some(py) = python() else {
+            eprintln!("SKIPPED: no TALIESIN_PYTHON");
+            return;
+        };
+        let fake = fake_daemon(
+            &py,
+            r#"
+import sys, os
+HERE = os.path.dirname(os.path.abspath(__file__))
+log = open(os.path.join(HERE, "requests.log"), "a")
+sys.stdout.write("READY []\n"); sys.stdout.flush()
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    rid, _, conn = line.partition(" ")
+    if not conn:
+        rid, conn = "", line
+    log.write(conn + "\n"); log.flush()
+    sys.stdout.write(("ERROR %s\n" % rid) if rid else "ERROR\n"); sys.stdout.flush()
+"#,
+        );
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let d = Arc::new(ForkserverDaemon::boot(&fake.script).await.unwrap());
+            assert!(
+                PoolInner::warm_one(&py, &d).await.is_err(),
+                "an always-ERROR daemon must fail the pre-warm"
+            );
+            let log = std::fs::read_to_string(fake.dir.join("requests.log")).unwrap();
+            let asked: Vec<&str> = log.lines().filter(|l| !l.is_empty()).collect();
+            // Every retry creates its own connection dir; each one must be swept.
+            assert_eq!(
+                asked.len(),
+                FORK_ATTEMPTS,
+                "an `ERROR` reply is retryable, so the pre-warm should have used every attempt"
+            );
+            for conn in asked {
+                let dir = std::path::Path::new(conn).parent().unwrap();
+                assert!(
+                    !dir.exists(),
+                    "a failed fork must not leak its connection dir: {}",
+                    dir.display()
+                );
+            }
+        });
+    }
+
+    /// The pool must re-warm after a fork failure instead of going dark for good.
+    ///
+    /// The refill task ends its pass on a failed fork, and a `take` is what re-arms it
+    /// — but the trigger used to be gated on the take being a *hit*, and a take can
+    /// only hit when the queue is non-empty, which is exactly what a dead refill
+    /// prevents. So one fork hiccup retired the pool permanently while `is_warm()` kept
+    /// answering `true`. Measured before the fix: `ready_len` stayed 0 for the full 15s
+    /// poll below.
+    ///
+    /// The stand-in daemon fails `FORK_ATTEMPTS` requests (exhausting one whole refill
+    /// pass, retries included) and then serves real kernels, so the only way the pool
+    /// recovers is a take re-arming the refill.
+    #[test]
+    fn pool_rewarms_after_a_fork_failure() {
+        let Some(py) = python() else {
+            eprintln!("SKIPPED: no TALIESIN_PYTHON");
+            return;
+        };
+        // Fails every attempt of the first refill pass, then serves real ipykernels.
+        let fake = fake_daemon(
+            &py,
+            &format!(
+                r#"
+import sys, os, subprocess
+FAIL_FIRST = {FORK_ATTEMPTS}
+sys.stdout.write("READY []\n"); sys.stdout.flush()
+n = 0
+devnull = open(os.devnull, "wb")
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    rid, _, conn = line.partition(" ")
+    n += 1
+    if n <= FAIL_FIRST:
+        sys.stdout.write("ERROR %s\n" % rid); sys.stdout.flush()
+        continue
+    p = subprocess.Popen([sys.executable, "-m", "ipykernel_launcher", "-f", conn],
+                         stdout=devnull, stderr=devnull)
+    sys.stdout.write("SPAWNED %s %d\n" % (rid, p.pid)); sys.stdout.flush()
+"#
+            ),
+        );
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let pool = WarmPool::new(&fake.script, POOL_CAP).await;
+            assert!(pool.is_warm(), "the stand-in daemon should report READY");
+            // Let the boot-time refill pass burn its attempts on the scripted failures
+            // and die (4 `ERROR`s + ~240ms of backoff), so what follows tests the
+            // re-arm and not a pass that was still running anyway.
+            tokio::time::sleep(Duration::from_secs(2)).await;
+            assert_eq!(
+                pool.ready_len().await,
+                0,
+                "the first refill pass should have failed"
+            );
+            // The daemon serves kernels again. A take is the pool's only way back:
+            // it misses (nothing ready) and must still re-arm the refill.
+            assert!(pool.take().await.is_none(), "nothing ready yet -> a miss");
+            let mut refilled = false;
+            for _ in 0..150 {
+                if pool.ready_len().await > 0 {
+                    refilled = true;
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            assert!(
+                refilled,
+                "the pool must re-warm after a fork failure, not stay dark forever"
+            );
+            // And the re-warmed kernel is real: a pool that recovers on paper but hands
+            // out a dead kernel has not recovered.
+            let mut kernel = pool.take().await.expect("the re-warmed kernel is takeable");
+            let html = render_outputs(&kernel.execute("print(1 + 1)").await.unwrap());
+            assert!(
+                html.contains('2'),
+                "re-warmed kernel did not return 2: {html}"
+            );
+        });
+    }
+
+    /// A fork request that outran its deadline must not poison the next one.
+    ///
+    /// The daemon is single-threaded and does not know a client gave up: it finishes
+    /// the fork and writes the reply anyway, leaving it in the pipe ahead of the next
+    /// caller's read. Before the reply carried its request's id there was nothing to
+    /// tell them apart, and the next fork returned the previous request's pid —
+    /// measured: request two got `Ok(111111)`, request one's kernel. The pool would
+    /// then hand out a `Kernel` whose ports belong to a different connection file.
+    ///
+    /// Also pins the reclaim: the abandoned request's process is real and running, and
+    /// nothing else will ever kill it, so the late reply must be a chance to reap it.
+    /// The stand-in daemon spawns a plain long-lived process per request (no kernel
+    /// needed to prove pid bookkeeping) and logs the ids + pids it handed out.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn a_timed_out_fork_does_not_mispair_a_later_reply() {
+        let Some(py) = python() else {
+            eprintln!("SKIPPED (no live kernel): set TALIESIN_PYTHON to test fork correlation.");
+            return;
+        };
+        let fake = fake_daemon(
+            &py,
+            r#"
+import sys, os, time, subprocess
+HERE = os.path.dirname(os.path.abspath(__file__))
+log = open(os.path.join(HERE, "requests.log"), "a")
+sys.stdout.write("READY []\n"); sys.stdout.flush()
+n = 0
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    rid, _, conn = line.partition(" ")
+    n += 1
+    # A stand-in for the forked kernel: a real process with a real pid, in the
+    # daemon's process group, that outlives the reply.
+    p = subprocess.Popen(["sleep", "300"])
+    log.write("%s %d\n" % (rid, p.pid)); log.flush()
+    if n == 1:
+        time.sleep(2.0)   # outrun the client's deadline, then answer anyway
+    sys.stdout.write("SPAWNED %s %d\n" % (rid, p.pid)); sys.stdout.flush()
+"#,
+        );
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let d = ForkserverDaemon::boot(&fake.script).await.unwrap();
+            let group = d.helper_pid.expect("a booted daemon has a helper pid");
+            let first = d
+                .fork_kernel_within(
+                    std::path::Path::new("/tmp/tali-test-req-one/connection.json"),
+                    Duration::from_millis(300),
+                )
+                .await;
+            assert!(
+                first.is_err(),
+                "the stalled request must time out, not wait forever: {first:?}"
+            );
+            let second = d
+                .fork_kernel_within(
+                    std::path::Path::new("/tmp/tali-test-req-two/connection.json"),
+                    Duration::from_secs(5),
+                )
+                .await
+                .expect("the second request must be answered");
+
+            // What the daemon actually handed out, in order. Poll: the daemon logs a
+            // request as it serves it, and a client that returned the WRONG pid can get
+            // here before the daemon has even logged the request that pid belongs to.
+            let handed_out = || -> Vec<u32> {
+                std::fs::read_to_string(fake.dir.join("requests.log"))
+                    .unwrap_or_default()
+                    .lines()
+                    .filter_map(|l| l.split_whitespace().nth(1))
+                    .filter_map(|p| p.parse().ok())
+                    .collect()
+            };
+            let mut handed = handed_out();
+            for _ in 0..50 {
+                if handed.len() >= 2 {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+                handed = handed_out();
+            }
+            assert_eq!(handed.len(), 2, "the daemon should have served two requests");
+            let (abandoned, mine) = (handed[0], handed[1]);
+            assert_eq!(
+                second, mine,
+                "the second request must get ITS OWN pid ({mine}), not the abandoned request's ({abandoned})"
+            );
+
+            // The abandoned request's process is nobody's: it must have been reclaimed
+            // off the late reply, while the live request's is left alone.
+            let mut reclaimed = false;
+            for _ in 0..50 {
+                if !live_group_members(group).contains(&abandoned) {
+                    reclaimed = true;
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            assert!(
+                reclaimed,
+                "the abandoned request's kernel must be reclaimed, not left holding RAM + ports"
+            );
+            assert!(
+                live_group_members(group).contains(&mine),
+                "the live request's kernel must survive the reclaim"
+            );
+        });
+    }
+
+    /// The fork protocol's wire format, pinned without a daemon or a kernel: a reply
+    /// must be attributable to exactly one request, and anything unrecognized must be
+    /// a skippable stray rather than a failure (a banner on the pipe must not break an
+    /// otherwise-good fork).
+    #[test]
+    fn fork_replies_parse_to_their_request() {
+        assert_eq!(
+            parse_fork_reply("SPAWNED 7 4242"),
+            ForkReply::Spawned { id: 7, pid: 4242 }
+        );
+        assert_eq!(parse_fork_reply("ERROR 7"), ForkReply::Error { id: 7 });
+        // The pre-id shapes are not replies to anything: reading one as "my pid" is
+        // exactly the desync this protocol fixed, so it must be a stray, not a pid.
+        assert_eq!(parse_fork_reply("SPAWNED 4242"), ForkReply::Stray);
+        assert_eq!(parse_fork_reply("ERROR"), ForkReply::Stray);
+        // Junk stays skippable rather than fatal.
+        assert_eq!(parse_fork_reply(""), ForkReply::Stray);
+        assert_eq!(
+            parse_fork_reply("NOTE: Ctrl-C will not work"),
+            ForkReply::Stray
+        );
+        assert_eq!(parse_fork_reply("SPAWNED x 1"), ForkReply::Stray);
+        assert_eq!(parse_fork_reply("SPAWNED 1 -3"), ForkReply::Stray);
+        assert_eq!(parse_fork_reply("SPAWNED 1 2 3"), ForkReply::Stray);
+    }
+
+    /// A pre-warm retries what the daemon says it can still serve, and gives up at once
+    /// on what it cannot. The `ERROR` reply is the whole point: the daemon reports a
+    /// failed fork and goes back to reading stdin, so the next attempt is worth making
+    /// — the client used to treat that as terminal. Pure, no daemon.
+    #[test]
+    fn only_recoverable_fork_failures_are_retried() {
+        // The daemon said "this one failed", not "I am done".
+        assert!(fork_error_is_retryable(
+            "forkserver: fork failed (daemon reported ERROR)"
+        ));
+        // Now that replies carry ids, a retry after a timeout is safe (it was the
+        // mis-pairing trigger before) and worth making.
+        assert!(fork_error_is_retryable(
+            "forkserver: fork request timed out"
+        ));
+        // The same port race the cold path re-rolls, reached through `prepare_connection`.
+        assert!(fork_error_is_retryable("address already in use"));
+        // The daemon is gone: every retry would fail identically, just later.
+        assert!(!fork_error_is_retryable("forkserver: closed during fork"));
+        assert!(!fork_error_is_retryable(
+            "Broken pipe (os error 32)".to_ascii_lowercase().as_str()
+        ));
+        // Permanent by the cold path's own classification: don't delay an honest error.
+        assert!(!fork_error_is_retryable(
+            "`python3` exited at startup: No module named ipykernel"
+        ));
     }
 
     /// The refill loop reserves slots one at a time until occupancy reaches `cap`,

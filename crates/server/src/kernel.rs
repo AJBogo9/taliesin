@@ -554,9 +554,7 @@ impl Kernel {
         // it, then disarm once the kernel is built. (`kill_on_drop` below is the
         // process half: a `child` dropped on the connect-fail path is SIGKILL'd
         // rather than left running against its now-orphaned ports.)
-        let dir_guard = ConnDirGuard {
-            conn_dir: Some(conn_dir),
-        };
+        let dir_guard = ConnDirGuard::arm(conn_dir);
 
         // Capture stderr so a startup failure (e.g. the interpreter lacks the
         // ipykernel/IRkernel module) can be reported instead of swallowed.
@@ -889,13 +887,26 @@ impl Kernel {
 /// removes it on drop and is `disarm`ed on the success path. The kernel *process* is
 /// handled separately (`kill_on_drop` on the spawn command); the sibling
 /// [`ForkedCleanup`] guards the fork path, which additionally SIGKILLs a non-child pid.
-struct ConnDirGuard {
+///
+/// Also used by the warm pool's `warm_one`, the step *between* these two guards: it
+/// creates the connection dir and then forks, so it owns the dir for exactly the window
+/// where no kernel does. It is the same "dir with no owner yet" hazard, so it reuses
+/// this guard rather than growing a third one.
+pub(crate) struct ConnDirGuard {
     conn_dir: Option<PathBuf>,
 }
 
 impl ConnDirGuard {
+    /// Arm the guard over a freshly-[`prepare_connection`]ed dir: from here until
+    /// `disarm`, any early return removes it.
+    pub(crate) fn arm(conn_dir: PathBuf) -> ConnDirGuard {
+        ConnDirGuard {
+            conn_dir: Some(conn_dir),
+        }
+    }
+
     /// Hand the connection dir to the now-live kernel and defuse the guard.
-    fn disarm(mut self) -> PathBuf {
+    pub(crate) fn disarm(mut self) -> PathBuf {
         self.conn_dir.take().expect("conn_dir present until disarm")
     }
 }
