@@ -253,6 +253,22 @@ mod tests {
     use super::*;
     use crate::site::tests::write_site;
 
+    // R1 (deferred): `page_prose` cannot simply reuse `render::indexable_text`. The two text
+    // extractors decode DIFFERENT entity sets — `text_content` decodes numeric/`&nbsp;` refs
+    // like `&#8217;`, while `render::text::decode` (behind `indexable_text`) does not.
+    // Consolidating would leave raw entities in `llms.txt`, a regression. Aligning them is a
+    // separate call (it also changes the search index), out of this pass's scope. This test
+    // pins the divergence so a change that removes it flags R1 as revivable.
+    #[test]
+    fn text_content_decodes_more_entities_than_indexable_text() {
+        let stripped = strip_katex(r#"<p>it&#8217;s fine&nbsp;here</p>"#);
+        assert_eq!(text_content(&stripped), "it\u{2019}s fine here");
+        assert_eq!(
+            crate::render::indexable_text(&stripped),
+            "it&#8217;s fine here"
+        );
+    }
+
     #[test]
     fn llms_txt_leads_with_hero_identity_and_lists_posts() {
         let root = write_site(
