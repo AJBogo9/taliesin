@@ -2470,6 +2470,75 @@ fn input_shortcode_other_types_emit_their_native_control() {
 }
 
 #[test]
+fn embed_shortcode_renders_isolating_deck_iframe() {
+    // `{{< embed slides.tmd >}}` embeds another document's deck view in an isolating
+    // iframe. The source path is mapped to its BUILT output (`.tmd` -> `.html`, because
+    // the deck is built beside the embedding page), a default accessible name is
+    // supplied, and the frame carries the fullscreen + open-in-new-tab affordances.
+    let doc =
+        render_document_with_includes("{{< embed slides.tmd >}}\n", std::path::Path::new("."));
+    let h = doc.body_html();
+    assert!(h.contains("class=\"tali-embed\""), "wrapper: {h}");
+    assert!(
+        h.contains("<iframe class=\"tali-embed-frame\" src=\"slides.html\""),
+        "the `.tmd` source maps to its built `.html` output: {h}"
+    );
+    assert!(
+        h.contains("title=\"Embedded slide deck\""),
+        "default accessible name: {h}"
+    );
+    assert!(h.contains("allowfullscreen"), "fullscreen affordance: {h}");
+    assert!(
+        h.contains("href=\"slides.html\"") && h.contains("target=\"_blank\""),
+        "open-in-new-tab link points at the same built deck: {h}"
+    );
+}
+
+#[test]
+fn embed_title_overrides_default_and_is_attribute_escaped() {
+    // A `title="…"` names the iframe; the bare token is still the deck path (a `key=value`
+    // named arg is never mistaken for it). The title is attribute-escaped so a `&` (or a
+    // `"`) can't break out of the double-quoted attribute.
+    let doc = render_document_with_includes(
+        "{{< embed slides.tmd title=\"Q & A session\" >}}\n",
+        std::path::Path::new("."),
+    );
+    let h = doc.body_html();
+    assert!(
+        h.contains("src=\"slides.html\""),
+        "the named `title=` arg is not mistaken for the deck path: {h}"
+    );
+    assert!(
+        h.contains("title=\"Q &amp; A session\""),
+        "custom title, attribute-escaped: {h}"
+    );
+    assert!(
+        !h.contains("Embedded slide deck"),
+        "default title is replaced: {h}"
+    );
+}
+
+#[test]
+fn embed_targets_collects_in_order_dedups_and_skips_code_examples() {
+    // The build/preview uses `embed_targets` to also build each referenced deck. It must
+    // return paths in document order, deduped, and must skip a `{{< embed >}}` shown as an
+    // *example* inside inline or fenced code (which stays literal, never a real dependency).
+    let src = "\
+{{< embed a.tmd >}}\n\
+{{< embed b.tmd >}}\n\
+{{< embed a.tmd >}}\n\
+An inline example `{{< embed inline.tmd >}}` stays literal.\n\
+```\n\
+{{< embed fenced.tmd >}}\n\
+```\n";
+    assert_eq!(
+        embed_targets(src),
+        vec!["a.tmd".to_string(), "b.tmd".to_string()],
+        "order preserved, a.tmd deduped, code examples skipped"
+    );
+}
+
+#[test]
 fn scrolly_arm_emits_stage_steps_and_reactive_input() {
     let doc = render_document(
         "::: {.scrolly name=\"scene\"}\nThe stage paragraph.\n\n::: {.step state=\"a\"}\nStep A.\n:::\n\n::: {.step state=\"b\"}\nStep B.\n:::\n:::\n",

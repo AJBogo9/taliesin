@@ -1,0 +1,12 @@
+---
+title: "Embedding a deck"
+---
+
+A `{{< embed >}}` pulls another document's **deck** view into this page as an
+isolated iframe. The deck is built as a standalone `.html` beside this page (kept
+out of the site nav) and the iframe resolves to it:
+
+{{< embed talk.tmd >}}
+
+Everything below the embed is ordinary page prose, so the embedded deck is one
+component of an article rather than a page of its own.
