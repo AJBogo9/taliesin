@@ -130,14 +130,18 @@ a fix, grep this file for the thing you just built.
    mcp` now say plainly: not a sandbox, no containment, and `build` writes HTML and runs cells.
 
 **Pick up here (2026-07-17, latest session — the search-index fix):**
-1. **Start with §2 #6 (title-only edit broadcasts nothing) or #7 (stale `client.js` under a green
-   pill).** Both were re-verified against source on 2026-07-17 and are the only two items on the list
-   that are genuinely **one small change** each; #6 mirrors the existing `deck_meta_changed` shape
-   (un-gate it from `DocFormat::Reveal`), #7 wires the boot-mismatch branch to the `reload()` lever
-   that already has three live senders. #8/#9/#10 are each 2-3 independent fixes — fine to take, but
-   price them first and do not promise them as one.
-2. **§2 is now NINE items, not ten** (#4's entity half landed, `9e52b71`; its cross-page-xref half
-   survives, re-filed with a corrected cause). Do not trust that count either — recount.
+1. **Start with §2 #7 (stale `client.js` under a green pill)** — now the only item left that is
+   genuinely **one small change**: wire the boot-mismatch branch (`client.js:~950`, which today only
+   re-mounts) to the `reload()` lever that already has three live senders. Purely client-side; no
+   JS test harness exists, so it is browser-verified only. #8/#9/#10 are each 2-3 independent fixes
+   — fine to take, but price them first and do not promise them as one. *(#6 landed, `2bd8385`.)*
+2. **§2 is now EIGHT items** (#4's entity half landed `9e52b71`, #6 landed `2bd8385`). Do not trust
+   that count either — recount.
+3. **When an entry says "path X already fixes exactly this", that is evidence, not a template.**
+   #6's entry pointed at `deck_meta_changed` and the fix it implied (force a re-mount) was wrong:
+   the deck re-mounts because its title slide is *structural*, a reason that does not transfer to an
+   HTML page, where a re-mount discards every live `{js}` cell. Check what *forced* the neighbouring
+   shape before copying it.
 3. **The lesson that keeps paying: read the helper the entry points AWAY from.** #4 named one defect
    and the function held four; the other three were invisible to the entry because it blamed the
    symptom's location instead of the code next door that already did the job right. **`grep` for the
@@ -277,11 +281,20 @@ changes.*
    ***"This sandbox has no `ipykernel`" is FALSE*** (2026-07-17): `~/.local/share/qmd-venv/bin/python`
    has it, and the warm forkserver boots (`preloaded: numpy, matplotlib`). Set `TALIESIN_PYTHON` to
    it. This item is verifiable NOW, and so was the false premise blocking it.
-6. **A front-matter `title:`-only edit broadcasts nothing** (measured, same audit). The title lives
-   in chrome, outside `doc.blocks`, so the diff is empty and `Broadcast::messages` returns `vec![]`
-   (`serve_site/mod.rs:947-952`). The server *does* rebuild; the live tab never hears. **The deck
-   path already fixes exactly this** (`serve/mod.rs:1280`, `deck_meta_changed` folded into
-   `remount`), gated on `DocFormat::Reveal`, so HTML pages keep the hole.
+6. ~~**A front-matter `title:`-only edit broadcasts nothing**~~ **LANDED 2026-07-17** (`2bd8385`).
+   A `title` message now rides after the body, mirroring `theme_changed → style()`; both servers
+   send it (the single-doc path had the same hole for any non-deck doc). **Two things the entry got
+   wrong, worth keeping because they generalize.** (1) Its mechanism was a special case: measured on
+   a live preview, the diff was **not** empty — the body updated (`<h1>` = "CHANGED Title") while
+   the tab stayed "Original Title". It broadcast one op and still lost the title, because *no
+   non-remount path carries it*; an empty diff is merely the case where nothing is heard at all.
+   (2) Its recommended fix (fold into `remount`, as `deck_meta_changed` does) was **rejected**: a
+   deck must re-mount because its title slide is structural, but re-mounting an HTML page replaces
+   the body and discards every `{js}`/WebGL cell's live state — B3-18's exact defect, paid for a tab
+   label. **A neighbouring fix's shape is evidence, not a template: copy it only after checking that
+   what forced it there applies here.** Also fixed a second, pre-existing bug it would have hidden:
+   `baseTitle` was captured once at load and restored after every build, so assigning
+   `document.title` alone reverts on the next save.
 7. **A restarted server leaves tabs on stale `client.js` under a green "live" pill** (same audit).
    No protocol version; `boot_id` detects the restart (`client.js:943-955`) and only forces a
    re-mount; `CLIENT_JS` is `include_str!`-compiled. Same trap CLAUDE.md warns about for assets,
