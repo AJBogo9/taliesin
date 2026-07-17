@@ -136,7 +136,16 @@ a fix, grep this file for the thing you just built.
    `seo.rs` can already reach it), #9 is two (a mechanical clamp ×3, plus the shared `wrap()` shrink
    trigger), #10 is three (only the `=>` case is cheap). #1 is two channels, not one. **#8's
    `<lastmod>` is the best next hour on this list.**
-2. **§2 is now SEVEN items.** Do not trust that count either — recount.
+2. **§2 is now EIGHT items** (1, 2, 3, 4, 5, 8, 9, 10). *An agent wrote "SEVEN" here on
+   2026-07-17 — under a header that says "count them, don't trust a number written here" — by
+   forgetting #2. It was caught by `grep -cE '^[0-9]+\. '`, not by reading. **Recount, don't
+   read**, including this line.*
+3. **#2 and #4 are adjacent and probably want one sitting.** Both are the same disagreement about
+   *when* the xref registry exists relative to its consumers: #4 is that `search::build_sections`
+   (`site/mod.rs:368`) runs BEFORE `harvest_xref_numbers` (`:392`), so the index is built without
+   targets; #2 is that a warm content edit refreshes the search fragment but never re-harvests, so
+   the registry then goes stale. Same seam, opposite ends. Whoever takes one should read the other
+   first — but they are still two fixes, so do not promise them as one.
 3. **When an entry says "path X already fixes exactly this", that is evidence, not a template.**
    #6's entry pointed at `deck_meta_changed` and the fix it implied (force a re-mount) was wrong:
    the deck re-mounts because its title slide is *structural*, a reason that does not transfer to an
