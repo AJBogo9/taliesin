@@ -17,11 +17,16 @@ const BODY_CAP: usize = 1500;
 /// refresh a single edited page's entries without re-rendering the whole site (see
 /// [`super::Site::refresh_search_for_page`]). Renders each page's markdown once (no
 /// code execution) so the anchor ids match what the served pages emit.
-pub(super) fn build_sections(pages: &[Page], book: &Option<Book>) -> Vec<(String, String)> {
+pub(super) fn build_sections(
+    pages: &[Page],
+    book: &Option<Book>,
+    targets: &HashMap<String, XrefTarget>,
+) -> Vec<(String, String)> {
     pages
         .iter()
         .filter_map(|p| {
-            page_fragment(p, super::book::chapter_of(book, p)).map(|frag| (p.rel.clone(), frag))
+            page_fragment(p, super::book::chapter_of(book, p), targets)
+                .map(|frag| (p.rel.clone(), frag))
         })
         .collect()
 }
@@ -46,7 +51,17 @@ pub(super) fn assemble(sections: &[(String, String)]) -> String {
 /// carries the numbers the rendered page shows ("Theorem 2.1", not "Theorem 1"). Rendering
 /// unscoped here made every snippet in a book contradict its own target and hid a search
 /// for the number the reader can actually see.
-pub(super) fn page_fragment(page: &Page, chapter: Option<u32>) -> Option<String> {
+///
+/// `targets` is the xref registry, for the same reason one level out: this renders the page
+/// ALONE, and a single-doc render cannot know a cross-PAGE number, so a `@fig-` to another
+/// page survives as an unresolved marker reading a bare "Figure". Passing the (already
+/// harvested) registry is what lets the snippet agree with its target — so a caller must
+/// hand over a registry whose numbers are filled, not the empty one the source scan leaves.
+pub(super) fn page_fragment(
+    page: &Page,
+    chapter: Option<u32>,
+    targets: &HashMap<String, XrefTarget>,
+) -> Option<String> {
     // The author's own 404 page (output URL `404.html`) is navigation chrome, not
     // content: keep it out of the full-text index so a search never surfaces it.
     if page.url == "404.html" {
@@ -54,7 +69,10 @@ pub(super) fn page_fragment(page: &Page, chapter: Option<u32>) -> Option<String>
     }
     let src = std::fs::read_to_string(&page.input).ok()?;
     let base = page.input.parent().unwrap_or_else(|| Path::new("."));
-    let doc = render::render_document_with_includes_scoped(&src, base, chapter);
+    let mut doc = render::render_document_with_includes_scoped(&src, base, chapter);
+    // Apply the registry exactly as the served page does, or index text the page never
+    // shows: this render leaves a cross-page `@fig-` as a marker link reading "Figure".
+    super::xref::resolve_blocks(&mut doc.blocks, targets, &page.url);
     let page_title = page
         .title
         .clone()

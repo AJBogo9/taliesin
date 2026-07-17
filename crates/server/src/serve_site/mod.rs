@@ -1177,9 +1177,9 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
 
     // Rebuild only pages that are open (have live state) and depend on a change.
     let open: Vec<String> = app.pages.lock().keys().cloned().collect();
-    let to_rebuild: Vec<String> = {
+    let mut to_rebuild: Vec<String> = {
         let site = app.site.lock();
-        open.into_iter()
+        open.iter()
             .filter(|rel| {
                 let Some(page) = site.page(rel) else {
                     return false;
@@ -1204,8 +1204,77 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
                 }
                 deps.intersection(&changed_canon).next().is_some()
             })
+            .cloned()
             .collect()
     };
+    // Re-derive the cross-reference registry FIRST: everything below reads it, and both its
+    // producers ran only at discovery, so a warm preview froze every cross-page number at
+    // startup. Measured on a live server: after inserting a figure above the referenced one,
+    // `intro.html` served "Figure 1.2" while `methods.html` served "Figure 1.1" for that
+    // same figure, and an anchor added after startup rendered as a dead same-page link.
+    //
+    // Gated on the CHANGED FILES, deliberately not on `to_rebuild`: that list is the *open
+    // tabs* whose own sources moved, and registry staleness has nothing to do with which
+    // tabs are open. Gating it there looked right and did nothing — with no tab open the
+    // refresh never ran at all, and editing `intro.tmd` while only `methods.html` was open
+    // left the registry rotting, which is the exact cross-page case this fixes. A cross-page
+    // ref is precisely the dependency `to_rebuild` cannot see.
+    //
+    // `.tmd` only: an anchor can be created or renumbered by a page source or an
+    // `{{< include >}}` partial (both `.tmd`), never by a `.bib`/`.css`/image, which the
+    // dependency walk above also feeds us. `structural` already re-discovered, which rebuilds
+    // the registry, so refreshing again would just burn the pass twice.
+    //
+    // Under the lock, unlike the per-page render below: this is the whole-site pass and the
+    // pages rebuilt after it MUST see the fresh registry. It costs 27ms on the largest real
+    // book (`docs/guide`, 20 pages) — a re-scan plus one render per page, no code execution.
+    // Guarded like the fragment render for the same reason (this task has no guard of its
+    // own); a panicking render leaves the registry un-numbered until the next good save,
+    // which is the same page whose own render would be failing anyway.
+    let touches_source = changed
+        .iter()
+        .any(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("tmd")));
+    if touches_source && !structural {
+        let before = app.site.lock().xref_targets.clone();
+        let refreshed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            app.site.lock().refresh_xrefs();
+        }));
+        if refreshed.is_err() {
+            crate::log::warn("cross-reference refresh panicked; numbers may be stale");
+        }
+        // A moved target is a dependency the walk above CANNOT see, and fixing the registry
+        // alone fixes nothing a reader can read: `methods.tmd` names no file that changed,
+        // so it is absent from `to_rebuild` and keeps serving its cached body — measured
+        // with the registry provably holding "1.2" while the page still served "Figure 1.1".
+        // `backlinks` (anchor → referring pages, refreshed just now by the same pass) is
+        // exactly that missing edge, already reversed for us.
+        //
+        // Only when a target actually MOVED, so an ordinary prose edit still rebuilds one
+        // page; and only over pages already OPEN, so this can add a tab's worth of renders,
+        // never a site's.
+        let site = app.site.lock();
+        if site.xref_targets != before {
+            let referring: HashSet<&str> = site
+                .backlinks
+                .values()
+                .flatten()
+                .map(String::as_str)
+                .collect();
+            for rel in &open {
+                if !to_rebuild.contains(rel)
+                    && site
+                        .page(rel)
+                        .is_some_and(|p| referring.contains(p.url.as_str()))
+                {
+                    to_rebuild.push(rel.clone());
+                }
+            }
+        }
+    }
+    // Cloned once, after the refresh and before the loop: the fragment render below runs OFF
+    // the lock (see the note there) but must resolve against the registry the served pages
+    // use, or Cmd-K indexes a bare "Figure" for text the page shows as "Figure 1.1".
+    let xref_targets = app.site.lock().xref_targets.clone();
     // Refresh the cross-page Cmd-K index for each rebuilt page, so a re-fetch of
     // `/search-index.js` (the client re-fetches on each palette open in preview) reflects
     // the edit's new headings/prose instead of staying frozen at discovery. Per-page so a
@@ -1225,7 +1294,7 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
             continue;
         };
         let computed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            taliesin_core::site::page_search_fragment(&page, chapter)
+            taliesin_core::site::page_search_fragment(&page, chapter, &xref_targets)
         }));
         // A render panic keeps the last-good fragment (don't wipe the page from search).
         if let Ok(fragment) = computed {

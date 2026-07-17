@@ -8,7 +8,10 @@ use crate::render::parse_attrs;
 
 /// Where a cross-referenceable anchor (`sec-x`, `fig-x`, …) lives in the project:
 /// its page url and, for a numbered section, its number ("2.1"; empty otherwise).
-#[derive(Debug, Clone, Default)]
+/// `PartialEq` so the dev server can ask whether a refresh actually MOVED anything —
+/// a cross-page ref is a dependency the file-level walk cannot see, so "did a target
+/// move" is what tells it which open pages to re-render.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct XrefTarget {
     pub url: String,
     pub number: String,
@@ -180,6 +183,29 @@ pub(super) fn xref_markers_in(html: &str) -> Vec<&str> {
 /// Rewrite the `data-qmd-xref`-marked links in one block's HTML: a marker whose
 /// anchor is a known cross-page target becomes a link to that page (with its
 /// number); an unknown anchor is left as the bare-label link `cite` emitted.
+/// Resolve every cross-page xref marker in `blocks` against `targets`, as seen from
+/// `current_url`. The ONE definition of "apply the registry to a rendered page", shared by
+/// the page-render path ([`super::Site::resolve_cross_refs`]) and the search index
+/// ([`super::search::page_fragment`]) — a single-doc render cannot know a cross-page
+/// number, so anything that reads a rendered page's text must run this first or read a
+/// bare "Figure". The search index used to skip it, and its snippets contradicted the very
+/// pages they linked to.
+pub(super) fn resolve_blocks(
+    blocks: &mut [Block],
+    targets: &HashMap<String, XrefTarget>,
+    current_url: &str,
+) {
+    if targets.is_empty() {
+        return;
+    }
+    let up = "../".repeat(current_url.matches('/').count());
+    for b in blocks.iter_mut() {
+        if b.html.contains("data-qmd-xref=\"") {
+            b.html = rewrite_cross_refs(&b.html, targets, current_url, &up);
+        }
+    }
+}
+
 pub(super) fn rewrite_cross_refs(
     html: &str,
     targets: &HashMap<String, XrefTarget>,

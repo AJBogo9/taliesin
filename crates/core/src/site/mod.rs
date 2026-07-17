@@ -198,10 +198,16 @@ pub struct Site {
 /// excluded from search or unreadable) — renders the page's markdown once, no code
 /// execution. A free function so the dev server can render it OFF the site lock (and
 /// under a panic guard) before installing it via [`Site::install_search_fragment`].
-/// `chapter` is the page's book chapter (`Site::chapter_for`), read under the site lock by
-/// the caller before it releases it, so the indexed text carries the numbers the page shows.
-pub fn page_search_fragment(page: &Page, chapter: Option<u32>) -> Option<String> {
-    search::page_fragment(page, chapter)
+/// `chapter` is the page's book chapter (`Site::chapter_for`), and `targets` the xref
+/// registry ([`Site::xref_targets`]) — both read under the site lock by the caller before it
+/// releases it, so the indexed text carries the numbers the page shows (its own "Theorem
+/// 2.1", and a cross-page "Figure 1.1" rather than a bare "Figure").
+pub fn page_search_fragment(
+    page: &Page,
+    chapter: Option<u32>,
+    targets: &HashMap<String, XrefTarget>,
+) -> Option<String> {
+    search::page_fragment(page, chapter, targets)
 }
 
 mod book;
@@ -223,7 +229,7 @@ mod search;
 mod seo;
 mod xref;
 pub use xref::XrefTarget;
-use xref::{rewrite_cross_refs, scan_xref_targets};
+use xref::scan_xref_targets;
 mod config;
 mod frontmatter;
 pub use config::*;
@@ -365,8 +371,6 @@ impl Site {
         );
 
         let xref_targets = scan_xref_targets(&pages, &book, &mut warnings);
-        let search_sections = search::build_sections(&pages, &book);
-        let search_index_json = search::assemble(&search_sections);
 
         let mut site = Site {
             root: root.to_path_buf(),
@@ -377,8 +381,11 @@ impl Site {
             backlinks: HashMap::new(),
             includes,
             warnings,
-            search_index_json,
-            search_sections,
+            // Both are built below, once the registry's numbers exist: the search index
+            // READS `xref_targets`, so building it here (as it used to) indexed every
+            // cross-page `@fig-` before a single number had been harvested.
+            search_index_json: String::new(),
+            search_sections: Vec::new(),
             hover_index_json: String::new(),
             decks,
             excluded_drafts,
@@ -393,7 +400,20 @@ impl Site {
         // Likewise once per discover: the cross-page hover-preview snippet index (its own
         // scoped render pass; independent of the numbers above).
         site.build_hover_index();
+        // LAST, and the ordering is load-bearing: the Cmd-K index resolves each page's
+        // cross-page refs against `xref_targets`, so it has to run after the harvest above
+        // has put the numbers there. Built before it, every cross-page `@fig-` was indexed
+        // as a bare "Figure" and the snippet contradicted the page it linked to.
+        site.rebuild_search_index();
         site
+    }
+
+    /// Rebuild the whole Cmd-K index from the pages' current sources, against the CURRENT
+    /// registry. Separate from `discover` so the ordering requirement above has one name,
+    /// and so [`refresh_xrefs`](Self::refresh_xrefs) can be followed by it.
+    fn rebuild_search_index(&mut self) {
+        self.search_sections = search::build_sections(&self.pages, &self.book, &self.xref_targets);
+        self.search_index_json = search::assemble(&self.search_sections);
     }
 
     /// A deck referenced by an `{{< embed >}}`, looked up by its output URL (what a
@@ -447,7 +467,7 @@ impl Site {
         let Some((rel, fragment)) = self.page(rel_or_url).map(|page| {
             (
                 page.rel.clone(),
-                search::page_fragment(page, self.chapter_for(page)),
+                search::page_fragment(page, self.chapter_for(page), &self.xref_targets),
             )
         }) else {
             return;
@@ -470,7 +490,8 @@ impl Site {
             },
             // Not previously indexed but now has content: recompute so page order holds.
             None if fragment.is_some() => {
-                self.search_sections = search::build_sections(&self.pages, &self.book);
+                self.search_sections =
+                    search::build_sections(&self.pages, &self.book, &self.xref_targets);
             }
             None => return,
         }
@@ -871,15 +892,36 @@ impl Site {
     /// resolved by `cite`; an anchor unknown project-wide is left as a label link.
     /// Called by both the static build and the live preview.
     pub fn resolve_cross_refs(&self, blocks: &mut [Block], current_url: &str) {
-        if self.xref_targets.is_empty() {
-            return;
-        }
-        let up = "../".repeat(current_url.matches('/').count());
-        for b in blocks.iter_mut() {
-            if b.html.contains("data-qmd-xref=\"") {
-                b.html = rewrite_cross_refs(&b.html, &self.xref_targets, current_url, &up);
-            }
-        }
+        xref::resolve_blocks(blocks, &self.xref_targets, current_url);
+    }
+
+    /// Re-derive the whole cross-reference registry from the pages' current sources — the
+    /// source scan *and* the render-harvest that numbers the floats — so a warm preview's
+    /// cross-page refs track edits instead of freezing at discovery. Both producers ran only
+    /// in `discover`, which left `intro.html` serving "Figure 1.2" while `methods.html`
+    /// served "Figure 1.1" for that same figure, and left an anchor added after startup
+    /// permanently unknown (it rendered as a dead same-page link, silently).
+    ///
+    /// Whole-registry rather than per-page, which the numbers alone would allow (a float's
+    /// number depends only on its own page + chapter): MEASURED at 27ms for the largest real
+    /// book (`docs/guide`, 20 pages; `docs/internals` 17ms, `corpus/demo-book` 0.5ms), which
+    /// is not worth buying with incremental invalidation — that would have to re-derive the
+    /// scan's project-wide "first definition wins" ordering to know whether a dropped anchor
+    /// should fall through to another page's definition. A page-SET change re-runs `discover`
+    /// anyway.
+    ///
+    /// Deliberately does NOT rebuild the hover index (its own second render pass over the
+    /// targets): it is equally frozen today, so leaving it is no regression, and doubling
+    /// this cost for hover cards wants its own measurement.
+    pub fn refresh_xrefs(&mut self) {
+        // The re-scan's duplicate-label warnings are dropped, not appended: `self.warnings`
+        // is discovery-scoped (the server logs it once at startup and never re-reads it), so
+        // appending would grow it unboundedly per save and surface nothing. A duplicate
+        // introduced mid-preview therefore stays unwarned — exactly as it is today, since
+        // nothing re-scans at all.
+        let mut discarded = Vec::new();
+        self.xref_targets = scan_xref_targets(&self.pages, &self.book, &mut discarded);
+        self.harvest_xref_numbers();
     }
 
     /// Render-harvest: render each page once (scoped to its chapter) and fill in the
@@ -1967,6 +2009,101 @@ pub(crate) mod tests {
         site.refresh_search_for_page("does-not-exist");
         assert_eq!(before, site.search_index_json);
 
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// A two-chapter book whose `methods` chapter cross-references a figure defined in
+    /// `intro` — the smallest shape that exercises the xref registry's whole seam.
+    fn xref_book(tag: &str) -> std::path::PathBuf {
+        write_site(
+            tag,
+            &[
+                (
+                    "_site.yml",
+                    "title: B\nchapters:\n  - index.tmd\n  - intro.tmd\n  - methods.tmd\n",
+                ),
+                ("index.tmd", "---\ntitle: Home\n---\n\nWelcome.\n"),
+                (
+                    "intro.tmd",
+                    "---\ntitle: Intro\n---\n\n![The structure.](a.svg){#fig-structure}\n",
+                ),
+                (
+                    "methods.tmd",
+                    "---\ntitle: Methods\n---\n\n## Setup {#sec-setup}\n\n\
+                     Refines the overview from @fig-structure into steps.\n",
+                ),
+            ],
+        )
+    }
+
+    /// A cross-page `@fig-` was indexed WITHOUT its number, so the Cmd-K snippet
+    /// contradicted the page it points at ("…from Figure into…" vs the page's "…from
+    /// Figure 1.1 into…") and the number was unsearchable. An ORDERING fact, not a text
+    /// bug: `build_sections` ran at discovery *before* `harvest_xref_numbers` filled the
+    /// numbers, and the per-page render it uses leaves a cross-page ref as an unresolved
+    /// marker link — only the site-level pass rewrites it.
+    #[test]
+    fn search_index_carries_a_cross_page_xref_number() {
+        let root = xref_book("xref-search");
+        let site = Site::discover(&root);
+        assert!(
+            site.search_index_json.contains("Figure 1.1"),
+            "the index must carry the number the page shows: {}",
+            site.search_index_json
+        );
+        assert!(
+            !site.search_index_json.contains("from Figure into"),
+            "a bare label means the marker was never resolved: {}",
+            site.search_index_json
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The other end of the same seam: the registry is filled ONLY in `discover`, so a warm
+    /// preview's cross-page numbers freeze at startup. Measured on a live server before this
+    /// existed: after inserting a figure above `fig-structure`, `intro.html` served
+    /// "Figure 1.2" while `methods.html` served "Figure 1.1" for the same figure — one
+    /// preview contradicting itself — and an anchor created after startup stayed unknown
+    /// forever, rendering as a dead same-page link.
+    #[test]
+    fn refresh_xrefs_reflects_a_renumber_and_a_new_anchor() {
+        use std::fs;
+        let root = xref_book("xref-refresh");
+        let mut site = Site::discover(&root);
+        assert_eq!(site.xref_targets["fig-structure"].number, "1.1");
+        assert!(!site.xref_targets.contains_key("fig-new"));
+
+        // Insert a figure ABOVE the referenced one: `fig-structure` becomes 1.2, and
+        // `fig-new` is an anchor the registry has never seen.
+        fs::write(
+            root.join("intro.tmd"),
+            "---\ntitle: Intro\n---\n\n![A new first.](a.svg){#fig-new}\n\n\
+             ![The structure.](a.svg){#fig-structure}\n",
+        )
+        .unwrap();
+        site.refresh_xrefs();
+        assert_eq!(
+            site.xref_targets["fig-structure"].number, "1.2",
+            "the renumber must reach the registry"
+        );
+        assert_eq!(
+            site.xref_targets.get("fig-new").map(|t| t.url.as_str()),
+            Some("intro.html"),
+            "an anchor born after startup must become resolvable"
+        );
+        // A dropped anchor must LEAVE the registry, or a stale target outlives its source
+        // and `@fig-structure` keeps resolving to a figure that no longer exists.
+        fs::write(
+            root.join("intro.tmd"),
+            "---\ntitle: Intro\n---\n\n![A new first.](a.svg){#fig-new}\n",
+        )
+        .unwrap();
+        site.refresh_xrefs();
+        assert!(
+            !site.xref_targets.contains_key("fig-structure"),
+            "a deleted anchor must not linger: {:?}",
+            site.xref_targets
+        );
         let _ = fs::remove_dir_all(&root);
     }
 
