@@ -180,9 +180,6 @@ pub(super) fn xref_markers_in(html: &str) -> Vec<&str> {
     }
     out
 }
-/// Rewrite the `data-qmd-xref`-marked links in one block's HTML: a marker whose
-/// anchor is a known cross-page target becomes a link to that page (with its
-/// number); an unknown anchor is left as the bare-label link `cite` emitted.
 /// Resolve every cross-page xref marker in `blocks` against `targets`, as seen from
 /// `current_url`. The ONE definition of "apply the registry to a rendered page", shared by
 /// the page-render path ([`super::Site::resolve_cross_refs`]) and the search index
@@ -206,6 +203,9 @@ pub(super) fn resolve_blocks(
     }
 }
 
+/// Rewrite the `data-qmd-xref`-marked links in one block's HTML: a marker whose
+/// anchor is a known cross-page target becomes a link to that page (with its
+/// number); an unknown anchor is left as the bare-label link `cite` emitted.
 pub(super) fn rewrite_cross_refs(
     html: &str,
     targets: &HashMap<String, XrefTarget>,

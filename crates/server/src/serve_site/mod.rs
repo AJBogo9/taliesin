@@ -1161,6 +1161,15 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
         return;
     }
 
+    // The registry as it stands BEFORE anything below re-derives it — snapshotted here
+    // because `structural` re-discovers (replacing the whole `Site`) and that is one of the
+    // two ways it moves. Both ways have to be compared against the same "before", or the
+    // rebuild selection below silently doesn't apply to one of them.
+    let xrefs_before = {
+        let site = app.site.lock();
+        (site.xref_targets.clone(), site.backlinks.clone())
+    };
+
     // A `.tmd` was created/removed: re-discover, and if the page set actually changed
     // (new/renamed/deleted page, not just an editor's save-via-rename of an existing
     // one) reload open tabs so nav + listings refresh. Otherwise fall through to the
@@ -1228,35 +1237,54 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
     // Under the lock, unlike the per-page render below: this is the whole-site pass and the
     // pages rebuilt after it MUST see the fresh registry. It costs 27ms on the largest real
     // book (`docs/guide`, 20 pages) — a re-scan plus one render per page, no code execution.
-    // Guarded like the fragment render for the same reason (this task has no guard of its
-    // own); a panicking render leaves the registry un-numbered until the next good save,
-    // which is the same page whose own render would be failing anyway.
+    // `refresh_xrefs` is all-or-nothing about a render panic, so a bad page cannot leave the
+    // registry un-numbered site-wide; the guard here is belt-and-braces for this task, which
+    // (unlike `build_page`) has none of its own.
+    //
+    // NOT when `structural`: that path re-discovered above, which rebuilds the registry as a
+    // side effect, so refreshing again would burn the whole pass twice.
     let touches_source = changed
         .iter()
         .any(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("tmd")));
     if touches_source && !structural {
-        let before = app.site.lock().xref_targets.clone();
         let refreshed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             app.site.lock().refresh_xrefs();
         }));
         if refreshed.is_err() {
             crate::log::warn("cross-reference refresh panicked; numbers may be stale");
         }
-        // A moved target is a dependency the walk above CANNOT see, and fixing the registry
-        // alone fixes nothing a reader can read: `methods.tmd` names no file that changed,
-        // so it is absent from `to_rebuild` and keeps serving its cached body — measured
-        // with the registry provably holding "1.2" while the page still served "Figure 1.1".
-        // `backlinks` (anchor → referring pages, refreshed just now by the same pass) is
-        // exactly that missing edge, already reversed for us.
-        //
-        // Only when a target actually MOVED, so an ordinary prose edit still rebuilds one
-        // page; and only over pages already OPEN, so this can add a tab's worth of renders,
-        // never a site's.
+    }
+
+    // A moved target is a dependency the walk above CANNOT see, and re-deriving the registry
+    // fixes nothing a reader can read without this: `methods.tmd` names no file that changed,
+    // so it is absent from `to_rebuild` and keeps serving its cached body — measured with the
+    // registry provably holding "1.2" while the open tab still showed "Figure 1.1".
+    //
+    // Deliberately OUTSIDE the `!structural` gate above, which is the subtler half of that
+    // same measurement. The registry moves on BOTH paths — `refresh_xrefs` here, `discover`
+    // there — so gating this on the refresh skips the reader-visible half exactly when a
+    // `.tmd` is created/removed rather than written in place. Reproduced: delete+recreate
+    // (a `git checkout`, or any editor that unlinks before writing) served "Figure 1.2" from
+    // `intro.html` while the open `methods.html` tab sat on "Figure 1.1".
+    //
+    // Referrers are unioned across BEFORE and AFTER, because `build_backlink_index` drops a
+    // marker whose anchor is not a known target: DELETING `{#fig-structure}` unlists its
+    // referrer from the new index, so an after-only read would never rebuild the one page
+    // whose link just went dead. Only on a real move, and only over pages already OPEN, so
+    // this adds a tab's worth of renders, never a site's.
+    // The selection is any-cross-page-ref, not this-anchor: a page referencing ANYTHING
+    // cross-page is rebuilt when ANY target moves. Rebuilds are idempotent (cells replay
+    // from their cumulative hashes, and the diff yields no ops for unchanged blocks), and
+    // over open tabs the precision is not worth an anchor-diff.
+    let (targets_before, backlinks_before) = xrefs_before;
+    let moved = {
         let site = app.site.lock();
-        if site.xref_targets != before {
+        let moved = site.xref_targets != targets_before;
+        if moved {
             let referring: HashSet<&str> = site
                 .backlinks
                 .values()
+                .chain(backlinks_before.values())
                 .flatten()
                 .map(String::as_str)
                 .collect();
@@ -1270,6 +1298,16 @@ fn dispatch_changes(app: &SiteApp, changed: &HashSet<PathBuf>, structural: bool)
                 }
             }
         }
+        moved
+    };
+    // The Cmd-K index is GLOBAL — one `search-index.js` for every tab — so the per-page
+    // refresh below, keyed on the open tabs being rebuilt, cannot keep it true: a renumbered
+    // figure would go stale in the fragments of every page nobody happens to have open, and
+    // Cmd-K would surface a snippet contradicting the page it links to. That is the defect
+    // the discovery-time ordering exists to prevent, so it must not come back on the warm
+    // path. Only on a real move (a prose edit still refreshes one page's fragment below).
+    if moved {
+        app.site.lock().rebuild_search_index();
     }
     // Cloned once, after the refresh and before the loop: the fragment render below runs OFF
     // the lock (see the note there) but must resolve against the registry the served pages

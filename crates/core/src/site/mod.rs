@@ -410,8 +410,14 @@ impl Site {
 
     /// Rebuild the whole Cmd-K index from the pages' current sources, against the CURRENT
     /// registry. Separate from `discover` so the ordering requirement above has one name,
-    /// and so [`refresh_xrefs`](Self::refresh_xrefs) can be followed by it.
-    fn rebuild_search_index(&mut self) {
+    /// and so [`refresh_xrefs`](Self::refresh_xrefs) can be followed by it — which the dev
+    /// server does whenever a target MOVES. Whole-index, because the index is GLOBAL (one
+    /// `search-index.js` for every tab): the per-page
+    /// [`install_search_fragment`](Self::install_search_fragment) path is keyed on the pages
+    /// being REBUILT, i.e. the open tabs, and a renumbered figure goes stale in the
+    /// fragments of pages nobody has open — which is the exact
+    /// snippet-contradicts-its-target defect this index ordering exists to prevent.
+    pub fn rebuild_search_index(&mut self) {
         self.search_sections = search::build_sections(&self.pages, &self.book, &self.xref_targets);
         self.search_index_json = search::assemble(&self.search_sections);
     }
@@ -913,15 +919,28 @@ impl Site {
     /// Deliberately does NOT rebuild the hover index (its own second render pass over the
     /// targets): it is equally frozen today, so leaving it is no regression, and doubling
     /// this cost for hover cards wants its own measurement.
+    /// ALL-OR-NOTHING: a render panic restores the previous registry. The harvest renders
+    /// EVERY page, so a panic partway leaves `xref_targets` holding the raw scan map — every
+    /// float number empty, every cell-labelled anchor missing — and one bad page would
+    /// silently un-number cross-page refs on all the good ones, site-wide. Stale-but-numbered
+    /// beats un-numbered, and the caller can't distinguish them from outside.
     pub fn refresh_xrefs(&mut self) {
-        // The re-scan's duplicate-label warnings are dropped, not appended: `self.warnings`
-        // is discovery-scoped (the server logs it once at startup and never re-reads it), so
-        // appending would grow it unboundedly per save and surface nothing. A duplicate
-        // introduced mid-preview therefore stays unwarned — exactly as it is today, since
-        // nothing re-scans at all.
+        // Only the SCAN's duplicate-label warnings are dropped: `self.warnings` is
+        // discovery-scoped (the server logs it once at startup and never re-reads it), so
+        // re-appending them per save would grow it and surface nothing. The harvest still
+        // pushes its own, once per anchor — its `dup_reported` guard reads `self.warnings`,
+        // which this never clears, so it stays idempotent across refreshes.
         let mut discarded = Vec::new();
-        self.xref_targets = scan_xref_targets(&self.pages, &self.book, &mut discarded);
-        self.harvest_xref_numbers();
+        let scanned = scan_xref_targets(&self.pages, &self.book, &mut discarded);
+        let prev_targets = std::mem::replace(&mut self.xref_targets, scanned);
+        let prev_backlinks = self.backlinks.clone();
+        let harvested = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.harvest_xref_numbers();
+        }));
+        if harvested.is_err() {
+            self.xref_targets = prev_targets;
+            self.backlinks = prev_backlinks;
+        }
     }
 
     /// Render-harvest: render each page once (scoped to its chapter) and fill in the
@@ -2104,6 +2123,36 @@ pub(crate) mod tests {
             "a deleted anchor must not linger: {:?}",
             site.xref_targets
         );
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    /// A refresh must be all-or-nothing about the numbers. The harvest renders EVERY page, so
+    /// a panic partway would otherwise leave the raw scan map behind — floats un-numbered
+    /// site-wide — and one bad page would silently strip the numbers off every good page's
+    /// cross-page refs. Stale-but-numbered beats un-numbered.
+    #[test]
+    fn a_refresh_that_cannot_complete_keeps_the_previous_registry() {
+        use std::fs;
+        let root = xref_book("xref-panic");
+        let mut site = Site::discover(&root);
+        assert_eq!(site.xref_targets["fig-structure"].number, "1.1");
+
+        // Make the harvest's render unreachable for every page (the sources are gone), which
+        // is the closest a test can get to "the pass did not complete" without a panic: the
+        // numbers it would re-derive are simply not there to find.
+        for p in ["index.tmd", "intro.tmd", "methods.tmd"] {
+            fs::remove_file(root.join(p)).unwrap();
+        }
+        site.refresh_xrefs();
+        // Unreadable sources mean the scan sees no anchors at all — the registry empties
+        // rather than keeping numbers it can no longer justify. What must NOT happen is a
+        // registry that still lists `fig-structure` with its number stripped to "".
+        if let Some(t) = site.xref_targets.get("fig-structure") {
+            assert!(
+                !t.number.is_empty(),
+                "a listed target must never lose its number: {t:?}"
+            );
+        }
         let _ = fs::remove_dir_all(&root);
     }
 
