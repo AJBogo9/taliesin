@@ -153,6 +153,46 @@ mod tests {
     }
 
     #[test]
+    fn absolute_urls_percent_encode_an_unsafe_path_segment() {
+        // A page directory can carry a space (pages are discovered from the filesystem,
+        // never slugified). The shared absolute URL must be percent-encoded, or the
+        // sitemap `<loc>` ships a raw space (an invalid sitemap URL — `esc` is an XML
+        // escaper, not a URL escaper) and llms.txt ships a broken CommonMark link.
+        let root = write_site(
+            "seoencode",
+            &[
+                ("_site.yml", "title: S\nurl: https://ex.com\n"),
+                ("index.tmd", "---\ntitle: Home\n---\n\nHi.\n"),
+                (
+                    "posts/two words/index.tmd",
+                    "---\ntitle: Two Words\ndate: 2026-05-15\n---\n\nx\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let sm = site.sitemap().expect("sitemap emitted with url:");
+        assert!(
+            sm.contains("<loc>https://ex.com/posts/two%20words/</loc>"),
+            "the space must be percent-encoded in <loc>: {sm}"
+        );
+        assert!(
+            !sm.contains("two words"),
+            "no raw space may reach the sitemap XML: {sm}"
+        );
+        // The same shared helper feeds llms.txt, so its link is encoded too.
+        let llms = site.llms_txt().expect("llms.txt emitted with url:");
+        assert!(
+            llms.contains("(https://ex.com/posts/two%20words/)"),
+            "the llms.txt link must be percent-encoded: {llms}"
+        );
+        assert!(
+            !llms.contains("two words/)"),
+            "no raw space may reach an llms.txt link: {llms}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn robots_allows_all_and_points_at_the_sitemap() {
         let root = write_site(
             "robotsgen",

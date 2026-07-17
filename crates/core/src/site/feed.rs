@@ -21,10 +21,16 @@ impl Site {
     /// A page's absolute clean (directory) URL, e.g. `https://site/posts/x/`.
     /// An index page is served at its directory, matching the `og:url`/canonical
     /// logic in `meta.rs`. `None` without `url:`.
+    ///
+    /// The path is percent-encoded: pages are discovered from the filesystem and never
+    /// slugified, so a directory with a space (or any non-URL-safe byte) would otherwise
+    /// ship a raw space into the sitemap `<loc>` (invalid XML sitemap URL — `esc` is an
+    /// XML escaper, not a URL escaper) and into llms.txt (a broken CommonMark link). The
+    /// `base` origin is left as the author wrote it.
     pub(crate) fn abs_page_url(&self, page: &Page) -> Option<String> {
         let base = self.canonical_base()?;
         let clean = page.url.strip_suffix("index.html").unwrap_or(&page.url);
-        Some(format!("{base}/{clean}"))
+        Some(format!("{base}/{}", percent_encode_path(clean)))
     }
 
     /// The feed-bearing listings in nav order — each `(host page, relative feed path,
@@ -199,10 +205,63 @@ pub(crate) fn rfc3339(date: &str) -> Option<String> {
     Some(format!("{y:04}-{m:02}-{day:02}T{time}"))
 }
 
+/// Percent-encode a URL path, preserving the `/` separators. Every byte outside RFC 3986
+/// `pchar` (unreserved `A-Za-z0-9-._~`, sub-delims `!$&'()*+,;=`, and `:@`) plus `/` is
+/// `%XX`-escaped — so a space becomes `%20`, and a stray `%`, `?`, `#`, `<`, `>` are
+/// encoded too. ASCII-safe bytes pass through; multi-byte UTF-8 is encoded per-byte, which
+/// is the standard path encoding a browser and crawler both round-trip.
+pub(crate) fn percent_encode_path(path: &str) -> String {
+    fn is_safe(b: u8) -> bool {
+        b.is_ascii_alphanumeric()
+            || matches!(
+                b,
+                b'-' | b'.'
+                    | b'_'
+                    | b'~'
+                    | b'!'
+                    | b'$'
+                    | b'&'
+                    | b'\''
+                    | b'('
+                    | b')'
+                    | b'*'
+                    | b'+'
+                    | b','
+                    | b';'
+                    | b'='
+                    | b':'
+                    | b'@'
+                    | b'/'
+            )
+    }
+    let mut out = String::with_capacity(path.len());
+    for &b in path.as_bytes() {
+        if is_safe(b) {
+            out.push(b as char);
+        } else {
+            out.push('%');
+            out.push_str(&format!("{b:02X}"));
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::site::tests::write_site;
+
+    #[test]
+    fn percent_encode_path_encodes_unsafe_bytes_and_keeps_separators() {
+        // `/` separators and `pchar`-safe bytes pass through unchanged.
+        assert_eq!(percent_encode_path("posts/a-b_c/"), "posts/a-b_c/");
+        // A space is the realistic case (a directory name); `%` and delimiters encode too.
+        assert_eq!(percent_encode_path("two words"), "two%20words");
+        assert_eq!(percent_encode_path("a?b#c"), "a%3Fb%23c");
+        assert_eq!(percent_encode_path("100%"), "100%25");
+        // Multi-byte UTF-8 encodes per-byte (é = C3 A9).
+        assert_eq!(percent_encode_path("café/"), "caf%C3%A9/");
+    }
 
     /// `author: [A, B]` is a YAML sequence, so reading it as a scalar yields nothing and
     /// the feed used to fall through to the site title: a two-author blog published
