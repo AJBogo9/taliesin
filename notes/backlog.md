@@ -75,9 +75,11 @@ a total.
 
 **What is left is a flat list; none of it is a grind chunk.** All **three owner rulings are
 CLOSED**, both **ruling rounds are spent**, and the **whole M2-M6 exec/kernel audit is finished
-except M6a, whose sign-off was refused** (2026-07-17). What remains is §2's ten small live defects,
-D70 (unruled), D72 (declined), and one deliberate deferral. Everything else is Tier 2/3
-(demand-driven). **There is no gated work waiting on the owner: the next session can just build.**
+except M6a, whose sign-off was refused** (2026-07-17). What remains is §2's live defects (**go count
+the un-struck ones**; a number written here has now been wrong twice, once by the very session that
+wrote the header telling it not to, so this sentence no longer carries one), D70 (unruled), D72
+(declined), and one deliberate deferral. Everything else is Tier 2/3 (demand-driven). **There is no
+gated work waiting on the owner: the next session can just build.**
 
 **This file was measured against source on 2026-07-17 and was wrong in six places.** A sweep
 re-derived every open item from today's code. **The rot was not the author pushing mid-session:
@@ -225,12 +227,21 @@ entry (`lang: fr`) was pointing at correct code.*
 
 *Re-verified against source again 2026-07-17 (later session), items 6-10: **all five are LIVE** and
 their described symptoms hold. But **three of five were mispriced as one change**, so read the
-per-item cost notes before promising anything: **#8 is three independent fixes**, **#9 is two**
-(a mechanical clamp ×3, plus a different fix to the shared `wrap()` shrink trigger), and **#10 is
-three** (only the `=>` case is cheap; `)`/`]` need real context tracking). #6 and #7 are genuinely
-one small change each and are the two cleanest builds on this list. **The recurring finding is not
-drift, it is under-pricing:** an entry's summary counts symptoms, and symptoms do not map 1:1 to
-changes.*
+per-item cost notes before promising anything: **#8 is three independent fixes** (the first landed),
+**#9 is two** (a mechanical clamp ×3, plus a different fix to the shared `wrap()` shrink trigger),
+and **#10 is three** (only the `=>` case is cheap; `)`/`]` need real context tracking). **The
+recurring finding is not drift, it is under-pricing:** an entry's summary counts symptoms, and
+symptoms do not map 1:1 to changes.*
+
+*Priced again by BUILDING them, 2026-07-17 (#8a, #2, #4). **Under-pricing is not the only direction,
+and the summary is not the only thing that lies — the stated CAUSE is too.** #2 came in cheaper than
+its fix implied (a whole-site re-derive measured 27ms, so the incremental invalidation everyone would
+have designed was never needed) and dearer in the part nobody wrote down (fixing the registry fixed
+nothing a reader could see; the dependent page never rebuilt). #8a's entry was true in every clause
+and wrong in its conclusion, because "the correct helper is next door, just call it" has a
+precondition nobody checks: **that the helper is correct.** The one habit that caught all of it:
+**measure the running product before and after, not the unit test.** Every one of these had a green
+unit test while the live server still served the bug.*
 
 1. **Duplicate-label warnings are unlocated** (`render/mod.rs:1568-1571`, `site/xref.rs:50-56` emit
    no file/line), half-reproducing the exact Quarto flaw D53 critiques. *(The harvest's own duplicate
@@ -240,9 +251,22 @@ changes.*
    line)` (`render/model.rs:166`) — cheap. But `site/xref.rs:23` and `site/mod.rs:172` are
    `Vec<String>`: **no location field exists in that channel at all**, so half of this item is a
    channel type change. (Line numbers here had drifted by 30 and 6; the symptom held.)
-2. **The xref registry goes stale on a warm content edit** (`serve_site/mod.rs:1186-1204` refreshes
-   only the Cmd-K search fragment). Confirmed: `harvest_xref_numbers` has exactly one caller,
-   `site/mod.rs:392`, inside `discover` — and `xref` appears nowhere in `crates/server/src/serve_site/`.
+2. ~~**The xref registry goes stale on a warm content edit**~~ **LANDED 2026-07-17** (`4b35bb5`),
+   together with #4 — they were the two ends of one seam and shipped as one change. `refresh_xrefs()`
+   re-runs both producers on a `.tmd` change. **Three things the entry did not know, all found by
+   measuring the running server, and the lesson is the same each time: the filed symptom was the
+   visible tip.** (1) The obvious gate is WRONG: refreshing when `to_rebuild` is non-empty reads
+   right ("refresh when we rebuild") and does nothing — that list is the *open tabs* whose own
+   sources moved, and registry staleness is a function of the CHANGED FILES. Editing `intro.tmd`
+   while only `methods.html` is open leaves it empty, which is exactly the cross-page case.
+   (2) **Fixing the registry fixes nothing a reader can read.** With the registry provably holding
+   `number: "1.2"`, the page still served "Figure 1.1": a served page comes from its cached render,
+   and a page that only *cross-references* an edited page names no changed file, so it never
+   rebuilds. `backlinks` was that missing edge, already reversed. (3) The registry wasn't merely
+   stale, it was **dead for anything new**: an anchor created while warm rendered as
+   `<a href="#fig-new">Figure</a>`, a same-page link to an anchor not on that page, landing nowhere
+   with no warning. **Cheaper than feared where it counted:** a whole-site re-derive measured 27ms
+   on the largest real book, so no incremental invalidation was needed at all.
 3. **Cross-reference labels are English-only** (re-filed 2026-07-17; **was "`lang: fr` promises
    French, delivers English (`render/page.rs:239`)", and both halves were wrong**). `page.rs:239` is
    *correct code*: `<html lang="{lang}">` fed by `doc.lang`, doing exactly its job. The true site is
@@ -251,24 +275,16 @@ changes.*
    `vocab.rs` only ever promise `lang:` sets `<html lang>`, which it does. **So this is an absent
    i18n FEATURE with a scope question, not a small live defect** (no corpus doc demands it). A
    textbook wrong-*layer* pointer: the entry named a real symptom and a file that is not the cause.
-4. **A cross-page `@fig-`/`@sec-` is indexed WITHOUT its number.** *(This is the remaining half of
-   the old "Cmd-K index stores raw `&nbsp;`" item. The entity half LANDED 2026-07-17, `9e52b71` —
-   and its stated cause, "the text extraction never decodes entities", was wrong: the extraction
-   decoded five entities and simply lacked `&nbsp;`. Reading the helper it pointed away from found
-   **three more** defects in the same function — KaTeX math indexed three times with its raw TeX,
-   a `>` inside a quoted attribute ending the tag early, and `&amp;lt;` double-decoding to `<`.
-   `section_text` now delegates to the shared `render::indexable_text`.)*
-   **Measured on `corpus/demo-book`, so the symptom is real:** the page reads "refines the chapter
-   overview from Figure&nbsp;1.1 into the steps", the index reads "…from Figure into the steps" —
-   the snippet contradicts the page it points at, and the number is unsearchable.
-   **The old entry's cause was wrong and would send you to the wrong file:** this does NOT live in
-   `search.rs`'s text extraction. It is an **ordering** fact — `search::build_sections` runs at
-   `site/mod.rs:368`, but `harvest_xref_numbers()`, the only thing that fills `xref_targets`, runs
-   at `:392`; and `rewrite_cross_refs` has exactly one caller (`:880`, the page-render path). The
-   targets **do not exist yet** when the index is built, so the fix is a reorder or a second pass
-   over the fragments, **not** a call you can drop in. Checked and leave alone: `build_hover_index`
-   (`:395`) already sits on the right side of that line, and its `&nbsp;` are *correct* (it stores
-   HTML for a card, not text to search).
+4. ~~**A cross-page `@fig-`/`@sec-` is indexed WITHOUT its number.**~~ **LANDED 2026-07-17**
+   (`4b35bb5`, with #2 — one seam, one change). The entry's "reorder or a second pass" was right
+   about the ordering and **incomplete about the cause: it is TWO causes, not one.** The reorder
+   alone is not enough — `page_fragment` renders each page ALONE, and a single-doc render cannot
+   know a cross-page number, so the marker survives unresolved no matter when you build the index.
+   It now resolves through the same `xref::resolve_blocks` the served page uses, so the two cannot
+   disagree. Verified live: `/search-index.js` carries the post-edit "Figure 1.2".
+   *The entry's own grep trap is worth keeping: its quoted phrase spans a line break in both source
+   and HTML, so a single-line grep returns nothing and it reads like rot. Flatten newlines first.*
+   *(Historical: the entity half of this item landed separately, `9e52b71`.)*
    *Grep trap that hid this twice: the entry's own quoted example spans a line break in both
    `methods.tmd:15-16` and the emitted HTML, so a single-line `grep` for the phrase returns
    nothing and the entry reads like rot. Flatten newlines before believing it.*
