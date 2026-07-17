@@ -315,22 +315,27 @@ changes.*
    this shipped still lands stale (old code cannot be taught to reload); it self-corrects after.
    *The check that mattered as much as the fix: a sentinel proving three consecutive edits stay
    incremental and do NOT reload — the failure mode here was an edit-triggered reload loop.*
-8. **`seo.rs` emits machine-invalid output with no diagnostic** (executed, same audit).
-   `<lastmod>` is verbatim (`date: "May 15, 2026"` ships as-is; W3C Datetime needs zero-padded
-   `YYYY-MM-DD`, and `feed.rs` *does* enforce RFC-3339); `<loc>` is entity-escaped but never
-   URL-escaped (`posts/two words/` -> a raw space, and the same URL goes into `llms.txt` where it
-   isn't a CommonMark link); a scheme-less `url: ex.com` builds clean and emits `<loc>ex.com/</loc>`
-   + `Sitemap: ex.com/sitemap.xml`. `check` reports "no problems found", exit 0, in all three cases.
-   11/11 lastmods valid today: latent traps, not live breaks. Wants a **diagnostic, not a knob**
-   (the `69c228b` value-lint + D37 precedent).
-   **Priced 2026-07-17: this is THREE independent fixes, not one** (different functions, no overlap):
-   the `<lastmod>` normalize, the `<loc>` percent-encode, and the scheme check. **The `<lastmod>` half
-   is nearly free and nobody noticed:** `feed.rs:185-204` already exports `pub(crate) fn rfc3339`,
-   already used by the Atom feed at `:130`/`:158`, and `seo.rs` is a sibling that **can already reach
-   it** (`super::feed::rfc3339`, no visibility change). `seo.rs:24-26` just doesn't call it — `esc` is
-   `escape_attr`, an XML escaper, not a date normalizer. **That is the same "correct helper next door,
-   not called" shape as the search-index fix** (`9e52b71`) and the three the machine-facing audit
-   found: when an entry says output is malformed, grep for the validator before writing one.
+8. **`seo.rs` emits machine-invalid output with no diagnostic** (executed, same audit). **The
+   `<lastmod>` third LANDED 2026-07-17 (`3041f87`); the other two are still open and still
+   independent:** `<loc>` is entity-escaped but never URL-escaped (`posts/two words/` -> a raw space,
+   and the same URL goes into `llms.txt` where it isn't a CommonMark link); a scheme-less
+   `url: ex.com` builds clean and emits `<loc>ex.com/</loc>` + `Sitemap: ex.com/sitemap.xml`. `check`
+   reports "no problems found", exit 0, for both. Wants a **diagnostic, not a knob** (the `69c228b`
+   value-lint + D37 precedent — and `<lastmod>` now *is* that precedent too).
+   **What the landed third proves, because it cost more than its price tag said.** The entry read
+   "`rfc3339` exists, `seo.rs` can reach it, it just doesn't call it — close to free". Every clause
+   was true and the conclusion was still wrong twice. (1) **Calling it breaks a pin one file over:**
+   `sitemap_lists_pages_...` asserts a date-only `<lastmod>`, and is *right* to — the feed's
+   `T00:00:00Z` exists only because Atom requires a timestamp, a force that does not travel to the
+   sitemap. Share the **validator**, not the format. (2) **`rfc3339` did not enforce what the entry
+   credited it with** (`2026-99-99` passed; its `T` fast-path returned *before any check*), so
+   "just call it" would have spread a bug while closing the symptom. **The real find:** the entry
+   named the sitemap as the victim and the feed as the enforcer. Backwards — 11/11 sitemap dates were
+   valid, while `date: Thursday` was *live-publishing* `<updated>Thursday</updated>` into the Atom
+   feed under a green `check`. **So "the correct helper is next door, just call it" has a
+   precondition nobody checks: that the helper is correct.** Grep for the validator, then *test the
+   validator*. Root cause was three readers of `date:` each answering "is this a date" at a different
+   strictness; `frontmatter::calendar_date` now owns it (the `yaml_bool_word` shape).
 9. **`card.rs` overflow, the fields nobody clamped** (rendered, same audit; the headline ellipsis +
    the glyph-coverage diagnostic LANDED 2026-07-16, this is the remainder). Eyebrow, wordmark and
    domain get no wrap/truncate/width check at all (`card.rs:358-361`, `:399-409`, `:411-414`): a long
