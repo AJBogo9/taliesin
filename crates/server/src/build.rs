@@ -2410,7 +2410,13 @@ mod asset_bundle_tests {
     /// that is a trade to reconsider, not a bug to fix by re-adding the bypass.
     #[test]
     fn vendored_libs_are_written_verbatim_not_reminified() {
-        let dir = std::env::temp_dir().join(format!("tali-bundle-{}", std::process::id()));
+        // pid + a stem, matching `tali-build-{pid}-{name}` / `tali-mirror-{pid}-{name}` in this
+        // file: tests in one binary share a pid and run on threads, so a bare-pid path is safe
+        // only while exactly one test uses it.
+        let dir = std::env::temp_dir().join(format!(
+            "tali-bundle-{}-vendored-verbatim",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("temp dir");
         let bundle = write_asset_bundle(&dir).expect("write bundle");

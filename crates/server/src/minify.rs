@@ -133,28 +133,37 @@ fn is_ident_char(c: char) -> bool {
 /// Decide whether a `/` (not `//` or `/*`) begins a regex literal rather than division.
 /// Conservative but correct for our own JS: a regex starts only when the previous
 /// significant (non-whitespace, non-comment) token cannot end an expression, i.e. it is
-/// start-of-input, a newline boundary, the `return` keyword, an arrow, or one of the
-/// listed punctuators. `out` is the emitted output so far, WITHOUT the `/`.
+/// start-of-input, a newline boundary, the `return` keyword, or one of the listed
+/// punctuators.
+///
+/// `>` is in the set, and covers the arrow: `prev == '>'` means the previous token ENDED
+/// in `>`, which in plain JS narrows to exactly `>`, `>>`, `>>>` and `=>`. All four are
+/// operators (or the arrow) and none can end an expression, so a `/` after any of them is
+/// necessarily a regex — `xs.filter(s => /['"]/.test(s))`, `a >> /re/.exec(b)`. There is
+/// no ambiguity to resolve here: `a > b / c` never reaches this, because at that `/` the
+/// previous significant char is `b`. (`>=`/`>>=` likewise leave `=`, already in the set.)
 ///
 /// `)` and `]` are deliberately absent: after either, division is the correct reading
 /// (`(a + b) / 2`, `xs[i] / 2`). A regex can only follow them as an expression STATEMENT
 /// (`if (x) /re/.test(y)`), whose value is discarded — so treating them as regex context
 /// would misread real division to serve dead code.
-fn regex_context(prev: Option<char>, last_word: &str, newline_boundary: bool, out: &str) -> bool {
+///
+/// Since `${}` interpolation bodies are now scanned as code, this is consulted inside them
+/// too, where it previously could not run at all — so its holes are reachable in more places
+/// than before. The known one: `/` is absent from the set, so `a / /re/` reads the regex as
+/// two more divisions. That is harmless (the chars are copied verbatim) UNLESS the regex body
+/// is stateful — `('x' / /\{/)` bumps `brace_depth` off a `{` that is really regex content,
+/// and the desync cascades. Adding `/` to the set is NOT the fix: `prev == '/'` is also what
+/// a CLOSING regex leaves behind, so it would break `/a/ / 2` (a regex divided by a number),
+/// which is correct today. Both shapes are nonsense JS and neither appears in any bundle we
+/// minify; this split is the better of the two.
+fn regex_context(prev: Option<char>, last_word: &str, newline_boundary: bool) -> bool {
     if prev.is_none() || newline_boundary || last_word == "return" {
-        return true;
-    }
-    // An arrow puts us in expression position: `xs.filter(s => /['"]/.test(s))`. `prev` holds
-    // one char and a bare `>` is ambiguous (`a > b`, `a >= b`, `a >> b`), so ask the emitted
-    // output for the two-char token rather than widening the `prev` set. A `=>` inside a
-    // string/comment can never reach `out`'s tail here: a string's closing quote follows it,
-    // and comment bodies are dropped before they are emitted.
-    if prev == Some('>') && out.trim_end().ends_with("=>") {
         return true;
     }
     matches!(
         prev,
-        Some('(' | ',' | '=' | ':' | '[' | '!' | '&' | '|' | '?' | '{' | '}' | ';')
+        Some('(' | ',' | '=' | ':' | '[' | '!' | '&' | '|' | '?' | '{' | '}' | ';' | '>')
     )
 }
 
@@ -243,12 +252,8 @@ pub fn minify_js(src: &str) -> String {
                     continue;
                 }
                 if c == '/' {
-                    // Ask BEFORE emitting: the check reads `out`'s tail for `=>`, which the
-                    // `/` itself would hide.
-                    let is_regex =
-                        regex_context(prev_significant, &last_word, newline_boundary, &out);
                     out.push(c);
-                    if is_regex {
+                    if regex_context(prev_significant, &last_word, newline_boundary) {
                         state = Js::Regex;
                         regex_class = false;
                     } else {
@@ -861,19 +866,45 @@ mod tests {
     }
 
     #[test]
-    fn js_division_after_a_bare_gt_is_still_division() {
-        // The `=>` fix must key on the two-char arrow, not on a bare `>`: `a > b` and `a >= b`
-        // both leave `>`/`=` as the previous char, and a `/` after them is division. Reading
-        // one as a regex would swallow the rest of the line into a regex literal.
+    fn js_regex_after_every_gt_ending_operator_not_just_the_arrow() {
+        // `prev == '>'` means the previous token ENDED in `>`, which in plain JS is exactly
+        // `>`, `>>`, `>>>` or `=>` — all operators/arrow, none able to end an expression. So a
+        // `/` after ANY of them is a regex, and the arrow is not a special case.
+        //
+        // This test replaced one that could not fail. It asserted that `a > b / c` stays
+        // division, which no implementation could break: at that `/` the previous significant
+        // char is `b`, so the `>` branch is never consulted. It "guarded" a path it never
+        // reached, and the reasoning it encoded ("a bare `>` is ambiguous") was inverted —
+        // the ambiguity is in the TOKEN `>`, never in a `/` that FOLLOWS one.
+        for op in ["=>", ">", ">>", ">>>"] {
+            let src = format!("const q = a {op} /['\"]/.test(b)\nconst tail = 1 // drop me\n");
+            let out = minify_js(&src);
+            assert!(
+                !out.contains("// drop me"),
+                "`{op}` before a regex read as division: the scanner walked into the regex \
+                 body as code, where `'` opened a string that never closes — so quote parity \
+                 flipped and this comment was never stripped: {out:?}"
+            );
+            assert_js_token_identical(&src, "gt-regex");
+        }
+    }
+
+    #[test]
+    fn js_division_is_still_division_where_an_expression_really_ended() {
+        // The mirror: `>` in the set must not make ordinary comparison-then-division misread.
+        // These reach the `/` with `b`/`)`/`]` as prev, not `>`, which is exactly the point.
         for src in [
             "const q = a > b / c\nconst tail = 1\n",
-            "const q = a >= b / c\nconst tail = 1\n",
-            "const q = a >> b / c\nconst tail = 1\n",
+            "const q = (a + b) / 2\nconst tail = 1\n",
+            "const q = xs[i] / 2\nconst tail = 1\n",
         ] {
             let out = minify_js(src);
-            assert!(out.contains("b / c"), "division misread as regex: {out:?}");
+            assert!(
+                out.contains("/ 2") || out.contains("b / c"),
+                "misread: {out:?}"
+            );
             assert!(out.contains("const tail = 1"), "tail swallowed: {out:?}");
-            assert_js_token_identical(src, "gt-division");
+            assert_js_token_identical(src, "real-division");
         }
     }
 
