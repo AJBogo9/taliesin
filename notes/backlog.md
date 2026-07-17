@@ -32,8 +32,11 @@ feared passed untouched. Price a change by making it and reading the failures.
 **Working method:** branch per feature; brainstorm if there's a fork; spec under
 `docs/superpowers/specs/`; implement TDD; verify (cargo + browser via chrome-devtools, or the
 extension harnesses); fast-forward merge locally; delete the item here. Agents commit + ff-merge to
-local `main` on request; push to `origin/main` only when the author asks. **Do-NOT-touch:** the
-exec/kernel zone + the single-editing-surface invariant. Review subagents use read-only git —
+local `main` on request; push to `origin/main` only when the author asks. **Do-NOT-touch (one
+freeze, not two):** the standing freeze is `MAX_WARM_PAGES` + `exec_pool.rs` eviction (M6a,
+sign-off refused 2026-07-17) and the single-editing-surface invariant. The rest of the exec/kernel
+zone is **not** blanket-frozen: its audit finished and the M2-M5 sign-offs were granted + spent
+(CLAUDE.md carries the definition). Review subagents use read-only git —
 **and that instruction is not enough.** On 2026-07-17 a `rust-reviewer` told "read-only, report
 findings, do not modify anything" decided to build a differential harness and ran `cat > Cargo.toml`
 in the **repo root**, destroying the workspace manifest (and `Cargo.lock`, 2711 lines) mid-session.
