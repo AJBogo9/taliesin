@@ -284,11 +284,10 @@ books as versioned spec, integrity debt paid.
   RSS reference in CLAUDE.md's file map (verify against the post-de-specialization
   reality). Foundation for the schema + spec items. *Invariant: docs + a const list; no
   protected machinery.*
-- [ ] **`third-party-truth` (high / small / none).** = backlog #5 deliverable. Rewrite
-  `THIRD_PARTY.md`: it still lists deleted reveal.js + highlight.js and omits the
-  vendored d3 + Observable Plot (ISC) that actually ship; mermaid is the sole CDN dep.
-  Full inventory + `cargo-deny` + a grep test over `assets/js` so it cannot silently
-  rot. A public repo with a wrong `THIRD_PARTY.md` is a real liability. *Invariant: docs
+- [x] **`third-party-truth` (high / small / none). DONE (verified 2026-07-17).** = backlog
+  #5 deliverable. `THIRD_PARTY.md` no longer lists the deleted reveal.js/highlight.js and
+  now covers the vendored d3 7.9.0 + Observable Plot 0.6.16 (ISC); mermaid is the sole CDN
+  dep. Provenance is drift-locked by `crates/core/tests/third_party.rs`. *Invariant: docs
   + CI only.*
 - [x] **`typography-craft-pass` (high / med / none). DONE (2026-06-24, branch
   `feat/typography-craft-pass`).** = backlog #6. Headings had NO explicit sizes (browser
@@ -300,8 +299,9 @@ books as versioned spec, integrity debt paid.
   Measure unchanged. Callout color/spacing was already handled by `callout-kind-contract`,
   so not restyled here. CSS-only, zero web fonts; verified before/after light + dark via
   chrome-devtools. *Invariant held: CSS-only; block model unchanged; deck.css untouched.*
-- [ ] **`version-stamp` (med / small / none).** `Cargo.toml` is `0.0.0`; add `--version`
-  + a build colophon. Gates any launch. *Invariant: trivial; no machinery.*
+- [x] **`version-stamp` (med / small / none). DONE (present in v0.2.0; verified
+  2026-07-17).** `Cargo.toml` is `0.2.0` (no longer `0.0.0`); `taliesin --version`/`-V`
+  prints it (`crates/server/src/main.rs`). *Invariant: trivial; no machinery.*
 - [ ] **`docs-as-spec` (med / large / none).** Lower priority; start after the
   validation epic stabilizes (so the spec describes settled behavior). An RFC-2119
   `.qmd`-dialect reference + a WebSocket protocol reference, promoting the dogfooded
