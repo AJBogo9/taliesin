@@ -267,6 +267,13 @@ unit test while the live server still served the bug.*
    `<a href="#fig-new">Figure</a>`, a same-page link to an anchor not on that page, landing nowhere
    with no warning. **Cheaper than feared where it counted:** a whole-site re-derive measured 27ms
    on the largest real book, so no incremental invalidation was needed at all.
+   **A review then found the reader-visible half STILL didn't land** (fixed, `c3314ba`), and how it
+   survived a live browser check is the durable part: the refresh was gated `!structural`, which also
+   skipped the rebuild — so it worked for an in-place write and failed for delete+recreate
+   (`git checkout`, editors that unlink first). **The reviewer predicted it for save-via-rename and
+   was wrong about that trigger** (Linux `mv` emits `Modify(Name(To))`, not `Create`), **and right
+   about the mechanism.** Take a review's *mechanism* seriously even when its example doesn't
+   reproduce: go find the trigger yourself. One browser measurement is one code path.
 3. **Cross-reference labels are English-only** (re-filed 2026-07-17; **was "`lang: fr` promises
    French, delivers English (`render/page.rs:239`)", and both halves were wrong**). `page.rs:239` is
    *correct code*: `<html lang="{lang}">` fed by `doc.lang`, doing exactly its job. The true site is
@@ -352,16 +359,21 @@ unit test while the live server still served the bug.*
    precondition nobody checks: that the helper is correct.** Grep for the validator, then *test the
    validator*. Root cause was three readers of `date:` each answering "is this a date" at a different
    strictness; `frontmatter::calendar_date` now owns it (the `yaml_bool_word` shape).
-9. **`card.rs` overflow, the fields nobody clamped** (rendered, same audit; the headline ellipsis +
-   the glyph-coverage diagnostic LANDED 2026-07-16, this is the remainder). Eyebrow, wordmark and
-   domain get no wrap/truncate/width check at all (`card.rs:358-361`, `:399-409`, `:411-414`): a long
-   site title overlaps the wordmark into the right-aligned domain ("Learnindgsbogossian.com"), and a
-   long domain drives x negative and clips left. Separately, an over-long single *word* clips
-   mid-glyph past the pad edge (`:134-154`: `wrap`'s `cur.is_empty()` guard accepts any first word,
-   and the shrink only fires above 3 lines, which one long word never reaches) —
-   `NullPointerExceptionHandlerFactory` clips at x=1199 against a 1128 pad edge, and the test
-   `wrap_keeps_an_overlong_word_on_its_own_line` **asserts** this without checking fit. 0/153 live
-   fields today.
+9. ~~**`card.rs` overflow, the fields nobody clamped**~~ **LANDED 2026-07-17** (`935536a`). The
+   entry's pricing ("a mechanical clamp ×3, plus a different fix to the shared `wrap()` shrink
+   trigger") **held exactly** — the first entry all day whose cost was right. Two things worth
+   keeping. (1) **"Clamp ×3" hides a fourth fix**: the wordmark and domain share one footer row, so
+   clamping each to the pad box *independently* still lets a long title slide under the domain — the
+   entry's own "Learnindgsbogossian.com" symptom is a COLLISION, not an overflow, and no per-field
+   clamp fixes it. (2) **The tests are what let all four survive, and one PINNED the bug:**
+   `render_card_survives_empty_and_overlong_text` feeds an 80-word eyebrow and asserts only
+   `png_dims == (1200,630)` (a card whose text runs off the edge is still 1200×630);
+   `wrap_keeps_every_line_within_max_width` checks fit but only for text that *wraps*; and
+   `wrap_keeps_an_overlong_word_...` asserted the overflowing word was PRESENT. Between them sits a
+   hole shaped exactly like the defect. **A green suite is not coverage; read what the assertions
+   actually say.** Tests now decode the PNG and assert no inked pixel escapes `[72, 1128]` — the
+   layout maths was the thing that was wrong, so asserting on the layout maths would have been
+   marking its own homework. All 16 real OG cards byte-identical (the entry's "0/153" held).
 10. **Two minifier latents remain** (proven, same audit; the acorn token-equivalence guard LANDED
    2026-07-16, so they can no longer ship *silently* — but the minifier is still wrong for these
    inputs). A regex literal after `=>`/`)`/`]` is read as division (`minify.rs:102-110`); if its body
