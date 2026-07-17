@@ -114,8 +114,9 @@ fn an_include_false_figure_cell_burns_no_figure_number() {
     // The reader-visible half that needs no cross-reference to bite: the hidden cell
     // used to consume Figure 1, leaving the page's only visible figure as "Figure 2".
     let body = doc(hidden_then_shown_figures()).body_html();
-    assert!(
-        body.contains(r##"<a href="#fig-shown" class="tali-xref">Figure&nbsp;1</a>"##),
+    assert_eq!(
+        xref_link_text(&body, "fig-shown").as_deref(),
+        Some("Figure&nbsp;1"),
         "the first figure that actually renders must be Figure 1, not Figure 2 — a \
          hidden figure must not consume a number; got:\n{body}"
     );
@@ -152,8 +153,9 @@ fn an_include_false_table_cell_registers_no_phantom_anchor() {
 #[test]
 fn an_include_false_table_cell_burns_no_table_number() {
     let body = doc(hidden_then_shown_tables()).body_html();
-    assert!(
-        body.contains(r##"<a href="#tbl-shown" class="tali-xref">Table&nbsp;1</a>"##),
+    assert_eq!(
+        xref_link_text(&body, "tbl-shown").as_deref(),
+        Some("Table&nbsp;1"),
         "the first table that actually renders must be Table 1, not Table 2; got:\n{body}"
     );
 }
@@ -197,8 +199,9 @@ fn an_echo_false_figure_cell_still_registers_its_anchor() {
                #| echo: false\nplot(1)\n```\n\n\
                See @fig-quiet.\n";
     let body = doc(src).body_html();
-    assert!(
-        body.contains(r##"<a href="#fig-quiet" class="tali-xref">Figure&nbsp;1</a>"##),
+    assert_eq!(
+        xref_link_text(&body, "fig-quiet").as_deref(),
+        Some("Figure&nbsp;1"),
         "an `echo: false` figure still materializes and must stay referenceable; got:\n{body}"
     );
     let ws = warnings(src);
@@ -208,10 +211,17 @@ fn an_echo_false_figure_cell_still_registers_its_anchor() {
     );
 }
 
+// Both names in the `matches!(lang, "mermaid" | "js")` exemption need their own pin.
+// With only the mermaid one, deleting `| "js"` passed the ENTIRE core suite (measured),
+// which would hide a real `{js}` figure's anchor and burn its number.
+//
+// NOTE these two pin CURRENT behavior that contradicts the documented contract: `include:
+// false` is specified as "hides source AND output" with no lang carve-out, yet mermaid and
+// `{js}` figures render fully visible under it. This fix does not change that (it is the
+// reason their anchors are real), but if the contract is ever enforced for these langs,
+// these two tests must be DELETED, not repaired — the exemption disappears with the bug.
 #[test]
 fn an_include_false_mermaid_figure_stays_referenceable() {
-    // A mermaid figure is emitted by the RENDER pass, not the executor, so its anchor
-    // exists on the page whatever `include` says. The gate must be lang-aware.
     let src = "---\ntitle: T\n---\n\n\
                ```{mermaid}\n%%| label: fig-graph\n%%| fig-cap: Rendered at render time\n\
                %%| include: false\ngraph TD\n  A --> B\n```\n\n\
@@ -221,9 +231,28 @@ fn an_include_false_mermaid_figure_stays_referenceable() {
         body.contains(r##"id="fig-graph""##),
         "a mermaid figure is emitted at render time; the anchor must exist:\n{body}"
     );
+    assert_eq!(
+        xref_link_text(&body, "fig-graph").as_deref(),
+        Some("Figure&nbsp;1"),
+        "a mermaid figure's anchor is real, so the ref must resolve; got:\n{body}"
+    );
+}
+
+#[test]
+fn an_include_false_js_figure_stays_referenceable() {
+    let src = "---\ntitle: T\n---\n\n\
+               ```{js}\n//| label: fig-plot\n//| fig-cap: Rendered at render time\n\
+               //| include: false\n1 + 1\n```\n\n\
+               See @fig-plot.\n";
+    let body = doc(src).body_html();
     assert!(
-        body.contains(r##"<a href="#fig-graph" class="tali-xref">Figure&nbsp;1</a>"##),
-        "a mermaid figure's anchor is real, so the ref must still resolve; got:\n{body}"
+        body.contains(r##"id="fig-plot""##),
+        "a `{{js}}` figure is emitted at render time; the anchor must exist:\n{body}"
+    );
+    assert_eq!(
+        xref_link_text(&body, "fig-plot").as_deref(),
+        Some("Figure&nbsp;1"),
+        "a `{{js}}` figure's anchor is real, so the ref must resolve; got:\n{body}"
     );
 }
 

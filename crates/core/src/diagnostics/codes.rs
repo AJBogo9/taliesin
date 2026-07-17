@@ -47,6 +47,14 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("unknown input type", "TAL-INPUT-TYPE", WARNING),
     // Cross-references + links + anchors.
     ("broken cross-reference", "TAL-XREF-UNDEF", ERROR),
+    // A DEFINITION no `@ref` can reach: a hidden cell's `label:` (the executor drops the
+    // output that would carry the anchor) or a theorem id with no kind prefix. Distinct
+    // from TAL-XREF-UNDEF, which is the reference site's complaint. Both messages embed
+    // the author's own label and `classify` is first-hit-wins over the whole string, so
+    // this MUST stay above the generic `math`/`bibliography`/`category ` needles below —
+    // otherwise `fig-math-model` classifies as TAL-MATH and `tbl-bibliography-counts` as
+    // TAL-CITE-BIB. Pinned by `an_unreferenceable_label_outranks_a_needle_in_its_own_label`.
+    ("cannot be cross-referenced", "TAL-XREF-UNREF", WARNING),
     ("duplicate heading id", "TAL-DUP-ID", ERROR),
     ("broken in-page link", "TAL-ANCHOR", ERROR),
     ("broken link anchor", "TAL-LINK-ANCHOR", ERROR),
@@ -113,6 +121,58 @@ mod tests {
         assert_eq!(
             classify("local asset not found: `x.png`"),
             ("TAL-ASSET", ERROR)
+        );
+    }
+
+    #[test]
+    fn an_unreferenceable_label_outranks_a_needle_in_its_own_label() {
+        // These two messages embed the author's anchor VERBATIM, and `classify` scans the
+        // whole string first-hit-wins — so a perfectly ordinary label that happens to
+        // contain a later family's needle would hijack the code. Measured before the
+        // needle existed: `fig-math-model` classified as TAL-MATH, and the theorem
+        // warning (which had no family at all) did the same. Hostile labels on purpose.
+        assert_eq!(
+            classify(
+                "figure label \u{201c}fig-math-model\u{201d} cannot be cross-referenced: \
+                 `include: false` drops the cell's output, so nothing carries the anchor \
+                 and `@fig-math-model` won't resolve"
+            ),
+            ("TAL-XREF-UNREF", WARNING)
+        );
+        assert_eq!(
+            classify(
+                "table label \u{201c}tbl-bibliography-counts\u{201d} cannot be cross-referenced: \
+                 `include: false` drops the cell's output, so nothing carries the anchor \
+                 and `@tbl-bibliography-counts` won't resolve"
+            ),
+            ("TAL-XREF-UNREF", WARNING)
+        );
+        // The theorem-prefix warning is the same family and was previously uncatalogued
+        // (GENERIC/ERROR), so it hijacked the same way.
+        assert_eq!(
+            classify(
+                "theorem id \u{201c}math-of-primes\u{201d} cannot be cross-referenced \
+                 (`@math-of-primes` won't resolve); use `thm-math-of-primes`"
+            ),
+            ("TAL-XREF-UNREF", WARNING)
+        );
+    }
+
+    #[test]
+    fn a_broken_reference_and_an_unreachable_definition_are_different_families() {
+        // Two sides of one mistake, and an agent triages them differently: one edits the
+        // `@ref`, the other edits the cell that defines it.
+        assert_eq!(
+            classify("broken cross-reference: @fig-x (no such figure/section/\u{2026})").0,
+            "TAL-XREF-UNDEF"
+        );
+        assert_eq!(
+            classify(
+                "figure label \u{201c}fig-x\u{201d} cannot be cross-referenced: `include: false` \
+                 drops the cell's output, so nothing carries the anchor and `@fig-x` won't resolve"
+            )
+            .0,
+            "TAL-XREF-UNREF"
         );
     }
 

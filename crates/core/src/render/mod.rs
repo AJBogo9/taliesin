@@ -524,14 +524,26 @@ fn render_internal_impl(
             let code = cell.as_ref().map(|c| c.code.clone()).unwrap_or_default();
             match role {
                 CellRole::Figure { anchor, caption } => {
-                    // A python/R figure IS the executor's output block, and `include:
-                    // false` drops that block outright — so no element will ever carry
-                    // the anchor, and a number spent here would silently shift every
-                    // later figure down by one. Register from what will exist, like the
-                    // `Listing` arm below. mermaid/`{js}` figures are emitted *here*, at
-                    // render time, so theirs are real whatever `include` says.
-                    let from_executor = !matches!(lang.as_str(), "mermaid" | "js");
-                    let never_emitted = from_executor && cell.as_ref().is_some_and(|c| !c.include);
+                    // Register from what will EXIST, like the `Listing` arm below — not
+                    // from what the label declares. A python/R figure IS the executor's
+                    // output block, and `include: false` drops that block outright
+                    // (`exec.rs`), so no element will ever carry the anchor, and a number
+                    // spent here would silently shift every later figure down by one.
+                    //
+                    // mermaid/`{js}` figures are emitted right below, at render time, so
+                    // theirs exist whatever `include` says. That is the only reason this
+                    // is keyed on the lang, and it is why the test suite pins BOTH names:
+                    // dropping either from the exemption hides a real figure's anchor.
+                    //
+                    // KNOWN GAP (pre-existing, filed): a lang that is neither emitted here
+                    // nor executed — `{bash}`, `{sql}`, … — has no figure for ANY value of
+                    // `include`, so `label: fig-x` on one still registers a phantom. The
+                    // executable set is `exec::kernel_lang` (python|r) and lives in the
+                    // server crate, which core cannot see; closing it needs that list to
+                    // be shared, not a wider guess here.
+                    let emitted_at_render_time = matches!(lang.as_str(), "mermaid" | "js");
+                    let never_emitted =
+                        !emitted_at_render_time && cell.as_ref().is_some_and(|c| !c.include);
                     if never_emitted {
                         if let Some(a) = anchor {
                             warnings.push(unreferenceable_hidden_label(
