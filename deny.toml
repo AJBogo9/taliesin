@@ -3,6 +3,10 @@
 # mirroring the licenses we actually ship (MIT/Apache/ISC/BSD/…).
 [advisories]
 version = 2
+# Also gate on `unsound` informational advisories for the whole tree (not just
+# workspace crates); each accepted one is pinned by ID in `ignore` below with a
+# rationale. `unmaintained` is already checked by the version-2 default.
+unsound = "all"
 # A few transitive deps are flagged *unmaintained* (not a security vulnerability, and no
 # safe upgrade exists). cargo-audit (the other CI job) already tolerates these as warnings;
 # ignoring them here keeps cargo-deny's stricter gate meaningful, a NEW advisory (or any
@@ -16,6 +20,11 @@ ignore = [
     # via `owned_ttf_parser`; ab_glyph is pure-Rust with no C dep, which is why it was picked
     # over alternatives, so we tolerate this until ab_glyph migrates off it.
     "RUSTSEC-2026-0192", # ttf-parser unmaintained (ab_glyph→owned_ttf_parser); no safe upgrade available
+    # Rides in through `zeromq` (warm Jupyter kernel transport, crates/server/src/kernel.rs).
+    # The double-free is in scc's panicking-comparator path; our map keys are non-panicking
+    # `Vec<u8>` identities and the peers are loopback-only, self-spawned kernels, so that path
+    # is unreachable. No fixed `scc` is published yet; revisit when one is.
+    "RUSTSEC-2026-0205", # scc 3.7.3 double-free (zeromq→scc); panicking-comparator path unreachable
 ]
 
 [licenses]
