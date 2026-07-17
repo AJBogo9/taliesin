@@ -129,8 +129,12 @@ fn text_width(f: &FontRef, text: &str, px: f32, tracking: f32) -> f32 {
         .sum()
 }
 
-/// Greedy word-wrap so each line's width is <= `max_w` (a single over-long word
-/// still occupies its own line rather than being dropped).
+/// Greedy word-wrap so each line's width is <= `max_w`. A single over-long word keeps its
+/// own line rather than being dropped, but is ellipsized to fit: the `cur.is_empty()` guard
+/// below admits ANY first word regardless of width, which used to be the whole story, so
+/// `NullPointerExceptionHandlerFactory` sailed out past the card's pad edge and clipped
+/// mid-glyph. The line-count clamp above this can't catch that — one long word is one line,
+/// and never trips a limit expressed in lines.
 fn wrap(f: &FontRef, text: &str, px: f32, max_w: f32) -> Vec<String> {
     let mut lines = Vec::new();
     let mut cur = String::new();
@@ -150,17 +154,26 @@ fn wrap(f: &FontRef, text: &str, px: f32, max_w: f32) -> Vec<String> {
     if !cur.is_empty() {
         lines.push(cur);
     }
+    // Only a lone over-long word can still overflow (every other line was admitted by the
+    // width test above), and only ever by ellipsizing it — never by dropping the line.
+    for line in &mut lines {
+        if text_width(f, line, px, 0.0) > max_w {
+            *line = truncate_line(f, line, px, max_w, 0.0);
+        }
+    }
     lines
 }
 
 /// Truncate a single line to `max_w` with a trailing ellipsis when it overflows.
-fn truncate_line(f: &FontRef, text: &str, px: f32, max_w: f32) -> String {
-    if text_width(f, text, px, 0.0) <= max_w {
+/// `tracking` must match what the caller will DRAW with, or the fit is measured against a
+/// different string than the one that lands on the canvas (the eyebrow draws at 3.0).
+fn truncate_line(f: &FontRef, text: &str, px: f32, max_w: f32, tracking: f32) -> String {
+    if text_width(f, text, px, tracking) <= max_w {
         return text.to_string();
     }
     let mut s = String::new();
     for ch in text.chars() {
-        if text_width(f, &format!("{s}{ch}\u{2026}"), px, 0.0) > max_w {
+        if text_width(f, &format!("{s}{ch}\u{2026}"), px, tracking) > max_w {
             break;
         }
         s.push(ch);
@@ -177,7 +190,13 @@ fn wrap_clamp(f: &FontRef, text: &str, px: f32, max_w: f32, max_lines: usize) ->
     if lines.len() > max_lines {
         lines.truncate(max_lines);
         let last = lines.pop().unwrap(); // safe: max_lines >= 1, so >=1 line remains
-        lines.push(truncate_line(f, &format!("{last} \u{2026}"), px, max_w));
+        lines.push(truncate_line(
+            f,
+            &format!("{last} \u{2026}"),
+            px,
+            max_w,
+            0.0,
+        ));
     }
     lines
 }
@@ -346,6 +365,38 @@ fn headline_layout(f: &FontRef, headline: &str, max_w: f32) -> (Vec<String>, f32
     (wrap_clamp(f, headline, hsize, max_w, 3), hsize)
 }
 
+/// The card's margin: no ink may fall outside `[PAD, CARD_W - PAD]`.
+const PAD: f32 = 72.0;
+const MARK_W: f32 = 52.0;
+/// Where the footer wordmark starts (after the bell-curve mark).
+const WORD_X: f32 = PAD + MARK_W + 22.0;
+const WORD_SIZE: f32 = 30.0;
+const DOM_SIZE: f32 = 28.0;
+/// The least breathing room allowed between the wordmark and the domain.
+const FOOT_GAP: f32 = 24.0;
+
+/// The footer domain, fitted. Right-aligned as `CARD_W - PAD - width`, so an unbounded
+/// width drives its own x NEGATIVE and clips off the left edge — the cap is what stops
+/// that. It keeps its natural width otherwise: a domain is short by nature, and the cap is
+/// a backstop, not a layout rule.
+fn footer_domain_fitted(f: &FontRef, spec: &CardSpec) -> Option<String> {
+    spec.domain
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .map(|d| truncate_line(f, d, DOM_SIZE, (CARD_W as f32 - PAD * 2.0) * 0.45, 0.0))
+}
+
+/// The footer wordmark, fitted to whatever the (right-aligned) domain leaves of the row.
+/// Clamping each field to the pad box independently is NOT enough here: these two share one
+/// line, so a long site title slid under the domain and rendered "Learnindgsbogossian.com"
+/// while both still sat inside the box. The domain wins the tie — it is the shorter, more
+/// load-bearing identity, and it is what a reader uses to place the card.
+fn footer_wordmark_fitted(f: &FontRef, spec: &CardSpec) -> String {
+    let dom_w = footer_domain_fitted(f, spec).map_or(0.0, |d| text_width(f, &d, DOM_SIZE, 0.0));
+    let avail = (CARD_W as f32 - PAD - dom_w - FOOT_GAP) - WORD_X;
+    truncate_line(f, &spec.footer_wordmark, WORD_SIZE, avail.max(0.0), 0.0)
+}
+
 /// Render `spec` onto a 1200x630 dark card and return the encoded PNG bytes.
 pub fn render_card(spec: &CardSpec) -> Vec<u8> {
     let f = font();
@@ -365,11 +416,14 @@ pub fn render_card(spec: &CardSpec) -> Vec<u8> {
     const EYE_GAP: f32 = 26.0; // eyebrow box -> headline
     const HEAD_GAP: f32 = 30.0; // headline -> lead
 
+    // One line, so it truncates rather than wraps — and at the tracking it is DRAWN with
+    // (3.0), or the fit is measured against a narrower string than the one that lands.
+    // It had no width check at all and simply ran off the right edge.
     let eyebrow = spec
         .eyebrow
         .as_deref()
         .filter(|s| !s.is_empty())
-        .map(|s| s.to_uppercase());
+        .map(|s| truncate_line(&f, &s.to_uppercase(), EYE_SIZE, max_w, 3.0));
 
     // Headline: large fg serif, up to 3 lines, one shrink step if it overflows.
     let (hlines, hsize) = headline_layout(&f, &spec.headline, max_w);
@@ -439,22 +493,23 @@ pub fn render_card(spec: &CardSpec) -> Vec<u8> {
         3.0,
         ACCENT,
     );
-    // Wordmark after the mark.
-    if !spec.footer_wordmark.is_empty() {
-        c.draw_text(
-            &f,
-            &spec.footer_wordmark,
-            mark_x + mark_w + 22.0,
-            foot,
-            30.0,
-            FG,
-            0.0,
-        );
+    // Wordmark after the mark, fitted to what the domain leaves of the row.
+    let wordmark = footer_wordmark_fitted(&f, spec);
+    if !wordmark.is_empty() {
+        c.draw_text(&f, &wordmark, WORD_X, foot, WORD_SIZE, FG, 0.0);
     }
     // Domain, right-aligned.
-    if let Some(dom) = spec.domain.as_deref().filter(|s| !s.is_empty()) {
-        let w = text_width(&f, dom, 28.0, 0.0);
-        c.draw_text(&f, dom, CARD_W as f32 - pad - w, foot, 28.0, MUTED, 0.0);
+    if let Some(dom) = footer_domain_fitted(&f, spec) {
+        let w = text_width(&f, &dom, DOM_SIZE, 0.0);
+        c.draw_text(
+            &f,
+            &dom,
+            CARD_W as f32 - pad - w,
+            foot,
+            DOM_SIZE,
+            MUTED,
+            0.0,
+        );
     }
 
     c.into_png()
@@ -543,8 +598,8 @@ mod tests {
     #[test]
     fn truncate_line_adds_ellipsis_only_when_overflowing() {
         let f = font();
-        assert_eq!(truncate_line(&f, "hi", 40.0, 1000.0), "hi");
-        let t = truncate_line(&f, "a very long line of words here", 40.0, 120.0);
+        assert_eq!(truncate_line(&f, "hi", 40.0, 1000.0, 0.0), "hi");
+        let t = truncate_line(&f, "a very long line of words here", 40.0, 120.0, 0.0);
         assert!(t.ends_with('\u{2026}'), "overflow gets an ellipsis: {t:?}");
         assert!(
             text_width(&f, &t, 40.0, 0.0) <= 120.0,
@@ -572,16 +627,37 @@ mod tests {
         );
     }
 
+    /// An over-long single word keeps its own line and is never dropped — **and it fits**.
+    /// This used to assert only the first half (`contains("supercalifragilistic")` against a
+    /// 50px budget), which does not merely miss the bug, it PINS it: `wrap`'s `cur.is_empty()`
+    /// guard admits any first word at any width, and the clamp above it is expressed in LINES,
+    /// which one long word never trips. So the word ran past the card's pad edge and clipped
+    /// mid-glyph, with a green test asserting the overflowing text was present.
     #[test]
-    fn wrap_keeps_an_overlong_word_on_its_own_line() {
+    fn wrap_keeps_an_overlong_word_on_its_own_line_and_fits_it() {
         let f = font();
-        let lines = wrap(&f, "supercalifragilisticexpialidocious", 40.0, 50.0);
+        let max = 200.0;
+        let lines = wrap(&f, "supercalifragilisticexpialidocious", 40.0, max);
         assert_eq!(
             lines.len(),
             1,
             "an over-long single word is one line, not dropped"
         );
-        assert!(lines[0].contains("supercalifragilistic"));
+        assert!(
+            text_width(&f, &lines[0], 40.0, 0.0) <= max,
+            "and it fits inside max_w: {:?}",
+            lines[0]
+        );
+        assert!(
+            lines[0].starts_with("sup"),
+            "kept from the start: {:?}",
+            lines[0]
+        );
+        assert!(
+            lines[0].ends_with('\u{2026}'),
+            "ellipsized, so the cut is visible rather than a silent clip: {:?}",
+            lines[0]
+        );
     }
 
     #[test]
@@ -725,6 +801,120 @@ mod tests {
         // A headline that FITS must not gain a spurious ellipsis.
         let (short, _) = headline_layout(&f, "A Short Title", max_w);
         assert_eq!(short, vec!["A Short Title".to_string()]);
+    }
+
+    /// Decode a rendered card and return the x of the leftmost and rightmost inked
+    /// (non-background) pixel — "did anything escape the pad box", asked of the actual
+    /// image rather than of the layout maths that is supposed to prevent it.
+    fn ink_x_range(png: &[u8]) -> Option<(u32, u32)> {
+        let dec = png::Decoder::new(png);
+        let mut reader = dec.read_info().expect("decodable png");
+        let mut buf = vec![0; reader.output_buffer_size()];
+        let info = reader.next_frame(&mut buf).expect("frame");
+        let (mut lo, mut hi) = (u32::MAX, 0u32);
+        for y in 0..info.height {
+            for x in 0..info.width {
+                let i = ((y * info.width + x) * 4) as usize;
+                // Tolerate anti-aliasing: only count a pixel that is meaningfully inked.
+                let d = (buf[i] as i32 - BG[0] as i32).abs()
+                    + (buf[i + 1] as i32 - BG[1] as i32).abs()
+                    + (buf[i + 2] as i32 - BG[2] as i32).abs();
+                if d > 24 {
+                    lo = lo.min(x);
+                    hi = hi.max(x);
+                }
+            }
+        }
+        (lo != u32::MAX).then_some((lo, hi))
+    }
+
+    /// Every field must stay inside the 72px pad box. The eyebrow, wordmark and domain got
+    /// no width check at all, so a long site title ran the wordmark under the right-aligned
+    /// domain, and a long domain (right-aligned as `CARD_W - pad - width`) drove x NEGATIVE
+    /// and clipped off the left edge. `render_card_survives_empty_and_overlong_text` covers
+    /// these same fields and passes, because it only asserts the PNG's dimensions — a card
+    /// whose text runs off the edge is still 1200x630.
+    #[test]
+    fn no_field_draws_outside_the_pad_box() {
+        let pad = 72u32;
+        // A sane card is the control: if this fails the assertion itself is wrong.
+        let (lo, hi) = ink_x_range(&render_card(&sample())).expect("sample card has ink");
+        assert!(
+            lo + 2 >= pad && hi <= CARD_W - pad + 2,
+            "the sample card already escapes the pad box: ink x {lo}..{hi}, box {pad}..{}",
+            CARD_W - pad
+        );
+
+        for (what, spec) in [
+            (
+                "eyebrow",
+                CardSpec {
+                    eyebrow: Some("a very long kicker that keeps going and going".repeat(2)),
+                    ..sample()
+                },
+            ),
+            (
+                "wordmark",
+                CardSpec {
+                    footer_wordmark: "Learnings from a Very Long Site Title Indeed".into(),
+                    ..sample()
+                },
+            ),
+            (
+                "domain",
+                CardSpec {
+                    domain: Some(
+                        "an-extremely-long-domain-name-that-cannot-fit.example.com".into(),
+                    ),
+                    ..sample()
+                },
+            ),
+            (
+                "headline single word",
+                CardSpec {
+                    headline: "NullPointerExceptionHandlerFactoryProviderStrategyDelegate".into(),
+                    ..sample()
+                },
+            ),
+        ] {
+            let (lo, hi) = ink_x_range(&render_card(&spec)).expect("card has ink");
+            assert!(
+                lo + 2 >= pad,
+                "{what}: ink starts at x={lo}, left of the {pad}px pad edge"
+            );
+            assert!(
+                hi <= CARD_W - pad + 2,
+                "{what}: ink reaches x={hi}, past the {} pad edge",
+                CARD_W - pad
+            );
+        }
+    }
+
+    /// The wordmark and the domain share the footer row, so clamping each to the pad box
+    /// is not enough: they must not collide with each other either.
+    #[test]
+    fn a_long_wordmark_does_not_run_into_the_domain() {
+        let f = font();
+        // Long enough to genuinely reach the domain: a merely longish wordmark stays inside
+        // the pad box AND clear of the domain, so it proves nothing.
+        let spec = CardSpec {
+            footer_wordmark: "Learnings from a Very Long Site Title That Simply Keeps Going".into(),
+            domain: Some("andreasbogossian.com".into()),
+            ..sample()
+        };
+        // The unfitted string must actually collide, or this test would pass on a bug.
+        let dom = footer_domain_fitted(&f, &spec).unwrap();
+        let dom_x = CARD_W as f32 - PAD - text_width(&f, &dom, DOM_SIZE, 0.0);
+        let raw_end = WORD_X + text_width(&f, &spec.footer_wordmark, WORD_SIZE, 0.0);
+        assert!(
+            raw_end > dom_x,
+            "fixture is too short to collide (raw ends {raw_end}, domain starts {dom_x})"
+        );
+        let word_end = WORD_X + text_width(&f, &footer_wordmark_fitted(&f, &spec), WORD_SIZE, 0.0);
+        assert!(
+            word_end <= dom_x - FOOT_GAP + 1.0,
+            "wordmark ends at {word_end}, domain starts at {dom_x}: they collide"
+        );
     }
 
     #[test]
