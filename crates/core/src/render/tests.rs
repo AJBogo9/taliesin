@@ -2539,6 +2539,28 @@ An inline example `{{< embed inline.tmd >}}` stays literal.\n\
 }
 
 #[test]
+fn a_duplicate_cross_reference_label_warning_is_located() {
+    // A repeated `{#sec-x}`/`{#fig-x}`/`{#tbl-x}` is a duplicate cross-reference label.
+    // The warning must carry the DUPLICATE's source line for click-to-source — like the
+    // "duplicate heading id" warning right beside it already does — not the unlocated
+    // string that half-reproduces the Quarto flaw D53 critiques (§2 #1).
+    let doc = render_document("# First {#sec-dup}\n\n## Second {#sec-dup}\n");
+    let w = doc
+        .warnings
+        .iter()
+        .find(|w| {
+            w.message.contains("duplicate cross-reference label") && w.message.contains("sec-dup")
+        })
+        .expect("a duplicate cross-reference label warning");
+    // The duplicate (second) heading is on line 3.
+    assert_eq!(
+        w.line,
+        Some(3),
+        "located at the duplicate's line, got: {w:?}"
+    );
+}
+
+#[test]
 fn scrolly_arm_emits_stage_steps_and_reactive_input() {
     let doc = render_document(
         "::: {.scrolly name=\"scene\"}\nThe stage paragraph.\n\n::: {.step state=\"a\"}\nStep A.\n:::\n\n::: {.step state=\"b\"}\nStep B.\n:::\n:::\n",

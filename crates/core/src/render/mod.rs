@@ -481,7 +481,14 @@ fn render_internal_impl(
                     sec_count.to_string()
                 }
             };
-            register_xref(&mut xref_registry, &mut warnings, id, number);
+            register_xref(
+                &mut xref_registry,
+                &mut warnings,
+                id,
+                number,
+                source_file.as_deref(),
+                buf_start as u32,
+            );
         }
         let id_attr = match heading_level {
             Some(_) if format == DocFormat::Html => {
@@ -535,7 +542,14 @@ fn render_internal_impl(
             // `#eq-` id so `@eq-x` cross-references resolve to "Equation N".
             eq_count += 1;
             let eq_num = float_number(chapter, eq_count);
-            register_xref(&mut xref_registry, &mut warnings, &anchor, eq_num.clone());
+            register_xref(
+                &mut xref_registry,
+                &mut warnings,
+                &anchor,
+                eq_num.clone(),
+                source_file.as_deref(),
+                buf_start as u32,
+            );
             html.push_str(&emit_equation(&latex, &anchor, &attrs, &eq_num));
         } else if let Some(fig) = is_paragraph.then(|| figure_parts(node)).flatten() {
             // Standalone image -> a numbered `<figure>`; register `#fig-` ids so
@@ -543,7 +557,14 @@ fn render_internal_impl(
             fig_count += 1;
             let fig_num = float_number(chapter, fig_count);
             if let Some(fid) = fig.attrs.id.as_deref().filter(|i| i.starts_with("fig-")) {
-                register_xref(&mut xref_registry, &mut warnings, fid, fig_num.clone());
+                register_xref(
+                    &mut xref_registry,
+                    &mut warnings,
+                    fid,
+                    fig_num.clone(),
+                    source_file.as_deref(),
+                    buf_start as u32,
+                );
             }
             html.push_str(&emit_figure(&fig, &attrs, &fig_num));
         } else if let Some(role) = &cell_role {
@@ -588,7 +609,14 @@ fn render_internal_impl(
                         fig_count += 1;
                         let fig_num = float_number(chapter, fig_count);
                         if let Some(a) = anchor {
-                            register_xref(&mut xref_registry, &mut warnings, a, fig_num.clone());
+                            register_xref(
+                                &mut xref_registry,
+                                &mut warnings,
+                                a,
+                                fig_num.clone(),
+                                source_file.as_deref(),
+                                buf_start as u32,
+                            );
                         }
                         match lang.as_str() {
                             // Client-rendered outputs are known now, so wrap them here.
@@ -644,7 +672,14 @@ fn render_internal_impl(
                         lst_count += 1;
                         let lst_num = float_number(chapter, lst_count);
                         if let Some(a) = anchor {
-                            register_xref(&mut xref_registry, &mut warnings, a, lst_num.clone());
+                            register_xref(
+                                &mut xref_registry,
+                                &mut warnings,
+                                a,
+                                lst_num.clone(),
+                                source_file.as_deref(),
+                                buf_start as u32,
+                            );
                         }
                         html.push_str(&emit_code_listing(
                             &code,
@@ -1650,14 +1685,32 @@ fn register_xref(
     warnings: &mut Vec<Warning>,
     anchor: &str,
     number: String,
+    file: Option<&str>,
+    line: u32,
 ) {
     if reg.contains_key(anchor) {
-        warnings.push(Warning::new(format!(
-            "duplicate cross-reference label \u{201c}{anchor}\u{201d} (using the first definition)"
-        )));
+        // Locate the DUPLICATE (this second definition), like the "duplicate heading id"
+        // warning beside it — an unlocated duplicate-label warning half-reproduces the
+        // Quarto flaw D53 critiques.
+        warnings.push(
+            Warning::new(format!(
+                "duplicate cross-reference label \u{201c}{anchor}\u{201d} (using the first definition)"
+            ))
+            .at(file.map(str::to_string), line),
+        );
     } else {
         reg.insert(anchor.to_string(), number);
     }
+}
+
+/// The 1-based start line of a `L:C-L:C` sourcepos, or 0 when it carries none (a generated
+/// block with an empty sourcepos — not click-to-source anyway, and `locatable()` requires
+/// a `[1-9]` line, so 0 reads as "no location").
+fn sourcepos_start_line(sp: &str) -> u32 {
+    sp.split(':')
+        .next()
+        .and_then(|l| l.parse().ok())
+        .unwrap_or(0)
 }
 
 /// A labelled cell whose output the executor will never emit (`#| include: false`) has
@@ -1784,7 +1837,14 @@ fn number_theorems(
             // suggest the kind's prefix (theorem -> `thm-`, lemma -> `lem-`, …).
             if let Some(id) = id {
                 if crate::cite::is_xref_anchor(&id) {
-                    register_xref(xrefs, warnings, &id, display);
+                    register_xref(
+                        xrefs,
+                        warnings,
+                        &id,
+                        display,
+                        b.source_file.as_deref(),
+                        sourcepos_start_line(&b.sourcepos),
+                    );
                 } else {
                     let hint = crate::cite::xref_prefix_for_label(divs::theorem_meta(&kind).0)
                         .map(|p| format!("; use `{p}-{id}`"))
@@ -1807,6 +1867,10 @@ fn apply_table_captions(
     let mut tbl_count = 0usize;
     let mut i = 0;
     while i < blocks.len() {
+        // The current block's location, captured before any mutable borrow of it, so a
+        // duplicate-label warning can point at it (click-to-source).
+        let bfile = blocks[i].source_file.clone();
+        let bline = sourcepos_start_line(&blocks[i].sourcepos);
         // A code cell whose executed output is a numbered table (`#| label: tbl-x`):
         // assign its number in document order (so it interleaves correctly with
         // Markdown tables) and register the xref. The executor injects the matching
@@ -1816,7 +1880,7 @@ fn apply_table_captions(
             let num = float_number(chapter, tbl_count);
             t.number = num.clone();
             if let Some(a) = &t.anchor {
-                register_xref(xrefs, warnings, a, num);
+                register_xref(xrefs, warnings, a, num, bfile.as_deref(), bline);
             }
             i += 1;
             continue;
@@ -1829,7 +1893,16 @@ fn apply_table_captions(
             tbl_count += 1;
             let tbl_num = float_number(chapter, tbl_count);
             if let Some(id) = &id {
-                register_xref(xrefs, warnings, id, tbl_num.clone());
+                // The `{#tbl-x}` label is authored on the caption paragraph (blocks[i+1]),
+                // so locate the warning there.
+                register_xref(
+                    xrefs,
+                    warnings,
+                    id,
+                    tbl_num.clone(),
+                    blocks[i + 1].source_file.as_deref(),
+                    sourcepos_start_line(&blocks[i + 1].sourcepos),
+                );
             }
             let sep = if caption_html.is_empty() { "" } else { ": " };
             let id_attr = id_attr(id.as_deref());
