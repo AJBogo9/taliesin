@@ -47,6 +47,32 @@ pub(crate) fn ws_origin_ok(headers: &axum::http::HeaderMap, allow_loopback_origi
     origin_allowed(origin, host, allow_loopback_origins)
 }
 
+/// Whether a request's `Host` header names THIS server: the standard DNS-rebinding
+/// defense. The origin check compares `Origin` to `Host`, but under a rebinding attack
+/// (a page at evil.example rebinds its DNS to 127.0.0.1 and reaches the loopback
+/// preview) both headers are the attacker's domain and match, so the origin check alone
+/// cannot see it. Validating `Host` against a fixed allowlist instead of the
+/// (equally-attacker-controlled) `Origin` is what closes it. Loopback names are always
+/// this server; under `--host` the bound LAN IP is too (the phone dials it). A missing
+/// `Host` is allowed: only a browser can mount a rebind and it always sends one.
+pub(crate) fn host_allowed(host: Option<&str>, lan_ip: Option<&str>) -> bool {
+    let Some(host) = host else {
+        return true; // no Host => not a browser => can't be a rebinding attack
+    };
+    let name = host_name(host);
+    matches!(name, "localhost" | "127.0.0.1" | "::1") || lan_ip == Some(name)
+}
+
+/// The host portion of a `Host` header value, dropping an optional `:port` and IPv6
+/// brackets: `localhost:4388` -> `localhost`, `[::1]:4388` -> `::1`, `192.168.1.5:4388`
+/// -> `192.168.1.5`.
+fn host_name(host: &str) -> &str {
+    if let Some(rest) = host.strip_prefix('[') {
+        return rest.split(']').next().unwrap_or(rest); // `[::1]:4388` -> `::1`
+    }
+    host.rsplit_once(':').map_or(host, |(h, _)| h)
+}
+
 // --- LAN access token (`--host` only) -------------------------------------------
 // `--host` binds 0.0.0.0, so anyone on the LAN can reach the preview. A per-session
 // token, carried in the QR / printed LAN URL, gates *non-loopback* access: a snooper
@@ -164,6 +190,46 @@ pub(crate) fn with_lan_guard(router: Router, token: Option<Arc<str>>) -> Router 
             },
         )),
     }
+}
+
+/// Axum middleware enforcing [`host_allowed`], the DNS-rebinding defense. Unlike the LAN
+/// token guard this is installed in BOTH modes: a rebinding read works even against the
+/// default loopback preview (whose HTTP routes are otherwise ungated), so the guard is
+/// unconditional. `lan_ip` is `Some` only under `--host`, adding the bound LAN IP to the
+/// allowlist.
+pub(crate) async fn host_guard(
+    lan_ip: Option<Arc<str>>,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let allowed = {
+        let host = req
+            .headers()
+            .get(axum::http::header::HOST)
+            .and_then(|v| v.to_str().ok());
+        host_allowed(host, lan_ip.as_deref())
+    };
+    if allowed {
+        next.run(req).await
+    } else {
+        (
+            axum::http::StatusCode::FORBIDDEN,
+            "taliesin: refused (the Host header does not name this preview server; this is \
+             the DNS-rebinding guard).",
+        )
+            .into_response()
+    }
+}
+
+/// Wrap a router with the [`host_guard`]. Always installed (loopback previews need it
+/// too), so unlike [`with_lan_guard`] it takes no `Option<Router>` short-circuit.
+pub(crate) fn with_host_guard(router: Router, lan_ip: Option<Arc<str>>) -> Router {
+    router.layer(axum::middleware::from_fn(
+        move |req: axum::extract::Request, next: axum::middleware::Next| {
+            let lan_ip = lan_ip.clone();
+            async move { host_guard(lan_ip, req, next).await }
+        },
+    ))
 }
 
 /// The LAN URL to advertise (QR + console): the base plus the session token in `?t=`
@@ -317,5 +383,34 @@ mod tests {
     #[test]
     fn session_tokens_are_unique() {
         assert_ne!(new_session_token(), new_session_token());
+    }
+
+    #[test]
+    fn host_guard_allows_this_server_and_blocks_dns_rebinding() {
+        // Loopback preview (default): no LAN IP, only loopback names are this server.
+        let no_lan: Option<&str> = None;
+        // The author's own browser.
+        assert!(host_allowed(Some("localhost:4388"), no_lan));
+        assert!(host_allowed(Some("127.0.0.1:4388"), no_lan));
+        assert!(host_allowed(Some("[::1]:4388"), no_lan));
+        assert!(host_allowed(Some("localhost"), no_lan)); // no port
+        // A non-browser client (curl with no -H) sends no Host and can't mount a rebind.
+        assert!(host_allowed(None, no_lan));
+        // The DNS-rebinding attack: a page at evil.example rebinds it to 127.0.0.1 and
+        // reaches the loopback preview with Host = evil.example. origin_allowed passes
+        // (Origin == Host); the Host allowlist is the only thing that stops it. Blocked.
+        assert!(!host_allowed(Some("evil.example:4388"), no_lan));
+        assert!(!host_allowed(Some("evil.example"), no_lan));
+        // A host that merely *contains* a loopback name is not loopback.
+        assert!(!host_allowed(Some("127.0.0.1.evil.example:4388"), no_lan));
+        assert!(!host_allowed(Some("localhost.evil.example"), no_lan));
+
+        // --host: the bound LAN IP is additionally a legitimate Host (the phone dials
+        // it); the attacker domain and other LAN IPs still are not.
+        let lan = Some("192.168.1.5");
+        assert!(host_allowed(Some("192.168.1.5:4388"), lan));
+        assert!(host_allowed(Some("127.0.0.1:4388"), lan)); // author still uses localhost
+        assert!(!host_allowed(Some("evil.example:4388"), lan));
+        assert!(!host_allowed(Some("192.168.1.99:4388"), lan));
     }
 }

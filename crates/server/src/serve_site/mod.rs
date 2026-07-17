@@ -30,7 +30,8 @@ use tokio::sync::{broadcast, mpsc};
 use crate::protocol::{self, Diagnostic};
 use crate::serve::{
     CLIENT_JS, FAVICON, STATUS_CSS, bind_with_fallback, js_str, lan_url, local_ip,
-    new_session_token, open_in_browser, percent_decode, print_qr, with_lan_guard, ws_origin_ok,
+    new_session_token, open_in_browser, percent_decode, print_qr, with_host_guard, with_lan_guard,
+    ws_origin_ok,
 };
 
 mod exec_pool;
@@ -190,6 +191,12 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
     // With --host the whole site is LAN-reachable; gate non-loopback access behind a
     // per-session token threaded into the LAN URL/QR (loopback stays token-free).
     let token: Option<Arc<str>> = expose.then(|| Arc::from(new_session_token()));
+    // Under --host, the bound LAN IP is a legitimate `Host`; in loopback mode only
+    // loopback names are (the DNS-rebinding allowlist).
+    let lan_ip: Option<Arc<str>> = expose
+        .then(local_ip)
+        .flatten()
+        .map(|ip| Arc::from(ip.to_string()));
 
     let router = Router::new()
         .route("/favicon.ico", get(favicon))
@@ -200,6 +207,7 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         .fallback(page_or_asset)
         .with_state(app.clone());
     let router = with_lan_guard(router, token.clone());
+    let router = with_host_guard(router, lan_ip);
 
     let (listener, addr) = bind_with_fallback(port, expose).await?;
     let port = addr.port();

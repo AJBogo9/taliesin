@@ -28,7 +28,9 @@ pub(crate) const FAVICON: &str = include_str!("../../../../web-client/favicon.sv
 
 mod security;
 // Re-exported at `crate::serve::*` because serve_site.rs imports several of these.
-pub(crate) use security::{lan_url, new_session_token, with_lan_guard, ws_origin_ok};
+pub(crate) use security::{
+    lan_url, new_session_token, with_host_guard, with_lan_guard, ws_origin_ok,
+};
 
 struct AppState {
     path: PathBuf,
@@ -198,6 +200,12 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
     // With --host the preview is LAN-reachable; gate non-loopback access behind a
     // per-session token threaded into the LAN URL/QR (loopback stays token-free).
     let token: Option<Arc<str>> = expose.then(|| Arc::from(new_session_token()));
+    // Under --host, the bound LAN IP is a legitimate `Host`; in loopback mode only
+    // loopback names are (the DNS-rebinding allowlist).
+    let lan_ip: Option<Arc<str>> = expose
+        .then(local_ip)
+        .flatten()
+        .map(|ip| Arc::from(ip.to_string()));
 
     let router = Router::new()
         .route("/", get(index))
@@ -208,6 +216,7 @@ async fn serve(path: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         .fallback(static_asset)
         .with_state(app.clone());
     let router = with_lan_guard(router, token.clone());
+    let router = with_host_guard(router, lan_ip);
 
     let (listener, addr) = bind_with_fallback(port, expose).await?;
     let port = addr.port();
