@@ -164,7 +164,7 @@ one line at the existing kernel-start log site in `exec.rs`, guarded by a per-la
 "already logged" flag so it fires once per executor:
 
 ```
-python → /home/bogo/proj/.venv/bin/python  (from .venv)
+python → /home/user/proj/.venv/bin/python  (from .venv)
 r      → /usr/bin/R                          (from TALIESIN_R)
 ```
 

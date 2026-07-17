@@ -697,7 +697,7 @@ In `crates/server/src/serve/mod.rs` `STATUS_CSS`, add a rule (append inside the 
 
 Run: `cd web-client && npx -y -p typescript tsc -p jsconfig.json 2>&1 | tail -15`
 Expected: no new errors (the `window.TALIESIN_DRAFTS` cast keeps it typed).
-Run: `cd /home/bogo/Documents/personal/taliesin && cargo build -p taliesin-server 2>&1 | tail -3` → clean (embeds the new JS/CSS).
+Run (from the repo root): `cargo build -p taliesin-server 2>&1 | tail -3` → clean (embeds the new JS/CSS).
 
 - [ ] **Step 5: Commit.**
 
