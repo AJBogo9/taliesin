@@ -54,6 +54,36 @@ CDN, no preview write-back, no new output format, `--tali-*` tokens only.
 
 ## Next session: start here
 
+**Pick up here (2026-07-18 — reduction + modularity pass landed & pushed to `origin/main`):**
+A staged extension-system exploration ran this session. **Strategic outcome (do not
+re-litigate):** grow the extension system in phases — **(i) internal modularity now, (ii)
+user opt-in slimness when the tool is in daily use, (iii) third-party ecosystem only if
+external users appear.** Present-benefit only: build nothing now that is not earning its keep
+today; the tiered extension *design* is captured but deliberately UNBUILT.
+- Spec: [2026-07-17-reduction-and-modularity-pass-design.md](../docs/superpowers/specs/2026-07-17-reduction-and-modularity-pass-design.md).
+  Verified findings map: [2026-07-17-reduction-audit-map.md](2026-07-17-reduction-audit-map.md).
+- **Headline: the codebase is already lean.** A 5-way audit found almost no dead code (tiny
+  reduction yield) — which is itself the answer, and why the extension system is deferred:
+  nothing in core wants extracting yet.
+- **Landed (Phase 2 + T1), committed + pushed:** removed the `about:` block (superseded by
+  `hero:`; it cascaded into the schema/vocab/AGENTS.md goldens), the orphaned `TAL-MEDIA` audio
+  diagnostic row, and the dead `search_button(full=true)` variant; added `PageParts::defaults()`
+  so a new page field is one edit, not four. Net −127 lines; workspace green, fmt + clippy clean,
+  tech-blog artifact re-verified (hero intact, `tali-about`/`tali-search-full` gone).
+- **R1 was DEFERRED, and that is a finding:** `llms.rs` re-derives text extraction, but it and
+  `render::indexable_text` decode DIFFERENT entity sets (`&#8217;`/`&nbsp;`), so reusing it
+  would leak raw entities into `llms.txt`. Pinned by a passing test
+  (`text_content_decodes_more_entities_than_indexable_text`); aligning them also moves the
+  search index, a separate call.
+- **New open items** (evidence in the map; the scanner one is filed under Tier 2 below): R2/T2
+  unify the three raw-source pre-scans in `site/{xref,book,discovery}.rs`; the 7 corpus-coverage
+  gaps C1–C7 (biggest: `{{< embed >}}` is load-bearing with ZERO corpus + unit tests); and
+  `docs/guide/reference/cli.tmd`'s command table is stale (missing `mcp`/`map`/`vocab`/`read`,
+  and `paper` on the `new` row).
+- **Housekeeping (owner's call):** six stray `.claude/worktrees/agent-*` worktrees at the repo
+  root — debris or live parallel-session worktrees. `git worktree list` before any
+  `git worktree remove`.
+
 **Git.** Do not trust a SHA written here; any commit that records one falsifies it — and on
 2026-07-16 an agent wrote a SHA into this file that **did not exist at all**. **Check, do not
 read:** `git log --oneline origin/main..main` for what is unpushed (the author pushes, not the
@@ -552,6 +582,14 @@ dropping Atom feeds as "a documented non-goal" and Atom shipped anyway, with aut
 
 ## Tier 2 — hardening (P3)
 
+- **Site raw-source scanners are duplicated three ways** (reduction audit, 2026-07-17; R2/T2 in
+  [2026-07-17-reduction-audit-map.md](2026-07-17-reduction-audit-map.md)). `site/xref.rs::scan_page_anchors`,
+  `site/book.rs::chapter_heading`, and `site/discovery.rs` each run their own "skip front matter,
+  toggle fenced code, walk headings" pre-scan over raw `.tmd`, bypassing the render pipeline.
+  `chapter_heading` vs `scan_page_anchors` are near-identical with ONE real divergence: `xref`
+  resolves `{{< include >}}` first, `chapter_heading` does not. Factor the shared skeleton into
+  one helper; decide deliberately whether chapter-title detection should resolve includes. Both
+  are corpus-exercised (nothing ships wrong today), so P3.
 - **Phantom xref anchors — the two triggers §2 #5 left open** (found by the adversarial review of
   the #5 fix, 2026-07-17; both reproduced on the running product, both pre-existing, neither shipping
   in any corpus doc):
