@@ -2394,3 +2394,44 @@ mod jobs_tests {
         );
     }
 }
+
+#[cfg(test)]
+mod asset_bundle_tests {
+    use super::*;
+
+    /// The vendored libs ship already minified, so `write_asset_bundle` hashes and writes them
+    /// as-is rather than re-minifying. That was asserted only by a code comment, which is not
+    /// a thing that fails: this pins the bytes.
+    ///
+    /// Note what this does NOT rest on. `minify_js` is separately proven token-identical on
+    /// both bundles (`minify::tests::js_minify_is_token_identical_on_the_vendored_bundles_too`),
+    /// so the bypass is a build-cost choice — skipping a megabyte of pointless rescanning — and
+    /// not a safety rail. If a future change routes them through the minifier deliberately,
+    /// that is a trade to reconsider, not a bug to fix by re-adding the bypass.
+    #[test]
+    fn vendored_libs_are_written_verbatim_not_reminified() {
+        let dir = std::env::temp_dir().join(format!("tali-bundle-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("temp dir");
+        let bundle = write_asset_bundle(&dir).expect("write bundle");
+
+        let read = |rel: &str| std::fs::read_to_string(dir.join(rel)).expect("read asset");
+        // `assert_eq!` on two megabyte bundles prints BOTH on failure (~3.5MB of minified
+        // vendor code), burying the one line that says what broke. Compare, then report short.
+        assert!(
+            read(&bundle.mermaid_js) == taliesin_core::mermaid_bundle_js(),
+            "mermaid was rewritten on the way to disk"
+        );
+        assert!(
+            read(&bundle.jslibs_js) == taliesin_core::js_cell_libs_js(),
+            "the {{js}}-cell libs were rewritten on the way to disk"
+        );
+        // Control: the hand-written bundle IS minified, or the assertions above would pass
+        // just as well against a `write_asset_bundle` that had stopped minifying entirely.
+        assert!(
+            read(&bundle.app_js) != taliesin_core::core_enhance_js(),
+            "app.js should have been minified"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

@@ -133,9 +133,23 @@ fn is_ident_char(c: char) -> bool {
 /// Decide whether a `/` (not `//` or `/*`) begins a regex literal rather than division.
 /// Conservative but correct for our own JS: a regex starts only when the previous
 /// significant (non-whitespace, non-comment) token cannot end an expression, i.e. it is
-/// start-of-input, a newline boundary, the `return` keyword, or one of the listed punctuators.
-fn regex_context(prev: Option<char>, last_word: &str, newline_boundary: bool) -> bool {
+/// start-of-input, a newline boundary, the `return` keyword, an arrow, or one of the
+/// listed punctuators. `out` is the emitted output so far, WITHOUT the `/`.
+///
+/// `)` and `]` are deliberately absent: after either, division is the correct reading
+/// (`(a + b) / 2`, `xs[i] / 2`). A regex can only follow them as an expression STATEMENT
+/// (`if (x) /re/.test(y)`), whose value is discarded — so treating them as regex context
+/// would misread real division to serve dead code.
+fn regex_context(prev: Option<char>, last_word: &str, newline_boundary: bool, out: &str) -> bool {
     if prev.is_none() || newline_boundary || last_word == "return" {
+        return true;
+    }
+    // An arrow puts us in expression position: `xs.filter(s => /['"]/.test(s))`. `prev` holds
+    // one char and a bare `>` is ambiguous (`a > b`, `a >= b`, `a >> b`), so ask the emitted
+    // output for the two-char token rather than widening the `prev` set. A `=>` inside a
+    // string/comment can never reach `out`'s tail here: a string's closing quote follows it,
+    // and comment bodies are dropped before they are emitted.
+    if prev == Some('>') && out.trim_end().ends_with("=>") {
         return true;
     }
     matches!(
@@ -172,6 +186,13 @@ pub fn minify_js(src: &str) -> String {
     let mut in_word = false; // currently extending `last_word` (reset by any boundary)
     let mut newline_boundary = true; // start-of-input counts as a newline boundary
     let mut regex_class = false; // inside a `[...]` char class of a regex literal
+    // Template interpolation: a `${...}` body is CODE, and may itself contain a template
+    // (`` `${x(`inner`)}` ``), so the two states interleave to any depth and a stack is the
+    // only way to know which `}`/`` ` `` belongs to whom. `brace_depth` counts `{` nesting in
+    // the current code region; `tmpl_stack` holds, per open interpolation, the depth it began
+    // at — so the `}` that closes it is the one that returns to exactly that depth.
+    let mut brace_depth = 0usize;
+    let mut tmpl_stack: Vec<usize> = Vec::new();
 
     while i < n {
         let c = chars[i];
@@ -222,8 +243,12 @@ pub fn minify_js(src: &str) -> String {
                     continue;
                 }
                 if c == '/' {
+                    // Ask BEFORE emitting: the check reads `out`'s tail for `=>`, which the
+                    // `/` itself would hide.
+                    let is_regex =
+                        regex_context(prev_significant, &last_word, newline_boundary, &out);
                     out.push(c);
-                    if regex_context(prev_significant, &last_word, newline_boundary) {
+                    if is_regex {
                         state = Js::Regex;
                         regex_class = false;
                     } else {
@@ -235,6 +260,22 @@ pub fn minify_js(src: &str) -> String {
                     }
                     i += 1;
                     continue;
+                }
+                // A `}` that returns to the depth an interpolation began at closes it: the
+                // chars after it are the enclosing template's string content again, not code.
+                if c == '}' && tmpl_stack.last() == Some(&brace_depth) {
+                    tmpl_stack.pop();
+                    out.push(c);
+                    state = Js::Template;
+                    i += 1;
+                    continue;
+                }
+                match c {
+                    '{' => brace_depth += 1,
+                    // saturating: a stray `}` in malformed input must not wrap to usize::MAX
+                    // and make every later `}` look like an interpolation close.
+                    '}' => brace_depth = brace_depth.saturating_sub(1),
+                    _ => {}
                 }
                 // ordinary significant char
                 out.push(c);
@@ -299,6 +340,23 @@ pub fn minify_js(src: &str) -> String {
                     if e == '\n' {
                         line_start = out.len();
                     }
+                    i += 2;
+                    continue;
+                }
+                // `${` opens an interpolation, whose body is CODE. Scanning it as string
+                // content is what let an inner template's backtick read as THIS template's
+                // close, after which the two swapped roles for the rest of the file.
+                if state == Js::Template && c == '$' && i + 1 < n && chars[i + 1] == '{' {
+                    out.push('$');
+                    out.push('{');
+                    tmpl_stack.push(brace_depth);
+                    state = Js::Normal;
+                    // An interpolation opens in expression position, so `${/re/.test(x)}` is a
+                    // regex; `{` is already in the regex-context set, so say we just saw one.
+                    prev_significant = Some('{');
+                    last_word.clear();
+                    in_word = false;
+                    newline_boundary = false;
                     i += 2;
                     continue;
                 }
@@ -781,6 +839,116 @@ mod tests {
             out.matches(')').count(),
             "parens unbalanced after minify"
         );
+    }
+
+    // --- Regex-vs-division in expression position ---
+
+    #[test]
+    fn js_regex_after_an_arrow_is_a_regex_not_division() {
+        // `s => /['"]/.test(s)` is an ordinary escaping idiom. Read that `/` as division and
+        // the scanner walks into the regex BODY as code, where `'` opens a string literal that
+        // never closes — flipping quote parity for the whole REST of the file, so later code is
+        // scanned as string content (its comments survive; a later apostrophe re-flips it and
+        // starts eating real tokens).
+        let src = "const f = s => /['\"]/.test(s)\nconst tail = \"kept\" // drop me\n";
+        let out = minify_js(src);
+        assert!(
+            !out.contains("// drop me"),
+            "quote parity flipped: everything after the regex is being scanned as a string, \
+             so this comment was never stripped: {out:?}"
+        );
+        assert_js_token_identical(src, "arrow-regex");
+    }
+
+    #[test]
+    fn js_division_after_a_bare_gt_is_still_division() {
+        // The `=>` fix must key on the two-char arrow, not on a bare `>`: `a > b` and `a >= b`
+        // both leave `>`/`=` as the previous char, and a `/` after them is division. Reading
+        // one as a regex would swallow the rest of the line into a regex literal.
+        for src in [
+            "const q = a > b / c\nconst tail = 1\n",
+            "const q = a >= b / c\nconst tail = 1\n",
+            "const q = a >> b / c\nconst tail = 1\n",
+        ] {
+            let out = minify_js(src);
+            assert!(out.contains("b / c"), "division misread as regex: {out:?}");
+            assert!(out.contains("const tail = 1"), "tail swallowed: {out:?}");
+            assert_js_token_identical(src, "gt-division");
+        }
+    }
+
+    // --- Nested template literals ---
+
+    #[test]
+    fn js_nested_template_literal_is_left_intact() {
+        // A template inside a `${...}` interpolation. Without `${}` depth tracking the INNER
+        // backtick reads as the OUTER template's close, after which real string content is
+        // scanned as code: here the `//` of a URL then reads as a line comment and eats the
+        // rest of the line, including both template closers.
+        let src = "const s = `${xs.map(x => `http://${x}`).join(`,`)}`\nconst tail = 1\n";
+        let out = minify_js(src);
+        assert!(
+            out.contains("`http://${x}`"),
+            "nested template mangled: {out:?}"
+        );
+        assert!(out.contains("const tail = 1"), "tail swallowed: {out:?}");
+        assert_js_token_identical(src, "nested-template");
+    }
+
+    #[test]
+    fn js_nested_template_keeps_its_own_indentation() {
+        // The subtler half of the same defect, and the one the token guard exists for: no
+        // comment marker is involved, the token COUNT is unchanged, and only a template's
+        // cooked VALUE changes. Scanned as code, the continuation line's leading indentation
+        // is stripped as if it were dead whitespace — silently rewriting emitted text.
+        let src = "const s = `${x(`a\n    b`)}`\n";
+        let out = minify_js(src);
+        assert!(
+            out.contains("`a\n    b`"),
+            "indentation inside a nested template was stripped: {out:?}"
+        );
+        assert_js_token_identical(src, "nested-template-indent");
+    }
+
+    #[test]
+    fn js_interpolation_body_is_still_scanned_as_code() {
+        // The mirror of the two above: `${...}` holds CODE, so comments in it must still go
+        // and a regex in it is still a regex. A fix that made the whole template opaque would
+        // pass the tests above and silently stop minifying every interpolation.
+        let src = "const s = `a${ /* c */ b }${ /['\"]/.test(y) }`\nconst tail = 1\n";
+        let out = minify_js(src);
+        assert!(
+            !out.contains("/* c */"),
+            "interpolation not minified: {out:?}"
+        );
+        assert!(out.contains("const tail = 1"), "tail swallowed: {out:?}");
+        assert_js_token_identical(src, "interpolation-is-code");
+    }
+
+    #[test]
+    fn js_brace_in_an_interpolation_does_not_end_it_early() {
+        // An object literal (or a block) inside `${...}` means the interpolation cannot be
+        // closed by the first `}`: depth has to be counted, not matched.
+        let src = "const s = `a${ b ? {c: 1}.c : d }e`\nconst tail = 1\n";
+        let out = minify_js(src);
+        assert!(out.contains("}e`"), "interpolation closed early: {out:?}");
+        assert!(out.contains("const tail = 1"), "tail swallowed: {out:?}");
+        assert_js_token_identical(src, "interpolation-braces");
+    }
+
+    #[test]
+    fn js_minify_is_token_identical_on_the_vendored_bundles_too() {
+        // `build.rs` deliberately does NOT route these through `minify_js` (they ship already
+        // minified, so re-minifying is build cost for ~nothing). They are checked here anyway,
+        // because the bypass should stay a size/cost CHOICE and never become the only thing
+        // standing between a scanner bug and a corrupted asset.
+        //
+        // They are also by far the most adversarial JS available: minified vendor code is
+        // half a million tokens of exactly the dense, nested constructs a hand-written scanner
+        // gets wrong. Mermaid earns its keep — before `${}` depth tracking it failed here on
+        // token 476206, with the token COUNT identical, so the output parsed clean.
+        assert_js_token_identical(&taliesin_core::mermaid_bundle_js(), "mermaid");
+        assert_js_token_identical(&taliesin_core::js_cell_libs_js(), "jslibs");
     }
 
     #[test]
