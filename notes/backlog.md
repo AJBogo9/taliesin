@@ -129,10 +129,26 @@ a fix, grep this file for the thing you just built.
    real (a host that can run the binary already has the filesystem). The module + `taliesin help
    mcp` now say plainly: not a sandbox, no containment, and `build` writes HTML and runs cells.
 
+**Pick up here (2026-07-17, latest session — the search-index fix):**
+1. **Start with §2 #6 (title-only edit broadcasts nothing) or #7 (stale `client.js` under a green
+   pill).** Both were re-verified against source on 2026-07-17 and are the only two items on the list
+   that are genuinely **one small change** each; #6 mirrors the existing `deck_meta_changed` shape
+   (un-gate it from `DocFormat::Reveal`), #7 wires the boot-mismatch branch to the `reload()` lever
+   that already has three live senders. #8/#9/#10 are each 2-3 independent fixes — fine to take, but
+   price them first and do not promise them as one.
+2. **§2 is now NINE items, not ten** (#4's entity half landed, `9e52b71`; its cross-page-xref half
+   survives, re-filed with a corrected cause). Do not trust that count either — recount.
+3. **The lesson that keeps paying: read the helper the entry points AWAY from.** #4 named one defect
+   and the function held four; the other three were invisible to the entry because it blamed the
+   symptom's location instead of the code next door that already did the job right. **`grep` for the
+   correct helper before writing one** — it has now existed already in 5 of 5 cases (`search.rs` vs
+   `render/text.rs`, `llms.rs`, `meta.rs`, `minify.rs`'s own JS branch, and `seo.rs` vs `feed.rs`'s
+   `rfc3339`, still uncalled today).
+
 **Pick up here (2026-07-17, after the M-audit was finished):**
 1. **Sections 1 and 4's exec/kernel half are now EMPTY.** M1, M2, M3+M4+M5 and M6b have all landed;
    **M6a (`MAX_WARM_PAGES`) is the only exec/kernel item left and its sign-off was REFUSED**, so it
-   is not available to pick up. D69 landed; D72 is declined. **Section 2 (live defects, 10 items) is
+   is not available to pick up. D69 landed; D72 is declined. **Section 2 (live defects, now 9) is
    what is actually left**, plus D70, which is unruled.
 2. **Blast-radius labels were wrong 4 of 5 times** (D49, D67, M1, M1's other half; only M2-M5 truly
    needed the zone). **The label travels with the SUMMARY, not the code**: M6 was filed as one item
@@ -194,6 +210,15 @@ this section still called it "the cleanest build on the list". Do not re-add it.
 *Re-derived from source 2026-07-17. Line numbers below are corrected; several had drifted, and one
 entry (`lang: fr`) was pointing at correct code.*
 
+*Re-verified against source again 2026-07-17 (later session), items 6-10: **all five are LIVE** and
+their described symptoms hold. But **three of five were mispriced as one change**, so read the
+per-item cost notes before promising anything: **#8 is three independent fixes**, **#9 is two**
+(a mechanical clamp ×3, plus a different fix to the shared `wrap()` shrink trigger), and **#10 is
+three** (only the `=>` case is cheap; `)`/`]` need real context tracking). #6 and #7 are genuinely
+one small change each and are the two cleanest builds on this list. **The recurring finding is not
+drift, it is under-pricing:** an entry's summary counts symptoms, and symptoms do not map 1:1 to
+changes.*
+
 1. **Duplicate-label warnings are unlocated** (`render/mod.rs:1568-1571`, `site/xref.rs:50-56` emit
    no file/line), half-reproducing the exact Quarto flaw D53 critiques. *(The harvest's own duplicate
    warning, added 2026-07-16, is unlocated for the same reason: `site/mod.rs:953`.)* **Price it
@@ -213,14 +238,27 @@ entry (`lang: fr`) was pointing at correct code.*
    `vocab.rs` only ever promise `lang:` sets `<html lang>`, which it does. **So this is an absent
    i18n FEATURE with a scope question, not a small live defect** (no corpus doc demands it). A
    textbook wrong-*layer* pointer: the entry named a real symptom and a file that is not the cause.
-4. **The Cmd-K index stores raw `&nbsp;` entities in its "plain text"** (found 2026-07-16 while
-   fixing the index's chapter scoping; pre-existing and independent of it). The indexed body reads
-   `Theorem &nbsp;2.1` / `Figure&nbsp;2.1`, so a reader typing the number they can SEE ("Theorem
-   2.1") matches nothing — the text extraction never decodes entities. Scoping the index made the
-   numbers agree with the page but cannot make them findable. Same pass: a cross-page `@fig-` inside
-   an indexed snippet renders as a bare "Figure" (search renders a page alone, so the site-level
-   xref rewrite never runs over it), e.g. methods' "refines the chapter overview from Figure into
-   the steps". Both live in `site/search.rs`'s text extraction.
+4. **A cross-page `@fig-`/`@sec-` is indexed WITHOUT its number.** *(This is the remaining half of
+   the old "Cmd-K index stores raw `&nbsp;`" item. The entity half LANDED 2026-07-17, `9e52b71` —
+   and its stated cause, "the text extraction never decodes entities", was wrong: the extraction
+   decoded five entities and simply lacked `&nbsp;`. Reading the helper it pointed away from found
+   **three more** defects in the same function — KaTeX math indexed three times with its raw TeX,
+   a `>` inside a quoted attribute ending the tag early, and `&amp;lt;` double-decoding to `<`.
+   `section_text` now delegates to the shared `render::indexable_text`.)*
+   **Measured on `corpus/demo-book`, so the symptom is real:** the page reads "refines the chapter
+   overview from Figure&nbsp;1.1 into the steps", the index reads "…from Figure into the steps" —
+   the snippet contradicts the page it points at, and the number is unsearchable.
+   **The old entry's cause was wrong and would send you to the wrong file:** this does NOT live in
+   `search.rs`'s text extraction. It is an **ordering** fact — `search::build_sections` runs at
+   `site/mod.rs:368`, but `harvest_xref_numbers()`, the only thing that fills `xref_targets`, runs
+   at `:392`; and `rewrite_cross_refs` has exactly one caller (`:880`, the page-render path). The
+   targets **do not exist yet** when the index is built, so the fix is a reorder or a second pass
+   over the fragments, **not** a call you can drop in. Checked and leave alone: `build_hover_index`
+   (`:395`) already sits on the right side of that line, and its `&nbsp;` are *correct* (it stores
+   HTML for a card, not text to search).
+   *Grep trap that hid this twice: the entry's own quoted example spans a line break in both
+   `methods.tmd:15-16` and the emitted HTML, so a single-line `grep` for the phrase returns
+   nothing and the entry reads like rot. Flatten newlines before believing it.*
 5. **A labelled `include: false` python/R cell registers an anchor that never exists** (found by the
    adversarial review of the cell-label fix, 2026-07-16). `register_xref` runs *before* the lang
    match (`render/mod.rs:~523`), so `#| label: fig-x` + `#| include: false` registers `fig-x` with a
@@ -260,6 +298,14 @@ entry (`lang: fr`) was pointing at correct code.*
    + `Sitemap: ex.com/sitemap.xml`. `check` reports "no problems found", exit 0, in all three cases.
    11/11 lastmods valid today: latent traps, not live breaks. Wants a **diagnostic, not a knob**
    (the `69c228b` value-lint + D37 precedent).
+   **Priced 2026-07-17: this is THREE independent fixes, not one** (different functions, no overlap):
+   the `<lastmod>` normalize, the `<loc>` percent-encode, and the scheme check. **The `<lastmod>` half
+   is nearly free and nobody noticed:** `feed.rs:185-204` already exports `pub(crate) fn rfc3339`,
+   already used by the Atom feed at `:130`/`:158`, and `seo.rs` is a sibling that **can already reach
+   it** (`super::feed::rfc3339`, no visibility change). `seo.rs:24-26` just doesn't call it — `esc` is
+   `escape_attr`, an XML escaper, not a date normalizer. **That is the same "correct helper next door,
+   not called" shape as the search-index fix** (`9e52b71`) and the three the machine-facing audit
+   found: when an entry says output is malformed, grep for the validator before writing one.
 9. **`card.rs` overflow, the fields nobody clamped** (rendered, same audit; the headline ellipsis +
    the glyph-coverage diagnostic LANDED 2026-07-16, this is the remainder). Eyebrow, wordmark and
    domain get no wrap/truncate/width check at all (`card.rs:358-361`, `:399-409`, `:411-414`): a long
@@ -399,6 +445,15 @@ dropping Atom feeds as "a documented non-goal" and Atom shipped anyway, with aut
     `exec::tests::pooled_kernel_serves_cells_without_a_long_warming_state` +
     `kernel::tests::kernel_executes_state_errors_and_interrupts_runaway_cell` fail under CPU load;
     both assert on **timing**. Fix: wait on a **state signal**, not a duration.
+    - **A THIRD one, observed 2026-07-17: `exec::tests::a_successful_probe_pins_the_freeze_key_format`.**
+      Failed once in a full gate-3 run while a Chrome instance + a local HTTP server were loading the
+      machine; **passed in isolation and in a full re-run on a quiet machine** (205 passed, 0 failed).
+      It awaits `probe_interp_id(..., Duration::from_secs(10))` against a stand-in `#!/bin/sh` script,
+      so a load-starved probe tripping its own 10s timeout is the plausible mechanism — **but the panic
+      message was not captured, so this is an OBSERVATION, not a diagnosis. Do not "fix" it from this
+      note; reproduce it under load and read the assertion first.** Filed because the set was believed
+      to be two, and because `cargo test` aborts later binaries at the first failure — this one hid a
+      whole gate's result and looked at first like the search change had broken the exec zone.
   - `build.rs:926` warms the pool before knowing any page needs a kernel, even under
     `TALIESIN_NO_EXEC=1`. Hygiene, not perf (0.25 s vs 0.27 s on a prose-only site).
   - R stream/stderr leaks raw ANSI into HTML (`kernel.rs` `Output::Stream` emits `esc(text)` with no
