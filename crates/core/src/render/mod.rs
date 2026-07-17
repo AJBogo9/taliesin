@@ -524,45 +524,69 @@ fn render_internal_impl(
             let code = cell.as_ref().map(|c| c.code.clone()).unwrap_or_default();
             match role {
                 CellRole::Figure { anchor, caption } => {
-                    fig_count += 1;
-                    let fig_num = float_number(chapter, fig_count);
-                    if let Some(a) = anchor {
-                        register_xref(&mut xref_registry, &mut warnings, a, fig_num.clone());
-                    }
-                    match lang.as_str() {
-                        // Client-rendered outputs are known now, so wrap them here.
-                        "mermaid" => html.push_str(&emit_mermaid_figure(
-                            &code,
-                            anchor.as_deref(),
-                            caption.as_deref(),
-                            &attrs,
-                            &fig_num,
-                        )),
-                        "js" => html.push_str(&emit_js_figure(
-                            &code,
-                            &id,
-                            cell.as_ref().map(|c| &c.js),
-                            anchor.as_deref(),
-                            caption.as_deref(),
-                            &attrs,
-                            &fig_num,
-                        )),
-                        // Python/R: the source renders now; tag the cell so the
-                        // executor wraps the (later) output in the numbered figure.
-                        _ => {
-                            if let Some(c) = cell.as_mut() {
-                                c.figure = Some(CellFigure {
-                                    anchor: anchor.clone(),
-                                    caption: caption.clone(),
-                                    number: fig_num.clone(),
-                                });
-                            }
-                            // `echo: false` hides the code but keeps the figure
-                            // tagging, so the executed output still becomes Figure N.
-                            if cell.as_ref().is_some_and(|c| !c.echo || !c.include) {
-                                html.push_str(&hidden_cell(&attrs));
-                            } else {
-                                emit(node, &attrs, &mut html);
+                    // A python/R figure IS the executor's output block, and `include:
+                    // false` drops that block outright — so no element will ever carry
+                    // the anchor, and a number spent here would silently shift every
+                    // later figure down by one. Register from what will exist, like the
+                    // `Listing` arm below. mermaid/`{js}` figures are emitted *here*, at
+                    // render time, so theirs are real whatever `include` says.
+                    let from_executor = !matches!(lang.as_str(), "mermaid" | "js");
+                    let never_emitted = from_executor && cell.as_ref().is_some_and(|c| !c.include);
+                    if never_emitted {
+                        if let Some(a) = anchor {
+                            warnings.push(unreferenceable_hidden_label(
+                                "figure",
+                                a,
+                                source_file.clone(),
+                                buf_start,
+                            ));
+                        }
+                        // The block itself stays (hidden): `include: false` still RUNS the
+                        // cell, and the executor only sees cells that reach the block list.
+                        html.push_str(&hidden_cell(&attrs));
+                    } else {
+                        fig_count += 1;
+                        let fig_num = float_number(chapter, fig_count);
+                        if let Some(a) = anchor {
+                            register_xref(&mut xref_registry, &mut warnings, a, fig_num.clone());
+                        }
+                        match lang.as_str() {
+                            // Client-rendered outputs are known now, so wrap them here.
+                            "mermaid" => html.push_str(&emit_mermaid_figure(
+                                &code,
+                                anchor.as_deref(),
+                                caption.as_deref(),
+                                &attrs,
+                                &fig_num,
+                            )),
+                            "js" => html.push_str(&emit_js_figure(
+                                &code,
+                                &id,
+                                cell.as_ref().map(|c| &c.js),
+                                anchor.as_deref(),
+                                caption.as_deref(),
+                                &attrs,
+                                &fig_num,
+                            )),
+                            // Python/R: the source renders now; tag the cell so the
+                            // executor wraps the (later) output in the numbered figure.
+                            _ => {
+                                if let Some(c) = cell.as_mut() {
+                                    c.figure = Some(CellFigure {
+                                        anchor: anchor.clone(),
+                                        caption: caption.clone(),
+                                        number: fig_num.clone(),
+                                    });
+                                }
+                                // `echo: false` hides the code but keeps the figure
+                                // tagging, so the executed output still becomes Figure N.
+                                // (`include: false` never reaches here — it is handled
+                                // above, where the figure is known not to materialize.)
+                                if cell.as_ref().is_some_and(|c| !c.echo) {
+                                    html.push_str(&hidden_cell(&attrs));
+                                } else {
+                                    emit(node, &attrs, &mut html);
+                                }
                             }
                         }
                     }
@@ -598,19 +622,36 @@ fn render_internal_impl(
                     // DataFrame), so tag the cell and let the executor inject the
                     // caption/id; the number is assigned in document order by
                     // `apply_table_captions` below. The source renders now (or is
-                    // hidden by `echo:false`/`include:false`), like a figure cell.
-                    if let Some(c) = cell.as_mut() {
-                        c.table = Some(CellTable {
-                            anchor: anchor.clone(),
-                            caption: caption.clone(),
-                            // Filled in document order by `apply_table_captions`.
-                            number: String::new(),
-                        });
-                    }
-                    if cell.as_ref().is_some_and(|c| !c.echo || !c.include) {
+                    // hidden by `echo: false`), like a figure cell.
+                    //
+                    // A table has no render-time emission path at all — unlike a figure,
+                    // which mermaid/`{js}` can produce here — so `include: false` always
+                    // means no `<table>` and no anchor. Leaving `c.table` unset is what
+                    // keeps `apply_table_captions` from numbering and registering it.
+                    if cell.as_ref().is_some_and(|c| !c.include) {
+                        if let Some(a) = anchor {
+                            warnings.push(unreferenceable_hidden_label(
+                                "table",
+                                a,
+                                source_file.clone(),
+                                buf_start,
+                            ));
+                        }
                         html.push_str(&hidden_cell(&attrs));
                     } else {
-                        emit(node, &attrs, &mut html);
+                        if let Some(c) = cell.as_mut() {
+                            c.table = Some(CellTable {
+                                anchor: anchor.clone(),
+                                caption: caption.clone(),
+                                // Filled in document order by `apply_table_captions`.
+                                number: String::new(),
+                            });
+                        }
+                        if cell.as_ref().is_some_and(|c| !c.echo) {
+                            html.push_str(&hidden_cell(&attrs));
+                        } else {
+                            emit(node, &attrs, &mut html);
+                        }
                     }
                 }
             }
@@ -1575,6 +1616,25 @@ fn register_xref(
     } else {
         reg.insert(anchor.to_string(), number);
     }
+}
+
+/// A labelled cell whose output the executor will never emit (`#| include: false`) has
+/// nothing to carry its anchor, so the label is unreachable. Warn at the cell, mirroring
+/// the theorem-prefix warning: the reference site's own "broken cross-reference: @fig-x"
+/// reads as a lie to an author looking straight at the `label: fig-x` they wrote, and an
+/// unreferenced one would otherwise die silently. `kind` names the construct ("figure",
+/// "table") so the message says which label it means.
+fn unreferenceable_hidden_label(
+    kind: &str,
+    anchor: &str,
+    file: Option<String>,
+    line: usize,
+) -> Warning {
+    Warning::new(format!(
+        "{kind} label \u{201c}{anchor}\u{201d} cannot be cross-referenced: `include: false` drops \
+         the cell's output, so nothing carries the anchor and `@{anchor}` won't resolve"
+    ))
+    .at(file, line as u32)
 }
 
 /// Assign continuous, per-kind theorem numbers in document order (Theorem 1, 2, …;
