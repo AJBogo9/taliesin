@@ -130,13 +130,13 @@ a fix, grep this file for the thing you just built.
    mcp` now say plainly: not a sandbox, no containment, and `build` writes HTML and runs cells.
 
 **Pick up here (2026-07-17, latest session — the search-index fix):**
-1. **Start with §2 #7 (stale `client.js` under a green pill)** — now the only item left that is
-   genuinely **one small change**: wire the boot-mismatch branch (`client.js:~950`, which today only
-   re-mounts) to the `reload()` lever that already has three live senders. Purely client-side; no
-   JS test harness exists, so it is browser-verified only. #8/#9/#10 are each 2-3 independent fixes
-   — fine to take, but price them first and do not promise them as one. *(#6 landed, `2bd8385`.)*
-2. **§2 is now EIGHT items** (#4's entity half landed `9e52b71`, #6 landed `2bd8385`). Do not trust
-   that count either — recount.
+1. **Every "one small change" item in §2 is now spent** (#6 `2bd8385`, #7 `ca5c3c2`, #4's entity
+   half `9e52b71`). **What is left is genuinely multi-part, so price before promising**: #8 is three
+   independent fixes (its `<lastmod>` half is nearly free — `feed.rs::rfc3339` already exists and
+   `seo.rs` can already reach it), #9 is two (a mechanical clamp ×3, plus the shared `wrap()` shrink
+   trigger), #10 is three (only the `=>` case is cheap). #1 is two channels, not one. **#8's
+   `<lastmod>` is the best next hour on this list.**
+2. **§2 is now SEVEN items.** Do not trust that count either — recount.
 3. **When an entry says "path X already fixes exactly this", that is evidence, not a template.**
    #6's entry pointed at `deck_meta_changed` and the fix it implied (force a re-mount) was wrong:
    the deck re-mounts because its title slide is *structural*, a reason that does not transfer to an
@@ -295,14 +295,17 @@ changes.*
    what forced it there applies here.** Also fixed a second, pre-existing bug it would have hidden:
    `baseTitle` was captured once at load and restored after every build, so assigning
    `document.title` alone reverts on the next save.
-7. **A restarted server leaves tabs on stale `client.js` under a green "live" pill** (same audit).
-   No protocol version; `boot_id` detects the restart (`client.js:943-955`) and only forces a
-   re-mount; `CLIENT_JS` is `include_str!`-compiled. Same trap CLAUDE.md warns about for assets,
-   except the server *knows* it restarted. **Correction (2026-07-17): this entry said the `reload()`
-   lever "is unused" — false.** It has three live senders (`serve_site/mod.rs:835`, `:1216`,
-   `serve/mod.rs:1086`) plus a protocol test. It is unwired *to the boot-mismatch path* only, so the
-   fix is narrower than the entry implies: wire that one path to the existing lever. Someone
-   trusting "unused" would go hunting a dead function that is not dead.
+7. ~~**A restarted server leaves tabs on stale `client.js` under a green "live" pill**~~ **LANDED
+   2026-07-17** (`ca5c3c2`). The boot-mismatch branch now calls `location.reload()` instead of only
+   re-mounting (a re-mount replaces the body, never the running `<script>`). **Reproduced with a
+   build marker before fixing**: server served v2 while the tab still executed v1 under a pill
+   reading "live". After: server v4, tab reloaded onto v4, page intact. **No server change was
+   needed** — `boot` already rides on every `full_render`, so the client decides alone; the
+   `reload()` *message* stays a server-initiated lever with its own three senders. **Known and
+   deliberate**: the tab must already run a client carrying the check, so the *first* restart after
+   this shipped still lands stale (old code cannot be taught to reload); it self-corrects after.
+   *The check that mattered as much as the fix: a sentinel proving three consecutive edits stay
+   incremental and do NOT reload — the failure mode here was an edit-triggered reload loop.*
 8. **`seo.rs` emits machine-invalid output with no diagnostic** (executed, same audit).
    `<lastmod>` is verbatim (`date: "May 15, 2026"` ships as-is; W3C Datetime needs zero-padded
    `YYYY-MM-DD`, and `feed.rs` *does* enforce RFC-3339); `<loc>` is entity-escaped but never
