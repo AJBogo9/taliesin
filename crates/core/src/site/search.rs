@@ -141,34 +141,14 @@ fn headings_with_pos(html: &str) -> Vec<(u8, String, String, usize, usize)> {
     out
 }
 
-/// Plain text from inner HTML: drop tags, decode the few entities the renderer
-/// emits, collapse whitespace, and cap the length (so one section can't dominate
-/// the index).
+/// Plain text from inner HTML, capped so one section (or a big code listing) can't
+/// dominate the index. The extraction itself is [`render::indexable_text`], the same
+/// pass `taliesin read` and the TOC/slug path use, so a snippet reads exactly like the
+/// page it points at: KaTeX math indexed once (not MathML + raw TeX + glyphs), `&nbsp;`
+/// normalized so a reader can search the "Theorem 2.1" they can see, and entities
+/// decoded once. Do not re-derive it here.
 fn section_text(html: &str) -> String {
-    let mut s = String::with_capacity(html.len());
-    let mut in_tag = false;
-    for c in html.chars() {
-        match c {
-            // A space at every tag so text from adjacent blocks/inlines stays
-            // word-separated (the trailing whitespace-collapse tidies the runs).
-            '<' => {
-                in_tag = true;
-                s.push(' ');
-            }
-            '>' => in_tag = false,
-            _ if !in_tag => s.push(c),
-            _ => {}
-        }
-    }
-    let text = s
-        .replace("&amp;", "&")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&#39;", "'")
-        .replace("&quot;", "\"")
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
+    let text = render::indexable_text(html);
     match text.char_indices().nth(BODY_CAP) {
         Some((i, _)) => text[..i].to_string(),
         None => text,
@@ -233,6 +213,52 @@ mod tests {
         let out = json_str("a\u{2028}b\u{2029}c");
         assert_eq!(out, "a\\u2028b\\u2029c");
         assert!(!out.contains('\u{2028}') && !out.contains('\u{2029}'));
+    }
+
+    #[test]
+    fn section_text_decodes_nbsp_so_the_visible_number_is_searchable() {
+        // A numbered label renders "Theorem&nbsp;2.1" (figure.rs, cell_numbered.rs,
+        // cite/render.rs and render/mod.rs all emit the non-breaking space). Indexing the
+        // raw entity means a reader typing the number they can SEE matches nothing.
+        assert_eq!(
+            section_text("<p>Theorem&nbsp;2.1 holds.</p>"),
+            "Theorem 2.1 holds."
+        );
+    }
+
+    #[test]
+    fn section_text_indexes_math_once_and_never_leaks_latex() {
+        // KaTeX emits every formula three times: the MathML semantic text, a raw-TeX
+        // `<annotation>`, then the visible glyphs. Indexing all three triples the math and
+        // puts LaTeX source in the index — the exact leak `strip_tags` was made to prevent.
+        let html = "<p>Euler: <span class=\"katex\"><span class=\"katex-mathml\"><math>\
+                    <semantics><mrow><mi>e</mi></mrow>\
+                    <annotation encoding=\"application/x-tex\">e^{i\\pi}</annotation>\
+                    </semantics></math></span>\
+                    <span class=\"katex-html\" aria-hidden=\"true\">eiπ</span></span>.</p>";
+        let text = section_text(html);
+        assert!(
+            !text.contains("\\pi"),
+            "raw LaTeX leaked into the index: {text}"
+        );
+        assert_eq!(text, "Euler: eiπ .");
+    }
+
+    #[test]
+    fn section_text_is_quote_aware_about_a_gt_inside_an_attribute() {
+        // KaTeX ships `title` attributes containing `>`; a naive `<`/`>` toggle ends the
+        // tag early and spills attribute source into the indexed prose.
+        assert_eq!(section_text("<p><span title=\"a>b\">x</span></p>"), "x");
+    }
+
+    #[test]
+    fn section_text_decodes_entities_exactly_once() {
+        // Chained `.replace` decodes `&amp;lt;` twice (`&lt;` then `<`). Prose about markup
+        // must survive as the text the page shows.
+        assert_eq!(
+            section_text("<p>&amp;lt; is an entity</p>"),
+            "&lt; is an entity"
+        );
     }
 
     #[test]

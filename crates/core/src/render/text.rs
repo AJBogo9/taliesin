@@ -94,13 +94,35 @@ fn fenced_code(lang: &str, code: &str) -> String {
     format!("```{lang}\n{}\n```", code.trim_end_matches('\n'))
 }
 
+/// Decode already-stripped text: `&nbsp;` normalized to a space, then the entities the
+/// renderer emits decoded exactly once. The single home for this recipe — [`visible`]
+/// and [`indexable_text`] differ only in how they strip and trim, never in how they
+/// decode, and a caller that rewrites it by hand gets `&amp;lt;` wrong (a chained
+/// `.replace` decodes it twice, to `<`).
+fn decode(stripped: &str) -> String {
+    unescape_html(&stripped.replace("&nbsp;", " "))
+}
+
 /// Visible text of a block's HTML: tags stripped (KaTeX `<math>` MathML dropped),
 /// `&nbsp;` normalized to a space, entities decoded. Identical extraction to the
 /// TOC/slug path, so what `read` shows matches what a heading's slug/label sees.
 fn visible(html: &str) -> String {
-    unescape_html(&strip_tags(html).replace("&nbsp;", " "))
-        .trim()
-        .to_string()
+    decode(&strip_tags(html)).trim().to_string()
+}
+
+/// Visible text of a *run* of block HTML, for the cross-page search index: the same
+/// extraction as [`visible`] — so an indexed snippet reads exactly like the page it
+/// points at — plus a space at every tag boundary and collapsed whitespace, since the
+/// index reads many blocks as one string.
+///
+/// Sharing [`strip_tags_inner`] is what keeps the index honest: a hand-rolled `<`/`>`
+/// scan indexes KaTeX's MathML *and* its raw-TeX `<annotation>` alongside the visible
+/// glyphs, so every formula lands three times and leaks LaTeX into the index.
+pub(crate) fn indexable_text(html: &str) -> String {
+    decode(&strip_tags_separated(html))
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Decode a `<pre><code>` block's text: strip the highlight spans, decode entities. Keeps

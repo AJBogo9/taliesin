@@ -84,6 +84,9 @@ use figure::{emit_figure, emit_mermaid_figure, figure_parts};
 // Text projection (`taliesin read`): a plain-text VIEW of the block model, not an output
 // format. Crate-internal; reached via `RenderedDoc::body_text()`.
 mod text;
+// The search index's text extraction, shared with the `read`/TOC/slug path above rather
+// than re-derived in `site/` (where a weaker copy silently indexed KaTeX three times).
+pub(crate) use text::indexable_text;
 mod theme;
 // Used only by the page builders; kept crate-internal, not part of the public API.
 pub(crate) use theme::theme_head;
@@ -1956,11 +1959,27 @@ pub(crate) fn tag_end(html: &str) -> Option<usize> {
 /// leaks LaTeX (`$H_0$` → `H0H_0H0`). So the whole `<math>…</math>` subtree is dropped,
 /// leaving only the visible `katex-html` glyphs (`H0`).
 fn strip_tags(html: &str) -> String {
+    strip_tags_inner(html, false)
+}
+
+/// [`strip_tags`], but with a space at every tag boundary, so text from *adjacent
+/// blocks* stays word-separated when a run of block HTML is read as one string (the
+/// search index's case: `<p>First.</p><p>Second.</p>` must not fuse into
+/// "First.Second."). The TOC/slug path must NOT do this — a space there would split
+/// `<em>Fig</em>ure` into two words and change every slug.
+fn strip_tags_separated(html: &str) -> String {
+    strip_tags_inner(html, true)
+}
+
+fn strip_tags_inner(html: &str, separate: bool) -> String {
     let mut out = String::new();
     let mut skip_math = 0usize; // depth of `<math>` subtrees whose text is dropped
     let mut chars = html.chars();
     while let Some(ch) = chars.next() {
         if ch == '<' {
+            if separate {
+                out.push(' ');
+            }
             // Consume the tag body up to the closing `>` (quote-aware: a `>` inside a
             // quoted attribute value does not end the tag).
             let mut tag = String::new();
