@@ -28,7 +28,6 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("unknown front-matter key", "TAL-FM-KEY", WARNING),
     ("unknown execute key", "TAL-FM-KEY", WARNING),
     ("unknown listing key", "TAL-FM-KEY", WARNING),
-    ("unknown about key", "TAL-FM-KEY", WARNING),
     ("unknown hero key", "TAL-FM-KEY", WARNING),
     ("unknown theorems key", "TAL-FM-KEY", WARNING),
     ("unknown prose-lint key", "TAL-FM-KEY", WARNING),

@@ -422,11 +422,11 @@ fn home_page_renders_marginalia_hero() {
         !home.contains("<img class=\"hero-media\""),
         "homepage: hero should be photoless"
     );
-    // The hero replaces the default title block, and no Quarto about: markup remains.
-    // Markup-specific: the `.tali-about*` class names also live in the inlined site.css.
+    // The `about:` block was removed from the framework (superseded by `hero:`), so its
+    // `.tali-about*` markup must never appear.
     assert!(
         !home.contains("class=\"tali-about"),
-        "homepage: about: header markup should be gone"
+        "about: header markup should be gone (the feature was removed)"
     );
     assert!(
         !home.contains("class=\"tali-title-block\""),

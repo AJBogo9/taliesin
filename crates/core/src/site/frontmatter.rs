@@ -16,7 +16,6 @@ pub(crate) struct FrontInfo {
     pub(crate) image_alt: Option<String>,
     pub(crate) categories: Vec<String>,
     pub(crate) listings: Vec<ListingSpec>,
-    pub(crate) about: Option<AboutSpec>,
     pub(crate) hero: Option<HeroSpec>,
     pub(crate) page_layout: Option<String>,
     /// `draft: true`: held out of the published view (`DraftMode::Exclude` — build,
@@ -57,7 +56,6 @@ pub(crate) fn parse_front_matter(
         image_alt: scalar(val.get("image-alt")),
         categories: string_list(val.get("categories")),
         listings: parse_listings(val.get("listing"), label, warnings),
-        about: parse_about(val.get("about")),
         hero: parse_hero(val.get("hero")),
         page_layout: scalar(val.get("page-layout")),
         draft: bool_field(&val, "draft", false, label, warnings),
@@ -91,32 +89,6 @@ fn bool_field(
         return b;
     }
     default
-}
-
-/// Parse an `about:` mapping into a profile spec (template + image + links).
-pub(crate) fn parse_about(v: Option<&serde_yaml::Value>) -> Option<AboutSpec> {
-    let map = match v? {
-        serde_yaml::Value::Mapping(_) => v?,
-        _ => return None,
-    };
-    let links = match map.get("links") {
-        Some(serde_yaml::Value::Sequence(seq)) => seq
-            .iter()
-            .map(|it| NavItem {
-                text: scalar(it.get("text")),
-                href: scalar(it.get("href")),
-                icon: scalar(it.get("icon")),
-            })
-            .filter(|n| n.href.is_some())
-            .collect(),
-        _ => Vec::new(),
-    };
-    Some(AboutSpec {
-        template: scalar(map.get("template")).unwrap_or_else(|| "jolla".to_string()),
-        image: scalar(map.get("image")),
-        image_alt: scalar(map.get("image-alt")),
-        links,
-    })
 }
 
 pub(crate) fn parse_hero(v: Option<&serde_yaml::Value>) -> Option<HeroSpec> {

@@ -208,10 +208,6 @@
         "name": "listing"
       },
       {
-        "description": "About-page block configuration.",
-        "name": "about"
-      },
-      {
         "description": "Landing-page hero block configuration.",
         "name": "hero"
       },
@@ -225,24 +221,6 @@
       }
     ],
     "nested": {
-      "about": [
-        {
-          "description": "About-page template.",
-          "name": "template"
-        },
-        {
-          "description": "Image path (about or hero).",
-          "name": "image"
-        },
-        {
-          "description": "Alt text for the image.",
-          "name": "image-alt"
-        },
-        {
-          "description": "Social and contact links.",
-          "name": "links"
-        }
-      ],
       "execute": [
         {
           "description": "Show the cell's source code.",
@@ -275,7 +253,7 @@
           "name": "actions"
         },
         {
-          "description": "Image path (about or hero).",
+          "description": "Hero portrait image path.",
           "name": "image"
         },
         {

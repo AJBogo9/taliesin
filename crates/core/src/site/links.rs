@@ -423,7 +423,6 @@ mod tests {
                 card_image_alt: None,
                 categories: Vec::new(),
                 listings: Vec::new(),
-                about: None,
                 hero: None,
                 page_layout: None,
                 has_bibliography: false,

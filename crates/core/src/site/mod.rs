@@ -65,10 +65,8 @@ pub struct Page {
     pub categories: Vec<String>,
     /// `listing:` blocks declared on this page (the blog index, projects, etc.).
     pub listings: Vec<ListingSpec>,
-    /// `about:` profile block, if this page declares one (the homepage).
-    pub about: Option<AboutSpec>,
-    /// `hero:` landing block (headline + lead + CTAs), if declared. Mutually
-    /// exclusive with `about:` (both replace the title block).
+    /// `hero:` landing block (headline + lead + CTAs), if declared. Replaces the
+    /// title block.
     pub hero: Option<HeroSpec>,
     /// `page-layout:` (`full` widens the content column; default reading width).
     pub page_layout: Option<String>,
@@ -79,17 +77,6 @@ pub struct Page {
     /// draft surfaced in `DraftMode::Include` (preview). Drives the DRAFT badge/banner; a
     /// built page is always `false`, so those affordances are inert in a build.
     pub draft: bool,
-}
-
-/// An `about:` front-matter block: a profile header (image + name + links). The
-/// `template` (e.g. jolla) is kept as a class for styling; the layout is the
-/// centered jolla style the corpus uses.
-#[derive(Debug, Clone)]
-pub struct AboutSpec {
-    pub template: String,
-    pub image: Option<String>,
-    pub image_alt: Option<String>,
-    pub links: Vec<NavItem>,
 }
 
 /// A `hero:` front-matter block: the headline + lead + call-to-action band at the
@@ -630,7 +617,7 @@ impl Site {
 
     /// Finish a page whose `doc.blocks` are already produced — and possibly
     /// code-executed (the static build runs cells, then calls this): apply the
-    /// site front-matter expansion (`about:`/`listing:`), wrap in chrome, and
+    /// site front-matter expansion (`listing:`), wrap in chrome, and
     /// rewrite intra-site `.tmd` links. Shared by `render_page` (no execution) and
     /// the executing `build` path so both emit identical chrome + links.
     pub fn render_page_doc(&self, page: &Page, doc: render::RenderedDoc) -> String {
@@ -808,7 +795,7 @@ impl Site {
 
     /// Finish a page's blocks in place: chapter numbering, site-wide cross-ref
     /// resolution (+ broken-ref warnings), and site front-matter expansion
-    /// (`about:`/`listing:`). The single block-finishing step shared by the static
+    /// (`listing:`). The single block-finishing step shared by the static
     /// build, `render_page_doc`, and the live preview, so all three produce identical
     /// blocks (the preview used to skip `validate_xrefs`). `page_toc` is computed by
     /// the caller (it reads blocks but doesn't mutate them).
@@ -882,13 +869,12 @@ impl Site {
     /// explicit `toc: true` forces it on regardless of length); otherwise the site-wide
     /// `toc:` applies, but only to article pages with enough headings to warrant it — the
     /// page's rendered `blocks` are counted by `render::toc_entry_count`, and a page below
-    /// [`MIN_TOC_HEADINGS`] (or a listing / about / hero page) reads as a single column
+    /// [`MIN_TOC_HEADINGS`] (or a listing / hero page) reads as a single column
     /// instead of getting a near-empty TOC. Used by both the static build and live preview.
     pub fn page_toc(&self, page: &Page, doc_toc: Option<bool>, blocks: &[Block]) -> bool {
         doc_toc.unwrap_or_else(|| {
             self.config.toc.unwrap_or(false)
                 && page.listings.is_empty()
-                && page.about.is_none()
                 && page.hero.is_none()
                 // Auto-gate (NN/g: show a TOC only on long, chunkable pages): a site-wide
                 // `toc: true` lands the sidebar TOC only when the page has enough sections.
@@ -1150,17 +1136,14 @@ impl Site {
     // --- listings ---------------------------------------------------------
 
     /// Apply this page's site-level front-matter blocks to its rendered `blocks`,
-    /// mutating in place: an `about:` profile replaces the title block, and each
+    /// mutating in place: a `hero:` block replaces the title block, and each
     /// `listing:` expands into post cards. Both the static build and the live
     /// preview call this, so the results stay in the block model (mounted + diffed
     /// like any other block).
     pub fn expand_page(&self, page: &Page, blocks: &mut Vec<Block>, warnings: &mut Vec<Warning>) {
-        // A `hero:` or `about:` block replaces the title block (they're alternative
-        // page-header treatments; hero wins if a page somehow declares both).
+        // A `hero:` block replaces the title block (a landing-page header treatment).
         if let Some(hero) = &page.hero {
             set_title_block(blocks, self.hero_html(page, hero));
-        } else if let Some(about) = &page.about {
-            set_title_block(blocks, self.about_html(page, about));
         }
         for (li, spec) in page.listings.iter().enumerate() {
             let cards = self.listing_html(page, spec, warnings);
@@ -1442,52 +1425,6 @@ impl Site {
         }
     }
 
-    // --- about ------------------------------------------------------------
-
-    /// Render an `about:` profile header (replaces the title block on a page that
-    /// declares one). Centered jolla-style: round image, name, optional links. The
-    /// `image` is relative to the page itself, so it's emitted as-is.
-    fn about_html(&self, page: &Page, about: &AboutSpec) -> String {
-        let name = page.title.clone().unwrap_or_default();
-        let img = about
-            .image
-            .as_deref()
-            .map(|src| {
-                let alt = about.image_alt.as_deref().unwrap_or("");
-                format!(
-                    "<img class=\"tali-about-img\" src=\"{}\" alt=\"{}\">",
-                    esc(src),
-                    esc(alt)
-                )
-            })
-            .unwrap_or_default();
-        let links = if about.links.is_empty() {
-            String::new()
-        } else {
-            let items: String = about
-                .links
-                .iter()
-                .filter_map(|l| {
-                    let href = l.href.as_deref()?;
-                    let label = l.text.as_deref().or(l.icon.as_deref()).unwrap_or(href);
-                    Some(format!(
-                        "<a class=\"tali-about-link\" href=\"{}\">{}</a>",
-                        esc(href),
-                        esc(label)
-                    ))
-                })
-                .collect();
-            format!("<div class=\"tali-about-links\">{items}</div>")
-        };
-        format!(
-            "<header class=\"tali-about tali-about-{tpl}\" data-block-id=\"qmd-title-block\" data-qmd-src=\"{src}\">\
-             {img}<h1 class=\"tali-about-name\">{name}</h1>{links}</header>",
-            tpl = esc(&about.template),
-            name = esc(&name),
-            src = esc(&page.rel),
-        )
-    }
-
     // --- chrome -----------------------------------------------------------
 }
 
@@ -1504,7 +1441,7 @@ fn listing_block(index: usize, contents: &str, cards_html: &str) -> Block {
     }
 }
 
-/// Set the page's title-block content to `html` (a `hero:`/`about:` header): reuse
+/// Set the page's title-block content to `html` (a `hero:` header): reuse
 /// the existing `qmd-title-block` so source-mapping + diffing are preserved, or
 /// insert it at the top if the page has no title block.
 fn set_title_block(blocks: &mut Vec<Block>, html: String) {

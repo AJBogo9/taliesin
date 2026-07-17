@@ -100,11 +100,8 @@ fn nested_key_descriptions() -> &'static [(&'static str, &'static str)] {
         ),
         ("max-items", "Maximum entries shown."),
         ("categories", "Show a category filter."),
-        // about:
-        ("template", "About-page template."),
-        ("image", "Image path (about or hero)."),
-        ("links", "Social and contact links."),
         // hero:
+        ("image", "Hero portrait image path."),
         ("eyebrow", "Small label above the headline."),
         ("headline", "Hero headline."),
         ("lead", "Hero lead paragraph."),
@@ -117,7 +114,7 @@ fn nested_key_descriptions() -> &'static [(&'static str, &'static str)] {
             "numbered",
             "Whether or when to number (`true`, `false`, `unless-unique`).",
         ),
-        // shared across blocks (about/listing reuse these):
+        // shared across blocks (hero/listing reuse these):
         ("image-alt", "Alt text for the image."),
     ]
 }
@@ -216,8 +213,8 @@ fn xref_prefixes() -> Value {
 /// Build the vocabulary JSON from the validator's consts.
 pub fn vocab() -> Value {
     use crate::frontmatter::{
-        ABOUT_KEYS, EXECUTE_KEYS, HERO_KEYS, KNOWN_KEYS, LISTING_KEYS, PROSE_LINT_KEYS,
-        THEOREM_KEYS, UNSUPPORTED_KEYS,
+        EXECUTE_KEYS, HERO_KEYS, KNOWN_KEYS, LISTING_KEYS, PROSE_LINT_KEYS, THEOREM_KEYS,
+        UNSUPPORTED_KEYS,
     };
     use crate::render::{CALLOUT_KINDS, CELL_OPTION_KEYS, INPUT_TYPES, THEOREM_KINDS};
 
@@ -238,7 +235,6 @@ pub fn vocab() -> Value {
             "nested": {
                 "execute": named(EXECUTE_KEYS, nested_desc),
                 "listing": named(LISTING_KEYS, nested_desc),
-                "about": named(ABOUT_KEYS, nested_desc),
                 "hero": named(HERO_KEYS, nested_desc),
                 "prose-lint": named(PROSE_LINT_KEYS, nested_desc),
                 "theorems": named(THEOREM_KEYS, nested_desc),
@@ -301,14 +297,7 @@ mod tests {
         }
         let v = vocab();
         check_named(&v["frontmatter"]["keys"], "frontmatter.keys");
-        for parent in [
-            "execute",
-            "listing",
-            "about",
-            "hero",
-            "prose-lint",
-            "theorems",
-        ] {
+        for parent in ["execute", "listing", "hero", "prose-lint", "theorems"] {
             check_named(&v["frontmatter"]["nested"][parent], parent);
         }
         check_named(&v["cellOptions"], "cellOptions");

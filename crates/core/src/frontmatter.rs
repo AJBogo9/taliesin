@@ -4,8 +4,8 @@
 //! recognized key set. A key taliesin does not
 //! implement, whether a typo like `treme:` or a legacy term it does not honor, is
 //! flagged by [`validate_front_matter`]: every unknown top-level key, plus every
-//! unknown immediate child of the nested `execute:` / `listing:` / `about:` /
-//! `hero:` blocks, each suggesting the closest known key. It only warns (located
+//! unknown immediate child of the nested `execute:` / `listing:` / `hero:`
+//! blocks, each suggesting the closest known key. It only warns (located
 //! for click-to-source); rendering is unaffected, an unknown key still renders.
 
 use crate::render::Warning;
@@ -14,7 +14,7 @@ use crate::render::Warning;
 /// actually implements, plus every key the corpus/docs use. Intentionally tight
 /// (the native flip), so a key taliesin doesn't implement, or a typo,
 /// now warns instead of being silently ignored. Top-level keys plus the immediate
-/// children of `execute:` / `listing:` / `about:` / `hero:` are linted; `format:`
+/// children of `execute:` / `listing:` / `hero:` are linted; `format:`
 /// sub-keys are not (an extension owns them).
 pub(crate) const KNOWN_KEYS: &[&str] = &[
     // Identity / metadata
@@ -52,7 +52,6 @@ pub(crate) const KNOWN_KEYS: &[&str] = &[
     "execute",
     // Listings / project pages
     "listing",
-    "about",
     "hero",
     // Prose lint (opt-in): `prose-lint: true | { banned: [...] }`; see `crate::prose`.
     "prose-lint",
@@ -82,9 +81,6 @@ pub(crate) const EXECUTE_KEYS: &[&str] = &["echo", "include", "cache"];
 pub(crate) const LISTING_KEYS: &[&str] =
     &["contents", "id", "sort", "type", "max-items", "categories"];
 
-/// `about:` sub-keys taliesin honors (see `site::frontmatter::parse_about`).
-pub(crate) const ABOUT_KEYS: &[&str] = &["template", "image", "image-alt", "links"];
-
 /// `hero:` sub-keys taliesin honors (see `site::frontmatter::parse_hero`).
 pub(crate) const HERO_KEYS: &[&str] = &[
     "eyebrow",
@@ -111,7 +107,7 @@ const THEOREM_NUMBERED: &[&str] = &["false", "unless-unique"];
 
 /// Validate a document's front matter against taliesin's vocabulary: every unknown
 /// top-level key, plus every unknown immediate child of the nested `execute:`,
-/// `listing:`, `about:`, and `hero:` blocks. Membership is decided by a real YAML
+/// `listing:`, and `hero:` blocks. Membership is decided by a real YAML
 /// parse (so structure, lists, nested maps, never causes a false positive); each
 /// warning is best-effort located (click-to-source) at the offending key's source
 /// line. Empty when there is no front matter, it is not a mapping, or it fails to
@@ -145,7 +141,6 @@ pub fn validate_front_matter(src: &str) -> Vec<Warning> {
     validate_page_layout_value(map, block, &mut out);
     validate_date_value(map, block, &mut out);
     validate_nested(map, "execute", "execute key", EXECUTE_KEYS, block, &mut out);
-    validate_nested(map, "about", "about key", ABOUT_KEYS, block, &mut out);
     validate_nested(map, "hero", "hero key", HERO_KEYS, block, &mut out);
     validate_nested(
         map,
@@ -726,12 +721,7 @@ mod tests {
     }
 
     #[test]
-    fn flags_unknown_about_and_hero_children() {
-        let a = msgs("---\ntitle: X\nabout:\n  template: jolla\n  imagee: me.png\n---\n");
-        assert_eq!(
-            a,
-            vec!["unknown about key `imagee` (did you mean `image`?)"]
-        );
+    fn flags_unknown_hero_children() {
         let h = msgs("---\ntitle: X\nhero:\n  headlin: Hi\n---\n");
         assert_eq!(
             h,
@@ -740,9 +730,21 @@ mod tests {
     }
 
     #[test]
+    fn retired_about_key_warns_as_unknown() {
+        // `about:` was removed (superseded by `hero:`); a stale author config should now
+        // warn that the key is unknown, not be silently accepted.
+        let a = msgs("---\ntitle: X\nabout:\n  template: jolla\n---\n");
+        assert!(
+            a.iter()
+                .any(|m| m.contains("unknown front-matter key") && m.contains("about")),
+            "a stale `about:` should warn now that the feature is gone, got {a:?}"
+        );
+    }
+
+    #[test]
     fn clean_doc_with_nested_blocks_has_no_warnings() {
         let w = validate_front_matter(
-            "---\ntitle: X\ntoc: true\nexecute:\n  echo: false\n  cache: true\nlisting:\n  contents: posts\n  type: grid\nabout:\n  template: jolla\n  links:\n    - text: GH\n      href: https://x\n---\n\nx\n",
+            "---\ntitle: X\ntoc: true\nexecute:\n  echo: false\n  cache: true\nlisting:\n  contents: posts\n  type: grid\n---\n\nx\n",
         );
         assert!(w.is_empty(), "got: {w:?}");
     }

@@ -165,19 +165,6 @@
      label by size; the muted token carries it at full strength (5.38-7.46:1). */
   .tali-cat-count { font-size: .82em; font-variant-numeric: tabular-nums; }
 
-  /* about: a centered profile header (jolla), replacing the title block */
-  .tali-about { display: flex; flex-direction: column; align-items: center; text-align: center;
-    gap: .85rem; margin: 1rem 0 2.5rem; padding-bottom: 1.5rem;
-    border-bottom: 1px solid var(--tali-border); }
-  .tali-about-img { width: 9rem; height: 9rem; border-radius: 50%; object-fit: cover;
-    border: 1px solid var(--tali-border); }
-  .tali-about-name { margin: 0; font-size: 2rem; line-height: 1.15; }
-  .tali-about-links { display: flex; flex-wrap: wrap; gap: .6rem; justify-content: center; }
-  .tali-about-link { font: 500 .9rem var(--tali-font-head); text-decoration: none;
-    color: var(--tali-fg); border: 1px solid var(--tali-border); border-radius: 999px;
-    padding: .3rem .9rem; transition: border-color .12s ease, color .12s ease; }
-  .tali-about-link:hover { border-color: var(--tali-accent); color: var(--tali-link); }
-
   @media (max-width: 640px) {
     .tali-listing-default .tali-card { flex-direction: column; }
     .tali-listing-default .tali-card-img { width: 100%; aspect-ratio: 16 / 9; }

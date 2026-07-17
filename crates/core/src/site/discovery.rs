@@ -58,7 +58,6 @@ pub(super) fn website_pages(
                 card_image_alt: fm.image_alt,
                 categories: fm.categories,
                 listings: fm.listings,
-                about: fm.about,
                 hero: fm.hero,
                 page_layout: fm.page_layout,
                 has_bibliography: fm.has_bibliography,

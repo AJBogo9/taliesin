@@ -18,8 +18,7 @@ pub const SITE_SCHEMA: &str = include_str!("../assets/schema/tali-site.schema.js
 #[cfg(test)]
 mod generate {
     use crate::frontmatter::{
-        ABOUT_KEYS, EXECUTE_KEYS, HERO_KEYS, KNOWN_KEYS, LISTING_KEYS, PROSE_LINT_KEYS,
-        THEOREM_KEYS,
+        EXECUTE_KEYS, HERO_KEYS, KNOWN_KEYS, LISTING_KEYS, PROSE_LINT_KEYS, THEOREM_KEYS,
     };
     use crate::site::{NATIVE_KEYS, PUBLISH_KEYS};
     use serde_json::{Map, Value, json};
@@ -67,7 +66,6 @@ mod generate {
         let listing = json!({
             "oneOf": [listing_item.clone(), { "type": "array", "items": listing_item }]
         });
-        let about = closed_object(ABOUT_KEYS, &[]);
         let hero = closed_object(HERO_KEYS, &[]);
         // prose-lint: `true` (built-in rules) or `{ banned: [strings] }`.
         let prose_lint = json!({
@@ -97,7 +95,6 @@ mod generate {
             ("toc", boolean()),
             ("execute", execute),
             ("listing", listing),
-            ("about", about),
             ("hero", hero),
             ("prose-lint", prose_lint),
             ("theorems", theorems),

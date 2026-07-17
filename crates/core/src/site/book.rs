@@ -231,7 +231,6 @@ pub(super) fn book_pages(root: &Path, book: &Book, warnings: &mut Vec<String>) -
                 card_image_alt: None,
                 categories: fm.categories,
                 listings: fm.listings,
-                about: fm.about,
                 hero: fm.hero,
                 page_layout: fm.page_layout,
                 has_bibliography: fm.has_bibliography,
