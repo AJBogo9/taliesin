@@ -961,6 +961,20 @@
         // either side for back-compat) is eligible to skip.
         const genKnown = msg.gen != null;
         const bootOk = msg.boot == null || mountedBoot == null || msg.boot === mountedBoot;
+        // A different boot id means a NEW server process — and this client is
+        // `include_str!`-compiled into the binary, so a restart that carried a rebuild
+        // leaves this tab executing the PREVIOUS build's client against the new server's
+        // messages, under a green "live" pill. A re-mount cannot fix that: it replaces the
+        // body, not the `<script>` that is running. Reload instead, so the tab picks up the
+        // new client and every other bundled asset.
+        //
+        // Bootstrapping caveat: the tab must already be running a client that has this
+        // check, so the first restart after shipping it still lands stale. That is inherent
+        // — old code cannot be taught to reload — and self-corrects from then on.
+        if (!bootOk) {
+          location.reload();
+          return;
+        }
         const skipMount =
           bootOk &&
           ((ssrPending && (!genKnown || ssrGen == null || msg.gen === ssrGen)) ||
