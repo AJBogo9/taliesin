@@ -62,7 +62,6 @@ const TABLE: &[(&str, &str, &str)] = &[
     // Assets + media.
     ("local asset not found", "TAL-ASSET", ERROR),
     ("local video not found", "TAL-MEDIA", ERROR),
-    ("local audio not found", "TAL-MEDIA", ERROR),
     // Reactive `{js}` graph.
     ("unknown reactive input", "TAL-REACTIVE", ERROR),
     ("reactive dependency cycle", "TAL-REACTIVE", ERROR),
