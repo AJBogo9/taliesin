@@ -201,8 +201,27 @@ pub fn is_malformed_config_warning(warning: &str) -> bool {
     warning.starts_with(MALFORMED_CONFIG_PREFIX)
 }
 
+/// `url:`, when set, must be an absolute origin with a scheme: it seeds every machine-read
+/// absolute URL (sitemap `<loc>`, `robots.txt`/feed `Sitemap:`, `og:url`, llms.txt links).
+/// A scheme-less `url: ex.com` builds clean and emits `<loc>ex.com/</loc>` +
+/// `Sitemap: ex.com/sitemap.xml` — machine-invalid, under a green `check`. Warn (a
+/// diagnostic, not a knob — the `page-layout` / site-`image:` precedent). A blank `url:` is
+/// treated as unset by [`Site::canonical_base`], so it is left alone.
+fn validate_url(value: &serde_yaml::Value, warnings: &mut Vec<String>) {
+    let Some(url) = value.get("url").and_then(|v| v.as_str()).map(str::trim) else {
+        return;
+    };
+    if !url.is_empty() && !(url.starts_with("http://") || url.starts_with("https://")) {
+        warnings.push(format!(
+            "url: `{url}` has no scheme — sitemap, robots.txt, feed and og:url need an \
+             absolute URL (write `https://{url}`)"
+        ));
+    }
+}
+
 fn parse_native(value: &serde_yaml::Value, warnings: &mut Vec<String>) -> SiteConfig {
     validate_keys(value, warnings);
+    validate_url(value, warnings);
     let str_of = |k: &str| value.get(k).and_then(|v| v.as_str()).map(str::to_string);
     let chapters = value
         .get("chapters")
@@ -491,6 +510,37 @@ mod config_tests {
             w.iter().any(|m| m.contains("image")),
             "a site-level `image:` must be diagnosed, not silently ignored: {w:?}"
         );
+    }
+
+    #[test]
+    fn a_scheme_less_url_is_diagnosed_not_silently_shipped() {
+        // `url: ex.com` (no scheme) builds clean and emits `<loc>ex.com/</loc>` +
+        // `Sitemap: ex.com/sitemap.xml` + `og:url` — machine-invalid absolute URLs, under a
+        // green `check`. A scheme is required; warn (a diagnostic, not a knob — the
+        // `page-layout`/site-`image:` precedent).
+        let mut w = Vec::new();
+        let v: serde_yaml::Value = serde_yaml::from_str("title: X\nurl: ex.com\n").unwrap();
+        let _ = parse_native(&v, &mut w);
+        assert!(
+            w.iter().any(|m| m.contains("url") && m.contains("scheme")),
+            "a scheme-less url: must be diagnosed: {w:?}"
+        );
+    }
+
+    #[test]
+    fn a_url_with_a_scheme_or_blank_does_not_warn() {
+        // http/https are accepted silently; a blank url: is treated as unset (canonical_base
+        // filters it), so it must not warn either.
+        for url in ["https://ex.com", "http://localhost:8080", ""] {
+            let mut w = Vec::new();
+            let v: serde_yaml::Value =
+                serde_yaml::from_str(&format!("title: X\nurl: \"{url}\"\n")).unwrap();
+            let _ = parse_native(&v, &mut w);
+            assert!(
+                !w.iter().any(|m| m.contains("scheme")),
+                "a scheme'd or blank url must not warn ({url:?}): {w:?}"
+            );
+        }
     }
 
     #[test]
