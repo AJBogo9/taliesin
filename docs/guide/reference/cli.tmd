@@ -13,13 +13,17 @@ title: "CLI reference"
 | `build <file.tmd> --bare` | Write a **bare** page: zero `<script>`, zero CDN, CSS-only theme (drafts / archives / print input) |
 | `build <dir> [--out <dir>]` | Build a **multi-page site/book** to `_site/` / `_book/` |
 | `publish <dir> [--project-name <name>] [--public] [--no-strict] [--dry-run]` | Build a site/book + deploy it to Cloudflare Pages behind a shared passcode by default (`--public` opts out); strict by default (`--no-strict` opts out); Wrangler direct upload |
-| `render <file.tmd>` | Render a one-shot full HTML page to stdout |
+| `render <file.tmd>` | Render a one-shot full HTML page to stdout (static; does **not** execute code cells) |
+| `read <file.tmd>` | Project the document to plain text (agent-readable; static, does **not** execute code cells) |
 | `blocks <file.tmd>` | List block ids and sourcepos (for debugging) |
 | `schema [--out <dir>]` | Emit the bundled JSON Schemas for `_site.yml` + front matter (editor autocomplete) |
+| `vocab` | Emit the editor autocomplete vocabulary as JSON (the companion consumes it) |
 | `check <file.tmd\|dir> [--format human\|json]` | List every located diagnostic and exit non-zero if any (a CI / pre-publish gate) |
 | `init [dir]` | Scaffold a minimal previewable site (`_site.yml` + `index.tmd`) in `dir` (default `.`); refuses to overwrite |
-| `new <post\|page\|deck> <slug>` | Scaffold one document, correct on its first save; refuses to overwrite |
+| `new <post\|page\|deck\|paper> <slug>` | Scaffold one document, correct on its first save; refuses to overwrite (`paper` is citation-wired: `bibliography:` + a `[@key]` + a shipped `references.bib`) |
 | `symbols <file.tmd> [--format human\|json]` | List the document's cross-reference targets (what you can write after `@`) |
+| `map <dir> [--format human\|json]` | Whole-project outline: pages, nav, drafts, xref graph, mounts (agent planning) |
+| `mcp` | Run a stdio **MCP server** exposing check/read/symbols/map/vocab/build tools |
 | `completions <bash\|zsh\|fish>` | Print a shell completion script to stdout (command names + file arguments) |
 
 `check` renders the document or site in memory and reports everything that flows
