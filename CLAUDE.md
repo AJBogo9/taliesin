@@ -18,6 +18,14 @@ Do-NOT-touch discipline.** The active roadmap is `notes/ROADMAP.md` (successor t
 completed `notes/native-rewrite.md`); the prior "the corpus is the spec / not a general
 document compiler" framing is superseded by it.
 
+**"Do-NOT-touch" is one freeze, not two.** The only *standing* freeze is warm-page
+eviction: `MAX_WARM_PAGES` plus the deterministic LRU order in
+`serve_site/exec_pool.rs`, which the build relies on (an accidental reorder is not
+test-guarded, so it breaks silently). The 7-item "Do NOT touch" list in
+`notes/native-rewrite.md` is a *completed rewrite-scoping* decision (don't rewrite
+those subsystems for parity, since a rewrite comes out identical-or-worse), **not** a
+standing freeze; their behavior may still change when a change makes the tool better.
+
 **The `.tmd` file is the single editing surface; the browser is a read-only view.**
 Edits flow one way: you change the source in your editor, the preview re-renders.
 Click-to-source is the only bridge back, and it *navigates* (preview → editor
