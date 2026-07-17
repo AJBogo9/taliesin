@@ -58,7 +58,10 @@ checks too, do not assume: `cargo test -p taliesin-core` + `-p taliesin-server`,
 pushed `2368e4a` mid-session while an agent was mid-task. The count was checked, not reported.)*
 *(A **seventh** time on 2026-07-17: the author pushed `50e0e71` mid-session while an agent was
 mid-task, so three of that session's own commits were already on `origin/main` before it finished.
-Checked, not assumed — which is the only reason the handoff below is right.)*
+Checked, not assumed — which is the only reason the handoff below is right.)* *(An **eighth** time,
+same day: `origin/main` reached `044bdc7` overnight, so the ten commits the previous handoff called
+"unpushed" were **all** already pushed before anyone read it. That handoff was written accurately
+and was stale within hours. **This is now the single most reliable way this file lies to you.**)*
 
 **THREE gates now, or the suite quietly under-tests itself:** `TALIESIN_REQUIRE_NODE=1 cargo test
 --workspace` (the JS-equivalence guard skips without Node), `TALIESIN_R=R TALIESIN_REQUIRE_R=1
@@ -71,8 +74,10 @@ fire when something else is using the CPU) hides every later binary's result: re
 a total.
 
 **What is left is a flat list; none of it is a grind chunk.** All **three owner rulings are
-CLOSED** (2026-07-17, below); the rest is small defects, two sign-off-gated citation items, and one
-deliberate deferral. Everything else is Tier 2/3 (demand-driven).
+CLOSED**, both **ruling rounds are spent**, and the **whole M2-M6 exec/kernel audit is finished
+except M6a, whose sign-off was refused** (2026-07-17). What remains is §2's ten small live defects,
+D70 (unruled), D72 (declined), and one deliberate deferral. Everything else is Tier 2/3
+(demand-driven). **There is no gated work waiting on the owner: the next session can just build.**
 
 **This file was measured against source on 2026-07-17 and was wrong in six places.** A sweep
 re-derived every open item from today's code. **The rot was not the author pushing mid-session:
@@ -83,6 +88,13 @@ scoped prune leaves the unscoped half looking freshly reviewed.** When you prune
 whole list or say which slice you pruned. Corrections applied below; the sweep's verdicts are in
 [2026-07-17-backlog-truth-sweep.md](2026-07-17-backlog-truth-sweep.md).
 
+**It then happened a seventh time, to the session that wrote the paragraph above.** The theorem-docs
+item sat in §2 for hours *after that same session built the page it asked for*, and was caught only
+because a later pass checked the file existed instead of reading the entry. So the lesson is not
+"other people's entries rot": **you will land something and leave its entry standing on the same
+day you write a warning about exactly that.** The habit that catches it is cheap: before you commit
+a fix, grep this file for the thing you just built.
+
 **Second ruling round, 2026-07-17 (do not re-litigate):**
 - **Exec/kernel sign-off GRANTED for M2 and the M3+M4+M5 bundle.** **M6a (`MAX_WARM_PAGES`) was
   NOT granted: the zone stays frozen there.** Do not tune that constant or touch `exec_pool.rs`
@@ -90,12 +102,16 @@ whole list or say which slice you pruned. Corrections applied below; the sweep's
 - **Citation sign-off GRANTED for D69 only** (the appendix-after-`# References` orphan). **D72
   (bare `@key`) DECLINED for now**: the diagnostic already ships, so nothing renders wrong silently,
   which makes it a feature question, not a defect.
-- **A reference's click-to-source lands NOWHERE** (live defect #1). `locatable()` must require a
-  *usable* sourcepos, so the References section is simply not click-to-source instead of silently
-  landing every click on line 1. A CSL entry's real position is in the `.bib`, not the `.tmd`, so
-  there is nothing truthful to point at, and pointing at the `[@key]` site would dress a guess up as
-  navigation. The same one change also closes the footnote-chrome bug (clicking the `<hr>`/padding
-  resolved to line 1). **This adds no new bridge back to source** (single-editing-surface).
+- **A reference's click-to-source lands NOWHERE.** ~~Live defect #1~~ **LANDED 2026-07-17**
+  (`5bfd703`): `locatable()` now requires a *usable* sourcepos (`^[1-9]\d*:\d+`), so the References
+  section is simply not click-to-source instead of silently landing every click on line 1. A CSL
+  entry's real position is in the `.bib`, not the `.tmd`, so there is nothing truthful to point at,
+  and pointing at the `[@key]` site would dress a guess up as navigation. As predicted, the one
+  change also closed the footnote-chrome bug, **verified in a real browser**: the section and its
+  `<hr>` resolve to NOWHERE while a footnote `<li>` still resolves to `fn-aside@29:1-29:89`, because
+  the walk continues *past* an unusable block to a usable ancestor. It added no new bridge back to
+  source; it removed two false ones. **Consequence the owner should know:** the generated title
+  block lost its Alt-click too, where line 1 was accidentally truthful (front matter starts there).
 - **D34: SUBTRACT.** Delete the dead `SiteConfig.card_image` (zero readers; its own doc comment
   concedes it); **defer** the `bibliography`/`csl`/`execute`/`theme` project defaults until a corpus
   doc actually hurts. "Perfect the default before adding a knob."
@@ -113,22 +129,26 @@ whole list or say which slice you pruned. Corrections applied below; the sweep's
    real (a host that can run the binary already has the filesystem). The module + `taliesin help
    mcp` now say plainly: not a sandbox, no containment, and `build` writes HTML and runs cells.
 
-**Pick up here:**
-1. **Section 1 is EMPTY. D37 already landed** (`515fbd7`, `frontmatter.rs:286-308`
-   `validate_format_subkeys`, which even emits `located(...)`). It was this file's headline
-   "cleanest build on the list" for ~90 minutes after it was already built.
-2. **Blast-radius labels are wrong more often than right: 3.5 of 4 so far** (D49, D67, M1, and M1's
-   other half all named the zone and none needed it — `f141cac` touched no `warm_pool.rs`/`kernel.rs`/
-   `exec.rs`/`freeze.rs`). **But M6 is not one item, and the label travels with the SUMMARY, not the
-   code**: its `/proc`-probe half is free-standing (no sign-off), while `MAX_WARM_PAGES` is
-   eviction — `exec_pool.rs:87` drops the executor, *killing its kernel children* and destroying that
-   page's variable state, and `exec_pool.rs:3` says the eviction order must stay deterministic
-   because the build relies on it. **That half needs sign-off.** The one-line summary ("a constant and
-   a `/proc` probe") bundled a probe with a kernel-lifecycle policy. M2 + M3-M5 genuinely need it.
-3. **M3+M4+M5 are ONE change, not three.** They share one trigger (a failed fork) and the natural
-   fix to M3 arms M4, which today cannot fire only because M3 kills the task that would trigger it.
-4. **Do not re-verify M4/M5/M6 from the note alone** — unlike M1/M2/M3 they were confirmed by source
-   reading only, never executed.
+**Pick up here (2026-07-17, after the M-audit was finished):**
+1. **Sections 1 and 4's exec/kernel half are now EMPTY.** M1, M2, M3+M4+M5 and M6b have all landed;
+   **M6a (`MAX_WARM_PAGES`) is the only exec/kernel item left and its sign-off was REFUSED**, so it
+   is not available to pick up. D69 landed; D72 is declined. **Section 2 (live defects, 10 items) is
+   what is actually left**, plus D70, which is unruled.
+2. **Blast-radius labels were wrong 4 of 5 times** (D49, D67, M1, M1's other half; only M2-M5 truly
+   needed the zone). **The label travels with the SUMMARY, not the code**: M6 was filed as one item
+   ("a constant and a `/proc` probe") and split into a free-standing file read and a
+   kernel-lifecycle policy sitting on opposite sides of the line.
+3. **The exec/kernel zone is now well-tested, which changes the cost of future work here.** A
+   stand-in daemon that speaks the fork protocol makes the ERROR and outran-the-deadline paths
+   reachable without waiting on rare load, and `TALIESIN_REQUIRE_KERNEL=1` hard-fails instead of
+   skipping. Reuse that pattern rather than inventing another.
+4. **Verify by mutation, not by green.** Every fix this session was confirmed by *restoring its bug*
+   and watching the new test fail (5 for 5). This caught nothing wrong, which is the point: it is
+   what makes "the tests pass" mean something. Two of those tests would otherwise have been
+   plausible and vacuous.
+5. **One open question, filed in §4:** the M4 test's `sleep 300` stand-in survives ~2 of 8
+   full-suite runs and only when the build is cold. Measured, unexplained, argued test-only. Do not
+   re-run the ruled-out checks listed there.
 
 **Method note that paid off three times on 2026-07-16, use it:** when an entry names a file:line,
 open the *running product* before the file. §D's layout targets were labelled "re-verified against
@@ -174,16 +194,7 @@ this section still called it "the cleanest build on the list". Do not re-add it.
 *Re-derived from source 2026-07-17. Line numbers below are corrected; several had drifted, and one
 entry (`lang: fr`) was pointing at correct code.*
 
-1. **The References section repeats the footnote bug** (found while fixing D74, 2026-07-16).
-   `cite/render.rs:102` hardcodes `data-block-id="qmd-references"` with an empty sourcepos, so
-   Alt-clicking any reference silently lands on **line 1** (same mechanism as D74). **In the
-   Do-NOT-touch citation zone**, and unlike footnotes there is **no clean per-`<li>` fix**: a CSL
-   entry's real position is in the `.bib` file, not the `.tmd`. *Owner ruled 2026-07-16: log it, do
-   not fix it yet.* **It needs a design answer before code:** where should a reference's
-   click-to-source land (the `.bib` entry in another file? the `[@key]` citation site? nowhere)?
-   Related, deliberately left: clicking the footnote section's own chrome (the `<hr>`/padding) still
-   resolves to line 1; closing that needs `locatable()` to require a *usable* sourcepos, a client change.
-2. **Duplicate-label warnings are unlocated** (`render/mod.rs:1568-1571`, `site/xref.rs:50-56` emit
+1. **Duplicate-label warnings are unlocated** (`render/mod.rs:1568-1571`, `site/xref.rs:50-56` emit
    no file/line), half-reproducing the exact Quarto flaw D53 critiques. *(The harvest's own duplicate
    warning, added 2026-07-16, is unlocated for the same reason: `site/mod.rs:953`.)* **Price it
    before promising it (2026-07-17): this reads as one small fix and is TWO, with very different
@@ -191,13 +202,10 @@ entry (`lang: fr`) was pointing at correct code.*
    line)` (`render/model.rs:166`) — cheap. But `site/xref.rs:23` and `site/mod.rs:172` are
    `Vec<String>`: **no location field exists in that channel at all**, so half of this item is a
    channel type change. (Line numbers here had drifted by 30 and 6; the symptom held.)
-3. ~~`{.python code-line-numbers=...}` routed to the executable path~~ — **LANDED** (`371b060`;
-   `render/cell_extract.rs:181` `is_executable_fence`, gated at `render/mod.rs:348`). Listed as open
-   here for ~90 minutes after it was fixed.
-4. **The xref registry goes stale on a warm content edit** (`serve_site/mod.rs:1186-1204` refreshes
+2. **The xref registry goes stale on a warm content edit** (`serve_site/mod.rs:1186-1204` refreshes
    only the Cmd-K search fragment). Confirmed: `harvest_xref_numbers` has exactly one caller,
    `site/mod.rs:392`, inside `discover` — and `xref` appears nowhere in `crates/server/src/serve_site/`.
-5. **Cross-reference labels are English-only** (re-filed 2026-07-17; **was "`lang: fr` promises
+3. **Cross-reference labels are English-only** (re-filed 2026-07-17; **was "`lang: fr` promises
    French, delivers English (`render/page.rs:239`)", and both halves were wrong**). `page.rs:239` is
    *correct code*: `<html lang="{lang}">` fed by `doc.lang`, doing exactly its job. The true site is
    `cite/render.rs:15-21`, a hardcoded English const table — and `lang` appears **zero** times in
@@ -205,7 +213,7 @@ entry (`lang: fr`) was pointing at correct code.*
    `vocab.rs` only ever promise `lang:` sets `<html lang>`, which it does. **So this is an absent
    i18n FEATURE with a scope question, not a small live defect** (no corpus doc demands it). A
    textbook wrong-*layer* pointer: the entry named a real symptom and a file that is not the cause.
-6. **The Cmd-K index stores raw `&nbsp;` entities in its "plain text"** (found 2026-07-16 while
+4. **The Cmd-K index stores raw `&nbsp;` entities in its "plain text"** (found 2026-07-16 while
    fixing the index's chapter scoping; pre-existing and independent of it). The indexed body reads
    `Theorem &nbsp;2.1` / `Figure&nbsp;2.1`, so a reader typing the number they can SEE ("Theorem
    2.1") matches nothing — the text extraction never decodes entities. Scoping the index made the
@@ -213,15 +221,7 @@ entry (`lang: fr`) was pointing at correct code.*
    an indexed snippet renders as a bare "Figure" (search renders a page alone, so the site-level
    xref rewrite never runs over it), e.g. methods' "refines the chapter overview from Figure into
    the steps". Both live in `site/search.rs`'s text extraction.
-7. **Theorem environments are undocumented in the User Guide** (surfaced 2026-07-16 while deleting
-   `number-within`, not caused by it). They shipped 2026-06-29 (8 kinds, `shared:`/`numbered:`,
-   hover-preview, collapsible proofs, cross-page refs) and the **corpus exercises them in 6 docs**
-   (`corpus/refs/theorems*.tmd`, `demo-book/methods.tmd`, `diagnostics/check-superset.tmd`), but
-   `grep -rli theorem --include='*.tmd' docs/` matches **only** `docs/internals/sites.tmd` (and only
-   as an xref prefix). So a shipped, corpus-pinned feature is unusable from the docs alone, which is
-   the docs' stated purpose. Small: one `using/` page, and the numbering rule to teach is now simply
-   "a numbered book chapter scopes it; nothing to configure".
-8. **A labelled `include: false` python/R cell registers an anchor that never exists** (found by the
+5. **A labelled `include: false` python/R cell registers an anchor that never exists** (found by the
    adversarial review of the cell-label fix, 2026-07-16). `register_xref` runs *before* the lang
    match (`render/mod.rs:~523`), so `#| label: fig-x` + `#| include: false` registers `fig-x` with a
    number, while `exec.rs:379` (`!cell.include → continue`) drops the output block, so no `id="fig-x"`
@@ -239,25 +239,12 @@ entry (`lang: fr`) was pointing at correct code.*
    ***"This sandbox has no `ipykernel`" is FALSE*** (2026-07-17): `~/.local/share/qmd-venv/bin/python`
    has it, and the warm forkserver boots (`preloaded: numpy, matplotlib`). Set `TALIESIN_PYTHON` to
    it. This item is verifiable NOW, and so was the false premise blocking it.
-9. ~~The websocket clobbers the SSR `<title>`~~ — **RULED + CLOSED 2026-07-17** (`9ec3bae`). Owner
-   ruled **producer**: `full_render` now carries the display-ready title. Consumer / `PageDoc.title`
-   were rejected: each closes only one of the two symptoms. `PageDoc.title` (raw) became
-   `tab_title` (resolved), which SSR and `full_render_json` both read, so the divergence is now
-   structurally impossible rather than merely fixed; the whole policy is one core fn
-   (`render/page.rs` `site_page_title` = `resolve_title` + `title_with_site_suffix`, both of which
-   already existed — the SSR path had been hand-rolling the composition beside them). **Measured in
-   a real browser, not just on the wire:** `/ws?page=intro.tmd` now sends `Introduction · A Short
-   Demo Book`, which is both symptoms at once (H1 fallback + suffix; it was the literal "Taliesin").
-   *Left open, reported not fixed:* the **single-doc** server (`serve/mod.rs:910`) also ships raw
-   `d.title`, but it is **not the same hole** (no site, no suffix to lose, and its SSR paints a
-   literal `"taliesin"` by design at `:682`, so the wire title is an improvement there). Making a
-   single-doc preview tab read the doc title is a design call about preview chrome.
-10. **A front-matter `title:`-only edit broadcasts nothing** (measured, same audit). The title lives
+6. **A front-matter `title:`-only edit broadcasts nothing** (measured, same audit). The title lives
    in chrome, outside `doc.blocks`, so the diff is empty and `Broadcast::messages` returns `vec![]`
    (`serve_site/mod.rs:947-952`). The server *does* rebuild; the live tab never hears. **The deck
    path already fixes exactly this** (`serve/mod.rs:1280`, `deck_meta_changed` folded into
    `remount`), gated on `DocFormat::Reveal`, so HTML pages keep the hole.
-11. **A restarted server leaves tabs on stale `client.js` under a green "live" pill** (same audit).
+7. **A restarted server leaves tabs on stale `client.js` under a green "live" pill** (same audit).
    No protocol version; `boot_id` detects the restart (`client.js:943-955`) and only forces a
    re-mount; `CLIENT_JS` is `include_str!`-compiled. Same trap CLAUDE.md warns about for assets,
    except the server *knows* it restarted. **Correction (2026-07-17): this entry said the `reload()`
@@ -265,14 +252,7 @@ entry (`lang: fr`) was pointing at correct code.*
    `serve/mod.rs:1086`) plus a protocol test. It is unwired *to the boot-mismatch path* only, so the
    fix is narrower than the entry implies: wire that one path to the existing lever. Someone
    trusting "unused" would go hunting a dead function that is not dead.
-12. ~~MCP `read` has no containment~~ — **RULED + CLOSED 2026-07-17** (`d0819fc`). Owner ruled: no
-   root; drop the false claim instead. A root would withhold nothing real, since a host that can run
-   the binary already has the filesystem. `mcp.rs` and `taliesin help mcp` now state plainly that it
-   is not a sandbox, that no containment exists, and that `build` writes HTML and executes cells.
-   The behavior is unchanged and deliberate: **do not "fix" it by adding a root** without reversing
-   the ruling. (Re-verified by execution before the docs were written, rather than trusted from the
-   audit note: `/etc/hostname` and a `../`-climbing path both still return.)
-13. **`seo.rs` emits machine-invalid output with no diagnostic** (executed, same audit).
+8. **`seo.rs` emits machine-invalid output with no diagnostic** (executed, same audit).
    `<lastmod>` is verbatim (`date: "May 15, 2026"` ships as-is; W3C Datetime needs zero-padded
    `YYYY-MM-DD`, and `feed.rs` *does* enforce RFC-3339); `<loc>` is entity-escaped but never
    URL-escaped (`posts/two words/` -> a raw space, and the same URL goes into `llms.txt` where it
@@ -280,7 +260,7 @@ entry (`lang: fr`) was pointing at correct code.*
    + `Sitemap: ex.com/sitemap.xml`. `check` reports "no problems found", exit 0, in all three cases.
    11/11 lastmods valid today: latent traps, not live breaks. Wants a **diagnostic, not a knob**
    (the `69c228b` value-lint + D37 precedent).
-14. **`card.rs` overflow, the fields nobody clamped** (rendered, same audit; the headline ellipsis +
+9. **`card.rs` overflow, the fields nobody clamped** (rendered, same audit; the headline ellipsis +
    the glyph-coverage diagnostic LANDED 2026-07-16, this is the remainder). Eyebrow, wordmark and
    domain get no wrap/truncate/width check at all (`card.rs:358-361`, `:399-409`, `:411-414`): a long
    site title overlaps the wordmark into the right-aligned domain ("Learnindgsbogossian.com"), and a
@@ -290,7 +270,7 @@ entry (`lang: fr`) was pointing at correct code.*
    `NullPointerExceptionHandlerFactory` clips at x=1199 against a 1128 pad edge, and the test
    `wrap_keeps_an_overlong_word_on_its_own_line` **asserts** this without checking fit. 0/153 live
    fields today.
-15. **Two minifier latents remain** (proven, same audit; the acorn token-equivalence guard LANDED
+10. **Two minifier latents remain** (proven, same audit; the acorn token-equivalence guard LANDED
    2026-07-16, so they can no longer ship *silently* — but the minifier is still wrong for these
    inputs). A regex literal after `=>`/`)`/`]` is read as division (`minify.rs:102-110`); if its body
    holds a quote it flips quote parity for the rest of the file and can truncate a later string
@@ -320,9 +300,9 @@ entry (`lang: fr`) was pointing at correct code.*
   on inspection it touched only concurrency arithmetic in `build.rs`/`build_budget.rs` — no
   execution semantics, no kernel lifecycle, no freeze keying — so it was **not** in the zone after
   all. That is the third time an entry named this zone and did not need it (after D49 and D67):
-  **check the actual blast radius before assuming M2-M6 need sign-off too.** M2 (`exec.rs`) and
-  M3-M5 (`warm_pool.rs` fork protocol) plainly do; **M6 is worth re-checking** — it is a constant
-  and a `/proc` probe, and may be as free-standing as M1 was. Ranked:
+  **check the actual blast radius before assuming M2-M6 need sign-off too.** *(Settled 2026-07-17:
+  M2 and M3-M5 did need it and were signed off and fixed; M6 was two items, one free-standing and
+  one refused. **The whole audit is closed except M6a.**)* Ranked:
   - ~~**M2 `interp_id` wedges the rebuild pipeline forever**~~ — **FIXED 2026-07-17** (`f9eea8d`,
     signed off). Probe is now async + `tokio::time::timeout` (10s, `kill_on_drop`), and only an
     *answer* is memoized (a spawn error or timeout is retried; "ran and printed nothing" still
@@ -344,12 +324,26 @@ entry (`lang: fr`) was pointing at correct code.*
     - **Also found, not fixed:** `crates/server/Cargo.toml` does not list tokio's `process` feature,
       though `kernel.rs`, `warm_pool.rs` and now `exec.rs` all use `tokio::process`. It compiles only
       via feature unification from elsewhere in the graph. Pre-existing and already load-bearing.
-  - **M3 warm-pool refill goes permanently dark after one fork hiccup** + **M4 `fork_kernel` PID
-    desync** + **M5 `warm_one` `/tmp` leak**. **One trigger (a failed fork); MUST be fixed as ONE
-    change** — the natural fix to M3 arms M4, which today cannot fire only because M3 kills the task
-    that would trigger it. The Python daemon already has a retry protocol the Rust client refuses to
-    use (`warm_pool.rs:128-138` vs `:348`), and the cold path already retries this exact failure
-    (`exec.rs:790-804`) while `warm_one` has zero retries.
+  - ~~**M3 refill goes dark** + **M4 `fork_kernel` PID desync** + **M5 `warm_one` `/tmp` leak**~~:
+    **FIXED 2026-07-17 as ONE change** (`4520996`, signed off). Correlation ids on the fork protocol
+    (`SPAWNED <id> <pid>`) make a late reply self-identifying, so it is skipped and its orphaned
+    kernel reclaimed; refill now triggers on a **miss** too (the state that needs re-warming, and
+    the gate that made "empty" unescapable); `ConnDirGuard` is armed over the fork window
+    (`kernel.rs` exports `arm()`); `FORK_ATTEMPTS` mirrors the cold path's `START_ATTEMPTS` and
+    defers to its `start_error_is_transient`. Each of the three new tests was **mutation-checked**
+    by restoring its bug. The Tier-2 duplicate of M4 ("cross-call edge") was deleted with it.
+    - **NEW, open, and filed rather than buried in that commit: the M4 test's stand-in kernel
+      (`sleep 300`) survives 2 of 8 full-suite runs.** Both leaks were on runs that were also
+      *compiling*; six runs against a warm build leaked none, and instrumenting the drop hid it
+      entirely (a Heisenbug). Ruled out by measurement, so do not re-check these: the drop fires for
+      all six daemons every run, always with a helper pid, always with the group alive at kill time
+      (`kill(-pgid, 0)` -> rc=0); the survivor is genuinely alive (`/proc` `State: S`), **not** the
+      zombie the interrupted session guessed. Unexplained: it sits in its dead leader's group, and a
+      child inherits its pgid at fork, so the group SIGKILL should have reached it. **Test-only on
+      the evidence** (`sleep 300` exists solely as that stand-in, deliberately unowned to prove the
+      reclaim is surgical, and it self-exits in 5 min); a real kernel has three nets where it has
+      one (`Kernel`'s own SIGKILL-on-drop, `ForkedCleanup`, then the group kill). Worth an hour only
+      if a real kernel is ever seen outliving its pool.
   - **M6 is TWO items, and they land on opposite sides of the line** (split 2026-07-17; it was
     filed as one because the summary said "a constant and a `/proc` probe"):
     - **M6a `MAX_WARM_PAGES = 6` sits outside the budget built to bound it** (`serve_site/exec_pool.rs:14`
@@ -364,11 +358,13 @@ entry (`lang: fr`) was pointing at correct code.*
   *(Two entries that named the citation zone — D49, D67 — turned out not to need it. Check before
   assuming these do; but M1-M6 were all read-only-audited precisely because they do.)*
 
-- **D72/D69 citations** (ADOPT, but **both edit `crates/core/src/cite/`, and need explicit
-  sign-off**). D72: support bare `@key` at all? (The *diagnostic* shipped 2026-07-16, `8a45d59`, so
-  the failure is now caught; the engine question is separate.) D69: the reference list is `push`ed at
-  the end, so an appendix after `# References` orphans the heading. *(Two entries that named this
-  zone — D49 and D67 — turned out not to need it at all. Check before assuming a third does.)*
+- **D72 bare `@key`** (ADOPT in principle; edits `crates/core/src/cite/`, needs sign-off). Support
+  bare `@key` at all? **DECLINED for now** in the 2026-07-17 ruling round: the *diagnostic* shipped
+  2026-07-16 (`8a45d59`), so nothing renders wrong silently, which makes this a feature question
+  rather than a defect. *(D69 landed 2026-07-17, `acfbe8f`: `any` became `position`, so one
+  `Option<usize>` now drives both decisions it always implied, the suppressed `<h2>` and an
+  `insert(i + 1)`. It had been right by luck in all three corpus docs that carry the heading,
+  because each ends with it.)*
 
 ### 5. Deliberately deferred
 
@@ -405,8 +401,6 @@ dropping Atom feeds as "a documented non-goal" and Atom shipped anyway, with aut
     both assert on **timing**. Fix: wait on a **state signal**, not a duration.
   - `build.rs:926` warms the pool before knowing any page needs a kernel, even under
     `TALIESIN_NO_EXEC=1`. Hygiene, not perf (0.25 s vs 0.27 s on a prose-only site).
-  - `fork_kernel` cross-call edge (low): a timed-out-but-queued fork mis-pairs the next `SPAWNED
-    <pid>`; poison the daemon on any fork timeout so later `take`s cold-start.
   - R stream/stderr leaks raw ANSI into HTML (`kernel.rs` `Output::Stream` emits `esc(text)` with no
     `strip_ansi`, do-not-touch).
 - **Interpreter selection is silent + has no project-local override (DX; S+M).** Resolved once at
