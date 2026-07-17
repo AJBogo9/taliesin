@@ -33,7 +33,13 @@ feared passed untouched. Price a change by making it and reading the failures.
 `docs/superpowers/specs/`; implement TDD; verify (cargo + browser via chrome-devtools, or the
 extension harnesses); fast-forward merge locally; delete the item here. Agents commit + ff-merge to
 local `main` on request; push to `origin/main` only when the author asks. **Do-NOT-touch:** the
-exec/kernel zone + the single-editing-surface invariant. Review subagents use read-only git.
+exec/kernel zone + the single-editing-surface invariant. Review subagents use read-only git —
+**and that instruction is not enough.** On 2026-07-17 a `rust-reviewer` told "read-only, report
+findings, do not modify anything" decided to build a differential harness and ran `cat > Cargo.toml`
+in the **repo root**, destroying the workspace manifest (and `Cargo.lock`, 2711 lines) mid-session.
+It touched no git command at all. A review agent holding `Bash` will write scratch files, and its
+CWD is your tree. **Give it a worktree, or commit before dispatching it** — "read-only" describes
+an intent, not a permission.
 **Author policy (feature-first):** finish framework features before marketing-site work.
 
 **Standing constraints on any change** (from the 2026-07-11 website audit, 99 findings; detail:
@@ -131,40 +137,43 @@ a fix, grep this file for the thing you just built.
    real (a host that can run the binary already has the filesystem). The module + `taliesin help
    mcp` now say plainly: not a sandbox, no containment, and `build` writes HTML and runs cells.
 
-**Pick up here (2026-07-17, latest session — the search-index fix):**
-1. **Every "one small change" item in §2 is now spent** (#6 `2bd8385`, #7 `ca5c3c2`, #4's entity
-   half `9e52b71`). **What is left is genuinely multi-part, so price before promising**: #8 is three
-   independent fixes (its `<lastmod>` half is nearly free — `feed.rs::rfc3339` already exists and
-   `seo.rs` can already reach it), #9 is two (a mechanical clamp ×3, plus the shared `wrap()` shrink
-   trigger), #10 is three (only the `=>` case is cheap). #1 is two channels, not one. **#8's
-   `<lastmod>` is the best next hour on this list.**
-2. **§2 is now EIGHT items** (1, 2, 3, 4, 5, 8, 9, 10). *An agent wrote "SEVEN" here on
-   2026-07-17 — under a header that says "count them, don't trust a number written here" — by
-   forgetting #2. It was caught by `grep -cE '^[0-9]+\. '`, not by reading. **Recount, don't
-   read**, including this line.*
-3. **#2 and #4 are adjacent and probably want one sitting.** Both are the same disagreement about
-   *when* the xref registry exists relative to its consumers: #4 is that `search::build_sections`
-   (`site/mod.rs:368`) runs BEFORE `harvest_xref_numbers` (`:392`), so the index is built without
-   targets; #2 is that a warm content edit refreshes the search fragment but never re-harvests, so
-   the registry then goes stale. Same seam, opposite ends. Whoever takes one should read the other
-   first — but they are still two fixes, so do not promise them as one.
-3. **When an entry says "path X already fixes exactly this", that is evidence, not a template.**
+**Pick up here (2026-07-17, latest session — the §2 sitting: #8's `<lastmod>`, #2+#4, #9, #10):**
+1. **§2 is down to FOUR un-struck items: #1, #3, #5, and #8's other two thirds.** *Recount, do not
+   read this line* — `awk '/^### 2\./,/^### 3\./' notes/backlog.md | grep -cE '^[0-9]+\. '` still
+   says ten; six are struck. (An agent wrote "SEVEN" here on 2026-07-17, under a header telling it
+   not to, by forgetting #2.) **None of the four is mechanical**, so the "one small change" seam is
+   genuinely mined out: #1 is two channels; #3 is a design question in a defect's clothes; #5 wants
+   an anchor-registration *rule*; #8's `<loc>` halves are two fixes plus a diagnostic.
+2. **Four entries were priced this session; three were wrong, and #9 was the only one that held.**
+   #8's "close to free" third cost the most on the list (the helper it told me to call was itself
+   broken). #2's implied incremental-invalidation design collapsed into "re-run the two passes"
+   the moment a full re-harvest was *measured* at 27ms. #10 named three regex contexts and two were
+   padding. **Price by building and measure before designing** — the estimate in an entry is the
+   one part of it nobody re-derived.
+3. **A workaround sitting in the tree is not a constraint.** #10's entry treated the vendored-lib
+   bypass as a standing fact to design around; the bypass existed only because the minifier was
+   broken, and fixing the minifier dissolved it. When an entry says "X is unsafe, so we avoid X",
+   check whether X is still unsafe before you build around it.
+4. **When an entry says "path X already fixes exactly this", that is evidence, not a template.**
    #6's entry pointed at `deck_meta_changed` and the fix it implied (force a re-mount) was wrong:
    the deck re-mounts because its title slide is *structural*, a reason that does not transfer to an
    HTML page, where a re-mount discards every live `{js}` cell. Check what *forced* the neighbouring
    shape before copying it.
-3. **The lesson that keeps paying: read the helper the entry points AWAY from.** #4 named one defect
+5. **The lesson that keeps paying: read the helper the entry points AWAY from.** #4 named one defect
    and the function held four; the other three were invisible to the entry because it blamed the
    symptom's location instead of the code next door that already did the job right. **`grep` for the
    correct helper before writing one** — it has now existed already in 5 of 5 cases (`search.rs` vs
    `render/text.rs`, `llms.rs`, `meta.rs`, `minify.rs`'s own JS branch, and `seo.rs` vs `feed.rs`'s
-   `rfc3339`, still uncalled today).
+   `rfc3339`). **But 5-of-5 is only half the rule:** `rfc3339` turned out to be *wrong* when finally
+   called (`2026-99-99` passed it), so the sixth case cost more than writing one would have. Grep
+   for the helper, then **test the helper** — see #8.
 
 **Pick up here (2026-07-17, after the M-audit was finished):**
 1. **Sections 1 and 4's exec/kernel half are now EMPTY.** M1, M2, M3+M4+M5 and M6b have all landed;
    **M6a (`MAX_WARM_PAGES`) is the only exec/kernel item left and its sign-off was REFUSED**, so it
-   is not available to pick up. D69 landed; D72 is declined. **Section 2 (live defects, now 9) is
-   what is actually left**, plus D70, which is unruled.
+   is not available to pick up. D69 landed; D72 is declined. **Section 2 (live defects) is
+   what is actually left**, plus D70, which is unruled. *(A count stood here and rotted; the
+   newer block above owns it. Go count.)*
 2. **Blast-radius labels were wrong 4 of 5 times** (D49, D67, M1, M1's other half; only M2-M5 truly
    needed the zone). **The label travels with the SUMMARY, not the code**: M6 was filed as one item
    ("a constant and a `/proc` probe") and split into a free-standing file read and a
@@ -374,15 +383,32 @@ unit test while the live server still served the bug.*
    actually say.** Tests now decode the PNG and assert no inked pixel escapes `[72, 1128]` — the
    layout maths was the thing that was wrong, so asserting on the layout maths would have been
    marking its own homework. All 16 real OG cards byte-identical (the entry's "0/153" held).
-10. **Two minifier latents remain** (proven, same audit; the acorn token-equivalence guard LANDED
-   2026-07-16, so they can no longer ship *silently* — but the minifier is still wrong for these
-   inputs). A regex literal after `=>`/`)`/`]` is read as division (`minify.rs:102-110`); if its body
-   holds a quote it flips quote parity for the rest of the file and can truncate a later string
-   literal, **killing all of `app.js`** (trigger `s => /['"]/.test(x)` is an ordinary escaping
-   idiom). Nested template literals are rewritten (`:252-283`, no `${}` depth) — proven on real
-   mermaid, **token count identical**. The guard covers `core_enhance_js()` only, so the
-   **vendored-lib bypass is still unenforced** (`build.rs:1102-1104` is a *comment* with no test):
-   routing `mermaid_bundle_js()` through `minify_js` would corrupt it outside the guard's reach.
+10. ~~**Two minifier latents remain**~~ **LANDED 2026-07-17** (`8d73657`). Both fixed, bypass now
+   tested. The entry's *framing* held perfectly — the **whole built blog is byte-identical**
+   before/after, every file, so nothing that ships today moved. That is what "latent" earns the
+   name for, and it is why this was safe to land. Its *contents* were another matter.
+   **It named three regex contexts; one was real.** `=>` was a true defect (`prev` holds ONE char,
+   so the fix asks `out`'s tail for the two-char arrow — a bare `>` is ambiguous: `a > b`,
+   `a >= b`, `a >> b`). But `)` and `]` are **correct as division** (`(a + b) / 2`, `xs[i] / 2`);
+   a regex can only follow either as an expression STATEMENT (`if (x) /re/.test(y)`) whose value
+   is discarded. "Fixing" them would have misread live division to serve dead code. The entry's
+   own headline trigger `s => /['"]/.test(x)` is the `=>` case — the two it added were padding.
+   **The bypass inverted, and that is the find.** The entry treated *"routing `mermaid_bundle_js()`
+   through `minify_js` would corrupt it"* as a standing fact that justified the bypass. It was
+   true: neutering the fix reproduces it exactly, mermaid failing on **token 476206, count
+   identical**. Fixing `${}` depth made it **false** — both vendored bundles now pass the token
+   guard through the minifier. **So the bypass was never an invariant; it was a bug report with a
+   workaround attached, and the entry had promoted the workaround to a constraint.** Keep the
+   bypass (re-minifying a megabyte of already-minified vendor code is build cost for ~nothing) but
+   it is now a *choice*, pinned by `vendored_libs_are_written_verbatim_not_reminified`, with
+   `minify_js` checked against both bundles anyway — half a million tokens of dense real JS, the
+   most adversarial corpus in the repo, and worth more than any fixture I could write.
+   **The nested-template bug had a quiet twin the entry missed:** `${...}` bodies were never
+   scanned as code at *all*, so every interpolation silently skipped minification (a comment
+   inside one shipped). Both halves are pinned, because a "fix" that just made templates opaque
+   passes every nested-template test while leaving that half broken. Craft note: `assert_eq!` on
+   two megabyte bundles prints **both** on failure (3.5MB), burying the one line that says what
+   broke — compare, then report short.
 
 ### 3. Needs an owner ruling (not builds)
 
