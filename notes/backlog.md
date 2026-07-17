@@ -150,9 +150,16 @@ a fix, grep this file for the thing you just built.
 2. **Four entries were priced this session; three were wrong, and #9 was the only one that held.**
    #8's "close to free" third cost the most on the list (the helper it told me to call was itself
    broken). #2's implied incremental-invalidation design collapsed into "re-run the two passes"
-   the moment a full re-harvest was *measured* at 27ms. #10 named three regex contexts and two were
-   padding. **Price by building and measure before designing** — the estimate in an entry is the
-   one part of it nobody re-derived.
+   the moment a full re-harvest was *measured* at 27ms. #10 named three regex contexts, two were
+   padding, and it missed three. **Price by building and measure before designing** — the estimate
+   in an entry is the one part of it nobody re-derived.
+   **And an entry is not the only thing that rots: so does your own reasoning, within the hour.**
+   #10's first fix shipped a paragraph arguing a one-char change was unsafe, with three examples
+   that were not counter-examples, plus a test that could not fail asserting the same wrong rule.
+   Review caught it; the suite could not. **Two of the three vacuous tests found today were mine,
+   written the same hour I wrote the warning about vacuous tests.** The habit that works is
+   mechanical, not attentional: **mutate the fix, watch the named test fail.** Nothing else caught
+   these.
 3. **A workaround sitting in the tree is not a constraint.** #10's entry treated the vendored-lib
    bypass as a standing fact to design around; the bypass existed only because the minifier was
    broken, and fixing the minifier dissolved it. When an entry says "X is unsafe, so we avoid X",
@@ -390,12 +397,24 @@ unit test while the live server still served the bug.*
    tested. The entry's *framing* held perfectly — the **whole built blog is byte-identical**
    before/after, every file, so nothing that ships today moved. That is what "latent" earns the
    name for, and it is why this was safe to land. Its *contents* were another matter.
-   **It named three regex contexts; one was real.** `=>` was a true defect (`prev` holds ONE char,
-   so the fix asks `out`'s tail for the two-char arrow — a bare `>` is ambiguous: `a > b`,
-   `a >= b`, `a >> b`). But `)` and `]` are **correct as division** (`(a + b) / 2`, `xs[i] / 2`);
-   a regex can only follow either as an expression STATEMENT (`if (x) /re/.test(y)`) whose value
-   is discarded. "Fixing" them would have misread live division to serve dead code. The entry's
-   own headline trigger `s => /['"]/.test(x)` is the `=>` case — the two it added were padding.
+   **It named three regex contexts. Two were padding, and it MISSED three.** `)` and `]` are
+   **correct as division** (`(a + b) / 2`, `xs[i] / 2`); a regex can only follow either as an
+   expression STATEMENT (`if (x) /re/.test(y)`) whose value is discarded, so "fixing" them would
+   misread live division to serve dead code. (Adversarial review tried to refute this and could
+   not.) Meanwhile `>`, `>>` and `>>>` are regex context too, and the entry named none of them:
+   **`prev == '>'` means the previous token ENDED in `>`, which in plain JS is exactly `>`, `>>`,
+   `>>>`, `=>` — all operators, none able to end an expression.** So the arrow was never a special
+   case, and the one-line fix is `>` in the punctuator set.
+   **My first fix was worse than that, and the comment defending it had the reasoning backwards.**
+   I wrote "a bare `>` is ambiguous — `a > b`, `a >= b`, `a >> b`" and built a check on `out`'s
+   tail to spot the two-char arrow. None of those examples has a `/` after the `>` at all: at the
+   `/` in `a > b / c` the previous significant char is `b`, so the `>` branch never runs. **That
+   conflated "is the TOKEN `>` ambiguous" (yes) with "is a `/` FOLLOWING one ambiguous" (no) —
+   and the test I wrote to guard it asserted `a > b / c` stays division, a property no
+   implementation can break.** It guarded a path it could not reach, and cemented the error.
+   Caught by review, not by me; `a > /['"]/.test(b)` still corrupted after my "fix". **When a
+   one-char change feels unsafe, write the counter-example down before designing around it — if
+   it will not come, the fear is the bug.**
    **The bypass inverted, and that is the find.** The entry treated *"routing `mermaid_bundle_js()`
    through `minify_js` would corrupt it"* as a standing fact that justified the bypass. It was
    true: neutering the fix reproduces it exactly, mermaid failing on **token 476206, count
