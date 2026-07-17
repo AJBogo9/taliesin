@@ -352,7 +352,24 @@ pub(crate) fn safe_join(base_dir: &Path, rel: &str) -> Option<PathBuf> {
     let abs_base = absolutize(base_dir);
     let target = normalize(&abs_base.join(relp));
     let root = containment_root(&abs_base);
-    target.starts_with(&root).then_some(target)
+    // Lexical containment first. This also lets a not-yet-existing in-root target
+    // through, so the caller's read fails with a "not found" diagnostic rather than a
+    // traversal one.
+    if !target.starts_with(&root) {
+        return None;
+    }
+    // Symlink defense: a lexical check alone is fooled by an in-tree symlink whose target
+    // escapes the root (its bytes would be read + inlined verbatim). When the target
+    // exists, its *canonical* path must still be within the *canonical* root, mirroring
+    // `serve_asset_from`. A non-existent target cannot be a symlink escape, so a
+    // canonicalize failure falls through to the lexical result. The lexical `target` is
+    // still what we return, so labels / `data-source-file` are unchanged.
+    if let (Ok(croot), Ok(ctarget)) = (root.canonicalize(), target.canonicalize())
+        && !ctarget.starts_with(&croot)
+    {
+        return None;
+    }
+    Some(target)
 }
 
 /// Make `p` absolute by prepending the current working directory if needed, then
@@ -557,5 +574,47 @@ mod tests {
         assert!(safe_join(&base, "/etc/passwd").is_none());
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn safe_join_refuses_an_in_tree_symlink_that_escapes_the_root() {
+        // PT-1: `safe_join` confined only *lexically* (no symlink resolution), so an
+        // in-tree symlink whose target is OUTSIDE the project root passed the
+        // `starts_with(root)` check and the bytes were read + inlined verbatim into the
+        // rendered page (arbitrary-file disclosure, surviving `--no-exec`). The canonical
+        // path of the resolved target must stay within the canonical root.
+        use std::os::unix::fs::symlink;
+        let uniq = format!(
+            "{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let root = std::env::temp_dir().join(format!("tali-symlink-root-{uniq}"));
+        let secret = std::env::temp_dir().join(format!("tali-symlink-secret-{uniq}.txt"));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("post")).unwrap();
+        std::fs::write(root.join(".git"), b"").unwrap();
+        std::fs::write(&secret, b"TOP SECRET").unwrap();
+        // An in-tree symlink pointing at the external secret.
+        symlink(&secret, root.join("post/theme.css")).unwrap();
+        // A real in-root file, to prove the fix does not reject legitimate resources.
+        std::fs::write(root.join("post/real.css"), b"body{}").unwrap();
+
+        let base = root.join("post");
+        assert!(
+            safe_join(&base, "real.css").is_some(),
+            "a real in-root file must still resolve"
+        );
+        assert!(
+            safe_join(&base, "theme.css").is_none(),
+            "an in-tree symlink whose target escapes the root must be refused"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+        let _ = std::fs::remove_file(&secret);
     }
 }
