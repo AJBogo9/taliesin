@@ -951,6 +951,11 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
     let ops = diff_blocks(&ps.doc.blocks, &doc.blocks);
     let diags_changed = ps.doc.diagnostics != diags;
     let theme_changed = ps.doc.theme_css != doc.theme_css;
+    // Compared BEFORE the assignment below overwrites it. The title is chrome, so it never
+    // reaches the tab as a block op: a `title:`-only edit on a page that renders no title
+    // block diffs to nothing, and even when it does render one, the body swapped while the
+    // tab kept the old name.
+    let title_changed = ps.doc.tab_title != tab_title;
     ps.doc.tab_title = tab_title;
     ps.doc.toc = toc;
     ps.doc.theme_css = doc.theme_css;
@@ -970,12 +975,14 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
     let messages = protocol::Broadcast {
         ops: &ops,
         remount: recovered,
+        title_changed,
         theme_changed,
         diags_changed,
     }
     .messages(
         || full_render_json(&ps.doc),
         |op| op_json(op, generation),
+        || protocol::title(Some(&ps.doc.tab_title)),
         || protocol::style(&ps.doc.theme_css),
         || protocol::diagnostics(&ps.doc.diagnostics),
     );

@@ -1279,6 +1279,10 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         // overview across the swap, exactly as it does for a structural change.
         let deck_meta_changed =
             deck_meta_changed(doc.format, &d.title, &d.subtitle, &doc.title, &doc.subtitle);
+        // The tab title, for any format. A deck re-mounts (above) and its `full_render`
+        // retitles the tab on the way through, so this only ever fires for a non-deck doc,
+        // whose title reaches the tab through no other channel.
+        let title_changed = d.title != doc.title;
         let diags_changed = d.diagnostics != diags;
         let theme_changed = d.theme_css != doc.theme_css;
         d.title = doc.title;
@@ -1317,12 +1321,14 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         let messages = protocol::Broadcast {
             ops: &ops,
             remount: recovered || deck_structural || deck_meta_changed,
+            title_changed,
             theme_changed,
             diags_changed,
         }
         .messages(
             || full_render_json(&d),
             |op| op_json(op, generation),
+            || protocol::title(d.title.as_deref()),
             || protocol::style(&d.theme_css),
             || protocol::diagnostics(&d.diagnostics),
         );

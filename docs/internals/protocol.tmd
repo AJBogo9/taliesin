@@ -34,6 +34,7 @@ Nine types travel this direction.
 | `remove` | a block disappeared | drop one element |
 | `set_meta` | a block's *source position* shifted but its content didn't | patch its position attributes only |
 | `diagnostics` | the issue list changed (alone, or alongside block ops) | refresh the dev-menu issue stack |
+| `title` | the tab title changed without a re-mount | retitle the tab in place |
 | `style` | only the theme CSS changed | hot-swap the theme `<style>` in place |
 | `error` | a render/read failure | show an error overlay |
 | `reload` | a config / kernel-restart change | full page reload |
@@ -161,6 +162,27 @@ Both `full_render` and `diagnostics` carry the same per-issue object:
   **clickable** (it jumps to source).
 - `frame` (optional) is a small code frame (a few source lines around `line`, with
   the offending one marked) shown inline under the row.
+
+### `title`
+
+The tab title changed, on a rebuild that did not re-mount. The title is *chrome*: it
+lives outside the block model, so no block op can carry it, and on a page whose title
+renders no block a `title:`-only edit diffs to nothing at all. Without this message the
+title only ever rides on `full_render`, so the tab would keep the old name while the
+body updated around it.
+
+```json
+{ "type": "title", "title": "Methods · A Short Demo Book" }
+```
+
+The string arrives **display-ready** — the server has already resolved the leading-`# H1`
+fallback and the ` · {site}` suffix, because the same value is what it server-rendered
+into `<title>`, and the two must not disagree. A re-mount is deliberately *not* how this
+is fixed: replacing the body would discard every `{js}`/WebGL cell's live state, which is
+far too much to pay for a tab label. For the same reason the message is **suppressed on a
+re-mount** — `full_render` carries a `title` field of its own, so repeating it would be
+dead weight. (This is the one place the ordering differs from `style`, which *must* repeat
+after a re-mount because `full_render` carries no CSS field.)
 
 ### `style`
 

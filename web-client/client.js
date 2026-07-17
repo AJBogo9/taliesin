@@ -23,10 +23,11 @@
  * @typedef {{ type: "set_meta", gen?: number, target_id: string, sourcepos: string, source_file: ?string }} SetMetaMsg
  * @typedef {{ type: "error", message: string }} ErrorMsg
  * @typedef {{ type: "reload" }} ReloadMsg
+ * @typedef {{ type: "title", title: ?string }} TitleMsg
  * @typedef {{ type: "style", css: string }} StyleMsg
  * @typedef {{ type: "build-state", page: ?string, phase: "warming-kernel"|"executing"|"idle"|"error", ran: number, total: number, lang: string }} BuildStateMsg
  * @typedef {{ type: "cell-state", page: ?string, cell_id: string, state: "queued"|"running"|"done"|"error", started_ms: ?number, duration_ms: ?number }} CellStateMsg
- * @typedef {FullRenderMsg|DiagnosticsMsg|UpdateMsg|InsertMsg|RemoveMsg|SetMetaMsg|ErrorMsg|ReloadMsg|StyleMsg|BuildStateMsg|CellStateMsg} ServerMessage
+ * @typedef {FullRenderMsg|DiagnosticsMsg|UpdateMsg|InsertMsg|RemoveMsg|SetMetaMsg|ErrorMsg|ReloadMsg|TitleMsg|StyleMsg|BuildStateMsg|CellStateMsg} ServerMessage
  */
 (() => {
   const root = document.getElementById("tali-root");
@@ -521,7 +522,18 @@
   var warmStartMs = /** @type {number|null} */ (null); // set at first warming-kernel of a build
   var warmTimer = 0; // interval id ticking the warm-up elapsed label
   var buildErrored = false; // latched on `error`; cleared only when a fresh build starts
-  var baseTitle = document.title || "Taliesin"; // save original title for restore
+  var baseTitle = document.title || "Taliesin"; // the page's own title, restored after each build
+
+  // Retitle the tab. Goes through here so `baseTitle` moves with it: the build/error
+  // states overwrite document.title with transient labels ("● building… — X") and restore
+  // `baseTitle` when they finish, so assigning document.title alone would look right until
+  // the next save and then silently revert to the old name.
+  // `t` arrives display-ready from the server (H1 fallback + " · {site}" already applied);
+  // a null means the page has no render yet, not that the policy is ours to apply.
+  function setPageTitle(/** @type {string|null|undefined} */ t) {
+    baseTitle = t || "Taliesin";
+    document.title = baseTitle;
+  }
 
   // Canvas-drawn favicon: a coloured dot superimposed on the base favicon SVG.
   // Swapped in while busy/error; the link[rel=icon] href is restored on idle.
@@ -935,11 +947,10 @@
     switch (msg.type) {
       case "full_render": {
         renderOk(); // a fresh render arrived: any prior failure is resolved
-        // `title` arrives display-ready — the server resolves the H1 fallback and the
-        // " · {site}" suffix (`site_page_title`), because this assignment lands on top of
-        // the `<title>` it server-rendered and must not disagree with it. Don't reshape it
-        // here; a null means the page has no render yet, not that policy is ours to apply.
-        document.title = msg.title || "Taliesin";
+        // The server resolves the H1 fallback and the " · {site}" suffix
+        // (`site_page_title`), because this lands on top of the `<title>` it server-rendered
+        // and must not disagree with it.
+        setPageTitle(msg.title);
         // Skip the re-mount when the DOM already reflects this render:
         //  - the first message after SSR whose gen matches what SSR painted, OR
         //  - a reconnect delivering a gen we already have mounted (byte-identical doc).
@@ -1046,6 +1057,12 @@
         transportError = true;
         setStatus("error");
         showError(msg.message);
+        break;
+      case "title":
+        // Retitle the tab in place (no re-mount): the title is chrome, so no block op can
+        // carry it, and a `title:`-only edit produces an empty diff. Re-mounting to move a
+        // tab label would discard every `{js}` cell's live state.
+        setPageTitle(msg.title);
         break;
       case "style": {
         // Hot-swap theme CSS in place (no reload): scroll + deck slide survive.
