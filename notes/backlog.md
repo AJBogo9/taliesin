@@ -75,9 +75,12 @@ cargo test -p taliesin-server --test r_kernel` (R needs an interpreter + IRkerne
 2026-07-17** `TALIESIN_PYTHON=~/.local/share/qmd-venv/bin/python TALIESIN_REQUIRE_KERNEL=1` (the
 pool-booted `--jobs` path; a missing interpreter is a HARD FAIL, not a skip). CI sets all three.
 **A plain `cargo test` silently skips all of them.** Note `cargo test` **aborts the remaining test
-binaries at the first failure**, so a flake (see Tier 2's two load-sensitive timing tests, which
-fire when something else is using the CPU) hides every later binary's result: re-run before reading
-a total.
+binaries at the first failure**, so a flake hides every later binary's result: re-run before reading
+a total. **Two distinct flake families now, and conflating them cost a day** (both in Tier 2): two
+genuinely load-sensitive *timing* tests, and **two `exec::tests` probe tests that are a concurrency
+race, not timing** — they fail ~2 runs in 3 on an *idle* machine and pass 3/3 under
+`--test-threads=1`, which is 4x slower. If an `exec` probe test fails, **`--test-threads=1` before
+you blame your change or the CPU.**
 
 **What is left is a flat list; none of it is a grind chunk.** All **three owner rulings are
 CLOSED**, both **ruling rounds are spent**, and the **whole M2-M6 exec/kernel audit is finished
@@ -529,15 +532,33 @@ dropping Atom feeds as "a documented non-goal" and Atom shipped anyway, with aut
     `exec::tests::pooled_kernel_serves_cells_without_a_long_warming_state` +
     `kernel::tests::kernel_executes_state_errors_and_interrupts_runaway_cell` fail under CPU load;
     both assert on **timing**. Fix: wait on a **state signal**, not a duration.
-    - **A THIRD one, observed 2026-07-17: `exec::tests::a_successful_probe_pins_the_freeze_key_format`.**
-      Failed once in a full gate-3 run while a Chrome instance + a local HTTP server were loading the
-      machine; **passed in isolation and in a full re-run on a quiet machine** (205 passed, 0 failed).
-      It awaits `probe_interp_id(..., Duration::from_secs(10))` against a stand-in `#!/bin/sh` script,
-      so a load-starved probe tripping its own 10s timeout is the plausible mechanism — **but the panic
-      message was not captured, so this is an OBSERVATION, not a diagnosis. Do not "fix" it from this
-      note; reproduce it under load and read the assertion first.** Filed because the set was believed
-      to be two, and because `cargo test` aborts later binaries at the first failure — this one hid a
-      whole gate's result and looked at first like the search change had broken the exec zone.
+    - **A THIRD + FOURTH one, and they are NOT timing at all.**
+      `exec::tests::a_successful_probe_pins_the_freeze_key_format` +
+      `exec::tests::a_failed_interp_probe_is_not_memoized_for_the_process_lifetime`. Filed
+      2026-07-17 as a load-sensitive observation, and **that entry did the right thing: it refused
+      to diagnose without the panic message and said "reproduce it and read the assertion first".
+      Doing exactly that inverted it.** *(Left in this LOAD-sensitive bullet on purpose — the two
+      above are still timing; these two are not, and the grouping is what misled.)*
+      **Measured 2026-07-17, on pristine `main` (so it is nobody's change):** fails ~2 runs in 3 on
+      an **idle** machine, in a full `--bins` run; **never** fails filtered to `exec::tests`, and
+      **passes 3/3 under `--test-threads=1`** — which takes **6.4s vs 1.6s parallel**. *More
+      wall-clock per test and no failure: that refutes load/timing outright.* It is a **concurrency
+      race**, and it needs the rest of the suite present, so the two tests are victims, not causes.
+      **The assertion, captured at last:** the freeze key's interpreter-id segment comes back
+      **empty** — `left: "python::/tmp/tali-interp-fmt-<uuid>/nonzero-exit::"` vs
+      `right: "...::Python 3.1.2"`. In `probe_interp_id` (`exec.rs:1013`) the version is
+      `answer.unwrap_or_default()`, and `probe_version` returns `None` for exactly two reasons:
+      **spawn failed, or it hung past `bound`.** `bound` is 10s and the whole parallel suite
+      finishes in 1.6s, so **the timeout cannot have fired — the spawn failed.** The memo is not
+      the culprit either: each test writes its stubs under a fresh uuid dir, so no key collides.
+      **Leading hypothesis, NOT verified: `ETXTBSY`.** `write_exe` (`:1228`) does `fs::write` then
+      `set_permissions`, and the suite forks constantly across tokio threads; a child forked while
+      another thread holds a write-fd to a stub inherits that fd, and any exec of that stub before
+      the child execs fails with "Text file busy" — the classic write-then-exec race in a
+      multithreaded process. `probe_version` swallows the spawn error into `None`, which is why
+      this was invisible for a day. **Do not fix from this note either** (exec/kernel zone, and the
+      hypothesis is unproven): the cheap first move is to make `probe_version` log *why* it
+      returned `None`, and re-run the full suite until it trips.
   - `build.rs:926` warms the pool before knowing any page needs a kernel, even under
     `TALIESIN_NO_EXEC=1`. Hygiene, not perf (0.25 s vs 0.27 s on a prose-only site).
   - R stream/stderr leaks raw ANSI into HTML (`kernel.rs` `Output::Stream` emits `esc(text)` with no
