@@ -928,9 +928,25 @@ mod tests {
     #[test]
     fn js_brace_in_an_interpolation_does_not_end_it_early() {
         // An object literal (or a block) inside `${...}` means the interpolation cannot be
-        // closed by the first `}`: depth has to be counted, not matched.
-        let src = "const s = `a${ b ? {c: 1}.c : d }e`\nconst tail = 1\n";
+        // closed by the first `}`: depth has to be COUNTED, not matched.
+        //
+        // The trailing comment is the whole test, and the reason is worth keeping. Closing the
+        // interpolation early only puts the scanner wrongly into TEMPLATE state, and template
+        // state means "copy verbatim" — so on ordinary input the output is byte-identical to a
+        // correct scan and every assertion passes. Mutating this fix to `!tmpl_stack.is_empty()`
+        // (match the first `}`) passed all 27 tests, INCLUDING the acorn token guard on
+        // mermaid's ~476k tokens: identical bytes cannot have different tokens.
+        //
+        // Only content the two states DISAGREE about can see the difference. A comment is the
+        // cheapest such content: code strips it, a template keeps it. So it must sit after the
+        // inner `}`, in the region a mis-scan hands to the wrong state.
+        let src = "const s = `a${ b ? {c: 1}.c : /* pick */ d }e`\nconst tail = 1\n";
         let out = minify_js(src);
+        assert!(
+            !out.contains("/* pick */"),
+            "interpolation closed at the object literal's closing brace, so the rest of it \
+             was scanned as template content and its comment survived: {out:?}"
+        );
         assert!(out.contains("}e`"), "interpolation closed early: {out:?}");
         assert!(out.contains("const tail = 1"), "tail swallowed: {out:?}");
         assert_js_token_identical(src, "interpolation-braces");
