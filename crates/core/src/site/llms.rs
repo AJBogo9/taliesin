@@ -270,6 +270,22 @@ mod tests {
     }
 
     #[test]
+    fn strip_katex_removes_inline_math_not_just_display() {
+        // Inline `<span class="katex">` must be stripped too, not only block `katex-display`:
+        // KaTeX emits the source twice (a MathML `<annotation>` plus the visual glyph spans),
+        // so leaving inline math in place duplicates/garbles it in the `llms.txt` projection.
+        // The one existing strip_katex test feeds no katex span at all, so it never exercised
+        // the removal path — a regression dropping the inline marker went unnoticed.
+        let html = r#"<p>Energy <span class="katex"><span class="katex-mathml"><math><annotation>E=mc^2</annotation></math></span><span class="katex-html">E=mc2</span></span> is conserved.</p>"#;
+        let text = text_content(&strip_katex(html));
+        assert_eq!(text, "Energy is conserved.");
+        assert!(
+            !text.contains("mc") && !text.contains("E="),
+            "inline KaTeX markup leaked into the text projection: {text:?}"
+        );
+    }
+
+    #[test]
     fn llms_txt_leads_with_hero_identity_and_lists_posts() {
         let root = write_site(
             "llmsmap",

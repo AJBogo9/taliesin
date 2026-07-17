@@ -513,6 +513,18 @@ mod tests {
             diags.iter().all(|d| d.file.contains("doc.tmd")),
             "located to file: {diags:?}"
         );
+        // Exactly one diagnostic per issue: the assembly must not duplicate a channel. A
+        // doubled `.chain(xref.iter())` (or a validator run twice) emits the broken-xref
+        // diagnostic twice; the `any()` existence checks above never counted, so a
+        // duplication shipped unnoticed.
+        assert_eq!(
+            diags
+                .iter()
+                .filter(|d| d.message.contains("@fig-nope"))
+                .count(),
+            1,
+            "the broken-xref diagnostic must appear exactly once, not be duplicated: {diags:?}"
+        );
         let _ = fs::remove_dir_all(&dir);
     }
 

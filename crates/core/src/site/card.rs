@@ -876,6 +876,22 @@ mod tests {
                     ..sample()
                 },
             ),
+            (
+                // The lead line was the one text field this case list omitted, so a lead
+                // wrapped at the wrong (full-canvas instead of pad-box) width ran off the
+                // right edge unnoticed — the only test rendering a long lead asserts PNG
+                // dimensions only.
+                "lead",
+                CardSpec {
+                    lead: Some(
+                        "a lead paragraph deliberately far too long to sit on one line, which \
+                         must wrap and clamp inside the pad box instead of running past the \
+                         right edge of the card"
+                            .repeat(2),
+                    ),
+                    ..sample()
+                },
+            ),
         ] {
             let (lo, hi) = ink_x_range(&render_card(&spec)).expect("card has ink");
             assert!(

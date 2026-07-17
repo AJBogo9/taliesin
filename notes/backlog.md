@@ -54,6 +54,18 @@ CDN, no preview write-back, no new output format, `--tali-*` tokens only.
 
 ## Next session: start here
 
+**Pick up here (2026-07-18, latest — a vacuous-test / mutation audit landed + pushed).** A new
+lens: not "find bugs in the source" but "which green tests don't actually constrain the behavior
+they name?" — the codebase's own most-repeated finding ("the tests certify the defects") run as a
+deliberate sweep for the first time. 4 read-only agents + a `cargo-mutants` backstop, **every
+finding verified by real mutation** (14/14, zero misfires). All 14 hardened the same day
+(test-only, plus one dead-code removal: the orphaned `vocab` `about` description). Detail +
+the full table: [AUDITS.md](AUDITS.md) (top entry). Highlights: a **data:image/svg+xml XSS
+exclusion with no test** (C4), the **block-id content-hash** pinned only incidentally by 4
+snapshot docs (C1), and machine-facing output (`strip_katex`/`og:type`/OG-card `lead`/reading-time
+number) whose tests asserted presence, not correctness. Method note now in AUDITS.md: same-file
+mutation reverts need a file backup, not `git checkout` (it eats the new test).
+
 **Pick up here (2026-07-18, later session — a coverage + live-defect batch landed to LOCAL
 main; NOT pushed, the author pushes).** Seven commits verified (TDD + mutation-checked where
 the code pre-existed; full workspace green, clippy `-D warnings` + fmt clean). **Check, don't

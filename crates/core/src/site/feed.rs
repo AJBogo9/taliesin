@@ -339,6 +339,42 @@ mod tests {
         );
     }
 
+    /// A listing page with no `title:` of its own must title its feed with the SITE title,
+    /// not the bare "Feed" placeholder. Every other feed fixture sets a host `title:`, so the
+    /// `.or(config.title)` fallback in `build_atom` (and `feed_index`) was never exercised.
+    #[test]
+    fn feed_title_falls_back_to_the_site_title_when_the_host_has_none() {
+        let root = write_site(
+            "feedtitlefallback",
+            &[
+                ("_site.yml", "title: My Site\nurl: https://ex.com/\n"),
+                (
+                    "feed.tmd",
+                    "---\nlisting:\n  contents: posts\n  type: list\n---\n\nbody\n",
+                ),
+                (
+                    "posts/a/index.tmd",
+                    "---\ntitle: First Post\ndate: 2026-05-15\n---\n\nBody.\n",
+                ),
+            ],
+        );
+        let site = Site::discover(&root);
+        let feeds = site.atom_feeds();
+        let (_, xml) = feeds
+            .iter()
+            .find(|(p, _)| p == "feed.xml")
+            .expect("a feed for the uncapped listing");
+        assert!(
+            xml.contains("<title>My Site</title>"),
+            "the feed title must fall back to the site title, not \"Feed\": {xml}"
+        );
+        assert!(
+            !xml.contains("<title>Feed</title>"),
+            "the bare \"Feed\" placeholder must not ship when a site title exists: {xml}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
     #[test]
     fn rfc3339_normalizes_a_date_only_string() {
         assert_eq!(

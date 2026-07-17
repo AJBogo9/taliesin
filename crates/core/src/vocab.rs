@@ -74,7 +74,6 @@ fn frontmatter_key_descriptions() -> &'static [(&'static str, &'static str)] {
         ("bibliography", "Path(s) to `.bib` file(s) for citations."),
         ("execute", "Document-level code-cell execution defaults."),
         ("listing", "Auto-generated listing of child pages."),
-        ("about", "About-page block configuration."),
         ("hero", "Landing-page hero block configuration."),
         (
             "prose-lint",
@@ -304,6 +303,22 @@ mod tests {
         check_named(&v["calloutKinds"], "calloutKinds");
         check_named(&v["theoremKinds"], "theoremKinds");
         check_named(&v["divClasses"], "divClasses");
+    }
+
+    /// The reverse of `descriptions_present`: every entry in `frontmatter_key_descriptions`
+    /// must map to a real `KNOWN_KEY`. The vocab keys are `KNOWN_KEYS` looked up in that
+    /// table, so a description for a key NOT in `KNOWN_KEYS` (a retired/renamed key) is dead:
+    /// never emitted, never seen by `descriptions_present`, and so accumulates silently.
+    #[test]
+    fn every_frontmatter_description_maps_to_a_known_key() {
+        use crate::frontmatter::KNOWN_KEYS;
+        for (key, _) in frontmatter_key_descriptions() {
+            assert!(
+                KNOWN_KEYS.contains(key),
+                "`frontmatter_key_descriptions` carries `{key}`, which is not a KNOWN_KEY: \
+                 a retired key leaves dead, never-emitted doc text here"
+            );
+        }
     }
 
     /// The bundled string parses as JSON (catches an empty or corrupt committed file).

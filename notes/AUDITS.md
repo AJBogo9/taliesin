@@ -12,6 +12,57 @@ before touching deck code so you remove rather than "fix" the outgoing behavior.
 
 -----------------------------------------------------------------------------
 
+# Vacuous-test / mutation audit (2026-07-18)
+
+**Why this lens.** Every prior round was source-driven (eye-driven browser passes, the
+machine-facing surfaces, the reduction/modularity sweep whose headline was "the codebase is
+already lean", the exec/kernel M-audit). Those saturated. The one lens never run as a
+*deliberate* sweep is the codebase's own most-repeated, hardest-won finding — **"the tests
+certify the defects"** (a green test that doesn't actually constrain the behavior it names).
+As the source gets leaner, the surviving bugs are exactly the ones a vacuous test would let
+through, so this lens gains value precisely where the others lose it. It also hardens the
+regression net, which is the load-bearing asset.
+
+**Method.** 4 read-only discovery agents (output-correctness / xref+citation / block-model+diff /
+validation+freeze-keying), each proposing candidate vacuous tests with a concrete one-token
+mutation + a SURVIVES/CAUGHT prediction. A `cargo-mutants` run (`taliesin-core`, `--lib`, the four
+OG/SEO output files) as a mechanical backstop. **Every candidate was then verified by real
+mutation** — apply the mutation, run the named test, watch it stay green — the "mutate the fix,
+watch the named test fail" discipline this repo keeps re-deriving by hand. 13 agent candidates +
+1 the agents missed but cargo-mutants caught (`sameAs`); all 14 confirmed, zero agent misfires.
+
+**Landed the same day (test hardening; no production behavior change except one dead-code
+removal).** Each new/strengthened assertion was mutation-checked (mutate → the NEW test fails →
+revert → passes). Full workspace green, `cargo fmt` + `clippy -D warnings` clean.
+
+| # | The hole (a green test that constrained nothing) | Fix |
+|---|---|---|
+| C4 | `is_safe_data_image` excludes `data:image/svg+xml` (SVG-XSS) with **no test** | added the svg+xml rejection case to `dangerous_url_schemes_are_neutralized` |
+| C1 | the dedicated block-id test checks uniqueness+stability, never content-derivation (only 4 snapshot docs pinned it incidentally) | assert two different docs get different ids |
+| C2 | tabset ARIA test asserts the attributes *appear*, not that tab↔panel pair | round-trip: a tab controls a panel that points back at it |
+| C3 | diff had **no** 2-inserts-in-one-gap test, so `after_id` chaining was uncovered | `old=[a,d]→[a,b,c,d]` asserts the second insert chains off the first |
+| A1 | the only real-math `llms.txt` test asserts length>2000 + a name, so `strip_katex` dropping inline math is invisible | assert inline KaTeX is stripped, not garbled into the text |
+| A2 | OG-card pad-box test omits the `lead` field | added a long-`lead` case (mutation now escapes at x=1195 > 1128) |
+| A3 | `og:type=website` (undated pages) had no test; only the dated `article` branch was pinned | assert the undated home page is `og:type=website` |
+| A4 | feed `<title>` site-title fallback never exercised (every fixture sets a host title) | a title-less listing host → `<title>` = site title, not "Feed" |
+| D1 | reading time only checked `contains(" min read")`, never the number | a 400-word doc must read "2 min read", not a constant |
+| B1 | duplicate-xref-label test checks the warning fires, never the resolved number (the D53 flaw itself) | resolve `@sec-dup`, assert it keeps the first definition's number |
+| B2 | duplicate-bib-key "uses the last definition" — never rendered to confirm which wins | format the dup entry, assert the last (Second/2002) wins |
+| B3 | bracketed `[@fig-x]` cross-ref path had zero coverage | assert `[@fig-fit]` resolves to the figure link, not a bogus citation |
+| D2 | `check` diagnostic assembly has no count assertion (any-exists only) | assert the broken-xref diagnostic appears exactly once |
+| E1 | JSON-LD `sameAs` "tested" by a page-contains check the footer chrome also satisfies | assert `sameAs` is in the Person JSON-LD; **plus** a real latent: removed the dead `vocab` `about` description + added a bidirectional gate (D3) |
+
+**Lessons that generalize (and match this repo's own log).** The sharp, targeted human-mutation
+approach beat the mechanical sweep for *relevance* (agents ranked what matters), and the mechanical
+sweep beat the humans for *completeness* (`cargo-mutants` found `sameAs`, which four agents missed) —
+run both. Two apparent CAUGHTs were not agent errors: C1's behavior is only *incidentally* pinned by
+snapshot docs (its named test is still vacuous), and D2 was a harness artifact (`taliesin-server` is a
+bin crate, so `--lib` had no target). Process note for next time: when the test and the mutated code
+live in the **same file**, `git checkout <file>` to revert a mutation also eats the new test — back the
+file up and restore from the backup instead.
+
+-----------------------------------------------------------------------------
+
 # Taliesin: full multi-surface deep audit (2026-07-07)
 
 **Method.** One multi-agent workflow (87 agents, ~6.9M tokens): 24 surface×lens finder

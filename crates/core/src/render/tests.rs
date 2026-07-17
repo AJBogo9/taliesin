@@ -38,6 +38,18 @@ fn ids_are_stable_across_runs_and_unique_for_duplicates() {
         doc.blocks[0].id, again.blocks[0].id,
         "ids must be stable across runs"
     );
+    // Ids must be DERIVED from content, not merely positionally unique: two different
+    // single-block docs must get different ids. A `make_id` that ignored the block bytes
+    // and leaned only on positional dedup would still satisfy the uniqueness + stability
+    // checks above while collapsing every doc's first block to one id (the invariant the
+    // diff, click-to-source and live-state preservation all key off). That regression was
+    // otherwise caught only incidentally by four `{js}` snapshot docs — pin it directly.
+    let alpha = render_document("Alpha.\n");
+    let bravo = render_document("Bravo.\n");
+    assert_ne!(
+        alpha.blocks[0].id, bravo.blocks[0].id,
+        "block ids must be content-derived, not positional"
+    );
 }
 
 #[test]
@@ -55,6 +67,30 @@ fn front_matter_title_extracted_and_rendered_as_title_block() {
         doc.blocks[0].html
     );
     assert!(doc.blocks[1].html.contains("Body."));
+}
+
+#[test]
+fn reading_time_scales_with_word_count() {
+    // The estimate is prose-words / 200 wpm, min 1. Pin the NUMBER, not merely that some
+    // "N min read" string is present: a constant `mins = 1` regression sails through a
+    // `contains(" min read")` substring check (the site tests only did that), yet mislabels
+    // every long post as a one-minute read.
+    let body = "lorem ".repeat(400);
+    let doc = render_document(&format!("---\ntitle: T\ndate: 2020-01-01\n---\n\n{body}\n"));
+    let h = doc.body_html();
+    assert!(
+        h.contains("class=\"tali-read-time\""),
+        "reading time shown: {h}"
+    );
+    // (400 + 100) / 200 = 2, so it must read "2 min read", not a collapsed constant.
+    assert!(
+        h.contains("2 min read"),
+        "reading time must scale with word count, got: {h}"
+    );
+    assert!(
+        !h.contains("1 min read"),
+        "reading time must not collapse to a constant: {h}"
+    );
 }
 
 #[test]
@@ -355,9 +391,25 @@ fn panel_tabset_builds_aria_tabs_from_headings() {
         h.matches("data-block-id").count() >= 3,
         "wrapper + 2 code blocks each keep an id: {h}"
     );
+    // ARIA wiring must PAIR, not merely be present: a tab's `aria-controls` must name a
+    // panel that exists, and that panel's `aria-labelledby` must name the tab back. Asserting
+    // the attributes only *appear* let a tab claim to control itself (`aria-controls="{tab_id}"`,
+    // a realistic copy/paste-of-`id` slip) pass unnoticed.
+    let tab0 = h.split("role=\"tab\" id=\"").nth(1).expect("a tab button");
+    let tab0_id = tab0.split('"').next().unwrap();
+    let controls = tab0
+        .split("aria-controls=\"")
+        .nth(1)
+        .unwrap()
+        .split('"')
+        .next()
+        .unwrap();
+    assert_ne!(tab0_id, controls, "a tab must not control itself: {h}");
     assert!(
-        h.contains("aria-controls=") && h.contains("aria-labelledby="),
-        "aria wiring: {h}"
+        h.contains(&format!(
+            "role=\"tabpanel\" id=\"{controls}\" aria-labelledby=\"{tab0_id}\""
+        )),
+        "tab {tab0_id} must control a panel that points back at it: {h}"
     );
     assert!(!doc.body_html().contains(":::"), "fence leaked: {h}");
 }
@@ -976,6 +1028,25 @@ fn sec_label_makes_at_sec_resolve_to_a_number() {
 }
 
 #[test]
+fn a_bracketed_fig_reference_resolves_as_a_crossref_not_a_citation() {
+    // `[@fig-x]` (bracketed) must resolve as a CROSS-REFERENCE, not fall through the citation
+    // renderer. No corpus doc or test used the bracketed cross-ref form (all use the bare
+    // `@fig-x`), so the `xref_link` call inside `render_citation_group` was entirely uncovered:
+    // dropping it would silently render `[@fig-x]` as a bogus numeric citation + a phantom
+    // References entry.
+    let doc = render_document("![A fit.](fit.png){#fig-fit}\n\nAs in [@fig-fit].\n");
+    let body = doc.body_html();
+    assert!(
+        body.contains("<a href=\"#fig-fit\" class=\"tali-xref\">Figure&nbsp;1</a>"),
+        "bracketed [@fig-fit] must resolve to the numbered figure link: {body}"
+    );
+    assert!(
+        !body.contains("ref-fig-fit"),
+        "it must NOT fall through to a citation with a References entry: {body}"
+    );
+}
+
+#[test]
 fn table_caption_is_numbered_folded_and_referenceable() {
     let doc = render_document(
         "| a | b |\n|---|---|\n| 1 | 2 |\n\n: My caption {#tbl-data}\n\nSee @tbl-data.\n",
@@ -1293,6 +1364,19 @@ fn dangerous_url_schemes_are_neutralized() {
             .contains("data:image/png;base64,iVBORw0KGgo="),
         "a legitimate inline data:image was dropped: {}",
         data_img.blocks[0].html
+    );
+
+    // `data:image/svg+xml` is NOT a safe inline raster: SVG can embed `<script>`/`onload`,
+    // so it is an XSS vector even in an image context and must be neutralized like
+    // `data:text/html`, not passed through like png/gif/jpeg/webp/avif. `is_safe_data_image`
+    // deliberately omits it; pin that, so re-adding svg to the allow-list can't slip by.
+    let svg_img = render_document(
+        "![x](data:image/svg+xml;base64,PHN2Zz48c2NyaXB0PmFsZXJ0KDEpPC9zY3JpcHQ+PC9zdmc+)\n",
+    );
+    assert!(
+        !svg_img.blocks[0].html.contains("data:image/svg+xml"),
+        "script-bearing data:image/svg+xml leaked into an img src: {}",
+        svg_img.blocks[0].html
     );
 
     // Ordinary schemes, relative paths, and fragments are untouched.
@@ -2590,7 +2674,7 @@ fn a_duplicate_cross_reference_label_warning_is_located() {
     // The warning must carry the DUPLICATE's source line for click-to-source — like the
     // "duplicate heading id" warning right beside it already does — not the unlocated
     // string that half-reproduces the Quarto flaw D53 critiques (§2 #1).
-    let doc = render_document("# First {#sec-dup}\n\n## Second {#sec-dup}\n");
+    let doc = render_document("## First {#sec-dup}\n\n## Second {#sec-dup}\n\nSee @sec-dup.\n");
     let w = doc
         .warnings
         .iter()
@@ -2603,6 +2687,23 @@ fn a_duplicate_cross_reference_label_warning_is_located() {
         w.line,
         Some(3),
         "located at the duplicate's line, got: {w:?}"
+    );
+    // "First definition wins" is the whole point, not just the warning: the registry keeps the
+    // FIRST section's number (1), and the bare `sec-dup` id stays on that first heading. A silent
+    // last-wins regression stores the second number (2) while the id still points at the first —
+    // the exact "link and number disagree, no diagnostic" flaw D53 critiques (§2 #1). Resolve the
+    // reference so a regression here fails, instead of the warning firing over a wrong number.
+    assert_eq!(
+        doc.xref_numbers.get("sec-dup").map(String::as_str),
+        Some("1"),
+        "duplicate label must keep the first definition's number, got: {:?}",
+        doc.xref_numbers
+    );
+    assert!(
+        doc.body_html()
+            .contains("<a href=\"#sec-dup\" class=\"tali-xref\">Section&nbsp;1</a>"),
+        "@sec-dup must resolve to the first Section 1: {}",
+        doc.body_html()
     );
 }
 

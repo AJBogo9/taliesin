@@ -342,6 +342,31 @@ mod tests {
     }
 
     #[test]
+    fn consecutive_inserts_in_one_gap_chain_each_after_the_previous() {
+        // Two (or more) new blocks in a SINGLE gap must chain: the second inserts after the
+        // first, not after the stale anchor before the gap. Otherwise the client runs both
+        // `insertAfter(a)` and the pair lands in reverse DOM order. Every other insertion
+        // test above inserts exactly one block per gap, so none exercises the `*prev_new`
+        // chaining update inside the insert loop.
+        let old = ids(&["a", "d"]);
+        let new = ids(&["a", "b", "c", "d"]);
+        let ops = diff_blocks(&old, &new);
+        assert_eq!(
+            ops,
+            vec![
+                BlockOp::Insert {
+                    after_id: Some("a".into()),
+                    html: block("b").html
+                },
+                BlockOp::Insert {
+                    after_id: Some("b".into()),
+                    html: block("c").html
+                },
+            ]
+        );
+    }
+
+    #[test]
     fn removal_emits_remove() {
         let ops = diff_blocks(&ids(&["a", "b", "c"]), &ids(&["a", "c"]));
         assert_eq!(

@@ -314,7 +314,19 @@ mod jsonld_tests {
             html.contains(r#""name":"Andreas Bogossian""#),
             "person name = title fallback"
         );
-        assert!(html.contains("https://github.com/x"), "sameAs from footer");
+        // The footer social link must land in the Person JSON-LD `sameAs`, not merely appear
+        // somewhere on the page: the footer chrome renders the same URL, so a plain
+        // page-contains check stayed green even when `sameAs` was dropped from the JSON-LD.
+        assert!(
+            html.contains(r#""sameAs":["https://github.com/x"]"#),
+            "footer social link must appear in the Person JSON-LD sameAs"
+        );
+        // An undated page is og:type=website. Only the dated=article branch was pinned
+        // (in corpus.rs), so an always-"article" regression on this branch went unnoticed.
+        assert!(
+            html.contains(r#"property="og:type" content="website""#),
+            "an undated page must be og:type=website, not article"
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 

@@ -19,6 +19,27 @@ fn parses_and_formats_entry() {
 }
 
 #[test]
+fn a_duplicate_bib_key_keeps_the_last_definition() {
+    // The duplicate-key warning promises "using the last definition" (bib_warning_located.rs
+    // pins the warning and its location), but nothing rendered a duplicate-keyed entry to
+    // confirm which one actually WINS. Two `@book{dup}` differ by title + year; the SECOND
+    // must format. A silent flip to first-wins would keep the warning honest-looking while
+    // publishing the wrong reference.
+    let b = parse_bib(
+        "@book{dup, title={First}, year={2001}}\n@book{dup, title={Second}, year={2002}}\n",
+    );
+    let f = b.format("dup").expect("the duplicate key formats");
+    assert!(
+        f.contains("Second") && f.contains("2002"),
+        "the last definition must win: {f}"
+    );
+    assert!(
+        !f.contains("First") && !f.contains("2001"),
+        "the first definition must be superseded: {f}"
+    );
+}
+
+#[test]
 fn article_is_ieee_quoted_title_italic_journal_and_et_al() {
     let b = parse_bib(
         "@article{k,\n author = {Ziegler, Daniel M. and Stiennon, Nisan and Wu, Jeffrey and Brown, Tom B. and Radford, Alec and Amodei, Dario and Christiano, Paul and Irving, Geoffrey},\n title = {Fine-Tuning Language Models},\n journal = {arXiv preprint arXiv:1909.08593},\n year = {2019},\n url = {https://arxiv.org/abs/1909.08593}\n}\n",
