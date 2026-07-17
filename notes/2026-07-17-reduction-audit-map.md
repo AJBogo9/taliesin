@@ -142,3 +142,15 @@ gone, search button present).
 
 Untouched, as deferred: R2/T2 (site raw-source scanners), the coverage gaps C1-C7, the
 `cli.tmd` doc drift, and the stray `.claude/worktrees/agent-*` (owner's call).
+
+## Follow-up (2026-07-18)
+
+A later same-day session closed the top coverage gaps and the `cli.tmd` drift:
+**C1** (`{{< embed >}}` — corpus `corpus/embed/` + `embed_site_build.rs` + render unit
+tests), **C2** (`{{< video >}}` `dark=`/`poster=`/`caption=` unit tests), **C7**
+(`render`/`blocks` black-box CLI test), and the **`cli.tmd`** command table (added
+`mcp`/`map`/`vocab`/`read` + the `paper` kind). Still open: **C3–C6** (custom theme
+`.css`, `head:`/`body-*:` knobs, `mounts:`, `citation_*` meta). **Correction to this
+map:** the coverage list is right, but note that **M6b was already fixed** (`dc5af1e`)
+before this map was written — the "`probe_free_mb` has zero tests" line in the audit body
+was stale by the time it was filed.

@@ -54,6 +54,34 @@ CDN, no preview write-back, no new output format, `--tali-*` tokens only.
 
 ## Next session: start here
 
+**Pick up here (2026-07-18, later session — a coverage + live-defect batch landed to LOCAL
+main; NOT pushed, the author pushes).** Seven commits verified (TDD + mutation-checked where
+the code pre-existed; full workspace green, clippy `-D warnings` + fmt clean). **Check, don't
+trust:** `git log --oneline origin/main..main`.
+- **C1 `{{< embed >}}` pinned** (`9aa76dc`): the top coverage gap closed. New `corpus/embed/`
+  mini-site + `crates/server/tests/embed_site_build.rs` (site build builds the deck beside the
+  page, iframe resolves, kept out of nav — mutation-checked by disabling the deck loop) + three
+  render unit tests (iframe markup, `.tmd`→`.html` href, `embed_targets`).
+- **seo #8 CLOSED** (both halves): `47e07af` percent-encodes absolute page URLs at the shared
+  `abs_page_url` (a spaced dir shipped a raw space into the sitemap `<loc>` + a broken llms.txt
+  link); `124855c` diagnoses a scheme-less `url:` (`url: ex.com` built clean and emitted
+  `<loc>ex.com/</loc>` under a green `check`) — verified end-to-end against the real binary.
+- **§2 #1 Part A landed** (`108e5bd`): `register_xref`'s duplicate-cross-reference-label warning
+  is now located (8 call sites threaded). **Part B (the site cross-page duplicate on the
+  `Vec<String>` channel) re-scoped to Tier 2** — it is a channel type change AND a semantic
+  question (a cross-page dup has ≥2 locations; which do you point at?). See §2 #1 + Tier 2.
+- **C2** (`818663a`) pins `{{< video >}}` `dark=`/`poster=`/`caption=`; **C7** (`4079f9d`) is a
+  black-box `render`/`blocks` CLI test; **cli.tmd** (`3216007`) gained the missing `mcp`/`map`/
+  `vocab`/`read` rows + the `paper` scaffold kind.
+- **M6b was ALREADY LANDED** (`dc5af1e`, "stop the RAM probe failing open in a container") — the
+  reduction map + §4 listed it as open with "zero tests"; it has the full cgroup-v2 ancestor-walk
+  cap and a dated test module. **Pure backlog rot** (the exact trap this file warns about). §4
+  entry struck below.
+- **Still open (measured, not rushed):** §2 #1 Part B; the coverage gaps **C3–C6** (custom theme
+  `.css`, `head:`/`body-*:` knobs, `mounts:`, Google-Scholar `citation_*` meta — each wants a
+  corpus pin, all lower-risk than C1/C2/C7); and **R2/T2** (unify the three raw-source scanners —
+  a refactor with a behavioral decision inside, left for a focused session).
+
 **Pick up here (2026-07-18 — reduction + modularity pass landed & pushed to `origin/main`):**
 A staged extension-system exploration ran this session. **Strategic outcome (do not
 re-litigate):** grow the extension system in phases — **(i) internal modularity now, (ii)
@@ -299,14 +327,16 @@ precondition nobody checks: **that the helper is correct.** The one habit that c
 **measure the running product before and after, not the unit test.** Every one of these had a green
 unit test while the live server still served the bug.*
 
-1. **Duplicate-label warnings are unlocated** (`render/mod.rs:1568-1571`, `site/xref.rs:50-56` emit
-   no file/line), half-reproducing the exact Quarto flaw D53 critiques. *(The harvest's own duplicate
-   warning, added 2026-07-16, is unlocated for the same reason: `site/mod.rs:953`.)* **Price it
-   before promising it (2026-07-17): this reads as one small fix and is TWO, with very different
-   costs.** `render/mod.rs:1568` is on the `Vec<Warning>` channel, which already has `.at(file,
-   line)` (`render/model.rs:166`) — cheap. But `site/xref.rs:23` and `site/mod.rs:172` are
-   `Vec<String>`: **no location field exists in that channel at all**, so half of this item is a
-   channel type change. (Line numbers here had drifted by 30 and 6; the symptom held.)
+1. **Duplicate-label warnings are unlocated** — half-reproducing the exact Quarto flaw D53
+   critiques. **Part A LANDED 2026-07-18** (`108e5bd`): the render-side `register_xref` warning
+   (`Vec<Warning>` channel, which already had `.at()`) now carries the duplicate's file/line,
+   threaded through its 8 call sites (the five in the main block loop pass `source_file`/
+   `buf_start`; the three caption/theorem passes derive it from the block's `sourcepos`). As
+   priced, this was NOT one small fix. **Part B still OPEN, re-scoped to Tier 2:** the site
+   cross-page duplicate (`site/xref.rs`, `site/mod.rs`, and the harvest's own `site/mod.rs`
+   duplicate) is on the `Vec<String>` channel with **no location field at all** — and it is not
+   merely a channel type change: a "defined on multiple pages" warning has **≥2 locations**, so
+   locating it is a semantic decision (point at the second, or carry both). See Tier 2.
 2. ~~**The xref registry goes stale on a warm content edit**~~ **LANDED 2026-07-17** (`4b35bb5`),
    together with #4 — they were the two ends of one seam and shipped as one change. `refresh_xrefs()`
    re-runs both producers on a `.tmd` change. **Three things the entry did not know, all found by
@@ -397,13 +427,13 @@ unit test while the live server still served the bug.*
    this shipped still lands stale (old code cannot be taught to reload); it self-corrects after.
    *The check that mattered as much as the fix: a sentinel proving three consecutive edits stay
    incremental and do NOT reload — the failure mode here was an edit-triggered reload loop.*
-8. **`seo.rs` emits machine-invalid output with no diagnostic** (executed, same audit). **The
-   `<lastmod>` third LANDED 2026-07-17 (`3041f87`); the other two are still open and still
-   independent:** `<loc>` is entity-escaped but never URL-escaped (`posts/two words/` -> a raw space,
-   and the same URL goes into `llms.txt` where it isn't a CommonMark link); a scheme-less
-   `url: ex.com` builds clean and emits `<loc>ex.com/</loc>` + `Sitemap: ex.com/sitemap.xml`. `check`
-   reports "no problems found", exit 0, for both. Wants a **diagnostic, not a knob** (the `69c228b`
-   value-lint + D37 precedent — and `<lastmod>` now *is* that precedent too).
+8. ~~**`seo.rs` emits machine-invalid output with no diagnostic**~~ **CLOSED 2026-07-18.** All
+   three halves landed: `<lastmod>` (`3041f87`), URL-escaping (`47e07af` — percent-encode at the
+   shared `abs_page_url`, so sitemap `<loc>` + `llms.txt` + feed + og:url are all fixed at one
+   producer; new `percent_encode_path` helper in `feed.rs`), and the scheme-less `url:` diagnostic
+   (`124855c` — `validate_url` in `config/parse_native`; `url: ex.com` now fails `check` with a fix
+   hint, verified end-to-end). The prediction held: a diagnostic, not a knob (the `page-layout` /
+   site-`image:` precedent).
    **What the landed third proves, because it cost more than its price tag said.** The entry read
    "`rfc3339` exists, `seo.rs` can reach it, it just doesn't call it — close to free". Every clause
    was true and the conclusion was still wrong twice. (1) **Calling it breaks a pin one file over:**
@@ -543,10 +573,12 @@ unit test while the live server still served the bug.*
       at `:87` drops the executor, which *kills its kernel child processes* (`:17`), destroying that
       page's kernel variable state and forcing a cold replay; `:3` states the eviction order must
       stay deterministic because the build relies on it. That is kernel lifecycle.
-    - **M6b the RAM probe fails OPEN in a container** (`build_budget.rs:36-46`: host-wide
-      `/proc/meminfo` while `available_parallelism` honours cgroup CPU quota). **FREE-STANDING, no
-      sign-off**: a file read returning `Option<u64>`, exactly M1's shape. Only affects auto mode
-      (an explicit `--jobs` never consults memory). `probe_free_mb` has zero tests.
+    - ~~**M6b the RAM probe fails OPEN in a container**~~ **ALREADY LANDED** (`dc5af1e`, "stop the
+      RAM probe failing open in a container"), discovered 2026-07-18 to be pure rot: this entry (and
+      the reduction map) said "zero tests", but `build_budget.rs` has the full cgroup-v2
+      ancestor-walk cap (`cgroup_free_mb_with`, `probe_free_mb` capping host by cgroup) AND a dated
+      M6b test module (`the_container_that_failed_open_is_now_capped_by_ram_not_cores`, 25 tests
+      green). The classic "grep the symbol before trusting this file" lesson.
   *(Two entries that named the citation zone — D49, D67 — turned out not to need it. Check before
   assuming these do; but M1-M6 were all read-only-audited precisely because they do.)*
 
@@ -582,6 +614,14 @@ dropping Atom feeds as "a documented non-goal" and Atom shipped anyway, with aut
 
 ## Tier 2 — hardening (P3)
 
+- **Locate the site-side cross-page duplicate-label warning** (§2 #1 Part B, split out
+  2026-07-18 after Part A landed). `site/xref.rs` + `site/mod.rs` push
+  `"duplicate cross-reference label X defined on multiple pages"` onto the **`Vec<String>`**
+  channel, which carries no location. This is **not just a channel type change** (Vec<String> →
+  a located type, touching discovery/config/links/xref/book): a cross-page duplicate has **≥2
+  real locations** (page A's line and page B's line), so the fix must first decide what to point
+  at — the second definition, both, or a per-page list. Design the semantics before the plumbing.
+  Corpus-exercised (nothing ships wrong today), so P3.
 - **Site raw-source scanners are duplicated three ways** (reduction audit, 2026-07-17; R2/T2 in
   [2026-07-17-reduction-audit-map.md](2026-07-17-reduction-audit-map.md)). `site/xref.rs::scan_page_anchors`,
   `site/book.rs::chapter_heading`, and `site/discovery.rs` each run their own "skip front matter,
