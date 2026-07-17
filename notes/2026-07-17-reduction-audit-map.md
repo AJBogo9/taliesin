@@ -116,3 +116,29 @@ Sub-gaps also noted: `TAL-FM-KEY` ("unknown prose-lint key") and
 - **Not this pass:** the coverage gaps (C1-C7) are a separate "add corpus pins"
   initiative; the doc-drift and worktree items are one-liners for whenever.
 - **Deck:** classified must-stay-native / mid-redesign; untouched, as specified.
+
+---
+
+## Execution outcome (2026-07-17, scope: Phase 2 + T1)
+
+Plan: `docs/superpowers/plans/2026-07-17-reduction-phase2-3.md`. Branch
+`reduction-modularity-pass`. One commit per item; workspace tests + clippy + fmt green;
+tech-blog rebuilt and artifact-verified (hero intact, `tali-about`/`tali-search-full`
+gone, search button present).
+
+- **D2 done** (`1a47fb6`): dropped the orphaned `TAL-MEDIA` audio row.
+- **D3 done** (`f57e5d4`): removed the unused `search_button(full=true)` variant + its dead CSS.
+- **D1 done** (`dcf0588`): removed the `about:` block end-to-end. Wider than first scoped:
+  it cascaded into `schema.rs`/`vocab.rs` (both derive from the frontmatter consts) and
+  three regenerated golden assets (schema, vocab, repo-root + bundled AGENTS.md). `about:`
+  now warns as an unknown key (the `image:`/`csl` retirement precedent).
+- **R1 DEFERRED** (`90ef09f`): the equivalence gate FAILED — `text_content` decodes
+  `&#8217;`/`&nbsp;`, `render::indexable_text` does not, so reusing it would leak raw
+  entities into `llms.txt`. Divergence pinned by a passing test; aligning the two (which
+  also changes the search index) is a separate call, out of this pass's scope.
+- **T1 done** (`59c99b8`): added `PageParts::defaults()`; the three production assemblers
+  use `..PageParts::defaults()`, so a new field is one edit. Page-assembly snapshots
+  byte-identical.
+
+Untouched, as deferred: R2/T2 (site raw-source scanners), the coverage gaps C1-C7, the
+`cli.tmd` doc drift, and the stray `.claude/worktrees/agent-*` (owner's call).
