@@ -1,5 +1,25 @@
 # Pre-open-source security + supply-chain audit, 2026-07-17
 
+> **Remediation status (2026-07-17, same day).** All four real findings are fixed on local
+> `main`, plus the trivial supply-chain items:
+> - **PT-1** symlink escape — `safe_join` canonicalizes + re-checks (`e981f20`).
+> - **NET-1** DNS-rebinding — positive `Host`-header allowlist middleware (`2fe4add`).
+> - **OUT-1** URL-scheme sanitizer on the markdown link/image path (`99ffdc8`).
+> - **PT-2** single-doc includes/resources confined to an explicit root (`9359a2c`): a new
+>   `safe_join_in(base, rel, root)`; preview/build/render/read/map/check pass the doc's own
+>   dir; the site path keeps the `_site.yml`-bounded walk. Threaded fix (not the deferred
+>   "accept + document" option), per owner decision. A standalone doc can no longer read
+>   above its own folder (a refused include surfaces the located "escapes the project root"
+>   warning).
+> - **DEP-02** `anyhow` bumped; **DEP-01** `scc` unsound advisory gated + documented in
+>   `deny.toml` (`unsound = "all"`, `78b26e7`). `SECURITY.md` added; `/home/bogo` paths
+>   scrubbed (`127038c`).
+>
+> **Deferred to the pre-public cleanup (repo goes public ~2026-08, owner may start fresh):**
+> the remaining info/hardening items below (DEP-03 mermaid bump, CMD-01 boot log, dos-rich /
+> dos-ws-size caps, dos-pages eviction) and the `oss-*` checklist (notes/ prune decision).
+> `dos-pages` and the notes/ prune are **not** done. `check` also confines now (single-doc).
+
 Report-only. A multi-agent audit (7 read-only finders, one per attack class; each finding
 independently adversarially verified) run before making the repo public. Threat model:
 **A1** a malicious web page the author visits while a preview runs, **A2** an untrusted `.tmd`
