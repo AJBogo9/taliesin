@@ -119,6 +119,34 @@ pub struct PageParts<'a> {
     pub assets: AssetMode<'a>,
 }
 
+impl<'a> PageParts<'a> {
+    /// Every field at a safe default so a construction site sets only what it varies and
+    /// ends with `..PageParts::defaults()`. Adding a new `PageParts` field is then a
+    /// one-line edit here instead of at every hand-rolled call site (the three live/build
+    /// assemblers used to drift, which once shipped a title-consistency bug).
+    pub fn defaults() -> PageParts<'a> {
+        PageParts {
+            mode: OutputMode::Build,
+            title: "",
+            lang: "en",
+            favicon: "",
+            theme_default: "",
+            theme_css: "",
+            with_site_css: false,
+            ship_katex: false,
+            extra_head: "",
+            body_class: "",
+            include_in_header: "",
+            include_before_body: "",
+            body: "",
+            scripts_pre: "",
+            scripts_post: "",
+            include_after_body: "",
+            assets: AssetMode::Inline,
+        }
+    }
+}
+
 /// Assemble a complete HTML page from its parts: the single source of truth for
 /// the page skeleton (`<!DOCTYPE>`, the `<head>` ordering, the body frame, the
 /// shared enhancer scripts) shared by the static build and both live-preview
@@ -569,7 +597,6 @@ fn html_page_inner(
         theme_css: &doc.theme_css,
         with_site_css: site.is_some(),
         ship_katex,
-        extra_head: "",
         body_class: &body_class,
         include_in_header: &includes.in_header,
         include_before_body: &includes.before_body,
@@ -582,6 +609,7 @@ fn html_page_inner(
         scripts_post: &format!("{STATIC_ENHANCE}\n{toc_script}"),
         include_after_body: &includes.after_body,
         assets,
+        ..PageParts::defaults()
     })
 }
 
@@ -653,6 +681,18 @@ mod tests {
     // proves the runtime shipped INLINE (in External mode all other framework JS is a
     // `<script src=...>` link, so raw runtime text in the page == an inline `<script>`).
     const MARKER_QMDJS: &str = "qmd-js cell error:";
+
+    #[test]
+    fn page_parts_defaults_assemble_a_minimal_page() {
+        // The churn-killer: a caller sets only what it varies, the rest comes from defaults().
+        let html = assemble_html_page(&PageParts {
+            title: "MinimalT",
+            body: "<p>hello-min</p>",
+            ..PageParts::defaults()
+        });
+        assert!(html.contains("hello-min"), "body must render: {html}");
+        assert!(html.contains("MinimalT"), "title must render");
+    }
 
     #[test]
     fn external_inlines_js_cell_runtime_page_relative() {

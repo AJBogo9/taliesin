@@ -699,7 +699,6 @@ fn blog_index_html(ctx: &PageCtx) -> String {
         favicon: "<link rel=\"icon\" type=\"image/svg+xml\" href=\"/favicon.ico\" />",
         theme_default: ctx.theme_default,
         theme_css: ctx.theme_css,
-        with_site_css: false,
         // A live doc can gain math at any edit, so always ship the KaTeX styles.
         ship_katex: true,
         extra_head: &extra_head,
@@ -710,7 +709,7 @@ fn blog_index_html(ctx: &PageCtx) -> String {
         scripts_pre: &scripts_pre,
         scripts_post: &scripts_post,
         include_after_body: &ctx.includes.after_body,
-        assets: taliesin_core::AssetMode::Inline,
+        ..taliesin_core::PageParts::defaults()
     })
 }
 

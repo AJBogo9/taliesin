@@ -686,7 +686,7 @@ fn site_page_html(app: &SiteApp, page: &Page) -> String {
         scripts_pre: &scripts_pre,
         scripts_post: &scripts_post,
         include_after_body: &includes.after_body,
-        assets: taliesin_core::AssetMode::Inline,
+        ..taliesin_core::PageParts::defaults()
     })
 }
 
