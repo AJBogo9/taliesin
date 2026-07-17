@@ -344,9 +344,13 @@ pub(crate) fn open_in_browser(url: &str) {
 
 fn render_doc(app: &AppState) -> Option<RenderedDoc> {
     let src = std::fs::read_to_string(&app.path).ok()?;
-    Some(taliesin_core::render_document_with_includes(
+    // Single-document preview: confine includes/resources to the doc's own directory
+    // (PT-2) so an untrusted `.tmd` opened from inside a larger checkout cannot climb
+    // out to read a sibling repo-local file.
+    Some(taliesin_core::render_document_with_includes_rooted(
         &src,
         &app.base_dir,
+        Some(&app.base_dir),
     ))
 }
 

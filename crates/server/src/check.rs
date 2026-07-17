@@ -141,7 +141,7 @@ fn collect_file_diagnostics(path: &Path) -> Result<Vec<Diagnostic>, String> {
     let src = std::fs::read_to_string(path)
         .map_err(|e| format!("cannot read {}: {e}", path.display()))?;
     let base = path.parent().unwrap_or_else(|| Path::new("."));
-    let doc = taliesin_core::render_document_with_includes(&src, base);
+    let doc = taliesin_core::render_document_with_includes_rooted(&src, base, Some(base));
     let path_str = path.display().to_string();
     let xref = taliesin_core::cite::validate_xrefs(&doc.blocks);
     let statics = page_static_diagnostics(&src, &doc.blocks, base, doc.format, Scope::Standalone);
@@ -319,7 +319,7 @@ fn collect_environment(path: &Path) -> Vec<EnvEntry> {
             return Vec::new();
         };
         let base = path.parent().unwrap_or_else(|| Path::new("."));
-        let doc = taliesin_core::render_document_with_includes(&src, base);
+        let doc = taliesin_core::render_document_with_includes_rooted(&src, base, Some(base));
         used_languages(&doc.blocks)
             .into_iter()
             .map(|lang| {

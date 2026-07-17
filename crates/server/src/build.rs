@@ -498,7 +498,9 @@ fn build_page_executing(
             ));
             problems += 1;
         }
-        let mut doc = taliesin_core::render_document_with_includes(src, base);
+        // Single-document build: confine includes/resources to the doc's own directory
+        // (PT-2), matching single-doc preview.
+        let mut doc = taliesin_core::render_document_with_includes_rooted(src, base, Some(base));
         // `--bare` is prose-shaped, JS-free output: a slide deck (whose navigation is
         // JavaScript) can't be one. Refuse before doing any execution work.
         if mode == taliesin_core::OutputMode::Bare && doc.format == taliesin_core::DocFormat::Reveal

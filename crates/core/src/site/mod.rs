@@ -368,6 +368,10 @@ impl Site {
             config.body_end.as_ref(),
             config.css.as_ref(),
             Some(root),
+            // The site root is the explicit containment boundary (equivalent to the
+            // `_site.yml`-marker walk, but not dependent on it): head/css includes stay
+            // inside the project.
+            Some(root),
         );
 
         let xref_targets = scan_xref_targets(&pages, &book, &mut warnings);

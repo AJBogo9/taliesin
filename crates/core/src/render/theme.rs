@@ -14,6 +14,7 @@ use super::*;
 pub(super) fn resolve_theme(
     theme: Option<&str>,
     base_dir: Option<&Path>,
+    root: Option<&Path>,
     warnings: &mut Vec<Warning>,
 ) -> String {
     let Some(name) = theme else {
@@ -27,7 +28,7 @@ pub(super) fn resolve_theme(
         // `safe_join` refuses an absolute path or one escaping the project root.
         path if path.ends_with(".css") || path.ends_with(".scss") => {
             match base_dir
-                .and_then(|b| crate::includes::safe_join(b, path))
+                .and_then(|b| crate::includes::safe_join_in(b, path, root))
                 .and_then(|p| std::fs::read_to_string(&p).ok())
             {
                 Some(css) => css,

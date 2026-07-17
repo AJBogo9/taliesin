@@ -47,6 +47,18 @@ pub fn resolve_warned(
     src: &str,
     base_dir: &Path,
 ) -> (String, Vec<LineOrigin>, Vec<IncludeWarning>) {
+    resolve_warned_in(src, base_dir, None)
+}
+
+/// Like [`resolve_warned`], but with an explicit containment `root` (see [`safe_join_in`]).
+/// First-party single-document invocations pass the invoked doc's own directory so an
+/// untrusted document cannot `{{< include ../../.. >}}` out of it into a parent checkout.
+/// `None` keeps the inferred-marker walk (the site and corpus loose-doc behavior).
+pub fn resolve_warned_in(
+    src: &str,
+    base_dir: &Path,
+    root: Option<&Path>,
+) -> (String, Vec<LineOrigin>, Vec<IncludeWarning>) {
     let mut lines = Vec::new();
     let mut origins = Vec::new();
     let mut warnings = Vec::new();
@@ -57,6 +69,7 @@ pub fn resolve_warned(
         base_dir,
         base_dir,
         None,
+        root,
         &mut stack,
         &mut lines,
         &mut origins,
@@ -76,6 +89,7 @@ fn expand(
     base_dir: &Path,            // directory of the file currently being expanded
     primary_base: &Path,        // directory of the primary document (for nice labels)
     file_label: Option<String>, // label of the current file (None = primary)
+    root: Option<&Path>,        // explicit containment root (constant across recursion)
     stack: &mut Vec<PathBuf>,
     out_lines: &mut Vec<String>,
     out_origins: &mut Vec<LineOrigin>,
@@ -119,7 +133,7 @@ fn expand(
         };
         // Unsafe path (absolute or escaping the project root), or an include cycle:
         // leave the directive visible rather than reading outside the project / looping.
-        let Some(target) = safe_join(base_dir, rel) else {
+        let Some(target) = safe_join_in(base_dir, rel, root) else {
             drop_with_warning(rel, "path escapes the project root (or is absolute)");
             continue;
         };
@@ -137,6 +151,7 @@ fn expand(
                     &child_base,
                     primary_base,
                     Some(label),
+                    root,
                     stack,
                     out_lines,
                     out_origins,
@@ -338,6 +353,22 @@ fn relative_from(base: &Path, target: &Path) -> Option<String> {
 /// (the repo root contains both the doc and `_includes/`). Shared by include
 /// resolution, theme/CSS includes, and format-resource reads.
 pub(crate) fn safe_join(base_dir: &Path, rel: &str) -> Option<PathBuf> {
+    safe_join_in(base_dir, rel, None)
+}
+
+/// Like [`safe_join`], but the containment boundary can be given explicitly as `root`
+/// instead of being inferred by walking to the nearest ancestor `.git`/`_site.yml`.
+/// First-party single-document invocations (preview/build of one `.tmd`) pass the
+/// invoked doc's own directory here so an untrusted document dropped inside a larger
+/// checkout cannot `../`-climb to a sibling repo-local file (the walk would otherwise
+/// widen the boundary to that ancestor's marker). `None` keeps the walk, which the
+/// site path relies on (its `_site.yml` marker bounds the walk to the project) and the
+/// corpus's loose `../../_includes/` fixture depends on.
+pub(crate) fn safe_join_in(
+    base_dir: &Path,
+    rel: &str,
+    explicit_root: Option<&Path>,
+) -> Option<PathBuf> {
     let relp = Path::new(rel);
     // An absolute path (incl. a Windows drive/UNC root) escapes immediately.
     if relp.has_root() || relp.is_absolute() {
@@ -351,7 +382,12 @@ pub(crate) fn safe_join(base_dir: &Path, rel: &str) -> Option<PathBuf> {
     // normalizes lexically (no filesystem touch, no symlink resolution).
     let abs_base = absolutize(base_dir);
     let target = normalize(&abs_base.join(relp));
-    let root = containment_root(&abs_base);
+    // An explicit root (a first-party single-doc invocation) bounds the boundary to
+    // exactly that directory; otherwise infer it by walking to an ancestor marker.
+    let root = match explicit_root {
+        Some(r) => absolutize(r),
+        None => containment_root(&abs_base),
+    };
     // Lexical containment first. This also lets a not-yet-existing in-root target
     // through, so the caller's read fails with a "not found" diagnostic rather than a
     // traversal one.
@@ -616,5 +652,51 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&root);
         let _ = std::fs::remove_file(&secret);
+    }
+
+    #[test]
+    fn safe_join_in_confines_to_an_explicit_root_despite_an_ancestor_marker() {
+        // PT-2: `containment_root`'s walk widens the boundary to the nearest ancestor
+        // holding `.git`/`_site.yml`. An untrusted doc dropped inside an existing checkout
+        // could therefore `../`-climb to a sibling repo-local file. With an EXPLICIT root
+        // (the CLI-invoked doc dir), `safe_join_in` must confine to that root and refuse
+        // any climb above it, even when a `.git` sits higher up.
+        //   <tmp>/.git                 (ancestor checkout marker)
+        //   <tmp>/proj/doc/            (the invoked doc's dir = the explicit root)
+        //   <tmp>/proj/sibling.txt     (a repo-local file ABOVE the explicit root)
+        let uniq = format!(
+            "{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let tmp = std::env::temp_dir().join(format!("tali-pt2-{uniq}"));
+        let _ = std::fs::remove_dir_all(&tmp);
+        let doc = tmp.join("proj/doc");
+        std::fs::create_dir_all(&doc).unwrap();
+        std::fs::write(tmp.join(".git"), b"").unwrap();
+        std::fs::write(tmp.join("proj/sibling.txt"), b"secret").unwrap();
+        std::fs::write(doc.join("local.txt"), b"ok").unwrap();
+
+        // With the doc dir as the explicit root: an in-root file resolves...
+        assert!(
+            safe_join_in(&doc, "local.txt", Some(&doc)).is_some(),
+            "an in-root file must resolve under an explicit root"
+        );
+        // ...but climbing above the explicit root is refused, despite the ancestor `.git`.
+        assert!(
+            safe_join_in(&doc, "../sibling.txt", Some(&doc)).is_none(),
+            "a climb above the explicit root must be refused even with an ancestor .git"
+        );
+        // Contrast: the walk (None) climbs to `<tmp>/.git`, so the SAME escape is allowed.
+        // That widening is exactly what the explicit root closes.
+        assert!(
+            safe_join(&doc, "../sibling.txt").is_some(),
+            "sanity: the inferred-marker walk still permits the climb (the behavior PT-2 bounds)"
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

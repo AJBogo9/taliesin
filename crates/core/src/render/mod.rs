@@ -116,7 +116,7 @@ use theme::{detect_theme, resolve_theme, theme_default_mode, theme_style};
 /// assert!(doc.blocks[0].html.contains("<h1"));
 /// ```
 pub fn render_document(src: &str) -> RenderedDoc {
-    render_internal(src, None, None, None)
+    render_internal(src, None, None, None, None)
 }
 
 /// Like [`render_document`], but first expands `{{< include >}}` shortcodes
@@ -134,13 +134,38 @@ pub fn render_document_with_includes_scoped(
     base_dir: &Path,
     chapter: Option<u32>,
 ) -> RenderedDoc {
-    let (expanded, origins, include_warnings) = crate::includes::resolve_warned(src, base_dir);
+    render_doc_with_includes_impl(src, base_dir, chapter, None)
+}
+
+/// Like [`render_document_with_includes`], but confining `{{< include >}}` and the
+/// front-matter resource paths (`css:` / `bibliography:` / `csl:` / `include-*`) to an
+/// explicit containment `root` (see [`crate::includes::safe_join_in`]) instead of the
+/// inferred `.git`/`_site.yml` walk. First-party single-document preview/build passes the
+/// invoked doc's own directory here, so an untrusted document dropped inside a larger
+/// checkout cannot climb out of it to read a sibling repo-local file. `None` keeps the
+/// walk (the multi-page site path and the corpus's loose `../../_includes/` fixture).
+pub fn render_document_with_includes_rooted(
+    src: &str,
+    base_dir: &Path,
+    root: Option<&Path>,
+) -> RenderedDoc {
+    render_doc_with_includes_impl(src, base_dir, None, root)
+}
+
+fn render_doc_with_includes_impl(
+    src: &str,
+    base_dir: &Path,
+    chapter: Option<u32>,
+    root: Option<&Path>,
+) -> RenderedDoc {
+    let (expanded, origins, include_warnings) =
+        crate::includes::resolve_warned_in(src, base_dir, root);
     // Declarative shortcodes (`{{< embed >}}` / `{{< video >}}` / `{{< input >}}`)
     // expand after includes, line-preserving so `origins` stays valid. A `{{< name >}}`
     // that no built-in declares is left verbatim but reported, so a typo'd shortcode
     // doesn't ship silently as literal text.
     let (expanded, shortcode_warnings) = extension::expand_shortcodes(&expanded);
-    let mut doc = render_internal(&expanded, Some(&origins), Some(base_dir), chapter);
+    let mut doc = render_internal(&expanded, Some(&origins), Some(base_dir), root, chapter);
     // An include that couldn't be expanded (unsafe path, cycle, unreadable) leaves
     // its `{{< include … >}}` directive literal in the output; surface it as a
     // located, click-to-source diagnostic on the same channel as broken refs so it
@@ -168,13 +193,14 @@ fn render_internal(
     src: &str,
     origins: Option<&[LineOrigin]>,
     base_dir: Option<&Path>,
+    include_root: Option<&Path>,
     chapter: Option<u32>,
 ) -> RenderedDoc {
     std::thread::scope(|scope| {
         match std::thread::Builder::new()
             .stack_size(256 * 1024 * 1024)
             .spawn_scoped(scope, || {
-                render_internal_impl(src, origins, base_dir, chapter)
+                render_internal_impl(src, origins, base_dir, include_root, chapter)
             }) {
             Ok(handle) => match handle.join() {
                 Ok(doc) => doc,
@@ -183,7 +209,7 @@ fn render_internal(
             // Spawning the big-stack worker can fail under a strict address-space
             // limit (e.g. `ulimit -v`). Fall back to rendering inline on the current
             // (default-stack) thread rather than panicking — same as before this guard.
-            Err(_) => render_internal_impl(src, origins, base_dir, chapter),
+            Err(_) => render_internal_impl(src, origins, base_dir, include_root, chapter),
         }
     })
 }
@@ -192,6 +218,7 @@ fn render_internal_impl(
     src: &str,
     origins: Option<&[LineOrigin]>,
     base_dir: Option<&Path>,
+    include_root: Option<&Path>,
     chapter: Option<u32>,
 ) -> RenderedDoc {
     let arena = Arena::new();
@@ -329,7 +356,7 @@ fn render_internal_impl(
                 toc_explicit = detect_toc(fm);
                 hide_title_block = detect_title_block_hidden(fm);
                 theme = detect_theme(fm);
-                includes = resolve_doc_includes(fm, base_dir);
+                includes = resolve_doc_includes(fm, base_dir, include_root);
                 (exec_echo, exec_include, exec_cache) = detect_execute_defaults(fm);
                 theorem_config = parse_theorem_config(fm);
                 continue;
@@ -737,7 +764,7 @@ fn render_internal_impl(
         chapter,
     );
     let bib_line = crate::frontmatter::bibliography_line(src);
-    let bib = load_bibliography(&bib_paths, base_dir, bib_line, &mut warnings);
+    let bib = load_bibliography(&bib_paths, base_dir, include_root, bib_line, &mut warnings);
     warnings.extend(crate::cite::process(&mut blocks, &bib, &xref_registry));
     // Gather the footnote definitions (collected above, in comrak's reference order)
     // into one footnotes section, appended after any References.
@@ -785,7 +812,7 @@ fn render_internal_impl(
             },
         );
     }
-    let theme_css = resolve_theme(theme.as_deref(), base_dir, &mut warnings);
+    let theme_css = resolve_theme(theme.as_deref(), base_dir, include_root, &mut warnings);
     let theme_default = theme_default_mode(theme.as_deref()).to_string();
     let theme_is_custom = !theme_css.trim().is_empty();
     RenderedDoc {
@@ -924,6 +951,7 @@ const DARK_CSS: &str = include_str!("../../assets/css/dark.css");
 fn load_bibliography(
     paths: &[String],
     base_dir: Option<&Path>,
+    root: Option<&Path>,
     bib_line: Option<u32>,
     warnings: &mut Vec<Warning>,
 ) -> crate::cite::Bibliography {
@@ -949,7 +977,8 @@ fn load_bibliography(
             ))));
             continue;
         }
-        match crate::includes::safe_join(base, path).and_then(|p| std::fs::read_to_string(&p).ok())
+        match crate::includes::safe_join_in(base, path, root)
+            .and_then(|p| std::fs::read_to_string(&p).ok())
         {
             Some(content) => {
                 text.push_str(&content);
