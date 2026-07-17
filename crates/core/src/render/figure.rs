@@ -102,7 +102,7 @@ pub(super) fn emit_figure(fig: &FigureParts, block_attrs: &str, num: &str) -> St
         };
         format!(
             "<img{cls} src=\"{}\" alt=\"{alt}\"{style} />",
-            escape_attr(src)
+            escape_attr(safe_url(src, true))
         )
     };
     // With `dark=`, ship a light + dark <img> pair (like `{{< video dark= >}}`); CSS shows

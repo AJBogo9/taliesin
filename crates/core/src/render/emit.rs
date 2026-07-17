@@ -106,7 +106,7 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
         }
         NodeValue::ThematicBreak => out.push_str(&format!("<hr{attrs} />")),
         NodeValue::Link(l) => {
-            out.push_str(&format!("<a href=\"{}\"", escape_attr(&l.url)));
+            out.push_str(&format!("<a href=\"{}\"", escape_attr(safe_url(&l.url, false))));
             if !l.title.is_empty() {
                 out.push_str(&format!(" title=\"{}\"", escape_attr(&l.title)));
             }
@@ -119,7 +119,7 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
             collect_text(node, &mut alt);
             out.push_str(&format!(
                 "<img src=\"{}\" alt=\"{}\"",
-                escape_attr(&l.url),
+                escape_attr(safe_url(&l.url, true)),
                 escape_attr(&alt)
             ));
             if !l.title.is_empty() {
@@ -133,6 +133,75 @@ pub(super) fn emit<'a>(node: &'a AstNode<'a>, attrs: &str, out: &mut String) {
         // Unknown/unhandled wrappers degrade to their inner content.
         _ => emit_children(node, out),
     }
+}
+
+/// Neutralize script-bearing URL schemes in a markdown link/image destination.
+/// Taliesin renders comrak's AST with raw-HTML passthrough, which also disables
+/// comrak's own safe-mode URL filter, so this restores that safe default on the
+/// markdown path. Relative paths, fragments, and the ordinary web schemes pass
+/// through unchanged; a blocked scheme collapses to an empty string (an inert
+/// `href`/`src`). `allow_data_image` additionally permits inline raster `data:image/*`
+/// payloads (legitimate for `<img>`), which stay blocked for `<a href>`, where
+/// `data:` is an XSS vector. The `.tmd` author can still emit any URL via raw HTML;
+/// this only guards not-fully-authored markdown (an include, a third-party README).
+pub(crate) fn safe_url(url: &str, allow_data_image: bool) -> &str {
+    match url_scheme_lc(url) {
+        // No scheme: relative path, absolute path, `#fragment`, `?query`, or a
+        // protocol-relative `//host` URL. None can introduce script; keep as-is.
+        None => url,
+        Some(scheme) => match scheme.as_str() {
+            "http" | "https" | "mailto" | "tel" | "ftp" => url,
+            "data" if allow_data_image && is_safe_data_image(url) => url,
+            _ => "",
+        },
+    }
+}
+
+/// The URL's scheme, lowercased, or `None` if it has none. ASCII whitespace and C0
+/// control characters are skipped while scanning, mirroring how browsers strip them
+/// before resolving a scheme, so `java\tscript:` is still recognized as `javascript`.
+fn url_scheme_lc(url: &str) -> Option<String> {
+    let mut scheme = String::new();
+    for &b in url.as_bytes() {
+        match b {
+            b':' => return (!scheme.is_empty()).then_some(scheme),
+            // path / query / fragment starts before any `:` → no scheme
+            b'/' | b'?' | b'#' => return None,
+            // browsers drop these before scheme resolution; ignore them
+            b if b <= 0x20 => continue,
+            b if b.is_ascii_alphanumeric() || matches!(b, b'+' | b'-' | b'.') => {
+                // a scheme must begin with a letter
+                if scheme.is_empty() && !b.is_ascii_alphabetic() {
+                    return None;
+                }
+                scheme.push(b.to_ascii_lowercase() as char);
+            }
+            // any other byte cannot appear in a scheme → treat as schemeless
+            _ => return None,
+        }
+    }
+    None
+}
+
+/// Whether a `data:` URL is an inline *raster* image (`png`/`gif`/`jpeg`/`webp`/`avif`).
+/// `data:image/svg+xml` is deliberately excluded: SVG can carry script. The prefix is
+/// matched after stripping ASCII whitespace/control chars so a padded `data:\timage/…`
+/// cannot slip past.
+fn is_safe_data_image(url: &str) -> bool {
+    let norm: String = url
+        .bytes()
+        .filter(|b| *b > 0x20)
+        .map(|b| b.to_ascii_lowercase() as char)
+        .collect();
+    const RASTER: [&str; 6] = [
+        "data:image/png",
+        "data:image/gif",
+        "data:image/jpeg",
+        "data:image/jpg",
+        "data:image/webp",
+        "data:image/avif",
+    ];
+    RASTER.iter().any(|p| norm.starts_with(p))
 }
 
 /// A footnote definition as an `<li>` for the gathered footnotes `<ol>` (the render

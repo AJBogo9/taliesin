@@ -1258,6 +1258,56 @@ fn attribute_values_are_escaped() {
 }
 
 #[test]
+fn dangerous_url_schemes_are_neutralized() {
+    // Taliesin renders comrak's AST with raw-HTML passthrough, which also bypasses
+    // comrak's safe-mode URL sanitizer, so the markdown link/image path must reject
+    // script-bearing schemes itself. The trusted author can still use raw HTML; this
+    // is the safe default for any not-fully-authored markdown (a third-party README,
+    // an `{{< include >}}`d fragment, a future multi-author surface).
+    let link = render_document("[click](javascript:alert)\n");
+    let lh = &link.blocks[0].html;
+    assert!(
+        !lh.contains("javascript:"),
+        "javascript: URL leaked into a link href: {lh}"
+    );
+
+    let img = render_document("![x](vbscript:evil)\n");
+    let ih = &img.blocks[0].html;
+    assert!(
+        !ih.contains("vbscript:"),
+        "vbscript: URL leaked into an img src: {ih}"
+    );
+
+    // `data:text/html` is an XSS vector in a link; an inline `data:image` is a
+    // legitimate image, so it is allowed in the image context only.
+    let data_link = render_document("[x](data:text/html;base64,PHNjcmlwdD4=)\n");
+    assert!(
+        !data_link.blocks[0].html.contains("data:text/html"),
+        "data:text/html leaked into a link href: {}",
+        data_link.blocks[0].html
+    );
+    let data_img = render_document("![x](data:image/png;base64,iVBORw0KGgo=)\n");
+    assert!(
+        data_img.blocks[0]
+            .html
+            .contains("data:image/png;base64,iVBORw0KGgo="),
+        "a legitimate inline data:image was dropped: {}",
+        data_img.blocks[0].html
+    );
+
+    // Ordinary schemes, relative paths, and fragments are untouched.
+    let ok = render_document("[a](https://ex.com) [b](/rel) [c](#frag) [d](mailto:x@y.z)\n");
+    let oh = &ok.blocks[0].html;
+    assert!(
+        oh.contains("href=\"https://ex.com\""),
+        "https dropped: {oh}"
+    );
+    assert!(oh.contains("href=\"/rel\""), "relative path dropped: {oh}");
+    assert!(oh.contains("href=\"#frag\""), "fragment dropped: {oh}");
+    assert!(oh.contains("href=\"mailto:x@y.z\""), "mailto dropped: {oh}");
+}
+
+#[test]
 fn unicode_text_is_preserved() {
     let doc = render_document("naïve café — ψ ∈ ℂ, Σ over 𝒩\n");
     assert!(doc.blocks[0].html.contains("naïve café — ψ ∈ ℂ, Σ over 𝒩"));

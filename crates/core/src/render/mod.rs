@@ -79,6 +79,7 @@ mod emit;
 use emit::emit;
 // emit_children is re-exported so the sibling figure module reaches it via `super`.
 pub(crate) use emit::emit_children;
+pub(crate) use emit::safe_url;
 mod figure;
 use figure::{emit_figure, emit_mermaid_figure, figure_parts};
 // Text projection (`taliesin read`): a plain-text VIEW of the block model, not an output
