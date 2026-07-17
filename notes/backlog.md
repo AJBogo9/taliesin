@@ -323,11 +323,27 @@ entry (`lang: fr`) was pointing at correct code.*
   **check the actual blast radius before assuming M2-M6 need sign-off too.** M2 (`exec.rs`) and
   M3-M5 (`warm_pool.rs` fork protocol) plainly do; **M6 is worth re-checking** — it is a constant
   and a `/proc` probe, and may be as free-standing as M1 was. Ranked:
-  - **M2 `interp_id` wedges the rebuild pipeline forever** (reproduced). `exec.rs:971`: blocking
-    `Command::output()` with no timeout, called from `:409` *before* `ensure_kernel` at `:466`, so
-    every timeout you built sits downstream of it. `TALIESIN_CELL_TIMEOUT` never fires. Only a
-    process restart recovers. Same function memoizes an **empty** version on a transient failure,
-    poisoning the freeze key for the process lifetime.
+  - ~~**M2 `interp_id` wedges the rebuild pipeline forever**~~ — **FIXED 2026-07-17** (`f9eea8d`,
+    signed off). Probe is now async + `tokio::time::timeout` (10s, `kill_on_drop`), and only an
+    *answer* is memoized (a spawn error or timeout is retried; "ran and printed nothing" still
+    caches, so the healthy path stays one fork per process). **Measured end to end against an
+    interpreter that hangs forever** (`sleep infinity`): `taliesin-stable` (old) **exit 124, still
+    wedged at 200s**; new **exit 0 at 161s**, degrading to "kernel unavailable". **Freeze key proven
+    byte-identical**, independently of the agent that wrote it: a `_freeze/` entry written by
+    `taliesin-stable` (`df394c6`, the old blocking probe) **replays under the new binary with zero
+    kernel boots**, key `58a59a3611fc6ba7` untouched.
+    - **NEW, found by that measurement: M2 has a sibling, and the sibling now owns the delay.**
+      161s is a long recovery, and **none of it is `interp_id`** (bounded at 10s). The time is
+      downstream: the warm-pool forkserver READY wait, then kernel-start retries. A hanging (not
+      *missing*) interpreter is the trigger; the test
+      `kernel::tests::transient_start_errors_retry_but_missing_interpreter_does_not` shows the
+      *missing* case is handled and the *hanging* one is not. **Not
+      covered by M2's sign-off** (it is `kernel.rs`/`warm_pool.rs`, not the probe). Needs its own
+      ruling. *Only visible end-to-end: a unit test on the probe cannot see it, and it is exactly
+      why the first end-to-end attempt looked like M2 had failed when it had not.*
+    - **Also found, not fixed:** `crates/server/Cargo.toml` does not list tokio's `process` feature,
+      though `kernel.rs`, `warm_pool.rs` and now `exec.rs` all use `tokio::process`. It compiles only
+      via feature unification from elsewhere in the graph. Pre-existing and already load-bearing.
   - **M3 warm-pool refill goes permanently dark after one fork hiccup** + **M4 `fork_kernel` PID
     desync** + **M5 `warm_one` `/tmp` leak**. **One trigger (a failed fork); MUST be fixed as ONE
     change** — the natural fix to M3 arms M4, which today cannot fire only because M3 kills the task
