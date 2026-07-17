@@ -30,24 +30,14 @@ const BOOK_DRAWER_SCRIPT: &str = "<script>(function(){var b=document.getElementB
 /// A search control that opens the Cmd-K palette. It carries `data-qmd-search`,
 /// which `web-client/search.js` wires (by click delegation) to open the same
 /// palette the keyboard shortcut does. Rendered in the navbar (websites) and the
-/// book sidebar; `full` widens it with a label for the sidebar.
-fn search_button(full: bool) -> String {
+/// book sidebar.
+fn search_button() -> String {
     // The kbd is a shortcut hint, not part of the label: aria-hidden keeps it out of the
     // accessible name (WCAG 2.5.3 Label-in-Name). The icon-only button names itself with
-    // aria-label; the `full` variant has a visible "Search the book" label, so an aria-label
-    // would only mismatch it and the visible text is the accessible name instead.
-    let (cls, label, aria) = if full {
-        (
-            "tali-search-btn tali-search-full",
-            "<span class='tali-search-label'>Search the book</span>",
-            "",
-        )
-    } else {
-        ("tali-search-btn", "", " aria-label='Search'")
-    };
+    // aria-label.
     format!(
-        "<button class='{cls}' type='button' data-qmd-search{aria} \
-         aria-keyshortcuts='Control+K Meta+K'>{SEARCH_ICON}{label}\
+        "<button class='tali-search-btn' type='button' data-qmd-search aria-label='Search' \
+         aria-keyshortcuts='Control+K Meta+K'>{SEARCH_ICON}\
          <kbd class='tali-search-kbd' aria-hidden='true'>\u{2318}K</kbd></button>"
     )
 }
@@ -107,7 +97,7 @@ impl Site {
         }
         // A visible search control (opens the Cmd-K palette); search + social links collapse
         // into the burger menu on mobile. Dev-only tools live in the floating dev menu.
-        s.push_str(&search_button(false));
+        s.push_str(&search_button());
         s.push_str("</div>");
         // The reader Settings gear (theme / focus / shortcuts) sits OUTSIDE the collapsing
         // links so it stays visible top-right at every width, beside the burger on mobile.
@@ -259,7 +249,7 @@ impl Site {
         s.push_str("<span class=\"tali-nav-spacer\"></span>");
         // A search button (opens the same Cmd-K palette) + the reader Settings gear (theme /
         // focus / shortcuts). The gear replaces the old light/dark toggle that lived here.
-        s.push_str(&search_button(false));
+        s.push_str(&search_button());
         s.push_str(&settings_button());
         s.push_str("</div></header>");
         // --- the chapter drawer: an off-canvas overlay summoned from the topbar ---
@@ -472,7 +462,7 @@ mod tests {
     #[test]
     fn search_button_hides_the_shortcut_hint_from_its_name() {
         // WCAG 2.5.3: the visible ⌘K kbd must not pollute the button's accessible name.
-        let b = search_button(false);
+        let b = search_button();
         assert!(
             b.contains("<kbd class='tali-search-kbd' aria-hidden='true'>"),
             "the shortcut hint kbd must be aria-hidden: {b}"
@@ -481,22 +471,6 @@ mod tests {
         assert!(
             b.contains("aria-label='Search'"),
             "icon-only button keeps its label: {b}"
-        );
-    }
-
-    #[test]
-    fn full_search_button_name_matches_its_visible_label() {
-        // The sidebar variant shows a "Search the book" label, so a fixed aria-label='Search'
-        // would violate Label-in-Name; the visible text is the accessible name instead.
-        let b = search_button(true);
-        assert!(b.contains("Search the book"), "visible label present: {b}");
-        assert!(
-            !b.contains("aria-label='Search'"),
-            "no aria-label that mismatches the visible label: {b}"
-        );
-        assert!(
-            b.contains("aria-hidden='true'"),
-            "kbd stays hidden in the full variant too: {b}"
         );
     }
 }

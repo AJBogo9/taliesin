@@ -69,9 +69,6 @@
   .tali-search-btn svg { flex: none; }
   .tali-search-kbd { font-size: .72rem; border: 1px solid var(--tali-border);
     border-radius: 4px; padding: 0 .3rem; color: var(--tali-muted); }
-  /* book sidebar: a full-width search box under the title */
-  .tali-search-full { width: 100%; margin: .1rem 0 1.1rem; }
-  .tali-search-full .tali-search-label { margin-right: auto; }
   /* burger menu button: hidden at desktop widths, revealed in the ≤640px block.
      A real <button>, so reset its native chrome to look like the bare icon. */
   .tali-nav-burger { display: none; background: transparent; border: 0; }
