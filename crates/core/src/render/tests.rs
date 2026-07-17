@@ -2539,6 +2539,52 @@ An inline example `{{< embed inline.tmd >}}` stays literal.\n\
 }
 
 #[test]
+fn video_shortcode_emits_a_framed_autoplaying_screencast() {
+    // `{{< video clip.mp4 >}}` — a silent, autoplaying, looping screencast authored in
+    // Markdown so a page needs no raw `<video>` HTML. A single source has no light/dark split.
+    let doc = render_document_with_includes("{{< video clip.mp4 >}}\n", std::path::Path::new("."));
+    let h = doc.body_html();
+    assert!(h.contains("<figure class=\"tali-video\""), "frame: {h}");
+    assert!(h.contains("src=\"clip.mp4\""), "source: {h}");
+    assert!(
+        h.contains("autoplay")
+            && h.contains("muted")
+            && h.contains("loop")
+            && h.contains("playsinline"),
+        "silent autoplay loop: {h}"
+    );
+    assert!(
+        !h.contains("tali-video-light"),
+        "a single source has no theme split: {h}"
+    );
+}
+
+#[test]
+fn video_dark_and_poster_and_caption_args_are_exercised() {
+    // C2: `dark=` ships a light + dark clip (CSS shows the one matching `html[data-theme]`);
+    // `poster=` lands on the frame; `caption=` becomes the figcaption. None had corpus or
+    // unit coverage.
+    let doc = render_document_with_includes(
+        "{{< video clip.mp4 dark=clip-dark.mp4 poster=poster.png caption=\"A demo\" >}}\n",
+        std::path::Path::new("."),
+    );
+    let h = doc.body_html();
+    assert!(
+        h.contains("<video class=\"tali-video-light\" src=\"clip.mp4\""),
+        "light clip: {h}"
+    );
+    assert!(
+        h.contains("<video class=\"tali-video-dark\" src=\"clip-dark.mp4\""),
+        "dark clip: {h}"
+    );
+    assert!(h.contains("poster=\"poster.png\""), "poster attr: {h}");
+    assert!(
+        h.contains("<figcaption>A demo</figcaption>"),
+        "caption: {h}"
+    );
+}
+
+#[test]
 fn a_duplicate_cross_reference_label_warning_is_located() {
     // A repeated `{#sec-x}`/`{#fig-x}`/`{#tbl-x}` is a duplicate cross-reference label.
     // The warning must carry the DUPLICATE's source line for click-to-source — like the
