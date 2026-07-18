@@ -9,6 +9,7 @@ mod build;
 mod build_budget;
 mod check;
 mod cli;
+mod complete;
 mod exec;
 mod freeze;
 mod interpreter;
@@ -56,7 +57,7 @@ fn main() -> ExitCode {
         Some("new") => cli::cmd_new(&args),
         // `preview`/`dev` are vite-style aliases for the live server.
         Some("serve" | "preview" | "dev") => cli::cmd_serve(&args),
-        Some("completions") => cli::cmd_completions(&args),
+        Some("completions") => complete::cmd_completions(&args),
         Some("--version" | "-V") => {
             println!(
                 "taliesin {} ({})",
