@@ -58,11 +58,14 @@ CDN, no preview write-back, no new output format, `--tali-*` tokens only.
 audit landed ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md); 30+7 sourced personas +
 author/reader/publish/trust walkthroughs). Headline: the tool is **feature-complete for ~one user**,
 so the dedup pass killed most candidates (they already ship: `publish`→Cloudflare, presenter view,
-deck a11y, `echo`/`code-fold`, the deck `?` menu). **Build-ready now (§1):** **B1** reader "Cite
-this" box (owner revived D70, 2026-07-18) and **B2** book landing-page auto-TOC. **Needs a direction
-brainstorm first (§3):** **B4** deck visual-identity pass. Verify item **C-PUB-1** in Tier 2; the
-demand-driven tail (incl. the Zenodo DOI on-ramp, staged behind B1) in Tier 3. Grep the named symbol
-before trusting any entry, as always.
+deck a11y, `echo`/`code-fold`, the deck `?` menu). **~~B1~~ reader "Cite this" box + ~~B2~~ book
+landing-page auto-TOC BOTH LANDED 2026-07-18** (local `main`, not pushed — B1 `4bb10c7`, B2
+`b284544`; details in §1). **§1 is now empty.** The one remaining PMF feature is **B4 deck
+visual-identity pass**, which **needs a direction brainstorm/ruling first (§3)** — decide the
+editorial direction the way the website's A/B/C directions were before building. Verify item
+**C-PUB-1** in Tier 2; the demand-driven tail (incl. the Zenodo DOI on-ramp B5, staged behind B1) in
+Tier 3. Grep the named symbol before trusting any entry, as always. **Check, don't trust the SHAs:**
+`git log --oneline origin/main..main`.
 
 **Pick up here (2026-07-18, newest — C3+C4 coverage gaps landed; the C3–C6 batch was 2/4
 already pinned).** Filling the "four uncovered features" set, two were already covered — the
@@ -358,30 +361,27 @@ payoff). Theorem numbering was ruled **auto-scope + delete `number-within`** and
 
 ### 1. Build-ready now (no ruling needed)
 
-*Batch from the 2026-07-18 PMF audit ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md)). The
-audit's headline finding: the tool is feature-complete for ~one real user, so the dedup pass killed
-most candidates (they already ship). Only this survived as a genuinely-absent build with owner
-buy-in. Price it by building it; grep the named symbol before trusting the entry.*
+**This section is now EMPTY — both PMF build-ready items (B1, B2) landed 2026-07-18.** The only
+remaining PMF feature is **B4 (deck visual-identity pass)**, which needs an owner *direction* ruling
+first (§3). The rest is Tier 2/3 (demand-driven).
 
-- **Book landing-page auto-TOC (PMF B2):** the owner's own idea, confirmed absent. The book landing
-  is only the `index.tmd` preface prose; `toc: true` drives just the per-page heading scrollspy, so a
-  reader has no whole-book chapter contents to jump from (the hardcover pattern). Generate one on the
-  book landing from `book.entries` (parts + numbered chapters, optional blurb from a chapter's
-  front-matter `description:`). `site/book.rs` already holds the ordered `Book`/`BookEntry` list.
-  Distinct from the per-page book-TOC (the 2026-07-06 "fix-in-place, keep both nav surfaces"
-  decision). Pin: `corpus/demo-book/`. value high / effort S-M.
+**Do not re-add:** **B2 (book landing-page auto-TOC) LANDED 2026-07-18** (local `main` `b284544`,
+NOT pushed — the author pushes; spec `6690abb`): `site/book_toc.rs` (`render_book_toc` +
+`attach_book_toc`, appended in `finish_blocks`, a no-op unless `is_book()` && the landing
+`index.html`; distinct `tali-btoc-*` classes so it never collides with the drawer's drawer-close
+markup), `site.css`, `corpus/demo-book/` (`methods.tmd` gained a `description:`) +
+`tests/book_landing_toc.rs`. Additive: the scrollspy TOC + chapter drawer are untouched (the
+2026-07-06 keep-both-nav-surfaces decision). Browser-verified (light+dark, mobile+desktop, no
+console errors).
 
-- **Reader-facing "Cite this" box + BibTeX/CSL/RIS export (PMF B1, = D70, REVIVED by owner
-  2026-07-18):** the owner reversed the same-day D70 decline and explicitly wants it. The
-  machine-readable half already ships (`.citations.json`, ScholarlyArticle JSON-LD, Google-Scholar
-  `citation_*` meta); this adds the *reader* widget: a rendered "Cite this" box that copies/downloads
-  the citation in BibTeX + CSL + RIS, built from the page's citation front-matter. Design gate (the
-  original D70 concern): render only when the page carries enough metadata (author/title/date) so an
-  authorless post degrades to nothing rather than an empty box. Pin: a corpus page that sets
-  `author:`/`date:` (the 8 tech-blog posts do not, which is why D70 was first declined). value high /
-  effort M. Detail: [2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md).
-
-**Do not re-add:** D37 (lint `format:` sub-keys) already landed (`515fbd7`).
+**Do not re-add:** D37 (lint `format:` sub-keys) already landed (`515fbd7`). **B1 (reader-facing
+"Cite this" box) LANDED 2026-07-18** (local `main` `4bb10c7`, NOT pushed — the author pushes;
+spec `6f1b5a4`): `site/cite_this.rs` (deterministic BibTeX/CSL-JSON/RIS serializers + resolve/gate +
+the `.tali-cite-this` block via `attach_cite_this`, appended last in `finish_blocks`), JS fragment
+`17-cite-box.js`, `site.css`, and `corpus/cite-this/` + `tests/cite_this.rs`. Owner ruling
+2026-07-18: **site-author fallback** (page `author:` → site `author:`, never the site *title*, so an
+authorless post with no site author degrades to nothing); DOI deferred to B5. Browser-verified
+(light+dark, mobile+desktop, no console errors). **Do not re-add.**
 
 ### 2. Live defects (small, independent; count them, don't trust a number written here)
 
