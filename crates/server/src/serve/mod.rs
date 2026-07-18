@@ -1235,8 +1235,23 @@ async fn rebuild(app: &AppState, executor: &mut crate::exec::Executor) {
         )));
         return;
     };
+    // Static lints (broken links, missing assets/media, dup ids, dangling anchors,
+    // a11y, ...) on PRE-EXEC blocks, so a cell-generated figure isn't linted for alt
+    // text. `src` is re-read (render_doc doesn't expose it); `base` is the doc's dir.
+    let static_diags = {
+        let src = std::fs::read_to_string(&app.path).unwrap_or_default();
+        let base = app.path.parent().unwrap_or_else(|| Path::new("."));
+        crate::preview_diag::static_diagnostics(
+            &src,
+            &doc.blocks,
+            base,
+            doc.format,
+            crate::check::Scope::Standalone,
+        )
+    };
     let blocks = executor.run(doc.blocks).await;
     let mut diags = compute_diagnostics(app, executor);
+    diags.extend(static_diags);
     // Render warnings (missing bibliography/theme file, broken citation) ride
     // alongside the include/kernel diagnostics into the dev menu.
     // A warning that carries a line becomes a clickable jump-to-source row.

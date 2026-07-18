@@ -17,6 +17,7 @@ mod kernel;
 mod log;
 mod mcp;
 mod minify;
+mod preview_diag;
 mod protocol;
 mod publish;
 mod query;
