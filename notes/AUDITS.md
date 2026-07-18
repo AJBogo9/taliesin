@@ -97,6 +97,29 @@ defaults off, so every existing scaffold + the mirror stay byte-identical. **Def
 silently degrades — the pending **DX5**), so a column demo would teach a shaky idiom until DX5 lands; the
 `NewOpts`/`NEW_FLAGS` plumbing is already in place for it.
 
+**DX5 LANDED 2026-07-18** (Tier 1 — the last two silent-degradation traps). **Part A — `.columns` alias:**
+`::: {.columns}` with `.column` children now aliases to the native `layout-ncol` grid (a new arm in
+`build_container`, `ncol = max(2, count of .column children)`, reusing the exact `tali-layout` grid HTML),
+so reveal.js muscle-memory lays out **side-by-side** (responsive, like `layout-ncol`) instead of silently
+stacking — the on-projector disaster from the speaker persona. Sanctioned alias → silent (no warning).
+**Part B — near-miss "did you mean":** a new `validate_div_class` (beside `validate_callout_kind`) fires
+from the generic-div fall-through: for a class that is a near-miss (`closest` ≤ 2) of
+`DIV_FEATURE_CLASSES ∪ THEOREM_KINDS` it pushes a located (click-to-source) `unknown div class \`X\` (did
+you mean \`Y\`?)`. **Open-vocabulary design (the crux):** unlike callout/front-matter (closed vocab), div
+classes allow arbitrary custom classes, so an exactly-known class (`.aside`, `.fragment`) and a class > 2
+edits from every feature name (a genuine custom class) both stay **silent**; only 1–2-edit near-misses
+warn. This is the case the `validate.rs:41` comment explicitly flagged (a misspelled theorem kind has no
+prefix to anchor a suggestion). **Accepted tradeoff:** a custom class within 2 edits of a feature name
+(`.roof`↔`proof`, `.side`↔`aside`) draws a spurious *warning* (never an error; renders fine); the upside
+(catching the on-projector class of bug) dominates, and `DIV_FEATURE_CLASSES` is one const to tune.
+**Verification:** unit tests (`validate_div_class` near-miss-only; `columns_div_aliases_to_the_layout_grid`),
+a `vocab.rs` drift test pinning `div_classes()` ⊆ `DIV_FEATURE_CLASSES`, a mutation-checked `typos.tmd`
+diagnostics pin, and a browser check (columns → 2×360px grid at 1440px; `.fragmnet` → "did you mean
+`fragment`?" located in the preview dev menu). **Unblocks the DX10-followup `new deck --tour`** (columns
+now work via the alias). Spec/plan: `docs/superpowers/specs|plans/2026-07-18-dx5-div-class-did-you-mean*`.
+Clippy gotcha: the `DIV_FEATURE_CLASSES` re-export is read only by the cfg(test) drift test, so it is
+`#[cfg(test)]`-gated to avoid an unused-import error in the lib build.
+
 -----------------------------------------------------------------------------
 
 # Vacuous-test / mutation audit (2026-07-18)

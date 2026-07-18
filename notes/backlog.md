@@ -54,7 +54,7 @@ CDN, no preview write-back, no new output format, `--tali-*` tokens only.
 
 ## Next session: start here
 
-**Pick up here (2026-07-18, DX audit — DX1–DX3 landed; DX4–DX19 queued).** A developer-experience audit
+**Pick up here (2026-07-18, DX audit — DX1–DX3 + DX5 + DX10[3/4] landed; DX4/DX6–DX9/DX11–DX19 queued).** A developer-experience audit
 landed ([2026-07-18-dx-audit.md](2026-07-18-dx-audit.md); DX/discoverability research + full DX-surface
 map + error/feedback-loop audit + 4 persona simulations); 19 findings + 3 design questions queued as the
 **DX audit batch (§6** of Open work, above Tier 2**)**. **DX1 (live preview validation) is DONE** (both
@@ -63,11 +63,13 @@ serve paths surface the static validators + cross-page + `_site.yml` warnings; b
 `?`; browser-verified single-doc/site/deck + matrix). **DX3 (auto-wire config JSON Schema on `init`) is
 DONE** (`init` emits `.taliesin/` schemas + the `_site.yml` modeline; integration-verified). **DX10
 (teaching scaffolds) is MOSTLY DONE** — 3 of 4 sub-parts (paper worked `{python}` figure + math + xrefs,
-`init`→`taliesin new` pointer, `new post --draft`); only `new deck --tour` deferred (waits on DX5's
-columns idiom — see the DX10-followup bullet in §6). All on local `main` after merge, NOT pushed — check
-`git log origin/main..main`. Next up per the suggested order: **{DX5, DX11}** (kill the two silent-failure
-traps), then DX4/DX6/DX8, then DX17–19 (DX18 cheap). Most remaining items are *surfacing an existing
-capability*, not net-new.
+`init`→`taliesin new` pointer, `new post --draft`); only `new deck --tour` split to the now-unblocked
+DX10-followup. **DX5 (silent-degradation "did you mean") is DONE** — `::: {.columns}` aliases to the
+`layout-ncol` grid (Lena's on-projector disaster) and a misspelled feature/theorem `:::` class draws a
+located did-you-mean (near-miss only; browser-verified). All on local `main` after merge, NOT pushed —
+check `git log origin/main..main`. Next up per the suggested order: **DX11** (friendly `.pdf` rejection —
+the other silent-failure trap), then the DX10-followup (`--tour`, now unblocked), then DX4/DX6/DX8, then
+DX17–19 (DX18 cheap). Most remaining items are *surfacing an existing capability*, not net-new.
 
 **Pick up here (2026-07-18, PMF-audit batch — START HERE for feature work).** A product-market-fit
 audit landed ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md); 30+7 sourced personas +
@@ -765,10 +767,14 @@ Integration-verified (byte-identical to `taliesin schema`; `.taliesin/` never sh
 - **DX4 — `taliesin doctor`**: standalone env self-audit (✓/✗/⚠ + fix commands) for Python/R interpreter,
   ipykernel/IRkernel, config sanity, incl. **conda/active-env detection**. M · [new*] · 🎓. Today the
   probe is buried inside `check` and only fires for languages a doc already uses (circular); *logic reusable.
-- **DX5 — "Did you mean" on the last silent-degradation paths**: unknown `:::` div/theorem class (today →
-  plain div, no warning; `divs.rs` fall-through) suggests against known classes, and accept `.columns`/
-  `.column` as `layout-ncol` aliases. S–M · [surface] · 🎤 (the on-projector disaster) 🎓. Extends the
-  existing `validate_callout_kind` pattern.
+**DX5 — LANDED 2026-07-18.** Both silent-degradation traps closed: (A) `::: {.columns}` with `.column`
+children is aliased to the native `layout-ncol` grid (side-by-side, responsive — Lena's on-projector
+disaster); (B) a misspelled feature/theorem `:::` class draws a located "did you mean" (`validate_div_class`,
+near-miss ≤2 against `DIV_FEATURE_CLASSES ∪ THEOREM_KINDS`) — but only near-misses warn (div classes are an
+*open* vocabulary; exact-known + far-custom stay silent). Extends `validate_callout_kind`. Spec/plan under
+`docs/superpowers/specs|plans/2026-07-18-dx5-div-class-did-you-mean*`, record in [AUDITS.md](AUDITS.md).
+Browser-verified (columns 2×360px grid; `.fragmnet` → "did you mean `fragment`?" in the preview dev menu).
+**This unblocks the DX10-followup (`new deck --tour`)** — the columns idiom now works via the alias.
 - **DX6 — `check --explain <code>`** + a per-diagnostic `docs_url`: expand a stable `TAL-*` code into
   cause + canonical fix (rustc `--explain`). S–M · [new] · 🎓🤖.
 - **DX7 — Dynamic value completion** (extend the shipped completion): complete page/deck names, post
@@ -789,11 +795,11 @@ scaffolds a worked `{python}` matplotlib figure (`#| label: fig-demo` + `#| fig-
 regenerated); `init`'s `index.tmd` points at `taliesin new`; `new post --draft` (a `NewOpts`-threaded flag
 that splices `draft: true`, default-off so existing scaffolds stay byte-identical). Spec/plan under
 `docs/superpowers/specs|plans/2026-07-18-dx10-teaching-scaffolds*`, record in [AUDITS.md](AUDITS.md).
-  - **DX10-followup — `new deck --tour`** (still open): a `--tour` deck demoing fragments/incremental/
-    magic-move/notes/columns. Deferred deliberately: the columns-on-a-slide idiom must use native
-    `layout-ncol` (reveal's `.columns` silently degrades — that's **DX5**), and a teaching scaffold must be
-    exemplary, so land this *after* DX5 settles the columns story. The `NewOpts` plumbing + `NEW_FLAGS`
-    did-you-mean are already in place — it's a `--tour` arm in `new_files` + a browser-verified deck check.
+  - **DX10-followup — `new deck --tour`** (NOW UNBLOCKED): a `--tour` deck demoing fragments/incremental/
+    magic-move/notes/columns. Was deferred until the columns idiom settled — **DX5 landed 2026-07-18**, so
+    the tour can use `::: {.columns}` (now a working `layout-ncol` alias) or native `layout-ncol`. The
+    `NewOpts` plumbing + `NEW_FLAGS` did-you-mean are already in place — it's a `--tour` arm in `new_files`
+    + a browser-verified deck check. Ready to pick up.
 - **DX11 — Friendly `.pdf`/wrong-target rejection**: `build … x.pdf` today silently writes HTML bytes into
   a `.pdf` file (🎓's abandonment moment). Reject with "HTML-only; `build` for a page, browser Print for a
   rough PDF; a print track is planned (ROADMAP Pillar IV)." S · [new]. NB: real PDF is already sanctioned
@@ -830,7 +836,7 @@ that splices `draft: true`, default-off so existing scaffolds stay byte-identica
   One-command deck publish in scope? (🎤)
 - Presenter laser/spotlight + auto-advance (reveal.js reflexes). (🎤)
 
-**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ (landed; `deck --tour` split to DX10-followup) → {DX5, DX11}
+**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ ~~DX5~~ (landed; `deck --tour` → DX10-followup, now unblocked) → DX11 → DX4/DX6/DX8 → DX17–19 (DX18 cheap)
 (kill the two silent-failure traps) → DX4/DX6/DX8 → DX17–19 (DX18 is cheap, pull forward). Tier 0–1 and
 most of Tier 2 are *surfacing existing capability*, not net-new.
 
