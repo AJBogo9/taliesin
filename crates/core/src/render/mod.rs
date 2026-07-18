@@ -73,9 +73,10 @@ use divs::{group_divs, parse_pandoc_attrs, preprocess, scan_div_spans};
 
 // Re-exported for the editor vocabulary dump (crate::vocab), which sources completion
 // vocabulary from the SAME consts the validator enforces so the two cannot drift.
-pub(crate) use validate::{
-    CALLOUT_KINDS, CELL_OPTION_KEYS, DIV_FEATURE_CLASSES, INPUT_TYPES, THEOREM_KINDS,
-};
+pub(crate) use validate::{CALLOUT_KINDS, CELL_OPTION_KEYS, INPUT_TYPES, THEOREM_KINDS};
+// Only the `vocab.rs` drift test reads this outside `render`; the validator uses it directly.
+#[cfg(test)]
+pub(crate) use validate::DIV_FEATURE_CLASSES;
 
 mod emit;
 use emit::emit;
