@@ -204,6 +204,20 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
     }
 }
 
+/// A fixed set of candidate values (subcommand kinds, shells, format values), filtered by
+/// the current prefix. The completion is authoritative, so file fallback is suppressed.
+fn enumerated(cur: &str, values: &[&'static str]) -> Completion {
+    let candidates = values
+        .iter()
+        .filter(|v| v.starts_with(cur))
+        .map(|v| Candidate::plain(*v))
+        .collect();
+    Completion {
+        candidates,
+        directive: NO_FILE_COMP,
+    }
+}
+
 /// Compute completions for the words typed after `taliesin` (`words.last()` is the
 /// current, possibly-empty word), resolving any paths relative to `cwd`.
 fn complete_line(words: &[String], _cwd: &Path) -> Completion {
@@ -241,6 +255,37 @@ fn complete_line(words: &[String], _cwd: &Path) -> Completion {
             candidates,
             directive: NO_FILE_COMP,
         };
+    }
+
+    // 3. Value of the flag immediately before the cursor.
+    if let Some(prev) = prior.last() {
+        if prev.as_str() == "--format" {
+            let vals: &[&str] = if canonical(sub) == "build" {
+                &["json"]
+            } else {
+                &["human", "json"]
+            };
+            return enumerated(cur, vals);
+        }
+        // Other value-taking flags (--out/--dir/--jobs/--port/--project-name): let the
+        // shell complete the value (a dir, a number, a name); nothing smart to add.
+        if flags_for(sub)
+            .iter()
+            .any(|(f, takes, _)| *f == prev.as_str() && *takes)
+        {
+            return Completion {
+                candidates: Vec::new(),
+                directive: 0,
+            };
+        }
+    }
+
+    // 4. Enumerated first positionals.
+    if prior.len() == 1 && prior[0] == "new" {
+        return enumerated(cur, &["post", "page", "deck", "paper"]);
+    }
+    if prior.len() == 1 && prior[0] == "completions" {
+        return enumerated(cur, &["bash", "zsh", "fish", "powershell"]);
     }
 
     // Everything else: nothing yet (grown in later tasks). Fall back to file completion.
@@ -394,5 +439,30 @@ mod brain_tests {
     fn flags_are_offered_through_aliases() {
         // `dev` and `serve` share preview's flags.
         assert!(values(&["dev", "--"]).contains(&"--host".to_string()));
+    }
+
+    #[test]
+    fn enumerated_positionals() {
+        assert_eq!(
+            values(&["new", ""]),
+            ["post", "page", "deck", "paper"]
+                .into_iter()
+                .map(String::from)
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            values(&["completions", ""]),
+            ["bash", "zsh", "fish", "powershell"]
+                .into_iter()
+                .map(String::from)
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn format_value_completion() {
+        assert_eq!(values(&["build", "--format", ""]), vec!["json".to_string()]);
+        let human_json: Vec<String> = ["human", "json"].into_iter().map(String::from).collect();
+        assert_eq!(values(&["check", "--format", ""]), human_json);
     }
 }
