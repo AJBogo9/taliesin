@@ -170,6 +170,7 @@ fn command_desc(cmd: &str) -> &'static str {
         "vocab" => "emit editor autocomplete vocabulary as JSON",
         "symbols" => "list the doc's cross-reference targets",
         "check" => "list located diagnostics (non-zero if any)",
+        "doctor" => "audit the environment for running code cells",
         "map" => "whole-project outline (pages, nav, xref)",
         "mcp" => "stdio MCP server",
         "init" => "scaffold a starter site",

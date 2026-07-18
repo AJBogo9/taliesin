@@ -10,6 +10,7 @@ mod build_budget;
 mod check;
 mod cli;
 mod complete;
+mod doctor;
 mod exec;
 mod freeze;
 mod interpreter;
@@ -53,6 +54,7 @@ fn main() -> ExitCode {
         Some("symbols") => query::cmd_symbols(&args),
         Some("map") => query::cmd_map(&args),
         Some("check") => check::cmd_check(&args),
+        Some("doctor") => doctor::cmd_doctor(&args),
         Some("mcp") => mcp::cmd_mcp(&args),
         Some("init") => cli::cmd_init(&args),
         Some("new") => cli::cmd_new(&args),
@@ -106,6 +108,7 @@ const COMMANDS: &[&str] = &[
     "vocab",
     "symbols",
     "check",
+    "doctor",
     "map",
     "mcp",
     "init",
@@ -192,6 +195,8 @@ fn usage() {
     println!(
         "  check <file|dir> [--format human|json]  list located diagnostics; exits non-zero if any"
     );
+    println!("  doctor [dir] [--format human|json]  audit the environment for running code cells");
+    println!("                             (interpreters, ipykernel/IRkernel, active conda/venv)");
     println!("  completions <bash|zsh|fish|powershell>  print a shell completion script");
     println!(
         "                             (subcommand + flag + .tmd-aware path completion; install hint in --help)"
@@ -416,6 +421,19 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \n\
              Example:\n\
              \x20 taliesin completions zsh\n"
+        }
+        "doctor" => {
+            "taliesin doctor [dir] [--format human|json]\n\
+             \n\
+             Audit whether the environment can run code cells: the Python and R interpreter\n\
+             (resolved as a build would: _site.yml python:/r:, a .venv, TALIESIN_PYTHON/R, then\n\
+             the PATH default), whether ipykernel/IRkernel import, the active conda/virtualenv,\n\
+             and _site.yml validity. Prints a status line per item with a fix command; exits\n\
+             non-zero only if a configured interpreter is broken.\n\
+             \n\
+             Example:\n\
+             \x20 taliesin doctor\n\
+             \x20 taliesin doctor myproject --format json\n"
         }
         _ => return None,
     };
