@@ -40,29 +40,43 @@ fn native_flat_config_parses_nav_footer_and_icon() {
     );
 }
 
-/// A site's `head:` and `body-end:` (from `_site.yml`) are injected into every page: head
-/// inside <head>, body-end after the content. The tech-blog dropped its own head:/body-end:
-/// (Quarto nav-prefetch residue), so this synthetic site is the injection mechanism's net.
+/// A site's `head:`, `body-start:` and `body-end:` (from `_site.yml`) are each injected into
+/// every page: head inside <head>, body-start ahead of the content, body-end after it. The
+/// tech-blog dropped its own head:/body-*: (Quarto nav-prefetch residue), so this synthetic
+/// site is the injection mechanism's net. `body-start:` had no test of its own, and the
+/// ordering asserts distinguish the before/after slots so a swap can't pass on presence alone.
 #[test]
-fn site_head_and_body_end_are_injected() {
+fn site_head_body_start_and_body_end_are_injected() {
     let d = TempProj::new();
     d.file(
         "_site.yml",
         "title: T\n\
          head:\n  text: '<meta name=\"probe-head\" content=\"1\">'\n\
+         body-start:\n  text: '<span id=\"probe-body-start\"></span>'\n\
          body-end:\n  text: '<span id=\"probe-body-end\"></span>'\n",
     );
-    d.file("index.tmd", "---\ntitle: Home\n---\n\n# Hi\n");
+    d.file("index.tmd", "---\ntitle: Home\n---\n\n# Content Anchor\n");
     let site = Site::discover(&d.0);
     let html = site.render_page("index.tmd").expect("renders");
+
     let head = &html[..html.find("</head>").expect("has </head>")];
     assert!(
         head.contains("probe-head"),
         "head: must be injected inside <head>"
     );
+
+    // body-start lands ahead of the content, body-end after it — assert the ordering, not just
+    // presence, so swapping the before_body/after_body include slots fails the test.
+    let start = html.find("probe-body-start").expect("body-start present");
+    let content = html.find("Content Anchor").expect("content present");
+    let end = html.find("probe-body-end").expect("body-end present");
     assert!(
-        html.contains("probe-body-end"),
-        "body-end: must be injected after the content"
+        start < content,
+        "body-start: must be injected ahead of the page content"
+    );
+    assert!(
+        content < end,
+        "body-end: must be injected after the page content"
     );
 }
 
