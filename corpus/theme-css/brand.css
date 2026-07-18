@@ -1,0 +1,9 @@
+/* A minimal custom theme applied via `theme: brand.css`: override the accent and
+   a couple of surface tokens. Read from disk relative to the document and inlined
+   after the base stylesheet, so one file can restyle a page without touching the
+   framework. The marker below pins that this file's bytes reach the rendered page. */
+:root {
+  --tali-accent: oklch(0.55 0.15 30); /* CORPUS-C3-THEME-MARKER */
+  --tali-bg: #fffdf7;
+  --tali-fg: #1b1a17;
+}

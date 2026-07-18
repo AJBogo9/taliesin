@@ -10,6 +10,7 @@ author's own projects; provenance is below.
 |---|---|---|---|
 | `native-tmd.tmd` | Native source extension | authored in `.tmd` (Taliesin's native *and only* source extension); pins that the walker/`check`/link-rewrite recognize `.tmd` and that a stray `.qmd` file is no longer recognized as a source document | (purpose-built) |
 | `highlight.tmd` | Syntax-highlighting coverage | server-side `tali-hl-` scope classes per language; pins that `ts`/`toml` highlight (syntect's bundled set has neither) and that `text`/`console`/unlabelled fences stay plain without tripping `validate_code_languages` | (purpose-built) |
+| `theme-css/` | Custom `theme:` resolution | `theme: brand.css` (a sibling stylesheet) is read from disk relative to the document and inlined after the base stylesheet, into the page's `<style id="qmd-theme">`; the installed `_extensions/<name>/theme.css` bundle branch resolves by bare name. Pinned by `theme_css.rs` (the file-read + extension-bundle positive paths; the missing-file *warning* is pinned in the render unit tests) | (purpose-built) |
 | `posts/born-machines.tmd` | Prose blog post | pure prose (no math/code) — the simplest Phase 1 target | `personal/blog` |
 | `posts/em-algorithm/` | Math blog post | heavy KaTeX (~100 math spans), 6 code cells, `{js}` cells | `personal/tech-blog` |
 | `posts/pca-geometry/` | Live-demo blog post | `{js}` cells + Three.js + math + code | `personal/tech-blog` |

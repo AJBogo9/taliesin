@@ -1,0 +1,15 @@
+---
+title: Custom .css theme
+theme: brand.css
+---
+
+# Custom .css theme
+
+This document sets `theme: brand.css`, a sibling stylesheet resolved relative to the
+document and inlined after the base stylesheet, so a single `.css` file can restyle the
+page without touching the framework or shipping a whole extension.
+
+The same `theme:` key also resolves an installed `_extensions/<name>/theme.css` bundle by
+bare name, and a `.scss` file is read verbatim (no compilation). A named `.css`/`.scss`
+that cannot be read is reported as a `theme file not found` warning, while a bare name is
+left unwarned (it may be a legacy built-in theme this build does not ship).
