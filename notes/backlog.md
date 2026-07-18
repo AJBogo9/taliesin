@@ -76,9 +76,17 @@ re-check, never trust a recorded SHA). **DX10-followup (`new deck --tour`) is DO
 `new deck` scaffolds a guided, check-clean deck demoing every deck feature (browser-verified: columns
 side-by-side, notes hidden); deck-only. **DX4 (`taliesin doctor`) is DONE** — a standalone env self-audit
 (both interpreters + kernel packages + active conda/venv + `_site.yml`), ✓/⚠/✗ + fix commands, exits
-non-zero only on a configured-but-broken interpreter; `--format json`; all pushed to `origin/main`. Next up
-per the suggested order: DX6 (`check --explain <code>`), DX8 (Cmd-K command palette), then DX17–19 (DX18
-cheap). Most remaining items are *surfacing an existing capability*, not net-new.
+non-zero only on a configured-but-broken interpreter; `--format json`; all pushed to `origin/main`. **DX6
+(`check --explain <CODE>`) is DONE** — a flag on `check` (not a subcommand) that expands a stable `TAL-*`
+code into title/cause/canonical-fix (rustc `--explain` style; honours `--format json`; bare `--explain`
+lists every code; unknown code → did-you-mean + non-zero), plus a per-diagnostic `docs_url` (computed,
+so it can't drift) on every `check --format json` diagnostic. The prose catalog is an `EXPLANATIONS`
+table next to the code TABLE in `crates/core/src/diagnostics/codes.rs`, drift-locked by a completeness
+test; `docs/DIAGNOSTICS.md` is generated from it (blessed, `TALIESIN_BLESS=1`) so the `#anchor` resolves
+on GitHub; `check --explain <TAB>` completes to the code set. **DX6 landed locally, NOT yet pushed** (ask
+me / push when asked; verify with `git log --oneline origin/main..main`). Next up per the suggested order:
+DX8 (Cmd-K command palette — UI, needs a chrome-devtools browser check), then DX7 (dynamic completion) and
+DX17–19 (DX18 cheap). Most remaining items are *surfacing an existing capability*, not net-new.
 
 **Pick up here (2026-07-18, PMF-audit batch — START HERE for feature work).** A product-market-fit
 audit landed ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md); 30+7 sourced personas +
@@ -790,8 +798,6 @@ near-miss ≤2 against `DIV_FEATURE_CLASSES ∪ THEOREM_KINDS`) — but only nea
 Browser-verified (columns 2×360px grid; `.fragmnet` → "did you mean `fragment`?" in the preview dev menu).
 **This unblocked the DX10-followup (`new deck --tour`)** — the columns idiom now works via the alias
 (DX10-followup landed 2026-07-18).
-- **DX6 — `check --explain <code>`** + a per-diagnostic `docs_url`: expand a stable `TAL-*` code into
-  cause + canonical fix (rustc `--explain`). S–M · [new] · 🎓🤖.
 - **DX7 — Dynamic value completion** (extend the shipped completion): complete page/deck names, post
   slugs, `@`-xref targets *with descriptions* (gh/fzf pattern) + a one-liner "install completion now".
   M · [surface] · the literal next step in the feature just shipped.
@@ -846,7 +852,7 @@ fragments/`. . .`/incremental/columns/magic-move/notes + a make-it-yours closer,
   One-command deck publish in scope? (🎤)
 - Presenter laser/spotlight + auto-advance (reveal.js reflexes). (🎤)
 
-**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ ~~DX5~~ ~~DX11~~ ~~DX10-followup~~ ~~DX4~~ (all landed) → DX6/DX8 → DX17–19 (DX18 cheap)
+**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ ~~DX5~~ ~~DX11~~ ~~DX10-followup~~ ~~DX4~~ ~~DX6~~ (all landed) → DX8 → DX17–19 (DX18 cheap)
 (kill the two silent-failure traps) → DX4/DX6/DX8 → DX17–19 (DX18 is cheap, pull forward). Tier 0–1 and
 most of Tier 2 are *surfacing existing capability*, not net-new.
 

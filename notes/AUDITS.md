@@ -205,6 +205,40 @@ python-exit-1 / conda-env-named / valid+malformed `_site.yml` config). No corpus
 a rendering capability. Spec/plan: `docs/superpowers/specs|plans/2026-07-18-dx4-doctor*`. **Next per the
 suggested order: DX6 (`check --explain <code>` + `docs_url`), then DX8 (Cmd-K command palette).**
 
+**DX6 LANDED 2026-07-18** (a flag on `check`, not a subcommand). **The gap:** `check --format json` already
+stamps every diagnostic with a stable `TAL-*` code, but a code was only a *label* — nothing expanded
+`TAL-XREF-UNREF` into "why did this fire, what's the one fix?" (rustc solved exactly this with
+`rustc --explain E0502`). **The fix, two deliverables:** (1) `taliesin check --explain <CODE>` prints
+title/cause/canonical-fix (offline, needs no file); honours `--format json` (`{code,title,cause,fix,
+docs_url}`); **bare `--explain` lists every code** (an index — deviates from rustc deliberately, the code
+set is small/closed/enumerable); an unknown code is a `closest()` did-you-mean + non-zero exit (a
+`{"error":…}` envelope under json). (2) **a per-diagnostic `docs_url`** now rides on *every* `check
+--format json` diagnostic (and the shared `build`/`publish` `diagnostics_json`), **computed** from the code
+(`docs_url(code) = {base}#{code.to_lowercase()}`) so it can't drift; human output stays byte-identical (no
+code/url leak — the codes-work invariant). **The resolved design forks (the crux):** *(a) flag not
+subcommand* — codes are surfaced BY `check`, so `check --explain` is the discoverable follow-up, and a flag
+dodges the 5-place subcommand guard (only the `flag_table_covers_help` drift gate applies; `--explain`
+added to `flags_for("check")`). *(b) prose home* — an `EXPLANATIONS` table (`{code,title,cause,fix}`, one
+per distinct code incl. `GENERIC`) sits next to the `TABLE` it explains in
+`crates/core/src/diagnostics/codes.rs`, **drift-locked** by `every_code_has_a_nonempty_explanation` +
+`no_orphan_explanations` (the DX5 vocab-guard pattern — a new family with no explanation fails the build).
+*(c) docs_url must resolve* — the tool ships no production docs domain, so `docs/DIAGNOSTICS.md` is a
+committed catalog **generated** from `EXPLANATIONS` (`diagnostics_markdown()`) and **blessed**
+(`TALIESIN_BLESS=1 cargo test -p taliesin-core --lib codes`, mirroring `schema.rs::bless_or_assert`); GitHub
+renders its `## TAL-FM-KEY` headings as `#tal-fm-key` anchors, so the computed url resolves for real. *(d)
+completion* — `check --explain <TAB>` enumerates the drift-locked `all_codes()` set (static vocabulary,
+distinct from DX7's dynamic-from-document completion). **Prose accuracy:** each cause/fix was grounded by
+grepping the *real* validator message (e.g. `TAL-XREF-UNREF` = `include: false` drops a labeled cell's
+output OR a theorem id missing its `thm-` prefix; `TAL-A11Y-ALT` = missing OR placeholder alt), not guessed.
+**Surface:** `codes.rs` (+`Explanation`/`EXPLANATIONS`/`explain`/`all_codes`/`DIAGNOSTICS_DOC_URL`/`docs_url`
+/`diagnostics_markdown`), `check.rs` (`docs_url` on `Diagnostic`, `explain_output`, the `--explain` parse
+arm + branch before the path check, `CHECK_FLAGS`), `complete.rs` (flag + `--explain` value completion),
+`main.rs` (`usage()` + `subcommand_help` blocks), NEW `docs/DIAGNOSTICS.md`. **Verification:** full-workspace
+`cargo test` green (0 failures), fmt + clippy clean, and a real-binary sweep of all five shapes (human/json
+explain, unknown→did-you-mean human+json envelope, bare index, `docs_url` on a live `check`, `--explain`
+`<TAB>` completion). Spec/plan: `docs/superpowers/specs|plans/2026-07-18-dx6-check-explain*`. **Next per the
+suggested order: DX8 (Cmd-K command palette — UI, needs a chrome-devtools check), then DX7 / DX17–19.**
+
 -----------------------------------------------------------------------------
 
 # Vacuous-test / mutation audit (2026-07-18)
