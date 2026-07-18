@@ -54,14 +54,17 @@ CDN, no preview write-back, no new output format, `--tali-*` tokens only.
 
 ## Next session: start here
 
-**Pick up here (2026-07-18, DX audit — DX1 landed; DX2–DX19 queued).** A developer-experience audit
+**Pick up here (2026-07-18, DX audit — DX1+DX2 landed; DX3–DX19 queued).** A developer-experience audit
 landed ([2026-07-18-dx-audit.md](2026-07-18-dx-audit.md); DX/discoverability research + full DX-surface
 map + error/feedback-loop audit + 4 persona simulations); 19 findings + 3 design questions queued as the
 **DX audit batch (§6** of Open work, above Tier 2**)**. **DX1 (the dominant finding — live preview
 validation) is DONE** (both serve paths now surface the static validators + cross-page + `_site.yml`
-warnings; browser-verified; local `main` after merge, NOT pushed — check `git log origin/main..main`).
-Next up per the suggested order: **{DX2, DX3, DX10}** (three S-effort "hidden→used" wins). Most remaining
-items are *surfacing an existing capability*, not net-new — a "come back when there's time" queue.
+warnings; browser-verified). **DX2 (first-run in-preview hint) is DONE** (a one-time, dismissible,
+localStorage-gated callout tethered above the `◇</>` button surfaces Alt-click-to-source + `?`;
+browser-verified across single-doc/site/deck + the viewport matrix). Both on local `main` after merge,
+NOT pushed — check `git log origin/main..main`. Next up per the suggested order: **{DX3, DX10}** (the
+remaining two S-effort "hidden→used" wins). Most remaining items are *surfacing an existing capability*,
+not net-new — a "come back when there's time" queue.
 
 **Pick up here (2026-07-18, PMF-audit batch — START HERE for feature work).** A product-market-fit
 audit landed ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md); 30+7 sourced personas +
@@ -740,10 +743,14 @@ incremental infra needed (~27 ms whole-site re-derive). **Do not re-open.**
 
 **Tier 1 — discoverability family ("in the vein of the shell completion just shipped"), now do-first:**
 
-- **DX2 — First-run in-preview hints** (one-time, dismissible, localStorage-gated): "Alt-click any block
-  to jump to source" + "Press ? for shortcuts". S · [surface] · ✍️🎤 both would have shipped never
-  knowing click-to-source (the flagship feature) exists — it's hidden behind the `◇</>` panel. Highest
-  discoverability-per-line in the audit.
+**DX2 — LANDED 2026-07-18.** First-run in-preview hint: a one-time, dismissible, localStorage-gated
+(`tali-hint-seen`, fail-closed) callout tethered above the `◇</>` button surfaces the flagship
+Alt-click-to-source gesture + (where live) `?`. All in `web-client/client.js` (built in `buildDevMenu`)
++ a CSS block in the shared `STATUS_CSS` (`serve/mod.rs`); preview-only, four dismissals (Got it /
+menu-open / Alt-click / Esc). Per-line liveness omits the `?` line on decks / shortcuts-off. Spec/plan
+under `docs/superpowers/specs|plans/2026-07-18-dx2-first-run-preview-hint*`, closure record in
+[AUDITS.md](AUDITS.md). Browser-verified single-doc/site/deck + viewport matrix. **Do not re-open.**
+
 - **DX3 — Auto-wire the config JSON Schema on `init`**: write the `# yaml-language-server: $schema=…/tali-site.schema.json`
   directive into the scaffolded `_site.yml` + emit the schema files, so config autocompletes + validates
   in-editor with zero manual step. S · [surface] · 🎓✍️. `taliesin schema` already emits them; the wiring
@@ -810,7 +817,7 @@ incremental infra needed (~27 ms whole-site re-derive). **Do not re-open.**
   One-command deck publish in scope? (🎤)
 - Presenter laser/spotlight + auto-advance (reveal.js reflexes). (🎤)
 
-**Suggested order:** ~~DX1~~ (landed) → {DX2, DX3, DX10} (three S-effort "hidden→used" wins) → {DX5, DX11}
+**Suggested order:** ~~DX1~~ ~~DX2~~ (landed) → {DX3, DX10} (the remaining S-effort "hidden→used" wins) → {DX5, DX11}
 (kill the two silent-failure traps) → DX4/DX6/DX8 → DX17–19 (DX18 is cheap, pull forward). Tier 0–1 and
 most of Tier 2 are *surfacing existing capability*, not net-new.
 

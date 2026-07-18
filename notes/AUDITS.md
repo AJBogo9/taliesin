@@ -37,6 +37,29 @@ lib target, so `tests/*.rs` can't see `pub(crate)` items); the live-socket wirin
 chrome-devtools, not a unit test. Cheap follow-ups deferred: DX5 (unknown `:::`-class "did you mean")
 and line-locating `_site.yml` warnings (`check` doesn't locate them either).
 
+**DX2 LANDED 2026-07-18** (Tier 1 discoverability — highest discoverability-per-line). A one-time,
+dismissible, localStorage-gated (`tali-hint-seen`) callout tethered above the collapsed `◇</>` dev
+button surfaces the flagship Alt-click-to-source gesture + (where live) the `?` shortcuts menu — the
+gesture previously self-advertised only *inside* the collapsed panel, so the blogger + speaker personas
+"would have shipped never knowing it existed." All in `web-client/client.js` (built in `buildDevMenu`,
+mounted into the existing `#tali-controls` host) + a CSS block appended to the shared server-side
+`STATUS_CSS` const (`serve/mod.rs`), which both serve paths already inject. Preview-only by construction
+(client.js is never in `build` — verified by grepping built output for `tali-hint-nudge` → 0). Four
+dismissals, all persisting: Got it / opening the `◇` menu / the first *resolving* Alt-click / Esc.
+**Per-line liveness** (`askLive`) omits the `?` line where it is a dead key — on a deck (reader menu is
+`.tali-deck`-skipped) and when a reader has turned shortcuts off — mirroring `07-keyboard.js`'s existing
+"don't advertise dead keys" discipline. Storage failures **fail closed** (treat as seen → never show):
+an un-dismissable nag is worse than a missed hint, the opposite of `taliShortcutsOn`'s fail-open. Spec/
+plan: `docs/superpowers/specs|plans/2026-07-18-dx2-first-run-preview-hint*`. **Grounding notes:** the
+audit called this pure `[surface]`, but the "Alt-click a block" text existed *only* inside the collapsed
+panel — the surfaced first-run nudge is genuinely small net-new chrome, not pure wiring. Like the dev
+menu itself (and like DX1), it ships **no corpus pin** — the corpus is rendered *output*, and the dev
+client is never in output; verification is a `STATUS_CSS`-contains-`.tali-hint-nudge` mutation-checked
+Rust pin + `tsc` + a chrome-devtools loop across single-doc/site/deck + the mobile/laptop/portrait
+matrix. A layout gotcha surfaced in-browser: `#tali-controls` shrink-wraps to the ~60px toggle, so the
+absolute callout needed a fixed `width` (14rem), not just `max-width`, or it collapsed to a sliver (the
+sibling `.tali-dev-panel` avoids this with `min-width:13rem`).
+
 -----------------------------------------------------------------------------
 
 # Vacuous-test / mutation audit (2026-07-18)
