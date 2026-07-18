@@ -239,6 +239,39 @@ explain, unknown→did-you-mean human+json envelope, bare index, `docs_url` on a
 `<TAB>` completion). Spec/plan: `docs/superpowers/specs|plans/2026-07-18-dx6-check-explain*`. **Next per the
 suggested order: DX8 (Cmd-K command palette — UI, needs a chrome-devtools check), then DX7 / DX17–19.**
 
+**DX8 LANDED 2026-07-19** (the command palette; the UI-heaviest DX item). **The gap:** ✍️🎤 "reached for
+Cmd-K to *do* things, got search only." **The fix:** the Cmd-K palette (`web-client/search.js`) now runs
+commands too. **Shape (design fork, resolved):** a *unified* list, not a `>`-prefix mode (which teaches a
+hidden syntax and loses immediacy) — an empty query lists the available actions first (a discoverable
+menu), a query sorts matching actions (scored over title + keyword synonyms via the existing `score()`)
+above content results. **Action set, each self-gating on a capability global (presence, not env sniffing):**
+Toggle light/dark theme (always — `window.taliToggleTheme`, defined in `theme.rs`'s `theme_head` which ships
+on every page); Restart kernel + Open source in editor (**live-preview only** — `window.taliRestartKernel` /
+`window.taliOpenPageSource`, defined in `client.js`, which is `include_str!`'d ONLY in `serve/mod.rs`, so
+they're absent from a static `build` and those actions simply don't appear there — a published site shows
+exactly one action, theme). **DRY:** each action *invokes* the module that already owns the behavior, never
+reimplements it — the theme toggle was extracted from the dev-menu button's inline handler into
+`taliToggleTheme` and both now share it; kernel restart reuses the `{type:"restart_kernel"}` ws message;
+open-source calls the existing `gotoSource(null,1)`. **Excluded on principle (documented in the spec):**
+new-post/draft — a browser→server *write* path that fights the single-editing-surface / read-only-preview
+invariant (the in-scope path is `taliesin new` / an editor command; also meaningless with no server); and
+slide-jump — decks own their chrome and `search.js` no-ops on `.tali-deck`. **Reach:** the palette rides
+wherever Cmd-K already lives (TOC pages: books, papers-with-toc, sites), which `toc_scripts()` gates on;
+single docs without a TOC don't ship `search.js`, so DX8 is correctly scoped to "extend Cmd-K where it
+exists," not "add Cmd-K everywhere." **Surface:** `search.js` (action registry + capability gates +
+`availableActions()` + unified `render()` prepend + the `item.action` branch in `go()`/`itemEl()` + the
+"Search or run a command…" placeholder + an `.tali-s-action` tag style), `theme.rs` (+`taliToggleTheme`,
+button reuses it), `client.js` (+2 preview globals), `globals.d.ts` (3 decls). **Verification (the load-
+bearing half is browser JS):** Rust drift pins on the three `include_str!`'d assets (search.js registry +
+placeholder, `theme_head`'s `taliToggleTheme`, `client.js`'s two hooks) + full `cargo test`/fmt/clippy +
+both JS `tsc` type-checks, then **chrome-devtools at 3 viewports** (1440×900 / 390×844 / 900×1440): empty
+Cmd-K shows the 3 actions as a menu, "theme"→Enter flips dark→light + persists (`qmd-theme`) + closes the
+palette, "kernel"/"editor"/"source" filter to their actions, "fourier" shows content only (no action
+pollution), console clean; and a **static `build`** opened via `file://` shows only the theme action
+(`taliRestartKernel`/`taliOpenPageSource` `undefined`). Spec/plan:
+`docs/superpowers/specs|plans/2026-07-19-dx8-command-palette*`. **Next per the suggested order: DX7 (dynamic
+value completion), then DX17–19 (DX18 cheap — `check` exit-gating).**
+
 -----------------------------------------------------------------------------
 
 # Vacuous-test / mutation audit (2026-07-18)

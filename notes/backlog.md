@@ -83,10 +83,17 @@ lists every code; unknown code → did-you-mean + non-zero), plus a per-diagnost
 so it can't drift) on every `check --format json` diagnostic. The prose catalog is an `EXPLANATIONS`
 table next to the code TABLE in `crates/core/src/diagnostics/codes.rs`, drift-locked by a completeness
 test; `docs/DIAGNOSTICS.md` is generated from it (blessed, `TALIESIN_BLESS=1`) so the `#anchor` resolves
-on GitHub; `check --explain <TAB>` completes to the code set. **DX6 landed locally, NOT yet pushed** (ask
-me / push when asked; verify with `git log --oneline origin/main..main`). Next up per the suggested order:
-DX8 (Cmd-K command palette — UI, needs a chrome-devtools browser check), then DX7 (dynamic completion) and
-DX17–19 (DX18 cheap). Most remaining items are *surfacing an existing capability*, not net-new.
+on GitHub; `check --explain <TAB>` completes to the code set. **DX8 (Cmd-K command palette) is DONE** —
+Cmd-K now runs commands too, not just search: an empty query lists the available actions (a discoverable
+menu), a query sorts matching actions above content. Three capability-gated actions (Toggle theme, always;
+Restart kernel + Open source in editor, live-preview only via globals that live in `client.js`, so a
+static build shows only the theme action). Each reuses the owning module's behavior (`theme.rs`'s
+`window.taliToggleTheme`, extracted from + shared with the dev-menu button; the kernel restart; and
+`gotoSource(null,1)`); new-post/draft + slide-jump excluded on principle (read-only-preview / deck chrome).
+Rust drift pins guard the `include_str!`'d JS; browser-verified via chrome-devtools at 3 viewports + a
+static build. **DX6 + DX8 landed locally, NOT yet pushed** (ask me / push when asked; verify with `git log
+--oneline origin/main..main`). Next up per the suggested order: DX7 (dynamic value completion) and
+DX17–19 (DX18 cheap — `check` exit-gating). Most remaining items are *surfacing an existing capability*.
 
 **Pick up here (2026-07-18, PMF-audit batch — START HERE for feature work).** A product-market-fit
 audit landed ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md); 30+7 sourced personas +
@@ -801,9 +808,6 @@ Browser-verified (columns 2×360px grid; `.fragmnet` → "did you mean `fragment
 - **DX7 — Dynamic value completion** (extend the shipped completion): complete page/deck names, post
   slugs, `@`-xref targets *with descriptions* (gh/fzf pattern) + a one-liner "install completion now".
   M · [surface] · the literal next step in the feature just shipped.
-- **DX8 — Command palette**: extend Cmd-K from content-search to *actions* (jump to page/slide, toggle
-  theme, restart kernel, new post/draft, open source). M · [surface] · ✍️🎤 reached for Cmd-K to *do*
-  things, got search only.
 
 **Tier 2 — workflow smoothers & delight:**
 
@@ -852,7 +856,7 @@ fragments/`. . .`/incremental/columns/magic-move/notes + a make-it-yours closer,
   One-command deck publish in scope? (🎤)
 - Presenter laser/spotlight + auto-advance (reveal.js reflexes). (🎤)
 
-**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ ~~DX5~~ ~~DX11~~ ~~DX10-followup~~ ~~DX4~~ ~~DX6~~ (all landed) → DX8 → DX17–19 (DX18 cheap)
+**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ ~~DX5~~ ~~DX11~~ ~~DX10-followup~~ ~~DX4~~ ~~DX6~~ ~~DX8~~ (all landed) → DX7 / DX17–19 (DX18 cheap)
 (kill the two silent-failure traps) → DX4/DX6/DX8 → DX17–19 (DX18 is cheap, pull forward). Tier 0–1 and
 most of Tier 2 are *surfacing existing capability*, not net-new.
 
