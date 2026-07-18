@@ -1,0 +1,34 @@
+---
+title: "The Marginalia Deck"
+subtitle: "The blog's voice, on stage"
+format: deck
+---
+
+## What changed
+
+The deck now speaks in Taliesin's own editorial voice: a **serif** headline in
+Newsreader, an iron-gall accent rule, and section dividers that read as chapters.
+
+- Serif titles, sans body
+- One owned accent, in light and dark
+- Section dividers with a numeral
+
+## A little code
+
+```python
+def greet(name):
+    return f"hello, {name}"
+```
+
+# First movement
+
+## A point under the first movement
+
+The section divider before this slide is numbered and centered, with a serif
+numeral and an accent rule.
+
+# Second movement
+
+## A point under the second movement
+
+The numeral increments, so a reader always knows where they are in the arc.

@@ -704,6 +704,11 @@ html.tali-idle .tali-blackout-overlay { cursor: none; }
   --tali-callout-important: #bd505c; --tali-callout-caution: #8d4315;
   --deck-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --deck-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  /* Marginalia identity (B4): the deck's serif voice — Newsreader, the blog's owned body
+     serif, already inlined into every deck page via FONTS_CSS (deck.rs) but otherwise
+     unused. Titles + headings render in it; body/lists/code stay --deck-font (sans) for
+     legibility from the back of a room. A theme overrides by redefining this token. */
+  --deck-font-head: "Newsreader", ui-serif, Georgia, "Times New Roman", serif;
   font-family: var(--deck-font);
   color: var(--deck-ink);
   font-weight: 400;
@@ -715,20 +720,21 @@ html.tali-idle .tali-blackout-overlay { cursor: none; }
 .tali-deck .tali-slides { text-align: left; }
 .tali-deck section.tali-title-slide, .tali-deck h1.title { text-align: center; }
 
-/* Type scale (the deck base font-size is 40px, set above). Headings inherit
-   font-family from .tali-deck (low specificity) rather than setting it, so a theme
-   extension's `.tali-deck *` font rule can still win. */
+/* Type scale (the deck base font-size is 40px, set above). Headings render in the serif
+   head font (Marginalia identity, B4); a theme overrides by redefining --deck-font-head
+   rather than by a low-specificity `.tali-deck *` rule (which an element selector beats). */
 .tali-deck h1, .tali-deck h2, .tali-deck h3, .tali-deck h4 {
+  font-family: var(--deck-font-head);
   font-weight: 700;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
   color: var(--deck-ink);
   margin: 0 0 .5em;
 }
 .tali-deck h1 { font-size: 1.9em; }
 .tali-deck h2 { font-size: 1.5em; }
 .tali-deck h3 { font-size: 1.15em; }
-.tali-deck h1.title { font-size: 2.3em; letter-spacing: -0.035em; margin-bottom: .2em; }
+.tali-deck h1.title { font-size: 2.35em; letter-spacing: -0.02em; margin-bottom: .25em; }
 .tali-deck .subtitle {
   text-align: center;
   font-size: 1.05em;
@@ -736,7 +742,58 @@ html.tali-idle .tali-blackout-overlay { cursor: none; }
   font-weight: 400;
   letter-spacing: 0;
   color: var(--deck-muted);
+  margin-top: .1em;
 }
+
+/* Marginalia identity (B4): an iron-gall accent rule under the serif title, the one
+   owned mark that makes the title slide read as the blog "on stage". */
+.tali-deck section.tali-title-slide h1.title::after {
+  content: "";
+  display: block;
+  width: 2.2em;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--deck-accent);
+  margin: .4em auto .1em;
+}
+
+/* Section dividers: an h1-led slide (data-level="1") is a chapter break, not a content
+   slide. Center it and lead with a large serif numeral (a document-order CSS counter, so
+   the sequence is deterministic) over the serif title + accent rule. Purely presentational
+   — the engine already emits this slide shape, it was simply never styled. */
+.tali-deck .tali-slides { counter-reset: tali-section; }
+.tali-deck .tali-slides section.tali-slide[data-level="1"] {
+  counter-increment: tali-section;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: center;
+}
+.tali-deck .tali-slides section.tali-slide[data-level="1"]::before {
+  content: counter(tali-section, decimal-leading-zero);
+  font-family: var(--deck-font-head);
+  font-size: 1.5em;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--deck-accent);
+  margin-bottom: .15em;
+}
+.tali-deck .tali-slides section.tali-slide[data-level="1"] h1 { font-size: 2.1em; margin: 0; }
+.tali-deck .tali-slides section.tali-slide[data-level="1"] h1::after {
+  content: "";
+  display: block;
+  width: 2em;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--deck-accent);
+  margin: .4em auto 0;
+}
+@media (forced-colors: active) {
+  .tali-deck section.tali-title-slide h1.title::after,
+  .tali-deck .tali-slides section.tali-slide[data-level="1"] h1::after { background: CanvasText; }
+  .tali-deck .tali-slides section.tali-slide[data-level="1"]::before { color: LinkText; }
+}
+
 .tali-deck p { margin: 0 0 .6em; line-height: 1.4; }
 .tali-deck strong { font-weight: 700; color: var(--deck-ink); }
 .tali-deck a {
