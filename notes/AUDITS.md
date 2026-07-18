@@ -120,6 +120,33 @@ now work via the alias). Spec/plan: `docs/superpowers/specs|plans/2026-07-18-dx5
 Clippy gotcha: the `DIV_FEATURE_CLASSES` re-export is read only by the cfg(test) drift test, so it is
 `#[cfg(test)]`-gated to avoid an unused-import error in the lib build.
 
+**DX11 LANDED 2026-07-18** (Tier 1 — the second silent-failure trap, after DX5's silent-degradation pair).
+**The trap:** `taliesin build methods.tmd methods.pdf` wrote HTML bytes into `methods.pdf`, logged `built
+methods.pdf`, and **exited 0** (`file methods.pdf` → "HTML document") — the academic persona (🎓 Priya)
+opens a "PDF" full of `<!DOCTYPE html>`, concludes the tool is broken, and abandons (the audit's single
+worst moment). Root cause: the second positional `out_html` was handed verbatim to `std::fs::write`
+(`build.rs:231-234`), no extension check. **The fix:** a `const NON_HTML_OUTPUT_EXTS` (`pdf, docx, doc,
+odt, rtf, tex, latex, typ, epub, pptx, ppt, md, markdown`) + a pure `non_html_output_error(out_html)`
+helper, wired into `parse_build_args` (beside the value-less-`--out` / unknown-flag / bad-`--jobs`
+guards): a denylisted extension is a hard `Err` (exit 1, **nothing written**) with a friendly message
+naming the extension, the concrete `.html` fix (`Path::with_extension`, so `dist/x.pdf` → `dist/x.html`),
+the browser Print-to-PDF escape hatch, and the planned print track (ROADMAP Pillar IV / Wave 5).
+**Denylist not allowlist (the design crux):** an extensionless / `.html` / `.htm` / `.txt` / unusual-named
+target is the author's deliberate choice (HTML content in the file they asked for), *not* a
+format-expectation trap, so it stays permitted; only format-implying extensions (the pandoc/Quarto
+refugee's muscle memory) are rejected. **Accepted tradeoff:** a format-implying extension not in the
+const slips through (writes HTML, exit 0, as before) — low-frequency, low-harm, one line to extend. It is
+the CLI analog of `frontmatter::NON_HTML_FORMATS` (which does the same for a carried-over `format:` field
+*name*); the two lists stay separate consts (format names vs. output-path file extensions) in their own
+crates. **Verification:** two pure unit tests (`non_html_output_error` denylist + case-insensitivity +
+`.html`/extensionless/`.txt` pass-through + dir-preserving suggestion; `parse_build_args` Err on `.pdf`,
+Ok on `.html`), an end-to-end binary pin (`strict_robustness.rs::build_into_pdf_is_rejected`: exit≠0, no
+`.pdf` created, stderr names the extension + HTML-only + ROADMAP + Print), full `cargo test -p
+taliesin-core -p taliesin-server` green, fmt + clippy clean, and a real-binary check (`.pdf`/`.docx`/`.md`
+rejected; `.html` still builds). No corpus pin: this is CLI arg-validation, not a rendering capability.
+Spec/plan: `docs/superpowers/specs|plans/2026-07-18-dx11-friendly-pdf-rejection*`. **Unblocks nothing new;
+next per the suggested order is the DX10-followup `new deck --tour`.**
+
 -----------------------------------------------------------------------------
 
 # Vacuous-test / mutation audit (2026-07-18)

@@ -54,7 +54,7 @@ CDN, no preview write-back, no new output format, `--tali-*` tokens only.
 
 ## Next session: start here
 
-**Pick up here (2026-07-18, DX audit — DX1–DX3 + DX5 + DX10[3/4] landed; DX4/DX6–DX9/DX11–DX19 queued).** A developer-experience audit
+**Pick up here (2026-07-18, DX audit — DX1–DX3 + DX5 + DX10[3/4] + DX11 landed; DX4/DX6–DX9/DX12–DX19 queued).** A developer-experience audit
 landed ([2026-07-18-dx-audit.md](2026-07-18-dx-audit.md); DX/discoverability research + full DX-surface
 map + error/feedback-loop audit + 4 persona simulations); 19 findings + 3 design questions queued as the
 **DX audit batch (§6** of Open work, above Tier 2**)**. **DX1 (live preview validation) is DONE** (both
@@ -66,12 +66,15 @@ DONE** (`init` emits `.taliesin/` schemas + the `_site.yml` modeline; integratio
 `init`→`taliesin new` pointer, `new post --draft`); only `new deck --tour` split to the now-unblocked
 DX10-followup. **DX5 (silent-degradation "did you mean") is DONE** — `::: {.columns}` aliases to the
 `layout-ncol` grid (Lena's on-projector disaster) and a misspelled feature/theorem `:::` class draws a
-located did-you-mean (near-miss only; browser-verified). **All pushed to `origin/main` 2026-07-18**
-(verify with `git log --oneline origin/main..main` — should be empty; the author may push again mid-session,
-so re-check, never trust a recorded SHA). Next up per the suggested order: **DX11** (friendly `.pdf`
-rejection — the other silent-failure trap), then the DX10-followup (`--tour`, now unblocked), then
-DX4/DX6/DX8, then DX17–19 (DX18 cheap). Most remaining items are *surfacing an existing capability*, not
-net-new.
+located did-you-mean (near-miss only; browser-verified). **DX11 (friendly `.pdf`/wrong-target rejection)
+is DONE** — `build doc.tmd doc.pdf` (and `.docx`/`.tex`/`.md`/…) is now a hard error naming HTML-only + the
+`.html` fix + browser Print + the planned print track, instead of silently writing HTML bytes into the
+`.pdf` at exit 0 (🎓's abandonment moment); a pure guard in `parse_build_args` (`NON_HTML_OUTPUT_EXTS`),
+unit- + end-to-end-pinned (`strict_robustness.rs`). **DX1–DX3 + DX5 + DX10[3/4] pushed to `origin/main`
+2026-07-18; DX11 landed on local `main`, not yet pushed** (verify with `git log --oneline origin/main..main`;
+the author may push again mid-session, so re-check, never trust a recorded SHA). Next up per the suggested
+order: the DX10-followup (`new deck --tour`, now unblocked), then DX4/DX6/DX8, then DX17–19 (DX18 cheap).
+Most remaining items are *surfacing an existing capability*, not net-new.
 
 **Pick up here (2026-07-18, PMF-audit batch — START HERE for feature work).** A product-market-fit
 audit landed ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md); 30+7 sourced personas +
@@ -802,10 +805,6 @@ that splices `draft: true`, default-off so existing scaffolds stay byte-identica
     the tour can use `::: {.columns}` (now a working `layout-ncol` alias) or native `layout-ncol`. The
     `NewOpts` plumbing + `NEW_FLAGS` did-you-mean are already in place — it's a `--tour` arm in `new_files`
     + a browser-verified deck check. Ready to pick up.
-- **DX11 — Friendly `.pdf`/wrong-target rejection**: `build … x.pdf` today silently writes HTML bytes into
-  a `.pdf` file (🎓's abandonment moment). Reject with "HTML-only; `build` for a page, browser Print for a
-  rough PDF; a print track is planned (ROADMAP Pillar IV)." S · [new]. NB: real PDF is already sanctioned
-  in ROADMAP Pillar IV / Wave 5 (derived from HTML) — this is only the interim guardrail.
 - **DX12 — Default `build` shouldn't ship broken output at exit 0**: print `⚠ built with N problems — run
   --strict to fail` + a `rebuilding…` save-start line for symmetry with `update N blocks`. S · [surface] ·
   ✍️🎓 (`build.rs:218` exits 0 with a missing image/dead link).
@@ -838,7 +837,7 @@ that splices `draft: true`, default-off so existing scaffolds stay byte-identica
   One-command deck publish in scope? (🎤)
 - Presenter laser/spotlight + auto-advance (reveal.js reflexes). (🎤)
 
-**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ ~~DX5~~ (landed; `deck --tour` → DX10-followup, now unblocked) → DX11 → DX4/DX6/DX8 → DX17–19 (DX18 cheap)
+**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ ~~DX5~~ ~~DX11~~ (landed; `deck --tour` → DX10-followup, now unblocked) → DX10-followup → DX4/DX6/DX8 → DX17–19 (DX18 cheap)
 (kill the two silent-failure traps) → DX4/DX6/DX8 → DX17–19 (DX18 is cheap, pull forward). Tier 0–1 and
 most of Tier 2 are *surfacing existing capability*, not net-new.
 
