@@ -39,3 +39,32 @@ fn completes_subcommands_and_suppresses_files() {
     );
     assert_eq!(directive, "4", "NoFileComp for subcommand completion");
 }
+
+#[test]
+fn path_completion_end_to_end_filters_dirs() {
+    use std::fs;
+    let dir = std::env::temp_dir().join(format!("tali-complete-e2e-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&dir);
+    fs::create_dir_all(dir.join("site")).unwrap();
+    fs::create_dir_all(dir.join("target")).unwrap();
+    fs::write(dir.join("index.tmd"), "# hi\n").unwrap();
+    fs::write(dir.join("site/_site.yml"), "title: S\n").unwrap();
+    fs::write(dir.join("site/page.tmd"), "# p\n").unwrap();
+    fs::write(dir.join("target/decoy.tmd"), "# d\n").unwrap();
+
+    let (values, directive) = complete(&dir, &["preview", ""]);
+    assert!(
+        values.contains(&"index.tmd".to_string()),
+        "offers .tmd: {values:?}"
+    );
+    assert!(
+        values.contains(&"site/".to_string()),
+        "offers site dir: {values:?}"
+    );
+    assert!(
+        !values.iter().any(|v| v.starts_with("target")),
+        "hides target/: {values:?}"
+    );
+    assert_eq!(directive, "5", "NoSpace|NoFileComp when dirs present");
+    let _ = fs::remove_dir_all(&dir);
+}

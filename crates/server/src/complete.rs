@@ -218,9 +218,157 @@ fn enumerated(cur: &str, values: &[&'static str]) -> Completion {
     }
 }
 
+/// Count the positional (non-flag, non-flag-value) args already sitting between the
+/// subcommand and the cursor.
+fn positionals_seen(sub: &str, rest: &[String]) -> usize {
+    let mut n = 0;
+    let mut i = 0;
+    while i < rest.len() {
+        let tok = rest[i].as_str();
+        if tok.starts_with('-') {
+            // A value-taking flag (`--out dir`) also consumes the next token, unless it was
+            // written `--out=dir`.
+            if !tok.contains('=')
+                && flags_for(sub)
+                    .iter()
+                    .any(|(f, takes, _)| *f == tok && *takes)
+            {
+                i += 1;
+            }
+        } else {
+            n += 1;
+        }
+        i += 1;
+    }
+    n
+}
+
+const IGNORE_DIRS: &[&str] = &[".git", "target", "node_modules", "_site", "_freeze"];
+const TMD_WALK_DEPTH: usize = 6;
+
+/// Whether a subcommand's first positional path may be a `.tmd` file, a directory, or
+/// either.
+enum PathKind {
+    File,
+    FileOrDir,
+    Dir,
+}
+
+impl PathKind {
+    /// Whether `.tmd` files are offered as terminal candidates. Directories are always
+    /// offered regardless, so a nested target stays reachable by descending.
+    fn offers_files(&self) -> bool {
+        matches!(self, PathKind::File | PathKind::FileOrDir)
+    }
+}
+
+/// The first positional's path type, or `None` when the subcommand takes no path.
+fn positional_kind(sub: &str) -> Option<PathKind> {
+    match canonical(sub) {
+        "preview" | "build" | "check" => Some(PathKind::FileOrDir),
+        "render" | "read" | "blocks" | "symbols" => Some(PathKind::File),
+        "map" | "publish" | "init" => Some(PathKind::Dir),
+        _ => None,
+    }
+}
+
+/// Complete a path word: `.tmd` files (when `kind.offers_files()`) plus directories that
+/// contain a `.tmd` anywhere below, site/book roots first, dirs suffixed `/`.
+fn complete_paths(cur: &str, cwd: &Path, kind: &PathKind) -> Completion {
+    // Split into (dir_part incl. trailing slash, leaf prefix).
+    let (dir_part, leaf) = match cur.rfind('/') {
+        Some(i) => (&cur[..=i], &cur[i + 1..]),
+        None => ("", cur),
+    };
+    let base = cwd.join(dir_part);
+    let Ok(entries) = std::fs::read_dir(&base) else {
+        return Completion {
+            candidates: Vec::new(),
+            directive: NO_FILE_COMP,
+        };
+    };
+
+    let mut site_dirs: Vec<Candidate> = Vec::new();
+    let mut dirs: Vec<Candidate> = Vec::new();
+    let mut files: Vec<Candidate> = Vec::new();
+
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !name.starts_with(leaf) {
+            continue;
+        }
+        // Hide dotfiles unless the user is explicitly typing a dot prefix.
+        if name.starts_with('.') && !leaf.starts_with('.') {
+            continue;
+        }
+        let Ok(ty) = entry.file_type() else { continue };
+        if ty.is_dir() {
+            if IGNORE_DIRS.contains(&name.as_str()) {
+                continue;
+            }
+            let path = entry.path();
+            if !dir_contains_tmd(&path, TMD_WALK_DEPTH) {
+                continue;
+            }
+            let value = format!("{dir_part}{name}/");
+            if path.join("_site.yml").exists() {
+                site_dirs.push(Candidate::described(value, "site / book root"));
+            } else {
+                dirs.push(Candidate::plain(value));
+            }
+        } else if kind.offers_files() && ty.is_file() && name.ends_with(".tmd") {
+            files.push(Candidate::plain(format!("{dir_part}{name}")));
+        }
+    }
+
+    site_dirs.sort_by(|a, b| a.value.cmp(&b.value));
+    dirs.sort_by(|a, b| a.value.cmp(&b.value));
+    files.sort_by(|a, b| a.value.cmp(&b.value));
+
+    let mut candidates = site_dirs;
+    candidates.append(&mut dirs);
+    candidates.append(&mut files);
+
+    let mut directive = NO_FILE_COMP;
+    if candidates.iter().any(|c| c.value.ends_with('/')) {
+        directive |= NO_SPACE;
+    }
+    Completion {
+        candidates,
+        directive,
+    }
+}
+
+/// True if `dir` holds a `.tmd` file within `depth` levels, skipping the build/vcs dirs in
+/// `IGNORE_DIRS` and dot-dirs. Short-circuits on the first hit. `file_type()` does not
+/// follow symlinks, so symlinked dirs are skipped and cannot cause a cycle.
+fn dir_contains_tmd(dir: &Path, depth: usize) -> bool {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return false;
+    };
+    let mut subdirs = Vec::new();
+    for entry in entries.flatten() {
+        let Ok(ty) = entry.file_type() else { continue };
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if ty.is_file() {
+            if name.ends_with(".tmd") {
+                return true;
+            }
+        } else if ty.is_dir()
+            && depth > 0
+            && !name.starts_with('.')
+            && !IGNORE_DIRS.contains(&name.as_ref())
+        {
+            subdirs.push(entry.path());
+        }
+    }
+    subdirs.into_iter().any(|d| dir_contains_tmd(&d, depth - 1))
+}
+
 /// Compute completions for the words typed after `taliesin` (`words.last()` is the
 /// current, possibly-empty word), resolving any paths relative to `cwd`.
-fn complete_line(words: &[String], _cwd: &Path) -> Completion {
+fn complete_line(words: &[String], cwd: &Path) -> Completion {
     let empty = String::new();
     let cur = words.last().unwrap_or(&empty).as_str();
     let prior: &[String] = if words.is_empty() {
@@ -288,7 +436,15 @@ fn complete_line(words: &[String], _cwd: &Path) -> Completion {
         return enumerated(cur, &["bash", "zsh", "fish", "powershell"]);
     }
 
-    // Everything else: nothing yet (grown in later tasks). Fall back to file completion.
+    // 5. First path positional (only the first; later positionals fall through to the
+    //    shell's own file completion).
+    if let Some(kind) = positional_kind(sub) {
+        if positionals_seen(sub, &prior[1..]) == 0 {
+            return complete_paths(cur, cwd, &kind);
+        }
+    }
+
+    // 6. Nothing special: let the shell do its normal file completion.
     Completion {
         candidates: Vec::new(),
         directive: 0,
@@ -464,5 +620,89 @@ mod brain_tests {
         assert_eq!(values(&["build", "--format", ""]), vec!["json".to_string()]);
         let human_json: Vec<String> = ["human", "json"].into_iter().map(String::from).collect();
         assert_eq!(values(&["check", "--format", ""]), human_json);
+    }
+
+    fn fixture(tag: &str) -> std::path::PathBuf {
+        use std::fs;
+        let dir =
+            std::env::temp_dir().join(format!("tali-complete-{}-{}", tag, std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("site")).unwrap();
+        fs::create_dir_all(dir.join("nested/deep")).unwrap();
+        fs::create_dir_all(dir.join("empty")).unwrap();
+        fs::create_dir_all(dir.join("target")).unwrap();
+        fs::write(dir.join("index.tmd"), "# hi\n").unwrap();
+        fs::write(dir.join("site/_site.yml"), "title: S\n").unwrap();
+        fs::write(dir.join("site/page.tmd"), "# p\n").unwrap();
+        fs::write(dir.join("nested/deep/buried.tmd"), "# b\n").unwrap();
+        fs::write(dir.join("target/decoy.tmd"), "# decoy\n").unwrap();
+        dir
+    }
+
+    fn path_values(dir: &std::path::Path, words: &[&str]) -> Vec<String> {
+        let owned: Vec<String> = words.iter().map(|s| s.to_string()).collect();
+        complete_line(&owned, dir)
+            .candidates
+            .into_iter()
+            .map(|c| c.value)
+            .collect()
+    }
+
+    #[test]
+    fn path_completion_filters_and_orders() {
+        let dir = fixture("filter");
+        let got = path_values(&dir, &["preview", ""]);
+        assert!(
+            got.contains(&"index.tmd".to_string()),
+            "offers .tmd file: {got:?}"
+        );
+        assert!(
+            got.contains(&"site/".to_string()),
+            "offers site root: {got:?}"
+        );
+        assert!(
+            got.contains(&"nested/".to_string()),
+            "offers dir with a buried .tmd: {got:?}"
+        );
+        assert!(
+            !got.iter().any(|v| v.starts_with("empty")),
+            "hides .tmd-free dir: {got:?}"
+        );
+        assert!(
+            !got.iter().any(|v| v.starts_with("target")),
+            "hides ignore-set dir: {got:?}"
+        );
+        // Site/book root is ordered before plain dirs and files.
+        let site = got.iter().position(|v| v == "site/").unwrap();
+        let nested = got.iter().position(|v| v == "nested/").unwrap();
+        assert!(site < nested, "site root first: {got:?}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn dir_only_subcommands_hide_tmd_files() {
+        let dir = fixture("dironly");
+        let got = path_values(&dir, &["map", ""]);
+        assert!(
+            !got.contains(&"index.tmd".to_string()),
+            "map offers no .tmd file: {got:?}"
+        );
+        assert!(
+            got.contains(&"site/".to_string()),
+            "map still offers a site dir: {got:?}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn path_directive_sets_nospace_when_dirs_present() {
+        let dir = fixture("directive");
+        let d = complete_line(&["preview".to_string(), "".to_string()], &dir).directive;
+        assert_eq!(
+            d,
+            NO_SPACE | NO_FILE_COMP,
+            "dirs present => NoSpace|NoFileComp"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
