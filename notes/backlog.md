@@ -122,11 +122,10 @@ trust:** `git log --oneline origin/main..main`.
   reduction map + §4 listed it as open with "zero tests"; it has the full cgroup-v2 ancestor-walk
   cap and a dated test module. **Pure backlog rot** (the exact trap this file warns about). §4
   entry struck below.
-- **Still open (measured, not rushed):** §2 #1 Part B; **R2/T2** (unify the three raw-source
-  scanners — a refactor with a behavioral decision inside, left for a focused session); and
-  **C5's serve-path gap only** (the live `serve_site` mount discovery/serve, P3). *(The rest of
-  the C3–C6 batch landed 2026-07-18 or was already pinned — see the newest start-here block; C3/C4
-  done, C6 never a gap.)*
+- **Still open (measured, not rushed):** §2 #1 Part B; and **C5's serve-path gap only** (the live
+  `serve_site` mount discovery/serve, P3). *(The rest of the C3–C6 batch landed 2026-07-18 or was
+  already pinned — see the newest start-here block; C3/C4 done, C6 never a gap. **R2 also landed**
+  2026-07-18, `3dfac8e` — the scanner unification; option A, behavior-preserving.)*
 
 **Pick up here (2026-07-18 — reduction + modularity pass landed & pushed to `origin/main`):**
 A staged extension-system exploration ran this session. **Strategic outcome (do not
@@ -684,14 +683,6 @@ dropping Atom feeds as "a documented non-goal" and Atom shipped anyway, with aut
   real locations** (page A's line and page B's line), so the fix must first decide what to point
   at — the second definition, both, or a per-page list. Design the semantics before the plumbing.
   Corpus-exercised (nothing ships wrong today), so P3.
-- **Site raw-source scanners are duplicated three ways** (reduction audit, 2026-07-17; R2/T2 in
-  [2026-07-17-reduction-audit-map.md](2026-07-17-reduction-audit-map.md)). `site/xref.rs::scan_page_anchors`,
-  `site/book.rs::chapter_heading`, and `site/discovery.rs` each run their own "skip front matter,
-  toggle fenced code, walk headings" pre-scan over raw `.tmd`, bypassing the render pipeline.
-  `chapter_heading` vs `scan_page_anchors` are near-identical with ONE real divergence: `xref`
-  resolves `{{< include >}}` first, `chapter_heading` does not. Factor the shared skeleton into
-  one helper; decide deliberately whether chapter-title detection should resolve includes. Both
-  are corpus-exercised (nothing ships wrong today), so P3.
 - **Phantom xref anchors — the two triggers §2 #5 left open** (found by the adversarial review of
   the #5 fix, 2026-07-17; both reproduced on the running product, both pre-existing, neither shipping
   in any corpus doc):
