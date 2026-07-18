@@ -1,0 +1,23 @@
+---
+title: "Shell completion"
+---
+
+*Reference: [CLI](cli.tmd) · Shell completion · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd)*
+
+Tab completion for the `taliesin` (and `tali`) command. Press Tab and it offers
+subcommands, flags, and, for a path argument, only `.tmd` files plus directories that
+contain one, with site and book roots listed first. Directories with no `.tmd` inside
+(and build folders like `target/`) are hidden, so finding the document, deck, or site
+you want to open is quick.
+
+All the logic lives in the binary, so every shell stays in sync and there is nothing to
+keep updated by hand. Install the script for your shell once:
+
+- **bash:** `taliesin completions bash > ~/.local/share/bash-completion/completions/taliesin`
+- **zsh:** `taliesin completions zsh > "${fpath[1]}/_taliesin"`, then run `compinit`
+- **fish:** `taliesin completions fish > ~/.config/fish/completions/taliesin.fish`
+- **PowerShell:** `taliesin completions powershell >> $PROFILE`
+
+Open a new shell (for zsh, re-run `compinit`) and press Tab after `tali preview`. The
+same completion also drives `taliesin build`, `render`, `check`, and the other
+path-taking commands.

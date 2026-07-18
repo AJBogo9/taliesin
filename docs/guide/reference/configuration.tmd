@@ -2,7 +2,7 @@
 title: "Configuration reference"
 ---
 
-*Reference: [CLI](cli.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · Configuration · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd)*
+*Reference: [CLI](cli.tmd) · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · Configuration · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd)*
 
 Two places hold configuration: a document's **YAML front matter** (the `---`
 block at the top), and a project's **`_site.yml`** (for a site or book). The

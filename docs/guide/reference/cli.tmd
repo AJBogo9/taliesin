@@ -2,7 +2,7 @@
 title: "CLI reference"
 ---
 
-*Reference: CLI · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd)*
+*Reference: CLI · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd)*
 
 | Command | Effect |
 |---|---|
@@ -333,20 +333,14 @@ works from anywhere.
 
 ## Shell completions
 
-`taliesin completions <bash|zsh|fish>` prints a completion script to stdout: it
-completes the subcommand as the first word (and the shell name after `completions`),
-then falls back to file completion for the document argument. The command list is
-generated from the CLI itself, so it can never drift from the commands the tool
-actually has (a test pins the two together).
+`taliesin completions <bash|zsh|fish|powershell>` prints a completion script to stdout.
+The script is a thin shim that asks the running binary for candidates, so Tab completes
+subcommands, per-command flags (with descriptions), and, for a path argument, only
+`.tmd` files plus directories that contain one (site and book roots first). It registers
+both `taliesin` and the `tali` alias, and all the logic lives in one place in the binary,
+so no per-shell list can drift.
 
-```sh
-# bash
-taliesin completions bash > ~/.local/share/bash-completion/completions/taliesin
-# zsh (into a directory on your $fpath, then run compinit)
-taliesin completions zsh > "${fpath[1]}/_taliesin"
-# fish
-taliesin completions fish > ~/.config/fish/completions/taliesin.fish
-```
+See [Shell completion](shell-completion.tmd) for the one-line install per shell.
 
 ## Environment
 

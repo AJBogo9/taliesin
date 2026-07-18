@@ -2,7 +2,7 @@
 title: "Troubleshooting"
 ---
 
-*Reference: [CLI](cli.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · Troubleshooting*
+*Reference: [CLI](cli.tmd) · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · Troubleshooting*
 
 The preview surfaces most problems as a small **diagnostics** note in the corner
 (non-fatal) or a dismissible **error overlay** (a failed render). Here are the

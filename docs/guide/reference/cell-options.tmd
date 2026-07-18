@@ -2,7 +2,7 @@
 title: "Cell-options reference"
 ---
 
-*Reference: [CLI](cli.tmd) · [Front matter](frontmatter.tmd) · Cell options · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd)*
+*Reference: [CLI](cli.tmd) · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · Cell options · [Configuration](configuration.tmd) · [Shortcodes](shortcodes.tmd) · [Troubleshooting](troubleshooting.tmd)*
 
 A code cell carries per-cell options on its leading comment lines. These tune
 whether the source shows, whether the cell runs, whether its output is cached, and

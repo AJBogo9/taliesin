@@ -2,7 +2,7 @@
 title: "Shortcode reference"
 ---
 
-*Reference: [CLI](cli.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · Shortcodes · [Troubleshooting](troubleshooting.tmd)*
+*Reference: [CLI](cli.tmd) · [Shell completion](shell-completion.tmd) · [Front matter](frontmatter.tmd) · [Cell options](cell-options.tmd) · [Configuration](configuration.tmd) · Shortcodes · [Troubleshooting](troubleshooting.tmd)*
 
 A shortcode is a `{{< name args >}}` tag in the body of a document. Taliesin
 expands the built-in shortcodes (and any an extension declares) in a single pass
