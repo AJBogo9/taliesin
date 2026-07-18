@@ -9,7 +9,8 @@ export type CompletionContext =
   | { kind: "cell-option" }
   | { kind: "div-class" }
   | { kind: "xref"; typed: string }
-  | { kind: "cite" };
+  | { kind: "cite" }
+  | { kind: "shortcode-path"; shortcode: "embed" | "include"; typed: string };
 
 // Front-matter parents whose immediate children have their own vocabulary.
 const NESTED_PARENTS = ["execute", "listing", "about", "hero", "prose-lint", "theorems"];
@@ -57,6 +58,12 @@ function nestedParent(docPrefix: string): string | null {
 }
 
 export function detectContext(linePrefix: string, docPrefix: string): CompletionContext {
+  // Shortcode file argument: `{{< embed ` / `{{< include ` then the first (path) token.
+  // Only while typing that FIRST token — a space after it moves on to named args (title=…),
+  // which are not paths. Checked before the `@`/`:::` rules so a path can't be misread.
+  const sc = /\{\{<\s*(embed|include)\s+([^\s>]*)$/.exec(linePrefix);
+  if (sc) return { kind: "shortcode-path", shortcode: sc[1] as "embed" | "include", typed: sc[2] };
+
   // Citation FIRST: `[@` contains `@`, so it must win over the xref rule.
   if (/\[@[^\]]*$/.test(linePrefix)) return { kind: "cite" };
 
@@ -132,6 +139,50 @@ export function mergeXrefTargets(
     detail.set(s.id, label && s.number ? `${label} ${s.number}` : "cross-reference target");
   }
   return [...detail.keys()].sort().map((id) => ({ id, detail: detail.get(id)! }));
+}
+
+// Build/vcs dirs never worth offering as a `{{< embed/include >}}` target.
+const IGNORE_DIRS = [".git", "target", "node_modules", "_site", "_freeze"];
+
+export interface DirEntry {
+  name: string;
+  isDir: boolean;
+}
+export interface PathCandidate {
+  value: string;
+  detail: string;
+}
+
+// Candidates for a `{{< embed/include <path> >}}` file argument: the `.tmd` files and
+// descendable subdirs in the directory of `typed`, filtered by its leaf and returned as
+// insert-values relative to the document (dirs suffixed `/` so you can keep descending).
+// `entries` is that directory's listing (the caller reads it); `fileDetail` labels the
+// `.tmd` hits ("deck / page" for embed, "partial" for include). Pure + vscode-free, so it
+// stays in the fast `node:test` loop.
+export function shortcodePathCandidates(
+  entries: DirEntry[],
+  typed: string,
+  fileDetail: string
+): PathCandidate[] {
+  const slash = typed.lastIndexOf("/");
+  const dirPart = slash >= 0 ? typed.slice(0, slash + 1) : "";
+  const leaf = slash >= 0 ? typed.slice(slash + 1) : typed;
+  const dirs: PathCandidate[] = [];
+  const files: PathCandidate[] = [];
+  for (const e of entries) {
+    if (!e.name.startsWith(leaf)) continue;
+    // Hide dotfiles unless the user is explicitly typing a dot prefix.
+    if (e.name.startsWith(".") && !leaf.startsWith(".")) continue;
+    if (e.isDir) {
+      if (IGNORE_DIRS.includes(e.name)) continue;
+      dirs.push({ value: `${dirPart}${e.name}/`, detail: "directory" });
+    } else if (e.name.endsWith(".tmd")) {
+      files.push({ value: `${dirPart}${e.name}`, detail: fileDetail });
+    }
+  }
+  dirs.sort((a, b) => a.value.localeCompare(b.value));
+  files.sort((a, b) => a.value.localeCompare(b.value));
+  return [...dirs, ...files];
 }
 
 // Harvest `{#id}` anchors (heading ids + figure/table/etc. labels) from the buffer, for

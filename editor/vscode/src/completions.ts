@@ -9,6 +9,7 @@ import {
   frontmatterBibPaths,
   parseSymbolsJson,
   mergeXrefTargets,
+  shortcodePathCandidates,
   XrefSymbol,
 } from "./complete";
 
@@ -152,6 +153,35 @@ export function registerCompletions(context: vscode.ExtensionContext): void {
           }
           return [...keys].map((k) => item(k, "citation key", K.Reference));
         }
+        case "shortcode-path": {
+          if (document.isUntitled) return undefined; // no on-disk dir to resolve against
+          const docDir = path.dirname(document.uri.fsPath);
+          const slash = ctx.typed.lastIndexOf("/");
+          const dirPart = slash >= 0 ? ctx.typed.slice(0, slash + 1) : "";
+          let entries: { name: string; isDir: boolean }[];
+          try {
+            entries = fs
+              .readdirSync(path.resolve(docDir, dirPart), { withFileTypes: true })
+              .map((d) => ({ name: d.name, isDir: d.isDirectory() }));
+          } catch {
+            return undefined; // unreadable dir -> no completions
+          }
+          const fileDetail = ctx.shortcode === "embed" ? "deck / page" : "partial";
+          // Replace the whole typed path (incl. any dir prefix) so descending overwrites
+          // cleanly rather than appending to a half-typed segment.
+          const replace = new vscode.Range(position.translate(0, -ctx.typed.length), position);
+          return shortcodePathCandidates(entries, ctx.typed, fileDetail).map((c) => {
+            const isDir = c.value.endsWith("/");
+            const ci = new vscode.CompletionItem(c.value, isDir ? K.Folder : K.File);
+            ci.detail = c.detail;
+            ci.range = replace;
+            ci.insertText = c.value;
+            ci.filterText = c.value;
+            // A directory keeps the menu open so you can descend without re-typing.
+            if (isDir) ci.command = { command: "editor.action.triggerSuggest", title: "" };
+            return ci;
+          });
+        }
       }
       return undefined;
     },
@@ -164,7 +194,8 @@ export function registerCompletions(context: vscode.ExtensionContext): void {
       "@",
       ".",
       "|",
-      "-"
+      "-",
+      "/"
     )
   );
 }

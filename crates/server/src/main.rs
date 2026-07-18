@@ -199,9 +199,9 @@ fn usage() {
     );
     println!("  doctor [dir] [--format human|json]  audit the environment for running code cells");
     println!("                             (interpreters, ipykernel/IRkernel, active conda/venv)");
-    println!("  completions <bash|zsh|fish|powershell>  print a shell completion script");
+    println!("  completions <shell> [--install]  print (or --install) a shell completion script");
     println!(
-        "                             (subcommand + flag + .tmd-aware path completion; install hint in --help)"
+        "                             (subcommand + flag + .tmd-aware path completion; --install writes it for you)"
     );
     println!("  help, --version            show this help / the version");
     println!();
@@ -413,13 +413,18 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin publish . --dry-run\n"
         }
         "completions" => {
-            "taliesin completions <bash|zsh|fish|powershell>\n\
+            "taliesin completions <bash|zsh|fish|powershell> [--install]\n\
              \n\
              Print a shell completion script to stdout. The script is a thin shim that\n\
              asks the running binary for candidates, so Tab offers subcommands, flags, and\n\
              only .tmd files plus directories that contain one (site/book roots first).\n\
              \n\
-             Install:\n\
+             --install writes the script into your shell's completion dir instead (the\n\
+             shell is detected from $SHELL when omitted); completion works after a restart:\n\
+             \x20 taliesin completions --install         # detect $SHELL and install\n\
+             \x20 taliesin completions zsh --install     # install for a named shell\n\
+             \n\
+             Or install by hand:\n\
              \x20 bash        taliesin completions bash > ~/.local/share/bash-completion/completions/taliesin\n\
              \x20 zsh         taliesin completions zsh  > \"${fpath[1]}/_taliesin\"   # then: compinit\n\
              \x20 fish        taliesin completions fish > ~/.config/fish/completions/taliesin.fish\n\

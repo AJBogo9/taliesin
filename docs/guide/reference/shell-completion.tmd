@@ -11,13 +11,24 @@ contain one, with site and book roots listed first. Directories with no `.tmd` i
 you want to open is quick.
 
 All the logic lives in the binary, so every shell stays in sync and there is nothing to
-keep updated by hand. Install the script for your shell once:
+keep updated by hand. The quickest way to install is to let Taliesin write the script
+into your shell's completion directory:
+
+```sh
+taliesin completions --install        # detects your shell from $SHELL
+taliesin completions zsh --install    # or name the shell explicitly
+```
+
+Then open a new shell (for zsh you may need to re-run `compinit`, or add the printed
+`fpath` line to `~/.zshrc`). To install by hand instead, redirect the script yourself:
 
 - **bash:** `taliesin completions bash > ~/.local/share/bash-completion/completions/taliesin`
 - **zsh:** `taliesin completions zsh > "${fpath[1]}/_taliesin"`, then run `compinit`
 - **fish:** `taliesin completions fish > ~/.config/fish/completions/taliesin.fish`
 - **PowerShell:** `taliesin completions powershell >> $PROFILE`
 
-Open a new shell (for zsh, re-run `compinit`) and press Tab after `tali preview`. The
-same completion also drives `taliesin build`, `render`, `check`, and the other
-path-taking commands.
+Press Tab after `tali preview` and it offers matching documents. The same completion
+also drives `taliesin build`, `render`, `check`, and the other path-taking commands. In
+the editor, the companion extends this idea *inside* a document: typing the file
+argument of `{{< embed … >}}` or `{{< include … >}}` completes the sibling `.tmd`
+files and directories.

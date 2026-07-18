@@ -269,8 +269,42 @@ Cmd-K shows the 3 actions as a menu, "theme"→Enter flips dark→light + persis
 palette, "kernel"/"editor"/"source" filter to their actions, "fourier" shows content only (no action
 pollution), console clean; and a **static `build`** opened via `file://` shows only the theme action
 (`taliRestartKernel`/`taliOpenPageSource` `undefined`). Spec/plan:
-`docs/superpowers/specs|plans/2026-07-19-dx8-command-palette*`. **Next per the suggested order: DX7 (dynamic
-value completion), then DX17–19 (DX18 cheap — `check` exit-gating).**
+`docs/superpowers/specs|plans/2026-07-19-dx8-command-palette*`. **Next per the suggested order: DX17–19
+(DX18 cheap — `check` exit-gating).**
+
+**DX7 LANDED 2026-07-19** (dynamic value completion). **The rot (found by grepping the named surfaces
+before trusting the entry — the file's own rule):** DX7's flagship — `@`-xref completion *with descriptions*
+— was **already shipped** in the companion (`completions.ts` `xref` case merges buffer `{#id}` anchors + the
+`taliesin symbols` registry as `Figure N`/`Section N`); and "page/deck names, post slugs" in the *shell* are
+`.tmd` *paths*, which `complete.rs` already path-completes (there is no CLI slot that takes an xref or bare
+slug). So DX7 was **not** built as worded; it was scoped to the two genuine, unshipped gaps. **Gap 1 (shell
+install one-liner):** `taliesin completions --install` writes the script into the shell's conventional
+completion dir instead of making the user hand-run a `> ~/.local/share/…` redirect. Shape: a pure
+`install_plan(shell, &InstallEnv{home,xdg_data,xdg_config})` (unit-tested, no I/O) returns
+`Write{path,manual}` for bash/zsh/fish (XDG-aware paths; zsh carries an `fpath` follow-up the write can't do)
+or `Manual{command}` for powershell (`$PROFILE` can't be resolved from outside pwsh); the shell is detected
+from `$SHELL` (basename → `canonical_shell`) or named explicitly (`completions zsh --install`). A thin
+wrapper does the `create_dir_all` + `write`; exits non-zero only on unknown/undetectable shell, no `$HOME`,
+or an I/O error. `flags_for("completions")` gains `--install` (so `completions --<TAB>` offers it and
+`flag_table_covers_help` stays green once the help text mentions it), and the shell-kind positional now fires
+even after `--install` interleaves. **Gap 2 (editor shortcode targets = "page/deck names, post slugs" where
+they're actually values in a doc):** the companion completes the file argument of `{{< embed … >}}` /
+`{{< include … >}}` — a new `detectContext` context (`\{\{<\s*(embed|include)\s+([^\s>]*)$`, first-arg only)
++ a pure `shortcodePathCandidates(entries, typed, fileDetail)` (`.tmd` files + descendable subdirs, ignore-
+dirs hidden, dir-prefix preserved) rendered with a replace range over the typed path (folders re-trigger
+suggest to keep descending; `/` added as a trigger char). **Deliberately not built (noted in the spec):** per-
+candidate front-matter reads to label deck-vs-page (I/O in the completion hot path — uniform "deck / page"
+detail is honest); internal `[](page.tmd)` link-target completion (a larger, separate context). **Verification:**
+`cargo test -p taliesin-server` (257 unit + all integration + `flag_table_covers_help`) + clippy `-D warnings`
+clean + `cargo test -p taliesin-core` (corpus net) green; **end-to-end** `completions --install` under a
+throwaway `HOME`/`$SHELL` lands the byte-identical script for bash/zsh/fish, powershell prints the manual
+command (exit 0), unknown/undetectable shell errors (exit 1); `__complete` brain e2e for the new cases; the
+companion's `npm test` (75 node:test, 5 new) + `tsc --noEmit` clean + esbuild bundle; the guide's
+`shell-completion.tmd` gains `--install` + the shortcode note and stays `check`-clean. **Not verified:** in-
+editor click-through of the shortcode completion (needs a vsix repackage+reinstall; the standard companion
+caveat — left to a deliberate step). Spec: `docs/superpowers/specs/2026-07-19-dx7-dynamic-completion.md`.
+**Next per the suggested order: DX17–19 (DX18 cheap — `check` exit-gating), or DX12 (build exit-0 warning
+summary).**
 
 -----------------------------------------------------------------------------
 

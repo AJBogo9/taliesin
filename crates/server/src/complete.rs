@@ -3,21 +3,186 @@
 //! behavior cannot drift between shells: each shim only relays the brain's output.
 
 use crate::log;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-/// `taliesin completions <bash|zsh|fish>`: print that shell's completion script to stdout
-/// (the only thing the command does), or a usage error + non-zero exit for a missing or
-/// unsupported shell. The scripts are generated from `crate::COMMANDS`, so the offered
-/// command list can never drift from what `main()` dispatches on.
+/// `taliesin completions <bash|zsh|fish> [--install]`: without `--install`, print that
+/// shell's completion script to stdout (a usage error + non-zero exit for a missing or
+/// unsupported shell); with `--install`, write it into the shell's conventional completion
+/// dir (see `install_completions`). The scripts are generated from `crate::COMMANDS`, so
+/// the offered command list can never drift from what `main()` dispatches on.
 pub(crate) fn cmd_completions(args: &[String]) -> ExitCode {
-    match args.get(2).map(String::as_str).and_then(completions_script) {
+    let rest = args.get(2..).unwrap_or(&[]);
+    let install = rest.iter().any(|a| a == "--install");
+    // The shell, if named, is the first non-flag token (so `--install zsh` and
+    // `zsh --install` are equivalent).
+    let shell_arg = rest
+        .iter()
+        .find(|a| !a.starts_with('-'))
+        .map(String::as_str);
+    if install {
+        return install_completions(shell_arg);
+    }
+    match shell_arg.and_then(completions_script) {
         Some(script) => {
             print!("{script}");
             ExitCode::SUCCESS
         }
         None => {
-            log::error("usage: taliesin completions <bash|zsh|fish|powershell>");
+            log::error("usage: taliesin completions <bash|zsh|fish|powershell> [--install]");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Map a user-supplied or `$SHELL`-derived shell name to its canonical form, or `None` for
+/// an unsupported shell. `pwsh` folds into `powershell` (they share one script).
+fn canonical_shell(name: &str) -> Option<&'static str> {
+    match name {
+        "bash" => Some("bash"),
+        "zsh" => Some("zsh"),
+        "fish" => Some("fish"),
+        "powershell" | "pwsh" => Some("powershell"),
+        _ => None,
+    }
+}
+
+/// The canonical shell behind a `$SHELL` value (`/usr/bin/zsh` -> `zsh`), or `None` when it
+/// is unset or unrecognized (the caller then asks for an explicit `<shell> --install`).
+fn detect_shell(shell_env: Option<&str>) -> Option<&'static str> {
+    let base = shell_env?.rsplit(['/', '\\']).next()?;
+    let base = base.strip_suffix(".exe").unwrap_or(base);
+    canonical_shell(base)
+}
+
+/// The home + XDG dirs the install path is derived from. Injected (not read inline) so
+/// `install_plan` is a pure function unit tests can drive without touching the environment.
+struct InstallEnv {
+    home: Option<String>,
+    xdg_data: Option<String>,
+    xdg_config: Option<String>,
+}
+
+impl InstallEnv {
+    fn from_env() -> Self {
+        let nonempty = |k| std::env::var(k).ok().filter(|s: &String| !s.is_empty());
+        InstallEnv {
+            home: nonempty("HOME"),
+            xdg_data: nonempty("XDG_DATA_HOME"),
+            xdg_config: nonempty("XDG_CONFIG_HOME"),
+        }
+    }
+}
+
+/// What `--install` should do for a shell: write the script to a path (bash/zsh/fish), or
+/// hand back a manual command when there is no reliable auto path (powershell's `$PROFILE`
+/// can't be resolved from outside PowerShell).
+enum InstallPlan {
+    Write {
+        path: PathBuf,
+        /// A follow-up the file write can't perform for the user (zsh's `fpath` edit).
+        manual: Option<String>,
+    },
+    Manual {
+        command: String,
+    },
+}
+
+/// Where `shell`'s completion script installs, given the environment. `None` only when
+/// `$HOME` is unresolvable (every path below needs it). XDG overrides are honored so the
+/// target matches whatever `bash-completion`/`fish`/a framework actually reads.
+fn install_plan(shell: &str, env: &InstallEnv) -> Option<InstallPlan> {
+    let home = env.home.as_deref()?;
+    let data = env
+        .xdg_data
+        .clone()
+        .unwrap_or_else(|| format!("{home}/.local/share"));
+    let config = env
+        .xdg_config
+        .clone()
+        .unwrap_or_else(|| format!("{home}/.config"));
+    let plan = match shell {
+        "bash" => InstallPlan::Write {
+            path: PathBuf::from(format!("{data}/bash-completion/completions/taliesin")),
+            manual: None,
+        },
+        "zsh" => {
+            let dir = format!("{data}/zsh/site-functions");
+            InstallPlan::Write {
+                path: PathBuf::from(format!("{dir}/_taliesin")),
+                manual: Some(format!(
+                    "if completion doesn't appear, add `fpath+=({dir})` to ~/.zshrc before `compinit`"
+                )),
+            }
+        }
+        "fish" => InstallPlan::Write {
+            path: PathBuf::from(format!("{config}/fish/completions/taliesin.fish")),
+            manual: None,
+        },
+        "powershell" => InstallPlan::Manual {
+            command: "taliesin completions powershell >> $PROFILE".to_string(),
+        },
+        _ => return None,
+    };
+    Some(plan)
+}
+
+/// `taliesin completions [<shell>] --install`: resolve the shell (explicit arg, else
+/// `$SHELL`), then write the script to its conventional dir. Prints where it landed plus
+/// any manual follow-up; exits non-zero only on a real failure (unknown shell, undetectable
+/// shell, unresolvable `$HOME`, or an I/O error), never for the informational powershell case.
+fn install_completions(shell_arg: Option<&str>) -> ExitCode {
+    let shell = match shell_arg {
+        Some(s) => match canonical_shell(s) {
+            Some(c) => c,
+            None => {
+                log::error(&format!(
+                    "unknown shell `{s}` (expected bash, zsh, fish, or powershell)"
+                ));
+                return ExitCode::FAILURE;
+            }
+        },
+        None => match detect_shell(std::env::var("SHELL").ok().as_deref()) {
+            Some(c) => c,
+            None => {
+                log::error(
+                    "could not detect your shell from $SHELL; run e.g. `taliesin completions zsh --install`",
+                );
+                return ExitCode::FAILURE;
+            }
+        },
+    };
+    match install_plan(shell, &InstallEnv::from_env()) {
+        Some(InstallPlan::Write { path, manual }) => {
+            if let Some(parent) = path.parent()
+                && let Err(e) = std::fs::create_dir_all(parent)
+            {
+                log::error(&format!("could not create {}: {e}", parent.display()));
+                return ExitCode::FAILURE;
+            }
+            let script = completions_script(shell).expect("a canonical shell has a script");
+            if let Err(e) = std::fs::write(&path, script) {
+                log::error(&format!("could not write {}: {e}", path.display()));
+                return ExitCode::FAILURE;
+            }
+            log::info(&format!(
+                "installed {shell} completion -> {}",
+                path.display()
+            ));
+            if let Some(m) = manual {
+                log::info(&m);
+            }
+            log::info("restart your shell to pick it up");
+            ExitCode::SUCCESS
+        }
+        Some(InstallPlan::Manual { command }) => {
+            log::info(&format!(
+                "{shell}: automatic install isn't supported; run:\n  {command}"
+            ));
+            ExitCode::SUCCESS
+        }
+        None => {
+            log::error("could not resolve $HOME for the install location");
             ExitCode::FAILURE
         }
     }
@@ -241,6 +406,11 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
             ("--format", true, "human | json"),
             ("--explain", true, "explain a diagnostic code (TAL-...)"),
         ],
+        "completions" => &[(
+            "--install",
+            false,
+            "write the script into your shell's completion dir",
+        )],
         _ => &[],
     }
 }
@@ -478,7 +648,12 @@ fn complete_line(words: &[String], cwd: &Path) -> Completion {
     if prior.len() == 1 && prior[0] == "new" {
         return enumerated(cur, &["post", "page", "deck", "paper"]);
     }
-    if prior.len() == 1 && prior[0] == "completions" {
+    // `completions` offers the shell kinds until one is chosen, so it also fires after
+    // `completions --install` (where an interleaved flag pushed prior.len() past 1).
+    if canonical(sub) == "completions"
+        && !cur.starts_with('-')
+        && positionals_seen("completions", &prior[1..]) == 0
+    {
         return enumerated(cur, &["bash", "zsh", "fish", "powershell"]);
     }
 
@@ -657,6 +832,23 @@ mod brain_tests {
     }
 
     #[test]
+    fn completions_offers_install_flag_and_still_offers_shells() {
+        // `completions --<TAB>` offers the install flag.
+        assert!(values(&["completions", "--"]).contains(&"--install".to_string()));
+        // `completions --install <TAB>` still offers the shell kinds (the flag interleaves
+        // ahead of the shell positional, so a naive prior.len()==1 check would miss it).
+        assert_eq!(
+            values(&["completions", "--install", ""]),
+            ["bash", "zsh", "fish", "powershell"]
+                .into_iter()
+                .map(String::from)
+                .collect::<Vec<_>>()
+        );
+        // Once a shell positional is present, shells are no longer offered.
+        assert!(values(&["completions", "bash", ""]).is_empty());
+    }
+
+    #[test]
     fn format_value_completion() {
         assert_eq!(values(&["build", "--format", ""]), vec!["json".to_string()]);
         let human_json: Vec<String> = ["human", "json"].into_iter().map(String::from).collect();
@@ -801,5 +993,108 @@ mod brain_tests {
                 "`{flag}` appears in help but is missing from flags_for (add it or the table drifts)"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod install_tests {
+    use super::*;
+
+    fn env(home: Option<&str>, data: Option<&str>, config: Option<&str>) -> InstallEnv {
+        InstallEnv {
+            home: home.map(String::from),
+            xdg_data: data.map(String::from),
+            xdg_config: config.map(String::from),
+        }
+    }
+
+    /// The write-path of a `Write` plan, or `None` for a `Manual`/absent plan.
+    fn write_path(shell: &str, e: &InstallEnv) -> Option<PathBuf> {
+        match install_plan(shell, e)? {
+            InstallPlan::Write { path, .. } => Some(path),
+            InstallPlan::Manual { .. } => None,
+        }
+    }
+
+    #[test]
+    fn canonical_shell_folds_pwsh_and_rejects_unknown() {
+        assert_eq!(canonical_shell("zsh"), Some("zsh"));
+        assert_eq!(canonical_shell("pwsh"), Some("powershell"));
+        assert_eq!(canonical_shell("powershell"), Some("powershell"));
+        assert_eq!(canonical_shell("tcsh"), None);
+        assert_eq!(canonical_shell(""), None);
+    }
+
+    #[test]
+    fn detect_shell_reads_the_basename_of_shell() {
+        assert_eq!(detect_shell(Some("/usr/bin/zsh")), Some("zsh"));
+        assert_eq!(detect_shell(Some("/bin/bash")), Some("bash"));
+        assert_eq!(detect_shell(Some("fish")), Some("fish"));
+        assert_eq!(
+            detect_shell(Some(r"C:\Program Files\PowerShell\pwsh.exe")),
+            Some("powershell")
+        );
+        assert_eq!(detect_shell(Some("/usr/bin/tcsh")), None);
+        assert_eq!(detect_shell(None), None);
+    }
+
+    #[test]
+    fn install_plan_uses_xdg_default_paths() {
+        let e = env(Some("/home/u"), None, None);
+        assert_eq!(
+            write_path("bash", &e).unwrap(),
+            PathBuf::from("/home/u/.local/share/bash-completion/completions/taliesin")
+        );
+        assert_eq!(
+            write_path("zsh", &e).unwrap(),
+            PathBuf::from("/home/u/.local/share/zsh/site-functions/_taliesin")
+        );
+        assert_eq!(
+            write_path("fish", &e).unwrap(),
+            PathBuf::from("/home/u/.config/fish/completions/taliesin.fish")
+        );
+    }
+
+    #[test]
+    fn install_plan_honors_xdg_overrides() {
+        let e = env(Some("/home/u"), Some("/data"), Some("/cfg"));
+        assert_eq!(
+            write_path("bash", &e).unwrap(),
+            PathBuf::from("/data/bash-completion/completions/taliesin")
+        );
+        assert_eq!(
+            write_path("fish", &e).unwrap(),
+            PathBuf::from("/cfg/fish/completions/taliesin.fish")
+        );
+    }
+
+    #[test]
+    fn zsh_carries_a_manual_fpath_hint_others_do_not() {
+        let e = env(Some("/home/u"), None, None);
+        match install_plan("zsh", &e).unwrap() {
+            InstallPlan::Write { manual, .. } => {
+                assert!(manual.unwrap().contains("fpath"), "zsh hints at fpath")
+            }
+            InstallPlan::Manual { .. } => panic!("zsh writes a file"),
+        }
+        match install_plan("bash", &e).unwrap() {
+            InstallPlan::Write { manual, .. } => assert!(manual.is_none(), "bash auto-loads"),
+            InstallPlan::Manual { .. } => panic!("bash writes a file"),
+        }
+    }
+
+    #[test]
+    fn powershell_is_manual_only() {
+        let e = env(Some("/home/u"), None, None);
+        match install_plan("powershell", &e).unwrap() {
+            InstallPlan::Manual { command } => assert!(command.contains("$PROFILE")),
+            InstallPlan::Write { .. } => panic!("$PROFILE can't be resolved from outside pwsh"),
+        }
+    }
+
+    #[test]
+    fn install_plan_needs_a_home() {
+        // Every install path is HOME-relative, so without it there is no plan.
+        assert!(install_plan("bash", &env(None, Some("/data"), None)).is_none());
     }
 }

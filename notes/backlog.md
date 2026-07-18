@@ -91,9 +91,15 @@ static build shows only the theme action). Each reuses the owning module's behav
 `window.taliToggleTheme`, extracted from + shared with the dev-menu button; the kernel restart; and
 `gotoSource(null,1)`); new-post/draft + slide-jump excluded on principle (read-only-preview / deck chrome).
 Rust drift pins guard the `include_str!`'d JS; browser-verified via chrome-devtools at 3 viewports + a
-static build. **DX6 + DX8 landed locally, NOT yet pushed** (ask me / push when asked; verify with `git log
---oneline origin/main..main`). Next up per the suggested order: DX7 (dynamic value completion) and
-DX17–19 (DX18 cheap — `check` exit-gating). Most remaining items are *surfacing an existing capability*.
+static build. **DX7 (dynamic value completion) is DONE** — grepping first showed the flagship (`@`-xref
+completion *with descriptions*) was **already shipped** in the companion and shell page/deck/slug names are
+already path-completed, so DX7 shipped the two real gaps: `taliesin completions --install` (detect `$SHELL`,
+write the script to its XDG-aware dir; pure `install_plan`, unit + e2e verified) and companion completion for
+`{{< embed/include >}}` file targets (new `detectContext` context + pure `shortcodePathCandidates`, node:test
++ tsc + bundle verified; in-editor click-through needs a vsix repackage, not done). **DX6 + DX8 + DX7 landed
+locally, NOT yet pushed** (ask me / push when asked; verify with `git log --oneline origin/main..main`). Next
+up per the suggested order: DX17–19 (DX18 cheap — `check` exit-gating) then DX12. Most remaining items are
+*surfacing an existing capability*.
 
 **Pick up here (2026-07-18, PMF-audit batch — START HERE for feature work).** A product-market-fit
 audit landed ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md); 30+7 sourced personas +
@@ -805,9 +811,17 @@ near-miss ≤2 against `DIV_FEATURE_CLASSES ∪ THEOREM_KINDS`) — but only nea
 Browser-verified (columns 2×360px grid; `.fragmnet` → "did you mean `fragment`?" in the preview dev menu).
 **This unblocked the DX10-followup (`new deck --tour`)** — the columns idiom now works via the alias
 (DX10-followup landed 2026-07-18).
-- **DX7 — Dynamic value completion** (extend the shipped completion): complete page/deck names, post
-  slugs, `@`-xref targets *with descriptions* (gh/fzf pattern) + a one-liner "install completion now".
-  M · [surface] · the literal next step in the feature just shipped.
+**DX7 — Dynamic value completion — LANDED 2026-07-19.** Grepping the named surfaces first (per this file's
+anti-rot rule) showed the flagship was **already shipped**: `@`-xref completion *with descriptions* lives in
+the companion (`completions.ts` merges buffer `{#id}` anchors + the `symbols` registry as `Figure N`), and
+"page/deck names, slugs" in the *shell* are `.tmd` paths `complete.rs` already completes. So DX7 shipped the
+two genuine gaps: (1) **`taliesin completions --install`** — detect the shell from `$SHELL` (or a named
+shell) and write the script into its conventional, XDG-aware dir (pure `install_plan`, unit-tested; zsh
+carries an `fpath` follow-up, powershell is manual-only); (2) **companion completion for the file argument of
+`{{< embed … >}}` / `{{< include … >}}`** — the one place page/deck/slug names are *values in a document*
+(new `detectContext` context + pure `shortcodePathCandidates`). Deck-vs-page labelling by front-matter peek
+and `[](page.tmd)` link completion were left out (noted in the spec). Spec
+`docs/superpowers/specs/2026-07-19-dx7-dynamic-completion.md`; record in [AUDITS.md](AUDITS.md).
 
 **Tier 2 — workflow smoothers & delight:**
 
@@ -856,7 +870,7 @@ fragments/`. . .`/incremental/columns/magic-move/notes + a make-it-yours closer,
   One-command deck publish in scope? (🎤)
 - Presenter laser/spotlight + auto-advance (reveal.js reflexes). (🎤)
 
-**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ ~~DX5~~ ~~DX11~~ ~~DX10-followup~~ ~~DX4~~ ~~DX6~~ ~~DX8~~ (all landed) → DX7 / DX17–19 (DX18 cheap)
+**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ ~~DX5~~ ~~DX11~~ ~~DX10-followup~~ ~~DX4~~ ~~DX6~~ ~~DX8~~ ~~DX7~~ (all landed) → DX17–19 (DX18 cheap) / DX12
 (kill the two silent-failure traps) → DX4/DX6/DX8 → DX17–19 (DX18 is cheap, pull forward). Tier 0–1 and
 most of Tier 2 are *surfacing existing capability*, not net-new.
 

@@ -7,6 +7,7 @@ import {
   frontmatterBibPaths,
   parseSymbolsJson,
   mergeXrefTargets,
+  shortcodePathCandidates,
 } from "../complete";
 
 const FM_OPEN = "---\ntitle: T\n";
@@ -127,4 +128,54 @@ test("mergeXrefTargets unions the buffer's anchors with the CLI's symbols", () =
 test("mergeXrefTargets falls back to the kind prefix when the label is unknown", () => {
   const merged = mergeXrefTargets([], [{ id: "xyz-a", kind: "xyz", number: "1" }], {});
   assert.equal(merged[0].detail, "cross-reference target");
+});
+
+test("detects an embed shortcode file-argument position", () => {
+  assert.deepEqual(detectContext("{{< embed ", "{{< embed "), {
+    kind: "shortcode-path",
+    shortcode: "embed",
+    typed: "",
+  });
+  assert.deepEqual(detectContext("{{< embed tou", "{{< embed tou"), {
+    kind: "shortcode-path",
+    shortcode: "embed",
+    typed: "tou",
+  });
+});
+
+test("detects an include shortcode with a nested path prefix", () => {
+  assert.deepEqual(detectContext("{{< include chapters/0", "{{< include chapters/0"), {
+    kind: "shortcode-path",
+    shortcode: "include",
+    typed: "chapters/0",
+  });
+});
+
+test("no shortcode-path completion past the first argument", () => {
+  // Once the file arg + a space is typed, later (named) args are not path-completed.
+  assert.deepEqual(detectContext("{{< embed tour.tmd tit", "x"), { kind: "none" });
+});
+
+test("shortcodePathCandidates offers .tmd files and dirs, hiding build dirs", () => {
+  const entries = [
+    { name: "tour.tmd", isDir: false },
+    { name: "notes.txt", isDir: false },
+    { name: "chapters", isDir: true },
+    { name: "_freeze", isDir: true },
+    { name: ".git", isDir: true },
+  ];
+  assert.deepEqual(shortcodePathCandidates(entries, "", "page"), [
+    { value: "chapters/", detail: "directory" },
+    { value: "tour.tmd", detail: "page" },
+  ]);
+});
+
+test("shortcodePathCandidates keeps the dir prefix and filters by leaf", () => {
+  const entries = [
+    { name: "01-intro.tmd", isDir: false },
+    { name: "02-body.tmd", isDir: false },
+  ];
+  assert.deepEqual(shortcodePathCandidates(entries, "chapters/01", "partial"), [
+    { value: "chapters/01-intro.tmd", detail: "partial" },
+  ]);
 });
