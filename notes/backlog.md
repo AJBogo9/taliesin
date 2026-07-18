@@ -66,17 +66,19 @@ DONE** (`init` emits `.taliesin/` schemas + the `_site.yml` modeline; integratio
 `init`→`taliesin new` pointer, `new post --draft`); only `new deck --tour` split to the now-unblocked
 DX10-followup. **DX5 (silent-degradation "did you mean") is DONE** — `::: {.columns}` aliases to the
 `layout-ncol` grid (Lena's on-projector disaster) and a misspelled feature/theorem `:::` class draws a
-located did-you-mean (near-miss only; browser-verified). All on local `main` after merge, NOT pushed —
-check `git log origin/main..main`. Next up per the suggested order: **DX11** (friendly `.pdf` rejection —
-the other silent-failure trap), then the DX10-followup (`--tour`, now unblocked), then DX4/DX6/DX8, then
-DX17–19 (DX18 cheap). Most remaining items are *surfacing an existing capability*, not net-new.
+located did-you-mean (near-miss only; browser-verified). **All pushed to `origin/main` 2026-07-18**
+(verify with `git log --oneline origin/main..main` — should be empty; the author may push again mid-session,
+so re-check, never trust a recorded SHA). Next up per the suggested order: **DX11** (friendly `.pdf`
+rejection — the other silent-failure trap), then the DX10-followup (`--tour`, now unblocked), then
+DX4/DX6/DX8, then DX17–19 (DX18 cheap). Most remaining items are *surfacing an existing capability*, not
+net-new.
 
 **Pick up here (2026-07-18, PMF-audit batch — START HERE for feature work).** A product-market-fit
 audit landed ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md); 30+7 sourced personas +
 author/reader/publish/trust walkthroughs). Headline: the tool is **feature-complete for ~one user**,
 so the dedup pass killed most candidates (they already ship: `publish`→Cloudflare, presenter view,
 deck a11y, `echo`/`code-fold`, the deck `?` menu). **ALL THREE PMF builds now LANDED 2026-07-18**
-(local `main`, not pushed): **B1** reader "Cite this" box (`4bb10c7`, §1), **B2** book landing-page
+(pushed to `origin/main` 2026-07-18): **B1** reader "Cite this" box (`4bb10c7`, §1), **B2** book landing-page
 auto-TOC (`b284544`, §1), **B4** deck Marginalia identity (Direction A, serif titles; merge `2cf72f4`,
 feat `d04a06c`, §3). **The whole PMF build-batch is done.** What remains is Tier 2/3 (demand-driven):
 verify item **C-PUB-1**, the Zenodo DOI on-ramp **B5** (a natural next step now B1 ships the
