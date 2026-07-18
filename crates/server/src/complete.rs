@@ -737,4 +737,44 @@ mod brain_tests {
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn flag_table_covers_help() {
+        // Collect every `--flag` mentioned anywhere in main.rs help text, then assert each
+        // lives in some subcommand's `flags_for` table (mirrors the ENV_HELP drift gate).
+        let src = include_str!("main.rs");
+        let bytes = src.as_bytes();
+        let mut mentioned = std::collections::BTreeSet::new();
+        let mut i = 0;
+        while i + 1 < bytes.len() {
+            if bytes[i] == b'-' && bytes[i + 1] == b'-' {
+                let start = i;
+                let mut j = i + 2;
+                while j < bytes.len() && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'-') {
+                    j += 1;
+                }
+                let tok = &src[start..j];
+                // Flags that appear in help but are NOT taliesin subcommand flags: the
+                // global --help/--version, and flags inside external-tool command examples
+                // (wrangler's `--production-branch` in the publish setup hint).
+                const NON_TABLE_FLAGS: &[&str] = &["--help", "--version", "--production-branch"];
+                if tok.len() > 2 && !NON_TABLE_FLAGS.contains(&tok) {
+                    mentioned.insert(tok.to_string());
+                }
+                i = j;
+            } else {
+                i += 1;
+            }
+        }
+        let known: std::collections::BTreeSet<&str> = crate::COMMANDS
+            .iter()
+            .flat_map(|c| flags_for(c).iter().map(|(f, _, _)| *f))
+            .collect();
+        for flag in &mentioned {
+            assert!(
+                known.contains(flag.as_str()),
+                "`{flag}` appears in help but is missing from flags_for (add it or the table drifts)"
+            );
+        }
+    }
 }
