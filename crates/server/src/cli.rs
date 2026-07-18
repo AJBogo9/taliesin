@@ -246,7 +246,88 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
 pub(crate) struct NewOpts {
     /// `--draft`: mark the scaffold `draft: true`, holding it out of the published build.
     pub(crate) draft: bool,
+    /// `--tour`: scaffold a *guided* deck (one slide per feature, each explained) instead of
+    /// the bare starter. Deck-only; `cmd_new` rejects it on any other kind.
+    pub(crate) tour: bool,
 }
+
+/// The guided-tour deck body (everything after the front matter): one slide per deck feature,
+/// each with a one-line teaching sentence, demonstrating fragments / a pause / incremental /
+/// columns (the DX5 alias) / magic-move / speaker notes. A raw literal (not a format string),
+/// so the many `::: {.feature}` braces and the ```code fences need no escaping. Kept in sync
+/// with `corpus/scaffold/deck-tour.tmd` by the drift-guard test in `new_cli.rs`.
+const TOUR_SLIDES: &str = r####"
+## Welcome to your deck
+
+Every `##` heading starts a new slide. Use the arrow keys or swipe to move
+between them; press `?` for the key sheet and `s` for speaker view.
+
+- Edit this file and the preview re-renders the slide you changed
+- Delete these tour slides when you write your own
+
+## Reveal one thing at a time
+
+Put a pause wherever you want to stop and talk.
+
+. . .
+
+Then keep going. A whole block can wait for its own step:
+
+::: {.fragment}
+This aside appears when you press forward.
+:::
+
+## Build a list step by step
+
+::: {.incremental}
+- First this point
+- then this one
+- and finally this
+:::
+
+## Show two things side by side
+
+::: {.columns}
+::: {.column}
+The left column: a claim beside its evidence, or a before beside an after.
+:::
+
+::: {.column}
+Writing `::: {.columns}` with `.column` children lays them out side by side.
+:::
+:::
+
+## Refactor code live
+
+::: {.magic-move}
+```python
+def area(r):
+    return 3.14 * r * r
+```
+
+```python
+import math
+
+def area(r):
+    return math.pi * r ** 2
+```
+:::
+
+The first version morphs into the second as you step forward.
+
+## Speak from notes only you can see
+
+Press `s` for speaker view: your notes, a timer, and the upcoming slide.
+
+::: {.notes}
+Only the presenter sees this. Put your talking points here.
+:::
+
+## Make it yours
+
+Replace these slides with your talk. Each `##` starts a slide; a single `#`
+starts a new section you drop into with the down arrow.
+"####;
 
 /// The files a `taliesin new <kind> <slug>` writes, as `(project-relative path, contents)`.
 ///
@@ -354,25 +435,38 @@ pub(crate) fn new_files(
                  Save the file and the preview re-renders only the block you changed.\n"
             ),
         ),
-        NewKind::Deck => (
-            PathBuf::from(format!("{slug}.tmd")),
-            format!(
-                "---\n\
-                 title: \"{title}\"\n{draft}\
-                 subtitle: \"A subtitle\"\n\
-                 format: deck\n\
-                 ---\n\
-                 \n\
-                 ## The first slide\n\
-                 \n\
-                 - A point worth making\n\
-                 - Another one\n\
-                 \n\
-                 ## The second slide\n\
-                 \n\
-                 Each `##` heading starts a new slide.\n"
-            ),
-        ),
+        NewKind::Deck => {
+            // `--tour` scaffolds a guided deck (one slide per feature, each explained);
+            // otherwise the bare starter. The front matter is interpolated, then the constant
+            // `TOUR_SLIDES` is appended (a raw literal, so its `:::` braces need no escaping).
+            let body = if opts.tour {
+                format!(
+                    "---\n\
+                     title: \"{title}\"\n{draft}\
+                     subtitle: \"A guided tour of Taliesin decks\"\n\
+                     format: deck\n\
+                     ---\n{TOUR_SLIDES}"
+                )
+            } else {
+                format!(
+                    "---\n\
+                     title: \"{title}\"\n{draft}\
+                     subtitle: \"A subtitle\"\n\
+                     format: deck\n\
+                     ---\n\
+                     \n\
+                     ## The first slide\n\
+                     \n\
+                     - A point worth making\n\
+                     - Another one\n\
+                     \n\
+                     ## The second slide\n\
+                     \n\
+                     Each `##` heading starts a new slide.\n"
+                )
+            };
+            (PathBuf::from(format!("{slug}.tmd")), body)
+        }
         // Paper is handled by the early return above (it writes two files).
         NewKind::Paper => unreachable!("Paper scaffold is built before this match"),
     };
@@ -399,6 +493,8 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
             "--json" => json = true,
             // `--draft` marks the scaffold `draft: true` (held out of the published build).
             "--draft" => opts.draft = true,
+            // `--tour` scaffolds a guided deck (deck-only; rejected below on other kinds).
+            "--tour" => opts.tour = true,
             s if s.starts_with("--") => {
                 log::error(&serve::unknown_flag_error(s, NEW_FLAGS));
                 return ExitCode::FAILURE;
@@ -417,6 +513,12 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    // `--tour` scaffolds a *deck* tour; on any other kind it has no meaning. Reject it
+    // (a friendly error, not a silent no-op) before writing anything.
+    if opts.tour && kind != NewKind::Deck {
+        log::error("--tour scaffolds a guided deck; use it with `new deck <slug>`");
+        return ExitCode::FAILURE;
+    }
     if let Err(e) = validate_slug(slug) {
         log::error(&e);
         return ExitCode::FAILURE;
@@ -459,7 +561,7 @@ fn new_json(kind: &str, slug: &str, written: &[PathBuf]) -> String {
 }
 
 /// Every long flag `new` accepts (drives the unknown-flag did-you-mean).
-const NEW_FLAGS: &[&str] = &["--dir", "--json", "--draft"];
+const NEW_FLAGS: &[&str] = &["--dir", "--json", "--draft", "--tour"];
 
 /// Write the scaffold under `root`, refusing to overwrite any existing target before
 /// writing any of them (so a partial scaffold never lands on the author's work).

@@ -1,0 +1,76 @@
+---
+title: "Deck Tour"
+subtitle: "A guided tour of Taliesin decks"
+format: deck
+---
+
+## Welcome to your deck
+
+Every `##` heading starts a new slide. Use the arrow keys or swipe to move
+between them; press `?` for the key sheet and `s` for speaker view.
+
+- Edit this file and the preview re-renders the slide you changed
+- Delete these tour slides when you write your own
+
+## Reveal one thing at a time
+
+Put a pause wherever you want to stop and talk.
+
+. . .
+
+Then keep going. A whole block can wait for its own step:
+
+::: {.fragment}
+This aside appears when you press forward.
+:::
+
+## Build a list step by step
+
+::: {.incremental}
+- First this point
+- then this one
+- and finally this
+:::
+
+## Show two things side by side
+
+::: {.columns}
+::: {.column}
+The left column: a claim beside its evidence, or a before beside an after.
+:::
+
+::: {.column}
+Writing `::: {.columns}` with `.column` children lays them out side by side.
+:::
+:::
+
+## Refactor code live
+
+::: {.magic-move}
+```python
+def area(r):
+    return 3.14 * r * r
+```
+
+```python
+import math
+
+def area(r):
+    return math.pi * r ** 2
+```
+:::
+
+The first version morphs into the second as you step forward.
+
+## Speak from notes only you can see
+
+Press `s` for speaker view: your notes, a timer, and the upcoming slide.
+
+::: {.notes}
+Only the presenter sees this. Put your talking points here.
+:::
+
+## Make it yours
+
+Replace these slides with your talk. Each `##` starts a slide; a single `#`
+starts a new section you drop into with the down arrow.
