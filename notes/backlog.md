@@ -54,6 +54,16 @@ CDN, no preview write-back, no new output format, `--tali-*` tokens only.
 
 ## Next session: start here
 
+**Pick up here (2026-07-18, PMF-audit batch — START HERE for feature work).** A product-market-fit
+audit landed ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md); 30+7 sourced personas +
+author/reader/publish/trust walkthroughs). Headline: the tool is **feature-complete for ~one user**,
+so the dedup pass killed most candidates (they already ship: `publish`→Cloudflare, presenter view,
+deck a11y, `echo`/`code-fold`, the deck `?` menu). **Build-ready now (§1):** **B1** reader "Cite
+this" box (owner revived D70, 2026-07-18) and **B2** book landing-page auto-TOC. **Needs a direction
+brainstorm first (§3):** **B4** deck visual-identity pass. Verify item **C-PUB-1** in Tier 2; the
+demand-driven tail (incl. the Zenodo DOI on-ramp, staged behind B1) in Tier 3. Grep the named symbol
+before trusting any entry, as always.
+
 **Pick up here (2026-07-18, newest — C3+C4 coverage gaps landed; the C3–C6 batch was 2/4
 already pinned).** Filling the "four uncovered features" set, two were already covered — the
 exact backlog rot this file warns about, caught by grepping the named symbol before trusting the
@@ -348,8 +358,30 @@ payoff). Theorem numbering was ruled **auto-scope + delete `number-within`** and
 
 ### 1. Build-ready now (no ruling needed)
 
-**Empty.** D37 (lint `format:` sub-keys) was the only entry and had already landed (`515fbd7`) when
-this section still called it "the cleanest build on the list". Do not re-add it.
+*Batch from the 2026-07-18 PMF audit ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md)). The
+audit's headline finding: the tool is feature-complete for ~one real user, so the dedup pass killed
+most candidates (they already ship). Only this survived as a genuinely-absent build with owner
+buy-in. Price it by building it; grep the named symbol before trusting the entry.*
+
+- **Book landing-page auto-TOC (PMF B2):** the owner's own idea, confirmed absent. The book landing
+  is only the `index.tmd` preface prose; `toc: true` drives just the per-page heading scrollspy, so a
+  reader has no whole-book chapter contents to jump from (the hardcover pattern). Generate one on the
+  book landing from `book.entries` (parts + numbered chapters, optional blurb from a chapter's
+  front-matter `description:`). `site/book.rs` already holds the ordered `Book`/`BookEntry` list.
+  Distinct from the per-page book-TOC (the 2026-07-06 "fix-in-place, keep both nav surfaces"
+  decision). Pin: `corpus/demo-book/`. value high / effort S-M.
+
+- **Reader-facing "Cite this" box + BibTeX/CSL/RIS export (PMF B1, = D70, REVIVED by owner
+  2026-07-18):** the owner reversed the same-day D70 decline and explicitly wants it. The
+  machine-readable half already ships (`.citations.json`, ScholarlyArticle JSON-LD, Google-Scholar
+  `citation_*` meta); this adds the *reader* widget: a rendered "Cite this" box that copies/downloads
+  the citation in BibTeX + CSL + RIS, built from the page's citation front-matter. Design gate (the
+  original D70 concern): render only when the page carries enough metadata (author/title/date) so an
+  authorless post degrades to nothing rather than an empty box. Pin: a corpus page that sets
+  `author:`/`date:` (the 8 tech-blog posts do not, which is why D70 was first declined). value high /
+  effort M. Detail: [2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md).
+
+**Do not re-add:** D37 (lint `format:` sub-keys) already landed (`515fbd7`).
 
 ### 2. Live defects (small, independent; count them, don't trust a number written here)
 
@@ -551,7 +583,17 @@ unit test while the live server still served the bug.*
 
 ### 3. Needs an owner ruling (not builds)
 
-**Empty — both entries resolved 2026-07-18.**
+- **Deck visual-identity pass (PMF B4), needs a DIRECTION ruling then build.** The deck is the
+  owner's stated weakest format in *output polish*, not capability (its 2026-07-12 audit was
+  interaction/bug/reshape only, so it never received the editorial identity the website + book got in
+  the 2026-07-11 "Marginalia" audit). Default slide type is a generic em-scaled scale (40px base,
+  `h1.title` 2.3em centered, left-aligned content, in `deck.css`) with no owned voice. The build is
+  clear (a designed title slide, a real type-scale/rhythm, an accent system, a section-divider
+  treatment); the *direction* is the fork, so decide it the way the website's A/B/C directions were
+  (brainstorm then spec). Reuses `--tali-*` tokens, no invariant risk. Pin: `corpus/deck.tmd` plus a
+  themed exemplar. value high / effort M. Detail: [2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md).
+
+*Prior entries resolved 2026-07-18 (records kept):*
 
 - **D34 — RESOLVED (its build half was already done; the entry had rotted).** The "subtract" half
   landed at `084c338` ("delete the site-level `image:` that stopped meaning anything (D34)"): the
@@ -566,6 +608,8 @@ unit test while the live server still served the bug.*
 - **D70 "Cite this" card — DECLINED** (owner accepted the skip, 2026-07-18; moved to "Decided
   against"). Its machine-readable half already ships (`.citations.json` + ScholarlyArticle
   JSON-LD); a rendered card would be author-free for all 8 tech-blog posts (none set `author:`).
+  **REVIVED 2026-07-18 (same day): the owner reversed this decline and wants it; now in Build-ready
+  as PMF B1, gated on sufficient page metadata so the authorless case degrades cleanly.**
 
 ### 4. Needs Do-NOT-touch sign-off (citation zone)
 
@@ -667,6 +711,11 @@ dropping Atom feeds as "a documented non-goal" and Atom shipped anyway, with aut
 
 ## Tier 2 — hardening (P3)
 
+- **Verify OG-card coverage on decks + book chapters; emit `_redirects`/`_headers` (PMF C-PUB-1).**
+  `card::card_url` gates on `url:` per page (`site/meta.rs`); confirm a standalone deck and a book
+  chapter each emit `og:image`/`twitter:card` (the amateur tell is one site-wide card), and that
+  `taliesin publish` writes `_redirects`/`_headers` so pretty URLs and caching hold on Cloudflare
+  Pages. Verify-first, may already hold. value med / effort S. Detail: `2026-07-18-pmf-audit.md`.
 - **`mounts:` live serve/discovery is untested** (C5's only remaining gap, filed 2026-07-18
   after C3/C4 landed). Everything else about `mounts:` is pinned — config-parse + typo-warn
   (`config/mod.rs`), `map` JSON surfacing (`map_cli.rs`), `check` cross-mount link-tolerance
@@ -830,6 +879,19 @@ dropping Atom feeds as "a documented non-goal" and Atom shipped anyway, with aut
 - **`serde_yaml` fallback watch-item:** if 0.9 breaks against a future serde/edition, swap to
   `serde_yaml_ng` (v0.10), gated on a test that `Error::location().line()` still works. Fix the stale
   `Cargo.toml` comment (names the unsound `serde_yml`) when touched.
+- **PMF audit demand-driven tail** ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md), Tier C).
+  Filed here, not built, because each waits on a real user asking (the audit's #1 action is *get
+  users*, not more features): hover-preview extended to inline `[@key]`/footnotes (reuse
+  `site/hover.rs`; note the width-gated sidenotes already cover part of the Distill reader-layer job);
+  reader-owned document-level show/hide-code toggle (cell `echo`/`code-fold` already exist; a reader
+  switch is a reader-local pref, a11y-exempt from minimal-config); on-page code+data download plus a
+  "reproducible" affordance (overlaps the cut repro-manifest, `FEATURE-IDEAS.md`); scroll-synced TOC
+  greying passed sections; versioned/permanent-URL scheme for link-rot distrust; deck autoplay/kiosk
+  loop; and a docs "deck powers" page (the deck already ships a `?`/`m` shortcut menu with a
+  jump-to-slide list, so the gap is that first-timers do not know it exists: docs, not code). A
+  Zenodo DOI on-ramp (`CITATION.cff`/`.zenodo.json` to a GitHub-release DOI) belongs with Wave 5's
+  repro/print-pdf track; private-share via Cloudflare Access is already filed under the `publish`
+  follow-ups above.
 
 
 ## Decided against / do-not-re-litigate
@@ -893,8 +955,25 @@ surfaces; xref graph tool removed; focus mode stays ephemeral; deck overview kee
 backgrounds; dev-menu + `#tali-progress` + reading-progress bar stay three separate signals
 (`#tali-progress` is the exec chip, not a reading chip).
 
+**2026-07-18 PMF audit re-derivations.** The audit
+([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md)) re-proposed two already-ruled items and the
+owner ruled on both the same day. (1) **Reader "Cite this" box (audit B1) = D70: REVIVED, not
+declined.** The owner reversed the same-day decline and explicitly wants it, so the 2026-07-12 "Cite
+this" cut and the D70 decline are SUPERSEDED; it now lives in Build-ready with an author-metadata
+gate. (2) **Deck desktop "async handout" reading view stays CUT.** The audit re-derived the exact job
+the deck reader/scroll-mode deletion (2026-07-12) addressed; that ruling split it into overview
+(browse) + phone-feed (read), leaving only the *desktop send-me-the-slides* slice, which stays cut
+unless the job is proven with a real audience. Do not re-open (2) without a fresh ruling.
+
 ## Product / distribution
 
 Resolved (2026-06-20): ship as **open source + personal tool**, no company for now (optionality kept:
 sole copyright + trademarkable name; `STARTUP-PLAN.md`). Open-source the repo + publish the site when
 ready; the security token gate is shipped.
+
+**PMF audit, 2026-07-18 ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md)):** the tool is
+feature-complete for ~one real user, so the highest-leverage next move is not more features but
+**real users**. The owner is publishing soon to gather feedback (the audit's action A1). When
+publishing, lead the copy with the **speed moat** (warm server, block-level incremental, no per-edit
+rebuild), the single most-repeated Quarto grievance and the most under-marketed asset (A3). Marketing
+build-out stays feature-first (see the deferred marketing-site item in Tier 3).
