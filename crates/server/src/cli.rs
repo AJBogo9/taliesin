@@ -240,21 +240,37 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     (if m <= 2 { y + 1 } else { y }, m, d)
 }
 
+/// Per-invocation options for `taliesin new` (beyond kind + slug). `Default` is today's
+/// behavior, so an unflagged scaffold is byte-identical to before (the corpus pin holds).
+#[derive(Clone, Copy, Default)]
+pub(crate) struct NewOpts {
+    /// `--draft`: mark the scaffold `draft: true`, holding it out of the published build.
+    pub(crate) draft: bool,
+}
+
 /// The files a `taliesin new <kind> <slug>` writes, as `(project-relative path, contents)`.
 ///
 /// Pure, so the corpus pin can compare the bytes exactly (`corpus/scaffold/`) and the CLI
 /// can stay a thin wrapper. Every front-matter key here is one the validator knows; a
 /// `check`-clean scaffold is asserted by `crates/server/tests/new_cli.rs`, and the emitted
 /// documents are rendered and linted by the corpus regression net like any other document.
-pub(crate) fn new_files(kind: NewKind, slug: &str, today: &str) -> Vec<(PathBuf, String)> {
+pub(crate) fn new_files(
+    kind: NewKind,
+    slug: &str,
+    today: &str,
+    opts: NewOpts,
+) -> Vec<(PathBuf, String)> {
     let title = title_from_slug(slug);
+    // `--draft` splices a `draft: true` line into the front matter (right after `title:`);
+    // default off emits nothing, keeping the unflagged scaffold byte-identical.
+    let draft = if opts.draft { "draft: true\n" } else { "" };
     // A research paper scaffolds TWO files: a citation-wired doc plus the `.bib` its one
     // `[@key]` resolves against, so `check` is clean on the first save (a declared-but-
     // missing bibliography, or a citation with no bibliography, would both warn).
     if kind == NewKind::Paper {
         let index = format!(
             "---\n\
-             title: \"{title}\"\n\
+             title: \"{title}\"\n{draft}\
              date: {today}\n\
              description: \"One sentence: the claim this paper makes.\"\n\
              categories: [research]\n\
@@ -315,7 +331,7 @@ pub(crate) fn new_files(kind: NewKind, slug: &str, today: &str) -> Vec<(PathBuf,
             PathBuf::from("posts").join(slug).join("index.tmd"),
             format!(
                 "---\n\
-                 title: \"{title}\"\n\
+                 title: \"{title}\"\n{draft}\
                  date: {today}\n\
                  description: \"One sentence: what a reader will understand by the end.\"\n\
                  categories: [writing]\n\
@@ -332,7 +348,7 @@ pub(crate) fn new_files(kind: NewKind, slug: &str, today: &str) -> Vec<(PathBuf,
             PathBuf::from(format!("{slug}.tmd")),
             format!(
                 "---\n\
-                 title: \"{title}\"\n\
+                 title: \"{title}\"\n{draft}\
                  ---\n\
                  \n\
                  Save the file and the preview re-renders only the block you changed.\n"
@@ -342,7 +358,7 @@ pub(crate) fn new_files(kind: NewKind, slug: &str, today: &str) -> Vec<(PathBuf,
             PathBuf::from(format!("{slug}.tmd")),
             format!(
                 "---\n\
-                 title: \"{title}\"\n\
+                 title: \"{title}\"\n{draft}\
                  subtitle: \"A subtitle\"\n\
                  format: deck\n\
                  ---\n\
@@ -369,6 +385,7 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
     let mut positional: Vec<&str> = Vec::new();
     let mut root = ".".to_string();
     let mut json = false;
+    let mut opts = NewOpts::default();
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -380,6 +397,8 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
             // `--json` prints `{kind, slug, created, preview}` (pure JSON to stdout), so an
             // agent knows exactly what it made and where. Suppresses the human hints.
             "--json" => json = true,
+            // `--draft` marks the scaffold `draft: true` (held out of the published build).
+            "--draft" => opts.draft = true,
             s if s.starts_with("--") => {
                 log::error(&serve::unknown_flag_error(s, NEW_FLAGS));
                 return ExitCode::FAILURE;
@@ -403,7 +422,7 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
         return ExitCode::FAILURE;
     }
     let root = Path::new(&root);
-    match write_new(root, kind, slug) {
+    match write_new(root, kind, slug, opts) {
         Ok(written) => {
             if json {
                 println!("{}", new_json(kind.name(), slug, &written));
@@ -440,12 +459,17 @@ fn new_json(kind: &str, slug: &str, written: &[PathBuf]) -> String {
 }
 
 /// Every long flag `new` accepts (drives the unknown-flag did-you-mean).
-const NEW_FLAGS: &[&str] = &["--dir", "--json"];
+const NEW_FLAGS: &[&str] = &["--dir", "--json", "--draft"];
 
 /// Write the scaffold under `root`, refusing to overwrite any existing target before
 /// writing any of them (so a partial scaffold never lands on the author's work).
-fn write_new(root: &Path, kind: NewKind, slug: &str) -> Result<Vec<PathBuf>, String> {
-    let files = new_files(kind, slug, &today_utc());
+fn write_new(
+    root: &Path,
+    kind: NewKind,
+    slug: &str,
+    opts: NewOpts,
+) -> Result<Vec<PathBuf>, String> {
+    let files = new_files(kind, slug, &today_utc(), opts);
     for (rel, _) in &files {
         let path = root.join(rel);
         if path.exists() {
@@ -790,7 +814,7 @@ mod new_tests {
                 NewKind::Deck => "my-talk",
                 NewKind::Paper => "my-paper",
             };
-            for (rel, contents) in new_files(kind, slug, "2026-07-10") {
+            for (rel, contents) in new_files(kind, slug, "2026-07-10", NewOpts::default()) {
                 let pinned = std::fs::read_to_string(corpus.join(&rel))
                     .unwrap_or_else(|e| panic!("corpus pin for {kind:?} at {rel:?}: {e}"));
                 assert_eq!(

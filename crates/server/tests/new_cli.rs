@@ -136,6 +136,39 @@ fn new_json_reports_what_it_made() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// `--draft` marks a scaffold `draft: true` (held out of the published build) and the doc still
+/// checks clean; without the flag, no `draft:` key appears (the default scaffold is unchanged).
+#[test]
+fn new_post_draft_marks_it_a_draft_and_stays_clean() {
+    let dir = tmp("draft");
+    let (ok, _, stderr) = run(&[
+        "new",
+        "post",
+        "wip",
+        "--draft",
+        "--dir",
+        dir.to_str().unwrap(),
+    ]);
+    assert!(ok, "stderr: {stderr}");
+    let src = std::fs::read_to_string(dir.join("posts/wip/index.tmd")).unwrap();
+    assert!(
+        src.contains("draft: true"),
+        "--draft sets draft: true:\n{src}"
+    );
+    let (clean, diags) = check_is_clean(&dir.join("posts/wip/index.tmd"));
+    assert!(clean, "a fresh --draft post must check clean:\n{diags}");
+
+    // Default (no flag) stays draft-free, so the corpus mirror + existing scaffolds are unchanged.
+    let (ok2, ..) = run(&["new", "post", "published", "--dir", dir.to_str().unwrap()]);
+    assert!(ok2);
+    let plain = std::fs::read_to_string(dir.join("posts/published/index.tmd")).unwrap();
+    assert!(
+        !plain.contains("draft:"),
+        "no --draft → no draft key:\n{plain}"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// A post's date is today's, not a placeholder the author must remember to change.
 #[test]
 fn a_new_post_is_dated_today() {
