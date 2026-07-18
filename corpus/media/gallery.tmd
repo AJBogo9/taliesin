@@ -15,3 +15,18 @@ open one and step through the rest with the ← / → arrow keys.
 
 The three fits above (@fig-no-pooling, @fig-complete-pooling, and @fig-hierarchical)
 zoom into one gallery: click any one, then step through the others with ← / →.
+
+## Side-by-side columns
+
+`::: {.columns}` with `.column` children (reveal.js muscle memory) is accepted as an alias
+for `{layout-ncol}`, so a two-column split lays out side by side rather than silently stacking:
+
+::: {.columns}
+::: {.column}
+The left column holds one idea.
+:::
+
+::: {.column}
+The right column holds the other, beside it.
+:::
+:::

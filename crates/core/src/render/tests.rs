@@ -237,6 +237,32 @@ fn layout_ncol_div_becomes_grid() {
 }
 
 #[test]
+fn columns_div_aliases_to_the_layout_grid() {
+    // Reveal muscle-memory `::: {.columns}` with `.column` children must lay out side-by-side
+    // (the native layout grid), not silently stack — the on-projector trap DX5 closes.
+    let doc = render_document(
+        "::: {.columns}\n::: {.column}\nLeft\n:::\n\n::: {.column}\nRight\n:::\n:::\n",
+    );
+    let h: String = doc.blocks.iter().map(|b| b.html.as_str()).collect();
+    assert!(
+        h.contains("tali-layout"),
+        "columns should become a layout grid: {h}"
+    );
+    assert!(
+        h.contains("repeat(2,"),
+        "two .column children -> 2 columns: {h}"
+    );
+    // The alias is silent — no did-you-mean for the known `columns`/`column` classes.
+    assert!(
+        !doc.warnings
+            .iter()
+            .any(|w| w.message.contains("did you mean")),
+        "the columns alias must not warn: {:?}",
+        doc.warnings
+    );
+}
+
+#[test]
 fn unterminated_div_renders_content_without_a_container() {
     // A `:::` open with no matching close forms no span: the fence line is
     // blanked and the content renders as ordinary blocks (no crash, no

@@ -452,6 +452,20 @@ fn build_container(
         format!(
             "<div class=\"tali-layout\" style=\"display:grid;grid-template-columns:repeat({ncol},minmax(0,1fr));gap:1rem\"{data}>{body}</div>"
         )
+    } else if attrs.classes.iter().any(|c| c == "columns") {
+        // Reveal muscle-memory: `::: {.columns}` with `.column` children. Alias it to the native
+        // layout grid so it lays out side-by-side instead of silently stacking (the on-projector
+        // trap, DX5). `ncol` = the count of direct `.column` children (fallback 2); their widths
+        // are ignored (equal columns). A sanctioned alias, so it renders silently, no warning.
+        let ncol = inner
+            .iter()
+            .filter(|b| b.html.trim_start().starts_with("<div class=\"column\""))
+            .count()
+            .max(2);
+        let body = concat(&inner);
+        format!(
+            "<div class=\"tali-layout\" style=\"display:grid;grid-template-columns:repeat({ncol},minmax(0,1fr));gap:1rem\"{data}>{body}</div>"
+        )
     } else if attrs.classes.iter().any(|c| c == "magic-move") {
         // Magic-move: the contained code blocks are animation steps. Line-wrap each so
         // the deck engine can match + glide lines between consecutive blocks.
