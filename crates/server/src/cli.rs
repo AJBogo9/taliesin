@@ -262,10 +262,32 @@ pub(crate) fn new_files(kind: NewKind, slug: &str, today: &str) -> Vec<(PathBuf,
              \n\
              State your claim in the first paragraph, then support it. Cite prior work with\n\
              `[@key]` syntax, which resolves against `references.bib` — for example the\n\
-             literate-programming idea [@knuth1984literate].\n\
+             literate-programming idea [@knuth1984literate]. @sec-methods works a figure end\n\
+             to end.\n\
              \n\
-             Add sections with `##`, figures with `![caption](path){{#fig-x}}`, and refer to\n\
-             them with `@fig-x`. The reference list renders under the heading below.\n\
+             ## Methods {{#sec-methods}}\n\
+             \n\
+             A `{{python}}` cell runs when you preview (with a kernel) and renders its figure\n\
+             inline. Quarto's cell options work verbatim: `#| label:` names it — a `fig-` prefix\n\
+             makes it a figure — and `#| fig-cap:` is its caption, so `@fig-demo` cross-references\n\
+             resolve automatically.\n\
+             \n\
+             ```{{python}}\n\
+             #| label: fig-demo\n\
+             #| fig-cap: \"A worked figure — replace it with your result.\"\n\
+             import matplotlib.pyplot as plt\n\
+             \n\
+             fig, ax = plt.subplots()\n\
+             ax.plot([0, 1, 2, 3], [0, 1, 4, 9])\n\
+             ax.set_xlabel(\"x\")\n\
+             ax.set_ylabel(\"y\")\n\
+             ```\n\
+             \n\
+             @fig-demo shows the result. Display math uses `$$`:\n\
+             \n\
+             $$\n\
+             y = x^2\n\
+             $$\n\
              \n\
              # References\n"
         );

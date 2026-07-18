@@ -89,6 +89,18 @@ fn a_paper_ships_its_bibliography_so_citations_resolve() {
         "declares its bib"
     );
     assert!(src.contains("[@knuth1984literate]"), "cites a real key");
+    // A worked example, not a blank page: a runnable figure cell whose Quarto-style cell options
+    // (`#| label:`/`#| fig-cap:`) cross-reference automatically, plus display math.
+    assert!(
+        src.contains("```{python}"),
+        "paper shows a runnable code cell"
+    );
+    assert!(
+        src.contains("#| label: fig-"),
+        "paper labels a figure the Quarto way"
+    );
+    assert!(src.contains("@fig-"), "paper cross-references its figure");
+    assert!(src.contains("$$"), "paper shows display math");
     let (clean, diagnostics) = check_is_clean(&index);
     assert!(clean, "a fresh paper must check clean, got:\n{diagnostics}");
     let _ = std::fs::remove_dir_all(&dir);
