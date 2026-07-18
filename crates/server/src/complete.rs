@@ -237,7 +237,10 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
         "schema" => &[("--out", true, "output dir")],
         "symbols" => &[("--format", true, "human | json")],
         "map" => &[("--format", true, "human | json")],
-        "check" => &[("--format", true, "human | json")],
+        "check" => &[
+            ("--format", true, "human | json"),
+            ("--explain", true, "explain a diagnostic code (TAL-...)"),
+        ],
         _ => &[],
     }
 }
@@ -453,6 +456,11 @@ fn complete_line(words: &[String], cwd: &Path) -> Completion {
             };
             return enumerated(cur, vals);
         }
+        // `check --explain <TAB>` offers the closed, drift-locked set of diagnostic codes.
+        if prev.as_str() == "--explain" && canonical(sub) == "check" {
+            let codes = taliesin_core::diagnostics::codes::all_codes();
+            return enumerated(cur, &codes);
+        }
         // Other value-taking flags (--out/--dir/--jobs/--port/--project-name): let the
         // shell complete the value (a dir, a number, a name); nothing smart to add.
         if flags_for(sub)
@@ -653,6 +661,22 @@ mod brain_tests {
         assert_eq!(values(&["build", "--format", ""]), vec!["json".to_string()]);
         let human_json: Vec<String> = ["human", "json"].into_iter().map(String::from).collect();
         assert_eq!(values(&["check", "--format", ""]), human_json);
+    }
+
+    #[test]
+    fn explain_value_completes_to_the_code_set() {
+        // `check --explain <TAB>` offers the drift-locked diagnostic-code vocabulary; a
+        // prefix filters it (`TAL-A` -> the a11y codes).
+        let all: Vec<String> = taliesin_core::diagnostics::codes::all_codes()
+            .into_iter()
+            .map(String::from)
+            .collect();
+        assert_eq!(values(&["check", "--explain", ""]), all);
+        let a11y = values(&["check", "--explain", "TAL-A11Y-"]);
+        assert!(
+            a11y.iter().all(|c| c.starts_with("TAL-A11Y-")) && !a11y.is_empty(),
+            "prefix filters to the a11y family: {a11y:?}"
+        );
     }
 
     fn fixture(tag: &str) -> std::path::PathBuf {

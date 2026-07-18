@@ -22,6 +22,10 @@ use std::process::ExitCode;
 #[derive(Debug, Clone, serde::Serialize)]
 pub(crate) struct Diagnostic {
     code: &'static str,
+    /// Where to read more about this `code`: the committed diagnostics catalog anchored by
+    /// the lowercased code (`…/DIAGNOSTICS.md#tal-fm-key`). Computed from `code`, so it can
+    /// never drift; the same text is available offline via `check --explain <code>`.
+    docs_url: String,
     severity: &'static str,
     file: String,
     line: Option<u32>,
@@ -47,6 +51,7 @@ impl Diagnostic {
             codes::extract_suggestion(&message).map(|replacement| Suggestion { replacement });
         Diagnostic {
             code,
+            docs_url: codes::docs_url(code),
             severity,
             file,
             line,
@@ -377,8 +382,81 @@ fn format_human(diags: &[Diagnostic]) -> String {
     s
 }
 
+/// Render `check --explain`: expand one diagnostic code into cause + canonical fix
+/// (rustc `--explain` style), or list every code when `code` is `None` (an index). `Ok`
+/// text goes to stdout and exits 0; `Err(message)` is an unknown code, which the caller
+/// routes through the same human/json error split as a render failure (non-zero exit).
+///
+/// `format` is `"human"` or `"json"` (already validated). The catalog + the `docs_url`
+/// both come from `taliesin_core::diagnostics::codes`, so the offline `--explain` text and
+/// the JSON `docs_url` on every diagnostic never disagree.
+fn explain_output(code: Option<&str>, format: &str) -> Result<String, String> {
+    use taliesin_core::diagnostics::codes;
+    match code {
+        // Expand one code.
+        Some(c) => {
+            let Some(e) = codes::explain(c) else {
+                let all = codes::all_codes();
+                let hint = match taliesin_core::closest(&c.to_ascii_uppercase(), &all) {
+                    Some(near) => format!("unknown diagnostic code `{c}` (did you mean `{near}`?)"),
+                    None => format!("unknown diagnostic code `{c}`"),
+                };
+                return Err(format!(
+                    "{hint}\nrun `taliesin check --explain` to list every code"
+                ));
+            };
+            let url = codes::docs_url(e.code);
+            if format == "json" {
+                Ok(serde_json::to_string_pretty(&serde_json::json!({
+                    "code": e.code,
+                    "title": e.title,
+                    "cause": e.cause,
+                    "fix": e.fix,
+                    "docs_url": url,
+                }))
+                .unwrap_or_else(|_| "{}".to_string()))
+            } else {
+                Ok(format!(
+                    "{}: {}\n\n{}\n\nTo fix: {}\n\nLearn more: {url}\n",
+                    e.code, e.title, e.cause, e.fix
+                ))
+            }
+        }
+        // Index: list every code.
+        None => {
+            let all = codes::all_codes();
+            if format == "json" {
+                let codes: Vec<_> = all
+                    .iter()
+                    .filter_map(|c| codes::explain(c))
+                    .map(|e| {
+                        serde_json::json!({
+                            "code": e.code,
+                            "title": e.title,
+                            "docs_url": codes::docs_url(e.code),
+                        })
+                    })
+                    .collect();
+                Ok(
+                    serde_json::to_string_pretty(&serde_json::json!({ "codes": codes }))
+                        .unwrap_or_else(|_| "{\"codes\":[]}".to_string()),
+                )
+            } else {
+                let mut s = String::new();
+                for c in &all {
+                    if let Some(e) = codes::explain(c) {
+                        s.push_str(&format!("{:<18} {}\n", e.code, e.title));
+                    }
+                }
+                s.push_str("\nRun `taliesin check --explain <CODE>` for the cause + fix.\n");
+                Ok(s)
+            }
+        }
+    }
+}
+
 /// Every long flag `check` accepts (drives the unknown-flag did-you-mean).
-const CHECK_FLAGS: &[&str] = &["--format"];
+const CHECK_FLAGS: &[&str] = &["--format", "--explain"];
 
 /// `taliesin check <file|dir> [--format human|json]`: render in memory, list every
 /// located diagnostic, and exit non-zero if any are found (a CI gate). Static-only
@@ -386,12 +464,26 @@ const CHECK_FLAGS: &[&str] = &["--format"];
 pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
     let mut path: Option<&str> = None;
     let mut format = "human";
+    let mut explain = false;
+    let mut explain_code: Option<&str> = None;
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
         match a.as_str() {
             "--format" => {
                 if let Some(v) = it.next() {
                     format = v;
+                }
+            }
+            // `--explain [CODE]`: expand a diagnostic code, not lint a file. Consume the next
+            // token as the code only when it isn't itself a flag, so `--explain --format json`
+            // is the index in JSON (code = None), not "code = `--format`".
+            "--explain" => {
+                explain = true;
+                if let Some(next) = it.clone().next()
+                    && !next.starts_with('-')
+                {
+                    explain_code = Some(next.as_str());
+                    it.next();
                 }
             }
             // An unrecognized `--flag` is a hard error with a did-you-mean (not silently
@@ -407,16 +499,35 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
             }
         }
     }
-    let Some(path) = path else {
-        eprintln!("usage: taliesin check <file.tmd|dir> [--format human|json]");
-        return ExitCode::FAILURE;
-    };
     if format != "human" && format != "json" {
         log::error(&format!(
             "unknown --format `{format}` (expected human or json)"
         ));
         return ExitCode::FAILURE;
     }
+    // `--explain` is a code lookup, not a lint: print cause + fix (or the code index) and
+    // exit, needing no path. A positional path, if also given, is ignored (as with rustc).
+    if explain {
+        return match explain_output(explain_code, format) {
+            Ok(text) => {
+                print!("{text}");
+                ExitCode::SUCCESS
+            }
+            // Unknown code: mirror the render-error split so `--format json | jq` stays valid.
+            Err(e) => {
+                if format == "json" {
+                    println!("{}", json_error(&e));
+                } else {
+                    log::error(&e);
+                }
+                ExitCode::FAILURE
+            }
+        };
+    }
+    let Some(path) = path else {
+        eprintln!("usage: taliesin check <file.tmd|dir> [--format human|json]");
+        return ExitCode::FAILURE;
+    };
     let target = Path::new(path);
     // Guard the render: a panic in core rendering becomes a clean located error + non-zero
     // exit (routed through the same error path, so `--format json` stays valid) instead of
@@ -493,6 +604,92 @@ mod tests {
         let _ = fs::remove_dir_all(&d);
         fs::create_dir_all(&d).unwrap();
         d
+    }
+
+    #[test]
+    fn diagnostics_carry_a_docs_url_in_json_but_not_human() {
+        use taliesin_core::diagnostics::codes;
+        // A broken xref -> TAL-XREF-UNDEF; its JSON diagnostic carries a docs_url anchored by
+        // the lowercased code, and human output never leaks the url.
+        let d = Diagnostic::new(
+            "a.tmd".into(),
+            Some(2),
+            "broken cross-reference: @fig-x".into(),
+        );
+        let json = format_json(std::slice::from_ref(&d), &[]);
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid json");
+        let url = parsed["diagnostics"][0]["docs_url"].as_str().unwrap_or("");
+        assert!(
+            url.starts_with(codes::DIAGNOSTICS_DOC_URL),
+            "docs_url present: {json}"
+        );
+        assert!(
+            url.ends_with("#tal-xref-undef"),
+            "anchored by lowercased code: {json}"
+        );
+        // Human output is byte-identical to before: no url, no code.
+        let human = format_human(std::slice::from_ref(&d));
+        assert!(!human.contains("http"), "no url in human output: {human}");
+        assert!(!human.contains("TAL-"), "no code in human output: {human}");
+    }
+
+    #[test]
+    fn explain_known_code_human_has_cause_fix_and_url() {
+        let text = explain_output(Some("TAL-XREF-UNREF"), "human").expect("known code");
+        assert!(text.starts_with("TAL-XREF-UNREF:"), "titled block: {text}");
+        assert!(text.contains("To fix:"), "has a fix: {text}");
+        assert!(
+            text.contains("Learn more: https://github.com/AJBogo9/taliesin"),
+            "has a docs url: {text}"
+        );
+    }
+
+    #[test]
+    fn explain_known_code_json_is_structured_and_case_insensitive() {
+        // Lowercase input resolves; the JSON echoes the canonical uppercase code + the fields.
+        let text = explain_output(Some("tal-fm-key"), "json").expect("known code");
+        let v: serde_json::Value = serde_json::from_str(&text).expect("valid json");
+        assert_eq!(v["code"], "TAL-FM-KEY");
+        assert!(v["title"].is_string() && v["cause"].is_string() && v["fix"].is_string());
+        assert!(
+            v["docs_url"]
+                .as_str()
+                .unwrap_or("")
+                .ends_with("#tal-fm-key"),
+            "docs_url anchored: {text}"
+        );
+    }
+
+    #[test]
+    fn explain_unknown_code_is_err_with_did_you_mean() {
+        // A near-miss of a real code draws a suggestion; the message names the bad input.
+        let err = explain_output(Some("TAL-XREF-UNDEFF"), "human").expect_err("unknown");
+        assert!(err.contains("TAL-XREF-UNDEFF"), "names the bad code: {err}");
+        assert!(err.contains("did you mean"), "suggests a near-miss: {err}");
+        assert!(err.contains("--explain"), "points at the index: {err}");
+    }
+
+    #[test]
+    fn explain_no_code_lists_every_code() {
+        use taliesin_core::diagnostics::codes;
+        // Human index: one line per code, each naming the code.
+        let human = explain_output(None, "human").expect("index");
+        for c in codes::all_codes() {
+            assert!(human.contains(c), "index lists {c}: {human}");
+        }
+        // JSON index: an array of {code,title,docs_url} of the full length.
+        let json = explain_output(None, "json").expect("index");
+        let v: serde_json::Value = serde_json::from_str(&json).expect("valid json");
+        let arr = v["codes"].as_array().expect("codes array");
+        assert_eq!(
+            arr.len(),
+            codes::all_codes().len(),
+            "every code listed: {json}"
+        );
+        assert!(
+            arr[0]["docs_url"].is_string(),
+            "each carries a docs_url: {json}"
+        );
     }
 
     #[test]

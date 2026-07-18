@@ -192,8 +192,10 @@ fn usage() {
     println!(
         "  mcp                        stdio MCP server (check/read/symbols/map/vocab/build tools)"
     );
+    println!("  check <file|dir> [--format human|json] [--explain <CODE>]");
+    println!("                             list located diagnostics; exits non-zero if any");
     println!(
-        "  check <file|dir> [--format human|json]  list located diagnostics; exits non-zero if any"
+        "                             (--explain <CODE> prints a diagnostic code's cause + fix)"
     );
     println!("  doctor [dir] [--format human|json]  audit the environment for running code cells");
     println!("                             (interpreters, ipykernel/IRkernel, active conda/venv)");
@@ -247,18 +249,22 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin build . --jobs 4\n"
         }
         "check" => {
-            "taliesin check <file.tmd | dir> [--format human|json]\n\
+            "taliesin check <file.tmd | dir> [--format human|json] [--explain <CODE>]\n\
              \n\
              Render in memory and list every located diagnostic; exits non-zero if any\n\
              are found (a CI / pre-publish gate). Does NOT execute code cells.\n\
              \n\
              Flags:\n\
-             \x20 --format human  path:line: message lines to stderr (default)\n\
-             \x20 --format json   {diagnostics:[{code,severity,file,line,message,suggestion?}],\n\
-             \x20                    environment:[...]} object to stdout (pipes to jq)\n\
+             \x20 --format human   path:line: message lines to stderr (default)\n\
+             \x20 --format json    {diagnostics:[{code,docs_url,severity,file,line,message,\n\
+             \x20                     suggestion?}], environment:[...]} object to stdout (jq)\n\
+             \x20 --explain <CODE> expand a diagnostic code (e.g. TAL-XREF-UNREF) into its\n\
+             \x20                  cause + canonical fix, rustc-style; bare lists every code.\n\
+             \x20                  Honours --format json. Needs no file.\n\
              \n\
              Example:\n\
-             \x20 taliesin check . --format json | jq\n"
+             \x20 taliesin check . --format json | jq\n\
+             \x20 taliesin check --explain TAL-FM-KEY\n"
         }
         "render" => {
             "taliesin render <file.tmd>\n\
