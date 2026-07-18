@@ -58,14 +58,16 @@ CDN, no preview write-back, no new output format, `--tali-*` tokens only.
 audit landed ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md); 30+7 sourced personas +
 author/reader/publish/trust walkthroughs). Headline: the tool is **feature-complete for ~one user**,
 so the dedup pass killed most candidates (they already ship: `publish`→Cloudflare, presenter view,
-deck a11y, `echo`/`code-fold`, the deck `?` menu). **~~B1~~ reader "Cite this" box + ~~B2~~ book
-landing-page auto-TOC BOTH LANDED 2026-07-18** (local `main`, not pushed — B1 `4bb10c7`, B2
-`b284544`; details in §1). **§1 is now empty.** The one remaining PMF feature is **B4 deck
-visual-identity pass**, which **needs a direction brainstorm/ruling first (§3)** — decide the
-editorial direction the way the website's A/B/C directions were before building. Verify item
-**C-PUB-1** in Tier 2; the demand-driven tail (incl. the Zenodo DOI on-ramp B5, staged behind B1) in
-Tier 3. Grep the named symbol before trusting any entry, as always. **Check, don't trust the SHAs:**
-`git log --oneline origin/main..main`.
+deck a11y, `echo`/`code-fold`, the deck `?` menu). **ALL THREE PMF builds now LANDED 2026-07-18**
+(local `main`, not pushed): **B1** reader "Cite this" box (`4bb10c7`, §1), **B2** book landing-page
+auto-TOC (`b284544`, §1), **B4** deck Marginalia identity (Direction A, serif titles; merge `2cf72f4`,
+feat `d04a06c`, §3). **The whole PMF build-batch is done.** What remains is Tier 2/3 (demand-driven):
+verify item **C-PUB-1**, the Zenodo DOI on-ramp **B5** (a natural next step now B1 ships the
+reader-facing citation), and the rest of the tail. **Check, don't trust the SHAs:** `git log
+--oneline origin/main..main`. **Heads-up (not a backlog item):** a parallel **shell-completion**
+feature reached local `main` (`d493560`) via `worktree-shell-completion`; as of this batch it has 2
+`complete.rs` clippy errors (`-D warnings`) + a failing `skill_freshness` test — its owner's to
+resolve before pushing, untouched here (disjoint from B1/B2/B4).
 
 **Pick up here (2026-07-18, newest — C3+C4 coverage gaps landed; the C3–C6 batch was 2/4
 already pinned).** Filling the "four uncovered features" set, two were already covered — the
@@ -583,15 +585,17 @@ unit test while the live server still served the bug.*
 
 ### 3. Needs an owner ruling (not builds)
 
-- **Deck visual-identity pass (PMF B4), needs a DIRECTION ruling then build.** The deck is the
-  owner's stated weakest format in *output polish*, not capability (its 2026-07-12 audit was
-  interaction/bug/reshape only, so it never received the editorial identity the website + book got in
-  the 2026-07-11 "Marginalia" audit). Default slide type is a generic em-scaled scale (40px base,
-  `h1.title` 2.3em centered, left-aligned content, in `deck.css`) with no owned voice. The build is
-  clear (a designed title slide, a real type-scale/rhythm, an accent system, a section-divider
-  treatment); the *direction* is the fork, so decide it the way the website's A/B/C directions were
-  (brainstorm then spec). Reuses `--tali-*` tokens, no invariant risk. Pin: `corpus/deck.tmd` plus a
-  themed exemplar. value high / effort M. Detail: [2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md).
+- **Deck visual-identity pass (PMF B4) — LANDED 2026-07-18** (local `main`, merge commit `2cf72f4`,
+  NOT pushed — the author pushes; feat `d04a06c`, spec `4849a53`). **Owner direction ruling
+  2026-07-18: Direction A — Marginalia (serif titles).** A pure `deck.css` pass (no engine/DOM
+  change): a `--deck-font-head` **Newsreader** serif token (already inlined via `FONTS_CSS`, was
+  unused) applied to all headings + the title; an iron-gall accent rule under the serif title; and a
+  designed **section-divider** treatment for the previously-unstyled `section.tali-slide[data-level=
+  "1"]` (centered, a large serif numeral from a document-order CSS counter, the serif h1, an accent
+  rule). Body/lists/code stay sans. Exemplar `corpus/deck-marginalia.tmd` + `tests/deck_marginalia.rs`
+  (pins the identity CSS AND the `data-level="1"` hook). `corpus/deck.tmd` unchanged. Browser-verified
+  light+dark. **Deferred (clean follow-up):** the mono eyebrow (needs a small `deck.rs` front-matter
+  field). **Do not re-add.**
 
 *Prior entries resolved 2026-07-18 (records kept):*
 
