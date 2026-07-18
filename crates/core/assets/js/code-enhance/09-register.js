@@ -11,4 +11,5 @@ window.taliEnhancers.register(function () { taliInitFocusMode(); });
 window.taliEnhancers.register(function () { taliInitSkipLink(); });
 window.taliEnhancers.register(function () { taliInitKeyboard(); });
 window.taliEnhancers.register(taliInitCategoryFilter);
+window.taliEnhancers.register(taliInitCiteBox);
 

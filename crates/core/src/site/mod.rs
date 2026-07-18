@@ -208,6 +208,7 @@ pub use card::{
 };
 mod backlinks;
 mod categories;
+mod cite_this;
 mod feed;
 mod hover;
 mod llms;
@@ -808,6 +809,8 @@ impl Site {
         // this page defines that other pages reference.
         self.attach_backlinks(blocks, &page.url);
         self.expand_page(page, blocks, warnings);
+        // Last: the reader-facing "Cite this" box, when the page carries enough metadata.
+        self.attach_cite_this(page, blocks);
     }
 
     /// A self-contained `404.html` for the static build. A static host (GitHub

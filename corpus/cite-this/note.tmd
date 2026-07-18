@@ -1,0 +1,8 @@
+---
+title: "A field note"
+date: 2026-05-01
+---
+
+This page sets a `title:` and a `date:` but no `author:` of its own. Because
+`_site.yml` sets a site-level `author:`, the **Cite this** box falls back to the
+site author, and (no `bibliography:`) types it as a blog post (`post-weblog` / `BLOG`).

@@ -1,0 +1,12 @@
+---
+title: "On the Analytical Engine"
+author: "Grace Hopper"
+date: 2026-03-09
+bibliography: refs.bib
+---
+
+A worked publication page. It sets its own `author:`, a `date:`, and a
+`bibliography:`, so the **Cite this** box renders with this page's author as the
+byline and a scholarly (`article-journal` / `JOUR`) type.
+
+The engine's design builds on earlier notes [@lovelace1843].
