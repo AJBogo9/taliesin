@@ -1297,6 +1297,15 @@
     window.location.href = "vscode://file" + encodeURI(abs) + ":" + line + ":" + col;
   };
 
+  // Command-palette hooks (web-client/search.js). These globals exist ONLY in the preview
+  // client, so the palette offers their actions only in a live preview — a static build
+  // ships search.js but not client.js, so `typeof window.taliRestartKernel` is undefined
+  // there and the action is hidden. Each reuses the dev menu's existing behavior verbatim.
+  window.taliRestartKernel = () => {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "restart_kernel" }));
+  };
+  window.taliOpenPageSource = () => gotoSource(null, 1);
+
   const inDevMenu = (/** @type {Element} */ t) => !!t.closest("#tali-controls");
 
   // Click-to-source: Alt/Option-click any block to jump to its source line (browser

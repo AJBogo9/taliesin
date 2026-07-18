@@ -49,6 +49,8 @@
     "#tali-search .tali-s-item[aria-selected=true] .tali-s-title mark{color:#fff;" +
     "text-decoration:underline}" +
     "#tali-search .tali-s-sec{font-size:.8rem;color:var(--tali-muted,#888);white-space:nowrap;margin-left:auto}" +
+    "#tali-search .tali-s-action .tali-s-sec{color:var(--tali-link,#2563eb);text-transform:uppercase;" +
+    "font-size:.66rem;letter-spacing:.05em;font-weight:700}" +
     "#tali-search .tali-s-empty{padding:1rem 1.1rem;color:var(--tali-muted,#888)}" +
     "#tali-search .tali-s-hint{display:flex;gap:1rem;padding:.45rem .9rem;font-size:.72rem;" +
     "color:var(--tali-muted,#888);border-top:1px solid var(--tali-border,#e0e0e0)}" +
@@ -63,8 +65,10 @@
     document.head.appendChild(s);
   }
 
-  /** A built, match-ready index entry (memoized lowercase fields for the matcher). */
-  /** @typedef {{ id: string, title: string, level: number, body: string, url?: string, page?: string, tLow: string, bLow: string }} SearchItem */
+  /** A built, match-ready index entry (memoized lowercase fields for the matcher). A
+   * command-palette action is the same shape with `action:true` + a `run` callback and no
+   * `url`/`page` (it executes instead of navigating). */
+  /** @typedef {{ id: string, title: string, level: number, body: string, url?: string, page?: string, tLow: string, bLow: string, action?: boolean, run?: () => void }} SearchItem */
 
   // Lazily created in ensureUi() and always assigned before any use below, so they're
   // typed non-null; ensureUi() self-guards re-entry via `if (overlay) return`.
@@ -80,6 +84,56 @@
   var sel = 0;
   /** @type {string[]} the current query's terms, for the search-hit flash */
   var lastTerms = [];
+
+  // --- command-palette actions -----------------------------------------------------
+  // Cmd-K runs commands too, not just search. Each action self-gates on a capability
+  // global: `taliToggleTheme` ships on every page (theme_head), so the theme action is
+  // always offered; `taliRestartKernel` / `taliOpenPageSource` ship only in the preview
+  // client (client.js), so those appear only in a live preview, never a static build.
+  // Matched by the same score() as content, over the title + keyword synonyms.
+  /** @typedef {{ id: string, title: string, keywords: string, run: () => void, available: () => boolean }} PaletteAction */
+  /** @type {PaletteAction[]} */
+  var ACTIONS = [
+    {
+      id: "theme",
+      title: "Toggle light / dark theme",
+      keywords: "theme dark light mode appearance colour color",
+      available: function () { return typeof window.taliToggleTheme === "function"; },
+      run: function () { if (window.taliToggleTheme) window.taliToggleTheme(); },
+    },
+    {
+      id: "kernel",
+      title: "Restart kernel",
+      keywords: "restart kernel jupyter python r rerun re-run execute cells",
+      available: function () { return typeof window.taliRestartKernel === "function"; },
+      run: function () { if (window.taliRestartKernel) window.taliRestartKernel(); },
+    },
+    {
+      id: "source",
+      title: "Open source in editor",
+      keywords: "open source editor vscode file code edit",
+      available: function () { return typeof window.taliOpenPageSource === "function"; },
+      run: function () { if (window.taliOpenPageSource) window.taliOpenPageSource(); },
+    },
+  ];
+
+  // The currently-available actions as match-ready SearchItems: level 0 so they sort with
+  // top-level entries, body = keyword synonyms so score() can match them, and action+run
+  // carrying the behavior. Rebuilt per render() so capability gates stay live.
+  /** @returns {SearchItem[]} */
+  function availableActions() {
+    /** @type {SearchItem[]} */
+    var out = [];
+    for (var i = 0; i < ACTIONS.length; i++) {
+      var a = ACTIONS[i];
+      if (!a.available()) continue;
+      out.push({
+        id: "action:" + a.id, title: a.title, level: 0, body: a.keywords,
+        tLow: a.title.toLowerCase(), bLow: a.keywords.toLowerCase(), action: true, run: a.run,
+      });
+    }
+    return out;
+  }
 
   // Build the index: every anchored heading, plus the lowercased text of the
   // blocks that follow it until the next heading (so body keywords match too).
@@ -193,7 +247,7 @@
       // aria-controls / aria-activedescendant; the listbox is separately named.
       '<input class="tali-s-input" type="text" autocomplete="off" spellcheck="false" ' +
       'role="combobox" aria-expanded="true" aria-haspopup="listbox" aria-autocomplete="list" ' +
-      'placeholder="Search this document…" aria-label="Search this document" ' +
+      'placeholder="Search or run a command…" aria-label="Search or run a command" ' +
       'aria-controls="tali-s-results" />' +
       '<ul class="tali-s-results" id="tali-s-results" role="listbox" aria-label="Search results"></ul>' +
       '<div class="tali-s-hint"><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span>' +
@@ -212,11 +266,13 @@
   function open() {
     ensureUi();
     var isSite = !!(window.TALIESIN_SEARCH_URL || window.TALIESIN_SEARCH_INDEX);
-    // Single doc with no headings: nothing to search.
-    if (!isSite && !buildIndex().length) return;
+    // Single doc with no headings AND no available actions: nothing to do. With the command
+    // palette the always-available theme action normally keeps Cmd-K openable even on a
+    // heading-less doc, so it can still run commands.
+    if (!isSite && !buildIndex().length && !availableActions().length) return;
     overlay.hidden = false;
     input.value = "";
-    input.placeholder = isSite ? "Search…" : "Search this document…";
+    input.placeholder = "Search or run a command…";
     // While the cross-page index is fetching on first open, show a loading row.
     list.innerHTML = "";
     if (isSite && !window.TALIESIN_SEARCH_INDEX) {
@@ -302,19 +358,28 @@
     var q = query.trim().toLowerCase();
     var terms = q ? q.split(/\s+/).filter(Boolean) : [];
     lastTerms = terms; // so go() can flash the matched term after navigating
+    // Command-palette actions come first: all available ones when the query is empty (a
+    // discoverable menu — the point of a palette), else those whose title/keywords match.
+    var acts = availableActions();
+    if (terms.length) {
+      acts = acts.filter(function (a) { return score(a, terms) > 0; });
+    }
+    /** @type {SearchItem[]} */
+    var content;
     if (!terms.length) {
       // No query: a book shows its chapter list (the level-0 page entries) as a
       // jump menu; a single doc shows its full heading outline.
-      matches = window.TALIESIN_SEARCH_INDEX
+      content = window.TALIESIN_SEARCH_INDEX
         ? index.filter(function (it) { return it.level === 0; })
         : index.slice();
     } else {
-      matches = index
+      content = index
         .map(function (it) { return { it: it, s: score(it, terms) }; })
         .filter(function (m) { return m.s > 0; })
         .sort(function (a, b) { return b.s - a.s || (a.it.level || 0) - (b.it.level || 0); })
         .map(function (m) { return m.it; });
     }
+    matches = acts.concat(content);
     sel = 0;
     list.innerHTML = "";
     if (!matches.length) {
@@ -336,7 +401,7 @@
   /** @param {SearchItem} item @param {string[]} terms @param {number} i */
   function itemEl(item, terms, i) {
     var li = document.createElement("li");
-    li.className = "tali-s-item";
+    li.className = "tali-s-item" + (item.action ? " tali-s-action" : "");
     li.setAttribute("role", "option");
     li.id = "tali-s-opt-" + i;
     var head = document.createElement("div");
@@ -346,17 +411,19 @@
     highlight(title, item.title, terms);
     var sec = document.createElement("span");
     sec.className = "tali-s-sec";
-    // In a book, label the result with its chapter; otherwise its heading level.
-    sec.textContent = item.page || "H" + item.level;
+    // In a book, label a content result with its chapter; a heading with its level; an
+    // action with a plain "action" tag so it reads as a command, not a destination.
+    sec.textContent = item.action ? "action" : item.page || "H" + item.level;
     head.append(title, sec);
     li.appendChild(head);
     // A body snippet when the body carries something the title doesn't already show. "In the
     // title" matches score()'s notion (exact OR a >=4-char fuzzy hit), so a fuzzy-title match
-    // doesn't trigger an unmarkable body snippet.
+    // doesn't trigger an unmarkable body snippet. Actions never snippet (their "body" is just
+    // keyword synonyms for matching, not prose to show).
     var everyInTitle = terms.every(function (term) {
       return item.tLow.indexOf(term) >= 0 || (term.length >= 4 && fuzzyWord(term, item.tLow));
     });
-    if (terms.length && !everyInTitle && item.body) {
+    if (!item.action && terms.length && !everyInTitle && item.body) {
       var snip = document.createElement("div");
       snip.className = "tali-s-snip";
       snippet(snip, item.body, terms);
@@ -603,6 +670,12 @@
 
   /** @param {SearchItem} item */
   function go(item) {
+    // A command-palette action runs its command and closes; a content result navigates.
+    if (item.action && typeof item.run === "function") {
+      close();
+      try { item.run(); } catch (e) {}
+      return;
+    }
     close();
     var terms = lastTerms.slice();
     // A result on another page navigates there (a real page load, anchored to the

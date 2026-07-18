@@ -2155,6 +2155,38 @@ fn search_js_ships_tokenizing_matcher() {
 }
 
 #[test]
+fn search_js_ships_the_command_palette_actions() {
+    // DX8: Cmd-K runs commands, not only search. The palette must ship the action registry
+    // (each action gating on its capability global) + the action branch in go() + the
+    // "run a command" placeholder. JS is include_str!'d, so this is the drift guard.
+    let js = super::SEARCH_JS;
+    for needle in [
+        "taliToggleTheme",         // the always-available theme action
+        "taliRestartKernel",       // preview-only kernel action
+        "taliOpenPageSource",      // preview-only open-in-editor action
+        "availableActions",        // the capability-gated action list
+        "item.action",             // go()/itemEl() branch on actions vs content
+        "Search or run a command", // the palette-not-just-search placeholder
+    ] {
+        assert!(
+            js.contains(needle),
+            "search.js missing command-palette wiring: {needle}"
+        );
+    }
+}
+
+#[test]
+fn theme_head_ships_a_toggle_theme_global() {
+    // The palette's "Toggle theme" action calls window.taliToggleTheme, defined in theme_head
+    // so it ships on every page (build + preview) — that's why the theme action is always
+    // available. The dev-menu button reuses the same global (no duplicated toggle logic).
+    assert!(
+        theme_head("auto").contains("window.taliToggleTheme"),
+        "theme_head must define window.taliToggleTheme for the command palette"
+    );
+}
+
+#[test]
 fn search_js_localizes_the_kbd_hint_off_mac() {
     // The kbd badge is server-rendered with the Mac glyph (⌘K); the shipped client JS must
     // rewrite it to "Ctrl K" on non-Mac platforms (the badge class is the rewrite target).

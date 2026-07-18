@@ -39,6 +39,15 @@ interface Window {
   taliGetThemeChoice?: () => 'auto' | 'light' | 'dark' | 'sepia';
   /** Wires every `[data-qmd-theme-toggle]` button (defined in theme_head). */
   taliWireThemeToggles?: () => void;
+  /** Flip light <-> dark (defined in theme_head; ships on every page). The Cmd-K palette's
+   *  "Toggle theme" action and the dev-menu button share it. */
+  taliToggleTheme?: () => void;
+  /** Restart the warm Jupyter kernel (preview client only; the palette's "Restart kernel"
+   *  action gates on its presence, so it's hidden in a static build). */
+  taliRestartKernel?: () => void;
+  /** Open the previewed document's source in the editor (preview client only; the palette's
+   *  "Open source in editor" action gates on its presence). */
+  taliOpenPageSource?: () => void;
   /** Runs all registered enhancers over `root` (the registry runner, code-enhance.js). */
   taliEnhanceCode?: (root: ParentNode | null) => void;
   /** Public extension hook: register `fn(root)` to enhance freshly-mounted DOM. */

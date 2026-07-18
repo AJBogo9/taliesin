@@ -1648,6 +1648,22 @@ mod protocol_contract {
     }
 
     #[test]
+    fn client_js_ships_the_preview_command_palette_hooks() {
+        // DX8: the Cmd-K palette's preview-only actions (restart kernel, open source in the
+        // editor) call these globals, which live in the PREVIEW client (client.js) — so they
+        // exist only in a live preview, never a static build. JS is include_str!'d; this is
+        // the drift guard that the hooks still ship.
+        assert!(
+            CLIENT_JS.contains("window.taliRestartKernel"),
+            "client.js must expose window.taliRestartKernel for the command palette"
+        );
+        assert!(
+            CLIENT_JS.contains("window.taliOpenPageSource"),
+            "client.js must expose window.taliOpenPageSource for the command palette"
+        );
+    }
+
+    #[test]
     fn reveal_index_carries_qmd_doc_for_click_to_source() {
         // The deck page has no scripts_pre, so its tail must inject TALIESIN_DOC — without
         // it, client.js's openSource bails (no doc) and click-to-source is dead on
