@@ -147,6 +147,63 @@ fn command_desc(cmd: &str) -> &'static str {
     }
 }
 
+/// Resolve preview's aliases so flag/positional tables are keyed by one canonical name.
+fn canonical(sub: &str) -> &str {
+    match sub {
+        "dev" | "serve" => "preview",
+        other => other,
+    }
+}
+
+/// `(flag, takes_a_value, description)` per canonical subcommand. Single source of truth
+/// for flag completion; `flag_table_covers_help` guards it against the CLI help text.
+fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
+    match canonical(sub) {
+        "preview" => &[
+            (
+                "--host",
+                false,
+                "expose on your LAN + print a phone QR code",
+            ),
+            ("--open", false, "launch the default browser"),
+            (
+                "--no-exec",
+                false,
+                "render code cells as source, never run them",
+            ),
+            ("--port", true, "port to serve on"),
+        ],
+        "build" => &[
+            ("--out", true, "write a portable folder to <dir>"),
+            (
+                "--strict",
+                false,
+                "exit non-zero on a cell error or located warning",
+            ),
+            ("--bare", false, "emit zero-JS, CSS-only single-doc HTML"),
+            ("--jobs", true, "cap parallel page renders"),
+            ("--format", true, "machine output format (json)"),
+        ],
+        "publish" => &[
+            ("--project-name", true, "Cloudflare Pages project name"),
+            ("--out", true, "output dir"),
+            ("--public", false, "deploy un-gated (no passcode)"),
+            ("--no-strict", false, "do not fail on located warnings"),
+            ("--dry-run", false, "build but skip the deploy"),
+            ("--format", true, "machine output format (json)"),
+        ],
+        "new" => &[
+            ("--dir", true, "project root to scaffold into"),
+            ("--json", false, "print a json receipt"),
+        ],
+        "schema" => &[("--out", true, "output dir")],
+        "symbols" => &[("--format", true, "human | json")],
+        "map" => &[("--format", true, "human | json")],
+        "check" => &[("--format", true, "human | json")],
+        _ => &[],
+    }
+}
+
 /// Compute completions for the words typed after `taliesin` (`words.last()` is the
 /// current, possibly-empty word), resolving any paths relative to `cwd`.
 fn complete_line(words: &[String], _cwd: &Path) -> Completion {
@@ -164,6 +221,21 @@ fn complete_line(words: &[String], _cwd: &Path) -> Completion {
             .iter()
             .filter(|c| c.starts_with(cur))
             .map(|c| Candidate::described(*c, command_desc(c)))
+            .collect();
+        return Completion {
+            candidates,
+            directive: NO_FILE_COMP,
+        };
+    }
+
+    let sub = prior.first().map(String::as_str).unwrap_or("");
+
+    // 2. Flag-name completion.
+    if cur.starts_with('-') {
+        let candidates = flags_for(sub)
+            .iter()
+            .filter(|(f, _, _)| f.starts_with(cur))
+            .map(|(f, _, d)| Candidate::described(*f, *d))
             .collect();
         return Completion {
             candidates,
@@ -304,5 +376,23 @@ mod brain_tests {
                 "`{c}` needs a description in command_desc"
             );
         }
+    }
+
+    #[test]
+    fn dash_completes_subcommand_flags() {
+        let got = values(&["preview", "--"]);
+        for f in ["--host", "--open", "--no-exec", "--port"] {
+            assert!(got.contains(&f.to_string()), "preview offers {f}: {got:?}");
+        }
+        let got = values(&["build", "--"]);
+        for f in ["--out", "--strict", "--bare", "--jobs", "--format"] {
+            assert!(got.contains(&f.to_string()), "build offers {f}: {got:?}");
+        }
+    }
+
+    #[test]
+    fn flags_are_offered_through_aliases() {
+        // `dev` and `serve` share preview's flags.
+        assert!(values(&["dev", "--"]).contains(&"--host".to_string()));
     }
 }
