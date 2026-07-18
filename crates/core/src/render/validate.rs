@@ -10,7 +10,7 @@
 //! is deliberate: taliesin is its own tool, not a compatibility shim.
 
 use super::Warning;
-use crate::frontmatter::unknown_key_message;
+use crate::frontmatter::{closest, unknown_key_message};
 
 /// Cell options taliesin recognizes on a code cell's leading `#|` / `//|` / `%%|`
 /// lines (the union across all cell languages; each is read in `cell_option` /
@@ -49,6 +49,28 @@ pub(crate) const THEOREM_KINDS: &[&str] = &[
     "example",
     "remark",
     "proof",
+];
+
+/// Structural + deck feature classes a `:::` fenced div can carry. This is **not** a closed
+/// vocabulary — a div may carry any custom class (styled by the author's own CSS) — so this list
+/// only anchors the *did-you-mean* (`validate_div_class`); it never rejects. Keep in sync with the
+/// `.class` dispatch in `render/divs.rs` and the deck classes in `assets/css/deck.css`; a
+/// `vocab.rs` test pins `vocab::div_classes()`'s names as a subset.
+pub(crate) const DIV_FEATURE_CLASSES: &[&str] = &[
+    "panel-tabset",
+    "code-walkthrough",
+    "scrolly",
+    "magic-move",
+    "step",
+    "column-margin",
+    "aside",
+    "sidenote",
+    "marginnote",
+    "fragment",
+    "incremental",
+    "notes",
+    "columns",
+    "column",
 ];
 
 /// Input control types `.input type=` recognizes.
@@ -99,6 +121,34 @@ pub(crate) fn validate_callout_kind(
 ) -> Option<Warning> {
     (!CALLOUT_KINDS.contains(&kind)).then(|| {
         Warning::new(unknown_key_message("callout kind", kind, CALLOUT_KINDS)).at(file, line as u32)
+    })
+}
+
+/// A misspelled feature/theorem `:::` class → a located "did you mean". Fired from the generic-div
+/// fall-through in `build_container` (the classes that matched no feature arm). Only a *near-miss*
+/// of a known feature class ([`DIV_FEATURE_CLASSES`] ∪ [`THEOREM_KINDS`], edit distance ≤ 2) warns:
+/// an exactly-known class (a legit generic like `.aside`/`.fragment`) and a genuine custom class
+/// (far from every known name) both stay silent, since div classes are an *open* vocabulary. At
+/// most one warning per div (the first offending class), and purely diagnostic — the div still
+/// renders with its given class. `line` is the 1-based source line of the opening fence.
+pub(crate) fn validate_div_class(
+    classes: &[String],
+    line: usize,
+    file: Option<String>,
+) -> Option<Warning> {
+    let known: Vec<&'static str> = DIV_FEATURE_CLASSES
+        .iter()
+        .copied()
+        .chain(THEOREM_KINDS.iter().copied())
+        .collect();
+    classes.iter().find_map(|c| {
+        if known.contains(&c.as_str()) {
+            return None;
+        }
+        closest(c, &known).map(|s| {
+            Warning::new(format!("unknown div class `{c}` (did you mean `{s}`?)"))
+                .at(file.clone(), line as u32)
+        })
     })
 }
 
@@ -228,6 +278,40 @@ mod tests {
         assert!(
             validate_cell_options(lit, 1, None).is_empty(),
             "all keys recognized"
+        );
+    }
+
+    #[test]
+    fn validate_div_class_suggests_near_miss_only() {
+        let s = |c: &str| vec![c.to_string()];
+        // A near-miss of a feature class → located "did you mean".
+        let w = validate_div_class(&s("fragmnet"), 3, None).expect("a near-miss warning");
+        assert_eq!(
+            w.message,
+            "unknown div class `fragmnet` (did you mean `fragment`?)"
+        );
+        assert_eq!(w.line, Some(3));
+        // A near-miss of a THEOREM kind (the case validate.rs's own comment calls out).
+        assert!(
+            validate_div_class(&s("theorm"), 3, None).is_some(),
+            "a misspelled theorem kind should be caught"
+        );
+        // An exactly-known class is legit → silent.
+        assert!(
+            validate_div_class(&s("aside"), 3, None).is_none(),
+            "known class is silent"
+        );
+        // A genuine custom class (far from every known name) → silent (open vocabulary).
+        assert!(
+            validate_div_class(&s("my-widget"), 3, None).is_none(),
+            "a far custom class must not warn"
+        );
+        // Only the first offending class warns (no pile-up).
+        assert_eq!(
+            validate_div_class(&s("fragmnet"), 3, None)
+                .into_iter()
+                .count(),
+            1
         );
     }
 

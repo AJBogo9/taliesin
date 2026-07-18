@@ -18,6 +18,7 @@ fn typos_doc_warns_exactly_on_each_unknown_key() {
         "unknown listing key `max-itemz` (did you mean `max-items`?)",
         "unknown callout kind `importnat` (did you mean `important`?)",
         "unknown cell option `labl` (did you mean `label`?)",
+        "unknown div class `fragmnet` (did you mean `fragment`?)",
     ];
     for e in expected {
         assert!(
@@ -55,5 +56,14 @@ fn typos_doc_warns_exactly_on_each_unknown_key() {
     assert!(
         callout.line.is_some(),
         "callout warning should be located: {callout:?}"
+    );
+    let div = doc
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("`fragmnet`"))
+        .unwrap();
+    assert!(
+        div.line.is_some(),
+        "div-class warning should be located: {div:?}"
     );
 }

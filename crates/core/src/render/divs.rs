@@ -645,6 +645,15 @@ fn build_container(
             )
         }
     } else {
+        // Generic div: any class the author wants (styled by their own CSS). A class that is a
+        // near-miss of a known feature/theorem class is almost certainly a typo that silently
+        // degraded (a `.columns` that stacked, a `.fragmnet` that never revealed) — warn with a
+        // did-you-mean (located, click-to-source). Genuine custom classes stay silent.
+        if let Some(w) =
+            super::validate::validate_div_class(&attrs.classes, open_line, file.clone())
+        {
+            warnings.push(w);
+        }
         let mut class = attrs.classes.join(" ");
         if class.is_empty() {
             class.push_str("tali-div");

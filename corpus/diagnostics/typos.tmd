@@ -17,6 +17,10 @@ Each unknown key below produces one click-to-source warning; rendering is unaffe
 This callout names a kind Taliesin does not define.
 :::
 
+::: {.fragmnet}
+This div names a feature class Taliesin does not define; it silently degraded before DX5.
+:::
+
 ```{python}
 #| labl: fig-demo
 print("hello from a cell whose option key is misspelled")

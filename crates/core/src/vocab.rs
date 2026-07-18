@@ -163,23 +163,25 @@ fn theorem_descriptions() -> &'static [(&'static str, &'static str)] {
     ]
 }
 
-/// Structural fenced-div classes. There is no single Rust const for these (each is
-/// dispatched by name in `render::divs` with styles in `assets/css/base.css`), so they are
-/// enumerated here as their named home. Keep in sync with the `.class` dispatch in
-/// `render/divs.rs` and the aliases wired in `base.css`.
+/// Structural fenced-div classes offered to the editor. These are a subset of
+/// `render::DIV_FEATURE_CLASSES` (the near-miss anchor for the div-class did-you-mean); the
+/// `div_classes_are_a_subset_of_the_validator_vocab` test pins that so the two can't drift.
+/// Keep in sync with the `.class` dispatch in `render/divs.rs` and the aliases in `base.css`.
+const DIV_CLASS_NAMES: &[&str] = &[
+    "panel-tabset",
+    "code-walkthrough",
+    "scrolly",
+    "magic-move",
+    "step",
+    "column-margin",
+    "aside",
+    "sidenote",
+    "marginnote",
+];
+
 fn div_classes() -> Value {
     named(
-        &[
-            "panel-tabset",
-            "code-walkthrough",
-            "scrolly",
-            "magic-move",
-            "step",
-            "column-margin",
-            "aside",
-            "sidenote",
-            "marginnote",
-        ],
+        DIV_CLASS_NAMES,
         &[
             (
                 "panel-tabset",
@@ -259,6 +261,20 @@ pub fn to_pretty_json() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The editor's offered div classes must all be near-miss anchors for the div-class
+    /// did-you-mean, so a class a user is told exists also gets a "did you mean" when typo'd.
+    /// Pins `DIV_CLASS_NAMES ⊆ render::DIV_FEATURE_CLASSES` — add a new class to both or neither.
+    #[test]
+    fn div_classes_are_a_subset_of_the_validator_vocab() {
+        for name in DIV_CLASS_NAMES {
+            assert!(
+                crate::render::DIV_FEATURE_CLASSES.contains(name),
+                "`{name}` is offered by vocab::div_classes() but missing from \
+                 render::DIV_FEATURE_CLASSES (typos of it won't get a did-you-mean)"
+            );
+        }
+    }
 
     /// Assert the generated JSON equals the committed file, OR (under `TALIESIN_BLESS=1`)
     /// rewrite the committed file from the generator. Mirrors `schema.rs`.
