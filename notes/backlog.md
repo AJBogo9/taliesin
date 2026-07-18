@@ -61,10 +61,13 @@ map + error/feedback-loop audit + 4 persona simulations); 19 findings + 3 design
 serve paths surface the static validators + cross-page + `_site.yml` warnings; browser-verified).
 **DX2 (first-run in-preview hint) is DONE** (one-time dismissible callout surfacing Alt-click-to-source +
 `?`; browser-verified single-doc/site/deck + matrix). **DX3 (auto-wire config JSON Schema on `init`) is
-DONE** (`init` emits `.taliesin/` schemas + the `_site.yml` modeline; integration-verified). All on local
-`main` after merge, NOT pushed — check `git log origin/main..main`. Next up per the suggested order:
-**DX10** (the last S-effort "hidden→used" win — teaching scaffolds). Most remaining items are *surfacing
-an existing capability*, not net-new — a "come back when there's time" queue.
+DONE** (`init` emits `.taliesin/` schemas + the `_site.yml` modeline; integration-verified). **DX10
+(teaching scaffolds) is MOSTLY DONE** — 3 of 4 sub-parts (paper worked `{python}` figure + math + xrefs,
+`init`→`taliesin new` pointer, `new post --draft`); only `new deck --tour` deferred (waits on DX5's
+columns idiom — see the DX10-followup bullet in §6). All on local `main` after merge, NOT pushed — check
+`git log origin/main..main`. Next up per the suggested order: **{DX5, DX11}** (kill the two silent-failure
+traps), then DX4/DX6/DX8, then DX17–19 (DX18 cheap). Most remaining items are *surfacing an existing
+capability*, not net-new.
 
 **Pick up here (2026-07-18, PMF-audit batch — START HERE for feature work).** A product-market-fit
 audit landed ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md); 30+7 sourced personas +
@@ -780,11 +783,17 @@ Integration-verified (byte-identical to `taliesin schema`; `.taliesin/` never sh
 - **DX9 — Make caching legible**: `⚡ cached` vs `✓ 1.2s` per-cell badge + a console `restored N cached
   cells · 1 re-ran` line + a one-line tie to "Restart kernel"/`TALIESIN_NO_CACHE`. S · [surface] · 🎤🎓
   both restarted the kernel needlessly asking "why didn't my cell re-run?"; the info is in `freeze.rs`.
-- **DX10 — Scaffolds that teach** (worked examples, not stubs): `paper` gets a runnable `{python}` figure
-  cell with `#| label:`/`#| fig-cap:` + one `$$` block + one `@fig-`/`@sec-` ref (stays check-clean);
-  `new deck --tour` demoing fragments/columns/magic-move/notes; `new post --draft`; `init`'s index.tmd
-  points to `taliesin new`. S · [surface] · 🎓✍️🎤. The most-delightful discovery (Quarto `#| label:`
-  works verbatim) is currently invisible.
+**DX10 — Scaffolds that teach — MOSTLY LANDED 2026-07-18** (3 of 4 sub-parts). Shipped: `paper` now
+scaffolds a worked `{python}` matplotlib figure (`#| label: fig-demo` + `#| fig-cap:`), a `$$` block, and
+`@fig-demo`/`@sec-methods` cross-refs (check-clean; corpus mirror `corpus/scaffold/posts/my-paper/`
+regenerated); `init`'s `index.tmd` points at `taliesin new`; `new post --draft` (a `NewOpts`-threaded flag
+that splices `draft: true`, default-off so existing scaffolds stay byte-identical). Spec/plan under
+`docs/superpowers/specs|plans/2026-07-18-dx10-teaching-scaffolds*`, record in [AUDITS.md](AUDITS.md).
+  - **DX10-followup — `new deck --tour`** (still open): a `--tour` deck demoing fragments/incremental/
+    magic-move/notes/columns. Deferred deliberately: the columns-on-a-slide idiom must use native
+    `layout-ncol` (reveal's `.columns` silently degrades — that's **DX5**), and a teaching scaffold must be
+    exemplary, so land this *after* DX5 settles the columns story. The `NewOpts` plumbing + `NEW_FLAGS`
+    did-you-mean are already in place — it's a `--tour` arm in `new_files` + a browser-verified deck check.
 - **DX11 — Friendly `.pdf`/wrong-target rejection**: `build … x.pdf` today silently writes HTML bytes into
   a `.pdf` file (🎓's abandonment moment). Reject with "HTML-only; `build` for a page, browser Print for a
   rough PDF; a print track is planned (ROADMAP Pillar IV)." S · [new]. NB: real PDF is already sanctioned
@@ -821,7 +830,7 @@ Integration-verified (byte-identical to `taliesin schema`; `.taliesin/` never sh
   One-command deck publish in scope? (🎤)
 - Presenter laser/spotlight + auto-advance (reveal.js reflexes). (🎤)
 
-**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ (landed) → DX10 (the last S-effort "hidden→used" win) → {DX5, DX11}
+**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ (landed; `deck --tour` split to DX10-followup) → {DX5, DX11}
 (kill the two silent-failure traps) → DX4/DX6/DX8 → DX17–19 (DX18 is cheap, pull forward). Tier 0–1 and
 most of Tier 2 are *surfacing existing capability*, not net-new.
 

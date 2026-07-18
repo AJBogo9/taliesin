@@ -77,6 +77,26 @@ Only the **site** schema is modeline-wired (into `_site.yml`, a real YAML doc); 
 emitted for the companion but not wired into `.tmd` files (a `.tmd` isn't a YAML doc a language server
 processes). `init` is the sole `_site.yml` producer, so `new`/paper/post are untouched (DX10 covers those).
 
+**DX10 MOSTLY LANDED 2026-07-18** (Tier 2 — "scaffolds that teach"; 3 of 4 sub-parts). The audit's
+headline was that the single most-delightful discovery — Quarto's `#| label:`/`#| fig-cap:` cell options
+**work verbatim** — was invisible, because no scaffold showed a runnable figure. Shipped: (1) `paper` now
+scaffolds a worked `{python}` matplotlib figure (`#| label: fig-demo` + `#| fig-cap:`), a `$$` display-math
+block, a `## Methods {#sec-methods}` section, and `@fig-demo`/`@sec-methods` cross-refs; (2) `init`'s
+`index.tmd` "Next steps" points at `taliesin new`; (3) `new post --draft` — a `NewOpts`-threaded flag that
+splices `draft: true` into the front matter. All in `cli.rs` (the pure `new_files` + thin `write_new`/
+`cmd_new`), plus the extended `new_cli.rs` assertions and a regenerated `corpus/scaffold/posts/my-paper/`
+mirror. **Grounding / gotchas:** (a) measured that `taliesin check` reports kernel/ipykernel status only as
+an *informational* "Environment" block, never a counted diagnostic — so a `{python}` figure cell keeps a
+scaffold check-clean with no kernel (exit 0), and `#| label: fig-x` resolves `@fig-x` **statically** (the
+core corpus net renders without executing cells, yet fig-labelled corpus docs pass). (b) The scaffold has
+BOTH a check-clean integration pin (`new_cli.rs` runs the real binary + `check`) **and** a byte-exact unit
+pin (`every_scaffold_matches_its_corpus_pin`, fixed date `2026-07-10`) against `corpus/scaffold/` — the
+paper mirror had to be regenerated with that fixed date, not today's, or the byte-pin fails. (c) `--draft`
+defaults off, so every existing scaffold + the mirror stay byte-identical. **Deferred: `new deck --tour`**
+(→ DX10-followup in backlog): a teaching deck's columns must use native `layout-ncol` (reveal's `.columns`
+silently degrades — the pending **DX5**), so a column demo would teach a shaky idiom until DX5 lands; the
+`NewOpts`/`NEW_FLAGS` plumbing is already in place for it.
+
 -----------------------------------------------------------------------------
 
 # Vacuous-test / mutation audit (2026-07-18)
