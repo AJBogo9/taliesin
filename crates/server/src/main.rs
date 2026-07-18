@@ -191,8 +191,9 @@ fn usage() {
     println!(
         "  check <file|dir> [--format human|json]  list located diagnostics; exits non-zero if any"
     );
+    println!("  completions <bash|zsh|fish|powershell>  print a shell completion script");
     println!(
-        "  completions <bash|zsh|fish>  print a shell completion script to stdout (install hint in --help)"
+        "                             (subcommand + flag + .tmd-aware path completion; install hint in --help)"
     );
     println!("  help, --version            show this help / the version");
     println!();
@@ -400,18 +401,20 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin publish . --dry-run\n"
         }
         "completions" => {
-            "taliesin completions <bash|zsh|fish>\n\
+            "taliesin completions <bash|zsh|fish|powershell>\n\
              \n\
-             Print a shell completion script to stdout (command names + file arguments).\n\
-             The offered commands are generated from the CLI itself, so they never drift.\n\
+             Print a shell completion script to stdout. The script is a thin shim that\n\
+             asks the running binary for candidates, so Tab offers subcommands, flags, and\n\
+             only .tmd files plus directories that contain one (site/book roots first).\n\
              \n\
              Install:\n\
-             \x20 bash  taliesin completions bash > ~/.local/share/bash-completion/completions/taliesin\n\
-             \x20 zsh   taliesin completions zsh  > \"${fpath[1]}/_taliesin\"   # then: compinit\n\
-             \x20 fish  taliesin completions fish > ~/.config/fish/completions/taliesin.fish\n\
+             \x20 bash        taliesin completions bash > ~/.local/share/bash-completion/completions/taliesin\n\
+             \x20 zsh         taliesin completions zsh  > \"${fpath[1]}/_taliesin\"   # then: compinit\n\
+             \x20 fish        taliesin completions fish > ~/.config/fish/completions/taliesin.fish\n\
+             \x20 powershell  taliesin completions powershell >> $PROFILE\n\
              \n\
              Example:\n\
-             \x20 taliesin completions bash\n"
+             \x20 taliesin completions zsh\n"
         }
         _ => return None,
     };

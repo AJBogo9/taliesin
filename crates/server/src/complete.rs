@@ -17,74 +17,111 @@ pub(crate) fn cmd_completions(args: &[String]) -> ExitCode {
             ExitCode::SUCCESS
         }
         None => {
-            log::error("usage: taliesin completions <bash|zsh|fish>");
+            log::error("usage: taliesin completions <bash|zsh|fish|powershell>");
             ExitCode::FAILURE
         }
     }
 }
 
-/// The completion script for `shell`, or `None` for an unsupported one. Every branch draws
-/// its command list from `crate::COMMANDS.join(" ")` (the `@COMMANDS@` placeholder), so a
-/// new subcommand appears in all three shells at once and no per-shell list can go stale.
-/// Gated by `completions_tests::every_shell_script_offers_exactly_the_dispatched_command_list`.
+/// The completion script for `shell`, or `None` for an unsupported one. Each script is a
+/// thin shim that relays the command line to `taliesin __complete` and feeds the result
+/// back to the shell, so the completion logic lives in one place (`complete_line`) and
+/// cannot drift between shells.
 pub(crate) fn completions_script(shell: &str) -> Option<String> {
-    let template = match shell {
+    let script = match shell {
         "bash" => BASH_COMPLETIONS,
         "zsh" => ZSH_COMPLETIONS,
         "fish" => FISH_COMPLETIONS,
+        "powershell" => POWERSHELL_COMPLETIONS,
         _ => return None,
     };
-    Some(template.replace("@COMMANDS@", &crate::COMMANDS.join(" ")))
+    Some(script.to_string())
 }
 
-const BASH_COMPLETIONS: &str = r#"# taliesin bash completion.
-# Install:  taliesin completions bash > ~/.local/share/bash-completion/completions/taliesin
-#   (system-wide)  taliesin completions bash | sudo tee /etc/bash_completion.d/taliesin
+const BASH_COMPLETIONS: &str = r#"# taliesin bash completion (dynamic).
+# Install: taliesin completions bash > ~/.local/share/bash-completion/completions/taliesin
 _taliesin() {
-    local cur cmds
-    cur="${COMP_WORDS[COMP_CWORD]}"
-    cmds="@COMMANDS@"
-    if [ "${COMP_CWORD}" -eq 1 ]; then
-        COMPREPLY=($(compgen -W "${cmds}" -- "${cur}"))
-        return
-    fi
-    if [ "${COMP_WORDS[1]}" = "completions" ] && [ "${COMP_CWORD}" -eq 2 ]; then
-        COMPREPLY=($(compgen -W "bash zsh fish" -- "${cur}"))
-        return
-    fi
-    COMPREPLY=($(compgen -f -- "${cur}"))
+    local IFS=$'\n' line directive=0
+    local words=("${COMP_WORDS[@]:1:COMP_CWORD}")
+    COMPREPLY=()
+    for line in $(taliesin __complete "${words[@]}" 2>/dev/null); do
+        if [[ $line == :* ]]; then
+            directive=${line#:}
+            continue
+        fi
+        COMPREPLY+=("${line%%$'\t'*}")
+    done
+    (( directive & 1 )) && compopt -o nospace 2>/dev/null
+    (( directive & 4 )) || compopt -o default 2>/dev/null
 }
-complete -F _taliesin taliesin
+complete -F _taliesin taliesin tali
 "#;
 
-const ZSH_COMPLETIONS: &str = r#"#compdef taliesin
-# taliesin zsh completion.
+const ZSH_COMPLETIONS: &str = r#"#compdef taliesin tali
+# taliesin zsh completion (dynamic).
 # Install (into a dir on $fpath, then run compinit):
 #   taliesin completions zsh > "${fpath[1]}/_taliesin"
 _taliesin() {
-    local -a cmds
-    cmds=(@COMMANDS@)
-    if (( CURRENT == 2 )); then
-        _describe 'taliesin command' cmds
-        return
+    local -a args
+    args=("${(@)words[2,CURRENT]}")
+    local out directive=0
+    out="$(taliesin __complete "${args[@]}" 2>/dev/null)"
+    local -a described plain
+    local line val
+    for line in ${(f)out}; do
+        [[ $line == :* ]] && { directive=${line#:}; continue; }
+        val=${line%%$'\t'*}
+        [[ $line == *$'\t'* ]] && described+=("${val}:${line#*$'\t'}")
+        plain+=("$val")
+    done
+    if (( directive & 1 )); then
+        # Path completion: keep the trailing slash live so you can keep descending.
+        (( ${#plain} )) && compadd -S '' -- "${plain[@]}"
+    elif (( ${#described} == ${#plain} && ${#described} > 0 )); then
+        _describe 'taliesin' described
+    elif (( ${#plain} )); then
+        compadd -- "${plain[@]}"
+    elif (( (directive & 4) == 0 )); then
+        _files
     fi
-    if [[ ${words[2]} == completions ]]; then
-        _values 'shell' bash zsh fish
-        return
-    fi
-    _files
 }
 if [ "${funcstack[1]}" = "_taliesin" ]; then
     _taliesin "$@"
 else
-    compdef _taliesin taliesin
+    compdef _taliesin taliesin tali
 fi
 "#;
 
-const FISH_COMPLETIONS: &str = r#"# taliesin fish completion.
-# Install:  taliesin completions fish > ~/.config/fish/completions/taliesin.fish
-complete -c taliesin -n __fish_use_subcommand -a '@COMMANDS@' -d 'taliesin command'
-complete -c taliesin -n '__fish_seen_subcommand_from completions' -f -a 'bash zsh fish' -d shell
+const FISH_COMPLETIONS: &str = r#"# taliesin fish completion (dynamic).
+# Install: taliesin completions fish > ~/.config/fish/completions/taliesin.fish
+function __taliesin_complete
+    set -l tokens (commandline -opc) (commandline -ct)
+    set -l words $tokens[2..-1]
+    taliesin __complete $words 2>/dev/null | while read -l line
+        string match -q ':*' -- $line; and continue
+        echo $line
+    end
+end
+complete -c taliesin -f -a '(__taliesin_complete)'
+complete -c tali -f -a '(__taliesin_complete)'
+"#;
+
+const POWERSHELL_COMPLETIONS: &str = r#"# taliesin PowerShell completion (dynamic).
+# Install: taliesin completions powershell >> $PROFILE
+Register-ArgumentCompleter -Native -CommandName @('taliesin','tali') -ScriptBlock {
+    param($wordToComplete, $commandAst, $cursorPosition)
+    $elements = $commandAst.CommandElements
+    $words = @()
+    for ($i = 1; $i -lt $elements.Count; $i++) { $words += $elements[$i].ToString() }
+    if ($wordToComplete -eq '' -and ($words.Count -eq 0 -or $words[-1] -ne '')) { $words += '' }
+    (& taliesin __complete @words 2>$null) | ForEach-Object {
+        if ($_ -like ':*') { return }
+        $parts = $_ -split "`t", 2
+        $value = $parts[0]
+        $desc = if ($parts.Count -gt 1) { $parts[1] } else { $parts[0] }
+        [System.Management.Automation.CompletionResult]::new($value, $value, 'ParameterValue', $desc)
+    }
+}
 "#;
 
 // --- The hidden `__complete` runtime brain (cobra-compatible wire protocol) ---
@@ -476,41 +513,36 @@ mod completions_tests {
 
     #[test]
     fn generates_a_script_for_each_supported_shell_and_nothing_else() {
-        for shell in ["bash", "zsh", "fish"] {
+        for shell in ["bash", "zsh", "fish", "powershell"] {
             let script = completions_script(shell)
                 .unwrap_or_else(|| panic!("a `{shell}` completion script"));
             assert!(!script.trim().is_empty(), "`{shell}` script is non-empty");
-            // Each script registers taliesin's completion with the shell.
             assert!(
                 script.contains("taliesin"),
-                "`{shell}` script names the binary: {script}"
+                "`{shell}` names the binary: {script}"
+            );
+            // Every shim delegates to the one brain rather than hardcoding logic.
+            assert!(
+                script.contains("__complete"),
+                "`{shell}` calls __complete: {script}"
+            );
+            // Both the canonical name and the `tali` alias get completion. Use a per-shell
+            // marker: a bare `contains("tali")` is vacuously true (it is inside "taliesin").
+            let alias_marker = match shell {
+                "bash" | "zsh" => "taliesin tali",
+                "fish" => "-c tali",
+                "powershell" => "'tali'",
+                _ => unreachable!(),
+            };
+            assert!(
+                script.contains(alias_marker),
+                "`{shell}` registers the tali alias ({alias_marker:?}): {script}"
             );
         }
         assert!(
-            completions_script("powershell").is_none(),
+            completions_script("tcsh").is_none(),
             "an unsupported shell yields no script (so the CLI errors, not emits junk)"
         );
-    }
-
-    /// The load-bearing drift gate: every generated script offers **exactly** the command
-    /// list `main()` dispatches on (`crate::COMMANDS`), because each script interpolates
-    /// `COMMANDS.join(" ")` rather than hardcoding its own list. A hand-hardcoded or
-    /// partial list in any shell branch drops the full joined string and fails here — the
-    /// same drift `every_dispatched_command_is_listed_in_commands` guards for the
-    /// did-you-mean. Mutation check: truncating `COMMANDS` in one branch, or dropping a
-    /// name, changes the expected substring and trips this (verified by construction: the
-    /// assertion is a full-string `contains`, not a per-token one).
-    #[test]
-    fn every_shell_script_offers_exactly_the_dispatched_command_list() {
-        let expected = crate::COMMANDS.join(" ");
-        for shell in ["bash", "zsh", "fish"] {
-            let script = completions_script(shell).unwrap();
-            assert!(
-                script.contains(&expected),
-                "`{shell}` completion command list must equal COMMANDS ({expected:?}); \
-                 a per-shell hardcoded list would drift: {script}"
-            );
-        }
     }
 
     #[test]
@@ -518,7 +550,7 @@ mod completions_tests {
         // `cmd_completions` turns `None` into a non-zero exit + a usage error (rather than a
         // silent empty success); the branch under test is `completions_script`'s `Option`.
         assert!(completions_script("").is_none());
-        assert!(completions_script("tcsh").is_none());
+        assert!(completions_script("elvish").is_none());
         assert!(
             completions_script("BASH").is_none(),
             "shell names are case-sensitive"
