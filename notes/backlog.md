@@ -230,11 +230,13 @@ a fix, grep this file for the thing you just built.
   the walk continues *past* an unusable block to a usable ancestor. It added no new bridge back to
   source; it removed two false ones. **Consequence the owner should know:** the generated title
   block lost its Alt-click too, where line 1 was accidentally truthful (front matter starts there).
-- **D34: SUBTRACT.** Delete the dead `SiteConfig.card_image` (zero readers; its own doc comment
-  concedes it); **defer** the `bibliography`/`csl`/`execute`/`theme` project defaults until a corpus
-  doc actually hurts. "Perfect the default before adding a knob."
-- **D70 "Cite this" card: still unruled**, and low priority — it would render author-free for all 8
-  tech-blog posts (0 set `author:`), and its machine-readable half already ships.
+- **D34: SUBTRACT.** ~~Delete the dead `SiteConfig.card_image`~~ **— the subtract half was already
+  done (`084c338`); this line's `SiteConfig.card_image` is a MISNOMER (no such field; the live one
+  is `Page.card_image`). See §3.** Defaults half stays **deferred** until a corpus doc actually
+  hurts. "Perfect the default before adding a knob."
+- **D70 "Cite this" card: DECLINED 2026-07-18** (owner accepted the skip) — it would render
+  author-free for all 8 tech-blog posts (0 set `author:`), and its machine-readable half already
+  ships. Was "still unruled".
 
 **The three rulings landed 2026-07-17 (do not re-litigate):**
 1. **`--jobs N` means N parallel PAGES.** The CLI was right; the code was the bug. Warm pool is now
@@ -550,15 +552,21 @@ unit test while the live server still served the bug.*
 
 ### 3. Needs an owner ruling (not builds)
 
-*(The `--jobs` semantics ruling is CLOSED — N = pages, landed `f141cac`. See the start-here block.)*
+**Empty — both entries resolved 2026-07-18.**
 
-- **D34 project defaults** (OWNER-RULING). `bibliography`/`csl`/`execute`/`theme` are absent from the
-  19-key `NATIVE_KEYS`, but no corpus doc repeats them across pages, so it fails minimal-config today.
-  Recommendation: **subtract before adding**, delete the dead `image:`/`SiteConfig.card_image` field
-  (zero readers; its own doc comment concedes it) and defer the defaults until a corpus doc hurts.
-- **D70 "Cite this" card** (OWNER-RULING). Its machine-readable half already shipped
-  (`.citations.json` + ScholarlyArticle JSON-LD). A card would render **author-free for every current
-  post** (0 of 8 tech-blog posts set `author:`).
+- **D34 — RESOLVED (its build half was already done; the entry had rotted).** The "subtract" half
+  landed at `084c338` ("delete the site-level `image:` that stopped meaning anything (D34)"): the
+  dead site-level `image:` field is gone AND the key left `NATIVE_KEYS`, so a stale `image:` now
+  warns instead of parsing inert — pinned by `a_site_level_image_is_not_a_config_key_and_says_so`
+  (whose comment reads "D34's subtraction (owner ruling 2026-07-17)"). **The ruling block below
+  still says "delete the dead `SiteConfig.card_image`" — that field does not exist.** There is no
+  `SiteConfig` image field; `Page.card_image` is a LIVE listing-card thumbnail (`card_html`,
+  discovery.rs) — do NOT touch it. The "add `bibliography`/`csl`/`execute`/`theme` project
+  defaults" half stays **deferred** per the ruling ("perfect the default before adding a knob";
+  revive only when a corpus doc repeats a key across pages).
+- **D70 "Cite this" card — DECLINED** (owner accepted the skip, 2026-07-18; moved to "Decided
+  against"). Its machine-readable half already ships (`.citations.json` + ScholarlyArticle
+  JSON-LD); a rendered card would be author-free for all 8 tech-blog posts (none set `author:`).
 
 ### 4. Needs Do-NOT-touch sign-off (citation zone)
 
