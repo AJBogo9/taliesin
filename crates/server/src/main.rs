@@ -58,6 +58,9 @@ fn main() -> ExitCode {
         // `preview`/`dev` are vite-style aliases for the live server.
         Some("serve" | "preview" | "dev") => cli::cmd_serve(&args),
         Some("completions") => complete::cmd_completions(&args),
+        // Hidden: the shell-completion shims call this at runtime. Not in COMMANDS
+        // (underscore-prefixed => excluded from did-you-mean + the dispatch guard).
+        Some("__complete") => complete::cmd_complete(&args),
         Some("--version" | "-V") => {
             println!(
                 "taliesin {} ({})",
@@ -550,10 +553,11 @@ mod cli_microcopy_tests {
         while let Some(i) = rest.find("Some(") {
             rest = &rest[i + "Some(".len()..];
             let Some(end) = rest.find(')') else { break };
-            // Flags (`--version`, `-h`) are not commands and are never suggested, so they
-            // are not in `COMMANDS`. A binding pattern (`Some(other)`) has no literal.
+            // Flags (`--version`, `-h`) and hidden internal subcommands (`__complete`,
+            // underscore-prefixed) are not user-facing commands: never suggested, never in
+            // `COMMANDS`. A binding pattern (`Some(other)`) has no literal.
             for lit in rest[..end].split('"').skip(1).step_by(2) {
-                if !lit.starts_with('-') {
+                if !lit.starts_with('-') && !lit.starts_with('_') {
                     out.insert(lit.to_string());
                 }
             }
@@ -585,6 +589,8 @@ mod cli_microcopy_tests {
         // Flags and binding patterns contribute nothing.
         assert!(commands_in_dispatch("Some(\"--version\" | \"-V\") => v(),").is_empty());
         assert!(commands_in_dispatch("Some(other) => fail(other),").is_empty());
+        // Hidden underscore-prefixed subcommands are excluded (like flags).
+        assert!(commands_in_dispatch("Some(\"__complete\") => c(),").is_empty());
     }
 
     /// Every name `main()` dispatches on is in `COMMANDS`, and vice versa. `COMMANDS` is
