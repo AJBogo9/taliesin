@@ -81,4 +81,8 @@ interface Window {
   taliFocusTrap?: (container: Element, initial?: Element | null) => () => void;
   /** Programmatic Cmd-K opener (search.js), for the keyboard reader's `/` shortcut. */
   taliOpenSearch?: () => void;
+  /** Reader preference: are single-key shortcuts (`f`, `?`, `/`) live?
+   *  (code-enhance/01-registry.js). The first-run nudge omits the `?` line when this
+   *  is present and returns false, matching the "don't advertise dead keys" rule. */
+  taliShortcutsOn?: () => boolean;
 }

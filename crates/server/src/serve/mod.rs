@@ -618,7 +618,7 @@ pub(crate) const STATUS_CSS: &str = "\
       [data-qmd-cell-state=\"running\"] .tali-cell-badge { animation: tali-pulse 1s ease-in-out infinite; } \
       @keyframes tali-pulse { 50% { opacity: .35; } } \
     } \
-    .tali-hint-nudge { position: absolute; bottom: calc(100% + .45rem); left: 0; max-width: 15rem; \
+    .tali-hint-nudge { position: absolute; bottom: calc(100% + .45rem); left: 0; width: 14rem; \
       display: flex; flex-direction: column; gap: .4rem; padding: .6rem .7rem; \
       font: 12px/1.4 ui-sans-serif, system-ui, sans-serif; \
       background: var(--tali-bg, #fff); color: var(--tali-fg, #111); \
