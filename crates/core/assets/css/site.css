@@ -296,6 +296,30 @@ body.tali-book-body [data-block-id] { scroll-margin-top: calc(var(--tali-nav-h) 
   .tali-book-postnav { width: auto; }
 }
 
+/* Book landing-page Contents (B2): the hardcover table of contents on a book's landing
+   page. A prominent, readable list in the reading column — distinct from the compact
+   off-canvas drawer, whose classes it never reuses. --tali-* tokens, theme-aware. */
+.tali-book-landing-toc {
+  margin: 2.75rem 0 1rem; padding-top: 1.4rem; border-top: 1px solid var(--tali-border); }
+.tali-btoc-title { margin: 0 0 1rem; font-size: 1.15rem; }
+.tali-btoc-list { list-style: none; margin: 0; padding: 0; }
+.tali-btoc-part { margin: 1.4rem 0 .5rem; font-size: .78rem; font-weight: 700;
+  letter-spacing: .05em; text-transform: uppercase; color: var(--tali-muted); }
+.tali-btoc-item { margin: .1rem 0 .7rem; }
+.tali-btoc-link { display: inline-flex; align-items: baseline; gap: .5rem;
+  color: var(--tali-fg); text-decoration: none; font: 600 1.02rem/1.35 var(--tali-font-head); }
+.tali-btoc-link:hover { color: var(--tali-link); }
+.tali-btoc-link:hover .tali-btoc-chap { text-decoration: underline; text-underline-offset: 3px; }
+.tali-btoc-num { flex: 0 0 auto; min-width: 1.4em; color: var(--tali-muted);
+  font-variant-numeric: tabular-nums; }
+.tali-btoc-link:hover .tali-btoc-num { color: var(--tali-link); }
+.tali-btoc-desc { margin: .15rem 0 0 1.9em; color: var(--tali-muted); font-size: .92rem; line-height: 1.45; }
+.tali-btoc-draft .tali-btoc-link { color: var(--tali-muted); }
+@media (forced-colors: active) {
+  .tali-book-landing-toc { border-top: 1px solid CanvasText; }
+  .tali-btoc-link { color: LinkText; }
+}
+
 /* High-contrast / forced-colors: the site chrome leans on subtle 1px borders + a tinted
    active state, both of which a forced palette can flatten. Re-assert a visible separator
    on the navbar / sidebar / footer and a clear marker on the active nav item so the

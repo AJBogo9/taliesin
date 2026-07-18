@@ -207,6 +207,7 @@ pub use card::{
     uncovered_glyphs,
 };
 mod backlinks;
+mod book_toc;
 mod categories;
 mod cite_this;
 mod feed;
@@ -809,6 +810,8 @@ impl Site {
         // this page defines that other pages reference.
         self.attach_backlinks(blocks, &page.url);
         self.expand_page(page, blocks, warnings);
+        // The whole-book Contents list, on the book landing page only.
+        self.attach_book_toc(page, blocks);
         // Last: the reader-facing "Cite this" box, when the page carries enough metadata.
         self.attach_cite_this(page, blocks);
     }
