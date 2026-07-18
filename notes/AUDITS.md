@@ -147,6 +147,34 @@ rejected; `.html` still builds). No corpus pin: this is CLI arg-validation, not 
 Spec/plan: `docs/superpowers/specs|plans/2026-07-18-dx11-friendly-pdf-rejection*`. **Unblocks nothing new;
 next per the suggested order is the DX10-followup `new deck --tour`.**
 
+**DX10-followup LANDED 2026-07-18** (the 4th DX10 sub-part, "scaffolds that teach"; unblocked by DX5).
+**Before:** `taliesin new deck <slug>` scaffolded a bare 2-slide deck, so the single most-delightful deck
+capabilities (fragments, incremental reveal, side-by-side columns, live magic-move, speaker notes) were
+invisible until the author read the reference. **The fix:** `new deck --tour` scaffolds a *guided*,
+check-clean deck: seven slides, one per feature, each demonstrating **and** explaining it in a line
+(scaffold-as-teacher) — navigation basics (`##`=slide, arrows/`?`/`s`), a `. . .` pause + `::: {.fragment}`,
+`::: {.incremental}`, `::: {.columns}`/`.column` (the DX5-unblocked idiom), `::: {.magic-move}` over two
+code blocks, `::: {.notes}`, and a "make it yours" closer. **Plumbing:** `NewOpts.tour` + `--tour` in
+`NEW_FLAGS` + a `--tour` arm in `cmd_new` + a `--tour` branch in the pure `new_files` `Deck` arm; the tour
+body is a raw-string const `TOUR_SLIDES` (so its many `::: {.class}` braces need no format escaping),
+appended to interpolated front matter. **Deck-only (the design crux):** `--tour` on any other kind is a
+friendly hard error (`--tour scaffolds a guided deck; use it with \`new deck <slug>\``), not a silent no-op
+— on-theme with the DX batch's anti-silent-degradation stance; `--tour` is the first kind-specific `new`
+flag (`--draft` stays universal). The **default `new deck` output is byte-unchanged** (new branch is
+`--tour`-gated; the existing `corpus/scaffold/my-talk.tmd` pin + "default unchanged" tests stay green).
+**Dependency-free + check-clean by design:** no images/citations/xrefs/`{js}`/executed cells; every `:::`
+class is a known deck feature (DX5 `DIV_FEATURE_CLASSES`), so no did-you-mean fires; plain ` ```python `
+blocks are highlighted, not executed (no kernel needed). **Pinned:** a `corpus/scaffold/deck-tour.tmd`
+fixture (generated from the binary → rendered + linted by the corpus net = the capability pin) + three
+`new_cli.rs` tests (features present + check-clean; non-deck rejection writes nothing; byte-for-byte drift
+guard between the CLI output and the fixture). **Browser-verified** (chrome-devtools, the DX5 payoff is the
+headline): the columns slide lays out **side by side** (`grid-template-columns: 432px 432px`, two cols at
+equal `y`, different `x` — not stacked), fragments (2: pause + aside) / incremental (3 items) / magic-move
+(2 code blocks) all render, and `::: {.notes}` is `display:none` in the audience view; console clean. Full
+`cargo test -p taliesin-core -p taliesin-server` green, fmt + clippy clean. Spec/plan:
+`docs/superpowers/specs|plans/2026-07-18-dx10-followup-deck-tour*`. **With this, all 4 DX10 sub-parts are
+done; next per the suggested order is DX4/DX6/DX8.**
+
 -----------------------------------------------------------------------------
 
 # Vacuous-test / mutation audit (2026-07-18)
