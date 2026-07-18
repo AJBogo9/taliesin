@@ -54,13 +54,14 @@ CDN, no preview write-back, no new output format, `--tali-*` tokens only.
 
 ## Next session: start here
 
-**Pick up here (2026-07-18, DX audit — documented, not yet built).** A developer-experience audit
+**Pick up here (2026-07-18, DX audit — DX1 landed; DX2–DX19 queued).** A developer-experience audit
 landed ([2026-07-18-dx-audit.md](2026-07-18-dx-audit.md); DX/discoverability research + full DX-surface
-map + error/feedback-loop audit + 4 persona simulations). All 19 findings + 3 design questions are queued
-as the **DX audit batch (§6** of Open work, above Tier 2**)** with effort/type/persona tags. Headline:
-DX is above median; **one finding dominates (DX1)** — the located "did-you-mean" validators run in
-`build`/`check` but not in live preview, so every persona shipped a broken doc. Most items are *surfacing
-an existing capability*, not net-new. Nothing built yet — this is a "come back when there's time" queue.
+map + error/feedback-loop audit + 4 persona simulations); 19 findings + 3 design questions queued as the
+**DX audit batch (§6** of Open work, above Tier 2**)**. **DX1 (the dominant finding — live preview
+validation) is DONE** (both serve paths now surface the static validators + cross-page + `_site.yml`
+warnings; browser-verified; local `main` after merge, NOT pushed — check `git log origin/main..main`).
+Next up per the suggested order: **{DX2, DX3, DX10}** (three S-effort "hidden→used" wins). Most remaining
+items are *surfacing an existing capability*, not net-new — a "come back when there's time" queue.
 
 **Pick up here (2026-07-18, PMF-audit batch — START HERE for feature work).** A product-market-fit
 audit landed ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md); 30+7 sourced personas +
@@ -730,20 +731,14 @@ named symbol first, trust the *symptom* not the cause/line, and measure the runn
 promising anything. Tags: 🎓 academic · ✍️ blogger · 🎤 speaker · 🤖 agent. Type: [surface] = wire up
 an existing capability (most of these), [new] = net-new.
 
-**THE dominant finding (do first) — every persona shipped a broken doc because of it:**
+**DX1 — LANDED 2026-07-18** (the dominant finding). Live static validation now runs on **both** serve
+paths, feeding the existing dev-menu list + badge; spec/plan under `docs/superpowers/specs|plans/2026-07-18-dx1-live-preview-validation*`,
+closure record in [AUDITS.md](AUDITS.md). Scope collapsed hard on grounding (the exact rot this file warns
+about): the red-dot badge **already existed**, and single-doc `serve` **already** surfaced xrefs + render
+warnings — the real gap was `serve_site` parity (static set + cross-page + `_site.yml` warnings). No
+incremental infra needed (~27 ms whole-site re-derive). **Do not re-open.**
 
-- **DX1 — Live validation in the preview + a red-dot "audit" badge.** M · [surface] · 🎓✍️🎤🤖.
-  The located "did-you-mean" validators (broken links, missing images/assets/media, dup heading ids,
-  dangling `@fig-`/`@sec-`) run in `build`/`check`/`publish` (`check.rs:112 page_static_diagnostics`,
-  `cite::validate_xrefs`) but **NOT on either serve path** — and `serve_site` validates even less than
-  `serve` (no `validate_xrefs`, no static set). Wire both onto the serve loop behind a debounce; surface
-  in the existing dev-menu diagnostics list (transport already exists, used by render-pass warnings);
-  add an Astro-style red-dot badge on the collapsed `◇</>` button. Only real engineering: make
-  cross-page link checking incremental enough for the hot loop (measure first — a whole-site re-derive
-  was 27ms on the largest book per item #2). Also fold in: locate + browser-surface the `_site.yml`
-  unknown-key warnings (today console-only, unlocated).
-
-**Tier 1 — discoverability family ("in the vein of the shell completion just shipped"):**
+**Tier 1 — discoverability family ("in the vein of the shell completion just shipped"), now do-first:**
 
 - **DX2 — First-run in-preview hints** (one-time, dismissible, localStorage-gated): "Alt-click any block
   to jump to source" + "Press ? for shortcuts". S · [surface] · ✍️🎤 both would have shipped never
@@ -815,9 +810,9 @@ an existing capability (most of these), [new] = net-new.
   One-command deck publish in scope? (🎤)
 - Presenter laser/spotlight + auto-advance (reveal.js reflexes). (🎤)
 
-**Suggested order:** DX1 → {DX2, DX3, DX10} (three S-effort "hidden→used" wins) → {DX5, DX11} (kill the two
-silent-failure traps) → DX4/DX6/DX8 → DX17–19 (DX18 is cheap, pull forward). Tier 0–1 and most of Tier 2
-are *surfacing existing capability*, not net-new.
+**Suggested order:** ~~DX1~~ (landed) → {DX2, DX3, DX10} (three S-effort "hidden→used" wins) → {DX5, DX11}
+(kill the two silent-failure traps) → DX4/DX6/DX8 → DX17–19 (DX18 is cheap, pull forward). Tier 0–1 and
+most of Tier 2 are *surfacing existing capability*, not net-new.
 
 ## Tier 2 — hardening (P3)
 

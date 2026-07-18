@@ -19,6 +19,24 @@ live preview**, so the fast loop is silent about the errors the author most need
 persona shipped a broken doc because of it). Most recommendations are *surfacing an existing capability*,
 not net-new. Prioritized feature queue in the file.
 
+**DX1 LANDED 2026-07-18** (the dominant finding). Live static validation now runs on both serve paths:
+a new `crates/server/src/preview_diag.rs` bridge converts the `check`-superset validators
+(`check::page_static_diagnostics`, `Site::validate_cross_page_links`, `Site::warnings`) into
+`protocol::Diagnostic`s; `serve::rebuild` runs the static set (Standalone) on pre-exec blocks, and
+`serve_site::build_page` reaches parity (static InSite + cross-page filtered to the current page +
+located `_site.yml` warnings, previously console-only). Spec/plan:
+`docs/superpowers/specs|plans/2026-07-18-dx1-live-preview-validation*`. **The scope collapsed on
+grounding — the exact backlog rot the audit itself warns about:** the "add a red-dot audit badge" work
+**already existed** (`client.js` shows an amber count + red-on-error dot on the collapsed `◇</>` button),
+and single-doc `serve` **already** surfaced xrefs + render warnings; the real gap was `serve_site`
+parity, not "wire both paths + build a badge." The audit's "make cross-page checking incremental" was
+also unnecessary (~27 ms whole-site re-derive; a debounced full run is fine). Browser-verified on both
+paths (single-doc badge=3; site index badge=2; a clean sibling page shows only the site-global config
+warning, no phantom cross-page). Method note: the helpers are unit-tested in-crate (the bin crate has no
+lib target, so `tests/*.rs` can't see `pub(crate)` items); the live-socket wiring is verified via
+chrome-devtools, not a unit test. Cheap follow-ups deferred: DX5 (unknown `:::`-class "did you mean")
+and line-locating `_site.yml` warnings (`check` doesn't locate them either).
+
 -----------------------------------------------------------------------------
 
 # Vacuous-test / mutation audit (2026-07-18)
