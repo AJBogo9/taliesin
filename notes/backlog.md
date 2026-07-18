@@ -54,7 +54,7 @@ CDN, no preview write-back, no new output format, `--tali-*` tokens only.
 
 ## Next session: start here
 
-**Pick up here (2026-07-18, DX audit — DX1–DX3 + DX5 + DX10[3/4] + DX11 landed; DX4/DX6–DX9/DX12–DX19 queued).** A developer-experience audit
+**Pick up here (2026-07-18, DX audit — DX1–DX5 + DX10[4/4] + DX11 landed; DX6–DX9/DX12–DX19 queued).** A developer-experience audit
 landed ([2026-07-18-dx-audit.md](2026-07-18-dx-audit.md); DX/discoverability research + full DX-surface
 map + error/feedback-loop audit + 4 persona simulations); 19 findings + 3 design questions queued as the
 **DX audit batch (§6** of Open work, above Tier 2**)**. **DX1 (live preview validation) is DONE** (both
@@ -71,11 +71,13 @@ is DONE** — `build doc.tmd doc.pdf` (and `.docx`/`.tex`/`.md`/…) is now a ha
 `.html` fix + browser Print + the planned print track, instead of silently writing HTML bytes into the
 `.pdf` at exit 0 (🎓's abandonment moment); a pure guard in `parse_build_args` (`NON_HTML_OUTPUT_EXTS`),
 unit- + end-to-end-pinned (`strict_robustness.rs`). **DX1–DX3 + DX5 + DX10[3/4] pushed to `origin/main`
-2026-07-18; DX11 landed on local `main`, not yet pushed** (verify with `git log --oneline origin/main..main`;
-the author may push again mid-session, so re-check, never trust a recorded SHA). **DX10-followup
-(`new deck --tour`) is DONE** — a `--tour` arm on `new deck` scaffolds a guided, check-clean deck demoing
-every deck feature (browser-verified: columns side-by-side, notes hidden); deck-only (`new post --tour` is a
-friendly error); landed on local `main`. Next up per the suggested order: DX4/DX6/DX8, then DX17–19 (DX18
+2026-07-18** (verify with `git log --oneline origin/main..main`; the author may push again mid-session, so
+re-check, never trust a recorded SHA). **DX10-followup (`new deck --tour`) is DONE** — a `--tour` arm on
+`new deck` scaffolds a guided, check-clean deck demoing every deck feature (browser-verified: columns
+side-by-side, notes hidden); deck-only. **DX4 (`taliesin doctor`) is DONE** — a standalone env self-audit
+(both interpreters + kernel packages + active conda/venv + `_site.yml`), ✓/⚠/✗ + fix commands, exits
+non-zero only on a configured-but-broken interpreter; `--format json`; all pushed to `origin/main`. Next up
+per the suggested order: DX6 (`check --explain <code>`), DX8 (Cmd-K command palette), then DX17–19 (DX18
 cheap). Most remaining items are *surfacing an existing capability*, not net-new.
 
 **Pick up here (2026-07-18, PMF-audit batch — START HERE for feature work).** A product-market-fit
@@ -771,9 +773,14 @@ constants (can't drift from the validator). Spec/plan under
 `docs/superpowers/specs|plans/2026-07-18-dx3-init-schema-autowire*`, closure record in [AUDITS.md](AUDITS.md).
 Integration-verified (byte-identical to `taliesin schema`; `.taliesin/` never ships into `_site/`).
 **Do not re-open.**
-- **DX4 — `taliesin doctor`**: standalone env self-audit (✓/✗/⚠ + fix commands) for Python/R interpreter,
-  ipykernel/IRkernel, config sanity, incl. **conda/active-env detection**. M · [new*] · 🎓. Today the
-  probe is buried inside `check` and only fires for languages a doc already uses (circular); *logic reusable.
+**DX4 — LANDED 2026-07-18.** `taliesin doctor [dir]` is a standalone env self-audit: unconditionally
+resolves + probes both Python and R (the circular `check`-only probe is now surfaced), reporting a per-item
+✓/⚠/✗ line with a fix command, plus **conda/active-env detection** (new: `VIRTUAL_ENV`/`CONDA_PREFIX`) and
+`_site.yml` config sanity. Severity: ready = runs + kernel pkg; warn = pkg missing (fix cmd) or an absent
+*default* interpreter; error = a *configured* interpreter (`TALIESIN_*`/`_site.yml` field/`.venv`) that
+won't run (exits non-zero). `--format json` for agents. Pure testable core reuses `crate::interpreter`
+verbatim; never executes the doc. Spec/plan under `docs/superpowers/specs|plans/2026-07-18-dx4-doctor*`,
+record in [AUDITS.md](AUDITS.md).
 **DX5 — LANDED 2026-07-18.** Both silent-degradation traps closed: (A) `::: {.columns}` with `.column`
 children is aliased to the native `layout-ncol` grid (side-by-side, responsive — Lena's on-projector
 disaster); (B) a misspelled feature/theorem `:::` class draws a located "did you mean" (`validate_div_class`,
@@ -839,7 +846,7 @@ fragments/`. . .`/incremental/columns/magic-move/notes + a make-it-yours closer,
   One-command deck publish in scope? (🎤)
 - Presenter laser/spotlight + auto-advance (reveal.js reflexes). (🎤)
 
-**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ ~~DX5~~ ~~DX11~~ ~~DX10-followup~~ (all landed) → DX4/DX6/DX8 → DX17–19 (DX18 cheap)
+**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ ~~DX5~~ ~~DX11~~ ~~DX10-followup~~ ~~DX4~~ (all landed) → DX6/DX8 → DX17–19 (DX18 cheap)
 (kill the two silent-failure traps) → DX4/DX6/DX8 → DX17–19 (DX18 is cheap, pull forward). Tier 0–1 and
 most of Tier 2 are *surfacing existing capability*, not net-new.
 

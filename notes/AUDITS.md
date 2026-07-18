@@ -175,6 +175,36 @@ equal `y`, different `x` — not stacked), fragments (2: pause + aside) / increm
 `docs/superpowers/specs|plans/2026-07-18-dx10-followup-deck-tour*`. **With this, all 4 DX10 sub-parts are
 done; next per the suggested order is DX4/DX6/DX8.**
 
+**DX4 LANDED 2026-07-18** (Tier 2, "the heavier discoverability tier"). **The gap:** a first-run user's
+first code cell fails on kernel wiring and they want a `flutter doctor`/`quarto check`. Taliesin *had* the
+probe logic (`interpreter::probe`: `<bin> --version` + an `import ipykernel`/`library(IRkernel)`), but it
+was **buried inside `check` and only ran for languages a document already used** (`check.rs`
+`used_languages` → `env_entry`): circular, since you can't diagnose a Python setup before you have a
+working-enough Python doc. **The fix:** `taliesin doctor [dir]` surfaces it as an **unconditional**
+standalone audit of *both* Python and R: resolve the interpreter (honouring `_site.yml python:/r:`, a
+`.venv`, `TALIESIN_PYTHON/R`, then the PATH default, via `interpreter::resolve_*`) + probe it, plus **active
+conda/virtualenv detection** (NET-NEW: `VIRTUAL_ENV`/`CONDA_PREFIX`/`CONDA_DEFAULT_ENV` were read nowhere
+before) and `_site.yml` sanity (reusing `site::is_malformed_config_warning`). Prints a per-item ✓/⚠/✗ line
+with a concrete fix command and a readiness summary; `--format json` (`{ok, checks:[{name,status,detail,
+fix?}]}`) for agents. **Severity model (the design crux):** ✓ = interpreter runs *and* its kernel package
+imports; ⚠ = runs but the package is missing (→ a `<that-python> -m pip install ipykernel` fix) OR the
+*default* interpreter is simply absent (you don't have it; not a misconfiguration); ✗ = a *configured*
+interpreter (`Provenance::Field`/`Env`/`Venv` — a `TALIESIN_PYTHON`, an `_site.yml` field, a `.venv`) that
+does not run at all. **Exit non-zero iff any ✗** (a pointed-at-and-broken interpreter is unambiguously
+wrong and scriptable; CI kernel-readiness *warning*-gating is the separate DX18 `--require-kernel`). **New
+module `crates/server/src/doctor.rs`** with a **pure, testable core** (`interpreter_check`/`active_env_check`
+/`overall_ok` — probe + env injected, unit-tested without spawning, mirroring `interpreter.rs`'s discipline)
++ a thin `cmd_doctor` I/O wrapper; reuses `crate::interpreter` verbatim and never executes the user's
+document. **Registration is guard-tested across FIVE coupled places** (found by the test net, not guessed):
+dispatch arm ⟺ `COMMANDS` ⟺ `subcommand_help` ⟺ `usage()` ⟺ **`complete::command_desc`** (the shell-
+completion brain — `every_command_has_a_description` caught the missing 5th). **Verification:** 6 unit tests
+(each severity branch + the fix strings; conda/venv/none; `overall_ok`), 3 `doctor_cli.rs` integration pins
+(sections present, JSON shape, broken-`TALIESIN_PYTHON` exits non-zero), full `cargo test -p taliesin-core
+-p taliesin-server` green, fmt + clippy clean, and a real-binary sweep (⚠ ipykernel-missing / ✗ broken-
+python-exit-1 / conda-env-named / valid+malformed `_site.yml` config). No corpus pin: a CLI diagnostic, not
+a rendering capability. Spec/plan: `docs/superpowers/specs|plans/2026-07-18-dx4-doctor*`. **Next per the
+suggested order: DX6 (`check --explain <code>` + `docs_url`), then DX8 (Cmd-K command palette).**
+
 -----------------------------------------------------------------------------
 
 # Vacuous-test / mutation audit (2026-07-18)
