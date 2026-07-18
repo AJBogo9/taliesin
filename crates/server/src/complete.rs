@@ -434,7 +434,7 @@ fn complete_line(words: &[String], cwd: &Path) -> Completion {
         let candidates = flags_for(sub)
             .iter()
             .filter(|(f, _, _)| f.starts_with(cur))
-            .map(|(f, _, d)| Candidate::described(*f, *d))
+            .map(|(f, _, d)| Candidate::described(*f, d))
             .collect();
         return Completion {
             candidates,
@@ -475,10 +475,10 @@ fn complete_line(words: &[String], cwd: &Path) -> Completion {
 
     // 5. First path positional (only the first; later positionals fall through to the
     //    shell's own file completion).
-    if let Some(kind) = positional_kind(sub) {
-        if positionals_seen(sub, &prior[1..]) == 0 {
-            return complete_paths(cur, cwd, &kind);
-        }
+    if let Some(kind) = positional_kind(sub)
+        && positionals_seen(sub, &prior[1..]) == 0
+    {
+        return complete_paths(cur, cwd, &kind);
     }
 
     // 6. Nothing special: let the shell do its normal file completion.

@@ -17,24 +17,30 @@ fn skill_md() -> String {
     std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read SKILL.md at {path}: {e}"))
 }
 
-/// The real command set, read from the binary's own completion script (`cmds="…"`), so this
-/// can never disagree with what `main()` dispatches.
+/// The real command set, read from the binary's own dynamic completer: `__complete` with an
+/// empty first word lists every dispatchable subcommand as `name\tdescription` lines (plus a
+/// trailing `:<directive>`). The completion is dynamic (the shell script shells out to
+/// `__complete` rather than embedding a static `cmds="…"`), so this reads the same dispatch
+/// brain `main()` uses and can never disagree with it.
 fn real_commands() -> HashSet<String> {
     let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
-        .args(["completions", "bash"])
+        .args(["__complete", ""])
         .output()
-        .expect("run taliesin completions bash");
-    let script = String::from_utf8_lossy(&out.stdout);
-    let line = script
+        .expect("run taliesin __complete");
+    let text = String::from_utf8_lossy(&out.stdout);
+    let cmds: HashSet<String> = text
         .lines()
-        .find(|l| l.trim_start().starts_with("cmds="))
-        .expect("completions script defines cmds=");
-    line.split('"')
-        .nth(1)
-        .expect("cmds is a quoted list")
-        .split_whitespace()
+        .filter(|l| !l.starts_with(':')) // skip the trailing `:<directive>` line
+        .filter_map(|l| l.split('\t').next()) // candidate name, before its \t description
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
         .map(str::to_string)
-        .collect()
+        .collect();
+    assert!(
+        !cmds.is_empty(),
+        "`taliesin __complete \"\"` must list the subcommands"
+    );
+    cmds
 }
 
 /// Every `taliesin <lowercase-verb>` in the skill (prose uses `Taliesin` for the tool name,
