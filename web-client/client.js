@@ -410,6 +410,7 @@
       e.stopPropagation();
       panel.hidden = !panel.hidden;
       toggle.setAttribute("aria-expanded", panel.hidden ? "false" : "true");
+      if (!panel.hidden && dismissHint) dismissHint(); // opening the menu = the tools were found
     });
     document.addEventListener("click", (e) => {
       if (!panel.hidden && e.target instanceof Node && !host.contains(e.target)) {
@@ -1313,6 +1314,12 @@
       ws.send(JSON.stringify({ type: "click_block", ...blockRef(el) }));
     }
     openSource(el);
+    if (dismissHint) dismissHint(); // they discovered click-to-source; retire the hint
+  });
+
+  // Esc also retires the first-run hint (consistent with the error overlay's Esc-to-dismiss).
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && dismissHint) dismissHint();
   });
 
   // Click-to-source affordance: while Alt is held, make the otherwise-invisible
