@@ -16,8 +16,11 @@ use crate::{log, serve, serve_site};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-/// `_site.yml` for the scaffold: the minimal flat-native config (just a title).
-const INIT_SITE_YML: &str = "title: My site\n";
+/// `_site.yml` for the scaffold: the schema modeline (so an editor's YAML language server
+/// validates + autocompletes config keys with zero manual step — the schema is emitted into
+/// `.taliesin/` beside it) followed by the minimal flat-native config (just a title).
+const INIT_SITE_YML: &str =
+    "# yaml-language-server: $schema=.taliesin/tali-site.schema.json\ntitle: My site\n";
 
 /// `index.tmd` for the scaffold: a hello-world page that previews immediately and
 /// points the new user at the next steps. `.tmd` is the native extension.
@@ -96,6 +99,17 @@ fn scaffold_init(dir: &Path) -> Result<Vec<PathBuf>, String> {
         // The agent onramp (edit `.tmd`/`check --format json`/dialect). Generated from the
         // validator vocabulary and golden-locked in core, so it cannot drift from `check`.
         ("AGENTS.md", taliesin_core::agents::AGENTS_MD),
+        // The bundled config schemas (the same constants `taliesin schema` emits, so they can't
+        // drift from the validator), wired into `_site.yml` via the modeline above. In a
+        // walker-skipped dot-dir so they never become a page or ship into `_site/`.
+        (
+            ".taliesin/tali-site.schema.json",
+            taliesin_core::schema::SITE_SCHEMA,
+        ),
+        (
+            ".taliesin/tali-frontmatter.schema.json",
+            taliesin_core::schema::FRONTMATTER_SCHEMA,
+        ),
     ];
     // Refuse to overwrite *any* target before writing *any*, so a partial scaffold
     // never lands on top of an existing project.
@@ -111,6 +125,12 @@ fn scaffold_init(dir: &Path) -> Result<Vec<PathBuf>, String> {
     let mut written = Vec::new();
     for (name, contents) in files {
         let path = dir.join(name);
+        // Schema files live in a `.taliesin/` subdir, so ensure each target's parent exists.
+        if let Some(parent) = path.parent()
+            && let Err(e) = std::fs::create_dir_all(parent)
+        {
+            return Err(format!("cannot create {}: {e}", parent.display()));
+        }
         if let Err(e) = std::fs::write(&path, contents) {
             return Err(format!("cannot write {}: {e}", path.display()));
         }
@@ -619,17 +639,56 @@ mod tests {
         let site_yml = dir.join("_site.yml");
         let index = dir.join("index.tmd");
         let agents = dir.join("AGENTS.md");
+        let site_schema = dir.join(".taliesin").join("tali-site.schema.json");
+        let fm_schema = dir.join(".taliesin").join("tali-frontmatter.schema.json");
         assert!(site_yml.exists(), "_site.yml written");
         assert!(index.exists(), "index.tmd written");
         assert!(agents.exists(), "AGENTS.md written");
+        assert!(
+            site_schema.exists(),
+            ".taliesin/tali-site.schema.json written"
+        );
+        assert!(
+            fm_schema.exists(),
+            ".taliesin/tali-frontmatter.schema.json written"
+        );
         assert_eq!(
             written,
-            vec![site_yml.clone(), index.clone(), agents.clone()]
+            vec![
+                site_yml.clone(),
+                index.clone(),
+                agents.clone(),
+                site_schema.clone(),
+                fm_schema.clone(),
+            ]
         );
 
         // The scaffold is a real, parseable site whose one page previews.
         let cfg = fs::read_to_string(&site_yml).unwrap();
         assert!(cfg.contains("title:"), "config has a title: {cfg}");
+
+        // Load-bearing: the modeline points at a real schema whose body is the bundled one, so
+        // the referenced path and the emitted file can never silently drift.
+        let first = cfg.lines().next().unwrap_or("");
+        assert!(
+            first.starts_with("# yaml-language-server: $schema="),
+            "first line is the schema modeline: {first}"
+        );
+        let rel = first.trim_end().rsplit('=').next().unwrap();
+        let pointed = dir.join(rel);
+        assert!(
+            pointed.exists(),
+            "modeline path resolves to a real file: {rel}"
+        );
+        assert_eq!(
+            fs::read_to_string(&pointed).unwrap(),
+            taliesin_core::schema::SITE_SCHEMA,
+            "the wired schema is the bundled SITE_SCHEMA"
+        );
+        assert_eq!(
+            fs::read_to_string(&fm_schema).unwrap(),
+            taliesin_core::schema::FRONTMATTER_SCHEMA,
+        );
         let page = fs::read_to_string(&index).unwrap();
         assert!(
             page.starts_with("---") && page.contains("title:"),
