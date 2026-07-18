@@ -926,6 +926,15 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
         });
         exec.set_progress(sink, Some(rel.to_string()));
     }
+    // Static lints on PRE-EXEC blocks (InSite omits validate_local_links; the site-aware
+    // cross-page check below covers those). Collected now, pushed after `diags` is built.
+    let static_diags = crate::preview_diag::static_diagnostics(
+        &src,
+        &doc.blocks,
+        &base,
+        doc.format,
+        crate::check::Scope::InSite,
+    );
     doc.blocks = exec.run(std::mem::take(&mut doc.blocks)).await;
     // Finish the executed blocks exactly as the build does (numbering, cross-refs +
     // broken-ref warnings, listing/about expansion, post decoration). Queries the
@@ -942,6 +951,14 @@ async fn build_page(app: &SiteApp, rel: &str, pool: &mut ExecPool) {
         )
     };
     let mut diags = page_diagnostics(&page.input, exec);
+    diags.extend(static_diags);
+    // Cross-page links (this page only) + `_site.yml` config warnings. `validate_cross_page_links`
+    // re-renders the whole site (~27 ms), so scope the site lock tightly.
+    {
+        let site = app.site.lock();
+        diags.extend(crate::preview_diag::cross_page_diagnostics(&site, rel));
+        diags.extend(crate::preview_diag::site_config_diagnostics(&site));
+    }
     for w in &warnings {
         let mut d = Diagnostic::warn(&w.message);
         if let Some(line) = w.line {
