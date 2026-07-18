@@ -58,11 +58,13 @@ CDN, no preview write-back, no new output format, `--tali-*` tokens only.
 audit landed ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md); 30+7 sourced personas +
 author/reader/publish/trust walkthroughs). Headline: the tool is **feature-complete for ~one user**,
 so the dedup pass killed most candidates (they already ship: `publish`→Cloudflare, presenter view,
-deck a11y, `echo`/`code-fold`, the deck `?` menu). **Build-ready now (§1):** **B1** reader "Cite
-this" box (owner revived D70, 2026-07-18) and **B2** book landing-page auto-TOC. **Needs a direction
+deck a11y, `echo`/`code-fold`, the deck `?` menu). **~~B1~~ reader "Cite this" box LANDED
+2026-07-18** (local `main` `4bb10c7`, not pushed; site-author-fallback gate, DOI deferred to B5 —
+see §1). **Build-ready now (§1):** **B2** book landing-page auto-TOC. **Needs a direction
 brainstorm first (§3):** **B4** deck visual-identity pass. Verify item **C-PUB-1** in Tier 2; the
 demand-driven tail (incl. the Zenodo DOI on-ramp, staged behind B1) in Tier 3. Grep the named symbol
-before trusting any entry, as always.
+before trusting any entry, as always. **Check, don't trust the SHAs:** `git log --oneline
+origin/main..main`.
 
 **Pick up here (2026-07-18, newest — C3+C4 coverage gaps landed; the C3–C6 batch was 2/4
 already pinned).** Filling the "four uncovered features" set, two were already covered — the
@@ -371,17 +373,14 @@ buy-in. Price it by building it; grep the named symbol before trusting the entry
   Distinct from the per-page book-TOC (the 2026-07-06 "fix-in-place, keep both nav surfaces"
   decision). Pin: `corpus/demo-book/`. value high / effort S-M.
 
-- **Reader-facing "Cite this" box + BibTeX/CSL/RIS export (PMF B1, = D70, REVIVED by owner
-  2026-07-18):** the owner reversed the same-day D70 decline and explicitly wants it. The
-  machine-readable half already ships (`.citations.json`, ScholarlyArticle JSON-LD, Google-Scholar
-  `citation_*` meta); this adds the *reader* widget: a rendered "Cite this" box that copies/downloads
-  the citation in BibTeX + CSL + RIS, built from the page's citation front-matter. Design gate (the
-  original D70 concern): render only when the page carries enough metadata (author/title/date) so an
-  authorless post degrades to nothing rather than an empty box. Pin: a corpus page that sets
-  `author:`/`date:` (the 8 tech-blog posts do not, which is why D70 was first declined). value high /
-  effort M. Detail: [2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md).
-
-**Do not re-add:** D37 (lint `format:` sub-keys) already landed (`515fbd7`).
+**Do not re-add:** D37 (lint `format:` sub-keys) already landed (`515fbd7`). **B1 (reader-facing
+"Cite this" box) LANDED 2026-07-18** (local `main` `4bb10c7`, NOT pushed — the author pushes;
+spec `6f1b5a4`): `site/cite_this.rs` (deterministic BibTeX/CSL-JSON/RIS serializers + resolve/gate +
+the `.tali-cite-this` block via `attach_cite_this`, appended last in `finish_blocks`), JS fragment
+`17-cite-box.js`, `site.css`, and `corpus/cite-this/` + `tests/cite_this.rs`. Owner ruling
+2026-07-18: **site-author fallback** (page `author:` → site `author:`, never the site *title*, so an
+authorless post with no site author degrades to nothing); DOI deferred to B5. Browser-verified
+(light+dark, mobile+desktop, no console errors). **Do not re-add.**
 
 ### 2. Live defects (small, independent; count them, don't trust a number written here)
 
