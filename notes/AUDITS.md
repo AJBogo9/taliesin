@@ -60,6 +60,23 @@ matrix. A layout gotcha surfaced in-browser: `#tali-controls` shrink-wraps to th
 absolute callout needed a fixed `width` (14rem), not just `max-width`, or it collapsed to a sliver (the
 sibling `.tali-dev-panel` avoids this with `min-width:13rem`).
 
+**DX3 LANDED 2026-07-18** (Tier 1 discoverability — "the config-authoring equivalent of shell
+completion"). `taliesin init` now produces a project whose `_site.yml` autocompletes + red-squiggles in
+any editor with a YAML language server, zero manual step: it emits the two bundled schemas into a
+`.taliesin/` dot-dir and prepends `# yaml-language-server: $schema=.taliesin/tali-site.schema.json` to
+the scaffolded `_site.yml`. One-file change (`cli.rs`: `INIT_SITE_YML` gains the modeline; `scaffold_init`
+gains the two schema entries + per-file parent-dir creation; the all-or-nothing overwrite guard + written
+list now cover them). **DRY:** reuses `taliesin_core::schema::{SITE_SCHEMA, FRONTMATTER_SCHEMA}` (the same
+constants `taliesin schema` emits), so init's schemas can't drift from the validator — a test pins that
+the modeline path resolves to a real file whose body **==** `SITE_SCHEMA` (mutation-checked). **Grounding
+notes:** all three site walkers already skip `.`/`_`-prefixed dirs (page discovery `discovery.rs:117`,
+`mirror_assets`, referenced-source deploy), so `.taliesin/` is neither a phantom page nor shipped into
+`_site/` — integration-verified (built output has no `.taliesin/`; the emitted files are byte-identical to
+`taliesin schema`; the modeline is an inert YAML comment, so `check`/`build` report no config warning).
+Only the **site** schema is modeline-wired (into `_site.yml`, a real YAML doc); the front-matter schema is
+emitted for the companion but not wired into `.tmd` files (a `.tmd` isn't a YAML doc a language server
+processes). `init` is the sole `_site.yml` producer, so `new`/paper/post are untouched (DX10 covers those).
+
 -----------------------------------------------------------------------------
 
 # Vacuous-test / mutation audit (2026-07-18)

@@ -54,17 +54,17 @@ CDN, no preview write-back, no new output format, `--tali-*` tokens only.
 
 ## Next session: start here
 
-**Pick up here (2026-07-18, DX audit — DX1+DX2 landed; DX3–DX19 queued).** A developer-experience audit
+**Pick up here (2026-07-18, DX audit — DX1–DX3 landed; DX4–DX19 queued).** A developer-experience audit
 landed ([2026-07-18-dx-audit.md](2026-07-18-dx-audit.md); DX/discoverability research + full DX-surface
 map + error/feedback-loop audit + 4 persona simulations); 19 findings + 3 design questions queued as the
-**DX audit batch (§6** of Open work, above Tier 2**)**. **DX1 (the dominant finding — live preview
-validation) is DONE** (both serve paths now surface the static validators + cross-page + `_site.yml`
-warnings; browser-verified). **DX2 (first-run in-preview hint) is DONE** (a one-time, dismissible,
-localStorage-gated callout tethered above the `◇</>` button surfaces Alt-click-to-source + `?`;
-browser-verified across single-doc/site/deck + the viewport matrix). Both on local `main` after merge,
-NOT pushed — check `git log origin/main..main`. Next up per the suggested order: **{DX3, DX10}** (the
-remaining two S-effort "hidden→used" wins). Most remaining items are *surfacing an existing capability*,
-not net-new — a "come back when there's time" queue.
+**DX audit batch (§6** of Open work, above Tier 2**)**. **DX1 (live preview validation) is DONE** (both
+serve paths surface the static validators + cross-page + `_site.yml` warnings; browser-verified).
+**DX2 (first-run in-preview hint) is DONE** (one-time dismissible callout surfacing Alt-click-to-source +
+`?`; browser-verified single-doc/site/deck + matrix). **DX3 (auto-wire config JSON Schema on `init`) is
+DONE** (`init` emits `.taliesin/` schemas + the `_site.yml` modeline; integration-verified). All on local
+`main` after merge, NOT pushed — check `git log origin/main..main`. Next up per the suggested order:
+**DX10** (the last S-effort "hidden→used" win — teaching scaffolds). Most remaining items are *surfacing
+an existing capability*, not net-new — a "come back when there's time" queue.
 
 **Pick up here (2026-07-18, PMF-audit batch — START HERE for feature work).** A product-market-fit
 audit landed ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md); 30+7 sourced personas +
@@ -751,10 +751,14 @@ menu-open / Alt-click / Esc). Per-line liveness omits the `?` line on decks / sh
 under `docs/superpowers/specs|plans/2026-07-18-dx2-first-run-preview-hint*`, closure record in
 [AUDITS.md](AUDITS.md). Browser-verified single-doc/site/deck + viewport matrix. **Do not re-open.**
 
-- **DX3 — Auto-wire the config JSON Schema on `init`**: write the `# yaml-language-server: $schema=…/tali-site.schema.json`
-  directive into the scaffolded `_site.yml` + emit the schema files, so config autocompletes + validates
-  in-editor with zero manual step. S · [surface] · 🎓✍️. `taliesin schema` already emits them; the wiring
-  is manual opt-in today.
+**DX3 — LANDED 2026-07-18.** `taliesin init` now emits both bundled schemas into a walker-skipped
+`.taliesin/` dot-dir and prepends `# yaml-language-server: $schema=.taliesin/tali-site.schema.json` to
+the scaffolded `_site.yml`, so config autocompletes + red-squiggles in-editor with zero manual step.
+One-file change (`cli.rs` `INIT_SITE_YML` + `scaffold_init`), reusing the `SITE_SCHEMA`/`FRONTMATTER_SCHEMA`
+constants (can't drift from the validator). Spec/plan under
+`docs/superpowers/specs|plans/2026-07-18-dx3-init-schema-autowire*`, closure record in [AUDITS.md](AUDITS.md).
+Integration-verified (byte-identical to `taliesin schema`; `.taliesin/` never ships into `_site/`).
+**Do not re-open.**
 - **DX4 — `taliesin doctor`**: standalone env self-audit (✓/✗/⚠ + fix commands) for Python/R interpreter,
   ipykernel/IRkernel, config sanity, incl. **conda/active-env detection**. M · [new*] · 🎓. Today the
   probe is buried inside `check` and only fires for languages a doc already uses (circular); *logic reusable.
@@ -817,7 +821,7 @@ under `docs/superpowers/specs|plans/2026-07-18-dx2-first-run-preview-hint*`, clo
   One-command deck publish in scope? (🎤)
 - Presenter laser/spotlight + auto-advance (reveal.js reflexes). (🎤)
 
-**Suggested order:** ~~DX1~~ ~~DX2~~ (landed) → {DX3, DX10} (the remaining S-effort "hidden→used" wins) → {DX5, DX11}
+**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ (landed) → DX10 (the last S-effort "hidden→used" win) → {DX5, DX11}
 (kill the two silent-failure traps) → DX4/DX6/DX8 → DX17–19 (DX18 is cheap, pull forward). Tier 0–1 and
 most of Tier 2 are *surfacing existing capability*, not net-new.
 
