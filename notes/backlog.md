@@ -54,6 +54,14 @@ CDN, no preview write-back, no new output format, `--tali-*` tokens only.
 
 ## Next session: start here
 
+**Pick up here (2026-07-18, DX audit — documented, not yet built).** A developer-experience audit
+landed ([2026-07-18-dx-audit.md](2026-07-18-dx-audit.md); DX/discoverability research + full DX-surface
+map + error/feedback-loop audit + 4 persona simulations). All 19 findings + 3 design questions are queued
+as the **DX audit batch (§6** of Open work, above Tier 2**)** with effort/type/persona tags. Headline:
+DX is above median; **one finding dominates (DX1)** — the located "did-you-mean" validators run in
+`build`/`check` but not in live preview, so every persona shipped a broken doc. Most items are *surfacing
+an existing capability*, not net-new. Nothing built yet — this is a "come back when there's time" queue.
+
 **Pick up here (2026-07-18, PMF-audit batch — START HERE for feature work).** A product-market-fit
 audit landed ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md); 30+7 sourced personas +
 author/reader/publish/trust walkthroughs). Headline: the tool is **feature-complete for ~one user**,
@@ -712,6 +720,104 @@ conclusion); and the **executive summary is misleading** (it describes a per-ent
 does not exist, miscounts, and its "rule on these first" list mixes open questions with
 already-shipped work). A skeptic verdict is evidence, never a ruling: D135's skeptic insisted on
 dropping Atom feeds as "a documented non-goal" and Atom shipped anyway, with autodiscovery.
+
+### 6. DX audit batch (2026-07-18)
+
+**Full rationale + sources + persona friction tables:** [2026-07-18-dx-audit.md](2026-07-18-dx-audit.md)
+(2 sourced research passes + 2 codebase audits + 4 persona simulations, all grounded against source).
+**These are audit findings, not priced builds — S/M/L are guesses.** Per this file's own law: grep the
+named symbol first, trust the *symptom* not the cause/line, and measure the running server before
+promising anything. Tags: 🎓 academic · ✍️ blogger · 🎤 speaker · 🤖 agent. Type: [surface] = wire up
+an existing capability (most of these), [new] = net-new.
+
+**THE dominant finding (do first) — every persona shipped a broken doc because of it:**
+
+- **DX1 — Live validation in the preview + a red-dot "audit" badge.** M · [surface] · 🎓✍️🎤🤖.
+  The located "did-you-mean" validators (broken links, missing images/assets/media, dup heading ids,
+  dangling `@fig-`/`@sec-`) run in `build`/`check`/`publish` (`check.rs:112 page_static_diagnostics`,
+  `cite::validate_xrefs`) but **NOT on either serve path** — and `serve_site` validates even less than
+  `serve` (no `validate_xrefs`, no static set). Wire both onto the serve loop behind a debounce; surface
+  in the existing dev-menu diagnostics list (transport already exists, used by render-pass warnings);
+  add an Astro-style red-dot badge on the collapsed `◇</>` button. Only real engineering: make
+  cross-page link checking incremental enough for the hot loop (measure first — a whole-site re-derive
+  was 27ms on the largest book per item #2). Also fold in: locate + browser-surface the `_site.yml`
+  unknown-key warnings (today console-only, unlocated).
+
+**Tier 1 — discoverability family ("in the vein of the shell completion just shipped"):**
+
+- **DX2 — First-run in-preview hints** (one-time, dismissible, localStorage-gated): "Alt-click any block
+  to jump to source" + "Press ? for shortcuts". S · [surface] · ✍️🎤 both would have shipped never
+  knowing click-to-source (the flagship feature) exists — it's hidden behind the `◇</>` panel. Highest
+  discoverability-per-line in the audit.
+- **DX3 — Auto-wire the config JSON Schema on `init`**: write the `# yaml-language-server: $schema=…/tali-site.schema.json`
+  directive into the scaffolded `_site.yml` + emit the schema files, so config autocompletes + validates
+  in-editor with zero manual step. S · [surface] · 🎓✍️. `taliesin schema` already emits them; the wiring
+  is manual opt-in today.
+- **DX4 — `taliesin doctor`**: standalone env self-audit (✓/✗/⚠ + fix commands) for Python/R interpreter,
+  ipykernel/IRkernel, config sanity, incl. **conda/active-env detection**. M · [new*] · 🎓. Today the
+  probe is buried inside `check` and only fires for languages a doc already uses (circular); *logic reusable.
+- **DX5 — "Did you mean" on the last silent-degradation paths**: unknown `:::` div/theorem class (today →
+  plain div, no warning; `divs.rs` fall-through) suggests against known classes, and accept `.columns`/
+  `.column` as `layout-ncol` aliases. S–M · [surface] · 🎤 (the on-projector disaster) 🎓. Extends the
+  existing `validate_callout_kind` pattern.
+- **DX6 — `check --explain <code>`** + a per-diagnostic `docs_url`: expand a stable `TAL-*` code into
+  cause + canonical fix (rustc `--explain`). S–M · [new] · 🎓🤖.
+- **DX7 — Dynamic value completion** (extend the shipped completion): complete page/deck names, post
+  slugs, `@`-xref targets *with descriptions* (gh/fzf pattern) + a one-liner "install completion now".
+  M · [surface] · the literal next step in the feature just shipped.
+- **DX8 — Command palette**: extend Cmd-K from content-search to *actions* (jump to page/slide, toggle
+  theme, restart kernel, new post/draft, open source). M · [surface] · ✍️🎤 reached for Cmd-K to *do*
+  things, got search only.
+
+**Tier 2 — workflow smoothers & delight:**
+
+- **DX9 — Make caching legible**: `⚡ cached` vs `✓ 1.2s` per-cell badge + a console `restored N cached
+  cells · 1 re-ran` line + a one-line tie to "Restart kernel"/`TALIESIN_NO_CACHE`. S · [surface] · 🎤🎓
+  both restarted the kernel needlessly asking "why didn't my cell re-run?"; the info is in `freeze.rs`.
+- **DX10 — Scaffolds that teach** (worked examples, not stubs): `paper` gets a runnable `{python}` figure
+  cell with `#| label:`/`#| fig-cap:` + one `$$` block + one `@fig-`/`@sec-` ref (stays check-clean);
+  `new deck --tour` demoing fragments/columns/magic-move/notes; `new post --draft`; `init`'s index.tmd
+  points to `taliesin new`. S · [surface] · 🎓✍️🎤. The most-delightful discovery (Quarto `#| label:`
+  works verbatim) is currently invisible.
+- **DX11 — Friendly `.pdf`/wrong-target rejection**: `build … x.pdf` today silently writes HTML bytes into
+  a `.pdf` file (🎓's abandonment moment). Reject with "HTML-only; `build` for a page, browser Print for a
+  rough PDF; a print track is planned (ROADMAP Pillar IV)." S · [new]. NB: real PDF is already sanctioned
+  in ROADMAP Pillar IV / Wave 5 (derived from HTML) — this is only the interim guardrail.
+- **DX12 — Default `build` shouldn't ship broken output at exit 0**: print `⚠ built with N problems — run
+  --strict to fail` + a `rebuilding…` save-start line for symmetry with `update N blocks`. S · [surface] ·
+  ✍️🎓 (`build.rs:218` exits 0 with a missing image/dead link).
+- **DX13 — Social-card preview pane** in the dev menu (render the branded 1200×630 OG card for the current
+  page). M · [surface] · ✍️ cards only bake at build today.
+- **DX14 — Interactive `new`/`init` wizard** (arrow-key kind picker, `-y` to skip) + a `site`/`book` kind.
+  M · [new] · 🎓✍️ (flags-only today; no multi-page scaffolder).
+- **DX15 — Pre-flight publish summary** (one screen: strict result, target, GATED vs PUBLIC + the flag to
+  flip it) before deploy. S · [surface] · ✍️ deployed his public blog passcode-gated, needed a 2nd run.
+- **DX16 — Update-available nudge** (async, boxed, `NO_UPDATE_NOTIFIER` opt-out). S · [new].
+
+**Tier 3 — agent-DX (the AI-native positioning):**
+
+- **DX17 — Headless executed-output visibility** — the agent's single biggest blind spot: it can't tell
+  its chart executed. `read`=source, `check`=static, `build`=python/r only, `{js}` never server-run. (a)
+  let `read` project the *built* doc so baked figures surface as `[figure fig-x: produced, alt "…"]`; (b)
+  optional headless `{js}` eval. L · [new] · 🤖. Overlaps ROADMAP agent work — check there first.
+- **DX18 — `check --errors-only`/`--min-severity` + `--require-kernel`**: exit-gating. Severity +
+  kernel-readiness are already computed; exit conflates them (any diagnostic → exit 1; kernel-missing
+  never gates). S · [surface] · 🤖 (worth pulling forward — cheap).
+- **DX19 — Data-figure recipes in `vocab`/AGENTS.md** (CSV→figure idiom), generated from real corpus
+  examples so it can't drift. M · [surface] · 🤖 the one thing an agent must learn from prose today.
+
+**Design questions (owner ruling first — NOT build-ready):**
+
+- Terminal hotkeys (Vite `r/o/u/c/q`) were deliberately dropped when interactivity moved to the browser
+  dev menu. Cheap middle path: one banner line pointing at the `◇` menu so a Vite user pressing `h` isn't
+  met with silence. (✍️🎤)
+- Deck sharing/publish: the Share QR encodes `localhost:PORT`; `build` yields a file the user must self-host.
+  One-command deck publish in scope? (🎤)
+- Presenter laser/spotlight + auto-advance (reveal.js reflexes). (🎤)
+
+**Suggested order:** DX1 → {DX2, DX3, DX10} (three S-effort "hidden→used" wins) → {DX5, DX11} (kill the two
+silent-failure traps) → DX4/DX6/DX8 → DX17–19 (DX18 is cheap, pull forward). Tier 0–1 and most of Tier 2
+are *surfacing existing capability*, not net-new.
 
 ## Tier 2 — hardening (P3)
 

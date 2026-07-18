@@ -10,6 +10,15 @@ a mobile-feed spec + a grind order). Also queued as **section F** in [backlog.md
 the deck mode-model is being reshaped (delete reader + PDF; add a mobile slide-feed) — read the file
 before touching deck code so you remove rather than "fix" the outgoing behavior.
 
+The **developer experience** was deep-audited 2026-07-18 →
+[2026-07-18-dx-audit.md](2026-07-18-dx-audit.md) (DX/productivity research + discoverability-pattern
+catalog + full DX-surface map + error/feedback-loop audit + 4 persona workflow simulations). Headline:
+the tool's DX is well above median; **one finding dominates** — the excellent located "did-you-mean"
+validators (broken links/images/media, dup ids, dangling xrefs) run in `build`/`check` but **not in
+live preview**, so the fast loop is silent about the errors the author most needs while writing (every
+persona shipped a broken doc because of it). Most recommendations are *surfacing an existing capability*,
+not net-new. Prioritized feature queue in the file.
+
 -----------------------------------------------------------------------------
 
 # Vacuous-test / mutation audit (2026-07-18)
