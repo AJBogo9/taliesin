@@ -1460,9 +1460,80 @@ fn set_title_block(blocks: &mut Vec<Block>, html: String) {
     }
 }
 
+/// Walk a raw `.tmd` source's *content* lines: those outside the leading front-matter
+/// block and outside fenced code (` ``` `/`~~~`). Each yielded line is already
+/// `trim_start`ed. This is the skeleton both raw-source scanners share —
+/// [`xref::scan_page_anchors`] (heading `{#id}` anchors + section numbers) and
+/// [`book::chapter_heading`] (a chapter's leading `# H1`) — so a `#` inside front matter
+/// or a `# comment` inside a code fence is never mistaken for a heading in either. It does
+/// NOT resolve `{{< include >}}`: that stays a deliberate caller choice (the xref scan
+/// resolves includes first so section numbers advance over included headings; chapter-title
+/// detection reads the file raw). A refactor of two ~identical pre-scans into one, not a
+/// behavior change.
+pub(super) fn content_lines(src: &str) -> impl Iterator<Item = &str> {
+    let mut in_front_matter = false;
+    let mut in_code = false;
+    src.lines().enumerate().filter_map(move |(i, line)| {
+        let t = line.trim_start();
+        if i == 0 && t == "---" {
+            in_front_matter = true;
+            return None;
+        }
+        if in_front_matter {
+            in_front_matter = t != "---";
+            return None;
+        }
+        if t.starts_with("```") || t.starts_with("~~~") {
+            in_code = !in_code;
+            return None;
+        }
+        if in_code {
+            return None;
+        }
+        Some(t)
+    })
+}
+
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+
+    #[test]
+    fn content_lines_skips_front_matter_and_fenced_code() {
+        // The skeleton both raw-source scanners (xref anchors, chapter titles) now share:
+        // front matter (even a `#`-looking line in it) and fenced code (```/~~~, even a
+        // `# comment` inside) are dropped; the real headings + prose survive, trim_start'ed.
+        // A `#` in either region must never read as a heading in either scanner.
+        let src = concat!(
+            "---\n",
+            "title: X\n",
+            "# not a heading (front matter)\n",
+            "---\n",
+            "\n",
+            "# Real H1\n",
+            "```yaml\n",
+            "# fake heading in a fence\n",
+            "```\n",
+            "text\n",
+            "~~~\n",
+            "## also fake in a tilde fence {#sec-fake}\n",
+            "~~~\n",
+            "## Real H2 {#sec-x}\n",
+        );
+        let lines: Vec<&str> = content_lines(src).collect();
+        assert!(lines.contains(&"# Real H1"), "real H1 survives: {lines:?}");
+        assert!(
+            lines.contains(&"## Real H2 {#sec-x}"),
+            "real H2 survives: {lines:?}"
+        );
+        assert!(lines.contains(&"text"), "prose survives: {lines:?}");
+        assert!(
+            !lines
+                .iter()
+                .any(|l| l.contains("fake") || l.contains("front matter")),
+            "no front-matter or in-fence line may leak: {lines:?}"
+        );
+    }
 
     #[test]
     fn a_titleless_website_page_falls_back_to_its_leading_h1() {

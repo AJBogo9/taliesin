@@ -75,25 +75,7 @@ pub(super) fn scan_xref_targets(
 fn scan_page_anchors(src: &str, chapter: Option<u32>) -> Vec<(String, String)> {
     let mut out = Vec::new();
     let mut counters = [0u32; 5];
-    let mut in_front_matter = false;
-    let mut in_code = false;
-    for (i, line) in src.lines().enumerate() {
-        let t = line.trim_start();
-        if i == 0 && t == "---" {
-            in_front_matter = true;
-            continue;
-        }
-        if in_front_matter {
-            in_front_matter = t != "---";
-            continue;
-        }
-        if t.starts_with("```") || t.starts_with("~~~") {
-            in_code = !in_code;
-            continue;
-        }
-        if in_code {
-            continue;
-        }
+    for t in content_lines(src) {
         let level = t.bytes().take_while(|&b| b == b'#').count();
         let is_heading = (1..=6).contains(&level) && t.as_bytes().get(level) == Some(&b' ');
         if is_heading {

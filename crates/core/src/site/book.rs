@@ -181,29 +181,9 @@ pub(super) fn chapter_heading(input: &Path) -> (Option<String>, bool) {
     let Ok(src) = std::fs::read_to_string(input) else {
         return (None, false);
     };
-    let mut in_fm = false;
-    let mut in_code = false;
-    for (i, line) in src.lines().enumerate() {
-        let t = line.trim_start();
-        if i == 0 && t == "---" {
-            in_fm = true;
-            continue;
-        }
-        if in_fm {
-            if t == "---" {
-                in_fm = false;
-            }
-            continue;
-        }
-        // Skip fenced code blocks so a `# comment` inside ```yaml/```sh isn't
-        // mistaken for the chapter's H1.
-        if t.starts_with("```") || t.starts_with("~~~") {
-            in_code = !in_code;
-            continue;
-        }
-        if in_code {
-            continue;
-        }
+    // `content_lines` skips front matter + fenced code (so a `# comment` inside ```yaml/```sh
+    // isn't mistaken for the chapter's H1); take the first real `# ` heading.
+    for t in content_lines(&src) {
         if let Some(rest) = t.strip_prefix("# ") {
             let unnumbered = rest.contains(".unnumbered") || rest.contains("{-}");
             let title = rest.split('{').next().unwrap_or(rest).trim().to_string();
