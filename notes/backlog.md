@@ -54,6 +54,39 @@ CDN, no preview write-back, no new output format, `--tali-*` tokens only.
 
 ## Next session: start here
 
+**Pick up here (2026-07-18, newest — C3+C4 coverage gaps landed; the C3–C6 batch was 2/4
+already pinned).** Filling the "four uncovered features" set, two were already covered — the
+exact backlog rot this file warns about, caught by grepping the named symbol before trusting the
+entry. **Do not re-add C3/C4/C6 as coverage gaps.**
+- **C6 (Google-Scholar `citation_*`) was ALREADY fully pinned.**
+  `config.rs::scholarly_citation_meta_for_authored_dated_posts_only` asserts all five `citation_*`
+  names + the non-article negative case. Not a gap; built nothing.
+- **C4 (`head:`/`body-*:` injection) was ALREADY 3/4 pinned.**
+  `config.rs::site_head_and_body_end_are_injected` covered `head:` + `body-end:`; only
+  **`body-start:`** (a real wired slot: `config.body_start` → `before_body` →
+  `include_before_body`, ahead of the content) had no test. **LANDED** (`cd14b8a`): extended +
+  renamed to `site_head_body_start_and_body_end_are_injected`, injecting all three and asserting
+  the before/after ORDERING so a slot-swap can't pass on presence alone.
+- **C3 (custom `theme:` `.css`) had a genuine meaty gap.** Only the negative case (`gone.css`
+  warns) was pinned — and it passes even with `base_dir = None`, since the `.css` branch
+  short-circuits to the not-found warning before any read, so a no-op reader renders clean.
+  **LANDED** (`45f9daa`): new `corpus/theme-css/` artifact (a doc + a sibling `brand.css`) +
+  `crates/core/tests/theme_css.rs` pinning the file-read path (its CSS reaches both the
+  RenderedDoc `theme_css` and the page's `<style id="qmd-theme">`) and the
+  `_extensions/<name>/theme.css` bundle branch. Each branch mutation-checked independently.
+- **C5 (`mounts:`) is mostly pinned; only the serve path is left, and it is P3.** Config-parse +
+  typo-warn (`config/mod.rs`), `map` surfacing (`map_cli.rs`), `check` link-tolerance, and
+  build-side `mount_warnings` (`build.rs`) are all covered; mounts are **preview-only** (the
+  static build does not wire them, it warns). The one untested surface is the live `serve_site`
+  MountedSite discovery/serve — a bin-crate integration gap with no live-HTTP test infra in the
+  suite. Low-value, demand-driven; left rather than manufactured.
+- **So the C1–C7 coverage batch is effectively CLOSED** (C1/C2/C7 last session; C3/C4 this
+  session; C6 was never a gap). Only C5's serve path remains, P3.
+Both commits verified: full `taliesin-core` (541 unit + all integration) + `taliesin-server` (218
+unit + all integration) suites green, `cargo fmt --check` + `clippy --all-targets -- -D warnings`
+clean, every new test mutation-checked (mutate the code → watch the named test fail → revert).
+**Check, don't trust the SHAs:** `git log --oneline origin/main..main`.
+
 **Pick up here (2026-07-18, latest — a vacuous-test / mutation audit landed + pushed).** A new
 lens: not "find bugs in the source" but "which green tests don't actually constrain the behavior
 they name?" — the codebase's own most-repeated finding ("the tests certify the defects") run as a
@@ -89,10 +122,11 @@ trust:** `git log --oneline origin/main..main`.
   reduction map + §4 listed it as open with "zero tests"; it has the full cgroup-v2 ancestor-walk
   cap and a dated test module. **Pure backlog rot** (the exact trap this file warns about). §4
   entry struck below.
-- **Still open (measured, not rushed):** §2 #1 Part B; the coverage gaps **C3–C6** (custom theme
-  `.css`, `head:`/`body-*:` knobs, `mounts:`, Google-Scholar `citation_*` meta — each wants a
-  corpus pin, all lower-risk than C1/C2/C7); and **R2/T2** (unify the three raw-source scanners —
-  a refactor with a behavioral decision inside, left for a focused session).
+- **Still open (measured, not rushed):** §2 #1 Part B; **R2/T2** (unify the three raw-source
+  scanners — a refactor with a behavioral decision inside, left for a focused session); and
+  **C5's serve-path gap only** (the live `serve_site` mount discovery/serve, P3). *(The rest of
+  the C3–C6 batch landed 2026-07-18 or was already pinned — see the newest start-here block; C3/C4
+  done, C6 never a gap.)*
 
 **Pick up here (2026-07-18 — reduction + modularity pass landed & pushed to `origin/main`):**
 A staged extension-system exploration ran this session. **Strategic outcome (do not
@@ -626,6 +660,14 @@ dropping Atom feeds as "a documented non-goal" and Atom shipped anyway, with aut
 
 ## Tier 2 — hardening (P3)
 
+- **`mounts:` live serve/discovery is untested** (C5's only remaining gap, filed 2026-07-18
+  after C3/C4 landed). Everything else about `mounts:` is pinned — config-parse + typo-warn
+  (`config/mod.rs`), `map` JSON surfacing (`map_cli.rs`), `check` cross-mount link-tolerance
+  (`check.rs`), and the build-side preview-only `mount_warnings` (`build.rs`). Untested: the live
+  `serve_site` `MountedSite` discovery + serving under the `/at/` prefix (`serve_site/mod.rs`
+  ~139-170), incl. the "mount 'x': no directory" warn path. It is a **bin-crate integration**
+  gap — the suite has no live-HTTP serve test, so pinning it means new infra (spin the server,
+  GET the prefixed URL). Low-value (mounts are preview-only, so nothing ships wrong), demand-driven.
 - **Locate the site-side cross-page duplicate-label warning** (§2 #1 Part B, split out
   2026-07-18 after Part A landed). `site/xref.rs` + `site/mod.rs` push
   `"duplicate cross-reference label X defined on multiple pages"` onto the **`Vec<String>`**
