@@ -133,6 +133,15 @@
   .tali-card-img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block;
     background: var(--tali-code-bg); }
   .tali-listing-default .tali-card-img { width: 12rem; aspect-ratio: 4 / 3; flex: none; }
+  /* Placeholder for a post with no `image:` in a thumbnail listing: a monogram fills the
+     same slot so mixed listings stay aligned (row) and even-height (grid) instead of
+     leaving a text card floating beside its imaged neighbours. */
+  .tali-card-noimg { width: 100%; aspect-ratio: 16 / 9; display: flex; align-items: center;
+    justify-content: center; user-select: none; font: 700 2.4rem var(--tali-font-head);
+    color: color-mix(in oklab, var(--tali-accent) 60%, var(--tali-muted));
+    background: linear-gradient(135deg, var(--tali-code-bg),
+      color-mix(in oklab, var(--tali-accent) 12%, var(--tali-code-bg))); }
+  .tali-listing-default .tali-card-noimg { width: 12rem; aspect-ratio: 4 / 3; flex: none; }
   .tali-card-body { padding: .85rem 1rem 1rem; display: flex; flex-direction: column; gap: .35rem; }
   .tali-card-date { font: 600 .72rem var(--tali-font-head); color: var(--tali-muted);
     text-transform: uppercase; letter-spacing: .04em; }
@@ -167,7 +176,10 @@
 
   @media (max-width: 640px) {
     .tali-listing-default .tali-card { flex-direction: column; }
-    .tali-listing-default .tali-card-img { width: 100%; aspect-ratio: 16 / 9; }
+    .tali-listing-default .tali-card-img,
+    .tali-listing-default .tali-card-noimg { width: 100%; aspect-ratio: 16 / 9; }
+    /* The keyboard-shortcut hint is meaningless on a touch phone (no ⌘/Ctrl key). */
+    .tali-search-kbd { display: none; }
     /* ≥44px square tap target (WCAG 2.5.5); centred icon, no auto-margin (the
        brand + spacer already push it right) so it can't bleed past the edge. */
     .tali-nav-burger { display: flex; flex-direction: column; justify-content: center;

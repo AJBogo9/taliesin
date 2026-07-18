@@ -2,7 +2,7 @@
 title: "Layout: tabsets and margin notes"
 ---
 
-taliesin renders tabbed panels and margin notes as native web-native layout, and
+Taliesin renders tabbed panels and margin notes as web-native layout, and
 cross-references resolve straight through them.
 
 ::: {.column-margin}

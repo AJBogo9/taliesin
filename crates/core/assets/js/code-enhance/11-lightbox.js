@@ -28,7 +28,16 @@ function taliInitLightbox() {
     '#tali-lightbox .tali-lb-cap:empty{display:none}' +
     '#tali-lightbox .tali-lb-close{position:fixed;top:.6rem;right:1rem;color:#fff;background:none;' +
     'border:0;font-size:2.2rem;line-height:1;cursor:pointer;opacity:.75}' +
-    '#tali-lightbox .tali-lb-close:hover{opacity:1}';
+    '#tali-lightbox .tali-lb-close:hover{opacity:1}' +
+    // Prev/next controls: hidden by default, shown only while a multi-image gallery is
+    // active (the `.has-gallery` class). Large tap targets so touch users can step too.
+    '#tali-lightbox .tali-lb-nav{position:fixed;top:50%;transform:translateY(-50%);display:none;' +
+    'align-items:center;justify-content:center;width:3rem;height:4.5rem;color:#fff;' +
+    'background:rgba(0,0,0,.35);border:0;border-radius:8px;font-size:2.2rem;line-height:1;' +
+    'cursor:pointer;opacity:.7;transition:opacity .15s ease,background .15s ease}' +
+    '#tali-lightbox .tali-lb-nav:hover{opacity:1;background:rgba(0,0,0,.55)}' +
+    '#tali-lightbox.has-gallery .tali-lb-nav{display:flex}' +
+    '#tali-lightbox .tali-lb-prev{left:.6rem}#tali-lightbox .tali-lb-next{right:.6rem}';
   document.head.appendChild(style);
 
   var box = document.createElement('div');
@@ -36,6 +45,8 @@ function taliInitLightbox() {
   box.setAttribute('role', 'dialog');
   box.setAttribute('aria-label', 'Image viewer'); // a role=dialog needs an accessible name
   box.innerHTML = '<button class="tali-lb-close" aria-label="Close">×</button>' +
+    '<button class="tali-lb-nav tali-lb-prev" aria-label="Previous image">‹</button>' +
+    '<button class="tali-lb-nav tali-lb-next" aria-label="Next image">›</button>' +
     '<img alt=""><video class="tali-lb-video" muted loop playsinline></video>' +
     '<div class="tali-lb-svg"></div><div class="tali-lb-cap"></div>';
   document.body.appendChild(box);
@@ -43,6 +54,8 @@ function taliInitLightbox() {
   var lbVideo = box.querySelector('.tali-lb-video');
   var lbSvg = box.querySelector('.tali-lb-svg');
   var lbCap = box.querySelector('.tali-lb-cap');
+  var lbPrev = box.querySelector('.tali-lb-prev');
+  var lbNext = box.querySelector('.tali-lb-next');
   var gallery = [], gIdx = -1; // the page's zoomable images, for ←/→ navigation
   var lbRelease = null;        // active focus-trap release while the lightbox is open
 
@@ -59,6 +72,7 @@ function taliInitLightbox() {
     try { lbVideo.pause(); } catch (e) {}
     lbVideo.removeAttribute('src');
     lbSvg.style.display = 'none'; lbSvg.innerHTML = '';
+    box.classList.remove('has-gallery'); // hide prev/next until a multi-image set is shown
   }
   // Show gallery[i] (wrapping) with its caption + an (n / N) counter for multi-image sets.
   function showImageAt(i) {
@@ -74,6 +88,7 @@ function taliInitLightbox() {
     var cap = fc ? taliCleanCaptionText(fc) : (img.alt || '');
     if (gallery.length > 1) cap = (cap ? cap + '  ' : '') + '(' + (gIdx + 1) + ' / ' + gallery.length + ')';
     lbCap.textContent = cap;
+    box.classList.toggle('has-gallery', gallery.length > 1); // reveal prev/next only for a set
     markOpen();
   }
   // Open the clicked image, building the page's gallery so ←/→ can step between images.
@@ -146,8 +161,25 @@ function taliInitLightbox() {
     }
   }, true);
   box.addEventListener('click', function (e) {
+    // The nav buttons live on the backdrop; stopPropagation below keeps their click from
+    // reaching here (which would treat it as an outside-click and close the viewer).
     if (e.target !== lbImg && e.target !== lbVideo && !lbSvg.contains(e.target)) close();
   });
+  // Visible prev/next controls (mouse + touch): keyboard ←/→ already works, but the
+  // gallery had no on-screen affordance. stopPropagation so the backdrop-close doesn't fire.
+  lbPrev.addEventListener('click', function (e) { e.stopPropagation(); showImageAt(gIdx - 1); });
+  lbNext.addEventListener('click', function (e) { e.stopPropagation(); showImageAt(gIdx + 1); });
+  // Touch swipe steps the gallery (only while a multi-image set is shown).
+  var touchX = null;
+  box.addEventListener('touchstart', function (e) {
+    touchX = e.touches.length === 1 ? e.touches[0].clientX : null;
+  }, { passive: true });
+  box.addEventListener('touchend', function (e) {
+    if (touchX === null || !box.classList.contains('has-gallery')) { touchX = null; return; }
+    var dx = e.changedTouches[0].clientX - touchX;
+    touchX = null;
+    if (Math.abs(dx) > 40) showImageAt(dx < 0 ? gIdx + 1 : gIdx - 1);
+  }, { passive: true });
   document.addEventListener('keydown', function (e) {
     if (!box.classList.contains('open')) return;
     if (e.key === 'Escape') { close(); return; }

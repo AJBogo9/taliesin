@@ -308,9 +308,16 @@ fn video_html(
     let poster_attr = poster
         .map(|p| format!(" poster=\"{}\"", escape_attr(p)))
         .unwrap_or_default();
-    let video = |s: &str, class: &str| {
+    // A light/dark PAIR ships both clips but only one is ever visible, so the theme-hidden
+    // one must not download. `autoplay` overrides `preload`, so hiding via CSS + `preload`
+    // is not enough (the browser still fetches an autoplay source). Instead the pair carries
+    // `data-src` (no `src`); `syncThemeVideos` (theme.rs) promotes `data-src`→`src` on the
+    // visible variant only, on load + every theme change — so exactly one clip downloads.
+    // A single-source video keeps an eager `src` (works without JS; nothing to save).
+    let video = |s: &str, class: &str, lazy: bool| {
+        let src_attr = if lazy { "data-src" } else { "src" };
         format!(
-            "<video{cls} src=\"{}\"{poster_attr} autoplay muted loop playsinline></video>",
+            "<video{cls} {src_attr}=\"{}\"{poster_attr} autoplay muted loop playsinline></video>",
             escape_attr(s),
             cls = if class.is_empty() {
                 String::new()
@@ -322,10 +329,10 @@ fn video_html(
     let videos = match dark {
         Some(d) => format!(
             "{}{}",
-            video(src, "tali-video-light"),
-            video(d, "tali-video-dark")
+            video(src, "tali-video-light", true),
+            video(d, "tali-video-dark", true)
         ),
-        None => video(src, ""),
+        None => video(src, "", false),
     };
     let cap = caption
         .map(|c| format!("<figcaption>{}</figcaption>", html_escape(c)))
@@ -351,11 +358,12 @@ fn embed_html(path: &str, title: Option<&str>) -> String {
     // `title` lands in a double-quoted attribute, so escape `"` too (escape_attr,
     // not html_escape) — otherwise a `"` in the title breaks out of the attribute.
     let title = escape_attr(title.unwrap_or("Embedded slide deck"));
+    // One fullscreen control only: the labelled `⤢ Fullscreen` button in the bar below.
+    // (A second floating `⤢` overlay on the stage was redundant — same requestFullscreen().)
     format!(
         "<div class=\"tali-embed\">\
          <div class=\"tali-embed-stage\">\
          <iframe class=\"tali-embed-frame\" src=\"{href}\" title=\"{title}\" loading=\"lazy\" allowfullscreen></iframe>\
-         <button type=\"button\" class=\"tali-embed-expand\" aria-label=\"Fullscreen\" onclick=\"this.closest('.tali-embed').querySelector('iframe').requestFullscreen()\">\u{2922}</button>\
          </div>\
          <div class=\"tali-embed-bar\">\
          <button type=\"button\" class=\"tali-embed-btn\" onclick=\"this.closest('.tali-embed').querySelector('iframe').requestFullscreen()\">\u{2922} Fullscreen</button>\

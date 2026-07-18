@@ -49,11 +49,25 @@ function taliInitCategoryFilter(root) {
       if (announced) live.textContent = 'Showing ' + shown + ' of ' + total + ' posts';
       announced = true;
     };
+    // Deep-link the active filter so a filtered view is shareable + survives reload +
+    // restores on Back. Repeated `?cat=` params (not a delimited list) keep a category
+    // name that contains a comma intact, matching how the badges carry exact names.
+    // replaceState (not push) means scrolling/toggling doesn't spam history.
+    var writeUrl = function () {
+      try {
+        var params = new URLSearchParams(location.search);
+        params.delete('cat');
+        selected.forEach(function (c) { params.append('cat', c); });
+        var qs = params.toString();
+        history.replaceState(history.state, '', location.pathname + (qs ? '?' + qs : '') + location.hash);
+      } catch (e) {}
+    };
     var toggle = function (cat) {
       if (cat === '') selected.clear();
       else if (selected.has(cat)) selected.delete(cat);
       else selected.add(cat);
       apply();
+      writeUrl();
     };
     filter.addEventListener('click', function (e) {
       var chip = e.target.closest('.tali-cat-chip');
@@ -67,6 +81,18 @@ function taliInitCategoryFilter(root) {
       e.stopPropagation();
       toggle(tag.getAttribute('data-cat'));
     });
+    // Restore a filter from the URL (?cat=…) on load — ignoring any name that is not a
+    // real chip, so a stale/hand-edited param can never hide every card.
+    var validCats = new Set();
+    filter.querySelectorAll('.tali-cat-chip').forEach(function (chip) {
+      var c = chip.getAttribute('data-cat');
+      if (c) validCats.add(c);
+    });
+    try {
+      new URLSearchParams(location.search).getAll('cat').forEach(function (c) {
+        if (validCats.has(c)) selected.add(c);
+      });
+    } catch (e) {}
     apply();
   });
 }

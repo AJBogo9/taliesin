@@ -2653,13 +2653,19 @@ fn video_dark_and_poster_and_caption_args_are_exercised() {
         std::path::Path::new("."),
     );
     let h = doc.body_html();
+    // The pair is lazy: `data-src` (no eager `src`) so only the theme-visible clip is fetched
+    // (syncThemeVideos promotes data-src->src on the shown variant). Both eager would download.
     assert!(
-        h.contains("<video class=\"tali-video-light\" src=\"clip.mp4\""),
-        "light clip: {h}"
+        h.contains("<video class=\"tali-video-light\" data-src=\"clip.mp4\""),
+        "light clip (lazy): {h}"
     );
     assert!(
-        h.contains("<video class=\"tali-video-dark\" src=\"clip-dark.mp4\""),
-        "dark clip: {h}"
+        h.contains("<video class=\"tali-video-dark\" data-src=\"clip-dark.mp4\""),
+        "dark clip (lazy): {h}"
+    );
+    assert!(
+        !h.contains(" src=\"clip.mp4\"") && !h.contains(" src=\"clip-dark.mp4\""),
+        "a light/dark pair must not carry an eager src (that defeats the lazy fetch): {h}"
     );
     assert!(h.contains("poster=\"poster.png\""), "poster attr: {h}");
     assert!(

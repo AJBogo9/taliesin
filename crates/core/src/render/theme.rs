@@ -173,16 +173,20 @@ pub fn theme_head(default_mode: &str) -> String {
       }})(btns[i]);
     }}
   }};
-  // Theme-matched `{{< video >}}` clips: a `<video>` hidden via `display:none`
-  // gets paused by the browser, so on a theme change play the now-visible variant
-  // (and pause the hidden one). Also runs once on load so a non-default-theme page
-  // starts its visible clip.
+  // Theme-matched `{{< video >}}` clips: a light/dark pair carries `data-src` (no `src`)
+  // so the theme-hidden variant is never fetched. Promote `data-src`->`src` on the
+  // now-VISIBLE variant (downloading it only when it is actually shown) and play it;
+  // pause the hidden one. Runs on load + on every theme change, so switching themes
+  // fetches the other clip lazily instead of both up front.
   function syncThemeVideos(){{
     var vids = document.querySelectorAll(".tali-video video");
     for (var i = 0; i < vids.length; i++) {{
       var v = vids[i];
       if (getComputedStyle(v).display === "none") {{ try {{ v.pause(); }} catch(e) {{}} }}
-      else {{ try {{ var p = v.play(); if (p && p.catch) p.catch(function(){{}}); }} catch(e) {{}} }}
+      else {{
+        if (!v.getAttribute("src") && v.getAttribute("data-src")) v.setAttribute("src", v.getAttribute("data-src"));
+        try {{ var p = v.play(); if (p && p.catch) p.catch(function(){{}}); }} catch(e) {{}}
+      }}
     }}
   }}
   window.addEventListener("qmd:themechange", syncThemeVideos);

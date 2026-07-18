@@ -30,7 +30,7 @@ state while you edit the prose around them.
 
 ## Slide decks {#slide-decks}
 
-`format: revealjs` turns the same headings into a deck, on Taliesin's own engine,
+`format: deck` turns the same headings into a deck, on Taliesin's own engine,
 with no reveal.js dependency: fragments and incremental lists, a presenter view
 with notes and a timer, one-slide-per-page PDF export, per-slide backgrounds,
 auto-animate, magic-move code, and step-through line highlighting. And because the

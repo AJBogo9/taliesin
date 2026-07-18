@@ -1308,6 +1308,22 @@ impl Site {
                 esc(src),
                 esc(p.card_image_alt.as_deref().unwrap_or(""))
             ),
+            // This listing shows thumbnails, but this post has no `image:`. Reserve the
+            // same slot with a monogram placeholder so a mixed listing keeps its rhythm:
+            // in the row layout the body still starts at the thumbnail column, and in the
+            // grid the card is a proper card, not a stretched void beside its neighbours.
+            (true, None) => {
+                let title = p.title.as_deref().unwrap_or(&p.rel);
+                let initial = title
+                    .chars()
+                    .find(|c| c.is_alphanumeric())
+                    .map(|c| c.to_uppercase().to_string())
+                    .unwrap_or_default();
+                format!(
+                    "<div class=\"tali-card-noimg\" aria-hidden=\"true\">{}</div>",
+                    esc(&initial)
+                )
+            }
             _ => String::new(),
         };
         let date = p

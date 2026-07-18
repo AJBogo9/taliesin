@@ -11,13 +11,18 @@ function taliInitKeyboard() {
   // Mount the shortcut list into the Settings menu (built by taliInitReaderMenu, which runs
   // first via the registry order). A static list of literal <kbd>s, no interpolation.
   if (window.taliReaderMenu) {
+    // Only list shortcuts that actually do something on THIS page: `/` needs a search
+    // (a website/book has one, a chrome-less single doc does not), and ←/→ needs the
+    // book prev/next anchors. Advertising a dead key is a small but real papercut.
+    var hasSearch = !!document.querySelector('[data-qmd-search]');
+    var hasChapters = !!document.querySelector('.tali-book-prev, .tali-book-next');
     var dl = document.createElement('dl');
     dl.className = 'tali-keys-list';
     dl.innerHTML =
       '<div><dt><kbd>?</kbd></dt><dd>Open settings</dd></div>' +
-      '<div><dt><kbd>/</kbd></dt><dd>Search</dd></div>' +
+      (hasSearch ? '<div><dt><kbd>/</kbd></dt><dd>Search</dd></div>' : '') +
       '<div><dt><kbd>f</kbd></dt><dd>Focus mode</dd></div>' +
-      '<div><dt><kbd>&larr;</kbd> <kbd>&rarr;</kbd></dt><dd>Previous / next chapter</dd></div>' +
+      (hasChapters ? '<div><dt><kbd>&larr;</kbd> <kbd>&rarr;</kbd></dt><dd>Previous / next chapter</dd></div>' : '') +
       '<div><dt><kbd>Esc</kbd></dt><dd>Close</dd></div>';
 
     // WCAG 2.1.4's turn-off mechanism, sitting directly above the list it governs. Same shape as

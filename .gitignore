@@ -51,3 +51,6 @@ Thumbs.db
 
 # live-edit benchmark runtime artifact (the committed snapshot is RESULTS.md)
 tools/live-edit-bench/RESULTS.json
+
+# ad-hoc Python kernel venv for local audits
+.venv-audit/
