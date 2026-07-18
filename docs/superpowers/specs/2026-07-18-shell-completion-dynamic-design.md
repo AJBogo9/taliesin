@@ -63,10 +63,12 @@ stale.
 
 ### Where the code lives
 
-New module `crates/server/src/complete.rs` owns the brain (`__complete`) and the shim
-templates. `cmd_completions` moves there from `cli.rs` (or stays in `cli.rs` and calls
-into `complete.rs` for the brain — implementer's choice; the brain and its tests are
-the substance). Dispatch in [main.rs](../../../crates/server/src/main.rs):
+New module `crates/server/src/complete.rs` owns all completion code: the brain
+(`__complete`), the shim templates, and `cmd_completions` (moved wholesale out of
+`cli.rs`, taking `BASH/ZSH/FISH_COMPLETIONS` and the `completions_tests` module with
+it). This leaves `cli.rs` focused on `init`/`new`/arg-parsing and gives completion a
+single-purpose module, matching the codebase's module-per-concern layout. Dispatch in
+[main.rs](../../../crates/server/src/main.rs):
 
 ```rust
 Some("__complete")  => complete::cmd_complete(&args),      // hidden
