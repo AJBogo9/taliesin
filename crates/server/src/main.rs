@@ -192,7 +192,9 @@ fn usage() {
     println!(
         "  mcp                        stdio MCP server (check/read/symbols/map/vocab/build tools)"
     );
-    println!("  check <file|dir> [--format human|json] [--explain <CODE>]");
+    println!(
+        "  check <file|dir> [--format human|json] [--errors-only] [--require-kernel] [--explain <CODE>]"
+    );
     println!("                             list located diagnostics; exits non-zero if any");
     println!(
         "                             (--explain <CODE> prints a diagnostic code's cause + fix)"
@@ -249,7 +251,8 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin build . --jobs 4\n"
         }
         "check" => {
-            "taliesin check <file.tmd | dir> [--format human|json] [--explain <CODE>]\n\
+            "taliesin check <file.tmd | dir> [--format human|json] [--errors-only]\n\
+             \x20                            [--require-kernel] [--explain <CODE>]\n\
              \n\
              Render in memory and list every located diagnostic; exits non-zero if any\n\
              are found (a CI / pre-publish gate). Does NOT execute code cells.\n\
@@ -258,12 +261,16 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 --format human   path:line: message lines to stderr (default)\n\
              \x20 --format json    {diagnostics:[{code,docs_url,severity,file,line,message,\n\
              \x20                     suggestion?}], environment:[...]} object to stdout (jq)\n\
+             \x20 --errors-only    report + gate on errors only; warnings no longer fail\n\
+             \x20 --require-kernel also fail if a used language's Jupyter kernel isn't ready\n\
+             \x20                  (interpreter + ipykernel/IRkernel); off by default\n\
              \x20 --explain <CODE> expand a diagnostic code (e.g. TAL-XREF-UNREF) into its\n\
              \x20                  cause + canonical fix, rustc-style; bare lists every code.\n\
              \x20                  Honours --format json. Needs no file.\n\
              \n\
              Example:\n\
              \x20 taliesin check . --format json | jq\n\
+             \x20 taliesin check src/ --errors-only --require-kernel\n\
              \x20 taliesin check --explain TAL-FM-KEY\n"
         }
         "render" => {

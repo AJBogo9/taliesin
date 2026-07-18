@@ -405,6 +405,16 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
         "check" => &[
             ("--format", true, "human | json"),
             ("--explain", true, "explain a diagnostic code (TAL-...)"),
+            (
+                "--errors-only",
+                false,
+                "report + gate on errors, not warnings",
+            ),
+            (
+                "--require-kernel",
+                false,
+                "also fail if a used language's kernel isn't ready",
+            ),
         ],
         "completions" => &[(
             "--install",

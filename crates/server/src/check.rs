@@ -456,7 +456,7 @@ fn explain_output(code: Option<&str>, format: &str) -> Result<String, String> {
 }
 
 /// Every long flag `check` accepts (drives the unknown-flag did-you-mean).
-const CHECK_FLAGS: &[&str] = &["--format", "--explain"];
+const CHECK_FLAGS: &[&str] = &["--format", "--explain", "--errors-only", "--require-kernel"];
 
 /// `taliesin check <file|dir> [--format human|json]`: render in memory, list every
 /// located diagnostic, and exit non-zero if any are found (a CI gate). Static-only
@@ -466,6 +466,11 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
     let mut format = "human";
     let mut explain = false;
     let mut explain_code: Option<&str> = None;
+    // DX18 exit-gating knobs (both default off, so the default `check` is byte-identical):
+    // `--errors-only` drops warnings from the output + exit decision; `--require-kernel`
+    // promotes a missing kernel for a used language from informational to a failure.
+    let mut errors_only = false;
+    let mut require_kernel = false;
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -474,6 +479,8 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
                     format = v;
                 }
             }
+            "--errors-only" => errors_only = true,
+            "--require-kernel" => require_kernel = true,
             // `--explain [CODE]`: expand a diagnostic code, not lint a file. Consume the next
             // token as the code only when it isn't itself a flag, so `--explain --format json`
             // is the index in JSON (code = None), not "code = `--format`".
@@ -549,10 +556,13 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    // Informational only: which interpreter each used language resolves to + whether
-    // its Jupyter kernel package is importable. This never contributes to the exit code
-    // (a CI box without Python must not fail static linting).
+    // Informational by default: which interpreter each used language resolves to + whether
+    // its Jupyter kernel package is importable. It gates the exit only under
+    // `--require-kernel` (a CI box without Python must still be able to lint by default).
     let environment = collect_environment(target);
+    // `--errors-only` drops warnings from what is shown AND from the exit decision.
+    let diags = at_severity_floor(diags, errors_only);
+    let kernel_fail = kernel_gate_fails(&environment, require_kernel);
     if format == "json" {
         // JSON to stdout only, so it pipes cleanly.
         println!("{}", format_json(&diags, &environment));
@@ -586,12 +596,48 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
                 eprintln!("  {}: {} ({}), {}", e.lang, e.path, e.provenance, pkg);
             }
         }
+        // Make the reason legible when `--require-kernel` is the *only* thing failing (0
+        // diagnostics would otherwise print "no problems found" then exit non-zero).
+        if kernel_fail {
+            let unready: Vec<&str> = environment
+                .iter()
+                .filter(|e| !e.runs || !e.kernel_pkg_ok)
+                .map(|e| e.lang)
+                .collect();
+            eprintln!(
+                "\n--require-kernel: no runnable kernel for {}",
+                unready.join(", ")
+            );
+        }
     }
-    if diags.is_empty() {
+    // Fail on any reported diagnostic (at the chosen severity floor) OR, under
+    // `--require-kernel`, a used language whose kernel isn't ready.
+    if diags.is_empty() && !kernel_fail {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
     }
+}
+
+/// The diagnostics `check` reports + gates on at the requested severity floor. With
+/// `--errors-only`, warnings are dropped from both the output and the exit decision; the
+/// default keeps every diagnostic. Pure, so the DX18 gate is unit-testable.
+fn at_severity_floor(diags: Vec<Diagnostic>, errors_only: bool) -> Vec<Diagnostic> {
+    if errors_only {
+        diags
+            .into_iter()
+            .filter(|d| d.severity == taliesin_core::diagnostics::codes::ERROR)
+            .collect()
+    } else {
+        diags
+    }
+}
+
+/// Whether `--require-kernel` should fail the run: it is set AND some used language's
+/// interpreter is absent/broken or its Jupyter kernel package isn't importable. Off by
+/// default, so kernel readiness stays informational and a Python-less CI box can still lint.
+fn kernel_gate_fails(environment: &[EnvEntry], require_kernel: bool) -> bool {
+    require_kernel && environment.iter().any(|e| !e.runs || !e.kernel_pkg_ok)
 }
 
 #[cfg(test)]
@@ -1319,5 +1365,66 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    // --- DX18 exit-gating ---
+
+    fn error_diag() -> Diagnostic {
+        // Classifies as TAL-XREF-UNDEF / ERROR.
+        Diagnostic::new(
+            "a.tmd".into(),
+            Some(1),
+            "broken cross-reference: @fig-x".into(),
+        )
+    }
+    fn warning_diag() -> Diagnostic {
+        // Classifies as TAL-FM-KEY / WARNING.
+        Diagnostic::new(
+            "a.tmd".into(),
+            Some(1),
+            "unknown front-matter key `x`".into(),
+        )
+    }
+
+    #[test]
+    fn errors_only_drops_warnings_but_keeps_the_default_inclusive() {
+        let both = vec![error_diag(), warning_diag()];
+        // Default: every diagnostic is reported + gated on.
+        assert_eq!(at_severity_floor(both.clone(), false).len(), 2);
+        // --errors-only: warnings vanish from the reported (and thus gated) set.
+        let errs = at_severity_floor(both, true);
+        assert_eq!(errs.len(), 1);
+        assert_eq!(errs[0].severity, taliesin_core::diagnostics::codes::ERROR);
+        // A warning-only doc becomes empty under --errors-only (so the run passes).
+        assert!(at_severity_floor(vec![warning_diag()], true).is_empty());
+    }
+
+    fn env_fixture(runs: bool, kernel_pkg_ok: bool) -> EnvEntry {
+        EnvEntry {
+            lang: "python",
+            path: "/usr/bin/python3".into(),
+            provenance: "default".into(),
+            runs,
+            kernel_pkg: "ipykernel",
+            kernel_pkg_ok,
+            version: None,
+            error: None,
+        }
+    }
+
+    #[test]
+    fn require_kernel_gate_is_off_by_default_and_needs_a_used_language() {
+        let ready = [env_fixture(true, true)];
+        let no_interp = [env_fixture(false, false)];
+        let no_pkg = [env_fixture(true, false)];
+        // Off by default: never gates, even with a broken kernel.
+        assert!(!kernel_gate_fails(&no_interp, false));
+        // On + everything ready: passes.
+        assert!(!kernel_gate_fails(&ready, true));
+        // On + a used language whose interpreter or kernel package is missing: fails.
+        assert!(kernel_gate_fails(&no_interp, true));
+        assert!(kernel_gate_fails(&no_pkg, true));
+        // On but no code cells (empty environment): nothing to require, so it passes.
+        assert!(!kernel_gate_fails(&[], true));
     }
 }

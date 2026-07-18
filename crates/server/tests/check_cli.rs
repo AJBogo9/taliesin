@@ -10,15 +10,30 @@ fn corpus(rel: &str) -> String {
 }
 
 fn run(args: &[&str]) -> (bool, String, String) {
-    let out = Command::new(env!("CARGO_BIN_EXE_taliesin"))
-        .args(args)
-        .output()
-        .expect("run taliesin check");
+    run_env(args, &[])
+}
+
+fn run_env(args: &[&str], envs: &[(&str, &str)]) -> (bool, String, String) {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_taliesin"));
+    cmd.args(args);
+    for (k, v) in envs {
+        cmd.env(k, v);
+    }
+    let out = cmd.output().expect("run taliesin check");
     (
         out.status.success(),
         String::from_utf8_lossy(&out.stdout).into_owned(),
         String::from_utf8_lossy(&out.stderr).into_owned(),
     )
+}
+
+/// Write `body` to a fresh temp `.tmd` file, returning its path.
+fn tmp_doc(tag: &str, body: &str) -> std::path::PathBuf {
+    let dir = std::env::temp_dir().join(format!("tali-check-cli-{tag}-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join("doc.tmd");
+    std::fs::write(&path, body).unwrap();
+    path
 }
 
 #[test]
@@ -164,5 +179,67 @@ fn explain_with_no_code_lists_the_index() {
     assert!(
         v["codes"].is_array(),
         "json index is an array under `codes`: {stdout2}"
+    );
+}
+
+#[test]
+fn errors_only_filters_warnings_but_still_gates_on_errors() {
+    // typos.tmd trips both an error (broken xref) and a warning (front-matter typo).
+    let (ok, stdout, _e) = run(&[
+        "check",
+        &corpus("diagnostics/typos.tmd"),
+        "--errors-only",
+        "--format",
+        "json",
+    ]);
+    assert!(!ok, "an error is present, so --errors-only still fails");
+    let v: serde_json::Value = serde_json::from_str(&stdout).expect("valid json");
+    let diags = v["diagnostics"].as_array().expect("diagnostics array");
+    assert!(!diags.is_empty(), "at least one error survives: {stdout}");
+    assert!(
+        diags.iter().all(|d| d["severity"] == "error"),
+        "warnings are filtered out under --errors-only: {stdout}"
+    );
+}
+
+#[test]
+fn errors_only_passes_a_warning_only_document() {
+    // `titel` is an unknown front-matter key (a WARNING); nothing here is an error.
+    let doc = tmp_doc("warn-only", "---\ntitel: Oops\n---\n\n# Hi\n");
+    let path = doc.to_str().unwrap();
+    let (ok_default, _o, _e) = run(&["check", path]);
+    assert!(!ok_default, "a warning fails the default gate (exit 1)");
+    let (ok_errors_only, _o2, stderr) = run(&["check", path, "--errors-only"]);
+    assert!(
+        ok_errors_only,
+        "with --errors-only a warning-only doc passes (exit 0): {stderr}"
+    );
+}
+
+#[test]
+fn require_kernel_gates_a_missing_interpreter() {
+    // A doc with a {python} cell + a deliberately broken interpreter: `check` is static so
+    // it finds no diagnostics (exit 0), but --require-kernel promotes the unrunnable kernel
+    // to a failure. TALIESIN_PYTHON points at a path that cannot run, so this is
+    // deterministic regardless of what's installed on the machine.
+    let doc = tmp_doc(
+        "needs-kernel",
+        "---\ntitle: K\n---\n\n```{python}\n1 + 1\n```\n",
+    );
+    let path = doc.to_str().unwrap();
+    let broken = [("TALIESIN_PYTHON", "/nonexistent/definitely-not-python")];
+    let (ok_default, _o, _e) = run_env(&["check", path], &broken);
+    assert!(
+        ok_default,
+        "static check ignores an unrunnable kernel by default (exit 0)"
+    );
+    let (ok_required, _o2, stderr) = run_env(&["check", path, "--require-kernel"], &broken);
+    assert!(
+        !ok_required,
+        "--require-kernel fails when the kernel can't run"
+    );
+    assert!(
+        stderr.contains("--require-kernel") && stderr.contains("python"),
+        "the human note names the gate + the language: {stderr}"
     );
 }

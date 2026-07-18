@@ -96,10 +96,13 @@ completion *with descriptions*) was **already shipped** in the companion and she
 already path-completed, so DX7 shipped the two real gaps: `taliesin completions --install` (detect `$SHELL`,
 write the script to its XDG-aware dir; pure `install_plan`, unit + e2e verified) and companion completion for
 `{{< embed/include >}}` file targets (new `detectContext` context + pure `shortcodePathCandidates`, node:test
-+ tsc + bundle verified; in-editor click-through needs a vsix repackage, not done). **DX6 + DX8 + DX7 landed
-locally, NOT yet pushed** (ask me / push when asked; verify with `git log --oneline origin/main..main`). Next
-up per the suggested order: DX17–19 (DX18 cheap — `check` exit-gating) then DX12. Most remaining items are
-*surfacing an existing capability*.
++ tsc + bundle verified; in-editor click-through needs a vsix repackage, not done). **DX18 (check exit-
+gating) is DONE** — two default-off gate flags: `--errors-only` (drop warnings from output + exit decision)
+and `--require-kernel` (fail if a used language's kernel isn't runnable); pure gate helpers + CLI exit-code
+integration tests; `--min-severity` folded into `--errors-only` (only two severities today). **DX6 + DX8 +
+DX7 + DX18 landed locally, NOT yet pushed** (ask me / push when asked; verify with `git log --oneline
+origin/main..main`). Next up per the suggested order: DX12 (build exit-0 warning summary — cheap), then
+DX17 / DX19. Most remaining items are *surfacing an existing capability*.
 
 **Pick up here (2026-07-18, PMF-audit batch — START HERE for feature work).** A product-market-fit
 audit landed ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md); 30+7 sourced personas +
@@ -855,9 +858,16 @@ fragments/`. . .`/incremental/columns/magic-move/notes + a make-it-yours closer,
   its chart executed. `read`=source, `check`=static, `build`=python/r only, `{js}` never server-run. (a)
   let `read` project the *built* doc so baked figures surface as `[figure fig-x: produced, alt "…"]`; (b)
   optional headless `{js}` eval. L · [new] · 🤖. Overlaps ROADMAP agent work — check there first.
-- **DX18 — `check --errors-only`/`--min-severity` + `--require-kernel`**: exit-gating. Severity +
-  kernel-readiness are already computed; exit conflates them (any diagnostic → exit 1; kernel-missing
-  never gates). S · [surface] · 🤖 (worth pulling forward — cheap).
+**DX18 — check exit-gating — LANDED 2026-07-19.** `check` gained two default-off gate flags so an agent/CI
+can separate the exit decision from the (still-computed) severity + kernel-readiness. `--errors-only` drops
+warnings from BOTH the output and the exit decision (a warning-only doc now passes; an error still fails);
+`--require-kernel` promotes a used language whose interpreter is absent/broken or whose Jupyter kernel
+package is missing from informational to a failure (a human note names the gate + language). Both are pure,
+unit-tested helpers (`at_severity_floor`, `kernel_gate_fails`) + CLI exit-code integration tests
+(`check_cli.rs`); wired into `CHECK_FLAGS`, `flags_for("check")` (completion), and the help/usage. The two
+severities are just error/warning today, so `--min-severity` folded into `--errors-only` (a better default
+than a knob whose only non-default value is "error"); note if a third severity ever appears. Record in
+[AUDITS.md](AUDITS.md).
 - **DX19 — Data-figure recipes in `vocab`/AGENTS.md** (CSV→figure idiom), generated from real corpus
   examples so it can't drift. M · [surface] · 🤖 the one thing an agent must learn from prose today.
 
@@ -870,7 +880,7 @@ fragments/`. . .`/incremental/columns/magic-move/notes + a make-it-yours closer,
   One-command deck publish in scope? (🎤)
 - Presenter laser/spotlight + auto-advance (reveal.js reflexes). (🎤)
 
-**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ ~~DX5~~ ~~DX11~~ ~~DX10-followup~~ ~~DX4~~ ~~DX6~~ ~~DX8~~ ~~DX7~~ (all landed) → DX17–19 (DX18 cheap) / DX12
+**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ ~~DX5~~ ~~DX11~~ ~~DX10-followup~~ ~~DX4~~ ~~DX6~~ ~~DX8~~ ~~DX7~~ ~~DX18~~ (all landed) → DX12 / DX17 / DX19
 (kill the two silent-failure traps) → DX4/DX6/DX8 → DX17–19 (DX18 is cheap, pull forward). Tier 0–1 and
 most of Tier 2 are *surfacing existing capability*, not net-new.
 

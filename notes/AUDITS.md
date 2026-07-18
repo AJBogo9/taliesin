@@ -303,8 +303,29 @@ companion's `npm test` (75 node:test, 5 new) + `tsc --noEmit` clean + esbuild bu
 `shell-completion.tmd` gains `--install` + the shortcode note and stays `check`-clean. **Not verified:** in-
 editor click-through of the shortcode completion (needs a vsix repackage+reinstall; the standard companion
 caveat — left to a deliberate step). Spec: `docs/superpowers/specs/2026-07-19-dx7-dynamic-completion.md`.
-**Next per the suggested order: DX17–19 (DX18 cheap — `check` exit-gating), or DX12 (build exit-0 warning
+**Next per the suggested order: DX18 (cheap — `check` exit-gating), then DX12 (build exit-0 warning
 summary).**
+
+**DX18 LANDED 2026-07-19** (`check` exit-gating). **The gap:** 🤖 severity + kernel-readiness are already
+computed, but the exit conflated them — *any* diagnostic (error or warning) → exit 1, and a missing kernel
+*never* gated. **The fix:** two default-off flags on `check` (the default run stays byte-identical).
+`--errors-only` runs the reported set through `at_severity_floor` (drops `severity != error`), so warnings
+leave BOTH the output and the exit decision — a warning-only doc now passes, an error still fails. It filters
+`--format json` too (an agent that wants all diagnostics simply omits the flag). `--require-kernel` runs the
+already-collected `environment` through `kernel_gate_fails` (any used language whose interpreter is
+absent/broken or whose `ipykernel`/`IRkernel` isn't importable) and, in human mode, prints a
+`--require-kernel: no runnable kernel for <langs>` note so a 0-diagnostic run that still exits 1 is legible.
+**Scope call (minimal-config):** `--min-severity` folded into `--errors-only` — there are exactly two
+severities today (error/warning, uncatalogued → error), so a general `--min-severity` would have one
+non-default value; a better default than a knob. Noted for a future third severity. **Surface:** `check.rs`
+(flag parse + two pure helpers + the filtered display/exit + the human note; `CHECK_FLAGS` +2), `complete.rs`
+(`flags_for("check")` +2, so `check --<TAB>` offers them), `main.rs` (help + usage). **Verification:** pure
+unit tests for both helpers (severity filter incl. the empty-when-warning-only case; kernel gate off-by-
+default / needs-a-used-language / interpreter-vs-pkg) + CLI exit-code integration tests in `check_cli.rs`
+(errors-only filters warnings from JSON yet still fails on an error; a warning-only temp doc flips exit 1→0;
+`--require-kernel` + a broken `TALIESIN_PYTHON` flips exit 0→1 deterministically) + the `flag_table_covers_
+help` drift gate green with the two new flags + full `cargo test -p taliesin-server` (259 unit + integration)
++ clippy `-D warnings` clean. **Next: DX12 (build exit-0 warning summary — cheap), then DX17 / DX19.**
 
 -----------------------------------------------------------------------------
 
