@@ -218,6 +218,42 @@ fn build_rejects_value_less_out_flag() {
 }
 
 #[test]
+fn build_into_pdf_is_rejected() {
+    // DX11: `build doc.tmd doc.pdf` used to write HTML bytes into `doc.pdf`, log `built
+    // doc.pdf`, and exit 0 (the academic persona opens a "PDF" full of `<!DOCTYPE html>`).
+    // It must now be a hard error that writes nothing and explains HTML-only + the fix.
+    let dir = tmp_dir("pdftarget");
+    let doc = dir.join("post.tmd");
+    fs::write(&doc, "---\ntitle: Post\n---\n\nProse.\n").unwrap();
+    let pdf = dir.join("post.pdf");
+    let res = taliesin()
+        .arg("build")
+        .arg(&doc)
+        .arg(&pdf)
+        .output()
+        .expect("run build");
+    let err = String::from_utf8_lossy(&res.stderr);
+    let wrote_pdf = pdf.exists();
+    let _ = fs::remove_dir_all(&dir);
+    assert!(
+        !res.status.success(),
+        "a .pdf output target must fail the build, stderr was:\n{err}"
+    );
+    assert!(
+        !wrote_pdf,
+        "the rejected build must not write HTML bytes into the .pdf file"
+    );
+    assert!(
+        err.contains(".pdf") && err.contains("HTML only"),
+        "the error names the extension and states HTML-only: {err}"
+    );
+    assert!(
+        err.contains("ROADMAP") && err.contains("Print"),
+        "the error points at the planned print track + the browser-Print escape hatch: {err}"
+    );
+}
+
+#[test]
 fn check_rejects_unknown_flag_with_suggestion() {
     let dir = tmp_dir("checkflag");
     let doc = dir.join("post.tmd");

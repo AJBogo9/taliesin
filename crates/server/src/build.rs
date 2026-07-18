@@ -64,6 +64,42 @@ struct BuildArgs<'a> {
 /// only short alias; it's not in this set (suggestions are between long flags).
 const BUILD_FLAGS: &[&str] = &["--out", "--dir", "--jobs", "--strict", "--bare", "--format"];
 
+/// Output-path extensions that name a format Taliesin does not produce (DX11). `build`
+/// writes HTML; a second positional ending in one of these means the author expected format
+/// *conversion* (a PDF/DOCX to open, a `.md` to round-trip) and would otherwise get HTML bytes
+/// silently written into that file with a green exit — the academic persona's abandonment
+/// moment. A denylist, not an allowlist: an extensionless or `.html`/`.htm`/unusual-but-named
+/// target is the author's deliberate choice (HTML content in the file they asked for), not a
+/// format-expectation trap. The CLI analog of `frontmatter::NON_HTML_FORMATS` (format *names*),
+/// here matching output-path *file extensions*. Real PDF is a sanctioned future track (ROADMAP
+/// Pillar IV / Wave 5, derived from the built HTML); this is only the interim guardrail.
+const NON_HTML_OUTPUT_EXTS: &[&str] = &[
+    "pdf", "docx", "doc", "odt", "rtf", "tex", "latex", "typ", "epub", "pptx", "ppt", "md",
+    "markdown",
+];
+
+/// The friendly rejection for a `build … <out>` whose extension names a non-HTML format
+/// ([`NON_HTML_OUTPUT_EXTS`]), or `None` when the output path is absent or an acceptable
+/// target. Names the extension, hands over the concrete `.html` fix (the out path with its
+/// extension swapped, so `dist/x.pdf` → `dist/x.html`), offers the browser Print-to-PDF escape
+/// hatch, and points at the planned print track. `error: `-prefixed to match the other
+/// `parse_build_args` errors (`cmd_build` prints it verbatim to stderr).
+fn non_html_output_error(out_html: Option<&str>) -> Option<String> {
+    let out = out_html?;
+    let ext = Path::new(out).extension()?.to_str()?.to_ascii_lowercase();
+    if !NON_HTML_OUTPUT_EXTS.contains(&ext.as_str()) {
+        return None;
+    }
+    let html = Path::new(out).with_extension("html");
+    let html = html.display();
+    Some(format!(
+        "error: `build` renders HTML only, but the output path `{out}` ends in `.{ext}`. \
+         Write `{html}` instead (or omit it to build `{html}` beside the source). For a rough \
+         PDF, open the built page and use your browser's Print to PDF; a real print/PDF track \
+         is planned (ROADMAP Pillar IV)."
+    ))
+}
+
 /// Parse `build` argv (`args[2..]`; `args[0..2]` are the binary + "build"). Flags may
 /// appear anywhere; the first positional is the source, the optional second is `[out.html]`.
 /// Returns `Err(usage/error message)` for a bad `--jobs` value, a value-less `--out`/`--dir`,
@@ -124,6 +160,13 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
         "usage: taliesin build <file.tmd|dir> [out.html] [--out <dir>] [--strict] [--bare] [--jobs <N>]"
             .to_string()
     })?;
+    // DX11: a format-implying output extension (`build doc.tmd doc.pdf`) is a hard error, not a
+    // silent HTML-into-a-.pdf write. Checked here so it is caught for any invocation carrying
+    // that second positional (even a contradictory `--out dist doc.pdf`, where it is otherwise
+    // ignored), and stays unit-testable as pure arg parsing.
+    if let Some(msg) = non_html_output_error(positionals.get(1).copied()) {
+        return Err(msg);
+    }
     Ok(BuildArgs {
         path,
         out_html: positionals.get(1).copied(),
@@ -2394,6 +2437,90 @@ mod jobs_tests {
             msg.contains("--jobs"),
             "error message names the flag: {msg}"
         );
+    }
+}
+
+#[cfg(test)]
+mod dx11_tests {
+    use super::*;
+
+    /// Build a `build` argv (`["taliesin", "build", …tokens]`) so `parse_build_args`,
+    /// which reads `args[2..]`, sees exactly the tokens after "build".
+    fn argv(tokens: &str) -> Vec<String> {
+        std::iter::once("taliesin")
+            .chain(std::iter::once("build"))
+            .chain(tokens.split(' '))
+            .map(String::from)
+            .collect()
+    }
+
+    /// DX11: a format-implying output extension (`.pdf`, `.docx`, `.tex`, …) is rejected with a
+    /// friendly HTML-only message; an HTML target, an extensionless name, and a plain `.txt`
+    /// are all left alone (the denylist targets format-conversion traps, not every filename).
+    #[test]
+    fn non_html_output_error_flags_format_extensions() {
+        let m = non_html_output_error(Some("methods.pdf")).expect(".pdf must be rejected");
+        assert!(m.contains(".pdf"), "names the extension: {m}");
+        assert!(m.contains("HTML only"), "states HTML-only: {m}");
+        assert!(m.contains("methods.html"), "suggests the .html fix: {m}");
+        assert!(
+            m.contains("Print"),
+            "offers the browser-Print escape hatch: {m}"
+        );
+
+        // Case-insensitive.
+        assert!(
+            non_html_output_error(Some("out.PDF")).is_some(),
+            ".PDF (caps)"
+        );
+        // The rest of the denylist.
+        for bad in [
+            "slides.pptx",
+            "paper.docx",
+            "x.tex",
+            "x.typ",
+            "x.md",
+            "a.epub",
+            "a.rtf",
+        ] {
+            assert!(non_html_output_error(Some(bad)).is_some(), "reject {bad}");
+        }
+
+        // Left alone: HTML targets, extensionless, and non-format extensions.
+        for ok in ["page.html", "page.htm", "draft", "notes.txt"] {
+            assert!(non_html_output_error(Some(ok)).is_none(), "allow {ok}");
+        }
+        assert!(
+            non_html_output_error(None).is_none(),
+            "no second positional"
+        );
+
+        // The .html suggestion keeps any directory component.
+        let nested = non_html_output_error(Some("dist/methods.pdf")).unwrap();
+        assert!(
+            nested.contains("dist/methods.html"),
+            "suggestion keeps the dir: {nested}"
+        );
+    }
+
+    /// DX11: the rejection is wired through `parse_build_args`, and a valid `.html` target
+    /// still parses (regression guard — the guard must not reject legitimate output paths).
+    #[test]
+    fn parse_build_args_rejects_pdf_output() {
+        // `BuildArgs<'a>` borrows from the argv, so each argv is bound before parsing.
+        let pdf = argv("doc.tmd out.pdf");
+        let err = parse_build_args(&pdf).expect_err(".pdf output must Err");
+        assert!(err.contains(".pdf"), "names the extension: {err}");
+        assert!(err.contains("HTML only"), "states HTML-only: {err}");
+
+        let html = argv("doc.tmd out.html");
+        let ok = parse_build_args(&html).expect(".html output parses");
+        assert_eq!(ok.out_html, Some("out.html"), "html target preserved");
+
+        // No second positional: nothing to reject.
+        let none = argv("doc.tmd");
+        let bare = parse_build_args(&none).expect("no out path parses");
+        assert_eq!(bare.out_html, None);
     }
 }
 
