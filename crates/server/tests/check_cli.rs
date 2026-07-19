@@ -250,4 +250,49 @@ fn require_kernel_gates_a_missing_interpreter() {
         stderr.contains("--require-kernel") && stderr.contains("python"),
         "the human note names the gate + the language: {stderr}"
     );
+    // PL14: under --require-kernel the degraded environment block appears and points at doctor.
+    assert!(
+        stderr.contains("Environment (kernels not ready)") && stderr.contains("taliesin doctor"),
+        "the degraded env block + a doctor pointer show under --require-kernel: {stderr}"
+    );
+}
+
+#[test]
+fn default_human_check_omits_the_environment_block() {
+    // PL14: `check` is a static linter, so a default human run does NOT spawn interpreters or
+    // print the Environment footer (it duplicated `doctor` on every keystroke/CI run). Forcing a
+    // BROKEN interpreter makes this deterministic AND pins the probe-skip: if the default path
+    // still probed, a broken interpreter would print a degraded "Environment …" block.
+    let doc = tmp_doc(
+        "static-check",
+        "---\ntitle: S\n---\n\n```{python}\n1 + 1\n```\n",
+    );
+    let path = doc.to_str().unwrap();
+    let broken = [("TALIESIN_PYTHON", "/nonexistent/definitely-not-python")];
+    let (ok, _o, stderr) = run_env(&["check", path], &broken);
+    assert!(
+        ok,
+        "static check passes without probing, even with a broken interpreter: {stderr}"
+    );
+    assert!(
+        !stderr.contains("Environment"),
+        "default human check omits the Environment block (it never probed): {stderr}"
+    );
+}
+
+#[test]
+fn json_check_still_carries_the_environment_probe() {
+    // PL14 keeps `--format json` always-on: agents want the full interpreter/kernel probe, so the
+    // `environment` array is present for a doc that uses a language (regardless of --require-kernel).
+    let doc = tmp_doc(
+        "json-env",
+        "---\ntitle: J\n---\n\n```{python}\n1 + 1\n```\n",
+    );
+    let (_ok, stdout, _e) = run(&["check", doc.to_str().unwrap(), "--format", "json"]);
+    let parsed: serde_json::Value = serde_json::from_str(&stdout).expect("valid json");
+    let env = parsed["environment"]
+        .as_array()
+        .expect("environment array present");
+    assert_eq!(env.len(), 1, "one entry for the python cell: {stdout}");
+    assert_eq!(env[0]["lang"], "python");
 }

@@ -602,10 +602,16 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    // Informational by default: which interpreter each used language resolves to + whether
-    // its Jupyter kernel package is importable. It gates the exit only under
-    // `--require-kernel` (a CI box without Python must still be able to lint by default).
-    let environment = collect_environment(target);
+    // The interpreter probe (which SPAWNS python3/R) runs only when the output or a gate needs
+    // it: `--format json` always carries `environment` (agents want the full probe), and
+    // `--require-kernel` gates on it. A default human `check` is a static linter ("does NOT
+    // execute code cells"), so it skips the spawn on every keystroke/CI run and leaves the
+    // environment audit to `taliesin doctor` (which the always-green footer only duplicated).
+    let environment = if format == "json" || require_kernel {
+        collect_environment(target)
+    } else {
+        Vec::new()
+    };
     // `--errors-only` drops warnings from what is shown AND from the exit decision.
     let diags = at_severity_floor(diags, errors_only);
     let kernel_fail = kernel_gate_fails(&environment, require_kernel);
@@ -617,23 +623,26 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
         // per-severity summary + the `--explain` footer (both in `human_summary`).
         eprint!("{}", format_human(&diags));
         eprint!("{}", human_summary(&diags));
-        if !environment.is_empty() {
-            eprintln!("\nEnvironment:");
-            for e in &environment {
+        // Under `--require-kernel` (the only human path that probed), surface just the DEGRADED
+        // languages — an all-green probe is `doctor`'s business, not a linter's — then point at
+        // `doctor` for the full audit.
+        let degraded: Vec<&EnvEntry> = environment
+            .iter()
+            .filter(|e| !e.runs || !e.kernel_pkg_ok)
+            .collect();
+        if !degraded.is_empty() {
+            eprintln!("\nEnvironment (kernels not ready):");
+            for e in &degraded {
                 let pkg = if !e.runs {
                     // The interpreter binary itself is absent/broken, so the kernel
                     // package is moot; name that instead of a misleading "pkg MISSING".
                     "interpreter not found or failed to run".to_string()
-                } else if e.kernel_pkg_ok {
-                    match &e.version {
-                        Some(v) => format!("{} present ({v})", e.kernel_pkg),
-                        None => format!("{} present", e.kernel_pkg),
-                    }
                 } else {
                     format!("{} MISSING", e.kernel_pkg)
                 };
                 eprintln!("  {}: {} ({}), {}", e.lang, e.path, e.provenance, pkg);
             }
+            eprintln!("run `taliesin doctor` for the full environment audit");
         }
         // Make the reason legible when `--require-kernel` is the *only* thing failing (0
         // diagnostics would otherwise print "no problems found" then exit non-zero).

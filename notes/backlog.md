@@ -961,9 +961,6 @@ under-sells machinery that already ships.)
 - **PL6 — Route kernel failures to `taliesin doctor`.** `exec.rs:328-329` blames the interpreter path; the usual
   cause is a missing `ipykernel`/`IRkernel` package `doctor` was built to find. Append the `doctor` pointer +
   soften "fix the interpreter". S · med. **VERIFIED.**
-- **PL14 — `check`'s Environment footer spawns interpreters + prints an always-green block** every run
-  (`check.rs:562`, `:581`) on a command documented "does NOT execute code cells", duplicating `doctor`. Print it
-  only when a used language is degraded; keep JSON `environment` always-on. S–M · med. **VERIFIED.**
 - **PL18 — One `--format` error helper** (two wordings/styles across `check`/`map`/`symbols` vs `doctor`/`publish`)
   + resolve the hidden per-command `--out`/`--dir` aliasing. Trivial · low-med. **VERIFIED (cited).**
 

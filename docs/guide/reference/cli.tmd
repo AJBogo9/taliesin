@@ -61,11 +61,13 @@ missing path (or an empty site) is reported as a single `{"error": "…"}` objec
 **stdout** (with a non-zero exit), so `taliesin check x --format json | jq` never chokes
 on a stray human message. Human format keeps that error on stderr.
 
-When the target runs code cells, `check` also prints an **Environment** section (a
-human block after the summary, and the `environment` array in JSON): for each language
-used, the resolved interpreter, where it came from, and whether its Jupyter kernel
-package (`ipykernel` / `IRkernel`) is importable. This is **informational only**: a box
-without Python won't fail `check`, so the static gate stays portable. See the
+`check` is a static linter, so by default it does **not** spawn interpreters — the
+environment audit lives in `taliesin doctor`. Two paths still probe: `--format json`
+always carries the full `environment` array (for each language used: the resolved
+interpreter, where it came from, and whether its `ipykernel` / `IRkernel` package is
+importable), because agents want it; and `--require-kernel` probes to gate on it. Under
+`--require-kernel` the human output lists only the **degraded** languages (an all-green
+probe is `doctor`'s business) and points at `taliesin doctor` for the full audit. See the
 [configuration reference](configuration.html) for how the interpreter is chosen.
 
 At a glance, here is everything `check` looks at, grouped by what it protects:
