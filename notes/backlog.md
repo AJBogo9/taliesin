@@ -1066,8 +1066,8 @@ is the best single first move (both S · high, both close a silent failure).
     end-to-end-verified against the real binary. **Do not re-open.**
 
 - **Execution-cache leaks — remainder** (exec/kernel Do-NOT-touch, careful):
-  - **Ungraceful-death path (S/M) — warm-pool + cold-kernel halves LANDED 2026-07-19; the
-    `/tmp` sweep + an R-cold-kernel residual remain.**
+  - **Ungraceful-death path (S/M) — warm-pool + cold-kernel + `/tmp`-sweep all LANDED 2026-07-19;
+    only a low-value R-cold-kernel residual remains.**
     (Measured baseline: `kill -9` on a real preview orphaned a 5-proc / ~243 MB forkserver
     subtree; 22 h+ orphans + 4199 stale `/tmp/tali-*` dirs were found in the wild.)
     - ~~warm-pool forkserver subtree orphans on SIGKILL~~ **DONE:** the helper now self-reaps
@@ -1091,12 +1091,18 @@ is the best single first move (both S · high, both close a silent failure).
       `cold_python_kernel_argv_arms_parent_death_reaping` + the e2e
       `cold_kernel_self_reaps_on_ungraceful_parent_death` (self-re-exec; both mutation-checked; verified
       e2e on a real preview). `crates/server/src/kernel.rs`.
-    - **Stale-`/tmp`-dir sweep (still open; backlog premise was wrong).** The runtime dirs
-      (`tali-warmpool-<uuid>`, `tali-kernel-<uuid>`, `tali-interp-<name>`) are **UUID/name-named — no
-      owner pid**, so "sweep dirs whose owner pid is dead" cannot work as written. The bulk of the 4199
-      is TEST debris (`tali-omit`/`tali-check`/`tali-sbe`/…, which *do* carry a pid). A real sweep needs a
-      design call: encode the pid in future runtime dir names + sweep pid-dead ones, or age-based (racy
-      vs a long preview). Wiring a startup sweep also touches `main.rs`.
+    - ~~Stale-`/tmp`-dir sweep~~ **DONE (2026-07-19, `c4f9af2`; owner-ruled "runtime leak only"):**
+      the two runtime accumulators (`tali-kernel-<uuid>`, `tali-warmpool-<uuid>`) are now pid-tagged
+      `tali-{kernel,warmpool}-<pid>_<uuid>`, and preview/serve + build sweep pid-dead ones at startup
+      (`crates/server/src/runtime_dirs.rs`; wiring in `main.rs` only, disjoint from the in-flight PL
+      cli/build). **Separator is `_` not `-`** (a uuid's first 8 hex chars are all-decimal ~2.3% of the
+      time, so `-` misreads legacy dirs as tagged). Parallel-session safe: only provably-dead
+      (`kill(pid,0)==ESRCH`), non-own pids are removed; legacy no-`_` dirs are left untouched (owner
+      ruling). Verified e2e (a SIGKILLed server's leaked dir is reclaimed by the next start; a legacy
+      dir survives); `owner_pid`/`sweep_in` mutation-checked. **Left out of scope by ruling:** test
+      debris (the bulk of the 4199 — a separate test-hygiene fix: `tali-omit`/`tali-check`/… should
+      self-clean) and age-based sweeping (racy). Design:
+      `docs/superpowers/specs/2026-07-19-stale-runtime-dir-sweep-design.md`.
   - **Flaky timing tests** (LOAD-sensitive):
     `exec::tests::pooled_kernel_serves_cells_without_a_long_warming_state` +
     `kernel::tests::kernel_executes_state_errors_and_interrupts_runaway_cell` fail under CPU load;
