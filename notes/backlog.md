@@ -966,9 +966,6 @@ under-sells machinery that already ships.)
 
 **Tier 2 — authoring/live-view coherence (opportunistic):**
 
-- **PL13 — Deck theme: 3-state Auto/Light/Dark** mirroring the page. A standalone deck's toggle wins in
-  `resolve()` forever with no OS-follow (`deck.rs:165-175`) vs the page's Auto (`14-reader-prefs.js:12`). S · med
-  (embedded decks already follow the host — scope is standalone only). **VERIFIED.** *(live check.)*
 - **PL17 — Theorem title from a leading heading, or warn.** Callouts hoist a leading heading as title
   (`divs.rs:411-423`); theorems take `title=` only (`:650-656`) — same gesture, two outcomes. S · med. **VERIFIED.**
 - **PL19 — Name `.column-margin` the canonical margin-note** in docs; keep `.sidenote`/`.marginnote`/`.aside` as

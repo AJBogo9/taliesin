@@ -2510,6 +2510,21 @@ fn deck_theme_is_custom_and_head_gating() {
         head.contains("t==='sepia' ? 'light'"),
         "hostTheme() should map a sepia host to a light deck"
     );
+    // PL13: the 3-state Auto/Light/Dark control. `taliDeckThemeChoice` exposes the current choice
+    // ('auto' when no key), the setter CLEARS the key for a non-light/dark value (so "Auto"
+    // resumes OS-follow), and a standalone Auto deck reacts to a live OS flip.
+    assert!(
+        head.contains("taliDeckThemeChoice"),
+        "the deck exposes its theme choice for the segment"
+    );
+    assert!(
+        head.contains("removeItem('qmd-deck-theme')"),
+        "a non-light/dark choice (Auto) clears the stored key -> OS-follow: {head}"
+    );
+    assert!(
+        head.contains("prefers-color-scheme: dark") && head.contains("addEventListener"),
+        "a standalone Auto deck follows a live OS light/dark flip: {head}"
+    );
 }
 
 #[test]

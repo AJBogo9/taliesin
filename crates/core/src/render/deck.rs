@@ -172,7 +172,10 @@ pub fn deck_theme_head(theme_default: &str, custom_theme: bool) -> String {
   window.taliDeckEmbedded = embedded;
   window.taliDeckThemeManaged = true;
   window.taliDeckApplyTheme = function(){{ var m = resolve(); var el = document.documentElement; el.classList.toggle('tali-deck-dark', m==='dark'); el.style.colorScheme = m; return m; }};
-  window.taliDeckSetTheme = function(m){{ if (!embedded) {{ try {{ localStorage.setItem('qmd-deck-theme', m); }} catch(e){{}} }} return window.taliDeckApplyTheme(); }};
+  window.taliDeckSetTheme = function(m){{ if (!embedded) {{ try {{ if (m==='dark'||m==='light') localStorage.setItem('qmd-deck-theme', m); else localStorage.removeItem('qmd-deck-theme'); }} catch(e){{}} }} return window.taliDeckApplyTheme(); }};
+  window.taliDeckThemeChoice = function(){{ return stored() || 'auto'; }};  // 'auto' = no stored key (OS-follow)
+  // A standalone deck in Auto follows a live OS light/dark flip, mirroring the page's pre-paint script.
+  try {{ if (!embedded && window.matchMedia) {{ var mq = matchMedia('(prefers-color-scheme: dark)'); var onOs = function(){{ if (!stored()) window.taliDeckApplyTheme(); }}; if (mq.addEventListener) mq.addEventListener('change', onOs); else if (mq.addListener) mq.addListener(onOs); }} }} catch(e){{}}
   window.taliDeckApplyTheme();
 }})();
 </script>"#

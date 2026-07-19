@@ -1716,9 +1716,17 @@
     menu.setAttribute('role', 'dialog');
     menu.setAttribute('aria-label', 'Slide navigation and view options');
     menu.setAttribute('hidden', '');
+    // A 3-state Auto/Light/Dark segment (mirrors the page's reader theme control); "Auto" clears
+    // the stored key so the deck resumes following the OS. Standalone decks only — an embedded
+    // deck follows its host, so `taliDeckEmbedded` suppresses the row.
+    var themeOpt = function (v, l) {
+      return '<button class="tali-theme-opt" data-theme-choice="' + v + '" aria-pressed="false">' + l + '</button>';
+    };
     var themeRow = (window.taliDeckThemeManaged && !window.taliDeckEmbedded)
-      ? '<div class="tali-menu-head">Theme</div><div class="tali-menu-tools">' +
-        tool('theme', IC.moon, 'Dark mode', '<span class="tali-theme-state"></span>') + '</div>'
+      ? '<div class="tali-menu-head">Theme</div>' +
+        '<div class="tali-theme-seg" role="group" aria-label="Theme">' +
+        themeOpt('auto', 'Auto') + themeOpt('light', 'Light') + themeOpt('dark', 'Dark') +
+        '</div>'
       : '';
     menu.innerHTML =
       '<div class="tali-menu-head">Slides</div><div class="tali-menu-slides"></div>' +
@@ -1761,16 +1769,27 @@
       if (b) b.classList.toggle('tali-on', !!on);
     };
     set('overview', deck.overview);
-    var st = deck.menu.querySelector('.tali-theme-state');
-    if (st) st.textContent = document.documentElement.classList.contains('tali-deck-dark') ? 'On' : 'Off';
+    updateThemeSeg();
+  }
+  // Reflect the current theme CHOICE (auto/light/dark) on the segment, pressing the active one.
+  function updateThemeSeg() {
+    if (!deck.menu || !window.taliDeckThemeChoice) return;
+    var cur = window.taliDeckThemeChoice();
+    var btns = deck.menu.querySelectorAll('.tali-theme-opt');
+    for (var i = 0; i < btns.length; i++) {
+      var on = btns[i].getAttribute('data-theme-choice') === cur;
+      btns[i].setAttribute('aria-pressed', on ? 'true' : 'false');
+      btns[i].classList.toggle('tali-on', on);
+    }
   }
   function onMenuClick(e) {
     var slide = e.target.closest && e.target.closest('.tali-menu-slide');
     if (slide) { jumpToIndex(parseInt(slide.getAttribute('data-i'), 10)); return; }
+    var opt = e.target.closest && e.target.closest('.tali-theme-opt');
+    if (opt) { setThemeChoice(opt.getAttribute('data-theme-choice')); return; } // stay open; reflects state
     var item = e.target.closest && e.target.closest('.tali-menu-item');
     if (!item) return;
     var a = item.getAttribute('data-action');
-    if (a === 'theme') { toggleThemeMode(); return; } // stay open; reflects state
     toggleMenu(false);
     // Present / Overview from the feed are a MANUAL mode choice: pin it (like ?qmd=present)
     // so a later resize's maybeReroute() can't auto-snap the user back into the feed.
@@ -1917,11 +1936,12 @@
     } else { legacyCopy(input); done(); }
   }
   function legacyCopy(input) { input.focus(); input.select(); try { document.execCommand('copy'); } catch (e) {} }
-  function toggleThemeMode() {
+  // Apply a theme CHOICE from the segment. 'auto' clears the stored key so the deck resumes
+  // following the OS (taliDeckSetTheme handles the persistence); light/dark pin it.
+  function setThemeChoice(choice) {
     if (!window.taliDeckSetTheme) return;
-    var dark = document.documentElement.classList.contains('tali-deck-dark');
-    window.taliDeckSetTheme(dark ? 'light' : 'dark');
-    markActiveTools();
+    window.taliDeckSetTheme(choice);
+    updateThemeSeg();
   }
   function updateChrome() {
     if (!deck.chrome) return;
