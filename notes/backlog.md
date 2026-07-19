@@ -116,10 +116,10 @@ DX7 + DX18 + DX12 + DX19 landed locally** (push when asked; verify with `git log
 **DX9 + DX15 + DX13 landed 2026-07-19** (the three build-ready Tier-2 surfacing items; see §6).
 Next up: **DX17** (headless executed-output visibility) is the last DX-batch item, but it is L, net-new, has
 a fork (optional headless `{js}` eval) and overlaps `ROADMAP.md` agent work, so **brainstorm before
-building** (do NOT scope it straight from the one-liner). The only remaining Tier-2 DX items are DX14
-(interactive `new`/`init` wizard, M · net-new) and DX16 (update-available nudge, S · net-new — implies a
-network check, so weigh it against the offline invariant first). Most remaining items are *surfacing an
-existing capability*.
+building** (do NOT scope it straight from the one-liner). **DX14 (interactive `new`/`init` wizard +
+multi-page scaffolds) LANDED 2026-07-19** (§6). The only remaining Tier-2 DX item is DX16 (update-available
+nudge, S · net-new — implies a network check, so weigh it against the offline invariant first). Most
+remaining items are *surfacing an existing capability*.
 
 **Pick up here (2026-07-18, PMF-audit batch — START HERE for feature work).** A product-market-fit
 audit landed ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md); 30+7 sourced personas +
@@ -889,8 +889,20 @@ url-less corpus site still renders a real 1200×630 PNG by rel) + a mutation-che
 include_str!'d client route/gate/CSS. Verified end-to-end: `curl /og-preview?page=intro.tmd` → 1200×630
 `image/png` on the url-less demo-book, and the pane renders in a real browser (no console errors). **Do not
 re-open.**
-- **DX14 — Interactive `new`/`init` wizard** (arrow-key kind picker, `-y` to skip) + a `site`/`book` kind.
-  M · [new] · 🎓✍️ (flags-only today; no multi-page scaffolder).
+**DX14 — Interactive `new`/`init` wizard + multi-page scaffolds — LANDED 2026-07-19.** Two halves.
+**(A)** `taliesin init` gained `--template basic|site|book`: `site` (a nav linking Home + About) and `book`
+(a `chapters:` project — landing page + two chapters) join the frozen `basic` one-page site, each
+byte-pinned by a real, buildable project under `corpus/scaffold-{site,book}/` (corpus-leads) that the
+regression net renders + lints, and `check`-clean as a whole project. `scaffold_init` was refactored into
+a pure `init_files(template)` (mirrors `new_files`) sharing a `write_scaffold` refuse-overwrite writer with
+`new`. **(B)** A `dialoguer` arrow-key wizard prompts for a missing kind/slug (`new`) or template/dir
+(`init`) — but ONLY at a human TTY: gated on `stdin.is_terminal() && !-y && !--json`, so every pipe, CI job,
+and agent keeps the exact pre-wizard behavior. That gate is the load-bearing safety property (integration-
+pinned + mutation-checked in `wizard_gate.rs`; the pure `should_prompt` is unit-tested; the dialoguer flow
+is PTY-verified). `-y`/`--yes` stays first-class. New dep `dialoguer` (`default-features = false` → console +
+shell-words + unicode-width; offline, no runtime network — the owner chose arrow-keys over a zero-dep line
+prompt). Help + shell completion (`--template` value completion, `--yes`) updated, drift-gated. Spec:
+`docs/superpowers/specs/2026-07-19-dx14-init-templates-and-wizard-design.md`. **Do not re-open.**
 **DX15 — Pre-flight publish summary — LANDED 2026-07-19.** Confirmed real: a real (non-dry-run) deploy in
 the default *gated* path printed **no gate confirmation at all** (only the ungated path warned) — exactly
 the accidental-gating incident. Now a pure `preflight_summary()` prints target + source + access + checks
@@ -939,7 +951,7 @@ Record in [AUDITS.md](AUDITS.md). **Do not re-open.**
   One-command deck publish in scope? (🎤)
 - Presenter laser/spotlight + auto-advance (reveal.js reflexes). (🎤)
 
-**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ ~~DX5~~ ~~DX11~~ ~~DX10-followup~~ ~~DX4~~ ~~DX6~~ ~~DX8~~ ~~DX7~~ ~~DX18~~ ~~DX12~~ ~~DX19~~ ~~DX9~~ ~~DX15~~ ~~DX13~~ (all landed) → DX17 (brainstorm: L, net-new, forked) · DX14/DX16 (Tier 2)
+**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ ~~DX5~~ ~~DX11~~ ~~DX10-followup~~ ~~DX4~~ ~~DX6~~ ~~DX8~~ ~~DX7~~ ~~DX18~~ ~~DX12~~ ~~DX19~~ ~~DX9~~ ~~DX15~~ ~~DX13~~ (all landed) → DX17 (brainstorm: L, net-new, forked) · DX16 (Tier 2)
 (kill the two silent-failure traps) → DX4/DX6/DX8 → DX17–19 (DX18 is cheap, pull forward). Tier 0–1 and
 most of Tier 2 are *surfacing existing capability*, not net-new.
 

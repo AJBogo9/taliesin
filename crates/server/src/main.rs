@@ -13,6 +13,7 @@ mod complete;
 mod doctor;
 mod exec;
 mod freeze;
+mod interactive;
 mod interpreter;
 mod kernel;
 mod log;
@@ -363,7 +364,7 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin vocab | jq .cellOptions\n"
         }
         "new" => {
-            "taliesin new <post|page|deck|paper> <slug> [--dir <root>] [--draft] [--tour] [--json]\n\
+            "taliesin new [post|page|deck|paper] [slug] [--dir <root>] [--draft] [--tour] [--json] [-y]\n\
              \n\
              Scaffold one document that is correct on its first save: it renders, and\n\
              `taliesin check` passes on it with no diagnostics. A post lands in\n\
@@ -371,11 +372,15 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              <slug>.tmd; a paper lands in posts/<slug>/ with a ready-to-cite\n\
              references.bib beside it. Refuses to overwrite an existing file.\n\
              \n\
+             Run at a terminal with the kind or slug omitted and it prompts for them\n\
+             (arrow keys to pick the kind); pass -y to never prompt.\n\
+             \n\
              Flags:\n\
              \x20 --dir <root>   scaffold under <root> instead of the current directory\n\
              \x20 --draft        mark the scaffold `draft: true`, held out of the published build\n\
              \x20 --tour         (deck only) scaffold a guided deck: one slide per feature, explained\n\
              \x20 --json         print a {kind, slug, created, preview} receipt (agent-friendly)\n\
+             \x20 -y, --yes      skip the interactive prompt (for scripts run at a terminal)\n\
              \n\
              Example:\n\
              \x20 taliesin new post my-first-post --draft\n"
@@ -405,7 +410,7 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin blocks post.tmd\n"
         }
         "init" => {
-            "taliesin init [dir] [--template basic|site|book]\n\
+            "taliesin init [dir] [--template basic|site|book] [-y]\n\
              \n\
              Scaffold a starter project into dir (default the current directory) and print\n\
              the preview hint. Refuses to overwrite existing files.\n\
@@ -417,6 +422,9 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \n\
              Every template also writes AGENTS.md (the agent onramp) and the .taliesin/\n\
              config schemas that drive editor autocomplete.\n\
+             \n\
+             Run at a terminal with no --template and it prompts for one (arrow keys);\n\
+             pass -y to take the basic default without prompting.\n\
              \n\
              Example:\n\
              \x20 taliesin init my-book --template book\n"

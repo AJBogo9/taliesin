@@ -12,7 +12,7 @@
 //! **Depends on:** [`crate::serve`] + [`crate::serve_site`] (the two server entry points)
 //! and [`crate::log`].
 
-use crate::{log, serve, serve_site};
+use crate::{interactive, log, serve, serve_site};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -122,6 +122,20 @@ pub(crate) enum InitTemplate {
 /// The template names, for the unknown-template did-you-mean and `--template` help.
 const INIT_TEMPLATES: &[&str] = &["basic", "site", "book"];
 
+/// The `init` wizard's template picker: a friendly one-line label per template, index-aligned
+/// with the value it selects.
+const INIT_TEMPLATE_MENU: [(&str, InitTemplate); 3] = [
+    ("basic  — a one-page site", InitTemplate::Basic),
+    (
+        "site   — a multi-page site with a top nav",
+        InitTemplate::Site,
+    ),
+    (
+        "book   — chapters with a sidebar and TOC",
+        InitTemplate::Book,
+    ),
+];
+
 impl InitTemplate {
     fn parse(raw: &str) -> Result<Self, String> {
         match raw {
@@ -163,7 +177,7 @@ pub(crate) fn init_files(template: InitTemplate) -> Vec<(PathBuf, String)> {
 }
 
 /// Every long flag `init` accepts (drives the unknown-flag did-you-mean).
-const INIT_FLAGS: &[&str] = &["--json", "--format", "--template"];
+const INIT_FLAGS: &[&str] = &["--json", "--format", "--template", "--yes"];
 
 /// `taliesin init [dir] [--json]`: scaffold a minimal previewable site into `dir` (default
 /// the current directory). Writes `_site.yml` + `index.tmd` + `AGENTS.md` (the agent
@@ -171,7 +185,9 @@ const INIT_FLAGS: &[&str] = &["--json", "--format", "--template"];
 pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
     let mut dir_arg: Option<&str> = None;
     let mut json = false;
-    let mut template = InitTemplate::Basic;
+    let mut yes = false;
+    // `None` = no `--template` given, so a human at a TTY is asked which starter to scaffold.
+    let mut template: Option<InitTemplate> = None;
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -186,11 +202,11 @@ pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
                     return ExitCode::FAILURE;
                 }
             },
-            // `--template basic|site|book`: which starter to scaffold (default basic, the
-            // frozen one-page site). An unknown value gets a did-you-mean.
+            // `--template basic|site|book`: which starter to scaffold. An unknown value gets a
+            // did-you-mean; omitted, a human at a TTY is prompted (else it defaults to basic).
             "--template" => match it.next() {
                 Some(v) => match InitTemplate::parse(v) {
-                    Ok(t) => template = t,
+                    Ok(t) => template = Some(t),
                     Err(e) => {
                         log::error(&e);
                         return ExitCode::FAILURE;
@@ -201,6 +217,8 @@ pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
                     return ExitCode::FAILURE;
                 }
             },
+            // `-y`/`--yes` skips the interactive wizard (basic into the given/current dir).
+            "-y" | "--yes" => yes = true,
             s if s.starts_with("--") => {
                 log::error(&serve::unknown_flag_error(s, INIT_FLAGS));
                 return ExitCode::FAILURE;
@@ -209,7 +227,37 @@ pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
             _ => {}
         }
     }
-    let dir = Path::new(dir_arg.unwrap_or("."));
+
+    // With a piece missing, a human at a TTY is prompted; a pipe/CI/agent (or `-y`/`--json`)
+    // takes the historical defaults (basic, into the given or current dir) with no prompt.
+    let interactive = interactive::is_interactive(yes, json);
+    let template = match template {
+        Some(t) => t,
+        None if interactive => {
+            let labels: Vec<&str> = INIT_TEMPLATE_MENU.iter().map(|(l, _)| *l).collect();
+            match interactive::select("What kind of project?", &labels, 0) {
+                Ok(i) => INIT_TEMPLATE_MENU[i].1,
+                Err(e) => {
+                    log::error(&e.to_string());
+                    return ExitCode::FAILURE;
+                }
+            }
+        }
+        None => InitTemplate::Basic,
+    };
+    let dir_owned: String = match dir_arg {
+        Some(d) => d.to_string(),
+        None if interactive => match interactive::input("Directory", Some("."), |_| Ok(())) {
+            Ok(d) => d,
+            Err(e) => {
+                log::error(&e.to_string());
+                return ExitCode::FAILURE;
+            }
+        },
+        None => ".".to_string(),
+    };
+
+    let dir = Path::new(&dir_owned);
     let where_ = if dir == Path::new(".") {
         ".".to_string()
     } else {
@@ -653,6 +701,7 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
     let mut positional: Vec<&str> = Vec::new();
     let mut root = ".".to_string();
     let mut json = false;
+    let mut yes = false;
     let mut opts = NewOpts::default();
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
@@ -681,6 +730,8 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
             "--draft" => opts.draft = true,
             // `--tour` scaffolds a guided deck (deck-only; rejected below on other kinds).
             "--tour" => opts.tour = true,
+            // `-y`/`--yes` skips the interactive wizard (use it for scripts at a TTY).
+            "-y" | "--yes" => yes = true,
             s if s.starts_with("--") => {
                 log::error(&serve::unknown_flag_error(s, NEW_FLAGS));
                 return ExitCode::FAILURE;
@@ -688,36 +739,63 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
             s => positional.push(s),
         }
     }
-    let (Some(kind), Some(slug)) = (positional.first(), positional.get(1)) else {
-        // Derive the synopsis from `new`'s `--help` block so the two can't drift.
-        eprintln!(
-            "usage: {}",
-            crate::command_synopsis("new").unwrap_or("taliesin new <post|page|deck|paper> <slug>")
-        );
-        return ExitCode::FAILURE;
-    };
-    let kind = match NewKind::parse(kind) {
-        Ok(k) => k,
-        Err(e) => {
-            log::error(&e);
-            return ExitCode::FAILURE;
+
+    // Missing kind/slug prompts a human at a TTY (the wizard); a pipe/CI/agent (or `-y`/`--json`)
+    // gets the historical usage error instead of ever blocking on a prompt.
+    let interactive = interactive::is_interactive(yes, json);
+
+    let kind = match positional.first() {
+        Some(k) => match NewKind::parse(k) {
+            Ok(k) => k,
+            Err(e) => {
+                log::error(&e);
+                return ExitCode::FAILURE;
+            }
+        },
+        None if interactive => {
+            const KINDS: [NewKind; 4] =
+                [NewKind::Post, NewKind::Page, NewKind::Deck, NewKind::Paper];
+            match interactive::select("What do you want to create?", NEW_KINDS, 0) {
+                Ok(i) => KINDS[i],
+                Err(e) => {
+                    log::error(&e.to_string());
+                    return ExitCode::FAILURE;
+                }
+            }
         }
+        None => return new_usage(),
     };
+
     // `--tour` scaffolds a *deck* tour; on any other kind it has no meaning. Reject it
     // (a friendly error, not a silent no-op) before writing anything.
     if opts.tour && kind != NewKind::Deck {
         log::error("--tour scaffolds a guided deck; use it with `new deck <slug>`");
         return ExitCode::FAILURE;
     }
-    if let Err(e) = validate_slug(slug) {
+
+    let slug: String = match positional.get(1) {
+        Some(s) => (*s).to_string(),
+        // The prompt's validator re-asks on a bad slug rather than aborting.
+        None if interactive => {
+            match interactive::input("Slug (lowercase, used in the URL)", None, validate_slug) {
+                Ok(s) => s,
+                Err(e) => {
+                    log::error(&e.to_string());
+                    return ExitCode::FAILURE;
+                }
+            }
+        }
+        None => return new_usage(),
+    };
+    if let Err(e) = validate_slug(&slug) {
         log::error(&e);
         return ExitCode::FAILURE;
     }
     let root = Path::new(&root);
-    match write_new(root, kind, slug, opts) {
+    match write_new(root, kind, &slug, opts) {
         Ok(written) => {
             if json {
-                println!("{}", new_json(kind.name(), slug, &written));
+                println!("{}", new_json(kind.name(), &slug, &written));
             } else {
                 for f in &written {
                     log::built(&f.display().to_string());
@@ -731,6 +809,16 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// The `new` usage line, printed when a kind/slug is missing and there's no TTY to prompt at.
+/// Derived from `new`'s `--help` synopsis so the two can't drift.
+fn new_usage() -> ExitCode {
+    eprintln!(
+        "usage: {}",
+        crate::command_synopsis("new").unwrap_or("taliesin new <post|page|deck|paper> <slug>")
+    );
+    ExitCode::FAILURE
 }
 
 /// The `--json` receipt for a scaffold: `{kind?, slug?, created:[...], preview}` as pretty
@@ -751,7 +839,7 @@ fn new_json(kind: &str, slug: &str, written: &[PathBuf]) -> String {
 }
 
 /// Every long flag `new` accepts (drives the unknown-flag did-you-mean).
-const NEW_FLAGS: &[&str] = &["--dir", "--json", "--format", "--draft", "--tour"];
+const NEW_FLAGS: &[&str] = &["--dir", "--json", "--format", "--draft", "--tour", "--yes"];
 
 /// Write the scaffold under `root`, refusing to overwrite any existing target before
 /// writing any of them (so a partial scaffold never lands on the author's work).

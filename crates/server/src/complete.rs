@@ -411,6 +411,7 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
             ),
             ("--json", false, "print a json receipt"),
             ("--format", true, "human | json (alias for --json)"),
+            ("--yes", false, "skip the interactive prompt"),
         ],
         "schema" => &[("--out", true, "output dir")],
         "symbols" => &[
@@ -445,6 +446,7 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
             ("--template", true, "starter: basic | site | book"),
             ("--json", false, "shorthand for --format json"),
             ("--format", true, "human | json"),
+            ("--yes", false, "skip the interactive prompt"),
         ],
         _ => &[],
     }
