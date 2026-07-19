@@ -1126,10 +1126,22 @@ bare (the family-prefix rule holds for one family) — document or reconsider?
   precedence, unit-tested). Env var stays the override; the field wins for reproducibility, exactly as
   scoped. **Do not re-add or re-scope from the old note** (the `exec.rs:217` line it named no longer
   exists). (Downstream `invertible-speech-disentanglement` BUG-002 is satisfied.)
-- **`assets/js/*` `tsc`/`@ts-check` pass** (own large session). The web-client tier is done + in CI;
-  remaining is `crates/core/assets/js` (measured 812 errors on a throwaway strict jsconfig; `deck.js`
-  402). Needs ambient globals + a config compiling the concatenated `code-enhance/` fragments as one
-  shared scope (isolated compile adds 12 spurious `TS2304`s).
+- ~~**`assets/js/*` `tsc`/`@ts-check` pass** (own large session).~~ **DONE 2026-07-19** (local `main`
+  `131d3b4`+`122d4fc`+`7ff96b0`, NOT pushed — the author pushes). All 23 hand-authored bundled scripts
+  under `crates/core/assets/js` (the 17 `code-enhance/` fragments + deck.js/qmd-js.js/mermaid/scrolly/
+  tabset/walkthrough) now type-check at **strict-zero**, gated in CI (the `typecheck` job) + CLAUDE.md.
+  `jsconfig.json` mirrors web-client's compilerOptions and `include`s the fragments as ONE shared script
+  scope (matching the `concat!` in `render/mod.rs`; zero TS2304, so the "isolated compile adds spurious
+  TS2304" worry never materialised); `globals.d.ts` merges web-client's shared `Window` decls +
+  core-only globals. Measured **858 errors** over 22 files + **493** in deck.js (not the note's 812/402);
+  deck.js's 241 collapsed under ONE `deck`-state typedef (dynamic bag → index signature). All
+  behavior-preserving (truthful DOM casts, `@param`/`@typedef`, `const` captures for closure-surviving
+  null-guards); one config knob `useUnknownInCatchVariables:false` so qmd-js's `err.stack` read stays the
+  exact expression a render drift pin locks. **Verified:** full jsconfig clean + gate mutation-checked
+  (a `querySelector(".x").focus()` trips it, revert → 0); 595 core + 284 server tests pass; headless-
+  browser smoke of every behaviorally-touched feature (lightbox/tabset/cite-box/cat-filter/hovercards/
+  scrolly + the whole deck: nav/overview/menu/QR-share/magic-move/auto-animate/feed) shows **zero console
+  errors**. **Do not re-add.**
 - **Mermaid `<script>` SRI + `crossorigin`** — deferred (only live Preview lazy-loads from the CDN; a
   build inlines the vendored copy). Needs a hash pinned to the CDN build; `integrity`+`crossorigin`
   would break a non-CORS `TALIESIN_MERMAID_URL` override.
