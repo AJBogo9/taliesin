@@ -189,11 +189,14 @@ footnotes section at the end of the page, in reference order, each with a backli
     anywhere for the body; Taliesin does the numbering and the return arrow.
 
 For an aside that belongs *beside* the text rather than at the bottom, a
-`::: {.sidenote}` (or `.marginnote`) block floats into the right margin on a wide
-screen and folds into the flow on a narrow one: web-native marginalia a PDF can't do.
+`::: {.column-margin}` block floats into the right margin on a wide screen and folds
+into the flow on a narrow one: web-native marginalia a PDF can't do. `.column-margin`
+is the canonical name; `.sidenote`, `.marginnote`, and `.aside` are accepted aliases
+for the identical block (Tufte/Distill/Quarto muscle memory), so reach for whichever
+you already know.
 
-::: {.sidenote}
-This is a sidenote. On a wide screen it sits in the margin, aligned to where it was
+::: {.column-margin}
+This is a margin note. On a wide screen it sits in the margin, aligned to where it was
 written; narrow the window and it collapses to an indented note. Math works here too:
 $\sigma^2 = \operatorname{Var}(X)$.
 :::

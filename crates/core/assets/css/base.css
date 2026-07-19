@@ -580,8 +580,8 @@
   .footnotes li > :first-child { display: inline; } /* keep the backlink on the text's line */
   .footnotes li:target, [id^="fnref-"]:target { background: var(--tali-flash); border-radius: var(--tali-radius-sm); }
   .tali-fn-back { text-decoration: none; margin-left: .4em; }
-  /* Sidenotes / margin notes (Tufte/Distill): `::: {.sidenote}` (aliases `.marginnote`,
-     `.column-margin`, `.aside`) floats into the right margin on a wide screen — marginalia
+  /* Margin notes (Tufte/Distill): `::: {.column-margin}` (canonical; aliases `.sidenote`,
+     `.marginnote`, `.aside`) floats into the right margin on a wide screen — marginalia
      that don't interrupt the body, impossible to do in a PDF. Below ~73rem (no margin
      room) it falls back to an indented aside in the flow. It's a normal block, so
      click-to-source works. */
