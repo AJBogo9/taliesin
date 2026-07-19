@@ -405,14 +405,21 @@ fn subcommand_help(cmd: &str) -> Option<&'static str> {
              \x20 taliesin blocks post.tmd\n"
         }
         "init" => {
-            "taliesin init [dir]\n\
+            "taliesin init [dir] [--template basic|site|book]\n\
              \n\
-             Scaffold a minimal previewable site into dir (default the current\n\
-             directory): writes _site.yml + index.tmd, then prints the preview hint.\n\
-             Refuses to overwrite existing files.\n\
+             Scaffold a starter project into dir (default the current directory) and print\n\
+             the preview hint. Refuses to overwrite existing files.\n\
+             \n\
+             Templates:\n\
+             \x20 basic   a one-page site (the default): _site.yml + index.tmd\n\
+             \x20 site    a multi-page site: a nav linking a Home and an About page\n\
+             \x20 book    a chapters: project: a landing page + two starter chapters\n\
+             \n\
+             Every template also writes AGENTS.md (the agent onramp) and the .taliesin/\n\
+             config schemas that drive editor autocomplete.\n\
              \n\
              Example:\n\
-             \x20 taliesin init my-site\n"
+             \x20 taliesin init my-book --template book\n"
         }
         "publish" => {
             "taliesin publish <dir> [--project-name <name>] [--out <dir>] [--public] [--no-strict] [--dry-run] [--format json]\n\

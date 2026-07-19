@@ -33,8 +33,137 @@ const INIT_INDEX_TMD: &str = "---\ntitle: Hello, Taliesin\n---\n\n\
     - Configure navigation and the title in `_site.yml`.\n\
     - Drop in a `{python}` or `{r}` code cell to run live output.\n";
 
+/// `_site.yml` for the `site` template: the schema modeline + a title and a two-item
+/// top nav wiring the two starter pages. Byte-pinned by `corpus/scaffold-site/`.
+const SITE_SITE_YML: &str = r#"# yaml-language-server: $schema=.taliesin/tali-site.schema.json
+title: My site
+nav:
+  left:
+  - text: Home
+    href: index.tmd
+  - text: About
+    href: about.tmd
+"#;
+
+/// The `site` template's home page: explains the multi-page/nav model and points at the
+/// next moves. Byte-pinned by `corpus/scaffold-site/index.tmd`.
+const SITE_INDEX_TMD: &str = r#"---
+title: Home
+---
+
+Welcome to your new [Taliesin](https://github.com/AJBogo9/taliesin) site. This is a
+multi-page site: each `.tmd` file beside this one becomes its own page, and the `nav:`
+in `_site.yml` links them across the top.
+
+Edit `index.tmd` and the preview reloads as you save.
+
+## Next steps
+
+- Add a page beside this one and link it from `nav:` in `_site.yml`.
+- Scaffold a blog post with `taliesin new post my-first-post` (add `--draft` to hold it back).
+- Drop in a `{python}` or `{r}` code cell to run live output.
+"#;
+
+/// The `site` template's About stub. Byte-pinned by `corpus/scaffold-site/about.tmd`.
+const SITE_ABOUT_TMD: &str = r#"---
+title: About
+---
+
+Say who you are and what this site is about. Edit `about.tmd`, or delete it and remove
+its link from `nav:` in `_site.yml`.
+"#;
+
+/// `_site.yml` for the `book` template: `chapters:` (which makes it a book) plus title,
+/// author, and a TOC. Byte-pinned by `corpus/scaffold-book/`.
+const BOOK_SITE_YML: &str = r#"# yaml-language-server: $schema=.taliesin/tali-site.schema.json
+title: My book
+author: Your Name
+toc: true
+chapters:
+  - index.tmd
+  - intro.tmd
+  - methods.tmd
+"#;
+
+/// The `book` template's landing page: a preface whose auto-generated table of contents
+/// (the book-landing TOC) lists the chapters. Byte-pinned by `corpus/scaffold-book/index.tmd`.
+const BOOK_INDEX_TMD: &str = r#"# Preface {.unnumbered}
+
+This is your book's landing page. Write a short preface here; Taliesin generates the
+table of contents below from the chapters listed in `_site.yml`.
+"#;
+
+/// The `book` template's first chapter. Byte-pinned by `corpus/scaffold-book/intro.tmd`.
+const BOOK_INTRO_TMD: &str = r#"# Introduction
+
+Open your book here. Each chapter is a `.tmd` file listed under `chapters:` in
+`_site.yml`; Taliesin numbers them and builds the sidebar and previous/next
+navigation for you.
+"#;
+
+/// The `book` template's second chapter, showing a cross-referenceable section anchor.
+/// Byte-pinned by `corpus/scaffold-book/methods.tmd`.
+const BOOK_METHODS_TMD: &str = r#"# Methods {#sec-methods}
+
+Write one chapter per `.tmd` file. This heading has an id, so you can cross-reference
+it as @sec-methods from any chapter. Drop in a `{python}` or `{r}` cell to compute a
+result inline.
+"#;
+
+/// Which starter `init` scaffolds. `Basic` is the frozen one-page site (the historical
+/// default); `Site` and `Book` add the two multi-page project shapes.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(crate) enum InitTemplate {
+    Basic,
+    Site,
+    Book,
+}
+
+/// The template names, for the unknown-template did-you-mean and `--template` help.
+const INIT_TEMPLATES: &[&str] = &["basic", "site", "book"];
+
+impl InitTemplate {
+    fn parse(raw: &str) -> Result<Self, String> {
+        match raw {
+            "basic" => Ok(Self::Basic),
+            "site" => Ok(Self::Site),
+            "book" => Ok(Self::Book),
+            other => Err(match taliesin_core::closest(other, INIT_TEMPLATES) {
+                Some(t) => format!("unknown template `{other}` (did you mean `{t}`?)"),
+                None => format!("unknown template `{other}` (expected basic, site, or book)"),
+            }),
+        }
+    }
+}
+
+/// The authored files a `taliesin init --template <t>` writes (config + pages), as
+/// `(project-relative path, contents)`. Pure, so the corpus pins can compare the bytes
+/// exactly (`corpus/scaffold-{site,book}/`) and the CLI stays a thin wrapper. The shared
+/// onramp (`AGENTS.md` + the `.taliesin/` schemas) is appended by [`scaffold_init`], not
+/// here, since those are generated constants already golden-locked in core.
+pub(crate) fn init_files(template: InitTemplate) -> Vec<(PathBuf, String)> {
+    let files: &[(&str, &str)] = match template {
+        InitTemplate::Basic => &[("_site.yml", INIT_SITE_YML), ("index.tmd", INIT_INDEX_TMD)],
+        InitTemplate::Site => &[
+            ("_site.yml", SITE_SITE_YML),
+            ("index.tmd", SITE_INDEX_TMD),
+            ("about.tmd", SITE_ABOUT_TMD),
+        ],
+        InitTemplate::Book => &[
+            ("_site.yml", BOOK_SITE_YML),
+            ("index.tmd", BOOK_INDEX_TMD),
+            ("intro.tmd", BOOK_INTRO_TMD),
+            ("methods.tmd", BOOK_METHODS_TMD),
+        ],
+    };
+    files
+        .iter()
+        .map(|(name, contents)| (PathBuf::from(name), contents.to_string()))
+        .collect()
+}
+
 /// Every long flag `init` accepts (drives the unknown-flag did-you-mean).
-const INIT_FLAGS: &[&str] = &["--json", "--format"];
+const INIT_FLAGS: &[&str] = &["--json", "--format", "--template"];
 
 /// `taliesin init [dir] [--json]`: scaffold a minimal previewable site into `dir` (default
 /// the current directory). Writes `_site.yml` + `index.tmd` + `AGENTS.md` (the agent
@@ -42,6 +171,7 @@ const INIT_FLAGS: &[&str] = &["--json", "--format"];
 pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
     let mut dir_arg: Option<&str> = None;
     let mut json = false;
+    let mut template = InitTemplate::Basic;
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -53,6 +183,21 @@ pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
                 Some("human") => json = false,
                 other => {
                     log::error(&serve::bad_format_error(other));
+                    return ExitCode::FAILURE;
+                }
+            },
+            // `--template basic|site|book`: which starter to scaffold (default basic, the
+            // frozen one-page site). An unknown value gets a did-you-mean.
+            "--template" => match it.next() {
+                Some(v) => match InitTemplate::parse(v) {
+                    Ok(t) => template = t,
+                    Err(e) => {
+                        log::error(&e);
+                        return ExitCode::FAILURE;
+                    }
+                },
+                None => {
+                    log::error("--template needs a value (basic, site, or book)");
                     return ExitCode::FAILURE;
                 }
             },
@@ -70,7 +215,7 @@ pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
     } else {
         dir.display().to_string()
     };
-    match scaffold_init(dir) {
+    match scaffold_init(dir, template) {
         Ok(written) => {
             if json {
                 let created: Vec<String> =
@@ -98,22 +243,18 @@ pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
     }
 }
 
-/// Write the starter files (`_site.yml`, `index.tmd`, `AGENTS.md`) into `dir`, creating it if
-/// needed. Refuses to overwrite an existing file (so re-running `init` never clobbers
-/// the user's work) and returns the paths written, or a human-readable error.
-fn scaffold_init(dir: &Path) -> Result<Vec<PathBuf>, String> {
-    if let Err(e) = std::fs::create_dir_all(dir) {
-        return Err(format!("cannot create {}: {e}", dir.display()));
-    }
-    let files = [
-        ("_site.yml", INIT_SITE_YML),
-        ("index.tmd", INIT_INDEX_TMD),
+/// The agent + editor onramp every scaffolded project gets regardless of template: the
+/// golden-locked `AGENTS.md` and the bundled config schemas wired via the `_site.yml`
+/// modeline. Kept out of [`init_files`] (and the corpus pins) because they're generated
+/// constants already locked in core, not authored template bytes.
+fn onramp_files() -> [(&'static str, &'static str); 3] {
+    [
         // The agent onramp (edit `.tmd`/`check --format json`/dialect). Generated from the
         // validator vocabulary and golden-locked in core, so it cannot drift from `check`.
         ("AGENTS.md", taliesin_core::agents::AGENTS_MD),
         // The bundled config schemas (the same constants `taliesin schema` emits, so they can't
-        // drift from the validator), wired into `_site.yml` via the modeline above. In a
-        // walker-skipped dot-dir so they never become a page or ship into `_site/`.
+        // drift from the validator), wired into `_site.yml` via the modeline. In a walker-
+        // skipped dot-dir so they never become a page or ship into `_site/`.
         (
             ".taliesin/tali-site.schema.json",
             taliesin_core::schema::SITE_SCHEMA,
@@ -122,22 +263,44 @@ fn scaffold_init(dir: &Path) -> Result<Vec<PathBuf>, String> {
             ".taliesin/tali-frontmatter.schema.json",
             taliesin_core::schema::FRONTMATTER_SCHEMA,
         ),
-    ];
-    // Refuse to overwrite *any* target before writing *any*, so a partial scaffold
-    // never lands on top of an existing project.
-    for (name, _) in files {
-        let path = dir.join(name);
+    ]
+}
+
+/// Scaffold the `template` starter into `dir`, creating it if needed: the template's authored
+/// files (config + pages) plus the shared onramp. Refuses to overwrite an existing file (so
+/// re-running `init` never clobbers the user's work) and returns the paths written.
+fn scaffold_init(dir: &Path, template: InitTemplate) -> Result<Vec<PathBuf>, String> {
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        return Err(format!("cannot create {}: {e}", dir.display()));
+    }
+    let mut files = init_files(template);
+    files.extend(
+        onramp_files()
+            .into_iter()
+            .map(|(name, contents)| (PathBuf::from(name), contents.to_string())),
+    );
+    write_scaffold(dir, &files)
+}
+
+/// Write `files` (project-relative path → contents) under `root`, refusing to overwrite any
+/// existing target before writing any of them and creating parent dirs as needed. Shared by
+/// `init` (project scaffold) and `new` (document scaffold); returns the paths written.
+fn write_scaffold(root: &Path, files: &[(PathBuf, String)]) -> Result<Vec<PathBuf>, String> {
+    // Refuse to overwrite *any* target before writing *any*, so a partial scaffold never
+    // lands on top of an existing project.
+    for (rel, _) in files {
+        let path = root.join(rel);
         if path.exists() {
             return Err(format!(
-                "{} already exists; refusing to overwrite (run `init` in an empty directory)",
+                "{} already exists; refusing to overwrite",
                 path.display()
             ));
         }
     }
     let mut written = Vec::new();
-    for (name, contents) in files {
-        let path = dir.join(name);
-        // Schema files live in a `.taliesin/` subdir, so ensure each target's parent exists.
+    for (rel, contents) in files {
+        let path = root.join(rel);
+        // Nested targets (`.taliesin/…`, `posts/<slug>/…`) need their parent created first.
         if let Some(parent) = path.parent()
             && let Err(e) = std::fs::create_dir_all(parent)
         {
@@ -598,30 +761,7 @@ fn write_new(
     slug: &str,
     opts: NewOpts,
 ) -> Result<Vec<PathBuf>, String> {
-    let files = new_files(kind, slug, &today_utc(), opts);
-    for (rel, _) in &files {
-        let path = root.join(rel);
-        if path.exists() {
-            return Err(format!(
-                "{} already exists; refusing to overwrite",
-                path.display()
-            ));
-        }
-    }
-    let mut written = Vec::new();
-    for (rel, contents) in &files {
-        let path = root.join(rel);
-        if let Some(parent) = path.parent()
-            && let Err(e) = std::fs::create_dir_all(parent)
-        {
-            return Err(format!("cannot create {}: {e}", parent.display()));
-        }
-        if let Err(e) = std::fs::write(&path, contents) {
-            return Err(format!("cannot write {}: {e}", path.display()));
-        }
-        written.push(path);
-    }
-    Ok(written)
+    write_scaffold(root, &new_files(kind, slug, &today_utc(), opts))
 }
 
 /// Parse the optional `[port]` positional: absent -> the 4321 default; a present but
@@ -810,7 +950,8 @@ mod tests {
     fn init_scaffolds_a_previewable_site() {
         let dir = tmp("scaffold");
         // The dir doesn't exist yet — `scaffold_init` must create it.
-        let written = scaffold_init(&dir).expect("scaffold succeeds into a fresh dir");
+        let written =
+            scaffold_init(&dir, InitTemplate::Basic).expect("scaffold succeeds into a fresh dir");
 
         let site_yml = dir.join("_site.yml");
         let index = dir.join("index.tmd");
@@ -872,10 +1013,63 @@ mod tests {
         );
 
         // Re-running refuses to overwrite (never clobbers existing work).
-        let err = scaffold_init(&dir).expect_err("second init refuses to overwrite");
+        let err =
+            scaffold_init(&dir, InitTemplate::Basic).expect_err("second init refuses to overwrite");
         assert!(err.contains("already exists"), "overwrite refused: {err}");
 
         let _ = fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod init_template_tests {
+    use super::*;
+
+    #[test]
+    fn an_unknown_template_suggests_the_nearest() {
+        assert_eq!(InitTemplate::parse("basic").unwrap(), InitTemplate::Basic);
+        assert_eq!(InitTemplate::parse("site").unwrap(), InitTemplate::Site);
+        assert_eq!(InitTemplate::parse("book").unwrap(), InitTemplate::Book);
+        let e = InitTemplate::parse("sit").unwrap_err();
+        assert!(e.contains("did you mean `site`?"), "got: {e}");
+        let e = InitTemplate::parse("zzzzzz").unwrap_err();
+        assert!(e.contains("expected basic, site, or book"), "got: {e}");
+    }
+
+    /// The default `init` must not drift: its two authored files are exactly the constants
+    /// that shipped before templates existed, so an existing `taliesin init` is byte-identical.
+    #[test]
+    fn basic_template_is_byte_identical_to_the_frozen_scaffold() {
+        assert_eq!(
+            init_files(InitTemplate::Basic),
+            vec![
+                (PathBuf::from("_site.yml"), INIT_SITE_YML.to_string()),
+                (PathBuf::from("index.tmd"), INIT_INDEX_TMD.to_string()),
+            ]
+        );
+    }
+
+    /// The `site` and `book` templates are pinned byte-for-byte by real, buildable projects
+    /// under `corpus/`, which the corpus regression net renders and lints like any other
+    /// document — so a scaffold that stops being `check`-clean fails the suite.
+    #[test]
+    fn site_and_book_templates_match_their_corpus_pins() {
+        let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus");
+        for (template, dir) in [
+            (InitTemplate::Site, "scaffold-site"),
+            (InitTemplate::Book, "scaffold-book"),
+        ] {
+            for (rel, contents) in init_files(template) {
+                let pinned = std::fs::read_to_string(corpus.join(dir).join(&rel))
+                    .unwrap_or_else(|e| panic!("corpus pin for {template:?} at {rel:?}: {e}"));
+                assert_eq!(
+                    contents,
+                    pinned,
+                    "`init --template {template:?}` drifted from corpus/{dir}/{}",
+                    rel.display()
+                );
+            }
+        }
     }
 }
 

@@ -441,6 +441,11 @@ fn flags_for(sub: &str) -> &'static [(&'static str, bool, &'static str)] {
             false,
             "write the script into your shell's completion dir",
         )],
+        "init" => &[
+            ("--template", true, "starter: basic | site | book"),
+            ("--json", false, "shorthand for --format json"),
+            ("--format", true, "human | json"),
+        ],
         _ => &[],
     }
 }
@@ -660,6 +665,10 @@ fn complete_line(words: &[String], cwd: &Path) -> Completion {
         if prev.as_str() == "--explain" && canonical(sub) == "check" {
             let codes = taliesin_core::diagnostics::codes::all_codes();
             return enumerated(cur, &codes);
+        }
+        // `init --template <TAB>` offers the three starters.
+        if prev.as_str() == "--template" && canonical(sub) == "init" {
+            return enumerated(cur, &["basic", "site", "book"]);
         }
         // Other value-taking flags (--out/--dir/--jobs/--port/--project-name): let the
         // shell complete the value (a dir, a number, a name); nothing smart to add.

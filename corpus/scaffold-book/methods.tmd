@@ -1,0 +1,5 @@
+# Methods {#sec-methods}
+
+Write one chapter per `.tmd` file. This heading has an id, so you can cross-reference
+it as @sec-methods from any chapter. Drop in a `{python}` or `{r}` cell to compute a
+result inline.

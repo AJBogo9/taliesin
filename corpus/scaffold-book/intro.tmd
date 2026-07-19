@@ -1,0 +1,5 @@
+# Introduction
+
+Open your book here. Each chapter is a `.tmd` file listed under `chapters:` in
+`_site.yml`; Taliesin numbers them and builds the sidebar and previous/next
+navigation for you.

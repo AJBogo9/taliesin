@@ -1,0 +1,15 @@
+---
+title: Home
+---
+
+Welcome to your new [Taliesin](https://github.com/AJBogo9/taliesin) site. This is a
+multi-page site: each `.tmd` file beside this one becomes its own page, and the `nav:`
+in `_site.yml` links them across the top.
+
+Edit `index.tmd` and the preview reloads as you save.
+
+## Next steps
+
+- Add a page beside this one and link it from `nav:` in `_site.yml`.
+- Scaffold a blog post with `taliesin new post my-first-post` (add `--draft` to hold it back).
+- Drop in a `{python}` or `{r}` code cell to run live output.
