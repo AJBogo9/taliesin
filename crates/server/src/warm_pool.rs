@@ -343,8 +343,9 @@ impl ForkserverDaemon {
         // re-imports the target function's `__main__` by name, which fails for a
         // `-c` string module ("Can't get attribute '_child_entry' on __main__").
         // Write it to a private 0700 dir, removed when the daemon drops.
-        let helper_dir =
-            std::env::temp_dir().join(format!("tali-warmpool-{}", uuid::Uuid::new_v4()));
+        // Pid-tagged so a later run can reclaim it if we die ungracefully (`Drop` won't
+        // run to remove it). See `runtime_dirs`.
+        let helper_dir = crate::runtime_dirs::warmpool_dir();
         {
             let mut b = std::fs::DirBuilder::new();
             b.recursive(true);

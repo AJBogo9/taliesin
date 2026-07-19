@@ -467,7 +467,9 @@ pub(crate) async fn prepare_connection(
         kernel_name: Some(kernel_name.to_string()),
     };
 
-    let conn_dir = std::env::temp_dir().join(format!("tali-kernel-{}", uuid::Uuid::new_v4()));
+    // Pid-tagged so a later run can reclaim it if we die ungracefully (`Drop` won't
+    // run to remove it). See `runtime_dirs`.
+    let conn_dir = crate::runtime_dirs::kernel_conn_dir();
     {
         let mut b = std::fs::DirBuilder::new();
         b.recursive(true);

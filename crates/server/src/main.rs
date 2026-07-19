@@ -22,6 +22,7 @@ mod preview_diag;
 mod protocol;
 mod publish;
 mod query;
+mod runtime_dirs;
 mod serve;
 mod serve_site;
 #[cfg(test)]
@@ -46,7 +47,10 @@ fn main() -> ExitCode {
     match args.get(1).map(String::as_str) {
         Some("render") => query::cmd_render(args.get(2)),
         Some("read") => query::cmd_read(args.get(2)),
-        Some("build") => build::cmd_build(&args),
+        Some("build") => {
+            runtime_dirs::sweep_stale_runtime_dirs();
+            build::cmd_build(&args)
+        }
         Some("publish") => publish::cmd_publish(&args),
         Some("blocks") => query::cmd_blocks(args.get(2)),
         Some("schema") => query::cmd_schema(&args),
@@ -59,7 +63,10 @@ fn main() -> ExitCode {
         Some("init") => cli::cmd_init(&args),
         Some("new") => cli::cmd_new(&args),
         // `preview`/`dev` are vite-style aliases for the live server.
-        Some("serve" | "preview" | "dev") => cli::cmd_serve(&args),
+        Some("serve" | "preview" | "dev") => {
+            runtime_dirs::sweep_stale_runtime_dirs();
+            cli::cmd_serve(&args)
+        }
         Some("completions") => complete::cmd_completions(&args),
         // Hidden: the shell-completion shims call this at runtime. Not in COMMANDS
         // (underscore-prefixed => excluded from did-you-mean + the dispatch guard).
