@@ -975,20 +975,24 @@ bare (the family-prefix rule holds for one family) — document or reconsider?
 
 ## Tier 2 — hardening (P3)
 
-- **OG-card coverage (PMF C-PUB-1) — VERIFIED 2026-07-19; book chapters now pinned. Two residuals.**
-  The build's card loop covers every `site.pages` entry, and `render_page` emits `social_head` for
-  website AND book pages through the one shared method (only the `is_book()` *chrome* branch differs,
-  mod.rs:535/548). So **a book chapter already gets its own distinct card** — the "amateur tell = one
-  site-wide card" concern does not bite, now pinned directly by
-  `meta.rs::a_book_chapter_gets_its_own_distinct_og_card_not_one_site_wide` (two chapters → two
-  distinct `/og/<hash>.png`; mutation-checked: collapse `card_spec` to the site title and the
-  distinctness assert fires). Two residuals, each needing a ruling, NOT a build:
-  - **Decks emit no `og:image`/`social_head` at all.** An embedded/standalone deck builds via the
-    context-free `render_doc_to_page` (no `Site`/`Page`); a single-doc deck build has no `url:`, so a
-    card is impossible regardless. Embedded decks are deliberately OUT of nav/search (they are
-    components of the embedding page, which HAS its own card), so giving a secondary artifact its own
-    social card is a **scope question** (and needs site context threaded into the deck build), not the
-    clean S-effort fix the entry assumed. Owner ruling first.
+- **OG-card coverage (PMF C-PUB-1) — DONE 2026-07-19** (book chapters + decks); only a decided-against
+  `_redirects` note remains. The build's card loop covers every `site.pages` entry, and `render_page`
+  emits `social_head` for website AND book pages through the one shared method (only the `is_book()`
+  *chrome* branch differs, mod.rs:535/548). So **a book chapter already gets its own distinct card** —
+  now pinned by `meta.rs::a_book_chapter_gets_its_own_distinct_og_card_not_one_site_wide` (two chapters
+  → two distinct `/og/<hash>.png`; mutation-checked).
+  - **Decks — LANDED** (owner ruled 2026-07-19 that a shared deck link should carry its own card).
+    An embedded deck built in a site with `url:` now gets the full rich social meta a page does:
+    `og:image` (its OWN branded card, with a "Slides" eyebrow), `og:url`, `og:type=website`,
+    `summary_large_image` (+ og/twitter title/description). Wired in the build's deck loop
+    (`build.rs`), url-gated (a url-less deck stays byte-identical); new
+    `card::deck_card_spec` + `meta::deck_social_head` share the exact tag emission with page
+    `social_head` (refactored `emit_social`, no drift). Corpus-pinned: `corpus/embed/` gained a `url:`
+    + deck subtitle; `tests/deck_social_card.rs` builds it and asserts the deck's card is distinct
+    from the embedding page's and written to disk (mutation-checked). Spec:
+    `docs/superpowers/specs/2026-07-19-deck-social-cards-design.md`. **Do not re-add.** *(Out of scope,
+    unchanged: live preview [not scraped; a deck's `/og/` hash wouldn't resolve] and single-doc
+    `build deck.tmd` [no site/url, so no card possible].)*
   - **`_redirects`/`_headers` are preserved, never generated** (`build.rs:1881` treats them as
     author-placed deploy metadata the sweep keeps; `stale_sweep.rs` pins that). Auto-generating them
     is a "perfect the default vs add a knob" call — Cloudflare Pages already serves pretty URLs from

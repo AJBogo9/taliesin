@@ -203,8 +203,8 @@ mod chrome;
 pub use book::{Book, BookEntry};
 use book::{book_pages, build_book, chapter_heading};
 pub use card::{
-    CARD_DESIGN_VERSION, CARD_EXT, CARD_H, CARD_W, CardSpec, card_rel_path, card_spec, render_card,
-    uncovered_glyphs,
+    CARD_DESIGN_VERSION, CARD_EXT, CARD_H, CARD_W, CardSpec, card_rel_path, card_spec,
+    deck_card_spec, render_card, uncovered_glyphs,
 };
 mod backlinks;
 mod book_toc;
@@ -615,6 +615,21 @@ impl Site {
         // ("Theorem 2.3"); non-book / unnumbered pages pass None (continuous).
         let doc = render::render_document_with_includes_scoped(&src, base, self.chapter_for(page));
         Some(self.render_page_doc(page, doc))
+    }
+
+    /// The OpenGraph/Twitter social-meta block for an embedded deck built beside this
+    /// site's pages. A deck is not a [`Page`], so it has its own entry point (delegating to
+    /// [`meta::deck_social_head`]); the build's deck loop pushes the result onto the deck
+    /// `doc`'s head include. `deck_url` is the deck's site-root-relative output URL,
+    /// `title`/`lead` its front-matter title + subtitle. Url-gated: a branded card only when
+    /// `_site.yml` sets `url:`.
+    pub fn deck_social_head(
+        &self,
+        deck_url: &str,
+        title: Option<&str>,
+        lead: Option<&str>,
+    ) -> String {
+        meta::deck_social_head(self, deck_url, title, lead)
     }
 
     /// Finish a page whose `doc.blocks` are already produced — and possibly

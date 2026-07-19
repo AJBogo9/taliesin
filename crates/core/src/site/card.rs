@@ -284,6 +284,25 @@ pub fn card_spec(site: &Site, page: &Page) -> CardSpec {
     }
 }
 
+/// A branded card spec for an embedded deck. A deck is not a `Page`, so it can't use
+/// `card_spec`: its title is the headline (falling back to the site title, as a page card
+/// does), its subtitle/description the lead, and `"Slides"` the eyebrow — the deck analogue
+/// of a post's category kicker, so a shared talk card reads as a presentation at a glance.
+/// Footer wordmark + domain are the site's, exactly like a page card.
+pub fn deck_card_spec(site: &Site, title: Option<&str>, lead: Option<&str>) -> CardSpec {
+    let site_title = site.config.title.clone().unwrap_or_default();
+    CardSpec {
+        eyebrow: Some("Slides".to_string()),
+        headline: title
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| site_title.clone()),
+        lead: lead.filter(|s| !s.is_empty()).map(str::to_string),
+        footer_wordmark: site_title,
+        domain: site.config.url.as_deref().map(host_of),
+    }
+}
+
 /// Deterministic content key: design version + every spec field + a font tag.
 fn spec_key(spec: &CardSpec) -> String {
     format!(
@@ -701,6 +720,33 @@ mod tests {
             c.px.chunks(4).any(|p| p[0] != BG[0]),
             "some glyph pixels drawn"
         );
+    }
+
+    #[test]
+    fn deck_card_spec_uses_title_lead_and_a_slides_eyebrow() {
+        // A deck is not a Page, so it needs its own spec builder. Its title is the
+        // headline, its subtitle/description the lead, and "Slides" the eyebrow (so a
+        // shared talk card reads as a presentation) — footer/domain are the site's,
+        // exactly like a page card.
+        let root = write_site(
+            "deckcard",
+            &[
+                ("_site.yml", "title: Talks\nurl: https://ex.com\n"),
+                ("index.tmd", "---\ntitle: H\n---\n\nx\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        let spec = deck_card_spec(&site, Some("The EM algorithm"), Some("A worked talk."));
+        assert_eq!(spec.headline, "The EM algorithm");
+        assert_eq!(spec.lead.as_deref(), Some("A worked talk."));
+        assert_eq!(spec.eyebrow.as_deref(), Some("Slides"));
+        assert_eq!(spec.footer_wordmark, "Talks");
+        assert_eq!(spec.domain.as_deref(), Some("ex.com"));
+        // An untitled deck falls back to the site title as headline, like `card_spec`.
+        let untitled = deck_card_spec(&site, None, None);
+        assert_eq!(untitled.headline, "Talks");
+        assert_eq!(untitled.lead, None);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

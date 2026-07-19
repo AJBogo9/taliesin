@@ -15,6 +15,99 @@ fn meta(attr: &str, key: &str, val: &str) -> String {
     format!("\n<meta {attr}=\"{key}\" content=\"{}\">", esc(val))
 }
 
+/// The core OpenGraph + Twitter-card `<meta>` block from already-resolved fields. Shared by
+/// the page path ([`social_head`]) and the embedded-deck path ([`deck_social_head`]) so both
+/// emit the same tag shape by construction (no reimplement-next-door drift). `image`
+/// present upgrades the Twitter card to `summary_large_image`; a `page_url` also emits the
+/// `<link rel="canonical">`. All values are already absolute + url-gated by the caller.
+fn emit_social(
+    site_title: Option<&str>,
+    title: &str,
+    desc: Option<&str>,
+    page_url: Option<&str>,
+    image: Option<&str>,
+    og_type: &str,
+) -> String {
+    let mut h = String::new();
+    if let Some(d) = desc {
+        h.push_str(&meta("name", "description", d));
+    }
+    h.push_str(&meta("property", "og:type", og_type));
+    if !title.is_empty() {
+        h.push_str(&meta("property", "og:title", title));
+    }
+    if let Some(d) = desc {
+        h.push_str(&meta("property", "og:description", d));
+    }
+    if let Some(s) = site_title {
+        h.push_str(&meta("property", "og:site_name", s));
+    }
+    if let Some(u) = page_url {
+        h.push_str(&meta("property", "og:url", u));
+    }
+    if let Some(img) = image {
+        h.push_str(&meta("property", "og:image", img));
+    }
+    h.push_str(&meta(
+        "name",
+        "twitter:card",
+        if image.is_some() {
+            "summary_large_image"
+        } else {
+            "summary"
+        },
+    ));
+    if !title.is_empty() {
+        h.push_str(&meta("name", "twitter:title", title));
+    }
+    if let Some(d) = desc {
+        h.push_str(&meta("name", "twitter:description", d));
+    }
+    if let Some(img) = image {
+        h.push_str(&meta("name", "twitter:image", img));
+    }
+    if let Some(u) = page_url {
+        h.push_str(&format!("\n<link rel=\"canonical\" href=\"{}\">", esc(u)));
+    }
+    h
+}
+
+/// The social/SEO meta block for an embedded deck (built off-`Page`, so it needs its own
+/// entry point). `deck_url` is the deck's site-root-relative output URL (e.g. `talk.html`).
+/// Url-gated exactly like a page: the absolute `og:url` + the branded `og:image` card appear
+/// only when `_site.yml` sets `url:` (else the deck keeps a plain `summary` text card built
+/// from its title/subtitle). `og:type` is `website` (a deck is not a dated article), and
+/// there is no `citation_*` (a deck is not a scholarly document). The `og:image` derives from
+/// the same [`card::deck_card_spec`] the build writes to disk, so URL and file agree.
+pub(crate) fn deck_social_head(
+    site: &Site,
+    deck_url: &str,
+    title: Option<&str>,
+    lead: Option<&str>,
+) -> String {
+    let cfg = &site.config;
+    let base = cfg.url.as_deref().map(|u| u.trim_end_matches('/'));
+    let doc_title = title
+        .filter(|s| !s.is_empty())
+        .or(cfg.title.as_deref())
+        .unwrap_or("");
+    let page_url = base.map(|b| format!("{b}/{deck_url}"));
+    let image = base.map(|b| {
+        format!(
+            "{b}/{}",
+            card::card_rel_path(&card::deck_card_spec(site, title, lead))
+        )
+    });
+    emit_social(
+        cfg.title.as_deref(),
+        doc_title,
+        lead.filter(|s| !s.is_empty()),
+        page_url.as_deref(),
+        image.as_deref(),
+        "website",
+    )
+}
+
 /// The social/SEO meta block for `page` (leading-newline-separated tags, ready to
 /// append to the head include).
 pub(super) fn social_head(site: &Site, page: &Page) -> String {
@@ -36,47 +129,16 @@ pub(super) fn social_head(site: &Site, page: &Page) -> String {
         "website"
     };
 
-    let mut h = String::new();
-    if let Some(d) = desc {
-        h.push_str(&meta("name", "description", d));
-    }
-    h.push_str(&meta("property", "og:type", og_type));
-    if !title.is_empty() {
-        h.push_str(&meta("property", "og:title", title));
-    }
-    if let Some(d) = desc {
-        h.push_str(&meta("property", "og:description", d));
-    }
-    if let Some(s) = cfg.title.as_deref() {
-        h.push_str(&meta("property", "og:site_name", s));
-    }
-    if let Some(u) = &page_url {
-        h.push_str(&meta("property", "og:url", u));
-    }
-    if let Some(img) = &image {
-        h.push_str(&meta("property", "og:image", img));
-    }
-    h.push_str(&meta(
-        "name",
-        "twitter:card",
-        if image.is_some() {
-            "summary_large_image"
-        } else {
-            "summary"
-        },
-    ));
-    if !title.is_empty() {
-        h.push_str(&meta("name", "twitter:title", title));
-    }
-    if let Some(d) = desc {
-        h.push_str(&meta("name", "twitter:description", d));
-    }
-    if let Some(img) = &image {
-        h.push_str(&meta("name", "twitter:image", img));
-    }
-    if let Some(u) = &page_url {
-        h.push_str(&format!("\n<link rel=\"canonical\" href=\"{}\">", esc(u)));
-    }
+    // The core OG/Twitter block is shared verbatim with a deck (`deck_social_head`) so the
+    // two can't drift; the page-only `citation_*` scholar block is appended below.
+    let mut h = emit_social(
+        cfg.title.as_deref(),
+        title,
+        desc,
+        page_url.as_deref(),
+        image.as_deref(),
+        og_type,
+    );
     // Google Scholar / Highwire-Press `citation_*` meta so a scholarly post is indexable
     // by academic databases. Emitted only for an article (has a `date`) that names an
     // `author` — a blog post's shape, not a nav/landing page. `citation_pdf_url` is
@@ -419,6 +481,76 @@ mod jsonld_tests {
             "each chapter must get its OWN card (distinct hash), not one site-wide image"
         );
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn deck_social_head_is_a_large_image_card_when_url_is_set_and_degrades_without() {
+        // C-PUB-1 deck residual: an embedded deck (built off-`Page`) gets its own rich
+        // social meta via `deck_social_head` — a branded og:image card + og:url +
+        // summary_large_image when `url:` is set, degrading to a plain `summary` text card
+        // (title/description only) when it is not, exactly like a page.
+        let with = write_site(
+            "decksocial",
+            &[
+                ("_site.yml", "title: Talks\nurl: https://ex.com\n"),
+                ("index.tmd", "---\ntitle: H\n---\n\nx\n"),
+            ],
+        );
+        let site = Site::discover(&with);
+        let h = super::deck_social_head(
+            &site,
+            "talk.html",
+            Some("The EM algorithm"),
+            Some("A worked talk."),
+        );
+        assert!(
+            h.contains(r#"property="og:title" content="The EM algorithm""#),
+            "{h}"
+        );
+        assert!(
+            h.contains(r#"property="og:type" content="website""#),
+            "a deck is not a dated article: {h}"
+        );
+        assert!(
+            h.contains(r#"property="og:url" content="https://ex.com/talk.html""#),
+            "{h}"
+        );
+        assert!(
+            h.contains(r#"name="twitter:card" content="summary_large_image""#),
+            "{h}"
+        );
+        // og:image points at the deck's OWN branded card (same spec the build writes).
+        let rel = crate::site::card_rel_path(&crate::site::deck_card_spec(
+            &site,
+            Some("The EM algorithm"),
+            Some("A worked talk."),
+        ));
+        assert!(
+            h.contains(&format!(
+                r#"property="og:image" content="https://ex.com/{rel}""#
+            )),
+            "{h}"
+        );
+        let _ = std::fs::remove_dir_all(&with);
+
+        // No `url:` → no absolute card is possible; degrade to a plain summary text card
+        // (still carrying the deck's title/description), and emit no og:url.
+        let without = write_site(
+            "decksocialno",
+            &[
+                ("_site.yml", "title: Talks\n"),
+                ("index.tmd", "---\ntitle: H\n---\n\nx\n"),
+            ],
+        );
+        let site2 = Site::discover(&without);
+        let h2 = super::deck_social_head(&site2, "talk.html", Some("T"), None);
+        assert!(!h2.contains("og:image"), "no url -> no card image: {h2}");
+        assert!(
+            h2.contains(r#"name="twitter:card" content="summary""#),
+            "degrades to summary: {h2}"
+        );
+        assert!(!h2.contains("og:url"), "no url -> no og:url: {h2}");
+        let _ = std::fs::remove_dir_all(&without);
     }
 
     #[test]

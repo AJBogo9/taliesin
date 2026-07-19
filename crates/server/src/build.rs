@@ -1539,6 +1539,9 @@ async fn build_site_async(
     // 3. Build each deck referenced by a `{{< embed >}}` to its own self-contained
     //    `.html` (not a chapter/page: no site chrome), so the embedding iframes
     //    resolve in the deployed tree.
+    // Collects both the deck cards written just below and the page cards written later, so
+    // the deploy-tree sweep keeps all of them (declared here because the deck loop needs it).
+    let mut card_paths: Vec<PathBuf> = Vec::new();
     let mut decks = 0usize;
     for deck in &site.decks {
         let Ok(src) = std::fs::read_to_string(&deck.input) else {
@@ -1560,6 +1563,37 @@ async fn build_site_async(
         doc.blocks = ex.run(std::mem::take(&mut doc.blocks)).await;
         kernel_unavailable |= ex.diagnostic().is_some();
         problems += report_cell_errors(&doc.blocks, &deck.url);
+        // Give a shared deck link the same rich social treatment a page gets (a deck is
+        // built off-`Page` via the context-free template, so it emits no OG/Twitter meta
+        // otherwise). Url-gated: the branded card + absolute meta appear only when
+        // `_site.yml` sets `url:`; a url-less deck stays byte-identical to before.
+        if site.config.url.is_some() {
+            let lead = doc.subtitle.as_deref().or(doc.description.as_deref());
+            doc.includes.in_header.push_str(&site.deck_social_head(
+                &deck.url,
+                doc.title.as_deref(),
+                lead,
+            ));
+            let spec = taliesin_core::site::deck_card_spec(&site, doc.title.as_deref(), lead);
+            let rel = taliesin_core::site::card_rel_path(&spec);
+            let card_dest = out.join(&rel);
+            if let Some(parent) = card_dest.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            let missing = taliesin_core::site::uncovered_glyphs(&spec);
+            if !missing.is_empty() {
+                let chars: Vec<String> = missing.iter().map(|c| format!("`{c}`")).collect();
+                log::warn(&format!(
+                    "{}: social card font has no glyph for {} (they render as blank boxes)",
+                    deck.input.display(),
+                    chars.join(" ")
+                ));
+            }
+            match std::fs::write(&card_dest, taliesin_core::site::render_card(&spec)) {
+                Ok(()) => card_paths.push(PathBuf::from(&rel)),
+                Err(e) => log::warn(&format!("cannot write {rel}: {e}")),
+            }
+        }
         let stem = deck
             .url
             .rsplit('/')
@@ -1622,7 +1656,6 @@ async fn build_site_async(
     // are mandatory for feeds/sitemap/JSON-LD). All auto-derived from the site's own
     // content; the author writes nothing SEO-specific.
     let mut seo_written: Vec<PathBuf> = Vec::new();
-    let mut card_paths: Vec<PathBuf> = Vec::new();
     if site.config.url.is_some() {
         let mut emit = |rel: &str, body: String| {
             let dest = out.join(rel);
