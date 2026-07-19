@@ -111,6 +111,11 @@ jobs:
           node-version: "20"
       - name: Type-check the client JS
         run: cd web-client && npx -y -p typescript tsc -p jsconfig.json
+      # The bundled browser scripts (the code-enhance/ fragments, deck.js, qmd-js.js,
+      # mermaid/scrolly/tabset/walkthrough) ship to every page and had no type gate;
+      # this keeps them at strict-zero the same way the client JS is kept honest.
+      - name: Type-check the bundled assets JS
+        run: cd crates/core/assets/js && npx -y -p typescript tsc -p jsconfig.json
       # The publish passcode gate (functions/_middleware.js) is security-critical and its
       # only functional test is this dependency-free node:test file. Run it here (Node is
       # already set up) so an auth-logic regression (e.g. a broken fail-closed default)

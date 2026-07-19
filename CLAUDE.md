@@ -122,6 +122,7 @@ cargo run -p taliesin-server -- render <file.tmd> > out.html   # one-shot full p
 cargo run -p taliesin-server -- blocks <file.tmd>              # block ids + sourcepos (debug)
 cargo test -p taliesin-core                                    # corpus invariants + unit tests
 cd web-client && npx -y -p typescript tsc -p jsconfig.json     # type-check the client JS (client.js + search/toc-spy/toc-sheet; // @ts-check, no build step)
+cd crates/core/assets/js && npx -y -p typescript tsc -p jsconfig.json  # type-check the bundled assets JS (code-enhance/ fragments + deck.js/qmd-js.js/mermaid/scrolly/tabset/walkthrough, strict; globals.d.ts + web-client's are merged; CI-gated)
 ```
 
 A `taliesin` launcher on `PATH` (`~/.local/bin/Taliesin`) rebuilds the release
