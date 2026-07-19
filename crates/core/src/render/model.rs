@@ -187,6 +187,10 @@ pub struct RenderedDoc {
     /// Front-matter `description`, used for the SEO/OpenGraph meta on a standalone
     /// page (site pages get richer per-page meta from their `Page`).
     pub description: Option<String>,
+    /// Whether this is a *dated* document (a post/article), the same gate the reading-time
+    /// estimate uses. Drives the standalone `og:type` (`article` vs `website`) so a generic
+    /// undated page isn't mislabelled an article to crawlers.
+    pub is_article: bool,
     pub format: DocFormat,
     /// Whether this doc shows a table of contents. For a standalone render this
     /// is the front-matter `toc:` (default off); inside a site it is recomputed

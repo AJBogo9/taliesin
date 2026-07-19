@@ -587,6 +587,7 @@ fn html_page_inner(
         includes.in_header.push_str(&social_meta_head(
             doc.title.as_deref(),
             doc.description.as_deref(),
+            doc.is_article,
         ));
     }
     let favicon = match site {

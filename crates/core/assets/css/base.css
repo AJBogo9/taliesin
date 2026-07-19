@@ -281,9 +281,11 @@
     border-radius: var(--tali-radius-lg); background: var(--tali-code-bg); }
   .feature h3 { font-family: var(--tali-font-head); margin: 0 0 .4rem; font-size: 1.12rem; }
   .feature p { margin: 0; color: var(--tali-muted); font-size: .95rem; }
-  /* Intentional modular heading scale (minor third) with optical line-heights +
-     vertical rhythm (more space before a heading than after, binding it to its section).
-     Replaces the browser-default sizes the headings used to fall back to. */
+  /* Intentional hand-tuned heading scale: the step ratio eases from ~1.24 (h1->h2) down to
+     ~1.11 (h5->h6), i.e. looser at display sizes and tighter as sizes shrink, rather than one
+     constant modular ratio. Paired with optical line-heights + vertical rhythm (more space
+     before a heading than after, binding it to its section). Replaces the browser-default
+     sizes the headings used to fall back to. */
   h1, h2, h3, h4, h5, h6 { font-family: var(--tali-font-head); font-weight: 600; }
   /* Prose rhythm: an explicit paragraph bottom-margin (was the browser default) and a
      flat, tokenised `<hr>` (was the browser's beveled default). List margins are left to

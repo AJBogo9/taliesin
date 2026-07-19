@@ -797,11 +797,22 @@ fn standalone_doc_carries_opengraph_seo_meta() {
         page.contains("name=\"description\" content=\"D\""),
         "meta description"
     );
+    // PL20: an undated standalone page is a generic `website`, not an `article` (the article
+    // gate is a front-matter `date:`, the same gate the reading-time estimate uses).
     assert!(
-        page.contains("property=\"og:type\" content=\"article\""),
-        "og:type"
+        page.contains("property=\"og:type\" content=\"website\""),
+        "an undated standalone doc is og:type=website, not article"
     );
     assert!(page.contains("name=\"twitter:card\""), "twitter card");
+    // A dated doc (a post) IS an article.
+    let dated =
+        taliesin_core::render_document("---\ntitle: \"T\"\ndate: \"2026-01-01\"\n---\n\nbody\n");
+    let dated_page =
+        taliesin_core::render_doc_to_page(&dated, "fallback", taliesin_core::OutputMode::Build);
+    assert!(
+        dated_page.contains("property=\"og:type\" content=\"article\""),
+        "a dated standalone doc is og:type=article"
+    );
 
     // A doc with no description omits the description tags but still has og:title.
     let bare = taliesin_core::render_doc_to_page(

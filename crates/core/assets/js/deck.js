@@ -1678,7 +1678,8 @@
   function key(k, d) { return '<div class="tali-key"><kbd>' + k + '</kbd><span>' + d + '</span></div>'; }
   var KEYS_HTML =
     key('← →', 'Navigate') + key('↑ ↓', 'Jump topic') + key('Space', 'Next') +
-    key('O', 'Overview') + key('F', 'Fullscreen') + key('S', 'Speaker view') +
+    key('Home End', 'First / last slide') +
+    key('O', 'Overview') + key('0', 'Fit map') + key('F', 'Fullscreen') + key('S', 'Speaker view') +
     key('B', 'Black screen') +
     key('?', 'This menu') + key('Esc', 'Close');
 
@@ -1949,11 +1950,17 @@
     var pct = all.length ? (idx + 1) / all.length * 100 : 0;
     deck.chrome.fill.style.width = pct + '%';
   }
-  var idleTimer;
+  var idleTimer, coldOpen = true;
   function showChrome() {
     document.documentElement.classList.remove('tali-idle');
     clearTimeout(idleTimer);
-    idleTimer = setTimeout(function () { if (!deck.menuOpen) document.documentElement.classList.add('tali-idle'); }, 3000);
+    // Cold open: a reader who just landed on a static deck hasn't touched anything yet, so
+    // hold the nav visible longer the FIRST time (there's no first-run hint otherwise) — long
+    // enough to register that controls exist before they fade. After any interaction, revert
+    // to the snappy 3s idle-hide.
+    var delay = coldOpen ? 6000 : 3000;
+    coldOpen = false;
+    idleTimer = setTimeout(function () { if (!deck.menuOpen) document.documentElement.classList.add('tali-idle'); }, delay);
   }
 
   // --- lifecycle ----------------------------------------------------------

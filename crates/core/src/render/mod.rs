@@ -862,10 +862,13 @@ fn render_internal_impl(
     // A visible title block (HTML only; reveal builds its own title slide). It is
     // a generated block (no sourcepos), so it rides the block model + diff like
     // the References section.
-    // Reading-time estimate, shown only for a dated post (the same gate as og:type=article).
-    // Prose words / 200 wpm, rounded to whole minutes (min 1), matching the client's live
-    // count; `src` is include-expanded, so an included file's prose is included.
-    let read_time = date.as_deref().filter(|d| !d.is_empty()).map(|_| {
+    // A dated document is an article (a post), which gates both the reading-time estimate and
+    // the standalone `og:type`. An undated page is a generic `website`, not an `article`.
+    let is_article = date.as_deref().is_some_and(|d| !d.is_empty());
+    // Reading-time estimate, shown only for a dated post. Prose words / 200 wpm, rounded to
+    // whole minutes (min 1), matching the client's live count; `src` is include-expanded, so
+    // an included file's prose is included.
+    let read_time = is_article.then(|| {
         let mins = ((crate::prose::word_count(src) + 100) / 200).max(1);
         format!("{mins} min read")
     });
@@ -899,6 +902,7 @@ fn render_internal_impl(
         subtitle,
         lang,
         description,
+        is_article,
         format,
         // Standalone default: a TOC only when the page asked for one. The site
         // path overrides this via `page_toc` using `toc_explicit`.
@@ -918,7 +922,7 @@ fn render_internal_impl(
 /// front matter. A single file has no site URL, so there's no canonical/og:url or
 /// absolute image — just the text tags that make a shared link or search result
 /// meaningful. (Site pages get the richer, URL-aware set from `site::meta`.)
-fn social_meta_head(title: Option<&str>, description: Option<&str>) -> String {
+fn social_meta_head(title: Option<&str>, description: Option<&str>, is_article: bool) -> String {
     let meta = |attr: &str, key: &str, val: &str| {
         format!("\n<meta {attr}=\"{key}\" content=\"{}\">", escape_attr(val))
     };
@@ -928,7 +932,11 @@ fn social_meta_head(title: Option<&str>, description: Option<&str>) -> String {
         h.push_str(&meta("property", "og:description", d));
         h.push_str(&meta("name", "twitter:description", d));
     }
-    h.push_str(&meta("property", "og:type", "article"));
+    h.push_str(&meta(
+        "property",
+        "og:type",
+        if is_article { "article" } else { "website" },
+    ));
     if let Some(t) = title.filter(|s| !s.is_empty()) {
         h.push_str(&meta("property", "og:title", t));
         h.push_str(&meta("name", "twitter:title", t));

@@ -3204,6 +3204,17 @@ fn theorem_div_emits_styled_block_with_number_slot() {
     );
 }
 
+/// PL20: the deck key-sheet documents First/last (Home/End) + Fit map (0) — keys that were
+/// bound but missing from the help overlay.
+#[test]
+fn deck_key_sheet_lists_home_end_and_fit_map() {
+    let js = super::deck::DECK_JS;
+    assert!(
+        js.contains("'Home End', 'First / last slide'") && js.contains("'0', 'Fit map'"),
+        "the deck key-sheet must document Home/End + the 0 (fit-map) key"
+    );
+}
+
 /// PL17: a theorem led by a heading adopts it as the parenthetical title (the same gesture
 /// that names a callout), instead of rendering the heading as body. A hoisted heading keeps
 /// an xref anchor on the title span, and an explicit `title="..."` still wins.

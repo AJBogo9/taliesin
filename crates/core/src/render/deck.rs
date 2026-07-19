@@ -10,7 +10,7 @@ use super::*;
 /// and `deck.js` the navigation/scaling engine (`window.TaliesinDeck`). Inlined into
 /// both the one-shot page and the live client, like KaTeX/mermaid.
 pub(super) const DECK_CSS: &str = include_str!("../../assets/css/deck.css");
-const DECK_JS: &str = include_str!("../../assets/js/deck.js");
+pub(super) const DECK_JS: &str = include_str!("../../assets/js/deck.js");
 
 /// The pieces a caller supplies to [`assemble_deck_page`]; the deck analogue of
 /// [`super::PageParts`]. The static build passes the empty preview slots; the
