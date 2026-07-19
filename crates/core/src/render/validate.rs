@@ -159,6 +159,28 @@ pub(crate) fn validate_div_class(
     })
 }
 
+/// Validate a `.step lines=` value (located, click-to-source). The `|` is the STEP separator
+/// of a deck/listing `code-line-numbers="1|2-3"` spec, but a `.step` is already one step, so
+/// its own `lines=` is parsed as comma-separated ranges only (`walkthrough.js`/`scrolly.js`).
+/// A `|` therefore matches neither a range nor a number and silently focuses zero lines — a
+/// deck author's muscle-memory trap. Purely diagnostic — the step still renders. `line` is the
+/// 1-based source line of the div's opening fence.
+pub(crate) fn validate_step_lines(
+    spec: &str,
+    line: usize,
+    file: Option<String>,
+) -> Option<Warning> {
+    spec.contains('|').then(|| {
+        Warning::new(format!(
+            "`.step lines=\"{spec}\"` uses `|` (the step separator for a deck's \
+             `code-line-numbers=`), but a `.step`'s own `lines=` focuses one step and takes \
+             comma-separated ranges only (e.g. `3-5,8`), so the `|` groups highlight nothing. \
+             Split the pipe groups into separate `.step` blocks."
+        ))
+        .at(file, line as u32)
+    })
+}
+
 /// Validate a `.code-walkthrough` container: warn (click-to-source) when it holds no
 /// code block, since the sticky panel would render empty. `line` is the 1-based source
 /// line of the div's opening fence. Purely diagnostic — the div still renders.
@@ -349,6 +371,23 @@ mod tests {
             validate_div_class(&div(&["fragment", "highlight"]), 5, None).is_none(),
             "the real `.highlight` effect is silent"
         );
+    }
+
+    #[test]
+    fn validate_step_lines_warns_only_on_the_pipe_step_separator() {
+        // PL7: a `|` in a `.step lines=` is a deck `code-line-numbers=` habit that the step's
+        // comma-only parser focuses to zero lines — warn, located.
+        let w = validate_step_lines("1|2-3", 7, Some("d.tmd".into())).expect("`|` warns");
+        assert!(
+            w.message.contains("step separator") && w.message.contains("lines=\"1|2-3\""),
+            "names the separator + echoes the spec: {}",
+            w.message
+        );
+        assert_eq!(w.line, Some(7), "located at the fence line");
+        // The valid grammars — comma-separated ranges/numbers, a plain range, `all` — are silent.
+        assert!(validate_step_lines("3-5,8", 7, None).is_none(), "commas ok");
+        assert!(validate_step_lines("6-8", 7, None).is_none(), "a range ok");
+        assert!(validate_step_lines("all", 7, None).is_none(), "`all` ok");
     }
 
     #[test]

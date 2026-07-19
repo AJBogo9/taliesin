@@ -66,4 +66,16 @@ fn typos_doc_warns_exactly_on_each_unknown_key() {
         div.line.is_some(),
         "div-class warning should be located: {div:?}"
     );
+
+    // PL7: a `.step lines=` carrying a `|` (the deck `code-line-numbers=` step separator) is a
+    // silent no-op — the step's comma-only parser focuses zero lines — so it must warn, located.
+    let step = doc
+        .warnings
+        .iter()
+        .find(|w| w.message.contains("step separator"))
+        .expect("a `.step lines=` using `|` must warn");
+    assert!(
+        step.line.is_some(),
+        "step-lines warning should be located: {step:?}"
+    );
 }

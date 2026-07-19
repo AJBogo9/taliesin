@@ -945,9 +945,6 @@ under-sells machinery that already ships.)
   attribute, `.columns`, `.column`) at `divs.rs:450-468`, and the arm's own comment admits `.column width=` is
   "ignored (equal columns)" with no warning. Bless `.columns` canonical + `layout-ncol` alias; honour-or-warn
   `width=`. S–M · high · [author]. **VERIFIED.**
-- **PL7 — Line-highlight: two names, two delimiters, a deck habit silently no-ops.** `code-line-numbers="1|2-3"`
-  (pipe, `emit.rs:234`) vs `.step lines="6-8"` split on `,` only (`walkthrough.js:23`); `lines="1|2-3"` in a step
-  focuses **zero** lines. Warn on `|` in a step `lines=` (or align the grammars). S · med-high. **VERIFIED.**
 - **PL10 — A `{js}` runtime error ships a raw stack trace to readers in *built* output.** `qmd-js.js:212` sets
   `textContent = String(e.stack||e)` (already `console.error`s it at `:209`); a published page shows a reader the
   stack. In the build path degrade to a terse themed notice, keep the console log. S · med. **VERIFIED.**

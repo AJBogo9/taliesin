@@ -44,6 +44,9 @@ const TABLE: &[(&str, &str, &str)] = &[
     ("unknown callout kind", "TAL-CALLOUT-KIND", WARNING),
     ("unknown cell option", "TAL-CELL-OPTION", WARNING),
     ("unknown input type", "TAL-INPUT-TYPE", WARNING),
+    // A `.step lines=` spec carrying a `|` (the deck `code-line-numbers=` step separator),
+    // which a step's own comma-only parser silently focuses to zero lines.
+    ("step separator", "TAL-STEP-LINES", WARNING),
     // Cross-references + links + anchors.
     ("broken cross-reference", "TAL-XREF-UNDEF", ERROR),
     // A DEFINITION no `@ref` can reach: a hidden cell's `label:` (the executor drops the
@@ -184,6 +187,17 @@ const EXPLANATIONS: &[Explanation] = &[
                 recognize, so it has no effect on how the cell runs or renders.",
         fix: "Correct the option to a known one (the message suggests the nearest, e.g. \
               `labl` -> `label`), or remove it. See the cell-options reference.",
+    },
+    Explanation {
+        code: "TAL-STEP-LINES",
+        title: "a `.step lines=` uses a step separator",
+        cause: "The `lines=` value on a `.code-walkthrough`/`.scrolly` `.step` contains a `|`. \
+                The `|` is the STEP separator of a deck/listing `code-line-numbers=\"1|2-3\"` \
+                spec; a `.step` is already one step, so its own `lines=` is parsed as \
+                comma-separated ranges only. The `|` matches neither a range nor a number, so \
+                the step silently focuses zero lines.",
+        fix: "Use comma-separated ranges within the step (`lines=\"3-5,8\"`), and express \
+              multiple reveal states as separate `.step` blocks — one per pipe group.",
     },
     Explanation {
         code: "TAL-INPUT-TYPE",

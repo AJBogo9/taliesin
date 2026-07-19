@@ -178,6 +178,14 @@ An `{js}` reactive cell either reads an input that no cell or `{{< input >}}` de
 
 To fix: Define the missing input (or fix its name; the message suggests the nearest), or break the cycle so the graph is acyclic.
 
+## TAL-STEP-LINES
+
+**a `.step lines=` uses a step separator**
+
+The `lines=` value on a `.code-walkthrough`/`.scrolly` `.step` contains a `|`. The `|` is the STEP separator of a deck/listing `code-line-numbers="1|2-3"` spec; a `.step` is already one step, so its own `lines=` is parsed as comma-separated ranges only. The `|` matches neither a range nor a number, so the step silently focuses zero lines.
+
+To fix: Use comma-separated ranges within the step (`lines="3-5,8"`), and express multiple reveal states as separate `.step` blocks — one per pipe group.
+
 ## TAL-XREF-UNDEF
 
 **a cross-reference points at nothing**

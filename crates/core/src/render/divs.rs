@@ -515,6 +515,12 @@ fn build_container(
         let id_attr = id_attr(attrs.id.as_deref());
         let cw_lines = match attrs.get("lines") {
             Some(spec) if !spec.is_empty() => {
+                // A `|` here is a deck `code-line-numbers=` habit that focuses zero lines in a
+                // step's comma-only parser — warn (located) instead of degrading silently.
+                if let Some(w) = super::validate::validate_step_lines(spec, open_line, file.clone())
+                {
+                    warnings.push(w);
+                }
                 format!(" data-cw-lines=\"{}\"", escape_attr(spec))
             }
             _ => String::new(),

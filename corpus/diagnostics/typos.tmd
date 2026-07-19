@@ -21,6 +21,11 @@ This callout names a kind Taliesin does not define.
 This div names a feature class Taliesin does not define; it silently degraded before DX5.
 :::
 
+::: {.step lines="1|2-3"}
+This scroll step's `lines=` uses the deck `code-line-numbers=` `|` step separator, which a
+step's comma-only parser silently focuses to zero lines.
+:::
+
 ```{python}
 #| labl: fig-demo
 print("hello from a cell whose option key is misspelled")
