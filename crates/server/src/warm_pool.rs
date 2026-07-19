@@ -82,7 +82,22 @@ const PRELOAD_CANDIDATES: &[&str] = &["numpy", "matplotlib", "torch"];
 /// warmth/exec rationale, and [`ForkserverDaemon::fork_kernel_within`] for why every
 /// reply echoes the request's id.
 const FORKSERVER_HELPER: &str = r#"
-import sys, os, json, importlib.util, multiprocessing as mp
+import sys, os, json, signal, importlib.util, multiprocessing as mp
+
+def _reap_group():
+    # taliesin (our parent) closed our stdin -> it has EXITED (SIGKILL, a crash, or a
+    # closed terminal), so its Drop-based teardown never ran. Reap the forkserver server
+    # + every kernel it forked before we follow it out: they share OUR process group (we
+    # lead it via `process_group(0)` on the Rust side), and taliesin sits in its own
+    # group, so this SIGKILL cannot reach it. This is the same group `kill_process_group`
+    # reaps gracefully from Rust, triggered here from inside instead. Chosen over
+    # PR_SET_PDEATHSIG: that signals only the helper (orphaning the server + kernels) and,
+    # in taliesin's multithreaded tokio runtime, can fire on a parent *thread* exit; stdin
+    # EOF is parent *process* death and reaps the whole subtree.
+    try:
+        os.killpg(os.getpgrp(), signal.SIGKILL)
+    except Exception:
+        pass
 
 def _detect_preload(requested):
     out = []
@@ -119,19 +134,7 @@ def _child_entry(conn_file):
         sys.stderr.write("tali-warm: child kernel failed: %r\n" % (e,)); sys.stderr.flush()
         os._exit(1)
 
-def main():
-    requested = json.loads(sys.argv[1]) if len(sys.argv) > 1 else []
-    preload = _detect_preload(requested)
-    try:
-        ctx = mp.get_context("forkserver")
-        ctx.set_forkserver_preload(preload)
-        # Force the forkserver server to boot + preload now (a throwaway noop fork),
-        # so the first real take() doesn't pay the import cost.
-        w = ctx.Process(target=_noop); w.start(); w.join()
-    except Exception as e:
-        sys.stderr.write("tali-warm: forkserver unavailable: %r\n" % (e,)); sys.stderr.flush()
-        os._exit(2)
-    sys.stdout.write("READY " + json.dumps(preload) + "\n"); sys.stdout.flush()
+def _serve(ctx):
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -154,6 +157,29 @@ def main():
             # Rust client retries on the strength of exactly this promise.
             sys.stderr.write("tali-warm: fork failed: %r\n" % (e,)); sys.stderr.flush()
             sys.stdout.write("ERROR %s\n" % (rid,)); sys.stdout.flush()
+
+def main():
+    requested = json.loads(sys.argv[1]) if len(sys.argv) > 1 else []
+    preload = _detect_preload(requested)
+    try:
+        ctx = mp.get_context("forkserver")
+        ctx.set_forkserver_preload(preload)
+        # Force the forkserver server to boot + preload now (a throwaway noop fork),
+        # so the first real take() doesn't pay the import cost.
+        w = ctx.Process(target=_noop); w.start(); w.join()
+    except Exception as e:
+        sys.stderr.write("tali-warm: forkserver unavailable: %r\n" % (e,)); sys.stderr.flush()
+        os._exit(2)
+    sys.stdout.write("READY " + json.dumps(preload) + "\n"); sys.stdout.flush()
+    # The serve loop ends when stdin hits EOF — which, in the ungraceful case (taliesin
+    # SIGKILLed / crashed / terminal closed), is the ONLY notice we get that our parent
+    # is gone. On any exit from it, reap the forkserver subtree we lead so it can't
+    # outlive taliesin (~100 MB per kernel). The graceful path SIGKILLs us first, so this
+    # runs only when Drop didn't.
+    try:
+        _serve(ctx)
+    finally:
+        _reap_group()
 
 if __name__ == "__main__":
     main()
@@ -221,7 +247,10 @@ fn kill_process_group(helper_pid: u32) {
 fn kill_process_group(_helper_pid: u32) {}
 
 struct DaemonIo {
-    stdin: ChildStdin,
+    /// The helper's stdin (request pipe). `Option` only so the ungraceful-death test can
+    /// drop it (closing the OS fd → EOF at the helper) to stand in for a parent death;
+    /// in production it is `Some` for the daemon's whole life.
+    stdin: Option<ChildStdin>,
     stdout: BufReader<ChildStdout>,
     /// The correlation id for the next fork request. Monotonic and never reused, so an
     /// abandoned request's id can never collide with a live one. Lives beside the pipes
@@ -401,7 +430,7 @@ impl ForkserverDaemon {
         Ok(ForkserverDaemon {
             _child: child,
             io: Mutex::new(DaemonIo {
-                stdin,
+                stdin: Some(stdin),
                 stdout: reader,
                 next_id: 1,
             }),
@@ -415,6 +444,19 @@ impl ForkserverDaemon {
     /// PID. Serialised across callers by the io mutex.
     async fn fork_kernel(&self, conn_file: &std::path::Path) -> std::io::Result<u32> {
         self.fork_kernel_within(conn_file, FORK_TIMEOUT).await
+    }
+
+    /// Drop *our* end of the helper's stdin so its `for line in sys.stdin` loop sees EOF
+    /// — exactly what an ungraceful taliesin death (SIGKILL/crash/closed terminal) does to
+    /// the pipe when the process's fds close. `take()` drops the `ChildStdin`, which
+    /// closes the OS write fd; `shutdown()` alone does not close a pipe, so the helper
+    /// would never see EOF. Used by the ungraceful-death test to trigger the helper's
+    /// self-reap WITHOUT running `Drop for ForkserverDaemon` (whose group-kill would mask
+    /// whether the helper reaps itself).
+    #[cfg(test)]
+    pub(crate) async fn close_stdin_for_test(&self) {
+        let mut io = self.io.lock().await;
+        io.stdin.take();
     }
 
     /// [`Self::fork_kernel`] with an explicit deadline, so a test can drive the
@@ -441,8 +483,12 @@ impl ForkserverDaemon {
         let id = io.next_id;
         io.next_id += 1;
         let req = format!("{id} {}\n", conn_file.display());
-        io.stdin.write_all(req.as_bytes()).await?;
-        io.stdin.flush().await?;
+        let stdin = io
+            .stdin
+            .as_mut()
+            .ok_or_else(|| std::io::Error::other("forkserver: stdin closed"))?;
+        stdin.write_all(req.as_bytes()).await?;
+        stdin.flush().await?;
         // Read until *our* reply. `_child_entry` detaches the kernel's stdout from this
         // pipe, so the reply is normally clean; but skip any stray non-protocol line as
         // belt-and-suspenders — a lone banner that slipped onto the pipe must not fail
@@ -1456,6 +1502,68 @@ for line in sys.stdin:
             assert!(
                 cleared,
                 "the whole forkserver group must be reaped on pool drop; survivors: {:?}",
+                live_group_members(pgid)
+            );
+        });
+    }
+
+    /// An *ungraceful* taliesin death (SIGKILL, crash, closed terminal) never runs
+    /// `Drop for ForkserverDaemon`, so the Rust-side group teardown never fires — yet
+    /// the forkserver subtree (~100 MB per kernel) must still be reaped, or it orphans
+    /// and reparents to init. The only signal the helper gets is EOF on its stdin when
+    /// taliesin's fds close; the helper must turn that into the same process-group kill
+    /// the graceful path performs. This drives that exact path: it closes our end of the
+    /// helper's stdin (the faithful stand-in for the parent's death — a real death closes
+    /// the identical write fd) WITHOUT dropping the daemon, then proves the whole group
+    /// self-reaps. Measured before the fix: the forkserver server outlived the helper's
+    /// EOF exit and survived. Kernel-gated + Linux-only (reads `/proc`).
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn ungraceful_parent_death_reaps_the_forkserver_subtree() {
+        let Some(py) = python() else {
+            eprintln!(
+                "SKIPPED (no live kernel): set TALIESIN_PYTHON to test ungraceful-death reaping."
+            );
+            return;
+        };
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async move {
+            let d = ForkserverDaemon::boot(&py).await.unwrap();
+            let pgid = d.helper_pid.expect("a booted daemon has a helper pid");
+            // Best-effort: pull a real forked kernel into the group so the reap is proven
+            // to reach kernels, not just the helper + server. Not required — the helper +
+            // forkserver server are in the group regardless of whether this fork lands.
+            let d = Arc::new(d);
+            let _kernel = PoolInner::warm_one(&py, &d).await.ok();
+
+            let before = live_group_members(pgid);
+            assert!(
+                before.len() >= 2,
+                "expected at least the helper + forkserver server in the group, saw {before:?}"
+            );
+
+            // Simulate the ungraceful death: taliesin's stdin write end closes, the
+            // helper's `for line in sys.stdin` hits EOF, and its teardown must reap the
+            // group it leads. We do NOT drop `d` — its `Drop` would group-kill and hide
+            // whether the helper reaps itself.
+            d.close_stdin_for_test().await;
+
+            let mut cleared = false;
+            for _ in 0..100 {
+                if live_group_members(pgid).is_empty() {
+                    cleared = true;
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(100)).await;
+            }
+            // Drop the daemon only AFTER the assertion window: by now the helper has
+            // either reaped the group (fix present) or not (bug). `Drop`'s redundant
+            // group-kill is then a harmless ESRCH no-op on an already-empty group.
+            drop(d);
+            assert!(
+                cleared,
+                "the helper must reap its forkserver subtree on parent death (stdin EOF); \
+                 survivors: {:?}",
                 live_group_members(pgid)
             );
         });
