@@ -17,6 +17,23 @@ use std::fmt::Write as _;
 /// verbatim copy without runtime generation, exactly as `vocab.rs` bundles the vocab JSON.
 pub const AGENTS_MD: &str = include_str!("../assets/agents/AGENTS.md");
 
+/// The worked CSV→figure cell embedded in the `## Recipes` section (DX19). Kept
+/// byte-identical to the real, `check`-clean corpus document `corpus/recipes/csv-figure.tmd`
+/// by the `recipe_matches_the_corpus_example` test, so the one data idiom `vocab` can't
+/// express as a closed set is taught from a proven example that can't rot.
+const CSV_FIGURE_CELL: &str = r#"```{python}
+#| label: fig-sales
+#| fig-cap: "Monthly sales from `data.csv`."
+import pandas as pd
+import matplotlib.pyplot as plt
+
+data = pd.read_csv("data.csv")
+fig, ax = plt.subplots()
+ax.plot(data["month"], data["sales"], marker="o")
+ax.set_xlabel("month")
+ax.set_ylabel("sales")
+```"#;
+
 /// Pull the `name` field out of each `{ "name", ... }` entry in a `vocab()` array.
 fn names(v: &Value) -> Vec<String> {
     v.as_array()
@@ -160,6 +177,27 @@ pub fn agents_md() -> String {
         code_list(&fm_keys)
     );
 
+    // Recipes: a worked idiom the closed-set `vocab` can't express, pinned to a real
+    // corpus document so it stays runnable (DX19). `vocab`/`schema` cover *structure*
+    // (which keys/options exist); this covers the one *composition* an agent otherwise
+    // has to learn from prose: turning a data file into a numbered, referenceable figure.
+    s.push_str("\n## Recipes\n\n");
+    s.push_str(
+        "Worked idioms the closed-set `vocab` can't express. Each is kept byte-identical to \
+         a real, `check`-clean corpus document, so it stays runnable.\n\n",
+    );
+    s.push_str(
+        "**A figure from a CSV** (the one data idiom worth learning from an example): read a \
+         data file, plot it, and give the cell a `fig-`-prefixed `#| label:` so its output \
+         becomes a numbered, `@fig-`-referenceable figure. Keep the data beside the `.tmd`:\n\n",
+    );
+    let _ = writeln!(s, "~~~~\n{CSV_FIGURE_CELL}\n~~~~");
+    s.push_str(
+        "\nThen reference it in prose: `@fig-sales shows the trend.` For the R kernel, swap \
+         `{python}` + pandas for `{r}` + readr (`read_csv(\"data.csv\")`); the `#| label:` and \
+         `@fig-` reference are identical.\n",
+    );
+
     s
 }
 
@@ -192,6 +230,46 @@ mod tests {
         assert!(
             md.contains(first),
             "missing callout kind `{first}` from vocab"
+        );
+        // DX19: the CSV→figure recipe (the one data idiom `vocab` can't express).
+        assert!(
+            md.contains("## Recipes") && md.contains("read_csv"),
+            "missing the CSV->figure recipe section"
+        );
+    }
+
+    /// Isolate the first ```` ```{python} ```` fenced cell from a `.tmd` source, verbatim
+    /// (opening fence through closing fence). The recipe cell has no nested triple-backtick,
+    /// so the first `\n```` closes it.
+    fn extract_python_cell(doc: &str) -> Option<String> {
+        let start = doc.find("```{python}")?;
+        let rest = &doc[start + 3..]; // past the opening fence, so it can't self-match
+        let close = rest.find("\n```")?;
+        let end = start + 3 + close + "\n```".len();
+        Some(doc[start..end].to_string())
+    }
+
+    /// DX19's "generated from real corpus examples so it can't drift" contract: the onramp's
+    /// CSV→figure recipe must stay byte-identical to the real, `check`-clean corpus document
+    /// it teaches, so an agent copies a proven idiom, not a rotting snippet. If the corpus
+    /// example changes, this fails until `CSV_FIGURE_CELL` is updated to match (then re-bless
+    /// AGENTS.md).
+    #[test]
+    fn recipe_matches_the_corpus_example() {
+        let path = format!(
+            "{}/../../corpus/recipes/csv-figure.tmd",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        let doc = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"));
+        let cell = extract_python_cell(&doc).expect("the recipe corpus doc has a {python} cell");
+        assert_eq!(
+            cell, CSV_FIGURE_CELL,
+            "the AGENTS.md CSV->figure recipe drifted from {path}; update CSV_FIGURE_CELL to \
+             match and re-bless AGENTS.md"
+        );
+        assert!(
+            agents_md().contains(CSV_FIGURE_CELL),
+            "the generated onramp does not embed the CSV->figure recipe cell"
         );
     }
 

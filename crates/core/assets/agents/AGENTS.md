@@ -39,3 +39,26 @@ Taliesin's Markdown is Pandoc-flavored. The closed sets below come straight from
 - **Citations:** `[@key]` cites a `.bib` entry declared in the `bibliography:` front matter.
 - **Structural divs:** `::: {.class} ... :::` blocks. Classes: `panel-tabset`, `code-walkthrough`, `scrolly`, `magic-move`, `step`, `column-margin`, `aside`, `sidenote`, `marginnote`.
 - **Front matter:** a leading `---` YAML block. Keys: `title`, `subtitle`, `author`, `date`, `description`, `lang`, `categories`, `image`, `image-alt`, `format`, `theme`, `css`, `page-layout`, `draft`, `title-block-style`, `include-in-header`, `include-before-body`, `include-after-body`, `toc`, `bibliography`, `execute`, `listing`, `hero`, `prose-lint`, `theorems`.
+
+## Recipes
+
+Worked idioms the closed-set `vocab` can't express. Each is kept byte-identical to a real, `check`-clean corpus document, so it stays runnable.
+
+**A figure from a CSV** (the one data idiom worth learning from an example): read a data file, plot it, and give the cell a `fig-`-prefixed `#| label:` so its output becomes a numbered, `@fig-`-referenceable figure. Keep the data beside the `.tmd`:
+
+~~~~
+```{python}
+#| label: fig-sales
+#| fig-cap: "Monthly sales from `data.csv`."
+import pandas as pd
+import matplotlib.pyplot as plt
+
+data = pd.read_csv("data.csv")
+fig, ax = plt.subplots()
+ax.plot(data["month"], data["sales"], marker="o")
+ax.set_xlabel("month")
+ax.set_ylabel("sales")
+```
+~~~~
+
+Then reference it in prose: `@fig-sales shows the trend.` For the R kernel, swap `{python}` + pandas for `{r}` + readr (`read_csv("data.csv")`); the `#| label:` and `@fig-` reference are identical.

@@ -352,6 +352,31 @@ malformed `_site.yml` degrades the site but ships green with the same tally); fu
 that a clean build prints no extra line. **Next: DX17 (headless executed-output visibility — L, forked,
 overlaps ROADMAP; brainstorm first) / DX19 (CSV→figure recipes in vocab/AGENTS.md — M).**
 
+**DX19 LANDED 2026-07-19** (the data-figure recipe). **The gap:** 🤖 `vocab`/`schema`/`symbols` describe
+*structure* (which front-matter keys, cell options, div classes, xref prefixes exist), but the one thing an
+agent must currently learn from prose is a *composition*: turning a data file into a numbered,
+cross-referenceable figure. `vocab` is closed-set structural only, so it can't hold it. **The fix:** the
+generated `AGENTS.md` onramp gains a `## Recipes` section carrying the CSV→figure idiom (a `{python}` cell
+that `pd.read_csv`s a file, plots it, and labels the output `#| label: fig-sales` so `@fig-sales` resolves;
+plus the one-line `{r}`+readr swap). **"Generated from real corpus examples so it can't drift":** the recipe
+ships pinned by a real corpus document `corpus/recipes/csv-figure.tmd` (+ `data.csv`) added in the same
+change (the corpus-leads rule), and a `recipe_matches_the_corpus_example` test asserts the embedded cell is
+**byte-identical** to that doc's cell — so if the corpus idiom changes, the test fails until the const is
+updated and the asset re-blessed. The recipe cell is a Rust const in `agents.rs`, embedded in `agents_md()`
+inside a `~~~~` fence (so the inner ```` ``` ```` cell renders literally), golden-locked exactly like the
+vocab-sourced dialect section. **Scope call:** put it in `AGENTS.md`, NOT `vocab` (the finding named both) —
+a worked composition isn't a closed set, and the audit itself flags `vocab` as "closed-set structural only";
+adding prose to the structural JSON would blur its contract, against the perfect-default/minimal-surface
+lens. **Surface:** `crates/core/src/agents.rs` (the `CSV_FIGURE_CELL` const + the `## Recipes` block +
+`recipe_matches_the_corpus_example` + a `## Recipes`/`read_csv` assertion in `agents_md_teaches_the_protocol`),
+re-blessed `crates/core/assets/agents/AGENTS.md`, synced repo-root `AGENTS.md`, and the new corpus doc +
+data file. **Verification:** the recipe doc is `check`-clean with no kernel (the `@fig-sales` target is
+registered from the label statically) and projects `@fig-sales` as "Figure 1" in `taliesin read` (the
+kernel-free agent view); full `taliesin-core` (incl. all corpus invariants over the new doc) + the golden-,
+repo-root-sync-, and drift-lock tests + `taliesin-server` (26 binaries) green; clippy clean. **Next: DX17
+(headless executed-output visibility) is the last DX-batch item but is L, net-new, forked, and overlaps
+ROADMAP agent work — brainstorm before building.**
+
 -----------------------------------------------------------------------------
 
 # Vacuous-test / mutation audit (2026-07-18)

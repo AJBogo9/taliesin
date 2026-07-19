@@ -100,10 +100,12 @@ write the script to its XDG-aware dir; pure `install_plan`, unit + e2e verified)
 gating) is DONE** — two default-off gate flags: `--errors-only` (drop warnings from output + exit decision)
 and `--require-kernel` (fail if a used language's kernel isn't runnable); pure gate helpers + CLI exit-code
 integration tests; `--min-severity` folded into `--errors-only` (only two severities today). **DX6 + DX8 +
-DX7 + DX18 + DX12 landed locally** (push when asked; verify with `git log --oneline origin/main..main`).
-Next up per the suggested order: DX19 (CSV→figure recipes in `vocab`/AGENTS.md — M, surface), then DX17
-(headless executed-output visibility — L, net-new, has a fork [optional headless `{js}` eval] and overlaps
-ROADMAP, so brainstorm first). Most remaining items are *surfacing an existing capability*.
+DX7 + DX18 + DX12 + DX19 landed locally** (push when asked; verify with `git log --oneline origin/main..main`).
+Next up: **DX17** (headless executed-output visibility) is the last DX-batch item, but it is L, net-new, has
+a fork (optional headless `{js}` eval) and overlaps `ROADMAP.md` agent work, so **brainstorm before
+building** (do NOT scope it straight from the one-liner). Cheaper alternatives if DX17 is deferred: DX9
+(make caching legible — S, surface) or the Tier 2 items DX13–DX16. Most remaining items are *surfacing an
+existing capability*.
 
 **Pick up here (2026-07-18, PMF-audit batch — START HERE for feature work).** A product-market-fit
 audit landed ([2026-07-18-pmf-audit.md](2026-07-18-pmf-audit.md); 30+7 sourced personas +
@@ -876,8 +878,18 @@ unit-tested helpers (`at_severity_floor`, `kernel_gate_fails`) + CLI exit-code i
 severities are just error/warning today, so `--min-severity` folded into `--errors-only` (a better default
 than a knob whose only non-default value is "error"); note if a third severity ever appears. Record in
 [AUDITS.md](AUDITS.md).
-- **DX19 — Data-figure recipes in `vocab`/AGENTS.md** (CSV→figure idiom), generated from real corpus
-  examples so it can't drift. M · [surface] · 🤖 the one thing an agent must learn from prose today.
+**DX19 — LANDED 2026-07-19** (data-figure recipe). The generated `AGENTS.md` gained a `## Recipes`
+section with the one idiom `vocab` can't express as a closed set: the CSV→figure loop (read a data file,
+plot it, `#| label: fig-*` so the output is a numbered `@fig-`-referenceable figure). **"Can't drift"** is
+enforced two ways: the recipe cell is a Rust const embedded in `agents_md()` (golden-locked like the rest
+of the onramp), AND a new `recipe_matches_the_corpus_example` test asserts it is **byte-identical** to a
+real, `check`-clean corpus document `corpus/recipes/csv-figure.tmd` (+ `data.csv`) shipped in the same
+change (the corpus-leads rule) — change the corpus example and the test fails until the const is updated +
+the asset re-blessed. **Scope call:** the recipe lives in `AGENTS.md`, not `vocab` — the audit itself
+notes `vocab` is "closed-set structural only", and a worked composition isn't a closed set; polluting the
+structural JSON with prose would blur its contract. Verified: `@fig-sales` resolves to "Figure 1" in the
+`read` projection (kernel-free), corpus invariants + golden-lock + repo-root sync + drift-lock all green.
+Record in [AUDITS.md](AUDITS.md). **Do not re-open.**
 
 **Design questions (owner ruling first — NOT build-ready):**
 
@@ -888,7 +900,7 @@ than a knob whose only non-default value is "error"); note if a third severity e
   One-command deck publish in scope? (🎤)
 - Presenter laser/spotlight + auto-advance (reveal.js reflexes). (🎤)
 
-**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ ~~DX5~~ ~~DX11~~ ~~DX10-followup~~ ~~DX4~~ ~~DX6~~ ~~DX8~~ ~~DX7~~ ~~DX18~~ ~~DX12~~ (all landed) → DX19 / DX17
+**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ ~~DX5~~ ~~DX11~~ ~~DX10-followup~~ ~~DX4~~ ~~DX6~~ ~~DX8~~ ~~DX7~~ ~~DX18~~ ~~DX12~~ ~~DX19~~ (all landed) → DX17 (brainstorm: L, net-new, forked) · DX9/DX13–DX16 (Tier 2)
 (kill the two silent-failure traps) → DX4/DX6/DX8 → DX17–19 (DX18 is cheap, pull forward). Tier 0–1 and
 most of Tier 2 are *surfacing existing capability*, not net-new.
 

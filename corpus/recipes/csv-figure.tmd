@@ -1,0 +1,27 @@
+---
+title: "Recipe: a figure from a CSV"
+---
+
+The canonical data-figure loop: read a CSV, plot it, and label the cell so the
+figure is numbered and cross-referenceable. The `{python}` cell below reads
+`data.csv` (sitting next to this document) and renders its plot inline when you
+preview with a kernel. A `#| label:` with a `fig-` prefix makes the output a
+numbered figure, and `#| fig-cap:` is its caption, so `@fig-sales` resolves on
+its own.
+
+```{python}
+#| label: fig-sales
+#| fig-cap: "Monthly sales from `data.csv`."
+import pandas as pd
+import matplotlib.pyplot as plt
+
+data = pd.read_csv("data.csv")
+fig, ax = plt.subplots()
+ax.plot(data["month"], data["sales"], marker="o")
+ax.set_xlabel("month")
+ax.set_ylabel("sales")
+```
+
+@fig-sales shows the trend. Swap `{python}` + pandas for `{r}` + readr
+(`read_csv("data.csv")`) to do the same against the R kernel: the `#| label:`
+and `@fig-` reference are identical.
