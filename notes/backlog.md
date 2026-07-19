@@ -101,10 +101,12 @@ gating) is DONE** — two default-off gate flags: `--errors-only` (drop warnings
 and `--require-kernel` (fail if a used language's kernel isn't runnable); pure gate helpers + CLI exit-code
 integration tests; `--min-severity` folded into `--errors-only` (only two severities today). **DX6 + DX8 +
 DX7 + DX18 + DX12 + DX19 landed locally** (push when asked; verify with `git log --oneline origin/main..main`).
+**DX9 + DX15 + DX13 landed 2026-07-19** (the three build-ready Tier-2 surfacing items; see §6).
 Next up: **DX17** (headless executed-output visibility) is the last DX-batch item, but it is L, net-new, has
 a fork (optional headless `{js}` eval) and overlaps `ROADMAP.md` agent work, so **brainstorm before
-building** (do NOT scope it straight from the one-liner). Cheaper alternatives if DX17 is deferred: DX9
-(make caching legible — S, surface) or the Tier 2 items DX13–DX16. Most remaining items are *surfacing an
+building** (do NOT scope it straight from the one-liner). The only remaining Tier-2 DX items are DX14
+(interactive `new`/`init` wizard, M · net-new) and DX16 (update-available nudge, S · net-new — implies a
+network check, so weigh it against the offline invariant first). Most remaining items are *surfacing an
 existing capability*.
 
 **Pick up here (2026-07-18, PMF-audit batch — START HERE for feature work).** A product-market-fit
@@ -831,9 +833,19 @@ and `[](page.tmd)` link completion were left out (noted in the spec). Spec
 
 **Tier 2 — workflow smoothers & delight:**
 
-- **DX9 — Make caching legible**: `⚡ cached` vs `✓ 1.2s` per-cell badge + a console `restored N cached
-  cells · 1 re-ran` line + a one-line tie to "Restart kernel"/`TALIESIN_NO_CACHE`. S · [surface] · 🎤🎓
-  both restarted the kernel needlessly asking "why didn't my cell re-run?"; the info is in `freeze.rs`.
+**DX9 — Make caching legible — LANDED 2026-07-19.** The fresh-run `✓ 1.2s` badge already shipped; the
+gap was that a replay carried a null duration, so the client showed a blank `✓` and the console said
+nothing. `protocol::cell_state` gained an additive `source` field (`"cache"`|`"fresh"`); `exec.rs` marks
+the up-front restored cells + returns a `CacheTally` per run, and `run()` logs one closing `restored N
+cached cell(s) · M re-ran` line (only when something replayed, so a cold run stays quiet). `client.js`
+renders `⚡ cached` + tags `data-qmd-cell-source` (STATUS_CSS mutes the border to a faded green), and a
+dev-menu Cache row ties it to Restart kernel / `TALIESIN_NO_CACHE`. Observational only (nothing about what
+runs/caches changed; freeze `FORMAT_VERSION` untouched). Unit-tested (protocol field + tally pluralization)
++ mutation-checked, a Rust drift pin guards the include_str!'d JS/CSS, browser-verified with a real kernel
+(cell one `⚡ cached` with muted border; console `restored 1 cached cell · 1 re-ran`; no console errors).
+**Do not re-open.** *(Known pre-existing limitation, unrelated: a freshly-edited cell's block id changes,
+so its new `-out` block is inserted after the transient cell-state arrives and misses its badge — the
+`✓ 1.2s` badge has always had this too.)*
 **DX10 — Scaffolds that teach — LANDED 2026-07-18** (all 4 sub-parts). Shipped: `paper` now
 scaffolds a worked `{python}` matplotlib figure (`#| label: fig-demo` + `#| fig-cap:`), a `$$` block, and
 `@fig-demo`/`@sec-methods` cross-refs (check-clean; corpus mirror `corpus/scaffold/posts/my-paper/`
@@ -854,12 +866,27 @@ a start line would be noise on every instant build). `build.rs` only (`finalize_
 `warn_nonstrict_problems` + `build_dir: ExitCode→bool`). End-to-end-pinned in `strict_robustness.rs`
 (single-doc broken-xref + site malformed-config); det-log parity confirmed. Record in
 [AUDITS.md](AUDITS.md). **Do not re-open.**
-- **DX13 — Social-card preview pane** in the dev menu (render the branded 1200×630 OG card for the current
-  page). M · [surface] · ✍️ cards only bake at build today.
+**DX13 — Social-card preview pane — LANDED 2026-07-19.** The entry's premise ("cards only bake at build")
+was **stale**: a live on-demand renderer already existed (`/og/{name}` → `og_card`, `serve_site`), but it
+was hash-keyed and so unreachable before `_site.yml` sets a `url:` (no hash surfaces without one). So the
+gap was a UI affordance + a url-less path. `serve_site` gained `GET /og-preview?page=<rel>` (reuses the
+pure/offline `render_card`+`card_spec`, keyed by page identity via `Site::page`, so it works with no
+`url:`); `client.js` adds a lazy dev-menu "Show OG card" pane gated on the site-preview page identity
+(site-preview only — single-doc `serve` has no `Site`/card concept). Pinned by a `serve_site` test (a
+url-less corpus site still renders a real 1200×630 PNG by rel) + a mutation-checked Rust drift pin on the
+include_str!'d client route/gate/CSS. Verified end-to-end: `curl /og-preview?page=intro.tmd` → 1200×630
+`image/png` on the url-less demo-book, and the pane renders in a real browser (no console errors). **Do not
+re-open.**
 - **DX14 — Interactive `new`/`init` wizard** (arrow-key kind picker, `-y` to skip) + a `site`/`book` kind.
   M · [new] · 🎓✍️ (flags-only today; no multi-page scaffolder).
-- **DX15 — Pre-flight publish summary** (one screen: strict result, target, GATED vs PUBLIC + the flag to
-  flip it) before deploy. S · [surface] · ✍️ deployed his public blog passcode-gated, needed a 2nd run.
+**DX15 — Pre-flight publish summary — LANDED 2026-07-19.** Confirmed real: a real (non-dry-run) deploy in
+the default *gated* path printed **no gate confirmation at all** (only the ungated path warned) — exactly
+the accidental-gating incident. Now a pure `preflight_summary()` prints target + source + access + checks
+once the build succeeds and before the (irreversible) upload, on both the dry-run and real paths, with the
+access line naming the exact flip both ways (`--public` / `publish.gate: false`, and the reverse). The loud
+PUBLIC warn stays as a second unmissable line for the case that leaks. `log::info` → stderr so a
+`--format json` stdout stream stays pure. Unit-tested (flip wording, problem count, dry-run verb) +
+mutation-checked; verified end-to-end against the real binary (gated + `--public`). **Do not re-open.**
 - **DX16 — Update-available nudge** (async, boxed, `NO_UPDATE_NOTIFIER` opt-out). S · [new].
 
 **Tier 3 — agent-DX (the AI-native positioning):**
@@ -900,7 +927,7 @@ Record in [AUDITS.md](AUDITS.md). **Do not re-open.**
   One-command deck publish in scope? (🎤)
 - Presenter laser/spotlight + auto-advance (reveal.js reflexes). (🎤)
 
-**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ ~~DX5~~ ~~DX11~~ ~~DX10-followup~~ ~~DX4~~ ~~DX6~~ ~~DX8~~ ~~DX7~~ ~~DX18~~ ~~DX12~~ ~~DX19~~ (all landed) → DX17 (brainstorm: L, net-new, forked) · DX9/DX13–DX16 (Tier 2)
+**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ ~~DX5~~ ~~DX11~~ ~~DX10-followup~~ ~~DX4~~ ~~DX6~~ ~~DX8~~ ~~DX7~~ ~~DX18~~ ~~DX12~~ ~~DX19~~ ~~DX9~~ ~~DX15~~ ~~DX13~~ (all landed) → DX17 (brainstorm: L, net-new, forked) · DX14/DX16 (Tier 2)
 (kill the two silent-failure traps) → DX4/DX6/DX8 → DX17–19 (DX18 is cheap, pull forward). Tier 0–1 and
 most of Tier 2 are *surfacing existing capability*, not net-new.
 
