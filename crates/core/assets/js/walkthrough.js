@@ -18,8 +18,9 @@
   // Clamp a range's upper bound to the rendered line count: focusLines only queries
   // on.has(i+1) for i in [0, lines-1], so a line past the code could never match — but
   // an unbounded typo range (a-99999999) would OOM-freeze the tab. Mirrors deck.js.
+  /** @param {string | null} spec @param {number} max @returns {Set<number>} */
   function parseLineSpec(spec, max) {
-    var on = new Set();
+    var on = /** @type {Set<number>} */ (new Set());
     (spec || '').split(',').forEach(function (part) {
       var m = part.trim().match(/^(\d+)\s*-\s*(\d+)$/);
       if (m) { for (var n = +m[1], hi = Math.min(+m[2], max); n <= hi; n++) on.add(n); }
@@ -31,6 +32,7 @@
   // Focus the lines named by `spec` in `pre`. The focused range is marked positively (accent
   // wash + inset rail); the rest keep their contrast, since no opacity dim can stay above 4.5:1
   // on syntax-coloured code. ""/"all" clears it.
+  /** @param {Element | null} pre @param {string | null} spec */
   function focusLines(pre, spec) {
     if (!pre) return;
     var lines = pre.querySelectorAll('.tali-hl-ln');
@@ -45,12 +47,14 @@
     lines.forEach(function (l, i) { l.classList.toggle('tali-hl-ln-hl', on.has(i + 1)); });
   }
 
+  /** @param {Element} cw */
   function initWalkthrough(cw) {
     var pre = cw.querySelector('.cw-stage pre');
-    var steps = Array.prototype.slice.call(cw.querySelectorAll('.cw-steps .step'));
+    var steps = /** @type {Element[]} */ (Array.prototype.slice.call(cw.querySelectorAll('.cw-steps .step')));
     if (!pre || !steps.length) return;
 
     var active = -1;
+    /** @param {number} i */
     var apply = function (i) {
       if (i === active) return;
       active = i;
@@ -96,6 +100,7 @@
     apply(currentStep()); // initial focus
   }
 
+  /** @param {ParentNode | null} [root] */
   function enhance(root) {
     (root || document)
       .querySelectorAll('.code-walkthrough:not([data-cw-init])')

@@ -12,7 +12,7 @@ function taliInitFocusMode() {
   live.setAttribute('aria-live', 'polite');
   document.body.appendChild(live);
 
-  var btn = null;
+  var btn = /** @type {HTMLButtonElement | null} */ (null);
   function on() { return document.body.classList.contains('tali-focus'); }
   function sync() {
     if (!btn) return;
@@ -24,6 +24,7 @@ function taliInitFocusMode() {
   // and the menu button both are — and it degrades silently where the API is blocked.
   // Exiting focus mode leaves fullscreen; leaving fullscreen via the browser (F11/Esc)
   // exits focus mode (the fullscreenchange sync below), so the two stay coupled.
+  /** @param {boolean} v */
   function goFullscreen(v) {
     try {
       var el = document.documentElement;
@@ -36,6 +37,7 @@ function taliInitFocusMode() {
       }
     } catch (e) {}
   }
+  /** @param {boolean} v */
   function setFocus(v) {
     document.body.classList.toggle('tali-focus', v);
     goFullscreen(v);
@@ -52,6 +54,7 @@ function taliInitFocusMode() {
   // Settings-menu toggle (discoverable). The launcher stays visible in focus mode, so this
   // remains the mouse exit + the theme control.
   if (window.taliReaderMenu) {
+    var rm = window.taliReaderMenu; // captured non-undefined for the click closure
     var row = document.createElement('div');
     row.className = 'tali-reader-row';
     var label = document.createElement('span');
@@ -63,17 +66,17 @@ function taliInitFocusMode() {
     btn.textContent = 'Off';
     btn.setAttribute('aria-pressed', 'false');
     btn.title = 'Hide chrome for distraction-free reading (press f)';
-    btn.addEventListener('click', function () { setFocus(!on()); window.taliReaderMenu.close(); });
+    btn.addEventListener('click', function () { setFocus(!on()); rm.close(); });
     seg.appendChild(btn);
     row.appendChild(label);
     row.appendChild(seg);
-    window.taliReaderMenu.addSection('', row, sync);
+    rm.addSection('', row, sync);
   }
 
   // `f` toggles; Esc exits. Both are off while typing in a field or while a modal
   // ([aria-modal="true"] — the Cmd-K palette / lightbox) is open, so they never steal keys.
   document.addEventListener('keydown', function (e) {
-    var t = e.target;
+    var t = /** @type {HTMLElement | null} */ (e.target);
     if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
     var modal = document.querySelector('[aria-modal="true"]');
     // `f` toggles focus mode; Esc exits (a universal dismiss).

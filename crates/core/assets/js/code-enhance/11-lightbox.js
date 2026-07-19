@@ -50,14 +50,16 @@ function taliInitLightbox() {
     '<img alt=""><video class="tali-lb-video" muted loop playsinline></video>' +
     '<div class="tali-lb-svg"></div><div class="tali-lb-cap"></div>';
   document.body.appendChild(box);
-  var lbImg = box.querySelector('img');
-  var lbVideo = box.querySelector('.tali-lb-video');
-  var lbSvg = box.querySelector('.tali-lb-svg');
-  var lbCap = box.querySelector('.tali-lb-cap');
-  var lbPrev = box.querySelector('.tali-lb-prev');
-  var lbNext = box.querySelector('.tali-lb-next');
-  var gallery = [], gIdx = -1; // the page's zoomable images, for ←/→ navigation
-  var lbRelease = null;        // active focus-trap release while the lightbox is open
+  // These are the fixed children just written into `box.innerHTML` above, so they are
+  // always present; cast to their concrete element types (non-null) accordingly.
+  var lbImg = /** @type {HTMLImageElement} */ (box.querySelector('img'));
+  var lbVideo = /** @type {HTMLVideoElement} */ (box.querySelector('.tali-lb-video'));
+  var lbSvg = /** @type {HTMLElement} */ (box.querySelector('.tali-lb-svg'));
+  var lbCap = /** @type {HTMLElement} */ (box.querySelector('.tali-lb-cap'));
+  var lbPrev = /** @type {HTMLElement} */ (box.querySelector('.tali-lb-prev'));
+  var lbNext = /** @type {HTMLElement} */ (box.querySelector('.tali-lb-next'));
+  var gallery = /** @type {HTMLImageElement[]} */ ([]), gIdx = -1; // page's zoomable images, for ←/→ nav
+  var lbRelease = /** @type {(() => void) | null} */ (null); // active focus-trap release while open
 
   // Open the box (add the class, lock scroll, trap focus on the close button once).
   function markOpen() {
@@ -75,6 +77,7 @@ function taliInitLightbox() {
     box.classList.remove('has-gallery'); // hide prev/next until a multi-image set is shown
   }
   // Show gallery[i] (wrapping) with its caption + an (n / N) counter for multi-image sets.
+  /** @param {number} i */
   function showImageAt(i) {
     if (!gallery.length) return;
     gIdx = (i + gallery.length) % gallery.length;
@@ -92,21 +95,23 @@ function taliInitLightbox() {
     markOpen();
   }
   // Open the clicked image, building the page's gallery so ←/→ can step between images.
+  /** @param {HTMLImageElement} srcImg */
   function openImg(srcImg) {
     // Only visible images join the gallery: a `dark=` figure has two <img>s but one is
     // theme-hidden (display:none → no offsetParent), so it must not become a phantom
     // ←/→ step or inflate the (n / N) counter. The clicked image is always kept.
-    gallery = [].slice.call(document.querySelectorAll('figure img, img.lightbox'))
+    gallery = /** @type {HTMLImageElement[]} */ ([].slice.call(document.querySelectorAll('figure img, img.lightbox')))
       .filter(function (im) { return im === srcImg || im.offsetParent !== null; });
     var i = gallery.indexOf(srcImg);
     if (i < 0) { gallery = [srcImg]; i = 0; }
     showImageAt(i);
   }
+  /** @param {Element} pre */
   function openMermaid(pre) {
     var svg = pre.querySelector('svg');
     if (!svg) return; // not rendered yet
     hideAll();
-    var clone = svg.cloneNode(true);
+    var clone = /** @type {SVGElement} */ (svg.cloneNode(true));
     clone.removeAttribute('width'); clone.removeAttribute('height');
     clone.style.maxWidth = 'none';
     lbSvg.appendChild(clone);
@@ -119,6 +124,7 @@ function taliInitLightbox() {
   }
   // A `{{< video >}}` screencast: play an enlarged copy (the clicked element is the
   // theme-visible variant; the hidden one is display:none and not clickable).
+  /** @param {HTMLVideoElement} vid */
   function openVideo(vid) {
     hideAll();
     lbVideo.style.display = 'block'; // CSS defaults it to none; need an explicit value
@@ -137,40 +143,47 @@ function taliInitLightbox() {
     if (lbRelease) { lbRelease(); lbRelease = null; }
   }
 
+  /** @param {MouseEvent} e */
   var unmodified = function (e) {
     return !e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey;
   };
   document.addEventListener('click', function (e) {
-    if (!e.target.closest) return;
-    var img = e.target.closest('figure img, img.lightbox'), vid;
+    var t = /** @type {Element | null} */ (e.target);
+    if (!t || !t.closest) return;
+    // Mutually-exclusive image / video / mermaid targets, as early returns (was an
+    // if / else-if / else chain — same semantics, but each branch narrows its own type).
+    var img = /** @type {HTMLImageElement | null} */ (t.closest('figure img, img.lightbox'));
     if (img && unmodified(e)) {
-      e.preventDefault(); e.stopPropagation(); openImg(img);
-    } else if ((vid = e.target.closest('.tali-video video')) && unmodified(e)) {
-      e.preventDefault(); e.stopPropagation(); openVideo(vid);
-    } else {
-      var pre = e.target.closest('pre.mermaid');
-      if (pre && pre.querySelector('svg') && unmodified(e)) {
-        e.preventDefault(); e.stopPropagation(); openMermaid(pre);
-      }
+      e.preventDefault(); e.stopPropagation(); openImg(img); return;
+    }
+    var vid = /** @type {HTMLVideoElement | null} */ (t.closest('.tali-video video'));
+    if (vid && unmodified(e)) {
+      e.preventDefault(); e.stopPropagation(); openVideo(vid); return;
+    }
+    var pre = t.closest('pre.mermaid');
+    if (pre && pre.querySelector('svg') && unmodified(e)) {
+      e.preventDefault(); e.stopPropagation(); openMermaid(pre);
     }
   }, true);
   // Keep a double-click on a figure/diagram/video from reaching click-to-source.
   document.addEventListener('dblclick', function (e) {
-    if (e.target.closest && e.target.closest('figure img, img.lightbox, pre.mermaid, .tali-video video')) {
+    var t = /** @type {Element | null} */ (e.target);
+    if (t && t.closest && t.closest('figure img, img.lightbox, pre.mermaid, .tali-video video')) {
       e.preventDefault(); e.stopPropagation();
     }
   }, true);
   box.addEventListener('click', function (e) {
     // The nav buttons live on the backdrop; stopPropagation below keeps their click from
     // reaching here (which would treat it as an outside-click and close the viewer).
-    if (e.target !== lbImg && e.target !== lbVideo && !lbSvg.contains(e.target)) close();
+    var t = /** @type {Node | null} */ (e.target);
+    if (t !== lbImg && t !== lbVideo && !lbSvg.contains(t)) close();
   });
   // Visible prev/next controls (mouse + touch): keyboard ←/→ already works, but the
   // gallery had no on-screen affordance. stopPropagation so the backdrop-close doesn't fire.
   lbPrev.addEventListener('click', function (e) { e.stopPropagation(); showImageAt(gIdx - 1); });
   lbNext.addEventListener('click', function (e) { e.stopPropagation(); showImageAt(gIdx + 1); });
   // Touch swipe steps the gallery (only while a multi-image set is shown).
-  var touchX = null;
+  var touchX = /** @type {number | null} */ (null);
   box.addEventListener('touchstart', function (e) {
     touchX = e.touches.length === 1 ? e.touches[0].clientX : null;
   }, { passive: true });
@@ -194,7 +207,7 @@ function taliInitLightbox() {
   // decoration below. A `{{< video >}}` is intentionally absent: it is not keyboard-decorated
   // (it keeps native media semantics), and its mouse click-zoom goes through the delegation above.
   window.__qmdLightboxOpen = function (el) {
-    if (el.matches && el.matches('figure img, img.lightbox')) openImg(el);
+    if (el.matches && el.matches('figure img, img.lightbox')) openImg(/** @type {HTMLImageElement} */ (el));
     else if (el.matches && el.matches('pre.mermaid')) { if (el.querySelector('svg')) openMermaid(el); }
   };
 }
@@ -204,14 +217,17 @@ function taliInitLightbox() {
 // (guard `data-qmd-lb`) makes each zoomable element a focusable button that opens on
 // Enter/Space. The capture-phase click delegation, focus-trap-on-open, Escape, and the ←/→
 // gallery nav inside taliInitLightbox are untouched; this only adds the keyboard entry point.
+/** @param {ParentNode | null} [root] */
 function taliDecorateLightbox(root) {
   taliInitLightbox(); // ensure the document-level machinery + window.__qmdLightboxOpen exist
   var scope = root || document;
   // Images + mermaid diagrams only. A `<video>` keeps its native media semantics: stamping
   // role="button"/aria-label onto it mislabels it in the a11y tree, and the clip already
   // autoplays inline. Mouse click-to-zoom on a video still works via the click delegation above.
-  var els = scope.querySelectorAll('figure img, img.lightbox, pre.mermaid');
-  [].forEach.call(els, function (el) {
+  // All matches are HTMLElements (img / pre); typed so `el.addEventListener('keydown')`
+  // resolves to KeyboardEvent (plain Element's event map lacks keydown).
+  var els = /** @type {NodeListOf<HTMLElement>} */ (scope.querySelectorAll('figure img, img.lightbox, pre.mermaid'));
+  els.forEach(function (el) {
     if (el.getAttribute('data-qmd-lb')) return; // idempotent: decorate once per element
     var isMermaid = el.matches && el.matches('pre.mermaid');
     // A decorative image (author set an explicit empty alt) stays out of the tab
@@ -239,5 +255,5 @@ function taliDecorateLightbox(root) {
     });
   });
 }
-window.taliEnhancers.register(taliDecorateLightbox);
+if (window.taliEnhancers) window.taliEnhancers.register(taliDecorateLightbox);
 

@@ -3,8 +3,9 @@
 // drift. The `el === document.activeElement` clause keeps a zero-size element that currently
 // holds focus. (The fragments are concatenated into one scope, so this is visible to 13.)
 var TALI_FOCUS_SEL = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+/** @param {Element} container @returns {HTMLElement[]} */
 function taliFocusables(container) {
-  return [].slice.call(container.querySelectorAll(TALI_FOCUS_SEL)).filter(function (el) {
+  return /** @type {HTMLElement[]} */ ([].slice.call(container.querySelectorAll(TALI_FOCUS_SEL))).filter(function (el) {
     return el.offsetWidth > 0 || el.offsetHeight > 0 || el === document.activeElement;
   });
 }
@@ -14,8 +15,9 @@ function taliFocusables(container) {
 // or programmatic close) — not when the user clicked elsewhere. Used by the lightbox + reader
 // menu here and, via this global, by the Cmd-K palette in search.js. Returns release().
 window.taliFocusTrap = window.taliFocusTrap || function (container, initial) {
-  var prev = document.activeElement;
+  var prev = /** @type {HTMLElement | null} */ (document.activeElement);
   container.setAttribute('aria-modal', 'true');
+  /** @param {KeyboardEvent} e */
   function onKey(e) {
     if (e.key !== 'Tab') return;
     var f = taliFocusables(container);
@@ -26,7 +28,7 @@ window.taliFocusTrap = window.taliFocusTrap || function (container, initial) {
     else if (a === last) { e.preventDefault(); first.focus(); }
   }
   document.addEventListener('keydown', onKey, true);
-  try { (initial || taliFocusables(container)[0] || container).focus(); } catch (e) {}
+  try { /** @type {HTMLElement} */ (initial || taliFocusables(container)[0] || container).focus(); } catch (e) {}
   return function () {
     document.removeEventListener('keydown', onKey, true);
     container.removeAttribute('aria-modal');

@@ -17,6 +17,7 @@ function taliInitReaderPrefs() {
   function curTheme() { return (window.taliGetThemeChoice && window.taliGetThemeChoice()) || 'auto'; }
 
   // One segmented control row: `title` labels it, each option is [value, label, hint?].
+  /** @param {string} title @param {string[][]} options @param {() => string} getCur @param {(v: string) => void} onPick */
   function seg(title, options, getCur, onPick) {
     var row = document.createElement('div');
     row.className = 'tali-reader-row';
@@ -26,6 +27,7 @@ function taliInitReaderPrefs() {
     group.className = 'tali-reader-seg';
     group.setAttribute('role', 'group');
     group.setAttribute('aria-label', title);
+    /** @type {HTMLButtonElement[]} */
     var buttons = [];
     options.forEach(function (opt) {
       var b = document.createElement('button');
@@ -47,7 +49,10 @@ function taliInitReaderPrefs() {
     return { row: row, sync: sync };
   }
 
-  var themeSeg = seg('Theme', THEMES, curTheme, function (v) { window.taliSetTheme(v); });
+  var setTheme = window.taliSetTheme; // guarded present above; captured for the pick closure
+  var themeSeg = seg('Theme', THEMES, curTheme, function (v) {
+    setTheme(/** @type {'auto' | 'light' | 'dark' | 'sepia'} */ (v));
+  });
   window.addEventListener('qmd:themechange', themeSeg.sync);
   window.taliReaderMenu.addSection('', themeSeg.row, themeSeg.sync);
 }

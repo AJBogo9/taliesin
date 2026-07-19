@@ -56,7 +56,7 @@ function taliInitKeyboard() {
   }
 
   document.addEventListener('keydown', function (e) {
-    var t = e.target;
+    var t = /** @type {HTMLElement | null} */ (e.target);
     var typing =
       t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
     var modal = document.querySelector('[aria-modal="true"]');
@@ -77,7 +77,7 @@ function taliInitKeyboard() {
     if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
       // leave arrows to a focused interactive control (slider, tablist, link, button)
       if (t && t.closest && t.closest('a,button,input,select,textarea,[role="tab"]')) return;
-      var nav = document.querySelector(e.key === 'ArrowRight' ? '.tali-book-next' : '.tali-book-prev');
+      var nav = /** @type {HTMLAnchorElement | null} */ (document.querySelector(e.key === 'ArrowRight' ? '.tali-book-next' : '.tali-book-prev'));
       if (nav && nav.href) { e.preventDefault(); window.location.assign(nav.href); }
     }
   });

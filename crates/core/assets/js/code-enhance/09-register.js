@@ -1,15 +1,17 @@
 // Register the built-ins through the public API. Lightbox / link-preview set
 // themselves up once (document-level), so they ignore `root`.
-window.taliEnhancers.register(taliCopyButtons);
-window.taliEnhancers.register(function () { taliInitLightbox(); });
-window.taliEnhancers.register(function () { taliInitLinkPreview(); });
-window.taliEnhancers.register(function () { taliInitReaderMenu(); });
-window.taliEnhancers.register(function () { taliInitReaderPrefs(); });
-window.taliEnhancers.register(function () { taliInitReadingProgress(); });
-window.taliEnhancers.register(taliInitAnchorLinks);
-window.taliEnhancers.register(function () { taliInitFocusMode(); });
-window.taliEnhancers.register(function () { taliInitSkipLink(); });
-window.taliEnhancers.register(function () { taliInitKeyboard(); });
-window.taliEnhancers.register(taliInitCategoryFilter);
-window.taliEnhancers.register(taliInitCiteBox);
-
+var reg = window.taliEnhancers;
+if (reg) {
+  reg.register(taliCopyButtons);
+  reg.register(function () { taliInitLightbox(); });
+  reg.register(function () { taliInitLinkPreview(); });
+  reg.register(function () { taliInitReaderMenu(); });
+  reg.register(function () { taliInitReaderPrefs(); });
+  reg.register(function () { taliInitReadingProgress(); });
+  reg.register(taliInitAnchorLinks);
+  reg.register(function () { taliInitFocusMode(); });
+  reg.register(function () { taliInitSkipLink(); });
+  reg.register(function () { taliInitKeyboard(); });
+  reg.register(taliInitCategoryFilter);
+  reg.register(taliInitCiteBox);
+}

@@ -1,0 +1,41 @@
+{
+  "//": "Dev-only: type-checks the bundled browser scripts under assets/js/ (mirrors web-client/jsconfig.json). Not embedded — the server include_str!s the .js sources verbatim. The code-enhance/ fragments are concatenated into ONE inline <script> at render time (render/mod.rs CODE_ENHANCE_JS), so they are checked as scripts sharing one global scope, matching the runtime. The vendored/minified bundles (d3.min.js, plot.umd.min.js, mermaid.min.js) are excluded. useUnknownInCatchVariables is off (classic any-typed catch bindings) since qmd-js.js reads err.stack off a caught throw and a render/tests.rs drift pin locks that exact expression. Run: cd crates/core/assets/js && npx -y -p typescript tsc -p jsconfig.json",
+  "compilerOptions": {
+    "checkJs": true,
+    "strict": true,
+    "useUnknownInCatchVariables": false,
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "noEmit": true,
+    "types": [],
+    "skipLibCheck": true
+  },
+  "//deck.js": "deck.js (the slide engine) is not yet in `include` — its strict-check pass is a tracked follow-up; add it here once clean.",
+  "include": [
+    "globals.d.ts",
+    "../../../../web-client/globals.d.ts",
+    "code-enhance/01-registry.js",
+    "code-enhance/02-anchor-links.js",
+    "code-enhance/03-focus-mode.js",
+    "code-enhance/04-focus-trap.js",
+    "code-enhance/06-skip-link.js",
+    "code-enhance/07-keyboard.js",
+    "code-enhance/08-copy-buttons.js",
+    "code-enhance/09-register.js",
+    "code-enhance/10-category-filter.js",
+    "code-enhance/11-lightbox.js",
+    "code-enhance/12-link-preview.js",
+    "code-enhance/13-reader-menu.js",
+    "code-enhance/14-reader-prefs.js",
+    "code-enhance/15-reading-progress.js",
+    "code-enhance/16-scroll-a11y.js",
+    "code-enhance/17-cite-box.js",
+    "qmd-js.js",
+    "mermaid.js",
+    "scrolly.js",
+    "tabset.js",
+    "walkthrough.js"
+  ]
+}

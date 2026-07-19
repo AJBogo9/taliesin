@@ -1,10 +1,14 @@
 // --- Built-in enhancers (registered through the same public API) -------------
 
 // Code blocks are highlighted server-side; the client only adds a copy button.
+/** @param {ParentNode | null} [root] */
 function taliCopyButtons(root) {
-  (root || document).querySelectorAll('pre > code').forEach(function (code) {
-    var pre = code.parentElement;
-    if (pre.dataset.enhanced) return;
+  var blocks = /** @type {NodeListOf<HTMLElement>} */ (
+    (root || document).querySelectorAll('pre > code')
+  );
+  blocks.forEach(function (code) {
+    const pre = code.parentElement; // const so the null-guard survives into the scroll closure
+    if (!pre || pre.dataset.enhanced) return;
     pre.dataset.enhanced = '1';
     // (Code is highlighted server-side; the client only adds the copy button.)
     // GitHub/Claude-style copy glyph (Octicons copy), swapping to a check on success.

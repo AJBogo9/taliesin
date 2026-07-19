@@ -6,10 +6,13 @@
 function taliInitSkipLink() {
   if (window.__qmdSkipLink) return;
   if (document.querySelector('.tali-deck')) return;
-  var main =
+  // `const` (not `var`) so the null-narrowing below survives into the deferred
+  // focus closure; the element is mutated in place, never reassigned.
+  const main = /** @type {HTMLElement | null} */ (
     document.querySelector('main') ||
     document.getElementById('tali-root') ||
-    document.querySelector('[data-block-id]');
+    document.querySelector('[data-block-id]')
+  );
   if (!main) return;
   window.__qmdSkipLink = true;
   if (!main.id) main.id = 'tali-main';

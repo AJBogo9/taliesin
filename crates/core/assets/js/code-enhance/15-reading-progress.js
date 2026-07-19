@@ -8,8 +8,9 @@ function taliInitReadingProgress() {
   window.__qmdProgress = true;
 
   // Top-level content blocks (a [data-block-id] not nested inside another block).
+  /** @returns {Element[]} */
   function contentBlocks() {
-    return [].slice.call(document.querySelectorAll('[data-block-id]')).filter(function (el) {
+    return /** @type {Element[]} */ ([].slice.call(document.querySelectorAll('[data-block-id]'))).filter(function (el) {
       return !el.parentElement || !el.parentElement.closest('[data-block-id]');
     });
   }
@@ -47,7 +48,7 @@ function taliInitReadingProgress() {
     }
     return blocks.length ? blocks[blocks.length - 1].getAttribute('data-block-id') : null;
   }
-  var saveTimer = null;
+  /** @type {number | undefined} */ var saveTimer;
   function saveSoon() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(function () {
@@ -59,7 +60,7 @@ function taliInitReadingProgress() {
     }, 500);
   }
 
-  var resumeEl = null, resumeArmed = false;
+  var resumeEl = /** @type {HTMLElement | null} */ (null), resumeArmed = false;
   function dismissResume() { if (resumeEl) { resumeEl.remove(); resumeEl = null; } }
   function maybeShowResume() {
     var raw = null;
@@ -68,7 +69,7 @@ function taliInitReadingProgress() {
     var parts = raw.split('|'), f = parseFloat(parts[0]), id = parts[1];
     if (!(f > 0.04) || !id) return;
     var sel = '[data-block-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]';
-    var target = document.querySelector(sel);
+    const target = document.querySelector(sel); // const so the null-guard survives the click closure
     if (!target || Math.abs(frac() - f) < 0.03) return; // missing or already roughly there
     resumeEl = document.createElement('div');
     resumeEl.className = 'tali-resume';

@@ -26,9 +26,14 @@ function taliInitLinkPreview() {
   card.setAttribute('role', 'tooltip');
   document.body.appendChild(card);
 
-  var showTimer = null, hideTimer = null, pinned = false, currentLink = null, lastHovered = null;
+  /** @type {number | undefined} */ var showTimer;
+  /** @type {number | undefined} */ var hideTimer;
+  var pinned = false;
+  /** @type {Element | null} */ var currentLink = null;
+  /** @type {Element | null} */ var lastHovered = null;
 
   // Same-page target: an in-page fragment link (the original behavior).
+  /** @param {Element | null} a @returns {boolean} */
   function eligibleSame(a) {
     if (!a) return false;
     var href = a.getAttribute('href') || '';
@@ -42,17 +47,20 @@ function taliInitLinkPreview() {
   // Cross-page target: a resolved cross-reference to another page — a `.tali-xref` whose
   // href is `page.html#anchor` (not a bare `#frag`). Its target lives in a different
   // document, so it's previewed from the served hover index, not the current DOM.
+  /** @param {Element | null} a @returns {boolean} */
   function eligibleCross(a) {
     if (!a || !a.classList.contains('tali-xref')) return false;
     var href = a.getAttribute('href') || '';
     if (href.charAt(0) === '#' || href.indexOf('#') < 0) return false;
     return !a.closest('#TOC') && !a.closest('#tali-link-preview');
   }
+  /** @param {Element | null} a */
   function eligible(a) { return eligibleSame(a) || eligibleCross(a); }
   // Clone a node for the card, stripping interactive chrome that has no place in a
   // read-only preview: the heading/caption `#` permalink (taliInitAnchorLinks) and code
   // copy buttons. Without this the cloned `#` shows in the card (and in a heading's
   // textContent as "Title#").
+  /** @param {Element} node */
   function cleanClone(node) {
     return taliCloneStripped(node);
   }
@@ -62,13 +70,15 @@ function taliInitLinkPreview() {
   // `data-block-id`, breaking the block model's in-DOM uniqueness invariant, and (b) make
   // the card a live Alt-click click-to-source target — a read-only preview must never be
   // one. Strip all three attrs from everything under `scope` so both paths share one rule.
+  /** @param {ParentNode} scope */
   function stripSourceAttrs(scope) {
-    [].forEach.call(scope.querySelectorAll('[data-block-id], [data-sourcepos], [data-source-file]'), function (n) {
+    scope.querySelectorAll('[data-block-id], [data-sourcepos], [data-source-file]').forEach(function (n) {
       n.removeAttribute('data-block-id');
       n.removeAttribute('data-sourcepos');
       n.removeAttribute('data-source-file');
     });
   }
+  /** @param {Element} link */
   function place(link) {
     var r = link.getBoundingClientRect();
     var cw = card.offsetWidth, ch = card.offsetHeight;
@@ -78,6 +88,7 @@ function taliInitLinkPreview() {
     card.style.left = left + 'px';
     card.style.top = Math.max(8, top) + 'px';
   }
+  /** @param {Element} link */
   function show(link) {
     if (eligibleCross(link)) { showCross(link); return; }
     var id = decodeURIComponent((link.getAttribute('href') || '').slice(1));
@@ -87,7 +98,7 @@ function taliInitLinkPreview() {
     // link, so a card adds nothing but noise while reading.
     if (/^H[1-6]$/.test(target.tagName)) return;
     var body = cleanClone(target);
-    if (!body || !body.textContent.trim()) return;
+    if (!body || !body.textContent || !body.textContent.trim()) return;
     card.innerHTML = '';
     card.appendChild(body);
     stripSourceAttrs(card); // read-only preview: never a click-to-source target, never a duplicate block id
@@ -100,6 +111,7 @@ function taliInitLinkPreview() {
   // Lazy-load the served hover index on the first cross-page hover (a <script> load, so it
   // works under file:// like search-index.js), then run `cb` once it is present.
   var hoverFetched = false;
+  /** @param {() => void} cb */
   function loadHoverThen(cb) {
     if (window.TALIESIN_HOVER_INDEX || !window.TALIESIN_HOVER_URL || hoverFetched) { cb(); return; }
     hoverFetched = true;
@@ -111,9 +123,11 @@ function taliInitLinkPreview() {
   }
   // A snippet's asset/link URLs are stored site-root-relative; prefix them with
   // TALIESIN_SITE_ROOT (this page's up-path to root) so they resolve from any depth.
+  /** @param {DocumentFragment} frag */
   function resolveUrls(frag) {
     var root = window.TALIESIN_SITE_ROOT || '';
     if (!root) return;
+    /** @param {string | null} v */
     function relative(v) {
       return v && v.charAt(0) !== '#' && v.charAt(0) !== '/' &&
         v.indexOf('//') !== 0 && v.indexOf('://') < 0 &&
@@ -126,6 +140,7 @@ function taliInitLinkPreview() {
       var v = n.getAttribute('href'); if (relative(v)) n.setAttribute('href', root + v);
     });
   }
+  /** @param {Element} link */
   function showCross(link) {
     loadHoverThen(function () {
       if (lastHovered !== link) return; // pointer moved away while the index loaded
@@ -154,6 +169,7 @@ function taliInitLinkPreview() {
       place(link);
     });
   }
+  /** @param {Element} link */
   function scheduleShow(link) {
     clearTimeout(hideTimer); clearTimeout(showTimer);
     showTimer = setTimeout(function () { show(link); }, 140);
@@ -170,13 +186,15 @@ function taliInitLinkPreview() {
   function scheduleHide() { clearTimeout(hideTimer); hideTimer = setTimeout(hide, 160); }
 
   document.addEventListener('mouseover', function (e) {
-    var a = e.target.closest && e.target.closest('a[href]');
+    var t = /** @type {Element | null} */ (e.target);
+    var a = t && t.closest && t.closest('a[href]');
     if (a && eligible(a)) { lastHovered = a; scheduleShow(a); }
   });
   document.addEventListener('mouseout', function (e) {
-    var a = e.target.closest && e.target.closest('a[href]');
+    var t = /** @type {Element | null} */ (e.target);
+    var a = t && t.closest && t.closest('a[href]');
     if (a && eligible(a)) {
-      var to = e.relatedTarget;
+      var to = /** @type {Element | null} */ (e.relatedTarget);
       if (to && to.closest && to.closest('#tali-link-preview')) return; // moving into the card
       lastHovered = null;
       scheduleHide();
@@ -185,11 +203,13 @@ function taliInitLinkPreview() {
   // Keyboard parity with hover: a focused citation/xref link surfaces the same card. Without
   // this the preview is mouse-only. Same eligibility + same delays as the mouse path.
   document.addEventListener('focusin', function (e) {
-    var a = e.target.closest && e.target.closest('a[href]');
+    var t = /** @type {Element | null} */ (e.target);
+    var a = t && t.closest && t.closest('a[href]');
     if (a && eligible(a)) { lastHovered = a; scheduleShow(a); }
   });
   document.addEventListener('focusout', function (e) {
-    var a = e.target.closest && e.target.closest('a[href]');
+    var t = /** @type {Element | null} */ (e.target);
+    var a = t && t.closest && t.closest('a[href]');
     if (a && eligible(a)) { lastHovered = null; scheduleHide(); }
   });
   card.addEventListener('mouseenter', function () { clearTimeout(hideTimer); });
@@ -197,7 +217,7 @@ function taliInitLinkPreview() {
   // Scrolling the page dismisses the card, but scrolling INSIDE the card (its own
   // overflow, `max-height:50vh`) must not — otherwise you can never read past the fold.
   window.addEventListener('scroll', function (e) {
-    var t = e.target;
+    var t = /** @type {Element | null} */ (e.target);
     if (t && t.nodeType === 1 && t.closest && t.closest('#tali-link-preview')) return;
     hide();
   }, true);
@@ -206,7 +226,7 @@ function taliInitLinkPreview() {
   card.addEventListener('click', function () { pinned = true; card.classList.add('pinned'); });
   document.addEventListener('mousedown', function (e) {
     if (!card.classList.contains('open')) return;
-    var t = e.target;
+    var t = /** @type {Element | null} */ (e.target);
     if (t && t.closest && (t.closest('#tali-link-preview') ||
         (currentLink && (t === currentLink || currentLink.contains(t))))) return;
     forceHide();

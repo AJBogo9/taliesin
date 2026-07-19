@@ -11,8 +11,10 @@
 // indistinguishable from core's.
 (function () {
   if (window.taliEnhancers) return;
+  /** @type {Array<(root: ParentNode) => void>} */
   var list = [];
   var mounted = false;
+  /** @param {(root: ParentNode) => void} fn @param {ParentNode | null} [root] */
   function run1(fn, root) {
     try { fn(root || document); } catch (e) { console.error('[taliesin] enhancer failed', e); }
   }
@@ -31,14 +33,16 @@
   };
   // Back-compat: the pre-rename public globals (same live objects).
   window.qmdEnhancers = window.taliEnhancers;
+  var enh = window.taliEnhancers; // captured non-undefined for the entry-point closure
   // The single entry point every caller uses (live client, static build, reveal).
-  window.taliEnhanceCode = function (root) { window.taliEnhancers.run(root); };
+  window.taliEnhanceCode = function (root) { enh.run(root); };
   window.qmdEnhanceCode = window.taliEnhanceCode;
 })();
 
 // Shared clipboard helper: navigator.clipboard in a secure context, with a hidden-textarea
 // execCommand fallback for insecure contexts (file://, plain-http --host LAN). Never throws;
 // calls onOk on success, onFail (optional) on total failure.
+/** @param {string} text @param {() => void} onOk @param {() => void} [onFail] */
 function taliCopyText(text, onOk, onFail) {
   function legacy() {
     try {
@@ -58,6 +62,7 @@ function taliCopyText(text, onOk, onFail) {
 
 // Build the canonical absolute deep link to the in-page anchor `id`: this page's URL with
 // any existing #id / :~:text= dropped, then this id. Pure.
+/** @param {string} id */
 function taliAnchorUrl(id) {
   var u = new URL(location.href);
   u.hash = '';
@@ -72,13 +77,15 @@ function taliAnchorUrl(id) {
 // Clone a node, stripping interactive chrome that has no place in a read-only clone:
 // the heading/caption `#` permalink (taliInitAnchorLinks) and code copy buttons. Shared by
 // the lightbox caption reader and the link-preview card builder. Returns the clone.
+/** @param {Node} node @returns {Node} */
 function taliCloneStripped(node) {
   var c = node.cloneNode(true);
-  if (c.querySelectorAll) {
-    [].forEach.call(c.querySelectorAll('.tali-anchor, .tali-copy'), function (x) { x.remove(); });
+  if (c instanceof Element) {
+    c.querySelectorAll('.tali-anchor, .tali-copy').forEach(function (x) { x.remove(); });
   }
   return c;
 }
+/** @param {Node | null} [node] */
 function taliCleanCaptionText(node) {
   if (!node) return '';
   if (!node.cloneNode) return (node.textContent || '').trim();
@@ -101,6 +108,7 @@ function taliShortcutsOn() {
   try { return localStorage.getItem('tali-shortcuts') !== 'off'; } catch (e) { return true; }
 }
 // Absent === on (the default), mirroring how theme.rs stores its non-default choices only.
+/** @param {boolean} on */
 function taliSetShortcuts(on) {
   try {
     if (on) localStorage.removeItem('tali-shortcuts');

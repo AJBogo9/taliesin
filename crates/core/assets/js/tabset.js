@@ -11,30 +11,33 @@
 // incremental block swap and is idempotent (guarded with `data-tabset-init`). A
 // replaced subtree's listeners are GC'd with it; the fresh tabset re-initialises.
 (function () {
+  /** @param {Element} set */
   function initTabset(set) {
-    var tablist = set.querySelector('[role="tablist"]');
+    var tablist = /** @type {HTMLElement | null} */ (set.querySelector('[role="tablist"]'));
     if (!tablist) return;
-    var tabs = Array.prototype.slice.call(tablist.querySelectorAll('[role="tab"]'));
+    var tabs = /** @type {HTMLElement[]} */ (Array.prototype.slice.call(tablist.querySelectorAll('[role="tab"]')));
     if (!tabs.length) return;
 
+    /** @param {number} i @param {boolean} focus */
     var select = function (i, focus) {
       tabs.forEach(function (tab, j) {
         var on = j === i;
         tab.setAttribute('aria-selected', on ? 'true' : 'false');
         tab.tabIndex = on ? 0 : -1;
-        var panel = document.getElementById(tab.getAttribute('aria-controls'));
+        var panel = document.getElementById(tab.getAttribute('aria-controls') || '');
         if (panel) panel.hidden = !on;
       });
       if (focus) tabs[i].focus();
     };
 
     tablist.addEventListener('click', function (e) {
-      var tab = e.target.closest('[role="tab"]');
+      var t = /** @type {Element | null} */ (e.target);
+      var tab = /** @type {HTMLElement | null} */ (t && t.closest('[role="tab"]'));
       if (tab) select(tabs.indexOf(tab), false);
     });
 
     tablist.addEventListener('keydown', function (e) {
-      var cur = tabs.indexOf(document.activeElement);
+      var cur = tabs.indexOf(/** @type {HTMLElement} */ (document.activeElement));
       if (cur < 0) return;
       var next = null;
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = (cur + 1) % tabs.length;
@@ -45,6 +48,7 @@
     });
   }
 
+  /** @param {ParentNode | null} [root] */
   function enhance(root) {
     (root || document)
       .querySelectorAll('.panel-tabset:not([data-tabset-init])')

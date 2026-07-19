@@ -4,6 +4,7 @@
 // source. Per-element idempotent (a host already carrying its .tali-anchor is skipped), so it
 // survives the live-preview re-mounts; skipped on decks (their own nav). `root` is always the
 // whole #tali-root container, so a descendant query suffices.
+/** @param {ParentNode | null} [root] */
 function taliInitAnchorLinks(root) {
   if (document.querySelector('.tali-deck')) return;
   if (!window.__qmdAnchorLive) {
@@ -13,10 +14,14 @@ function taliInitAnchorLinks(root) {
     document.body.appendChild(l);
     window.__qmdAnchorLive = l;
   }
-  function announce(msg) { var r = window.__qmdAnchorLive; r.textContent = ''; r.textContent = msg; }
+  /** @param {string} msg */
+  function announce(msg) { var r = window.__qmdAnchorLive; if (!r) return; r.textContent = ''; r.textContent = msg; }
+  /** @param {Element | null} host @param {string} id */
   function decorate(host, id) {
-    if (!host || !id || host.dataset.taliAnchored) return;
-    host.dataset.taliAnchored = '1';
+    if (!host || !id) return;
+    var el = /** @type {HTMLElement} */ (host);
+    if (el.dataset.taliAnchored) return;
+    el.dataset.taliAnchored = '1';
     var a = document.createElement('a');
     a.className = 'tali-anchor';
     a.href = '#' + id;
@@ -32,18 +37,18 @@ function taliInitAnchorLinks(root) {
         setTimeout(function () { a.classList.remove('tali-anchor-copied'); a.textContent = '#'; }, 1200);
       }, function () { announce('Copy failed'); });
     });
-    host.appendChild(a);
+    el.appendChild(a);
   }
   var scope = root || document;
-  [].forEach.call(scope.querySelectorAll('h1[id],h2[id],h3[id],h4[id],h5[id],h6[id]'),
-    function (h) { decorate(h, h.id); });
+  scope.querySelectorAll('h1[id],h2[id],h3[id],h4[id],h5[id],h6[id]')
+    .forEach(function (h) { decorate(h, h.id); });
   // A numbered float carries its id on the wrapper; drop the `#` into its caption.
-  [].forEach.call(scope.querySelectorAll('figcaption, caption'), function (c) {
+  scope.querySelectorAll('figcaption, caption').forEach(function (c) {
     var wrap = c.parentElement;
     if (wrap && wrap.id) decorate(c, wrap.id);
   });
   // A theorem carries its id on the wrapper; drop the `#` into its head paragraph.
-  [].forEach.call(scope.querySelectorAll('.tali-theorem[id]'), function (t) {
+  scope.querySelectorAll('.tali-theorem[id]').forEach(function (t) {
     var head = t.querySelector('.tali-theorem-head');
     if (head) decorate(head, t.id);
   });

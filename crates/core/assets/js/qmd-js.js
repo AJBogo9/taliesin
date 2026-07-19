@@ -21,15 +21,42 @@
   "use strict";
   var AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 
+  /**
+   * @typedef {Object} TaliJsCell
+   * @property {string} kind
+   * @property {() => Promise<void>} run
+   * @property {string | null} defines
+   * @property {string[]} inputs
+   * @property {HTMLElement} container
+   * @property {() => void} dispose
+   */
+  /**
+   * @typedef {Object} TaliJsGraph
+   * @property {Record<string, TaliJsCell[]>} consumers
+   * @property {TaliJsCell[]} order
+   * @property {TaliJsCell[]} cyclic
+   */
+  /**
+   * @typedef {Object} TaliJsRuntime
+   * @property {Record<string, any>} scope
+   * @property {Record<string, HTMLElement>} inputs
+   * @property {Record<string, any>} defines
+   * @property {Record<string, Set<() => void>>} listeners
+   * @property {TaliJsCell[]} cells
+   * @property {TaliJsGraph} [graph]
+   */
+
   // Per-page singleton. Reset implicitly on navigation/reload; on a full re-mount
   // the fresh DOM has no `data-qmd-ran` guards, so every cell re-runs and rebuilds.
+  /** @returns {TaliJsRuntime} */
   function rt() {
     if (!window.__talijs) {
       window.__talijs = { scope: {}, inputs: {}, defines: {}, listeners: {}, cells: [] };
     }
-    return window.__talijs;
+    return /** @type {TaliJsRuntime} */ (window.__talijs);
   }
 
+  /** @param {any} el @returns {any} */
   function readValue(el) {
     if (!el) return undefined;
     if (el.type === "checkbox") return el.checked;
@@ -52,6 +79,7 @@
     return !!document.querySelector(".tali-deck .tali-slides");
   }
   function parseInputFragment() {
+    /** @type {Record<string, string>} */
     var out = {};
     var h = (location.hash || "").replace(/^#/, "");
     var q = inDeck() ? h.split("?")[1] || "" : h;
@@ -65,12 +93,14 @@
     });
     return out;
   }
+  /** @param {any} el @param {string} val */
   function applyInputValue(el, val) {
     if (!el) return;
     if (el.type === "checkbox") el.checked = val === "true" || val === "1" || val === "on";
     else el.value = val;
   }
   function syncInputFragment() {
+    /** @type {string[]} */
     var parts = [];
     document.querySelectorAll("[data-qmd-input]").forEach(function (el) {
       var n = el.getAttribute("data-qmd-input");
@@ -93,6 +123,7 @@
     }
   }
 
+  /** @param {TaliJsRuntime} r @param {string} name @param {HTMLElement | null} el */
   function registerInput(r, name, el) {
     if (!el) return;
     r.inputs[name] = el;
@@ -118,9 +149,11 @@
         var obj = JSON.parse(s.textContent || "{}");
         // The Python bridge emits Observable's `{contents:[{name,value}]}` shape;
         // also accept a flat `{name: value}` map.
-        var pairs = Array.isArray(obj.contents)
-          ? obj.contents
-          : Object.keys(obj).map(function (k) { return { name: k, value: obj[k] }; });
+        var pairs = /** @type {Array<{ name: string, value: any }>} */ (
+          Array.isArray(obj.contents)
+            ? obj.contents
+            : Object.keys(obj).map(function (k) { return { name: k, value: obj[k] }; })
+        );
         pairs.forEach(function (p) { r.defines[p.name] = p.value; });
         changed = true;
       } catch (e) {
@@ -134,14 +167,19 @@
     if (changed) runSequentially(r.cells);
   }
 
+  /** @param {TaliJsRuntime} r @param {HTMLElement} container @param {() => (Promise<void> | null)} getInv */
   function makeApi(r, container, getInv) {
     return {
+      /** @param {string} n */
       get: function (n) { return r.scope[n]; },
+      /** @param {string} n @param {any} v */
       set: function (n, v) { r.scope[n] = v; },
+      /** @param {string} n */
       value: function (n) {
         return r.inputs[n] ? readValue(r.inputs[n]) : r.defines[n];
       },
       defines: r.defines,
+      /** @param {string | string[]} names @param {() => void} cb */
       onInput: function (names, cb) {
         (Array.isArray(names) ? names : [names]).forEach(function (n) {
           (r.listeners[n] = r.listeners[n] || new Set()).add(cb);
@@ -152,9 +190,11 @@
     };
   }
 
+  /** @param {HTMLElement} script */
   function setupCell(script) {
     var r = rt();
-    var container = document.getElementById(script.getAttribute("data-target"));
+    // const so the null-guard below survives into the async run()/dispose closures.
+    const container = document.getElementById(script.getAttribute("data-target") || "");
     if (!container) return;
     var src = script.textContent || "";
     var name = script.getAttribute("data-name") || null;
@@ -171,8 +211,8 @@
     // changes its content-hash block id, so the client replaces the node) would
     // detach the old renderer with its `invalidation.then(...)` cleanup never run,
     // leaking a WebGL context + RAF loop on every edit.
-    var resolveInv = null;
-    var currentInv = null;
+    var resolveInv = /** @type {((value?: unknown) => void) | null} */ (null);
+    var currentInv = /** @type {Promise<any> | null} */ (null);
     function freshInv() {
       if (resolveInv) { resolveInv(); }
       currentInv = new Promise(function (res) { resolveInv = res; });
@@ -193,17 +233,20 @@
       freshInv();
       try {
         var node = await fn(api, api, window.Plot, window.d3, container, currentInv);
+        // The returned value is arbitrary author output; `na` reads its duck-typed
+        // `.value` / `.querySelector` (an input control, a wrapper, or neither).
+        var na = /** @type {any} */ (node);
         if (node instanceof Node) {
-          container.replaceChildren(node);
+          /** @type {HTMLElement} */ (container).replaceChildren(node);
           if (viewof) {
             // the cell may return the control itself or a labeled wrapper around it
-            var ctrl = node.value !== undefined ? node
-              : (node.querySelector ? node.querySelector("input, select, textarea") : null);
+            var ctrl = na.value !== undefined ? node
+              : (na.querySelector ? na.querySelector("input, select, textarea") : null);
             registerInput(r, viewof, ctrl);
           }
         }
         if (name) {
-          r.scope[name] = (node instanceof Node && node.value !== undefined) ? node.value : node;
+          r.scope[name] = (node instanceof Node && na.value !== undefined) ? na.value : node;
         }
       } catch (e) {
         console.error("qmd-js cell error:", e);
@@ -216,7 +259,7 @@
         pre.textContent = (typeof window.taliOpenPageSource === "function")
           ? String((e && e.stack) || e)
           : "This interactive element couldn't load.";
-        container.replaceChildren(pre);
+        /** @type {HTMLElement} */ (container).replaceChildren(pre);
       } finally {
         // A finished run, whether or not it painted. `data-qmd-ran` is stamped at
         // registration (before the cell body runs), and a cell may legitimately emit
@@ -254,9 +297,11 @@
   // accumulate stale cells across edits. Also unregister any input the cell published,
   // so a re-mount re-registers a live element rather than firing a detached one. Called
   // by the client BEFORE it detaches an outgoing block (Update/Remove).
+  /** @param {Node | null} node */
   function teardownIn(node) {
     if (!node || !window.__talijs) return;
-    var r = window.__talijs;
+    var r = /** @type {TaliJsRuntime} */ (window.__talijs);
+    /** @type {TaliJsCell[]} */
     var kept = [];
     r.cells.forEach(function (c) {
       var inside = c.container && (c.container === node || (node.contains && node.contains(c.container)));
@@ -280,7 +325,7 @@
   // page's WebGL contexts / RAF loops and doesn't re-push duplicate cells onto a
   // never-reset `r.cells`. The next `enhance()` lazily rebuilds a fresh `window.__talijs`.
   function resetRuntime() {
-    var r = window.__talijs;
+    var r = /** @type {TaliJsRuntime | null} */ (window.__talijs);
     if (!r) return;
     (r.cells || []).forEach(function (c) {
       try { if (c.dispose) c.dispose(); } catch (e) { console.error("qmd-js: cell teardown failed", e); }
@@ -298,6 +343,7 @@
 
   // Run a list of cells in document order, awaiting each — so `//| name:` outputs
   // are stored before dependent cells run.
+  /** @param {TaliJsCell[]} cells */
   async function runSequentially(cells) {
     for (var i = 0; i < cells.length; i++) await cells[i].run();
   }
@@ -306,26 +352,30 @@
   // global topological order via Kahn's algorithm over `producer.defines -> consumer`
   // edges. Cells left over after Kahn's are in a dependency cycle -> diagnosed (and then
   // excluded from scheduling). Rebuilt whenever fresh cells mount.
+  /** @param {TaliJsRuntime} r @returns {TaliJsGraph} */
   function buildGraph(r) {
     var cells = r.cells;
+    /** @type {Record<string, TaliJsCell[]>} */
     var consumers = {}; // define-name -> [cells listing it in `inputs`]
     cells.forEach(function (c) {
       c.inputs.forEach(function (n) { (consumers[n] = consumers[n] || []).push(c); });
     });
+    /** @type {Map<TaliJsCell, number>} */
     var indeg = new Map();
     cells.forEach(function (c) { indeg.set(c, 0); });
     cells.forEach(function (c) {
       if (c.defines) (consumers[c.defines] || []).forEach(function (cc) {
-        indeg.set(cc, indeg.get(cc) + 1);
+        indeg.set(cc, (indeg.get(cc) || 0) + 1);
       });
     });
     var queue = cells.filter(function (c) { return indeg.get(c) === 0; }); // doc order
+    /** @type {TaliJsCell[]} */
     var order = [];
     while (queue.length) {
-      var c = queue.shift();
+      var c = /** @type {TaliJsCell} */ (queue.shift());
       order.push(c);
       if (c.defines) (consumers[c.defines] || []).forEach(function (cc) {
-        indeg.set(cc, indeg.get(cc) - 1);
+        indeg.set(cc, (indeg.get(cc) || 0) - 1);
         if (indeg.get(cc) === 0) queue.push(cc);
       });
     }
@@ -346,12 +396,14 @@
   // The cells transitively downstream of a changed name, in topological order. BFS over
   // the consumers map, following each hit cell's own `defines` (so n -> squared -> ...
   // chains are followed). Cyclic cells are excluded (they show their diagnostic instead).
+  /** @param {TaliJsRuntime} r @param {string} seed @returns {TaliJsCell[]} */
   function downstreamInOrder(r, seed) {
     var g = r.graph || buildGraph(r);
+    /** @type {Set<TaliJsCell>} */
     var hit = new Set();
     var q = [seed];
     while (q.length) {
-      var n = q.shift();
+      var n = /** @type {string} */ (q.shift());
       (g.consumers[n] || []).forEach(function (c) {
         if (!hit.has(c)) { hit.add(c); if (c.defines) q.push(c.defines); }
       });
@@ -361,11 +413,13 @@
 
   // Re-run exactly the closure downstream of `name`, once each, in dependency order — a
   // single controlled pass (NOT cascading listener fires, which would be a reactive VM).
+  /** @param {TaliJsRuntime} r @param {string} name */
   function scheduleFrom(r, name) {
     var cells = downstreamInOrder(r, name);
     if (cells.length) runSequentially(cells);
   }
 
+  /** @param {ParentNode | null} [root] */
   function enhance(root) {
     bindDefines(); // ingest any define blobs already present before running cells
     var r = rt();
@@ -375,9 +429,9 @@
     // existing scheduleFrom (transitive-downstream re-run). Live-swap re-registers via the
     // :not(...) guard. A sibling [data-qmd-out] (the slider readout) tracks the value.
     var frag = parseInputFragment();
-    (root || document)
-      .querySelectorAll("[data-qmd-input]:not([data-qmd-input-bound])")
-      .forEach(function (el) {
+    /** @type {NodeListOf<HTMLElement>} */ (
+      (root || document).querySelectorAll("[data-qmd-input]:not([data-qmd-input-bound])")
+    ).forEach(function (el) {
         el.setAttribute("data-qmd-input-bound", "1");
         var name = el.getAttribute("data-qmd-input");
         if (!name) return;
@@ -387,16 +441,18 @@
         registerInput(r, name, el);
         // Persist to the fragment on every change (shareable/deep-linkable state).
         el.addEventListener("input", syncInputFragment);
-        var out = el.parentNode && el.parentNode.querySelector("[data-qmd-out]");
+        // const so the null-guard survives into the `upd` input closure.
+        const out = el.parentNode && el.parentNode.querySelector("[data-qmd-out]");
         if (out) {
           var upd = function () { out.textContent = readValue(el); };
           el.addEventListener("input", upd);
           upd();
         }
       });
+    /** @type {TaliJsCell[]} */
     var fresh = [];
-    (root || document).querySelectorAll(
-      'script[type="application/qmd-js"]:not([data-qmd-ran])'
+    /** @type {NodeListOf<HTMLElement>} */ (
+      (root || document).querySelectorAll('script[type="application/qmd-js"]:not([data-qmd-ran])')
     ).forEach(function (s) {
       s.setAttribute("data-qmd-ran", "1");
       var c = setupCell(s);

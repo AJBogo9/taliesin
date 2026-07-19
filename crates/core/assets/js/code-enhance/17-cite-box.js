@@ -3,15 +3,18 @@
 // into <pre data-format> elements; the client only switches the visible one and
 // wires copy/download. Idempotent (guarded via dataset), so it is safe to run on
 // every (re)mount. With no JS the default BibTeX pane is still shown and selectable.
+/** @param {ParentNode | null} [root] */
 function taliInitCiteBox(root) {
-  (root || document).querySelectorAll('.tali-cite-this').forEach(function (box) {
+  var boxes = /** @type {NodeListOf<HTMLElement>} */ ((root || document).querySelectorAll('.tali-cite-this'));
+  boxes.forEach(function (box) {
     if (box.dataset.citeInit) return;
     box.dataset.citeInit = '1';
 
-    var tabs = [].slice.call(box.querySelectorAll('.tali-cite-tab'));
-    var panes = [].slice.call(box.querySelectorAll('.tali-cite-out'));
-    var copyBtn = box.querySelector('.tali-cite-copy');
-    var dlBtn = box.querySelector('.tali-cite-download');
+    var tabs = /** @type {HTMLElement[]} */ ([].slice.call(box.querySelectorAll('.tali-cite-tab')));
+    var panes = /** @type {HTMLElement[]} */ ([].slice.call(box.querySelectorAll('.tali-cite-out')));
+    // const so the null-narrowing survives into the copy/download click closures below.
+    const copyBtn = /** @type {HTMLElement | null} */ (box.querySelector('.tali-cite-copy'));
+    const dlBtn = /** @type {HTMLElement | null} */ (box.querySelector('.tali-cite-download'));
     if (!tabs.length || !panes.length) return;
     var copyLabel = copyBtn ? copyBtn.textContent : '';
 
@@ -19,6 +22,7 @@ function taliInitCiteBox(root) {
       var shown = panes.filter(function (p) { return !p.hidden; });
       return shown[0] || panes[0];
     }
+    /** @param {string | undefined} fmt */
     function select(fmt) {
       tabs.forEach(function (t) {
         t.setAttribute('aria-selected', String(t.dataset.format === fmt));
@@ -45,7 +49,7 @@ function taliInitCiteBox(root) {
 
     if (copyBtn) {
       copyBtn.addEventListener('click', function () {
-        taliCopyText(activePane().textContent, function () {
+        taliCopyText(activePane().textContent || '', function () {
           copyBtn.dataset.copied = 'true';
           copyBtn.textContent = 'Copied';
           setTimeout(function () {
@@ -59,7 +63,7 @@ function taliInitCiteBox(root) {
     if (dlBtn) {
       dlBtn.addEventListener('click', function () {
         var pane = activePane();
-        var blob = new Blob([pane.textContent], { type: 'text/plain;charset=utf-8' });
+        var blob = new Blob([pane.textContent || ''], { type: 'text/plain;charset=utf-8' });
         var url = URL.createObjectURL(blob);
         var a = document.createElement('a');
         a.href = url;

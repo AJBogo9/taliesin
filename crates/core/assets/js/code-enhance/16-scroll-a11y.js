@@ -8,9 +8,11 @@
 // landmark list), and re-evaluate on resize. Idempotent: keyed on data-scroll-a11y.
 (function () {
   if (!window.taliEnhancers) return;
+  /** @param {Element} el */
   function label(el) {
     return el.tagName === 'TABLE' ? 'Scrollable table' : 'Scrollable code';
   }
+  /** @param {Element} el */
   function sync(el) {
     // A scroll container inside the lightbox / a deck manages its own focus.
     var overflows = el.scrollWidth - el.clientWidth > 1;
@@ -29,7 +31,9 @@
       el.removeAttribute('data-scroll-a11y');
     }
   }
+  /** @type {string[]} */
   var roots = [];
+  /** @param {ParentNode | null} [root] */
   function scan(root) {
     (root || document).querySelectorAll('pre, table').forEach(function (el) {
       // A mermaid diagram / an inner code <pre> already handled by the lightbox
@@ -43,6 +47,7 @@
     if (raf) return;
     raf = requestAnimationFrame(function () { raf = 0; scan(document); });
   }
+  /** @param {ParentNode | null} [root] */
   function enhance(root) {
     scan(root);
     if (roots.indexOf('resize') === -1) {

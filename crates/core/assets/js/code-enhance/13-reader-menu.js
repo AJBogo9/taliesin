@@ -50,8 +50,9 @@ function taliInitReaderMenu() {
   document.body.appendChild(panel);
 
   function launchers() { return document.querySelectorAll('[data-tali-settings]'); }
+  /** @param {boolean} v */
   function setExpanded(v) {
-    [].forEach.call(launchers(), function (b) {
+    launchers().forEach(function (b) {
       b.setAttribute('aria-controls', panelId);
       b.setAttribute('aria-expanded', v ? 'true' : 'false');
     });
@@ -62,6 +63,7 @@ function taliInitReaderMenu() {
   // the reader shortcuts, which treat [aria-modal="true"] as "a modal owns the keys". Moving focus
   // once on open is not trapping and does not fight dismissal. aria-expanded + Esc-to-close
   // (returning focus to the launcher) + click-away is the right shape.
+  /** @type {Array<{ wrap: HTMLElement, onOpen?: (() => void) | undefined }>} */
   var sections = [];
   function openMenu() {
     panel.hidden = false; setExpanded(true);
@@ -79,14 +81,15 @@ function taliInitReaderMenu() {
   // One delegated click handler: a click on any launcher toggles; an outside click dismisses.
   // Delegation (vs. a direct listener) survives a navbar re-injection on hot reload.
   document.addEventListener('click', function (e) {
-    var launch = e.target.closest && e.target.closest('[data-tali-settings]');
+    var t = /** @type {Element | null} */ (e.target);
+    var launch = t && t.closest('[data-tali-settings]');
     if (launch) { toggleMenu(); return; }
-    if (!panel.hidden && !panel.contains(e.target)) closeMenu();
+    if (!panel.hidden && !panel.contains(t)) closeMenu();
   });
   document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && !panel.hidden) {
       closeMenu();
-      var l = document.querySelector('[data-tali-settings]');
+      var l = /** @type {HTMLElement | null} */ (document.querySelector('[data-tali-settings]'));
       if (l) l.focus();
     }
   });
@@ -106,7 +109,7 @@ function taliInitReaderMenu() {
       panel.appendChild(wrap);
       sections.push({ wrap: wrap, onOpen: onOpen });
       if (onOpen) onOpen();
-      return { setVisible: function (v) { wrap.hidden = !v; } };
+      return { setVisible: /** @param {boolean} v */ function (v) { wrap.hidden = !v; } };
     }
   };
 

@@ -12,11 +12,13 @@
 // on walkthrough.js. Registered through `taliEnhancers`; idempotent (`data-scrolly-init`);
 // self-cleans its scroll listener when its container is swapped out by a live diff.
 (function () {
+  /** @param {Element} root */
   function initScrolly(root) {
-    var steps = Array.prototype.slice.call(root.querySelectorAll('.scrolly-steps .step'));
+    var steps = /** @type {Element[]} */ (Array.prototype.slice.call(root.querySelectorAll('.scrolly-steps .step')));
     if (!steps.length) return;
-    var input = root.querySelector('.tali-scrolly-input');
+    var input = /** @type {HTMLInputElement | null} */ (root.querySelector('.tali-scrolly-input'));
     var active = -1;
+    /** @param {number} i @param {boolean} dispatch */
     function apply(i, dispatch) {
       if (i === active) return;
       active = i;
@@ -69,6 +71,7 @@
     apply(currentStep(), true);
   }
 
+  /** @param {ParentNode | null} [root] */
   function enhance(root) {
     (root || document)
       .querySelectorAll('.tali-scrolly:not([data-scrolly-init])')

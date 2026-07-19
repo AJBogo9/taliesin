@@ -16,9 +16,12 @@
 // stashed (dataset.src) so a later `qmd:themechange` can restore and re-run it.
 function taliMermaidConfig() {
   var cs = getComputedStyle(document.documentElement);
+  /** @param {string} n */
   var get = function (n) { return cs.getPropertyValue(n).trim(); };
   var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  /** @type {Record<string, any>} */
   var cfg = { startOnLoad: false, theme: get('--tali-mermaid-theme') || (dark ? 'dark' : 'default') };
+  /** @type {Record<string, string>} */
   var map = {
     background: '--tali-mermaid-bg',
     primaryColor: '--tali-mermaid-node',
@@ -26,6 +29,7 @@ function taliMermaidConfig() {
     primaryTextColor: '--tali-mermaid-text',
     lineColor: '--tali-mermaid-line',
   };
+  /** @type {Record<string, string>} */
   var vars = {};
   for (var key in map) { var v = get(map[key]); if (v) vars[key] = v; }
   if (Object.keys(vars).length) cfg.themeVariables = vars;
@@ -41,6 +45,7 @@ function taliMermaidConfig() {
   TYPES.forEach(function (t) { cfg[t] = { useMaxWidth: false }; });
   return cfg;
 }
+/** @param {NodeListOf<Element>} nodes */
 function taliRunMermaid(nodes) {
   try {
     window.mermaid.initialize(taliMermaidConfig());
@@ -52,10 +57,12 @@ function taliRunMermaid(nodes) {
 // before it (once). The diagram's source stays in the <pre> below, so the content is
 // never lost and a later successful retry can still render it. The inline styles keep the
 // banner legible even on a page with no stylesheet (offline / bare).
+/** @param {Element} p */
 function taliMermaidShowError(p) {
   p.setAttribute('data-mermaid-error', '1');
-  if (p.previousSibling && p.previousSibling.classList &&
-      p.previousSibling.classList.contains('mermaid-error')) {
+  var prev = /** @type {Element | null} */ (p.previousSibling);
+  if (prev && prev.classList &&
+      prev.classList.contains('mermaid-error')) {
     return; // banner already present (idempotent on retry)
   }
   var banner = document.createElement('div');
@@ -67,14 +74,18 @@ function taliMermaidShowError(p) {
     'color:#c0392b;background:rgba(192,57,43,.08);font-size:.9em';
   banner.textContent =
     'Diagram could not be loaded (offline or blocked). Showing the source below.';
-  p.parentNode.insertBefore(banner, p);
+  /** @type {Node} */ (p.parentNode).insertBefore(banner, p);
 }
 
+/** @param {ParentNode} root */
 function taliRenderMermaid(root) {
   var pending = root.querySelectorAll('pre.mermaid:not([data-processed])');
   if (!pending.length) return;
   // Keep the source text so the diagram survives a theme-driven re-render.
-  pending.forEach(function (p) { if (p.dataset.src == null) p.dataset.src = p.textContent; });
+  pending.forEach(function (p) {
+    var pe = /** @type {HTMLElement} */ (p);
+    if (pe.dataset.src == null) pe.dataset.src = pe.textContent || '';
+  });
   if (window.mermaid) { taliRunMermaid(pending); return; }
   if (window.__qmdMermaidLoading) return; // its onload will sweep the whole doc
   window.__qmdMermaidLoading = true;
@@ -101,9 +112,10 @@ function taliReRenderMermaid() {
   var all = document.querySelectorAll('pre.mermaid');
   if (!all.length) return;
   all.forEach(function (p) {
-    if (p.dataset.src == null) return;
-    p.textContent = p.dataset.src;
-    p.removeAttribute('data-processed');
+    var pe = /** @type {HTMLElement} */ (p);
+    if (pe.dataset.src == null) return;
+    pe.textContent = pe.dataset.src;
+    pe.removeAttribute('data-processed');
   });
   taliRunMermaid(document.querySelectorAll('pre.mermaid:not([data-processed])'));
 }
