@@ -323,14 +323,20 @@ impl Executor {
             } else {
                 ("TALIESIN_PYTHON", self.python.display().to_string())
             };
+            // The usual cause is a fine interpreter that's just missing the Jupyter kernel
+            // package (`ipykernel`/`IRkernel`), NOT a wrong interpreter path — so name both
+            // and route to `doctor`, which reports exactly which it is (PL6).
             Some(match &s.last_error {
                 Some(e) => format!(
-                    "{lang} kernel unavailable ({path}): {e}. Code cells render as source; \
-                     fix the interpreter ({var} or _site.yml {lang}:) and click Restart kernel."
+                    "{lang} kernel unavailable ({path}): {e}. Code cells render as source; fix \
+                     the interpreter ({var} or _site.yml {lang}:) or install its Jupyter kernel \
+                     package, then click Restart kernel. Run `taliesin doctor` to see which."
                 ),
                 None => format!(
-                    "{lang} kernel unavailable ({path}); code cells render as source \
-                     (set {var} or _site.yml {lang}: to an interpreter with the Jupyter kernel, then Restart kernel)."
+                    "{lang} kernel unavailable ({path}); code cells render as source (set {var} \
+                     or _site.yml {lang}: to an interpreter with the Jupyter kernel, then Restart \
+                     kernel). Run `taliesin doctor` to see whether it's the interpreter or a \
+                     missing kernel package."
                 ),
             })
         })
@@ -1626,6 +1632,14 @@ mod tests {
         assert!(
             html.contains("kernel unavailable"),
             "cell B (no valid cache) should still show the kernel-unavailable diagnostic: {html}"
+        );
+        // PL6: the executor-state guidance routes to `doctor` and names the Jupyter kernel
+        // package, not just the interpreter path (the usual real cause is a missing
+        // ipykernel/IRkernel on a perfectly good interpreter).
+        let diag = ex.diagnostic().unwrap_or_default();
+        assert!(
+            diag.contains("taliesin doctor") && diag.contains("Jupyter kernel"),
+            "the kernel-unavailable diagnostic must route to doctor + name the kernel package: {diag}"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
