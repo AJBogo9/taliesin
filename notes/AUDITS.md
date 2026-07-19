@@ -19,6 +19,30 @@ live preview**, so the fast loop is silent about the errors the author most need
 persona shipped a broken doc because of it). Most recommendations are *surfacing an existing capability*,
 not net-new. Prioritized feature queue in the file.
 
+**The feature *polish* was audited 2026-07-19** → [2026-07-19-polish-audit.md](2026-07-19-polish-audit.md)
+(4 read-only auditors — CLI/DX · authoring · live view · theming — + online research on how mature tools do these
++ per-finding source verification). Lens, distinct from the DX/PMF/deck rounds: "can an existing feature be
+*simplified with the same power*, or is it *implemented unintuitively*?" Headline: the tool validated + located
+almost everything, yet a handful of features offered co-equal spellings with no canonical, or silently dropped
+input its own vocabulary invited — closing those "silent holes in a fully-diagnosed surface" was the highest lever
+on "feels well-thought-out".
+
+**Polish audit batch (PL1–PL20) LANDED 2026-07-19** — all twenty items shipped, one commit each on `origin/main`,
+in two batches. **Batch 1** (`86d404e`…`06fa302`): PL1 surface the `check` code/severity/`--explain` in human
+output · PL2 warn on empty feature divs + drop the colliding `.tali-input` CSS · PL3 warn on `.column width=`, add
+`.columns ncol=`, fix empty-div grouping (the `group_divs` fix) · PL7 warn on a `|` in a `.step lines=` spec · PL8
+dynamic `theme-color` + `generator` meta · PL9 anchor `.fade-out`/`.highlight` for the div did-you-mean · PL13
+deck 3-state Auto/Light/Dark theme segment · PL14 probe the environment only when degraded · PL15 derive CLI usage
+synopses + document `--draft`/`--tour` · PL16 group the 16-command help by purpose. **Batch 2** (`8eeb91a`…`76185be`):
+PL4 single-source the owned `--tali-*` palette across page + deck · PL11 tokenize the geometry + motion scale · PL12
+derive exec/error boxes from the callout tokens · PL10 stop leaking a raw JS stack trace to readers in built output ·
+PL17 adopt a leading heading as the theorem title (like callouts) · PL5 accept `--json` ⇄ `--format json` everywhere
+· PL18 one shared bad-format error + one dir flag per semantic · PL19 name `.column-margin` the canonical
+margin-note · PL20 deck/reader micro-polish bundle (cold-open hint, reduced-motion on slide-jumps, key-sheet
+Home/End/`0`, `og:type` gating). **Still open in §7** ([backlog.md](backlog.md)): only the four owner-ruling design
+questions (deck serif/sans, focus-mode↔fullscreen, `//| uses:` alias, theorem-kind namespacing). Full per-item
+findings + evidence + credit in the dated file above.
+
 **DX1 LANDED 2026-07-18** (the dominant finding). Live static validation now runs on both serve paths:
 a new `crates/server/src/preview_diag.rs` bridge converts the `check`-superset validators
 (`check::page_static_diagnostics`, `Site::validate_cross_page_links`, `Site::warnings`) into
