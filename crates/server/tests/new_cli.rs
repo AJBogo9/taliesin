@@ -14,7 +14,15 @@ use std::path::Path;
 use std::process::Command;
 
 fn tmp(name: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("tali-new-{}-{}", name, std::process::id()));
+    // A per-call sequence, not just `(name, pid)`: two tests reusing a name (e.g. the
+    // scaffold-matrix loop's `tmp("paper")` and `a_paper_ships_...`'s `tmp("paper")`)
+    // otherwise share ONE dir and clobber each other's scaffold when run in parallel —
+    // a load-sensitive collision that fails `check` on a half-written or deleted file.
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static SEQ: AtomicU32 = AtomicU32::new(0);
+    let seq = SEQ.fetch_add(1, Ordering::Relaxed);
+    let dir =
+        std::env::temp_dir().join(format!("tali-new-{}-{}-{}", name, std::process::id(), seq));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     dir
