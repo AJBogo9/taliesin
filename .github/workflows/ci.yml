@@ -59,8 +59,11 @@ jobs:
       # numpy is one of the warm-pool's forkserver preload candidates (`numpy`,
       # `matplotlib`, `torch`, each preloaded only if importable); the pool test asserts a
       # forked kernel inherits the preloaded `numpy` via copy-on-write, so it must be present.
-      - name: Install ipykernel + numpy
-        run: python -m pip install --upgrade pip ipykernel numpy
+      # matplotlib is required by the fig-export concurrency test
+      # (`concurrent_pages_with_same_relative_export_do_not_clobber`), which exercises the
+      # inline-Figure export hook; without it the cell errors and no PDF is written.
+      - name: Install ipykernel + numpy + matplotlib
+        run: python -m pip install --upgrade pip ipykernel numpy matplotlib
       - name: Test with a live kernel
         env:
           TALIESIN_PYTHON: python
