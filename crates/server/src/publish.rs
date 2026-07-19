@@ -132,6 +132,61 @@ fn slug(name: &str) -> String {
     out.trim_matches('-').to_string()
 }
 
+/// The facts shown in the [`preflight_summary`] block printed right before a deploy.
+struct Preflight<'a> {
+    /// Cloudflare Pages project name (also the `<project>.pages.dev` subdomain).
+    project: &'a str,
+    /// Display path of the freshly built tree that will be uploaded.
+    out: &'a str,
+    /// Whether the deploy carries the shared-passcode gate (the safe default).
+    gated: bool,
+    /// Whether `--strict` is in force (informs the checks-line wording).
+    strict: bool,
+    /// Located problems in the built tree — always `0` when a strict build reached here.
+    problems: usize,
+    /// `true` for `--dry-run` (nothing is uploaded), which only changes the verb.
+    dry_run: bool,
+}
+
+/// The human pre-flight summary: one line per fact (target, source, access, checks), in
+/// print order. Pure — so the gate/flip wording is unit-testable without a real (or dry-run)
+/// deploy. Its whole job is to make an accidental PUBLIC (or accidental gate) impossible to
+/// miss *before* the irreversible upload: the reported incident was a public blog shipped
+/// passcode-gated and only noticed once it was live, because the default (gated) path prints
+/// no confirmation at all.
+fn preflight_summary(p: &Preflight) -> Vec<String> {
+    let verb = if p.dry_run {
+        "would deploy"
+    } else {
+        "deploying"
+    };
+    let access = if p.gated {
+        "GATED — visitors need the shared passcode \
+         (publish publicly with --public, or set publish.gate: false in _site.yml)"
+    } else {
+        "PUBLIC — no passcode; anyone with the URL can read it \
+         (re-gate by dropping --public, or set publish.gate: true in _site.yml)"
+    };
+    let checks = if p.problems == 0 {
+        "checks:  passed with no problems".to_string()
+    } else {
+        // Only reachable without --strict (a strict build with problems aborts before here).
+        let _ = p.strict;
+        format!(
+            "checks:  {} problem{} shipped without --strict (--strict would fail the deploy instead)",
+            p.problems,
+            if p.problems == 1 { "" } else { "s" }
+        )
+    };
+    vec![
+        format!("pre-flight — {verb} to Cloudflare Pages:"),
+        format!("  target:  https://{}.pages.dev", p.project),
+        format!("  source:  {}", p.out),
+        format!("  access:  {access}"),
+        format!("  {checks}"),
+    ]
+}
+
 /// Write the passcode gate into `<out>/functions/_middleware.js`. Called AFTER the build
 /// (the build's stale-sweep would otherwise delete the `functions/` dir, which is neither
 /// dot- nor underscore-prefixed); re-injected on every publish.
@@ -235,8 +290,23 @@ pub(crate) fn cmd_publish(args: &[String]) -> ExitCode {
     }
     let out = out.canonicalize().unwrap_or(out);
 
-    // Warn only once the build succeeded and we are actually about to deploy, so an
-    // aborted run (strict failure, bad provider) does not print a false PUBLIC alarm.
+    // Pre-flight summary (DX15): once the build has succeeded and we are actually about to
+    // deploy, print target + source + access + checks, so an accidental gate/target is caught
+    // *before* the irreversible upload. Always printed (both gated and public, dry-run too);
+    // log::info goes to stderr so a `--format json` stream on stdout stays pure.
+    for line in preflight_summary(&Preflight {
+        project: &project,
+        out: &out.display().to_string(),
+        gated,
+        strict,
+        problems: outcome.diagnostics.len(),
+        dry_run,
+    }) {
+        log::info(&line);
+    }
+
+    // Keep a loud WARN for the dangerous case: the summary already names PUBLIC, but a
+    // public deploy is the one that leaks, so it earns a second, unmissable line.
     if !gated {
         log::warn("publishing WITHOUT a passcode gate: this site will be PUBLIC");
     }
@@ -394,5 +464,79 @@ mod tests {
     fn public_typo_still_did_you_means() {
         let err = parse_publish_args(&argv(&["book", "--publik"])).unwrap_err();
         assert!(err.contains("--publik"), "{err}");
+    }
+
+    // DX15: a pre-flight summary printed before the (irreversible) deploy, so an accidental
+    // gate/target is caught before the upload rather than after (the reported incident was a
+    // public blog shipped passcode-gated, only noticed once it was live).
+
+    fn preflight(gated: bool, strict: bool, problems: usize, dry_run: bool) -> Vec<String> {
+        preflight_summary(&Preflight {
+            project: "my-blog",
+            out: "/tmp/site/_site",
+            gated,
+            strict,
+            problems,
+            dry_run,
+        })
+    }
+
+    #[test]
+    fn preflight_names_the_target_and_source() {
+        let s = preflight(true, true, 0, false).join("\n");
+        assert!(s.contains("my-blog.pages.dev"), "target URL missing:\n{s}");
+        assert!(s.contains("/tmp/site/_site"), "source dir missing:\n{s}");
+    }
+
+    #[test]
+    fn preflight_gated_names_the_exact_flip_to_public() {
+        // The whole point of DX15: the default (gated) path must say, unmissably, that the
+        // site is gated AND how to make it public — that path prints nothing today.
+        let s = preflight(true, true, 0, false).join("\n");
+        assert!(s.contains("GATED"), "gate status missing:\n{s}");
+        assert!(s.contains("--public"), "--public flip missing:\n{s}");
+        assert!(
+            s.contains("publish.gate: false"),
+            "_site.yml flip missing:\n{s}"
+        );
+        assert!(
+            !s.contains("PUBLIC"),
+            "gated summary must not say PUBLIC:\n{s}"
+        );
+    }
+
+    #[test]
+    fn preflight_public_names_the_exact_flip_to_gated() {
+        let s = preflight(false, true, 0, false).join("\n");
+        assert!(s.contains("PUBLIC"), "public status missing:\n{s}");
+        // The reverse flip (how to add the gate back) must be spelled out too.
+        assert!(
+            s.contains("publish.gate: true"),
+            "_site.yml re-gate missing:\n{s}"
+        );
+    }
+
+    #[test]
+    fn preflight_reports_shipped_problems_without_strict() {
+        let clean = preflight(true, true, 0, false).join("\n");
+        assert!(clean.contains("no problems"), "clean checks line:\n{clean}");
+        let dirty = preflight(true, false, 3, false).join("\n");
+        assert!(dirty.contains('3'), "problem count missing:\n{dirty}");
+        assert!(
+            dirty.contains("--strict"),
+            "should point at --strict:\n{dirty}"
+        );
+    }
+
+    #[test]
+    fn preflight_verb_tracks_dry_run() {
+        assert!(
+            preflight(true, true, 0, true).join("\n").contains("would"),
+            "dry-run should read as a would-deploy"
+        );
+        assert!(
+            !preflight(true, true, 0, false).join("\n").contains("would"),
+            "a real deploy is not a would-deploy"
+        );
     }
 }
