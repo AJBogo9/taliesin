@@ -1066,10 +1066,28 @@ is the best single first move (both S · high, both close a silent failure).
     end-to-end-verified against the real binary. **Do not re-open.**
 
 - **Execution-cache leaks — remainder** (exec/kernel Do-NOT-touch, careful):
-  - **Ungraceful-death path (S/M):** no defense vs SIGKILL / closed terminal / crash. Absent:
-    `PR_SET_PDEATHSIG` on the warm-pool helper (it has its own process group, so cheap), and a
-    startup sweep of stale `/tmp/tali-warmpool-*` / `/tmp/tali-kernel-*` dirs whose owner pid is dead.
-    (Measured: `kill -9` on a preview orphaned 8 procs / 451 MB + 123 `/tmp/tali-*` dirs.)
+  - **Ungraceful-death path (S/M) — warm-pool half LANDED 2026-07-19; two sub-parts remain.**
+    (Measured baseline: `kill -9` on a real preview orphaned a 5-proc / ~243 MB forkserver
+    subtree; 22 h+ orphans + 4199 stale `/tmp/tali-*` dirs were found in the wild.)
+    - ~~warm-pool forkserver subtree orphans on SIGKILL~~ **DONE:** the helper now self-reaps
+      its process group on stdin EOF (parent death) via `os.killpg(getpgrp, SIGKILL)` in
+      `warm_pool.rs`'s `FORKSERVER_HELPER` — the same group `kill_process_group` reaps
+      gracefully, triggered from inside. **Deliberately NOT `PR_SET_PDEATHSIG`** (the backlog's
+      named mechanism): PDEATHSIG signals only the helper (leaving the server + kernels orphaned)
+      and can fire on a parent *thread* exit in the tokio runtime; stdin EOF is parent *process*
+      death and reaps the whole subtree. Pinned by `ungraceful_parent_death_reaps_the_forkserver_subtree`
+      (mutation-checked); verified e2e (5-proc/243 MB → 0 on SIGKILL). **Do not re-open.**
+    - **Cold-kernel orphan (NEW, found by the repro; still open).** A single-doc preview cold-starts
+      the kernel (no warm pool), a direct child of taliesin with `stdin(null)`; on SIGKILL it survives
+      orphaned and leaks its `/tmp/tali-kernel-*` dir (reproduced). No stdin-EOF hook (ipykernel doesn't
+      read stdin), so the clean fix is ipykernel's `ParentPollerUnix` (process-death based, safe) — NOT
+      a bare PDEATHSIG (thread-exit hazard + silent mid-session kernel-state loss). `kernel.rs:561`.
+    - **Stale-`/tmp`-dir sweep (still open; backlog premise was wrong).** The runtime dirs
+      (`tali-warmpool-<uuid>`, `tali-kernel-<uuid>`, `tali-interp-<name>`) are **UUID/name-named — no
+      owner pid**, so "sweep dirs whose owner pid is dead" cannot work as written. The bulk of the 4199
+      is TEST debris (`tali-omit`/`tali-check`/`tali-sbe`/…, which *do* carry a pid). A real sweep needs a
+      design call: encode the pid in future runtime dir names + sweep pid-dead ones, or age-based (racy
+      vs a long preview). Wiring a startup sweep also touches `main.rs`.
   - **Flaky timing tests** (LOAD-sensitive):
     `exec::tests::pooled_kernel_serves_cells_without_a_long_warming_state` +
     `kernel::tests::kernel_executes_state_errors_and_interrupts_runaway_cell` fail under CPU load;
