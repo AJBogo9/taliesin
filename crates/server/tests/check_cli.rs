@@ -79,17 +79,25 @@ fn check_json_diagnostics_carry_codes_and_suggestions() {
 }
 
 #[test]
-fn check_human_output_is_unchanged_by_codes() {
-    // Human format is the greppable `file: message` linter line on stderr; codes/severity
-    // must NOT leak into it (byte-identical to before this feature).
+fn check_human_output_surfaces_codes_and_an_explain_footer() {
+    // PL1: the greppable linter line keeps its `file:line:` prefix + the message, and now also
+    // surfaces the `severity[CODE]:` the JSON path always carried, plus a rustc-style
+    // `--explain` footer — so the DX6 catalog is reachable from the output 99% of runs read.
+    // The `docs_url` stays JSON-only (the code + footer are the human path back to the catalog).
     let (_ok, _stdout, stderr) = run(&["check", &corpus("diagnostics/typos.tmd")]);
     assert!(
-        stderr.contains("unknown front-matter key `treme` (did you mean `theme`?)"),
-        "human message unchanged: {stderr}"
+        stderr.contains(
+            "warning[TAL-FM-KEY]: unknown front-matter key `treme` (did you mean `theme`?)"
+        ),
+        "human line carries severity + code before the message: {stderr}"
     );
     assert!(
-        !stderr.contains("TAL-FM-KEY"),
-        "codes must not leak into human output: {stderr}"
+        stderr.contains("taliesin check --explain <CODE>"),
+        "human output teaches --explain: {stderr}"
+    );
+    assert!(
+        !stderr.contains("http"),
+        "the docs_url stays JSON-only, never in human output: {stderr}"
     );
 }
 

@@ -936,11 +936,6 @@ under-sells machinery that already ships.)
 
 **Tier 1 — silent holes (do-first: cheap, high-confidence, each closes a silent failure):**
 
-- **PL1 — Surface the code + severity + `--explain` in `check`'s human output.** `format_human`
-  (`check.rs:374-383`) prints only `file:line: message` + a bare `N problem(s)` (`:575`); the stable `TAL-*`
-  code, the severity, and the whole DX6 `--explain` catalog never appear in the output 99% of runs read. Prefix
-  `severity[CODE]`, split the summary `(1 error, 2 warnings)`, print a `--explain <CODE>` footer (rustc-style).
-  Output-only. S · high · [surface]. **VERIFIED.**
 - **PL2 — Make `{{< input >}}` coherent** (two auditors found it independently). It's the one interactive feature
   that's a shortcode not a `:::` div, so `::: {.input name="k"}` is **silently dropped** (empty div, `divs.rs:295-298`)
   while the validator's own message calls it `.input` (`validate.rs:202`), a non-existent syntax; and a leftover

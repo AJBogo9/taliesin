@@ -44,10 +44,12 @@ catches these **publish-blocking** mistakes:
 | No accessible name | An `<a href>` / `<button>` in content with empty text and no `aria-label` / `title` / labelled image (e.g. an icon-only link), which a screen reader announces as just "link" / "button". |
 
 It does **not** execute code cells (it is fast, kernel-free,
-and deterministic, so runtime cell errors stay in `preview`/`build`). Output is
-`path:line: message` by default, or a `{ "diagnostics": [{file, line, message}],
-"environment": [...] }` object with `--format json`. It exits `0` when clean and `1`
-when any diagnostic is found, so it drops straight into CI or a pre-commit hook:
+and deterministic, so runtime cell errors stay in `preview`/`build`). Output is a
+greppable `path:line: severity[CODE]: message` linter line by default, closed by a
+per-severity summary (`3 problems (1 error, 2 warnings)`) and a `taliesin check
+--explain <CODE>` footer; or a `{ "diagnostics": [{file, line, message, code, severity,
+docs_url}], "environment": [...] }` object with `--format json`. It exits `0` when clean
+and `1` when any diagnostic is found, so it drops straight into CI or a pre-commit hook:
 
 ```sh
 taliesin check .                          # fails (exit 1) if any page has a diagnostic

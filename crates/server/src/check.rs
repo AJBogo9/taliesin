@@ -371,14 +371,60 @@ pub(crate) fn check_json(target: &Path) -> String {
     }
 }
 
+/// Greppable linter lines that also surface the DX6 machinery the JSON path already carries:
+/// the `severity` word and the stable `TAL-*` code. The `file:line:` prefix stays first (the
+/// linter convention VS Code problem-matchers / gcc / tsc key off), with `severity[CODE]:`
+/// inserted before the message (the gcc/clang shape). The `docs_url` is JSON-only; it never
+/// leaks here — the code + `--explain` footer are the human path back to the catalog.
 fn format_human(diags: &[Diagnostic]) -> String {
     let mut s = String::new();
     for d in diags {
         match d.line {
-            Some(l) => s.push_str(&format!("{}:{}: {}\n", d.file, l, d.message)),
-            None => s.push_str(&format!("{}: {}\n", d.file, d.message)),
+            Some(l) => s.push_str(&format!(
+                "{}:{}: {}[{}]: {}\n",
+                d.file, l, d.severity, d.code, d.message
+            )),
+            None => s.push_str(&format!(
+                "{}: {}[{}]: {}\n",
+                d.file, d.severity, d.code, d.message
+            )),
         }
     }
+    s
+}
+
+/// The human summary line + `--explain` footer printed after the per-diagnostic block. Split
+/// the bare `N problem(s)` into a per-severity breakdown (`(1 error, 2 warnings)`) — keeping
+/// the leading `N problem(s)` token so existing greps still match — and, when anything is
+/// reported, teach the `--explain` command (rustc's "For more information…"). Every line above
+/// shows a concrete `[CODE]` to substitute. Pure, so the split + footer are unit-testable.
+fn human_summary(diags: &[Diagnostic]) -> String {
+    use taliesin_core::diagnostics::codes;
+    let plural = |n: usize| if n == 1 { "" } else { "s" };
+    if diags.is_empty() {
+        return "no problems found\n".to_string();
+    }
+    let errors = diags.iter().filter(|d| d.severity == codes::ERROR).count();
+    let warnings = diags
+        .iter()
+        .filter(|d| d.severity == codes::WARNING)
+        .count();
+    let mut parts = Vec::new();
+    if errors > 0 {
+        parts.push(format!("{errors} error{}", plural(errors)));
+    }
+    if warnings > 0 {
+        parts.push(format!("{warnings} warning{}", plural(warnings)));
+    }
+    let n = diags.len();
+    let mut s = format!("{n} problem{}", plural(n));
+    if !parts.is_empty() {
+        s.push_str(&format!(" ({})", parts.join(", ")));
+    }
+    s.push('\n');
+    s.push_str(
+        "\nFor more information about a diagnostic, try `taliesin check --explain <CODE>`.\n",
+    );
     s
 }
 
@@ -567,17 +613,10 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
         // JSON to stdout only, so it pipes cleanly.
         println!("{}", format_json(&diags, &environment));
     } else {
-        // Greppable `path:line: message` lines to stderr (linter-style), then a summary.
+        // Greppable `path:line: severity[CODE]: message` lines to stderr (linter-style), then a
+        // per-severity summary + the `--explain` footer (both in `human_summary`).
         eprint!("{}", format_human(&diags));
-        if diags.is_empty() {
-            eprintln!("no problems found");
-        } else {
-            eprintln!(
-                "{} problem{}",
-                diags.len(),
-                if diags.len() == 1 { "" } else { "s" }
-            );
-        }
+        eprint!("{}", human_summary(&diags));
         if !environment.is_empty() {
             eprintln!("\nEnvironment:");
             for e in &environment {
@@ -653,10 +692,12 @@ mod tests {
     }
 
     #[test]
-    fn diagnostics_carry_a_docs_url_in_json_but_not_human() {
+    fn human_surfaces_code_and_severity_while_json_alone_carries_the_docs_url() {
         use taliesin_core::diagnostics::codes;
-        // A broken xref -> TAL-XREF-UNDEF; its JSON diagnostic carries a docs_url anchored by
-        // the lowercased code, and human output never leaks the url.
+        // A broken xref -> TAL-XREF-UNDEF (severity error); its JSON diagnostic carries a
+        // docs_url anchored by the lowercased code. PL1: the human line now surfaces the
+        // severity word + the code so the reader can `--explain` it, but never the url (the
+        // code + footer are the human path back to the catalog; the url stays JSON-only).
         let d = Diagnostic::new(
             "a.tmd".into(),
             Some(2),
@@ -673,10 +714,12 @@ mod tests {
             url.ends_with("#tal-xref-undef"),
             "anchored by lowercased code: {json}"
         );
-        // Human output is byte-identical to before: no url, no code.
         let human = format_human(std::slice::from_ref(&d));
         assert!(!human.contains("http"), "no url in human output: {human}");
-        assert!(!human.contains("TAL-"), "no code in human output: {human}");
+        assert!(
+            human.contains("error[TAL-XREF-UNDEF]"),
+            "human surfaces severity + code: {human}"
+        );
     }
 
     #[test]
@@ -1315,13 +1358,60 @@ mod tests {
 
     #[test]
     fn format_human_lists_located_lines() {
+        // Unmatched messages classify to (TAL-CHECK, error). PL1: the `file:line:` linter
+        // prefix stays first, with `severity[CODE]:` before the message (located + unlocated).
         let diags = vec![
             Diagnostic::new("a.tmd".into(), Some(3), "m1".into()),
             Diagnostic::new("b.tmd".into(), None, "m2".into()),
         ];
         let text = format_human(&diags);
-        assert!(text.contains("a.tmd:3: m1"), "located line: {text}");
-        assert!(text.contains("b.tmd: m2"), "unlocated line: {text}");
+        assert!(
+            text.contains("a.tmd:3: error[TAL-CHECK]: m1"),
+            "located line carries severity + code: {text}"
+        );
+        assert!(
+            text.contains("b.tmd: error[TAL-CHECK]: m2"),
+            "unlocated line carries severity + code: {text}"
+        );
+    }
+
+    #[test]
+    fn human_summary_splits_by_severity_and_points_at_explain() {
+        // Mixed set: a broken xref (error) + an unknown front-matter key (warning). The summary
+        // keeps the leading `N problem(s)` token, breaks it out per severity, and prints the
+        // `--explain` footer so the DX6 catalog is reachable from human output.
+        let diags = vec![
+            Diagnostic::new(
+                "a.tmd".into(),
+                Some(2),
+                "broken cross-reference: @fig-x".into(),
+            ),
+            Diagnostic::new(
+                "a.tmd".into(),
+                Some(1),
+                "unknown front-matter key: pyton".into(),
+            ),
+        ];
+        let s = human_summary(&diags);
+        assert!(s.contains("2 problems"), "leading count kept: {s}");
+        assert!(
+            s.contains("(1 error, 1 warning)"),
+            "per-severity breakdown: {s}"
+        );
+        assert!(
+            s.contains("taliesin check --explain <CODE>"),
+            "teaches --explain: {s}"
+        );
+        // A single warning pluralizes correctly and still shows the footer.
+        let one = human_summary(&[Diagnostic::new(
+            "a.tmd".into(),
+            Some(1),
+            "unknown front-matter key: pyton".into(),
+        )]);
+        assert!(one.contains("1 problem (1 warning)"), "singular: {one}");
+        // No diagnostics: the clean line, and NO --explain footer (nothing to explain).
+        let none = human_summary(&[]);
+        assert_eq!(none, "no problems found\n");
     }
 
     /// The `--format json` error path must produce a single valid JSON object
