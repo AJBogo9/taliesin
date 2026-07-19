@@ -557,6 +557,9 @@ pub(crate) const STATUS_CSS: &str = "\
       background: var(--tali-code-bg, #f5f5f5); color: var(--tali-fg, #111); \
       border: 1px solid var(--tali-border, #e0e0e0); border-radius: 6px; padding: .3rem .55rem; } \
     .tali-dev-ctl:hover { border-color: var(--tali-accent, #4c8dff); } \
+    .tali-dev-card { display: block; max-width: 100%; height: auto; border-radius: 6px; \
+      border: 1px solid var(--tali-border, #e0e0e0); } \
+    .tali-dev-card[hidden] { display: none; } \
     .tali-dev-theme svg { width: 14px; height: 14px; } \
     #tali-diagnostics { display: none; flex-direction: column; gap: .3rem; max-width: 22rem; } \
     #tali-diagnostics .tali-diag { padding: .3rem .5rem; border-radius: 6px; background: var(--tali-code-bg, #f5f5f5); \
@@ -613,6 +616,8 @@ pub(crate) const STATUS_CSS: &str = "\
     [data-qmd-cell-state=\"running\"] { border-left-color: #4c8dff; } \
     [data-qmd-cell-state=\"done\"] { border-left-color: #2bb673; } \
     [data-qmd-cell-state=\"error\"] { border-left-color: #cc3333; } \
+    [data-qmd-cell-source=\"cache\"] { border-left-color: color-mix(in srgb, #2bb673 40%, transparent); } \
+    [data-qmd-cell-source=\"cache\"] .tali-cell-badge { opacity: .6; } \
     .tali-cell-badge { font: 11px/1 var(--tali-mono, monospace); opacity: .75; margin-right: 6px; } \
     @media (prefers-reduced-motion: no-preference) { \
       [data-qmd-cell-state=\"running\"] .tali-cell-badge { animation: tali-pulse 1s ease-in-out infinite; } \
@@ -1660,6 +1665,46 @@ mod protocol_contract {
         assert!(
             CLIENT_JS.contains("window.taliOpenPageSource"),
             "client.js must expose window.taliOpenPageSource for the command palette"
+        );
+    }
+
+    #[test]
+    fn client_and_status_css_ship_the_cache_legibility_surface() {
+        // DX9: the ⚡ cached badge + the muted cached-cell border are include_str!'d JS/CSS,
+        // so this drift guard keeps the render and the style in lockstep with the protocol's
+        // `source: "cache"` tag. If the badge text or the CSS attr hook is renamed, the wire
+        // stays "cache" and the surface goes silently blank — this fails first.
+        assert!(
+            CLIENT_JS.contains("⚡ cached"),
+            "client.js must render the ⚡ cached badge for a cache replay"
+        );
+        assert!(
+            CLIENT_JS.contains("data-qmd-cell-source"),
+            "client.js must tag the block with its cache provenance"
+        );
+        assert!(
+            STATUS_CSS.contains("data-qmd-cell-source=\"cache\""),
+            "STATUS_CSS must style the cached-cell border distinctly from a fresh run"
+        );
+    }
+
+    #[test]
+    fn client_ships_the_card_preview_pane_hitting_the_identity_route() {
+        // DX13: the dev-menu card pane fetches the current page's card from the identity-
+        // keyed route, gated on the site preview's page global. If the route path or the
+        // gate global is renamed on one side, the pane silently 404s / never appears — this
+        // pins the client half against the serve_site `/og-preview` handler + STATUS_CSS.
+        assert!(
+            CLIENT_JS.contains("/og-preview?page="),
+            "client.js must fetch the card from the /og-preview identity route"
+        );
+        assert!(
+            CLIENT_JS.contains("TALIESIN_WS_PATH"),
+            "client.js must gate the card pane on the site-preview page identity"
+        );
+        assert!(
+            STATUS_CSS.contains(".tali-dev-card"),
+            "STATUS_CSS must style the card-preview image"
         );
     }
 

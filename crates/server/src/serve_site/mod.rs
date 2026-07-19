@@ -204,6 +204,7 @@ async fn serve(root: PathBuf, port: u16, open: bool, expose: bool) -> std::io::R
         .route("/hover-index.js", get(hover_index_js))
         .route("/ws", get(ws_handler))
         .route("/og/{name}", get(og_card))
+        .route("/og-preview", get(og_card_preview))
         .fallback(page_or_asset)
         .with_state(app.clone());
     let router = with_lan_guard(router, token.clone());
@@ -281,6 +282,30 @@ async fn og_card(
             let spec = taliesin_core::site::card_spec(&site, page);
             (taliesin_core::site::card_rel_path(&spec) == want)
                 .then(|| taliesin_core::site::render_card(&spec))
+        })
+    };
+    match bytes {
+        Some(b) => ([(axum::http::header::CONTENT_TYPE, "image/png")], b).into_response(),
+        None => axum::http::StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+/// Serve the branded OG social card for the CURRENT preview page (DX13), keyed by the
+/// page's source `rel` (or output `url`) via [`taliesin_core::Site::page`] rather than the
+/// content hash the shared `/og/{name}` route uses. The dev-menu card pane hits this so an
+/// author can see their card without a build — and, unlike the hash route, it works before
+/// `_site.yml` sets a `url:` (no card hash is ever surfaced without one, so `/og/{name}` is
+/// unreachable then). Preview-only; the render is pure + offline (bundled font).
+async fn og_card_preview(
+    State(app): State<Arc<SiteApp>>,
+    Query(q): Query<HashMap<String, String>>,
+) -> impl IntoResponse {
+    let rel = q.get("page").cloned().unwrap_or_default();
+    let bytes = {
+        let site = app.site.lock();
+        site.page(&rel).map(|page| {
+            let spec = taliesin_core::site::card_spec(&site, page);
+            taliesin_core::site::render_card(&spec)
         })
     };
     match bytes {
@@ -1584,5 +1609,40 @@ mod protocol_contract {
         assert_eq!(err["message"], "boom");
 
         assert_eq!(parse(protocol::reload())["type"], "reload");
+    }
+}
+
+#[cfg(test)]
+mod card_preview {
+    //! DX13: the dev-menu card pane renders the current page's OG card on demand via
+    //! `/og-preview?page=<rel>`, keyed by page identity (`Site::page`) so it works BEFORE
+    //! `_site.yml` sets a `url:` — the exact case the hash-keyed `/og/{name}` route can't
+    //! serve (no card hash is ever surfaced without a `url:`). This pins the handler's core
+    //! composition against a url-less corpus site; the axum plumbing has no live-HTTP harness.
+    use super::*;
+
+    #[test]
+    fn card_renders_by_page_identity_without_a_configured_url() {
+        let corpus = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../corpus");
+        let site = Site::discover(&corpus.join("demo-book"));
+        // The fixture sets no `url:`, so the hash route would surface nothing here — the
+        // preview route must still render, which is the whole point of keying by identity.
+        assert!(
+            site.config.url.is_none(),
+            "fixture must have no url: set, or it doesn't exercise the url-less path"
+        );
+        let page = site.page("intro.tmd").expect("corpus/demo-book/intro.tmd");
+        let spec = taliesin_core::site::card_spec(&site, page);
+        let png = taliesin_core::site::render_card(&spec);
+        // A real PNG (magic bytes) of non-trivial size: the card actually rendered.
+        assert!(
+            png.starts_with(&[0x89, b'P', b'N', b'G']),
+            "og-preview did not return PNG bytes"
+        );
+        assert!(
+            png.len() > 1000,
+            "suspiciously small card ({} bytes) — likely a blank/failed render",
+            png.len()
+        );
     }
 }

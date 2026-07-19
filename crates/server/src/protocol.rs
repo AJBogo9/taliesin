@@ -173,16 +173,24 @@ pub fn build_state(page: Option<&str>, phase: &str, ran: u32, total: u32, lang: 
 /// `cell_id` is the cell's own id (the same id the output block is built from as
 /// `{cell_id}-out`), so the client can target that block. `page` is the source
 /// rel-path for the multi-page server, `None` for the single-doc server.
+///
+/// `source` is how a `done` cell reached its output (DX9): `"cache"` = restored
+/// without running (the warm in-memory prefix or the disk `_freeze` tail), `"fresh"`
+/// = executed this pass. `None` for the transient/other states. The client renders a
+/// `⚡ cached` badge for a cache restore instead of the blank `✓` it showed before,
+/// so "why didn't my cell re-run?" is answered in the margin.
 pub fn cell_state(
     page: Option<&str>,
     cell_id: &str,
     state: &str,
     started_ms: Option<u64>,
     duration_ms: Option<u64>,
+    source: Option<&str>,
 ) -> String {
     serde_json::json!({
         "type": "cell-state", "page": page, "cell_id": cell_id,
-        "state": state, "started_ms": started_ms, "duration_ms": duration_ms
+        "state": state, "started_ms": started_ms, "duration_ms": duration_ms,
+        "source": source
     })
     .to_string()
 }
@@ -447,12 +455,27 @@ mod tests {
 
     #[test]
     fn cell_state_includes_state_and_optional_timing() {
-        let s = super::cell_state(Some("p.tmd"), "abc", "running", Some(1000), None);
+        let s = super::cell_state(Some("p.tmd"), "abc", "running", Some(1000), None, None);
         let v: serde_json::Value = serde_json::from_str(&s).unwrap();
         assert_eq!(v["type"], "cell-state");
         assert_eq!(v["cell_id"], "abc");
         assert_eq!(v["state"], "running");
         assert_eq!(v["started_ms"], 1000);
         assert!(v.get("duration_ms").is_none_or(|d| d.is_null()));
+        // No `source` for a transient state.
+        assert!(v.get("source").is_none_or(|d| d.is_null()));
+    }
+
+    #[test]
+    fn cell_state_carries_cache_provenance_for_done_cells() {
+        // DX9: a cache-restored `done` cell is tagged so the client can render "⚡ cached"
+        // instead of the blank "✓" that made a replay indistinguishable from a 0ms run.
+        let cached = super::cell_state(None, "c1", "done", None, None, Some("cache"));
+        let v: serde_json::Value = serde_json::from_str(&cached).unwrap();
+        assert_eq!(v["source"], "cache");
+        let fresh = super::cell_state(None, "c2", "done", Some(1), Some(1200), Some("fresh"));
+        let v: serde_json::Value = serde_json::from_str(&fresh).unwrap();
+        assert_eq!(v["source"], "fresh");
+        assert_eq!(v["duration_ms"], 1200);
     }
 }

@@ -114,10 +114,12 @@ gating) is DONE** — two default-off gate flags: `--errors-only` (drop warnings
 and `--require-kernel` (fail if a used language's kernel isn't runnable); pure gate helpers + CLI exit-code
 integration tests; `--min-severity` folded into `--errors-only` (only two severities today). **DX6 + DX8 +
 DX7 + DX18 + DX12 + DX19 landed locally** (push when asked; verify with `git log --oneline origin/main..main`).
+**DX9 + DX15 + DX13 landed 2026-07-19** (the three build-ready Tier-2 surfacing items; see §6).
 Next up: **DX17** (headless executed-output visibility) is the last DX-batch item, but it is L, net-new, has
 a fork (optional headless `{js}` eval) and overlaps `ROADMAP.md` agent work, so **brainstorm before
-building** (do NOT scope it straight from the one-liner). Cheaper alternatives if DX17 is deferred: DX9
-(make caching legible — S, surface) or the Tier 2 items DX13–DX16. Most remaining items are *surfacing an
+building** (do NOT scope it straight from the one-liner). The only remaining Tier-2 DX items are DX14
+(interactive `new`/`init` wizard, M · net-new) and DX16 (update-available nudge, S · net-new — implies a
+network check, so weigh it against the offline invariant first). Most remaining items are *surfacing an
 existing capability*.
 
 **Pick up here (2026-07-18, PMF-audit batch — START HERE for feature work).** A product-market-fit
@@ -844,9 +846,19 @@ and `[](page.tmd)` link completion were left out (noted in the spec). Spec
 
 **Tier 2 — workflow smoothers & delight:**
 
-- **DX9 — Make caching legible**: `⚡ cached` vs `✓ 1.2s` per-cell badge + a console `restored N cached
-  cells · 1 re-ran` line + a one-line tie to "Restart kernel"/`TALIESIN_NO_CACHE`. S · [surface] · 🎤🎓
-  both restarted the kernel needlessly asking "why didn't my cell re-run?"; the info is in `freeze.rs`.
+**DX9 — Make caching legible — LANDED 2026-07-19.** The fresh-run `✓ 1.2s` badge already shipped; the
+gap was that a replay carried a null duration, so the client showed a blank `✓` and the console said
+nothing. `protocol::cell_state` gained an additive `source` field (`"cache"`|`"fresh"`); `exec.rs` marks
+the up-front restored cells + returns a `CacheTally` per run, and `run()` logs one closing `restored N
+cached cell(s) · M re-ran` line (only when something replayed, so a cold run stays quiet). `client.js`
+renders `⚡ cached` + tags `data-qmd-cell-source` (STATUS_CSS mutes the border to a faded green), and a
+dev-menu Cache row ties it to Restart kernel / `TALIESIN_NO_CACHE`. Observational only (nothing about what
+runs/caches changed; freeze `FORMAT_VERSION` untouched). Unit-tested (protocol field + tally pluralization)
++ mutation-checked, a Rust drift pin guards the include_str!'d JS/CSS, browser-verified with a real kernel
+(cell one `⚡ cached` with muted border; console `restored 1 cached cell · 1 re-ran`; no console errors).
+**Do not re-open.** *(Known pre-existing limitation, unrelated: a freshly-edited cell's block id changes,
+so its new `-out` block is inserted after the transient cell-state arrives and misses its badge — the
+`✓ 1.2s` badge has always had this too.)*
 **DX10 — Scaffolds that teach — LANDED 2026-07-18** (all 4 sub-parts). Shipped: `paper` now
 scaffolds a worked `{python}` matplotlib figure (`#| label: fig-demo` + `#| fig-cap:`), a `$$` block, and
 `@fig-demo`/`@sec-methods` cross-refs (check-clean; corpus mirror `corpus/scaffold/posts/my-paper/`
@@ -867,12 +879,27 @@ a start line would be noise on every instant build). `build.rs` only (`finalize_
 `warn_nonstrict_problems` + `build_dir: ExitCode→bool`). End-to-end-pinned in `strict_robustness.rs`
 (single-doc broken-xref + site malformed-config); det-log parity confirmed. Record in
 [AUDITS.md](AUDITS.md). **Do not re-open.**
-- **DX13 — Social-card preview pane** in the dev menu (render the branded 1200×630 OG card for the current
-  page). M · [surface] · ✍️ cards only bake at build today.
+**DX13 — Social-card preview pane — LANDED 2026-07-19.** The entry's premise ("cards only bake at build")
+was **stale**: a live on-demand renderer already existed (`/og/{name}` → `og_card`, `serve_site`), but it
+was hash-keyed and so unreachable before `_site.yml` sets a `url:` (no hash surfaces without one). So the
+gap was a UI affordance + a url-less path. `serve_site` gained `GET /og-preview?page=<rel>` (reuses the
+pure/offline `render_card`+`card_spec`, keyed by page identity via `Site::page`, so it works with no
+`url:`); `client.js` adds a lazy dev-menu "Show OG card" pane gated on the site-preview page identity
+(site-preview only — single-doc `serve` has no `Site`/card concept). Pinned by a `serve_site` test (a
+url-less corpus site still renders a real 1200×630 PNG by rel) + a mutation-checked Rust drift pin on the
+include_str!'d client route/gate/CSS. Verified end-to-end: `curl /og-preview?page=intro.tmd` → 1200×630
+`image/png` on the url-less demo-book, and the pane renders in a real browser (no console errors). **Do not
+re-open.**
 - **DX14 — Interactive `new`/`init` wizard** (arrow-key kind picker, `-y` to skip) + a `site`/`book` kind.
   M · [new] · 🎓✍️ (flags-only today; no multi-page scaffolder).
-- **DX15 — Pre-flight publish summary** (one screen: strict result, target, GATED vs PUBLIC + the flag to
-  flip it) before deploy. S · [surface] · ✍️ deployed his public blog passcode-gated, needed a 2nd run.
+**DX15 — Pre-flight publish summary — LANDED 2026-07-19.** Confirmed real: a real (non-dry-run) deploy in
+the default *gated* path printed **no gate confirmation at all** (only the ungated path warned) — exactly
+the accidental-gating incident. Now a pure `preflight_summary()` prints target + source + access + checks
+once the build succeeds and before the (irreversible) upload, on both the dry-run and real paths, with the
+access line naming the exact flip both ways (`--public` / `publish.gate: false`, and the reverse). The loud
+PUBLIC warn stays as a second unmissable line for the case that leaks. `log::info` → stderr so a
+`--format json` stdout stream stays pure. Unit-tested (flip wording, problem count, dry-run verb) +
+mutation-checked; verified end-to-end against the real binary (gated + `--public`). **Do not re-open.**
 - **DX16 — Update-available nudge** (async, boxed, `NO_UPDATE_NOTIFIER` opt-out). S · [new].
 
 **Tier 3 — agent-DX (the AI-native positioning):**
@@ -913,7 +940,7 @@ Record in [AUDITS.md](AUDITS.md). **Do not re-open.**
   One-command deck publish in scope? (🎤)
 - Presenter laser/spotlight + auto-advance (reveal.js reflexes). (🎤)
 
-**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ ~~DX5~~ ~~DX11~~ ~~DX10-followup~~ ~~DX4~~ ~~DX6~~ ~~DX8~~ ~~DX7~~ ~~DX18~~ ~~DX12~~ ~~DX19~~ (all landed) → DX17 (brainstorm: L, net-new, forked) · DX9/DX13–DX16 (Tier 2)
+**Suggested order:** ~~DX1~~ ~~DX2~~ ~~DX3~~ ~~DX10~~ ~~DX5~~ ~~DX11~~ ~~DX10-followup~~ ~~DX4~~ ~~DX6~~ ~~DX8~~ ~~DX7~~ ~~DX18~~ ~~DX12~~ ~~DX19~~ ~~DX9~~ ~~DX15~~ ~~DX13~~ (all landed) → DX17 (brainstorm: L, net-new, forked) · DX14/DX16 (Tier 2)
 (kill the two silent-failure traps) → DX4/DX6/DX8 → DX17–19 (DX18 is cheap, pull forward). Tier 0–1 and
 most of Tier 2 are *surfacing existing capability*, not net-new.
 
@@ -1009,23 +1036,34 @@ is the best single first move (both S · high, both close a silent failure).
   real locations** (page A's line and page B's line), so the fix must first decide what to point
   at — the second definition, both, or a per-page list. Design the semantics before the plumbing.
   Corpus-exercised (nothing ships wrong today), so P3.
-- **Phantom xref anchors — the two triggers §2 #5 left open** (found by the adversarial review of
-  the #5 fix, 2026-07-17; both reproduced on the running product, both pre-existing, neither shipping
-  in any corpus doc):
-  - **Non-executed, non-render-emitted langs (`{bash}`, `{sql}`, `{julia}`, …).** #5 gated on
-    `include`, but a lang that is neither `exec::kernel_lang` (python|r) nor emitted at render time
-    (mermaid|js) has NO figure/table for *any* value of `include`, so `label: fig-x` on one still
-    registers a phantom and burns a number (verified: `{bash}` + `label: fig-shell` → `id="fig-shell"`
-    count 0 under a confident "Figure 1"). Same bug as #5 on the LANG axis. The clean fix needs the
-    executable-lang set shared into `taliesin-core` (it lives in `crates/server/src/exec.rs`
-    `kernel_lang`, which core can't see); the invariant is `emitted_at_render_time(lang) ||
-    (executes(lang) && include)`. A `render/mod.rs` comment at the `emitted_at_render_time` predicate
-    marks the seam.
-  - **Empty output also phantoms.** `exec.rs` drops output on `inner.trim().is_empty() || !cell.include`,
-    so a labelled cell that runs but prints nothing registers an anchor no element carries (verified:
-    `label: fig-silent` on a `x = 1+1` cell → dead `@fig-silent`). NOT knowable at render time (it is
-    a post-execution fact in the server crate), so unlike #5 it can't be fixed in the render pass;
-    wants an exec-side decline-or-warn once the output is known empty.
+- **Phantom xref anchors — the two triggers §2 #5 left open — BOTH LANDED (2026-07-19).** (found by the
+  adversarial review of the #5 fix, 2026-07-17; both reproduced on the running product, both pre-existing,
+  neither shipping in any corpus doc. §2 #5 is now fully closed.)
+  - **Non-executed, non-render-emitted langs (`{bash}`, `{sql}`, `{julia}`, …) — LANDED 2026-07-19.**
+    #5 gated on `include`, but a lang that is neither executed nor emitted at render time had NO
+    figure/table for *any* `include`, yet a `label: fig-x`/`tbl-x` on one still burned a number +
+    registered a phantom (verified: `{bash}` + `label: fig-shell` → real figure shifted to "Figure 2").
+    Fix: a canonical `taliesin_core::render::executes_to_kernel` (python|r) now shared into core; both
+    the figure arm and the table arm gate on `emitted_at_render_time(lang) || (executes_to_kernel(lang)
+    && include)`, so a non-materializing lang keeps its **visible source** (not a numbered float), burns
+    no number, and draws a located `check` warning naming the lang (`{bash}` is not executed…). Server's
+    `exec::kernel_lang` is **drift-locked** to the core set by a test (the "shared, not guessed" the note
+    asked for). Pinned: two render unit tests (figure + table axes, mutation-checked) + the drift-lock;
+    the sibling `include: false` phantom tests (`hidden_cell_xref_targets.rs`) still green. **Do not
+    re-open.**
+  - **Empty output also phantoms — LANDED 2026-07-19.** `exec.rs` drops output on
+    `inner.trim().is_empty() || !cell.include`, so a `label: fig-x`/`tbl-x` cell that RUNS but prints
+    nothing left a dead anchor render had already committed a number to (verified: `label: fig-silent` on
+    `x = 1+1` → `@fig-silent` links to a "Figure 1" no element carries, and the sole real figure shifts to
+    "Figure 2"). It is a **post-execution** fact — render can't see the output will be empty, and cross-refs
+    are resolved at render time (`cite::process`), so unlike #5 it can't be declined or un-burned; the
+    number/ref are baked. Fix: a pure `empty_labelled_float_warning` (`exec.rs`) drives a build/serve
+    `log::warn` at the output-drop point, naming the anchor + kind (figure/table) and telling the author to
+    drop the label or emit output. Deliberately narrow — `include: false` (render already warns via
+    `unreferenceable_hidden_label`), kernel-unavailable (its `inner` is the non-empty diagnostic, not
+    empty), and unlabelled-empty cells all stay silent; fires on cached replay too (empty output is frozen).
+    Pinned: 2 unit tests (figure + table warn / the three silent cases), each mutation-checked;
+    end-to-end-verified against the real binary. **Do not re-open.**
 
 - **Execution-cache leaks — remainder** (exec/kernel Do-NOT-touch, careful):
   - **Ungraceful-death path (S/M):** no defense vs SIGKILL / closed terminal / crash. Absent:

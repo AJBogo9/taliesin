@@ -75,7 +75,7 @@ fn emit_cell_errors(
     for cell in &cells[range] {
         emit(
             sink,
-            crate::protocol::cell_state(page, &cell.id, "error", None, None),
+            crate::protocol::cell_state(page, &cell.id, "error", None, None, None),
         );
     }
 }
@@ -129,6 +129,22 @@ struct CellRef {
 struct Ran {
     hash: String,
     output: String, // inner output HTML (may be empty)
+}
+
+/// How one run split between replay and re-execution, summed across languages so the
+/// caller can print one legible cache line (DX9): `cached` cells were restored (the warm
+/// in-memory prefix + the disk `_freeze` tail), `ran` cells actually executed.
+#[derive(Default, Clone, Copy)]
+struct CacheTally {
+    cached: usize,
+    ran: usize,
+}
+
+impl std::ops::AddAssign for CacheTally {
+    fn add_assign(&mut self, o: Self) {
+        self.cached += o.cached;
+        self.ran += o.ran;
+    }
 }
 
 /// Per-language warm kernel + the cells it has executed. One per executed language
@@ -371,16 +387,30 @@ impl Executor {
 
         // Map cell block index -> its output block (when non-empty), across langs.
         let mut output_blocks: HashMap<usize, Block> = HashMap::new();
+        let mut tally = CacheTally::default();
         for (lang, cells) in &by_lang {
-            let outputs = self.compute_outputs(lang, cells).await;
+            let (outputs, lang_tally) = self.compute_outputs(lang, cells).await;
+            tally += lang_tally;
             for (cell, inner) in cells.iter().zip(&outputs) {
                 // `include: false` cells run (above) for their kernel-state side
                 // effects but contribute no visible output block.
                 if inner.trim().is_empty() || !cell.include {
+                    // A labelled figure/table cell that ran but emitted nothing left a
+                    // dead `@fig-`/`@tbl-` anchor render already committed to — only
+                    // knowable now, so warn (it can't be un-burned post-execution).
+                    if let Some(w) = empty_labelled_float_warning(cell, inner) {
+                        crate::log::warn(&w);
+                    }
                     continue;
                 }
                 output_blocks.insert(cell.block_index, output_block(cell, inner));
             }
+        }
+        // One legible cache line per run (DX9): only when something replayed, so a cold
+        // run (nothing cached) stays quiet and the "why didn't my cell re-run?" case — an
+        // all-cached replay reporting `· 0 re-ran` — is the one that speaks up.
+        if tally.cached > 0 {
+            crate::log::cache_tally(self.page.as_deref(), tally.cached, tally.ran);
         }
         // A forced re-run (Restart kernel) applies to every language in this pass,
         // then clears. Flush any newly executed outputs to `_freeze/` once.
@@ -400,7 +430,13 @@ impl Executor {
     /// Outputs (inner HTML) for one language's cells: restore the unchanged warm
     /// prefix + any disk-cached tail, and execute the contiguous range in between
     /// (see [`plan`]). Freshly executed, cacheable, non-error outputs are persisted.
-    async fn compute_outputs(&mut self, lang: &'static str, cells: &[CellRef]) -> Vec<String> {
+    /// Also returns a [`CacheTally`] (how many cells replayed vs re-ran) so the caller
+    /// can print one legible cache summary per run (DX9).
+    async fn compute_outputs(
+        &mut self,
+        lang: &'static str,
+        cells: &[CellRef],
+    ) -> (Vec<String>, CacheTally) {
         // The interpreter identity seeds the cumulative hash chain (a different
         // interpreter/version can't serve another's outputs). Computed up front so
         // even a full cold replay — which never boots the kernel — can key the cache.
@@ -440,14 +476,24 @@ impl Executor {
         // in the loop below. `cell_id` is each cell's own id (the id the output block
         // is built from as `{id}-out`), so the client can target that block.
         for (i, cell) in cells.iter().enumerate() {
-            let state = if i < shared || i >= run_end {
-                "done"
+            // The warm prefix and the disk-cached tail are both restored without running,
+            // so tag them `source: "cache"` (DX9) — that's what turns a client's blank `✓`
+            // into `⚡ cached`. The run range is still `queued` (no source yet).
+            let (state, source) = if i < shared || i >= run_end {
+                ("done", Some("cache"))
             } else {
-                "queued"
+                ("queued", None)
             };
             emit(
                 &self.sink,
-                crate::protocol::cell_state(self.page.as_deref(), &cell.id, state, None, None),
+                crate::protocol::cell_state(
+                    self.page.as_deref(),
+                    &cell.id,
+                    state,
+                    None,
+                    None,
+                    source,
+                ),
             );
         }
 
@@ -555,7 +601,14 @@ impl Executor {
                     // (This mid-run dead-kernel path is production-only; toy runs rarely hit it.)
                     emit(
                         &sink,
-                        crate::protocol::cell_state(page.as_deref(), &cell.id, "error", None, None),
+                        crate::protocol::cell_state(
+                            page.as_deref(),
+                            &cell.id,
+                            "error",
+                            None,
+                            None,
+                            None,
+                        ),
                     );
                     outputs.push(KERNEL_DIED_HTML.to_string());
                 } else {
@@ -596,6 +649,7 @@ impl Executor {
                                 "running",
                                 Some(t0),
                                 None,
+                                None,
                             ),
                         );
                         t0
@@ -607,6 +661,10 @@ impl Executor {
                         } else {
                             "done"
                         };
+                        // A cell that actually executed is `source: "fresh"` (DX9), so a
+                        // real "✓ 1.2s" run is never mistaken for a cache restore. Errors
+                        // carry no source.
+                        let source = (state == "done").then_some("fresh");
                         emit(
                             &sink,
                             crate::protocol::cell_state(
@@ -615,6 +673,7 @@ impl Executor {
                                 state,
                                 Some(t0),
                                 Some(now_ms().saturating_sub(t0)),
+                                source,
                             ),
                         );
                     }
@@ -683,7 +742,17 @@ impl Executor {
                 ),
             );
         }
-        outputs
+        // Cache legibility (DX9): the warm prefix `[0, shared)` and the disk tail
+        // `[run_end, len)` were restored without running; `ran_count` is what actually
+        // executed. Observational only — computed after all execution, changes nothing.
+        let cached = shared + cells.len().saturating_sub(run_end);
+        (
+            outputs,
+            CacheTally {
+                cached,
+                ran: ran_count,
+            },
+        )
     }
 
     /// Ensure a live kernel for `lang` before executing. Cases, in order:
@@ -1073,6 +1142,44 @@ fn kernel_unavailable_html(lang: &str, last_error: Option<&str>) -> String {
     )
 }
 
+/// A `label: fig-x`/`tbl-x` cell whose executed output turns out **empty** leaves a
+/// dead cross-reference: the render pass already reserved it a number and registered
+/// `@fig-x`/`@tbl-x` (an optimistic bet, since a figure/table cell normally produces
+/// output), but with no output no element carries the anchor — so `@fig-x` resolves
+/// to a "Figure N" nothing shows and every later float shifts down by one.
+///
+/// This is only knowable *here*: the emptiness is a post-execution fact the render
+/// pass can't see, so — unlike a non-executable lang (`{bash}`, …), declined up front —
+/// it can't be prevented, and the number/ref are already baked. Surface it as a
+/// build/serve warning naming the anchor so the author can drop the label or make the
+/// cell emit output.
+///
+/// Deliberately narrow: `include: false` is excluded (that output is *meant* to be
+/// dropped, and render already warns the label is unreachable via
+/// `unreferenceable_hidden_label`); a kernel-unavailable cell is excluded implicitly,
+/// its `inner` being the non-empty "kernel unavailable" diagnostic rather than empty;
+/// and an unlabelled empty cell (`x = 1`) is normal, not a phantom.
+fn empty_labelled_float_warning(cell: &CellRef, inner: &str) -> Option<String> {
+    if !cell.include || !inner.trim().is_empty() {
+        return None;
+    }
+    let (kind, anchor) = cell
+        .figure
+        .as_ref()
+        .and_then(|f| f.anchor.as_deref())
+        .map(|a| ("figure", a))
+        .or_else(|| {
+            cell.table
+                .as_ref()
+                .and_then(|t| t.anchor.as_deref())
+                .map(|a| ("table", a))
+        })?;
+    Some(format!(
+        "the cell labelled `{anchor}` produced no output, so @{anchor} resolves to a \
+         {kind} number no element carries — remove the label or make the cell emit output"
+    ))
+}
+
 /// Build the output block for a cell. Its id is the cell id + `-out`, and it
 /// points click-to-source at the cell's own source position. A `#| label: fig-x`
 /// cell wraps its output in a numbered `<figure>` so `@fig-x` resolves.
@@ -1160,6 +1267,25 @@ mod tests {
     use super::*;
     use taliesin_core::render::Cell;
 
+    /// The render pass reserves a `@fig-`/`@tbl-` number only for a lang core believes
+    /// executes (`taliesin_core::render::executes_to_kernel`), while `kernel_lang` is
+    /// what actually runs one. If the two sets ever drift, a `label: fig-*` on a lang
+    /// core thinks executes but the kernel does not (or the reverse) re-opens the
+    /// phantom-anchor bug those two functions exist to prevent. Pin them equal — this
+    /// is the "shared executable set" the render-side comment relies on.
+    #[test]
+    fn kernel_lang_agrees_with_cores_executable_set() {
+        for lang in [
+            "python", "r", "bash", "sql", "julia", "js", "mermaid", "ruby", "",
+        ] {
+            assert_eq!(
+                kernel_lang(lang).is_some(),
+                taliesin_core::render::executes_to_kernel(lang),
+                "kernel_lang and executes_to_kernel disagree on {lang:?}"
+            );
+        }
+    }
+
     fn cell(id: &str) -> CellRef {
         CellRef {
             block_index: 0,
@@ -1173,6 +1299,77 @@ mod tests {
             cache: true,
             fig_export: None,
         }
+    }
+
+    /// A `label: fig-x`/`tbl-x` cell that RUNS but prints nothing burns its number +
+    /// dead-links `@fig-x`/`@tbl-x` (render bet on output; exec found none). The
+    /// warning is what turns that silent post-execution phantom into an author-visible
+    /// problem, so it must fire for both a figure and a table label and name the
+    /// anchor. (The number/ref are baked at render time and can't be un-burned here.)
+    #[test]
+    fn empty_output_under_a_figure_or_table_label_warns() {
+        let mut fig = cell("fig-silent");
+        fig.figure = Some(CellFigure {
+            anchor: Some("fig-silent".into()),
+            caption: None,
+            number: "1".into(),
+        });
+        let w = empty_labelled_float_warning(&fig, "   \n ")
+            .expect("an empty-output figure label must warn");
+        assert!(
+            w.contains("fig-silent"),
+            "warning must name the anchor: {w}"
+        );
+        assert!(w.contains("figure"), "warning must say it's a figure: {w}");
+
+        let mut tbl = cell("tbl-silent");
+        tbl.table = Some(CellTable {
+            anchor: Some("tbl-silent".into()),
+            caption: None,
+            number: String::new(),
+        });
+        let w =
+            empty_labelled_float_warning(&tbl, "").expect("an empty-output table label must warn");
+        assert!(
+            w.contains("tbl-silent"),
+            "warning must name the anchor: {w}"
+        );
+        assert!(w.contains("table"), "warning must say it's a table: {w}");
+    }
+
+    /// The warning is precisely scoped to the phantom, so none of the everyday cases
+    /// speak: a figure that DID emit output (the common path), an unlabelled cell that
+    /// happens to print nothing (`x = 1`), and an `include: false` cell (its output is
+    /// meant to be dropped, and render already warned the label is unreachable).
+    #[test]
+    fn empty_output_warning_stays_silent_off_the_phantom_path() {
+        let mut fig = cell("fig-real");
+        fig.figure = Some(CellFigure {
+            anchor: Some("fig-real".into()),
+            caption: None,
+            number: "1".into(),
+        });
+        assert!(
+            empty_labelled_float_warning(&fig, "<b>a real output</b>").is_none(),
+            "a figure that produced output is not a phantom"
+        );
+
+        assert!(
+            empty_labelled_float_warning(&cell("plain"), "").is_none(),
+            "an unlabelled empty cell is normal, not a phantom"
+        );
+
+        let mut hidden = cell("fig-hidden");
+        hidden.include = false;
+        hidden.figure = Some(CellFigure {
+            anchor: Some("fig-hidden".into()),
+            caption: None,
+            number: "1".into(),
+        });
+        assert!(
+            empty_labelled_float_warning(&hidden, "").is_none(),
+            "include: false drops output by design (render already warned)"
+        );
     }
 
     fn python_cell_block(id: &str) -> Block {

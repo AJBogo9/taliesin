@@ -26,7 +26,7 @@
  * @typedef {{ type: "title", title: ?string }} TitleMsg
  * @typedef {{ type: "style", css: string }} StyleMsg
  * @typedef {{ type: "build-state", page: ?string, phase: "warming-kernel"|"executing"|"idle"|"error", ran: number, total: number, lang: string }} BuildStateMsg
- * @typedef {{ type: "cell-state", page: ?string, cell_id: string, state: "queued"|"running"|"done"|"error", started_ms: ?number, duration_ms: ?number }} CellStateMsg
+ * @typedef {{ type: "cell-state", page: ?string, cell_id: string, state: "queued"|"running"|"done"|"error", started_ms: ?number, duration_ms: ?number, source: ?("cache"|"fresh") }} CellStateMsg
  * @typedef {FullRenderMsg|DiagnosticsMsg|UpdateMsg|InsertMsg|RemoveMsg|SetMetaMsg|ErrorMsg|ReloadMsg|TitleMsg|StyleMsg|BuildStateMsg|CellStateMsg} ServerMessage
  */
 (() => {
@@ -455,7 +455,16 @@
       }
     });
 
-    panel.append(devRow("Status", statusEl), devRow("Words", wordCountEl), devRow("Source", srcHint), kernelBtn);
+    // Cache legibility (DX9): tie the ⚡ cached badges + the console "restored N cached
+    // cell(s)" line to how you force a re-run, right beside the button that does it.
+    const cacheHint = document.createElement("span");
+    cacheHint.id = "tali-cache-hint";
+    cacheHint.textContent = "⚡ cached cells replay instantly";
+    cacheHint.title =
+      "Cells marked ⚡ replayed from the _freeze cache without running. " +
+      "Restart kernel (above) or set TALIESIN_NO_CACHE=1 to force a fresh re-run.";
+
+    panel.append(devRow("Status", statusEl), devRow("Words", wordCountEl), devRow("Source", srcHint), kernelBtn, devRow("Cache", cacheHint));
 
     // Draft pages (preview only): a count that expands to click-to-open links. The server
     // sets window.TALIESIN_DRAFTS on site previews; absent/empty on single-doc + builds.
@@ -472,6 +481,37 @@
         draftList.appendChild(a);
       });
       panel.append(devRow("Drafts", draftCount), draftList);
+    }
+
+    // OG social-card preview (DX13, site preview only): render the current page's branded
+    // 1200×630 card on demand so an author can see what gets shared without a full build.
+    // Gated on the site preview's page identity (window.TALIESIN_WS_PATH carries ?page=<rel>);
+    // absent on single-doc previews + static builds, which have no Site/card concept. The
+    // image loads lazily — only fetched on first reveal, so it costs nothing until asked for.
+    const wsPath = window.TALIESIN_WS_PATH || "";
+    const pageParam = (wsPath.match(/[?&]page=([^&]*)/) || [])[1];
+    if (pageParam) {
+      const cardBtn = document.createElement("button");
+      cardBtn.className = "tali-dev-ctl";
+      cardBtn.type = "button";
+      cardBtn.textContent = "Show OG card";
+      cardBtn.title = "Preview this page's branded 1200×630 social card (the image baked at build for link unfurls)";
+      const cardImg = document.createElement("img");
+      cardImg.className = "tali-dev-card";
+      cardImg.alt = "Social card preview for this page";
+      cardImg.hidden = true;
+      cardBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (cardImg.hidden) {
+          if (!cardImg.getAttribute("src")) cardImg.src = "/og-preview?page=" + pageParam;
+          cardImg.hidden = false;
+          cardBtn.textContent = "Hide OG card";
+        } else {
+          cardImg.hidden = true;
+          cardBtn.textContent = "Show OG card";
+        }
+      });
+      panel.append(cardBtn, cardImg);
     }
 
     // The dev menu carries its own quick light/dark toggle (wired by the shared theme_head)
@@ -570,6 +610,9 @@
     var out = elById(msg.cell_id + "-out") || elById(msg.cell_id);
     if (!out) return;
     out.setAttribute("data-qmd-cell-state", msg.state);
+    // Provenance (DX9): a `done` cell is either freshly run or a cache replay. Tagging the
+    // block lets CSS mute a cached cell's border so it reads as "available, not just run".
+    out.setAttribute("data-qmd-cell-source", msg.source || "");
     var badge = out.querySelector(":scope > .tali-cell-badge") || (function () {
       var b = document.createElement("span"); b.className = "tali-cell-badge";
       out.insertBefore(b, out.firstChild); return b;
@@ -581,7 +624,10 @@
     } else {
       delete runningTimers[msg.cell_id];
       if (msg.state === "error") activeCell = msg.cell_id; // keep erroring cell as scroll target
-      if (msg.state === "done") badge.textContent = "✓ " + (msg.duration_ms != null ? fmtElapsed(msg.duration_ms) : "");
+      // A cache replay shows "⚡ cached" instead of the blank "✓" it used to (a replay
+      // carries no duration, so "✓ " with nothing after it read as a 0ms run); a fresh run
+      // keeps "✓ 1.2s".
+      if (msg.state === "done") badge.textContent = msg.source === "cache" ? "⚡ cached" : "✓ " + (msg.duration_ms != null ? fmtElapsed(msg.duration_ms) : "");
       else if (msg.state === "error") badge.textContent = "✕";
       else badge.textContent = "⏳"; // queued
     }

@@ -176,6 +176,27 @@ pub fn exec(page: Option<&str>, done: usize, total: usize) {
     }
 }
 
+/// The body of the closing cache summary (DX9), pure so its wording + pluralization are
+/// unit-testable: `N` cells replayed from cache (the warm in-memory prefix + the disk
+/// `_freeze` tail), `M` re-ran fresh. Answers "why didn't my cell re-run?" — the info was
+/// always in the freeze plan, just never surfaced.
+fn cache_tally_body(cached: usize, ran: usize) -> String {
+    format!(
+        "restored {cached} cached cell{} · {ran} re-ran",
+        if cached == 1 { "" } else { "s" }
+    )
+}
+
+/// The closing cache summary, printed once per run (only when at least one cell replayed).
+/// `page` names the document on a multi-page build, where pages run concurrently.
+pub fn cache_tally(page: Option<&str>, cached: usize, ran: usize) {
+    let body = cache_tally_body(cached, ran);
+    match page {
+        Some(p) => line(Style::Exec, &format!("{p}  {body}")),
+        None => line(Style::Exec, &body),
+    }
+}
+
 /// General informational message: a note about what is about to happen or is winding
 /// down. It gets its own tag — reusing the green `built` tag made a build *start* print
 /// `built building with…` and Ctrl-C print `built shutting down…`, both reading as
@@ -195,6 +216,15 @@ pub fn error(msg: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cache_tally_body_reads_naturally_and_pluralizes() {
+        // The all-cached replay is exactly the "why didn't my cell re-run?" case: it must
+        // still speak (0 re-ran), and the count must be real, not hard-coded.
+        assert_eq!(cache_tally_body(5, 0), "restored 5 cached cells · 0 re-ran");
+        assert_eq!(cache_tally_body(1, 2), "restored 1 cached cell · 2 re-ran");
+        assert_eq!(cache_tally_body(3, 1), "restored 3 cached cells · 1 re-ran");
+    }
 
     #[test]
     fn ordinary_locations_are_untouched() {
