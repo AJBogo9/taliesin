@@ -670,8 +670,8 @@ fn build_container(
             "<div class=\"tali-scrolly\"{data}{name_attr}>{hidden}<div class=\"scrolly-steps\">{steps}</div><div class=\"scrolly-stage\">{stage}</div></div>"
         )
     } else if let Some(kind) = attrs.theorem_kind() {
-        let body = concat(&inner);
         if kind == "proof" {
+            let body = concat(&inner);
             // Unnumbered, not cross-referenceable (matches common convention). Auto-QED.
             let head = attrs
                 .get("title")
@@ -697,13 +697,29 @@ fn build_container(
             // group_divs, before cite::process), so numbering stays document-ordered.
             let (name, style) = theorem_meta(kind);
             let id_attr = id_attr(attrs.id.as_deref());
+            // Title: an explicit `title="..."`, else a leading heading (the same gesture that
+            // names a callout, so a theorem led by a heading names the box instead of rendering
+            // the heading as body), else nothing. A hoisted heading that carried an xref anchor
+            // keeps its id on the title span so `@thm-x`/`#thm-x` still resolves + scrolls here.
             let title = match attrs.get("title") {
                 Some(t) => format!(
                     " <span class=\"tali-theorem-title\">({})</span>",
                     html_escape(t)
                 ),
+                None if inner.first().is_some_and(|b| is_heading(&b.html)) => {
+                    let heading = inner.remove(0).html;
+                    let id = extract_attr(&heading, "id")
+                        .filter(|id| crate::cite::is_xref_anchor(id))
+                        .map(|hid| format!(" id=\"{}\"", escape_attr(&hid)))
+                        .unwrap_or_default();
+                    format!(
+                        " <span class=\"tali-theorem-title\"{id}>({})</span>",
+                        strip_tags(&heading)
+                    )
+                }
                 None => String::new(),
             };
+            let body = concat(&inner);
             format!(
                 "<div class=\"tali-theorem tali-theorem-{kind} tali-thm-style-{style}\"{id_attr} data-qmd-theorem-kind=\"{kind}\"{data}><p class=\"tali-theorem-head\"><span class=\"tali-theorem-label\">{name}<span class=\"tali-theorem-number\"></span></span>{title}</p><div class=\"tali-theorem-body\">{body}</div></div>"
             )

@@ -3204,6 +3204,39 @@ fn theorem_div_emits_styled_block_with_number_slot() {
     );
 }
 
+/// PL17: a theorem led by a heading adopts it as the parenthetical title (the same gesture
+/// that names a callout), instead of rendering the heading as body. A hoisted heading keeps
+/// an xref anchor on the title span, and an explicit `title="..."` still wins.
+#[test]
+fn theorem_adopts_a_leading_heading_as_its_title() {
+    let doc =
+        render_document("::: {.theorem}\n### Pythagoras\n\nThe square of the hypotenuse.\n:::\n");
+    let h = &doc.blocks[0].html;
+    assert!(
+        h.contains("<span class=\"tali-theorem-title\">(Pythagoras)</span>"),
+        "leading heading should become the parenthetical title: {h}"
+    );
+    assert!(
+        !h.contains("Pythagoras</h"),
+        "the hoisted heading must not also render as a body heading: {h}"
+    );
+    // A hoisted heading that carried an xref anchor keeps its id on the title span, so a
+    // pre-existing `@thm-x`/`#thm-x` still resolves + scrolls here.
+    let doc2 = render_document("::: {.theorem}\n### Named {#thm-x}\n\nBody.\n:::\n");
+    let h2 = &doc2.blocks[0].html;
+    assert!(
+        h2.contains("<span class=\"tali-theorem-title\" id=\"thm-x\">(Named)</span>"),
+        "xref anchor preserved on the title span: {h2}"
+    );
+    // An explicit `title="..."` still wins; the heading then stays in the body.
+    let doc3 = render_document("::: {.theorem title=\"Explicit\"}\n### Ignored\n\nBody.\n:::\n");
+    let h3 = &doc3.blocks[0].html;
+    assert!(
+        h3.contains("(Explicit)") && h3.contains("Ignored</h"),
+        "explicit title= wins and the heading stays body: {h3}"
+    );
+}
+
 #[test]
 fn theorem_styles_map_kinds() {
     let d = render_document("::: {.definition}\nA set.\n:::\n");
