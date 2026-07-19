@@ -403,11 +403,20 @@ fn strict_build_fails_on_everything_check_fails_on() {
         String::from_utf8_lossy(&strict.stderr)
     );
 
-    // Every diagnostic `check` reports is reported by the build, verbatim and located.
+    // Every diagnostic `check` reports is reported by the build, located. The two surfaces
+    // decorate the SAME located defect differently: `check`'s linter line is
+    // `file:line: severity[CODE]: message` (PL1), while `build --strict` logs it via `log::warn`
+    // as `warn  file:line: message` (the log level already conveys severity). So compare on the
+    // located message core, stripping `check`'s `severity[CODE]: ` insertion.
     let check_msgs: Vec<String> = String::from_utf8_lossy(&check.stderr)
         .lines()
-        .filter(|l| !l.trim().is_empty() && !l.contains(" problem"))
-        .map(|l| l.trim().to_string())
+        .filter(|l| l.contains("error[") || l.contains("warning["))
+        .map(|l| {
+            let l = l.trim();
+            let (loc, rest) = l.split_once(": ").expect("a located finding line");
+            let msg = rest.split_once("]: ").map(|(_, m)| m).unwrap_or(rest);
+            format!("{loc}: {msg}")
+        })
         .collect();
     assert_eq!(
         check_msgs.len(),
