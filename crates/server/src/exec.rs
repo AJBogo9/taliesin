@@ -395,6 +395,12 @@ impl Executor {
                 // `include: false` cells run (above) for their kernel-state side
                 // effects but contribute no visible output block.
                 if inner.trim().is_empty() || !cell.include {
+                    // A labelled figure/table cell that ran but emitted nothing left a
+                    // dead `@fig-`/`@tbl-` anchor render already committed to — only
+                    // knowable now, so warn (it can't be un-burned post-execution).
+                    if let Some(w) = empty_labelled_float_warning(cell, inner) {
+                        crate::log::warn(&w);
+                    }
                     continue;
                 }
                 output_blocks.insert(cell.block_index, output_block(cell, inner));
@@ -1136,6 +1142,44 @@ fn kernel_unavailable_html(lang: &str, last_error: Option<&str>) -> String {
     )
 }
 
+/// A `label: fig-x`/`tbl-x` cell whose executed output turns out **empty** leaves a
+/// dead cross-reference: the render pass already reserved it a number and registered
+/// `@fig-x`/`@tbl-x` (an optimistic bet, since a figure/table cell normally produces
+/// output), but with no output no element carries the anchor — so `@fig-x` resolves
+/// to a "Figure N" nothing shows and every later float shifts down by one.
+///
+/// This is only knowable *here*: the emptiness is a post-execution fact the render
+/// pass can't see, so — unlike a non-executable lang (`{bash}`, …), declined up front —
+/// it can't be prevented, and the number/ref are already baked. Surface it as a
+/// build/serve warning naming the anchor so the author can drop the label or make the
+/// cell emit output.
+///
+/// Deliberately narrow: `include: false` is excluded (that output is *meant* to be
+/// dropped, and render already warns the label is unreachable via
+/// `unreferenceable_hidden_label`); a kernel-unavailable cell is excluded implicitly,
+/// its `inner` being the non-empty "kernel unavailable" diagnostic rather than empty;
+/// and an unlabelled empty cell (`x = 1`) is normal, not a phantom.
+fn empty_labelled_float_warning(cell: &CellRef, inner: &str) -> Option<String> {
+    if !cell.include || !inner.trim().is_empty() {
+        return None;
+    }
+    let (kind, anchor) = cell
+        .figure
+        .as_ref()
+        .and_then(|f| f.anchor.as_deref())
+        .map(|a| ("figure", a))
+        .or_else(|| {
+            cell.table
+                .as_ref()
+                .and_then(|t| t.anchor.as_deref())
+                .map(|a| ("table", a))
+        })?;
+    Some(format!(
+        "the cell labelled `{anchor}` produced no output, so @{anchor} resolves to a \
+         {kind} number no element carries — remove the label or make the cell emit output"
+    ))
+}
+
 /// Build the output block for a cell. Its id is the cell id + `-out`, and it
 /// points click-to-source at the cell's own source position. A `#| label: fig-x`
 /// cell wraps its output in a numbered `<figure>` so `@fig-x` resolves.
@@ -1255,6 +1299,77 @@ mod tests {
             cache: true,
             fig_export: None,
         }
+    }
+
+    /// A `label: fig-x`/`tbl-x` cell that RUNS but prints nothing burns its number +
+    /// dead-links `@fig-x`/`@tbl-x` (render bet on output; exec found none). The
+    /// warning is what turns that silent post-execution phantom into an author-visible
+    /// problem, so it must fire for both a figure and a table label and name the
+    /// anchor. (The number/ref are baked at render time and can't be un-burned here.)
+    #[test]
+    fn empty_output_under_a_figure_or_table_label_warns() {
+        let mut fig = cell("fig-silent");
+        fig.figure = Some(CellFigure {
+            anchor: Some("fig-silent".into()),
+            caption: None,
+            number: "1".into(),
+        });
+        let w = empty_labelled_float_warning(&fig, "   \n ")
+            .expect("an empty-output figure label must warn");
+        assert!(
+            w.contains("fig-silent"),
+            "warning must name the anchor: {w}"
+        );
+        assert!(w.contains("figure"), "warning must say it's a figure: {w}");
+
+        let mut tbl = cell("tbl-silent");
+        tbl.table = Some(CellTable {
+            anchor: Some("tbl-silent".into()),
+            caption: None,
+            number: String::new(),
+        });
+        let w =
+            empty_labelled_float_warning(&tbl, "").expect("an empty-output table label must warn");
+        assert!(
+            w.contains("tbl-silent"),
+            "warning must name the anchor: {w}"
+        );
+        assert!(w.contains("table"), "warning must say it's a table: {w}");
+    }
+
+    /// The warning is precisely scoped to the phantom, so none of the everyday cases
+    /// speak: a figure that DID emit output (the common path), an unlabelled cell that
+    /// happens to print nothing (`x = 1`), and an `include: false` cell (its output is
+    /// meant to be dropped, and render already warned the label is unreachable).
+    #[test]
+    fn empty_output_warning_stays_silent_off_the_phantom_path() {
+        let mut fig = cell("fig-real");
+        fig.figure = Some(CellFigure {
+            anchor: Some("fig-real".into()),
+            caption: None,
+            number: "1".into(),
+        });
+        assert!(
+            empty_labelled_float_warning(&fig, "<b>a real output</b>").is_none(),
+            "a figure that produced output is not a phantom"
+        );
+
+        assert!(
+            empty_labelled_float_warning(&cell("plain"), "").is_none(),
+            "an unlabelled empty cell is normal, not a phantom"
+        );
+
+        let mut hidden = cell("fig-hidden");
+        hidden.include = false;
+        hidden.figure = Some(CellFigure {
+            anchor: Some("fig-hidden".into()),
+            caption: None,
+            number: "1".into(),
+        });
+        assert!(
+            empty_labelled_float_warning(&hidden, "").is_none(),
+            "include: false drops output by design (render already warned)"
+        );
     }
 
     fn python_cell_block(id: &str) -> Block {

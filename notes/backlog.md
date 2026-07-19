@@ -954,9 +954,9 @@ most of Tier 2 are *surfacing existing capability*, not net-new.
   real locations** (page A's line and page B's line), so the fix must first decide what to point
   at — the second definition, both, or a per-page list. Design the semantics before the plumbing.
   Corpus-exercised (nothing ships wrong today), so P3.
-- **Phantom xref anchors — the two triggers §2 #5 left open** (found by the adversarial review of
-  the #5 fix, 2026-07-17; both reproduced on the running product, both pre-existing, neither shipping
-  in any corpus doc):
+- **Phantom xref anchors — the two triggers §2 #5 left open — BOTH LANDED (2026-07-19).** (found by the
+  adversarial review of the #5 fix, 2026-07-17; both reproduced on the running product, both pre-existing,
+  neither shipping in any corpus doc. §2 #5 is now fully closed.)
   - **Non-executed, non-render-emitted langs (`{bash}`, `{sql}`, `{julia}`, …) — LANDED 2026-07-19.**
     #5 gated on `include`, but a lang that is neither executed nor emitted at render time had NO
     figure/table for *any* `include`, yet a `label: fig-x`/`tbl-x` on one still burned a number +
@@ -969,11 +969,19 @@ most of Tier 2 are *surfacing existing capability*, not net-new.
     asked for). Pinned: two render unit tests (figure + table axes, mutation-checked) + the drift-lock;
     the sibling `include: false` phantom tests (`hidden_cell_xref_targets.rs`) still green. **Do not
     re-open.**
-  - **Empty output also phantoms** (the still-open twin). `exec.rs` drops output on `inner.trim().is_empty() || !cell.include`,
-    so a labelled cell that runs but prints nothing registers an anchor no element carries (verified:
-    `label: fig-silent` on a `x = 1+1` cell → dead `@fig-silent`). NOT knowable at render time (it is
-    a post-execution fact in the server crate), so unlike #5 it can't be fixed in the render pass;
-    wants an exec-side decline-or-warn once the output is known empty.
+  - **Empty output also phantoms — LANDED 2026-07-19.** `exec.rs` drops output on
+    `inner.trim().is_empty() || !cell.include`, so a `label: fig-x`/`tbl-x` cell that RUNS but prints
+    nothing left a dead anchor render had already committed a number to (verified: `label: fig-silent` on
+    `x = 1+1` → `@fig-silent` links to a "Figure 1" no element carries, and the sole real figure shifts to
+    "Figure 2"). It is a **post-execution** fact — render can't see the output will be empty, and cross-refs
+    are resolved at render time (`cite::process`), so unlike #5 it can't be declined or un-burned; the
+    number/ref are baked. Fix: a pure `empty_labelled_float_warning` (`exec.rs`) drives a build/serve
+    `log::warn` at the output-drop point, naming the anchor + kind (figure/table) and telling the author to
+    drop the label or emit output. Deliberately narrow — `include: false` (render already warns via
+    `unreferenceable_hidden_label`), kernel-unavailable (its `inner` is the non-empty diagnostic, not
+    empty), and unlabelled-empty cells all stay silent; fires on cached replay too (empty output is frozen).
+    Pinned: 2 unit tests (figure + table warn / the three silent cases), each mutation-checked;
+    end-to-end-verified against the real binary. **Do not re-open.**
 
 - **Execution-cache leaks — remainder** (exec/kernel Do-NOT-touch, careful):
   - **Ungraceful-death path (S/M):** no defense vs SIGKILL / closed terminal / crash. Absent:
