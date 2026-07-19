@@ -370,6 +370,58 @@ mod jsonld_tests {
     }
 
     #[test]
+    fn a_book_chapter_gets_its_own_distinct_og_card_not_one_site_wide() {
+        // C-PUB-1 (PMF audit): "the amateur tell is one site-wide card." A website page
+        // getting its own card is pinned (corpus.rs, tech-blog posts), but a BOOK routes
+        // its chapters through the same `render_page` via the `is_book()` chrome branch,
+        // and nothing pinned that a book chapter still emits og:image/twitter:card there,
+        // nor that each chapter's card is DISTINCT. A future divergence of the book head
+        // path could drop `social_head` with every website test still green.
+        let root = write_site(
+            "bookcards",
+            &[
+                (
+                    "_site.yml",
+                    "title: A Book\nurl: https://ex.com\nchapters:\n  - index.tmd\n  - methods.tmd\n",
+                ),
+                ("index.tmd", "---\ntitle: Introduction\n---\n\nWelcome.\n"),
+                ("methods.tmd", "---\ntitle: Methodology\n---\n\nHow.\n"),
+            ],
+        );
+        let site = Site::discover(&root);
+        assert!(site.is_book(), "chapters: makes this a book");
+
+        // Pull the og:image URL out of a rendered chapter, asserting it carries the
+        // large-image twitter card on the way (a card page is summary_large_image, never
+        // the imageless `summary`).
+        let og_image = |rel: &str| -> String {
+            let html = site.render_page(rel).expect("chapter renders");
+            assert!(
+                html.contains(r#"name="twitter:card" content="summary_large_image""#),
+                "{rel}: a book chapter with a card must be summary_large_image, not summary"
+            );
+            let key = r#"property="og:image" content=""#;
+            let i = html
+                .find(key)
+                .unwrap_or_else(|| panic!("{rel}: a book chapter must emit og:image:\n{html}"));
+            let rest = &html[i + key.len()..];
+            rest[..rest.find('"').expect("closing quote")].to_string()
+        };
+        let intro = og_image("index.tmd");
+        let methods = og_image("methods.tmd");
+        assert!(
+            intro.starts_with("https://ex.com/og/") && methods.starts_with("https://ex.com/og/"),
+            "each chapter's og:image is the branded build card (got {intro} / {methods})"
+        );
+        // The load-bearing assertion: the two chapters do NOT share one site-wide card.
+        assert_ne!(
+            intro, methods,
+            "each chapter must get its OWN card (distinct hash), not one site-wide image"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn error_page_emits_no_card_image() {
         // Finding A: the build skips the 404 card, so social_head must not point og:image at a
         // card file that is never written.

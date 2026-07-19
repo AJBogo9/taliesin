@@ -975,11 +975,25 @@ bare (the family-prefix rule holds for one family) — document or reconsider?
 
 ## Tier 2 — hardening (P3)
 
-- **Verify OG-card coverage on decks + book chapters; emit `_redirects`/`_headers` (PMF C-PUB-1).**
-  `card::card_url` gates on `url:` per page (`site/meta.rs`); confirm a standalone deck and a book
-  chapter each emit `og:image`/`twitter:card` (the amateur tell is one site-wide card), and that
-  `taliesin publish` writes `_redirects`/`_headers` so pretty URLs and caching hold on Cloudflare
-  Pages. Verify-first, may already hold. value med / effort S. Detail: `2026-07-18-pmf-audit.md`.
+- **OG-card coverage (PMF C-PUB-1) — VERIFIED 2026-07-19; book chapters now pinned. Two residuals.**
+  The build's card loop covers every `site.pages` entry, and `render_page` emits `social_head` for
+  website AND book pages through the one shared method (only the `is_book()` *chrome* branch differs,
+  mod.rs:535/548). So **a book chapter already gets its own distinct card** — the "amateur tell = one
+  site-wide card" concern does not bite, now pinned directly by
+  `meta.rs::a_book_chapter_gets_its_own_distinct_og_card_not_one_site_wide` (two chapters → two
+  distinct `/og/<hash>.png`; mutation-checked: collapse `card_spec` to the site title and the
+  distinctness assert fires). Two residuals, each needing a ruling, NOT a build:
+  - **Decks emit no `og:image`/`social_head` at all.** An embedded/standalone deck builds via the
+    context-free `render_doc_to_page` (no `Site`/`Page`); a single-doc deck build has no `url:`, so a
+    card is impossible regardless. Embedded decks are deliberately OUT of nav/search (they are
+    components of the embedding page, which HAS its own card), so giving a secondary artifact its own
+    social card is a **scope question** (and needs site context threaded into the deck build), not the
+    clean S-effort fix the entry assumed. Owner ruling first.
+  - **`_redirects`/`_headers` are preserved, never generated** (`build.rs:1881` treats them as
+    author-placed deploy metadata the sweep keeps; `stale_sweep.rs` pins that). Auto-generating them
+    is a "perfect the default vs add a knob" call — Cloudflare Pages already serves pretty URLs from
+    the emitted file layout — so LEAVE as-is unless a real deploy proves it needs one.
+    Detail: `2026-07-18-pmf-audit.md`.
 - **`mounts:` live serve/discovery is untested** (C5's only remaining gap, filed 2026-07-18
   after C3/C4 landed). Everything else about `mounts:` is pinned — config-parse + typo-warn
   (`config/mod.rs`), `map` JSON surfacing (`map_cli.rs`), `check` cross-mount link-tolerance
@@ -1098,17 +1112,16 @@ bare (the family-prefix rule holds for one family) — document or reconsider?
     `TALIESIN_NO_EXEC=1`. Hygiene, not perf (0.25 s vs 0.27 s on a prose-only site).
   - R stream/stderr leaks raw ANSI into HTML (`kernel.rs` `Output::Stream` emits `esc(text)` with no
     `strip_ansi`, do-not-touch).
-- **Interpreter selection is silent + has no project-local override (DX; S+M).** Resolved once at
-  `exec.rs:217` (`TALIESIN_PYTHON` else `python3`; `TALIESIN_R` else `R`). Two gaps bit a real user
-  (2026-07-11: a global `TALIESIN_PYTHON` in `~/.zshrc` errored a whole book's ~35 cells):
-  - **No "which python?" signal (S, highest-leverage).** A dep-less interpreter is indistinguishable
-    from a code error. Log `executing cells with <abs path>` at build start, and/or a `taliesin
-    check` reporting interpreter + `ipykernel` presence (like `quarto check`). Lives in the
-    build/serve entry, not the Do-NOT-touch core.
-  - **No project-local declaration (M).** Add a `python:` / `r:` field in `_site.yml` (parsed in
-    `schema.rs`/`frontmatter.rs`, threaded into `Executor::build`), and/or auto-detect a sibling
-    `.venv/bin/python` when the env var is unset. Env var stays the override; the field wins for
-    reproducibility. (Downstream `invertible-speech-disentanglement` BUG-002.)
+- ~~**Interpreter selection is silent + has no project-local override (DX; S+M).**~~ **DONE — all
+  of it shipped; struck as rot 2026-07-19** (grepped the named symbols per this file's own rule).
+  Live today: the **"which python?" signal** (`exec.rs::ensure_kernel` logs `{lang} -> {path} (from
+  {provenance})` once per executor, at kernel boot); **`taliesin doctor`** (DX4) + `check` report the
+  interpreter + `ipykernel`/`IRkernel` presence; and the **project-local `python:`/`r:` `_site.yml`
+  fields + `.venv` auto-detect** resolve through `interpreter.rs` (`Provenance`/`Resolved`,
+  `set_interpreters` at every build/serve entry — build.rs:643/1062/1555; `config/mod.rs:59` parse +
+  precedence, unit-tested). Env var stays the override; the field wins for reproducibility, exactly as
+  scoped. **Do not re-add or re-scope from the old note** (the `exec.rs:217` line it named no longer
+  exists). (Downstream `invertible-speech-disentanglement` BUG-002 is satisfied.)
 - **`assets/js/*` `tsc`/`@ts-check` pass** (own large session). The web-client tier is done + in CI;
   remaining is `crates/core/assets/js` (measured 812 errors on a throwaway strict jsconfig; `deck.js`
   402). Needs ambient globals + a config compiling the concatenated `code-enhance/` fragments as one
