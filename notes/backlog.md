@@ -1066,7 +1066,8 @@ is the best single first move (both S · high, both close a silent failure).
     end-to-end-verified against the real binary. **Do not re-open.**
 
 - **Execution-cache leaks — remainder** (exec/kernel Do-NOT-touch, careful):
-  - **Ungraceful-death path (S/M) — warm-pool half LANDED 2026-07-19; two sub-parts remain.**
+  - **Ungraceful-death path (S/M) — warm-pool + cold-kernel halves LANDED 2026-07-19; the
+    `/tmp` sweep + an R-cold-kernel residual remain.**
     (Measured baseline: `kill -9` on a real preview orphaned a 5-proc / ~243 MB forkserver
     subtree; 22 h+ orphans + 4199 stale `/tmp/tali-*` dirs were found in the wild.)
     - ~~warm-pool forkserver subtree orphans on SIGKILL~~ **DONE:** the helper now self-reaps
@@ -1077,11 +1078,19 @@ is the best single first move (both S · high, both close a silent failure).
       and can fire on a parent *thread* exit in the tokio runtime; stdin EOF is parent *process*
       death and reaps the whole subtree. Pinned by `ungraceful_parent_death_reaps_the_forkserver_subtree`
       (mutation-checked); verified e2e (5-proc/243 MB → 0 on SIGKILL). **Do not re-open.**
-    - **Cold-kernel orphan (NEW, found by the repro; still open).** A single-doc preview cold-starts
-      the kernel (no warm pool), a direct child of taliesin with `stdin(null)`; on SIGKILL it survives
-      orphaned and leaks its `/tmp/tali-kernel-*` dir (reproduced). No stdin-EOF hook (ipykernel doesn't
-      read stdin), so the clean fix is ipykernel's `ParentPollerUnix` (process-death based, safe) — NOT
-      a bare PDEATHSIG (thread-exit hazard + silent mid-session kernel-state loss). `kernel.rs:561`.
+    - ~~Cold-kernel orphan~~ **DONE (2026-07-19, `ac1da85`):** the cold **Python** kernel's argv now
+      carries `--IPKernelApp.parent_handle=<taliesin pid>`, arming ipykernel's `ParentPollerUnix` to
+      self-exit when its ppid changes. **Correction to the plan above, verified empirically — do not
+      re-scope from the old note:** `parent_handle=1` (the naive form) is a **NO-OP** in ipykernel 7
+      (`init_poller` disables the poller for `== 1`; the old `ppid==init` mode is subreaper-fragile),
+      and the measured orphan reparents to a **subreaper, not init**, so the REAL pid is required to arm
+      the robust "ppid changed" path. Still NOT `PR_SET_PDEATHSIG` (fires on a tokio parent-*thread*
+      exit → could kill a live kernel). **R residual (still open, low value):** IRkernel has no
+      `ParentPollerUnix` equivalent, so R cold kernels still orphan; there is no clean fix (PDEATHSIG is
+      the only lever and it is hazardous), and R is rarely the cold single-doc path. Pinned by
+      `cold_python_kernel_argv_arms_parent_death_reaping` + the e2e
+      `cold_kernel_self_reaps_on_ungraceful_parent_death` (self-re-exec; both mutation-checked; verified
+      e2e on a real preview). `crates/server/src/kernel.rs`.
     - **Stale-`/tmp`-dir sweep (still open; backlog premise was wrong).** The runtime dirs
       (`tali-warmpool-<uuid>`, `tali-kernel-<uuid>`, `tali-interp-<name>`) are **UUID/name-named — no
       owner pid**, so "sweep dirs whose owner pid is dead" cannot work as written. The bulk of the 4199
