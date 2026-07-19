@@ -52,10 +52,7 @@ pub(crate) fn cmd_init(args: &[String]) -> ExitCode {
                 Some("json") => json = true,
                 Some("human") => json = false,
                 other => {
-                    log::error(&format!(
-                        "--format expects human or json (got {})",
-                        other.unwrap_or("nothing")
-                    ));
+                    log::error(&serve::bad_format_error(other));
                     return ExitCode::FAILURE;
                 }
             },
@@ -497,7 +494,9 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
     let mut it = args[2..].iter();
     while let Some(a) = it.next() {
         match a.as_str() {
-            "--dir" | "--out" => {
+            // `--dir` = the scaffold-input root (where the project lives). The undocumented
+            // `--out` alias was dropped — `--out` is the output-dir flag on build/publish.
+            "--dir" => {
                 if let Some(v) = it.next() {
                     root = v.clone();
                 }
@@ -511,10 +510,7 @@ pub(crate) fn cmd_new(args: &[String]) -> ExitCode {
                 Some("json") => json = true,
                 Some("human") => json = false,
                 other => {
-                    log::error(&format!(
-                        "--format expects human or json (got {})",
-                        other.unwrap_or("nothing")
-                    ));
+                    log::error(&serve::bad_format_error(other));
                     return ExitCode::FAILURE;
                 }
             },

@@ -64,12 +64,7 @@ fn parse_publish_args(args: &[String]) -> Result<PublishArgs<'_>, String> {
         match a.as_str() {
             "--format" => match it.next().map(|s| s.as_str()) {
                 Some(v) if v == "human" || v == "json" => format = v,
-                other => {
-                    return Err(format!(
-                        "error: --format expects human or json (got {})",
-                        other.unwrap_or("nothing")
-                    ));
-                }
+                other => return Err(format!("error: {}", crate::serve::bad_format_error(other))),
             },
             // `--json`: clig.dev shorthand for `--format json`.
             "--json" => format = "json",
@@ -82,7 +77,9 @@ fn parse_publish_args(args: &[String]) -> Result<PublishArgs<'_>, String> {
                     );
                 }
             },
-            "--out" | "--dir" => match it.next().map(|s| s.as_str()) {
+            // `--out` = the output dir. The undocumented `--dir` alias was dropped
+            // (`--dir` is reserved for the scaffold-input flag on `init`/`new`).
+            "--out" => match it.next().map(|s| s.as_str()) {
                 Some(v) if !v.starts_with("--") => out_dir = Some(v),
                 _ => {
                     return Err(format!(
@@ -446,6 +443,14 @@ mod tests {
             parse_publish_args(&argv(&["book"])).unwrap().format,
             "human"
         );
+    }
+
+    /// PL18: a bad `--format` value uses the one shared wording (`serve::bad_format_error`),
+    /// so the same mistake reads identically on every subcommand.
+    #[test]
+    fn bad_format_value_uses_the_shared_wording() {
+        let err = parse_publish_args(&argv(&["book", "--format", "xml"])).unwrap_err();
+        assert_eq!(err, "error: --format expects human or json (got xml)");
     }
 
     #[test]

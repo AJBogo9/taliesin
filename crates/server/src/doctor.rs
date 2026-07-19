@@ -235,10 +235,7 @@ pub(crate) fn cmd_doctor(args: &[String]) -> ExitCode {
                 Some("json") => json = true,
                 Some("human") => json = false,
                 other => {
-                    eprintln!(
-                        "error: --format expects human or json (got {})",
-                        other.unwrap_or("nothing")
-                    );
+                    crate::log::error(&crate::serve::bad_format_error(other));
                     return ExitCode::FAILURE;
                 }
             },

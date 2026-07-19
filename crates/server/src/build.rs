@@ -63,7 +63,7 @@ struct BuildArgs<'a> {
 /// Every long flag `build` accepts (drives the unknown-flag did-you-mean). `-j` is the
 /// only short alias; it's not in this set (suggestions are between long flags).
 const BUILD_FLAGS: &[&str] = &[
-    "--out", "--dir", "--jobs", "--strict", "--bare", "--format", "--json",
+    "--out", "--jobs", "--strict", "--bare", "--format", "--json",
 ];
 
 /// Output-path extensions that name a format Taliesin does not produce (DX11). `build`
@@ -119,20 +119,16 @@ fn parse_build_args(args: &[String]) -> Result<BuildArgs<'_>, String> {
             // `--format human|json`: mirror `check`'s flag exactly (value validated below).
             "--format" => match it.next().map(|s| s.as_str()) {
                 Some(v) if v == "human" || v == "json" => format = v,
-                other => {
-                    return Err(format!(
-                        "error: --format expects human or json (got {})",
-                        other.unwrap_or("nothing")
-                    ));
-                }
+                other => return Err(format!("error: {}", crate::serve::bad_format_error(other))),
             },
             // `--json`: clig.dev shorthand for `--format json`, accepted on every
             // machine-output command so neither spelling dead-ends.
             "--json" => format = "json",
             // `--out <dir>` needs a real value. A missing one (end of args, or a flag
             // follows) is a hard error rather than silently leaving out_dir None and
-            // writing `<stem>.html` to an unexpected place.
-            "--out" | "--dir" => match it.next().map(|s| s.as_str()) {
+            // writing `<stem>.html` to an unexpected place. (`--out` = output dir; the
+            // undocumented `--dir` alias was dropped — `--dir` is the scaffold-input flag.)
+            "--out" => match it.next().map(|s| s.as_str()) {
                 Some(v) if !v.starts_with("--") => out_dir = Some(v),
                 _ => {
                     return Err(format!(

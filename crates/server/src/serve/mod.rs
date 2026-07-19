@@ -1451,6 +1451,18 @@ pub(crate) fn unknown_flag_error(flag: &str, known: &[&'static str]) -> String {
     }
 }
 
+/// One wording for a bad `--format` value, shared by every subcommand that takes
+/// `--format`/`--json` (`build`/`publish`/`check`/`doctor`/`map`/`symbols`/`init`/`new`)
+/// so the same mistake reads identically everywhere. `got` is the offending value, or
+/// `None` when `--format` was given with nothing after it. No `error:` prefix — the caller
+/// frames it exactly like `unknown_flag_error` (raw `eprintln!`, or `log::error` styles it).
+pub(crate) fn bad_format_error(got: Option<&str>) -> String {
+    format!(
+        "--format expects human or json (got {})",
+        got.unwrap_or("nothing")
+    )
+}
+
 #[cfg(test)]
 mod protocol_contract {
     //! The single-doc producers share the op/message contract that the preview

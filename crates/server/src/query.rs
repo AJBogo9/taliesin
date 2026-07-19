@@ -195,13 +195,12 @@ pub(crate) fn cmd_schema(args: &[String]) -> ExitCode {
         ("tali-frontmatter.schema.json", FRONTMATTER_SCHEMA),
         ("tali-site.schema.json", SITE_SCHEMA),
     ];
-    // Optional `--out <dir>` (alias `--dir`), parsed like `cmd_build`.
+    // Optional `--out <dir>` (the output dir), parsed like `cmd_build`.
     let mut out: Option<String> = None;
     let mut it = args.iter().skip(2);
     while let Some(a) = it.next() {
-        match a.as_str() {
-            "--out" | "--dir" => out = it.next().cloned(),
-            _ => {}
+        if a == "--out" {
+            out = it.next().cloned();
         }
     }
     match out {
@@ -519,9 +518,7 @@ pub(crate) fn cmd_map(args: &[String]) -> ExitCode {
         return ExitCode::FAILURE;
     };
     if format != "human" && format != "json" {
-        log::error(&format!(
-            "unknown --format `{format}` (expected human or json)"
-        ));
+        log::error(&crate::serve::bad_format_error(Some(format)));
         return ExitCode::FAILURE;
     }
     let target = Path::new(path);
@@ -588,9 +585,7 @@ pub(crate) fn cmd_symbols(args: &[String]) -> ExitCode {
         return ExitCode::FAILURE;
     };
     if format != "human" && format != "json" {
-        log::error(&format!(
-            "unknown --format `{format}` (expected human or json)"
-        ));
+        log::error(&crate::serve::bad_format_error(Some(format)));
         return ExitCode::FAILURE;
     }
     if let Some(msg) = directory_rejection(

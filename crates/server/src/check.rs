@@ -561,9 +561,7 @@ pub(crate) fn cmd_check(args: &[String]) -> ExitCode {
         }
     }
     if format != "human" && format != "json" {
-        log::error(&format!(
-            "unknown --format `{format}` (expected human or json)"
-        ));
+        log::error(&crate::serve::bad_format_error(Some(format)));
         return ExitCode::FAILURE;
     }
     // `--explain` is a code lookup, not a lint: print cause + fix (or the code index) and
