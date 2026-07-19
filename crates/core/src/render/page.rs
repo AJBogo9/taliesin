@@ -269,6 +269,7 @@ pub fn assemble_html_page(p: &PageParts) -> String {
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="referrer" content="no-referrer" />
+<meta name="generator" content="Taliesin" />
 <title>{title}</title>
 {favicon}
 {theme_init}

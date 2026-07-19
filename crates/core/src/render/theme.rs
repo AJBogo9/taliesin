@@ -111,6 +111,16 @@ pub fn theme_head(default_mode: &str) -> String {
     // which shows as a white flash on every (cross-page) navigation in dark mode.
     el.style.colorScheme = mode === "dark" ? "dark" : "light";
     el.style.background = BG[mode] || '#ffffff';
+    // Keep the mobile browser-chrome tint (`<meta name="theme-color">`) in lockstep with the
+    // canvas, so a dark page no longer sits under a white status bar. Reuse the same BG map
+    // (single source, no duplicated hex) and follow the in-page toggle, not just the OS. The
+    // meta is created here rather than emitted statically so its value is never a stale literal.
+    try {{
+      var head = document.head || document.getElementsByTagName("head")[0];
+      var mc = document.querySelector('meta[name="theme-color"]');
+      if (!mc && head) {{ mc = document.createElement("meta"); mc.setAttribute("name", "theme-color"); head.appendChild(mc); }}
+      if (mc) mc.setAttribute("content", BG[mode] || '#ffffff');
+    }} catch(e) {{}}
     // Let theme-dependent renderers (e.g. mermaid, whose SVG colours are baked at
     // render time) re-render on a toggle, and let the Settings picker re-sync its
     // pressed state: which tracks the choice, not the mode.

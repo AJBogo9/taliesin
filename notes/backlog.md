@@ -961,9 +961,6 @@ under-sells machinery that already ships.)
 - **PL12 — Tokenize the exec/error boxes** (`base.css:681-693`, `:931`, `dark.css:32-35`): hardcoded per-theme
   literals are *why* printing force-swaps the whole doc to light (`theme.rs:144-157`). Derive surfaces via
   `color-mix` from the callout tokens; drop ~6 override rules + shrink the print swap. S · med. **VERIFIED (cited).**
-- **PL8 — Add `<meta name="theme-color">` (dynamic) + `<meta name="generator">`.** Head (`page.rs:269-271`) has
-  neither; mobile chrome stays white on a dark page. The `BG` map (`theme.rs:103`) can feed a dynamic theme-color;
-  the feed already advertises a generator (`feed.rs:158`). S/trivial · med. **VERIFIED.**
 
 **Tier 2 — CLI/config consistency sweep:**
 
