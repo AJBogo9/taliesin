@@ -613,6 +613,8 @@ pub(crate) const STATUS_CSS: &str = "\
     [data-qmd-cell-state=\"running\"] { border-left-color: #4c8dff; } \
     [data-qmd-cell-state=\"done\"] { border-left-color: #2bb673; } \
     [data-qmd-cell-state=\"error\"] { border-left-color: #cc3333; } \
+    [data-qmd-cell-source=\"cache\"] { border-left-color: color-mix(in srgb, #2bb673 40%, transparent); } \
+    [data-qmd-cell-source=\"cache\"] .tali-cell-badge { opacity: .6; } \
     .tali-cell-badge { font: 11px/1 var(--tali-mono, monospace); opacity: .75; margin-right: 6px; } \
     @media (prefers-reduced-motion: no-preference) { \
       [data-qmd-cell-state=\"running\"] .tali-cell-badge { animation: tali-pulse 1s ease-in-out infinite; } \
@@ -1660,6 +1662,26 @@ mod protocol_contract {
         assert!(
             CLIENT_JS.contains("window.taliOpenPageSource"),
             "client.js must expose window.taliOpenPageSource for the command palette"
+        );
+    }
+
+    #[test]
+    fn client_and_status_css_ship_the_cache_legibility_surface() {
+        // DX9: the ⚡ cached badge + the muted cached-cell border are include_str!'d JS/CSS,
+        // so this drift guard keeps the render and the style in lockstep with the protocol's
+        // `source: "cache"` tag. If the badge text or the CSS attr hook is renamed, the wire
+        // stays "cache" and the surface goes silently blank — this fails first.
+        assert!(
+            CLIENT_JS.contains("⚡ cached"),
+            "client.js must render the ⚡ cached badge for a cache replay"
+        );
+        assert!(
+            CLIENT_JS.contains("data-qmd-cell-source"),
+            "client.js must tag the block with its cache provenance"
+        );
+        assert!(
+            STATUS_CSS.contains("data-qmd-cell-source=\"cache\""),
+            "STATUS_CSS must style the cached-cell border distinctly from a fresh run"
         );
     }
 

@@ -75,7 +75,7 @@ fn emit_cell_errors(
     for cell in &cells[range] {
         emit(
             sink,
-            crate::protocol::cell_state(page, &cell.id, "error", None, None),
+            crate::protocol::cell_state(page, &cell.id, "error", None, None, None),
         );
     }
 }
@@ -129,6 +129,22 @@ struct CellRef {
 struct Ran {
     hash: String,
     output: String, // inner output HTML (may be empty)
+}
+
+/// How one run split between replay and re-execution, summed across languages so the
+/// caller can print one legible cache line (DX9): `cached` cells were restored (the warm
+/// in-memory prefix + the disk `_freeze` tail), `ran` cells actually executed.
+#[derive(Default, Clone, Copy)]
+struct CacheTally {
+    cached: usize,
+    ran: usize,
+}
+
+impl std::ops::AddAssign for CacheTally {
+    fn add_assign(&mut self, o: Self) {
+        self.cached += o.cached;
+        self.ran += o.ran;
+    }
 }
 
 /// Per-language warm kernel + the cells it has executed. One per executed language
@@ -371,8 +387,10 @@ impl Executor {
 
         // Map cell block index -> its output block (when non-empty), across langs.
         let mut output_blocks: HashMap<usize, Block> = HashMap::new();
+        let mut tally = CacheTally::default();
         for (lang, cells) in &by_lang {
-            let outputs = self.compute_outputs(lang, cells).await;
+            let (outputs, lang_tally) = self.compute_outputs(lang, cells).await;
+            tally += lang_tally;
             for (cell, inner) in cells.iter().zip(&outputs) {
                 // `include: false` cells run (above) for their kernel-state side
                 // effects but contribute no visible output block.
@@ -381,6 +399,12 @@ impl Executor {
                 }
                 output_blocks.insert(cell.block_index, output_block(cell, inner));
             }
+        }
+        // One legible cache line per run (DX9): only when something replayed, so a cold
+        // run (nothing cached) stays quiet and the "why didn't my cell re-run?" case — an
+        // all-cached replay reporting `· 0 re-ran` — is the one that speaks up.
+        if tally.cached > 0 {
+            crate::log::cache_tally(self.page.as_deref(), tally.cached, tally.ran);
         }
         // A forced re-run (Restart kernel) applies to every language in this pass,
         // then clears. Flush any newly executed outputs to `_freeze/` once.
@@ -400,7 +424,13 @@ impl Executor {
     /// Outputs (inner HTML) for one language's cells: restore the unchanged warm
     /// prefix + any disk-cached tail, and execute the contiguous range in between
     /// (see [`plan`]). Freshly executed, cacheable, non-error outputs are persisted.
-    async fn compute_outputs(&mut self, lang: &'static str, cells: &[CellRef]) -> Vec<String> {
+    /// Also returns a [`CacheTally`] (how many cells replayed vs re-ran) so the caller
+    /// can print one legible cache summary per run (DX9).
+    async fn compute_outputs(
+        &mut self,
+        lang: &'static str,
+        cells: &[CellRef],
+    ) -> (Vec<String>, CacheTally) {
         // The interpreter identity seeds the cumulative hash chain (a different
         // interpreter/version can't serve another's outputs). Computed up front so
         // even a full cold replay — which never boots the kernel — can key the cache.
@@ -440,14 +470,24 @@ impl Executor {
         // in the loop below. `cell_id` is each cell's own id (the id the output block
         // is built from as `{id}-out`), so the client can target that block.
         for (i, cell) in cells.iter().enumerate() {
-            let state = if i < shared || i >= run_end {
-                "done"
+            // The warm prefix and the disk-cached tail are both restored without running,
+            // so tag them `source: "cache"` (DX9) — that's what turns a client's blank `✓`
+            // into `⚡ cached`. The run range is still `queued` (no source yet).
+            let (state, source) = if i < shared || i >= run_end {
+                ("done", Some("cache"))
             } else {
-                "queued"
+                ("queued", None)
             };
             emit(
                 &self.sink,
-                crate::protocol::cell_state(self.page.as_deref(), &cell.id, state, None, None),
+                crate::protocol::cell_state(
+                    self.page.as_deref(),
+                    &cell.id,
+                    state,
+                    None,
+                    None,
+                    source,
+                ),
             );
         }
 
@@ -555,7 +595,14 @@ impl Executor {
                     // (This mid-run dead-kernel path is production-only; toy runs rarely hit it.)
                     emit(
                         &sink,
-                        crate::protocol::cell_state(page.as_deref(), &cell.id, "error", None, None),
+                        crate::protocol::cell_state(
+                            page.as_deref(),
+                            &cell.id,
+                            "error",
+                            None,
+                            None,
+                            None,
+                        ),
                     );
                     outputs.push(KERNEL_DIED_HTML.to_string());
                 } else {
@@ -596,6 +643,7 @@ impl Executor {
                                 "running",
                                 Some(t0),
                                 None,
+                                None,
                             ),
                         );
                         t0
@@ -607,6 +655,10 @@ impl Executor {
                         } else {
                             "done"
                         };
+                        // A cell that actually executed is `source: "fresh"` (DX9), so a
+                        // real "✓ 1.2s" run is never mistaken for a cache restore. Errors
+                        // carry no source.
+                        let source = (state == "done").then_some("fresh");
                         emit(
                             &sink,
                             crate::protocol::cell_state(
@@ -615,6 +667,7 @@ impl Executor {
                                 state,
                                 Some(t0),
                                 Some(now_ms().saturating_sub(t0)),
+                                source,
                             ),
                         );
                     }
@@ -683,7 +736,17 @@ impl Executor {
                 ),
             );
         }
-        outputs
+        // Cache legibility (DX9): the warm prefix `[0, shared)` and the disk tail
+        // `[run_end, len)` were restored without running; `ran_count` is what actually
+        // executed. Observational only — computed after all execution, changes nothing.
+        let cached = shared + cells.len().saturating_sub(run_end);
+        (
+            outputs,
+            CacheTally {
+                cached,
+                ran: ran_count,
+            },
+        )
     }
 
     /// Ensure a live kernel for `lang` before executing. Cases, in order:

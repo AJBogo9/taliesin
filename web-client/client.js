@@ -26,7 +26,7 @@
  * @typedef {{ type: "title", title: ?string }} TitleMsg
  * @typedef {{ type: "style", css: string }} StyleMsg
  * @typedef {{ type: "build-state", page: ?string, phase: "warming-kernel"|"executing"|"idle"|"error", ran: number, total: number, lang: string }} BuildStateMsg
- * @typedef {{ type: "cell-state", page: ?string, cell_id: string, state: "queued"|"running"|"done"|"error", started_ms: ?number, duration_ms: ?number }} CellStateMsg
+ * @typedef {{ type: "cell-state", page: ?string, cell_id: string, state: "queued"|"running"|"done"|"error", started_ms: ?number, duration_ms: ?number, source: ?("cache"|"fresh") }} CellStateMsg
  * @typedef {FullRenderMsg|DiagnosticsMsg|UpdateMsg|InsertMsg|RemoveMsg|SetMetaMsg|ErrorMsg|ReloadMsg|TitleMsg|StyleMsg|BuildStateMsg|CellStateMsg} ServerMessage
  */
 (() => {
@@ -455,7 +455,16 @@
       }
     });
 
-    panel.append(devRow("Status", statusEl), devRow("Words", wordCountEl), devRow("Source", srcHint), kernelBtn);
+    // Cache legibility (DX9): tie the ⚡ cached badges + the console "restored N cached
+    // cell(s)" line to how you force a re-run, right beside the button that does it.
+    const cacheHint = document.createElement("span");
+    cacheHint.id = "tali-cache-hint";
+    cacheHint.textContent = "⚡ cached cells replay instantly";
+    cacheHint.title =
+      "Cells marked ⚡ replayed from the _freeze cache without running. " +
+      "Restart kernel (above) or set TALIESIN_NO_CACHE=1 to force a fresh re-run.";
+
+    panel.append(devRow("Status", statusEl), devRow("Words", wordCountEl), devRow("Source", srcHint), kernelBtn, devRow("Cache", cacheHint));
 
     // Draft pages (preview only): a count that expands to click-to-open links. The server
     // sets window.TALIESIN_DRAFTS on site previews; absent/empty on single-doc + builds.
@@ -570,6 +579,9 @@
     var out = elById(msg.cell_id + "-out") || elById(msg.cell_id);
     if (!out) return;
     out.setAttribute("data-qmd-cell-state", msg.state);
+    // Provenance (DX9): a `done` cell is either freshly run or a cache replay. Tagging the
+    // block lets CSS mute a cached cell's border so it reads as "available, not just run".
+    out.setAttribute("data-qmd-cell-source", msg.source || "");
     var badge = out.querySelector(":scope > .tali-cell-badge") || (function () {
       var b = document.createElement("span"); b.className = "tali-cell-badge";
       out.insertBefore(b, out.firstChild); return b;
@@ -581,7 +593,10 @@
     } else {
       delete runningTimers[msg.cell_id];
       if (msg.state === "error") activeCell = msg.cell_id; // keep erroring cell as scroll target
-      if (msg.state === "done") badge.textContent = "✓ " + (msg.duration_ms != null ? fmtElapsed(msg.duration_ms) : "");
+      // A cache replay shows "⚡ cached" instead of the blank "✓" it used to (a replay
+      // carries no duration, so "✓ " with nothing after it read as a 0ms run); a fresh run
+      // keeps "✓ 1.2s".
+      if (msg.state === "done") badge.textContent = msg.source === "cache" ? "⚡ cached" : "✓ " + (msg.duration_ms != null ? fmtElapsed(msg.duration_ms) : "");
       else if (msg.state === "error") badge.textContent = "✕";
       else badge.textContent = "⏳"; // queued
     }
